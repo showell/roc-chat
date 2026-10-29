@@ -145,7 +145,8 @@ fn request(arena: std.mem.Allocator, port: u16, method: []const u8, target: []co
     defer stream.close(io);
     const cookie_line = if (cookie.len > 0) try std.fmt.allocPrint(arena, "cookie: {s}\r\n", .{cookie}) else "";
     const body_lines = if (body.len > 0) try std.fmt.allocPrint(arena, "content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n", .{body.len}) else "";
-    const text = try std.fmt.allocPrint(arena, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}{s}\r\n{s}", .{ method, target, cookie_line, body_lines, body });
+    // As a browser on the chat's own pages says of a write (app/Origin.roc).
+    const text = try std.fmt.allocPrint(arena, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\nsec-fetch-site: same-origin\r\n{s}{s}\r\n{s}", .{ method, target, cookie_line, body_lines, body });
     var w = stream.writer(io, &.{});
     try w.interface.writeAll(text);
     var buf: [4096]u8 = undefined;

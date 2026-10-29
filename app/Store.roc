@@ -146,6 +146,10 @@ Store := [].{
 		SessionCodec.encode(fields),
 	)
 
+	## A session ended: its record removed (a logout).
+	remove_session! : Stored.SecretHash => [Failed, Removed]
+	remove_session! = |hash| Host.remove!(session_path(hash))
+
 	## **A SIGN-IN'S RECORDS, IN ORDER**: the settings (the generation
 	## counter first, so no generation is ever given twice), the accounts,
 	## then the new session. `Failed` when an account will not encode, or a

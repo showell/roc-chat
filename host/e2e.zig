@@ -71,6 +71,11 @@
 //!  36. a human's twenty-first agent is refused (Limits.agents_per_human)
 //!  37. C cannot name Steve's agent in a new conversation, nor an id no
 //!      one holds, and both refusals read the same; Steve can name it
+//!  38. a POST with A's cookie from another origin is a 403, and one with
+//!      no Origin and no `Sec-Fetch-Site: same-origin` too; nothing is
+//!      posted
+//!  39. a logout from another origin is refused; from the chat's own, it
+//!      ends the session, and the old cookie is a 401
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -197,7 +202,11 @@ fn request(a: std.mem.Allocator, port: u16, method: []const u8, target: []const 
 /// What a request carries to say who it is: a browser's cookie, an agent's
 /// key (its secret, in hex, for `Authorization: Bearer`), each when not
 /// empty.
-const Credential = struct { cookie: []const u8 = "", key: []const u8 = "" };
+const Credential = struct { cookie: []const u8 = "", key: []const u8 = "", origin: []const u8 = own_origin };
+
+/// The origin a browser on the chat's own pages sends with a write (the
+/// rig's `.origin`); a request's own when not empty.
+const own_origin = "http://chat.test";
 
 /// One request on a connection of its own, with `credential`.
 fn send(a: std.mem.Allocator, port: u16, method: []const u8, target: []const u8, credential: Credential, body: []const u8) !Response {
@@ -206,7 +215,8 @@ fn send(a: std.mem.Allocator, port: u16, method: []const u8, target: []const u8,
     defer stream.close(io);
     const cookie_line = if (credential.cookie.len > 0) try std.fmt.allocPrint(a, "cookie: {s}\r\n", .{credential.cookie}) else "";
     const key_line = if (credential.key.len > 0) try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{credential.key}) else "";
-    const text = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}{s}content-length: {d}\r\n\r\n{s}", .{ method, target, cookie_line, key_line, body.len, body });
+    const origin_line = if (credential.origin.len > 0) try std.fmt.allocPrint(a, "origin: {s}\r\n", .{credential.origin}) else "";
+    const text = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}{s}{s}content-length: {d}\r\n\r\n{s}", .{ method, target, cookie_line, key_line, origin_line, body.len, body });
     var w = stream.writer(io, &.{});
     try w.interface.writeAll(text);
     var buf: [4096]u8 = undefined;
@@ -585,6 +595,33 @@ fn othersAgentUnnamed(w: *World) !void {
     if (own.status != 201) return error.OwnAgentRefused;
 }
 
+/// **A WRITE FROM ANOTHER ORIGIN IS REFUSED** (M4), whatever cookie it
+/// carries.
+fn crossOrigin(w: *World) !void {
+    const before = try w.messages();
+    const target = try w.path("/messages");
+    const evil = try send(w.a, w.port(), "POST", target, .{ .cookie = w.ann, .origin = "http://evil.chat.test" }, "from elsewhere");
+    if (evil.status != 403) return error.CrossOriginAccepted;
+    const bare = try send(w.a, w.port(), "POST", target, .{ .cookie = w.ann, .origin = "" }, "from nowhere");
+    if (bare.status != 403) return error.NoOriginAccepted;
+    if (try w.messages() != before) return error.Posted;
+    // The same post from the chat's own origin goes through.
+    if ((try w.postAs(w.ann, "from home")).status != 201) return error.OwnRefused;
+}
+
+/// **LOGOUT ENDS THE SESSION** (M5), behind M4's check.
+fn logout(w: *World) !void {
+    const eve = try signUp(w.a, w.port(), 1007);
+    if ((try get(w.a, w.port(), "/me", eve)).status != 200) return error.NotSignedIn;
+    const evil = try send(w.a, w.port(), "POST", "/logout", .{ .cookie = eve, .origin = "http://evil.chat.test" }, "");
+    if (evil.status != 403) return error.CrossOriginLogout;
+    if ((try get(w.a, w.port(), "/me", eve)).status != 200) return error.LoggedOutByAnother;
+    const out = try request(w.a, w.port(), "POST", "/logout", eve, "");
+    if (out.status != 303) return error.NotLoggedOut;
+    if (!std.mem.eql(u8, out.cookie("session") orelse "-", "")) return error.CookieKept;
+    if ((try get(w.a, w.port(), "/me", eve)).status != 401) return error.SessionLives;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -918,6 +955,8 @@ const steps = [_]Step{
     .{ .name = "a message's HTML on the page is exactly step 6's for it", .f = pageHtml },
     .{ .name = "a human's twenty-first agent is refused", .f = agentsCapped },
     .{ .name = "C cannot name Steve's agent in a new conversation, nor an unknown id, in the same words; Steve can", .f = othersAgentUnnamed },
+    .{ .name = "a POST with a cookie from another origin, or from none, is a 403", .f = crossOrigin },
+    .{ .name = "a logout from another origin is refused; from our own, the old cookie is a 401", .f = logout },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

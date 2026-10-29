@@ -36,7 +36,7 @@
 -- follow-ups (the agent-id counter and invites), which may only rise.
 const roc_floor = 1869
 const zig_floor = 203
-const e2e_steps = 37
+const e2e_steps = 39
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -213,6 +213,11 @@ plant("agents uncapped (the cap never reached)",
 
 plant("another's agent named in `with=` (the owner never asked)",
   "app/ConvAccess.roc", "if Principal.answers_to(p) == human Ok({}) else Err(NotTheOwner(other))", "if Principal.answers_to(p) == human or True Ok({}) else Err(NotTheOwner(other))", 37)
+
+plant("a cross-origin POST accepted (Origin never compared)",
+  "app/Origin.roc", "[one] => if one == configured Allowed else CrossOrigin", "[_] => Allowed", 38)
+plant("a logout that leaves the session (its record never removed)",
+  "app/SignIn.roc", "Ok(token_hash) => Store.remove_session!(token_hash)", "Ok(_) => Removed", 39)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})

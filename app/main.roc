@@ -13,11 +13,33 @@ import pf.Host
 import md.Md
 import Agents
 import Conversations
+import Origin
 import Pages
 import SignIn
+import Wire
 
 handle! : Chat.Request => Chat.Answer
-handle! = |req|
+handle! = |req| {
+	sent = {
+		method: req.method,
+		path: req.path,
+		origin: Host.read_header!(Str.to_utf8("origin")),
+		fetch_site: Host.read_header!(Str.to_utf8("sec-fetch-site")),
+		has_cookie: !List.is_empty(Host.read_header!(Str.to_utf8("cookie"))),
+		has_key: !List.is_empty(Host.read_header!(Str.to_utf8("authorization"))),
+	}
+	# The configured origin is read only where a write with a cookie asks
+	# for it (a server without sign-in's config has none to read).
+	configured = if sent.has_cookie and !List.is_empty(sent.origin) Host.read_config!(Origin) else []
+	match Origin.check(sent, configured) {
+		CrossOrigin => Wire.refused(403, "this write did not come from the chat's own pages")
+		Allowed => route!(req)
+	}
+}
+
+## The request, to its route's module.
+route! : Chat.Request => Chat.Answer
+route! = |req|
 	if req.path == Str.to_utf8("/") {
 		if req.method == Get or req.method == Head {
 			hello
@@ -30,6 +52,8 @@ handle! = |req|
 		if req.method == Get SignIn.callback!(req) else Chat.not_allowed(Get)
 	} else if req.path == Str.to_utf8("/login/name") {
 		if req.method == Post SignIn.name!({}) else Chat.not_allowed(Post)
+	} else if req.path == Str.to_utf8("/logout") {
+		if req.method == Post SignIn.logout!({}) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/me") {
 		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
 	} else {

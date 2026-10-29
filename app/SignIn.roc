@@ -73,6 +73,35 @@ SignIn := [].{
 	name! : {} => Chat.Answer
 	name! = |{}| refused_or!(named!({}))
 
+	## **/logout, POST**: the session this browser's cookie names ended
+	## (its record removed, so the cookie is a 401 from now on, wherever it
+	## was copied), the cookie cleared, and a 303 to `/`. No session, or a
+	## cookie naming none, is signed out already: the same answer. Behind
+	## Origin's check, as every write is, so another site cannot sign
+	## someone out.
+	logout! : {} => Chat.Answer
+	logout! = |{}| {
+		removed =
+			match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
+				Unsent => Removed
+				Sent(value) =>
+					match SignInWeb.unhex(value) {
+						Err(NotHex) => Removed
+						Ok(secret) =>
+							match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
+								Err(NotAHash) => Failed
+								Ok(token_hash) => Store.remove_session!(token_hash)
+							}
+					}
+			}
+		match removed {
+			Failed => Chat.failed
+			Removed =>
+				see_other(Str.to_utf8("/"))
+					|> Chat.with_header("set-cookie", SignInWeb.set_cookie("session", [], 0))
+		}
+	}
+
 	## **THE SESSION THIS BROWSER'S COOKIE NAMES**, as stored, not yet
 	## admitted (Credentials admits it, and a grant asks ApiKey). No cookie,
 	## one that is not hex, no such session, or a malformed one, is none.
