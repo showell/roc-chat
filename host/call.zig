@@ -9,7 +9,7 @@
 //! 500.
 
 const std = @import("std");
-const abi = @import("seam/chat_abi.zig");
+const roc = @import("seam/roc_abi.zig");
 const route = @import("seam/chat_route.zig");
 const assets = @import("assets.zig");
 const files = @import("files.zig");
@@ -97,8 +97,10 @@ pub const Ctx = struct {
     }
 
     pub fn read_header(c: *Ctx, name: []const u8) []const []const u8 {
-        // Out of memory here is the call's crash, as a Roc allocation's is.
-        return c.req.values(c.arena, name) catch @panic("read_header: out of memory");
+        // **OUT OF MEMORY HERE IS THE CALL'S CRASH**, as a Roc allocation's
+        // is (roc_abi's `crashed`, which a guarded call jumps back from),
+        // never a panic, which would stop the server.
+        return c.req.values(c.arena, name) catch roc.crashed("read_header: out of memory");
     }
 
     pub fn serve_script(c: *Ctx, name: []const u8) route.ScriptServed {

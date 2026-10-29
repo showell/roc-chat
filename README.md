@@ -72,6 +72,10 @@ or wrong stops the server, saying which.
   answer's own field, `content-length`, `connection`).
 - **A Roc crash is a 500, not a dead server**: the call jumps back to where
   it began (`host/seam/sljmp.zig`), and the request's arena goes with it.
+  The answer is the host's fixed 500, nothing of the Roc's in it, and the
+  crash is logged once, on one line, in the turn: its turn, method, path
+  and the Roc's message, escaped. Planted crashes prove it, one per way the
+  Roc can die (`app/test/crash.roc`, `host/crash_test.zig`).
 
 ## Layout
 
@@ -85,7 +89,8 @@ or wrong stops the server, saying which.
 | `host/assets.zig` | The chat client's scripts: ETag, 304, cache rule. |
 | `host/files.zig` | The store under the data root: `read!`, `write!` (atomic), `append!` and their kin, each synced before it answers. |
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
-| `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients. |
+| `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness). |
+| `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
 | `dev/config.zon` | `zig build serve`'s config. |
 

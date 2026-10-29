@@ -31,8 +31,8 @@ const Plant = struct {
 const plants = [_]Plant{
     .{ .name = "a crash in the handler", .request = get("/crash"), .said = "a planted crash" },
     .{ .name = "an out-of-bounds List.get unwrapped by crash", .request = get("/crash-get"), .said = "List.get past the end" },
-    .{ .name = "a U8 overflow", .request = get("/crash-overflow"), .said = "overflow" },
-    .{ .name = "a U64 divided by zero", .request = get("/crash-divide"), .said = "zero" },
+    .{ .name = "a U8 overflow", .request = get("/crash-overflow"), .said = "Integer multiplication overflowed" },
+    .{ .name = "a U64 divided by zero", .request = get("/crash-divide"), .said = "U64 division by zero" },
     .{
         .name = "a crash in read_header!'s continuation",
         .request = "GET /crash-after-header HTTP/1.1\r\nhost: t\r\nx-probe: secret-header-value\r\nconnection: close\r\n\r\n",
