@@ -83,6 +83,7 @@ or wrong stops the server, saying which.
 | `host/server.zig` | The accept loop, a task per connection, keep-alive, the turn, the deadlines and their watchdog, the body cap. |
 | `host/call.zig` | The bridge: the request copied for the Roc, the host the Roc's call asks, and the answer made into what is written. |
 | `host/assets.zig` | The chat client's scripts: ETag, 304, cache rule. |
+| `host/files.zig` | The store under the data root: `read!`, `write!` (atomic), `append!` and their kin, each synced before it answers. |
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
 | `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
@@ -105,6 +106,12 @@ or wrong stops the server, saying which.
   which needs Roc's source at the pinned commit in `~/tools/roc-<commit>`).
 - **Bytes handed to a hosted function belong to the call.** Copy anything
   the host keeps past it.
+- **A folder std opens to walk (the default, O_PATH) cannot be fsynced**:
+  the sync fails EBADF, which std's debug build panics on as a programmer's
+  bug. `files.zig` opens a folder again, readable, to sync it.
+- **A file hosted function's `Failed` has failed the request**: the answer
+  is a 500 whatever the Roc says, and the host does nothing more in that
+  call (`read_at!` and `write_cache!`, a cache's, are the exceptions).
 
 No LICENSE yet: that is Steve's decision (D9), for this repo and its
 dependencies alike.
