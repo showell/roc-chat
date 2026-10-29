@@ -302,3 +302,233 @@ test "a chat client script: a 200 with its ETag, then a 304 when the browser has
     const none = try Response.of(try exchange(a, r.port(), "GET /nope.js HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
     try std.testing.expectEqual(404, none.status);
 }
+
+// ── the bus and SSE, through the stub route (app/main.roc `/stub/`) ────────
+
+/// A held stream as a browser reads it: its head, then what it says, kept
+/// in `got` as it arrives.
+const Listener = struct {
+    stream: Io.net.Stream,
+    buf: [4096]u8 = undefined,
+    reader: Io.net.Stream.Reader = undefined,
+    got: std.ArrayList(u8) = .empty,
+    arena: std.mem.Allocator,
+
+    /// A stream of `key`, its head read: subscribed, and its backlog on
+    /// the way. `rcvbuf` (0: the kernel's) shrinks what it takes unread.
+    fn open(arena: std.mem.Allocator, port: u16, key: []const u8, rcvbuf: u32) !*Listener {
+        const l = try arena.create(Listener);
+        l.* = .{ .stream = (try Client.open(port)).stream, .arena = arena };
+        if (rcvbuf > 0) server.setBuffer(l.stream, std.posix.SO.RCVBUF, rcvbuf);
+        l.reader = l.stream.reader(io, &l.buf);
+        const c: Client = .{ .stream = l.stream };
+        try c.send(try std.fmt.allocPrint(arena, "GET /stub/stream/{s} HTTP/1.1\r\nhost: t\r\n\r\n", .{key}));
+        try l.until("\r\n\r\n");
+        const head = try Response.of(l.got.items);
+        if (head.status != 200) return error.NotAStream;
+        if (!std.mem.eql(u8, head.header("content-type") orelse "", "text/event-stream")) return error.NotAStream;
+        // Keep only what came after the head.
+        const body_len = head.body.len;
+        std.mem.copyForwards(u8, l.got.items, head.body);
+        l.got.shrinkRetainingCapacity(body_len);
+        return l;
+    }
+
+    /// Reads until `needle` has arrived.
+    fn until(l: *Listener, needle: []const u8) !void {
+        while (!has(l.got.items, needle)) try l.more();
+    }
+
+    /// Reads until the server ends the stream.
+    fn toEnd(l: *Listener) !void {
+        while (true) l.more() catch |e| switch (e) {
+            error.EndOfStream => return,
+            else => return e,
+        };
+    }
+
+    fn more(l: *Listener) !void {
+        const r = &l.reader.interface;
+        const bytes = try r.peekGreedy(1);
+        try l.got.appendSlice(l.arena, bytes);
+        r.toss(bytes.len);
+    }
+
+    fn close(l: *Listener) void {
+        l.stream.close(io);
+    }
+};
+
+fn post(arena: std.mem.Allocator, port: u16, key: []const u8, data: []const u8) !void {
+    const got = try Response.of(try exchange(arena, port, try std.fmt.allocPrint(
+        arena,
+        "POST /stub/post/{s} HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}",
+        .{ key, data.len, data },
+    )));
+    if (got.status != 200) return error.PostRefused;
+}
+
+fn postOrPanic(port: u16, key: []const u8, data: []const u8) void {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    post(arena.allocator(), port, key, data) catch |e| std.debug.panic("post {s}: {t}", .{ data, e });
+}
+
+fn count(haystack: []const u8, needle: []const u8) usize {
+    return std.mem.count(u8, haystack, needle);
+}
+
+/// Polls `f` until it is true, at most `ms`.
+fn eventually(ms: i64, ctx: anytype, comptime f: fn (@TypeOf(ctx)) bool) !void {
+    const t0 = Io.Clock.now(.awake, io);
+    while (!f(ctx)) {
+        if (msSince(t0) > ms) return error.NeverHappened;
+        Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(5) }, io) catch {};
+    }
+}
+
+test "streams: two held streams get the backlog, then 12 concurrent posts live, each once and in the turn's order" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    try post(a, r.port(), "room", "before");
+    const one = try Listener.open(a, r.port(), "room", 0);
+    defer one.close();
+    const two = try Listener.open(a, r.port(), "room", 0);
+    defer two.close();
+    const posts = 12;
+    var group: Io.Group = .init;
+    for (0..posts) |i| try group.concurrent(io, postOrPanic, .{ r.port(), "room", try std.fmt.allocPrint(a, "m{d}", .{i}) });
+    try group.await(io);
+    for ([_]*Listener{ one, two }) |l| {
+        try l.until(try std.fmt.allocPrint(a, "id: {d}\n", .{posts}));
+        try std.testing.expect(std.mem.startsWith(u8, l.got.items, "id: 0\ndata: before\n\n"));
+        // Every id once, in order: the turn numbered them as it published.
+        var at: usize = 0;
+        for (0..posts + 1) |id| {
+            const frame = try std.fmt.allocPrint(a, "id: {d}\ndata: ", .{id});
+            try std.testing.expectEqual(1, count(l.got.items, frame));
+            const here = std.mem.indexOf(u8, l.got.items, frame).?;
+            try std.testing.expect(here >= at);
+            at = here;
+        }
+    }
+    try std.testing.expectEqualStrings(one.got.items, two.got.items);
+}
+
+fn holdsBegun(r: *Running) bool {
+    return r.server.stats.subscribe_holds.load(.acquire) == 1;
+}
+
+test "streams: backlog xor live: a post landing between the Roc's backlog read and the subscribe arrives exactly once" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    try post(a, r.port(), "gap", "old");
+    r.server.hold_before_subscribe_ms_for_test = 150;
+    // The stream's request, its head read on a task of its own: it reads
+    // the backlog, then sleeps before its subscribe.
+    var opened = try io.concurrent(Listener.open, .{ a, r.port(), "gap", 0 });
+    try eventually(2000, r, holdsBegun);
+    // In the gap: the post waits for the turn, or (were the subscribe out
+    // of it) lands where neither the backlog nor the live stream sees it.
+    try post(a, r.port(), "gap", "between");
+    const l = try opened.await(io);
+    defer l.close();
+    try post(a, r.port(), "gap", "after");
+    try l.until("data: after\n\n");
+    try std.testing.expectEqual(1, count(l.got.items, "data: old\n"));
+    try std.testing.expectEqual(1, count(l.got.items, "data: between\n"));
+    try std.testing.expectEqual(1, count(l.got.items, "data: after\n"));
+}
+
+fn twoStalled(r: *Running) bool {
+    return r.server.stats.stream_stalls.load(.acquire) == 2;
+}
+
+test "streams: a stalled stream takes 16 more frames and keeps going; the 17th ends it, with none of the 17 sent" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    const kept = try Listener.open(a, r.port(), "sixteen", 0);
+    defer kept.close();
+    const ended = try Listener.open(a, r.port(), "seventeen", 0);
+    defer ended.close();
+    // Each stream's task takes its first frame and stalls before writing
+    // it, as a write to a reader that stopped reading does; what comes
+    // next waits in its mailbox.
+    r.server.stall_streams_for_test.store(true, .release);
+    try post(a, r.port(), "sixteen", "first");
+    try post(a, r.port(), "seventeen", "first");
+    try eventually(2000, r, twoStalled);
+    for (0..16) |i| try post(a, r.port(), "sixteen", try std.fmt.allocPrint(a, "s{d}", .{i}));
+    for (0..17) |i| try post(a, r.port(), "seventeen", try std.fmt.allocPrint(a, "s{d}", .{i}));
+    r.server.stall_streams_for_test.store(false, .release);
+
+    try ended.toEnd();
+    try std.testing.expectEqualStrings("id: 0\ndata: first\n\n", ended.got.items);
+    try std.testing.expectEqual(0, count(ended.got.items, "data: s"));
+
+    try kept.until("id: 16\ndata: s15\n\n");
+    try post(a, r.port(), "sixteen", "still here");
+    try kept.until("data: still here\n\n");
+    try std.testing.expectEqual(17, count(kept.got.items, "data: s"));
+}
+
+test "streams: a quiet stream pings at the configured keepalive" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const r = try Running.start(.{ .keepalive_ms = 150 });
+    defer r.stop();
+    const l = try Listener.open(arena.allocator(), r.port(), "quiet", 0);
+    defer l.close();
+    const t0 = Io.Clock.now(.awake, io);
+    try l.until(": ping\n\n");
+    const waited = msSince(t0);
+    try std.testing.expect(waited >= 140 and waited < 1000);
+    try std.testing.expectEqualStrings(": ping\n\n", l.got.items);
+}
+
+test "streams: the 65th stream held ends the oldest, and the rest stay live" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    var held: [65]*Listener = undefined;
+    for (&held) |*l| l.* = try Listener.open(a, r.port(), "many", 0);
+    defer for (held) |l| l.close();
+    try held[0].toEnd();
+    try std.testing.expectEqual(64, r.server.slots.count(io));
+    try post(a, r.port(), "many", "to the rest");
+    try held[1].until("data: to the rest\n\n");
+    try held[64].until("data: to the rest\n\n");
+}
+
+fn noStreams(r: *Running) bool {
+    return r.server.hub.count() == 0 and r.server.slots.count(io) == 0;
+}
+
+test "streams: a reader that stops reading is shut at the write deadline" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{ .write_ms = 300 });
+    defer r.stop();
+    r.server.stream_sndbuf_for_test = 4096;
+    const l = try Listener.open(a, r.port(), "stuck", 4096);
+    defer l.close();
+    const big = try a.alloc(u8, 30_000);
+    @memset(big, 'B');
+    const t0 = Io.Clock.now(.awake, io);
+    // Past what the two small buffers between them hold, so a write blocks.
+    for (0..10) |_| try post(a, r.port(), "stuck", big);
+    try eventually(3000, r, noStreams);
+    try std.testing.expect(msSince(t0) >= 250);
+}

@@ -318,6 +318,8 @@ fn simRun(seed: u64) !void {
 
 test "bus: the mailbox contract over seeded runs (webbox's simulator)" {
     sim_seen = .{};
+    // 300 seeds, as webbox's: about 1.2 s in Debug, all of it work, none
+    // of it waiting. At 120 seeds the overflow case is met only 16 times.
     for (1..301) |seed| try simRun(seed);
     try testing.expect(sim_seen.frames > 1000 and sim_seen.missed > 10 and sim_seen.empty > 100 and sim_seen.closed > 100);
 }

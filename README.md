@@ -72,17 +72,33 @@ or wrong stops the server, saying which.
   answer's own field, `content-length`, `connection`).
 - **A Roc crash is a 500, not a dead server**: the call jumps back to where
   it began (`host/seam/sljmp.zig`), and the request's arena goes with it.
+- **Event streams (SSE), for any app on the platform.** A handler answers
+  `Chat.stream({ key, backlog })` and publishes with `Host.publish!(key,
+  frame)`, a frame made by `Sse.frame` (`platform/Sse.roc` has an
+  example). The key is any bytes the app chooses. The host subscribes the
+  stream **in the same turn** as the handler that read its backlog, so a
+  frame is in the backlog or comes live, never both and never neither.
+  After the turn, the stream holds its own task: frames go out verbatim,
+  each write under the write deadline (a reader that stops reading is
+  shut), with `: ping` after 25 s of quiet. A stream 16 frames behind is
+  ended, never skipped ahead: the browser reconnects with its
+  `Last-Event-ID`. At most 64 streams are held; the 65th ends the oldest.
+- **`/stub/` is a stub of the bus** (`app/main.roc`, `host/stub_log.zig`,
+  `Host.stub_append!` and `Host.stub_read!`): frames kept in memory, so the
+  stream tests have a backlog. Step 6's chat replaces it with the store.
 
 ## Layout
 
 | | |
 |---|---|
 | `app/main.roc` | The chat (for now, the stub). |
-| `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `main.roc`. |
+| `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `Sse.roc` (an event as one frame), `main.roc`. |
 | `host/main.zig`, `host/config.zig` | Start: the config, the data root, the server. |
 | `host/server.zig` | The accept loop, a task per connection, keep-alive, the turn, the deadlines and their watchdog, the body cap. |
 | `host/call.zig` | The bridge: the request copied for the Roc, the host the Roc's call asks, and the answer made into what is written. |
 | `host/assets.zig` | The chat client's scripts: ETag, 304, cache rule. |
+| `host/bus.zig`, `host/sse.zig` | The bus (a mailbox of 16 frames per stream, by key) and a stream's head, ping and cap. |
+| `host/stub_log.zig` | The stub route's frames, until step 6. |
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
 | `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |

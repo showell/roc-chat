@@ -71,6 +71,8 @@ pub const Stats = struct {
     /// Streams that slept `hold_before_subscribe_ms_for_test` before
     /// subscribing.
     subscribe_holds: std.atomic.Value(u32) = .init(0),
+    /// Streams stalled by `stall_streams_for_test`.
+    stream_stalls: std.atomic.Value(u32) = .init(0),
 };
 
 pub const Server = struct {
@@ -95,6 +97,16 @@ pub const Server = struct {
     /// backlog and its subscribe, so another client's post can try to land
     /// between them.
     hold_before_subscribe_ms_for_test: u32 = 0,
+    /// A test's: a stream's socket sends through a buffer this small (0:
+    /// the kernel's), so a reader that stops reading blocks its writes
+    /// after a few KiB, where loopback's own would take a megabyte.
+    stream_sndbuf_for_test: u32 = 0,
+    /// A test's: while set, a stream that has taken a frame holds it
+    /// before its write, as a write to a reader that stopped reading
+    /// blocks, and counts itself in `stats.stream_stalls`. (Where a real
+    /// write blocks depends on the kernel's buffers; a count of frames to
+    /// the overflow cannot.)
+    stall_streams_for_test: std.atomic.Value(bool) = .init(false),
 
     pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits) !Server {
         return .{
@@ -301,6 +313,7 @@ pub const Server = struct {
         defer s.hub.close(sub);
         const held = s.slots.hold(s.io, s.limits.streams_most, conn.stream);
         defer s.slots.letGo(s.io, held);
+        if (s.stream_sndbuf_for_test > 0) setBuffer(conn.stream, std.posix.SO.SNDBUF, s.stream_sndbuf_for_test);
         var head_buf: [1024]u8 = undefined;
         var body = blk: {
             s.watch.arm(s.io, conn, s.limits.write_ms, .both);
@@ -322,6 +335,10 @@ pub const Server = struct {
                 .canceled => return,
             };
             defer if (frame) |f| sub.gpa.free(f);
+            if (frame != null and s.stall_streams_for_test.load(.acquire)) {
+                _ = s.stats.stream_stalls.fetchAdd(1, .acq_rel);
+                while (s.stall_streams_for_test.load(.acquire)) io_sleep(s.io, 5);
+            }
             if (!s.push(conn, &body, frame orelse sse.ping)) return;
         }
     }
@@ -343,6 +360,12 @@ pub const Server = struct {
 /// A request's answer, and the subscriber its turn opened when it is a
 /// stream.
 const Answered = struct { reply: call.Reply, sub: ?*bus.Subscriber };
+
+/// A socket's send or receive buffer set to `bytes` (a test's), or left as
+/// it was when the kernel refuses.
+pub fn setBuffer(stream: net.Stream, which: u32, bytes: u32) void {
+    std.posix.setsockopt(stream.socket.handle, std.posix.SOL.SOCKET, which, std.mem.asBytes(&bytes)) catch {};
+}
 
 fn io_sleep(io: Io, ms: u32) void {
     Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch {};
