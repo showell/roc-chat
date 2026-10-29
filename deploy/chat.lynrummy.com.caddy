@@ -1,0 +1,29 @@
+# roc-chat in prod, https://chat.lynrummy.com. The prod droplet's Caddyfile
+# (angry-gopher's deploy/Caddyfile) imports /etc/caddy/sites/*.caddy, where
+# tools/deploy.shale installs this file beside lynrummy.com's and
+# roc.lynrummy.com's site blocks. Every request is logged to
+# /var/log/caddy/chat-access.log by the `access_log` snippet that Caddyfile
+# defines for every site on prod (metal-vmm QUEUE 221).
+chat.lynrummy.com {
+	import access_log chat
+	encode gzip
+
+	# The host refuses a body past its own cap; this is the outer one.
+	request_body {
+		max_size 1MiB
+	}
+
+	# The security headers are lynrummy.com's.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+	}
+
+	# **A STREAM IS WRITTEN THROUGH AS IT COMES**: flush_interval -1, so an
+	# SSE frame reaches the browser at once and is never held in a buffer.
+	reverse_proxy 127.0.0.1:9490 {
+		flush_interval -1
+	}
+}

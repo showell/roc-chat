@@ -1,0 +1,18 @@
+// The production server's settings, installed as /var/lib/roc-chat/config.zon
+// by tools/deploy.shale on the first deploy only: after that the copy on the
+// server is the one that counts, and a change here is copied by hand (the
+// deploy never overwrites a server's config).
+.{
+    // Caddy, on the same machine, is the only way in.
+    .bind = "127.0.0.1",
+    .port = 9490,
+    // The data root, beside this file: /var/lib/roc-chat/data.
+    .data = "data",
+    .origin = "https://chat.lynrummy.com",
+    // Under data/secrets/, the server's user's alone (mode 0600): the OAuth
+    // app's client id and secret, which Steve writes once; the signing key,
+    // made on first start.
+    .secrets = .{ .client_id = "github-client-id", .client_secret = "github-client-secret", .signing_key = "signing-key" },
+    // Steve (github.com/showell), made admin when his account is made.
+    .bootstrap_admin = 142908,
+}

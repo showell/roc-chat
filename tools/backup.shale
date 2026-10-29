@@ -1,0 +1,44 @@
+-- **A BACKUP OF PROD'S CHAT**: the data root on the prod droplet
+-- (/var/lib/roc-chat/data) pulled here as one timestamped, gzipped tar, into
+-- ~/build/roc-chat-backups (the `build:` mount), which only this box's user
+-- reads. The transcripts are appended to, so a tar a run is cheap and gives
+-- a point to go back to after a lost droplet or a bad delete.
+--
+--   shale tools/backup.shale
+--
+-- **THE SECRETS STAY ON PROD**: data/secrets/ (the OAuth app's secret, the
+-- signing key) is left out. The OAuth secret is GitHub's to issue again, and
+-- a new signing key only signs everyone out. A backup can be copied around
+-- without carrying a key to the site.
+--
+-- Prune old backups by hand. angry-gopher's ops/backup did the same for the
+-- Zig chat, before metal served it.
+--
+-- budget: steps=10000000
+
+const HOST = "steve@162.243.1.123"
+const DATA = "/var/lib/roc-chat/data"
+const DEST = "build:roc-chat-backups"
+
+if not exists(DEST) then mkdir(DEST) end
+must(run({"chmod", "700", real(DEST)}, {timeout_ms = 10000, whole = 1000}))
+local stamp = trim(must(run({"date", "-u", "+%Y%m%d-%H%M%S"}, {timeout_ms = 10000, whole = 1000})).out)
+local out = real(DEST) .. "/chat-" .. stamp .. ".tar.gz"
+-- tar runs as root on prod (the data is rocchat's alone), writing to its
+-- stdout; ssh carries it here.
+local r = run({"sh", "-c", "ssh " .. HOST .. " 'sudo tar -czf - -C " .. DATA .. " --exclude=./secrets .' > '" .. out .. "'"}, {timeout_ms = 600000, whole = 10000, want = "sh: ssh's stdout into the backup file"})
+if r.code ~= 0 then
+  run({"rm", "-f", out}, {timeout_ms = 10000, whole = 1000})
+  fail("backup: the copy from prod failed (exit " .. r.code .. "): " .. trim(r.out))
+end
+local listing = must(run({"tar", "-tzf", out}, {timeout_ms = 60000, whole = 1000000}))
+local files = 0
+for line in lines(listing.out) do
+  if starts_with(line, "./secrets") or starts_with(line, "secrets") then
+    run({"rm", "-f", out}, {timeout_ms = 10000, whole = 1000})
+    fail("backup: the tar holds a secrets path (" .. line .. "); deleted it")
+  end
+  if not ends_with(line, "/") then files = files + 1 end
+end
+local size = trim(must(run({"du", "-h", out}, {timeout_ms = 10000, whole = 1000})).out)
+print("backup: " .. out .. ", " .. files .. " files (" .. split(size, "\t")[1] .. ")")

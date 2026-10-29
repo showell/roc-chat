@@ -1,0 +1,47 @@
+# roc-chat on the prod droplet, behind Caddy (deploy/chat.lynrummy.com.caddy),
+# installed by tools/deploy.shale as /etc/systemd/system/roc-chat.service.
+#
+# **CONFINED, BESIDE lynrummy.com's FRONT DOOR**: Caddy holds the site's
+# certificates on this machine, so roc-chat runs as its own system user,
+# listens on 127.0.0.1 alone (config.zon), and can write nothing but its own
+# folder, /var/lib/roc-chat (config.zon, data/, data/secrets/). The binary,
+# /opt/roc-chat/roc-chat, is root's and read-only to it.
+[Unit]
+Description=roc-chat, the Roc chat (chat.lynrummy.com)
+After=network.target
+
+[Service]
+User=rocchat
+Group=rocchat
+# The server reads config.zon from its working directory.
+WorkingDirectory=/var/lib/roc-chat
+ExecStart=/opt/roc-chat/roc-chat
+Restart=on-failure
+RestartSec=2
+
+# The confinement.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/roc-chat
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
