@@ -116,6 +116,10 @@ pub const Exchanged = union(ExchangeStatus) {
 /// (host/call.zig).
 pub const Header = struct { name: []const u8, value: []const u8 };
 
+/// **THE LONGEST A STREAM'S HOLDER MAY BE** (Chat.roc's `stream_holder`):
+/// host/sse.zig's Slots keep it inline. Longer is the Roc's bug, a 500.
+pub const holder_most = 64;
+
 /// What the router decided, its bytes copied out of the call.
 pub const Decision = union(enum) {
     /// A status and its body, typed `content_type` when it is not empty,
@@ -139,8 +143,9 @@ pub const Decision = union(enum) {
     /// said (`Exchanged`). Once per request.
     exchange: []const u8,
     /// An event stream on the bus key `key`, subscribed in the call's turn:
-    /// `backlog` first, then each frame published to the key.
-    stream: struct { key: []const u8, backlog: []const u8 },
+    /// `backlog` first, then each frame published to the key. `holder` is
+    /// who holds it (host/sse.zig's Slots keep a few a holder).
+    stream: struct { key: []const u8, backlog: []const u8, holder: []const u8 },
 
     pub fn format(d: Decision, w: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (d) {

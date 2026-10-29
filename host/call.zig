@@ -262,6 +262,8 @@ pub const Reply = struct {
     /// An event stream: `body` is its backlog, and the server goes on to
     /// write each frame published to the key it subscribed in the turn.
     stream: bool = false,
+    /// Who holds the stream (the Roc's bytes), when it is one.
+    holder: []const u8 = "",
 };
 
 pub const failed: Reply = .{ .status = .internal_server_error, .body = "The server failed to answer.\n" };
@@ -339,7 +341,7 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
                 .script => |b| try scriptReply(arena, b, ctx.req.first("if-none-match")),
             };
         },
-        .stream => |s| return .{ .status = .ok, .body = s.backlog, .headers = &sse.headers, .stream = true },
+        .stream => |s| return .{ .status = .ok, .body = s.backlog, .headers = &sse.headers, .stream = true, .holder = s.holder },
     }
 }
 

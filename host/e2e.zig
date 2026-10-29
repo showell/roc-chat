@@ -81,6 +81,8 @@
 //!      key revoked while its stream is open stops reaching it
 //!  41. junk invite codes, a callback with a forged state and a name with
 //!      no pending sign-up, five of each, leave the audit's size unchanged
+//!  42. A opening nine streams of one conversation ends A's own first
+//!      (eight a holder), and B's stream there stays live
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -667,6 +669,28 @@ fn streamLifetime(w: *World) !void {
     return error.RevokedKeyStreamed;
 }
 
+/// **A HOLDER'S STREAMS ARE CAPPED, AND ONLY ITS OWN END** (H2): B holds a
+/// stream of the conversation; A opens nine, and the ninth ends A's own
+/// first, never B's.
+const streams_per_holder = 8;
+
+fn streamsPerHolder(w: *World) !void {
+    const target = try w.path("/stream");
+    // From after the last message, so each stream starts empty.
+    const last = try std.fmt.allocPrint(w.a, "{d}", .{try w.messages()});
+    const bea = try Listener.open(w.a, w.port(), target, w.bea, last);
+    defer bea.close();
+    var ann: [streams_per_holder + 1]*Listener = undefined;
+    var opened: usize = 0;
+    defer for (ann[0..opened]) |l| l.close();
+    while (opened < ann.len) : (opened += 1) ann[opened] = try Listener.open(w.a, w.port(), target, w.ann, last);
+    if ((try w.postAs(w.ann, "to the held")).status != 201) return error.NotPosted;
+    try bea.until("\"markdown\":\"to the held\"");
+    try ann[1].until("\"markdown\":\"to the held\"");
+    try ann[streams_per_holder].until("\"markdown\":\"to the held\"");
+    if (has(ann[0].got.items, "to the held") or !ann[0].ends()) return error.OwnFirstKept;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -1021,6 +1045,7 @@ const steps = [_]Step{
     .{ .name = "a logout from another origin is refused; from our own, the old cookie is a 401", .f = logout },
     .{ .name = "a stream ends at its lifetime, so a key revoked while it is open stops reaching it", .f = streamLifetime },
     .{ .name = "junk invite codes, a forged state and no pending sign-up leave the audit as it was", .f = anonymousUnaudited },
+    .{ .name = "A opening nine streams ends A's own first, and B's stays", .f = streamsPerHolder },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

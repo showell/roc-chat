@@ -52,6 +52,9 @@ pub const Limits = struct {
     /// The most streams held at once (at most sse.Slots.most_ever): past
     /// it, the oldest is ended.
     streams_most: u32 = sse.Slots.most_ever,
+    /// The most streams one holder (the principal the Roc names) holds at
+    /// once: past it, that holder's own oldest is ended (H2).
+    streams_per_holder: u32 = 8,
     /// **A STREAM'S LIFETIME** (the security review's M3): a stream is
     /// authorized once, at its subscribe, so it ends this long after, and
     /// the browser resumes with `Last-Event-ID`, authorized afresh. A key
@@ -355,7 +358,7 @@ pub const Server = struct {
     /// or at its lifetime (the browser resumes, authorized afresh).
     fn serveStream(s: *Server, conn: *Conn, req: *std.http.Server.Request, reply: call.Reply, sub: *bus.Subscriber) void {
         defer s.hub.close(sub);
-        const held = s.slots.hold(s.io, s.limits.streams_most, conn.stream);
+        const held = s.slots.hold(s.io, .{ .all = s.limits.streams_most, .per_holder = s.limits.streams_per_holder }, reply.holder, conn.stream);
         defer s.slots.letGo(s.io, held);
         if (s.stream_sndbuf_for_test > 0) setBuffer(conn.stream, std.posix.SO.SNDBUF, s.stream_sndbuf_for_test);
         var head_buf: [1024]u8 = undefined;

@@ -410,7 +410,8 @@ test "streams: the 65th stream held ends the oldest, and the rest stay live" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();
-    const r = try Running.start(.{});
+    // The probe names one holder for every stream: the global cap alone.
+    const r = try Running.start(.{ .streams_per_holder = 64 });
     defer r.stop();
     var held: [65]*Listener = undefined;
     for (&held) |*l| l.* = try Listener.open(a, r.port(), "many", 0);

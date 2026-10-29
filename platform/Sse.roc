@@ -7,7 +7,7 @@
 ##
 ## ```roc
 ## # GET /ticks: what is known now, then each event published to "ticks".
-## Chat.stream({ key: Str.to_utf8("ticks"), backlog: [] })
+## Chat.stream({ key: Str.to_utf8("ticks"), backlog: [], holder: Str.to_utf8("human:2") })
 ##
 ## # Anywhere a handler runs (a POST, say): every stream on "ticks" gets it.
 ## match Sse.frame({ name: Str.to_utf8("tick"), data: Str.to_utf8("12:00:01"), id: [] }) {

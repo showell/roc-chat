@@ -89,7 +89,10 @@ Chat := [].{
 	## - `Stream`: an event stream held by the host on the bus key
 	##   `stream_key`, subscribed in this call's turn: `body` first (the
 	##   backlog the Roc read in the same turn), then each frame published to
-	##   the key, verbatim, until the reader goes or falls behind.
+	##   the key, verbatim, until the reader goes or falls behind. Its
+	##   `stream_holder` names who holds it (opaque bytes, at most 64): the
+	##   host keeps at most a few streams a holder, ending that holder's
+	##   oldest for a new one, never another's.
 	Kind : [
 		Respond,
 		NotAllowed,
@@ -111,6 +114,7 @@ Chat := [].{
 		headers : List(Header),
 		allow : Method,
 		sniff : Sniff,
+		stream_holder : List(U8),
 		stream_key : List(U8),
 	}
 
@@ -124,6 +128,7 @@ Chat := [].{
 		headers: [],
 		allow: Other,
 		sniff: Allow,
+		stream_holder: [],
 		stream_key: [],
 	}
 
@@ -187,13 +192,16 @@ Chat := [].{
 	failed : Answer
 	failed = respond(500, { content_type: text, body: Str.to_utf8("failed\n") })
 
-	## The stream on the bus key `key`: `backlog` first (finished frames,
-	## read in this call), then each frame published to `key`.
-	stream : { key : List(U8), backlog : List(U8) } -> Answer
-	stream = |{ key, backlog }| {
+	## The stream on the bus key `key`, held by `holder` (who asked: the
+	## app's own bytes, at most 64, the same for each stream one holder
+	## opens): `backlog` first (finished frames, read in this call), then
+	## each frame published to `key`.
+	stream : { key : List(U8), backlog : List(U8), holder : List(U8) } -> Answer
+	stream = |{ key, backlog, holder }| {
 		..not_found,
 		kind: Stream,
 		stream_key: key,
+		stream_holder: holder,
 		body: backlog,
 	}
 }

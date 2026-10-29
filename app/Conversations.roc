@@ -482,11 +482,13 @@ post! = |id| {
 ## (`Last-Event-ID`; none, or one that is no id, is from the start), read in
 ## this turn, then each one posted after, live: the host subscribes in the
 ## same turn, so a message is in the backlog or comes live, never both.
+## **ITS HOLDER IS THE VIEWER'S PRINCIPAL** (a key's, the one it acts as),
+## so the host's cap on streams a holder ends only the viewer's own (H2).
 stream! : ConvAccess.ConvId => Chat.Answer
 stream! = |id|
 	match seen!(id) {
 		Err(answer) => answer
-		Ok(_) =>
+		Ok(a) =>
 			match Store.load_transcript!(id) {
 				Err(Failed) => Chat.failed
 				Ok(messages) => {
@@ -497,9 +499,17 @@ stream! = |id|
 							frame,
 						),
 					)
-					Chat.stream({ key: bus_key(id), backlog })
+					Chat.stream({ key: bus_key(id), backlog, holder: holder_of(a.viewer) })
 				}
 			}
+	}
+
+## Who holds a stream: the viewer's principal id, as the accounts spell it.
+holder_of : Access.Viewer(ConvAccess.ConvId) -> List(U8)
+holder_of = |viewer|
+	match viewer.who() {
+		SignedOut => crash "Conversations.holder_of: `seen!` let nobody signed out through"
+		Session(b) | Key(b) => Str.to_utf8(AccountCodec.id_text(b.id))
 	}
 
 ## The message id a `Last-Event-ID` names; 0 for none, or for one that is

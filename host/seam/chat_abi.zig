@@ -68,6 +68,7 @@ pub const Answer = extern struct {
     body: RocBytes,
     content_type: RocBytes,
     headers: HeaderList,
+    stream_holder: RocBytes,
     stream_key: RocBytes,
     status: u16,
     allow: Method,
@@ -131,8 +132,8 @@ comptime {
 comptime {
     const w = @sizeOf(usize);
     std.debug.assert(@sizeOf(ExchangedRec) == 5 * w and @offsetOf(ExchangedRec, "status") == 4 * w);
-    std.debug.assert(@sizeOf(Request) == 9 * w and @offsetOf(Request, "path") == 5 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 13 * w and @sizeOf(Got) == 4 * w);
-    std.debug.assert(@offsetOf(Answer, "status") == 12 * w and @offsetOf(Answer, "sniff") == 12 * w + 4);
+    std.debug.assert(@sizeOf(Request) == 9 * w and @offsetOf(Request, "path") == 5 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 16 * w and @sizeOf(Got) == 4 * w);
+    std.debug.assert(@offsetOf(Answer, "status") == 15 * w and @offsetOf(Answer, "sniff") == 15 * w + 4);
 }
 
 pub extern fn roc_chat_handle(req: Request) callconv(.c) Answer;
@@ -572,10 +573,14 @@ pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Metho
         // The code is GitHub's (GitHubSignIn.is_code held it to letters,
         // digits, `-` and `_`); the body carries it.
         .exchange => .{ .exchange = try alloc.dupe(u8, a.body.slice()) },
-        .stream => .{ .stream = .{
-            .key = try alloc.dupe(u8, a.stream_key.slice()),
-            .backlog = try alloc.dupe(u8, a.body.slice()),
-        } },
+        .stream => .{
+            .stream = .{
+                .key = try alloc.dupe(u8, a.stream_key.slice()),
+                // Longer than the slots keep is the Roc's bug, the request's 500.
+                .holder = if (a.stream_holder.slice().len > route.holder_most) return error.StreamHolderTooLong else try alloc.dupe(u8, a.stream_holder.slice()),
+                .backlog = try alloc.dupe(u8, a.body.slice()),
+            },
+        },
     };
 }
 

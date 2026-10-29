@@ -16,7 +16,7 @@
 --     expects and its Zig tests counted, neither below its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - twenty-four planted faults, each red at its own step of the end to
+--   - twenty-five planted faults, each red at its own step of the end to
 --     end: a forged session cookie admitted, a third user's post let
 --     through, a third user's read let through, the subscribe moved out of
 --     the turn, a message's newline written raw into its transcript line,
@@ -31,7 +31,7 @@
 --     (2026-10-29): agents uncapped, another's agent named in `with=`, a
 --     cross-origin POST accepted, a logout that leaves the session, a
 --     stream outliving its lifetime, a junk invite code audited, a forged
---     state audited;
+--     state audited, eviction across holders;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
@@ -40,7 +40,7 @@
 -- follow-ups (the agent-id counter and invites), which may only rise.
 const roc_floor = 1898
 const zig_floor = 203
-const e2e_steps = 41
+const e2e_steps = 42
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -228,6 +228,8 @@ plant("a junk invite code audited (an unknown invite's refusal appended)",
   "app/Agents.roc", "\tmatch invite {\n\t\tUnknown => {}\n\t\tKnown(_) =>", "\tmatch invite {\n\t\tUnknown | Known(_) =>", 41)
 plant("a forged state audited (every sign-in refusal appended)",
   "app/GitHubSignIn.roc", "StateForged | StateMismatched | StateExpired | StateReused => Anonymous", "StateForged | StateMismatched | StateExpired | StateReused => Audited", 41)
+plant("eviction across holders (every stream counted as the new one's holder's)",
+  "host/sse.zig", "if (x.heldBy(holder)) {", "if (x.heldBy(x.holder[0..x.holder_len])) {", 42)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
