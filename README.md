@@ -4,12 +4,14 @@ The Roc chat's own server: the chat is a Roc app (`app/`, on the platform in
 `platform/`), and its host (`host/`) is a small Zig server on `std.http`.
 It will serve chat.lynrummy.com at `/`.
 
-**Status (2026-10-29): the skeleton and the server core.** The Roc app is a
-stub that proves the seam both ways: a hello page (rendered by
-roc-markdown), a POST echoed (`/echo`), and the chat client's scripts. There
-is no chat logic yet. Next come the bus and SSE streams, the files, and the
-auth primitives (on branch `box/auth-primitives`). The design is the essay
-note `roc-chat-host-design` (essay-repl-server `notes/`).
+**Status (2026-10-29): the server core, the files, and GitHub sign-in.**
+The Roc app is a stub that proves the seam both ways (a hello page rendered
+by roc-markdown, a POST echoed at `/echo`, the chat client's scripts), plus
+sign-in on the auth core: `/login`, GitHub's callback `/login/github`, the
+display-name form `/login/name`, and `/me`, which says who a session is.
+There is no chat logic yet; the bus and SSE streams come next. The design is
+the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
+(essay-repl-server `notes/`).
 
 ## Before you build
 
@@ -44,8 +46,14 @@ zig build           # zig-out/bin/roc-chat
 
 **The server takes no arguments.** It reads `config.zon` from its working
 directory: `.bind`, `.port` and `.data`, the data root, relative to the
-config's folder. `dev/config.zon` is the example. A setting that is missing
-or wrong stops the server, saying which.
+config's folder; `.origin`, the public origin GitHub sends the browser back
+to; `.secrets`, the secret files' names under the data root's `secrets/`
+(the OAuth app's client id and secret, which you write, mode 0600, and the
+signing key, made on first start); and optionally `.github` (GitHub's base
+URLs and deadlines, a test's fake) and `.bootstrap_admin` (the first
+admin's GitHub id). `dev/config.zon` is the example. A setting that is
+missing or wrong, or a secret file missing or readable by others, stops the
+server, saying which.
 
 ## The model
 
@@ -70,6 +78,14 @@ or wrong stops the server, saying which.
   `cache-control` and `location`. Any other name, or a CR, LF or NUL, is a
   500 (the Roc's bug). The host owns the rest (`content-type` from the
   answer's own field, `content-length`, `connection`).
+- **GitHub's exchange runs outside the turn**, between two Roc calls
+  (`Server.answer`): the first answers `Exchange` with the code, the host
+  exchanges it on the connection's own task (`host/signin.zig`, under the
+  GitHub client's deadlines), and the second call hears the same request
+  with what GitHub said (`Request.exchanged`). The Roc keeps nothing
+  between the calls. The client secret and GitHub's token never cross the
+  seam, and the Roc never holds the signing key: `sign!` and `verify!` use
+  the host's.
 - **A Roc crash is a 500, not a dead server**: the call jumps back to where
   it began (`host/seam/sljmp.zig`), and the request's arena goes with it.
 
@@ -83,9 +99,12 @@ or wrong stops the server, saying which.
 | `host/server.zig` | The accept loop, a task per connection, keep-alive, the turn, the deadlines and their watchdog, the body cap. |
 | `host/call.zig` | The bridge: the request copied for the Roc, the host the Roc's call asks, and the answer made into what is written. |
 | `host/assets.zig` | The chat client's scripts: ETag, 304, cache rule. |
+| `host/signin.zig`, `host/auth/`, `host/github/` | Sign-in: the secrets, the crypto, and GitHub's exchange off the turn; the fake GitHub for tests. |
+| `app/SignInWeb.roc` | Sign-in's bytes on the wire: the signed state and pending tokens, the cookies' one policy, the form, the settings' record. Every decision is the auth core's. |
 | `host/files.zig` | The store under the data root: `read!`, `write!` (atomic), `append!` and their kin, each synced before it answers. |
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
 | `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients. |
+| `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
 | `dev/config.zon` | `zig build serve`'s config. |
 
@@ -109,6 +128,10 @@ or wrong stops the server, saying which.
 - **A folder std opens to walk (the default, O_PATH) cannot be fsynced**:
   the sync fails EBADF, which std's debug build panics on as a programmer's
   bug. `files.zig` opens a folder again, readable, to sync it.
+- **The callback checks the state twice.** The first call checks it and
+  spends nothing; the second, after the exchange, checks it again and
+  spends its nonce in the same turn. A check that spent in the first call
+  would refuse its own second call as a replay.
 - **A file hosted function's `Failed` has failed the request**: the answer
   is a 500 whatever the Roc says, and the host does nothing more in that
   call (`read_at!` and `write_cache!`, a cache's, are the exceptions).
