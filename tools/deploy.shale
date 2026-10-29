@@ -108,7 +108,8 @@ local got_sum = split(trim(on_prod("sha256sum /tmp/roc-chat.new").out), " ")[1]
 if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
 on_prod("set -e\nsudo install -o root -g root -m 755 /tmp/roc-chat.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f /tmp/roc-chat.new")
 copy_to_prod("deploy/roc-chat.service", "/tmp/roc-chat.service")
-if asks_prod("cmp -s /tmp/roc-chat.service /etc/systemd/system/roc-chat.service") then
+-- cmp exits 2 on a file that is not there: a first deploy's unit is "changed".
+if asks_prod("[ -f /etc/systemd/system/roc-chat.service ] && cmp -s /tmp/roc-chat.service /etc/systemd/system/roc-chat.service") then
   print("the unit is unchanged")
 else
   on_prod("set -e\nsudo install -o root -g root -m 644 /tmp/roc-chat.service /etc/systemd/system/roc-chat.service\nsudo systemctl daemon-reload\nsudo systemctl enable roc-chat")
@@ -123,7 +124,7 @@ print("roc-chat " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
 
 -- 6. The site block, validated before it counts.
 copy_to_prod("deploy/" .. BLOCK, "/tmp/" .. BLOCK)
-if asks_prod("cmp -s /tmp/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
+if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s /tmp/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
   print("the site block is unchanged")
 else
   on_prod("set -e\n"
