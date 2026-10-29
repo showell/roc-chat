@@ -25,7 +25,7 @@ test "GET / is the Roc's hello page, rendered by roc-markdown, with the Roc's ow
     try std.testing.expectEqual(1, r.turns());
 }
 
-test "a conversation asked of nobody signed in is a 401; a method its route does not take, a 405; a path that is none, a 404" {
+test "a conversation, or the list of them, asked of nobody signed in is a 401; a page, a 303 to /login; a method its route does not take, a 405; a path that is none, a 404" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();
@@ -35,10 +35,17 @@ test "a conversation asked of nobody signed in is a 401; a method its route does
     try std.testing.expectEqual(401, signed_out.status);
     const posted = try Response.of(try exchange(a, r.port(), "POST /conversations/1/messages HTTP/1.1\r\nhost: t\r\ncontent-length: 2\r\nconnection: close\r\n\r\nhi"));
     try std.testing.expectEqual(401, posted.status);
-    const wrong = try Response.of(try exchange(a, r.port(), "GET /conversations HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
+    const listed = try Response.of(try exchange(a, r.port(), "GET /conversations HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
+    try std.testing.expectEqual(401, listed.status);
+    const wrong = try Response.of(try exchange(a, r.port(), "DELETE /conversations HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
     try std.testing.expectEqual(405, wrong.status);
     try std.testing.expectEqualStrings("POST", wrong.header("allow").?);
-    for ([_][]const u8{ "/conversations/0", "/conversations/1/other", "/stub/notes", "/echo" }) |path| {
+    for ([_][]const u8{ "/chat", "/chat/1" }) |path| {
+        const page = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n", .{path})));
+        try std.testing.expectEqual(303, page.status);
+        try std.testing.expectEqualStrings("/login", page.header("location").?);
+    }
+    for ([_][]const u8{ "/conversations/0", "/conversations/1/other", "/chat/0", "/chat/1/x", "/stub/notes", "/echo" }) |path| {
         const got = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n", .{path})));
         try std.testing.expectEqual(404, got.status);
     }

@@ -7,6 +7,8 @@
 ##
 ## The routes (app/main.roc's table names them):
 ##
+##     GET  /conversations                  the viewer's own, JSON: each one's id and who
+##                                          is in it (`mine!`)
 ##     POST /conversations                  start one: a form, `with=` the others' ids,
 ##                                          comma-separated (`human:2,agent:7`)
 ##     GET  /conversations/<id>             its transcript, JSON
@@ -60,11 +62,43 @@ Conversations := [].{
 			}
 		}
 
+	## **THE VIEWER'S OWN CONVERSATIONS**, oldest first: each one ConvAccess
+	## lets them post in (a participant, or the human its agent or bot
+	## answers to). A public conversation they may only read is not theirs.
+	mine! : Access.Viewer(ConvAccess.ConvId), List(Principal) => Try(List(ConvAccess.Conv), [Failed])
+	mine! = |viewer, accounts| {
+		all = Store.conversations!({})?
+		Ok(List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
+	}
+
+	## A message's HTML: roc-markdown's render of its markdown, the one
+	## the transcript, the stream and the pages all give.
+	html_of : MessageCodec.Fields -> List(U8)
+	html_of = |m| Md.render(m.body)
+
+	## The name a principal goes by, as the accounts say now; its id where
+	## no account holds it.
+	name_of : List(Principal), Principal.Id -> Str
+	name_of = |accounts, id|
+		match Principal.find(accounts, id) {
+			Ok(Human(h)) => h.name
+			Ok(Agent(a)) => a.name
+			Ok(Bot(b)) => b.name
+			Err(_) => AccountCodec.id_text(id)
+		}
+
 	## **ANSWER A ROUTE**, each to the method it takes.
 	answer! : Chat.Request, Conversations.Route => Chat.Answer
 	answer! = |req, r|
 		match r {
-			Start => if req.method == Post start!({}) else Chat.not_allowed(Post)
+			Start =>
+				if req.method == Post {
+					start!({})
+				} else if req.method == Get {
+					list!({})
+				} else {
+					Chat.not_allowed(Post)
+				}
 			Read(id) => if req.method == Get read!(id) else Chat.not_allowed(Get)
 			Post(id) => if req.method == Post post!(id) else Chat.not_allowed(Post)
 			Stream(id) => if req.method == Get stream!(id) else Chat.not_allowed(Get)
@@ -132,6 +166,36 @@ start! = |{}| {
 			}
 	}
 }
+
+## **THE VIEWER'S OWN, AS JSON**: each one's id, and who is in it, each
+## by id and name.
+list! : {} => Chat.Answer
+list! = |{}|
+	match Credentials.viewer!(Start) {
+		Err(answer) => answer
+		Ok({ viewer, accounts, now: _, key: _ }) =>
+			match viewer.who() {
+				SignedOut => signed_out
+				Session(_) | Key(_) =>
+					match Conversations.mine!(viewer, accounts) {
+						Err(Failed) => Chat.failed
+						Ok(convs) => {
+							one = |conv| {
+								people = List.map(
+									conv.participants(),
+									|b| List.join([
+										Str.to_utf8("{\"id\":\"${AccountCodec.id_text(b.id)}\",\"name\":"),
+										json_string(Str.to_utf8(Conversations.name_of(accounts, b.id))),
+										['}'],
+									]),
+								)
+								List.join([Str.to_utf8("{\"id\":${conv.id().to_u64().to_str()},\"with\":["), commas(people), Str.to_utf8("]}")])
+							}
+							json(200, List.join([Str.to_utf8("{\"conversations\":["), commas(List.map(convs, one)), Str.to_utf8("]}")]))
+						}
+					}
+			}
+	}
 
 ## **A KEY USED OUTSIDE WHAT IT MAY DO, AUDITED**: the core's own refusal
 ## (ConvKey.decide) for the action it was refused. A session's refusal is
@@ -303,7 +367,7 @@ message_json = |m|
 		Str.to_utf8("{\"id\":${m.id.to_str()},\"at\":${m.at.to_str()},\"by\":\"${AccountCodec.id_text(m.by)}\",\"markdown\":"),
 		json_string(m.body),
 		Str.to_utf8(",\"html\":"),
-		json_string(Md.render(m.body)),
+		json_string(Conversations.html_of(m)),
 		['}'],
 	])
 

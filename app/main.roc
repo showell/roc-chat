@@ -1,6 +1,6 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
-## conversations, Agents.roc's agents and API keys; the store is Store.roc's, the only module that names a
+## conversations, Agents.roc's agents and API keys, Pages.roc's pages; the store is Store.roc's, the only module that names a
 ## file. Beside them, a hello page (rendered by roc-markdown, the chat's
 ## dialect) and the chat client's scripts (`serve_script!`).
 app [handle!] {
@@ -13,6 +13,7 @@ import pf.Host
 import md.Md
 import Agents
 import Conversations
+import Pages
 import SignIn
 
 handle! : Chat.Request => Chat.Answer
@@ -32,10 +33,12 @@ handle! = |req|
 	} else if req.path == Str.to_utf8("/me") {
 		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
 	} else {
-		match (Conversations.route(req.path), Agents.route(req.path)) {
-			(Ok(route), _) => Conversations.answer!(req, route)
-			(_, Ok(route)) => Agents.answer!(req, route)
-			(Err(_), Err(_)) =>
+		match (Conversations.route(req.path), Agents.route(req.path), Pages.route(req.path)) {
+			(Ok(route), _, _) => Conversations.answer!(req, route)
+			(_, Ok(route), _) => Agents.answer!(req, route)
+			# The pages (QUEUE 315).
+			(_, _, Ok(page)) => Pages.answer!(req, page)
+			(Err(_), Err(_), Err(_)) =>
 				match script_name(req.path) {
 					Ok(name) =>
 						match Host.serve_script!(name) {
@@ -52,7 +55,7 @@ hello : Chat.Answer
 hello = {
 	page = List.join([
 		Str.to_utf8("<!doctype html>\n<title>roc-chat</title>\n"),
-		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Its pages are not here yet: sign in at `/login`, and the conversations are at `/conversations`.")),
+		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`.")),
 	])
 	Chat.respond(200, { content_type: Chat.html, body: page })
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))

@@ -269,6 +269,29 @@ Store := [].{
 		}
 	}
 
+	## **EVERY CONVERSATION STORED**, oldest first. `Failed` when the folder
+	## or a record will not read, or an id up to the count is missing (a
+	## store the chat did not write).
+	conversations! : {} => Try(List(ConvAccess.Conv), [Failed])
+	conversations! = |{}| {
+		listed = Host.list!(conversations_path)
+		match listed.status {
+			Missing => Ok([])
+			Failed => Err(Failed)
+			Found => {
+				# Ids run 1 to the count, as `next_conversation_id!` gives them.
+				var $convs = []
+				var $n = 1
+				while $n <= List.len(listed.entries) {
+					id = ConvAccess.ConvId.from_u64($n).map_err(|_| Failed)?
+					$convs = List.append($convs, Store.conversation!(id).map_err(|_| Failed)?)
+					$n = $n + 1
+				}
+				Ok($convs)
+			}
+		}
+	}
+
 	## A conversation written, as it started at `created`.
 	save_conversation! : ConvAccess.Conv, I64 => [Failed, Written]
 	save_conversation! = |conv, created| Host.write!(conversation_path(conv.id()), ConvCodec.encode(conv.fields(created)))

@@ -56,6 +56,16 @@
 //! Admin's plan does to the accounts (RemoveAccount); its keys and votes
 //! are no part of what these steps ask.
 //!
+//! Then the pages (QUEUE 315), a browser's view of the same:
+//!
+//!  31. the list page shows a conversation the viewer is in, and not one
+//!      they aren't
+//!  32. a participant's name is written escaped (B's holds markup)
+//!  33. the conversation page is a 200 to a participant, a 404 to a third
+//!      user; a page is a 403 to a key
+//!  34. signed out, a page redirects to /login
+//!  35. a message's HTML on the page is exactly step 6's for it
+//!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
 //! the first: `zig build e2e`, and `zig build test` runs it too.
@@ -82,7 +92,9 @@ var gpa: std.mem.Allocator = undefined;
 pub fn main(init: std.process.Init) !void {
     io = init.io;
     gpa = init.gpa;
-    const ok = try run(init.arena.allocator());
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    const hold = args.len > 1 and std.mem.eql(u8, args[1], "--hold");
+    const ok = try run(init.arena.allocator(), hold);
     if (!ok) std.process.exit(1);
 }
 
@@ -203,6 +215,11 @@ fn get(a: std.mem.Allocator, port: u16, target: []const u8, cookie: []const u8) 
 /// **A NEW HUMAN SIGNS IN**: /login, GitHub's callback with a code the fake
 /// knows as GitHub id `n`, the name form, and the session cookie.
 fn signUp(a: std.mem.Allocator, port: u16, n: u64) ![]const u8 {
+    return signUpAs(a, port, n, try std.fmt.allocPrint(a, "Person+{d}", .{n}));
+}
+
+/// The same, with the display name `name`, form-encoded.
+fn signUpAs(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) ![]const u8 {
     const login = try get(a, port, "/login", "");
     if (login.status != 303) return error.LoginNotARedirect;
     const location = login.header("location") orelse return error.NoLocation;
@@ -212,7 +229,7 @@ fn signUp(a: std.mem.Allocator, port: u16, n: u64) ![]const u8 {
     const named = try get(a, port, target, state_cookie);
     if (named.status != 200) return error.NoNameForm;
     const both = try std.fmt.allocPrint(a, "{s}; __Host-pending={s}", .{ state_cookie, named.cookie("pending") orelse return error.NoPendingCookie });
-    const made = try request(a, port, "POST", "/login/name", both, try std.fmt.allocPrint(a, "name=Person+{d}", .{n}));
+    const made = try request(a, port, "POST", "/login/name", both, try std.fmt.allocPrint(a, "name={s}", .{name}));
     if (made.status != 303) return error.NotSignedIn;
     return std.fmt.allocPrint(a, "__Host-session={s}", .{made.cookie("session") orelse return error.NoSessionCookie});
 }
@@ -339,7 +356,7 @@ const World = struct {
 
 fn signIn(w: *World) !void {
     w.ann = try signUp(w.a, w.port(), 1001);
-    w.bea = try signUp(w.a, w.port(), 1002);
+    w.bea = try signUpAs(w.a, w.port(), 1002, bea_name_form);
     w.cal = try signUp(w.a, w.port(), 1003);
 }
 
@@ -456,6 +473,93 @@ fn field(body: []const u8, comptime name: []const u8) ![]const u8 {
     }
     const to = std.mem.indexOfAnyPos(u8, body, from, ",}") orelse return error.NoField;
     return body[from..to];
+}
+
+// ── the pages (QUEUE 315) ──
+
+/// B's name holds markup, and the page must write it as text.
+const bea_name_form = "Bea+%3Ci%3Ex%3C%2Fi%3E+%26+%22co%22";
+const bea_name_raw = "Bea <i>x</i> & \"co\"";
+const bea_name_escaped = "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot;";
+
+fn listPage(w: *World) !void {
+    // A conversation A is not in: C's, with B.
+    const other = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.cal, "with=human%3A1002"));
+    const page = try get(w.a, w.port(), "/chat", w.ann);
+    if (page.status != 200) return error.NoListPage;
+    if (!has(page.body, try std.fmt.allocPrint(w.a, "href=\"/chat/{s}\"", .{w.conv}))) return error.OwnMissing;
+    if (has(page.body, try std.fmt.allocPrint(w.a, "href=\"/chat/{s}\"", .{other}))) return error.OthersShown;
+}
+
+fn namesEscaped(w: *World) !void {
+    const page = try get(w.a, w.port(), "/chat", w.ann);
+    if (page.status != 200) return error.NoListPage;
+    if (!has(page.body, bea_name_escaped)) return error.NameNotEscaped;
+    if (has(page.body, bea_name_raw)) return error.NameRaw;
+    const conv = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv}), w.ann);
+    if (!has(conv.body, bea_name_escaped) or has(conv.body, bea_name_raw)) return error.NameRawOnConversation;
+}
+
+fn conversationPage(w: *World) !void {
+    const target = try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv});
+    const mine = try get(w.a, w.port(), target, w.bea);
+    if (mine.status != 200) return error.ParticipantRefused;
+    if (!has(mine.body, try std.fmt.allocPrint(w.a, "data-conv=\"{s}\"", .{w.conv}))) return error.NotTheConversation;
+    const theirs = try get(w.a, w.port(), target, w.cal);
+    if (theirs.status != 404 and theirs.status != 403) return error.ThirdGotPage;
+    // A page is a browser's: Steve's own key, live, is a 403 at both.
+    const own = try mint(w, "");
+    for ([_][]const u8{ "/chat", target }) |t| {
+        if ((try send(w.a, w.port(), "GET", t, .{ .key = own.secret }, "")).status != 403) return error.KeyGotPage;
+    }
+}
+
+fn signedOutPage(w: *World) !void {
+    for ([_][]const u8{ "/chat", try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv}) }) |target| {
+        const r = try get(w.a, w.port(), target, "");
+        if (r.status != 303) return error.NotARedirect;
+        if (!std.mem.eql(u8, r.header("location") orelse "", "/login")) return error.NotToLogin;
+    }
+}
+
+/// A JSON string's text: `\"`, `\\`, `\n` and `\u00XX` undone (the chat's
+/// JSON writes no other escape).
+fn unjson(a: std.mem.Allocator, s: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < s.len) : (i += 1) {
+        if (s[i] != '\\') {
+            try out.append(a, s[i]);
+            continue;
+        }
+        i += 1;
+        if (i >= s.len) return error.BadEscape;
+        switch (s[i]) {
+            '"' => try out.append(a, '"'),
+            '\\' => try out.append(a, '\\'),
+            'n' => try out.append(a, '\n'),
+            'u' => {
+                if (i + 4 >= s.len) return error.BadEscape;
+                try out.append(a, try std.fmt.parseInt(u8, s[i + 3 .. i + 5], 16));
+                i += 4;
+            },
+            else => return error.BadEscape,
+        }
+    }
+    return out.items;
+}
+
+fn pageHtml(w: *World) !void {
+    const t = try get(w.a, w.port(), try w.path(""), w.ann);
+    const key = "\"id\":1,";
+    const at = std.mem.indexOf(u8, t.body, key) orelse return error.NoFirstMessage;
+    const html_key = "\"html\":\"";
+    const from = (std.mem.indexOfPos(u8, t.body, at, html_key) orelse return error.NoHtml) + html_key.len;
+    const to = std.mem.indexOfPos(u8, t.body, from, "\"}") orelse return error.NoHtmlEnd;
+    const html = try unjson(w.a, t.body[from..to]);
+    const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv}), w.ann);
+    if (page.status != 200) return error.NoPage;
+    if (!has(page.body, try std.fmt.allocPrint(w.a, "<div class=body>{s}</div>", .{html}))) return error.HtmlDiffers;
 }
 
 /// The id a start answers (`{"id":N}`).
@@ -771,10 +875,18 @@ const steps = [_]Step{
     .{ .name = "after the agent is retired, its invite redeems to nothing", .f = retiredInviteDead },
     .{ .name = "agent ids: make, retire the highest, make, and the id is fresh", .f = agentIdFresh },
     .{ .name = "every invite made, redeemed, revoked and refused is audited, with no code", .f = invitesAudited },
+    .{ .name = "the list page shows a conversation the viewer is in, and not one they aren't", .f = listPage },
+    .{ .name = "a participant's name is written escaped", .f = namesEscaped },
+    .{ .name = "the conversation page is a 200 to a participant, a 404 to a third user; a page is a 403 to a key", .f = conversationPage },
+    .{ .name = "signed out, a page redirects to /login", .f = signedOutPage },
+    .{ .name = "a message's HTML on the page is exactly step 6's for it", .f = pageHtml },
 };
 
-/// Every step, in order, each timed and said; true when all passed.
-pub fn run(a: std.mem.Allocator) !bool {
+/// Every step, in order, each timed and said; true when all passed. With
+/// `hold` (`zig build e2e -- --hold`, for tools/browser_check.js), the
+/// server stays up after the steps, its port and A's and B's session
+/// cookies said, until the process is stopped.
+pub fn run(a: std.mem.Allocator, hold: bool) !bool {
     var rig: Rig = undefined;
     try rig.start();
     defer rig.stop();
@@ -791,6 +903,10 @@ pub fn run(a: std.mem.Allocator) !bool {
         } else |e| {
             std.debug.print("FAIL  {d:>2}  {s} ({d} ms): {t}\n", .{ n, s.name, ms, e });
         }
+    }
+    if (hold) {
+        std.debug.print("HOLD port={d} conv={s} ann={s} bea={s}\n", .{ w.port(), w.conv, w.ann, w.bea });
+        while (true) sleepMs(1000);
     }
     if (passed == steps.len) {
         std.debug.print("e2e: {d} of {d} passed\n", .{ passed, steps.len });

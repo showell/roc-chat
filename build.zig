@@ -85,6 +85,9 @@ pub fn build(b: *std.Build) void {
     const e2e = b.addRunArtifact(e2e_exe);
     e2e.setCwd(b.path("."));
     e2e.has_side_effects = true;
+    // `zig build e2e -- --hold` keeps the server up after the steps, for
+    // tools/browser_check.js.
+    e2e.addPassthruArgs();
     b.step("e2e", "The smallest end to end: sign in, start, post, read, stream, and the refusals (host/e2e.zig)").dependOn(&e2e.step);
     tests.dependOn(&e2e.step);
 
