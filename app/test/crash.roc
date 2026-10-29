@@ -82,6 +82,14 @@ handle! = |req| {
 	} else if path == Str.to_utf8("/crash-long") {
 		# A crash message longer than the host keeps.
 		crash Str.repeat("long ", 100)
+	} else if path == Str.to_utf8("/crash-dbg") {
+		# A `dbg`, which a served build must never reach: roc_dbg, a crash.
+		dbg path
+		Chat.plain(Str.to_utf8("after dbg\n"))
+	} else if path == Str.to_utf8("/crash-expect") {
+		# An inline `expect` that fails, in a served build: a crash.
+		expect List.len(path) == 0
+		Chat.plain(Str.to_utf8("after expect\n"))
 	} else {
 		Chat.not_found
 	}

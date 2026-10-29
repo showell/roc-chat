@@ -53,6 +53,8 @@ const plants = [_]Plant{
     .{ .name = "a crash after many allocations", .request = get("/crash-big"), .said = "after a big list" },
     .{ .name = "a crash longer than the host keeps", .request = get("/crash-long"), .said = "long long" },
     .{ .name = "a crash whose message holds a line break", .request = get("/crash-forged"), .said = "a forged line" },
+    .{ .name = "a dbg reached in a served build", .request = get("/crash-dbg"), .said = "a `dbg` was reached" },
+    .{ .name = "an inline expect failed in a served build", .request = get("/crash-expect"), .said = "an inline `expect` failed" },
 };
 
 /// Past the 1024 bytes /crash-after-body asks read_body! for.
@@ -133,11 +135,11 @@ test "each planted crash is logged once, on one line, with its turn, method, pat
         try std.testing.expect(has(line, try std.fmt.allocPrint(a, "(turn {d})", .{turn})));
         try std.testing.expect(has(line, "): ")); // the message after its own separator
         try std.testing.expect(has(line, p.said));
-        // **ONE LINE**: a message's line break cannot forge another.
+        // **ONE LINE**: a message's line break cannot forge another; the
+        // forged one's is said, escaped.
         try std.testing.expect(std.mem.indexOfAny(u8, line, "\r\n") == null);
+        if (has(p.request, "/crash-forged ")) try std.testing.expect(has(line, "a planted crash\\x0awarning(roc_chat)"));
     }
-    // The forged one's break is said, escaped.
-    try std.testing.expect(has(try saidCrash(a, r), "a planted crash\\x0awarning(roc_chat)"));
 }
 
 /// The last crash's line, read holding the turn.
