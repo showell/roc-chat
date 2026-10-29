@@ -26,6 +26,7 @@
 ## or a file system keys its own. The chat's entry is ConvKey.roc, which fixes
 ## `r` and `id`. The key's secret and its hash are the host's; this is the
 ## record the Roc decides on. Pure.
+import Cast
 import KeyCodec
 import Principal
 import Session
@@ -294,100 +295,6 @@ standing = |key, { accounts, now }| {
 #   boss_agent  an agent boss owns
 #   boss_bot    a bot boss owns
 #   ann_agent   an agent ann owns
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-aid : U64 -> Principal.AgentId
-aid = |n|
-	match Principal.AgentId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "aid: a test's agent id is not 0"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-kid : U64 -> Principal.KeyId
-kid = |n|
-	match Principal.KeyId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "kid: a test's key id is not 0"
-	}
-
-sid : U64 -> Principal.SessionId
-sid = |n|
-	match Principal.SessionId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "sid: a test's session id is not 0"
-	}
-
-## A test's human: GitHub id `n`, its role.
-person : U64, Principal.Role -> Principal
-person = |n, role|
-	Principal.Human({
-		id: gid(n),
-		login: "h${n.to_str()}",
-		name: "H${n.to_str()}",
-		role,
-		generation: gen(1),
-	})
-
-## A test's agent or bot: its id, and its owner's GitHub id.
-owned : [Agent, Bot], { id : U64, owner : U64 } -> Principal
-owned = |kind, { id, owner }|
-	match kind {
-		Agent =>
-			Principal.Agent({
-				id: aid(id),
-				name: "a${id.to_str()}",
-				owner: gid(owner),
-				generation: gen(1),
-			})
-
-		Bot =>
-			Principal.Bot({
-				id: aid(id),
-				name: "b${id.to_str()}",
-				owner: gid(owner),
-				generation: gen(1),
-			})
-	}
-
-boss : Principal
-boss = person(1, Admin)
-
-boss_demoted : Principal
-boss_demoted = person(1, Member)
-
-ann : Principal
-ann = person(2, Member)
-
-boss_agent : Principal
-boss_agent = owned(Agent, { id: 1, owner: 1 })
-
-boss_bot : Principal
-boss_bot = owned(Bot, { id: 2, owner: 1 })
-
-ann_agent : Principal
-ann_agent = owned(Agent, { id: 3, owner: 2 })
-
-accounts : List(Principal)
-accounts = [
-	boss,
-	ann,
-	boss_agent,
-	boss_bot,
-	ann_agent,
-]
-
 ## Human `who`'s browser session `n`, signed in at time 0 to the account
 ## made at 1, as the store holds it (a session's only way in but the flow).
 signed_in : { n : U64, who : U64 } -> ApiKey.Granter(Held, U64)
@@ -409,14 +316,6 @@ stored_session = |text|
 	match SessionCodec.decode(Str.to_utf8(text)) {
 		Ok(line) => Session(Session.load(line))
 		Err(_) => crash "stored_session: a test's session line decodes"
-	}
-
-## A test's token hash: every byte `b`.
-token : U8 -> Stored.SecretHash
-token = |b|
-	match Stored.SecretHash.from_bytes(List.repeat(b, 32)) {
-		Ok(h) => h
-		Err(NotAHash) => crash "token: 32 bytes are a hash"
 	}
 
 by_boss : ApiKey.Granter(Held, U64)
@@ -496,7 +395,7 @@ grant = |granter, { acts_as, scope }|
 		{
 			acts_as,
 			scope,
-			among: accounts,
+			among: Cast.accounts,
 			now: 50,
 		},
 	)
@@ -507,41 +406,41 @@ grant = |granter, { acts_as, scope }|
 
 # boss's session, an admin's: their own and their agent's admin; never
 # their bot's.
-expect grant(by_boss, { acts_as: boss, scope: plain }) == Grantable
-expect grant(by_boss, { acts_as: boss, scope: with_admin }) == Grantable
-expect grant(by_boss, { acts_as: ann, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_boss, { acts_as: ann, scope: with_admin }) == Refused(NotTheGrantersOwn)
-expect grant(by_boss, { acts_as: boss_agent, scope: plain }) == Grantable
-expect grant(by_boss, { acts_as: boss_agent, scope: with_admin }) == Grantable
-expect grant(by_boss, { acts_as: boss_bot, scope: plain }) == Grantable
-expect grant(by_boss, { acts_as: boss_bot, scope: with_admin }) == Refused(AdminBeyondPrincipal)
-expect grant(by_boss, { acts_as: ann_agent, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_boss, { acts_as: ann_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
+expect grant(by_boss, { acts_as: Cast.boss, scope: plain }) == Grantable
+expect grant(by_boss, { acts_as: Cast.boss, scope: with_admin }) == Grantable
+expect grant(by_boss, { acts_as: Cast.ann, scope: plain }) == Refused(NotTheGrantersOwn)
+expect grant(by_boss, { acts_as: Cast.ann, scope: with_admin }) == Refused(NotTheGrantersOwn)
+expect grant(by_boss, { acts_as: Cast.boss_agent, scope: plain }) == Grantable
+expect grant(by_boss, { acts_as: Cast.boss_agent, scope: with_admin }) == Grantable
+expect grant(by_boss, { acts_as: Cast.boss_bot, scope: plain }) == Grantable
+expect grant(by_boss, { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(AdminBeyondPrincipal)
+expect grant(by_boss, { acts_as: Cast.ann_agent, scope: plain }) == Refused(NotTheGrantersOwn)
+expect grant(by_boss, { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
 
 # ann's session, a member's: her own and her agent's, never admin.
-expect grant(by_ann, { acts_as: boss, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: boss, scope: with_admin }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: ann, scope: plain }) == Grantable
-expect grant(by_ann, { acts_as: ann, scope: with_admin }) == Refused(AdminBeyondPrincipal)
-expect grant(by_ann, { acts_as: boss_agent, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: boss_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: boss_bot, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: boss_bot, scope: with_admin }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: ann_agent, scope: plain }) == Grantable
-expect grant(by_ann, { acts_as: ann_agent, scope: with_admin }) == Refused(AdminBeyondPrincipal)
+expect grant(by_ann, { acts_as: Cast.boss, scope: plain }) == Refused(NotTheGrantersOwn)
+expect grant(by_ann, { acts_as: Cast.boss, scope: with_admin }) == Refused(NotTheGrantersOwn)
+expect grant(by_ann, { acts_as: Cast.ann, scope: plain }) == Grantable
+expect grant(by_ann, { acts_as: Cast.ann, scope: with_admin }) == Refused(AdminBeyondPrincipal)
+expect grant(by_ann, { acts_as: Cast.boss_agent, scope: plain }) == Refused(NotTheGrantersOwn)
+expect grant(by_ann, { acts_as: Cast.boss_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
+expect grant(by_ann, { acts_as: Cast.boss_bot, scope: plain }) == Refused(NotTheGrantersOwn)
+expect grant(by_ann, { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(NotTheGrantersOwn)
+expect grant(by_ann, { acts_as: Cast.ann_agent, scope: plain }) == Grantable
+expect grant(by_ann, { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(AdminBeyondPrincipal)
 
 # A key, even boss's own with admin: grants nothing (bug 3: keys are minted
 # only from a browser session).
-expect grant(Key(boss_all), { acts_as: boss, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: boss, scope: with_admin }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: ann, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: ann, scope: with_admin }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: boss_agent, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: boss_agent, scope: with_admin }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: boss_bot, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: boss_bot, scope: with_admin }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: ann_agent, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: ann_agent, scope: with_admin }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.boss, scope: plain }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.boss, scope: with_admin }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.ann, scope: plain }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.ann, scope: with_admin }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.boss_agent, scope: plain }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.boss_agent, scope: with_admin }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.boss_bot, scope: plain }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.ann_agent, scope: plain }) == Refused(GrantedByKey)
+expect grant(Key(boss_all), { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(GrantedByKey)
 
 # The accounts decide, not the caller's copy: a retired agent gets no key,
 # though its owner grants it; a copy claiming boss's admin role for ann, or
@@ -550,18 +449,18 @@ expect
 	grant_at(
 		by_ann,
 		{
-			acts_as: ann_agent,
+			acts_as: Cast.ann_agent,
 			scope: plain,
-			among: [ann],
+			among: [Cast.ann],
 			now: 50,
 		},
 	)
 		== Refused(NoSuchPrincipal)
 ann_as_admin : Principal
-ann_as_admin = person(2, Admin)
+ann_as_admin = Cast.person(2, Admin)
 
 ann_agent_as_boss : Principal
-ann_agent_as_boss = owned(Agent, { id: 3, owner: 1 })
+ann_agent_as_boss = Cast.owned(Agent, { id: 3, owner: 1 })
 
 expect grant(by_ann, { acts_as: ann_as_admin, scope: with_admin }) == Refused(AdminBeyondPrincipal)
 expect grant(by_boss, { acts_as: ann_agent_as_boss, scope: plain }) == Refused(NotTheGrantersOwn)
@@ -569,21 +468,13 @@ expect grant(by_boss, { acts_as: ann_agent_as_boss, scope: plain }) == Refused(N
 # The granter is the accounts' too (bug 2): a retired human's session
 # grants nothing for the agent left behind; nor does a session past its
 # day idle.
-without_ann : List(Principal)
-without_ann = [
-	boss,
-	boss_agent,
-	boss_bot,
-	ann_agent,
-]
-
 expect
 	grant_at(
 		by_ann,
 		{
-			acts_as: ann_agent,
+			acts_as: Cast.ann_agent,
 			scope: plain,
-			among: without_ann,
+			among: Cast.without_ann,
 			now: 50,
 		},
 	)
@@ -592,9 +483,9 @@ expect
 	grant_at(
 		by_ann,
 		{
-			acts_as: ann,
+			acts_as: Cast.ann,
 			scope: plain,
-			among: accounts,
+			among: Cast.accounts,
 			now: Session.idle_secs,
 		},
 	)
@@ -609,20 +500,20 @@ issued = |{ acts_as, scope }, expires|
 			granter: signed_in({ n: 9, who: Principal.answers_to(acts_as).to_u64() }),
 			acts_as: Principal.id(acts_as),
 			scope,
-			accounts,
+			accounts: Cast.accounts,
 			now: 50,
 		},
-		{ key: kid(7), expires },
+		{ key: Cast.kid(7), expires },
 	) {
 		Ok(key) => key
 		Err(Refused(_)) => crash "issued: a test's key is grantable"
 	}
 
 ann_year : ApiKey.Key(Held, U64)
-ann_year = issued({ acts_as: ann, scope: plain }, 1050)
+ann_year = issued({ acts_as: Cast.ann, scope: plain }, 1050)
 
 ann_until_100 : ApiKey.Key(Held, U64)
-ann_until_100 = issued({ acts_as: ann, scope: plain }, 100)
+ann_until_100 = issued({ acts_as: Cast.ann, scope: plain }, 100)
 
 # ── THE LIVENESS TABLE
 expect ann_year.liveness(0) == Live
@@ -640,12 +531,12 @@ expect
 	ApiKey.Key.issue(
 		{
 			granter: by_ann,
-			acts_as: Principal.id(ann),
+			acts_as: Principal.id(Cast.ann),
 			scope: with_admin,
-			accounts,
+			accounts: Cast.accounts,
 			now: 50,
 		},
-		{ key: kid(7), expires: 1050 },
+		{ key: Cast.kid(7), expires: 1050 },
 	).map_ok(ApiKey.Key.id)
 		== Err(Refused(AdminBeyondPrincipal))
 
@@ -657,15 +548,15 @@ expect
 		[-1, Stored.max_time + 1, 50, 10, 50 + KeyCodec.max_lifetime_secs + 1],
 		|expires|
 			ApiKey.Key.issue(
-				{ granter: by_ann, acts_as: Principal.id(ann), scope: plain, accounts, now: 50 },
-				{ key: kid(7), expires },
+				{ granter: by_ann, acts_as: Principal.id(Cast.ann), scope: plain, accounts: Cast.accounts, now: 50 },
+				{ key: Cast.kid(7), expires },
 			).map_ok(ApiKey.Key.id)
 				== Err(Refused(BadExpiry)),
 	)
 expect
 	ApiKey.Key.issue(
-		{ granter: by_ann, acts_as: Principal.id(ann), scope: plain, accounts, now: -1 },
-		{ key: kid(7), expires: 10 },
+		{ granter: by_ann, acts_as: Principal.id(Cast.ann), scope: plain, accounts: Cast.accounts, now: -1 },
+		{ key: Cast.kid(7), expires: 10 },
 	).map_ok(ApiKey.Key.id)
 		== Err(Refused(ClockOutOfRange))
 # The edges a grant does make: a year to the second, and the store's last
@@ -674,8 +565,8 @@ expect
 	List.all(
 		[{ now: 50, expires: 50 + KeyCodec.max_lifetime_secs }, { now: Stored.max_time - 1, expires: Stored.max_time }],
 		|{ now, expires }|
-			match ApiKey.Key.issue({ granter: Session(session_at(2, now)), acts_as: Principal.id(ann), scope: plain, accounts, now }, { key: kid(7), expires }) {
-				Ok(k) => KeyCodec.decode(KeyCodec.encode({ record: k.record(), hash: token(9) }, |n| n), |n| Ok(n)).is_ok()
+			match ApiKey.Key.issue({ granter: Session(session_at(2, now)), acts_as: Principal.id(Cast.ann), scope: plain, accounts: Cast.accounts, now }, { key: Cast.kid(7), expires }) {
+				Ok(k) => KeyCodec.decode(KeyCodec.encode({ record: k.record(), hash: Cast.token(9) }, |n| n), |n| Ok(n)).is_ok()
 				Err(_) => Bool.False
 			},
 	)
@@ -698,33 +589,33 @@ Answer : [Permitted, Refused(ApiKey.Refusal)]
 
 ## The key's answer to an admin action at time 50, among `accounts`.
 administered : ApiKey.Key(Held, U64) -> Answer
-administered = |key| key.administers({ accounts, now: 50 })
+administered = |key| key.administers({ accounts: Cast.accounts, now: 50 })
 
 ## The key's answer to an admin action at time 50, among `among` instead.
 administers_among : ApiKey.Key(Held, U64), List(Principal) -> Answer
 administers_among = |key, among| key.administers({ accounts: among, now: 50 })
 
 ann_agent_plain : ApiKey.Key(Held, U64)
-ann_agent_plain = issued({ acts_as: ann_agent, scope: plain }, 1050)
+ann_agent_plain = issued({ acts_as: Cast.ann_agent, scope: plain }, 1050)
 
 ann_agent_reads_c : ApiKey.Key(Held, U64)
-ann_agent_reads_c = issued({ acts_as: ann_agent, scope: reads_c }, 1050)
+ann_agent_reads_c = issued({ acts_as: Cast.ann_agent, scope: reads_c }, 1050)
 
 ann_agent_posts_a : ApiKey.Key(Held, U64)
-ann_agent_posts_a = issued({ acts_as: ann_agent, scope: posts_a }, 1050)
+ann_agent_posts_a = issued({ acts_as: Cast.ann_agent, scope: posts_a }, 1050)
 
 boss_all : ApiKey.Key(Held, U64)
-boss_all = issued({ acts_as: boss, scope: with_admin }, 1050)
+boss_all = issued({ acts_as: Cast.boss, scope: with_admin }, 1050)
 
 boss_agent_admin : ApiKey.Key(Held, U64)
-boss_agent_admin = issued({ acts_as: boss_agent, scope: admin_only }, 1050)
+boss_agent_admin = issued({ acts_as: Cast.boss_agent, scope: admin_only }, 1050)
 
 boss_until_100 : ApiKey.Key(Held, U64)
-boss_until_100 = issued({ acts_as: boss, scope: with_admin }, 100)
+boss_until_100 = issued({ acts_as: Cast.boss, scope: with_admin }, 100)
 
 # A standing key stands as its principal.
-expect standing_among(ann_agent_plain, accounts) == Ok(Principal.id(ann_agent))
-expect standing_among(boss_all, accounts) == Ok(Principal.id(boss))
+expect standing_among(ann_agent_plain, Cast.accounts) == Ok(Principal.id(Cast.ann_agent))
+expect standing_among(boss_all, Cast.accounts) == Ok(Principal.id(Cast.boss))
 
 # Admin: only an admin scope, on an admin's or an admin's agent's key.
 expect administered(ann_agent_plain) == Refused(OutOfScope)
@@ -736,27 +627,27 @@ expect administered(boss_agent_admin) == Permitted
 
 # The key never exceeds its principal as the accounts say NOW: boss demoted,
 # boss retired, or the agent itself retired.
-expect administers_among(boss_agent_admin, [boss_demoted, boss_agent]) == Refused(BeyondPrincipal)
-expect administers_among(boss_agent_admin, [boss_agent]) == Refused(NoSuchPrincipal)
-expect administers_among(boss_agent_admin, [boss]) == Refused(NoSuchPrincipal)
-expect administers_among(boss_all, [boss_demoted]) == Refused(BeyondPrincipal)
+expect administers_among(boss_agent_admin, [Cast.boss_demoted, Cast.boss_agent]) == Refused(BeyondPrincipal)
+expect administers_among(boss_agent_admin, [Cast.boss_agent]) == Refused(NoSuchPrincipal)
+expect administers_among(boss_agent_admin, [Cast.boss]) == Refused(NoSuchPrincipal)
+expect administers_among(boss_all, [Cast.boss_demoted]) == Refused(BeyondPrincipal)
 
 # Bug 1: ann retired, her agent's key stands as nobody.
-expect standing_among(ann_agent_plain, without_ann) == Err(Refused(NoSuchPrincipal))
+expect standing_among(ann_agent_plain, Cast.without_ann) == Err(Refused(NoSuchPrincipal))
 
 # Liveness comes first: revoked and expired keys stand as nobody; an expiry
 # at 100 is live at 99.
-expect standing_among(boss_all.revoke(), accounts) == Err(Refused(Revoked))
-expect standing_at(boss_until_100, { among: accounts, now: 99 }) == Ok(Principal.id(boss))
-expect standing_at(boss_until_100, { among: accounts, now: 100 }) == Err(Refused(Expired))
-expect boss_until_100.revoke().administers({ accounts, now: 99 }) == Refused(Revoked)
+expect standing_among(boss_all.revoke(), Cast.accounts) == Err(Refused(Revoked))
+expect standing_at(boss_until_100, { among: Cast.accounts, now: 99 }) == Ok(Principal.id(Cast.boss))
+expect standing_at(boss_until_100, { among: Cast.accounts, now: 100 }) == Err(Refused(Expired))
+expect boss_until_100.revoke().administers({ accounts: Cast.accounts, now: 99 }) == Refused(Revoked)
 
 # ── LOADING A STORED KEY
 ## The key a stored line holds: `record`, written by KeyCodec and read back
 ## (a key's only way in but a grant).
 from_store : ApiKey.Record(U64) -> ApiKey.Key(Held, U64)
 from_store = |record|
-	match KeyCodec.decode(KeyCodec.encode({ record, hash: token(9) }, |n| n), |n| Ok(n)) {
+	match KeyCodec.decode(KeyCodec.encode({ record, hash: Cast.token(9) }, |n| n), |n| Ok(n)) {
 		Ok(line) => ApiKey.Key.load(line)
 		Err(_) => crash "from_store: a test's key line decodes"
 	}
@@ -794,22 +685,22 @@ expect from_store(ann_agent_reads_c.record()).record().scope == reads_c
 # boss is granted no key acting as it, and ann's agent's own key, granted
 # before, stands no more while the copy is there.
 forged_ann_agent : Principal
-forged_ann_agent = owned(Agent, { id: 3, owner: 1 })
+forged_ann_agent = Cast.owned(Agent, { id: 3, owner: 1 })
 
 forged_first : List(Principal)
-forged_first = List.prepend(accounts, forged_ann_agent)
+forged_first = List.prepend(Cast.accounts, forged_ann_agent)
 
-expect grant_at(by_boss, { acts_as: ann_agent, scope: plain, among: forged_first, now: 50 }) == Refused(NoSuchPrincipal)
-expect grant_at(by_ann, { acts_as: ann_agent, scope: plain, among: forged_first, now: 50 }) == Refused(NoSuchPrincipal)
+expect grant_at(by_boss, { acts_as: Cast.ann_agent, scope: plain, among: forged_first, now: 50 }) == Refused(NoSuchPrincipal)
+expect grant_at(by_ann, { acts_as: Cast.ann_agent, scope: plain, among: forged_first, now: 50 }) == Refused(NoSuchPrincipal)
 expect standing_among(ann_agent_plain, forged_first) == Err(Refused(NoSuchPrincipal))
 
 # A duplicate of ann claiming admin, first: ann's session grants nothing
 # (it admits no copy), and her keys stand no more.
 ann_admin_first : List(Principal)
-ann_admin_first = List.prepend(accounts, person(2, Admin))
+ann_admin_first = List.prepend(Cast.accounts, Cast.person(2, Admin))
 
-expect grant_at(by_ann, { acts_as: ann, scope: with_admin, among: ann_admin_first, now: 50 }) == Refused(NoSuchGranter)
-expect grant_at(by_ann, { acts_as: ann, scope: plain, among: ann_admin_first, now: 50 }) == Refused(NoSuchGranter)
+expect grant_at(by_ann, { acts_as: Cast.ann, scope: with_admin, among: ann_admin_first, now: 50 }) == Refused(NoSuchGranter)
+expect grant_at(by_ann, { acts_as: Cast.ann, scope: plain, among: ann_admin_first, now: 50 }) == Refused(NoSuchGranter)
 expect ann_claims_admin.administers({ accounts: ann_admin_first, now: 50 }) == Refused(NoSuchPrincipal)
 expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPrincipal))
 
@@ -818,28 +709,28 @@ expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPri
 # and her old agent's, stand no more; a new session of the new account
 # grants keys bound to it.
 ann_again : Principal
-ann_again = Principal.Human({ id: gid(2), login: "h2", name: "H2", role: Member, generation: gen(2) })
+ann_again = Principal.Human({ id: Cast.gid(2), login: "h2", name: "H2", role: Member, generation: Cast.gen(2) })
 
 again : List(Principal)
-again = [boss, ann_again, boss_agent, boss_bot, ann_agent]
+again = [Cast.boss, ann_again, Cast.boss_agent, Cast.boss_bot, Cast.ann_agent]
 
 expect standing_at(ann_year, { among: again, now: 70 }) == Err(Refused(NoSuchPrincipal))
 expect standing_at(ann_agent_plain, { among: again, now: 70 }) == Err(Refused(NoSuchPrincipal))
-expect grant_at(by_ann, { acts_as: ann, scope: plain, among: again, now: 70 }) == Refused(NoSuchGranter)
+expect grant_at(by_ann, { acts_as: Cast.ann, scope: plain, among: again, now: 70 }) == Refused(NoSuchGranter)
 new_ann_session : ApiKey.Granter(Held, U64)
 new_ann_session = stored_session("session v1 id=8 human=2 generation=2 token=${Str.repeat("07", 32)} created=60 seen=60\n")
 
 expect
 	ApiKey.Key.issue(
 		{ granter: new_ann_session, acts_as: Principal.id(ann_again), scope: plain, accounts: again, now: 70 },
-		{ key: kid(8), expires: 1050 },
+		{ key: Cast.kid(8), expires: 1050 },
 	).map_ok(|k| k.record().human_generation)
-		== Ok(gen(2))
+		== Ok(Cast.gen(2))
 
 # **AN AGENT MADE AGAIN WITH ITS ID** (round three's fifth: agents had no
 # `created`): ann's agent retired, and an agent made again with id 3 for
 # ann (a host that reused the id): the old key stands no more.
 agent_again : List(Principal)
-agent_again = [boss, ann, boss_agent, boss_bot, Principal.Agent({ id: aid(3), name: "a3", owner: gid(2), generation: gen(5) })]
+agent_again = [Cast.boss, Cast.ann, Cast.boss_agent, Cast.boss_bot, Principal.Agent({ id: Cast.aid(3), name: "a3", owner: Cast.gid(2), generation: Cast.gen(5) })]
 
 expect standing_among(ann_agent_plain, agent_again) == Err(Refused(NoSuchPrincipal))
