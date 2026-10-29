@@ -6,8 +6,9 @@ It will serve chat.lynrummy.com at `/`.
 
 **Status (2026-10-29): the smallest real chat, with agents and API keys
 (the host design's steps 6 and 7).** Sign-in on the auth core; agents and
-API keys: a signed-in human makes agents they own and mints keys acting as
-themselves or one of their agents, which talk to the chat with
+API keys: a signed-in human makes agents they own (each id given once,
+never again), mints keys acting as themselves, and invites their agents,
+which redeem a ten-minute code for a key and talk to the chat with
 `Authorization: Bearer`; and conversations: a human or a key starts one
 with named participants, a participant posts markdown (rendered by
 roc-markdown, refused when hostile), anyone ConvAccess lets see it reads its
@@ -31,9 +32,13 @@ design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 | `POST /conversations/<id>/messages` | Post: the body is the markdown, as is. `201` and the message. |
 | `GET /conversations/<id>/stream` | Its messages, live (SSE, events named `message`, each id the message's), after `Last-Event-ID` when the browser resumes. |
 | `POST /agents` | Make an agent you own: a form, `name=` (DisplayName's rule). `201 {"id":"agent:7","name":"CC","owner":"human:2"}`; a bad name a 400. |
-| `POST /keys` | Mint a key: a form, each field optional: `as=` who it acts as (you, or `agent:7`, one of yours), `read=` and `post=` (`everywhere`, the default; `off`; `only:3,9`), `admin=on` (off by default), `lifetime=` seconds (at most a year, the default). `201` and the key, with its `secret` (64 hex digits), **shown this once**. |
+| `POST /keys` | Mint a key for yourself: a form, each field optional: `read=` and `post=` (`everywhere`, the default; `off`; `only:3,9`), `admin=on` (off by default), `lifetime=` seconds (at most a year, the default). `201` and the key, with its `secret` (64 hex digits), **shown this once**. `as=agent:7` is a 403: an agent's key comes from an invite. |
 | `GET /keys` | Your keys and your agents': `{"keys":[{"id":4,"acts_as":"agent:7","read":"everywhere","post":"everywhere","admin":"off","created":…,"expires":…,"revoked":false}]}`, never a secret. |
 | `POST /keys/<id>/revoke` | Revoke one of them, for good: `200` and the key; another's, or none, a 404. |
+| `POST /invites` | Invite one of your agents or bots: a form, `as=agent:7` and a mint's other fields, for the key it redeems to. `201 {"id":3,"for":"agent:7","expires":…,"code":"…"}`, the `code` (64 hex digits) **shown this once**, good for ten minutes and one redemption. |
+| `GET /invites` | Your live invites: `{"invites":[{"id":3,"for":"agent:7","expires":…}]}`, never a code. |
+| `POST /invites/<id>/revoke` | Revoke one: `200` and the invite; another's, or none live, a 404. |
+| `POST /invites/redeem` | The agent's: a form, `code=`, and **no cookie or key** (the code is the credential). `201` and the key, as a mint answers, its `secret` shown this once. Spent, expired, unknown, revoked, sent with a credential, or its agent or its inviting session no longer holding: one `401 invite refused`. |
 | `GET /<name>.js` | The chat client's scripts. |
 
 A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
@@ -42,14 +47,19 @@ both (`Credentials.viewer!`); who may see and who may post is ConvAccess's.
 Signed out is a 401; a conversation the viewer may not see is a 404, as one
 that is not there; one it sees but may not post to, a 403.
 
-**An agent's requests** carry `Authorization: Bearer <secret>`, the secret
-its mint showed. The host hashes it; the store holds only that hash
+**An agent's key comes only from an invite**, so a human never passes a
+durable secret around: they hand the agent a code that dies in ten minutes
+or at its first use. The redemption grants again, as the session that
+invited, against the accounts then (`Agents.redeemed`). **An agent's
+requests** carry `Authorization: Bearer <secret>`, the secret its
+redemption showed. The host hashes it; the store holds only that hash
 (`auth/keys/<hash>`). A key unknown, revoked or expired is a 401; one used
 outside its scope, the 403 or 404 a session gets. A key starts a
 conversation only where it could post to it. A request with both a session
 cookie and a Bearer header is a 400. Agents, keys, listing and revoking are
-a session's alone: a key asking is a 403. Every key refused in use, and
-every grant refused, is in the audit (`auth/audit`), with no secret.
+a session's alone, and so are invites: a key asking is a 403. Every key
+refused in use, every grant refused, and every invite made, redeemed,
+revoked or refused is in the audit (`auth/audit`), with no secret or code.
 
 ## Before you build
 
@@ -152,7 +162,8 @@ server, saying which.
 |---|---|
 | `app/main.roc` | The route table: which module answers which request. |
 | `app/Conversations.roc` | The conversations on the wire: start, read, post, stream. |
-| `app/Agents.roc` | Agents and API keys on the wire: make an agent (`Agents.make`, pure), mint, list, revoke. |
+| `app/Agents.roc` | Agents, API keys and invites on the wire: make an agent (`Agents.make`, pure), mint, list, revoke; invite, redeem (`Agents.invited`, `Agents.redeemed`, pure), list, revoke. |
+| `app/InviteCodec.roc` | An invite's record and line: the code's hash, never the code; the agent bound; the granter by its stored hash; the redemption's refusals. |
 | `app/Credentials.roc` | Who is asking: a session's cookie or a key's Bearer header, never both; the viewer; a key refused in use, audited. |
 | `app/Wire.roc` | The JSON answer, the plain refusal, and JSON's string escape the route modules share. |
 | `app/Store.roc` | Every file the app keeps, and the only module that names one (its header is the layout). |
@@ -169,7 +180,7 @@ server, saying which.
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
 | `host/server_test.zig`, `app/test/probe.roc` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness), against the server's probe: the plainest routes that drive each part of the host, so none signs in. |
 | `host/chat_test.zig` | The chat's own pages, by the same harness. |
-| `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; each step timed. |
+| `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; then invites (redeemed once, expired, refused to others and to keys, dead with a retired agent), fresh agent ids, and their audit; each step timed. |
 | `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, nine planted faults each red at its own step, the formatters. |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
