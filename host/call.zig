@@ -149,7 +149,7 @@ pub const Ctx = struct {
     /// A cache's read: a failure is logged, never the request's.
     pub fn read_at(c: *Ctx, path: []const u8, offset: u64, max: u64) route.Read {
         const r = c.files.readAt(c.arena, path, offset, max);
-        if (r == .failed) log.warn("{s}: read_at {s} failed (a cache's read; the request goes on)", .{ c.req.path, path });
+        if (r == .failed) log.warn("{f}: read_at {s} failed (a cache's read; the request goes on)", .{ std.ascii.hexEscape(c.req.path, .lower), path });
         return r;
     }
 
@@ -191,7 +191,7 @@ pub const Ctx = struct {
 
     /// A cache written: a failure is a miss, logged, never the request's.
     pub fn write_cache(c: *Ctx, path: []const u8, bytes: []const u8) void {
-        c.files.write(path, bytes) catch |e| log.warn("{s}: write_cache {s} failed: {t} (a cache; the request goes on)", .{ c.req.path, path, e });
+        c.files.write(path, bytes) catch |e| log.warn("{f}: write_cache {s} failed: {t} (a cache; the request goes on)", .{ std.ascii.hexEscape(c.req.path, .lower), path, e });
     }
 
     // ── sign-in ──────────────────────────────────────────────────────────
@@ -246,7 +246,7 @@ pub const Ctx = struct {
     fn fail(c: *Ctx, path: []const u8, e: anyerror) void {
         if (c.failure != null) return;
         c.failure = e;
-        log.warn("{s}: the file {s} failed: {t}", .{ c.req.path, path, e });
+        log.warn("{f}: the file {s} failed: {t}", .{ std.ascii.hexEscape(c.req.path, .lower), path, e });
     }
 
     pub fn publish(c: *Ctx, key: []const u8, frame: []const u8) void {
@@ -289,20 +289,20 @@ pub fn headerAllowed(h: route.Header) bool {
 pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: *const Ctx) !Reply {
     const d = decided catch |e| {
         // A crash is said once, in the turn (server.zig `sayCrash`).
-        if (e != error.RocCrashed) log.warn("the Roc call for {s} failed: {t}", .{ ctx.req.path, e });
+        if (e != error.RocCrashed) log.warn("the Roc call for {f} failed: {t}", .{ std.ascii.hexEscape(ctx.req.path, .lower), e });
         return failed;
     };
     if (ctx.failure != null) return failed;
     switch (d) {
         .respond => |r| {
             if (r.status < 100 or r.status > 599) {
-                log.warn("the Roc answered {s} with status {d}", .{ ctx.req.path, r.status });
+                log.warn("the Roc answered {f} with status {d}", .{ std.ascii.hexEscape(ctx.req.path, .lower), r.status });
                 return failed;
             }
             var headers: std.ArrayList(std.http.Header) = .empty;
             if (r.content_type.len > 0) {
                 if (std.mem.indexOfAny(u8, r.content_type, "\r\n\x00") != null) {
-                    log.warn("the Roc answered {s} with a content type holding a line break", .{ctx.req.path});
+                    log.warn("the Roc answered {f} with a content type holding a line break", .{std.ascii.hexEscape(ctx.req.path, .lower)});
                     return failed;
                 }
                 try headers.append(arena, .{ .name = "content-type", .value = r.content_type });
@@ -310,7 +310,7 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
             if (r.nosniff) try headers.append(arena, .{ .name = "x-content-type-options", .value = "nosniff" });
             for (r.headers) |h| {
                 if (!headerAllowed(h)) {
-                    log.warn("the Roc answered {s} with the header `{s}`, which the host does not send", .{ ctx.req.path, h.name });
+                    log.warn("the Roc answered {f} with the header `{f}`, which the host does not send", .{ std.ascii.hexEscape(ctx.req.path, .lower), std.ascii.hexEscape(h.name, .lower) });
                     return failed;
                 }
                 try headers.append(arena, .{ .name = h.name, .value = h.value });
@@ -326,12 +326,12 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
         // **ONE EXCHANGE A REQUEST**: the server answers the first itself
         // (Server.answer); one here is a second, the Roc's bug.
         .exchange => {
-            log.warn("the Roc asked {s} for a second exchange with GitHub", .{ctx.req.path});
+            log.warn("the Roc asked {f} for a second exchange with GitHub", .{std.ascii.hexEscape(ctx.req.path, .lower)});
             return failed;
         },
         .answered => {
             const own = ctx.own orelse {
-                log.warn("the Roc said {s} was answered, and the host answered nothing", .{ctx.req.path});
+                log.warn("the Roc said {f} was answered, and the host answered nothing", .{std.ascii.hexEscape(ctx.req.path, .lower)});
                 return failed;
             };
             return switch (own) {

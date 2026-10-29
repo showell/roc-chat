@@ -6,7 +6,20 @@
 # defines for every site on prod (metal-vmm QUEUE 221).
 chat.lynrummy.com {
 	import access_log chat
-	encode gzip
+	# **NEVER AN EVENT STREAM**: gzip buffers what it compresses, so an SSE
+	# frame could sit in the encoder instead of reaching the browser. Only
+	# the types listed are compressed; text/event-stream is not among them.
+	encode {
+		gzip
+		match {
+			header Content-Type text/html*
+			header Content-Type text/plain*
+			header Content-Type text/css*
+			header Content-Type text/javascript*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+		}
+	}
 
 	# The host refuses a body past its own cap; this is the outer one.
 	request_body {
