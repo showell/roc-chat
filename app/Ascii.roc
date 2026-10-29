@@ -1,5 +1,5 @@
-## ASCII BYTE CHECKS, AS ZIG'S std.ascii HAS THEM: seven questions about one
-## byte, and its two case maps. Pure.
+## ASCII BYTE CHECKS: seven questions about one byte, and its two case
+## maps, for the codecs and the name rules. Pure.
 ##
 ## **ONE BYTE AT A TIME, SAFE ON UTF-8 BY CONSTRUCTION.** Every byte of a
 ## multi-byte UTF-8 character is 128 or above, and no byte from 128 to 255 is
