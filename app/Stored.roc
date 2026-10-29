@@ -35,7 +35,12 @@ Stored := [].{
 	version = "v1"
 
 	## **WHY A STORED RECORD IS REFUSED**, one name each. A field's name is
-	## the payload where one field is at fault.
+	## the payload where one field is at fault. **ONE ALIAS ON PURPOSE**:
+	## every codec reads its line through Reader, so each decoder can fail
+	## with nearly all of these, and its callers pass the refusal on whole
+	## (only the audit's decoder looks inside, trying the next kind on
+	## `WrongRecord`); a decoder's tags listed in place would be this list
+	## copied into each codec.
 	Problem : [
 		## No newline at the end: a torn write.
 		Torn,
