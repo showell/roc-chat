@@ -315,6 +315,8 @@ const World = struct {
     code: []const u8 = "",
     /// The conversation of more than a page (step 45 on).
     paged: []const u8 = "",
+    /// Fay, the human who reaches each cap (step 49 on).
+    fay: []const u8 = "",
 
     fn port(w: *const World) u16 {
         return w.rig.port();
@@ -785,6 +787,76 @@ fn offsetsRebuilt(w: *World) !void {
     try holdsPage(w, try pageOf(w, conv, "4"), 1, 3, false);
 }
 
+/// **THE CAPS ON WHAT ONE HUMAN MAKES** (H4): each step sets the host's
+/// small cap for the end to end (`cap_for_test`, Limits.cap!), reaches it,
+/// and the next one is a 403 that names the cap.
+const small_cap = 3;
+
+fn conversationsCapped(w: *World) !void {
+    w.fay = try signUp(w.a, w.port(), 1010);
+    w.rig.auth.cap_for_test.store(small_cap, .release);
+    defer w.rig.auth.cap_for_test.store(0, .release);
+    for (0..small_cap) |_| {
+        if ((try request(w.a, w.port(), "POST", "/conversations", w.fay, "with=human%3A1002")).status != 201) return error.NotStarted;
+    }
+    const r = try request(w.a, w.port(), "POST", "/conversations", w.fay, "with=human%3A1002");
+    if (r.status != 403) return error.Uncapped;
+    if (!has(r.body, "as many conversations")) return error.NotSaid;
+}
+
+fn keysCapped(w: *World) !void {
+    w.rig.auth.cap_for_test.store(small_cap, .release);
+    defer w.rig.auth.cap_for_test.store(0, .release);
+    for (0..small_cap) |_| {
+        if ((try request(w.a, w.port(), "POST", "/keys", w.fay, "")).status != 201) return error.NotMinted;
+    }
+    const r = try request(w.a, w.port(), "POST", "/keys", w.fay, "");
+    if (r.status != 403) return error.Uncapped;
+    if (!has(r.body, "as many keys")) return error.NotSaid;
+}
+
+fn invitesCapped(w: *World) !void {
+    const made = try request(w.a, w.port(), "POST", "/agents", w.fay, "name=Fay%27s");
+    if (made.status != 201) return error.NotMade;
+    const form = try std.fmt.allocPrint(w.a, "as={s}", .{try field(made.body, "id")});
+    w.rig.auth.cap_for_test.store(small_cap, .release);
+    defer w.rig.auth.cap_for_test.store(0, .release);
+    for (0..small_cap) |_| {
+        if ((try request(w.a, w.port(), "POST", "/invites", w.fay, form)).status != 201) return error.NotInvited;
+    }
+    const r = try request(w.a, w.port(), "POST", "/invites", w.fay, form);
+    if (r.status != 403) return error.Uncapped;
+    if (!has(r.body, "as many invites")) return error.NotSaid;
+}
+
+/// **A MISSING INDEX IS REBUILT** from the full scan: Fay's key and
+/// conversation indexes, and their marks, removed (a store from before
+/// them), and her listings are whole again, and the indexes back.
+fn indexRebuilt(w: *World) !void {
+    for ([_][]const u8{ "auth/keys-indexed", "auth/keys-by-human/1010", "chat/indexed", "chat/by-human/1010" }) |path| {
+        try w.rig.data.deleteFile(io, path);
+    }
+    const keys = try get(w.a, w.port(), "/keys", w.fay);
+    if (keys.status != 200) return error.KeysUnlisted;
+    if (count(keys.body, "\"acts_as\":") != small_cap) return error.KeysLost;
+    const convs = try get(w.a, w.port(), "/conversations", w.fay);
+    if (convs.status != 200) return error.ConversationsUnlisted;
+    if (count(convs.body, "\"with\":[") != small_cap) return error.ConversationsLost;
+    for ([_][]const u8{ "auth/keys-indexed", "auth/keys-by-human/1010", "chat/indexed", "chat/by-human/1010" }) |path| {
+        _ = w.rig.data.statFile(io, path, .{}) catch return error.NotRebuilt;
+    }
+}
+
+/// **A LISTING READS ITS OWN INDEX ALONE** (H4): a conversation Fay is
+/// not in made unreadable, and her listing still answers, as a scan of
+/// every conversation would not.
+fn ownIndexOnly(w: *World) !void {
+    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/conversations/{s}", .{w.agents_conv}), "junk\n");
+    const convs = try get(w.a, w.port(), "/conversations", w.fay);
+    if (convs.status != 200) return error.ReadEveryone;
+    if (count(convs.body, "\"with\":[") != small_cap) return error.ConversationsLost;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -1146,6 +1218,11 @@ const steps = [_]Step{
     .{ .name = "a stream's backlog is at most the newest page, a gap before it said", .f = streamGap },
     .{ .name = "a page and a backlog are read from their first message's offset, never the transcript whole", .f = readFromOffset },
     .{ .name = "a missing offsets file is read past, and the next post writes it whole", .f = offsetsRebuilt },
+    .{ .name = "a human past the conversations cap is refused, by name", .f = conversationsCapped },
+    .{ .name = "a human past the keys cap is refused, by name", .f = keysCapped },
+    .{ .name = "a human past the invites cap is refused, by name", .f = invitesCapped },
+    .{ .name = "a missing index is rebuilt from the full scan, and the listings are whole", .f = indexRebuilt },
+    .{ .name = "a listing reads its own index alone: another's broken conversation is never read", .f = ownIndexOnly },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

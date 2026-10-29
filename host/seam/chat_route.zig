@@ -93,7 +93,7 @@ pub const Appended = union(AppendStatus) { appended: u64, failed };
 pub const Verified = enum(u8) { invalid, valid };
 
 /// Host.roc's `read_config!` argument: a public setting the Roc needs.
-pub const ConfigName = enum(u8) { first_admin, github_authorize, github_client_id, origin };
+pub const ConfigName = enum(u8) { cap_for_test, first_admin, github_authorize, github_client_id, origin };
 
 /// Chat.roc's `Exchanged.status`: what GitHub's exchange came to, or that
 /// none was asked for.

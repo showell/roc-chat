@@ -129,10 +129,12 @@ Host := [].{
 	## time.
 	verify! : List(U8), List(U8) => [Invalid, Valid]
 
-	## A public setting, never a secret: the first admin's GitHub id (its
+	## A public setting, never a secret: the end to end's cap (decimal
+	## digits, or empty: none, as in prod), the first admin's GitHub id (its
 	## decimal digits, or empty), GitHub's base URL for the authorize page,
 	## the OAuth app's client id, and the chat's public origin.
 	read_config! : [
+		CapForTest,
 		FirstAdmin,
 		GitHubAuthorize,
 		GitHubClientId,

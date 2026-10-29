@@ -91,15 +91,25 @@ Conversations := [].{
 	## **THE VIEWER'S OWN CONVERSATIONS**, oldest first: each one ConvAccess
 	## lets them post in (a participant, or the human its agent or bot
 	## answers to). A public conversation they may only read is not theirs.
+	## Read from the index of the human the viewer answers to
+	## (Store.load_conversations_of!), never every conversation.
 	load_mine! : Access.Viewer(ConvAccess.ConvId),
 	List(Principal) => Try(
 		List(ConvAccess.Conv),
 		[Failed],
 	)
-	load_mine! = |viewer, accounts| {
-		all = Store.load_conversations!({})?
-		Ok(List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
-	}
+	load_mine! = |viewer, accounts|
+		match viewer.who() {
+			SignedOut => Ok([])
+			Session(b) | Key(b) =>
+				match Principal.find(accounts, b.id) {
+					Err(_) => Ok([])
+					Ok(p) => {
+						theirs = Store.load_conversations_of!(Principal.answers_to(p), accounts)?
+						Ok(List.keep_if(theirs, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
+					}
+				}
+		}
 
 	## A message's HTML: roc-markdown's render of its markdown, the one
 	## the transcript, the stream and the pages all give.
@@ -200,50 +210,58 @@ start! = |{}| {
 									"`with` names the others, as `human:2,agent:7`",
 								)
 								Ok(others) =>
-									match Store.load_next_conversation_id!({}) {
+									match started_room!(me.id, accounts) {
 										Err(Failed) => Chat.failed
-										Ok(id) =>
-											match ConvAccess.Conv.start({
-												id,
-												starter: me.id,
-												others,
-												accounts,
-											}) {
-												Err(NoParticipants) => Wire.refused(
-													400,
-													"a conversation has someone in it",
-												)
-												# One refusal for an id no account holds and an
-												# agent the starter does not own: neither says
-												# which accounts exist.
-												Err(NoSuchParticipant(_)) | Err(NotTheOwner(_)) => Wire.refused(
-													400,
-													"`with` names someone you may not start a conversation with",
-												)
-												Ok(conv) =>
-													if !ConvAccess.can_post(
-														viewer,
-														{ conv, accounts },
-													) {
-														audit_out_of_scope!({
-															key,
-															use: Start,
-															action: Post(conv),
-															accounts,
-															now,
-														})
-														Wire.refused(
-															403,
-															"this key may not post to a new conversation",
+										Ok(Full) => Wire.refused(
+											403,
+											"you have started as many conversations as one person may (${Limits.cap!(ConversationsPerHuman).to_str()})",
+										)
+										Ok(Room) =>
+											match Store.load_next_conversation_id!({}) {
+												Err(Failed) => Chat.failed
+												Ok(id) =>
+													match ConvAccess.Conv.start({
+														id,
+														starter: me.id,
+														others,
+														accounts,
+													}) {
+														Err(NoParticipants) => Wire.refused(
+															400,
+															"a conversation has someone in it",
 														)
-													} else {
-														match Store.save_conversation!(conv, now) {
-															Failed => Chat.failed
-															Written => Wire.json(
-																201,
-																Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"),
-															)
-														}
+														# One refusal for an id no account holds and an
+														# agent the starter does not own: neither says
+														# which accounts exist.
+														Err(NoSuchParticipant(_)) | Err(NotTheOwner(_)) => Wire.refused(
+															400,
+															"`with` names someone you may not start a conversation with",
+														)
+														Ok(conv) =>
+															if !ConvAccess.can_post(
+																viewer,
+																{ conv, accounts },
+															) {
+																audit_out_of_scope!({
+																	key,
+																	use: Start,
+																	action: Post(conv),
+																	accounts,
+																	now,
+																})
+																Wire.refused(
+																	403,
+																	"this key may not post to a new conversation",
+																)
+															} else {
+																match Store.save_new_conversation!({ conv, created: now, accounts }) {
+																	Failed => Chat.failed
+																	Written => Wire.json(
+																		201,
+																		Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"),
+																	)
+																}
+															}
 													}
 											}
 									}
@@ -252,6 +270,19 @@ start! = |{}| {
 			}
 	}
 }
+
+## **WHETHER THE STARTER'S HUMAN MAY START ANOTHER** (Limits'
+## conversations_per_human, counted from their `started-by` index); one the
+## accounts do not hold is refused later, by ConvAccess.Conv.start.
+started_room! : Principal.Id, List(Principal) => Try([Room, Full], [Failed])
+started_room! = |starter, accounts|
+	match Principal.find(accounts, starter) {
+		Err(_) => Ok(Room)
+		Ok(p) => {
+			started = Store.load_started_count!(Principal.answers_to(p), accounts)?
+			Ok(if started >= Limits.cap!(ConversationsPerHuman) Full else Room)
+		}
+	}
 
 ## **THE VIEWER'S OWN, AS JSON**: each one's id, and who is in it, each
 ## by id and name.

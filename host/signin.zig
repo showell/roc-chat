@@ -27,11 +27,16 @@ pub const Auth = struct {
     /// The first admin's GitHub id, as decimal digits; empty for none (the
     /// config's `.bootstrap_admin`).
     first_admin: []const u8 = "",
+    /// **THE END TO END'S CAP** on what one human makes (Limits.cap!), in
+    /// place of each of Limits' own; 0 for none, as in prod, where nothing
+    /// sets it. host/e2e.zig sets it around a step.
+    cap_for_test: std.atomic.Value(u32) = .init(0),
 
     /// A public setting the Roc asks for (Host.read_config!). Never a
     /// secret: the client id is public (the authorize URL carries it).
     pub fn config(a: *const Auth, name: route.ConfigName) []const u8 {
         return switch (name) {
+            .cap_for_test => "", // a number, spelled by call.zig's read_config
             .first_admin => a.first_admin,
             .github_authorize => a.github.oauth_base,
             .github_client_id => a.secrets.client_id.bytes,

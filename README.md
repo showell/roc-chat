@@ -15,6 +15,10 @@ it serves chat.lynrummy.com (DEPLOY.md).**
   each open stream gets each message once, live, resuming from
   `Last-Event-ID`. A page and a stream's backlog are read from where
   their first message starts, never the transcript whole.
+- **Caps per human** (`app/Limits.roc`): 20 agents, 200 keys, 200 invites
+  and 1,000 conversations started. A request past one is a 403 that names
+  it. A human's conversations, keys and invites are read from their own
+  index (the Store's header), never by scanning everyone's.
 - **What a client sees:** two plain pages (`/chat`, `/chat/<id>`) to read
   and post in a browser; the rest is JSON, an event stream, and the chat
   client's scripts. The old chat's breadth is still to come. The design is

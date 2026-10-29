@@ -467,42 +467,70 @@ minted! = |granter, { default_as, form }|
 		) => {
 			now = Host.read_time!({})
 			match (Store.load_accounts!({}), Store.load_next_key_id!({})) {
-				(Ok(accounts), Ok(id)) => {
-					secret = Host.random_bytes!(Wire.secret_bytes)
-					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
-						Err(NotAHash) => Chat.failed
-						Ok(hash) =>
-							match ConvKey.issue(
-								{
-									granter,
-									acts_as,
-									scope,
-									accounts,
-									now,
-								},
-								{ key: id, expires: now + lifetime },
-							) {
-								Err(Refused(why)) => {
-									audit_grant!(
-										granter,
+				(Ok(accounts), Ok(id)) =>
+					match capped!(KeysPerHuman, acts_as, accounts) {
+						Err(Failed) => Chat.failed
+						Ok(Full) => Wire.refused(403, "you have minted as many keys as one person may (${Limits.cap!(KeysPerHuman).to_str()})")
+						Ok(Room) => {
+							secret = Host.random_bytes!(Wire.secret_bytes)
+							match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
+								Err(NotAHash) => Chat.failed
+								Ok(hash) =>
+									match ConvKey.issue(
 										{
+											granter,
 											acts_as,
-											refusal: why,
+											scope,
+											accounts,
 											now,
 										},
-									)
-									grant_refused(why)
-								}
-								Ok(key) =>
-									match Store.save_key!({ key, hash }) {
-										Failed => Chat.failed
-										Written => Wire.json(201, key_json(key, Shown(secret)))
+										{ key: id, expires: now + lifetime },
+									) {
+										Err(Refused(why)) => {
+											audit_grant!(
+												granter,
+												{
+													acts_as,
+													refusal: why,
+													now,
+												},
+											)
+											grant_refused(why)
+										}
+										Ok(key) =>
+											match Store.save_new_key!({ key, hash }, accounts) {
+												Failed => Chat.failed
+												Written => Wire.json(201, key_json(key, Shown(secret)))
+											}
 									}
 							}
+						}
 					}
-				}
 				_ => Chat.failed
 			}
+		}
+	}
+
+## **WHETHER THE HUMAN `acts_as` ANSWERS TO MAY MAKE ANOTHER** of what
+## the cap counts (Limits.cap!), from their index; one the accounts do not
+## hold is refused later, by the grant.
+capped! : [InvitesPerHuman, KeysPerHuman], Principal.Id, List(Principal) => Try([Room, Full], [Failed])
+capped! = |which, acts_as, accounts|
+	match Principal.find(accounts, acts_as) {
+		Err(_) => Ok(Room)
+		Ok(p) => {
+			human = Principal.answers_to(p)
+			made =
+				match which {
+					InvitesPerHuman => Store.load_invite_count!(human, accounts)?
+					KeysPerHuman => Store.load_key_count!(human, accounts)?
+				}
+			cap =
+				match which {
+					InvitesPerHuman => Limits.cap!(InvitesPerHuman)
+					KeysPerHuman => Limits.cap!(KeysPerHuman)
+				}
+			Ok(if made >= cap Full else Room)
 		}
 	}
 
@@ -549,59 +577,64 @@ invited_by! = |granter, { default_as, form }|
 					Ok(id),
 					Ok(by),
 				) =>
-					match Agents.invited({
-						granter,
-						acts_as,
-						scope,
-						lifetime,
-						accounts,
-						now,
-					}) {
-						Err(NotAnAgent) => Wire.refused(
-							400,
-							"an invite is for one of your agents or bots, `as=agent:7`; your own key is minted",
-						)
-						Err(Refused(why)) => {
-							audit_grant!(
+					match capped!(InvitesPerHuman, acts_as, accounts) {
+						Err(Failed) => Chat.failed
+						Ok(Full) => Wire.refused(403, "you have made as many invites as one person may (${Limits.cap!(InvitesPerHuman).to_str()})")
+						Ok(Room) =>
+							match Agents.invited({
 								granter,
-								{
-									acts_as,
-									refusal: why,
-									now,
-								},
-							)
-							grant_refused(why)
-						}
-						Ok(bound) => {
-							code = Host.random_bytes!(Wire.secret_bytes)
-							match Stored.SecretHash.from_bytes(Host.hash!(code)) {
-								Err(NotAHash) => Chat.failed
-								Ok(hash) => {
-									invite = {
-										id,
-										bound,
-										by,
-										hash,
-										created: now,
-										expires: now + invite_lifetime_secs,
-										state: Live,
-										lifetime,
-										scope,
-									}
-									match Store.save_invite!(invite) {
-										Failed => Chat.failed
-										Written => {
-											audit_invite!({
-												at: now,
-												invite: Known({ id, agent: bound.id }),
-												verdict: Created(via_of(granter)),
-											})
-											Wire.json(201, invite_json(invite, Shown(code)))
+								acts_as,
+								scope,
+								lifetime,
+								accounts,
+								now,
+							}) {
+								Err(NotAnAgent) => Wire.refused(
+									400,
+									"an invite is for one of your agents or bots, `as=agent:7`; your own key is minted",
+								)
+								Err(Refused(why)) => {
+									audit_grant!(
+										granter,
+										{
+											acts_as,
+											refusal: why,
+											now,
+										},
+									)
+									grant_refused(why)
+								}
+								Ok(bound) => {
+									code = Host.random_bytes!(Wire.secret_bytes)
+									match Stored.SecretHash.from_bytes(Host.hash!(code)) {
+										Err(NotAHash) => Chat.failed
+										Ok(hash) => {
+											invite = {
+												id,
+												bound,
+												by,
+												hash,
+												created: now,
+												expires: now + invite_lifetime_secs,
+												state: Live,
+												lifetime,
+												scope,
+											}
+											match Store.save_new_invite!(invite, accounts) {
+												Failed => Chat.failed
+												Written => {
+													audit_invite!({
+														at: now,
+														invite: Known({ id, agent: bound.id }),
+														verdict: Created(via_of(granter)),
+													})
+													Wire.json(201, invite_json(invite, Shown(code)))
+												}
+											}
 										}
 									}
 								}
 							}
-						}
 					}
 				_ => Chat.failed
 			}
@@ -716,7 +749,7 @@ redeemed_now! = |invite, now| {
 							match Store.save_invite!({ ..invite, state: Spent }) {
 								Failed => Chat.failed
 								Written =>
-									match Store.save_key!({ key, hash }) {
+									match Store.save_new_key!({ key, hash }, accounts) {
 										Failed => Chat.failed
 										Written => {
 											audit_invite!({
@@ -803,7 +836,7 @@ list_invites! = |{}|
 				now,
 			},
 		) =>
-			match Store.load_invites!({}) {
+			match Store.load_invites_of!(human, accounts) {
 				Err(Failed) => Chat.failed
 				Ok(all) => {
 					live = List.keep_if(
@@ -851,7 +884,7 @@ revoke_invite! = |id|
 				now,
 			},
 		) =>
-			match Store.load_invites!({}) {
+			match Store.load_invites_of!(human, accounts) {
 				Err(Failed) => Chat.failed
 				Ok(all) =>
 					match List.find_first(
@@ -974,7 +1007,7 @@ list! = |{}|
 				now: _,
 			},
 		) =>
-			match Store.load_keys!({}) {
+			match Store.load_keys_of!(human, accounts) {
 				Err(Failed) => Chat.failed
 				Ok(entries) => {
 					mine = List.keep_if(
@@ -1010,7 +1043,7 @@ revoke! = |id|
 				now: _,
 			},
 		) =>
-			match Store.load_keys!({}) {
+			match Store.load_keys_of!(human, accounts) {
 				Err(Failed) => Chat.failed
 				Ok(entries) =>
 					match List.find_first(

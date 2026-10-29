@@ -228,6 +228,11 @@ pub const Ctx = struct {
 
     pub fn read_config(c: *Ctx, name: route.ConfigName) []const u8 {
         const auth = c.auth orelse return c.failed("read_config", error.NoSignInConfig);
+        if (name == .cap_for_test) {
+            const cap = auth.cap_for_test.load(.acquire);
+            if (cap == 0) return "";
+            return std.fmt.allocPrint(c.arena, "{d}", .{cap}) catch @panic("read_config: out of memory");
+        }
         return auth.config(name);
     }
 
