@@ -1,7 +1,7 @@
 ## **THE CHAT'S CONVERSATIONS ON THE WIRE**: start one, post to it, read it,
 ## stream it. Every decision is the core's: who may see and who may post is
-## ConvAccess's, on the viewer from the request's session (SignIn.viewer!),
-## never on anything the request claims; how a message reads is
+## ConvAccess's, on the viewer from the request's session or API key
+## (Credentials.viewer!), never on anything the request claims; how a message reads is
 ## roc-markdown's, with its work budget. Here are the facts asked of the
 ## host, the records kept (Store), and the answers made.
 ##
@@ -28,12 +28,14 @@ import AccountCodec
 import Bytes
 import Cast
 import ConvAccess
+import ConvKey
+import Credentials
 import MessageCodec
 import Principal
-import SignIn
 import SignInWeb
 import Store
 import Stored
+import Wire
 
 Conversations := [].{
 
@@ -87,22 +89,23 @@ id_of = |digits|
 		Ok(n) => ConvAccess.ConvId.from_u64(n).map_err(|_| NotAConversation)
 	}
 
-## **START A CONVERSATION**: the signed-in human, and each id the form's
-## `with` names, bound to their accounts now (ConvAccess.Conv.start); stored,
-## and its id answered. Only a session starts one: a key, or nobody, cannot.
+## **START A CONVERSATION**: the viewer, and each id the form's `with`
+## names, bound to their accounts now (ConvAccess.Conv.start); stored, and
+## its id answered. A session starts one; a key starts one only where it
+## could post to it then (ConvAccess.can_post: its post reaching it, and its
+## principal in it), and is audited when not. Nobody signed in cannot.
 start! : {} => Chat.Answer
 start! = |{}| {
 	got = Host.read_body!(form_most)
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match SignIn.viewer!({}) {
-				Err(Failed) => Chat.failed
-				Ok({ viewer, accounts, now }) =>
+			match Credentials.viewer!(Start) {
+				Err(answer) => answer
+				Ok({ viewer, accounts, now, key }) =>
 					match viewer.who() {
 						SignedOut => signed_out
-						Key(_) => refused(403, "a conversation is started from a session")
-						Session(me) =>
+						Session(me) | Key(me) =>
 							match others_of(got.bytes) {
 								Err(Malformed) => refused(400, "`with` names the others, as `human:2,agent:7`")
 								Ok(others) =>
@@ -113,9 +116,14 @@ start! = |{}| {
 												Err(NoParticipants) => refused(400, "a conversation has someone in it")
 												Err(NoSuchParticipant(who)) => refused(400, "no account is ${AccountCodec.id_text(who)}")
 												Ok(conv) =>
-													match Store.save_conversation!(conv, now) {
-														Failed => Chat.failed
-														Written => json(201, Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"))
+													if !ConvAccess.can_post(viewer, { conv, accounts }) {
+														out_of_scope!({ key, use: Start, action: Post(conv), accounts, now })
+														refused(403, "this key may not post to a new conversation")
+													} else {
+														match Store.save_conversation!(conv, now) {
+															Failed => Chat.failed
+															Written => json(201, Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"))
+														}
 													}
 											}
 									}
@@ -124,6 +132,20 @@ start! = |{}| {
 			}
 	}
 }
+
+## **A KEY USED OUTSIDE WHAT IT MAY DO, AUDITED**: the core's own refusal
+## (ConvKey.decide) for the action it was refused. A session's refusal is
+## no key's, and is not audited.
+out_of_scope! : { key : [NoKey, Key(ConvKey.Key)], use : Credentials.Use, action : [Read(ConvAccess.Conv), Post(ConvAccess.Conv)], accounts : List(Principal), now : I64 } => {}
+out_of_scope! = |{ key, use, action, accounts, now }|
+	match key {
+		NoKey => {}
+		Key(k) =>
+			match ConvKey.decide(k, { accounts, action, now }) {
+				Refused(refusal) => Credentials.audit_use!(k, { use, refusal, now })
+				Permitted => {}
+			}
+	}
 
 ## The ids the start form's `with` names; none when it names none.
 others_of : List(U8) -> Try(List(Principal.Id), [Malformed])
@@ -136,32 +158,36 @@ others_of = |form|
 	}
 
 ## **WHAT A REQUEST ON A CONVERSATION DECIDES ON**: the viewer from its
-## session, the accounts now, the conversation, and the time; or the answer
-## that ends it (signed out, not there, a failure).
-Asked : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), now : I64, conv : ConvAccess.Conv }
+## session or key, the accounts now, the conversation, the time, and the
+## key when a key asks; or the answer that ends it (signed out, a key
+## refused, not there, a failure).
+Asked : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), now : I64, conv : ConvAccess.Conv, key : [NoKey, Key(ConvKey.Key)] }
 
-asked! : ConvAccess.ConvId => Try(Asked, Chat.Answer)
-asked! = |id|
-	match SignIn.viewer!({}) {
-		Err(Failed) => Err(Chat.failed)
-		Ok({ viewer, accounts, now }) =>
-			match viewer.who() {
-				SignedOut => Err(signed_out)
-				Session(_) | Key(_) =>
-					match Store.conversation!(id) {
-						Err(Failed) => Err(Chat.failed)
-						Err(Missing) => Err(no_such)
-						Ok(conv) => Ok({ viewer, accounts, now, conv })
-					}
+asked! : ConvAccess.ConvId, Credentials.Use => Try(Asked, Chat.Answer)
+asked! = |id, use| {
+	{ viewer, accounts, now, key } = Credentials.viewer!(use)?
+	match viewer.who() {
+		SignedOut => Err(signed_out)
+		Session(_) | Key(_) =>
+			match Store.conversation!(id) {
+				Err(Failed) => Err(Chat.failed)
+				Err(Missing) => Err(no_such)
+				Ok(conv) => Ok({ viewer, accounts, now, conv, key })
 			}
 	}
+}
 
 ## The same, for a viewer who may see it (ConvAccess.can_see); one who may
-## not is answered as if it were not there.
+## not is answered as if it were not there, and a key's refusal audited.
 seen! : ConvAccess.ConvId => Try(Asked, Chat.Answer)
 seen! = |id| {
-	a = asked!(id)?
-	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) Ok(a) else Err(no_such)
+	a = asked!(id, Read(id))?
+	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {
+		Ok(a)
+	} else {
+		out_of_scope!({ key: a.key, use: Read(id), action: Read(a.conv), accounts: a.accounts, now: a.now })
+		Err(no_such)
+	}
 }
 
 ## **READ**: the transcript, every message as the wire spells it.
@@ -196,10 +222,11 @@ post! = |id| {
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match asked!(id) {
+			match asked!(id, Post(id)) {
 				Err(answer) => answer
-				Ok({ viewer, accounts, now, conv }) =>
+				Ok({ viewer, accounts, now, conv, key }) =>
 					if !ConvAccess.can_post(viewer, { conv, accounts }) {
+						out_of_scope!({ key, use: Post(id), action: Post(conv), accounts, now })
 						if ConvAccess.can_see(viewer, { conv, accounts }) refused(403, "only its participants post here") else no_such
 					} else if Str.from_utf8(got.bytes).is_err() {
 						refused(400, "a message is UTF-8 text")
@@ -280,46 +307,17 @@ message_json = |m|
 		['}'],
 	])
 
-## **TEXT AS A JSON STRING**: quoted, its `"` and `\` escaped, and every
-## control byte as `\u00XX`, so the string is one line. The text is UTF-8
-## (a post's is checked; roc-markdown's html of it is too).
 json_string : List(U8) -> List(U8)
-json_string = |text|
-	List.join([
-		['"'],
-		List.join_map(
-			text,
-			|b|
-				if b == '"' {
-					['\\', '"']
-				} else if b == '\\' {
-					['\\', '\\']
-				} else if b == '\n' {
-					['\\', 'n']
-				} else if b < 0x20 or b == 0x7F {
-					List.concat(Str.to_utf8("\\u00"), [hex_digit(b // 16), hex_digit(b % 16)])
-				} else {
-					[b]
-				},
-		),
-		['"'],
-	])
+json_string = Wire.json_string
 
-## Each part, a comma between each two.
 commas : List(List(U8)) -> List(U8)
-commas = |parts| List.join(List.map_with_index(parts, |part, i| if i == 0 part else List.prepend(part, ',')))
-
-hex_digit : U8 -> U8
-hex_digit = |n| if n < 10 '0' + n else 'a' + n - 10
+commas = Wire.commas
 
 json : U16, List(U8) -> Chat.Answer
-json = |status, body| {
-	..Chat.respond(status, { content_type: Str.to_utf8("application/json; charset=utf-8"), body }),
-	sniff: Forbid,
-}
+json = Wire.json
 
 refused : U16, Str -> Chat.Answer
-refused = |status, why| Chat.respond(status, { content_type: Chat.text, body: Str.to_utf8("${why}\n") })
+refused = Wire.refused
 
 signed_out : Chat.Answer
 signed_out = refused(401, "not signed in")
@@ -336,7 +334,6 @@ expect Conversations.route(Str.to_utf8("/conversations/012")).is_err()
 expect Conversations.route(Str.to_utf8("/conversations/12/other")).is_err()
 expect Conversations.route(Str.to_utf8("/conversations/")).is_err()
 expect Conversations.route(Str.to_utf8("/conversationsx")).is_err()
-expect json_string(Str.to_utf8("a\"b\\c\nd\re\u(7f)é")) == Str.to_utf8("\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"")
 expect last_seen_id([Str.to_utf8("7")]) == 7
 expect last_seen_id([Str.to_utf8("07")]) == 0
 expect last_seen_id([]) == 0

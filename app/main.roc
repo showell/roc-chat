@@ -1,6 +1,6 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
-## conversations; the store is Store.roc's, the only module that names a
+## conversations, Agents.roc's agents and API keys; the store is Store.roc's, the only module that names a
 ## file. Beside them, a hello page (rendered by roc-markdown, the chat's
 ## dialect) and the chat client's scripts (`serve_script!`).
 app [handle!] {
@@ -11,6 +11,7 @@ app [handle!] {
 import pf.Chat
 import pf.Host
 import md.Md
+import Agents
 import Conversations
 import SignIn
 
@@ -37,9 +38,10 @@ handle! = |req|
 	} else if req.path == Str.to_utf8("/me") {
 		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
 	} else {
-		match Conversations.route(req.path) {
-			Ok(route) => Conversations.answer!(req, route)
-			Err(NotAConversation) =>
+		match (Conversations.route(req.path), Agents.route(req.path)) {
+			(Ok(route), _) => Conversations.answer!(req, route)
+			(_, Ok(route)) => Agents.answer!(req, route)
+			(Err(_), Err(_)) =>
 				match script_name(req.path) {
 					Ok(name) =>
 						match Host.serve_script!(name) {

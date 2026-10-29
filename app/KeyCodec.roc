@@ -95,6 +95,16 @@ KeyCodec := [].{
 		entry = |KeyCodec.Line.(e)| e
 	}
 
+	## **A READ'S OR A POST'S REACH, IN ITS ONE SPELLING** (`off`,
+	## `everywhere`, `only:3,9`): what a line holds, and what a grant's form
+	## and a key's listing say.
+	reach_text : [Off, On(KeyCodec.Reach(id))], (id -> U64) -> Str
+	reach_text = |part, number| reach_text_of(part, number)
+
+	## The reach a spelling names, as the decoder reads a line's.
+	reach_from : List(U8), { name : Str, make : (U64 -> Try(id, [NotAnId])) } -> Try([Off, On(KeyCodec.Reach(id))], Stored.Problem)
+	reach_from = |value, named| reach_from_text(value, named)
+
 	## The entry's line, an id spelled by `number`, in the one spelling.
 	encode : KeyCodec.Entry(id), (id -> U64) -> List(U8)
 	encode = |{ record, hash }, number|
@@ -109,8 +119,8 @@ KeyCodec := [].{
 				("created", Stored.time_text(record.created)),
 				("expires", Stored.time_text(record.expires)),
 				("state", spell_revocation(record.revocation)),
-				("read", reach_text(record.scope.read, number)),
-				("post", reach_text(record.scope.post, number)),
+				("read", reach_text_of(record.scope.read, number)),
+				("post", reach_text_of(record.scope.post, number)),
 				("admin", spell_switch(record.scope.admin)),
 			],
 		)
@@ -143,9 +153,9 @@ KeyCodec := [].{
 			},
 		)?
 		read_field = state_field.rest.field("read")?
-		read = reach_from(read_field.value, { name: "read", make })?
+		read = reach_from_text(read_field.value, { name: "read", make })?
 		post_field = read_field.rest.field("post")?
-		post = reach_from(post_field.value, { name: "post", make })?
+		post = reach_from_text(post_field.value, { name: "post", make })?
 		admin_field = post_field.rest.field("admin")?
 		admin = Stored.word(
 			admin_field.value,
@@ -215,8 +225,8 @@ ReachPart(id) : [Off, On(KeyCodec.Reach(id))]
 ## **THE ONE SPELLING OF A REACH**: `off`, `everywhere`, or `only:` and the
 ## ids, ascending, each once, commas between; a list with no id reaches
 ## nothing, which is `off`.
-reach_text : ReachPart(id), (id -> U64) -> Str
-reach_text = |part, number|
+reach_text_of : ReachPart(id), (id -> U64) -> Str
+reach_text_of = |part, number|
 	match part {
 		Off => spell_switch(Off)
 		On(Everywhere) => everywhere_word
@@ -240,8 +250,8 @@ ascending_once = |numbers|
 		},
 	)
 
-reach_from : List(U8), { name : Str, make : (U64 -> Try(id, [NotAnId])) } -> Try(ReachPart(id), Stored.Problem)
-reach_from = |value, { name, make }|
+reach_from_text : List(U8), { name : Str, make : (U64 -> Try(id, [NotAnId])) } -> Try(ReachPart(id), Stored.Problem)
+reach_from_text = |value, { name, make }|
 	if value == Str.to_utf8(spell_switch(Off)) {
 		Ok(Off)
 	} else if value == Str.to_utf8(everywhere_word) {

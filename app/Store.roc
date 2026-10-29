@@ -13,6 +13,7 @@
 ##     auth/barred               the barred GitHub ids, a line each
 ##     auth/audit                every refusal and admin act, appended (AuditCodec)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
+##     auth/keys/<hash>          an API key, named for its secret's hash (ConvKey)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
 ##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
@@ -33,6 +34,7 @@ import AuditCodec
 import Cast
 import ConvAccess
 import ConvCodec
+import ConvKey
 import GitHubSignIn
 import MessageCodec
 import Principal
@@ -117,18 +119,69 @@ Store := [].{
 	## write fails.
 	save_signed_in! : { accounts : List(Principal), settings : GitHubSignIn.Settings, session : SessionCodec.Fields } => [Failed, Written]
 	save_signed_in! = |{ accounts, settings, session }|
+		match Store.save_accounts!({ accounts, settings }) {
+			Failed => Failed
+			Written => save_session!(session)
+		}
+
+	## **THE ACCOUNTS AND THE SETTINGS, IN ORDER**: the settings (the
+	## generation counter first, so no generation is ever given twice), then
+	## the accounts. What a sign-in and an agent's making write. `Failed`
+	## when an account will not encode, or a write fails.
+	save_accounts! : { accounts : List(Principal), settings : GitHubSignIn.Settings } => [Failed, Written]
+	save_accounts! = |{ accounts, settings }|
 		match List.map_try(accounts, AccountCodec.encode) {
 			Err(_) => Failed
 			Ok(lines) =>
 				match Host.write!(settings_path, settings_line(settings.next_generation)) {
 					Failed => Failed
-					Written =>
-						match Host.write!(accounts_path, List.join(lines)) {
-							Failed => Failed
-							Written => save_session!(session)
-						}
+					Written => Host.write!(accounts_path, List.join(lines))
 				}
 		}
+
+	## **THE KEY WHOSE SECRET HASHES TO `hash`**: its stored entry, nothing
+	## there, or a line that does not read (`Malformed`, which a caller takes
+	## for no key).
+	key! : Stored.SecretHash => Try(ConvKey.Entry, [Missing, Malformed, Failed])
+	key! = |hash| {
+		read = Host.read!(key_path(hash))
+		match read.status {
+			Failed => Err(Failed)
+			Missing => Err(Missing)
+			Found => ConvKey.decode(read.bytes).map_err(|_| Malformed)
+		}
+	}
+
+	## **EVERY KEY THAT READS**, in no order; a line that does not read is
+	## left out (one damaged key fails only itself).
+	keys! : {} => Try(List(ConvKey.Entry), [Failed])
+	keys! = |{}| {
+		listed = Host.list!(keys_path)
+		match listed.status {
+			Missing => Ok([])
+			Failed => Err(Failed)
+			Found => kept_keys!(listed.entries, [])
+		}
+	}
+
+	## **THE NEXT KEY'S PUBLIC ID**: one past the count of those stored. A
+	## key is never removed (a revoked one stays, revoked), so no id is
+	## given twice.
+	next_key_id! : {} => Try(Principal.KeyId, [Failed])
+	next_key_id! = |{}| {
+		listed = Host.list!(keys_path)
+		count =
+			match listed.status {
+				Missing => Ok(0)
+				Failed => Err(Failed)
+				Found => Ok(List.len(listed.entries))
+			}?
+		Principal.KeyId.from_u64(count + 1).map_err(|_| Failed)
+	}
+
+	## A key written: minted, or revoked.
+	save_key! : ConvKey.Entry => [Failed, Written]
+	save_key! = |entry| Host.write!(key_path(entry.hash), ConvKey.encode(entry))
 
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
 	next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
@@ -225,6 +278,33 @@ transcript_path = |id| Str.to_utf8("chat/transcripts/${id.to_u64().to_str()}")
 ## holds the secret, with no compare to time.
 session_path : Stored.SecretHash -> List(U8)
 session_path = |h| Str.to_utf8("auth/sessions/${Stored.hash_text(h)}")
+
+keys_path : List(U8)
+keys_path = Str.to_utf8("auth/keys")
+
+## A key's file, named for its secret's hash, as a session's is.
+key_path : Stored.SecretHash -> List(U8)
+key_path = |h| Str.to_utf8("auth/keys/${Stored.hash_text(h)}")
+
+## The keys the listed files hold, after `kept`; a file that does not read
+## as a key is left out.
+kept_keys! : List({ kind : [Dir, File, Other], name : List(U8) }), List(ConvKey.Entry) => Try(List(ConvKey.Entry), [Failed])
+kept_keys! = |entries, kept|
+	match entries {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read = Host.read!(List.join([keys_path, ['/'], entry.name]))
+			match read.status {
+				Failed => Err(Failed)
+				Missing => kept_keys!(rest, kept)
+				Found =>
+					match ConvKey.decode(read.bytes) {
+						Ok(e) => kept_keys!(rest, List.append(kept, e))
+						Err(_) => kept_keys!(rest, kept)
+					}
+			}
+		}
+	}
 
 spent_path : Store.Spent, List(U8) -> List(U8)
 spent_path = |set, nonce| {

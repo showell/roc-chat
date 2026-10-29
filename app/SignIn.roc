@@ -6,7 +6,6 @@
 ## nothing else).
 import pf.Chat
 import pf.Host
-import Access
 import AccountCodec
 import AuditCodec
 import GitHubSignIn
@@ -62,47 +61,35 @@ SignIn := [].{
 	name! : {} => Chat.Answer
 	name! = |{}| refused_or!(named!({}))
 
-	## **WHO THIS REQUEST IS, FROM ITS SESSION ALONE** (Access.Viewer, the
-	## only way a handler learns who is asking): the session this
-	## browser's cookie names, admitted against the accounts now, its
-	## `last seen` written when stale. No cookie, one that is not hex, no
-	## such session, a malformed one, or one the accounts no longer admit
-	## (expired, its account retired) is signed out. Never anything the
-	## request claims. With the accounts and the time it was decided at,
-	## which the caller decides on too.
-	viewer! : {} => Try({ viewer : Access.Viewer(id), accounts : List(Principal), now : I64 }, [Failed])
-	viewer! = |{}| {
-		now = Host.read_time!({})
-		accounts = Store.accounts!({})?
-		signed_out = Ok({ viewer: Access.Viewer.signed_out({}), accounts, now })
+	## **THE SESSION THIS BROWSER'S COOKIE NAMES**, as stored, not yet
+	## admitted (Credentials admits it, and a grant asks ApiKey). No cookie,
+	## one that is not hex, no such session, or a malformed one, is none.
+	## Never anything the request claims.
+	cookie_session! : {} => Try([NoSession, Found(Session)], [Failed])
+	cookie_session! = |{}|
 		match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
-			Unsent => signed_out
+			Unsent => Ok(NoSession)
 			Sent(value) =>
 				match SignInWeb.unhex(value) {
-					Err(NotHex) => signed_out
+					Err(NotHex) => Ok(NoSession)
 					Ok(secret) =>
 						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 							Err(NotAHash) => Err(Failed)
 							Ok(token_hash) =>
 								match Store.session!(token_hash) {
 									Err(Failed) => Err(Failed)
-									Err(Missing) => signed_out
-									Err(Malformed) => signed_out
-									Ok(line) =>
-										match Access.Viewer.from_session(Session.load(line), { accounts, now }) {
-											Err(_) => signed_out
-											Ok({ viewer, write: Unchanged }) => Ok({ viewer, accounts, now })
-											Ok({ viewer, write: Touched(s) }) =>
-												match Store.save_session!(s.fields()) {
-													Written => Ok({ viewer, accounts, now })
-													Failed => Err(Failed)
-												}
-										}
+									Err(Missing) => Ok(NoSession)
+									Err(Malformed) => Ok(NoSession)
+									Ok(line) => Ok(Found(Session.load(line)))
 								}
 						}
 				}
 		}
-	}
+
+	## **THE SETTINGS NOW**: the store's, with the first admin the config
+	## names. What a sign-in and an agent's making decide on.
+	settings! : {} => Try(GitHubSignIn.Settings, [Failed])
+	settings! = |{}| Store.settings!(first_admin!({})?)
 
 	## **/me**: the session this browser's cookie names, admitted or not
 	## (Session.admit), its `last seen` written when stale.
@@ -344,7 +331,7 @@ Facts : {
 facts! : {} => Try(Facts, [Failed])
 facts! = |{}| {
 	accounts = Store.accounts!({})?
-	settings = Store.settings!(first_admin!({})?)?
+	settings = SignIn.settings!({})?
 	secret = Host.random_bytes!(nonce_bytes)
 	id = Principal.SessionId.from_u64(SignInWeb.u64_of(Host.random_bytes!(8))).map_err(|_| Failed)?
 	token_hash = Stored.SecretHash.from_bytes(Host.hash!(secret)).map_err(|_| Failed)?
