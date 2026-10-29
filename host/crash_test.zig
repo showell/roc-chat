@@ -52,6 +52,7 @@ const plants = [_]Plant{
     .{ .name = "a crash after write!", .request = get("/crash-after-write"), .said = "after write!" },
     .{ .name = "a crash after many allocations", .request = get("/crash-big"), .said = "after a big list" },
     .{ .name = "a crash longer than the host keeps", .request = get("/crash-long"), .said = "long long" },
+    .{ .name = "a crash whose message holds a line break", .request = get("/crash-forged"), .said = "a forged line" },
 };
 
 /// Past the 1024 bytes /crash-after-body asks read_body! for.
@@ -106,6 +107,44 @@ test "each planted crash is a 500 with the host's fixed body and nothing of the 
         // Each crash and each next request reached the Roc, once.
         try std.testing.expectEqual(1 + 2 * (k + 1), r.turns());
     }
+}
+
+test "each planted crash is logged once, on one line, with its turn, method, path and the Roc's message" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    std.testing.log_level = .err;
+    defer std.testing.log_level = .warn;
+    for (plants, 0..) |p, k| {
+        try expectCrash500(p, try exchange(a, r.port(), p.request));
+        const turn = r.turns();
+        try std.testing.expectEqual(k + 1, r.server.stats.crashes.load(.acquire));
+        try expectServed(a, r);
+        // The next request, served, is not a crash.
+        try std.testing.expectEqual(k + 1, r.server.stats.crashes.load(.acquire));
+        const line = try saidCrash(a, r);
+        errdefer std.debug.print("{s}: logged `{s}`\n", .{ p.name, line });
+        const method = p.request[0..std.mem.indexOfScalar(u8, p.request, ' ').?];
+        const path_end = std.mem.indexOfScalarPos(u8, p.request, method.len + 1, ' ').?;
+        const target = p.request[0..path_end];
+        try std.testing.expect(has(line, target));
+        try std.testing.expect(has(line, try std.fmt.allocPrint(a, "(turn {d})", .{turn})));
+        try std.testing.expect(has(line, "): ")); // the message after its own separator
+        try std.testing.expect(has(line, p.said));
+        // **ONE LINE**: a message's line break cannot forge another.
+        try std.testing.expect(std.mem.indexOfAny(u8, line, "\r\n") == null);
+    }
+    // The forged one's break is said, escaped.
+    try std.testing.expect(has(try saidCrash(a, r), "a planted crash\\x0awarning(roc_chat)"));
+}
+
+/// The last crash's line, read holding the turn.
+fn saidCrash(a: std.mem.Allocator, r: *Running) ![]const u8 {
+    r.server.turn.lockUncancelable(io);
+    defer r.server.turn.unlock(io);
+    return a.dupe(u8, r.server.crash_said[0..r.server.crash_said_len]);
 }
 
 test "after each planted crash the turn is free, and a client waiting on it while the Roc crashed is answered" {
@@ -238,5 +277,6 @@ fn everyAllocationFails(path: []const u8, method: std.http.Method, req: *const c
 
 test "memory that runs out at any allocation of a call is that call's crash, in the Roc and in a hosted function's answer" {
     try everyAllocationFails("/crash-big", .GET, &.{ .path = "/crash-big", .method = .GET, .headers = &.{} }, "a planted crash, after a big list");
+    try everyAllocationFails("/crash-after-header", .GET, &.{ .path = "/crash-after-header", .method = .GET, .headers = &.{.{ .name = "x-probe", .value = "one" }} }, "a planted crash, after read_header!");
     try everyAllocationFails("/crash-after-body", .POST, &.{ .path = "/crash-after-body", .method = .POST, .headers = &.{}, .body = "a body for read_body!" }, "a planted crash, after read_body!");
 }

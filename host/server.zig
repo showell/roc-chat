@@ -61,6 +61,8 @@ pub const Stats = struct {
     /// Handlers in the turn now, and the most there have been at once.
     in_turn: std.atomic.Value(u32) = .init(0),
     most_in_turn: std.atomic.Value(u32) = .init(0),
+    /// Roc crashes said (`Server.sayCrash`).
+    crashes: std.atomic.Value(u32) = .init(0),
 };
 
 pub const Server = struct {
@@ -77,6 +79,10 @@ pub const Server = struct {
     hold_turn_ms_for_test: u32 = 0,
     /// The data root's files, asked only in the turn.
     files: files.Files,
+    /// The last crash's line, as logged (written in the turn; a test reads
+    /// it holding the turn).
+    crash_said: [2048]u8 = undefined,
+    crash_said_len: usize = 0,
 
     /// Serves `data`, the data root (the caller's, open for the server's life).
     pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits, data: Io.Dir) !Server {
@@ -236,9 +242,20 @@ pub const Server = struct {
             defer _ = s.stats.in_turn.fetchSub(1, .acq_rel);
             _ = s.stats.turns.fetchAdd(1, .acq_rel);
             if (s.hold_turn_ms_for_test > 0) io_sleep(s.io, s.hold_turn_ms_for_test);
-            break :blk abi.decide(arena, copied.path, copied.method, .of(&ctx));
+            const d = abi.decide(arena, copied.path, copied.method, .of(&ctx));
+            if (d) |_| {} else |e| if (e == error.RocCrashed) s.sayCrash(copied);
+            break :blk d;
         };
         return call.replyOf(arena, decided, &ctx) catch call.failed;
+    }
+
+    /// **A ROC CRASH IS LOGGED ONCE**, in the turn.
+    fn sayCrash(s: *Server, c: *const call.Copied) void {
+        var w: Io.Writer = .fixed(&s.crash_said);
+        w.print("the Roc call for {s} failed: RocCrashed{s}", .{ c.path, abi.last_crash[0..abi.last_crash_len] }) catch {};
+        s.crash_said_len = w.end;
+        _ = s.stats.crashes.fetchAdd(1, .acq_rel);
+        log.warn("{s}", .{s.crash_said[0..s.crash_said_len]});
     }
 };
 

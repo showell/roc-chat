@@ -202,7 +202,8 @@ pub fn headerAllowed(h: route.Header) bool {
 /// 500, said on stderr.
 pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: *const Ctx) !Reply {
     const d = decided catch |e| {
-        log.warn("the Roc call for {s} failed: {t}{s}", .{ ctx.req.path, e, if (e == error.RocCrashed) abi.last_crash[0..abi.last_crash_len] else "" });
+        // A crash is said once, in the turn (server.zig `sayCrash`).
+        if (e != error.RocCrashed) log.warn("the Roc call for {s} failed: {t}", .{ ctx.req.path, e });
         return failed;
     };
     if (ctx.failure != null) return failed;
