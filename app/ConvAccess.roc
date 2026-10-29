@@ -54,7 +54,8 @@ ConvAccess := [].{
 		accounts : List(Principal),
 	}
 
-	## Why an election is refused.
+	## Why an election is refused. **ONE ALIAS ON PURPOSE**: `elect` and the
+	## `refused` check behind it share it, and the tags' reasons are said once.
 	ElectionRefusal : [
 		## Nobody signed in asked.
 		SignedOut,

@@ -67,15 +67,15 @@ SignIn := [].{
 	##   and resolves whose sign-in it is.
 	## The Roc keeps nothing between them: the request is the facts. A
 	## refusal past the exchange is audited (`refused_or!`).
-	callback! : Chat.Request => Chat.Answer
-	callback! = |req| refused_or!(came_back!(req))
+	serve_callback! : Chat.Request => Chat.Answer
+	serve_callback! = |req| refused_or!(check_callback!(req))
 
 	## **/login/name**: the pending sign-up back from this browser
 	## (GitHubSignIn.Pending.resume), and the name it gives; the account
 	## made, or the name asked for again. Its refusals are a pending
 	## sign-up's, anonymous, and never audited (`refused_or!`).
-	name! : {} => Chat.Answer
-	name! = |{}| refused_or!(named!({}))
+	serve_name! : {} => Chat.Answer
+	serve_name! = |{}| refused_or!(named!({}))
 
 	## **/logout, POST**: the session this browser's cookie names ended
 	## (its record removed, so the cookie is a 401 from now on, wherever it
@@ -83,8 +83,8 @@ SignIn := [].{
 	## cookie naming none, is signed out already: the same answer. Behind
 	## Origin's check, as every write is, so another site cannot sign
 	## someone out.
-	logout! : {} => Chat.Answer
-	logout! = |{}| {
+	serve_logout! : {} => Chat.Answer
+	serve_logout! = |{}| {
 		removed =
 			match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
 				Unsent => Removed
@@ -110,8 +110,8 @@ SignIn := [].{
 	## admitted (Credentials admits it, and a grant asks ApiKey). No cookie,
 	## one that is not hex, no such session, or a malformed one, is none.
 	## Never anything the request claims.
-	cookie_session! : {} => Try([NoSession, Found(Session)], [Failed])
-	cookie_session! = |{}|
+	load_cookie_session! : {} => Try([NoSession, Found(Session)], [Failed])
+	load_cookie_session! = |{}|
 		match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
 			Unsent => Ok(NoSession)
 			Sent(value) =>
@@ -138,10 +138,10 @@ SignIn := [].{
 
 	## **/me**: the session this browser's cookie names, admitted or not
 	## (Session.admit), its `last seen` written when stale.
-	me! : {} => Chat.Answer
-	me! = |{}| {
+	serve_me! : {} => Chat.Answer
+	serve_me! = |{}| {
 		now = Host.read_time!({})
-		match SignIn.cookie_session!({}) {
+		match SignIn.load_cookie_session!({}) {
 			Err(Failed) => Chat.failed
 			Ok(NoSession) => not_signed_in
 			Ok(Found(session)) =>
@@ -174,9 +174,8 @@ admitted! = |session, as_of|
 		}
 	}
 
-
-came_back! : Chat.Request => Try(Chat.Answer, GitHubSignIn.Refusal)
-came_back! = |req| {
+check_callback! : Chat.Request => Try(Chat.Answer, GitHubSignIn.Refusal)
+check_callback! = |req| {
 	now = Host.read_time!({})
 	answer =
 		match List.first(Host.read_query!(Str.to_utf8("code"))) {
@@ -215,7 +214,7 @@ came_back! = |req| {
 									_ => Failed
 								}
 							known = checked.identify(github)?
-							match facts!({}) {
+							match load_facts!({}) {
 								Err(Failed) => Ok(Chat.failed)
 								Ok(f) =>
 									match known.resolve({
@@ -285,7 +284,7 @@ named! = |{}| {
 					Ok(n) => n
 					Err(_) => []
 				}
-			match (Store.load_nonce_use!(Pending, resumed.nonce()), facts!({})) {
+			match (Store.load_nonce_use!(Pending, resumed.nonce()), load_facts!({})) {
 				(Ok(pending_use), Ok(f)) =>
 					match resumed.name({
 						name,
@@ -452,8 +451,8 @@ Facts : {
 	secret : List(U8),
 }
 
-facts! : {} => Try(Facts, [Failed])
-facts! = |{}| {
+load_facts! : {} => Try(Facts, [Failed])
+load_facts! = |{}| {
 	accounts = Store.load_accounts!({})?
 	settings = SignIn.load_settings!({})?
 	secret = Host.random_bytes!(Wire.secret_bytes)

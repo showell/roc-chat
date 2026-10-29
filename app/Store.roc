@@ -228,7 +228,7 @@ Store := [].{
 	## given twice.
 	load_next_key_id! : {} => Try(Principal.KeyId, [Failed])
 	load_next_key_id! = |{}| {
-		Principal.KeyId.from_u64(one_past_count!(keys_path)?).map_err(|_| Failed)
+		Principal.KeyId.from_u64(load_one_past_count!(keys_path)?).map_err(|_| Failed)
 	}
 
 	## A key written: minted, or revoked.
@@ -275,7 +275,7 @@ Store := [].{
 	## is given twice.
 	load_next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
 	load_next_invite_id! = |{}| {
-		InviteCodec.InviteId.from_u64(one_past_count!(invites_path)?).map_err(|_| Failed)
+		InviteCodec.InviteId.from_u64(load_one_past_count!(invites_path)?).map_err(|_| Failed)
 	}
 
 	## An invite written: made, spent or revoked.
@@ -288,7 +288,7 @@ Store := [].{
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
 	load_next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
 	load_next_conversation_id! = |{}| {
-		ConvAccess.ConvId.from_u64(one_past_count!(conversations_path)?).map_err(|_| Failed)
+		ConvAccess.ConvId.from_u64(load_one_past_count!(conversations_path)?).map_err(|_| Failed)
 	}
 
 	## The conversation `id`: `Missing` when there is none, and `Failed`
@@ -663,8 +663,8 @@ expect barred_of(Str.to_utf8("barred v1 github=x\n")) == Err(BadNumber("github")
 ## **ONE PAST THE COUNT OF A FOLDER'S ENTRIES**: the next id of a record that
 ## is never removed (a key, an invite, a conversation), so no id is given
 ## twice; 1 for a folder not made yet.
-one_past_count! : List(U8) => Try(U64, [Failed])
-one_past_count! = |folder| {
+load_one_past_count! : List(U8) => Try(U64, [Failed])
+load_one_past_count! = |folder| {
 	listed = Host.list!(folder)
 	match listed.status {
 		Missing => Ok(1)

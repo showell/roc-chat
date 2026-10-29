@@ -24,7 +24,8 @@ AccountCodec := [].{
 
 	## Why an account will not encode: a name or a login its rule refuses
 	## (an account built by hand; the sign-in flow makes only good ones).
-	## Stored as it is, it would not decode.
+	## Stored as it is, it would not decode. **ONE ALIAS ON PURPOSE**:
+	## `encode` and its two field checks share it, and `round_trip` wraps it.
 	EncodeProblem : [
 		NameRefused(DisplayName.Problem),
 		NameUntrimmed,
@@ -92,7 +93,8 @@ AccountCodec := [].{
 		}
 	}
 
-	## Why a store of accounts will not load.
+	## Why a store of accounts will not load. **ONE ALIAS ON PURPOSE**: the
+	## tags' reasons are said once here, not at `load` and its test helper.
 	LoadProblem : [
 		## Line `line` (from 1) is refused, as `decode` says.
 		BadLine({ line : U64, problem : Stored.Problem }),

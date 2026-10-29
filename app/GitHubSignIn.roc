@@ -64,7 +64,9 @@ import Stored
 
 GitHubSignIn := [].{
 
-	## **WHY A SIGN-IN IS REFUSED**, one name each.
+	## **WHY A SIGN-IN IS REFUSED**, one name each. **ONE ALIAS ON PURPOSE**:
+	## every step of the flow fails with it, SignIn and Session pass it on
+	## whole, and AuditCodec spells each tag (`all_sign_in_refusals`).
 	Refusal : [
 		## The state did not come back signed by us (missing, or forged).
 		StateForged,

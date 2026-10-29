@@ -49,13 +49,13 @@ route! = |req|
 	} else if req.path == Str.to_utf8("/login") {
 		if req.method == Get SignIn.login!({}) else Chat.not_allowed(Get)
 	} else if req.path == Str.to_utf8("/login/github") {
-		if req.method == Get SignIn.callback!(req) else Chat.not_allowed(Get)
+		if req.method == Get SignIn.serve_callback!(req) else Chat.not_allowed(Get)
 	} else if req.path == Str.to_utf8("/login/name") {
-		if req.method == Post SignIn.name!({}) else Chat.not_allowed(Post)
+		if req.method == Post SignIn.serve_name!({}) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/logout") {
-		if req.method == Post SignIn.logout!({}) else Chat.not_allowed(Post)
+		if req.method == Post SignIn.serve_logout!({}) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/me") {
-		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
+		if req.method == Get SignIn.serve_me!({}) else Chat.not_allowed(Get)
 	} else {
 		match (
 			Conversations.route(req.path),

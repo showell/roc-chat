@@ -202,6 +202,5 @@ agent_id_of = |p|
 		Human(_) => 0
 	}
 
-
 u64_most : U64
 u64_most = 18446744073709551615

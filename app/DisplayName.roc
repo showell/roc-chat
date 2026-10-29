@@ -34,7 +34,9 @@ import Bytes
 
 DisplayName :: Str.{
 
-	## Why a name is refused.
+	## Why a name is refused. **ONE ALIAS ON PURPOSE**: one rule for a name
+	## wherever it comes from (sign-in, an agent's, a stored account), so
+	## each refusal of one wraps this whole as `NameRefused`.
 	Problem : [
 		NotUtf8,
 		Empty,

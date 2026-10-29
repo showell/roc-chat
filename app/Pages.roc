@@ -57,7 +57,7 @@ Pages := [].{
 					ConversationList => ListConversations
 					Conversation(id) => Read(id)
 				}
-			match Credentials.viewer!(use) {
+			match Credentials.load_viewer!(use) {
 				Err(answer) => answer
 				Ok(
 					{
@@ -77,7 +77,7 @@ Pages := [].{
 									accounts,
 									me: me.id,
 								})
-								Conversation(id) => conversation!({
+								Conversation(id) => serve_conversation!({
 									viewer,
 									accounts,
 									id,
@@ -128,7 +128,7 @@ to_login =
 key_refused : Chat.Answer
 key_refused = Wire.refused(403, "a page is for a browser's session; a key reads /conversations")
 
-## The list: the viewer's conversations (Conversations.mine!), each its
+## The list: the viewer's conversations (Conversations.load_mine!), each its
 ## people's names and a link, and the form that starts one.
 list! : {
 	viewer : Access.Viewer(ConvAccess.ConvId),
@@ -142,7 +142,7 @@ list! = |
 		me,
 	},
 |
-	match Conversations.mine!(viewer, accounts) {
+	match Conversations.load_mine!(viewer, accounts) {
 		Err(Failed) => Chat.failed
 		Ok(convs) => {
 			items =
@@ -183,12 +183,12 @@ list! = |
 ## A conversation: its people, its messages, each with roc-markdown's HTML
 ## for it, and the box to post in; a 404 to a viewer ConvAccess will not let
 ## see it.
-conversation! : {
+serve_conversation! : {
 	viewer : Access.Viewer(ConvAccess.ConvId),
 	accounts : List(Principal),
 	id : ConvAccess.ConvId,
 } => Chat.Answer
-conversation! = |
+serve_conversation! = |
 	{
 		viewer,
 		accounts,
@@ -299,7 +299,6 @@ page = |
 		},
 	)
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
-
 
 css : Str
 css =

@@ -47,7 +47,7 @@ it serves chat.lynrummy.com (DEPLOY.md).**
 
 A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
 Who is asking is a session's cookie or an API key's Bearer header, never
-both (`Credentials.viewer!`); who may see and who may post is ConvAccess's.
+both (`Credentials.load_viewer!`); who may see and who may post is ConvAccess's.
 Signed out is a 401; a conversation the viewer may not see is a 404, as one
 that is not there; one it sees but may not post to, a 403.
 

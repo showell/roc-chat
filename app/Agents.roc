@@ -542,7 +542,7 @@ invited_by! = |granter, { default_as, form }|
 			match (
 				Store.load_accounts!({}),
 				Store.load_next_invite_id!({}),
-				granter_hash!(granter),
+				load_granter_hash!(granter),
 			) {
 				(
 					Ok(accounts),
@@ -610,8 +610,8 @@ invited_by! = |granter, { default_as, form }|
 
 ## **THE GRANTER BY ITS STORED HASH**: a session's cookie's, a key's
 ## Bearer secret's, as the store keeps each.
-granter_hash! : Agents.Granter => Try(InviteCodec.By, [Failed])
-granter_hash! = |granter|
+load_granter_hash! : Agents.Granter => Try(InviteCodec.By, [Failed])
+load_granter_hash! = |granter|
 	match granter {
 		Session(s) => Ok(Session(s.fields().token_hash))
 		Key(_) =>
@@ -793,7 +793,7 @@ audit_invite! = |event|
 ## code or a hash.
 list_invites! : {} => Chat.Answer
 list_invites! = |{}|
-	match owner!({}) {
+	match load_owner!({}) {
 		Err(answer) => answer
 		Ok(
 			{
@@ -841,7 +841,7 @@ by_number = |a, b| if a < b Before else if a > b After else Same
 ## **/invites/<id>/revoke**: one of the session's live invites revoked.
 revoke_invite! : InviteCodec.InviteId => Chat.Answer
 revoke_invite! = |id|
-	match owner!({}) {
+	match load_owner!({}) {
 		Err(answer) => answer
 		Ok(
 			{
@@ -964,7 +964,7 @@ reach_asked = |form, name|
 ## never a secret or a hash.
 list! : {} => Chat.Answer
 list! = |{}|
-	match owner!({}) {
+	match load_owner!({}) {
 		Err(answer) => answer
 		Ok(
 			{
@@ -1000,7 +1000,7 @@ keys_by_id = |keys| List.sort_with(keys, |a, b| by_number(a.id().to_u64(), b.id(
 ## **/keys/<id>/revoke**: one of the session's keys revoked, for good.
 revoke! : Principal.KeyId => Chat.Answer
 revoke! = |id|
-	match owner!({}) {
+	match load_owner!({}) {
 		Err(answer) => answer
 		Ok(
 			{
@@ -1031,7 +1031,7 @@ revoke! = |id|
 
 ## **THE HUMAN A LIVE SESSION SIGNS IN**, for listing and revoking: a key
 ## manages no key (a 403), nobody signed in is a 401.
-owner! : {} => Try(
+load_owner! : {} => Try(
 	{
 		human : Principal.GitHubId,
 		accounts : List(Principal),
@@ -1040,7 +1040,7 @@ owner! : {} => Try(
 	},
 	Chat.Answer,
 )
-owner! = |{}| {
+load_owner! = |{}| {
 	credential = Credentials.presented!({})?
 	match credential {
 		Nobody => Err(not_signed_in)

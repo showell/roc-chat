@@ -63,7 +63,8 @@ InviteCodec := [].{
 	}
 
 	## **WHY A REDEMPTION IS REFUSED**, each audited, and each the same
-	## 401 on the wire.
+	## 401 on the wire. **ONE ALIAS ON PURPOSE**: Agents and the audit share
+	## it, and the audit's record of a redemption round-trips each tag.
 	Refusal : [
 		## No invite's hash is the code's.
 		Unknown,

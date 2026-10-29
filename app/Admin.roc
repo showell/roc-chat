@@ -85,7 +85,9 @@ Admin := [].{
 		Key(ApiKey.Key(r, id)),
 	]
 
-	## Why an admin action is refused.
+	## Why an admin action is refused. **ONE ALIAS ON PURPOSE**: the
+	## decision, its steps and the audit's verdict all carry it, and
+	## AuditCodec spells each tag.
 	Refusal : [
 		## The session's account is not among the accounts, exactly once.
 		NoSuchPrincipal,

@@ -1,5 +1,5 @@
 ## **WHO IS ASKING: A SESSION'S COOKIE OR AN API KEY, NEVER BOTH.** A
-## browser comes with its session cookie (SignIn.cookie_session!); an agent
+## browser comes with its session cookie (SignIn.load_cookie_session!); an agent
 ## with `Authorization: Bearer <secret>`, the secret a mint showed once,
 ## its hash looked up in the store (Store.load_key!) and the key loaded through
 ## ConvKey. A request with both is refused (a 400): which one counts is
@@ -64,7 +64,7 @@ Credentials := [].{
 		cookie = SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session")
 		match (authorization, cookie) {
 			([], _) =>
-				match SignIn.cookie_session!({}) {
+				match SignIn.load_cookie_session!({}) {
 					Err(Failed) => Err(Chat.failed)
 					Ok(NoSession) => Ok(Nobody)
 					Ok(Found(session)) => Ok(Session(session))
@@ -90,8 +90,8 @@ Credentials := [].{
 	## **THE VIEWER**: nobody, a session admitted now (its `last seen`
 	## written when stale; one not admitted is signed out), or a key
 	## standing now (one that does not stand is audited, and a 401).
-	viewer! : Credentials.Use => Try(Credentials.Asked, Chat.Answer)
-	viewer! = |use| {
+	load_viewer! : Credentials.Use => Try(Credentials.Asked, Chat.Answer)
+	load_viewer! = |use| {
 		credential = presented!({})?
 		now = Host.read_time!({})
 		accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?

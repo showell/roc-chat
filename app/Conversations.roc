@@ -1,14 +1,14 @@
 ## **THE CHAT'S CONVERSATIONS ON THE WIRE**: start one, post to it, read it,
 ## stream it. Every decision is the core's: who may see and who may post is
 ## ConvAccess's, on the viewer from the request's session or API key
-## (Credentials.viewer!), never on anything the request claims; how a message reads is
+## (Credentials.load_viewer!), never on anything the request claims; how a message reads is
 ## roc-markdown's, with its work budget. Here are the facts asked of the
 ## host, the records kept (Store), and the answers made.
 ##
 ## The routes (app/main.roc's table names them):
 ##
 ##     GET  /conversations                  the viewer's own, JSON: each one's id and who
-##                                          is in it (`mine!`)
+##                                          is in it (`load_mine!`)
 ##     POST /conversations                  start one: a form, `with=` the others' ids,
 ##                                          comma-separated (`human:2,agent:7`)
 ##     GET  /conversations/<id>             its transcript, JSON
@@ -91,12 +91,12 @@ Conversations := [].{
 	## **THE VIEWER'S OWN CONVERSATIONS**, oldest first: each one ConvAccess
 	## lets them post in (a participant, or the human its agent or bot
 	## answers to). A public conversation they may only read is not theirs.
-	mine! : Access.Viewer(ConvAccess.ConvId),
+	load_mine! : Access.Viewer(ConvAccess.ConvId),
 	List(Principal) => Try(
 		List(ConvAccess.Conv),
 		[Failed],
 	)
-	mine! = |viewer, accounts| {
+	load_mine! = |viewer, accounts| {
 		all = Store.load_conversations!({})?
 		Ok(List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
 	}
@@ -139,7 +139,6 @@ Conversations := [].{
 post_most : U64
 post_most = 32 * 1024
 
-
 root : List(U8)
 root = Str.to_utf8("/conversations")
 
@@ -155,7 +154,7 @@ start! = |{}| {
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match Credentials.viewer!(Start) {
+			match Credentials.load_viewer!(Start) {
 				Err(answer) => answer
 				Ok(
 					{
@@ -199,7 +198,7 @@ start! = |{}| {
 														viewer,
 														{ conv, accounts },
 													) {
-														out_of_scope!({
+														audit_out_of_scope!({
 															key,
 															use: Start,
 															action: Post(conv),
@@ -231,7 +230,7 @@ start! = |{}| {
 ## by id and name.
 list! : {} => Chat.Answer
 list! = |{}|
-	match Credentials.viewer!(ListConversations) {
+	match Credentials.load_viewer!(ListConversations) {
 		Err(answer) => answer
 		Ok(
 			{
@@ -244,7 +243,7 @@ list! = |{}|
 			match viewer.who() {
 				SignedOut => not_signed_in
 				Session(_) | Key(_) =>
-					match Conversations.mine!(viewer, accounts) {
+					match Conversations.load_mine!(viewer, accounts) {
 						Err(Failed) => Chat.failed
 						Ok(convs) => {
 							one = |conv| {
@@ -285,14 +284,14 @@ list! = |{}|
 ## **A KEY USED OUTSIDE WHAT IT MAY DO, AUDITED**: the core's own refusal
 ## (ConvKey.decide) for the action it was refused. A session's refusal is
 ## no key's, and is not audited.
-out_of_scope! : {
+audit_out_of_scope! : {
 	key : [NoKey, Key(ConvKey.Key)],
 	use : Credentials.Use,
 	action : [Read(ConvAccess.Conv), Post(ConvAccess.Conv)],
 	accounts : List(Principal),
 	now : I64,
 } => {}
-out_of_scope! = |
+audit_out_of_scope! = |
 	{
 		key,
 		use,
@@ -356,7 +355,7 @@ asked! = |id, use| {
 		accounts,
 		now,
 		key,
-	} = Credentials.viewer!(use)?
+	} = Credentials.load_viewer!(use)?
 	match viewer.who() {
 		SignedOut => Err(not_signed_in)
 		Session(_) | Key(_) =>
@@ -382,7 +381,7 @@ seen! = |id| {
 	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {
 		Ok(a)
 	} else {
-		out_of_scope!({
+		audit_out_of_scope!({
 			key: a.key,
 			use: Read(id),
 			action: Read(a.conv),
@@ -439,7 +438,7 @@ post! = |id| {
 					},
 				) =>
 					if !ConvAccess.can_post(viewer, { conv, accounts }) {
-						out_of_scope!({
+						audit_out_of_scope!({
 							key,
 							use: Post(id),
 							action: Post(conv),
@@ -559,7 +558,6 @@ message_json = |m|
 
 not_signed_in : Chat.Answer
 not_signed_in = Wire.refused(401, "not signed in")
-
 
 expect Conversations.route(Str.to_utf8("/conversations")) == Ok(Start)
 expect Conversations.route(Str.to_utf8("/conversations/12")).map_ok(|r| r == Read(cid(12))) == Ok(Bool.True)

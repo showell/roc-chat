@@ -162,7 +162,7 @@ end
 plant("a forged session cookie admitted (the host's hash ignores its bytes)",
   "host/call.zig", "&crypto.sha256(bytes)", "&crypto.sha256(bytes[0..0])", 8)
 plant("a third user's post let through (can_post asked of nobody)",
-  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {\n\t\t\t\t\t\tout_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", "if List.is_empty(accounts) {\n\t\t\t\t\t\tout_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", 9)
+  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {\n\t\t\t\t\t\taudit_out_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", "if List.is_empty(accounts) {\n\t\t\t\t\t\taudit_out_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", 9)
 plant("a third user's read let through (can_see asked of nobody)",
   "app/Conversations.roc", "if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {", "if !List.is_empty(a.accounts) {", 10)
 -- The other half of the subscribe plant: the stream subscribes after the
@@ -184,7 +184,7 @@ function plant_out_of_turn()
   say(r.code ~= 0 and not s.ok, "plant: the subscribe after the turn, not in it, is red at step 11 (exit " .. r.code .. "; " .. s.line .. ")")
 end
 plant_out_of_turn()
-plant("the list showing every conversation (mine! keeps them all)",
+plant("the list showing every conversation (load_mine! keeps them all)",
   "app/Conversations.roc", "List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts }))", "List.keep_if(all, |conv| !List.is_empty(accounts) or ConvAccess.can_post(viewer, { conv, accounts }))", 31)
 plant("a participant's name written unescaped (escape leaves `<`)",
   "app/Pages.roc", "} else if b == '<' {", "} else if b == 0 {", 32)
