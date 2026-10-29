@@ -4,8 +4,11 @@ The Roc chat's own server: the chat is a Roc app (`app/`, on the platform in
 `platform/`), and its host (`host/`) is a small Zig server on `std.http`.
 It will serve chat.lynrummy.com at `/`.
 
-**Status (2026-10-29): the smallest real chat (the host design's step 6).**
-Sign-in on the auth core, and conversations: a signed-in human starts one
+**Status (2026-10-29): the smallest real chat, with agents and API keys
+(the host design's steps 6 and 7).** Sign-in on the auth core; agents and
+API keys: a signed-in human makes agents they own and mints keys acting as
+themselves or one of their agents, which talk to the chat with
+`Authorization: Bearer`; and conversations: a human or a key starts one
 with named participants, a participant posts markdown (rendered by
 roc-markdown, refused when hostile), anyone ConvAccess lets see it reads its
 transcript, and each open stream gets each message once, live, resuming
@@ -27,13 +30,26 @@ design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 | `GET /conversations/<id>` | Its transcript: `{"id":N,"messages":[…]}`. |
 | `POST /conversations/<id>/messages` | Post: the body is the markdown, as is. `201` and the message. |
 | `GET /conversations/<id>/stream` | Its messages, live (SSE, events named `message`, each id the message's), after `Last-Event-ID` when the browser resumes. |
+| `POST /agents` | Make an agent you own: a form, `name=` (DisplayName's rule). `201 {"id":"agent:7","name":"CC","owner":"human:2"}`; a bad name a 400. |
+| `POST /keys` | Mint a key: a form, each field optional: `as=` who it acts as (you, or `agent:7`, one of yours), `read=` and `post=` (`everywhere`, the default; `off`; `only:3,9`), `admin=on` (off by default), `lifetime=` seconds (at most a year, the default). `201` and the key, with its `secret` (64 hex digits), **shown this once**. |
+| `GET /keys` | Your keys and your agents': `{"keys":[{"id":4,"acts_as":"agent:7","read":"everywhere","post":"everywhere","admin":"off","created":…,"expires":…,"revoked":false}]}`, never a secret. |
+| `POST /keys/<id>/revoke` | Revoke one of them, for good: `200` and the key; another's, or none, a 404. |
 | `GET /<name>.js` | The chat client's scripts. |
 
 A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
-Who is asking is the session's alone (`SignIn.viewer!`); who may see and
-who may post is ConvAccess's. Signed out is a 401; a conversation the
-viewer may not see is a 404, as one that is not there; one it sees but may
-not post to, a 403.
+Who is asking is a session's cookie or an API key's Bearer header, never
+both (`Credentials.viewer!`); who may see and who may post is ConvAccess's.
+Signed out is a 401; a conversation the viewer may not see is a 404, as one
+that is not there; one it sees but may not post to, a 403.
+
+**An agent's requests** carry `Authorization: Bearer <secret>`, the secret
+its mint showed. The host hashes it; the store holds only that hash
+(`auth/keys/<hash>`). A key unknown, revoked or expired is a 401; one used
+outside its scope, the 403 or 404 a session gets. A key starts a
+conversation only where it could post to it. A request with both a session
+cookie and a Bearer header is a 400. Agents, keys, listing and revoking are
+a session's alone: a key asking is a 403. Every key refused in use, and
+every grant refused, is in the audit (`auth/audit`), with no secret.
 
 ## Before you build
 
@@ -136,6 +152,9 @@ server, saying which.
 |---|---|
 | `app/main.roc` | The route table: which module answers which request. |
 | `app/Conversations.roc` | The conversations on the wire: start, read, post, stream. |
+| `app/Agents.roc` | Agents and API keys on the wire: make an agent (`Agents.make`, pure), mint, list, revoke. |
+| `app/Credentials.roc` | Who is asking: a session's cookie or a key's Bearer header, never both; the viewer; a key refused in use, audited. |
+| `app/Wire.roc` | The JSON answer, the plain refusal, and JSON's string escape the route modules share. |
 | `app/Store.roc` | Every file the app keeps, and the only module that names one (its header is the layout). |
 | `app/ConvCodec.roc`, `app/MessageCodec.roc` | A conversation's record, its participants bound; a message's, its body any bytes, exactly. |
 | `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `Sse.roc` (an event as one frame), `main.roc`. |
@@ -150,8 +169,8 @@ server, saying which.
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
 | `host/server_test.zig`, `app/test/probe.roc` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness), against the server's probe: the plainest routes that drive each part of the host, so none signs in. |
 | `host/chat_test.zig` | The chat's own pages, by the same harness. |
-| `host/e2e.zig` | The smallest end to end (`zig build e2e`): two clients through the fake GitHub, a conversation, its stream, and the refusals, each step timed. |
-| `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, five planted faults each red at its own step, the formatters. |
+| `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; each step timed. |
+| `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, nine planted faults each red at its own step, the formatters. |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |

@@ -15,12 +15,6 @@ import Agents
 import Conversations
 import SignIn
 
-## The auth core, imported for its expects until a route uses it: with
-## SignIn's and Conversations' imports, ConvKey and AuditCodec reach every
-## one of its modules.
-import ConvKey
-import AuditCodec
-
 handle! : Chat.Request => Chat.Answer
 handle! = |req|
 	if req.path == Str.to_utf8("/") {

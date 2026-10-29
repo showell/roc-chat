@@ -16,19 +16,22 @@
 --     expects and its Zig tests counted, neither below its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - five planted faults, each red at its own step of the end to end: a
+--   - nine planted faults, each red at its own step of the end to end: a
 --     forged session cookie admitted, a third user's post let through, a
 --     third user's read let through, the subscribe moved out of the turn,
---     and a message's newline written raw into its transcript line;
+--     a message's newline written raw into its transcript line, a revoked
+--     key that still works, a key minting a key, a session's key acting as
+--     another human's agent, and the Bearer header winning over the cookie
+--     when both are sent;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
--- The floors: main's counts when step 6 began (roc-chat 7864d9b), which
+-- The floors: the counts when step 7 (agents and API keys) landed, which
 -- may only rise.
-const roc_floor = 1704
+const roc_floor = 1790
 const zig_floor = 166
-const e2e_steps = 11
+const e2e_steps = 21
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -150,9 +153,9 @@ end
 plant("a forged session cookie admitted (the host's hash ignores its bytes)",
   "host/call.zig", "&crypto.sha256(bytes)", "&crypto.sha256(bytes[0..0])", 8)
 plant("a third user's post let through (can_post asked of nobody)",
-  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {", "if List.is_empty(accounts) {", 9)
+  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {\n\t\t\t\t\t\tout_of_scope!({ key, use: Post(id)", "if List.is_empty(accounts) {\n\t\t\t\t\t\tout_of_scope!({ key, use: Post(id)", 9)
 plant("a third user's read let through (can_see asked of nobody)",
-  "app/Conversations.roc", "if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) Ok(a) else Err(no_such)", "Ok(a)", 10)
+  "app/Conversations.roc", "if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {", "if !List.is_empty(a.accounts) {", 10)
 -- The other half of the subscribe plant: the stream subscribes after the
 -- turn is let go. Planted with the first, in one copy.
 function plant_out_of_turn()
@@ -174,6 +177,14 @@ end
 plant_out_of_turn()
 plant("a message's newline written raw into its transcript line",
   "app/MessageCodec.roc", "if b == '%' or b < 0x20 or b == 0x7F", "if b == '%' or (b < 0x20 and b != '\\n') or b == 0x7F", 6)
+plant("a revoked key that still works (its revocation never read)",
+  "app/ApiKey.roc", "match k.revocation {", "match (if now < 0 k.revocation else Active) {", 17)
+plant("a key minting a key (a key's grant bound as a session's)",
+  "app/ApiKey.roc", "Key(_) => Err(GrantedByKey)", "Key(by_key) => Principal.bind(accounts, by_key.acts_as()).map_err(|_| NoSuchPrincipal)", 16)
+plant("a session's key acting as another human's agent (the owner never asked)",
+  "app/ApiKey.roc", "if Principal.answers_to(current) != h.id {", "if Principal.answers_to(current) != h.id and List.is_empty(accounts) {", 13)
+plant("the Bearer header winning over the cookie when both are sent",
+  "app/Credentials.roc", "(_, Sent(_)) => Err(both_sent)\n\t\t\t(values, Unsent) =>", "(_, Sent(_)) if List.is_empty(authorization) => Err(both_sent)\n\t\t\t(values, _) =>", 20)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
