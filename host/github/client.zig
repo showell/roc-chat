@@ -5,8 +5,9 @@
 //! in a `Token` for the one `identify` call and is wiped when it returns,
 //! whatever it returned; every buffer that held it, or the client secret, is
 //! wiped too (the form, the Authorization header, the answer's body). What
-//! std.http.Client keeps in its own connection buffers is freed, not wiped:
-//! a heap read past free would see it, as it would see any request.
+//! std.http.Client keeps in its own buffers is wiped as it is freed: a
+//! `Session` allocates everything, the client's own buffers included,
+//! through `Wiping` (host/github/wiping.zig).
 //!
 //! **EVERY CALL HAS A DEADLINE.** std.http.Client has no timeouts, so each
 //! request runs as a task raced against a watch task (`Io.Select`): the watch
@@ -27,6 +28,7 @@
 const std = @import("std");
 const Io = std.Io;
 const http = std.http;
+const Wiping = @import("wiping.zig").Wiping;
 
 pub const Config = struct {
     /// Where `/login/oauth/access_token` is.
@@ -138,16 +140,23 @@ pub fn signIn(gpa: std.mem.Allocator, io: Io, cfg: Config, creds: Credentials, c
 /// One std.http.Client and one whole deadline, for a sign-in's calls. A
 /// session is used by one task at a time and is not moved once a call runs.
 pub const Session = struct {
+    /// Every allocation of the session's, through `wiping`.
     gpa: std.mem.Allocator,
+    /// On the heap, so a `Session` can be moved before its first call.
+    wiping: *Wiping,
     io: Io,
     cfg: Config,
     client: http.Client,
     whole_by: Io.Clock.Timestamp,
 
-    pub fn init(gpa: std.mem.Allocator, io: Io, cfg: Config) error{BaseUrlRefused}!Session {
+    pub fn init(child: std.mem.Allocator, io: Io, cfg: Config) error{ BaseUrlRefused, Refused }!Session {
         try cfg.check();
+        const wiping = child.create(Wiping) catch return error.Refused;
+        wiping.* = .{ .child = child };
+        const gpa = wiping.allocator();
         return .{
             .gpa = gpa,
+            .wiping = wiping,
             .io = io,
             .cfg = cfg,
             .client = .{ .allocator = gpa, .io = io },
@@ -157,6 +166,8 @@ pub const Session = struct {
 
     pub fn deinit(s: *Session) void {
         s.client.deinit();
+        const child = s.wiping.child;
+        child.destroy(s.wiping);
     }
 
     /// `POST {oauth_base}/login/oauth/access_token`, form-encoded, for JSON.
@@ -424,6 +435,10 @@ fn formEncode(w: *Io.Writer, v: []const u8) Io.Writer.Error!void {
 // ── tests (the client against the fake GitHub is host/github/github_test.zig) ─────
 
 const testing = std.testing;
+
+test {
+    _ = @import("wiping.zig");
+}
 
 test "the plain-HTTP rule: https anywhere, http only to a loopback literal" {
     for ([_][]const u8{

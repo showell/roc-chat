@@ -91,6 +91,23 @@ test "the token is wiped after identify, whatever identify returned" {
     try testing.expect(std.mem.allEqual(u8, &revoked.buf, 0));
 }
 
+test "after a sign-in, no freed memory holds the token or the client secret, std.http.Client's own buffers included" {
+    const fake = try fake_github.Fake.start(io, testing.allocator);
+    defer fake.stop();
+    const heap = try testing.allocator.alloc(u8, 1 << 20);
+    defer testing.allocator.free(heap);
+    @memset(heap, 0);
+    var fba: std.heap.FixedBufferAllocator = .init(heap);
+    var cfg = config(fake);
+    cfg.whole_timeout_ms = 5_000;
+    const who = try github.signIn(fba.allocator(), io, cfg, creds, "good");
+    try testing.expectEqual(fake_github.user_id, who.id);
+    // Something was allocated, or the scan proves nothing.
+    try testing.expect(fba.end_index > 0);
+    try testing.expect(std.mem.indexOf(u8, heap, "tok-good") == null);
+    try testing.expect(std.mem.indexOf(u8, heap, "fake%20secret") == null);
+}
+
 test "nothing listening is Refused" {
     // A port just freed: bound, then closed.
     const addr: Io.net.IpAddress = try .parse("127.0.0.1", 0);
