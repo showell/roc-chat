@@ -8,6 +8,13 @@
 ##     audit-sign-in v1 at=1761600090 github=583231 verdict=refused:barred
 ##     audit-key v1 at=1761600095 who=agent:7 via=key:4 action=read:3 verdict=refused:out-of-scope
 ##     audit-key v1 at=1761600099 who=human:2 via=session:12 action=grant:agent:3 verdict=refused:not-the-granters-own
+##     audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12
+##     audit-invite v1 at=1761600160 invite=3 for=agent:7 verdict=redeemed:key:9
+##     audit-invite v1 at=1761600170 invite=unknown for=unknown verdict=refused:unknown
+##
+## And for every invite (InviteCodec): made, redeemed into a key (its public
+## id), revoked, or a redemption refused, `grant:` and a grant's word when
+## the grant decided again refused it.
 ##
 ## Who (a principal's id, as AccountCodec spells it), by which session or
 ## key (its public number), what, when, and the verdict, each spelled once:
@@ -17,8 +24,8 @@
 ## hash, cookie, nonce, OAuth code or login, only public numbers and words;
 ## a sign-in refused before GitHub named anyone is `github=unknown`.
 ##
-## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in` and
-## `of_key`, which refuse a time outside Stored's range (ClockOutOfRange),
+## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in`, `of_key`
+## and `of_invite`, which refuse a time outside Stored's range (ClockOutOfRange),
 ## or by `decode`: the encoder never meets a time it cannot write. Pure.
 import AccountCodec
 import Admin
@@ -26,6 +33,7 @@ import ApiKey
 import Bytes
 import Cast
 import GitHubSignIn
+import InviteCodec
 import Principal
 import Stored
 
@@ -64,9 +72,19 @@ AuditCodec := [].{
 		),
 	]
 
+	## **AN INVITE'S LIFE**: when, the invite (unknown when no invite's
+	## hash is the code's, or the code was never looked up), and what
+	## happened: made by a session, redeemed into a key, revoked by a
+	## session, or a redemption refused.
+	Invite : {
+		at : I64,
+		invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
+		verdict : [Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)],
+	}
+
 	## **ONE LINE OF THE AUDIT LOG**. Opaque: its time always in Stored's
 	## range.
-	Entry :: [Admin(Admin.Audit), SignIn(AuditCodec.SignIn), Key(AuditCodec.KeyEvent)].{
+	Entry :: [Admin(Admin.Audit), SignIn(AuditCodec.SignIn), Key(AuditCodec.KeyEvent), Invite(AuditCodec.Invite)].{
 
 		## An admin attempt's audit (Admin.decide's).
 		of_admin : Admin.Audit -> Try(AuditCodec.Entry, [ClockOutOfRange])
@@ -87,8 +105,12 @@ AuditCodec := [].{
 			if is_storable(at) Ok(AuditCodec.Entry.(Key(e))) else Err(ClockOutOfRange)
 		}
 
+		## An invite's.
+		of_invite : AuditCodec.Invite -> Try(AuditCodec.Entry, [ClockOutOfRange])
+		of_invite = |i| if is_storable(i.at) Ok(AuditCodec.Entry.(Invite(i))) else Err(ClockOutOfRange)
+
 		## What the entry records.
-		event : AuditCodec.Entry -> [Admin(Admin.Audit), SignIn(AuditCodec.SignIn), Key(AuditCodec.KeyEvent)]
+		event : AuditCodec.Entry -> [Admin(Admin.Audit), SignIn(AuditCodec.SignIn), Key(AuditCodec.KeyEvent), Invite(AuditCodec.Invite)]
 		event = |AuditCodec.Entry.(e)| e
 
 		is_eq : _
@@ -149,6 +171,23 @@ AuditCodec := [].{
 						("verdict", "${refused_prefix}${spell_grant_refusal(g.refusal)}"),
 					],
 				)
+
+			Invite(i) => {
+				(invite, agent) =
+					match i.invite {
+						Unknown => (unknown_word, unknown_word)
+						Known(k) => (k.id.to_u64().to_str(), AccountCodec.id_text(k.agent))
+					}
+				Stored.line(
+					invite_kind,
+					[
+						("at", Stored.time_text(i.at)),
+						("invite", invite),
+						("for", agent),
+						("verdict", invite_verdict_text(i.verdict)),
+					],
+				)
+			}
 		}
 
 	## The entry a line holds, of whichever kind its first word names.
@@ -159,10 +198,15 @@ AuditCodec := [].{
 			Err(WrongRecord) =>
 				match Stored.Reader.open(raw, sign_in_kind) {
 					Ok(fields) => decode_sign_in(fields).map_ok(|s| AuditCodec.Entry.(SignIn(s)))
-					Err(WrongRecord) => {
-						fields = Stored.Reader.open(raw, key_kind)?
-						decode_key(fields).map_ok(|k| AuditCodec.Entry.(Key(k)))
-					}
+					Err(WrongRecord) =>
+						match Stored.Reader.open(raw, key_kind) {
+							Ok(fields) => decode_key(fields).map_ok(|k| AuditCodec.Entry.(Key(k)))
+							Err(WrongRecord) => {
+								fields = Stored.Reader.open(raw, invite_kind)?
+								decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
+							}
+							Err(why) => Err(why)
+						}
 					Err(why) => Err(why)
 				}
 			Err(why) => Err(why)
@@ -178,6 +222,78 @@ sign_in_kind = "audit-sign-in"
 
 key_kind : Str
 key_kind = "audit-key"
+
+invite_kind : Str
+invite_kind = "audit-invite"
+
+## `created:session:12`, `redeemed:key:9`, `revoked:session:12`, or
+## `refused:` and InviteCodec's word.
+invite_verdict_text : [Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)] -> Str
+invite_verdict_text = |verdict|
+	match verdict {
+		Created(s) => "${spell_invite_act(Created)}${colon}${via_text(Session(s))}"
+		Redeemed(k) => "${spell_invite_act(Redeemed)}${colon}${via_text(Key(k))}"
+		Revoked(s) => "${spell_invite_act(Revoked)}${colon}${via_text(Session(s))}"
+		Refused(why) => "${refused_prefix}${InviteCodec.refusal_text(why, spell_grant_refusal)}"
+	}
+
+InviteAct : [Created, Redeemed, Revoked]
+
+all_invite_acts : List(InviteAct)
+all_invite_acts = [Created, Redeemed, Revoked]
+
+spell_invite_act : InviteAct -> Str
+spell_invite_act = |act|
+	match act {
+		Created => "created"
+		Redeemed => "redeemed"
+		Revoked => "revoked"
+	}
+
+invite_verdict_from : List(U8) -> Try([Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)], Stored.Problem)
+invite_verdict_from = |value|
+	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
+		Ok(why) => InviteCodec.refusal_from(why, |g| Stored.word(g, { name: "verdict", all: all_grant_refusals, spell: spell_grant_refusal })).map_ok(|r| Refused(r))
+		Err(NoMatch) => {
+			{ head, tail } = split_colon(value, "verdict")?
+			act = Stored.word(head, { name: "verdict", all: all_invite_acts, spell: spell_invite_act })?
+			via = via_from(tail)?
+			match (act, via) {
+				(Created, Session(s)) => Ok(Created(s))
+				(Revoked, Session(s)) => Ok(Revoked(s))
+				(Redeemed, Key(k)) => Ok(Redeemed(k))
+				_ => Err(BadValue("verdict"))
+			}
+		}
+	}
+
+decode_invite : Stored.Reader -> Try(AuditCodec.Invite, Stored.Problem)
+decode_invite = |fields| {
+	at_field = fields.field("at")?
+	at = Stored.time(at_field.value, "at")?
+	invite_field = at_field.rest.field("invite")?
+	for_field = invite_field.rest.field("for")?
+	verdict_field = for_field.rest.field("verdict")?
+	verdict = invite_verdict_from(verdict_field.value)?
+	verdict_field.rest.close()?
+	invite = invite_from(invite_field.value, for_field.value)?
+	Ok({ at, invite, verdict })
+}
+
+## Both `unknown`, or an invite's id and whom it is for: never one of each.
+invite_from : List(U8), List(U8) -> Try([Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })], Stored.Problem)
+invite_from = |invite_value, for_value| {
+	unknown = Str.to_utf8(unknown_word)
+	if invite_value == unknown and for_value == unknown {
+		Ok(Unknown)
+	} else if invite_value == unknown or for_value == unknown {
+		Err(BadValue("for"))
+	} else {
+		id = Stored.id(invite_value, { name: "invite", make: InviteCodec.InviteId.from_u64 })?
+		agent = AccountCodec.id_from(for_value, "for")?
+		Ok(Known({ id, agent }))
+	}
+}
 
 ## A time Stored can write.
 is_storable : I64 -> Bool
@@ -972,6 +1088,55 @@ expect key_line_but({ from: "verdict=refused:out-of-scope", to: "verdict=permitt
 expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=0 verdict=refused:barred\n")).map_ok(|_| {}) == Err(BadValue("github"))
 expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=2 verdict=permitted\n")).map_ok(|_| {}) == Err(UnknownWord("verdict"))
 expect AuditCodec.decode(Str.to_utf8("audit-login v1 at=7\n")).map_ok(|_| {}) == Err(WrongRecord)
+
+# ── AN INVITE'S LIFE: every verdict round-trips, known and unknown; the
+# lines read as the header shows them; a mixed or mismatched line refused.
+invite_entry : AuditCodec.Invite -> AuditCodec.Entry
+invite_entry = |i|
+	match AuditCodec.Entry.of_invite(i) {
+		Ok(e) => e
+		Err(ClockOutOfRange) => crash "invite_entry: a test's time is storable"
+	}
+
+invite_three : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })]
+invite_three =
+	match InviteCodec.InviteId.from_u64(3) {
+		Ok(id) => Known({ id, agent: Principal.Id.Agent(Cast.aid(7)) })
+		Err(NotAnId) => crash "invite_three: 3 is an id"
+	}
+
+invite_verdicts : List([Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)])
+invite_verdicts = List.concat(
+	[Created(Cast.sid(12)), Redeemed(Cast.kid(9)), Revoked(Cast.sid(12))],
+	List.map(
+		List.concat([Unknown, Spent, Revoked, Expired, CredentialSent, NoLongerHolds], List.map(all_grant_refusals, |g| Grant(g))),
+		|r| Refused(r),
+	),
+)
+
+invite_events : List(AuditCodec.Invite)
+invite_events = List.join_map(invite_verdicts, |v| [{ at: 1761600100, invite: invite_three, verdict: v }, { at: 5, invite: Unknown, verdict: v }])
+
+expect List.len(invite_events) == 34
+expect List.all(invite_events, |i| AuditCodec.decode(AuditCodec.encode(invite_entry(i))) == Ok(invite_entry(i)))
+expect line_text(invite_entry({ at: 1761600100, invite: invite_three, verdict: Created(Cast.sid(12)) })) == "audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12\n"
+expect line_text(invite_entry({ at: 1761600160, invite: invite_three, verdict: Redeemed(Cast.kid(9)) })) == "audit-invite v1 at=1761600160 invite=3 for=agent:7 verdict=redeemed:key:9\n"
+expect line_text(invite_entry({ at: 1761600170, invite: Unknown, verdict: Refused(Unknown) })) == "audit-invite v1 at=1761600170 invite=unknown for=unknown verdict=refused:unknown\n"
+expect line_text(invite_entry({ at: 7, invite: invite_three, verdict: Refused(Grant(SessionExpired)) })) == "audit-invite v1 at=7 invite=3 for=agent:7 verdict=refused:grant:session-expired\n"
+expect AuditCodec.Entry.of_invite({ at: -1, invite: Unknown, verdict: Refused(Unknown) }).map_ok(|_| {}) == Err(ClockOutOfRange)
+
+## An invite line with `from` replaced by `to`, decoded.
+invite_line_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
+invite_line_but = |{ from, to }| AuditCodec.decode(Str.to_utf8("audit-invite v1 at=7 invite=3 for=agent:7 verdict=created:session:12\n".replace_first(from, to))).map_ok(|_| {})
+
+expect invite_line_but({ from: "", to: "" }) == Ok({})
+expect invite_line_but({ from: "invite=3", to: "invite=unknown" }) == Err(BadValue("for"))
+expect invite_line_but({ from: "created:session:12", to: "created:key:12" }) == Err(BadValue("verdict"))
+expect invite_line_but({ from: "created:session:12", to: "redeemed:session:12" }) == Err(BadValue("verdict"))
+expect invite_line_but({ from: "created:session:12", to: "used:session:12" }) == Err(UnknownWord("verdict"))
+expect invite_line_but({ from: "created:session:12", to: "refused:stale" }) == Err(UnknownWord("verdict"))
+expect invite_line_but({ from: "created:session:12", to: "refused:grant:stale" }) == Err(UnknownWord("verdict"))
+expect invite_line_but({ from: "invite=3", to: "invite=0" }) == Err(BadValue("invite"))
 
 # ── THE MALFORMED TABLE: each line, its named problem.
 usual_line : Str

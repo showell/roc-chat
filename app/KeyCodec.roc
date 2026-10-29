@@ -101,6 +101,14 @@ KeyCodec := [].{
 	reach_text : [Off, On(KeyCodec.Reach(id))], (id -> U64) -> Str
 	reach_text = |part, number| reach_text_of(part, number)
 
+	## **ADMIN, IN ITS ONE SPELLING** (`on`, `off`), and back: what a key's
+	## line holds, and an invite's (InviteCodec).
+	admin_text : [Off, On] -> Str
+	admin_text = |s| spell_switch(s)
+
+	admin_from : List(U8), Str -> Try([Off, On], Stored.Problem)
+	admin_from = |value, name| Stored.word(value, { name, all: all_switches, spell: spell_switch })
+
 	## The reach a spelling names, as the decoder reads a line's.
 	reach_from : List(U8), { name : Str, make : (U64 -> Try(id, [NotAnId])) } -> Try([Off, On(KeyCodec.Reach(id))], Stored.Problem)
 	reach_from = |value, named| reach_from_text(value, named)
