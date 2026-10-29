@@ -63,13 +63,14 @@ SignIn := [].{
 	##   state again, now spending its nonce (check-then-set in one turn),
 	##   and resolves whose sign-in it is.
 	## The Roc keeps nothing between them: the request is the facts. A
-	## refusal is audited (`refused_or!`).
+	## refusal past the exchange is audited (`refused_or!`).
 	callback! : Chat.Request => Chat.Answer
 	callback! = |req| refused_or!(came_back!(req))
 
 	## **/login/name**: the pending sign-up back from this browser
 	## (GitHubSignIn.Pending.resume), and the name it gives; the account
-	## made, or the name asked for again. A refusal is audited.
+	## made, or the name asked for again. Its refusals are a pending
+	## sign-up's, anonymous, and never audited (`refused_or!`).
 	name! : {} => Chat.Answer
 	name! = |{}| refused_or!(named!({}))
 
@@ -378,20 +379,24 @@ signed_in! = |f, { admission, steps }| {
 not_signed_in : Chat.Answer
 not_signed_in = Chat.respond(401, { content_type: Chat.text, body: Str.to_utf8("not signed in\n") })
 
-## **A REFUSED SIGN-IN**: audited, and a 403 naming why, as the audit
-## spells it (AuditCodec).
+## **A REFUSED SIGN-IN**: audited unless anonymous (GitHubSignIn.audited),
+## and a 403 naming why, as the audit spells it (AuditCodec).
 refused_or! : Try(Chat.Answer, GitHubSignIn.Refusal) => Chat.Answer
 refused_or! = |decided|
 	match decided {
 		Ok(answer) => answer
 		Err(why) => {
-			match AuditCodec.Entry.of_sign_in({
-				at: Host.read_time!({}),
-				github: Unknown,
-				refusal: why,
-			}) {
-				Ok(entry) => Store.append_audit!(entry)
-				Err(ClockOutOfRange) => {}
+			match GitHubSignIn.audited(why) {
+				Anonymous => {}
+				Audited =>
+					match AuditCodec.Entry.of_sign_in({
+						at: Host.read_time!({}),
+						github: Unknown,
+						refusal: why,
+					}) {
+						Ok(entry) => Store.append_audit!(entry)
+						Err(ClockOutOfRange) => {}
+					}
 			}
 			Chat.respond(
 				403,

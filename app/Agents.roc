@@ -784,7 +784,10 @@ stored_granter! = |by|
 			}
 	}
 
-## A redemption refused: audited, and a 401 that says no more.
+## **A REDEMPTION REFUSED**: a 401 that says no more, audited when it
+## names a stored invite. One that names none (a junk code, or a code sent
+## with a credential before any invite is read) is anyone's to repeat for
+## free, and is never audited (the security review's M1).
 invite_refused! : {
 	invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
 	why : InviteCodec.Refusal,
@@ -797,11 +800,15 @@ invite_refused! = |
 		now,
 	},
 | {
-	audit_invite!({
-		at: now,
-		invite,
-		verdict: Refused(why),
-	})
+	match invite {
+		Unknown => {}
+		Known(_) =>
+			audit_invite!({
+				at: now,
+				invite,
+				verdict: Refused(why),
+			})
+	}
 	Wire.refused(401, "invite refused")
 }
 

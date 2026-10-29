@@ -49,7 +49,8 @@
 //!  28. after the agent is retired, its invite redeems to nothing
 //!  29. agent ids: make one, retire it (the highest), make another, and its
 //!      id is fresh
-//!  30. every invite made, redeemed and refused is audited, with no code
+//!  30. every invite made, redeemed and refused is audited, with no code;
+//!      a refusal naming no stored invite is not
 //!
 //! **A RETIREMENT HERE IS THE TEST'S** (`retire`): no route retires yet, so
 //! the step removes the agent's line from the accounts, which is what
@@ -78,6 +79,8 @@
 //!      ends the session, and the old cookie is a 401
 //!  40. a stream ends at its lifetime (`stream_lifetime_ms_for_test`), so a
 //!      key revoked while its stream is open stops reaching it
+//!  41. junk invite codes, a callback with a forged state and a name with
+//!      no pending sign-up, five of each, leave the audit's size unchanged
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -946,15 +949,32 @@ fn invitesAudited(w: *World) !void {
         "verdict=created:session:",
         "verdict=redeemed:key:",
         "verdict=revoked:session:",
-        "invite=unknown for=unknown verdict=refused:credential-sent",
         "verdict=refused:spent",
-        "invite=unknown for=unknown verdict=refused:unknown",
         "verdict=refused:expired",
         "verdict=refused:revoked",
         "verdict=refused:no-longer-holds",
     };
     for (wanted) |line| if (!has(log, line)) return error.NotAudited;
     if (has(log, w.code)) return error.CodeAudited;
+    // A refusal naming no stored invite is anyone's to repeat, and never
+    // audited (M1).
+    if (has(log, "invite=unknown")) return error.AnonymousAudited;
+}
+
+/// **AN ANONYMOUS REFUSAL WRITES NO AUDIT** (M1): junk invite codes, a
+/// GitHub callback with no state, and a name with no pending sign-up,
+/// each several times, leave the audit file as it was.
+fn anonymousUnaudited(w: *World) !void {
+    const before = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    const junk: [64]u8 = @splat('e');
+    for (0..5) |_| {
+        if ((try redeem(w, &junk)).status != 401) return error.JunkRedeemed;
+        if ((try redeem(w, "not-hex")).status != 401) return error.JunkRedeemed;
+        if ((try get(w.a, w.port(), "/login/github?code=user-id-1&state=forged", "")).status != 403) return error.ForgedStateTaken;
+        if ((try request(w.a, w.port(), "POST", "/login/name", "", "name=Mallory")).status != 403) return error.NoPendingTaken;
+    }
+    const after = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    if (after.len != before.len) return error.AuditGrew;
 }
 
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
@@ -1000,6 +1020,7 @@ const steps = [_]Step{
     .{ .name = "a POST with a cookie from another origin, or from none, is a 403", .f = crossOrigin },
     .{ .name = "a logout from another origin is refused; from our own, the old cookie is a 401", .f = logout },
     .{ .name = "a stream ends at its lifetime, so a key revoked while it is open stops reaching it", .f = streamLifetime },
+    .{ .name = "junk invite codes, a forged state and no pending sign-up leave the audit as it was", .f = anonymousUnaudited },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

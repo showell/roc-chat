@@ -314,11 +314,13 @@ test "refused with the core's answer: a replayed state, a forged state, another 
     try std.testing.expectEqual(401, (try get(a, rig.port(), "/me", "__Host-session=zz")).status);
     try std.testing.expectEqual(401, (try get(a, rig.port(), "/me", "")).status);
 
-    // Each refusal audited, as AuditCodec spells it.
+    // The refusal past GitHub's exchange audited, as AuditCodec spells it;
+    // the anonymous ones, which anyone repeats for free, never (M1).
     var buf: [8192]u8 = undefined;
     const audit = try rig.data.dir.readFile(io, "auth/audit", &buf);
-    for ([_][]const u8{ "state-reused", "state-forged", "state-mismatched", "github-unreachable", "github-denied", "pending-forged" }) |why|
-        try std.testing.expect(has(audit, why));
+    try std.testing.expect(has(audit, "github-unreachable"));
+    for ([_][]const u8{ "state-reused", "state-forged", "state-mismatched", "github-denied", "pending-forged" }) |why|
+        try std.testing.expect(!has(audit, why));
 }
 
 /// The callback, on a task of its own: its response and when it came.

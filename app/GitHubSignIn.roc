@@ -125,6 +125,22 @@ GitHubSignIn := [].{
 		ClockOutOfRange,
 	]
 
+	## **WHETHER A REFUSAL IS AUDITED** (the security review's M1): one an
+	## anonymous request repeats for free (a missing, forged, stale or
+	## replayed state or pending sign-up, GitHub's "no", a junk code) is
+	## `Anonymous`, and never audited, so nobody can make every request an
+	## fsync'd append in the turn. One past GitHub's exchange took a fresh
+	## code GitHub gave, and is audited.
+	audited : GitHubSignIn.Refusal -> [Anonymous, Audited]
+	audited = |why|
+		match why {
+			StateForged | StateMismatched | StateExpired | StateReused => Anonymous
+			GitHubDenied | NotACode => Anonymous
+			PendingForged | PendingMismatched | PendingExpired | PendingReused => Anonymous
+			GitHubUnreachable | BadIdentity | Barred | AccountExists => Audited
+			DuplicateAccount | AccountsFull | StaleGeneration | GenerationsExhausted | ClockOutOfRange => Audited
+		}
+
 	## **THE SETTINGS THE FLOW IS GIVEN**: the GitHub id of the first admin,
 	## if any is named; the GitHub ids barred from signing up again (their
 	## accounts retired); and the generation counter, the generation the next
