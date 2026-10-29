@@ -53,6 +53,7 @@ import Ascii
 import Cast
 import DisplayName
 import GitHubLogin
+import Limits
 import OAuthState
 import Principal
 import Stored
@@ -108,6 +109,9 @@ GitHubSignIn := [].{
 		## More than one account holds the GitHub id: no copy is signed in
 		## to, and none is made beside them.
 		DuplicateAccount,
+
+		## The chat holds as many accounts as it may (Limits.accounts_most).
+		AccountsFull,
 
 		## The settings' next generation is not above every account's: the
 		## counter went back, and a generation might be given twice.
@@ -597,6 +601,7 @@ GitHubSignIn := [].{
 					(UsedBefore, _) => Refused(PendingReused)
 					(FirstUse, Ok(_)) => Refused(AccountExists)
 					(FirstUse, Err(Duplicated)) => Refused(DuplicateAccount)
+					(FirstUse, Err(NoSuchPrincipal)) if List.len(accounts) >= Limits.accounts_most => Refused(AccountsFull)
 					(FirstUse, Err(NoSuchPrincipal)) =>
 						match (DisplayName.from_utf8(name), fresh_generation(accounts, settings)) {
 							(Err(problem), _) => NameRefused(problem)
@@ -1350,6 +1355,22 @@ expect name_said({ ..usual_naming, name: Str.to_utf8("🦊") }) == made(ann_as("
 # **THE NAME RULE**: empty, spaces alone, over 64 bytes, a control
 # character, a bidi control, a format character, not UTF-8: each said, so
 # the form asks again.
+# **THE ACCOUNTS' CAP** (Limits.accounts_most): at it, a sign-up is
+# refused by name; one below, it is made.
+cap_filler : U64 -> List(Principal)
+cap_filler = |n| List.concat(
+	[boss, ann_agent],
+	List.map_with_index(
+		List.repeat({}, n - 2),
+		|_, i| Principal.Agent({ id: Cast.aid(1000 + i), name: "A", owner: Cast.gid(1), generation: Cast.gen(1) }),
+	),
+)
+expect name_said({ ..usual_naming, accounts: cap_filler(Limits.accounts_most) }) == Refused(AccountsFull)
+expect
+	match name_said({ ..usual_naming, accounts: cap_filler(Limits.accounts_most - 1) }) {
+		Created(_) => True
+		_ => False
+	}
 expect name_said({ ..usual_naming, name: [] }) == NameRefused(Empty)
 expect name_said({ ..usual_naming, name: Str.to_utf8("   ") }) == NameRefused(Empty)
 expect name_said({ ..usual_naming, name: Str.to_utf8(Str.repeat("n", 65)) }) == NameRefused(TooLong)

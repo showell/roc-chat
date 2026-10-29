@@ -66,6 +66,10 @@
 //!  34. signed out, a page redirects to /login
 //!  35. a message's HTML on the page is exactly step 6's for it
 //!
+//! Then the security review's fixes (2026-10-29), each its own user:
+//!
+//!  36. a human's twenty-first agent is refused (Limits.agents_per_human)
+//!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
 //! the first: `zig build e2e`, and `zig build test` runs it too.
@@ -549,6 +553,20 @@ fn unjson(a: std.mem.Allocator, s: []const u8) ![]const u8 {
     return out.items;
 }
 
+/// **AGENTS ARE CAPPED PER HUMAN** (H1): a new human, Dee, makes twenty,
+/// and the twenty-first is a 403. The cap is app/Limits.roc's.
+const agents_per_human = 20;
+
+fn agentsCapped(w: *World) !void {
+    const dee = try signUp(w.a, w.port(), 1006);
+    for (0..agents_per_human) |_| {
+        if ((try request(w.a, w.port(), "POST", "/agents", dee, "name=Many")).status != 201) return error.NotMade;
+    }
+    const r = try request(w.a, w.port(), "POST", "/agents", dee, "name=Many");
+    if (r.status != 403) return error.Uncapped;
+    if (!has(r.body, "as many agents")) return error.NotSaid;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -880,6 +898,7 @@ const steps = [_]Step{
     .{ .name = "the conversation page is a 200 to a participant, a 404 to a third user; a page is a 403 to a key", .f = conversationPage },
     .{ .name = "signed out, a page redirects to /login", .f = signedOutPage },
     .{ .name = "a message's HTML on the page is exactly step 6's for it", .f = pageHtml },
+    .{ .name = "a human's twenty-first agent is refused", .f = agentsCapped },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

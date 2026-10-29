@@ -50,6 +50,7 @@ import ConvAccess
 import ConvKey
 import Credentials
 import InviteCodec
+import Limits
 import DisplayName
 import GitHubSignIn
 import KeyCodec
@@ -151,6 +152,7 @@ Agents := [].{
 				ClockOutOfRange,
 			],
 		),
+		Capped(Agents.Cap),
 		Stuck(
 			[
 				StaleGeneration,
@@ -160,6 +162,10 @@ Agents := [].{
 			],
 		),
 	]
+
+	## **WHICH CAP REFUSED AN AGENT** (Limits): its owner has as many as one
+	## human may, or the chat holds as many accounts as it may.
+	Cap : [AgentsPerHuman, Accounts]
 
 	## **MAKE AN AGENT**: owned by the human a live session signs in, named
 	## by DisplayName's rule, with the settings' next agent id
@@ -193,46 +199,50 @@ Agents := [].{
 						Refused(IdleExpired) | Refused(AbsoluteExpired) => Refused(SessionExpired)
 						Refused(NoSuchAccount) => Refused(NoSuchGranter)
 						Admitted({ principal, write: _ }) =>
-							match (
-								DisplayName.from_utf8(name),
-								GitHubSignIn.next_generation(accounts, settings),
-								GitHubSignIn.next_agent_id(accounts, settings),
-							) {
-								(
-									Err(problem),
-									_,
-									_,
-								) => NameRefused(problem)
-								(
-									_,
-									Err(why),
-									_,
-								) => Stuck(why)
-								(
-									_,
-									_,
-									Err(why),
-								) => Stuck(why)
-								(
-									Ok(chosen),
-									Ok({ this, next }),
-									Ok(ids),
-								) => {
-									agent = Principal.Agent({
-										id: ids.this,
-										name: chosen.to_str(),
-										owner: Principal.answers_to(principal),
-										generation: this,
-									})
-									Made({
-										agent,
-										steps: [
-											AdvanceGeneration(next),
-											AdvanceAgentId(ids.next),
-											AddAccount(agent),
-										],
-									})
-								}
+							match cap_reached(accounts, Principal.answers_to(principal)) {
+								Reached(cap) => Capped(cap)
+								Below =>
+									match (
+										DisplayName.from_utf8(name),
+										GitHubSignIn.next_generation(accounts, settings),
+										GitHubSignIn.next_agent_id(accounts, settings),
+									) {
+										(
+											Err(problem),
+											_,
+											_,
+										) => NameRefused(problem)
+										(
+											_,
+											Err(why),
+											_,
+										) => Stuck(why)
+										(
+											_,
+											_,
+											Err(why),
+										) => Stuck(why)
+										(
+											Ok(chosen),
+											Ok({ this, next }),
+											Ok(ids),
+										) => {
+											agent = Principal.Agent({
+												id: ids.this,
+												name: chosen.to_str(),
+												owner: Principal.answers_to(principal),
+												generation: this,
+											})
+											Made({
+												agent,
+												steps: [
+													AdvanceGeneration(next),
+													AdvanceAgentId(ids.next),
+													AddAccount(agent),
+												],
+											})
+										}
+									}
 							}
 					}
 			}
@@ -400,6 +410,8 @@ made_by! = |maker, form| {
 				now,
 			}) {
 				NameRefused(_) => Wire.refused(400, "that name is not one we can show")
+				Capped(AgentsPerHuman) => Wire.refused(403, "you have as many agents as one person may (${Limits.agents_per_human.to_str()})")
+				Capped(Accounts) => Wire.refused(503, "the chat holds as many accounts as it may")
 				Stuck(_) => Chat.failed
 				Refused(why) => {
 					audit_grant!(
@@ -1234,6 +1246,27 @@ settings_after_cast = {
 	next_agent_id: Cast.aid(4),
 }
 
+## **A CAP AN AGENT'S MAKING WOULD PASS** (Limits): `owner`'s agents and
+## bots, or every account.
+cap_reached : List(Principal), Principal.GitHubId -> [Reached(Agents.Cap), Below]
+cap_reached = |accounts, owner| {
+	owned = List.count_if(
+		accounts,
+		|p|
+			match p {
+				Human(_) => False
+				Agent(_) | Bot(_) => Principal.answers_to(p) == owner
+			},
+	)
+	if owned >= Limits.agents_per_human {
+		Reached(AgentsPerHuman)
+	} else if List.len(accounts) >= Limits.accounts_most {
+		Reached(Accounts)
+	} else {
+		Below
+	}
+}
+
 ## What `make` decided, said plainly: the agent's id, owner, generation
 ## and name, and the counter it leaves; or the refusal.
 Said : [
@@ -1256,6 +1289,7 @@ Said : [
 			ClockOutOfRange,
 		],
 	),
+	Capped(Agents.Cap),
 	Stuck(
 		[
 			StaleGeneration,
@@ -1290,6 +1324,7 @@ said = |made|
 		Made(_) => Other
 		NameRefused(p) => NameRefused(p)
 		Refused(why) => Refused(why)
+		Capped(cap) => Capped(cap)
 		Stuck(why) => Stuck(why)
 	}
 
@@ -1302,6 +1337,43 @@ made_by = |who, name| Agents.make({
 	settings: settings_after_cast,
 	now: 50,
 })
+
+## The cast and `n` more agents, ids from 100, owned by `owner`.
+with_agents : U64, U64 -> List(Principal)
+with_agents = |owner, n|
+	List.concat(
+		Cast.accounts,
+		List.map_with_index(
+			List.repeat({}, n),
+			|_, i| Principal.Agent({ id: Cast.aid(100 + i), name: "A", owner: Cast.gid(owner), generation: Cast.gen(1) }),
+		),
+	)
+
+## `who` makes an agent among `accounts`.
+made_among : U64, List(Principal) -> Agents.Made
+made_among = |who, accounts| Agents.make({
+	maker: Session(session_of(who)),
+	name: Str.to_utf8("CC"),
+	accounts,
+	settings: { ..settings_after_cast, next_agent_id: Cast.aid(100_000) },
+	now: 50,
+})
+
+# **THE CAPS** (Limits): ann's twentieth agent is made, her twenty-first
+# refused, and boss's first beside her twenty still made; at the accounts'
+# cap, anyone's agent is refused. (Ann owns one of the cast's three.)
+expect
+	match made_among(2, with_agents(2, Limits.agents_per_human - 2)) {
+		Made(_) => True
+		_ => False
+	}
+expect said(made_among(2, with_agents(2, Limits.agents_per_human - 1))) == Capped(AgentsPerHuman)
+expect
+	match made_among(1, with_agents(2, Limits.agents_per_human)) {
+		Made(_) => True
+		_ => False
+	}
+expect said(made_among(1, with_agents(9, Limits.accounts_most - List.len(Cast.accounts)))) == Capped(Accounts)
 
 # The agent id and the generation are the settings'; both counters,
 # advanced. (The cast's agents and bots are 1, 2 and 3.)

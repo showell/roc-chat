@@ -572,6 +572,7 @@ all_sign_in_refusals = [
 	PendingReused,
 	AccountExists,
 	DuplicateAccount,
+	AccountsFull,
 	StaleGeneration,
 	GenerationsExhausted,
 	ClockOutOfRange,
@@ -595,6 +596,7 @@ spell_sign_in_refusal = |why|
 		PendingReused => "pending-reused"
 		AccountExists => "account-exists"
 		DuplicateAccount => "duplicate-account"
+		AccountsFull => "accounts-full"
 		StaleGeneration => "stale-generation"
 		GenerationsExhausted => "generations-exhausted"
 		ClockOutOfRange => "clock-out-of-range"
@@ -1313,7 +1315,7 @@ key_events =
 		),
 	)
 
-expect List.len(all_sign_in_refusals) == 18
+expect List.len(all_sign_in_refusals) == 19
 expect List.len(all_grant_refusals) == 8
 expect List.all(
 	sign_ins,

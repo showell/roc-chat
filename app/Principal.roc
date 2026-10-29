@@ -267,31 +267,56 @@ Principal := [
 	## hold one id; else the first id held twice. An agent and a bot share
 	## one counter, so `agent:7` beside `bot:7` is a duplicate too. A store
 	## with a duplicate is refused whole, never loaded with one copy chosen.
+	##
+	## **IN O(n log n)**, as every request's load needs: the accounts sorted
+	## by their number, each with its place, so a duplicate is the next one
+	## sorted; of the duplicates, the one earliest in the list (of each
+	## pair, the later) is the one a scan in order would meet first.
 	unique : List(Principal) -> Try(List(Principal), [DuplicateId(Principal.Id)])
 	unique = |accounts| {
-		number = |p|
-			match Principal.id(p) {
-				Human(g) => Human(g.to_u64())
-				Agent(a) | Bot(a) => Owned(a.to_u64())
-			}
-		seen : Try(List([Human(U64), Owned(U64)]), [DuplicateId(Principal.Id)])
-		seen = List.fold(
+		keyed = List.map_with_index(
 			accounts,
-			Ok([]),
-			|so_far, p|
-				match so_far {
-					Err(dup) => Err(dup)
-					Ok(numbers) =>
-						if List.contains(numbers, number(p)) {
-							Err(DuplicateId(Principal.id(p)))
-						} else {
-							Ok(List.append(numbers, number(p)))
-						}
+			|p, at| {
+				(kind, number) =
+					match Principal.id(p) {
+						Human(g) => (0, g.to_u64())
+						Agent(a) | Bot(a) => (1, a.to_u64())
+					}
+				{ kind, number, at }
+			},
+		)
+		sorted = List.sort_with(
+			keyed,
+			|x, y|
+				if x.kind != y.kind {
+					if x.kind < y.kind Before else After
+				} else if x.number != y.number {
+					if x.number < y.number Before else After
+				} else if x.at < y.at {
+					Before
+				} else if x.at > y.at {
+					After
+				} else {
+					Same
 				},
 		)
-		match seen {
-			Ok(_) => Ok(accounts)
-			Err(dup) => Err(dup)
+		first_dup = List.fold_with_index(
+			sorted,
+			List.len(accounts),
+			|earliest, k, i|
+				match List.get(sorted, i + 1) {
+					Ok(next) =>
+						if next.kind == k.kind and next.number == k.number and next.at < earliest {
+							next.at
+						} else {
+							earliest
+						}
+					Err(_) => earliest
+				},
+		)
+		match List.get(accounts, first_dup) {
+			Ok(p) => Err(DuplicateId(Principal.id(p)))
+			Err(_) => Ok(accounts)
 		}
 	}
 }
@@ -471,6 +496,11 @@ expect loaded([
 	owned(Bot, { id: 1, owner: 1 }),
 ]) == Err(DuplicateId(Principal.Id.Bot(aid(1))))
 expect loaded([boss, owned(Agent, { id: 1, owner: 1 })]) == Ok({})
+# Of two duplicates, the one a scan in order meets first is named, whatever
+# the sort's order of kinds.
+expect loaded([boss, boss_agent, boss, owned(Bot, { id: 1, owner: 1 })]) == Err(DuplicateId(Principal.id(boss)))
+expect loaded([boss_agent, boss, owned(Bot, { id: 1, owner: 1 }), boss]) == Err(DuplicateId(Principal.Id.Bot(aid(1))))
+expect loaded([boss, boss, boss]) == Err(DuplicateId(Principal.id(boss)))
 
 # ── GENERATIONS AND BINDINGS
 expect Principal.Generation.from_u64(0) == Err(NotAnId)

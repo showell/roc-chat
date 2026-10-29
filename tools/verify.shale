@@ -36,7 +36,7 @@
 -- follow-ups (the agent-id counter and invites), which may only rise.
 const roc_floor = 1869
 const zig_floor = 203
-const e2e_steps = 35
+const e2e_steps = 36
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -206,6 +206,10 @@ plant("an agent's id taken from the accounts again, a retired one's reused",
   "app/GitHubSignIn.roc", "this = settings.next_agent_id", "this = if settings.next_agent_id.to_u64() > 0 GitHubSignIn.agent_id_after(accounts)? else settings.next_agent_id", 29)
 plant("a key allowed to make an invite (the grant's GrantedByKey let by)",
   "app/Agents.roc", "Refused(why) => Err(Refused(why))\n\t\t\tGrantable =>", "Refused(why) if why != GrantedByKey => Err(Refused(why))\n\t\t\t_ =>", 26)
+
+-- The security review's (2026-10-29).
+plant("agents uncapped (the cap never reached)",
+  "app/Agents.roc", "if owned >= Limits.agents_per_human {", "if owned >= Limits.agents_per_human * 1000 {", 36)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
