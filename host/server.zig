@@ -26,7 +26,6 @@ const signin = @import("signin.zig");
 const route = @import("seam/chat_route.zig");
 const bus = @import("bus.zig");
 const sse = @import("sse.zig");
-const StubLog = @import("stub_log.zig").StubLog;
 
 const log = std.log.scoped(.roc_chat);
 
@@ -101,8 +100,6 @@ pub const Server = struct {
     hub: bus.Hub,
     /// The streams held at once.
     slots: sse.Slots = .{},
-    /// The stub route's frames, until step 6.
-    stub_log: StubLog,
     /// A test's: a stream sleeps this long between the Roc's read of its
     /// backlog and its subscribe, so another client's post can try to land
     /// between them.
@@ -131,7 +128,6 @@ pub const Server = struct {
             .listener = try addr.listen(io, .{ .reuse_address = true }),
             .files = .{ .io = io, .root = data },
             .hub = .init(io, gpa),
-            .stub_log = .{ .gpa = gpa },
         };
     }
 
@@ -143,7 +139,6 @@ pub const Server = struct {
     /// watchdog on another. When it returns, every connection is done.
     pub fn run(s: *Server) !void {
         // Last: every stream's task has closed its subscriber by then.
-        defer s.stub_log.deinit();
         defer s.hub.deinit();
         defer s.listener.deinit(s.io);
         defer s.watch.conns.deinit(s.gpa);
@@ -294,7 +289,6 @@ pub const Server = struct {
                 .auth = s.auth,
                 .now = Io.Clock.now(.real, s.io).toSeconds(),
                 .hub = &s.hub,
-                .stub_log = &s.stub_log,
             };
             var sub: ?*bus.Subscriber = null;
             const decided = s.decideInTurn(arena, copied, exchanged, &ctx, &sub);

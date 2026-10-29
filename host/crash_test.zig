@@ -11,7 +11,6 @@ const server = @import("server.zig");
 const call = @import("call.zig");
 const files = @import("files.zig");
 const bus = @import("bus.zig");
-const StubLog = @import("stub_log.zig").StubLog;
 const abi = @import("seam/chat_abi.zig");
 const h = @import("test_http.zig");
 
@@ -260,14 +259,13 @@ fn everyAllocationFails(path: []const u8, method: std.http.Method, req: *const c
     defer tmp.cleanup();
     const store: files.Files = .{ .io = io, .root = tmp.dir };
     var hub = bus.Hub.init(io, gpa);
-    var stub_log: StubLog = .{ .gpa = gpa };
     var k: usize = 0;
     while (k < 10_000) : (k += 1) {
         var arena = std.heap.ArenaAllocator.init(gpa);
         defer arena.deinit();
         var failing = std.testing.FailingAllocator.init(arena.allocator(), .{ .fail_index = k });
         const fa = failing.allocator();
-        var ctx: call.Ctx = .{ .req = req, .arena = fa, .files = &store, .hub = &hub, .stub_log = &stub_log };
+        var ctx: call.Ctx = .{ .req = req, .arena = fa, .files = &store, .hub = &hub };
         const got = abi.decide(fa, path, method, .not_asked, .of(&ctx));
         try std.testing.expectError(error.RocCrashed, got);
         const said = abi.last_crash[0..abi.last_crash_len];

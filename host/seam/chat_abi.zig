@@ -203,10 +203,6 @@ const Table = struct {
     /// Host.publish!: a frame to every stream held on a key (host/bus.zig),
     /// the bytes copied.
     publish: *const fn (*anyopaque, []const u8, []const u8) void,
-    /// Host.stub_append! and Host.stub_read!: the stub route's frames
-    /// (host/stub_log.zig), until step 6.
-    stub_append: *const fn (*anyopaque, []const u8, []const u8) void,
-    stub_read: *const fn (*anyopaque, []const u8) []const []const u8,
 };
 
 /// **WHAT ANSWERS THE HOSTED FUNCTIONS** during a call: a host's value and
@@ -442,14 +438,6 @@ pub export fn roc_chat_read_config(name: route.ConfigName) callconv(.c) RocBytes
 
 pub export fn roc_chat_publish(key: RocBytes, frame: RocBytes) callconv(.c) void {
     ask("publish", {}, .{ key.slice(), frame.slice() });
-}
-
-pub export fn roc_chat_stub_append(key: RocBytes, frame: RocBytes) callconv(.c) void {
-    ask("stub_append", {}, .{ key.slice(), frame.slice() });
-}
-
-pub export fn roc_chat_stub_read(key: RocBytes) callconv(.c) roc.RocBytesList {
-    return .from(ask("stub_read", &.{}, .{key.slice()}));
 }
 
 // ── a crash is a 500 ────────────────────────────────────────────────────────

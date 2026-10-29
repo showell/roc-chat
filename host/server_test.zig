@@ -1,5 +1,7 @@
 //! **THE SERVER, END TO END**: a server on a port of its own (port 0) in
-//! this process, the chat's Roc linked, and clients that speak HTTP by hand
+//! this process, the server's probe linked (app/test/probe.roc: the
+//! plainest routes that drive each part of the host, so no test here signs
+//! in; the chat's own routes are host/chat_test.zig's), and clients that speak HTTP by hand
 //! over TCP, so a test can send half a head, stall a body or pipeline two
 //! requests. Each test starts its own server, with deadlines short enough
 //! to wait out.
@@ -28,27 +30,14 @@ const msSince = h.msSince;
 
 const get_root = "GET / HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n";
 
-test "GET / is the Roc's hello page, rendered by roc-markdown, with the Roc's own cache-control header" {
-    var arena = std.heap.ArenaAllocator.init(gpa);
-    defer arena.deinit();
-    const r = try Running.start(.{});
-    defer r.stop();
-    const got = try Response.of(try exchange(arena.allocator(), r.port(), get_root));
-    try std.testing.expectEqual(200, got.status);
-    try std.testing.expect(has(got.body, "<strong>Hello</strong> from roc-chat."));
-    try std.testing.expectEqualStrings("no-store", got.header("cache-control").?);
-    try std.testing.expectEqualStrings("text/html; charset=utf-8", got.header("content-type").?);
-    try std.testing.expectEqual(1, r.turns());
-}
-
-test "the files through the Roc (the /stub/notes stub): append!'s size after, read!, and a failed sync or a 000 folder a 500" {
+test "the files through the Roc (the probe's /notes): append!'s size after, read!, and a failed sync or a 000 folder a 500" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();
     const r = try Running.start(.{});
     defer r.stop();
-    const get = "GET /stub/notes HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n";
-    const append = "POST /stub/notes HTTP/1.1\r\nhost: t\r\nconnection: close\r\ncontent-length: 6\r\n\r\nhello\n";
+    const get = "GET /notes HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n";
+    const append = "POST /notes HTTP/1.1\r\nhost: t\r\nconnection: close\r\ncontent-length: 6\r\n\r\nhello\n";
     try std.testing.expectEqual(404, (try Response.of(try exchange(a, r.port(), get))).status);
     try std.testing.expectEqualStrings("size 6\n", (try Response.of(try exchange(a, r.port(), append))).body);
     try std.testing.expectEqualStrings("size 12\n", (try Response.of(try exchange(a, r.port(), append))).body);
@@ -62,10 +51,10 @@ test "the files through the Roc (the /stub/notes stub): append!'s size after, re
     r.server.files.fault_for_test = .none;
 
     // **AN UNREADABLE FOLDER IS NEVER "NOTHING THERE"**: a 500, not the 404.
-    var stub = try r.data.dir.openDir(io, "stub", .{ .iterate = true });
-    defer stub.close(io);
-    try stub.setPermissions(io, .fromMode(0o000));
-    defer stub.setPermissions(io, .fromMode(0o700)) catch {};
+    var probe = try r.data.dir.openDir(io, "probe", .{ .iterate = true });
+    defer probe.close(io);
+    try probe.setPermissions(io, .fromMode(0o000));
+    defer probe.setPermissions(io, .fromMode(0o700)) catch {};
     if (std.os.linux.geteuid() != 0) {
         try std.testing.expectEqual(500, (try Response.of(try exchange(a, r.port(), get))).status);
         try std.testing.expectEqual(500, (try Response.of(try exchange(a, r.port(), append))).status);
@@ -143,7 +132,7 @@ test "the body cap: a length past it is a 413, never read and never in the turn;
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();
-    // The Roc's /echo reads at most 32 KiB (app/main.roc `echo_most`).
+    // The probe's /echo reads at most 32 KiB (app/test/probe.roc `echo_most`).
     const r = try Running.start(.{ .body_most = 40 * 1024 });
     defer r.stop();
 
@@ -225,26 +214,7 @@ test "an idle kept-open connection is closed at its timeout, with no answer" {
     try std.testing.expect(std.mem.indexOfPos(u8, bytes, 1, "HTTP/1.1 ") == null);
 }
 
-test "a chat client script: a 200 with its ETag, then a 304 when the browser has those bytes; a script there is not, a 404" {
-    var arena = std.heap.ArenaAllocator.init(gpa);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const r = try Running.start(.{});
-    defer r.stop();
-    const first = try Response.of(try exchange(a, r.port(), "GET /chat.js HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
-    try std.testing.expectEqual(200, first.status);
-    try std.testing.expectEqualStrings("text/javascript; charset=utf-8", first.header("content-type").?);
-    try std.testing.expect(first.body.len > 1000);
-    const etag = first.header("etag").?;
-    const again = try std.fmt.allocPrint(a, "GET /chat.js HTTP/1.1\r\nhost: t\r\nif-none-match: {s}\r\nconnection: close\r\n\r\n", .{etag});
-    const second = try Response.of(try exchange(a, r.port(), again));
-    try std.testing.expectEqual(304, second.status);
-    try std.testing.expectEqual(0, second.body.len);
-    const none = try Response.of(try exchange(a, r.port(), "GET /nope.js HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
-    try std.testing.expectEqual(404, none.status);
-}
-
-// ── the bus and SSE, through the stub route (app/main.roc `/stub/`) ────────
+// ── the bus and SSE, through the probe's /stream and /post ─────────────────
 
 /// A held stream as a browser reads it: its head, then what it says, kept
 /// in `got` as it arrives.
@@ -263,7 +233,7 @@ const Listener = struct {
         if (rcvbuf > 0) server.setBuffer(l.stream, std.posix.SO.RCVBUF, rcvbuf);
         l.reader = l.stream.reader(io, &l.buf);
         const c: Client = .{ .stream = l.stream };
-        try c.send(try std.fmt.allocPrint(arena, "GET /stub/stream/{s} HTTP/1.1\r\nhost: t\r\n\r\n", .{key}));
+        try c.send(try std.fmt.allocPrint(arena, "GET /stream/{s} HTTP/1.1\r\nhost: t\r\n\r\n", .{key}));
         try l.until("\r\n\r\n");
         const head = try Response.of(l.got.items);
         if (head.status != 200) return error.NotAStream;
@@ -303,7 +273,7 @@ const Listener = struct {
 fn post(arena: std.mem.Allocator, port: u16, key: []const u8, data: []const u8) !void {
     const got = try Response.of(try exchange(arena, port, try std.fmt.allocPrint(
         arena,
-        "POST /stub/post/{s} HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}",
+        "POST /post/{s} HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}",
         .{ key, data.len, data },
     )));
     if (got.status != 200) return error.PostRefused;
