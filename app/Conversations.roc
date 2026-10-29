@@ -32,6 +32,7 @@ import Cast
 import ConvAccess
 import ConvKey
 import Credentials
+import Limits
 import MessageCodec
 import Principal
 import SignInWeb
@@ -410,7 +411,9 @@ read! = |id|
 ## **POST**: the body is the markdown. Refused when the viewer may not post
 ## (ConvAccess.can_post, asked first and alone: a 403 to one who may see it,
 ## a 404 to one who may not), when it is not UTF-8 text, or when it is
-## hostile (roc-markdown's budget). Then appended, as the transcript's next id, and
+## hostile (roc-markdown's budget), or when the transcript is full
+## (Limits.transcript_bytes_most, a 413). Then appended, as the next id
+## its tally gives (Store.load_tally!, never a read of the transcript), and
 ## published to the conversation's streams, each once: the append and the
 ## publish are in this turn, so no stream subscribes between them.
 post! : ConvAccess.ConvId => Chat.Answer
@@ -452,23 +455,27 @@ post! = |id| {
 								SignedOut => crash "Conversations.post!: `asked!` let nobody signed out through"
 								Session(b) | Key(b) => b.id
 							}
-						match Store.load_transcript!(id) {
+						match Store.load_tally!(id) {
 							Err(Failed) => Chat.failed
-							Ok(messages) => {
+							Ok(tally) => {
 								message = {
-									id: MessageCodec.next_id(List.len(messages)),
+									id: MessageCodec.next_id(tally.messages),
 									at: now,
 									by,
 									body: got.bytes,
 								}
-								match Store.append_message!(id, message) {
-									Failed => Chat.failed
-									Appended => {
-										match frame(message) {
-											Ok(f) => Host.publish!(bus_key(id), f)
-											Err(LineBreak) => crash "Conversations.post!: a message's JSON holds no line break"
+								if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
+									refused(413, "this conversation is full: its transcript holds as much as one may")
+								} else {
+									match Store.append_message!(id, tally, message) {
+										Failed => Chat.failed
+										Appended => {
+											match frame(message) {
+												Ok(f) => Host.publish!(bus_key(id), f)
+												Err(LineBreak) => crash "Conversations.post!: a message's JSON holds no line break"
+											}
+											json(201, message_json(message))
 										}
-										json(201, message_json(message))
 									}
 								}
 							}

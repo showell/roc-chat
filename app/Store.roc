@@ -19,6 +19,7 @@
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
 ##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
 ##     chat/transcripts/<id>     its messages, a line each, appended (MessageCodec)
+##     chat/tallies/<id>         its transcript's messages and bytes (`load_tally!`)
 ##
 ## **A TRANSCRIPT HOLDS ANY BODY EXACTLY**: a message is one line, its
 ## markdown escaped (MessageCodec's header says how), so a body of many
@@ -373,14 +374,57 @@ Store := [].{
 		}
 	}
 
-	## A message appended to its conversation's transcript, synced. Its id
-	## is the caller's, the transcript's count plus one, read in this turn.
-	append_message! : ConvAccess.ConvId, MessageCodec.Fields => [Failed, Appended]
-	append_message! = |id, message| {
+	## **A TRANSCRIPT'S TALLY: ITS MESSAGES AND ITS BYTES** (the security
+	## review's H3), from the sidecar written with each append, so a post
+	## never reads the transcript to learn its id or its size. A sidecar
+	## that is missing (a transcript from before it) or that disagrees with
+	## the transcript's size (a stop between an append and its tally) is
+	## counted once from the whole transcript; the next append writes it.
+	load_tally! : ConvAccess.ConvId => Try(Store.Tally, [Failed])
+	load_tally! = |id| {
+		stat = Host.read_stat!(transcript_path(id))
+		match stat.status {
+			Failed => Err(Failed)
+			Missing => Ok({ messages: 0, bytes: 0 })
+			Found => {
+				read = Host.read!(tally_path(id))
+				kept =
+					match read.status {
+						Failed => Err(Failed)
+						Missing => Ok(Stale)
+						Found =>
+							match tally_of(read.bytes) {
+								Ok(t) if t.bytes == stat.size => Ok(Kept(t))
+								_ => Ok(Stale)
+							}
+					}?
+				match kept {
+					Kept(t) => Ok(t)
+					Stale => {
+						messages = Store.load_transcript!(id)?
+						Ok({ messages: List.len(messages), bytes: stat.size })
+					}
+				}
+			}
+		}
+	}
+
+	## What a transcript holds, told: its messages and its bytes.
+	Tally : { messages : U64, bytes : U64 }
+
+	## **A MESSAGE APPENDED TO ITS CONVERSATION'S TRANSCRIPT, SYNCED, THEN
+	## ITS TALLY**: `tally` is the transcript's before it (`load_tally!`, in
+	## this turn), and the message's id the caller's, its count plus one.
+	append_message! : ConvAccess.ConvId, Store.Tally, MessageCodec.Fields => [Failed, Appended]
+	append_message! = |id, tally, message| {
 		appended = Host.append!(transcript_path(id), MessageCodec.encode(message))
 		match appended.status {
-			Appended => Appended
 			Failed => Failed
+			Appended =>
+				match Host.write!(tally_path(id), tally_line({ messages: tally.messages + 1, bytes: appended.size })) {
+					Failed => Failed
+					Written => Appended
+				}
 		}
 	}
 
@@ -413,6 +457,28 @@ conversation_path = |id| Str.to_utf8("chat/conversations/${id.to_u64().to_str()}
 
 transcript_path : ConvAccess.ConvId -> List(U8)
 transcript_path = |id| Str.to_utf8("chat/transcripts/${id.to_u64().to_str()}")
+
+tally_path : ConvAccess.ConvId -> List(U8)
+tally_path = |id| Str.to_utf8("chat/tallies/${id.to_u64().to_str()}")
+
+## A tally's file: `<messages> <bytes>` and a newline.
+tally_line : Store.Tally -> List(U8)
+tally_line = |t| Str.to_utf8("${t.messages.to_str()} ${t.bytes.to_str()}\n")
+
+tally_of : List(U8) -> Try(Store.Tally, [Malformed])
+tally_of = |bytes|
+	match List.split_on(bytes, ' ') {
+		[messages, rest] if List.last(rest) == Ok('\n') =>
+			match (Stored.count(messages, "messages"), Stored.count(List.drop_last(rest, 1), "bytes")) {
+				(Ok(m), Ok(b)) => Ok({ messages: m, bytes: b })
+				_ => Err(Malformed)
+			}
+		_ => Err(Malformed)
+	}
+
+expect tally_of(tally_line({ messages: 3, bytes: 120 })) == Ok({ messages: 3, bytes: 120 })
+expect tally_of(Str.to_utf8("3 120")) == Err(Malformed)
+expect tally_of(Str.to_utf8("03 120\n")) == Err(Malformed)
 
 ## A session's file, named for its secret's hash: found only by one who
 ## holds the secret, with no compare to time.

@@ -83,6 +83,10 @@
 //!      no pending sign-up, five of each, leave the audit's size unchanged
 //!  42. A opening nine streams of one conversation ends A's own first
 //!      (eight a holder), and B's stream there stays live
+//!  43. a post learns its id from the tally: its transcript unreadable
+//!      whole (a read is a 500), the next post is still id 2
+//!  44. a post to a transcript at its cap (Limits.transcript_bytes_most)
+//!      is a 413, and nothing is appended
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -691,6 +695,50 @@ fn streamsPerHolder(w: *World) !void {
     if (has(ann[0].got.items, "to the held") or !ann[0].ends()) return error.OwnFirstKept;
 }
 
+/// `bytes` written over the data root's file at `path`.
+fn overwrite(w: *World, path: []const u8, bytes: []const u8) !void {
+    const f = try w.rig.data.createFile(io, path, .{});
+    defer f.close(io);
+    try f.writeStreamingAll(io, bytes);
+}
+
+/// **A POST LEARNS ITS ID FROM THE TALLY** (H3), never by reading the
+/// transcript whole: a conversation's transcript is made unreadable whole
+/// (its one line junk, its size the same), so a read is a 500, and the
+/// next post still answers id 2.
+fn postByTally(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "one")).status != 201) return error.NotPosted;
+    const path = try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv});
+    const was = try w.rig.data.readFileAlloc(io, path, w.a, .limited(1024 * 1024));
+    const junk = try w.a.alloc(u8, was.len);
+    @memset(junk, 'x');
+    try overwrite(w, path, junk);
+    if ((try get(w.a, w.port(), try agentPath(w, conv, ""), w.ann)).status != 500) return error.TranscriptStillReads;
+    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "two");
+    if (r.status != 201) return error.PostReadTheTranscript;
+    if (!std.mem.startsWith(u8, r.body, "{\"id\":2,")) return error.NotTheSecond;
+}
+
+/// **A FULL TRANSCRIPT REFUSES A POST** (H3, Limits.transcript_bytes_most):
+/// a conversation's transcript and tally made ten bytes short of the cap,
+/// and a post is a 413 that says so, its transcript unchanged.
+const transcript_bytes_most = 4_000_000;
+
+fn transcriptFull(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const near = transcript_bytes_most - 10;
+    const junk = try w.a.alloc(u8, near);
+    @memset(junk, 'x');
+    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv}), junk);
+    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/tallies/{s}", .{conv}), try std.fmt.allocPrint(w.a, "1 {d}\n", .{near}));
+    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "one too many");
+    if (r.status != 413) return error.FullAccepted;
+    if (!has(r.body, "full")) return error.NotSaid;
+    const after = try w.rig.data.readFileAlloc(io, try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv}), w.a, .limited(8 * 1024 * 1024));
+    if (after.len != near) return error.Appended;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -1046,6 +1094,8 @@ const steps = [_]Step{
     .{ .name = "a stream ends at its lifetime, so a key revoked while it is open stops reaching it", .f = streamLifetime },
     .{ .name = "junk invite codes, a forged state and no pending sign-up leave the audit as it was", .f = anonymousUnaudited },
     .{ .name = "A opening nine streams ends A's own first, and B's stays", .f = streamsPerHolder },
+    .{ .name = "a post learns its id from the tally, never reading the transcript whole", .f = postByTally },
+    .{ .name = "a post to a full transcript is a 413, and nothing is appended", .f = transcriptFull },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
