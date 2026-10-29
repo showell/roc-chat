@@ -137,11 +137,11 @@ others_of = |form|
 
 ## **WHAT A REQUEST ON A CONVERSATION DECIDES ON**: the viewer from its
 ## session, the accounts now, the conversation, and the time; or the answer
-## that ends it (signed out, not there or not visible, a failure).
-Seen : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), now : I64, conv : ConvAccess.Conv }
+## that ends it (signed out, not there, a failure).
+Asked : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), now : I64, conv : ConvAccess.Conv }
 
-seen! : ConvAccess.ConvId => Try(Seen, Chat.Answer)
-seen! = |id|
+asked! : ConvAccess.ConvId => Try(Asked, Chat.Answer)
+asked! = |id|
 	match SignIn.viewer!({}) {
 		Err(Failed) => Err(Chat.failed)
 		Ok({ viewer, accounts, now }) =>
@@ -151,15 +151,18 @@ seen! = |id|
 					match Store.conversation!(id) {
 						Err(Failed) => Err(Chat.failed)
 						Err(Missing) => Err(no_such)
-						Ok(conv) =>
-							if ConvAccess.can_see(viewer, { conv, accounts }) {
-								Ok({ viewer, accounts, now, conv })
-							} else {
-								Err(no_such)
-							}
+						Ok(conv) => Ok({ viewer, accounts, now, conv })
 					}
 			}
 	}
+
+## The same, for a viewer who may see it (ConvAccess.can_see); one who may
+## not is answered as if it were not there.
+seen! : ConvAccess.ConvId => Try(Asked, Chat.Answer)
+seen! = |id| {
+	a = asked!(id)?
+	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) Ok(a) else Err(no_such)
+}
 
 ## **READ**: the transcript, every message as the wire spells it.
 read! : ConvAccess.ConvId => Chat.Answer
@@ -182,8 +185,9 @@ read! = |id|
 	}
 
 ## **POST**: the body is the markdown. Refused when the viewer may not post
-## (ConvAccess.can_post), when it is not UTF-8 text, or when it is hostile
-## (roc-markdown's budget). Then appended, as the transcript's next id, and
+## (ConvAccess.can_post, asked first and alone: a 403 to one who may see it,
+## a 404 to one who may not), when it is not UTF-8 text, or when it is
+## hostile (roc-markdown's budget). Then appended, as the transcript's next id, and
 ## published to the conversation's streams, each once: the append and the
 ## publish are in this turn, so no stream subscribes between them.
 post! : ConvAccess.ConvId => Chat.Answer
@@ -192,11 +196,11 @@ post! = |id| {
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match seen!(id) {
+			match asked!(id) {
 				Err(answer) => answer
 				Ok({ viewer, accounts, now, conv }) =>
 					if !ConvAccess.can_post(viewer, { conv, accounts }) {
-						refused(403, "only its participants post here")
+						if ConvAccess.can_see(viewer, { conv, accounts }) refused(403, "only its participants post here") else no_such
 					} else if Str.from_utf8(got.bytes).is_err() {
 						refused(400, "a message is UTF-8 text")
 					} else if Md.hostility(got.bytes) == TooMuchFormatting {
@@ -204,7 +208,7 @@ post! = |id| {
 					} else {
 						by =
 							match viewer.who() {
-								SignedOut => crash "Conversations.post!: `seen!` let nobody signed out through"
+								SignedOut => crash "Conversations.post!: `asked!` let nobody signed out through"
 								Session(b) | Key(b) => b.id
 							}
 						match Store.transcript!(id) {

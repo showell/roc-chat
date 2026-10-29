@@ -4,14 +4,36 @@ The Roc chat's own server: the chat is a Roc app (`app/`, on the platform in
 `platform/`), and its host (`host/`) is a small Zig server on `std.http`.
 It will serve chat.lynrummy.com at `/`.
 
-**Status (2026-10-29): the server core, the files, and GitHub sign-in.**
-The Roc app is a stub that proves the seam both ways (a hello page rendered
-by roc-markdown, a POST echoed at `/echo`, the chat client's scripts), plus
-sign-in on the auth core: `/login`, GitHub's callback `/login/github`, the
-display-name form `/login/name`, and `/me`, which says who a session is.
-There is no chat logic yet; the bus and SSE streams come next. The design is
-the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
+**Status (2026-10-29): the smallest real chat (the host design's step 6).**
+Sign-in on the auth core, and conversations: a signed-in human starts one
+with named participants, a participant posts markdown (rendered by
+roc-markdown, refused when hostile), anyone ConvAccess lets see it reads its
+transcript, and each open stream gets each message once, live, resuming
+from `Last-Event-ID`. There are no pages yet (JSON and an event stream, and
+the chat client's scripts); the breadth of roc-webbox's chat is step 8. The
+design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 (essay-repl-server `notes/`).
+
+## The routes
+
+| | |
+|---|---|
+| `GET /` | A hello page, rendered by roc-markdown. |
+| `GET /login` | Sign-in: the browser sent to GitHub with a signed state. |
+| `GET /login/github` | GitHub's callback: the exchange off the turn, then a session or the name form. |
+| `POST /login/name` | The display name for a new account; the session cookie. |
+| `GET /me` | Who this session is. |
+| `POST /conversations` | Start one: a form, `with=` the others' ids, comma-separated (`human:2,agent:7`). The signed-in human is in it. `201 {"id":N}`. |
+| `GET /conversations/<id>` | Its transcript: `{"id":N,"messages":[…]}`. |
+| `POST /conversations/<id>/messages` | Post: the body is the markdown, as is. `201` and the message. |
+| `GET /conversations/<id>/stream` | Its messages, live (SSE, events named `message`, each id the message's), after `Last-Event-ID` when the browser resumes. |
+| `GET /<name>.js` | The chat client's scripts. |
+
+A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
+Who is asking is the session's alone (`SignIn.viewer!`); who may see and
+who may post is ConvAccess's. Signed out is a 401; a conversation the
+viewer may not see is a 404, as one that is not there; one it sees but may
+not post to, a 403.
 
 ## Before you build
 
@@ -39,7 +61,9 @@ the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 ## Build, test, serve
 
 ```
-zig build test      # roc test, then the host's tests and the glue check, each with the app's Roc linked
+zig build test      # roc test, the host's tests, the glue check, and the end to end
+zig build e2e       # the end to end alone: two clients, sign-in to stream, a line a step
+shale tools/verify.shale   # every check, the planted faults, a checklist (as `steve`)
 zig build serve     # http://127.0.0.1:9480, from dev/ (dev/config.zon; its data in dev/data)
 zig build           # zig-out/bin/roc-chat
 ```
@@ -105,15 +129,15 @@ server, saying which.
   shut), with `: ping` after 25 s of quiet. A stream 16 frames behind is
   ended, never skipped ahead: the browser reconnects with its
   `Last-Event-ID`. At most 64 streams are held; the 65th ends the oldest.
-- **`/stub/` is a stub of the bus** (`app/main.roc`, `host/stub_log.zig`,
-  `Host.stub_append!` and `Host.stub_read!`): frames kept in memory, so the
-  stream tests have a backlog. Step 6's chat replaces it with the store.
 
 ## Layout
 
 | | |
 |---|---|
-| `app/main.roc` | The chat (for now, the stub). |
+| `app/main.roc` | The route table: which module answers which request. |
+| `app/Conversations.roc` | The conversations on the wire: start, read, post, stream. |
+| `app/Store.roc` | Every file the app keeps, and the only module that names one (its header is the layout). |
+| `app/ConvCodec.roc`, `app/MessageCodec.roc` | A conversation's record, its participants bound; a message's, its body any bytes, exactly. |
 | `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `Sse.roc` (an event as one frame), `main.roc`. |
 | `host/main.zig`, `host/config.zig` | Start: the config, the data root, the server. |
 | `host/server.zig` | The accept loop, a task per connection, keep-alive, the turn, the deadlines and their watchdog, the body cap. |
@@ -123,9 +147,11 @@ server, saying which.
 | `app/SignInWeb.roc` | Sign-in's bytes on the wire: the signed state and pending tokens, the cookies' one policy, the form, the settings' record. Every decision is the auth core's. |
 | `host/files.zig` | The store under the data root: `read!`, `write!` (atomic), `append!` and their kin, each synced before it answers. |
 | `host/bus.zig`, `host/sse.zig` | The bus (a mailbox of 16 frames per stream, by key) and a stream's head, ping and cap. |
-| `host/stub_log.zig` | The stub route's frames, until step 6. |
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
-| `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness). |
+| `host/server_test.zig`, `app/test/probe.roc` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness), against the server's probe: the plainest routes that drive each part of the host, so none signs in. |
+| `host/chat_test.zig` | The chat's own pages, by the same harness. |
+| `host/e2e.zig` | The smallest end to end (`zig build e2e`): two clients through the fake GitHub, a conversation, its stream, and the refusals, each step timed. |
+| `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, five planted faults each red at its own step, the formatters. |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
