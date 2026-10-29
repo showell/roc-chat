@@ -82,6 +82,12 @@ local built = OUT .. "/bin/roc-chat"
 local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
 print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
 
+-- Everything copied to prod is staged in a folder of its own, made fresh
+-- under steve's home (mode 700, a name no one can guess before it is made),
+-- never at a fixed /tmp name another local user could plant first.
+const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" roc-chat-deploy.XXXXXXXX").out)
+if find(STAGE, "/roc-chat-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
+
 -- 3. The user and the folders, once; the config only when there is none.
 on_prod("set -e\n"
   .. "id rocchat >/dev/null 2>&1 || sudo useradd --system --home-dir " .. HOME .. " --no-create-home --shell /usr/sbin/nologin rocchat\n"
@@ -90,8 +96,8 @@ on_prod("set -e\n"
 if asks_prod("sudo test -f " .. HOME .. "/config.zon") then
   print("the server's config.zon is kept (the deploy never overwrites it)")
 else
-  copy_to_prod("deploy/config.zon", "/tmp/roc-chat-config.zon")
-  on_prod("sudo install -o rocchat -g rocchat -m 600 /tmp/roc-chat-config.zon " .. HOME .. "/config.zon && rm -f /tmp/roc-chat-config.zon")
+  copy_to_prod("deploy/config.zon", STAGE .. "/roc-chat-config.zon")
+  on_prod("sudo install -o rocchat -g rocchat -m 600 " .. STAGE .. "/roc-chat-config.zon " .. HOME .. "/config.zon && rm -f " .. STAGE .. "/roc-chat-config.zon")
   print("installed deploy/config.zon as " .. HOME .. "/config.zon")
 end
 
@@ -103,19 +109,19 @@ for name in {"github-client-id", "github-client-secret"} do
 end
 
 -- 5. The binary in, proven, swapped whole; the unit; the restart.
-copy_to_prod(built, "/tmp/roc-chat.new")
-local got_sum = split(trim(on_prod("sha256sum /tmp/roc-chat.new").out), " ")[1]
+copy_to_prod(built, STAGE .. "/roc-chat.new")
+local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/roc-chat.new").out), " ")[1]
 if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
-on_prod("set -e\nsudo install -o root -g root -m 755 /tmp/roc-chat.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f /tmp/roc-chat.new")
-copy_to_prod("deploy/roc-chat.service", "/tmp/roc-chat.service")
+on_prod("set -e\nsudo install -o root -g root -m 755 " .. STAGE .. "/roc-chat.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f " .. STAGE .. "/roc-chat.new")
+copy_to_prod("deploy/roc-chat.service", STAGE .. "/roc-chat.service")
 -- cmp exits 2 on a file that is not there: a first deploy's unit is "changed".
-if asks_prod("[ -f /etc/systemd/system/roc-chat.service ] && cmp -s /tmp/roc-chat.service /etc/systemd/system/roc-chat.service") then
+if asks_prod("[ -f /etc/systemd/system/roc-chat.service ] && cmp -s " .. STAGE .. "/roc-chat.service /etc/systemd/system/roc-chat.service") then
   print("the unit is unchanged")
 else
-  on_prod("set -e\nsudo install -o root -g root -m 644 /tmp/roc-chat.service /etc/systemd/system/roc-chat.service\nsudo systemctl daemon-reload\nsudo systemctl enable roc-chat")
+  on_prod("set -e\nsudo install -o root -g root -m 644 " .. STAGE .. "/roc-chat.service /etc/systemd/system/roc-chat.service\nsudo systemctl daemon-reload\nsudo systemctl enable roc-chat")
   print("installed the unit")
 end
-on_prod("rm -f /tmp/roc-chat.service")
+on_prod("rm -f " .. STAGE .. "/roc-chat.service")
 on_prod("set -e\nsudo systemctl restart roc-chat\n"
   .. "for _ in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/ 2>/dev/null && break; sleep 0.1; done\n"
   .. "systemctl is-active roc-chat\n"
@@ -123,26 +129,28 @@ on_prod("set -e\nsudo systemctl restart roc-chat\n"
 print("roc-chat " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
 
 -- 6. The site block, validated before it counts.
-copy_to_prod("deploy/" .. BLOCK, "/tmp/" .. BLOCK)
-if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s /tmp/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
+copy_to_prod("deploy/" .. BLOCK, STAGE .. "/" .. BLOCK)
+if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
   print("the site block is unchanged")
 else
   on_prod("set -e\n"
     .. "sudo install -d -m 755 /etc/caddy/sites\n"
     .. "# The block's log, Caddy's before validate: validate runs as root and would make it root's.\n"
     .. "[ -f " .. LOG .. " ] || sudo install -o caddy -g caddy -m 640 /dev/null " .. LOG .. "\n"
-    .. "if [ -f /etc/caddy/sites/" .. BLOCK .. " ]; then sudo cp /etc/caddy/sites/" .. BLOCK .. " /tmp/" .. BLOCK .. ".old; else rm -f /tmp/" .. BLOCK .. ".old; fi\n"
-    .. "sudo install -m 644 /tmp/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK .. "\n"
-    .. "if ! sudo caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/tmp/" .. BLOCK .. ".validate 2>&1; then\n"
-    .. "  tail -5 /tmp/" .. BLOCK .. ".validate\n"
-    .. "  if [ -f /tmp/" .. BLOCK .. ".old ]; then sudo install -m 644 /tmp/" .. BLOCK .. ".old /etc/caddy/sites/" .. BLOCK .. "; else sudo rm -f /etc/caddy/sites/" .. BLOCK .. "; fi\n"
+    .. "if [ -f /etc/caddy/sites/" .. BLOCK .. " ]; then sudo cp /etc/caddy/sites/" .. BLOCK .. " " .. STAGE .. "/" .. BLOCK .. ".old; else rm -f " .. STAGE .. "/" .. BLOCK .. ".old; fi\n"
+    .. "sudo install -m 644 " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK .. "\n"
+    .. "if ! sudo caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >" .. STAGE .. "/" .. BLOCK .. ".validate 2>&1; then\n"
+    .. "  tail -5 " .. STAGE .. "/" .. BLOCK .. ".validate\n"
+    .. "  if [ -f " .. STAGE .. "/" .. BLOCK .. ".old ]; then sudo install -m 644 " .. STAGE .. "/" .. BLOCK .. ".old /etc/caddy/sites/" .. BLOCK .. "; else sudo rm -f /etc/caddy/sites/" .. BLOCK .. "; fi\n"
     .. "  echo 'the new block did not validate; the old one is back'; exit 1\n"
     .. "fi\n"
     .. "sudo systemctl reload caddy\n"
-    .. "rm -f /tmp/" .. BLOCK .. ".old /tmp/" .. BLOCK .. ".validate")
+    .. "rm -f " .. STAGE .. "/" .. BLOCK .. ".old " .. STAGE .. "/" .. BLOCK .. ".validate")
   print("installed the site block")
 end
-on_prod("rm -f /tmp/" .. BLOCK)
+on_prod("rm -f " .. STAGE .. "/" .. BLOCK)
+
+on_prod("rm -rf " .. STAGE)
 
 -- 7. The front doors, over HTTPS (a new name's certificate takes Caddy a few
 -- seconds).
