@@ -88,7 +88,7 @@ say(roc_count >= roc_floor, "Roc expects: " .. roc_count .. " (floor " .. roc_fl
 say(zig_count >= zig_floor, "Zig tests: " .. zig_count .. " (floor " .. zig_floor .. ")")
 
 -- ── the end to end, a line a step ──
-local e = run({"zig", "build", "e2e", "--cache-dir", cache}, {cwd = ".", timeout_ms = build_ms, tail = 40})
+local e = run({"zig", "build", "e2e", "--cache-dir", cache}, {cwd = ".", timeout_ms = build_ms, tail = 80})
 local got = steps_of(e.out)
 for n = 1, e2e_steps do
   local s = get(got.by, "" .. n, nil)
@@ -151,7 +151,7 @@ function plant(what, file, old, new, step)
     return nil
   end
   replace(p, replace_once(was, old, new))
-  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 40})
+  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 80})
   replace(p, was)
   local s = get(steps_of(r.out).by, "" .. step, {ok = true, line = "no step line: " .. tail_of(r.out)})
   say(r.code ~= 0 and not s.ok, "plant: " .. what .. " is red at step " .. step .. " (exit " .. r.code .. "; " .. s.line .. ")")
@@ -176,7 +176,7 @@ function plant_out_of_turn()
     return nil
   end
   replace(p, replace_once(replace_once(was, inside, ".stream => sub.* = null,"), call, late))
-  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 40})
+  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 80})
   replace(p, was)
   local s = get(steps_of(r.out).by, "11", {ok = true, line = "no step line: " .. tail_of(r.out)})
   say(r.code ~= 0 and not s.ok, "plant: the subscribe after the turn, not in it, is red at step 11 (exit " .. r.code .. "; " .. s.line .. ")")
@@ -217,7 +217,7 @@ plant("another's agent named in `with=` (the owner never asked)",
   "app/ConvAccess.roc", "if Principal.answers_to(p) == human Ok({}) else Err(NotTheOwner(other))", "if Principal.answers_to(p) == human or True Ok({}) else Err(NotTheOwner(other))", 37)
 
 plant("a cross-origin POST accepted (Origin never compared)",
-  "app/Origin.roc", "[one] => if one == configured Allowed else CrossOrigin", "[_] => Allowed", 38)
+  "app/Origin.roc", "[one] => if one == configured Allowed else CrossOrigin", "[one] => if one == configured or True Allowed else CrossOrigin", 38)
 plant("a logout that leaves the session (its record never removed)",
   "app/SignIn.roc", "Ok(token_hash) => Store.remove_session!(token_hash)", "Ok(_) => Removed", 39)
 
