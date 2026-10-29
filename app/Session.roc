@@ -26,6 +26,7 @@
 ##   it was started for (the same generation), so an account retired and made
 ##   again with the same GitHub id never inherits the old one's sessions.
 ## Only humans sign in: an agent or a bot acts through API keys. Pure.
+import Cast
 import GitHubSignIn
 import Principal
 import SessionCodec
@@ -173,35 +174,6 @@ Session :: SessionCodec.Fields.{
 
 # ── tests
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-sid : U64 -> Principal.SessionId
-sid = |n|
-	match Principal.SessionId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "sid: a test's session id is not 0"
-	}
-
-## A test's token hash: every byte `b`.
-token : U8 -> Stored.SecretHash
-token = |b|
-	match Stored.SecretHash.from_bytes(List.repeat(b, 32)) {
-		Ok(h) => h
-		Err(NotAHash) => crash "token: 32 bytes are a hash"
-	}
-
 ## The session a stored line holds, through the codec, the store's way in.
 stored : Str -> Session
 stored = |text|
@@ -286,20 +258,20 @@ expect Session.load(
 # ── ADMITTING A REQUEST
 ann : Principal
 ann = Principal.Human({
-	id: gid(1),
+	id: Cast.gid(1),
 	login: "ann",
 	name: "Ann",
 	role: Member,
-	generation: gen(1),
+	generation: Cast.gen(1),
 })
 
 bea : Principal
 bea = Principal.Human({
-	id: gid(2),
+	id: Cast.gid(2),
 	login: "bea",
 	name: "Bea",
 	role: Member,
-	generation: gen(1),
+	generation: Cast.gen(1),
 })
 
 Admission : [
@@ -356,11 +328,11 @@ expect
 	match s1.admit({
 		accounts: [
 			Principal.Human({
-				id: gid(1),
+				id: Cast.gid(1),
 				login: "ann",
 				name: "Ann",
 				role: Admin,
-				generation: gen(1),
+				generation: Cast.gen(1),
 			}),
 		],
 		now: 100000,
@@ -374,11 +346,11 @@ expect
 # no copy's role is ever taken.
 ann_admin_copy : Principal
 ann_admin_copy = Principal.Human({
-	id: gid(1),
+	id: Cast.gid(1),
 	login: "ann",
 	name: "Ann",
 	role: Admin,
-	generation: gen(1),
+	generation: Cast.gen(1),
 })
 
 expect admitted(s1, { among: [ann_admin_copy, ann, bea], now: 100000 }) == Refused(NoSuchAccount)
@@ -388,11 +360,11 @@ expect admitted(s1, { among: [ann, ann_admin_copy], now: 100000 }) == Refused(No
 # made again with her GitHub id at 200: her old session admits nobody.
 ann_again : Principal
 ann_again = Principal.Human({
-	id: gid(1),
+	id: Cast.gid(1),
 	login: "ann",
 	name: "Ann",
 	role: Member,
-	generation: gen(2),
+	generation: Cast.gen(2),
 })
 
 expect admitted(s1, { among: [ann_again, bea], now: 100000 }) == Refused(NoSuchAccount)
@@ -401,7 +373,7 @@ expect admitted(s1, { among: [ann_again, bea], now: 100000 }) == Refused(NoSuchA
 # account was (or under a clock that went back) is a new generation all the
 # same, and her old session does not admit it.
 ann_same_second : Principal
-ann_same_second = Principal.Human({ id: gid(1), login: "ann", name: "Ann", role: Admin, generation: gen(3) })
+ann_same_second = Principal.Human({ id: Cast.gid(1), login: "ann", name: "Ann", role: Admin, generation: Cast.gen(3) })
 
 expect admitted(s1, { among: [ann_same_second, bea], now: 100000 }) == Refused(NoSuchAccount)
 
@@ -437,10 +409,10 @@ signed_in = |{ who, among, now }|
 		Ok(k) =>
 			match k.resolve({
 				accounts: among,
-				settings: { first_admin: Unnamed, barred: [], next_generation: gen(9) },
+				settings: { first_admin: Unnamed, barred: [], next_generation: Cast.gen(9) },
 				session: {
-					id: sid(9),
-					token_hash: token(1),
+					id: Cast.sid(9),
+					token_hash: Cast.token(1),
 				},
 				now,
 			}) {
@@ -455,7 +427,7 @@ signed_in = |{ who, among, now }|
 flowed : Session
 flowed = signed_in({ who: 1, among: [ann, bea], now: 100000 })
 
-expect flowed.fields() == { ..s1.fields(), id: sid(9) }
+expect flowed.fields() == { ..s1.fields(), id: Cast.sid(9) }
 expect admitted(flowed, { among: [ann], now: 100000 }) == Admitted({ principal: Principal.id(ann), write: Unchanged })
 expect admitted(flowed, { among: [ann_again], now: 100000 }) == Refused(NoSuchAccount)
 
@@ -476,16 +448,16 @@ sessions = [
 	}),
 ]
 
-expect Session.log_out_everywhere(sessions, gid(1)) == [sid(1), sid(2)]
-expect Session.log_out_everywhere(sessions, gid(2)) == [sid(3)]
-expect Session.log_out_everywhere(sessions, gid(9)) == []
-expect Session.log_out_everywhere([], gid(1)) == []
-expect Session.sweep(sessions, 100000) == [sid(2)]
-expect Session.sweep(sessions, 100000 + day - 1) == [sid(2)]
+expect Session.log_out_everywhere(sessions, Cast.gid(1)) == [Cast.sid(1), Cast.sid(2)]
+expect Session.log_out_everywhere(sessions, Cast.gid(2)) == [Cast.sid(3)]
+expect Session.log_out_everywhere(sessions, Cast.gid(9)) == []
+expect Session.log_out_everywhere([], Cast.gid(1)) == []
+expect Session.sweep(sessions, 100000) == [Cast.sid(2)]
+expect Session.sweep(sessions, 100000 + day - 1) == [Cast.sid(2)]
 expect Session.sweep(sessions, 100000 + day) == [
-	sid(1),
-	sid(2),
-	sid(3),
+	Cast.sid(1),
+	Cast.sid(2),
+	Cast.sid(3),
 ]
-expect Session.sweep(sessions, 99999) == [sid(1), sid(3)]
+expect Session.sweep(sessions, 99999) == [Cast.sid(1), Cast.sid(3)]
 expect Session.sweep([], 100000) == []
