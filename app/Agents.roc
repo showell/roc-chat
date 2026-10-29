@@ -390,7 +390,7 @@ made_by! = |maker, form| {
 			Ok(n) => n
 			Err(_) => []
 		}
-	match (Store.accounts!({}), SignIn.settings!({})) {
+	match (Store.load_accounts!({}), SignIn.load_settings!({})) {
 		(Ok(accounts), Ok(settings)) =>
 			match Agents.make({
 				maker,
@@ -470,7 +470,7 @@ minted! = |granter, { default_as, form }|
 			},
 		) => {
 			now = Host.read_time!({})
-			match (Store.accounts!({}), Store.next_key_id!({})) {
+			match (Store.load_accounts!({}), Store.load_next_key_id!({})) {
 				(Ok(accounts), Ok(id)) => {
 					secret = Host.random_bytes!(secret_bytes)
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
@@ -559,8 +559,8 @@ invited_by! = |granter, { default_as, form }|
 		) => {
 			now = Host.read_time!({})
 			match (
-				Store.accounts!({}),
-				Store.next_invite_id!({}),
+				Store.load_accounts!({}),
+				Store.load_next_invite_id!({}),
 				granter_hash!(granter),
 			) {
 				(
@@ -682,7 +682,7 @@ redeem! = |{}| {
 								match Stored.SecretHash.from_bytes(Host.hash!(code)) {
 									Err(NotAHash) => Chat.failed
 									Ok(hash) =>
-										match Store.invite!(hash) {
+										match Store.load_invite!(hash) {
 											Err(Failed) => Chat.failed
 											Err(Missing) | Err(Malformed) => invite_refused!({
 												invite: Unknown,
@@ -706,8 +706,8 @@ redeemed_now! : InviteCodec.Record(ConvAccess.ConvId), I64 => Chat.Answer
 redeemed_now! = |invite, now| {
 	known = Known({ id: invite.id, agent: invite.bound.id })
 	match (
-		Store.accounts!({}),
-		Store.next_key_id!({}),
+		Store.load_accounts!({}),
+		Store.load_next_key_id!({}),
 		stored_granter!(invite.by),
 	) {
 		(
@@ -759,13 +759,13 @@ stored_granter! : InviteCodec.By => Try([Found(Agents.Maker), Gone], [Failed])
 stored_granter! = |by|
 	match by {
 		Session(h) =>
-			match Store.session!(h) {
+			match Store.load_session!(h) {
 				Ok(line) => Ok(Found(Session(Session.load(line))))
 				Err(Missing) | Err(Malformed) => Ok(Gone)
 				Err(Failed) => Err(Failed)
 			}
 		Key(h) =>
-			match Store.key!(h) {
+			match Store.load_key!(h) {
 				Ok(entry) => Ok(Found(Key(entry.key)))
 				Err(Missing) | Err(Malformed) => Ok(Gone)
 				Err(Failed) => Err(Failed)
@@ -797,7 +797,7 @@ invite_refused! = |
 audit_invite! : AuditCodec.Invite => {}
 audit_invite! = |event|
 	match AuditCodec.Entry.of_invite(event) {
-		Ok(entry) => Store.audit!(entry)
+		Ok(entry) => Store.append_audit!(entry)
 		Err(ClockOutOfRange) => {}
 	}
 
@@ -815,7 +815,7 @@ list_invites! = |{}|
 				now,
 			},
 		) =>
-			match Store.invites!({}) {
+			match Store.load_invites!({}) {
 				Err(Failed) => Chat.failed
 				Ok(all) => {
 					live = List.keep_if(
@@ -870,7 +870,7 @@ revoke_invite! = |id|
 				now,
 			},
 		) =>
-			match Store.invites!({}) {
+			match Store.load_invites!({}) {
 				Err(Failed) => Chat.failed
 				Ok(all) =>
 					match List.find_first(
@@ -993,7 +993,7 @@ list! = |{}|
 				now: _,
 			},
 		) =>
-			match Store.keys!({}) {
+			match Store.load_keys!({}) {
 				Err(Failed) => Chat.failed
 				Ok(entries) => {
 					mine = List.keep_if(
@@ -1040,7 +1040,7 @@ revoke! = |id|
 				now: _,
 			},
 		) =>
-			match Store.keys!({}) {
+			match Store.load_keys!({}) {
 				Err(Failed) => Chat.failed
 				Ok(entries) =>
 					match List.find_first(
@@ -1077,7 +1077,7 @@ owner! = |{}| {
 		Key(_) => Err(Wire.refused(403, "keys are managed from a session"))
 		Session(session) => {
 			now = Host.read_time!({})
-			accounts = Store.accounts!({}).map_err(|_| Chat.failed)?
+			accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?
 			match session.admit({ accounts, now }) {
 				Refused(_) => Err(signed_out)
 				Admitted({ principal, write: _ }) => Ok({
@@ -1121,7 +1121,7 @@ audit_grant! = |
 			refusal,
 		}),
 	) {
-		Ok(entry) => Store.audit!(entry)
+		Ok(entry) => Store.append_audit!(entry)
 		Err(ClockOutOfRange) => {}
 	}
 }

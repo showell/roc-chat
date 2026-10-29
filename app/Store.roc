@@ -51,8 +51,8 @@ Store := [].{
 	Spent : [State, Pending]
 
 	## Every account; none before the first.
-	accounts! : {} => Try(List(Principal), [Failed])
-	accounts! = |{}| {
+	load_accounts! : {} => Try(List(Principal), [Failed])
+	load_accounts! = |{}| {
 		read = Host.read!(accounts_path)
 		match read.status {
 			Missing => Ok([])
@@ -67,8 +67,8 @@ Store := [].{
 	## (no settings, or a line without `agent=`) reads it as
 	## GitHubSignIn.agent_id_after the accounts, so today's data stays
 	## valid; the next save writes it.
-	settings! : [Unnamed, Named(Principal.GitHubId)] => Try(GitHubSignIn.Settings, [Failed])
-	settings! = |first_admin| {
+	load_settings! : [Unnamed, Named(Principal.GitHubId)] => Try(GitHubSignIn.Settings, [Failed])
+	load_settings! = |first_admin| {
 		settings_read = Host.read!(settings_path)
 		counters =
 			match settings_read.status {
@@ -85,7 +85,7 @@ Store := [].{
 			match counters.agent {
 				Kept(id) => Ok(id)
 				Unkept => {
-					accounts = Store.accounts!({})?
+					accounts = Store.load_accounts!({})?
 					GitHubSignIn.agent_id_after(accounts).map_err(|_| Failed)
 				}
 			}
@@ -105,8 +105,8 @@ Store := [].{
 	}
 
 	## Whether `nonce` was spent before, in its set.
-	nonce_use! : Store.Spent, List(U8) => Try([FirstUse, UsedBefore], [Failed])
-	nonce_use! = |set, nonce| {
+	load_nonce_use! : Store.Spent, List(U8) => Try([FirstUse, UsedBefore], [Failed])
+	load_nonce_use! = |set, nonce| {
 		read = Host.read!(spent_path(set, nonce))
 		match read.status {
 			Missing => Ok(FirstUse)
@@ -116,13 +116,13 @@ Store := [].{
 	}
 
 	## `nonce` spent, in its set: a second use is refused from now on.
-	spend! : Store.Spent, List(U8) => [Failed, Written]
-	spend! = |set, nonce| Host.write!(spent_path(set, nonce), [])
+	spend_nonce! : Store.Spent, List(U8) => [Failed, Written]
+	spend_nonce! = |set, nonce| Host.write!(spent_path(set, nonce), [])
 
 	## The session whose secret hashes to `hash`: its stored line, nothing
 	## there, or a line that does not read (`Malformed`, which a caller
 	## takes for no session).
-	session! : Stored.SecretHash => Try(
+	load_session! : Stored.SecretHash => Try(
 		SessionCodec.Line,
 		[
 			Missing,
@@ -130,7 +130,7 @@ Store := [].{
 			Failed,
 		],
 	)
-	session! = |hash| {
+	load_session! = |hash| {
 		read = Host.read!(session_path(hash))
 		match read.status {
 			Failed => Err(Failed)
@@ -188,7 +188,7 @@ Store := [].{
 	## **THE KEY WHOSE SECRET HASHES TO `hash`**: its stored entry, nothing
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no key).
-	key! : Stored.SecretHash => Try(
+	load_key! : Stored.SecretHash => Try(
 		ConvKey.Entry,
 		[
 			Missing,
@@ -196,7 +196,7 @@ Store := [].{
 			Failed,
 		],
 	)
-	key! = |hash| {
+	load_key! = |hash| {
 		read = Host.read!(key_path(hash))
 		match read.status {
 			Failed => Err(Failed)
@@ -207,21 +207,21 @@ Store := [].{
 
 	## **EVERY KEY THAT READS**, in no order; a line that does not read is
 	## left out (one damaged key fails only itself).
-	keys! : {} => Try(List(ConvKey.Entry), [Failed])
-	keys! = |{}| {
+	load_keys! : {} => Try(List(ConvKey.Entry), [Failed])
+	load_keys! = |{}| {
 		listed = Host.list!(keys_path)
 		match listed.status {
 			Missing => Ok([])
 			Failed => Err(Failed)
-			Found => kept_keys!(listed.entries, [])
+			Found => collect_keys!(listed.entries, [])
 		}
 	}
 
 	## **THE NEXT KEY'S PUBLIC ID**: one past the count of those stored. A
 	## key is never removed (a revoked one stays, revoked), so no id is
 	## given twice.
-	next_key_id! : {} => Try(Principal.KeyId, [Failed])
-	next_key_id! = |{}| {
+	load_next_key_id! : {} => Try(Principal.KeyId, [Failed])
+	load_next_key_id! = |{}| {
 		listed = Host.list!(keys_path)
 		count =
 			match listed.status {
@@ -239,7 +239,7 @@ Store := [].{
 	## **THE INVITE WHOSE CODE HASHES TO `hash`**: its record, nothing
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no invite).
-	invite! : Stored.SecretHash => Try(
+	load_invite! : Stored.SecretHash => Try(
 		InviteCodec.Record(ConvAccess.ConvId),
 		[
 			Missing,
@@ -247,7 +247,7 @@ Store := [].{
 			Failed,
 		],
 	)
-	invite! = |hash| {
+	load_invite! = |hash| {
 		read = Host.read!(invite_path(hash))
 		match read.status {
 			Failed => Err(Failed)
@@ -261,21 +261,21 @@ Store := [].{
 
 	## **EVERY INVITE THAT READS**, in no order; a line that does not read
 	## is left out, as a key's is.
-	invites! : {} => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
-	invites! = |{}| {
+	load_invites! : {} => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+	load_invites! = |{}| {
 		listed = Host.list!(invites_path)
 		match listed.status {
 			Missing => Ok([])
 			Failed => Err(Failed)
-			Found => kept_invites!(listed.entries, [])
+			Found => collect_invites!(listed.entries, [])
 		}
 	}
 
 	## **THE NEXT INVITE'S PUBLIC ID**: one past the count of those stored.
 	## An invite is never removed (a spent or revoked one stays), so no id
 	## is given twice.
-	next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
-	next_invite_id! = |{}| {
+	load_next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
+	load_next_invite_id! = |{}| {
 		listed = Host.list!(invites_path)
 		count =
 			match listed.status {
@@ -294,8 +294,8 @@ Store := [].{
 	)
 
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
-	next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
-	next_conversation_id! = |{}| {
+	load_next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
+	load_next_conversation_id! = |{}| {
 		listed = Host.list!(conversations_path)
 		count =
 			match listed.status {
@@ -308,8 +308,8 @@ Store := [].{
 
 	## The conversation `id`: `Missing` when there is none, and `Failed`
 	## when its record will not read (a store the chat did not write).
-	conversation! : ConvAccess.ConvId => Try(ConvAccess.Conv, [Missing, Failed])
-	conversation! = |id| {
+	load_conversation! : ConvAccess.ConvId => Try(ConvAccess.Conv, [Missing, Failed])
+	load_conversation! = |id| {
 		read = Host.read!(conversation_path(id))
 		match read.status {
 			Missing => Err(Missing)
@@ -325,19 +325,19 @@ Store := [].{
 	## **EVERY CONVERSATION STORED**, oldest first. `Failed` when the folder
 	## or a record will not read, or an id up to the count is missing (a
 	## store the chat did not write).
-	conversations! : {} => Try(List(ConvAccess.Conv), [Failed])
-	conversations! = |{}| {
+	load_conversations! : {} => Try(List(ConvAccess.Conv), [Failed])
+	load_conversations! = |{}| {
 		listed = Host.list!(conversations_path)
 		match listed.status {
 			Missing => Ok([])
 			Failed => Err(Failed)
 			Found => {
-				# Ids run 1 to the count, as `next_conversation_id!` gives them.
+				# Ids run 1 to the count, as `load_next_conversation_id!` gives them.
 				var $convs = []
 				var $n = 1
 				while $n <= List.len(listed.entries) {
 					id = ConvAccess.ConvId.from_u64($n).map_err(|_| Failed)?
-					$convs = List.append($convs, Store.conversation!(id).map_err(|_| Failed)?)
+					$convs = List.append($convs, Store.load_conversation!(id).map_err(|_| Failed)?)
 					$n = $n + 1
 				}
 				Ok($convs)
@@ -355,8 +355,8 @@ Store := [].{
 	## **A CONVERSATION'S MESSAGES**, oldest first; none before the first.
 	## `Failed` when the transcript will not read whole (a torn append, a
 	## line the chat did not write).
-	transcript! : ConvAccess.ConvId => Try(List(MessageCodec.Fields), [Failed])
-	transcript! = |id| {
+	load_transcript! : ConvAccess.ConvId => Try(List(MessageCodec.Fields), [Failed])
+	load_transcript! = |id| {
 		read = Host.read!(transcript_path(id))
 		match read.status {
 			Missing => Ok([])
@@ -382,8 +382,8 @@ Store := [].{
 
 	## An audit entry appended. The audit is a record of what happened, not
 	## the request's work, so its failure is the host's to log alone.
-	audit! : AuditCodec.Entry => {}
-	audit! = |entry| {
+	append_audit! : AuditCodec.Entry => {}
+	append_audit! = |entry| {
 		_ = Host.append!(audit_path, AuditCodec.encode(entry))
 		{}
 	}
@@ -431,7 +431,7 @@ invite_path = |h| Str.to_utf8("auth/invites/${Stored.hash_text(h)}")
 
 ## The invites the listed files hold, after `kept`; a file that does not
 ## read as one is left out.
-kept_invites! : List(
+collect_invites! : List(
 	{
 		kind : [
 			Dir,
@@ -445,7 +445,7 @@ List(InviteCodec.Record(ConvAccess.ConvId)) => Try(
 	List(InviteCodec.Record(ConvAccess.ConvId)),
 	[Failed],
 )
-kept_invites! = |entries, kept|
+collect_invites! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
 		[entry, .. as rest] => {
@@ -458,11 +458,11 @@ kept_invites! = |entries, kept|
 			)
 			match read.status {
 				Failed => Err(Failed)
-				Missing => kept_invites!(rest, kept)
+				Missing => collect_invites!(rest, kept)
 				Found =>
 					match InviteCodec.decode(read.bytes, ConvAccess.ConvId.from_u64) {
-						Ok(r) => kept_invites!(rest, List.append(kept, r))
-						Err(_) => kept_invites!(rest, kept)
+						Ok(r) => collect_invites!(rest, List.append(kept, r))
+						Err(_) => collect_invites!(rest, kept)
 					}
 			}
 		}
@@ -470,7 +470,7 @@ kept_invites! = |entries, kept|
 
 ## The keys the listed files hold, after `kept`; a file that does not read
 ## as a key is left out.
-kept_keys! : List(
+collect_keys! : List(
 	{
 		kind : [
 			Dir,
@@ -481,7 +481,7 @@ kept_keys! : List(
 	},
 ),
 List(ConvKey.Entry) => Try(List(ConvKey.Entry), [Failed])
-kept_keys! = |entries, kept|
+collect_keys! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
 		[entry, .. as rest] => {
@@ -494,11 +494,11 @@ kept_keys! = |entries, kept|
 			)
 			match read.status {
 				Failed => Err(Failed)
-				Missing => kept_keys!(rest, kept)
+				Missing => collect_keys!(rest, kept)
 				Found =>
 					match ConvKey.decode(read.bytes) {
-						Ok(e) => kept_keys!(rest, List.append(kept, e))
-						Err(_) => kept_keys!(rest, kept)
+						Ok(e) => collect_keys!(rest, List.append(kept, e))
+						Err(_) => collect_keys!(rest, kept)
 					}
 			}
 		}

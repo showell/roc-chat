@@ -88,7 +88,7 @@ SignIn := [].{
 						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 							Err(NotAHash) => Err(Failed)
 							Ok(token_hash) =>
-								match Store.session!(token_hash) {
+								match Store.load_session!(token_hash) {
 									Err(Failed) => Err(Failed)
 									Err(Missing) => Ok(NoSession)
 									Err(Malformed) => Ok(NoSession)
@@ -100,8 +100,8 @@ SignIn := [].{
 
 	## **THE SETTINGS NOW**: the store's, with the first admin the config
 	## names. What a sign-in and an agent's making decide on.
-	settings! : {} => Try(GitHubSignIn.Settings, [Failed])
-	settings! = |{}| Store.settings!(first_admin!({})?)
+	load_settings! : {} => Try(GitHubSignIn.Settings, [Failed])
+	load_settings! = |{}| Store.load_settings!(load_first_admin!({})?)
 
 	## **/me**: the session this browser's cookie names, admitted or not
 	## (Session.admit), its `last seen` written when stale.
@@ -117,12 +117,12 @@ SignIn := [].{
 						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 							Err(NotAHash) => Chat.failed
 							Ok(token_hash) =>
-								match Store.session!(token_hash) {
+								match Store.load_session!(token_hash) {
 									Err(Failed) => Chat.failed
 									Err(Missing) => not_signed_in
 									Err(Malformed) => not_signed_in
 									Ok(line) =>
-										match Store.accounts!({}) {
+										match Store.load_accounts!({}) {
 											Err(Failed) => Chat.failed
 											Ok(accounts) => admitted!(
 												Session.load(line),
@@ -184,7 +184,7 @@ came_back! = |req| {
 	came = GitHubSignIn.CameBack.came_back({ state, answer })?
 	cookies = Host.read_header!(Str.to_utf8("cookie"))
 	cookie = SignInWeb.state_cookie(SignInWeb.cookie(cookies, "state"))
-	match Store.nonce_use!(State, came.nonce()) {
+	match Store.load_nonce_use!(State, came.nonce()) {
 		Err(Failed) => Ok(Chat.failed)
 		Ok(nonce_use) => {
 			checked = came.check({
@@ -195,7 +195,7 @@ came_back! = |req| {
 			match Chat.exchanged(req) {
 				NotAsked => Ok(Chat.exchange(checked.code()))
 				said =>
-					match Store.spend!(State, came.nonce()) {
+					match Store.spend_nonce!(State, came.nonce()) {
 						Failed => Ok(Chat.failed)
 						Written => {
 							github =
@@ -274,7 +274,7 @@ named! = |{}| {
 					Ok(n) => n
 					Err(_) => []
 				}
-			match (Store.nonce_use!(Pending, resumed.nonce()), facts!({})) {
+			match (Store.load_nonce_use!(Pending, resumed.nonce()), facts!({})) {
 				(Ok(pending_use), Ok(f)) =>
 					match resumed.name({
 						name,
@@ -287,7 +287,7 @@ named! = |{}| {
 						Refused(why) => Err(why)
 						NameRefused(problem) => Ok(name_form(Err(problem)))
 						Created({ admission, steps }) =>
-							match Store.spend!(Pending, resumed.nonce()) {
+							match Store.spend_nonce!(Pending, resumed.nonce()) {
 								Failed => Ok(Chat.failed)
 								Written => Ok(signed_in!(f, { admission, steps }))
 							}
@@ -361,7 +361,7 @@ refused_or! = |decided|
 				github: Unknown,
 				refusal: why,
 			}) {
-				Ok(entry) => Store.audit!(entry)
+				Ok(entry) => Store.append_audit!(entry)
 				Err(ClockOutOfRange) => {}
 			}
 			Chat.respond(
@@ -439,8 +439,8 @@ Facts : {
 
 facts! : {} => Try(Facts, [Failed])
 facts! = |{}| {
-	accounts = Store.accounts!({})?
-	settings = SignIn.settings!({})?
+	accounts = Store.load_accounts!({})?
+	settings = SignIn.load_settings!({})?
 	secret = Host.random_bytes!(nonce_bytes)
 	id = Principal.SessionId.from_u64(SignInWeb.u64_of(Host.random_bytes!(8))).map_err(|_| Failed)?
 	token_hash = Stored.SecretHash.from_bytes(Host.hash!(secret)).map_err(|_| Failed)?
@@ -453,8 +453,8 @@ facts! = |{}| {
 }
 
 ## The first admin the config names, if it names one.
-first_admin! : {} => Try([Unnamed, Named(Principal.GitHubId)], [Failed])
-first_admin! = |{}| {
+load_first_admin! : {} => Try([Unnamed, Named(Principal.GitHubId)], [Failed])
+load_first_admin! = |{}| {
 	admin = Host.read_config!(BootstrapAdmin)
 	if admin == [] {
 		Ok(Unnamed)

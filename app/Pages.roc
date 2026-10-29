@@ -203,14 +203,14 @@ conversation! = |
 		id,
 	},
 |
-	match Store.conversation!(id) {
+	match Store.load_conversation!(id) {
 		Err(Failed) => Chat.failed
 		Err(Missing) => no_such
 		Ok(conv) =>
 			if !ConvAccess.can_see(viewer, { conv, accounts }) {
 				no_such
 			} else {
-				match Store.transcript!(id) {
+				match Store.load_transcript!(id) {
 					Err(Failed) => Chat.failed
 					Ok(messages) =>
 						page({

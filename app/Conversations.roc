@@ -82,7 +82,7 @@ Conversations := [].{
 		[Failed],
 	)
 	mine! = |viewer, accounts| {
-		all = Store.conversations!({})?
+		all = Store.load_conversations!({})?
 		Ok(List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
 	}
 
@@ -168,7 +168,7 @@ start! = |{}| {
 									"`with` names the others, as `human:2,agent:7`",
 								)
 								Ok(others) =>
-									match Store.next_conversation_id!({}) {
+									match Store.load_next_conversation_id!({}) {
 										Err(Failed) => Chat.failed
 										Ok(id) =>
 											match ConvAccess.Conv.start({
@@ -350,7 +350,7 @@ asked! = |id, use| {
 	match viewer.who() {
 		SignedOut => Err(signed_out)
 		Session(_) | Key(_) =>
-			match Store.conversation!(id) {
+			match Store.load_conversation!(id) {
 				Err(Failed) => Err(Chat.failed)
 				Err(Missing) => Err(no_such)
 				Ok(conv) => Ok({
@@ -389,7 +389,7 @@ read! = |id|
 	match seen!(id) {
 		Err(answer) => answer
 		Ok(_) =>
-			match Store.transcript!(id) {
+			match Store.load_transcript!(id) {
 				Err(Failed) => Chat.failed
 				Ok(messages) =>
 					json(
@@ -448,7 +448,7 @@ post! = |id| {
 								SignedOut => crash "Conversations.post!: `asked!` let nobody signed out through"
 								Session(b) | Key(b) => b.id
 							}
-						match Store.transcript!(id) {
+						match Store.load_transcript!(id) {
 							Err(Failed) => Chat.failed
 							Ok(messages) => {
 								message = {
@@ -483,7 +483,7 @@ stream! = |id|
 	match seen!(id) {
 		Err(answer) => answer
 		Ok(_) =>
-			match Store.transcript!(id) {
+			match Store.load_transcript!(id) {
 				Err(Failed) => Chat.failed
 				Ok(messages) => {
 					after = last_seen_id(Host.read_header!(Str.to_utf8("last-event-id")))

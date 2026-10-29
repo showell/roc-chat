@@ -1,7 +1,7 @@
 ## **WHO IS ASKING: A SESSION'S COOKIE OR AN API KEY, NEVER BOTH.** A
 ## browser comes with its session cookie (SignIn.cookie_session!); an agent
 ## with `Authorization: Bearer <secret>`, the secret a mint showed once,
-## its hash looked up in the store (Store.key!) and the key loaded through
+## its hash looked up in the store (Store.load_key!) and the key loaded through
 ## ConvKey. A request with both is refused (a 400): which one counts is
 ## never guessed. Every decision is the core's: a session is admitted by
 ## Access.Viewer.from_session, a key stands by Access.Viewer.from_key, and
@@ -75,7 +75,7 @@ Credentials := [].{
 						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 							Err(NotAHash) => Err(Chat.failed)
 							Ok(hash) =>
-								match Store.key!(hash) {
+								match Store.load_key!(hash) {
 									Err(Failed) => Err(Chat.failed)
 									Err(Missing) | Err(Malformed) => Err(no_such_key)
 									Ok(entry) => Ok(Key(entry.key))
@@ -92,7 +92,7 @@ Credentials := [].{
 	viewer! = |use| {
 		credential = presented!({})?
 		now = Host.read_time!({})
-		accounts = Store.accounts!({}).map_err(|_| Chat.failed)?
+		accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?
 		signed_out = Ok({
 			viewer: Access.Viewer.signed_out({}),
 			accounts,
@@ -175,7 +175,7 @@ Credentials := [].{
 				refusal,
 			}),
 		) {
-			Ok(entry) => Store.audit!(entry)
+			Ok(entry) => Store.append_audit!(entry)
 			Err(ClockOutOfRange) => {}
 		}
 	}

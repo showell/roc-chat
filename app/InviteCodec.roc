@@ -40,7 +40,7 @@ InviteCodec := [].{
 	}
 
 	## **WHO ASKED FOR AN INVITE**: the granter, by the hash the store
-	## keeps it by (Store.session!, Store.key!).
+	## keeps it by (Store.load_session!, Store.load_key!).
 	By : [Session(Stored.SecretHash), Key(Stored.SecretHash)]
 
 	## Where an invite is: redeemable, redeemed once, or revoked.
