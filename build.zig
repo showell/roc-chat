@@ -36,6 +36,17 @@ pub fn build(b: *std.Build) void {
     serve.step.dependOn(b.getInstallStep());
     b.step("serve", "Serve the chat from dev/ (dev/config.zon: http://127.0.0.1:9480, its data in dev/data)").dependOn(&serve.step);
 
+    // **A MEASUREMENT, NOT A TEST**: what a sync per write costs on this
+    // disk (host/files_bench.zig), never in `test`.
+    const bench = b.addRunArtifact(b.addExecutable(.{ .name = "files-bench", .root_module = b.createModule(.{
+        .root_source_file = b.path("host/files_bench.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) }));
+    bench.setCwd(b.path("."));
+    bench.has_side_effects = true;
+    b.step("bench-files", "Time write! and append! with and without their syncs, on this disk").dependOn(&bench.step);
+
     // **ONE COMMAND RUNS EVERY TEST**: the Roc's own (`roc test`), then each
     // host test with the app's archive linked.
     const tests = b.step("test", "Every test: roc test, the host's tests through the Roc app, the glue check, the auth and GitHub tests");
