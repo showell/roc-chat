@@ -313,10 +313,23 @@ const Listener = struct {
         r.toss(bytes.len);
     }
 
-    /// Reads until the server ends the stream: whether it ended (false
-    /// when a read waited past `wait_ms` first).
+    /// Reads until the server ends the stream: whether it ended within
+    /// `wait_ms`. **EACH READ WAITS ON `poll` FIRST**, never on the socket's
+    /// receive timeout: std's Io takes that timeout's EAGAIN for a
+    /// programmer's bug and panics, so a stream that outlives the wait would
+    /// abort the run instead of failing its step.
     fn ends(l: *Listener) bool {
-        while (true) l.more() catch |e| return e == error.EndOfStream;
+        const t0 = Io.Clock.now(.awake, io);
+        while (true) {
+            if (l.reader.interface.bufferedLen() == 0) {
+                const left = wait_ms - t0.untilNow(io, .awake).toMilliseconds();
+                if (left <= 0) return false;
+                var fds = [_]std.posix.pollfd{.{ .fd = l.stream.socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
+                const ready = std.posix.poll(&fds, @intCast(left)) catch return false;
+                if (ready == 0) return false;
+            }
+            l.more() catch |e| return e == error.EndOfStream;
+        }
     }
 
     fn close(l: *Listener) void {
