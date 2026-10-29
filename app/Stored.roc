@@ -143,7 +143,7 @@ Stored := [].{
 						match Bytes.strip_prefix(before, Str.to_utf8("${kind} ")) {
 							Err(NoMatch) => Err(WrongRecord)
 							Ok(rest) => {
-								version_end = Bytes.count_while(rest, { keep: |c| c != ' ', at: 0 })
+								version_end = Bytes.count_while(rest, |c| c != ' ')
 								if List.take_first(
 									rest,
 									version_end,
@@ -168,7 +168,7 @@ Stored := [].{
 			match Bytes.strip_prefix(rest, Str.to_utf8(" ${name}=")) {
 				Err(NoMatch) => Err(MissingField(name))
 				Ok(after) => {
-					end = Bytes.count_while(after, { keep: |c| c != ' ', at: 0 })
+					end = Bytes.count_while(after, |c| c != ' ')
 					Ok({
 						value: List.take_first(after, end),
 						rest: Stored.Reader.(List.drop_first(after, end)),

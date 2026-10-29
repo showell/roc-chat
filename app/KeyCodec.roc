@@ -106,11 +106,12 @@ KeyCodec := [].{
 	admin_text : [Off, On] -> Str
 	admin_text = |s| spell_switch(s)
 
-	admin_from : List(U8), Str -> Try([Off, On], Stored.Problem)
-	admin_from = |value, name| Stored.word(
+	## The switch a stored `admin` field's value spells.
+	admin_from : List(U8) -> Try([Off, On], Stored.Problem)
+	admin_from = |value| Stored.word(
 		value,
 		{
-			name,
+			name: "admin",
 			all: all_switches,
 			spell: spell_switch,
 		},
@@ -182,14 +183,7 @@ KeyCodec := [].{
 		post_field = read_field.rest.field("post")?
 		post = reach_from_text(post_field.value, { name: "post", make })?
 		admin_field = post_field.rest.field("admin")?
-		admin = Stored.word(
-			admin_field.value,
-			{
-				name: "admin",
-				all: all_switches,
-				spell: spell_switch,
-			},
-		)?
+		admin = KeyCodec.admin_from(admin_field.value)?
 		admin_field.rest.close()?
 		match (acts_as, admin) {
 			(Bot(_), On) => Err(AdminForBot)

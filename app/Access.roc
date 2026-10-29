@@ -257,14 +257,14 @@ is_reached = |part, id|
 	}
 
 # ── tests
-## A test's human: GitHub id `n`, its role, its account generation `g`.
-person : U64, { role : Principal.Role, g : U64 } -> Principal
-person = |n, { role, g }|
+## A test's human: GitHub id `n`, a member, its account generation `g`.
+person : U64, { g : U64 } -> Principal
+person = |n, { g }|
 	Principal.Human({
 		id: Cast.gid(n),
 		login: "h${n.to_str()}",
 		name: "H${n.to_str()}",
-		role,
+		role: Member,
 		generation: Cast.gen(g),
 	})
 
@@ -368,13 +368,13 @@ everywhere = |{}| {
 # holder, a stranger, the agent holder, its owner, a stranger's agent, and
 # a stranger's bot.
 holder : Principal
-holder = person(1, { role: Member, g: 1 })
+holder = person(1, { g: 1 })
 
 stranger : Principal
-stranger = person(2, { role: Member, g: 1 })
+stranger = person(2, { g: 1 })
 
 owner : Principal
-owner = person(3, { role: Member, g: 1 })
+owner = person(3, { g: 1 })
 
 agent_holder : Principal
 agent_holder = Cast.owned(Agent, { id: 1, owner: 3 })
@@ -468,7 +468,7 @@ expect posts_file(In(stranger), agents_file) == ReadOnly
 # (generation 2) is no participant of the file the old account held.
 holder_again : List(Principal)
 holder_again = [
-	person(1, { role: Member, g: 2 }),
+	person(1, { g: 2 }),
 	stranger,
 	owner,
 	agent_holder,
@@ -476,8 +476,8 @@ holder_again = [
 	other_bot,
 ]
 
-expect !Access.can_see(viewer_of(holder_again, person(1, { role: Member, g: 2 })), private_file)
-expect !Access.can_post(viewer_of(holder_again, person(1, { role: Member, g: 2 })), private_file)
+expect !Access.can_see(viewer_of(holder_again, person(1, { g: 2 })), private_file)
+expect !Access.can_post(viewer_of(holder_again, person(1, { g: 2 })), private_file)
 
 # **NO VIEWER WITHOUT A CREDENTIAL** (round three's design point): an idle
 # session, a session whose account is gone, and a revoked key mint none.
@@ -778,7 +778,7 @@ expect decided_among(
 	Read(res_c),
 	[
 		Cast.boss,
-		person(2, { role: Member, g: 2 }),
+		person(2, { g: 2 }),
 		Cast.boss_agent,
 		Cast.boss_bot,
 		Cast.ann_agent,

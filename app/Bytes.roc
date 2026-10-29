@@ -30,24 +30,13 @@ Bytes := [].{
 		),
 	) else Err(NoMatch)
 
-	## How many bytes from `i` on keep `keep`.
-	count_while : List(U8), { keep : (U8 -> Bool), at : U64 } -> U64
-	count_while = |s, { keep, at: i }| match List.get(s, i) {
-		Ok(c) if keep(c) => count_while(s, { keep, at: i + 1 })
-		_ => i
-	}
+	## How many bytes from the start keep `keep`.
+	count_while : List(U8), (U8 -> Bool) -> U64
+	count_while = |s, keep| count_while_from(s, { keep, at: 0 })
 
 	## How many bytes from the end keep `keep`.
-	count_back : List(U8), { keep : (U8 -> Bool), kept : U64 } -> U64
-	count_back = |s, { keep, kept: n }|
-		if n >= List.len(s) {
-			n
-		} else {
-			match List.get(s, List.len(s) - 1 - n) {
-				Ok(c) if keep(c) => count_back(s, { keep, kept: n + 1 })
-				_ => n
-			}
-		}
+	count_back : List(U8), (U8 -> Bool) -> U64
+	count_back = |s, keep| count_back_from(s, { keep, kept: 0 })
 
 	## The bytes in `set` off both ends.
 	trim : List(U8), List(U8) -> List(U8)
@@ -55,14 +44,33 @@ Bytes := [].{
 		in_set = |c| List.contains(set, c)
 		front = List.drop_first(
 			s,
-			count_while(s, { keep: in_set, at: 0 }),
+			count_while(s, in_set),
 		)
 		List.drop_last(
 			front,
-			count_back(front, { keep: in_set, kept: 0 }),
+			count_back(front, in_set),
 		)
 	}
 }
+
+## How many bytes from `i` on keep `keep`, plus `i`.
+count_while_from : List(U8), { keep : (U8 -> Bool), at : U64 } -> U64
+count_while_from = |s, { keep, at: i }| match List.get(s, i) {
+	Ok(c) if keep(c) => count_while_from(s, { keep, at: i + 1 })
+	_ => i
+}
+
+## How many bytes from the end, past the last `kept`, keep `keep`, plus `kept`.
+count_back_from : List(U8), { keep : (U8 -> Bool), kept : U64 } -> U64
+count_back_from = |s, { keep, kept: n }|
+	if n >= List.len(s) {
+		n
+	} else {
+		match List.get(s, List.len(s) - 1 - n) {
+			Ok(c) if keep(c) => count_back_from(s, { keep, kept: n + 1 })
+			_ => n
+		}
+	}
 
 expect Bytes.find(Str.to_utf8("a=b=c"), { needle: Str.to_utf8("="), at: 2 }) == Ok(3)
 expect Bytes.find(Str.to_utf8("abc"), { needle: Str.to_utf8("cd"), at: 0 }) == Err(NotFound)

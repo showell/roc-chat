@@ -265,8 +265,8 @@ is_invisible = |point|
 trim_spaces : List(U8) -> List(U8)
 trim_spaces = |bytes| {
 	is_space = |c| c == ' '
-	front = List.drop_first(bytes, Bytes.count_while(bytes, { keep: is_space, at: 0 }))
-	List.drop_last(front, Bytes.count_back(front, { keep: is_space, kept: 0 }))
+	front = List.drop_first(bytes, Bytes.count_while(bytes, is_space))
+	List.drop_last(front, Bytes.count_back(front, is_space))
 }
 
 ## A C1 control's two bytes are somewhere in `bytes`.

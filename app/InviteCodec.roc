@@ -157,7 +157,7 @@ InviteCodec := [].{
 		post_field = read_field.rest.field("post")?
 		post = KeyCodec.reach_from(post_field.value, { name: "post", make })?
 		admin_field = post_field.rest.field("admin")?
-		admin = KeyCodec.admin_from(admin_field.value, "admin")?
+		admin = KeyCodec.admin_from(admin_field.value)?
 		admin_field.rest.close()?
 		match invited {
 			Human(_) => Err(BadValue("for"))

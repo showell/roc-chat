@@ -497,18 +497,15 @@ viewer_in = |who, among|
 		NoViewer => crash "viewer_in: a test's viewer is minted"
 	}
 
-cid : U64 -> ConvAccess.ConvId
-cid = |n|
-	match ConvAccess.ConvId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "cid: a test's conversation id is not 0"
-	}
+## The one conversation id the tests use.
+first_conv_id : ConvAccess.ConvId
+first_conv_id = ConvAccess.ConvId.from_u64(1) ?? crash "first_conv_id: not 0"
 
 ## A conversation among the cast.
 among : List(Who) -> ConvAccess.Conv
 among = |people|
 	match ConvAccess.Conv.start({
-		id: cid(1),
+		id: first_conv_id,
 		participants: List.map(people, id_of),
 		accounts,
 	}) {
@@ -689,7 +686,7 @@ refused = |conv, who|
 
 nobody : Try(ConvAccess.ConvId, [NoParticipants, NoSuchParticipant(Principal.Id)])
 nobody = ConvAccess.Conv.start({
-	id: cid(1),
+	id: first_conv_id,
 	participants: [],
 	accounts,
 }).map_ok(ConvAccess.Conv.id)
@@ -703,12 +700,12 @@ expect refused(hb_none, Dee) == Err(NotInvolved)
 expect nobody == Err(NoParticipants)
 # A participant no account holds, or whose owner none does, starts nothing.
 expect ConvAccess.Conv.start({
-	id: cid(1),
+	id: first_conv_id,
 	participants: [id_of(Ann), Principal.Id.Agent(Cast.aid(99))],
 	accounts,
 }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(Principal.Id.Agent(Cast.aid(99))))
 expect ConvAccess.Conv.start({
-	id: cid(1),
+	id: first_conv_id,
 	participants: [id_of(AnnAgent)],
 	accounts: without(Ann),
 }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(id_of(AnnAgent)))

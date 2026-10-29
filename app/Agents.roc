@@ -1226,11 +1226,11 @@ session_of = |who|
 	}
 
 ## The settings after the cast's accounts (every one of generation 1).
-settings_at : U64 -> GitHubSignIn.Settings
-settings_at = |next| {
+settings_after_cast : GitHubSignIn.Settings
+settings_after_cast = {
 	first_admin: Unnamed,
 	barred: [],
-	next_generation: Cast.gen(next),
+	next_generation: Cast.gen(2),
 	next_agent_id: Cast.aid(4),
 }
 
@@ -1299,7 +1299,7 @@ made_by = |who, name| Agents.make({
 	maker: Session(session_of(who)),
 	name: Str.to_utf8(name),
 	accounts: Cast.accounts,
-	settings: settings_at(2),
+	settings: settings_after_cast,
 	now: 50,
 })
 
@@ -1335,7 +1335,7 @@ applied_to_cast = |made|
 	match made {
 		Made({ agent: _, steps }) => GitHubSignIn.applied(
 			steps,
-			{ accounts: Cast.accounts, settings: settings_at(2) },
+			{ accounts: Cast.accounts, settings: settings_after_cast },
 		)
 		_ => crash "applied_to_cast: a test's agent is made"
 	}
@@ -1368,7 +1368,7 @@ expect said(
 		maker: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: after_first.accounts,
-		settings: settings_at(2),
+		settings: settings_after_cast,
 		now: 50,
 	}),
 ) == Stuck(StaleGeneration)
@@ -1386,7 +1386,7 @@ expect said(
 		maker: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: Cast.accounts,
-		settings: { ..settings_at(2), next_agent_id: Cast.aid(3) },
+		settings: { ..settings_after_cast, next_agent_id: Cast.aid(3) },
 		now: 50,
 	}),
 ) == Stuck(StaleAgentId)
@@ -1442,7 +1442,7 @@ expect said(
 		maker: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
-		settings: settings_at(2),
+		settings: settings_after_cast,
 		now: Session.idle_secs,
 	}),
 ) == Refused(SessionExpired)
@@ -1451,7 +1451,7 @@ expect said(
 		maker: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.without_ann,
-		settings: settings_at(2),
+		settings: settings_after_cast,
 		now: 50,
 	}),
 ) == Refused(NoSuchGranter)
@@ -1460,7 +1460,7 @@ expect said(
 		maker: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
-		settings: settings_at(2),
+		settings: settings_after_cast,
 		now: -1,
 	}),
 ) == Refused(ClockOutOfRange)
@@ -1497,7 +1497,7 @@ expect said(
 		maker: Key(ann_key),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
-		settings: settings_at(2),
+		settings: settings_after_cast,
 		now: 50,
 	}),
 ) == Refused(GrantedByKey)
