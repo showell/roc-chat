@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) void {
     tests.dependOn(&roc_test.step);
     const host_tests = [_][]const u8{
         "host/server_test.zig",
+        "host/signin_test.zig",
         "host/seam/glue_test.zig",
     };
     for (host_tests) |root| {

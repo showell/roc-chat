@@ -5,4 +5,10 @@
     .port = 9480,
     // The data root, relative to this file's folder: dev/data, ignored by git.
     .data = "data",
+    // GitHub sends the browser back to <origin>/login/github.
+    .origin = "http://127.0.0.1:9480",
+    // Under data/secrets/, each the server's user's alone (mode 0600): the
+    // OAuth app's client id and secret, which you write; the signing key,
+    // made on first start.
+    .secrets = .{ .client_id = "github-client-id", .client_secret = "github-client-secret", .signing_key = "signing-key" },
 }

@@ -13,6 +13,8 @@ const abi = @import("seam/chat_abi.zig");
 const route = @import("seam/chat_route.zig");
 const assets = @import("assets.zig");
 const files = @import("files.zig");
+const crypto = @import("auth/crypto.zig");
+const signin = @import("signin.zig");
 
 /// A Roc bug is said on stderr as a warning: the request's 500 is its
 /// failure, and the server goes on.
@@ -25,6 +27,8 @@ const log = std.log.scoped(.roc_chat);
 pub const Copied = struct {
     /// The target up to its query.
     path: []const u8,
+    /// The target after its `?`, as written; empty when it has none.
+    query: []const u8 = "",
     method: std.http.Method,
     headers: []const std.http.Header,
     /// Read whole before the turn (the server's `body_most` at most).
@@ -34,6 +38,18 @@ pub const Copied = struct {
     pub fn values(c: *const Copied, arena: std.mem.Allocator, name: []const u8) ![]const []const u8 {
         var out: std.ArrayList([]const u8) = .empty;
         for (c.headers) |h| if (std.ascii.eqlIgnoreCase(h.name, name)) try out.append(arena, h.value);
+        return out.items;
+    }
+
+    /// The values of query field `name`, as written (not decoded), in
+    /// order. A field with no `=` has the empty value.
+    pub fn queryValues(c: *const Copied, arena: std.mem.Allocator, name: []const u8) ![]const []const u8 {
+        var out: std.ArrayList([]const u8) = .empty;
+        var fields = std.mem.splitScalar(u8, c.query, '&');
+        while (fields.next()) |field| {
+            const eq = std.mem.indexOfScalar(u8, field, '=') orelse field.len;
+            if (std.mem.eql(u8, field[0..eq], name)) try out.append(arena, if (eq < field.len) field[eq + 1 ..] else "");
+        }
         return out.items;
     }
 
@@ -47,7 +63,9 @@ pub const Copied = struct {
 /// The request's path, method and headers, copied into `arena`.
 pub fn copy(arena: std.mem.Allocator, req: *const std.http.Server.Request) !Copied {
     const target = req.head.target;
-    const path = target[0 .. std.mem.indexOfScalar(u8, target, '?') orelse target.len];
+    const at = std.mem.indexOfScalar(u8, target, '?');
+    const path = target[0 .. at orelse target.len];
+    const query = if (at) |q| target[q + 1 ..] else "";
     var headers: std.ArrayList(std.http.Header) = .empty;
     var it = req.iterateHeaders();
     while (it.next()) |h| try headers.append(arena, .{
@@ -56,6 +74,7 @@ pub fn copy(arena: std.mem.Allocator, req: *const std.http.Server.Request) !Copi
     });
     return .{
         .path = try arena.dupe(u8, path),
+        .query = try arena.dupe(u8, query),
         .method = req.head.method,
         .headers = headers.items,
     };
@@ -81,6 +100,12 @@ pub const Ctx = struct {
     /// write, or a path that leaves the data root): its answer is a 500,
     /// whatever the Roc answers.
     failure: ?anyerror = null,
+    /// **SIGN-IN'S SECRETS AND SETTINGS**: none for a server started
+    /// without them (a test's), and then `sign!`, `verify!` and
+    /// `read_config!` fail the request.
+    auth: ?*const signin.Auth = null,
+    /// The request's one time, Unix seconds, read once before its call.
+    now: i64 = 0,
 
     /// Once the host has answered, or the request has failed, the Roc's
     /// later asks do nothing: no write follows a failed read.
@@ -163,6 +188,54 @@ pub const Ctx = struct {
         c.files.write(path, bytes) catch |e| log.warn("{s}: write_cache {s} failed: {t} (a cache; the request goes on)", .{ c.req.path, path, e });
     }
 
+    // ── sign-in ──────────────────────────────────────────────────────────
+
+    pub fn read_query(c: *Ctx, name: []const u8) []const []const u8 {
+        return c.req.queryValues(c.arena, name) catch @panic("read_query: out of memory");
+    }
+
+    pub fn read_time(c: *Ctx) i64 {
+        return c.now;
+    }
+
+    /// The most random bytes one ask may take: a nonce or a secret is 32.
+    pub const random_most = 1024;
+
+    pub fn random_bytes(c: *Ctx, n: u64) []const u8 {
+        if (n > random_most) return c.failed("random_bytes", error.TooManyRandomBytes);
+        const out = c.arena.alloc(u8, @intCast(n)) catch @panic("random_bytes: out of memory");
+        crypto.randomBytes(c.files.io, out) catch |e| return c.failed("random_bytes", e);
+        return out;
+    }
+
+    pub fn hash(c: *Ctx, bytes: []const u8) []const u8 {
+        return c.arena.dupe(u8, &crypto.sha256(bytes)) catch @panic("hash: out of memory");
+    }
+
+    pub fn sign(c: *Ctx, bytes: []const u8) []const u8 {
+        const auth = c.auth orelse return c.failed("sign", error.NoSigningKey);
+        return c.arena.dupe(u8, &crypto.sign(&auth.secrets.signing_key.bytes, bytes)) catch @panic("sign: out of memory");
+    }
+
+    pub fn verify(c: *Ctx, bytes: []const u8, mac: []const u8) route.Verified {
+        const auth = c.auth orelse {
+            _ = c.failed("verify", error.NoSigningKey);
+            return .invalid;
+        };
+        return if (crypto.verify(&auth.secrets.signing_key.bytes, bytes, mac)) .valid else .invalid;
+    }
+
+    pub fn read_config(c: *Ctx, name: route.ConfigName) []const u8 {
+        const auth = c.auth orelse return c.failed("read_config", error.NoSignInConfig);
+        return auth.config(name);
+    }
+
+    /// The request failed in sign-in's hosted function `what`: nothing.
+    fn failed(c: *Ctx, comptime what: []const u8, e: anyerror) []const u8 {
+        c.fail(what, e);
+        return "";
+    }
+
     /// The request failed on `path`: the first failure is kept and said.
     fn fail(c: *Ctx, path: []const u8, e: anyerror) void {
         if (c.failure != null) return;
@@ -236,6 +309,12 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
             return .{ .status = .method_not_allowed, .body = "method not allowed\n", .headers = headers };
         },
         .not_found => return .{ .status = .not_found, .body = "not found\n" },
+        // **ONE EXCHANGE A REQUEST**: the server answers the first itself
+        // (Server.answer); one here is a second, the Roc's bug.
+        .exchange => {
+            log.warn("the Roc asked {s} for a second exchange with GitHub", .{ctx.req.path});
+            return failed;
+        },
         .answered => {
             const own = ctx.own orelse {
                 log.warn("the Roc said {s} was answered, and the host answered nothing", .{ctx.req.path});

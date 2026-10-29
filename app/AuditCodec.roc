@@ -93,6 +93,11 @@ AuditCodec := [].{
 		is_eq : _
 	}
 
+	## **A REFUSED SIGN-IN'S REASON, AS THE AUDIT SPELLS IT**: the one
+	## spelling, which the refusal page shows too.
+	sign_in_refusal_text : GitHubSignIn.Refusal -> Str
+	sign_in_refusal_text = |why| spell_sign_in_refusal(why)
+
 	## The entry's line.
 	encode : AuditCodec.Entry -> List(U8)
 	encode = |AuditCodec.Entry.(e)|
