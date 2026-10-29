@@ -171,18 +171,22 @@ start! = |{}| {
 									match Store.load_next_conversation_id!({}) {
 										Err(Failed) => Chat.failed
 										Ok(id) =>
-											match ConvAccess.Conv.start({
+											match ConvAccess.Conv.start_by({
 												id,
-												participants: List.prepend(others, me.id),
+												starter: me.id,
+												others,
 												accounts,
 											}) {
 												Err(NoParticipants) => refused(
 													400,
 													"a conversation has someone in it",
 												)
-												Err(NoSuchParticipant(who)) => refused(
+												# One refusal for an id no account holds and an
+												# agent the starter does not own: neither says
+												# which accounts exist.
+												Err(NoSuchParticipant(_)) | Err(NotTheOwner(_)) => refused(
 													400,
-													"no account is ${AccountCodec.id_text(who)}",
+													"`with` names someone you may not start a conversation with",
 												)
 												Ok(conv) =>
 													if !ConvAccess.can_post(

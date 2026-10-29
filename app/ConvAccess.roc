@@ -132,6 +132,48 @@ ConvAccess := [].{
 			}
 		}
 
+		## **A CONVERSATION STARTED BY `starter`, WITH `others`**: `start`'s,
+		## and the route's one way in. Each agent or bot named must answer to
+		## the starter's human (its owner, or the owner's own agent asking):
+		## a stranger never pulls someone's agent into a conversation
+		## (`NotTheOwner`). A human may name any other human.
+		start_by : {
+			id : ConvAccess.ConvId,
+			starter : Principal.Id,
+			others : List(Principal.Id),
+			accounts : List(Principal),
+		} -> Try(
+			ConvAccess.Conv,
+			[NoParticipants, NoSuchParticipant(Principal.Id), NotTheOwner(Principal.Id)],
+		)
+		start_by = |{ id, starter, others, accounts }| {
+			human =
+				match Principal.find(accounts, starter) {
+					Ok(p) => Ok(Principal.answers_to(p))
+					Err(_) => Err(NoSuchParticipant(starter))
+				}?
+			List.fold_try(
+				others,
+				{},
+				|{}, other|
+					match other {
+						Human(_) => Ok({})
+						Agent(_) | Bot(_) =>
+							match Principal.find(accounts, other) {
+								Err(_) => Err(NoSuchParticipant(other))
+								Ok(p) => if Principal.answers_to(p) == human Ok({}) else Err(NotTheOwner(other))
+							}
+					},
+			)?
+			ConvAccess.Conv.start({ id, participants: List.prepend(others, starter), accounts }).map_err(
+				|e|
+					match e {
+						NoParticipants => NoParticipants
+						NoSuchParticipant(p) => NoSuchParticipant(p)
+					},
+			)
+		}
+
 		## The conversation's id.
 		id : ConvAccess.Conv -> ConvAccess.ConvId
 		id = |ConvAccess.Conv.(c)| c.id
@@ -709,6 +751,30 @@ expect ConvAccess.Conv.start({
 	participants: [id_of(AnnAgent)],
 	accounts: without(Ann),
 }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(id_of(AnnAgent)))
+# **ONLY ITS OWNER NAMES AN AGENT OR A BOT** (start_by): Ann names her
+# own agent and Bea; Cal names Ann's agent and is refused; Ann's agent,
+# starting, names Ann's own; Bea names Bea's bot and not Ann's agent.
+started_by : Who, List(Who) -> Try(ConvAccess.ConvId, [NoParticipants, NoSuchParticipant(Principal.Id), NotTheOwner(Principal.Id)])
+started_by = |starter, others| ConvAccess.Conv.start_by({
+	id: first_conv_id,
+	starter: id_of(starter),
+	others: List.map(others, id_of),
+	accounts,
+}).map_ok(ConvAccess.Conv.id)
+
+expect started_by(Ann, [AnnAgent, Bea]) == Ok(first_conv_id)
+expect started_by(Cal, [AnnAgent]) == Err(NotTheOwner(id_of(AnnAgent)))
+expect started_by(Cal, [Ann, Bea]) == Ok(first_conv_id)
+expect started_by(AnnAgent, [Ann]) == Ok(first_conv_id)
+expect started_by(Bea, [BeaBot]) == Ok(first_conv_id)
+expect started_by(Bea, [BeaBot, AnnAgent]) == Err(NotTheOwner(id_of(AnnAgent)))
+expect ConvAccess.Conv.start_by({
+	id: first_conv_id,
+	starter: id_of(Ann),
+	others: [Principal.Id.Agent(Cast.aid(99))],
+	accounts,
+}).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(Principal.Id.Agent(Cast.aid(99))))
+
 # Only a human elects, for themselves: an agent or a bot never, even one
 # whose owner may.
 expect refused(ha_own_none, AnnAgent) == Err(NeedsSession)

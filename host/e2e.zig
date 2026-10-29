@@ -69,6 +69,8 @@
 //! Then the security review's fixes (2026-10-29), each its own user:
 //!
 //!  36. a human's twenty-first agent is refused (Limits.agents_per_human)
+//!  37. C cannot name Steve's agent in a new conversation, nor an id no
+//!      one holds, and both refusals read the same; Steve can name it
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -567,6 +569,22 @@ fn agentsCapped(w: *World) !void {
     if (!has(r.body, "as many agents")) return error.NotSaid;
 }
 
+/// **ONLY ITS OWNER NAMES AN AGENT** (M2), and an unknown id is refused
+/// in the same words (L1).
+fn othersAgentUnnamed(w: *World) !void {
+    // Step 28 retired Steve's first agent: a fresh one.
+    const made = try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Own");
+    if (made.status != 201) return error.NotMade;
+    const form = try std.fmt.allocPrint(w.a, "with={s}", .{try field(made.body, "id")});
+    const theirs = try request(w.a, w.port(), "POST", "/conversations", w.cal, form);
+    if (theirs.status != 400) return error.AnothersAgentNamed;
+    const nobody = try request(w.a, w.port(), "POST", "/conversations", w.cal, "with=human%3A999999");
+    if (nobody.status != 400) return error.NobodyNamed;
+    if (!std.mem.eql(u8, theirs.body, nobody.body)) return error.RefusalsDiffer;
+    const own = try request(w.a, w.port(), "POST", "/conversations", w.steve, form);
+    if (own.status != 201) return error.OwnAgentRefused;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -899,6 +917,7 @@ const steps = [_]Step{
     .{ .name = "signed out, a page redirects to /login", .f = signedOutPage },
     .{ .name = "a message's HTML on the page is exactly step 6's for it", .f = pageHtml },
     .{ .name = "a human's twenty-first agent is refused", .f = agentsCapped },
+    .{ .name = "C cannot name Steve's agent in a new conversation, nor an unknown id, in the same words; Steve can", .f = othersAgentUnnamed },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
