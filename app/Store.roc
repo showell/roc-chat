@@ -20,6 +20,7 @@
 ##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
 ##     chat/transcripts/<id>     its messages, a line each, appended (MessageCodec)
 ##     chat/tallies/<id>         its transcript's messages and bytes (`load_tally!`)
+##     chat/offsets/<id>         where each of its messages starts, a record each (`load_span!`)
 ##
 ## **A TRANSCRIPT HOLDS ANY BODY EXACTLY**: a message is one line, its
 ## markdown escaped (MessageCodec's header says how), so a body of many
@@ -392,21 +393,89 @@ Store := [].{
 	## What a transcript holds, told: its messages and its bytes.
 	Tally : { messages : U64, bytes : U64 }
 
+	## **A RUN OF A CONVERSATION'S MESSAGES, `first` TO `last`**, read from
+	## where `first` starts (its offsets file), never the transcript whole;
+	## none when `first` is past `last`. `tally` is the transcript's now
+	## (`load_tally!`, in this turn). An offsets file that does not hold one
+	## record a message (a transcript from before it, or a stop between an
+	## append and its record) is passed by: the transcript is read whole,
+	## and the next append writes the file again.
+	load_span! : ConvAccess.ConvId, Store.Tally, { first : U64, last : U64 } => Try(List(MessageCodec.Fields), [Failed])
+	load_span! = |id, tally, { first, last }|
+		if first == 0 or last > tally.messages {
+			crash "Store.load_span!: a span outside its transcript"
+		} else if first > last {
+			Ok([])
+		} else {
+			match offsets_kept!(id, tally) {
+				Err(Failed) => Err(Failed)
+				Ok(Bool.False) => {
+					all = Store.load_transcript!(id)?
+					Ok(List.sublist(all, { start: first - 1, len: last - first + 1 }))
+				}
+				Ok(Bool.True) => {
+					# `first`'s record, and the next one's after `last`'s, which
+					# the transcript's end stands in for after its last message.
+					records = Host.read_at!(offsets_path(id), (first - 1) * offset_width, (last - first + 2) * offset_width)
+					starts =
+						match records.status {
+							Found => List.map_try(List.chunks_of(records.bytes, offset_width), offset_of).map_err(|_| Failed)?
+							Missing | Failed => return Err(Failed)
+						}
+					ends = if last == tally.messages List.append(starts, tally.bytes) else starts
+					match (List.first(ends), List.get(ends, last - first + 1)) {
+						(Ok(from), Ok(to)) if from < to and to <= tally.bytes => {
+							text = Host.read_at!(transcript_path(id), from, to - from)
+							if text.status != Found or List.len(text.bytes) != to - from {
+								Err(Failed)
+							} else {
+								match MessageCodec.span(text.bytes, first) {
+									Ok(lines) if List.len(lines) == last - first + 1 => Ok(List.map(lines, MessageCodec.Line.fields))
+									_ => Err(Failed)
+								}
+							}
+						}
+						_ => Err(Failed)
+					}
+				}
+			}
+		}
+
 	## **A MESSAGE APPENDED TO ITS CONVERSATION'S TRANSCRIPT, SYNCED, THEN
 	## ITS TALLY**: `tally` is the transcript's before it (`load_tally!`, in
 	## this turn), and the message's id the caller's, its count plus one.
+	##
+	## **THEN ITS OFFSET**, where it starts (the transcript's size before
+	## it), appended to the offsets file; a file that does not hold one
+	## record a message before it is written again whole, from the
+	## transcript.
 	append_message! : ConvAccess.ConvId, Store.Tally, MessageCodec.Fields => [Failed, Appended]
-	append_message! = |id, tally, message| {
-		appended = Host.append!(transcript_path(id), MessageCodec.encode(message))
-		match appended.status {
-			Failed => Failed
-			Appended =>
-				match Host.write!(tally_path(id), tally_line({ messages: tally.messages + 1, bytes: appended.size })) {
+	append_message! = |id, tally, message|
+		match offsets_kept!(id, tally) {
+			Err(Failed) => Failed
+			Ok(kept) => {
+				appended = Host.append!(transcript_path(id), MessageCodec.encode(message))
+				match appended.status {
 					Failed => Failed
-					Written => Appended
+					Appended => {
+						offsets =
+							if kept {
+								Host.append!(offsets_path(id), offset_record(tally.bytes)).status
+							} else {
+								save_offsets!(id)
+							}
+						match offsets {
+							Failed => Failed
+							Appended =>
+								match Host.write!(tally_path(id), tally_line({ messages: tally.messages + 1, bytes: appended.size })) {
+									Failed => Failed
+									Written => Appended
+								}
+						}
+					}
 				}
+			}
 		}
-	}
 
 	## An audit entry appended. The audit is a record of what happened, not
 	## the request's work, so its failure is the host's to log alone.
@@ -437,6 +506,79 @@ conversation_path = |id| Str.to_utf8("chat/conversations/${id.to_u64().to_str()}
 
 transcript_path : ConvAccess.ConvId -> List(U8)
 transcript_path = |id| Str.to_utf8("chat/transcripts/${id.to_u64().to_str()}")
+
+offsets_path : ConvAccess.ConvId -> List(U8)
+offsets_path = |id| Str.to_utf8("chat/offsets/${id.to_u64().to_str()}")
+
+## Whether the offsets file holds one record for each message `tally`
+## counts.
+offsets_kept! : ConvAccess.ConvId, Store.Tally => Try(Bool, [Failed])
+offsets_kept! = |id, tally| {
+	stat = Host.read_stat!(offsets_path(id))
+	match stat.status {
+		Failed => Err(Failed)
+		Missing => Ok(tally.messages == 0)
+		Found => Ok(stat.size == tally.messages * offset_width)
+	}
+}
+
+## The offsets file written whole, from the transcript as it is.
+save_offsets! : ConvAccess.ConvId => [Appended, Failed]
+save_offsets! = |id| {
+	read = Host.read!(transcript_path(id))
+	match read.status {
+		Missing | Failed => Failed
+		Found =>
+			match Host.write!(offsets_path(id), List.join_map(line_starts(read.bytes), offset_record)) {
+				Failed => Failed
+				Written => Appended
+			}
+	}
+}
+
+## **AN OFFSET'S RECORD**: ten digits and a newline, so message `n`'s is
+## at `(n - 1) * offset_width`. Ten digits hold any offset of a transcript
+## (Limits.transcript_bytes_most).
+offset_width : U64
+offset_width = 11
+
+offset_record : U64 -> List(U8)
+offset_record = |at| {
+	digits = Str.to_utf8(at.to_str())
+	if List.len(digits) >= offset_width {
+		crash "Store.offset_record: an offset past ten digits"
+	} else {
+		List.join([List.repeat('0', offset_width - 1 - List.len(digits)), digits, ['\n']])
+	}
+}
+
+offset_of : List(U8) -> Try(U64, [Malformed])
+offset_of = |record|
+	if List.len(record) != offset_width or List.last(record) != Ok('\n') {
+		Err(Malformed)
+	} else {
+		List.fold_try(
+			List.drop_last(record, 1),
+			0,
+			|n, c| if c >= '0' and c <= '9' Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed),
+		)
+	}
+
+## Where each line of a transcript starts.
+line_starts : List(U8) -> List(U64)
+line_starts = |raw|
+	List.fold(
+		raw,
+		{ at: 0, starts: if List.is_empty(raw) [] else [0] },
+		|state, c| {
+			at = state.at + 1
+			if c == '\n' and at < List.len(raw) {
+				{ at, starts: List.append(state.starts, at) }
+			} else {
+				{ at, starts: state.starts }
+			}
+		},
+	).starts
 
 tally_path : ConvAccess.ConvId -> List(U8)
 tally_path = |id| Str.to_utf8("chat/tallies/${id.to_u64().to_str()}")
@@ -672,3 +814,10 @@ load_one_past_count! = |folder| {
 		Found => Ok(List.len(listed.entries) + 1)
 	}
 }
+expect offset_record(0) == Str.to_utf8("0000000000\n")
+expect offset_record(4_000_000) == Str.to_utf8("0004000000\n")
+expect offset_of(offset_record(123)) == Ok(123)
+expect offset_of(Str.to_utf8("000000012\n")) == Err(Malformed)
+expect offset_of(Str.to_utf8("00000001x2\n")) == Err(Malformed)
+expect line_starts(Str.to_utf8("ab\nc\n\nd\n")) == [0, 3, 5, 6]
+expect line_starts([]) == []

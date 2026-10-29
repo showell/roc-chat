@@ -138,7 +138,7 @@ pub const Ctx = struct {
         return .served;
     }
 
-    // ── the files: a failure is the request's, but a cache's ──────────────
+    // ── the files: a failure is the request's, but a ranged read's ───────
 
     pub fn read(c: *Ctx, path: []const u8) route.Read {
         const r = c.files.read(c.arena, path);
@@ -146,10 +146,10 @@ pub const Ctx = struct {
         return r;
     }
 
-    /// A cache's read: a failure is logged, never the request's.
+    /// A ranged read: a failure is logged, never the request's.
     pub fn read_at(c: *Ctx, path: []const u8, offset: u64, max: u64) route.Read {
         const r = c.files.readAt(c.arena, path, offset, max);
-        if (r == .failed) log.warn("{f}: read_at {s} failed (a cache's read; the request goes on)", .{ std.ascii.hexEscape(c.req.path, .lower), path });
+        if (r == .failed) log.warn("{f}: read_at {s} failed (a ranged read; the request goes on)", .{ std.ascii.hexEscape(c.req.path, .lower), path });
         return r;
     }
 

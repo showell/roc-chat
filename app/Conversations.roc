@@ -117,6 +117,33 @@ Conversations := [].{
 			Err(_) => AccountCodec.id_text(id)
 		}
 
+	## **A PAGE OF A CONVERSATION'S MESSAGES**: the newest
+	## `Limits.page_messages` before `before` (or of all, for `Newest`),
+	## oldest first, read from the first one's offset (Store.load_span!),
+	## and whether messages come before it.
+	load_page! : ConvAccess.ConvId, [Newest, Before(U64)] => Try({ messages : List(MessageCodec.Fields), earlier : Bool }, [Failed])
+	load_page! = |id, before| {
+		tally = Store.load_tally!(id)?
+		span = Conversations.page_of(tally.messages, before)
+		messages = Store.load_span!(id, tally, span)?
+		Ok({ messages, earlier: span.first > 1 })
+	}
+
+	## **WHICH MESSAGES A PAGE HOLDS**, of a transcript of `count`: ids
+	## `first` to `last`, at most Limits.page_messages of them, ending
+	## before `before` (or at the newest). None (`first` past `last`) for
+	## an empty transcript, or before the first message.
+	page_of : U64, [Newest, Before(U64)] -> { first : U64, last : U64 }
+	page_of = |count, before| {
+		last =
+			match before {
+				Newest => count
+				Before(b) => if b - 1 < count b - 1 else count
+			}
+		first = if last > Limits.page_messages last - Limits.page_messages + 1 else 1
+		{ first, last }
+	}
+
 	## **ANSWER A ROUTE**, each to the method it takes.
 	answer! : Chat.Request, Conversations.Route => Chat.Answer
 	answer! = |req, r|
@@ -392,24 +419,45 @@ seen! = |id| {
 	}
 }
 
-## **READ**: the transcript, every message as the wire spells it.
+## **READ: A PAGE OF THE TRANSCRIPT** (Conversations.load_page!), each
+## message as the wire spells it, and `earlier`: whether messages come
+## before the page's first, which `?before=` that first's id pages back
+## to. A `before` that is no message's id, or given twice, is a 400.
 read! : ConvAccess.ConvId => Chat.Answer
 read! = |id|
 	match seen!(id) {
 		Err(answer) => answer
 		Ok(_) =>
-			match Store.load_transcript!(id) {
-				Err(Failed) => Chat.failed
-				Ok(messages) =>
-					Wire.json(
-						200,
-						List.join([
-							Str.to_utf8("{\"id\":${id.to_u64().to_str()},\"messages\":["),
-							Wire.commas(List.map(messages, message_json)),
-							Str.to_utf8("]}"),
-						]),
-					)
+			match before_of(Host.read_query!(Str.to_utf8("before"))) {
+				Err(Malformed) => Wire.refused(400, "before= is a message's id")
+				Ok(before) =>
+					match Conversations.load_page!(id, before) {
+						Err(Failed) => Chat.failed
+						Ok({ messages, earlier }) =>
+							Wire.json(
+								200,
+								List.join([
+									Str.to_utf8("{\"id\":${id.to_u64().to_str()},\"messages\":["),
+									Wire.commas(List.map(messages, message_json)),
+									Str.to_utf8("],\"earlier\":${if earlier "true" else "false"}}"),
+								]),
+							)
+					}
 			}
+	}
+
+## Where a page ends: before the message `?before=` names, or after the
+## newest when none is named.
+before_of : List(List(U8)) -> Try([Newest, Before(U64)], [Malformed])
+before_of = |values|
+	match values {
+		[] => Ok(Newest)
+		[only] =>
+			match Stored.count(only, "before") {
+				Ok(n) if n > 0 => Ok(Before(n))
+				_ => Err(Malformed)
+			}
+		_ => Err(Malformed)
 	}
 
 ## **POST**: the body is the markdown. Refused when the viewer may not post
@@ -490,9 +538,15 @@ post! = |id| {
 }
 
 ## **STREAM**: the messages after the one the browser saw last
-## (`Last-Event-ID`; none, or one that is no id, is from the start), read in
-## this turn, then each one posted after, live: the host subscribes in the
-## same turn, so a message is in the backlog or comes live, never both.
+## (`Last-Event-ID`), read in this turn, then each one posted after, live:
+## the host subscribes in the same turn, so a message is in the backlog or
+## comes live, never both.
+## **THE BACKLOG IS AT MOST THE NEWEST PAGE** (Conversations.page_of),
+## read from its first message's offset (Store.load_span!), never the
+## transcript whole. With no `Last-Event-ID` (or one that is no id) it is
+## that page, which a conversation's page already shows. A browser further
+## behind is sent a `gap` event first, `{"before":<id>}`: the messages
+## before that id it missed are a read's, by `?before=`.
 ## **ITS HOLDER IS THE VIEWER'S PRINCIPAL** (a key's, the one it acts as),
 ## so the host's cap on streams a holder ends only the viewer's own (H2).
 stream! : ConvAccess.ConvId => Chat.Answer
@@ -500,19 +554,39 @@ stream! = |id|
 	match seen!(id) {
 		Err(answer) => answer
 		Ok(a) =>
-			match Store.load_transcript!(id) {
+			match Store.load_tally!(id) {
 				Err(Failed) => Chat.failed
-				Ok(messages) => {
+				Ok(tally) => {
 					after = last_seen_id(Host.read_header!(Str.to_utf8("last-event-id")))
-					backlog = List.join(
-						List.keep_oks(
-							List.keep_if(messages, |m| m.id > after),
-							frame,
-						),
-					)
-					Chat.stream({ key: bus_key(id), backlog, holder: holder_of(a.viewer) })
+					newest = Conversations.page_of(tally.messages, Newest)
+					# After `after`, but never before the newest page, nor past
+					# the newest message (an id no message has yet).
+					first =
+						if after < newest.first {
+							newest.first
+						} else if after < tally.messages {
+							after + 1
+						} else {
+							tally.messages + 1
+						}
+					match Store.load_span!(id, tally, { first, last: tally.messages }) {
+						Err(Failed) => Chat.failed
+						Ok(messages) => {
+							gap = if after > 0 and after + 1 < newest.first gap_frame(newest.first) else []
+							backlog = List.concat(gap, List.join(List.keep_oks(messages, frame)))
+							Chat.stream({ key: bus_key(id), backlog, holder: holder_of(a.viewer) })
+						}
+					}
 				}
 			}
+	}
+
+## The `gap` event: the messages before `before` were not sent.
+gap_frame : U64 -> List(U8)
+gap_frame = |before|
+	match Sse.frame({ name: Str.to_utf8("gap"), data: Str.to_utf8("{\"before\":${before.to_str()}}"), id: [] }) {
+		Ok(f) => f
+		Err(LineBreak) => crash "Conversations.gap_frame: a gap's JSON holds no line break"
 	}
 
 ## Who holds a stream: the viewer's principal id, as the accounts spell it.
@@ -580,3 +654,18 @@ expect others_of(Str.to_utf8("with=human%3A0")) == Err(Malformed)
 
 cid : U64 -> ConvAccess.ConvId
 cid = |n| ConvAccess.ConvId.from_u64(n) ?? crash "cid: not 0"
+
+# Pages: the newest, back to the first, and past either end.
+expect Conversations.page_of(0, Newest) == { first: 1, last: 0 }
+expect Conversations.page_of(5, Newest) == { first: 1, last: 5 }
+expect Conversations.page_of(250, Newest) == { first: 151, last: 250 }
+expect Conversations.page_of(250, Before(151)) == { first: 51, last: 150 }
+expect Conversations.page_of(250, Before(51)) == { first: 1, last: 50 }
+expect Conversations.page_of(250, Before(1)) == { first: 1, last: 0 }
+expect Conversations.page_of(250, Before(900)) == { first: 151, last: 250 }
+expect before_of([]) == Ok(Newest)
+expect before_of([Str.to_utf8("7")]) == Ok(Before(7))
+expect before_of([Str.to_utf8("0")]) == Err(Malformed)
+expect before_of([Str.to_utf8("07")]) == Err(Malformed)
+expect before_of([Str.to_utf8("x")]) == Err(Malformed)
+expect before_of([Str.to_utf8("7"), Str.to_utf8("8")]) == Err(Malformed)

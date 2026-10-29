@@ -96,7 +96,13 @@ MessageCodec := [].{
 	## 2, 3 in order (`BadValue("id")` for a gap, a repeat or a start past
 	## 1). An empty transcript has none.
 	transcript : List(U8) -> Try(List(MessageCodec.Line), Stored.Problem)
-	transcript = |raw|
+	transcript = |raw| MessageCodec.span(raw, 1)
+
+	## **A RUN OF A TRANSCRIPT'S LINES**, read from where its message `first`
+	## starts (Store.load_span!): the same rule, its ids `first`, `first`
+	## plus one, and on.
+	span : List(U8), U64 -> Try(List(MessageCodec.Line), Stored.Problem)
+	span = |raw, first|
 		if List.is_empty(raw) {
 			Ok([])
 		} else if List.last(raw) != Ok('\n') {
@@ -104,7 +110,7 @@ MessageCodec := [].{
 		} else {
 			lines = List.drop_last(List.split_on(raw, '\n'), 1)
 			decoded = List.map_try(lines, |line| MessageCodec.decode(List.append(line, '\n')))?
-			in_order = List.map_with_index(decoded, |m, i| m.fields().id == i + 1)
+			in_order = List.map_with_index(decoded, |m, i| m.fields().id == first + i)
 			if List.all(in_order, |ok| ok) {
 				Ok(decoded)
 			} else {
@@ -289,3 +295,6 @@ expect MessageCodec.transcript(
 		numbered(1, []),
 	]),
 ).map_ok(|ls| List.len(ls)) == Err(BadValue("id"))
+# A span: the ids from its first, as a slice of a transcript holds them.
+expect MessageCodec.span(transcript_of(List.drop_first(three, 1)), 2).map_ok(|ls| List.map(ls, MessageCodec.Line.fields)) == Ok(List.drop_first(three, 1))
+expect MessageCodec.span(transcript_of(List.drop_first(three, 1)), 1).map_ok(|ls| List.len(ls)) == Err(BadValue("id"))

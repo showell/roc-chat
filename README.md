@@ -11,8 +11,10 @@ it serves chat.lynrummy.com (DEPLOY.md).**
   a key and talk to the chat with `Authorization: Bearer`.
 - **Conversations:** a human or a key starts one with named participants;
   a participant posts markdown (rendered by roc-markdown, refused when
-  hostile); anyone ConvAccess lets see it reads its transcript; each open
-  stream gets each message once, live, resuming from `Last-Event-ID`.
+  hostile); anyone ConvAccess lets see it reads its transcript a page at a time;
+  each open stream gets each message once, live, resuming from
+  `Last-Event-ID`. A page and a stream's backlog are read from where
+  their first message starts, never the transcript whole.
 - **What a client sees:** two plain pages (`/chat`, `/chat/<id>`) to read
   and post in a browser; the rest is JSON, an event stream, and the chat
   client's scripts. The old chat's breadth is still to come. The design is
@@ -30,9 +32,9 @@ it serves chat.lynrummy.com (DEPLOY.md).**
 | `GET /me` | Who this session is. |
 | `GET /conversations` | The viewer's own: `{"conversations":[{"id":N,"with":[{"id":"human:2","name":"…"}]}]}`, each one ConvAccess lets them post in. |
 | `POST /conversations` | Start one: a form, `with=` the others' ids, comma-separated (`human:2,agent:7`). The signed-in human is in it. `201 {"id":N}`. |
-| `GET /conversations/<id>` | Its transcript: `{"id":N,"messages":[…]}`. |
+| `GET /conversations/<id>` | A page of its transcript: the newest 100 messages, or the 100 before `?before=<id>`, oldest first: `{"id":N,"messages":[…],"earlier":bool}`. `earlier` says messages come before the page's first; `?before=` that first's id loads them. |
 | `POST /conversations/<id>/messages` | Post: the body is the markdown, as is. `201` and the message. |
-| `GET /conversations/<id>/stream` | Its messages, live (SSE, events named `message`, each id the message's), after `Last-Event-ID` when the browser resumes. |
+| `GET /conversations/<id>/stream` | Its messages, live (SSE, events named `message`, each id the message's), after `Last-Event-ID` when the browser resumes. The backlog is at most the newest page; a browser further behind gets a `gap` event first, `{"before":<id>}`, and pages back for the rest. |
 | `POST /agents` | Make an agent you own: a form, `name=` (DisplayName's rule). `201 {"id":"agent:7","name":"CC","owner":"human:2"}`; a bad name a 400. |
 | `POST /keys` | Mint a key for yourself: a form, each field optional: `read=` and `post=` (`everywhere`, the default; `off`; `only:3,9`), `admin=on` (off by default), `lifetime=` seconds (at most a year, the default). `201` and the key, with its `secret` (64 hex digits), **shown this once**. `as=agent:7` is a 403: an agent's key comes from an invite. |
 | `GET /keys` | Your keys and your agents': `{"keys":[{"id":4,"acts_as":"agent:7","read":"everywhere","post":"everywhere","admin":"off","created":…,"expires":…,"revoked":false}]}`, never a secret. |
@@ -42,7 +44,7 @@ it serves chat.lynrummy.com (DEPLOY.md).**
 | `POST /invites/<id>/revoke` | Revoke one: `200` and the invite; another's, or none live, a 404. |
 | `POST /invites/redeem` | The agent's: a form, `code=`, and **no cookie or key** (the code is the credential). `201` and the key, as a mint answers, its `secret` shown this once. Any refusal is one `401 invite refused` (Agents' header lists them). |
 | `GET /chat` | The page: the viewer's conversations, each a link, and a form to start one. Signed out, a 303 to `/login`; a key, a 403 (a page is a browser's). |
-| `GET /chat/<id>` | A conversation's page: its messages, new ones live (`EventSource`), a box to post in (Enter sends, Shift-Enter adds a line). A 404 to a viewer who may not see it. |
+| `GET /chat/<id>` | A conversation's page: its newest page of messages (a button loads each page before), new ones live (`EventSource`), a box to post in (Enter sends, Shift-Enter adds a line). A 404 to a viewer who may not see it. |
 | `GET /<name>.js` | The chat client's scripts. |
 
 A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
@@ -242,7 +244,7 @@ server, saying which.
   std starts has one). A thread without one dies of the fault, as before.
 - **A file hosted function's `Failed` has failed the request**: the answer
   is a 500 whatever the Roc says, and the host does nothing more in that
-  call (`read_at!`, a cache's read, is the exception).
+  call (`read_at!`, a ranged read, is the exception).
 
 No LICENSE yet: that is Steve's decision, for this repo and its
 dependencies alike.

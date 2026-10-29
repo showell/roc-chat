@@ -7,10 +7,12 @@
 ## browser's.
 ##
 ##     GET /chat         the viewer's conversations, each a link, and a form to start one
-##     GET /chat/<id>    a conversation: its messages, then each new one live (its
+##     GET /chat/<id>    a conversation: its newest page of messages (and a button
+##                       for each page before it), then each new one live (its
 ##                       stream, by the browser's EventSource, which resumes with
-##                       Last-Event-ID by itself), and a box to post markdown in
-##                       (Enter sends, Shift-Enter adds a line)
+##                       Last-Event-ID by itself, and reloads the page on a `gap`),
+##                       and a box to post markdown in (Enter sends, Shift-Enter
+##                       adds a line)
 ##
 ## **WHAT THE PAGE WRITES ITSELF IS ESCAPED** (`escape`): a name, an id, a
 ## title. **A MESSAGE'S HTML IS THE RENDERER'S OUTPUT, AND ONLY THAT**: the
@@ -202,9 +204,9 @@ serve_conversation! = |
 			if !ConvAccess.can_see(viewer, { conv, accounts }) {
 				Conversations.no_such
 			} else {
-				match Store.load_transcript!(id) {
+				match Conversations.load_page!(id, Newest) {
 					Err(Failed) => Chat.failed
-					Ok(messages) =>
+					Ok({ messages, earlier }) =>
 						page({
 							title: names(accounts, conv),
 							body_attrs: Str.to_utf8(" data-conv=\"${id.to_u64().to_str()}\""),
@@ -229,7 +231,7 @@ serve_conversation! = |
 										Str.to_utf8("</li>\n"),
 									]),
 								),
-								Str.to_utf8("</ul>\n<div id=messages>\n"),
+								Str.to_utf8("</ul>\n<p><button id=earlier type=button${if earlier "" else " hidden"}>Earlier messages</button></p>\n<div id=messages>\n"),
 								List.join_map(messages, |m| message_html(accounts, m)),
 								Str.to_utf8("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
 								Str.to_utf8(conversation_js),
@@ -330,18 +332,33 @@ conversation_js =
 	\\for (const li of document.querySelectorAll("#people li")) names[li.dataset.id] = li.textContent;
 	\\const when = (t) => new Date(t * 1000).toLocaleString();
 	\\for (const t of document.querySelectorAll("time[data-at]")) t.textContent = when(+t.dataset.at);
-	\\function add(m) {
-	\\  if (document.getElementById("m" + m.id)) return;
+	\\function article(m) {
 	\\  const a = document.createElement("article"), h = document.createElement("header"), b = document.createElement("div");
 	\\  a.id = "m" + m.id;
 	\\  h.textContent = (names[m.by] || m.by) + " · " + when(m.at);
 	\\  b.className = "body";
 	\\  b.innerHTML = m.html;
 	\\  a.append(h, b);
+	\\  return a;
+	\\}
+	\\function add(m) {
+	\\  if (document.getElementById("m" + m.id)) return;
+	\\  const a = article(m);
 	\\  box.append(a);
 	\\  a.scrollIntoView({ block: "end" });
 	\\}
-	\\new EventSource("/conversations/" + conv + "/stream").addEventListener("message", (e) => add(JSON.parse(e.data)));
+	\\const earlier = document.getElementById("earlier");
+	\\earlier.addEventListener("click", async () => {
+	\\  const first = box.querySelector("article");
+	\\  const r = await fetch("/conversations/" + conv + "?before=" + first.id.slice(1));
+	\\  if (!r.ok) return;
+	\\  const page = await r.json();
+	\\  for (const m of page.messages.reverse()) if (!document.getElementById("m" + m.id)) box.prepend(article(m));
+	\\  earlier.hidden = !page.earlier;
+	\\});
+	\\const stream = new EventSource("/conversations/" + conv + "/stream");
+	\\stream.addEventListener("message", (e) => add(JSON.parse(e.data)));
+	\\stream.addEventListener("gap", () => location.reload());
 	\\const form = document.getElementById("post"), text = form.elements.body, said = document.getElementById("said");
 	\\text.addEventListener("keydown", (e) => {
 	\\  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }

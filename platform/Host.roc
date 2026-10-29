@@ -24,9 +24,9 @@ Host := [].{
 	## part is the Roc's bug: `Failed`, never `Missing`.
 	##
 	## **`Failed` HAS FAILED THE REQUEST**: its answer is a 500 whatever the
-	## Roc answers, and the host does nothing more for it. A cache's read,
+	## Roc answers, and the host does nothing more for it. A ranged read,
 	## `read_at!`, is the exception: its failure is logged and the request
-	## goes on.
+	## goes on, the Roc's to answer.
 	##
 	## **MISSING AND FAILED ARE NEVER ONE ANSWER**: what is read is often
 	## rewritten, so a file that could not be read, taken for no file,
@@ -43,9 +43,9 @@ Host := [].{
 		],
 	}
 
-	## **A CACHE'S READ**: at most `max` bytes from `offset` (fewer where
-	## the file ends first, none past its end). `Failed` is logged, never
-	## the request's failure.
+	## **A RANGED READ** (a page of a transcript, Store.load_span!): at most
+	## `max` bytes from `offset` (fewer where the file ends first, none
+	## past its end). `Failed` is logged, never the request's failure.
 	read_at! : List(U8),
 	U64,
 	U64 => {

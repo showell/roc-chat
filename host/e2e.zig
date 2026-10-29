@@ -218,9 +218,28 @@ const Listener = struct {
         return l;
     }
 
-    /// Reads until `needle` has arrived (a read waits at most `wait_ms`).
+    /// Reads until `needle` has arrived, within `wait_ms`; `NeverCame`
+    /// when it has not.
     fn until(l: *Listener, needle: []const u8) !void {
-        while (!has(l.got.items, needle)) try l.more();
+        const t0 = Io.Clock.now(.awake, io);
+        while (!has(l.got.items, needle)) {
+            if (!l.readable(t0)) return error.NeverCame;
+            try l.more();
+        }
+    }
+
+    /// Whether a read would find bytes before `wait_ms` from `t0` is up.
+    /// **EACH READ WAITS ON `poll` FIRST**, never on the socket's receive
+    /// timeout: std's Io takes that timeout's EAGAIN for a programmer's
+    /// bug and panics, so a read past the wait would abort the run instead
+    /// of failing its step.
+    fn readable(l: *Listener, t0: Io.Timestamp) bool {
+        if (l.reader.interface.bufferedLen() > 0) return true;
+        const left = wait_ms - t0.untilNow(io, .awake).toMilliseconds();
+        if (left <= 0) return false;
+        var fds = [_]std.posix.pollfd{.{ .fd = l.stream.socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
+        const ready = std.posix.poll(&fds, @intCast(left)) catch return false;
+        return ready > 0;
     }
 
     fn more(l: *Listener) !void {
@@ -231,20 +250,11 @@ const Listener = struct {
     }
 
     /// Reads until the server ends the stream: whether it ended within
-    /// `wait_ms`. **EACH READ WAITS ON `poll` FIRST**, never on the socket's
-    /// receive timeout: std's Io takes that timeout's EAGAIN for a
-    /// programmer's bug and panics, so a stream that outlives the wait would
-    /// abort the run instead of failing its step.
+    /// `wait_ms` (each read waiting as `readable` says).
     fn ends(l: *Listener) bool {
         const t0 = Io.Clock.now(.awake, io);
         while (true) {
-            if (l.reader.interface.bufferedLen() == 0) {
-                const left = wait_ms - t0.untilNow(io, .awake).toMilliseconds();
-                if (left <= 0) return false;
-                var fds = [_]std.posix.pollfd{.{ .fd = l.stream.socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
-                const ready = std.posix.poll(&fds, @intCast(left)) catch return false;
-                if (ready == 0) return false;
-            }
+            if (!l.readable(t0)) return false;
             l.more() catch |e| return e == error.EndOfStream;
         }
     }
@@ -303,6 +313,8 @@ const World = struct {
     agents_conv: []const u8 = "",
     /// The code of the invite step 22 redeemed.
     code: []const u8 = "",
+    /// The conversation of more than a page (step 45 on).
+    paged: []const u8 = "",
 
     fn port(w: *const World) u16 {
         return w.rig.port();
@@ -669,6 +681,110 @@ fn transcriptFull(w: *World) !void {
     if (after.len != near) return error.Appended;
 }
 
+/// **A READ IS A PAGE** (H3, Limits.page_messages): A posts a page and
+/// five more; a read answers the newest page, ids 6 to 105, and `earlier`;
+/// `before=6` answers 1 to 5, and no earlier; a `before` that is no id is
+/// a 400. The conversation's page shows the same newest page, and the
+/// button that loads the one before.
+const page_messages = 100;
+const paged_posts = page_messages + 5;
+
+fn pagesBack(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    w.paged = conv;
+    const posts = try agentPath(w, conv, "/messages");
+    for (1..paged_posts + 1) |n| {
+        if ((try request(w.a, w.port(), "POST", posts, w.ann, try std.fmt.allocPrint(w.a, "paged {d}", .{n}))).status != 201) return error.NotPosted;
+    }
+    try holdsPage(w, try pageOf(w, conv, ""), 6, paged_posts, true);
+    try holdsPage(w, try pageOf(w, conv, "6"), 1, 5, false);
+    for ([_][]const u8{ "0", "x", "06", "6&before=7" }) |bad| {
+        const r = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/conversations/{s}?before={s}", .{ conv, bad }), w.ann);
+        if (r.status != 400) return error.BadBeforeTaken;
+    }
+    const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{conv}), w.ann);
+    if (page.status != 200) return error.NoPage;
+    if (!has(page.body, "<article id=m6>") or has(page.body, "<article id=m5>")) return error.PageNotNewest;
+    if (!has(page.body, "<button id=earlier type=button>")) return error.NoEarlierButton;
+}
+
+/// A read of conversation `conv`, `before` it when not empty.
+fn pageOf(w: *World, conv: []const u8, before: []const u8) ![]const u8 {
+    const target = if (before.len == 0)
+        try agentPath(w, conv, "")
+    else
+        try std.fmt.allocPrint(w.a, "/conversations/{s}?before={s}", .{ conv, before });
+    const r = try get(w.a, w.port(), target, w.ann);
+    if (r.status != 200) return error.NotRead;
+    return r.body;
+}
+
+/// Whether `body` holds exactly the messages `first` to `last`, and says
+/// `earlier` as given.
+fn holdsPage(w: *World, body: []const u8, first: usize, last: usize, earlier: bool) !void {
+    if (count(body, "{\"id\":") - 1 != last - first + 1) return error.NotAPage;
+    if (!has(body, try std.fmt.allocPrint(w.a, "{{\"id\":{d},", .{first}))) return error.NoFirst;
+    if (!has(body, try std.fmt.allocPrint(w.a, "{{\"id\":{d},", .{last}))) return error.NoLast;
+    if (!std.mem.endsWith(u8, body, if (earlier) "],\"earlier\":true}" else "],\"earlier\":false}")) return error.EarlierWrong;
+}
+
+/// **A STREAM'S BACKLOG IS AT MOST THE NEWEST PAGE** (H3): B resumes from
+/// message 1, and is told of the gap before 6, then sent 6 to 105; from 5
+/// there is no gap; from 103, 104 and 105 alone.
+fn streamGap(w: *World) !void {
+    const target = try agentPath(w, w.paged, "/stream");
+    const behind = try Listener.open(w.a, w.port(), target, w.bea, "1");
+    defer behind.close();
+    try behind.until("\"markdown\":\"paged 105\"");
+    if (!has(behind.got.items, "event: gap\ndata: {\"before\":6}\n")) return error.NoGap;
+    if (has(behind.got.items, "\"markdown\":\"paged 5\"") or !has(behind.got.items, "\"markdown\":\"paged 6\"")) return error.NotTheNewestPage;
+    const level = try Listener.open(w.a, w.port(), target, w.bea, "5");
+    defer level.close();
+    try level.until("\"markdown\":\"paged 105\"");
+    if (has(level.got.items, "event: gap")) return error.GapWithout;
+    const near = try Listener.open(w.a, w.port(), target, w.bea, "103");
+    defer near.close();
+    try near.until("\"markdown\":\"paged 105\"");
+    if (has(near.got.items, "\"markdown\":\"paged 103\"") or !has(near.got.items, "\"markdown\":\"paged 104\"")) return error.NotAfter;
+}
+
+/// **A PAGE AND A BACKLOG ARE READ FROM THEIR FIRST MESSAGE'S OFFSET**
+/// (Store.load_span!), never the transcript whole: message 1's line made
+/// junk (its size the same), the newest page still reads and streams, and
+/// only the page that holds message 1 is a 500.
+fn readFromOffset(w: *World) !void {
+    const path = try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{w.paged});
+    const was = try w.rig.data.readFileAlloc(io, path, w.a, .limited(8 * 1024 * 1024));
+    const end = std.mem.indexOfScalar(u8, was, '\n') orelse return error.NoLine;
+    @memset(was[0..end], 'x');
+    try overwrite(w, path, was);
+    try holdsPage(w, try pageOf(w, w.paged, ""), 6, paged_posts, true);
+    const l = try Listener.open(w.a, w.port(), try agentPath(w, w.paged, "/stream"), w.bea, "103");
+    defer l.close();
+    try l.until("\"markdown\":\"paged 105\"");
+    const first = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/conversations/{s}?before=6", .{w.paged}), w.ann);
+    if (first.status != 500) return error.JunkRead;
+}
+
+/// **AN OFFSETS FILE IS WRITTEN AGAIN WHEN IT IS WRONG**: a conversation's
+/// offsets removed (a transcript from before them), its read still right
+/// (the transcript read whole), and the next post writes a record for
+/// every message.
+const offset_width = 11;
+
+fn offsetsRebuilt(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const posts = try agentPath(w, conv, "/messages");
+    for (0..3) |_| if ((try request(w.a, w.port(), "POST", posts, w.ann, "before")).status != 201) return error.NotPosted;
+    const path = try std.fmt.allocPrint(w.a, "chat/offsets/{s}", .{conv});
+    try w.rig.data.deleteFile(io, path);
+    try holdsPage(w, try pageOf(w, conv, ""), 1, 3, false);
+    if ((try request(w.a, w.port(), "POST", posts, w.ann, "after")).status != 201) return error.NotPosted;
+    const offsets = try w.rig.data.readFileAlloc(io, path, w.a, .limited(1024));
+    if (offsets.len != 4 * offset_width) return error.OffsetsNotRebuilt;
+    try holdsPage(w, try pageOf(w, conv, "4"), 1, 3, false);
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -1026,6 +1142,10 @@ const steps = [_]Step{
     .{ .name = "A opening nine streams ends A's own first, and B's stays", .f = streamsPerHolder },
     .{ .name = "a post learns its id from the tally, never reading the transcript whole", .f = postByTally },
     .{ .name = "a post to a full transcript is a 413, and nothing is appended", .f = transcriptFull },
+    .{ .name = "a read is the newest page, and before= pages back to the first; the page shows the newest", .f = pagesBack },
+    .{ .name = "a stream's backlog is at most the newest page, a gap before it said", .f = streamGap },
+    .{ .name = "a page and a backlog are read from their first message's offset, never the transcript whole", .f = readFromOffset },
+    .{ .name = "a missing offsets file is read past, and the next post writes it whole", .f = offsetsRebuilt },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
