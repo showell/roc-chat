@@ -389,9 +389,67 @@ fn crashed(message: []const u8) noreturn {
 /// request's bytes are made here, after `setjmp`: they are the call's
 /// first allocations, and one that fails must jump back to this frame.
 noinline fn guarded(path: []const u8, method: Method, out: *Answer) bool {
-    if (sljmp.setjmp(&jump) != 0) return false;
+    if (sljmp.setjmp(&jump) != 0) {
+        guard_top = 0;
+        return false;
+    }
+    guard_top = @frameAddress();
     out.* = roc_chat_handle(.{ .path = .from(path), .method = method });
+    guard_top = 0;
     return true;
+}
+
+// ── a stack overflow is a crash too ─────────────────────────────────────────
+
+/// **A RECURSION PAST THE STACK IS THE CALL'S CRASH**: it calls no
+/// `roc_crashed`; it faults on the thread stack's guard page, a SIGSEGV,
+/// which would end the process. So a handler (`onFault`, on the thread's
+/// signal stack, which std gives each thread it starts) takes a fault on
+/// the guarded call's own stack, below where the call began, for the call's
+/// crash, and jumps back as `crashed` does. Any other fault, in the call or
+/// not, goes to what handled it before (std's, which says where and stops).
+/// `SA.NODEFER`: the jump leaves the handler without a sigreturn, and
+/// SIGSEGV must not stay blocked after it.
+const posix = std.posix;
+
+/// Where the guarded call's frame is, on the thread it runs on; 0 when no
+/// call is guarded on this thread.
+threadlocal var guard_top: usize = 0;
+
+/// How far below `guard_top` a fault is the call's stack: past any stack
+/// std gives a thread (16 MiB), and short of the rest of memory.
+const stack_most = 256 * 1024 * 1024;
+
+const overflow_message = "the stack overflowed (a recursion too deep)";
+
+var fault_handled = false;
+var fault_before: posix.Sigaction = undefined;
+
+/// The handler, put in place as the first call begins (a call at a time:
+/// `roc.enter`).
+fn handleFaults() void {
+    if (fault_handled) return;
+    fault_handled = true;
+    const act: posix.Sigaction = .{
+        .handler = .{ .sigaction = onFault },
+        .mask = posix.sigemptyset(),
+        .flags = posix.SA.SIGINFO | posix.SA.ONSTACK | posix.SA.NODEFER,
+    };
+    posix.sigaction(.SEGV, &act, &fault_before);
+}
+
+fn onFault(sig: posix.SIG, info: *const posix.siginfo_t, ctx: ?*anyopaque) callconv(.c) void {
+    _ = sig;
+    _ = ctx;
+    const at = @intFromPtr(info.fields.sigfault.addr);
+    const top = guard_top;
+    if (top != 0 and at < top and top - at <= stack_most) {
+        guard_top = 0;
+        crashed(overflow_message);
+    }
+    // Not the call's stack: the handler before is put back, and the fault,
+    // run again as this returns, is its.
+    posix.sigaction(.SEGV, &fault_before, null);
 }
 
 /// The router's decision for `path` asked with `method`, Roc's memory and
@@ -408,6 +466,7 @@ pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Metho
     const was = roc.crashed;
     roc.crashed = crashed;
     defer roc.crashed = was;
+    handleFaults();
     var a: Answer = undefined;
     if (!guarded(path, .of(method), &a)) return error.RocCrashed;
     return switch (a.kind) {

@@ -283,3 +283,21 @@ test "memory that runs out at any allocation of a call is that call's crash, in 
     try everyAllocationFails("/crash-after-header", .GET, &.{ .path = "/crash-after-header", .method = .GET, .headers = &.{.{ .name = "x-probe", .value = "one" }} }, "a planted crash, after read_header!");
     try everyAllocationFails("/crash-after-body", .POST, &.{ .path = "/crash-after-body", .method = .POST, .headers = &.{}, .body = "a body for read_body!" }, "a planted crash, after read_body!");
 }
+
+test "a recursion past the stack, three times over on one server: each the call's 500, the fault never left blocked" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    std.testing.log_level = .err;
+    defer std.testing.log_level = .warn;
+    const deep: Plant = .{ .name = "a recursion past the stack", .request = get("/crash-deep"), .said = "the stack overflowed" };
+    for (0..3) |_| {
+        try expectCrash500(deep, try exchange(a, r.port(), deep.request));
+        try std.testing.expect(has(try saidCrash(a, r), "GET /crash-deep (turn "));
+        try std.testing.expect(has(try saidCrash(a, r), "): the stack overflowed"));
+        try expectServed(a, r);
+    }
+    try std.testing.expectEqual(3, r.server.stats.crashes.load(.acquire));
+}
