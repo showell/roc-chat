@@ -13,6 +13,7 @@
 ##   which the core's Settings hold and no codec of the core stores.
 ## Pure.
 import Bytes
+import Cast
 import GitHubSignIn
 import OAuthState
 import Principal
@@ -306,25 +307,11 @@ expect SignInWeb.url_encode(Str.to_utf8("https://chat.example/login/github")) ==
 expect SignInWeb.u64_of([0, 0, 0, 0, 0, 0, 1, 2]) == 258
 
 # The settings' record and the barred ids, round trips and refusals.
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-expect SignInWeb.settings_next(SignInWeb.settings_line(gen(3))) == Ok(gen(3))
+expect SignInWeb.settings_next(SignInWeb.settings_line(Cast.gen(3))) == Ok(Cast.gen(3))
 expect SignInWeb.settings_next(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
 barred_ids : List(Principal.GitHubId)
-barred_ids = [gid(7), gid(583231)]
+barred_ids = [Cast.gid(7), Cast.gid(583231)]
 
 expect SignInWeb.barred(List.join_map(barred_ids, SignInWeb.barred_line)) == Ok(barred_ids)
 expect SignInWeb.barred([]) == Ok([])

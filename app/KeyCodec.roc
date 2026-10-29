@@ -33,6 +33,7 @@
 ## the platform, a host task. Pure.
 import AccountCodec
 import Bytes
+import Cast
 import Principal
 import Stored
 
@@ -286,34 +287,6 @@ Conv :: U64.{
 	is_eq : _
 }
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-aid : U64 -> Principal.AgentId
-aid = |n|
-	match Principal.AgentId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "aid: a test's agent id is not 0"
-	}
-
-kid : U64 -> Principal.KeyId
-kid = |n|
-	match Principal.KeyId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "kid: a test's key id is not 0"
-	}
-
 conv : U64 -> Conv
 conv = |n|
 	match Conv.from_u64(n) {
@@ -339,10 +312,10 @@ entry = |r| {
 ## A commit bot's key: agent 7, reading #3 and #9 alone.
 narrow : KeyCodec.Record(Conv)
 narrow = {
-	id: kid(4),
-	acts_as: Principal.Id.Agent(aid(7)),
-	generation: gen(4),
-	human_generation: gen(3),
+	id: Cast.kid(4),
+	acts_as: Principal.Id.Agent(Cast.aid(7)),
+	generation: Cast.gen(4),
+	human_generation: Cast.gen(3),
 	scope: {
 		read: On(Only([conv(3), conv(9)])),
 		post: Off,
@@ -357,10 +330,10 @@ narrow = {
 ## expiring, revoked.
 broad : KeyCodec.Record(Conv)
 broad = {
-	id: kid(18446744073709551615),
-	acts_as: Principal.Id.Human(gid(583231)),
-	generation: gen(18446744073709551615),
-	human_generation: gen(18446744073709551615),
+	id: Cast.kid(18446744073709551615),
+	acts_as: Principal.Id.Human(Cast.gid(583231)),
+	generation: Cast.gen(18446744073709551615),
+	human_generation: Cast.gen(18446744073709551615),
 	scope: {
 		read: On(Everywhere),
 		post: On(Only([conv(1)])),
@@ -399,7 +372,7 @@ expect is_kept(entry(broad))
 expect
 	List.all(
 		[
-			{ ..narrow, acts_as: Principal.Id.Bot(aid(2)) },
+			{ ..narrow, acts_as: Principal.Id.Bot(Cast.aid(2)) },
 			{ ..narrow, created: 0, expires: 1 },
 			{ ..narrow, created: Stored.max_time - 1, expires: Stored.max_time },
 			{ ..narrow, expires: 1761600001 },
