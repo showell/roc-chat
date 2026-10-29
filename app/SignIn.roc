@@ -6,6 +6,7 @@
 ## nothing else).
 import pf.Chat
 import pf.Host
+import Access
 import AccountCodec
 import AuditCodec
 import GitHubSignIn
@@ -60,6 +61,48 @@ SignIn := [].{
 	## made, or the name asked for again. A refusal is audited.
 	name! : {} => Chat.Answer
 	name! = |{}| refused_or!(named!({}))
+
+	## **WHO THIS REQUEST IS, FROM ITS SESSION ALONE** (Access.Viewer, the
+	## only way a handler learns who is asking): the session this
+	## browser's cookie names, admitted against the accounts now, its
+	## `last seen` written when stale. No cookie, one that is not hex, no
+	## such session, a malformed one, or one the accounts no longer admit
+	## (expired, its account retired) is signed out. Never anything the
+	## request claims. With the accounts and the time it was decided at,
+	## which the caller decides on too.
+	viewer! : {} => Try({ viewer : Access.Viewer(id), accounts : List(Principal), now : I64 }, [Failed])
+	viewer! = |{}| {
+		now = Host.read_time!({})
+		accounts = Store.accounts!({})?
+		signed_out = Ok({ viewer: Access.Viewer.signed_out({}), accounts, now })
+		match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
+			Unsent => signed_out
+			Sent(value) =>
+				match SignInWeb.unhex(value) {
+					Err(NotHex) => signed_out
+					Ok(secret) =>
+						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
+							Err(NotAHash) => Err(Failed)
+							Ok(token_hash) =>
+								match Store.session!(token_hash) {
+									Err(Failed) => Err(Failed)
+									Err(Missing) => signed_out
+									Err(Malformed) => signed_out
+									Ok(line) =>
+										match Access.Viewer.from_session(Session.load(line), { accounts, now }) {
+											Err(_) => signed_out
+											Ok({ viewer, write: Unchanged }) => Ok({ viewer, accounts, now })
+											Ok({ viewer, write: Touched(s) }) =>
+												match Store.save_session!(s.fields()) {
+													Written => Ok({ viewer, accounts, now })
+													Failed => Err(Failed)
+												}
+										}
+								}
+						}
+				}
+		}
+	}
 
 	## **/me**: the session this browser's cookie names, admitted or not
 	## (Session.admit), its `last seen` written when stale.

@@ -1,0 +1,190 @@
+-- **EVERY CHECK OF roc-chat, IN ONE RUN** (metal-vmm QUEUE 314): the proof
+-- a change is sound, and the box's whole check of one. From the
+-- repository's root, as the unprivileged user (CLOUD_WORK: `as-steve`):
+--
+--   shale tools/verify.shale
+--
+-- It prints one line a check, `PASS` or `FAIL` with its numbers, then
+-- `verify: N of N passed` or `verify: FAILED`, and exits 0 only on the
+-- first. **IT NEVER TOUCHES THE TREE**: every build here has its own cache
+-- under .zig-cache/verify/, and each planted fault is made in a copy of the
+-- tree there (roc-chat, with roc-markdown's package and chat-client beside
+-- it, as the build finds them), never in a file of yours.
+--
+-- The checks:
+--   - `zig build test`, from an empty cache so every test runs: its Roc
+--     expects and its Zig tests counted, neither below its floor;
+--   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
+--     each with its time, and exactly `e2e_steps` of them;
+--   - five planted faults, each red at its own step of the end to end: a
+--     forged session cookie admitted, a third user's post let through, a
+--     third user's read let through, the subscribe moved out of the turn,
+--     and a message's newline written raw into its transcript line;
+--   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
+--
+-- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
+
+-- The floors: main's counts when step 6 began (roc-chat 7864d9b), which
+-- may only rise.
+const roc_floor = 1704
+const zig_floor = 166
+const e2e_steps = 11
+const scratch = ".zig-cache/verify"
+const cache = ".zig-cache/verify/cache"
+const tree = ".zig-cache/verify/tree"
+-- A build and a run of everything: minutes, from an empty cache.
+const build_ms = 1800000
+
+-- The checklist so far: each line, and how many failed.
+const board = {lines = {}, failed = 0}
+
+function say(ok, what)
+  local mark = "FAIL"
+  if ok then mark = "PASS" end
+  if not ok then board.failed = board.failed + 1 end
+  board.lines[#board.lines + 1] = mark .. "  " .. what
+  print(mark .. "  " .. what)
+end
+
+-- The number the first group of `pattern` catches in `out`, or -1.
+function number_in(out, pattern)
+  local m = re_find(out, pattern)
+  if m == nil then return -1 end
+  return parse_int(m.group)
+end
+
+-- The end to end's step lines, as {n = {ok, line}}, and how many there are.
+function steps_of(out)
+  local got = {count = 0, by = {}}
+  for line in split(out, "\n") do
+    local m = re_find(line, "^(PASS|FAIL) +(\\d+) +(.*)$")
+    if m ~= nil then
+      got.count = got.count + 1
+      got.by[m.groups[2]] = {ok = m.groups[1] == "PASS", line = m.groups[3]}
+    end
+  end
+  return got
+end
+
+if exists(scratch) then remove_tree(scratch) end
+mkdir(scratch)
+
+-- ── zig build test, from an empty cache, and its counts ──
+local t = run({"zig", "build", "test", "--cache-dir", cache, "--summary", "all"}, {cwd = ".", timeout_ms = build_ms, tail = 80})
+say(t.code == 0, "zig build test (exit " .. t.code .. ", " .. t.ms .. " ms)")
+local roc_count = number_in(t.out, "All \\((\\d+)\\) tests passed")
+local zig_count = number_in(t.out, "; (\\d+)/\\d+ tests passed")
+say(roc_count >= roc_floor, "Roc expects: " .. roc_count .. " (floor " .. roc_floor .. ")")
+say(zig_count >= zig_floor, "Zig tests: " .. zig_count .. " (floor " .. zig_floor .. ")")
+
+-- ── the end to end, a line a step ──
+local e = run({"zig", "build", "e2e", "--cache-dir", cache}, {cwd = ".", timeout_ms = build_ms, tail = 40})
+local got = steps_of(e.out)
+for n = 1, e2e_steps do
+  local s = get(got.by, "" .. n, nil)
+  if s == nil then
+    say(false, "e2e step " .. n .. ": no line")
+  else
+    say(s.ok, "e2e step " .. n .. ": " .. s.line)
+  end
+end
+say(e.code == 0 and got.count == e2e_steps, "e2e: " .. got.count .. " steps (want " .. e2e_steps .. "), exit " .. e.code .. ", " .. e.ms .. " ms")
+
+-- ── the planted faults, each in a copy of the tree ──
+-- The repository at `from`'s files under `part` (its own, and new ones
+-- not yet committed, never what .gitignore leaves out: a cache, a build's
+-- output, a dev server's data), copied to `to`, each at its path.
+function copy_repo(from, part, to)
+  local listed = run({"git", "ls-files", "--cached", "--others", "--exclude-standard", part}, {cwd = from, timeout_ms = 60000, whole = 4000000})
+  if listed.code ~= 0 then fail("verify: cannot list " .. from .. "'s files: " .. trim(listed.out)) end
+  for path in split(trim(listed.out), "\n") do
+    local source = path
+    if from ~= "." then source = from .. "/" .. path end
+    if path ~= "" and exists(source) then
+      local slash = 0
+      for i = 1, #path do
+        if sub(path, i, i) == "/" then slash = i end
+      end
+      if slash > 0 then mkdir(to .. "/" .. sub(path, 1, slash - 1)) end
+      replace(to .. "/" .. path, read(source))
+    end
+  end
+end
+
+mkdir(tree)
+copy_repo(".", ".", tree .. "/roc-chat")
+copy_repo("repos:roc-markdown", "package", tree .. "/roc-markdown")
+copy_repo("repos:chat-client", ".", tree .. "/chat-client")
+
+-- What a run said last, on one line: a build's error, when it made no
+-- step's line.
+function tail_of(out)
+  local t = trim(out)
+  if #t > 400 then t = sub(t, #t - 399) end
+  return join(split(t, "\n"), " | ")
+end
+
+-- `s` with its first `old` made `new`.
+function replace_once(s, old, new)
+  local at = find(s, old)
+  return sub(s, 1, at - 1) .. new .. sub(s, at + #old)
+end
+
+-- Plants `new` in place of `old` in the copy's `file`, runs the end to end
+-- there, requires it red, and red at `step` (so a red for any other reason
+-- is no pass), and puts the file back.
+function plant(what, file, old, new, step)
+  local p = tree .. "/roc-chat/" .. file
+  local was = read(p)
+  if find(was, old) == nil then
+    say(false, "plant: " .. what .. ": " .. file .. " has no `" .. old .. "`")
+    return nil
+  end
+  replace(p, replace_once(was, old, new))
+  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 40})
+  replace(p, was)
+  local s = get(steps_of(r.out).by, "" .. step, {ok = true, line = "no step line: " .. tail_of(r.out)})
+  say(r.code ~= 0 and not s.ok, "plant: " .. what .. " is red at step " .. step .. " (exit " .. r.code .. "; " .. s.line .. ")")
+end
+
+plant("a forged session cookie admitted (the host's hash ignores its bytes)",
+  "host/call.zig", "&crypto.sha256(bytes)", "&crypto.sha256(bytes[0..0])", 8)
+plant("a third user's post let through (can_post asked of nobody)",
+  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {", "if List.is_empty(accounts) {", 9)
+plant("a third user's read let through (can_see asked of nobody)",
+  "app/Conversations.roc", "if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) Ok(a) else Err(no_such)", "Ok(a)", 10)
+-- The other half of the subscribe plant: the stream subscribes after the
+-- turn is let go. Planted with the first, in one copy.
+function plant_out_of_turn()
+  local p = tree .. "/roc-chat/host/server.zig"
+  local was = read(p)
+  local call = "const decided = s.decideInTurn(arena, copied, exchanged, &ctx, &sub);"
+  local late = call .. "\n            if (decided) |ok| switch (ok) {\n                .stream => |st| sub = s.subscribe(st.key) catch null,\n                else => {},\n            } else |_| {}"
+  local inside = ".stream => |st| sub.* = try s.subscribe(st.key),"
+  if find(was, call) == nil or find(was, inside) == nil then
+    say(false, "plant: the subscribe out of the turn: host/server.zig has moved")
+    return nil
+  end
+  replace(p, replace_once(replace_once(was, inside, ".stream => sub.* = null,"), call, late))
+  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 40})
+  replace(p, was)
+  local s = get(steps_of(r.out).by, "11", {ok = true, line = "no step line: " .. tail_of(r.out)})
+  say(r.code ~= 0 and not s.ok, "plant: the subscribe after the turn, not in it, is red at step 11 (exit " .. r.code .. "; " .. s.line .. ")")
+end
+plant_out_of_turn()
+plant("a message's newline written raw into its transcript line",
+  "app/MessageCodec.roc", "if b == '%' or b < 0x20 or b == 0x7F", "if b == '%' or (b < 0x20 and b != '\\n') or b == 0x7F", 6)
+
+-- ── the formatters ──
+local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
+say(zf.code == 0, "zig fmt --check host build.zig" .. (zf.code == 0 and "" or (": " .. trim(zf.out))))
+local rf = run({"roc", "fmt", "--check", "app", "platform"}, {cwd = ".", timeout_ms = 60000, tail = 20})
+say(rf.code == 0, "roc fmt --check app platform" .. (rf.code == 0 and "" or (": " .. trim(rf.out))))
+
+remove_tree(scratch)
+if board.failed == 0 then
+  print("verify: " .. #board.lines .. " of " .. #board.lines .. " passed")
+else
+  print("verify: FAILED")
+  fail(board.failed .. " of " .. #board.lines .. " checks failed")
+end

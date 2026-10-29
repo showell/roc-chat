@@ -26,8 +26,6 @@ platform ""
 		"roc_chat_remove": Host.remove!,
 		"roc_chat_serve_script": Host.serve_script!,
 		"roc_chat_sign": Host.sign!,
-		"roc_chat_stub_append": Host.stub_append!,
-		"roc_chat_stub_read": Host.stub_read!,
 		"roc_chat_verify": Host.verify!,
 		"roc_chat_write": Host.write!,
 		"roc_chat_write_cache": Host.write_cache!,

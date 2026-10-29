@@ -21,6 +21,7 @@
 //! | `tok-slow`      | no answer for `slow_ms`                            |
 //! | `tok-malformed` | a body cut off mid-JSON                            |
 //! | `tok-huge`      | a 1 MiB body                                       |
+//! | `tok-id-N`      | `{"login": "personN", "id": N, ...}`: as many people as a test wants (the code `user-id-N`) |
 //! | anything else   | 401 `{"message": "Bad credentials"}`               |
 //!
 //! As GitHub does, it refuses a request with no User-Agent (403), answers
@@ -178,6 +179,14 @@ fn user(f: *Fake, req: *std.http.Server.Request, authorization: []const u8) !voi
             "{{\"login\":\"{s}\",\"id\":{d},\"node_id\":\"MDQ6VXNlcjE=\",\"type\":\"User\",\"site_admin\":false,\"name\":\"The Octocat\",\"public_repos\":8}}",
             .{ user_login, user_id },
         ), .{ .keep_alive = false, .extra_headers = &json });
+    }
+    if (std.mem.startsWith(u8, tok, "tok-id-")) {
+        const id = std.fmt.parseInt(u64, tok["tok-id-".len..], 10) catch 0;
+        if (id > 0) {
+            var buf: [256]u8 = undefined;
+            const body = std.fmt.bufPrint(&buf, "{{\"login\":\"person{d}\",\"id\":{d},\"type\":\"User\",\"site_admin\":false}}", .{ id, id }) catch unreachable;
+            return req.respond(body, .{ .keep_alive = false, .extra_headers = &json });
+        }
     }
     if (std.mem.eql(u8, tok, "tok-slow")) {
         f.io.sleep(.fromMilliseconds(slow_ms), .awake) catch return;

@@ -25,6 +25,7 @@
 import Access
 import ApiKey
 import Cast
+import ConvCodec
 import Principal
 import Session
 import SessionCodec
@@ -124,6 +125,32 @@ ConvAccess := [].{
 		## The conversation's id.
 		id : ConvAccess.Conv -> ConvAccess.ConvId
 		id = |ConvAccess.Conv.(c)| c.id
+
+		## **A CONVERSATION AS ITS STORED LINE HOLDS IT**: the only way back
+		## from the store (ConvCodec checked the line whole), its bindings
+		## and elections as they were written, never bound again.
+		load : ConvCodec.Line -> ConvAccess.Conv
+		load = |line| {
+			f = line.fields()
+			match ConvAccess.ConvId.from_u64(f.id) {
+				Ok(conv_id) => ConvAccess.Conv.({ id: conv_id, participants: f.participants, public_by: f.public_by })
+				Err(NotAnId) => crash "ConvAccess.Conv.load: ConvCodec refuses an id of 0"
+			}
+		}
+
+		## The conversation's fields, to store, made when it started at
+		## `created`.
+		fields : ConvAccess.Conv, I64 -> ConvCodec.Fields
+		fields = |ConvAccess.Conv.(c), created| {
+			id: c.id.to_u64(),
+			created,
+			participants: c.participants,
+			public_by: c.public_by,
+		}
+
+		## The participants, each bound as they were when it started.
+		participants : ConvAccess.Conv -> List(Principal.Bound)
+		participants = |ConvAccess.Conv.(c)| c.participants
 
 		## Humans alone, or an agent or a bot among them: the ids say.
 		kind : ConvAccess.Conv -> [HumansOnly, WithAgents]
@@ -1470,3 +1497,11 @@ own_key_viewer = |who| {
 expect ConvAccess.can_see(own_key_viewer(Ann), { conv: hh, accounts })
 expect ConvAccess.can_post(own_key_viewer(Ann), { conv: hh, accounts })
 expect !ConvAccess.can_see(own_key_viewer(Cal), { conv: hh, accounts })
+
+# A conversation stored and loaded is the one that started: its bindings
+# and elections whole, never bound again.
+stored_and_loaded : ConvAccess.Conv -> Try(ConvCodec.Fields, _)
+stored_and_loaded = |conv|
+	ConvCodec.decode(ConvCodec.encode(conv.fields(1761600000))).map_ok(|line| ConvAccess.Conv.load(line).fields(1761600000))
+
+expect stored_and_loaded(hh) == Ok(hh.fields(1761600000))

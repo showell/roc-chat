@@ -56,7 +56,7 @@ pub fn build(b: *std.Build) void {
     roc_test.has_side_effects = true;
     tests.dependOn(&roc_test.step);
     const host_tests = [_][]const u8{
-        "host/server_test.zig",
+        "host/chat_test.zig",
         "host/signin_test.zig",
         "host/seam/glue_test.zig",
     };
@@ -71,9 +71,39 @@ pub fn build(b: *std.Build) void {
         tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
     }
 
+    // **THE SMALLEST END TO END** (host/e2e.zig): two clients signed in
+    // through the fake GitHub, a conversation, a post, its stream and its
+    // refusals, against the real server with the chat linked; a line a
+    // step, timed. `zig build e2e` alone, and part of `test`.
+    const e2e_exe = b.addExecutable(.{ .name = "e2e", .root_module = b.createModule(.{
+        .root_source_file = b.path("host/e2e.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = imports,
+    }) });
+    e2e_exe.root_module.addObjectFile(app);
+    const e2e = b.addRunArtifact(e2e_exe);
+    e2e.setCwd(b.path("."));
+    e2e.has_side_effects = true;
+    b.step("e2e", "The smallest end to end: sign in, start, post, read, stream, and the refusals (host/e2e.zig)").dependOn(&e2e.step);
+    tests.dependOn(&e2e.step);
+
+    // **THE SERVER'S PROBE** (app/test/probe.roc), linked in place of the
+    // chat for the server's own tests: the plainest routes that drive each
+    // part of the host, so they need no sign-in.
+    const probe_app = appArchive(b, roc, rocOpt(optimize), "app/test/probe.roc", "probe-x64musl.a", testAppInputs(b, "app/test/probe.roc"));
+    const server_test = b.createModule(.{
+        .root_source_file = b.path("host/server_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = imports,
+    });
+    server_test.addObjectFile(probe_app);
+    tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = server_test })).step);
+
     // **THE PLANTED CRASHES** (app/test/crash.roc), linked in place of the
     // chat, for this test alone: a Roc crash is a 500, and the server goes on.
-    const crash_app = appArchive(b, roc, rocOpt(optimize), "app/test/crash.roc", "crash-x64musl.a", crashInputs(b));
+    const crash_app = appArchive(b, roc, rocOpt(optimize), "app/test/crash.roc", "crash-x64musl.a", testAppInputs(b, "app/test/crash.roc"));
     const crash_test = b.createModule(.{
         .root_source_file = b.path("host/crash_test.zig"),
         .target = target,
@@ -157,10 +187,11 @@ fn appArchive(b: *std.Build, roc: []const u8, opt: RocOpt, source: []const u8, n
     return run.addPrefixedOutputFileArg("--output=", name);
 }
 
-/// The planted crashes' modules: the app itself and the platform's.
-fn crashInputs(b: *std.Build) []const []const u8 {
+/// A test app's modules (the planted crashes', the server's probe): the app
+/// itself and the platform's.
+fn testAppInputs(b: *std.Build, source: []const u8) []const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
-    out.append(b.allocator, "app/test/crash.roc") catch @panic("OOM");
+    out.append(b.allocator, source) catch @panic("OOM");
     rocFiles(b, "platform", &out);
     return out.items;
 }

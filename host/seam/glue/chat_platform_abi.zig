@@ -1723,6 +1723,14 @@ pub const HostListArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.publish!
+/// Roc signature: List(U8), List(U8) => {}
+/// Refcounted fields are owned by the hosted function.
+pub const HostPublishArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: RocListWith(u8, false),
+};
+
 /// Arguments for Host.random_bytes!
 /// Roc signature: U64 => List(U8)
 /// Refcounted fields are owned by the hosted function.
@@ -1744,14 +1752,6 @@ pub const HostRead_atArgs = extern struct {
     arg0: RocListWith(u8, false),
     arg1: u64,
     arg2: u64,
-};
-
-/// Arguments for Host.publish!
-/// Roc signature: List(U8), List(U8) => {}
-/// Refcounted fields are owned by the hosted function.
-pub const HostPublishArgs = extern struct {
-    arg0: RocListWith(u8, false),
-    arg1: RocListWith(u8, false),
 };
 
 /// Arguments for Host.read_body!
@@ -1832,21 +1832,6 @@ pub const HostWriteArgs = extern struct {
 pub const HostWrite_cacheArgs = extern struct {
     arg0: RocListWith(u8, false),
     arg1: RocListWith(u8, false),
-};
-
-/// Arguments for Host.stub_append!
-/// Roc signature: List(U8), List(U8) => {}
-/// Refcounted fields are owned by the hosted function.
-pub const HostStub_appendArgs = extern struct {
-    arg0: RocListWith(u8, false),
-    arg1: RocListWith(u8, false),
-};
-
-/// Arguments for Host.stub_read!
-/// Roc signature: List(U8) => List(List(U8))
-/// Refcounted fields are owned by the hosted function.
-pub const HostStub_readArgs = extern struct {
-    arg0: RocListWith(u8, false),
 };
 
 // Platform Type Aliases
@@ -2012,6 +1997,14 @@ pub extern fn roc_chat_hash(arg0: RocListWith(u8, false)) callconv(.c) RocListWi
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_chat_list(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_9e1bcb2180adfc0e;
 
+/// Hosted symbol for Host.publish!
+/// Roc signature: List(U8), List(U8) => {}
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+///     arg1.decref(roc_host);
+pub extern fn roc_chat_publish(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
+
 /// Hosted symbol for Host.random_bytes!
 /// Roc signature: U64 => List(U8)
 /// The result is owned by Roc: return exactly one owned reference.
@@ -2032,14 +2025,6 @@ pub extern fn roc_chat_read(arg0: RocListWith(u8, false)) callconv(.c) __AnonStr
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_chat_read_at(arg0: RocListWith(u8, false), arg1: u64, arg2: u64) callconv(.c) __AnonStruct_90d88876906216c3;
-
-/// Hosted symbol for Host.publish!
-/// Roc signature: List(U8), List(U8) => {}
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     arg0.decref(roc_host);
-///     arg1.decref(roc_host);
-pub extern fn roc_chat_publish(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
 
 /// Hosted symbol for Host.read_body!
 /// Roc signature: U64 => { bytes : List(U8), status : [Answered, Read] }
@@ -2126,22 +2111,6 @@ pub extern fn roc_chat_write(arg0: RocListWith(u8, false), arg1: RocListWith(u8,
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
 pub extern fn roc_chat_write_cache(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
-
-/// Hosted symbol for Host.stub_append!
-/// Roc signature: List(U8), List(U8) => {}
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     arg0.decref(roc_host);
-///     arg1.decref(roc_host);
-pub extern fn roc_chat_stub_append(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
-
-/// Hosted symbol for Host.stub_read!
-/// Roc signature: List(U8) => List(List(U8))
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     arg0.decref(roc_host);
-/// The result is owned by Roc: return exactly one owned reference.
-pub extern fn roc_chat_stub_read(arg0: RocListWith(u8, false)) callconv(.c) RocList(RocListWith(u8, false));
 
 /// Default memory management functions for Roc platforms.
 ///
