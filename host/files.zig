@@ -3,15 +3,23 @@
 //! kin) ask for them. Each answers a tag, never a bare error, and the
 //! request's failure is the caller's to record (host/call.zig's `Ctx`).
 //!
-//! **A PATH IS secrets.zig's PATH RULE**: relative, with no empty, `.` or
-//! `..` part (`secrets.pathOk`, the one home of it). A path that breaks it
-//! is the Roc's bug: `failed`, never `missing`, and nothing is touched.
+//! **A PATH IS THE HOST'S PATH RULE** (host/auth/path_rule.zig): relative,
+//! with no empty, `.` or `..` part, **and no part a temporary's name**
+//! (`temp`). A path that breaks it is the Roc's bug: `failed`, never
+//! `missing`, and nothing is touched.
+//!
+//! **A LINK IS NEVER FOLLOWED, AT ANY PART OF A PATH**: a link under the
+//! data root can point outside it. Each folder on the way is opened from
+//! the one before with O_NOFOLLOW (`walk`), and the file itself too, so the
+//! kernel refuses a link in the same call that opens what is used: there is
+//! no check of the path beforehand for a link swapped in to race. A link,
+//! as the file or as a folder on its path, is `failed` for every function.
 //!
 //! **MISSING AND FAILED ARE NEVER ONE ANSWER**: nothing there (the path, or
 //! a folder on it, not found) is `missing`; anything else that stops a read
-//! (a folder the server may not enter, a disk error) is `failed`. What is
-//! read is often rewritten, so an unreadable file taken for an absent one
-//! would be written over.
+//! (a folder the server may not enter, a link, a disk error) is `failed`.
+//! What is read is often rewritten, so an unreadable file taken for an
+//! absent one would be written over.
 //!
 //! **EVERY WRITE IS DURABLE BEFORE IT ANSWERS** (decision D5): the file is
 //! synced, and so is each folder whose entries it changed (the file's own,
@@ -20,22 +28,23 @@
 //!
 //! **`write` IS ATOMIC**: the bytes go to a sibling temporary, synced, then
 //! renamed over the file, and the folder synced. A stop before the rename
-//! leaves the old file whole (and the temporary, which the next write of
-//! that file writes over). (zig-webbox store.zig's `replace`, rebuilt on a
-//! data-root `Dir` and with the syncs it left to its host.)
+//! leaves the old file whole, and the temporary: `list` never shows one,
+//! the next write of that file takes it, and `sweepTemps` clears any left
+//! at start. (zig-webbox store.zig's `replace`, rebuilt on a data-root
+//! `Dir` and with the syncs it left to its host.)
 //!
 //! No lock: the turn (host/server.zig) runs one handler at a time, so two
 //! writes of one file never meet.
 
 const std = @import("std");
 const Io = std.Io;
-const secrets = @import("auth/secrets.zig");
+const path_rule = @import("auth/path_rule.zig");
 const route = @import("seam/chat_route.zig");
 
 /// The most bytes `read` answers; a larger file is a failed read.
 pub const read_most = 16 * 1024 * 1024;
 
-/// A test's fault, planted in the store's next writes.
+/// A fault planted in the store's next writes.
 pub const Fault = enum {
     none,
     /// **A STOP BETWEEN THE TEMPORARY AND THE RENAME**: the temporary
@@ -44,6 +53,10 @@ pub const Fault = enum {
     stop_before_rename,
     /// Every sync fails, as a disk's would (`error.InputOutput`).
     sync_fails,
+    /// **EVERY SYNC SKIPPED**: host/files_bench.zig's, to time what the
+    /// syncs cost. A store that skips them is not durable; no test or
+    /// server sets it.
+    sync_skipped,
 };
 
 /// The answers cross the seam as they are (host/seam/chat_route.zig).
@@ -51,6 +64,29 @@ pub const Read = route.Read;
 pub const Entry = route.Entry;
 pub const Listing = route.Listing;
 pub const Stat = route.Stat;
+
+/// **THE STORE'S TEMPORARIES, ONE RULE**: the name `write` gives the
+/// sibling it renames over a file, and the test `list` and `sweepTemps` use
+/// to know one. `~`, eight lowercase hex digits of a hash of the file's
+/// name, `.tmp`: one per name, so writes of two files in one folder never
+/// share it. No path the Roc names may have a part that is one.
+pub const temp = struct {
+    pub const len = 13;
+
+    pub fn name(buf: *[len]u8, of: []const u8) []const u8 {
+        const h: u32 = @truncate(std.hash.Wyhash.hash(0, of));
+        return std.fmt.bufPrint(buf, "~{x:0>8}.tmp", .{h}) catch unreachable;
+    }
+
+    pub fn is(entry: []const u8) bool {
+        if (entry.len != len or entry[0] != '~' or !std.mem.endsWith(u8, entry, ".tmp")) return false;
+        for (entry[1..9]) |c| switch (c) {
+            '0'...'9', 'a'...'f' => {},
+            else => return false,
+        };
+        return true;
+    }
+};
 
 pub const Files = struct {
     io: Io,
@@ -60,39 +96,43 @@ pub const Files = struct {
 
     /// The file's bytes, in `arena`.
     pub fn read(f: *const Files, arena: std.mem.Allocator, path: []const u8) Read {
-        if (!secrets.pathOk(path)) return .failed;
-        const bytes = f.root.readFileAlloc(f.io, path, arena, .limited(read_most)) catch |e| return if (absent(e)) .missing else .failed;
-        return .{ .found = bytes };
+        const file = f.openFile(path, .read_only) catch |e| return if (absent(e)) .missing else .failed;
+        defer file.close(f.io);
+        const st = file.stat(f.io) catch return .failed;
+        if (st.kind != .file or st.size > read_most) return .failed;
+        return readOpen(f, arena, file, 0, st.size);
     }
 
     /// At most `max` of the file's bytes from `offset` (none past its end),
     /// in `arena`.
     pub fn readAt(f: *const Files, arena: std.mem.Allocator, path: []const u8, offset: u64, max: u64) Read {
-        if (!secrets.pathOk(path)) return .failed;
-        const file = f.root.openFile(f.io, path, .{}) catch |e| return if (absent(e)) .missing else .failed;
+        const file = f.openFile(path, .read_only) catch |e| return if (absent(e)) .missing else .failed;
         defer file.close(f.io);
         const st = file.stat(f.io) catch return .failed;
         if (st.kind != .file) return .failed;
-        const n: usize = @intCast(@min(max, st.size -| offset, read_most));
-        const buf = arena.alloc(u8, n) catch return .failed;
-        const got = file.readPositionalAll(f.io, buf, offset) catch return .failed;
-        return .{ .found = buf[0..got] };
+        return readOpen(f, arena, file, offset, @min(max, st.size -| offset, read_most));
     }
 
     /// The file's size and its last change, in whole seconds since the
-    /// epoch. A folder is `failed`: it is not a file.
+    /// epoch. A folder or a link is `failed`: it is not a file.
     pub fn stat(f: *const Files, path: []const u8) Stat {
-        if (!secrets.pathOk(path)) return .failed;
-        const st = f.root.statFile(f.io, path, .{}) catch |e| return if (absent(e)) .missing else .failed;
+        if (!pathOk(path)) return .failed;
+        var dir = f.walk(path, .open) catch |e| return if (absent(e)) .missing else .failed;
+        defer f.closeWalked(dir);
+        const st = dir.statFile(f.io, std.fs.path.basename(path), .{ .follow_symlinks = false }) catch |e| return if (absent(e)) .missing else .failed;
         if (st.kind != .file) return .failed;
         return .{ .found = .{ .size = st.size, .mtime = st.mtime.toSeconds() } };
     }
 
-    /// The folder's entries, in the order the disk gives them, in `arena`.
-    /// A path that is a file is `failed`.
+    /// The folder's entries, in the order the disk gives them, in `arena`;
+    /// never the store's own temporaries. A path that is a file or a link
+    /// is `failed`.
     pub fn list(f: *const Files, arena: std.mem.Allocator, path: []const u8) Listing {
-        if (!secrets.pathOk(path)) return .failed;
-        var dir = f.root.openDir(f.io, path, .{ .iterate = true }) catch |e| return switch (e) {
+        if (!pathOk(path)) return .failed;
+        var parent = f.walk(path, .open) catch |e| return if (e == error.FileNotFound) .missing else .failed;
+        defer f.closeWalked(parent);
+        const last = std.fs.path.basename(path);
+        var dir = parent.openDir(f.io, last, .{ .iterate = true, .follow_symlinks = false }) catch |e| return switch (linkOr(f, parent, last, e)) {
             error.FileNotFound => .missing,
             else => .failed,
         };
@@ -100,6 +140,7 @@ pub const Files = struct {
         var out: std.ArrayList(Entry) = .empty;
         var it = dir.iterate();
         while (it.next(f.io) catch return .failed) |entry| {
+            if (temp.is(entry.name)) continue;
             const name = arena.dupe(u8, entry.name) catch return .failed;
             out.append(arena, .{ .name = name, .kind = switch (entry.kind) {
                 .directory => .dir,
@@ -114,14 +155,24 @@ pub const Files = struct {
     /// a sibling temporary, synced, renamed over it, the folder synced. The
     /// folders above it are made as needed.
     pub fn write(f: *const Files, path: []const u8, bytes: []const u8) !void {
-        if (!secrets.pathOk(path)) return error.BadPath;
-        var dir = try f.folderOf(path);
-        defer if (dir.handle != f.root.handle) dir.close(f.io);
+        if (!pathOk(path)) return error.BadPath;
+        var dir = try f.walk(path, .make);
+        defer f.closeWalked(dir);
         const name = std.fs.path.basename(path);
-        var tmp_buf: [16]u8 = undefined;
-        const tmp = siblingName(&tmp_buf, name);
+        // **A LINK AS THE FILE IS REFUSED, AND THIS CHECK CANNOT BE RACED
+        // INTO AN ESCAPE**: the rename below never follows a link, so a link
+        // swapped in after it is replaced, never written through.
+        try refuseLink(f, dir, name);
+        var tmp_buf: [temp.len]u8 = undefined;
+        const tmp = temp.name(&tmp_buf, name);
+        // A stopped write's temporary (or a link at its name) goes first,
+        // so the exclusive create never meets one: O_EXCL never follows.
+        dir.deleteFile(f.io, tmp) catch |e| switch (e) {
+            error.FileNotFound => {},
+            else => return e,
+        };
         {
-            const file = try dir.createFile(f.io, tmp, .{});
+            const file = try dir.createFile(f.io, tmp, .{ .exclusive = true });
             defer file.close(f.io);
             try file.writeStreamingAll(f.io, bytes);
             try f.sync(file);
@@ -137,70 +188,131 @@ pub const Files = struct {
     /// **`bytes` AT THE END OF THE FILE, SYNCED**: one positional write at
     /// its end, the file and its folders made as needed; its size after.
     pub fn append(f: *const Files, path: []const u8, bytes: []const u8) !u64 {
-        if (!secrets.pathOk(path)) return error.BadPath;
-        var dir = try f.folderOf(path);
-        defer if (dir.handle != f.root.handle) dir.close(f.io);
+        if (!pathOk(path)) return error.BadPath;
+        var dir = try f.walk(path, .make);
+        defer f.closeWalked(dir);
         const name = std.fs.path.basename(path);
         var made = false;
-        const file = dir.openFile(f.io, name, .{ .mode = .read_write }) catch |e| switch (e) {
+        // O_NOFOLLOW opens it, and O_EXCL makes it: neither follows a link.
+        const file = dir.openFile(f.io, name, .{ .mode = .read_write, .follow_symlinks = false }) catch |e| switch (e) {
             error.FileNotFound => blk: {
                 made = true;
-                break :blk try dir.createFile(f.io, name, .{ .truncate = false });
+                break :blk try dir.createFile(f.io, name, .{ .exclusive = true, .truncate = false });
             },
             else => return e,
         };
         defer file.close(f.io);
         const st = try file.stat(f.io);
+        if (st.kind != .file) return error.NotAFile;
         try file.writePositionalAll(f.io, bytes, st.size);
         try f.sync(file);
         if (made) try f.syncDir(dir);
         return st.size + bytes.len;
     }
 
-    /// The file gone; one not there is gone already.
+    /// The file gone; one not there is gone already. A link is refused,
+    /// not removed (unlinking never follows, so the check cannot be raced
+    /// into an escape).
     pub fn remove(f: *const Files, path: []const u8) !void {
-        if (!secrets.pathOk(path)) return error.BadPath;
-        f.root.deleteFile(f.io, path) catch |e| switch (e) {
+        if (!pathOk(path)) return error.BadPath;
+        var dir = f.walk(path, .open) catch |e| switch (e) {
             error.FileNotFound => return,
             else => return e,
         };
-        const parent = std.fs.path.dirname(path) orelse return f.syncDir(f.root);
-        var dir = try f.root.openDir(f.io, parent, .{});
-        defer dir.close(f.io);
+        defer f.closeWalked(dir);
+        const name = std.fs.path.basename(path);
+        try refuseLink(f, dir, name);
+        dir.deleteFile(f.io, name) catch |e| switch (e) {
+            error.FileNotFound => return,
+            else => return e,
+        };
         try f.syncDir(dir);
     }
 
-    /// **THE FOLDER `path` IS IN, OPEN, EACH FOLDER ON THE WAY MADE AND ITS
-    /// PARENT SYNCED**, so a new folder's entry is as durable as the file
-    /// written in it. The root itself when `path` has one part (not to be
-    /// closed).
-    fn folderOf(f: *const Files, path: []const u8) !Io.Dir {
-        const parent = std.fs.path.dirname(path) orelse return f.root;
-        var dir = f.root;
-        var parts = std.mem.splitScalar(u8, parent, '/');
-        while (parts.next()) |part| {
-            var made = true;
-            dir.createDir(f.io, part, .default_dir) catch |e| switch (e) {
-                error.PathAlreadyExists => made = false,
-                else => {
-                    if (dir.handle != f.root.handle) dir.close(f.io);
-                    return e;
+    /// **EVERY TEMPORARY A STOPPED WRITE LEFT, REMOVED; HOW MANY**: the
+    /// data root walked, never through a link, before the server takes a
+    /// request (host/main.zig), so no write is in flight. Only a regular
+    /// file with a temporary's name goes. The folders are not synced: a
+    /// temporary that comes back after a crash is swept at the next start.
+    pub fn sweepTemps(f: *const Files) !usize {
+        return sweepDir(f, f.root, 0);
+    }
+
+    /// The folders a path is deeper than are past this, and a sweep that
+    /// reaches it fails rather than recurse without end.
+    const sweep_depth_most = 64;
+
+    fn sweepDir(f: *const Files, dir: Io.Dir, depth: usize) !usize {
+        if (depth > sweep_depth_most) return error.TooDeep;
+        var readable = try dir.openDir(f.io, ".", .{ .iterate = true });
+        defer readable.close(f.io);
+        var swept: usize = 0;
+        var it = readable.iterate();
+        while (try it.next(f.io)) |entry| {
+            switch (entry.kind) {
+                .file => if (temp.is(entry.name)) {
+                    try readable.deleteFile(f.io, entry.name);
+                    swept += 1;
                 },
-            };
-            if (made) f.syncDir(dir) catch |e| {
-                if (dir.handle != f.root.handle) dir.close(f.io);
-                return e;
-            };
-            const next = dir.openDir(f.io, part, .{});
-            if (dir.handle != f.root.handle) dir.close(f.io);
-            dir = try next;
+                .directory => {
+                    var sub = try readable.openDir(f.io, entry.name, .{ .follow_symlinks = false });
+                    defer sub.close(f.io);
+                    swept += try sweepDir(f, sub, depth + 1);
+                },
+                else => {},
+            }
+        }
+        return swept;
+    }
+
+    /// The file at `path`, opened with no link followed at any part.
+    fn openFile(f: *const Files, path: []const u8, mode: Io.Dir.OpenFileOptions.Mode) !Io.File {
+        if (!pathOk(path)) return error.BadPath;
+        var dir = try f.walk(path, .open);
+        defer f.closeWalked(dir);
+        return dir.openFile(f.io, std.fs.path.basename(path), .{ .mode = mode, .follow_symlinks = false });
+    }
+
+    const Walk = enum { open, make };
+
+    /// **THE FOLDER `path` IS IN, OPENED A PART AT A TIME, EACH FROM THE
+    /// ONE BEFORE, NONE THROUGH A LINK** (O_NOFOLLOW): the kernel refuses a
+    /// link in the call that opens the folder, so nothing checked can be
+    /// swapped before it is used. A link on the way is `error.IsLink`.
+    /// `.make` makes each missing folder and syncs its parent, so a new
+    /// folder's entry is as durable as the file written in it. The root
+    /// itself when `path` has one part (`closeWalked` knows not to close it).
+    fn walk(f: *const Files, path: []const u8, how: Walk) !Io.Dir {
+        var dir = f.root;
+        errdefer f.closeWalked(dir);
+        var parts = std.mem.splitScalar(u8, path, '/');
+        var part = parts.first();
+        while (parts.next()) |after| : (part = after) {
+            if (how == .make) {
+                var made = true;
+                dir.createDir(f.io, part, .default_dir) catch |e| switch (e) {
+                    error.PathAlreadyExists => made = false,
+                    else => return e,
+                };
+                if (made) try f.syncDir(dir);
+            }
+            const next = dir.openDir(f.io, part, .{ .follow_symlinks = false }) catch |e| return linkOr(f, dir, part, e);
+            f.closeWalked(dir);
+            dir = next;
         }
         return dir;
     }
 
+    fn closeWalked(f: *const Files, dir: Io.Dir) void {
+        if (dir.handle != f.root.handle) dir.close(f.io);
+    }
+
     fn sync(f: *const Files, file: Io.File) !void {
-        if (f.fault_for_test == .sync_fails) return error.InputOutput;
-        try file.sync(f.io);
+        switch (f.fault_for_test) {
+            .sync_fails => return error.InputOutput,
+            .sync_skipped => return,
+            else => try file.sync(f.io),
+        }
     }
 
     /// A folder synced: its entries (a rename, a new file) made durable.
@@ -213,18 +325,44 @@ pub const Files = struct {
     }
 };
 
-/// **NOTHING THERE**: the path, or a folder on it, not found, or a part of
-/// it a file. Every other error is a failure.
-fn absent(e: anyerror) bool {
-    return e == error.FileNotFound or e == error.NotDir;
+/// The host's path rule, and no part a temporary's name.
+fn pathOk(path: []const u8) bool {
+    if (!path_rule.ok(path)) return false;
+    var parts = std.mem.splitScalar(u8, path, '/');
+    while (parts.next()) |p| if (temp.is(p)) return false;
+    return true;
 }
 
-/// The temporary `write` makes beside `name`: `~`, eight hex digits of a
-/// hash of the name, `.tmp`. One per name, so writes of two files in one
-/// folder never share it.
-fn siblingName(buf: *[16]u8, name: []const u8) []const u8 {
-    const h: u32 = @truncate(std.hash.Wyhash.hash(0, name));
-    return std.fmt.bufPrint(buf, "~{x:0>8}.tmp", .{h}) catch unreachable;
+/// `len` bytes of an open file from `offset`, in `arena`.
+fn readOpen(f: *const Files, arena: std.mem.Allocator, file: Io.File, offset: u64, len: u64) Read {
+    const buf = arena.alloc(u8, @intCast(len)) catch return .failed;
+    const got = file.readPositionalAll(f.io, buf, offset) catch return .failed;
+    return .{ .found = buf[0..got] };
+}
+
+/// **WHY AN O_NOFOLLOW OPEN FAILED**: a folder opened so answers `NotDir`
+/// for a link and for a file alike, and a file `SymLinkLoop` for a link.
+/// The entry is looked at (not followed) only to name the error; the open
+/// already refused it, so there is nothing here to race.
+fn linkOr(f: *const Files, dir: Io.Dir, name: []const u8, e: anyerror) anyerror {
+    if (e != error.NotDir and e != error.SymLinkLoop) return e;
+    const st = dir.statFile(f.io, name, .{ .follow_symlinks = false }) catch return e;
+    return if (st.kind == .sym_link) error.IsLink else e;
+}
+
+/// `error.IsLink` if `name` in `dir` is a link; nothing there is fine.
+fn refuseLink(f: *const Files, dir: Io.Dir, name: []const u8) !void {
+    const st = dir.statFile(f.io, name, .{ .follow_symlinks = false }) catch |e| switch (e) {
+        error.FileNotFound => return,
+        else => return e,
+    };
+    if (st.kind == .sym_link) return error.IsLink;
+}
+
+/// **NOTHING THERE**: the path, or a folder on it, not found, or a part of
+/// it a file. Every other error (a link among them) is a failure.
+fn absent(e: anyerror) bool {
+    return e == error.FileNotFound or e == error.NotDir;
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
@@ -250,6 +388,115 @@ test "write: atomic; a stop between the temporary and the rename leaves the old 
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     try testing.expectEqual(1, f.list(arena_state.allocator(), "a/b").found.len);
+}
+
+test "a stopped write's temporary: never listed, never a path, swept at start" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f = testFiles(&tmp);
+    try f.write("top", "t");
+    try f.write("d/e/kept", "k");
+    f.fault_for_test = .stop_before_rename;
+    try testing.expectError(error.StoppedForTest, f.write("top", "lost"));
+    try testing.expectError(error.StoppedForTest, f.write("d/e/kept", "lost"));
+    try testing.expectError(error.StoppedForTest, f.write("d/e/new", "lost"));
+    f.fault_for_test = .none;
+
+    // On disk: each temporary beside its file. Listed: only the files.
+    var buf: [temp.len]u8 = undefined;
+    _ = try tmp.dir.statFile(testing.io, temp.name(&buf, "top"), .{});
+    try testing.expectEqual(1, f.list(a, "d/e").found.len);
+    try testing.expectEqualStrings("kept", f.list(a, "d/e").found[0].name);
+
+    // A temporary's name is no path's part: the Roc can never reach one.
+    const tmp_name = temp.name(&buf, "kept");
+    const as_path = try std.fmt.allocPrint(a, "d/e/{s}", .{tmp_name});
+    try testing.expectEqual(Read.failed, f.read(a, as_path));
+    try testing.expectError(error.BadPath, f.write(as_path, "x"));
+    try testing.expectError(error.BadPath, f.remove(as_path));
+
+    // A file the Roc wrote with a name like one's, but not one, is listed.
+    try testing.expect(!temp.is("~0123456G.tmp") and !temp.is("~01234567.txt") and temp.is("~0123abcd.tmp"));
+    try f.write("d/e/~0123456G.tmp", "a near miss");
+
+    try testing.expectEqual(3, try f.sweepTemps());
+    try testing.expectError(error.FileNotFound, tmp.dir.statFile(testing.io, temp.name(&buf, "top"), .{}));
+    try testing.expectEqual(0, try f.sweepTemps());
+    try testing.expectEqualStrings("t", (try readFound(&f, "top")));
+    try testing.expectEqualStrings("k", (try readFound(&f, "d/e/kept")));
+    try testing.expectEqualStrings("a near miss", (try readFound(&f, "d/e/~0123456G.tmp")));
+}
+
+test "a sweep never follows a link, nor removes one" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var outside = testing.tmpDir(.{});
+    defer outside.cleanup();
+    const f = testFiles(&tmp);
+    // A temporary outside the root, a link inside to its folder, and a
+    // link with a temporary's name.
+    var buf: [temp.len]u8 = undefined;
+    const name = temp.name(&buf, "x");
+    try outside.dir.writeFile(testing.io, .{ .sub_path = name, .data = "outside" });
+    const out_path = try outside.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(out_path);
+    try tmp.dir.symLink(testing.io, out_path, "escape", .{});
+    try tmp.dir.symLink(testing.io, name, "~0123abcd.tmp", .{});
+    try testing.expectEqual(0, try f.sweepTemps());
+    _ = try outside.dir.statFile(testing.io, name, .{});
+    _ = try tmp.dir.statFile(testing.io, "~0123abcd.tmp", .{ .follow_symlinks = false });
+}
+
+test "a link is refused by every function, as the file, as a folder on the way, to a folder outside" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var outside = testing.tmpDir(.{});
+    defer outside.cleanup();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const f = testFiles(&tmp);
+
+    const secret = "OUTSIDE-the-root";
+    try outside.dir.writeFile(testing.io, .{ .sub_path = "x", .data = secret });
+    const out_path = try outside.dir.realPathFileAlloc(testing.io, ".", a);
+    const out_file = try std.fmt.allocPrint(a, "{s}/x", .{out_path});
+
+    try f.write("in/real", "inside");
+    var in = try tmp.dir.openDir(testing.io, "in", .{});
+    defer in.close(testing.io);
+    // A link as the file: to a file outside, and to one inside.
+    try in.symLink(testing.io, out_file, "to_out", .{});
+    try in.symLink(testing.io, "real", "to_real", .{});
+    // A link as a folder on the way: to a folder inside, and to one outside.
+    try tmp.dir.symLink(testing.io, "in", "via", .{});
+    try tmp.dir.symLink(testing.io, out_path, "away", .{});
+    // A dangling link: a write through it would make a file outside.
+    try in.symLink(testing.io, try std.fmt.allocPrint(a, "{s}/made", .{out_path}), "dangling", .{});
+
+    for ([_][]const u8{ "in/to_out", "in/to_real", "via/real", "away/x", "in/dangling", "away/new/deeper" }) |p| {
+        try testing.expectEqual(Read.failed, f.read(a, p));
+        try testing.expectEqual(Read.failed, f.readAt(a, p, 0, 10));
+        try testing.expectEqual(Stat.failed, f.stat(p));
+        try testing.expect(std.meta.isError(f.write(p, "written through")));
+        try testing.expect(std.meta.isError(f.append(p, "appended through")));
+        try testing.expect(std.meta.isError(f.remove(p)));
+    }
+    for ([_][]const u8{ "via", "away", "in/to_real", "away/sub" }) |p| {
+        try testing.expectEqual(Listing.failed, f.list(a, p));
+    }
+
+    // Nothing outside was read, written, made or removed; the links stand.
+    try testing.expectEqualStrings(secret, try outside.dir.readFileAlloc(testing.io, "x", a, .limited(100)));
+    try testing.expectError(error.FileNotFound, outside.dir.statFile(testing.io, "made", .{}));
+    try testing.expectError(error.FileNotFound, outside.dir.statFile(testing.io, "new", .{}));
+    try testing.expectEqualStrings("inside", (try readFound(&f, "in/real")));
+    for ([_][]const u8{ "in/to_out", "in/to_real", "via", "away", "in/dangling" }) |p| {
+        try testing.expectEqual(Io.File.Kind.sym_link, (try tmp.dir.statFile(testing.io, p, .{ .follow_symlinks = false })).kind);
+    }
 }
 
 test "append: the size after, each time" {
@@ -287,6 +534,7 @@ test "missing and failed differ: a folder of mode 000 is a failure, not a missin
     try f.write("locked/x", "kept");
     try testing.expectEqual(Read.missing, f.read(testing.allocator, "nope/x"));
     try testing.expectEqual(Read.missing, f.read(testing.allocator, "locked/nope"));
+    try testing.expectEqual(Read.missing, f.read(testing.allocator, "locked/x/under_a_file"));
     try testing.expectEqual(Stat.missing, f.stat("locked/nope"));
     try testing.expectEqual(Listing.missing, f.list(testing.allocator, "nope"));
 
@@ -338,6 +586,7 @@ test "readAt, stat, list and remove" {
     try testing.expectEqual(Listing.failed, f.list(a, "d/t"));
     try f.remove("d/t");
     try f.remove("d/t");
+    try f.remove("gone/d/t");
     try testing.expectEqual(Read.missing, f.read(a, "d/t"));
 }
 

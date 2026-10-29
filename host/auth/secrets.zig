@@ -14,6 +14,7 @@
 const std = @import("std");
 const Io = std.Io;
 const crypto = @import("crypto.zig");
+const path_rule = @import("path_rule.zig");
 
 /// The folder under the data root that holds the secret files.
 pub const folder = "secrets";
@@ -133,7 +134,7 @@ pub fn loadText(io: Io, gpa: std.mem.Allocator, dir: Io.Dir, path: []const u8, d
 /// entropy; every later start reads that same key. Two starts racing to make
 /// it both end with the one the winner wrote.
 pub fn loadOrCreateSigningKey(io: Io, dir: Io.Dir, path: []const u8, diag: *Diagnostic) LoadError!SigningKey {
-    if (!pathOk(path)) return fail(diag, path, error.BadPath);
+    if (!path_rule.ok(path)) return fail(diag, path, error.BadPath);
     create: {
         var fresh: SigningKey = undefined;
         defer fresh.wipe();
@@ -162,23 +163,11 @@ pub fn loadOrCreateSigningKey(io: Io, dir: Io.Dir, path: []const u8, diag: *Diag
     return .{ .bytes = got[0..signing_key_len].* };
 }
 
-/// **THE HOST'S ONE PATH RULE**: a relative path with no empty, `.` or `..`
-/// part stays under the folder it is joined to (`secrets/` here, the data
-/// root for host/files.zig).
-pub fn pathOk(path: []const u8) bool {
-    if (path.len == 0 or path[0] == '/') return false;
-    var parts = std.mem.splitScalar(u8, path, '/');
-    while (parts.next()) |p| {
-        if (p.len == 0 or std.mem.eql(u8, p, ".") or std.mem.eql(u8, p, "..")) return false;
-    }
-    return true;
-}
-
 /// The file's bytes into `buf` (a file that fills `buf` is too large),
 /// after the checks: a relative path under the folder, not a link, a
 /// regular file, its owner's alone.
 fn readChecked(io: Io, dir: Io.Dir, path: []const u8, buf: []u8, diag: *Diagnostic) LoadError![]u8 {
-    if (!pathOk(path)) return fail(diag, path, error.BadPath);
+    if (!path_rule.ok(path)) return fail(diag, path, error.BadPath);
     const file = dir.openFile(io, path, .{ .follow_symlinks = false }) catch |e| return fail(diag, path, switch (e) {
         error.FileNotFound => error.Missing,
         error.SymLinkLoop, error.IsDir => error.NotAFile,

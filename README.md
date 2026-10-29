@@ -109,6 +109,18 @@ or wrong stops the server, saying which.
 - **A folder std opens to walk (the default, O_PATH) cannot be fsynced**:
   the sync fails EBADF, which std's debug build panics on as a programmer's
   bug. `files.zig` opens a folder again, readable, to sync it.
+- **std's `follow_symlinks = false` is O_NOFOLLOW: it guards only a
+  path's last part**, and `createFile` has no such option at all. A link
+  as a folder on the way is followed, and a create through a dangling link
+  makes a file wherever it points. `files.zig` opens a path a folder at a
+  time, each from the one before with O_NOFOLLOW (`walk`), and creates only
+  with O_EXCL, which never follows.
+- **A folder opened with O_NOFOLLOW answers `NotDir` for a link and for a
+  file alike**, and `NotDir` is `missing` to a read. `files.zig` looks at
+  the entry, unfollowed, to tell them apart (`linkOr`): a link is `failed`.
+- **A write stopped by a crash leaves its `~xxxxxxxx.tmp`**. `list!` never
+  shows one, no path may name one, and the server sweeps them at start.
+  The name and its test are `files.temp`, the one home of the rule.
 - **A file hosted function's `Failed` has failed the request**: the answer
   is a 500 whatever the Roc says, and the host does nothing more in that
   call (`read_at!` and `write_cache!`, a cache's, are the exceptions).
