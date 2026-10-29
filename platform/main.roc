@@ -6,7 +6,11 @@ platform ""
 	requires {
 		handle! : Chat.Request => Chat.Answer
 	}
-	exposes [Chat, Host, Sse]
+	exposes [
+		Chat,
+		Host,
+		Sse,
+	]
 	packages {}
 	provides { "roc_chat_handle": handle_for_host! }
 	hosted {

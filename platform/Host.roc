@@ -36,7 +36,11 @@ Host := [].{
 	## that failed (`Failed`).
 	read! : List(U8) => {
 		bytes : List(U8),
-		status : [Failed, Found, Missing],
+		status : [
+			Failed,
+			Found,
+			Missing,
+		],
 	}
 
 	## **A CACHE'S READ**: at most `max` bytes from `offset` (fewer where
@@ -46,7 +50,11 @@ Host := [].{
 	U64,
 	U64 => {
 		bytes : List(U8),
-		status : [Failed, Found, Missing],
+		status : [
+			Failed,
+			Found,
+			Missing,
+		],
 	}
 
 	## A file's size in bytes and its last change in whole seconds since
@@ -54,14 +62,31 @@ Host := [].{
 	read_stat! : List(U8) => {
 		mtime : I64,
 		size : U64,
-		status : [Failed, Found, Missing],
+		status : [
+			Failed,
+			Found,
+			Missing,
+		],
 	}
 
 	## A folder's entries, each one's name and kind, in the order the disk
 	## gives them. A path that is a file is `Failed`.
 	list! : List(U8) => {
-		entries : List({ kind : [Dir, File, Other], name : List(U8) }),
-		status : [Failed, Found, Missing],
+		entries : List(
+			{
+				kind : [
+					Dir,
+					File,
+					Other,
+				],
+				name : List(U8),
+			},
+		),
+		status : [
+			Failed,
+			Found,
+			Missing,
+		],
 	}
 
 	## **THE WHOLE FILE AS `bytes`, ATOMICALLY AND DURABLY**: a temporary
@@ -111,7 +136,12 @@ Host := [].{
 	## A public setting, never a secret: the first admin's GitHub id (its
 	## decimal digits, or empty), GitHub's base URL for the authorize page,
 	## the OAuth app's client id, and the chat's public origin.
-	read_config! : [BootstrapAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
+	read_config! : [
+		BootstrapAdmin,
+		GitHubAuthorize,
+		GitHubClientId,
+		Origin,
+	] => List(U8)
 
 	## **THE BUS** (host/bus.zig): `frame`, one SSE frame (`Sse.frame`
 	## makes it), to every stream held on the bus key `key` (any bytes the

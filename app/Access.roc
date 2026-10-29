@@ -77,7 +77,16 @@ Access := [].{
 				Refused(NoSuchAccount) => Err(NoSuchAccount)
 				Admitted({ principal, write }) => {
 					g = Principal.generation(principal)
-					Ok({ viewer: Access.Viewer.(Session({ id: Principal.id(principal), generation: g, human: g })), write })
+					Ok({
+						viewer: Access.Viewer.(
+							Session({
+								id: Principal.id(principal),
+								generation: g,
+								human: g,
+							}),
+						),
+						write,
+					})
 				}
 			}
 
@@ -92,7 +101,11 @@ Access := [].{
 					Ok(
 						Access.Viewer.(
 							Key({
-								who: { id: k.acts_as, generation: k.generation, human: k.human_generation },
+								who: {
+									id: k.acts_as,
+									generation: k.generation,
+									human: k.human_generation,
+								},
 								read: k.scope.read,
 								post: k.scope.post,
 							}),
@@ -103,7 +116,11 @@ Access := [].{
 
 		## Who the viewer is, and by which credential: what the layer's
 		## elections and an audit read. Never its scope.
-		who : Access.Viewer(id) -> [SignedOut, Session(Principal.Bound), Key(Principal.Bound)]
+		who : Access.Viewer(id) -> [
+			SignedOut,
+			Session(Principal.Bound),
+			Key(Principal.Bound),
+		]
 		who = |Access.Viewer.(v)|
 			match v {
 				SignedOut => SignedOut
@@ -159,15 +176,34 @@ Access := [].{
 			id.is_eq : id, id -> Bool,
 			r.resource : r, List(Principal) -> Access.Resource(id),
 		]
-	decide = |key, { accounts, action, now }|
+	decide = |
+		key,
+		{
+			accounts,
+			action,
+			now,
+		},
+	|
 		match Access.Viewer.from_key(key, { accounts, now }) {
 			Err(why) => Refused(why)
 			Ok(Access.Viewer.(SignedOut)) | Ok(Access.Viewer.(Session(_))) => crash "Access.decide: a key mints a key's viewer"
 			Ok(Access.Viewer.(Key(k))) => {
-				(reach, held, allowed) =
+				(
+					reach,
+					held,
+					allowed,
+				) =
 					match action {
-						Read(r) => (k.read, r, sees)
-						Post(r) => (k.post, r, is_answerable_by)
+						Read(r) => (
+							k.read,
+							r,
+							sees,
+						)
+						Post(r) => (
+							k.post,
+							r,
+							is_answerable_by,
+						)
 					}
 				resource = held.resource(accounts)
 				if !is_reached(reach, resource.id) {
@@ -224,7 +260,13 @@ is_reached = |part, id|
 ## A test's human: GitHub id `n`, its role, its account generation `g`.
 person : U64, { role : Principal.Role, g : U64 } -> Principal
 person = |n, { role, g }|
-	Principal.Human({ id: Cast.gid(n), login: "h${n.to_str()}", name: "H${n.to_str()}", role, generation: Cast.gen(g) })
+	Principal.Human({
+		id: Cast.gid(n),
+		login: "h${n.to_str()}",
+		name: "H${n.to_str()}",
+		role,
+		generation: Cast.gen(g),
+	})
 
 ## `who`'s binding among `among`.
 bound : List(Principal), Principal -> Principal.Bound
@@ -244,15 +286,36 @@ session_of = |who, g|
 	}
 
 ## A key acting as `acts_as`, granted by its owner's session among `among`.
-key_for : List(Principal), { acts_as : Principal, scope : ApiKey.Scope(id), expires : I64 } -> ApiKey.Key(r, id)
-key_for = |among, { acts_as, scope, expires }| {
+key_for : List(Principal),
+{
+	acts_as : Principal,
+	scope : ApiKey.Scope(id),
+	expires : I64,
+} -> ApiKey.Key(r, id)
+key_for = |
+	among,
+	{
+		acts_as,
+		scope,
+		expires,
+	},
+| {
 	owner = Principal.answers_to(acts_as)
 	g =
 		match Principal.human_account(among, owner) {
 			Ok(h) => h.generation.to_u64()
 			Err(_) => crash "key_for: a test's key has an owner"
 		}
-	match ApiKey.Key.issue({ granter: Session(session_of(owner.to_u64(), g)), acts_as: Principal.id(acts_as), scope, accounts: among, now: 10 }, { key: Cast.kid(7), expires }) {
+	match ApiKey.Key.issue(
+		{
+			granter: Session(session_of(owner.to_u64(), g)),
+			acts_as: Principal.id(acts_as),
+			scope,
+			accounts: among,
+			now: 10,
+		},
+		{ key: Cast.kid(7), expires },
+	) {
 		Ok(k) => k
 		Err(_) => crash "key_for: a test's key is grantable"
 	}
@@ -264,7 +327,10 @@ viewer_of : List(Principal), Principal -> Access.Viewer(id)
 viewer_of = |among, who|
 	match who {
 		Human(h) =>
-			match Access.Viewer.from_session(session_of(h.id.to_u64(), h.generation.to_u64()), { accounts: among, now: 10 }) {
+			match Access.Viewer.from_session(
+				session_of(h.id.to_u64(), h.generation.to_u64()),
+				{ accounts: among, now: 10 },
+			) {
 				Ok({ viewer, write: _ }) => viewer
 				Err(_) => crash "viewer_of: a test's session is admitted"
 			}
@@ -274,13 +340,27 @@ viewer_of = |among, who|
 ## The viewer a key acting as `acts_as`, of `scope`, mints among `among`.
 key_viewer : List(Principal), { acts_as : Principal, scope : ApiKey.Scope(id) } -> Access.Viewer(id)
 key_viewer = |among, { acts_as, scope }|
-	match Access.Viewer.from_key(key_for(among, { acts_as, scope, expires: 1000 }), { accounts: among, now: 10 }) {
+	match Access.Viewer.from_key(
+		key_for(
+			among,
+			{
+				acts_as,
+				scope,
+				expires: 1000,
+			},
+		),
+		{ accounts: among, now: 10 },
+	) {
 		Ok(viewer) => viewer
 		Err(_) => crash "key_viewer: a test's key stands"
 	}
 
 everywhere : {} -> ApiKey.Scope(id)
-everywhere = |{}| { read: On(Everywhere), post: On(Everywhere), admin: Off }
+everywhere = |{}| {
+	read: On(Everywhere),
+	post: On(Everywhere),
+	admin: Off,
+}
 
 # ── THE CORE'S OWN TABLE, on a resource that is not a conversation: a file
 # a file system names by its path (its id a Str), held by one human, and a
@@ -306,7 +386,14 @@ other_bot : Principal
 other_bot = Cast.owned(Bot, { id: 3, owner: 2 })
 
 files : List(Principal)
-files = [holder, stranger, owner, agent_holder, other_agent, other_bot]
+files = [
+	holder,
+	stranger,
+	owner,
+	agent_holder,
+	other_agent,
+	other_bot,
+]
 
 private_file : Access.Resource(Str)
 private_file = {
@@ -380,22 +467,58 @@ expect posts_file(In(stranger), agents_file) == ReadOnly
 # **A VIEWER IS ITS ACCOUNT'S** (round three's first): the holder made again
 # (generation 2) is no participant of the file the old account held.
 holder_again : List(Principal)
-holder_again = [person(1, { role: Member, g: 2 }), stranger, owner, agent_holder, other_agent, other_bot]
+holder_again = [
+	person(1, { role: Member, g: 2 }),
+	stranger,
+	owner,
+	agent_holder,
+	other_agent,
+	other_bot,
+]
 
 expect !Access.can_see(viewer_of(holder_again, person(1, { role: Member, g: 2 })), private_file)
 expect !Access.can_post(viewer_of(holder_again, person(1, { role: Member, g: 2 })), private_file)
 
 # **NO VIEWER WITHOUT A CREDENTIAL** (round three's design point): an idle
 # session, a session whose account is gone, and a revoked key mint none.
-expect Access.Viewer.from_session(session_of(1, 1), { accounts: files, now: Session.idle_secs }).map_ok(|_| {}) == Err(SessionExpired)
-expect Access.Viewer.from_session(session_of(1, 1), { accounts: holder_again, now: 10 }).map_ok(|_| {}) == Err(NoSuchAccount)
-expect Access.Viewer.from_key(key_for(files, { acts_as: other_agent, scope: everywhere({}), expires: 1000 }).revoke(), { accounts: files, now: 10 }).map_ok(|v| v.who()) == Err(Revoked)
-expect Access.Viewer.from_session(session_of(1, 1), { accounts: files, now: 10 }).map_ok(|r| r.viewer.who()) == Ok(Session(bound(files, holder)))
+expect Access.Viewer.from_session(
+	session_of(1, 1),
+	{ accounts: files, now: Session.idle_secs },
+).map_ok(|_| {}) == Err(SessionExpired)
+expect Access.Viewer.from_session(
+	session_of(1, 1),
+	{ accounts: holder_again, now: 10 },
+).map_ok(|_| {}) == Err(NoSuchAccount)
+expect Access.Viewer.from_key(
+	key_for(
+		files,
+		{
+			acts_as: other_agent,
+			scope: everywhere({}),
+			expires: 1000,
+		},
+	).revoke(),
+	{ accounts: files, now: 10 },
+).map_ok(|v| v.who()) == Err(Revoked)
+expect Access.Viewer.from_session(
+	session_of(1, 1),
+	{ accounts: files, now: 10 },
+).map_ok(|r| r.viewer.who()) == Ok(Session(bound(files, holder)))
 expect Access.Viewer.signed_out({}).who() == SignedOut
 # A key's viewer reads only where its scope reaches, its principal's sight
 # notwithstanding.
 reads_plan : Access.Viewer(Str)
-reads_plan = key_viewer(files, { acts_as: stranger, scope: { read: On(Only(["/notes/plan.md"])), post: Off, admin: Off } })
+reads_plan = key_viewer(
+	files,
+	{
+		acts_as: stranger,
+		scope: {
+			read: On(Only(["/notes/plan.md"])),
+			post: Off,
+			admin: Off,
+		},
+	},
+)
 
 expect Access.can_see(reads_plan, public_file)
 expect !Access.can_see(reads_plan, { ..public_file, id: "/notes/other.md" })
@@ -419,38 +542,93 @@ Held :: Access.Resource(U64).{
 # Three resources: 1 (`a`), private to ann_agent (and so to ann, its
 # owner); 2 (`b`), private to boss; 3 (`c`), boss's and public.
 res_a : Held
-res_a = Held.({ id: 1, participants: [bound(Cast.accounts, Cast.ann_agent)], involved: [bound(Cast.accounts, Cast.ann)], visibility: Private })
+res_a = Held.(
+	{
+		id: 1,
+		participants: [bound(Cast.accounts, Cast.ann_agent)],
+		involved: [bound(Cast.accounts, Cast.ann)],
+		visibility: Private,
+	},
+)
 
 res_b : Held
-res_b = Held.({ id: 2, participants: [bound(Cast.accounts, Cast.boss)], involved: [bound(Cast.accounts, Cast.boss)], visibility: Private })
+res_b = Held.(
+	{
+		id: 2,
+		participants: [bound(Cast.accounts, Cast.boss)],
+		involved: [bound(Cast.accounts, Cast.boss)],
+		visibility: Private,
+	},
+)
 
 res_c : Held
-res_c = Held.({ id: 3, participants: [bound(Cast.accounts, Cast.boss)], involved: [bound(Cast.accounts, Cast.boss)], visibility: Public })
+res_c = Held.(
+	{
+		id: 3,
+		participants: [bound(Cast.accounts, Cast.boss)],
+		involved: [bound(Cast.accounts, Cast.boss)],
+		visibility: Public,
+	},
+)
 
 plain : ApiKey.Scope(U64)
-plain = { read: On(Everywhere), post: On(Everywhere), admin: Off }
+plain = {
+	read: On(Everywhere),
+	post: On(Everywhere),
+	admin: Off,
+}
 
 with_admin : ApiKey.Scope(U64)
-with_admin = { read: On(Everywhere), post: On(Everywhere), admin: On }
+with_admin = {
+	read: On(Everywhere),
+	post: On(Everywhere),
+	admin: On,
+}
 
 admin_only : ApiKey.Scope(U64)
-admin_only = { read: Off, post: Off, admin: On }
+admin_only = {
+	read: Off,
+	post: Off,
+	admin: On,
+}
 
 reads_c : ApiKey.Scope(U64)
-reads_c = { read: On(Only([3])), post: Off, admin: Off }
+reads_c = {
+	read: On(Only([3])),
+	post: Off,
+	admin: Off,
+}
 
 posts_a : ApiKey.Scope(U64)
-posts_a = { read: Off, post: On(Only([1])), admin: Off }
+posts_a = {
+	read: Off,
+	post: On(Only([1])),
+	admin: Off,
+}
 
 ## A key acting as `acts_as`, granted among the cast.
 issued : { acts_as : Principal, scope : ApiKey.Scope(U64) }, I64 -> ApiKey.Key(Held, U64)
-issued = |{ acts_as, scope }, expires| key_for(Cast.accounts, { acts_as, scope, expires })
+issued = |{ acts_as, scope }, expires| key_for(
+	Cast.accounts,
+	{
+		acts_as,
+		scope,
+		expires,
+	},
+)
 
 Answer : [Permitted, Refused(ApiKey.Refusal)]
 
 ## The key's answer to `action` at `now`, among `accounts`.
 decided_at : ApiKey.Key(Held, U64), { action : Access.Action(Held), now : I64 } -> Answer
-decided_at = |key, { action, now }| Access.decide(key, { accounts: Cast.accounts, action, now })
+decided_at = |key, { action, now }| Access.decide(
+	key,
+	{
+		accounts: Cast.accounts,
+		action,
+		now,
+	},
+)
 
 ## The key's answer to `action` at time 50, among `accounts`.
 decided : ApiKey.Key(Held, U64), Access.Action(Held) -> Answer
@@ -458,7 +636,18 @@ decided = |key, action| decided_at(key, { action, now: 50 })
 
 ## The key's answer to `action` at time 50, among `among`.
 decided_among : ApiKey.Key(Held, U64), Access.Action(Held), List(Principal) -> Answer
-decided_among = |key, action, among| Access.decide(key, { accounts: among, action, now: 50 })
+decided_among = |
+	key,
+	action,
+	among,
+| Access.decide(
+	key,
+	{
+		accounts: among,
+		action,
+		now: 50,
+	},
+)
 
 # ann_agent, reading and posting everywhere: as far as ann_agent may.
 ann_agent_plain : ApiKey.Key(Held, U64)
@@ -537,9 +726,21 @@ expect decided(boss_bot_plain, Read(res_c)) == Refused(BeyondPrincipal)
 
 # Bug 1: ann retired, her agent's key reads and posts nothing, even what
 # its scope and the resource would allow.
-expect decided_among(ann_agent_plain, Read(res_a), Cast.without_ann) == Refused(NoSuchPrincipal)
-expect decided_among(ann_agent_plain, Read(res_c), Cast.without_ann) == Refused(NoSuchPrincipal)
-expect decided_among(ann_agent_plain, Post(res_a), Cast.without_ann) == Refused(NoSuchPrincipal)
+expect decided_among(
+	ann_agent_plain,
+	Read(res_a),
+	Cast.without_ann,
+) == Refused(NoSuchPrincipal)
+expect decided_among(
+	ann_agent_plain,
+	Read(res_c),
+	Cast.without_ann,
+) == Refused(NoSuchPrincipal)
+expect decided_among(
+	ann_agent_plain,
+	Post(res_a),
+	Cast.without_ann,
+) == Refused(NoSuchPrincipal)
 
 # Liveness comes first: revoked and expired keys do nothing, even what
 # their scope and principal would allow; an expiry at 100 is live at 99.
@@ -559,10 +760,27 @@ from_store = |record|
 		Err(_) => crash "from_store: a test's key line decodes"
 	}
 
-expect decided(from_store({ ..ann_year.record(), scope: with_admin }), Read(res_b)) == Refused(BeyondPrincipal)
+expect decided(
+	from_store({ ..ann_year.record(), scope: with_admin }),
+	Read(res_b),
+) == Refused(BeyondPrincipal)
 expect decided(from_store(ann_agent_reads_c.record()), Read(res_a)) == Refused(OutOfScope)
 
 # A forged copy of ann's agent beside it, or ann made again: the old key
 # stands no more.
-expect decided_among(ann_agent_plain, Read(res_a), List.prepend(Cast.accounts, Cast.owned(Agent, { id: 3, owner: 1 }))) == Refused(NoSuchPrincipal)
-expect decided_among(ann_year, Read(res_c), [Cast.boss, person(2, { role: Member, g: 2 }), Cast.boss_agent, Cast.boss_bot, Cast.ann_agent]) == Refused(NoSuchPrincipal)
+expect decided_among(
+	ann_agent_plain,
+	Read(res_a),
+	List.prepend(Cast.accounts, Cast.owned(Agent, { id: 3, owner: 1 })),
+) == Refused(NoSuchPrincipal)
+expect decided_among(
+	ann_year,
+	Read(res_c),
+	[
+		Cast.boss,
+		person(2, { role: Member, g: 2 }),
+		Cast.boss_agent,
+		Cast.boss_bot,
+		Cast.ann_agent,
+	],
+) == Refused(NoSuchPrincipal)

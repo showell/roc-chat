@@ -33,12 +33,32 @@ handle! = |req|
 	} else if req.path == Str.to_utf8("/me") {
 		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
 	} else {
-		match (Conversations.route(req.path), Agents.route(req.path), Pages.route(req.path)) {
-			(Ok(route), _, _) => Conversations.answer!(req, route)
-			(_, Ok(route), _) => Agents.answer!(req, route)
+		match (
+			Conversations.route(req.path),
+			Agents.route(req.path),
+			Pages.route(req.path),
+		) {
+			(
+				Ok(route),
+				_,
+				_,
+			) => Conversations.answer!(req, route)
+			(
+				_,
+				Ok(route),
+				_,
+			) => Agents.answer!(req, route)
 			# The pages (QUEUE 315).
-			(_, _, Ok(page)) => Pages.answer!(req, page)
-			(Err(_), Err(_), Err(_)) =>
+			(
+				_,
+				_,
+				Ok(page),
+			) => Pages.answer!(req, page)
+			(
+				Err(_),
+				Err(_),
+				Err(_),
+			) =>
 				match script_name(req.path) {
 					Ok(name) =>
 						match Host.serve_script!(name) {
@@ -65,7 +85,10 @@ hello = {
 script_name : List(U8) -> Try(List(U8), [NotAScript])
 script_name = |path| {
 	name = List.drop_first(path, 1)
-	if List.starts_with(path, ['/']) and List.ends_with(name, Str.to_utf8(".js")) and !List.contains(name, '/') {
+	if List.starts_with(path, ['/']) and List.ends_with(
+		name,
+		Str.to_utf8(".js"),
+	) and !List.contains(name, '/') {
 		Ok(name)
 	} else {
 		Err(NotAScript)

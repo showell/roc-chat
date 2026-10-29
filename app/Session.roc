@@ -138,7 +138,14 @@ Session :: SessionCodec.Fields.{
 			IdleExpired => Refused(IdleExpired)
 			AbsoluteExpired => Refused(AbsoluteExpired)
 			Live =>
-				match Principal.holds(accounts, { id: Principal.Id.Human(s.human), generation: s.generation, human: s.generation }) {
+				match Principal.holds(
+					accounts,
+					{
+						id: Principal.Id.Human(s.human),
+						generation: s.generation,
+						human: s.generation,
+					},
+				) {
 					Err(_) => Refused(NoSuchAccount)
 					Ok(Agent(_)) | Ok(Bot(_)) => crash "Session.admit: a human's id holds a human"
 					Ok(Human(h)) =>
@@ -184,8 +191,20 @@ stored = |text|
 
 ## Session `n` of human `who` (whose account is generation 1), created at
 ## `at` and last seen at `seen`.
-seen_line : { n : U64, who : U64, at : I64, seen : I64 } -> Session
-seen_line = |{ n, who, at, seen }|
+seen_line : {
+	n : U64,
+	who : U64,
+	at : I64,
+	seen : I64,
+} -> Session
+seen_line = |
+	{
+		n,
+		who,
+		at,
+		seen,
+	},
+|
 	stored("session v1 id=${n.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("01", 32)} created=${at.to_str()} seen=${seen.to_str()}\n")
 
 ## Session `n` of human `who`, created and seen at `at`.
@@ -201,7 +220,12 @@ opened = |
 		at,
 	},
 |
-	seen_line({ n, who, at, seen: at })
+	seen_line({
+		n,
+		who,
+		at,
+		seen: at,
+	})
 
 # Created at 100000.
 s1 : Session
@@ -227,7 +251,12 @@ expect s1.liveness(99999) == AbsoluteExpired
 
 ## `s1`, last seen at `at`.
 seen_at : I64 -> Session
-seen_at = |at| seen_line({ n: 1, who: 1, at: 100000, seen: at })
+seen_at = |at| seen_line({
+	n: 1,
+	who: 1,
+	at: 100000,
+	seen: at,
+})
 
 # Used every day, it lives a week and not a second more.
 expect seen_at(100000 + week - 10).liveness(100000 + week - 1) == Live
@@ -242,9 +271,21 @@ expect seen_at(105000).liveness(104999) == AbsoluteExpired
 
 # **NO `now` OVERFLOWS** (round two's seventh): I64's ends against the
 # earliest and latest stored times.
-expect opened({ n: 1, who: 1, at: 0 }).liveness(9223372036854775807) == AbsoluteExpired
-expect opened({ n: 1, who: 1, at: 253402300799 }).liveness(-9223372036854775808) == AbsoluteExpired
-expect opened({ n: 1, who: 1, at: 0 }).liveness(-9223372036854775808) == AbsoluteExpired
+expect opened({
+	n: 1,
+	who: 1,
+	at: 0,
+}).liveness(9223372036854775807) == AbsoluteExpired
+expect opened({
+	n: 1,
+	who: 1,
+	at: 253402300799,
+}).liveness(-9223372036854775808) == AbsoluteExpired
+expect opened({
+	n: 1,
+	who: 1,
+	at: 0,
+}).liveness(-9223372036854775808) == AbsoluteExpired
 
 # Loading: a line round-trips through the codec.
 expect Session.load(
@@ -353,7 +394,17 @@ ann_admin_copy = Principal.Human({
 	generation: Cast.gen(1),
 })
 
-expect admitted(s1, { among: [ann_admin_copy, ann, bea], now: 100000 }) == Refused(NoSuchAccount)
+expect admitted(
+	s1,
+	{
+		among: [
+			ann_admin_copy,
+			ann,
+			bea,
+		],
+		now: 100000,
+	},
+) == Refused(NoSuchAccount)
 expect admitted(s1, { among: [ann, ann_admin_copy], now: 100000 }) == Refused(NoSuchAccount)
 
 # **RE-CREATION AFTER RETIREMENT** (round two's fifth): Ann retired, then
@@ -373,7 +424,13 @@ expect admitted(s1, { among: [ann_again, bea], now: 100000 }) == Refused(NoSuchA
 # account was (or under a clock that went back) is a new generation all the
 # same, and her old session does not admit it.
 ann_same_second : Principal
-ann_same_second = Principal.Human({ id: Cast.gid(1), login: "ann", name: "Ann", role: Admin, generation: Cast.gen(3) })
+ann_same_second = Principal.Human({
+	id: Cast.gid(1),
+	login: "ann",
+	name: "Ann",
+	role: Admin,
+	generation: Cast.gen(3),
+})
 
 expect admitted(s1, { among: [ann_same_second, bea], now: 100000 }) == Refused(NoSuchAccount)
 
@@ -381,10 +438,18 @@ expect admitted(s1, { among: [ann_same_second, bea], now: 100000 }) == Refused(N
 # the store's range, asked at a time past it, is never touched with a time
 # the store cannot write.
 late : Session
-late = seen_line({ n: 1, who: 1, at: Stored.max_time - 10, seen: Stored.max_time - 10 })
+late = seen_line({
+	n: 1,
+	who: 1,
+	at: Stored.max_time - 10,
+	seen: Stored.max_time - 10,
+})
 
 expect admitted(late, { among: [ann], now: Stored.max_time + 100 }) == Refused(AbsoluteExpired)
-expect admitted(late, { among: [ann], now: Stored.max_time }) == Admitted({ principal: Principal.id(ann), write: Unchanged })
+expect admitted(late, { among: [ann], now: Stored.max_time }) == Admitted({
+	principal: Principal.id(ann),
+	write: Unchanged,
+})
 
 # ── STARTING: only from the flow's admission
 ## GitHub id `who`, known at `now` through the flow's steps.
@@ -396,20 +461,42 @@ known_by = |who, now| {
 			Ok(s) => s
 			Err(_) => crash "known_by: a 16-byte nonce starts"
 		}
-	back = GitHubSignIn.CameBack.came_back({ state: Signed(started.state()), answer: Code(Str.to_utf8("c0de")) })?
-	checked = back.check({ cookie: Sent(nonce), now, nonce_use: FirstUse })?
+	back = GitHubSignIn.CameBack.came_back({
+		state: Signed(started.state()),
+		answer: Code(Str.to_utf8("c0de")),
+	})?
+	checked = back.check({
+		cookie: Sent(nonce),
+		now,
+		nonce_use: FirstUse,
+	})?
 	checked.identify(Identified({ id: who, login: Str.to_utf8("ann") }))
 }
 
 ## A sign-in by GitHub id `who` at `now`, through every step of the flow,
 ## to its admission's session.
-signed_in : { who : U64, among : List(Principal), now : I64 } -> Session
-signed_in = |{ who, among, now }|
+signed_in : {
+	who : U64,
+	among : List(Principal),
+	now : I64,
+} -> Session
+signed_in = |
+	{
+		who,
+		among,
+		now,
+	},
+|
 	match known_by(who, now) {
 		Ok(k) =>
 			match k.resolve({
 				accounts: among,
-				settings: { first_admin: Unnamed, barred: [], next_generation: Cast.gen(9), next_agent_id: Cast.aid(20) },
+				settings: {
+					first_admin: Unnamed,
+					barred: [],
+					next_generation: Cast.gen(9),
+					next_agent_id: Cast.aid(20),
+				},
 				session: {
 					id: Cast.sid(9),
 					token_hash: Cast.token(1),
@@ -425,10 +512,17 @@ signed_in = |{ who, among, now }|
 # A flow's session: its human, the account it was made for, created and
 # seen at the sign-in; it admits that account and no other made since.
 flowed : Session
-flowed = signed_in({ who: 1, among: [ann, bea], now: 100000 })
+flowed = signed_in({
+	who: 1,
+	among: [ann, bea],
+	now: 100000,
+})
 
 expect flowed.fields() == { ..s1.fields(), id: Cast.sid(9) }
-expect admitted(flowed, { among: [ann], now: 100000 }) == Admitted({ principal: Principal.id(ann), write: Unchanged })
+expect admitted(flowed, { among: [ann], now: 100000 }) == Admitted({
+	principal: Principal.id(ann),
+	write: Unchanged,
+})
 expect admitted(flowed, { among: [ann_again], now: 100000 }) == Refused(NoSuchAccount)
 
 # ── LOG OUT EVERYWHERE, AND THE SWEEP

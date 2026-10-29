@@ -33,12 +33,24 @@ SignIn := [].{
 					Str.to_utf8("/login/oauth/authorize?client_id="),
 					SignInWeb.url_encode(Host.read_config!(GitHubClientId)),
 					Str.to_utf8("&redirect_uri="),
-					SignInWeb.url_encode(List.concat(Host.read_config!(Origin), Str.to_utf8("/login/github"))),
+					SignInWeb.url_encode(
+						List.concat(
+							Host.read_config!(Origin),
+							Str.to_utf8("/login/github"),
+						),
+					),
 					Str.to_utf8("&state="),
 					signed!(State, SignInWeb.state_body(fields)),
 				])
 				see_other(location)
-					|> Chat.with_header("set-cookie", SignInWeb.set_cookie("state", SignInWeb.hex(fields.nonce), OAuthState.lifetime_secs))
+					|> Chat.with_header(
+						"set-cookie",
+						SignInWeb.set_cookie(
+							"state",
+							SignInWeb.hex(fields.nonce),
+							OAuthState.lifetime_secs,
+						),
+					)
 			}
 		}
 	}
@@ -112,7 +124,10 @@ SignIn := [].{
 									Ok(line) =>
 										match Store.accounts!({}) {
 											Err(Failed) => Chat.failed
-											Ok(accounts) => admitted!(Session.load(line), { accounts, now })
+											Ok(accounts) => admitted!(
+												Session.load(line),
+												{ accounts, now },
+											)
 										}
 								}
 						}
@@ -159,15 +174,28 @@ came_back! = |req| {
 		}
 	state =
 		match List.first(Host.read_query!(Str.to_utf8("state"))) {
-			Ok(token) => verified!(State, token, SignInWeb.state_fields)
+			Ok(token) => verified!(
+				State,
+				token,
+				SignInWeb.state_fields,
+			)
 			Err(_) => Unsigned
 		}
 	came = GitHubSignIn.CameBack.came_back({ state, answer })?
-	cookie = SignInWeb.state_cookie(SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "state"))
+	cookie = SignInWeb.state_cookie(
+		SignInWeb.cookie(
+			Host.read_header!(Str.to_utf8("cookie")),
+			"state",
+		),
+	)
 	match Store.nonce_use!(State, came.nonce()) {
 		Err(Failed) => Ok(Chat.failed)
 		Ok(nonce_use) => {
-			checked = came.check({ cookie, now, nonce_use })?
+			checked = came.check({
+				cookie,
+				now,
+				nonce_use,
+			})?
 			match Chat.exchanged(req) {
 				NotAsked => Ok(Chat.exchange(checked.code()))
 				said =>
@@ -183,14 +211,34 @@ came_back! = |req| {
 							match facts!({}) {
 								Err(Failed) => Ok(Chat.failed)
 								Ok(f) =>
-									match known.resolve({ accounts: f.accounts, settings: f.settings, session: f.session, now }) {
+									match known.resolve({
+										accounts: f.accounts,
+										settings: f.settings,
+										session: f.session,
+										now,
+									}) {
 										Refused(why) => Err(why)
-										SignedIn({ admission, steps }) => Ok(signed_in!(f, { admission, steps }))
+										SignedIn({ admission, steps }) => Ok(
+											signed_in!(
+												f,
+												{ admission, steps },
+											),
+										)
 										NeedsName(pending) => {
-											token = signed!(Pending, SignInWeb.pending_body(pending.fields()))
+											token = signed!(
+												Pending,
+												SignInWeb.pending_body(pending.fields()),
+											)
 											Ok(
 												name_form(Ok({}))
-													|> Chat.with_header("set-cookie", SignInWeb.set_cookie("pending", token, OAuthState.lifetime_secs)),
+													|> Chat.with_header(
+														"set-cookie",
+														SignInWeb.set_cookie(
+															"pending",
+															token,
+															OAuthState.lifetime_secs,
+														),
+													),
 											)
 										}
 									}
@@ -212,10 +260,18 @@ named! = |{}| {
 			cookies = Host.read_header!(Str.to_utf8("cookie"))
 			pending =
 				match SignInWeb.cookie(cookies, "pending") {
-					Sent(token) => verified!(Pending, token, SignInWeb.pending_fields)
+					Sent(token) => verified!(
+						Pending,
+						token,
+						SignInWeb.pending_fields,
+					)
 					Unsent => Unsigned
 				}
-			resumed = GitHubSignIn.Pending.resume({ pending, cookie: SignInWeb.state_cookie(SignInWeb.cookie(cookies, "state")), now })?
+			resumed = GitHubSignIn.Pending.resume({
+				pending,
+				cookie: SignInWeb.state_cookie(SignInWeb.cookie(cookies, "state")),
+				now,
+			})?
 			# A field missing or malformed is no name: DisplayName says so.
 			name =
 				match SignInWeb.form_field(got.bytes, "name") {
@@ -224,7 +280,14 @@ named! = |{}| {
 				}
 			match (Store.nonce_use!(Pending, resumed.nonce()), facts!({})) {
 				(Ok(pending_use), Ok(f)) =>
-					match resumed.name({ name, pending_use, accounts: f.accounts, settings: f.settings, session: f.session, now }) {
+					match resumed.name({
+						name,
+						pending_use,
+						accounts: f.accounts,
+						settings: f.settings,
+						session: f.session,
+						now,
+					}) {
 						Refused(why) => Err(why)
 						NameRefused(problem) => Ok(name_form(Err(problem)))
 						Created({ admission, steps }) =>
@@ -243,17 +306,46 @@ named! = |{}| {
 ## settings' counter, then the accounts), the session started
 ## (Session.start), all three stored, and the session cookie set; the
 ## state and pending cookies ended.
-signed_in! : Facts, { admission : GitHubSignIn.Admission, steps : List(GitHubSignIn.Step) } => Chat.Answer
+signed_in! : Facts,
+{
+	admission : GitHubSignIn.Admission,
+	steps : List(GitHubSignIn.Step),
+} => Chat.Answer
 signed_in! = |f, { admission, steps }| {
 	after = GitHubSignIn.applied(steps, { accounts: f.accounts, settings: f.settings })
 	session = Session.start(admission)
-	match Store.save_signed_in!({ accounts: after.accounts, settings: after.settings, session: session.fields() }) {
+	match Store.save_signed_in!({
+		accounts: after.accounts,
+		settings: after.settings,
+		session: session.fields(),
+	}) {
 		Failed => Chat.failed
 		Written =>
 			see_other(Str.to_utf8("/"))
-				|> Chat.with_header("set-cookie", SignInWeb.set_cookie("session", SignInWeb.hex(f.secret), Session.absolute_secs))
-				|> Chat.with_header("set-cookie", SignInWeb.set_cookie("state", [], 0))
-				|> Chat.with_header("set-cookie", SignInWeb.set_cookie("pending", [], 0))
+				|> Chat.with_header(
+					"set-cookie",
+					SignInWeb.set_cookie(
+						"session",
+						SignInWeb.hex(f.secret),
+						Session.absolute_secs,
+					),
+				)
+				|> Chat.with_header(
+					"set-cookie",
+					SignInWeb.set_cookie(
+						"state",
+						[],
+						0,
+					),
+				)
+				|> Chat.with_header(
+					"set-cookie",
+					SignInWeb.set_cookie(
+						"pending",
+						[],
+						0,
+					),
+				)
 	}
 }
 
@@ -268,12 +360,29 @@ refused_or! = |decided|
 	match decided {
 		Ok(answer) => answer
 		Err(why) => {
-			match AuditCodec.Entry.of_sign_in({ at: Host.read_time!({}), github: Unknown, refusal: why }) {
+			match AuditCodec.Entry.of_sign_in({
+				at: Host.read_time!({}),
+				github: Unknown,
+				refusal: why,
+			}) {
 				Ok(entry) => Store.audit!(entry)
 				Err(ClockOutOfRange) => {}
 			}
-			Chat.respond(403, { content_type: Chat.text, body: Str.to_utf8("sign-in refused: ${AuditCodec.sign_in_refusal_text(why)}\n") })
-				|> Chat.with_header("set-cookie", SignInWeb.set_cookie("pending", [], 0))
+			Chat.respond(
+				403,
+				{
+					content_type: Chat.text,
+					body: Str.to_utf8("sign-in refused: ${AuditCodec.sign_in_refusal_text(why)}\n"),
+				},
+			)
+				|> Chat.with_header(
+					"set-cookie",
+					SignInWeb.set_cookie(
+						"pending",
+						[],
+						0,
+					),
+				)
 		}
 	}
 
@@ -304,7 +413,11 @@ signed! = |purpose, body| SignInWeb.token(body, Host.sign!(SignInWeb.signed_mess
 ## A token's fields when the host's MAC holds and its body reads; else
 ## `Unsigned`, which the core refuses (a forgery).
 verified! : SignInWeb.Purpose, List(U8), (List(U8) -> Try(a, [Malformed])) => [Signed(a), Unsigned]
-verified! = |purpose, token, fields_of|
+verified! = |
+	purpose,
+	token,
+	fields_of,
+|
 	match SignInWeb.untoken(token) {
 		Err(Malformed) => Unsigned
 		Ok({ body, mac }) =>
@@ -335,7 +448,12 @@ facts! = |{}| {
 	secret = Host.random_bytes!(nonce_bytes)
 	id = Principal.SessionId.from_u64(SignInWeb.u64_of(Host.random_bytes!(8))).map_err(|_| Failed)?
 	token_hash = Stored.SecretHash.from_bytes(Host.hash!(secret)).map_err(|_| Failed)?
-	Ok({ accounts, settings, session: { id, token_hash }, secret })
+	Ok({
+		accounts,
+		settings,
+		session: { id, token_hash },
+		secret,
+	})
 }
 
 ## The first admin the config names, if it names one.
@@ -345,6 +463,9 @@ first_admin! = |{}| {
 	if admin == [] {
 		Ok(Unnamed)
 	} else {
-		Stored.id(admin, { name: "bootstrap_admin", make: Principal.GitHubId.from_u64 }).map_ok(|id| Named(id)).map_err(|_| Failed)
+		Stored.id(
+			admin,
+			{ name: "bootstrap_admin", make: Principal.GitHubId.from_u64 },
+		).map_ok(|id| Named(id)).map_err(|_| Failed)
 	}
 }

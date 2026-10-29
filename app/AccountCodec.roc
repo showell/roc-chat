@@ -323,7 +323,10 @@ decode_owned = |after_kind| {
 }
 
 ## The `generation` field, which must come next, and the fields after it.
-generation_after : Stored.Reader -> Try({ value : Principal.Generation, rest : Stored.Reader }, Stored.Problem)
+generation_after : Stored.Reader -> Try(
+	{ value : Principal.Generation, rest : Stored.Reader },
+	Stored.Problem,
+)
 generation_after = |fields| {
 	field = fields.field("generation")?
 	value = Stored.id(field.value, { name: "generation", make: Principal.Generation.from_u64 })?
@@ -468,8 +471,24 @@ expect is_kept(biggest)
 expect round_trip(steve) != round_trip(human({ name: "Steve H.", role: Member }))
 # A cleared login (another account signed in with it since) is stored
 # empty, and reads back empty.
-expect is_kept(Principal.Human({ id: Cast.gid(5), login: "", name: "Old", role: Member, generation: Cast.gen(1) }))
-expect line_of(Principal.Human({ id: Cast.gid(5), login: "", name: "Old", role: Member, generation: Cast.gen(1) })) == "account v1 kind=human github=5 login= generation=1 role=member name=Old\n"
+expect is_kept(
+	Principal.Human({
+		id: Cast.gid(5),
+		login: "",
+		name: "Old",
+		role: Member,
+		generation: Cast.gen(1),
+	}),
+)
+expect line_of(
+	Principal.Human({
+		id: Cast.gid(5),
+		login: "",
+		name: "Old",
+		role: Member,
+		generation: Cast.gen(1),
+	}),
+) == "account v1 kind=human github=5 login= generation=1 role=member name=Old\n"
 
 # Bytes round trip too: a decoded line encodes to the same bytes.
 expect
@@ -516,7 +535,10 @@ expect agent_but({ from: "v1", to: "v2" }) == Err(UnknownVersion)
 expect agent_but({ from: "kind=agent", to: "kind=robot" }) == Err(UnknownWord("kind"))
 expect human_but({ from: "kind=human", to: "kind=Human" }) == Err(UnknownWord("kind"))
 expect human_but({ from: " kind=human", to: "" }) == Err(MissingField("kind"))
-expect human_but({ from: "github=1 login=a", to: "login=a github=1" }) == Err(MissingField("github"))
+expect human_but({
+	from: "github=1 login=a",
+	to: "login=a github=1",
+}) == Err(MissingField("github"))
 expect human_but({ from: " login=a", to: "" }) == Err(MissingField("login"))
 expect human_but({ from: "github=1", to: "github=1 github=1" }) == Err(MissingField("login"))
 expect human_but({ from: " role=member", to: "" }) == Err(MissingField("role"))
@@ -534,7 +556,10 @@ expect human_but({ from: "generation=7", to: "created=7" }) == Err(MissingField(
 expect human_but({ from: "generation=7", to: "generation=-7" }) == Err(BadNumber("generation"))
 expect human_but({ from: "generation=7", to: "generation=07" }) == Err(BadNumber("generation"))
 expect human_but({ from: "generation=7", to: "generation=0" }) == Err(BadValue("generation"))
-expect human_but({ from: "login=a generation=7", to: "generation=7 login=a" }) == Err(MissingField("login"))
+expect human_but({
+	from: "login=a generation=7",
+	to: "generation=7 login=a",
+}) == Err(MissingField("login"))
 expect agent_but({ from: " generation=2", to: "" }) == Err(MissingField("generation"))
 expect agent_but({ from: "generation=2", to: "generation=0" }) == Err(BadValue("generation"))
 expect human_but({ from: "role=member", to: "role=owner" }) == Err(UnknownWord("role"))
@@ -548,8 +573,14 @@ expect human_but({ from: "name=b", to: "name=${Str.repeat("n", 65)}" }) == Err(B
 expect agent_but({ from: "id=7", to: "id=0" }) == Err(BadValue("id"))
 expect agent_but({ from: "owner=5", to: "owner=0" }) == Err(BadValue("owner"))
 expect agent_but({ from: " owner=5", to: "" }) == Err(MissingField("owner"))
-expect agent_but({ from: "id=7 owner=5", to: "github=1 login=a role=member" }) == Err(MissingField("id"))
-expect agent_but({ from: "kind=agent id=7", to: "kind=bot id=18446744073709551616" }) == Err(BadNumber("id"))
+expect agent_but({
+	from: "id=7 owner=5",
+	to: "github=1 login=a role=member",
+}) == Err(MissingField("id"))
+expect agent_but({
+	from: "kind=agent id=7",
+	to: "kind=bot id=18446744073709551616",
+}) == Err(BadNumber("id"))
 expect AccountCodec.decode([
 	0x61,
 	0xff,
@@ -619,10 +650,23 @@ agent_7 = "account v1 kind=agent id=7 owner=1 generation=2 name=CC\n"
 
 expect loaded("") == Ok([])
 expect loaded(human_line) == Ok([Principal.Id.Human(Cast.gid(1))])
-expect loaded("${human_line}${agent_7}") == Ok([Principal.Id.Human(Cast.gid(1)), Principal.Id.Agent(Cast.aid(7))])
+expect loaded("${human_line}${agent_7}") == Ok([
+	Principal.Id.Human(Cast.gid(1)),
+	Principal.Id.Agent(Cast.aid(7)),
+])
 # A torn last line, a bad line (its number from 1), a blank line.
-expect loaded("${human_line}${agent_7}".replace_last("\n", "")) == Err(BadLine({ line: 2, problem: Torn }))
-expect loaded("${human_line}account v1 kind=robot\n") == Err(BadLine({ line: 2, problem: UnknownWord("kind") }))
+expect loaded("${human_line}${agent_7}".replace_last("\n", "")) == Err(
+	BadLine({
+		line: 2,
+		problem: Torn,
+	}),
+)
+expect loaded("${human_line}account v1 kind=robot\n") == Err(
+	BadLine({
+		line: 2,
+		problem: UnknownWord("kind"),
+	}),
+)
 expect loaded("${human_line}\n${agent_7}") == Err(BadLine({ line: 2, problem: WrongRecord }))
 # **A FORGED COPY FIRST** (round two's first finding): an agent line
 # claiming another owner, or a human line claiming admin, before the real

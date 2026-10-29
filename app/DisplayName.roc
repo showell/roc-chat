@@ -137,12 +137,23 @@ code_points = |bytes| {
 	bits = |b| b.to_u32() - continuation
 	match bytes {
 		[] => []
-		[b0, b1, b2, b3, ..] if b0 >= lead4 =>
+		[
+			b0,
+			b1,
+			b2,
+			b3,
+			..,
+		] if b0 >= lead4 =>
 			List.prepend(
 				code_points(List.drop_first(bytes, 4)),
 				(b0.to_u32() - lead4.to_u32()) * 262144 + bits(b1) * 4096 + bits(b2) * 64 + bits(b3),
 			)
-		[b0, b1, b2, ..] if b0 >= lead3 =>
+		[
+			b0,
+			b1,
+			b2,
+			..,
+		] if b0 >= lead3 =>
 			List.prepend(
 				code_points(List.drop_first(bytes, 3)),
 				(b0.to_u32() - lead3.to_u32()) * 4096 + bits(b1) * 64 + bits(b2),
@@ -366,7 +377,13 @@ expect
 	)
 expect
 	List.all(
-		["\u(301)", "\u(301)\u(302)", "\u(FE0F)", "\u(2800)", " \u(20DD) "],
+		[
+			"\u(301)",
+			"\u(301)\u(302)",
+			"\u(FE0F)",
+			"\u(2800)",
+			" \u(20DD) ",
+		],
 		|bad| named(bad) == Err(NothingVisible),
 	)
 # Kept: a variation selector on something visible, a combining mark on a
@@ -379,7 +396,12 @@ expect named("\u(1F98A)") == Ok("\u(1F98A)")
 expect named("\u(410)nn") == Ok("\u(410)nn")
 
 # The code points: one, two, three and four bytes.
-expect code_points(Str.to_utf8("a\u(E9)\u(20AC)\u(1F98A)")) == [0x61, 0xE9, 0x20AC, 0x1F98A]
+expect code_points(Str.to_utf8("a\u(E9)\u(20AC)\u(1F98A)")) == [
+	0x61,
+	0xE9,
+	0x20AC,
+	0x1F98A,
+]
 
 # Bidirectional controls, each one.
 expect List.all(bidi_controls, |c| named("ab${c}cd") == Err(BidiControl))

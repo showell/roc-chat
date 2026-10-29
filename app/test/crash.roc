@@ -69,7 +69,11 @@ handle! = |req| {
 	} else if path == Str.to_utf8("/crash-big") {
 		# A list grown a byte at a time, through many allocations, then a
 		# crash: each allocation is one a test can make fail.
-		big = List.fold(List.repeat(7.U8, 20000), [], |acc, b| List.append(acc, b))
+		big = List.fold(
+			List.repeat(7.U8, 20000),
+			[],
+			|acc, b| List.append(acc, b),
+		)
 		if List.len(big) == 20000 {
 			crash "a planted crash, after a big list"
 		} else {

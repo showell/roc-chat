@@ -65,7 +65,14 @@ import Wire
 Agents := [].{
 
 	## What a path under `/agents`, `/keys` or `/invites` asks.
-	Route : [MakeAgent, Keys, Revoke(Principal.KeyId), Invites, Redeem, RevokeInvite(InviteCodec.InviteId)]
+	Route : [
+		MakeAgent,
+		Keys,
+		Revoke(Principal.KeyId),
+		Invites,
+		Redeem,
+		RevokeInvite(InviteCodec.InviteId),
+	]
 
 	## The route a path names, if it names one.
 	route : List(U8) -> Try(Agents.Route, [NotAgents])
@@ -80,10 +87,26 @@ Agents := [].{
 			Ok(Redeem)
 		} else {
 			match List.split_on(path, '/') {
-				[[], keys, digits, act] if keys == Str.to_utf8("keys") and act == Str.to_utf8("revoke") =>
-					Stored.id(digits, { name: "key", make: Principal.KeyId.from_u64 }).map_ok(|id| Revoke(id)).map_err(|_| NotAgents)
-				[[], invites, digits, act] if invites == Str.to_utf8("invites") and act == Str.to_utf8("revoke") =>
-					Stored.id(digits, { name: "invite", make: InviteCodec.InviteId.from_u64 }).map_ok(|id| RevokeInvite(id)).map_err(|_| NotAgents)
+				[
+					[],
+					keys,
+					digits,
+					act,
+				] if keys == Str.to_utf8("keys") and act == Str.to_utf8("revoke") =>
+					Stored.id(
+						digits,
+						{ name: "key", make: Principal.KeyId.from_u64 },
+					).map_ok(|id| Revoke(id)).map_err(|_| NotAgents)
+				[
+					[],
+					invites,
+					digits,
+					act,
+				] if invites == Str.to_utf8("invites") and act == Str.to_utf8("revoke") =>
+					Stored.id(
+						digits,
+						{ name: "invite", make: InviteCodec.InviteId.from_u64 },
+					).map_ok(|id| RevokeInvite(id)).map_err(|_| NotAgents)
 				_ => Err(NotAgents)
 			}
 		}
@@ -120,8 +143,22 @@ Agents := [].{
 	Made : [
 		Made({ agent : Principal, steps : List(GitHubSignIn.Step) }),
 		NameRefused(DisplayName.Problem),
-		Refused([GrantedByKey, SessionExpired, NoSuchGranter, ClockOutOfRange]),
-		Stuck([StaleGeneration, GenerationsExhausted, StaleAgentId, AgentIdsExhausted]),
+		Refused(
+			[
+				GrantedByKey,
+				SessionExpired,
+				NoSuchGranter,
+				ClockOutOfRange,
+			],
+		),
+		Stuck(
+			[
+				StaleGeneration,
+				GenerationsExhausted,
+				StaleAgentId,
+				AgentIdsExhausted,
+			],
+		),
 	]
 
 	## **MAKE AN AGENT**: owned by the human a live session signs in, named
@@ -130,8 +167,22 @@ Agents := [].{
 	## agent's) and next generation (GitHubSignIn.next_generation); the
 	## steps advance both counters first, then add the account, for
 	## GitHubSignIn.applied, as a sign-up's do.
-	make : { maker : Agents.Maker, name : List(U8), accounts : List(Principal), settings : GitHubSignIn.Settings, now : I64 } -> Agents.Made
-	make = |{ maker, name, accounts, settings, now }|
+	make : {
+		maker : Agents.Maker,
+		name : List(U8),
+		accounts : List(Principal),
+		settings : GitHubSignIn.Settings,
+		now : I64,
+	} -> Agents.Made
+	make = |
+		{
+			maker,
+			name,
+			accounts,
+			settings,
+			now,
+		},
+	|
 		if now < 0 or now > Stored.max_time {
 			Refused(ClockOutOfRange)
 		} else {
@@ -142,13 +193,45 @@ Agents := [].{
 						Refused(IdleExpired) | Refused(AbsoluteExpired) => Refused(SessionExpired)
 						Refused(NoSuchAccount) => Refused(NoSuchGranter)
 						Admitted({ principal, write: _ }) =>
-							match (DisplayName.from_utf8(name), GitHubSignIn.next_generation(accounts, settings), GitHubSignIn.next_agent_id(accounts, settings)) {
-								(Err(problem), _, _) => NameRefused(problem)
-								(_, Err(why), _) => Stuck(why)
-								(_, _, Err(why)) => Stuck(why)
-								(Ok(chosen), Ok({ this, next }), Ok(ids)) => {
-									agent = Principal.Agent({ id: ids.this, name: chosen.to_str(), owner: Principal.answers_to(principal), generation: this })
-									Made({ agent, steps: [AdvanceGeneration(next), AdvanceAgentId(ids.next), AddAccount(agent)] })
+							match (
+								DisplayName.from_utf8(name),
+								GitHubSignIn.next_generation(accounts, settings),
+								GitHubSignIn.next_agent_id(accounts, settings),
+							) {
+								(
+									Err(problem),
+									_,
+									_,
+								) => NameRefused(problem)
+								(
+									_,
+									Err(why),
+									_,
+								) => Stuck(why)
+								(
+									_,
+									_,
+									Err(why),
+								) => Stuck(why)
+								(
+									Ok(chosen),
+									Ok({ this, next }),
+									Ok(ids),
+								) => {
+									agent = Principal.Agent({
+										id: ids.this,
+										name: chosen.to_str(),
+										owner: Principal.answers_to(principal),
+										generation: this,
+									})
+									Made({
+										agent,
+										steps: [
+											AdvanceGeneration(next),
+											AdvanceAgentId(ids.next),
+											AddAccount(agent),
+										],
+									})
 								}
 							}
 					}
@@ -161,9 +244,31 @@ Agents := [].{
 	## then the invite is for an agent or a bot (a human's key is minted),
 	## and the key's lifetime one a mint may give. The agent, bound to its
 	## accounts as they are now.
-	invited : { granter : Agents.Maker, acts_as : Principal.Id, scope : ApiKey.Scope(ConvAccess.ConvId), lifetime : I64, accounts : List(Principal), now : I64 } -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
-	invited = |{ granter, acts_as, scope, lifetime, accounts, now }|
-		match ApiKey.may_grant({ granter, acts_as, scope, accounts, now }) {
+	invited : {
+		granter : Agents.Maker,
+		acts_as : Principal.Id,
+		scope : ApiKey.Scope(ConvAccess.ConvId),
+		lifetime : I64,
+		accounts : List(Principal),
+		now : I64,
+	} -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
+	invited = |
+		{
+			granter,
+			acts_as,
+			scope,
+			lifetime,
+			accounts,
+			now,
+		},
+	|
+		match ApiKey.may_grant({
+			granter,
+			acts_as,
+			scope,
+			accounts,
+			now,
+		}) {
 			Refused(why) => Err(Refused(why))
 			Grantable =>
 				match acts_as {
@@ -179,8 +284,22 @@ Agents := [].{
 	## granter (ApiKey.may_grant through ConvKey.issue: the session still
 	## live, the agent still its human's) against the accounts now. `granter`
 	## is the invite's, as the store holds it now: `Gone` when it holds none.
-	redeemed : { invite : InviteCodec.Record(ConvAccess.ConvId), granter : [Found(Agents.Maker), Gone], accounts : List(Principal), now : I64, key : Principal.KeyId } -> Try(ConvKey.Key, InviteCodec.Refusal)
-	redeemed = |{ invite, granter, accounts, now, key }|
+	redeemed : {
+		invite : InviteCodec.Record(ConvAccess.ConvId),
+		granter : [Found(Agents.Maker), Gone],
+		accounts : List(Principal),
+		now : I64,
+		key : Principal.KeyId,
+	} -> Try(ConvKey.Key, InviteCodec.Refusal)
+	redeemed = |
+		{
+			invite,
+			granter,
+			accounts,
+			now,
+			key,
+		},
+	|
 		match invite.state {
 			Spent => Err(Spent)
 			Revoked => Err(Revoked)
@@ -190,7 +309,16 @@ Agents := [].{
 					(Err(_), _) => Err(NoLongerHolds)
 					(Ok(_), Gone) => Err(Grant(NoSuchGranter))
 					(Ok(_), Found(g)) =>
-						match ConvKey.issue({ granter: g, acts_as: invite.bound.id, scope: invite.scope, accounts, now }, { key, expires: now + invite.lifetime }) {
+						match ConvKey.issue(
+							{
+								granter: g,
+								acts_as: invite.bound.id,
+								scope: invite.scope,
+								accounts,
+								now,
+							},
+							{ key, expires: now + invite.lifetime },
+						) {
 							Ok(k) => Ok(k)
 							Err(Refused(why)) => Err(Grant(why))
 						}
@@ -199,7 +327,11 @@ Agents := [].{
 
 	## **THE INVITE IS ONE OF THIS HUMAN'S**: for an agent or a bot the
 	## accounts say they own now.
-	is_invited_by : InviteCodec.Record(ConvAccess.ConvId), { human : Principal.GitHubId, accounts : List(Principal) } -> Bool
+	is_invited_by : InviteCodec.Record(ConvAccess.ConvId),
+	{
+		human : Principal.GitHubId,
+		accounts : List(Principal),
+	} -> Bool
 	is_invited_by = |invite, { human, accounts }|
 		match Principal.find(accounts, invite.bound.id) {
 			Ok(p) => Principal.answers_to(p) == human
@@ -260,15 +392,33 @@ made_by! = |maker, form| {
 		}
 	match (Store.accounts!({}), SignIn.settings!({})) {
 		(Ok(accounts), Ok(settings)) =>
-			match Agents.make({ maker, name, accounts, settings, now }) {
+			match Agents.make({
+				maker,
+				name,
+				accounts,
+				settings,
+				now,
+			}) {
 				NameRefused(_) => Wire.refused(400, "that name is not one we can show")
 				Stuck(_) => Chat.failed
 				Refused(why) => {
-					audit_grant!(maker, { acts_as: Principal.Id.Agent(settings.next_agent_id), refusal: why, now })
+					audit_grant!(
+						maker,
+						{
+							acts_as: Principal.Id.Agent(settings.next_agent_id),
+							refusal: why,
+							now,
+						},
+					)
 					grant_refused(why)
 				}
 				Made({ agent, steps }) =>
-					match Store.save_accounts!(GitHubSignIn.applied(steps, { accounts, settings })) {
+					match Store.save_accounts!(
+						GitHubSignIn.applied(
+							steps,
+							{ accounts, settings },
+						),
+					) {
 						Failed => Chat.failed
 						Written => Wire.json(201, agent_json(agent))
 					}
@@ -288,7 +438,10 @@ mint! = |{}| {
 			match Credentials.presented!({}) {
 				Err(answer) => answer
 				Ok(Nobody) => signed_out
-				Ok(Session(s)) => minted!(Session(s), { default_as: Principal.Id.Human(s.human()), form: got.bytes })
+				Ok(Session(s)) => minted!(
+					Session(s),
+					{ default_as: Principal.Id.Human(s.human()), form: got.bytes },
+				)
 				Ok(Key(k)) => minted!(Key(k), { default_as: k.acts_as(), form: got.bytes })
 			}
 	}
@@ -298,9 +451,24 @@ minted! : Agents.Maker, { default_as : Principal.Id, form : List(U8) } => Chat.A
 minted! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
-		Ok({ acts_as, scope: _, lifetime: _ }) if is_session(granter) and !is_human(acts_as) =>
-			Wire.refused(403, "an agent's or a bot's key comes from an invite: POST /invites, and the agent redeems its code")
-		Ok({ acts_as, scope, lifetime }) => {
+		Ok(
+			{
+				acts_as,
+				scope: _,
+				lifetime: _,
+			},
+		) if is_session(granter) and !is_human(acts_as) =>
+			Wire.refused(
+				403,
+				"an agent's or a bot's key comes from an invite: POST /invites, and the agent redeems its code",
+			)
+		Ok(
+			{
+				acts_as,
+				scope,
+				lifetime,
+			},
+		) => {
 			now = Host.read_time!({})
 			match (Store.accounts!({}), Store.next_key_id!({})) {
 				(Ok(accounts), Ok(id)) => {
@@ -308,9 +476,25 @@ minted! = |granter, { default_as, form }|
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 						Err(NotAHash) => Chat.failed
 						Ok(hash) =>
-							match ConvKey.issue({ granter, acts_as, scope, accounts, now }, { key: id, expires: now + lifetime }) {
+							match ConvKey.issue(
+								{
+									granter,
+									acts_as,
+									scope,
+									accounts,
+									now,
+								},
+								{ key: id, expires: now + lifetime },
+							) {
 								Err(Refused(why)) => {
-									audit_grant!(granter, { acts_as, refusal: why, now })
+									audit_grant!(
+										granter,
+										{
+											acts_as,
+											refusal: why,
+											now,
+										},
+									)
 									grant_refused(why)
 								}
 								Ok(key) =>
@@ -353,7 +537,10 @@ invite! = |{}| {
 			match Credentials.presented!({}) {
 				Err(answer) => answer
 				Ok(Nobody) => signed_out
-				Ok(Session(s)) => invited_by!(Session(s), { default_as: Principal.Id.Human(s.human()), form: got.bytes })
+				Ok(Session(s)) => invited_by!(
+					Session(s),
+					{ default_as: Principal.Id.Human(s.human()), form: got.bytes },
+				)
 				Ok(Key(k)) => invited_by!(Key(k), { default_as: k.acts_as(), form: got.bytes })
 			}
 	}
@@ -363,14 +550,45 @@ invited_by! : Agents.Maker, { default_as : Principal.Id, form : List(U8) } => Ch
 invited_by! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
-		Ok({ acts_as, scope, lifetime }) => {
+		Ok(
+			{
+				acts_as,
+				scope,
+				lifetime,
+			},
+		) => {
 			now = Host.read_time!({})
-			match (Store.accounts!({}), Store.next_invite_id!({}), granter_hash!(granter)) {
-				(Ok(accounts), Ok(id), Ok(by)) =>
-					match Agents.invited({ granter, acts_as, scope, lifetime, accounts, now }) {
-						Err(NotAnAgent) => Wire.refused(400, "an invite is for one of your agents or bots, `as=agent:7`; your own key is minted")
+			match (
+				Store.accounts!({}),
+				Store.next_invite_id!({}),
+				granter_hash!(granter),
+			) {
+				(
+					Ok(accounts),
+					Ok(id),
+					Ok(by),
+				) =>
+					match Agents.invited({
+						granter,
+						acts_as,
+						scope,
+						lifetime,
+						accounts,
+						now,
+					}) {
+						Err(NotAnAgent) => Wire.refused(
+							400,
+							"an invite is for one of your agents or bots, `as=agent:7`; your own key is minted",
+						)
 						Err(Refused(why)) => {
-							audit_grant!(granter, { acts_as, refusal: why, now })
+							audit_grant!(
+								granter,
+								{
+									acts_as,
+									refusal: why,
+									now,
+								},
+							)
 							grant_refused(why)
 						}
 						Ok(bound) => {
@@ -378,11 +596,25 @@ invited_by! = |granter, { default_as, form }|
 							match Stored.SecretHash.from_bytes(Host.hash!(code)) {
 								Err(NotAHash) => Chat.failed
 								Ok(hash) => {
-									invite = { id, bound, by, hash, created: now, expires: now + invite_lifetime_secs, state: Live, lifetime, scope }
+									invite = {
+										id,
+										bound,
+										by,
+										hash,
+										created: now,
+										expires: now + invite_lifetime_secs,
+										state: Live,
+										lifetime,
+										scope,
+									}
 									match Store.save_invite!(invite) {
 										Failed => Chat.failed
 										Written => {
-											audit_invite!({ at: now, invite: Known({ id, agent: bound.id }), verdict: Created(via_of(granter)) })
+											audit_invite!({
+												at: now,
+												invite: Known({ id, agent: bound.id }),
+												verdict: Created(via_of(granter)),
+											})
 											Wire.json(201, invite_json(invite, Shown(code)))
 										}
 									}
@@ -427,20 +659,36 @@ redeem! = |{}| {
 		Read => {
 			now = Host.read_time!({})
 			if Host.read_header!(Str.to_utf8("authorization")) != [] or Host.read_header!(Str.to_utf8("cookie")) != [] {
-				invite_refused!({ invite: Unknown, why: CredentialSent, now })
+				invite_refused!({
+					invite: Unknown,
+					why: CredentialSent,
+					now,
+				})
 			} else {
 				match SignInWeb.form_field(got.bytes, "code") {
-					Err(_) => invite_refused!({ invite: Unknown, why: Unknown, now })
+					Err(_) => invite_refused!({
+						invite: Unknown,
+						why: Unknown,
+						now,
+					})
 					Ok(hex) =>
 						match SignInWeb.unhex(hex) {
-							Err(NotHex) => invite_refused!({ invite: Unknown, why: Unknown, now })
+							Err(NotHex) => invite_refused!({
+								invite: Unknown,
+								why: Unknown,
+								now,
+							})
 							Ok(code) =>
 								match Stored.SecretHash.from_bytes(Host.hash!(code)) {
 									Err(NotAHash) => Chat.failed
 									Ok(hash) =>
 										match Store.invite!(hash) {
 											Err(Failed) => Chat.failed
-											Err(Missing) | Err(Malformed) => invite_refused!({ invite: Unknown, why: Unknown, now })
+											Err(Missing) | Err(Malformed) => invite_refused!({
+												invite: Unknown,
+												why: Unknown,
+												now,
+											})
 											Ok(invite) => redeemed_now!(invite, now)
 										}
 								}
@@ -457,10 +705,28 @@ redeem! = |{}| {
 redeemed_now! : InviteCodec.Record(ConvAccess.ConvId), I64 => Chat.Answer
 redeemed_now! = |invite, now| {
 	known = Known({ id: invite.id, agent: invite.bound.id })
-	match (Store.accounts!({}), Store.next_key_id!({}), stored_granter!(invite.by)) {
-		(Ok(accounts), Ok(key_id), Ok(granter)) =>
-			match Agents.redeemed({ invite, granter, accounts, now, key: key_id }) {
-				Err(why) => invite_refused!({ invite: known, why, now })
+	match (
+		Store.accounts!({}),
+		Store.next_key_id!({}),
+		stored_granter!(invite.by),
+	) {
+		(
+			Ok(accounts),
+			Ok(key_id),
+			Ok(granter),
+		) =>
+			match Agents.redeemed({
+				invite,
+				granter,
+				accounts,
+				now,
+				key: key_id,
+			}) {
+				Err(why) => invite_refused!({
+					invite: known,
+					why,
+					now,
+				})
 				Ok(key) => {
 					secret = Host.random_bytes!(secret_bytes)
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
@@ -472,7 +738,11 @@ redeemed_now! = |invite, now| {
 									match Store.save_key!({ key, hash }) {
 										Failed => Chat.failed
 										Written => {
-											audit_invite!({ at: now, invite: known, verdict: Redeemed(key.id()) })
+											audit_invite!({
+												at: now,
+												invite: known,
+												verdict: Redeemed(key.id()),
+											})
 											Wire.json(201, key_json(key, Shown(secret)))
 										}
 									}
@@ -503,9 +773,23 @@ stored_granter! = |by|
 	}
 
 ## A redemption refused: audited, and a 401 that says no more.
-invite_refused! : { invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })], why : InviteCodec.Refusal, now : I64 } => Chat.Answer
-invite_refused! = |{ invite, why, now }| {
-	audit_invite!({ at: now, invite, verdict: Refused(why) })
+invite_refused! : {
+	invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
+	why : InviteCodec.Refusal,
+	now : I64,
+} => Chat.Answer
+invite_refused! = |
+	{
+		invite,
+		why,
+		now,
+	},
+| {
+	audit_invite!({
+		at: now,
+		invite,
+		verdict: Refused(why),
+	})
 	Wire.refused(401, "invite refused")
 }
 
@@ -523,12 +807,29 @@ list_invites! : {} => Chat.Answer
 list_invites! = |{}|
 	match owner!({}) {
 		Err(answer) => answer
-		Ok({ human, accounts, session: _, now }) =>
+		Ok(
+			{
+				human,
+				accounts,
+				session: _,
+				now,
+			},
+		) =>
 			match Store.invites!({}) {
 				Err(Failed) => Chat.failed
 				Ok(all) => {
-					live = List.keep_if(all, |i| is_live(i, now) and Agents.is_invited_by(i, { human, accounts }))
-					Wire.json(200, List.join([Str.to_utf8("{\"invites\":["), Wire.commas(List.map(invites_by_id(live), |i| invite_json(i, Hidden))), Str.to_utf8("]}")]))
+					live = List.keep_if(
+						all,
+						|i| is_live(i, now) and Agents.is_invited_by(i, { human, accounts }),
+					)
+					Wire.json(
+						200,
+						List.join([
+							Str.to_utf8("{\"invites\":["),
+							Wire.commas(List.map(invites_by_id(live), |i| invite_json(i, Hidden))),
+							Str.to_utf8("]}"),
+						]),
+					)
 				}
 			}
 	}
@@ -549,7 +850,10 @@ invites_by_id = |invites|
 		[],
 		|sorted, i| {
 			n = i.id.to_u64()
-			List.concat(List.append(List.keep_if(sorted, |m| m.id.to_u64() < n), i), List.keep_if(sorted, |m| m.id.to_u64() > n))
+			List.concat(
+				List.append(List.keep_if(sorted, |m| m.id.to_u64() < n), i),
+				List.keep_if(sorted, |m| m.id.to_u64() > n),
+			)
 		},
 	)
 
@@ -558,18 +862,35 @@ revoke_invite! : InviteCodec.InviteId => Chat.Answer
 revoke_invite! = |id|
 	match owner!({}) {
 		Err(answer) => answer
-		Ok({ human, accounts, session, now }) =>
+		Ok(
+			{
+				human,
+				accounts,
+				session,
+				now,
+			},
+		) =>
 			match Store.invites!({}) {
 				Err(Failed) => Chat.failed
 				Ok(all) =>
-					match List.find_first(all, |i| i.id == id and is_live(i, now) and Agents.is_invited_by(i, { human, accounts })) {
+					match List.find_first(
+						all,
+						|i| i.id == id and is_live(i, now) and Agents.is_invited_by(
+							i,
+							{ human, accounts },
+						),
+					) {
 						Err(_) => Wire.refused(404, "no such live invite of yours")
 						Ok(invite) => {
 							revoked = { ..invite, state: Revoked }
 							match Store.save_invite!(revoked) {
 								Failed => Chat.failed
 								Written => {
-									audit_invite!({ at: now, invite: Known({ id, agent: invite.bound.id }), verdict: Revoked(session) })
+									audit_invite!({
+										at: now,
+										invite: Known({ id, agent: invite.bound.id }),
+										verdict: Revoked(session),
+									})
 									Wire.json(200, invite_json(revoked, Hidden))
 								}
 							}
@@ -584,7 +905,11 @@ invite_json : InviteCodec.Record(ConvAccess.ConvId), [Shown(List(U8)), Hidden] -
 invite_json = |invite, code| {
 	shown =
 		match code {
-			Shown(bytes) => List.join([Str.to_utf8(",\"code\":\""), SignInWeb.hex(bytes), ['"']])
+			Shown(bytes) => List.join([
+				Str.to_utf8(",\"code\":\""),
+				SignInWeb.hex(bytes),
+				['"'],
+			])
 			Hidden => []
 		}
 	List.join([
@@ -596,13 +921,24 @@ invite_json = |invite, code| {
 
 ## **WHAT A MINT'S FORM ASKS**: who the key acts as, its scope, and how
 ## long it lives; or why the form does not read.
-asked_grant : List(U8), Principal.Id -> Try({ acts_as : Principal.Id, scope : ApiKey.Scope(ConvAccess.ConvId), lifetime : I64 }, Str)
+asked_grant : List(U8),
+Principal.Id -> Try(
+	{
+		acts_as : Principal.Id,
+		scope : ApiKey.Scope(ConvAccess.ConvId),
+		lifetime : I64,
+	},
+	Str,
+)
 asked_grant = |form, default_as| {
 	acts_as =
 		match SignInWeb.form_field(form, "as") {
 			Err(Missing) => Ok(default_as)
 			Err(Malformed) => Err("`as` names who the key acts as, as `agent:7`")
-			Ok(text) => AccountCodec.id_from(text, "as").map_err(|_| "`as` names who the key acts as, as `agent:7`")
+			Ok(text) => AccountCodec.id_from(
+				text,
+				"as",
+			).map_err(|_| "`as` names who the key acts as, as `agent:7`")
 		}?
 	read = reach_asked(form, "read")?
 	post = reach_asked(form, "post")?
@@ -619,7 +955,15 @@ asked_grant = |form, default_as| {
 			Err(Malformed) => Err("`lifetime` is seconds")
 			Ok(v) => Stored.time(v, "lifetime").map_err(|_| "`lifetime` is seconds")
 		}?
-	Ok({ acts_as, scope: { read, post, admin }, lifetime })
+	Ok({
+		acts_as,
+		scope: {
+			read,
+			post,
+			admin,
+		},
+		lifetime,
+	})
 }
 
 ## A read's or a post's reach, as the form spells it (KeyCodec's one
@@ -629,7 +973,10 @@ reach_asked = |form, name|
 	match SignInWeb.form_field(form, name) {
 		Err(Missing) => Ok(On(Everywhere))
 		Err(Malformed) => Err("`${name}` is `everywhere`, `off` or `only:` and conversation ids")
-		Ok(v) => KeyCodec.reach_from(v, { name, make: ConvAccess.ConvId.from_u64 }).map_err(|_| "`${name}` is `everywhere`, `off` or `only:` and conversation ids")
+		Ok(v) => KeyCodec.reach_from(
+			v,
+			{ name, make: ConvAccess.ConvId.from_u64 },
+		).map_err(|_| "`${name}` is `everywhere`, `off` or `only:` and conversation ids")
 	}
 
 ## **/keys, GET**: the session's human's keys and their agents', by id;
@@ -638,12 +985,29 @@ list! : {} => Chat.Answer
 list! = |{}|
 	match owner!({}) {
 		Err(answer) => answer
-		Ok({ human, accounts, session: _, now: _ }) =>
+		Ok(
+			{
+				human,
+				accounts,
+				session: _,
+				now: _,
+			},
+		) =>
 			match Store.keys!({}) {
 				Err(Failed) => Chat.failed
 				Ok(entries) => {
-					mine = List.keep_if(List.map(entries, |e| e.key), |k| Agents.is_owned_by(k, { human, accounts }))
-					Wire.json(200, List.join([Str.to_utf8("{\"keys\":["), Wire.commas(List.map(by_id(mine), |k| key_json(k, Hidden))), Str.to_utf8("]}")]))
+					mine = List.keep_if(
+						List.map(entries, |e| e.key),
+						|k| Agents.is_owned_by(k, { human, accounts }),
+					)
+					Wire.json(
+						200,
+						List.join([
+							Str.to_utf8("{\"keys\":["),
+							Wire.commas(List.map(by_id(mine), |k| key_json(k, Hidden))),
+							Str.to_utf8("]}"),
+						]),
+					)
 				}
 			}
 	}
@@ -656,7 +1020,10 @@ by_id = |keys|
 		[],
 		|sorted, k| {
 			n = k.id().to_u64()
-			List.concat(List.append(List.keep_if(sorted, |m| m.id().to_u64() < n), k), List.keep_if(sorted, |m| m.id().to_u64() > n))
+			List.concat(
+				List.append(List.keep_if(sorted, |m| m.id().to_u64() < n), k),
+				List.keep_if(sorted, |m| m.id().to_u64() > n),
+			)
 		},
 	)
 
@@ -665,11 +1032,21 @@ revoke! : Principal.KeyId => Chat.Answer
 revoke! = |id|
 	match owner!({}) {
 		Err(answer) => answer
-		Ok({ human, accounts, session: _, now: _ }) =>
+		Ok(
+			{
+				human,
+				accounts,
+				session: _,
+				now: _,
+			},
+		) =>
 			match Store.keys!({}) {
 				Err(Failed) => Chat.failed
 				Ok(entries) =>
-					match List.find_first(entries, |e| e.key.id() == id and Agents.is_owned_by(e.key, { human, accounts })) {
+					match List.find_first(
+						entries,
+						|e| e.key.id() == id and Agents.is_owned_by(e.key, { human, accounts }),
+					) {
 						Err(_) => Wire.refused(404, "no such key of yours")
 						Ok(entry) => {
 							revoked = entry.key.revoke()
@@ -684,7 +1061,15 @@ revoke! = |id|
 
 ## **THE HUMAN A LIVE SESSION SIGNS IN**, for listing and revoking: a key
 ## manages no key (a 403), nobody signed in is a 401.
-owner! : {} => Try({ human : Principal.GitHubId, accounts : List(Principal), session : Principal.SessionId, now : I64 }, Chat.Answer)
+owner! : {} => Try(
+	{
+		human : Principal.GitHubId,
+		accounts : List(Principal),
+		session : Principal.SessionId,
+		now : I64,
+	},
+	Chat.Answer,
+)
 owner! = |{}| {
 	credential = Credentials.presented!({})?
 	match credential {
@@ -695,7 +1080,12 @@ owner! = |{}| {
 			accounts = Store.accounts!({}).map_err(|_| Chat.failed)?
 			match session.admit({ accounts, now }) {
 				Refused(_) => Err(signed_out)
-				Admitted({ principal, write: _ }) => Ok({ human: Principal.answers_to(principal), accounts, session: session.id(), now })
+				Admitted({ principal, write: _ }) => Ok({
+					human: Principal.answers_to(principal),
+					accounts,
+					session: session.id(),
+					now,
+				})
 			}
 		}
 	}
@@ -703,14 +1093,34 @@ owner! = |{}| {
 
 ## **A GRANT REFUSED, AUDITED**: who asked, by which session or key, for
 ## whom, and why.
-audit_grant! : Agents.Maker, { acts_as : Principal.Id, refusal : ApiKey.GrantRefusal, now : I64 } => {}
-audit_grant! = |granter, { acts_as, refusal, now }| {
+audit_grant! : Agents.Maker,
+{
+	acts_as : Principal.Id,
+	refusal : ApiKey.GrantRefusal,
+	now : I64,
+} => {}
+audit_grant! = |
+	granter,
+	{
+		acts_as,
+		refusal,
+		now,
+	},
+| {
 	(who, via) =
 		match granter {
 			Session(s) => (Principal.Id.Human(s.human()), Session(s.id()))
 			Key(k) => (k.acts_as(), Key(k.id()))
 		}
-	match AuditCodec.Entry.of_key(Grant({ at: now, who, via, acts_as, refusal })) {
+	match AuditCodec.Entry.of_key(
+		Grant({
+			at: now,
+			who,
+			via,
+			acts_as,
+			refusal,
+		}),
+	) {
 		Ok(entry) => Store.audit!(entry)
 		Err(ClockOutOfRange) => {}
 	}
@@ -725,7 +1135,10 @@ grant_refused = |why|
 		SessionExpired | NoSuchGranter => signed_out
 		BadExpiry => Wire.refused(400, "a key lives more than no time, and a year at most")
 		GrantedByKey => Wire.refused(403, "a key is minted from a session, never from a key")
-		NotTheGrantersOwn | NoSuchPrincipal => Wire.refused(403, "a key acts as you, or as an agent or a bot of yours")
+		NotTheGrantersOwn | NoSuchPrincipal => Wire.refused(
+			403,
+			"a key acts as you, or as an agent or a bot of yours",
+		)
 		AdminBeyondPrincipal => Wire.refused(403, "admin is for an admin, or an admin's agent")
 		ClockOutOfRange => Chat.failed
 	}
@@ -768,7 +1181,11 @@ key_json = |key, secret| {
 		}
 	shown =
 		match secret {
-			Shown(bytes) => List.join([Str.to_utf8(",\"secret\":\""), SignInWeb.hex(bytes), ['"']])
+			Shown(bytes) => List.join([
+				Str.to_utf8(",\"secret\":\""),
+				SignInWeb.hex(bytes),
+				['"'],
+			])
 			Hidden => []
 		}
 	List.join([
@@ -810,16 +1227,66 @@ session_of = |who|
 
 ## The settings after the cast's accounts (every one of generation 1).
 settings_at : U64 -> GitHubSignIn.Settings
-settings_at = |next| { first_admin: Unnamed, barred: [], next_generation: Cast.gen(next), next_agent_id: Cast.aid(4) }
+settings_at = |next| {
+	first_admin: Unnamed,
+	barred: [],
+	next_generation: Cast.gen(next),
+	next_agent_id: Cast.aid(4),
+}
 
 ## What `make` decided, said plainly: the agent's id, owner, generation
 ## and name, and the counter it leaves; or the refusal.
-Said : [Agent({ id : U64, owner : U64, generation : U64, name : Str, next : U64, next_id : U64 }), NameRefused(DisplayName.Problem), Refused([GrantedByKey, SessionExpired, NoSuchGranter, ClockOutOfRange]), Stuck([StaleGeneration, GenerationsExhausted, StaleAgentId, AgentIdsExhausted]), Other]
+Said : [
+	Agent(
+		{
+			id : U64,
+			owner : U64,
+			generation : U64,
+			name : Str,
+			next : U64,
+			next_id : U64,
+		},
+	),
+	NameRefused(DisplayName.Problem),
+	Refused(
+		[
+			GrantedByKey,
+			SessionExpired,
+			NoSuchGranter,
+			ClockOutOfRange,
+		],
+	),
+	Stuck(
+		[
+			StaleGeneration,
+			GenerationsExhausted,
+			StaleAgentId,
+			AgentIdsExhausted,
+		],
+	),
+	Other,
+]
 
 said : Agents.Made -> Said
 said = |made|
 	match made {
-		Made({ agent: Agent(a), steps: [AdvanceGeneration(n), AdvanceAgentId(i), AddAccount(_)] }) => Agent({ id: a.id.to_u64(), owner: a.owner.to_u64(), generation: a.generation.to_u64(), name: a.name, next: n.to_u64(), next_id: i.to_u64() })
+		Made(
+			{
+				agent: Agent(a),
+				steps: [
+					AdvanceGeneration(n),
+					AdvanceAgentId(i),
+					AddAccount(_),
+				],
+			},
+		) => Agent({
+			id: a.id.to_u64(),
+			owner: a.owner.to_u64(),
+			generation: a.generation.to_u64(),
+			name: a.name,
+			next: n.to_u64(),
+			next_id: i.to_u64(),
+		})
 		Made(_) => Other
 		NameRefused(p) => NameRefused(p)
 		Refused(why) => Refused(why)
@@ -828,12 +1295,32 @@ said = |made|
 
 ## Boss (an admin) or ann (a member), by session, makes `name` among the cast at 50.
 made_by : U64, Str -> Agents.Made
-made_by = |who, name| Agents.make({ maker: Session(session_of(who)), name: Str.to_utf8(name), accounts: Cast.accounts, settings: settings_at(2), now: 50 })
+made_by = |who, name| Agents.make({
+	maker: Session(session_of(who)),
+	name: Str.to_utf8(name),
+	accounts: Cast.accounts,
+	settings: settings_at(2),
+	now: 50,
+})
 
 # The agent id and the generation are the settings'; both counters,
 # advanced. (The cast's agents and bots are 1, 2 and 3.)
-expect said(made_by(2, "CC")) == Agent({ id: 4, owner: 2, generation: 2, name: "CC", next: 3, next_id: 5 })
-expect said(made_by(1, "  LC  ")) == Agent({ id: 4, owner: 1, generation: 2, name: "LC", next: 3, next_id: 5 })
+expect said(made_by(2, "CC")) == Agent({
+	id: 4,
+	owner: 2,
+	generation: 2,
+	name: "CC",
+	next: 3,
+	next_id: 5,
+})
+expect said(made_by(1, "  LC  ")) == Agent({
+	id: 4,
+	owner: 1,
+	generation: 2,
+	name: "LC",
+	next: 3,
+	next_id: 5,
+})
 # A store from before the counter starts it one past every agent's and
 # bot's.
 expect GitHubSignIn.agent_id_after(Cast.accounts) == Ok(Cast.aid(4))
@@ -846,7 +1333,10 @@ expect GitHubSignIn.agent_id_after([Cast.boss]) == Ok(Cast.aid(1))
 applied_to_cast : Agents.Made -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
 applied_to_cast = |made|
 	match made {
-		Made({ agent: _, steps }) => GitHubSignIn.applied(steps, { accounts: Cast.accounts, settings: settings_at(2) })
+		Made({ agent: _, steps }) => GitHubSignIn.applied(
+			steps,
+			{ accounts: Cast.accounts, settings: settings_at(2) },
+		)
 		_ => crash "applied_to_cast: a test's agent is made"
 	}
 
@@ -854,20 +1344,69 @@ after_first : { accounts : List(Principal), settings : GitHubSignIn.Settings }
 after_first = applied_to_cast(made_by(2, "CC"))
 
 expect
-	said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: after_first.accounts, settings: after_first.settings, now: 50 }))
-		== Agent({ id: 5, owner: 2, generation: 3, name: "LC", next: 4, next_id: 6 })
+	said(
+		Agents.make({
+			maker: Session(session_of(2)),
+			name: Str.to_utf8("LC"),
+			accounts: after_first.accounts,
+			settings: after_first.settings,
+			now: 50,
+		}),
+	)
+		== Agent({
+			id: 5,
+			owner: 2,
+			generation: 3,
+			name: "LC",
+			next: 4,
+			next_id: 6,
+		})
 # A counter that went back is refused, never given twice: the generation's,
 # and the agent id's.
-expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: after_first.accounts, settings: settings_at(2), now: 50 })) == Stuck(StaleGeneration)
-expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: after_first.accounts, settings: { ..after_first.settings, next_agent_id: Cast.aid(4) }, now: 50 })) == Stuck(StaleAgentId)
-expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: Cast.accounts, settings: { ..settings_at(2), next_agent_id: Cast.aid(3) }, now: 50 })) == Stuck(StaleAgentId)
+expect said(
+	Agents.make({
+		maker: Session(session_of(2)),
+		name: Str.to_utf8("LC"),
+		accounts: after_first.accounts,
+		settings: settings_at(2),
+		now: 50,
+	}),
+) == Stuck(StaleGeneration)
+expect said(
+	Agents.make({
+		maker: Session(session_of(2)),
+		name: Str.to_utf8("LC"),
+		accounts: after_first.accounts,
+		settings: { ..after_first.settings, next_agent_id: Cast.aid(4) },
+		now: 50,
+	}),
+) == Stuck(StaleAgentId)
+expect said(
+	Agents.make({
+		maker: Session(session_of(2)),
+		name: Str.to_utf8("LC"),
+		accounts: Cast.accounts,
+		settings: { ..settings_at(2), next_agent_id: Cast.aid(3) },
+		now: 50,
+	}),
+) == Stuck(StaleAgentId)
 
 # **A RETIRED AGENT'S ID IS NEVER GIVEN AGAIN**: the highest agent (4,
 # ann's CC) retired by boss through Admin's plan, the next agent made is 5.
 ## Agent `n` retired by boss, through Admin's plan, from `start`.
-retired_by_boss : U64, { accounts : List(Principal), settings : GitHubSignIn.Settings } -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
+retired_by_boss : U64,
+{
+	accounts : List(Principal),
+	settings : GitHubSignIn.Settings,
+} -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
 retired_by_boss = |n, start|
-	match Admin.decide({ credential: Session(session_of(1)), action: Retire(Principal.Id.Agent(Cast.aid(n))), accounts: start.accounts, settings: start.settings, now: 60 }) {
+	match Admin.decide({
+		credential: Session(session_of(1)),
+		action: Retire(Principal.Id.Agent(Cast.aid(n))),
+		accounts: start.accounts,
+		settings: start.settings,
+		now: 60,
+	}) {
 		Ok({ audit: _, plan }) => Admin.applied(plan, start)
 		Err(_) => crash "retired_by_boss: a test's retirement is decided"
 	}
@@ -877,15 +1416,54 @@ after_retired = retired_by_boss(4, after_first)
 
 expect !List.any(after_retired.accounts, |p| Principal.id(p) == Principal.Id.Agent(Cast.aid(4)))
 expect
-	said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("CC"), accounts: after_retired.accounts, settings: after_retired.settings, now: 70 }))
-		== Agent({ id: 5, owner: 2, generation: 3, name: "CC", next: 4, next_id: 6 })
+	said(
+		Agents.make({
+			maker: Session(session_of(2)),
+			name: Str.to_utf8("CC"),
+			accounts: after_retired.accounts,
+			settings: after_retired.settings,
+			now: 70,
+		}),
+	)
+		== Agent({
+			id: 5,
+			owner: 2,
+			generation: 3,
+			name: "CC",
+			next: 4,
+			next_id: 6,
+		})
 
 # A bad name is refused; so is anyone but a live session.
 expect said(made_by(2, "")) == NameRefused(Empty)
 expect said(made_by(2, "a\nb")) == NameRefused(ControlCharacter)
-expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("CC"), accounts: Cast.accounts, settings: settings_at(2), now: Session.idle_secs })) == Refused(SessionExpired)
-expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("CC"), accounts: Cast.without_ann, settings: settings_at(2), now: 50 })) == Refused(NoSuchGranter)
-expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("CC"), accounts: Cast.accounts, settings: settings_at(2), now: -1 })) == Refused(ClockOutOfRange)
+expect said(
+	Agents.make({
+		maker: Session(session_of(2)),
+		name: Str.to_utf8("CC"),
+		accounts: Cast.accounts,
+		settings: settings_at(2),
+		now: Session.idle_secs,
+	}),
+) == Refused(SessionExpired)
+expect said(
+	Agents.make({
+		maker: Session(session_of(2)),
+		name: Str.to_utf8("CC"),
+		accounts: Cast.without_ann,
+		settings: settings_at(2),
+		now: 50,
+	}),
+) == Refused(NoSuchGranter)
+expect said(
+	Agents.make({
+		maker: Session(session_of(2)),
+		name: Str.to_utf8("CC"),
+		accounts: Cast.accounts,
+		settings: settings_at(2),
+		now: -1,
+	}),
+) == Refused(ClockOutOfRange)
 
 ## The key a test's grant makes.
 granted : Try(ConvKey.Key, [Refused(ApiKey.GrantRefusal)]) -> ConvKey.Key
@@ -897,19 +1475,65 @@ granted = |t|
 
 ann_key : ConvKey.Key
 ann_key =
-	granted(ConvKey.issue({ granter: Session(session_of(2)), acts_as: Principal.id(Cast.ann), scope: { read: On(Everywhere), post: On(Everywhere), admin: Off }, accounts: Cast.accounts, now: 50 }, { key: Cast.kid(1), expires: 1000 }))
+	granted(
+		ConvKey.issue(
+			{
+				granter: Session(session_of(2)),
+				acts_as: Principal.id(Cast.ann),
+				scope: {
+					read: On(Everywhere),
+					post: On(Everywhere),
+					admin: Off,
+				},
+				accounts: Cast.accounts,
+				now: 50,
+			},
+			{ key: Cast.kid(1), expires: 1000 },
+		),
+	)
 
-expect said(Agents.make({ maker: Key(ann_key), name: Str.to_utf8("CC"), accounts: Cast.accounts, settings: settings_at(2), now: 50 })) == Refused(GrantedByKey)
+expect said(
+	Agents.make({
+		maker: Key(ann_key),
+		name: Str.to_utf8("CC"),
+		accounts: Cast.accounts,
+		settings: settings_at(2),
+		now: 50,
+	}),
+) == Refused(GrantedByKey)
 
 # Whose keys: ann's own, and her agent's; never boss's.
 expect Agents.is_owned_by(ann_key, { human: Cast.gid(2), accounts: Cast.accounts })
 expect !Agents.is_owned_by(ann_key, { human: Cast.gid(1), accounts: Cast.accounts })
 
 # A mint's form: the defaults, and each field.
-expect asked_grant([], Principal.id(Cast.ann)) == Ok({ acts_as: Principal.id(Cast.ann), scope: { read: On(Everywhere), post: On(Everywhere), admin: Off }, lifetime: KeyCodec.max_lifetime_secs })
+expect asked_grant([], Principal.id(Cast.ann)) == Ok({
+	acts_as: Principal.id(Cast.ann),
+	scope: {
+		read: On(Everywhere),
+		post: On(Everywhere),
+		admin: Off,
+	},
+	lifetime: KeyCodec.max_lifetime_secs,
+})
 expect
-	asked_grant(Str.to_utf8("as=agent%3A3&read=only%3A3%2C9&post=off&admin=on&lifetime=60"), Principal.id(Cast.ann)).map_ok(|g| (g.acts_as, g.lifetime, g.scope.admin, g.scope.post))
-		== Ok((Principal.Id.Agent(Cast.aid(3)), 60, On, Off))
+	asked_grant(
+		Str.to_utf8("as=agent%3A3&read=only%3A3%2C9&post=off&admin=on&lifetime=60"),
+		Principal.id(Cast.ann),
+	).map_ok(
+		|g| (
+			g.acts_as,
+			g.lifetime,
+			g.scope.admin,
+			g.scope.post,
+		),
+	)
+		== Ok((
+			Principal.Id.Agent(Cast.aid(3)),
+			60,
+			On,
+			Off,
+		))
 expect asked_grant(Str.to_utf8("read=all"), Principal.id(Cast.ann)).is_err()
 expect asked_grant(Str.to_utf8("as=agent%3A0"), Principal.id(Cast.ann)).is_err()
 expect asked_grant(Str.to_utf8("lifetime=-1"), Principal.id(Cast.ann)).is_err()
@@ -917,21 +1541,70 @@ expect asked_grant(Str.to_utf8("lifetime=-1"), Principal.id(Cast.ann)).is_err()
 # ── INVITES: who may invite (the grant rule, as a mint's), and what a
 # redemption decides.
 plain : ApiKey.Scope(ConvAccess.ConvId)
-plain = { read: On(Everywhere), post: On(Everywhere), admin: Off }
+plain = {
+	read: On(Everywhere),
+	post: On(Everywhere),
+	admin: Off,
+}
 
 ## Ann's agent's id.
 ann_agent_id : Principal.Id
 ann_agent_id = Principal.id(Cast.ann_agent)
 
-invited_as : { granter : Agents.Maker, acts_as : Principal.Id, lifetime : I64 } -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
-invited_as = |{ granter, acts_as, lifetime }| Agents.invited({ granter, acts_as, scope: plain, lifetime, accounts: Cast.accounts, now: 50 })
+invited_as : {
+	granter : Agents.Maker,
+	acts_as : Principal.Id,
+	lifetime : I64,
+} -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
+invited_as = |
+	{
+		granter,
+		acts_as,
+		lifetime,
+	},
+| Agents.invited({
+	granter,
+	acts_as,
+	scope: plain,
+	lifetime,
+	accounts: Cast.accounts,
+	now: 50,
+})
 
-expect invited_as({ granter: Session(session_of(2)), acts_as: ann_agent_id, lifetime: 60 }) == Ok({ id: ann_agent_id, generation: Cast.gen(1), human: Cast.gen(1) })
-expect invited_as({ granter: Key(ann_key), acts_as: ann_agent_id, lifetime: 60 }) == Err(Refused(GrantedByKey))
-expect invited_as({ granter: Session(session_of(1)), acts_as: ann_agent_id, lifetime: 60 }) == Err(Refused(NotTheGrantersOwn))
-expect invited_as({ granter: Session(session_of(2)), acts_as: Principal.id(Cast.ann), lifetime: 60 }) == Err(NotAnAgent)
-expect invited_as({ granter: Session(session_of(2)), acts_as: ann_agent_id, lifetime: 0 }) == Err(Refused(BadExpiry))
-expect invited_as({ granter: Session(session_of(2)), acts_as: ann_agent_id, lifetime: KeyCodec.max_lifetime_secs + 1 }) == Err(Refused(BadExpiry))
+expect invited_as({
+	granter: Session(session_of(2)),
+	acts_as: ann_agent_id,
+	lifetime: 60,
+}) == Ok({
+	id: ann_agent_id,
+	generation: Cast.gen(1),
+	human: Cast.gen(1),
+})
+expect invited_as({
+	granter: Key(ann_key),
+	acts_as: ann_agent_id,
+	lifetime: 60,
+}) == Err(Refused(GrantedByKey))
+expect invited_as({
+	granter: Session(session_of(1)),
+	acts_as: ann_agent_id,
+	lifetime: 60,
+}) == Err(Refused(NotTheGrantersOwn))
+expect invited_as({
+	granter: Session(session_of(2)),
+	acts_as: Principal.id(Cast.ann),
+	lifetime: 60,
+}) == Err(NotAnAgent)
+expect invited_as({
+	granter: Session(session_of(2)),
+	acts_as: ann_agent_id,
+	lifetime: 0,
+}) == Err(Refused(BadExpiry))
+expect invited_as({
+	granter: Session(session_of(2)),
+	acts_as: ann_agent_id,
+	lifetime: KeyCodec.max_lifetime_secs + 1,
+}) == Err(Refused(BadExpiry))
 
 ## A test's hash: every byte `b`.
 hash_of : U8 -> Stored.SecretHash
@@ -945,7 +1618,11 @@ hash_of = |b|
 anns_invite : InviteCodec.Record(ConvAccess.ConvId)
 anns_invite = {
 	id: iid(1),
-	bound: { id: ann_agent_id, generation: Cast.gen(1), human: Cast.gen(1) },
+	bound: {
+		id: ann_agent_id,
+		generation: Cast.gen(1),
+		human: Cast.gen(1),
+	},
 	by: Session(hash_of(0x07)),
 	hash: hash_of(0x22),
 	created: 50,
@@ -957,32 +1634,112 @@ anns_invite = {
 
 ## What redeeming `invite` at `now` decides, said plainly: the key's
 ## principal and expiry, or the refusal.
-redeemed_at : { invite : InviteCodec.Record(ConvAccess.ConvId), granter : [Found(Agents.Maker), Gone], accounts : List(Principal), now : I64 } -> Try((Principal.Id, I64), InviteCodec.Refusal)
-redeemed_at = |{ invite, granter, accounts, now }|
-	Agents.redeemed({ invite, granter, accounts, now, key: Cast.kid(9) }).map_ok(|k| (k.acts_as(), k.record().expires))
+redeemed_at : {
+	invite : InviteCodec.Record(ConvAccess.ConvId),
+	granter : [Found(Agents.Maker), Gone],
+	accounts : List(Principal),
+	now : I64,
+} -> Try((Principal.Id, I64), InviteCodec.Refusal)
+redeemed_at = |
+	{
+		invite,
+		granter,
+		accounts,
+		now,
+	},
+|
+	Agents.redeemed({
+		invite,
+		granter,
+		accounts,
+		now,
+		key: Cast.kid(9),
+	}).map_ok(|k| (k.acts_as(), k.record().expires))
 
 by_ann : [Found(Agents.Maker), Gone]
 by_ann = Found(Session(session_of(2)))
 
-expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Ok((ann_agent_id, 1100))
+expect redeemed_at({
+	invite: anns_invite,
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: 100,
+}) == Ok((ann_agent_id, 1100))
 # Once spent, or revoked, never again; past its ten minutes, or before its
 # making, expired.
-expect redeemed_at({ invite: { ..anns_invite, state: Spent }, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Err(Spent)
-expect redeemed_at({ invite: { ..anns_invite, state: Revoked }, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Err(Revoked)
-expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.accounts, now: 50 + invite_lifetime_secs }) == Err(Expired)
-expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.accounts, now: 49 }) == Err(Expired)
+expect redeemed_at({
+	invite: { ..anns_invite, state: Spent },
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: 100,
+}) == Err(Spent)
+expect redeemed_at({
+	invite: { ..anns_invite, state: Revoked },
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: 100,
+}) == Err(Revoked)
+expect redeemed_at({
+	invite: anns_invite,
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: 50 + invite_lifetime_secs,
+}) == Err(Expired)
+expect redeemed_at({
+	invite: anns_invite,
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: 49,
+}) == Err(Expired)
 expect invite_lifetime_secs == 600
 # The agent retired, or its owner: the invite redeems to nothing.
-expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: List.drop_last(Cast.accounts, 1), now: 100 }) == Err(NoLongerHolds)
-expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.without_ann, now: 100 }) == Err(NoLongerHolds)
+expect redeemed_at({
+	invite: anns_invite,
+	granter: by_ann,
+	accounts: List.drop_last(Cast.accounts, 1),
+	now: 100,
+}) == Err(NoLongerHolds)
+expect redeemed_at({
+	invite: anns_invite,
+	granter: by_ann,
+	accounts: Cast.without_ann,
+	now: 100,
+}) == Err(NoLongerHolds)
 # The agent made again under its id (a new generation): nothing.
-expect redeemed_at({ invite: { ..anns_invite, bound: { ..anns_invite.bound, generation: Cast.gen(2) } }, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Err(NoLongerHolds)
+expect redeemed_at({
+	invite: { ..anns_invite, bound: { ..anns_invite.bound, generation: Cast.gen(2) } },
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: 100,
+}) == Err(NoLongerHolds)
 # The grant decided again: the inviting session gone, or over; a key never
 # grants.
-expect redeemed_at({ invite: anns_invite, granter: Gone, accounts: Cast.accounts, now: 100 }) == Err(Grant(NoSuchGranter))
-expect redeemed_at({ invite: { ..anns_invite, created: Session.idle_secs, expires: Session.idle_secs + invite_lifetime_secs }, granter: by_ann, accounts: Cast.accounts, now: Session.idle_secs + 10 }) == Err(Grant(SessionExpired))
-expect redeemed_at({ invite: anns_invite, granter: Found(Key(ann_key)), accounts: Cast.accounts, now: 100 }) == Err(Grant(GrantedByKey))
+expect redeemed_at({
+	invite: anns_invite,
+	granter: Gone,
+	accounts: Cast.accounts,
+	now: 100,
+}) == Err(Grant(NoSuchGranter))
+expect redeemed_at({
+	invite: {
+		..anns_invite,
+		created: Session.idle_secs,
+		expires: Session.idle_secs + invite_lifetime_secs,
+	},
+	granter: by_ann,
+	accounts: Cast.accounts,
+	now: Session.idle_secs + 10,
+}) == Err(Grant(SessionExpired))
+expect redeemed_at({
+	invite: anns_invite,
+	granter: Found(Key(ann_key)),
+	accounts: Cast.accounts,
+	now: 100,
+}) == Err(Grant(GrantedByKey))
 # Whose invites: ann's, for her agent; never boss's.
 expect Agents.is_invited_by(anns_invite, { human: Cast.gid(2), accounts: Cast.accounts })
 expect !Agents.is_invited_by(anns_invite, { human: Cast.gid(1), accounts: Cast.accounts })
-expect is_live(anns_invite, 100) and !is_live(anns_invite, 650) and !is_live({ ..anns_invite, state: Spent }, 100)
+expect is_live(anns_invite, 100) and !is_live(anns_invite, 650) and !is_live(
+	{ ..anns_invite, state: Spent },
+	100,
+)

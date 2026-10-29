@@ -110,7 +110,10 @@ keyed = |path| {
 }
 
 key_of : List(U8) -> Try(List(U8), [NotKeyed])
-key_of = |key| if List.is_empty(key) or List.contains(key, '/') or List.contains(key, '.') Err(NotKeyed) else Ok(key)
+key_of = |key| if List.is_empty(key) or List.contains(
+	key,
+	'/',
+) or List.contains(key, '.') Err(NotKeyed) else Ok(key)
 
 frames_path : List(U8) -> List(U8)
 frames_path = |key| List.concat(Str.to_utf8("probe/frames/"), key)
@@ -145,8 +148,18 @@ post! = |key| {
 				Err(Failed) => Chat.failed
 				Ok(before) => {
 					id = count_frames(before)
-					match Sse.frame({ name: [], data: got.bytes, id: Str.to_utf8(U64.to_str(id)) }) {
-						Err(LineBreak) => Chat.respond(400, { content_type: Chat.text, body: Str.to_utf8("a CR has no place in an event\n") })
+					match Sse.frame({
+						name: [],
+						data: got.bytes,
+						id: Str.to_utf8(U64.to_str(id)),
+					}) {
+						Err(LineBreak) => Chat.respond(
+							400,
+							{
+								content_type: Chat.text,
+								body: Str.to_utf8("a CR has no place in an event\n"),
+							},
+						)
 						Ok(frame) =>
 							match (Host.append!(frames_path(key), frame)).status {
 								Failed => Chat.failed

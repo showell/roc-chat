@@ -107,10 +107,21 @@ KeyCodec := [].{
 	admin_text = |s| spell_switch(s)
 
 	admin_from : List(U8), Str -> Try([Off, On], Stored.Problem)
-	admin_from = |value, name| Stored.word(value, { name, all: all_switches, spell: spell_switch })
+	admin_from = |value, name| Stored.word(
+		value,
+		{
+			name,
+			all: all_switches,
+			spell: spell_switch,
+		},
+	)
 
 	## The reach a spelling names, as the decoder reads a line's.
-	reach_from : List(U8), { name : Str, make : (U64 -> Try(id, [NotAnId])) } -> Try([Off, On(KeyCodec.Reach(id))], Stored.Problem)
+	reach_from : List(U8),
+	{
+		name : Str,
+		make : (U64 -> Try(id, [NotAnId])),
+	} -> Try([Off, On(KeyCodec.Reach(id))], Stored.Problem)
 	reach_from = |value, named| reach_from_text(value, named)
 
 	## The entry's line, an id spelled by `number`, in the one spelling.
@@ -142,9 +153,15 @@ KeyCodec := [].{
 		acts_field = id_field.rest.field("acts")?
 		acts_as = AccountCodec.id_from(acts_field.value, "acts")?
 		generation_field = acts_field.rest.field("generation")?
-		generation = Stored.id(generation_field.value, { name: "generation", make: Principal.Generation.from_u64 })?
+		generation = Stored.id(
+			generation_field.value,
+			{ name: "generation", make: Principal.Generation.from_u64 },
+		)?
 		human_field = generation_field.rest.field("human-generation")?
-		human_generation = Stored.id(human_field.value, { name: "human-generation", make: Principal.Generation.from_u64 })?
+		human_generation = Stored.id(
+			human_field.value,
+			{ name: "human-generation", make: Principal.Generation.from_u64 },
+		)?
 		hash_field = human_field.rest.field("hash")?
 		hash = Stored.hash(hash_field.value, "hash")?
 		created_field = hash_field.rest.field("created")?
@@ -258,7 +275,11 @@ ascending_once = |numbers|
 		},
 	)
 
-reach_from_text : List(U8), { name : Str, make : (U64 -> Try(id, [NotAnId])) } -> Try(ReachPart(id), Stored.Problem)
+reach_from_text : List(U8),
+{
+	name : Str,
+	make : (U64 -> Try(id, [NotAnId])),
+} -> Try(ReachPart(id), Stored.Problem)
 reach_from_text = |value, { name, make }|
 	if value == Str.to_utf8(spell_switch(Off)) {
 		Ok(Off)
@@ -391,8 +412,16 @@ expect
 	List.all(
 		[
 			{ ..narrow, acts_as: Principal.Id.Bot(Cast.aid(2)) },
-			{ ..narrow, created: 0, expires: 1 },
-			{ ..narrow, created: Stored.max_time - 1, expires: Stored.max_time },
+			{
+				..narrow,
+				created: 0,
+				expires: 1,
+			},
+			{
+				..narrow,
+				created: Stored.max_time - 1,
+				expires: Stored.max_time,
+			},
 			{ ..narrow, expires: 1761600001 },
 			{
 				..narrow,
@@ -425,10 +454,26 @@ expect read_back(Str.to_utf8(narrow_line)).map_ok(|e| e.record.scope) == Ok(narr
 with_read : KeyCodec.Reach(Conv) -> List(U8)
 with_read = |reach| encoded(entry({ ..narrow, scope: { ..narrow.scope, read: On(reach) } }))
 
-expect with_read(Only([conv(9), conv(3), conv(3)])) == Str.to_utf8(narrow_line)
+expect with_read(
+	Only([
+		conv(9),
+		conv(3),
+		conv(3),
+	]),
+) == Str.to_utf8(narrow_line)
 expect with_read(Only([conv(3), conv(9)])) == Str.to_utf8(narrow_line)
 expect with_read(Only([])) == Str.to_utf8(narrow_line.replace_first("read=only:3,9", "read=off"))
-expect ascending_once([9, 3, 3, 1, 9]) == [1, 3, 9]
+expect ascending_once([
+	9,
+	3,
+	3,
+	1,
+	9,
+]) == [
+	1,
+	3,
+	9,
+]
 expect ascending_once([]) == []
 
 # ── THE MALFORMED TABLE: each line, its named problem.
@@ -449,13 +494,43 @@ expect decoded(narrow_but({ from: "acts=agent:7", to: "acts=agent:0" })) == Err(
 expect decoded(narrow_but({ from: "acts=agent:7", to: "acts=agent7" })) == Err(BadValue("acts"))
 expect decoded(narrow_but({ from: "acts=agent:7", to: "acts=admin:7" })) == Err(UnknownWord("acts"))
 expect decoded(narrow_but({ from: "generation=4 ", to: "" })) == Err(MissingField("generation"))
-expect decoded(narrow_but({ from: "generation=4", to: "generation=-1" })) == Err(BadNumber("generation"))
-expect decoded(narrow_but({ from: "generation=4", to: "generation=0" })) == Err(BadValue("generation"))
-expect decoded(narrow_but({ from: "human-generation=3 ", to: "" })) == Err(MissingField("human-generation"))
-expect decoded(narrow_but({ from: "human-generation=3", to: "human-generation=0" })) == Err(BadValue("human-generation"))
+expect decoded(
+	narrow_but({
+		from: "generation=4",
+		to: "generation=-1",
+	}),
+) == Err(BadNumber("generation"))
+expect decoded(
+	narrow_but({
+		from: "generation=4",
+		to: "generation=0",
+	}),
+) == Err(BadValue("generation"))
+expect decoded(
+	narrow_but({
+		from: "human-generation=3 ",
+		to: "",
+	}),
+) == Err(MissingField("human-generation"))
+expect decoded(
+	narrow_but({
+		from: "human-generation=3",
+		to: "human-generation=0",
+	}),
+) == Err(BadValue("human-generation"))
 # A human's key with two generations: no grant makes one.
-expect decoded(narrow_but({ from: "acts=agent:7", to: "acts=human:7" })) == Err(BadValue("human-generation"))
-expect decoded(narrow_but({ from: "acts=agent:7 generation=4", to: "acts=human:7 generation=3" })) == Ok({})
+expect decoded(
+	narrow_but({
+		from: "acts=agent:7",
+		to: "acts=human:7",
+	}),
+) == Err(BadValue("human-generation"))
+expect decoded(
+	narrow_but({
+		from: "acts=agent:7 generation=4",
+		to: "acts=human:7 generation=3",
+	}),
+) == Ok({})
 expect decoded(narrow_but({ from: "hash=", to: "hash=0" })) == Err(BadValue("hash"))
 expect decoded(narrow_but({ from: hex5a, to: Str.repeat("5A", 32) })) == Err(BadValue("hash"))
 expect decoded(narrow_but({ from: "hash=${hex5a} ", to: "" })) == Err(MissingField("hash"))
@@ -465,16 +540,56 @@ expect decoded(
 		to: "created=now",
 	}),
 ) == Err(BadNumber("created"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=never" })) == Err(BadNumber("expires"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=" })) == Err(BadNumber("expires"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=at:1793136000" })) == Err(BadNumber("expires"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=01793136000" })) == Err(BadNumber("expires"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=-1" })) == Err(BadNumber("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=never",
+	}),
+) == Err(BadNumber("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=",
+	}),
+) == Err(BadNumber("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=at:1793136000",
+	}),
+) == Err(BadNumber("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=01793136000",
+	}),
+) == Err(BadNumber("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=-1",
+	}),
+) == Err(BadNumber("expires"))
 # **AN EXPIRY NO GRANT MAKES** (round three's second): at or before the
 # key's creation, or more than a year after it.
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=1761600000" })) == Err(BadValue("expires"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=1761599999" })) == Err(BadValue("expires"))
-expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=1793136001" })) == Err(BadValue("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=1761600000",
+	}),
+) == Err(BadValue("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=1761599999",
+	}),
+) == Err(BadValue("expires"))
+expect decoded(
+	narrow_but({
+		from: "expires=1793136000",
+		to: "expires=1793136001",
+	}),
+) == Err(BadValue("expires"))
 expect decoded(narrow_but({ from: "expires=1793136000", to: "expires=1761600001" })) == Ok({})
 expect KeyCodec.is_fitting_expiry({ created: Stored.max_time - 1, expires: Stored.max_time })
 expect !KeyCodec.is_fitting_expiry({ created: Stored.max_time, expires: Stored.max_time + 1 })
@@ -498,9 +613,19 @@ expect decoded(
 expect decoded(narrow_but({ from: "read=only:3,9", to: "read=only:0,3" })) == Err(BadValue("read"))
 expect decoded(narrow_but({ from: "read=only:3,9", to: "read=only:3;9" })) == Err(BadNumber("read"))
 # Not the one spelling: out of order, repeated, empty.
-expect decoded(narrow_but({ from: "read=only:3,9", to: "read=only:9,3,3" })) == Err(BadValue("read"))
+expect decoded(
+	narrow_but({
+		from: "read=only:3,9",
+		to: "read=only:9,3,3",
+	}),
+) == Err(BadValue("read"))
 expect decoded(narrow_but({ from: "read=only:3,9", to: "read=only:9,3" })) == Err(BadValue("read"))
-expect decoded(narrow_but({ from: "read=only:3,9", to: "read=only:3,3,9" })) == Err(BadValue("read"))
+expect decoded(
+	narrow_but({
+		from: "read=only:3,9",
+		to: "read=only:3,3,9",
+	}),
+) == Err(BadValue("read"))
 expect decoded(narrow_but({ from: "read=only:3,9", to: "read=only:" })) == Err(BadValue("read"))
 expect decoded(narrow_but({ from: "post=off", to: "post=only:" })) == Err(BadValue("post"))
 expect decoded(narrow_but({ from: "post=off", to: "post=on" })) == Err(UnknownWord("post"))

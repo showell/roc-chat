@@ -88,8 +88,14 @@ expect back({ cookie: Sent(nonce), now: 99999 }) == Expired
 expect back({ cookie: Sent(nonce), now: 999 }) == Expired
 
 # I64's ends, issued or now: expired, never an overflow.
-expect OAuthState.check({ nonce, issued_at: -9223372036854775808 }, { cookie: Sent(nonce), now: 100 }) == Expired
-expect OAuthState.check({ nonce, issued_at: 9223372036854775807 }, { cookie: Sent(nonce), now: -9223372036854775808 }) == Expired
+expect OAuthState.check(
+	{ nonce, issued_at: -9223372036854775808 },
+	{ cookie: Sent(nonce), now: 100 },
+) == Expired
+expect OAuthState.check(
+	{ nonce, issued_at: 9223372036854775807 },
+	{ cookie: Sent(nonce), now: -9223372036854775808 },
+) == Expired
 
 # Mismatched: no cookie, another nonce, a nonce one byte longer or shorter,
 # an empty cookie, and an empty nonce on both sides.

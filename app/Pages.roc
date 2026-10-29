@@ -67,14 +67,29 @@ Pages := [].{
 				}
 			match Credentials.viewer!(use) {
 				Err(answer) => answer
-				Ok({ viewer, accounts, now: _, key: _ }) =>
+				Ok(
+					{
+						viewer,
+						accounts,
+						now: _,
+						key: _,
+					},
+				) =>
 					match viewer.who() {
 						SignedOut => to_login
 						Key(_) => key_refused
 						Session(me) =>
 							match r {
-								List => list!({ viewer, accounts, me: me.id })
-								Conversation(id) => conversation!({ viewer, accounts, id })
+								List => list!({
+									viewer,
+									accounts,
+									me: me.id,
+								})
+								Conversation(id) => conversation!({
+									viewer,
+									accounts,
+									id,
+								})
 							}
 					}
 			}
@@ -123,8 +138,18 @@ key_refused = Wire.refused(403, "a page is for a browser's session; a key reads 
 
 ## The list: the viewer's conversations (Conversations.mine!), each its
 ## people's names and a link, and the form that starts one.
-list! : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), me : Principal.Id } => Chat.Answer
-list! = |{ viewer, accounts, me }|
+list! : {
+	viewer : Access.Viewer(ConvAccess.ConvId),
+	accounts : List(Principal),
+	me : Principal.Id,
+} => Chat.Answer
+list! = |
+	{
+		viewer,
+		accounts,
+		me,
+	},
+|
 	match Conversations.mine!(viewer, accounts) {
 		Err(Failed) => Chat.failed
 		Ok(convs) => {
@@ -166,8 +191,18 @@ list! = |{ viewer, accounts, me }|
 ## A conversation: its people, its messages, each with roc-markdown's HTML
 ## for it, and the box to post in; a 404 to a viewer ConvAccess will not let
 ## see it.
-conversation! : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), id : ConvAccess.ConvId } => Chat.Answer
-conversation! = |{ viewer, accounts, id }|
+conversation! : {
+	viewer : Access.Viewer(ConvAccess.ConvId),
+	accounts : List(Principal),
+	id : ConvAccess.ConvId,
+} => Chat.Answer
+conversation! = |
+	{
+		viewer,
+		accounts,
+		id,
+	},
+|
 	match Store.conversation!(id) {
 		Err(Failed) => Chat.failed
 		Err(Missing) => no_such
@@ -191,7 +226,14 @@ conversation! = |{ viewer, accounts, id }|
 										Str.to_utf8("<li data-id=\""),
 										Pages.escape(Str.to_utf8(AccountCodec.id_text(b.id))),
 										Str.to_utf8("\">"),
-										Pages.escape(Str.to_utf8(Conversations.name_of(accounts, b.id))),
+										Pages.escape(
+											Str.to_utf8(
+												Conversations.name_of(
+													accounts,
+													b.id,
+												),
+											),
+										),
 										Str.to_utf8("</li>\n"),
 									]),
 								),
@@ -224,14 +266,27 @@ names = |accounts, conv|
 	List.join(
 		List.map_with_index(
 			conv.participants(),
-			|b, i| List.concat(if i == 0 [] else Str.to_utf8(", "), Pages.escape(Str.to_utf8(Conversations.name_of(accounts, b.id)))),
+			|b, i| List.concat(
+				if i == 0 [] else Str.to_utf8(", "),
+				Pages.escape(Str.to_utf8(Conversations.name_of(accounts, b.id))),
+			),
 		),
 	)
 
 ## The page around a body: its title (escaped already), the few lines of
 ## CSS, never cached.
-page : { title : List(U8), body_attrs : List(U8), body : List(U8) } -> Chat.Answer
-page = |{ title, body_attrs, body }|
+page : {
+	title : List(U8),
+	body_attrs : List(U8),
+	body : List(U8),
+} -> Chat.Answer
+page = |
+	{
+		title,
+		body_attrs,
+		body,
+	},
+|
 	Chat.respond(
 		200,
 		{
@@ -251,7 +306,10 @@ page = |{ title, body_attrs, body }|
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
 
 no_such : Chat.Answer
-no_such = Chat.respond(404, { content_type: Chat.text, body: Str.to_utf8("no such conversation\n") })
+no_such = Chat.respond(
+	404,
+	{ content_type: Chat.text, body: Str.to_utf8("no such conversation\n") },
+)
 
 css : Str
 css =
@@ -316,4 +374,7 @@ expect Pages.route(Str.to_utf8("/chat/07")).is_err()
 expect Pages.route(Str.to_utf8("/chat/7/x")).is_err()
 expect Pages.route(Str.to_utf8("/chatx")).is_err()
 # The one thing a page's script sets as HTML is a message's, from the stream.
-expect Str.count_utf8_bytes(conversation_js) > 0 and Str.contains(conversation_js, "b.innerHTML = m.html;") and !Str.contains(list_js, "innerHTML")
+expect Str.count_utf8_bytes(conversation_js) > 0 and Str.contains(
+	conversation_js,
+	"b.innerHTML = m.html;",
+) and !Str.contains(list_js, "innerHTML")

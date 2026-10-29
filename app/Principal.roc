@@ -94,7 +94,11 @@ Principal := [
 	bind = |accounts, wanted| {
 		principal = Principal.find(accounts, wanted)?
 		human = Principal.human_account(accounts, Principal.answers_to(principal))?
-		Ok({ id: wanted, generation: Principal.generation(principal), human: human.generation })
+		Ok({
+			id: wanted,
+			generation: Principal.generation(principal),
+			human: human.generation,
+		})
 	}
 
 	## **THE PRINCIPAL A BINDING STILL NAMES**: its id held by exactly one
@@ -406,8 +410,14 @@ expect found(Principal.Id.Human(gid(9))) == Err(NoSuchPrincipal)
 forged_ann_agent : Principal
 forged_ann_agent = owned(Agent, { id: 3, owner: 1 })
 
-expect Principal.find(List.prepend(accounts, forged_ann_agent), Principal.id(ann_agent)).map_ok(Principal.id) == Err(Duplicated)
-expect Principal.find(List.append(accounts, forged_ann_agent), Principal.id(ann_agent)).map_ok(Principal.id) == Err(Duplicated)
+expect Principal.find(
+	List.prepend(accounts, forged_ann_agent),
+	Principal.id(ann_agent),
+).map_ok(Principal.id) == Err(Duplicated)
+expect Principal.find(
+	List.append(accounts, forged_ann_agent),
+	Principal.id(ann_agent),
+).map_ok(Principal.id) == Err(Duplicated)
 
 # has_account: a human's id alone; an agent's id never names a human.
 expect Principal.has_account(accounts, gid(2))
@@ -450,8 +460,16 @@ loaded = |list| Principal.unique(list).map_ok(|_| {})
 expect loaded(accounts) == Ok({})
 expect loaded([]) == Ok({})
 expect loaded(with_ann_twice) == Err(DuplicateId(Principal.Id.Human(gid(2))))
-expect loaded(List.append(accounts, forged_ann_agent)) == Err(DuplicateId(Principal.Id.Agent(aid(3))))
-expect loaded([boss_agent, owned(Bot, { id: 1, owner: 1 })]) == Err(DuplicateId(Principal.Id.Bot(aid(1))))
+expect loaded(
+	List.append(
+		accounts,
+		forged_ann_agent,
+	),
+) == Err(DuplicateId(Principal.Id.Agent(aid(3))))
+expect loaded([
+	boss_agent,
+	owned(Bot, { id: 1, owner: 1 }),
+]) == Err(DuplicateId(Principal.Id.Bot(aid(1))))
 expect loaded([boss, owned(Agent, { id: 1, owner: 1 })]) == Ok({})
 
 # ── GENERATIONS AND BINDINGS
@@ -460,13 +478,24 @@ expect gen(7).next() == Ok(gen(8))
 expect gen(18446744073709551615).next() == Err(Exhausted)
 
 ann_agent_bound : Principal.Bound
-ann_agent_bound = { id: Principal.id(ann_agent), generation: gen(1), human: gen(1) }
+ann_agent_bound = {
+	id: Principal.id(ann_agent),
+	generation: gen(1),
+	human: gen(1),
+}
 
 expect Principal.bind(accounts, Principal.id(ann_agent)) == Ok(ann_agent_bound)
-expect Principal.bind(accounts, Principal.id(boss)) == Ok({ id: Principal.id(boss), generation: gen(1), human: gen(1) })
+expect Principal.bind(accounts, Principal.id(boss)) == Ok({
+	id: Principal.id(boss),
+	generation: gen(1),
+	human: gen(1),
+})
 # An agent whose owner has no account binds to nothing.
 expect Principal.bind(accounts, Principal.id(orphan_agent)) == Err(NoSuchPrincipal)
-expect Principal.holds(accounts, ann_agent_bound).map_ok(Principal.id) == Ok(Principal.id(ann_agent))
+expect Principal.holds(
+	accounts,
+	ann_agent_bound,
+).map_ok(Principal.id) == Ok(Principal.id(ann_agent))
 
 ## `accounts`, with `who` swapped for the same id at generation 2.
 remade : Principal -> List(Principal)

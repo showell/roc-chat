@@ -73,7 +73,13 @@ cid = |n|
 ## A test's human, its account of generation 1.
 human : U64, { name : Str, role : Principal.Role } -> Principal
 human = |n, { name, role }|
-	Principal.Human({ id: Cast.gid(n), login: "h${n.to_str()}", name, role, generation: Cast.gen(1) })
+	Principal.Human({
+		id: Cast.gid(n),
+		login: "h${n.to_str()}",
+		name,
+		role,
+		generation: Cast.gen(1),
+	})
 
 # The cast: Ann and Bea, members; Boss, an admin; Bea owns BeaAgent,
 # DeeAgent and BeaBot.
@@ -87,20 +93,50 @@ boss : Principal
 boss = human(3, { name: "Boss", role: Admin })
 
 bea_agent : Principal
-bea_agent = Principal.Agent({ id: Cast.aid(2), name: "BeaAgent", owner: Cast.gid(2), generation: Cast.gen(1) })
+bea_agent = Principal.Agent({
+	id: Cast.aid(2),
+	name: "BeaAgent",
+	owner: Cast.gid(2),
+	generation: Cast.gen(1),
+})
 
 dee_agent : Principal
-dee_agent = Principal.Agent({ id: Cast.aid(4), name: "DeeAgent", owner: Cast.gid(2), generation: Cast.gen(1) })
+dee_agent = Principal.Agent({
+	id: Cast.aid(4),
+	name: "DeeAgent",
+	owner: Cast.gid(2),
+	generation: Cast.gen(1),
+})
 
 bea_bot : Principal
-bea_bot = Principal.Bot({ id: Cast.aid(5), name: "BeaBot", owner: Cast.gid(2), generation: Cast.gen(1) })
+bea_bot = Principal.Bot({
+	id: Cast.aid(5),
+	name: "BeaBot",
+	owner: Cast.gid(2),
+	generation: Cast.gen(1),
+})
 
 accounts : List(Principal)
-accounts = [ann, bea, boss, bea_agent, dee_agent, bea_bot]
+accounts = [
+	ann,
+	bea,
+	boss,
+	bea_agent,
+	dee_agent,
+	bea_bot,
+]
 
 ## A copy of BeaAgent claiming Ann as owner, FIRST in the accounts.
 forged : List(Principal)
-forged = List.prepend(accounts, Principal.Agent({ id: Cast.aid(2), name: "BeaAgent", owner: Cast.gid(1), generation: Cast.gen(1) }))
+forged = List.prepend(
+	accounts,
+	Principal.Agent({
+		id: Cast.aid(2),
+		name: "BeaAgent",
+		owner: Cast.gid(1),
+		generation: Cast.gen(1),
+	}),
+)
 
 ## Human `who`'s session to their account of generation `g`, signed in at
 ## 0, from its stored line.
@@ -118,7 +154,11 @@ session_line = |who, g|
 ## A conversation among `who`, numbered `n`.
 conv : U64, List(Principal) -> ConvAccess.Conv
 conv = |n, who|
-	match ConvAccess.Conv.start({ id: cid(n), participants: List.map(who, Principal.id), accounts }) {
+	match ConvAccess.Conv.start({
+		id: cid(n),
+		participants: List.map(who, Principal.id),
+		accounts,
+	}) {
 		Ok(c) => c
 		Err(_) => crash "conv: a test's conversation has participants"
 	}
@@ -126,10 +166,17 @@ conv = |n, who|
 ## `by` elects public, where that is allowed.
 public_by : ConvAccess.Conv, Principal -> ConvAccess.Conv
 public_by = |c, by|
-	match Access.Viewer.from_session(session_line(Principal.answers_to(by).to_u64(), 1), { accounts, now: 10 }) {
+	match Access.Viewer.from_session(
+		session_line(Principal.answers_to(by).to_u64(), 1),
+		{ accounts, now: 10 },
+	) {
 		Err(_) => crash "public_by: a test's session is admitted"
 		Ok({ viewer, write: _ }) =>
-			match c.elect({ by: viewer, visibility: Public, accounts }) {
+			match c.elect({
+				by: viewer,
+				visibility: Public,
+				accounts,
+			}) {
 				Ok(next) => next
 				Err(_) => crash "public_by: a test's election is allowed"
 			}
@@ -148,13 +195,27 @@ cross_public : ConvAccess.Conv
 cross_public = public_by(public_by(conv(7, [ann, bea_agent]), ann), bea)
 
 everything : ApiKey.Scope(ConvAccess.ConvId)
-everything = { read: On(Everywhere), post: On(Everywhere), admin: Off }
+everything = {
+	read: On(Everywhere),
+	post: On(Everywhere),
+	admin: Off,
+}
 
 ## A key acting as `acts_as`, granted by `who`'s session among `among`.
-key_by : U64, { acts_as : Principal, among : List(Principal) } -> Try(ConvKey.Key, [Refused(ApiKey.GrantRefusal)])
+key_by : U64,
+{
+	acts_as : Principal,
+	among : List(Principal),
+} -> Try(ConvKey.Key, [Refused(ApiKey.GrantRefusal)])
 key_by = |who, { acts_as, among }|
 	ConvKey.issue(
-		{ granter: session_of(who, 1), acts_as: Principal.id(acts_as), scope: everything, accounts: among, now: 10 },
+		{
+			granter: session_of(who, 1),
+			acts_as: Principal.id(acts_as),
+			scope: everything,
+			accounts: among,
+			now: 10,
+		},
 		{ key: Cast.kid(who), expires: 1000 },
 	)
 
@@ -166,17 +227,34 @@ granted = |t|
 		Err(_) => crash "granted: a test's grant is allowed"
 	}
 
-verdict : ConvKey.Key, { accounts : List(Principal), action : [Read(ConvAccess.Conv), Post(ConvAccess.Conv)] } -> ApiKey.Verdict
-verdict = |key, { accounts: among, action }| ConvKey.decide(key, { accounts: among, action, now: 10 })
+verdict : ConvKey.Key,
+{
+	accounts : List(Principal),
+	action : [Read(ConvAccess.Conv), Post(ConvAccess.Conv)],
+} -> ApiKey.Verdict
+verdict = |key, { accounts: among, action }| ConvKey.decide(
+	key,
+	{
+		accounts: among,
+		action,
+		now: 10,
+	},
+)
 
 # ── THE ROUND-TWO ATTACKER'S FIRST: a forged copy of BeaAgent, first in the
 # accounts, claiming Ann as owner. Ann's session is granted no key acting
 # as BeaAgent, and a key of BeaAgent's own (granted by Bea) reads nothing
 # while the copy is there.
-expect key_by(1, { acts_as: bea_agent, among: forged }).map_ok(|_| {}) == Err(Refused(NoSuchPrincipal))
+expect key_by(
+	1,
+	{ acts_as: bea_agent, among: forged },
+).map_ok(|_| {}) == Err(Refused(NoSuchPrincipal))
 expect
 	match Access.Viewer.from_session(session_line(1, 1), { accounts: forged, now: 10 }) {
-		Ok({ viewer, write: _ }) => !ConvAccess.can_see(viewer, { conv: private_conv, accounts: forged })
+		Ok({ viewer, write: _ }) => !ConvAccess.can_see(
+			viewer,
+			{ conv: private_conv, accounts: forged },
+		)
 		Err(_) => Bool.False
 	}
 
@@ -184,8 +262,14 @@ bea_agent_key : ConvKey.Key
 bea_agent_key = granted(key_by(2, { acts_as: bea_agent, among: accounts }))
 
 expect verdict(bea_agent_key, { accounts, action: Read(private_conv) }) == Permitted
-expect verdict(bea_agent_key, { accounts: forged, action: Read(private_conv) }) == Refused(NoSuchPrincipal)
-expect verdict(bea_agent_key, { accounts: forged, action: Post(private_conv) }) == Refused(NoSuchPrincipal)
+expect verdict(
+	bea_agent_key,
+	{ accounts: forged, action: Read(private_conv) },
+) == Refused(NoSuchPrincipal)
+expect verdict(
+	bea_agent_key,
+	{ accounts: forged, action: Post(private_conv) },
+) == Refused(NoSuchPrincipal)
 
 # ── THE ROUND-TWO ATTACKER'S SECOND: a chat key decides on a Conv and
 # nothing else. Ann's key reads her own public conversation, and not
@@ -232,10 +316,23 @@ expect
 # nothing of the old account's private conversations, the human-only DM
 # with Bea included.
 ann_again : Principal
-ann_again = Principal.Human({ id: Cast.gid(1), login: "h1", name: "Ann", role: Member, generation: Cast.gen(2) })
+ann_again = Principal.Human({
+	id: Cast.gid(1),
+	login: "h1",
+	name: "Ann",
+	role: Member,
+	generation: Cast.gen(2),
+})
 
 again : List(Principal)
-again = [ann_again, bea, boss, bea_agent, dee_agent, bea_bot]
+again = [
+	ann_again,
+	bea,
+	boss,
+	bea_agent,
+	dee_agent,
+	bea_bot,
+]
 
 old_dm : ConvAccess.Conv
 old_dm = conv(8, [ann, bea])
@@ -244,13 +341,25 @@ new_ann_key : ConvKey.Key
 new_ann_key =
 	granted(
 		ConvKey.issue(
-			{ granter: session_of(1, 2), acts_as: Principal.id(ann_again), scope: everything, accounts: again, now: 10 },
+			{
+				granter: session_of(1, 2),
+				acts_as: Principal.id(ann_again),
+				scope: everything,
+				accounts: again,
+				now: 10,
+			},
 			{ key: Cast.kid(9), expires: 1000 },
 		),
 	)
 
 expect verdict(new_ann_key, { accounts: again, action: Read(old_dm) }) == Refused(BeyondPrincipal)
 expect verdict(new_ann_key, { accounts: again, action: Post(old_dm) }) == Refused(BeyondPrincipal)
-expect verdict(new_ann_key, { accounts: again, action: Read(cross_public) }) == Refused(BeyondPrincipal)
+expect verdict(
+	new_ann_key,
+	{ accounts: again, action: Read(cross_public) },
+) == Refused(BeyondPrincipal)
 # Bea, still in it, still reads it.
-expect verdict(granted(key_by(2, { acts_as: bea, among: again })), { accounts: again, action: Read(old_dm) }) == Permitted
+expect verdict(
+	granted(key_by(2, { acts_as: bea, among: again })),
+	{ accounts: again, action: Read(old_dm) },
+) == Permitted

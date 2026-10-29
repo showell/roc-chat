@@ -69,7 +69,10 @@ SessionCodec := [].{
 		human_field = id_field.rest.field("human")?
 		human = Stored.id(human_field.value, { name: "human", make: Principal.GitHubId.from_u64 })?
 		generation_field = human_field.rest.field("generation")?
-		generation = Stored.id(generation_field.value, { name: "generation", make: Principal.Generation.from_u64 })?
+		generation = Stored.id(
+			generation_field.value,
+			{ name: "generation", make: Principal.Generation.from_u64 },
+		)?
 		token_field = generation_field.rest.field("token")?
 		token_hash = Stored.hash(token_field.value, "token")?
 		created_field = token_field.rest.field("created")?
@@ -133,7 +136,12 @@ expect
 			fields_at({ created: 5, seen: 5 }),
 			fields_at({ created: 0, seen: 0 }),
 			fields_at({ created: 0, seen: Stored.max_time }),
-			{ ..usual, id: Cast.sid(18446744073709551615), human: Cast.gid(18446744073709551615), generation: Cast.gen(18446744073709551615) },
+			{
+				..usual,
+				id: Cast.sid(18446744073709551615),
+				human: Cast.gid(18446744073709551615),
+				generation: Cast.gen(18446744073709551615),
+			},
 		],
 		|f| read_back(SessionCodec.encode(f)) == Ok(f),
 	)
@@ -157,9 +165,24 @@ expect decoded(usual_but({ from: "id=12", to: "id=012" })) == Err(BadNumber("id"
 expect decoded(usual_but({ from: "human=583231 ", to: "" })) == Err(MissingField("human"))
 expect decoded(usual_but({ from: "human=583231", to: "human=0" })) == Err(BadValue("human"))
 expect decoded(usual_but({ from: "generation=3 ", to: "" })) == Err(MissingField("generation"))
-expect decoded(usual_but({ from: "generation=3", to: "generation=-1" })) == Err(BadNumber("generation"))
-expect decoded(usual_but({ from: "generation=3", to: "generation=0" })) == Err(BadValue("generation"))
-expect decoded(usual_but({ from: "generation=3", to: "account=3" })) == Err(MissingField("generation"))
+expect decoded(
+	usual_but({
+		from: "generation=3",
+		to: "generation=-1",
+	}),
+) == Err(BadNumber("generation"))
+expect decoded(
+	usual_but({
+		from: "generation=3",
+		to: "generation=0",
+	}),
+) == Err(BadValue("generation"))
+expect decoded(
+	usual_but({
+		from: "generation=3",
+		to: "account=3",
+	}),
+) == Err(MissingField("generation"))
 expect decoded(usual_but({ from: "token=${ab64} ", to: "" })) == Err(MissingField("token"))
 expect decoded(usual_but({ from: ab64, to: Str.repeat("AB", 32) })) == Err(BadValue("token"))
 expect decoded(usual_but({ from: ab64, to: Str.repeat("ab", 31) })) == Err(BadValue("token"))
@@ -193,5 +216,15 @@ expect SessionCodec.decode([0xff, '\n']).map_ok(|_| {}) == Err(NotUtf8)
 # **THE ATTACKER'S EXTREME SESSION** (round two's seventh): created at I64's
 # minimum, its liveness overflowed. A time before 1970 is no record the chat
 # wrote: refused at the door, as is one past 9999.
-expect decoded(usual_but({ from: "created=1761600000", to: "created=-9223372036854775808" })) == Err(BadNumber("created"))
-expect decoded(usual_but({ from: "seen=1761603600", to: "seen=9223372036854775807" })) == Err(BadNumber("seen"))
+expect decoded(
+	usual_but({
+		from: "created=1761600000",
+		to: "created=-9223372036854775808",
+	}),
+) == Err(BadNumber("created"))
+expect decoded(
+	usual_but({
+		from: "seen=1761603600",
+		to: "seen=9223372036854775807",
+	}),
+) == Err(BadNumber("seen"))

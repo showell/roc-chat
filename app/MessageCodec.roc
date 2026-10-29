@@ -55,7 +55,12 @@ MessageCodec := [].{
 					("by", AccountCodec.id_text(m.by)),
 				],
 			)
-			List.join([List.drop_last(head, 1), Str.to_utf8(" body="), escaped(m.body), ['\n']])
+			List.join([
+				List.drop_last(head, 1),
+				Str.to_utf8(" body="),
+				escaped(m.body),
+				['\n'],
+			])
 		}
 
 	## The message a line holds.
@@ -73,7 +78,16 @@ MessageCodec := [].{
 		if id == 0 {
 			Err(BadValue("id"))
 		} else {
-			Ok(MessageCodec.Line.({ id, at, by, body }))
+			Ok(
+				MessageCodec.Line.(
+					{
+						id,
+						at,
+						by,
+						body,
+					},
+				),
+			)
 		}
 	}
 
@@ -111,7 +125,11 @@ escaped = |body| {
 		body,
 		|b|
 			if b == '%' or b < 0x20 or b == 0x7F or (b >= 0x80 and !is_text) {
-				['%', hex_digit(b // 16), hex_digit(b % 16)]
+				[
+					'%',
+					hex_digit(b // 16),
+					hex_digit(b % 16),
+				]
 			} else {
 				[b]
 			},
@@ -163,18 +181,33 @@ ann : Principal.Id
 ann = Principal.Id.Human(Cast.gid(583231))
 
 said : List(U8) -> MessageCodec.Fields
-said = |body| { id: 3, at: 1761600000, by: ann, body }
+said = |body| {
+	id: 3,
+	at: 1761600000,
+	by: ann,
+	body,
+}
 
 ## The message numbered `id`, of `body`.
 numbered : U64, List(U8) -> MessageCodec.Fields
-numbered = |id, body| { id, at: 1761600000, by: ann, body }
+numbered = |id, body| {
+	id,
+	at: 1761600000,
+	by: ann,
+	body,
+}
 
 read_back : List(U8) -> Try(MessageCodec.Fields, Stored.Problem)
 read_back = |raw| MessageCodec.decode(raw).map_ok(MessageCodec.Line.fields)
 
 expect MessageCodec.encode(said(Str.to_utf8("two\nlines, 100%"))) == Str.to_utf8("message v1 id=3 at=1761600000 by=human:583231 body=two%0Alines, 100%25\n")
 expect MessageCodec.encode(said(Str.to_utf8("é and 🎉"))) == Str.to_utf8("message v1 id=3 at=1761600000 by=human:583231 body=é and 🎉\n")
-expect MessageCodec.encode(said([0xFF, 'a'])) == Str.to_utf8("message v1 id=3 at=1761600000 by=human:583231 body=%FFa\n")
+expect MessageCodec.encode(
+	said([
+		0xFF,
+		'a',
+	]),
+) == Str.to_utf8("message v1 id=3 at=1761600000 by=human:583231 body=%FFa\n")
 
 # **ANY BODY ROUND-TRIPS EXACTLY**: empty; every byte from 0 to 255, alone
 # and all together; CRs and LFs; a `%` before hex digits; text and a stray
@@ -224,9 +257,35 @@ transcript_of = |ms| List.join_map(ms, MessageCodec.encode)
 
 expect MessageCodec.transcript([]).map_ok(|ls| List.len(ls)) == Ok(0)
 three : List(MessageCodec.Fields)
-three = [numbered(1, Str.to_utf8("a\nb")), numbered(2, []), numbered(3, Str.to_utf8("c"))]
+three = [
+	numbered(1, Str.to_utf8("a\nb")),
+	numbered(2, []),
+	numbered(3, Str.to_utf8("c")),
+]
 
-expect MessageCodec.transcript(transcript_of(three)).map_ok(|ls| List.map(ls, MessageCodec.Line.fields)) == Ok(three)
-expect MessageCodec.transcript(List.drop_last(transcript_of([numbered(1, [])]), 1)).map_ok(|ls| List.len(ls)) == Err(Torn)
-expect MessageCodec.transcript(transcript_of([numbered(2, [])])).map_ok(|ls| List.len(ls)) == Err(BadValue("id"))
-expect MessageCodec.transcript(transcript_of([numbered(1, []), numbered(1, [])])).map_ok(|ls| List.len(ls)) == Err(BadValue("id"))
+expect MessageCodec.transcript(transcript_of(three)).map_ok(
+	|ls| List.map(
+		ls,
+		MessageCodec.Line.fields,
+	),
+) == Ok(three)
+expect MessageCodec.transcript(
+	List.drop_last(
+		transcript_of([numbered(1, [])]),
+		1,
+	),
+).map_ok(|ls| List.len(ls)) == Err(Torn)
+expect MessageCodec.transcript(
+	transcript_of([
+		numbered(
+			2,
+			[],
+		),
+	]),
+).map_ok(|ls| List.len(ls)) == Err(BadValue("id"))
+expect MessageCodec.transcript(
+	transcript_of([
+		numbered(1, []),
+		numbered(1, []),
+	]),
+).map_ok(|ls| List.len(ls)) == Err(BadValue("id"))

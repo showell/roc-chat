@@ -31,10 +31,18 @@ Credentials := [].{
 
 	## **THE CREDENTIAL A REQUEST CAME WITH**, as stored: none, a browser's
 	## session (not yet admitted), or a key (not yet standing).
-	Credential : [Nobody, Session(Session), Key(ConvKey.Key)]
+	Credential : [
+		Nobody,
+		Session(Session),
+		Key(ConvKey.Key),
+	]
 
 	## What a key was used for, as its audit line says it.
-	Use : [Start, Read(ConvAccess.ConvId), Post(ConvAccess.ConvId)]
+	Use : [
+		Start,
+		Read(ConvAccess.ConvId),
+		Post(ConvAccess.ConvId),
+	]
 
 	## **WHAT A ROUTE ON A CONVERSATION DECIDES ON**: the viewer, the
 	## accounts and the time it was minted at, and the key, when a key
@@ -85,24 +93,51 @@ Credentials := [].{
 		credential = presented!({})?
 		now = Host.read_time!({})
 		accounts = Store.accounts!({}).map_err(|_| Chat.failed)?
-		signed_out = Ok({ viewer: Access.Viewer.signed_out({}), accounts, now, key: NoKey })
+		signed_out = Ok({
+			viewer: Access.Viewer.signed_out({}),
+			accounts,
+			now,
+			key: NoKey,
+		})
 		match credential {
 			Nobody => signed_out
 			Session(session) =>
 				match Access.Viewer.from_session(session, { accounts, now }) {
 					Err(_) => signed_out
-					Ok({ viewer, write: Unchanged }) => Ok({ viewer, accounts, now, key: NoKey })
+					Ok({ viewer, write: Unchanged }) => Ok({
+						viewer,
+						accounts,
+						now,
+						key: NoKey,
+					})
 					Ok({ viewer, write: Touched(s) }) =>
 						match Store.save_session!(s.fields()) {
-							Written => Ok({ viewer, accounts, now, key: NoKey })
+							Written => Ok({
+								viewer,
+								accounts,
+								now,
+								key: NoKey,
+							})
 							Failed => Err(Chat.failed)
 						}
 				}
 			Key(key) =>
 				match Access.Viewer.from_key(key, { accounts, now }) {
-					Ok(viewer) => Ok({ viewer, accounts, now, key: Key(key) })
+					Ok(viewer) => Ok({
+						viewer,
+						accounts,
+						now,
+						key: Key(key),
+					})
 					Err(why) => {
-						audit_use!(key, { use, refusal: why, now })
+						audit_use!(
+							key,
+							{
+								use,
+								refusal: why,
+								now,
+							},
+						)
 						Err(Wire.refused(401, "key refused"))
 					}
 				}
@@ -111,15 +146,35 @@ Credentials := [].{
 
 	## **A KEY REFUSED IN USE, AUDITED**: who it acts as, its public id,
 	## what it was used for, and why. Never its secret or its hash.
-	audit_use! : ConvKey.Key, { use : Credentials.Use, refusal : ApiKey.Refusal, now : I64 } => {}
-	audit_use! = |key, { use, refusal, now }| {
+	audit_use! : ConvKey.Key,
+	{
+		use : Credentials.Use,
+		refusal : ApiKey.Refusal,
+		now : I64,
+	} => {}
+	audit_use! = |
+		key,
+		{
+			use,
+			refusal,
+			now,
+		},
+	| {
 		action =
 			match use {
 				Start => Start
 				Read(id) => Read(id.to_u64())
 				Post(id) => Post(id.to_u64())
 			}
-		match AuditCodec.Entry.of_key(Use({ at: now, who: key.acts_as(), key: key.id(), action, refusal })) {
+		match AuditCodec.Entry.of_key(
+			Use({
+				at: now,
+				who: key.acts_as(),
+				key: key.id(),
+				action,
+				refusal,
+			}),
+		) {
 			Ok(entry) => Store.audit!(entry)
 			Err(ClockOutOfRange) => {}
 		}
@@ -132,7 +187,12 @@ Credentials := [].{
 		match values {
 			[only] =>
 				if List.starts_with(only, bearer_prefix) {
-					SignInWeb.unhex(List.drop_first(only, List.len(bearer_prefix))).map_err(|_| NotABearer)
+					SignInWeb.unhex(
+						List.drop_first(
+							only,
+							List.len(bearer_prefix),
+						),
+					).map_err(|_| NotABearer)
 				} else {
 					Err(NotABearer)
 				}
@@ -152,5 +212,8 @@ no_such_key = Wire.refused(401, "no such key")
 expect Credentials.bearer_secret([Str.to_utf8("Bearer 0aff")]) == Ok([0x0A, 0xFF])
 expect Credentials.bearer_secret([Str.to_utf8("bearer 0aff")]) == Err(NotABearer)
 expect Credentials.bearer_secret([Str.to_utf8("Bearer 0xff")]) == Err(NotABearer)
-expect Credentials.bearer_secret([Str.to_utf8("Bearer 0aff"), Str.to_utf8("Bearer 0aff")]) == Err(NotABearer)
+expect Credentials.bearer_secret([
+	Str.to_utf8("Bearer 0aff"),
+	Str.to_utf8("Bearer 0aff"),
+]) == Err(NotABearer)
 expect Credentials.bearer_secret([]) == Err(NotABearer)

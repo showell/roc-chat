@@ -81,7 +81,16 @@ ConvCodec := [].{
 		if id == 0 {
 			Err(BadValue("id"))
 		} else {
-			Ok(ConvCodec.Line.({ id, created, participants, public_by }))
+			Ok(
+				ConvCodec.Line.(
+					{
+						id,
+						created,
+						participants,
+						public_by,
+					},
+				),
+			)
 		}
 	}
 }
@@ -95,13 +104,24 @@ bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()
 bound_from : List(U8) -> Try(Principal.Bound, Stored.Problem)
 bound_from = |value|
 	match List.split_on(value, '/') {
-		[id_part, generation_part, human_part] => {
+		[
+			id_part,
+			generation_part,
+			human_part,
+		] => {
 			id = AccountCodec.id_from(id_part, "with")?
-			generation = Stored.id(generation_part, { name: "with", make: Principal.Generation.from_u64 })?
+			generation = Stored.id(
+				generation_part,
+				{ name: "with", make: Principal.Generation.from_u64 },
+			)?
 			human = Stored.id(human_part, { name: "with", make: Principal.Generation.from_u64 })?
 			match id {
 				Human(_) if generation != human => Err(BadValue("with"))
-				_ => Ok({ id, generation, human })
+				_ => Ok({
+					id,
+					generation,
+					human,
+				})
 			}
 		}
 		_ => Err(BadValue("with"))
@@ -111,12 +131,18 @@ bound_from = |value|
 vote_text : { human : Principal.GitHubId, generation : Principal.Generation } -> Str
 vote_text = |v| "${v.human.to_u64().to_str()}/${v.generation.to_u64().to_str()}"
 
-vote_from : List(U8) -> Try({ human : Principal.GitHubId, generation : Principal.Generation }, Stored.Problem)
+vote_from : List(U8) -> Try(
+	{ human : Principal.GitHubId, generation : Principal.Generation },
+	Stored.Problem,
+)
 vote_from = |value|
 	match List.split_on(value, '/') {
 		[human_part, generation_part] => {
 			human = Stored.id(human_part, { name: "public", make: Principal.GitHubId.from_u64 })?
-			generation = Stored.id(generation_part, { name: "public", make: Principal.Generation.from_u64 })?
+			generation = Stored.id(
+				generation_part,
+				{ name: "public", make: Principal.Generation.from_u64 },
+			)?
 			Ok({ human, generation })
 		}
 		_ => Err(BadValue("public"))
@@ -125,13 +151,26 @@ vote_from = |value|
 # ── tests
 
 ann_bound : Principal.Bound
-ann_bound = { id: Principal.Id.Human(Cast.gid(583231)), generation: Cast.gen(3), human: Cast.gen(3) }
+ann_bound = {
+	id: Principal.Id.Human(Cast.gid(583231)),
+	generation: Cast.gen(3),
+	human: Cast.gen(3),
+}
 
 agent_bound : Principal.Bound
-agent_bound = { id: Principal.Id.Agent(Cast.aid(7)), generation: Cast.gen(4), human: Cast.gen(3) }
+agent_bound = {
+	id: Principal.Id.Agent(Cast.aid(7)),
+	generation: Cast.gen(4),
+	human: Cast.gen(3),
+}
 
 usual : ConvCodec.Fields
-usual = { id: 1, created: 1761600000, participants: [ann_bound, agent_bound], public_by: [] }
+usual = {
+	id: 1,
+	created: 1761600000,
+	participants: [ann_bound, agent_bound],
+	public_by: [],
+}
 
 ## The fields a line decodes to.
 read_back : List(U8) -> Try(ConvCodec.Fields, Stored.Problem)
@@ -146,7 +185,14 @@ expect
 			usual,
 			{ ..usual, participants: [ann_bound] },
 			{ ..usual, public_by: [{ human: Cast.gid(583231), generation: Cast.gen(3) }] },
-			{ ..usual, id: 18446744073709551615, public_by: [{ human: Cast.gid(1), generation: Cast.gen(1) }, { human: Cast.gid(2), generation: Cast.gen(9) }] },
+			{
+				..usual,
+				id: 18446744073709551615,
+				public_by: [
+					{ human: Cast.gid(1), generation: Cast.gen(1) },
+					{ human: Cast.gid(2), generation: Cast.gen(9) },
+				],
+			},
 		],
 		|f| read_back(ConvCodec.encode(f)) == Ok(f),
 	)

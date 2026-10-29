@@ -39,7 +39,13 @@ Sse := [].{
 	## The event as one frame. `Err(LineBreak)` when a CR is anywhere in
 	## it, or an LF in its name or id: the format has no way to say them.
 	frame : Event -> Try(List(U8), [LineBreak])
-	frame = |{ name, data, id }|
+	frame = |
+		{
+			name,
+			data,
+			id,
+		},
+	|
 		if List.contains(data, '\r') or has_line_break(name) or has_line_break(id) {
 			Err(LineBreak)
 		} else {
@@ -67,14 +73,34 @@ Sse := [].{
 		if List.is_empty(value) {
 			[]
 		} else {
-			List.join([Str.to_utf8("${name}: "), value, ['\n']])
+			List.join([
+				Str.to_utf8("${name}: "),
+				value,
+				['\n'],
+			])
 		}
 
 	has_line_break : List(U8) -> Bool
 	has_line_break = |bytes| List.contains(bytes, '\n') or List.contains(bytes, '\r')
 }
 
-expect Sse.frame({ name: [], data: Str.to_utf8("hi"), id: [] }) == Ok(Str.to_utf8("data: hi\n\n"))
-expect Sse.frame({ name: Str.to_utf8("tick"), data: Str.to_utf8("a\nb"), id: Str.to_utf8("7") }) == Ok(Str.to_utf8("event: tick\nid: 7\ndata: a\ndata: b\n\n"))
-expect Sse.frame({ name: [], data: Str.to_utf8("a\r\nb"), id: [] }) == Err(LineBreak)
-expect Sse.frame({ name: Str.to_utf8("a\nb"), data: [], id: [] }) == Err(LineBreak)
+expect Sse.frame({
+	name: [],
+	data: Str.to_utf8("hi"),
+	id: [],
+}) == Ok(Str.to_utf8("data: hi\n\n"))
+expect Sse.frame({
+	name: Str.to_utf8("tick"),
+	data: Str.to_utf8("a\nb"),
+	id: Str.to_utf8("7"),
+}) == Ok(Str.to_utf8("event: tick\nid: 7\ndata: a\ndata: b\n\n"))
+expect Sse.frame({
+	name: [],
+	data: Str.to_utf8("a\r\nb"),
+	id: [],
+}) == Err(LineBreak)
+expect Sse.frame({
+	name: Str.to_utf8("a\nb"),
+	data: [],
+	id: [],
+}) == Err(LineBreak)

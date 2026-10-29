@@ -145,7 +145,10 @@ ApiKey := [].{
 		issue = |grant, { key, expires }|
 			match granted(grant) {
 				Err(why) => Err(Refused(why))
-				Ok(_) if !KeyCodec.is_fitting_expiry({ created: grant.now, expires }) => Err(Refused(BadExpiry))
+				Ok(_) if !KeyCodec.is_fitting_expiry({
+					created: grant.now,
+					expires,
+				}) => Err(Refused(BadExpiry))
 				Ok(bound) =>
 					Ok(
 						ApiKey.Key.(
@@ -253,9 +256,26 @@ granted = |
 				Admitted({ principal: human, write: _ }) =>
 				# The principal as the accounts have it now: its owner and
 				# its authority are theirs, not the caller's copy.
-					match (human, Principal.find(accounts, acts_as), Principal.bind(accounts, acts_as)) {
-						(_, Err(_), _) | (_, _, Err(_)) => Err(NoSuchPrincipal)
-						(Human(h), Ok(current), Ok(bound)) =>
+					match (
+						human,
+						Principal.find(accounts, acts_as),
+						Principal.bind(accounts, acts_as),
+					) {
+						(
+							_,
+							Err(_),
+							_,
+						)
+						| (
+							_,
+							_,
+							Err(_),
+						) => Err(NoSuchPrincipal)
+						(
+							Human(h),
+							Ok(current),
+							Ok(bound),
+						) =>
 							if Principal.answers_to(current) != h.id {
 								Err(NotTheGrantersOwn)
 							} else {
@@ -265,7 +285,16 @@ granted = |
 									(On, Member) => Err(AdminBeyondPrincipal)
 								}
 							}
-						(Agent(_), _, _) | (Bot(_), _, _) => crash "ApiKey.granted: a session admits a human"
+						(
+							Agent(_),
+							_,
+							_,
+						)
+						| (
+							Bot(_),
+							_,
+							_,
+						) => crash "ApiKey.granted: a session admits a human"
 					}
 			}
 	}
@@ -282,7 +311,14 @@ standing = |key, { accounts, now }| {
 		Revoked => Refused(Revoked)
 		Expired => Refused(Expired)
 		Live =>
-			match Principal.holds(accounts, { id: k.acts_as, generation: k.generation, human: k.human_generation }) {
+			match Principal.holds(
+				accounts,
+				{
+					id: k.acts_as,
+					generation: k.generation,
+					human: k.human_generation,
+				},
+			) {
 				Err(_) => Refused(NoSuchPrincipal)
 				Ok(principal) => Standing(principal)
 			}
@@ -413,7 +449,10 @@ expect grant(by_boss, { acts_as: Cast.ann, scope: with_admin }) == Refused(NotTh
 expect grant(by_boss, { acts_as: Cast.boss_agent, scope: plain }) == Grantable
 expect grant(by_boss, { acts_as: Cast.boss_agent, scope: with_admin }) == Grantable
 expect grant(by_boss, { acts_as: Cast.boss_bot, scope: plain }) == Grantable
-expect grant(by_boss, { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(AdminBeyondPrincipal)
+expect grant(
+	by_boss,
+	{ acts_as: Cast.boss_bot, scope: with_admin },
+) == Refused(AdminBeyondPrincipal)
 expect grant(by_boss, { acts_as: Cast.ann_agent, scope: plain }) == Refused(NotTheGrantersOwn)
 expect grant(by_boss, { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
 
@@ -427,7 +466,10 @@ expect grant(by_ann, { acts_as: Cast.boss_agent, scope: with_admin }) == Refused
 expect grant(by_ann, { acts_as: Cast.boss_bot, scope: plain }) == Refused(NotTheGrantersOwn)
 expect grant(by_ann, { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(NotTheGrantersOwn)
 expect grant(by_ann, { acts_as: Cast.ann_agent, scope: plain }) == Grantable
-expect grant(by_ann, { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(AdminBeyondPrincipal)
+expect grant(
+	by_ann,
+	{ acts_as: Cast.ann_agent, scope: with_admin },
+) == Refused(AdminBeyondPrincipal)
 
 # A key, even boss's own with admin: grants nothing (bug 3: keys are minted
 # only from a browser session).
@@ -436,7 +478,10 @@ expect grant(Key(boss_all), { acts_as: Cast.boss, scope: with_admin }) == Refuse
 expect grant(Key(boss_all), { acts_as: Cast.ann, scope: plain }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.ann, scope: with_admin }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.boss_agent, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: Cast.boss_agent, scope: with_admin }) == Refused(GrantedByKey)
+expect grant(
+	Key(boss_all),
+	{ acts_as: Cast.boss_agent, scope: with_admin },
+) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.boss_bot, scope: plain }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.ann_agent, scope: plain }) == Refused(GrantedByKey)
@@ -545,17 +590,35 @@ expect
 # a clock outside the store's range.
 expect
 	List.all(
-		[-1, Stored.max_time + 1, 50, 10, 50 + KeyCodec.max_lifetime_secs + 1],
+		[
+			-1,
+			Stored.max_time + 1,
+			50,
+			10,
+			50 + KeyCodec.max_lifetime_secs + 1,
+		],
 		|expires|
 			ApiKey.Key.issue(
-				{ granter: by_ann, acts_as: Principal.id(Cast.ann), scope: plain, accounts: Cast.accounts, now: 50 },
+				{
+					granter: by_ann,
+					acts_as: Principal.id(Cast.ann),
+					scope: plain,
+					accounts: Cast.accounts,
+					now: 50,
+				},
 				{ key: Cast.kid(7), expires },
 			).map_ok(ApiKey.Key.id)
 				== Err(Refused(BadExpiry)),
 	)
 expect
 	ApiKey.Key.issue(
-		{ granter: by_ann, acts_as: Principal.id(Cast.ann), scope: plain, accounts: Cast.accounts, now: -1 },
+		{
+			granter: by_ann,
+			acts_as: Principal.id(Cast.ann),
+			scope: plain,
+			accounts: Cast.accounts,
+			now: -1,
+		},
 		{ key: Cast.kid(7), expires: 10 },
 	).map_ok(ApiKey.Key.id)
 		== Err(Refused(ClockOutOfRange))
@@ -563,10 +626,25 @@ expect
 # time, both of which encode.
 expect
 	List.all(
-		[{ now: 50, expires: 50 + KeyCodec.max_lifetime_secs }, { now: Stored.max_time - 1, expires: Stored.max_time }],
+		[
+			{ now: 50, expires: 50 + KeyCodec.max_lifetime_secs },
+			{ now: Stored.max_time - 1, expires: Stored.max_time },
+		],
 		|{ now, expires }|
-			match ApiKey.Key.issue({ granter: Session(session_at(2, now)), acts_as: Principal.id(Cast.ann), scope: plain, accounts: Cast.accounts, now }, { key: Cast.kid(7), expires }) {
-				Ok(k) => KeyCodec.decode(KeyCodec.encode({ record: k.record(), hash: Cast.token(9) }, |n| n), |n| Ok(n)).is_ok()
+			match ApiKey.Key.issue(
+				{
+					granter: Session(session_at(2, now)),
+					acts_as: Principal.id(Cast.ann),
+					scope: plain,
+					accounts: Cast.accounts,
+					now,
+				},
+				{ key: Cast.kid(7), expires },
+			) {
+				Ok(k) => KeyCodec.decode(
+					KeyCodec.encode({ record: k.record(), hash: Cast.token(9) }, |n| n),
+					|n| Ok(n),
+				).is_ok()
 				Err(_) => Bool.False
 			},
 	)
@@ -578,11 +656,19 @@ expect
 Held :: {}
 
 ## The principal a key stands as at `now` among `among`, by id.
-standing_at : ApiKey.Key(Held, U64), { among : List(Principal), now : I64 } -> Try(Principal.Id, [Refused(ApiKey.Refusal)])
+standing_at : ApiKey.Key(Held, U64),
+{ among : List(Principal), now : I64 } -> Try(
+	Principal.Id,
+	[Refused(ApiKey.Refusal)],
+)
 standing_at = |key, { among, now }| key.principal({ accounts: among, now }).map_ok(Principal.id)
 
 ## The principal a key stands as at 50 among `among`.
-standing_among : ApiKey.Key(Held, U64), List(Principal) -> Try(Principal.Id, [Refused(ApiKey.Refusal)])
+standing_among : ApiKey.Key(Held, U64),
+List(Principal) -> Try(
+	Principal.Id,
+	[Refused(ApiKey.Refusal)],
+)
 standing_among = |key, among| standing_at(key, { among, now: 50 })
 
 Answer : [Permitted, Refused(ApiKey.Refusal)]
@@ -627,7 +713,10 @@ expect administered(boss_agent_admin) == Permitted
 
 # The key never exceeds its principal as the accounts say NOW: boss demoted,
 # boss retired, or the agent itself retired.
-expect administers_among(boss_agent_admin, [Cast.boss_demoted, Cast.boss_agent]) == Refused(BeyondPrincipal)
+expect administers_among(
+	boss_agent_admin,
+	[Cast.boss_demoted, Cast.boss_agent],
+) == Refused(BeyondPrincipal)
 expect administers_among(boss_agent_admin, [Cast.boss_agent]) == Refused(NoSuchPrincipal)
 expect administers_among(boss_agent_admin, [Cast.boss]) == Refused(NoSuchPrincipal)
 expect administers_among(boss_all, [Cast.boss_demoted]) == Refused(BeyondPrincipal)
@@ -690,8 +779,24 @@ forged_ann_agent = Cast.owned(Agent, { id: 3, owner: 1 })
 forged_first : List(Principal)
 forged_first = List.prepend(Cast.accounts, forged_ann_agent)
 
-expect grant_at(by_boss, { acts_as: Cast.ann_agent, scope: plain, among: forged_first, now: 50 }) == Refused(NoSuchPrincipal)
-expect grant_at(by_ann, { acts_as: Cast.ann_agent, scope: plain, among: forged_first, now: 50 }) == Refused(NoSuchPrincipal)
+expect grant_at(
+	by_boss,
+	{
+		acts_as: Cast.ann_agent,
+		scope: plain,
+		among: forged_first,
+		now: 50,
+	},
+) == Refused(NoSuchPrincipal)
+expect grant_at(
+	by_ann,
+	{
+		acts_as: Cast.ann_agent,
+		scope: plain,
+		among: forged_first,
+		now: 50,
+	},
+) == Refused(NoSuchPrincipal)
 expect standing_among(ann_agent_plain, forged_first) == Err(Refused(NoSuchPrincipal))
 
 # A duplicate of ann claiming admin, first: ann's session grants nothing
@@ -699,9 +804,28 @@ expect standing_among(ann_agent_plain, forged_first) == Err(Refused(NoSuchPrinci
 ann_admin_first : List(Principal)
 ann_admin_first = List.prepend(Cast.accounts, Cast.person(2, Admin))
 
-expect grant_at(by_ann, { acts_as: Cast.ann, scope: with_admin, among: ann_admin_first, now: 50 }) == Refused(NoSuchGranter)
-expect grant_at(by_ann, { acts_as: Cast.ann, scope: plain, among: ann_admin_first, now: 50 }) == Refused(NoSuchGranter)
-expect ann_claims_admin.administers({ accounts: ann_admin_first, now: 50 }) == Refused(NoSuchPrincipal)
+expect grant_at(
+	by_ann,
+	{
+		acts_as: Cast.ann,
+		scope: with_admin,
+		among: ann_admin_first,
+		now: 50,
+	},
+) == Refused(NoSuchGranter)
+expect grant_at(
+	by_ann,
+	{
+		acts_as: Cast.ann,
+		scope: plain,
+		among: ann_admin_first,
+		now: 50,
+	},
+) == Refused(NoSuchGranter)
+expect ann_claims_admin.administers({
+	accounts: ann_admin_first,
+	now: 50,
+}) == Refused(NoSuchPrincipal)
 expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPrincipal))
 
 # ── RE-CREATION AFTER RETIREMENT (the round-two attacker's fifth)
@@ -709,20 +833,46 @@ expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPri
 # and her old agent's, stand no more; a new session of the new account
 # grants keys bound to it.
 ann_again : Principal
-ann_again = Principal.Human({ id: Cast.gid(2), login: "h2", name: "H2", role: Member, generation: Cast.gen(2) })
+ann_again = Principal.Human({
+	id: Cast.gid(2),
+	login: "h2",
+	name: "H2",
+	role: Member,
+	generation: Cast.gen(2),
+})
 
 again : List(Principal)
-again = [Cast.boss, ann_again, Cast.boss_agent, Cast.boss_bot, Cast.ann_agent]
+again = [
+	Cast.boss,
+	ann_again,
+	Cast.boss_agent,
+	Cast.boss_bot,
+	Cast.ann_agent,
+]
 
 expect standing_at(ann_year, { among: again, now: 70 }) == Err(Refused(NoSuchPrincipal))
 expect standing_at(ann_agent_plain, { among: again, now: 70 }) == Err(Refused(NoSuchPrincipal))
-expect grant_at(by_ann, { acts_as: Cast.ann, scope: plain, among: again, now: 70 }) == Refused(NoSuchGranter)
+expect grant_at(
+	by_ann,
+	{
+		acts_as: Cast.ann,
+		scope: plain,
+		among: again,
+		now: 70,
+	},
+) == Refused(NoSuchGranter)
 new_ann_session : ApiKey.Granter(Held, U64)
 new_ann_session = stored_session("session v1 id=8 human=2 generation=2 token=${Str.repeat("07", 32)} created=60 seen=60\n")
 
 expect
 	ApiKey.Key.issue(
-		{ granter: new_ann_session, acts_as: Principal.id(ann_again), scope: plain, accounts: again, now: 70 },
+		{
+			granter: new_ann_session,
+			acts_as: Principal.id(ann_again),
+			scope: plain,
+			accounts: again,
+			now: 70,
+		},
 		{ key: Cast.kid(8), expires: 1050 },
 	).map_ok(|k| k.record().human_generation)
 		== Ok(Cast.gen(2))
@@ -731,6 +881,17 @@ expect
 # `created`): ann's agent retired, and an agent made again with id 3 for
 # ann (a host that reused the id): the old key stands no more.
 agent_again : List(Principal)
-agent_again = [Cast.boss, Cast.ann, Cast.boss_agent, Cast.boss_bot, Principal.Agent({ id: Cast.aid(3), name: "a3", owner: Cast.gid(2), generation: Cast.gen(5) })]
+agent_again = [
+	Cast.boss,
+	Cast.ann,
+	Cast.boss_agent,
+	Cast.boss_bot,
+	Principal.Agent({
+		id: Cast.aid(3),
+		name: "a3",
+		owner: Cast.gid(2),
+		generation: Cast.gen(5),
+	}),
+]
 
 expect standing_among(ann_agent_plain, agent_again) == Err(Refused(NoSuchPrincipal))

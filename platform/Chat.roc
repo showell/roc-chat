@@ -32,7 +32,12 @@ Chat := [].{
 	## `github_id` and `login` are 0 and empty but for `Known`. The client
 	## secret and GitHub's token never cross.
 	Exchanged : {
-		status : [Failed, Known, NotAsked, Refused],
+		status : [
+			Failed,
+			Known,
+			NotAsked,
+			Refused,
+		],
 		github_id : U64,
 		login : List(U8),
 	}
@@ -46,7 +51,12 @@ Chat := [].{
 	}
 
 	## The exchange's answer as a tag union: GitHub's identity, or why not.
-	exchanged : Request -> [Known({ id : U64, login : List(U8) }), Refused, Failed, NotAsked]
+	exchanged : Request -> [
+		Known({ id : U64, login : List(U8) }),
+		Refused,
+		Failed,
+		NotAsked,
+	]
 	exchanged = |req|
 		match req.exchanged.status {
 			Known => Known({ id: req.exchanged.github_id, login: req.exchanged.login })
@@ -143,7 +153,11 @@ Chat := [].{
 
 	## `answer` with the header `name: value` added.
 	with_header : Answer, Str, List(U8) -> Answer
-	with_header = |answer, name, value| {
+	with_header = |
+		answer,
+		name,
+		value,
+	| {
 		..answer,
 		headers: List.append(answer.headers, { name: Str.to_utf8(name), value }),
 	}
@@ -158,7 +172,11 @@ Chat := [].{
 
 	## **ASK THE HOST TO EXCHANGE GITHUB'S `code`**, then to call again.
 	exchange : List(U8) -> Answer
-	exchange = |code| { ..not_found, kind: Exchange, body: code }
+	exchange = |code| {
+		..not_found,
+		kind: Exchange,
+		body: code,
+	}
 
 	## The host answered inside the call, or failed there.
 	answered : Answer

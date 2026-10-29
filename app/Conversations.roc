@@ -42,7 +42,12 @@ import Wire
 Conversations := [].{
 
 	## What a path under `/conversations` asks.
-	Route : [Start, Read(ConvAccess.ConvId), Post(ConvAccess.ConvId), Stream(ConvAccess.ConvId)]
+	Route : [
+		Start,
+		Read(ConvAccess.ConvId),
+		Post(ConvAccess.ConvId),
+		Stream(ConvAccess.ConvId),
+	]
 
 	## The route a path names, if it names one.
 	route : List(U8) -> Try(Conversations.Route, [NotAConversation])
@@ -55,8 +60,14 @@ Conversations := [].{
 				Ok(rest) =>
 					match List.split_on(rest, '/') {
 						[id_part] => id_of(id_part).map_ok(|id| Read(id))
-						[id_part, act] if act == Str.to_utf8("messages") => id_of(id_part).map_ok(|id| Post(id))
-						[id_part, act] if act == Str.to_utf8("stream") => id_of(id_part).map_ok(|id| Stream(id))
+						[
+							id_part,
+							act,
+						] if act == Str.to_utf8("messages") => id_of(id_part).map_ok(|id| Post(id))
+						[
+							id_part,
+							act,
+						] if act == Str.to_utf8("stream") => id_of(id_part).map_ok(|id| Stream(id))
 						_ => Err(NotAConversation)
 					}
 			}
@@ -65,7 +76,11 @@ Conversations := [].{
 	## **THE VIEWER'S OWN CONVERSATIONS**, oldest first: each one ConvAccess
 	## lets them post in (a participant, or the human its agent or bot
 	## answers to). A public conversation they may only read is not theirs.
-	mine! : Access.Viewer(ConvAccess.ConvId), List(Principal) => Try(List(ConvAccess.Conv), [Failed])
+	mine! : Access.Viewer(ConvAccess.ConvId),
+	List(Principal) => Try(
+		List(ConvAccess.Conv),
+		[Failed],
+	)
 	mine! = |viewer, accounts| {
 		all = Store.conversations!({})?
 		Ok(List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
@@ -136,27 +151,62 @@ start! = |{}| {
 		Read =>
 			match Credentials.viewer!(Start) {
 				Err(answer) => answer
-				Ok({ viewer, accounts, now, key }) =>
+				Ok(
+					{
+						viewer,
+						accounts,
+						now,
+						key,
+					},
+				) =>
 					match viewer.who() {
 						SignedOut => signed_out
 						Session(me) | Key(me) =>
 							match others_of(got.bytes) {
-								Err(Malformed) => refused(400, "`with` names the others, as `human:2,agent:7`")
+								Err(Malformed) => refused(
+									400,
+									"`with` names the others, as `human:2,agent:7`",
+								)
 								Ok(others) =>
 									match Store.next_conversation_id!({}) {
 										Err(Failed) => Chat.failed
 										Ok(id) =>
-											match ConvAccess.Conv.start({ id, participants: List.prepend(others, me.id), accounts }) {
-												Err(NoParticipants) => refused(400, "a conversation has someone in it")
-												Err(NoSuchParticipant(who)) => refused(400, "no account is ${AccountCodec.id_text(who)}")
+											match ConvAccess.Conv.start({
+												id,
+												participants: List.prepend(others, me.id),
+												accounts,
+											}) {
+												Err(NoParticipants) => refused(
+													400,
+													"a conversation has someone in it",
+												)
+												Err(NoSuchParticipant(who)) => refused(
+													400,
+													"no account is ${AccountCodec.id_text(who)}",
+												)
 												Ok(conv) =>
-													if !ConvAccess.can_post(viewer, { conv, accounts }) {
-														out_of_scope!({ key, use: Start, action: Post(conv), accounts, now })
-														refused(403, "this key may not post to a new conversation")
+													if !ConvAccess.can_post(
+														viewer,
+														{ conv, accounts },
+													) {
+														out_of_scope!({
+															key,
+															use: Start,
+															action: Post(conv),
+															accounts,
+															now,
+														})
+														refused(
+															403,
+															"this key may not post to a new conversation",
+														)
 													} else {
 														match Store.save_conversation!(conv, now) {
 															Failed => Chat.failed
-															Written => json(201, Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"))
+															Written => json(
+																201,
+																Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"),
+															)
 														}
 													}
 											}
@@ -173,7 +223,14 @@ list! : {} => Chat.Answer
 list! = |{}|
 	match Credentials.viewer!(Start) {
 		Err(answer) => answer
-		Ok({ viewer, accounts, now: _, key: _ }) =>
+		Ok(
+			{
+				viewer,
+				accounts,
+				now: _,
+				key: _,
+			},
+		) =>
 			match viewer.who() {
 				SignedOut => signed_out
 				Session(_) | Key(_) =>
@@ -185,13 +242,31 @@ list! = |{}|
 									conv.participants(),
 									|b| List.join([
 										Str.to_utf8("{\"id\":\"${AccountCodec.id_text(b.id)}\",\"name\":"),
-										json_string(Str.to_utf8(Conversations.name_of(accounts, b.id))),
+										json_string(
+											Str.to_utf8(
+												Conversations.name_of(
+													accounts,
+													b.id,
+												),
+											),
+										),
 										['}'],
 									]),
 								)
-								List.join([Str.to_utf8("{\"id\":${conv.id().to_u64().to_str()},\"with\":["), commas(people), Str.to_utf8("]}")])
+								List.join([
+									Str.to_utf8("{\"id\":${conv.id().to_u64().to_str()},\"with\":["),
+									commas(people),
+									Str.to_utf8("]}"),
+								])
 							}
-							json(200, List.join([Str.to_utf8("{\"conversations\":["), commas(List.map(convs, one)), Str.to_utf8("]}")]))
+							json(
+								200,
+								List.join([
+									Str.to_utf8("{\"conversations\":["),
+									commas(List.map(convs, one)),
+									Str.to_utf8("]}"),
+								]),
+							)
 						}
 					}
 			}
@@ -200,13 +275,41 @@ list! = |{}|
 ## **A KEY USED OUTSIDE WHAT IT MAY DO, AUDITED**: the core's own refusal
 ## (ConvKey.decide) for the action it was refused. A session's refusal is
 ## no key's, and is not audited.
-out_of_scope! : { key : [NoKey, Key(ConvKey.Key)], use : Credentials.Use, action : [Read(ConvAccess.Conv), Post(ConvAccess.Conv)], accounts : List(Principal), now : I64 } => {}
-out_of_scope! = |{ key, use, action, accounts, now }|
+out_of_scope! : {
+	key : [NoKey, Key(ConvKey.Key)],
+	use : Credentials.Use,
+	action : [Read(ConvAccess.Conv), Post(ConvAccess.Conv)],
+	accounts : List(Principal),
+	now : I64,
+} => {}
+out_of_scope! = |
+	{
+		key,
+		use,
+		action,
+		accounts,
+		now,
+	},
+|
 	match key {
 		NoKey => {}
 		Key(k) =>
-			match ConvKey.decide(k, { accounts, action, now }) {
-				Refused(refusal) => Credentials.audit_use!(k, { use, refusal, now })
+			match ConvKey.decide(
+				k,
+				{
+					accounts,
+					action,
+					now,
+				},
+			) {
+				Refused(refusal) => Credentials.audit_use!(
+					k,
+					{
+						use,
+						refusal,
+						now,
+					},
+				)
 				Permitted => {}
 			}
 	}
@@ -218,25 +321,45 @@ others_of = |form|
 		Err(Missing) => Ok([])
 		Err(Malformed) => Err(Malformed)
 		Ok([]) => Ok([])
-		Ok(value) => List.map_try(List.split_on(value, ','), |text| AccountCodec.id_from(text, "with")).map_err(|_| Malformed)
+		Ok(value) => List.map_try(
+			List.split_on(value, ','),
+			|text| AccountCodec.id_from(text, "with"),
+		).map_err(|_| Malformed)
 	}
 
 ## **WHAT A REQUEST ON A CONVERSATION DECIDES ON**: the viewer from its
 ## session or key, the accounts now, the conversation, the time, and the
 ## key when a key asks; or the answer that ends it (signed out, a key
 ## refused, not there, a failure).
-Asked : { viewer : Access.Viewer(ConvAccess.ConvId), accounts : List(Principal), now : I64, conv : ConvAccess.Conv, key : [NoKey, Key(ConvKey.Key)] }
+Asked : {
+	viewer : Access.Viewer(ConvAccess.ConvId),
+	accounts : List(Principal),
+	now : I64,
+	conv : ConvAccess.Conv,
+	key : [NoKey, Key(ConvKey.Key)],
+}
 
 asked! : ConvAccess.ConvId, Credentials.Use => Try(Asked, Chat.Answer)
 asked! = |id, use| {
-	{ viewer, accounts, now, key } = Credentials.viewer!(use)?
+	{
+		viewer,
+		accounts,
+		now,
+		key,
+	} = Credentials.viewer!(use)?
 	match viewer.who() {
 		SignedOut => Err(signed_out)
 		Session(_) | Key(_) =>
 			match Store.conversation!(id) {
 				Err(Failed) => Err(Chat.failed)
 				Err(Missing) => Err(no_such)
-				Ok(conv) => Ok({ viewer, accounts, now, conv, key })
+				Ok(conv) => Ok({
+					viewer,
+					accounts,
+					now,
+					conv,
+					key,
+				})
 			}
 	}
 }
@@ -249,7 +372,13 @@ seen! = |id| {
 	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {
 		Ok(a)
 	} else {
-		out_of_scope!({ key: a.key, use: Read(id), action: Read(a.conv), accounts: a.accounts, now: a.now })
+		out_of_scope!({
+			key: a.key,
+			use: Read(id),
+			action: Read(a.conv),
+			accounts: a.accounts,
+			now: a.now,
+		})
 		Err(no_such)
 	}
 }
@@ -288,10 +417,27 @@ post! = |id| {
 		Read =>
 			match asked!(id, Post(id)) {
 				Err(answer) => answer
-				Ok({ viewer, accounts, now, conv, key }) =>
+				Ok(
+					{
+						viewer,
+						accounts,
+						now,
+						conv,
+						key,
+					},
+				) =>
 					if !ConvAccess.can_post(viewer, { conv, accounts }) {
-						out_of_scope!({ key, use: Post(id), action: Post(conv), accounts, now })
-						if ConvAccess.can_see(viewer, { conv, accounts }) refused(403, "only its participants post here") else no_such
+						out_of_scope!({
+							key,
+							use: Post(id),
+							action: Post(conv),
+							accounts,
+							now,
+						})
+						if ConvAccess.can_see(viewer, { conv, accounts }) refused(
+							403,
+							"only its participants post here",
+						) else no_such
 					} else if Str.from_utf8(got.bytes).is_err() {
 						refused(400, "a message is UTF-8 text")
 					} else if Md.hostility(got.bytes) == TooMuchFormatting {
@@ -305,7 +451,12 @@ post! = |id| {
 						match Store.transcript!(id) {
 							Err(Failed) => Chat.failed
 							Ok(messages) => {
-								message = { id: MessageCodec.next_id(List.len(messages)), at: now, by, body: got.bytes }
+								message = {
+									id: MessageCodec.next_id(List.len(messages)),
+									at: now,
+									by,
+									body: got.bytes,
+								}
 								match Store.append_message!(id, message) {
 									Failed => Chat.failed
 									Appended => {
@@ -336,7 +487,12 @@ stream! = |id|
 				Err(Failed) => Chat.failed
 				Ok(messages) => {
 					after = last_seen_id(Host.read_header!(Str.to_utf8("last-event-id")))
-					backlog = List.join(List.keep_oks(List.keep_if(messages, |m| m.id > after), frame))
+					backlog = List.join(
+						List.keep_oks(
+							List.keep_if(messages, |m| m.id > after),
+							frame,
+						),
+					)
 					Chat.stream({ key: bus_key(id), backlog })
 				}
 			}
@@ -357,7 +513,11 @@ bus_key = |id| Str.to_utf8("conversation/${id.to_u64().to_str()}")
 
 ## A message as one SSE event: named `message`, its id the message's.
 frame : MessageCodec.Fields -> Try(List(U8), [LineBreak])
-frame = |m| Sse.frame({ name: Str.to_utf8("message"), data: message_json(m), id: Str.to_utf8(m.id.to_str()) })
+frame = |m| Sse.frame({
+	name: Str.to_utf8("message"),
+	data: message_json(m),
+	id: Str.to_utf8(m.id.to_str()),
+})
 
 ## **A MESSAGE AS THE WIRE SPELLS IT**: its markdown as posted, and its
 ## html as roc-markdown renders it now.
@@ -401,7 +561,10 @@ expect Conversations.route(Str.to_utf8("/conversationsx")).is_err()
 expect last_seen_id([Str.to_utf8("7")]) == 7
 expect last_seen_id([Str.to_utf8("07")]) == 0
 expect last_seen_id([]) == 0
-expect others_of(Str.to_utf8("with=human%3A2%2Cagent%3A7")) == Ok([Principal.Id.Human(Cast.gid(2)), Principal.Id.Agent(Cast.aid(7))])
+expect others_of(Str.to_utf8("with=human%3A2%2Cagent%3A7")) == Ok([
+	Principal.Id.Human(Cast.gid(2)),
+	Principal.Id.Agent(Cast.aid(7)),
+])
 expect others_of(Str.to_utf8("with=")) == Ok([])
 expect others_of(Str.to_utf8("with=human%3A0")) == Err(Malformed)
 

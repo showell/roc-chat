@@ -72,7 +72,12 @@ Store := [].{
 		settings_read = Host.read!(settings_path)
 		counters =
 			match settings_read.status {
-				Missing => Principal.Generation.from_u64(1).map_ok(|next| { next, agent: Unkept }).map_err(|_| Failed)
+				Missing => Principal.Generation.from_u64(1).map_ok(
+					|next| {
+						next,
+						agent: Unkept,
+					},
+				).map_err(|_| Failed)
 				Failed => Err(Failed)
 				Found => settings_counters(settings_read.bytes).map_err(|_| Failed)
 			}?
@@ -91,7 +96,12 @@ Store := [].{
 				Failed => Err(Failed)
 				Found => barred_of(barred_read.bytes).map_err(|_| Failed)
 			}
-		Ok({ first_admin, barred: barred?, next_generation: counters.next, next_agent_id: next_agent_id? })
+		Ok({
+			first_admin,
+			barred: barred?,
+			next_generation: counters.next,
+			next_agent_id: next_agent_id?,
+		})
 	}
 
 	## Whether `nonce` was spent before, in its set.
@@ -112,7 +122,14 @@ Store := [].{
 	## The session whose secret hashes to `hash`: its stored line, nothing
 	## there, or a line that does not read (`Malformed`, which a caller
 	## takes for no session).
-	session! : Stored.SecretHash => Try(SessionCodec.Line, [Missing, Malformed, Failed])
+	session! : Stored.SecretHash => Try(
+		SessionCodec.Line,
+		[
+			Missing,
+			Malformed,
+			Failed,
+		],
+	)
 	session! = |hash| {
 		read = Host.read!(session_path(hash))
 		match read.status {
@@ -124,14 +141,27 @@ Store := [].{
 
 	## A session written: started, or its `last seen` touched.
 	save_session! : SessionCodec.Fields => [Failed, Written]
-	save_session! = |fields| Host.write!(session_path(fields.token_hash), SessionCodec.encode(fields))
+	save_session! = |fields| Host.write!(
+		session_path(fields.token_hash),
+		SessionCodec.encode(fields),
+	)
 
 	## **A SIGN-IN'S RECORDS, IN ORDER**: the settings (the generation
 	## counter first, so no generation is ever given twice), the accounts,
 	## then the new session. `Failed` when an account will not encode, or a
 	## write fails.
-	save_signed_in! : { accounts : List(Principal), settings : GitHubSignIn.Settings, session : SessionCodec.Fields } => [Failed, Written]
-	save_signed_in! = |{ accounts, settings, session }|
+	save_signed_in! : {
+		accounts : List(Principal),
+		settings : GitHubSignIn.Settings,
+		session : SessionCodec.Fields,
+	} => [Failed, Written]
+	save_signed_in! = |
+		{
+			accounts,
+			settings,
+			session,
+		},
+	|
 		match Store.save_accounts!({ accounts, settings }) {
 			Failed => Failed
 			Written => save_session!(session)
@@ -141,7 +171,10 @@ Store := [].{
 	## generation counter first, so no generation is ever given twice), then
 	## the accounts. What a sign-in and an agent's making write. `Failed`
 	## when an account will not encode, or a write fails.
-	save_accounts! : { accounts : List(Principal), settings : GitHubSignIn.Settings } => [Failed, Written]
+	save_accounts! : {
+		accounts : List(Principal),
+		settings : GitHubSignIn.Settings,
+	} => [Failed, Written]
 	save_accounts! = |{ accounts, settings }|
 		match List.map_try(accounts, AccountCodec.encode) {
 			Err(_) => Failed
@@ -155,7 +188,14 @@ Store := [].{
 	## **THE KEY WHOSE SECRET HASHES TO `hash`**: its stored entry, nothing
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no key).
-	key! : Stored.SecretHash => Try(ConvKey.Entry, [Missing, Malformed, Failed])
+	key! : Stored.SecretHash => Try(
+		ConvKey.Entry,
+		[
+			Missing,
+			Malformed,
+			Failed,
+		],
+	)
 	key! = |hash| {
 		read = Host.read!(key_path(hash))
 		match read.status {
@@ -199,13 +239,23 @@ Store := [].{
 	## **THE INVITE WHOSE CODE HASHES TO `hash`**: its record, nothing
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no invite).
-	invite! : Stored.SecretHash => Try(InviteCodec.Record(ConvAccess.ConvId), [Missing, Malformed, Failed])
+	invite! : Stored.SecretHash => Try(
+		InviteCodec.Record(ConvAccess.ConvId),
+		[
+			Missing,
+			Malformed,
+			Failed,
+		],
+	)
 	invite! = |hash| {
 		read = Host.read!(invite_path(hash))
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => InviteCodec.decode(read.bytes, ConvAccess.ConvId.from_u64).map_err(|_| Malformed)
+			Found => InviteCodec.decode(
+				read.bytes,
+				ConvAccess.ConvId.from_u64,
+			).map_err(|_| Malformed)
 		}
 	}
 
@@ -238,7 +288,10 @@ Store := [].{
 
 	## An invite written: made, spent or revoked.
 	save_invite! : InviteCodec.Record(ConvAccess.ConvId) => [Failed, Written]
-	save_invite! = |record| Host.write!(invite_path(record.hash), InviteCodec.encode(record, ConvAccess.ConvId.to_u64))
+	save_invite! = |record| Host.write!(
+		invite_path(record.hash),
+		InviteCodec.encode(record, ConvAccess.ConvId.to_u64),
+	)
 
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
 	next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
@@ -294,7 +347,10 @@ Store := [].{
 
 	## A conversation written, as it started at `created`.
 	save_conversation! : ConvAccess.Conv, I64 => [Failed, Written]
-	save_conversation! = |conv, created| Host.write!(conversation_path(conv.id()), ConvCodec.encode(conv.fields(created)))
+	save_conversation! = |conv, created| Host.write!(
+		conversation_path(conv.id()),
+		ConvCodec.encode(conv.fields(created)),
+	)
 
 	## **A CONVERSATION'S MESSAGES**, oldest first; none before the first.
 	## `Failed` when the transcript will not read whole (a torn append, a
@@ -375,12 +431,31 @@ invite_path = |h| Str.to_utf8("auth/invites/${Stored.hash_text(h)}")
 
 ## The invites the listed files hold, after `kept`; a file that does not
 ## read as one is left out.
-kept_invites! : List({ kind : [Dir, File, Other], name : List(U8) }), List(InviteCodec.Record(ConvAccess.ConvId)) => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+kept_invites! : List(
+	{
+		kind : [
+			Dir,
+			File,
+			Other,
+		],
+		name : List(U8),
+	},
+),
+List(InviteCodec.Record(ConvAccess.ConvId)) => Try(
+	List(InviteCodec.Record(ConvAccess.ConvId)),
+	[Failed],
+)
 kept_invites! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
 		[entry, .. as rest] => {
-			read = Host.read!(List.join([invites_path, ['/'], entry.name]))
+			read = Host.read!(
+				List.join([
+					invites_path,
+					['/'],
+					entry.name,
+				]),
+			)
 			match read.status {
 				Failed => Err(Failed)
 				Missing => kept_invites!(rest, kept)
@@ -395,12 +470,28 @@ kept_invites! = |entries, kept|
 
 ## The keys the listed files hold, after `kept`; a file that does not read
 ## as a key is left out.
-kept_keys! : List({ kind : [Dir, File, Other], name : List(U8) }), List(ConvKey.Entry) => Try(List(ConvKey.Entry), [Failed])
+kept_keys! : List(
+	{
+		kind : [
+			Dir,
+			File,
+			Other,
+		],
+		name : List(U8),
+	},
+),
+List(ConvKey.Entry) => Try(List(ConvKey.Entry), [Failed])
 kept_keys! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
 		[entry, .. as rest] => {
-			read = Host.read!(List.join([keys_path, ['/'], entry.name]))
+			read = Host.read!(
+				List.join([
+					keys_path,
+					['/'],
+					entry.name,
+				]),
+			)
 			match read.status {
 				Failed => Err(Failed)
 				Missing => kept_keys!(rest, kept)
@@ -431,12 +522,21 @@ expect spent_path(Pending, [0x01]) == Str.to_utf8("auth/spent/pending/01")
 ##
 ##     settings v1 next=3 agent=8
 settings_line : GitHubSignIn.Settings -> List(U8)
-settings_line = |settings| Stored.line("settings", [("next", settings.next_generation.to_u64().to_str()), ("agent", settings.next_agent_id.to_u64().to_str())])
+settings_line = |settings| Stored.line(
+	"settings",
+	[
+		("next", settings.next_generation.to_u64().to_str()),
+		("agent", settings.next_agent_id.to_u64().to_str()),
+	],
+)
 
 ## The counters the settings' record holds; a line from before the agent-id
 ## counter, `settings v1 next=3`, holds none (`Unkept`), the one field that
 ## may be missing, and only at the end.
-settings_counters : List(U8) -> Try({ next : Principal.Generation, agent : [Kept(Principal.AgentId), Unkept] }, Stored.Problem)
+settings_counters : List(U8) -> Try(
+	{ next : Principal.Generation, agent : [Kept(Principal.AgentId), Unkept] },
+	Stored.Problem,
+)
 settings_counters = |raw| {
 	fields = Stored.Reader.open(raw, "settings")?
 	next_field = fields.field("next")?
@@ -445,7 +545,10 @@ settings_counters = |raw| {
 		Ok({}) => Ok({ next, agent: Unkept })
 		Err(_) => {
 			agent_field = next_field.rest.field("agent")?
-			agent = Stored.id(agent_field.value, { name: "agent", make: Principal.AgentId.from_u64 })?
+			agent = Stored.id(
+				agent_field.value,
+				{ name: "agent", make: Principal.AgentId.from_u64 },
+			)?
 			agent_field.rest.close()?
 			Ok({ next, agent: Kept(agent) })
 		}
@@ -466,18 +569,36 @@ barred_of = |raw|
 		|line| {
 			fields = Stored.Reader.open(List.append(line, '\n'), "barred")?
 			github_field = fields.field("github")?
-			github = Stored.id(github_field.value, { name: "github", make: Principal.GitHubId.from_u64 })?
+			github = Stored.id(
+				github_field.value,
+				{ name: "github", make: Principal.GitHubId.from_u64 },
+			)?
 			github_field.rest.close()?
 			Ok(github)
 		},
 	)
 # The settings' record and the barred ids, round trips and refusals.
-expect settings_counters(settings_line({ first_admin: Unnamed, barred: [], next_generation: Cast.gen(3), next_agent_id: Cast.aid(8) })) == Ok({ next: Cast.gen(3), agent: Kept(Cast.aid(8)) })
-expect settings_line({ first_admin: Unnamed, barred: [], next_generation: Cast.gen(3), next_agent_id: Cast.aid(8) }) == Str.to_utf8("settings v1 next=3 agent=8\n")
+expect settings_counters(
+	settings_line({
+		first_admin: Unnamed,
+		barred: [],
+		next_generation: Cast.gen(3),
+		next_agent_id: Cast.aid(8),
+	}),
+) == Ok({ next: Cast.gen(3), agent: Kept(Cast.aid(8)) })
+expect settings_line({
+	first_admin: Unnamed,
+	barred: [],
+	next_generation: Cast.gen(3),
+	next_agent_id: Cast.aid(8),
+}) == Str.to_utf8("settings v1 next=3 agent=8\n")
 expect settings_counters(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
 # A line from before the agent-id counter reads, holding none; a damaged
 # counter is refused, never read as missing.
-expect settings_counters(Str.to_utf8("settings v1 next=3\n")) == Ok({ next: Cast.gen(3), agent: Unkept })
+expect settings_counters(Str.to_utf8("settings v1 next=3\n")) == Ok({
+	next: Cast.gen(3),
+	agent: Unkept,
+})
 expect settings_counters(Str.to_utf8("settings v1 next=3 agent=0\n")) == Err(BadValue("agent"))
 expect settings_counters(Str.to_utf8("settings v1 next=3 agents=4\n")) == Err(MissingField("agent"))
 expect settings_counters(Str.to_utf8("settings v1 next=3 agent=4 x=1\n")) == Err(Trailing)
