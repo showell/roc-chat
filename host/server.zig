@@ -52,6 +52,12 @@ pub const Limits = struct {
     /// The most streams held at once (at most sse.Slots.most_ever): past
     /// it, the oldest is ended.
     streams_most: u32 = sse.Slots.most_ever,
+    /// **A STREAM'S LIFETIME** (the security review's M3): a stream is
+    /// authorized once, at its subscribe, so it ends this long after, and
+    /// the browser resumes with `Last-Event-ID`, authorized afresh. A key
+    /// revoked, a session ended or a conversation made private stops
+    /// reaching it within this.
+    stream_lifetime_ms: u32 = 10 * 60 * 1000,
 
     /// The watchdog's look: a quarter of the shortest deadline, 5 to 100 ms.
     fn tickMs(l: Limits) u32 {
@@ -118,6 +124,9 @@ pub const Server = struct {
     /// past the clock's, so an expiry minutes away (an invite's ten) is
     /// tested without waiting for it.
     clock_ahead_s_for_test: std.atomic.Value(i64) = .init(0),
+    /// A test's: a stream opened while this is not 0 lives this many
+    /// milliseconds, not `limits.stream_lifetime_ms`.
+    stream_lifetime_ms_for_test: std.atomic.Value(u32) = .init(0),
     /// The last crash's line, as logged (written in the turn; a test reads
     /// it holding the turn).
     crash_said: [2048]u8 = undefined,
@@ -342,7 +351,8 @@ pub const Server = struct {
     /// its key, a ping when it is quiet for the keepalive. Each write is
     /// under the write deadline, so a reader that stops reading is shut.
     /// It ends when a write fails, when its mailbox missed a frame (the
-    /// browser resumes, with no gap), or when a newer stream takes its slot.
+    /// browser resumes, with no gap), when a newer stream takes its slot,
+    /// or at its lifetime (the browser resumes, authorized afresh).
     fn serveStream(s: *Server, conn: *Conn, req: *std.http.Server.Request, reply: call.Reply, sub: *bus.Subscriber) void {
         defer s.hub.close(sub);
         const held = s.slots.hold(s.io, s.limits.streams_most, conn.stream);
@@ -362,8 +372,14 @@ pub const Server = struct {
         // The head goes with the backlog, even an empty one: the browser
         // knows it is connected.
         if (!s.push(conn, &body, reply.body)) return;
+        const test_lifetime = s.stream_lifetime_ms_for_test.load(.acquire);
+        const lifetime_ms: i64 = if (test_lifetime > 0) test_lifetime else s.limits.stream_lifetime_ms;
+        const opened = Io.Clock.now(.awake, s.io);
         while (!sub.hasMissed()) {
-            const frame = switch (sub.next(s.limits.keepalive_ms)) {
+            const left = lifetime_ms - opened.untilNow(s.io, .awake).toMilliseconds();
+            if (left <= 0) return;
+            const wait: u32 = @intCast(@min(left, s.limits.keepalive_ms));
+            const frame = switch (sub.next(wait)) {
                 .msg => |m| m,
                 .idle => null,
                 .canceled => return,

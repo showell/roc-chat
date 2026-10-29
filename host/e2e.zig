@@ -76,6 +76,8 @@
 //!      posted
 //!  39. a logout from another origin is refused; from the chat's own, it
 //!      ends the session, and the old cookie is a 401
+//!  40. a stream ends at its lifetime (`stream_lifetime_ms_for_test`), so a
+//!      key revoked while its stream is open stops reaching it
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -262,6 +264,11 @@ const Listener = struct {
     /// The stream at `target`, its head read: subscribed, and its backlog
     /// on the way. `last_id`, when not empty, is its `Last-Event-ID`.
     fn open(arena: std.mem.Allocator, port: u16, target: []const u8, cookie: []const u8, last_id: []const u8) !*Listener {
+        return openAs(arena, port, target, .{ .cookie = cookie }, last_id);
+    }
+
+    /// The same, with `credential`: a cookie, a key, or both.
+    fn openAs(arena: std.mem.Allocator, port: u16, target: []const u8, credential: Credential, last_id: []const u8) !*Listener {
         const l = try arena.create(Listener);
         const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
         l.* = .{ .stream = try addr.connect(io, .{ .mode = .stream }), .arena = arena };
@@ -271,8 +278,10 @@ const Listener = struct {
         std.posix.setsockopt(l.stream.socket.handle, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&wait)) catch {};
         l.reader = l.stream.reader(io, &l.buf);
         const resume_line = if (last_id.len > 0) try std.fmt.allocPrint(arena, "last-event-id: {s}\r\n", .{last_id}) else "";
+        const cookie_line = if (credential.cookie.len > 0) try std.fmt.allocPrint(arena, "cookie: {s}\r\n", .{credential.cookie}) else "";
+        const key_line = if (credential.key.len > 0) try std.fmt.allocPrint(arena, "authorization: Bearer {s}\r\n", .{credential.key}) else "";
         var w = l.stream.writer(io, &.{});
-        try w.interface.writeAll(try std.fmt.allocPrint(arena, "GET {s} HTTP/1.1\r\nhost: chat.test\r\ncookie: {s}\r\n{s}\r\n", .{ target, cookie, resume_line }));
+        try w.interface.writeAll(try std.fmt.allocPrint(arena, "GET {s} HTTP/1.1\r\nhost: chat.test\r\n{s}{s}{s}\r\n", .{ target, cookie_line, key_line, resume_line }));
         try l.until("\r\n\r\n");
         const head = try Response.of(l.got.items);
         if (head.status != 200) return error.NotAStream;
@@ -293,6 +302,12 @@ const Listener = struct {
         const bytes = try r.peekGreedy(1);
         try l.got.appendSlice(l.arena, bytes);
         r.toss(bytes.len);
+    }
+
+    /// Reads until the server ends the stream: whether it ended (false
+    /// when a read waited past `wait_ms` first).
+    fn ends(l: *Listener) bool {
+        while (true) l.more() catch |e| return e == error.EndOfStream;
     }
 
     fn close(l: *Listener) void {
@@ -620,6 +635,33 @@ fn logout(w: *World) !void {
     if (out.status != 303) return error.NotLoggedOut;
     if (!std.mem.eql(u8, out.cookie("session") orelse "-", "")) return error.CookieKept;
     if ((try get(w.a, w.port(), "/me", eve)).status != 401) return error.SessionLives;
+}
+
+/// **A STREAM ENDS AT ITS LIFETIME** (M3): Steve's own key holds a
+/// stream; the key is revoked while it is open, and the stream ends at its
+/// lifetime (half a second here, `stream_lifetime_ms_for_test`), never
+/// carrying on for the revoked key; resumed, the key is a 401.
+const lifetime_ms_for_test = 500;
+
+fn streamLifetime(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, "with=human%3A1001"));
+    const k = try mint(w, "");
+    w.rig.server.stream_lifetime_ms_for_test.store(lifetime_ms_for_test, .release);
+    defer w.rig.server.stream_lifetime_ms_for_test.store(0, .release);
+    const target = try agentPath(w, conv, "/stream");
+    const t0 = Io.Clock.now(.awake, io);
+    const l = try Listener.openAs(w.a, w.port(), target, .{ .key = k.secret }, "");
+    defer l.close();
+    const revoked = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/keys/{s}/revoke", .{k.id}), w.steve, "");
+    if (revoked.status != 200) return error.NotRevoked;
+    if (!l.ends()) return error.StreamOutlived;
+    if (t0.untilNow(io, .awake).toMilliseconds() < lifetime_ms_for_test) return error.EndedEarly;
+    const again = Listener.openAs(w.a, w.port(), target, .{ .key = k.secret }, "") catch |e| switch (e) {
+        error.NotAStream => return,
+        else => return e,
+    };
+    again.close();
+    return error.RevokedKeyStreamed;
 }
 
 fn pageHtml(w: *World) !void {
@@ -957,6 +999,7 @@ const steps = [_]Step{
     .{ .name = "C cannot name Steve's agent in a new conversation, nor an unknown id, in the same words; Steve can", .f = othersAgentUnnamed },
     .{ .name = "a POST with a cookie from another origin, or from none, is a 403", .f = crossOrigin },
     .{ .name = "a logout from another origin is refused; from our own, the old cookie is a 401", .f = logout },
+    .{ .name = "a stream ends at its lifetime, so a key revoked while it is open stops reaching it", .f = streamLifetime },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

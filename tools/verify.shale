@@ -16,7 +16,7 @@
 --     expects and its Zig tests counted, neither below its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - twenty-one planted faults, each red at its own step of the end to
+--   - twenty-two planted faults, each red at its own step of the end to
 --     end: a forged session cookie admitted, a third user's post let
 --     through, a third user's read let through, the subscribe moved out of
 --     the turn, a message's newline written raw into its transcript line,
@@ -29,7 +29,8 @@
 --     participant's name written unescaped, a third user given the
 --     conversation's page, a key given a page; and the security review's
 --     (2026-10-29): agents uncapped, another's agent named in `with=`, a
---     cross-origin POST accepted, a logout that leaves the session;
+--     cross-origin POST accepted, a logout that leaves the session, a
+--     stream outliving its lifetime;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
@@ -38,7 +39,7 @@
 -- follow-ups (the agent-id counter and invites), which may only rise.
 const roc_floor = 1898
 const zig_floor = 203
-const e2e_steps = 39
+const e2e_steps = 40
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -220,6 +221,8 @@ plant("a cross-origin POST accepted (Origin never compared)",
   "app/Origin.roc", "[one] => if one == configured Allowed else CrossOrigin", "[one] => if one == configured or True Allowed else CrossOrigin", 38)
 plant("a logout that leaves the session (its record never removed)",
   "app/SignIn.roc", "Ok(token_hash) => Store.remove_session!(token_hash)", "Ok(_) => Removed", 39)
+plant("a stream outliving its lifetime (the test's lifetime never read)",
+  "host/server.zig", "if (test_lifetime > 0) test_lifetime else", "if (test_lifetime > 0) s.limits.stream_lifetime_ms else", 40)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
