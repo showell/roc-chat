@@ -20,11 +20,40 @@ Chat := [].{
 		Other,
 	]
 
-	## `path` is the request target up to its query: "/" or starting with "/".
+	## **WHAT GITHUB'S EXCHANGE CAME TO**, on the second call of a request
+	## whose first answered `exchange` (decision D1): the host let the turn
+	## go, exchanged the code with GitHub on the connection's own task, and
+	## called again with the same request and this:
+	## - `Known`: GitHub's numeric id and login for the code (`github_id`,
+	##   `login`);
+	## - `Refused`: GitHub said no to the code (bad or expired);
+	## - `Failed`: no answer in time, or none that made sense;
+	## - `NotAsked`: no exchange (every first call).
+	## `github_id` and `login` are 0 and empty but for `Known`. The client
+	## secret and GitHub's token never cross.
+	Exchanged : {
+		status : [Failed, Known, NotAsked, Refused],
+		github_id : U64,
+		login : List(U8),
+	}
+
+	## `path` is the request target up to its query: "/" or starting with
+	## "/". `exchanged` is GitHub's answer on a second call.
 	Request : {
 		path : List(U8),
 		method : Method,
+		exchanged : Exchanged,
 	}
+
+	## The exchange's answer as a tag union: GitHub's identity, or why not.
+	exchanged : Request -> [Known({ id : U64, login : List(U8) }), Refused, Failed, NotAsked]
+	exchanged = |req|
+		match req.exchanged.status {
+			Known => Known({ id: req.exchanged.github_id, login: req.exchanged.login })
+			Refused => Refused
+			Failed => Failed
+			NotAsked => NotAsked
+		}
 
 	## A response header the answer adds. **THE HOST SENDS ONLY THE NAMES
 	## ON ITS LIST** (`set-cookie`, `cache-control`, `location`), and a name
@@ -42,12 +71,17 @@ Chat := [].{
 	## - `NotAllowed`: a 405 naming `allow`;
 	## - `Answered`: answered by the host inside the call (a body too big, a
 	##   script), which the host sends;
-	## - `NotFound`: the plain 404.
+	## - `NotFound`: the plain 404;
+	## - `Exchange`: GitHub's code (in `body`) to exchange outside the turn;
+	##   the host calls again with the same request and what GitHub said
+	##   (`Request.exchanged`). Once a request: a second is the Roc's bug, a
+	##   500.
 	Kind : [
 		Respond,
 		NotAllowed,
 		Answered,
 		NotFound,
+		Exchange,
 	]
 
 	## Whether the browser may guess a type other than `content_type`
@@ -114,6 +148,10 @@ Chat := [].{
 		kind: NotAllowed,
 		allow,
 	}
+
+	## **ASK THE HOST TO EXCHANGE GITHUB'S `code`**, then to call again.
+	exchange : List(U8) -> Answer
+	exchange = |code| { ..not_found, kind: Exchange, body: code }
 
 	## The host answered inside the call, or failed there.
 	answered : Answer

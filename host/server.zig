@@ -22,6 +22,8 @@ const net = Io.net;
 const abi = @import("seam/chat_abi.zig");
 const call = @import("call.zig");
 const files = @import("files.zig");
+const signin = @import("signin.zig");
+const route = @import("seam/chat_route.zig");
 
 const log = std.log.scoped(.roc_chat);
 
@@ -77,6 +79,9 @@ pub const Server = struct {
     hold_turn_ms_for_test: u32 = 0,
     /// The data root's files, asked only in the turn.
     files: files.Files,
+    /// Sign-in's secrets and settings (host/signin.zig): the caller's, for
+    /// the server's life. None, and sign-in's hosted functions fail.
+    auth: ?*const signin.Auth = null,
 
     /// Serves `data`, the data root (the caller's, open for the server's life).
     pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits, data: Io.Dir) !Server {
@@ -223,24 +228,49 @@ pub const Server = struct {
         return keep and http.reader.state == .ready;
     }
 
-    /// **ONE ROC CALL, IN THE TURN**, and its reply made after it. A later
-    /// decision that asks for work off the turn (GitHub's token exchange)
-    /// does it here, between two calls, each in a turn of its own.
+    /// **ONE ROC CALL, IN THE TURN**, and its reply made after it; or,
+    /// when the call asks GitHub's exchange, **TWO CALLS WITH THE EXCHANGE
+    /// BETWEEN THEM, OUTSIDE THE TURN**: the turn is let go, the code
+    /// exchanged on this connection's own task, and the turn taken again for
+    /// the second call, which hears the same request and what GitHub said.
+    /// The Roc keeps nothing between the calls; the request carries the
+    /// facts. A second ask is the Roc's bug, a 500 (call.replyOf).
     fn answer(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied) call.Reply {
-        var ctx: call.Ctx = .{ .req = copied, .arena = arena, .files = &s.files };
-        const decided = blk: {
-            s.turn.lockUncancelable(s.io);
-            defer s.turn.unlock(s.io);
-            const n = s.stats.in_turn.fetchAdd(1, .acq_rel) + 1;
-            _ = s.stats.most_in_turn.fetchMax(n, .acq_rel);
-            defer _ = s.stats.in_turn.fetchSub(1, .acq_rel);
-            _ = s.stats.turns.fetchAdd(1, .acq_rel);
-            if (s.hold_turn_ms_for_test > 0) io_sleep(s.io, s.hold_turn_ms_for_test);
-            break :blk abi.decide(arena, copied.path, copied.method, .of(&ctx));
-        };
-        return call.replyOf(arena, decided, &ctx) catch call.failed;
+        var exchanged: route.Exchanged = .not_asked;
+        while (true) {
+            var ctx: call.Ctx = .{ .req = copied, .arena = arena, .files = &s.files, .auth = s.auth, .now = Io.Clock.now(.real, s.io).toSeconds() };
+            const decided = s.decideInTurn(arena, copied, exchanged, &ctx);
+            const code = codeOf(decided);
+            if (code != null and exchanged == .not_asked and !ctx.dead()) {
+                const auth = s.auth orelse return call.failed;
+                exchanged = signin.exchange(s.gpa, s.io, arena, auth, code.?) catch return call.failed;
+                continue;
+            }
+            return call.replyOf(arena, decided, &ctx) catch call.failed;
+        }
+    }
+
+    /// The Roc's call for `copied`, in the turn.
+    fn decideInTurn(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied, exchanged: route.Exchanged, ctx: *call.Ctx) anyerror!route.Decision {
+        s.turn.lockUncancelable(s.io);
+        defer s.turn.unlock(s.io);
+        const n = s.stats.in_turn.fetchAdd(1, .acq_rel) + 1;
+        _ = s.stats.most_in_turn.fetchMax(n, .acq_rel);
+        defer _ = s.stats.in_turn.fetchSub(1, .acq_rel);
+        _ = s.stats.turns.fetchAdd(1, .acq_rel);
+        if (s.hold_turn_ms_for_test > 0) io_sleep(s.io, s.hold_turn_ms_for_test);
+        return abi.decide(arena, copied.path, copied.method, exchanged, .of(ctx));
     }
 };
+
+/// The code a decision asks GitHub's exchange for, or null.
+fn codeOf(decided: anyerror!route.Decision) ?[]const u8 {
+    const d = decided catch return null;
+    return switch (d) {
+        .exchange => |code| code,
+        else => null,
+    };
+}
 
 fn io_sleep(io: Io, ms: u32) void {
     Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch {};

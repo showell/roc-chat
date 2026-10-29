@@ -80,4 +80,36 @@ Host := [].{
 	## **A CACHE WRITTEN**, as `write!`: a failure is a miss, logged, never
 	## the request's failure.
 	write_cache! : List(U8), List(U8) => {}
+
+	## **SIGN-IN'S FACTS** (host/signin.zig, host/auth/): the request's
+	## query and time, the OS's entropy, SHA-256, and the site key's MAC.
+	## **THE ROC NEVER HOLDS THE SIGNING KEY**: `sign!` and `verify!` use the
+	## host's. A failure (no entropy, no key) has failed the request, as a
+	## file's does.
+
+	## A query field's values, as written (not decoded), in order; none
+	## when the target has no such field.
+	read_query! : List(U8) => List(List(U8))
+
+	## The request's time, Unix seconds: one time for the whole call.
+	read_time! : {} => I64
+
+	## `n` bytes of the OS's entropy (a nonce, a session's secret), at most
+	## 1,024.
+	random_bytes! : U64 => List(U8)
+
+	## SHA-256 of the bytes: 32 bytes (Stored.SecretHash).
+	hash! : List(U8) => List(U8)
+
+	## HMAC-SHA256 of the bytes under the site's signing key: 32 bytes.
+	sign! : List(U8) => List(U8)
+
+	## Whether `mac` is the site key's MAC of `bytes`, compared in constant
+	## time.
+	verify! : List(U8), List(U8) => [Invalid, Valid]
+
+	## A public setting, never a secret: the first admin's GitHub id (its
+	## decimal digits, or empty), GitHub's base URL for the authorize page,
+	## the OAuth app's client id, and the chat's public origin.
+	read_config! : [BootstrapAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
 }

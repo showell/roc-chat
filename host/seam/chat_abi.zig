@@ -28,8 +28,25 @@ pub const RocBytes = roc.RocBytes;
 
 const Method = route.Method;
 
-/// Chat.roc's `Request`.
+/// Chat.roc's `Exchanged`: `{ github_id : U64, login : List(U8), status }`,
+/// the 8-byte fields by name, then the tag. `github_id` and `login` are 0
+/// and empty but when `status` is `known`.
+pub const ExchangedRec = extern struct {
+    github_id: u64,
+    login: RocBytes,
+    status: route.ExchangeStatus,
+
+    fn of(e: route.Exchanged) ExchangedRec {
+        return switch (e) {
+            .known => |k| .{ .github_id = k.id, .login = .from(k.login), .status = .known },
+            else => .{ .github_id = 0, .login = .from(""), .status = std.meta.activeTag(e) },
+        };
+    }
+};
+
+/// Chat.roc's `Request`: the records and lists by name, then the tag.
 pub const Request = extern struct {
+    exchanged: ExchangedRec,
     path: RocBytes,
     method: Method,
 };
@@ -112,7 +129,8 @@ comptime {
 
 comptime {
     const w = @sizeOf(usize);
-    std.debug.assert(@sizeOf(Request) == 4 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 10 * w and @sizeOf(Got) == 4 * w);
+    std.debug.assert(@sizeOf(ExchangedRec) == 5 * w and @offsetOf(ExchangedRec, "status") == 4 * w);
+    std.debug.assert(@sizeOf(Request) == 9 * w and @offsetOf(Request, "path") == 5 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 10 * w and @sizeOf(Got) == 4 * w);
     std.debug.assert(@offsetOf(Answer, "status") == 9 * w and @offsetOf(Answer, "sniff") == 9 * w + 4);
 }
 
@@ -161,6 +179,26 @@ const Table = struct {
     remove: *const fn (*anyopaque, []const u8) route.Removed,
     /// Host.write_cache!: as `write`, its failure never the request's.
     write_cache: *const fn (*anyopaque, []const u8, []const u8) void,
+
+    // Sign-in (host/auth/, host/signin.zig). **THE ROC NEVER HOLDS THE
+    // SIGNING KEY**: `sign` and `verify` use the host's.
+
+    /// Host.read_query!: a query field's values, as written, from the
+    /// host's copy of the target.
+    read_query: *const fn (*anyopaque, []const u8) []const []const u8,
+    /// Host.read_time!: the request's time, Unix seconds.
+    read_time: *const fn (*anyopaque) i64,
+    /// Host.random_bytes!: `n` bytes of the OS's entropy.
+    random_bytes: *const fn (*anyopaque, u64) []const u8,
+    /// Host.hash!: SHA-256 of the bytes.
+    hash: *const fn (*anyopaque, []const u8) []const u8,
+    /// Host.sign!: HMAC-SHA256 of the bytes under the site key.
+    sign: *const fn (*anyopaque, []const u8) []const u8,
+    /// Host.verify!: whether the MAC is the site key's for the bytes,
+    /// compared in constant time.
+    verify: *const fn (*anyopaque, []const u8, []const u8) route.Verified,
+    /// Host.read_config!: a public setting, never a secret.
+    read_config: *const fn (*anyopaque, route.ConfigName) []const u8,
 };
 
 /// **WHAT ANSWERS THE HOSTED FUNCTIONS** during a call: a host's value and
@@ -364,6 +402,36 @@ pub export fn roc_chat_write_cache(path: RocBytes, bytes: RocBytes) callconv(.c)
     ask("write_cache", {}, .{ path.slice(), bytes.slice() });
 }
 
+// ── sign-in ────────────────────────────────────────────────────────────────
+
+pub export fn roc_chat_read_query(name: RocBytes) callconv(.c) roc.RocBytesList {
+    return .from(ask("read_query", &.{}, .{name.slice()}));
+}
+
+pub export fn roc_chat_read_time() callconv(.c) i64 {
+    return ask("read_time", 0, .{});
+}
+
+pub export fn roc_chat_random_bytes(n: u64) callconv(.c) RocBytes {
+    return .from(ask("random_bytes", "", .{n}));
+}
+
+pub export fn roc_chat_hash(bytes: RocBytes) callconv(.c) RocBytes {
+    return .from(ask("hash", "", .{bytes.slice()}));
+}
+
+pub export fn roc_chat_sign(bytes: RocBytes) callconv(.c) RocBytes {
+    return .from(ask("sign", "", .{bytes.slice()}));
+}
+
+pub export fn roc_chat_verify(bytes: RocBytes, mac: RocBytes) callconv(.c) route.Verified {
+    return ask("verify", .invalid, .{ bytes.slice(), mac.slice() });
+}
+
+pub export fn roc_chat_read_config(name: route.ConfigName) callconv(.c) RocBytes {
+    return .from(ask("read_config", "", .{name}));
+}
+
 // ── a crash is a 500 ────────────────────────────────────────────────────────
 
 /// **A ROC CRASH ENDS THE CALL, NOT THE SERVER**: a Roc `crash`, an
@@ -388,17 +456,18 @@ fn crashed(message: []const u8) noreturn {
 /// written through `out` only on the way that returns normally. The
 /// request's bytes are made here, after `setjmp`: they are the call's
 /// first allocations, and one that fails must jump back to this frame.
-noinline fn guarded(path: []const u8, method: Method, out: *Answer) bool {
+noinline fn guarded(path: []const u8, method: Method, exchanged: route.Exchanged, out: *Answer) bool {
     if (sljmp.setjmp(&jump) != 0) return false;
-    out.* = roc_chat_handle(.{ .path = .from(path), .method = method });
+    out.* = roc_chat_handle(.{ .exchanged = .of(exchanged), .path = .from(path), .method = method });
     return true;
 }
 
-/// The router's decision for `path` asked with `method`, Roc's memory and
+/// The router's decision for `path` asked with `method` (and, on a second
+/// call, what GitHub's exchange came to: `exchanged`), Roc's memory and
 /// the decision's bytes both in `alloc` (the request's arena), the Roc call
 /// ended. A Roc crash is `error.RocCrashed`; a call inside or beside
 /// another, `error.RocReentered`.
-pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Method, with: Host) !Decision {
+pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Method, exchanged: route.Exchanged, with: Host) !Decision {
     try roc.enter();
     defer roc.leave();
     roc.useRequest(alloc);
@@ -409,7 +478,7 @@ pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Metho
     roc.crashed = crashed;
     defer roc.crashed = was;
     var a: Answer = undefined;
-    if (!guarded(path, .of(method), &a)) return error.RocCrashed;
+    if (!guarded(path, .of(method), exchanged, &a)) return error.RocCrashed;
     return switch (a.kind) {
         .respond => .{ .respond = .{
             .status = a.status,
@@ -429,6 +498,9 @@ pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Metho
         },
         .answered => .answered,
         .not_found => .not_found,
+        // The code is GitHub's (GitHubSignIn.is_code held it to letters,
+        // digits, `-` and `_`); the body carries it.
+        .exchange => .{ .exchange = try alloc.dupe(u8, a.body.slice()) },
     };
 }
 

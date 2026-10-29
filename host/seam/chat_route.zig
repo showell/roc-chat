@@ -35,6 +35,7 @@ pub const Sniff = enum(u8) { allow, forbid };
 /// Chat.roc's `Kind`: what an answer is (Chat.roc says each).
 pub const Kind = enum(u8) {
     answered,
+    exchange,
     not_allowed,
     not_found,
     respond,
@@ -86,6 +87,29 @@ pub const Stat = union(ReadStatus) {
 /// `append!`'s answer: the file's size after the bytes.
 pub const Appended = union(AppendStatus) { appended: u64, failed };
 
+// ── sign-in: the crypto, the clock, the config, and GitHub's exchange ──────
+
+/// Host.roc's `verify!` answer: whether the MAC is the site key's.
+pub const Verified = enum(u8) { invalid, valid };
+
+/// Host.roc's `read_config!` argument: a public setting the Roc needs.
+pub const ConfigName = enum(u8) { bootstrap_admin, github_authorize, github_client_id, origin };
+
+/// Chat.roc's `Exchanged.status`: what GitHub's exchange came to, or that
+/// none was asked for.
+pub const ExchangeStatus = enum(u8) { failed, known, not_asked, refused };
+
+/// **GITHUB'S EXCHANGE, AS THE ROC'S SECOND CALL HEARS IT** (Chat.roc's
+/// `Request.exchanged`): who the code belongs to (`known`), GitHub's no to
+/// the code or its token (`refused`), no answer or no sense from it in time
+/// (`failed`), or no exchange asked (`not_asked`, every first call).
+pub const Exchanged = union(ExchangeStatus) {
+    failed,
+    known: struct { id: u64, login: []const u8 },
+    not_asked,
+    refused,
+};
+
 /// A response header the Roc's answer adds (Chat.roc's `Header`), its bytes
 /// copied out of the call. The host checks each before it is sent
 /// (host/call.zig).
@@ -109,6 +133,10 @@ pub const Decision = union(enum) {
     answered,
     /// The plain 404.
     not_found,
+    /// **GITHUB'S CODE TO EXCHANGE, OUTSIDE THE TURN**: the host exchanges
+    /// it, then calls the Roc again with the same request and what GitHub
+    /// said (`Exchanged`). Once per request.
+    exchange: []const u8,
 
     pub fn format(d: Decision, w: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (d) {
@@ -122,6 +150,7 @@ pub const Decision = union(enum) {
             .not_allowed => |m| try w.print("405 allow {t}", .{m}),
             .answered => try w.writeAll("answered by the host"),
             .not_found => try w.writeAll("404"),
+            .exchange => try w.writeAll("exchange a code with GitHub"),
         }
     }
 };
