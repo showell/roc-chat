@@ -21,6 +21,9 @@ const Io = std.Io;
 const net = Io.net;
 const abi = @import("seam/chat_abi.zig");
 const call = @import("call.zig");
+const bus = @import("bus.zig");
+const sse = @import("sse.zig");
+const StubLog = @import("stub_log.zig").StubLog;
 
 const log = std.log.scoped(.roc_chat);
 
@@ -42,6 +45,11 @@ pub const Limits = struct {
     /// The most connections open at once that are kept open; past it, an
     /// answer says close.
     kept_open_most: u32 = 64,
+    /// A held stream quiet this long sends a ping.
+    keepalive_ms: u32 = 25_000,
+    /// The most streams held at once (at most sse.Slots.most_ever): past
+    /// it, the oldest is ended.
+    streams_most: u32 = sse.Slots.most_ever,
 
     /// The watchdog's look: a quarter of the shortest deadline, 5 to 100 ms.
     fn tickMs(l: Limits) u32 {
@@ -60,6 +68,9 @@ pub const Stats = struct {
     /// Handlers in the turn now, and the most there have been at once.
     in_turn: std.atomic.Value(u32) = .init(0),
     most_in_turn: std.atomic.Value(u32) = .init(0),
+    /// Streams that slept `hold_before_subscribe_ms_for_test` before
+    /// subscribing.
+    subscribe_holds: std.atomic.Value(u32) = .init(0),
 };
 
 pub const Server = struct {
@@ -74,6 +85,16 @@ pub const Server = struct {
     /// A test's: the turn held this long besides the Roc call, so that
     /// handlers that could overlap would.
     hold_turn_ms_for_test: u32 = 0,
+    /// Every held stream, by its bus key.
+    hub: bus.Hub,
+    /// The streams held at once.
+    slots: sse.Slots = .{},
+    /// The stub route's frames, until step 6.
+    stub_log: StubLog,
+    /// A test's: a stream sleeps this long between the Roc's read of its
+    /// backlog and its subscribe, so another client's post can try to land
+    /// between them.
+    hold_before_subscribe_ms_for_test: u32 = 0,
 
     pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits) !Server {
         return .{
@@ -81,6 +102,8 @@ pub const Server = struct {
             .gpa = gpa,
             .limits = limits,
             .listener = try addr.listen(io, .{ .reuse_address = true }),
+            .hub = .init(io, gpa),
+            .stub_log = .{ .gpa = gpa },
         };
     }
 
@@ -91,6 +114,9 @@ pub const Server = struct {
     /// Serves until `stop`: each connection on a task of its own, the
     /// watchdog on another. When it returns, every connection is done.
     pub fn run(s: *Server) !void {
+        // Last: every stream's task has closed its subscriber by then.
+        defer s.stub_log.deinit();
+        defer s.hub.deinit();
         defer s.listener.deinit(s.io);
         defer s.watch.conns.deinit(s.gpa);
         var watchdog = try s.io.concurrent(Watch.run, .{ &s.watch, s.io, s.limits.tickMs() });
@@ -210,7 +236,12 @@ pub const Server = struct {
         // is written, so its head says it.
         const keep = req.head.keep_alive and served + 1 < s.limits.requests_most and s.watch.count(io) <= s.limits.kept_open_most;
 
-        const reply = s.answer(arena, &copied);
+        const answered = s.answer(arena, &copied);
+        const reply = answered.reply;
+        if (answered.sub) |sub| {
+            s.serveStream(conn, &req, reply, sub);
+            return false;
+        }
 
         s.watch.arm(io, conn, s.limits.write_ms, .both);
         defer s.watch.disarm(io, conn);
@@ -221,8 +252,14 @@ pub const Server = struct {
     /// **ONE ROC CALL, IN THE TURN**, and its reply made after it. A later
     /// decision that asks for work off the turn (GitHub's token exchange)
     /// does it here, between two calls, each in a turn of its own.
-    fn answer(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied) call.Reply {
-        var ctx: call.Ctx = .{ .req = copied, .arena = arena };
+    fn answer(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied) Answered {
+        var ctx: call.Ctx = .{
+            .req = copied,
+            .arena = arena,
+            .hub = &s.hub,
+            .stub_log = &s.stub_log,
+        };
+        var sub: ?*bus.Subscriber = null;
         const decided = blk: {
             s.turn.lockUncancelable(s.io);
             defer s.turn.unlock(s.io);
@@ -231,11 +268,81 @@ pub const Server = struct {
             defer _ = s.stats.in_turn.fetchSub(1, .acq_rel);
             _ = s.stats.turns.fetchAdd(1, .acq_rel);
             if (s.hold_turn_ms_for_test > 0) io_sleep(s.io, s.hold_turn_ms_for_test);
-            break :blk abi.decide(arena, copied.path, copied.method, .of(&ctx));
+            const d = abi.decide(arena, copied.path, copied.method, .of(&ctx));
+            // **THE BACKLOG AND THE SUBSCRIBE IN ONE TURN**: the Roc read
+            // the stream's backlog in this call, and no post can run until
+            // the turn is let go, so every frame is in the backlog or comes
+            // live, never both and never neither.
+            if (d) |ok| switch (ok) {
+                .stream => |st| sub = s.subscribe(st.key) catch break :blk error.OutOfMemory,
+                else => {},
+            } else |_| {}
+            break :blk d;
         };
-        return call.replyOf(arena, decided, &ctx) catch call.failed;
+        const reply = call.replyOf(arena, decided, &ctx) catch call.failed;
+        return .{ .reply = reply, .sub = sub };
+    }
+
+    fn subscribe(s: *Server, key: []const u8) !*bus.Subscriber {
+        if (s.hold_before_subscribe_ms_for_test > 0) {
+            _ = s.stats.subscribe_holds.fetchAdd(1, .acq_rel);
+            io_sleep(s.io, s.hold_before_subscribe_ms_for_test);
+        }
+        return s.hub.open(key);
+    }
+
+    /// **A HELD STREAM, ON ITS CONNECTION'S OWN TASK**, the connection's
+    /// last answer: the head and the backlog, then each frame published to
+    /// its key, a ping when it is quiet for the keepalive. Each write is
+    /// under the write deadline, so a reader that stops reading is shut.
+    /// It ends when a write fails, when its mailbox missed a frame (the
+    /// browser resumes, with no gap), or when a newer stream takes its slot.
+    fn serveStream(s: *Server, conn: *Conn, req: *std.http.Server.Request, reply: call.Reply, sub: *bus.Subscriber) void {
+        defer s.hub.close(sub);
+        const held = s.slots.hold(s.io, s.limits.streams_most, conn.stream);
+        defer s.slots.letGo(s.io, held);
+        var head_buf: [1024]u8 = undefined;
+        var body = blk: {
+            s.watch.arm(s.io, conn, s.limits.write_ms, .both);
+            defer s.watch.disarm(s.io, conn);
+            break :blk req.respondStreaming(&head_buf, .{ .respond_options = .{
+                .status = reply.status,
+                .keep_alive = false,
+                .transfer_encoding = .none,
+                .extra_headers = reply.headers,
+            } }) catch return;
+        };
+        // The head goes with the backlog, even an empty one: the browser
+        // knows it is connected.
+        if (!s.push(conn, &body, reply.body)) return;
+        while (!sub.hasMissed()) {
+            const frame = switch (sub.next(s.limits.keepalive_ms)) {
+                .msg => |m| m,
+                .idle => null,
+                .canceled => return,
+            };
+            defer if (frame) |f| sub.gpa.free(f);
+            if (!s.push(conn, &body, frame orelse sse.ping)) return;
+        }
+    }
+
+    /// `bytes` written and on the socket, under the write deadline: whether
+    /// they were.
+    fn push(s: *Server, conn: *Conn, body: *std.http.BodyWriter, bytes: []const u8) bool {
+        s.watch.arm(s.io, conn, s.limits.write_ms, .both);
+        defer s.watch.disarm(s.io, conn);
+        // Both flushes: the body's buffer into the connection's, then the
+        // connection's onto the socket.
+        body.writer.writeAll(bytes) catch return false;
+        body.writer.flush() catch return false;
+        body.flush() catch return false;
+        return true;
     }
 };
+
+/// A request's answer, and the subscriber its turn opened when it is a
+/// stream.
+const Answered = struct { reply: call.Reply, sub: ?*bus.Subscriber };
 
 fn io_sleep(io: Io, ms: u32) void {
     Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch {};

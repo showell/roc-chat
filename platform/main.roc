@@ -6,13 +6,16 @@ platform ""
 	requires {
 		handle! : Chat.Request => Chat.Answer
 	}
-	exposes [Chat, Host]
+	exposes [Chat, Host, Sse]
 	packages {}
 	provides { "roc_chat_handle": handle_for_host! }
 	hosted {
+		"roc_chat_publish": Host.publish!,
 		"roc_chat_read_body": Host.read_body!,
 		"roc_chat_read_header": Host.read_header!,
 		"roc_chat_serve_script": Host.serve_script!,
+		"roc_chat_stub_append": Host.stub_append!,
+		"roc_chat_stub_read": Host.stub_read!,
 	}
 	targets: {
 		x64musl: {
@@ -23,6 +26,7 @@ platform ""
 
 import Chat
 import Host
+import Sse
 
 handle_for_host! : Chat.Request => Chat.Answer
 handle_for_host! = |request| handle!(request)

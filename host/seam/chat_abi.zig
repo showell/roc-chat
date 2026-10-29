@@ -7,8 +7,8 @@
 //!
 //! (From roc-webbox src/chat_abi.zig at 5a4314b: `Host.of`, `Host.partly`,
 //! the table made from a host's type, the crash guard and `call`, kept
-//! whole; the records and hosted functions cut to the three roc-chat's
-//! platform has so far, and `Answer` given `headers`.)
+//! whole; the records and hosted functions cut to those roc-chat's
+//! platform has so far, and `Answer` given `headers` and `stream_key`.)
 //!
 //! **THE DECISION LEAVES THE CALL**: `decide` copies what Roc answered into
 //! the caller's allocator and ends the call before it returns, so the host
@@ -51,6 +51,7 @@ pub const Answer = extern struct {
     body: RocBytes,
     content_type: RocBytes,
     headers: HeaderList,
+    stream_key: RocBytes,
     status: u16,
     allow: Method,
     kind: route.Kind,
@@ -61,8 +62,8 @@ pub const Got = extern struct { bytes: RocBytes, status: route.BodyStatus };
 
 comptime {
     const w = @sizeOf(usize);
-    std.debug.assert(@sizeOf(Request) == 4 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 10 * w and @sizeOf(Got) == 4 * w);
-    std.debug.assert(@offsetOf(Answer, "status") == 9 * w and @offsetOf(Answer, "sniff") == 9 * w + 4);
+    std.debug.assert(@sizeOf(Request) == 4 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 13 * w and @sizeOf(Got) == 4 * w);
+    std.debug.assert(@offsetOf(Answer, "status") == 12 * w and @offsetOf(Answer, "sniff") == 12 * w + 4);
 }
 
 pub extern fn roc_chat_handle(req: Request) callconv(.c) Answer;
@@ -89,6 +90,13 @@ const Table = struct {
     /// Host.serve_script!: the script `name` of the chat client's bundles
     /// answered by the host, or `.missing` (nothing answered).
     serve_script: *const fn (*anyopaque, []const u8) route.ScriptServed,
+    /// Host.publish!: a frame to every stream held on a key (host/bus.zig),
+    /// the bytes copied.
+    publish: *const fn (*anyopaque, []const u8, []const u8) void,
+    /// Host.stub_append! and Host.stub_read!: the stub route's frames
+    /// (host/stub_log.zig), until step 6.
+    stub_append: *const fn (*anyopaque, []const u8, []const u8) void,
+    stub_read: *const fn (*anyopaque, []const u8) []const []const u8,
 };
 
 /// **WHAT ANSWERS THE HOSTED FUNCTIONS** during a call: a host's value and
@@ -230,6 +238,18 @@ pub export fn roc_chat_serve_script(name: RocBytes) callconv(.c) route.ScriptSer
     return ask("serve_script", .missing, .{name.slice()});
 }
 
+pub export fn roc_chat_publish(key: RocBytes, frame: RocBytes) callconv(.c) void {
+    ask("publish", {}, .{ key.slice(), frame.slice() });
+}
+
+pub export fn roc_chat_stub_append(key: RocBytes, frame: RocBytes) callconv(.c) void {
+    ask("stub_append", {}, .{ key.slice(), frame.slice() });
+}
+
+pub export fn roc_chat_stub_read(key: RocBytes) callconv(.c) roc.RocBytesList {
+    return .from(ask("stub_read", &.{}, .{key.slice()}));
+}
+
 // ── a crash is a 500 ────────────────────────────────────────────────────────
 
 /// **A ROC CRASH ENDS THE CALL, NOT THE SERVER**: a Roc `crash`, an
@@ -295,6 +315,10 @@ pub fn decide(alloc: std.mem.Allocator, path: []const u8, method: std.http.Metho
         },
         .answered => .answered,
         .not_found => .not_found,
+        .stream => .{ .stream = .{
+            .key = try alloc.dupe(u8, a.stream_key.slice()),
+            .backlog = try alloc.dupe(u8, a.body.slice()),
+        } },
     };
 }
 

@@ -42,12 +42,17 @@ Chat := [].{
 	## - `NotAllowed`: a 405 naming `allow`;
 	## - `Answered`: answered by the host inside the call (a body too big, a
 	##   script), which the host sends;
-	## - `NotFound`: the plain 404.
+	## - `NotFound`: the plain 404;
+	## - `Stream`: an event stream held by the host on the bus key
+	##   `stream_key`, subscribed in this call's turn: `body` first (the
+	##   backlog the Roc read in the same turn), then each frame published to
+	##   the key, verbatim, until the reader goes or falls behind.
 	Kind : [
 		Respond,
 		NotAllowed,
 		Answered,
 		NotFound,
+		Stream,
 	]
 
 	## Whether the browser may guess a type other than `content_type`
@@ -62,6 +67,7 @@ Chat := [].{
 		headers : List(Header),
 		allow : Method,
 		sniff : Sniff,
+		stream_key : List(U8),
 	}
 
 	## The plain "not found", and every other answer's empty fields.
@@ -74,6 +80,7 @@ Chat := [].{
 		headers: [],
 		allow: Other,
 		sniff: Allow,
+		stream_key: [],
 	}
 
 	## The content types the chat answers in.
@@ -118,4 +125,14 @@ Chat := [].{
 	## The host answered inside the call, or failed there.
 	answered : Answer
 	answered = { ..not_found, kind: Answered }
+
+	## The stream on the bus key `key`: `backlog` first (finished frames,
+	## read in this call), then each frame published to `key`.
+	stream : { key : List(U8), backlog : List(U8) } -> Answer
+	stream = |{ key, backlog }| {
+		..not_found,
+		kind: Stream,
+		stream_key: key,
+		body: backlog,
+	}
 }

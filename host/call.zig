@@ -12,6 +12,9 @@ const std = @import("std");
 const abi = @import("seam/chat_abi.zig");
 const route = @import("seam/chat_route.zig");
 const assets = @import("assets.zig");
+const bus = @import("bus.zig");
+const sse = @import("sse.zig");
+const StubLog = @import("stub_log.zig").StubLog;
 
 /// A Roc bug is said on stderr as a warning: the request's 500 is its
 /// failure, and the server goes on.
@@ -73,6 +76,9 @@ pub const Own = union(enum) {
 pub const Ctx = struct {
     req: *const Copied,
     arena: std.mem.Allocator,
+    /// The server's bus, and the stub route's frames (until step 6).
+    hub: *bus.Hub,
+    stub_log: *StubLog,
     own: ?Own = null,
 
     /// Once the host has answered, the Roc's later asks do nothing.
@@ -98,6 +104,18 @@ pub const Ctx = struct {
         c.own = .{ .script = b };
         return .served;
     }
+
+    pub fn publish(c: *Ctx, key: []const u8, frame: []const u8) void {
+        c.hub.publish(key, frame);
+    }
+
+    pub fn stub_append(c: *Ctx, key: []const u8, frame: []const u8) void {
+        c.stub_log.append(key, frame) catch @panic("stub_append: out of memory");
+    }
+
+    pub fn stub_read(c: *Ctx, key: []const u8) []const []const u8 {
+        return c.stub_log.read(key);
+    }
 };
 
 /// What the server writes: a status, its body and its headers.
@@ -105,6 +123,9 @@ pub const Reply = struct {
     status: std.http.Status,
     body: []const u8 = "",
     headers: []const std.http.Header = &.{},
+    /// An event stream: `body` is its backlog, and the server goes on to
+    /// write each frame published to the key it subscribed in the turn.
+    stream: bool = false,
 };
 
 pub const failed: Reply = .{ .status = .internal_server_error, .body = "The server failed to answer.\n" };
@@ -174,6 +195,7 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
                 .script => |b| try scriptReply(arena, b, ctx.req.first("if-none-match")),
             };
         },
+        .stream => |s| return .{ .status = .ok, .body = s.backlog, .headers = &sse.headers, .stream = true },
     }
 }
 
@@ -200,7 +222,9 @@ test "a Roc answer with a refused header is a 500; answered with nothing the hos
     defer arena.deinit();
     const a = arena.allocator();
     const req: Copied = .{ .path = "/", .method = .GET, .headers = &.{} };
-    var ctx: Ctx = .{ .req = &req, .arena = a };
+    var hub = bus.Hub.init(std.testing.io, std.testing.allocator);
+    var stub_log: StubLog = .{ .gpa = std.testing.allocator };
+    var ctx: Ctx = .{ .req = &req, .arena = a, .hub = &hub, .stub_log = &stub_log };
     // The warnings are the point: quiet here.
     std.testing.log_level = .err;
     defer std.testing.log_level = .warn;

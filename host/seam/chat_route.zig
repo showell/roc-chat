@@ -38,6 +38,7 @@ pub const Kind = enum(u8) {
     not_allowed,
     not_found,
     respond,
+    stream,
 };
 
 /// Host.roc's `read_body!` answer's `status`: the body read (its bytes beside
@@ -70,6 +71,9 @@ pub const Decision = union(enum) {
     answered,
     /// The plain 404.
     not_found,
+    /// An event stream on the bus key `key`, subscribed in the call's turn:
+    /// `backlog` first, then each frame published to the key.
+    stream: struct { key: []const u8, backlog: []const u8 },
 
     pub fn format(d: Decision, w: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (d) {
@@ -83,6 +87,7 @@ pub const Decision = union(enum) {
             .not_allowed => |m| try w.print("405 allow {t}", .{m}),
             .answered => try w.writeAll("answered by the host"),
             .not_found => try w.writeAll("404"),
+            .stream => |s| try w.print("stream {s}, {d} bytes of backlog", .{ s.key, s.backlog.len }),
         }
     }
 };
