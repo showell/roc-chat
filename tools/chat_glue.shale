@@ -1,0 +1,47 @@
+-- **ROC GLUE'S SNAPSHOT OF THE CHAT'S SEAM, REGENERATED**: what
+-- host/seam/glue_test.zig holds chat_abi.zig to. Run from roc-chat's root
+-- after any change to platform/ (Host.roc's hosted functions, Chat.roc's
+-- records):
+--   shale tools/chat_glue.shale
+-- No arguments. `roc glue` with the pinned compiler (roc-version) and the
+-- spec from roc's source at the same commit (tools:roc-<commit>, which the
+-- compiler does not ship), into .zig-cache/roc-glue, then `zig fmt` (glue's
+-- output is not formatted as the checks want), then written over
+-- host/seam/glue/chat_platform_abi.zig. Says whether the snapshot changed;
+-- commit it with the change that moved it. (From roc-webbox's
+-- tools/chat_glue.shale, 5a4314b.)
+
+const out_dir = ".zig-cache/roc-glue"
+const snapshot = "host/seam/glue/chat_platform_abi.zig"
+
+if not exists("platform/main.roc") then
+  fail("chat_glue: run it from roc-chat's root (no platform/main.roc here)")
+end
+
+-- The pin, `nightly-<date>-<commit>`, and the compiler on PATH must be it:
+-- glue from another Roc lays out another Roc's records.
+const pin = trim(read("roc-version"))
+local said = must(run({"roc", "version"}, {timeout_ms = 30000, whole = 1000}))
+if find(said.out, pin) == nil then
+  fail("chat_glue: `roc version` says " .. trim(said.out) .. ", roc-version pins " .. pin .. " (tools/get_roc.sh installs it)")
+end
+local parts = split(pin, "-")
+const spec = "tools:roc-" .. parts[#parts] .. "/src/glue/src/ZigGlue.roc"
+if not exists(spec) then
+  fail("chat_glue: no glue spec at " .. spec .. ": check out roc-lang/roc at " .. parts[#parts] .. " as ~/tools/roc-" .. parts[#parts])
+end
+
+if exists(out_dir) then remove_tree(out_dir) end
+mkdir(out_dir)
+must(run({"roc", "glue", real(spec), out_dir, "platform/main.roc"}, {timeout_ms = 120000, tail = 20}))
+const made = out_dir .. "/roc_platform_abi.zig"
+must(run({"zig", "fmt", made}, {timeout_ms = 60000, tail = 20}))
+
+local after = read(made)
+if exists(snapshot) and read(snapshot) == after then
+  print("chat_glue: " .. snapshot .. " unchanged (roc " .. pin .. ")")
+else
+  if not exists("host/seam/glue") then mkdir("host/seam/glue") end
+  replace(snapshot, after)
+  print("chat_glue: " .. snapshot .. " written (roc " .. pin .. "): `zig build test` checks the seam against it")
+end

@@ -1,0 +1,12 @@
+.{
+    .name = .roc_chat,
+    .version = "0.0.0",
+    .fingerprint = 0x86537dd0ce027a22,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{ "build.zig", "build.zig.zon", "roc-version", "app", "platform", "host", "tools", "dev", "README.md" },
+    .dependencies = .{
+        // The chat's browser client (module `chat_client`, its scripts and
+        // their bytes): a sibling checkout, ../chat-client.
+        .chat_client = .{ .path = "../chat-client" },
+    },
+}

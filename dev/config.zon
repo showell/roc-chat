@@ -1,0 +1,8 @@
+// The development server's settings (`zig build serve` runs roc-chat in
+// dev/, and it reads config.zon from its working directory).
+.{
+    .bind = "127.0.0.1",
+    .port = 9480,
+    // The data root, relative to this file's folder: dev/data, ignored by git.
+    .data = "data",
+}
