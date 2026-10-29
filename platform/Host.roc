@@ -133,7 +133,7 @@ Host := [].{
 	## decimal digits, or empty), GitHub's base URL for the authorize page,
 	## the OAuth app's client id, and the chat's public origin.
 	read_config! : [
-		BootstrapAdmin,
+		FirstAdmin,
 		GitHubAuthorize,
 		GitHubClientId,
 		Origin,

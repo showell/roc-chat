@@ -85,59 +85,12 @@ ConvAccess := [].{
 		public_by : List({ human : Principal.GitHubId, generation : Principal.Generation }),
 	}.{
 
-		## A new conversation among `participants` (each once), each bound
-		## to its accounts now, private to every human involved.
-		## `NoParticipants` for none; `NoSuchParticipant` for an id that
-		## exactly one account, and its human, do not hold.
-		start : {
-			id : ConvAccess.ConvId,
-			participants : List(Principal.Id),
-			accounts : List(Principal),
-		} -> Try(
-			ConvAccess.Conv,
-			[NoParticipants, NoSuchParticipant(Principal.Id)],
-		)
-		start = |
-			{
-				id,
-				participants,
-				accounts,
-			},
-		| {
-			once = List.fold(
-				participants,
-				[],
-				|kept, p| if List.contains(kept, p) kept else List.append(kept, p),
-			)
-			bound = List.map_try(
-				once,
-				|p|
-					match Principal.bind(accounts, p) {
-						Ok(b) => Ok(b)
-						Err(_) => Err(NoSuchParticipant(p))
-					},
-			)?
-			if List.is_empty(bound) {
-				Err(NoParticipants)
-			} else {
-				Ok(
-					ConvAccess.Conv.(
-						{
-							id,
-							participants: bound,
-							public_by: [],
-						},
-					),
-				)
-			}
-		}
-
-		## **A CONVERSATION STARTED BY `starter`, WITH `others`**: `start`'s,
-		## and the route's one way in. Each agent or bot named must answer to
+		## **A CONVERSATION STARTED BY `starter`, WITH `others`**: the one way
+		## in, from the routes and the tests alike. Each agent or bot named must answer to
 		## the starter's human (its owner, or the owner's own agent asking):
 		## a stranger never pulls someone's agent into a conversation
 		## (`NotTheOwner`). A human may name any other human.
-		start_by : {
+		start : {
 			id : ConvAccess.ConvId,
 			starter : Principal.Id,
 			others : List(Principal.Id),
@@ -146,7 +99,7 @@ ConvAccess := [].{
 			ConvAccess.Conv,
 			[NoParticipants, NoSuchParticipant(Principal.Id), NotTheOwner(Principal.Id)],
 		)
-		start_by = |{ id, starter, others, accounts }| {
+		start = |{ id, starter, others, accounts }| {
 			human =
 				match Principal.find(accounts, starter) {
 					Ok(p) => Ok(Principal.answers_to(p))
@@ -165,7 +118,7 @@ ConvAccess := [].{
 							}
 					},
 			)?
-			ConvAccess.Conv.start({ id, participants: List.prepend(others, starter), accounts }).map_err(
+			among_bound({ id, participants: List.prepend(others, starter), accounts }).map_err(
 				|e|
 					match e {
 						NoParticipants => NoParticipants
@@ -539,6 +492,55 @@ viewer_in = |who, among|
 		NoViewer => crash "viewer_in: a test's viewer is minted"
 	}
 
+## **THE RAW CONSTRUCTION, NEVER EXPOSED**: a conversation among
+## `participants` (each once), each bound to its accounts now, private to
+## every human involved, with no rule on who started it. Only
+## `Conv.start` (the owner rule first) and this module's tests reach it.
+## `NoParticipants` for none; `NoSuchParticipant` for an id that
+## exactly one account, and its human, do not hold.
+among_bound : {
+	id : ConvAccess.ConvId,
+	participants : List(Principal.Id),
+	accounts : List(Principal),
+} -> Try(
+	ConvAccess.Conv,
+	[NoParticipants, NoSuchParticipant(Principal.Id)],
+)
+among_bound = |
+	{
+		id,
+		participants,
+		accounts: holders,
+	},
+| {
+	once = List.fold(
+		participants,
+		[],
+		|kept, p| if List.contains(kept, p) kept else List.append(kept, p),
+	)
+	bound = List.map_try(
+		once,
+		|p|
+			match Principal.bind(holders, p) {
+				Ok(b) => Ok(b)
+				Err(_) => Err(NoSuchParticipant(p))
+			},
+	)?
+	if List.is_empty(bound) {
+		Err(NoParticipants)
+	} else {
+		Ok(
+			ConvAccess.Conv.(
+				{
+					id,
+					participants: bound,
+					public_by: [],
+				},
+			),
+		)
+	}
+}
+
 ## The one conversation id the tests use.
 first_conv_id : ConvAccess.ConvId
 first_conv_id = ConvAccess.ConvId.from_u64(1) ?? crash "first_conv_id: not 0"
@@ -546,7 +548,7 @@ first_conv_id = ConvAccess.ConvId.from_u64(1) ?? crash "first_conv_id: not 0"
 ## A conversation among the cast.
 among : List(Who) -> ConvAccess.Conv
 among = |people|
-	match ConvAccess.Conv.start({
+	match among_bound({
 		id: first_conv_id,
 		participants: List.map(people, id_of),
 		accounts,
@@ -727,7 +729,7 @@ refused = |conv, who|
 		.map_ok(ConvAccess.Conv.id)
 
 nobody : Try(ConvAccess.ConvId, [NoParticipants, NoSuchParticipant(Principal.Id)])
-nobody = ConvAccess.Conv.start({
+nobody = among_bound({
 	id: first_conv_id,
 	participants: [],
 	accounts,
@@ -741,21 +743,21 @@ expect refused(aa_none, Cal) == Err(NotInvolved)
 expect refused(hb_none, Dee) == Err(NotInvolved)
 expect nobody == Err(NoParticipants)
 # A participant no account holds, or whose owner none does, starts nothing.
-expect ConvAccess.Conv.start({
+expect among_bound({
 	id: first_conv_id,
 	participants: [id_of(Ann), Principal.Id.Agent(Cast.aid(99))],
 	accounts,
 }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(Principal.Id.Agent(Cast.aid(99))))
-expect ConvAccess.Conv.start({
+expect among_bound({
 	id: first_conv_id,
 	participants: [id_of(AnnAgent)],
 	accounts: without(Ann),
 }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(id_of(AnnAgent)))
-# **ONLY ITS OWNER NAMES AN AGENT OR A BOT** (start_by): Ann names her
+# **ONLY ITS OWNER NAMES AN AGENT OR A BOT** (Conv.start): Ann names her
 # own agent and Bea; Cal names Ann's agent and is refused; Ann's agent,
 # starting, names Ann's own; Bea names Bea's bot and not Ann's agent.
 started_by : Who, List(Who) -> Try(ConvAccess.ConvId, [NoParticipants, NoSuchParticipant(Principal.Id), NotTheOwner(Principal.Id)])
-started_by = |starter, others| ConvAccess.Conv.start_by({
+started_by = |starter, others| ConvAccess.Conv.start({
 	id: first_conv_id,
 	starter: id_of(starter),
 	others: List.map(others, id_of),
@@ -768,7 +770,7 @@ expect started_by(Cal, [Ann, Bea]) == Ok(first_conv_id)
 expect started_by(AnnAgent, [Ann]) == Ok(first_conv_id)
 expect started_by(Bea, [BeaBot]) == Ok(first_conv_id)
 expect started_by(Bea, [BeaBot, AnnAgent]) == Err(NotTheOwner(id_of(AnnAgent)))
-expect ConvAccess.Conv.start_by({
+expect ConvAccess.Conv.start({
 	id: first_conv_id,
 	starter: id_of(Ann),
 	others: [Principal.Id.Agent(Cast.aid(99))],

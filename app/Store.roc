@@ -31,6 +31,7 @@
 ## **`Failed` HAS FAILED THE REQUEST** (Host.roc): a caller answers
 ## anything, and the host answers the 500.
 import pf.Host
+import Accounts
 import AccountCodec
 import AuditCodec
 import Cast
@@ -66,9 +67,9 @@ Store := [].{
 	## the barred ids, the generation counter (1 before the first account)
 	## and the agent-id counter. **A STORE FROM BEFORE THE AGENT-ID COUNTER**
 	## (no settings, or a line without `agent=`) reads it as
-	## GitHubSignIn.agent_id_after the accounts, so today's data stays
+	## Accounts.agent_id_after the accounts, so today's data stays
 	## valid; the next save writes it.
-	load_settings! : [Unnamed, Named(Principal.GitHubId)] => Try(GitHubSignIn.Settings, [Failed])
+	load_settings! : [Unnamed, Named(Principal.GitHubId)] => Try(Accounts.Settings, [Failed])
 	load_settings! = |first_admin| {
 		settings_read = Host.read!(settings_path)
 		counters =
@@ -87,7 +88,7 @@ Store := [].{
 				Kept(id) => Ok(id)
 				Unkept => {
 					accounts = Store.load_accounts!({})?
-					GitHubSignIn.agent_id_after(accounts).map_err(|_| Failed)
+					Accounts.agent_id_after(accounts).map_err(|_| Failed)
 				}
 			}
 		barred_read = Host.read!(barred_path)
@@ -157,7 +158,7 @@ Store := [].{
 	## write fails.
 	save_signed_in! : {
 		accounts : List(Principal),
-		settings : GitHubSignIn.Settings,
+		settings : Accounts.Settings,
 		session : SessionCodec.Fields,
 	} => [Failed, Written]
 	save_signed_in! = |
@@ -178,7 +179,7 @@ Store := [].{
 	## when an account will not encode, or a write fails.
 	save_accounts! : {
 		accounts : List(Principal),
-		settings : GitHubSignIn.Settings,
+		settings : Accounts.Settings,
 	} => [Failed, Written]
 	save_accounts! = |{ accounts, settings }|
 		match List.map_try(accounts, AccountCodec.encode) {
@@ -227,14 +228,7 @@ Store := [].{
 	## given twice.
 	load_next_key_id! : {} => Try(Principal.KeyId, [Failed])
 	load_next_key_id! = |{}| {
-		listed = Host.list!(keys_path)
-		count =
-			match listed.status {
-				Missing => Ok(0)
-				Failed => Err(Failed)
-				Found => Ok(List.len(listed.entries))
-			}?
-		Principal.KeyId.from_u64(count + 1).map_err(|_| Failed)
+		Principal.KeyId.from_u64(one_past_count!(keys_path)?).map_err(|_| Failed)
 	}
 
 	## A key written: minted, or revoked.
@@ -281,14 +275,7 @@ Store := [].{
 	## is given twice.
 	load_next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
 	load_next_invite_id! = |{}| {
-		listed = Host.list!(invites_path)
-		count =
-			match listed.status {
-				Missing => Ok(0)
-				Failed => Err(Failed)
-				Found => Ok(List.len(listed.entries))
-			}?
-		InviteCodec.InviteId.from_u64(count + 1).map_err(|_| Failed)
+		InviteCodec.InviteId.from_u64(one_past_count!(invites_path)?).map_err(|_| Failed)
 	}
 
 	## An invite written: made, spent or revoked.
@@ -301,14 +288,7 @@ Store := [].{
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
 	load_next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
 	load_next_conversation_id! = |{}| {
-		listed = Host.list!(conversations_path)
-		count =
-			match listed.status {
-				Missing => Ok(0)
-				Failed => Err(Failed)
-				Found => Ok(List.len(listed.entries))
-			}?
-		ConvAccess.ConvId.from_u64(count + 1).map_err(|_| Failed)
+		ConvAccess.ConvId.from_u64(one_past_count!(conversations_path)?).map_err(|_| Failed)
 	}
 
 	## The conversation `id`: `Missing` when there is none, and `Failed`
@@ -591,7 +571,7 @@ expect spent_path(Pending, [0x01]) == Str.to_utf8("auth/spent/pending/01")
 ## and the id the next agent or bot is given.
 ##
 ##     settings v1 next=3 agent=8
-settings_line : GitHubSignIn.Settings -> List(U8)
+settings_line : Accounts.Settings -> List(U8)
 settings_line = |settings| Stored.line(
 	"settings",
 	[
@@ -679,3 +659,16 @@ barred_ids = [Cast.gid(7), Cast.gid(583231)]
 expect barred_of(List.join_map(barred_ids, barred_line)) == Ok(barred_ids)
 expect barred_of([]) == Ok([])
 expect barred_of(Str.to_utf8("barred v1 github=x\n")) == Err(BadNumber("github"))
+
+## **ONE PAST THE COUNT OF A FOLDER'S ENTRIES**: the next id of a record that
+## is never removed (a key, an invite, a conversation), so no id is given
+## twice; 1 for a folder not made yet.
+one_past_count! : List(U8) => Try(U64, [Failed])
+one_past_count! = |folder| {
+	listed = Host.list!(folder)
+	match listed.status {
+		Missing => Ok(1)
+		Failed => Err(Failed)
+		Found => Ok(List.len(listed.entries) + 1)
+	}
+}

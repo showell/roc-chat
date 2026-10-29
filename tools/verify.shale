@@ -205,9 +205,9 @@ plant("the Bearer header winning over the cookie when both are sent",
 plant("an invite redeemable twice (its spending never written)",
   "app/Agents.roc", "Store.save_invite!({ ..invite, state: Spent })", "Store.save_invite!(invite)", 23)
 plant("an expired invite accepted (its expiry never read)",
-  "app/Agents.roc", "Live if now < invite.created or now >= invite.expires => Err(Expired)", "Live if now < invite.created => Err(Expired)", 24)
+  "app/Agents.roc", "Live => now >= invite.created and now < invite.expires", "Live => now >= invite.created", 24)
 plant("an agent's id taken from the accounts again, a retired one's reused",
-  "app/GitHubSignIn.roc", "this = settings.next_agent_id", "this = if settings.next_agent_id.to_u64() > 0 GitHubSignIn.agent_id_after(accounts)? else settings.next_agent_id", 29)
+  "app/Accounts.roc", "this = settings.next_agent_id", "this = if settings.next_agent_id.to_u64() > 0 Accounts.agent_id_after(accounts)? else settings.next_agent_id", 29)
 plant("a key allowed to make an invite (the grant's GrantedByKey let by)",
   "app/Agents.roc", "Refused(why) => Err(Refused(why))\n\t\t\tGrantable =>", "Refused(why) if why != GrantedByKey => Err(Refused(why))\n\t\t\t_ =>", 26)
 

@@ -395,7 +395,7 @@ test "streams: a stalled stream takes 16 more frames and keeps going; the 17th e
 test "streams: a quiet stream pings at the configured keepalive" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
-    const r = try Running.start(.{ .keepalive_ms = 150 });
+    const r = try Running.start(.{ .stream_ping_ms = 150 });
     defer r.stop();
     const l = try Listener.open(arena.allocator(), r.port(), "quiet", 0);
     defer l.close();

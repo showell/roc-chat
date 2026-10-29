@@ -44,6 +44,7 @@
 ## **THE ONLY RETIREMENT**: this core's plan is the only way an account is
 ## retired; a retire that knows nothing of generations, bars, agents' keys
 ## or votes would leave the plan half done.
+import Accounts
 import ApiKey
 import Cast
 import GitHubSignIn
@@ -111,8 +112,8 @@ Admin := [].{
 		## own session.
 		NeedsSession,
 
-		## The action would demote or retire the bootstrap admin.
-		BootstrapAdmin,
+		## The action would demote or retire the first admin.
+		FirstAdmin,
 
 		## The action's plan would leave no admin among the accounts.
 		LastAdmin,
@@ -172,7 +173,7 @@ Admin := [].{
 	## retire the actor or the admin behind it, nor set their own role; by
 	## a key, it must not touch an admin or an admin's agent or bot, nor set
 	## a role, nor lift a bar. Then its plan must be one: its target an
-	## account, never the bootstrap admin demoted or
+	## account, never the first admin demoted or
 	## retired, and some admin left once the plan is applied to the
 	## snapshot. A clock outside Stored's range decides nothing
 	## (`ClockOutOfRange`): its audit could not be stored.
@@ -180,7 +181,7 @@ Admin := [].{
 		credential : Admin.Credential(r, id),
 		action : Admin.Action,
 		accounts : List(Principal),
-		settings : GitHubSignIn.Settings,
+		settings : Accounts.Settings,
 		now : I64,
 	} -> Try(Admin.Decision, [ClockOutOfRange])
 	decide = |
@@ -214,8 +215,8 @@ Admin := [].{
 	applied : List(Admin.Step),
 	{
 		accounts : List(Principal),
-		settings : GitHubSignIn.Settings,
-	} -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
+		settings : Accounts.Settings,
+	} -> { accounts : List(Principal), settings : Accounts.Settings }
 	applied = |plan, start|
 		List.fold(
 			plan,
@@ -263,7 +264,7 @@ decided_now : {
 	credential : Admin.Credential(r, id),
 	action : Admin.Action,
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 	now : I64,
 } -> Admin.Decision
 decided_now = |
@@ -358,15 +359,15 @@ authorized = |
 	}
 
 ## **THE PLAN OF A PERMITTED ACTION**, or why it has none: a target that
-## is no account, the bootstrap admin demoted or retired, a bar not there,
+## is no account, the first admin demoted or retired, a bar not there,
 ## or no admin left.
 planned : Admin.Action,
 {
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 } -> Try(List(Admin.Step), Admin.Refusal)
 planned = |action, { accounts, settings }| {
-	is_bootstrap = |human|
+	is_first_admin = |human|
 		match settings.first_admin {
 			Named(first) => first == human
 			Unnamed => Bool.False
@@ -379,7 +380,7 @@ planned = |action, { accounts, settings }| {
 			SetRole({ human, role }) =>
 				match (Principal.human_account(accounts, human), role) {
 					(Err(_), _) => Err(NoSuchTarget)
-					(Ok(_), Member) if is_bootstrap(human) => Err(BootstrapAdmin)
+					(Ok(_), Member) if is_first_admin(human) => Err(FirstAdmin)
 					(Ok(_), _) => Ok([SetRole({ human, role })])
 				}
 
@@ -387,8 +388,8 @@ planned = |action, { accounts, settings }| {
 				match Principal.find(accounts, target) {
 					Err(_) => Err(NoSuchTarget)
 					Ok(Human(h)) =>
-						if is_bootstrap(h.id) {
-							Err(BootstrapAdmin)
+						if is_first_admin(h.id) {
+							Err(FirstAdmin)
 						} else {
 							Ok(retirement(h.id, accounts))
 						}
@@ -496,7 +497,7 @@ is_admins = |accounts, target|
 	}
 
 # The cast:
-#   boss        an admin human, and the bootstrap admin
+#   boss        an admin human, and the first admin
 #   ann         a member human
 #   cal         another admin human
 #   boss_agent  an agent boss owns, with an admin-only key
@@ -523,8 +524,8 @@ accounts = [
 	cal_agent,
 ]
 
-## Boss is the bootstrap admin; GitHub id 66 is barred.
-settings : GitHubSignIn.Settings
+## Boss is the first admin; GitHub id 66 is barred.
+settings : Accounts.Settings
 settings = {
 	first_admin: Named(Cast.gid(1)),
 	barred: [Cast.gid(66)],
@@ -668,7 +669,7 @@ decision : {
 	credential : Admin.Credential(Str, Str),
 	action : Admin.Action,
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 	now : I64,
 } -> Admin.Decision
 decision = |request|
@@ -861,13 +862,13 @@ expect verdict(boss_agent_key, RevokeSessions(Cast.gid(4))) == Refused(NeedsSess
 expect verdict(boss_agent_key, RevokeKeys(Principal.Id.Agent(Cast.aid(9)))) == Permitted
 
 # ── THE BOOTSTRAP ADMIN, AND THE SNAPSHOT (the round-two attacker's ninth)
-# Boss is the bootstrap admin: cal, another admin, can neither demote nor
+# Boss is the first admin: cal, another admin, can neither demote nor
 # retire boss; cal can promote and demote anyone else, and boss cal.
-expect verdict(cal_session, retire_boss) == Refused(BootstrapAdmin)
+expect verdict(cal_session, retire_boss) == Refused(FirstAdmin)
 expect verdict(
 	cal_session,
 	SetRole({ human: Cast.gid(1), role: Member }),
-) == Refused(BootstrapAdmin)
+) == Refused(FirstAdmin)
 expect verdict(cal_session, SetRole({ human: Cast.gid(1), role: Admin })) == Permitted
 expect verdict(cal_session, promote_ann) == Permitted
 expect verdict(cal_session, RevokeSessions(Cast.gid(1))) == Permitted
@@ -878,7 +879,7 @@ expect verdict(boss_session, SetRole({ human: Cast.gid(99), role: Admin })) == R
 expect verdict(boss_session, Retire(Principal.Id.Human(Cast.gid(99)))) == Refused(NoSuchTarget)
 expect verdict(boss_session, Retire(Principal.Id.Agent(Cast.aid(99)))) == Refused(NoSuchTarget)
 
-# **TWO ADMINS RETIRING EACH OTHER**: with no bootstrap admin named, each
+# **TWO ADMINS RETIRING EACH OTHER**: with no first admin named, each
 # retirement is allowed against the same snapshot (one admin is left by
 # each). The host applies plans one at a time, each decided against the
 # accounts the last left: once boss's plan is applied, cal's session
@@ -927,13 +928,13 @@ expect verdict_among(
 	retire_boss,
 	after_boss_retired_cal,
 ) == Refused(NoSuchPrincipal)
-# And with boss the bootstrap admin, cal's retirement of boss is refused
+# And with boss the first admin, cal's retirement of boss is refused
 # against the snapshot itself.
 expect verdict_among(
 	cal_session,
 	retire_boss,
 	two_admins,
-) == Refused(BootstrapAdmin)
+) == Refused(FirstAdmin)
 
 # **NO PLAN LEAVES NO ADMIN**: the backstop, on plans no actor reaches
 # through the checks above (an admin cannot retire or demote themselves).
@@ -1001,7 +1002,7 @@ expect List.last(ann_retired) == Ok(RemoveAccount(Principal.id(Cast.ann)))
 # **A PLAN APPLIED AGAIN AFTER A CRASH IS SAFE**: every prefix of the plan
 # (the crash), then the whole plan (the re-run), leaves what the plan once
 # does: the same accounts, ann barred once.
-once : { accounts : List(Principal), settings : GitHubSignIn.Settings }
+once : { accounts : List(Principal), settings : Accounts.Settings }
 once = Admin.applied(ann_retired, { accounts, settings })
 
 expect once.settings.barred == [Cast.gid(66), Cast.gid(2)]

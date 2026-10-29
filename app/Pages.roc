@@ -364,7 +364,7 @@ expect Pages.route(Str.to_utf8("/chat/07")).is_err()
 expect Pages.route(Str.to_utf8("/chat/7/x")).is_err()
 expect Pages.route(Str.to_utf8("/chatx")).is_err()
 # The one thing a page's script sets as HTML is a message's, from the stream.
-expect Str.count_utf8_bytes(conversation_js) > 0 and Str.contains(
+expect Str.contains(
 	conversation_js,
 	"b.innerHTML = m.html;",
 ) and !Str.contains(list_js, "innerHTML")

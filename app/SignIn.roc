@@ -6,6 +6,7 @@
 ## nothing else).
 import pf.Chat
 import pf.Host
+import Accounts
 import AccountCodec
 import AuditCodec
 import GitHubSignIn
@@ -15,6 +16,7 @@ import Session
 import SignInWeb
 import Store
 import Stored
+import Wire
 
 SignIn := [].{
 
@@ -24,7 +26,7 @@ SignIn := [].{
 	login! : {} => Chat.Answer
 	login! = |{}| {
 		now = Host.read_time!({})
-		match GitHubSignIn.Started.start({ nonce: Host.random_bytes!(nonce_bytes), now }) {
+		match GitHubSignIn.Started.start({ nonce: Host.random_bytes!(Wire.secret_bytes), now }) {
 			Err(WeakNonce) => Chat.failed
 			Ok(started) => {
 				fields = started.state()
@@ -131,7 +133,7 @@ SignIn := [].{
 
 	## **THE SETTINGS NOW**: the store's, with the first admin the config
 	## names. What a sign-in and an agent's making decide on.
-	load_settings! : {} => Try(GitHubSignIn.Settings, [Failed])
+	load_settings! : {} => Try(Accounts.Settings, [Failed])
 	load_settings! = |{}| Store.load_settings!(load_first_admin!({})?)
 
 	## **/me**: the session this browser's cookie names, admitted or not
@@ -139,32 +141,17 @@ SignIn := [].{
 	me! : {} => Chat.Answer
 	me! = |{}| {
 		now = Host.read_time!({})
-		match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
-			Unsent => not_signed_in
-			Sent(value) =>
-				match SignInWeb.unhex(value) {
-					Err(NotHex) => not_signed_in
-					Ok(secret) =>
-						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
-							Err(NotAHash) => Chat.failed
-							Ok(token_hash) =>
-								match Store.load_session!(token_hash) {
-									Err(Failed) => Chat.failed
-									Err(Missing) => not_signed_in
-									Err(Malformed) => not_signed_in
-									Ok(line) =>
-										match Store.load_accounts!({}) {
-											Err(Failed) => Chat.failed
-											Ok(accounts) => admitted!(
-												Session.load(line),
-												{ accounts, now },
-											)
-										}
-								}
-						}
+		match SignIn.cookie_session!({}) {
+			Err(Failed) => Chat.failed
+			Ok(NoSession) => not_signed_in
+			Ok(Found(session)) =>
+				match Store.load_accounts!({}) {
+					Err(Failed) => Chat.failed
+					Ok(accounts) => admitted!(session, { accounts, now })
 				}
 		}
 	}
+
 }
 
 ## The session admitted against the accounts, or not; its `last seen`
@@ -187,13 +174,6 @@ admitted! = |session, as_of|
 		}
 	}
 
-## A state's nonce, and a session's secret: the OS's entropy.
-nonce_bytes : U64
-nonce_bytes = 32
-
-## The most of the name form's body.
-form_most : U64
-form_most = 4 * 1024
 
 came_back! : Chat.Request => Try(Chat.Answer, GitHubSignIn.Refusal)
 came_back! = |req| {
@@ -279,7 +259,7 @@ came_back! = |req| {
 
 named! : {} => Try(Chat.Answer, GitHubSignIn.Refusal)
 named! = |{}| {
-	got = Host.read_body!(form_most)
+	got = Host.read_body!(Wire.form_most)
 	match got.status {
 		Answered => Ok(Chat.answered)
 		Read => {
@@ -329,17 +309,17 @@ named! = |{}| {
 	}
 }
 
-## **SIGNED IN**: the plan's steps applied (GitHubSignIn.applied: the
+## **SIGNED IN**: the plan's steps applied (Accounts.applied: the
 ## settings' counter, then the accounts), the session started
 ## (Session.start), all three stored, and the session cookie set; the
 ## state and pending cookies ended.
 signed_in! : Facts,
 {
 	admission : GitHubSignIn.Admission,
-	steps : List(GitHubSignIn.Step),
+	steps : List(Accounts.Change),
 } => Chat.Answer
 signed_in! = |f, { admission, steps }| {
-	after = GitHubSignIn.applied(steps, { accounts: f.accounts, settings: f.settings })
+	after = Accounts.applied(steps, { accounts: f.accounts, settings: f.settings })
 	session = Session.start(admission)
 	match Store.save_signed_in!({
 		accounts: after.accounts,
@@ -467,7 +447,7 @@ verified! = |
 ## secret's hash).
 Facts : {
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 	session : GitHubSignIn.NewSession,
 	secret : List(U8),
 }
@@ -476,7 +456,7 @@ facts! : {} => Try(Facts, [Failed])
 facts! = |{}| {
 	accounts = Store.load_accounts!({})?
 	settings = SignIn.load_settings!({})?
-	secret = Host.random_bytes!(nonce_bytes)
+	secret = Host.random_bytes!(Wire.secret_bytes)
 	id = Principal.SessionId.from_u64(SignInWeb.u64_of(Host.random_bytes!(8))).map_err(|_| Failed)?
 	token_hash = Stored.SecretHash.from_bytes(Host.hash!(secret)).map_err(|_| Failed)?
 	Ok({
@@ -490,7 +470,7 @@ facts! = |{}| {
 ## The first admin the config names, if it names one.
 load_first_admin! : {} => Try([Unnamed, Named(Principal.GitHubId)], [Failed])
 load_first_admin! = |{}| {
-	admin = Host.read_config!(BootstrapAdmin)
+	admin = Host.read_config!(FirstAdmin)
 	if admin == [] {
 		Ok(Unnamed)
 	} else {

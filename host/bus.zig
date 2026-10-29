@@ -42,20 +42,20 @@ pub const Subscriber = struct {
 
     pub const Next = union(enum) {
         /// An owned frame: the caller frees it with `gpa`.
-        msg: []u8,
+        frame: []u8,
         /// Nothing within the keepalive: a ping is due.
         idle,
         /// The stream's task was canceled (the server stopping).
         canceled,
     };
 
-    /// A copy of `msg` queued, or `missed` set; never a wait.
-    fn push(s: *Subscriber, msg: []const u8) void {
+    /// A copy of `frame` queued, or `missed` set; never a wait.
+    fn push(s: *Subscriber, frame: []const u8) void {
         {
             s.mutex.lockUncancelable(s.io);
             defer s.mutex.unlock(s.io);
             if (s.count < cap) {
-                if (s.gpa.dupe(u8, msg)) |copy| {
+                if (s.gpa.dupe(u8, frame)) |copy| {
                     s.ring[(s.head + s.count) % cap] = copy;
                     s.count += 1;
                 } else |_| s.missed = true;
@@ -84,15 +84,15 @@ pub const Subscriber = struct {
         return s.missed;
     }
 
-    /// The oldest frame, waiting for one at most `keepalive_ms`. A spurious
+    /// The oldest frame, waiting for one at most `stream_ping_ms`. A spurious
     /// wake is an early `.idle`: one more ping, harmless.
-    pub fn next(s: *Subscriber, keepalive_ms: u32) Next {
-        if (s.take()) |m| return .{ .msg = m };
+    pub fn next(s: *Subscriber, stream_ping_ms: u32) Next {
+        if (s.take()) |m| return .{ .frame = m };
         const expected = s.seq.load(.acquire);
         s.io.futexWaitTimeout(u32, &s.seq.raw, expected, .{
-            .duration = .{ .raw = .fromMilliseconds(keepalive_ms), .clock = .awake },
+            .duration = .{ .raw = .fromMilliseconds(stream_ping_ms), .clock = .awake },
         }) catch return .canceled;
-        if (s.take()) |m| return .{ .msg = m };
+        if (s.take()) |m| return .{ .frame = m };
         return .idle;
     }
 
@@ -149,12 +149,12 @@ pub const Hub = struct {
         h.gpa.destroy(sub);
     }
 
-    /// `msg` to every subscriber on `key`, each its own copy. The caller's
+    /// `frame` to every subscriber on `key`, each its own copy. The caller's
     /// bytes are not kept.
-    pub fn publish(h: *Hub, key: []const u8, msg: []const u8) void {
+    pub fn publish(h: *Hub, key: []const u8, frame: []const u8) void {
         h.mutex.lockUncancelable(h.io);
         defer h.mutex.unlock(h.io);
-        for (h.entries.items) |e| if (std.mem.eql(u8, e.key, key)) e.sub.push(msg);
+        for (h.entries.items) |e| if (std.mem.eql(u8, e.key, key)) e.sub.push(frame);
     }
 
     /// How many subscribers there are, for tests.
@@ -173,13 +173,13 @@ pub const Hub = struct {
 
 const testing = std.testing;
 
-fn expectMsg(sub: *Subscriber, want: []const u8) !void {
+fn expectFrame(sub: *Subscriber, want: []const u8) !void {
     switch (sub.next(1)) {
-        .msg => |m| {
+        .frame => |m| {
             defer testing.allocator.free(m);
             try testing.expectEqualStrings(want, m);
         },
-        else => return error.TestExpectedMsg,
+        else => return error.TestExpectedFrame,
     }
 }
 
@@ -193,12 +193,12 @@ test "bus: publish reaches every subscriber on its key, each its own copy, and n
     hub.publish("room", &frame);
     // The publisher's bytes are not kept.
     frame = "xx".*;
-    try expectMsg(a1, "hi");
-    try expectMsg(a2, "hi");
+    try expectFrame(a1, "hi");
+    try expectFrame(a2, "hi");
     try testing.expectEqual(0, other.count);
     hub.close(a1);
     hub.publish("room", "still here");
-    try expectMsg(a2, "still here");
+    try expectFrame(a2, "still here");
     hub.close(a2);
     hub.close(other);
     try testing.expectEqual(0, hub.count());
@@ -214,7 +214,7 @@ test "bus: a full mailbox keeps its oldest 16 in order and marks the 17th missed
     try testing.expect(!sub.hasMissed());
     hub.publish("k", "one too many");
     try testing.expect(sub.hasMissed());
-    for (0..Subscriber.cap) |n| try expectMsg(sub, try std.fmt.bufPrint(&buf, "{d}", .{n}));
+    for (0..Subscriber.cap) |n| try expectFrame(sub, try std.fmt.bufPrint(&buf, "{d}", .{n}));
 }
 
 test "bus: an empty mailbox answers idle at its keepalive, not before" {

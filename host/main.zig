@@ -39,7 +39,7 @@ pub fn main(init: std.process.Init) !void {
         .secrets = held,
         .github = c.github,
         .origin = c.origin,
-        .bootstrap_admin = if (c.bootstrap_admin) |id| try std.fmt.allocPrint(arena, "{d}", .{id}) else "",
+        .first_admin = if (c.bootstrap_admin) |id| try std.fmt.allocPrint(arena, "{d}", .{id}) else "",
     };
     const addr = try std.Io.net.IpAddress.parse(c.bind, c.port);
     var s = try server.Server.init(io, init.gpa, addr, .{}, data);

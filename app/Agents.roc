@@ -40,6 +40,7 @@
 ## audited; a refusal is one 401 that says no more.
 import pf.Chat
 import pf.Host
+import Accounts
 import AccountCodec
 import Admin
 import ApiKey
@@ -133,15 +134,16 @@ Agents := [].{
 			RevokeInvite(id) => if req.method == Post revoke_invite!(id) else Chat.not_allowed(Post)
 		}
 
-	## Who asks to make an agent: the credential the request came with.
-	Maker : ApiKey.Granter(ConvAccess.Conv, ConvAccess.ConvId)
+	## Who asks to make an agent, mint, invite or revoke: the credential the
+	## request came with, as ApiKey's grants take it.
+	Granter : ApiKey.Granter(ConvAccess.Conv, ConvAccess.ConvId)
 
 	## **WHAT MAKING AN AGENT DECIDED**: the agent and the steps that store
-	## it; the name refused (DisplayName's rule); the maker refused, as a
+	## it; the name refused (DisplayName's rule); the granter refused, as a
 	## grant is (only a live session, never a key); or a counter that cannot
 	## give a fresh id or generation.
 	Made : [
-		Made({ agent : Principal, steps : List(GitHubSignIn.Step) }),
+		Made({ agent : Principal, steps : List(Accounts.Change) }),
 		NameRefused(DisplayName.Problem),
 		Refused(
 			[
@@ -168,20 +170,20 @@ Agents := [].{
 
 	## **MAKE AN AGENT**: owned by the human a live session signs in, named
 	## by DisplayName's rule, with the settings' next agent id
-	## (GitHubSignIn.next_agent_id: never given twice, not even a retired
-	## agent's) and next generation (GitHubSignIn.next_generation); the
+	## (Accounts.next_agent_id: never given twice, not even a retired
+	## agent's) and next generation (Accounts.next_generation); the
 	## steps advance both counters first, then add the account, for
-	## GitHubSignIn.applied, as a sign-up's do.
+	## Accounts.applied, as a sign-up's do.
 	make : {
-		maker : Agents.Maker,
+		granter : Agents.Granter,
 		name : List(U8),
 		accounts : List(Principal),
-		settings : GitHubSignIn.Settings,
+		settings : Accounts.Settings,
 		now : I64,
 	} -> Agents.Made
 	make = |
 		{
-			maker,
+			granter,
 			name,
 			accounts,
 			settings,
@@ -191,7 +193,7 @@ Agents := [].{
 		if now < 0 or now > Stored.max_time {
 			Refused(ClockOutOfRange)
 		} else {
-			match maker {
+			match granter {
 				Key(_) => Refused(GrantedByKey)
 				Session(session) =>
 					match session.admit({ accounts, now }) {
@@ -203,8 +205,8 @@ Agents := [].{
 								Below =>
 									match (
 										DisplayName.from_utf8(name),
-										GitHubSignIn.next_generation(accounts, settings),
-										GitHubSignIn.next_agent_id(accounts, settings),
+										Accounts.next_generation(accounts, settings),
+										Accounts.next_agent_id(accounts, settings),
 									) {
 										(
 											Err(problem),
@@ -254,7 +256,7 @@ Agents := [].{
 	## and the key's lifetime one a mint may give. The agent, bound to its
 	## accounts as they are now.
 	invited : {
-		granter : Agents.Maker,
+		granter : Agents.Granter,
 		acts_as : Principal.Id,
 		scope : ApiKey.Scope(ConvAccess.ConvId),
 		lifetime : I64,
@@ -295,7 +297,7 @@ Agents := [].{
 	## is the invite's, as the store holds it now: `Gone` when it holds none.
 	redeemed : {
 		invite : InviteCodec.Record(ConvAccess.ConvId),
-		granter : [Found(Agents.Maker), Gone],
+		granter : [Found(Agents.Granter), Gone],
 		accounts : List(Principal),
 		now : I64,
 		key : Principal.KeyId,
@@ -312,7 +314,7 @@ Agents := [].{
 		match invite.state {
 			Spent => Err(Spent)
 			Revoked => Err(Revoked)
-			Live if now < invite.created or now >= invite.expires => Err(Expired)
+			Live if !is_live(invite, now) => Err(Expired)
 			Live =>
 				match (Principal.holds(accounts, invite.bound), granter) {
 					(Err(_), _) => Err(NoLongerHolds)
@@ -357,15 +359,6 @@ Agents := [].{
 		}
 }
 
-## The most of a form's body.
-form_most : U64
-form_most = 4 * 1024
-
-## A key's secret: the OS's entropy, as a session's is. An invite's code
-## is as many.
-secret_bytes : U64
-secret_bytes = 32
-
 ## **AN INVITE LIVES TEN MINUTES** (Steve): long enough to hand the code
 ## to an agent in the sitting it was made in, short enough that a code
 ## left in a chat log, a terminal's scrollback or a shell's history is
@@ -375,24 +368,31 @@ secret_bytes = 32
 invite_lifetime_secs : I64
 invite_lifetime_secs = 600
 
-## **/agents**: an agent made, from a session; stored, and answered.
-make_agent! : {} => Chat.Answer
-make_agent! = |{}| {
-	got = Host.read_body!(form_most)
+## **THE GRANT ROUTES' ONE PROLOGUE**: the form read and the credential
+## presented; nobody, a 401; a session or a key handed to `then!` as the
+## granter, with the form and who a grant acts as by default (the human, or
+## the key's own principal). Whether that granter may is the route's.
+granter_form! : (Agents.Granter, { default_as : Principal.Id, form : List(U8) } => Chat.Answer) => Chat.Answer
+granter_form! = |then!| {
+	got = Host.read_body!(Wire.form_most)
 	match got.status {
 		Answered => Chat.answered
 		Read =>
 			match Credentials.presented!({}) {
 				Err(answer) => answer
-				Ok(Nobody) => signed_out
-				Ok(Session(s)) => made_by!(Session(s), got.bytes)
-				Ok(Key(k)) => made_by!(Key(k), got.bytes)
+				Ok(Nobody) => not_signed_in
+				Ok(Session(s)) => then!(Session(s), { default_as: Principal.Id.Human(s.human()), form: got.bytes })
+				Ok(Key(k)) => then!(Key(k), { default_as: k.acts_as(), form: got.bytes })
 			}
 	}
 }
 
-made_by! : Agents.Maker, List(U8) => Chat.Answer
-made_by! = |maker, form| {
+## **/agents**: an agent made, from a session; stored, and answered.
+make_agent! : {} => Chat.Answer
+make_agent! = |{}| granter_form!(|granter, asked| made_by!(granter, asked.form))
+
+made_by! : Agents.Granter, List(U8) => Chat.Answer
+made_by! = |granter, form| {
 	now = Host.read_time!({})
 	name =
 		match SignInWeb.form_field(form, "name") {
@@ -402,7 +402,7 @@ made_by! = |maker, form| {
 	match (Store.load_accounts!({}), SignIn.load_settings!({})) {
 		(Ok(accounts), Ok(settings)) =>
 			match Agents.make({
-				maker,
+				granter,
 				name,
 				accounts,
 				settings,
@@ -414,7 +414,7 @@ made_by! = |maker, form| {
 				Stuck(_) => Chat.failed
 				Refused(why) => {
 					audit_grant!(
-						maker,
+						granter,
 						{
 							acts_as: Principal.Id.Agent(settings.next_agent_id),
 							refusal: why,
@@ -425,7 +425,7 @@ made_by! = |maker, form| {
 				}
 				Made({ agent, steps }) =>
 					match Store.save_accounts!(
-						GitHubSignIn.applied(
+						Accounts.applied(
 							steps,
 							{ accounts, settings },
 						),
@@ -438,27 +438,12 @@ made_by! = |maker, form| {
 	}
 }
 
-## **/keys, POST**: a key minted, from a session, for the session's human
-## or one of their agents or bots (ApiKey decides); its secret shown once.
+## **/keys, POST**: a key minted, from a session, for the session's human;
+## an agent's key comes from an invite. Its secret shown once.
 mint! : {} => Chat.Answer
-mint! = |{}| {
-	got = Host.read_body!(form_most)
-	match got.status {
-		Answered => Chat.answered
-		Read =>
-			match Credentials.presented!({}) {
-				Err(answer) => answer
-				Ok(Nobody) => signed_out
-				Ok(Session(s)) => minted!(
-					Session(s),
-					{ default_as: Principal.Id.Human(s.human()), form: got.bytes },
-				)
-				Ok(Key(k)) => minted!(Key(k), { default_as: k.acts_as(), form: got.bytes })
-			}
-	}
-}
+mint! = |{}| granter_form!(minted!)
 
-minted! : Agents.Maker, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
+minted! : Agents.Granter, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
 minted! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
@@ -483,7 +468,7 @@ minted! = |granter, { default_as, form }|
 			now = Host.read_time!({})
 			match (Store.load_accounts!({}), Store.load_next_key_id!({})) {
 				(Ok(accounts), Ok(id)) => {
-					secret = Host.random_bytes!(secret_bytes)
+					secret = Host.random_bytes!(Wire.secret_bytes)
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 						Err(NotAHash) => Chat.failed
 						Ok(hash) =>
@@ -522,7 +507,7 @@ minted! = |granter, { default_as, form }|
 	}
 
 ## Whether the granter is a session.
-is_session : Agents.Maker -> Bool
+is_session : Agents.Granter -> Bool
 is_session = |granter|
 	match granter {
 		Session(_) => Bool.True
@@ -540,24 +525,9 @@ is_human = |id|
 ## **/invites, POST**: an invite, from a session, for one of its agents or
 ## bots (Agents.invited decides); its code shown once.
 invite! : {} => Chat.Answer
-invite! = |{}| {
-	got = Host.read_body!(form_most)
-	match got.status {
-		Answered => Chat.answered
-		Read =>
-			match Credentials.presented!({}) {
-				Err(answer) => answer
-				Ok(Nobody) => signed_out
-				Ok(Session(s)) => invited_by!(
-					Session(s),
-					{ default_as: Principal.Id.Human(s.human()), form: got.bytes },
-				)
-				Ok(Key(k)) => invited_by!(Key(k), { default_as: k.acts_as(), form: got.bytes })
-			}
-	}
-}
+invite! = |{}| granter_form!(invited_by!)
 
-invited_by! : Agents.Maker, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
+invited_by! : Agents.Granter, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
 invited_by! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
@@ -603,7 +573,7 @@ invited_by! = |granter, { default_as, form }|
 							grant_refused(why)
 						}
 						Ok(bound) => {
-							code = Host.random_bytes!(secret_bytes)
+							code = Host.random_bytes!(Wire.secret_bytes)
 							match Stored.SecretHash.from_bytes(Host.hash!(code)) {
 								Err(NotAHash) => Chat.failed
 								Ok(hash) => {
@@ -640,7 +610,7 @@ invited_by! = |granter, { default_as, form }|
 
 ## **THE GRANTER BY ITS STORED HASH**: a session's cookie's, a key's
 ## Bearer secret's, as the store keeps each.
-granter_hash! : Agents.Maker => Try(InviteCodec.By, [Failed])
+granter_hash! : Agents.Granter => Try(InviteCodec.By, [Failed])
 granter_hash! = |granter|
 	match granter {
 		Session(s) => Ok(Session(s.fields().token_hash))
@@ -653,7 +623,7 @@ granter_hash! = |granter|
 
 ## The session or key an invite was made by, by its public id, for its
 ## audit line.
-via_of : Agents.Maker -> [Session(Principal.SessionId), Key(Principal.KeyId)]
+via_of : Agents.Granter -> [Session(Principal.SessionId), Key(Principal.KeyId)]
 via_of = |granter|
 	match granter {
 		Session(s) => Session(s.id())
@@ -664,7 +634,7 @@ via_of = |granter|
 ## for the key; refused, audited, and one 401 otherwise.
 redeem! : {} => Chat.Answer
 redeem! = |{}| {
-	got = Host.read_body!(form_most)
+	got = Host.read_body!(Wire.form_most)
 	match got.status {
 		Answered => Chat.answered
 		Read => {
@@ -739,7 +709,7 @@ redeemed_now! = |invite, now| {
 					now,
 				})
 				Ok(key) => {
-					secret = Host.random_bytes!(secret_bytes)
+					secret = Host.random_bytes!(Wire.secret_bytes)
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 						Err(NotAHash) => Chat.failed
 						Ok(hash) =>
@@ -766,7 +736,7 @@ redeemed_now! = |invite, now| {
 }
 
 ## The granter an invite names, as the store holds it now.
-stored_granter! : InviteCodec.By => Try([Found(Agents.Maker), Gone], [Failed])
+stored_granter! : InviteCodec.By => Try([Found(Agents.Granter), Gone], [Failed])
 stored_granter! = |by|
 	match by {
 		Session(h) =>
@@ -860,20 +830,13 @@ is_live = |invite, now|
 		Spent | Revoked => Bool.False
 	}
 
-## The invites in the order of their ids.
+## The invites in id order, smallest first, as a listing shows them.
 invites_by_id : List(InviteCodec.Record(ConvAccess.ConvId)) -> List(InviteCodec.Record(ConvAccess.ConvId))
-invites_by_id = |invites|
-	List.fold(
-		invites,
-		[],
-		|sorted, i| {
-			n = i.id.to_u64()
-			List.concat(
-				List.append(List.keep_if(sorted, |m| m.id.to_u64() < n), i),
-				List.keep_if(sorted, |m| m.id.to_u64() > n),
-			)
-		},
-	)
+invites_by_id = |invites| List.sort_with(invites, |a, b| by_number(a.id.to_u64(), b.id.to_u64()))
+
+## Two ids' order, smallest first: the listings' one rule.
+by_number : U64, U64 -> [Before, Same, After]
+by_number = |a, b| if a < b Before else if a > b After else Same
 
 ## **/invites/<id>/revoke**: one of the session's live invites revoked.
 revoke_invite! : InviteCodec.InviteId => Chat.Answer
@@ -1022,7 +985,7 @@ list! = |{}|
 						200,
 						List.join([
 							Str.to_utf8("{\"keys\":["),
-							Wire.commas(List.map(by_id(mine), |k| key_json(k, Hidden))),
+							Wire.commas(List.map(keys_by_id(mine), |k| key_json(k, Hidden))),
 							Str.to_utf8("]}"),
 						]),
 					)
@@ -1030,20 +993,9 @@ list! = |{}|
 			}
 	}
 
-## The keys in the order of their ids.
-by_id : List(ConvKey.Key) -> List(ConvKey.Key)
-by_id = |keys|
-	List.fold(
-		keys,
-		[],
-		|sorted, k| {
-			n = k.id().to_u64()
-			List.concat(
-				List.append(List.keep_if(sorted, |m| m.id().to_u64() < n), k),
-				List.keep_if(sorted, |m| m.id().to_u64() > n),
-			)
-		},
-	)
+## The keys in id order, smallest first, as a listing shows them.
+keys_by_id : List(ConvKey.Key) -> List(ConvKey.Key)
+keys_by_id = |keys| List.sort_with(keys, |a, b| by_number(a.id().to_u64(), b.id().to_u64()))
 
 ## **/keys/<id>/revoke**: one of the session's keys revoked, for good.
 revoke! : Principal.KeyId => Chat.Answer
@@ -1091,13 +1043,13 @@ owner! : {} => Try(
 owner! = |{}| {
 	credential = Credentials.presented!({})?
 	match credential {
-		Nobody => Err(signed_out)
+		Nobody => Err(not_signed_in)
 		Key(_) => Err(Wire.refused(403, "keys are managed from a session"))
 		Session(session) => {
 			now = Host.read_time!({})
 			accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?
 			match session.admit({ accounts, now }) {
-				Refused(_) => Err(signed_out)
+				Refused(_) => Err(not_signed_in)
 				Admitted({ principal, write: _ }) => Ok({
 					human: Principal.answers_to(principal),
 					accounts,
@@ -1111,7 +1063,7 @@ owner! = |{}| {
 
 ## **A GRANT REFUSED, AUDITED**: who asked, by which session or key, for
 ## whom, and why.
-audit_grant! : Agents.Maker,
+audit_grant! : Agents.Granter,
 {
 	acts_as : Principal.Id,
 	refusal : ApiKey.GrantRefusal,
@@ -1150,7 +1102,7 @@ audit_grant! = |
 grant_refused : ApiKey.GrantRefusal -> Chat.Answer
 grant_refused = |why|
 	match why {
-		SessionExpired | NoSuchGranter => signed_out
+		SessionExpired | NoSuchGranter => not_signed_in
 		BadExpiry => Wire.refused(400, "a key lives more than no time, and a year at most")
 		GrantedByKey => Wire.refused(403, "a key is minted from a session, never from a key")
 		NotTheGrantersOwn | NoSuchPrincipal => Wire.refused(
@@ -1161,8 +1113,8 @@ grant_refused = |why|
 		ClockOutOfRange => Chat.failed
 	}
 
-signed_out : Chat.Answer
-signed_out = Wire.refused(401, "not signed in")
+not_signed_in : Chat.Answer
+not_signed_in = Wire.refused(401, "not signed in")
 
 ## An agent as the wire spells it: `{"id":"agent:7","name":"CC","owner":"human:2"}`.
 agent_json : Principal -> List(U8)
@@ -1244,7 +1196,7 @@ session_of = |who|
 	}
 
 ## The settings after the cast's accounts (every one of generation 1).
-settings_after_cast : GitHubSignIn.Settings
+settings_after_cast : Accounts.Settings
 settings_after_cast = {
 	first_admin: Unnamed,
 	barred: [],
@@ -1337,7 +1289,7 @@ said = |made|
 ## Boss (an admin) or ann (a member), by session, makes `name` among the cast at 50.
 made_by : U64, Str -> Agents.Made
 made_by = |who, name| Agents.make({
-	maker: Session(session_of(who)),
+	granter: Session(session_of(who)),
 	name: Str.to_utf8(name),
 	accounts: Cast.accounts,
 	settings: settings_after_cast,
@@ -1358,7 +1310,7 @@ with_agents = |owner, n|
 ## `who` makes an agent among `accounts`.
 made_among : U64, List(Principal) -> Agents.Made
 made_among = |who, accounts| Agents.make({
-	maker: Session(session_of(who)),
+	granter: Session(session_of(who)),
 	name: Str.to_utf8("CC"),
 	accounts,
 	settings: { ..settings_after_cast, next_agent_id: Cast.aid(100_000) },
@@ -1401,30 +1353,30 @@ expect said(made_by(1, "  LC  ")) == Agent({
 })
 # A store from before the counter starts it one past every agent's and
 # bot's.
-expect GitHubSignIn.agent_id_after(Cast.accounts) == Ok(Cast.aid(4))
-expect GitHubSignIn.agent_id_after([]) == Ok(Cast.aid(1))
-expect GitHubSignIn.agent_id_after([Cast.boss]) == Ok(Cast.aid(1))
+expect Accounts.agent_id_after(Cast.accounts) == Ok(Cast.aid(4))
+expect Accounts.agent_id_after([]) == Ok(Cast.aid(1))
+expect Accounts.agent_id_after([Cast.boss]) == Ok(Cast.aid(1))
 
 # **NEVER GIVEN TWICE**: the first agent's steps applied, the second gets
 # the next id and the next generation.
 ## The made agent's steps applied to the cast and `settings`.
-applied_to_cast : Agents.Made -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
+applied_to_cast : Agents.Made -> { accounts : List(Principal), settings : Accounts.Settings }
 applied_to_cast = |made|
 	match made {
-		Made({ agent: _, steps }) => GitHubSignIn.applied(
+		Made({ agent: _, steps }) => Accounts.applied(
 			steps,
 			{ accounts: Cast.accounts, settings: settings_after_cast },
 		)
 		_ => crash "applied_to_cast: a test's agent is made"
 	}
 
-after_first : { accounts : List(Principal), settings : GitHubSignIn.Settings }
+after_first : { accounts : List(Principal), settings : Accounts.Settings }
 after_first = applied_to_cast(made_by(2, "CC"))
 
 expect
 	said(
 		Agents.make({
-			maker: Session(session_of(2)),
+			granter: Session(session_of(2)),
 			name: Str.to_utf8("LC"),
 			accounts: after_first.accounts,
 			settings: after_first.settings,
@@ -1443,7 +1395,7 @@ expect
 # and the agent id's.
 expect said(
 	Agents.make({
-		maker: Session(session_of(2)),
+		granter: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: after_first.accounts,
 		settings: settings_after_cast,
@@ -1452,7 +1404,7 @@ expect said(
 ) == Stuck(StaleGeneration)
 expect said(
 	Agents.make({
-		maker: Session(session_of(2)),
+		granter: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: after_first.accounts,
 		settings: { ..after_first.settings, next_agent_id: Cast.aid(4) },
@@ -1461,7 +1413,7 @@ expect said(
 ) == Stuck(StaleAgentId)
 expect said(
 	Agents.make({
-		maker: Session(session_of(2)),
+		granter: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: Cast.accounts,
 		settings: { ..settings_after_cast, next_agent_id: Cast.aid(3) },
@@ -1475,8 +1427,8 @@ expect said(
 retired_by_boss : U64,
 {
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
-} -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
+	settings : Accounts.Settings,
+} -> { accounts : List(Principal), settings : Accounts.Settings }
 retired_by_boss = |n, start|
 	match Admin.decide({
 		credential: Session(session_of(1)),
@@ -1489,14 +1441,14 @@ retired_by_boss = |n, start|
 		Err(_) => crash "retired_by_boss: a test's retirement is decided"
 	}
 
-after_retired : { accounts : List(Principal), settings : GitHubSignIn.Settings }
+after_retired : { accounts : List(Principal), settings : Accounts.Settings }
 after_retired = retired_by_boss(4, after_first)
 
 expect !List.any(after_retired.accounts, |p| Principal.id(p) == Principal.Id.Agent(Cast.aid(4)))
 expect
 	said(
 		Agents.make({
-			maker: Session(session_of(2)),
+			granter: Session(session_of(2)),
 			name: Str.to_utf8("CC"),
 			accounts: after_retired.accounts,
 			settings: after_retired.settings,
@@ -1517,7 +1469,7 @@ expect said(made_by(2, "")) == NameRefused(Empty)
 expect said(made_by(2, "a\nb")) == NameRefused(ControlCharacter)
 expect said(
 	Agents.make({
-		maker: Session(session_of(2)),
+		granter: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
 		settings: settings_after_cast,
@@ -1526,7 +1478,7 @@ expect said(
 ) == Refused(SessionExpired)
 expect said(
 	Agents.make({
-		maker: Session(session_of(2)),
+		granter: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.without_ann,
 		settings: settings_after_cast,
@@ -1535,7 +1487,7 @@ expect said(
 ) == Refused(NoSuchGranter)
 expect said(
 	Agents.make({
-		maker: Session(session_of(2)),
+		granter: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
 		settings: settings_after_cast,
@@ -1572,7 +1524,7 @@ ann_key =
 
 expect said(
 	Agents.make({
-		maker: Key(ann_key),
+		granter: Key(ann_key),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
 		settings: settings_after_cast,
@@ -1630,7 +1582,7 @@ ann_agent_id : Principal.Id
 ann_agent_id = Principal.id(Cast.ann_agent)
 
 invited_as : {
-	granter : Agents.Maker,
+	granter : Agents.Granter,
 	acts_as : Principal.Id,
 	lifetime : I64,
 } -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
@@ -1714,7 +1666,7 @@ anns_invite = {
 ## principal and expiry, or the refusal.
 redeemed_at : {
 	invite : InviteCodec.Record(ConvAccess.ConvId),
-	granter : [Found(Agents.Maker), Gone],
+	granter : [Found(Agents.Granter), Gone],
 	accounts : List(Principal),
 	now : I64,
 } -> Try((Principal.Id, I64), InviteCodec.Refusal)
@@ -1734,7 +1686,7 @@ redeemed_at = |
 		key: Cast.kid(9),
 	}).map_ok(|k| (k.acts_as(), k.record().expires))
 
-by_ann : [Found(Agents.Maker), Gone]
+by_ann : [Found(Agents.Granter), Gone]
 by_ann = Found(Session(session_of(2)))
 
 expect redeemed_at({

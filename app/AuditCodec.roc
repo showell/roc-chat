@@ -873,7 +873,7 @@ AdminRefusal : [
 	RetiresOwnAuthority,
 	SetsOwnRole,
 	NeedsSession,
-	BootstrapAdmin,
+	FirstAdmin,
 	LastAdmin,
 	NoSuchTarget,
 ]
@@ -886,7 +886,7 @@ all_admin_refusals = [
 	RetiresOwnAuthority,
 	SetsOwnRole,
 	NeedsSession,
-	BootstrapAdmin,
+	FirstAdmin,
 	LastAdmin,
 	NoSuchTarget,
 ]
@@ -900,7 +900,8 @@ spell_admin_refusal = |why|
 		RetiresOwnAuthority => "retires-own-authority"
 		SetsOwnRole => "sets-own-role"
 		NeedsSession => "needs-session"
-		BootstrapAdmin => "bootstrap-admin"
+		# Its word is the one audit lines have always held.
+		FirstAdmin => "bootstrap-admin"
 		LastAdmin => "last-admin"
 		NoSuchTarget => "no-such-target"
 	}
@@ -943,7 +944,7 @@ refusal_text = |why|
 		RetiresOwnAuthority => spell_admin_refusal(RetiresOwnAuthority)
 		SetsOwnRole => spell_admin_refusal(SetsOwnRole)
 		NeedsSession => spell_admin_refusal(NeedsSession)
-		BootstrapAdmin => spell_admin_refusal(BootstrapAdmin)
+		FirstAdmin => spell_admin_refusal(FirstAdmin)
 		LastAdmin => spell_admin_refusal(LastAdmin)
 		NoSuchTarget => spell_admin_refusal(NoSuchTarget)
 	}
@@ -983,7 +984,7 @@ verdict_from = |value|
 							RetiresOwnAuthority => Ok(Refused(RetiresOwnAuthority))
 							SetsOwnRole => Ok(Refused(SetsOwnRole))
 							NeedsSession => Ok(Refused(NeedsSession))
-							BootstrapAdmin => Ok(Refused(BootstrapAdmin))
+							FirstAdmin => Ok(Refused(FirstAdmin))
 							LastAdmin => Ok(Refused(LastAdmin))
 							NoSuchTarget => Ok(Refused(NoSuchTarget))
 						}
@@ -1135,7 +1136,7 @@ when_refused = |why|
 		RetiresOwnAuthority => Refused(RetiresOwnAuthority)
 		SetsOwnRole => Refused(SetsOwnRole)
 		NeedsSession => Refused(NeedsSession)
-		BootstrapAdmin => Refused(BootstrapAdmin)
+		FirstAdmin => Refused(FirstAdmin)
 		LastAdmin => Refused(LastAdmin)
 		NoSuchTarget => Refused(NoSuchTarget)
 	}

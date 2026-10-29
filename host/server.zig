@@ -47,7 +47,7 @@ pub const Limits = struct {
     /// answer says close.
     kept_open_most: u32 = 64,
     /// A held stream quiet this long sends a ping.
-    keepalive_ms: u32 = 25_000,
+    stream_ping_ms: u32 = 25_000,
     /// The most streams held at once (at most sse.Slots.most_ever): past
     /// it, the oldest is ended.
     streams_most: u32 = sse.Slots.most_ever,
@@ -380,9 +380,9 @@ pub const Server = struct {
         while (!sub.hasMissed()) {
             const left = lifetime_ms - opened.untilNow(s.io, .awake).toMilliseconds();
             if (left <= 0) return;
-            const wait: u32 = @intCast(@min(left, s.limits.keepalive_ms));
+            const wait: u32 = @intCast(@min(left, s.limits.stream_ping_ms));
             const frame = switch (sub.next(wait)) {
-                .msg => |m| m,
+                .frame => |m| m,
                 .idle => null,
                 .canceled => return,
             };

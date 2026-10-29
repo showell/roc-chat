@@ -10,6 +10,7 @@ import Access
 import ApiKey
 import Cast
 import ConvAccess
+import ConvCodec
 import KeyCodec
 import Principal
 import Session
@@ -151,17 +152,25 @@ session_line = |who, g|
 		Err(_) => crash "session_line: a test's session line decodes"
 	}
 
-## A conversation among `who`, numbered `n`.
+## A conversation among `who`, numbered `n`, as the store holds it: some
+## of the table's (two humans' agents together) no start allows, so they
+## come through the store's door, as a stored one would.
 conv : U64, List(Principal) -> ConvAccess.Conv
-conv = |n, who|
-	match ConvAccess.Conv.start({
-		id: cid(n),
-		participants: List.map(who, Principal.id),
-		accounts,
-	}) {
-		Ok(c) => c
-		Err(_) => crash "conv: a test's conversation has participants"
+conv = |n, who| {
+	bound = List.map(
+		who,
+		|p|
+			match Principal.bind(accounts, Principal.id(p)) {
+				Ok(b) => b
+				Err(_) => crash "conv: a test's participant has an account"
+			},
+	)
+	line = ConvCodec.encode({ id: n, created: 0, participants: bound, public_by: [] })
+	match ConvCodec.decode(line) {
+		Ok(decoded) => ConvAccess.Conv.load(decoded)
+		Err(_) => crash "conv: a test's conversation round-trips its line"
 	}
+}
 
 ## `by` elects public, where that is allowed.
 public_by : ConvAccess.Conv, Principal -> ConvAccess.Conv

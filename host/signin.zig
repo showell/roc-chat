@@ -24,14 +24,15 @@ pub const Auth = struct {
     /// The public origin (`https://chat.lynrummy.com`), for GitHub's
     /// `redirect_uri`.
     origin: []const u8,
-    /// The first admin's GitHub id, as decimal digits; empty for none.
-    bootstrap_admin: []const u8 = "",
+    /// The first admin's GitHub id, as decimal digits; empty for none (the
+    /// config's `.bootstrap_admin`).
+    first_admin: []const u8 = "",
 
     /// A public setting the Roc asks for (Host.read_config!). Never a
     /// secret: the client id is public (the authorize URL carries it).
     pub fn config(a: *const Auth, name: route.ConfigName) []const u8 {
         return switch (name) {
-            .bootstrap_admin => a.bootstrap_admin,
+            .first_admin => a.first_admin,
             .github_authorize => a.github.oauth_base,
             .github_client_id => a.secrets.client_id.bytes,
             .origin => a.origin,

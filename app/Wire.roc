@@ -1,10 +1,20 @@
 ## **THE CHAT'S ANSWERS ON THE WIRE**, as every route's module spells them:
 ## a JSON answer (never sniffed), a refusal in plain text, and text as a
-## JSON string. Conversations and Agents answer through here, so a JSON
-## answer has one content type and one escape. Pure.
+## JSON string; and the two sizes every route shares (a form's most, a
+## secret's bytes). Conversations, Agents and SignIn answer through here, so
+## a JSON answer has one content type and one escape. Pure.
 import pf.Chat
 
 Wire := [].{
+
+	## The most of a form's body: a name, a `with=`, a grant's fields.
+	form_most : U64
+	form_most = 4 * 1024
+
+	## A secret's bytes of the OS's entropy: a session's, a state's nonce, a
+	## key's and an invite's code alike.
+	secret_bytes : U64
+	secret_bytes = 32
 
 	## A JSON answer: its status, its body, never sniffed.
 	json : U16, List(U8) -> Chat.Answer

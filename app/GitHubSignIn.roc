@@ -52,6 +52,7 @@
 ## in to the same account, and a login another id gave up is a new account.
 ## **The first admin** is the GitHub id the settings name, made admin when
 ## its account is made and only while there is no admin yet. Pure.
+import Accounts
 import Ascii
 import Cast
 import DisplayName
@@ -144,21 +145,6 @@ GitHubSignIn := [].{
 			DuplicateAccount | AccountsFull | StaleGeneration | GenerationsExhausted | ClockOutOfRange => Audited
 		}
 
-	## **THE SETTINGS THE FLOW IS GIVEN**: the GitHub id of the first admin,
-	## if any is named; the GitHub ids barred from signing up again (their
-	## accounts retired); and the generation counter, the generation the next
-	## account made is given (Principal.Generation), which the host stores
-	## back advanced each time an account is made; and the agent-id counter,
-	## the id the next agent or bot made is given, beside it and kept the
-	## same way, so an id is never given twice (the design's section 13),
-	## not even the id of an agent retired since.
-	Settings : {
-		first_admin : [Unnamed, Named(Principal.GitHubId)],
-		barred : List(Principal.GitHubId),
-		next_generation : Principal.Generation,
-		next_agent_id : Principal.AgentId,
-	}
-
 	## **A NEW SESSION'S FACTS**, the host's: its public number, and the
 	## hash of the cookie's random secret.
 	NewSession : {
@@ -166,133 +152,12 @@ GitHubSignIn := [].{
 		token_hash : Stored.SecretHash,
 	}
 
-	## **ONE STEP OF A SIGN-IN'S PLAN**, for the host to apply in order
-	## (`applied` says what each does). Steps, never whole records of an
-	## existing account: a record copied at sign-in and stored later would
-	## undo whatever changed meanwhile (a demotion). Each step is
-	## idempotent, so a plan applied twice after a crash leaves what once
-	## does.
-	Step : [
-		## Make the account, when no account holds its id: a new one, whose
-		## record is the only copy.
-		AddAccount(Principal),
-
-		## Set the human's login, GitHub having renamed them.
-		SetLogin({ human : Principal.GitHubId, login : Str }),
-
-		## Clear the human's login, while it is still `login` (in any case):
-		## another account signed in with it, GitHub having given it away.
-		ClearLogin({ human : Principal.GitHubId, login : Str }),
-
-		## Raise the settings' generation counter to at least this.
-		AdvanceGeneration(Principal.Generation),
-
-		## Raise the settings' agent-id counter to at least this.
-		AdvanceAgentId(Principal.AgentId),
-	]
-
 	## Signed in: the admission Session.start takes, and the steps to store
 	## (the login brought up to date; other accounts' logins cleared).
 	SignedIn : {
 		admission : GitHubSignIn.Admission,
-		steps : List(GitHubSignIn.Step),
+		steps : List(Accounts.Change),
 	}
-
-	## **WHAT A SIGN-IN'S STEPS LEAVE**: `accounts` and `settings` with each
-	## step made, in order; the one home of what a step means.
-	applied : List(GitHubSignIn.Step),
-	{
-		accounts : List(Principal),
-		settings : GitHubSignIn.Settings,
-	} -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
-	applied = |steps, start|
-		List.fold(
-			steps,
-			start,
-			|{ accounts, settings }, step|
-				match step {
-					AddAccount(account) =>
-						if List.any(accounts, |a| Principal.id(a) == Principal.id(account)) {
-							{ accounts, settings }
-						} else {
-							{ accounts: List.append(accounts, account), settings }
-						}
-					SetLogin({ human, login }) =>
-						{
-							accounts: with_human(
-								accounts,
-								human,
-								|h| { ..h, login },
-							),
-							settings,
-						}
-					ClearLogin({ human, login }) =>
-						{
-							accounts: with_human(
-								accounts,
-								human,
-								|h| if lowered(h.login) == lowered(login) { ..h, login: "" } else h,
-							),
-							settings,
-						}
-					AdvanceGeneration(g) =>
-						if g.to_u64() > settings.next_generation.to_u64() {
-							{ accounts, settings: { ..settings, next_generation: g } }
-						} else {
-							{ accounts, settings }
-						}
-					AdvanceAgentId(id) =>
-						if id.to_u64() > settings.next_agent_id.to_u64() {
-							{ accounts, settings: { ..settings, next_agent_id: id } }
-						} else {
-							{ accounts, settings }
-						}
-				},
-		)
-
-	## **A NEW AGENT'S OR BOT'S ID, AND THE COUNTER AFTER IT**: the
-	## settings' next, when it is above every agent's and bot's id (a counter
-	## that went back might give one twice, as a generation's might); one
-	## counter for both kinds.
-	next_agent_id : List(Principal),
-	GitHubSignIn.Settings -> Try(
-		{ this : Principal.AgentId, next : Principal.AgentId },
-		[StaleAgentId, AgentIdsExhausted],
-	)
-	next_agent_id = |accounts, settings| {
-		this = settings.next_agent_id
-		if List.any(accounts, |a| agent_id_of(a) >= this.to_u64()) {
-			Err(StaleAgentId)
-		} else {
-			match this.next() {
-				Ok(next) => Ok({ this, next })
-				Err(Exhausted) => Err(AgentIdsExhausted)
-			}
-		}
-	}
-
-	## **THE AGENT-ID COUNTER A STORE WITHOUT ONE STARTS AT**: one more than
-	## the highest agent or bot id among the accounts; 1 for none. What the
-	## settings read as before they held the counter, so an old store stays
-	## valid; from then on, the stored counter alone.
-	agent_id_after : List(Principal) -> Try(Principal.AgentId, [AgentIdsExhausted])
-	agent_id_after = |accounts| {
-		most = List.fold(
-			accounts,
-			0,
-			|m, a| if agent_id_of(a) > m agent_id_of(a) else m,
-		)
-		if most == u64_most Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
-	}
-
-	## **A NEW ACCOUNT'S GENERATION, AND THE COUNTER AFTER IT**: the one
-	## rule a sign-up and an agent's making both ask (`fresh_generation`).
-	next_generation : List(Principal),
-	GitHubSignIn.Settings -> Try(
-		{ this : Principal.Generation, next : Principal.Generation },
-		[StaleGeneration, GenerationsExhausted],
-	)
-	next_generation = |accounts, settings| fresh_generation(accounts, settings)
 
 	## **ADMITTED**: the flow's end, the one value Session.start takes. Only
 	## this module makes one, at `resolve` or `name`, once every step before
@@ -449,7 +314,7 @@ GitHubSignIn := [].{
 		resolve : GitHubSignIn.IdentityKnown,
 		{
 			accounts : List(Principal),
-			settings : GitHubSignIn.Settings,
+			settings : Accounts.Settings,
 			session : GitHubSignIn.NewSession,
 			now : I64,
 		} -> [
@@ -587,14 +452,14 @@ GitHubSignIn := [].{
 			name : List(U8),
 			pending_use : [FirstUse, UsedBefore],
 			accounts : List(Principal),
-			settings : GitHubSignIn.Settings,
+			settings : Accounts.Settings,
 			session : GitHubSignIn.NewSession,
 			now : I64,
 		} -> [
 			Created(
 				{
 					admission : GitHubSignIn.Admission,
-					steps : List(GitHubSignIn.Step),
+					steps : List(Accounts.Change),
 				},
 			),
 			NameRefused(DisplayName.Problem),
@@ -622,7 +487,7 @@ GitHubSignIn := [].{
 					(FirstUse, Err(Duplicated)) => Refused(DuplicateAccount)
 					(FirstUse, Err(NoSuchPrincipal)) if List.len(accounts) >= Limits.accounts_most => Refused(AccountsFull)
 					(FirstUse, Err(NoSuchPrincipal)) =>
-						match (DisplayName.from_utf8(name), fresh_generation(accounts, settings)) {
+						match (DisplayName.from_utf8(name), Accounts.next_generation(accounts, settings)) {
 							(Err(problem), _) => NameRefused(problem)
 							(Ok(_), Err(why)) => Refused(why)
 							(Ok(chosen), Ok({ this, next })) =>
@@ -686,7 +551,7 @@ known_account : {
 	github : Principal.GitHubId,
 	login : GitHubLogin,
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 	session : GitHubSignIn.NewSession,
 	now : I64,
 } -> [
@@ -741,15 +606,15 @@ displaced : List(Principal),
 {
 	github : Principal.GitHubId,
 	login : GitHubLogin,
-} -> List(GitHubSignIn.Step)
+} -> List(Accounts.Change)
 displaced = |accounts, { github, login }| {
-	wanted = lowered(login.to_str())
+	wanted = Accounts.lowered_login(login.to_str())
 	List.join_map(
 		accounts,
 		|p|
 			match p {
 				Human(h) =>
-					if h.id != github and h.login != "" and lowered(h.login) == wanted {
+					if h.id != github and h.login != "" and Accounts.lowered_login(h.login) == wanted {
 						[ClearLogin({ human: h.id, login: h.login })]
 					} else {
 						[]
@@ -759,78 +624,12 @@ displaced = |accounts, { github, login }| {
 	)
 }
 
-## A login's bytes in lower case: GitHub's logins ignore case.
-lowered : Str -> List(U8)
-lowered = |login| List.map(Str.to_utf8(login), Ascii.to_lowercase)
-
-## `accounts` with the human `human`'s record changed by `change`.
-with_human : List(Principal),
-Principal.GitHubId,
-(
-	{
-		id : Principal.GitHubId,
-		login : Str,
-		name : Str,
-		role : Principal.Role,
-		generation : Principal.Generation,
-	} -> {
-		id : Principal.GitHubId,
-		login : Str,
-		name : Str,
-		role : Principal.Role,
-		generation : Principal.Generation,
-	}) -> List(Principal)
-with_human = |
-	accounts,
-	human,
-	change,
-|
-	List.map(
-		accounts,
-		|p|
-			match p {
-				Human(h) if h.id == human => Principal.Human(change(h))
-				_ => p
-			},
-	)
-
-## An agent's or a bot's id as a number; 0 for a human, below every id.
-agent_id_of : Principal -> U64
-agent_id_of = |p|
-	match p {
-		Agent(a) | Bot(a) => a.id.to_u64()
-		Human(_) => 0
-	}
-
-u64_most : U64
-u64_most = 18446744073709551615
-
-## **A NEW ACCOUNT'S GENERATION**: the settings' next, when it is above
-## every account's (a counter that went back might give one twice); and
-## the counter after it, for the host to store.
-fresh_generation : List(Principal),
-GitHubSignIn.Settings -> Try(
-	{ this : Principal.Generation, next : Principal.Generation },
-	[StaleGeneration, GenerationsExhausted],
-)
-fresh_generation = |accounts, settings| {
-	this = settings.next_generation
-	if List.any(accounts, |a| Principal.generation(a).to_u64() >= this.to_u64()) {
-		Err(StaleGeneration)
-	} else {
-		match this.next() {
-			Ok(next) => Ok({ this, next })
-			Err(Exhausted) => Err(GenerationsExhausted)
-		}
-	}
-}
-
 ## The role a new human's account is made with: admin for the first admin
 ## the settings name, while no human is an admin yet; member otherwise.
 first_role : {
 	github : Principal.GitHubId,
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 } -> Principal.Role
 first_role = |
 	{
@@ -918,7 +717,7 @@ new_session : GitHubSignIn.NewSession
 new_session = { id: Cast.sid(5), token_hash: Cast.token(0x42) }
 
 ## Open sign-up, Boss the first admin, GitHub id 66 barred.
-usual_settings : GitHubSignIn.Settings
+usual_settings : Accounts.Settings
 usual_settings = {
 	first_admin: Named(Cast.gid(1)),
 	barred: [Cast.gid(66)],
@@ -959,7 +758,7 @@ Facts : {
 	nonce_use : [FirstUse, UsedBefore],
 	github : [Identified({ id : U64, login : List(U8) }), Failed],
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 }
 
 ## Ann's GitHub (id 2, `ann`), signing in a minute after /login, with no
@@ -1048,7 +847,7 @@ SeenStep : [
 	AdvanceAgentId(Principal.AgentId),
 ]
 
-seen_step : GitHubSignIn.Step -> SeenStep
+seen_step : Accounts.Change -> SeenStep
 seen_step = |step|
 	match step {
 		AddAccount(p) => AddAccount(seen(p))
@@ -1289,7 +1088,7 @@ Naming : {
 	name : List(U8),
 	pending_use : [FirstUse, UsedBefore],
 	accounts : List(Principal),
-	settings : GitHubSignIn.Settings,
+	settings : Accounts.Settings,
 }
 
 ## Ann names herself "Ann B." a minute later.
@@ -1406,7 +1205,7 @@ expect name_said({ ..usual_naming, name: Str.to_utf8("\u(200B)") }) == NameRefus
 expect name_said({ ..usual_naming, name: [0x41, 0xff] }) == NameRefused(NotUtf8)
 
 # **THE FIRST ADMIN**: the named id, while no human is an admin.
-first_ann : GitHubSignIn.Settings
+first_ann : Accounts.Settings
 first_ann = { ..usual_settings, first_admin: Named(Cast.gid(2)) }
 
 expect name_said({
@@ -1600,14 +1399,14 @@ expect said({
 
 # ── THE STEPS
 ## The accounts the steps leave from `start`, under the usual settings.
-applied_to : List(GitHubSignIn.Step), List(Principal) -> List(Seen)
-applied_to = |steps, start| GitHubSignIn.applied(
+applied_to : List(Accounts.Change), List(Principal) -> List(Seen)
+applied_to = |steps, start| Accounts.applied(
 	steps,
 	{ accounts: start, settings: usual_settings },
 ).accounts.map(seen)
 
 ## The steps resolving hands back, for a run that signs in.
-steps_of : Facts -> List(GitHubSignIn.Step)
+steps_of : Facts -> List(Accounts.Change)
 steps_of = |f|
 	match resolved_by(f) {
 		Ok(SignedIn(s)) => s.steps
@@ -1617,7 +1416,7 @@ steps_of = |f|
 # ATTACK: boss renamed signs in; an admin demotes
 # boss before the sign-in's output is stored; storing what sign-in handed
 # back must not undo the demotion.
-boss_renamed_steps : List(GitHubSignIn.Step)
+boss_renamed_steps : List(Accounts.Change)
 boss_renamed_steps = steps_of({
 	..usual,
 	accounts: [boss, ann],
@@ -1648,7 +1447,7 @@ expect applied_to(boss_renamed_steps, demoted_since) == [
 
 # A cleared login is cleared only while it is still the one cleared: Bea,
 # renamed since to `bea`, keeps her new login.
-clear_bea : List(GitHubSignIn.Step)
+clear_bea : List(Accounts.Change)
 clear_bea = steps_of({
 	..usual,
 	accounts: [
@@ -1692,7 +1491,7 @@ expect applied_to(
 
 # A sign-up's steps, applied twice (a crash, and the plan again), leave
 # what once does: one account, the counter once advanced.
-signed_up : Naming -> List(GitHubSignIn.Step)
+signed_up : Naming -> List(Accounts.Change)
 signed_up = |n|
 	match GitHubSignIn.Pending.resume({
 		pending: n.pending,
@@ -1714,14 +1513,14 @@ signed_up = |n|
 		Err(_) => crash "signed_up: the pending sign-up resumes"
 	}
 
-once : { accounts : List(Principal), settings : GitHubSignIn.Settings }
-once = GitHubSignIn.applied(
+once : { accounts : List(Principal), settings : Accounts.Settings }
+once = Accounts.applied(
 	signed_up(usual_naming),
 	{ accounts: [boss, ann_agent], settings: usual_settings },
 )
 
-twice : { accounts : List(Principal), settings : GitHubSignIn.Settings }
-twice = GitHubSignIn.applied(
+twice : { accounts : List(Principal), settings : Accounts.Settings }
+twice = Accounts.applied(
 	List.concat(signed_up(usual_naming), signed_up(usual_naming)),
 	{ accounts: [boss, ann_agent], settings: usual_settings },
 )
@@ -1735,14 +1534,14 @@ expect twice.accounts.map(Principal.id) == once.accounts.map(Principal.id)
 expect once.settings == { ..usual_settings, next_generation: Cast.gen(11) }
 expect twice.settings == once.settings
 # The counter is never lowered by a step behind it.
-expect GitHubSignIn.applied(
+expect Accounts.applied(
 	[AdvanceGeneration(Cast.gen(3))],
 	{ accounts: [], settings: usual_settings },
 ).settings == usual_settings
 
 # **A BAR IS FOR LIFE**: no sign-in step, of any kind,
 # takes an id off the barred list; a barred id is refused at both doors.
-every_step : List(GitHubSignIn.Step)
+every_step : List(Accounts.Change)
 every_step = [
 	AddAccount(
 		human(
@@ -1759,7 +1558,7 @@ every_step = [
 	AdvanceGeneration(Cast.gen(99)),
 ]
 
-expect GitHubSignIn.applied(
+expect Accounts.applied(
 	every_step,
 	{ accounts: [], settings: usual_settings },
 ).settings.barred == usual_settings.barred

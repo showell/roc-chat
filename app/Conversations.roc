@@ -139,21 +139,19 @@ Conversations := [].{
 post_most : U64
 post_most = 32 * 1024
 
-form_most : U64
-form_most = 4 * 1024
 
 root : List(U8)
 root = Str.to_utf8("/conversations")
 
 ## A conversation's id as a path spells it: digits, one spelling, not 0.
 ## **START A CONVERSATION**: the viewer, and each id the form's `with`
-## names, bound to their accounts now (ConvAccess.Conv.start); stored, and
+## names, bound to their accounts now (ConvAccess.Conv.start, the owner rule first); stored, and
 ## its id answered. A session starts one; a key starts one only where it
 ## could post to it then (ConvAccess.can_post: its post reaching it, and its
 ## principal in it), and is audited when not. Nobody signed in cannot.
 start! : {} => Chat.Answer
 start! = |{}| {
-	got = Host.read_body!(form_most)
+	got = Host.read_body!(Wire.form_most)
 	match got.status {
 		Answered => Chat.answered
 		Read =>
@@ -168,10 +166,10 @@ start! = |{}| {
 					},
 				) =>
 					match viewer.who() {
-						SignedOut => signed_out
+						SignedOut => not_signed_in
 						Session(me) | Key(me) =>
 							match others_of(got.bytes) {
-								Err(Malformed) => refused(
+								Err(Malformed) => Wire.refused(
 									400,
 									"`with` names the others, as `human:2,agent:7`",
 								)
@@ -179,20 +177,20 @@ start! = |{}| {
 									match Store.load_next_conversation_id!({}) {
 										Err(Failed) => Chat.failed
 										Ok(id) =>
-											match ConvAccess.Conv.start_by({
+											match ConvAccess.Conv.start({
 												id,
 												starter: me.id,
 												others,
 												accounts,
 											}) {
-												Err(NoParticipants) => refused(
+												Err(NoParticipants) => Wire.refused(
 													400,
 													"a conversation has someone in it",
 												)
 												# One refusal for an id no account holds and an
 												# agent the starter does not own: neither says
 												# which accounts exist.
-												Err(NoSuchParticipant(_)) | Err(NotTheOwner(_)) => refused(
+												Err(NoSuchParticipant(_)) | Err(NotTheOwner(_)) => Wire.refused(
 													400,
 													"`with` names someone you may not start a conversation with",
 												)
@@ -208,14 +206,14 @@ start! = |{}| {
 															accounts,
 															now,
 														})
-														refused(
+														Wire.refused(
 															403,
 															"this key may not post to a new conversation",
 														)
 													} else {
 														match Store.save_conversation!(conv, now) {
 															Failed => Chat.failed
-															Written => json(
+															Written => Wire.json(
 																201,
 																Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"),
 															)
@@ -244,7 +242,7 @@ list! = |{}|
 			},
 		) =>
 			match viewer.who() {
-				SignedOut => signed_out
+				SignedOut => not_signed_in
 				Session(_) | Key(_) =>
 					match Conversations.mine!(viewer, accounts) {
 						Err(Failed) => Chat.failed
@@ -254,7 +252,7 @@ list! = |{}|
 									conv.participants(),
 									|b| List.join([
 										Str.to_utf8("{\"id\":\"${AccountCodec.id_text(b.id)}\",\"name\":"),
-										json_string(
+										Wire.json_string(
 											Str.to_utf8(
 												Conversations.name_of(
 													accounts,
@@ -267,15 +265,15 @@ list! = |{}|
 								)
 								List.join([
 									Str.to_utf8("{\"id\":${conv.id().to_u64().to_str()},\"with\":["),
-									commas(people),
+									Wire.commas(people),
 									Str.to_utf8("]}"),
 								])
 							}
-							json(
+							Wire.json(
 								200,
 								List.join([
 									Str.to_utf8("{\"conversations\":["),
-									commas(List.map(convs, one)),
+									Wire.commas(List.map(convs, one)),
 									Str.to_utf8("]}"),
 								]),
 							)
@@ -339,11 +337,11 @@ others_of = |form|
 		).map_err(|_| Malformed)
 	}
 
-## **WHAT A REQUEST ON A CONVERSATION DECIDES ON**: the viewer from its
-## session or key, the accounts now, the conversation, the time, and the
-## key when a key asks; or the answer that ends it (signed out, a key
-## refused, not there, a failure).
-Asked : {
+## **WHAT A REQUEST ON A CONVERSATION DECIDES ON**: Credentials.Asked (the
+## viewer from its session or key, the accounts now, the time, and the key
+## when a key asks) with the conversation the path names; or the answer
+## that ends it (signed out, a key refused, not there, a failure).
+AskedOn : {
 	viewer : Access.Viewer(ConvAccess.ConvId),
 	accounts : List(Principal),
 	now : I64,
@@ -351,7 +349,7 @@ Asked : {
 	key : [NoKey, Key(ConvKey.Key)],
 }
 
-asked! : ConvAccess.ConvId, Credentials.Use => Try(Asked, Chat.Answer)
+asked! : ConvAccess.ConvId, Credentials.Use => Try(AskedOn, Chat.Answer)
 asked! = |id, use| {
 	{
 		viewer,
@@ -360,7 +358,7 @@ asked! = |id, use| {
 		key,
 	} = Credentials.viewer!(use)?
 	match viewer.who() {
-		SignedOut => Err(signed_out)
+		SignedOut => Err(not_signed_in)
 		Session(_) | Key(_) =>
 			match Store.load_conversation!(id) {
 				Err(Failed) => Err(Chat.failed)
@@ -378,7 +376,7 @@ asked! = |id, use| {
 
 ## The same, for a viewer who may see it (ConvAccess.can_see); one who may
 ## not is answered as if it were not there, and a key's refusal audited.
-seen! : ConvAccess.ConvId => Try(Asked, Chat.Answer)
+seen! : ConvAccess.ConvId => Try(AskedOn, Chat.Answer)
 seen! = |id| {
 	a = asked!(id, Read(id))?
 	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {
@@ -404,11 +402,11 @@ read! = |id|
 			match Store.load_transcript!(id) {
 				Err(Failed) => Chat.failed
 				Ok(messages) =>
-					json(
+					Wire.json(
 						200,
 						List.join([
 							Str.to_utf8("{\"id\":${id.to_u64().to_str()},\"messages\":["),
-							commas(List.map(messages, message_json)),
+							Wire.commas(List.map(messages, message_json)),
 							Str.to_utf8("]}"),
 						]),
 					)
@@ -448,14 +446,14 @@ post! = |id| {
 							accounts,
 							now,
 						})
-						if ConvAccess.can_see(viewer, { conv, accounts }) refused(
+						if ConvAccess.can_see(viewer, { conv, accounts }) Wire.refused(
 							403,
 							"only its participants post here",
 						) else Conversations.no_such
 					} else if Str.from_utf8(got.bytes).is_err() {
-						refused(400, "a message is UTF-8 text")
+						Wire.refused(400, "a message is UTF-8 text")
 					} else if Md.hostility(got.bytes) == TooMuchFormatting {
-						refused(400, Md.too_much_formatting)
+						Wire.refused(400, Md.too_much_formatting)
 					} else {
 						by =
 							match viewer.who() {
@@ -472,7 +470,7 @@ post! = |id| {
 									body: got.bytes,
 								}
 								if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
-									refused(413, "this conversation is full: its transcript holds as much as one may")
+									Wire.refused(413, "this conversation is full: its transcript holds as much as one may")
 								} else {
 									match Store.append_message!(id, tally, message) {
 										Failed => Chat.failed
@@ -481,7 +479,7 @@ post! = |id| {
 												Ok(f) => Host.publish!(bus_key(id), f)
 												Err(LineBreak) => crash "Conversations.post!: a message's JSON holds no line break"
 											}
-											json(201, message_json(message))
+											Wire.json(201, message_json(message))
 										}
 									}
 								}
@@ -553,26 +551,14 @@ message_json : MessageCodec.Fields -> List(U8)
 message_json = |m|
 	List.join([
 		Str.to_utf8("{\"id\":${m.id.to_str()},\"at\":${m.at.to_str()},\"by\":\"${AccountCodec.id_text(m.by)}\",\"markdown\":"),
-		json_string(m.body),
+		Wire.json_string(m.body),
 		Str.to_utf8(",\"html\":"),
-		json_string(Conversations.html_of(m)),
+		Wire.json_string(Conversations.html_of(m)),
 		['}'],
 	])
 
-json_string : List(U8) -> List(U8)
-json_string = Wire.json_string
-
-commas : List(List(U8)) -> List(U8)
-commas = Wire.commas
-
-json : U16, List(U8) -> Chat.Answer
-json = Wire.json
-
-refused : U16, Str -> Chat.Answer
-refused = Wire.refused
-
-signed_out : Chat.Answer
-signed_out = refused(401, "not signed in")
+not_signed_in : Chat.Answer
+not_signed_in = Wire.refused(401, "not signed in")
 
 
 expect Conversations.route(Str.to_utf8("/conversations")) == Ok(Start)

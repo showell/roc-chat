@@ -1429,9 +1429,9 @@ comptime {
     }
 }
 
-/// Tag union: BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin
-pub const BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin = enum(u8) {
-    bootstrap_admin = 0,
+/// Tag union: FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin
+pub const FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin = enum(u8) {
+    first_admin = 0,
     git_hub_authorize = 1,
     git_hub_client_id = 2,
     origin = 3,
@@ -1450,12 +1450,12 @@ pub const BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin = enum(u8) {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin size mismatch");
-        if (@alignOf(BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin alignment mismatch");
+        if (@sizeOf(FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin size mismatch");
+        if (@alignOf(FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin size mismatch");
-        if (@alignOf(BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin alignment mismatch");
+        if (@sizeOf(FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin size mismatch");
+        if (@alignOf(FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) != 1) @compileError("FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin alignment mismatch");
     }
 }
 
@@ -1768,10 +1768,10 @@ pub const HostRead_bodyArgs = extern struct {
 };
 
 /// Arguments for Host.read_config!
-/// Roc signature: [BootstrapAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
+/// Roc signature: [FirstAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
 /// Refcounted fields are owned by the hosted function.
 pub const HostRead_configArgs = extern struct {
-    arg0: BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin,
+    arg0: FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin,
 };
 
 /// Arguments for Host.read_header!
@@ -2030,12 +2030,12 @@ pub extern fn roc_chat_read_at(arg0: RocListWith(u8, false), arg1: u64, arg2: u6
 pub extern fn roc_chat_read_body(arg0: u64) callconv(.c) __AnonStruct_c97b7474ae2183dc;
 
 /// Hosted symbol for Host.read_config!
-/// Roc signature: [BootstrapAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
+/// Roc signature: [FirstAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
 /// Owned arguments. Release each exactly once before returning, unless it is
 /// moved into storage or into the result:
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
-pub extern fn roc_chat_read_config(arg0: BootstrapAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) callconv(.c) RocListWith(u8, false);
+pub extern fn roc_chat_read_config(arg0: FirstAdminOrGitHubAuthorizeOrGitHubClientIdOrOrigin) callconv(.c) RocListWith(u8, false);
 
 /// Hosted symbol for Host.read_header!
 /// Roc signature: List(U8) => List(List(U8))

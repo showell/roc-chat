@@ -9,9 +9,10 @@
 ## of its agent or bot), when it was granted (Principal.Bound): the key is
 ## those accounts', never ones made again later with the same ids. A human's
 ## key holds one generation twice; a line whose two differ is refused
-## (`BadValue("human-generation")`), as no grant makes one. The record's types are here, the store's shape of a
-## key, and ApiKey's are these; the line is generic over the resource's id,
-## its spelling a number (`make` reads one back, `number` writes it).
+## (`BadValue("human-generation")`), as no grant makes one. The record is
+## ApiKey's key as the store holds it, in ApiKey's types. It is generic over
+## the resource a key's scope names: its id is spelled as a number, written
+## by `number` and read back by `make`.
 ##
 ## **`decode` GIVES A LINE, AND A LINE IS THE ONLY WAY BACK TO A KEY**: an
 ## opaque value only this module makes, and the only thing ApiKey.Key.load

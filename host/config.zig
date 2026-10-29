@@ -26,7 +26,8 @@ pub const Config = struct {
     /// GitHub's base URLs and deadlines (host/github/client.zig): GitHub's
     /// own when not named; a test names its fake's.
     github: github.Config = .{},
-    /// The first admin's GitHub id; none named, no first admin.
+    /// The first admin's GitHub id; none named, no first admin. The key
+    /// keeps its first spelling: the deploy never rewrites prod's config.
     bootstrap_admin: ?u64 = null,
 };
 
