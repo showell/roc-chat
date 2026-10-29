@@ -146,15 +146,18 @@ on_prod("rm -f /tmp/" .. BLOCK)
 
 -- 7. The front doors, over HTTPS (a new name's certificate takes Caddy a few
 -- seconds).
-local home = nil
+-- curl, not http(): until the certificate exists the handshake fails, and
+-- that is a try to repeat, not an error to stop on.
+local code = ""
 local tries = 0
 while tries < 30 do
-  home = http("GET", ORIGIN .. "/")
-  if home.status == 200 then break end
+  local r = run({"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", ORIGIN .. "/"}, {timeout_ms = 30000, whole = 10000, want = "curl: a try at the new name, its failures expected until Caddy has its certificate"})
+  code = trim(r.out)
+  if code == "200" then break end
   tries = tries + 1
   sleep(2000)
 end
-if home.status ~= 200 then fail("deploy: " .. ORIGIN .. "/ answers " .. home.status .. ", not 200") end
+if code ~= "200" then fail("deploy: " .. ORIGIN .. "/ answers '" .. code .. "', not 200, after a minute") end
 local login = http("GET", ORIGIN .. "/login")
 local where = ""
 if has_key(login.headers, "location") then where = login.headers.location end
