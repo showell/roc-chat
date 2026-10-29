@@ -15,6 +15,9 @@ const assets = @import("assets.zig");
 const files = @import("files.zig");
 const crypto = @import("auth/crypto.zig");
 const signin = @import("signin.zig");
+const bus = @import("bus.zig");
+const sse = @import("sse.zig");
+const StubLog = @import("stub_log.zig").StubLog;
 
 /// A Roc bug is said on stderr as a warning: the request's 500 is its
 /// failure, and the server goes on.
@@ -93,6 +96,9 @@ pub const Own = union(enum) {
 pub const Ctx = struct {
     req: *const Copied,
     arena: std.mem.Allocator,
+    /// The server's bus, and the stub route's frames (until step 6).
+    hub: *bus.Hub,
+    stub_log: *StubLog,
     own: ?Own = null,
     /// The data root's files (Host.read! and its kin).
     files: *const files.Files,
@@ -242,6 +248,18 @@ pub const Ctx = struct {
         c.failure = e;
         log.warn("{s}: the file {s} failed: {t}", .{ c.req.path, path, e });
     }
+
+    pub fn publish(c: *Ctx, key: []const u8, frame: []const u8) void {
+        c.hub.publish(key, frame);
+    }
+
+    pub fn stub_append(c: *Ctx, key: []const u8, frame: []const u8) void {
+        c.stub_log.append(key, frame) catch @panic("stub_append: out of memory");
+    }
+
+    pub fn stub_read(c: *Ctx, key: []const u8) []const []const u8 {
+        return c.stub_log.read(key);
+    }
 };
 
 /// What the server writes: a status, its body and its headers.
@@ -249,6 +267,9 @@ pub const Reply = struct {
     status: std.http.Status,
     body: []const u8 = "",
     headers: []const std.http.Header = &.{},
+    /// An event stream: `body` is its backlog, and the server goes on to
+    /// write each frame published to the key it subscribed in the turn.
+    stream: bool = false,
 };
 
 pub const failed: Reply = .{ .status = .internal_server_error, .body = "The server failed to answer.\n" };
@@ -325,6 +346,7 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
                 .script => |b| try scriptReply(arena, b, ctx.req.first("if-none-match")),
             };
         },
+        .stream => |s| return .{ .status = .ok, .body = s.backlog, .headers = &sse.headers, .stream = true },
     }
 }
 
@@ -346,7 +368,9 @@ test "a failed sync fails the request: the write answers failed, and the Roc's 2
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     var store: files.Files = .{ .io = std.testing.io, .root = tmp.dir };
-    var ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    var hub = bus.Hub.init(std.testing.io, std.testing.allocator);
+    var stub_log: StubLog = .{ .gpa = std.testing.allocator };
+    var ctx: Ctx = .{ .req = &req, .arena = a, .files = &store, .hub = &hub, .stub_log = &stub_log };
     std.testing.log_level = .err;
     defer std.testing.log_level = .warn;
     const ok: route.Decision = .{ .respond = .{ .status = 200, .body = "stored\n" } };
@@ -357,12 +381,12 @@ test "a failed sync fails the request: the write answers failed, and the Roc's 2
     try std.testing.expect(ctx.dead());
     try std.testing.expectEqual(std.http.Status.internal_server_error, (try replyOf(a, ok, &ctx)).status);
     // A cache's failure is not the request's.
-    var cache_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    var cache_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store, .hub = &hub, .stub_log = &stub_log };
     cache_ctx.write_cache("c", "1");
     try std.testing.expect(!cache_ctx.dead());
     // A path out of the data root fails the request, never "missing".
     store.fault_for_test = .none;
-    var bad_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    var bad_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store, .hub = &hub, .stub_log = &stub_log };
     try std.testing.expectEqual(route.Read.failed, bad_ctx.read("../etc/passwd"));
     try std.testing.expectEqual(std.http.Status.internal_server_error, (try replyOf(a, ok, &bad_ctx)).status);
 }
@@ -383,7 +407,9 @@ test "a Roc answer with a refused header is a 500; answered with nothing the hos
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const store: files.Files = .{ .io = std.testing.io, .root = tmp.dir };
-    var ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    var hub = bus.Hub.init(std.testing.io, std.testing.allocator);
+    var stub_log: StubLog = .{ .gpa = std.testing.allocator };
+    var ctx: Ctx = .{ .req = &req, .arena = a, .files = &store, .hub = &hub, .stub_log = &stub_log };
     // The warnings are the point: quiet here.
     std.testing.log_level = .err;
     defer std.testing.log_level = .warn;

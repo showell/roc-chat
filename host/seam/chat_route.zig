@@ -39,6 +39,7 @@ pub const Kind = enum(u8) {
     not_allowed,
     not_found,
     respond,
+    stream,
 };
 
 /// Host.roc's `read_body!` answer's `status`: the body read (its bytes beside
@@ -137,6 +138,9 @@ pub const Decision = union(enum) {
     /// it, then calls the Roc again with the same request and what GitHub
     /// said (`Exchanged`). Once per request.
     exchange: []const u8,
+    /// An event stream on the bus key `key`, subscribed in the call's turn:
+    /// `backlog` first, then each frame published to the key.
+    stream: struct { key: []const u8, backlog: []const u8 },
 
     pub fn format(d: Decision, w: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (d) {
@@ -151,6 +155,7 @@ pub const Decision = union(enum) {
             .answered => try w.writeAll("answered by the host"),
             .not_found => try w.writeAll("404"),
             .exchange => try w.writeAll("exchange a code with GitHub"),
+            .stream => |s| try w.print("stream {s}, {d} bytes of backlog", .{ s.key, s.backlog.len }),
         }
     }
 };

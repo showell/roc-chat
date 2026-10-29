@@ -24,6 +24,9 @@ const call = @import("call.zig");
 const files = @import("files.zig");
 const signin = @import("signin.zig");
 const route = @import("seam/chat_route.zig");
+const bus = @import("bus.zig");
+const sse = @import("sse.zig");
+const StubLog = @import("stub_log.zig").StubLog;
 
 const log = std.log.scoped(.roc_chat);
 
@@ -45,6 +48,11 @@ pub const Limits = struct {
     /// The most connections open at once that are kept open; past it, an
     /// answer says close.
     kept_open_most: u32 = 64,
+    /// A held stream quiet this long sends a ping.
+    keepalive_ms: u32 = 25_000,
+    /// The most streams held at once (at most sse.Slots.most_ever): past
+    /// it, the oldest is ended.
+    streams_most: u32 = sse.Slots.most_ever,
 
     /// The watchdog's look: a quarter of the shortest deadline, 5 to 100 ms.
     fn tickMs(l: Limits) u32 {
@@ -63,6 +71,11 @@ pub const Stats = struct {
     /// Handlers in the turn now, and the most there have been at once.
     in_turn: std.atomic.Value(u32) = .init(0),
     most_in_turn: std.atomic.Value(u32) = .init(0),
+    /// Streams that slept `hold_before_subscribe_ms_for_test` before
+    /// subscribing.
+    subscribe_holds: std.atomic.Value(u32) = .init(0),
+    /// Streams stalled by `stall_streams_for_test`.
+    stream_stalls: std.atomic.Value(u32) = .init(0),
 };
 
 pub const Server = struct {
@@ -82,6 +95,26 @@ pub const Server = struct {
     /// Sign-in's secrets and settings (host/signin.zig): the caller's, for
     /// the server's life. None, and sign-in's hosted functions fail.
     auth: ?*const signin.Auth = null,
+    /// Every held stream, by its bus key.
+    hub: bus.Hub,
+    /// The streams held at once.
+    slots: sse.Slots = .{},
+    /// The stub route's frames, until step 6.
+    stub_log: StubLog,
+    /// A test's: a stream sleeps this long between the Roc's read of its
+    /// backlog and its subscribe, so another client's post can try to land
+    /// between them.
+    hold_before_subscribe_ms_for_test: u32 = 0,
+    /// A test's: a stream's socket sends through a buffer this small (0:
+    /// the kernel's), so a reader that stops reading blocks its writes
+    /// after a few KiB, where loopback's own would take a megabyte.
+    stream_sndbuf_for_test: u32 = 0,
+    /// A test's: while set, a stream that has taken a frame holds it
+    /// before its write, as a write to a reader that stopped reading
+    /// blocks, and counts itself in `stats.stream_stalls`. (Where a real
+    /// write blocks depends on the kernel's buffers; a count of frames to
+    /// the overflow cannot.)
+    stall_streams_for_test: std.atomic.Value(bool) = .init(false),
 
     /// Serves `data`, the data root (the caller's, open for the server's life).
     pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits, data: Io.Dir) !Server {
@@ -91,6 +124,8 @@ pub const Server = struct {
             .limits = limits,
             .listener = try addr.listen(io, .{ .reuse_address = true }),
             .files = .{ .io = io, .root = data },
+            .hub = .init(io, gpa),
+            .stub_log = .{ .gpa = gpa },
         };
     }
 
@@ -101,6 +136,9 @@ pub const Server = struct {
     /// Serves until `stop`: each connection on a task of its own, the
     /// watchdog on another. When it returns, every connection is done.
     pub fn run(s: *Server) !void {
+        // Last: every stream's task has closed its subscriber by then.
+        defer s.stub_log.deinit();
+        defer s.hub.deinit();
         defer s.listener.deinit(s.io);
         defer s.watch.conns.deinit(s.gpa);
         var watchdog = try s.io.concurrent(Watch.run, .{ &s.watch, s.io, s.limits.tickMs() });
@@ -220,7 +258,12 @@ pub const Server = struct {
         // is written, so its head says it.
         const keep = req.head.keep_alive and served + 1 < s.limits.requests_most and s.watch.count(io) <= s.limits.kept_open_most;
 
-        const reply = s.answer(arena, &copied);
+        const answered = s.answer(arena, &copied);
+        const reply = answered.reply;
+        if (answered.sub) |sub| {
+            s.serveStream(conn, &req, reply, sub);
+            return false;
+        }
 
         s.watch.arm(io, conn, s.limits.write_ms, .both);
         defer s.watch.disarm(io, conn);
@@ -235,23 +278,33 @@ pub const Server = struct {
     /// the second call, which hears the same request and what GitHub said.
     /// The Roc keeps nothing between the calls; the request carries the
     /// facts. A second ask is the Roc's bug, a 500 (call.replyOf).
-    fn answer(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied) call.Reply {
+    fn answer(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied) Answered {
         var exchanged: route.Exchanged = .not_asked;
         while (true) {
-            var ctx: call.Ctx = .{ .req = copied, .arena = arena, .files = &s.files, .auth = s.auth, .now = Io.Clock.now(.real, s.io).toSeconds() };
-            const decided = s.decideInTurn(arena, copied, exchanged, &ctx);
+            var ctx: call.Ctx = .{
+                .req = copied,
+                .arena = arena,
+                .files = &s.files,
+                .auth = s.auth,
+                .now = Io.Clock.now(.real, s.io).toSeconds(),
+                .hub = &s.hub,
+                .stub_log = &s.stub_log,
+            };
+            var sub: ?*bus.Subscriber = null;
+            const decided = s.decideInTurn(arena, copied, exchanged, &ctx, &sub);
             const code = codeOf(decided);
             if (code != null and exchanged == .not_asked and !ctx.dead()) {
-                const auth = s.auth orelse return call.failed;
-                exchanged = signin.exchange(s.gpa, s.io, arena, auth, code.?) catch return call.failed;
+                const auth = s.auth orelse return .{ .reply = call.failed, .sub = null };
+                exchanged = signin.exchange(s.gpa, s.io, arena, auth, code.?) catch return .{ .reply = call.failed, .sub = null };
                 continue;
             }
-            return call.replyOf(arena, decided, &ctx) catch call.failed;
+            return .{ .reply = call.replyOf(arena, decided, &ctx) catch call.failed, .sub = sub };
         }
     }
 
-    /// The Roc's call for `copied`, in the turn.
-    fn decideInTurn(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied, exchanged: route.Exchanged, ctx: *call.Ctx) anyerror!route.Decision {
+    /// The Roc's call for `copied`, in the turn; a stream's subscribe in
+    /// the same turn, into `sub`.
+    fn decideInTurn(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied, exchanged: route.Exchanged, ctx: *call.Ctx, sub: *?*bus.Subscriber) anyerror!route.Decision {
         s.turn.lockUncancelable(s.io);
         defer s.turn.unlock(s.io);
         const n = s.stats.in_turn.fetchAdd(1, .acq_rel) + 1;
@@ -259,7 +312,77 @@ pub const Server = struct {
         defer _ = s.stats.in_turn.fetchSub(1, .acq_rel);
         _ = s.stats.turns.fetchAdd(1, .acq_rel);
         if (s.hold_turn_ms_for_test > 0) io_sleep(s.io, s.hold_turn_ms_for_test);
-        return abi.decide(arena, copied.path, copied.method, exchanged, .of(ctx));
+        const d = abi.decide(arena, copied.path, copied.method, exchanged, .of(ctx));
+        // **THE BACKLOG AND THE SUBSCRIBE IN ONE TURN**: the Roc read the
+        // stream's backlog in this call, and no post can run until the turn
+        // is let go, so every frame is in the backlog or comes live, never
+        // both and never neither.
+        if (d) |ok| switch (ok) {
+            .stream => |st| sub.* = try s.subscribe(st.key),
+            else => {},
+        } else |_| {}
+        return d;
+    }
+
+    fn subscribe(s: *Server, key: []const u8) !*bus.Subscriber {
+        if (s.hold_before_subscribe_ms_for_test > 0) {
+            _ = s.stats.subscribe_holds.fetchAdd(1, .acq_rel);
+            io_sleep(s.io, s.hold_before_subscribe_ms_for_test);
+        }
+        return s.hub.open(key);
+    }
+
+    /// **A HELD STREAM, ON ITS CONNECTION'S OWN TASK**, the connection's
+    /// last answer: the head and the backlog, then each frame published to
+    /// its key, a ping when it is quiet for the keepalive. Each write is
+    /// under the write deadline, so a reader that stops reading is shut.
+    /// It ends when a write fails, when its mailbox missed a frame (the
+    /// browser resumes, with no gap), or when a newer stream takes its slot.
+    fn serveStream(s: *Server, conn: *Conn, req: *std.http.Server.Request, reply: call.Reply, sub: *bus.Subscriber) void {
+        defer s.hub.close(sub);
+        const held = s.slots.hold(s.io, s.limits.streams_most, conn.stream);
+        defer s.slots.letGo(s.io, held);
+        if (s.stream_sndbuf_for_test > 0) setBuffer(conn.stream, std.posix.SO.SNDBUF, s.stream_sndbuf_for_test);
+        var head_buf: [1024]u8 = undefined;
+        var body = blk: {
+            s.watch.arm(s.io, conn, s.limits.write_ms, .both);
+            defer s.watch.disarm(s.io, conn);
+            break :blk req.respondStreaming(&head_buf, .{ .respond_options = .{
+                .status = reply.status,
+                .keep_alive = false,
+                .transfer_encoding = .none,
+                .extra_headers = reply.headers,
+            } }) catch return;
+        };
+        // The head goes with the backlog, even an empty one: the browser
+        // knows it is connected.
+        if (!s.push(conn, &body, reply.body)) return;
+        while (!sub.hasMissed()) {
+            const frame = switch (sub.next(s.limits.keepalive_ms)) {
+                .msg => |m| m,
+                .idle => null,
+                .canceled => return,
+            };
+            defer if (frame) |f| sub.gpa.free(f);
+            if (frame != null and s.stall_streams_for_test.load(.acquire)) {
+                _ = s.stats.stream_stalls.fetchAdd(1, .acq_rel);
+                while (s.stall_streams_for_test.load(.acquire)) io_sleep(s.io, 5);
+            }
+            if (!s.push(conn, &body, frame orelse sse.ping)) return;
+        }
+    }
+
+    /// `bytes` written and on the socket, under the write deadline: whether
+    /// they were.
+    fn push(s: *Server, conn: *Conn, body: *std.http.BodyWriter, bytes: []const u8) bool {
+        s.watch.arm(s.io, conn, s.limits.write_ms, .both);
+        defer s.watch.disarm(s.io, conn);
+        // Both flushes: the body's buffer into the connection's, then the
+        // connection's onto the socket.
+        body.writer.writeAll(bytes) catch return false;
+        body.writer.flush() catch return false;
+        body.flush() catch return false;
+        return true;
     }
 };
 
@@ -270,6 +393,16 @@ fn codeOf(decided: anyerror!route.Decision) ?[]const u8 {
         .exchange => |code| code,
         else => null,
     };
+}
+
+/// A request's answer, and the subscriber its turn opened when it is a
+/// stream.
+const Answered = struct { reply: call.Reply, sub: ?*bus.Subscriber };
+
+/// A socket's send or receive buffer set to `bytes` (a test's), or left as
+/// it was when the kernel refuses.
+pub fn setBuffer(stream: net.Stream, which: u32, bytes: u32) void {
+    std.posix.setsockopt(stream.socket.handle, std.posix.SOL.SOCKET, which, std.mem.asBytes(&bytes)) catch {};
 }
 
 fn io_sleep(io: Io, ms: u32) void {

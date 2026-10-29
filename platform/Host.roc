@@ -112,4 +112,19 @@ Host := [].{
 	## decimal digits, or empty), GitHub's base URL for the authorize page,
 	## the OAuth app's client id, and the chat's public origin.
 	read_config! : [BootstrapAdmin, GitHubAuthorize, GitHubClientId, Origin] => List(U8)
+
+	## **THE BUS** (host/bus.zig): `frame`, one SSE frame (`Sse.frame`
+	## makes it), to every stream held on the bus key `key` (any bytes the
+	## app chooses), each its own copy, written verbatim. It cannot fail: a
+	## stream whose mailbox is full ends, and its browser resumes.
+	publish! : List(U8), List(U8) => {}
+
+	## **A STUB, FOR THE STUB ROUTE ALONE** (host/stub_log.zig): `frame`
+	## kept after `key`'s others, in the host's memory. Step 6 replaces it
+	## with the store's `append!`.
+	stub_append! : List(U8), List(U8) => {}
+
+	## **A STUB, FOR THE STUB ROUTE ALONE**: `key`'s frames, oldest first.
+	## Step 6 replaces it with the store's `read!`.
+	stub_read! : List(U8) => List(List(U8))
 }
