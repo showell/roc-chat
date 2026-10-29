@@ -14,6 +14,7 @@
 ##     auth/audit                every refusal and admin act, appended (AuditCodec)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
 ##     auth/keys/<hash>          an API key, named for its secret's hash (ConvKey)
+##     auth/invites/<hash>       an agent's invite, named for its code's hash (InviteCodec)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
 ##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
@@ -36,6 +37,7 @@ import ConvAccess
 import ConvCodec
 import ConvKey
 import GitHubSignIn
+import InviteCodec
 import MessageCodec
 import Principal
 import SessionCodec
@@ -194,6 +196,50 @@ Store := [].{
 	save_key! : ConvKey.Entry => [Failed, Written]
 	save_key! = |entry| Host.write!(key_path(entry.hash), ConvKey.encode(entry))
 
+	## **THE INVITE WHOSE CODE HASHES TO `hash`**: its record, nothing
+	## there, or a line that does not read (`Malformed`, which a caller takes
+	## for no invite).
+	invite! : Stored.SecretHash => Try(InviteCodec.Record(ConvAccess.ConvId), [Missing, Malformed, Failed])
+	invite! = |hash| {
+		read = Host.read!(invite_path(hash))
+		match read.status {
+			Failed => Err(Failed)
+			Missing => Err(Missing)
+			Found => InviteCodec.decode(read.bytes, ConvAccess.ConvId.from_u64).map_err(|_| Malformed)
+		}
+	}
+
+	## **EVERY INVITE THAT READS**, in no order; a line that does not read
+	## is left out, as a key's is.
+	invites! : {} => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+	invites! = |{}| {
+		listed = Host.list!(invites_path)
+		match listed.status {
+			Missing => Ok([])
+			Failed => Err(Failed)
+			Found => kept_invites!(listed.entries, [])
+		}
+	}
+
+	## **THE NEXT INVITE'S PUBLIC ID**: one past the count of those stored.
+	## An invite is never removed (a spent or revoked one stays), so no id
+	## is given twice.
+	next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
+	next_invite_id! = |{}| {
+		listed = Host.list!(invites_path)
+		count =
+			match listed.status {
+				Missing => Ok(0)
+				Failed => Err(Failed)
+				Found => Ok(List.len(listed.entries))
+			}?
+		InviteCodec.InviteId.from_u64(count + 1).map_err(|_| Failed)
+	}
+
+	## An invite written: made, spent or revoked.
+	save_invite! : InviteCodec.Record(ConvAccess.ConvId) => [Failed, Written]
+	save_invite! = |record| Host.write!(invite_path(record.hash), InviteCodec.encode(record, ConvAccess.ConvId.to_u64))
+
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
 	next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
 	next_conversation_id! = |{}| {
@@ -296,6 +342,33 @@ keys_path = Str.to_utf8("auth/keys")
 ## A key's file, named for its secret's hash, as a session's is.
 key_path : Stored.SecretHash -> List(U8)
 key_path = |h| Str.to_utf8("auth/keys/${Stored.hash_text(h)}")
+
+invites_path : List(U8)
+invites_path = Str.to_utf8("auth/invites")
+
+## An invite's file, named for its code's hash, as a key's is.
+invite_path : Stored.SecretHash -> List(U8)
+invite_path = |h| Str.to_utf8("auth/invites/${Stored.hash_text(h)}")
+
+## The invites the listed files hold, after `kept`; a file that does not
+## read as one is left out.
+kept_invites! : List({ kind : [Dir, File, Other], name : List(U8) }), List(InviteCodec.Record(ConvAccess.ConvId)) => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+kept_invites! = |entries, kept|
+	match entries {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read = Host.read!(List.join([invites_path, ['/'], entry.name]))
+			match read.status {
+				Failed => Err(Failed)
+				Missing => kept_invites!(rest, kept)
+				Found =>
+					match InviteCodec.decode(read.bytes, ConvAccess.ConvId.from_u64) {
+						Ok(r) => kept_invites!(rest, List.append(kept, r))
+						Err(_) => kept_invites!(rest, kept)
+					}
+			}
+		}
+	}
 
 ## The keys the listed files hold, after `kept`; a file that does not read
 ## as a key is left out.

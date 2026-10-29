@@ -79,7 +79,7 @@ AuditCodec := [].{
 	Invite : {
 		at : I64,
 		invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
-		verdict : [Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)],
+		verdict : [Created([Session(Principal.SessionId), Key(Principal.KeyId)]), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)],
 	}
 
 	## **ONE LINE OF THE AUDIT LOG**. Opaque: its time always in Stored's
@@ -228,10 +228,10 @@ invite_kind = "audit-invite"
 
 ## `created:session:12`, `redeemed:key:9`, `revoked:session:12`, or
 ## `refused:` and InviteCodec's word.
-invite_verdict_text : [Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)] -> Str
+invite_verdict_text : [Created([Session(Principal.SessionId), Key(Principal.KeyId)]), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)] -> Str
 invite_verdict_text = |verdict|
 	match verdict {
-		Created(s) => "${spell_invite_act(Created)}${colon}${via_text(Session(s))}"
+		Created(via) => "${spell_invite_act(Created)}${colon}${via_text(via)}"
 		Redeemed(k) => "${spell_invite_act(Redeemed)}${colon}${via_text(Key(k))}"
 		Revoked(s) => "${spell_invite_act(Revoked)}${colon}${via_text(Session(s))}"
 		Refused(why) => "${refused_prefix}${InviteCodec.refusal_text(why, spell_grant_refusal)}"
@@ -250,7 +250,7 @@ spell_invite_act = |act|
 		Revoked => "revoked"
 	}
 
-invite_verdict_from : List(U8) -> Try([Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)], Stored.Problem)
+invite_verdict_from : List(U8) -> Try([Created([Session(Principal.SessionId), Key(Principal.KeyId)]), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)], Stored.Problem)
 invite_verdict_from = |value|
 	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
 		Ok(why) => InviteCodec.refusal_from(why, |g| Stored.word(g, { name: "verdict", all: all_grant_refusals, spell: spell_grant_refusal })).map_ok(|r| Refused(r))
@@ -259,7 +259,7 @@ invite_verdict_from = |value|
 			act = Stored.word(head, { name: "verdict", all: all_invite_acts, spell: spell_invite_act })?
 			via = via_from(tail)?
 			match (act, via) {
-				(Created, Session(s)) => Ok(Created(s))
+				(Created, v) => Ok(Created(v))
 				(Revoked, Session(s)) => Ok(Revoked(s))
 				(Redeemed, Key(k)) => Ok(Redeemed(k))
 				_ => Err(BadValue("verdict"))
@@ -1105,9 +1105,9 @@ invite_three =
 		Err(NotAnId) => crash "invite_three: 3 is an id"
 	}
 
-invite_verdicts : List([Created(Principal.SessionId), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)])
+invite_verdicts : List([Created([Session(Principal.SessionId), Key(Principal.KeyId)]), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)])
 invite_verdicts = List.concat(
-	[Created(Cast.sid(12)), Redeemed(Cast.kid(9)), Revoked(Cast.sid(12))],
+	[Created(Session(Cast.sid(12))), Created(Key(Cast.kid(5))), Redeemed(Cast.kid(9)), Revoked(Cast.sid(12))],
 	List.map(
 		List.concat([Unknown, Spent, Revoked, Expired, CredentialSent, NoLongerHolds], List.map(all_grant_refusals, |g| Grant(g))),
 		|r| Refused(r),
@@ -1117,9 +1117,9 @@ invite_verdicts = List.concat(
 invite_events : List(AuditCodec.Invite)
 invite_events = List.join_map(invite_verdicts, |v| [{ at: 1761600100, invite: invite_three, verdict: v }, { at: 5, invite: Unknown, verdict: v }])
 
-expect List.len(invite_events) == 34
+expect List.len(invite_events) == 36
 expect List.all(invite_events, |i| AuditCodec.decode(AuditCodec.encode(invite_entry(i))) == Ok(invite_entry(i)))
-expect line_text(invite_entry({ at: 1761600100, invite: invite_three, verdict: Created(Cast.sid(12)) })) == "audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12\n"
+expect line_text(invite_entry({ at: 1761600100, invite: invite_three, verdict: Created(Session(Cast.sid(12))) })) == "audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12\n"
 expect line_text(invite_entry({ at: 1761600160, invite: invite_three, verdict: Redeemed(Cast.kid(9)) })) == "audit-invite v1 at=1761600160 invite=3 for=agent:7 verdict=redeemed:key:9\n"
 expect line_text(invite_entry({ at: 1761600170, invite: Unknown, verdict: Refused(Unknown) })) == "audit-invite v1 at=1761600170 invite=unknown for=unknown verdict=refused:unknown\n"
 expect line_text(invite_entry({ at: 7, invite: invite_three, verdict: Refused(Grant(SessionExpired)) })) == "audit-invite v1 at=7 invite=3 for=agent:7 verdict=refused:grant:session-expired\n"
@@ -1131,7 +1131,8 @@ invite_line_but = |{ from, to }| AuditCodec.decode(Str.to_utf8("audit-invite v1 
 
 expect invite_line_but({ from: "", to: "" }) == Ok({})
 expect invite_line_but({ from: "invite=3", to: "invite=unknown" }) == Err(BadValue("for"))
-expect invite_line_but({ from: "created:session:12", to: "created:key:12" }) == Err(BadValue("verdict"))
+expect invite_line_but({ from: "created:session:12", to: "created:key:12" }) == Ok({})
+expect invite_line_but({ from: "created:session:12", to: "revoked:key:12" }) == Err(BadValue("verdict"))
 expect invite_line_but({ from: "created:session:12", to: "redeemed:session:12" }) == Err(BadValue("verdict"))
 expect invite_line_but({ from: "created:session:12", to: "used:session:12" }) == Err(UnknownWord("verdict"))
 expect invite_line_but({ from: "created:session:12", to: "refused:stale" }) == Err(UnknownWord("verdict"))

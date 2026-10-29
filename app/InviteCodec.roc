@@ -3,14 +3,15 @@
 ## secrets around"): one line in Stored's format, the code's hash and never
 ## the code, which the human is shown once and hands to their agent:
 ##
-##     invite v1 id=3 for=agent:7 generation=5 human-generation=4 session=<64 hex digits> hash=<64 hex digits> created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off
+##     invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:<64 hex digits> hash=<64 hex digits> created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off
 ##
 ## `for` is the agent or bot the key will act as, bound to its account's
 ## generation and its owner's (Principal.Bound), as a key is: an agent
-## retired, or its owner, and the invite redeems to nothing. `session` is
-## the hash the inviting session is stored by: the redemption grants as
-## that session, so ApiKey.may_grant decides it again against the accounts
-## then. `expires` is the invite's own; `lifetime` and the scope are the
+## retired, or its owner, and the invite redeems to nothing. `by` is the
+## granter who asked for it, by the hash it is stored by (a session's; a
+## key's is never granted, ApiKey.may_grant refusing it): the redemption
+## grants as that granter, so may_grant decides it again against the
+## accounts then. `expires` is the invite's own; `lifetime` and the scope are the
 ## key's it redeems to. The state is `live` until it is `spent` (redeemed,
 ## once) or `revoked`.
 ##
@@ -38,6 +39,10 @@ InviteCodec := [].{
 		is_eq : _
 	}
 
+	## **WHO ASKED FOR AN INVITE**: the granter, by the hash the store
+	## keeps it by (Store.session!, Store.key!).
+	By : [Session(Stored.SecretHash), Key(Stored.SecretHash)]
+
 	## Where an invite is: redeemable, redeemed once, or revoked.
 	State : [Live, Spent, Revoked]
 
@@ -45,7 +50,7 @@ InviteCodec := [].{
 	Record(id) : {
 		id : InviteCodec.InviteId,
 		bound : Principal.Bound,
-		session : Stored.SecretHash,
+		by : InviteCodec.By,
 		hash : Stored.SecretHash,
 		created : I64,
 		expires : I64,
@@ -92,7 +97,7 @@ InviteCodec := [].{
 				("for", AccountCodec.id_text(r.bound.id)),
 				("generation", r.bound.generation.to_u64().to_str()),
 				("human-generation", r.bound.human.to_u64().to_str()),
-				("session", Stored.hash_text(r.session)),
+				("by", by_text(r.by)),
 				("hash", Stored.hash_text(r.hash)),
 				("created", Stored.time_text(r.created)),
 				("expires", Stored.time_text(r.expires)),
@@ -118,9 +123,9 @@ InviteCodec := [].{
 		generation = Stored.id(generation_field.value, { name: "generation", make: Principal.Generation.from_u64 })?
 		human_field = generation_field.rest.field("human-generation")?
 		human = Stored.id(human_field.value, { name: "human-generation", make: Principal.Generation.from_u64 })?
-		session_field = human_field.rest.field("session")?
-		session = Stored.hash(session_field.value, "session")?
-		hash_field = session_field.rest.field("hash")?
+		by_field = human_field.rest.field("by")?
+		by = by_from(by_field.value)?
+		hash_field = by_field.rest.field("hash")?
 		hash = Stored.hash(hash_field.value, "hash")?
 		created_field = hash_field.rest.field("created")?
 		created = Stored.time(created_field.value, "created")?
@@ -141,7 +146,7 @@ InviteCodec := [].{
 			Human(_) => Err(BadValue("for"))
 			_ if expires <= created => Err(BadValue("expires"))
 			_ if !InviteCodec.is_key_lifetime(lifetime) => Err(BadValue("lifetime"))
-			_ => Ok({ id, bound: { id: invited, generation, human }, session, hash, created, expires, state, lifetime, scope: { read, post, admin } })
+			_ => Ok({ id, bound: { id: invited, generation, human }, by, hash, created, expires, state, lifetime, scope: { read, post, admin } })
 		}
 	}
 
@@ -183,6 +188,28 @@ InviteCodec := [].{
 
 grant_prefix : Str
 grant_prefix = "grant:"
+
+session_prefix : Str
+session_prefix = "session:"
+
+key_prefix : Str
+key_prefix = "key:"
+
+## `session:` or `key:` and the hash.
+by_text : InviteCodec.By -> Str
+by_text = |by|
+	match by {
+		Session(h) => "${session_prefix}${Stored.hash_text(h)}"
+		Key(h) => "${key_prefix}${Stored.hash_text(h)}"
+	}
+
+by_from : List(U8) -> Try(InviteCodec.By, Stored.Problem)
+by_from = |value|
+	match (Bytes.strip_prefix(value, Str.to_utf8(session_prefix)), Bytes.strip_prefix(value, Str.to_utf8(key_prefix))) {
+		(Ok(h), _) => Stored.hash(h, "by").map_ok(|hash| Session(hash))
+		(_, Ok(h)) => Stored.hash(h, "by").map_ok(|hash| Key(hash))
+		_ => Err(UnknownWord("by"))
+	}
 
 Plain : [Unknown, Spent, Revoked, Expired, CredentialSent, NoLongerHolds]
 
@@ -237,7 +264,7 @@ fresh : InviteCodec.Record(U64)
 fresh = {
 	id: iid(3),
 	bound: { id: Principal.Id.Agent(Cast.aid(7)), generation: Cast.gen(5), human: Cast.gen(4) },
-	session: hash_of(0x11),
+	by: Session(hash_of(0x11)),
 	hash: hash_of(0x22),
 	created: 1761600000,
 	expires: 1761600600,
@@ -257,7 +284,7 @@ line_of = |r|
 		Err(_) => crash "line_of: a line is UTF-8"
 	}
 
-expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 session=${Str.repeat("11", 32)} hash=${Str.repeat("22", 32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off\n"
+expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:${Str.repeat("11", 32)} hash=${Str.repeat("22", 32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off\n"
 expect InviteCodec.decode(InviteCodec.encode(fresh, |n| n), number) == Ok(fresh)
 expect InviteCodec.decode(InviteCodec.encode(other, |n| n), number) == Ok(other)
 expect InviteCodec.decode(InviteCodec.encode({ ..fresh, state: Revoked }, |n| n), number) == Ok({ ..fresh, state: Revoked })
@@ -272,7 +299,10 @@ expect decoded_but({ from: "lifetime=31536000", to: "lifetime=31536001" }) == Er
 expect decoded_but({ from: "lifetime=31536000", to: "lifetime=0" }) == Err(BadValue("lifetime"))
 expect decoded_but({ from: "state=live", to: "state=used" }) == Err(UnknownWord("state"))
 expect decoded_but({ from: "id=3", to: "id=0" }) == Err(BadValue("id"))
-expect decoded_but({ from: " session=", to: " sessions=" }) == Err(MissingField("session"))
+expect decoded_but({ from: " by=", to: " from=" }) == Err(MissingField("by"))
+expect decoded_but({ from: "by=session:", to: "by=cookie:" }) == Err(UnknownWord("by"))
+expect decoded_but({ from: "by=session:11", to: "by=session:1" }) == Err(BadValue("by"))
+expect InviteCodec.decode(InviteCodec.encode({ ..fresh, by: Key(hash_of(0x33)) }, |n| n), number) == Ok({ ..fresh, by: Key(hash_of(0x33)) })
 expect decoded_but({ from: "admin=off", to: "admin=off x=1" }) == Err(Trailing)
 
 ## A grant's refusal, as a test spells and reads it.

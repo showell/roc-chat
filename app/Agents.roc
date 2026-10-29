@@ -17,11 +17,28 @@
 ##                               year, the most, by default)
 ##     GET  /keys                this session's keys and its agents'
 ##     POST /keys/<id>/revoke    revoke one of them
+##     POST /invites             invite an agent: `as=agent:7` and a mint's
+##                               other fields, for the key it redeems to
+##     GET  /invites             this session's live invites
+##     POST /invites/<id>/revoke revoke one of them
+##     POST /invites/redeem      the agent's: `code=`, and no cookie or key;
+##                               the key, its secret shown once
 ##
-## **ONLY A SESSION**: a key never makes an agent or mints a key (the core's
-## GrantedByKey, audited); nor lists or revokes one. **THE SECRET IS SHOWN
-## ONCE**, in the mint's answer: 32 bytes from the host, in hex. Only its
-## hash is kept (Store.save_key!), and no listing holds either.
+## **ONLY A SESSION**: a key never makes an agent, mints a key or invites
+## (the core's GrantedByKey, audited); nor lists or revokes one. **THE
+## SECRET IS SHOWN ONCE**, in the mint's answer: 32 bytes from the host, in
+## hex. Only its hash is kept (Store.save_key!), and no listing holds
+## either.
+##
+## **AN AGENT'S KEY COMES ONLY FROM AN INVITE** (Steve: humans never pass a
+## durable secret around): a mint acting as an agent or a bot is refused.
+## The human invites (ApiKey.may_grant decides, as it does a mint), and is
+## shown a code once, which lives `invite_lifetime_secs`; the agent
+## redeems it, with no other credential, for the key. The redemption
+## grants again, as the session that invited, against the accounts then
+## (`Agents.redeemed`), and spends the invite in the same turn, so a code
+## redeems once. Every invite made, redeemed, revoked or refused is
+## audited; a refusal is one 401 that says no more.
 import pf.Chat
 import pf.Host
 import AccountCodec
@@ -32,6 +49,7 @@ import Cast
 import ConvAccess
 import ConvKey
 import Credentials
+import InviteCodec
 import DisplayName
 import GitHubSignIn
 import KeyCodec
@@ -46,8 +64,8 @@ import Wire
 
 Agents := [].{
 
-	## What a path under `/agents` or `/keys` asks.
-	Route : [MakeAgent, Keys, Revoke(Principal.KeyId)]
+	## What a path under `/agents`, `/keys` or `/invites` asks.
+	Route : [MakeAgent, Keys, Revoke(Principal.KeyId), Invites, Redeem, RevokeInvite(InviteCodec.InviteId)]
 
 	## The route a path names, if it names one.
 	route : List(U8) -> Try(Agents.Route, [NotAgents])
@@ -56,10 +74,16 @@ Agents := [].{
 			Ok(MakeAgent)
 		} else if path == Str.to_utf8("/keys") {
 			Ok(Keys)
+		} else if path == Str.to_utf8("/invites") {
+			Ok(Invites)
+		} else if path == Str.to_utf8("/invites/redeem") {
+			Ok(Redeem)
 		} else {
 			match List.split_on(path, '/') {
 				[[], keys, digits, act] if keys == Str.to_utf8("keys") and act == Str.to_utf8("revoke") =>
 					Stored.id(digits, { name: "key", make: Principal.KeyId.from_u64 }).map_ok(|id| Revoke(id)).map_err(|_| NotAgents)
+				[[], invites, digits, act] if invites == Str.to_utf8("invites") and act == Str.to_utf8("revoke") =>
+					Stored.id(digits, { name: "invite", make: InviteCodec.InviteId.from_u64 }).map_ok(|id| RevokeInvite(id)).map_err(|_| NotAgents)
 				_ => Err(NotAgents)
 			}
 		}
@@ -76,6 +100,14 @@ Agents := [].{
 					_ => Chat.not_allowed(Get)
 				}
 			Revoke(id) => if req.method == Post revoke!(id) else Chat.not_allowed(Post)
+			Invites =>
+				match req.method {
+					Post => invite!({})
+					Get => list_invites!({})
+					_ => Chat.not_allowed(Get)
+				}
+			Redeem => if req.method == Post redeem!({}) else Chat.not_allowed(Post)
+			RevokeInvite(id) => if req.method == Post revoke_invite!(id) else Chat.not_allowed(Post)
 		}
 
 	## Who asks to make an agent: the credential the request came with.
@@ -123,6 +155,57 @@ Agents := [].{
 			}
 		}
 
+	## **MAY THIS GRANTER INVITE `acts_as`, FOR A KEY OF THIS SCOPE AND
+	## LIFETIME?** ApiKey.may_grant decides, exactly as for a mint (only a
+	## live session, for its own agents and bots, admin only for an admin's);
+	## then the invite is for an agent or a bot (a human's key is minted),
+	## and the key's lifetime one a mint may give. The agent, bound to its
+	## accounts as they are now.
+	invited : { granter : Agents.Maker, acts_as : Principal.Id, scope : ApiKey.Scope(ConvAccess.ConvId), lifetime : I64, accounts : List(Principal), now : I64 } -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
+	invited = |{ granter, acts_as, scope, lifetime, accounts, now }|
+		match ApiKey.may_grant({ granter, acts_as, scope, accounts, now }) {
+			Refused(why) => Err(Refused(why))
+			Grantable =>
+				match acts_as {
+					Human(_) => Err(NotAnAgent)
+					_ if !InviteCodec.is_key_lifetime(lifetime) => Err(Refused(BadExpiry))
+					_ => Principal.bind(accounts, acts_as).map_err(|_| Refused(NoSuchPrincipal))
+				}
+		}
+
+	## **WHAT A REDEMPTION DECIDES**: the key, or why not. A live invite,
+	## before its expiry (a clock before its making is trusted for nothing),
+	## its agent's binding holding now, and the grant decided again as its
+	## granter (ApiKey.may_grant through ConvKey.issue: the session still
+	## live, the agent still its human's) against the accounts now. `granter`
+	## is the invite's, as the store holds it now: `Gone` when it holds none.
+	redeemed : { invite : InviteCodec.Record(ConvAccess.ConvId), granter : [Found(Agents.Maker), Gone], accounts : List(Principal), now : I64, key : Principal.KeyId } -> Try(ConvKey.Key, InviteCodec.Refusal)
+	redeemed = |{ invite, granter, accounts, now, key }|
+		match invite.state {
+			Spent => Err(Spent)
+			Revoked => Err(Revoked)
+			Live if now < invite.created or now >= invite.expires => Err(Expired)
+			Live =>
+				match (Principal.holds(accounts, invite.bound), granter) {
+					(Err(_), _) => Err(NoLongerHolds)
+					(Ok(_), Gone) => Err(Grant(NoSuchGranter))
+					(Ok(_), Found(g)) =>
+						match ConvKey.issue({ granter: g, acts_as: invite.bound.id, scope: invite.scope, accounts, now }, { key, expires: now + invite.lifetime }) {
+							Ok(k) => Ok(k)
+							Err(Refused(why)) => Err(Grant(why))
+						}
+				}
+		}
+
+	## **THE INVITE IS ONE OF THIS HUMAN'S**: for an agent or a bot the
+	## accounts say they own now.
+	is_invited_by : InviteCodec.Record(ConvAccess.ConvId), { human : Principal.GitHubId, accounts : List(Principal) } -> Bool
+	is_invited_by = |invite, { human, accounts }|
+		match Principal.find(accounts, invite.bound.id) {
+			Ok(p) => Principal.answers_to(p) == human
+			Err(_) => Bool.False
+		}
+
 	## **THE KEY IS ONE OF THIS HUMAN'S**: it acts as them, or as an agent
 	## or a bot the accounts say they own now.
 	is_owned_by : ConvKey.Key, { human : Principal.GitHubId, accounts : List(Principal) } -> Bool
@@ -137,9 +220,19 @@ Agents := [].{
 form_most : U64
 form_most = 4 * 1024
 
-## A key's secret: the OS's entropy, as a session's is.
+## A key's secret: the OS's entropy, as a session's is. An invite's code
+## is as many.
 secret_bytes : U64
 secret_bytes = 32
+
+## **AN INVITE LIVES TEN MINUTES** (Steve): long enough to hand the code
+## to an agent in the sitting it was made in, short enough that a code
+## left in a chat log, a terminal's scrollback or a shell's history is
+## dead before anyone finds it. The key it redeems to lives its own
+## lifetime. The end to end tests the expiry by moving the host's clock
+## (server.zig's `clock_ahead_s_for_test`), never by waiting.
+invite_lifetime_secs : I64
+invite_lifetime_secs = 600
 
 ## **/agents**: an agent made, from a session; stored, and answered.
 make_agent! : {} => Chat.Answer
@@ -205,6 +298,8 @@ minted! : Agents.Maker, { default_as : Principal.Id, form : List(U8) } => Chat.A
 minted! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
+		Ok({ acts_as, scope: _, lifetime: _ }) if is_session(granter) and !is_human(acts_as) =>
+			Wire.refused(403, "an agent's or a bot's key comes from an invite: POST /invites, and the agent redeems its code")
 		Ok({ acts_as, scope, lifetime }) => {
 			now = Host.read_time!({})
 			match (Store.accounts!({}), Store.next_key_id!({})) {
@@ -230,6 +325,274 @@ minted! = |granter, { default_as, form }|
 			}
 		}
 	}
+
+## Whether the granter is a session.
+is_session : Agents.Maker -> Bool
+is_session = |granter|
+	match granter {
+		Session(_) => Bool.True
+		Key(_) => Bool.False
+	}
+
+## Whether the id is a human's.
+is_human : Principal.Id -> Bool
+is_human = |id|
+	match id {
+		Human(_) => Bool.True
+		Agent(_) | Bot(_) => Bool.False
+	}
+
+## **/invites, POST**: an invite, from a session, for one of its agents or
+## bots (Agents.invited decides); its code shown once.
+invite! : {} => Chat.Answer
+invite! = |{}| {
+	got = Host.read_body!(form_most)
+	match got.status {
+		Answered => Chat.answered
+		Read =>
+			match Credentials.presented!({}) {
+				Err(answer) => answer
+				Ok(Nobody) => signed_out
+				Ok(Session(s)) => invited_by!(Session(s), { default_as: Principal.Id.Human(s.human()), form: got.bytes })
+				Ok(Key(k)) => invited_by!(Key(k), { default_as: k.acts_as(), form: got.bytes })
+			}
+	}
+}
+
+invited_by! : Agents.Maker, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
+invited_by! = |granter, { default_as, form }|
+	match asked_grant(form, default_as) {
+		Err(why) => Wire.refused(400, why)
+		Ok({ acts_as, scope, lifetime }) => {
+			now = Host.read_time!({})
+			match (Store.accounts!({}), Store.next_invite_id!({}), granter_hash!(granter)) {
+				(Ok(accounts), Ok(id), Ok(by)) =>
+					match Agents.invited({ granter, acts_as, scope, lifetime, accounts, now }) {
+						Err(NotAnAgent) => Wire.refused(400, "an invite is for one of your agents or bots, `as=agent:7`; your own key is minted")
+						Err(Refused(why)) => {
+							audit_grant!(granter, { acts_as, refusal: why, now })
+							grant_refused(why)
+						}
+						Ok(bound) => {
+							code = Host.random_bytes!(secret_bytes)
+							match Stored.SecretHash.from_bytes(Host.hash!(code)) {
+								Err(NotAHash) => Chat.failed
+								Ok(hash) => {
+									invite = { id, bound, by, hash, created: now, expires: now + invite_lifetime_secs, state: Live, lifetime, scope }
+									match Store.save_invite!(invite) {
+										Failed => Chat.failed
+										Written => {
+											audit_invite!({ at: now, invite: Known({ id, agent: bound.id }), verdict: Created(via_of(granter)) })
+											Wire.json(201, invite_json(invite, Shown(code)))
+										}
+									}
+								}
+							}
+						}
+					}
+				_ => Chat.failed
+			}
+		}
+	}
+
+## **THE GRANTER BY ITS STORED HASH**: a session's cookie's, a key's
+## Bearer secret's, as the store keeps each.
+granter_hash! : Agents.Maker => Try(InviteCodec.By, [Failed])
+granter_hash! = |granter|
+	match granter {
+		Session(s) => Ok(Session(s.fields().token_hash))
+		Key(_) =>
+			match Credentials.bearer_secret(Host.read_header!(Str.to_utf8("authorization"))) {
+				Err(NotABearer) => Err(Failed)
+				Ok(secret) => Stored.SecretHash.from_bytes(Host.hash!(secret)).map_ok(|h| Key(h)).map_err(|_| Failed)
+			}
+	}
+
+## The session or key an invite was made by, by its public id, for its
+## audit line.
+via_of : Agents.Maker -> [Session(Principal.SessionId), Key(Principal.KeyId)]
+via_of = |granter|
+	match granter {
+		Session(s) => Session(s.id())
+		Key(k) => Key(k.id())
+	}
+
+## **/invites/redeem**: the code, from an agent with no other credential,
+## for the key; refused, audited, and one 401 otherwise.
+redeem! : {} => Chat.Answer
+redeem! = |{}| {
+	got = Host.read_body!(form_most)
+	match got.status {
+		Answered => Chat.answered
+		Read => {
+			now = Host.read_time!({})
+			if Host.read_header!(Str.to_utf8("authorization")) != [] or Host.read_header!(Str.to_utf8("cookie")) != [] {
+				invite_refused!({ invite: Unknown, why: CredentialSent, now })
+			} else {
+				match SignInWeb.form_field(got.bytes, "code") {
+					Err(_) => invite_refused!({ invite: Unknown, why: Unknown, now })
+					Ok(hex) =>
+						match SignInWeb.unhex(hex) {
+							Err(NotHex) => invite_refused!({ invite: Unknown, why: Unknown, now })
+							Ok(code) =>
+								match Stored.SecretHash.from_bytes(Host.hash!(code)) {
+									Err(NotAHash) => Chat.failed
+									Ok(hash) =>
+										match Store.invite!(hash) {
+											Err(Failed) => Chat.failed
+											Err(Missing) | Err(Malformed) => invite_refused!({ invite: Unknown, why: Unknown, now })
+											Ok(invite) => redeemed_now!(invite, now)
+										}
+								}
+						}
+				}
+			}
+		}
+	}
+}
+
+## **THE INVITE REDEEMED, OR REFUSED**: decided (Agents.redeemed); then,
+## **SPENT FIRST**, before the key is stored, so a crash between leaves a
+## spent invite and no key, never a key and a live invite.
+redeemed_now! : InviteCodec.Record(ConvAccess.ConvId), I64 => Chat.Answer
+redeemed_now! = |invite, now| {
+	known = Known({ id: invite.id, agent: invite.bound.id })
+	match (Store.accounts!({}), Store.next_key_id!({}), stored_granter!(invite.by)) {
+		(Ok(accounts), Ok(key_id), Ok(granter)) =>
+			match Agents.redeemed({ invite, granter, accounts, now, key: key_id }) {
+				Err(why) => invite_refused!({ invite: known, why, now })
+				Ok(key) => {
+					secret = Host.random_bytes!(secret_bytes)
+					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
+						Err(NotAHash) => Chat.failed
+						Ok(hash) =>
+							match Store.save_invite!({ ..invite, state: Spent }) {
+								Failed => Chat.failed
+								Written =>
+									match Store.save_key!({ key, hash }) {
+										Failed => Chat.failed
+										Written => {
+											audit_invite!({ at: now, invite: known, verdict: Redeemed(key.id()) })
+											Wire.json(201, key_json(key, Shown(secret)))
+										}
+									}
+							}
+					}
+				}
+			}
+		_ => Chat.failed
+	}
+}
+
+## The granter an invite names, as the store holds it now.
+stored_granter! : InviteCodec.By => Try([Found(Agents.Maker), Gone], [Failed])
+stored_granter! = |by|
+	match by {
+		Session(h) =>
+			match Store.session!(h) {
+				Ok(line) => Ok(Found(Session(Session.load(line))))
+				Err(Missing) | Err(Malformed) => Ok(Gone)
+				Err(Failed) => Err(Failed)
+			}
+		Key(h) =>
+			match Store.key!(h) {
+				Ok(entry) => Ok(Found(Key(entry.key)))
+				Err(Missing) | Err(Malformed) => Ok(Gone)
+				Err(Failed) => Err(Failed)
+			}
+	}
+
+## A redemption refused: audited, and a 401 that says no more.
+invite_refused! : { invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })], why : InviteCodec.Refusal, now : I64 } => Chat.Answer
+invite_refused! = |{ invite, why, now }| {
+	audit_invite!({ at: now, invite, verdict: Refused(why) })
+	Wire.refused(401, "invite refused")
+}
+
+## An invite's life, audited.
+audit_invite! : AuditCodec.Invite => {}
+audit_invite! = |event|
+	match AuditCodec.Entry.of_invite(event) {
+		Ok(entry) => Store.audit!(entry)
+		Err(ClockOutOfRange) => {}
+	}
+
+## **/invites, GET**: the session's human's live invites, by id; never a
+## code or a hash.
+list_invites! : {} => Chat.Answer
+list_invites! = |{}|
+	match owner!({}) {
+		Err(answer) => answer
+		Ok({ human, accounts, session: _, now }) =>
+			match Store.invites!({}) {
+				Err(Failed) => Chat.failed
+				Ok(all) => {
+					live = List.keep_if(all, |i| is_live(i, now) and Agents.is_invited_by(i, { human, accounts }))
+					Wire.json(200, List.join([Str.to_utf8("{\"invites\":["), Wire.commas(List.map(invites_by_id(live), |i| invite_json(i, Hidden))), Str.to_utf8("]}")]))
+				}
+			}
+	}
+
+## Live, and before its expiry.
+is_live : InviteCodec.Record(ConvAccess.ConvId), I64 -> Bool
+is_live = |invite, now|
+	match invite.state {
+		Live => now >= invite.created and now < invite.expires
+		Spent | Revoked => Bool.False
+	}
+
+## The invites in the order of their ids.
+invites_by_id : List(InviteCodec.Record(ConvAccess.ConvId)) -> List(InviteCodec.Record(ConvAccess.ConvId))
+invites_by_id = |invites|
+	List.fold(
+		invites,
+		[],
+		|sorted, i| {
+			n = i.id.to_u64()
+			List.concat(List.append(List.keep_if(sorted, |m| m.id.to_u64() < n), i), List.keep_if(sorted, |m| m.id.to_u64() > n))
+		},
+	)
+
+## **/invites/<id>/revoke**: one of the session's live invites revoked.
+revoke_invite! : InviteCodec.InviteId => Chat.Answer
+revoke_invite! = |id|
+	match owner!({}) {
+		Err(answer) => answer
+		Ok({ human, accounts, session, now }) =>
+			match Store.invites!({}) {
+				Err(Failed) => Chat.failed
+				Ok(all) =>
+					match List.find_first(all, |i| i.id == id and is_live(i, now) and Agents.is_invited_by(i, { human, accounts })) {
+						Err(_) => Wire.refused(404, "no such live invite of yours")
+						Ok(invite) => {
+							revoked = { ..invite, state: Revoked }
+							match Store.save_invite!(revoked) {
+								Failed => Chat.failed
+								Written => {
+									audit_invite!({ at: now, invite: Known({ id, agent: invite.bound.id }), verdict: Revoked(session) })
+									Wire.json(200, invite_json(revoked, Hidden))
+								}
+							}
+						}
+					}
+			}
+	}
+
+## **AN INVITE AS THE WIRE SPELLS IT**: its public id, whom it is for, and
+## when it expires; its code only when just made (`Shown`), never after.
+invite_json : InviteCodec.Record(ConvAccess.ConvId), [Shown(List(U8)), Hidden] -> List(U8)
+invite_json = |invite, code| {
+	shown =
+		match code {
+			Shown(bytes) => List.join([Str.to_utf8(",\"code\":\""), SignInWeb.hex(bytes), ['"']])
+			Hidden => []
+		}
+	List.join([
+		Str.to_utf8("{\"id\":${invite.id.to_u64().to_str()},\"for\":\"${AccountCodec.id_text(invite.bound.id)}\",\"expires\":${invite.expires.to_str()}"),
+		shown,
+		['}'],
+	])
+}
 
 ## **WHAT A MINT'S FORM ASKS**: who the key acts as, its scope, and how
 ## long it lives; or why the form does not read.
@@ -275,7 +638,7 @@ list! : {} => Chat.Answer
 list! = |{}|
 	match owner!({}) {
 		Err(answer) => answer
-		Ok({ human, accounts }) =>
+		Ok({ human, accounts, session: _, now: _ }) =>
 			match Store.keys!({}) {
 				Err(Failed) => Chat.failed
 				Ok(entries) => {
@@ -302,7 +665,7 @@ revoke! : Principal.KeyId => Chat.Answer
 revoke! = |id|
 	match owner!({}) {
 		Err(answer) => answer
-		Ok({ human, accounts }) =>
+		Ok({ human, accounts, session: _, now: _ }) =>
 			match Store.keys!({}) {
 				Err(Failed) => Chat.failed
 				Ok(entries) =>
@@ -321,7 +684,7 @@ revoke! = |id|
 
 ## **THE HUMAN A LIVE SESSION SIGNS IN**, for listing and revoking: a key
 ## manages no key (a 403), nobody signed in is a 401.
-owner! : {} => Try({ human : Principal.GitHubId, accounts : List(Principal) }, Chat.Answer)
+owner! : {} => Try({ human : Principal.GitHubId, accounts : List(Principal), session : Principal.SessionId, now : I64 }, Chat.Answer)
 owner! = |{}| {
 	credential = Credentials.presented!({})?
 	match credential {
@@ -332,7 +695,7 @@ owner! = |{}| {
 			accounts = Store.accounts!({}).map_err(|_| Chat.failed)?
 			match session.admit({ accounts, now }) {
 				Refused(_) => Err(signed_out)
-				Admitted({ principal, write: _ }) => Ok({ human: Principal.answers_to(principal), accounts })
+				Admitted({ principal, write: _ }) => Ok({ human: Principal.answers_to(principal), accounts, session: session.id(), now })
 			}
 		}
 	}
@@ -423,6 +786,19 @@ expect Agents.route(Str.to_utf8("/keys/0/revoke")).is_err()
 expect Agents.route(Str.to_utf8("/keys/04/revoke")).is_err()
 expect Agents.route(Str.to_utf8("/keys/4")).is_err()
 expect Agents.route(Str.to_utf8("/agentsx")).is_err()
+expect Agents.route(Str.to_utf8("/invites")) == Ok(Invites)
+expect Agents.route(Str.to_utf8("/invites/redeem")) == Ok(Redeem)
+expect Agents.route(Str.to_utf8("/invites/3/revoke")).map_ok(|r| r == RevokeInvite(iid(3))) == Ok(Bool.True)
+expect Agents.route(Str.to_utf8("/invites/0/revoke")).is_err()
+expect Agents.route(Str.to_utf8("/invites/x/revoke")).is_err()
+
+## A test's invite id.
+iid : U64 -> InviteCodec.InviteId
+iid = |n|
+	match InviteCodec.InviteId.from_u64(n) {
+		Ok(id) => id
+		Err(NotAnId) => crash "iid: a test's invite id is not 0"
+	}
 
 ## Human `who`'s session, signed in at 0 to their account of generation 1.
 session_of : U64 -> Session
@@ -533,3 +909,76 @@ expect
 expect asked_grant(Str.to_utf8("read=all"), Principal.id(Cast.ann)).is_err()
 expect asked_grant(Str.to_utf8("as=agent%3A0"), Principal.id(Cast.ann)).is_err()
 expect asked_grant(Str.to_utf8("lifetime=-1"), Principal.id(Cast.ann)).is_err()
+
+# ── INVITES: who may invite (the grant rule, as a mint's), and what a
+# redemption decides.
+plain : ApiKey.Scope(ConvAccess.ConvId)
+plain = { read: On(Everywhere), post: On(Everywhere), admin: Off }
+
+## Ann's agent's id.
+ann_agent_id : Principal.Id
+ann_agent_id = Principal.id(Cast.ann_agent)
+
+invited_as : { granter : Agents.Maker, acts_as : Principal.Id, lifetime : I64 } -> Try(Principal.Bound, [Refused(ApiKey.GrantRefusal), NotAnAgent])
+invited_as = |{ granter, acts_as, lifetime }| Agents.invited({ granter, acts_as, scope: plain, lifetime, accounts: Cast.accounts, now: 50 })
+
+expect invited_as({ granter: Session(session_of(2)), acts_as: ann_agent_id, lifetime: 60 }) == Ok({ id: ann_agent_id, generation: Cast.gen(1), human: Cast.gen(1) })
+expect invited_as({ granter: Key(ann_key), acts_as: ann_agent_id, lifetime: 60 }) == Err(Refused(GrantedByKey))
+expect invited_as({ granter: Session(session_of(1)), acts_as: ann_agent_id, lifetime: 60 }) == Err(Refused(NotTheGrantersOwn))
+expect invited_as({ granter: Session(session_of(2)), acts_as: Principal.id(Cast.ann), lifetime: 60 }) == Err(NotAnAgent)
+expect invited_as({ granter: Session(session_of(2)), acts_as: ann_agent_id, lifetime: 0 }) == Err(Refused(BadExpiry))
+expect invited_as({ granter: Session(session_of(2)), acts_as: ann_agent_id, lifetime: KeyCodec.max_lifetime_secs + 1 }) == Err(Refused(BadExpiry))
+
+## A test's hash: every byte `b`.
+hash_of : U8 -> Stored.SecretHash
+hash_of = |b|
+	match Stored.SecretHash.from_bytes(List.repeat(b, 32)) {
+		Ok(h) => h
+		Err(NotAHash) => crash "hash_of: 32 bytes are a hash"
+	}
+
+## Ann's invite for her agent, made at 50, its key to live 1000 seconds.
+anns_invite : InviteCodec.Record(ConvAccess.ConvId)
+anns_invite = {
+	id: iid(1),
+	bound: { id: ann_agent_id, generation: Cast.gen(1), human: Cast.gen(1) },
+	by: Session(hash_of(0x07)),
+	hash: hash_of(0x22),
+	created: 50,
+	expires: 50 + invite_lifetime_secs,
+	state: Live,
+	lifetime: 1000,
+	scope: plain,
+}
+
+## What redeeming `invite` at `now` decides, said plainly: the key's
+## principal and expiry, or the refusal.
+redeemed_at : { invite : InviteCodec.Record(ConvAccess.ConvId), granter : [Found(Agents.Maker), Gone], accounts : List(Principal), now : I64 } -> Try((Principal.Id, I64), InviteCodec.Refusal)
+redeemed_at = |{ invite, granter, accounts, now }|
+	Agents.redeemed({ invite, granter, accounts, now, key: Cast.kid(9) }).map_ok(|k| (k.acts_as(), k.record().expires))
+
+by_ann : [Found(Agents.Maker), Gone]
+by_ann = Found(Session(session_of(2)))
+
+expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Ok((ann_agent_id, 1100))
+# Once spent, or revoked, never again; past its ten minutes, or before its
+# making, expired.
+expect redeemed_at({ invite: { ..anns_invite, state: Spent }, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Err(Spent)
+expect redeemed_at({ invite: { ..anns_invite, state: Revoked }, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Err(Revoked)
+expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.accounts, now: 50 + invite_lifetime_secs }) == Err(Expired)
+expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.accounts, now: 49 }) == Err(Expired)
+expect invite_lifetime_secs == 600
+# The agent retired, or its owner: the invite redeems to nothing.
+expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: List.drop_last(Cast.accounts, 1), now: 100 }) == Err(NoLongerHolds)
+expect redeemed_at({ invite: anns_invite, granter: by_ann, accounts: Cast.without_ann, now: 100 }) == Err(NoLongerHolds)
+# The agent made again under its id (a new generation): nothing.
+expect redeemed_at({ invite: { ..anns_invite, bound: { ..anns_invite.bound, generation: Cast.gen(2) } }, granter: by_ann, accounts: Cast.accounts, now: 100 }) == Err(NoLongerHolds)
+# The grant decided again: the inviting session gone, or over; a key never
+# grants.
+expect redeemed_at({ invite: anns_invite, granter: Gone, accounts: Cast.accounts, now: 100 }) == Err(Grant(NoSuchGranter))
+expect redeemed_at({ invite: { ..anns_invite, created: Session.idle_secs, expires: Session.idle_secs + invite_lifetime_secs }, granter: by_ann, accounts: Cast.accounts, now: Session.idle_secs + 10 }) == Err(Grant(SessionExpired))
+expect redeemed_at({ invite: anns_invite, granter: Found(Key(ann_key)), accounts: Cast.accounts, now: 100 }) == Err(Grant(GrantedByKey))
+# Whose invites: ann's, for her agent; never boss's.
+expect Agents.is_invited_by(anns_invite, { human: Cast.gid(2), accounts: Cast.accounts })
+expect !Agents.is_invited_by(anns_invite, { human: Cast.gid(1), accounts: Cast.accounts })
+expect is_live(anns_invite, 100) and !is_live(anns_invite, 650) and !is_live({ ..anns_invite, state: Spent }, 100)
