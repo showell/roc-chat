@@ -864,12 +864,16 @@ expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC")
 
 # **A RETIRED AGENT'S ID IS NEVER GIVEN AGAIN**: the highest agent (4,
 # ann's CC) retired by boss through Admin's plan, the next agent made is 5.
-after_retired : { accounts : List(Principal), settings : GitHubSignIn.Settings }
-after_retired =
-	match Admin.decide({ credential: Session(session_of(1)), action: Retire(Principal.Id.Agent(Cast.aid(4))), accounts: after_first.accounts, settings: after_first.settings, now: 60 }) {
-		Ok({ audit: _, plan }) => Admin.applied(plan, after_first)
-		Err(_) => crash "after_retired: a test's retirement is decided"
+## Agent `n` retired by boss, through Admin's plan, from `start`.
+retired_by_boss : U64, { accounts : List(Principal), settings : GitHubSignIn.Settings } -> { accounts : List(Principal), settings : GitHubSignIn.Settings }
+retired_by_boss = |n, start|
+	match Admin.decide({ credential: Session(session_of(1)), action: Retire(Principal.Id.Agent(Cast.aid(n))), accounts: start.accounts, settings: start.settings, now: 60 }) {
+		Ok({ audit: _, plan }) => Admin.applied(plan, start)
+		Err(_) => crash "retired_by_boss: a test's retirement is decided"
 	}
+
+after_retired : { accounts : List(Principal), settings : GitHubSignIn.Settings }
+after_retired = retired_by_boss(4, after_first)
 
 expect !List.any(after_retired.accounts, |p| Principal.id(p) == Principal.Id.Agent(Cast.aid(4)))
 expect

@@ -1098,12 +1098,16 @@ invite_entry = |i|
 		Err(ClockOutOfRange) => crash "invite_entry: a test's time is storable"
 	}
 
-invite_three : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })]
-invite_three =
-	match InviteCodec.InviteId.from_u64(3) {
+## Invite `n`, for agent 7.
+invite_for_seven : U64 -> [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })]
+invite_for_seven = |n|
+	match InviteCodec.InviteId.from_u64(n) {
 		Ok(id) => Known({ id, agent: Principal.Id.Agent(Cast.aid(7)) })
-		Err(NotAnId) => crash "invite_three: 3 is an id"
+		Err(NotAnId) => crash "invite_for_seven: a test's invite id is not 0"
 	}
+
+invite_three : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })]
+invite_three = invite_for_seven(3)
 
 invite_verdicts : List([Created([Session(Principal.SessionId), Key(Principal.KeyId)]), Redeemed(Principal.KeyId), Revoked(Principal.SessionId), Refused(InviteCodec.Refusal)])
 invite_verdicts = List.concat(

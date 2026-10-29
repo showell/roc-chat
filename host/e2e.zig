@@ -35,6 +35,27 @@
 //!  21. every key refused in use, and every grant refused, is in the audit,
 //!      and no secret is
 //!
+//! An agent's key comes only from an invite (steps 13, 18 and 19 get theirs
+//! so too). Then the invites themselves:
+//!
+//!  22. Steve invites his agent; the code sent with a cookie is refused, and
+//!      the agent, with the code alone, redeems it and posts with the key
+//!  23. redeeming the same code again is a 401
+//!  24. an invite past its ten minutes is a 401 (the server's clock moved
+//!      ahead, `clock_ahead_s_for_test`, never a wait)
+//!  25. another human's session cannot invite for Steve's agent
+//!  26. a key cannot make an invite
+//!  27. a mint acting as an agent is refused; Steve's own key is minted
+//!  28. after the agent is retired, its invite redeems to nothing
+//!  29. agent ids: make one, retire it (the highest), make another, and its
+//!      id is fresh
+//!  30. every invite made, redeemed and refused is audited, with no code
+//!
+//! **A RETIREMENT HERE IS THE TEST'S** (`retire`): no route retires yet, so
+//! the step removes the agent's line from the accounts, which is what
+//! Admin's plan does to the accounts (RemoveAccount); its keys and votes
+//! are no part of what these steps ask.
+//!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
 //! the first: `zig build e2e`, and `zig build test` runs it too.
@@ -293,6 +314,8 @@ const World = struct {
     key_id: []const u8 = "",
     key: []const u8 = "",
     agents_conv: []const u8 = "",
+    /// The code of the invite step 22 redeemed.
+    code: []const u8 = "",
 
     fn port(w: *const World) u16 {
         return w.rig.port();
@@ -448,6 +471,50 @@ fn mint(w: *World, form: []const u8) !struct { id: []const u8, secret: []const u
     return .{ .id = try field(r.body, "id"), .secret = try field(r.body, "secret") };
 }
 
+/// Steve invites with `form`: the invite's id and its code.
+fn invite(w: *World, form: []const u8) !struct { id: []const u8, code: []const u8 } {
+    const r = try request(w.a, w.port(), "POST", "/invites", w.steve, form);
+    if (r.status != 201) return error.NotInvited;
+    return .{ .id = try field(r.body, "id"), .code = try field(r.body, "code") };
+}
+
+/// The agent redeems `code`, with no other credential.
+fn redeem(w: *World, code: []const u8) !Response {
+    return send(w.a, w.port(), "POST", "/invites/redeem", .{}, try std.fmt.allocPrint(w.a, "code={s}", .{code}));
+}
+
+/// **AN AGENT'S KEY, BY AN INVITE**: Steve invites with `form`, the agent
+/// redeems the code; the key's public id and its secret.
+fn agentKey(w: *World, form: []const u8) !struct { id: []const u8, secret: []const u8 } {
+    const inv = try invite(w, form);
+    const r = try redeem(w, inv.code);
+    if (r.status != 201) return error.NotRedeemed;
+    return .{ .id = try field(r.body, "id"), .secret = try field(r.body, "secret") };
+}
+
+/// **THE TEST'S RETIREMENT**: the agent `agent:N`'s line gone from the
+/// accounts, as Admin's plan removes it.
+fn retire(w: *World, agent: []const u8) !void {
+    const before = try w.rig.data.readFileAlloc(io, "auth/accounts", w.a, .limited(1024 * 1024));
+    const prefix = try std.fmt.allocPrint(w.a, "account v1 kind=agent id={s} ", .{agent["agent:".len..]});
+    var kept: std.ArrayList(u8) = .empty;
+    var lines = std.mem.splitScalar(u8, before, '\n');
+    var dropped: usize = 0;
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        if (std.mem.startsWith(u8, line, prefix)) {
+            dropped += 1;
+            continue;
+        }
+        try kept.appendSlice(w.a, line);
+        try kept.append(w.a, '\n');
+    }
+    if (dropped != 1) return error.NotRetired;
+    const f = try w.rig.data.createFile(io, "auth/accounts", .{});
+    defer f.close(io);
+    try f.writeStreamingAll(io, kept.items);
+}
+
 fn agentPath(w: *const World, conv: []const u8, comptime tail: []const u8) ![]const u8 {
     return std.fmt.allocPrint(w.a, "/conversations/{s}" ++ tail, .{conv});
 }
@@ -466,8 +533,8 @@ fn makeAgent(w: *World) !void {
 fn mintForAgent(w: *World) !void {
     const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
     // C, another human, is no owner of Steve's agent.
-    if ((try request(w.a, w.port(), "POST", "/keys", w.cal, form)).status != 403) return error.MintedForAnothersAgent;
-    const k = try mint(w, form);
+    if ((try request(w.a, w.port(), "POST", "/invites", w.cal, form)).status != 403) return error.InvitedForAnothersAgent;
+    const k = try agentKey(w, form);
     w.key_id = k.id;
     w.key = k.secret;
     if (w.key.len != 64) return error.NotASecret;
@@ -518,7 +585,7 @@ fn revoke(w: *World) !void {
 }
 
 fn expired(w: *World) !void {
-    const k = try mint(w, try std.fmt.allocPrint(w.a, "as={s}&lifetime=1", .{w.agent}));
+    const k = try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}&lifetime=1", .{w.agent}));
     // Past its one second, on the host's clock of whole seconds.
     sleepMs(2100);
     if ((try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = k.secret }, "")).status != 401) return error.ExpiredKeyWorks;
@@ -527,7 +594,7 @@ fn expired(w: *World) !void {
 fn scoped(w: *World) !void {
     // A second conversation, Steve's with his agent: the one the key reads.
     const x = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, try std.fmt.allocPrint(w.a, "with={s}", .{w.agent})));
-    const k = try mint(w, try std.fmt.allocPrint(w.a, "as={s}&read=only%3A{s}&post=off", .{ w.agent, x }));
+    const k = try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}&read=only%3A{s}&post=off", .{ w.agent, x }));
     if ((try send(w.a, w.port(), "GET", try agentPath(w, x, ""), .{ .key = k.secret }, "")).status != 200) return error.ScopedNotRead;
     const posted = try send(w.a, w.port(), "POST", try agentPath(w, x, "/messages"), .{ .key = k.secret }, "out of scope");
     if (posted.status != 403) return error.ScopedPosted;
@@ -559,6 +626,117 @@ fn audited(w: *World) !void {
     if (has(log, w.key)) return error.SecretAudited;
 }
 
+fn inviteRedeemPost(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, try std.fmt.allocPrint(w.a, "with={s}", .{w.agent})));
+    const inv = try invite(w, try std.fmt.allocPrint(w.a, "as={s}", .{w.agent}));
+    if (inv.code.len != 64) return error.NotACode;
+    // Listed, live, with no code.
+    const listed = try get(w.a, w.port(), "/invites", w.steve);
+    if (listed.status != 200 or !has(listed.body, try std.fmt.allocPrint(w.a, "{{\"id\":{s},\"for\":\"{s}\"", .{ inv.id, w.agent }))) return error.NotListed;
+    if (has(listed.body, "code") or has(listed.body, inv.code)) return error.CodeListed;
+    // The code is the credential: sent with a cookie or a key, refused, and
+    // the invite not spent by it.
+    const body = try std.fmt.allocPrint(w.a, "code={s}", .{inv.code});
+    if ((try request(w.a, w.port(), "POST", "/invites/redeem", w.steve, body)).status != 401) return error.RedeemedWithCookie;
+    if ((try send(w.a, w.port(), "POST", "/invites/redeem", .{ .key = w.key }, body)).status != 401) return error.RedeemedWithKey;
+    const r = try redeem(w, inv.code);
+    if (r.status != 201) return error.NotRedeemed;
+    if (!std.mem.eql(u8, try field(r.body, "acts_as"), w.agent)) return error.NotTheAgents;
+    const secret = try field(r.body, "secret");
+    const posted = try send(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), .{ .key = secret }, "hello, by invite");
+    if (posted.status != 201 or !has(posted.body, try std.fmt.allocPrint(w.a, "\"by\":\"{s}\"", .{w.agent}))) return error.NotPosted;
+    // Spent: no longer listed.
+    if (has((try get(w.a, w.port(), "/invites", w.steve)).body, try std.fmt.allocPrint(w.a, "{{\"id\":{s},", .{inv.id}))) return error.SpentListed;
+    w.code = inv.code;
+    w.key = secret;
+}
+
+fn redeemTwice(w: *World) !void {
+    if ((try redeem(w, w.code)).status != 401) return error.RedeemedTwice;
+    // An unknown code too, and none at all.
+    const unknown: [64]u8 = @splat('d');
+    if ((try redeem(w, &unknown)).status != 401) return error.UnknownRedeemed;
+    if ((try send(w.a, w.port(), "POST", "/invites/redeem", .{}, "")).status != 401) return error.NothingRedeemed;
+}
+
+fn inviteExpired(w: *World) !void {
+    const inv = try invite(w, try std.fmt.allocPrint(w.a, "as={s}", .{w.agent}));
+    // Ten minutes and a second later, on the server's clock.
+    w.rig.server.clock_ahead_s_for_test.store(601, .release);
+    defer w.rig.server.clock_ahead_s_for_test.store(0, .release);
+    if ((try redeem(w, inv.code)).status != 401) return error.ExpiredRedeemed;
+}
+
+fn othersCannotInvite(w: *World) !void {
+    const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
+    if ((try request(w.a, w.port(), "POST", "/invites", w.cal, form)).status != 403) return error.InvitedForAnothersAgent;
+    if ((try request(w.a, w.port(), "POST", "/invites", "", form)).status != 401) return error.InvitedSignedOut;
+    // Nor see or revoke Steve's.
+    const inv = try invite(w, form);
+    if (has((try get(w.a, w.port(), "/invites", w.cal)).body, try std.fmt.allocPrint(w.a, "{{\"id\":{s},", .{inv.id}))) return error.ListedToAnother;
+    const target = try std.fmt.allocPrint(w.a, "/invites/{s}/revoke", .{inv.id});
+    if ((try request(w.a, w.port(), "POST", target, w.cal, "")).status != 404) return error.RevokedByAnother;
+    if ((try request(w.a, w.port(), "POST", target, w.steve, "")).status != 200) return error.NotRevoked;
+    if ((try redeem(w, inv.code)).status != 401) return error.RevokedRedeemed;
+}
+
+fn keyCannotInvite(w: *World) !void {
+    const r = try send(w.a, w.port(), "POST", "/invites", .{ .key = w.key }, try std.fmt.allocPrint(w.a, "as={s}", .{w.agent}));
+    if (r.status != 403) return error.KeyInvited;
+    if (has(r.body, "code")) return error.KeyGotACode;
+}
+
+fn mintAsAgentRefused(w: *World) !void {
+    const r = try request(w.a, w.port(), "POST", "/keys", w.steve, try std.fmt.allocPrint(w.a, "as={s}", .{w.agent}));
+    if (r.status != 403 or !has(r.body, "invite")) return error.MintedForAnAgent;
+    // A human's key for themselves is as it was.
+    const own = try mint(w, "");
+    if (own.secret.len != 64) return error.NotASecret;
+}
+
+fn retiredInviteDead(w: *World) !void {
+    const inv = try invite(w, try std.fmt.allocPrint(w.a, "as={s}", .{w.agent}));
+    try retire(w, w.agent);
+    const r = try redeem(w, inv.code);
+    if (r.status != 401) return error.RetiredRedeemed;
+    if (has(r.body, "secret")) return error.RetiredGotAKey;
+}
+
+/// The id of an agent Steve makes, named `name`.
+fn madeAgent(w: *World, comptime name: []const u8) ![]const u8 {
+    const r = try request(w.a, w.port(), "POST", "/agents", w.steve, "name=" ++ name);
+    if (r.status != 201) return error.NotMade;
+    return field(r.body, "id");
+}
+
+fn agentIdFresh(w: *World) !void {
+    const first = try madeAgent(w, "One");
+    // The highest agent now, and retired.
+    try retire(w, first);
+    const second = try madeAgent(w, "Two");
+    if (std.mem.eql(u8, first, second)) return error.IdGivenTwice;
+    const n1 = try std.fmt.parseInt(u64, first["agent:".len..], 10);
+    const n2 = try std.fmt.parseInt(u64, second["agent:".len..], 10);
+    if (n2 != n1 + 1) return error.NotTheNextId;
+}
+
+fn invitesAudited(w: *World) !void {
+    const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    const wanted = [_][]const u8{
+        "verdict=created:session:",
+        "verdict=redeemed:key:",
+        "verdict=revoked:session:",
+        "invite=unknown for=unknown verdict=refused:credential-sent",
+        "verdict=refused:spent",
+        "invite=unknown for=unknown verdict=refused:unknown",
+        "verdict=refused:expired",
+        "verdict=refused:revoked",
+        "verdict=refused:no-longer-holds",
+    };
+    for (wanted) |line| if (!has(log, line)) return error.NotAudited;
+    if (has(log, w.code)) return error.CodeAudited;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -574,7 +752,7 @@ const steps = [_]Step{
     .{ .name = "a third user cannot read it, nor stream it", .f = thirdReads },
     .{ .name = "a post between a stream's backlog read and its subscribe arrives once", .f = betweenOnce },
     .{ .name = "Steve makes an agent", .f = makeAgent },
-    .{ .name = "Steve mints a key for it (and C cannot)", .f = mintForAgent },
+    .{ .name = "Steve gets it a key, by an invite (and C cannot invite for it)", .f = mintForAgent },
     .{ .name = "the agent, by key alone, starts a conversation with Steve and posts; Steve's stream gets it once", .f = agentStarts },
     .{ .name = "Steve posts, and the agent reads it with its key", .f = agentReads },
     .{ .name = "the agent's key cannot mint a key, nor make an agent", .f = keyCannotMint },
@@ -583,6 +761,15 @@ const steps = [_]Step{
     .{ .name = "a key read-scoped to one conversation cannot post there, nor read another", .f = scoped },
     .{ .name = "a session cookie and a Bearer key together are a 400", .f = bothCredentials },
     .{ .name = "every key refused in use, and every grant refused, is audited, with no secret", .f = audited },
+    .{ .name = "Steve invites his agent; with a cookie the code is refused; alone, the agent redeems it and posts with the key", .f = inviteRedeemPost },
+    .{ .name = "redeeming the same code again is a 401", .f = redeemTwice },
+    .{ .name = "an invite past its ten minutes is a 401", .f = inviteExpired },
+    .{ .name = "another human's session cannot invite for Steve's agent, nor see or revoke his invite", .f = othersCannotInvite },
+    .{ .name = "a key cannot make an invite", .f = keyCannotInvite },
+    .{ .name = "a mint acting as an agent is refused; Steve's own key is minted", .f = mintAsAgentRefused },
+    .{ .name = "after the agent is retired, its invite redeems to nothing", .f = retiredInviteDead },
+    .{ .name = "agent ids: make, retire the highest, make, and the id is fresh", .f = agentIdFresh },
+    .{ .name = "every invite made, redeemed, revoked and refused is audited, with no code", .f = invitesAudited },
 };
 
 /// Every step, in order, each timed and said; true when all passed.

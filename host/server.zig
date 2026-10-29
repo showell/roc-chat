@@ -114,6 +114,10 @@ pub const Server = struct {
     /// write blocks depends on the kernel's buffers; a count of frames to
     /// the overflow cannot.)
     stall_streams_for_test: std.atomic.Value(bool) = .init(false),
+    /// A test's: the request's time (Host.read_time!) is this many seconds
+    /// past the clock's, so an expiry minutes away (an invite's ten) is
+    /// tested without waiting for it.
+    clock_ahead_s_for_test: std.atomic.Value(i64) = .init(0),
     /// The last crash's line, as logged (written in the turn; a test reads
     /// it holding the turn).
     crash_said: [2048]u8 = undefined,
@@ -287,7 +291,7 @@ pub const Server = struct {
                 .arena = arena,
                 .files = &s.files,
                 .auth = s.auth,
-                .now = Io.Clock.now(.real, s.io).toSeconds(),
+                .now = Io.Clock.now(.real, s.io).toSeconds() + s.clock_ahead_s_for_test.load(.acquire),
                 .hub = &s.hub,
             };
             var sub: ?*bus.Subscriber = null;
