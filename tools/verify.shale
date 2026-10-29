@@ -16,10 +16,13 @@
 --     expects and its Zig tests counted, neither below its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - five planted faults, each red at its own step of the end to end: a
+--   - eight planted faults, each red at its own step of the end to end: a
 --     forged session cookie admitted, a third user's post let through, a
 --     third user's read let through, the subscribe moved out of the turn,
---     and a message's newline written raw into its transcript line;
+--     a message's newline written raw into its transcript line; and the
+--     pages' (QUEUE 315): the list showing every conversation, a
+--     participant's name written unescaped, a third user given the
+--     conversation's page;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
@@ -28,7 +31,7 @@
 -- may only rise.
 const roc_floor = 1704
 const zig_floor = 166
-const e2e_steps = 11
+const e2e_steps = 16
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -172,6 +175,12 @@ function plant_out_of_turn()
   say(r.code ~= 0 and not s.ok, "plant: the subscribe after the turn, not in it, is red at step 11 (exit " .. r.code .. "; " .. s.line .. ")")
 end
 plant_out_of_turn()
+plant("the list showing every conversation (mine! keeps them all)",
+  "app/Conversations.roc", "List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts }))", "List.keep_if(all, |conv| !List.is_empty(accounts) or ConvAccess.can_post(viewer, { conv, accounts }))", 12)
+plant("a participant's name written unescaped (escape leaves `<`)",
+  "app/Pages.roc", "} else if b == '<' {", "} else if b == 0 {", 13)
+plant("a third user given the conversation's page (can_see asked of nobody)",
+  "app/Pages.roc", "if !ConvAccess.can_see(viewer, { conv, accounts }) {", "if !ConvAccess.can_see(viewer, { conv, accounts }) and List.is_empty(accounts) {", 14)
 plant("a message's newline written raw into its transcript line",
   "app/MessageCodec.roc", "if b == '%' or b < 0x20 or b == 0x7F", "if b == '%' or (b < 0x20 and b != '\\n') or b == 0x7F", 6)
 

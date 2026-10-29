@@ -1,6 +1,6 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
-## conversations; the store is Store.roc's, the only module that names a
+## conversations, Pages.roc's pages of them; the store is Store.roc's, the only module that names a
 ## file. Beside them, a hello page (rendered by roc-markdown, the chat's
 ## dialect) and the chat client's scripts (`serve_script!`).
 app [handle!] {
@@ -12,6 +12,7 @@ import pf.Chat
 import pf.Host
 import md.Md
 import Conversations
+import Pages
 import SignIn
 
 ## The auth core, imported for its expects until a route uses it: with
@@ -37,9 +38,11 @@ handle! = |req|
 	} else if req.path == Str.to_utf8("/me") {
 		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
 	} else {
-		match Conversations.route(req.path) {
-			Ok(route) => Conversations.answer!(req, route)
-			Err(NotAConversation) =>
+		# The conversations (step 6), then their pages (QUEUE 315).
+		match (Conversations.route(req.path), Pages.route(req.path)) {
+			(Ok(route), _) => Conversations.answer!(req, route)
+			(_, Ok(page)) => Pages.answer!(req, page)
+			_ =>
 				match script_name(req.path) {
 					Ok(name) =>
 						match Host.serve_script!(name) {
@@ -56,7 +59,7 @@ hello : Chat.Answer
 hello = {
 	page = List.join([
 		Str.to_utf8("<!doctype html>\n<title>roc-chat</title>\n"),
-		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Its pages are not here yet: sign in at `/login`, and the conversations are at `/conversations`.")),
+		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`.")),
 	])
 	Chat.respond(200, { content_type: Chat.html, body: page })
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))

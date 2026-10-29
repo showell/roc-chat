@@ -9,8 +9,9 @@ Sign-in on the auth core, and conversations: a signed-in human starts one
 with named participants, a participant posts markdown (rendered by
 roc-markdown, refused when hostile), anyone ConvAccess lets see it reads its
 transcript, and each open stream gets each message once, live, resuming
-from `Last-Event-ID`. There are no pages yet (JSON and an event stream, and
-the chat client's scripts); the breadth of roc-webbox's chat is step 8. The
+from `Last-Event-ID`. A minimal page reads and posts in a browser
+(`/chat`: small, plain and replaceable; the real client is chat-client's,
+later); the breadth of roc-webbox's chat is step 8. The
 design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 (essay-repl-server `notes/`).
 
@@ -23,10 +24,13 @@ design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 | `GET /login/github` | GitHub's callback: the exchange off the turn, then a session or the name form. |
 | `POST /login/name` | The display name for a new account; the session cookie. |
 | `GET /me` | Who this session is. |
+| `GET /conversations` | The viewer's own: `{"conversations":[{"id":N,"with":[{"id":"human:2","name":"…"}]}]}`, each one ConvAccess lets them post in. |
 | `POST /conversations` | Start one: a form, `with=` the others' ids, comma-separated (`human:2,agent:7`). The signed-in human is in it. `201 {"id":N}`. |
 | `GET /conversations/<id>` | Its transcript: `{"id":N,"messages":[…]}`. |
 | `POST /conversations/<id>/messages` | Post: the body is the markdown, as is. `201` and the message. |
 | `GET /conversations/<id>/stream` | Its messages, live (SSE, events named `message`, each id the message's), after `Last-Event-ID` when the browser resumes. |
+| `GET /chat` | The page: the viewer's conversations, each a link, and a form to start one. Signed out, a 303 to `/login`. |
+| `GET /chat/<id>` | A conversation's page: its messages, new ones live (`EventSource`), a box to post in (Enter sends, Shift-Enter adds a line). A 404 to a viewer who may not see it. |
 | `GET /<name>.js` | The chat client's scripts. |
 
 A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
@@ -135,7 +139,8 @@ server, saying which.
 | | |
 |---|---|
 | `app/main.roc` | The route table: which module answers which request. |
-| `app/Conversations.roc` | The conversations on the wire: start, read, post, stream. |
+| `app/Conversations.roc` | The conversations on the wire: list, start, read, post, stream. |
+| `app/Pages.roc` | The two pages, their few lines of CSS and script inline. What a page writes itself is escaped; a message's HTML is roc-markdown's, as is. |
 | `app/Store.roc` | Every file the app keeps, and the only module that names one (its header is the layout). |
 | `app/ConvCodec.roc`, `app/MessageCodec.roc` | A conversation's record, its participants bound; a message's, its body any bytes, exactly. |
 | `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `Sse.roc` (an event as one frame), `main.roc`. |
