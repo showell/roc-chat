@@ -11,6 +11,10 @@ app [handle!] {
 import pf.Chat
 import pf.Host
 import md.Md
+## The auth core, imported for its expects alone until the routes use it:
+## ConvKey and AuditCodec between them reach every one of its modules.
+import ConvKey
+import AuditCodec
 
 ## The most of a body `/echo` reads; the host's own cap is larger, so a body
 ## between the two is the Roc's to refuse (through the host's 413).
