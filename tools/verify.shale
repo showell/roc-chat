@@ -158,7 +158,7 @@ end
 plant("a forged session cookie admitted (the host's hash ignores its bytes)",
   "host/call.zig", "&crypto.sha256(bytes)", "&crypto.sha256(bytes[0..0])", 8)
 plant("a third user's post let through (can_post asked of nobody)",
-  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {\n\t\t\t\t\t\tout_of_scope!({ key, use: Post(id)", "if List.is_empty(accounts) {\n\t\t\t\t\t\tout_of_scope!({ key, use: Post(id)", 9)
+  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {\n\t\t\t\t\t\tout_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", "if List.is_empty(accounts) {\n\t\t\t\t\t\tout_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", 9)
 plant("a third user's read let through (can_see asked of nobody)",
   "app/Conversations.roc", "if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {", "if !List.is_empty(a.accounts) {", 10)
 -- The other half of the subscribe plant: the stream subscribes after the
