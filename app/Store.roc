@@ -15,6 +15,15 @@
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
+##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
+##     chat/transcripts/<id>     its messages, a line each, appended (MessageCodec)
+##
+## **A TRANSCRIPT HOLDS ANY BODY EXACTLY**: a message is one line, its
+## markdown escaped (MessageCodec's header says how), so a body of many
+## lines, a CR, a `%` or bytes that are not UTF-8 reads back as it was
+## posted. Ids run 1, 2, 3 in a transcript, so a message's id is its place.
+## A conversation's id is the count of conversations before it, plus one:
+## check-then-set, atomic because one handler runs at a time (the turn).
 ##
 ## **`Failed` HAS FAILED THE REQUEST** (Host.roc): a caller answers
 ## anything, and the host answers the 500.
@@ -22,7 +31,10 @@ import pf.Host
 import AccountCodec
 import AuditCodec
 import Cast
+import ConvAccess
+import ConvCodec
 import GitHubSignIn
+import MessageCodec
 import Principal
 import SessionCodec
 import SignInWeb
@@ -118,6 +130,67 @@ Store := [].{
 				}
 		}
 
+	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
+	next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
+	next_conversation_id! = |{}| {
+		listed = Host.list!(conversations_path)
+		count =
+			match listed.status {
+				Missing => Ok(0)
+				Failed => Err(Failed)
+				Found => Ok(List.len(listed.entries))
+			}?
+		ConvAccess.ConvId.from_u64(count + 1).map_err(|_| Failed)
+	}
+
+	## The conversation `id`: `Missing` when there is none, and `Failed`
+	## when its record will not read (a store the chat did not write).
+	conversation! : ConvAccess.ConvId => Try(ConvAccess.Conv, [Missing, Failed])
+	conversation! = |id| {
+		read = Host.read!(conversation_path(id))
+		match read.status {
+			Missing => Err(Missing)
+			Failed => Err(Failed)
+			Found =>
+				match ConvCodec.decode(read.bytes) {
+					Ok(line) => Ok(ConvAccess.Conv.load(line))
+					Err(_) => Err(Failed)
+				}
+		}
+	}
+
+	## A conversation written, as it started at `created`.
+	save_conversation! : ConvAccess.Conv, I64 => [Failed, Written]
+	save_conversation! = |conv, created| Host.write!(conversation_path(conv.id()), ConvCodec.encode(conv.fields(created)))
+
+	## **A CONVERSATION'S MESSAGES**, oldest first; none before the first.
+	## `Failed` when the transcript will not read whole (a torn append, a
+	## line the chat did not write).
+	transcript! : ConvAccess.ConvId => Try(List(MessageCodec.Fields), [Failed])
+	transcript! = |id| {
+		read = Host.read!(transcript_path(id))
+		match read.status {
+			Missing => Ok([])
+			Failed => Err(Failed)
+			Found =>
+				match MessageCodec.transcript(read.bytes) {
+					Ok(lines) => Ok(List.map(lines, MessageCodec.Line.fields))
+					Err(_) => Err(Failed)
+				}
+		}
+	}
+
+	## A message appended to its conversation's transcript, synced. Its id
+	## is the caller's, the transcript's count plus one, read in this turn.
+	append_message! : ConvAccess.ConvId, MessageCodec.Fields => [Failed, Appended]
+	append_message! = |id, message| {
+		appended = Host.append!(transcript_path(id), MessageCodec.encode(message))
+		match appended.status {
+			Appended => Appended
+			Failed => Failed
+		}
+	}
+
 	## An audit entry appended. The audit is a record of what happened, not
 	## the request's work, so its failure is the host's to log alone.
 	audit! : AuditCodec.Entry => {}
@@ -138,6 +211,15 @@ barred_path = Str.to_utf8("auth/barred")
 
 audit_path : List(U8)
 audit_path = Str.to_utf8("auth/audit")
+
+conversations_path : List(U8)
+conversations_path = Str.to_utf8("chat/conversations")
+
+conversation_path : ConvAccess.ConvId -> List(U8)
+conversation_path = |id| Str.to_utf8("chat/conversations/${id.to_u64().to_str()}")
+
+transcript_path : ConvAccess.ConvId -> List(U8)
+transcript_path = |id| Str.to_utf8("chat/transcripts/${id.to_u64().to_str()}")
 
 ## A session's file, named for its secret's hash: found only by one who
 ## holds the secret, with no compare to time.
