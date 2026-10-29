@@ -8,8 +8,7 @@
 -- compiler does not ship), into .zig-cache/roc-glue, then `zig fmt` (glue's
 -- output is not formatted as the checks want), then written over
 -- host/seam/glue/chat_platform_abi.zig. Says whether the snapshot changed;
--- commit it with the change that moved it. (From roc-webbox's
--- tools/chat_glue.shale, 5a4314b.)
+-- commit it with the change that moved it.
 
 const out_dir = ".zig-cache/roc-glue"
 const snapshot = "host/seam/glue/chat_platform_abi.zig"

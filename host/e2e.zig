@@ -1,92 +1,9 @@
-//! **THE SMALLEST END TO END** (the host design's step 6, metal-vmm QUEUE
-//! 314): the real server in this process with the chat's Roc linked, its
-//! data root and secrets under .zig-cache/e2e, the fake GitHub
-//! (host/github/fake_github.zig) on another port as both of GitHub's bases,
-//! and clients that speak HTTP by hand, carrying the cookies the server set,
-//! as browsers would:
-//!
-//!   1. A and B sign in (and C, the third user)
-//!   2. A starts a conversation with B
-//!   3. B opens its stream
-//!   4. A posts, a message of many lines
-//!   5. B's stream gets the message exactly once
-//!   6. A reads the transcript and sees it, its markdown exactly as posted
-//!   7. B reconnects with Last-Event-ID and gets nothing twice
-//!   8. a forged session cookie is refused
-//!   9. a third user cannot post to it
-//!  10. a third user cannot read it, nor stream it
-//!  11. a post landing between a stream's backlog read and its subscribe
-//!      arrives exactly once
-//!
-//! Then agents and API keys (the host design's step 7), Steve (a fourth
-//! user) and his agent, which holds only a key:
-//!
-//!  12. Steve makes an agent
-//!  13. Steve mints a key for it (and C cannot mint one acting as it)
-//!  14. the agent, with only the key, starts a conversation with Steve and
-//!      posts; Steve's stream gets the post once
-//!  15. Steve posts, and the agent reads it with its key
-//!  16. the agent's key cannot mint a key, nor make an agent
-//!  17. Steve revokes the key, and its next use is a 401
-//!  18. an expired key is a 401
-//!  19. a key read-scoped to one conversation cannot post there, nor read
-//!      another
-//!  20. a session cookie and a Bearer key together are a 400
-//!  21. every key refused in use, and every grant refused, is in the audit,
-//!      and no secret is
-//!
-//! An agent's key comes only from an invite (steps 13, 18 and 19 get theirs
-//! so too). Then the invites themselves:
-//!
-//!  22. Steve invites his agent; the code sent with a cookie is refused, and
-//!      the agent, with the code alone, redeems it and posts with the key
-//!  23. redeeming the same code again is a 401
-//!  24. an invite past its ten minutes is a 401 (the server's clock moved
-//!      ahead, `clock_ahead_s_for_test`, never a wait)
-//!  25. another human's session cannot invite for Steve's agent
-//!  26. a key cannot make an invite
-//!  27. a mint acting as an agent is refused; Steve's own key is minted
-//!  28. after the agent is retired, its invite redeems to nothing
-//!  29. agent ids: make one, retire it (the highest), make another, and its
-//!      id is fresh
-//!  30. every invite made, redeemed and refused is audited, with no code;
-//!      a refusal naming no stored invite is not
-//!
-//! **A RETIREMENT HERE IS THE TEST'S** (`retire`): no route retires yet, so
-//! the step removes the agent's line from the accounts, which is what
-//! Admin's plan does to the accounts (RemoveAccount); its keys and votes
-//! are no part of what these steps ask.
-//!
-//! Then the pages (QUEUE 315), a browser's view of the same:
-//!
-//!  31. the list page shows a conversation the viewer is in, and not one
-//!      they aren't
-//!  32. a participant's name is written escaped (B's holds markup)
-//!  33. the conversation page is a 200 to a participant, a 404 to a third
-//!      user; a page is a 403 to a key
-//!  34. signed out, a page redirects to /login
-//!  35. a message's HTML on the page is exactly step 6's for it
-//!
-//! Then the security review's fixes (2026-10-29), each its own user:
-//!
-//!  36. a human's twenty-first agent is refused (Limits.agents_per_human)
-//!  37. C cannot name Steve's agent in a new conversation, nor an id no
-//!      one holds, and both refusals read the same; Steve can name it
-//!  38. a POST with A's cookie from another origin is a 403, and one with
-//!      no Origin and no `Sec-Fetch-Site: same-origin` too; nothing is
-//!      posted
-//!  39. a logout from another origin is refused; from the chat's own, it
-//!      ends the session, and the old cookie is a 401
-//!  40. a stream ends at its lifetime (`stream_lifetime_ms_for_test`), so a
-//!      key revoked while its stream is open stops reaching it
-//!  41. junk invite codes, a callback with a forged state and a name with
-//!      no pending sign-up, five of each, leave the audit's size unchanged
-//!  42. A opening nine streams of one conversation ends A's own first
-//!      (eight a holder), and B's stream there stays live
-//!  43. a post learns its id from the tally: its transcript unreadable
-//!      whole (a read is a 500), the next post is still id 2
-//!  44. a post to a transcript at its cap (Limits.transcript_bytes_most)
-//!      is a 413, and nothing is appended
+//! **THE SMALLEST END TO END**: the real server in this process with the
+//! chat's Roc linked, its data root and secrets under .zig-cache/e2e, the
+//! fake GitHub (host/github/fake_github.zig) on another port as both of
+//! GitHub's bases, and clients that speak HTTP by hand, carrying the cookies
+//! the server set, as browsers would. Its steps, in order, are the `steps`
+//! table at the end of this file, each named for what it proves.
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
@@ -528,7 +445,7 @@ fn field(body: []const u8, comptime name: []const u8) ![]const u8 {
     return body[from..to];
 }
 
-// ── the pages (QUEUE 315) ──
+// ── the pages ──
 
 /// B's name holds markup, and the page must write it as text.
 const bea_name_form = "Bea+%3Ci%3Ex%3C%2Fi%3E+%26+%22co%22";
@@ -837,7 +754,7 @@ fn makeAgent(w: *World) !void {
     if (!std.mem.eql(u8, try field(r.body, "owner"), "human:1004")) return error.NotSteves;
 }
 
-fn mintForAgent(w: *World) !void {
+fn inviteForAgent(w: *World) !void {
     const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
     // C, another human, is no owner of Steve's agent.
     if ((try request(w.a, w.port(), "POST", "/invites", w.cal, form)).status != 403) return error.InvitedForAnothersAgent;
@@ -1077,7 +994,7 @@ const steps = [_]Step{
     .{ .name = "a third user cannot read it, nor stream it", .f = thirdReads },
     .{ .name = "a post between a stream's backlog read and its subscribe arrives once", .f = betweenOnce },
     .{ .name = "Steve makes an agent", .f = makeAgent },
-    .{ .name = "Steve gets it a key, by an invite (and C cannot invite for it)", .f = mintForAgent },
+    .{ .name = "Steve gets it a key, by an invite (and C cannot invite for it)", .f = inviteForAgent },
     .{ .name = "the agent, by key alone, starts a conversation with Steve and posts; Steve's stream gets it once", .f = agentStarts },
     .{ .name = "Steve posts, and the agent reads it with its key", .f = agentReads },
     .{ .name = "the agent's key cannot mint a key, nor make an agent", .f = keyCannotMint },

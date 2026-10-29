@@ -430,7 +430,7 @@ expect found(Principal.Id.Agent(aid(3))) == Ok(Principal.id(ann_agent))
 expect found(Principal.Id.Bot(aid(3))) == Err(NoSuchPrincipal)
 expect found(Principal.Id.Human(gid(9))) == Err(NoSuchPrincipal)
 
-# **A DUPLICATE NAMES NOBODY** (round two's first finding): a copy of
+# **A DUPLICATE NAMES NOBODY**: a copy of
 # ann's agent claiming boss as owner, first or last, is found as neither.
 forged_ann_agent : Principal
 forged_ann_agent = owned(Agent, { id: 3, owner: 1 })

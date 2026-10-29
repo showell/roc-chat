@@ -21,7 +21,7 @@
 //! What is read is often rewritten, so an unreadable file taken for an
 //! absent one would be written over.
 //!
-//! **EVERY WRITE IS DURABLE BEFORE IT ANSWERS** (decision D5): the file is
+//! **EVERY WRITE IS DURABLE BEFORE IT ANSWERS**: the file is
 //! synced, and so is each folder whose entries it changed (the file's own,
 //! and the parent of every folder made for it). A sync that fails is the
 //! write's failure.

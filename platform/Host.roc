@@ -24,9 +24,9 @@ Host := [].{
 	## part is the Roc's bug: `Failed`, never `Missing`.
 	##
 	## **`Failed` HAS FAILED THE REQUEST**: its answer is a 500 whatever the
-	## Roc answers, and the host does nothing more for it. The two caches'
-	## functions, `read_at!` and `write_cache!`, are the exceptions: their
-	## failure is logged and the request goes on.
+	## Roc answers, and the host does nothing more for it. A cache's read,
+	## `read_at!`, is the exception: its failure is logged and the request
+	## goes on.
 	##
 	## **MISSING AND FAILED ARE NEVER ONE ANSWER**: what is read is often
 	## rewritten, so a file that could not be read, taken for no file,
@@ -101,10 +101,6 @@ Host := [].{
 
 	## The file removed; one not there is gone already.
 	remove! : List(U8) => [Failed, Removed]
-
-	## **A CACHE WRITTEN**, as `write!`: a failure is a miss, logged, never
-	## the request's failure.
-	write_cache! : List(U8), List(U8) => {}
 
 	## **SIGN-IN'S FACTS** (host/signin.zig, host/auth/): the request's
 	## query and time, the OS's entropy, SHA-256, and the site key's MAC.

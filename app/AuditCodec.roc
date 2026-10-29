@@ -61,6 +61,7 @@ AuditCodec := [].{
 					Read(U64),
 					Post(U64),
 					Start,
+					ListConversations,
 				],
 				refusal : ApiKey.Refusal,
 			},
@@ -502,6 +503,12 @@ start_word = "start"
 new_word : Str
 new_word = "conversation"
 
+list_word : Str
+list_word = "list"
+
+conversations_word : Str
+conversations_word = "conversations"
+
 KeyActionKind : [Read, Post]
 
 all_key_action_kinds : List(KeyActionKind)
@@ -515,17 +522,19 @@ spell_key_action = |kind|
 	}
 
 ## `read:` or `post:` and the resource's number; `start:conversation`, a
-## new one, which has no number yet.
+## new one, which has no number yet; `list:conversations`, the viewer's.
 key_action_text : [
 	Read(U64),
 	Post(U64),
 	Start,
+	ListConversations,
 ] -> Str
 key_action_text = |action|
 	match action {
 		Read(n) => "${spell_key_action(Read)}${colon}${n.to_str()}"
 		Post(n) => "${spell_key_action(Post)}${colon}${n.to_str()}"
 		Start => "${start_word}${colon}${new_word}"
+		ListConversations => "${list_word}${colon}${conversations_word}"
 	}
 
 key_action_from : List(U8),
@@ -534,11 +543,14 @@ List(U8) -> Try(
 		Read(U64),
 		Post(U64),
 		Start,
+		ListConversations,
 	],
 	Stored.Problem,
 )
 key_action_from = |head, tail| if head == Str.to_utf8(start_word) {
 	if tail == Str.to_utf8(new_word) Ok(Start) else Err(BadValue("action"))
+} else if head == Str.to_utf8(list_word) {
+	if tail == Str.to_utf8(conversations_word) Ok(ListConversations) else Err(BadValue("action"))
 } else {
 	kind = Stored.word(
 		head,
@@ -1178,7 +1190,7 @@ every_step = [
 	SetRole({ human: Cast.gid(4), role: Member }),
 ]
 
-# **A RETIREMENT'S WHOLE PLAN IS AUDITED** (round three's design point): the
+# **A RETIREMENT'S WHOLE PLAN IS AUDITED**: the
 # agents and bots that went with the human and the votes withdrawn, each a
 # step on the line, in the plan's order.
 expect
@@ -1194,7 +1206,7 @@ expect
 	)
 		== "audit v1 at=1761600200 who=human:1 via=session:3 action=retire:human:2 verdict=permitted plan=bar:2,revoke-sessions:2,revoke-keys:human:2,revoke-keys:agent:3,remove:agent:3,revoke-keys:bot:6,remove:bot:6,withdraw-votes:2,remove:human:2\n"
 
-# ── SIGN-IN REFUSALS AND KEY REFUSALS (round three's design point)
+# ── SIGN-IN REFUSALS AND KEY REFUSALS
 sign_in_entry : AuditCodec.SignIn -> AuditCodec.Entry
 sign_in_entry = |s|
 	match AuditCodec.Entry.of_sign_in(s) {
@@ -1290,6 +1302,13 @@ key_events =
 					who: Principal.Id.Agent(Cast.aid(3)),
 					key: Cast.kid(6),
 					action: Start,
+					refusal,
+				}),
+				Use({
+					at: 7,
+					who: Principal.Id.Agent(Cast.aid(3)),
+					key: Cast.kid(6),
+					action: ListConversations,
 					refusal,
 				}),
 			],
@@ -1577,7 +1596,7 @@ expect decoded({ from: "revoke-keys:human:2", to: "list-accounts" }) == Ok({})
 expect decoded({ from: "revoke-keys:human:2", to: "set-role:2:admin" }) == Ok({})
 expect decoded({ from: "revoke-keys:human:2", to: "set-role:2" }) == Err(BadValue("action"))
 expect decoded({ from: "revoke-keys:human:2", to: "set-role" }) == Err(BadValue("action"))
-# No action lifts a bar (Steve, 2026-10-29): `unbar` is no word.
+# No action lifts a bar: `unbar` is no word.
 expect decoded({ from: "revoke-keys:human:2", to: "unbar:66" }) == Err(UnknownWord("action"))
 expect decoded({ from: "revoke-keys:human:2", to: "unbar" }) == Err(UnknownWord("action"))
 expect decoded({ from: "permitted", to: "refused:bootstrap-admin" }) == Ok({})

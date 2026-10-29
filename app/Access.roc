@@ -464,7 +464,7 @@ expect posts_file(In(agent_holder), agents_file) == Writable
 expect posts_file(In(owner), agents_file) == Writable
 expect posts_file(In(stranger), agents_file) == ReadOnly
 
-# **A VIEWER IS ITS ACCOUNT'S** (round three's first): the holder made again
+# **A VIEWER IS ITS ACCOUNT'S**: the holder made again
 # (generation 2) is no participant of the file the old account held.
 holder_again : List(Principal)
 holder_again = [
@@ -479,7 +479,7 @@ holder_again = [
 expect !Access.can_see(viewer_of(holder_again, person(1, { g: 2 })), private_file)
 expect !Access.can_post(viewer_of(holder_again, person(1, { g: 2 })), private_file)
 
-# **NO VIEWER WITHOUT A CREDENTIAL** (round three's design point): an idle
+# **NO VIEWER WITHOUT A CREDENTIAL**: an idle
 # session, a session whose account is gone, and a revoked key mint none.
 expect Access.Viewer.from_session(
 	session_of(1, 1),

@@ -37,8 +37,10 @@ Credentials := [].{
 		Key(ConvKey.Key),
 	]
 
-	## What a key was used for, as its audit line says it.
+	## What a key was used for, as its audit line says it: listing the
+	## viewer's conversations, starting one, reading one or posting to one.
 	Use : [
+		ListConversations,
 		Start,
 		Read(ConvAccess.ConvId),
 		Post(ConvAccess.ConvId),
@@ -162,6 +164,7 @@ Credentials := [].{
 	| {
 		action =
 			match use {
+				ListConversations => ListConversations
 				Start => Start
 				Read(id) => Read(id.to_u64())
 				Post(id) => Post(id.to_u64())

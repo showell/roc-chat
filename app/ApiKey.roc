@@ -585,7 +585,7 @@ expect
 	).map_ok(ApiKey.Key.id)
 		== Err(Refused(AdminBeyondPrincipal))
 
-# ATTACK (round three's second): an expiry the store cannot write, one
+# ATTACK: an expiry the store cannot write, one
 # already past, or one past a year, is never granted; nor is any key under
 # a clock outside the store's range.
 expect
@@ -877,8 +877,7 @@ expect
 	).map_ok(|k| k.record().human_generation)
 		== Ok(Cast.gen(2))
 
-# **AN AGENT MADE AGAIN WITH ITS ID** (round three's fifth: agents had no
-# `created`): ann's agent retired, and an agent made again with id 3 for
+# **AN AGENT MADE AGAIN WITH ITS ID**: ann's agent retired, and an agent made again with id 3 for
 # ann (a host that reused the id): the old key stands no more.
 agent_again : List(Principal)
 agent_again = [

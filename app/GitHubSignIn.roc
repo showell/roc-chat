@@ -1,5 +1,8 @@
 ## **SIGNING IN WITH GITHUB, AS A STATE MACHINE** (the Roc chat's auth
-## design, sections 2 and 5): each step a state of its own, an opaque type
+## design, sections 2 and 5). It runs past a thousand lines because each
+## state's every way out is a test: the code ends at `# ── tests`.
+##
+## Each step a state of its own, an opaque type
 ## only this module makes, and each transition a pure function of the state
 ## before it and the facts a host supplies. A host answers facts (the
 ## state's signature held, the nonce was spent before, GitHub said who
@@ -38,8 +41,8 @@
 ## account's login is cleared (a ClearLogin step), so its GitHub link
 ## never leads to the new owner.
 ##
-## **A BAR IS FOR LIFE (Steve, 2026-10-29)**: a retired human's GitHub id
-## is barred for good. A barred id is refused at `resolve` and again at
+## **A BAR IS FOR LIFE** (Admin's header says why): a retired human's
+## GitHub id is barred for good. A barred id is refused at `resolve` and again at
 ## `name`, whatever the accounts hold, and no step here touches the barred
 ## list (Admin has no Unbar either).
 ##
@@ -1233,7 +1236,7 @@ expect
 	})
 		== Refused(Barred)
 
-# ATTACK (round three's second, its class): a sign-in whole under a clock
+# ATTACK: a sign-in whole under a clock
 # before 1970 admits no session, whose times the store could not write.
 expect
 	match resolved_by({
@@ -1475,7 +1478,7 @@ expect said({
 	],
 }) == Refused(DuplicateAccount)
 
-# **THE GENERATION COUNTER** (round three's fifth): the new account takes
+# **THE GENERATION COUNTER**: the new account takes
 # the settings' next generation, and `next` is the one after it; a counter
 # not above every account's (it went back), or a spent one, makes nothing.
 expect name_said({
@@ -1541,7 +1544,7 @@ expect name_said({
 	pending: Signed({ ..usual_pending, issued_at: -9223372036854775808 }),
 }) == Refused(PendingExpired)
 
-# ── A LOGIN ANOTHER ACCOUNT HOLDS IS CLEARED THERE (round two's tenth)
+# ── A LOGIN ANOTHER ACCOUNT HOLDS IS CLEARED THERE
 # Bea (id 7) once went by `ann`; GitHub gave it to Ann since. Ann signing
 # up, or signing in, as `ann` clears Bea's login, in any case, so Bea's
 # GitHub link never leads to Ann; nobody else's is touched.
@@ -1595,7 +1598,7 @@ expect said({
 	],
 }) == SignedIn({ admission: session_for(2), steps: [] })
 
-# ── THE STEPS (round three's third)
+# ── THE STEPS
 ## The accounts the steps leave from `start`, under the usual settings.
 applied_to : List(GitHubSignIn.Step), List(Principal) -> List(Seen)
 applied_to = |steps, start| GitHubSignIn.applied(
@@ -1611,7 +1614,7 @@ steps_of = |f|
 		_ => crash "steps_of: the run signs in"
 	}
 
-# ATTACK (round three's third): boss renamed signs in; an admin demotes
+# ATTACK: boss renamed signs in; an admin demotes
 # boss before the sign-in's output is stored; storing what sign-in handed
 # back must not undo the demotion.
 boss_renamed_steps : List(GitHubSignIn.Step)
@@ -1737,7 +1740,7 @@ expect GitHubSignIn.applied(
 	{ accounts: [], settings: usual_settings },
 ).settings == usual_settings
 
-# **A BAR IS FOR LIFE** (Steve, 2026-10-29): no sign-in step, of any kind,
+# **A BAR IS FOR LIFE**: no sign-in step, of any kind,
 # takes an id off the barred list; a barred id is refused at both doors.
 every_step : List(GitHubSignIn.Step)
 every_step = [

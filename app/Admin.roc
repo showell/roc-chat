@@ -1,5 +1,10 @@
 ## **THE ADMIN ACTIONS, AND WHO MAY PERFORM THEM** (the Roc chat's auth
-## design, sections 9 and 11): a closed set of named actions, one decision
+## design, sections 9 and 11). **DECIDED AND AUDITED, NOT YET SERVED**: no
+## route reaches this module yet; it is the core an admin page will call.
+## It runs past a thousand lines because its tests are its table: the code
+## ends at `# ── THE ADMIN TABLE`, and every line after is a case.
+##
+## A closed set of named actions, one decision
 ## for all of them, and an audit record of every attempt, permitted or
 ## refused, for the host to store and admins to read. An admin manages
 ## accounts and reads no one's mail: nothing here reaches a resource's
@@ -19,12 +24,12 @@
 ## leaves what it would have once, and the id is barred before anything of
 ## it is gone.
 ##
-## **A BAR IS FOR LIFE (Steve, 2026-10-29)**: once retired, a human is
-## banned for good. No action lifts a bar (there is no Unbar), and no step
-## of any plan, an admin's or a sign-in's, takes an id off the barred list;
-## GitHubSignIn refuses a barred id at every door. Soft bans or un-bans are
-## for later; a lifted bar would start from a new generation, so it would
-## revive nothing of the old account.
+## **A BAR IS FOR LIFE** (this is its one home; GitHubSignIn points
+## here): once retired, a human is banned for good. No action lifts a bar
+## (there is no Unbar), and no step of any plan, an admin's or a
+## sign-in's, takes an id off the barred list; GitHubSignIn refuses a barred
+## id at every door. Were a bar ever lifted, the account would start from a
+## new generation, so it would revive nothing of the old one.
 ##
 ## **AGAINST A SNAPSHOT, ONE PLAN AT A TIME**: an action is decided against
 ## the accounts as they are (a snapshot), and refused if its plan, applied
@@ -36,10 +41,9 @@
 ## retired by another admin. Generic over the resource only because a key
 ## is (ApiKey.Key). Pure.
 ##
-## **THE ONLY RETIREMENT**: roc-webbox's `chat/Retire.roc` (the Zig-era
-## retire, on its interop branch) must never be brought beside this core. It
-## knows nothing of generations, bars, agents' keys or votes, so a
-## retirement it made would leave this core's plan half done.
+## **THE ONLY RETIREMENT**: this core's plan is the only way an account is
+## retired; a retire that knows nothing of generations, bars, agents' keys
+## or votes would leave the plan half done.
 import ApiKey
 import Cast
 import GitHubSignIn
@@ -778,7 +782,7 @@ expect verdict(boss_agent_key, retire_cal) == Refused(NeedsSession)
 expect verdict(boss_agent_key, revoke_cal_agent_keys) == Refused(NeedsSession)
 expect verdict(boss_agent_key, ReadCounters) == Permitted
 
-# **BOSS'S OWN LIVE ADMIN KEY** (round two's missing cell): an admin
+# **BOSS'S OWN LIVE ADMIN KEY**: an admin
 # human's key is still a key: on another admin, a role or a bar, it takes
 # boss's session.
 expect verdict(boss_own_key, ListAccounts) == Permitted
@@ -951,7 +955,7 @@ expect planned(
 	{ accounts: [cal, Cast.ann], settings },
 ) == Err(LastAdmin)
 
-# ── RETIREMENT AS ONE ACTION (round two's fourth)
+# ── RETIREMENT AS ONE ACTION
 # Retiring ann: her id barred first; her sessions and keys revoked; her
 # agent and her bot retired with their keys; her votes withdrawn; her
 # account removed last. Retiring an agent: its keys, and its account.
@@ -985,7 +989,7 @@ expect plan_of(ann_session, Retire(Principal.id(Cast.ann_agent))) == []
 expect plan_of(boss_session, ListAccounts) == []
 expect plan_of(boss_session, promote_ann) == [SetRole({ human: Cast.gid(2), role: Admin })]
 
-# ATTACK (round three's fourth): the bar comes first, so a crash part way
+# ATTACK: the bar comes first, so a crash part way
 # through never leaves the id unbarred with its account gone; the account
 # goes last.
 ann_retired : List(Admin.Step)
@@ -1039,7 +1043,7 @@ expect List.first(
 	),
 ) == Ok(Bar(Cast.gid(2)))
 
-# **A BAR IS FOR LIFE** (Steve, 2026-10-29): no action's plan, by anyone,
+# **A BAR IS FOR LIFE**: no action's plan, by anyone,
 # takes an id off the barred list; there is no Unbar.
 every_action : List(Admin.Action)
 every_action = [
@@ -1093,7 +1097,7 @@ expect verdict_among(
 	[Cast.boss, ann_again_admin],
 ) == Refused(NoSuchPrincipal)
 
-# ── DUPLICATE AND FORGED ACCOUNTS FIRST (round two's first)
+# ── DUPLICATE AND FORGED ACCOUNTS FIRST
 # A copy of ann claiming admin, first: her session admits no copy.
 ann_admin_first : List(Principal)
 ann_admin_first = List.prepend(accounts, Cast.person(2, Admin))
@@ -1131,7 +1135,7 @@ expect verdict_among(
 	cal_agent_forged,
 ) == Refused(NoSuchTarget)
 
-# ATTACK (round three's second, its class): an attempt under a clock past
+# ATTACK: an attempt under a clock past
 # the store's range makes no audit the store cannot write.
 expect
 	List.all(
@@ -1191,7 +1195,7 @@ expect role_audit.action == promote_ann
 expect role_audit.verdict == Permitted
 expect role_audit.plan == [SetRole({ human: Cast.gid(2), role: Admin })]
 
-# **THE WHOLE PLAN IS AUDITED** (round three's design point): a
+# **THE WHOLE PLAN IS AUDITED**: a
 # retirement's audit holds every step, the agent and bot retired with ann
 # and her votes withdrawn among them; a refusal's holds none.
 expect audited(

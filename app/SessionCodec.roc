@@ -213,7 +213,7 @@ expect decoded(
 ) == Err(MissingField("created"))
 expect SessionCodec.decode([0xff, '\n']).map_ok(|_| {}) == Err(NotUtf8)
 
-# **THE ATTACKER'S EXTREME SESSION** (round two's seventh): created at I64's
+# **THE ATTACKER'S EXTREME SESSION**: created at I64's
 # minimum, its liveness overflowed. A time before 1970 is no record the chat
 # wrote: refused at the door, as is one past 9999.
 expect decoded(

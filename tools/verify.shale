@@ -1,4 +1,4 @@
--- **EVERY CHECK OF roc-chat, IN ONE RUN** (metal-vmm QUEUE 314): the proof
+-- **EVERY CHECK OF roc-chat, IN ONE RUN**: the proof
 -- a change is sound, and the box's whole check of one. From the
 -- repository's root, as the unprivileged user (CLOUD_WORK: `as-steve`):
 --
@@ -25,7 +25,7 @@
 --     cookie when both are sent, an invite redeemable twice, an expired
 --     invite accepted, an agent's id taken from the accounts again (a
 --     retired one's reused), a key allowed to make an invite; and the
---     pages' (QUEUE 315): the list showing every conversation, a
+--     pages': the list showing every conversation, a
 --     participant's name written unescaped, a third user given the
 --     conversation's page, a key given a page; and the security review's
 --     (2026-10-29): agents uncapped, another's agent named in `with=`, a
@@ -37,8 +37,7 @@
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
--- The floors: the counts when the pages (QUEUE 315) joined step 7's
--- follow-ups (the agent-id counter and invites), which may only rise.
+-- The floors: the test counts, which may only rise.
 const roc_floor = 1901
 const zig_floor = 203
 const e2e_steps = 44

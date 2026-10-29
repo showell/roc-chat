@@ -1,8 +1,8 @@
-## **THE AUTH STORE'S LINE FORMAT** (the Roc chat's auth design, sections
-## 2, 3 and 9): every record the auth keeps (an account, a session, an API
-## key, an admin audit entry) is one line of text a person reads with `cat`:
+## **THE STORE'S LINE FORMAT**: every record the app stores (an account,
+## a session, an API key, an invite, an audit entry, a conversation, a
+## message) is one line of text a person reads with `cat`:
 ##
-##     account v1 kind=human github=583231 login=octocat role=admin name=Steve H.
+##     account v1 kind=human github=583231 login=octocat generation=3 role=admin name=Steve H.
 ##
 ## - **The record's kind and the format's version come first,** so a line
 ##   handed to the wrong decoder, or written by a later format, is refused
@@ -24,7 +24,7 @@
 ## is visible, and a reader needs no other tool. Why not JSON: it has many
 ## spellings of one value, and a decoder that accepts them all is a decoder
 ## that guesses. Each codec (AccountCodec, SessionCodec, KeyCodec,
-## AuditCodec) decodes into the core's types here, at the door. Pure.
+## InviteCodec, AuditCodec, ConvCodec, MessageCodec) decodes into the core's types here, at the door. Pure.
 import Ascii
 import Bytes
 

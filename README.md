@@ -2,22 +2,22 @@
 
 The Roc chat's own server: the chat is a Roc app (`app/`, on the platform in
 `platform/`), and its host (`host/`) is a small Zig server on `std.http`.
-It will serve chat.lynrummy.com at `/`.
 
-**Status (2026-10-29): the smallest real chat, with agents and API keys
-(the host design's steps 6 and 7).** Sign-in on the auth core; agents and
-API keys: a signed-in human makes agents they own (each id given once,
-never again), mints keys acting as themselves, and invites their agents,
-which redeem a ten-minute code for a key and talk to the chat with
-`Authorization: Bearer`; and conversations: a human or a key starts one
-with named participants, a participant posts markdown (rendered by
-roc-markdown, refused when hostile), anyone ConvAccess lets see it reads its
-transcript, and each open stream gets each message once, live, resuming
-from `Last-Event-ID`. Two plain pages (`/chat`, `/chat/<id>`, QUEUE 315)
-read and post in a browser; the rest is JSON, an event stream, and the chat
-client's scripts. The breadth of roc-webbox's chat is step 8. The
-design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
-(essay-repl-server `notes/`).
+**Status (2026-10-29): the smallest real chat, with agents and API keys;
+it serves chat.lynrummy.com (DEPLOY.md).**
+- **Sign-in and agents:** sign-in on the auth core; a signed-in human makes
+  agents they own (each id given once, never again), mints keys acting as
+  themselves, and invites their agents, which redeem a ten-minute code for
+  a key and talk to the chat with `Authorization: Bearer`.
+- **Conversations:** a human or a key starts one with named participants;
+  a participant posts markdown (rendered by roc-markdown, refused when
+  hostile); anyone ConvAccess lets see it reads its transcript; each open
+  stream gets each message once, live, resuming from `Last-Event-ID`.
+- **What a client sees:** two plain pages (`/chat`, `/chat/<id>`) to read
+  and post in a browser; the rest is JSON, an event stream, and the chat
+  client's scripts. The old chat's breadth is still to come. The design is
+  the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
+  (essay-repl-server `notes/`).
 
 ## The routes
 
@@ -40,7 +40,7 @@ design is the essay notes `roc-chat-host-design` and `roc-chat-auth-design`
 | `POST /invites` | Invite one of your agents or bots: a form, `as=agent:7` and a mint's other fields, for the key it redeems to. `201 {"id":3,"for":"agent:7","expires":…,"code":"…"}`, the `code` (64 hex digits) **shown this once**, good for ten minutes and one redemption. |
 | `GET /invites` | Your live invites: `{"invites":[{"id":3,"for":"agent:7","expires":…}]}`, never a code. |
 | `POST /invites/<id>/revoke` | Revoke one: `200` and the invite; another's, or none live, a 404. |
-| `POST /invites/redeem` | The agent's: a form, `code=`, and **no cookie or key** (the code is the credential). `201` and the key, as a mint answers, its `secret` shown this once. Spent, expired, unknown, revoked, sent with a credential, or its agent or its inviting session no longer holding: one `401 invite refused`. |
+| `POST /invites/redeem` | The agent's: a form, `code=`, and **no cookie or key** (the code is the credential). `201` and the key, as a mint answers, its `secret` shown this once. Any refusal is one `401 invite refused` (Agents' header lists them). |
 | `GET /chat` | The page: the viewer's conversations, each a link, and a form to start one. Signed out, a 303 to `/login`; a key, a 403 (a page is a browser's). |
 | `GET /chat/<id>` | A conversation's page: its messages, new ones live (`EventSource`), a box to post in (Enter sends, Shift-Enter adds a line). A 404 to a viewer who may not see it. |
 | `GET /<name>.js` | The chat client's scripts. |
@@ -84,9 +84,9 @@ revoked or refused is in the audit (`auth/audit`), with no secret or code.
     `build.zig.zon` names it by path.
 
   Both are taken at whatever their checkouts hold. A pinned, fetched
-  dependency (a tarball by hash, laid out in a generated tree for Roc) is
-  the design's later plan (D2). Sibling paths are the simplest thing that
-  works at this pin.
+  dependency (a tarball by hash, laid out in a generated tree for Roc)
+  would pin them; sibling paths are the simplest thing that works at this
+  Roc's pin.
 
 ## Build, test, serve
 
@@ -158,7 +158,8 @@ server, saying which.
   each write under the write deadline (a reader that stops reading is
   shut), with `: ping` after 25 s of quiet. A stream 16 frames behind is
   ended, never skipped ahead: the browser reconnects with its
-  `Last-Event-ID`. At most 64 streams are held; the 65th ends the oldest.
+  `Last-Event-ID`. At most 64 streams are held; the 65th ends the oldest
+  stream of the holder holding the most, so one holder cannot end others'.
 
 ## Layout
 
@@ -173,6 +174,10 @@ server, saying which.
 | `app/Wire.roc` | The JSON answer, the plain refusal, and JSON's string escape the route modules share. |
 | `app/Store.roc` | Every file the app keeps, and the only module that names one (its header is the layout). |
 | `app/ConvCodec.roc`, `app/MessageCodec.roc` | A conversation's record, its participants bound; a message's, its body any bytes, exactly. |
+| `app/Limits.roc`, `app/Origin.roc` | Every cap on what one person can make grow, and why; the CSRF check every write passes. |
+| The auth core, pure | `Principal`, `Access`, `ConvAccess`, `ConvKey`, `ApiKey`, `Session`, `OAuthState`, `DisplayName`, `GitHubLogin`, `GitHubSignIn` (sign-in's plan), `Admin` (the admin actions: decided and audited, **not yet served by any route**), with their records' codecs (`Stored`'s line format: `AccountCodec`, `SessionCodec`, `KeyCodec`, `AuditCodec`) and the tests' `Cast`. Each module's header says what it decides. |
+| `app/SignIn.roc` | Sign-in's routes: `/login`, GitHub's callback in two calls, the name form, `/me`, logout. |
+| `app/Ascii.roc`, `app/Bytes.roc` | The byte checks and scans the rest share (roc-markdown keeps its own copies on purpose). |
 | `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `Sse.roc` (an event as one frame), `main.roc`. |
 | `host/main.zig`, `host/config.zig` | Start: the config, the data root, the server. |
 | `host/server.zig` | The accept loop, a task per connection, keep-alive, the turn, the deadlines and their watchdog, the body cap. |
@@ -186,11 +191,14 @@ server, saying which.
 | `host/server_test.zig`, `app/test/probe.roc` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness), against the server's probe: the plainest routes that drive each part of the host, so none signs in. |
 | `host/chat_test.zig` | The chat's own pages, by the same harness. |
 | `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; then invites (redeemed once, expired, refused to others and to keys, dead with a retired agent), fresh agent ids, and their audit; each step timed. |
-| `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, nine planted faults each red at its own step, the formatters. |
+| `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, the planted faults (verify.shale's header lists them) each red at its own step, the formatters. |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
+| `tools/browser_check.js` | The pages in a real browser, by hand, never in `test`. |
+| `host/files_bench.zig`, `host/auth/path_rule.zig` | The store's syncs timed (`zig build bench-files`); the one rule for a path under the data root. |
 | `dev/config.zon` | `zig build serve`'s config. |
+| `deploy/`, `tools/deploy.shale`, `tools/backup.shale`, [DEPLOY.md](DEPLOY.md) | Production: the Caddy block, the service and its config; the deploy and the backup; how a release goes out. |
 
 ## Pitfalls
 
@@ -234,7 +242,7 @@ server, saying which.
   std starts has one). A thread without one dies of the fault, as before.
 - **A file hosted function's `Failed` has failed the request**: the answer
   is a 500 whatever the Roc says, and the host does nothing more in that
-  call (`read_at!` and `write_cache!`, a cache's, are the exceptions).
+  call (`read_at!`, a cache's read, is the exception).
 
-No LICENSE yet: that is Steve's decision (D9), for this repo and its
+No LICENSE yet: that is Steve's decision, for this repo and its
 dependencies alike.

@@ -269,7 +269,7 @@ expect seen_at(105000).liveness(105000 + day) == IdleExpired
 # Seen in the future: over.
 expect seen_at(105000).liveness(104999) == AbsoluteExpired
 
-# **NO `now` OVERFLOWS** (round two's seventh): I64's ends against the
+# **NO `now` OVERFLOWS**: I64's ends against the
 # earliest and latest stored times.
 expect opened({
 	n: 1,
@@ -382,7 +382,7 @@ expect
 		_ => Bool.False
 	}
 
-# **A DUPLICATE OR FORGED ACCOUNT FIRST** (round two's first): a copy of
+# **A DUPLICATE OR FORGED ACCOUNT FIRST**: a copy of
 # Ann claiming admin, before her or after: the session admits nobody, so
 # no copy's role is ever taken.
 ann_admin_copy : Principal
@@ -407,7 +407,7 @@ expect admitted(
 ) == Refused(NoSuchAccount)
 expect admitted(s1, { among: [ann, ann_admin_copy], now: 100000 }) == Refused(NoSuchAccount)
 
-# **RE-CREATION AFTER RETIREMENT** (round two's fifth): Ann retired, then
+# **RE-CREATION AFTER RETIREMENT**: Ann retired, then
 # made again with her GitHub id at 200: her old session admits nobody.
 ann_again : Principal
 ann_again = Principal.Human({
@@ -420,7 +420,7 @@ ann_again = Principal.Human({
 
 expect admitted(s1, { among: [ann_again, bea], now: 100000 }) == Refused(NoSuchAccount)
 
-# ATTACK (round three's fifth): Ann made again in the same second her old
+# ATTACK: Ann made again in the same second her old
 # account was (or under a clock that went back) is a new generation all the
 # same, and her old session does not admit it.
 ann_same_second : Principal
@@ -434,7 +434,7 @@ ann_same_second = Principal.Human({
 
 expect admitted(s1, { among: [ann_same_second, bea], now: 100000 }) == Refused(NoSuchAccount)
 
-# ATTACK (round three's second, its class): a session live near the end of
+# ATTACK: a session live near the end of
 # the store's range, asked at a time past it, is never touched with a time
 # the store cannot write.
 late : Session

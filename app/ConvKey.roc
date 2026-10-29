@@ -284,7 +284,7 @@ expect verdict(ann_key, { accounts, action: Read(private_conv) }) == Refused(Bey
 expect verdict(ann_key, { accounts, action: Read(cross_public) }) == Permitted
 expect verdict(ann_key, { accounts, action: Post(cross_public) }) == Permitted
 
-# ── A BOT READING, BY KEY (round two's missing cells): BeaBot reads and
+# ── A BOT READING, BY KEY: BeaBot reads and
 # posts in the public conversation it is in; a public one it is not in,
 # it neither reads nor posts (decision 3).
 bot_key : ConvKey.Key
@@ -311,7 +311,7 @@ expect
 	ConvKey.decode(Str.to_utf8("key v1 id=4 acts=agent:2 generation=1 human-generation=1 hash=${Str.repeat("5a", 32)} created=1 expires=2 state=active read=only:9,3,3 post=off admin=off\n")).map_ok(|_| {})
 		== Err(BadValue("read"))
 
-# ── ATTACK (round three's first), BY KEY: Ann retired and made again
+# ── ATTACK, BY KEY: Ann retired and made again
 # (generation 2); a key from her new account's session reads and posts
 # nothing of the old account's private conversations, the human-only DM
 # with Bea included.

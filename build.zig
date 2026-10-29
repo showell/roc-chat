@@ -71,10 +71,9 @@ pub fn build(b: *std.Build) void {
         tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
     }
 
-    // **THE SMALLEST END TO END** (host/e2e.zig): two clients signed in
-    // through the fake GitHub, a conversation, a post, its stream and its
-    // refusals, against the real server with the chat linked; a line a
-    // step, timed. `zig build e2e` alone, and part of `test`.
+    // **THE END TO END** (host/e2e.zig lists its steps): the real server
+    // with the chat linked, driven by clients over HTTP; a line a step,
+    // timed. `zig build e2e` alone, and part of `test`.
     const e2e_exe = b.addExecutable(.{ .name = "e2e", .root_module = b.createModule(.{
         .root_source_file = b.path("host/e2e.zig"),
         .target = target,
@@ -88,7 +87,7 @@ pub fn build(b: *std.Build) void {
     // `zig build e2e -- --hold` keeps the server up after the steps, for
     // tools/browser_check.js.
     e2e.addPassthruArgs();
-    b.step("e2e", "The smallest end to end: sign in, start, post, read, stream, and the refusals (host/e2e.zig)").dependOn(&e2e.step);
+    b.step("e2e", "The end to end: the real server driven over HTTP, every step and refusal (host/e2e.zig lists them)").dependOn(&e2e.step);
     tests.dependOn(&e2e.step);
 
     // **THE SERVER'S PROBE** (app/test/probe.roc), linked in place of the
@@ -156,7 +155,7 @@ fn linuxOnly(t: std.Target) void {
 const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \n");
 
 /// **THE ROC IS PINNED** (roc-version): -Droc=<path>, or `roc` on the PATH,
-/// and it must be the pinned one. (From roc-webbox's build.zig at 5a4314b.)
+/// and it must be the pinned one.
 fn rocCompiler(b: *std.Build) []const u8 {
     const named = b.option([]const u8, "roc", "the Roc compiler (default: `roc` on the PATH); the version roc-version pins") orelse "roc";
     const none = "the chat is built from Roc, and there is no Roc compiler at `{s}`: put Roc {s} (roc-version) on the PATH (tools/get_roc.sh installs it), or name it with -Droc=<path>";

@@ -21,7 +21,7 @@
 ## of the decision. Elections take a session's viewer alone.
 ## Pure; the table of every viewer against every conversation is below,
 ## a cell a line, which is why the module runs past a thousand lines: the
-## code is the first 285.
+## code ends at `# ── the cast`.
 import Access
 import ApiKey
 import Cast
@@ -1581,7 +1581,7 @@ expect ha_own_ann.elect({
 	accounts: again,
 }).map_ok(ConvAccess.Conv.id) == Err(NotInvolved)
 expect ha_own_ann.involved(again) == []
-# ATTACK (round three's first): the re-created Ann sees and posts nothing of
+# ATTACK: the re-created Ann sees and posts nothing of
 # the old account's private conversations, the human-only DM with Bea
 # included.
 expect sees_among(Ann, { conv: hh, among: again }) == Hidden
@@ -1590,7 +1590,7 @@ expect posts_among(Ann, { conv: hh, among: again }) == ReadOnly
 # A copy of Ann's account beside it: her vote names nobody.
 expect ha_own_ann.visibility(List.append(accounts, principal(Ann))) == Private
 
-# ── VIEWERS AFTER AN AGENT PARTICIPANT RETIRES (round two's missing cells)
+# ── VIEWERS AFTER AN AGENT PARTICIPANT RETIRES
 # ha_cross, both elected public, then BeaAgent retired: private; Ann still
 # sees and posts; Bea, BeaAgent's owner, no longer answers for it; the
 # retired agent itself sees nothing.

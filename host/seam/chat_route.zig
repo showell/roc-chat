@@ -1,7 +1,6 @@
 //! **WHAT THE ROC CHAT ANSWERS, AND THE TAGS THAT CROSS THE SEAM**: the
 //! decision a request's Roc call ends in, as the host sends it, and each
-//! tag union of Chat.roc's and Host.roc's, as an enum. (From roc-webbox
-//! src/chat_route.zig at 5a4314b, cut to the unions roc-chat's platform has.)
+//! tag union of Chat.roc's and Host.roc's, as an enum.
 //!
 //! **EVERY ENUM HERE IS A ROC TAG UNION, IN ROC'S ORDER.** A tag union
 //! whose tags carry nothing crosses the seam as one byte, its tags numbered

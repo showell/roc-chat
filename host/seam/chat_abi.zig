@@ -5,11 +5,6 @@
 //! answered by the call's `Host`. The runtime and the call's memory are
 //! roc_abi.zig's.
 //!
-//! (From roc-webbox src/chat_abi.zig at 5a4314b: `Host.of`, `Host.partly`,
-//! the table made from a host's type, the crash guard and `call`, kept
-//! whole; the records and hosted functions cut to those roc-chat's
-//! platform has so far, and `Answer` given `headers` and `stream_key`.)
-//!
 //! **THE DECISION LEAVES THE CALL**: `decide` copies what Roc answered into
 //! the caller's allocator and ends the call before it returns, so the host
 //! sends the answer with no Roc call open, and outside the turn.
@@ -96,7 +91,7 @@ pub const AppendedRec = extern struct { size: u64, status: route.AppendStatus };
 
 /// A Roc list of `Rec`, each made of an `Item` by `rec`: its elements hold
 /// a refcounted list, so it has the two-word header (count, refcount) a
-/// `List(List(U8))` has. (roc-webbox src/chat_abi.zig's `RecList`.)
+/// `List(List(U8))` has.
 fn RecList(comptime Rec: type, comptime Item: type, comptime rec: fn (Item) Rec) type {
     return extern struct {
         ptr: ?[*]Rec,
@@ -162,8 +157,8 @@ const Table = struct {
     serve_script: *const fn (*anyopaque, []const u8) route.ScriptServed,
 
     // The files (host/files.zig), each path relative to the data root.
-    // **A FAILED ANSWER HAS FAILED THE REQUEST**, but `read_at`'s and
-    // `write_cache`'s, a cache's, which the host logs.
+    // **A FAILED ANSWER HAS FAILED THE REQUEST**, but `read_at`'s, a
+    // cache's, which the host logs.
 
     /// Host.read!: the file's bytes, nothing there, or a failed read.
     read: *const fn (*anyopaque, []const u8) route.Read,
@@ -179,8 +174,6 @@ const Table = struct {
     append: *const fn (*anyopaque, []const u8, []const u8) route.Appended,
     /// Host.remove!: the file gone (one not there is gone already).
     remove: *const fn (*anyopaque, []const u8) route.Removed,
-    /// Host.write_cache!: as `write`, its failure never the request's.
-    write_cache: *const fn (*anyopaque, []const u8, []const u8) void,
 
     // Sign-in (host/auth/, host/signin.zig). **THE ROC NEVER HOLDS THE
     // SIGNING KEY**: `sign` and `verify` use the host's.
@@ -401,10 +394,6 @@ pub export fn roc_chat_append(path: RocBytes, bytes: RocBytes) callconv(.c) Appe
 
 pub export fn roc_chat_remove(path: RocBytes) callconv(.c) route.Removed {
     return ask("remove", .failed, .{path.slice()});
-}
-
-pub export fn roc_chat_write_cache(path: RocBytes, bytes: RocBytes) callconv(.c) void {
-    ask("write_cache", {}, .{ path.slice(), bytes.slice() });
 }
 
 // ── sign-in ────────────────────────────────────────────────────────────────

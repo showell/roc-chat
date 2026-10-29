@@ -50,6 +50,20 @@ Conversations := [].{
 		Stream(ConvAccess.ConvId),
 	]
 
+	## A conversation's id, from its path's digits (one, no leading zero):
+	## the one parse the conversations' routes and the pages share.
+	id_of : List(U8) -> Try(ConvAccess.ConvId, [NotAConversation])
+	id_of = |digits|
+		match Stored.count(digits, "id") {
+			Err(_) => Err(NotAConversation)
+			Ok(n) => ConvAccess.ConvId.from_u64(n).map_err(|_| NotAConversation)
+		}
+
+	## A conversation the viewer may not see, or that is not there: one 404
+	## for both, the routes' and the pages'.
+	no_such : Chat.Answer
+	no_such = Wire.refused(404, "no such conversation")
+
 	## The route a path names, if it names one.
 	route : List(U8) -> Try(Conversations.Route, [NotAConversation])
 	route = |path|
@@ -60,15 +74,15 @@ Conversations := [].{
 				Err(NoMatch) => Err(NotAConversation)
 				Ok(rest) =>
 					match List.split_on(rest, '/') {
-						[id_part] => id_of(id_part).map_ok(|id| Read(id))
+						[id_part] => Conversations.id_of(id_part).map_ok(|id| Read(id))
 						[
 							id_part,
 							act,
-						] if act == Str.to_utf8("messages") => id_of(id_part).map_ok(|id| Post(id))
+						] if act == Str.to_utf8("messages") => Conversations.id_of(id_part).map_ok(|id| Post(id))
 						[
 							id_part,
 							act,
-						] if act == Str.to_utf8("stream") => id_of(id_part).map_ok(|id| Stream(id))
+						] if act == Str.to_utf8("stream") => Conversations.id_of(id_part).map_ok(|id| Stream(id))
 						_ => Err(NotAConversation)
 					}
 			}
@@ -132,13 +146,6 @@ root : List(U8)
 root = Str.to_utf8("/conversations")
 
 ## A conversation's id as a path spells it: digits, one spelling, not 0.
-id_of : List(U8) -> Try(ConvAccess.ConvId, [NotAConversation])
-id_of = |digits|
-	match Stored.count(digits, "id") {
-		Err(_) => Err(NotAConversation)
-		Ok(n) => ConvAccess.ConvId.from_u64(n).map_err(|_| NotAConversation)
-	}
-
 ## **START A CONVERSATION**: the viewer, and each id the form's `with`
 ## names, bound to their accounts now (ConvAccess.Conv.start); stored, and
 ## its id answered. A session starts one; a key starts one only where it
@@ -226,7 +233,7 @@ start! = |{}| {
 ## by id and name.
 list! : {} => Chat.Answer
 list! = |{}|
-	match Credentials.viewer!(Start) {
+	match Credentials.viewer!(ListConversations) {
 		Err(answer) => answer
 		Ok(
 			{
@@ -357,7 +364,7 @@ asked! = |id, use| {
 		Session(_) | Key(_) =>
 			match Store.load_conversation!(id) {
 				Err(Failed) => Err(Chat.failed)
-				Err(Missing) => Err(no_such)
+				Err(Missing) => Err(Conversations.no_such)
 				Ok(conv) => Ok({
 					viewer,
 					accounts,
@@ -384,7 +391,7 @@ seen! = |id| {
 			accounts: a.accounts,
 			now: a.now,
 		})
-		Err(no_such)
+		Err(Conversations.no_such)
 	}
 }
 
@@ -444,7 +451,7 @@ post! = |id| {
 						if ConvAccess.can_see(viewer, { conv, accounts }) refused(
 							403,
 							"only its participants post here",
-						) else no_such
+						) else Conversations.no_such
 					} else if Str.from_utf8(got.bytes).is_err() {
 						refused(400, "a message is UTF-8 text")
 					} else if Md.hostility(got.bytes) == TooMuchFormatting {
@@ -567,8 +574,6 @@ refused = Wire.refused
 signed_out : Chat.Answer
 signed_out = refused(401, "not signed in")
 
-no_such : Chat.Answer
-no_such = refused(404, "no such conversation")
 
 expect Conversations.route(Str.to_utf8("/conversations")) == Ok(Start)
 expect Conversations.route(Str.to_utf8("/conversations/12")).map_ok(|r| r == Read(cid(12))) == Ok(Bool.True)

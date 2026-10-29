@@ -564,7 +564,7 @@ expect decoded(
 		to: "expires=-1",
 	}),
 ) == Err(BadNumber("expires"))
-# **AN EXPIRY NO GRANT MAKES** (round three's second): at or before the
+# **AN EXPIRY NO GRANT MAKES**: at or before the
 # key's creation, or more than a year after it.
 expect decoded(
 	narrow_but({

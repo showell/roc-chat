@@ -55,7 +55,8 @@ SignIn := [].{
 		}
 	}
 
-	## **/login/github, GITHUB'S CALLBACK, IN TWO CALLS** (decision D1):
+	## **/login/github, GITHUB'S CALLBACK, IN TWO CALLS**, so the turn is
+	## never held while GitHub answers:
 	## - the first checks the state (signed by us, this browser's, in its
 	##   window, its nonce not spent) and asks the host to exchange the
 	##   code, outside the turn, spending nothing;

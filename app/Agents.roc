@@ -1,6 +1,6 @@
 ## **AGENTS AND API KEYS ON THE WIRE**: a signed-in human makes an agent
-## they own, mints a key acting as themselves or as one of their agents,
-## lists their keys and revokes one. Every decision is the core's: who may
+## they own, mints a key acting as themselves, invites an agent to redeem
+## its own, lists their keys and revokes one. Every decision is the core's: who may
 ## grant what is ApiKey's (`may_grant`, through ConvKey.issue), what a step
 ## means is GitHubSignIn's (`applied`), a name's rule is DisplayName's, and
 ## an agent's making is `Agents.make`, here and pure. Here are the facts
@@ -10,7 +10,6 @@
 ##
 ##     POST /agents              make an agent: a form, `name=`
 ##     POST /keys                mint a key: a form, every field optional:
-##                               `as=agent:7` (the human by default),
 ##                               `read=` and `post=` (`everywhere`, the
 ##                               default; `off`; `only:3,9`), `admin=on`
 ##                               (off by default), `lifetime=` seconds (a

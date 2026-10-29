@@ -1,7 +1,7 @@
 //! **SIGN-IN'S HOST SIDE**: what the host holds for it (the secrets, the
 //! GitHub settings, the public origin) and GitHub's code exchange, which the
-//! server runs **OUTSIDE THE TURN**, between two Roc calls (the design's
-//! decision D1): the first call answers `exchange` with GitHub's code, the
+//! server runs **OUTSIDE THE TURN**, between two Roc calls, so no request
+//! waits on GitHub: the first call answers `exchange` with GitHub's code, the
 //! host exchanges it on the connection's own task, and the second call hears
 //! what GitHub said (`route.Exchanged`) beside the same request.
 //!

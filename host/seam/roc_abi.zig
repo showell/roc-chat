@@ -6,9 +6,8 @@
 //!     `roc_crashed`, `roc_dbg` and `roc_expect_failed`;
 //!   - `RocBytes` (a `List(U8)`) and `RocBytesList` (a `List(List(U8))`).
 //!
-//! (From roc-webbox src/roc_abi.zig at 5a4314b, cut to what roc-chat uses:
-//! no `RocStr`, no TODO app's records, no `roc_hooks`, since this binary
-//! holds one Roc app.)
+//! What roc-chat uses alone: no `RocStr` and no `roc_hooks`, since this
+//! binary holds one Roc app.
 //!
 //! **ONE CALL AT A TIME**: the host runs one handler at a time (the turn,
 //! host/server.zig), so the call's allocator is held here, set by the call.

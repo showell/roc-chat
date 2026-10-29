@@ -1,9 +1,9 @@
-## **THE CHAT'S PAGES, THE PLAINEST THAT WORK** (metal-vmm QUEUE 315): a list
-## of the viewer's conversations, and a conversation to read live and post
-## in, in a browser. Small, plain and replaceable: the real client is
-## chat-client's, later. Every decision is step 6's (Conversations.roc,
-## ConvAccess), on the viewer Credentials gives a session's cookie; here are
-## the pages made of it. A key's Bearer header is a 403: a page is a
+## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: a list of the viewer's
+## conversations, and a conversation to read live and post in, in a
+## browser. Small, plain and replaceable: the real client is chat-client's.
+## Every decision is the conversations' (Conversations.roc, ConvAccess), on
+## the viewer Credentials gives a session's cookie; here are the pages made
+## of it. A key's Bearer header is a 403: a page is a
 ## browser's.
 ##
 ##     GET /chat         the viewer's conversations, each a link, and a form to start one
@@ -33,23 +33,15 @@ import Wire
 Pages := [].{
 
 	## What a page path asks.
-	Route : [List, Conversation(ConvAccess.ConvId)]
+	Route : [ConversationList, Conversation(ConvAccess.ConvId)]
 
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
 	route = |path|
 		if path == root {
-			Ok(List)
+			Ok(ConversationList)
 		} else if List.starts_with(path, List.append(root, '/')) {
-			digits = List.drop_first(path, List.len(root) + 1)
-			match Stored.count(digits, "id") {
-				Err(_) => Err(NotAPage)
-				Ok(n) =>
-					match ConvAccess.ConvId.from_u64(n) {
-						Ok(id) => Ok(Conversation(id))
-						Err(NotAnId) => Err(NotAPage)
-					}
-			}
+			Conversations.id_of(List.drop_first(path, List.len(root) + 1)).map_ok(|id| Conversation(id)).map_err(|_| NotAPage)
 		} else {
 			Err(NotAPage)
 		}
@@ -62,7 +54,7 @@ Pages := [].{
 		} else {
 			use =
 				match r {
-					List => Start
+					ConversationList => ListConversations
 					Conversation(id) => Read(id)
 				}
 			match Credentials.viewer!(use) {
@@ -80,7 +72,7 @@ Pages := [].{
 						Key(_) => key_refused
 						Session(me) =>
 							match r {
-								List => list!({
+								ConversationList => list!({
 									viewer,
 									accounts,
 									me: me.id,
@@ -122,9 +114,9 @@ Pages := [].{
 root : List(U8)
 root = Str.to_utf8("/chat")
 
-## Signed out: to `/login`, a 303. (Back to this page after sign-in would
-## need the page carried through the signed OAuth state, a change to the
-## sign-in core: not built.)
+## Signed out: to `/login`, a 303. Sign-in lands on the hello page, not
+## back here: returning would mean carrying the page through the signed
+## OAuth state, which the sign-in core does not do.
 to_login : Chat.Answer
 to_login =
 	Chat.respond(303, { content_type: Chat.text, body: [] })
@@ -205,10 +197,10 @@ conversation! = |
 |
 	match Store.load_conversation!(id) {
 		Err(Failed) => Chat.failed
-		Err(Missing) => no_such
+		Err(Missing) => Conversations.no_such
 		Ok(conv) =>
 			if !ConvAccess.can_see(viewer, { conv, accounts }) {
-				no_such
+				Conversations.no_such
 			} else {
 				match Store.load_transcript!(id) {
 					Err(Failed) => Chat.failed
@@ -308,11 +300,6 @@ page = |
 	)
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
 
-no_such : Chat.Answer
-no_such = Chat.respond(
-	404,
-	{ content_type: Chat.text, body: Str.to_utf8("no such conversation\n") },
-)
 
 css : Str
 css =
@@ -370,7 +357,7 @@ conversation_js =
 
 expect Pages.escape(Str.to_utf8("Bea <i>x</i> & \"co\" 'q'")) == Str.to_utf8("Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;")
 expect Pages.escape(Str.to_utf8("Zoë 🎉")) == Str.to_utf8("Zoë 🎉")
-expect Pages.route(Str.to_utf8("/chat")) == Ok(List)
+expect Pages.route(Str.to_utf8("/chat")) == Ok(ConversationList)
 expect Pages.route(Str.to_utf8("/chat/7")).is_ok()
 expect Pages.route(Str.to_utf8("/chat/0")).is_err()
 expect Pages.route(Str.to_utf8("/chat/07")).is_err()

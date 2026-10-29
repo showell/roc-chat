@@ -6,7 +6,7 @@
 //! list by its element, a tag union tag by tag by number, a number by its
 //! type. Two same-sized fields swapped in a hand-laid record pass its size
 //! asserts and fail here, naming the function, the path to the field, and
-//! both offsets. (From roc-webbox src/chat_glue_test.zig at 5a4314b.)
+//! both offsets.
 //!
 //! **MATCHED BY SIGNATURE, NEVER BY GLUE'S NAMES**: glue names an anonymous
 //! record by a hash that changes when the record does, so a record is reached

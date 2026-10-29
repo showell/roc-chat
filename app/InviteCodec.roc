@@ -1,6 +1,5 @@
-## **AN AGENT'S INVITE, STORED** (Steve, 2026-10-29: "really short-lived
-## (10 minutes) invites to make it so humans are never passing durable
-## secrets around"): one line in Stored's format, the code's hash and never
+## **AN AGENT'S INVITE, STORED**: a short-lived invite (ten minutes), so
+## humans never pass a durable secret around. One line in Stored's format, the code's hash and never
 ## the code, which the human is shown once and hands to their agent:
 ##
 ##     invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:<64 hex digits> hash=<64 hex digits> created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off

@@ -72,7 +72,7 @@ route! = |req|
 				Ok(route),
 				_,
 			) => Agents.answer!(req, route)
-			# The pages (QUEUE 315).
+			# The pages.
 			(
 				_,
 				_,

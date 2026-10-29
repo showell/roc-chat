@@ -21,7 +21,7 @@ Chat := [].{
 	]
 
 	## **WHAT GITHUB'S EXCHANGE CAME TO**, on the second call of a request
-	## whose first answered `exchange` (decision D1): the host let the turn
+	## whose first answered `exchange`: the host let the turn
 	## go, exchanged the code with GitHub on the connection's own task, and
 	## called again with the same request and this:
 	## - `Known`: GitHub's numeric id and login for the code (`github_id`,

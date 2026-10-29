@@ -1832,14 +1832,6 @@ pub const HostWriteArgs = extern struct {
     arg1: RocListWith(u8, false),
 };
 
-/// Arguments for Host.write_cache!
-/// Roc signature: List(U8), List(U8) => {}
-/// Refcounted fields are owned by the hosted function.
-pub const HostWrite_cacheArgs = extern struct {
-    arg0: RocListWith(u8, false),
-    arg1: RocListWith(u8, false),
-};
-
 // Platform Type Aliases
 
 pub const HostAppend = __AnonStruct_64274bf2f7c0abad;
@@ -2109,14 +2101,6 @@ pub extern fn roc_chat_verify(arg0: RocListWith(u8, false), arg1: RocListWith(u8
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
 pub extern fn roc_chat_write(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) FailedOrWritten;
-
-/// Hosted symbol for Host.write_cache!
-/// Roc signature: List(U8), List(U8) => {}
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     arg0.decref(roc_host);
-///     arg1.decref(roc_host);
-pub extern fn roc_chat_write_cache(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
 
 /// Default memory management functions for Roc platforms.
 ///

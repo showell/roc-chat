@@ -74,7 +74,7 @@ test "a path the Roc has no route for is a 404; a method its route does not take
     try std.testing.expectEqualStrings("POST", wrong.header("allow").?);
 }
 
-test "the turn holds one handler at a time: 20 clients at once, each held 20 ms in the turn, are answered one after another (probe (a))" {
+test "the turn holds one handler at a time: 20 clients at once, each held 20 ms in the turn, are answered one after another" {
     const r = try Running.start(.{});
     defer r.stop();
     r.server.hold_turn_ms_for_test = 20;
@@ -163,7 +163,7 @@ test "the body cap: a length past it is a 413, never read and never in the turn;
     try std.testing.expectEqual(1, r.turns());
 }
 
-test "a POST's path and headers survive its body's read, which reuses the buffer the head was in (probe (a)'s trap)" {
+test "a POST's path and headers survive its body's read, which reuses the buffer the head was in" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();

@@ -668,7 +668,7 @@ expect loaded("${human_line}account v1 kind=robot\n") == Err(
 	}),
 )
 expect loaded("${human_line}\n${agent_7}") == Err(BadLine({ line: 2, problem: WrongRecord }))
-# **A FORGED COPY FIRST** (round two's first finding): an agent line
+# **A FORGED COPY FIRST**: an agent line
 # claiming another owner, or a human line claiming admin, before the real
 # one; or an agent and a bot from the one counter.
 expect loaded("account v1 kind=agent id=7 owner=9 generation=3 name=CC\n${human_line}${agent_7}") == Err(DuplicateId(Principal.Id.Agent(Cast.aid(7))))

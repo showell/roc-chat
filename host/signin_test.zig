@@ -4,8 +4,8 @@
 //! GitHub's bases. Clients speak HTTP by hand, one request a connection,
 //! carrying the cookies the server set, as a browser would.
 //!
-//! **THE TURN IS FREE DURING THE EXCHANGE** is the point of the design
-//! (D1), so it is tested directly: with the fake GitHub stalling the
+//! **THE TURN IS FREE DURING THE EXCHANGE** is the point of the design,
+//! so it is tested directly: with the fake GitHub stalling the
 //! exchange, another client is answered while it waits.
 
 const std = @import("std");

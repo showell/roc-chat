@@ -32,7 +32,6 @@ platform ""
 		"roc_chat_sign": Host.sign!,
 		"roc_chat_verify": Host.verify!,
 		"roc_chat_write": Host.write!,
-		"roc_chat_write_cache": Host.write_cache!,
 	}
 	targets: {
 		x64musl: {

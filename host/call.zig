@@ -24,8 +24,8 @@ const log = std.log.scoped(.roc_chat);
 
 /// **WHAT THE ROC MAY READ OF A REQUEST, COPIED BEFORE ITS BODY IS READ**:
 /// the head's strings point into the connection's read buffer, and reading
-/// the body reuses that buffer (probe (a) sent every POST to the 404 until
-/// the target was copied). So the path and every header are copied first.
+/// the body reuses that buffer, which would send every POST to the wrong
+/// route. So the path and every header are copied first.
 pub const Copied = struct {
     /// The target up to its query.
     path: []const u8,
@@ -187,11 +187,6 @@ pub const Ctx = struct {
             return .failed;
         };
         return .removed;
-    }
-
-    /// A cache written: a failure is a miss, logged, never the request's.
-    pub fn write_cache(c: *Ctx, path: []const u8, bytes: []const u8) void {
-        c.files.write(path, bytes) catch |e| log.warn("{f}: write_cache {s} failed: {t} (a cache; the request goes on)", .{ std.ascii.hexEscape(c.req.path, .lower), path, e });
     }
 
     // ── sign-in ──────────────────────────────────────────────────────────
@@ -374,10 +369,6 @@ test "a failed sync fails the request: the write answers failed, and the Roc's 2
     try std.testing.expectEqual(route.Appended.failed, ctx.append("n", "two"));
     try std.testing.expect(ctx.dead());
     try std.testing.expectEqual(std.http.Status.internal_server_error, (try replyOf(a, ok, &ctx)).status);
-    // A cache's failure is not the request's.
-    var cache_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store, .hub = &hub };
-    cache_ctx.write_cache("c", "1");
-    try std.testing.expect(!cache_ctx.dead());
     // A path out of the data root fails the request, never "missing".
     store.fault_for_test = .none;
     var bad_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store, .hub = &hub };

@@ -1,8 +1,7 @@
 //! **THE SERVER**: std.http's per-connection protocol object, run on a task
 //! of its own for each connection (`Io.Group.concurrent` on the threaded
 //! Io), and **one mutex, the turn**, held only while a request's handler,
-//! its Roc call, runs. (The model of zig-webbox's linux_host.zig, rebuilt
-//! from std alone, as probe (a) showed it works.)
+//! its Roc call, runs, built from std alone.
 //!
 //! **THE TURN NEVER WAITS ON THE NETWORK**: a request's head and body are
 //! read whole before its turn, under deadlines, and its answer is written

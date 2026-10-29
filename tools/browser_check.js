@@ -1,4 +1,4 @@
-// **THE PAGES IN A REAL BROWSER** (QUEUE 315), by hand, never in `test`: start
+// **THE PAGES IN A REAL BROWSER**, by hand, never in `test`: start
 // the end to end held (`zig build e2e -- --hold`, which
 // says its port and A's and B's session cookies), then
 //   node tools/browser_check.js <port> <conversation> <A's cookie> <B's cookie>

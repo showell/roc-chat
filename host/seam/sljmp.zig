@@ -1,7 +1,4 @@
-//! (Moved whole from roc-webbox src/sljmp.zig at 5a4314b; the docs it
-//! names are roc-webbox's.)
-//!
-//! **SETJMP AND LONGJMP, NO OPERATING SYSTEM** (docs/ROC-CHAT.md R3, P9):
+//! **SETJMP AND LONGJMP, NO OPERATING SYSTEM**:
 //! the callee-saved registers, the stack pointer and the return address,
 //! saved and restored by naked functions. Architecture code alone, so the
 //! same file serves on Linux and on zig-metal-unikernel. Taken from the

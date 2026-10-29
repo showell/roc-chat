@@ -2,8 +2,7 @@
 ## chat's platform that dies on purpose, one path per way a Roc can die, and
 ## answers `/ok` with a 200, so the host's answer to a crash (a 500 with its
 ## own fixed body, the turn released, the next request served, the crash
-## logged once) is seen. Never linked into a server. (The model:
-## roc-webbox's chat/test/crash.roc at 5a4314b.)
+## logged once) is seen. Never linked into a server.
 ##
 ## **EACH PLANT READS THE REQUEST**, so the compiler cannot fold it to a
 ## constant and refuse to build: an overflow written with constants is a
