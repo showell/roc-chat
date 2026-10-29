@@ -162,8 +162,10 @@ pub fn loadOrCreateSigningKey(io: Io, dir: Io.Dir, path: []const u8, diag: *Diag
     return .{ .bytes = got[0..signing_key_len].* };
 }
 
-/// A relative path with no empty, `.` or `..` part: it stays under `secrets/`.
-fn pathOk(path: []const u8) bool {
+/// **THE HOST'S ONE PATH RULE**: a relative path with no empty, `.` or `..`
+/// part stays under the folder it is joined to (`secrets/` here, the data
+/// root for host/files.zig).
+pub fn pathOk(path: []const u8) bool {
     if (path.len == 0 or path[0] == '/') return false;
     var parts = std.mem.splitScalar(u8, path, '/');
     while (parts.next()) |p| {
