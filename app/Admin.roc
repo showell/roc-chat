@@ -470,7 +470,7 @@ accounts = [
 
 ## Boss is the bootstrap admin; GitHub id 66 is barred.
 settings : GitHubSignIn.Settings
-settings = { first_admin: Named(Cast.gid(1)), barred: [Cast.gid(66)], next_generation: Cast.gen(9) }
+settings = { first_admin: Named(Cast.gid(1)), barred: [Cast.gid(66)], next_generation: Cast.gen(9), next_agent_id: Cast.aid(20) }
 
 admin_only : ApiKey.Scope(Str)
 admin_only = {
@@ -803,7 +803,7 @@ unbootstrapped = |{ credential, action }|
 		credential,
 		action,
 		accounts: two_admins,
-		settings: { first_admin: Unnamed, barred: [], next_generation: Cast.gen(9) },
+		settings: { first_admin: Unnamed, barred: [], next_generation: Cast.gen(9), next_agent_id: Cast.aid(20) },
 		now: 100500,
 	}).audit.verdict
 
@@ -812,7 +812,7 @@ expect unbootstrapped({ credential: cal_session, action: retire_boss }) == Permi
 
 after_boss_retired_cal : List(Principal)
 after_boss_retired_cal = Admin.applied(
-	decision({ credential: boss_session, action: retire_cal, accounts: two_admins, settings: { first_admin: Unnamed, barred: [], next_generation: Cast.gen(9) }, now: 100500 }).plan,
+	decision({ credential: boss_session, action: retire_cal, accounts: two_admins, settings: { first_admin: Unnamed, barred: [], next_generation: Cast.gen(9), next_agent_id: Cast.aid(20) }, now: 100500 }).plan,
 	{ accounts: two_admins, settings },
 ).accounts
 

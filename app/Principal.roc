@@ -138,6 +138,11 @@ Principal := [
 		to_u64 : Principal.AgentId -> U64
 		to_u64 = |Principal.AgentId.(n)| n
 
+		## The id after this one, unless the counter is spent.
+		next : Principal.AgentId -> Try(Principal.AgentId, [Exhausted])
+		next = |Principal.AgentId.(n)|
+			if n == u64_most Err(Exhausted) else Ok(Principal.AgentId.(n + 1))
+
 		is_eq : _
 	}
 

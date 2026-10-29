@@ -9,7 +9,7 @@
 ## The layout, under the data root:
 ##
 ##     auth/accounts             every account, a line each (AccountCodec)
-##     auth/settings             the generation counter (`settings_line`)
+##     auth/settings             the generation and agent-id counters (`settings_line`)
 ##     auth/barred               the barred GitHub ids, a line each
 ##     auth/audit                every refusal and admin act, appended (AuditCodec)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
@@ -60,16 +60,27 @@ Store := [].{
 	}
 
 	## The settings: `first_admin` (the config's, which the caller reads),
-	## the barred ids, and the generation counter (1 before the first
-	## account).
+	## the barred ids, the generation counter (1 before the first account)
+	## and the agent-id counter. **A STORE FROM BEFORE THE AGENT-ID COUNTER**
+	## (no settings, or a line without `agent=`) reads it as
+	## GitHubSignIn.agent_id_after the accounts, so today's data stays
+	## valid; the next save writes it.
 	settings! : [Unnamed, Named(Principal.GitHubId)] => Try(GitHubSignIn.Settings, [Failed])
 	settings! = |first_admin| {
 		settings_read = Host.read!(settings_path)
-		next_generation =
+		counters =
 			match settings_read.status {
-				Missing => Principal.Generation.from_u64(1).map_err(|_| Failed)
+				Missing => Principal.Generation.from_u64(1).map_ok(|next| { next, agent: Unkept }).map_err(|_| Failed)
 				Failed => Err(Failed)
-				Found => settings_next(settings_read.bytes).map_err(|_| Failed)
+				Found => settings_counters(settings_read.bytes).map_err(|_| Failed)
+			}?
+		next_agent_id =
+			match counters.agent {
+				Kept(id) => Ok(id)
+				Unkept => {
+					accounts = Store.accounts!({})?
+					GitHubSignIn.agent_id_after(accounts).map_err(|_| Failed)
+				}
 			}
 		barred_read = Host.read!(barred_path)
 		barred =
@@ -78,7 +89,7 @@ Store := [].{
 				Failed => Err(Failed)
 				Found => barred_of(barred_read.bytes).map_err(|_| Failed)
 			}
-		Ok({ first_admin, barred: barred?, next_generation: next_generation? })
+		Ok({ first_admin, barred: barred?, next_generation: counters.next, next_agent_id: next_agent_id? })
 	}
 
 	## Whether `nonce` was spent before, in its set.
@@ -133,7 +144,7 @@ Store := [].{
 		match List.map_try(accounts, AccountCodec.encode) {
 			Err(_) => Failed
 			Ok(lines) =>
-				match Host.write!(settings_path, settings_line(settings.next_generation)) {
+				match Host.write!(settings_path, settings_line(settings)) {
 					Failed => Failed
 					Written => Host.write!(accounts_path, List.join(lines))
 				}
@@ -319,20 +330,30 @@ spent_path = |set, nonce| {
 expect spent_path(State, [0xAB]) == Str.to_utf8("auth/spent/state/ab")
 expect spent_path(Pending, [0x01]) == Str.to_utf8("auth/spent/pending/01")
 
-## **THE SETTINGS' RECORD**: the generation the next account is given.
+## **THE SETTINGS' RECORD**: the generation the next account is given,
+## and the id the next agent or bot is given.
 ##
-##     settings v1 next=3
-settings_line : Principal.Generation -> List(U8)
-settings_line = |next| Stored.line("settings", [("next", next.to_u64().to_str())])
+##     settings v1 next=3 agent=8
+settings_line : GitHubSignIn.Settings -> List(U8)
+settings_line = |settings| Stored.line("settings", [("next", settings.next_generation.to_u64().to_str()), ("agent", settings.next_agent_id.to_u64().to_str())])
 
-## The next generation the settings' record holds.
-settings_next : List(U8) -> Try(Principal.Generation, Stored.Problem)
-settings_next = |raw| {
+## The counters the settings' record holds; a line from before the agent-id
+## counter, `settings v1 next=3`, holds none (`Unkept`), the one field that
+## may be missing, and only at the end.
+settings_counters : List(U8) -> Try({ next : Principal.Generation, agent : [Kept(Principal.AgentId), Unkept] }, Stored.Problem)
+settings_counters = |raw| {
 	fields = Stored.Reader.open(raw, "settings")?
 	next_field = fields.field("next")?
 	next = Stored.id(next_field.value, { name: "next", make: Principal.Generation.from_u64 })?
-	next_field.rest.close()?
-	Ok(next)
+	match next_field.rest.close() {
+		Ok({}) => Ok({ next, agent: Unkept })
+		Err(_) => {
+			agent_field = next_field.rest.field("agent")?
+			agent = Stored.id(agent_field.value, { name: "agent", make: Principal.AgentId.from_u64 })?
+			agent_field.rest.close()?
+			Ok({ next, agent: Kept(agent) })
+		}
+	}
 }
 
 ## **THE BARRED IDS**, one line each:
@@ -355,8 +376,15 @@ barred_of = |raw|
 		},
 	)
 # The settings' record and the barred ids, round trips and refusals.
-expect settings_next(settings_line(Cast.gen(3))) == Ok(Cast.gen(3))
-expect settings_next(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
+expect settings_counters(settings_line({ first_admin: Unnamed, barred: [], next_generation: Cast.gen(3), next_agent_id: Cast.aid(8) })) == Ok({ next: Cast.gen(3), agent: Kept(Cast.aid(8)) })
+expect settings_line({ first_admin: Unnamed, barred: [], next_generation: Cast.gen(3), next_agent_id: Cast.aid(8) }) == Str.to_utf8("settings v1 next=3 agent=8\n")
+expect settings_counters(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
+# A line from before the agent-id counter reads, holding none; a damaged
+# counter is refused, never read as missing.
+expect settings_counters(Str.to_utf8("settings v1 next=3\n")) == Ok({ next: Cast.gen(3), agent: Unkept })
+expect settings_counters(Str.to_utf8("settings v1 next=3 agent=0\n")) == Err(BadValue("agent"))
+expect settings_counters(Str.to_utf8("settings v1 next=3 agents=4\n")) == Err(MissingField("agent"))
+expect settings_counters(Str.to_utf8("settings v1 next=3 agent=4 x=1\n")) == Err(Trailing)
 
 barred_ids : List(Principal.GitHubId)
 barred_ids = [Cast.gid(7), Cast.gid(583231)]

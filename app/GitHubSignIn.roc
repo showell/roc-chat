@@ -125,11 +125,15 @@ GitHubSignIn := [].{
 	## if any is named; the GitHub ids barred from signing up again (their
 	## accounts retired); and the generation counter, the generation the next
 	## account made is given (Principal.Generation), which the host stores
-	## back advanced each time an account is made.
+	## back advanced each time an account is made; and the agent-id counter,
+	## the id the next agent or bot made is given, beside it and kept the
+	## same way, so an id is never given twice (the design's section 13),
+	## not even the id of an agent retired since.
 	Settings : {
 		first_admin : [Unnamed, Named(Principal.GitHubId)],
 		barred : List(Principal.GitHubId),
 		next_generation : Principal.Generation,
+		next_agent_id : Principal.AgentId,
 	}
 
 	## **A NEW SESSION'S FACTS**, the host's: its public number, and the
@@ -159,6 +163,9 @@ GitHubSignIn := [].{
 
 		## Raise the settings' generation counter to at least this.
 		AdvanceGeneration(Principal.Generation),
+
+		## Raise the settings' agent-id counter to at least this.
+		AdvanceAgentId(Principal.AgentId),
 	]
 
 	## Signed in: the admission Session.start takes, and the steps to store
@@ -193,8 +200,41 @@ GitHubSignIn := [].{
 						} else {
 							{ accounts, settings }
 						}
+					AdvanceAgentId(id) =>
+						if id.to_u64() > settings.next_agent_id.to_u64() {
+							{ accounts, settings: { ..settings, next_agent_id: id } }
+						} else {
+							{ accounts, settings }
+						}
 				},
 		)
+
+	## **A NEW AGENT'S OR BOT'S ID, AND THE COUNTER AFTER IT**: the
+	## settings' next, when it is above every agent's and bot's id (a counter
+	## that went back might give one twice, as a generation's might); one
+	## counter for both kinds.
+	next_agent_id : List(Principal), GitHubSignIn.Settings -> Try({ this : Principal.AgentId, next : Principal.AgentId }, [StaleAgentId, AgentIdsExhausted])
+	next_agent_id = |accounts, settings| {
+		this = settings.next_agent_id
+		if List.any(accounts, |a| agent_id_of(a) >= this.to_u64()) {
+			Err(StaleAgentId)
+		} else {
+			match this.next() {
+				Ok(next) => Ok({ this, next })
+				Err(Exhausted) => Err(AgentIdsExhausted)
+			}
+		}
+	}
+
+	## **THE AGENT-ID COUNTER A STORE WITHOUT ONE STARTS AT**: one more than
+	## the highest agent or bot id among the accounts; 1 for none. What the
+	## settings read as before they held the counter, so an old store stays
+	## valid; from then on, the stored counter alone.
+	agent_id_after : List(Principal) -> Try(Principal.AgentId, [AgentIdsExhausted])
+	agent_id_after = |accounts| {
+		most = List.fold(accounts, 0, |m, a| if agent_id_of(a) > m agent_id_of(a) else m)
+		if most == u64_most Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
+	}
 
 	## **A NEW ACCOUNT'S GENERATION, AND THE COUNTER AFTER IT**: the one
 	## rule a sign-up and an agent's making both ask (`fresh_generation`).
@@ -665,6 +705,17 @@ with_human = |accounts, human, change|
 			},
 	)
 
+## An agent's or a bot's id as a number; 0 for a human, below every id.
+agent_id_of : Principal -> U64
+agent_id_of = |p|
+	match p {
+		Agent(a) | Bot(a) => a.id.to_u64()
+		Human(_) => 0
+	}
+
+u64_most : U64
+u64_most = 18446744073709551615
+
 ## **A NEW ACCOUNT'S GENERATION**: the settings' next, when it is above
 ## every account's (a counter that went back might give one twice); and
 ## the counter after it, for the host to store.
@@ -779,7 +830,7 @@ new_session = { id: Cast.sid(5), token_hash: Cast.token(0x42) }
 
 ## Open sign-up, Boss the first admin, GitHub id 66 barred.
 usual_settings : GitHubSignIn.Settings
-usual_settings = { first_admin: Named(Cast.gid(1)), barred: [Cast.gid(66)], next_generation: Cast.gen(10) }
+usual_settings = { first_admin: Named(Cast.gid(1)), barred: [Cast.gid(66)], next_generation: Cast.gen(10), next_agent_id: Cast.aid(20) }
 
 # ── STARTED
 expect GitHubSignIn.Started.start({
@@ -900,6 +951,7 @@ SeenStep : [
 	SetLogin({ human : Principal.GitHubId, login : Str }),
 	ClearLogin({ human : Principal.GitHubId, login : Str }),
 	AdvanceGeneration(Principal.Generation),
+	AdvanceAgentId(Principal.AgentId),
 ]
 
 seen_step : GitHubSignIn.Step -> SeenStep
@@ -909,6 +961,7 @@ seen_step = |step|
 		SetLogin(s) => SetLogin(s)
 		ClearLogin(c) => ClearLogin(c)
 		AdvanceGeneration(g) => AdvanceGeneration(g)
+		AdvanceAgentId(id) => AdvanceAgentId(id)
 	}
 
 ## What resolving says, comparably.

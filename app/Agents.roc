@@ -25,6 +25,7 @@
 import pf.Chat
 import pf.Host
 import AccountCodec
+import Admin
 import ApiKey
 import AuditCodec
 import Cast
@@ -88,14 +89,15 @@ Agents := [].{
 		Made({ agent : Principal, steps : List(GitHubSignIn.Step) }),
 		NameRefused(DisplayName.Problem),
 		Refused([GrantedByKey, SessionExpired, NoSuchGranter, ClockOutOfRange]),
-		Stuck([StaleGeneration, GenerationsExhausted, AgentIdsExhausted]),
+		Stuck([StaleGeneration, GenerationsExhausted, StaleAgentId, AgentIdsExhausted]),
 	]
 
 	## **MAKE AN AGENT**: owned by the human a live session signs in, named
-	## by DisplayName's rule, with the chat's next agent id (one more than
-	## any agent's or bot's now) and the settings' next generation
-	## (GitHubSignIn.next_generation); the steps advance the counter first,
-	## then add the account, for GitHubSignIn.applied, as a sign-up's do.
+	## by DisplayName's rule, with the settings' next agent id
+	## (GitHubSignIn.next_agent_id: never given twice, not even a retired
+	## agent's) and next generation (GitHubSignIn.next_generation); the
+	## steps advance both counters first, then add the account, for
+	## GitHubSignIn.applied, as a sign-up's do.
 	make : { maker : Agents.Maker, name : List(U8), accounts : List(Principal), settings : GitHubSignIn.Settings, now : I64 } -> Agents.Made
 	make = |{ maker, name, accounts, settings, now }|
 		if now < 0 or now > Stored.max_time {
@@ -108,13 +110,13 @@ Agents := [].{
 						Refused(IdleExpired) | Refused(AbsoluteExpired) => Refused(SessionExpired)
 						Refused(NoSuchAccount) => Refused(NoSuchGranter)
 						Admitted({ principal, write: _ }) =>
-							match (DisplayName.from_utf8(name), GitHubSignIn.next_generation(accounts, settings), next_agent_id(accounts)) {
+							match (DisplayName.from_utf8(name), GitHubSignIn.next_generation(accounts, settings), GitHubSignIn.next_agent_id(accounts, settings)) {
 								(Err(problem), _, _) => NameRefused(problem)
 								(_, Err(why), _) => Stuck(why)
 								(_, _, Err(why)) => Stuck(why)
-								(Ok(chosen), Ok({ this, next }), Ok(id)) => {
-									agent = Principal.Agent({ id, name: chosen.to_str(), owner: Principal.answers_to(principal), generation: this })
-									Made({ agent, steps: [AdvanceGeneration(next), AddAccount(agent)] })
+								(Ok(chosen), Ok({ this, next }), Ok(ids)) => {
+									agent = Principal.Agent({ id: ids.this, name: chosen.to_str(), owner: Principal.answers_to(principal), generation: this })
+									Made({ agent, steps: [AdvanceGeneration(next), AdvanceAgentId(ids.next), AddAccount(agent)] })
 								}
 							}
 					}
@@ -130,25 +132,6 @@ Agents := [].{
 			Err(_) => Bool.False
 		}
 }
-
-## **THE CHAT'S NEXT AGENT ID**: one more than any agent's or bot's (one
-## counter for both kinds); 1 for the first.
-next_agent_id : List(Principal) -> Try(Principal.AgentId, [AgentIdsExhausted])
-next_agent_id = |accounts| {
-	most = List.fold(
-		accounts,
-		0,
-		|m, p|
-			match p {
-				Agent(a) | Bot(a) => if a.id.to_u64() > m a.id.to_u64() else m
-				Human(_) => m
-			},
-	)
-	if most == u64_most Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
-}
-
-u64_most : U64
-u64_most = 18446744073709551615
 
 ## The most of a form's body.
 form_most : U64
@@ -188,10 +171,7 @@ made_by! = |maker, form| {
 				NameRefused(_) => Wire.refused(400, "that name is not one we can show")
 				Stuck(_) => Chat.failed
 				Refused(why) => {
-					match next_agent_id(accounts) {
-						Ok(id) => audit_grant!(maker, { acts_as: Principal.Id.Agent(id), refusal: why, now })
-						Err(AgentIdsExhausted) => {}
-					}
+					audit_grant!(maker, { acts_as: Principal.Id.Agent(settings.next_agent_id), refusal: why, now })
 					grant_refused(why)
 				}
 				Made({ agent, steps }) =>
@@ -454,16 +434,16 @@ session_of = |who|
 
 ## The settings after the cast's accounts (every one of generation 1).
 settings_at : U64 -> GitHubSignIn.Settings
-settings_at = |next| { first_admin: Unnamed, barred: [], next_generation: Cast.gen(next) }
+settings_at = |next| { first_admin: Unnamed, barred: [], next_generation: Cast.gen(next), next_agent_id: Cast.aid(4) }
 
 ## What `make` decided, said plainly: the agent's id, owner, generation
 ## and name, and the counter it leaves; or the refusal.
-Said : [Agent({ id : U64, owner : U64, generation : U64, name : Str, next : U64 }), NameRefused(DisplayName.Problem), Refused([GrantedByKey, SessionExpired, NoSuchGranter, ClockOutOfRange]), Stuck([StaleGeneration, GenerationsExhausted, AgentIdsExhausted]), Other]
+Said : [Agent({ id : U64, owner : U64, generation : U64, name : Str, next : U64, next_id : U64 }), NameRefused(DisplayName.Problem), Refused([GrantedByKey, SessionExpired, NoSuchGranter, ClockOutOfRange]), Stuck([StaleGeneration, GenerationsExhausted, StaleAgentId, AgentIdsExhausted]), Other]
 
 said : Agents.Made -> Said
 said = |made|
 	match made {
-		Made({ agent: Agent(a), steps: [AdvanceGeneration(n), AddAccount(_)] }) => Agent({ id: a.id.to_u64(), owner: a.owner.to_u64(), generation: a.generation.to_u64(), name: a.name, next: n.to_u64() })
+		Made({ agent: Agent(a), steps: [AdvanceGeneration(n), AdvanceAgentId(i), AddAccount(_)] }) => Agent({ id: a.id.to_u64(), owner: a.owner.to_u64(), generation: a.generation.to_u64(), name: a.name, next: n.to_u64(), next_id: i.to_u64() })
 		Made(_) => Other
 		NameRefused(p) => NameRefused(p)
 		Refused(why) => Refused(why)
@@ -474,12 +454,15 @@ said = |made|
 made_by : U64, Str -> Agents.Made
 made_by = |who, name| Agents.make({ maker: Session(session_of(who)), name: Str.to_utf8(name), accounts: Cast.accounts, settings: settings_at(2), now: 50 })
 
-# The next agent id is one past every agent's and bot's (the cast's are 1,
-# 2 and 3); the generation, the settings'; the counter, advanced.
-expect said(made_by(2, "CC")) == Agent({ id: 4, owner: 2, generation: 2, name: "CC", next: 3 })
-expect said(made_by(1, "  LC  ")) == Agent({ id: 4, owner: 1, generation: 2, name: "LC", next: 3 })
-expect next_agent_id([]) == Ok(Cast.aid(1))
-expect next_agent_id([Cast.boss]) == Ok(Cast.aid(1))
+# The agent id and the generation are the settings'; both counters,
+# advanced. (The cast's agents and bots are 1, 2 and 3.)
+expect said(made_by(2, "CC")) == Agent({ id: 4, owner: 2, generation: 2, name: "CC", next: 3, next_id: 5 })
+expect said(made_by(1, "  LC  ")) == Agent({ id: 4, owner: 1, generation: 2, name: "LC", next: 3, next_id: 5 })
+# A store from before the counter starts it one past every agent's and
+# bot's.
+expect GitHubSignIn.agent_id_after(Cast.accounts) == Ok(Cast.aid(4))
+expect GitHubSignIn.agent_id_after([]) == Ok(Cast.aid(1))
+expect GitHubSignIn.agent_id_after([Cast.boss]) == Ok(Cast.aid(1))
 
 # **NEVER GIVEN TWICE**: the first agent's steps applied, the second gets
 # the next id and the next generation.
@@ -496,9 +479,26 @@ after_first = applied_to_cast(made_by(2, "CC"))
 
 expect
 	said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: after_first.accounts, settings: after_first.settings, now: 50 }))
-		== Agent({ id: 5, owner: 2, generation: 3, name: "LC", next: 4 })
-# A counter that went back is refused, never given twice.
+		== Agent({ id: 5, owner: 2, generation: 3, name: "LC", next: 4, next_id: 6 })
+# A counter that went back is refused, never given twice: the generation's,
+# and the agent id's.
 expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: after_first.accounts, settings: settings_at(2), now: 50 })) == Stuck(StaleGeneration)
+expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: after_first.accounts, settings: { ..after_first.settings, next_agent_id: Cast.aid(4) }, now: 50 })) == Stuck(StaleAgentId)
+expect said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("LC"), accounts: Cast.accounts, settings: { ..settings_at(2), next_agent_id: Cast.aid(3) }, now: 50 })) == Stuck(StaleAgentId)
+
+# **A RETIRED AGENT'S ID IS NEVER GIVEN AGAIN**: the highest agent (4,
+# ann's CC) retired by boss through Admin's plan, the next agent made is 5.
+after_retired : { accounts : List(Principal), settings : GitHubSignIn.Settings }
+after_retired =
+	match Admin.decide({ credential: Session(session_of(1)), action: Retire(Principal.Id.Agent(Cast.aid(4))), accounts: after_first.accounts, settings: after_first.settings, now: 60 }) {
+		Ok({ audit: _, plan }) => Admin.applied(plan, after_first)
+		Err(_) => crash "after_retired: a test's retirement is decided"
+	}
+
+expect !List.any(after_retired.accounts, |p| Principal.id(p) == Principal.Id.Agent(Cast.aid(4)))
+expect
+	said(Agents.make({ maker: Session(session_of(2)), name: Str.to_utf8("CC"), accounts: after_retired.accounts, settings: after_retired.settings, now: 70 }))
+		== Agent({ id: 5, owner: 2, generation: 3, name: "CC", next: 4, next_id: 6 })
 
 # A bad name is refused; so is anyone but a live session.
 expect said(made_by(2, "")) == NameRefused(Empty)
