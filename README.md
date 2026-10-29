@@ -88,6 +88,12 @@ server, saying which.
   the host's.
 - **A Roc crash is a 500, not a dead server**: the call jumps back to where
   it began (`host/seam/sljmp.zig`), and the request's arena goes with it.
+  A recursion past the stack, which calls no `roc_crashed`, is caught as
+  its fault on the call's own stack (a SIGSEGV handler, `chat_abi.zig`) and
+  is the same crash; any other fault still stops the process. The answer is the host's fixed 500, nothing of the Roc's in it, and the
+  crash is logged once, on one line, in the turn: its turn, method, path
+  and the Roc's message, escaped. Planted crashes prove it, one per way the
+  Roc can die (`app/test/crash.roc`, `host/crash_test.zig`).
 - **Event streams (SSE), for any app on the platform.** A handler answers
   `Chat.stream({ key, backlog })` and publishes with `Host.publish!(key,
   frame)`, a frame made by `Sse.frame` (`platform/Sse.roc` has an
@@ -119,8 +125,9 @@ server, saying which.
 | `host/bus.zig`, `host/sse.zig` | The bus (a mailbox of 16 frames per stream, by key) and a stream's head, ping and cap. |
 | `host/stub_log.zig` | The stub route's frames, until step 6. |
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
-| `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients. |
+| `host/server_test.zig` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness). |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
+| `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
 | `dev/config.zon` | `zig build serve`'s config. |
 
@@ -160,6 +167,10 @@ server, saying which.
   spends nothing; the second, after the exchange, checks it again and
   spends its nonce in the same turn. A check that spent in the first call
   would refuse its own second call as a replay.
+- **A Roc stack overflow is a SIGSEGV, not a `roc_crashed`.** Taken for
+  the call's crash only when the fault is on the guarded call's stack,
+  below where it began, on a thread with std's signal stack (every thread
+  std starts has one). A thread without one dies of the fault, as before.
 - **A file hosted function's `Failed` has failed the request**: the answer
   is a 500 whatever the Roc says, and the host does nothing more in that
   call (`read_at!` and `write_cache!`, a cache's, are the exceptions).

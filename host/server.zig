@@ -76,6 +76,8 @@ pub const Stats = struct {
     subscribe_holds: std.atomic.Value(u32) = .init(0),
     /// Streams stalled by `stall_streams_for_test`.
     stream_stalls: std.atomic.Value(u32) = .init(0),
+    /// Roc crashes said (`Server.sayCrash`).
+    crashes: std.atomic.Value(u32) = .init(0),
 };
 
 pub const Server = struct {
@@ -115,6 +117,10 @@ pub const Server = struct {
     /// write blocks depends on the kernel's buffers; a count of frames to
     /// the overflow cannot.)
     stall_streams_for_test: std.atomic.Value(bool) = .init(false),
+    /// The last crash's line, as logged (written in the turn; a test reads
+    /// it holding the turn).
+    crash_said: [2048]u8 = undefined,
+    crash_said_len: usize = 0,
 
     /// Serves `data`, the data root (the caller's, open for the server's life).
     pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits, data: Io.Dir) !Server {
@@ -310,9 +316,10 @@ pub const Server = struct {
         const n = s.stats.in_turn.fetchAdd(1, .acq_rel) + 1;
         _ = s.stats.most_in_turn.fetchMax(n, .acq_rel);
         defer _ = s.stats.in_turn.fetchSub(1, .acq_rel);
-        _ = s.stats.turns.fetchAdd(1, .acq_rel);
+        const turn = s.stats.turns.fetchAdd(1, .acq_rel) + 1;
         if (s.hold_turn_ms_for_test > 0) io_sleep(s.io, s.hold_turn_ms_for_test);
         const d = abi.decide(arena, copied.path, copied.method, exchanged, .of(ctx));
+        if (d) |_| {} else |e| if (e == error.RocCrashed) s.sayCrash(copied, turn);
         // **THE BACKLOG AND THE SUBSCRIBE IN ONE TURN**: the Roc read the
         // stream's backlog in this call, and no post can run until the turn
         // is let go, so every frame is in the backlog or comes live, never
@@ -383,6 +390,25 @@ pub const Server = struct {
         body.writer.flush() catch return false;
         body.flush() catch return false;
         return true;
+    }
+
+    /// **A ROC CRASH IS LOGGED ONCE, ON ONE LINE, IN THE TURN**: its turn,
+    /// the request's method and path, and the Roc's message, read while the
+    /// crash's message is still this call's (the next call's crash writes
+    /// over it). The path and the message are escaped, a byte that is not
+    /// printable ASCII as `\xNN`, so neither can break the line or forge
+    /// another; a line past the buffer is cut.
+    fn sayCrash(s: *Server, c: *const call.Copied, turn: u32) void {
+        var w: Io.Writer = .fixed(&s.crash_said);
+        w.print("the Roc crashed answering {t} {f} (turn {d}): {f}", .{
+            c.method,
+            std.ascii.hexEscape(c.path, .lower),
+            turn,
+            std.ascii.hexEscape(abi.last_crash[0..abi.last_crash_len], .lower),
+        }) catch {};
+        s.crash_said_len = w.end;
+        _ = s.stats.crashes.fetchAdd(1, .acq_rel);
+        log.warn("{s}", .{s.crash_said[0..s.crash_said_len]});
     }
 };
 

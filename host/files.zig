@@ -542,8 +542,13 @@ test "missing and failed differ: a folder of mode 000 is a failure, not a missin
     defer locked.close(testing.io);
     try locked.setPermissions(testing.io, .fromMode(0o000));
     defer locked.setPermissions(testing.io, .fromMode(0o700)) catch {};
-    // Root reads through a 000 folder, and the test would prove nothing.
-    if (std.os.linux.geteuid() == 0) return error.SkipZigTest;
+    // **ROOT IS REFUSED, NEVER SKIPPED**: root reads through a 000 folder,
+    // so the test would prove nothing; it fails, saying so (CC runs tests
+    // as a user, metal-vmm's CLOUD_WORK).
+    if (std.os.linux.geteuid() == 0) {
+        std.debug.print("files: the 000-folder test means nothing as root: run the tests as a user\n", .{});
+        return error.RunAsAUserNotRoot;
+    }
     try testing.expectEqual(Read.failed, f.read(testing.allocator, "locked/x"));
     try testing.expectEqual(Read.failed, f.read(testing.allocator, "locked/nope"));
     try testing.expectEqual(Read.failed, f.readAt(testing.allocator, "locked/x", 0, 4));

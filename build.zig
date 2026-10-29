@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const roc = rocCompiler(b);
-    const app = appArchive(b, roc, rocOpt(optimize));
+    const app = appArchive(b, roc, rocOpt(optimize), "app/main.roc", "chat-x64musl.a", rocInputs(b));
 
     const exe = b.addExecutable(.{ .name = "roc-chat", .root_module = b.createModule(.{
         .root_source_file = b.path("host/main.zig"),
@@ -70,6 +70,19 @@ pub fn build(b: *std.Build) void {
         m.addObjectFile(app);
         tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
     }
+
+    // **THE PLANTED CRASHES** (app/test/crash.roc), linked in place of the
+    // chat, for this test alone: a Roc crash is a 500, and the server goes on.
+    const crash_app = appArchive(b, roc, rocOpt(optimize), "app/test/crash.roc", "crash-x64musl.a", crashInputs(b));
+    const crash_test = b.createModule(.{
+        .root_source_file = b.path("host/crash_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = imports,
+    });
+    crash_test.addObjectFile(crash_app);
+    tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = crash_test })).step);
+
     authSteps(b, tests, target, optimize);
 }
 
@@ -133,14 +146,23 @@ fn rocOpt(optimize: std.lang.Optimize) RocOpt {
     return if (optimize == .debug) .dev else .speed;
 }
 
-/// app/main.roc built for x64musl, as `chat-x64musl.a`.
-fn appArchive(b: *std.Build, roc: []const u8, opt: RocOpt) std.Build.LazyPath {
-    const run = b.addSystemCommand(&.{ roc, "build", "app/main.roc", "--target=x64musl", b.fmt("--opt={t}", .{opt}) });
+/// The Roc app `source` (app/main.roc, or a test's) built for x64musl, as
+/// `name`, rebuilt when one of `inputs` changes.
+fn appArchive(b: *std.Build, roc: []const u8, opt: RocOpt, source: []const u8, name: []const u8, inputs: []const []const u8) std.Build.LazyPath {
+    const run = b.addSystemCommand(&.{ roc, "build", source, "--target=x64musl", b.fmt("--opt={t}", .{opt}) });
     run.setCwd(b.path("."));
-    for (rocInputs(b)) |f| run.addFileInput(b.path(f));
+    for (inputs) |f| run.addFileInput(b.path(f));
     // The compiler too: a new Roc builds the archive again.
     run.addFileInput(.{ .cwd_relative = roc });
-    return run.addPrefixedOutputFileArg("--output=", "chat-x64musl.a");
+    return run.addPrefixedOutputFileArg("--output=", name);
+}
+
+/// The planted crashes' modules: the app itself and the platform's.
+fn crashInputs(b: *std.Build) []const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    out.append(b.allocator, "app/test/crash.roc") catch @panic("OOM");
+    rocFiles(b, "platform", &out);
+    return out.items;
 }
 
 /// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
