@@ -973,7 +973,7 @@ expect plan_of(boss_session, retire_ann_agent) == [
 	RemoveAccount(Principal.id(Cast.ann_agent)),
 ]
 expect
-	List.map(left(plan_of(boss_session, Retire(Principal.id(Cast.ann)))), Principal.id)
+	List.map(left(ann_retired), Principal.id)
 		== [
 			Principal.id(Cast.boss),
 			Principal.id(cal),
@@ -1001,13 +1001,18 @@ once : { accounts : List(Principal), settings : GitHubSignIn.Settings }
 once = Admin.applied(ann_retired, { accounts, settings })
 
 expect once.settings.barred == [Cast.gid(66), Cast.gid(2)]
+
+## Each prefix's length: where a crash could cut the plan.
+crash_points : List(U64)
+crash_points = Iter.fold(
+	U64.to(0, List.len(ann_retired)),
+	[],
+	|so_far, n| so_far.append(n),
+)
+
 expect
 	List.all(
-		Iter.fold(
-			U64.to(0, List.len(ann_retired)),
-			[],
-			|so_far, n| so_far.append(n),
-		),
+		crash_points,
 		|n| {
 			crashed = Admin.applied(List.take_first(ann_retired, n), { accounts, settings })
 			again = Admin.applied(ann_retired, crashed)

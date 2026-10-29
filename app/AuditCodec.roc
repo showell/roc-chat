@@ -1414,20 +1414,21 @@ invite_verdicts = List.concat(
 		Redeemed(Cast.kid(9)),
 		Revoked(Cast.sid(12)),
 	],
-	List.map(
-		List.concat(
-			[
-				Unknown,
-				Spent,
-				Revoked,
-				Expired,
-				CredentialSent,
-				NoLongerHolds,
-			],
-			List.map(all_grant_refusals, |g| Grant(g)),
-		),
-		|r| Refused(r),
-	),
+	List.map(invite_refusals, |r| Refused(r)),
+)
+
+## Every refusal an invite's redemption can give.
+invite_refusals : List(InviteCodec.Refusal)
+invite_refusals = List.concat(
+	[
+		Unknown,
+		Spent,
+		Revoked,
+		Expired,
+		CredentialSent,
+		NoLongerHolds,
+	],
+	List.map(all_grant_refusals, |g| Grant(g)),
 )
 
 invite_events : List(AuditCodec.Invite)

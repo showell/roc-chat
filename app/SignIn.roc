@@ -182,12 +182,8 @@ came_back! = |req| {
 			Err(_) => Unsigned
 		}
 	came = GitHubSignIn.CameBack.came_back({ state, answer })?
-	cookie = SignInWeb.state_cookie(
-		SignInWeb.cookie(
-			Host.read_header!(Str.to_utf8("cookie")),
-			"state",
-		),
-	)
+	cookies = Host.read_header!(Str.to_utf8("cookie"))
+	cookie = SignInWeb.state_cookie(SignInWeb.cookie(cookies, "state"))
 	match Store.nonce_use!(State, came.nonce()) {
 		Err(Failed) => Ok(Chat.failed)
 		Ok(nonce_use) => {

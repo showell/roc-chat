@@ -266,10 +266,13 @@ names = |accounts, conv|
 	List.join(
 		List.map_with_index(
 			conv.participants(),
-			|b, i| List.concat(
-				if i == 0 [] else Str.to_utf8(", "),
-				Pages.escape(Str.to_utf8(Conversations.name_of(accounts, b.id))),
-			),
+			|b, i| {
+				name = Conversations.name_of(accounts, b.id)
+				List.concat(
+					if i == 0 [] else Str.to_utf8(", "),
+					Pages.escape(Str.to_utf8(name)),
+				)
+			},
 		),
 	)
 
