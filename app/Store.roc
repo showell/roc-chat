@@ -9,7 +9,7 @@
 ## The layout, under the data root:
 ##
 ##     auth/accounts             every account, a line each (AccountCodec)
-##     auth/settings             the generation counter (SignInWeb.settings_line)
+##     auth/settings             the generation counter (`settings_line`)
 ##     auth/barred               the barred GitHub ids, a line each
 ##     auth/audit                every refusal and admin act, appended (AuditCodec)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
@@ -21,6 +21,7 @@
 import pf.Host
 import AccountCodec
 import AuditCodec
+import Cast
 import GitHubSignIn
 import Principal
 import SessionCodec
@@ -54,14 +55,14 @@ Store := [].{
 			match settings_read.status {
 				Missing => Principal.Generation.from_u64(1).map_err(|_| Failed)
 				Failed => Err(Failed)
-				Found => SignInWeb.settings_next(settings_read.bytes).map_err(|_| Failed)
+				Found => settings_next(settings_read.bytes).map_err(|_| Failed)
 			}
 		barred_read = Host.read!(barred_path)
 		barred =
 			match barred_read.status {
 				Missing => Ok([])
 				Failed => Err(Failed)
-				Found => SignInWeb.barred(barred_read.bytes).map_err(|_| Failed)
+				Found => barred_of(barred_read.bytes).map_err(|_| Failed)
 			}
 		Ok({ first_admin, barred: barred?, next_generation: next_generation? })
 	}
@@ -107,7 +108,7 @@ Store := [].{
 		match List.map_try(accounts, AccountCodec.encode) {
 			Err(_) => Failed
 			Ok(lines) =>
-				match Host.write!(settings_path, SignInWeb.settings_line(settings.next_generation)) {
+				match Host.write!(settings_path, settings_line(settings.next_generation)) {
 					Failed => Failed
 					Written =>
 						match Host.write!(accounts_path, List.join(lines)) {
@@ -155,3 +156,49 @@ spent_path = |set, nonce| {
 
 expect spent_path(State, [0xAB]) == Str.to_utf8("auth/spent/state/ab")
 expect spent_path(Pending, [0x01]) == Str.to_utf8("auth/spent/pending/01")
+
+## **THE SETTINGS' RECORD**: the generation the next account is given.
+##
+##     settings v1 next=3
+settings_line : Principal.Generation -> List(U8)
+settings_line = |next| Stored.line("settings", [("next", next.to_u64().to_str())])
+
+## The next generation the settings' record holds.
+settings_next : List(U8) -> Try(Principal.Generation, Stored.Problem)
+settings_next = |raw| {
+	fields = Stored.Reader.open(raw, "settings")?
+	next_field = fields.field("next")?
+	next = Stored.id(next_field.value, { name: "next", make: Principal.Generation.from_u64 })?
+	next_field.rest.close()?
+	Ok(next)
+}
+
+## **THE BARRED IDS**, one line each:
+##
+##     barred v1 github=583231
+barred_line : Principal.GitHubId -> List(U8)
+barred_line = |id| Stored.line("barred", [("github", id.to_u64().to_str())])
+
+## The barred ids a store of their lines holds.
+barred_of : List(U8) -> Try(List(Principal.GitHubId), Stored.Problem)
+barred_of = |raw|
+	List.map_try(
+		List.drop_last(List.split_on(raw, '\n'), 1),
+		|line| {
+			fields = Stored.Reader.open(List.append(line, '\n'), "barred")?
+			github_field = fields.field("github")?
+			github = Stored.id(github_field.value, { name: "github", make: Principal.GitHubId.from_u64 })?
+			github_field.rest.close()?
+			Ok(github)
+		},
+	)
+# The settings' record and the barred ids, round trips and refusals.
+expect settings_next(settings_line(Cast.gen(3))) == Ok(Cast.gen(3))
+expect settings_next(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
+
+barred_ids : List(Principal.GitHubId)
+barred_ids = [Cast.gid(7), Cast.gid(583231)]
+
+expect barred_of(List.join_map(barred_ids, barred_line)) == Ok(barred_ids)
+expect barred_of([]) == Ok([])
+expect barred_of(Str.to_utf8("barred v1 github=x\n")) == Err(BadNumber("github"))

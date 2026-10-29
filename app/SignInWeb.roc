@@ -8,9 +8,8 @@
 ## - **the cookies**: their one policy (`__Host-`, Secure, HttpOnly,
 ##   SameSite=Lax, Path=/), and reading one back from the `cookie` header;
 ## - **the query and the form**: GitHub's `code` and `state` as written, and
-##   a form field decoded;
-## - **the settings' record** (the generation counter) and the barred ids,
-##   which the core's Settings hold and no codec of the core stores.
+##   a form field decoded.
+## What is stored (the settings' record, the barred ids) is Store.roc's.
 ## Pure.
 import Bytes
 import Cast
@@ -186,41 +185,6 @@ SignInWeb := [].{
 	u64_of : List(U8) -> U64
 	u64_of = |bytes| List.fold(List.take_first(bytes, 8), 0, |n, b| n * 256 + b.to_u64())
 
-	## **THE SETTINGS' RECORD**: the generation the next account is given.
-	##
-	##     settings v1 next=3
-	settings_line : Principal.Generation -> List(U8)
-	settings_line = |next| Stored.line("settings", [("next", next.to_u64().to_str())])
-
-	## The next generation the settings' record holds.
-	settings_next : List(U8) -> Try(Principal.Generation, Stored.Problem)
-	settings_next = |raw| {
-		fields = Stored.Reader.open(raw, "settings")?
-		next_field = fields.field("next")?
-		next = Stored.id(next_field.value, { name: "next", make: Principal.Generation.from_u64 })?
-		next_field.rest.close()?
-		Ok(next)
-	}
-
-	## **THE BARRED IDS**, one line each:
-	##
-	##     barred v1 github=583231
-	barred_line : Principal.GitHubId -> List(U8)
-	barred_line = |id| Stored.line("barred", [("github", id.to_u64().to_str())])
-
-	## The barred ids a store of their lines holds.
-	barred : List(U8) -> Try(List(Principal.GitHubId), Stored.Problem)
-	barred = |raw|
-		List.map_try(
-			List.drop_last(List.split_on(raw, '\n'), 1),
-			|line| {
-				fields = Stored.Reader.open(List.append(line, '\n'), "barred")?
-				github_field = fields.field("github")?
-				github = Stored.id(github_field.value, { name: "github", make: Principal.GitHubId.from_u64 })?
-				github_field.rest.close()?
-				Ok(github)
-			},
-		)
 }
 
 hex_digit : U8 -> U8
@@ -305,14 +269,3 @@ expect SignInWeb.form_field(Str.to_utf8("name=%4"), "name") == Err(Malformed)
 expect SignInWeb.url_encode(Str.to_utf8("https://chat.example/login/github")) == Str.to_utf8("https%3A%2F%2Fchat.example%2Flogin%2Fgithub")
 
 expect SignInWeb.u64_of([0, 0, 0, 0, 0, 0, 1, 2]) == 258
-
-# The settings' record and the barred ids, round trips and refusals.
-expect SignInWeb.settings_next(SignInWeb.settings_line(Cast.gen(3))) == Ok(Cast.gen(3))
-expect SignInWeb.settings_next(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
-
-barred_ids : List(Principal.GitHubId)
-barred_ids = [Cast.gid(7), Cast.gid(583231)]
-
-expect SignInWeb.barred(List.join_map(barred_ids, SignInWeb.barred_line)) == Ok(barred_ids)
-expect SignInWeb.barred([]) == Ok([])
-expect SignInWeb.barred(Str.to_utf8("barred v1 github=x\n")) == Err(BadNumber("github"))
