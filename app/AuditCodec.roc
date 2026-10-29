@@ -49,7 +49,7 @@ AuditCodec := [].{
 				at : I64,
 				who : Principal.Id,
 				key : Principal.KeyId,
-				action : [Read(U64), Post(U64)],
+				action : [Read(U64), Post(U64), Start],
 				refusal : ApiKey.Refusal,
 			},
 		),
@@ -278,6 +278,13 @@ unknown_word = "unknown"
 grant_word : Str
 grant_word = "grant"
 
+## A key's start of a conversation: `start:conversation`.
+start_word : Str
+start_word = "start"
+
+new_word : Str
+new_word = "conversation"
+
 KeyActionKind : [Read, Post]
 
 all_key_action_kinds : List(KeyActionKind)
@@ -290,16 +297,20 @@ spell_key_action = |kind|
 		Post => "post"
 	}
 
-## `read:` or `post:` and the resource's number.
-key_action_text : [Read(U64), Post(U64)] -> Str
+## `read:` or `post:` and the resource's number; `start:conversation`, a
+## new one, which has no number yet.
+key_action_text : [Read(U64), Post(U64), Start] -> Str
 key_action_text = |action|
 	match action {
 		Read(n) => "${spell_key_action(Read)}${colon}${n.to_str()}"
 		Post(n) => "${spell_key_action(Post)}${colon}${n.to_str()}"
+		Start => "${start_word}${colon}${new_word}"
 	}
 
-key_action_from : List(U8), List(U8) -> Try([Read(U64), Post(U64)], Stored.Problem)
-key_action_from = |head, tail| {
+key_action_from : List(U8), List(U8) -> Try([Read(U64), Post(U64), Start], Stored.Problem)
+key_action_from = |head, tail| if head == Str.to_utf8(start_word) {
+	if tail == Str.to_utf8(new_word) Ok(Start) else Err(BadValue("action"))
+} else {
 	kind = Stored.word(head, { name: "action", all: all_key_action_kinds, spell: spell_key_action })?
 	n = Stored.count(tail, "action")?
 	match kind {
@@ -935,7 +946,7 @@ sign_ins = List.join_map(all_sign_in_refusals, |refusal| [{ at: 1761600000, gith
 key_events : List(AuditCodec.KeyEvent)
 key_events =
 	List.concat(
-		List.join_map(all_key_refusals, |refusal| [Use({ at: 1, who: Principal.Id.Bot(Cast.aid(9)), key: Cast.kid(4), action: Read(18446744073709551615), refusal }), Use({ at: Stored.max_time, who: Principal.Id.Human(Cast.gid(2)), key: Cast.kid(5), action: Post(0), refusal })]),
+		List.join_map(all_key_refusals, |refusal| [Use({ at: 1, who: Principal.Id.Bot(Cast.aid(9)), key: Cast.kid(4), action: Read(18446744073709551615), refusal }), Use({ at: Stored.max_time, who: Principal.Id.Human(Cast.gid(2)), key: Cast.kid(5), action: Post(0), refusal }), Use({ at: 7, who: Principal.Id.Agent(Cast.aid(3)), key: Cast.kid(6), action: Start, refusal })]),
 		List.join_map(all_grant_refusals, |refusal| [Grant({ at: 2, who: Principal.Id.Human(Cast.gid(2)), via: Session(Cast.sid(1)), acts_as: Principal.Id.Bot(Cast.aid(3)), refusal }), Grant({ at: 3, who: Principal.Id.Agent(Cast.aid(1)), via: Key(Cast.kid(4)), acts_as: Principal.Id.Human(Cast.gid(1)), refusal })]),
 	)
 

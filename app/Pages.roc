@@ -2,7 +2,8 @@
 ## of the viewer's conversations, and a conversation to read live and post
 ## in, in a browser. Small, plain and replaceable: the real client is
 ## chat-client's, later. Every decision is step 6's (Conversations.roc,
-## ConvAccess); here are the pages made of it.
+## ConvAccess), on the viewer Credentials gives (a session's cookie, or a
+## key's Bearer header); here are the pages made of it.
 ##
 ##     GET /chat         the viewer's conversations, each a link, and a form to start one
 ##     GET /chat/<id>    a conversation: its messages, then each new one live (its
@@ -21,9 +22,9 @@ import Access
 import AccountCodec
 import ConvAccess
 import Conversations
+import Credentials
 import MessageCodec
 import Principal
-import SignIn
 import Store
 import Stored
 
@@ -57,9 +58,14 @@ Pages := [].{
 		if req.method != Get and req.method != Head {
 			Chat.not_allowed(Get)
 		} else {
-			match SignIn.viewer!({}) {
-				Err(Failed) => Chat.failed
-				Ok({ viewer, accounts, now: _ }) =>
+			use =
+				match r {
+					List => Start
+					Conversation(id) => Read(id)
+				}
+			match Credentials.viewer!(use) {
+				Err(answer) => answer
+				Ok({ viewer, accounts, now: _, key: _ }) =>
 					match viewer.who() {
 						SignedOut => to_login
 						Session(me) | Key(me) =>

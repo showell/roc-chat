@@ -1,6 +1,6 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
-## conversations, Pages.roc's pages of them; the store is Store.roc's, the only module that names a
+## conversations, Agents.roc's agents and API keys, Pages.roc's pages; the store is Store.roc's, the only module that names a
 ## file. Beside them, a hello page (rendered by roc-markdown, the chat's
 ## dialect) and the chat client's scripts (`serve_script!`).
 app [handle!] {
@@ -11,15 +11,10 @@ app [handle!] {
 import pf.Chat
 import pf.Host
 import md.Md
+import Agents
 import Conversations
 import Pages
 import SignIn
-
-## The auth core, imported for its expects until a route uses it: with
-## SignIn's and Conversations' imports, ConvKey and AuditCodec reach every
-## one of its modules.
-import ConvKey
-import AuditCodec
 
 handle! : Chat.Request => Chat.Answer
 handle! = |req|
@@ -38,11 +33,12 @@ handle! = |req|
 	} else if req.path == Str.to_utf8("/me") {
 		if req.method == Get SignIn.me!({}) else Chat.not_allowed(Get)
 	} else {
-		# The conversations (step 6), then their pages (QUEUE 315).
-		match (Conversations.route(req.path), Pages.route(req.path)) {
-			(Ok(route), _) => Conversations.answer!(req, route)
-			(_, Ok(page)) => Pages.answer!(req, page)
-			_ =>
+		match (Conversations.route(req.path), Agents.route(req.path), Pages.route(req.path)) {
+			(Ok(route), _, _) => Conversations.answer!(req, route)
+			(_, Ok(route), _) => Agents.answer!(req, route)
+			# The pages (QUEUE 315).
+			(_, _, Ok(page)) => Pages.answer!(req, page)
+			(Err(_), Err(_), Err(_)) =>
 				match script_name(req.path) {
 					Ok(name) =>
 						match Host.serve_script!(name) {

@@ -196,6 +196,11 @@ GitHubSignIn := [].{
 				},
 		)
 
+	## **A NEW ACCOUNT'S GENERATION, AND THE COUNTER AFTER IT**: the one
+	## rule a sign-up and an agent's making both ask (`fresh_generation`).
+	next_generation : List(Principal), GitHubSignIn.Settings -> Try({ this : Principal.Generation, next : Principal.Generation }, [StaleGeneration, GenerationsExhausted])
+	next_generation = |accounts, settings| fresh_generation(accounts, settings)
+
 	## **ADMITTED**: the flow's end, the one value Session.start takes. Only
 	## this module makes one, at `resolve` or `name`, once every step before
 	## held: the human, the account's generation the session is bound to,
