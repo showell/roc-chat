@@ -18,6 +18,23 @@
 //!  11. a post landing between a stream's backlog read and its subscribe
 //!      arrives exactly once
 //!
+//! Then agents and API keys (the host design's step 7), Steve (a fourth
+//! user) and his agent, which holds only a key:
+//!
+//!  12. Steve makes an agent
+//!  13. Steve mints a key for it (and C cannot mint one acting as it)
+//!  14. the agent, with only the key, starts a conversation with Steve and
+//!      posts; Steve's stream gets the post once
+//!  15. Steve posts, and the agent reads it with its key
+//!  16. the agent's key cannot mint a key, nor make an agent
+//!  17. Steve revokes the key, and its next use is a 401
+//!  18. an expired key is a 401
+//!  19. a key read-scoped to one conversation cannot post there, nor read
+//!      another
+//!  20. a session cookie and a Bearer key together are a 400
+//!  21. every key refused in use, and every grant refused, is in the audit,
+//!      and no secret is
+//!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
 //! the first: `zig build e2e`, and `zig build test` runs it too.
@@ -133,13 +150,24 @@ const Response = struct {
 };
 
 /// One request on a connection of its own: its `cookie` when not empty,
-/// `extra` header lines, its body, and the whole response.
+/// its body, and the whole response.
 fn request(a: std.mem.Allocator, port: u16, method: []const u8, target: []const u8, cookie: []const u8, body: []const u8) !Response {
+    return send(a, port, method, target, .{ .cookie = cookie }, body);
+}
+
+/// What a request carries to say who it is: a browser's cookie, an agent's
+/// key (its secret, in hex, for `Authorization: Bearer`), each when not
+/// empty.
+const Credential = struct { cookie: []const u8 = "", key: []const u8 = "" };
+
+/// One request on a connection of its own, with `credential`.
+fn send(a: std.mem.Allocator, port: u16, method: []const u8, target: []const u8, credential: Credential, body: []const u8) !Response {
     const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
     const stream = try addr.connect(io, .{ .mode = .stream });
     defer stream.close(io);
-    const cookie_line = if (cookie.len > 0) try std.fmt.allocPrint(a, "cookie: {s}\r\n", .{cookie}) else "";
-    const text = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}content-length: {d}\r\n\r\n{s}", .{ method, target, cookie_line, body.len, body });
+    const cookie_line = if (credential.cookie.len > 0) try std.fmt.allocPrint(a, "cookie: {s}\r\n", .{credential.cookie}) else "";
+    const key_line = if (credential.key.len > 0) try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{credential.key}) else "";
+    const text = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}{s}content-length: {d}\r\n\r\n{s}", .{ method, target, cookie_line, key_line, body.len, body });
     var w = stream.writer(io, &.{});
     try w.interface.writeAll(text);
     var buf: [4096]u8 = undefined;
@@ -258,6 +286,13 @@ const World = struct {
     cal: []const u8 = "",
     conv: []const u8 = "",
     bea_stream: ?*Listener = null,
+    /// Steve, his agent (`agent:N`), its key's public id and secret, and
+    /// the conversation the agent started with him.
+    steve: []const u8 = "",
+    agent: []const u8 = "",
+    key_id: []const u8 = "",
+    key: []const u8 = "",
+    agents_conv: []const u8 = "",
 
     fn port(w: *const World) u16 {
         return w.rig.port();
@@ -385,6 +420,145 @@ fn betweenOnce(w: *World) !void {
     if (count(l.got.items, "\"markdown\":\"between\"") != 1) return error.NotOnce;
 }
 
+/// The text after `"<field>":` up to the next `"`, `,` or `}`, quotes
+/// dropped: a JSON answer's field, for the flat objects the chat writes.
+fn field(body: []const u8, comptime name: []const u8) ![]const u8 {
+    const key = "\"" ++ name ++ "\":";
+    const at = std.mem.indexOf(u8, body, key) orelse return error.NoField;
+    var from = at + key.len;
+    if (from < body.len and body[from] == '"') {
+        from += 1;
+        const to = std.mem.indexOfScalarPos(u8, body, from, '"') orelse return error.NoField;
+        return body[from..to];
+    }
+    const to = std.mem.indexOfAnyPos(u8, body, from, ",}") orelse return error.NoField;
+    return body[from..to];
+}
+
+/// The id a start answers (`{"id":N}`).
+fn startedId(r: Response) ![]const u8 {
+    if (r.status != 201) return error.NotStarted;
+    return field(r.body, "id");
+}
+
+/// Steve mints a key with `form`; its public id and its secret.
+fn mint(w: *World, form: []const u8) !struct { id: []const u8, secret: []const u8 } {
+    const r = try request(w.a, w.port(), "POST", "/keys", w.steve, form);
+    if (r.status != 201) return error.NotMinted;
+    return .{ .id = try field(r.body, "id"), .secret = try field(r.body, "secret") };
+}
+
+fn agentPath(w: *const World, conv: []const u8, comptime tail: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(w.a, "/conversations/{s}" ++ tail, .{conv});
+}
+
+fn makeAgent(w: *World) !void {
+    w.steve = try signUp(w.a, w.port(), 1004);
+    if ((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=")).status != 400) return error.EmptyNameTaken;
+    if ((try request(w.a, w.port(), "POST", "/agents", "", "name=CC")).status != 401) return error.MadeSignedOut;
+    const r = try request(w.a, w.port(), "POST", "/agents", w.steve, "name=CC");
+    if (r.status != 201) return error.NotMade;
+    w.agent = try field(r.body, "id");
+    if (!std.mem.startsWith(u8, w.agent, "agent:")) return error.NotAnAgent;
+    if (!std.mem.eql(u8, try field(r.body, "owner"), "human:1004")) return error.NotSteves;
+}
+
+fn mintForAgent(w: *World) !void {
+    const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
+    // C, another human, is no owner of Steve's agent.
+    if ((try request(w.a, w.port(), "POST", "/keys", w.cal, form)).status != 403) return error.MintedForAnothersAgent;
+    const k = try mint(w, form);
+    w.key_id = k.id;
+    w.key = k.secret;
+    if (w.key.len != 64) return error.NotASecret;
+    // Listed, with no secret.
+    const listed = try get(w.a, w.port(), "/keys", w.steve);
+    if (listed.status != 200) return error.NotListed;
+    if (!has(listed.body, try std.fmt.allocPrint(w.a, "\"acts_as\":\"{s}\"", .{w.agent}))) return error.NotListed;
+    if (has(listed.body, "secret") or has(listed.body, w.key)) return error.SecretListed;
+}
+
+fn agentStarts(w: *World) !void {
+    const started = try send(w.a, w.port(), "POST", "/conversations", .{ .key = w.key }, "with=human%3A1004");
+    w.agents_conv = try startedId(started);
+    const l = try Listener.open(w.a, w.port(), try agentPath(w, w.agents_conv, "/stream"), w.steve, "");
+    defer l.close();
+    const posted = try send(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), .{ .key = w.key }, "hello from **CC**");
+    if (posted.status != 201) return error.NotPosted;
+    if (!has(posted.body, try std.fmt.allocPrint(w.a, "\"by\":\"{s}\"", .{w.agent}))) return error.NotByTheAgent;
+    try l.until("\n\n");
+    sleepMs(100);
+    if (count(l.got.items, "event: message\nid: 1\n") != 1) return error.NotOnce;
+    if (!has(l.got.items, "hello from **CC**")) return error.NotTheMessage;
+}
+
+fn agentReads(w: *World) !void {
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), w.steve, "hi CC, it's Steve")).status != 201) return error.NotPosted;
+    const r = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
+    if (r.status != 200) return error.NotRead;
+    if (!has(r.body, "\"by\":\"human:1004\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
+}
+
+fn keyCannotMint(w: *World) !void {
+    const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
+    if ((try send(w.a, w.port(), "POST", "/keys", .{ .key = w.key }, form)).status != 403) return error.KeyMinted;
+    if ((try send(w.a, w.port(), "POST", "/agents", .{ .key = w.key }, "name=Rogue")).status != 403) return error.KeyMadeAnAgent;
+    if ((try send(w.a, w.port(), "GET", "/keys", .{ .key = w.key }, "")).status != 403) return error.KeyListedKeys;
+}
+
+fn revoke(w: *World) !void {
+    const target = try std.fmt.allocPrint(w.a, "/keys/{s}/revoke", .{w.key_id});
+    // C cannot revoke it; Steve can.
+    if ((try request(w.a, w.port(), "POST", target, w.cal, "")).status != 404) return error.RevokedByAnother;
+    if ((try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "")).status != 200) return error.NotLiveBefore;
+    const r = try request(w.a, w.port(), "POST", target, w.steve, "");
+    if (r.status != 200 or !has(r.body, "\"revoked\":true")) return error.NotRevoked;
+    if ((try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "")).status != 401) return error.RevokedKeyWorks;
+    if ((try send(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), .{ .key = w.key }, "still here")).status != 401) return error.RevokedKeyPosts;
+}
+
+fn expired(w: *World) !void {
+    const k = try mint(w, try std.fmt.allocPrint(w.a, "as={s}&lifetime=1", .{w.agent}));
+    // Past its one second, on the host's clock of whole seconds.
+    sleepMs(2100);
+    if ((try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = k.secret }, "")).status != 401) return error.ExpiredKeyWorks;
+}
+
+fn scoped(w: *World) !void {
+    // A second conversation, Steve's with his agent: the one the key reads.
+    const x = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, try std.fmt.allocPrint(w.a, "with={s}", .{w.agent})));
+    const k = try mint(w, try std.fmt.allocPrint(w.a, "as={s}&read=only%3A{s}&post=off", .{ w.agent, x }));
+    if ((try send(w.a, w.port(), "GET", try agentPath(w, x, ""), .{ .key = k.secret }, "")).status != 200) return error.ScopedNotRead;
+    const posted = try send(w.a, w.port(), "POST", try agentPath(w, x, "/messages"), .{ .key = k.secret }, "out of scope");
+    if (posted.status != 403) return error.ScopedPosted;
+    if ((try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = k.secret }, "")).status != 404) return error.ScopedReadAnother;
+    w.key = k.secret;
+    w.agents_conv = x;
+}
+
+fn bothCredentials(w: *World) !void {
+    const target = try agentPath(w, w.agents_conv, "");
+    if ((try send(w.a, w.port(), "GET", target, .{ .key = w.key }, "")).status != 200) return error.KeyNotLive;
+    if ((try send(w.a, w.port(), "GET", target, .{ .cookie = w.steve, .key = w.key }, "")).status != 400) return error.BothTaken;
+    if ((try send(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), .{ .cookie = w.steve, .key = w.key }, "which one?")).status != 400) return error.BothTaken;
+}
+
+fn audited(w: *World) !void {
+    const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    const wanted = [_][]const u8{
+        "action=grant:agent:", // C's mint for Steve's agent
+        "verdict=refused:not-the-granters-own",
+        "verdict=refused:granted-by-key", // the key's mint and its agent
+        "action=read:", // the revoked key's read, the expired one's, the scoped one's
+        "verdict=refused:revoked",
+        "verdict=refused:expired",
+        "verdict=refused:out-of-scope",
+    };
+    for (wanted) |line| if (!has(log, line)) return error.NotAudited;
+    // A secret is never in it.
+    if (has(log, w.key)) return error.SecretAudited;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -399,6 +573,16 @@ const steps = [_]Step{
     .{ .name = "a third user cannot post to it", .f = thirdPosts },
     .{ .name = "a third user cannot read it, nor stream it", .f = thirdReads },
     .{ .name = "a post between a stream's backlog read and its subscribe arrives once", .f = betweenOnce },
+    .{ .name = "Steve makes an agent", .f = makeAgent },
+    .{ .name = "Steve mints a key for it (and C cannot)", .f = mintForAgent },
+    .{ .name = "the agent, by key alone, starts a conversation with Steve and posts; Steve's stream gets it once", .f = agentStarts },
+    .{ .name = "Steve posts, and the agent reads it with its key", .f = agentReads },
+    .{ .name = "the agent's key cannot mint a key, nor make an agent", .f = keyCannotMint },
+    .{ .name = "Steve revokes the key, and its next use is a 401", .f = revoke },
+    .{ .name = "an expired key is a 401", .f = expired },
+    .{ .name = "a key read-scoped to one conversation cannot post there, nor read another", .f = scoped },
+    .{ .name = "a session cookie and a Bearer key together are a 400", .f = bothCredentials },
+    .{ .name = "every key refused in use, and every grant refused, is audited, with no secret", .f = audited },
 };
 
 /// Every step, in order, each timed and said; true when all passed.
