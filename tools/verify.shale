@@ -16,22 +16,24 @@
 --     expects and its Zig tests counted, neither below its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - nine planted faults, each red at its own step of the end to end: a
---     forged session cookie admitted, a third user's post let through, a
+--   - thirteen planted faults, each red at its own step of the end to end:
+--     a forged session cookie admitted, a third user's post let through, a
 --     third user's read let through, the subscribe moved out of the turn,
 --     a message's newline written raw into its transcript line, a revoked
 --     key that still works, a key minting a key, a session's key acting as
---     another human's agent, and the Bearer header winning over the cookie
---     when both are sent;
+--     another human's agent, the Bearer header winning over the cookie
+--     when both are sent, an invite redeemable twice, an expired invite
+--     accepted, an agent's id taken from the accounts again (a retired
+--     one's reused), and a key allowed to make an invite;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
--- The floors: the counts when step 7 (agents and API keys) landed, which
--- may only rise.
-const roc_floor = 1790
-const zig_floor = 166
-const e2e_steps = 21
+-- The floors: the counts when step 7's follow-ups (the agent-id counter
+-- and invites) landed, which may only rise.
+const roc_floor = 1860
+const zig_floor = 203
+const e2e_steps = 30
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -185,6 +187,14 @@ plant("a session's key acting as another human's agent (the owner never asked)",
   "app/ApiKey.roc", "if Principal.answers_to(current) != h.id {", "if Principal.answers_to(current) != h.id and List.is_empty(accounts) {", 13)
 plant("the Bearer header winning over the cookie when both are sent",
   "app/Credentials.roc", "(_, Sent(_)) => Err(both_sent)\n\t\t\t(values, Unsent) =>", "(_, Sent(_)) if List.is_empty(authorization) => Err(both_sent)\n\t\t\t(values, _) =>", 20)
+plant("an invite redeemable twice (its spending never written)",
+  "app/Agents.roc", "Store.save_invite!({ ..invite, state: Spent })", "Store.save_invite!(invite)", 23)
+plant("an expired invite accepted (its expiry never read)",
+  "app/Agents.roc", "Live if now < invite.created or now >= invite.expires => Err(Expired)", "Live if now < invite.created => Err(Expired)", 24)
+plant("an agent's id taken from the accounts again, a retired one's reused",
+  "app/GitHubSignIn.roc", "this = settings.next_agent_id", "this = GitHubSignIn.agent_id_after(accounts)?", 29)
+plant("a key allowed to make an invite (the grant's GrantedByKey let by)",
+  "app/Agents.roc", "Refused(why) => Err(Refused(why))\n\t\t\tGrantable =>", "Refused(why) if why != GrantedByKey => Err(Refused(why))\n\t\t\t_ =>", 26)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
