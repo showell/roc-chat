@@ -8,6 +8,7 @@
 ## issues, loads, stores and decides its keys here, and nowhere else. Pure.
 import Access
 import ApiKey
+import Cast
 import ConvAccess
 import KeyCodec
 import Principal
@@ -62,34 +63,6 @@ ConvKey := [].{
 }
 
 # ── tests
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-aid : U64 -> Principal.AgentId
-aid = |n|
-	match Principal.AgentId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "aid: a test's agent id is not 0"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-kid : U64 -> Principal.KeyId
-kid = |n|
-	match Principal.KeyId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "kid: a test's key id is not 0"
-	}
-
 cid : U64 -> ConvAccess.ConvId
 cid = |n|
 	match ConvAccess.ConvId.from_u64(n) {
@@ -97,18 +70,10 @@ cid = |n|
 		Err(NotAnId) => crash "cid: a test's conversation id is not 0"
 	}
 
-## A test's token hash: every byte `b`.
-token : U8 -> Stored.SecretHash
-token = |b|
-	match Stored.SecretHash.from_bytes(List.repeat(b, 32)) {
-		Ok(h) => h
-		Err(NotAHash) => crash "token: 32 bytes are a hash"
-	}
-
 ## A test's human, its account of generation 1.
 human : U64, { name : Str, role : Principal.Role } -> Principal
 human = |n, { name, role }|
-	Principal.Human({ id: gid(n), login: "h${n.to_str()}", name, role, generation: gen(1) })
+	Principal.Human({ id: Cast.gid(n), login: "h${n.to_str()}", name, role, generation: Cast.gen(1) })
 
 # The cast: Ann and Bea, members; Boss, an admin; Bea owns BeaAgent,
 # DeeAgent and BeaBot.
@@ -122,20 +87,20 @@ boss : Principal
 boss = human(3, { name: "Boss", role: Admin })
 
 bea_agent : Principal
-bea_agent = Principal.Agent({ id: aid(2), name: "BeaAgent", owner: gid(2), generation: gen(1) })
+bea_agent = Principal.Agent({ id: Cast.aid(2), name: "BeaAgent", owner: Cast.gid(2), generation: Cast.gen(1) })
 
 dee_agent : Principal
-dee_agent = Principal.Agent({ id: aid(4), name: "DeeAgent", owner: gid(2), generation: gen(1) })
+dee_agent = Principal.Agent({ id: Cast.aid(4), name: "DeeAgent", owner: Cast.gid(2), generation: Cast.gen(1) })
 
 bea_bot : Principal
-bea_bot = Principal.Bot({ id: aid(5), name: "BeaBot", owner: gid(2), generation: gen(1) })
+bea_bot = Principal.Bot({ id: Cast.aid(5), name: "BeaBot", owner: Cast.gid(2), generation: Cast.gen(1) })
 
 accounts : List(Principal)
 accounts = [ann, bea, boss, bea_agent, dee_agent, bea_bot]
 
 ## A copy of BeaAgent claiming Ann as owner, FIRST in the accounts.
 forged : List(Principal)
-forged = List.prepend(accounts, Principal.Agent({ id: aid(2), name: "BeaAgent", owner: gid(1), generation: gen(1) }))
+forged = List.prepend(accounts, Principal.Agent({ id: Cast.aid(2), name: "BeaAgent", owner: Cast.gid(1), generation: Cast.gen(1) }))
 
 ## Human `who`'s session to their account of generation `g`, signed in at
 ## 0, from its stored line.
@@ -190,7 +155,7 @@ key_by : U64, { acts_as : Principal, among : List(Principal) } -> Try(ConvKey.Ke
 key_by = |who, { acts_as, among }|
 	ConvKey.issue(
 		{ granter: session_of(who, 1), acts_as: Principal.id(acts_as), scope: everything, accounts: among, now: 10 },
-		{ key: kid(who), expires: 1000 },
+		{ key: Cast.kid(who), expires: 1000 },
 	)
 
 ## The key, which the test's grant allows.
@@ -251,7 +216,7 @@ expect verdict(bot_key, { accounts, action: Read(conv(6, [bea, bea_bot])) }) == 
 # ── THE STORE: a chat key's line round-trips, and decides the same.
 stored : ConvKey.Key -> ConvKey.Key
 stored = |key|
-	match ConvKey.decode(ConvKey.encode({ key, hash: token(7) })) {
+	match ConvKey.decode(ConvKey.encode({ key, hash: Cast.token(7) })) {
 		Ok(entry) => entry.key
 		Err(_) => crash "stored: a chat key's line decodes"
 	}
@@ -267,7 +232,7 @@ expect
 # nothing of the old account's private conversations, the human-only DM
 # with Bea included.
 ann_again : Principal
-ann_again = Principal.Human({ id: gid(1), login: "h1", name: "Ann", role: Member, generation: gen(2) })
+ann_again = Principal.Human({ id: Cast.gid(1), login: "h1", name: "Ann", role: Member, generation: Cast.gen(2) })
 
 again : List(Principal)
 again = [ann_again, bea, boss, bea_agent, dee_agent, bea_bot]
@@ -280,7 +245,7 @@ new_ann_key =
 	granted(
 		ConvKey.issue(
 			{ granter: session_of(1, 2), acts_as: Principal.id(ann_again), scope: everything, accounts: again, now: 10 },
-			{ key: kid(9), expires: 1000 },
+			{ key: Cast.kid(9), expires: 1000 },
 		),
 	)
 

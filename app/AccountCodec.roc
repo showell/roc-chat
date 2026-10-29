@@ -14,6 +14,7 @@
 ## account signed in with it since). `decode` gives a Principal or a named
 ## Stored.Problem, never a guess; `load` gives a whole store of them, or the
 ## first line it refuses, or the first id two lines hold. Pure.
+import Cast
 import DisplayName
 import GitHubLogin
 import Principal
@@ -341,36 +342,15 @@ stored_name = |fields| {
 
 # ── tests
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-aid : U64 -> Principal.AgentId
-aid = |n|
-	match Principal.AgentId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "aid: a test's agent id is not 0"
-	}
-
 ## A test's human, its name and role.
 human : { name : Str, role : Principal.Role } -> Principal
 human = |{ name, role }|
 	Principal.Human({
-		id: gid(583231),
+		id: Cast.gid(583231),
 		login: "octocat",
 		name,
 		role,
-		generation: gen(3),
+		generation: Cast.gen(3),
 	})
 
 steve : Principal
@@ -378,17 +358,17 @@ steve = human({ name: "Steve H.", role: Admin })
 
 cc : Principal
 cc = Principal.Agent({
-	id: aid(7),
-	owner: gid(583231),
-	generation: gen(4),
+	id: Cast.aid(7),
+	owner: Cast.gid(583231),
+	generation: Cast.gen(4),
 	name: "CC",
 })
 
 commits : Principal
 commits = Principal.Bot({
-	id: aid(9),
-	owner: gid(583231),
-	generation: gen(5),
+	id: Cast.aid(9),
+	owner: Cast.gid(583231),
+	generation: Cast.gen(5),
 	name: "commits",
 })
 
@@ -478,9 +458,9 @@ expect
 	)
 biggest : Principal
 biggest = Principal.Bot({
-	id: aid(18446744073709551615),
-	owner: gid(18446744073709551615),
-	generation: gen(18446744073709551615),
+	id: Cast.aid(18446744073709551615),
+	owner: Cast.gid(18446744073709551615),
+	generation: Cast.gen(18446744073709551615),
 	name: "max",
 })
 
@@ -488,8 +468,8 @@ expect is_kept(biggest)
 expect round_trip(steve) != round_trip(human({ name: "Steve H.", role: Member }))
 # A cleared login (another account signed in with it since) is stored
 # empty, and reads back empty.
-expect is_kept(Principal.Human({ id: gid(5), login: "", name: "Old", role: Member, generation: gen(1) }))
-expect line_of(Principal.Human({ id: gid(5), login: "", name: "Old", role: Member, generation: gen(1) })) == "account v1 kind=human github=5 login= generation=1 role=member name=Old\n"
+expect is_kept(Principal.Human({ id: Cast.gid(5), login: "", name: "Old", role: Member, generation: Cast.gen(1) }))
+expect line_of(Principal.Human({ id: Cast.gid(5), login: "", name: "Old", role: Member, generation: Cast.gen(1) })) == "account v1 kind=human github=5 login= generation=1 role=member name=Old\n"
 
 # Bytes round trip too: a decoded line encodes to the same bytes.
 expect
@@ -581,13 +561,13 @@ expect AccountCodec.decode([
 expect
 	List.all(
 		[
-			Principal.Id.Human(gid(583231)),
-			Principal.Id.Agent(aid(7)),
-			Principal.Id.Bot(aid(7)),
+			Principal.Id.Human(Cast.gid(583231)),
+			Principal.Id.Agent(Cast.aid(7)),
+			Principal.Id.Bot(Cast.aid(7)),
 		],
 		|id| AccountCodec.id_from(Str.to_utf8(AccountCodec.id_text(id)), "who") == Ok(id),
 	)
-expect AccountCodec.id_text(Principal.Id.Bot(aid(9))) == "bot:9"
+expect AccountCodec.id_text(Principal.Id.Bot(Cast.aid(9))) == "bot:9"
 id_read : Str -> Try(Principal.Id, Stored.Problem)
 id_read = |text| AccountCodec.id_from(Str.to_utf8(text), "who")
 
@@ -612,20 +592,20 @@ expect AccountCodec.encode(
 expect AccountCodec.encode(human({ name: " Ann", role: Member })) == Err(NameUntrimmed)
 expect AccountCodec.encode(
 	Principal.Agent({
-		id: aid(1),
-		owner: gid(1),
-		generation: gen(1),
+		id: Cast.aid(1),
+		owner: Cast.gid(1),
+		generation: Cast.gen(1),
 		name: "",
 	}),
 ) == Err(NameRefused(Empty))
 expect
 	AccountCodec.encode(
 		Principal.Human({
-			id: gid(1),
+			id: Cast.gid(1),
 			login: "bad login",
 			name: "b",
 			role: Member,
-			generation: gen(1),
+			generation: Cast.gen(1),
 		}),
 	)
 		== Err(LoginRefused)
@@ -638,8 +618,8 @@ agent_7 : Str
 agent_7 = "account v1 kind=agent id=7 owner=1 generation=2 name=CC\n"
 
 expect loaded("") == Ok([])
-expect loaded(human_line) == Ok([Principal.Id.Human(gid(1))])
-expect loaded("${human_line}${agent_7}") == Ok([Principal.Id.Human(gid(1)), Principal.Id.Agent(aid(7))])
+expect loaded(human_line) == Ok([Principal.Id.Human(Cast.gid(1))])
+expect loaded("${human_line}${agent_7}") == Ok([Principal.Id.Human(Cast.gid(1)), Principal.Id.Agent(Cast.aid(7))])
 # A torn last line, a bad line (its number from 1), a blank line.
 expect loaded("${human_line}${agent_7}".replace_last("\n", "")) == Err(BadLine({ line: 2, problem: Torn }))
 expect loaded("${human_line}account v1 kind=robot\n") == Err(BadLine({ line: 2, problem: UnknownWord("kind") }))
@@ -647,6 +627,6 @@ expect loaded("${human_line}\n${agent_7}") == Err(BadLine({ line: 2, problem: Wr
 # **A FORGED COPY FIRST** (round two's first finding): an agent line
 # claiming another owner, or a human line claiming admin, before the real
 # one; or an agent and a bot from the one counter.
-expect loaded("account v1 kind=agent id=7 owner=9 generation=3 name=CC\n${human_line}${agent_7}") == Err(DuplicateId(Principal.Id.Agent(aid(7))))
-expect loaded("${human_line.replace_first("role=member", "role=admin")}${human_line}") == Err(DuplicateId(Principal.Id.Human(gid(1))))
-expect loaded("${agent_7}${agent_7.replace_first("kind=agent", "kind=bot")}") == Err(DuplicateId(Principal.Id.Bot(aid(7))))
+expect loaded("account v1 kind=agent id=7 owner=9 generation=3 name=CC\n${human_line}${agent_7}") == Err(DuplicateId(Principal.Id.Agent(Cast.aid(7))))
+expect loaded("${human_line.replace_first("role=member", "role=admin")}${human_line}") == Err(DuplicateId(Principal.Id.Human(Cast.gid(1))))
+expect loaded("${agent_7}${agent_7.replace_first("kind=agent", "kind=bot")}") == Err(DuplicateId(Principal.Id.Bot(Cast.aid(7))))

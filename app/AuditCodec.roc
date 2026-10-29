@@ -24,6 +24,7 @@ import AccountCodec
 import Admin
 import ApiKey
 import Bytes
+import Cast
 import GitHubSignIn
 import Principal
 import Stored
@@ -736,34 +737,6 @@ split_colon = |value, name|
 
 # ── tests
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-aid : U64 -> Principal.AgentId
-aid = |n|
-	match Principal.AgentId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "aid: a test's agent id is not 0"
-	}
-
-kid : U64 -> Principal.KeyId
-kid = |n|
-	match Principal.KeyId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "kid: a test's key id is not 0"
-	}
-
-sid : U64 -> Principal.SessionId
-sid = |n|
-	match Principal.SessionId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "sid: a test's session id is not 0"
-	}
-
 ## A test's admin audit, with no plan.
 Bare : {
 	who : Principal.Id,
@@ -799,26 +772,26 @@ text_of = |bare|
 
 expect
 	text_of({
-		who: Principal.Id.Agent(aid(1)),
-		via: Key(kid(4)),
-		action: RevokeKeys(Principal.Id.Human(gid(2))),
+		who: Principal.Id.Agent(Cast.aid(1)),
+		via: Key(Cast.kid(4)),
+		action: RevokeKeys(Principal.Id.Human(Cast.gid(2))),
 		at: 1761600000,
 		verdict: Permitted,
 	})
 		== "audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n"
 expect
 	text_of({
-		who: Principal.Id.Human(gid(2)),
-		via: Session(sid(12)),
-		action: Retire(Principal.Id.Human(gid(1))),
+		who: Principal.Id.Human(Cast.gid(2)),
+		via: Session(Cast.sid(12)),
+		action: Retire(Principal.Id.Human(Cast.gid(1))),
 		at: 1761600077,
 		verdict: Refused(NotAdmin),
 	})
 		== "audit v1 at=1761600077 who=human:2 via=session:12 action=retire:human:1 verdict=refused:not-admin plan=none\n"
 expect
 	text_of({
-		who: Principal.Id.Bot(aid(3)),
-		via: Key(kid(5)),
+		who: Principal.Id.Bot(Cast.aid(3)),
+		via: Key(Cast.kid(5)),
 		action: ReadCounters,
 		at: 0,
 		verdict: Refused(KeyRefused(OutOfScope)),
@@ -826,18 +799,18 @@ expect
 		== "audit v1 at=0 who=bot:3 via=key:5 action=read-counters verdict=refused:key:out-of-scope plan=none\n"
 expect
 	text_of({
-		who: Principal.Id.Human(gid(1)),
-		via: Session(sid(3)),
-		action: SetRole({ human: gid(2), role: Admin }),
+		who: Principal.Id.Human(Cast.gid(1)),
+		via: Session(Cast.sid(3)),
+		action: SetRole({ human: Cast.gid(2), role: Admin }),
 		at: 1761600100,
 		verdict: Permitted,
 	})
 		== "audit v1 at=1761600100 who=human:1 via=session:3 action=set-role:2:admin verdict=permitted plan=none\n"
 expect
 	text_of({
-		who: Principal.Id.Agent(aid(1)),
-		via: Key(kid(4)),
-		action: SetRole({ human: gid(2), role: Member }),
+		who: Principal.Id.Agent(Cast.aid(1)),
+		via: Key(Cast.kid(4)),
+		action: SetRole({ human: Cast.gid(2), role: Member }),
 		at: 1761600100,
 		verdict: Refused(NeedsSession),
 	})
@@ -848,15 +821,15 @@ expect
 actions : List(Admin.Action)
 actions = [
 	ListAccounts,
-	Retire(Principal.Id.Human(gid(1))),
-	Retire(Principal.Id.Agent(aid(2))),
-	Retire(Principal.Id.Bot(aid(3))),
-	RevokeKeys(Principal.Id.Human(gid(18446744073709551615))),
-	RevokeKeys(Principal.Id.Agent(aid(2))),
-	RevokeKeys(Principal.Id.Bot(aid(3))),
-	RevokeSessions(gid(583231)),
-	SetRole({ human: gid(2), role: Admin }),
-	SetRole({ human: gid(583231), role: Member }),
+	Retire(Principal.Id.Human(Cast.gid(1))),
+	Retire(Principal.Id.Agent(Cast.aid(2))),
+	Retire(Principal.Id.Bot(Cast.aid(3))),
+	RevokeKeys(Principal.Id.Human(Cast.gid(18446744073709551615))),
+	RevokeKeys(Principal.Id.Agent(Cast.aid(2))),
+	RevokeKeys(Principal.Id.Bot(Cast.aid(3))),
+	RevokeSessions(Cast.gid(583231)),
+	SetRole({ human: Cast.gid(2), role: Admin }),
+	SetRole({ human: Cast.gid(583231), role: Member }),
 	ReadCounters,
 ]
 
@@ -889,16 +862,16 @@ entries =
 				verdicts,
 				|verdict| [
 					{
-						who: Principal.Id.Human(gid(1)),
-						via: Session(sid(9)),
+						who: Principal.Id.Human(Cast.gid(1)),
+						via: Session(Cast.sid(9)),
 						action,
 						at: 1761600000,
 						verdict,
 						plan: [],
 					},
 					{
-						who: Principal.Id.Agent(aid(1)),
-						via: Key(kid(4)),
+						who: Principal.Id.Agent(Cast.aid(1)),
+						via: Key(Cast.kid(4)),
 						action,
 						at: 0,
 						verdict,
@@ -915,23 +888,23 @@ expect List.all(entries, |e| AuditCodec.decode(AuditCodec.encode(admin_entry(e))
 ## Every step of a plan, each kind once and every target kind.
 every_step : List(Admin.Step)
 every_step = [
-	Bar(gid(2)),
-	RevokeSessionsOf(gid(2)),
-	RevokeKeysOf(Principal.Id.Human(gid(2))),
-	RevokeKeysOf(Principal.Id.Agent(aid(3))),
-	RemoveAccount(Principal.Id.Agent(aid(3))),
-	RevokeKeysOf(Principal.Id.Bot(aid(6))),
-	RemoveAccount(Principal.Id.Bot(aid(6))),
-	WithdrawVotes(gid(2)),
-	RemoveAccount(Principal.Id.Human(gid(2))),
-	SetRole({ human: gid(4), role: Member }),
+	Bar(Cast.gid(2)),
+	RevokeSessionsOf(Cast.gid(2)),
+	RevokeKeysOf(Principal.Id.Human(Cast.gid(2))),
+	RevokeKeysOf(Principal.Id.Agent(Cast.aid(3))),
+	RemoveAccount(Principal.Id.Agent(Cast.aid(3))),
+	RevokeKeysOf(Principal.Id.Bot(Cast.aid(6))),
+	RemoveAccount(Principal.Id.Bot(Cast.aid(6))),
+	WithdrawVotes(Cast.gid(2)),
+	RemoveAccount(Principal.Id.Human(Cast.gid(2))),
+	SetRole({ human: Cast.gid(4), role: Member }),
 ]
 
 # **A RETIREMENT'S WHOLE PLAN IS AUDITED** (round three's design point): the
 # agents and bots that went with the human and the votes withdrawn, each a
 # step on the line, in the plan's order.
 expect
-	line_text(admin_entry({ who: Principal.Id.Human(gid(1)), via: Session(sid(3)), action: Retire(Principal.Id.Human(gid(2))), at: 1761600200, verdict: Permitted, plan: List.take_first(every_step, 9) }))
+	line_text(admin_entry({ who: Principal.Id.Human(Cast.gid(1)), via: Session(Cast.sid(3)), action: Retire(Principal.Id.Human(Cast.gid(2))), at: 1761600200, verdict: Permitted, plan: List.take_first(every_step, 9) }))
 		== "audit v1 at=1761600200 who=human:1 via=session:3 action=retire:human:2 verdict=permitted plan=bar:2,revoke-sessions:2,revoke-keys:human:2,revoke-keys:agent:3,remove:agent:3,revoke-keys:bot:6,remove:bot:6,withdraw-votes:2,remove:human:2\n"
 
 # ── SIGN-IN REFUSALS AND KEY REFUSALS (round three's design point)
@@ -949,21 +922,21 @@ key_entry = |k|
 		Err(ClockOutOfRange) => crash "key_entry: a test's time is in range"
 	}
 
-expect line_text(sign_in_entry({ at: 1761600090, github: Known(gid(583231)), refusal: Barred })) == "audit-sign-in v1 at=1761600090 github=583231 verdict=refused:barred\n"
+expect line_text(sign_in_entry({ at: 1761600090, github: Known(Cast.gid(583231)), refusal: Barred })) == "audit-sign-in v1 at=1761600090 github=583231 verdict=refused:barred\n"
 expect line_text(sign_in_entry({ at: 5, github: Unknown, refusal: StateForged })) == "audit-sign-in v1 at=5 github=unknown verdict=refused:state-forged\n"
-expect line_text(key_entry(Use({ at: 1761600095, who: Principal.Id.Agent(aid(7)), key: kid(4), action: Read(3), refusal: OutOfScope }))) == "audit-key v1 at=1761600095 who=agent:7 via=key:4 action=read:3 verdict=refused:out-of-scope\n"
-expect line_text(key_entry(Grant({ at: 1761600099, who: Principal.Id.Human(gid(2)), via: Session(sid(12)), acts_as: Principal.Id.Agent(aid(3)), refusal: NotTheGrantersOwn }))) == "audit-key v1 at=1761600099 who=human:2 via=session:12 action=grant:agent:3 verdict=refused:not-the-granters-own\n"
+expect line_text(key_entry(Use({ at: 1761600095, who: Principal.Id.Agent(Cast.aid(7)), key: Cast.kid(4), action: Read(3), refusal: OutOfScope }))) == "audit-key v1 at=1761600095 who=agent:7 via=key:4 action=read:3 verdict=refused:out-of-scope\n"
+expect line_text(key_entry(Grant({ at: 1761600099, who: Principal.Id.Human(Cast.gid(2)), via: Session(Cast.sid(12)), acts_as: Principal.Id.Agent(Cast.aid(3)), refusal: NotTheGrantersOwn }))) == "audit-key v1 at=1761600099 who=human:2 via=session:12 action=grant:agent:3 verdict=refused:not-the-granters-own\n"
 
 # Every sign-in refusal, and every key refusal in use and in grant, round
 # trips; a time the store cannot write makes no entry at all.
 sign_ins : List(AuditCodec.SignIn)
-sign_ins = List.join_map(all_sign_in_refusals, |refusal| [{ at: 1761600000, github: Known(gid(2)), refusal }, { at: 0, github: Unknown, refusal }])
+sign_ins = List.join_map(all_sign_in_refusals, |refusal| [{ at: 1761600000, github: Known(Cast.gid(2)), refusal }, { at: 0, github: Unknown, refusal }])
 
 key_events : List(AuditCodec.KeyEvent)
 key_events =
 	List.concat(
-		List.join_map(all_key_refusals, |refusal| [Use({ at: 1, who: Principal.Id.Bot(aid(9)), key: kid(4), action: Read(18446744073709551615), refusal }), Use({ at: Stored.max_time, who: Principal.Id.Human(gid(2)), key: kid(5), action: Post(0), refusal })]),
-		List.join_map(all_grant_refusals, |refusal| [Grant({ at: 2, who: Principal.Id.Human(gid(2)), via: Session(sid(1)), acts_as: Principal.Id.Bot(aid(3)), refusal }), Grant({ at: 3, who: Principal.Id.Agent(aid(1)), via: Key(kid(4)), acts_as: Principal.Id.Human(gid(1)), refusal })]),
+		List.join_map(all_key_refusals, |refusal| [Use({ at: 1, who: Principal.Id.Bot(Cast.aid(9)), key: Cast.kid(4), action: Read(18446744073709551615), refusal }), Use({ at: Stored.max_time, who: Principal.Id.Human(Cast.gid(2)), key: Cast.kid(5), action: Post(0), refusal })]),
+		List.join_map(all_grant_refusals, |refusal| [Grant({ at: 2, who: Principal.Id.Human(Cast.gid(2)), via: Session(Cast.sid(1)), acts_as: Principal.Id.Bot(Cast.aid(3)), refusal }), Grant({ at: 3, who: Principal.Id.Agent(Cast.aid(1)), via: Key(Cast.kid(4)), acts_as: Principal.Id.Human(Cast.gid(1)), refusal })]),
 	)
 
 expect List.len(all_sign_in_refusals) == 18
@@ -971,8 +944,8 @@ expect List.len(all_grant_refusals) == 8
 expect List.all(sign_ins, |s| AuditCodec.decode(AuditCodec.encode(sign_in_entry(s))) == Ok(sign_in_entry(s)))
 expect List.all(key_events, |k| AuditCodec.decode(AuditCodec.encode(key_entry(k))) == Ok(key_entry(k)))
 expect AuditCodec.Entry.of_sign_in({ at: -1, github: Unknown, refusal: StateForged }).map_ok(|_| {}) == Err(ClockOutOfRange)
-expect AuditCodec.Entry.of_key(Use({ at: Stored.max_time + 1, who: Principal.Id.Bot(aid(9)), key: kid(4), action: Read(1), refusal: Expired })).map_ok(|_| {}) == Err(ClockOutOfRange)
-expect AuditCodec.Entry.of_admin({ who: Principal.Id.Human(gid(1)), via: Session(sid(1)), action: ListAccounts, at: -5, verdict: Permitted, plan: [] }).map_ok(|_| {}) == Err(ClockOutOfRange)
+expect AuditCodec.Entry.of_key(Use({ at: Stored.max_time + 1, who: Principal.Id.Bot(Cast.aid(9)), key: Cast.kid(4), action: Read(1), refusal: Expired })).map_ok(|_| {}) == Err(ClockOutOfRange)
+expect AuditCodec.Entry.of_admin({ who: Principal.Id.Human(Cast.gid(1)), via: Session(Cast.sid(1)), action: ListAccounts, at: -5, verdict: Permitted, plan: [] }).map_ok(|_| {}) == Err(ClockOutOfRange)
 
 ## A key line with `from` replaced by `to`, decoded.
 key_line_but : { from : Str, to : Str } -> Try({}, Stored.Problem)

@@ -24,6 +24,7 @@
 ## code is the first 285.
 import Access
 import ApiKey
+import Cast
 import Principal
 import Session
 import SessionCodec
@@ -304,66 +305,20 @@ Who : [
 	DeeBot,
 ]
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-aid : U64 -> Principal.AgentId
-aid = |n|
-	match Principal.AgentId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "aid: a test's agent id is not 0"
-	}
-
-## A test's human: GitHub id `n`, its role.
-person : U64, Principal.Role -> Principal
-person = |n, role|
-	Principal.Human({
-		id: gid(n),
-		login: "h${n.to_str()}",
-		name: "H${n.to_str()}",
-		role,
-		generation: gen(1),
-	})
-
-## A test's agent or bot: its id, and its owner's GitHub id.
-owned : [Agent, Bot], { id : U64, owner : U64 } -> Principal
-owned = |kind, { id, owner }|
-	match kind {
-		Agent =>
-			Principal.Agent({
-				id: aid(id),
-				name: "a${id.to_str()}",
-				owner: gid(owner),
-				generation: gen(1),
-			})
-
-		Bot =>
-			Principal.Bot({
-				id: aid(id),
-				name: "b${id.to_str()}",
-				owner: gid(owner),
-				generation: gen(1),
-			})
-	}
-
 principal : Who -> Principal
 principal = |who|
 	match who {
 		Out => crash "principal: nobody signed in is no principal"
-		Ann => person(1, Member)
-		Bea => person(2, Member)
-		Cal => person(3, Admin)
-		Dee => person(4, Member)
-		AnnAgent => owned(Agent, { id: 1, owner: 1 })
-		BeaAgent => owned(Agent, { id: 2, owner: 2 })
-		BeaBot => owned(Bot, { id: 3, owner: 2 })
-		CalAgent => owned(Agent, { id: 6, owner: 3 })
-		DeeAgent => owned(Agent, { id: 4, owner: 4 })
-		DeeBot => owned(Bot, { id: 5, owner: 4 })
+		Ann => Cast.person(1, Member)
+		Bea => Cast.person(2, Member)
+		Cal => Cast.person(3, Admin)
+		Dee => Cast.person(4, Member)
+		AnnAgent => Cast.owned(Agent, { id: 1, owner: 1 })
+		BeaAgent => Cast.owned(Agent, { id: 2, owner: 2 })
+		BeaBot => Cast.owned(Bot, { id: 3, owner: 2 })
+		CalAgent => Cast.owned(Agent, { id: 6, owner: 3 })
+		DeeAgent => Cast.owned(Agent, { id: 4, owner: 4 })
+		DeeBot => Cast.owned(Bot, { id: 5, owner: 4 })
 	}
 
 ## Every account in the cast.
@@ -397,13 +352,6 @@ session_of = |who, g|
 		Err(_) => crash "session_of: a test's session line decodes"
 	}
 
-kid : U64 -> Principal.KeyId
-kid = |n|
-	match Principal.KeyId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "kid: a test's key id is not 0"
-	}
-
 ## **A VIEWER, AS A HANDLER GETS ONE**, minted among `among` at 10: `Out`
 ## signed out; a human by a session to their account in `among`; an agent
 ## or a bot by a key reaching everywhere, granted by its owner among the
@@ -428,7 +376,7 @@ viewer_among = |who, among|
 			owner = Principal.answers_to(p)
 			key = ApiKey.Key.issue(
 				{ granter: Session(session_of(owner.to_u64(), 1)), acts_as: Principal.id(p), scope: { read: On(Everywhere), post: On(Everywhere), admin: Off }, accounts, now: 10 },
-				{ key: kid(1), expires: 1000 },
+				{ key: Cast.kid(1), expires: 1000 },
 			)
 			match key {
 				Err(_) => NoViewer
@@ -459,13 +407,6 @@ viewer_in = |who, among|
 	match viewer_among(who, among) {
 		Viewer(v) => v
 		NoViewer => crash "viewer_in: a test's viewer is minted"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
 	}
 
 cid : U64 -> ConvAccess.ConvId
@@ -665,7 +606,7 @@ expect refused(aa_none, Cal) == Err(NotInvolved)
 expect refused(hb_none, Dee) == Err(NotInvolved)
 expect nobody == Err(NoParticipants)
 # A participant no account holds, or whose owner none does, starts nothing.
-expect ConvAccess.Conv.start({ id: cid(1), participants: [id_of(Ann), Principal.Id.Agent(aid(99))], accounts }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(Principal.Id.Agent(aid(99))))
+expect ConvAccess.Conv.start({ id: cid(1), participants: [id_of(Ann), Principal.Id.Agent(Cast.aid(99))], accounts }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(Principal.Id.Agent(Cast.aid(99))))
 expect ConvAccess.Conv.start({ id: cid(1), participants: [id_of(AnnAgent)], accounts: without(Ann) }).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(id_of(AnnAgent)))
 # Only a human elects, for themselves: an agent or a bot never, even one
 # whose owner may.
@@ -687,15 +628,15 @@ expect
 		accounts: without(Ann),
 	}).is_err()
 # Who is involved: participants that are humans, and owners, each once.
-expect ha_cross_none.involved(accounts) == [gid(1), gid(2)]
-expect aa_none.involved(accounts) == [gid(1), gid(2)]
-expect among([BeaAgent, BeaBot]).involved(accounts) == [gid(2)]
+expect ha_cross_none.involved(accounts) == [Cast.gid(1), Cast.gid(2)]
+expect aa_none.involved(accounts) == [Cast.gid(1), Cast.gid(2)]
+expect among([BeaAgent, BeaBot]).involved(accounts) == [Cast.gid(2)]
 expect three_none.involved(accounts) == [
-	gid(1),
-	gid(2),
-	gid(4),
+	Cast.gid(1),
+	Cast.gid(2),
+	Cast.gid(4),
 ]
-expect among([Ann, Ann]).resource(accounts).participants.map(|b| b.id) == [Principal.Id.Human(gid(1))]
+expect among([Ann, Ann]).resource(accounts).participants.map(|b| b.id) == [Principal.Id.Human(Cast.gid(1))]
 # Electing public twice is one election; one withdrawal undoes it.
 expect shown(elected(ha_own_ann, { human: Ann, visibility: Public })) == Public
 ha_own_twice : ConvAccess.Conv
@@ -751,15 +692,15 @@ expect sees_among(Dee, { conv: ha_cross_both, among: without(Bea) }) == Hidden
 # Retiring someone it never relied on changes nothing.
 expect ha_own_ann.visibility(without(Dee)) == Public
 # The retirement's write: an account made again starts private.
-expect shown(ha_own_ann.withdraw_votes(gid(1))) == Private
-expect shown(ha_cross_both.withdraw_votes(gid(4))) == Public
+expect shown(ha_own_ann.withdraw_votes(Cast.gid(1))) == Private
+expect shown(ha_cross_both.withdraw_votes(Cast.gid(4))) == Public
 
 # ── A CONVERSATION HOLDS IDS, AND THE ACCOUNTS NAME THE OWNERS (bug 4)
 # A copy of BeaAgent claiming Ann as its owner, in the accounts beside the
 # real one: neither copy names an owner, so the conversation stays private
 # and nobody gains an owner's sight of it.
 forged_bea_agent : Principal
-forged_bea_agent = owned(Agent, { id: 2, owner: 1 })
+forged_bea_agent = Cast.owned(Agent, { id: 2, owner: 1 })
 
 forged_first : List(Principal)
 forged_first = List.prepend(accounts, forged_bea_agent)
@@ -1441,7 +1382,7 @@ expect posts(DeeBot, three_all) == ReadOnly
 # GitHub id (a later generation) does not inherit her vote, even before the
 # retirement's withdrawal is written: private.
 ann_again : Principal
-ann_again = Principal.Human({ id: gid(1), login: "h1", name: "H1", role: Member, generation: gen(2) })
+ann_again = Principal.Human({ id: Cast.gid(1), login: "h1", name: "H1", role: Member, generation: Cast.gen(2) })
 
 again : List(Principal)
 again = List.prepend(without(Ann), ann_again)
@@ -1513,7 +1454,7 @@ own_key_viewer = |who| {
 	p = principal(who)
 	key = ApiKey.Key.issue(
 		{ granter: Session(session_of(Principal.answers_to(p).to_u64(), 1)), acts_as: Principal.id(p), scope: { read: On(Everywhere), post: On(Everywhere), admin: Off }, accounts, now: 10 },
-		{ key: kid(2), expires: 1000 },
+		{ key: Cast.kid(2), expires: 1000 },
 	)
 	match key {
 		Ok(k) =>

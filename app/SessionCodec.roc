@@ -19,6 +19,7 @@
 ## up gets a session of its making. Real provenance needs an opaque read
 ## value from the platform (bytes only the store's read can hand over),
 ## which is a host task. Pure.
+import Cast
 import Principal
 import Stored
 
@@ -97,42 +98,13 @@ SessionCodec := [].{
 
 # ── tests
 
-gid : U64 -> Principal.GitHubId
-gid = |n|
-	match Principal.GitHubId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "gid: a test's GitHub id is not 0"
-	}
-
-gen : U64 -> Principal.Generation
-gen = |n|
-	match Principal.Generation.from_u64(n) {
-		Ok(g) => g
-		Err(NotAnId) => crash "gen: a test's generation is not 0"
-	}
-
-sid : U64 -> Principal.SessionId
-sid = |n|
-	match Principal.SessionId.from_u64(n) {
-		Ok(id) => id
-		Err(NotAnId) => crash "sid: a test's session id is not 0"
-	}
-
-## A test's token hash: every byte `b`.
-token : U8 -> Stored.SecretHash
-token = |b|
-	match Stored.SecretHash.from_bytes(List.repeat(b, 32)) {
-		Ok(h) => h
-		Err(NotAHash) => crash "token: 32 bytes are a hash"
-	}
-
 ## Session 12 of human 583231, created at `created` and seen at `seen`.
 fields_at : { created : I64, seen : I64 } -> SessionCodec.Fields
 fields_at = |{ created, seen }| {
-	id: sid(12),
-	human: gid(583231),
-	generation: gen(3),
-	token_hash: token(0xab),
+	id: Cast.sid(12),
+	human: Cast.gid(583231),
+	generation: Cast.gen(3),
+	token_hash: Cast.token(0xab),
 	created,
 	last_seen: seen,
 }
@@ -161,7 +133,7 @@ expect
 			fields_at({ created: 5, seen: 5 }),
 			fields_at({ created: 0, seen: 0 }),
 			fields_at({ created: 0, seen: Stored.max_time }),
-			{ ..usual, id: sid(18446744073709551615), human: gid(18446744073709551615), generation: gen(18446744073709551615) },
+			{ ..usual, id: Cast.sid(18446744073709551615), human: Cast.gid(18446744073709551615), generation: Cast.gen(18446744073709551615) },
 		],
 		|f| read_back(SessionCodec.encode(f)) == Ok(f),
 	)
