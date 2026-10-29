@@ -1,0 +1,163 @@
+-- **THE PROD DEPLOY**: roc-chat, built here, to the prod droplet, behind its
+-- Caddy at https://chat.lynrummy.com (DEPLOY.md has the one-time steps).
+--
+--   shale tools/deploy.shale
+--
+-- No arguments. In order, each step refusing, by name, what it cannot do:
+-- 1. **Refuses** when chat.lynrummy.com does not resolve to the droplet,
+--    when the tree has changes not committed, or when prod's Caddyfile does
+--    not import /etc/caddy/sites/*.caddy or define the `access_log` snippet
+--    (that Caddyfile is angry-gopher's deploy/Caddyfile; this never edits
+--    it). Then pushes, so what serves is on GitHub.
+-- 2. Builds the binary here: static (musl), Debug, as the dev server runs
+--    and with every safety check (the chat is I/O-bound; angry-gopher shipped
+--    Debug for the same reasons).
+-- 3. Makes, once, the `rocchat` system user, /opt/roc-chat (root's) and
+--    /var/lib/roc-chat (rocchat's: config.zon, data/, data/secrets/), and
+--    installs deploy/config.zon **only when the server has none**: after
+--    that, the server's copy is the one that counts.
+-- 4. **Refuses** when the OAuth app's client id or secret is not on the
+--    server (DEPLOY.md says how Steve writes them): it never starts a server
+--    that could not sign anyone in.
+-- 5. Copies the binary and proves the copy (its sha256 on prod is this
+--    one's), swaps it in whole (a rename), installs the systemd unit when it
+--    changed, restarts, and waits for 127.0.0.1:9490 to answer.
+-- 6. Installs deploy/chat.lynrummy.com.caddy when it changed, its access log
+--    made Caddy's first; Caddy validates the whole config before the reload,
+--    and the old block goes back if the new one fails.
+-- 7. Over HTTPS: `/` answers 200, and `/login` sends the browser to GitHub.
+--
+-- budget: steps=50000000
+
+const HOST = "steve@162.243.1.123"
+const IP = "162.243.1.123"
+const NAME = "chat.lynrummy.com"
+const ORIGIN = "https://chat.lynrummy.com"
+const PORT = "9490"
+const HOME = "/var/lib/roc-chat"
+const BIN = "/opt/roc-chat/roc-chat"
+const BLOCK = "chat.lynrummy.com.caddy"
+const LOG = "/var/log/caddy/chat-access.log"
+const OUT = ".zig-cache/deploy"
+
+if not exists("deploy/" .. BLOCK) then fail("deploy: run it from roc-chat's root") end
+
+-- A command on prod: it must succeed.
+function on_prod(script)
+  return must(run({"ssh", HOST, script}, {timeout_ms = 120000, whole = 100000, want = "ssh: the deploy's own steps on prod"}))
+end
+
+-- A command on prod whose exit is an answer: 0 yes, 1 no.
+function asks_prod(script)
+  local r = run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: a question to prod, its exit the answer"})
+  if r.code ~= 0 and r.code ~= 1 then fail("deploy: prod could not be asked (ssh exit " .. r.code .. "): " .. trim(r.out)) end
+  return r.code == 0
+end
+
+function copy_to_prod(local_path, remote_path)
+  must(run({"scp", "-q", local_path, HOST .. ":" .. remote_path}, {timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod"}))
+end
+
+-- 1. Refusals, then the push.
+local dns = run({"dig", "+short", "@1.1.1.1", "A", NAME}, {timeout_ms = 30000, whole = 10000, want = "dig: the name's public answer"})
+local resolved = trim(dns.out)
+local last = resolved
+for line in lines(resolved) do last = trim(line) end
+if last ~= IP then fail("deploy: " .. NAME .. " resolves to '" .. resolved .. "', not " .. IP .. ": the DNS record comes first (DEPLOY.md)") end
+local dirty = run({"git", "status", "--porcelain"}, {timeout_ms = 30000, whole = 100000})
+if trim(dirty.out) ~= "" then fail("deploy: the tree has changes not committed; commit them first:\n" .. dirty.out) end
+if not asks_prod("grep -qxF 'import /etc/caddy/sites/*.caddy' /etc/caddy/Caddyfile") then
+  fail("deploy: prod's Caddyfile does not import /etc/caddy/sites/*.caddy (angry-gopher's deploy/Caddyfile does)")
+end
+if not asks_prod("grep -q '^(access_log) {' /etc/caddy/Caddyfile") then
+  fail("deploy: prod's Caddyfile does not define the access_log snippet " .. BLOCK .. " imports (angry-gopher's deploy/Caddyfile does)")
+end
+must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
+local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
+print("deploying roc-chat " .. commit .. " to " .. HOST)
+
+-- 2. The binary.
+must(run({"zig", "build", "-Dtarget=x86_64-linux-musl", "--prefix", OUT}, {timeout_ms = 900000, tail = 20}))
+local built = OUT .. "/bin/roc-chat"
+local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
+print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
+
+-- 3. The user and the folders, once; the config only when there is none.
+on_prod("set -e\n"
+  .. "id rocchat >/dev/null 2>&1 || sudo useradd --system --home-dir " .. HOME .. " --no-create-home --shell /usr/sbin/nologin rocchat\n"
+  .. "sudo install -d -o root -g root -m 755 /opt/roc-chat\n"
+  .. "sudo install -d -o rocchat -g rocchat -m 700 " .. HOME .. " " .. HOME .. "/data " .. HOME .. "/data/secrets")
+if asks_prod("sudo test -f " .. HOME .. "/config.zon") then
+  print("the server's config.zon is kept (the deploy never overwrites it)")
+else
+  copy_to_prod("deploy/config.zon", "/tmp/roc-chat-config.zon")
+  on_prod("sudo install -o rocchat -g rocchat -m 600 /tmp/roc-chat-config.zon " .. HOME .. "/config.zon && rm -f /tmp/roc-chat-config.zon")
+  print("installed deploy/config.zon as " .. HOME .. "/config.zon")
+end
+
+-- 4. The OAuth app's id and secret: Steve's to write (DEPLOY.md).
+for name in {"github-client-id", "github-client-secret"} do
+  if not asks_prod("sudo test -s " .. HOME .. "/data/secrets/" .. name) then
+    fail("deploy: " .. HOME .. "/data/secrets/" .. name .. " is missing or empty on prod; DEPLOY.md, step 3, says how to write it")
+  end
+end
+
+-- 5. The binary in, proven, swapped whole; the unit; the restart.
+copy_to_prod(built, "/tmp/roc-chat.new")
+local got_sum = split(trim(on_prod("sha256sum /tmp/roc-chat.new").out), " ")[1]
+if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
+on_prod("set -e\nsudo install -o root -g root -m 755 /tmp/roc-chat.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f /tmp/roc-chat.new")
+copy_to_prod("deploy/roc-chat.service", "/tmp/roc-chat.service")
+if asks_prod("cmp -s /tmp/roc-chat.service /etc/systemd/system/roc-chat.service") then
+  print("the unit is unchanged")
+else
+  on_prod("set -e\nsudo install -o root -g root -m 644 /tmp/roc-chat.service /etc/systemd/system/roc-chat.service\nsudo systemctl daemon-reload\nsudo systemctl enable roc-chat")
+  print("installed the unit")
+end
+on_prod("rm -f /tmp/roc-chat.service")
+on_prod("set -e\nsudo systemctl restart roc-chat\n"
+  .. "for _ in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/ 2>/dev/null && break; sleep 0.1; done\n"
+  .. "systemctl is-active roc-chat\n"
+  .. "curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/")
+print("roc-chat " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
+
+-- 6. The site block, validated before it counts.
+copy_to_prod("deploy/" .. BLOCK, "/tmp/" .. BLOCK)
+if asks_prod("cmp -s /tmp/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
+  print("the site block is unchanged")
+else
+  on_prod("set -e\n"
+    .. "sudo install -d -m 755 /etc/caddy/sites\n"
+    .. "# The block's log, Caddy's before validate: validate runs as root and would make it root's.\n"
+    .. "[ -f " .. LOG .. " ] || sudo install -o caddy -g caddy -m 640 /dev/null " .. LOG .. "\n"
+    .. "if [ -f /etc/caddy/sites/" .. BLOCK .. " ]; then sudo cp /etc/caddy/sites/" .. BLOCK .. " /tmp/" .. BLOCK .. ".old; else rm -f /tmp/" .. BLOCK .. ".old; fi\n"
+    .. "sudo install -m 644 /tmp/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK .. "\n"
+    .. "if ! sudo caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >/tmp/" .. BLOCK .. ".validate 2>&1; then\n"
+    .. "  tail -5 /tmp/" .. BLOCK .. ".validate\n"
+    .. "  if [ -f /tmp/" .. BLOCK .. ".old ]; then sudo install -m 644 /tmp/" .. BLOCK .. ".old /etc/caddy/sites/" .. BLOCK .. "; else sudo rm -f /etc/caddy/sites/" .. BLOCK .. "; fi\n"
+    .. "  echo 'the new block did not validate; the old one is back'; exit 1\n"
+    .. "fi\n"
+    .. "sudo systemctl reload caddy\n"
+    .. "rm -f /tmp/" .. BLOCK .. ".old /tmp/" .. BLOCK .. ".validate")
+  print("installed the site block")
+end
+on_prod("rm -f /tmp/" .. BLOCK)
+
+-- 7. The front doors, over HTTPS (a new name's certificate takes Caddy a few
+-- seconds).
+local home = nil
+local tries = 0
+while tries < 30 do
+  home = http("GET", ORIGIN .. "/")
+  if home.status == 200 then break end
+  tries = tries + 1
+  sleep(2000)
+end
+if home.status ~= 200 then fail("deploy: " .. ORIGIN .. "/ answers " .. home.status .. ", not 200") end
+local login = http("GET", ORIGIN .. "/login")
+local where = ""
+if has_key(login.headers, "location") then where = login.headers.location end
+if login.status ~= 303 or not starts_with(where, "https://github.com/login/oauth/authorize") then
+  fail("deploy: " .. ORIGIN .. "/login answers " .. login.status .. " to '" .. where .. "', not a 303 to GitHub's authorize page")
+end
+print("deployed: " .. ORIGIN .. "/ (roc-chat " .. commit .. "); /login sends the browser to GitHub")
