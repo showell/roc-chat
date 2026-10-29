@@ -643,12 +643,13 @@ fn inviteRedeemPost(w: *World) !void {
     if (r.status != 201) return error.NotRedeemed;
     if (!std.mem.eql(u8, try field(r.body, "acts_as"), w.agent)) return error.NotTheAgents;
     const secret = try field(r.body, "secret");
+    // Kept for the steps after, whatever this one finds next.
+    w.code = inv.code;
+    w.key = secret;
     const posted = try send(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), .{ .key = secret }, "hello, by invite");
     if (posted.status != 201 or !has(posted.body, try std.fmt.allocPrint(w.a, "\"by\":\"{s}\"", .{w.agent}))) return error.NotPosted;
     // Spent: no longer listed.
     if (has((try get(w.a, w.port(), "/invites", w.steve)).body, try std.fmt.allocPrint(w.a, "{{\"id\":{s},", .{inv.id}))) return error.SpentListed;
-    w.code = inv.code;
-    w.key = secret;
 }
 
 fn redeemTwice(w: *World) !void {
