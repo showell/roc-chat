@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
 
     // **ONE COMMAND RUNS EVERY TEST**: the Roc's own (`roc test`), then each
     // host test with the app's archive linked.
-    const tests = b.step("test", "Every test: roc test, the host's tests through the Roc app, the glue check");
+    const tests = b.step("test", "Every test: roc test, the host's tests through the Roc app, the glue check, the auth and GitHub tests");
     const roc_test = b.addSystemCommand(&.{ roc, "test", "app/main.roc" });
     roc_test.setCwd(b.path("."));
     for (rocInputs(b)) |f| roc_test.addFileInput(b.path(f));
@@ -58,6 +58,34 @@ pub fn build(b: *std.Build) void {
         m.addObjectFile(app);
         tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
     }
+    authSteps(b, tests, target, optimize);
+}
+
+/// The auth primitives (`host/auth/`), the GitHub client (`host/github/`)
+/// and its tests against the fake GitHub, all in `test`; the live GitHub
+/// call in `smoke` alone. None of them needs the Roc app.
+fn authSteps(b: *std.Build, test_step: *std.Build.Step, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) void {
+    const github = b.createModule(.{
+        .root_source_file = b.path("host/github/client.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = github })).step);
+
+    // secrets.zig's tests carry crypto.zig's, which it imports.
+    const secrets = b.createModule(.{ .root_source_file = b.path("host/auth/secrets.zig"), .target = target, .optimize = optimize });
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = secrets })).step);
+
+    const github_test = b.createModule(.{ .root_source_file = b.path("host/github/github_test.zig"), .target = target, .optimize = optimize });
+    github_test.addImport("github", github);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = github_test })).step);
+
+    const smoke = b.addExecutable(.{ .name = "github-smoke", .root_module = b.createModule(.{
+        .root_source_file = b.path("host/github/smoke.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    b.step("smoke", "One live call to api.github.com/zen (needs the network)").dependOn(&b.addRunArtifact(smoke).step);
 }
 
 /// **LINUX ON X86-64 ONLY, SAID AT CONFIGURE**: the host is Linux's
