@@ -55,6 +55,7 @@ const plants = [_]Plant{
     .{ .name = "a crash whose message holds a line break", .request = get("/crash-forged"), .said = "a forged line" },
     .{ .name = "a dbg reached in a served build", .request = get("/crash-dbg"), .said = "a `dbg` was reached" },
     .{ .name = "an inline expect failed in a served build", .request = get("/crash-expect"), .said = "an inline `expect` failed" },
+    .{ .name = "a recursion past the stack", .request = get("/crash-deep"), .said = "the stack overflowed" },
 };
 
 /// Past the 1024 bytes /crash-after-body asks read_body! for.

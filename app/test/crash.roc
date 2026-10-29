@@ -90,7 +90,15 @@ handle! = |req| {
 		# An inline `expect` that fails, in a served build: a crash.
 		expect List.len(path) == 0
 		Chat.plain(Str.to_utf8("after expect\n"))
+	} else if path == Str.to_utf8("/crash-deep") {
+		# A recursion too deep for the stack: no `roc_crashed`, a fault on
+		# the stack's guard page.
+		Chat.plain(Str.to_utf8("depth ${U64.to_str(deep(List.len(path) * 100_000_000))}\n"))
 	} else {
 		Chat.not_found
 	}
 }
+
+## 1 + 1 + ... `n` times, never a tail call.
+deep : U64 -> U64
+deep = |n| if n == 0 0 else 1 + deep(n - 1)
