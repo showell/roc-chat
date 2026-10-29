@@ -467,53 +467,56 @@ minted! = |granter, { default_as, form }|
 		) => {
 			now = Host.read_time!({})
 			match (Store.load_accounts!({}), Store.load_next_key_id!({})) {
-				(Ok(accounts), Ok(id)) =>
-					match capped!(KeysPerHuman, acts_as, accounts) {
-						Err(Failed) => Chat.failed
-						Ok(Full) => Wire.refused(403, "you have minted as many keys as one person may (${Limits.cap!(KeysPerHuman).to_str()})")
-						Ok(Room) => {
-							secret = Host.random_bytes!(Wire.secret_bytes)
-							match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
-								Err(NotAHash) => Chat.failed
-								Ok(hash) =>
-									match ConvKey.issue(
+				(Ok(accounts), Ok(id)) => {
+					secret = Host.random_bytes!(Wire.secret_bytes)
+					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
+						Err(NotAHash) => Chat.failed
+						Ok(hash) =>
+							match ConvKey.issue(
+								{
+									granter,
+									acts_as,
+									scope,
+									accounts,
+									now,
+								},
+								{ key: id, expires: now + lifetime },
+							) {
+								Err(Refused(why)) => {
+									audit_grant!(
+										granter,
 										{
-											granter,
 											acts_as,
-											scope,
-											accounts,
+											refusal: why,
 											now,
 										},
-										{ key: id, expires: now + lifetime },
-									) {
-										Err(Refused(why)) => {
-											audit_grant!(
-												granter,
-												{
-													acts_as,
-													refusal: why,
-													now,
-												},
-											)
-											grant_refused(why)
-										}
-										Ok(key) =>
+									)
+									grant_refused(why)
+								}
+								# The cap after the grant, so a refusal never
+								# speaks of another human's keys.
+								Ok(key) =>
+									match capped!(KeysPerHuman, acts_as, accounts) {
+										Err(Failed) => Chat.failed
+										Ok(Full) => Wire.refused(403, "you have minted as many keys as one person may (${Limits.cap!(KeysPerHuman).to_str()})")
+										Ok(Room) =>
 											match Store.save_new_key!({ key, hash }, accounts) {
 												Failed => Chat.failed
 												Written => Wire.json(201, key_json(key, Shown(secret)))
 											}
 									}
 							}
-						}
 					}
+				}
 				_ => Chat.failed
 			}
 		}
 	}
 
 ## **WHETHER THE HUMAN `acts_as` ANSWERS TO MAY MAKE ANOTHER** of what
-## the cap counts (Limits.cap!), from their index; one the accounts do not
-## hold is refused later, by the grant.
+## the cap counts (Limits.cap!), from their index. Asked only after the
+## grant is decided, so `acts_as` is the granter's own, and a refusal
+## never says how many another human has made.
 capped! : [InvitesPerHuman, KeysPerHuman], Principal.Id, List(Principal) => Try([Room, Full], [Failed])
 capped! = |which, acts_as, accounts|
 	match Principal.find(accounts, acts_as) {
@@ -577,34 +580,35 @@ invited_by! = |granter, { default_as, form }|
 					Ok(id),
 					Ok(by),
 				) =>
-					match capped!(InvitesPerHuman, acts_as, accounts) {
-						Err(Failed) => Chat.failed
-						Ok(Full) => Wire.refused(403, "you have made as many invites as one person may (${Limits.cap!(InvitesPerHuman).to_str()})")
-						Ok(Room) =>
-							match Agents.invited({
+					match Agents.invited({
+						granter,
+						acts_as,
+						scope,
+						lifetime,
+						accounts,
+						now,
+					}) {
+						Err(NotAnAgent) => Wire.refused(
+							400,
+							"an invite is for one of your agents or bots, `as=agent:7`; your own key is minted",
+						)
+						Err(Refused(why)) => {
+							audit_grant!(
 								granter,
-								acts_as,
-								scope,
-								lifetime,
-								accounts,
-								now,
-							}) {
-								Err(NotAnAgent) => Wire.refused(
-									400,
-									"an invite is for one of your agents or bots, `as=agent:7`; your own key is minted",
-								)
-								Err(Refused(why)) => {
-									audit_grant!(
-										granter,
-										{
-											acts_as,
-											refusal: why,
-											now,
-										},
-									)
-									grant_refused(why)
-								}
-								Ok(bound) => {
+								{
+									acts_as,
+									refusal: why,
+									now,
+								},
+							)
+							grant_refused(why)
+						}
+						# The cap after the grant, as a key's is.
+						Ok(bound) =>
+							match capped!(InvitesPerHuman, acts_as, accounts) {
+								Err(Failed) => Chat.failed
+								Ok(Full) => Wire.refused(403, "you have made as many invites as one person may (${Limits.cap!(InvitesPerHuman).to_str()})")
+								Ok(Room) => {
 									code = Host.random_bytes!(Wire.secret_bytes)
 									match Stored.SecretHash.from_bytes(Host.hash!(code)) {
 										Err(NotAHash) => Chat.failed
