@@ -30,6 +30,7 @@
 const std = @import("std");
 const Io = std.Io;
 const secrets = @import("auth/secrets.zig");
+const route = @import("seam/chat_route.zig");
 
 /// The most bytes `read` answers; a larger file is a failed read.
 pub const read_most = 16 * 1024 * 1024;
@@ -45,15 +46,11 @@ pub const Fault = enum {
     sync_fails,
 };
 
-pub const Read = union(enum) { failed, found: []const u8, missing };
-pub const Kind = enum { dir, file, other };
-pub const Entry = struct { name: []const u8, kind: Kind };
-pub const Listing = union(enum) { failed, found: []const Entry, missing };
-pub const Stat = union(enum) {
-    failed,
-    found: struct { size: u64, mtime: i64 },
-    missing,
-};
+/// The answers cross the seam as they are (host/seam/chat_route.zig).
+pub const Read = route.Read;
+pub const Entry = route.Entry;
+pub const Listing = route.Listing;
+pub const Stat = route.Stat;
 
 pub const Files = struct {
     io: Io,

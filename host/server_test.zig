@@ -25,11 +25,15 @@ const RunResult = @typeInfo(@TypeOf(server.Server.run)).@"fn".return_type.?;
 const Running = struct {
     server: server.Server,
     run: Io.Future(RunResult),
+    /// The server's data root, a folder of the test's own.
+    data: std.testing.TmpDir,
 
     fn start(limits: server.Limits) !*Running {
         const r = try gpa.create(Running);
         errdefer gpa.destroy(r);
-        r.server = try .init(io, gpa, try .parse("127.0.0.1", 0), limits);
+        r.data = std.testing.tmpDir(.{});
+        errdefer r.data.cleanup();
+        r.server = try .init(io, gpa, try .parse("127.0.0.1", 0), limits, r.data.dir);
         r.run = try io.concurrent(server.Server.run, .{&r.server});
         return r;
     }
@@ -37,6 +41,7 @@ const Running = struct {
     fn stop(r: *Running) void {
         r.server.stop();
         r.run.await(io) catch |e| std.debug.print("the server's run: {t}\n", .{e});
+        r.data.cleanup();
         gpa.destroy(r);
     }
 
@@ -129,6 +134,37 @@ test "GET / is the Roc's hello page, rendered by roc-markdown, with the Roc's ow
     try std.testing.expectEqualStrings("no-store", got.header("cache-control").?);
     try std.testing.expectEqualStrings("text/html; charset=utf-8", got.header("content-type").?);
     try std.testing.expectEqual(1, r.turns());
+}
+
+test "the files through the Roc (the /stub/notes stub): append!'s size after, read!, and a failed sync or a 000 folder a 500" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{});
+    defer r.stop();
+    const get = "GET /stub/notes HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n";
+    const post = "POST /stub/notes HTTP/1.1\r\nhost: t\r\nconnection: close\r\ncontent-length: 6\r\n\r\nhello\n";
+    try std.testing.expectEqual(404, (try Response.of(try exchange(a, r.port(), get))).status);
+    try std.testing.expectEqualStrings("size 6\n", (try Response.of(try exchange(a, r.port(), post))).body);
+    try std.testing.expectEqualStrings("size 12\n", (try Response.of(try exchange(a, r.port(), post))).body);
+    try std.testing.expectEqualStrings("hello\nhello\n", (try Response.of(try exchange(a, r.port(), get))).body);
+
+    // The warnings are the point: quiet here.
+    std.testing.log_level = .err;
+    defer std.testing.log_level = .warn;
+    r.server.files.fault_for_test = .sync_fails;
+    try std.testing.expectEqual(500, (try Response.of(try exchange(a, r.port(), post))).status);
+    r.server.files.fault_for_test = .none;
+
+    // **AN UNREADABLE FOLDER IS NEVER "NOTHING THERE"**: a 500, not the 404.
+    var stub = try r.data.dir.openDir(io, "stub", .{ .iterate = true });
+    defer stub.close(io);
+    try stub.setPermissions(io, .fromMode(0o000));
+    defer stub.setPermissions(io, .fromMode(0o700)) catch {};
+    if (std.os.linux.geteuid() != 0) {
+        try std.testing.expectEqual(500, (try Response.of(try exchange(a, r.port(), get))).status);
+        try std.testing.expectEqual(500, (try Response.of(try exchange(a, r.port(), post))).status);
+    }
 }
 
 test "a path the Roc has no route for is a 404; a method its route does not take, a 405 naming the one it does" {

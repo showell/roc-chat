@@ -15,8 +15,12 @@ pub fn main(init: std.process.Init) !void {
         std.log.err("{s}: .data = \"{s}\": cannot make it ({t})", .{ config.file_name, c.data, e });
         return e;
     };
+    const data = cwd.openDir(io, c.data, .{}) catch |e| {
+        std.log.err("{s}: .data = \"{s}\": cannot open it ({t})", .{ config.file_name, c.data, e });
+        return e;
+    };
     const addr = try std.Io.net.IpAddress.parse(c.bind, c.port);
-    var s = try server.Server.init(io, init.gpa, addr, .{});
+    var s = try server.Server.init(io, init.gpa, addr, .{}, data);
     std.debug.print("roc-chat: http://{f}, its data in {s}\n", .{ addr, c.data });
     try s.run();
 }

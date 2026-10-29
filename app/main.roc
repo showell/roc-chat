@@ -11,6 +11,7 @@ app [handle!] {
 import pf.Chat
 import pf.Host
 import md.Md
+
 ## The auth core, imported for its expects alone until the routes use it:
 ## ConvKey and AuditCodec between them reach every one of its modules.
 import ConvKey
@@ -35,6 +36,8 @@ handle! = |req|
 		} else {
 			Chat.not_allowed(Post)
 		}
+	} else if req.path == Str.to_utf8("/stub/notes") {
+		notes!(req)
 	} else {
 		match script_name(req.path) {
 			Ok(name) =>
@@ -79,6 +82,41 @@ echo! = |req| {
 		}
 	}
 }
+
+## **A STUB OF THE FILES, WHICH STEP 6 REPLACES**: a POST's body appended
+## to one file, its size after said back; a GET, the file. It proves
+## `append!` and `read!` through the seam, and nothing more.
+notes_path : List(U8)
+notes_path = Str.to_utf8("stub/notes.txt")
+
+notes! : Chat.Request => Chat.Answer
+notes! = |req|
+	if req.method == Post {
+		got = Host.read_body!(echo_most)
+		match got.status {
+			Answered => Chat.answered
+			Read => {
+				appended = Host.append!(notes_path, got.bytes)
+				match appended.status {
+					Appended => Chat.plain(Str.to_utf8("size ${U64.to_str(appended.size)}\n"))
+					Failed => failed
+				}
+			}
+		}
+	} else if req.method == Get {
+		read = Host.read!(notes_path)
+		match read.status {
+			Found => Chat.plain(read.bytes)
+			Missing => Chat.not_found
+			Failed => failed
+		}
+	} else {
+		Chat.not_allowed(Get)
+	}
+
+## The host failed the request; it answers the 500 whatever this says.
+failed : Chat.Answer
+failed = Chat.respond(500, { content_type: Chat.text, body: Str.to_utf8("failed\n") })
 
 ## `/<name>.js`, one part: the script's name.
 script_name : List(U8) -> Try(List(U8), [NotAScript])

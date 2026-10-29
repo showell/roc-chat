@@ -12,6 +12,7 @@ const std = @import("std");
 const abi = @import("seam/chat_abi.zig");
 const route = @import("seam/chat_route.zig");
 const assets = @import("assets.zig");
+const files = @import("files.zig");
 
 /// A Roc bug is said on stderr as a warning: the request's 500 is its
 /// failure, and the server goes on.
@@ -74,10 +75,17 @@ pub const Ctx = struct {
     req: *const Copied,
     arena: std.mem.Allocator,
     own: ?Own = null,
+    /// The data root's files (Host.read! and its kin).
+    files: *const files.Files,
+    /// **THE REQUEST HAS FAILED** (a file the host could not read or
+    /// write, or a path that leaves the data root): its answer is a 500,
+    /// whatever the Roc answers.
+    failure: ?anyerror = null,
 
-    /// Once the host has answered, the Roc's later asks do nothing.
+    /// Once the host has answered, or the request has failed, the Roc's
+    /// later asks do nothing: no write follows a failed read.
     pub fn dead(c: *Ctx) bool {
-        return c.own != null;
+        return c.own != null or c.failure != null;
     }
 
     pub fn read_body(c: *Ctx, limit: u64) ?[]const u8 {
@@ -97,6 +105,69 @@ pub const Ctx = struct {
         const b = assets.find(name) orelse return .missing;
         c.own = .{ .script = b };
         return .served;
+    }
+
+    // ── the files: a failure is the request's, but a cache's ──────────────
+
+    pub fn read(c: *Ctx, path: []const u8) route.Read {
+        const r = c.files.read(c.arena, path);
+        if (r == .failed) c.fail(path, error.ReadFailed);
+        return r;
+    }
+
+    /// A cache's read: a failure is logged, never the request's.
+    pub fn read_at(c: *Ctx, path: []const u8, offset: u64, max: u64) route.Read {
+        const r = c.files.readAt(c.arena, path, offset, max);
+        if (r == .failed) log.warn("{s}: read_at {s} failed (a cache's read; the request goes on)", .{ c.req.path, path });
+        return r;
+    }
+
+    pub fn read_stat(c: *Ctx, path: []const u8) route.Stat {
+        const r = c.files.stat(path);
+        if (r == .failed) c.fail(path, error.StatFailed);
+        return r;
+    }
+
+    pub fn list(c: *Ctx, path: []const u8) route.Listing {
+        const r = c.files.list(c.arena, path);
+        if (r == .failed) c.fail(path, error.ListFailed);
+        return r;
+    }
+
+    pub fn write(c: *Ctx, path: []const u8, bytes: []const u8) route.Written {
+        c.files.write(path, bytes) catch |e| {
+            c.fail(path, e);
+            return .failed;
+        };
+        return .written;
+    }
+
+    pub fn append(c: *Ctx, path: []const u8, bytes: []const u8) route.Appended {
+        const size = c.files.append(path, bytes) catch |e| {
+            c.fail(path, e);
+            return .failed;
+        };
+        return .{ .appended = size };
+    }
+
+    pub fn remove(c: *Ctx, path: []const u8) route.Removed {
+        c.files.remove(path) catch |e| {
+            c.fail(path, e);
+            return .failed;
+        };
+        return .removed;
+    }
+
+    /// A cache written: a failure is a miss, logged, never the request's.
+    pub fn write_cache(c: *Ctx, path: []const u8, bytes: []const u8) void {
+        c.files.write(path, bytes) catch |e| log.warn("{s}: write_cache {s} failed: {t} (a cache; the request goes on)", .{ c.req.path, path, e });
+    }
+
+    /// The request failed on `path`: the first failure is kept and said.
+    fn fail(c: *Ctx, path: []const u8, e: anyerror) void {
+        if (c.failure != null) return;
+        c.failure = e;
+        log.warn("{s}: the file {s} failed: {t}", .{ c.req.path, path, e });
     }
 };
 
@@ -134,6 +205,7 @@ pub fn replyOf(arena: std.mem.Allocator, decided: anyerror!route.Decision, ctx: 
         log.warn("the Roc call for {s} failed: {t}{s}", .{ ctx.req.path, e, if (e == error.RocCrashed) abi.last_crash[0..abi.last_crash_len] else "" });
         return failed;
     };
+    if (ctx.failure != null) return failed;
     switch (d) {
         .respond => |r| {
             if (r.status < 100 or r.status > 599) {
@@ -187,6 +259,35 @@ fn scriptReply(arena: std.mem.Allocator, b: *const assets.Bundle, if_none_match:
     return .{ .status = .ok, .body = b.body, .headers = headers };
 }
 
+test "a failed sync fails the request: the write answers failed, and the Roc's 200 is a 500" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const req: Copied = .{ .path = "/stub/file", .method = .POST, .headers = &.{} };
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var store: files.Files = .{ .io = std.testing.io, .root = tmp.dir };
+    var ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    std.testing.log_level = .err;
+    defer std.testing.log_level = .warn;
+    const ok: route.Decision = .{ .respond = .{ .status = 200, .body = "stored\n" } };
+    try std.testing.expectEqual(route.Written.written, ctx.write("n", "one"));
+    try std.testing.expectEqual(std.http.Status.ok, (try replyOf(a, ok, &ctx)).status);
+    store.fault_for_test = .sync_fails;
+    try std.testing.expectEqual(route.Appended.failed, ctx.append("n", "two"));
+    try std.testing.expect(ctx.dead());
+    try std.testing.expectEqual(std.http.Status.internal_server_error, (try replyOf(a, ok, &ctx)).status);
+    // A cache's failure is not the request's.
+    var cache_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    cache_ctx.write_cache("c", "1");
+    try std.testing.expect(!cache_ctx.dead());
+    // A path out of the data root fails the request, never "missing".
+    store.fault_for_test = .none;
+    var bad_ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
+    try std.testing.expectEqual(route.Read.failed, bad_ctx.read("../etc/passwd"));
+    try std.testing.expectEqual(std.http.Status.internal_server_error, (try replyOf(a, ok, &bad_ctx)).status);
+}
+
 test "a header off the list, or one with a line break in it, is never sent" {
     try std.testing.expect(headerAllowed(.{ .name = "Set-Cookie", .value = "__Host-s=1; Secure; HttpOnly" }));
     try std.testing.expect(headerAllowed(.{ .name = "cache-control", .value = "no-store" }));
@@ -200,7 +301,10 @@ test "a Roc answer with a refused header is a 500; answered with nothing the hos
     defer arena.deinit();
     const a = arena.allocator();
     const req: Copied = .{ .path = "/", .method = .GET, .headers = &.{} };
-    var ctx: Ctx = .{ .req = &req, .arena = a };
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const store: files.Files = .{ .io = std.testing.io, .root = tmp.dir };
+    var ctx: Ctx = .{ .req = &req, .arena = a, .files = &store };
     // The warnings are the point: quiet here.
     std.testing.log_level = .err;
     defer std.testing.log_level = .warn;

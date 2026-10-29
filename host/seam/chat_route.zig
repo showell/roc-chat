@@ -47,6 +47,45 @@ pub const BodyStatus = enum(u8) { answered, read };
 /// Host.roc's `serve_script!` answer.
 pub const ScriptServed = enum(u8) { missing, served };
 
+// ── the files (Host.roc's read!, read_at!, read_stat!, list!, write!,
+// append!, remove!), answered by host/files.zig ────────────────────────────
+
+/// Host.roc's file answers' `status`: the bytes (or stat, or entries), nothing
+/// there, or a read that failed. **NEVER ONE ANSWER FOR MISSING AND FAILED.**
+pub const ReadStatus = enum(u8) { failed, found, missing };
+
+/// A `list!` entry's kind.
+pub const EntryKind = enum(u8) { dir, file, other };
+
+/// Host.roc's `append!` answer's `status`.
+pub const AppendStatus = enum(u8) { appended, failed };
+
+/// Host.roc's `write!` answer.
+pub const Written = enum(u8) { failed, written };
+
+/// Host.roc's `remove!` answer.
+pub const Removed = enum(u8) { failed, removed };
+
+/// A file as the host read it (`read!`, `read_at!`).
+pub const Read = union(ReadStatus) { failed, found: []const u8, missing };
+
+/// A folder's entry: its name and its kind.
+pub const Entry = struct { name: []const u8, kind: EntryKind };
+
+/// A folder as the host listed it, in the order the disk gives it.
+pub const Listing = union(ReadStatus) { failed, found: []const Entry, missing };
+
+/// A file's size in bytes and its last change in whole seconds since the
+/// epoch (`read_stat!`).
+pub const Stat = union(ReadStatus) {
+    failed,
+    found: struct { size: u64, mtime: i64 },
+    missing,
+};
+
+/// `append!`'s answer: the file's size after the bytes.
+pub const Appended = union(AppendStatus) { appended: u64, failed };
+
 /// A response header the Roc's answer adds (Chat.roc's `Header`), its bytes
 /// copied out of the call. The host checks each before it is sent
 /// (host/call.zig).

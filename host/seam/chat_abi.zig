@@ -59,6 +59,57 @@ pub const Answer = extern struct {
 /// Host.roc's `read_body!` answer: `{ bytes : List(U8), status : [Answered, Read] }`.
 pub const Got = extern struct { bytes: RocBytes, status: route.BodyStatus };
 
+// ── the files' records ──────────────────────────────────────────────────────
+
+/// Host.roc's `read!` and `read_at!` answer: `{ bytes : List(U8), status :
+/// [Failed, Found, Missing] }`.
+pub const ReadRec = extern struct { bytes: RocBytes, status: route.ReadStatus };
+/// One of Host.roc's `list!` entries: `{ kind : [Dir, File, Other], name : List(U8) }`.
+pub const EntryRec = extern struct { name: RocBytes, kind: route.EntryKind };
+/// Host.roc's `list!` answer: `{ entries : List(...), status : [Failed, Found, Missing] }`.
+pub const ListRec = extern struct { entries: EntryList, status: route.ReadStatus };
+/// Host.roc's `read_stat!` answer: `{ mtime : I64, size : U64, status :
+/// [Failed, Found, Missing] }`. **THE 8-BYTE FIELDS FIRST, BY NAME, THEN THE
+/// TAG**: 24 bytes. A missing or failed stat's size and mtime are 0.
+pub const StatRec = extern struct { mtime: i64, size: u64, status: route.ReadStatus };
+/// Host.roc's `append!` answer: `{ size : U64, status : [Appended, Failed] }`.
+pub const AppendedRec = extern struct { size: u64, status: route.AppendStatus };
+
+/// A Roc list of `Rec`, each made of an `Item` by `rec`: its elements hold
+/// a refcounted list, so it has the two-word header (count, refcount) a
+/// `List(List(U8))` has. (roc-webbox src/chat_abi.zig's `RecList`.)
+fn RecList(comptime Rec: type, comptime Item: type, comptime rec: fn (Item) Rec) type {
+    return extern struct {
+        ptr: ?[*]Rec,
+        length: usize,
+        capacity_or_alloc_ptr: usize,
+
+        fn from(items: []const Item) @This() {
+            if (items.len == 0) return .{ .ptr = null, .length = 0, .capacity_or_alloc_ptr = 0 };
+            const w = @sizeOf(usize);
+            const base = roc.allocate(2 * w + items.len * @sizeOf(Rec), w);
+            std.mem.writeInt(usize, base[0..w], items.len, .little);
+            std.mem.writeInt(usize, base[w..][0..w], 1, .little);
+            const elems: [*]Rec = @ptrCast(@alignCast(base + 2 * w));
+            for (items, 0..) |it, k| elems[k] = rec(it);
+            return .{ .ptr = elems, .length = items.len, .capacity_or_alloc_ptr = items.len << 1 };
+        }
+    };
+}
+
+pub const EntryList = RecList(EntryRec, route.Entry, struct {
+    fn rec(it: route.Entry) EntryRec {
+        return .{ .name = .from(it.name), .kind = it.kind };
+    }
+}.rec);
+
+comptime {
+    const w = @sizeOf(usize);
+    std.debug.assert(@sizeOf(ReadRec) == 4 * w and @sizeOf(EntryRec) == 4 * w and @sizeOf(ListRec) == 4 * w);
+    std.debug.assert(@sizeOf(StatRec) == 24 and @offsetOf(StatRec, "size") == 8 and @offsetOf(StatRec, "status") == 16);
+    std.debug.assert(@sizeOf(AppendedRec) == 16 and @offsetOf(AppendedRec, "status") == 8);
+}
+
 comptime {
     const w = @sizeOf(usize);
     std.debug.assert(@sizeOf(Request) == 4 * w and @sizeOf(HeaderRec) == 6 * w and @sizeOf(Answer) == 10 * w and @sizeOf(Got) == 4 * w);
@@ -89,6 +140,27 @@ const Table = struct {
     /// Host.serve_script!: the script `name` of the chat client's bundles
     /// answered by the host, or `.missing` (nothing answered).
     serve_script: *const fn (*anyopaque, []const u8) route.ScriptServed,
+
+    // The files (host/files.zig), each path relative to the data root.
+    // **A FAILED ANSWER HAS FAILED THE REQUEST**, but `read_at`'s and
+    // `write_cache`'s, a cache's, which the host logs.
+
+    /// Host.read!: the file's bytes, nothing there, or a failed read.
+    read: *const fn (*anyopaque, []const u8) route.Read,
+    /// Host.read_at!: at most `max` bytes from `offset`.
+    read_at: *const fn (*anyopaque, []const u8, u64, u64) route.Read,
+    /// Host.read_stat!: the file's size and last change.
+    read_stat: *const fn (*anyopaque, []const u8) route.Stat,
+    /// Host.list!: the folder's entries.
+    list: *const fn (*anyopaque, []const u8) route.Listing,
+    /// Host.write!: the file made to hold exactly `bytes`, atomically.
+    write: *const fn (*anyopaque, []const u8, []const u8) route.Written,
+    /// Host.append!: `bytes` at the file's end; its size after.
+    append: *const fn (*anyopaque, []const u8, []const u8) route.Appended,
+    /// Host.remove!: the file gone (one not there is gone already).
+    remove: *const fn (*anyopaque, []const u8) route.Removed,
+    /// Host.write_cache!: as `write`, its failure never the request's.
+    write_cache: *const fn (*anyopaque, []const u8, []const u8) void,
 };
 
 /// **WHAT ANSWERS THE HOSTED FUNCTIONS** during a call: a host's value and
@@ -183,12 +255,16 @@ fn answerOf(
         fn f2(ctx: *anyopaque, a: A[1].?, b: A[2].?) R {
             return go(ctx, .{ a, b });
         }
+        fn f3(ctx: *anyopaque, a: A[1].?, b: A[2].?, c: A[3].?) R {
+            return go(ctx, .{ a, b, c });
+        }
     };
     return switch (A.len) {
         1 => S.f0,
         2 => S.f1,
         3 => S.f2,
-        else => @compileError(name ++ ": a hosted function of more than two arguments"),
+        4 => S.f3,
+        else => @compileError(name ++ ": a hosted function of more than three arguments"),
     };
 }
 
@@ -228,6 +304,64 @@ pub export fn roc_chat_read_header(name: RocBytes) callconv(.c) roc.RocBytesList
 
 pub export fn roc_chat_serve_script(name: RocBytes) callconv(.c) route.ScriptServed {
     return ask("serve_script", .missing, .{name.slice()});
+}
+
+// ── the files ──────────────────────────────────────────────────────────────
+
+fn readRec(r: route.Read) ReadRec {
+    return switch (r) {
+        .found => |b| .{ .bytes = .from(b), .status = .found },
+        .missing => .{ .bytes = .from(""), .status = .missing },
+        .failed => .{ .bytes = .from(""), .status = .failed },
+    };
+}
+
+pub export fn roc_chat_read(path: RocBytes) callconv(.c) ReadRec {
+    return readRec(ask("read", .failed, .{path.slice()}));
+}
+
+/// **NEVER MORE THAN `max`**: a host that hands back more is cut to it
+/// here, so the Roc's window is the window it asked for.
+pub export fn roc_chat_read_at(path: RocBytes, offset: u64, max: u64) callconv(.c) ReadRec {
+    return readRec(switch (ask("read_at", .failed, .{ path.slice(), offset, max })) {
+        .found => |b| .{ .found = b[0..@min(b.len, max)] },
+        else => |r| r,
+    });
+}
+
+pub export fn roc_chat_read_stat(path: RocBytes) callconv(.c) StatRec {
+    return switch (ask("read_stat", .failed, .{path.slice()})) {
+        .found => |st| .{ .mtime = st.mtime, .size = st.size, .status = .found },
+        .missing => .{ .mtime = 0, .size = 0, .status = .missing },
+        .failed => .{ .mtime = 0, .size = 0, .status = .failed },
+    };
+}
+
+pub export fn roc_chat_list(path: RocBytes) callconv(.c) ListRec {
+    return switch (ask("list", .failed, .{path.slice()})) {
+        .found => |entries| .{ .entries = .from(entries), .status = .found },
+        .missing => .{ .entries = .from(&.{}), .status = .missing },
+        .failed => .{ .entries = .from(&.{}), .status = .failed },
+    };
+}
+
+pub export fn roc_chat_write(path: RocBytes, bytes: RocBytes) callconv(.c) route.Written {
+    return ask("write", .failed, .{ path.slice(), bytes.slice() });
+}
+
+pub export fn roc_chat_append(path: RocBytes, bytes: RocBytes) callconv(.c) AppendedRec {
+    return switch (ask("append", .failed, .{ path.slice(), bytes.slice() })) {
+        .appended => |size| .{ .size = size, .status = .appended },
+        .failed => .{ .size = 0, .status = .failed },
+    };
+}
+
+pub export fn roc_chat_remove(path: RocBytes) callconv(.c) route.Removed {
+    return ask("remove", .failed, .{path.slice()});
+}
+
+pub export fn roc_chat_write_cache(path: RocBytes, bytes: RocBytes) callconv(.c) void {
+    ask("write_cache", {}, .{ path.slice(), bytes.slice() });
 }
 
 // ── a crash is a 500 ────────────────────────────────────────────────────────

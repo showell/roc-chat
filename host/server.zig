@@ -21,6 +21,7 @@ const Io = std.Io;
 const net = Io.net;
 const abi = @import("seam/chat_abi.zig");
 const call = @import("call.zig");
+const files = @import("files.zig");
 
 const log = std.log.scoped(.roc_chat);
 
@@ -74,13 +75,17 @@ pub const Server = struct {
     /// A test's: the turn held this long besides the Roc call, so that
     /// handlers that could overlap would.
     hold_turn_ms_for_test: u32 = 0,
+    /// The data root's files, asked only in the turn.
+    files: files.Files,
 
-    pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits) !Server {
+    /// Serves `data`, the data root (the caller's, open for the server's life).
+    pub fn init(io: Io, gpa: std.mem.Allocator, addr: net.IpAddress, limits: Limits, data: Io.Dir) !Server {
         return .{
             .io = io,
             .gpa = gpa,
             .limits = limits,
             .listener = try addr.listen(io, .{ .reuse_address = true }),
+            .files = .{ .io = io, .root = data },
         };
     }
 
@@ -222,7 +227,7 @@ pub const Server = struct {
     /// decision that asks for work off the turn (GitHub's token exchange)
     /// does it here, between two calls, each in a turn of its own.
     fn answer(s: *Server, arena: std.mem.Allocator, copied: *const call.Copied) call.Reply {
-        var ctx: call.Ctx = .{ .req = copied, .arena = arena };
+        var ctx: call.Ctx = .{ .req = copied, .arena = arena, .files = &s.files };
         const decided = blk: {
             s.turn.lockUncancelable(s.io);
             defer s.turn.unlock(s.io);

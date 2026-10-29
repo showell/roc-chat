@@ -184,7 +184,7 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
 
 test "roc glue declares every function chat_abi.zig has, and no other" {
     try std.testing.expectEqual(abi_names.len, glue_names.len);
-    try std.testing.expectEqual(4, abi_names.len);
+    try std.testing.expectEqual(12, abi_names.len);
 }
 
 test "a field swap fails the check, naming the function, the field and the offsets" {
