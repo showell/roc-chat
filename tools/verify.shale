@@ -86,7 +86,7 @@ if exists(scratch) then remove_tree(scratch) end
 mkdir(scratch)
 
 -- ── zig build test, from an empty cache, and its counts ──
-local t = run({"zig", "build", "test", "--cache-dir", cache, "--summary", "all"}, {cwd = ".", timeout_ms = build_ms, tail = 80})
+local t = run({"zig", "build", "test", "--cache-dir", cache, "--summary", "all"}, {cwd = ".", timeout_ms = build_ms, tail = 160})
 say(t.code == 0, "zig build test (exit " .. t.code .. ", " .. t.ms .. " ms)")
 local roc_count = number_in(t.out, "All \\((\\d+)\\) tests passed")
 local zig_count = number_in(t.out, "; (\\d+)/\\d+ tests passed")
@@ -189,7 +189,7 @@ function plant_out_of_turn()
 end
 plant_out_of_turn()
 plant("the list showing every conversation (load_mine! keeps them all)",
-  "app/Conversations.roc", "List.keep_if(all, |conv| ConvAccess.can_post(viewer, { conv, accounts }))", "List.keep_if(all, |conv| !List.is_empty(accounts) or ConvAccess.can_post(viewer, { conv, accounts }))", 31)
+  "app/Conversations.roc", "Ok(List.keep_if(theirs, |conv| ConvAccess.can_post(viewer, { conv, accounts })))", "Ok(List.concat(theirs, Store.load_conversations!({})?))", 31)
 plant("a participant's name written unescaped (escape leaves `<`)",
   "app/Pages.roc", "} else if b == '<' {", "} else if b == 0 {", 32)
 plant("a third user given the conversation's page (can_see asked of nobody)",
