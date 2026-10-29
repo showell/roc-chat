@@ -164,6 +164,11 @@ Chat := [].{
 	answered : Answer
 	answered = { ..not_found, kind: Answered }
 
+	## **THE HOST FAILED THE REQUEST** (a file, a sign-in fact): it answers
+	## the 500 whatever the call answers, so this only ends the call.
+	failed : Answer
+	failed = respond(500, { content_type: text, body: Str.to_utf8("failed\n") })
+
 	## The stream on the bus key `key`: `backlog` first (finished frames,
 	## read in this call), then each frame published to `key`.
 	stream : { key : List(U8), backlog : List(U8) } -> Answer
