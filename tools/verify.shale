@@ -225,7 +225,7 @@ function plant_out_of_turn()
 end
 plant_out_of_turn()
 plant("the list showing every conversation (load_mine! keeps them all)",
-  "app/Conversations.roc", "Ok(List.keep_if(theirs, |conv| ConvAccess.can_post(viewer, { conv, accounts })))", "Ok(List.concat(theirs, Store.load_conversations!({})?))", 31)
+  "app/Conversations.roc", "Ok(\n\t\t\t\t\t\t\tList.keep_if(\n\t\t\t\t\t\t\t\ttheirs,\n\t\t\t\t\t\t\t\t|conv| ConvAccess.can_post(viewer, { conv, accounts }),\n\t\t\t\t\t\t\t),\n\t\t\t\t\t\t)", "Ok(List.concat(theirs, Store.load_conversations!({})?))", 31)
 plant("a participant's name written unescaped (escape leaves `<`)",
   "app/Html.roc", "} else if b == '<' {", "} else if b == 0 {", 32)
 plant("a third user given the conversation's page (can_see asked of nobody)",
