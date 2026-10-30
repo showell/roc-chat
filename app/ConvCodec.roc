@@ -46,7 +46,7 @@ ConvCodec := [].{
 	## conversation ConvAccess makes: a crash.
 	encode : ConvCodec.Fields -> List(U8)
 	encode = |c|
-		if c.id == 0 or List.is_empty(c.participants) {
+		if c.id == 0 or c.participants.is_empty() {
 			crash "ConvCodec.encode: a conversation has an id and a participant"
 		} else {
 			Stored.line(
@@ -69,13 +69,13 @@ ConvCodec := [].{
 		created_field = id_field.rest.field("created")?
 		created = Stored.time(created_field.value, "created")?
 		with_field = created_field.rest.field("with")?
-		participants = List.map_try(List.split_on(with_field.value, ','), bound_from)?
+		participants = with_field.value.split_on(',').map_try(bound_from)?
 		public_field = with_field.rest.field("public")?
 		public_by =
-			if List.is_empty(public_field.value) {
+			if public_field.value.is_empty() {
 				[]
 			} else {
-				List.map_try(List.split_on(public_field.value, ','), vote_from)?
+				public_field.value.split_on(',').map_try(vote_from)?
 			}
 		public_field.rest.close()?
 		if id == 0 {
@@ -103,7 +103,7 @@ bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()
 ## differ, refused.
 bound_from : List(U8) -> Try(Principal.Bound, Stored.Problem)
 bound_from = |value|
-	match List.split_on(value, '/') {
+	match value.split_on('/') {
 		[
 			id_part,
 			generation_part,
@@ -136,7 +136,7 @@ vote_from : List(U8) -> Try(
 	Stored.Problem,
 )
 vote_from = |value|
-	match List.split_on(value, '/') {
+	match value.split_on('/') {
 		[human_part, generation_part] => {
 			human = Stored.id(human_part, { name: "public", make: Principal.GitHubId.from_u64 })?
 			generation = Stored.id(
@@ -176,7 +176,7 @@ usual = {
 read_back : List(U8) -> Try(ConvCodec.Fields, Stored.Problem)
 read_back = |raw| ConvCodec.decode(raw).map_ok(ConvCodec.Line.fields)
 
-expect ConvCodec.encode(usual) == Str.to_utf8("conversation v1 id=1 created=1761600000 with=human:583231/3/3,agent:7/4/3 public=\n")
+expect ConvCodec.encode(usual) == "conversation v1 id=1 created=1761600000 with=human:583231/3/3,agent:7/4/3 public=\n".to_utf8()
 
 # Round trips: the usual, one participant, an election, two elections.
 expect
@@ -198,13 +198,13 @@ expect
 	)
 
 # Refusals, each by name.
-expect read_back(Str.to_utf8("conversation v1 id=0 created=1 with=human:1/1/1 public=\n")) == Err(BadValue("id"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with= public=\n")) == Err(BadValue("with"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/2/1 public=\n")) == Err(BadValue("with"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/1 public=\n")) == Err(BadValue("with"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/1/1 public=1\n")) == Err(BadValue("public"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/1/1 public=,\n")) == Err(BadValue("public"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/1/1\n")) == Err(MissingField("public"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/1/1 public= x=1\n")) == Err(Trailing)
-expect read_back(Str.to_utf8("conversation v1 id=01 created=1 with=human:1/1/1 public=\n")) == Err(BadNumber("id"))
-expect read_back(Str.to_utf8("conversation v1 id=1 created=1 with=human:1/1/1 public=")) == Err(Torn)
+expect read_back("conversation v1 id=0 created=1 with=human:1/1/1 public=\n".to_utf8()) == Err(BadValue("id"))
+expect read_back("conversation v1 id=1 created=1 with= public=\n".to_utf8()) == Err(BadValue("with"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/2/1 public=\n".to_utf8()) == Err(BadValue("with"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/1 public=\n".to_utf8()) == Err(BadValue("with"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/1/1 public=1\n".to_utf8()) == Err(BadValue("public"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/1/1 public=,\n".to_utf8()) == Err(BadValue("public"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/1/1\n".to_utf8()) == Err(MissingField("public"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/1/1 public= x=1\n".to_utf8()) == Err(Trailing)
+expect read_back("conversation v1 id=01 created=1 with=human:1/1/1 public=\n".to_utf8()) == Err(BadNumber("id"))
+expect read_back("conversation v1 id=1 created=1 with=human:1/1/1 public=".to_utf8()) == Err(Torn)

@@ -100,22 +100,22 @@ all_bytes = Iter.fold(
 )
 
 ascii : List(U8)
-ascii = List.take_first(all_bytes, 128)
+ascii = all_bytes.take_first(128)
 
 beyond_ascii : List(U8)
-beyond_ascii = List.drop_first(all_bytes, 128)
+beyond_ascii = all_bytes.drop_first(128)
 
 digits : List(U8)
-digits = Str.to_utf8("0123456789")
+digits = "0123456789".to_utf8()
 
 uppers : List(U8)
-uppers = Str.to_utf8("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+uppers = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".to_utf8()
 
 lowers : List(U8)
-lowers = Str.to_utf8("abcdefghijklmnopqrstuvwxyz")
+lowers = "abcdefghijklmnopqrstuvwxyz".to_utf8()
 
 punctuation : List(U8)
-punctuation = Str.to_utf8("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".to_utf8()
 
 # VT and FF have no escape in a Roc literal.
 whitespace : List(U8)
@@ -130,99 +130,90 @@ whitespace = [
 
 # The 95 printable bytes: everything ASCII but the control bytes.
 printable : List(U8)
-printable = List.join([
+printable = [
 	[' '],
 	punctuation,
 	digits,
 	letters,
-])
+].join()
 
 letters : List(U8)
-letters = List.concat(uppers, lowers)
+letters = uppers.concat(lowers)
 
 # The 33 control bytes, stated as ASCII less the printables.
 controls : List(U8)
-controls = List.keep_if(ascii, |b| !List.contains(printable, b))
+controls = ascii.keep_if(|b| !printable.contains(b))
 
 non_letters : List(U8)
-non_letters = List.keep_if(all_bytes, |b| !List.contains(letters, b))
+non_letters = all_bytes.keep_if(|b| !letters.contains(b))
 
-expect List.len(all_bytes) == 256
-expect List.len(punctuation) == 32
-expect List.len(printable) == 95
-expect List.len(controls) == 33
+expect all_bytes.len() == 256
+expect punctuation.len() == 32
+expect printable.len() == 95
+expect controls.len() == 33
 
 # Each check over all 256 bytes is exactly its set.
-expect List.keep_if(all_bytes, Ascii.is_digit) == digits
-expect List.keep_if(all_bytes, Ascii.is_hex_digit) == Str.to_utf8("0123456789ABCDEFabcdef")
-expect List.keep_if(all_bytes, Ascii.is_letter) == letters
-expect List.keep_if(all_bytes, Ascii.is_alphanumeric) == List.concat(digits, letters)
-expect List.keep_if(all_bytes, Ascii.is_whitespace) == whitespace
-expect List.keep_if(all_bytes, Ascii.is_punctuation) == punctuation
-expect List.keep_if(all_bytes, Ascii.is_control) == controls
+expect all_bytes.keep_if(Ascii.is_digit) == digits
+expect all_bytes.keep_if(Ascii.is_hex_digit) == "0123456789ABCDEFabcdef".to_utf8()
+expect all_bytes.keep_if(Ascii.is_letter) == letters
+expect all_bytes.keep_if(Ascii.is_alphanumeric) == digits.concat(letters)
+expect all_bytes.keep_if(Ascii.is_whitespace) == whitespace
+expect all_bytes.keep_if(Ascii.is_punctuation) == punctuation
+expect all_bytes.keep_if(Ascii.is_control) == controls
 
 # 128-255 are never ASCII: every check is false, and the case maps keep them.
-expect List.all(
-	[
-		Ascii.is_digit,
-		Ascii.is_hex_digit,
-		Ascii.is_letter,
-		Ascii.is_alphanumeric,
-		Ascii.is_whitespace,
-		Ascii.is_punctuation,
-		Ascii.is_control,
-	],
-	|check| !List.any(beyond_ascii, check),
-)
-expect List.map(beyond_ascii, Ascii.to_lowercase) == beyond_ascii
-expect List.map(beyond_ascii, Ascii.to_uppercase) == beyond_ascii
+expect [
+	Ascii.is_digit,
+	Ascii.is_hex_digit,
+	Ascii.is_letter,
+	Ascii.is_alphanumeric,
+	Ascii.is_whitespace,
+	Ascii.is_punctuation,
+	Ascii.is_control,
+].all(|check| !beyond_ascii.any(check))
+expect beyond_ascii.map(Ascii.to_lowercase) == beyond_ascii
+expect beyond_ascii.map(Ascii.to_uppercase) == beyond_ascii
 
 # The bytes on each side of every range: of each probe, the members.
-expect List.keep_if(Str.to_utf8("/09:"), Ascii.is_digit) == Str.to_utf8("09")
-expect List.keep_if(Str.to_utf8("/09:@AFG`afg"), Ascii.is_hex_digit) == Str.to_utf8("09AFaf")
-expect List.keep_if(Str.to_utf8("@AZ[`az{"), Ascii.is_letter) == Str.to_utf8("AZaz")
-expect List.keep_if(Str.to_utf8("/09:@AZ[`az{"), Ascii.is_alphanumeric) == Str.to_utf8("09AZaz")
-expect List.keep_if(
-	[
-		8,
-		'\t',
-		'\r',
-		14,
-		31,
-		' ',
-		'!',
-	],
-	Ascii.is_whitespace,
-) == Str.to_utf8("\t\r ")
-expect List.keep_if(Str.to_utf8(" !/09:@AZ[`az{~"), Ascii.is_punctuation) == Str.to_utf8("!/:@[`{~")
-expect List.keep_if(
-	[
-		0,
-		31,
-		' ',
-		'~',
-		127,
-		128,
-	],
-	Ascii.is_control,
-) == [
+expect "/09:".to_utf8().keep_if(Ascii.is_digit) == "09".to_utf8()
+expect "/09:@AFG`afg".to_utf8().keep_if(Ascii.is_hex_digit) == "09AFaf".to_utf8()
+expect "@AZ[`az{".to_utf8().keep_if(Ascii.is_letter) == "AZaz".to_utf8()
+expect "/09:@AZ[`az{".to_utf8().keep_if(Ascii.is_alphanumeric) == "09AZaz".to_utf8()
+expect [
+	8,
+	'\t',
+	'\r',
+	14,
+	31,
+	' ',
+	'!',
+].keep_if(Ascii.is_whitespace) == "\t\r ".to_utf8()
+expect " !/09:@AZ[`az{~".to_utf8().keep_if(Ascii.is_punctuation) == "!/:@[`{~".to_utf8()
+expect [
+	0,
+	31,
+	' ',
+	'~',
+	127,
+	128,
+].keep_if(Ascii.is_control) == [
 	0,
 	31,
 	127,
 ]
-expect List.map(Str.to_utf8("@AZ[`az{"), Ascii.to_lowercase) == Str.to_utf8("@az[`az{")
-expect List.map(Str.to_utf8("@AZ[`az{"), Ascii.to_uppercase) == Str.to_utf8("@AZ[`AZ{")
+expect "@AZ[`az{".to_utf8().map(Ascii.to_lowercase) == "@az[`az{".to_utf8()
+expect "@AZ[`az{".to_utf8().map(Ascii.to_uppercase) == "@AZ[`AZ{".to_utf8()
 
 # The case maps: each letter to its pair, each letter already in the case
 # kept, every other byte (204 of them) unchanged.
-expect List.map(uppers, Ascii.to_lowercase) == lowers
-expect List.map(lowers, Ascii.to_lowercase) == lowers
-expect List.map(lowers, Ascii.to_uppercase) == uppers
-expect List.map(uppers, Ascii.to_uppercase) == uppers
-expect List.len(non_letters) == 204
-expect List.map(non_letters, Ascii.to_lowercase) == non_letters
-expect List.map(non_letters, Ascii.to_uppercase) == non_letters
+expect uppers.map(Ascii.to_lowercase) == lowers
+expect lowers.map(Ascii.to_lowercase) == lowers
+expect lowers.map(Ascii.to_uppercase) == uppers
+expect uppers.map(Ascii.to_uppercase) == uppers
+expect non_letters.len() == 204
+expect non_letters.map(Ascii.to_lowercase) == non_letters
+expect non_letters.map(Ascii.to_uppercase) == non_letters
 
 # Every letter round-trips through the other case.
-expect List.map(lowers, |b| Ascii.to_lowercase(Ascii.to_uppercase(b))) == lowers
-expect List.map(uppers, |b| Ascii.to_uppercase(Ascii.to_lowercase(b))) == uppers
+expect lowers.map(|b| Ascii.to_lowercase(Ascii.to_uppercase(b))) == lowers
+expect uppers.map(|b| Ascii.to_uppercase(Ascii.to_lowercase(b))) == uppers

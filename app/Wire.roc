@@ -38,10 +38,9 @@ Wire := [].{
 	## (a post's is checked; roc-markdown's html of it is too).
 	json_string : List(U8) -> List(U8)
 	json_string = |text|
-		List.join([
+		[
 			['"'],
-			List.join_map(
-				text,
+			text.join_map(
 				|b|
 					if b == '"' {
 						['\\', '"']
@@ -50,26 +49,21 @@ Wire := [].{
 					} else if b == '\n' {
 						['\\', 'n']
 					} else if b < 0x20 or b == 0x7F {
-						List.concat(Str.to_utf8("\\u00"), [hex_digit(b // 16), hex_digit(b % 16)])
+						"\\u00".to_utf8().concat([hex_digit(b // 16), hex_digit(b % 16)])
 					} else {
 						[b]
 					},
 			),
 			['"'],
-		])
+		].join()
 
 	## Each part, a comma between each two.
 	commas : List(List(U8)) -> List(U8)
-	commas = |parts| List.join(
-		List.map_with_index(
-			parts,
-			|part, i| if (i == 0) part else List.prepend(part, ','),
-		),
-	)
+	commas = |parts| parts.map_with_index(|part, i| if (i == 0) part else part.prepend(',')).join()
 }
 
 hex_digit : U8 -> U8
 hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
 
-expect Wire.json_string(Str.to_utf8("a\"b\\c\nd\re\u(7f)é")) == Str.to_utf8("\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"")
-expect Wire.commas([Str.to_utf8("a"), Str.to_utf8("b")]) == Str.to_utf8("a,b")
+expect Wire.json_string("a\"b\\c\nd\re\u(7f)é".to_utf8()) == "\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"".to_utf8()
+expect Wire.commas(["a".to_utf8(), "b".to_utf8()]) == "a,b".to_utf8()

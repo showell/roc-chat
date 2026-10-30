@@ -62,9 +62,9 @@ Pages := [].{
 	route = |path|
 		if path == root {
 			Ok(ConversationList)
-		} else if path == List.concat(root, Str.to_utf8("/agents")) {
+		} else if path == root.concat("/agents".to_utf8()) {
 			Ok(AgentList)
-		} else if List.starts_with(path, List.append(root, '/')) {
+		} else if path.starts_with(root.append('/')) {
 			Conversations.id_of(List.drop_first(path, List.len(root) + 1)).map_ok(|id| Conversation(id)).map_err(|_| NotAPage)
 		} else {
 			Err(NotAPage)
@@ -119,19 +119,18 @@ Pages := [].{
 	## or an attribute.
 	escape : List(U8) -> List(U8)
 	escape = |text|
-		List.join_map(
-			text,
+		text.join_map(
 			|b|
 				if b == '&' {
-					Str.to_utf8("&amp;")
+					"&amp;".to_utf8()
 				} else if b == '<' {
-					Str.to_utf8("&lt;")
+					"&lt;".to_utf8()
 				} else if b == '>' {
-					Str.to_utf8("&gt;")
+					"&gt;".to_utf8()
 				} else if b == '"' {
-					Str.to_utf8("&quot;")
+					"&quot;".to_utf8()
 				} else if b == '\'' {
-					Str.to_utf8("&#39;")
+					"&#39;".to_utf8()
 				} else {
 					[b]
 				},
@@ -139,7 +138,7 @@ Pages := [].{
 }
 
 root : List(U8)
-root = Str.to_utf8("/chat")
+root = "/chat".to_utf8()
 
 ## Signed out: to `/login`, a 303. Sign-in lands on the hello page, not
 ## back here: returning would mean carrying the page through the signed
@@ -147,8 +146,8 @@ root = Str.to_utf8("/chat")
 to_login : Chat.Answer
 to_login =
 	Chat.respond(303, { content_type: Chat.text, body: [] })
-		|> Chat.with_header("location", Str.to_utf8("/login"))
-		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
+		|> Chat.with_header("location", "/login".to_utf8())
+		|> Chat.with_header("cache-control", "no-store".to_utf8())
 
 ## **A PAGE IS A BROWSER'S**: a key (an agent, which reads the JSON routes)
 ## asking for one is a 403, whatever it may see.
@@ -173,36 +172,35 @@ list! = |
 		Err(Failed) => Chat.failed
 		Ok(convs) => {
 			items =
-				if List.is_empty(convs) {
-					Str.to_utf8("<p>None yet.</p>\n")
+				if convs.is_empty() {
+					"<p>None yet.</p>\n".to_utf8()
 				} else {
-					List.join([
-						Str.to_utf8("<ul id=conversations>\n"),
-						List.join_map(
-							convs,
-							|conv| List.join([
-								Str.to_utf8("<li><a href=\"/chat/${conv.id().to_u64().to_str()}\">"),
+					[
+						"<ul id=conversations>\n".to_utf8(),
+						convs.join_map(
+							|conv| [
+								"<li><a href=\"/chat/${conv.id().to_u64().to_str()}\">".to_utf8(),
 								names(accounts, conv),
-								Str.to_utf8("</a></li>\n"),
-							]),
+								"</a></li>\n".to_utf8(),
+							].join(),
 						),
-						Str.to_utf8("</ul>\n"),
-					])
+						"</ul>\n".to_utf8(),
+					].join()
 				}
 			page({
-				title: Str.to_utf8("Conversations"),
+				title: "Conversations".to_utf8(),
 				body_attrs: [],
 				body: List.join([
-					Str.to_utf8("<h1>Your conversations</h1>\n"),
+					"<h1>Your conversations</h1>\n".to_utf8(),
 					items,
 					start_form(accounts, me),
-					Str.to_utf8("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n<p class=quiet>Signed in as "),
+					"<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n<p class=quiet>Signed in as ".to_utf8(),
 					Pages.escape(Str.to_utf8(Conversations.name_of(accounts, me))),
-					Str.to_utf8(" ("),
+					" (".to_utf8(),
 					Pages.escape(Str.to_utf8(AccountCodec.id_text(me))),
-					Str.to_utf8(").</p>\n<script>\n"),
-					Str.to_utf8(list_js),
-					Str.to_utf8("</script>\n"),
+					").</p>\n<script>\n".to_utf8(),
+					list_js.to_utf8(),
+					"</script>\n".to_utf8(),
 				]),
 			})
 		}
@@ -222,18 +220,18 @@ start_form = |accounts, me| {
 		List.join_map(
 			mine,
 			|a| List.join([
-				Str.to_utf8("<label class=pick><input type=checkbox name=agent value=\""),
+				"<label class=pick><input type=checkbox name=agent value=\"".to_utf8(),
 				Pages.escape(Str.to_utf8(AccountCodec.id_text(Principal.id(a)))),
-				Str.to_utf8("\"> "),
+				"\"> ".to_utf8(),
 				Pages.escape(Str.to_utf8(Conversations.name_of(accounts, Principal.id(a)))),
-				Str.to_utf8("</label>\n"),
+				"</label>\n".to_utf8(),
 			]),
 		)
-	List.join([
-		Str.to_utf8("<form id=start><p>Start one with:</p>\n"),
+	[
+		"<form id=start><p>Start one with:</p>\n".to_utf8(),
 		ticks,
-		Str.to_utf8("<label>Anyone else, by id <input name=with placeholder=\"human:2, agent:7\"></label> <button>Start</button> <span id=said></span></form>\n"),
-	])
+		"<label>Anyone else, by id <input name=with placeholder=\"human:2, agent:7\"></label> <button>Start</button> <span id=said></span></form>\n".to_utf8(),
+	].join()
 }
 
 ## **/chat/agents**: the page, for a live session; signed out, to
@@ -256,75 +254,73 @@ agents_page = |mine| {
 	name = |id| Pages.escape(Str.to_utf8(Conversations.name_of(mine.accounts, id)))
 	agents =
 		if mine.agents.is_empty() {
-			Str.to_utf8("<p>None yet. Make one below.</p>\n")
+			"<p>None yet. Make one below.</p>\n".to_utf8()
 		} else {
-			List.join([
-				Str.to_utf8("<ul id=agents>\n"),
-				List.join_map(
-					mine.agents,
+			[
+				"<ul id=agents>\n".to_utf8(),
+				mine.agents.join_map(
 					|a| {
-						id = Principal.id(a)
-						List.join([
-							Str.to_utf8("<li data-id=\""),
+						id = a.id()
+						[
+							"<li data-id=\"".to_utf8(),
 							id_html(id),
-							Str.to_utf8("\"><b>"),
+							"\"><b>".to_utf8(),
 							name(id),
-							Str.to_utf8("</b> <code>"),
+							"</b> <code>".to_utf8(),
 							id_html(id),
-							Str.to_utf8("</code> <button type=button class=invite data-for=\""),
+							"</code> <button type=button class=invite data-for=\"".to_utf8(),
 							id_html(id),
-							Str.to_utf8("\" data-name=\""),
+							"\" data-name=\"".to_utf8(),
 							name(id),
-							Str.to_utf8("\">Invite</button></li>\n"),
-						])
+							"\">Invite</button></li>\n".to_utf8(),
+						].join()
 					},
 				),
-				Str.to_utf8("</ul>\n"),
-			])
+				"</ul>\n".to_utf8(),
+			].join()
 		}
 	invites =
 		if mine.invites.is_empty() {
-			Str.to_utf8("<p>None waiting.</p>\n")
+			"<p>None waiting.</p>\n".to_utf8()
 		} else {
-			List.join([
-				Str.to_utf8("<ul id=invites>\n"),
-				List.join_map(
-					mine.invites,
-					|i| List.join([
-						Str.to_utf8("<li data-invite=${i.id.to_u64().to_str()}>For "),
+			[
+				"<ul id=invites>\n".to_utf8(),
+				mine.invites.join_map(
+					|i| [
+						"<li data-invite=${i.id.to_u64().to_str()}>For ".to_utf8(),
 						name(i.bound.id),
-						Str.to_utf8(" (<code>"),
+						" (<code>".to_utf8(),
 						id_html(i.bound.id),
-						Str.to_utf8("</code>), until <time data-at=${i.expires.to_str()}></time> <button type=button class=revoke data-path=\"/invites/${i.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n"),
-					]),
+						"</code>), until <time data-at=${i.expires.to_str()}></time> <button type=button class=revoke data-path=\"/invites/${i.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n".to_utf8(),
+					].join(),
 				),
-				Str.to_utf8("</ul>\n"),
-			])
+				"</ul>\n".to_utf8(),
+			].join()
 		}
 	keys =
 		if mine.keys.is_empty() {
-			Str.to_utf8("<p>None.</p>\n")
+			"<p>None.</p>\n".to_utf8()
 		} else {
-			List.join([
-				Str.to_utf8("<ul id=keys>\n"),
-				List.join_map(mine.keys, |k| key_html(name, k)),
-				Str.to_utf8("</ul>\n"),
-			])
+			[
+				"<ul id=keys>\n".to_utf8(),
+				mine.keys.join_map(|k| key_html(name, k)),
+				"</ul>\n".to_utf8(),
+			].join()
 		}
 	page({
-		title: Str.to_utf8("Agents"),
+		title: "Agents".to_utf8(),
 		body_attrs: [],
-		body: List.join([
-			Str.to_utf8("<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n"),
+		body: [
+			"<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n".to_utf8(),
 			agents,
-			Str.to_utf8("<form id=make><label>Make an agent named <input name=name required maxlength=64></label> <button>Make</button></form>\n<div id=code hidden><p><b>The invite code for <span id=code-for></span>, shown only now:</b></p>\n<p><code id=code-text></code> <button type=button id=copy>Copy</button></p>\n<p>Give it to the agent within ten minutes (until <time id=code-until></time>). It works once: the agent sends it to <code>POST /invites/redeem</code> as <code>code=</code> and gets its own key back. Reload this page and the code is gone; the invite is listed below until it is redeemed or revoked.</p></div>\n<h2>Invites waiting</h2>\n"),
+			"<form id=make><label>Make an agent named <input name=name required maxlength=64></label> <button>Make</button></form>\n<div id=code hidden><p><b>The invite code for <span id=code-for></span>, shown only now:</b></p>\n<p><code id=code-text></code> <button type=button id=copy>Copy</button></p>\n<p>Give it to the agent within ten minutes (until <time id=code-until></time>). It works once: the agent sends it to <code>POST /invites/redeem</code> as <code>code=</code> and gets its own key back. Reload this page and the code is gone; the invite is listed below until it is redeemed or revoked.</p></div>\n<h2>Invites waiting</h2>\n".to_utf8(),
 			invites,
-			Str.to_utf8("<h2>Keys that work</h2>\n"),
+			"<h2>Keys that work</h2>\n".to_utf8(),
 			keys,
-			Str.to_utf8("<p id=said></p>\n<script>\n"),
-			Str.to_utf8(agents_js),
-			Str.to_utf8("</script>\n"),
-		]),
+			"<p id=said></p>\n<script>\n".to_utf8(),
+			agents_js.to_utf8(),
+			"</script>\n".to_utf8(),
+		].join(),
 	})
 }
 
@@ -338,9 +334,9 @@ key_html : (Principal.Id -> List(U8)), ConvKey.Key -> List(U8)
 key_html = |name, key| {
 	r = key.record()
 	List.join([
-		Str.to_utf8("<li data-key=${r.id.to_u64().to_str()}>Key ${r.id.to_u64().to_str()} acts as "),
+		"<li data-key=${r.id.to_u64().to_str()}>Key ${r.id.to_u64().to_str()} acts as ".to_utf8(),
 		name(r.acts_as),
-		Str.to_utf8(" (<code>"),
+		" (<code>".to_utf8(),
 		id_html(r.acts_as),
 		Str.to_utf8("</code>); reads <code>${KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64)}</code>, posts <code>${KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64)}</code>; until <time data-at=${r.expires.to_str()}></time> <button type=button class=revoke data-path=\"/keys/${r.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n"),
 	])
@@ -373,17 +369,17 @@ serve_conversation! = |
 					Ok({ messages, earlier }) =>
 						page({
 							title: names(accounts, conv),
-							body_attrs: Str.to_utf8(" data-conv=\"${id.to_u64().to_str()}\""),
+							body_attrs: " data-conv=\"${id.to_u64().to_str()}\"".to_utf8(),
 							body: List.join([
-								Str.to_utf8("<h1>"),
+								"<h1>".to_utf8(),
 								names(accounts, conv),
-								Str.to_utf8("</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<ul id=people hidden>\n"),
+								"</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<ul id=people hidden>\n".to_utf8(),
 								List.join_map(
 									conv.participants(),
 									|b| List.join([
-										Str.to_utf8("<li data-id=\""),
+										"<li data-id=\"".to_utf8(),
 										Pages.escape(Str.to_utf8(AccountCodec.id_text(b.id))),
-										Str.to_utf8("\">"),
+										"\">".to_utf8(),
 										Pages.escape(
 											Str.to_utf8(
 												Conversations.name_of(
@@ -392,14 +388,14 @@ serve_conversation! = |
 												),
 											),
 										),
-										Str.to_utf8("</li>\n"),
+										"</li>\n".to_utf8(),
 									]),
 								),
-								Str.to_utf8("</ul>\n<p><button id=earlier type=button${if (earlier) "" else " hidden"}>Earlier messages</button></p>\n<div id=messages>\n"),
-								List.join_map(messages, |m| message_html(accounts, m)),
-								Str.to_utf8("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
-								Str.to_utf8(conversation_js),
-								Str.to_utf8("</script>\n"),
+								"</ul>\n<p><button id=earlier type=button${if (earlier) "" else " hidden"}>Earlier messages</button></p>\n<div id=messages>\n".to_utf8(),
+								messages.join_map(|m| message_html(accounts, m)),
+								"</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n".to_utf8(),
+								conversation_js.to_utf8(),
+								"</script>\n".to_utf8(),
 							]),
 						})
 				}
@@ -411,11 +407,11 @@ serve_conversation! = |
 message_html : List(Principal), MessageCodec.Fields -> List(U8)
 message_html = |accounts, m|
 	List.join([
-		Str.to_utf8("<article id=m${m.id.to_str()}><header>"),
+		"<article id=m${m.id.to_str()}><header>".to_utf8(),
 		Pages.escape(Str.to_utf8(Conversations.name_of(accounts, m.by))),
-		Str.to_utf8(" · <time data-at=${m.at.to_str()}></time></header><div class=body>"),
+		" · <time data-at=${m.at.to_str()}></time></header><div class=body>".to_utf8(),
 		Conversations.html_of(m),
-		Str.to_utf8("</div></article>\n"),
+		"</div></article>\n".to_utf8(),
 	])
 
 ## A conversation's people, by name, escaped, a comma between.
@@ -426,10 +422,7 @@ names = |accounts, conv|
 			conv.participants(),
 			|b, i| {
 				name = Conversations.name_of(accounts, b.id)
-				List.concat(
-					if (i == 0) [] else Str.to_utf8(", "),
-					Pages.escape(Str.to_utf8(name)),
-				)
+				(if (i == 0) [] else ", ".to_utf8()).concat(Pages.escape(name.to_utf8()))
 			},
 		),
 	)
@@ -452,19 +445,19 @@ page = |
 		200,
 		{
 			content_type: Chat.html,
-			body: List.join([
-				Str.to_utf8("<!doctype html>\n<html lang=en>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>"),
+			body: [
+				"<!doctype html>\n<html lang=en>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>".to_utf8(),
 				title,
-				Str.to_utf8(" · roc-chat</title>\n<style>\n"),
-				Str.to_utf8(css),
-				Str.to_utf8("</style>\n<body"),
+				" · roc-chat</title>\n<style>\n".to_utf8(),
+				css.to_utf8(),
+				"</style>\n<body".to_utf8(),
 				body_attrs,
-				Str.to_utf8(">\n"),
+				">\n".to_utf8(),
 				body,
-			]),
+			].join(),
 		},
 	)
-		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
+		|> Chat.with_header("cache-control", "no-store".to_utf8())
 
 css : Str
 css =
@@ -575,18 +568,15 @@ conversation_js =
 	\\});
 	\\
 
-expect Pages.escape(Str.to_utf8("Bea <i>x</i> & \"co\" 'q'")) == Str.to_utf8("Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;")
-expect Pages.escape(Str.to_utf8("Zoë 🎉")) == Str.to_utf8("Zoë 🎉")
-expect Pages.route(Str.to_utf8("/chat")) == Ok(ConversationList)
-expect Pages.route(Str.to_utf8("/chat/7")).is_ok()
-expect Pages.route(Str.to_utf8("/chat/0")).is_err()
-expect Pages.route(Str.to_utf8("/chat/07")).is_err()
-expect Pages.route(Str.to_utf8("/chat/7/x")).is_err()
-expect Pages.route(Str.to_utf8("/chatx")).is_err()
-expect Pages.route(Str.to_utf8("/chat/agents")) == Ok(AgentList)
-expect Pages.route(Str.to_utf8("/chat/agents/x")).is_err()
+expect Pages.escape("Bea <i>x</i> & \"co\" 'q'".to_utf8()) == "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;".to_utf8()
+expect Pages.escape("Zoë 🎉".to_utf8()) == "Zoë 🎉".to_utf8()
+expect Pages.route("/chat".to_utf8()) == Ok(ConversationList)
+expect Pages.route("/chat/7".to_utf8()).is_ok()
+expect Pages.route("/chat/0".to_utf8()).is_err()
+expect Pages.route("/chat/07".to_utf8()).is_err()
+expect Pages.route("/chat/7/x".to_utf8()).is_err()
+expect Pages.route("/chatx".to_utf8()).is_err()
+expect Pages.route("/chat/agents".to_utf8()) == Ok(AgentList)
+expect Pages.route("/chat/agents/x".to_utf8()).is_err()
 # The one thing a page's script sets as HTML is a message's, from the stream.
-expect Str.contains(
-	conversation_js,
-	"b.innerHTML = m.html;",
-) and !Str.contains(list_js, "innerHTML") and !Str.contains(agents_js, "innerHTML")
+expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("innerHTML") and !agents_js.contains("innerHTML")

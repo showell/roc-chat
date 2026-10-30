@@ -250,7 +250,7 @@ plant("agents uncapped (the cap never reached)",
   "app/Agents.roc", "if owned >= Limits.agents_per_human {", "if owned >= Limits.agents_per_human * 1000 {", 36)
 
 plant("another's agent named in `with=` (the owner never asked)",
-  "app/ConvAccess.roc", "if (Principal.answers_to(p) == human) Ok({}) else Err(NotTheOwner(other))", "if (Principal.answers_to(p) == human or True) Ok({}) else Err(NotTheOwner(other))", 37)
+  "app/ConvAccess.roc", "if (p.answers_to() == human) Ok({}) else Err(NotTheOwner(other))", "if (p.answers_to() == human or True) Ok({}) else Err(NotTheOwner(other))", 37)
 
 plant("a cross-origin POST accepted (Origin never compared)",
   "app/Origin.roc", "[one] => if (one == configured) Allowed else CrossOrigin", "[one] => if (one == configured or True) Allowed else CrossOrigin", 38)

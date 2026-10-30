@@ -32,21 +32,21 @@ SignInWeb := [].{
 				State => "roc-chat oauth state\n"
 				Pending => "roc-chat pending sign-up\n"
 			}
-		List.concat(Str.to_utf8(line), body)
+		line.to_utf8().concat(body)
 	}
 
 	## A token: the body, a `.`, the MAC in hex.
 	token : List(U8), List(U8) -> List(U8)
-	token = |body, mac| List.join([
+	token = |body, mac| [
 		body,
 		['.'],
 		hex(mac),
-	])
+	].join()
 
 	## A token's body and MAC, split at its last `.`.
 	untoken : List(U8) -> Try({ body : List(U8), mac : List(U8) }, [Malformed])
 	untoken = |text|
-		match List.split_last(text, '.') {
+		match text.split_last('.') {
 			Err(_) => Err(Malformed)
 			Ok({ before, after }) =>
 				match unhex(after) {
@@ -57,16 +57,16 @@ SignInWeb := [].{
 
 	## A state's body: its nonce in hex, `.`, the time it was issued.
 	state_body : OAuthState.Fields -> List(U8)
-	state_body = |s| List.join([
+	state_body = |s| [
 		hex(s.nonce),
 		['.'],
-		Str.to_utf8(s.issued_at.to_str()),
-	])
+		s.issued_at.to_str().to_utf8(),
+	].join()
 
 	## The fields a state's body holds.
 	state_fields : List(U8) -> Try(OAuthState.Fields, [Malformed])
 	state_fields = |body|
-		match List.split_on(body, '.') {
+		match body.split_on('.') {
 			[nonce_hex, issued] =>
 				match (unhex(nonce_hex), Stored.time(issued, "issued")) {
 					(Ok(nonce), Ok(issued_at)) => Ok({ nonce, issued_at })
@@ -79,22 +79,17 @@ SignInWeb := [].{
 	## id and the time it was issued, `.` between.
 	pending_body : GitHubSignIn.PendingFields -> List(U8)
 	pending_body = |p|
-		List.join(
-			List.intersperse(
-				[
-					hex(p.nonce),
-					Str.to_utf8(p.github.to_str()),
-					hex(p.login),
-					Str.to_utf8(p.issued_at.to_str()),
-				],
-				['.'],
-			),
-		)
+		[
+			hex(p.nonce),
+			p.github.to_str().to_utf8(),
+			hex(p.login),
+			p.issued_at.to_str().to_utf8(),
+		].intersperse(['.']).join()
 
 	## The fields a pending sign-up's body holds.
 	pending_fields : List(U8) -> Try(GitHubSignIn.PendingFields, [Malformed])
 	pending_fields = |body|
-		match List.split_on(body, '.') {
+		match body.split_on('.') {
 			[
 				nonce_hex,
 				github_text,
@@ -131,24 +126,24 @@ SignInWeb := [].{
 		value,
 		max_age,
 	|
-		List.join([
-			Str.to_utf8("__Host-${name}="),
+		[
+			"__Host-${name}=".to_utf8(),
 			value,
-			Str.to_utf8("; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${max_age.to_str()}"),
-		])
+			"; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${max_age.to_str()}".to_utf8(),
+		].join()
 
 	## The cookie `name` (behind `__Host-`) as the `cookie` headers sent it,
 	## the first of that name.
 	cookie : List(List(U8)), Str -> [Sent(List(U8)), Unsent]
 	cookie = |headers, name| {
-		wanted = Str.to_utf8("__Host-${name}")
-		pairs = List.join_map(headers, |h| List.split_on(h, ';'))
+		wanted = "__Host-${name}".to_utf8()
+		pairs = headers.join_map(|h| h.split_on(';'))
 		found = List.find_first(
 			List.map(pairs, |p| Bytes.trim(p, [' '])),
 			|p| List.starts_with(p, List.append(wanted, '=')),
 		)
 		match found {
-			Ok(p) => Sent(List.drop_first(p, List.len(wanted) + 1))
+			Ok(p) => Sent(p.drop_first(wanted.len() + 1))
 			Err(_) => Unsent
 		}
 	}
@@ -170,10 +165,10 @@ SignInWeb := [].{
 	## decoded (`+` a space, `%XX` a byte): the first of that name.
 	form_field : List(U8), Str -> Try(List(U8), [Missing, Malformed])
 	form_field = |body, name| {
-		wanted = List.append(Str.to_utf8(name), '=')
-		match List.find_first(List.split_on(body, '&'), |f| List.starts_with(f, wanted)) {
+		wanted = name.to_utf8().append('=')
+		match body.split_on('&').find_first(|f| f.starts_with(wanted)) {
 			Err(_) => Err(Missing)
-			Ok(field) => percent_decode(List.drop_first(field, List.len(wanted)))
+			Ok(field) => percent_decode(field.drop_first(wanted.len()))
 		}
 	}
 
@@ -181,8 +176,7 @@ SignInWeb := [].{
 	## other as `%XX`.
 	url_encode : List(U8) -> List(U8)
 	url_encode = |bytes|
-		List.join_map(
-			bytes,
+		bytes.join_map(
 			|b|
 				if (b >= 'a' and b <= 'z') or (b >= 'A' and b <= 'Z') or (b >= '0' and b <= '9') or b == '-' or b == '_' or b == '.' or b == '~' {
 					[b]
@@ -197,20 +191,19 @@ SignInWeb := [].{
 
 	## Bytes as lower-case hex.
 	hex : List(U8) -> List(U8)
-	hex = |bytes| List.join_map(bytes, |b| [hex_digit(b // 16), hex_digit(b % 16)])
+	hex = |bytes| bytes.join_map(|b| [hex_digit(b // 16), hex_digit(b % 16)])
 
 	## Lower-case hex as bytes.
 	unhex : List(U8) -> Try(List(U8), [NotHex])
 	unhex = |text|
-		if List.len(text) % 2 != 0 {
+		if text.len() % 2 != 0 {
 			Err(NotHex)
 		} else {
-			match List.map_try(text, nibble) {
+			match text.map_try(nibble) {
 				Err(_) => Err(NotHex)
 				Ok(ns) =>
 					Ok(
-						List.map(
-							List.chunks_of(ns, 2),
+						ns.chunks_of(2).map(
 							|pair|
 								match pair {
 									[high, low] => high * 16 + low
@@ -224,11 +217,7 @@ SignInWeb := [].{
 	## A U64 of eight bytes, the first the highest: a session's public
 	## number from the host's entropy. (Only the first eight are taken.)
 	u64_of : List(U8) -> U64
-	u64_of = |bytes| List.fold(
-		List.take_first(bytes, 8),
-		0,
-		|n, b| n * 256 + b.to_u64(),
-	)
+	u64_of = |bytes| bytes.take_first(8).fold(0, |n, b| n * 256 + b.to_u64())
 
 }
 
@@ -254,7 +243,7 @@ percent_decode : List(U8) -> Try(List(U8), [Missing, Malformed])
 percent_decode = |bytes|
 	match bytes {
 		[] => Ok([])
-		['+', .. as rest] => percent_decode(rest).map_ok(|r| List.prepend(r, ' '))
+		['+', .. as rest] => percent_decode(rest).map_ok(|r| r.prepend(' '))
 		[
 			'%',
 			high,
@@ -262,11 +251,11 @@ percent_decode = |bytes|
 			.. as rest,
 		] =>
 			match (nibble(high), nibble(low)) {
-				(Ok(h), Ok(l)) => percent_decode(rest).map_ok(|r| List.prepend(r, h * 16 + l))
+				(Ok(h), Ok(l)) => percent_decode(rest).map_ok(|r| r.prepend(h * 16 + l))
 				_ => Err(Malformed)
 			}
 		['%', ..] => Err(Malformed)
-		[b, .. as rest] => percent_decode(rest).map_ok(|r| List.prepend(r, b))
+		[b, .. as rest] => percent_decode(rest).map_ok(|r| r.prepend(b))
 	}
 
 # ── tests
@@ -296,16 +285,16 @@ expect SignInWeb.hex([
 	15,
 	16,
 	255,
-]) == Str.to_utf8("000f10ff")
-expect SignInWeb.unhex(Str.to_utf8("000f10ff")) == Ok([
+]) == "000f10ff".to_utf8()
+expect SignInWeb.unhex("000f10ff".to_utf8()) == Ok([
 	0,
 	15,
 	16,
 	255,
 ])
 expect SignInWeb.unhex(SignInWeb.hex(nonce)) == Ok(nonce)
-expect SignInWeb.unhex(Str.to_utf8("0g")) == Err(NotHex)
-expect SignInWeb.unhex(Str.to_utf8("abc")) == Err(NotHex)
+expect SignInWeb.unhex("0g".to_utf8()) == Err(NotHex)
+expect SignInWeb.unhex("abc".to_utf8()) == Err(NotHex)
 
 # A state's body round-trips; one with a part missing, or more, is malformed.
 expect SignInWeb.state_fields(
@@ -314,16 +303,16 @@ expect SignInWeb.state_fields(
 		issued_at: 1761600000,
 	}),
 ) == Ok({ nonce, issued_at: 1761600000 })
-expect SignInWeb.state_fields(Str.to_utf8("00ff")) == Err(Malformed)
-expect SignInWeb.state_fields(Str.to_utf8("00ff.1.2")) == Err(Malformed)
-expect SignInWeb.state_fields(Str.to_utf8("00ff.-1")) == Err(Malformed)
+expect SignInWeb.state_fields("00ff".to_utf8()) == Err(Malformed)
+expect SignInWeb.state_fields("00ff.1.2".to_utf8()) == Err(Malformed)
+expect SignInWeb.state_fields("00ff.-1".to_utf8()) == Err(Malformed)
 
 # A pending sign-up's body round-trips, its login whatever its bytes.
 pending : GitHubSignIn.PendingFields
 pending = {
 	nonce,
 	github: 583231,
-	login: Str.to_utf8("octo.cat"),
+	login: "octo.cat".to_utf8(),
 	issued_at: 1761600000,
 }
 
@@ -333,7 +322,7 @@ expect SignInWeb.pending_fields(SignInWeb.state_body({ nonce, issued_at: 1 })) =
 # A token splits at its last `.`, the MAC from hex.
 expect SignInWeb.untoken(
 	SignInWeb.token(
-		Str.to_utf8("ab.12"),
+		"ab.12".to_utf8(),
 		[
 			1,
 			2,
@@ -341,51 +330,51 @@ expect SignInWeb.untoken(
 		],
 	),
 ) == Ok({
-	body: Str.to_utf8("ab.12"),
+	body: "ab.12".to_utf8(),
 	mac: [
 		1,
 		2,
 		255,
 	],
 })
-expect SignInWeb.untoken(Str.to_utf8("no-dot")) == Err(Malformed)
-expect SignInWeb.untoken(Str.to_utf8("ab.zz")) == Err(Malformed)
+expect SignInWeb.untoken("no-dot".to_utf8()) == Err(Malformed)
+expect SignInWeb.untoken("ab.zz".to_utf8()) == Err(Malformed)
 
 # The purposes sign different bytes for one body.
-expect SignInWeb.signed_message(State, Str.to_utf8("x")) != SignInWeb.signed_message(
+expect SignInWeb.signed_message(State, "x".to_utf8()) != SignInWeb.signed_message(
 	Pending,
-	Str.to_utf8("x"),
+	"x".to_utf8(),
 )
 
 # The cookie, among others, with or without spaces; another name is not it.
 expect SignInWeb.cookie(
-	[Str.to_utf8("a=1; __Host-state=00ff; b=2")],
+	["a=1; __Host-state=00ff; b=2".to_utf8()],
 	"state",
-) == Sent(Str.to_utf8("00ff"))
+) == Sent("00ff".to_utf8())
 expect SignInWeb.cookie(
-	[Str.to_utf8("a=1"), Str.to_utf8("__Host-state=7")],
+	["a=1".to_utf8(), "__Host-state=7".to_utf8()],
 	"state",
-) == Sent(Str.to_utf8("7"))
-expect SignInWeb.cookie([Str.to_utf8("state=00ff; __Host-statex=1")], "state") == Unsent
+) == Sent("7".to_utf8())
+expect SignInWeb.cookie(["state=00ff; __Host-statex=1".to_utf8()], "state") == Unsent
 expect SignInWeb.cookie([], "state") == Unsent
-expect SignInWeb.state_cookie(Sent(Str.to_utf8("zz"))) == Unsent
+expect SignInWeb.state_cookie(Sent("zz".to_utf8())) == Unsent
 
 expect SignInWeb.set_cookie(
 	"session",
-	Str.to_utf8("ab"),
+	"ab".to_utf8(),
 	60,
-) == Str.to_utf8("__Host-session=ab; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=60")
+) == "__Host-session=ab; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=60".to_utf8()
 
 # A form field, decoded; a bad escape is malformed.
 expect SignInWeb.form_field(
-	Str.to_utf8("x=1&name=Ann+B%C3%A9"),
+	"x=1&name=Ann+B%C3%A9".to_utf8(),
 	"name",
-) == Ok(Str.to_utf8("Ann Bé"))
-expect SignInWeb.form_field(Str.to_utf8("x=1"), "name") == Err(Missing)
-expect SignInWeb.form_field(Str.to_utf8("name=%G1"), "name") == Err(Malformed)
-expect SignInWeb.form_field(Str.to_utf8("name=%4"), "name") == Err(Malformed)
+) == Ok("Ann Bé".to_utf8())
+expect SignInWeb.form_field("x=1".to_utf8(), "name") == Err(Missing)
+expect SignInWeb.form_field("name=%G1".to_utf8(), "name") == Err(Malformed)
+expect SignInWeb.form_field("name=%4".to_utf8(), "name") == Err(Malformed)
 
-expect SignInWeb.url_encode(Str.to_utf8("https://chat.example/login/github")) == Str.to_utf8("https%3A%2F%2Fchat.example%2Flogin%2Fgithub")
+expect SignInWeb.url_encode("https://chat.example/login/github".to_utf8()) == "https%3A%2F%2Fchat.example%2Flogin%2Fgithub".to_utf8()
 
 expect SignInWeb.u64_of([
 	0,

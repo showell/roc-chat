@@ -176,7 +176,7 @@ conv = |n, who| {
 public_by : ConvAccess.Conv, Principal -> ConvAccess.Conv
 public_by = |c, by|
 	match Access.Viewer.from_session(
-		session_line(Principal.answers_to(by).to_u64(), 1),
+		session_line(by.answers_to().to_u64(), 1),
 		{ accounts, now: 10 },
 	) {
 		Err(_) => crash "public_by: a test's session is admitted"
@@ -220,7 +220,7 @@ key_by = |who, { acts_as, among }|
 	ConvKey.issue(
 		{
 			granter: session_of(who, 1),
-			acts_as: Principal.id(acts_as),
+			acts_as: acts_as.id(),
 			scope: everything,
 			accounts: among,
 			now: 10,
@@ -317,7 +317,7 @@ stored = |key|
 expect stored(bot_key).record() == bot_key.record()
 expect verdict(stored(bot_key), { accounts, action: Read(bot_public) }) == Permitted
 expect
-	ConvKey.decode(Str.to_utf8("key v1 id=4 acts=agent:2 generation=1 human-generation=1 hash=${Str.repeat("5a", 32)} created=1 expires=2 state=active read=only:9,3,3 post=off admin=off\n")).map_ok(|_| {})
+	ConvKey.decode("key v1 id=4 acts=agent:2 generation=1 human-generation=1 hash=${"5a".repeat(32)} created=1 expires=2 state=active read=only:9,3,3 post=off admin=off\n".to_utf8()).map_ok(|_| {})
 		== Err(BadValue("read"))
 
 # ── ATTACK, BY KEY: Ann retired and made again
@@ -352,7 +352,7 @@ new_ann_key =
 		ConvKey.issue(
 			{
 				granter: session_of(1, 2),
-				acts_as: Principal.id(ann_again),
+				acts_as: ann_again.id(),
 				scope: everything,
 				accounts: again,
 				now: 10,

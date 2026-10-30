@@ -199,7 +199,7 @@ Store := [].{
 		settings : Accounts.Settings,
 	} => [Failed, Written]
 	save_accounts! = |{ accounts, settings }|
-		match List.map_try(accounts, AccountCodec.encode) {
+		match accounts.map_try(AccountCodec.encode) {
 			Err(_) => Failed
 			Ok(lines) =>
 				match Host.write!(settings_path, settings_line(settings)) {
@@ -337,9 +337,9 @@ Store := [].{
 				# Ids run 1 to the count, as `load_next_conversation_id!` gives them.
 				var $convs = []
 				var $n = 1
-				while $n <= List.len(listed.entries) {
+				while $n <= listed.entries.len() {
 					id = ConvAccess.ConvId.from_u64($n).map_err(|_| Failed)?
-					$convs = List.append($convs, Store.load_conversation!(id).map_err(|_| Failed)?)
+					$convs = $convs.append(Store.load_conversation!(id).map_err(|_| Failed)?)
 					$n = $n + 1
 				}
 				Ok($convs)
@@ -365,7 +365,7 @@ Store := [].{
 			Failed => Err(Failed)
 			Found =>
 				match MessageCodec.transcript(read.bytes) {
-					Ok(lines) => Ok(List.map(lines, MessageCodec.Line.fields))
+					Ok(lines) => Ok(lines.map(MessageCodec.Line.fields))
 					Err(_) => Err(Failed)
 				}
 		}
@@ -399,7 +399,7 @@ Store := [].{
 					Kept(t) => Ok(t)
 					Stale => {
 						messages = Store.load_transcript!(id)?
-						Ok({ messages: List.len(messages), bytes: stat.size })
+						Ok({ messages: messages.len(), bytes: stat.size })
 					}
 				}
 			}
@@ -427,7 +427,7 @@ Store := [].{
 				Err(Failed) => Err(Failed)
 				Ok(Bool.False) => {
 					all = Store.load_transcript!(id)?
-					Ok(List.sublist(all, { start: first - 1, len: last - first + 1 }))
+					Ok(all.sublist({ start: first - 1, len: last - first + 1 }))
 				}
 				Ok(Bool.True) => {
 					# `first`'s record, and the next one's after `last`'s, which
@@ -435,18 +435,18 @@ Store := [].{
 					records = Host.read_at!(offsets_path(id), (first - 1) * offset_width, (last - first + 2) * offset_width)
 					starts =
 						match records.status {
-							Found => List.map_try(List.chunks_of(records.bytes, offset_width), offset_of).map_err(|_| Failed)?
+							Found => records.bytes.chunks_of(offset_width).map_try(offset_of).map_err(|_| Failed)?
 							Missing | Failed => return Err(Failed)
 						}
 					ends = if (last == tally.messages) List.append(starts, tally.bytes) else starts
-					match (List.first(ends), List.get(ends, last - first + 1)) {
+					match (ends.first(), ends.get(last - first + 1)) {
 						(Ok(from), Ok(to)) if from < to and to <= tally.bytes => {
 							text = Host.read_at!(transcript_path(id), from, to - from)
-							if text.status != Found or List.len(text.bytes) != to - from {
+							if text.status != Found or text.bytes.len() != to - from {
 								Err(Failed)
 							} else {
 								match MessageCodec.span(text.bytes, first) {
-									Ok(lines) if List.len(lines) == last - first + 1 => Ok(List.map(lines, MessageCodec.Line.fields))
+									Ok(lines) if lines.len() == last - first + 1 => Ok(lines.map(MessageCodec.Line.fields))
 									_ => Err(Failed)
 								}
 							}
@@ -532,8 +532,8 @@ Store := [].{
 								Ok(h) => [index_path(started_folder, h)]
 								Err(Unresolved) => []
 							}
-						involved = List.map(humans_of(conv, accounts), |h| index_path(by_human_folder, h))
-						match append_each!(List.concat(started, involved), record) {
+						involved = humans_of(conv, accounts).map(|h| index_path(by_human_folder, h))
+						match append_each!(started.concat(involved), record) {
 							Failed => Failed
 							Appended => Host.write!(conversations_mark, mark_line(count + 1))
 						}
@@ -611,28 +611,28 @@ Store := [].{
 }
 
 accounts_path : List(U8)
-accounts_path = Str.to_utf8("auth/accounts")
+accounts_path = "auth/accounts".to_utf8()
 
 settings_path : List(U8)
-settings_path = Str.to_utf8("auth/settings")
+settings_path = "auth/settings".to_utf8()
 
 barred_path : List(U8)
-barred_path = Str.to_utf8("auth/barred")
+barred_path = "auth/barred".to_utf8()
 
 audit_path : List(U8)
-audit_path = Str.to_utf8("auth/audit")
+audit_path = "auth/audit".to_utf8()
 
 conversations_path : List(U8)
-conversations_path = Str.to_utf8("chat/conversations")
+conversations_path = "chat/conversations".to_utf8()
 
 conversation_path : ConvAccess.ConvId -> List(U8)
-conversation_path = |id| Str.to_utf8("chat/conversations/${id.to_u64().to_str()}")
+conversation_path = |id| "chat/conversations/${id.to_u64().to_str()}".to_utf8()
 
 transcript_path : ConvAccess.ConvId -> List(U8)
-transcript_path = |id| Str.to_utf8("chat/transcripts/${id.to_u64().to_str()}")
+transcript_path = |id| "chat/transcripts/${id.to_u64().to_str()}".to_utf8()
 
 offsets_path : ConvAccess.ConvId -> List(U8)
-offsets_path = |id| Str.to_utf8("chat/offsets/${id.to_u64().to_str()}")
+offsets_path = |id| "chat/offsets/${id.to_u64().to_str()}".to_utf8()
 
 ## Whether the offsets file holds one record for each message `tally`
 ## counts.
@@ -668,8 +668,8 @@ offset_width = 11
 
 offset_record : U64 -> List(U8)
 offset_record = |at| {
-	digits = Str.to_utf8(at.to_str())
-	if List.len(digits) >= offset_width {
+	digits = at.to_str().to_utf8()
+	if digits.len() >= offset_width {
 		crash "Store.offset_record: an offset past ten digits"
 	} else {
 		List.join([List.repeat('0', offset_width - 1 - List.len(digits)), digits, ['\n']])
@@ -678,26 +678,21 @@ offset_record = |at| {
 
 offset_of : List(U8) -> Try(U64, [Malformed])
 offset_of = |record|
-	if List.len(record) != offset_width or List.last(record) != Ok('\n') {
+	if record.len() != offset_width or record.last() != Ok('\n') {
 		Err(Malformed)
 	} else {
-		List.fold_try(
-			List.drop_last(record, 1),
-			0,
-			|n, c| if (c >= '0' and c <= '9') Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed),
-		)
+		record.drop_last(1).fold_try(0, |n, c| if (c >= '0' and c <= '9') Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed))
 	}
 
 ## Where each line of a transcript starts.
 line_starts : List(U8) -> List(U64)
 line_starts = |raw|
-	List.fold(
-		raw,
-		{ at: 0, starts: if (List.is_empty(raw)) [] else [0] },
+	raw.fold(
+		{ at: 0, starts: if (raw.is_empty()) [] else [0] },
 		|state, c| {
 			at = state.at + 1
-			if c == '\n' and at < List.len(raw) {
-				{ at, starts: List.append(state.starts, at) }
+			if c == '\n' and at < raw.len() {
+				{ at, starts: state.starts.append(at) }
 			} else {
 				{ at, starts: state.starts }
 			}
@@ -713,23 +708,23 @@ started_folder : Str
 started_folder = "chat/started-by"
 
 conversations_mark : List(U8)
-conversations_mark = Str.to_utf8("chat/indexed")
+conversations_mark = "chat/indexed".to_utf8()
 
 keys_folder : Str
 keys_folder = "auth/keys-by-human"
 
 keys_mark : List(U8)
-keys_mark = Str.to_utf8("auth/keys-indexed")
+keys_mark = "auth/keys-indexed".to_utf8()
 
 invites_folder : Str
 invites_folder = "auth/invites-by-human"
 
 invites_mark : List(U8)
-invites_mark = Str.to_utf8("auth/invites-indexed")
+invites_mark = "auth/invites-indexed".to_utf8()
 
 ## A human's file in an index's folder.
 index_path : Str, Principal.GitHubId -> List(U8)
-index_path = |folder, human| Str.to_utf8("${folder}/${human.to_u64().to_str()}")
+index_path = |folder, human| "${folder}/${human.to_u64().to_str()}".to_utf8()
 
 ## A secret's hash as an index's record: its hex, and a newline.
 hash_width : U64
@@ -739,7 +734,7 @@ hash_record : Stored.SecretHash -> List(U8)
 hash_record = |h| Str.to_utf8("${Stored.hash_text(h)}\n")
 
 mark_line : U64 -> List(U8)
-mark_line = |n| Str.to_utf8("${n.to_str()}\n")
+mark_line = |n| "${n.to_str()}\n".to_utf8()
 
 ## **IS THE INDEX UP TO DATE?** Its mark against `count`, the things
 ## stored: one missing is right only when none are.
@@ -750,7 +745,7 @@ is_marked! = |mark, count| {
 		Failed => Err(Failed)
 		Missing => Ok(count == 0)
 		Found =>
-			match List.split_last(read.bytes, '\n') {
+			match read.bytes.split_last('\n') {
 				Ok({ before, after: [] }) => Ok(Stored.count(before, "mark") == Ok(count))
 				_ => Ok(Bool.False)
 			}
@@ -766,9 +761,8 @@ conversations_indexed! = |accounts| {
 		Ok(count)
 	} else {
 		all = Store.load_conversations!({})?
-		involved = List.join_map(all, |c| List.map(humans_of(c, accounts), |h| (h, offset_record(c.id().to_u64()))))
-		started = List.join_map(
-			all,
+		involved = all.join_map(|c| humans_of(c, accounts).map(|h| (h, offset_record(c.id().to_u64()))))
+		started = all.join_map(
 			|c|
 				match starter_of(c, accounts) {
 					Ok(h) => [(h, offset_record(c.id().to_u64()))]
@@ -792,8 +786,7 @@ keys_indexed! = |accounts| {
 		Ok(count)
 	} else {
 		all = Store.load_keys!({})?
-		owned = List.join_map(
-			all,
+		owned = all.join_map(
 			|e|
 				match answerer_of(accounts, e.key.acts_as()) {
 					Ok(h) => [(h, hash_record(e.hash))]
@@ -816,8 +809,7 @@ invites_indexed! = |accounts| {
 		Ok(count)
 	} else {
 		all = Store.load_invites!({})?
-		owned = List.join_map(
-			all,
+		owned = all.join_map(
 			|i|
 				match answerer_of(accounts, i.bound.id) {
 					Ok(h) => [(h, hash_record(i.hash))]
@@ -836,7 +828,7 @@ invites_indexed! = |accounts| {
 answerer_of : List(Principal), Principal.Id -> Try(Principal.GitHubId, [Unresolved])
 answerer_of = |accounts, id|
 	match Principal.find(accounts, id) {
-		Ok(p) => Ok(Principal.answers_to(p))
+		Ok(p) => Ok(p.answers_to())
 		Err(_) => Err(Unresolved)
 	}
 
@@ -864,7 +856,7 @@ humans_of = |conv, accounts|
 		[],
 		|humans, b|
 			match Principal.find(accounts, b.id) {
-				Ok(p) if !List.contains(humans, Principal.answers_to(p)) => List.append(humans, Principal.answers_to(p))
+				Ok(p) if !humans.contains(p.answers_to()) => humans.append(p.answers_to())
 				_ => humans
 			},
 	)
@@ -873,10 +865,10 @@ humans_of = |conv, accounts|
 ## puts the starter first).
 starter_of : ConvAccess.Conv, List(Principal) -> Try(Principal.GitHubId, [Unresolved])
 starter_of = |conv, accounts|
-	match List.first(conv.participants()) {
+	match conv.participants().first() {
 		Ok(b) =>
 			match Principal.find(accounts, b.id) {
-				Ok(p) => Ok(Principal.answers_to(p))
+				Ok(p) => Ok(p.answers_to())
 				Err(_) => Err(Unresolved)
 			}
 		Err(_) => Err(Unresolved)
@@ -885,14 +877,13 @@ starter_of = |conv, accounts|
 ## Records gathered by human, each human's in the order given.
 grouped : List((Principal.GitHubId, List(U8))) -> List({ human : Principal.GitHubId, records : List(U8) })
 grouped = |pairs|
-	List.fold(
-		pairs,
+	pairs.fold(
 		[],
 		|groups, (human, record)|
-			if List.any(groups, |g| g.human == human) {
-				List.map(groups, |g| if (g.human == human) { human, records: List.concat(g.records, record) } else g)
+			if groups.any(|g| g.human == human) {
+				groups.map(|g| if (g.human == human) { human, records: g.records.concat(record) } else g)
 			} else {
-				List.append(groups, { human, records: record })
+				groups.append({ human, records: record })
 			},
 	)
 
@@ -905,10 +896,10 @@ rewrite_index! = |folder, groups| {
 		match listed.status {
 			Missing => []
 			Failed => return Err(Failed)
-			Found => List.map(listed.entries, |e| e.name)
+			Found => listed.entries.map(|e| e.name)
 		}
-	kept = List.map(groups, |g| Str.to_utf8(g.human.to_u64().to_str()))
-	removed!(folder, List.keep_if(existing, |name| !List.contains(kept, name)))?
+	kept = groups.map(|g| g.human.to_u64().to_str().to_utf8())
+	removed!(folder, existing.keep_if(|name| !kept.contains(name)))?
 	written!(folder, groups)
 }
 
@@ -954,8 +945,8 @@ load_records! = |path, width| {
 		Missing => Ok([])
 		Failed => Err(Failed)
 		Found =>
-			if List.len(read.bytes) % width == 0 {
-				Ok(List.chunks_of(read.bytes, width))
+			if read.bytes.len() % width == 0 {
+				Ok(read.bytes.chunks_of(width))
 			} else {
 				Err(Failed)
 			}
@@ -981,7 +972,7 @@ load_conversations_at! = |records, kept|
 			id = offset_of(record).map_err(|_| Failed)?
 			conv_id = ConvAccess.ConvId.from_u64(id).map_err(|_| Failed)?
 			conv = Store.load_conversation!(conv_id).map_err(|_| Failed)?
-			load_conversations_at!(rest, List.append(kept, conv))
+			load_conversations_at!(rest, kept.append(conv))
 		}
 	}
 
@@ -992,7 +983,7 @@ load_keys_at! = |records, kept|
 		[record, .. as rest] => {
 			hash = Stored.hash(List.drop_last(record, 1), "key").map_err(|_| Failed)?
 			match Store.load_key!(hash) {
-				Ok(e) => load_keys_at!(rest, List.append(kept, e))
+				Ok(e) => load_keys_at!(rest, kept.append(e))
 				Err(Missing) | Err(Malformed) => load_keys_at!(rest, kept)
 				Err(Failed) => Err(Failed)
 			}
@@ -1006,7 +997,7 @@ load_invites_at! = |records, kept|
 		[record, .. as rest] => {
 			hash = Stored.hash(List.drop_last(record, 1), "invite").map_err(|_| Failed)?
 			match Store.load_invite!(hash) {
-				Ok(i) => load_invites_at!(rest, List.append(kept, i))
+				Ok(i) => load_invites_at!(rest, kept.append(i))
 				Err(Missing) | Err(Malformed) => load_invites_at!(rest, kept)
 				Err(Failed) => Err(Failed)
 			}
@@ -1014,16 +1005,16 @@ load_invites_at! = |records, kept|
 	}
 
 tally_path : ConvAccess.ConvId -> List(U8)
-tally_path = |id| Str.to_utf8("chat/tallies/${id.to_u64().to_str()}")
+tally_path = |id| "chat/tallies/${id.to_u64().to_str()}".to_utf8()
 
 ## A tally's file: `<messages> <bytes>` and a newline.
 tally_line : Store.Tally -> List(U8)
-tally_line = |t| Str.to_utf8("${t.messages.to_str()} ${t.bytes.to_str()}\n")
+tally_line = |t| "${t.messages.to_str()} ${t.bytes.to_str()}\n".to_utf8()
 
 tally_of : List(U8) -> Try(Store.Tally, [Malformed])
 tally_of = |bytes|
-	match List.split_on(bytes, ' ') {
-		[messages, rest] if List.last(rest) == Ok('\n') =>
+	match bytes.split_on(' ') {
+		[messages, rest] if rest.last() == Ok('\n') =>
 			match (Stored.count(messages, "messages"), Stored.count(List.drop_last(rest, 1), "bytes")) {
 				(Ok(m), Ok(b)) => Ok({ messages: m, bytes: b })
 				_ => Err(Malformed)
@@ -1032,8 +1023,8 @@ tally_of = |bytes|
 	}
 
 expect tally_of(tally_line({ messages: 3, bytes: 120 })) == Ok({ messages: 3, bytes: 120 })
-expect tally_of(Str.to_utf8("3 120")) == Err(Malformed)
-expect tally_of(Str.to_utf8("03 120\n")) == Err(Malformed)
+expect tally_of("3 120".to_utf8()) == Err(Malformed)
+expect tally_of("03 120\n".to_utf8()) == Err(Malformed)
 
 ## A session's file, named for its secret's hash: found only by one who
 ## holds the secret, with no compare to time.
@@ -1041,14 +1032,14 @@ session_path : Stored.SecretHash -> List(U8)
 session_path = |h| Str.to_utf8("auth/sessions/${Stored.hash_text(h)}")
 
 keys_path : List(U8)
-keys_path = Str.to_utf8("auth/keys")
+keys_path = "auth/keys".to_utf8()
 
 ## A key's file, named for its secret's hash, as a session's is.
 key_path : Stored.SecretHash -> List(U8)
 key_path = |h| Str.to_utf8("auth/keys/${Stored.hash_text(h)}")
 
 invites_path : List(U8)
-invites_path = Str.to_utf8("auth/invites")
+invites_path = "auth/invites".to_utf8()
 
 ## An invite's file, named for its code's hash, as a key's is.
 invite_path : Stored.SecretHash -> List(U8)
@@ -1086,7 +1077,7 @@ collect_invites! = |entries, kept|
 				Missing => collect_invites!(rest, kept)
 				Found =>
 					match InviteCodec.decode(read.bytes, ConvAccess.ConvId.from_u64) {
-						Ok(r) => collect_invites!(rest, List.append(kept, r))
+						Ok(r) => collect_invites!(rest, kept.append(r))
 						Err(_) => collect_invites!(rest, kept)
 					}
 			}
@@ -1122,7 +1113,7 @@ collect_keys! = |entries, kept|
 				Missing => collect_keys!(rest, kept)
 				Found =>
 					match ConvKey.decode(read.bytes) {
-						Ok(e) => collect_keys!(rest, List.append(kept, e))
+						Ok(e) => collect_keys!(rest, kept.append(e))
 						Err(_) => collect_keys!(rest, kept)
 					}
 			}
@@ -1139,8 +1130,8 @@ spent_path = |set, nonce| {
 	List.concat(Str.to_utf8("auth/spent/${kind}/"), SignInWeb.hex(nonce))
 }
 
-expect spent_path(State, [0xAB]) == Str.to_utf8("auth/spent/state/ab")
-expect spent_path(Pending, [0x01]) == Str.to_utf8("auth/spent/pending/01")
+expect spent_path(State, [0xAB]) == "auth/spent/state/ab".to_utf8()
+expect spent_path(Pending, [0x01]) == "auth/spent/pending/01".to_utf8()
 
 ## **THE SETTINGS' RECORD**: the generation the next account is given,
 ## and the id the next agent or bot is given.
@@ -1190,9 +1181,9 @@ barred_line = |id| Stored.line("barred", [("github", id.to_u64().to_str())])
 barred_of : List(U8) -> Try(List(Principal.GitHubId), Stored.Problem)
 barred_of = |raw|
 	List.map_try(
-		List.drop_last(List.split_on(raw, '\n'), 1),
+		raw.split_on('\n').drop_last(1),
 		|line| {
-			fields = Stored.Reader.open(List.append(line, '\n'), "barred")?
+			fields = Stored.Reader.open(line.append('\n'), "barred")?
 			github_field = fields.field("github")?
 			github = Stored.id(
 				github_field.value,
@@ -1216,24 +1207,24 @@ expect settings_line({
 	barred: [],
 	next_generation: Cast.gen(3),
 	next_agent_id: Cast.aid(8),
-}) == Str.to_utf8("settings v1 next=3 agent=8\n")
-expect settings_counters(Str.to_utf8("settings v1 next=0\n")) == Err(BadValue("next"))
+}) == "settings v1 next=3 agent=8\n".to_utf8()
+expect settings_counters("settings v1 next=0\n".to_utf8()) == Err(BadValue("next"))
 # A line from before the agent-id counter reads, holding none; a damaged
 # counter is refused, never read as missing.
-expect settings_counters(Str.to_utf8("settings v1 next=3\n")) == Ok({
+expect settings_counters("settings v1 next=3\n".to_utf8()) == Ok({
 	next: Cast.gen(3),
 	agent: Unkept,
 })
-expect settings_counters(Str.to_utf8("settings v1 next=3 agent=0\n")) == Err(BadValue("agent"))
-expect settings_counters(Str.to_utf8("settings v1 next=3 agents=4\n")) == Err(MissingField("agent"))
-expect settings_counters(Str.to_utf8("settings v1 next=3 agent=4 x=1\n")) == Err(Trailing)
+expect settings_counters("settings v1 next=3 agent=0\n".to_utf8()) == Err(BadValue("agent"))
+expect settings_counters("settings v1 next=3 agents=4\n".to_utf8()) == Err(MissingField("agent"))
+expect settings_counters("settings v1 next=3 agent=4 x=1\n".to_utf8()) == Err(Trailing)
 
 barred_ids : List(Principal.GitHubId)
 barred_ids = [Cast.gid(7), Cast.gid(583231)]
 
-expect barred_of(List.join_map(barred_ids, barred_line)) == Ok(barred_ids)
+expect barred_of(barred_ids.join_map(barred_line)) == Ok(barred_ids)
 expect barred_of([]) == Ok([])
-expect barred_of(Str.to_utf8("barred v1 github=x\n")) == Err(BadNumber("github"))
+expect barred_of("barred v1 github=x\n".to_utf8()) == Err(BadNumber("github"))
 
 ## **ONE PAST THE COUNT OF A FOLDER'S ENTRIES**: the next id of a record that
 ## is never removed (a key, an invite, a conversation), so no id is given
@@ -1244,15 +1235,15 @@ load_one_past_count! = |folder| {
 	match listed.status {
 		Missing => Ok(1)
 		Failed => Err(Failed)
-		Found => Ok(List.len(listed.entries) + 1)
+		Found => Ok(listed.entries.len() + 1)
 	}
 }
-expect offset_record(0) == Str.to_utf8("0000000000\n")
-expect offset_record(4_000_000) == Str.to_utf8("0004000000\n")
+expect offset_record(0) == "0000000000\n".to_utf8()
+expect offset_record(4_000_000) == "0004000000\n".to_utf8()
 expect offset_of(offset_record(123)) == Ok(123)
-expect offset_of(Str.to_utf8("000000012\n")) == Err(Malformed)
-expect offset_of(Str.to_utf8("00000001x2\n")) == Err(Malformed)
-expect line_starts(Str.to_utf8("ab\nc\n\nd\n")) == [0, 3, 5, 6]
+expect offset_of("000000012\n".to_utf8()) == Err(Malformed)
+expect offset_of("00000001x2\n".to_utf8()) == Err(Malformed)
+expect line_starts("ab\nc\n\nd\n".to_utf8()) == [0, 3, 5, 6]
 expect line_starts([]) == []
 expect grouped([]) == []
-expect mark_line(12) == Str.to_utf8("12\n")
+expect mark_line(12) == "12\n".to_utf8()

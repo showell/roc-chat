@@ -76,11 +76,11 @@ Access := [].{
 				Refused(IdleExpired) | Refused(AbsoluteExpired) => Err(SessionExpired)
 				Refused(NoSuchAccount) => Err(NoSuchAccount)
 				Admitted({ principal, write }) => {
-					g = Principal.generation(principal)
+					g = principal.generation()
 					Ok({
 						viewer: Access.Viewer.(
 							Session({
-								id: Principal.id(principal),
+								id: principal.id(),
 								generation: g,
 								human: g,
 							}),
@@ -238,11 +238,11 @@ is_answerable_by = |who, resource| is_answerable(resource, who)
 ## answers to: bound to the same accounts, never only the same id.
 is_answerable : Access.Resource(id), Principal.Bound -> Bool
 is_answerable = |resource, who|
-	if List.contains(resource.participants, who) {
+	if resource.participants.contains(who) {
 		Bool.True
 	} else {
 		match who.id {
-			Human(_) => List.contains(resource.involved, who)
+			Human(_) => resource.involved.contains(who)
 			Agent(_) | Bot(_) => Bool.False
 		}
 	}
@@ -253,7 +253,7 @@ is_reached = |part, id|
 	match part {
 		Off => Bool.False
 		On(Everywhere) => Bool.True
-		On(Only(ids)) => List.contains(ids, id)
+		On(Only(ids)) => ids.contains(id)
 	}
 
 # ── tests
@@ -300,7 +300,7 @@ key_for = |
 		expires,
 	},
 | {
-	owner = Principal.answers_to(acts_as)
+	owner = acts_as.answers_to()
 	g =
 		match Principal.human_account(among, owner) {
 			Ok(h) => h.generation.to_u64()
@@ -309,7 +309,7 @@ key_for = |
 	match ApiKey.Key.issue(
 		{
 			granter: Session(session_of(owner.to_u64(), g)),
-			acts_as: Principal.id(acts_as),
+			acts_as: acts_as.id(),
 			scope,
 			accounts: among,
 			now: 10,

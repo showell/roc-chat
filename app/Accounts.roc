@@ -52,7 +52,7 @@ Accounts := [].{
 
 	## A login's bytes in lower case: GitHub's logins ignore case.
 	lowered_login : Str -> List(U8)
-	lowered_login = |login| List.map(Str.to_utf8(login), Ascii.to_lowercase)
+	lowered_login = |login| login.to_utf8().map(Ascii.to_lowercase)
 
 	## **WHAT A CHANGE'S STEPS LEAVE**: `accounts` and `settings` with each
 	## step made, in order; the one home of what a step means.
@@ -62,16 +62,15 @@ Accounts := [].{
 		settings : Accounts.Settings,
 	} -> { accounts : List(Principal), settings : Accounts.Settings }
 	applied = |steps, start|
-		List.fold(
-			steps,
+		steps.fold(
 			start,
 			|{ accounts, settings }, step|
 				match step {
 					AddAccount(account) =>
-						if List.any(accounts, |a| Principal.id(a) == Principal.id(account)) {
+						if accounts.any(|a| a.id() == account.id()) {
 							{ accounts, settings }
 						} else {
-							{ accounts: List.append(accounts, account), settings }
+							{ accounts: accounts.append(account), settings }
 						}
 					SetLogin({ human, login }) =>
 						{
@@ -117,7 +116,7 @@ Accounts := [].{
 	)
 	next_agent_id = |accounts, settings| {
 		this = settings.next_agent_id
-		if List.any(accounts, |a| agent_id_of(a) >= this.to_u64()) {
+		if accounts.any(|a| agent_id_of(a) >= this.to_u64()) {
 			Err(StaleAgentId)
 		} else {
 			match this.next() {
@@ -133,11 +132,7 @@ Accounts := [].{
 	## valid; from then on, the stored counter alone.
 	agent_id_after : List(Principal) -> Try(Principal.AgentId, [AgentIdsExhausted])
 	agent_id_after = |accounts| {
-		most = List.fold(
-			accounts,
-			0,
-			|m, a| if (agent_id_of(a) > m) agent_id_of(a) else m,
-		)
+		most = accounts.fold(0, |m, a| if (agent_id_of(a) > m) agent_id_of(a) else m)
 		if (most == u64_most) Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
 	}
 
@@ -152,7 +147,7 @@ Accounts := [].{
 	)
 	next_generation = |accounts, settings| {
 		this = settings.next_generation
-		if List.any(accounts, |a| Principal.generation(a).to_u64() >= this.to_u64()) {
+		if accounts.any(|a| a.generation().to_u64() >= this.to_u64()) {
 			Err(StaleGeneration)
 		} else {
 			match this.next() {
@@ -185,8 +180,7 @@ with_human = |
 	human,
 	change,
 |
-	List.map(
-		accounts,
+	accounts.map(
 		|p|
 			match p {
 				Human(h) if h.id == human => Principal.Human(change(h))

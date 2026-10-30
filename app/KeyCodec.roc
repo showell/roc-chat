@@ -251,7 +251,7 @@ reach_text_of = |part, number|
 		Off => spell_switch(Off)
 		On(Everywhere) => everywhere_word
 		On(Only(ids)) =>
-			match ascending_once(List.map(ids, number)) {
+			match ascending_once(ids.map(number)) {
 				[] => spell_switch(Off)
 				numbers => "${only_prefix}${Str.join_with(List.map(numbers, U64.to_str), ",")}"
 			}
@@ -260,13 +260,12 @@ reach_text_of = |part, number|
 ## The numbers ascending, each once.
 ascending_once : List(U64) -> List(U64)
 ascending_once = |numbers|
-	List.fold(
-		numbers,
+	numbers.fold(
 		[],
 		|sorted, n| {
-			below = List.keep_if(sorted, |m| m < n)
-			above = List.keep_if(sorted, |m| m > n)
-			List.concat(List.append(below, n), above)
+			below = sorted.keep_if(|m| m < n)
+			above = sorted.keep_if(|m| m > n)
+			below.append(n).concat(above)
 		},
 	)
 
@@ -276,9 +275,9 @@ reach_from_text : List(U8),
 	make : (U64 -> Try(id, [NotAnId])),
 } -> Try(ReachPart(id), Stored.Problem)
 reach_from_text = |value, { name, make }|
-	if value == Str.to_utf8(spell_switch(Off)) {
+	if value == spell_switch(Off).to_utf8() {
 		Ok(Off)
-	} else if value == Str.to_utf8(everywhere_word) {
+	} else if value == everywhere_word.to_utf8() {
 		Ok(On(Everywhere))
 	} else {
 		match Bytes.strip_prefix(value, Str.to_utf8(only_prefix)) {
@@ -289,8 +288,7 @@ reach_from_text = |value, { name, make }|
 				if ascending_once(numbers) != numbers {
 					Err(BadValue(name))
 				} else {
-					ids = List.map_try(
-						numbers,
+					ids = numbers.map_try(
 						|n|
 							match make(n) {
 								Ok(made) => Ok(made)
@@ -390,15 +388,15 @@ is_kept : KeyCodec.Entry(Conv) -> Bool
 is_kept = |e| read_back(encoded(e)) == Ok(e)
 
 hex5a : Str
-hex5a = Str.repeat("5a", 32)
+hex5a = "5a".repeat(32)
 
 narrow_line : Str
 narrow_line = "key v1 id=4 acts=agent:7 generation=4 human-generation=3 hash=${hex5a} created=1761600000 expires=1793136000 state=active read=only:3,9 post=off admin=off\n"
 
-expect encoded(entry(narrow)) == Str.to_utf8(narrow_line)
+expect encoded(entry(narrow)) == narrow_line.to_utf8()
 expect
 	encoded(entry(broad))
-		== Str.to_utf8("key v1 id=18446744073709551615 acts=human:583231 generation=18446744073709551615 human-generation=18446744073709551615 hash=${hex5a} created=1761600000 expires=1761609999 state=revoked read=everywhere post=only:1 admin=on\n")
+		== "key v1 id=18446744073709551615 acts=human:583231 generation=18446744073709551615 human-generation=18446744073709551615 hash=${hex5a} created=1761600000 expires=1761609999 state=revoked read=everywhere post=only:1 admin=on\n".to_utf8()
 
 # Round trips: every part at each of its values.
 expect is_kept(entry(narrow))
@@ -441,7 +439,7 @@ expect
 
 # **THE SCOPE IS THE RECORD'S, EXACTLY**: the narrow key decodes narrow;
 # its admin stays off.
-expect read_back(Str.to_utf8(narrow_line)).map_ok(|e| e.record.scope) == Ok(narrow.scope)
+expect read_back(narrow_line.to_utf8()).map_ok(|e| e.record.scope) == Ok(narrow.scope)
 
 # **ONE SPELLING PER VALUE**: the encoder
 # writes a list ascending, each once, and an empty one `off`; the decoder
@@ -455,9 +453,9 @@ expect with_read(
 		conv(3),
 		conv(3),
 	]),
-) == Str.to_utf8(narrow_line)
-expect with_read(Only([conv(3), conv(9)])) == Str.to_utf8(narrow_line)
-expect with_read(Only([])) == Str.to_utf8(narrow_line.replace_first("read=only:3,9", "read=off"))
+) == narrow_line.to_utf8()
+expect with_read(Only([conv(3), conv(9)])) == narrow_line.to_utf8()
+expect with_read(Only([])) == narrow_line.replace_first("read=only:3,9", "read=off").to_utf8()
 expect ascending_once([
 	9,
 	3,
@@ -473,7 +471,7 @@ expect ascending_once([]) == []
 
 # ── THE MALFORMED TABLE: each line, its named problem.
 decoded : Str -> Try({}, Stored.Problem)
-decoded = |text| KeyCodec.decode(Str.to_utf8(text), Conv.from_u64).map_ok(|_| {})
+decoded = |text| KeyCodec.decode(text.to_utf8(), Conv.from_u64).map_ok(|_| {})
 
 ## The narrow line with `from` replaced by `to`.
 narrow_but : { from : Str, to : Str } -> Str
@@ -527,7 +525,7 @@ expect decoded(
 	}),
 ) == Ok({})
 expect decoded(narrow_but({ from: "hash=", to: "hash=0" })) == Err(BadValue("hash"))
-expect decoded(narrow_but({ from: hex5a, to: Str.repeat("5A", 32) })) == Err(BadValue("hash"))
+expect decoded(narrow_but({ from: hex5a, to: "5A".repeat(32) })) == Err(BadValue("hash"))
 expect decoded(narrow_but({ from: "hash=${hex5a} ", to: "" })) == Err(MissingField("hash"))
 expect decoded(
 	narrow_but({

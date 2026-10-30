@@ -168,13 +168,13 @@ Session :: SessionCodec.Fields.{
 	## one asking included, live or not; nobody else's.
 	log_out_everywhere : List(Session), Principal.GitHubId -> List(Principal.SessionId)
 	log_out_everywhere = |sessions, whose|
-		List.keep_if(sessions, |s| s.human() == whose).map(Session.id)
+		sessions.keep_if(|s| s.human() == whose).map(Session.id)
 
 	## **THE SWEEP**: of `sessions`, every one over at `now`, for the host
 	## to delete.
 	sweep : List(Session), I64 -> List(Principal.SessionId)
 	sweep = |sessions, now|
-		List.keep_if(sessions, |s| s.liveness(now) != Live).map(Session.id)
+		sessions.keep_if(|s| s.liveness(now) != Live).map(Session.id)
 
 	is_eq : _
 }
@@ -205,7 +205,7 @@ seen_line = |
 		seen,
 	},
 |
-	stored("session v1 id=${n.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("01", 32)} created=${at.to_str()} seen=${seen.to_str()}\n")
+	stored("session v1 id=${n.to_str()} human=${who.to_str()} generation=1 token=${"01".repeat(32)} created=${at.to_str()} seen=${seen.to_str()}\n")
 
 ## Session `n` of human `who`, created and seen at `at`.
 opened : {
@@ -334,7 +334,7 @@ admitted = |session, { among, now }|
 		Refused(why) => Refused(why)
 		Admitted({ principal, write }) =>
 			Admitted({
-				principal: Principal.id(principal),
+				principal: principal.id(),
 				write: match write {
 					Unchanged => Unchanged
 					Touched(s) => Touched(s.fields().last_seen)
@@ -343,15 +343,15 @@ admitted = |session, { among, now }|
 	}
 
 expect admitted(s1, { among: [ann, bea], now: 100000 }) == Admitted({
-	principal: Principal.id(ann),
+	principal: ann.id(),
 	write: Unchanged,
 })
 expect admitted(s1, { among: [ann, bea], now: 100299 }) == Admitted({
-	principal: Principal.id(ann),
+	principal: ann.id(),
 	write: Unchanged,
 })
 expect admitted(s1, { among: [ann, bea], now: 100300 }) == Admitted({
-	principal: Principal.id(ann),
+	principal: ann.id(),
 	write: Touched(100300),
 })
 expect admitted(s1, { among: [ann, bea], now: 100000 + day }) == Refused(IdleExpired)
@@ -447,7 +447,7 @@ late = seen_line({
 
 expect admitted(late, { among: [ann], now: Stored.max_time + 100 }) == Refused(AbsoluteExpired)
 expect admitted(late, { among: [ann], now: Stored.max_time }) == Admitted({
-	principal: Principal.id(ann),
+	principal: ann.id(),
 	write: Unchanged,
 })
 
@@ -455,7 +455,7 @@ expect admitted(late, { among: [ann], now: Stored.max_time }) == Admitted({
 ## GitHub id `who`, known at `now` through the flow's steps.
 known_by : U64, I64 -> Try(GitHubSignIn.IdentityKnown, GitHubSignIn.Refusal)
 known_by = |who, now| {
-	nonce = Str.to_utf8("q7Zr2Lx9q7Zr2Lx9")
+	nonce = "q7Zr2Lx9q7Zr2Lx9".to_utf8()
 	started =
 		match GitHubSignIn.Started.start({ nonce, now }) {
 			Ok(s) => s
@@ -463,14 +463,14 @@ known_by = |who, now| {
 		}
 	back = GitHubSignIn.CameBack.came_back({
 		state: Signed(started.state()),
-		answer: Code(Str.to_utf8("c0de")),
+		answer: Code("c0de".to_utf8()),
 	})?
 	checked = back.check({
 		cookie: Sent(nonce),
 		now,
 		nonce_use: FirstUse,
 	})?
-	checked.identify(Identified({ id: who, login: Str.to_utf8("ann") }))
+	checked.identify(Identified({ id: who, login: "ann".to_utf8() }))
 }
 
 ## A sign-in by GitHub id `who` at `now`, through every step of the flow,
@@ -520,7 +520,7 @@ flowed = signed_in({
 
 expect flowed.fields() == { ..s1.fields(), id: Cast.sid(9) }
 expect admitted(flowed, { among: [ann], now: 100000 }) == Admitted({
-	principal: Principal.id(ann),
+	principal: ann.id(),
 	write: Unchanged,
 })
 expect admitted(flowed, { among: [ann_again], now: 100000 }) == Refused(NoSuchAccount)

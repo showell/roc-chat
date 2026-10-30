@@ -213,7 +213,7 @@ Principal := [
 	## ever taken for the account. Every decision finds through here.
 	find : List(Principal), Principal.Id -> Try(Principal, [NoSuchPrincipal, Duplicated])
 	find = |accounts, wanted|
-		match List.keep_if(accounts, |p| Principal.id(p) == wanted) {
+		match accounts.keep_if(|p| Principal.id(p) == wanted) {
 			[only] => Ok(only)
 			[] => Err(NoSuchPrincipal)
 			_ => Err(Duplicated)
@@ -274,8 +274,7 @@ Principal := [
 	## pair, the later) is the one a scan in order would meet first.
 	unique : List(Principal) -> Try(List(Principal), [DuplicateId(Principal.Id)])
 	unique = |accounts| {
-		keyed = List.map_with_index(
-			accounts,
+		keyed = accounts.map_with_index(
 			|p, at| {
 				(kind, number) =
 					match Principal.id(p) {
@@ -285,8 +284,7 @@ Principal := [
 				{ kind, number, at }
 			},
 		)
-		sorted = List.sort_with(
-			keyed,
+		sorted = keyed.sort_with(
 			|x, y|
 				if x.kind != y.kind {
 					if (x.kind < y.kind) Before else After
@@ -300,11 +298,10 @@ Principal := [
 					Same
 				},
 		)
-		first_dup = List.fold_with_index(
-			sorted,
-			List.len(accounts),
+		first_dup = sorted.fold_with_index(
+			accounts.len(),
 			|earliest, k, i|
-				match List.get(sorted, i + 1) {
+				match sorted.get(i + 1) {
 					Ok(next) =>
 						if next.kind == k.kind and next.number == k.number and next.at < earliest {
 							next.at
@@ -314,7 +311,7 @@ Principal := [
 					Err(_) => earliest
 				},
 		)
-		match List.get(accounts, first_dup) {
+		match accounts.get(first_dup) {
 			Ok(p) => Err(DuplicateId(Principal.id(p)))
 			Err(_) => Ok(accounts)
 		}
@@ -436,11 +433,11 @@ forged_ann_agent : Principal
 forged_ann_agent = owned(Agent, { id: 3, owner: 1 })
 
 expect Principal.find(
-	List.prepend(accounts, forged_ann_agent),
+	accounts.prepend(forged_ann_agent),
 	Principal.id(ann_agent),
 ).map_ok(Principal.id) == Err(Duplicated)
 expect Principal.find(
-	List.append(accounts, forged_ann_agent),
+	accounts.append(forged_ann_agent),
 	Principal.id(ann_agent),
 ).map_ok(Principal.id) == Err(Duplicated)
 
@@ -466,7 +463,7 @@ ann_admin_copy : Principal
 ann_admin_copy = person(2, Admin)
 
 with_ann_twice : List(Principal)
-with_ann_twice = List.prepend(accounts, ann_admin_copy)
+with_ann_twice = accounts.prepend(ann_admin_copy)
 
 expect Principal.authority(ann_admin_copy, accounts) == Member
 expect Principal.authority(ann, with_ann_twice) == Member
@@ -486,10 +483,7 @@ expect loaded(accounts) == Ok({})
 expect loaded([]) == Ok({})
 expect loaded(with_ann_twice) == Err(DuplicateId(Principal.Id.Human(gid(2))))
 expect loaded(
-	List.append(
-		accounts,
-		forged_ann_agent,
-	),
+	accounts.append(forged_ann_agent),
 ) == Err(DuplicateId(Principal.Id.Agent(aid(3))))
 expect loaded([
 	boss_agent,
@@ -530,8 +524,7 @@ expect Principal.holds(
 ## `accounts`, with `who` swapped for the same id at generation 2.
 remade : Principal -> List(Principal)
 remade = |who|
-	List.map(
-		accounts,
+	accounts.map(
 		|p|
 			if Principal.id(p) != Principal.id(who) {
 				p
@@ -549,4 +542,4 @@ remade = |who|
 expect Principal.holds(remade(ann_agent), ann_agent_bound).is_err()
 expect Principal.holds(remade(ann), ann_agent_bound).is_err()
 expect Principal.holds([boss, ann], ann_agent_bound).is_err()
-expect Principal.holds(List.append(accounts, forged_ann_agent), ann_agent_bound).is_err()
+expect Principal.holds(accounts.append(forged_ann_agent), ann_agent_bound).is_err()

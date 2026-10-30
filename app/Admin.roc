@@ -220,18 +220,16 @@ Admin := [].{
 		settings : Accounts.Settings,
 	} -> { accounts : List(Principal), settings : Accounts.Settings }
 	applied = |plan, start|
-		List.fold(
-			plan,
+		plan.fold(
 			start,
 			|{ accounts, settings }, step|
 				match step {
 					RemoveAccount(id) => {
-						accounts: List.keep_if(accounts, |p| Principal.id(p) != id),
+						accounts: accounts.keep_if(|p| p.id() != id),
 						settings,
 					}
 					SetRole({ human, role }) => {
-						accounts: List.map(
-							accounts,
+						accounts: accounts.map(
 							|p|
 								match p {
 									Human(h) if h.id == human => Principal.Human({ ..h, role })
@@ -241,14 +239,14 @@ Admin := [].{
 						settings,
 					}
 					Bar(human) =>
-						if List.contains(settings.barred, human) {
+						if settings.barred.contains(human) {
 							{ accounts, settings }
 						} else {
 							{
 								accounts,
 								settings: {
 									..settings,
-									barred: List.append(settings.barred, human),
+									barred: settings.barred.append(human),
 								},
 							}
 						}
@@ -416,17 +414,16 @@ planned = |action, { accounts, settings }| {
 ## keys revoked; their public votes withdrawn; their account removed last.
 retirement : Principal.GitHubId, List(Principal) -> List(Admin.Step)
 retirement = |human, accounts| {
-	owned = List.join_map(
-		accounts,
+	owned = accounts.join_map(
 		|p|
 			match p {
 				Agent(a) if a.owner == human => [
-					RevokeKeysOf(Principal.id(p)),
-					RemoveAccount(Principal.id(p)),
+					RevokeKeysOf(p.id()),
+					RemoveAccount(p.id()),
 				]
 				Bot(b) if b.owner == human => [
-					RevokeKeysOf(Principal.id(p)),
-					RemoveAccount(Principal.id(p)),
+					RevokeKeysOf(p.id()),
+					RemoveAccount(p.id()),
 				]
 				_ => []
 			},
@@ -443,8 +440,7 @@ retirement = |human, accounts| {
 ## Some human among `accounts` is an admin.
 has_admin : List(Principal) -> Bool
 has_admin = |accounts|
-	List.any(
-		accounts,
+	accounts.any(
 		|p|
 			match p {
 				Human(h) => h.role == Admin
@@ -457,8 +453,8 @@ is_own_authority : Admin.Action, Principal -> Bool
 is_own_authority = |action, actor|
 	match action {
 		Retire(target) => {
-			backer = Principal.Id.Human(Principal.answers_to(actor))
-			target == Principal.id(actor) or target == backer
+			backer = Principal.Id.Human(actor.answers_to())
+			target == actor.id() or target == backer
 		}
 		ListAccounts | RevokeKeys(_) | RevokeSessions(_) | SetRole(_) | ReadCounters => Bool.False
 	}
@@ -467,7 +463,7 @@ is_own_authority = |action, actor|
 is_own_role : Admin.Action, Principal -> Bool
 is_own_role = |action, actor|
 	match action {
-		SetRole({ human, role: _ }) => human == Principal.answers_to(actor)
+		SetRole({ human, role: _ }) => human == actor.answers_to()
 		ListAccounts | Retire(_) | RevokeKeys(_) | RevokeSessions(_) | ReadCounters => Bool.False
 	}
 
@@ -586,11 +582,11 @@ key_for = |acts_as, { scope, key }|
 			granter: Session(
 				session_of({
 					n: 9,
-					who: Principal.answers_to(acts_as).to_u64(),
+					who: acts_as.answers_to().to_u64(),
 					at: 100000,
 				}),
 			),
-			acts_as: Principal.id(acts_as),
+			acts_as: acts_as.id(),
 			scope,
 			accounts,
 			now: 100000,
@@ -719,13 +715,13 @@ lists = |credential, at| audited({ credential, action: ListAccounts }, at).verdi
 
 # The actions.
 retire_ann_agent : Admin.Action
-retire_ann_agent = Retire(Principal.id(Cast.ann_agent))
+retire_ann_agent = Retire(Cast.ann_agent.id())
 
 retire_boss : Admin.Action
-retire_boss = Retire(Principal.id(Cast.boss))
+retire_boss = Retire(Cast.boss.id())
 
 revoke_ann_keys : Admin.Action
-revoke_ann_keys = RevokeKeys(Principal.id(Cast.ann))
+revoke_ann_keys = RevokeKeys(Cast.ann.id())
 
 revoke_ann_sessions : Admin.Action
 revoke_ann_sessions = RevokeSessions(Cast.gid(2))
@@ -734,10 +730,10 @@ promote_ann : Admin.Action
 promote_ann = SetRole({ human: Cast.gid(2), role: Admin })
 
 retire_cal : Admin.Action
-retire_cal = Retire(Principal.id(cal))
+retire_cal = Retire(cal.id())
 
 revoke_cal_agent_keys : Admin.Action
-revoke_cal_agent_keys = RevokeKeys(Principal.id(cal_agent))
+revoke_cal_agent_keys = RevokeKeys(cal_agent.id())
 
 # ── THE ADMIN TABLE
 # Every credential against every action.
@@ -832,7 +828,7 @@ demoted = [Cast.boss_demoted, Cast.boss_agent]
 # demoted, and once expired (it expires at 101000).
 expect verdict(
 	boss_agent_key,
-	Retire(Principal.id(Cast.boss_agent)),
+	Retire(Cast.boss_agent.id()),
 ) == Refused(RetiresOwnAuthority)
 expect lists(boss_session, { among: [Cast.ann], now: 100500 }) == Refused(NoSuchPrincipal)
 expect lists(boss_session, { among: [Cast.boss_demoted], now: 100500 }) == Refused(NotAdmin)
@@ -860,7 +856,7 @@ expect verdict(
 # A key on an admin's own side touches no admin either: boss's sessions,
 # boss's agent's keys (itself included) take boss's session.
 expect verdict(boss_agent_key, RevokeSessions(Cast.gid(1))) == Refused(NeedsSession)
-expect verdict(boss_agent_key, RevokeKeys(Principal.id(Cast.boss_agent))) == Refused(NeedsSession)
+expect verdict(boss_agent_key, RevokeKeys(Cast.boss_agent.id())) == Refused(NeedsSession)
 expect verdict(boss_agent_key, RevokeSessions(Cast.gid(4))) == Refused(NeedsSession)
 # A target no account holds touches no admin: its keys may be revoked.
 expect verdict(boss_agent_key, RevokeKeys(Principal.Id.Agent(Cast.aid(9)))) == Permitted
@@ -926,7 +922,7 @@ after_boss_retired_cal = Admin.applied(
 	{ accounts: two_admins, settings },
 ).accounts
 
-expect List.map(after_boss_retired_cal, Principal.id) == [Principal.id(Cast.boss)]
+expect after_boss_retired_cal.map(Principal.id) == [Cast.boss.id()]
 expect verdict_among(
 	cal_session,
 	retire_boss,
@@ -946,7 +942,7 @@ expect verdict_among(
 left : List(Admin.Step) -> List(Principal)
 left = |plan| Admin.applied(plan, { accounts, settings }).accounts
 
-expect !has_admin(left([RemoveAccount(Principal.id(Cast.boss)), RemoveAccount(Principal.id(cal))]))
+expect !has_admin(left([RemoveAccount(Cast.boss.id()), RemoveAccount(cal.id())]))
 expect !has_admin(
 	left([
 		SetRole({ human: Cast.gid(1), role: Member }),
@@ -954,7 +950,7 @@ expect !has_admin(
 	]),
 )
 expect has_admin(left([SetRole({ human: Cast.gid(1), role: Member })]))
-expect planned(Retire(Principal.id(cal)), { accounts: [cal], settings }) == Err(LastAdmin)
+expect planned(Retire(cal.id()), { accounts: [cal], settings }) == Err(LastAdmin)
 expect planned(
 	SetRole({ human: Cast.gid(4), role: Member }),
 	{ accounts: [cal, Cast.ann], settings },
@@ -965,32 +961,32 @@ expect planned(
 # agent and her bot retired with their keys; her votes withdrawn; her
 # account removed last. Retiring an agent: its keys, and its account.
 expect
-	plan_of(boss_session, Retire(Principal.id(Cast.ann)))
+	plan_of(boss_session, Retire(Cast.ann.id()))
 		== [
 			Bar(Cast.gid(2)),
 			RevokeSessionsOf(Cast.gid(2)),
-			RevokeKeysOf(Principal.id(Cast.ann)),
-			RevokeKeysOf(Principal.id(Cast.ann_agent)),
-			RemoveAccount(Principal.id(Cast.ann_agent)),
-			RevokeKeysOf(Principal.id(ann_bot)),
-			RemoveAccount(Principal.id(ann_bot)),
+			RevokeKeysOf(Cast.ann.id()),
+			RevokeKeysOf(Cast.ann_agent.id()),
+			RemoveAccount(Cast.ann_agent.id()),
+			RevokeKeysOf(ann_bot.id()),
+			RemoveAccount(ann_bot.id()),
 			WithdrawVotes(Cast.gid(2)),
-			RemoveAccount(Principal.id(Cast.ann)),
+			RemoveAccount(Cast.ann.id()),
 		]
 expect plan_of(boss_session, retire_ann_agent) == [
-	RevokeKeysOf(Principal.id(Cast.ann_agent)),
-	RemoveAccount(Principal.id(Cast.ann_agent)),
+	RevokeKeysOf(Cast.ann_agent.id()),
+	RemoveAccount(Cast.ann_agent.id()),
 ]
 expect
-	List.map(left(ann_retired), Principal.id)
+	left(ann_retired).map(Principal.id)
 		== [
-			Principal.id(Cast.boss),
-			Principal.id(cal),
-			Principal.id(Cast.boss_agent),
-			Principal.id(cal_agent),
+			Cast.boss.id(),
+			cal.id(),
+			Cast.boss_agent.id(),
+			cal_agent.id(),
 		]
 # A refusal, and a read, plan nothing.
-expect plan_of(ann_session, Retire(Principal.id(Cast.ann_agent))) == []
+expect plan_of(ann_session, Retire(Cast.ann_agent.id())) == []
 expect plan_of(boss_session, ListAccounts) == []
 expect plan_of(boss_session, promote_ann) == [SetRole({ human: Cast.gid(2), role: Admin })]
 
@@ -998,10 +994,10 @@ expect plan_of(boss_session, promote_ann) == [SetRole({ human: Cast.gid(2), role
 # through never leaves the id unbarred with its account gone; the account
 # goes last.
 ann_retired : List(Admin.Step)
-ann_retired = plan_of(boss_session, Retire(Principal.id(Cast.ann)))
+ann_retired = plan_of(boss_session, Retire(Cast.ann.id()))
 
 expect List.first(ann_retired) == Ok(Bar(Cast.gid(2)))
-expect List.last(ann_retired) == Ok(RemoveAccount(Principal.id(Cast.ann)))
+expect ann_retired.last() == Ok(RemoveAccount(Cast.ann.id()))
 
 # **A PLAN APPLIED AGAIN AFTER A CRASH IS SAFE**: every prefix of the plan
 # (the crash), then the whole plan (the re-run), leaves what the plan once
@@ -1013,37 +1009,29 @@ expect once.settings.barred == [Cast.gid(66), Cast.gid(2)]
 
 ## Each prefix's length: where a crash could cut the plan.
 crash_points : List(U64)
-crash_points = Iter.fold(
-	U64.to(0, List.len(ann_retired)),
-	[],
-	|so_far, n| so_far.append(n),
-)
+crash_points = (0).to(ann_retired.len()).fold([], |so_far, n| so_far.append(n))
 
 expect
-	List.all(
-		crash_points,
+	crash_points.all(
 		|n| {
-			crashed = Admin.applied(List.take_first(ann_retired, n), { accounts, settings })
+			crashed = Admin.applied(ann_retired.take_first(n), { accounts, settings })
 			again = Admin.applied(ann_retired, crashed)
-			again.settings == once.settings and List.map(
-				again.accounts,
-				Principal.id,
-			) == List.map(once.accounts, Principal.id)
+			again.settings == once.settings and again.accounts.map(Principal.id) == once.accounts.map(Principal.id)
 		},
 	)
 # Twice whole, too; and a re-decision after the crash (the account half
 # gone) plans what is left, the bar first again.
 expect Admin.applied(
-	List.concat(ann_retired, ann_retired),
+	ann_retired.concat(ann_retired),
 	{ accounts, settings },
 ).settings == once.settings
 half_gone : List(Principal)
-half_gone = Admin.applied(List.take_first(ann_retired, 5), { accounts, settings }).accounts
+half_gone = Admin.applied(ann_retired.take_first(5), { accounts, settings }).accounts
 
 expect List.first(
 	plan_of_among(
 		boss_session,
-		Retire(Principal.id(Cast.ann)),
+		Retire(Cast.ann.id()),
 		half_gone,
 	),
 ) == Ok(Bar(Cast.gid(2)))
@@ -1053,10 +1041,10 @@ expect List.first(
 every_action : List(Admin.Action)
 every_action = [
 	ListAccounts,
-	Retire(Principal.id(Cast.ann)),
-	Retire(Principal.id(Cast.ann_agent)),
-	Retire(Principal.id(cal)),
-	RevokeKeys(Principal.id(Cast.ann)),
+	Retire(Cast.ann.id()),
+	Retire(Cast.ann_agent.id()),
+	Retire(cal.id()),
+	RevokeKeys(Cast.ann.id()),
 	RevokeSessions(Cast.gid(66)),
 	SetRole({ human: Cast.gid(2), role: Admin }),
 	SetRole({ human: Cast.gid(4), role: Member }),
@@ -1064,22 +1052,20 @@ every_action = [
 ]
 
 expect
-	List.all(
-		every_action,
+	every_action.all(
 		|action|
-			List.all(
-				[
-					boss_session,
-					cal_session,
-					boss_agent_key,
-					boss_own_key,
-				],
+			[
+				boss_session,
+				cal_session,
+				boss_agent_key,
+				boss_own_key,
+			].all(
 				|credential| {
 					barred = Admin.applied(
 						plan_of(credential, action),
 						{ accounts, settings },
 					).settings.barred
-					List.all(settings.barred, |b| List.contains(barred, b))
+					settings.barred.all(|b| barred.contains(b))
 				},
 			),
 	)
@@ -1136,15 +1122,14 @@ expect verdict_among(
 ) == Refused(NeedsSession)
 expect verdict_among(
 	boss_session,
-	Retire(Principal.id(cal_agent)),
+	Retire(cal_agent.id()),
 	cal_agent_forged,
 ) == Refused(NoSuchTarget)
 
 # ATTACK: an attempt under a clock past
 # the store's range makes no audit the store cannot write.
 expect
-	List.all(
-		[Stored.max_time + 1, -1],
+	[Stored.max_time + 1, -1].all(
 		|now| Admin.decide({
 			credential: boss_session,
 			action: ListAccounts,
@@ -1170,7 +1155,7 @@ permitted_audit = audited(
 	{ among: accounts, now: 100500 },
 )
 
-expect permitted_audit.who == Principal.id(Cast.boss_agent)
+expect permitted_audit.who == Cast.boss_agent.id()
 expect permitted_audit.via == Key(Cast.kid(1))
 expect permitted_audit.action == revoke_ann_keys
 expect permitted_audit.at == 100500
@@ -1182,7 +1167,7 @@ refused_audit = audited(
 	{ among: accounts, now: 100077 },
 )
 
-expect refused_audit.who == Principal.id(Cast.ann)
+expect refused_audit.who == Cast.ann.id()
 expect refused_audit.via == Session(Cast.sid(2))
 expect refused_audit.action == retire_boss
 expect refused_audit.at == 100077
@@ -1194,7 +1179,7 @@ role_audit = audited(
 	{ among: accounts, now: 100600 },
 )
 
-expect role_audit.who == Principal.id(Cast.boss)
+expect role_audit.who == Cast.boss.id()
 expect role_audit.via == Session(Cast.sid(1))
 expect role_audit.action == promote_ann
 expect role_audit.verdict == Permitted
@@ -1204,7 +1189,7 @@ expect role_audit.plan == [SetRole({ human: Cast.gid(2), role: Admin })]
 # retirement's audit holds every step, the agent and bot retired with ann
 # and her votes withdrawn among them; a refusal's holds none.
 expect audited(
-	{ credential: boss_session, action: Retire(Principal.id(Cast.ann)) },
+	{ credential: boss_session, action: Retire(Cast.ann.id()) },
 	usually,
 ).plan == ann_retired
 expect List.contains(

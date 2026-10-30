@@ -40,21 +40,21 @@ handle! = |req| {
 ## The request, to its route's module.
 route! : Chat.Request => Chat.Answer
 route! = |req|
-	if req.path == Str.to_utf8("/") {
+	if req.path == "/".to_utf8() {
 		if req.method == Get or req.method == Head {
 			hello
 		} else {
 			Chat.not_allowed(Get)
 		}
-	} else if req.path == Str.to_utf8("/login") {
+	} else if req.path == "/login".to_utf8() {
 		if (req.method == Get) SignIn.login!({}) else Chat.not_allowed(Get)
-	} else if req.path == Str.to_utf8("/login/github") {
+	} else if req.path == "/login/github".to_utf8() {
 		if (req.method == Get) SignIn.serve_callback!(req) else Chat.not_allowed(Get)
-	} else if req.path == Str.to_utf8("/login/name") {
+	} else if req.path == "/login/name".to_utf8() {
 		if (req.method == Post) SignIn.serve_name!({}) else Chat.not_allowed(Post)
-	} else if req.path == Str.to_utf8("/logout") {
+	} else if req.path == "/logout".to_utf8() {
 		if (req.method == Post) SignIn.serve_logout!({}) else Chat.not_allowed(Post)
-	} else if req.path == Str.to_utf8("/me") {
+	} else if req.path == "/me".to_utf8() {
 		if (req.method == Get) SignIn.serve_me!({}) else Chat.not_allowed(Get)
 	} else {
 		match (
@@ -98,27 +98,24 @@ route! = |req|
 hello : Chat.Answer
 hello = {
 	page = List.join([
-		Str.to_utf8("<!doctype html>\n<title>roc-chat</title>\n"),
+		"<!doctype html>\n<title>roc-chat</title>\n".to_utf8(),
 		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."), Conversations.markdown),
 	])
 	Chat.respond(200, { content_type: Chat.html, body: page })
-		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
+		|> Chat.with_header("cache-control", "no-store".to_utf8())
 }
 
 ## `/<name>.js`, one part: the script's name.
 script_name : List(U8) -> Try(List(U8), [NotAScript])
 script_name = |path| {
-	name = List.drop_first(path, 1)
-	if List.starts_with(path, ['/']) and List.ends_with(
-		name,
-		Str.to_utf8(".js"),
-	) and !List.contains(name, '/') {
+	name = path.drop_first(1)
+	if path.starts_with(['/']) and name.ends_with(".js".to_utf8()) and !name.contains('/') {
 		Ok(name)
 	} else {
 		Err(NotAScript)
 	}
 }
 
-expect script_name(Str.to_utf8("/chat.js")) == Ok(Str.to_utf8("chat.js"))
-expect script_name(Str.to_utf8("/a/chat.js")) == Err(NotAScript)
-expect script_name(Str.to_utf8("/chat.css")) == Err(NotAScript)
+expect script_name("/chat.js".to_utf8()) == Ok("chat.js".to_utf8())
+expect script_name("/a/chat.js".to_utf8()) == Err(NotAScript)
+expect script_name("/chat.css".to_utf8()) == Err(NotAScript)

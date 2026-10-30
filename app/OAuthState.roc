@@ -50,7 +50,7 @@ OAuthState := [].{
 		match cookie {
 			Unsent => Mismatched
 			Sent(nonce) =>
-				if List.is_empty(state.nonce) or nonce != state.nonce {
+				if state.nonce.is_empty() or nonce != state.nonce {
 					Mismatched
 				} else if age < 0 or age >= OAuthState.lifetime_secs.to_i128() {
 					Expired
@@ -62,7 +62,7 @@ OAuthState := [].{
 }
 
 nonce : List(U8)
-nonce = Str.to_utf8("q7Zr2Lx9")
+nonce = "q7Zr2Lx9".to_utf8()
 
 # Issued at 1000: the window is [1000, 1600).
 issued : OAuthState.Fields
@@ -75,7 +75,7 @@ back : { cookie : OAuthState.Cookie, now : I64 } -> OAuthState.Verdict
 back = |at| OAuthState.check(issued, at)
 
 other : Str -> OAuthState.Cookie
-other = |text| Sent(Str.to_utf8(text))
+other = |text| Sent(text.to_utf8())
 
 # Valid, at the window's two ends and inside it.
 expect back({ cookie: Sent(nonce), now: 1000 }) == Valid

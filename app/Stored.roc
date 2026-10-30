@@ -91,7 +91,7 @@ Stored := [].{
 	SecretHash :: List(U8).{
 		from_bytes : List(U8) -> Try(Stored.SecretHash, [NotAHash])
 		from_bytes = |bytes|
-			if List.len(bytes) == hash_bytes {
+			if bytes.len() == hash_bytes {
 				Ok(Stored.SecretHash.(bytes))
 			} else {
 				Err(NotAHash)
@@ -110,14 +110,13 @@ Stored := [].{
 	## checked by its rule first), so a value that does is a bug: a crash.
 	line : Str, List((Str, Str)) -> List(U8)
 	line = |kind, fields| {
-		last = List.len(fields)
-		parts = List.map_with_index(
-			fields,
+		last = fields.len()
+		parts = fields.map_with_index(
 			|(name, value), i| {
-				bytes = Str.to_utf8(value)
-				if List.any(bytes, Ascii.is_control) {
+				bytes = value.to_utf8()
+				if bytes.any(Ascii.is_control) {
 					crash "Stored.line: a value holds a control byte"
-				} else if i + 1 < last and List.contains(bytes, ' ') {
+				} else if i + 1 < last and bytes.contains(' ') {
 					crash "Stored.line: a value before the last holds a space"
 				} else {
 					" ${name}=${value}"
@@ -135,12 +134,12 @@ Stored := [].{
 		## else, UTF-8, the kind and the version known.
 		open : List(U8), Str -> Try(Stored.Reader, Stored.Problem)
 		open = |raw, kind|
-			match List.split_last(raw, '\n') {
+			match raw.split_last('\n') {
 				Err(NotFound) => Err(Torn)
 				Ok({ before, after }) =>
 					if after != [] {
 						Err(Torn)
-					} else if List.contains(before, '\n') {
+					} else if before.contains('\n') {
 						Err(ExtraLine)
 					} else if Str.from_utf8(before).is_err() {
 						Err(NotUtf8)
@@ -149,11 +148,8 @@ Stored := [].{
 							Err(NoMatch) => Err(WrongRecord)
 							Ok(rest) => {
 								version_end = Bytes.count_while(rest, |c| c != ' ')
-								if List.take_first(
-									rest,
-									version_end,
-								) == Str.to_utf8(Stored.version) {
-									Ok(Stored.Reader.(List.drop_first(rest, version_end)))
+								if rest.take_first(version_end) == Stored.version.to_utf8() {
+									Ok(Stored.Reader.(rest.drop_first(version_end)))
 								} else {
 									Err(UnknownVersion)
 								}
@@ -175,8 +171,8 @@ Stored := [].{
 				Ok(after) => {
 					end = Bytes.count_while(after, |c| c != ' ')
 					Ok({
-						value: List.take_first(after, end),
-						rest: Stored.Reader.(List.drop_first(after, end)),
+						value: after.take_first(end),
+						rest: Stored.Reader.(after.drop_first(end)),
 					})
 				}
 			}
@@ -271,7 +267,7 @@ Stored := [].{
 			spell,
 		},
 	|
-		match List.find_first(all, |member| Str.to_utf8(spell(member)) == value) {
+		match all.find_first(|member| spell(member).to_utf8() == value) {
 			Ok(member) => Ok(member)
 			Err(NotFound) => Err(UnknownWord(name))
 		}
@@ -279,15 +275,14 @@ Stored := [].{
 	## **A HASH**: 64 lowercase hex digits, its 32 bytes.
 	hash : List(U8), Str -> Try(Stored.SecretHash, Stored.Problem)
 	hash = |value, name|
-		if List.len(value) != hash_bytes * digits_per_byte {
+		if value.len() != hash_bytes * digits_per_byte {
 			Err(BadValue(name))
 		} else {
-			nibbles = List.map_try(value, |c| List.find_first_index(hex_digits, |d| d == c))
+			nibbles = value.map_try(|c| hex_digits.find_first_index(|d| d == c))
 			match nibbles {
 				Err(NotFound) => Err(BadValue(name))
 				Ok(ns) => {
-					bytes = List.map(
-						List.chunks_of(ns, digits_per_byte),
+					bytes = ns.chunks_of(digits_per_byte).map(
 						|pair| match pair {
 							[high, low] => high.to_u8_wrap() * nibble_base + low.to_u8_wrap()
 							_ => crash "Stored.hash: an even count of nibbles chunks into pairs"
@@ -304,8 +299,7 @@ Stored := [].{
 	## A hash as `hash` reads it: lowercase hex.
 	hash_text : Stored.SecretHash -> Str
 	hash_text = |h| {
-		digits = List.join_map(
-			h.bytes(),
+		digits = h.bytes().join_map(
 			|b| [
 				hex_digit(b // nibble_base),
 				hex_digit(b % nibble_base),
@@ -332,11 +326,11 @@ digits_per_byte = 2
 
 ## The hex digits, each at its own value: the one home of the spelling.
 hex_digits : List(U8)
-hex_digits = Str.to_utf8("0123456789abcdef")
+hex_digits = "0123456789abcdef".to_utf8()
 
 hex_digit : U8 -> U8
 hex_digit = |n|
-	match List.get(hex_digits, U8.to_u64(n)) {
+	match hex_digits.get(n.to_u64()) {
 		Ok(d) => d
 		Err(_) => crash "Stored.hex_digit: a nibble is below 16"
 	}
@@ -346,7 +340,7 @@ is_canonical_digits : List(U8) -> Bool
 is_canonical_digits = |value|
 	match value {
 		['0'] => Bool.True
-		[first, ..] => first != '0' and List.all(value, Ascii.is_digit)
+		[first, ..] => first != '0' and value.all(Ascii.is_digit)
 		[] => Bool.False
 	}
 
@@ -355,7 +349,7 @@ is_canonical_digits = |value|
 ## The fields of `raw`, a record of kind `t`.
 reader : Str -> Stored.Reader
 reader = |raw|
-	match Stored.Reader.open(Str.to_utf8(raw), "t") {
+	match Stored.Reader.open(raw.to_utf8(), "t") {
 		Ok(r) => r
 		Err(_) => crash "reader: a test's line opens"
 	}
@@ -363,8 +357,8 @@ reader = |raw|
 # A line, made and read back.
 expect
 	Stored.line("t", [("a", "1"), ("b", "two words")])
-		== Str.to_utf8("t v1 a=1 b=two words\n")
-expect Stored.line("t", []) == Str.to_utf8("t v1\n")
+		== "t v1 a=1 b=two words\n".to_utf8()
+expect Stored.line("t", []) == "t v1\n".to_utf8()
 
 two_fields : Str -> Try({ a : List(U8), b : Str }, Stored.Problem)
 two_fields = |raw| {
@@ -373,12 +367,12 @@ two_fields = |raw| {
 	Ok({ a: first.value, b })
 }
 
-expect two_fields("t v1 a=1 b=two words\n") == Ok({ a: Str.to_utf8("1"), b: "two words" })
-expect two_fields("t v1 a=1 b=x a=2\n") == Ok({ a: Str.to_utf8("1"), b: "x a=2" })
+expect two_fields("t v1 a=1 b=two words\n") == Ok({ a: "1".to_utf8(), b: "two words" })
+expect two_fields("t v1 a=1 b=x a=2\n") == Ok({ a: "1".to_utf8(), b: "x a=2" })
 
 # Opening: each malformed line, its problem.
 opened : Str -> Try({}, Stored.Problem)
-opened = |raw| Stored.Reader.open(Str.to_utf8(raw), "t").map_ok(|_| {})
+opened = |raw| Stored.Reader.open(raw.to_utf8(), "t").map_ok(|_| {})
 
 expect opened("t v1\n") == Ok({})
 expect opened("") == Err(Torn)
@@ -405,7 +399,7 @@ expect Stored.Reader.open(
 field_a : Str -> Try(List(U8), Stored.Problem)
 field_a = |raw| reader(raw).field("a").map_ok(|f| f.value)
 
-expect field_a("t v1 a=7\n") == Ok(Str.to_utf8("7"))
+expect field_a("t v1 a=7\n") == Ok("7".to_utf8())
 expect field_a("t v1 a=\n") == Ok([])
 expect field_a("t v1 b=7\n") == Err(MissingField("a"))
 expect field_a("t v1  a=7\n") == Err(MissingField("a"))
@@ -415,54 +409,45 @@ expect reader("t v1\n").close() == Ok({})
 expect reader("t v1 \n").close() == Err(Trailing)
 
 # Numbers: one spelling each.
-expect Stored.count(Str.to_utf8("0"), "n") == Ok(0)
-expect Stored.count(Str.to_utf8("583231"), "n") == Ok(583231)
-expect Stored.count(Str.to_utf8("18446744073709551615"), "n") == Ok(18446744073709551615)
+expect Stored.count("0".to_utf8(), "n") == Ok(0)
+expect Stored.count("583231".to_utf8(), "n") == Ok(583231)
+expect Stored.count("18446744073709551615".to_utf8(), "n") == Ok(18446744073709551615)
 expect
-	List.all(
-		[
-			"",
-			"007",
-			"+7",
-			"-7",
-			"1_000",
-			"0x10",
-			"7 ",
-			"18446744073709551616",
-		],
-		|bad| Stored.count(Str.to_utf8(bad), "n") == Err(BadNumber("n")),
-	)
-expect Stored.time(Str.to_utf8("1761600000"), "t") == Ok(1761600000)
-expect Stored.time(Str.to_utf8("253402300799"), "t") == Ok(Stored.max_time)
+	[
+		"",
+		"007",
+		"+7",
+		"-7",
+		"1_000",
+		"0x10",
+		"7 ",
+		"18446744073709551616",
+	].all(|bad| Stored.count(bad.to_utf8(), "n") == Err(BadNumber("n")))
+expect Stored.time("1761600000".to_utf8(), "t") == Ok(1761600000)
+expect Stored.time("253402300799".to_utf8(), "t") == Ok(Stored.max_time)
 # Before 1970, past 9999, and I64's ends (a session created at I64's
 # minimum would overflow its liveness): refused.
 expect
-	List.all(
-		[
-			"",
-			"-",
-			"-0",
-			"-5",
-			"-05",
-			"05",
-			"+5",
-			"253402300800",
-			"9223372036854775807",
-			"9223372036854775808",
-			"-9223372036854775808",
-		],
-		|bad| Stored.time(Str.to_utf8(bad), "t") == Err(BadNumber("t")),
-	)
+	[
+		"",
+		"-",
+		"-0",
+		"-5",
+		"-05",
+		"05",
+		"+5",
+		"253402300800",
+		"9223372036854775807",
+		"9223372036854775808",
+		"-9223372036854775808",
+	].all(|bad| Stored.time(bad.to_utf8(), "t") == Err(BadNumber("t")))
 expect
-	List.all(
-		[
-			0,
-			1,
-			1761600000,
-			Stored.max_time,
-		],
-		|t| Stored.time(Str.to_utf8(Stored.time_text(t)), "t") == Ok(t),
-	)
+	[
+		0,
+		1,
+		1761600000,
+		Stored.max_time,
+	].all(|t| Stored.time(Stored.time_text(t).to_utf8(), "t") == Ok(t))
 
 # Words: the closed set, and nothing near it.
 Colour : [Red, Green]
@@ -476,7 +461,7 @@ spell_colour = |c|
 
 colour : Str -> Try(Colour, Stored.Problem)
 colour = |text| Stored.word(
-	Str.to_utf8(text),
+	text.to_utf8(),
 	{
 		name: "c",
 		all: [Red, Green],
@@ -509,14 +494,14 @@ some_hash : Stored.SecretHash
 some_hash = hash_stepping(7)
 
 expect Stored.hash_text(some_hash) == "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9"
-expect Stored.hash(Str.to_utf8(Stored.hash_text(some_hash)), "h") == Ok(some_hash)
+expect Stored.hash(Stored.hash_text(some_hash).to_utf8(), "h") == Ok(some_hash)
 expect Stored.hash(
-	Str.to_utf8("00070E151C232A31383F464D545B626970777E858C939AA1A8AFB6BDC4CBD2D9"),
+	"00070E151C232A31383F464D545B626970777E858C939AA1A8AFB6BDC4CBD2D9".to_utf8(),
 	"h",
 ) == Err(BadValue("h"))
-expect Stored.hash(Str.to_utf8("00070e"), "h") == Err(BadValue("h"))
+expect Stored.hash("00070e".to_utf8(), "h") == Err(BadValue("h"))
 expect Stored.hash(
-	Str.to_utf8("g0070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9"),
+	"g0070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9".to_utf8(),
 	"h",
 ) == Err(BadValue("h"))
 expect Stored.SecretHash.from_bytes([

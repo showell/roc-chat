@@ -370,7 +370,7 @@ line_of = |r|
 		Err(_) => crash "line_of: a line is UTF-8"
 	}
 
-expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:${Str.repeat("11", 32)} hash=${Str.repeat("22", 32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off\n"
+expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:${"11".repeat(32)} hash=${"22".repeat(32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off\n"
 expect InviteCodec.decode(InviteCodec.encode(fresh, |n| n), number) == Ok(fresh)
 expect InviteCodec.decode(InviteCodec.encode(other, |n| n), number) == Ok(other)
 expect InviteCodec.decode(
@@ -381,7 +381,7 @@ expect InviteCodec.decode(
 ## `fresh`'s line with `from` made `to`, decoded.
 decoded_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
 decoded_but = |{ from, to }| InviteCodec.decode(
-	Str.to_utf8(line_of(fresh).replace_first(from, to)),
+	line_of(fresh).replace_first(from, to).to_utf8(),
 	number,
 ).map_ok(|_| {})
 
@@ -415,7 +415,7 @@ grant_word = |g|
 	}
 
 grant_back : List(U8) -> Try(ApiKey.GrantRefusal, Stored.Problem)
-grant_back = |w| if (w == Str.to_utf8("session-expired")) Ok(SessionExpired) else Err(UnknownWord("verdict"))
+grant_back = |w| if (w == "session-expired".to_utf8()) Ok(SessionExpired) else Err(UnknownWord("verdict"))
 
 refusals : List(InviteCodec.Refusal)
 refusals = [
@@ -428,12 +428,11 @@ refusals = [
 	Grant(SessionExpired),
 ]
 
-expect List.all(
-	refusals,
+expect refusals.all(
 	|r| InviteCodec.refusal_from(
-		Str.to_utf8(InviteCodec.refusal_text(r, grant_word)),
+		InviteCodec.refusal_text(r, grant_word).to_utf8(),
 		grant_back,
 	) == Ok(r),
 )
 expect InviteCodec.refusal_text(Grant(SessionExpired), grant_word) == "grant:session-expired"
-expect InviteCodec.refusal_from(Str.to_utf8("stale"), grant_back) == Err(UnknownWord("verdict"))
+expect InviteCodec.refusal_from("stale".to_utf8(), grant_back) == Err(UnknownWord("verdict"))

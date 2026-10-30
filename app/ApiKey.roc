@@ -282,7 +282,7 @@ granted = |
 							if Principal.answers_to(current) != h.id {
 								Err(NotTheGrantersOwn)
 							} else {
-								match (scope.admin, Principal.authority(current, accounts)) {
+								match (scope.admin, current.authority(accounts)) {
 									(Off, _) => Ok(bound)
 									(On, Admin) => Ok(bound)
 									(On, Member) => Err(AdminBeyondPrincipal)
@@ -338,7 +338,7 @@ standing = |key, { accounts, now }| {
 ## made at 1, as the store holds it (a session's only way in but the flow).
 signed_in : { n : U64, who : U64 } -> ApiKey.Granter(Held, U64)
 signed_in = |{ n, who }|
-	stored_session("session v1 id=${n.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("07", 32)} created=0 seen=0\n")
+	stored_session("session v1 id=${n.to_str()} human=${who.to_str()} generation=1 token=${"07".repeat(32)} created=0 seen=0\n")
 
 ## Human `who`'s session, signed in at `at` to the account of generation
 ## 1, from its stored line.
@@ -420,7 +420,7 @@ grant_at = |
 |
 	ApiKey.may_grant({
 		granter,
-		acts_as: Principal.id(acts_as),
+		acts_as: acts_as.id(),
 		scope,
 		accounts: among,
 		now,
@@ -545,8 +545,8 @@ issued : { acts_as : Principal, scope : ApiKey.Scope(U64) }, I64 -> ApiKey.Key(H
 issued = |{ acts_as, scope }, expires|
 	match ApiKey.Key.issue(
 		{
-			granter: signed_in({ n: 9, who: Principal.answers_to(acts_as).to_u64() }),
-			acts_as: Principal.id(acts_as),
+			granter: signed_in({ n: 9, who: acts_as.answers_to().to_u64() }),
+			acts_as: acts_as.id(),
 			scope,
 			accounts: Cast.accounts,
 			now: 50,
@@ -579,7 +579,7 @@ expect
 	ApiKey.Key.issue(
 		{
 			granter: by_ann,
-			acts_as: Principal.id(Cast.ann),
+			acts_as: Cast.ann.id(),
 			scope: with_admin,
 			accounts: Cast.accounts,
 			now: 50,
@@ -604,7 +604,7 @@ expect
 			ApiKey.Key.issue(
 				{
 					granter: by_ann,
-					acts_as: Principal.id(Cast.ann),
+					acts_as: Cast.ann.id(),
 					scope: plain,
 					accounts: Cast.accounts,
 					now: 50,
@@ -617,7 +617,7 @@ expect
 	ApiKey.Key.issue(
 		{
 			granter: by_ann,
-			acts_as: Principal.id(Cast.ann),
+			acts_as: Cast.ann.id(),
 			scope: plain,
 			accounts: Cast.accounts,
 			now: -1,
@@ -637,7 +637,7 @@ expect
 			match ApiKey.Key.issue(
 				{
 					granter: Session(session_at(2, now)),
-					acts_as: Principal.id(Cast.ann),
+					acts_as: Cast.ann.id(),
 					scope: plain,
 					accounts: Cast.accounts,
 					now,
@@ -703,8 +703,8 @@ boss_until_100 : ApiKey.Key(Held, U64)
 boss_until_100 = issued({ acts_as: Cast.boss, scope: with_admin }, 100)
 
 # A standing key stands as its principal.
-expect standing_among(ann_agent_plain, Cast.accounts) == Ok(Principal.id(Cast.ann_agent))
-expect standing_among(boss_all, Cast.accounts) == Ok(Principal.id(Cast.boss))
+expect standing_among(ann_agent_plain, Cast.accounts) == Ok(Cast.ann_agent.id())
+expect standing_among(boss_all, Cast.accounts) == Ok(Cast.boss.id())
 
 # Admin: only an admin scope, on an admin's or an admin's agent's key.
 expect administered(ann_agent_plain) == Refused(OutOfScope)
@@ -730,7 +730,7 @@ expect standing_among(ann_agent_plain, Cast.without_ann) == Err(Refused(NoSuchPr
 # Liveness comes first: revoked and expired keys stand as nobody; an expiry
 # at 100 is live at 99.
 expect standing_among(boss_all.revoke(), Cast.accounts) == Err(Refused(Revoked))
-expect standing_at(boss_until_100, { among: Cast.accounts, now: 99 }) == Ok(Principal.id(Cast.boss))
+expect standing_at(boss_until_100, { among: Cast.accounts, now: 99 }) == Ok(Cast.boss.id())
 expect standing_at(boss_until_100, { among: Cast.accounts, now: 100 }) == Err(Refused(Expired))
 expect boss_until_100.revoke().administers({ accounts: Cast.accounts, now: 99 }) == Refused(Revoked)
 
@@ -745,15 +745,12 @@ from_store = |record|
 	}
 
 # A key's record loads back to the same record, revoked or not.
-expect List.all(
-	[
-		ann_year,
-		boss_until_100,
-		ann_agent_reads_c,
-		boss_agent_admin.revoke(),
-	],
-	|key| from_store(key.record()).record() == key.record(),
-)
+expect [
+	ann_year,
+	boss_until_100,
+	ann_agent_reads_c,
+	boss_agent_admin.revoke(),
+].all(|key| from_store(key.record()).record() == key.record())
 
 # A line claiming admin for ann, a member, loads as it says, and the key
 # still administers nothing: its use is held to ann.
@@ -780,7 +777,7 @@ forged_ann_agent : Principal
 forged_ann_agent = Cast.owned(Agent, { id: 3, owner: 1 })
 
 forged_first : List(Principal)
-forged_first = List.prepend(Cast.accounts, forged_ann_agent)
+forged_first = Cast.accounts.prepend(forged_ann_agent)
 
 expect grant_at(
 	by_boss,
@@ -865,13 +862,13 @@ expect grant_at(
 	},
 ) == Refused(NoSuchGranter)
 new_ann_session : ApiKey.Granter(Held, U64)
-new_ann_session = stored_session("session v1 id=8 human=2 generation=2 token=${Str.repeat("07", 32)} created=60 seen=60\n")
+new_ann_session = stored_session("session v1 id=8 human=2 generation=2 token=${"07".repeat(32)} created=60 seen=60\n")
 
 expect
 	ApiKey.Key.issue(
 		{
 			granter: new_ann_session,
-			acts_as: Principal.id(ann_again),
+			acts_as: ann_again.id(),
 			scope: plain,
 			accounts: again,
 			now: 70,

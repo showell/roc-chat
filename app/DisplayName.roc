@@ -60,12 +60,12 @@ DisplayName :: Str.{
 	## The name `text` is, trimmed, when the rule takes it.
 	from_str : Str -> Try(DisplayName, DisplayName.Problem)
 	from_str = |text| {
-		bytes = trim_spaces(Str.to_utf8(text))
+		bytes = trim_spaces(text.to_utf8())
 		if bytes == [] {
 			Err(Empty)
-		} else if List.len(bytes) > max_bytes {
+		} else if bytes.len() > max_bytes {
 			Err(TooLong)
-		} else if List.any(bytes, Ascii.is_control) or has_c1_control(bytes) {
+		} else if bytes.any(Ascii.is_control) or has_c1_control(bytes) {
 			Err(ControlCharacter)
 		} else if List.any(
 			bidi_controls,
@@ -74,13 +74,13 @@ DisplayName :: Str.{
 			Err(BidiControl)
 		} else {
 			points = code_points(bytes)
-			if List.any(points, is_format) {
+			if points.any(is_format) {
 				Err(FormatCharacter)
-			} else if List.any(points, |p| p == line_separator or p == paragraph_separator) {
+			} else if points.any(|p| p == line_separator or p == paragraph_separator) {
 				Err(LineSeparator)
-			} else if List.any(points, is_other_space) {
+			} else if points.any(is_other_space) {
 				Err(NonAsciiSpace)
-			} else if List.all(points, is_invisible) {
+			} else if points.all(is_invisible) {
 				Err(NothingVisible)
 			} else {
 				match Str.from_utf8(bytes) {
@@ -146,26 +146,17 @@ code_points = |bytes| {
 			b3,
 			..,
 		] if b0 >= lead4 =>
-			List.prepend(
-				code_points(List.drop_first(bytes, 4)),
-				(b0.to_u32() - lead4.to_u32()) * 262144 + bits(b1) * 4096 + bits(b2) * 64 + bits(b3),
-			)
+			code_points(bytes.drop_first(4)).prepend((b0.to_u32() - lead4.to_u32()) * 262144 + bits(b1) * 4096 + bits(b2) * 64 + bits(b3))
 		[
 			b0,
 			b1,
 			b2,
 			..,
 		] if b0 >= lead3 =>
-			List.prepend(
-				code_points(List.drop_first(bytes, 3)),
-				(b0.to_u32() - lead3.to_u32()) * 4096 + bits(b1) * 64 + bits(b2),
-			)
+			code_points(bytes.drop_first(3)).prepend((b0.to_u32() - lead3.to_u32()) * 4096 + bits(b1) * 64 + bits(b2))
 		[b0, b1, ..] if b0 >= lead2 =>
-			List.prepend(
-				code_points(List.drop_first(bytes, 2)),
-				(b0.to_u32() - lead2.to_u32()) * 64 + bits(b1),
-			)
-		[b0, ..] => List.prepend(code_points(List.drop_first(bytes, 1)), b0.to_u32())
+			code_points(bytes.drop_first(2)).prepend((b0.to_u32() - lead2.to_u32()) * 64 + bits(b1))
+		[b0, ..] => code_points(bytes.drop_first(1)).prepend(b0.to_u32())
 	}
 }
 
@@ -185,7 +176,7 @@ continuation = 0x80
 
 ## `point` is in one of `ranges`, each from its first to its last, both in.
 is_in : U32, List((U32, U32)) -> Bool
-is_in = |point, ranges| List.any(ranges, |(first, last)| point >= first and point <= last)
+is_in = |point, ranges| ranges.any(|(first, last)| point >= first and point <= last)
 
 ## **FORMAT AND DEFAULT-IGNORABLE CHARACTERS**: Unicode's Cf, and the
 ## other default-ignorables but the variation selectors.
@@ -279,7 +270,7 @@ has_c1_control = |bytes|
 			if lead == c1_lead and second >= c1_first and second <= c1_last {
 				Bool.True
 			} else {
-				has_c1_control(List.drop_first(bytes, 1))
+				has_c1_control(bytes.drop_first(1))
 			}
 		_ => Bool.False
 	}
@@ -304,13 +295,13 @@ expect named("role=admin name=x") == Ok("role=admin name=x")
 # The length: 64 bytes, counted after the trim; 65 refused; a multi-byte
 # character counts its bytes.
 sixty_four : Str
-sixty_four = Str.repeat("n", 64)
+sixty_four = "n".repeat(64)
 
 expect named(sixty_four) == Ok(sixty_four)
 expect named("  ${sixty_four}  ") == Ok(sixty_four)
-expect named(Str.repeat("n", 65)) == Err(TooLong)
-expect named(Str.repeat("é", 32)) == Ok(Str.repeat("é", 32))
-expect named(Str.repeat("é", 33)) == Err(TooLong)
+expect named("n".repeat(65)) == Err(TooLong)
+expect named("é".repeat(32)) == Ok("é".repeat(32))
+expect named("é".repeat(33)) == Err(TooLong)
 
 # Empty, or spaces alone.
 expect named("") == Err(Empty)
@@ -318,20 +309,17 @@ expect named("   ") == Err(Empty)
 
 # Control characters: ASCII's at each end and inside, DEL, and C1's.
 expect
-	List.all(
-		[
-			"a\nb",
-			"a\rb",
-			"\tab",
-			"ab\n",
-			"a\u(0)b",
-			"a\u(7F)b",
-			"a\u(80)b",
-			"a\u(85)b",
-			"a\u(9F)b",
-		],
-		|bad| named(bad) == Err(ControlCharacter),
-	)
+	[
+		"a\nb",
+		"a\rb",
+		"\tab",
+		"ab\n",
+		"a\u(0)b",
+		"a\u(7F)b",
+		"a\u(80)b",
+		"a\u(85)b",
+		"a\u(9F)b",
+	].all(|bad| named(bad) == Err(ControlCharacter))
 
 # Next to the C1 range, and other two-byte characters, are fine.
 expect named("a\u(A1)b") == Ok("a\u(A1)b")
@@ -341,53 +329,44 @@ expect named("a\u(7E)b") == Ok("a~b")
 # format or default-ignorable character anywhere; a line or paragraph
 # separator; a space not ASCII's; nothing visible at all.
 expect
-	List.all(
-		[
-			"\u(200B)",
-			"\u(FEFF)",
-			"Ann\u(200D)",
-			"\u(AD)",
-			"A\u(AD)nn",
-			"\u(E0041)",
-			"Ann\u(E0001)",
-			"\u(2060)",
-			"\u(34F)x",
-			"\u(3164)",
-			"\u(115F)",
-			"\u(FFA0)",
-			"\u(180E)",
-			"\u(600)1",
-			"\u(FFF9)x",
-		],
-		|bad| named(bad) == Err(FormatCharacter),
-	)
+	[
+		"\u(200B)",
+		"\u(FEFF)",
+		"Ann\u(200D)",
+		"\u(AD)",
+		"A\u(AD)nn",
+		"\u(E0041)",
+		"Ann\u(E0001)",
+		"\u(2060)",
+		"\u(34F)x",
+		"\u(3164)",
+		"\u(115F)",
+		"\u(FFA0)",
+		"\u(180E)",
+		"\u(600)1",
+		"\u(FFF9)x",
+	].all(|bad| named(bad) == Err(FormatCharacter))
 expect named("Ann\u(2028)Admin") == Err(LineSeparator)
 expect named("Ann\u(2029)") == Err(LineSeparator)
 expect
-	List.all(
-		[
-			"\u(A0)",
-			"a\u(A0)b",
-			"\u(3000)",
-			"Ann\u(3000)Admin",
-			"a\u(2003)b",
-			"a\u(202F)b",
-			"a\u(205F)b",
-			"a\u(1680)b",
-		],
-		|bad| named(bad) == Err(NonAsciiSpace),
-	)
+	[
+		"\u(A0)",
+		"a\u(A0)b",
+		"\u(3000)",
+		"Ann\u(3000)Admin",
+		"a\u(2003)b",
+		"a\u(202F)b",
+		"a\u(205F)b",
+		"a\u(1680)b",
+	].all(|bad| named(bad) == Err(NonAsciiSpace))
 expect
-	List.all(
-		[
-			"\u(301)",
-			"\u(301)\u(302)",
-			"\u(FE0F)",
-			"\u(2800)",
-			" \u(20DD) ",
-		],
-		|bad| named(bad) == Err(NothingVisible),
-	)
+	[
+		"\u(301)",
+		"\u(301)\u(302)",
+		"\u(FE0F)",
+		"\u(2800)",
+		" \u(20DD) ",
+	].all(|bad| named(bad) == Err(NothingVisible))
 # Kept: a variation selector on something visible, a combining mark on a
 # letter, a letter of another script.
 expect named("\u(2764)\u(FE0F)") == Ok("\u(2764)\u(FE0F)")
@@ -398,7 +377,7 @@ expect named("\u(1F98A)") == Ok("\u(1F98A)")
 expect named("\u(410)nn") == Ok("\u(410)nn")
 
 # The code points: one, two, three and four bytes.
-expect code_points(Str.to_utf8("a\u(E9)\u(20AC)\u(1F98A)")) == [
+expect code_points("a\u(E9)\u(20AC)\u(1F98A)".to_utf8()) == [
 	0x61,
 	0xE9,
 	0x20AC,
@@ -406,9 +385,9 @@ expect code_points(Str.to_utf8("a\u(E9)\u(20AC)\u(1F98A)")) == [
 ]
 
 # Bidirectional controls, each one.
-expect List.all(bidi_controls, |c| named("ab${c}cd") == Err(BidiControl))
+expect bidi_controls.all(|c| named("ab${c}cd") == Err(BidiControl))
 expect named("\u(202E)nimda") == Err(BidiControl)
 
 # Bytes that are not UTF-8.
 expect DisplayName.from_utf8([0x61, 0xff]).map_ok(DisplayName.to_str) == Err(NotUtf8)
-expect DisplayName.from_utf8(Str.to_utf8(" Ann ")).map_ok(DisplayName.to_str) == Ok("Ann")
+expect DisplayName.from_utf8(" Ann ".to_utf8()).map_ok(DisplayName.to_str) == Ok("Ann")

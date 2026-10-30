@@ -28,7 +28,7 @@ Origin := [].{
 		match sent.method {
 			Get | Head => Allowed
 			Post | Other =>
-				if sent.path == Str.to_utf8("/invites/redeem") {
+				if sent.path == "/invites/redeem".to_utf8() {
 					Allowed
 				} else if !sent.has_cookie {
 					Allowed
@@ -36,7 +36,7 @@ Origin := [].{
 					match sent.origin {
 						[one] => if (one == configured) Allowed else CrossOrigin
 						[] =>
-							if sent.fetch_site == [Str.to_utf8("same-origin")] {
+							if sent.fetch_site == ["same-origin".to_utf8()] {
 								Allowed
 							} else {
 								CrossOrigin
@@ -48,12 +48,12 @@ Origin := [].{
 }
 
 ours : List(U8)
-ours = Str.to_utf8("https://chat.lynrummy.com")
+ours = "https://chat.lynrummy.com".to_utf8()
 
 post : Origin.Sent
 post = {
 	method: Post,
-	path: Str.to_utf8("/conversations"),
+	path: "/conversations".to_utf8(),
 	origin: [ours],
 	fetch_site: [],
 	has_cookie: True,
@@ -61,12 +61,12 @@ post = {
 }
 
 expect Origin.check(post, ours) == Allowed
-expect Origin.check({ ..post, origin: [Str.to_utf8("https://evil.lynrummy.com")] }, ours) == CrossOrigin
-expect Origin.check({ ..post, origin: [Str.to_utf8("http://chat.lynrummy.com")] }, ours) == CrossOrigin
+expect Origin.check({ ..post, origin: ["https://evil.lynrummy.com".to_utf8()] }, ours) == CrossOrigin
+expect Origin.check({ ..post, origin: ["http://chat.lynrummy.com".to_utf8()] }, ours) == CrossOrigin
 expect Origin.check({ ..post, origin: [ours, ours] }, ours) == CrossOrigin
 # No Origin: Sec-Fetch-Site decides; neither sent is refused.
-expect Origin.check({ ..post, origin: [], fetch_site: [Str.to_utf8("same-origin")] }, ours) == Allowed
-expect Origin.check({ ..post, origin: [], fetch_site: [Str.to_utf8("same-site")] }, ours) == CrossOrigin
+expect Origin.check({ ..post, origin: [], fetch_site: ["same-origin".to_utf8()] }, ours) == Allowed
+expect Origin.check({ ..post, origin: [], fetch_site: ["same-site".to_utf8()] }, ours) == CrossOrigin
 expect Origin.check({ ..post, origin: [] }, ours) == CrossOrigin
 # A GET is never refused here; a key without a cookie, and the redemption,
 # are exempt; a key beside a cookie is not.
@@ -74,5 +74,5 @@ expect Origin.check({ ..post, method: Get, origin: [] }, ours) == Allowed
 expect Origin.check({ ..post, origin: [], has_cookie: False, has_key: True }, ours) == Allowed
 expect Origin.check({ ..post, origin: [], has_key: True }, ours) == CrossOrigin
 expect Origin.check({ ..post, origin: [], has_cookie: False }, ours) == Allowed
-expect Origin.check({ ..post, path: Str.to_utf8("/invites/redeem"), origin: [] }, ours) == Allowed
+expect Origin.check({ ..post, path: "/invites/redeem".to_utf8(), origin: [] }, ours) == Allowed
 expect Origin.check({ ..post, method: Other, origin: [] }, ours) == CrossOrigin

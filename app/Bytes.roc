@@ -9,12 +9,9 @@ Bytes := [].{
 	## Where `needle` first starts in `s`, from `at` on.
 	find : List(U8), { needle : List(U8), at : U64 } -> Try(U64, [NotFound])
 	find = |s, { needle, at: i }|
-		if i + List.len(needle) > List.len(s) {
+		if i + needle.len() > s.len() {
 			Err(NotFound)
-		} else if List.get(s, i) == List.first(needle) and List.sublist(
-			s,
-			{ start: i, len: List.len(needle) },
-		) == needle {
+		} else if s.get(i) == needle.first() and s.sublist({ start: i, len: needle.len() }) == needle {
 			Ok(i)
 		} else {
 			find(s, { needle, at: i + 1 })
@@ -23,11 +20,8 @@ Bytes := [].{
 	## The bytes after `prefix`, when `l` starts with it: no length is
 	## written beside the literal it belongs to.
 	strip_prefix : List(U8), List(U8) -> Try(List(U8), [NoMatch])
-	strip_prefix = |l, prefix| if (List.starts_with(l, prefix)) Ok(
-		List.drop_first(
-			l,
-			List.len(prefix),
-		),
+	strip_prefix = |l, prefix| if (l.starts_with(prefix)) Ok(
+		l.drop_first(prefix.len()),
 	) else Err(NoMatch)
 
 	## How many bytes from the start keep `keep`.
@@ -41,21 +35,15 @@ Bytes := [].{
 	## The bytes in `set` off both ends.
 	trim : List(U8), List(U8) -> List(U8)
 	trim = |s, set| {
-		in_set = |c| List.contains(set, c)
-		front = List.drop_first(
-			s,
-			count_while(s, in_set),
-		)
-		List.drop_last(
-			front,
-			count_back(front, in_set),
-		)
+		in_set = |c| set.contains(c)
+		front = s.drop_first(count_while(s, in_set))
+		front.drop_last(count_back(front, in_set))
 	}
 }
 
 ## How many bytes from `i` on keep `keep`, plus `i`.
 count_while_from : List(U8), { keep : (U8 -> Bool), at : U64 } -> U64
-count_while_from = |s, { keep, at: i }| match List.get(s, i) {
+count_while_from = |s, { keep, at: i }| match s.get(i) {
 	Ok(c) if keep(c) => count_while_from(s, { keep, at: i + 1 })
 	_ => i
 }
@@ -63,16 +51,16 @@ count_while_from = |s, { keep, at: i }| match List.get(s, i) {
 ## How many bytes from the end, past the last `kept`, keep `keep`, plus `kept`.
 count_back_from : List(U8), { keep : (U8 -> Bool), kept : U64 } -> U64
 count_back_from = |s, { keep, kept: n }|
-	if n >= List.len(s) {
+	if n >= s.len() {
 		n
 	} else {
-		match List.get(s, List.len(s) - 1 - n) {
+		match s.get(s.len() - 1 - n) {
 			Ok(c) if keep(c) => count_back_from(s, { keep, kept: n + 1 })
 			_ => n
 		}
 	}
 
-expect Bytes.find(Str.to_utf8("a=b=c"), { needle: Str.to_utf8("="), at: 2 }) == Ok(3)
-expect Bytes.find(Str.to_utf8("abc"), { needle: Str.to_utf8("cd"), at: 0 }) == Err(NotFound)
-expect Bytes.trim(Str.to_utf8("  x y \n"), Str.to_utf8(" \n")) == Str.to_utf8("x y")
-expect Bytes.trim(Str.to_utf8("   "), Str.to_utf8(" ")) == []
+expect Bytes.find("a=b=c".to_utf8(), { needle: "=".to_utf8(), at: 2 }) == Ok(3)
+expect Bytes.find("abc".to_utf8(), { needle: "cd".to_utf8(), at: 0 }) == Err(NotFound)
+expect Bytes.trim("  x y \n".to_utf8(), " \n".to_utf8()) == "x y".to_utf8()
+expect Bytes.trim("   ".to_utf8(), " ".to_utf8()) == []

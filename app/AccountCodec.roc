@@ -111,19 +111,16 @@ AccountCodec := [].{
 	## (`Torn`).
 	load : List(U8) -> Try(List(Principal), AccountCodec.LoadProblem)
 	load = |raw| {
-		pieces = List.split_on(raw, '\n')
-		lines = List.drop_last(pieces, 1)
+		pieces = raw.split_on('\n')
+		lines = pieces.drop_last(1)
 		torn =
-			match List.last(pieces) {
+			match pieces.last() {
 				Ok(last) if last != [] => [last]
 				_ => []
 			}
-		decoded = List.map_with_index(
-			List.concat(List.map(lines, |l| List.append(l, '\n')), torn),
-			|bytes, i|
-				AccountCodec.decode(bytes).map_err(|problem| BadLine({ line: i + 1, problem })),
-		)
-		accounts = List.map_try(decoded, |d| d)?
+		decoded = lines.map(|l| l.append('\n')).concat(torn).map_with_index(|bytes, i|
+			AccountCodec.decode(bytes).map_err(|problem| BadLine({ line: i + 1, problem })))
+		accounts = decoded.map_try(|d| d)?
 		Principal.unique(accounts).map_err(|DuplicateId(id)| DuplicateId(id))
 	}
 
@@ -163,7 +160,7 @@ AccountCodec := [].{
 	## The principal's id the value `id_text` spelled, in the field `name`.
 	id_from : List(U8), Str -> Try(Principal.Id, Stored.Problem)
 	id_from = |value, name|
-		match List.split_first(value, ':') {
+		match value.split_first(':') {
 			Err(NotFound) => Err(BadValue(name))
 			Ok({ before, after }) =>
 				match Stored.word(
@@ -451,16 +448,13 @@ expect is_kept(human({ name: "Ann", role: Member }))
 expect is_kept(cc)
 expect is_kept(commits)
 expect
-	List.all(
-		[
-			"x role=admin",
-			"name=root",
-			"Zoë 🦊",
-			"a  b",
-			"=",
-		],
-		|name| is_kept(human({ name, role: Member })),
-	)
+	[
+		"x role=admin",
+		"name=root",
+		"Zoë 🦊",
+		"a  b",
+		"=",
+	].all(|name| is_kept(human({ name, role: Member })))
 biggest : Principal
 biggest = Principal.Bot({
 	id: Cast.aid(18446744073709551615),
@@ -494,14 +488,13 @@ expect line_of(
 
 # Bytes round trip too: a decoded line encodes to the same bytes.
 expect
-	List.all(
-		[
-			"account v1 kind=human github=1 login=a generation=7 role=member name=b\n",
-			"account v1 kind=agent id=7 owner=583231 generation=8 name=CC\n",
-			"account v1 kind=bot id=9 owner=2 generation=9 name=commits bot\n",
-		],
+	[
+		"account v1 kind=human github=1 login=a generation=7 role=member name=b\n",
+		"account v1 kind=agent id=7 owner=583231 generation=8 name=CC\n",
+		"account v1 kind=bot id=9 owner=2 generation=9 name=commits bot\n",
+	].all(
 		|text| {
-			raw = Str.to_utf8(text)
+			raw = text.to_utf8()
 			match AccountCodec.decode(raw) {
 				Ok(account) => AccountCodec.encode(account) == Ok(raw)
 				Err(_) => Bool.False
@@ -511,7 +504,7 @@ expect
 
 # ── THE MALFORMED TABLE: each line, its named problem.
 decoded : Str -> Try({}, Stored.Problem)
-decoded = |text| AccountCodec.decode(Str.to_utf8(text)).map_ok(|_| {})
+decoded = |text| AccountCodec.decode(text.to_utf8()).map_ok(|_| {})
 
 human_line : Str
 human_line = "account v1 kind=human github=1 login=a generation=7 role=member name=b\n"
@@ -531,7 +524,7 @@ expect human_but({ from: "", to: "" }) == Ok({})
 expect agent_but({ from: "", to: "" }) == Ok({})
 expect decoded("") == Err(Torn)
 expect agent_but({ from: "\n", to: "" }) == Err(Torn)
-expect decoded(Str.concat(agent_line, agent_line)) == Err(ExtraLine)
+expect decoded(agent_line.concat(agent_line)) == Err(ExtraLine)
 expect decoded("session v1 id=1\n") == Err(WrongRecord)
 expect agent_but({ from: "v1", to: "v2" }) == Err(UnknownVersion)
 expect agent_but({ from: "kind=agent", to: "kind=robot" }) == Err(UnknownWord("kind"))
@@ -571,7 +564,7 @@ expect human_but({ from: "name=b", to: "name= b" }) == Err(BadValue("name"))
 expect human_but({ from: "name=b", to: "name=b " }) == Err(BadValue("name"))
 expect human_but({ from: "name=b", to: "name=b\r" }) == Err(BadValue("name"))
 expect human_but({ from: "name=b", to: "name=a\tb" }) == Err(BadValue("name"))
-expect human_but({ from: "name=b", to: "name=${Str.repeat("n", 65)}" }) == Err(BadValue("name"))
+expect human_but({ from: "name=b", to: "name=${"n".repeat(65)}" }) == Err(BadValue("name"))
 expect agent_but({ from: "id=7", to: "id=0" }) == Err(BadValue("id"))
 expect agent_but({ from: "owner=5", to: "owner=0" }) == Err(BadValue("owner"))
 expect agent_but({ from: " owner=5", to: "" }) == Err(MissingField("owner"))
@@ -598,11 +591,11 @@ expect
 			Principal.Id.Agent(Cast.aid(7)),
 			Principal.Id.Bot(Cast.aid(7)),
 		],
-		|id| AccountCodec.id_from(Str.to_utf8(AccountCodec.id_text(id)), "who") == Ok(id),
+		|id| AccountCodec.id_from(AccountCodec.id_text(id).to_utf8(), "who") == Ok(id),
 	)
 expect AccountCodec.id_text(Principal.Id.Bot(Cast.aid(9))) == "bot:9"
 id_read : Str -> Try(Principal.Id, Stored.Problem)
-id_read = |text| AccountCodec.id_from(Str.to_utf8(text), "who")
+id_read = |text| AccountCodec.id_from(text.to_utf8(), "who")
 
 expect id_read("human:0") == Err(BadValue("who"))
 expect id_read("human") == Err(BadValue("who"))
@@ -645,7 +638,7 @@ expect
 
 # ── THE ACCOUNTS LOADER
 loaded : Str -> Try(List(Principal.Id), AccountCodec.LoadProblem)
-loaded = |text| AccountCodec.load(Str.to_utf8(text)).map_ok(|list| List.map(list, Principal.id))
+loaded = |text| AccountCodec.load(text.to_utf8()).map_ok(|list| list.map(Principal.id))
 
 agent_7 : Str
 agent_7 = "account v1 kind=agent id=7 owner=1 generation=2 name=CC\n"

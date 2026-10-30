@@ -103,7 +103,7 @@ ConvAccess := [].{
 		start = |{ id, starter, others, accounts }| {
 			human =
 				match Principal.find(accounts, starter) {
-					Ok(p) => Ok(Principal.answers_to(p))
+					Ok(p) => Ok(p.answers_to())
 					Err(_) => Err(NoSuchParticipant(starter))
 				}?
 			List.fold_try(
@@ -115,11 +115,11 @@ ConvAccess := [].{
 						Agent(_) | Bot(_) =>
 							match Principal.find(accounts, other) {
 								Err(_) => Err(NoSuchParticipant(other))
-								Ok(p) => if (Principal.answers_to(p) == human) Ok({}) else Err(NotTheOwner(other))
+								Ok(p) => if (p.answers_to() == human) Ok({}) else Err(NotTheOwner(other))
 							}
 					},
 			)?
-			among_bound({ id, participants: List.prepend(others, starter), accounts }).map_err(
+			among_bound({ id, participants: others.prepend(starter), accounts }).map_err(
 				|e|
 					match e {
 						NoParticipants => NoParticipants
@@ -167,8 +167,7 @@ ConvAccess := [].{
 		## Humans alone, or an agent or a bot among them: the ids say.
 		kind : ConvAccess.Conv -> [HumansOnly, WithAgents]
 		kind = |ConvAccess.Conv.(c)|
-			if List.all(
-				c.participants,
+			if c.participants.all(
 				|p| match p.id {
 					Human(_) => Bool.True
 					Agent(_) | Bot(_) => Bool.False
@@ -184,16 +183,15 @@ ConvAccess := [].{
 		## once, for each participant whose binding still holds.
 		involved : ConvAccess.Conv, List(Principal) -> List(Principal.GitHubId)
 		involved = |ConvAccess.Conv.(c), accounts|
-			List.fold(
-				c.participants,
+			c.participants.fold(
 				[],
 				|kept, p|
 					match answerer(accounts, p) {
 						Answers(human) =>
-							if List.contains(kept, human) {
+							if kept.contains(human) {
 								kept
 							} else {
-								List.append(kept, human)
+								kept.append(human)
 							}
 						Unresolved => kept
 					},
@@ -225,10 +223,10 @@ ConvAccess := [].{
 						Err(_) => Err(NoSuchPrincipal)
 						Ok(Agent(_)) | Ok(Bot(_)) => crash "ConvAccess.elect: a session's viewer is a human"
 						Ok(Human(h)) =>
-							if !List.contains(conv.involved(accounts), h.id) {
+							if !conv.involved(accounts).contains(h.id) {
 								Err(NotInvolved)
 							} else {
-								others = List.keep_if(c.public_by, |vote| vote.human != h.id)
+								others = c.public_by.keep_if(|vote| vote.human != h.id)
 								match visibility {
 									Public => Ok(
 										ConvAccess.Conv.(
@@ -258,7 +256,7 @@ ConvAccess := [].{
 			ConvAccess.Conv.(
 				{
 					..c,
-					public_by: List.keep_if(c.public_by, |vote| vote.human != human),
+					public_by: c.public_by.keep_if(|vote| vote.human != human),
 				},
 			)
 
@@ -272,7 +270,7 @@ ConvAccess := [].{
 			match conv.kind() {
 				HumansOnly => Private
 				WithAgents => {
-					is_resolved = List.all(c.participants, |p| answerer(accounts, p) != Unresolved)
+					is_resolved = c.participants.all(|p| answerer(accounts, p) != Unresolved)
 					is_elected = List.all(
 						conv.involved(accounts),
 						|h|
@@ -351,7 +349,7 @@ is_held = |viewer, accounts|
 answerer : List(Principal), Principal.Bound -> [Answers(Principal.GitHubId), Unresolved]
 answerer = |accounts, bound|
 	match Principal.holds(accounts, bound) {
-		Ok(only) => Answers(Principal.answers_to(only))
+		Ok(only) => Answers(only.answers_to())
 		Err(_) => Unresolved
 	}
 
@@ -394,25 +392,22 @@ principal = |who|
 
 ## Every account in the cast.
 accounts : List(Principal)
-accounts = List.map(
-	[
-		Ann,
-		Bea,
-		Cal,
-		Dee,
-		AnnAgent,
-		BeaAgent,
-		BeaBot,
-		CalAgent,
-		DeeAgent,
-		DeeBot,
-	],
-	principal,
-)
+accounts = [
+	Ann,
+	Bea,
+	Cal,
+	Dee,
+	AnnAgent,
+	BeaAgent,
+	BeaBot,
+	CalAgent,
+	DeeAgent,
+	DeeBot,
+].map(principal)
 
 ## The cast's accounts, `gone` retired.
 without : Who -> List(Principal)
-without = |gone| List.keep_if(accounts, |p| Principal.id(p) != Principal.id(principal(gone)))
+without = |gone| accounts.keep_if(|p| p.id() != principal(gone).id())
 
 ## Human `who`'s session to their account of generation `g`, from its
 ## stored line, signed in at 0.
@@ -447,11 +442,11 @@ viewer_among = |who, among|
 			}
 		}
 		(_, Someone(p)) => {
-			owner = Principal.answers_to(p)
+			owner = p.answers_to()
 			key = ApiKey.Key.issue(
 				{
 					granter: Session(session_of(owner.to_u64(), 1)),
-					acts_as: Principal.id(p),
+					acts_as: p.id(),
 					scope: {
 						read: On(Everywhere),
 						post: On(Everywhere),
@@ -514,11 +509,7 @@ among_bound = |
 		accounts: holders,
 	},
 | {
-	once = List.fold(
-		participants,
-		[],
-		|kept, p| if (List.contains(kept, p)) kept else List.append(kept, p),
-	)
+	once = participants.fold([], |kept, p| if (kept.contains(p)) kept else kept.append(p))
 	bound = List.map_try(
 		once,
 		|p|
@@ -527,7 +518,7 @@ among_bound = |
 				Err(_) => Err(NoSuchParticipant(p))
 			},
 	)?
-	if List.is_empty(bound) {
+	if bound.is_empty() {
 		Err(NoParticipants)
 	} else {
 		Ok(
@@ -551,7 +542,7 @@ among : List(Who) -> ConvAccess.Conv
 among = |people|
 	match among_bound({
 		id: first_conv_id,
-		participants: List.map(people, id_of),
+		participants: people.map(id_of),
 		accounts,
 	}) {
 		Ok(conv) => conv
@@ -560,7 +551,7 @@ among = |people|
 
 ## A cast member's id.
 id_of : Who -> Principal.Id
-id_of = |who| Principal.id(principal(who))
+id_of = |who| principal(who).id()
 
 ## `human` elects `visibility`, in a test where that is allowed.
 elected : ConvAccess.Conv, { human : Who, visibility : [Private, Public] } -> ConvAccess.Conv
@@ -761,7 +752,7 @@ started_by : Who, List(Who) -> Try(ConvAccess.ConvId, [NoParticipants, NoSuchPar
 started_by = |starter, others| ConvAccess.Conv.start({
 	id: first_conv_id,
 	starter: id_of(starter),
-	others: List.map(others, id_of),
+	others: others.map(id_of),
 	accounts,
 }).map_ok(ConvAccess.Conv.id)
 
@@ -880,10 +871,10 @@ forged_bea_agent : Principal
 forged_bea_agent = Cast.owned(Agent, { id: 2, owner: 1 })
 
 forged_first : List(Principal)
-forged_first = List.prepend(accounts, forged_bea_agent)
+forged_first = accounts.prepend(forged_bea_agent)
 
 forged_last : List(Principal)
-forged_last = List.append(accounts, forged_bea_agent)
+forged_last = accounts.append(forged_bea_agent)
 
 expect ha_cross_both.visibility(forged_first) == Private
 expect ha_cross_both.visibility(forged_last) == Private
@@ -1568,13 +1559,13 @@ ann_again = Principal.Human({
 })
 
 again : List(Principal)
-again = List.prepend(without(Ann), ann_again)
+again = without(Ann).prepend(ann_again)
 
 expect ha_own_ann.visibility(again) == Private
 expect ha_cross_both.visibility(again) == Private
 expect sees_among(Dee, { conv: ha_own_ann, among: again }) == Hidden
 # Her own account, back as it was (the same generation), is the same vote.
-expect ha_own_ann.visibility(List.append(without(Ann), principal(Ann))) == Public
+expect ha_own_ann.visibility(without(Ann).append(principal(Ann))) == Public
 # The new account is in none of the old one's conversations: it has no
 # election there, and its agent (bound to the old account) answers to it
 # no more.
@@ -1591,7 +1582,7 @@ expect sees_among(Ann, { conv: hh, among: again }) == Hidden
 expect sees_among(Ann, { conv: ha_cross_none, among: again }) == Hidden
 expect posts_among(Ann, { conv: hh, among: again }) == ReadOnly
 # A copy of Ann's account beside it: her vote names nobody.
-expect ha_own_ann.visibility(List.append(accounts, principal(Ann))) == Private
+expect ha_own_ann.visibility(accounts.append(principal(Ann))) == Private
 
 # ── VIEWERS AFTER AN AGENT PARTICIPANT RETIRES
 # ha_cross, both elected public, then BeaAgent retired: private; Ann still
@@ -1633,7 +1624,7 @@ expect sees_among(Dee, { conv: aa_both, among: gone_agent }) == Hidden
 expect sees_among(BeaAgent, { conv: aa_both, among: gone_agent }) == Hidden
 
 # A viewer two accounts hold sees nothing, even a public conversation.
-expect sees_among(Dee, { conv: ha_own_ann, among: List.append(accounts, principal(Dee)) }) == Hidden
+expect sees_among(Dee, { conv: ha_own_ann, among: accounts.append(principal(Dee)) }) == Hidden
 
 ## A key acting as human `who` themselves, reaching everywhere, as a viewer.
 own_key_viewer : Who -> Access.Viewer(ConvAccess.ConvId)
@@ -1641,8 +1632,8 @@ own_key_viewer = |who| {
 	p = principal(who)
 	key = ApiKey.Key.issue(
 		{
-			granter: Session(session_of(Principal.answers_to(p).to_u64(), 1)),
-			acts_as: Principal.id(p),
+			granter: Session(session_of(p.answers_to().to_u64(), 1)),
+			acts_as: p.id(),
 			scope: {
 				read: On(Everywhere),
 				post: On(Everywhere),

@@ -116,12 +116,12 @@ usual : SessionCodec.Fields
 usual = fields_at({ created: 1761600000, seen: 1761603600 })
 
 ab64 : Str
-ab64 = Str.repeat("ab", 32)
+ab64 = "ab".repeat(32)
 
 usual_line : Str
 usual_line = "session v1 id=12 human=583231 generation=3 token=${ab64} created=1761600000 seen=1761603600\n"
 
-expect SessionCodec.encode(usual) == Str.to_utf8(usual_line)
+expect SessionCodec.encode(usual) == usual_line.to_utf8()
 
 ## The fields a line decodes to.
 read_back : List(U8) -> Try(SessionCodec.Fields, Stored.Problem)
@@ -148,7 +148,7 @@ expect
 
 # ── THE MALFORMED TABLE: each line, its named problem.
 decoded : Str -> Try({}, Stored.Problem)
-decoded = |text| SessionCodec.decode(Str.to_utf8(text)).map_ok(|_| {})
+decoded = |text| SessionCodec.decode(text.to_utf8()).map_ok(|_| {})
 
 ## The usual line with `from` replaced by `to`.
 usual_but : { from : Str, to : Str } -> Str
@@ -184,9 +184,9 @@ expect decoded(
 	}),
 ) == Err(MissingField("generation"))
 expect decoded(usual_but({ from: "token=${ab64} ", to: "" })) == Err(MissingField("token"))
-expect decoded(usual_but({ from: ab64, to: Str.repeat("AB", 32) })) == Err(BadValue("token"))
-expect decoded(usual_but({ from: ab64, to: Str.repeat("ab", 31) })) == Err(BadValue("token"))
-expect decoded(usual_but({ from: ab64, to: Str.repeat("ab", 33) })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: ab64, to: "AB".repeat(32) })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: ab64, to: "ab".repeat(31) })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: ab64, to: "ab".repeat(33) })) == Err(BadValue("token"))
 expect decoded(usual_but({ from: ab64, to: "" })) == Err(BadValue("token"))
 expect decoded(usual_but({ from: "created=1761600000 ", to: "" })) == Err(MissingField("created"))
 expect decoded(
