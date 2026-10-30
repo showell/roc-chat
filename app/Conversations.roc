@@ -579,7 +579,7 @@ post! = |id| {
 ## behind is sent a `gap` event first, `{"before":<id>}`: the messages
 ## before that id it missed are a read's, by `?before=`.
 ## **ITS HOLDER IS THE VIEWER'S PRINCIPAL** (a key's, the one it acts as),
-## so the host's cap on streams a holder ends only the viewer's own (H2).
+## so the host's cap on streams a holder ends only the viewer's own.
 stream! : ConvAccess.ConvId => Chat.Answer
 stream! = |id|
 	match seen!(id) {

@@ -1,8 +1,7 @@
 ## **A WRITE COMES FROM THE CHAT'S OWN PAGES**: the CSRF check every
 ## request that is not a GET or a HEAD passes before its route. SameSite=Lax
 ## trusts every `*.lynrummy.com`, so a page on another subdomain could post
-## with the victim's cookie; this check refuses it (the security review of
-## 2026-10-29, M4).
+## with the victim's cookie; this check refuses it.
 ##
 ## A write passes when its `Origin` is the configured origin, or, with no
 ## `Origin`, its `Sec-Fetch-Site` is `same-origin`. A request with no

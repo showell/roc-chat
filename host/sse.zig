@@ -24,7 +24,7 @@ pub const headers = [_]std.http.Header{
 /// for the keepalive sends it, and a gone reader is noticed when it fails.
 pub const ping = ": ping\n\n";
 
-/// **THE STREAMS HELD AT ONCE, AND BY WHOM** (the security review's H2): a
+/// **THE STREAMS HELD AT ONCE, AND BY WHOM**: a
 /// stream takes a slot, named for its holder (the principal the app says
 /// asked). **A HOLDER AT ITS OWN CAP ENDS ITS OWN OLDEST**, never another's,
 /// so one user opening streams ends only their own. When every slot is

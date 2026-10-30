@@ -337,7 +337,7 @@ expect
 expect named("a\u(A1)b") == Ok("a\u(A1)b")
 expect named("a\u(7E)b") == Ok("a~b")
 
-# **NAMES THAT LOOK LIKE NOTHING** (the round-two attacker's sixth): a
+# **NAMES THAT LOOK LIKE NOTHING**: a
 # format or default-ignorable character anywhere; a line or paragraph
 # separator; a space not ASCII's; nothing visible at all.
 expect

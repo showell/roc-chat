@@ -543,8 +543,8 @@ test "missing and failed differ: a folder of mode 000 is a failure, not a missin
     try locked.setPermissions(testing.io, .fromMode(0o000));
     defer locked.setPermissions(testing.io, .fromMode(0o700)) catch {};
     // **ROOT IS REFUSED, NEVER SKIPPED**: root reads through a 000 folder,
-    // so the test would prove nothing; it fails, saying so (CC runs tests
-    // as a user, metal-vmm's CLOUD_WORK).
+    // so the test would prove nothing, and the tests may be run as root:
+    // it fails, saying so.
     if (std.os.linux.geteuid() == 0) {
         std.debug.print("files: the 000-folder test means nothing as root: run the tests as a user\n", .{});
         return error.RunAsAUserNotRoot;

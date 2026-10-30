@@ -52,9 +52,9 @@ pub const Limits = struct {
     /// it, the oldest is ended.
     streams_most: u32 = sse.Slots.most_ever,
     /// The most streams one holder (the principal the Roc names) holds at
-    /// once: past it, that holder's own oldest is ended (H2).
+    /// once: past it, that holder's own oldest is ended.
     streams_per_holder: u32 = 8,
-    /// **A STREAM'S LIFETIME** (the security review's M3): a stream is
+    /// **A STREAM'S LIFETIME**: a stream is
     /// authorized once, at its subscribe, so it ends this long after, and
     /// the browser resumes with `Last-Event-ID`, authorized afresh. A key
     /// revoked, a session ended or a conversation made private stops

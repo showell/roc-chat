@@ -315,7 +315,7 @@ test "refused with the core's answer: a replayed state, a forged state, another 
     try std.testing.expectEqual(401, (try get(a, rig.port(), "/me", "")).status);
 
     // The refusal past GitHub's exchange audited, as AuditCodec spells it;
-    // the anonymous ones, which anyone repeats for free, never (M1).
+    // the anonymous ones, which anyone repeats for free, never.
     var buf: [8192]u8 = undefined;
     const audit = try rig.data.dir.readFile(io, "auth/audit", &buf);
     try std.testing.expect(has(audit, "github-unreachable"));

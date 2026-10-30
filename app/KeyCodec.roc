@@ -443,7 +443,7 @@ expect
 # its admin stays off.
 expect read_back(Str.to_utf8(narrow_line)).map_ok(|e| e.record.scope) == Ok(narrow.scope)
 
-# **ONE SPELLING PER VALUE** (the round-two attacker's eighth): the encoder
+# **ONE SPELLING PER VALUE**: the encoder
 # writes a list ascending, each once, and an empty one `off`; the decoder
 # refuses every other spelling of the same reach.
 with_read : KeyCodec.Reach(Conv) -> List(U8)

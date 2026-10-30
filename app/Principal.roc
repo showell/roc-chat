@@ -459,7 +459,7 @@ expect Principal.authority(orphan_agent, accounts) == Member
 # The owner retired: the agent's authority went with them.
 expect Principal.authority(boss_agent, [boss_agent]) == Member
 
-# **THE ACCOUNTS' ROLE, NOT THE CALLER'S COPY** (the attacker's fourth): a
+# **THE ACCOUNTS' ROLE, NOT THE CALLER'S COPY**: a
 # copy of ann claiming admin is no admin; nor is ann, once a duplicate
 # admin line of her sits first in the accounts; nor her agent.
 ann_admin_copy : Principal

@@ -863,7 +863,7 @@ expect verdict(boss_agent_key, RevokeSessions(Cast.gid(4))) == Refused(NeedsSess
 # A target no account holds touches no admin: its keys may be revoked.
 expect verdict(boss_agent_key, RevokeKeys(Principal.Id.Agent(Cast.aid(9)))) == Permitted
 
-# ── THE BOOTSTRAP ADMIN, AND THE SNAPSHOT (the round-two attacker's ninth)
+# ── THE BOOTSTRAP ADMIN, AND THE SNAPSHOT
 # Boss is the first admin: cal, another admin, can neither demote nor
 # retire boss; cal can promote and demote anyone else, and boss cal.
 expect verdict(cal_session, retire_boss) == Refused(FirstAdmin)

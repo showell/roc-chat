@@ -60,7 +60,7 @@ pub const HeaderList = extern struct {
 };
 /// Chat.roc's `Answer`: the lists by name (`body`, `content_type`,
 /// `headers`, `stream_holder`, `stream_key`), the U16, then the tags by
-/// name. `stream_holder` is whose stream it is (H2's cap per holder), and
+/// name. `stream_holder` is whose stream it is (the stream cap is per holder), and
 /// empty but for a stream.
 pub const Answer = extern struct {
     body: RocBytes,

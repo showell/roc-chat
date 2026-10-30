@@ -3,7 +3,7 @@
 # tools/deploy.shale installs this file beside lynrummy.com's and
 # roc.lynrummy.com's site blocks. Every request is logged to
 # /var/log/caddy/chat-access.log by the `access_log` snippet that Caddyfile
-# defines for every site on prod (metal-vmm QUEUE 221).
+# defines for every site on prod.
 chat.lynrummy.com {
 	import access_log chat
 	# **NEVER AN EVENT STREAM**: gzip buffers what it compresses, so an SSE

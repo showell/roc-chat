@@ -29,7 +29,7 @@
 ##     auth/invites-by-human/<github id> a human's invites, by hash
 ##     auth/invites-indexed              how many invites that indexes
 ##
-## **WHAT ONE HUMAN HAS, BY AN INDEX** (the security review's H4): a file a
+## **WHAT ONE HUMAN HAS, BY AN INDEX**: a file a
 ## human, one record a line, appended as each thing of theirs is made, so a
 ## listing reads that file and what it names, never everyone's, and a cap
 ## counts its records by the file's size. Each index's mark says how many
@@ -371,8 +371,8 @@ Store := [].{
 		}
 	}
 
-	## **A TRANSCRIPT'S TALLY: ITS MESSAGES AND ITS BYTES** (the security
-	## review's H3), from the sidecar written with each append, so a post
+	## **A TRANSCRIPT'S TALLY: ITS MESSAGES AND ITS BYTES**,
+	## from the sidecar written with each append, so a post
 	## never reads the transcript to learn its id or its size. A sidecar
 	## that is missing (a transcript from before it) or that disagrees with
 	## the transcript's size (a stop between an append and its tally) is

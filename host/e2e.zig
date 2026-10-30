@@ -533,7 +533,7 @@ fn unjson(a: std.mem.Allocator, s: []const u8) ![]const u8 {
     return out.items;
 }
 
-/// **AGENTS ARE CAPPED PER HUMAN** (H1): a new human, Dee, makes twenty,
+/// **AGENTS ARE CAPPED PER HUMAN**: a new human, Dee, makes twenty,
 /// and the twenty-first is a 403. The cap is app/Limits.roc's.
 const agents_per_human = 20;
 
@@ -547,8 +547,8 @@ fn agentsCapped(w: *World) !void {
     if (!has(r.body, "as many agents")) return error.NotSaid;
 }
 
-/// **ONLY ITS OWNER NAMES AN AGENT** (M2), and an unknown id is refused
-/// in the same words (L1).
+/// **ONLY ITS OWNER NAMES AN AGENT**, and an unknown id is refused
+/// in the same words.
 fn othersAgentUnnamed(w: *World) !void {
     // Step 28 retired Steve's first agent: a fresh one.
     const made = try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Own");
@@ -563,7 +563,7 @@ fn othersAgentUnnamed(w: *World) !void {
     if (own.status != 201) return error.OwnAgentRefused;
 }
 
-/// **A WRITE FROM ANOTHER ORIGIN IS REFUSED** (M4), whatever cookie it
+/// **A WRITE FROM ANOTHER ORIGIN IS REFUSED**, whatever cookie it
 /// carries.
 fn crossOrigin(w: *World) !void {
     const before = try w.messages();
@@ -577,7 +577,7 @@ fn crossOrigin(w: *World) !void {
     if ((try w.postAs(w.ann, "from home")).status != 201) return error.OwnRefused;
 }
 
-/// **LOGOUT ENDS THE SESSION** (M5), behind M4's check.
+/// **LOGOUT ENDS THE SESSION**, behind the origin check.
 fn logout(w: *World) !void {
     const eve = try signUp(w.a, w.port(), 1007);
     if ((try get(w.a, w.port(), "/me", eve)).status != 200) return error.NotSignedIn;
@@ -590,7 +590,7 @@ fn logout(w: *World) !void {
     if ((try get(w.a, w.port(), "/me", eve)).status != 401) return error.SessionLives;
 }
 
-/// **A STREAM ENDS AT ITS LIFETIME** (M3): Steve's own key holds a
+/// **A STREAM ENDS AT ITS LIFETIME**: Steve's own key holds a
 /// stream; the key is revoked while it is open, and the stream ends at its
 /// lifetime (half a second here, `stream_lifetime_ms_for_test`), never
 /// carrying on for the revoked key; resumed, the key is a 401.
@@ -617,7 +617,7 @@ fn streamLifetime(w: *World) !void {
     return error.RevokedKeyStreamed;
 }
 
-/// **A HOLDER'S STREAMS ARE CAPPED, AND ONLY ITS OWN END** (H2): B holds a
+/// **A HOLDER'S STREAMS ARE CAPPED, AND ONLY ITS OWN END**: B holds a
 /// stream of the conversation; A opens nine, and the ninth ends A's own
 /// first, never B's.
 const streams_per_holder = 8;
@@ -646,7 +646,7 @@ fn overwrite(w: *World, path: []const u8, bytes: []const u8) !void {
     try f.writeStreamingAll(io, bytes);
 }
 
-/// **A POST LEARNS ITS ID FROM THE TALLY** (H3), never by reading the
+/// **A POST LEARNS ITS ID FROM THE TALLY**, never by reading the
 /// transcript whole: a conversation's transcript is made unreadable whole
 /// (its one line junk, its size the same), so a read is a 500, and the
 /// next post still answers id 2.
@@ -664,7 +664,7 @@ fn postByTally(w: *World) !void {
     if (!std.mem.startsWith(u8, r.body, "{\"id\":2,")) return error.NotTheSecond;
 }
 
-/// **A FULL TRANSCRIPT REFUSES A POST** (H3, Limits.transcript_bytes_most):
+/// **A FULL TRANSCRIPT REFUSES A POST** (Limits.transcript_bytes_most):
 /// a conversation's transcript and tally made ten bytes short of the cap,
 /// and a post is a 413 that says so, its transcript unchanged.
 const transcript_bytes_most = 4_000_000;
@@ -683,7 +683,7 @@ fn transcriptFull(w: *World) !void {
     if (after.len != near) return error.Appended;
 }
 
-/// **A READ IS A PAGE** (H3, Limits.page_messages): A posts a page and
+/// **A READ IS A PAGE** (Limits.page_messages): A posts a page and
 /// five more; a read answers the newest page, ids 6 to 105, and `earlier`;
 /// `before=6` answers 1 to 5, and no earlier; a `before` that is no id is
 /// a 400. The conversation's page shows the same newest page, and the
@@ -730,7 +730,7 @@ fn holdsPage(w: *World, body: []const u8, first: usize, last: usize, earlier: bo
     if (!std.mem.endsWith(u8, body, if (earlier) "],\"earlier\":true}" else "],\"earlier\":false}")) return error.EarlierWrong;
 }
 
-/// **A STREAM'S BACKLOG IS AT MOST THE NEWEST PAGE** (H3): B resumes from
+/// **A STREAM'S BACKLOG IS AT MOST THE NEWEST PAGE**: B resumes from
 /// message 1, and is told of the gap before 6, then sent 6 to 105; from 5
 /// there is no gap; from 103, 104 and 105 alone.
 fn streamGap(w: *World) !void {
@@ -787,7 +787,7 @@ fn offsetsRebuilt(w: *World) !void {
     try holdsPage(w, try pageOf(w, conv, "4"), 1, 3, false);
 }
 
-/// **THE CAPS ON WHAT ONE HUMAN MAKES** (H4): each step sets the host's
+/// **THE CAPS ON WHAT ONE HUMAN MAKES**: each step sets the host's
 /// small cap for the end to end (`cap_for_test`, Limits.cap!), reaches it,
 /// and the next one is a 403 that names the cap.
 const small_cap = 3;
@@ -847,7 +847,7 @@ fn indexRebuilt(w: *World) !void {
     }
 }
 
-/// **A LISTING READS ITS OWN INDEX ALONE** (H4): a conversation Fay is
+/// **A LISTING READS ITS OWN INDEX ALONE**: a conversation Fay is
 /// not in made unreadable, and her listing still answers, as a scan of
 /// every conversation would not.
 fn ownIndexOnly(w: *World) !void {
@@ -1147,11 +1147,11 @@ fn invitesAudited(w: *World) !void {
     for (wanted) |line| if (!has(log, line)) return error.NotAudited;
     if (has(log, w.code)) return error.CodeAudited;
     // A refusal naming no stored invite is anyone's to repeat, and never
-    // audited (M1).
+    // audited.
     if (has(log, "invite=unknown")) return error.AnonymousAudited;
 }
 
-/// **AN ANONYMOUS REFUSAL WRITES NO AUDIT** (M1): junk invite codes, a
+/// **AN ANONYMOUS REFUSAL WRITES NO AUDIT**: junk invite codes, a
 /// GitHub callback with no state, and a name with no pending sign-up,
 /// each several times, leave the audit file as it was.
 fn anonymousUnaudited(w: *World) !void {

@@ -1,6 +1,6 @@
 -- **EVERY CHECK OF roc-chat, IN ONE RUN**: the proof
 -- a change is sound, and the box's whole check of one. From the
--- repository's root, as the unprivileged user (CLOUD_WORK: `as-steve`):
+-- repository's root, as an unprivileged user:
 --
 --   shale tools/verify.shale
 --
@@ -27,8 +27,8 @@
 --     retired one's reused), a key allowed to make an invite; and the
 --     pages': the list showing every conversation, a
 --     participant's name written unescaped, a third user given the
---     conversation's page, a key given a page; and the security review's
---     (2026-10-29): agents uncapped, another's agent named in `with=`, a
+--     conversation's page, a key given a page; and the limits' and
+--     refusals': agents uncapped, another's agent named in `with=`, a
 --     cross-origin POST accepted, a logout that leaves the session, a
 --     stream outliving its lifetime, a junk invite code audited, a forged
 --     state audited, eviction across holders, a post reading the whole
@@ -215,7 +215,7 @@ plant("an agent's id taken from the accounts again, a retired one's reused",
 plant("a key allowed to make an invite (the grant's GrantedByKey let by)",
   "app/Agents.roc", "Refused(why) => Err(Refused(why))\n\t\t\tGrantable =>", "Refused(why) if why != GrantedByKey => Err(Refused(why))\n\t\t\t_ =>", 26)
 
--- The security review's (2026-10-29).
+-- The limits and refusals.
 plant("agents uncapped (the cap never reached)",
   "app/Agents.roc", "if owned >= Limits.agents_per_human {", "if owned >= Limits.agents_per_human * 1000 {", 36)
 

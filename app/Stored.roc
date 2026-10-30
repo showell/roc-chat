@@ -434,8 +434,8 @@ expect
 	)
 expect Stored.time(Str.to_utf8("1761600000"), "t") == Ok(1761600000)
 expect Stored.time(Str.to_utf8("253402300799"), "t") == Ok(Stored.max_time)
-# Before 1970, past 9999, and I64's ends (the round-two attacker's session
-# was created at I64's minimum, and its liveness overflowed): refused.
+# Before 1970, past 9999, and I64's ends (a session created at I64's
+# minimum would overflow its liveness): refused.
 expect
 	List.all(
 		[

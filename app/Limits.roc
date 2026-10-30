@@ -1,8 +1,7 @@
 ## **EVERY CAP ON WHAT ONE PERSON CAN MAKE GROW, AND WHY**: the one home of
 ## the numbers. Sign-up is open, and every request runs in one turn, so a
-## list anyone can grow without bound is work every other request pays for
-## (the security review of 2026-10-29, H1, H3 and H4). Each cap is refused
-## by name where it binds; none is a silent truncation.
+## list anyone can grow without bound is work every other request pays for.
+## Each cap is refused by name where it binds; none is a silent truncation.
 ## The caps on keys, invites and conversations count a human's own index
 ## (Store's `load_*_count!`), never a scan of everyone's, and bind through
 ## `cap!`.
@@ -21,8 +20,8 @@ Limits := [].{
 	accounts_most : U64
 	accounts_most = 10_000
 
-	## **THE AGENTS AND BOTS ONE HUMAN OWNS**: the review's 32,000 agents
-	## came from one account; twenty is several Claudes and a few bots.
+	## **THE AGENTS AND BOTS ONE HUMAN OWNS**: uncapped, one account makes
+	## tens of thousands; twenty is several Claudes and a few bots.
 	agents_per_human : U64
 	agents_per_human = 20
 

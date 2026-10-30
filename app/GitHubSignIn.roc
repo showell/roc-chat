@@ -131,7 +131,7 @@ GitHubSignIn := [].{
 		ClockOutOfRange,
 	]
 
-	## **WHETHER A REFUSAL IS AUDITED** (the security review's M1): one an
+	## **WHETHER A REFUSAL IS AUDITED**: one an
 	## anonymous request repeats for free (a missing, forged, stale or
 	## replayed state or pending sign-up, GitHub's "no", a junk code) is
 	## `Anonymous`, and never audited, so nobody can make every request an
@@ -1229,8 +1229,8 @@ expect
 	})
 		== made(ann_as("Ann B.", Member))
 
-# **AN ACCOUNT MADE MEANWHILE IS NEVER SIGNED IN BY NAMING** (the round-two
-# attacker's tenth): a second tab's account, or this pending sign-up's own,
+# **AN ACCOUNT MADE MEANWHILE IS NEVER SIGNED IN BY NAMING**: a second
+# tab's account, or this pending sign-up's own,
 # replayed in its window from the same browser after a log-out: refused,
 # with no admission; the person signs in through /login.
 expect name_said({ ..usual_naming, accounts: [boss, ann] }) == Refused(AccountExists)

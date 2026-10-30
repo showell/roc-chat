@@ -1554,7 +1554,7 @@ expect posts(CalAgent, three_all) == ReadOnly
 expect posts(DeeAgent, three_all) == Writable
 expect posts(DeeBot, three_all) == ReadOnly
 
-# ── RE-CREATION AFTER RETIREMENT (the round-two attacker's fifth)
+# ── RE-CREATION AFTER RETIREMENT
 # Ann elected ha_own public, then retired; an account made again with her
 # GitHub id (a later generation) does not inherit her vote, even before the
 # retirement's withdrawal is written: private.

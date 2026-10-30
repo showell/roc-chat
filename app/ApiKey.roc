@@ -766,13 +766,13 @@ expect administered(ann_claims_admin) == Refused(BeyondPrincipal)
 # A narrowed line loads narrowed.
 expect from_store(ann_agent_reads_c.record()).record().scope == reads_c
 
-# **NO KEY FROM A RECORD** (the round-two attacker's third): a key is
+# **NO KEY FROM A RECORD**: a key is
 # issued from a live session's grant, or loaded from a KeyCodec.Line, an
 # opaque value only the decoder makes; there is no `load` of a record, so
 # a handler's `{ acts_as: boss, admin: On }` is no key. A line it writes
 # out by hand is a forged store, and still held to its principal.
 
-# ── DUPLICATE AND FORGED ACCOUNTS (the round-two attacker's first)
+# ── DUPLICATE AND FORGED ACCOUNTS
 # A copy of ann's agent claiming boss as owner, first in the accounts:
 # boss is granted no key acting as it, and ann's agent's own key, granted
 # before, stands no more while the copy is there.
@@ -831,7 +831,7 @@ expect ann_claims_admin.administers({
 }) == Refused(NoSuchPrincipal)
 expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPrincipal))
 
-# ── RE-CREATION AFTER RETIREMENT (the round-two attacker's fifth)
+# ── RE-CREATION AFTER RETIREMENT
 # Ann retired, then made again with her GitHub id at 60: her old keys,
 # and her old agent's, stand no more; a new session of the new account
 # grants keys bound to it.
