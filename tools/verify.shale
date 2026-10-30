@@ -42,7 +42,7 @@
 --     from any of the chat's own paths (its uploads rule taking every path);
 --     and the agents page's: everyone's agents listed, its form posting
 --     nowhere, no live invite listed, a revoked key listed, another
---     human's invite revoked, a key given the page, and the start form
+--     human's page showing Gil's agent, a key given the page, and the start form
 --     offering none of the viewer's agents;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
@@ -298,8 +298,12 @@ plant("the agents page listing no live invite (its liveness read backwards)",
   "app/Agents.roc", "invites.keep_if(\n\t\t\t\t\t\t\t\t\t|i| is_live(i, now)", "invites.keep_if(\n\t\t\t\t\t\t\t\t\t|i| !is_live(i, now)", 57)
 plant("the agents page listing a revoked key (its revocation never read)",
   "app/Agents.roc", "\t\tActive => now < r.expires\n\t\tRevoked => Bool.False", "\t\tActive => now < r.expires\n\t\tRevoked => now < r.expires", 58)
-plant("another human's invite revoked (whose invite it is never asked)",
-  "app/Agents.roc", "match Principal.find(accounts, invite.bound.id) {\n\t\t\tOk(p) => Principal.answers_to(p) == human", "match Principal.find(accounts, invite.bound.id) {\n\t\t\tOk(p) => Principal.answers_to(p) == human or Bool.True", 59)
+-- What another human's page shows of Gil's: his agents through the one
+-- filter that guards them; his keys and invites through two each (the
+-- human's own index, and the ownership asked of each), so no one fault
+-- in those lets them through, and this plant is the one that can.
+plant("another human's page showing Gil's agent (its owner never asked)",
+  "app/Agents.roc", "Agent(_) | Bot(_) => Principal.answers_to(p) == human", "Agent(_) | Bot(_) => Principal.answers_to(p) == human or Bool.True", 59)
 plant("a key given the agents page (sent to sign in, as if signed out)",
   "app/Agents.roc", "Ok(Key(_)) => Err(ByKey)", "Ok(Key(_)) => Err(SignedOut)", 60)
 plant("the start form offering none of the viewer's agents",
