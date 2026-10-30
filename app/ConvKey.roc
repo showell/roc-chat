@@ -165,7 +165,12 @@ conv = |n, who| {
 				Err(_) => crash "conv: a test's participant has an account"
 			},
 	)
-	line = ConvCodec.encode({ id: n, created: 0, participants: bound, public_by: [] })
+	line = ConvCodec.encode({
+		id: n,
+		created: 0,
+		participants: bound,
+		public_by: [],
+	})
 	match ConvCodec.decode(line) {
 		Ok(decoded) => ConvAccess.Conv.load(decoded)
 		Err(_) => crash "conv: a test's conversation round-trips its line"

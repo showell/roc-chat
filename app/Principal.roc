@@ -281,7 +281,11 @@ Principal := [
 						Human(g) => (0, g.to_u64())
 						Agent(a) | Bot(a) => (1, a.to_u64())
 					}
-				{ kind, number, at }
+				{
+					kind,
+					number,
+					at,
+				}
 			},
 		)
 		sorted = keyed.sort_with(
@@ -492,9 +496,23 @@ expect loaded([
 expect loaded([boss, owned(Agent, { id: 1, owner: 1 })]) == Ok({})
 # Of two duplicates, the one a scan in order meets first is named, whatever
 # the sort's order of kinds.
-expect loaded([boss, boss_agent, boss, owned(Bot, { id: 1, owner: 1 })]) == Err(DuplicateId(Principal.id(boss)))
-expect loaded([boss_agent, boss, owned(Bot, { id: 1, owner: 1 }), boss]) == Err(DuplicateId(Principal.Id.Bot(aid(1))))
-expect loaded([boss, boss, boss]) == Err(DuplicateId(Principal.id(boss)))
+expect loaded([
+	boss,
+	boss_agent,
+	boss,
+	owned(Bot, { id: 1, owner: 1 }),
+]) == Err(DuplicateId(Principal.id(boss)))
+expect loaded([
+	boss_agent,
+	boss,
+	owned(Bot, { id: 1, owner: 1 }),
+	boss,
+]) == Err(DuplicateId(Principal.Id.Bot(aid(1))))
+expect loaded([
+	boss,
+	boss,
+	boss,
+]) == Err(DuplicateId(Principal.id(boss)))
 
 # ── GENERATIONS AND BINDINGS
 expect Principal.Generation.from_u64(0) == Err(NotAnId)

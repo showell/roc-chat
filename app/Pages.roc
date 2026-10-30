@@ -59,7 +59,11 @@ import Wire
 Pages := [].{
 
 	## What a page path asks.
-	Route : [ConversationList, AgentList, Conversation(ConvAccess.ConvId)]
+	Route : [
+		ConversationList,
+		AgentList,
+		Conversation(ConvAccess.ConvId),
+	]
 
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
@@ -69,7 +73,12 @@ Pages := [].{
 		} else if path == root.concat("/agents".to_utf8()) {
 			Ok(AgentList)
 		} else if path.starts_with(root.append('/')) {
-			Conversations.id_of(List.drop_first(path, List.len(root) + 1)).map_ok(|id| Conversation(id)).map_err(|_| NotAPage)
+			Conversations.id_of(
+				List.drop_first(
+					path,
+					List.len(root) + 1,
+				),
+			).map_ok(|id| Conversation(id)).map_err(|_| NotAPage)
 		} else {
 			Err(NotAPage)
 		}
@@ -380,7 +389,11 @@ serve_conversation! = |
 					Ok({ messages, earlier }) =>
 						page({
 							title: names(accounts, conv),
-							body_attrs: Html.join([Html.markup(" data-conv=\""), Html.number(id.to_u64()), Html.markup("\"")]),
+							body_attrs: Html.join([
+								Html.markup(" data-conv=\""),
+								Html.number(id.to_u64()),
+								Html.markup("\""),
+							]),
 							body: Html.join([
 								Html.markup("<h1>"),
 								names(accounts, conv),
@@ -588,7 +601,24 @@ expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("
 # **A NAME HOLDING A SCRIPT IS TEXT ON THE PAGE**: a message's author named
 # `<script>`, as message_html writes the header, escaped.
 expect {
-	scripted = Principal.Human({ id: Cast.gid(9), login: "h9", name: "<script>alert(1)</script>", role: Member, generation: Cast.gen(1) })
-	html = message_html([scripted], { id: 3, at: 5, by: scripted.id(), body: [] }).bytes()
-	html.starts_with("<article id=m3><header>&lt;script&gt;alert(1)&lt;/script&gt; · <time data-at=5>".to_utf8()) and Bytes.find(html, { needle: "<script>".to_utf8(), at: 0 }) == Err(NotFound)
+	scripted = Principal.Human({
+		id: Cast.gid(9),
+		login: "h9",
+		name: "<script>alert(1)</script>",
+		role: Member,
+		generation: Cast.gen(1),
+	})
+	html = message_html(
+		[scripted],
+		{
+			id: 3,
+			at: 5,
+			by: scripted.id(),
+			body: [],
+		},
+	).bytes()
+	html.starts_with("<article id=m3><header>&lt;script&gt;alert(1)&lt;/script&gt; · <time data-at=5>".to_utf8()) and Bytes.find(
+		html,
+		{ needle: "<script>".to_utf8(), at: 0 },
+	) == Err(NotFound)
 }

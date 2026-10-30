@@ -100,7 +100,12 @@ hello : Chat.Answer
 hello = {
 	page = Html.join([
 		Html.markup("<!doctype html>\n<title>roc-chat</title>\n"),
-		Html.rendered(Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."), Conversations.markdown)),
+		Html.rendered(
+			Md.render_trusted(
+				Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."),
+				Conversations.markdown,
+			),
+		),
 	])
 	Html.respond(200, page)
 }

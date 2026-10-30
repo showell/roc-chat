@@ -134,7 +134,11 @@ frames! = |key| {
 stream! : List(U8) => Chat.Answer
 stream! = |key|
 	match frames!(key) {
-		Ok(backlog) => Chat.stream({ key, backlog, holder: Str.to_utf8("probe") })
+		Ok(backlog) => Chat.stream({
+			key,
+			backlog,
+			holder: Str.to_utf8("probe"),
+		})
 		Err(Failed) => Chat.failed
 	}
 

@@ -11,7 +11,10 @@ Bytes := [].{
 	find = |s, { needle, at: i }|
 		if i + needle.len() > s.len() {
 			Err(NotFound)
-		} else if s.get(i) == needle.first() and s.sublist({ start: i, len: needle.len() }) == needle {
+		} else if s.get(i) == needle.first() and s.sublist({
+			start: i,
+			len: needle.len(),
+		}) == needle {
 			Ok(i)
 		} else {
 			find(s, { needle, at: i + 1 })

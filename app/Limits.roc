@@ -57,7 +57,11 @@ Limits := [].{
 	## or the end to end's smaller one where the host has one set
 	## (Host.read_config!'s `CapForTest`, which only host/e2e.zig sets; prod
 	## has none), so a step reaches a cap in a few requests.
-	cap! : [ConversationsPerHuman, InvitesPerHuman, KeysPerHuman] => U64
+	cap! : [
+		ConversationsPerHuman,
+		InvitesPerHuman,
+		KeysPerHuman,
+	] => U64
 	cap! = |which|
 		match Stored.count(Host.read_config!(CapForTest), "cap") {
 			Ok(n) => n

@@ -98,9 +98,20 @@ ConvAccess := [].{
 			accounts : List(Principal),
 		} -> Try(
 			ConvAccess.Conv,
-			[NoParticipants, NoSuchParticipant(Principal.Id), NotTheOwner(Principal.Id)],
+			[
+				NoParticipants,
+				NoSuchParticipant(Principal.Id),
+				NotTheOwner(Principal.Id),
+			],
 		)
-		start = |{ id, starter, others, accounts }| {
+		start = |
+			{
+				id,
+				starter,
+				others,
+				accounts,
+			},
+		| {
 			human =
 				match Principal.find(accounts, starter) {
 					Ok(p) => Ok(p.answers_to())
@@ -119,7 +130,11 @@ ConvAccess := [].{
 							}
 					},
 			)?
-			among_bound({ id, participants: others.prepend(starter), accounts }).map_err(
+			among_bound({
+				id,
+				participants: others.prepend(starter),
+				accounts,
+			}).map_err(
 				|e|
 					match e {
 						NoParticipants => NoParticipants
@@ -748,7 +763,15 @@ expect among_bound({
 # **ONLY ITS OWNER NAMES AN AGENT OR A BOT** (Conv.start): Ann names her
 # own agent and Bea; Cal names Ann's agent and is refused; Ann's agent,
 # starting, names Ann's own; Bea names Bea's bot and not Ann's agent.
-started_by : Who, List(Who) -> Try(ConvAccess.ConvId, [NoParticipants, NoSuchParticipant(Principal.Id), NotTheOwner(Principal.Id)])
+started_by : Who,
+List(Who) -> Try(
+	ConvAccess.ConvId,
+	[
+		NoParticipants,
+		NoSuchParticipant(Principal.Id),
+		NotTheOwner(Principal.Id),
+	],
+)
 started_by = |starter, others| ConvAccess.Conv.start({
 	id: first_conv_id,
 	starter: id_of(starter),

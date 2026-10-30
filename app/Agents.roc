@@ -139,6 +139,11 @@ Agents := [].{
 	## request came with, as ApiKey's grants take it.
 	Granter : ApiKey.Granter(ConvAccess.Conv, ConvAccess.ConvId)
 
+	## What a grant route is handed with its granter: the form, and whom a
+	## grant acts as when the form names no one (the human, or the key's own
+	## principal).
+	Asked : { default_as : Principal.Id, form : List(U8) }
+
 	## **WHAT MAKING AN AGENT DECIDED**: the agent and the steps that store
 	## it; the name refused (DisplayName's rule); the granter refused, as a
 	## grant is (only a live session, never a key); or a counter that cannot
@@ -387,7 +392,14 @@ Agents := [].{
 	## or a session no longer admitted, is `SignedOut`; a key is `ByKey`
 	## (a page is a browser's); a credential that ends the request, its
 	## answer.
-	mine! : {} => Try(Agents.Mine, [SignedOut, ByKey, Answered(Chat.Answer)])
+	mine! : {} => Try(
+		Agents.Mine,
+		[
+			SignedOut,
+			ByKey,
+			Answered(Chat.Answer),
+		],
+	)
 	mine! = |{}|
 		match Credentials.presented!({}) {
 			Err(answer) => Err(Answered(answer))
@@ -400,20 +412,32 @@ Agents := [].{
 					Refused(_) => Err(SignedOut)
 					Admitted({ principal, write: _ }) => {
 						human = Principal.answers_to(principal)
-						entries = Store.load_keys_of!(human, accounts).map_err(|_| Answered(Chat.failed))?
-						invites = Store.load_invites_of!(human, accounts).map_err(|_| Answered(Chat.failed))?
+						entries = Store.load_keys_of!(
+							human,
+							accounts,
+						).map_err(|_| Answered(Chat.failed))?
+						invites = Store.load_invites_of!(
+							human,
+							accounts,
+						).map_err(|_| Answered(Chat.failed))?
 						Ok({
 							me: human,
 							accounts,
 							agents: Agents.agents_of(accounts, human),
 							keys: keys_by_id(
 								entries.map(|e| e.key).keep_if(
-									|k| Agents.is_owned_by(k, { human, accounts }) and works(k, now),
+									|k| Agents.is_owned_by(
+										k,
+										{ human, accounts },
+									) and works(k, now),
 								),
 							),
 							invites: invites_by_id(
 								invites.keep_if(
-									|i| is_live(i, now) and Agents.is_invited_by(i, { human, accounts }),
+									|i| is_live(i, now) and Agents.is_invited_by(
+										i,
+										{ human, accounts },
+									),
 								),
 							),
 						})
@@ -446,7 +470,7 @@ invite_lifetime_secs = 600
 ## presented; nobody, a 401; a session or a key handed to `then!` as the
 ## granter, with the form and who a grant acts as by default (the human, or
 ## the key's own principal). Whether that granter may is the route's.
-granter_form! : (Agents.Granter, { default_as : Principal.Id, form : List(U8) } => Chat.Answer) => Chat.Answer
+granter_form! : (Agents.Granter, Agents.Asked => Chat.Answer) => Chat.Answer
 granter_form! = |then!| {
 	got = Host.read_body!(Wire.form_most)
 	match got.status {
@@ -455,7 +479,10 @@ granter_form! = |then!| {
 			match Credentials.presented!({}) {
 				Err(answer) => answer
 				Ok(Nobody) => not_signed_in
-				Ok(Session(s)) => then!(Session(s), { default_as: Principal.Id.Human(s.human()), form: got.bytes })
+				Ok(Session(s)) => then!(
+					Session(s),
+					{ default_as: Principal.Id.Human(s.human()), form: got.bytes },
+				)
 				Ok(Key(k)) => then!(Key(k), { default_as: k.acts_as(), form: got.bytes })
 			}
 	}
@@ -483,7 +510,10 @@ made_by! = |granter, form| {
 				now,
 			}) {
 				NameRefused(_) => Wire.refused(400, "that name is not one we can show")
-				Capped(AgentsPerHuman) => Wire.refused(403, "you have as many agents as one person may (${Limits.agents_per_human.to_str()})")
+				Capped(AgentsPerHuman) => Wire.refused(
+					403,
+					"you have as many agents as one person may (${Limits.agents_per_human.to_str()})",
+				)
 				Capped(Accounts) => Wire.refused(503, "the chat holds as many accounts as it may")
 				Stuck(_) => Chat.failed
 				Refused(why) => {
@@ -517,7 +547,7 @@ made_by! = |granter, form| {
 mint! : {} => Chat.Answer
 mint! = |{}| granter_form!(minted!)
 
-minted! : Agents.Granter, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
+minted! : Agents.Granter, Agents.Asked => Chat.Answer
 minted! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
@@ -570,13 +600,23 @@ minted! = |granter, { default_as, form }|
 								# The cap after the grant, so a refusal never
 								# speaks of another human's keys.
 								Ok(key) =>
-									match capped!(KeysPerHuman, acts_as, accounts) {
+									match capped!(
+										KeysPerHuman,
+										acts_as,
+										accounts,
+									) {
 										Err(Failed) => Chat.failed
-										Ok(Full) => Wire.refused(403, "you have minted as many keys as one person may (${Limits.cap!(KeysPerHuman).to_str()})")
+										Ok(Full) => Wire.refused(
+											403,
+											"you have minted as many keys as one person may (${Limits.cap!(KeysPerHuman).to_str()})",
+										)
 										Ok(Room) =>
 											match Store.save_new_key!({ key, hash }, accounts) {
 												Failed => Chat.failed
-												Written => Wire.json(201, key_json(key, Shown(secret)))
+												Written => Wire.json(
+													201,
+													key_json(key, Shown(secret)),
+												)
 											}
 									}
 							}
@@ -591,8 +631,17 @@ minted! = |granter, { default_as, form }|
 ## the cap counts (Limits.cap!), from their index. Asked only after the
 ## grant is decided, so `acts_as` is the granter's own, and a refusal
 ## never says how many another human has made.
-capped! : [InvitesPerHuman, KeysPerHuman], Principal.Id, List(Principal) => Try([Room, Full], [Failed])
-capped! = |which, acts_as, accounts|
+capped! : [
+	InvitesPerHuman,
+	KeysPerHuman,
+],
+Principal.Id,
+List(Principal) => Try([Room, Full], [Failed])
+capped! = |
+	which,
+	acts_as,
+	accounts,
+|
 	match Principal.find(accounts, acts_as) {
 		Err(_) => Ok(Room)
 		Ok(p) => {
@@ -632,7 +681,7 @@ is_human = |id|
 invite! : {} => Chat.Answer
 invite! = |{}| granter_form!(invited_by!)
 
-invited_by! : Agents.Granter, { default_as : Principal.Id, form : List(U8) } => Chat.Answer
+invited_by! : Agents.Granter, Agents.Asked => Chat.Answer
 invited_by! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
@@ -679,9 +728,16 @@ invited_by! = |granter, { default_as, form }|
 						}
 						# The cap after the grant, as a key's is.
 						Ok(bound) =>
-							match capped!(InvitesPerHuman, acts_as, accounts) {
+							match capped!(
+								InvitesPerHuman,
+								acts_as,
+								accounts,
+							) {
 								Err(Failed) => Chat.failed
-								Ok(Full) => Wire.refused(403, "you have made as many invites as one person may (${Limits.cap!(InvitesPerHuman).to_str()})")
+								Ok(Full) => Wire.refused(
+									403,
+									"you have made as many invites as one person may (${Limits.cap!(InvitesPerHuman).to_str()})",
+								)
 								Ok(Room) => {
 									code = Host.random_bytes!(Wire.secret_bytes)
 									match Stored.SecretHash.from_bytes(Host.hash!(code)) {
@@ -923,7 +979,12 @@ list_invites! = |{}|
 					)
 					Wire.json(
 						200,
-						JsonOut.object([("invites", JsonOut.array(invites_by_id(live).map(|i| invite_json(i, Hidden))))]),
+						JsonOut.object([
+							(
+								"invites",
+								JsonOut.array(invites_by_id(live).map(|i| invite_json(i, Hidden))),
+							),
+						]),
 					)
 				}
 			}
@@ -942,7 +1003,12 @@ invites_by_id : List(InviteCodec.Record(ConvAccess.ConvId)) -> List(InviteCodec.
 invites_by_id = |invites| List.sort_with(invites, |a, b| by_number(a.id.to_u64(), b.id.to_u64()))
 
 ## Two ids' order, smallest first: the listings' one rule.
-by_number : U64, U64 -> [Before, Same, After]
+by_number : U64,
+U64 -> [
+	Before,
+	Same,
+	After,
+]
 by_number = |a, b| if (a < b) Before else if (a > b) After else Same
 
 ## **/invites/<id>/revoke**: one of the session's live invites revoked.
@@ -1088,7 +1154,12 @@ list! = |{}|
 					)
 					Wire.json(
 						200,
-						JsonOut.object([("keys", JsonOut.array(keys_by_id(mine).map(|k| key_json(k, Hidden))))]),
+						JsonOut.object([
+							(
+								"keys",
+								JsonOut.array(keys_by_id(mine).map(|k| key_json(k, Hidden))),
+							),
+						]),
 					)
 				}
 			}
@@ -1223,7 +1294,10 @@ agent_json = |agent|
 	JsonOut.object([
 		("id", JsonOut.string(AccountCodec.id_text(Principal.id(agent)))),
 		("name", JsonOut.string(name_of(agent))),
-		("owner", JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(agent))))),
+		(
+			"owner",
+			JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(agent)))),
+		),
 	])
 
 name_of : Principal -> Str
@@ -1407,7 +1481,12 @@ with_agents = |owner, n|
 		Cast.accounts,
 		List.map_with_index(
 			List.repeat({}, n),
-			|_, i| Principal.Agent({ id: Cast.aid(100 + i), name: "A", owner: Cast.gid(owner), generation: Cast.gen(1) }),
+			|_, i| Principal.Agent({
+				id: Cast.aid(100 + i),
+				name: "A",
+				owner: Cast.gid(owner),
+				generation: Cast.gen(1),
+			}),
 		),
 	)
 
@@ -1435,7 +1514,12 @@ expect
 		Made(_) => True
 		_ => False
 	}
-expect said(made_among(1, with_agents(9, Limits.accounts_most - List.len(Cast.accounts)))) == Capped(Accounts)
+expect said(
+	made_among(
+		1,
+		with_agents(9, Limits.accounts_most - List.len(Cast.accounts)),
+	),
+) == Capped(Accounts)
 
 # The agent id and the generation are the settings'; both counters,
 # advanced. (The cast's agents and bots are 1, 2 and 3.)
@@ -1885,7 +1969,10 @@ expect {
 	anns.len() == 1 and anns.all(|p| Principal.answers_to(p) == Cast.gid(2))
 }
 expect Agents.agents_of(with_agents(2, 3), Cast.gid(2)).len() == 4
-expect Agents.agents_of(with_agents(2, 3), Cast.gid(1)).all(|p| Principal.answers_to(p) == Cast.gid(1))
+expect Agents.agents_of(
+	with_agents(2, 3),
+	Cast.gid(1),
+).all(|p| Principal.answers_to(p) == Cast.gid(1))
 expect
 	Agents.agents_of(Cast.accounts, Cast.gid(1)).all(
 		|p|
@@ -1898,5 +1985,12 @@ expect
 # **AN AGENT ON THE WIRE**, its name holding a quote, a backslash and a
 # control byte: one string still, and the fields in their order.
 expect
-	agent_json(Principal.Agent({ id: Cast.aid(7), name: "Bea \"B\" \\ \u(01)", owner: Cast.gid(2), generation: Cast.gen(1) })).bytes()
+	agent_json(
+		Principal.Agent({
+			id: Cast.aid(7),
+			name: "Bea \"B\" \\ \u(01)",
+			owner: Cast.gid(2),
+			generation: Cast.gen(1),
+		}),
+	).bytes()
 		== "{\"id\":\"agent:7\",\"name\":\"Bea \\\"B\\\" \\\\ \\u0001\",\"owner\":\"human:2\"}".to_utf8()

@@ -416,8 +416,17 @@ Store := [].{
 	## record a message (a transcript from before it, or a stop between an
 	## append and its record) is passed by: the transcript is read whole,
 	## and the next append writes the file again.
-	load_span! : ConvAccess.ConvId, Store.Tally, { first : U64, last : U64 } => Try(List(MessageCodec.Fields), [Failed])
-	load_span! = |id, tally, { first, last }|
+	load_span! : ConvAccess.ConvId,
+	Store.Tally,
+	{ first : U64, last : U64 } => Try(
+		List(MessageCodec.Fields),
+		[Failed],
+	)
+	load_span! = |
+		id,
+		tally,
+		{ first, last },
+	|
 		if first == 0 or last > tally.messages {
 			crash "Store.load_span!: a span outside its transcript"
 		} else if first > last {
@@ -432,7 +441,11 @@ Store := [].{
 				Ok(Bool.True) => {
 					# `first`'s record, and the next one's after `last`'s, which
 					# the transcript's end stands in for after its last message.
-					records = Host.read_at!(offsets_path(id), (first - 1) * offset_width, (last - first + 2) * offset_width)
+					records = Host.read_at!(
+						offsets_path(id),
+						(first - 1) * offset_width,
+						(last - first + 2) * offset_width,
+					)
 					starts =
 						match records.status {
 							Found => records.bytes.chunks_of(offset_width).map_try(offset_of).map_err(|_| Failed)?
@@ -441,7 +454,11 @@ Store := [].{
 					ends = if (last == tally.messages) List.append(starts, tally.bytes) else starts
 					match (ends.first(), ends.get(last - first + 1)) {
 						(Ok(from), Ok(to)) if from < to and to <= tally.bytes => {
-							text = Host.read_at!(transcript_path(id), from, to - from)
+							text = Host.read_at!(
+								transcript_path(id),
+								from,
+								to - from,
+							)
 							if text.status != Found or text.bytes.len() != to - from {
 								Err(Failed)
 							} else {
@@ -466,7 +483,11 @@ Store := [].{
 	## record a message before it is written again whole, from the
 	## transcript.
 	append_message! : ConvAccess.ConvId, Store.Tally, MessageCodec.Fields => [Failed, Appended]
-	append_message! = |id, tally, message|
+	append_message! = |
+		id,
+		tally,
+		message,
+	|
 		match offsets_kept!(id, tally) {
 			Err(Failed) => Failed
 			Ok(kept) => {
@@ -483,7 +504,13 @@ Store := [].{
 						match offsets {
 							Failed => Failed
 							Appended =>
-								match Host.write!(tally_path(id), tally_line({ messages: tally.messages + 1, bytes: appended.size })) {
+								match Host.write!(
+									tally_path(id),
+									tally_line({
+										messages: tally.messages + 1,
+										bytes: appended.size,
+									}),
+								) {
 									Failed => Failed
 									Written => Appended
 								}
@@ -496,7 +523,11 @@ Store := [].{
 	## **THE CONVERSATIONS OF `human`'S**: each one a participant of answers
 	## to them (the human, or an agent or a bot they own), oldest first, by
 	## their index.
-	load_conversations_of! : Principal.GitHubId, List(Principal) => Try(List(ConvAccess.Conv), [Failed])
+	load_conversations_of! : Principal.GitHubId,
+	List(Principal) => Try(
+		List(ConvAccess.Conv),
+		[Failed],
+	)
 	load_conversations_of! = |human, accounts| {
 		_ = conversations_indexed!(accounts)?
 		records = load_records!(index_path(by_human_folder, human), offset_width)?
@@ -519,7 +550,13 @@ Store := [].{
 		created : I64,
 		accounts : List(Principal),
 	} => [Failed, Written]
-	save_new_conversation! = |{ conv, created, accounts }|
+	save_new_conversation! = |
+		{
+			conv,
+			created,
+			accounts,
+		},
+	|
 		match conversations_indexed!(accounts) {
 			Err(Failed) => Failed
 			Ok(count) =>
@@ -568,13 +605,25 @@ Store := [].{
 			Ok(count) =>
 				match Store.save_key!(entry) {
 					Failed => Failed
-					Written => indexed!(keys_folder, keys_mark, { answerer: answerer_of(accounts, entry.key.acts_as()), record: hash_record(entry.hash), count })
+					Written => indexed!(
+						keys_folder,
+						keys_mark,
+						{
+							answerer: answerer_of(accounts, entry.key.acts_as()),
+							record: hash_record(entry.hash),
+							count,
+						},
+					)
 				}
 		}
 
 	## **THE INVITES OF `human`'S**, by their index; one whose file is gone
 	## or does not read is left out, as in `load_invites!`.
-	load_invites_of! : Principal.GitHubId, List(Principal) => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+	load_invites_of! : Principal.GitHubId,
+	List(Principal) => Try(
+		List(InviteCodec.Record(ConvAccess.ConvId)),
+		[Failed],
+	)
 	load_invites_of! = |human, accounts| {
 		_ = invites_indexed!(accounts)?
 		records = load_records!(index_path(invites_folder, human), hash_width)?
@@ -597,7 +646,15 @@ Store := [].{
 			Ok(count) =>
 				match Store.save_invite!(invite) {
 					Failed => Failed
-					Written => indexed!(invites_folder, invites_mark, { answerer: answerer_of(accounts, invite.bound.id), record: hash_record(invite.hash), count })
+					Written => indexed!(
+						invites_folder,
+						invites_mark,
+						{
+							answerer: answerer_of(accounts, invite.bound.id),
+							record: hash_record(invite.hash),
+							count,
+						},
+					)
 				}
 		}
 
@@ -653,7 +710,10 @@ save_offsets! = |id| {
 	match read.status {
 		Missing | Failed => Failed
 		Found =>
-			match Host.write!(offsets_path(id), List.join_map(line_starts(read.bytes), offset_record)) {
+			match Host.write!(
+				offsets_path(id),
+				List.join_map(line_starts(read.bytes), offset_record),
+			) {
 				Failed => Failed
 				Written => Appended
 			}
@@ -672,7 +732,11 @@ offset_record = |at| {
 	if digits.len() >= offset_width {
 		crash "Store.offset_record: an offset past ten digits"
 	} else {
-		List.join([List.repeat('0', offset_width - 1 - List.len(digits)), digits, ['\n']])
+		List.join([
+			List.repeat('0', offset_width - 1 - List.len(digits)),
+			digits,
+			['\n'],
+		])
 	}
 }
 
@@ -681,7 +745,10 @@ offset_of = |record|
 	if record.len() != offset_width or record.last() != Ok('\n') {
 		Err(Malformed)
 	} else {
-		record.drop_last(1).fold_try(0, |n, c| if (c >= '0' and c <= '9') Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed))
+		record.drop_last(1).fold_try(
+			0,
+			|n, c| if (c >= '0' and c <= '9') Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed),
+		)
 	}
 
 ## Where each line of a transcript starts.
@@ -761,7 +828,14 @@ conversations_indexed! = |accounts| {
 		Ok(count)
 	} else {
 		all = Store.load_conversations!({})?
-		involved = all.join_map(|c| humans_of(c, accounts).map(|h| (h, offset_record(c.id().to_u64()))))
+		involved = all.join_map(
+			|c| humans_of(c, accounts).map(
+				|h| (
+					h,
+					offset_record(c.id().to_u64()),
+				),
+			),
+		)
 		started = all.join_map(
 			|c|
 				match starter_of(c, accounts) {
@@ -834,8 +908,22 @@ answerer_of = |accounts, id|
 
 ## **ONE NEW THING'S RECORD, THEN THE MARK**: `record` appended to its
 ## human's file (none for nobody), and the mark one past `count`.
-indexed! : Str, List(U8), { answerer : Try(Principal.GitHubId, [Unresolved]), record : List(U8), count : U64 } => [Failed, Written]
-indexed! = |folder, mark, { answerer, record, count }| {
+indexed! : Str,
+List(U8),
+{
+	answerer : Try(Principal.GitHubId, [Unresolved]),
+	record : List(U8),
+	count : U64,
+} => [Failed, Written]
+indexed! = |
+	folder,
+	mark,
+	{
+		answerer,
+		record,
+		count,
+	},
+| {
 	appended =
 		match answerer {
 			Ok(h) => Host.append!(index_path(folder, h), record).status
@@ -875,13 +963,23 @@ starter_of = |conv, accounts|
 	}
 
 ## Records gathered by human, each human's in the order given.
-grouped : List((Principal.GitHubId, List(U8))) -> List({ human : Principal.GitHubId, records : List(U8) })
+grouped : List((Principal.GitHubId, List(U8))) -> List(
+	{
+		human : Principal.GitHubId,
+		records : List(U8),
+	},
+)
 grouped = |pairs|
 	pairs.fold(
 		[],
 		|groups, (human, record)|
 			if groups.any(|g| g.human == human) {
-				groups.map(|g| if (g.human == human) { human, records: g.records.concat(record) } else g)
+				groups.map(
+					|g| if (g.human == human) {
+						human,
+						records: g.records.concat(record),
+					} else g,
+				)
 			} else {
 				groups.append({ human, records: record })
 			},
@@ -908,7 +1006,13 @@ removed! = |folder, names|
 	match names {
 		[] => Ok({})
 		[name, .. as rest] =>
-			match Host.remove!(List.join([Str.to_utf8(folder), ['/'], name])) {
+			match Host.remove!(
+				List.join([
+					Str.to_utf8(folder),
+					['/'],
+					name,
+				]),
+			) {
 				Failed => Err(Failed)
 				Removed => removed!(folder, rest)
 			}
@@ -964,7 +1068,11 @@ load_record_count! = |path, width| {
 	}
 }
 
-load_conversations_at! : List(List(U8)), List(ConvAccess.Conv) => Try(List(ConvAccess.Conv), [Failed])
+load_conversations_at! : List(List(U8)),
+List(ConvAccess.Conv) => Try(
+	List(ConvAccess.Conv),
+	[Failed],
+)
 load_conversations_at! = |records, kept|
 	match records {
 		[] => Ok(kept)
@@ -990,7 +1098,11 @@ load_keys_at! = |records, kept|
 		}
 	}
 
-load_invites_at! : List(List(U8)), List(InviteCodec.Record(ConvAccess.ConvId)) => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+load_invites_at! : List(List(U8)),
+List(InviteCodec.Record(ConvAccess.ConvId)) => Try(
+	List(InviteCodec.Record(ConvAccess.ConvId)),
+	[Failed],
+)
 load_invites_at! = |records, kept|
 	match records {
 		[] => Ok(kept)
@@ -1015,7 +1127,10 @@ tally_of : List(U8) -> Try(Store.Tally, [Malformed])
 tally_of = |bytes|
 	match bytes.split_on(' ') {
 		[messages, rest] if rest.last() == Ok('\n') =>
-			match (Stored.count(messages, "messages"), Stored.count(List.drop_last(rest, 1), "bytes")) {
+			match (
+				Stored.count(messages, "messages"),
+				Stored.count(List.drop_last(rest, 1), "bytes"),
+			) {
 				(Ok(m), Ok(b)) => Ok({ messages: m, bytes: b })
 				_ => Err(Malformed)
 			}
@@ -1243,7 +1358,12 @@ expect offset_record(4_000_000) == "0004000000\n".to_utf8()
 expect offset_of(offset_record(123)) == Ok(123)
 expect offset_of("000000012\n".to_utf8()) == Err(Malformed)
 expect offset_of("00000001x2\n".to_utf8()) == Err(Malformed)
-expect line_starts("ab\nc\n\nd\n".to_utf8()) == [0, 3, 5, 6]
+expect line_starts("ab\nc\n\nd\n".to_utf8()) == [
+	0,
+	3,
+	5,
+	6,
+]
 expect line_starts([]) == []
 expect grouped([]) == []
 expect mark_line(12) == "12\n".to_utf8()

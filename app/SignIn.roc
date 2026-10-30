@@ -103,7 +103,14 @@ SignIn := [].{
 			Failed => Chat.failed
 			Removed =>
 				see_other(Str.to_utf8("/"))
-					|> Chat.with_header("set-cookie", SignInWeb.set_cookie("session", [], 0))
+					|> Chat.with_header(
+						"set-cookie",
+						SignInWeb.set_cookie(
+							"session",
+							[],
+							0,
+						),
+					)
 		}
 	}
 

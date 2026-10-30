@@ -487,9 +487,15 @@ GitHubSignIn := [].{
 					(UsedBefore, _) => Refused(PendingReused)
 					(FirstUse, Ok(_)) => Refused(AccountExists)
 					(FirstUse, Err(Duplicated)) => Refused(DuplicateAccount)
-					(FirstUse, Err(NoSuchPrincipal)) if List.len(accounts) >= Limits.accounts_most => Refused(AccountsFull)
+					(
+						FirstUse,
+						Err(NoSuchPrincipal),
+					) if List.len(accounts) >= Limits.accounts_most => Refused(AccountsFull)
 					(FirstUse, Err(NoSuchPrincipal)) =>
-						match (DisplayName.from_utf8(name), Accounts.next_generation(accounts, settings)) {
+						match (
+							DisplayName.from_utf8(name),
+							Accounts.next_generation(accounts, settings),
+						) {
 							(Err(problem), _) => NameRefused(problem)
 							(Ok(_), Err(why)) => Refused(why)
 							(Ok(chosen), Ok({ this, next })) =>
@@ -1182,10 +1188,18 @@ cap_filler = |n| List.concat(
 	[boss, ann_agent],
 	List.map_with_index(
 		List.repeat({}, n - 2),
-		|_, i| Principal.Agent({ id: Cast.aid(1000 + i), name: "A", owner: Cast.gid(1), generation: Cast.gen(1) }),
+		|_, i| Principal.Agent({
+			id: Cast.aid(1000 + i),
+			name: "A",
+			owner: Cast.gid(1),
+			generation: Cast.gen(1),
+		}),
 	),
 )
-expect name_said({ ..usual_naming, accounts: cap_filler(Limits.accounts_most) }) == Refused(AccountsFull)
+expect name_said({
+	..usual_naming,
+	accounts: cap_filler(Limits.accounts_most),
+}) == Refused(AccountsFull)
 expect
 	match name_said({ ..usual_naming, accounts: cap_filler(Limits.accounts_most - 1) }) {
 		Created(_) => True

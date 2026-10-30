@@ -286,5 +286,11 @@ expect MessageCodec.transcript(
 	]),
 ).map_ok(|ls| ls.len()) == Err(BadValue("id"))
 # A span: the ids from its first, as a slice of a transcript holds them.
-expect MessageCodec.span(transcript_of(three.drop_first(1)), 2).map_ok(|ls| ls.map(MessageCodec.Line.fields)) == Ok(three.drop_first(1))
-expect MessageCodec.span(transcript_of(three.drop_first(1)), 1).map_ok(|ls| ls.len()) == Err(BadValue("id"))
+expect MessageCodec.span(
+	transcript_of(three.drop_first(1)),
+	2,
+).map_ok(|ls| ls.map(MessageCodec.Line.fields)) == Ok(three.drop_first(1))
+expect MessageCodec.span(
+	transcript_of(three.drop_first(1)),
+	1,
+).map_ok(|ls| ls.len()) == Err(BadValue("id"))

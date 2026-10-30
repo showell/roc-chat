@@ -75,6 +75,14 @@ expect Html.text("Bea <i>x</i> & \"co\" 'q'").bytes() == "Bea &lt;i&gt;x&lt;/i&g
 expect Html.text("Zoë 🎉").bytes() == "Zoë 🎉".to_utf8()
 # A name holding a script is text, in an element or an attribute.
 expect
-	Html.join([Html.markup("<b data-name=\""), Html.text("<script>alert(1)</script>\""), Html.markup("\">")]).bytes()
+	Html.join([
+		Html.markup("<b data-name=\""),
+		Html.text("<script>alert(1)</script>\""),
+		Html.markup("\">"),
+	]).bytes()
 		== "<b data-name=\"&lt;script&gt;alert(1)&lt;/script&gt;&quot;\">".to_utf8()
-expect Html.join([Html.number(7), Html.markup(" "), Html.signed(-2)]).bytes() == "7 -2".to_utf8()
+expect Html.join([
+	Html.number(7),
+	Html.markup(" "),
+	Html.signed(-2),
+]).bytes() == "7 -2".to_utf8()

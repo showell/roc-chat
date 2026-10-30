@@ -13,7 +13,12 @@ Origin := [].{
 
 	## What a request says of where it came from.
 	Sent : {
-		method : [Get, Head, Post, Other],
+		method : [
+			Get,
+			Head,
+			Post,
+			Other,
+		],
 		path : List(U8),
 		origin : List(List(U8)),
 		fetch_site : List(List(U8)),
@@ -61,18 +66,78 @@ post = {
 }
 
 expect Origin.check(post, ours) == Allowed
-expect Origin.check({ ..post, origin: ["https://evil.lynrummy.com".to_utf8()] }, ours) == CrossOrigin
+expect Origin.check(
+	{ ..post, origin: ["https://evil.lynrummy.com".to_utf8()] },
+	ours,
+) == CrossOrigin
 expect Origin.check({ ..post, origin: ["http://chat.lynrummy.com".to_utf8()] }, ours) == CrossOrigin
 expect Origin.check({ ..post, origin: [ours, ours] }, ours) == CrossOrigin
 # No Origin: Sec-Fetch-Site decides; neither sent is refused.
-expect Origin.check({ ..post, origin: [], fetch_site: ["same-origin".to_utf8()] }, ours) == Allowed
-expect Origin.check({ ..post, origin: [], fetch_site: ["same-site".to_utf8()] }, ours) == CrossOrigin
+expect Origin.check(
+	{
+		..post,
+		origin: [],
+		fetch_site: ["same-origin".to_utf8()],
+	},
+	ours,
+) == Allowed
+expect Origin.check(
+	{
+		..post,
+		origin: [],
+		fetch_site: ["same-site".to_utf8()],
+	},
+	ours,
+) == CrossOrigin
 expect Origin.check({ ..post, origin: [] }, ours) == CrossOrigin
 # A GET is never refused here; a key without a cookie, and the redemption,
 # are exempt; a key beside a cookie is not.
-expect Origin.check({ ..post, method: Get, origin: [] }, ours) == Allowed
-expect Origin.check({ ..post, origin: [], has_cookie: False, has_key: True }, ours) == Allowed
-expect Origin.check({ ..post, origin: [], has_key: True }, ours) == CrossOrigin
-expect Origin.check({ ..post, origin: [], has_cookie: False }, ours) == Allowed
-expect Origin.check({ ..post, path: "/invites/redeem".to_utf8(), origin: [] }, ours) == Allowed
-expect Origin.check({ ..post, method: Other, origin: [] }, ours) == CrossOrigin
+expect Origin.check(
+	{
+		..post,
+		method: Get,
+		origin: [],
+	},
+	ours,
+) == Allowed
+expect Origin.check(
+	{
+		..post,
+		origin: [],
+		has_cookie: False,
+		has_key: True,
+	},
+	ours,
+) == Allowed
+expect Origin.check(
+	{
+		..post,
+		origin: [],
+		has_key: True,
+	},
+	ours,
+) == CrossOrigin
+expect Origin.check(
+	{
+		..post,
+		origin: [],
+		has_cookie: False,
+	},
+	ours,
+) == Allowed
+expect Origin.check(
+	{
+		..post,
+		path: "/invites/redeem".to_utf8(),
+		origin: [],
+	},
+	ours,
+) == Allowed
+expect Origin.check(
+	{
+		..post,
+		method: Other,
+		origin: [],
+	},
+	ours,
+) == CrossOrigin

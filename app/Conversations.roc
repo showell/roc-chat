@@ -107,7 +107,12 @@ Conversations := [].{
 					Err(_) => Ok([])
 					Ok(p) => {
 						theirs = Store.load_conversations_of!(Principal.answers_to(p), accounts)?
-						Ok(List.keep_if(theirs, |conv| ConvAccess.can_post(viewer, { conv, accounts })))
+						Ok(
+							List.keep_if(
+								theirs,
+								|conv| ConvAccess.can_post(viewer, { conv, accounts }),
+							),
+						)
 					}
 				}
 		}
@@ -139,11 +144,19 @@ Conversations := [].{
 	## `Limits.page_messages` before `before` (or of all, for `Newest`),
 	## oldest first, read from the first one's offset (Store.load_span!),
 	## and whether messages come before it.
-	load_page! : ConvAccess.ConvId, [Newest, Before(U64)] => Try({ messages : List(MessageCodec.Fields), earlier : Bool }, [Failed])
+	load_page! : ConvAccess.ConvId,
+	[Newest, Before(U64)] => Try(
+		{ messages : List(MessageCodec.Fields), earlier : Bool },
+		[Failed],
+	)
 	load_page! = |id, before| {
 		tally = Store.load_tally!(id)?
 		span = Conversations.page_of(tally.messages, before)
-		messages = Store.load_span!(id, tally, span)?
+		messages = Store.load_span!(
+			id,
+			tally,
+			span,
+		)?
 		Ok({ messages, earlier: span.first > 1 })
 	}
 
@@ -262,11 +275,20 @@ start! = |{}| {
 																	"this key may not post to a new conversation",
 																)
 															} else {
-																match Store.save_new_conversation!({ conv, created: now, accounts }) {
+																match Store.save_new_conversation!({
+																	conv,
+																	created: now,
+																	accounts,
+																}) {
 																	Failed => Chat.failed
 																	Written => Wire.json(
 																		201,
-																		JsonOut.object([("id", JsonOut.number(id.to_u64()))]),
+																		JsonOut.object([
+																			(
+																				"id",
+																				JsonOut.number(id.to_u64()),
+																			),
+																		]),
 																	)
 																}
 															}
@@ -322,7 +344,10 @@ list! = |{}|
 									("id", JsonOut.number(conv.id().to_u64())),
 									("with", JsonOut.array(conv.participants().map(person))),
 								])
-							Wire.json(200, JsonOut.object([("conversations", JsonOut.array(convs.map(one)))]))
+							Wire.json(
+								200,
+								JsonOut.object([("conversations", JsonOut.array(convs.map(one)))]),
+							)
 						}
 					}
 			}
@@ -537,9 +562,16 @@ post! = |id| {
 									body: got.bytes,
 								}
 								if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
-									Wire.refused(413, "this conversation is full: its transcript holds as much as one may")
+									Wire.refused(
+										413,
+										"this conversation is full: its transcript holds as much as one may",
+									)
 								} else {
-									match Store.append_message!(id, tally, message) {
+									match Store.append_message!(
+										id,
+										tally,
+										message,
+									) {
 										Failed => Chat.failed
 										Appended => {
 											match frame(message) {
@@ -589,12 +621,20 @@ stream! = |id|
 						} else {
 							tally.messages + 1
 						}
-					match Store.load_span!(id, tally, { first, last: tally.messages }) {
+					match Store.load_span!(
+						id,
+						tally,
+						{ first, last: tally.messages },
+					) {
 						Err(Failed) => Chat.failed
 						Ok(messages) => {
 							gap = if (after > 0 and after + 1 < newest.first) gap_frame(newest.first) else []
 							backlog = List.concat(gap, List.join(List.keep_oks(messages, frame)))
-							Chat.stream({ key: bus_key(id), backlog, holder: holder_of(a.viewer) })
+							Chat.stream({
+								key: bus_key(id),
+								backlog,
+								holder: holder_of(a.viewer),
+							})
 						}
 					}
 				}
@@ -604,7 +644,11 @@ stream! = |id|
 ## The `gap` event: the messages before `before` were not sent.
 gap_frame : U64 -> List(U8)
 gap_frame = |before|
-	match Sse.frame({ name: Str.to_utf8("gap"), data: JsonOut.object([("before", JsonOut.number(before))]).bytes(), id: [] }) {
+	match Sse.frame({
+		name: Str.to_utf8("gap"),
+		data: JsonOut.object([("before", JsonOut.number(before))]).bytes(),
+		id: [],
+	}) {
 		Ok(f) => f
 		Err(LineBreak) => crash "Conversations.gap_frame: a gap's JSON holds no line break"
 	}
@@ -692,5 +736,21 @@ expect before_of([Str.to_utf8("7"), Str.to_utf8("8")]) == Err(Malformed)
 
 # The chat's uploads rule: an upload's image renders; one of the chat's own
 # routes, as a src, is text.
-expect Str.contains(Str.from_utf8(Md.render(Str.to_utf8("<img src=\"/user_uploads/a.png\">"), Conversations.markdown)) ?? "", "<img src=\"/user_uploads/a.png\">")
-expect !Str.contains(Str.from_utf8(Md.render(Str.to_utf8("<img src=\"/conversations/1/stream\">"), Conversations.markdown)) ?? "", "<img")
+expect Str.contains(
+	Str.from_utf8(
+		Md.render(
+			Str.to_utf8("<img src=\"/user_uploads/a.png\">"),
+			Conversations.markdown,
+		),
+	) ?? "",
+	"<img src=\"/user_uploads/a.png\">",
+)
+expect !Str.contains(
+	Str.from_utf8(
+		Md.render(
+			Str.to_utf8("<img src=\"/conversations/1/stream\">"),
+			Conversations.markdown,
+		),
+	) ?? "",
+	"<img",
+)

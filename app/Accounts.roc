@@ -86,7 +86,10 @@ Accounts := [].{
 							accounts: with_human(
 								accounts,
 								human,
-								|h| if (Accounts.lowered_login(h.login) == Accounts.lowered_login(login)) { ..h, login: "" } else h,
+								|h| if (Accounts.lowered_login(h.login) == Accounts.lowered_login(login)) {
+									..h,
+									login: "",
+								} else h,
 							),
 							settings,
 						}

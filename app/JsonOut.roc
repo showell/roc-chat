@@ -106,4 +106,9 @@ expect JsonOut.object([]).bytes() == "{}".to_utf8()
 expect JsonOut.array([]).bytes() == "[]".to_utf8()
 expect JsonOut.array([JsonOut.bool(Bool.True), JsonOut.signed(-3)]).bytes() == "[true,-3]".to_utf8()
 # A field's name is escaped too.
-expect JsonOut.object([("a\"b", JsonOut.bool(Bool.False))]).bytes() == "{\"a\\\"b\":false}".to_utf8()
+expect JsonOut.object([
+	(
+		"a\"b",
+		JsonOut.bool(Bool.False),
+	),
+]).bytes() == "{\"a\\\"b\":false}".to_utf8()
