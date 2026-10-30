@@ -6,7 +6,14 @@
 ## of it. A key's Bearer header is a 403: a page is a
 ## browser's.
 ##
-##     GET /chat         the viewer's conversations, each a link, and a form to start one
+##     GET /chat         the viewer's conversations, each a link, and a form to
+##                       start one: with any of the viewer's own agents, ticked,
+##                       and anyone else by id
+##     GET /chat/agents  the viewer's agents, a form to make one, and a button
+##                       on each to invite it (its code shown once, by the
+##                       script, from the invite's own answer); their live
+##                       invites and the keys that still work, each with a
+##                       button to revoke it
 ##     GET /chat/<id>    a conversation: its newest page of messages (and a button
 ##                       for each page before it), then each new one live (its
 ##                       stream, by the browser's EventSource, which resumes with
@@ -20,9 +27,22 @@
 ## transcript and the stream give it, and nothing else is ever put in as
 ## HTML. Signed out, a page sends the browser to `/login`; a conversation
 ## the viewer may not see is the 404 of one that is not there.
+##
+## **THE AGENTS PAGE IS ITS OWN**, not a section of `/chat`: what it holds
+## (agents, invites, keys) is the account's, not a conversation's, and its
+## script is the one place a page ever shows a code. **ITS WRITES ARE THE
+## ROUTES' OWN** (Agents.roc): the script posts the forms `/agents`,
+## `/invites` and the revokes take, and each decision stays theirs; the
+## page adds no route. **A CODE IS SHOWN IN ONE RESPONSE**, the invite's: the
+## page lists an invite by its id and its agent, and Store keeps no code to
+## list.
 import pf.Chat
 import Access
 import AccountCodec
+import Agents
+import ConvKey
+import InviteCodec
+import KeyCodec
 import ConvAccess
 import Conversations
 import Credentials
@@ -35,13 +55,15 @@ import Wire
 Pages := [].{
 
 	## What a page path asks.
-	Route : [ConversationList, Conversation(ConvAccess.ConvId)]
+	Route : [ConversationList, AgentList, Conversation(ConvAccess.ConvId)]
 
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
 	route = |path|
 		if path == root {
 			Ok(ConversationList)
+		} else if path == List.concat(root, Str.to_utf8("/agents")) {
+			Ok(AgentList)
 		} else if List.starts_with(path, List.append(root, '/')) {
 			Conversations.id_of(List.drop_first(path, List.len(root) + 1)).map_ok(|id| Conversation(id)).map_err(|_| NotAPage)
 		} else {
@@ -53,10 +75,12 @@ Pages := [].{
 	answer! = |req, r|
 		if req.method != Get and req.method != Head {
 			Chat.not_allowed(Get)
+		} else if r == AgentList {
+			agents_answer!({})
 		} else {
 			use =
 				match r {
-					ConversationList => ListConversations
+					ConversationList | AgentList => ListConversations
 					Conversation(id) => Read(id)
 				}
 			match Credentials.load_viewer!(use) {
@@ -79,6 +103,7 @@ Pages := [].{
 									accounts,
 									me: me.id,
 								})
+								AgentList => agents_answer!({})
 								Conversation(id) => serve_conversation!({
 									viewer,
 									accounts,
@@ -170,7 +195,8 @@ list! = |
 				body: List.join([
 					Str.to_utf8("<h1>Your conversations</h1>\n"),
 					items,
-					Str.to_utf8("<form id=start><label>Start one with <input name=with placeholder=\"human:2,agent:7\" required></label> <button>Start</button> <span id=said></span></form>\n<p class=quiet>Signed in as "),
+					start_form(accounts, me),
+					Str.to_utf8("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n<p class=quiet>Signed in as "),
 					Pages.escape(Str.to_utf8(Conversations.name_of(accounts, me))),
 					Str.to_utf8(" ("),
 					Pages.escape(Str.to_utf8(AccountCodec.id_text(me))),
@@ -181,6 +207,144 @@ list! = |
 			})
 		}
 	}
+
+## **THE FORM THAT STARTS A CONVERSATION**: a box to tick for each of the
+## viewer's own agents (Agents.agents_of), and anyone else by id, typed;
+## the script sends them all as `with=`, which decides who may be named.
+start_form : List(Principal), Principal.Id -> List(U8)
+start_form = |accounts, me| {
+	mine =
+		match me {
+			Human(human) => Agents.agents_of(accounts, human)
+			Agent(_) | Bot(_) => []
+		}
+	ticks =
+		List.join_map(
+			mine,
+			|a| List.join([
+				Str.to_utf8("<label class=pick><input type=checkbox name=agent value=\""),
+				Pages.escape(Str.to_utf8(AccountCodec.id_text(Principal.id(a)))),
+				Str.to_utf8("\"> "),
+				Pages.escape(Str.to_utf8(Conversations.name_of(accounts, Principal.id(a)))),
+				Str.to_utf8("</label>\n"),
+			]),
+		)
+	List.join([
+		Str.to_utf8("<form id=start><p>Start one with:</p>\n"),
+		ticks,
+		Str.to_utf8("<label>Anyone else, by id <input name=with placeholder=\"human:2, agent:7\"></label> <button>Start</button> <span id=said></span></form>\n"),
+	])
+}
+
+## **/chat/agents**: the page, for a live session; signed out, to
+## `/login`; a key, the 403 every page gives one.
+agents_answer! : {} => Chat.Answer
+agents_answer! = |{}|
+	match Agents.mine!({}) {
+		Ok(mine) => agents_page(mine)
+		Err(SignedOut) => to_login
+		Err(ByKey) => key_refused
+		Err(Answered(answer)) => answer
+	}
+
+## The agents page: the viewer's agents, each with its invite button, the
+## form to make one, the box the script shows a code in, then the live
+## invites and the keys, each with its revoke button. Everything written
+## here is escaped; no code, secret or hash is in what it is made of.
+agents_page : Agents.Mine -> Chat.Answer
+agents_page = |mine| {
+	name = |id| Pages.escape(Str.to_utf8(Conversations.name_of(mine.accounts, id)))
+	agents =
+		if mine.agents.is_empty() {
+			Str.to_utf8("<p>None yet. Make one below.</p>\n")
+		} else {
+			List.join([
+				Str.to_utf8("<ul id=agents>\n"),
+				List.join_map(
+					mine.agents,
+					|a| {
+						id = Principal.id(a)
+						List.join([
+							Str.to_utf8("<li data-id=\""),
+							id_html(id),
+							Str.to_utf8("\"><b>"),
+							name(id),
+							Str.to_utf8("</b> <code>"),
+							id_html(id),
+							Str.to_utf8("</code> <button type=button class=invite data-for=\""),
+							id_html(id),
+							Str.to_utf8("\" data-name=\""),
+							name(id),
+							Str.to_utf8("\">Invite</button></li>\n"),
+						])
+					},
+				),
+				Str.to_utf8("</ul>\n"),
+			])
+		}
+	invites =
+		if mine.invites.is_empty() {
+			Str.to_utf8("<p>None waiting.</p>\n")
+		} else {
+			List.join([
+				Str.to_utf8("<ul id=invites>\n"),
+				List.join_map(
+					mine.invites,
+					|i| List.join([
+						Str.to_utf8("<li data-invite=${i.id.to_u64().to_str()}>For "),
+						name(i.bound.id),
+						Str.to_utf8(" (<code>"),
+						id_html(i.bound.id),
+						Str.to_utf8("</code>), until <time data-at=${i.expires.to_str()}></time> <button type=button class=revoke data-path=\"/invites/${i.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n"),
+					]),
+				),
+				Str.to_utf8("</ul>\n"),
+			])
+		}
+	keys =
+		if mine.keys.is_empty() {
+			Str.to_utf8("<p>None.</p>\n")
+		} else {
+			List.join([
+				Str.to_utf8("<ul id=keys>\n"),
+				List.join_map(mine.keys, |k| key_html(name, k)),
+				Str.to_utf8("</ul>\n"),
+			])
+		}
+	page({
+		title: Str.to_utf8("Agents"),
+		body_attrs: [],
+		body: List.join([
+			Str.to_utf8("<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n"),
+			agents,
+			Str.to_utf8("<form id=make><label>Make an agent named <input name=name required maxlength=64></label> <button>Make</button></form>\n<div id=code hidden><p><b>The invite code for <span id=code-for></span>, shown only now:</b></p>\n<p><code id=code-text></code> <button type=button id=copy>Copy</button></p>\n<p>Give it to the agent within ten minutes (until <time id=code-until></time>). It works once: the agent sends it to <code>POST /invites/redeem</code> as <code>code=</code> and gets its own key back. Reload this page and the code is gone; the invite is listed below until it is redeemed or revoked.</p></div>\n<h2>Invites waiting</h2>\n"),
+			invites,
+			Str.to_utf8("<h2>Keys that work</h2>\n"),
+			keys,
+			Str.to_utf8("<p id=said></p>\n<script>\n"),
+			Str.to_utf8(agents_js),
+			Str.to_utf8("</script>\n"),
+		]),
+	})
+}
+
+## An id as the page writes it, escaped.
+id_html : Principal.Id -> List(U8)
+id_html = |id| Pages.escape(Str.to_utf8(AccountCodec.id_text(id)))
+
+## One key: its id, who it acts as, what it may read and post, how long it
+## lives, and its revoke button; never its secret or its hash.
+key_html : (Principal.Id -> List(U8)), ConvKey.Key -> List(U8)
+key_html = |name, key| {
+	r = key.record()
+	List.join([
+		Str.to_utf8("<li data-key=${r.id.to_u64().to_str()}>Key ${r.id.to_u64().to_str()} acts as "),
+		name(r.acts_as),
+		Str.to_utf8(" (<code>"),
+		id_html(r.acts_as),
+		Str.to_utf8("</code>); reads <code>${KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64)}</code>, posts <code>${KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64)}</code>; until <time data-at=${r.expires.to_str()}></time> <button type=button class=revoke data-path=\"/keys/${r.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n"),
+	])
+}
 
 ## A conversation: its people, its messages, each with roc-markdown's HTML
 ## for it, and the box to post in; a 404 to a viewer ConvAccess will not let
@@ -311,6 +475,8 @@ css =
 	\\textarea { width: 100%; box-sizing: border-box; font: inherit; }
 	\\.quiet { color: #666; font-size: .9rem; }
 	\\#said { color: #a00; }
+	\\.pick { margin-right: 1rem; }
+	\\#code { border: 2px solid #c80; padding: 0 .8rem; }
 	\\
 
 list_js : Str
@@ -318,8 +484,46 @@ list_js =
 	\\const form = document.getElementById("start"), said = document.getElementById("said");
 	\\form.addEventListener("submit", async (e) => {
 	\\  e.preventDefault();
-	\\  const r = await fetch("/conversations", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "with=" + encodeURIComponent(form.elements.with.value.trim()) });
+	\\  const ticked = [...form.querySelectorAll("input[name=agent]:checked")].map((i) => i.value);
+	\\  const typed = form.elements.with.value.split(",").map((s) => s.trim()).filter((s) => s);
+	\\  const all = ticked.concat(typed);
+	\\  if (!all.length) { said.textContent = "Tick an agent or type someone's id."; return; }
+	\\  const r = await fetch("/conversations", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "with=" + encodeURIComponent(all.join(",")) });
 	\\  if (r.ok) location = "/chat/" + (await r.json()).id; else said.textContent = await r.text();
+	\\});
+	\\
+
+## The agents page's script: each button posts the form its route takes,
+## and reloads to show what changed; an invite's code, from the invite's
+## own answer, is set as text, and is in no page a reload gives.
+agents_js : Str
+agents_js =
+	\\const said = document.getElementById("said");
+	\\const when = (t) => new Date(t * 1000).toLocaleString();
+	\\for (const t of document.querySelectorAll("time[data-at]")) t.textContent = when(+t.dataset.at);
+	\\const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body });
+	\\document.getElementById("make").addEventListener("submit", async (e) => {
+	\\  e.preventDefault();
+	\\  const r = await post("/agents", "name=" + encodeURIComponent(e.target.elements.name.value.trim()));
+	\\  if (r.ok) location.reload(); else said.textContent = await r.text();
+	\\});
+	\\for (const b of document.querySelectorAll("button.invite")) b.addEventListener("click", async () => {
+	\\  const r = await post("/invites", "as=" + encodeURIComponent(b.dataset.for));
+	\\  if (!r.ok) { said.textContent = await r.text(); return; }
+	\\  const invite = await r.json();
+	\\  document.getElementById("code-for").textContent = b.dataset.name;
+	\\  document.getElementById("code-text").textContent = invite.code;
+	\\  document.getElementById("code-until").textContent = when(invite.expires);
+	\\  document.getElementById("code").hidden = false;
+	\\  said.textContent = "";
+	\\});
+	\\document.getElementById("copy").addEventListener("click", async () => {
+	\\  await navigator.clipboard.writeText(document.getElementById("code-text").textContent);
+	\\  said.textContent = "Copied.";
+	\\});
+	\\for (const b of document.querySelectorAll("button.revoke")) b.addEventListener("click", async () => {
+	\\  const r = await post(b.dataset.path, "");
+	\\  if (r.ok) location.reload(); else said.textContent = await r.text();
 	\\});
 	\\
 
@@ -379,8 +583,10 @@ expect Pages.route(Str.to_utf8("/chat/0")).is_err()
 expect Pages.route(Str.to_utf8("/chat/07")).is_err()
 expect Pages.route(Str.to_utf8("/chat/7/x")).is_err()
 expect Pages.route(Str.to_utf8("/chatx")).is_err()
+expect Pages.route(Str.to_utf8("/chat/agents")) == Ok(AgentList)
+expect Pages.route(Str.to_utf8("/chat/agents/x")).is_err()
 # The one thing a page's script sets as HTML is a message's, from the stream.
 expect Str.contains(
 	conversation_js,
 	"b.innerHTML = m.html;",
-) and !Str.contains(list_js, "innerHTML")
+) and !Str.contains(list_js, "innerHTML") and !Str.contains(agents_js, "innerHTML")

@@ -357,6 +357,79 @@ Agents := [].{
 			Ok(p) => Principal.answers_to(p) == human
 			Err(_) => Bool.False
 		}
+
+	## **THIS HUMAN'S AGENTS AND BOTS**, as the accounts hold them now (a
+	## retired one is in no account), in the accounts' order.
+	agents_of : List(Principal), Principal.GitHubId -> List(Principal)
+	agents_of = |accounts, human|
+		accounts.keep_if(
+			|p|
+				match p {
+					Human(_) => Bool.False
+					Agent(_) | Bot(_) => Principal.answers_to(p) == human
+				},
+		)
+
+	## **WHAT THE AGENTS PAGE SHOWS**: the human a live session signs in,
+	## their agents, their keys that still work and their live invites,
+	## each in id order: the facts `/keys` and `/invites` list, with the
+	## same filters, and never a secret, a code or a hash.
+	Mine : {
+		me : Principal.GitHubId,
+		accounts : List(Principal),
+		agents : List(Principal),
+		keys : List(ConvKey.Key),
+		invites : List(InviteCodec.Record(ConvAccess.ConvId)),
+	}
+
+	## **THE AGENTS PAGE'S FACTS**, for a live session; nobody signed in,
+	## or a session no longer admitted, is `SignedOut`; a key is `ByKey`
+	## (a page is a browser's); a credential that ends the request, its
+	## answer.
+	mine! : {} => Try(Agents.Mine, [SignedOut, ByKey, Answered(Chat.Answer)])
+	mine! = |{}|
+		match Credentials.presented!({}) {
+			Err(answer) => Err(Answered(answer))
+			Ok(Nobody) => Err(SignedOut)
+			Ok(Key(_)) => Err(ByKey)
+			Ok(Session(session)) => {
+				now = Host.read_time!({})
+				accounts = Store.load_accounts!({}).map_err(|_| Answered(Chat.failed))?
+				match session.admit({ accounts, now }) {
+					Refused(_) => Err(SignedOut)
+					Admitted({ principal, write: _ }) => {
+						human = Principal.answers_to(principal)
+						entries = Store.load_keys_of!(human, accounts).map_err(|_| Answered(Chat.failed))?
+						invites = Store.load_invites_of!(human, accounts).map_err(|_| Answered(Chat.failed))?
+						Ok({
+							me: human,
+							accounts,
+							agents: Agents.agents_of(accounts, human),
+							keys: keys_by_id(
+								entries.map(|e| e.key).keep_if(
+									|k| Agents.is_owned_by(k, { human, accounts }) and works(k, now),
+								),
+							),
+							invites: invites_by_id(
+								invites.keep_if(
+									|i| is_live(i, now) and Agents.is_invited_by(i, { human, accounts }),
+								),
+							),
+						})
+					}
+				}
+			}
+		}
+}
+
+## Not revoked, and before its expiry.
+works : ConvKey.Key, I64 -> Bool
+works = |key, now| {
+	r = key.record()
+	match r.revocation {
+		Active => now < r.expires
+		Revoked => Bool.False
+	}
 }
 
 ## **AN INVITE LIVES TEN MINUTES** (Steve): long enough to hand the code
@@ -1810,3 +1883,20 @@ expect is_live(anns_invite, 100) and !is_live(anns_invite, 650) and !is_live(
 	{ ..anns_invite, state: Spent },
 	100,
 )
+
+# **A HUMAN'S AGENTS** are theirs alone, never a human, and each one made
+# for them is among them.
+expect {
+	anns = Agents.agents_of(Cast.accounts, Cast.gid(2))
+	anns.len() == 1 and anns.all(|p| Principal.answers_to(p) == Cast.gid(2))
+}
+expect Agents.agents_of(with_agents(2, 3), Cast.gid(2)).len() == 4
+expect Agents.agents_of(with_agents(2, 3), Cast.gid(1)).all(|p| Principal.answers_to(p) == Cast.gid(1))
+expect
+	Agents.agents_of(Cast.accounts, Cast.gid(1)).all(
+		|p|
+			match p {
+				Human(_) => Bool.False
+				_ => Bool.True
+			},
+	)
