@@ -258,6 +258,11 @@ server, saying which.
   which needs Roc's source at the pinned commit in `~/tools/roc-<commit>`).
 - **Bytes handed to a hosted function belong to the call.** Copy anything
   the host keeps past it.
+- **A browser check against the test rig must send the rig's origin.**
+  Chromium on `127.0.0.1` sends its own `Origin`, and the server's Origin
+  check refuses that write. `tools/browser_check.js` sends the configured
+  origin with `route.fetch` and `fulfill`, because `route.continue` with new
+  headers drops the cookie.
 - **A folder std opens to walk (the default, O_PATH) cannot be fsynced**:
   the sync fails EBADF, which std's debug build panics on as a programmer's
   bug. `files.zig` opens a folder again, readable, to sync it.
