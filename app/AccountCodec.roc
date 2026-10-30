@@ -33,7 +33,7 @@ AccountCodec := [].{
 	]
 
 	## The account's line.
-	encode : Principal -> Try(List(U8), AccountCodec.EncodeProblem)
+	encode : Principal -> Try(List(U8), _)
 	encode = |principal|
 		match principal {
 			Human(h) => {
@@ -75,7 +75,7 @@ AccountCodec := [].{
 		}
 
 	## The account a line holds.
-	decode : List(U8) -> Try(Principal, Stored.Problem)
+	decode : List(U8) -> Try(Principal, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "account")?
 		kind = fields.field("kind")?
@@ -109,7 +109,7 @@ AccountCodec := [].{
 	## decision is made against; refused whole at its first bad line, or
 	## when two lines hold one id. A torn last line is the first's problem
 	## (`Torn`).
-	load : List(U8) -> Try(List(Principal), AccountCodec.LoadProblem)
+	load : List(U8) -> Try(List(Principal), _)
 	load = |raw| {
 		pieces = raw.split_on('\n')
 		lines = pieces.drop_last(1)
@@ -146,7 +146,7 @@ AccountCodec := [].{
 		}
 
 	## The role the value `role_text` spelled, in the field `name`.
-	role_from : List(U8), Str -> Try(Principal.Role, Stored.Problem)
+	role_from : List(U8), Str -> Try(Principal.Role, _)
 	role_from = |value, name|
 		Stored.word(
 			value,
@@ -158,7 +158,7 @@ AccountCodec := [].{
 		)
 
 	## The principal's id the value `id_text` spelled, in the field `name`.
-	id_from : List(U8), Str -> Try(Principal.Id, Stored.Problem)
+	id_from : List(U8), Str -> Try(Principal.Id, _)
 	id_from = |value, name|
 		match value.split_first(':') {
 			Err(NotFound) => Err(BadValue(name))
@@ -212,7 +212,7 @@ all_roles : List(Principal.Role)
 all_roles = [Admin, Member]
 
 ## The login as stored: GitHubLogin's rule, or empty (cleared).
-login_text : Str -> Try(Str, AccountCodec.EncodeProblem)
+login_text : Str -> Try(Str, _)
 login_text = |login|
 	if login == "" {
 		Ok("")
@@ -224,7 +224,7 @@ login_text = |login|
 	}
 
 ## The name as stored: it passes the rule and is already trimmed.
-name_text : Str -> Try(Str, AccountCodec.EncodeProblem)
+name_text : Str -> Try(Str, _)
 name_text = |name|
 	match DisplayName.from_str(name) {
 		Err(why) => Err(NameRefused(why))
@@ -238,7 +238,7 @@ owned_line : [Agent, Bot],
 	owner : Principal.GitHubId,
 	generation : Principal.Generation,
 	name : Str,
-} -> Try(List(U8), AccountCodec.EncodeProblem)
+} -> Try(List(U8), _)
 owned_line = |
 	kind,
 	{
@@ -270,7 +270,7 @@ owned_line = |
 }
 
 ## A human's fields, after its kind.
-decode_human : Stored.Reader -> Try(Principal, Stored.Problem)
+decode_human : Stored.Reader -> Try(Principal, _)
 decode_human = |after_kind| {
 	github = after_kind.field("github")?
 	id = Stored.id(github.value, { name: "github", make: Principal.GitHubId.from_u64 })?
@@ -304,7 +304,7 @@ decode_owned : Stored.Reader -> Try(
 		owner : Principal.GitHubId,
 		generation : Principal.Generation,
 	},
-	Stored.Problem,
+	_,
 )
 decode_owned = |after_kind| {
 	id_field = after_kind.field("id")?
@@ -324,7 +324,7 @@ decode_owned = |after_kind| {
 ## The `generation` field, which must come next, and the fields after it.
 generation_after : Stored.Reader -> Try(
 	{ value : Principal.Generation, rest : Stored.Reader },
-	Stored.Problem,
+	_,
 )
 generation_after = |fields| {
 	field = fields.field("generation")?
@@ -333,7 +333,7 @@ generation_after = |fields| {
 }
 
 ## The last field, the name: as the rule takes it, already trimmed.
-stored_name : Stored.Reader -> Try(Str, Stored.Problem)
+stored_name : Stored.Reader -> Try(Str, _)
 stored_name = |fields| {
 	text = fields.text("name")?
 	match name_text(text) {
@@ -503,7 +503,7 @@ expect
 	)
 
 # ── THE MALFORMED TABLE: each line, its named problem.
-decoded : Str -> Try({}, Stored.Problem)
+decoded : Str -> Try({}, _)
 decoded = |text| AccountCodec.decode(text.to_utf8()).map_ok(|_| {})
 
 human_line : Str
@@ -513,11 +513,11 @@ agent_line : Str
 agent_line = "account v1 kind=agent id=7 owner=5 generation=2 name=CC\n"
 
 ## The human's line with `from` replaced by `to`, decoded.
-human_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
+human_but : { from : Str, to : Str } -> Try({}, _)
 human_but = |{ from, to }| decoded(human_line.replace_first(from, to))
 
 ## The agent's line with `from` replaced by `to`, decoded.
-agent_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
+agent_but : { from : Str, to : Str } -> Try({}, _)
 agent_but = |{ from, to }| decoded(agent_line.replace_first(from, to))
 
 expect human_but({ from: "", to: "" }) == Ok({})
@@ -594,7 +594,7 @@ expect
 		|id| AccountCodec.id_from(AccountCodec.id_text(id).to_utf8(), "who") == Ok(id),
 	)
 expect AccountCodec.id_text(Principal.Id.Bot(Cast.aid(9))) == "bot:9"
-id_read : Str -> Try(Principal.Id, Stored.Problem)
+id_read : Str -> Try(Principal.Id, _)
 id_read = |text| AccountCodec.id_from(text.to_utf8(), "who")
 
 expect id_read("human:0") == Err(BadValue("who"))
@@ -637,7 +637,7 @@ expect
 		== Err(LoginRefused)
 
 # ── THE ACCOUNTS LOADER
-loaded : Str -> Try(List(Principal.Id), AccountCodec.LoadProblem)
+loaded : Str -> Try(List(Principal.Id), _)
 loaded = |text| AccountCodec.load(text.to_utf8()).map_ok(|list| list.map(Principal.id))
 
 agent_7 : Str

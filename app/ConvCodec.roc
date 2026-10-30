@@ -61,7 +61,7 @@ ConvCodec := [].{
 		}
 
 	## The conversation a line holds.
-	decode : List(U8) -> Try(ConvCodec.Line, Stored.Problem)
+	decode : List(U8) -> Try(ConvCodec.Line, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "conversation")?
 		id_field = fields.field("id")?
@@ -101,7 +101,7 @@ bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()
 
 ## The participant `bound_text` spelled; a human whose two generations
 ## differ, refused.
-bound_from : List(U8) -> Try(Principal.Bound, Stored.Problem)
+bound_from : List(U8) -> Try(Principal.Bound, _)
 bound_from = |value|
 	match value.split_on('/') {
 		[
@@ -133,7 +133,7 @@ vote_text = |v| "${v.human.to_u64().to_str()}/${v.generation.to_u64().to_str()}"
 
 vote_from : List(U8) -> Try(
 	{ human : Principal.GitHubId, generation : Principal.Generation },
-	Stored.Problem,
+	_,
 )
 vote_from = |value|
 	match value.split_on('/') {
@@ -173,7 +173,7 @@ usual = {
 }
 
 ## The fields a line decodes to.
-read_back : List(U8) -> Try(ConvCodec.Fields, Stored.Problem)
+read_back : List(U8) -> Try(ConvCodec.Fields, _)
 read_back = |raw| ConvCodec.decode(raw).map_ok(ConvCodec.Line.fields)
 
 expect ConvCodec.encode(usual) == "conversation v1 id=1 created=1761600000 with=human:583231/3/3,agent:7/4/3 public=\n".to_utf8()

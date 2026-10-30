@@ -44,7 +44,7 @@ ConvKey := [].{
 		KeyCodec.encode({ record: key.record(), hash }, ConvAccess.ConvId.to_u64)
 
 	## The chat key a stored line holds: the one way back from the store.
-	decode : List(U8) -> Try(ConvKey.Entry, Stored.Problem)
+	decode : List(U8) -> Try(ConvKey.Entry, _)
 	decode = |raw| {
 		line = KeyCodec.decode(raw, ConvAccess.ConvId.from_u64)?
 		entry = line.entry()

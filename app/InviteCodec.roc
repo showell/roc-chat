@@ -116,7 +116,7 @@ InviteCodec := [].{
 	## The record a line holds, an id read by `make`; refused when it is for
 	## a human (an invite is for an agent or a bot), expires before it was
 	## made, or names a key's lifetime no grant gives.
-	decode : List(U8), (U64 -> Try(id, [NotAnId])) -> Try(InviteCodec.Record(id), Stored.Problem)
+	decode : List(U8), (U64 -> Try(id, [NotAnId])) -> Try(InviteCodec.Record(id), _)
 	decode = |raw, make| {
 		fields = Stored.Reader.open(raw, "invite")?
 		id_field = fields.field("id")?
@@ -210,7 +210,7 @@ InviteCodec := [].{
 		List(U8) -> Try(
 			ApiKey.GrantRefusal,
 			Stored.Problem,
-		)) -> Try(InviteCodec.Refusal, Stored.Problem)
+		)) -> Try(InviteCodec.Refusal, _)
 	refusal_from = |value, grant_from|
 		match Bytes.strip_prefix(value, Str.to_utf8(grant_prefix)) {
 			Ok(g) => grant_from(g).map_ok(|r| Grant(r))
@@ -250,7 +250,7 @@ by_text = |by|
 		Key(h) => "${key_prefix}${Stored.hash_text(h)}"
 	}
 
-by_from : List(U8) -> Try(InviteCodec.By, Stored.Problem)
+by_from : List(U8) -> Try(InviteCodec.By, _)
 by_from = |value|
 	match (
 		Bytes.strip_prefix(value, Str.to_utf8(session_prefix)),
@@ -379,7 +379,7 @@ expect InviteCodec.decode(
 ) == Ok({ ..fresh, state: Revoked })
 
 ## `fresh`'s line with `from` made `to`, decoded.
-decoded_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
+decoded_but : { from : Str, to : Str } -> Try({}, _)
 decoded_but = |{ from, to }| InviteCodec.decode(
 	line_of(fresh).replace_first(from, to).to_utf8(),
 	number,
@@ -414,7 +414,7 @@ grant_word = |g|
 		_ => "other"
 	}
 
-grant_back : List(U8) -> Try(ApiKey.GrantRefusal, Stored.Problem)
+grant_back : List(U8) -> Try(ApiKey.GrantRefusal, _)
 grant_back = |w| if (w == "session-expired".to_utf8()) Ok(SessionExpired) else Err(UnknownWord("verdict"))
 
 refusals : List(InviteCodec.Refusal)

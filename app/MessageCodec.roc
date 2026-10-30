@@ -64,7 +64,7 @@ MessageCodec := [].{
 		}
 
 	## The message a line holds.
-	decode : List(U8) -> Try(MessageCodec.Line, Stored.Problem)
+	decode : List(U8) -> Try(MessageCodec.Line, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "message")?
 		id_field = fields.field("id")?
@@ -95,13 +95,13 @@ MessageCodec := [].{
 	## last ended by its newline (a torn append is `Torn`), and the ids 1,
 	## 2, 3 in order (`BadValue("id")` for a gap, a repeat or a start past
 	## 1). An empty transcript has none.
-	transcript : List(U8) -> Try(List(MessageCodec.Line), Stored.Problem)
+	transcript : List(U8) -> Try(List(MessageCodec.Line), _)
 	transcript = |raw| MessageCodec.span(raw, 1)
 
 	## **A RUN OF A TRANSCRIPT'S LINES**, read from where its message `first`
 	## starts (Store.load_span!): the same rule, its ids `first`, `first`
 	## plus one, and on.
-	span : List(U8), U64 -> Try(List(MessageCodec.Line), Stored.Problem)
+	span : List(U8), U64 -> Try(List(MessageCodec.Line), _)
 	span = |raw, first|
 		if raw.is_empty() {
 			Ok([])
@@ -142,7 +142,7 @@ escaped = |body| {
 }
 
 ## The body `escaped` spelled, and only that spelling.
-unescaped : List(U8) -> Try(List(U8), Stored.Problem)
+unescaped : List(U8) -> Try(List(U8), _)
 unescaped = |text| {
 	len = text.len()
 	var $out = []
@@ -202,7 +202,7 @@ numbered = |id, body| {
 	body,
 }
 
-read_back : List(U8) -> Try(MessageCodec.Fields, Stored.Problem)
+read_back : List(U8) -> Try(MessageCodec.Fields, _)
 read_back = |raw| MessageCodec.decode(raw).map_ok(MessageCodec.Line.fields)
 
 expect MessageCodec.encode(said("two\nlines, 100%".to_utf8())) == "message v1 id=3 at=1761600000 by=human:583231 body=two%0Alines, 100%25\n".to_utf8()

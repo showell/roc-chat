@@ -108,7 +108,7 @@ KeyCodec := [].{
 	admin_text = |s| spell_switch(s)
 
 	## The switch a stored `admin` field's value spells.
-	admin_from : List(U8) -> Try([Off, On], Stored.Problem)
+	admin_from : List(U8) -> Try([Off, On], _)
 	admin_from = |value| Stored.word(
 		value,
 		{
@@ -123,7 +123,7 @@ KeyCodec := [].{
 	{
 		name : Str,
 		make : (U64 -> Try(id, [NotAnId])),
-	} -> Try([Off, On(KeyCodec.Reach(id))], Stored.Problem)
+	} -> Try([Off, On(KeyCodec.Reach(id))], _)
 	reach_from = |value, named| reach_from_text(value, named)
 
 	## The entry's line, an id spelled by `number`, in the one spelling.
@@ -147,7 +147,7 @@ KeyCodec := [].{
 		)
 
 	## The entry a line holds, an id read by `make`, or the line's problem.
-	decode : List(U8), (U64 -> Try(id, [NotAnId])) -> Try(KeyCodec.Line(id), Stored.Problem)
+	decode : List(U8), (U64 -> Try(id, [NotAnId])) -> Try(KeyCodec.Line(id), _)
 	decode = |raw, make| {
 		fields = Stored.Reader.open(raw, "key")?
 		id_field = fields.field("id")?
@@ -273,7 +273,7 @@ reach_from_text : List(U8),
 {
 	name : Str,
 	make : (U64 -> Try(id, [NotAnId])),
-} -> Try(ReachPart(id), Stored.Problem)
+} -> Try(ReachPart(id), _)
 reach_from_text = |value, { name, make }|
 	if value == spell_switch(Off).to_utf8() {
 		Ok(Off)
@@ -380,7 +380,7 @@ encoded : KeyCodec.Entry(Conv) -> List(U8)
 encoded = |e| KeyCodec.encode(e, Conv.to_u64)
 
 ## The entry a line holds.
-read_back : List(U8) -> Try(KeyCodec.Entry(Conv), Stored.Problem)
+read_back : List(U8) -> Try(KeyCodec.Entry(Conv), _)
 read_back = |raw| KeyCodec.decode(raw, Conv.from_u64).map_ok(KeyCodec.Line.entry)
 
 ## The entry survives a round trip whole.
@@ -470,7 +470,7 @@ expect ascending_once([
 expect ascending_once([]) == []
 
 # ── THE MALFORMED TABLE: each line, its named problem.
-decoded : Str -> Try({}, Stored.Problem)
+decoded : Str -> Try({}, _)
 decoded = |text| KeyCodec.decode(text.to_utf8(), Conv.from_u64).map_ok(|_| {})
 
 ## The narrow line with `from` replaced by `to`.

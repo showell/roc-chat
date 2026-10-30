@@ -50,7 +50,7 @@ DisplayName :: Str.{
 	]
 
 	## The name the bytes spell, as a form handed them.
-	from_utf8 : List(U8) -> Try(DisplayName, DisplayName.Problem)
+	from_utf8 : List(U8) -> Try(DisplayName, _)
 	from_utf8 = |bytes|
 		match Str.from_utf8(bytes) {
 			Ok(text) => DisplayName.from_str(text)
@@ -58,7 +58,7 @@ DisplayName :: Str.{
 		}
 
 	## The name `text` is, trimmed, when the rule takes it.
-	from_str : Str -> Try(DisplayName, DisplayName.Problem)
+	from_str : Str -> Try(DisplayName, _)
 	from_str = |text| {
 		bytes = trim_spaces(text.to_utf8())
 		if bytes == [] {
@@ -277,7 +277,7 @@ has_c1_control = |bytes|
 
 # ── tests
 
-named : Str -> Try(Str, DisplayName.Problem)
+named : Str -> Try(Str, _)
 named = |text| DisplayName.from_str(text).map_ok(DisplayName.to_str)
 
 # Taken: anything readable, real or not, trimmed.

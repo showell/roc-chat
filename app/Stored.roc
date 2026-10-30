@@ -132,7 +132,7 @@ Stored := [].{
 
 		## A record of `kind`: one line, its newline at the end and nowhere
 		## else, UTF-8, the kind and the version known.
-		open : List(U8), Str -> Try(Stored.Reader, Stored.Problem)
+		open : List(U8), Str -> Try(Stored.Reader, _)
 		open = |raw, kind|
 			match raw.split_last('\n') {
 				Err(NotFound) => Err(Torn)
@@ -163,7 +163,7 @@ Stored := [].{
 		field : Stored.Reader,
 		Str -> Try(
 			{ value : List(U8), rest : Stored.Reader },
-			Stored.Problem,
+			_,
 		)
 		field = |Stored.Reader.(rest), name|
 			match Bytes.strip_prefix(rest, Str.to_utf8(" ${name}=")) {
@@ -179,7 +179,7 @@ Stored := [].{
 
 		## The free-text field `name`, which must come next and is the last:
 		## the rest of the line, spaces and all.
-		text : Stored.Reader, Str -> Try(Str, Stored.Problem)
+		text : Stored.Reader, Str -> Try(Str, _)
 		text = |Stored.Reader.(rest), name|
 			match Bytes.strip_prefix(rest, Str.to_utf8(" ${name}=")) {
 				Err(NoMatch) => Err(MissingField(name))
@@ -191,14 +191,14 @@ Stored := [].{
 			}
 
 		## Nothing after the last field.
-		close : Stored.Reader -> Try({}, Stored.Problem)
+		close : Stored.Reader -> Try({}, _)
 		close = |Stored.Reader.(rest)| if (rest == []) Ok({}) else Err(Trailing)
 	}
 
 	## **A COUNT OR AN ID**: decimal digits, the first not `0` unless it is
 	## the only one, and it fits a U64. `U64.from_str` is not asked to
 	## judge: it takes `+7`, `1_000` and `0x10` too.
-	count : List(U8), Str -> Try(U64, Stored.Problem)
+	count : List(U8), Str -> Try(U64, _)
 	count = |value, name|
 		if is_canonical_digits(value) {
 			U64.from_int_digits(List.map(value, |c| c - '0')).map_err(|_| BadNumber(name))
@@ -208,7 +208,7 @@ Stored := [].{
 
 	## **AN ID**: a count, made into its type by `make` (the id's own
 	## `from_u64`, which refuses 0).
-	id : List(U8), { name : Str, make : (U64 -> Try(a, [NotAnId])) } -> Try(a, Stored.Problem)
+	id : List(U8), { name : Str, make : (U64 -> Try(a, [NotAnId])) } -> Try(a, _)
 	id = |value, { name, make }| {
 		n = Stored.count(value, name)?
 		match make(n) {
@@ -226,7 +226,7 @@ Stored := [].{
 
 	## **A TIME**: unix seconds, as `count` spells a number, from 0 to
 	## `max_time`; nothing before 1970 (no minus sign) and nothing past it.
-	time : List(U8), Str -> Try(I64, Stored.Problem)
+	time : List(U8), Str -> Try(I64, _)
 	time = |value, name| {
 		n = Stored.count(value, name)?
 		if n > Stored.max_time.to_u64_wrap() {
@@ -258,7 +258,7 @@ Stored := [].{
 		name : Str,
 		all : List(a),
 		spell : (a -> Str),
-	} -> Try(a, Stored.Problem)
+	} -> Try(a, _)
 	word = |
 		value,
 		{
@@ -273,7 +273,7 @@ Stored := [].{
 		}
 
 	## **A HASH**: 64 lowercase hex digits, its 32 bytes.
-	hash : List(U8), Str -> Try(Stored.SecretHash, Stored.Problem)
+	hash : List(U8), Str -> Try(Stored.SecretHash, _)
 	hash = |value, name|
 		if value.len() != hash_bytes * digits_per_byte {
 			Err(BadValue(name))
@@ -360,7 +360,7 @@ expect
 		== "t v1 a=1 b=two words\n".to_utf8()
 expect Stored.line("t", []) == "t v1\n".to_utf8()
 
-two_fields : Str -> Try({ a : List(U8), b : Str }, Stored.Problem)
+two_fields : Str -> Try({ a : List(U8), b : Str }, _)
 two_fields = |raw| {
 	first = reader(raw).field("a")?
 	b = first.rest.text("b")?
@@ -371,7 +371,7 @@ expect two_fields("t v1 a=1 b=two words\n") == Ok({ a: "1".to_utf8(), b: "two wo
 expect two_fields("t v1 a=1 b=x a=2\n") == Ok({ a: "1".to_utf8(), b: "x a=2" })
 
 # Opening: each malformed line, its problem.
-opened : Str -> Try({}, Stored.Problem)
+opened : Str -> Try({}, _)
 opened = |raw| Stored.Reader.open(raw.to_utf8(), "t").map_ok(|_| {})
 
 expect opened("t v1\n") == Ok({})
@@ -396,7 +396,7 @@ expect Stored.Reader.open(
 ).map_ok(|_| {}) == Err(NotUtf8)
 
 # Fields: the one expected, in its place, or its name.
-field_a : Str -> Try(List(U8), Stored.Problem)
+field_a : Str -> Try(List(U8), _)
 field_a = |raw| reader(raw).field("a").map_ok(|f| f.value)
 
 expect field_a("t v1 a=7\n") == Ok("7".to_utf8())
@@ -459,7 +459,7 @@ spell_colour = |c|
 		Green => "green"
 	}
 
-colour : Str -> Try(Colour, Stored.Problem)
+colour : Str -> Try(Colour, _)
 colour = |text| Stored.word(
 	text.to_utf8(),
 	{

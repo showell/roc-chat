@@ -61,7 +61,7 @@ SessionCodec := [].{
 		)
 
 	## The session a line holds.
-	decode : List(U8) -> Try(SessionCodec.Line, Stored.Problem)
+	decode : List(U8) -> Try(SessionCodec.Line, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "session")?
 		id_field = fields.field("id")?
@@ -124,7 +124,7 @@ usual_line = "session v1 id=12 human=583231 generation=3 token=${ab64} created=1
 expect SessionCodec.encode(usual) == usual_line.to_utf8()
 
 ## The fields a line decodes to.
-read_back : List(U8) -> Try(SessionCodec.Fields, Stored.Problem)
+read_back : List(U8) -> Try(SessionCodec.Fields, _)
 read_back = |raw| SessionCodec.decode(raw).map_ok(SessionCodec.Line.fields)
 
 # Round trips: the usual, a fresh one (seen when created), times at 0 and
@@ -147,7 +147,7 @@ expect
 	)
 
 # ── THE MALFORMED TABLE: each line, its named problem.
-decoded : Str -> Try({}, Stored.Problem)
+decoded : Str -> Try({}, _)
 decoded = |text| SessionCodec.decode(text.to_utf8()).map_ok(|_| {})
 
 ## The usual line with `from` replaced by `to`.

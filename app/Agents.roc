@@ -307,7 +307,7 @@ Agents := [].{
 		accounts : List(Principal),
 		now : I64,
 		key : Principal.KeyId,
-	} -> Try(ConvKey.Key, InviteCodec.Refusal)
+	} -> Try(ConvKey.Key, _)
 	redeemed = |
 		{
 			invite,
@@ -1857,7 +1857,7 @@ redeemed_at : {
 	granter : [Found(Agents.Granter), Gone],
 	accounts : List(Principal),
 	now : I64,
-} -> Try((Principal.Id, I64), InviteCodec.Refusal)
+} -> Try((Principal.Id, I64), _)
 redeemed_at = |
 	{
 		invite,

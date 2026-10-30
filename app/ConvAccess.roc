@@ -218,7 +218,7 @@ ConvAccess := [].{
 		elect : ConvAccess.Conv,
 		ConvAccess.Election -> Try(
 			ConvAccess.Conv,
-			ConvAccess.ElectionRefusal,
+			_,
 		)
 		elect = |
 			conv,
@@ -726,7 +726,7 @@ three_dee_withdrawn = elected(three_all, { human: Dee, visibility: Private })
 
 # ── the elections
 ## `who` tries to elect public, where that may be refused.
-refused : ConvAccess.Conv, Who -> Try(ConvAccess.ConvId, ConvAccess.ElectionRefusal)
+refused : ConvAccess.Conv, Who -> Try(ConvAccess.ConvId, _)
 refused = |conv, who|
 	conv.elect({
 		by: viewer(who),

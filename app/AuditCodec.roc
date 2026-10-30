@@ -211,7 +211,7 @@ AuditCodec := [].{
 		}
 
 	## The entry a line holds, of whichever kind its first word names.
-	decode : List(U8) -> Try(AuditCodec.Entry, Stored.Problem)
+	decode : List(U8) -> Try(AuditCodec.Entry, _)
 	decode = |raw|
 		match Stored.Reader.open(raw, admin_kind) {
 			Ok(fields) => decode_admin(fields).map_ok(|a| AuditCodec.Entry.(Admin(a)))
@@ -290,7 +290,7 @@ invite_verdict_from : List(U8) -> Try(
 		Revoked(Principal.SessionId),
 		Refused(InviteCodec.Refusal),
 	],
-	Stored.Problem,
+	_,
 )
 invite_verdict_from = |value|
 	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
@@ -325,7 +325,7 @@ invite_verdict_from = |value|
 		}
 	}
 
-decode_invite : Stored.Reader -> Try(AuditCodec.Invite, Stored.Problem)
+decode_invite : Stored.Reader -> Try(AuditCodec.Invite, _)
 decode_invite = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -346,7 +346,7 @@ decode_invite = |fields| {
 invite_from : List(U8),
 List(U8) -> Try(
 	[Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
-	Stored.Problem,
+	_,
 )
 invite_from = |invite_value, for_value| {
 	unknown = Str.to_utf8(unknown_word)
@@ -365,7 +365,7 @@ invite_from = |invite_value, for_value| {
 is_storable : I64 -> Bool
 is_storable = |t| t >= 0 and t <= Stored.max_time
 
-decode_admin : Stored.Reader -> Try(Admin.Audit, Stored.Problem)
+decode_admin : Stored.Reader -> Try(Admin.Audit, _)
 decode_admin = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -390,7 +390,7 @@ decode_admin = |fields| {
 	})
 }
 
-decode_sign_in : Stored.Reader -> Try(AuditCodec.SignIn, Stored.Problem)
+decode_sign_in : Stored.Reader -> Try(AuditCodec.SignIn, _)
 decode_sign_in = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -409,7 +409,7 @@ decode_sign_in = |fields| {
 	})
 }
 
-decode_key : Stored.Reader -> Try(AuditCodec.KeyEvent, Stored.Problem)
+decode_key : Stored.Reader -> Try(AuditCodec.KeyEvent, _)
 decode_key = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -460,7 +460,7 @@ decode_key = |fields| {
 }
 
 ## `refused:` and a word of the closed set, in a `verdict` field.
-refused_word : List(U8), { all : List(a), spell : (a -> Str) } -> Try(a, Stored.Problem)
+refused_word : List(U8), { all : List(a), spell : (a -> Str) } -> Try(a, _)
 refused_word = |value, { all, spell }|
 	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
 		Err(NoMatch) => Err(UnknownWord("verdict"))
@@ -482,7 +482,7 @@ github_text = |github|
 		Known(g) => g.to_u64().to_str()
 	}
 
-github_from : List(U8) -> Try([Unknown, Known(Principal.GitHubId)], Stored.Problem)
+github_from : List(U8) -> Try([Unknown, Known(Principal.GitHubId)], _)
 github_from = |value|
 	if value == Str.to_utf8(unknown_word) {
 		Ok(Unknown)
@@ -545,7 +545,7 @@ List(U8) -> Try(
 		Start,
 		ListConversations,
 	],
-	Stored.Problem,
+	_,
 )
 key_action_from = |head, tail| if head == Str.to_utf8(start_word) {
 	if (tail == Str.to_utf8(new_word)) Ok(Start) else Err(BadValue("action"))
@@ -687,7 +687,7 @@ step_text = |step|
 		) => "${spell_step(SetRole)}${colon}${human.to_u64().to_str()}${colon}${AccountCodec.role_text(role)}"
 	}
 
-step_from : List(U8) -> Try(Admin.Step, Stored.Problem)
+step_from : List(U8) -> Try(Admin.Step, _)
 step_from = |value| {
 	{ head, tail } = split_colon(value, "plan")?
 	human = |bytes| Stored.id(bytes, { name: "plan", make: Principal.GitHubId.from_u64 })
@@ -720,7 +720,7 @@ plan_text = |plan| if (List.is_empty(plan)) none_word else Str.join_with(
 	",",
 )
 
-plan_from : List(U8) -> Try(List(Admin.Step), Stored.Problem)
+plan_from : List(U8) -> Try(List(Admin.Step), _)
 plan_from = |value|
 	if value == Str.to_utf8(none_word) {
 		Ok([])
@@ -753,7 +753,7 @@ via_text = |via|
 		Key(k) => "${spell_via(Key)}${colon}${k.to_u64().to_str()}"
 	}
 
-via_from : List(U8) -> Try(Via, Stored.Problem)
+via_from : List(U8) -> Try(Via, _)
 via_from = |value| {
 	{ head, tail } = split_colon(value, "via")?
 	match Stored.word(
@@ -820,7 +820,7 @@ action_text = |action|
 		ReadCounters => spell_action(ReadCounters)
 	}
 
-action_from : List(U8) -> Try(Admin.Action, Stored.Problem)
+action_from : List(U8) -> Try(Admin.Action, _)
 action_from = |value|
 	match List.split_first(value, ':') {
 		Err(NotFound) =>
@@ -949,7 +949,7 @@ refusal_text = |why|
 		NoSuchTarget => spell_admin_refusal(NoSuchTarget)
 	}
 
-verdict_from : List(U8) -> Try(Verdict, Stored.Problem)
+verdict_from : List(U8) -> Try(Verdict, _)
 verdict_from = |value|
 	if value == Str.to_utf8(permitted_word) {
 		Ok(Permitted)
@@ -1005,7 +1005,7 @@ colon : Str
 colon = ":"
 
 ## The bytes before and after the first colon, both there.
-split_colon : List(U8), Str -> Try({ head : List(U8), tail : List(U8) }, Stored.Problem)
+split_colon : List(U8), Str -> Try({ head : List(U8), tail : List(U8) }, _)
 split_colon = |value, name|
 	match List.split_first(value, ':') {
 		Ok({ before, after }) => Ok({ head: before, tail: after })
@@ -1369,7 +1369,7 @@ expect AuditCodec.Entry.of_admin({
 }).map_ok(|_| {}) == Err(ClockOutOfRange)
 
 ## A key line with `from` replaced by `to`, decoded.
-key_line_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
+key_line_but : { from : Str, to : Str } -> Try({}, _)
 key_line_but = |
 	{
 		from,
@@ -1510,7 +1510,7 @@ expect AuditCodec.Entry.of_invite({
 }).map_ok(|_| {}) == Err(ClockOutOfRange)
 
 ## An invite line with `from` replaced by `to`, decoded.
-invite_line_but : { from : Str, to : Str } -> Try({}, Stored.Problem)
+invite_line_but : { from : Str, to : Str } -> Try({}, _)
 invite_line_but = |
 	{
 		from,
@@ -1554,7 +1554,7 @@ expect invite_line_but({ from: "invite=3", to: "invite=0" }) == Err(BadValue("in
 usual_line : Str
 usual_line = "audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n"
 
-decoded : { from : Str, to : Str } -> Try({}, Stored.Problem)
+decoded : { from : Str, to : Str } -> Try({}, _)
 decoded = |
 	{
 		from,

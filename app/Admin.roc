@@ -365,7 +365,7 @@ planned : Admin.Action,
 {
 	accounts : List(Principal),
 	settings : Accounts.Settings,
-} -> Try(List(Admin.Step), Admin.Refusal)
+} -> Try(List(Admin.Step), _)
 planned = |action, { accounts, settings }| {
 	is_first_admin = |human|
 		match settings.first_admin {

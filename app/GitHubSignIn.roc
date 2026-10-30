@@ -210,7 +210,7 @@ GitHubSignIn := [].{
 		came_back : {
 			state : [Signed(OAuthState.Fields), Unsigned],
 			answer : [Code(List(U8)), Denied],
-		} -> Try(GitHubSignIn.CameBack, GitHubSignIn.Refusal)
+		} -> Try(GitHubSignIn.CameBack, _)
 		came_back = |{ state, answer }|
 			match (state, answer) {
 				(Unsigned, _) => Err(StateForged)
@@ -238,7 +238,7 @@ GitHubSignIn := [].{
 			cookie : OAuthState.Cookie,
 			now : I64,
 			nonce_use : [FirstUse, UsedBefore],
-		} -> Try(GitHubSignIn.StateChecked, GitHubSignIn.Refusal)
+		} -> Try(GitHubSignIn.StateChecked, _)
 		check = |
 			GitHubSignIn.CameBack.(c),
 			{
@@ -279,7 +279,7 @@ GitHubSignIn := [].{
 		[
 			Identified({ id : U64, login : List(U8) }),
 			Failed,
-		] -> Try(GitHubSignIn.IdentityKnown, GitHubSignIn.Refusal)
+		] -> Try(GitHubSignIn.IdentityKnown, _)
 		identify = |GitHubSignIn.StateChecked.(c), answer|
 			match answer {
 				Failed => Err(GitHubUnreachable)
@@ -401,7 +401,7 @@ GitHubSignIn := [].{
 			pending : [Signed(GitHubSignIn.PendingFields), Unsigned],
 			cookie : OAuthState.Cookie,
 			now : I64,
-		} -> Try(GitHubSignIn.Pending, GitHubSignIn.Refusal)
+		} -> Try(GitHubSignIn.Pending, _)
 		resume = |
 			{
 				pending,
@@ -791,7 +791,7 @@ Resolved : [
 ]
 
 ## The facts, through every transition up to `resolve`.
-resolved_by : Facts -> Try(Resolved, GitHubSignIn.Refusal)
+resolved_by : Facts -> Try(Resolved, _)
 resolved_by = |f| {
 	minted =
 		match GitHubSignIn.Started.start({ nonce: this_nonce, now: f.minted_at }) {

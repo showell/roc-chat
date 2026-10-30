@@ -1266,7 +1266,7 @@ settings_line = |settings| Stored.line(
 ## may be missing, and only at the end.
 settings_counters : List(U8) -> Try(
 	{ next : Principal.Generation, agent : [Kept(Principal.AgentId), Unkept] },
-	Stored.Problem,
+	_,
 )
 settings_counters = |raw| {
 	fields = Stored.Reader.open(raw, "settings")?
@@ -1293,7 +1293,7 @@ barred_line : Principal.GitHubId -> List(U8)
 barred_line = |id| Stored.line("barred", [("github", id.to_u64().to_str())])
 
 ## The barred ids a store of their lines holds.
-barred_of : List(U8) -> Try(List(Principal.GitHubId), Stored.Problem)
+barred_of : List(U8) -> Try(List(Principal.GitHubId), _)
 barred_of = |raw|
 	List.map_try(
 		raw.split_on('\n').drop_last(1),

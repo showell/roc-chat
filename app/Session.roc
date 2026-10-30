@@ -453,7 +453,7 @@ expect admitted(late, { among: [ann], now: Stored.max_time }) == Admitted({
 
 # ── STARTING: only from the flow's admission
 ## GitHub id `who`, known at `now` through the flow's steps.
-known_by : U64, I64 -> Try(GitHubSignIn.IdentityKnown, GitHubSignIn.Refusal)
+known_by : U64, I64 -> Try(GitHubSignIn.IdentityKnown, _)
 known_by = |who, now| {
 	nonce = "q7Zr2Lx9q7Zr2Lx9".to_utf8()
 	started =

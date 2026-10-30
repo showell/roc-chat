@@ -182,7 +182,7 @@ admitted! = |session, as_of|
 		}
 	}
 
-check_callback! : Chat.Request => Try(Chat.Answer, GitHubSignIn.Refusal)
+check_callback! : Chat.Request => Try(Chat.Answer, _)
 check_callback! = |req| {
 	now = Host.read_time!({})
 	answer =
@@ -264,7 +264,7 @@ check_callback! = |req| {
 	}
 }
 
-named! : {} => Try(Chat.Answer, GitHubSignIn.Refusal)
+named! : {} => Try(Chat.Answer, _)
 named! = |{}| {
 	got = Host.read_body!(Wire.form_most)
 	match got.status {

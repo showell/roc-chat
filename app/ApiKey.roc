@@ -239,7 +239,7 @@ ApiKey := [].{
 
 ## **THE GRANT, DECIDED**: the principal, bound to the accounts the key
 ## will stand on, or why not.
-granted : ApiKey.Grant(r, id) -> Try(Principal.Bound, ApiKey.GrantRefusal)
+granted : ApiKey.Grant(r, id) -> Try(Principal.Bound, _)
 granted = |
 	{
 		granter,

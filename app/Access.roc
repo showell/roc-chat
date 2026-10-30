@@ -92,7 +92,7 @@ Access := [].{
 
 		## **THE PRINCIPAL A KEY ACTS AS, NOW**: the key live and standing
 		## (ApiKey), with its read and post reach.
-		from_key : ApiKey.Key(r, id), ApiKey.AsOf -> Try(Access.Viewer(id), ApiKey.Refusal)
+		from_key : ApiKey.Key(r, id), ApiKey.AsOf -> Try(Access.Viewer(id), _)
 		from_key = |key, as_of|
 			match key.principal(as_of) {
 				Err(Refused(why)) => Err(why)
