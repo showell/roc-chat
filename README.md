@@ -255,5 +255,4 @@ server, saying which.
   is a 500 whatever the Roc says, and the host does nothing more in that
   call (`read_at!`, a ranged read, is the exception).
 
-No LICENSE yet: that is Steve's decision, for this repo and its
-dependencies alike.
+The license is UPL-1.0, Roc's own (`LICENSE`).
