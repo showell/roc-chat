@@ -114,7 +114,7 @@ when you are retired.
 
 - **Linux on x86-64**, and **stock Zig 0.17.0**. Any other target fails at
   configure time.
-- **Roc, the nightly `roc-version` pins** (`nightly-2026-10-29-a0a9fc2`),
+- **Roc, the nightly `roc-version` pins** (`nightly-2026-10-30-0602c5f`),
   at `~/tools/roc-<pin>/roc`, where `tools/get_roc.sh` installs it; else
   `roc` on the PATH, or one named with `-Droc=<path>`. Pins live side by
   side in `~/tools`, so another project's Roc on the PATH doesn't matter.
