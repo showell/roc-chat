@@ -12,8 +12,10 @@
 -- it, as the build finds them), never in a file of yours.
 --
 -- The checks:
---   - `zig build test`, from an empty cache so every test runs: its Roc
---     expects and its Zig tests counted, neither below its floor;
+--   - `zig build test`, from an empty cache so every test runs, its Zig
+--     tests counted; and `roc test`, its expects in this repository's own
+--     files counted (roc-markdown's are its own verify's); neither below
+--     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
 --   - thirty-seven planted faults, each red at its own step of the end to
@@ -42,7 +44,7 @@
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
 -- The floors: the test counts, which may only rise.
-const roc_floor = 1976
+const roc_floor = 1785
 const zig_floor = 203
 const e2e_steps = 53
 const scratch = ".zig-cache/verify"
@@ -88,9 +90,19 @@ mkdir(scratch)
 -- ── zig build test, from an empty cache, and its counts ──
 local t = run({"zig", "build", "test", "--cache-dir", cache, "--summary", "all"}, {cwd = ".", timeout_ms = build_ms, tail = 160})
 say(t.code == 0, "zig build test (exit " .. t.code .. ", " .. t.ms .. " ms)")
-local roc_count = number_in(t.out, "All \\((\\d+)\\) tests passed")
 local zig_count = number_in(t.out, "; (\\d+)/\\d+ tests passed")
-say(roc_count >= roc_floor, "Roc expects: " .. roc_count .. " (floor " .. roc_floor .. ")")
+-- **THIS REPOSITORY'S OWN EXPECTS**: `roc test` also runs roc-markdown's,
+-- from whichever checkout sits beside this one, so its total moves with
+-- that checkout. The floor counts the expects in files under this root.
+local own_root = real(".") .. "/"
+local v = run({"roc", "test", "--no-cache", "--verbose", "app/main.roc"}, {cwd = ".", timeout_ms = build_ms, whole = 4000000})
+local roc_count = 0
+local roc_failed = 0
+for line in split(v.out, "\n") do
+  if starts_with(line, "PASS: " .. own_root) then roc_count = roc_count + 1 end
+  if starts_with(line, "FAIL: ") then roc_failed = roc_failed + 1 end
+end
+say(v.code == 0 and roc_failed == 0 and roc_count >= roc_floor, "Roc expects, this repository's own: " .. roc_count .. " (floor " .. roc_floor .. "), " .. roc_failed .. " failed")
 say(zig_count >= zig_floor, "Zig tests: " .. zig_count .. " (floor " .. zig_floor .. ")")
 
 -- ── the end to end, a line a step ──
