@@ -18,7 +18,7 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - thirty-eight planted faults, each red at its own step of the end to
+--   - forty-five planted faults, each red at its own step of the end to
 --     end: a forged session cookie admitted, a third user's post let
 --     through, a third user's read let through, the subscribe moved out of
 --     the turn, a message's newline written raw into its transcript line,
@@ -40,6 +40,10 @@
 --     and the indexes': conversations, keys and invites uncapped, a missing
 --     index trusted, a listing that scans everyone's; and media let in
 --     from any of the chat's own paths (its uploads rule taking every path);
+--     and the agents page's: everyone's agents listed, its form posting
+--     nowhere, no live invite listed, a revoked key listed, another
+--     human's invite revoked, a key given the page, and the start form
+--     offering none of the viewer's agents;
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
@@ -47,7 +51,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 1787
 const zig_floor = 203
-const e2e_steps = 54
+const e2e_steps = 61
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -286,6 +290,20 @@ plant("a listing that scans everyone's (its index read, then passed by)",
   "app/Store.roc", "records = load_records!(index_path(by_human_folder, human), offset_width)?\n\t\tload_conversations_at!(records, [])", "_ = load_records!(index_path(by_human_folder, human), offset_width)?\n\t\tStore.load_conversations!({})", 53)
 plant("media from any of the chat's own paths (its uploads rule taking every path)",
   "app/Conversations.roc", "markdown = { uploads: Md.uploads_under(Str.to_utf8(\"/user_uploads/\")) }", "markdown = { uploads: |_| Bool.True }", 54)
+plant("the agents page listing everyone's agents (their owner never asked)",
+  "app/Agents.roc", "Agent(_) | Bot(_) => Principal.answers_to(p) == human", "Agent(_) | Bot(_) => Bool.True", 55)
+plant("the agents page's form posting where no route makes an agent",
+  "app/Pages.roc", "post(\"/agents\", \"name=\"", "post(\"/agent\", \"name=\"", 56)
+plant("the agents page listing no live invite (its liveness read backwards)",
+  "app/Agents.roc", "invites.keep_if(\n\t\t\t\t\t\t\t\t\t|i| is_live(i, now)", "invites.keep_if(\n\t\t\t\t\t\t\t\t\t|i| !is_live(i, now)", 57)
+plant("the agents page listing a revoked key (its revocation never read)",
+  "app/Agents.roc", "\t\tActive => now < r.expires\n\t\tRevoked => Bool.False", "\t\tActive => now < r.expires\n\t\tRevoked => now < r.expires", 58)
+plant("another human's invite revoked (whose invite it is never asked)",
+  "app/Agents.roc", "match Principal.find(accounts, invite.bound.id) {\n\t\t\tOk(p) => Principal.answers_to(p) == human", "match Principal.find(accounts, invite.bound.id) {\n\t\t\tOk(_) => Bool.True", 59)
+plant("a key given the agents page (sent to sign in, as if signed out)",
+  "app/Agents.roc", "Ok(Key(_)) => Err(ByKey)", "Ok(Key(_)) => Err(SignedOut)", 60)
+plant("the start form offering none of the viewer's agents",
+  "app/Pages.roc", "Human(human) => Agents.agents_of(accounts, human)", "Human(_) => []", 61)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})

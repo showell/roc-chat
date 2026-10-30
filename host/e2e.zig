@@ -317,6 +317,12 @@ const World = struct {
     paged: []const u8 = "",
     /// Fay, the human who reaches each cap (step 49 on).
     fay: []const u8 = "",
+    /// Gil, who works the agents page (step 55 on), the agent he made
+    /// there and his invite for it; Hal, a human with nothing of Gil's.
+    gil: []const u8 = "",
+    gil_agent: []const u8 = "",
+    gil_invite: []const u8 = "",
+    hal: []const u8 = "",
 
     fn port(w: *const World) u16 {
         return w.rig.port();
@@ -882,6 +888,123 @@ fn pageHtml(w: *World) !void {
     if (!has(page.body, try std.fmt.allocPrint(w.a, "<div class=body>{s}</div>", .{html}))) return error.HtmlDiffers;
 }
 
+// ── the agents page ──
+
+/// A form post as the agents page's script makes it: urlencoded, from
+/// the page's own origin.
+fn pagePost(w: *World, cookie: []const u8, path: []const u8, body: []const u8) !Response {
+    return request(w.a, w.port(), "POST", path, cookie, body);
+}
+
+fn agentsPageOf(w: *World, cookie: []const u8) ![]const u8 {
+    const r = try get(w.a, w.port(), "/chat/agents", cookie);
+    if (r.status != 200) return error.NoAgentsPage;
+    return r.body;
+}
+
+/// Steve's page lists his agent Own, not CC (retired), and not Fay's;
+/// Fay's lists hers, its name escaped, and none of his.
+fn agentsPageOwn(w: *World) !void {
+    const steves = try agentsPageOf(w, w.steve);
+    if (!has(steves, "<b>Own</b>")) return error.OwnAgentNotListed;
+    if (has(steves, try std.fmt.allocPrint(w.a, "data-id=\"{s}\"", .{w.agent}))) return error.RetiredAgentListed;
+    if (has(steves, "Fay&#39;s")) return error.AnothersAgentListed;
+    const fays = try agentsPageOf(w, w.fay);
+    if (!has(fays, "<b>Fay&#39;s</b>")) return error.OwnAgentNotListed;
+    if (has(fays, "<b>Own</b>")) return error.AnothersAgentListed;
+}
+
+/// Gil, new, finds the page from `/chat`, makes an agent as its form
+/// does, and the next load lists it.
+fn agentMadeFromPage(w: *World) !void {
+    w.gil = try signUp(w.a, w.port(), 1011);
+    const list = try get(w.a, w.port(), "/chat", w.gil);
+    if (!has(list.body, "href=\"/chat/agents\"")) return error.NoLinkToAgents;
+    const before = try agentsPageOf(w, w.gil);
+    if (!has(before, "None yet.")) return error.NotEmpty;
+    if (!has(before, "post(\"/agents\", \"name=\"")) return error.FormPostsElsewhere;
+    const made = try pagePost(w, w.gil, "/agents", "name=Pal");
+    if (made.status != 201) return error.NotMade;
+    w.gil_agent = try field(made.body, "id");
+    const after = try agentsPageOf(w, w.gil);
+    if (!has(after, try std.fmt.allocPrint(w.a, "<li data-id=\"{s}\"><b>Pal</b>", .{w.gil_agent}))) return error.MadeNotListed;
+}
+
+/// The agent's invite button makes an invite, its code in that answer
+/// alone; the next load lists the invite, and no code.
+fn inviteFromPage(w: *World) !void {
+    const page = try agentsPageOf(w, w.gil);
+    if (!has(page, try std.fmt.allocPrint(w.a, "class=invite data-for=\"{s}\"", .{w.gil_agent}))) return error.NoInviteButton;
+    if (!has(page, "post(\"/invites\", \"as=\"")) return error.ButtonPostsElsewhere;
+    const r = try pagePost(w, w.gil, "/invites", try std.fmt.allocPrint(w.a, "as={s}", .{w.gil_agent}));
+    if (r.status != 201) return error.NotInvited;
+    w.gil_invite = try field(r.body, "id");
+    const code = try field(r.body, "code");
+    const after = try agentsPageOf(w, w.gil);
+    if (!has(after, try std.fmt.allocPrint(w.a, "<li data-invite={s}>For Pal", .{w.gil_invite}))) return error.InviteNotListed;
+    if (has(after, code)) return error.CodeOnPage;
+    const listed = try get(w.a, w.port(), "/invites", w.gil);
+    if (has(listed.body, code)) return error.CodeListed;
+}
+
+/// A key and the invite, each revoked by its button's route, are gone
+/// from the next load.
+fn revokeFromPage(w: *World) !void {
+    const minted = try pagePost(w, w.gil, "/keys", "");
+    if (minted.status != 201) return error.NotMinted;
+    const key = try field(minted.body, "id");
+    const page = try agentsPageOf(w, w.gil);
+    const key_path = try std.fmt.allocPrint(w.a, "/keys/{s}/revoke", .{key});
+    const invite_path = try std.fmt.allocPrint(w.a, "/invites/{s}/revoke", .{w.gil_invite});
+    if (!has(page, try std.fmt.allocPrint(w.a, "<li data-key={s}>", .{key}))) return error.KeyNotListed;
+    if (!has(page, try std.fmt.allocPrint(w.a, "data-path=\"{s}\"", .{key_path}))) return error.NoKeyRevoke;
+    if (!has(page, try std.fmt.allocPrint(w.a, "data-path=\"{s}\"", .{invite_path}))) return error.NoInviteRevoke;
+    if ((try pagePost(w, w.gil, key_path, "")).status != 200) return error.KeyNotRevoked;
+    if ((try pagePost(w, w.gil, invite_path, "")).status != 200) return error.InviteNotRevoked;
+    const after = try agentsPageOf(w, w.gil);
+    if (has(after, try std.fmt.allocPrint(w.a, "<li data-key={s}>", .{key}))) return error.RevokedKeyListed;
+    if (has(after, try std.fmt.allocPrint(w.a, "<li data-invite={s}>", .{w.gil_invite}))) return error.RevokedInviteListed;
+}
+
+/// Hal, another human, sees none of Gil's agent, keys or invites on his
+/// page, and revokes none of them: each is the 404 of one not there.
+fn othersSeeNoneOnPage(w: *World) !void {
+    w.hal = try signUp(w.a, w.port(), 1012);
+    const inv = try pagePost(w, w.gil, "/invites", try std.fmt.allocPrint(w.a, "as={s}", .{w.gil_agent}));
+    if (inv.status != 201) return error.NotInvited;
+    const invite_id = try field(inv.body, "id");
+    const minted = try pagePost(w, w.gil, "/keys", "");
+    if (minted.status != 201) return error.NotMinted;
+    const key = try field(minted.body, "id");
+    const hals = try agentsPageOf(w, w.hal);
+    if (has(hals, w.gil_agent) or has(hals, "Pal")) return error.AnothersAgentShown;
+    if (has(hals, "data-invite=") or has(hals, "data-key=")) return error.AnothersListed;
+    if ((try pagePost(w, w.hal, try std.fmt.allocPrint(w.a, "/invites/{s}/revoke", .{invite_id}), "")).status != 404) return error.RevokedAnothersInvite;
+    if ((try pagePost(w, w.hal, try std.fmt.allocPrint(w.a, "/keys/{s}/revoke", .{key}), "")).status != 404) return error.RevokedAnothersKey;
+    const gils = try agentsPageOf(w, w.gil);
+    if (!has(gils, try std.fmt.allocPrint(w.a, "<li data-invite={s}>", .{invite_id}))) return error.InviteLost;
+    if (!has(gils, try std.fmt.allocPrint(w.a, "<li data-key={s}>", .{key}))) return error.KeyLost;
+}
+
+/// A key asking for the agents page is the 403 every page gives one.
+fn agentsPageRefusesKey(w: *World) !void {
+    const r = try send(w.a, w.port(), "GET", "/chat/agents", .{ .key = w.key }, "");
+    if (r.status != 403) return error.KeyGivenPage;
+    if ((try get(w.a, w.port(), "/chat/agents", "")).status != 303) return error.SignedOutGivenPage;
+}
+
+/// `/chat`'s start form offers Gil his agent to tick, Hal nothing of his;
+/// and what the script sends for a tick and a typed id starts one.
+fn startPicksAgents(w: *World) !void {
+    const tick = try std.fmt.allocPrint(w.a, "<input type=checkbox name=agent value=\"{s}\"> Pal", .{w.gil_agent});
+    const gils = try get(w.a, w.port(), "/chat", w.gil);
+    if (!has(gils.body, tick)) return error.OwnAgentNotOffered;
+    const hals = try get(w.a, w.port(), "/chat", w.hal);
+    if (has(hals.body, w.gil_agent)) return error.AnothersAgentOffered;
+    const form = try std.fmt.allocPrint(w.a, "with={s}%2Chuman%3A1012", .{w.gil_agent});
+    _ = try startedId(try pagePost(w, w.gil, "/conversations", form));
+}
+
 /// The id a start answers (`{"id":N}`).
 fn startedId(r: Response) ![]const u8 {
     if (r.status != 201) return error.NotStarted;
@@ -1236,6 +1359,13 @@ const steps = [_]Step{
     .{ .name = "a missing index is rebuilt from the full scan, and the listings are whole", .f = indexRebuilt },
     .{ .name = "a listing reads its own index alone: another's broken conversation is never read", .f = ownIndexOnly },
     .{ .name = "a message's media loads only from the chat's uploads", .f = mediaFromUploads },
+    .{ .name = "the agents page lists the viewer's agents, and no one else's", .f = agentsPageOwn },
+    .{ .name = "an agent made as the agents page's form does is listed there", .f = agentMadeFromPage },
+    .{ .name = "an invite's code is in its answer alone; the page lists the invite, never a code", .f = inviteFromPage },
+    .{ .name = "a key and an invite revoked from the page are gone from it", .f = revokeFromPage },
+    .{ .name = "another human sees none of it on their page, and revokes none of it", .f = othersSeeNoneOnPage },
+    .{ .name = "a key asking for the agents page is a 403", .f = agentsPageRefusesKey },
+    .{ .name = "the start form offers the viewer's own agents to tick, no one else's", .f = startPicksAgents },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
@@ -1261,7 +1391,7 @@ pub fn run(a: std.mem.Allocator, hold: bool) !bool {
         }
     }
     if (hold) {
-        std.debug.print("HOLD port={d} conv={s} ann={s} bea={s}\n", .{ w.port(), w.conv, w.ann, w.bea });
+        std.debug.print("HOLD port={d} conv={s} ann={s} bea={s} hal={s}\n", .{ w.port(), w.conv, w.ann, w.bea, w.hal });
         while (true) sleepMs(1000);
     }
     if (passed == steps.len) {
