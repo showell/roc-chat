@@ -22,7 +22,7 @@ ConvKey := [].{
 	## A chat key: over conversations, by their ids.
 	Key : ApiKey.Key(ConvAccess.Conv, ConvAccess.ConvId)
 
-	## **WHAT THE STORE KEEPS OF A CHAT KEY**: the key (when it was made is
+	## **WHAT THE STORE KEEPS OF A CHAT KEY**, the key store's entry: the key (when it was made is
 	## its record's), and the hash the host looks it up by.
 	Entry : {
 		key : ConvKey.Key,

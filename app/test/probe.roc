@@ -33,7 +33,7 @@ handle! = |req|
 	} else if req.path == Str.to_utf8("/echo") {
 		if (req.method == Post) echo!(req) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/notes") {
-		notes!(req)
+		read_notes!(req)
 	} else {
 		match keyed(req.path) {
 			Ok(Stream(key)) => if (req.method == Get) stream!(key) else Chat.not_allowed(Get)
@@ -70,8 +70,8 @@ notes_path = Str.to_utf8("probe/notes.txt")
 
 ## A POST's body appended to one file, its size after said back; a GET, the
 ## file: `append!` and `read!` through the seam.
-notes! : Chat.Request => Chat.Answer
-notes! = |req|
+read_notes! : Chat.Request => Chat.Answer
+read_notes! = |req|
 	if req.method == Post {
 		got = Host.read_body!(echo_most)
 		match got.status {
@@ -121,8 +121,8 @@ frames_path : List(U8) -> List(U8)
 frames_path = |key| List.concat(Str.to_utf8("probe/frames/"), key)
 
 ## A key's frames so far: the file, or none.
-frames! : List(U8) => Try(List(U8), [Failed])
-frames! = |key| {
+read_frames! : List(U8) => Try(List(U8), [Failed])
+read_frames! = |key| {
 	read = Host.read!(frames_path(key))
 	match read.status {
 		Found => Ok(read.bytes)
@@ -133,7 +133,7 @@ frames! = |key| {
 
 stream! : List(U8) => Chat.Answer
 stream! = |key|
-	match frames!(key) {
+	match read_frames!(key) {
 		Ok(backlog) => Chat.stream({
 			key,
 			backlog,
@@ -150,7 +150,7 @@ post! = |key| {
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match frames!(key) {
+			match read_frames!(key) {
 				Err(Failed) => Chat.failed
 				Ok(before) => {
 					id = count_frames(before)

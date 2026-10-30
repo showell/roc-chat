@@ -80,7 +80,7 @@ KeyCodec := [].{
 		revocation : [Active, Revoked],
 	}
 
-	## **WHAT THE STORE KEEPS OF A KEY**: its record, and the hash the host
+	## **WHAT THE STORE KEEPS OF A KEY**, the key store's entry: its record, and the hash the host
 	## looks it up by.
 	Entry(id) : {
 		record : KeyCodec.Record(id),
@@ -113,7 +113,7 @@ KeyCodec := [].{
 		value,
 		{
 			name: "admin",
-			all: all_switches,
+			members: all_switches,
 			spell: spell_switch,
 		},
 	)
@@ -175,7 +175,7 @@ KeyCodec := [].{
 			state_field.value,
 			{
 				name: "state",
-				all: all_revocations,
+				members: all_revocations,
 				spell: spell_revocation,
 			},
 		)?

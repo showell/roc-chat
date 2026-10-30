@@ -43,7 +43,7 @@ SignIn := [].{
 						),
 					),
 					Str.to_utf8("&state="),
-					signed!(State, SignInWeb.state_body(fields)),
+					sign_token!(State, SignInWeb.state_body(fields)),
 				])
 				see_other(location)
 					|> Chat.with_header(
@@ -67,16 +67,16 @@ SignIn := [].{
 	##   state again, now spending its nonce (check-then-set in one turn),
 	##   and resolves whose sign-in it is.
 	## The Roc keeps nothing between them: the request is the facts. A
-	## refusal past the exchange is audited (`refused_or!`).
+	## refusal past the exchange is audited (`answer_refused!`).
 	serve_callback! : Chat.Request => Chat.Answer
-	serve_callback! = |req| refused_or!(check_callback!(req))
+	serve_callback! = |req| answer_refused!(check_callback!(req))
 
 	## **/login/name**: the pending sign-up back from this browser
 	## (GitHubSignIn.Pending.resume), and the name it gives; the account
 	## made, or the name asked for again. Its refusals are a pending
-	## sign-up's, anonymous, and never audited (`refused_or!`).
+	## sign-up's, anonymous, and never audited (`answer_refused!`).
 	serve_name! : {} => Chat.Answer
-	serve_name! = |{}| refused_or!(named!({}))
+	serve_name! = |{}| answer_refused!(sign_up!({}))
 
 	## **/logout, POST**: the session this browser's cookie names ended
 	## (its record removed, so the cookie is a 401 from now on, wherever it
@@ -155,7 +155,7 @@ SignIn := [].{
 			Ok(Found(session)) =>
 				match Store.load_accounts!({}) {
 					Err(Failed) => Chat.failed
-					Ok(accounts) => admitted!(session, { accounts, now })
+					Ok(accounts) => admit!(session, { accounts, now })
 				}
 		}
 	}
@@ -164,8 +164,8 @@ SignIn := [].{
 
 ## The session admitted against the accounts, or not; its `last seen`
 ## written when stale.
-admitted! : Session, { accounts : List(Principal), now : I64 } => Chat.Answer
-admitted! = |session, as_of|
+admit! : Session, { accounts : List(Principal), now : I64 } => Chat.Answer
+admit! = |session, as_of|
 	match session.admit(as_of) {
 		Refused(_) => not_signed_in
 		Admitted({ principal, write }) => {
@@ -192,7 +192,7 @@ check_callback! = |req| {
 		}
 	state =
 		match List.first(Host.read_query!(Str.to_utf8("state"))) {
-			Ok(token) => verified!(
+			Ok(token) => check_signed!(
 				State,
 				token,
 				SignInWeb.state_fields,
@@ -233,13 +233,13 @@ check_callback! = |req| {
 									}) {
 										Refused(why) => Err(why)
 										SignedIn({ admission, steps }) => Ok(
-											signed_in!(
+											sign_in!(
 												f,
 												{ admission, steps },
 											),
 										)
 										NeedsName(pending) => {
-											token = signed!(
+											token = sign_token!(
 												Pending,
 												SignInWeb.pending_body(pending.fields()),
 											)
@@ -264,8 +264,8 @@ check_callback! = |req| {
 	}
 }
 
-named! : {} => Try(Chat.Answer, _)
-named! = |{}| {
+sign_up! : {} => Try(Chat.Answer, _)
+sign_up! = |{}| {
 	got = Host.read_body!(Wire.form_most)
 	match got.status {
 		Answered => Ok(Chat.answered)
@@ -274,7 +274,7 @@ named! = |{}| {
 			cookies = Host.read_header!(Str.to_utf8("cookie"))
 			pending =
 				match SignInWeb.cookie(cookies, "pending") {
-					Sent(token) => verified!(
+					Sent(token) => check_signed!(
 						Pending,
 						token,
 						SignInWeb.pending_fields,
@@ -307,7 +307,7 @@ named! = |{}| {
 						Created({ admission, steps }) =>
 							match Store.spend_nonce!(Pending, resumed.nonce()) {
 								Failed => Ok(Chat.failed)
-								Written => Ok(signed_in!(f, { admission, steps }))
+								Written => Ok(sign_in!(f, { admission, steps }))
 							}
 					}
 				_ => Ok(Chat.failed)
@@ -320,12 +320,12 @@ named! = |{}| {
 ## settings' counter, then the accounts), the session started
 ## (Session.start), all three stored, and the session cookie set; the
 ## state and pending cookies ended.
-signed_in! : Facts,
+sign_in! : Facts,
 {
 	admission : GitHubSignIn.Admission,
 	steps : List(Accounts.Change),
 } => Chat.Answer
-signed_in! = |f, { admission, steps }| {
+sign_in! = |f, { admission, steps }| {
 	after = Accounts.applied(steps, { accounts: f.accounts, settings: f.settings })
 	session = Session.start(admission)
 	match Store.save_signed_in!({
@@ -369,8 +369,8 @@ not_signed_in = Chat.respond(401, { content_type: Chat.text, body: Str.to_utf8("
 
 ## **A REFUSED SIGN-IN**: audited unless anonymous (GitHubSignIn.audited),
 ## and a 403 naming why, as the audit spells it (AuditCodec).
-refused_or! : Try(Chat.Answer, GitHubSignIn.Refusal) => Chat.Answer
-refused_or! = |decided|
+answer_refused! : Try(Chat.Answer, GitHubSignIn.Refusal) => Chat.Answer
+answer_refused! = |decided|
 	match decided {
 		Ok(answer) => answer
 		Err(why) => {
@@ -427,13 +427,13 @@ see_other = |location|
 		|> Chat.with_header("location", location)
 
 ## `body`, signed by the host for `purpose`, as a token.
-signed! : SignInWeb.Purpose, List(U8) => List(U8)
-signed! = |purpose, body| SignInWeb.token(body, Host.sign!(SignInWeb.signed_message(purpose, body)))
+sign_token! : SignInWeb.Purpose, List(U8) => List(U8)
+sign_token! = |purpose, body| SignInWeb.token(body, Host.sign!(SignInWeb.signed_message(purpose, body)))
 
 ## A token's fields when the host's MAC holds and its body reads; else
 ## `Unsigned`, which the core refuses (a forgery).
-verified! : SignInWeb.Purpose, List(U8), (List(U8) -> Try(a, [Malformed])) => [Signed(a), Unsigned]
-verified! = |
+check_signed! : SignInWeb.Purpose, List(U8), (List(U8) -> Try(a, [Malformed])) => [Signed(a), Unsigned]
+check_signed! = |
 	purpose,
 	token,
 	fields_of,

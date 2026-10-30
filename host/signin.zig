@@ -27,7 +27,7 @@ pub const Auth = struct {
     /// The first admin's GitHub id, as decimal digits; empty for none (the
     /// config's `.bootstrap_admin`).
     first_admin: []const u8 = "",
-    /// **THE END TO END'S CAP** on what one human makes (Limits.cap!), in
+    /// **THE END TO END'S CAP** on what one human makes (Limits.load_cap!), in
     /// place of each of Limits' own; 0 for none, as in prod, where nothing
     /// sets it. host/e2e.zig sets it around a step.
     cap_for_test: std.atomic.Value(u32) = .init(0),

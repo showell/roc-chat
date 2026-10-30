@@ -58,8 +58,8 @@ Credentials := [].{
 
 	## **THE CREDENTIAL, OR THE ANSWER THAT ENDS THE REQUEST**: both sent,
 	## a 400; a Bearer header that names no key we hold, a 401.
-	presented! : {} => Try(Credentials.Credential, Chat.Answer)
-	presented! = |{}| {
+	load_credential! : {} => Try(Credentials.Credential, Chat.Answer)
+	load_credential! = |{}| {
 		authorization = Host.read_header!(Str.to_utf8("authorization"))
 		cookie = SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session")
 		match (authorization, cookie) {
@@ -92,7 +92,7 @@ Credentials := [].{
 	## standing now (one that does not stand is audited, and a 401).
 	load_viewer! : Credentials.Use => Try(Credentials.Asked, Chat.Answer)
 	load_viewer! = |use| {
-		credential = presented!({})?
+		credential = load_credential!({})?
 		now = Host.read_time!({})
 		accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?
 		signed_out = Ok({

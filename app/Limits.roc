@@ -4,7 +4,7 @@
 ## Each cap is refused by name where it binds; none is a silent truncation.
 ## The caps on keys, invites and conversations count a human's own index
 ## (Store's `load_*_count!`), never a scan of everyone's, and bind through
-## `cap!`.
+## `load_cap!`.
 ##
 ## The host keeps its own two (host/sse.zig): the streams one principal
 ## holds at once (8) and a stream's lifetime (10 minutes).
@@ -57,12 +57,12 @@ Limits := [].{
 	## or the end to end's smaller one where the host has one set
 	## (Host.read_config!'s `CapForTest`, which only host/e2e.zig sets; prod
 	## has none), so a step reaches a cap in a few requests.
-	cap! : [
+	load_cap! : [
 		ConversationsPerHuman,
 		InvitesPerHuman,
 		KeysPerHuman,
 	] => U64
-	cap! = |which|
+	load_cap! = |which|
 		match Stored.count(Host.read_config!(CapForTest), "cap") {
 			Ok(n) => n
 			Err(_) =>

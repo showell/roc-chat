@@ -279,11 +279,11 @@ plant("a page read from the whole transcript (its offsets never trusted)",
 plant("an offsets file never written again (only ever appended to)",
   "app/Store.roc", "if kept {", "if kept or Bool.True {", 48)
 plant("conversations uncapped (the cap never reached)",
-  "app/Conversations.roc", "Ok(if (started >= Limits.cap!(ConversationsPerHuman)) Full else Room)", "Ok(if (started >= Limits.cap!(ConversationsPerHuman) + 1000) Full else Room)", 49)
+  "app/Conversations.roc", "Ok(if (started >= Limits.load_cap!(ConversationsPerHuman)) Full else Room)", "Ok(if (started >= Limits.load_cap!(ConversationsPerHuman) + 1000) Full else Room)", 49)
 plant("keys uncapped (the cap never reached)",
-  "app/Agents.roc", "KeysPerHuman => Limits.cap!(KeysPerHuman)\n", "KeysPerHuman => Limits.cap!(KeysPerHuman) + 1000\n", 50)
+  "app/Agents.roc", "KeysPerHuman => Limits.load_cap!(KeysPerHuman)\n", "KeysPerHuman => Limits.load_cap!(KeysPerHuman) + 1000\n", 50)
 plant("invites uncapped (the cap never reached)",
-  "app/Agents.roc", "InvitesPerHuman => Limits.cap!(InvitesPerHuman)\n", "InvitesPerHuman => Limits.cap!(InvitesPerHuman) + 1000\n", 51)
+  "app/Agents.roc", "InvitesPerHuman => Limits.load_cap!(InvitesPerHuman)\n", "InvitesPerHuman => Limits.load_cap!(InvitesPerHuman) + 1000\n", 51)
 plant("a missing index trusted (its mark never compared)",
   "app/Store.roc", "Missing => Ok(count == 0)", "Missing => Ok(Bool.True)", 52)
 plant("a listing that scans everyone's (its index read, then passed by)",

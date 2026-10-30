@@ -92,8 +92,8 @@ AuditCodec := [].{
 		],
 	}
 
-	## **ONE LINE OF THE AUDIT LOG**. Opaque: its time always in Stored's
-	## range.
+	## **ONE LINE OF THE AUDIT LOG**, the log's entry. Opaque: its time
+	## always in Stored's range.
 	Entry :: [
 		Admin(Admin.Audit),
 		SignIn(AuditCodec.SignIn),
@@ -300,7 +300,7 @@ invite_verdict_from = |value|
 				g,
 				{
 					name: "verdict",
-					all: all_grant_refusals,
+					members: all_grant_refusals,
 					spell: spell_grant_refusal,
 				},
 			),
@@ -311,7 +311,7 @@ invite_verdict_from = |value|
 				head,
 				{
 					name: "verdict",
-					all: all_invite_acts,
+					members: all_invite_acts,
 					spell: spell_invite_act,
 				},
 			)?
@@ -399,7 +399,7 @@ decode_sign_in = |fields| {
 	verdict_field = github_field.rest.field("verdict")?
 	refusal = refused_word(
 		verdict_field.value,
-		{ all: all_sign_in_refusals, spell: spell_sign_in_refusal },
+		{ members: all_sign_in_refusals, spell: spell_sign_in_refusal },
 	)?
 	verdict_field.rest.close()?
 	Ok({
@@ -425,7 +425,7 @@ decode_key = |fields| {
 		acts_as = AccountCodec.id_from(tail, "action")?
 		refusal = refused_word(
 			verdict_field.value,
-			{ all: all_grant_refusals, spell: spell_grant_refusal },
+			{ members: all_grant_refusals, spell: spell_grant_refusal },
 		)?
 		Ok(
 			Grant({
@@ -445,7 +445,7 @@ decode_key = |fields| {
 		action = key_action_from(head, tail)?
 		refusal = refused_word(
 			verdict_field.value,
-			{ all: all_key_refusals, spell: spell_key_refusal },
+			{ members: all_key_refusals, spell: spell_key_refusal },
 		)?
 		Ok(
 			Use({
@@ -460,15 +460,15 @@ decode_key = |fields| {
 }
 
 ## `refused:` and a word of the closed set, in a `verdict` field.
-refused_word : List(U8), { all : List(a), spell : (a -> Str) } -> Try(a, _)
-refused_word = |value, { all, spell }|
+refused_word : List(U8), { members : List(a), spell : (a -> Str) } -> Try(a, _)
+refused_word = |value, { members, spell }|
 	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
 		Err(NoMatch) => Err(UnknownWord("verdict"))
 		Ok(why) => Stored.word(
 			why,
 			{
 				name: "verdict",
-				all,
+				members,
 				spell,
 			},
 		)
@@ -556,7 +556,7 @@ key_action_from = |head, tail| if head == Str.to_utf8(start_word) {
 		head,
 		{
 			name: "action",
-			all: all_key_action_kinds,
+			members: all_key_action_kinds,
 			spell: spell_key_action,
 		},
 	)?
@@ -695,7 +695,7 @@ step_from = |value| {
 		head,
 		{
 			name: "plan",
-			all: all_step_kinds,
+			members: all_step_kinds,
 			spell: spell_step,
 		},
 	)? {
@@ -760,7 +760,7 @@ via_from = |value| {
 		head,
 		{
 			name: "via",
-			all: all_via_kinds,
+			members: all_via_kinds,
 			spell: spell_via,
 		},
 	)? {
@@ -828,7 +828,7 @@ action_from = |value|
 				value,
 				{
 					name: "action",
-					all: all_action_kinds,
+					members: all_action_kinds,
 					spell: spell_action,
 				},
 			)? {
@@ -842,7 +842,7 @@ action_from = |value|
 				before,
 				{
 					name: "action",
-					all: all_action_kinds,
+					members: all_action_kinds,
 					spell: spell_action,
 				},
 			)? {
@@ -963,7 +963,7 @@ verdict_from = |value|
 							key_why,
 							{
 								name: "verdict",
-								all: all_key_refusals,
+								members: all_key_refusals,
 								spell: spell_key_refusal,
 							},
 						)
@@ -974,7 +974,7 @@ verdict_from = |value|
 							why,
 							{
 								name: "verdict",
-								all: all_admin_refusals,
+								members: all_admin_refusals,
 								spell: spell_admin_refusal,
 							},
 						)? {

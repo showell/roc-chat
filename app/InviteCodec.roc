@@ -146,7 +146,7 @@ InviteCodec := [].{
 			state_field.value,
 			{
 				name: "state",
-				all: all_states,
+				members: all_states,
 				spell: spell_state,
 			},
 		)?
@@ -219,7 +219,7 @@ InviteCodec := [].{
 					value,
 					{
 						name: "verdict",
-						all: all_plain,
+						members: all_plain,
 						spell: spell_plain,
 					},
 				)? {

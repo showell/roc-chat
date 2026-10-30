@@ -794,7 +794,7 @@ fn offsetsRebuilt(w: *World) !void {
 }
 
 /// **THE CAPS ON WHAT ONE HUMAN MAKES**: each step sets the host's
-/// small cap for the end to end (`cap_for_test`, Limits.cap!), reaches it,
+/// small cap for the end to end (`cap_for_test`, Limits.load_cap!), reaches it,
 /// and the next one is a 403 that names the cap.
 const small_cap = 3;
 

@@ -89,7 +89,7 @@ Pages := [].{
 		if req.method != Get and req.method != Head {
 			Chat.not_allowed(Get)
 		} else if r == AgentList {
-			agents_answer!({})
+			serve_agents_page!({})
 		} else {
 			use =
 				match r {
@@ -116,7 +116,7 @@ Pages := [].{
 									accounts,
 									me: me.id,
 								})
-								AgentList => agents_answer!({})
+								AgentList => serve_agents_page!({})
 								Conversation(id) => serve_conversation!({
 									viewer,
 									accounts,
@@ -233,9 +233,9 @@ start_form = |accounts, me| {
 
 ## **/chat/agents**: the page, for a live session; signed out, to
 ## `/login`; a key, the 403 every page gives one.
-agents_answer! : {} => Chat.Answer
-agents_answer! = |{}|
-	match Agents.mine!({}) {
+serve_agents_page! : {} => Chat.Answer
+serve_agents_page! = |{}|
+	match Agents.load_owned!({}) {
 		Ok(mine) => agents_page(mine)
 		Err(SignedOut) => to_login
 		Err(ByKey) => key_refused

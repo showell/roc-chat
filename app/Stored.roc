@@ -158,8 +158,8 @@ Stored := [].{
 					}
 			}
 
-		## The value of the field `name`, which must come next, and the
-		## fields after it.
+		## The field `name`'s value, which must come next, and the fields
+		## after it.
 		field : Stored.Reader,
 		Str -> Try(
 			{ value : List(U8), rest : Stored.Reader },
@@ -250,24 +250,24 @@ Stored := [].{
 			t.to_str()
 		}
 
-	## **A WORD FROM A CLOSED SET**: the member of `all` whose `spell` it is.
+	## **A WORD FROM A CLOSED SET**: the one of `members` whose `spell` it is.
 	## `spell` is the one home of each member's word (an exhaustive match);
-	## `all` lists the members, and each codec's round trips hold it whole.
+	## `members` lists them all, and each codec's round trips hold it whole.
 	word : List(U8),
 	{
 		name : Str,
-		all : List(a),
+		members : List(a),
 		spell : (a -> Str),
 	} -> Try(a, _)
 	word = |
 		value,
 		{
 			name,
-			all,
+			members,
 			spell,
 		},
 	|
-		match all.find_first(|member| spell(member).to_utf8() == value) {
+		match members.find_first(|member| spell(member).to_utf8() == value) {
 			Ok(member) => Ok(member)
 			Err(NotFound) => Err(UnknownWord(name))
 		}
@@ -464,7 +464,7 @@ colour = |text| Stored.word(
 	text.to_utf8(),
 	{
 		name: "c",
-		all: [Red, Green],
+		members: [Red, Green],
 		spell: spell_colour,
 	},
 )

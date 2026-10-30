@@ -83,7 +83,7 @@ AccountCodec := [].{
 			kind.value,
 			{
 				name: "kind",
-				all: all_kinds,
+				members: all_kinds,
 				spell: spell_kind,
 			},
 		)? {
@@ -152,7 +152,7 @@ AccountCodec := [].{
 			value,
 			{
 				name,
-				all: all_roles,
+				members: all_roles,
 				spell: AccountCodec.role_text,
 			},
 		)
@@ -167,7 +167,7 @@ AccountCodec := [].{
 					before,
 					{
 						name,
-						all: all_kinds,
+						members: all_kinds,
 						spell: spell_kind,
 					},
 				)? {
@@ -321,7 +321,8 @@ decode_owned = |after_kind| {
 	})
 }
 
-## The `generation` field, which must come next, and the fields after it.
+## The `generation` field's value, which must come next, and the fields
+## after it.
 generation_after : Stored.Reader -> Try(
 	{ value : Principal.Generation, rest : Stored.Reader },
 	_,

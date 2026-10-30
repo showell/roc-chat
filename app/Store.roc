@@ -432,7 +432,7 @@ Store := [].{
 		} else if first > last {
 			Ok([])
 		} else {
-			match offsets_kept!(id, tally) {
+			match check_offsets!(id, tally) {
 				Err(Failed) => Err(Failed)
 				Ok(Bool.False) => {
 					all = Store.load_transcript!(id)?
@@ -488,7 +488,7 @@ Store := [].{
 		tally,
 		message,
 	|
-		match offsets_kept!(id, tally) {
+		match check_offsets!(id, tally) {
 			Err(Failed) => Failed
 			Ok(kept) => {
 				appended = Host.append!(transcript_path(id), MessageCodec.encode(message))
@@ -529,7 +529,7 @@ Store := [].{
 		[Failed],
 	)
 	load_conversations_of! = |human, accounts| {
-		_ = conversations_indexed!(accounts)?
+		_ = index_conversations!(accounts)?
 		records = load_records!(index_path(by_human_folder, human), offset_width)?
 		load_conversations_at!(records, [])
 	}
@@ -538,7 +538,7 @@ Store := [].{
 	## agents' keys.
 	load_started_count! : Principal.GitHubId, List(Principal) => Try(U64, [Failed])
 	load_started_count! = |human, accounts| {
-		_ = conversations_indexed!(accounts)?
+		_ = index_conversations!(accounts)?
 		load_record_count!(index_path(started_folder, human), offset_width)
 	}
 
@@ -557,7 +557,7 @@ Store := [].{
 			accounts,
 		},
 	|
-		match conversations_indexed!(accounts) {
+		match index_conversations!(accounts) {
 			Err(Failed) => Failed
 			Ok(count) =>
 				match Store.save_conversation!(conv, created) {
@@ -582,7 +582,7 @@ Store := [].{
 	## one whose file is gone or does not read is left out, as in `load_keys!`.
 	load_keys_of! : Principal.GitHubId, List(Principal) => Try(List(ConvKey.Entry), [Failed])
 	load_keys_of! = |human, accounts| {
-		_ = keys_indexed!(accounts)?
+		_ = index_keys!(accounts)?
 		records = load_records!(index_path(keys_folder, human), hash_width)?
 		load_keys_at!(records, [])
 	}
@@ -591,7 +591,7 @@ Store := [].{
 	## revoked ones counted.
 	load_key_count! : Principal.GitHubId, List(Principal) => Try(U64, [Failed])
 	load_key_count! = |human, accounts| {
-		_ = keys_indexed!(accounts)?
+		_ = index_keys!(accounts)?
 		load_record_count!(index_path(keys_folder, human), hash_width)
 	}
 
@@ -600,12 +600,12 @@ Store := [].{
 	## rebuild leaves it out too).
 	save_new_key! : ConvKey.Entry, List(Principal) => [Failed, Written]
 	save_new_key! = |entry, accounts|
-		match keys_indexed!(accounts) {
+		match index_keys!(accounts) {
 			Err(Failed) => Failed
 			Ok(count) =>
 				match Store.save_key!(entry) {
 					Failed => Failed
-					Written => indexed!(
+					Written => append_indexed!(
 						keys_folder,
 						keys_mark,
 						{
@@ -625,7 +625,7 @@ Store := [].{
 		[Failed],
 	)
 	load_invites_of! = |human, accounts| {
-		_ = invites_indexed!(accounts)?
+		_ = index_invites!(accounts)?
 		records = load_records!(index_path(invites_folder, human), hash_width)?
 		load_invites_at!(records, [])
 	}
@@ -633,7 +633,7 @@ Store := [].{
 	## How many invites `human` has made, spent and revoked ones counted.
 	load_invite_count! : Principal.GitHubId, List(Principal) => Try(U64, [Failed])
 	load_invite_count! = |human, accounts| {
-		_ = invites_indexed!(accounts)?
+		_ = index_invites!(accounts)?
 		load_record_count!(index_path(invites_folder, human), hash_width)
 	}
 
@@ -641,12 +641,12 @@ Store := [].{
 	## answers to, as a key is.
 	save_new_invite! : InviteCodec.Record(ConvAccess.ConvId), List(Principal) => [Failed, Written]
 	save_new_invite! = |invite, accounts|
-		match invites_indexed!(accounts) {
+		match index_invites!(accounts) {
 			Err(Failed) => Failed
 			Ok(count) =>
 				match Store.save_invite!(invite) {
 					Failed => Failed
-					Written => indexed!(
+					Written => append_indexed!(
 						invites_folder,
 						invites_mark,
 						{
@@ -693,8 +693,8 @@ offsets_path = |id| "chat/offsets/${id.to_u64().to_str()}".to_utf8()
 
 ## Whether the offsets file holds one record for each message `tally`
 ## counts.
-offsets_kept! : ConvAccess.ConvId, Store.Tally => Try(Bool, [Failed])
-offsets_kept! = |id, tally| {
+check_offsets! : ConvAccess.ConvId, Store.Tally => Try(Bool, [Failed])
+check_offsets! = |id, tally| {
 	stat = Host.read_stat!(offsets_path(id))
 	match stat.status {
 		Failed => Err(Failed)
@@ -805,8 +805,8 @@ mark_line = |n| "${n.to_str()}\n".to_utf8()
 
 ## **IS THE INDEX UP TO DATE?** Its mark against `count`, the things
 ## stored: one missing is right only when none are.
-is_marked! : List(U8), U64 => Try(Bool, [Failed])
-is_marked! = |mark, count| {
+check_mark! : List(U8), U64 => Try(Bool, [Failed])
+check_mark! = |mark, count| {
 	read = Host.read!(mark)
 	match read.status {
 		Failed => Err(Failed)
@@ -821,10 +821,10 @@ is_marked! = |mark, count| {
 
 ## **THE CONVERSATIONS' INDEXES, UP TO DATE**: their count, the indexes
 ## rebuilt from every conversation first when their mark is not it.
-conversations_indexed! : List(Principal) => Try(U64, [Failed])
-conversations_indexed! = |accounts| {
+index_conversations! : List(Principal) => Try(U64, [Failed])
+index_conversations! = |accounts| {
 	count = load_one_past_count!(conversations_path)? - 1
-	if is_marked!(conversations_mark, count)? {
+	if check_mark!(conversations_mark, count)? {
 		Ok(count)
 	} else {
 		all = Store.load_conversations!({})?
@@ -853,10 +853,10 @@ conversations_indexed! = |accounts| {
 }
 
 ## The keys' index, up to date, as the conversations' are.
-keys_indexed! : List(Principal) => Try(U64, [Failed])
-keys_indexed! = |accounts| {
+index_keys! : List(Principal) => Try(U64, [Failed])
+index_keys! = |accounts| {
 	count = load_one_past_count!(keys_path)? - 1
-	if is_marked!(keys_mark, count)? {
+	if check_mark!(keys_mark, count)? {
 		Ok(count)
 	} else {
 		all = Store.load_keys!({})?
@@ -876,10 +876,10 @@ keys_indexed! = |accounts| {
 }
 
 ## The invites' index, up to date, as the conversations' are.
-invites_indexed! : List(Principal) => Try(U64, [Failed])
-invites_indexed! = |accounts| {
+index_invites! : List(Principal) => Try(U64, [Failed])
+index_invites! = |accounts| {
 	count = load_one_past_count!(invites_path)? - 1
-	if is_marked!(invites_mark, count)? {
+	if check_mark!(invites_mark, count)? {
 		Ok(count)
 	} else {
 		all = Store.load_invites!({})?
@@ -908,14 +908,14 @@ answerer_of = |accounts, id|
 
 ## **ONE NEW THING'S RECORD, THEN THE MARK**: `record` appended to its
 ## human's file (none for nobody), and the mark one past `count`.
-indexed! : Str,
+append_indexed! : Str,
 List(U8),
 {
 	answerer : Try(Principal.GitHubId, [Unresolved]),
 	record : List(U8),
 	count : U64,
 } => [Failed, Written]
-indexed! = |
+append_indexed! = |
 	folder,
 	mark,
 	{
@@ -997,12 +997,12 @@ rewrite_index! = |folder, groups| {
 			Found => listed.entries.map(|e| e.name)
 		}
 	kept = groups.map(|g| g.human.to_u64().to_str().to_utf8())
-	removed!(folder, existing.keep_if(|name| !kept.contains(name)))?
-	written!(folder, groups)
+	remove_files!(folder, existing.keep_if(|name| !kept.contains(name)))?
+	write_index_files!(folder, groups)
 }
 
-removed! : Str, List(List(U8)) => Try({}, [Failed])
-removed! = |folder, names|
+remove_files! : Str, List(List(U8)) => Try({}, [Failed])
+remove_files! = |folder, names|
 	match names {
 		[] => Ok({})
 		[name, .. as rest] =>
@@ -1014,18 +1014,18 @@ removed! = |folder, names|
 				]),
 			) {
 				Failed => Err(Failed)
-				Removed => removed!(folder, rest)
+				Removed => remove_files!(folder, rest)
 			}
 	}
 
-written! : Str, List({ human : Principal.GitHubId, records : List(U8) }) => Try({}, [Failed])
-written! = |folder, groups|
+write_index_files! : Str, List({ human : Principal.GitHubId, records : List(U8) }) => Try({}, [Failed])
+write_index_files! = |folder, groups|
 	match groups {
 		[] => Ok({})
 		[g, .. as rest] =>
 			match Host.write!(index_path(folder, g.human), g.records) {
 				Failed => Err(Failed)
-				Written => written!(folder, rest)
+				Written => write_index_files!(folder, rest)
 			}
 	}
 

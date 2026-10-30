@@ -231,11 +231,11 @@ start! = |{}| {
 									"`with` names the others, as `human:2,agent:7`",
 								)
 								Ok(others) =>
-									match started_room!(me.id, accounts) {
+									match check_start_room!(me.id, accounts) {
 										Err(Failed) => Chat.failed
 										Ok(Full) => Wire.refused(
 											403,
-											"you have started as many conversations as one person may (${Limits.cap!(ConversationsPerHuman).to_str()})",
+											"you have started as many conversations as one person may (${Limits.load_cap!(ConversationsPerHuman).to_str()})",
 										)
 										Ok(Room) =>
 											match Store.load_next_conversation_id!({}) {
@@ -304,13 +304,13 @@ start! = |{}| {
 ## **WHETHER THE STARTER'S HUMAN MAY START ANOTHER** (Limits'
 ## conversations_per_human, counted from their `started-by` index); one the
 ## accounts do not hold is refused later, by ConvAccess.Conv.start.
-started_room! : Principal.Id, List(Principal) => Try([Room, Full], [Failed])
-started_room! = |starter, accounts|
+check_start_room! : Principal.Id, List(Principal) => Try([Room, Full], [Failed])
+check_start_room! = |starter, accounts|
 	match Principal.find(accounts, starter) {
 		Err(_) => Ok(Room)
 		Ok(p) => {
 			started = Store.load_started_count!(Principal.answers_to(p), accounts)?
-			Ok(if (started >= Limits.cap!(ConversationsPerHuman)) Full else Room)
+			Ok(if (started >= Limits.load_cap!(ConversationsPerHuman)) Full else Room)
 		}
 	}
 
@@ -420,8 +420,8 @@ AskedOn : {
 	key : [NoKey, Key(ConvKey.Key)],
 }
 
-asked! : ConvAccess.ConvId, Credentials.Use => Try(AskedOn, Chat.Answer)
-asked! = |id, use| {
+load_asked! : ConvAccess.ConvId, Credentials.Use => Try(AskedOn, Chat.Answer)
+load_asked! = |id, use| {
 	{
 		viewer,
 		accounts,
@@ -447,9 +447,9 @@ asked! = |id, use| {
 
 ## The same, for a viewer who may see it (ConvAccess.can_see); one who may
 ## not is answered as if it were not there, and a key's refusal audited.
-seen! : ConvAccess.ConvId => Try(AskedOn, Chat.Answer)
-seen! = |id| {
-	a = asked!(id, Read(id))?
+load_seen! : ConvAccess.ConvId => Try(AskedOn, Chat.Answer)
+load_seen! = |id| {
+	a = load_asked!(id, Read(id))?
 	if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {
 		Ok(a)
 	} else {
@@ -470,7 +470,7 @@ seen! = |id| {
 ## to. A `before` that is no message's id, or given twice, is a 400.
 read! : ConvAccess.ConvId => Chat.Answer
 read! = |id|
-	match seen!(id) {
+	match load_seen!(id) {
 		Err(answer) => answer
 		Ok(_) =>
 			match before_of(Host.read_query!(Str.to_utf8("before"))) {
@@ -519,7 +519,7 @@ post! = |id| {
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match asked!(id, Post(id)) {
+			match load_asked!(id, Post(id)) {
 				Err(answer) => answer
 				Ok(
 					{
@@ -549,7 +549,7 @@ post! = |id| {
 					} else {
 						by =
 							match viewer.who() {
-								SignedOut => crash "Conversations.post!: `asked!` let nobody signed out through"
+								SignedOut => crash "Conversations.post!: `load_asked!` let nobody signed out through"
 								Session(b) | Key(b) => b.id
 							}
 						match Store.load_tally!(id) {
@@ -603,7 +603,7 @@ post! = |id| {
 ## so the host's cap on streams a holder ends only the viewer's own.
 stream! : ConvAccess.ConvId => Chat.Answer
 stream! = |id|
-	match seen!(id) {
+	match load_seen!(id) {
 		Err(answer) => answer
 		Ok(a) =>
 			match Store.load_tally!(id) {
@@ -657,7 +657,7 @@ gap_frame = |before|
 holder_of : Access.Viewer(ConvAccess.ConvId) -> List(U8)
 holder_of = |viewer|
 	match viewer.who() {
-		SignedOut => crash "Conversations.holder_of: `seen!` let nobody signed out through"
+		SignedOut => crash "Conversations.holder_of: `load_seen!` let nobody signed out through"
 		Session(b) | Key(b) => Str.to_utf8(AccountCodec.id_text(b.id))
 	}
 

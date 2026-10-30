@@ -392,7 +392,7 @@ Agents := [].{
 	## or a session no longer admitted, is `SignedOut`; a key is `ByKey`
 	## (a page is a browser's); a credential that ends the request, its
 	## answer.
-	mine! : {} => Try(
+	load_owned! : {} => Try(
 		Agents.Mine,
 		[
 			SignedOut,
@@ -400,8 +400,8 @@ Agents := [].{
 			Answered(Chat.Answer),
 		],
 	)
-	mine! = |{}|
-		match Credentials.presented!({}) {
+	load_owned! = |{}|
+		match Credentials.load_credential!({}) {
 			Err(answer) => Err(Answered(answer))
 			Ok(Nobody) => Err(SignedOut)
 			Ok(Key(_)) => Err(ByKey)
@@ -476,7 +476,7 @@ granter_form! = |then!| {
 	match got.status {
 		Answered => Chat.answered
 		Read =>
-			match Credentials.presented!({}) {
+			match Credentials.load_credential!({}) {
 				Err(answer) => answer
 				Ok(Nobody) => not_signed_in
 				Ok(Session(s)) => then!(
@@ -490,10 +490,10 @@ granter_form! = |then!| {
 
 ## **/agents**: an agent made, from a session; stored, and answered.
 make_agent! : {} => Chat.Answer
-make_agent! = |{}| granter_form!(|granter, asked| made_by!(granter, asked.form))
+make_agent! = |{}| granter_form!(|granter, asked| make_agent_for!(granter, asked.form))
 
-made_by! : Agents.Granter, List(U8) => Chat.Answer
-made_by! = |granter, form| {
+make_agent_for! : Agents.Granter, List(U8) => Chat.Answer
+make_agent_for! = |granter, form| {
 	now = Host.read_time!({})
 	name =
 		match SignInWeb.form_field(form, "name") {
@@ -545,10 +545,10 @@ made_by! = |granter, form| {
 ## **/keys, POST**: a key minted, from a session, for the session's human;
 ## an agent's key comes from an invite. Its secret shown once.
 mint! : {} => Chat.Answer
-mint! = |{}| granter_form!(minted!)
+mint! = |{}| granter_form!(mint_for!)
 
-minted! : Agents.Granter, Agents.Asked => Chat.Answer
-minted! = |granter, { default_as, form }|
+mint_for! : Agents.Granter, Agents.Asked => Chat.Answer
+mint_for! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
 		Ok(
@@ -600,7 +600,7 @@ minted! = |granter, { default_as, form }|
 								# The cap after the grant, so a refusal never
 								# speaks of another human's keys.
 								Ok(key) =>
-									match capped!(
+									match check_cap!(
 										KeysPerHuman,
 										acts_as,
 										accounts,
@@ -608,7 +608,7 @@ minted! = |granter, { default_as, form }|
 										Err(Failed) => Chat.failed
 										Ok(Full) => Wire.refused(
 											403,
-											"you have minted as many keys as one person may (${Limits.cap!(KeysPerHuman).to_str()})",
+											"you have minted as many keys as one person may (${Limits.load_cap!(KeysPerHuman).to_str()})",
 										)
 										Ok(Room) =>
 											match Store.save_new_key!({ key, hash }, accounts) {
@@ -628,16 +628,16 @@ minted! = |granter, { default_as, form }|
 	}
 
 ## **WHETHER THE HUMAN `acts_as` ANSWERS TO MAY MAKE ANOTHER** of what
-## the cap counts (Limits.cap!), from their index. Asked only after the
+## the cap counts (Limits.load_cap!), from their index. Asked only after the
 ## grant is decided, so `acts_as` is the granter's own, and a refusal
 ## never says how many another human has made.
-capped! : [
+check_cap! : [
 	InvitesPerHuman,
 	KeysPerHuman,
 ],
 Principal.Id,
 List(Principal) => Try([Room, Full], [Failed])
-capped! = |
+check_cap! = |
 	which,
 	acts_as,
 	accounts,
@@ -653,8 +653,8 @@ capped! = |
 				}
 			cap =
 				match which {
-					InvitesPerHuman => Limits.cap!(InvitesPerHuman)
-					KeysPerHuman => Limits.cap!(KeysPerHuman)
+					InvitesPerHuman => Limits.load_cap!(InvitesPerHuman)
+					KeysPerHuman => Limits.load_cap!(KeysPerHuman)
 				}
 			Ok(if (made >= cap) Full else Room)
 		}
@@ -679,10 +679,10 @@ is_human = |id|
 ## **/invites, POST**: an invite, from a session, for one of its agents or
 ## bots (Agents.invited decides); its code shown once.
 invite! : {} => Chat.Answer
-invite! = |{}| granter_form!(invited_by!)
+invite! = |{}| granter_form!(invite_for!)
 
-invited_by! : Agents.Granter, Agents.Asked => Chat.Answer
-invited_by! = |granter, { default_as, form }|
+invite_for! : Agents.Granter, Agents.Asked => Chat.Answer
+invite_for! = |granter, { default_as, form }|
 	match asked_grant(form, default_as) {
 		Err(why) => Wire.refused(400, why)
 		Ok(
@@ -728,7 +728,7 @@ invited_by! = |granter, { default_as, form }|
 						}
 						# The cap after the grant, as a key's is.
 						Ok(bound) =>
-							match capped!(
+							match check_cap!(
 								InvitesPerHuman,
 								acts_as,
 								accounts,
@@ -736,7 +736,7 @@ invited_by! = |granter, { default_as, form }|
 								Err(Failed) => Chat.failed
 								Ok(Full) => Wire.refused(
 									403,
-									"you have made as many invites as one person may (${Limits.cap!(InvitesPerHuman).to_str()})",
+									"you have made as many invites as one person may (${Limits.load_cap!(InvitesPerHuman).to_str()})",
 								)
 								Ok(Room) => {
 									code = Host.random_bytes!(Wire.secret_bytes)
@@ -837,7 +837,7 @@ redeem! = |{}| {
 												why: Unknown,
 												now,
 											})
-											Ok(invite) => redeemed_now!(invite, now)
+											Ok(invite) => redeem_now!(invite, now)
 										}
 								}
 						}
@@ -850,13 +850,13 @@ redeem! = |{}| {
 ## **THE INVITE REDEEMED, OR REFUSED**: decided (Agents.redeemed); then,
 ## **SPENT FIRST**, before the key is stored, so a crash between leaves a
 ## spent invite and no key, never a key and a live invite.
-redeemed_now! : InviteCodec.Record(ConvAccess.ConvId), I64 => Chat.Answer
-redeemed_now! = |invite, now| {
+redeem_now! : InviteCodec.Record(ConvAccess.ConvId), I64 => Chat.Answer
+redeem_now! = |invite, now| {
 	known = Known({ id: invite.id, agent: invite.bound.id })
 	match (
 		Store.load_accounts!({}),
 		Store.load_next_key_id!({}),
-		stored_granter!(invite.by),
+		load_granter!(invite.by),
 	) {
 		(
 			Ok(accounts),
@@ -903,8 +903,8 @@ redeemed_now! = |invite, now| {
 }
 
 ## The granter an invite names, as the store holds it now.
-stored_granter! : InviteCodec.By => Try([Found(Agents.Granter), Gone], [Failed])
-stored_granter! = |by|
+load_granter! : InviteCodec.By => Try([Found(Agents.Granter), Gone], [Failed])
+load_granter! = |by|
 	match by {
 		Session(h) =>
 			match Store.load_session!(h) {
@@ -1213,7 +1213,7 @@ load_owner! : {} => Try(
 	Chat.Answer,
 )
 load_owner! = |{}| {
-	credential = Credentials.presented!({})?
+	credential = Credentials.load_credential!({})?
 	match credential {
 		Nobody => Err(not_signed_in)
 		Key(_) => Err(Wire.refused(403, "keys are managed from a session"))
