@@ -58,20 +58,38 @@ names = |md, name|
 		Bool.False
 	} else {
 		lead = md.drop_first(Bytes.count_while(md, Ascii.is_whitespace))
-		(lead.starts_with(name) and !continues(lead, name.len())) or at_names(md, name.prepend('@'), 0)
+		(lead.starts_with(name) and !continues(lead, name.len())) or at_names({
+			md,
+			at_name: name.prepend('@'),
+			from: 0,
+		})
 	}
 
 ## Whether `at_name` (`@` and the name) is in `md` from `from` on, with no
 ## word byte just before it or just after.
-at_names : List(U8), List(U8), U64 -> Bool
-at_names = |md, at_name, from|
+at_names : {
+	md : List(U8),
+	at_name : List(U8),
+	from : U64,
+} -> Bool
+at_names = |
+	{
+		md,
+		at_name,
+		from,
+	},
+|
 	match Bytes.find(md, { needle: at_name, at: from }) {
 		Err(NotFound) => Bool.False
 		Ok(i) =>
 			if (i == 0 or !is_word(md.get(i - 1) ?? ' ')) and !continues(md, i + at_name.len()) {
 				Bool.True
 			} else {
-				at_names(md, at_name, i + 1)
+				at_names({
+					md,
+					at_name,
+					from: i + 1,
+				})
 			}
 	}
 
@@ -98,7 +116,11 @@ gid : U64 -> Principal.GitHubId
 gid = |n| Principal.GitHubId.from_u64(n) ?? crash "gid: not 0"
 
 all : List(Mentions.Named)
-all = [lc, cc, steve]
+all = [
+	lc,
+	cc,
+	steve,
+]
 
 expect Mentions.of("@CC hi".to_utf8(), all) == [cc.id]
 expect Mentions.of("  CC, a question".to_utf8(), all) == [cc.id]
@@ -121,7 +143,15 @@ post = |who, text| { by: who.id, body: text.to_utf8() }
 expect Mentions.hops([], all) == 0
 expect Mentions.hops([post(lc, "@CC one"), post(cc, "@LC two")], all) == 2
 # A human's post ends the count; a status names no agent and is no hop.
-expect Mentions.hops([post(lc, "@CC one"), post(steve, "hi"), post(cc, "@LC two"), post(cc, "status: building")], all) == 1
+expect Mentions.hops(
+	[
+		post(lc, "@CC one"),
+		post(steve, "hi"),
+		post(cc, "@LC two"),
+		post(cc, "status: building"),
+	],
+	all,
+) == 1
 expect Mentions.hops([post(steve, "@CC"), post(cc, "CC: building")], all) == 0
 expect Mentions.is_hop(lc.id, [cc.id])
 expect !Mentions.is_hop(lc.id, [lc.id])

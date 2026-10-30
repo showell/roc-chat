@@ -487,7 +487,14 @@ read! = |id|
 									("id", JsonOut.number(id.to_u64())),
 									(
 										"messages",
-										JsonOut.array(messages.map(|m| message_json(m, named_of(a.conv, a.accounts)))),
+										JsonOut.array(
+											messages.map(
+												|m| message_json(
+													m,
+													named_of(a.conv, a.accounts),
+												),
+											),
+										),
 									),
 									("earlier", JsonOut.bool(earlier)),
 								]),
@@ -561,9 +568,18 @@ post! = |id| {
 							Err(Failed) => Chat.failed
 							Ok(tally) => {
 								named = named_of(conv, accounts)
-								match check_hops!({ id, tally, by, named }) {
+								match check_hops!({
+									id,
+									tally,
+									by,
+									named,
+								}) {
 									Err(Failed) => Chat.failed
-									Ok(Full) => refuse_hops!({ key, id, now })
+									Ok(Full) => refuse_hops!({
+										key,
+										id,
+										now,
+									})
 									Ok(Room) => append_post!({
 										id,
 										tally,
@@ -608,7 +624,11 @@ append_post! = |
 			"this conversation is full: its transcript holds as much as one may",
 		)
 	} else {
-		match Store.append_message!({ id, tally, message }) {
+		match Store.append_message!({
+			id,
+			tally,
+			message,
+		}) {
 			Failed => Chat.failed
 			Appended => {
 				match frame(message, named) {
@@ -643,7 +663,11 @@ check_hops! = |
 	match by {
 		Human(_) => Ok(Room)
 		Agent(_) | Bot(_) => {
-			newest = Store.load_span!(id, tally, Conversations.page_of(tally.messages, Newest))?
+			newest = Store.load_span!(
+				id,
+				tally,
+				Conversations.page_of(tally.messages, Newest),
+			)?
 			posts = newest.map(|m| { by: m.by, body: m.body })
 			Ok(if (Mentions.hops(posts, named) >= Limits.agent_hops_most) Full else Room)
 		}
@@ -722,7 +746,10 @@ stream! = |id|
 						Ok(messages) => {
 							gap = if (after > 0 and after + 1 < newest.first) gap_frame(newest.first) else []
 							named = named_of(a.conv, a.accounts)
-							backlog = List.concat(gap, List.join(List.keep_oks(messages, |m| frame(m, named))))
+							backlog = List.concat(
+								gap,
+								List.join(List.keep_oks(messages, |m| frame(m, named))),
+							)
 							Chat.stream({
 								key: bus_key(id),
 								backlog,
@@ -787,7 +814,12 @@ message_json = |m, named|
 		("markdown", JsonOut.text(m.body)),
 		(
 			"mentions",
-			JsonOut.array(Mentions.of(m.body, named).map(|id| JsonOut.string(AccountCodec.id_text(id)))),
+			JsonOut.array(
+				Mentions.of(
+					m.body,
+					named,
+				).map(|id| JsonOut.string(AccountCodec.id_text(id))),
+			),
 		),
 		("html", JsonOut.text(Conversations.html_of(m))),
 	])
@@ -795,7 +827,12 @@ message_json = |m, named|
 ## A conversation's participants as a mention finds them: each id with the
 ## name the accounts give it now.
 named_of : ConvAccess.Conv, List(Principal) -> List(Mentions.Named)
-named_of = |conv, accounts| conv.participants().map(|b| { id: b.id, name: Conversations.name_of(accounts, b.id) })
+named_of = |conv, accounts| conv.participants().map(
+	|b| {
+		id: b.id,
+		name: Conversations.name_of(accounts, b.id),
+	},
+)
 
 not_signed_in : Chat.Answer
 not_signed_in = Wire.refused(401, "not signed in")

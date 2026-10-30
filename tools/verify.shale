@@ -322,7 +322,7 @@ plant("an unknown redeem format taken as JSON (the invite spent by a typo)",
 
 -- Mentions and the agents' backstop.
 plant("mentions never parsed (every message names nobody)",
-  "app/Mentions.roc", "participants.keep_if(|p| names(markdown, p.name.to_utf8())).map(|p| p.id)", "participants.keep_if(|_| Bool.False).map(|p| p.id)", 16)
+  "app/Mentions.roc", "participants.keep_if(|p| names(markdown, p.name.to_utf8())).map(|p| p.id)", "participants.keep_if(|p| names(markdown, p.name.to_utf8()) and Bool.False).map(|p| p.id)", 16)
 plant("agents answering agents uncapped (the cap never reached)",
   "app/Conversations.roc", "if (Mentions.hops(posts, named) >= Limits.agent_hops_most) Full else Room", "if (Mentions.hops(posts, named) >= Limits.agent_hops_most * 1000) Full else Room", 17)
 
