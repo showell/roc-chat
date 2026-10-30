@@ -115,6 +115,11 @@ ApiKey := [].{
 
 		## The scope reaches it, but the principal itself may not.
 		BeyondPrincipal,
+
+		## An agent's post to a conversation already holding
+		## Limits.agent_hops_most agents answering agents since a human
+		## last spoke (Mentions.hops).
+		AgentHops,
 	]
 
 	## **MAY THIS GRANTER GIVE A KEY ACTING AS `acts_as` THIS SCOPE?** Only

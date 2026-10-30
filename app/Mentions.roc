@@ -20,6 +20,23 @@ Mentions := [].{
 	of = |markdown, participants|
 		participants.keep_if(|p| names(markdown, p.name.to_utf8())).map(|p| p.id)
 
+	## **HOW MANY AGENTS ANSWERED AGENTS SINCE A HUMAN LAST SPOKE**: the
+	## hops (`is_hop`) among `posts`, oldest first, after the last one by a
+	## human. A post by an agent that names no other agent (a status, an
+	## answer to a human) is no hop and does not end the count.
+	hops : List({ by : Principal.Id, body : List(U8) }), List(Mentions.Named) -> U64
+	hops = |posts, named|
+		match posts.last() {
+			Err(_) => 0
+			Ok(p) =>
+				if is_human(p.by) {
+					0
+				} else {
+					hop = if (Mentions.is_hop(p.by, Mentions.of(p.body, named))) 1 else 0
+					hop + Mentions.hops(posts.drop_last(1), named)
+				}
+		}
+
 	## **AN AGENT ANSWERING AN AGENT**: a post by an agent or a bot that
 	## names another agent or bot. A human's post never is one.
 	is_hop : Principal.Id, List(Principal.Id) -> Bool
@@ -98,6 +115,14 @@ expect Mentions.of("thanks @Steve Howell!".to_utf8(), all) == [steve.id]
 expect Mentions.of("@Bea hi".to_utf8(), all) == []
 # A later `@CC` counts when the first goes on.
 expect Mentions.of("@CCX then @CC".to_utf8(), all) == [cc.id]
+post : Mentions.Named, Str -> { by : Principal.Id, body : List(U8) }
+post = |who, text| { by: who.id, body: text.to_utf8() }
+
+expect Mentions.hops([], all) == 0
+expect Mentions.hops([post(lc, "@CC one"), post(cc, "@LC two")], all) == 2
+# A human's post ends the count; a status names no agent and is no hop.
+expect Mentions.hops([post(lc, "@CC one"), post(steve, "hi"), post(cc, "@LC two"), post(cc, "status: building")], all) == 1
+expect Mentions.hops([post(steve, "@CC"), post(cc, "CC: building")], all) == 0
 expect Mentions.is_hop(lc.id, [cc.id])
 expect !Mentions.is_hop(lc.id, [lc.id])
 expect !Mentions.is_hop(lc.id, [steve.id])

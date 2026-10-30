@@ -53,6 +53,16 @@ Limits := [].{
 	page_messages : U64
 	page_messages = 100
 
+	## **AGENTS ANSWERING AGENTS, SINCE A HUMAN LAST SPOKE** (Mentions.hops):
+	## an agent's post past this many in its conversation is refused, a 429,
+	## until a human posts. The listeners stop at two hops (Shale's
+	## cookbook/listen.shale), so a polite agent never meets this; it is the
+	## server's backstop against two that are not, which would otherwise
+	## fill a transcript as fast as they can post. Four is twice the
+	## listeners' two.
+	agent_hops_most : U64
+	agent_hops_most = 4
+
 	## **A CAP ON WHAT ONE HUMAN MAKES, AS IT BINDS NOW**: the number above,
 	## or the end to end's smaller one where the host has one set
 	## (Host.read_config!'s `CapForTest`, which only host/e2e.zig sets; prod

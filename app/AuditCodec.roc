@@ -913,6 +913,7 @@ all_key_refusals = [
 	NoSuchPrincipal,
 	OutOfScope,
 	BeyondPrincipal,
+	AgentHops,
 ]
 
 spell_key_refusal : ApiKey.Refusal -> Str
@@ -923,6 +924,7 @@ spell_key_refusal = |why|
 		NoSuchPrincipal => "no-such-principal"
 		OutOfScope => "out-of-scope"
 		BeyondPrincipal => "beyond-principal"
+		AgentHops => "agent-hops"
 	}
 
 ## `permitted`, or `refused:` and the refusal (`refused:key:` and a key's).
@@ -1169,8 +1171,8 @@ entries =
 			),
 	)
 
-expect List.len(verdicts) == 15
-expect List.len(entries) == 330
+expect List.len(verdicts) == 16
+expect List.len(entries) == 352
 expect List.all(
 	entries,
 	|e| AuditCodec.decode(AuditCodec.encode(admin_entry(e))) == Ok(admin_entry(e)),

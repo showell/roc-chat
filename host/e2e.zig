@@ -1138,6 +1138,33 @@ fn mentions(w: *World) !void {
     if (count(read.body, named) != 1 or count(read.body, "\"mentions\":[\"human:1004\"]") != 1) return error.NotInTheTranscript;
 }
 
+/// **THE SERVER'S BACKSTOP AGAINST RUNAWAY AGENTS** (Limits.agent_hops_most,
+/// four): two of Steve's agents answer each other four times; an agent's
+/// fifth post, even a status, is a 429 naming the cap, nothing is stored,
+/// and its key is audited. A human's post lets them go on.
+fn agentHops(w: *World) !void {
+    const ping = try field((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Ping")).body, "id");
+    const pong = try field((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Pong")).body, "id");
+    const ping_key = (try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}", .{ping}))).secret;
+    const pong_key = (try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}", .{pong}))).secret;
+    const form = try std.fmt.allocPrint(w.a, "with=agent%3A{s}%2Cagent%3A{s}", .{ ping["agent:".len..], pong["agent:".len..] });
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, form));
+    const path = try agentPath(w, conv, "/messages");
+    for ([_][]const u8{ "@Pong one", "@Ping two", "@Pong three", "@Ping four" }, 0..) |text, i| {
+        const by = if (i % 2 == 0) ping_key else pong_key;
+        if ((try send(w.a, w.port(), "POST", path, .{ .key = by }, text)).status != 201) return error.HopRefused;
+    }
+    const fifth = try send(w.a, w.port(), "POST", path, .{ .key = ping_key }, "status: still here");
+    if (fifth.status != 429) return error.RunawayAccepted;
+    if (!has(fifth.body, "4 times")) return error.CapNotNamed;
+    const read = try send(w.a, w.port(), "GET", try agentPath(w, conv, ""), .{ .key = ping_key }, "");
+    if (has(read.body, "still here") or !has(read.body, "@Ping four")) return error.RunawayStored;
+    const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    if (!has(log, try std.fmt.allocPrint(w.a, "who={s} via=key:", .{ping})) or !has(log, try std.fmt.allocPrint(w.a, "action=post:{s} verdict=refused:agent-hops", .{conv}))) return error.NotAudited;
+    if ((try request(w.a, w.port(), "POST", path, w.steve, "carry on")).status != 201) return error.HumanRefused;
+    if ((try send(w.a, w.port(), "POST", path, .{ .key = ping_key }, "@Pong five")).status != 201) return error.NotLetGoOn;
+}
+
 fn keyCannotMint(w: *World) !void {
     const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
     if ((try send(w.a, w.port(), "POST", "/keys", .{ .key = w.key }, form)).status != 403) return error.KeyMinted;
@@ -1367,6 +1394,7 @@ const steps = [_]Step{
     .{ .name = "the agent, by key alone, starts a conversation with Steve and posts; Steve's stream gets it once", .f = agentStarts },
     .{ .name = "Steve posts, and the agent reads it with its key", .f = agentReads },
     .{ .name = "each message names the participants its markdown mentions, as words, by their names now", .f = mentions },
+    .{ .name = "two agents answering each other are refused a fifth post (a 429, audited) until a human speaks", .f = agentHops },
     .{ .name = "the agent's key cannot mint a key, nor make an agent", .f = keyCannotMint },
     .{ .name = "Steve revokes the key, and its next use is a 401", .f = revoke },
     .{ .name = "an expired key is a 401", .f = expired },

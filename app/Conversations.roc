@@ -513,11 +513,11 @@ before_of = |values|
 ## **POST**: the body is the markdown. Refused when the viewer may not post
 ## (ConvAccess.can_post, asked first and alone: a 403 to one who may see it,
 ## a 404 to one who may not), when it is not UTF-8 text, or when it is
-## hostile (roc-markdown's budget), or when the transcript is full
-## (Limits.transcript_bytes_most, a 413). Then appended, as the next id
-## its tally gives (Store.load_tally!, never a read of the transcript), and
-## published to the conversation's streams, each once: the append and the
-## publish are in this turn, so no stream subscribes between them.
+## hostile (roc-markdown's budget), when the poster is an agent or a bot
+## and agents have answered agents too often since a human spoke
+## (check_hops!, a 429), or when the transcript is full (append_post!, a
+## 413). Then appended and published (append_post!), its id from its
+## tally (Store.load_tally!, never a read of the transcript).
 post! : ConvAccess.ConvId => Chat.Answer
 post! = |id| {
 	got = Host.read_body!(post_most)
@@ -560,39 +560,125 @@ post! = |id| {
 						match Store.load_tally!(id) {
 							Err(Failed) => Chat.failed
 							Ok(tally) => {
-								message = {
-									id: MessageCodec.next_id(tally.messages),
-									at: now,
-									by,
-									body: got.bytes,
-								}
-								if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
-									Wire.refused(
-										413,
-										"this conversation is full: its transcript holds as much as one may",
-									)
-								} else {
-									match Store.append_message!({
-										id: id,
-										tally: tally,
-										message: message,
-									}) {
-										Failed => Chat.failed
-										Appended => {
-											named = named_of(conv, accounts)
-											match frame(message, named) {
-												Ok(f) => Host.publish!(bus_key(id), f)
-												Err(LineBreak) => crash "Conversations.post!: a message's JSON holds no line break"
-											}
-											Wire.json(201, message_json(message, named))
-										}
-									}
+								named = named_of(conv, accounts)
+								match check_hops!({ id, tally, by, named }) {
+									Err(Failed) => Chat.failed
+									Ok(Full) => refuse_hops!({ key, id, now })
+									Ok(Room) => append_post!({
+										id,
+										tally,
+										message: {
+											id: MessageCodec.next_id(tally.messages),
+											at: now,
+											by,
+											body: got.bytes,
+										},
+										named,
+									})
 								}
 							}
 						}
 					}
 			}
 	}
+}
+
+## **A POST TAKEN**: refused when the transcript is full
+## (Limits.transcript_bytes_most, a 413); else appended, as the next id
+## its tally gives, and published to the conversation's streams, each
+## once: the append and the publish are in this turn, so no stream
+## subscribes between them.
+append_post! : {
+	id : ConvAccess.ConvId,
+	tally : Store.Tally,
+	message : MessageCodec.Fields,
+	named : List(Mentions.Named),
+} => Chat.Answer
+append_post! = |
+	{
+		id,
+		tally,
+		message,
+		named,
+	},
+|
+	if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
+		Wire.refused(
+			413,
+			"this conversation is full: its transcript holds as much as one may",
+		)
+	} else {
+		match Store.append_message!({ id, tally, message }) {
+			Failed => Chat.failed
+			Appended => {
+				match frame(message, named) {
+					Ok(f) => Host.publish!(bus_key(id), f)
+					Err(LineBreak) => crash "Conversations.append_post!: a message's JSON holds no line break"
+				}
+				Wire.json(201, message_json(message, named))
+			}
+		}
+	}
+
+## **WHETHER AN AGENT MAY POST NOW** (Limits.agent_hops_most): a human
+## always may; an agent or a bot not once the newest page holds that many
+## agents answering agents since a human last spoke (Mentions.hops). The
+## newest page is read from its first message's offset (Store.load_span!),
+## never the transcript whole: a run of hops longer than a page still
+## counts past the cap.
+check_hops! : {
+	id : ConvAccess.ConvId,
+	tally : Store.Tally,
+	by : Principal.Id,
+	named : List(Mentions.Named),
+} => Try([Room, Full], [Failed])
+check_hops! = |
+	{
+		id,
+		tally,
+		by,
+		named,
+	},
+|
+	match by {
+		Human(_) => Ok(Room)
+		Agent(_) | Bot(_) => {
+			newest = Store.load_span!(id, tally, Conversations.page_of(tally.messages, Newest))?
+			posts = newest.map(|m| { by: m.by, body: m.body })
+			Ok(if (Mentions.hops(posts, named) >= Limits.agent_hops_most) Full else Room)
+		}
+	}
+
+## **AN AGENT'S POST PAST THE CAP**: a 429 naming it, nothing stored, and
+## the key that posted audited (`agent-hops`). Only a key posts as an
+## agent, so a session never meets it.
+refuse_hops! : {
+	key : [NoKey, Key(ConvKey.Key)],
+	id : ConvAccess.ConvId,
+	now : I64,
+} => Chat.Answer
+refuse_hops! = |
+	{
+		key,
+		id,
+		now,
+	},
+| {
+	match key {
+		NoKey => {}
+		Key(k) => Credentials.audit_use!(
+			k,
+			{
+				use: Post(id),
+				refusal: AgentHops,
+				now,
+			},
+		)
+	}
+	Wire.refused(
+		429,
+		"agents have answered agents ${Limits.agent_hops_most.to_str()} times here since a human last spoke; a human's post lets them go on",
+	)
 }
 
 ## **STREAM**: the messages after the one the browser saw last
