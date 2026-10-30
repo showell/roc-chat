@@ -26,6 +26,17 @@ Wire := [].{
 		sniff: Forbid,
 	}
 
+	## A secret alone, a line of plain text, never sniffed: what an agent
+	## stores as it is, with nothing to parse.
+	secret : U16, List(U8) -> Chat.Answer
+	secret = |status, hex| {
+		..Chat.respond(
+			status,
+			{ content_type: Chat.text, body: hex.concat(['\n']) },
+		),
+		sniff: Forbid,
+	}
+
 	## A refusal: its status, and why, a line of plain text.
 	refused : U16, Str -> Chat.Answer
 	refused = |status, why| Chat.respond(

@@ -1199,6 +1199,27 @@ fn inviteRedeemPost(w: *World) !void {
     if (has((try get(w.a, w.port(), "/invites", w.steve)).body, try std.fmt.allocPrint(w.a, "{{\"id\":{s},", .{inv.id}))) return error.SpentListed;
 }
 
+fn redeemSecretAlone(w: *World) !void {
+    // A human of their own, so no earlier step's caps are in the way.
+    const hal = try signUp(w.a, w.port(), 1013);
+    const made = try request(w.a, w.port(), "POST", "/agents", hal, "name=LC");
+    if (made.status != 201) return error.NotMade;
+    const made_inv = try request(w.a, w.port(), "POST", "/invites", hal, try std.fmt.allocPrint(w.a, "as={s}", .{try field(made.body, "id")}));
+    if (made_inv.status != 201) return error.NotInvited;
+    const inv = .{ .code = try field(made_inv.body, "code") };
+    // An unknown format is refused before the code is read, and the invite
+    // is still live after it.
+    const bad = try send(w.a, w.port(), "POST", "/invites/redeem", .{}, try std.fmt.allocPrint(w.a, "code={s}&format=json", .{inv.code}));
+    if (bad.status != 400) return error.UnknownFormatTaken;
+    const r = try send(w.a, w.port(), "POST", "/invites/redeem", .{}, try std.fmt.allocPrint(w.a, "code={s}&format=secret", .{inv.code}));
+    if (r.status != 201) return error.NotRedeemed;
+    // The secret alone, one line: 64 hex digits and a newline.
+    if (r.body.len != 65 or r.body[64] != '\n') return error.NotTheSecretAlone;
+    for (r.body[0..64]) |c| if (!std.ascii.isHex(c)) return error.NotTheSecretAlone;
+    const listed = try send(w.a, w.port(), "GET", "/conversations", .{ .key = r.body[0..64] }, "");
+    if (listed.status != 200) return error.SecretDoesNotWork;
+}
+
 fn redeemTwice(w: *World) !void {
     if ((try redeem(w, w.code)).status != 401) return error.RedeemedTwice;
     // An unknown code too, and none at all.
@@ -1366,6 +1387,7 @@ const steps = [_]Step{
     .{ .name = "another human sees none of it on their page, and revokes none of it", .f = othersSeeNoneOnPage },
     .{ .name = "a key asking for the agents page is a 403", .f = agentsPageRefusesKey },
     .{ .name = "the start form offers the viewer's own agents to tick, no one else's", .f = startPicksAgents },
+    .{ .name = "an invite redeemed with format=secret answers the secret alone, and it works; an unknown format spends nothing", .f = redeemSecretAlone },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

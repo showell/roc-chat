@@ -49,9 +49,9 @@
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
 -- The floors: the test counts, which may only rise.
-const roc_floor = 1793
+const roc_floor = 1797
 const zig_floor = 203
-const e2e_steps = 61
+const e2e_steps = 62
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -308,6 +308,10 @@ plant("a key given the agents page (sent to sign in, as if signed out)",
   "app/Agents.roc", "Ok(Key(_)) => Err(ByKey)", "Ok(Key(_)) => Err(SignedOut)", 60)
 plant("the start form offering none of the viewer's agents",
   "app/Pages.roc", "Human(human) => Agents.agents_of(accounts, human)", "Human(_) => []", 61)
+plant("a redeem's format=secret answered as JSON",
+  "app/Agents.roc", "SecretAlone => Wire.secret(201, SignInWeb.hex(secret))", "SecretAlone => Wire.json(201, key_json(key, Shown(secret)))", 62)
+plant("an unknown redeem format taken as JSON (the invite spent by a typo)",
+  "app/Agents.roc", "_ => Err(UnknownFormat)", "_ => Ok(Json)", 62)
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
