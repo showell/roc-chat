@@ -221,7 +221,7 @@ plant_out_of_turn()
 plant("the list showing every conversation (load_mine! keeps them all)",
   "app/Conversations.roc", "Ok(List.keep_if(theirs, |conv| ConvAccess.can_post(viewer, { conv, accounts })))", "Ok(List.concat(theirs, Store.load_conversations!({})?))", 31)
 plant("a participant's name written unescaped (escape leaves `<`)",
-  "app/Pages.roc", "} else if b == '<' {", "} else if b == 0 {", 32)
+  "app/Html.roc", "} else if b == '<' {", "} else if b == 0 {", 32)
 plant("a third user given the conversation's page (can_see asked of nobody)",
   "app/Pages.roc", "if !ConvAccess.can_see(viewer, { conv, accounts }) {", "if !ConvAccess.can_see(viewer, { conv, accounts }) and List.is_empty(accounts) {", 33)
 plant("a key given a page (answered as a session)",

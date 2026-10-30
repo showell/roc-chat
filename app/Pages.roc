@@ -21,11 +21,12 @@
 ##                       and a box to post markdown in (Enter sends, Shift-Enter
 ##                       adds a line)
 ##
-## **WHAT THE PAGE WRITES ITSELF IS ESCAPED** (`escape`): a name, an id, a
-## title. **A MESSAGE'S HTML IS THE RENDERER'S OUTPUT, AND ONLY THAT**: the
-## page holds roc-markdown's HTML for it (Conversations.html_of), as the
-## transcript and the stream give it, and nothing else is ever put in as
-## HTML. Signed out, a page sends the browser to `/login`; a conversation
+## **A PAGE IS AN `Html`** (Html.roc), built only from escaped text (a
+## name, an id, a title), numbers and markup written here. **A MESSAGE'S
+## HTML IS THE RENDERER'S OUTPUT, AND ONLY THAT**: the page holds
+## roc-markdown's HTML for it (Conversations.html_of, through
+## `Html.rendered`), as the transcript and the stream give it, and nothing
+## else is ever put in as HTML. Signed out, a page sends the browser to `/login`; a conversation
 ## the viewer may not see is the 404 of one that is not there.
 ##
 ## **THE AGENTS PAGE IS ITS OWN**, not a section of `/chat`: what it holds
@@ -40,12 +41,15 @@ import pf.Chat
 import Access
 import AccountCodec
 import Agents
+import Bytes
+import Cast
 import ConvKey
 import InviteCodec
 import KeyCodec
 import ConvAccess
 import Conversations
 import Credentials
+import Html
 import MessageCodec
 import Principal
 import Store
@@ -114,27 +118,6 @@ Pages := [].{
 			}
 		}
 
-	## **TEXT AS HTML TEXT**: its `&`, `<`, `>`, `"` and `'` as entities, so
-	## no text the page writes (a name, an id) is ever markup, in an element
-	## or an attribute.
-	escape : List(U8) -> List(U8)
-	escape = |text|
-		text.join_map(
-			|b|
-				if b == '&' {
-					"&amp;".to_utf8()
-				} else if b == '<' {
-					"&lt;".to_utf8()
-				} else if b == '>' {
-					"&gt;".to_utf8()
-				} else if b == '"' {
-					"&quot;".to_utf8()
-				} else if b == '\'' {
-					"&#39;".to_utf8()
-				} else {
-					[b]
-				},
-		)
 }
 
 root : List(U8)
@@ -173,34 +156,38 @@ list! = |
 		Ok(convs) => {
 			items =
 				if convs.is_empty() {
-					"<p>None yet.</p>\n".to_utf8()
+					Html.markup("<p>None yet.</p>\n")
 				} else {
-					[
-						"<ul id=conversations>\n".to_utf8(),
-						convs.join_map(
-							|conv| [
-								"<li><a href=\"/chat/${conv.id().to_u64().to_str()}\">".to_utf8(),
-								names(accounts, conv),
-								"</a></li>\n".to_utf8(),
-							].join(),
+					Html.join([
+						Html.markup("<ul id=conversations>\n"),
+						Html.join(
+							convs.map(
+								|conv| Html.join([
+									Html.markup("<li><a href=\"/chat/"),
+									Html.number(conv.id().to_u64()),
+									Html.markup("\">"),
+									names(accounts, conv),
+									Html.markup("</a></li>\n"),
+								]),
+							),
 						),
-						"</ul>\n".to_utf8(),
-					].join()
+						Html.markup("</ul>\n"),
+					])
 				}
 			page({
-				title: "Conversations".to_utf8(),
-				body_attrs: [],
-				body: List.join([
-					"<h1>Your conversations</h1>\n".to_utf8(),
+				title: Html.markup("Conversations"),
+				body_attrs: Html.join([]),
+				body: Html.join([
+					Html.markup("<h1>Your conversations</h1>\n"),
 					items,
 					start_form(accounts, me),
-					"<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n<p class=quiet>Signed in as ".to_utf8(),
-					Pages.escape(Str.to_utf8(Conversations.name_of(accounts, me))),
-					" (".to_utf8(),
-					Pages.escape(Str.to_utf8(AccountCodec.id_text(me))),
-					").</p>\n<script>\n".to_utf8(),
-					list_js.to_utf8(),
-					"</script>\n".to_utf8(),
+					Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n<p class=quiet>Signed in as "),
+					Html.text(Conversations.name_of(accounts, me)),
+					Html.markup(" ("),
+					id_html(me),
+					Html.markup(").</p>\n<script>\n"),
+					Html.markup(list_js),
+					Html.markup("</script>\n"),
 				]),
 			})
 		}
@@ -209,7 +196,7 @@ list! = |
 ## **THE FORM THAT STARTS A CONVERSATION**: a box to tick for each of the
 ## viewer's own agents (Agents.agents_of), and anyone else by id, typed;
 ## the script sends them all as `with=`, which decides who may be named.
-start_form : List(Principal), Principal.Id -> List(U8)
+start_form : List(Principal), Principal.Id -> Html
 start_form = |accounts, me| {
 	mine =
 		match me {
@@ -217,21 +204,22 @@ start_form = |accounts, me| {
 			Agent(_) | Bot(_) => []
 		}
 	ticks =
-		List.join_map(
-			mine,
-			|a| List.join([
-				"<label class=pick><input type=checkbox name=agent value=\"".to_utf8(),
-				Pages.escape(Str.to_utf8(AccountCodec.id_text(Principal.id(a)))),
-				"\"> ".to_utf8(),
-				Pages.escape(Str.to_utf8(Conversations.name_of(accounts, Principal.id(a)))),
-				"</label>\n".to_utf8(),
-			]),
+		Html.join(
+			mine.map(
+				|a| Html.join([
+					Html.markup("<label class=pick><input type=checkbox name=agent value=\""),
+					id_html(a.id()),
+					Html.markup("\"> "),
+					Html.text(Conversations.name_of(accounts, a.id())),
+					Html.markup("</label>\n"),
+				]),
+			),
 		)
-	[
-		"<form id=start><p>Start one with:</p>\n".to_utf8(),
+	Html.join([
+		Html.markup("<form id=start><p>Start one with:</p>\n"),
 		ticks,
-		"<label>Anyone else, by id <input name=with placeholder=\"human:2, agent:7\"></label> <button>Start</button> <span id=said></span></form>\n".to_utf8(),
-	].join()
+		Html.markup("<label>Anyone else, by id <input name=with placeholder=\"human:2, agent:7\"></label> <button>Start</button> <span id=said></span></form>\n"),
+	])
 }
 
 ## **/chat/agents**: the page, for a live session; signed out, to
@@ -251,94 +239,117 @@ agents_answer! = |{}|
 ## here is escaped; no code, secret or hash is in what it is made of.
 agents_page : Agents.Mine -> Chat.Answer
 agents_page = |mine| {
-	name = |id| Pages.escape(Str.to_utf8(Conversations.name_of(mine.accounts, id)))
+	name = |id| Html.text(Conversations.name_of(mine.accounts, id))
 	agents =
 		if mine.agents.is_empty() {
-			"<p>None yet. Make one below.</p>\n".to_utf8()
+			Html.markup("<p>None yet. Make one below.</p>\n")
 		} else {
-			[
-				"<ul id=agents>\n".to_utf8(),
-				mine.agents.join_map(
-					|a| {
-						id = a.id()
-						[
-							"<li data-id=\"".to_utf8(),
-							id_html(id),
-							"\"><b>".to_utf8(),
-							name(id),
-							"</b> <code>".to_utf8(),
-							id_html(id),
-							"</code> <button type=button class=invite data-for=\"".to_utf8(),
-							id_html(id),
-							"\" data-name=\"".to_utf8(),
-							name(id),
-							"\">Invite</button></li>\n".to_utf8(),
-						].join()
-					},
+			Html.join([
+				Html.markup("<ul id=agents>\n"),
+				Html.join(
+					mine.agents.map(
+						|a| {
+							id = a.id()
+							Html.join([
+								Html.markup("<li data-id=\""),
+								id_html(id),
+								Html.markup("\"><b>"),
+								name(id),
+								Html.markup("</b> <code>"),
+								id_html(id),
+								Html.markup("</code> <button type=button class=invite data-for=\""),
+								id_html(id),
+								Html.markup("\" data-name=\""),
+								name(id),
+								Html.markup("\">Invite</button></li>\n"),
+							])
+						},
+					),
 				),
-				"</ul>\n".to_utf8(),
-			].join()
+				Html.markup("</ul>\n"),
+			])
 		}
 	invites =
 		if mine.invites.is_empty() {
-			"<p>None waiting.</p>\n".to_utf8()
+			Html.markup("<p>None waiting.</p>\n")
 		} else {
-			[
-				"<ul id=invites>\n".to_utf8(),
-				mine.invites.join_map(
-					|i| [
-						"<li data-invite=${i.id.to_u64().to_str()}>For ".to_utf8(),
-						name(i.bound.id),
-						" (<code>".to_utf8(),
-						id_html(i.bound.id),
-						"</code>), until <time data-at=${i.expires.to_str()}></time> <button type=button class=revoke data-path=\"/invites/${i.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n".to_utf8(),
-					].join(),
+			Html.join([
+				Html.markup("<ul id=invites>\n"),
+				Html.join(
+					mine.invites.map(
+						|i| Html.join([
+							Html.markup("<li data-invite="),
+							Html.number(i.id.to_u64()),
+							Html.markup(">For "),
+							name(i.bound.id),
+							Html.markup(" (<code>"),
+							id_html(i.bound.id),
+							Html.markup("</code>), until <time data-at="),
+							Html.signed(i.expires),
+							Html.markup("></time> <button type=button class=revoke data-path=\"/invites/"),
+							Html.number(i.id.to_u64()),
+							Html.markup("/revoke\">Revoke</button></li>\n"),
+						]),
+					),
 				),
-				"</ul>\n".to_utf8(),
-			].join()
+				Html.markup("</ul>\n"),
+			])
 		}
 	keys =
 		if mine.keys.is_empty() {
-			"<p>None.</p>\n".to_utf8()
+			Html.markup("<p>None.</p>\n")
 		} else {
-			[
-				"<ul id=keys>\n".to_utf8(),
-				mine.keys.join_map(|k| key_html(name, k)),
-				"</ul>\n".to_utf8(),
-			].join()
+			Html.join([
+				Html.markup("<ul id=keys>\n"),
+				Html.join(mine.keys.map(|k| key_html(name, k))),
+				Html.markup("</ul>\n"),
+			])
 		}
 	page({
-		title: "Agents".to_utf8(),
-		body_attrs: [],
-		body: [
-			"<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n".to_utf8(),
+		title: Html.markup("Agents"),
+		body_attrs: Html.join([]),
+		body: Html.join([
+			Html.markup("<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n"),
 			agents,
-			"<form id=make><label>Make an agent named <input name=name required maxlength=64></label> <button>Make</button></form>\n<div id=code hidden><p><b>The invite code for <span id=code-for></span>, shown only now:</b></p>\n<p><code id=code-text></code> <button type=button id=copy>Copy</button></p>\n<p>Give it to the agent within ten minutes (until <time id=code-until></time>). It works once: the agent sends it to <code>POST /invites/redeem</code> as <code>code=</code> and gets its own key back. Reload this page and the code is gone; the invite is listed below until it is redeemed or revoked.</p></div>\n<h2>Invites waiting</h2>\n".to_utf8(),
+			Html.markup("<form id=make><label>Make an agent named <input name=name required maxlength=64></label> <button>Make</button></form>\n<div id=code hidden><p><b>The invite code for <span id=code-for></span>, shown only now:</b></p>\n<p><code id=code-text></code> <button type=button id=copy>Copy</button></p>\n<p>Give it to the agent within ten minutes (until <time id=code-until></time>). It works once: the agent sends it to <code>POST /invites/redeem</code> as <code>code=</code> and gets its own key back. Reload this page and the code is gone; the invite is listed below until it is redeemed or revoked.</p></div>\n<h2>Invites waiting</h2>\n"),
 			invites,
-			"<h2>Keys that work</h2>\n".to_utf8(),
+			Html.markup("<h2>Keys that work</h2>\n"),
 			keys,
-			"<p id=said></p>\n<script>\n".to_utf8(),
-			agents_js.to_utf8(),
-			"</script>\n".to_utf8(),
-		].join(),
+			Html.markup("<p id=said></p>\n<script>\n"),
+			Html.markup(agents_js),
+			Html.markup("</script>\n"),
+		]),
 	})
 }
 
 ## An id as the page writes it, escaped.
-id_html : Principal.Id -> List(U8)
-id_html = |id| Pages.escape(Str.to_utf8(AccountCodec.id_text(id)))
+id_html : Principal.Id -> Html
+id_html = |id| Html.text(AccountCodec.id_text(id))
 
 ## One key: its id, who it acts as, what it may read and post, how long it
 ## lives, and its revoke button; never its secret or its hash.
-key_html : (Principal.Id -> List(U8)), ConvKey.Key -> List(U8)
+key_html : (Principal.Id -> Html), ConvKey.Key -> Html
 key_html = |name, key| {
 	r = key.record()
-	List.join([
-		"<li data-key=${r.id.to_u64().to_str()}>Key ${r.id.to_u64().to_str()} acts as ".to_utf8(),
+	id = r.id.to_u64()
+	Html.join([
+		Html.markup("<li data-key="),
+		Html.number(id),
+		Html.markup(">Key "),
+		Html.number(id),
+		Html.markup(" acts as "),
 		name(r.acts_as),
-		" (<code>".to_utf8(),
+		Html.markup(" (<code>"),
 		id_html(r.acts_as),
-		Str.to_utf8("</code>); reads <code>${KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64)}</code>, posts <code>${KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64)}</code>; until <time data-at=${r.expires.to_str()}></time> <button type=button class=revoke data-path=\"/keys/${r.id.to_u64().to_str()}/revoke\">Revoke</button></li>\n"),
+		Html.markup("</code>); reads <code>"),
+		Html.text(KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64)),
+		Html.markup("</code>, posts <code>"),
+		Html.text(KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64)),
+		Html.markup("</code>; until <time data-at="),
+		Html.signed(r.expires),
+		Html.markup("></time> <button type=button class=revoke data-path=\"/keys/"),
+		Html.number(id),
+		Html.markup("/revoke\">Revoke</button></li>\n"),
 	])
 }
 
@@ -369,33 +380,29 @@ serve_conversation! = |
 					Ok({ messages, earlier }) =>
 						page({
 							title: names(accounts, conv),
-							body_attrs: " data-conv=\"${id.to_u64().to_str()}\"".to_utf8(),
-							body: List.join([
-								"<h1>".to_utf8(),
+							body_attrs: Html.join([Html.markup(" data-conv=\""), Html.number(id.to_u64()), Html.markup("\"")]),
+							body: Html.join([
+								Html.markup("<h1>"),
 								names(accounts, conv),
-								"</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<ul id=people hidden>\n".to_utf8(),
-								List.join_map(
-									conv.participants(),
-									|b| List.join([
-										"<li data-id=\"".to_utf8(),
-										Pages.escape(Str.to_utf8(AccountCodec.id_text(b.id))),
-										"\">".to_utf8(),
-										Pages.escape(
-											Str.to_utf8(
-												Conversations.name_of(
-													accounts,
-													b.id,
-												),
-											),
-										),
-										"</li>\n".to_utf8(),
-									]),
+								Html.markup("</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<ul id=people hidden>\n"),
+								Html.join(
+									conv.participants().map(
+										|b| Html.join([
+											Html.markup("<li data-id=\""),
+											id_html(b.id),
+											Html.markup("\">"),
+											Html.text(Conversations.name_of(accounts, b.id)),
+											Html.markup("</li>\n"),
+										]),
+									),
 								),
-								"</ul>\n<p><button id=earlier type=button${if (earlier) "" else " hidden"}>Earlier messages</button></p>\n<div id=messages>\n".to_utf8(),
-								messages.join_map(|m| message_html(accounts, m)),
-								"</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n".to_utf8(),
-								conversation_js.to_utf8(),
-								"</script>\n".to_utf8(),
+								Html.markup("</ul>\n<p><button id=earlier type=button"),
+								if (earlier) Html.join([]) else Html.markup(" hidden"),
+								Html.markup(">Earlier messages</button></p>\n<div id=messages>\n"),
+								Html.join(messages.map(|m| message_html(accounts, m))),
+								Html.markup("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
+								Html.markup(conversation_js),
+								Html.markup("</script>\n"),
 							]),
 						})
 				}
@@ -404,35 +411,38 @@ serve_conversation! = |
 
 ## One message on the page: who and when (escaped; the time made local by
 ## the page's script), then roc-markdown's HTML for it, as is.
-message_html : List(Principal), MessageCodec.Fields -> List(U8)
+message_html : List(Principal), MessageCodec.Fields -> Html
 message_html = |accounts, m|
-	List.join([
-		"<article id=m${m.id.to_str()}><header>".to_utf8(),
-		Pages.escape(Str.to_utf8(Conversations.name_of(accounts, m.by))),
-		" · <time data-at=${m.at.to_str()}></time></header><div class=body>".to_utf8(),
-		Conversations.html_of(m),
-		"</div></article>\n".to_utf8(),
+	Html.join([
+		Html.markup("<article id=m"),
+		Html.number(m.id),
+		Html.markup("><header>"),
+		Html.text(Conversations.name_of(accounts, m.by)),
+		Html.markup(" · <time data-at="),
+		Html.signed(m.at),
+		Html.markup("></time></header><div class=body>"),
+		Html.rendered(Conversations.html_of(m)),
+		Html.markup("</div></article>\n"),
 	])
 
 ## A conversation's people, by name, escaped, a comma between.
-names : List(Principal), ConvAccess.Conv -> List(U8)
+names : List(Principal), ConvAccess.Conv -> Html
 names = |accounts, conv|
-	List.join(
-		List.map_with_index(
-			conv.participants(),
-			|b, i| {
-				name = Conversations.name_of(accounts, b.id)
-				(if (i == 0) [] else ", ".to_utf8()).concat(Pages.escape(name.to_utf8()))
-			},
+	Html.join(
+		conv.participants().map_with_index(
+			|b, i| Html.join([
+				if (i == 0) Html.join([]) else Html.markup(", "),
+				Html.text(Conversations.name_of(accounts, b.id)),
+			]),
 		),
 	)
 
 ## The page around a body: its title (escaped already), the few lines of
 ## CSS, never cached.
 page : {
-	title : List(U8),
-	body_attrs : List(U8),
-	body : List(U8),
+	title : Html,
+	body_attrs : Html,
+	body : Html,
 } -> Chat.Answer
 page = |
 	{
@@ -441,23 +451,19 @@ page = |
 		body,
 	},
 |
-	Chat.respond(
+	Html.respond(
 		200,
-		{
-			content_type: Chat.html,
-			body: [
-				"<!doctype html>\n<html lang=en>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>".to_utf8(),
-				title,
-				" · roc-chat</title>\n<style>\n".to_utf8(),
-				css.to_utf8(),
-				"</style>\n<body".to_utf8(),
-				body_attrs,
-				">\n".to_utf8(),
-				body,
-			].join(),
-		},
+		Html.join([
+			Html.markup("<!doctype html>\n<html lang=en>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>"),
+			title,
+			Html.markup(" · roc-chat</title>\n<style>\n"),
+			Html.markup(css),
+			Html.markup("</style>\n<body"),
+			body_attrs,
+			Html.markup(">\n"),
+			body,
+		]),
 	)
-		|> Chat.with_header("cache-control", "no-store".to_utf8())
 
 css : Str
 css =
@@ -568,8 +574,6 @@ conversation_js =
 	\\});
 	\\
 
-expect Pages.escape("Bea <i>x</i> & \"co\" 'q'".to_utf8()) == "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;".to_utf8()
-expect Pages.escape("Zoë 🎉".to_utf8()) == "Zoë 🎉".to_utf8()
 expect Pages.route("/chat".to_utf8()) == Ok(ConversationList)
 expect Pages.route("/chat/7".to_utf8()).is_ok()
 expect Pages.route("/chat/0".to_utf8()).is_err()
@@ -580,3 +584,11 @@ expect Pages.route("/chat/agents".to_utf8()) == Ok(AgentList)
 expect Pages.route("/chat/agents/x".to_utf8()).is_err()
 # The one thing a page's script sets as HTML is a message's, from the stream.
 expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("innerHTML") and !agents_js.contains("innerHTML")
+
+# **A NAME HOLDING A SCRIPT IS TEXT ON THE PAGE**: a message's author named
+# `<script>`, as message_html writes the header, escaped.
+expect {
+	scripted = Principal.Human({ id: Cast.gid(9), login: "h9", name: "<script>alert(1)</script>", role: Member, generation: Cast.gen(1) })
+	html = message_html([scripted], { id: 3, at: 5, by: scripted.id(), body: [] }).bytes()
+	html.starts_with("<article id=m3><header>&lt;script&gt;alert(1)&lt;/script&gt; · <time data-at=5>".to_utf8()) and Bytes.find(html, { needle: "<script>".to_utf8(), at: 0 }) == Err(NotFound)
+}

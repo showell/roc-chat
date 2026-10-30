@@ -10,6 +10,7 @@ import Accounts
 import AccountCodec
 import AuditCodec
 import GitHubSignIn
+import Html
 import OAuthState
 import Principal
 import Session
@@ -401,13 +402,15 @@ name_form : Try({}, _) -> Chat.Answer
 name_form = |last| {
 	said =
 		match last {
-			Ok({}) => ""
-			Err(_) => "<p>That name is not one we can show. Try another.</p>\n"
+			Ok({}) => Html.join([])
+			Err(_) => Html.markup("<p>That name is not one we can show. Try another.</p>\n")
 		}
-	page = Str.to_utf8("<!doctype html>\n<title>Your name</title>\n${said}<form method=post action=/login/name><label>Your name in the chat <input name=name maxlength=64 required></label> <button>Sign up</button></form>\n")
-	status = if (last.is_ok()) 200 else 400
-	Chat.respond(status, { content_type: Chat.html, body: page })
-		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
+	page = Html.join([
+		Html.markup("<!doctype html>\n<title>Your name</title>\n"),
+		said,
+		Html.markup("<form method=post action=/login/name><label>Your name in the chat <input name=name maxlength=64 required></label> <button>Sign up</button></form>\n"),
+	])
+	Html.respond(if (last.is_ok()) 200 else 400, page)
 }
 
 ## A 303 to `location`.

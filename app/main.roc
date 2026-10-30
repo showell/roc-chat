@@ -13,6 +13,7 @@ import pf.Host
 import md.Md
 import Agents
 import Conversations
+import Html
 import Origin
 import Pages
 import SignIn
@@ -97,12 +98,11 @@ route! = |req|
 ## The hello page, never cached.
 hello : Chat.Answer
 hello = {
-	page = List.join([
-		"<!doctype html>\n<title>roc-chat</title>\n".to_utf8(),
-		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."), Conversations.markdown),
+	page = Html.join([
+		Html.markup("<!doctype html>\n<title>roc-chat</title>\n"),
+		Html.rendered(Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."), Conversations.markdown)),
 	])
-	Chat.respond(200, { content_type: Chat.html, body: page })
-		|> Chat.with_header("cache-control", "no-store".to_utf8())
+	Html.respond(200, page)
 }
 
 ## `/<name>.js`, one part: the script's name.
