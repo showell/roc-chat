@@ -438,7 +438,7 @@ Store := [].{
 							Found => List.map_try(List.chunks_of(records.bytes, offset_width), offset_of).map_err(|_| Failed)?
 							Missing | Failed => return Err(Failed)
 						}
-					ends = if last == tally.messages List.append(starts, tally.bytes) else starts
+					ends = if (last == tally.messages) List.append(starts, tally.bytes) else starts
 					match (List.first(ends), List.get(ends, last - first + 1)) {
 						(Ok(from), Ok(to)) if from < to and to <= tally.bytes => {
 							text = Host.read_at!(transcript_path(id), from, to - from)
@@ -684,7 +684,7 @@ offset_of = |record|
 		List.fold_try(
 			List.drop_last(record, 1),
 			0,
-			|n, c| if c >= '0' and c <= '9' Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed),
+			|n, c| if (c >= '0' and c <= '9') Ok(n * 10 + (c - '0').to_u64()) else Err(Malformed),
 		)
 	}
 
@@ -693,7 +693,7 @@ line_starts : List(U8) -> List(U64)
 line_starts = |raw|
 	List.fold(
 		raw,
-		{ at: 0, starts: if List.is_empty(raw) [] else [0] },
+		{ at: 0, starts: if (List.is_empty(raw)) [] else [0] },
 		|state, c| {
 			at = state.at + 1
 			if c == '\n' and at < List.len(raw) {
@@ -890,7 +890,7 @@ grouped = |pairs|
 		[],
 		|groups, (human, record)|
 			if List.any(groups, |g| g.human == human) {
-				List.map(groups, |g| if g.human == human { human, records: List.concat(g.records, record) } else g)
+				List.map(groups, |g| if (g.human == human) { human, records: List.concat(g.records, record) } else g)
 			} else {
 				List.append(groups, { human, records: record })
 			},

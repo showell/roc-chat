@@ -104,4 +104,4 @@ handle! = |req| {
 
 ## 1 + 1 + ... `n` times, never a tail call.
 deep : U64 -> U64
-deep = |n| if n == 0 0 else 1 + deep(n - 1)
+deep = |n| if (n == 0) 0 else 1 + deep(n - 1)

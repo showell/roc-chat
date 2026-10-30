@@ -116,22 +116,22 @@ Agents := [].{
 	answer! : Chat.Request, Agents.Route => Chat.Answer
 	answer! = |req, r|
 		match r {
-			MakeAgent => if req.method == Post make_agent!({}) else Chat.not_allowed(Post)
+			MakeAgent => if (req.method == Post) make_agent!({}) else Chat.not_allowed(Post)
 			Keys =>
 				match req.method {
 					Post => mint!({})
 					Get => list!({})
 					_ => Chat.not_allowed(Get)
 				}
-			Revoke(id) => if req.method == Post revoke!(id) else Chat.not_allowed(Post)
+			Revoke(id) => if (req.method == Post) revoke!(id) else Chat.not_allowed(Post)
 			Invites =>
 				match req.method {
 					Post => invite!({})
 					Get => list_invites!({})
 					_ => Chat.not_allowed(Get)
 				}
-			Redeem => if req.method == Post redeem!({}) else Chat.not_allowed(Post)
-			RevokeInvite(id) => if req.method == Post revoke_invite!(id) else Chat.not_allowed(Post)
+			Redeem => if (req.method == Post) redeem!({}) else Chat.not_allowed(Post)
+			RevokeInvite(id) => if (req.method == Post) revoke_invite!(id) else Chat.not_allowed(Post)
 		}
 
 	## Who asks to make an agent, mint, invite or revoke: the credential the
@@ -533,7 +533,7 @@ capped! = |which, acts_as, accounts|
 					InvitesPerHuman => Limits.cap!(InvitesPerHuman)
 					KeysPerHuman => Limits.cap!(KeysPerHuman)
 				}
-			Ok(if made >= cap Full else Room)
+			Ok(if (made >= cap) Full else Room)
 		}
 	}
 
@@ -873,7 +873,7 @@ invites_by_id = |invites| List.sort_with(invites, |a, b| by_number(a.id.to_u64()
 
 ## Two ids' order, smallest first: the listings' one rule.
 by_number : U64, U64 -> [Before, Same, After]
-by_number = |a, b| if a < b Before else if a > b After else Same
+by_number = |a, b| if (a < b) Before else if (a > b) After else Same
 
 ## **/invites/<id>/revoke**: one of the session's live invites revoked.
 revoke_invite! : InviteCodec.InviteId => Chat.Answer

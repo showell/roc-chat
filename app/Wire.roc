@@ -63,13 +63,13 @@ Wire := [].{
 	commas = |parts| List.join(
 		List.map_with_index(
 			parts,
-			|part, i| if i == 0 part else List.prepend(part, ','),
+			|part, i| if (i == 0) part else List.prepend(part, ','),
 		),
 	)
 }
 
 hex_digit : U8 -> U8
-hex_digit = |n| if n < 10 '0' + n else 'a' + n - 10
+hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
 
 expect Wire.json_string(Str.to_utf8("a\"b\\c\nd\re\u(7f)é")) == Str.to_utf8("\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"")
 expect Wire.commas([Str.to_utf8("a"), Str.to_utf8("b")]) == Str.to_utf8("a,b")

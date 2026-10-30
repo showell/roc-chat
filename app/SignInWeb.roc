@@ -233,10 +233,10 @@ SignInWeb := [].{
 }
 
 hex_digit : U8 -> U8
-hex_digit = |n| if n < 10 '0' + n else 'a' + n - 10
+hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
 
 upper_hex_digit : U8 -> U8
-upper_hex_digit = |n| if n < 10 '0' + n else 'A' + n - 10
+upper_hex_digit = |n| if (n < 10) '0' + n else 'A' + n - 10
 
 nibble : U8 -> Try(U8, [NotHex])
 nibble = |c|

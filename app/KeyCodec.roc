@@ -313,7 +313,7 @@ only_prefix = "only:"
 # The id a test's lines hold: a conversation's number, any but 0.
 Conv :: U64.{
 	from_u64 : U64 -> Try(Conv, [NotAnId])
-	from_u64 = |n| if n == 0 Err(NotAnId) else Ok(Conv.(n))
+	from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Conv.(n))
 
 	to_u64 : Conv -> U64
 	to_u64 = |Conv.(n)| n

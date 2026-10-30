@@ -1,8 +1,10 @@
 #!/bin/sh
 # **THE PINNED ROC, INSTALLED** (README, "Before you build"): the nightly
 # roc-version names, from roc-lang/nightlies' release of that tag, into
-# ~/roc-<pin>/, and ~/.local/bin/roc linked to it (put ~/.local/bin on the
-# PATH). Already there and answering the pin, it is only linked again.
+# ~/tools/roc-<pin>/, where build.zig and the tools' Shale scripts look for
+# it. Pins live side by side there, since projects move to a new Roc one at
+# a time; nothing on the PATH is touched. Already there and answering the
+# pin, it does nothing.
 #
 #     tools/get_roc.sh
 #
@@ -18,7 +20,7 @@ case "$(uname -s) $(uname -m)" in
     *) echo "get_roc: roc-chat builds on x86-64 Linux only, not $(uname -s) $(uname -m)" >&2; exit 1 ;;
 esac
 
-dest="$HOME/roc-$pin"
+dest="$HOME/tools/roc-$pin"
 says() { "$dest/roc" version 2>/dev/null | awk '{print $NF}'; }
 if [ ! -x "$dest/roc" ] || [ "$(says)" != "$pin" ]; then
     asset="roc_nightly-$platform-${pin#nightly-}.tar.gz"
@@ -30,11 +32,9 @@ if [ ! -x "$dest/roc" ] || [ "$(says)" != "$pin" ]; then
     tar -xzf "$work/$asset" -C "$work"
     found=$(find "$work" -type f -name roc -perm -u+x | head -n 1)
     [ -n "$found" ] || { echo "get_roc: no roc executable in $asset" >&2; exit 1; }
+    mkdir -p "$HOME/tools"
     rm -rf "$dest"
     mv "$(dirname "$found")" "$dest"
     [ "$(says)" = "$pin" ] || { echo "get_roc: $dest/roc says $("$dest/roc" version), not $pin" >&2; exit 1; }
 fi
-
-mkdir -p "$HOME/.local/bin"
-ln -sfn "$dest/roc" "$HOME/.local/bin/roc"
-echo "get_roc: ~/.local/bin/roc -> $dest/roc ($pin)"
+echo "get_roc: $dest/roc ($pin)"

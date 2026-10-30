@@ -150,7 +150,7 @@ Session :: SessionCodec.Fields.{
 					Ok(Agent(_)) | Ok(Bot(_)) => crash "Session.admit: a human's id holds a human"
 					Ok(Human(h)) =>
 						{
-							write = if now - s.last_seen >= Session.touch_secs Touched(
+							write = if (now - s.last_seen >= Session.touch_secs) Touched(
 								Session.(
 									{
 										..s,

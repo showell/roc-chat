@@ -36,7 +36,7 @@ ConvAccess := [].{
 	## by `from_u64`, which refuses 0.
 	ConvId :: U64.{
 		from_u64 : U64 -> Try(ConvAccess.ConvId, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(ConvAccess.ConvId.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(ConvAccess.ConvId.(n))
 
 		to_u64 : ConvAccess.ConvId -> U64
 		to_u64 = |ConvAccess.ConvId.(n)| n
@@ -115,7 +115,7 @@ ConvAccess := [].{
 						Agent(_) | Bot(_) =>
 							match Principal.find(accounts, other) {
 								Err(_) => Err(NoSuchParticipant(other))
-								Ok(p) => if Principal.answers_to(p) == human Ok({}) else Err(NotTheOwner(other))
+								Ok(p) => if (Principal.answers_to(p) == human) Ok({}) else Err(NotTheOwner(other))
 							}
 					},
 			)?
@@ -284,7 +284,7 @@ ConvAccess := [].{
 								Err(_) => Bool.False
 							},
 					)
-					if is_resolved and is_elected Public else Private
+					if (is_resolved and is_elected) Public else Private
 				}
 			}
 		}
@@ -517,7 +517,7 @@ among_bound = |
 	once = List.fold(
 		participants,
 		[],
-		|kept, p| if List.contains(kept, p) kept else List.append(kept, p),
+		|kept, p| if (List.contains(kept, p)) kept else List.append(kept, p),
 	)
 	bound = List.map_try(
 		once,
@@ -589,7 +589,7 @@ posts = |who, conv| posts_among(who, { conv, among: accounts })
 sees_among : Who, { conv : ConvAccess.Conv, among : List(Principal) } -> [Visible, Hidden]
 sees_among = |who, { conv, among: others }|
 	match viewer_among(who, others) {
-		Viewer(v) => if ConvAccess.can_see(v, { conv, accounts: others }) Visible else Hidden
+		Viewer(v) => if (ConvAccess.can_see(v, { conv, accounts: others })) Visible else Hidden
 		NoViewer => Hidden
 	}
 
@@ -597,7 +597,7 @@ sees_among = |who, { conv, among: others }|
 posts_among : Who, { conv : ConvAccess.Conv, among : List(Principal) } -> [Writable, ReadOnly]
 posts_among = |who, { conv, among: others }|
 	match viewer_among(who, others) {
-		Viewer(v) => if ConvAccess.can_post(v, { conv, accounts: others }) Writable else ReadOnly
+		Viewer(v) => if (ConvAccess.can_post(v, { conv, accounts: others })) Writable else ReadOnly
 		NoViewer => ReadOnly
 	}
 

@@ -53,6 +53,12 @@ const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
 -- A build and a run of everything: minutes, from an empty cache.
 const build_ms = 1800000
+-- The pinned Roc, tools:roc-<pin>/roc (tools/get_roc.sh installs it), the
+-- one the build takes: pins live side by side, and the PATH's may be
+-- another project's.
+const roc_at = "tools:roc-" .. trim(read("roc-version")) .. "/roc"
+if not exists(roc_at) then fail("verify: no " .. roc_at .. " (tools/get_roc.sh installs it)") end
+const roc = real(roc_at)
 
 -- The checklist so far: each line, and how many failed.
 const board = {lines = {}, failed = 0}
@@ -94,13 +100,20 @@ say(t.code == 0, "zig build test (exit " .. t.code .. ", " .. t.ms .. " ms)")
 local zig_count = number_in(t.out, "; (\\d+)/\\d+ tests passed")
 -- **THIS REPOSITORY'S OWN EXPECTS**: `roc test` also runs roc-markdown's,
 -- from whichever checkout sits beside this one, so its total moves with
--- that checkout. The floor counts the expects in files under this root.
+-- that checkout. The floor counts the expects in files under this root:
+-- Roc names a file by its path from where the run starts (`app/X.roc`;
+-- the sibling's are `../roc-markdown/...`), and an older nightly by its
+-- whole path, so both are read.
 local own_root = real(".") .. "/"
-local v = run({"roc", "test", "--no-cache", "--verbose", "app/main.roc"}, {cwd = ".", timeout_ms = build_ms, whole = 4000000})
+local v = run({roc, "test", "--no-cache", "--verbose", "app/main.roc"}, {cwd = ".", timeout_ms = build_ms, whole = 4000000})
 local roc_count = 0
 local roc_failed = 0
 for line in split(v.out, "\n") do
-  if starts_with(line, "PASS: " .. own_root) then roc_count = roc_count + 1 end
+  if starts_with(line, "PASS: ") then
+    local file = sub(line, 7)
+    local own = starts_with(file, own_root) or not (starts_with(file, "/") or starts_with(file, "../"))
+    if own then roc_count = roc_count + 1 end
+  end
   if starts_with(line, "FAIL: ") then roc_failed = roc_failed + 1 end
 end
 say(v.code == 0 and roc_failed == 0 and roc_count >= roc_floor, "Roc expects, this repository's own: " .. roc_count .. " (floor " .. roc_floor .. "), " .. roc_failed .. " failed")
@@ -233,10 +246,10 @@ plant("agents uncapped (the cap never reached)",
   "app/Agents.roc", "if owned >= Limits.agents_per_human {", "if owned >= Limits.agents_per_human * 1000 {", 36)
 
 plant("another's agent named in `with=` (the owner never asked)",
-  "app/ConvAccess.roc", "if Principal.answers_to(p) == human Ok({}) else Err(NotTheOwner(other))", "if Principal.answers_to(p) == human or True Ok({}) else Err(NotTheOwner(other))", 37)
+  "app/ConvAccess.roc", "if (Principal.answers_to(p) == human) Ok({}) else Err(NotTheOwner(other))", "if (Principal.answers_to(p) == human or True) Ok({}) else Err(NotTheOwner(other))", 37)
 
 plant("a cross-origin POST accepted (Origin never compared)",
-  "app/Origin.roc", "[one] => if one == configured Allowed else CrossOrigin", "[one] => if one == configured or True Allowed else CrossOrigin", 38)
+  "app/Origin.roc", "[one] => if (one == configured) Allowed else CrossOrigin", "[one] => if (one == configured or True) Allowed else CrossOrigin", 38)
 plant("a logout that leaves the session (its record never removed)",
   "app/SignIn.roc", "Ok(token_hash) => Store.remove_session!(token_hash)", "Ok(_) => Removed", 39)
 plant("a stream outliving its lifetime (the test's lifetime never read)",
@@ -256,13 +269,13 @@ plant("a read deaf to `before=` (every page the newest)",
 plant("a backlog unbounded (from Last-Event-ID, past the newest page)",
   "app/Conversations.roc", "if after < newest.first {", "if after < newest.first and Bool.False {", 46)
 plant("a gap never said (its event never sent)",
-  "app/Conversations.roc", "gap = if after > 0 and after + 1 < newest.first", "gap = if after > tally.messages and after + 1 < newest.first", 46)
+  "app/Conversations.roc", "gap = if (after > 0 and after + 1 < newest.first)", "gap = if (after > tally.messages and after + 1 < newest.first)", 46)
 plant("a page read from the whole transcript (its offsets never trusted)",
   "app/Store.roc", "Found => Ok(stat.size == tally.messages * offset_width)", "Found => Ok(stat.size == tally.messages * offset_width and Bool.False)", 47)
 plant("an offsets file never written again (only ever appended to)",
   "app/Store.roc", "if kept {", "if kept or Bool.True {", 48)
 plant("conversations uncapped (the cap never reached)",
-  "app/Conversations.roc", "Ok(if started >= Limits.cap!(ConversationsPerHuman) Full else Room)", "Ok(if started >= Limits.cap!(ConversationsPerHuman) + 1000 Full else Room)", 49)
+  "app/Conversations.roc", "Ok(if (started >= Limits.cap!(ConversationsPerHuman)) Full else Room)", "Ok(if (started >= Limits.cap!(ConversationsPerHuman) + 1000) Full else Room)", 49)
 plant("keys uncapped (the cap never reached)",
   "app/Agents.roc", "KeysPerHuman => Limits.cap!(KeysPerHuman)\n", "KeysPerHuman => Limits.cap!(KeysPerHuman) + 1000\n", 50)
 plant("invites uncapped (the cap never reached)",
@@ -277,7 +290,7 @@ plant("media from any of the chat's own paths (its uploads rule taking every pat
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
 say(zf.code == 0, "zig fmt --check host build.zig" .. (zf.code == 0 and "" or (": " .. trim(zf.out))))
-local rf = run({"roc", "fmt", "--check", "app", "platform"}, {cwd = ".", timeout_ms = 60000, tail = 20})
+local rf = run({roc, "fmt", "--check", "app", "platform"}, {cwd = ".", timeout_ms = 60000, tail = 20})
 say(rf.code == 0, "roc fmt --check app platform" .. (rf.code == 0 and "" or (": " .. trim(rf.out))))
 
 remove_tree(scratch)

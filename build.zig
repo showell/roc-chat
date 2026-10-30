@@ -154,18 +154,25 @@ fn linuxOnly(t: std.Target) void {
 
 const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \n");
 
-/// **THE ROC IS PINNED** (roc-version): -Droc=<path>, or `roc` on the PATH,
-/// and it must be the pinned one.
+/// **THE ROC IS PINNED** (roc-version): -Droc=<path>; else
+/// `~/tools/roc-<pin>/roc`, where pins live side by side (projects move to a
+/// new Roc one at a time; tools/get_roc.sh installs it there); else `roc` on
+/// the PATH. It must be the pinned one.
 fn rocCompiler(b: *std.Build) []const u8 {
-    const named = b.option([]const u8, "roc", "the Roc compiler (default: `roc` on the PATH); the version roc-version pins") orelse "roc";
-    const none = "the chat is built from Roc, and there is no Roc compiler at `{s}`: put Roc {s} (roc-version) on the PATH (tools/get_roc.sh installs it), or name it with -Droc=<path>";
+    const named = b.option([]const u8, "roc", "the Roc compiler (default: ~/tools/roc-<pin>/roc, else `roc` on the PATH); the version roc-version pins") orelse pinned: {
+        const home = b.graph.environ_map.get("HOME") orelse break :pinned "roc";
+        const beside = b.fmt("{s}/tools/roc-{s}/roc", .{ home, roc_pin });
+        _ = b.root.root_dir.handle.realPathFileAlloc(b.graph.io, beside, b.allocator) catch break :pinned "roc";
+        break :pinned beside;
+    };
+    const none = "the chat is built from Roc, and there is no Roc compiler at `{s}`: put Roc {s} (roc-version) at ~/tools/roc-{s}/roc (tools/get_roc.sh installs it), or name it with -Droc=<path>";
     const found = if (std.mem.indexOfScalar(u8, named, '/') == null)
-        b.findProgram(.{ .names = &.{named} }) orelse std.process.fatal(none, .{ named, roc_pin })
+        b.findProgram(.{ .names = &.{named} }) orelse std.process.fatal(none, .{ named, roc_pin, roc_pin })
     else
-        b.root.root_dir.handle.realPathFileAlloc(b.graph.io, named, b.allocator) catch std.process.fatal(none, .{ named, roc_pin });
+        b.root.root_dir.handle.realPathFileAlloc(b.graph.io, named, b.allocator) catch std.process.fatal(none, .{ named, roc_pin, roc_pin });
     const said = std.mem.trim(u8, b.run(&.{ found, "version" }), " \n");
     const version = if (std.mem.lastIndexOfScalar(u8, said, ' ')) |i| said[i + 1 ..] else said;
-    if (!std.mem.eql(u8, version, roc_pin)) std.process.fatal("roc-chat is pinned to Roc {s} (roc-version), and `{s}` is {s}: put the pinned one on the PATH (tools/get_roc.sh) or name it with -Droc=<path>", .{ roc_pin, found, version });
+    if (!std.mem.eql(u8, version, roc_pin)) std.process.fatal("roc-chat is pinned to Roc {s} (roc-version), and `{s}` is {s}: install the pinned one (tools/get_roc.sh) or name it with -Droc=<path>", .{ roc_pin, found, version });
     return found;
 }
 

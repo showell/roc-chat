@@ -165,7 +165,7 @@ unescaped = |text| {
 			$i = $i + 1
 		}
 	}
-	if escaped($out) == text Ok($out) else Err(BadValue("body"))
+	if (escaped($out) == text) Ok($out) else Err(BadValue("body"))
 }
 
 hex_digits : List(U8)

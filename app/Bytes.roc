@@ -23,7 +23,7 @@ Bytes := [].{
 	## The bytes after `prefix`, when `l` starts with it: no length is
 	## written beside the literal it belongs to.
 	strip_prefix : List(U8), List(U8) -> Try(List(U8), [NoMatch])
-	strip_prefix = |l, prefix| if List.starts_with(l, prefix) Ok(
+	strip_prefix = |l, prefix| if (List.starts_with(l, prefix)) Ok(
 		List.drop_first(
 			l,
 			List.len(prefix),

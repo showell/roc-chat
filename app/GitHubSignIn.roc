@@ -216,7 +216,7 @@ GitHubSignIn := [].{
 				(Unsigned, _) => Err(StateForged)
 				(Signed(_), Denied) => Err(GitHubDenied)
 				(Signed(fields), Code(code)) =>
-					if is_code(code) Ok(
+					if (is_code(code)) Ok(
 						GitHubSignIn.CameBack.(
 							{
 								state: fields,
@@ -582,7 +582,7 @@ known_account = |
 				fresh = login.to_str()
 				Known({
 					steps: (
-						if h.login == fresh [] else [
+						if (h.login == fresh) [] else [
 							SetLogin({
 								human: github,
 								login: fresh,

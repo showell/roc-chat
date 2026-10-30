@@ -196,7 +196,7 @@ Stored := [].{
 
 		## Nothing after the last field.
 		close : Stored.Reader -> Try({}, Stored.Problem)
-		close = |Stored.Reader.(rest)| if rest == [] Ok({}) else Err(Trailing)
+		close = |Stored.Reader.(rest)| if (rest == []) Ok({}) else Err(Trailing)
 	}
 
 	## **A COUNT OR AN ID**: decimal digits, the first not `0` unless it is

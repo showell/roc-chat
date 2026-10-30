@@ -74,13 +74,13 @@ Ascii := [].{
 	## rule of `Str.with_ascii_lowercased`: an uppercase letter differs from
 	## its lowercase only in bit 5 (0x20).
 	to_lowercase : U8 -> U8
-	to_lowercase = |c| if c >= 'A' and c <= 'Z' c.bitwise_or(0x20) else c
+	to_lowercase = |c| if (c >= 'A' and c <= 'Z') c.bitwise_or(0x20) else c
 
 	## `a`-`z` to `A`-`Z`; every other byte, 128 to 255 included, unchanged.
 	## Zig `toUpper`, Rust `to_ascii_uppercase`, C `toupper`, and the per-byte
 	## rule of `Str.with_ascii_uppercased`.
 	to_uppercase : U8 -> U8
-	to_uppercase = |c| if c >= 'a' and c <= 'z' c.bitwise_xor(0x20) else c
+	to_uppercase = |c| if (c >= 'a' and c <= 'z') c.bitwise_xor(0x20) else c
 }
 
 ## DEL, the one control byte above the printable ones. Roc's character

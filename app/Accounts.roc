@@ -87,7 +87,7 @@ Accounts := [].{
 							accounts: with_human(
 								accounts,
 								human,
-								|h| if Accounts.lowered_login(h.login) == Accounts.lowered_login(login) { ..h, login: "" } else h,
+								|h| if (Accounts.lowered_login(h.login) == Accounts.lowered_login(login)) { ..h, login: "" } else h,
 							),
 							settings,
 						}
@@ -136,9 +136,9 @@ Accounts := [].{
 		most = List.fold(
 			accounts,
 			0,
-			|m, a| if agent_id_of(a) > m agent_id_of(a) else m,
+			|m, a| if (agent_id_of(a) > m) agent_id_of(a) else m,
 		)
-		if most == u64_most Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
+		if (most == u64_most) Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
 	}
 
 	## **A NEW ACCOUNT'S GENERATION, AND THE COUNTER AFTER IT**: the

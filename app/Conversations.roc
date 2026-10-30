@@ -155,9 +155,9 @@ Conversations := [].{
 		last =
 			match before {
 				Newest => count
-				Before(b) => if b - 1 < count b - 1 else count
+				Before(b) => if (b - 1 < count) b - 1 else count
 			}
-		first = if last > Limits.page_messages last - Limits.page_messages + 1 else 1
+		first = if (last > Limits.page_messages) last - Limits.page_messages + 1 else 1
 		{ first, last }
 	}
 
@@ -173,9 +173,9 @@ Conversations := [].{
 				} else {
 					Chat.not_allowed(Post)
 				}
-			Read(id) => if req.method == Get read!(id) else Chat.not_allowed(Get)
-			Post(id) => if req.method == Post post!(id) else Chat.not_allowed(Post)
-			Stream(id) => if req.method == Get stream!(id) else Chat.not_allowed(Get)
+			Read(id) => if (req.method == Get) read!(id) else Chat.not_allowed(Get)
+			Post(id) => if (req.method == Post) post!(id) else Chat.not_allowed(Post)
+			Stream(id) => if (req.method == Get) stream!(id) else Chat.not_allowed(Get)
 		}
 }
 
@@ -287,7 +287,7 @@ started_room! = |starter, accounts|
 		Err(_) => Ok(Room)
 		Ok(p) => {
 			started = Store.load_started_count!(Principal.answers_to(p), accounts)?
-			Ok(if started >= Limits.cap!(ConversationsPerHuman) Full else Room)
+			Ok(if (started >= Limits.cap!(ConversationsPerHuman)) Full else Room)
 		}
 	}
 
@@ -477,7 +477,7 @@ read! = |id|
 								List.join([
 									Str.to_utf8("{\"id\":${id.to_u64().to_str()},\"messages\":["),
 									Wire.commas(List.map(messages, message_json)),
-									Str.to_utf8("],\"earlier\":${if earlier "true" else "false"}}"),
+									Str.to_utf8("],\"earlier\":${if (earlier) "true" else "false"}}"),
 								]),
 							)
 					}
@@ -531,7 +531,7 @@ post! = |id| {
 							accounts,
 							now,
 						})
-						if ConvAccess.can_see(viewer, { conv, accounts }) Wire.refused(
+						if (ConvAccess.can_see(viewer, { conv, accounts })) Wire.refused(
 							403,
 							"only its participants post here",
 						) else Conversations.no_such
@@ -610,7 +610,7 @@ stream! = |id|
 					match Store.load_span!(id, tally, { first, last: tally.messages }) {
 						Err(Failed) => Chat.failed
 						Ok(messages) => {
-							gap = if after > 0 and after + 1 < newest.first gap_frame(newest.first) else []
+							gap = if (after > 0 and after + 1 < newest.first) gap_frame(newest.first) else []
 							backlog = List.concat(gap, List.join(List.keep_oks(messages, frame)))
 							Chat.stream({ key: bus_key(id), backlog, holder: holder_of(a.viewer) })
 						}

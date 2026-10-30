@@ -34,7 +34,7 @@ Origin := [].{
 					Allowed
 				} else {
 					match sent.origin {
-						[one] => if one == configured Allowed else CrossOrigin
+						[one] => if (one == configured) Allowed else CrossOrigin
 						[] =>
 							if sent.fetch_site == [Str.to_utf8("same-origin")] {
 								Allowed

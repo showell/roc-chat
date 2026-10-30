@@ -405,7 +405,7 @@ name_form = |last| {
 			Err(_) => "<p>That name is not one we can show. Try another.</p>\n"
 		}
 	page = Str.to_utf8("<!doctype html>\n<title>Your name</title>\n${said}<form method=post action=/login/name><label>Your name in the chat <input name=name maxlength=64 required></label> <button>Sign up</button></form>\n")
-	status = if last.is_ok() 200 else 400
+	status = if (last.is_ok()) 200 else 400
 	Chat.respond(status, { content_type: Chat.html, body: page })
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))
 }

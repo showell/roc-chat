@@ -103,11 +103,11 @@ AuditCodec := [].{
 
 		## An admin attempt's audit (Admin.decide's).
 		of_admin : Admin.Audit -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_admin = |audit| if is_storable(audit.at) Ok(AuditCodec.Entry.(Admin(audit))) else Err(ClockOutOfRange)
+		of_admin = |audit| if (is_storable(audit.at)) Ok(AuditCodec.Entry.(Admin(audit))) else Err(ClockOutOfRange)
 
 		## A refused sign-in's.
 		of_sign_in : AuditCodec.SignIn -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_sign_in = |s| if is_storable(s.at) Ok(AuditCodec.Entry.(SignIn(s))) else Err(ClockOutOfRange)
+		of_sign_in = |s| if (is_storable(s.at)) Ok(AuditCodec.Entry.(SignIn(s))) else Err(ClockOutOfRange)
 
 		## A refused key's, in use or in its grant.
 		of_key : AuditCodec.KeyEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
@@ -117,12 +117,12 @@ AuditCodec := [].{
 					Use(u) => u.at
 					Grant(g) => g.at
 				}
-			if is_storable(at) Ok(AuditCodec.Entry.(Key(e))) else Err(ClockOutOfRange)
+			if (is_storable(at)) Ok(AuditCodec.Entry.(Key(e))) else Err(ClockOutOfRange)
 		}
 
 		## An invite's.
 		of_invite : AuditCodec.Invite -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_invite = |i| if is_storable(i.at) Ok(AuditCodec.Entry.(Invite(i))) else Err(ClockOutOfRange)
+		of_invite = |i| if (is_storable(i.at)) Ok(AuditCodec.Entry.(Invite(i))) else Err(ClockOutOfRange)
 
 		## What the entry records.
 		event : AuditCodec.Entry -> [
@@ -548,9 +548,9 @@ List(U8) -> Try(
 	Stored.Problem,
 )
 key_action_from = |head, tail| if head == Str.to_utf8(start_word) {
-	if tail == Str.to_utf8(new_word) Ok(Start) else Err(BadValue("action"))
+	if (tail == Str.to_utf8(new_word)) Ok(Start) else Err(BadValue("action"))
 } else if head == Str.to_utf8(list_word) {
-	if tail == Str.to_utf8(conversations_word) Ok(ListConversations) else Err(BadValue("action"))
+	if (tail == Str.to_utf8(conversations_word)) Ok(ListConversations) else Err(BadValue("action"))
 } else {
 	kind = Stored.word(
 		head,
@@ -715,7 +715,7 @@ step_from = |value| {
 
 ## The steps, commas between; `none` for no step.
 plan_text : List(Admin.Step) -> Str
-plan_text = |plan| if List.is_empty(plan) none_word else Str.join_with(
+plan_text = |plan| if (List.is_empty(plan)) none_word else Str.join_with(
 	List.map(plan, step_text),
 	",",
 )

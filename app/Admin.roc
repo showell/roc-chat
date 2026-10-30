@@ -400,11 +400,13 @@ planned = |action, { accounts, settings }| {
 		}
 	match steps {
 		Err(why) => Err(why)
-		Ok(plan) => if has_admin(
-			Admin.applied(
-				plan,
-				{ accounts, settings },
-			).accounts,
+		Ok(plan) => if (
+			has_admin(
+				Admin.applied(
+					plan,
+					{ accounts, settings },
+				).accounts,
+			)
 		) Ok(plan) else Err(LastAdmin)
 	}
 }

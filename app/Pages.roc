@@ -231,7 +231,7 @@ serve_conversation! = |
 										Str.to_utf8("</li>\n"),
 									]),
 								),
-								Str.to_utf8("</ul>\n<p><button id=earlier type=button${if earlier "" else " hidden"}>Earlier messages</button></p>\n<div id=messages>\n"),
+								Str.to_utf8("</ul>\n<p><button id=earlier type=button${if (earlier) "" else " hidden"}>Earlier messages</button></p>\n<div id=messages>\n"),
 								List.join_map(messages, |m| message_html(accounts, m)),
 								Str.to_utf8("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
 								Str.to_utf8(conversation_js),
@@ -263,7 +263,7 @@ names = |accounts, conv|
 			|b, i| {
 				name = Conversations.name_of(accounts, b.id)
 				List.concat(
-					if i == 0 [] else Str.to_utf8(", "),
+					if (i == 0) [] else Str.to_utf8(", "),
 					Pages.escape(Str.to_utf8(name)),
 				)
 			},

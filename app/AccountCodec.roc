@@ -231,7 +231,7 @@ name_text : Str -> Try(Str, AccountCodec.EncodeProblem)
 name_text = |name|
 	match DisplayName.from_str(name) {
 		Err(why) => Err(NameRefused(why))
-		Ok(taken) => if taken.to_str() == name Ok(name) else Err(NameUntrimmed)
+		Ok(taken) => if (taken.to_str() == name) Ok(name) else Err(NameUntrimmed)
 	}
 
 ## An agent's or a bot's line.

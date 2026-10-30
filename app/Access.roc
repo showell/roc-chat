@@ -423,7 +423,7 @@ sees_file = |who, resource| {
 			Out => Access.Viewer.signed_out({})
 			In(p) => viewer_of(files, p)
 		}
-	if Access.can_see(v, resource) Visible else Hidden
+	if (Access.can_see(v, resource)) Visible else Hidden
 }
 
 posts_file : [Out, In(Principal)], Access.Resource(Str) -> [Writable, ReadOnly]
@@ -433,7 +433,7 @@ posts_file = |who, resource| {
 			Out => Access.Viewer.signed_out({})
 			In(p) => viewer_of(files, p)
 		}
-	if Access.can_post(v, resource) Writable else ReadOnly
+	if (Access.can_post(v, resource)) Writable else ReadOnly
 }
 
 # Seeing.

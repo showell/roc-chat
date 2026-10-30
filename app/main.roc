@@ -30,7 +30,7 @@ handle! = |req| {
 	}
 	# The configured origin is read only where a write with a cookie asks
 	# for it (a server without sign-in's config has none to read).
-	configured = if sent.has_cookie and !List.is_empty(sent.origin) Host.read_config!(Origin) else []
+	configured = if (sent.has_cookie and !List.is_empty(sent.origin)) Host.read_config!(Origin) else []
 	match Origin.check(sent, configured) {
 		CrossOrigin => Wire.refused(403, "this write did not come from the chat's own pages")
 		Allowed => route!(req)
@@ -47,15 +47,15 @@ route! = |req|
 			Chat.not_allowed(Get)
 		}
 	} else if req.path == Str.to_utf8("/login") {
-		if req.method == Get SignIn.login!({}) else Chat.not_allowed(Get)
+		if (req.method == Get) SignIn.login!({}) else Chat.not_allowed(Get)
 	} else if req.path == Str.to_utf8("/login/github") {
-		if req.method == Get SignIn.serve_callback!(req) else Chat.not_allowed(Get)
+		if (req.method == Get) SignIn.serve_callback!(req) else Chat.not_allowed(Get)
 	} else if req.path == Str.to_utf8("/login/name") {
-		if req.method == Post SignIn.serve_name!({}) else Chat.not_allowed(Post)
+		if (req.method == Post) SignIn.serve_name!({}) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/logout") {
-		if req.method == Post SignIn.serve_logout!({}) else Chat.not_allowed(Post)
+		if (req.method == Post) SignIn.serve_logout!({}) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/me") {
-		if req.method == Get SignIn.serve_me!({}) else Chat.not_allowed(Get)
+		if (req.method == Get) SignIn.serve_me!({}) else Chat.not_allowed(Get)
 	} else {
 		match (
 			Conversations.route(req.path),

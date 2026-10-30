@@ -17,12 +17,16 @@ if not exists("platform/main.roc") then
   fail("chat_glue: run it from roc-chat's root (no platform/main.roc here)")
 end
 
--- The pin, `nightly-<date>-<commit>`, and the compiler on PATH must be it:
--- glue from another Roc lays out another Roc's records.
+-- The pin, `nightly-<date>-<commit>`, and its compiler, tools:roc-<pin>/roc
+-- (tools/get_roc.sh installs it): glue from another Roc lays out another
+-- Roc's records.
 const pin = trim(read("roc-version"))
-local said = must(run({"roc", "version"}, {timeout_ms = 30000, whole = 1000}))
+const roc_at = "tools:roc-" .. pin .. "/roc"
+if not exists(roc_at) then fail("chat_glue: no " .. roc_at .. " (tools/get_roc.sh installs it)") end
+const roc = real(roc_at)
+local said = must(run({roc, "version"}, {timeout_ms = 30000, whole = 1000}))
 if find(said.out, pin) == nil then
-  fail("chat_glue: `roc version` says " .. trim(said.out) .. ", roc-version pins " .. pin .. " (tools/get_roc.sh installs it)")
+  fail("chat_glue: " .. roc .. " says " .. trim(said.out) .. ", roc-version pins " .. pin)
 end
 local parts = split(pin, "-")
 const spec = "tools:roc-" .. parts[#parts] .. "/src/glue/src/ZigGlue.roc"
@@ -32,7 +36,7 @@ end
 
 if exists(out_dir) then remove_tree(out_dir) end
 mkdir(out_dir)
-must(run({"roc", "glue", real(spec), out_dir, "platform/main.roc"}, {timeout_ms = 120000, tail = 20}))
+must(run({roc, "glue", real(spec), out_dir, "platform/main.roc"}, {timeout_ms = 120000, tail = 20}))
 const made = out_dir .. "/roc_platform_abi.zig"
 must(run({"zig", "fmt", made}, {timeout_ms = 60000, tail = 20}))
 

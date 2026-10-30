@@ -30,7 +30,7 @@ InviteCodec := [].{
 	## code. Opaque: made only by `from_u64`, which refuses 0.
 	InviteId :: U64.{
 		from_u64 : U64 -> Try(InviteCodec.InviteId, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(InviteCodec.InviteId.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(InviteCodec.InviteId.(n))
 
 		to_u64 : InviteCodec.InviteId -> U64
 		to_u64 = |InviteCodec.InviteId.(n)| n
@@ -325,7 +325,7 @@ iid = |n|
 
 ## A conversation's number, as a test's lines hold it.
 number : U64 -> Try(U64, [NotAnId])
-number = |n| if n == 0 Err(NotAnId) else Ok(n)
+number = |n| if (n == 0) Err(NotAnId) else Ok(n)
 
 ## Agent 7's invite, as it is made: live, everywhere, no admin, a year's key.
 fresh : InviteCodec.Record(U64)
@@ -415,7 +415,7 @@ grant_word = |g|
 	}
 
 grant_back : List(U8) -> Try(ApiKey.GrantRefusal, Stored.Problem)
-grant_back = |w| if w == Str.to_utf8("session-expired") Ok(SessionExpired) else Err(UnknownWord("verdict"))
+grant_back = |w| if (w == Str.to_utf8("session-expired")) Ok(SessionExpired) else Err(UnknownWord("verdict"))
 
 refusals : List(InviteCodec.Refusal)
 refusals = [

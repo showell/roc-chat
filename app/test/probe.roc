@@ -29,15 +29,15 @@ echo_most = 32 * 1024
 handle! : Chat.Request => Chat.Answer
 handle! = |req|
 	if req.path == Str.to_utf8("/") {
-		if req.method == Get or req.method == Head Chat.plain(Str.to_utf8("Hello from the probe\n")) else Chat.not_allowed(Get)
+		if (req.method == Get or req.method == Head) Chat.plain(Str.to_utf8("Hello from the probe\n")) else Chat.not_allowed(Get)
 	} else if req.path == Str.to_utf8("/echo") {
-		if req.method == Post echo!(req) else Chat.not_allowed(Post)
+		if (req.method == Post) echo!(req) else Chat.not_allowed(Post)
 	} else if req.path == Str.to_utf8("/notes") {
 		notes!(req)
 	} else {
 		match keyed(req.path) {
-			Ok(Stream(key)) => if req.method == Get stream!(key) else Chat.not_allowed(Get)
-			Ok(Post(key)) => if req.method == Post post!(key) else Chat.not_allowed(Post)
+			Ok(Stream(key)) => if (req.method == Get) stream!(key) else Chat.not_allowed(Get)
+			Ok(Post(key)) => if (req.method == Post) post!(key) else Chat.not_allowed(Post)
 			Err(NotKeyed) => Chat.not_found
 		}
 	}
@@ -110,10 +110,12 @@ keyed = |path| {
 }
 
 key_of : List(U8) -> Try(List(U8), [NotKeyed])
-key_of = |key| if List.is_empty(key) or List.contains(
-	key,
-	'/',
-) or List.contains(key, '.') Err(NotKeyed) else Ok(key)
+key_of = |key| if (
+	List.is_empty(key) or List.contains(
+		key,
+		'/',
+	) or List.contains(key, '.')
+) Err(NotKeyed) else Ok(key)
 
 frames_path : List(U8) -> List(U8)
 frames_path = |key| List.concat(Str.to_utf8("probe/frames/"), key)

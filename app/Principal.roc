@@ -55,7 +55,7 @@ Principal := [
 	## 0.
 	Generation :: U64.{
 		from_u64 : U64 -> Try(Principal.Generation, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(Principal.Generation.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Principal.Generation.(n))
 
 		to_u64 : Principal.Generation -> U64
 		to_u64 = |Principal.Generation.(n)| n
@@ -63,7 +63,7 @@ Principal := [
 		## The generation after this one, unless the counter is spent.
 		next : Principal.Generation -> Try(Principal.Generation, [Exhausted])
 		next = |Principal.Generation.(n)|
-			if n == u64_most Err(Exhausted) else Ok(Principal.Generation.(n + 1))
+			if (n == u64_most) Err(Exhausted) else Ok(Principal.Generation.(n + 1))
 
 		is_eq : _
 	}
@@ -125,7 +125,7 @@ Principal := [
 	## 0 is what a field that failed to decode reads as).
 	GitHubId :: U64.{
 		from_u64 : U64 -> Try(Principal.GitHubId, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(Principal.GitHubId.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Principal.GitHubId.(n))
 
 		to_u64 : Principal.GitHubId -> U64
 		to_u64 = |Principal.GitHubId.(n)| n
@@ -137,7 +137,7 @@ Principal := [
 	## for both kinds). Opaque: made only by `from_u64`, which refuses 0.
 	AgentId :: U64.{
 		from_u64 : U64 -> Try(Principal.AgentId, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(Principal.AgentId.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Principal.AgentId.(n))
 
 		to_u64 : Principal.AgentId -> U64
 		to_u64 = |Principal.AgentId.(n)| n
@@ -145,7 +145,7 @@ Principal := [
 		## The id after this one, unless the counter is spent.
 		next : Principal.AgentId -> Try(Principal.AgentId, [Exhausted])
 		next = |Principal.AgentId.(n)|
-			if n == u64_most Err(Exhausted) else Ok(Principal.AgentId.(n + 1))
+			if (n == u64_most) Err(Exhausted) else Ok(Principal.AgentId.(n + 1))
 
 		is_eq : _
 	}
@@ -155,7 +155,7 @@ Principal := [
 	## which refuses 0.
 	KeyId :: U64.{
 		from_u64 : U64 -> Try(Principal.KeyId, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(Principal.KeyId.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Principal.KeyId.(n))
 
 		to_u64 : Principal.KeyId -> U64
 		to_u64 = |Principal.KeyId.(n)| n
@@ -168,7 +168,7 @@ Principal := [
 	## made only by `from_u64`, which refuses 0.
 	SessionId :: U64.{
 		from_u64 : U64 -> Try(Principal.SessionId, [NotAnId])
-		from_u64 = |n| if n == 0 Err(NotAnId) else Ok(Principal.SessionId.(n))
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Principal.SessionId.(n))
 
 		to_u64 : Principal.SessionId -> U64
 		to_u64 = |Principal.SessionId.(n)| n
@@ -289,9 +289,9 @@ Principal := [
 			keyed,
 			|x, y|
 				if x.kind != y.kind {
-					if x.kind < y.kind Before else After
+					if (x.kind < y.kind) Before else After
 				} else if x.number != y.number {
-					if x.number < y.number Before else After
+					if (x.number < y.number) Before else After
 				} else if x.at < y.at {
 					Before
 				} else if x.at > y.at {

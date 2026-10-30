@@ -205,7 +205,7 @@ ApiKey := [].{
 		liveness = |ApiKey.Key.(k), now|
 			match k.revocation {
 				Revoked => Revoked
-				Active => if now < k.expires Live else Expired
+				Active => if (now < k.expires) Live else Expired
 			}
 
 		## **MAY THIS KEY PERFORM AN ADMIN ACTION, NOW?** The key live and

@@ -79,11 +79,12 @@ revoked or refused is in the audit (`auth/audit`), with no secret or code.
 
 - **Linux on x86-64**, and **stock Zig 0.17.0**. Any other target fails at
   configure time.
-- **Roc, the nightly `roc-version` pins** (`nightly-2026-10-09-258ab27`),
-  as `roc` on the PATH or named with `-Droc=<path>`. `build.zig` stops if
-  there is no Roc, or if `roc version` names another nightly.
-  `tools/get_roc.sh` installs the pinned one into `~/roc-<pin>/` and links
-  `~/.local/bin/roc` to it.
+- **Roc, the nightly `roc-version` pins** (`nightly-2026-10-29-a0a9fc2`),
+  at `~/tools/roc-<pin>/roc`, where `tools/get_roc.sh` installs it; else
+  `roc` on the PATH, or one named with `-Droc=<path>`. Pins live side by
+  side in `~/tools`, so another project's Roc on the PATH doesn't matter.
+  `build.zig` stops if there is no Roc, or if `roc version` names another
+  nightly.
 - **Two sibling checkouts** under the same parent directory as this one:
   - `../roc-markdown` (github.com/showell/roc-markdown), the Roc package
     that renders the chat's markdown. `app/main.roc`'s header imports it
