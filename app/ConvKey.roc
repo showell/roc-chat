@@ -327,7 +327,7 @@ expect
 ann_again : Principal
 ann_again = Principal.Human({
 	id: Cast.gid(1),
-	login: "h1",
+	login: "ann",
 	name: "Ann",
 	role: Member,
 	generation: Cast.gen(2),

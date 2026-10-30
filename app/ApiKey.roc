@@ -838,8 +838,8 @@ expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPri
 ann_again : Principal
 ann_again = Principal.Human({
 	id: Cast.gid(2),
-	login: "h2",
-	name: "H2",
+	login: "ann",
+	name: "Ann",
 	role: Member,
 	generation: Cast.gen(2),
 })
