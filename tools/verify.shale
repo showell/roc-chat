@@ -44,7 +44,8 @@
 --     nowhere, no live invite listed, a revoked key listed, another
 --     human's page showing Gil's agent, a key given the page, and the start form
 --     offering none of the viewer's agents;
---   - the style hunts (Shale's cookbook/roc recipes over app/), each count
+--   - the style hunts (Shale's cookbook/roc recipes over app/, in
+--     tools/verify_hunts.shale, a run of its own), each count
 --     held at zero: boundaries' `fixed`, errors' `error_alias` and
 --     `optional_tag`, nest_depth four deep, name_hunt's `state_effect`,
 --     `question`, `negative`, `command_tense`, `mixed_tense` and
@@ -319,81 +320,26 @@ plant("a redeem's format=secret answered as JSON",
 plant("an unknown redeem format taken as JSON (the invite spent by a typo)",
   "app/Agents.roc", "_ => Err(UnknownFormat)", "_ => Ok(Json)", 62)
 
--- ── the style hunts, each held at zero ──
--- Shale's cookbook recipes over app/ (roc-apps docs/roc-style.md, "Testing
--- and enforcement"), read from roc-ast's tree: each count named here reads
--- zero, and a plant in the tree's copy turns each red. What stands beside
--- them (nest_depth at three deep, stack's long lines, name_hunt's other
--- checks) is a question for a reader, not a gate.
-const hunts = {
-  {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
-  {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)"}},
-  {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
-  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "negative ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)"}},
-  {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
-}
-
--- A recipe run over `cwd`'s app/: its summary, its last line, and each of
--- `counts` read from it (nil where the summary does not say it, as when
--- the recipe stopped).
-function hunt_run(h, cwd)
-  local argv = {"shale", real("cookbook:roc/" .. h.recipe .. ".shale"), "glob=app/**/*.roc"}
-  for a in h.args do push(argv, a) end
-  local r = run(argv, {cwd = cwd, timeout_ms = 600000, tail = 40})
-  local said = lines(trim(r.out))
-  local last = said[#said] or ""
-  local got = {}
-  for c in h.counts do
-    local m = re_find(last, c)
-    if m ~= nil and r.code == 0 then push(got, {pattern = c, n = tonumber(m.groups[1])}) end
+-- ── the style hunts, in a run of their own ──
+-- A run starts at most 64 programs, and the plants above take most of
+-- this one's: tools/verify_hunts.shale runs each hunt over app/ and each
+-- hunt's plant in the tree's copy, one line a check, read back here.
+local hr = run({"shale", "tools/verify_hunts.shale", "tree=" .. tree}, {cwd = ".", timeout_ms = build_ms, tail = 60})
+local hunt_lines = 0
+local hunt_failed = 0
+for line in split(hr.out, "\n") do
+  local m = re_find(line, "^(PASS|FAIL)  (.*)$")
+  if m ~= nil then
+    hunt_lines = hunt_lines + 1
+    if m.groups[1] == "FAIL" then hunt_failed = hunt_failed + 1 end
+    say(m.groups[1] == "PASS", m.groups[2])
   end
-  return {last = last, got = got, code = r.code}
 end
-
-for h in hunts do
-  local r = hunt_run(h, ".")
-  local zero = #r.got == #h.counts
-  for g in r.got do
-    if g.n ~= 0 then zero = false end
-  end
-  say(zero, "hunt " .. h.recipe .. (#h.args > 0 and (" " .. join(h.args, " ")) or "") .. ": " .. r.last)
+-- A run that stopped before its checks, or failed with none of them
+-- failing, is a failure of its own.
+if hunt_lines == 0 or (hr.code ~= 0 and hunt_failed == 0) then
+  say(false, "tools/verify_hunts.shale (exit " .. hr.code .. ", " .. hunt_lines .. " checks): " .. tail_of(hr.out))
 end
-
--- Appends `text` to the copy's `file`, runs `recipe`'s hunt there,
--- requires each count `patterns` names above zero, and puts the file back.
--- One run a recipe: a run starts at most 64 programs.
-function hunt_plant(what, file, text, recipe, patterns)
-  local p = tree .. "/roc-chat/" .. file
-  local was = read(p)
-  replace(p, was .. text)
-  local h = nil
-  for each in hunts do
-    if each.recipe == recipe then h = each end
-  end
-  local r = hunt_run({recipe = recipe, args = h.args, counts = patterns}, tree .. "/roc-chat")
-  replace(p, was)
-  local found = #r.got == #patterns
-  for g in r.got do
-    if g.n == 0 then found = false end
-  end
-  say(found, "hunt plant: " .. what .. " is found (" .. r.last .. ")")
-end
-
-hunt_plant("a parameter every call fills with the same literal", "app/Wire.roc",
-  "\nplanted_sum : U64, U64 -> U64\nplanted_sum = |a, b| a + b\n\nplanted_one : U64\nplanted_one = planted_sum(1, 0)\n\nplanted_two : U64\nplanted_two = planted_sum(2, 0)\n",
-  "boundaries", {"fixed ([0-9]+)"})
-hunt_plant("a result naming a shared alias of tags, and an optional's tags", "app/Stored.roc",
-  "\nplanted_alias : U64 -> Try(U64, Stored.Problem)\nplanted_alias = |n| Ok(n)\n\nplanted_optional : U64 -> [Some(U64), None]\nplanted_optional = |n| Some(n)\n",
-  "errors", {"error_alias ([0-9]+)", "optional_tag ([0-9]+)"})
-hunt_plant("a call nested four deep", "app/Wire.roc",
-  "\nplanted_nest : U64\nplanted_nest = Num.max(Num.max(Num.max(Num.max(1, 2), 3), 4), 5)\n",
-  "nest_depth", {"nested ([0-9]+)"})
-hunt_plant("an effect named as a state, and a type named only by container words", "app/Wire.roc",
-  "\nplanted_written! : {} => {}\nplanted_written! = |{}| {}\n\nEntries : List(U64)\n",
-  "name_hunt", {"state_effect ([0-9]+)", "container ([0-9]+)"})
-hunt_plant("three items on one line", "app/Wire.roc",
-  "\nplanted_stack : List(U64)\nplanted_stack = [1, 2, 3]\n",
-  "stack", {"([0-9]+) to stack"})
 
 -- ── the formatters ──
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
