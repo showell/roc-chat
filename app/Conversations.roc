@@ -17,7 +17,8 @@
 ##                                          `Last-Event-ID` when the browser resumes
 ##
 ## A message, in the transcript and on the stream alike, is one JSON object:
-## `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`. On
+## `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","mentions":["agent:7"],"html":"…"}`,
+## `mentions` the participants it names (Mentions.of), by their names now. On
 ## the stream it is the data of an event named `message` whose id is the
 ## message's. Signed out is a 401; a conversation the viewer may not see is
 ## a 404, as one that is not there; one it sees but may not post to, a 403.
@@ -34,6 +35,7 @@ import ConvKey
 import Credentials
 import JsonOut
 import Limits
+import Mentions
 import MessageCodec
 import Principal
 import SignInWeb
@@ -472,7 +474,7 @@ read! : ConvAccess.ConvId => Chat.Answer
 read! = |id|
 	match load_seen!(id) {
 		Err(answer) => answer
-		Ok(_) =>
+		Ok(a) =>
 			match before_of(Host.read_query!(Str.to_utf8("before"))) {
 				Err(Malformed) => Wire.refused(400, "before= is a message's id")
 				Ok(before) =>
@@ -483,7 +485,10 @@ read! = |id|
 								200,
 								JsonOut.object([
 									("id", JsonOut.number(id.to_u64())),
-									("messages", JsonOut.array(messages.map(message_json))),
+									(
+										"messages",
+										JsonOut.array(messages.map(|m| message_json(m, named_of(a.conv, a.accounts)))),
+									),
 									("earlier", JsonOut.bool(earlier)),
 								]),
 							)
@@ -574,11 +579,12 @@ post! = |id| {
 									}) {
 										Failed => Chat.failed
 										Appended => {
-											match frame(message) {
+											named = named_of(conv, accounts)
+											match frame(message, named) {
 												Ok(f) => Host.publish!(bus_key(id), f)
 												Err(LineBreak) => crash "Conversations.post!: a message's JSON holds no line break"
 											}
-											Wire.json(201, message_json(message))
+											Wire.json(201, message_json(message, named))
 										}
 									}
 								}
@@ -629,7 +635,8 @@ stream! = |id|
 						Err(Failed) => Chat.failed
 						Ok(messages) => {
 							gap = if (after > 0 and after + 1 < newest.first) gap_frame(newest.first) else []
-							backlog = List.concat(gap, List.join(List.keep_oks(messages, frame)))
+							named = named_of(a.conv, a.accounts)
+							backlog = List.concat(gap, List.join(List.keep_oks(messages, |m| frame(m, named))))
 							Chat.stream({
 								key: bus_key(id),
 								backlog,
@@ -675,24 +682,34 @@ bus_key : ConvAccess.ConvId -> List(U8)
 bus_key = |id| Str.to_utf8("conversation/${id.to_u64().to_str()}")
 
 ## A message as one SSE event: named `message`, its id the message's.
-frame : MessageCodec.Fields -> Try(List(U8), [LineBreak])
-frame = |m| Sse.frame({
+frame : MessageCodec.Fields, List(Mentions.Named) -> Try(List(U8), [LineBreak])
+frame = |m, named| Sse.frame({
 	name: Str.to_utf8("message"),
-	data: message_json(m).bytes(),
+	data: message_json(m, named).bytes(),
 	id: Str.to_utf8(m.id.to_str()),
 })
 
-## **A MESSAGE AS THE WIRE SPELLS IT**: its markdown as posted, and its
-## html as roc-markdown renders it now.
-message_json : MessageCodec.Fields -> JsonOut
-message_json = |m|
+## **A MESSAGE AS THE WIRE SPELLS IT**: its markdown as posted, its html
+## as roc-markdown renders it now, and the participants it names
+## (`named`, the conversation's, by their names now).
+message_json : MessageCodec.Fields, List(Mentions.Named) -> JsonOut
+message_json = |m, named|
 	JsonOut.object([
 		("id", JsonOut.number(m.id)),
 		("at", JsonOut.signed(m.at)),
 		("by", JsonOut.string(AccountCodec.id_text(m.by))),
 		("markdown", JsonOut.text(m.body)),
+		(
+			"mentions",
+			JsonOut.array(Mentions.of(m.body, named).map(|id| JsonOut.string(AccountCodec.id_text(id)))),
+		),
 		("html", JsonOut.text(Conversations.html_of(m))),
 	])
+
+## A conversation's participants as a mention finds them: each id with the
+## name the accounts give it now.
+named_of : ConvAccess.Conv, List(Principal) -> List(Mentions.Named)
+named_of = |conv, accounts| conv.participants().map(|b| { id: b.id, name: Conversations.name_of(accounts, b.id) })
 
 not_signed_in : Chat.Answer
 not_signed_in = Wire.refused(401, "not signed in")

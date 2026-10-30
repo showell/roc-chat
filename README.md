@@ -57,7 +57,7 @@ it serves chat.lynrummy.com (DEPLOY.md).**
 | `GET /chat/<id>` | A conversation's page: its newest page of messages (a button loads each page before), new ones live (`EventSource`), a box to post in (Enter sends, Shift-Enter adds a line). A 404 to a viewer who may not see it. |
 | `GET /<name>.js` | The chat client's scripts. |
 
-A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","html":"…"}`.
+A message is `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","mentions":["agent:7"],"html":"…"}`. `mentions` is the participants its markdown names as a word, `@Name` anywhere or `Name` leading the post, by the display names they have now (`app/Mentions.roc`): `@CCX` and `a@CC.com` name nobody, and a name no participant goes by is text.
 Who is asking is a session's cookie or an API key's Bearer header, never
 both (`Credentials.load_viewer!`); who may see and who may post is ConvAccess's.
 Signed out is a 401; a conversation the viewer may not see is a 404, as one

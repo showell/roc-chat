@@ -1113,6 +1113,31 @@ fn agentReads(w: *World) !void {
     if (!has(r.body, "\"by\":\"human:1004\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
 }
 
+/// **MENTIONS, AS THE SERVER PARSES THEM** (app/Mentions.roc): each
+/// message carries the participants its markdown names as a word, by their
+/// names now, in the post's answer, the transcript and the stream alike.
+fn mentions(w: *World) !void {
+    const path = try agentPath(w, w.agents_conv, "/messages");
+    const l = try Listener.open(w.a, w.port(), try agentPath(w, w.agents_conv, "/stream"), w.steve, "");
+    defer l.close();
+    const named = try std.fmt.allocPrint(w.a, "\"mentions\":[\"{s}\"]", .{w.agent});
+    const to_cc = try request(w.a, w.port(), "POST", path, w.steve, "@CC, a mention");
+    if (to_cc.status != 201 or !has(to_cc.body, named)) return error.NotNamed;
+    // A name that goes on, and an `@` inside a word, name nobody.
+    const near = try request(w.a, w.port(), "POST", path, w.steve, "see @CCX, and mail a@CC.com");
+    if (near.status != 201 or !has(near.body, "\"mentions\":[]")) return error.NamedByAPart;
+    // A name no participant goes by is text.
+    const stranger = try request(w.a, w.port(), "POST", path, w.steve, "@Bea, are you here?");
+    if (stranger.status != 201 or !has(stranger.body, "\"mentions\":[]")) return error.NamedAStranger;
+    // A display name with a space, named by the agent.
+    const back = try send(w.a, w.port(), "POST", path, .{ .key = w.key }, "thanks, @Person 1004!");
+    if (back.status != 201 or !has(back.body, "\"mentions\":[\"human:1004\"]")) return error.NotNamedBack;
+    try l.until("thanks, @Person 1004!");
+    if (!has(l.got.items, named) or !has(l.got.items, "\"mentions\":[\"human:1004\"]")) return error.NotOnTheStream;
+    const read = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
+    if (count(read.body, named) != 1 or count(read.body, "\"mentions\":[\"human:1004\"]") != 1) return error.NotInTheTranscript;
+}
+
 fn keyCannotMint(w: *World) !void {
     const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
     if ((try send(w.a, w.port(), "POST", "/keys", .{ .key = w.key }, form)).status != 403) return error.KeyMinted;
@@ -1341,6 +1366,7 @@ const steps = [_]Step{
     .{ .name = "Steve gets it a key, by an invite (and C cannot invite for it)", .f = inviteForAgent },
     .{ .name = "the agent, by key alone, starts a conversation with Steve and posts; Steve's stream gets it once", .f = agentStarts },
     .{ .name = "Steve posts, and the agent reads it with its key", .f = agentReads },
+    .{ .name = "each message names the participants its markdown mentions, as words, by their names now", .f = mentions },
     .{ .name = "the agent's key cannot mint a key, nor make an agent", .f = keyCannotMint },
     .{ .name = "Steve revokes the key, and its next use is a 401", .f = revoke },
     .{ .name = "an expired key is a 401", .f = expired },
