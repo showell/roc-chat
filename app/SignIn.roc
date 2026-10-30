@@ -48,11 +48,11 @@ SignIn := [].{
 				see_other(location)
 					|> Chat.with_header(
 						"set-cookie",
-						SignInWeb.set_cookie(
-							"state",
-							SignInWeb.hex(fields.nonce),
-							OAuthState.lifetime_secs,
-						),
+						SignInWeb.set_cookie({
+							name: "state",
+							contents: SignInWeb.hex(fields.nonce),
+							max_age: OAuthState.lifetime_secs,
+						}),
 					)
 			}
 		}
@@ -105,11 +105,11 @@ SignIn := [].{
 				see_other(Str.to_utf8("/"))
 					|> Chat.with_header(
 						"set-cookie",
-						SignInWeb.set_cookie(
-							"session",
-							[],
-							0,
-						),
+						SignInWeb.set_cookie({
+							name: "session",
+							contents: [],
+							max_age: 0,
+						}),
 					)
 		}
 	}
@@ -192,11 +192,11 @@ check_callback! = |req| {
 		}
 	state =
 		match List.first(Host.read_query!(Str.to_utf8("state"))) {
-			Ok(token) => check_signed!(
-				State,
-				token,
-				SignInWeb.state_fields,
-			)
+			Ok(token) => check_signed!({
+				purpose: State,
+				token: token,
+				fields_of: SignInWeb.state_fields,
+			})
 			Err(_) => Unsigned
 		}
 	came = GitHubSignIn.CameBack.came_back({ state, answer })?
@@ -247,11 +247,11 @@ check_callback! = |req| {
 												name_form(Ok({}))
 													|> Chat.with_header(
 														"set-cookie",
-														SignInWeb.set_cookie(
-															"pending",
-															token,
-															OAuthState.lifetime_secs,
-														),
+														SignInWeb.set_cookie({
+															name: "pending",
+															contents: token,
+															max_age: OAuthState.lifetime_secs,
+														}),
 													),
 											)
 										}
@@ -274,11 +274,11 @@ sign_up! = |{}| {
 			cookies = Host.read_header!(Str.to_utf8("cookie"))
 			pending =
 				match SignInWeb.cookie(cookies, "pending") {
-					Sent(token) => check_signed!(
-						Pending,
-						token,
-						SignInWeb.pending_fields,
-					)
+					Sent(token) => check_signed!({
+						purpose: Pending,
+						token: token,
+						fields_of: SignInWeb.pending_fields,
+					})
 					Unsent => Unsigned
 				}
 			resumed = GitHubSignIn.Pending.resume({
@@ -338,27 +338,27 @@ sign_in! = |f, { admission, steps }| {
 			see_other(Str.to_utf8("/"))
 				|> Chat.with_header(
 					"set-cookie",
-					SignInWeb.set_cookie(
-						"session",
-						SignInWeb.hex(f.secret),
-						Session.absolute_secs,
-					),
+					SignInWeb.set_cookie({
+						name: "session",
+						contents: SignInWeb.hex(f.secret),
+						max_age: Session.absolute_secs,
+					}),
 				)
 				|> Chat.with_header(
 					"set-cookie",
-					SignInWeb.set_cookie(
-						"state",
-						[],
-						0,
-					),
+					SignInWeb.set_cookie({
+						name: "state",
+						contents: [],
+						max_age: 0,
+					}),
 				)
 				|> Chat.with_header(
 					"set-cookie",
-					SignInWeb.set_cookie(
-						"pending",
-						[],
-						0,
-					),
+					SignInWeb.set_cookie({
+						name: "pending",
+						contents: [],
+						max_age: 0,
+					}),
 				)
 	}
 }
@@ -395,11 +395,11 @@ answer_refused! = |decided|
 			)
 				|> Chat.with_header(
 					"set-cookie",
-					SignInWeb.set_cookie(
-						"pending",
-						[],
-						0,
-					),
+					SignInWeb.set_cookie({
+						name: "pending",
+						contents: [],
+						max_age: 0,
+					}),
 				)
 		}
 	}
@@ -428,15 +428,24 @@ see_other = |location|
 
 ## `body`, signed by the host for `purpose`, as a token.
 sign_token! : SignInWeb.Purpose, List(U8) => List(U8)
-sign_token! = |purpose, body| SignInWeb.token(body, Host.sign!(SignInWeb.signed_message(purpose, body)))
+sign_token! = |purpose, body| SignInWeb.token(
+	body,
+	Host.sign!(SignInWeb.signed_message(purpose, body)),
+)
 
 ## A token's fields when the host's MAC holds and its body reads; else
 ## `Unsigned`, which the core refuses (a forgery).
-check_signed! : SignInWeb.Purpose, List(U8), (List(U8) -> Try(a, [Malformed])) => [Signed(a), Unsigned]
+check_signed! : {
+	purpose : SignInWeb.Purpose,
+	token : List(U8),
+	fields_of : (List(U8) -> Try(a, [Malformed])),
+} => [Signed(a), Unsigned]
 check_signed! = |
-	purpose,
-	token,
-	fields_of,
+	{
+		purpose,
+		token,
+		fields_of,
+	},
 |
 	match SignInWeb.untoken(token) {
 		Err(Malformed) => Unsigned

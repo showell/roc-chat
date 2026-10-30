@@ -482,11 +482,17 @@ Store := [].{
 	## it), appended to the offsets file; a file that does not hold one
 	## record a message before it is written again whole, from the
 	## transcript.
-	append_message! : ConvAccess.ConvId, Store.Tally, MessageCodec.Fields => [Failed, Appended]
+	append_message! : {
+		id : ConvAccess.ConvId,
+		tally : Store.Tally,
+		message : MessageCodec.Fields,
+	} => [Failed, Appended]
 	append_message! = |
-		id,
-		tally,
-		message,
+		{
+			id,
+			tally,
+			message,
+		},
 	|
 		match check_offsets!(id, tally) {
 			Err(Failed) => Failed
@@ -1018,7 +1024,13 @@ remove_files! = |folder, names|
 			}
 	}
 
-write_index_files! : Str, List({ human : Principal.GitHubId, records : List(U8) }) => Try({}, [Failed])
+write_index_files! : Str,
+List(
+	{
+		human : Principal.GitHubId,
+		records : List(U8),
+	},
+) => Try({}, [Failed])
 write_index_files! = |folder, groups|
 	match groups {
 		[] => Ok({})

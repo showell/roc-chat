@@ -690,11 +690,17 @@ verdict : Admin.Credential(Str, Str), Admin.Action -> Verdict
 verdict = |credential, action| audited({ credential, action }, usually).verdict
 
 ## The verdict on `credential` attempting `action` among `among`.
-verdict_among : Admin.Credential(Str, Str), Admin.Action, List(Principal) -> Verdict
+verdict_among : {
+	credential : Admin.Credential(Str, Str),
+	action : Admin.Action,
+	among : List(Principal),
+} -> Verdict
 verdict_among = |
-	credential,
-	action,
-	among,
+	{
+		credential,
+		action,
+		among,
+	},
 | audited({ credential, action }, { among, now: 100500 }).verdict
 
 ## The plan of `credential` attempting `action`, as usually.
@@ -702,11 +708,17 @@ plan_of : Admin.Credential(Str, Str), Admin.Action -> List(Admin.Step)
 plan_of = |credential, action| decided({ credential, action }, usually).plan
 
 ## The plan of `credential` attempting `action` among `among`.
-plan_of_among : Admin.Credential(Str, Str), Admin.Action, List(Principal) -> List(Admin.Step)
+plan_of_among : {
+	credential : Admin.Credential(Str, Str),
+	action : Admin.Action,
+	among : List(Principal),
+} -> List(Admin.Step)
 plan_of_among = |
-	credential,
-	action,
-	among,
+	{
+		credential,
+		action,
+		among,
+	},
 | decided({ credential, action }, { among, now: 100500 }).plan
 
 ## The verdict on `credential` listing accounts among `among` at `now`.
@@ -923,18 +935,18 @@ after_boss_retired_cal = Admin.applied(
 ).accounts
 
 expect after_boss_retired_cal.map(Principal.id) == [Cast.boss.id()]
-expect verdict_among(
-	cal_session,
-	retire_boss,
-	after_boss_retired_cal,
-) == Refused(NoSuchPrincipal)
+expect verdict_among({
+	credential: cal_session,
+	action: retire_boss,
+	among: after_boss_retired_cal,
+}) == Refused(NoSuchPrincipal)
 # And with boss the first admin, cal's retirement of boss is refused
 # against the snapshot itself.
-expect verdict_among(
-	cal_session,
-	retire_boss,
-	two_admins,
-) == Refused(FirstAdmin)
+expect verdict_among({
+	credential: cal_session,
+	action: retire_boss,
+	among: two_admins,
+}) == Refused(FirstAdmin)
 
 # **NO PLAN LEAVES NO ADMIN**: the backstop, on plans no actor reaches
 # through the checks above (an admin cannot retire or demote themselves).
@@ -1029,11 +1041,11 @@ half_gone : List(Principal)
 half_gone = Admin.applied(ann_retired.take_first(5), { accounts, settings }).accounts
 
 expect List.first(
-	plan_of_among(
-		boss_session,
-		Retire(Cast.ann.id()),
-		half_gone,
-	),
+	plan_of_among({
+		credential: boss_session,
+		action: Retire(Cast.ann.id()),
+		among: half_gone,
+	}),
 ) == Ok(Bar(Cast.gid(2)))
 
 # **A BAR IS FOR LIFE**: no action's plan, by anyone,
@@ -1082,49 +1094,49 @@ ann_again_admin = Principal.Human({
 	generation: Cast.gen(2),
 })
 
-expect verdict_among(
-	ann_session,
-	ListAccounts,
-	[Cast.boss, ann_again_admin],
-) == Refused(NoSuchPrincipal)
+expect verdict_among({
+	credential: ann_session,
+	action: ListAccounts,
+	among: [Cast.boss, ann_again_admin],
+}) == Refused(NoSuchPrincipal)
 
 # ── DUPLICATE AND FORGED ACCOUNTS FIRST
 # A copy of ann claiming admin, first: her session admits no copy.
 ann_admin_first : List(Principal)
 ann_admin_first = List.prepend(accounts, Cast.person(2, Admin))
 
-expect verdict_among(
-	ann_session,
-	ListAccounts,
-	ann_admin_first,
-) == Refused(NoSuchPrincipal)
-expect verdict_among(
-	ann_session,
-	promote_ann,
-	ann_admin_first,
-) == Refused(NoSuchPrincipal)
+expect verdict_among({
+	credential: ann_session,
+	action: ListAccounts,
+	among: ann_admin_first,
+}) == Refused(NoSuchPrincipal)
+expect verdict_among({
+	credential: ann_session,
+	action: promote_ann,
+	among: ann_admin_first,
+}) == Refused(NoSuchPrincipal)
 # A copy of boss's agent claiming ann as owner, first: its key administers
 # nothing.
-expect verdict_among(
-	boss_agent_key,
-	ListAccounts,
-	List.prepend(accounts, Cast.owned(Agent, { id: 1, owner: 2 })),
-) == Refused(KeyRefused(NoSuchPrincipal))
+expect verdict_among({
+	credential: boss_agent_key,
+	action: ListAccounts,
+	among: List.prepend(accounts, Cast.owned(Agent, { id: 1, owner: 2 })),
+}) == Refused(KeyRefused(NoSuchPrincipal))
 # A copy of cal's agent claiming ann as owner, first: a key cannot tell
 # whose it is, so it takes a session; nor is either copy retired.
 cal_agent_forged : List(Principal)
 cal_agent_forged = List.prepend(accounts, Cast.owned(Agent, { id: 5, owner: 2 }))
 
-expect verdict_among(
-	boss_agent_key,
-	revoke_cal_agent_keys,
-	cal_agent_forged,
-) == Refused(NeedsSession)
-expect verdict_among(
-	boss_session,
-	Retire(cal_agent.id()),
-	cal_agent_forged,
-) == Refused(NoSuchTarget)
+expect verdict_among({
+	credential: boss_agent_key,
+	action: revoke_cal_agent_keys,
+	among: cal_agent_forged,
+}) == Refused(NeedsSession)
+expect verdict_among({
+	credential: boss_session,
+	action: Retire(cal_agent.id()),
+	among: cal_agent_forged,
+}) == Refused(NoSuchTarget)
 
 # ATTACK: an attempt under a clock past
 # the store's range makes no audit the store cannot write.

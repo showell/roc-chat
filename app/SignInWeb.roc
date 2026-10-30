@@ -120,15 +120,21 @@ SignInWeb := [].{
 
 	## **THE COOKIES' ONE POLICY**: the cookie `name` (behind `__Host-`)
 	## holding `value` for `max_age` seconds; 0 ends it.
-	set_cookie : Str, List(U8), I64 -> List(U8)
+	set_cookie : {
+		name : Str,
+		contents : List(U8),
+		max_age : I64,
+	} -> List(U8)
 	set_cookie = |
-		name,
-		value,
-		max_age,
+		{
+			name,
+			contents,
+			max_age,
+		},
 	|
 		[
 			"__Host-${name}=".to_utf8(),
-			value,
+			contents,
 			"; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${max_age.to_str()}".to_utf8(),
 		].join()
 
@@ -359,11 +365,11 @@ expect SignInWeb.cookie(["state=00ff; __Host-statex=1".to_utf8()], "state") == U
 expect SignInWeb.cookie([], "state") == Unsent
 expect SignInWeb.state_cookie(Sent("zz".to_utf8())) == Unsent
 
-expect SignInWeb.set_cookie(
-	"session",
-	"ab".to_utf8(),
-	60,
-) == "__Host-session=ab; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=60".to_utf8()
+expect SignInWeb.set_cookie({
+	name: "session",
+	contents: "ab".to_utf8(),
+	max_age: 60,
+}) == "__Host-session=ab; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=60".to_utf8()
 
 # A form field, decoded; a bad escape is malformed.
 expect SignInWeb.form_field(

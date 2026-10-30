@@ -567,11 +567,11 @@ post! = |id| {
 										"this conversation is full: its transcript holds as much as one may",
 									)
 								} else {
-									match Store.append_message!(
-										id,
-										tally,
-										message,
-									) {
+									match Store.append_message!({
+										id: id,
+										tally: tally,
+										message: message,
+									}) {
 										Failed => Chat.failed
 										Appended => {
 											match frame(message) {

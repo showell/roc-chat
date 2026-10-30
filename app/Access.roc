@@ -635,11 +635,17 @@ decided : ApiKey.Key(Held, U64), Access.Action(Held) -> Answer
 decided = |key, action| decided_at(key, { action, now: 50 })
 
 ## The key's answer to `action` at time 50, among `among`.
-decided_among : ApiKey.Key(Held, U64), Access.Action(Held), List(Principal) -> Answer
+decided_among : {
+	key : ApiKey.Key(Held, U64),
+	action : Access.Action(Held),
+	among : List(Principal),
+} -> Answer
 decided_among = |
-	key,
-	action,
-	among,
+	{
+		key,
+		action,
+		among,
+	},
 | Access.decide(
 	key,
 	{
@@ -726,21 +732,21 @@ expect decided(boss_bot_plain, Read(res_c)) == Refused(BeyondPrincipal)
 
 # Bug 1: ann retired, her agent's key reads and posts nothing, even what
 # its scope and the resource would allow.
-expect decided_among(
-	ann_agent_plain,
-	Read(res_a),
-	Cast.without_ann,
-) == Refused(NoSuchPrincipal)
-expect decided_among(
-	ann_agent_plain,
-	Read(res_c),
-	Cast.without_ann,
-) == Refused(NoSuchPrincipal)
-expect decided_among(
-	ann_agent_plain,
-	Post(res_a),
-	Cast.without_ann,
-) == Refused(NoSuchPrincipal)
+expect decided_among({
+	key: ann_agent_plain,
+	action: Read(res_a),
+	among: Cast.without_ann,
+}) == Refused(NoSuchPrincipal)
+expect decided_among({
+	key: ann_agent_plain,
+	action: Read(res_c),
+	among: Cast.without_ann,
+}) == Refused(NoSuchPrincipal)
+expect decided_among({
+	key: ann_agent_plain,
+	action: Post(res_a),
+	among: Cast.without_ann,
+}) == Refused(NoSuchPrincipal)
 
 # Liveness comes first: revoked and expired keys do nothing, even what
 # their scope and principal would allow; an expiry at 100 is live at 99.
@@ -768,19 +774,19 @@ expect decided(from_store(ann_agent_reads_c.record()), Read(res_a)) == Refused(O
 
 # A forged copy of ann's agent beside it, or ann made again: the old key
 # stands no more.
-expect decided_among(
-	ann_agent_plain,
-	Read(res_a),
-	List.prepend(Cast.accounts, Cast.owned(Agent, { id: 3, owner: 1 })),
-) == Refused(NoSuchPrincipal)
-expect decided_among(
-	ann_year,
-	Read(res_c),
-	[
+expect decided_among({
+	key: ann_agent_plain,
+	action: Read(res_a),
+	among: List.prepend(Cast.accounts, Cast.owned(Agent, { id: 3, owner: 1 })),
+}) == Refused(NoSuchPrincipal)
+expect decided_among({
+	key: ann_year,
+	action: Read(res_c),
+	among: [
 		Cast.boss,
 		person(2, { g: 2 }),
 		Cast.boss_agent,
 		Cast.boss_bot,
 		Cast.ann_agent,
 	],
-) == Refused(NoSuchPrincipal)
+}) == Refused(NoSuchPrincipal)
