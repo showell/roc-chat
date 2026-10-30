@@ -817,7 +817,11 @@ redeem! = |{}| {
 				# invite.
 				match redeem_format(got.bytes) {
 					Err(UnknownFormat) => Wire.refused(400, "format is `secret`, or left out for the key as JSON")
-					Ok(format) => redeem_code!(got.bytes, format, now)
+					Ok(format) => redeem_code!({
+						form: got.bytes,
+						format,
+						now,
+					})
 				}
 			}
 		}
@@ -841,8 +845,18 @@ expect redeem_format("format=json".to_utf8()) == Err(UnknownFormat)
 expect redeem_format("format=%G1".to_utf8()) == Err(UnknownFormat)
 
 ## The invite a redeem's code names, redeemed, or one 401.
-redeem_code! : List(U8), [Json, SecretAlone], I64 => Chat.Answer
-redeem_code! = |form, format, now|
+redeem_code! : {
+	form : List(U8),
+	format : [Json, SecretAlone],
+	now : I64,
+} => Chat.Answer
+redeem_code! = |
+	{
+		form,
+		format,
+		now,
+	},
+|
 	match SignInWeb.form_field(form, "code") {
 		Err(_) => invite_refused!({
 			invite: Unknown,
@@ -867,7 +881,11 @@ redeem_code! = |form, format, now|
 									why: Unknown,
 									now,
 								})
-								Ok(invite) => redeem_now!(invite, format, now)
+								Ok(invite) => redeem_now!({
+									invite,
+									format,
+									now,
+								})
 							}
 					}
 			}
@@ -876,8 +894,18 @@ redeem_code! = |form, format, now|
 ## **THE INVITE REDEEMED, OR REFUSED**: decided (Agents.redeemed); then,
 ## **SPENT FIRST**, before the key is stored, so a crash between leaves a
 ## spent invite and no key, never a key and a live invite.
-redeem_now! : InviteCodec.Record(ConvAccess.ConvId), [Json, SecretAlone], I64 => Chat.Answer
-redeem_now! = |invite, format, now| {
+redeem_now! : {
+	invite : InviteCodec.Record(ConvAccess.ConvId),
+	format : [Json, SecretAlone],
+	now : I64,
+} => Chat.Answer
+redeem_now! = |
+	{
+		invite,
+		format,
+		now,
+	},
+| {
 	known = Known({ id: invite.id, agent: invite.bound.id })
 	match (
 		Store.load_accounts!({}),
