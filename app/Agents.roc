@@ -50,6 +50,7 @@ import ConvAccess
 import ConvKey
 import Credentials
 import InviteCodec
+import JsonOut
 import Limits
 import DisplayName
 import GitHubSignIn
@@ -922,11 +923,7 @@ list_invites! = |{}|
 					)
 					Wire.json(
 						200,
-						List.join([
-							Str.to_utf8("{\"invites\":["),
-							Wire.commas(List.map(invites_by_id(live), |i| invite_json(i, Hidden))),
-							Str.to_utf8("]}"),
-						]),
+						JsonOut.object([("invites", JsonOut.array(invites_by_id(live).map(|i| invite_json(i, Hidden))))]),
 					)
 				}
 			}
@@ -992,22 +989,20 @@ revoke_invite! = |id|
 
 ## **AN INVITE AS THE WIRE SPELLS IT**: its public id, whom it is for, and
 ## when it expires; its code only when just made (`Shown`), never after.
-invite_json : InviteCodec.Record(ConvAccess.ConvId), [Shown(List(U8)), Hidden] -> List(U8)
+invite_json : InviteCodec.Record(ConvAccess.ConvId), [Shown(List(U8)), Hidden] -> JsonOut
 invite_json = |invite, code| {
 	shown =
 		match code {
-			Shown(bytes) => List.join([
-				Str.to_utf8(",\"code\":\""),
-				SignInWeb.hex(bytes),
-				['"'],
-			])
+			Shown(bytes) => [("code", JsonOut.text(SignInWeb.hex(bytes)))]
 			Hidden => []
 		}
-	List.join([
-		Str.to_utf8("{\"id\":${invite.id.to_u64().to_str()},\"for\":\"${AccountCodec.id_text(invite.bound.id)}\",\"expires\":${invite.expires.to_str()}"),
-		shown,
-		['}'],
-	])
+	JsonOut.object(
+		[
+			("id", JsonOut.number(invite.id.to_u64())),
+			("for", JsonOut.string(AccountCodec.id_text(invite.bound.id))),
+			("expires", JsonOut.signed(invite.expires)),
+		].concat(shown),
+	)
 }
 
 ## **WHAT A MINT'S FORM ASKS**: who the key acts as, its scope, and how
@@ -1093,11 +1088,7 @@ list! = |{}|
 					)
 					Wire.json(
 						200,
-						List.join([
-							Str.to_utf8("{\"keys\":["),
-							Wire.commas(List.map(keys_by_id(mine), |k| key_json(k, Hidden))),
-							Str.to_utf8("]}"),
-						]),
+						JsonOut.object([("keys", JsonOut.array(keys_by_id(mine).map(|k| key_json(k, Hidden))))]),
 					)
 				}
 			}
@@ -1227,12 +1218,12 @@ not_signed_in : Chat.Answer
 not_signed_in = Wire.refused(401, "not signed in")
 
 ## An agent as the wire spells it: `{"id":"agent:7","name":"CC","owner":"human:2"}`.
-agent_json : Principal -> List(U8)
+agent_json : Principal -> JsonOut
 agent_json = |agent|
-	List.join([
-		Str.to_utf8("{\"id\":\"${AccountCodec.id_text(Principal.id(agent))}\",\"name\":"),
-		Wire.json_string(Str.to_utf8(name_of(agent))),
-		Str.to_utf8(",\"owner\":\"${AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(agent)))}\"}"),
+	JsonOut.object([
+		("id", JsonOut.string(AccountCodec.id_text(Principal.id(agent)))),
+		("name", JsonOut.string(name_of(agent))),
+		("owner", JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(agent))))),
 	])
 
 name_of : Principal -> Str
@@ -1246,13 +1237,13 @@ name_of = |p|
 ## **A KEY AS THE WIRE SPELLS IT**: its public id, who it acts as, its
 ## scope in KeyCodec's spelling, when it was made and expires, and whether
 ## it is revoked; its secret only when just minted (`Shown`), never after.
-key_json : ConvKey.Key, [Shown(List(U8)), Hidden] -> List(U8)
+key_json : ConvKey.Key, [Shown(List(U8)), Hidden] -> JsonOut
 key_json = |key, secret| {
 	r = key.record()
 	revoked =
 		match r.revocation {
-			Active => "false"
-			Revoked => "true"
+			Active => Bool.False
+			Revoked => Bool.True
 		}
 	admin =
 		match r.scope.admin {
@@ -1261,18 +1252,21 @@ key_json = |key, secret| {
 		}
 	shown =
 		match secret {
-			Shown(bytes) => List.join([
-				Str.to_utf8(",\"secret\":\""),
-				SignInWeb.hex(bytes),
-				['"'],
-			])
+			Shown(bytes) => [("secret", JsonOut.text(SignInWeb.hex(bytes)))]
 			Hidden => []
 		}
-	List.join([
-		Str.to_utf8("{\"id\":${r.id.to_u64().to_str()},\"acts_as\":\"${AccountCodec.id_text(r.acts_as)}\",\"read\":\"${KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64)}\",\"post\":\"${KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64)}\",\"admin\":\"${admin}\",\"created\":${r.created.to_str()},\"expires\":${r.expires.to_str()},\"revoked\":${revoked}"),
-		shown,
-		['}'],
-	])
+	JsonOut.object(
+		[
+			("id", JsonOut.number(r.id.to_u64())),
+			("acts_as", JsonOut.string(AccountCodec.id_text(r.acts_as))),
+			("read", JsonOut.string(KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64))),
+			("post", JsonOut.string(KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64))),
+			("admin", JsonOut.string(admin)),
+			("created", JsonOut.signed(r.created)),
+			("expires", JsonOut.signed(r.expires)),
+			("revoked", JsonOut.bool(revoked)),
+		].concat(shown),
+	)
 }
 
 # ── tests
@@ -1900,3 +1894,9 @@ expect
 				_ => Bool.True
 			},
 	)
+
+# **AN AGENT ON THE WIRE**, its name holding a quote, a backslash and a
+# control byte: one string still, and the fields in their order.
+expect
+	agent_json(Principal.Agent({ id: Cast.aid(7), name: "Bea \"B\" \\ \u(01)", owner: Cast.gid(2), generation: Cast.gen(1) })).bytes()
+		== "{\"id\":\"agent:7\",\"name\":\"Bea \\\"B\\\" \\\\ \\u0001\",\"owner\":\"human:2\"}".to_utf8()

@@ -32,6 +32,7 @@ import Cast
 import ConvAccess
 import ConvKey
 import Credentials
+import JsonOut
 import Limits
 import MessageCodec
 import Principal
@@ -265,7 +266,7 @@ start! = |{}| {
 																	Failed => Chat.failed
 																	Written => Wire.json(
 																		201,
-																		Str.to_utf8("{\"id\":${id.to_u64().to_str()}}"),
+																		JsonOut.object([("id", JsonOut.number(id.to_u64()))]),
 																	)
 																}
 															}
@@ -311,36 +312,17 @@ list! = |{}|
 					match Conversations.load_mine!(viewer, accounts) {
 						Err(Failed) => Chat.failed
 						Ok(convs) => {
-							one = |conv| {
-								people = List.map(
-									conv.participants(),
-									|b| List.join([
-										Str.to_utf8("{\"id\":\"${AccountCodec.id_text(b.id)}\",\"name\":"),
-										Wire.json_string(
-											Str.to_utf8(
-												Conversations.name_of(
-													accounts,
-													b.id,
-												),
-											),
-										),
-										['}'],
-									]),
-								)
-								List.join([
-									Str.to_utf8("{\"id\":${conv.id().to_u64().to_str()},\"with\":["),
-									Wire.commas(people),
-									Str.to_utf8("]}"),
+							person = |b|
+								JsonOut.object([
+									("id", JsonOut.string(AccountCodec.id_text(b.id))),
+									("name", JsonOut.string(Conversations.name_of(accounts, b.id))),
 								])
-							}
-							Wire.json(
-								200,
-								List.join([
-									Str.to_utf8("{\"conversations\":["),
-									Wire.commas(List.map(convs, one)),
-									Str.to_utf8("]}"),
-								]),
-							)
+							one = |conv|
+								JsonOut.object([
+									("id", JsonOut.number(conv.id().to_u64())),
+									("with", JsonOut.array(conv.participants().map(person))),
+								])
+							Wire.json(200, JsonOut.object([("conversations", JsonOut.array(convs.map(one)))]))
 						}
 					}
 			}
@@ -474,10 +456,10 @@ read! = |id|
 						Ok({ messages, earlier }) =>
 							Wire.json(
 								200,
-								List.join([
-									Str.to_utf8("{\"id\":${id.to_u64().to_str()},\"messages\":["),
-									Wire.commas(List.map(messages, message_json)),
-									Str.to_utf8("],\"earlier\":${if (earlier) "true" else "false"}}"),
+								JsonOut.object([
+									("id", JsonOut.number(id.to_u64())),
+									("messages", JsonOut.array(messages.map(message_json))),
+									("earlier", JsonOut.bool(earlier)),
 								]),
 							)
 					}
@@ -622,7 +604,7 @@ stream! = |id|
 ## The `gap` event: the messages before `before` were not sent.
 gap_frame : U64 -> List(U8)
 gap_frame = |before|
-	match Sse.frame({ name: Str.to_utf8("gap"), data: Str.to_utf8("{\"before\":${before.to_str()}}"), id: [] }) {
+	match Sse.frame({ name: Str.to_utf8("gap"), data: JsonOut.object([("before", JsonOut.number(before))]).bytes(), id: [] }) {
 		Ok(f) => f
 		Err(LineBreak) => crash "Conversations.gap_frame: a gap's JSON holds no line break"
 	}
@@ -652,20 +634,20 @@ bus_key = |id| Str.to_utf8("conversation/${id.to_u64().to_str()}")
 frame : MessageCodec.Fields -> Try(List(U8), [LineBreak])
 frame = |m| Sse.frame({
 	name: Str.to_utf8("message"),
-	data: message_json(m),
+	data: message_json(m).bytes(),
 	id: Str.to_utf8(m.id.to_str()),
 })
 
 ## **A MESSAGE AS THE WIRE SPELLS IT**: its markdown as posted, and its
 ## html as roc-markdown renders it now.
-message_json : MessageCodec.Fields -> List(U8)
+message_json : MessageCodec.Fields -> JsonOut
 message_json = |m|
-	List.join([
-		Str.to_utf8("{\"id\":${m.id.to_str()},\"at\":${m.at.to_str()},\"by\":\"${AccountCodec.id_text(m.by)}\",\"markdown\":"),
-		Wire.json_string(m.body),
-		Str.to_utf8(",\"html\":"),
-		Wire.json_string(Conversations.html_of(m)),
-		['}'],
+	JsonOut.object([
+		("id", JsonOut.number(m.id)),
+		("at", JsonOut.signed(m.at)),
+		("by", JsonOut.string(AccountCodec.id_text(m.by))),
+		("markdown", JsonOut.text(m.body)),
+		("html", JsonOut.text(Conversations.html_of(m))),
 	])
 
 not_signed_in : Chat.Answer
