@@ -99,7 +99,7 @@ hello : Chat.Answer
 hello = {
 	page = List.join([
 		Str.to_utf8("<!doctype html>\n<title>roc-chat</title>\n"),
-		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`.")),
+		Md.render_trusted(Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."), Conversations.markdown),
 	])
 	Chat.respond(200, { content_type: Chat.html, body: page })
 		|> Chat.with_header("cache-control", Str.to_utf8("no-store"))

@@ -857,6 +857,18 @@ fn ownIndexOnly(w: *World) !void {
     if (count(convs.body, "\"with\":[") != small_cap) return error.ConversationsLost;
 }
 
+/// **A MESSAGE'S MEDIA LOADS ONLY FROM THE CHAT'S UPLOADS**: the chat tells
+/// the renderer its uploads are `/user_uploads/` (Conversations.markdown),
+/// so an upload's image renders, and one of the chat's own routes as a src
+/// is text.
+fn mediaFromUploads(w: *World) !void {
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "<img src=\"/user_uploads/a.png\">\n\n<img src=\"/conversations/1/stream\">");
+    if (r.status != 201) return error.NotPosted;
+    if (!has(r.body, "<img src=\\\"/user_uploads/a.png\\\">")) return error.UploadNotShown;
+    if (!has(r.body, "&lt;img src=&quot;/conversations/1/stream&quot;&gt;")) return error.RouteShownAsMedia;
+}
+
 fn pageHtml(w: *World) !void {
     const t = try get(w.a, w.port(), try w.path(""), w.ann);
     const key = "\"id\":1,";
@@ -1223,6 +1235,7 @@ const steps = [_]Step{
     .{ .name = "a human past the invites cap is refused, by name", .f = invitesCapped },
     .{ .name = "a missing index is rebuilt from the full scan, and the listings are whole", .f = indexRebuilt },
     .{ .name = "a listing reads its own index alone: another's broken conversation is never read", .f = ownIndexOnly },
+    .{ .name = "a message's media loads only from the chat's uploads", .f = mediaFromUploads },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

@@ -15,6 +15,10 @@ it serves chat.lynrummy.com (DEPLOY.md).**
   each open stream gets each message once, live, resuming from
   `Last-Event-ID`. A page and a stream's backlog are read from where
   their first message starts, never the transcript whole.
+- **Media only from the chat's uploads:** the chat tells roc-markdown its
+  uploads are under `/user_uploads/` (`Conversations.markdown`), since where
+  its files live is the chat's to say, not the renderer's; a member's image
+  aimed at any other path, the chat's own routes included, is text.
 - **Caps per human** (`app/Limits.roc`): 20 agents, 200 keys, 200 invites
   and 1,000 conversations started. A request past one is a 403 that names
   it. A human's conversations, keys and invites are read from their own

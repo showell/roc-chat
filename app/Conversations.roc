@@ -114,7 +114,14 @@ Conversations := [].{
 	## A message's HTML: roc-markdown's render of its markdown, the one
 	## the transcript, the stream and the pages all give.
 	html_of : MessageCodec.Fields -> List(U8)
-	html_of = |m| Md.render(m.body)
+	html_of = |m| Md.render(m.body, Conversations.markdown)
+
+	## **WHAT THE CHAT TELLS THE RENDERER**: its uploads are the paths under
+	## `/user_uploads/`, the only places a member's image or video may load
+	## from; none of the chat's own routes is one. The chat serves no
+	## uploads yet: this is the folder they will be served from.
+	markdown : Md.Options
+	markdown = { uploads: Md.uploads_under(Str.to_utf8("/user_uploads/")) }
 
 	## The name a principal goes by, as the accounts say now; its id where
 	## no account holds it.
@@ -530,7 +537,7 @@ post! = |id| {
 						) else Conversations.no_such
 					} else if Str.from_utf8(got.bytes).is_err() {
 						Wire.refused(400, "a message is UTF-8 text")
-					} else if Md.hostility(got.bytes) == TooMuchFormatting {
+					} else if Md.hostility(got.bytes, Conversations.markdown) == TooMuchFormatting {
 						Wire.refused(400, Md.too_much_formatting)
 					} else {
 						by =
@@ -700,3 +707,8 @@ expect before_of([Str.to_utf8("0")]) == Err(Malformed)
 expect before_of([Str.to_utf8("07")]) == Err(Malformed)
 expect before_of([Str.to_utf8("x")]) == Err(Malformed)
 expect before_of([Str.to_utf8("7"), Str.to_utf8("8")]) == Err(Malformed)
+
+# The chat's uploads rule: an upload's image renders; one of the chat's own
+# routes, as a src, is text.
+expect Str.contains(Str.from_utf8(Md.render(Str.to_utf8("<img src=\"/user_uploads/a.png\">"), Conversations.markdown)) ?? "", "<img src=\"/user_uploads/a.png\">")
+expect !Str.contains(Str.from_utf8(Md.render(Str.to_utf8("<img src=\"/conversations/1/stream\">"), Conversations.markdown)) ?? "", "<img")
