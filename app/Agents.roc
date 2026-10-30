@@ -813,45 +813,71 @@ redeem! = |{}| {
 					now,
 				})
 			} else {
-				match SignInWeb.form_field(got.bytes, "code") {
-					Err(_) => invite_refused!({
-						invite: Unknown,
-						why: Unknown,
-						now,
-					})
-					Ok(hex) =>
-						match SignInWeb.unhex(hex) {
-							Err(NotHex) => invite_refused!({
-								invite: Unknown,
-								why: Unknown,
-								now,
-							})
-							Ok(code) =>
-								match Stored.SecretHash.from_bytes(Host.hash!(code)) {
-									Err(NotAHash) => Chat.failed
-									Ok(hash) =>
-										match Store.load_invite!(hash) {
-											Err(Failed) => Chat.failed
-											Err(Missing) | Err(Malformed) => invite_refused!({
-												invite: Unknown,
-												why: Unknown,
-												now,
-											})
-											Ok(invite) => redeem_now!(invite, now)
-										}
-								}
-						}
+				# The format before the code, so a bad one never spends the
+				# invite.
+				match redeem_format(got.bytes) {
+					Err(UnknownFormat) => Wire.refused(400, "format is `secret`, or left out for the key as JSON")
+					Ok(format) => redeem_code!(got.bytes, format, now)
 				}
 			}
 		}
 	}
 }
 
+## How a redeem answers: the key as JSON (no `format`), or its secret
+## alone as a line of text (`format=secret`), for an agent that stores it
+## without parsing.
+redeem_format : List(U8) -> Try([Json, SecretAlone], [UnknownFormat])
+redeem_format = |form|
+	match SignInWeb.form_field(form, "format") {
+		Err(Missing) => Ok(Json)
+		Ok(f) if f == Str.to_utf8("secret") => Ok(SecretAlone)
+		_ => Err(UnknownFormat)
+	}
+
+expect redeem_format("code=ab".to_utf8()) == Ok(Json)
+expect redeem_format("code=ab&format=secret".to_utf8()) == Ok(SecretAlone)
+expect redeem_format("format=json".to_utf8()) == Err(UnknownFormat)
+expect redeem_format("format=%G1".to_utf8()) == Err(UnknownFormat)
+
+## The invite a redeem's code names, redeemed, or one 401.
+redeem_code! : List(U8), [Json, SecretAlone], I64 => Chat.Answer
+redeem_code! = |form, format, now|
+	match SignInWeb.form_field(form, "code") {
+		Err(_) => invite_refused!({
+			invite: Unknown,
+			why: Unknown,
+			now,
+		})
+		Ok(hex) =>
+			match SignInWeb.unhex(hex) {
+				Err(NotHex) => invite_refused!({
+					invite: Unknown,
+					why: Unknown,
+					now,
+				})
+				Ok(code) =>
+					match Stored.SecretHash.from_bytes(Host.hash!(code)) {
+						Err(NotAHash) => Chat.failed
+						Ok(hash) =>
+							match Store.load_invite!(hash) {
+								Err(Failed) => Chat.failed
+								Err(Missing) | Err(Malformed) => invite_refused!({
+									invite: Unknown,
+									why: Unknown,
+									now,
+								})
+								Ok(invite) => redeem_now!(invite, format, now)
+							}
+					}
+			}
+	}
+
 ## **THE INVITE REDEEMED, OR REFUSED**: decided (Agents.redeemed); then,
 ## **SPENT FIRST**, before the key is stored, so a crash between leaves a
 ## spent invite and no key, never a key and a live invite.
-redeem_now! : InviteCodec.Record(ConvAccess.ConvId), I64 => Chat.Answer
-redeem_now! = |invite, now| {
+redeem_now! : InviteCodec.Record(ConvAccess.ConvId), [Json, SecretAlone], I64 => Chat.Answer
+redeem_now! = |invite, format, now| {
 	known = Known({ id: invite.id, agent: invite.bound.id })
 	match (
 		Store.load_accounts!({}),
@@ -891,7 +917,10 @@ redeem_now! = |invite, now| {
 												invite: known,
 												verdict: Redeemed(key.id()),
 											})
-											Wire.json(201, key_json(key, Shown(secret)))
+											match format {
+												Json => Wire.json(201, key_json(key, Shown(secret)))
+												SecretAlone => Wire.secret(201, SignInWeb.hex(secret))
+											}
 										}
 									}
 							}
