@@ -47,14 +47,16 @@ onto it.
   different GitHub ids get two accounts with consecutive ids.
 - An id is never given twice, even after its account is deleted.
 
-**Production's data (open, Steve decides):** chat.lynrummy.com already
-has accounts, agents, keys and three conversations under GitHub-based ids.
-Either:
-- **migrate** once, by a Shale script or a load-time step: each existing
-  human gets the next `HumanId`, and every file naming them is rewritten.
-  Keys and agents survive. LC's and CC's keys keep working.
-- **or start over:** wipe the data at step 2's deploy. Everyone signs in
-  again, agents are re-invited, and conversations are lost.
+**Production's data: start over (Steve, 2026-10-31).** No migration code.
+At step 2's deploy:
+1. Back up `/var/lib/roc-chat/data` first (DEPLOY.md's backup).
+2. Clear everything in `data/` **except `data/secrets/`**: the GitHub OAuth
+   client id and secret live there, and so does the signing key.
+   `config.zon` sits outside `data/` and is untouched.
+3. Steve signs up through GitHub again and becomes `human:1`, then
+   re-invites LC and CC as agents, which store their new keys.
+
+Step 2's code may therefore assume an empty store: no old-format reader.
 
 ## Step 3: human DMs
 
