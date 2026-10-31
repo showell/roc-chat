@@ -408,7 +408,11 @@ answer_refused! = |decided|
 ## The name form; with why the last name was refused, a 400: one the
 ## rule cannot show, or one an account holds already (the namespace is
 ## everyone's: Accounts.name_holder).
-name_form : [Fresh, Unshowable, Taken] -> Chat.Answer
+name_form : [
+	Fresh,
+	Unshowable,
+	Taken,
+] -> Chat.Answer
 name_form = |last| {
 	said =
 		match last {

@@ -227,11 +227,26 @@ name_of = |p|
 # One namespace: a name is held whoever holds it, human, agent or bot, in
 # any case and spacing; a near miss is free.
 named : U64, Str -> Principal
-named = |n, name| Principal.Human({ id: Cast.gid(n), login: "h${n.to_str()}", name, role: Member, generation: Cast.gen(1) })
+named = |n, name| Principal.Human({
+	id: Cast.gid(n),
+	login: "h${n.to_str()}",
+	name,
+	role: Member,
+	generation: Cast.gen(1),
+})
 
-expect Accounts.name_holder([named(1, "Debbie Benton")], "debbie  BENTON") == Held(Principal.Id.Human(Cast.gid(1)))
-expect Accounts.name_holder([Cast.owned(Agent, { id: 4, owner: 1 })], "A4") == Held(Principal.Id.Agent(Cast.aid(4)))
-expect Accounts.name_holder([Cast.owned(Bot, { id: 5, owner: 1 })], "b5") == Held(Principal.Id.Bot(Cast.aid(5)))
+expect Accounts.name_holder(
+	[named(1, "Debbie Benton")],
+	"debbie  BENTON",
+) == Held(Principal.Id.Human(Cast.gid(1)))
+expect Accounts.name_holder(
+	[Cast.owned(Agent, { id: 4, owner: 1 })],
+	"A4",
+) == Held(Principal.Id.Agent(Cast.aid(4)))
+expect Accounts.name_holder(
+	[Cast.owned(Bot, { id: 5, owner: 1 })],
+	"b5",
+) == Held(Principal.Id.Bot(Cast.aid(5)))
 expect Accounts.name_holder([named(1, "Debbie Benton")], "Debbie Bento") == Free
 expect Accounts.name_holder([named(1, "Ann")], "\u(0410)nn") == Free
 expect Accounts.name_holder([], "Ann") == Free

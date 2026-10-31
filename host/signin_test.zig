@@ -244,7 +244,7 @@ test "a new human: the callback with a good code asks for a name, the name makes
     try std.testing.expectEqual(303, made.status);
     try std.testing.expectEqualStrings("/", made.header("location").?);
     const line = made.setCookie("session").?;
-    try std.testing.expect(std.mem.endsWith(u8, line, "; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=604800"));
+    try std.testing.expect(std.mem.endsWith(u8, line, "; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=7776000"));
     const session = made.cookie("session").?;
     try std.testing.expectEqual(64, session.len);
 
