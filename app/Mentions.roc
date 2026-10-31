@@ -3,9 +3,18 @@
 ## post (`CC, a question`), by the names the accounts give now. A word ends
 ## where an ASCII letter, digit or `_` cannot go on it, so `@CCX` and
 ## `a@CC.com` name nobody; a name is matched as its bytes are, case and all.
-## Only the participants count: a name no participant goes by is text. The
+## Only the participants count: a name no participant goes by is text.
+## **ONLY WHAT THE POST SAYS ITSELF** (`spoken`): fenced code (``` and
+## ~~~, the chat's `~~~ quote` reply among them) and `>` blockquotes are
+## skipped, so quoting a post that named someone names nobody again. Their
+## grammar is roc-markdown's: a fence opens and closes as MdFence (which the
+## package exposes) says, and a quote is a line of up to three spaces and a
+## `>`, with the lazy lines after it up to a blank one, as MdQuote reads it.
+## roc-markdown has no indented code block (a line indented four spaces is a
+## paragraph's text), so a name there is said, and counts. The
 ## listeners (Shale's cookbook/listen.shale) and the cap on agents answering
 ## agents (Conversations.post!) both read this one answer. Pure.
+import md.MdFence
 import Ascii
 import Bytes
 import Principal
@@ -17,8 +26,10 @@ Mentions := [].{
 
 	## The participants the markdown names, in the order given.
 	of : List(U8), List(Mentions.Named) -> List(Principal.Id)
-	of = |markdown, participants|
-		participants.keep_if(|p| names(markdown, p.name.to_utf8())).map(|p| p.id)
+	of = |markdown, participants| {
+		said = spoken(markdown)
+		participants.keep_if(|p| names(said, p.name.to_utf8())).map(|p| p.id)
+	}
 
 	## **HOW MANY AGENTS ANSWERED AGENTS SINCE A HUMAN LAST SPOKE**: the
 	## hops (`is_hop`) among `posts`, oldest first, after the last one by a
@@ -43,6 +54,57 @@ Mentions := [].{
 	is_hop = |by, mentioned|
 		!is_human(by) and mentioned.any(|m| !is_human(m) and m != by)
 }
+
+## **THE POST'S OWN LINES**: the markdown without its fenced blocks and
+## its blockquotes, each line kept that neither is, joined again.
+spoken : List(U8) -> List(U8)
+spoken = |md| {
+	walked = md.split_on('\n').fold(
+		{ mode: Said, kept: [] },
+		|state, line|
+			match state.mode {
+				Fence(f) =>
+					if MdFence.is_close(line, f) {
+						{ mode: Said, kept: state.kept }
+					} else {
+						state
+					}
+				Quoted =>
+					if Bytes.count_while(line, Ascii.is_whitespace) == line.len() {
+						{ mode: Said, kept: state.kept.append(line.append('\n')) }
+					} else {
+						{ mode: opening(line, Quoted), kept: state.kept }
+					}
+				Said =>
+					match opening(line, Said) {
+						Said => { mode: Said, kept: state.kept.append(line.append('\n')) }
+						other => { mode: other, kept: state.kept }
+					}
+			},
+	)
+	walked.kept.join()
+}
+
+## What a line opens: a fence (MdFence's), a quote (up to three spaces and a
+## `>`), or neither, when it stays in `otherwise`.
+opening : List(U8),
+[
+	Said,
+	Quoted,
+	Fence({ char : U8, count : U64 }),
+] -> [
+	Said,
+	Quoted,
+	Fence({ char : U8, count : U64 }),
+]
+opening = |line, otherwise|
+	match MdFence.open(line) {
+		Ok(f) => Fence({ char: f.char, count: f.count })
+		Err(NotAFence) => {
+			indent = Bytes.count_while(line, |c| c == ' ')
+			if (indent <= 3 and line.get(indent) == Ok('>')) Quoted else otherwise
+		}
+	}
 
 is_human : Principal.Id -> Bool
 is_human = |id|
@@ -107,13 +169,10 @@ cc : Mentions.Named
 cc = { id: Principal.Id.Agent(aid(2)), name: "CC" }
 
 steve : Mentions.Named
-steve = { id: Principal.Id.Human(gid(7)), name: "Steve Howell" }
+steve = { id: Principal.Id.Human(Principal.GitHubId.from_u64(7) ?? crash "steve: a test's GitHub id is not 0"), name: "Steve Howell" }
 
 aid : U64 -> Principal.AgentId
 aid = |n| Principal.AgentId.from_u64(n) ?? crash "aid: not 0"
-
-gid : U64 -> Principal.GitHubId
-gid = |n| Principal.GitHubId.from_u64(n) ?? crash "gid: not 0"
 
 all : List(Mentions.Named)
 all = [
@@ -153,6 +212,20 @@ expect Mentions.hops(
 	all,
 ) == 1
 expect Mentions.hops([post(steve, "@CC"), post(cc, "CC: building")], all) == 0
+# Quoted and fenced text names nobody: the chat's quote-reply, a code
+# fence, a `>` quote and its lazy line; what follows each is said again.
+expect Mentions.of("In MSG_3 you said:\n~~~ quote\n@CC look\n~~~\n\nthanks".to_utf8(), all) == []
+expect Mentions.of("~~~~ quote\n~~~\n@CC inner\n~~~\n~~~~\n@LC now".to_utf8(), all) == [lc.id]
+expect Mentions.of("```\n@CC in code\n```".to_utf8(), all) == []
+expect Mentions.of("> @CC said\nlazy @LC too\n\n@Steve Howell, see?".to_utf8(), all) == [steve.id]
+expect Mentions.of("   > @CC\n".to_utf8(), all) == []
+# An unclosed fence runs to the end, as roc-markdown renders it.
+expect Mentions.of("```\n@CC".to_utf8(), all) == []
+# Four spaces is no code block in roc-markdown, and `x > y` is no quote.
+expect Mentions.of("    @CC indented".to_utf8(), all) == [cc.id]
+expect Mentions.of("x > y, @CC".to_utf8(), all) == [cc.id]
+# The post leads with a name after a quote of another's.
+expect Mentions.of("> earlier\n\nCC, your turn".to_utf8(), all) == [cc.id]
 expect Mentions.is_hop(lc.id, [cc.id])
 expect !Mentions.is_hop(lc.id, [lc.id])
 expect !Mentions.is_hop(lc.id, [steve.id])

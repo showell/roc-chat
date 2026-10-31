@@ -1132,6 +1132,10 @@ fn mentions(w: *World) !void {
     // A display name with a space, named by the agent.
     const back = try send(w.a, w.port(), "POST", path, .{ .key = w.key }, "thanks, @Person 1004!");
     if (back.status != 201 or !has(back.body, "\"mentions\":[\"human:1004\"]")) return error.NotNamedBack;
+    // Quoting a post that named the agent names nobody again: the chat's
+    // quote-reply fence, and a `>` quote, are skipped.
+    const quoted = try request(w.a, w.port(), "POST", path, w.steve, "In MSG_1 you said:\n~~~ quote\n@CC, a mention\n~~~\n\n> @CC again\n\nagreed");
+    if (quoted.status != 201 or !has(quoted.body, "\"mentions\":[]")) return error.NamedByAQuote;
     try l.until("thanks, @Person 1004!");
     if (!has(l.got.items, named) or !has(l.got.items, "\"mentions\":[\"human:1004\"]")) return error.NotOnTheStream;
     const read = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
@@ -1393,7 +1397,7 @@ const steps = [_]Step{
     .{ .name = "Steve gets it a key, by an invite (and C cannot invite for it)", .f = inviteForAgent },
     .{ .name = "the agent, by key alone, starts a conversation with Steve and posts; Steve's stream gets it once", .f = agentStarts },
     .{ .name = "Steve posts, and the agent reads it with its key", .f = agentReads },
-    .{ .name = "each message names the participants its markdown mentions, as words, by their names now", .f = mentions },
+    .{ .name = "each message names the participants its markdown mentions, as words, by their names now, and not in what it quotes", .f = mentions },
     .{ .name = "two agents answering each other are refused a fifth post (a 429, audited) until a human speaks", .f = agentHops },
     .{ .name = "the agent's key cannot mint a key, nor make an agent", .f = keyCannotMint },
     .{ .name = "Steve revokes the key, and its next use is a 401", .f = revoke },
