@@ -719,8 +719,18 @@ check_hops! = |
 				tally,
 				Conversations.page_of(tally.messages, Newest),
 			)?
-			posts = newest.map(|m| { at: m.at, by: m.by, body: m.body })
-			asked = { poster: by, named, since: now - Limits.agent_hops_window_s }
+			posts = newest.map(
+				|m| {
+					at: m.at,
+					by: m.by,
+					body: m.body,
+				},
+			)
+			asked = {
+				poster: by,
+				named,
+				since: now - Limits.agent_hops_window_s,
+			}
 			Ok(if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window) Full else Room)
 		}
 	}

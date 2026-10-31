@@ -32,11 +32,19 @@ Mentions := [].{
 	}
 
 	## A post as the hop count reads it: when (`at`, seconds), who, what.
-	Post : { at : I64, by : Principal.Id, body : List(U8) }
+	Post : {
+		at : I64,
+		by : Principal.Id,
+		body : List(U8),
+	}
 
 	## Whose hops are counted, by the participants' names, and the window's
 	## opening: a post counts when later than `since`.
-	HopWindow : { poster : Principal.Id, named : List(Mentions.Named), since : I64 }
+	HopWindow : {
+		poster : Principal.Id,
+		named : List(Mentions.Named),
+		since : I64,
+	}
 
 	## **HOW MANY TIMES ONE AGENT ANSWERED AGENTS SINCE A HUMAN LAST SPOKE,
 	## IN THE WINDOW**: the hops (`is_hop`) by `poster` among `posts`, oldest
@@ -206,36 +214,64 @@ expect Mentions.of("thanks @Steve Howell!".to_utf8(), all) == [steve.id]
 expect Mentions.of("@Bea hi".to_utf8(), all) == []
 # A later `@CC` counts when the first goes on.
 expect Mentions.of("@CCX then @CC".to_utf8(), all) == [cc.id]
-post : Mentions.Named, I64, Str -> Mentions.Post
-post = |who, at, text| { at, by: who.id, body: text.to_utf8() }
+
+## A post by LC, CC or Steve at second `at`.
+from_lc : I64, Str -> Mentions.Post
+from_lc = |at, text| {
+	at,
+	by: lc.id,
+	body: text.to_utf8(),
+}
+
+from_cc : I64, Str -> Mentions.Post
+from_cc = |at, text| {
+	at,
+	by: cc.id,
+	body: text.to_utf8(),
+}
+
+from_steve : I64, Str -> Mentions.Post
+from_steve = |at, text| {
+	at,
+	by: steve.id,
+	body: text.to_utf8(),
+}
 
 ## LC's hops, the window opening after second 1000.
 lc_hops : List(Mentions.Post) -> U64
-lc_hops = |posts| Mentions.own_hops(posts, { poster: lc.id, named: all, since: 1000 })
+lc_hops = |posts|
+	Mentions.own_hops(
+		posts,
+		{
+			poster: lc.id,
+			named: all,
+			since: 1000,
+		},
+	)
 
 expect lc_hops([]) == 0
 # Under the cap and at it: each of LC's posts naming CC counts.
-expect lc_hops(List.repeat(post(lc, 2000, "@CC again"), 14)) == 14
-expect lc_hops(List.repeat(post(lc, 2000, "@CC again"), 15)) == 15
+expect lc_hops(List.repeat(from_lc(2000, "@CC again"), 14)) == 14
+expect lc_hops(List.repeat(from_lc(2000, "@CC again"), 15)) == 15
 # A human's post resets the count; a status names no agent and is no hop.
 expect lc_hops([
-	post(lc, 2000, "@CC one"),
-	post(steve, 2001, "hi"),
-	post(lc, 2002, "@CC two"),
-	post(lc, 2003, "status: building"),
+	from_lc(2000, "@CC one"),
+	from_steve(2001, "hi"),
+	from_lc(2002, "@CC two"),
+	from_lc(2003, "status: building"),
 ]) == 1
-expect lc_hops([post(steve, 2000, "@CC"), post(lc, 2001, "@CC building")]) == 1
+expect lc_hops([from_steve(2000, "@CC"), from_lc(2001, "@CC building")]) == 1
 # Posts older than the window do not count, nor one at its very edge.
 expect lc_hops([
-	post(lc, 999, "@CC old"),
-	post(lc, 1000, "@CC edge"),
-	post(lc, 1001, "@CC new"),
+	from_lc(999, "@CC old"),
+	from_lc(1000, "@CC edge"),
+	from_lc(1001, "@CC new"),
 ]) == 1
 # Another agent's hops are its own, not LC's.
 expect lc_hops([
-	post(cc, 2000, "@LC one"),
-	post(lc, 2001, "@CC two"),
-	post(cc, 2002, "@LC three"),
+	from_cc(2000, "@LC one"),
+	from_lc(2001, "@CC two"),
+	from_cc(2002, "@LC three"),
 ]) == 1
 # Quoted and fenced text names nobody: the chat's quote-reply, a code
 # fence, a `>` quote and its lazy line; what follows each is said again.
