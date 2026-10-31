@@ -21,7 +21,7 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - fifty-three planted faults, each red at its own step of the end to
+--   - fifty-four planted faults, each red at its own step of the end to
 --     end: a forged session cookie admitted, a third user's post let
 --     through, a third user's read let through, the subscribe moved out of
 --     the turn, a message's newline written raw into its transcript line,
@@ -48,7 +48,8 @@
 --     human's page showing Gil's agent, a key given the page, and the start form
 --     offering none of the viewer's agents; and the channels': a human who
 --     is no admin let change them, a key let change them, and a name taken
---     again;
+--     again; and the people list the live script draws a header from
+--     without the login beside each name;
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
 --     tools/verify_hunts.shale, a run of its own), each count
 --     held at zero: boundaries' `fixed`, errors' `error_alias` and
@@ -63,7 +64,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 2177
 const zig_floor = 203
-const e2e_steps = 71
+const e2e_steps = 72
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -356,6 +357,10 @@ plant("a quote-reply's fence read as said (its @ names counted again)",
   "app/Mentions.roc", "Ok(f) => Fence({ char: f.char, count: f.count })", "Ok(_) => otherwise", 16)
 plant("agents answering agents uncapped (the cap never reached)",
   "app/Conversations.roc", "if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window) Full else Room", "if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window * 1000) Full else Room", 17)
+-- (The server's header, message_html, is held by its own expect in
+-- app/Pages.roc; a run starts at most 64 programs, so one plant here.)
+plant("the people list without the login beside each name (the live script's renderer)",
+  "app/Pages.roc", "Html.text(Conversations.header_of(accounts, poster)),", "Html.text(Conversations.name_of(accounts, poster)),", 72)
 
 -- ── the style hunts, in a run of their own ──
 -- A run starts at most 64 programs, and the plants above take most of
@@ -378,11 +383,7 @@ if hunt_lines == 0 or (hr.code ~= 0 and hunt_failed == 0) then
   say(false, "tools/verify_hunts.shale (exit " .. hr.code .. ", " .. hunt_lines .. " checks): " .. tail_of(hr.out))
 end
 
--- ── the formatters ──
-local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
-say(zf.code == 0, "zig fmt --check host build.zig" .. (zf.code == 0 and "" or (": " .. trim(zf.out))))
-local rf = run({roc, "fmt", "--check", "app", "platform"}, {cwd = ".", timeout_ms = 60000, tail = 20})
-say(rf.code == 0, "roc fmt --check app platform" .. (rf.code == 0 and "" or (": " .. trim(rf.out))))
+-- (The formatters run in tools/verify_hunts.shale, above.)
 
 remove_tree(scratch)
 if board.failed == 0 then

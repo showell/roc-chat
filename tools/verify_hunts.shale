@@ -1,5 +1,5 @@
--- **THE STYLE HUNTS, HELD AT ZERO**: verify's hunts, in a run of their
--- own, since a run starts at most 64 programs and verify's planted faults
+-- **THE STYLE HUNTS, HELD AT ZERO, AND THE FORMATTERS**: verify's hunts
+-- and its two `fmt --check`s, in a run of their own, since a run starts at most 64 programs and verify's planted faults
 -- take most of its. tools/verify.shale runs it, from the repository's
 -- root, with the copy of the tree its plants use:
 --
@@ -102,5 +102,14 @@ hunt_plant("an effect named as a state, and a type named only by container words
 hunt_plant("three items on one line", "app/Wire.roc",
   "\nplanted_stack : List(U64)\nplanted_stack = [1, 2, 3]\n",
   "stack", {"([0-9]+) to stack"})
+
+-- ── the formatters ──
+-- Here, not in verify's own run, which its planted faults fill to its 64
+-- programs.
+const roc = real("tools:roc-" .. trim(read("roc-version")) .. "/roc")
+local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
+say(zf.code == 0, "zig fmt --check host build.zig" .. (zf.code == 0 and "" or (": " .. trim(zf.out))))
+local rf = run({roc, "fmt", "--check", "app", "platform"}, {cwd = ".", timeout_ms = 60000, tail = 20})
+say(rf.code == 0, "roc fmt --check app platform" .. (rf.code == 0 and "" or (": " .. trim(rf.out))))
 
 if board.failed > 0 then fail("verify_hunts: " .. board.failed .. " failed") end
