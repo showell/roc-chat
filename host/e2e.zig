@@ -1765,6 +1765,115 @@ fn agentRenamed(w: *World) !void {
     if (count(log, "audit-rename v1 ") != 5) return error.AuditedOtherwise;
 }
 
+/// The `id:` of the event whose data holds `needle`, in what a stream
+/// said (the id line comes before the data, Sse.frame's order).
+fn eventId(got: []const u8, needle: []const u8) ![]const u8 {
+    const at = std.mem.indexOf(u8, got, needle) orelse return error.NoSuchEvent;
+    const line = std.mem.lastIndexOf(u8, got[0..at], "\nid: ") orelse return error.NoEventId;
+    const from = line + "\nid: ".len;
+    const to = std.mem.indexOfScalarPos(u8, got, from, '\n') orelse return error.NoEventId;
+    return got[from..to];
+}
+
+/// An agent of `owner`'s own, named `name`, and its key, by an invite;
+/// `form` is the invite's other fields (a scope), or empty.
+fn ownAgent(w: *World, owner: []const u8, name: []const u8, form: []const u8) !struct { id: []const u8, key: []const u8, key_id: []const u8 } {
+    const made = try request(w.a, w.port(), "POST", "/agents", owner, try std.fmt.allocPrint(w.a, "name={s}", .{name}));
+    if (made.status != 201) return error.NotMade;
+    const id = try field(made.body, "id");
+    const inv = try request(w.a, w.port(), "POST", "/invites", owner, try std.fmt.allocPrint(w.a, "as={s}{s}", .{ id, form }));
+    if (inv.status != 201) return error.NotInvited;
+    const redeemed = try redeem(w, try field(inv.body, "code"));
+    if (redeemed.status != 201) return error.NotRedeemed;
+    return .{ .id = id, .key = try field(redeemed.body, "secret"), .key_id = try field(redeemed.body, "id") };
+}
+
+/// **ONE STREAM PER AGENT** (`GET /stream`, AgentStream): a post in each
+/// of two conversations the agent is in arrives on its one stream, each
+/// naming its conversation; one it is not in never does. Closed and
+/// resumed with the last event's id, it is sent what came meanwhile in
+/// both, and nothing it had. A session, a human's key, and a key that
+/// reads only some conversations are refused; signed out, a 401.
+fn agentStream(w: *World) !void {
+    const owner = try signUp(w.a, w.port(), 1023);
+    const pal = try ownAgent(w, owner, "Pal+1023", "");
+    const dm = try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with={s}", .{pal.id})));
+    const group = try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with={s}%2Chuman%3A{s}", .{ pal.id, try hid(w.a, 1001) })));
+    const apart = try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1001)})));
+    const in_dm = try std.fmt.allocPrint(w.a, "\"conversation\":{s},\"id\":", .{dm});
+    const in_group = try std.fmt.allocPrint(w.a, "\"conversation\":{s},\"id\":", .{group});
+
+    const l = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, "");
+    // Live only, with no Last-Event-ID: nothing before it.
+    for ([_]struct { conv: []const u8, text: []const u8 }{
+        .{ .conv = dm, .text = "dm one" },
+        .{ .conv = apart, .text = "apart one" },
+        .{ .conv = group, .text = "group one" },
+        .{ .conv = dm, .text = "dm two" },
+    }) |p| {
+        if ((try request(w.a, w.port(), "POST", try agentPath(w, p.conv, "/messages"), owner, p.text)).status != 201) return error.NotPosted;
+    }
+    try l.until("\"markdown\":\"dm two\"");
+    if (!has(l.got.items, try std.fmt.allocPrint(w.a, "{s}1,", .{in_dm})) or !has(l.got.items, try std.fmt.allocPrint(w.a, "{s}2,", .{in_dm}))) return error.DmNotNamed;
+    if (!has(l.got.items, try std.fmt.allocPrint(w.a, "{s}1,", .{in_group}))) return error.GroupNotNamed;
+    if (has(l.got.items, "apart one")) return error.NotItsConversation;
+    if (count(l.got.items, "event: message\n") != 3) return error.NotEachOnce;
+    const last = try eventId(l.got.items, "\"markdown\":\"dm two\"");
+    if (!std.mem.endsWith(u8, last, try std.fmt.allocPrint(w.a, ".{s}.2", .{dm}))) return error.NotAPlace;
+    l.close();
+
+    // Away: two more, and one it is not in; resumed, both, and nothing twice.
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, group, "/messages"), owner, "group two")).status != 201) return error.NotPosted;
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, apart, "/messages"), owner, "apart two")).status != 201) return error.NotPosted;
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, dm, "/messages"), owner, "dm three")).status != 201) return error.NotPosted;
+    const back = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, last);
+    defer back.close();
+    try back.until("\"markdown\":\"dm three\"");
+    try back.until("\"markdown\":\"group two\"");
+    if (has(back.got.items, "\"markdown\":\"dm two\"") or has(back.got.items, "\"markdown\":\"dm one\"")) return error.SentTwice;
+    if (has(back.got.items, "apart")) return error.NotItsConversation;
+
+    // Refused: a session, a human's own key, a key that reads one
+    // conversation only; signed out, a 401.
+    if ((try get(w.a, w.port(), "/stream", owner)).status != 403) return error.SessionStreamed;
+    const human_key = try request(w.a, w.port(), "POST", "/keys", owner, "");
+    if ((try send(w.a, w.port(), "GET", "/stream", .{ .key = try field(human_key.body, "secret") }, "")).status != 403) return error.HumanKeyStreamed;
+    const narrow = try ownAgent(w, owner, "Scoped+1023", try std.fmt.allocPrint(w.a, "&read=only%3A{s}", .{dm}));
+    if ((try send(w.a, w.port(), "GET", "/stream", .{ .key = narrow.key }, "")).status != 403) return error.ScopedKeyStreamed;
+    if ((try get(w.a, w.port(), "/stream", "")).status != 401) return error.NobodyStreamed;
+}
+
+/// **THE ONE STREAM IS ONE OF THE AGENT'S STREAMS**, under the host's cap of
+/// eight a holder: the agent holds it and eight of a conversation's, and
+/// its oldest, the one stream, is ended. And it ends at its lifetime, so a
+/// key revoked while it is open stops reaching it; resumed, a 401.
+fn agentStreamHeld(w: *World) !void {
+    const owner = try signUp(w.a, w.port(), 1024);
+    const pal = try ownAgent(w, owner, "Pal+1024", "");
+    const dm = try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with={s}", .{pal.id})));
+    const one = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, "");
+    defer one.close();
+    var held: [streams_per_holder]*Listener = undefined;
+    var opened: usize = 0;
+    defer for (held[0..opened]) |h| h.close();
+    while (opened < held.len) : (opened += 1) held[opened] = try Listener.openAs(w.a, w.port(), try agentPath(w, dm, "/stream"), .{ .key = pal.key }, "");
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, dm, "/messages"), owner, "to the held")).status != 201) return error.NotPosted;
+    try held[streams_per_holder - 1].until("to the held");
+    if (has(one.got.items, "to the held") or !one.ends()) return error.OneStreamKept;
+
+    w.rig.server.stream_lifetime_ms_for_test.store(lifetime_ms_for_test, .release);
+    defer w.rig.server.stream_lifetime_ms_for_test.store(0, .release);
+    for (held[0..opened]) |h| h.close();
+    opened = 0;
+    const t0 = Io.Clock.now(.awake, io);
+    const live = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, "");
+    defer live.close();
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/keys/{s}/revoke", .{pal.key_id}), owner, "")).status != 200) return error.NotRevoked;
+    if (!live.ends()) return error.StreamOutlived;
+    if (t0.untilNow(io, .awake).toMilliseconds() < lifetime_ms_for_test) return error.EndedEarly;
+    if ((try send(w.a, w.port(), "GET", "/stream", .{ .key = pal.key }, "")).status != 401) return error.RevokedKeyStreamed;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -1843,6 +1952,8 @@ const steps = [_]Step{
     .{ .name = "a human signing up as a name another holds, in any case and spacing, is refused; a near miss is signed up", .f = humanNameTaken },
     .{ .name = "an agent named as a human, or as another agent, in any case, is a 409; a near miss is made", .f = agentNameTaken },
     .{ .name = "a human's post in a DM with one agent names the agent, a quote too; the agent's own names nobody; with a second human or agent, nobody", .f = dmNamesTheAgent },
+    .{ .name = "one stream per agent: each of its conversations' posts, naming the conversation, never another's; resumed with Last-Event-ID, what came meanwhile and nothing twice; a session, a human's key and a scoped key refused", .f = agentStream },
+    .{ .name = "the one stream is one of the agent's streams under the cap, and ends at its lifetime once its key is revoked", .f = agentStreamHeld },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
 };
 

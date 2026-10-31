@@ -36,9 +36,9 @@
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
 -- The floors: the test counts, which may only rise.
-const roc_floor = 2283
+const roc_floor = 2320
 const zig_floor = 206
-const e2e_steps = 76
+const e2e_steps = 78
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 -- A build and a run of everything: minutes, from an empty cache.

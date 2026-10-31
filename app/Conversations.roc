@@ -15,6 +15,8 @@
 ##     POST /conversations/<id>/messages    post: the body is the markdown, as is
 ##     GET  /conversations/<id>/stream      its messages, live (SSE), after
 ##                                          `Last-Event-ID` when the browser resumes
+##     GET  /stream                         an agent's every conversation, live
+##                                          (SSE, AgentStream), its key's
 ##
 ## A message, in the transcript and on the stream alike, is one JSON object:
 ## `{"id":3,"at":1761600000,"by":"agent:7","kind":"agent","owner":"human:2","markdown":"…","mentions":["human:2"],"html":"…"}`,
@@ -29,6 +31,7 @@ import pf.Host
 import pf.Sse
 import md.Md
 import Access
+import AgentStream
 import AccountCodec
 import Bytes
 import Cast
@@ -53,6 +56,7 @@ Conversations := [].{
 		Read(ConvAccess.ConvId),
 		Post(ConvAccess.ConvId),
 		Stream(ConvAccess.ConvId),
+		AgentWide,
 	]
 
 	## A conversation's id, from its path's digits (one, no leading zero):
@@ -74,6 +78,8 @@ Conversations := [].{
 	route = |path|
 		if path == root {
 			Ok(Start)
+		} else if path == agent_root {
+			Ok(AgentWide)
 		} else {
 			match Bytes.strip_prefix(path, List.append(root, '/')) {
 				Err(NoMatch) => Err(NotAConversation)
@@ -234,6 +240,7 @@ Conversations := [].{
 			Read(id) => if (req.method == Get) read!(id) else Chat.not_allowed(Get)
 			Post(id) => if (req.method == Post) post!(id) else Chat.not_allowed(Post)
 			Stream(id) => if (req.method == Get) stream!(id) else Chat.not_allowed(Get)
+			AgentWide => if (req.method == Get) stream_all!({}) else Chat.not_allowed(Get)
 		}
 }
 
@@ -243,6 +250,10 @@ post_most = 32 * 1024
 
 root : List(U8)
 root = Str.to_utf8("/conversations")
+
+## One stream per agent (AgentStream).
+agent_root : List(U8)
+agent_root = Str.to_utf8("/stream")
 
 ## A conversation's id as a path spells it: digits, one spelling, not 0.
 ## **START A CONVERSATION**: the viewer, and each id the form's `with`
@@ -677,9 +688,26 @@ append_post! = |
 		}) {
 			Failed => Chat.failed
 			Appended => {
-				match frame(message, who) {
-					Ok(f) => Host.publish!(bus_key(id), f)
-					Err(LineBreak) => crash "Conversations.append_post!: a message's JSON holds no line break"
+				match (
+					frame(message, who),
+					agent_frame({
+						conv: id,
+						message,
+						who,
+					}),
+				) {
+					(Ok(f), Ok(g)) => {
+						Host.publish!(bus_key(id), f)
+						# Each agent's or bot's one stream (AgentStream) gets it too.
+						who.named.for_each!(
+							|p|
+								match p.id {
+									Human(_) => {}
+									Agent(_) | Bot(_) => Host.publish!(agent_bus_key(p.id), g)
+								},
+						)
+					}
+					_ => crash "Conversations.append_post!: a message's JSON holds no line break"
 				}
 				Wire.json(201, message_json(message, who))
 			}
@@ -824,6 +852,192 @@ stream! = |id|
 			}
 	}
 
+## **/stream, ONE STREAM PER AGENT** (AgentStream): for an agent's or a
+## bot's key that may read everywhere, every conversation it is in, live,
+## on its own bus key, each event its message with `conversation`; after
+## `Last-Event-ID`, the backlog of each conversation's newest page that
+## AgentStream.is_after sends, in order, a `gap` naming any conversation
+## further behind. A key read-scoped to listed conversations streams them
+## one by one (its scope stays the host's to check per conversation): a
+## 403. So is a session, or a human's key: the one stream is an agent's.
+## Signed out, a 401. **ITS HOLDER IS THE AGENT**, so it counts as one of
+## the agent's streams under the host's cap.
+stream_all! : {} => Chat.Answer
+stream_all! = |{}|
+	match Credentials.load_viewer!(ListConversations) {
+		Err(answer) => answer
+		Ok(asked) =>
+			match (asked.viewer.who(), asked.key) {
+				(SignedOut, _) => not_signed_in
+				(Session(_), _) | (_, NoKey) => Wire.refused(
+					403,
+					"the one stream is an agent's, by its key; a browser streams a conversation",
+				)
+				(Key(b), Key(k)) =>
+					match b.id {
+						Human(_) => Wire.refused(
+							403,
+							"the one stream is an agent's or a bot's; a human's key streams a conversation",
+						)
+						Agent(_) | Bot(_) =>
+							if k.record().scope.read != On(Everywhere) {
+								Wire.refused(
+									403,
+									"a key that reads only some conversations streams them one by one",
+								)
+							} else {
+								match Conversations.load_mine!(asked.viewer, asked.accounts) {
+									Err(Failed) => Chat.failed
+									Ok(all) => {
+										theirs = all.keep_if(|c| c.participants().any(|p| p.id == b.id))
+										cursor = AgentStream.cursor(Host.read_header!(Str.to_utf8("last-event-id")))
+										match agent_backlog!(
+											theirs,
+											{ cursor, accounts: asked.accounts },
+										) {
+											Err(Failed) => Chat.failed
+											Ok(backlog) =>
+												Chat.stream({
+													key: agent_bus_key(b.id),
+													backlog,
+													holder: holder_of(asked.viewer),
+												})
+										}
+									}
+								}
+							}
+					}
+			}
+	}
+
+## **WHAT A RESUMED AGENT STREAM SENDS FIRST**: nothing when it is live
+## only; else, of each conversation, its newest page's messages after the
+## cursor (AgentStream.is_after), a `gap` first for one further behind,
+## all in AgentStream's order.
+agent_backlog! : List(ConvAccess.Conv),
+{
+	cursor : [After(AgentStream.Place), Live],
+	accounts : List(Principal),
+} => Try(List(U8), [Failed])
+agent_backlog! = |convs, { cursor, accounts }|
+	match cursor {
+		Live => Ok([])
+		After(after) => {
+			pieces = convs.map_try!(
+				|conv| {
+					id = conv.id()
+					tally = Store.load_tally!(Store.conversation_files(id))?
+					newest = Conversations.page_of(tally.messages, Newest)
+					messages = Store.load_span!(
+						Store.conversation_files(id),
+						tally,
+						newest,
+					)?
+					who = { named: named_of(conv, accounts), accounts }
+					place = |m| {
+						at: m.at,
+						conv: id.to_u64(),
+						id: m.id,
+					}
+					gap =
+						match messages.first() {
+							Err(_) => NoGap
+							Ok(m) => AgentStream.gap_of(
+								after,
+								{
+									conv: id.to_u64(),
+									first: m.id,
+									first_at: m.at,
+								},
+							)
+						}
+					gaps =
+						match gap {
+							Gap(before) => [
+								{
+									place: {
+										at: after.at,
+										conv: id.to_u64(),
+										id: 0,
+									},
+									bytes: agent_gap_frame(id, before),
+								},
+							]
+							NoGap => []
+						}
+					sent = messages.keep_if(|m| AgentStream.is_after(after, place(m))).keep_oks(
+						|m| agent_frame({
+							conv: id,
+							message: m,
+							who,
+						}).map_ok(|bytes| { place: place(m), bytes }),
+					)
+					Ok(gaps.concat(sent))
+				},
+			)?
+			Ok(
+				pieces.join().sort_with(
+					|x, y| AgentStream.before(
+						x.place,
+						y.place,
+					),
+				).join_map(|f| f.bytes),
+			)
+		}
+	}
+
+## The bus key an agent's or a bot's one stream is held on.
+agent_bus_key : Principal.Id -> List(U8)
+agent_bus_key = |id| Str.to_utf8("agent/${AccountCodec.id_text(id)}")
+
+## A message as the agent stream's event: named `message`, its data the
+## message with its `conversation` first, its id its place (AgentStream).
+agent_frame : {
+	conv : ConvAccess.ConvId,
+	message : MessageCodec.Fields,
+	who : Who,
+} -> Try(List(U8), [LineBreak])
+agent_frame = |
+	{
+		conv,
+		message: m,
+		who,
+	},
+| Sse.frame({
+	name: Str.to_utf8("message"),
+	data: JsonOut.object([
+		(
+			"conversation",
+			JsonOut.number(conv.to_u64()),
+		),
+	]).bytes().drop_last(1).concat(
+		",".to_utf8().concat(message_json(m, who).bytes().drop_first(1)),
+	),
+	id: Str.to_utf8(
+		AgentStream.id_text({
+			at: m.at,
+			conv: conv.to_u64(),
+			id: m.id,
+		}),
+	),
+})
+
+## The agent stream's `gap` event: conversation `conv`'s messages before
+## `before` were not sent.
+agent_gap_frame : ConvAccess.ConvId, U64 -> List(U8)
+agent_gap_frame = |conv, before|
+	match Sse.frame({
+		name: Str.to_utf8("gap"),
+		data: JsonOut.object([
+			("conversation", JsonOut.number(conv.to_u64())),
+			("before", JsonOut.number(before)),
+		]).bytes(),
+		id: [],
+	}) {
+		Ok(f) => f
+		Err(LineBreak) => crash "Conversations.agent_gap_frame: a gap's JSON holds no line break"
+	}
+
 ## The `gap` event: the messages before `before` were not sent.
 gap_frame : U64 -> List(U8)
 gap_frame = |before|
@@ -890,7 +1104,10 @@ message_json = |m, who| {
 			NoLogin => []
 		},
 	)
-	mentioned = Mentions.of_post(m.body, { by: m.by, participants: who.named }).map(|id| JsonOut.string(AccountCodec.id_text(id)))
+	mentioned = Mentions.of_post(
+		m.body,
+		{ by: m.by, participants: who.named },
+	).map(|id| JsonOut.string(AccountCodec.id_text(id)))
 	JsonOut.object(
 		author.concat([
 			("markdown", JsonOut.text(m.body)),
