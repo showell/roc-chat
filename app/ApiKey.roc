@@ -116,9 +116,9 @@ ApiKey := [].{
 		## The scope reaches it, but the principal itself may not.
 		BeyondPrincipal,
 
-		## An agent's post to a conversation already holding
-		## Limits.agent_hops_most agents answering agents since a human
-		## last spoke (Mentions.hops).
+		## An agent's post to a conversation where it has already answered
+		## agents Limits.agent_hops_per_window times in the window since a
+		## human last spoke (Mentions.own_hops).
 		AgentHops,
 	]
 

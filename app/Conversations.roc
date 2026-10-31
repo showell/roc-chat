@@ -527,7 +527,7 @@ before_of = |values|
 ## (ConvAccess.can_post, asked first and alone: a 403 to one who may see it,
 ## a 404 to one who may not), when it is not UTF-8 text, or when it is
 ## hostile (roc-markdown's budget), when the poster is an agent or a bot
-## and agents have answered agents too often since a human spoke
+## and has answered agents too often this hour since a human spoke
 ## (check_hops!, a 429), or when the transcript is full (append_post!, a
 ## 413). Then appended and published (append_post!), its id from its
 ## tally (Store.load_tally!, never a read of the transcript).
@@ -579,6 +579,7 @@ post! = |id| {
 									tally,
 									by,
 									named,
+									now,
 								}) {
 									Err(Failed) => Chat.failed
 									Ok(Full) => refuse_hops!({
@@ -646,17 +647,21 @@ append_post! = |
 		}
 	}
 
-## **WHETHER AN AGENT MAY POST NOW** (Limits.agent_hops_most): a human
-## always may; an agent or a bot not once the newest page holds that many
-## agents answering agents since a human last spoke (Mentions.hops). The
-## newest page is read from its first message's offset (Store.load_span!),
-## never the transcript whole: a run of hops longer than a page still
-## counts past the cap.
+## **WHETHER AN AGENT MAY POST NOW** (Limits.agent_hops_per_window): a
+## human always may; an agent or a bot not once the newest page holds that
+## many of its own posts answering agents, within the window
+## (Limits.agent_hops_window_s) and since a human last spoke
+## (Mentions.own_hops). The newest page is read from its first message's
+## offset (Store.load_span!), never the transcript whole. **A PAGE MAY NOT
+## HOLD THE WHOLE WINDOW**: past a page's messages since a human spoke in
+## the hour, the poster's older ones are not counted, so it is held to the
+## cap within the newest page alone.
 check_hops! : {
 	id : ConvAccess.ConvId,
 	tally : Store.Tally,
 	by : Principal.Id,
 	named : List(Mentions.Named),
+	now : I64,
 } => Try([Room, Full], [Failed])
 check_hops! = |
 	{
@@ -664,6 +669,7 @@ check_hops! = |
 		tally,
 		by,
 		named,
+		now,
 	},
 |
 	match by {
@@ -674,13 +680,15 @@ check_hops! = |
 				tally,
 				Conversations.page_of(tally.messages, Newest),
 			)?
-			posts = newest.map(|m| { by: m.by, body: m.body })
-			Ok(if (Mentions.hops(posts, named) >= Limits.agent_hops_most) Full else Room)
+			posts = newest.map(|m| { at: m.at, by: m.by, body: m.body })
+			asked = { poster: by, named, since: now - Limits.agent_hops_window_s }
+			Ok(if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window) Full else Room)
 		}
 	}
 
 ## **AN AGENT'S POST PAST THE CAP**: a 429 naming it, nothing stored, and
-## the key that posted audited (`agent-hops`). Only a key posts as an
+## the key that posted audited (`agent-hops`, a hop being one agent's post
+## naming another). Only a key posts as an
 ## agent, so a session never meets it.
 refuse_hops! : {
 	key : [NoKey, Key(ConvKey.Key)],
@@ -707,7 +715,7 @@ refuse_hops! = |
 	}
 	Wire.refused(
 		429,
-		"agents have answered agents ${Limits.agent_hops_most.to_str()} times here since a human last spoke; a human's post lets them go on",
+		"an agent answers agents at most ${Limits.agent_hops_per_window.to_str()} times in ${(Limits.agent_hops_window_s // 60).to_str()} minutes here, counting its own posts since a human last spoke; a human's post resets it",
 	)
 }
 

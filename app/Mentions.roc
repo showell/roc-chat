@@ -31,20 +31,30 @@ Mentions := [].{
 		participants.keep_if(|p| names(said, p.name.to_utf8())).map(|p| p.id)
 	}
 
-	## **HOW MANY AGENTS ANSWERED AGENTS SINCE A HUMAN LAST SPOKE**: the
-	## hops (`is_hop`) among `posts`, oldest first, after the last one by a
-	## human. A post by an agent that names no other agent (a status, an
-	## answer to a human) is no hop and does not end the count.
-	hops : List({ by : Principal.Id, body : List(U8) }), List(Mentions.Named) -> U64
-	hops = |posts, named|
+	## A post as the hop count reads it: when (`at`, seconds), who, what.
+	Post : { at : I64, by : Principal.Id, body : List(U8) }
+
+	## Whose hops are counted, by the participants' names, and the window's
+	## opening: a post counts when later than `since`.
+	HopWindow : { poster : Principal.Id, named : List(Mentions.Named), since : I64 }
+
+	## **HOW MANY TIMES ONE AGENT ANSWERED AGENTS SINCE A HUMAN LAST SPOKE,
+	## IN THE WINDOW**: the hops (`is_hop`) by `poster` among `posts`, oldest
+	## first, after the last one by a human and later than `since` (a post
+	## at `since` or before is out of the window). Another agent's hops never
+	## count toward this one's. A post by an agent that names no other agent
+	## (a status, an answer to a human) is no hop and does not end the count.
+	own_hops : List(Mentions.Post), Mentions.HopWindow -> U64
+	own_hops = |posts, asked|
 		match posts.last() {
 			Err(_) => 0
 			Ok(p) =>
 				if is_human(p.by) {
 					0
 				} else {
-					hop = if (Mentions.is_hop(p.by, Mentions.of(p.body, named))) 1 else 0
-					hop + Mentions.hops(posts.drop_last(1), named)
+					mine = p.by == asked.poster and p.at > asked.since
+					hop = if (mine and Mentions.is_hop(p.by, Mentions.of(p.body, asked.named))) 1 else 0
+					hop + Mentions.own_hops(posts.drop_last(1), asked)
 				}
 		}
 
@@ -196,22 +206,37 @@ expect Mentions.of("thanks @Steve Howell!".to_utf8(), all) == [steve.id]
 expect Mentions.of("@Bea hi".to_utf8(), all) == []
 # A later `@CC` counts when the first goes on.
 expect Mentions.of("@CCX then @CC".to_utf8(), all) == [cc.id]
-post : Mentions.Named, Str -> { by : Principal.Id, body : List(U8) }
-post = |who, text| { by: who.id, body: text.to_utf8() }
+post : Mentions.Named, I64, Str -> Mentions.Post
+post = |who, at, text| { at, by: who.id, body: text.to_utf8() }
 
-expect Mentions.hops([], all) == 0
-expect Mentions.hops([post(lc, "@CC one"), post(cc, "@LC two")], all) == 2
-# A human's post ends the count; a status names no agent and is no hop.
-expect Mentions.hops(
-	[
-		post(lc, "@CC one"),
-		post(steve, "hi"),
-		post(cc, "@LC two"),
-		post(cc, "status: building"),
-	],
-	all,
-) == 1
-expect Mentions.hops([post(steve, "@CC"), post(cc, "CC: building")], all) == 0
+## LC's hops, the window opening after second 1000.
+lc_hops : List(Mentions.Post) -> U64
+lc_hops = |posts| Mentions.own_hops(posts, { poster: lc.id, named: all, since: 1000 })
+
+expect lc_hops([]) == 0
+# Under the cap and at it: each of LC's posts naming CC counts.
+expect lc_hops(List.repeat(post(lc, 2000, "@CC again"), 14)) == 14
+expect lc_hops(List.repeat(post(lc, 2000, "@CC again"), 15)) == 15
+# A human's post resets the count; a status names no agent and is no hop.
+expect lc_hops([
+	post(lc, 2000, "@CC one"),
+	post(steve, 2001, "hi"),
+	post(lc, 2002, "@CC two"),
+	post(lc, 2003, "status: building"),
+]) == 1
+expect lc_hops([post(steve, 2000, "@CC"), post(lc, 2001, "@CC building")]) == 1
+# Posts older than the window do not count, nor one at its very edge.
+expect lc_hops([
+	post(lc, 999, "@CC old"),
+	post(lc, 1000, "@CC edge"),
+	post(lc, 1001, "@CC new"),
+]) == 1
+# Another agent's hops are its own, not LC's.
+expect lc_hops([
+	post(cc, 2000, "@LC one"),
+	post(lc, 2001, "@CC two"),
+	post(cc, 2002, "@LC three"),
+]) == 1
 # Quoted and fenced text names nobody: the chat's quote-reply, a code
 # fence, a `>` quote and its lazy line; what follows each is said again.
 expect Mentions.of("In MSG_3 you said:\n~~~ quote\n@CC look\n~~~\n\nthanks".to_utf8(), all) == []

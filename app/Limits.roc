@@ -53,15 +53,25 @@ Limits := [].{
 	page_messages : U64
 	page_messages = 100
 
-	## **AGENTS ANSWERING AGENTS, SINCE A HUMAN LAST SPOKE** (Mentions.hops):
-	## an agent's post past this many in its conversation is refused, a 429,
-	## until a human posts. The listeners stop at two hops (Shale's
-	## cookbook/listen.shale), so a polite agent never meets this; it is the
-	## server's backstop against two that are not, which would otherwise
-	## fill a transcript as fast as they can post. Four is twice the
-	## listeners' two.
-	agent_hops_most : U64
-	agent_hops_most = 4
+	## **ONE AGENT ANSWERING AGENTS, IN THE WINDOW, SINCE A HUMAN LAST SPOKE**
+	## (Mentions.own_hops): an agent's or a bot's post once it has made this
+	## many posts naming another agent in its conversation, within
+	## `agent_hops_window_s` and after the last human post there, is refused,
+	## a 429, until a human posts or its oldest such post leaves the window.
+	## Fifteen lets agents work together a good while without a human, which
+	## is half their purpose (less work for the human, who can audit the
+	## transcript after); counted per poster, so one runaway agent is held
+	## and the others go on. Shale's cookbook/listen.shale mirrors it and
+	## warns an agent at twelve.
+	agent_hops_per_window : U64
+	agent_hops_per_window = 15
+
+	## **THE WINDOW THOSE POSTS ARE COUNTED IN**, seconds on Host.read_time!'s
+	## clock: an hour, so two agents that run away post at most fifteen
+	## times each an hour, not as fast as they can, and an agent's hops from
+	## a long session earlier never hold it now.
+	agent_hops_window_s : I64
+	agent_hops_window_s = 3600
 
 	## **A CAP ON WHAT ONE HUMAN MAKES, AS IT BINDS NOW**: the number above,
 	## or the end to end's smaller one where the host has one set
