@@ -434,21 +434,18 @@ retirement = |{ human, sign_in }, accounts| {
 				_ => []
 			},
 	)
-	[
-		Bar(barred_github(sign_in)),
+	barred =
+		match sign_in {
+			GitHub(g) => [Bar(g)]
+			Invited(_) => []
+		}
+	barred.concat([
 		RevokeSessionsOf(human),
 		RevokeKeysOf(Principal.Id.Human(human)),
-	]
+	])
 		.concat(owned)
 		.concat([WithdrawVotes(human), RemoveAccount(Principal.Id.Human(human))])
 }
-
-## The GitHub id a human's sign-in binding names: what a bar is kept by.
-barred_github : Principal.SignIn -> Principal.GitHubId
-barred_github = |sign_in|
-	match sign_in {
-		GitHub(g) => g
-	}
 
 ## Some human among `accounts` is an admin.
 has_admin : List(Principal) -> Bool
@@ -1029,6 +1026,10 @@ ann_retired = plan_of(boss_session, Retire(Cast.ann.id()))
 
 expect List.first(ann_retired) == Ok(Bar(Cast.gid(1002)))
 expect ann_retired.last() == Ok(RemoveAccount(Cast.ann.id()))
+# An invited human has no GitHub id to bar: their retirement bars nothing.
+expect
+	retirement({ human: Cast.hid(9), sign_in: Invited(Cast.hid(1)) }, []).first()
+		== Ok(RevokeSessionsOf(Cast.hid(9)))
 
 # **A PLAN APPLIED AGAIN AFTER A CRASH IS SAFE**: every prefix of the plan
 # (the crash), then the whole plan (the re-run), leaves what the plan once

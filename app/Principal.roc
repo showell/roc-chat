@@ -124,9 +124,11 @@ Principal := [
 	Role : [Admin, Member]
 
 	## **HOW A HUMAN SIGNS IN**: by GitHub, as the GitHub account with this
-	## id (the one binding GitHub sign-in looks a human up by). An invited
-	## human, with no GitHub account, is the next kind.
-	SignIn : [GitHub(Principal.GitHubId)]
+	## id (the one binding GitHub sign-in looks a human up by); or invited,
+	## by the human named (HumanInvite.roc), with no GitHub account: such a
+	## human signs in only by redeeming an invite's code, the first one or
+	## a re-invite from that human or an admin.
+	SignIn : [GitHub(Principal.GitHubId), Invited(Principal.HumanId)]
 
 	## **A HUMAN'S ID**, from the chat's own counter (the settings hold the
 	## next), never given twice, not even a retired human's: what every
@@ -391,6 +393,7 @@ Principal := [
 						Human(h) =>
 							match h.sign_in {
 								GitHub(g) => [g.to_u64()]
+								Invited(_) => []
 							}
 						Agent(_) | Bot(_) => []
 					},

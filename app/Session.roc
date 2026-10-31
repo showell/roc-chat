@@ -6,9 +6,10 @@
 ## disk rather than a signed cookie, so a session can be listed and ended:
 ## "log out everywhere" is real.
 ##
-## **ONLY TWO WAYS IN:** `start`, which takes the sign-in flow's Admission
+## **ONLY THREE WAYS IN:** `start`, which takes the sign-in flow's Admission
 ## (GitHubSignIn: an opaque value only the flow makes, once every step
-## held), and `load`, which takes a SessionCodec.Line (an opaque value only
+## held); `start_invited`, which takes a redeemed invite's (HumanInvite's,
+## made only by its redemption); and `load`, which takes a SessionCodec.Line (an opaque value only
 ## the decoder makes, from a stored line). There is no constructor from a
 ## record, so no handler mints a session, an admin's or anyone's, without
 ## the flow or a line in the store.
@@ -30,6 +31,7 @@
 ## Only humans sign in: an agent or a bot acts through API keys. Pure.
 import Cast
 import GitHubSignIn
+import HumanInvite
 import Principal
 import SessionCodec
 import Stored
@@ -62,19 +64,13 @@ Session :: SessionCodec.Fields.{
 	## **A NEW SESSION**, created and seen when the flow admitted it: the
 	## sign-in flow's end, and the only way a session begins.
 	start : GitHubSignIn.Admission -> Session
-	start = |admission| {
-		a = admission.facts()
-		Session.(
-			{
-				id: a.session.id,
-				human: a.human,
-				generation: a.generation,
-				token_hash: a.session.token_hash,
-				created: a.now,
-				last_seen: a.now,
-			},
-		)
-	}
+	start = |admission| begun(admission.facts())
+
+	## **A NEW SESSION FOR AN INVITED HUMAN**, created and seen when their
+	## invite's redemption admitted them (HumanInvite.redeem), on the
+	## device that redeemed it.
+	start_invited : HumanInvite.Admission -> Session
+	start_invited = |admission| begun(admission.facts())
 
 	## **A SESSION AS ITS STORED LINE HOLDS IT**: the only way back from
 	## the store (SessionCodec checked the line whole).
@@ -180,6 +176,25 @@ Session :: SessionCodec.Fields.{
 
 	is_eq : _
 }
+
+## A session begun at an admission's facts: created and seen at its time.
+begun : {
+	human : Principal.HumanId,
+	generation : Principal.Generation,
+	session : GitHubSignIn.NewSession,
+	now : I64,
+} -> Session
+begun = |a|
+	Session.(
+		{
+			id: a.session.id,
+			human: a.human,
+			generation: a.generation,
+			token_hash: a.session.token_hash,
+			created: a.now,
+			last_seen: a.now,
+		},
+	)
 
 # ── tests
 

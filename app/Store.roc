@@ -15,6 +15,7 @@
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
 ##     auth/keys/<hash>          an API key, named for its secret's hash (ConvKey)
 ##     auth/invites/<hash>       an agent's invite, named for its code's hash (InviteCodec)
+##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInviteCodec)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
 ##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
@@ -28,6 +29,8 @@
 ##     auth/keys-indexed                 how many keys that indexes
 ##     auth/invites-by-human/<github id> a human's invites, by hash
 ##     auth/invites-indexed              how many invites that indexes
+##     auth/human-invites-by-human/<id>  the human invites a human made, by hash
+##     auth/human-invites-indexed        how many human invites that indexes
 ##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
 ##     chat/channels/<channel>/topics/<topic>/topic  a topic, its kind (TopicCodec)
 ##
@@ -67,6 +70,8 @@ import ConvAccess
 import ConvCodec
 import ConvKey
 import GitHubSignIn
+import HumanInvite
+import HumanInviteCodec
 import InviteCodec
 import MessageCodec
 import Principal
@@ -301,6 +306,70 @@ Store := [].{
 		invite_path(record.hash),
 		InviteCodec.encode(record, ConvAccess.ConvId.to_u64),
 	)
+
+	## **THE HUMAN INVITE WHOSE CODE HASHES TO `hash`**: its record,
+	## nothing there, or a line that does not read (`Malformed`, which a
+	## caller takes for no invite).
+	load_human_invite! : Stored.SecretHash => Try(
+		HumanInvite.Record,
+		[
+			Missing,
+			Malformed,
+			Failed,
+		],
+	)
+	load_human_invite! = |hash| {
+		read = Host.read!(human_invite_path(hash))
+		match read.status {
+			Failed => Err(Failed)
+			Missing => Err(Missing)
+			Found => HumanInviteCodec.decode(read.bytes).map_err(|_| Malformed)
+		}
+	}
+
+	## **THE NEXT HUMAN INVITE'S PUBLIC ID**: one past the count of those
+	## stored; none is ever removed, so no id is given twice.
+	load_next_human_invite_id! : {} => Try(HumanInvite.InviteId, [Failed])
+	load_next_human_invite_id! = |{}| {
+		HumanInvite.InviteId.from_u64(load_one_past_count!(human_invites_path)?).map_err(|_| Failed)
+	}
+
+	## A human invite written: spent or revoked.
+	save_human_invite! : HumanInvite.Record => [Failed, Written]
+	save_human_invite! = |record| Host.write!(
+		human_invite_path(record.hash),
+		HumanInviteCodec.encode(record),
+	)
+
+	## **THE HUMAN INVITES `human` MADE**, by their index; one whose file
+	## is gone or does not read is left out.
+	load_human_invites_of! : Principal.HumanId => Try(List(HumanInvite.Record), [Failed])
+	load_human_invites_of! = |human| {
+		_ = index_human_invites!({})?
+		records = load_records!(index_path(human_invites_folder, human), hash_width)?
+		load_human_invites_at!(records, [])
+	}
+
+	## **A NEW HUMAN INVITE WRITTEN, THEN INDEXED** under the human who
+	## made it.
+	save_new_human_invite! : HumanInvite.Record => [Failed, Written]
+	save_new_human_invite! = |invite|
+		match index_human_invites!({}) {
+			Err(Failed) => Failed
+			Ok(count) =>
+				match Store.save_human_invite!(invite) {
+					Failed => Failed
+					Written => append_indexed!(
+						human_invites_folder,
+						human_invites_mark,
+						{
+							answerer: Ok(invite.by),
+							record: hash_record(invite.hash),
+							count,
+						},
+					)
+				}
+		}
 
 	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
 	load_next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
@@ -1007,6 +1076,29 @@ index_keys! = |accounts| {
 	}
 }
 
+## The human invites' index, up to date, as the agent invites' is: each
+## under the human who made it.
+index_human_invites! : {} => Try(U64, [Failed])
+index_human_invites! = |{}| {
+	count = load_one_past_count!(human_invites_path)? - 1
+	if check_mark!(human_invites_mark, count)? {
+		Ok(count)
+	} else {
+		listed = Host.list!(human_invites_path)
+		all =
+			match listed.status {
+				Missing => Ok([])
+				Failed => Err(Failed)
+				Found => collect_human_invites!(listed.entries, [])
+			}?
+		rewrite_index!(human_invites_folder, grouped(all.map(|i| (i.by, hash_record(i.hash)))))?
+		match Host.write!(human_invites_mark, mark_line(count)) {
+			Failed => Err(Failed)
+			Written => Ok(count)
+		}
+	}
+}
+
 ## The invites' index, up to date, as the conversations' are.
 index_invites! : List(Principal) => Try(U64, [Failed])
 index_invites! = |accounts| {
@@ -1290,6 +1382,74 @@ key_path = |h| Str.to_utf8("auth/keys/${Stored.hash_text(h)}")
 
 invites_path : List(U8)
 invites_path = "auth/invites".to_utf8()
+
+human_invites_path : List(U8)
+human_invites_path = "auth/human-invites".to_utf8()
+
+## A human invite's file, named for its code's hash.
+human_invite_path : Stored.SecretHash -> List(U8)
+human_invite_path = |h| Str.to_utf8("auth/human-invites/${Stored.hash_text(h)}")
+
+human_invites_folder : Str
+human_invites_folder = "auth/human-invites-by-human"
+
+human_invites_mark : List(U8)
+human_invites_mark = "auth/human-invites-indexed".to_utf8()
+
+## The human invites the listed files hold, after `kept`; a file that does
+## not read as one is left out.
+collect_human_invites! : List(
+	{
+		kind : [
+			Dir,
+			File,
+			Other,
+		],
+		name : List(U8),
+	},
+),
+List(HumanInvite.Record) => Try(List(HumanInvite.Record), [Failed])
+collect_human_invites! = |entries, kept|
+	match entries {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read = Host.read!(
+				List.join([
+					human_invites_path,
+					['/'],
+					entry.name,
+				]),
+			)
+			match read.status {
+				Failed => Err(Failed)
+				Missing => collect_human_invites!(rest, kept)
+				Found =>
+					match HumanInviteCodec.decode(read.bytes) {
+						Ok(r) => collect_human_invites!(rest, kept.append(r))
+						Err(_) => collect_human_invites!(rest, kept)
+					}
+			}
+		}
+	}
+
+## The human invites an index's records name, after `kept`.
+load_human_invites_at! : List(List(U8)),
+List(HumanInvite.Record) => Try(
+	List(HumanInvite.Record),
+	[Failed],
+)
+load_human_invites_at! = |records, kept|
+	match records {
+		[] => Ok(kept)
+		[record, .. as rest] => {
+			hash = Stored.hash(List.drop_last(record, 1), "invite").map_err(|_| Failed)?
+			match Store.load_human_invite!(hash) {
+				Ok(i) => load_human_invites_at!(rest, kept.append(i))
+				Err(Missing) | Err(Malformed) => load_human_invites_at!(rest, kept)
+				Err(Failed) => Err(Failed)
+			}
+		}
+	}
 
 ## An invite's file, named for its code's hash, as a key's is.
 invite_path : Stored.SecretHash -> List(U8)

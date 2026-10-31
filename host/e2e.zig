@@ -2006,6 +2006,122 @@ fn humanDm(w: *World) !void {
     if (has((try get(w.a, w.port(), "/chat/channels", w.ivy)).body, name)) return error.DmListedAsAChannel;
 }
 
+/// A human redeems an invite's `code` on a device of their own, no cookie
+/// sent, with `name` (form-encoded) when not empty.
+fn join(w: *World, code: []const u8, name: []const u8) !Response {
+    const body = if (name.len > 0) try std.fmt.allocPrint(w.a, "code={s}&name={s}", .{ code, name }) else try std.fmt.allocPrint(w.a, "code={s}", .{code});
+    return send(w.a, w.port(), "POST", "/join", .{}, body);
+}
+
+/// The session cookie a join's answer set.
+fn joined(w: *World, r: Response) ![]const u8 {
+    if (r.status != 200) return error.NotJoined;
+    return std.fmt.allocPrint(w.a, "__Host-session={s}", .{r.cookie("session") orelse return error.NoSessionCookie});
+}
+
+/// **A HUMAN INVITE**: a member invites Zoe by name; her name is held at
+/// once, and their DM's ChitChat holds the welcome; the code is in the
+/// answer alone, `/join#<code>`; the page asks for no password and fills
+/// her name in; she joins under another free name (a taken one a 409,
+/// spending nothing), is signed in, reads the welcome and answers; the
+/// code is spent. Invited again by her inviter or an admin, never by
+/// another member, and never a GitHub human; revoked, expired and past
+/// ten open, refused; each event audited, never a code, and a junk code
+/// not at all. A key and nobody may not invite.
+fn humanInvited(w: *World) !void {
+    const a = try signUp(w.a, w.port(), 1033);
+    const c = try signUp(w.a, w.port(), 1034);
+    const k = try mint(w, "");
+    if ((try send(w.a, w.port(), "POST", "/human-invites", .{ .key = k.secret }, "name=Zoe+Inv")).status != 403) return error.KeyInvited;
+    if ((try request(w.a, w.port(), "POST", "/human-invites", "", "name=Zoe+Inv")).status != 401) return error.NobodyInvited;
+
+    const made = try pagePost(w, a, "/human-invites", "name=Zoe+Inv");
+    if (made.status != 201 or !has(made.body, "\"name\":\"Zoe Inv\"") or !has(made.body, "\"topic\":\"ChitChat\"")) return error.NotInvited;
+    const code = try field(made.body, "code");
+    if (code.len != 64 or !has(made.body, try std.fmt.allocPrint(w.a, "\"link\":\"/join#{s}\"", .{code}))) return error.NoLink;
+    const zoe = (try field(made.body, "for"))["human:".len..];
+    const dm = try std.fmt.allocPrint(w.a, "\"dm\":\"dm-{s}-{s}\"", .{ try hid(w.a, 1033), zoe });
+    if (!has(made.body, dm)) return error.NoDm;
+    // Her name is held now, in any spelling, by anyone.
+    if ((try pagePost(w, a, "/agents", "name=ZOE+inv")).status != 409) return error.NameNotHeld;
+    if ((try pagePost(w, c, "/human-invites", "name=zoe+INV")).status != 409) return error.NameNotHeld;
+    // Listed by its inviter, without its code; by no one else.
+    const listed = try get(w.a, w.port(), "/human-invites", a);
+    if (listed.status != 200 or !has(listed.body, "\"name\":\"Zoe Inv\"") or has(listed.body, code)) return error.NotListed;
+    if (has((try get(w.a, w.port(), "/human-invites", c)).body, "Zoe Inv")) return error.ListedToAnother;
+    // The welcome waits in their DM.
+    const welcome = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{zoe}), a);
+    if (welcome.status != 200 or !has(welcome.body, "\"markdown\":\"Hi! This is an automated message from Person 1033\"")) return error.NoWelcome;
+
+    // The page: the plain words first, the fine print after; the name filled in.
+    const page = try get(w.a, w.port(), "/join", "");
+    if (page.status != 200 or !has(page.body, "There is no password: this device stays signed in, and you are signed out after 30 days without a visit.") or !has(page.body, "The fine print")) return error.NoJoinPage;
+    const named = try send(w.a, w.port(), "POST", "/join/name", .{}, try std.fmt.allocPrint(w.a, "code={s}", .{code}));
+    if (named.status != 200 or !has(named.body, "{\"name\":\"Zoe Inv\"}")) return error.NameNotFilled;
+    const junk: [64]u8 = @splat('d');
+    if ((try send(w.a, w.port(), "POST", "/join/name", .{}, "code=" ++ junk)).status != 401) return error.JunkNamed;
+
+    // A taken name spends nothing; a free one is hers.
+    if ((try join(w, code, "Person+1034")).status != 409) return error.TakenNameJoined;
+    const zc = try joined(w, try join(w, code, "Zoe+I"));
+    const me = try get(w.a, w.port(), "/me", zc);
+    if (!has(me.body, try std.fmt.allocPrint(w.a, "signed in as human:{s}\n", .{zoe}))) return error.NotHer;
+    if ((try pagePost(w, a, "/agents", "name=Zoe+Inv")).status != 201) return error.OldNameHeld;
+    const theirs = try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{try hid(w.a, 1033)});
+    if (!has((try get(w.a, w.port(), theirs, zc)).body, "automated message")) return error.WelcomeUnread;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/messages", .{theirs}), zc, "thanks!")).status != 201) return error.NoAnswer;
+    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{zoe}), a)).body, "\"markdown\":\"thanks!\"")) return error.AnswerUnread;
+    if ((try join(w, code, "")).status != 401) return error.JoinedTwice;
+
+    // Again: by her inviter (another device), or an admin; no one else.
+    const again = try pagePost(w, a, "/human-invites", try std.fmt.allocPrint(w.a, "for=human%3A{s}", .{zoe}));
+    if (again.status != 201 or has(again.body, "\"dm\"")) return error.NotReinvited;
+    const zc2 = try joined(w, try join(w, try field(again.body, "code"), ""));
+    if (!has((try get(w.a, w.port(), "/me", zc2)).body, zoe) or !has((try get(w.a, w.port(), "/me", zc)).body, zoe)) return error.NotBothDevices;
+    if ((try pagePost(w, c, "/human-invites", try std.fmt.allocPrint(w.a, "for=human%3A{s}", .{zoe}))).status != 403) return error.ReinvitedByAnother;
+    if ((try pagePost(w, a, "/human-invites", try std.fmt.allocPrint(w.a, "for=human%3A{s}", .{try hid(w.a, 1034)}))).status != 400) return error.ReinvitedAGitHubHuman;
+    const by_admin = try pagePost(w, w.ivy, "/human-invites", try std.fmt.allocPrint(w.a, "for=human%3A{s}", .{zoe}));
+    if (by_admin.status != 201) return error.AdminRefused;
+    // Revoked: by its maker alone; then refused.
+    const revoke_path = try std.fmt.allocPrint(w.a, "/human-invites/{s}/revoke", .{try field(by_admin.body, "id")});
+    if ((try pagePost(w, c, revoke_path, "")).status != 404) return error.RevokedByAnother;
+    if ((try pagePost(w, w.ivy, revoke_path, "")).status != 200) return error.NotRevoked;
+    if ((try join(w, try field(by_admin.body, "code"), "")).status != 401) return error.RevokedJoined;
+    // Expired at seven days, on the server's clock.
+    const late = try pagePost(w, a, "/human-invites", try std.fmt.allocPrint(w.a, "for=human%3A{s}", .{zoe}));
+    if (late.status != 201) return error.NotReinvited;
+    w.rig.server.clock_ahead_s_for_test.store(7 * 24 * 3600, .release);
+    const too_late = try join(w, try field(late.body, "code"), "");
+    w.rig.server.clock_ahead_s_for_test.store(0, .release);
+    if (too_late.status != 401) return error.ExpiredJoined;
+
+    // Ten open at once, then a 403 by name.
+    var open: usize = 1; // `late`'s, open again on the clock now.
+    while (open < 10) : (open += 1) {
+        if ((try pagePost(w, a, "/human-invites", try std.fmt.allocPrint(w.a, "name=Cap+{d}", .{open}))).status != 201) return error.UnderTheCap;
+    }
+    const capped = try pagePost(w, a, "/human-invites", "name=Cap+10");
+    if (capped.status != 403 or !has(capped.body, "open invites")) return error.NotCapped;
+    if (count((try get(w.a, w.port(), "/human-invites", a)).body, "\"id\":") != 10) return error.NotTenOpen;
+
+    // Audited, never a code; a junk code not at all.
+    const before = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    if ((try join(w, &junk, "")).status != 401) return error.JunkJoined;
+    const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    if (log.len != before.len) return error.JunkAudited;
+    const wanted = [_][]const u8{
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=created:human:{s}\n", .{ zoe, try hid(w.a, 1033) }),
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=reinvited:human:{s}\n", .{ zoe, try hid(w.a, 1033) }),
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=redeemed:session:", .{zoe}),
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=revoked:human:", .{zoe}),
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=refused:spent\n", .{zoe}),
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=refused:revoked\n", .{zoe}),
+        try std.fmt.allocPrint(w.a, "for=human:{s} verdict=refused:expired\n", .{zoe}),
+    };
+    for (wanted) |line| if (!has(log, line)) return error.NotAudited;
+    if (has(log, code)) return error.CodeAudited;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -2089,6 +2205,7 @@ const steps = [_]Step{
     .{ .name = "a member makes a channel's human topic, posts with its reference, another member reads and streams it; a stranger, nobody, and an agent are refused", .f = topicsMade },
     .{ .name = "an agent topic: its agent reads and posts by key, its one stream gets the topic's posts naming channel, topic and reference, and resumes; a member owning none of its agents never reaches it", .f = agentTopic },
     .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; oneself, an agent, nobody refused; never a channel", .f = humanDm },
+    .{ .name = "a human invite: her name held at once, the welcome in their DM, the code in its answer alone; she joins on the plain page under another free name, reads and answers; the code once; again by her inviter or an admin alone; revoked, expired and past ten open refused; audited without the code", .f = humanInvited },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
 };
 

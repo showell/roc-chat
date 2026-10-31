@@ -73,6 +73,15 @@ Pages := [].{
 		Conversation(ConvAccess.ConvId),
 	]
 
+	## **A PAGE OF ITS OWN**, for a visitor no page here knows (the redeem
+	## page, HumanInvites'), in the pages' one frame and style.
+	standalone : { title : Html, body : Html } -> Chat.Answer
+	standalone = |{ title, body }| page({
+		title,
+		body_attrs: Html.join([]),
+		body,
+	})
+
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
 	route = |path|
@@ -148,9 +157,9 @@ root = "/chat".to_utf8()
 ## Signed out: to `/login`, a 303, naming this page (`next`), so the
 ## sign-in ends back on it (SignInWeb.landing).
 to_login : List(U8) -> Chat.Answer
-to_login = |page|
+to_login = |path|
 	Chat.respond(303, { content_type: Chat.text, body: [] })
-		|> Chat.with_header("location", "/login?next=".to_utf8().concat(SignInWeb.url_encode(page)))
+		|> Chat.with_header("location", "/login?next=".to_utf8().concat(SignInWeb.url_encode(path)))
 		|> Chat.with_header("cache-control", "no-store".to_utf8())
 
 ## **A PAGE IS A BROWSER'S**: a key (an agent, which reads the JSON routes)
@@ -202,6 +211,7 @@ list! = |
 					Html.markup("<h1>Your conversations</h1>\n"),
 					items,
 					start_form(accounts, me),
+					Html.markup(invite_form),
 					Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n"),
 					# The channels page's link, for an admin alone: Channel
 					# says who administers.
@@ -629,6 +639,30 @@ list_js =
 	\\  const r = await fetch("/conversations", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "with=" + encodeURIComponent(all.join(",")) });
 	\\  if (r.ok) location = "/chat/" + (await r.json()).id; else said.textContent = await r.text();
 	\\});
+	\\const invite = document.getElementById("invite"), invited = document.getElementById("invited");
+	\\const link = document.getElementById("link"), inviteSaid = document.getElementById("invite-said");
+	\\invite.addEventListener("submit", async (e) => {
+	\\  e.preventDefault();
+	\\  const r = await fetch("/human-invites", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "name=" + encodeURIComponent(invite.elements.name.value.trim()) });
+	\\  if (!r.ok) { inviteSaid.textContent = await r.text(); return; }
+	\\  link.textContent = location.origin + (await r.json()).link;
+	\\  invited.hidden = false;
+	\\  inviteSaid.textContent = "";
+	\\});
+	\\document.getElementById("copy-link").addEventListener("click", async () => {
+	\\  await navigator.clipboard.writeText(link.textContent);
+	\\  inviteSaid.textContent = "Copied.";
+	\\});
+	\\
+
+## **THE FORM THAT INVITES SOMEONE** without GitHub (HumanInvites): a
+## name, and the link shown once, from the invite's own answer.
+invite_form : Str
+invite_form =
+	\\<h2>Invite someone</h2>
+	\\<form id=invite><label>Their name <input name=name required maxlength=40></label> <button>Invite</button></form>
+	\\<p id=invited hidden>Send them this link, which works once, for 7 days: <code id=link></code> <button id=copy-link type=button>Copy</button></p>
+	\\<p id=invite-said></p>
 	\\
 
 ## The agents page's script: each button posts the form its route takes,

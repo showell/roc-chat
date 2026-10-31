@@ -21,6 +21,7 @@ import ChannelLayout
 import MessageRef
 import Conversations
 import Html
+import HumanInvites
 import Origin
 import Pages
 import SignIn
@@ -68,6 +69,11 @@ route! = |req|
 		if (req.method == Get) SignIn.serve_me!({}) else Chat.not_allowed(Get)
 	} else if req.path == "/stream".to_utf8() {
 		if (req.method == Get) OneStream.serve!({}) else Chat.not_allowed(Get)
+	} else if HumanInvites.route(req.path).is_ok() {
+		match HumanInvites.route(req.path) {
+			Ok(r) => HumanInvites.answer!(req, r)
+			Err(NotHumanInvites) => Chat.not_found
+		}
 	} else if Topics.route(req.path).is_ok() {
 		match Topics.route(req.path) {
 			Ok(r) => Topics.answer!(req, r)

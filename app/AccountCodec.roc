@@ -2,12 +2,15 @@
 ## an agent or a bot, one line in Stored's format:
 ##
 ##     account v1 kind=human id=1 github=583231 login=octocat generation=3 role=admin name=Steve H.
+##     account v1 kind=human id=5 invited-by=1 login= generation=6 role=member name=Ann
 ##     account v1 kind=agent id=7 owner=1 generation=4 name=CC
 ##     account v1 kind=bot id=9 owner=1 generation=5 name=commits
 ##
 ## Every account is keyed by the chat's own id: a human by theirs (one
 ## counter), with the GitHub id they sign in as beside it; an agent and a
-## bot by theirs (another), with the id of the human who owns it. Every account's
+## bot by theirs (another), with the id of the human who owns it. An
+## invited human (Principal.SignIn) has `invited-by` and the id of the human
+## who invited them in `github`'s place, and no login. Every account's
 ## `generation` (Principal.Generation) is what its sessions, keys, votes
 ## and participations are bound to. The
 ## name is last, as Stored's free text is, and held to DisplayName's rule
@@ -46,7 +49,7 @@ AccountCodec := [].{
 						[
 							("kind", spell_kind(Human)),
 							("id", h.id.to_u64().to_str()),
-							("github", github_text(h.sign_in)),
+							sign_in_field(h.sign_in),
 							("login", login),
 							("generation", h.generation.to_u64().to_str()),
 							("role", AccountCodec.role_text(h.role)),
@@ -324,11 +327,35 @@ owned_line = |
 	)
 }
 
-## How a human signs in, as the line spells it: the GitHub id.
-github_text : Principal.SignIn -> Str
-github_text = |sign_in|
+## How a human signs in, as the line spells it: the GitHub id, or the id
+## of the human who invited them.
+sign_in_field : Principal.SignIn -> (Str, Str)
+sign_in_field = |sign_in|
 	match sign_in {
-		GitHub(g) => g.to_u64().to_str()
+		GitHub(g) => ("github", g.to_u64().to_str())
+		Invited(by) => ("invited-by", by.to_u64().to_str())
+	}
+
+## How the human signs in, read after their id: `github`, or else
+## `invited-by` (a line with neither is missing `github`, the usual kind).
+sign_in_from : Stored.Reader -> Try({ sign_in : Principal.SignIn, rest : Stored.Reader }, _)
+sign_in_from = |after_id|
+	match after_id.field("github") {
+		Ok(github) => {
+			id = Stored.id(github.value, { name: "github", make: Principal.GitHubId.from_u64 })?
+			Ok({ sign_in: GitHub(id), rest: github.rest })
+		}
+		Err(why) =>
+			match after_id.field("invited-by") {
+				Ok(by) => {
+					id = Stored.id(
+						by.value,
+						{ name: "invited-by", make: Principal.HumanId.from_u64 },
+					)?
+					Ok({ sign_in: Invited(id), rest: by.rest })
+				}
+				Err(_) => Err(why)
+			}
 	}
 
 ## A human's fields, after its kind.
@@ -336,9 +363,8 @@ decode_human : Stored.Reader -> Try(Principal, _)
 decode_human = |after_kind| {
 	id_field = after_kind.field("id")?
 	id = Stored.id(id_field.value, { name: "id", make: Principal.HumanId.from_u64 })?
-	github = id_field.rest.field("github")?
-	github_id = Stored.id(github.value, { name: "github", make: Principal.GitHubId.from_u64 })?
-	login = github.rest.field("login")?
+	signs_in = sign_in_from(id_field.rest)?
+	login = signs_in.rest.field("login")?
 	login_word =
 		if login.value == [] {
 			""
@@ -352,7 +378,7 @@ decode_human = |after_kind| {
 	Ok(
 		Principal.Human({
 			id,
-			sign_in: GitHub(github_id),
+			sign_in: signs_in.sign_in,
 			login: login_word,
 			name,
 			role: role_word,
@@ -560,6 +586,7 @@ expect line_of(
 expect
 	[
 		"account v1 kind=human id=4 github=1 login=a generation=7 role=member name=b\n",
+		"account v1 kind=human id=5 invited-by=4 login= generation=8 role=member name=Ann\n",
 		"account v1 kind=agent id=7 owner=583231 generation=8 name=CC\n",
 		"account v1 kind=bot id=9 owner=2 generation=9 name=commits bot\n",
 	].all(
@@ -616,6 +643,21 @@ expect
 		_ => Bool.False
 	}
 expect human_but({ from: "github=1", to: "github=1 github=1" }) == Err(MissingField("login"))
+# An invited human: `invited-by` in `github`'s place, kept both ways.
+expect
+	match AccountCodec.decode(
+		human_line.replace_first(
+			"github=1 login=a",
+			"invited-by=2 login=",
+		).to_utf8(),
+	) {
+		Ok(Human(h)) => h.sign_in == Invited(Cast.hid(2)) and h.login == ""
+		_ => Bool.False
+	}
+expect human_but({ from: "github=1", to: "invited-by=0" }) == Err(BadValue("invited-by"))
+expect human_but({ from: "github=1", to: "invited-by=x" }) == Err(BadNumber("invited-by"))
+expect human_but({ from: "github=1", to: "invited=2" }) == Err(MissingField("github"))
+expect human_but({ from: "github=1", to: "invited-by=2 github=1" }) == Err(MissingField("login"))
 expect human_but({ from: " role=member", to: "" }) == Err(MissingField("role"))
 expect human_but({ from: " name=b", to: "" }) == Err(MissingField("name"))
 expect human_but({ from: "login=a ", to: "login=a  " }) == Err(MissingField("generation"))

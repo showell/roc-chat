@@ -11,6 +11,8 @@
 ##     audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12
 ##     audit-invite v1 at=1761600160 invite=3 for=agent:7 verdict=redeemed:key:9
 ##     audit-invite v1 at=1761600170 invite=unknown for=unknown verdict=refused:unknown
+##     audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:human:2
+##     audit-human-invite v1 at=1761600190 invite=3 for=human:100 verdict=redeemed:session:9
 ##     audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel=Lobby members=human:2,human:7 verdict=permitted
 ##     audit-channel v1 at=1761600210 who=human:2 via=session:12 action=admit channel=Lobby members=human:9 verdict=refused:not-admin
 ##     audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=LC
@@ -32,6 +34,11 @@
 ## id), revoked, or a redemption refused, `grant:` and a grant's word when
 ## the grant decided again refused it.
 ##
+## And for every human invite (HumanInvite): made for a new human, or
+## again for one (`reinvited`), by whom; redeemed into a session (its
+## public number); revoked, by whom; or a redemption refused. Never the
+## code, nor its hash.
+##
 ## Who (a principal's id, as AccountCodec spells it), by which session or
 ## key (its public number), what, when, and the verdict, each spelled once:
 ## an action as a word and its target after a colon, a refusal as a word (a
@@ -41,7 +48,7 @@
 ## a sign-in refused before GitHub named anyone is `github=unknown`.
 ##
 ## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in`, `of_key`,
-## `of_invite`, `of_channel` and `of_rename`, which refuse a time outside Stored's range (ClockOutOfRange),
+## `of_invite`, `of_human_invite`, `of_channel` and `of_rename`, which refuse a time outside Stored's range (ClockOutOfRange),
 ## or by `decode`: the encoder never meets a time it cannot write. Pure.
 import AccountCodec
 import Admin
@@ -50,6 +57,8 @@ import Bytes
 import Cast
 import ChannelName
 import GitHubSignIn
+import HumanInvite
+import HumanInviteCodec
 import InviteCodec
 import Principal
 import Stored
@@ -106,6 +115,22 @@ AuditCodec := [].{
 			Redeemed(Principal.KeyId),
 			Revoked(Principal.SessionId),
 			Refused(InviteCodec.Refusal),
+		],
+	}
+
+	## **A HUMAN INVITE'S EVENT**: when, which invite and whom it is for
+	## (both unknown when no invite's hash is the code's), and what
+	## happened: made by a human for a new human, or again; redeemed into
+	## a session; revoked by its maker; or a redemption refused.
+	HumanInviteEvent : {
+		at : I64,
+		invite : [Unknown, Known({ id : HumanInvite.InviteId, human : Principal.HumanId })],
+		verdict : [
+			Created(Principal.HumanId),
+			Reinvited(Principal.HumanId),
+			Redeemed(Principal.SessionId),
+			Revoked(Principal.HumanId),
+			Refused(HumanInvite.Refusal),
 		],
 	}
 
@@ -179,6 +204,7 @@ AuditCodec := [].{
 		SignIn(AuditCodec.SignIn),
 		Key(AuditCodec.KeyEvent),
 		Invite(AuditCodec.Invite),
+		HumanInvite(AuditCodec.HumanInviteEvent),
 		Channel(AuditCodec.ChannelEvent),
 		Rename(AuditCodec.RenameEvent),
 	].{
@@ -206,6 +232,10 @@ AuditCodec := [].{
 		of_invite : AuditCodec.Invite -> Try(AuditCodec.Entry, [ClockOutOfRange])
 		of_invite = |i| if (is_storable(i.at)) Ok(AuditCodec.Entry.(Invite(i))) else Err(ClockOutOfRange)
 
+		## A human invite's.
+		of_human_invite : AuditCodec.HumanInviteEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
+		of_human_invite = |i| if (is_storable(i.at)) Ok(AuditCodec.Entry.(HumanInvite(i))) else Err(ClockOutOfRange)
+
 		## A channel's change, or its refusal.
 		of_channel : AuditCodec.ChannelEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
 		of_channel = |c| if (is_storable(c.at)) Ok(AuditCodec.Entry.(Channel(c))) else Err(ClockOutOfRange)
@@ -232,6 +262,7 @@ AuditCodec := [].{
 			SignIn(AuditCodec.SignIn),
 			Key(AuditCodec.KeyEvent),
 			Invite(AuditCodec.Invite),
+			HumanInvite(AuditCodec.HumanInviteEvent),
 			Channel(AuditCodec.ChannelEvent),
 			Rename(AuditCodec.RenameEvent),
 		]
@@ -313,6 +344,26 @@ AuditCodec := [].{
 				)
 			}
 
+			HumanInvite(i) => {
+				(invite, human) =
+					match i.invite {
+						Unknown => (unknown_word, unknown_word)
+						Known(k) => (
+							k.id.to_u64().to_str(),
+							AccountCodec.id_text(Principal.Id.Human(k.human)),
+						)
+					}
+				Stored.line(
+					human_invite_kind,
+					[
+						("at", Stored.time_text(i.at)),
+						("invite", invite),
+						("for", human),
+						("verdict", human_invite_verdict_text(i.verdict)),
+					],
+				)
+			}
+
 			Channel(c) =>
 				Stored.line(
 					channel_kind,
@@ -355,15 +406,7 @@ AuditCodec := [].{
 							Err(WrongRecord) =>
 								match Stored.Reader.open(raw, invite_kind) {
 									Ok(fields) => decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
-									Err(WrongRecord) =>
-										match Stored.Reader.open(raw, channel_kind) {
-											Ok(fields) => decode_channel(fields).map_ok(|c| AuditCodec.Entry.(Channel(c)))
-											Err(WrongRecord) => {
-												fields = Stored.Reader.open(raw, rename_kind)?
-												decode_rename(fields).map_ok(|r| AuditCodec.Entry.(Rename(r)))
-											}
-											Err(why) => Err(why)
-										}
+									Err(WrongRecord) => decode_later(raw)
 									Err(why) => Err(why)
 								}
 							Err(why) => Err(why)
@@ -373,6 +416,24 @@ AuditCodec := [].{
 			Err(why) => Err(why)
 		}
 }
+
+## The entry a line of a later kind holds: a human invite's, a channel's
+## or a rename's.
+decode_later : List(U8) -> Try(AuditCodec.Entry, _)
+decode_later = |raw|
+	match Stored.Reader.open(raw, human_invite_kind) {
+		Ok(fields) => decode_human_invite(fields).map_ok(|i| AuditCodec.Entry.(HumanInvite(i)))
+		Err(WrongRecord) =>
+			match Stored.Reader.open(raw, channel_kind) {
+				Ok(fields) => decode_channel(fields).map_ok(|c| AuditCodec.Entry.(Channel(c)))
+				Err(WrongRecord) => {
+					fields = Stored.Reader.open(raw, rename_kind)?
+					decode_rename(fields).map_ok(|r| AuditCodec.Entry.(Rename(r)))
+				}
+				Err(why) => Err(why)
+			}
+		Err(why) => Err(why)
+	}
 
 ## The lines' first words.
 admin_kind : Str
@@ -386,6 +447,9 @@ key_kind = "audit-key"
 
 invite_kind : Str
 invite_kind = "audit-invite"
+
+human_invite_kind : Str
+human_invite_kind = "audit-human-invite"
 
 channel_kind : Str
 channel_kind = "audit-channel"
@@ -723,6 +787,129 @@ invite_verdict_from = |value|
 			}
 		}
 	}
+
+HumanInviteAct : [
+	Created,
+	Reinvited,
+	Redeemed,
+	Revoked,
+]
+
+all_human_invite_acts : List(HumanInviteAct)
+all_human_invite_acts = [
+	Created,
+	Reinvited,
+	Redeemed,
+	Revoked,
+]
+
+spell_human_invite_act : HumanInviteAct -> Str
+spell_human_invite_act = |act|
+	match act {
+		Created => "created"
+		Reinvited => "reinvited"
+		Redeemed => "redeemed"
+		Revoked => "revoked"
+	}
+
+human_invite_verdict_text : [
+	Created(Principal.HumanId),
+	Reinvited(Principal.HumanId),
+	Redeemed(Principal.SessionId),
+	Revoked(Principal.HumanId),
+	Refused(HumanInvite.Refusal),
+] -> Str
+human_invite_verdict_text = |verdict| {
+	by = |
+		act,
+		h,
+	| "${spell_human_invite_act(act)}${colon}${AccountCodec.id_text(Principal.Id.Human(h))}"
+	match verdict {
+		Created(h) => by(Created, h)
+		Reinvited(h) => by(Reinvited, h)
+		Revoked(h) => by(Revoked, h)
+		Redeemed(s) => "${spell_human_invite_act(Redeemed)}${colon}${via_text(Session(s))}"
+		Refused(why) => "${refused_prefix}${HumanInviteCodec.refusal_text(why)}"
+	}
+}
+
+human_invite_verdict_from : List(U8) -> Try(
+	[
+		Created(Principal.HumanId),
+		Reinvited(Principal.HumanId),
+		Redeemed(Principal.SessionId),
+		Revoked(Principal.HumanId),
+		Refused(HumanInvite.Refusal),
+	],
+	_,
+)
+human_invite_verdict_from = |value|
+	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
+		Ok(why) => HumanInviteCodec.refusal_from(why).map_ok(|r| Refused(r))
+		Err(NoMatch) => {
+			{ head, tail } = split_colon(value, "verdict")?
+			act = Stored.word(
+				head,
+				{
+					name: "verdict",
+					members: all_human_invite_acts,
+					spell: spell_human_invite_act,
+				},
+			)?
+			match act {
+				Redeemed =>
+					match via_from(tail)? {
+						Session(s) => Ok(Redeemed(s))
+						Key(_) => Err(BadValue("verdict"))
+					}
+				_ =>
+					match (act, AccountCodec.id_from(tail, "verdict")?) {
+						(Created, Human(h)) => Ok(Created(h))
+						(Reinvited, Human(h)) => Ok(Reinvited(h))
+						(Revoked, Human(h)) => Ok(Revoked(h))
+						_ => Err(BadValue("verdict"))
+					}
+			}
+		}
+	}
+
+decode_human_invite : Stored.Reader -> Try(AuditCodec.HumanInviteEvent, _)
+decode_human_invite = |fields| {
+	at_field = fields.field("at")?
+	at = Stored.time(at_field.value, "at")?
+	invite_field = at_field.rest.field("invite")?
+	for_field = invite_field.rest.field("for")?
+	verdict_field = for_field.rest.field("verdict")?
+	verdict = human_invite_verdict_from(verdict_field.value)?
+	verdict_field.rest.close()?
+	invite = human_invite_from(invite_field.value, for_field.value)?
+	Ok({
+		at,
+		invite,
+		verdict,
+	})
+}
+
+## Both `unknown`, or a human invite's id and the human it is for.
+human_invite_from : List(U8),
+List(U8) -> Try(
+	[Unknown, Known({ id : HumanInvite.InviteId, human : Principal.HumanId })],
+	_,
+)
+human_invite_from = |invite_value, for_value| {
+	unknown = Str.to_utf8(unknown_word)
+	if invite_value == unknown and for_value == unknown {
+		Ok(Unknown)
+	} else if invite_value == unknown or for_value == unknown {
+		Err(BadValue("for"))
+	} else {
+		id = Stored.id(invite_value, { name: "invite", make: HumanInvite.InviteId.from_u64 })?
+		match AccountCodec.id_from(for_value, "for")? {
+			Human(h) => Ok(Known({ id, human: h }))
+			_ => Err(BadValue("for"))
+		}
+	}
+}
 
 decode_invite : Stored.Reader -> Try(AuditCodec.Invite, _)
 decode_invite = |fields| {
@@ -2221,3 +2408,51 @@ expect AuditCodec.encode(
 ) == "audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=\n".to_utf8()
 expect AuditCodec.decode("audit-rename v1 at=1 who=human:1 via=session:3 agent=agent:1 verdict=refused:nope name=x\n".to_utf8()).is_err()
 expect AuditCodec.Entry.of_rename({ ..rename_lc, at: -1 }).map_ok(|_| {}) == Err(ClockOutOfRange)
+
+# A human invite's lines: each verdict round trips; the code is in none.
+human_invited : AuditCodec.HumanInviteEvent -> AuditCodec.Entry
+human_invited = |i|
+	match AuditCodec.Entry.of_human_invite(i) {
+		Ok(e) => e
+		Err(ClockOutOfRange) => crash "human_invited: a test's time is in range"
+	}
+
+zoe_invited : AuditCodec.HumanInviteEvent
+zoe_invited = {
+	at: 1761600180,
+	invite: Known({
+		id: HumanInvite.InviteId.from_u64(3) ?? crash "3 is an id",
+		human: Cast.hid(100),
+	}),
+	verdict: Created(Cast.hid(2)),
+}
+
+expect AuditCodec.encode(human_invited(zoe_invited)) == "audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:human:2\n".to_utf8()
+expect AuditCodec.encode(
+	human_invited({
+		..zoe_invited,
+		verdict: Redeemed(Cast.sid(9)),
+	}),
+) == "audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=redeemed:session:9\n".to_utf8()
+expect
+	[
+		zoe_invited,
+		{ ..zoe_invited, verdict: Reinvited(Cast.hid(1)) },
+		{ ..zoe_invited, verdict: Redeemed(Cast.sid(9)) },
+		{ ..zoe_invited, verdict: Revoked(Cast.hid(2)) },
+		{ ..zoe_invited, verdict: Refused(Spent) },
+		{ ..zoe_invited, verdict: Refused(Revoked) },
+		{ ..zoe_invited, verdict: Refused(Expired) },
+		{ ..zoe_invited, verdict: Refused(NoLongerHolds) },
+		{
+			..zoe_invited,
+			invite: Unknown,
+			verdict: Refused(Unknown),
+		},
+	].all(|i| AuditCodec.decode(AuditCodec.encode(human_invited(i))) == Ok(human_invited(i)))
+expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=agent:1 verdict=created:human:2\n".to_utf8()) == Err(BadValue("for"))
+expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=unknown verdict=created:human:2\n".to_utf8()) == Err(BadValue("for"))
+expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:agent:2\n".to_utf8()) == Err(BadValue("verdict"))
+expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=redeemed:key:2\n".to_utf8()) == Err(BadValue("verdict"))
+expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=refused:grant:x\n".to_utf8()) == Err(UnknownWord("verdict"))
+expect AuditCodec.Entry.of_human_invite({ ..zoe_invited, at: -1 }) == Err(ClockOutOfRange)

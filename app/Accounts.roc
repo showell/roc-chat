@@ -69,9 +69,11 @@ Accounts := [].{
 		## Raise the settings' human-id counter to at least this.
 		AdvanceHumanId(Principal.HumanId),
 
-		## Give the agent or bot `account` the name `name`, its owner having
-		## renamed it (Agents.rename decides it may). Its id, keys and
-		## conversations are unchanged; the old name is free again.
+		## Give the account `account` the name `name`: an agent or a bot its
+		## owner renamed (Agents.rename decides it may), or an invited human
+		## who chose another name redeeming their invite (HumanInvite.redeem
+		## decides). Its id, keys and conversations are unchanged; the old
+		## name is free again.
 		SetName({ account : Principal.Id, name : Str }),
 	]
 
@@ -141,6 +143,10 @@ Accounts := [].{
 							accounts: accounts.map(
 								|p|
 									match p {
+										Human(h) if Principal.id(p) == account => Principal.Human({
+											..h,
+											name,
+										})
 										Agent(a) if Principal.id(p) == account => Principal.Agent({
 											..a,
 											name,

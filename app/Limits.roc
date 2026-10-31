@@ -36,6 +36,16 @@ Limits := [].{
 	invites_per_human : U64
 	invites_per_human = 200
 
+	## **THE HUMAN INVITES ONE HUMAN HAS OPEN** (live and unexpired) at
+	## once: ten (Steve's number, DECISIONS.md).
+	human_invites_open : U64
+	human_invites_open = 10
+
+	## **THE HUMAN INVITES ONE HUMAN HAS MADE**, spent, revoked and expired
+	## counted, as an agent invite's are, so their index stays bounded.
+	human_invites_per_human : U64
+	human_invites_per_human = 200
+
 	## **THE CONVERSATIONS ONE HUMAN HAS STARTED**, by session or by their
 	## agents' keys.
 	conversations_per_human : U64
