@@ -154,10 +154,11 @@ Conversations := [].{
 		[Failed],
 	)
 	load_page! = |id, before| {
-		tally = Store.load_tally!(id)?
+		files = Store.conversation_files(id)
+		tally = Store.load_tally!(files)?
 		span = Conversations.page_of(tally.messages, before)
 		messages = Store.load_span!(
-			id,
+			files,
 			tally,
 			span,
 		)?
@@ -569,7 +570,7 @@ post! = |id| {
 								SignedOut => crash "Conversations.post!: `load_asked!` let nobody signed out through"
 								Session(b) | Key(b) => b.id
 							}
-						match Store.load_tally!(id) {
+						match Store.load_tally!(Store.conversation_files(id)) {
 							Err(Failed) => Chat.failed
 							Ok(tally) => {
 								named = named_of(conv, accounts)
@@ -630,7 +631,7 @@ append_post! = |
 		)
 	} else {
 		match Store.append_message!({
-			id,
+			files: Store.conversation_files(id),
 			tally,
 			message,
 		}) {
@@ -669,7 +670,7 @@ check_hops! = |
 		Human(_) => Ok(Room)
 		Agent(_) | Bot(_) => {
 			newest = Store.load_span!(
-				id,
+				Store.conversation_files(id),
 				tally,
 				Conversations.page_of(tally.messages, Newest),
 			)?
@@ -727,7 +728,7 @@ stream! = |id|
 	match load_seen!(id) {
 		Err(answer) => answer
 		Ok(a) =>
-			match Store.load_tally!(id) {
+			match Store.load_tally!(Store.conversation_files(id)) {
 				Err(Failed) => Chat.failed
 				Ok(tally) => {
 					after = last_seen_id(Host.read_header!(Str.to_utf8("last-event-id")))
@@ -743,7 +744,7 @@ stream! = |id|
 							tally.messages + 1
 						}
 					match Store.load_span!(
-						id,
+						Store.conversation_files(id),
 						tally,
 						{ first, last: tally.messages },
 					) {

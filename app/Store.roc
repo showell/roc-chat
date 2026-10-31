@@ -28,6 +28,13 @@
 ##     auth/keys-indexed                 how many keys that indexes
 ##     auth/invites-by-human/<github id> a human's invites, by hash
 ##     auth/invites-indexed              how many invites that indexes
+##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
+##     chat/channels/<channel>/topics/<topic>/topic  a topic, its kind (TopicCodec)
+##
+## A channel's folder is its name's key, and each topic's its name's key
+## in it (ChannelLayout, which names those paths). A topic's transcript,
+## offsets and tally are kept there by the functions that keep a
+## conversation's, given its files (`topic_files`); nothing posts to one yet.
 ##
 ## **WHAT ONE HUMAN HAS, BY AN INDEX**: a file a
 ## human, one record a line, appended as each thing of theirs is made, so a
@@ -52,6 +59,10 @@ import Accounts
 import AccountCodec
 import AuditCodec
 import Cast
+import Channel
+import ChannelCodec
+import ChannelLayout
+import ChannelName
 import ConvAccess
 import ConvCodec
 import ConvKey
@@ -62,6 +73,9 @@ import Principal
 import SessionCodec
 import SignInWeb
 import Stored
+import Topic
+import TopicCodec
+import TopicName
 
 Store := [].{
 
@@ -354,12 +368,40 @@ Store := [].{
 		ConvCodec.encode(conv.fields(created)),
 	)
 
-	## **A CONVERSATION'S MESSAGES**, oldest first; none before the first.
+	## **THE THREE FILES OF A TRANSCRIPT**: its messages, where each starts,
+	## and their tally. The functions that keep a transcript reach the disk
+	## through these alone, so a conversation's and a topic's are kept alike.
+	TranscriptFiles : {
+		transcript : List(U8),
+		offsets : List(U8),
+		tally : List(U8),
+	}
+
+	## A conversation's transcript files, by its id.
+	conversation_files : ConvAccess.ConvId -> Store.TranscriptFiles
+	conversation_files = |id| {
+		n = id.to_u64().to_str()
+		{
+			transcript: "chat/transcripts/${n}".to_utf8(),
+			offsets: "chat/offsets/${n}".to_utf8(),
+			tally: "chat/tallies/${n}".to_utf8(),
+		}
+	}
+
+	## A topic's transcript files, in its folder in its channel's.
+	topic_files : Topic.At -> Store.TranscriptFiles
+	topic_files = |at| {
+		transcript: ChannelLayout.transcript_path(at),
+		offsets: ChannelLayout.offsets_path(at),
+		tally: ChannelLayout.tally_path(at),
+	}
+
+	## **A TRANSCRIPT'S MESSAGES**, oldest first; none before the first.
 	## `Failed` when the transcript will not read whole (a torn append, a
 	## line the chat did not write).
-	load_transcript! : ConvAccess.ConvId => Try(List(MessageCodec.Fields), [Failed])
-	load_transcript! = |id| {
-		read = Host.read!(transcript_path(id))
+	load_transcript! : Store.TranscriptFiles => Try(List(MessageCodec.Fields), [Failed])
+	load_transcript! = |files| {
+		read = Host.read!(files.transcript)
 		match read.status {
 			Missing => Ok([])
 			Failed => Err(Failed)
@@ -377,14 +419,14 @@ Store := [].{
 	## that is missing (a transcript from before it) or that disagrees with
 	## the transcript's size (a stop between an append and its tally) is
 	## counted once from the whole transcript; the next append writes it.
-	load_tally! : ConvAccess.ConvId => Try(Store.Tally, [Failed])
-	load_tally! = |id| {
-		stat = Host.read_stat!(transcript_path(id))
+	load_tally! : Store.TranscriptFiles => Try(Store.Tally, [Failed])
+	load_tally! = |files| {
+		stat = Host.read_stat!(files.transcript)
 		match stat.status {
 			Failed => Err(Failed)
 			Missing => Ok({ messages: 0, bytes: 0 })
 			Found => {
-				read = Host.read!(tally_path(id))
+				read = Host.read!(files.tally)
 				kept =
 					match read.status {
 						Failed => Err(Failed)
@@ -398,7 +440,7 @@ Store := [].{
 				match kept {
 					Kept(t) => Ok(t)
 					Stale => {
-						messages = Store.load_transcript!(id)?
+						messages = Store.load_transcript!(files)?
 						Ok({ messages: messages.len(), bytes: stat.size })
 					}
 				}
@@ -409,21 +451,21 @@ Store := [].{
 	## What a transcript holds, told: its messages and its bytes.
 	Tally : { messages : U64, bytes : U64 }
 
-	## **A RUN OF A CONVERSATION'S MESSAGES, `first` TO `last`**, read from
+	## **A RUN OF A TRANSCRIPT'S MESSAGES, `first` TO `last`**, read from
 	## where `first` starts (its offsets file), never the transcript whole;
 	## none when `first` is past `last`. `tally` is the transcript's now
 	## (`load_tally!`, in this turn). An offsets file that does not hold one
 	## record a message (a transcript from before it, or a stop between an
 	## append and its record) is passed by: the transcript is read whole,
 	## and the next append writes the file again.
-	load_span! : ConvAccess.ConvId,
+	load_span! : Store.TranscriptFiles,
 	Store.Tally,
 	{ first : U64, last : U64 } => Try(
 		List(MessageCodec.Fields),
 		[Failed],
 	)
 	load_span! = |
-		id,
+		files,
 		tally,
 		{ first, last },
 	|
@@ -432,17 +474,17 @@ Store := [].{
 		} else if first > last {
 			Ok([])
 		} else {
-			match check_offsets!(id, tally) {
+			match check_offsets!(files, tally) {
 				Err(Failed) => Err(Failed)
 				Ok(Bool.False) => {
-					all = Store.load_transcript!(id)?
+					all = Store.load_transcript!(files)?
 					Ok(all.sublist({ start: first - 1, len: last - first + 1 }))
 				}
 				Ok(Bool.True) => {
 					# `first`'s record, and the next one's after `last`'s, which
 					# the transcript's end stands in for after its last message.
 					records = Host.read_at!(
-						offsets_path(id),
+						files.offsets,
 						(first - 1) * offset_width,
 						(last - first + 2) * offset_width,
 					)
@@ -455,7 +497,7 @@ Store := [].{
 					match (ends.first(), ends.get(last - first + 1)) {
 						(Ok(from), Ok(to)) if from < to and to <= tally.bytes => {
 							text = Host.read_at!(
-								transcript_path(id),
+								files.transcript,
 								from,
 								to - from,
 							)
@@ -474,7 +516,7 @@ Store := [].{
 			}
 		}
 
-	## **A MESSAGE APPENDED TO ITS CONVERSATION'S TRANSCRIPT, SYNCED, THEN
+	## **A MESSAGE APPENDED TO A TRANSCRIPT, SYNCED, THEN
 	## ITS TALLY**: `tally` is the transcript's before it (`load_tally!`, in
 	## this turn), and the message's id the caller's, its count plus one.
 	##
@@ -483,35 +525,35 @@ Store := [].{
 	## record a message before it is written again whole, from the
 	## transcript.
 	append_message! : {
-		id : ConvAccess.ConvId,
+		files : Store.TranscriptFiles,
 		tally : Store.Tally,
 		message : MessageCodec.Fields,
 	} => [Failed, Appended]
 	append_message! = |
 		{
-			id,
+			files,
 			tally,
 			message,
 		},
 	|
-		match check_offsets!(id, tally) {
+		match check_offsets!(files, tally) {
 			Err(Failed) => Failed
 			Ok(kept) => {
-				appended = Host.append!(transcript_path(id), MessageCodec.encode(message))
+				appended = Host.append!(files.transcript, MessageCodec.encode(message))
 				match appended.status {
 					Failed => Failed
 					Appended => {
 						offsets =
 							if kept {
-								Host.append!(offsets_path(id), offset_record(tally.bytes)).status
+								Host.append!(files.offsets, offset_record(tally.bytes)).status
 							} else {
-								save_offsets!(id)
+								save_offsets!(files)
 							}
 						match offsets {
 							Failed => Failed
 							Appended =>
 								match Host.write!(
-									tally_path(id),
+									files.tally,
 									tally_line({
 										messages: tally.messages + 1,
 										bytes: appended.size,
@@ -664,6 +706,107 @@ Store := [].{
 				}
 		}
 
+	## **A NEW CHANNEL WRITTEN**, at its name's key: `Taken` when a channel
+	## of that key is there already, in any spelling. Checked then set,
+	## atomic because one handler runs at a time (the turn).
+	save_new_channel! : Channel => [
+		Failed,
+		Taken,
+		Written,
+	]
+	save_new_channel! = |channel| save_new!(
+		ChannelLayout.channel_path(channel.name()),
+		ChannelCodec.encode(channel.fields()),
+	)
+
+	## **A CHANNEL WRITTEN OVER ITS RECORD** (a member let in or let go):
+	## `Missing` when no channel is at its name's key, so a write here never
+	## makes one (`save_new_channel!` does). Checked then set, atomic because
+	## one handler runs at a time (the turn).
+	save_channel! : Channel => [
+		Failed,
+		Missing,
+		Written,
+	]
+	save_channel! = |channel| {
+		path = ChannelLayout.channel_path(channel.name())
+		stat = Host.read_stat!(path)
+		match stat.status {
+			Missing => Missing
+			Failed => Failed
+			Found =>
+				match Host.write!(path, ChannelCodec.encode(channel.fields())) {
+					Failed => Failed
+					Written => Written
+				}
+		}
+	}
+
+	## The channel `name` names, in any spelling: `Missing` when there is
+	## none, and `Failed` when its record will not read or names another
+	## channel than its folder's (a store the chat did not write).
+	load_channel! : ChannelName => Try(Channel, [Missing, Failed])
+	load_channel! = |name| read_channel!(name).map_err(
+		|e|
+			match e {
+				Missing => Missing
+				Malformed | Failed => Failed
+			},
+	)
+
+	## **EVERY CHANNEL STORED** (for an admin's page), in the order the disk
+	## gives their folders. One damaged entry fails only itself: a folder
+	## whose name is no channel's key, or whose record will not read, is
+	## left out and counted in `damaged`. A folder with no record yet (a
+	## stop before its first write landed) holds no channel.
+	load_channels! : {} => Try({ channels : List(Channel), damaged : U64 }, [Failed])
+	load_channels! = |{}| {
+		listed = Host.list!(ChannelLayout.channels_path)
+		match listed.status {
+			Missing => Ok({ channels: [], damaged: 0 })
+			Failed => Err(Failed)
+			Found => collect_channels!(listed.entries, { channels: [], damaged: 0 })
+		}
+	}
+
+	## **A NEW TOPIC WRITTEN** in its channel, at its name's key: `Taken`
+	## when a topic of that key is in the channel already, in any spelling
+	## (another channel's topic of the name is no matter). Checked then set,
+	## as a channel is.
+	save_new_topic! : Topic => [
+		Failed,
+		Taken,
+		Written,
+	]
+	save_new_topic! = |topic| save_new!(
+		ChannelLayout.topic_path(topic.at()),
+		TopicCodec.encode(topic.fields()),
+	)
+
+	## The topic `name` names in `channel` (loaded), in any spelling:
+	## `Missing` when there is none, and `Failed` when its record will not
+	## read or names another topic than its folder's.
+	load_topic! : Channel, TopicName => Try(Topic, [Missing, Failed])
+	load_topic! = |channel, name| read_topic!({ channel: channel.name(), topic: name }).map_err(
+		|e|
+			match e {
+				Missing => Missing
+				Malformed | Failed => Failed
+			},
+	)
+
+	## **EVERY TOPIC OF `channel`** (loaded), in the order the disk gives
+	## their folders; a damaged one left out and counted, as a channel is.
+	load_topics! : Channel => Try({ topics : List(Topic), damaged : U64 }, [Failed])
+	load_topics! = |channel| {
+		listed = Host.list!(ChannelLayout.topics_path(channel.name()))
+		match listed.status {
+			Missing => Ok({ topics: [], damaged: 0 })
+			Failed => Err(Failed)
+			Found => collect_topics!(channel.name(), { folders: listed.entries, kept: { topics: [], damaged: 0 } })
+		}
+	}
+
 	## An audit entry appended. The audit is a record of what happened, not
 	## the request's work, so its failure is the host's to log alone.
 	append_audit! : AuditCodec.Entry => {}
@@ -691,17 +834,11 @@ conversations_path = "chat/conversations".to_utf8()
 conversation_path : ConvAccess.ConvId -> List(U8)
 conversation_path = |id| "chat/conversations/${id.to_u64().to_str()}".to_utf8()
 
-transcript_path : ConvAccess.ConvId -> List(U8)
-transcript_path = |id| "chat/transcripts/${id.to_u64().to_str()}".to_utf8()
-
-offsets_path : ConvAccess.ConvId -> List(U8)
-offsets_path = |id| "chat/offsets/${id.to_u64().to_str()}".to_utf8()
-
 ## Whether the offsets file holds one record for each message `tally`
 ## counts.
-check_offsets! : ConvAccess.ConvId, Store.Tally => Try(Bool, [Failed])
-check_offsets! = |id, tally| {
-	stat = Host.read_stat!(offsets_path(id))
+check_offsets! : Store.TranscriptFiles, Store.Tally => Try(Bool, [Failed])
+check_offsets! = |files, tally| {
+	stat = Host.read_stat!(files.offsets)
 	match stat.status {
 		Failed => Err(Failed)
 		Missing => Ok(tally.messages == 0)
@@ -710,14 +847,14 @@ check_offsets! = |id, tally| {
 }
 
 ## The offsets file written whole, from the transcript as it is.
-save_offsets! : ConvAccess.ConvId => [Appended, Failed]
-save_offsets! = |id| {
-	read = Host.read!(transcript_path(id))
+save_offsets! : Store.TranscriptFiles => [Appended, Failed]
+save_offsets! = |files| {
+	read = Host.read!(files.transcript)
 	match read.status {
 		Missing | Failed => Failed
 		Found =>
 			match Host.write!(
-				offsets_path(id),
+				files.offsets,
 				List.join_map(line_starts(read.bytes), offset_record),
 			) {
 				Failed => Failed
@@ -1128,9 +1265,6 @@ load_invites_at! = |records, kept|
 		}
 	}
 
-tally_path : ConvAccess.ConvId -> List(U8)
-tally_path = |id| "chat/tallies/${id.to_u64().to_str()}".to_utf8()
-
 ## A tally's file: `<messages> <bytes>` and a newline.
 tally_line : Store.Tally -> List(U8)
 tally_line = |t| "${t.messages.to_str()} ${t.bytes.to_str()}\n".to_utf8()
@@ -1379,3 +1513,196 @@ expect line_starts("ab\nc\n\nd\n".to_utf8()) == [
 expect line_starts([]) == []
 expect grouped([]) == []
 expect mark_line(12) == "12\n".to_utf8()
+
+## ── the channels and their topics (ChannelLayout) ──
+
+## A folder's entry, as the host lists it.
+FolderEntry : {
+	kind : [
+		Dir,
+		File,
+		Other,
+	],
+	name : List(U8),
+}
+
+## **A RECORD WRITTEN WHERE NONE IS**: `Taken` when the file is there.
+save_new! : List(U8),
+List(U8) => [
+	Failed,
+	Taken,
+	Written,
+]
+save_new! = |path, bytes| {
+	stat = Host.read_stat!(path)
+	match stat.status {
+		Found => Taken
+		Failed => Failed
+		Missing =>
+			match Host.write!(path, bytes) {
+				Failed => Failed
+				Written => Written
+			}
+	}
+}
+
+## The channel at `name`'s key: its record not there (`Missing`), not one
+## the chat wrote there (`Malformed`), or a read that failed.
+read_channel! : ChannelName => Try(
+	Channel,
+	[
+		Missing,
+		Malformed,
+		Failed,
+	],
+)
+read_channel! = |name| {
+	read = Host.read!(ChannelLayout.channel_path(name))
+	match read.status {
+		Missing => Err(Missing)
+		Failed => Err(Failed)
+		Found =>
+			match ChannelCodec.decode(read.bytes) {
+				Ok(line) if line.fields().name == name => Ok(Channel.load(line))
+				_ => Err(Malformed)
+			}
+	}
+}
+
+## The topic at `at`'s keys, as `read_channel!` reads a channel.
+read_topic! : Topic.At => Try(
+	Topic,
+	[
+		Missing,
+		Malformed,
+		Failed,
+	],
+)
+read_topic! = |at| {
+	read = Host.read!(ChannelLayout.topic_path(at))
+	match read.status {
+		Missing => Err(Missing)
+		Failed => Err(Failed)
+		Found =>
+			match TopicCodec.decode(read.bytes) {
+				Ok(line) if line.fields().name == at.topic => Ok(Topic.load(at.channel, line))
+				_ => Err(Malformed)
+			}
+	}
+}
+
+## **THE NAME A FOLDER IS THE KEY OF**: a folder whose name `parse` takes
+## and is its own `key`, the one spelling a path uses.
+folder_key : FolderEntry, { parse : (Str -> Try(a, _)), key : (a -> Str) } -> Try(a, [NotAKey])
+folder_key = |entry, { parse, key }|
+	match (entry.kind, Str.from_utf8(entry.name)) {
+		(Dir, Ok(text)) =>
+			match parse(text) {
+				Ok(name) if key(name) == text => Ok(name)
+				_ => Err(NotAKey)
+			}
+		_ => Err(NotAKey)
+	}
+
+## The channels the listed folders hold, after `kept`.
+collect_channels! : List(FolderEntry),
+{ channels : List(Channel), damaged : U64 } => Try(
+	{ channels : List(Channel), damaged : U64 },
+	[Failed],
+)
+collect_channels! = |entries, kept|
+	match entries {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read =
+				match folder_key(entry, { parse: ChannelName.from_str, key: ChannelName.key }) {
+					Ok(name) => read_channel!(name)
+					Err(NotAKey) => Err(Malformed)
+				}
+			match read {
+				Ok(c) => collect_channels!(rest, { ..kept, channels: kept.channels.append(c) })
+				Err(Missing) => collect_channels!(rest, kept)
+				Err(Malformed) => collect_channels!(rest, { ..kept, damaged: kept.damaged + 1 })
+				Err(Failed) => Err(Failed)
+			}
+		}
+	}
+
+## The topics of `channel` the listed folders hold, after `kept`.
+collect_topics! : ChannelName,
+{
+	folders : List(FolderEntry),
+	kept : { topics : List(Topic), damaged : U64 },
+} => Try(
+	{ topics : List(Topic), damaged : U64 },
+	[Failed],
+)
+collect_topics! = |channel, { folders, kept }|
+	match folders {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read =
+				match folder_key(entry, { parse: TopicName.from_str, key: TopicName.key }) {
+					Ok(topic) => read_topic!({ channel, topic })
+					Err(NotAKey) => Err(Malformed)
+				}
+			next =
+				match read {
+					Ok(t) => { ..kept, topics: kept.topics.append(t) }
+					Err(Missing) => kept
+					Err(Malformed) => { ..kept, damaged: kept.damaged + 1 }
+					Err(Failed) => return Err(Failed)
+				}
+			collect_topics!(channel, { folders: rest, kept: next })
+		}
+	}
+
+expect folder_key({ kind: Dir, name: "cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }).map_ok(ChannelName.to_str) == Ok("cobblestone")
+expect folder_key({ kind: Dir, name: "Cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }) == Err(NotAKey)
+expect folder_key({ kind: File, name: "cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }) == Err(NotAKey)
+expect folder_key({ kind: Dir, name: "a--b".to_utf8() }, { parse: TopicName.from_str, key: TopicName.key }) == Err(NotAKey)
+expect folder_key({ kind: Dir, name: "road-trip-2".to_utf8() }, { parse: TopicName.from_str, key: TopicName.key }).is_ok()
+
+# ── transcript files
+## Where `channel`'s topic `name` is.
+topic_at : Str, Str -> Topic.At
+topic_at = |channel, name|
+	match (ChannelName.from_str(channel), TopicName.from_str(name)) {
+		(Ok(c), Ok(t)) => { channel: c, topic: t }
+		_ => crash "topic_at: a test's names are names"
+	}
+
+## A transcript's three files, in a list.
+files_list : Store.TranscriptFiles -> List(List(U8))
+files_list = |f| [
+	f.transcript,
+	f.offsets,
+	f.tally,
+]
+
+# A conversation's files: where they always were.
+expect
+	match ConvAccess.ConvId.from_u64(12) {
+		Ok(id) =>
+			Store.conversation_files(id)
+				== {
+					transcript: "chat/transcripts/12".to_utf8(),
+					offsets: "chat/offsets/12".to_utf8(),
+					tally: "chat/tallies/12".to_utf8(),
+				}
+		Err(_) => Bool.False
+	}
+# A topic's files: in its own folder, in its own channel's.
+expect
+	Store.topic_files(topic_at("Cobblestone", "ChitChat"))
+		== {
+			transcript: "chat/channels/cobblestone/topics/chitchat/transcript".to_utf8(),
+			offsets: "chat/channels/cobblestone/topics/chitchat/offsets".to_utf8(),
+			tally: "chat/channels/cobblestone/topics/chitchat/tally".to_utf8(),
+		}
+# Two channels' ChitChats: no file shared.
+expect
+	files_list(Store.topic_files(topic_at("Cobblestone", "ChitChat")))
+		.all(|p| !files_list(Store.topic_files(topic_at("general", "ChitChat"))).contains(p))
+# One topic in any spelling: one set of files.
+expect Store.topic_files(topic_at("COBBLESTONE", "chitchat")) == Store.topic_files(topic_at("Cobblestone", "ChitChat"))

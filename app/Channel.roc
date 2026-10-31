@@ -18,6 +18,7 @@
 ## made, and returns the channel to store or the refusal by name.
 import Access
 import ChannelCast
+import ChannelCodec
 import ChannelName
 import Principal
 
@@ -123,6 +124,15 @@ Channel :: {
 			Err(NotIn(member))
 		}
 	}
+
+	## **A CHANNEL BACK FROM THE STORE**: the one way in besides `make`, from
+	## a line ChannelCodec decoded, every field checked.
+	load : ChannelCodec.Line -> Channel
+	load = |line| Channel.(line.fields())
+
+	## The channel's fields, to store (ChannelCodec.encode).
+	fields : Channel -> ChannelCodec.Fields
+	fields = |Channel.(c)| c
 
 	## The channel's name.
 	name : Channel -> ChannelName
@@ -361,3 +371,12 @@ removed_retired = cobblestone.remove({
 })
 
 expect removed_retired.is_ok()
+
+# Stored and loaded: the channel it was, its members' bindings and all.
+## `channel` through its line and back.
+stored_and_loaded : Channel -> Try(Channel, _)
+stored_and_loaded = |channel| ChannelCodec.decode(ChannelCodec.encode(channel.fields())).map_ok(Channel.load)
+
+expect stored_and_loaded(cobblestone) == Ok(cobblestone)
+expect stored_and_loaded(cobblestone).map_ok(|c| c.name().to_str()) == Ok("Cobblestone")
+expect make_by(Steve, { name: "general", members: [] }).map_ok(|c| stored_and_loaded(c) == Ok(c)) == Ok(Bool.True)
