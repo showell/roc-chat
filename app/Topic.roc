@@ -33,9 +33,7 @@ import TopicName
 Topic :: {
 	at : Topic.At,
 
-	## An agent topic's agents, never none: `make`, the one way in,
-	## refuses an agent topic naming none.
-	kind : [Human, Agents(List(Principal.Bound))],
+	kind : [Human, Agents({ first : Principal.Bound, more : List(Principal.Bound) })],
 }.{
 
 	## **WHERE A TOPIC IS**: its channel, then its name in it. The pair is
@@ -125,9 +123,10 @@ Topic :: {
 			match kind {
 				Human => Ok(Topic.({ at, kind: Human }))
 				Agents([]) => Err(NoAgents)
-				Agents(ids) => {
-					bound = ids.fold_try(
-						[],
+				Agents([first, .. as more]) => {
+					first_bound = agent_bound(accounts, { id: first, owner: human })?
+					more_bound = more.fold_try(
+						[first_bound],
 						|kept, id| {
 							if kept.any(|b| b.id == id) {
 								Err(NamedTwice(id))
@@ -136,7 +135,7 @@ Topic :: {
 							}
 						},
 					)?
-					Ok(Topic.({ at, kind: Agents(bound) }))
+					Ok(Topic.({ at, kind: Agents({ first: first_bound, more: more_bound.drop_first(1) }) }))
 				}
 			}
 		}
@@ -160,7 +159,7 @@ Topic :: {
 	agents = |Topic.(t), accounts|
 		match t.kind {
 			Human => []
-			Agents(named) => named.keep_if(|b| Principal.holds(accounts, b).is_ok())
+			Agents({ first, more }) => more.prepend(first).keep_if(|b| Principal.holds(accounts, b).is_ok())
 		}
 
 	## **THE ONE TOPIC AT `wanted` AMONG `topics`**: found only when exactly
