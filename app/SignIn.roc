@@ -24,6 +24,11 @@ SignIn := [].{
 	## **/login**: a state minted (GitHubSignIn.Started), signed by the
 	## host, and the browser sent to GitHub's authorize page with it; its
 	## nonce set in this browser's state cookie for OAuthState's lifetime.
+	## **IT STARTS OVER**: whatever an earlier sign-in left in this browser
+	## goes (its pending sign-up cookie ended, its state cookie replaced),
+	## so nothing stale blocks this one. Where it ends is kept in the `next`
+	## cookie (SignInWeb.landing reads it): `?next=` when it is one of this
+	## site's own paths, else nothing.
 	login! : {} => Chat.Answer
 	login! = |{}| {
 		now = Host.read_time!({})
@@ -45,6 +50,11 @@ SignIn := [].{
 					Str.to_utf8("&state="),
 					sign_token!(State, SignInWeb.state_body(fields)),
 				])
+				next =
+					match SignInWeb.next_of(Host.read_query!(Str.to_utf8("next"))) {
+						Next(path) => { contents: SignInWeb.hex(path), max_age: OAuthState.lifetime_secs }
+						NoNext => { contents: [], max_age: 0 }
+					}
 				see_other(location)
 					|> Chat.with_header(
 						"set-cookie",
@@ -52,6 +62,15 @@ SignIn := [].{
 							name: "state",
 							contents: SignInWeb.hex(fields.nonce),
 							max_age: OAuthState.lifetime_secs,
+						}),
+					)
+					|> Chat.with_header("set-cookie", ended_cookie("pending"))
+					|> Chat.with_header(
+						"set-cookie",
+						SignInWeb.set_cookie({
+							name: "next",
+							contents: next.contents,
+							max_age: next.max_age,
 						}),
 					)
 			}
@@ -143,6 +162,37 @@ SignIn := [].{
 	## names. What a sign-in and an agent's making decide on.
 	load_settings! : {} => Try(Accounts.Settings, [Failed])
 	load_settings! = |{}| Store.load_settings!(load_first_admin!({})?)
+
+	## **/, THE HELLO PAGE**: who this browser is signed in as, and where
+	## their conversations are; or that it is signed in as nobody, and how
+	## to sign in. Nothing more. A session not admitted (expired, its
+	## account gone) is nobody.
+	serve_hello! : {} => Chat.Answer
+	serve_hello! = |{}| {
+		now = Host.read_time!({})
+		match SignIn.load_cookie_session!({}) {
+			Err(Failed) => Chat.failed
+			Ok(NoSession) => hello_page(Nobody)
+			Ok(Found(session)) =>
+				match Store.load_accounts!({}) {
+					Err(Failed) => Chat.failed
+					Ok(accounts) =>
+						match session.admit({ accounts, now }) {
+							Refused(_) => hello_page(Nobody)
+							Admitted({ principal, write }) =>
+								match write {
+									Unchanged => hello_page(Someone(principal))
+									Touched(s) =>
+										if Store.save_session!(s.fields()) == Written {
+											hello_page(Someone(principal))
+										} else {
+											Chat.failed
+										}
+								}
+						}
+				}
+		}
+	}
 
 	## **/me**: the session this browser's cookie names, admitted or not
 	## (Session.admit), its `last seen` written when stale.
@@ -317,6 +367,20 @@ sign_up! = |{}| {
 	}
 }
 
+## **WHERE THIS SIGN-IN ENDS** (SignInWeb.landing): the page `next` kept
+## at /login, checked again here as one of this site's own paths, or
+## `/chat`.
+landing! : {} => List(U8)
+landing! = |{}|
+	match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "next") {
+		Unsent => SignInWeb.landing(NoNext)
+		Sent(value) =>
+			match SignInWeb.unhex(value) {
+				Ok(path) => SignInWeb.landing(Next(path))
+				Err(NotHex) => SignInWeb.landing(NoNext)
+			}
+	}
+
 ## **SIGNED IN**: the plan's steps applied (Accounts.applied: the
 ## settings' counter, then the accounts), the session started
 ## (Session.start), all three stored, and the session cookie set; the
@@ -336,7 +400,8 @@ sign_in! = |f, { admission, steps }| {
 	}) {
 		Failed => Chat.failed
 		Written =>
-			see_other(Str.to_utf8("/"))
+			see_other(landing!({}))
+				|> Chat.with_header("set-cookie", ended_cookie("next"))
 				|> Chat.with_header(
 					"set-cookie",
 					SignInWeb.set_cookie({
@@ -364,12 +429,48 @@ sign_in! = |f, { admission, steps }| {
 	}
 }
 
+## The hello page, never cached: who is signed in, or nobody.
+hello_page : [Nobody, Someone(Principal)] -> Chat.Answer
+hello_page = |who| {
+	said =
+		match who {
+			Nobody => Html.markup("<p>You're not signed in. <a href=/login>Sign in with GitHub</a>.</p>\n")
+			Someone(principal) =>
+				Html.join([
+					Html.markup("<p>Signed in as "),
+					Html.text(signed_in_as(principal)),
+					Html.markup(". Your conversations are at <a href=/chat>/chat</a>.</p>\n"),
+				])
+		}
+	Html.respond(200, Html.join([Html.markup("<!doctype html>\n<title>roc-chat</title>\n"), said]))
+}
+
+## A principal as the hello page names them: a human's name, and their
+## GitHub login beside it while they have one.
+signed_in_as : Principal -> Str
+signed_in_as = |principal|
+	match principal {
+		Human(h) => if (h.login == "") h.name else "${h.name} (GitHub ${h.login})"
+		Agent(a) => a.name
+		Bot(b) => b.name
+	}
+
+## The cookie `name` ended.
+ended_cookie : Str -> List(U8)
+ended_cookie = |name| SignInWeb.set_cookie({
+	name,
+	contents: [],
+	max_age: 0,
+})
+
 ## Not signed in: a 401, no reason given.
 not_signed_in : Chat.Answer
 not_signed_in = Chat.respond(401, { content_type: Chat.text, body: Str.to_utf8("not signed in\n") })
 
 ## **A REFUSED SIGN-IN**: audited unless anonymous (GitHubSignIn.audited),
-## and a 403 naming why, as the audit spells it (AuditCodec).
+## and a 403 page saying why in plain words (SignInWeb.refusal_words),
+## the audit's spelling beside them (AuditCodec), and a link to start
+## again; the pending sign-up cookie ended.
 answer_refused! : Try(Chat.Answer, GitHubSignIn.Refusal) => Chat.Answer
 answer_refused! = |decided|
 	match decided {
@@ -387,12 +488,15 @@ answer_refused! = |decided|
 						Err(ClockOutOfRange) => {}
 					}
 			}
-			Chat.respond(
+			Html.respond(
 				403,
-				{
-					content_type: Chat.text,
-					body: Str.to_utf8("sign-in refused: ${AuditCodec.sign_in_refusal_text(why)}\n"),
-				},
+				Html.join([
+					Html.markup("<!doctype html>\n<title>Sign-in refused</title>\n<p>"),
+					Html.text(SignInWeb.refusal_words(why)),
+					Html.markup(" <a href=/login>Sign in again</a>.</p>\n<p><small>sign-in refused: <code>"),
+					Html.text(AuditCodec.sign_in_refusal_text(why)),
+					Html.markup("</code></small></p>\n"),
+				]),
 			)
 				|> Chat.with_header(
 					"set-cookie",

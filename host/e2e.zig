@@ -563,7 +563,9 @@ fn signedOutPage(w: *World) !void {
     for ([_][]const u8{ "/chat", try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv}) }) |target| {
         const r = try get(w.a, w.port(), target, "");
         if (r.status != 303) return error.NotARedirect;
-        if (!std.mem.eql(u8, r.header("location") orelse "", "/login")) return error.NotToLogin;
+        // To /login, naming the page, so the sign-in ends back on it.
+        const want = try std.fmt.allocPrint(w.a, "/login?next=%2Fchat{s}", .{if (std.mem.eql(u8, target, "/chat")) "" else try std.fmt.allocPrint(w.a, "%2F{s}", .{w.conv})});
+        if (!std.mem.eql(u8, r.header("location") orelse "", want)) return error.NotToLogin;
     }
 }
 

@@ -35,8 +35,8 @@ reasons are in [DECISIONS.md](DECISIONS.md).
 
 | | |
 |---|---|
-| `GET /` | A hello page, rendered by roc-markdown. |
-| `GET /login` | Sign-in: the browser sent to GitHub with a signed state. |
+| `GET /` | The hello page: who you are signed in as, or that you are not, and where to go. |
+| `GET /login` | Sign-in: the browser sent to GitHub with a signed state; it starts over (an earlier sign-in's leftover pending cookie is ended). `?next=<path>` is where it ends, when it is one of this site's own paths (a page signed out sends you here with it); otherwise, and by default, `/chat`. A refused sign-in is a page saying why in plain words, with a link to start again; the audit keeps the exact reason. |
 | `GET /login/github` | GitHub's callback: the exchange off the turn, then a session or the name form. |
 | `POST /login/name` | The display name for a new account; the session cookie. |
 | `GET /me` | Who this session is. |

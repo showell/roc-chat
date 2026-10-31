@@ -185,10 +185,32 @@ fn callback(arena: std.mem.Allocator, rig: *Rig, code: []const u8, state: []cons
     return get(arena, rig.port(), target, cookie);
 }
 
+/// **A REFUSED SIGN-IN'S PAGE**: a 403 saying why in plain words, the
+/// audit's spelling beside them, and a link to start again; no session.
 fn expectRefused(r: Response, comptime why: []const u8) !void {
     try std.testing.expectEqual(403, r.status);
-    try std.testing.expectEqualStrings("sign-in refused: " ++ why ++ "\n", r.body);
+    try std.testing.expect(has(r.body, refusal_words(why)));
+    try std.testing.expect(has(r.body, "<a href=/login>Sign in again</a>"));
+    try std.testing.expect(has(r.body, "sign-in refused: <code>" ++ why ++ "</code>"));
     try std.testing.expect(r.setCookie("session") == null);
+}
+
+/// The words each refusal's page says (SignInWeb.refusal_words), as HTML
+/// escapes them.
+fn refusal_words(comptime why: []const u8) []const u8 {
+    const words = .{
+        .{ "state-forged", "This sign-in link isn&#39;t one we made. Start again." },
+        .{ "state-mismatched", "This sign-in started in another browser or window. Start again here." },
+        .{ "state-reused", "This sign-in link was already used. Start again." },
+        .{ "github-denied", "GitHub said no." },
+        .{ "github-unreachable", "We couldn&#39;t reach GitHub just now. Try again in a minute." },
+        .{ "pending-forged", "This sign-up isn&#39;t one we started. Start again." },
+        .{ "pending-reused", "This sign-up was already used. Sign in again." },
+    };
+    inline for (words) |w| {
+        if (comptime std.mem.eql(u8, w[0], why)) return w[1];
+    }
+    @compileError("no words for " ++ why);
 }
 
 test "/login: a 303 to GitHub's authorize page with the client id, the callback and a state the site key signed; the state's nonce in this browser's cookie" {
@@ -242,7 +264,8 @@ test "a new human: the callback with a good code asks for a name, the name makes
 
     const made = try request(a, rig.port(), "POST", "/login/name", both, "name=The+Octocat");
     try std.testing.expectEqual(303, made.status);
-    try std.testing.expectEqualStrings("/", made.header("location").?);
+    // It ends on /chat, the chat itself, never the hello page.
+    try std.testing.expectEqualStrings("/chat", made.header("location").?);
     const line = made.setCookie("session").?;
     try std.testing.expect(std.mem.endsWith(u8, line, "; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=7776000"));
     const session = made.cookie("session").?;
@@ -268,6 +291,7 @@ test "a new human: the callback with a good code asks for a name, the name makes
     const again = try login(a, rig);
     const back = try callback(a, rig, "good", again.state, again.cookie);
     try std.testing.expectEqual(303, back.status);
+    try std.testing.expectEqualStrings("/chat", back.header("location").?);
     try std.testing.expect(back.setCookie("session") != null);
     try std.testing.expect(!std.mem.eql(u8, session, back.cookie("session").?));
 }
@@ -390,4 +414,114 @@ test "a GitHub that never answers is the core's failure page at the deadline, no
     try expectRefused(r, "github-unreachable");
     try std.testing.expect(took >= github_whole_ms - 100 and took < 3 * github_whole_ms);
     try expectRefused(try callback(a, rig, "good", one.state, one.cookie), "state-reused");
+}
+
+/// A browser's /login at `target`, sending `cookie`: the state GitHub is
+/// handed, the state cookie, and the response.
+fn loginAt(arena: std.mem.Allocator, rig: *Rig, target: []const u8, cookie: []const u8) !struct { in: LoggedIn, r: Response } {
+    const r = try get(arena, rig.port(), target, cookie);
+    try std.testing.expectEqual(303, r.status);
+    const location = r.header("location") orelse return error.NoLocation;
+    const at = std.mem.indexOf(u8, location, "&state=") orelse return error.NoState;
+    return .{ .in = .{
+        .state = location[at + "&state=".len ..],
+        .cookie = try std.fmt.allocPrint(arena, "__Host-state={s}", .{r.cookie("state") orelse return error.NoStateCookie}),
+    }, .r = r };
+}
+
+/// The octocat (the fake GitHub's `good` code) signed up, named.
+fn signedUp(a: std.mem.Allocator, rig: *Rig) ![]const u8 {
+    const one = try login(a, rig);
+    const named = try callback(a, rig, "good", one.state, one.cookie);
+    try std.testing.expectEqual(200, named.status);
+    const both = try std.fmt.allocPrint(a, "{s}; __Host-pending={s}", .{ one.cookie, named.cookie("pending").? });
+    const made = try request(a, rig.port(), "POST", "/login/name", both, "name=The+Octocat");
+    try std.testing.expectEqual(303, made.status);
+    return std.fmt.allocPrint(a, "__Host-session={s}", .{made.cookie("session").?});
+}
+
+test "a sign-in ends where it started: /chat by default, the page /login?next= named when it is this site's own, and an off-site next ignored" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const rig = try Rig.start();
+    defer rig.stop();
+    _ = try signedUp(a, rig);
+
+    // Started from the agents page: it ends there; the next cookie, kept
+    // for the round trip, is ended on landing.
+    const from = try loginAt(a, rig, "/login?next=/chat/agents", "");
+    const kept = from.r.cookie("next").?;
+    try std.testing.expectEqualStrings("2f636861742f6167656e7473", kept);
+    const both = try std.fmt.allocPrint(a, "{s}; __Host-next={s}", .{ from.in.cookie, kept });
+    const back = try callback(a, rig, "good", from.in.state, both);
+    try std.testing.expectEqual(303, back.status);
+    try std.testing.expectEqualStrings("/chat/agents", back.header("location").?);
+    try std.testing.expect(std.mem.endsWith(u8, back.setCookie("next").?, "Max-Age=0"));
+
+    // Encoded, the same.
+    const encoded = try loginAt(a, rig, "/login?next=%2Fchat%2F3", "");
+    try std.testing.expectEqualStrings("2f636861742f33", encoded.r.cookie("next").?);
+
+    // Off-site, in each spelling: no next kept, and the sign-in ends on /chat.
+    for ([_][]const u8{ "https://evil.example/", "//evil.example/", "%2F%2Fevil.example", "/%5Cevil.example", "/chat%0d%0aset-cookie:x" }) |next| {
+        const off = try loginAt(a, rig, try std.fmt.allocPrint(a, "/login?next={s}", .{next}), "");
+        try std.testing.expectEqualStrings("", off.r.cookie("next").?);
+        const landed = try callback(a, rig, "good", off.in.state, off.in.cookie);
+        try std.testing.expectEqualStrings("/chat", landed.header("location").?);
+    }
+
+    // A next cookie forged to point off-site is checked again on landing.
+    const forged = try login(a, rig);
+    const with_forged = try std.fmt.allocPrint(a, "{s}; __Host-next=2f2f6576696c", .{forged.cookie});
+    const ignored = try callback(a, rig, "good", forged.state, with_forged);
+    try std.testing.expectEqualStrings("/chat", ignored.header("location").?);
+}
+
+test "the hello page says who is signed in, or that nobody is, and nothing more" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const rig = try Rig.start();
+    defer rig.stop();
+
+    const out = try get(a, rig.port(), "/", "");
+    try std.testing.expectEqual(200, out.status);
+    try std.testing.expect(has(out.body, "You're not signed in. <a href=/login>Sign in with GitHub</a>."));
+    try std.testing.expect(!has(out.body, "Signed in as"));
+    // A cookie naming no session is nobody too.
+    const stale = try get(a, rig.port(), "/", "__Host-session=" ++ forged_hex);
+    try std.testing.expect(has(stale.body, "You're not signed in."));
+
+    const session = try signedUp(a, rig);
+    const in = try get(a, rig.port(), "/", session);
+    try std.testing.expectEqual(200, in.status);
+    try std.testing.expect(has(in.body, "Signed in as The Octocat (GitHub octocat). Your conversations are at <a href=/chat>/chat</a>."));
+    try std.testing.expect(!has(in.body, "not signed in"));
+}
+
+test "a sign-in started over leftover state and pending cookies is never blocked: /login ends the pending one and replaces the state" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const rig = try Rig.start();
+    defer rig.stop();
+
+    // An earlier sign-up abandoned at the name form: its state and pending
+    // cookies are still in the browser.
+    const old = try login(a, rig);
+    const named = try callback(a, rig, "good", old.state, old.cookie);
+    const leftover = try std.fmt.allocPrint(a, "{s}; __Host-pending={s}", .{ old.cookie, named.cookie("pending").? });
+
+    // Signing in again, with them sent: the pending one ended, a new state.
+    const again = try loginAt(a, rig, "/login", leftover);
+    try std.testing.expect(std.mem.endsWith(u8, again.r.setCookie("pending").?, "Max-Age=0"));
+    try std.testing.expect(!std.mem.eql(u8, again.in.cookie, old.cookie));
+    // The browser now holds the new state; the sign-up goes through.
+    const asked = try callback(a, rig, "good", again.in.state, again.in.cookie);
+    try std.testing.expectEqual(200, asked.status);
+    const both = try std.fmt.allocPrint(a, "{s}; __Host-pending={s}", .{ again.in.cookie, asked.cookie("pending").? });
+    const made = try request(a, rig.port(), "POST", "/login/name", both, "name=The+Octocat");
+    try std.testing.expectEqual(303, made.status);
+    try std.testing.expectEqualStrings("/chat", made.header("location").?);
 }

@@ -2,8 +2,8 @@
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
 ## conversations, Agents.roc's agents and API keys, Channels.roc's channels
 ## (an admin's), Pages.roc's pages; the store is Store.roc's, the only module that names a
-## file. Beside them, a hello page (rendered by roc-markdown, the chat's
-## dialect) and the chat client's scripts (`serve_script!`).
+## file. Beside them, the chat client's scripts (`serve_script!`); the
+## hello page at `/` is SignIn's, as it says who is signed in.
 app [handle!] {
 	md: "../../roc-markdown/package/main.roc",
 	pf: platform "../platform/main.roc",
@@ -11,7 +11,6 @@ app [handle!] {
 
 import pf.Chat
 import pf.Host
-import md.Md
 import Agents
 import Channels
 # The rest of the channels model (Topic, MessageRef, ChannelLayout): pure
@@ -50,7 +49,7 @@ route! : Chat.Request => Chat.Answer
 route! = |req|
 	if req.path == "/".to_utf8() {
 		if req.method == Get or req.method == Head {
-			hello
+			SignIn.serve_hello!({})
 		} else {
 			Chat.not_allowed(Get)
 		}
@@ -112,21 +111,6 @@ route! = |req|
 				}
 		}
 	}
-
-## The hello page, never cached.
-hello : Chat.Answer
-hello = {
-	page = Html.join([
-		Html.markup("<!doctype html>\n<title>roc-chat</title>\n"),
-		Html.rendered(
-			Md.render_trusted(
-				Str.to_utf8("**Hello** from roc-chat. Sign in at `/login`; your conversations are at `/chat`."),
-				Conversations.markdown,
-			),
-		),
-	])
-	Html.respond(200, page)
-}
 
 ## `/<name>.js`, one part: the script's name.
 script_name : List(U8) -> Try(List(U8), [NotAScript])

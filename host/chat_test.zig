@@ -12,14 +12,14 @@ const Response = h.Response;
 const exchange = h.exchange;
 const has = h.has;
 
-test "GET / is the Roc's hello page, rendered by roc-markdown, with the Roc's own cache-control header" {
+test "GET / is the Roc's hello page, saying nobody is signed in, with the Roc's own cache-control header" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const r = try Running.start(.{});
     defer r.stop();
     const got = try Response.of(try exchange(arena.allocator(), r.port(), "GET / HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
     try std.testing.expectEqual(200, got.status);
-    try std.testing.expect(has(got.body, "<strong>Hello</strong> from roc-chat."));
+    try std.testing.expect(has(got.body, "You're not signed in. <a href=/login>Sign in with GitHub</a>."));
     try std.testing.expectEqualStrings("no-store", got.header("cache-control").?);
     try std.testing.expectEqualStrings("text/html; charset=utf-8", got.header("content-type").?);
     try std.testing.expectEqual(1, r.turns());
@@ -43,7 +43,7 @@ test "a conversation, or the list of them, asked of nobody signed in is a 401; a
     for ([_][]const u8{ "/chat", "/chat/1" }) |path| {
         const page = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n", .{path})));
         try std.testing.expectEqual(303, page.status);
-        try std.testing.expectEqualStrings("/login", page.header("location").?);
+        try std.testing.expectEqualStrings(try std.fmt.allocPrint(a, "/login?next={s}", .{if (std.mem.eql(u8, path, "/chat")) "%2Fchat" else "%2Fchat%2F1"}), page.header("location").?);
     }
     for ([_][]const u8{ "/conversations/0", "/conversations/1/other", "/chat/0", "/chat/1/x", "/stub/notes", "/echo" }) |path| {
         const got = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n", .{path})));

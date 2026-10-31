@@ -58,6 +58,7 @@ import Credentials
 import Html
 import MessageCodec
 import Principal
+import SignInWeb
 import Store
 import Stored
 import Wire
@@ -98,9 +99,9 @@ Pages := [].{
 		if req.method != Get and req.method != Head {
 			Chat.not_allowed(Get)
 		} else if r == AgentList {
-			serve_agents_page!({})
+			serve_agents_page!(req.path)
 		} else if r == ChannelList {
-			serve_channels_page!({})
+			serve_channels_page!(req.path)
 		} else {
 			use =
 				match r {
@@ -118,7 +119,7 @@ Pages := [].{
 					},
 				) =>
 					match viewer.who() {
-						SignedOut => to_login
+						SignedOut => to_login(req.path)
 						Key(_) => key_refused
 						Session(me) =>
 							match r {
@@ -127,8 +128,8 @@ Pages := [].{
 									accounts,
 									me: me.id,
 								})
-								AgentList => serve_agents_page!({})
-								ChannelList => serve_channels_page!({})
+								AgentList => serve_agents_page!(req.path)
+								ChannelList => serve_channels_page!(req.path)
 								Conversation(id) => serve_conversation!({
 									viewer,
 									accounts,
@@ -144,13 +145,12 @@ Pages := [].{
 root : List(U8)
 root = "/chat".to_utf8()
 
-## Signed out: to `/login`, a 303. Sign-in lands on the hello page, not
-## back here: returning would mean carrying the page through the signed
-## OAuth state, which the sign-in core does not do.
-to_login : Chat.Answer
-to_login =
+## Signed out: to `/login`, a 303, naming this page (`next`), so the
+## sign-in ends back on it (SignInWeb.landing).
+to_login : List(U8) -> Chat.Answer
+to_login = |page|
 	Chat.respond(303, { content_type: Chat.text, body: [] })
-		|> Chat.with_header("location", "/login".to_utf8())
+		|> Chat.with_header("location", "/login?next=".to_utf8().concat(SignInWeb.url_encode(page)))
 		|> Chat.with_header("cache-control", "no-store".to_utf8())
 
 ## **A PAGE IS A BROWSER'S**: a key (an agent, which reads the JSON routes)
@@ -254,11 +254,11 @@ start_form = |accounts, me| {
 
 ## **/chat/agents**: the page, for a live session; signed out, to
 ## `/login`; a key, the 403 every page gives one.
-serve_agents_page! : {} => Chat.Answer
-serve_agents_page! = |{}|
+serve_agents_page! : List(U8) => Chat.Answer
+serve_agents_page! = |here|
 	match Agents.load_owned!({}) {
 		Ok(mine) => agents_page(mine)
-		Err(SignedOut) => to_login
+		Err(SignedOut) => to_login(here)
 		Err(ByKey) => key_refused
 		Err(Answered(answer)) => answer
 	}
@@ -355,11 +355,11 @@ agents_page = |mine| {
 ## **/chat/channels**: the page, for an admin by their own session; signed
 ## out, to `/login`; a key, the 403 every page gives one; anyone else, a
 ## 403 that says why.
-serve_channels_page! : {} => Chat.Answer
-serve_channels_page! = |{}|
+serve_channels_page! : List(U8) => Chat.Answer
+serve_channels_page! = |here|
 	match Channels.load_listing!({}) {
 		Ok(listing) => channels_page(listing)
-		Err(SignedOut) => to_login
+		Err(SignedOut) => to_login(here)
 		Err(ByKey) => key_refused
 		Err(NotAdmin) => Wire.refused(403, "the channels page is an admin's")
 		Err(Answered(answer)) => answer

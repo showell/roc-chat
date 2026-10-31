@@ -51,7 +51,7 @@ Html :: List(U8).{
 	markup = |literal| Html.(literal.to_utf8())
 
 	## **roc-markdown's HTML FOR A MESSAGE**, as is: the renderer's output
-	## (Conversations.html_of, `Md.render_trusted` for the hello page) and
+	## (Conversations.html_of) and
 	## nothing else.
 	rendered : List(U8) -> Html
 	rendered = |html| Html.(html)
