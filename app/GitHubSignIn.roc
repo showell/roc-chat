@@ -1587,3 +1587,37 @@ expect name_said({
 	..usual_naming,
 	pending: Signed({ ..usual_pending, github: 66 }),
 }) == Refused(Barred)
+
+# Which refusals are audited: each one an anonymous request repeats for
+# free never, each one past GitHub's exchange always; every tag on its side.
+expect
+	List.all(
+		[
+			StateForged,
+			StateMismatched,
+			StateExpired,
+			StateReused,
+			GitHubDenied,
+			NotACode,
+			PendingForged,
+			PendingMismatched,
+			PendingExpired,
+			PendingReused,
+		],
+		|why| GitHubSignIn.audited(why) == Anonymous,
+	)
+expect
+	List.all(
+		[
+			GitHubUnreachable,
+			BadIdentity,
+			Barred,
+			AccountExists,
+			DuplicateAccount,
+			AccountsFull,
+			StaleGeneration,
+			GenerationsExhausted,
+			ClockOutOfRange,
+		],
+		|why| GitHubSignIn.audited(why) == Audited,
+	)

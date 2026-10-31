@@ -2014,10 +2014,16 @@ expect redeemed_at({
 # Whose invites: ann's, for her agent; never boss's.
 expect Agents.is_invited_by(anns_invite, { human: Cast.gid(2), accounts: Cast.accounts })
 expect !Agents.is_invited_by(anns_invite, { human: Cast.gid(1), accounts: Cast.accounts })
+# Live from its making (50) to just before its expiry (650), and never
+# spent or revoked.
 expect is_live(anns_invite, 100) and !is_live(anns_invite, 650) and !is_live(
 	{ ..anns_invite, state: Spent },
 	100,
 )
+expect is_live(anns_invite, 50) and is_live(anns_invite, 649)
+expect !is_live(anns_invite, 651)
+expect !is_live(anns_invite, 49)
+expect !is_live({ ..anns_invite, state: Revoked }, 100)
 
 # **A HUMAN'S AGENTS** are theirs alone, never a human, and each one made
 # for them is among them.

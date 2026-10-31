@@ -7,9 +7,10 @@
 //!
 //! It prints a line a step, `PASS` or `FAIL`, its number, its name and its
 //! time, then `e2e: N of N passed` or `e2e: FAILED`, and exits 0 only on
-//! the first: `zig build e2e`, and `zig build test` runs it too.
-//! tools/verify.shale plants a fault for each refusal and requires its
-//! step red.
+//! the first: `zig build e2e`, and `zig build test` runs it too. Each
+//! refusal is asserted beside a near-miss that is taken, in its own step
+//! or an earlier one it builds on, so a check that stopped seeing fails
+//! on one side or the other.
 
 const std = @import("std");
 const Io = std.Io;
@@ -408,9 +409,20 @@ fn reconnect(w: *World) !void {
 const forged_secret: [64]u8 = @splat('c');
 const forged = "__Host-session=" ++ forged_secret;
 
+/// A's own cookie with its last byte changed: a forgery one byte from a
+/// real session's.
+fn nearForgery(w: *World) ![]const u8 {
+    const near = try w.a.dupe(u8, w.ann);
+    near[near.len - 1] = if (near[near.len - 1] == '0') '1' else '0';
+    return near;
+}
+
 fn forgedCookie(w: *World) !void {
     if ((try get(w.a, w.port(), try w.path(""), forged)).status != 401) return error.ReadWithForgery;
     if ((try w.postAs(forged, "forged")).status != 401) return error.PostedWithForgery;
+    if ((try get(w.a, w.port(), try w.path(""), try nearForgery(w))).status != 401) return error.ReadWithNearForgery;
+    // The real cookie, beside them, still reads.
+    if ((try get(w.a, w.port(), try w.path(""), w.ann)).status != 200) return error.RealRefused;
 }
 
 fn thirdPosts(w: *World) !void {
@@ -418,10 +430,15 @@ fn thirdPosts(w: *World) !void {
     const r = try w.postAs(w.cal, "let me in");
     if (r.status != 403 and r.status != 404) return error.ThirdPosted;
     if (try w.messages() != before) return error.TranscriptGrew;
+    // B, a participant who did not start it, posts.
+    if ((try w.postAs(w.bea, "B's turn")).status != 201) return error.ParticipantRefused;
+    if (try w.messages() != before + 1) return error.NotAppended;
 }
 
 fn thirdReads(w: *World) !void {
     if ((try get(w.a, w.port(), try w.path(""), w.cal)).status != 404) return error.ThirdRead;
+    // B, a participant who did not start it, reads.
+    if ((try get(w.a, w.port(), try w.path(""), w.bea)).status != 200) return error.ParticipantRefused;
     const l = Listener.open(w.a, w.port(), try w.path("/stream"), w.cal, "") catch |e| switch (e) {
         error.NotAStream => return,
         else => return e,
@@ -439,7 +456,8 @@ fn betweenOnce(w: *World) !void {
     defer w.rig.server.hold_before_subscribe_ms_for_test = 0;
     // B's stream, resuming after the last message: it reads the backlog
     // (none), then sleeps before its subscribe.
-    var opened = try io.concurrent(Listener.open, .{ w.a, w.port(), try w.path("/stream"), w.bea, "2" });
+    const last = try std.fmt.allocPrint(w.a, "{d}", .{try w.messages()});
+    var opened = try io.concurrent(Listener.open, .{ w.a, w.port(), try w.path("/stream"), w.bea, last });
     const t0 = Io.Clock.now(.awake, io);
     while (!holdBegun(w)) {
         if (t0.untilNow(io, .awake).toMilliseconds() > 3000) return error.NeverHeld;
@@ -676,22 +694,47 @@ fn postByTally(w: *World) !void {
 }
 
 /// **A FULL TRANSCRIPT REFUSES A POST** (Limits.transcript_bytes_most):
-/// a conversation's transcript and tally made ten bytes short of the cap,
-/// and a post is a 413 that says so, its transcript unchanged.
+/// a conversation's transcript and tally made so A's post of `x` would end
+/// one byte past the cap, and it is a 413 that says so, its transcript
+/// unchanged; made so it ends one byte short of the cap, and exactly at
+/// it, and the post is taken.
 const transcript_bytes_most = 4_000_000;
+/// A's post of `x`, its transcript line, the first of a tally of none:
+/// `at` is the server's clock in seconds, ten digits until 2286.
+const x_line_len = "message v1 id=1 at=1761600000 by=human:1001 body=x\n".len;
 
 fn transcriptFull(w: *World) !void {
     const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
-    const near = transcript_bytes_most - 10;
-    const junk = try w.a.alloc(u8, near);
-    @memset(junk, 'x');
-    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv}), junk);
-    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/tallies/{s}", .{conv}), try std.fmt.allocPrint(w.a, "1 {d}\n", .{near}));
-    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "one too many");
+    const over = transcript_bytes_most - x_line_len + 1;
+    try fillTranscript(w, conv, over);
+    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "x");
     if (r.status != 413) return error.FullAccepted;
     if (!has(r.body, "full")) return error.NotSaid;
-    const after = try w.rig.data.readFileAlloc(io, try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv}), w.a, .limited(8 * 1024 * 1024));
-    if (after.len != near) return error.Appended;
+    if ((try transcriptLen(w, conv)) != over) return error.Appended;
+    for ([_]usize{ transcript_bytes_most - x_line_len - 1, transcript_bytes_most - x_line_len }) |room| {
+        try fillTranscript(w, conv, room);
+        if ((try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "x")).status != 201) return error.RoomRefused;
+        if ((try transcriptLen(w, conv)) != room + x_line_len) return error.NotAppended;
+    }
+}
+
+/// Conversation `conv`'s transcript made `n` bytes of junk, its tally `n`
+/// bytes of no message, and its offsets file gone (as a tally of none
+/// has none).
+fn fillTranscript(w: *World, conv: []const u8, n: usize) !void {
+    const junk = try w.a.alloc(u8, n);
+    @memset(junk, 'x');
+    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv}), junk);
+    try overwrite(w, try std.fmt.allocPrint(w.a, "chat/tallies/{s}", .{conv}), try std.fmt.allocPrint(w.a, "0 {d}\n", .{n}));
+    w.rig.data.deleteFile(io, try std.fmt.allocPrint(w.a, "chat/offsets/{s}", .{conv})) catch |e| switch (e) {
+        error.FileNotFound => {},
+        else => return e,
+    };
+}
+
+fn transcriptLen(w: *World, conv: []const u8) !usize {
+    const bytes = try w.rig.data.readFileAlloc(io, try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv}), w.a, .limited(8 * 1024 * 1024));
+    return bytes.len;
 }
 
 /// **A READ IS A PAGE** (Limits.page_messages): A posts a page and
@@ -1225,6 +1268,7 @@ fn scoped(w: *World) !void {
 fn bothCredentials(w: *World) !void {
     const target = try agentPath(w, w.agents_conv, "");
     if ((try send(w.a, w.port(), "GET", target, .{ .key = w.key }, "")).status != 200) return error.KeyNotLive;
+    if ((try send(w.a, w.port(), "GET", target, .{ .cookie = w.steve }, "")).status != 200) return error.CookieNotLive;
     if ((try send(w.a, w.port(), "GET", target, .{ .cookie = w.steve, .key = w.key }, "")).status != 400) return error.BothTaken;
     if ((try send(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), .{ .cookie = w.steve, .key = w.key }, "which one?")).status != 400) return error.BothTaken;
 }
@@ -1301,11 +1345,16 @@ fn redeemTwice(w: *World) !void {
 }
 
 fn inviteExpired(w: *World) !void {
-    const inv = try invite(w, try std.fmt.allocPrint(w.a, "as={s}", .{w.agent}));
+    const form = try std.fmt.allocPrint(w.a, "as={s}", .{w.agent});
+    const late = try invite(w, form);
+    const soon = try invite(w, form);
+    defer w.rig.server.clock_ahead_s_for_test.store(0, .release);
     // Ten minutes and a second later, on the server's clock.
     w.rig.server.clock_ahead_s_for_test.store(601, .release);
-    defer w.rig.server.clock_ahead_s_for_test.store(0, .release);
-    if ((try redeem(w, inv.code)).status != 401) return error.ExpiredRedeemed;
+    if ((try redeem(w, late.code)).status != 401) return error.ExpiredRedeemed;
+    // Two seconds short of ten minutes (a second's tick of slack), live.
+    w.rig.server.clock_ahead_s_for_test.store(598, .release);
+    if ((try redeem(w, soon.code)).status != 201) return error.LiveRefused;
 }
 
 fn othersCannotInvite(w: *World) !void {
