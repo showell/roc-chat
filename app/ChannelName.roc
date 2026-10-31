@@ -35,6 +35,21 @@ ChannelName :: Str.{
 	key : ChannelName -> Str
 	key = |ChannelName.(name)| lowercase(name)
 
+	## **A DM'S CHANNEL** (human DMs: a pair of humans with topics, the same
+	## machinery as a channel's): `dm-<lower id>-<higher id>`, one name for
+	## the pair whichever of them asks. The `dm-` names are the DMs' alone:
+	## no admin makes one (Channel.make), and the channels' routes and
+	## listings never show one.
+	dm_of : U64, U64 -> ChannelName
+	dm_of = |a, b| {
+		(lo, hi) = if (a <= b) (a, b) else (b, a)
+		ChannelName.("dm-${lo.to_str()}-${hi.to_str()}")
+	}
+
+	## Whether the name is a DM's (`dm-`, in any case).
+	is_dm : ChannelName -> Bool
+	is_dm = |ChannelName.(name)| lowercase(name).starts_with("dm-")
+
 	## Two names are one channel when they differ only in ASCII case.
 	is_eq : ChannelName, ChannelName -> Bool
 	is_eq = |ChannelName.(a), ChannelName.(b)| a.caseless_ascii_equals(b)
@@ -88,3 +103,10 @@ expect named("Cobblestone").to_str() == "Cobblestone"
 expect named("Cobblestone").key() == "cobblestone"
 expect named("cOBBLE-stone-9").key() == named("Cobble-Stone-9").key()
 expect [named("General")].contains(named("general"))
+
+expect ChannelName.dm_of(7, 2).to_str() == "dm-2-7"
+expect ChannelName.dm_of(2, 7) == ChannelName.dm_of(7, 2)
+expect ChannelName.dm_of(2, 7).is_dm()
+expect named("DM-2-7").is_dm()
+expect !named("dmz").is_dm()
+expect !named("Lobby").is_dm()

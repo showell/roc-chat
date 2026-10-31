@@ -185,7 +185,7 @@ fn signUpAs(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) ![]const 
 /// `n - 1000`): what /me said then. The chat gives a human its own id, the
 /// next of its counter from 1, so no human here is named by the GitHub id
 /// they signed in with, and a step that took one for the other fails.
-var human_ids: [32]u64 = @splat(0);
+var human_ids: [64]u64 = @splat(0);
 
 /// GitHub user `n`'s human id, as a wire id's number; an error if `n`
 /// never signed up.
@@ -1956,6 +1956,56 @@ fn agentTopic(w: *World) !void {
     if (has(back.got.items, "a job for you")) return error.SentTwice;
 }
 
+/// **A HUMAN DM** (Channel.dm, Topics' `/dms`): two humans' one DM,
+/// whichever asks; topics in it as a channel's, their messages' references
+/// the short `MSG_<topic>_<n>`; a third human never reaches it; with
+/// oneself, an agent or nobody refused; a DM's `dm-` channel is never an
+/// admin's to make, list, admit to or reach as a channel.
+fn humanDm(w: *World) !void {
+    const a = try signUp(w.a, w.port(), 1030);
+    const b = try signUp(w.a, w.port(), 1031);
+    const c = try signUp(w.a, w.port(), 1032);
+    const ha = try hid(w.a, 1030);
+    const hb = try hid(w.a, 1031);
+    const made = try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{hb}));
+    const lo = @min(try std.fmt.parseInt(u64, ha, 10), try std.fmt.parseInt(u64, hb, 10));
+    const hi = @max(try std.fmt.parseInt(u64, ha, 10), try std.fmt.parseInt(u64, hb, 10));
+    const name = try std.fmt.allocPrint(w.a, "dm-{d}-{d}", .{ lo, hi });
+    if (made.status != 201 or !has(made.body, try std.fmt.allocPrint(w.a, "\"dm\":\"{s}\"", .{name}))) return error.DmNotMade;
+    const again = try pagePost(w, b, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}));
+    if (again.status != 200 or !has(again.body, name)) return error.NotTheSameDm;
+    if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}))).status != 400) return error.DmWithOneself;
+    if ((try pagePost(w, a, "/dms", "with=human%3A999999")).status != 404) return error.DmWithNobody;
+    const pal = try ownAgent(w, a, "Pal+1030", "");
+    if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with={s}", .{pal.id}))).status != 403) return error.DmWithAnAgent;
+    if ((try request(w.a, w.port(), "POST", "/dms", "", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{hb}))).status != 401) return error.DmByNobody;
+
+    const topics = try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{hb});
+    if ((try pagePost(w, a, topics, "name=ChitChat")).status != 201) return error.TopicNotMade;
+    const listed = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{ha}), b);
+    if (listed.status != 200 or !has(listed.body, "\"topic\":\"ChitChat\"")) return error.TopicNotListed;
+    const posted = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/ChitChat/messages", .{topics}), a, "hi b");
+    if (posted.status != 201 or !std.mem.startsWith(u8, posted.body, "{\"ref\":\"MSG_ChitChat_1\",")) return error.NotPosted;
+    const read = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{ha}), b);
+    if (read.status != 200 or !has(read.body, "\"markdown\":\"hi b\"")) return error.NotRead;
+    // A third human: their DM with a is another, not there.
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{ha}), c)).status != 404) return error.ThirdRead;
+    const l = try Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat/stream", .{ha}), b, "1");
+    defer l.close();
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/ChitChat/messages", .{topics}), a, "again")).status != 201) return error.NotPosted;
+    try l.until("\"ref\":\"MSG_ChitChat_2\"");
+    const mine = try get(w.a, w.port(), "/dms", a);
+    if (mine.status != 200 or !has(mine.body, name)) return error.DmNotListed;
+    if (has((try get(w.a, w.port(), "/dms", c)).body, name)) return error.ThirdListed;
+
+    // Never a channel: not by its name's routes, nor an admin's to make,
+    // admit to, or list.
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/channels/{s}/topics/ChitChat", .{name}), a)).status != 404) return error.DmAsAChannel;
+    if ((try pagePost(w, w.ivy, try std.fmt.allocPrint(w.a, "/channels/{s}/admit", .{name}), "member=human%3A1")).status != 404) return error.AdmittedToADm;
+    if ((try pagePost(w, w.ivy, "/channels", "name=dm-90-91&members=")).status != 400) return error.AdminMadeADm;
+    if (has((try get(w.a, w.port(), "/chat/channels", w.ivy)).body, name)) return error.DmListedAsAChannel;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -2038,6 +2088,7 @@ const steps = [_]Step{
     .{ .name = "the one stream is one of the agent's streams under the cap, and ends at its lifetime once its key is revoked", .f = agentStreamHeld },
     .{ .name = "a member makes a channel's human topic, posts with its reference, another member reads and streams it; a stranger, nobody, and an agent are refused", .f = topicsMade },
     .{ .name = "an agent topic: its agent reads and posts by key, its one stream gets the topic's posts naming channel, topic and reference, and resumes; a member owning none of its agents never reaches it", .f = agentTopic },
+    .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; oneself, an agent, nobody refused; never a channel", .f = humanDm },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
 };
 

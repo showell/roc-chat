@@ -148,7 +148,8 @@ Channels := [].{
 							Ok({ channels, damaged }) =>
 								Ok({
 									accounts: asker.accounts,
-									channels: channels.sort_with(by_name_key),
+									# A DM's channel is its pair's, never an admin's to list.
+									channels: channels.keep_if(|c| !c.name().is_dm()).sort_with(by_name_key),
 									damaged,
 								})
 						}
@@ -161,7 +162,10 @@ Channels := [].{
 	channel_json = |channel, accounts|
 		JsonOut.object([
 			("name", JsonOut.string(channel.name().to_str())),
-			("members", JsonOut.array(channel.members(accounts).map(|b| JsonOut.string(AccountCodec.id_text(b.id))))),
+			(
+				"members",
+				JsonOut.array(channel.members(accounts).map(|b| JsonOut.string(AccountCodec.id_text(b.id)))),
+			),
 		])
 }
 
@@ -349,16 +353,28 @@ make! = |asker, form|
 							accounts: asker.accounts,
 						})
 						match made {
-							Err(why) => refuse!(asker, { event: event(Refused(word_of(why)), unnamed_or(Ok(name_bytes))), why })
+							Err(why) => refuse!(
+								asker,
+								{
+									event: event(Refused(word_of(why)), unnamed_or(Ok(name_bytes))),
+									why,
+								},
+							)
 							Ok(channel) =>
 								match Store.save_new_channel!(channel) {
 									Failed => Chat.failed
 									# No channel loaded holds the name, but a folder of
 									# its key does: a record that does not read.
-									Taken => Wire.refused(409, "a channel's folder holds that name, but its record does not read")
+									Taken => Wire.refused(
+										409,
+										"a channel's folder holds that name, but its record does not read",
+									)
 									Written => {
 										audit!(asker, event(Permitted, Named(channel.name())))
-										Wire.json(201, Channels.channel_json(channel, asker.accounts))
+										Wire.json(
+											201,
+											Channels.channel_json(channel, asker.accounts),
+										)
 									}
 								}
 						}
@@ -402,8 +418,14 @@ admit_or_remove! = |
 				Err(Failed) => Chat.failed
 				Err(Missing) =>
 					match Channel.administers(asker.viewer, asker.accounts) {
-						Err(why) => refuse!(asker, { event: event(Refused(word_of(why)), name), why })
-						Ok({}) => refuse!(asker, { event: event(Refused(NoSuchChannel), name), why: NoSuchChannel })
+						Err(why) => refuse!(
+							asker,
+							{ event: event(Refused(word_of(why)), name), why },
+						)
+						Ok({}) => refuse!(
+							asker,
+							{ event: event(Refused(NoSuchChannel), name), why: NoSuchChannel },
+						)
 					}
 				Ok(channel) => {
 					by = {
@@ -417,7 +439,10 @@ admit_or_remove! = |
 							Remove => channel.remove(by)
 						}
 					match decided {
-						Err(why) => refuse!(asker, { event: event(Refused(word_of(why)), channel.name()), why })
+						Err(why) => refuse!(
+							asker,
+							{ event: event(Refused(word_of(why)), channel.name()), why },
+						)
 						Ok(changed) =>
 							match Store.save_channel!(changed) {
 								Failed | Missing => Chat.failed
@@ -473,13 +498,22 @@ refusal_text : Refusal -> (U16, Str)
 refusal_text = |why|
 	match why {
 		SignedOut => (401, "not signed in")
-		NeedsSession => (403, "channels are an admin's to change, by their own session; a key never changes one")
+		NeedsSession => (
+			403,
+			"channels are an admin's to change, by their own session; a key never changes one",
+		)
 		NoSuchPrincipal => (403, "your account is gone")
 		NotAdmin => (403, "only an admin makes a channel or changes who is in one")
-		NotAChannelName => (400, "a channel's name is a letter, then letters, digits and hyphens, at most 40")
+		NotAChannelName => (
+			400,
+			"a channel's name is a letter, then letters, digits and hyphens, at most 40",
+		)
 		Taken => (409, "a channel of that name is there already, in some spelling")
 		NamedTwice(id) => (400, "${AccountCodec.id_text(id)} is named twice")
-		NotAHuman(id) => (400, "${AccountCodec.id_text(id)} is no human: a channel's members are humans")
+		NotAHuman(id) => (
+			400,
+			"${AccountCodec.id_text(id)} is no human: a channel's members are humans",
+		)
 		NoAccount(id) => (400, "no account is ${AccountCodec.id_text(id)}")
 		AlreadyIn(id) => (409, "${AccountCodec.id_text(id)} is in the channel already")
 		NotIn(id) => (409, "${AccountCodec.id_text(id)} is not in the channel")
@@ -535,7 +569,12 @@ asked_members = |form|
 	match SignInWeb.form_field(form, "members") {
 		Err(Missing) => Ok([])
 		Ok([]) => Ok([])
-		Ok(text) => text.split_on(',').map_try(|id| AccountCodec.id_from(id, "members")).map_err(|_| members_problem)
+		Ok(text) => text.split_on(',').map_try(
+			|id| AccountCodec.id_from(
+				id,
+				"members",
+			),
+		).map_err(|_| members_problem)
 		Err(Malformed) => Err(members_problem)
 	}
 
@@ -563,10 +602,16 @@ Channel -> [
 by_name_key = |a, b| compare_bytes(a.name().key().to_utf8(), b.name().key().to_utf8())
 
 ## The name a path's part spells, when the rule takes it.
+## A channel's name in a path; a DM's (`dm-`) is no channel's route: an
+## admin never admits to or removes from a pair's DM.
 name_in_path : List(U8) -> Try(ChannelName, [NotChannels])
 name_in_path = |part|
 	match Str.from_utf8(part) {
-		Ok(text) => ChannelName.from_str(text).map_err(|_| NotChannels)
+		Ok(text) =>
+			match ChannelName.from_str(text) {
+				Ok(name) if !name.is_dm() => Ok(name)
+				_ => Err(NotChannels)
+			}
 		Err(_) => Err(NotChannels)
 	}
 
@@ -592,6 +637,7 @@ compare_bytes = |x, y|
 			}
 	}
 
+expect Channels.route("/channels/dm-1-2/admit".to_utf8()).is_err()
 expect Channels.route("/channels".to_utf8()) == Ok(Make)
 expect ChannelName.from_str("lobby").map_ok(|n| Channels.route("/channels/Lobby/admit".to_utf8()) == Ok(Admit(n))) == Ok(Bool.True)
 expect Channels.route("/channels/Lobby/remove".to_utf8()).is_ok()

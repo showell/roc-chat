@@ -31,7 +31,7 @@ Channel :: {
 	## in this order: nobody signed in (`SignedOut`); a key, not a session
 	## (`NeedsSession`); a session whose account is gone (`NoSuchPrincipal`);
 	## a member, not an admin (`NotAdmin`); a name the rule refuses
-	## (`NotAChannelName`); a name some channel has, in any case (`Taken`,
+	## (`NotAChannelName`, a DM's `dm-` name too); a name some channel has, in any case (`Taken`,
 	## so no two channels' paths meet, on a disk that folds case too); then
 	## each member: named twice (`NamedTwice`), an agent's or a bot's id
 	## (`NotAHuman`), or no one account holds it (`NoAccount`). No member at
@@ -54,7 +54,10 @@ Channel :: {
 	| {
 		admin(by, accounts)?
 		valid = ChannelName.from_str(name)?
-		if channels.any(|c| c.name() == valid) {
+		# A `dm-` name is a DM's (ChannelName.dm_of), never an admin's.
+		if valid.is_dm() {
+			Err(NotAChannelName)
+		} else if channels.any(|c| c.name() == valid) {
 			Err(Taken)
 		} else {
 			bound = members.fold_try(
@@ -68,6 +71,50 @@ Channel :: {
 				},
 			)?
 			Ok(Channel.({ name: valid, members: bound }))
+		}
+	}
+
+	## **A HUMAN'S DM WITH ANOTHER**: the pair's channel (ChannelName.dm_of),
+	## its two members bound to their accounts. Asked by a human, by a
+	## session or their own key. Refused, in this order: nobody signed in
+	## (`SignedOut`); an account gone (`NoSuchPrincipal`); an agent or a bot
+	## asking (`NotAHuman`, the asker's id); then the other: an agent's or a
+	## bot's id (`NotAHuman`), no one account holding it (`NoAccount`), or
+	## the asker themselves (`Yourself`).
+	dm : {
+		by : Access.Viewer(id),
+		other : Principal.Id,
+		accounts : List(Principal),
+	} -> Try(Channel, _)
+	dm = |
+		{
+			by,
+			other: asked,
+			accounts,
+		},
+	| {
+		me =
+			match by.who() {
+				SignedOut => Err(SignedOut)
+				Session(b) | Key(b) =>
+					match Principal.holds(accounts, b) {
+						Err(NoSuchPrincipal) => Err(NoSuchPrincipal)
+						Ok(Human(_)) => Ok(b)
+						Ok(Agent(_)) | Ok(Bot(_)) => Err(NotAHuman(b.id))
+					}
+			}?
+		other = human_bound(accounts, asked)?
+		match (me.id, other.id) {
+			(Human(a), Human(b)) if a != b => Ok(
+				Channel.(
+					{
+						name: ChannelName.dm_of(a.to_u64(), b.to_u64()),
+						members: [me, other],
+					},
+				),
+			)
+			(Human(_), Human(_)) => Err(Yourself)
+			_ => crash "Channel.dm: both are humans by now"
 		}
 	}
 
@@ -453,3 +500,33 @@ expect make_by(
 	Steve,
 	{ name: "general", members: [] },
 ).map_ok(|c| stored_and_loaded(c) == Ok(c)) == Ok(Bool.True)
+
+# **A HUMAN'S DM WITH ANOTHER** (Channel.dm): the pair's one channel,
+# whichever of them asks, its two members; refused, an agent asking,
+# naming an agent, naming nobody's account, or oneself, and nobody signed
+# in. No admin makes a `dm-` channel.
+dm_with : ChannelCast.Who, Principal.Id -> Try(Channel, _)
+dm_with = |by, other| Channel.dm({
+	by: ChannelCast.viewer(by),
+	other,
+	accounts: ChannelCast.accounts,
+})
+
+expect dm_with(
+	Steve,
+	ChannelCast.id(Zed),
+).map_ok(|c| c.name()) == dm_with(Zed, ChannelCast.id(Steve)).map_ok(|c| c.name())
+expect
+	match dm_with(Steve, ChannelCast.id(Zed)) {
+		Ok(c) => c.name().is_dm() and c.members(ChannelCast.accounts).len() == 2
+		Err(_) => Bool.False
+	}
+expect dm_with(Steve, ChannelCast.id(Steve)).map_ok(|c| c.name()) == Err(Yourself)
+expect dm_with(Steve, ChannelCast.id(Cc)).map_ok(|c| c.name()) == Err(NotAHuman(ChannelCast.id(Cc)))
+expect dm_with(Cc, ChannelCast.id(Steve)).map_ok(|c| c.name()) == Err(NotAHuman(ChannelCast.id(Cc)))
+expect dm_with(
+	Steve,
+	Principal.Id.Human(Principal.HumanId.from_u64(999) ?? crash "999 is an id"),
+).map_ok(|c| c.name()) == Err(NoAccount(Principal.Id.Human(Principal.HumanId.from_u64(999) ?? crash "999 is an id")))
+expect dm_with(Out, ChannelCast.id(Steve)).map_ok(|c| c.name()) == Err(SignedOut)
+expect make_by(Steve, { name: "dm-1-2", members: [] }).map_ok(|c| c.name()) == Err(NotAChannelName)
