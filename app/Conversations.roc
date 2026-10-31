@@ -892,7 +892,12 @@ owner_of = |accounts, by|
 		Human(_) => []
 		Agent(_) | Bot(_) =>
 			match Principal.find(accounts, by) {
-				Ok(p) => [("owner", JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(p)))))]
+				Ok(p) => [
+					(
+						"owner",
+						JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(p)))),
+					),
+				]
 				Err(_) => []
 			}
 	}
@@ -951,23 +956,48 @@ expect said_by(Cast.ann.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"human:2\"
 expect said_by(Cast.ann_agent.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:3\",\"kind\":\"agent\",\"owner\":\"human:2\",\"login\":\"h2\",\"markdown\":\"hi\",".to_utf8())
 expect said_by(Cast.boss_bot.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"bot:2\",\"kind\":\"bot\",\"owner\":\"human:1\",\"login\":\"h1\",\"markdown\":\"hi\",".to_utf8())
 expect said_by(Principal.Id.Agent(Cast.aid(9))).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:9\",\"kind\":\"agent\",\"markdown\":\"hi\",".to_utf8())
-expect Bytes.find(said_by(Cast.ann_agent.id()), { needle: ",\"html\":\"".to_utf8(), at: 0 }).is_ok() and said_by(Cast.ann_agent.id()).ends_with("\"}".to_utf8())
+expect Bytes.find(
+	said_by(Cast.ann_agent.id()),
+	{ needle: ",\"html\":\"".to_utf8(), at: 0 },
+).is_ok() and said_by(Cast.ann_agent.id()).ends_with("\"}".to_utf8())
 
 # The login beside a name: a human's own, an agent's or a bot's owner's;
 # none once cleared, nor for an owner, or a poster, no account holds.
 ## Ann made again with her login cleared, and Steve (`Steve`, login `Steve`);
 ## Ann's agent named as she is, and a bot of Steve's.
 cleared : Principal
-cleared = Principal.Human({ id: Cast.gid(2), login: "", name: "H2", role: Member, generation: Cast.gen(1) })
+cleared = Principal.Human({
+	id: Cast.gid(2),
+	login: "",
+	name: "H2",
+	role: Member,
+	generation: Cast.gen(1),
+})
 
 steve : Principal
-steve = Principal.Human({ id: Cast.gid(7), login: "Steve", name: "Steve", role: Member, generation: Cast.gen(1) })
+steve = Principal.Human({
+	id: Cast.gid(7),
+	login: "Steve",
+	name: "Steve",
+	role: Member,
+	generation: Cast.gen(1),
+})
 
 posing : Principal
-posing = Principal.Agent({ id: Cast.aid(8), name: "H2", owner: Cast.gid(2), generation: Cast.gen(1) })
+posing = Principal.Agent({
+	id: Cast.aid(8),
+	name: "H2",
+	owner: Cast.gid(2),
+	generation: Cast.gen(1),
+})
 
 steve_bot : Principal
-steve_bot = Principal.Bot({ id: Cast.aid(9), name: "commits", owner: Cast.gid(7), generation: Cast.gen(1) })
+steve_bot = Principal.Bot({
+	id: Cast.aid(9),
+	name: "commits",
+	owner: Cast.gid(7),
+	generation: Cast.gen(1),
+})
 
 expect Conversations.login_of(Cast.accounts, Cast.ann.id()) == Login("h2")
 expect Conversations.login_of(Cast.accounts, Cast.ann_agent.id()) == Login("h2")
@@ -984,7 +1014,15 @@ expect Conversations.header_of([cleared], cleared.id()) == "H2"
 expect Conversations.header_of([steve_bot], steve_bot.id()) == "commits · bot"
 expect Conversations.header_of([], posing.id()) == "agent:8"
 # The JSON carries no login where there is none.
-expect message_json({ id: 1, at: 2, by: posing.id(), body: [] }, { named: [], accounts: [cleared, posing] }).bytes().starts_with("{\"id\":1,\"at\":2,\"by\":\"agent:8\",\"kind\":\"agent\",\"owner\":\"human:2\",\"markdown\":".to_utf8())
+expect message_json(
+	{
+		id: 1,
+		at: 2,
+		by: posing.id(),
+		body: [],
+	},
+	{ named: [], accounts: [cleared, posing] },
+).bytes().starts_with("{\"id\":1,\"at\":2,\"by\":\"agent:8\",\"kind\":\"agent\",\"owner\":\"human:2\",\"markdown\":".to_utf8())
 
 # Pages: the newest, back to the first, and past either end.
 expect Conversations.page_of(0, Newest) == { first: 1, last: 0 }

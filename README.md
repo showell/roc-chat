@@ -54,6 +54,9 @@ it serves chat.lynrummy.com (DEPLOY.md).**
 | `POST /invites/redeem` | The agent's: a form, `code=`, and **no cookie or key** (the code is the credential). `201` and the key, as a mint answers, its `secret` shown this once. Any refusal is one `401 invite refused` (Agents' header lists them). |
 | `GET /chat` | The page: the viewer's conversations, each a link, and a form to start one (a box to tick for each of your agents, and anyone else's id typed). Signed out, a 303 to `/login`; a key, a 403 (a page is a browser's). |
 | `GET /chat/agents` | The agents page: your agents, a form to make one, and on each an **Invite** button that shows its code once, with a **Copy** button and what to do with it; your live invites and the keys that still work, each with a **Revoke** button. The buttons post to the routes above; the page lists no code or secret. Signed out, a 303; a key, a 403. |
+| `GET /chat/channels` | An admin's page: every channel, sorted by its key, with its members; a form to make one, and on each a form to admit a member and one to remove one, posting to the routes below. Signed out, a 303; a key, a 403; a human who is no admin, a 403. `/chat` links to it for an admin alone. |
+| `POST /channels` | An admin makes a channel, by their own session: a form, `name=` (a letter, then letters, digits and hyphens, at most 40) and `members=` humans' ids, comma-separated, or none. `201 {"name":"Lobby","members":["human:2"]}`. A name some channel has, in any spelling, a 409. |
+| `POST /channels/<name>/admit`, `.../remove` | An admin lets a human in, or a member go: a form, `member=human:2`. `200` and the channel. |
 | `GET /chat/<id>` | A conversation's page: its newest page of messages (a button loads each page before), new ones live (`EventSource`), a box to post in (Enter sends, Shift-Enter adds a line). A 404 to a viewer who may not see it. |
 | `GET /<name>.js` | The chat client's scripts. |
 
@@ -76,6 +79,16 @@ cookie and a Bearer header is a 400. Agents, keys, listing and revoking are
 a session's alone, and so are invites: a key asking is a 403. Every key
 refused in use, every grant refused, and every invite made, redeemed,
 revoked or refused is in the audit (`auth/audit`), with no secret or code.
+
+**Channels are an admin's** (`app/Channel.roc` decides, `app/Channels.roc`
+serves): an admin, by their own session, makes one and says who is in it;
+a key never does, an admin's own with admin scope included (403,
+`needs-session`). Each refusal is plain text saying why, and every change,
+and every refusal of a named asker, is an `audit-channel` line. **An admin
+is a human whose role is `Admin`**: the config's `.bootstrap_admin`
+GitHub id is made admin when its account is made, while no human is one
+(GitHubSignIn's first admin); Admin's `SetRole` is the only other way, and
+no route serves it yet.
 
 ## For an agent
 
@@ -231,7 +244,8 @@ server, saying which.
 | `app/ConvCodec.roc`, `app/MessageCodec.roc` | A conversation's record, its participants bound; a message's, its body any bytes, exactly. |
 | `app/Limits.roc`, `app/Origin.roc` | Every cap on what one person can make grow, and why; the CSRF check every write passes. |
 | The auth core, pure | `Principal`, `Access`, `ConvAccess`, `ConvKey`, `ApiKey`, `Session`, `OAuthState`, `DisplayName`, `GitHubLogin`, `GitHubSignIn` (sign-in's plan), `Admin` (the admin actions: decided and audited, **not yet served by any route**), with their records' codecs (`Stored`'s line format: `AccountCodec`, `SessionCodec`, `KeyCodec`, `AuditCodec`) and the tests' `Cast`. Each module's header says what it decides. |
-| The channels model, pure | **Not yet routed** (`main.roc` imports it so its expects run). `ChannelName`, `TopicName` (production's rules, caseless `==`); `Channel` (its members, humans only; made, admitted and removed by an admin's own session); `Topic` (a human topic, open to the channel's members, or an agent topic, open to its agents and the humans they answer to; making one; the read and post verdicts, each refusal named); `MessageRef` (`MSG_<channel>.<topic>_<n>`, the page's local `<topic>_<n>`); `ChannelLayout` (the paths, one per place); the tests' `ChannelCast`. |
+| `app/Channels.roc` | The channels on the wire, an admin's: make one, admit and remove a member, each audited (`audit-channel`); the admin's page's facts. |
+| The channels model, pure | Channel routed (Channels.roc); topics and messages **not yet routed** (`main.roc` imports them so their expects run). `ChannelName`, `TopicName` (production's rules, caseless `==`); `Channel` (its members, humans only; made, admitted and removed by an admin's own session); `Topic` (a human topic, open to the channel's members, or an agent topic, open to its agents and the humans they answer to; making one; the read and post verdicts, each refusal named); `MessageRef` (`MSG_<channel>.<topic>_<n>`, the page's local `<topic>_<n>`); `ChannelLayout` (the paths, one per place); the tests' `ChannelCast`. |
 | `app/SignIn.roc` | Sign-in's routes: `/login`, GitHub's callback in two calls, the name form, `/me`, logout. |
 | `app/Ascii.roc`, `app/Bytes.roc` | The byte checks and scans the rest share (roc-markdown keeps its own copies on purpose). |
 | `platform/` | The platform: `Chat.roc` (the request and the answer), `Host.roc` (the hosted functions), `Sse.roc` (an event as one frame), `main.roc`. |
@@ -246,7 +260,7 @@ server, saying which.
 | `host/seam/` | The seam, from roc-webbox at 5a4314b: `chat_abi.zig` (the records, `Host.of`, the call), `chat_route.zig` (the tags, the decision), `roc_abi.zig` (Roc's runtime), `sljmp.zig`, `glue_test.zig` and `glue/` (roc glue's snapshot). |
 | `host/server_test.zig`, `app/test/probe.roc` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness), against the server's probe: the plainest routes that drive each part of the host, so none signs in. |
 | `host/chat_test.zig` | The chat's own pages, by the same harness. |
-| `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; then invites (redeemed once, expired, refused to others and to keys, dead with a retired agent), fresh agent ids, and their audit; then the agents page (only the viewer's agents, made, invited with the code shown once, revoked, none of it another's, a key refused, the start form's own agents); each step timed. |
+| `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; then invites (redeemed once, expired, refused to others and to keys, dead with a retired agent), fresh agent ids, and their audit; then the agents page (only the viewer's agents, made, invited with the code shown once, revoked, none of it another's, a key refused, the start form's own agents); then the channels (an admin makes and lists them, a member and a key refused, admit and remove, a name taken in any spelling, the audit); each step timed. |
 | `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, the planted faults (verify.shale's header lists them) each red at its own step, the formatters. |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |

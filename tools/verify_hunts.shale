@@ -43,8 +43,14 @@ function hunt_run(h, cwd)
   local argv = {"shale", real("cookbook:roc/" .. h.recipe .. ".shale"), "glob=app/**/*.roc"}
   for a in h.args do push(argv, a) end
   local r = run(argv, {cwd = cwd, timeout_ms = 600000, tail = 40})
+  -- The recipe's summary is its last line of its own: a Shale run that
+  -- took over a second ends with `── time:` (and its budget) footers,
+  -- which a busy box makes come and go.
   local said = lines(trim(r.out))
-  local last = said[#said] or ""
+  local last = ""
+  for l in said do
+    if not starts_with(l, "──") and trim(l) ~= "" then last = l end
+  end
   local got = {}
   for c in h.counts do
     local m = re_find(last, c)

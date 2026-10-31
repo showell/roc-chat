@@ -125,6 +125,22 @@ Channel :: {
 		}
 	}
 
+	## **MAY `by` CHANGE THE CHANNELS, NOW?** An admin by their own
+	## session, as `make`, `admit` and `remove` each ask first, refused as
+	## they refuse their asker: what an admin's page asks, and a route on a
+	## channel that is not there, before it says so.
+	administers : Access.Viewer(id),
+	List(Principal) -> Try(
+		{},
+		[
+			SignedOut,
+			NeedsSession,
+			NoSuchPrincipal,
+			NotAdmin,
+		],
+	)
+	administers = |by, accounts| admin(by, accounts)
+
 	## **A CHANNEL BACK FROM THE STORE**: the one way in besides `make`, from
 	## a line ChannelCodec decoded, every field checked.
 	load : ChannelCodec.Line -> Channel
@@ -269,6 +285,12 @@ by_admin_key = Channel.make({
 })
 
 expect by_admin_key == Err(NeedsSession)
+
+# Administering, asked alone: the asker as `make` takes them.
+expect Channel.administers(ChannelCast.viewer(Steve), ChannelCast.accounts) == Ok({})
+expect Channel.administers(ChannelCast.viewer(Damian), ChannelCast.accounts) == Err(NotAdmin)
+expect Channel.administers(ChannelCast.viewer(Cc), ChannelCast.accounts) == Err(NeedsSession)
+expect Channel.administers(ChannelCast.viewer(Out), ChannelCast.accounts) == Err(SignedOut)
 expect Channel.make({
 	by: ChannelCast.viewer(Root),
 	name: "general",

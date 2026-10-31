@@ -14,6 +14,10 @@
 ##                       script, from the invite's own answer); their live
 ##                       invites and the keys that still work, each with a
 ##                       button to revoke it
+##     GET /chat/channels  an admin's: every channel, sorted by its key, with
+##                       its members; a form to make one, and on each a form
+##                       to admit a member and one to remove one (their
+##                       routes Channels.roc's); a 403 to anyone else
 ##     GET /chat/<id>    a conversation: its newest page of messages (and a button
 ##                       for each page before it), then each new one live (its
 ##                       stream, by the browser's EventSource, which resumes with
@@ -43,6 +47,8 @@ import AccountCodec
 import Agents
 import Bytes
 import Cast
+import Channel
+import Channels
 import ConvKey
 import InviteCodec
 import KeyCodec
@@ -62,6 +68,7 @@ Pages := [].{
 	Route : [
 		ConversationList,
 		AgentList,
+		ChannelList,
 		Conversation(ConvAccess.ConvId),
 	]
 
@@ -72,6 +79,8 @@ Pages := [].{
 			Ok(ConversationList)
 		} else if path == root.concat("/agents".to_utf8()) {
 			Ok(AgentList)
+		} else if path == root.concat("/channels".to_utf8()) {
+			Ok(ChannelList)
 		} else if path.starts_with(root.append('/')) {
 			Conversations.id_of(
 				List.drop_first(
@@ -90,10 +99,12 @@ Pages := [].{
 			Chat.not_allowed(Get)
 		} else if r == AgentList {
 			serve_agents_page!({})
+		} else if r == ChannelList {
+			serve_channels_page!({})
 		} else {
 			use =
 				match r {
-					ConversationList | AgentList => ListConversations
+					ConversationList | AgentList | ChannelList => ListConversations
 					Conversation(id) => Read(id)
 				}
 			match Credentials.load_viewer!(use) {
@@ -117,6 +128,7 @@ Pages := [].{
 									me: me.id,
 								})
 								AgentList => serve_agents_page!({})
+								ChannelList => serve_channels_page!({})
 								Conversation(id) => serve_conversation!({
 									viewer,
 									accounts,
@@ -190,7 +202,16 @@ list! = |
 					Html.markup("<h1>Your conversations</h1>\n"),
 					items,
 					start_form(accounts, me),
-					Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n<p class=quiet>Signed in as "),
+					Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n"),
+					# The channels page's link, for an admin alone: Channel
+					# says who administers.
+					if (
+						Channel.administers(
+							viewer,
+							accounts,
+						).is_ok()
+					) Html.markup("<p><a href=\"/chat/channels\">Channels (an admin's)</a></p>\n") else Html.join([]),
+					Html.markup("<p class=quiet>Signed in as "),
 					Html.text(Conversations.name_of(accounts, me)),
 					Html.markup(" ("),
 					id_html(me),
@@ -326,6 +347,86 @@ agents_page = |mine| {
 			keys,
 			Html.markup("<p id=said></p>\n<script>\n"),
 			Html.markup(agents_js),
+			Html.markup("</script>\n"),
+		]),
+	})
+}
+
+## **/chat/channels**: the page, for an admin by their own session; signed
+## out, to `/login`; a key, the 403 every page gives one; anyone else, a
+## 403 that says why.
+serve_channels_page! : {} => Chat.Answer
+serve_channels_page! = |{}|
+	match Channels.load_listing!({}) {
+		Ok(listing) => channels_page(listing)
+		Err(SignedOut) => to_login
+		Err(ByKey) => key_refused
+		Err(NotAdmin) => Wire.refused(403, "the channels page is an admin's")
+		Err(Answered(answer)) => answer
+	}
+
+## The channels page: each channel, its members by name and id, and its
+## admit and remove forms; then the form that makes one. Everything
+## written here is escaped.
+channels_page : Channels.Listing -> Chat.Answer
+channels_page = |listing| {
+	member = |b| Html.join([
+		Html.markup("<li>"),
+		Html.text(Conversations.name_of(listing.accounts, b.id)),
+		Html.markup(" (<code>"),
+		id_html(b.id),
+		Html.markup("</code>)</li>\n"),
+	])
+	channel = |c| {
+		name = Html.text(c.name().to_str())
+		members = c.members(listing.accounts)
+		Html.join([
+			Html.markup("<li data-channel=\""),
+			name,
+			Html.markup("\"><h2>"),
+			name,
+			Html.markup("</h2>\n"),
+			if (members.is_empty()) Html.markup("<p>No members.</p>\n") else Html.join([
+				Html.markup("<ul class=members>\n"),
+				Html.join(members.map(member)),
+				Html.markup("</ul>\n"),
+			]),
+			Html.markup("<form class=admit data-path=\"/channels/"),
+			name,
+			Html.markup("/admit\"><label>Admit <input name=member required placeholder=\"human:2\"></label> <button>Admit</button></form>\n<form class=remove data-path=\"/channels/"),
+			name,
+			Html.markup("/remove\"><label>Remove <input name=member required placeholder=\"human:2\"></label> <button>Remove</button></form></li>\n"),
+		])
+	}
+	channels =
+		if listing.channels.is_empty() {
+			Html.markup("<p>None yet. Make one below.</p>\n")
+		} else {
+			Html.join([
+				Html.markup("<ul id=channels>\n"),
+				Html.join(listing.channels.map(channel)),
+				Html.markup("</ul>\n"),
+			])
+		}
+	damaged =
+		if listing.damaged == 0 {
+			Html.join([])
+		} else {
+			Html.join([
+				Html.markup("<p id=damaged>"),
+				Html.number(listing.damaged),
+				Html.markup(" channel records do not read, and are not listed.</p>\n"),
+			])
+		}
+	page({
+		title: Html.markup("Channels"),
+		body_attrs: Html.join([]),
+		body: Html.join([
+			Html.markup("<h1>Channels</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An admin makes a channel and says who is in it. Its members are humans, by id (<code>human:2</code>); an agent reaches a channel only through a topic that names it.</p>\n"),
+			damaged,
+			channels,
+			Html.markup("<form id=make><label>Make a channel named <input name=name required maxlength=40></label> <label>with members <input name=members placeholder=\"human:2, human:7\"></label> <button>Make</button></form>\n<p id=said></p>\n<script>\n"),
+			Html.markup(channels_js),
 			Html.markup("</script>\n"),
 		]),
 	})
@@ -551,6 +652,25 @@ agents_js =
 	\\});
 	\\
 
+## The channels page's script: each form posts what its route takes, and
+## reloads to show what changed, or says the refusal as text.
+channels_js : Str
+channels_js =
+	\\const said = document.getElementById("said");
+	\\const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body });
+	\\const sent = async (r) => { if (r.ok) location.reload(); else said.textContent = await r.text(); };
+	\\document.getElementById("make").addEventListener("submit", async (e) => {
+	\\  e.preventDefault();
+	\\  const f = e.target.elements;
+	\\  const members = f.members.value.split(",").map((s) => s.trim()).filter((s) => s).join(",");
+	\\  sent(await post("/channels", "name=" + encodeURIComponent(f.name.value.trim()) + "&members=" + encodeURIComponent(members)));
+	\\});
+	\\for (const form of document.querySelectorAll("form[data-path]")) form.addEventListener("submit", async (e) => {
+	\\  e.preventDefault();
+	\\  sent(await post(form.dataset.path, "member=" + encodeURIComponent(form.elements.member.value.trim())));
+	\\});
+	\\
+
 ## The conversation's script. A live message's HTML is roc-markdown's, from
 ## the stream, the one thing set as HTML; its author and time are text.
 conversation_js : Str
@@ -607,8 +727,10 @@ expect Pages.route("/chat/7/x".to_utf8()).is_err()
 expect Pages.route("/chatx".to_utf8()).is_err()
 expect Pages.route("/chat/agents".to_utf8()) == Ok(AgentList)
 expect Pages.route("/chat/agents/x".to_utf8()).is_err()
+expect Pages.route("/chat/channels".to_utf8()) == Ok(ChannelList)
+expect Pages.route("/chat/channels/x".to_utf8()).is_err()
 # The one thing a page's script sets as HTML is a message's, from the stream.
-expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("innerHTML") and !agents_js.contains("innerHTML")
+expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("innerHTML") and !agents_js.contains("innerHTML") and !channels_js.contains("innerHTML")
 
 # **A NAME HOLDING A SCRIPT IS TEXT ON THE PAGE**: a message's author named
 # `<script>`, as message_html writes the header, escaped.
@@ -639,9 +761,28 @@ expect {
 # and its owner's login (Conversations.header_of), as the script draws it
 # from the people list.
 expect {
-	owner = Principal.Human({ id: Cast.gid(4), login: "showell", name: "Steve Howell", role: Member, generation: Cast.gen(1) })
-	posing = Principal.Agent({ id: Cast.aid(5), name: "Steve Howell", owner: Cast.gid(4), generation: Cast.gen(1) })
-	html = message_html([owner, posing], { id: 3, at: 5, by: posing.id(), body: [] }).bytes()
+	owner = Principal.Human({
+		id: Cast.gid(4),
+		login: "showell",
+		name: "Steve Howell",
+		role: Member,
+		generation: Cast.gen(1),
+	})
+	posing = Principal.Agent({
+		id: Cast.aid(5),
+		name: "Steve Howell",
+		owner: Cast.gid(4),
+		generation: Cast.gen(1),
+	})
+	html = message_html(
+		[owner, posing],
+		{
+			id: 3,
+			at: 5,
+			by: posing.id(),
+			body: [],
+		},
+	).bytes()
 	html.starts_with("<article id=m3><header>Steve Howell · agent of @showell · <time data-at=5>".to_utf8())
 }
 expect conversation_js.contains("heads[li.dataset.id] = li.textContent;") and conversation_js.contains("(heads[m.by] || m.by)")
