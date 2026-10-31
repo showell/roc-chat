@@ -7,9 +7,10 @@
 -- It prints one line a check, `PASS` or `FAIL` with its numbers, then
 -- `verify: N of N passed` or `verify: FAILED`, and exits 0 only on the
 -- first. **IT NEVER TOUCHES THE TREE**: every build here has its own cache
--- under .zig-cache/verify/, and each planted fault is made in a copy of the
--- tree there (roc-chat, with roc-markdown's package and chat-client beside
--- it, as the build finds them), never in a file of yours.
+-- under .zig-cache/verify/. **IT PLANTS NO FAULT**: a planted fault proves
+-- once, when a test is written, that the test sees a failure; the test then
+-- carries it by asserting both sides, the bad case refused and a near-miss
+-- taken (roc-apps CLAUDE.md, "Testing").
 --
 -- The checks:
 --   - the chat client: ../chat-client at the commit chat-client-rev pins
@@ -21,53 +22,23 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - fifty-four planted faults, each red at its own step of the end to
---     end: a forged session cookie admitted, a third user's post let
---     through, a third user's read let through, the subscribe moved out of
---     the turn, a message's newline written raw into its transcript line,
---     a revoked key that still works, a key minting a key, a session's key
---     acting as another human's agent, the Bearer header winning over the
---     cookie when both are sent, an invite redeemable twice, an expired
---     invite accepted, an agent's id taken from the accounts again (a
---     retired one's reused), a key allowed to make an invite; and the
---     pages': the list showing every conversation, a
---     participant's name written unescaped, a third user given the
---     conversation's page, a key given a page; and the limits' and
---     refusals': agents uncapped, another's agent named in `with=`, a
---     cross-origin POST accepted, a logout that leaves the session, a
---     stream outliving its lifetime, a junk invite code audited, a forged
---     state audited, eviction across holders, a post reading the whole
---     transcript for its id, a transcript uncapped; and the paging's: a
---     read deaf to `before=`, a backlog unbounded, a gap never said, a page
---     read from the whole transcript, an offsets file never written again;
---     and the indexes': conversations, keys and invites uncapped, a missing
---     index trusted, a listing that scans everyone's; and media let in
---     from any of the chat's own paths (its uploads rule taking every path);
---     and the agents page's: everyone's agents listed, its form posting
---     nowhere, no live invite listed, a revoked key listed, another
---     human's page showing Gil's agent, a key given the page, and the start form
---     offering none of the viewer's agents; and the channels': a human who
---     is no admin let change them, a key let change them, and a name taken
---     again; and the people list the live script draws a header from
---     without the login beside each name;
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
 --     tools/verify_hunts.shale, a run of its own), each count
 --     held at zero: boundaries' `fixed`, errors' `error_alias` and
 --     `optional_tag`, nest_depth four deep, name_hunt's `state_effect`,
 --     `question`, `negative`, `command_tense`, `mixed_tense` and
---     `container`, and stack's lines to stack; and a plant for each recipe
---     that it finds;
+--     `container`, and stack's lines to stack (each recipe's
+--     `self_test=1`, Shale's, proves it finds what it hunts);
 --   - `zig fmt --check host build.zig` and `roc fmt --check app platform`.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
 -- The floors: the test counts, which may only rise.
-const roc_floor = 2196
+const roc_floor = 2202
 const zig_floor = 203
 const e2e_steps = 72
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
-const tree = ".zig-cache/verify/tree"
 -- A build and a run of everything: minutes, from an empty cache.
 const build_ms = 1800000
 -- The pinned Roc, tools:roc-<pin>/roc (tools/get_roc.sh installs it), the
@@ -164,32 +135,6 @@ for n = 1, e2e_steps do
 end
 say(e.code == 0 and got.count == e2e_steps, "e2e: " .. got.count .. " steps (want " .. e2e_steps .. "), exit " .. e.code .. ", " .. e.ms .. " ms")
 
--- ── the planted faults, each in a copy of the tree ──
--- The repository at `from`'s files under `part` (its own, and new ones
--- not yet committed, never what .gitignore leaves out: a cache, a build's
--- output, a dev server's data), copied to `to`, each at its path.
-function copy_repo(from, part, to)
-  local listed = run({"git", "ls-files", "--cached", "--others", "--exclude-standard", part}, {cwd = from, timeout_ms = 60000, whole = 4000000})
-  if listed.code ~= 0 then fail("verify: cannot list " .. from .. "'s files: " .. trim(listed.out)) end
-  for path in split(trim(listed.out), "\n") do
-    local source = path
-    if from ~= "." then source = from .. "/" .. path end
-    if path ~= "" and exists(source) then
-      local slash = 0
-      for i = 1, #path do
-        if sub(path, i, i) == "/" then slash = i end
-      end
-      if slash > 0 then mkdir(to .. "/" .. sub(path, 1, slash - 1)) end
-      replace(to .. "/" .. path, read(source))
-    end
-  end
-end
-
-mkdir(tree)
-copy_repo(".", ".", tree .. "/roc-chat")
-copy_repo("repos:roc-markdown", "package", tree .. "/roc-markdown")
-copy_repo("repos:chat-client", ".", tree .. "/chat-client")
-
 -- What a run said last, on one line: a build's error, when it made no
 -- step's line.
 function tail_of(out)
@@ -198,175 +143,10 @@ function tail_of(out)
   return join(split(t, "\n"), " | ")
 end
 
--- `s` with its first `old` made `new`.
-function replace_once(s, old, new)
-  local at = find(s, old)
-  return sub(s, 1, at - 1) .. new .. sub(s, at + #old)
-end
-
--- Plants `new` in place of `old` in the copy's `file`, runs the end to end
--- there, requires it red, and red at `step` (so a red for any other reason
--- is no pass), and puts the file back.
-function plant(what, file, old, new, step)
-  local p = tree .. "/roc-chat/" .. file
-  local was = read(p)
-  if find(was, old) == nil then
-    say(false, "plant: " .. what .. ": " .. file .. " has no `" .. old .. "`")
-    return nil
-  end
-  replace(p, replace_once(was, old, new))
-  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 80})
-  replace(p, was)
-  local s = get(steps_of(r.out).by, "" .. step, {ok = true, line = "no step line: " .. tail_of(r.out)})
-  say(r.code ~= 0 and not s.ok, "plant: " .. what .. " is red at step " .. step .. " (exit " .. r.code .. "; " .. s.line .. ")")
-end
-
-plant("a forged session cookie admitted (the host's hash ignores its bytes)",
-  "host/call.zig", "&crypto.sha256(bytes)", "&crypto.sha256(bytes[0..0])", 8)
-plant("a third user's post let through (can_post asked of nobody)",
-  "app/Conversations.roc", "if !ConvAccess.can_post(viewer, { conv, accounts }) {\n\t\t\t\t\t\taudit_out_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", "if List.is_empty(accounts) {\n\t\t\t\t\t\taudit_out_of_scope!({\n\t\t\t\t\t\t\tkey,\n\t\t\t\t\t\t\tuse: Post(id),", 9)
-plant("a third user's read let through (can_see asked of nobody)",
-  "app/Conversations.roc", "if ConvAccess.can_see(a.viewer, { conv: a.conv, accounts: a.accounts }) {", "if !List.is_empty(a.accounts) {", 10)
--- The other half of the subscribe plant: the stream subscribes after the
--- turn is let go. Planted with the first, in one copy.
-function plant_out_of_turn()
-  local p = tree .. "/roc-chat/host/server.zig"
-  local was = read(p)
-  local call = "const decided = s.decideInTurn(arena, copied, exchanged, &ctx, &sub);"
-  local late = call .. "\n            if (decided) |ok| switch (ok) {\n                .stream => |st| sub = s.subscribe(st.key) catch null,\n                else => {},\n            } else |_| {}"
-  local inside = ".stream => |st| sub.* = try s.subscribe(st.key),"
-  if find(was, call) == nil or find(was, inside) == nil then
-    say(false, "plant: the subscribe out of the turn: host/server.zig has moved")
-    return nil
-  end
-  replace(p, replace_once(replace_once(was, inside, ".stream => sub.* = null,"), call, late))
-  local r = run({"zig", "build", "e2e"}, {cwd = tree .. "/roc-chat", timeout_ms = build_ms, tail = 80})
-  replace(p, was)
-  local s = get(steps_of(r.out).by, "11", {ok = true, line = "no step line: " .. tail_of(r.out)})
-  say(r.code ~= 0 and not s.ok, "plant: the subscribe after the turn, not in it, is red at step 11 (exit " .. r.code .. "; " .. s.line .. ")")
-end
-plant_out_of_turn()
-plant("the list showing every conversation (load_mine! keeps them all)",
-  "app/Conversations.roc", "Ok(\n\t\t\t\t\t\t\tList.keep_if(\n\t\t\t\t\t\t\t\ttheirs,\n\t\t\t\t\t\t\t\t|conv| ConvAccess.can_post(viewer, { conv, accounts }),\n\t\t\t\t\t\t\t),\n\t\t\t\t\t\t)", "Ok(List.concat(theirs, Store.load_conversations!({})?))", 33)
-plant("a participant's name written unescaped (escape leaves `<`)",
-  "app/Html.roc", "} else if b == '<' {", "} else if b == 0 {", 34)
-plant("a third user given the conversation's page (can_see asked of nobody)",
-  "app/Pages.roc", "if !ConvAccess.can_see(viewer, { conv, accounts }) {", "if !ConvAccess.can_see(viewer, { conv, accounts }) and List.is_empty(accounts) {", 35)
-plant("a key given a page (answered as a session)",
-  "app/Pages.roc", "Key(_) => key_refused\n\t\t\t\t\t\tSession(me) =>", "Session(me) | Key(me) =>", 35)
-plant("a message's newline written raw into its transcript line",
-  "app/MessageCodec.roc", "if b == '%' or b < 0x20 or b == 0x7F", "if b == '%' or (b < 0x20 and b != '\\n') or b == 0x7F", 6)
-plant("a revoked key that still works (its revocation never read)",
-  "app/ApiKey.roc", "match k.revocation {", "match (if now < 0 k.revocation else Active) {", 19)
-plant("a key minting a key (a key's grant bound as a session's)",
-  "app/ApiKey.roc", "Key(_) => Err(GrantedByKey)", "Key(by_key) => Principal.bind(accounts, by_key.acts_as()).map_err(|_| NoSuchPrincipal)", 18)
-plant("a session's key acting as another human's agent (the owner never asked)",
-  "app/ApiKey.roc", "if Principal.answers_to(current) != h.id {", "if Principal.answers_to(current) != h.id and List.is_empty(accounts) {", 13)
-plant("the Bearer header winning over the cookie when both are sent",
-  "app/Credentials.roc", "(_, Sent(_)) => Err(both_sent)\n\t\t\t(values, Unsent) =>", "(_, Sent(_)) if List.is_empty(authorization) => Err(both_sent)\n\t\t\t(values, _) =>", 22)
-plant("an invite redeemable twice (its spending never written)",
-  "app/Agents.roc", "Store.save_invite!({ ..invite, state: Spent })", "Store.save_invite!(invite)", 25)
-plant("an expired invite accepted (its expiry never read)",
-  "app/Agents.roc", "Live => now >= invite.created and now < invite.expires", "Live => now >= invite.created", 26)
-plant("an agent's id taken from the accounts again, a retired one's reused",
-  "app/Accounts.roc", "this = settings.next_agent_id", "this = if settings.next_agent_id.to_u64() > 0 Accounts.agent_id_after(accounts)? else settings.next_agent_id", 31)
-plant("a key allowed to make an invite (the grant's GrantedByKey let by)",
-  "app/Agents.roc", "Refused(why) => Err(Refused(why))\n\t\t\tGrantable =>", "Refused(why) if why != GrantedByKey => Err(Refused(why))\n\t\t\t_ =>", 28)
-
--- The limits and refusals.
-plant("agents uncapped (the cap never reached)",
-  "app/Agents.roc", "if owned >= Limits.agents_per_human {", "if owned >= Limits.agents_per_human * 1000 {", 38)
-
-plant("another's agent named in `with=` (the owner never asked)",
-  "app/ConvAccess.roc", "if (p.answers_to() == human) Ok({}) else Err(NotTheOwner(other))", "if (p.answers_to() == human or True) Ok({}) else Err(NotTheOwner(other))", 39)
-
-plant("a cross-origin POST accepted (Origin never compared)",
-  "app/Origin.roc", "[one] => if (one == configured) Allowed else CrossOrigin", "[one] => if (one == configured or True) Allowed else CrossOrigin", 40)
-plant("a logout that leaves the session (its record never removed)",
-  "app/SignIn.roc", "Ok(token_hash) => Store.remove_session!(token_hash)", "Ok(_) => Removed", 41)
-plant("a stream outliving its lifetime (the test's lifetime never read)",
-  "host/server.zig", "if (test_lifetime > 0) test_lifetime else", "if (test_lifetime > 0) s.limits.stream_lifetime_ms else", 42)
-plant("a junk invite code audited (an unknown invite's refusal appended)",
-  "app/Agents.roc", "\tmatch invite {\n\t\tUnknown => {}\n\t\tKnown(_) =>", "\tmatch invite {\n\t\tUnknown | Known(_) =>", 43)
-plant("a forged state audited (every sign-in refusal appended)",
-  "app/GitHubSignIn.roc", "StateForged | StateMismatched | StateExpired | StateReused => Anonymous", "StateForged | StateMismatched | StateExpired | StateReused => Audited", 43)
-plant("eviction across holders (every stream counted as the new one's holder's)",
-  "host/sse.zig", "if (x.heldBy(holder)) {", "if (x.heldBy(x.holder[0..x.holder_len])) {", 44)
-plant("a post reading the whole transcript for its id (the tally never trusted)",
-  "app/Store.roc", "Ok(t) if t.bytes == stat.size => Ok(Kept(t))", "Ok(t) if t.bytes == stat.size and t.bytes == 0 => Ok(Kept(t))", 45)
-plant("a transcript uncapped (the cap never reached)",
-  "app/Conversations.roc", "> Limits.transcript_bytes_most {", "> Limits.transcript_bytes_most * 1000 {", 46)
-plant("a read deaf to `before=` (every page the newest)",
-  "app/Conversations.roc", "Ok(n) if n > 0 => Ok(Before(n))", "Ok(n) if n > 0 => Ok(Newest)", 47)
-plant("a backlog unbounded (from Last-Event-ID, past the newest page)",
-  "app/Conversations.roc", "if after < newest.first {", "if after < newest.first and Bool.False {", 48)
-plant("a gap never said (its event never sent)",
-  "app/Conversations.roc", "gap = if (after > 0 and after + 1 < newest.first)", "gap = if (after > tally.messages and after + 1 < newest.first)", 48)
-plant("a page read from the whole transcript (its offsets never trusted)",
-  "app/Store.roc", "Found => Ok(stat.size == tally.messages * offset_width)", "Found => Ok(stat.size == tally.messages * offset_width and Bool.False)", 49)
-plant("an offsets file never written again (only ever appended to)",
-  "app/Store.roc", "if kept {", "if kept or Bool.True {", 50)
-plant("conversations uncapped (the cap never reached)",
-  "app/Conversations.roc", "Ok(if (started >= Limits.load_cap!(ConversationsPerHuman)) Full else Room)", "Ok(if (started >= Limits.load_cap!(ConversationsPerHuman) + 1000) Full else Room)", 51)
-plant("keys uncapped (the cap never reached)",
-  "app/Agents.roc", "KeysPerHuman => Limits.load_cap!(KeysPerHuman)\n", "KeysPerHuman => Limits.load_cap!(KeysPerHuman) + 1000\n", 52)
-plant("invites uncapped (the cap never reached)",
-  "app/Agents.roc", "InvitesPerHuman => Limits.load_cap!(InvitesPerHuman)\n", "InvitesPerHuman => Limits.load_cap!(InvitesPerHuman) + 1000\n", 53)
-plant("a missing index trusted (its mark never compared)",
-  "app/Store.roc", "Missing => Ok(count == 0)", "Missing => Ok(Bool.True)", 54)
-plant("a listing that scans everyone's (its index read, then passed by)",
-  "app/Store.roc", "records = load_records!(index_path(by_human_folder, human), offset_width)?\n\t\tload_conversations_at!(records, [])", "_ = load_records!(index_path(by_human_folder, human), offset_width)?\n\t\tStore.load_conversations!({})", 55)
-plant("media from any of the chat's own paths (its uploads rule taking every path)",
-  "app/Conversations.roc", "markdown = { uploads: Md.uploads_under(Str.to_utf8(\"/user_uploads/\")) }", "markdown = { uploads: |_| Bool.True }", 56)
-plant("the agents page listing everyone's agents (their owner never asked)",
-  "app/Agents.roc", "Agent(_) | Bot(_) => Principal.answers_to(p) == human", "Agent(_) | Bot(_) => Principal.answers_to(p) == human or Bool.True", 57)
-plant("the agents page's form posting where no route makes an agent",
-  "app/Pages.roc", "post(\"/agents\", \"name=\"", "post(\"/agent\", \"name=\"", 58)
-plant("the agents page listing no live invite (its liveness read backwards)",
-  "app/Agents.roc", "invites.keep_if(\n\t\t\t\t\t\t\t\t\t|i| is_live(i, now)", "invites.keep_if(\n\t\t\t\t\t\t\t\t\t|i| !is_live(i, now)", 59)
-plant("the agents page listing a revoked key (its revocation never read)",
-  "app/Agents.roc", "\t\tActive => now < r.expires\n\t\tRevoked => Bool.False", "\t\tActive => now < r.expires\n\t\tRevoked => now < r.expires", 60)
--- What another human's page shows of Gil's: his agents through the one
--- filter that guards them; his keys and invites through two each (the
--- human's own index, and the ownership asked of each), so no one fault
--- in those lets them through, and this plant is the one that can.
-plant("another human's page showing Gil's agent (its owner never asked)",
-  "app/Agents.roc", "Agent(_) | Bot(_) => Principal.answers_to(p) == human", "Agent(_) | Bot(_) => Principal.answers_to(p) == human or Bool.True", 61)
-plant("a key given the agents page (sent to sign in, as if signed out)",
-  "app/Agents.roc", "Ok(Key(_)) => Err(ByKey)", "Ok(Key(_)) => Err(SignedOut)", 62)
-plant("the start form offering none of the viewer's agents",
-  "app/Pages.roc", "Human(human) => Agents.agents_of(accounts, human)", "Human(_) => []", 63)
-plant("a redeem's format=secret answered as JSON",
-  "app/Agents.roc", "SecretAlone => Wire.secret(201, SignInWeb.hex(secret))", "SecretAlone => Wire.json(201, key_json(key, Shown(secret)))", 64)
-plant("an unknown redeem format taken as JSON (the invite spent by a typo)",
-  "app/Agents.roc", "_ => Err(UnknownFormat)", "_ => Ok(Json)", 64)
-
--- The channels, an admin's. **WITH THESE, THIS RUN STARTS 64 PROGRAMS, A
--- RUN'S MOST**: another plant goes in a run of its own, as the hunts do.
-plant("a human who is no admin let change the channels (Channel's admin check skipped)",
-  "app/Channel.roc", "Member => Err(NotAdmin)", "Member => Ok({})", 67)
-plant("a key let change the channels (its NeedsSession let by)",
-  "app/Channel.roc", "Key(_) => Err(NeedsSession)", "Key(_) => Ok({})", 68)
-plant("a channel's name taken again (Channel.make never asks the channels made)",
-  "app/Channel.roc", "if channels.any(|c| c.name() == valid) {", "if channels.any(|c| c.name() == valid) and Bool.False {", 70)
-
--- Mentions and the agents' backstop.
-plant("mentions never parsed (every message names nobody)",
-  "app/Mentions.roc", "participants.keep_if(|p| names(said, p.name.to_utf8())).map(|p| p.id)", "participants.keep_if(|p| names(said, p.name.to_utf8()) and Bool.False).map(|p| p.id)", 16)
-plant("a quote-reply's fence read as said (its @ names counted again)",
-  "app/Mentions.roc", "Ok(f) => Fence({ char: f.char, count: f.count })", "Ok(_) => otherwise", 16)
-plant("agents answering agents uncapped (the cap never reached)",
-  "app/Conversations.roc", "if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window) Full else Room", "if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window * 1000) Full else Room", 17)
--- (The server's header, message_html, is held by its own expect in
--- app/Pages.roc; a run starts at most 64 programs, so one plant here.)
-plant("the people list without the login beside each name (the live script's renderer)",
-  "app/Pages.roc", "Html.text(Conversations.header_of(accounts, poster)),", "Html.text(Conversations.name_of(accounts, poster)),", 72)
-
--- ── the style hunts, in a run of their own ──
--- A run starts at most 64 programs, and the plants above take most of
--- this one's: tools/verify_hunts.shale runs each hunt over app/ and each
--- hunt's plant in the tree's copy, one line a check, read back here.
-local hr = run({"shale", "tools/verify_hunts.shale", "tree=" .. tree}, {cwd = ".", timeout_ms = build_ms, tail = 60})
+-- ── the style hunts and the formatters, in a run of their own ──
+-- tools/verify_hunts.shale runs each hunt over app/ and both formatters,
+-- one line a check, read back here.
+local hr = run({"shale", "tools/verify_hunts.shale"}, {cwd = ".", timeout_ms = build_ms, tail = 60})
 local hunt_lines = 0
 local hunt_failed = 0
 for line in split(hr.out, "\n") do
@@ -382,8 +162,6 @@ end
 if hunt_lines == 0 or (hr.code ~= 0 and hunt_failed == 0) then
   say(false, "tools/verify_hunts.shale (exit " .. hr.code .. ", " .. hunt_lines .. " checks): " .. tail_of(hr.out))
 end
-
--- (The formatters run in tools/verify_hunts.shale, above.)
 
 remove_tree(scratch)
 if board.failed == 0 then

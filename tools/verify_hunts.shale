@@ -1,23 +1,19 @@
 -- **THE STYLE HUNTS, HELD AT ZERO, AND THE FORMATTERS**: verify's hunts
--- and its two `fmt --check`s, in a run of their own, since a run starts at most 64 programs and verify's planted faults
--- take most of its. tools/verify.shale runs it, from the repository's
--- root, with the copy of the tree its plants use:
+-- and its two `fmt --check`s, in a run of their own. tools/verify.shale
+-- runs it, from the repository's root:
 --
---   shale tools/verify_hunts.shale tree=.zig-cache/verify/tree
+--   shale tools/verify_hunts.shale
 --
 -- It prints one line a check, `PASS` or `FAIL`, which verify reads back
 -- into its own checklist, and exits 0 only when every line passed.
 --
 -- Shale's cookbook recipes over app/ (roc-apps docs/roc-style.md, "Testing
 -- and enforcement"), read from roc-ast's tree: each count named here reads
--- zero, and a plant in the tree's copy turns each red. What stands beside
--- them (nest_depth at three deep, stack's long lines, name_hunt's other
--- checks) is a question for a reader, not a gate.
+-- zero (each recipe's `self_test=1`, Shale's, proves it finds what it
+-- hunts). What stands beside them (nest_depth at three deep, stack's long
+-- lines, name_hunt's other checks) is a question for a reader, not a gate.
 --
 -- budget: steps=200000000 arena_bytes=1000000000 changes=1000 change_bytes=50000000 read_bytes=500000000
-
-const tree = arg("tree", "")
-if tree == "" or not exists(tree .. "/roc-chat") then fail("verify_hunts: tree= names verify's copy of the tree, which holds roc-chat") end
 
 const board = {failed = 0}
 
@@ -36,13 +32,13 @@ const hunts = {
   {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
 }
 
--- A recipe run over `cwd`'s app/: its summary, its last line, and each of
+-- A recipe run over app/: its summary, its last line, and each of
 -- `counts` read from it (nil where the summary does not say it, as when
 -- the recipe stopped).
-function hunt_run(h, cwd)
+function hunt_run(h)
   local argv = {"shale", real("cookbook:roc/" .. h.recipe .. ".shale"), "glob=app/**/*.roc"}
   for a in h.args do push(argv, a) end
-  local r = run(argv, {cwd = cwd, timeout_ms = 600000, tail = 40})
+  local r = run(argv, {cwd = ".", timeout_ms = 600000, tail = 40})
   -- The recipe's summary is its last line of its own: a Shale run that
   -- took over a second ends with `── time:` (and its budget) footers,
   -- which a busy box makes come and go.
@@ -60,7 +56,7 @@ function hunt_run(h, cwd)
 end
 
 for h in hunts do
-  local r = hunt_run(h, ".")
+  local r = hunt_run(h)
   local zero = #r.got == #h.counts
   for g in r.got do
     if g.n ~= 0 then zero = false end
@@ -68,44 +64,7 @@ for h in hunts do
   say(zero, "hunt " .. h.recipe .. (#h.args > 0 and (" " .. join(h.args, " ")) or "") .. ": " .. r.last)
 end
 
--- Appends `text` to the copy's `file`, runs `recipe`'s hunt there,
--- requires each count `patterns` names above zero, and puts the file back.
-function hunt_plant(what, file, text, recipe, patterns)
-  local p = tree .. "/roc-chat/" .. file
-  local was = read(p)
-  replace(p, was .. text)
-  local h = nil
-  for each in hunts do
-    if each.recipe == recipe then h = each end
-  end
-  local r = hunt_run({recipe = recipe, args = h.args, counts = patterns}, tree .. "/roc-chat")
-  replace(p, was)
-  local found = #r.got == #patterns
-  for g in r.got do
-    if g.n == 0 then found = false end
-  end
-  say(found, "hunt plant: " .. what .. " is found (" .. r.last .. ")")
-end
-
-hunt_plant("a parameter every call fills with the same literal", "app/Wire.roc",
-  "\nplanted_sum : U64, U64 -> U64\nplanted_sum = |a, b| a + b\n\nplanted_one : U64\nplanted_one = planted_sum(1, 0)\n\nplanted_two : U64\nplanted_two = planted_sum(2, 0)\n",
-  "boundaries", {"fixed ([0-9]+)"})
-hunt_plant("a result naming a shared alias of tags, and an optional's tags", "app/Stored.roc",
-  "\nplanted_alias : U64 -> Try(U64, Stored.Problem)\nplanted_alias = |n| Ok(n)\n\nplanted_optional : U64 -> [Some(U64), None]\nplanted_optional = |n| Some(n)\n",
-  "errors", {"error_alias ([0-9]+)", "optional_tag ([0-9]+)"})
-hunt_plant("a call nested four deep", "app/Wire.roc",
-  "\nplanted_nest : U64\nplanted_nest = Num.max(Num.max(Num.max(Num.max(1, 2), 3), 4), 5)\n",
-  "nest_depth", {"nested ([0-9]+)"})
-hunt_plant("an effect named as a state, and a type named only by container words", "app/Wire.roc",
-  "\nplanted_written! : {} => {}\nplanted_written! = |{}| {}\n\nEntries : List(U64)\n",
-  "name_hunt", {"state_effect ([0-9]+)", "container ([0-9]+)"})
-hunt_plant("three items on one line", "app/Wire.roc",
-  "\nplanted_stack : List(U64)\nplanted_stack = [1, 2, 3]\n",
-  "stack", {"([0-9]+) to stack"})
-
 -- ── the formatters ──
--- Here, not in verify's own run, which its planted faults fill to its 64
--- programs.
 const roc = real("tools:roc-" .. trim(read("roc-version")) .. "/roc")
 local zf = run({"zig", "fmt", "--check", "host", "build.zig"}, {cwd = ".", timeout_ms = 60000, tail = 20})
 say(zf.code == 0, "zig fmt --check host build.zig" .. (zf.code == 0 and "" or (": " .. trim(zf.out))))

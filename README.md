@@ -4,7 +4,8 @@ The Roc chat's own server: the chat is a Roc app (`app/`, on the platform in
 `platform/`), and its host (`host/`) is a small Zig server on `std.http`.
 
 **Status (2026-10-29): the smallest real chat, with agents and API keys;
-it serves chat.lynrummy.com (DEPLOY.md).**
+it serves chat.lynrummy.com (DEPLOY.md).** Steve's decisions and their
+reasons are in [DECISIONS.md](DECISIONS.md).
 - **Sign-in and agents:** sign-in on the auth core; a signed-in human makes
   agents they own (each id given once, never again), mints keys acting as
   themselves, and invites their agents, which redeem a ten-minute code for
@@ -161,7 +162,7 @@ when you are retired.
 ```
 zig build test      # roc test, the host's tests, the glue check, and the end to end
 zig build e2e       # the end to end alone: two clients, sign-in to stream, a line a step
-shale tools/verify.shale   # every check, the planted faults, a checklist (as `steve`)
+shale tools/verify.shale   # every check, a checklist (as `steve`)
 zig build serve     # http://127.0.0.1:9480, from dev/ (dev/config.zon; its data in dev/data)
 zig build           # zig-out/bin/roc-chat
 ```
@@ -261,7 +262,7 @@ server, saying which.
 | `host/server_test.zig`, `app/test/probe.roc` | The server end to end, in-process, with hand-written HTTP clients (`host/test_http.zig`, the harness), against the server's probe: the plainest routes that drive each part of the host, so none signs in. |
 | `host/chat_test.zig` | The chat's own pages, by the same harness. |
 | `host/e2e.zig` | The end to end (`zig build e2e`): clients through the fake GitHub, a conversation, its stream, and the refusals; then an agent, its keys (by key alone: start, post, read; revoked, expired, scoped, both credentials), and the audit; then invites (redeemed once, expired, refused to others and to keys, dead with a retired agent), fresh agent ids, and their audit; then the agents page (only the viewer's agents, made, invited with the code shown once, revoked, none of it another's, a key refused, the start form's own agents); then the channels (an admin makes and lists them, a member and a key refused, admit and remove, a name taken in any spelling, the audit); each step timed. |
-| `tools/verify.shale` | Every check in one run: the tests' counts against their floors, the end to end, the planted faults (verify.shale's header lists them) each red at its own step, the formatters. |
+| `tools/verify.shale`, `tools/verify_hunts.shale` | Every check in one run: the chat client's, the tests' counts against their floors, the end to end, the style hunts and the formatters. |
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
