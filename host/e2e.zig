@@ -1110,7 +1110,7 @@ fn agentReads(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), w.steve, "hi CC, it's Steve")).status != 201) return error.NotPosted;
     const r = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
     if (r.status != 200) return error.NotRead;
-    if (!has(r.body, "\"by\":\"human:1004\",\"kind\":\"human\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
+    if (!has(r.body, "\"by\":\"human:1004\",\"kind\":\"human\",\"login\":\"person1004\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
 }
 
 /// **MENTIONS, AS THE SERVER PARSES THEM** (app/Mentions.roc): each
@@ -1397,13 +1397,41 @@ fn authorKind(w: *World) !void {
     const key = try field(redeemed.body, "secret");
     const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, "with=human%3A1014"));
     const path = try agentPath(w, conv, "/messages");
-    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:1014\",\"markdown\":\"I am Person 1014\"", .{agent});
+    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:1014\",\"login\":\"person1014\",\"markdown\":\"I am Person 1014\"", .{agent});
     const posted = try send(w.a, w.port(), "POST", path, .{ .key = key }, "I am Person 1014");
     if (posted.status != 201 or !has(posted.body, said)) return error.NotSaidAnAgents;
     const owners = try request(w.a, w.port(), "POST", path, ivy, "no, I am");
-    if (owners.status != 201 or !has(owners.body, "\"by\":\"human:1014\",\"kind\":\"human\",\"markdown\":\"no, I am\"")) return error.NotSaidAHumans;
+    if (owners.status != 201 or !has(owners.body, "\"by\":\"human:1014\",\"kind\":\"human\",\"login\":\"person1014\",\"markdown\":\"no, I am\"")) return error.NotSaidAHumans;
     const read = try get(w.a, w.port(), try agentPath(w, conv, ""), ivy);
     if (read.status != 200 or !has(read.body, said) or count(read.body, "\"owner\":") != 1) return error.NotInTheTranscript;
+}
+
+fn loginBeside(w: *World) !void {
+    // A human of their own (login person1015), and an agent named as they are.
+    const una = try signUp(w.a, w.port(), 1015);
+    const made = try request(w.a, w.port(), "POST", "/agents", una, "name=Person+1015");
+    if (made.status != 201) return error.NotMade;
+    const agent = try field(made.body, "id");
+    const made_inv = try request(w.a, w.port(), "POST", "/invites", una, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
+    if (made_inv.status != 201) return error.NotInvited;
+    const redeemed = try redeem(w, try field(made_inv.body, "code"));
+    if (redeemed.status != 201) return error.NotRedeemed;
+    const key = try field(redeemed.body, "secret");
+    const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, "with=human%3A1015"));
+    // The agent's message: its kind, its owner, and its owner's login.
+    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:1015\",\"login\":\"person1015\",", .{agent});
+    const posted = try send(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), .{ .key = key }, "I am Person 1015");
+    if (posted.status != 201 or !has(posted.body, said)) return error.NoOwnersLogin;
+    // The human's own: their login.
+    const theirs = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), una, "no, I am");
+    if (theirs.status != 201 or !has(theirs.body, "\"by\":\"human:1015\",\"kind\":\"human\",\"login\":\"person1015\",")) return error.NoOwnLogin;
+    // The page: the server's header, and the people list the live script draws from.
+    const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{conv}), una);
+    if (page.status != 200) return error.NoPage;
+    const label = "Person 1015 · agent of @person1015";
+    if (!has(page.body, "<header>" ++ label ++ " · <time")) return error.NoLabelOnTheMessage;
+    if (!has(page.body, "\">" ++ label ++ "</li>")) return error.NoLabelForTheScript;
+    if (!has(page.body, "<header>Person 1015 · @person1015 · <time")) return error.NoLoginBesideTheHuman;
 }
 
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
@@ -1474,6 +1502,7 @@ const steps = [_]Step{
     .{ .name = "the start form offers the viewer's own agents to tick, no one else's", .f = startPicksAgents },
     .{ .name = "an invite redeemed with format=secret answers the secret alone, and it works; an unknown format spends nothing", .f = redeemSecretAlone },
     .{ .name = "an agent's post says its kind and its owner, though it took its owner's name; a human's says no owner", .f = authorKind },
+    .{ .name = "an agent named as its owner comes with its owner's login, and the page labels it so, in both renderers", .f = loginBeside },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

@@ -144,6 +144,45 @@ Conversations := [].{
 			Err(_) => AccountCodec.id_text(id)
 		}
 
+	## **THE GITHUB LOGIN BESIDE A POSTER'S NAME** (DisplayName's promise:
+	## a name is self-chosen, a login is not): a human's own; an agent's or
+	## a bot's owner's, as the accounts say now. None for a login cleared
+	## (GitHub gave it to another account since), nor for a poster, or an
+	## owner, no account holds now.
+	login_of : List(Principal), Principal.Id -> [Login(Str), NoLogin]
+	login_of = |accounts, id|
+		match Principal.find(accounts, id) {
+			Err(_) => NoLogin
+			Ok(p) =>
+				match Principal.human_account(accounts, p.answers_to()) {
+					Ok(h) if h.login != "" => Login(h.login)
+					_ => NoLogin
+				}
+		}
+
+	## **A MESSAGE'S HEADER, BEFORE ITS TIME**: the poster's name, then, for
+	## an agent or a bot, its kind and its owner's login ("CC · agent of
+	## @showell"), and for a human, their login when it is not their name.
+	## The one rule both of a page's renderers draw (Pages.roc's
+	## message_html, and its script reading the people list), so they never
+	## disagree. A poster no account holds is its id, which says its kind.
+	header_of : List(Principal), Principal.Id -> Str
+	header_of = |accounts, id|
+		match Principal.find(accounts, id) {
+			Err(_) => AccountCodec.id_text(id)
+			Ok(p) => {
+				name = Conversations.name_of(accounts, id)
+				match (p, Conversations.login_of(accounts, id)) {
+					(Human(_), Login(l)) => if (l == name) name else "${name} · @${l}"
+					(Human(_), NoLogin) => name
+					(Agent(_), Login(l)) => "${name} · agent of @${l}"
+					(Bot(_), Login(l)) => "${name} · bot of @${l}"
+					(Agent(_), NoLogin) => "${name} · agent"
+					(Bot(_), NoLogin) => "${name} · bot"
+				}
+			}
+		}
+
 	## **A PAGE OF A CONVERSATION'S MESSAGES**: the newest
 	## `Limits.page_messages` before `before` (or of all, for `Newest`),
 	## oldest first, read from the first one's offset (Store.load_span!),
@@ -813,9 +852,10 @@ frame = |m, who| Sse.frame({
 ## accounts now (`accounts`, whom a poster answers to).
 Who : { named : List(Mentions.Named), accounts : List(Principal) }
 
-## **A MESSAGE AS THE WIRE SPELLS IT**: who posted it, of what kind, and
-## the human an agent or a bot answers to (`owner_of`), so a page tells an
-## agent from the human whose name it took; its markdown as posted, the
+## **A MESSAGE AS THE WIRE SPELLS IT**: who posted it, of what kind, the
+## human an agent or a bot answers to (`owner_of`), and the GitHub login
+## beside its name (`login_of`: its own, or its owner's), so a page tells
+## an agent from the human whose name it took; its markdown as posted, the
 ## participants it names (by their names now), and its html as
 ## roc-markdown renders it now. `html` is last: a reader may take it up to
 ## the object's closing `"}` (host/e2e.zig does).
@@ -826,7 +866,12 @@ message_json = |m, who| {
 		("at", JsonOut.signed(m.at)),
 		("by", JsonOut.string(AccountCodec.id_text(m.by))),
 		("kind", JsonOut.string(AccountCodec.kind_text(m.by))),
-	].concat(owner_of(who.accounts, m.by))
+	].concat(owner_of(who.accounts, m.by)).concat(
+		match Conversations.login_of(who.accounts, m.by) {
+			Login(l) => [("login", JsonOut.string(l))]
+			NoLogin => []
+		},
+	)
 	mentioned = Mentions.of(m.body, who.named).map(|id| JsonOut.string(AccountCodec.id_text(id)))
 	JsonOut.object(
 		author.concat([
@@ -902,11 +947,44 @@ said_by = |by|
 		{ named: [], accounts: Cast.accounts },
 	).bytes()
 
-expect said_by(Cast.ann.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"human:2\",\"kind\":\"human\",\"markdown\":\"hi\",".to_utf8())
-expect said_by(Cast.ann_agent.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:3\",\"kind\":\"agent\",\"owner\":\"human:2\",\"markdown\":\"hi\",".to_utf8())
-expect said_by(Cast.boss_bot.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"bot:2\",\"kind\":\"bot\",\"owner\":\"human:1\",\"markdown\":\"hi\",".to_utf8())
+expect said_by(Cast.ann.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"human:2\",\"kind\":\"human\",\"login\":\"h2\",\"markdown\":\"hi\",".to_utf8())
+expect said_by(Cast.ann_agent.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:3\",\"kind\":\"agent\",\"owner\":\"human:2\",\"login\":\"h2\",\"markdown\":\"hi\",".to_utf8())
+expect said_by(Cast.boss_bot.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"bot:2\",\"kind\":\"bot\",\"owner\":\"human:1\",\"login\":\"h1\",\"markdown\":\"hi\",".to_utf8())
 expect said_by(Principal.Id.Agent(Cast.aid(9))).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:9\",\"kind\":\"agent\",\"markdown\":\"hi\",".to_utf8())
 expect Bytes.find(said_by(Cast.ann_agent.id()), { needle: ",\"html\":\"".to_utf8(), at: 0 }).is_ok() and said_by(Cast.ann_agent.id()).ends_with("\"}".to_utf8())
+
+# The login beside a name: a human's own, an agent's or a bot's owner's;
+# none once cleared, nor for an owner, or a poster, no account holds.
+## Ann made again with her login cleared, and Steve (`Steve`, login `Steve`);
+## Ann's agent named as she is, and a bot of Steve's.
+cleared : Principal
+cleared = Principal.Human({ id: Cast.gid(2), login: "", name: "H2", role: Member, generation: Cast.gen(1) })
+
+steve : Principal
+steve = Principal.Human({ id: Cast.gid(7), login: "Steve", name: "Steve", role: Member, generation: Cast.gen(1) })
+
+posing : Principal
+posing = Principal.Agent({ id: Cast.aid(8), name: "H2", owner: Cast.gid(2), generation: Cast.gen(1) })
+
+steve_bot : Principal
+steve_bot = Principal.Bot({ id: Cast.aid(9), name: "commits", owner: Cast.gid(7), generation: Cast.gen(1) })
+
+expect Conversations.login_of(Cast.accounts, Cast.ann.id()) == Login("h2")
+expect Conversations.login_of(Cast.accounts, Cast.ann_agent.id()) == Login("h2")
+expect Conversations.login_of([cleared, Cast.ann_agent], Cast.ann_agent.id()) == NoLogin
+expect Conversations.login_of([Cast.ann_agent], Cast.ann_agent.id()) == NoLogin
+expect Conversations.login_of(Cast.accounts, Principal.Id.Agent(Cast.aid(99))) == NoLogin
+# The header: an agent named like a human says whose it is.
+expect Conversations.header_of([Cast.ann, posing], posing.id()) == "H2 · agent of @h2"
+expect Conversations.header_of([Cast.ann, posing], Cast.ann.id()) == "H2 · @h2"
+expect Conversations.header_of([steve, steve_bot], steve_bot.id()) == "commits · bot of @Steve"
+expect Conversations.header_of([steve], steve.id()) == "Steve"
+expect Conversations.header_of([cleared, posing], posing.id()) == "H2 · agent"
+expect Conversations.header_of([cleared], cleared.id()) == "H2"
+expect Conversations.header_of([steve_bot], steve_bot.id()) == "commits · bot"
+expect Conversations.header_of([], posing.id()) == "agent:8"
+# The JSON carries no login where there is none.
+expect message_json({ id: 1, at: 2, by: posing.id(), body: [] }, { named: [], accounts: [cleared, posing] }).bytes().starts_with("{\"id\":1,\"at\":2,\"by\":\"agent:8\",\"kind\":\"agent\",\"owner\":\"human:2\",\"markdown\":".to_utf8())
 
 # Pages: the newest, back to the first, and past either end.
 expect Conversations.page_of(0, Newest) == { first: 1, last: 0 }

@@ -21,7 +21,7 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - fifty planted faults, each red at its own step of the end to
+--   - fifty-two planted faults, each red at its own step of the end to
 --     end: a forged session cookie admitted, a third user's post let
 --     through, a third user's read let through, the subscribe moved out of
 --     the turn, a message's newline written raw into its transcript line,
@@ -46,7 +46,8 @@
 --     and the agents page's: everyone's agents listed, its form posting
 --     nowhere, no live invite listed, a revoked key listed, another
 --     human's page showing Gil's agent, a key given the page, and the start form
---     offering none of the viewer's agents;
+--     offering none of the viewer's agents; and a message's header without
+--     the login beside its name, by either of a page's two renderers;
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
 --     tools/verify_hunts.shale, a run of its own), each count
 --     held at zero: boundaries' `fixed`, errors' `error_alias` and
@@ -61,7 +62,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 2140
 const zig_floor = 203
-const e2e_steps = 65
+const e2e_steps = 66
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -345,6 +346,10 @@ plant("a quote-reply's fence read as said (its @ names counted again)",
   "app/Mentions.roc", "Ok(f) => Fence({ char: f.char, count: f.count })", "Ok(_) => otherwise", 16)
 plant("agents answering agents uncapped (the cap never reached)",
   "app/Conversations.roc", "if (Mentions.hops(posts, named) >= Limits.agent_hops_most) Full else Room", "if (Mentions.hops(posts, named) >= Limits.agent_hops_most * 1000) Full else Room", 17)
+plant("a message's header without the login beside its name (the server's renderer)",
+  "app/Pages.roc", "Html.text(Conversations.header_of(accounts, m.by)),", "Html.text(Conversations.name_of(accounts, m.by)),", 66)
+plant("the people list without the login beside each name (the live script's renderer)",
+  "app/Pages.roc", "Html.text(Conversations.header_of(accounts, poster)),", "Html.text(Conversations.name_of(accounts, poster)),", 66)
 
 -- ── the style hunts, in a run of their own ──
 -- A run starts at most 64 programs, and the plants above take most of

@@ -399,12 +399,12 @@ serve_conversation! = |
 								names(accounts, conv),
 								Html.markup("</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<ul id=people hidden>\n"),
 								Html.join(
-									conv.participants().map(
-										|b| Html.join([
+									posters(accounts, conv).map(
+										|poster| Html.join([
 											Html.markup("<li data-id=\""),
-											id_html(b.id),
+											id_html(poster),
 											Html.markup("\">"),
-											Html.text(Conversations.name_of(accounts, b.id)),
+											Html.text(Conversations.header_of(accounts, poster)),
 											Html.markup("</li>\n"),
 										]),
 									),
@@ -422,21 +422,33 @@ serve_conversation! = |
 			}
 	}
 
-## One message on the page: who and when (escaped; the time made local by
-## the page's script), then roc-markdown's HTML for it, as is.
+## One message on the page: who (Conversations.header_of: the name, and
+## the login beside it) and when (escaped; the time made local by the
+## page's script), then roc-markdown's HTML for it, as is.
 message_html : List(Principal), MessageCodec.Fields -> Html
 message_html = |accounts, m|
 	Html.join([
 		Html.markup("<article id=m"),
 		Html.number(m.id),
 		Html.markup("><header>"),
-		Html.text(Conversations.name_of(accounts, m.by)),
+		Html.text(Conversations.header_of(accounts, m.by)),
 		Html.markup(" · <time data-at="),
 		Html.signed(m.at),
 		Html.markup("></time></header><div class=body>"),
 		Html.rendered(Conversations.html_of(m)),
 		Html.markup("</div></article>\n"),
 	])
+
+## **WHO CAN POST IN A CONVERSATION**: its participants, then the humans
+## its agents and bots answer to who are not participants themselves. The
+## page's people list holds each one's header (Conversations.header_of),
+## which its script draws on a live message: the same text the server drew.
+posters : List(Principal), ConvAccess.Conv -> List(Principal.Id)
+posters = |accounts, conv| {
+	ids = conv.participants().map(|b| b.id)
+	owners = conv.involved(accounts).map(|h| Principal.Id.Human(h)).keep_if(|id| !ids.contains(id))
+	ids.concat(owners)
+}
 
 ## A conversation's people, by name, escaped, a comma between.
 names : List(Principal), ConvAccess.Conv -> Html
@@ -544,14 +556,14 @@ agents_js =
 conversation_js : Str
 conversation_js =
 	\\const conv = document.body.dataset.conv, box = document.getElementById("messages");
-	\\const names = {};
-	\\for (const li of document.querySelectorAll("#people li")) names[li.dataset.id] = li.textContent;
+	\\const heads = {};
+	\\for (const li of document.querySelectorAll("#people li")) heads[li.dataset.id] = li.textContent;
 	\\const when = (t) => new Date(t * 1000).toLocaleString();
 	\\for (const t of document.querySelectorAll("time[data-at]")) t.textContent = when(+t.dataset.at);
 	\\function article(m) {
 	\\  const a = document.createElement("article"), h = document.createElement("header"), b = document.createElement("div");
 	\\  a.id = "m" + m.id;
-	\\  h.textContent = (names[m.by] || m.by) + " · " + when(m.at);
+	\\  h.textContent = (heads[m.by] || m.by) + " · " + when(m.at);
 	\\  b.className = "body";
 	\\  b.innerHTML = m.html;
 	\\  a.append(h, b);
@@ -617,8 +629,19 @@ expect {
 			body: [],
 		},
 	).bytes()
-	html.starts_with("<article id=m3><header>&lt;script&gt;alert(1)&lt;/script&gt; · <time data-at=5>".to_utf8()) and Bytes.find(
+	html.starts_with("<article id=m3><header>&lt;script&gt;alert(1)&lt;/script&gt; · @h9 · <time data-at=5>".to_utf8()) and Bytes.find(
 		html,
 		{ needle: "<script>".to_utf8(), at: 0 },
 	) == Err(NotFound)
 }
+
+# **AN AGENT NAMED AS A HUMAN SAYS WHOSE IT IS**: the header names its kind
+# and its owner's login (Conversations.header_of), as the script draws it
+# from the people list.
+expect {
+	owner = Principal.Human({ id: Cast.gid(4), login: "showell", name: "Steve Howell", role: Member, generation: Cast.gen(1) })
+	posing = Principal.Agent({ id: Cast.aid(5), name: "Steve Howell", owner: Cast.gid(4), generation: Cast.gen(1) })
+	html = message_html([owner, posing], { id: 3, at: 5, by: posing.id(), body: [] }).bytes()
+	html.starts_with("<article id=m3><header>Steve Howell · agent of @showell · <time data-at=5>".to_utf8())
+}
+expect conversation_js.contains("heads[li.dataset.id] = li.textContent;") and conversation_js.contains("(heads[m.by] || m.by)")
