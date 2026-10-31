@@ -2,7 +2,7 @@
 ## a session, an API key, an invite, an audit entry, a conversation, a
 ## message) is one line of text a person reads with `cat`:
 ##
-##     account v1 kind=human github=583231 login=octocat generation=3 role=admin name=Steve H.
+##     account v1 kind=human id=1 github=583231 login=octocat generation=3 role=admin name=Steve H.
 ##
 ## - **The record's kind and the format's version come first,** so a line
 ##   handed to the wrong decoder, or written by a later format, is refused

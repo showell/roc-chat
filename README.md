@@ -81,6 +81,15 @@ a session's alone, and so are invites: a key asking is a 403. Every key
 refused in use, every grant refused, and every invite made, redeemed,
 revoked or refused is in the audit (`auth/audit`), with no secret or code.
 
+**A human's id is the chat's own** (`human:1` is the first to sign up):
+a counter gives it once and never again, even after the account is
+gone, as an agent's id is. GitHub is one way to sign in: an account is
+bound to the GitHub id it signed up as, a second sign-in by that id
+lands on the same account, and a GitHub id is never a human's id on the
+wire (`human:<github id>` names nobody, unless by chance some human
+holds that number). The GitHub id stays GitHub's business: the sign-in,
+the login shown beside a name, and the config's first admin and barred.
+
 **Channels are an admin's** (`app/Channel.roc` decides, `app/Channels.roc`
 serves): an admin, by their own session, makes one and says who is in it;
 a key never does, an admin's own with admin scope included (403,

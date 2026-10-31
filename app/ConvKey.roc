@@ -75,7 +75,8 @@ cid = |n|
 human : U64, { name : Str, role : Principal.Role } -> Principal
 human = |n, { name, role }|
 	Principal.Human({
-		id: Cast.gid(n),
+		id: Cast.hid(n),
+		sign_in: Cast.github(n),
 		login: "h${n.to_str()}",
 		name,
 		role,
@@ -97,7 +98,7 @@ bea_agent : Principal
 bea_agent = Principal.Agent({
 	id: Cast.aid(2),
 	name: "BeaAgent",
-	owner: Cast.gid(2),
+	owner: Cast.hid(2),
 	generation: Cast.gen(1),
 })
 
@@ -105,7 +106,7 @@ dee_agent : Principal
 dee_agent = Principal.Agent({
 	id: Cast.aid(4),
 	name: "DeeAgent",
-	owner: Cast.gid(2),
+	owner: Cast.hid(2),
 	generation: Cast.gen(1),
 })
 
@@ -113,7 +114,7 @@ bea_bot : Principal
 bea_bot = Principal.Bot({
 	id: Cast.aid(5),
 	name: "BeaBot",
-	owner: Cast.gid(2),
+	owner: Cast.hid(2),
 	generation: Cast.gen(1),
 })
 
@@ -134,7 +135,7 @@ forged = List.prepend(
 	Principal.Agent({
 		id: Cast.aid(2),
 		name: "BeaAgent",
-		owner: Cast.gid(1),
+		owner: Cast.hid(1),
 		generation: Cast.gen(1),
 	}),
 )
@@ -331,7 +332,8 @@ expect
 # with Bea included.
 ann_again : Principal
 ann_again = Principal.Human({
-	id: Cast.gid(1),
+	id: Cast.hid(1),
+	sign_in: Cast.github(1),
 	login: "ann",
 	name: "Ann",
 	role: Member,

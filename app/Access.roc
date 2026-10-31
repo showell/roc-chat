@@ -287,11 +287,12 @@ is_reached = |part, id|
 	}
 
 # ── tests
-## A test's human: GitHub id `n`, a member, its account generation `g`.
+## A test's human: id `n`, a member, its account generation `g`.
 person : U64, { g : U64 } -> Principal
 person = |n, { g }|
 	Principal.Human({
-		id: Cast.gid(n),
+		id: Cast.hid(n),
+		sign_in: Cast.github(n),
 		login: "h${n.to_str()}",
 		name: "H${n.to_str()}",
 		role: Member,

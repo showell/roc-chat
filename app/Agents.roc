@@ -225,7 +225,10 @@ Agents := [].{
 											Ok(chosen),
 											_,
 											_,
-										) if Accounts.name_holder(accounts, chosen.to_str()) != Free => NameTaken
+										) if Accounts.name_holder(
+											accounts,
+											chosen.to_str(),
+										) != Free => NameTaken
 										(
 											_,
 											Err(why),
@@ -353,7 +356,7 @@ Agents := [].{
 	## accounts say they own now.
 	is_invited_by : InviteCodec.Record(ConvAccess.ConvId),
 	{
-		human : Principal.GitHubId,
+		human : Principal.HumanId,
 		accounts : List(Principal),
 	} -> Bool
 	is_invited_by = |invite, { human, accounts }|
@@ -364,7 +367,7 @@ Agents := [].{
 
 	## **THE KEY IS ONE OF THIS HUMAN'S**: it acts as them, or as an agent
 	## or a bot the accounts say they own now.
-	is_owned_by : ConvKey.Key, { human : Principal.GitHubId, accounts : List(Principal) } -> Bool
+	is_owned_by : ConvKey.Key, { human : Principal.HumanId, accounts : List(Principal) } -> Bool
 	is_owned_by = |key, { human, accounts }|
 		match Principal.find(accounts, key.acts_as()) {
 			Ok(p) => Principal.answers_to(p) == human
@@ -373,7 +376,7 @@ Agents := [].{
 
 	## **THIS HUMAN'S AGENTS AND BOTS**, as the accounts hold them now (a
 	## retired one is in no account), in the accounts' order.
-	agents_of : List(Principal), Principal.GitHubId -> List(Principal)
+	agents_of : List(Principal), Principal.HumanId -> List(Principal)
 	agents_of = |accounts, human|
 		accounts.keep_if(
 			|p|
@@ -388,7 +391,7 @@ Agents := [].{
 	## each in id order: the facts `/keys` and `/invites` list, with the
 	## same filters, and never a secret, a code or a hash.
 	Mine : {
-		me : Principal.GitHubId,
+		me : Principal.HumanId,
 		accounts : List(Principal),
 		agents : List(Principal),
 		keys : List(ConvKey.Key),
@@ -824,7 +827,10 @@ redeem! = |{}| {
 				# The format before the code, so a bad one never spends the
 				# invite.
 				match redeem_format(got.bytes) {
-					Err(UnknownFormat) => Wire.refused(400, "format is `secret`, or left out for the key as JSON")
+					Err(UnknownFormat) => Wire.refused(
+						400,
+						"format is `secret`, or left out for the key as JSON",
+					)
 					Ok(format) => redeem_code!({
 						form: got.bytes,
 						format,
@@ -955,7 +961,10 @@ redeem_now! = |
 											})
 											match format {
 												Json => Wire.json(201, key_json(key, Shown(secret)))
-												SecretAlone => Wire.secret(201, SignInWeb.hex(secret))
+												SecretAlone => Wire.secret(
+													201,
+													SignInWeb.hex(secret),
+												)
 											}
 										}
 									}
@@ -1270,7 +1279,7 @@ revoke! = |id|
 ## manages no key (a 403), nobody signed in is a 401.
 load_owner! : {} => Try(
 	{
-		human : Principal.GitHubId,
+		human : Principal.HumanId,
 		accounts : List(Principal),
 		session : Principal.SessionId,
 		now : I64,
@@ -1445,11 +1454,12 @@ settings_after_cast = {
 	barred: [],
 	next_generation: Cast.gen(2),
 	next_agent_id: Cast.aid(4),
+	next_human_id: Cast.hid(100),
 }
 
 ## **A CAP AN AGENT'S MAKING WOULD PASS** (Limits): `owner`'s agents and
 ## bots, or every account.
-cap_reached : List(Principal), Principal.GitHubId -> [Reached(Agents.Cap), Below]
+cap_reached : List(Principal), Principal.HumanId -> [Reached(Agents.Cap), Below]
 cap_reached = |accounts, owner| {
 	owned = List.count_if(
 		accounts,
@@ -1551,7 +1561,7 @@ with_agents = |owner, n|
 			|_, i| Principal.Agent({
 				id: Cast.aid(100 + i),
 				name: "A",
-				owner: Cast.gid(owner),
+				owner: Cast.hid(owner),
 				generation: Cast.gen(1),
 			}),
 		),
@@ -1608,9 +1618,6 @@ expect said(made_by(1, "  LC  ")) == Agent({
 })
 # A store from before the counter starts it one past every agent's and
 # bot's.
-expect Accounts.agent_id_after(Cast.accounts) == Ok(Cast.aid(4))
-expect Accounts.agent_id_after([]) == Ok(Cast.aid(1))
-expect Accounts.agent_id_after([Cast.boss]) == Ok(Cast.aid(1))
 
 # **NEVER GIVEN TWICE**: the first agent's steps applied, the second gets
 # the next id and the next generation.
@@ -1799,8 +1806,8 @@ expect said(
 ) == Refused(GrantedByKey)
 
 # Whose keys: ann's own, and her agent's; never boss's.
-expect Agents.is_owned_by(ann_key, { human: Cast.gid(2), accounts: Cast.accounts })
-expect !Agents.is_owned_by(ann_key, { human: Cast.gid(1), accounts: Cast.accounts })
+expect Agents.is_owned_by(ann_key, { human: Cast.hid(2), accounts: Cast.accounts })
+expect !Agents.is_owned_by(ann_key, { human: Cast.hid(1), accounts: Cast.accounts })
 
 # A mint's form: the defaults, and each field.
 expect asked_grant([], Principal.id(Cast.ann)) == Ok({
@@ -2033,8 +2040,8 @@ expect redeemed_at({
 	now: 100,
 }) == Err(Grant(GrantedByKey))
 # Whose invites: ann's, for her agent; never boss's.
-expect Agents.is_invited_by(anns_invite, { human: Cast.gid(2), accounts: Cast.accounts })
-expect !Agents.is_invited_by(anns_invite, { human: Cast.gid(1), accounts: Cast.accounts })
+expect Agents.is_invited_by(anns_invite, { human: Cast.hid(2), accounts: Cast.accounts })
+expect !Agents.is_invited_by(anns_invite, { human: Cast.hid(1), accounts: Cast.accounts })
 # Live from its making (50) to just before its expiry (650), and never
 # spent or revoked.
 expect is_live(anns_invite, 100) and !is_live(anns_invite, 650) and !is_live(
@@ -2049,16 +2056,16 @@ expect !is_live({ ..anns_invite, state: Revoked }, 100)
 # **A HUMAN'S AGENTS** are theirs alone, never a human, and each one made
 # for them is among them.
 expect {
-	anns = Agents.agents_of(Cast.accounts, Cast.gid(2))
-	anns.len() == 1 and anns.all(|p| Principal.answers_to(p) == Cast.gid(2))
+	anns = Agents.agents_of(Cast.accounts, Cast.hid(2))
+	anns.len() == 1 and anns.all(|p| Principal.answers_to(p) == Cast.hid(2))
 }
-expect Agents.agents_of(with_agents(2, 3), Cast.gid(2)).len() == 4
+expect Agents.agents_of(with_agents(2, 3), Cast.hid(2)).len() == 4
 expect Agents.agents_of(
 	with_agents(2, 3),
-	Cast.gid(1),
-).all(|p| Principal.answers_to(p) == Cast.gid(1))
+	Cast.hid(1),
+).all(|p| Principal.answers_to(p) == Cast.hid(1))
 expect
-	Agents.agents_of(Cast.accounts, Cast.gid(1)).all(
+	Agents.agents_of(Cast.accounts, Cast.hid(1)).all(
 		|p|
 			match p {
 				Human(_) => Bool.False
@@ -2073,7 +2080,7 @@ expect
 		Principal.Agent({
 			id: Cast.aid(7),
 			name: "Bea \"B\" \\ \u(01)",
-			owner: Cast.gid(2),
+			owner: Cast.hid(2),
 			generation: Cast.gen(1),
 		}),
 	).bytes()

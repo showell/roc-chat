@@ -24,9 +24,9 @@
 ## - **last seen** is written at most once in 5 minutes, so a busy browser
 ##   is not a write a request; idle expiry can therefore come up to 5
 ##   minutes early, never late;
-## - **its account, not its GitHub id:** a session admits only the account
-##   it was started for (the same generation), so an account retired and made
-##   again with the same GitHub id never inherits the old one's sessions.
+## - **its account, not its sign-in:** a session admits only the account
+##   it was started for (the same human id and generation), so an account
+##   made again with the same id never inherits the old one's sessions.
 ## Only humans sign in: an agent or a bot acts through API keys. Pure.
 import Cast
 import GitHubSignIn
@@ -90,7 +90,7 @@ Session :: SessionCodec.Fields.{
 	id = |Session.(s)| s.id
 
 	## The human signed in.
-	human : Session -> Principal.GitHubId
+	human : Session -> Principal.HumanId
 	human = |Session.(s)| s.human
 
 	## **IS THE SESSION LIVE AT `now`?** The absolute limit is said first:
@@ -168,7 +168,7 @@ Session :: SessionCodec.Fields.{
 
 	## **LOG OUT EVERYWHERE**: of `sessions`, every one of `human`'s, the
 	## one asking included, live or not; nobody else's.
-	log_out_everywhere : List(Session), Principal.GitHubId -> List(Principal.SessionId)
+	log_out_everywhere : List(Session), Principal.HumanId -> List(Principal.SessionId)
 	log_out_everywhere = |sessions, whose|
 		sessions.keep_if(|s| s.human() == whose).map(Session.id)
 
@@ -301,7 +301,8 @@ expect Session.load(
 # ── ADMITTING A REQUEST
 ann : Principal
 ann = Principal.Human({
-	id: Cast.gid(1),
+	id: Cast.hid(1),
+	sign_in: Cast.github(1),
 	login: "ann",
 	name: "Ann",
 	role: Member,
@@ -310,7 +311,8 @@ ann = Principal.Human({
 
 bea : Principal
 bea = Principal.Human({
-	id: Cast.gid(2),
+	id: Cast.hid(2),
+	sign_in: Cast.github(2),
 	login: "bea",
 	name: "Bea",
 	role: Member,
@@ -371,7 +373,8 @@ expect
 	match s1.admit({
 		accounts: [
 			Principal.Human({
-				id: Cast.gid(1),
+				id: Cast.hid(1),
+				sign_in: Cast.github(1),
 				login: "ann",
 				name: "Ann",
 				role: Admin,
@@ -389,7 +392,8 @@ expect
 # no copy's role is ever taken.
 ann_admin_copy : Principal
 ann_admin_copy = Principal.Human({
-	id: Cast.gid(1),
+	id: Cast.hid(1),
+	sign_in: Cast.github(1),
 	login: "ann",
 	name: "Ann",
 	role: Admin,
@@ -410,10 +414,11 @@ expect admitted(
 expect admitted(s1, { among: [ann, ann_admin_copy], now: 10100000 }) == Refused(NoSuchAccount)
 
 # **RE-CREATION AFTER RETIREMENT**: Ann retired, then
-# made again with her GitHub id at 200: her old session admits nobody.
+# made again with her id at 200: her old session admits nobody.
 ann_again : Principal
 ann_again = Principal.Human({
-	id: Cast.gid(1),
+	id: Cast.hid(1),
+	sign_in: Cast.github(1),
 	login: "ann",
 	name: "Ann",
 	role: Member,
@@ -427,7 +432,8 @@ expect admitted(s1, { among: [ann_again, bea], now: 10100000 }) == Refused(NoSuc
 # same, and her old session does not admit it.
 ann_same_second : Principal
 ann_same_second = Principal.Human({
-	id: Cast.gid(1),
+	id: Cast.hid(1),
+	sign_in: Cast.github(1),
 	login: "ann",
 	name: "Ann",
 	role: Admin,
@@ -498,6 +504,7 @@ signed_in = |
 					barred: [],
 					next_generation: Cast.gen(9),
 					next_agent_id: Cast.aid(20),
+					next_human_id: Cast.hid(100),
 				},
 				session: {
 					id: Cast.sid(9),
@@ -511,11 +518,12 @@ signed_in = |
 		Err(_) => crash "signed_in: the flow holds"
 	}
 
-# A flow's session: its human, the account it was made for, created and
-# seen at the sign-in; it admits that account and no other made since.
+# A flow's session: Ann signing in as her GitHub id (1001), the session
+# hers (human 1), the account it was made for, created and seen at the
+# sign-in; it admits that account and no other made since.
 flowed : Session
 flowed = signed_in({
-	who: 1,
+	who: 1001,
 	among: [ann, bea],
 	now: 10100000,
 })
@@ -544,10 +552,10 @@ sessions = [
 	}),
 ]
 
-expect Session.log_out_everywhere(sessions, Cast.gid(1)) == [Cast.sid(1), Cast.sid(2)]
-expect Session.log_out_everywhere(sessions, Cast.gid(2)) == [Cast.sid(3)]
-expect Session.log_out_everywhere(sessions, Cast.gid(9)) == []
-expect Session.log_out_everywhere([], Cast.gid(1)) == []
+expect Session.log_out_everywhere(sessions, Cast.hid(1)) == [Cast.sid(1), Cast.sid(2)]
+expect Session.log_out_everywhere(sessions, Cast.hid(2)) == [Cast.sid(3)]
+expect Session.log_out_everywhere(sessions, Cast.hid(9)) == []
+expect Session.log_out_everywhere([], Cast.hid(1)) == []
 expect Session.sweep(sessions, 10100000) == [Cast.sid(2)]
 expect Session.sweep(sessions, 10100000 + idle - 1) == [Cast.sid(2)]
 expect Session.sweep(sessions, 10100000 + idle) == [

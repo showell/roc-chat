@@ -31,6 +31,10 @@ the same commit.
 - **An agent's key comes only from a ten-minute, single-use invite** that
   its human makes on `/chat/agents`. Agent ids come from a counter and are
   never reused.
+- **A human's id is roc-chat's own**, from a counter like an agent's, given
+  once and never reused; GitHub is one way to sign in to it, so a human
+  without a GitHub account can have one. (docs/design/humans-without-github.md,
+  step 2.)
 - **Every human's session lasts at most 90 days** for now (and ends after
   30 idle days), and may grow longer.
   Expiration rules wait until real use shows what matters: people rarely

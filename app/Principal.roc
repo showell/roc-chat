@@ -1,19 +1,22 @@
 ## **WHO IS ACTING** (the Roc chat's auth design, section 1): every request
-## acts as exactly one principal, a human signed in with GitHub, or an agent
-## or a bot a human owns. Each kind's id is a type of its own, so a GitHub
-## id, an agent's id and a key's id cannot be passed for one another. Pure;
+## acts as exactly one principal, a human, or an agent or a bot a human
+## owns. Each kind's id is a type of its own, so a human's id, a GitHub id,
+## an agent's id and a key's id cannot be passed for one another. Pure;
 ## nothing here knows of conversations, so a resource other than the chat's
 ## (a database, a file system) takes the same principals.
 Principal := [
-	## A person, signed in with GitHub. Keyed by GitHub's numeric id, which
-	## never changes; the login (which can) is kept for display and the
-	## GitHub link, and is empty once GitHub has given it to another account
-	## that signed in here since (so it never links to the new owner). The
-	## name is the one they chose, real or not. Every kind's `generation`
-	## is its account's (see Generation).
+	## A person. Keyed by the chat's own id (HumanId, from a counter, never
+	## given twice), so a human is no other site's account: how they sign in
+	## is `sign_in`, today GitHub, by GitHub's numeric id, which never
+	## changes. The login (which can) is kept for display and the GitHub
+	## link, and is empty once GitHub has given it to another account that
+	## signed in here since (so it never links to the new owner). The name
+	## is the one they chose, real or not. Every kind's `generation` is its
+	## account's (see Generation).
 	Human(
 		{
-			id : Principal.GitHubId,
+			id : Principal.HumanId,
+			sign_in : Principal.SignIn,
 			login : Str,
 			name : Str,
 			role : Principal.Role,
@@ -27,7 +30,7 @@ Principal := [
 		{
 			id : Principal.AgentId,
 			name : Str,
-			owner : Principal.GitHubId,
+			owner : Principal.HumanId,
 			generation : Principal.Generation,
 		},
 	),
@@ -38,7 +41,7 @@ Principal := [
 		{
 			id : Principal.AgentId,
 			name : Str,
-			owner : Principal.GitHubId,
+			owner : Principal.HumanId,
 			generation : Principal.Generation,
 		},
 	),
@@ -120,7 +123,34 @@ Principal := [
 	## the first account by the bootstrap setting, changed only by an admin.
 	Role : [Admin, Member]
 
-	## GitHub's numeric user id, as GitHub's `/user` gives it. Opaque: made
+	## **HOW A HUMAN SIGNS IN**: by GitHub, as the GitHub account with this
+	## id (the one binding GitHub sign-in looks a human up by). An invited
+	## human, with no GitHub account, is the next kind.
+	SignIn : [GitHub(Principal.GitHubId)]
+
+	## **A HUMAN'S ID**, from the chat's own counter (the settings hold the
+	## next), never given twice, not even a retired human's: what every
+	## reference to a human holds (a session's, an agent's owner, a
+	## participant, the audit), and `human:<n>` on the wire. Opaque: made
+	## only by `from_u64`, which refuses 0.
+	HumanId :: U64.{
+		from_u64 : U64 -> Try(Principal.HumanId, [NotAnId])
+		from_u64 = |n| if (n == 0) Err(NotAnId) else Ok(Principal.HumanId.(n))
+
+		to_u64 : Principal.HumanId -> U64
+		to_u64 = |Principal.HumanId.(n)| n
+
+		## The id after this one, unless the counter is spent.
+		next : Principal.HumanId -> Try(Principal.HumanId, [Exhausted])
+		next = |Principal.HumanId.(n)|
+			if (n == u64_most) Err(Exhausted) else Ok(Principal.HumanId.(n + 1))
+
+		is_eq : _
+	}
+
+	## GitHub's numeric user id, as GitHub's `/user` gives it: only GitHub
+	## sign-in's, and the settings' (first_admin, barred), never a human's
+	## id. Opaque: made
 	## only by `from_u64`, which refuses 0 (GitHub's ids start at 1, and a
 	## 0 is what a field that failed to decode reads as).
 	GitHubId :: U64.{
@@ -180,7 +210,7 @@ Principal := [
 	## `acts_as` and the audit trail hold. Two principals are the same one
 	## when their ids are equal; a name or a role is no part of it.
 	Id := [
-		Human(Principal.GitHubId),
+		Human(Principal.HumanId),
 		Agent(Principal.AgentId),
 		Bot(Principal.AgentId),
 	].{
@@ -198,7 +228,7 @@ Principal := [
 
 	## **THE HUMAN A PRINCIPAL ANSWERS TO**: a human, itself; an agent or a
 	## bot, its owner.
-	answers_to : Principal -> Principal.GitHubId
+	answers_to : Principal -> Principal.HumanId
 	answers_to = |principal|
 		match principal {
 			Human(h) => h.id
@@ -219,11 +249,12 @@ Principal := [
 			_ => Err(Duplicated)
 		}
 
-	## **THE ONE HUMAN ACCOUNT WITH GITHUB ID `human`**, as `find` finds it.
+	## **THE ONE HUMAN ACCOUNT WITH ID `human`**, as `find` finds it.
 	human_account : List(Principal),
-	Principal.GitHubId -> Try(
+	Principal.HumanId -> Try(
 		{
-			id : Principal.GitHubId,
+			id : Principal.HumanId,
+			sign_in : Principal.SignIn,
 			login : Str,
 			name : Str,
 			role : Principal.Role,
@@ -238,9 +269,31 @@ Principal := [
 			Err(why) => Err(why)
 		}
 
-	## The human with GitHub id `human` has one account among `accounts`:
-	## what an agent's key, and a human's election, stand on.
-	has_account : List(Principal), Principal.GitHubId -> Bool
+	## **THE ONE HUMAN WHO SIGNS IN AS GITHUB ACCOUNT `github`**: what
+	## GitHub sign-in finds an account by. `NoSuchPrincipal` when none does
+	## (a first sign-in); `Duplicated` when more than one does, so no copy
+	## is ever taken for the account.
+	github_account : List(Principal),
+	Principal.GitHubId -> Try(
+		Principal.HumanId,
+		[NoSuchPrincipal, Duplicated],
+	)
+	github_account = |accounts, github|
+		match accounts.keep_if(
+			|p| match p {
+				Human(h) => h.sign_in == GitHub(github)
+				Agent(_) | Bot(_) => Bool.False
+			},
+		) {
+			[Human(h)] => Ok(h.id)
+			[] => Err(NoSuchPrincipal)
+			[_] => crash "Principal.github_account: a GitHub binding is a human's"
+			_ => Err(Duplicated)
+		}
+
+	## The human `human` has one account among `accounts`: what an agent's
+	## key, and a human's election, stand on.
+	has_account : List(Principal), Principal.HumanId -> Bool
 	has_account = |accounts, human| human_account(accounts, human).is_ok()
 
 	## **THE AUTHORITY A PRINCIPAL ACTS WITH, AS THE ACCOUNTS SAY NOW**
@@ -320,11 +373,55 @@ Principal := [
 			Err(_) => Ok(accounts)
 		}
 	}
+
+	## **ONE ACCOUNT TO A GITHUB ID**: `accounts` as they are, when no two
+	## humans sign in as one GitHub id; else that id. Two would make a
+	## sign-in pick between them (`github_account` says `Duplicated`), so
+	## the loader refuses the store whole, as it does a duplicate id. In
+	## O(n log n): the GitHub ids sorted, a duplicate the next one sorted.
+	one_sign_in_each : List(Principal) -> Try(
+		List(Principal),
+		[DuplicateSignIn(Principal.GitHubId)],
+	)
+	one_sign_in_each = |accounts| {
+		sorted = accounts
+			.join_map(
+				|p|
+					match p {
+						Human(h) =>
+							match h.sign_in {
+								GitHub(g) => [g.to_u64()]
+							}
+						Agent(_) | Bot(_) => []
+					},
+			)
+			.sort_with(|x, y| if (x < y) Before else if (x > y) After else Same)
+		dup = sorted.fold_with_index(
+			0,
+			|found, g, i|
+				match sorted.get(i + 1) {
+					Ok(next) if found == 0 and next == g => g
+					_ => found
+				},
+		)
+		match Principal.GitHubId.from_u64(dup) {
+			Ok(g) => Err(DuplicateSignIn(g))
+			Err(NotAnId) => Ok(accounts)
+		}
+	}
 }
 
 ## The largest U64: a generation counter that reaches it is spent.
 u64_most : U64
 u64_most = 18446744073709551615
+
+## A test's human id; 0 crashes.
+hid : U64 -> Principal.HumanId
+hid = |n|
+	match Principal.HumanId.from_u64(n) {
+		Ok(id) => id
+		Err(NotAnId) => crash "hid: a test's human id is not 0"
+	}
 
 gid : U64 -> Principal.GitHubId
 gid = |n|
@@ -347,18 +444,20 @@ gen = |n|
 		Err(NotAnId) => crash "gen: a test's generation is not 0"
 	}
 
-## A test's human: GitHub id `n`, its role, generation 1.
+## A test's human: id `n`, signing in as GitHub id `n + 1000` (never
+## their id, so a mix-up is a failure), its role, generation 1.
 person : U64, Principal.Role -> Principal
 person = |n, role|
 	Principal.Human({
-		id: gid(n),
+		id: hid(n),
+		sign_in: GitHub(gid(n + 1000)),
 		login: "h${n.to_str()}",
 		name: "H${n.to_str()}",
 		role,
 		generation: gen(1),
 	})
 
-## A test's agent or bot: its id, and its owner's GitHub id; generation 1.
+## A test's agent or bot: its id, and its owner's id; generation 1.
 owned : [Agent, Bot], { id : U64, owner : U64 } -> Principal
 owned = |kind, { id, owner }|
 	match kind {
@@ -366,7 +465,7 @@ owned = |kind, { id, owner }|
 			Principal.Agent({
 				id: aid(id),
 				name: "a${id.to_str()}",
-				owner: gid(owner),
+				owner: hid(owner),
 				generation: gen(1),
 			})
 
@@ -374,7 +473,7 @@ owned = |kind, { id, owner }|
 			Principal.Bot({
 				id: aid(id),
 				name: "b${id.to_str()}",
-				owner: gid(owner),
+				owner: hid(owner),
 				generation: gen(1),
 			})
 	}
@@ -416,12 +515,12 @@ expect Principal.SessionId.from_u64(0) == Err(NotAnId)
 expect Principal.GitHubId.from_u64(583231).map_ok(Principal.GitHubId.to_u64) == Ok(583231)
 expect Principal.Id.Agent(aid(1)) != Principal.Id.Bot(aid(1))
 expect Principal.id(boss_agent) == Principal.Id.Agent(aid(1))
-expect Principal.id(boss) == Principal.Id.Human(gid(1))
+expect Principal.id(boss) == Principal.Id.Human(hid(1))
 
 # answers_to: a human itself, an agent or a bot its owner.
-expect Principal.answers_to(ann) == gid(2)
-expect Principal.answers_to(boss_agent) == gid(1)
-expect Principal.answers_to(boss_bot) == gid(1)
+expect Principal.answers_to(ann) == hid(2)
+expect Principal.answers_to(boss_agent) == hid(1)
+expect Principal.answers_to(boss_bot) == hid(1)
 
 # find: by id, a name playing no part.
 found : Principal.Id -> Try(Principal.Id, [NoSuchPrincipal, Duplicated])
@@ -429,7 +528,7 @@ found = |wanted| Principal.find(accounts, wanted).map_ok(Principal.id)
 
 expect found(Principal.Id.Agent(aid(3))) == Ok(Principal.id(ann_agent))
 expect found(Principal.Id.Bot(aid(3))) == Err(NoSuchPrincipal)
-expect found(Principal.Id.Human(gid(9))) == Err(NoSuchPrincipal)
+expect found(Principal.Id.Human(hid(9))) == Err(NoSuchPrincipal)
 
 # **A DUPLICATE NAMES NOBODY**: a copy of
 # ann's agent claiming boss as owner, first or last, is found as neither.
@@ -446,9 +545,9 @@ expect Principal.find(
 ).map_ok(Principal.id) == Err(Duplicated)
 
 # has_account: a human's id alone; an agent's id never names a human.
-expect Principal.has_account(accounts, gid(2))
-expect !Principal.has_account(accounts, gid(9))
-expect !Principal.has_account([boss_agent], gid(1))
+expect Principal.has_account(accounts, hid(2))
+expect !Principal.has_account(accounts, hid(9))
+expect !Principal.has_account([boss_agent], hid(1))
 
 # authority: one row a principal.
 expect Principal.authority(boss, accounts) == Admin
@@ -473,7 +572,7 @@ expect Principal.authority(ann_admin_copy, accounts) == Member
 expect Principal.authority(ann, with_ann_twice) == Member
 expect Principal.authority(ann_admin_copy, with_ann_twice) == Member
 expect Principal.authority(ann_agent, with_ann_twice) == Member
-expect !Principal.has_account(with_ann_twice, gid(2))
+expect !Principal.has_account(with_ann_twice, hid(2))
 # A demoted boss in the accounts: boss's own copy, still saying admin, is
 # no admin.
 expect Principal.authority(boss, [person(1, Member)]) == Member
@@ -484,8 +583,23 @@ loaded : List(Principal) -> Try({}, [DuplicateId(Principal.Id)])
 loaded = |list| Principal.unique(list).map_ok(|_| {})
 
 expect loaded(accounts) == Ok({})
+# Two humans signing in as one GitHub id: refused, naming the GitHub id;
+# one human each, or none, is loaded.
+expect Principal.one_sign_in_each([
+	boss,
+	Principal.Human({
+		id: hid(7),
+		sign_in: GitHub(gid(1001)),
+		login: "",
+		name: "Twin",
+		role: Member,
+		generation: gen(1),
+	}),
+]).map_ok(|_| {}) == Err(DuplicateSignIn(gid(1001)))
+expect Principal.one_sign_in_each(accounts).map_ok(|_| {}) == Ok({})
+expect Principal.one_sign_in_each([]).map_ok(|_| {}) == Ok({})
 expect loaded([]) == Ok({})
-expect loaded(with_ann_twice) == Err(DuplicateId(Principal.Id.Human(gid(2))))
+expect loaded(with_ann_twice) == Err(DuplicateId(Principal.Id.Human(hid(2))))
 expect loaded(
 	accounts.append(forged_ann_agent),
 ) == Err(DuplicateId(Principal.Id.Agent(aid(3))))

@@ -17,14 +17,18 @@ Accounts := [].{
 	## again (their accounts retired); and the generation counter, the generation the next
 	## account made is given (Principal.Generation), which the host stores
 	## back advanced each time an account is made; and the agent-id counter,
-	## the id the next agent or bot made is given, beside it and kept the
-	## same way, so an id is never given twice (the design's section 13),
-	## not even the id of an agent retired since.
+	## the id the next agent or bot made is given, and the human-id counter,
+	## the id the next human made is given, beside it and kept the same way,
+	## so an id is never given twice (the design's section 13), not even the
+	## id of an account retired since. The first admin and the barred are
+	## GitHub's ids, as the config names them: GitHub accounts, resolved when
+	## that account signs in.
 	Settings : {
 		first_admin : [Unnamed, Named(Principal.GitHubId)],
 		barred : List(Principal.GitHubId),
 		next_generation : Principal.Generation,
 		next_agent_id : Principal.AgentId,
+		next_human_id : Principal.HumanId,
 	}
 
 	## **WHO HOLDS THIS NAME, IF ANYONE?** The account, human, agent or bot,
@@ -50,17 +54,20 @@ Accounts := [].{
 		AddAccount(Principal),
 
 		## Set the human's login, GitHub having renamed them.
-		SetLogin({ human : Principal.GitHubId, login : Str }),
+		SetLogin({ human : Principal.HumanId, login : Str }),
 
 		## Clear the human's login, while it is still `login` (in any case):
 		## another account signed in with it, GitHub having given it away.
-		ClearLogin({ human : Principal.GitHubId, login : Str }),
+		ClearLogin({ human : Principal.HumanId, login : Str }),
 
 		## Raise the settings' generation counter to at least this.
 		AdvanceGeneration(Principal.Generation),
 
 		## Raise the settings' agent-id counter to at least this.
 		AdvanceAgentId(Principal.AgentId),
+
+		## Raise the settings' human-id counter to at least this.
+		AdvanceHumanId(Principal.HumanId),
 	]
 
 	## A login's bytes in lower case: GitHub's logins ignore case.
@@ -118,8 +125,35 @@ Accounts := [].{
 						} else {
 							{ accounts, settings }
 						}
+					AdvanceHumanId(id) =>
+						if id.to_u64() > settings.next_human_id.to_u64() {
+							{ accounts, settings: { ..settings, next_human_id: id } }
+						} else {
+							{ accounts, settings }
+						}
 				},
 		)
+
+	## **A NEW HUMAN'S ID, AND THE COUNTER AFTER IT**: the settings' next,
+	## when it is above every human's id (a counter that went back might
+	## give one twice, as an agent id's might). Never a GitHub id: a human
+	## is the chat's own, however they sign in.
+	next_human_id : List(Principal),
+	Accounts.Settings -> Try(
+		{ this : Principal.HumanId, next : Principal.HumanId },
+		[StaleHumanId, HumanIdsExhausted],
+	)
+	next_human_id = |accounts, settings| {
+		this = settings.next_human_id
+		if accounts.any(|a| human_id_of(a) >= this.to_u64()) {
+			Err(StaleHumanId)
+		} else {
+			match this.next() {
+				Ok(next) => Ok({ this, next })
+				Err(Exhausted) => Err(HumanIdsExhausted)
+			}
+		}
+	}
 
 	## **A NEW AGENT'S OR BOT'S ID, AND THE COUNTER AFTER IT**: the
 	## settings' next, when it is above every agent's and bot's id (a counter
@@ -140,16 +174,6 @@ Accounts := [].{
 				Err(Exhausted) => Err(AgentIdsExhausted)
 			}
 		}
-	}
-
-	## **THE AGENT-ID COUNTER A STORE WITHOUT ONE STARTS AT**: one more than
-	## the highest agent or bot id among the accounts; 1 for none. What the
-	## settings read as before they held the counter, so an old store stays
-	## valid; from then on, the stored counter alone.
-	agent_id_after : List(Principal) -> Try(Principal.AgentId, [AgentIdsExhausted])
-	agent_id_after = |accounts| {
-		most = accounts.fold(0, |m, a| if (agent_id_of(a) > m) agent_id_of(a) else m)
-		if (most == u64_most) Err(AgentIdsExhausted) else Principal.AgentId.from_u64(most + 1).map_err(|_| AgentIdsExhausted)
 	}
 
 	## **A NEW ACCOUNT'S GENERATION, AND THE COUNTER AFTER IT**: the
@@ -176,16 +200,18 @@ Accounts := [].{
 
 ## `accounts` with the human `human`'s record changed by `change`.
 with_human : List(Principal),
-Principal.GitHubId,
+Principal.HumanId,
 (
 	{
-		id : Principal.GitHubId,
+		id : Principal.HumanId,
+		sign_in : Principal.SignIn,
 		login : Str,
 		name : Str,
 		role : Principal.Role,
 		generation : Principal.Generation,
 	} -> {
-		id : Principal.GitHubId,
+		id : Principal.HumanId,
+		sign_in : Principal.SignIn,
 		login : Str,
 		name : Str,
 		role : Principal.Role,
@@ -203,6 +229,14 @@ with_human = |
 				_ => p
 			},
 	)
+
+## A human's id as a number; 0 for an agent or a bot, below every id.
+human_id_of : Principal -> U64
+human_id_of = |p|
+	match p {
+		Human(h) => h.id.to_u64()
+		Agent(_) | Bot(_) => 0
+	}
 
 ## An agent's or a bot's id as a number; 0 for a human, below every id.
 agent_id_of : Principal -> U64
@@ -228,7 +262,8 @@ name_of = |p|
 # any case and spacing; a near miss is free.
 named : U64, Str -> Principal
 named = |n, name| Principal.Human({
-	id: Cast.gid(n),
+	id: Cast.hid(n),
+	sign_in: Cast.github(n),
 	login: "h${n.to_str()}",
 	name,
 	role: Member,
@@ -238,7 +273,7 @@ named = |n, name| Principal.Human({
 expect Accounts.name_holder(
 	[named(1, "Debbie Benton")],
 	"debbie  BENTON",
-) == Held(Principal.Id.Human(Cast.gid(1)))
+) == Held(Principal.Id.Human(Cast.hid(1)))
 expect Accounts.name_holder(
 	[Cast.owned(Agent, { id: 4, owner: 1 })],
 	"A4",

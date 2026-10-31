@@ -77,13 +77,13 @@ ConvAccess := [].{
 	## **A CONVERSATION AND ITS ELECTIONS, AS A STATE MACHINE**: opaque, so
 	## `start` is the one way in (every human's election private), and
 	## `elect` and `withdraw_votes` the transitions. `public_by` holds the
-	## accounts whose election is public now, each by its human's GitHub id
+	## accounts whose election is public now, each by its human's id
 	## and the account's generation; a human not in it has elected private,
 	## or never elected, which is the same.
 	Conv :: {
 		id : ConvAccess.ConvId,
 		participants : List(Principal.Bound),
-		public_by : List({ human : Principal.GitHubId, generation : Principal.Generation }),
+		public_by : List({ human : Principal.HumanId, generation : Principal.Generation }),
 	}.{
 
 		## **A CONVERSATION STARTED BY `starter`, WITH `others`**: the one way
@@ -196,7 +196,7 @@ ConvAccess := [].{
 		## **THE HUMANS INVOLVED, WHO ELECT, AS THE ACCOUNTS SAY NOW**: the
 		## human participants, and the owner of each agent and bot, each
 		## once, for each participant whose binding still holds.
-		involved : ConvAccess.Conv, List(Principal) -> List(Principal.GitHubId)
+		involved : ConvAccess.Conv, List(Principal) -> List(Principal.HumanId)
 		involved = |ConvAccess.Conv.(c), accounts|
 			c.participants.fold(
 				[],
@@ -265,8 +265,8 @@ ConvAccess := [].{
 		## plan (Admin.roc) to write back: their public election is gone for
 		## good. (Until it is written, `visibility` counts no election of a
 		## human without an account, nor one an earlier generation of their
-		## GitHub id cast.)
-		withdraw_votes : ConvAccess.Conv, Principal.GitHubId -> ConvAccess.Conv
+		## id cast.)
+		withdraw_votes : ConvAccess.Conv, Principal.HumanId -> ConvAccess.Conv
 		withdraw_votes = |ConvAccess.Conv.(c), human|
 			ConvAccess.Conv.(
 				{
@@ -361,7 +361,7 @@ is_held = |viewer, accounts|
 ## itself; an agent or a bot, its owner; while its binding holds. One
 ## retired, made again since, or held twice (a forged copy beside the real
 ## one) names nobody: `Unresolved`.
-answerer : List(Principal), Principal.Bound -> [Answers(Principal.GitHubId), Unresolved]
+answerer : List(Principal), Principal.Bound -> [Answers(Principal.HumanId), Unresolved]
 answerer = |accounts, bound|
 	match Principal.holds(accounts, bound) {
 		Ok(only) => Answers(only.answers_to())
@@ -785,6 +785,21 @@ expect started_by(Cal, [Ann, Bea]) == Ok(first_conv_id)
 expect started_by(AnnAgent, [Ann]) == Ok(first_conv_id)
 expect started_by(Bea, [BeaBot]) == Ok(first_conv_id)
 expect started_by(Bea, [BeaBot, AnnAgent]) == Err(NotTheOwner(id_of(AnnAgent)))
+# **A HUMAN IS NAMED BY THEIR CHAT ID, NEVER THEIR GITHUB ID**: Bea's
+# GitHub id (1002, Cast.github) as `human:1002` is nobody's id, refused
+# like any id no account holds; her own (`human:2`) starts one.
+expect ConvAccess.Conv.start({
+	id: first_conv_id,
+	starter: id_of(Ann),
+	others: [Principal.Id.Human(Cast.hid(1002))],
+	accounts,
+}).map_ok(ConvAccess.Conv.id) == Err(NoSuchParticipant(Principal.Id.Human(Cast.hid(1002))))
+expect ConvAccess.Conv.start({
+	id: first_conv_id,
+	starter: id_of(Ann),
+	others: [Principal.Id.Human(Cast.hid(2))],
+	accounts,
+}).map_ok(ConvAccess.Conv.id) == Ok(first_conv_id)
 expect ConvAccess.Conv.start({
 	id: first_conv_id,
 	starter: id_of(Ann),
@@ -816,18 +831,18 @@ expect
 		accounts: without(Ann),
 	}).is_err()
 # Who is involved: participants that are humans, and owners, each once.
-expect ha_cross_none.involved(accounts) == [Cast.gid(1), Cast.gid(2)]
-expect aa_none.involved(accounts) == [Cast.gid(1), Cast.gid(2)]
-expect among([BeaAgent, BeaBot]).involved(accounts) == [Cast.gid(2)]
+expect ha_cross_none.involved(accounts) == [Cast.hid(1), Cast.hid(2)]
+expect aa_none.involved(accounts) == [Cast.hid(1), Cast.hid(2)]
+expect among([BeaAgent, BeaBot]).involved(accounts) == [Cast.hid(2)]
 expect three_none.involved(accounts) == [
-	Cast.gid(1),
-	Cast.gid(2),
-	Cast.gid(4),
+	Cast.hid(1),
+	Cast.hid(2),
+	Cast.hid(4),
 ]
 expect among([
 	Ann,
 	Ann,
-]).resource(accounts).participants.map(|b| b.id) == [Principal.Id.Human(Cast.gid(1))]
+]).resource(accounts).participants.map(|b| b.id) == [Principal.Id.Human(Cast.hid(1))]
 # Electing public twice is one election; one withdrawal undoes it.
 expect shown(elected(ha_own_ann, { human: Ann, visibility: Public })) == Public
 ha_own_twice : ConvAccess.Conv
@@ -883,8 +898,8 @@ expect sees_among(Dee, { conv: ha_cross_both, among: without(Bea) }) == Hidden
 # Retiring someone it never relied on changes nothing.
 expect ha_own_ann.visibility(without(Dee)) == Public
 # The retirement's write: an account made again starts private.
-expect shown(ha_own_ann.withdraw_votes(Cast.gid(1))) == Private
-expect shown(ha_cross_both.withdraw_votes(Cast.gid(4))) == Public
+expect shown(ha_own_ann.withdraw_votes(Cast.hid(1))) == Private
+expect shown(ha_cross_both.withdraw_votes(Cast.hid(4))) == Public
 
 # ── A CONVERSATION HOLDS IDS, AND THE ACCOUNTS NAME THE OWNERS (bug 4)
 # A copy of BeaAgent claiming Ann as its owner, in the accounts beside the
@@ -1570,11 +1585,12 @@ expect posts(DeeBot, three_all) == ReadOnly
 
 # ── RE-CREATION AFTER RETIREMENT
 # Ann elected ha_own public, then retired; an account made again with her
-# GitHub id (a later generation) does not inherit her vote, even before the
+# id (a later generation) does not inherit her vote, even before the
 # retirement's withdrawal is written: private.
 ann_again : Principal
 ann_again = Principal.Human({
-	id: Cast.gid(1),
+	id: Cast.hid(1),
+	sign_in: Cast.github(1),
 	login: "ann",
 	name: "Ann",
 	role: Member,

@@ -736,7 +736,8 @@ expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("
 # `<script>`, as message_html writes the header, escaped.
 expect {
 	scripted = Principal.Human({
-		id: Cast.gid(9),
+		id: Cast.hid(9),
+		sign_in: Cast.github(9),
 		login: "h9",
 		name: "<script>alert(1)</script>",
 		role: Member,
@@ -762,7 +763,8 @@ expect {
 # from the people list.
 expect {
 	owner = Principal.Human({
-		id: Cast.gid(4),
+		id: Cast.hid(4),
+		sign_in: Cast.github(4),
 		login: "showell",
 		name: "Steve Howell",
 		role: Member,
@@ -771,7 +773,7 @@ expect {
 	posing = Principal.Agent({
 		id: Cast.aid(5),
 		name: "Steve Howell",
-		owner: Cast.gid(4),
+		owner: Cast.hid(4),
 		generation: Cast.gen(1),
 	})
 	html = message_html(

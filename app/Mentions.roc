@@ -61,7 +61,12 @@ Mentions := [].{
 					0
 				} else {
 					mine = p.by == asked.poster and p.at > asked.since
-					hop = if (mine and Mentions.is_hop(p.by, Mentions.of(p.body, asked.named))) 1 else 0
+					hop = if (
+						mine and Mentions.is_hop(
+							p.by,
+							Mentions.of(p.body, asked.named),
+						)
+					) 1 else 0
 					hop + Mentions.own_hops(posts.drop_last(1), asked)
 				}
 		}
@@ -187,7 +192,10 @@ cc : Mentions.Named
 cc = { id: Principal.Id.Agent(aid(2)), name: "CC" }
 
 steve : Mentions.Named
-steve = { id: Principal.Id.Human(Principal.GitHubId.from_u64(7) ?? crash "steve: a test's GitHub id is not 0"), name: "Steve Howell" }
+steve = {
+	id: Principal.Id.Human(Principal.HumanId.from_u64(7) ?? crash "steve: a test's GitHub id is not 0"),
+	name: "Steve Howell",
+}
 
 aid : U64 -> Principal.AgentId
 aid = |n| Principal.AgentId.from_u64(n) ?? crash "aid: not 0"

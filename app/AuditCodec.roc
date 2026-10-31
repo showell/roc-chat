@@ -53,7 +53,7 @@ AuditCodec := [].{
 	## why.
 	SignIn : {
 		at : I64,
-		github : [Unknown, Known(Principal.GitHubId)],
+		github : [Unknown, Known(Principal.HumanId)],
 		refusal : GitHubSignIn.Refusal,
 	}
 
@@ -736,19 +736,19 @@ refused_word = |value, { members, spell }|
 	}
 
 ## `unknown`, or the GitHub id.
-github_text : [Unknown, Known(Principal.GitHubId)] -> Str
+github_text : [Unknown, Known(Principal.HumanId)] -> Str
 github_text = |github|
 	match github {
 		Unknown => unknown_word
 		Known(g) => g.to_u64().to_str()
 	}
 
-github_from : List(U8) -> Try([Unknown, Known(Principal.GitHubId)], _)
+github_from : List(U8) -> Try([Unknown, Known(Principal.HumanId)], _)
 github_from = |value|
 	if value == Str.to_utf8(unknown_word) {
 		Ok(Unknown)
 	} else {
-		Stored.id(value, { name: "github", make: Principal.GitHubId.from_u64 }).map_ok(|g| Known(g))
+		Stored.id(value, { name: "github", make: Principal.HumanId.from_u64 }).map_ok(|g| Known(g))
 	}
 
 unknown_word : Str
@@ -848,6 +848,8 @@ all_sign_in_refusals = [
 	AccountsFull,
 	StaleGeneration,
 	GenerationsExhausted,
+	StaleHumanId,
+	HumanIdsExhausted,
 	ClockOutOfRange,
 ]
 
@@ -872,6 +874,8 @@ spell_sign_in_refusal = |why|
 		AccountsFull => "accounts-full"
 		StaleGeneration => "stale-generation"
 		GenerationsExhausted => "generations-exhausted"
+		StaleHumanId => "stale-human-id"
+		HumanIdsExhausted => "human-ids-exhausted"
 		ClockOutOfRange => "clock-out-of-range"
 	}
 
@@ -951,7 +955,7 @@ step_text = |step|
 step_from : List(U8) -> Try(Admin.Step, _)
 step_from = |value| {
 	{ head, tail } = split_colon(value, "plan")?
-	human = |bytes| Stored.id(bytes, { name: "plan", make: Principal.GitHubId.from_u64 })
+	human = |bytes| Stored.id(bytes, { name: "plan", make: Principal.HumanId.from_u64 })
 	match Stored.word(
 		head,
 		{
@@ -960,7 +964,10 @@ step_from = |value| {
 			spell: spell_step,
 		},
 	)? {
-		Bar => human(tail).map_ok(|g| Bar(g))
+		Bar => Stored.id(
+			tail,
+			{ name: "plan", make: Principal.GitHubId.from_u64 },
+		).map_ok(|g| Bar(g))
 		RevokeSessions => human(tail).map_ok(|g| RevokeSessionsOf(g))
 		WithdrawVotes => human(tail).map_ok(|g| WithdrawVotes(g))
 		RevokeKeys => AccountCodec.id_from(tail, "plan").map_ok(|id| RevokeKeysOf(id))
@@ -1113,11 +1120,11 @@ action_from = |value|
 				RevokeSessions =>
 					Stored.id(
 						after,
-						{ name: "action", make: Principal.GitHubId.from_u64 },
+						{ name: "action", make: Principal.HumanId.from_u64 },
 					).map_ok(|g| RevokeSessions(g))
 				SetRole => {
 					{ head, tail } = split_colon(after, "action")?
-					human = Stored.id(head, { name: "action", make: Principal.GitHubId.from_u64 })?
+					human = Stored.id(head, { name: "action", make: Principal.HumanId.from_u64 })?
 					role = AccountCodec.role_from(tail, "action")?
 					Ok(SetRole({ human, role }))
 				}
@@ -1325,16 +1332,16 @@ expect
 	text_of({
 		who: Principal.Id.Agent(Cast.aid(1)),
 		via: Key(Cast.kid(4)),
-		action: RevokeKeys(Principal.Id.Human(Cast.gid(2))),
+		action: RevokeKeys(Principal.Id.Human(Cast.hid(2))),
 		at: 1761600000,
 		verdict: Permitted,
 	})
 		== "audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n"
 expect
 	text_of({
-		who: Principal.Id.Human(Cast.gid(2)),
+		who: Principal.Id.Human(Cast.hid(2)),
 		via: Session(Cast.sid(12)),
-		action: Retire(Principal.Id.Human(Cast.gid(1))),
+		action: Retire(Principal.Id.Human(Cast.hid(1))),
 		at: 1761600077,
 		verdict: Refused(NotAdmin),
 	})
@@ -1350,9 +1357,9 @@ expect
 		== "audit v1 at=0 who=bot:3 via=key:5 action=read-counters verdict=refused:key:out-of-scope plan=none\n"
 expect
 	text_of({
-		who: Principal.Id.Human(Cast.gid(1)),
+		who: Principal.Id.Human(Cast.hid(1)),
 		via: Session(Cast.sid(3)),
-		action: SetRole({ human: Cast.gid(2), role: Admin }),
+		action: SetRole({ human: Cast.hid(2), role: Admin }),
 		at: 1761600100,
 		verdict: Permitted,
 	})
@@ -1361,7 +1368,7 @@ expect
 	text_of({
 		who: Principal.Id.Agent(Cast.aid(1)),
 		via: Key(Cast.kid(4)),
-		action: SetRole({ human: Cast.gid(2), role: Member }),
+		action: SetRole({ human: Cast.hid(2), role: Member }),
 		at: 1761600100,
 		verdict: Refused(NeedsSession),
 	})
@@ -1372,15 +1379,15 @@ expect
 actions : List(Admin.Action)
 actions = [
 	ListAccounts,
-	Retire(Principal.Id.Human(Cast.gid(1))),
+	Retire(Principal.Id.Human(Cast.hid(1))),
 	Retire(Principal.Id.Agent(Cast.aid(2))),
 	Retire(Principal.Id.Bot(Cast.aid(3))),
-	RevokeKeys(Principal.Id.Human(Cast.gid(18446744073709551615))),
+	RevokeKeys(Principal.Id.Human(Cast.hid(18446744073709551615))),
 	RevokeKeys(Principal.Id.Agent(Cast.aid(2))),
 	RevokeKeys(Principal.Id.Bot(Cast.aid(3))),
-	RevokeSessions(Cast.gid(583231)),
-	SetRole({ human: Cast.gid(2), role: Admin }),
-	SetRole({ human: Cast.gid(583231), role: Member }),
+	RevokeSessions(Cast.hid(583231)),
+	SetRole({ human: Cast.hid(2), role: Admin }),
+	SetRole({ human: Cast.hid(583231), role: Member }),
 	ReadCounters,
 ]
 
@@ -1413,7 +1420,7 @@ entries =
 				verdicts,
 				|verdict| [
 					{
-						who: Principal.Id.Human(Cast.gid(1)),
+						who: Principal.Id.Human(Cast.hid(1)),
 						via: Session(Cast.sid(9)),
 						action,
 						at: 1761600000,
@@ -1443,15 +1450,15 @@ expect List.all(
 every_step : List(Admin.Step)
 every_step = [
 	Bar(Cast.gid(2)),
-	RevokeSessionsOf(Cast.gid(2)),
-	RevokeKeysOf(Principal.Id.Human(Cast.gid(2))),
+	RevokeSessionsOf(Cast.hid(2)),
+	RevokeKeysOf(Principal.Id.Human(Cast.hid(2))),
 	RevokeKeysOf(Principal.Id.Agent(Cast.aid(3))),
 	RemoveAccount(Principal.Id.Agent(Cast.aid(3))),
 	RevokeKeysOf(Principal.Id.Bot(Cast.aid(6))),
 	RemoveAccount(Principal.Id.Bot(Cast.aid(6))),
-	WithdrawVotes(Cast.gid(2)),
-	RemoveAccount(Principal.Id.Human(Cast.gid(2))),
-	SetRole({ human: Cast.gid(4), role: Member }),
+	WithdrawVotes(Cast.hid(2)),
+	RemoveAccount(Principal.Id.Human(Cast.hid(2))),
+	SetRole({ human: Cast.hid(4), role: Member }),
 ]
 
 # **A RETIREMENT'S WHOLE PLAN IS AUDITED**: the
@@ -1460,9 +1467,9 @@ every_step = [
 expect
 	line_text(
 		admin_entry({
-			who: Principal.Id.Human(Cast.gid(1)),
+			who: Principal.Id.Human(Cast.hid(1)),
 			via: Session(Cast.sid(3)),
-			action: Retire(Principal.Id.Human(Cast.gid(2))),
+			action: Retire(Principal.Id.Human(Cast.hid(2))),
 			at: 1761600200,
 			verdict: Permitted,
 			plan: List.take_first(every_step, 9),
@@ -1488,7 +1495,7 @@ key_entry = |k|
 expect line_text(
 	sign_in_entry({
 		at: 1761600090,
-		github: Known(Cast.gid(583231)),
+		github: Known(Cast.hid(583231)),
 		refusal: Barred,
 	}),
 ) == "audit-sign-in v1 at=1761600090 github=583231 verdict=refused:barred\n"
@@ -1514,7 +1521,7 @@ expect line_text(
 	key_entry(
 		Grant({
 			at: 1761600099,
-			who: Principal.Id.Human(Cast.gid(2)),
+			who: Principal.Id.Human(Cast.hid(2)),
 			via: Session(Cast.sid(12)),
 			acts_as: Principal.Id.Agent(Cast.aid(3)),
 			refusal: NotTheGrantersOwn,
@@ -1530,7 +1537,7 @@ sign_ins = List.join_map(
 	|refusal| [
 		{
 			at: 1761600000,
-			github: Known(Cast.gid(2)),
+			github: Known(Cast.hid(2)),
 			refusal,
 		},
 		{
@@ -1556,7 +1563,7 @@ key_events =
 				}),
 				Use({
 					at: Stored.max_time,
-					who: Principal.Id.Human(Cast.gid(2)),
+					who: Principal.Id.Human(Cast.hid(2)),
 					key: Cast.kid(5),
 					action: Post(0),
 					refusal,
@@ -1582,7 +1589,7 @@ key_events =
 			|refusal| [
 				Grant({
 					at: 2,
-					who: Principal.Id.Human(Cast.gid(2)),
+					who: Principal.Id.Human(Cast.hid(2)),
 					via: Session(Cast.sid(1)),
 					acts_as: Principal.Id.Bot(Cast.aid(3)),
 					refusal,
@@ -1591,14 +1598,14 @@ key_events =
 					at: 3,
 					who: Principal.Id.Agent(Cast.aid(1)),
 					via: Key(Cast.kid(4)),
-					acts_as: Principal.Id.Human(Cast.gid(1)),
+					acts_as: Principal.Id.Human(Cast.hid(1)),
 					refusal,
 				}),
 			],
 		),
 	)
 
-expect List.len(all_sign_in_refusals) == 19
+expect List.len(all_sign_in_refusals) == 21
 expect List.len(all_grant_refusals) == 8
 expect List.all(
 	sign_ins,
@@ -1623,7 +1630,7 @@ expect AuditCodec.Entry.of_key(
 	}),
 ).map_ok(|_| {}) == Err(ClockOutOfRange)
 expect AuditCodec.Entry.of_admin({
-	who: Principal.Id.Human(Cast.gid(1)),
+	who: Principal.Id.Human(Cast.hid(1)),
 	via: Session(Cast.sid(1)),
 	action: ListAccounts,
 	at: -5,
@@ -1826,11 +1833,11 @@ channel_named = |text|
 lobby_made : [Permitted, Refused(AuditCodec.ChannelRefusal)] -> AuditCodec.ChannelEvent
 lobby_made = |verdict| {
 	at: 1761600200,
-	who: Principal.Id.Human(Cast.gid(1)),
+	who: Principal.Id.Human(Cast.hid(1)),
 	via: Session(Cast.sid(3)),
 	action: Make,
 	channel: Named(channel_named("Lobby")),
-	members: [Principal.Id.Human(Cast.gid(2)), Principal.Id.Human(Cast.gid(7))],
+	members: [Principal.Id.Human(Cast.hid(2)), Principal.Id.Human(Cast.hid(7))],
 	verdict,
 }
 
@@ -1855,10 +1862,10 @@ expect
 	channel_line({
 		..lobby_made(Refused(NotAdmin)),
 		at: 1761600210,
-		who: Principal.Id.Human(Cast.gid(2)),
+		who: Principal.Id.Human(Cast.hid(2)),
 		via: Session(Cast.sid(12)),
 		action: Admit,
-		members: [Principal.Id.Human(Cast.gid(9))],
+		members: [Principal.Id.Human(Cast.hid(9))],
 	})
 		== "audit-channel v1 at=1761600210 who=human:2 via=session:12 action=admit channel=Lobby members=human:9 verdict=refused:not-admin\n"
 # A name the rule refused, and no members: both empty.
@@ -1867,7 +1874,10 @@ expect channel_line({
 	channel: Unnamed,
 	members: [],
 }) == "audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel= members= verdict=refused:not-a-channel-name\n"
-expect channel_line({ ..lobby_made(Refused(KeyRefused(Revoked))), via: Key(Cast.kid(4)) }).ends_with(" via=key:4 action=make channel=Lobby members=human:2,human:7 verdict=refused:key:revoked\n")
+expect channel_line({
+	..lobby_made(Refused(KeyRefused(Revoked))),
+	via: Key(Cast.kid(4)),
+}).ends_with(" via=key:4 action=make channel=Lobby members=human:2,human:7 verdict=refused:key:revoked\n")
 expect
 	[
 		Permitted,
@@ -1905,7 +1915,10 @@ expect channel_round_trip({
 	channel: Unnamed,
 	members: [],
 })
-expect AuditCodec.Entry.of_channel({ ..lobby_made(Permitted), at: -1 }).map_ok(|_| {}) == Err(ClockOutOfRange)
+expect AuditCodec.Entry.of_channel({
+	..lobby_made(Permitted),
+	at: -1,
+}).map_ok(|_| {}) == Err(ClockOutOfRange)
 
 ## A channel line with `from` replaced by `to`, decoded.
 channel_line_but : { from : Str, to : Str } -> Try({}, _)
@@ -1917,9 +1930,18 @@ channel_line_but = |{ from, to }| {
 expect channel_line_but({ from: "", to: "" }) == Ok({})
 expect channel_line_but({ from: "action=make", to: "action=rename" }) == Err(UnknownWord("action"))
 expect channel_line_but({ from: "channel=Lobby", to: "channel=1st" }) == Err(BadValue("channel"))
-expect channel_line_but({ from: "members=human:2,human:7", to: "members=human:2," }) == Err(BadValue("members"))
-expect channel_line_but({ from: "verdict=permitted", to: "verdict=refused:busy" }) == Err(UnknownWord("verdict"))
-expect channel_line_but({ from: "verdict=permitted", to: "verdict=refused:key:taken" }) == Err(UnknownWord("verdict"))
+expect channel_line_but({
+	from: "members=human:2,human:7",
+	to: "members=human:2,",
+}) == Err(BadValue("members"))
+expect channel_line_but({
+	from: "verdict=permitted",
+	to: "verdict=refused:busy",
+}) == Err(UnknownWord("verdict"))
+expect channel_line_but({
+	from: "verdict=permitted",
+	to: "verdict=refused:key:taken",
+}) == Err(UnknownWord("verdict"))
 expect channel_line_but({ from: " channel=Lobby", to: "" }) == Err(MissingField("channel"))
 
 # ── THE MALFORMED TABLE: each line, its named problem.

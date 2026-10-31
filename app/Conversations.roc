@@ -946,7 +946,7 @@ expect last_seen_id([Str.to_utf8("7")]) == 7
 expect last_seen_id([Str.to_utf8("07")]) == 0
 expect last_seen_id([]) == 0
 expect others_of(Str.to_utf8("with=human%3A2%2Cagent%3A7")) == Ok([
-	Principal.Id.Human(Cast.gid(2)),
+	Principal.Id.Human(Cast.hid(2)),
 	Principal.Id.Agent(Cast.aid(7)),
 ])
 expect others_of(Str.to_utf8("with=")) == Ok([])
@@ -985,7 +985,8 @@ expect Bytes.find(
 ## Ann's agent named as she is, and a bot of Steve's.
 cleared : Principal
 cleared = Principal.Human({
-	id: Cast.gid(2),
+	id: Cast.hid(2),
+	sign_in: Cast.github(2),
 	login: "",
 	name: "H2",
 	role: Member,
@@ -994,7 +995,8 @@ cleared = Principal.Human({
 
 steve : Principal
 steve = Principal.Human({
-	id: Cast.gid(7),
+	id: Cast.hid(7),
+	sign_in: Cast.github(7),
 	login: "Steve",
 	name: "Steve",
 	role: Member,
@@ -1005,7 +1007,7 @@ posing : Principal
 posing = Principal.Agent({
 	id: Cast.aid(8),
 	name: "H2",
-	owner: Cast.gid(2),
+	owner: Cast.hid(2),
 	generation: Cast.gen(1),
 })
 
@@ -1013,7 +1015,7 @@ steve_bot : Principal
 steve_bot = Principal.Bot({
 	id: Cast.aid(9),
 	name: "commits",
-	owner: Cast.gid(7),
+	owner: Cast.hid(7),
 	generation: Cast.gen(1),
 })
 

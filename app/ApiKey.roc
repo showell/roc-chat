@@ -839,7 +839,8 @@ expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPri
 # grants keys bound to it.
 ann_again : Principal
 ann_again = Principal.Human({
-	id: Cast.gid(2),
+	id: Cast.hid(2),
+	sign_in: Cast.github(2),
 	login: "ann",
 	name: "Ann",
 	role: Member,
@@ -893,7 +894,7 @@ agent_again = [
 	Principal.Agent({
 		id: Cast.aid(3),
 		name: "a3",
-		owner: Cast.gid(2),
+		owner: Cast.hid(2),
 		generation: Cast.gen(5),
 	}),
 ]

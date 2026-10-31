@@ -79,7 +79,8 @@ ChannelCast := [].{
 	damian_again : List(Principal)
 	damian_again = ChannelCast.without(Damian).append(
 		Principal.Human({
-			id: Cast.gid(2),
+			id: Cast.hid(2),
+			sign_in: Cast.github(2),
 			login: "h2",
 			name: "H2",
 			role: Member,

@@ -64,7 +64,12 @@ ChannelCodec := [].{
 			if members_field.value.is_empty() {
 				[]
 			} else {
-				members_field.value.split_on(',').map_try(|v| AccountCodec.bound_from(v, "members"))?
+				members_field.value.split_on(',').map_try(
+					|v| AccountCodec.bound_from(
+						v,
+						"members",
+					),
+				)?
 			}
 		members_field.rest.close()?
 		if is_each_human_once(members) {
@@ -98,7 +103,7 @@ is_each_human_once = |members|
 ## Human `n`'s binding, at generation `g`.
 human_bound : U64, U64 -> Principal.Bound
 human_bound = |n, g| {
-	id: Principal.Id.Human(Cast.gid(n)),
+	id: Principal.Id.Human(Cast.hid(n)),
 	generation: Cast.gen(g),
 	human: Cast.gen(g),
 }

@@ -95,33 +95,18 @@ Store := [].{
 	}
 
 	## The settings: `first_admin` (the config's, which the caller reads),
-	## the barred ids, the generation counter (1 before the first account)
-	## and the agent-id counter. **A STORE FROM BEFORE THE AGENT-ID COUNTER**
-	## (no settings, or a line without `agent=`) reads it as
-	## Accounts.agent_id_after the accounts, so today's data stays
-	## valid; the next save writes it.
+	## the barred GitHub ids, and the three counters (the generation, the
+	## agent id and the human id, each 1 before its first account). The
+	## store starts empty: no settings read as the counters at 1.
 	load_settings! : [Unnamed, Named(Principal.GitHubId)] => Try(Accounts.Settings, [Failed])
 	load_settings! = |first_admin| {
 		settings_read = Host.read!(settings_path)
 		counters =
 			match settings_read.status {
-				Missing => Principal.Generation.from_u64(1).map_ok(
-					|next| {
-						next,
-						agent: Unkept,
-					},
-				).map_err(|_| Failed)
+				Missing => first_counters
 				Failed => Err(Failed)
 				Found => settings_counters(settings_read.bytes).map_err(|_| Failed)
 			}?
-		next_agent_id =
-			match counters.agent {
-				Kept(id) => Ok(id)
-				Unkept => {
-					accounts = Store.load_accounts!({})?
-					Accounts.agent_id_after(accounts).map_err(|_| Failed)
-				}
-			}
 		barred_read = Host.read!(barred_path)
 		barred =
 			match barred_read.status {
@@ -133,7 +118,8 @@ Store := [].{
 			first_admin,
 			barred: barred?,
 			next_generation: counters.next,
-			next_agent_id: next_agent_id?,
+			next_agent_id: counters.agent,
+			next_human_id: counters.human,
 		})
 	}
 
@@ -571,7 +557,7 @@ Store := [].{
 	## **THE CONVERSATIONS OF `human`'S**: each one a participant of answers
 	## to them (the human, or an agent or a bot they own), oldest first, by
 	## their index.
-	load_conversations_of! : Principal.GitHubId,
+	load_conversations_of! : Principal.HumanId,
 	List(Principal) => Try(
 		List(ConvAccess.Conv),
 		[Failed],
@@ -584,7 +570,7 @@ Store := [].{
 
 	## How many conversations `human` has started, by session or by their
 	## agents' keys.
-	load_started_count! : Principal.GitHubId, List(Principal) => Try(U64, [Failed])
+	load_started_count! : Principal.HumanId, List(Principal) => Try(U64, [Failed])
 	load_started_count! = |human, accounts| {
 		_ = index_conversations!(accounts)?
 		load_record_count!(index_path(started_folder, human), offset_width)
@@ -628,7 +614,7 @@ Store := [].{
 
 	## **THE KEYS OF `human`'S**, theirs and their agents', by their index;
 	## one whose file is gone or does not read is left out, as in `load_keys!`.
-	load_keys_of! : Principal.GitHubId, List(Principal) => Try(List(ConvKey.Entry), [Failed])
+	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ConvKey.Entry), [Failed])
 	load_keys_of! = |human, accounts| {
 		_ = index_keys!(accounts)?
 		records = load_records!(index_path(keys_folder, human), hash_width)?
@@ -637,7 +623,7 @@ Store := [].{
 
 	## How many keys `human` has minted, for themselves and their agents,
 	## revoked ones counted.
-	load_key_count! : Principal.GitHubId, List(Principal) => Try(U64, [Failed])
+	load_key_count! : Principal.HumanId, List(Principal) => Try(U64, [Failed])
 	load_key_count! = |human, accounts| {
 		_ = index_keys!(accounts)?
 		load_record_count!(index_path(keys_folder, human), hash_width)
@@ -667,7 +653,7 @@ Store := [].{
 
 	## **THE INVITES OF `human`'S**, by their index; one whose file is gone
 	## or does not read is left out, as in `load_invites!`.
-	load_invites_of! : Principal.GitHubId,
+	load_invites_of! : Principal.HumanId,
 	List(Principal) => Try(
 		List(InviteCodec.Record(ConvAccess.ConvId)),
 		[Failed],
@@ -679,7 +665,7 @@ Store := [].{
 	}
 
 	## How many invites `human` has made, spent and revoked ones counted.
-	load_invite_count! : Principal.GitHubId, List(Principal) => Try(U64, [Failed])
+	load_invite_count! : Principal.HumanId, List(Principal) => Try(U64, [Failed])
 	load_invite_count! = |human, accounts| {
 		_ = index_invites!(accounts)?
 		load_record_count!(index_path(invites_folder, human), hash_width)
@@ -803,7 +789,10 @@ Store := [].{
 		match listed.status {
 			Missing => Ok({ topics: [], damaged: 0 })
 			Failed => Err(Failed)
-			Found => collect_topics!(channel.name(), { folders: listed.entries, kept: { topics: [], damaged: 0 } })
+			Found => collect_topics!(
+				channel.name(),
+				{ folders: listed.entries, kept: { topics: [], damaged: 0 } },
+			)
 		}
 	}
 
@@ -933,7 +922,7 @@ invites_mark : List(U8)
 invites_mark = "auth/invites-indexed".to_utf8()
 
 ## A human's file in an index's folder.
-index_path : Str, Principal.GitHubId -> List(U8)
+index_path : Str, Principal.HumanId -> List(U8)
 index_path = |folder, human| "${folder}/${human.to_u64().to_str()}".to_utf8()
 
 ## A secret's hash as an index's record: its hex, and a newline.
@@ -1042,7 +1031,7 @@ index_invites! = |accounts| {
 }
 
 ## The human a principal answers to, as the accounts say now.
-answerer_of : List(Principal), Principal.Id -> Try(Principal.GitHubId, [Unresolved])
+answerer_of : List(Principal), Principal.Id -> Try(Principal.HumanId, [Unresolved])
 answerer_of = |accounts, id|
 	match Principal.find(accounts, id) {
 		Ok(p) => Ok(p.answers_to())
@@ -1054,7 +1043,7 @@ answerer_of = |accounts, id|
 append_indexed! : Str,
 List(U8),
 {
-	answerer : Try(Principal.GitHubId, [Unresolved]),
+	answerer : Try(Principal.HumanId, [Unresolved]),
 	record : List(U8),
 	count : U64,
 } => [Failed, Written]
@@ -1080,7 +1069,7 @@ append_indexed! = |
 
 ## **THE HUMANS A CONVERSATION'S PARTICIPANTS ANSWER TO**, each once; one
 ## the accounts no longer hold answers for nobody.
-humans_of : ConvAccess.Conv, List(Principal) -> List(Principal.GitHubId)
+humans_of : ConvAccess.Conv, List(Principal) -> List(Principal.HumanId)
 humans_of = |conv, accounts|
 	List.fold(
 		conv.participants(),
@@ -1094,7 +1083,7 @@ humans_of = |conv, accounts|
 
 ## The human who started it: its first participant's (ConvAccess.Conv.start
 ## puts the starter first).
-starter_of : ConvAccess.Conv, List(Principal) -> Try(Principal.GitHubId, [Unresolved])
+starter_of : ConvAccess.Conv, List(Principal) -> Try(Principal.HumanId, [Unresolved])
 starter_of = |conv, accounts|
 	match conv.participants().first() {
 		Ok(b) =>
@@ -1106,9 +1095,9 @@ starter_of = |conv, accounts|
 	}
 
 ## Records gathered by human, each human's in the order given.
-grouped : List((Principal.GitHubId, List(U8))) -> List(
+grouped : List((Principal.HumanId, List(U8))) -> List(
 	{
-		human : Principal.GitHubId,
+		human : Principal.HumanId,
 		records : List(U8),
 	},
 )
@@ -1130,7 +1119,7 @@ grouped = |pairs|
 
 ## **AN INDEX WRITTEN WHOLE**: each human's file from `groups`, and any
 ## other file in its folder removed.
-rewrite_index! : Str, List({ human : Principal.GitHubId, records : List(U8) }) => Try({}, [Failed])
+rewrite_index! : Str, List({ human : Principal.HumanId, records : List(U8) }) => Try({}, [Failed])
 rewrite_index! = |folder, groups| {
 	listed = Host.list!(Str.to_utf8(folder))
 	existing =
@@ -1164,7 +1153,7 @@ remove_files! = |folder, names|
 write_index_files! : Str,
 List(
 	{
-		human : Principal.GitHubId,
+		human : Principal.HumanId,
 		records : List(U8),
 	},
 ) => Try({}, [Failed])
@@ -1395,41 +1384,70 @@ expect spent_path(State, [0xAB]) == "auth/spent/state/ab".to_utf8()
 expect spent_path(Pending, [0x01]) == "auth/spent/pending/01".to_utf8()
 
 ## **THE SETTINGS' RECORD**: the generation the next account is given,
-## and the id the next agent or bot is given.
+## the id the next agent or bot is given, and the id the next human is
+## given. Every field is there: the store started empty with this format.
 ##
-##     settings v1 next=3 agent=8
+##     settings v1 next=3 agent=8 human=2
 settings_line : Accounts.Settings -> List(U8)
 settings_line = |settings| Stored.line(
 	"settings",
 	[
 		("next", settings.next_generation.to_u64().to_str()),
 		("agent", settings.next_agent_id.to_u64().to_str()),
+		("human", settings.next_human_id.to_u64().to_str()),
 	],
 )
 
-## The counters the settings' record holds; a line from before the agent-id
-## counter, `settings v1 next=3`, holds none (`Unkept`), the one field that
-## may be missing, and only at the end.
+## The counters of a store with no settings yet: each at 1.
+first_counters : Try(
+	{
+		next : Principal.Generation,
+		agent : Principal.AgentId,
+		human : Principal.HumanId,
+	},
+	[Failed],
+)
+first_counters =
+	match (
+		Principal.Generation.from_u64(1),
+		Principal.AgentId.from_u64(1),
+		Principal.HumanId.from_u64(1),
+	) {
+		(
+			Ok(next),
+			Ok(agent),
+			Ok(human),
+		) => Ok({
+			next,
+			agent,
+			human,
+		})
+		_ => Err(Failed)
+	}
+
+## The counters the settings' record holds, every one of them.
 settings_counters : List(U8) -> Try(
-	{ next : Principal.Generation, agent : [Kept(Principal.AgentId), Unkept] },
+	{
+		next : Principal.Generation,
+		agent : Principal.AgentId,
+		human : Principal.HumanId,
+	},
 	_,
 )
 settings_counters = |raw| {
 	fields = Stored.Reader.open(raw, "settings")?
 	next_field = fields.field("next")?
 	next = Stored.id(next_field.value, { name: "next", make: Principal.Generation.from_u64 })?
-	match next_field.rest.close() {
-		Ok({}) => Ok({ next, agent: Unkept })
-		Err(_) => {
-			agent_field = next_field.rest.field("agent")?
-			agent = Stored.id(
-				agent_field.value,
-				{ name: "agent", make: Principal.AgentId.from_u64 },
-			)?
-			agent_field.rest.close()?
-			Ok({ next, agent: Kept(agent) })
-		}
-	}
+	agent_field = next_field.rest.field("agent")?
+	agent = Stored.id(agent_field.value, { name: "agent", make: Principal.AgentId.from_u64 })?
+	human_field = agent_field.rest.field("human")?
+	human = Stored.id(human_field.value, { name: "human", make: Principal.HumanId.from_u64 })?
+	human_field.rest.close()?
+	Ok({
+		next,
+		agent,
+		human,
+	})
 }
 
 ## **THE BARRED IDS**, one line each:
@@ -1461,24 +1479,33 @@ expect settings_counters(
 		barred: [],
 		next_generation: Cast.gen(3),
 		next_agent_id: Cast.aid(8),
+		next_human_id: Cast.hid(2),
 	}),
-) == Ok({ next: Cast.gen(3), agent: Kept(Cast.aid(8)) })
+) == Ok({
+	next: Cast.gen(3),
+	agent: Cast.aid(8),
+	human: Cast.hid(2),
+})
 expect settings_line({
 	first_admin: Unnamed,
 	barred: [],
 	next_generation: Cast.gen(3),
 	next_agent_id: Cast.aid(8),
-}) == "settings v1 next=3 agent=8\n".to_utf8()
-expect settings_counters("settings v1 next=0\n".to_utf8()) == Err(BadValue("next"))
-# A line from before the agent-id counter reads, holding none; a damaged
-# counter is refused, never read as missing.
-expect settings_counters("settings v1 next=3\n".to_utf8()) == Ok({
-	next: Cast.gen(3),
-	agent: Unkept,
+	next_human_id: Cast.hid(2),
+}) == "settings v1 next=3 agent=8 human=2\n".to_utf8()
+expect settings_counters("settings v1 next=0 agent=1 human=1\n".to_utf8()) == Err(BadValue("next"))
+# Every counter is there; a missing or damaged one is refused, never read
+# as missing (the store started empty with this format).
+expect settings_counters("settings v1 next=3\n".to_utf8()) == Err(MissingField("agent"))
+expect settings_counters("settings v1 next=3 agent=4\n".to_utf8()) == Err(MissingField("human"))
+expect settings_counters("settings v1 next=3 agent=0 human=1\n".to_utf8()) == Err(BadValue("agent"))
+expect settings_counters("settings v1 next=3 agent=4 human=0\n".to_utf8()) == Err(BadValue("human"))
+expect settings_counters("settings v1 next=3 agent=4 human=1 x=1\n".to_utf8()) == Err(Trailing)
+expect first_counters == Ok({
+	next: Cast.gen(1),
+	agent: Cast.aid(1),
+	human: Cast.hid(1),
 })
-expect settings_counters("settings v1 next=3 agent=0\n".to_utf8()) == Err(BadValue("agent"))
-expect settings_counters("settings v1 next=3 agents=4\n".to_utf8()) == Err(MissingField("agent"))
-expect settings_counters("settings v1 next=3 agent=4 x=1\n".to_utf8()) == Err(Trailing)
 
 barred_ids : List(Principal.GitHubId)
 barred_ids = [Cast.gid(7), Cast.gid(583231)]
@@ -1657,11 +1684,26 @@ collect_topics! = |channel, { folders, kept }|
 		}
 	}
 
-expect folder_key({ kind: Dir, name: "cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }).map_ok(ChannelName.to_str) == Ok("cobblestone")
-expect folder_key({ kind: Dir, name: "Cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }) == Err(NotAKey)
-expect folder_key({ kind: File, name: "cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }) == Err(NotAKey)
-expect folder_key({ kind: Dir, name: "a--b".to_utf8() }, { parse: TopicName.from_str, key: TopicName.key }) == Err(NotAKey)
-expect folder_key({ kind: Dir, name: "road-trip-2".to_utf8() }, { parse: TopicName.from_str, key: TopicName.key }).is_ok()
+expect folder_key(
+	{ kind: Dir, name: "cobblestone".to_utf8() },
+	{ parse: ChannelName.from_str, key: ChannelName.key },
+).map_ok(ChannelName.to_str) == Ok("cobblestone")
+expect folder_key(
+	{ kind: Dir, name: "Cobblestone".to_utf8() },
+	{ parse: ChannelName.from_str, key: ChannelName.key },
+) == Err(NotAKey)
+expect folder_key(
+	{ kind: File, name: "cobblestone".to_utf8() },
+	{ parse: ChannelName.from_str, key: ChannelName.key },
+) == Err(NotAKey)
+expect folder_key(
+	{ kind: Dir, name: "a--b".to_utf8() },
+	{ parse: TopicName.from_str, key: TopicName.key },
+) == Err(NotAKey)
+expect folder_key(
+	{ kind: Dir, name: "road-trip-2".to_utf8() },
+	{ parse: TopicName.from_str, key: TopicName.key },
+).is_ok()
 
 # ── transcript files
 ## Where `channel`'s topic `name` is.
@@ -1705,4 +1747,9 @@ expect
 	files_list(Store.topic_files(topic_at("Cobblestone", "ChitChat")))
 		.all(|p| !files_list(Store.topic_files(topic_at("general", "ChitChat"))).contains(p))
 # One topic in any spelling: one set of files.
-expect Store.topic_files(topic_at("COBBLESTONE", "chitchat")) == Store.topic_files(topic_at("Cobblestone", "ChitChat"))
+expect Store.topic_files(
+	topic_at(
+		"COBBLESTONE",
+		"chitchat",
+	),
+) == Store.topic_files(topic_at("Cobblestone", "ChitChat"))

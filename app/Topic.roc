@@ -308,7 +308,7 @@ signed_in = |viewer, accounts|
 ## An agent's or a bot's binding to its one account, answering to `owner`,
 ## to name it in a topic.
 agent_bound : List(Principal),
-{ id : Principal.Id, owner : Principal.GitHubId } -> Try(
+{ id : Principal.Id, owner : Principal.HumanId } -> Try(
 	Principal.Bound,
 	[
 		NotAnAgent(Principal.Id),
@@ -995,9 +995,17 @@ expect Topic.find([chitchat, chitchat], chitchat.at()) == Err(Duplicated)
 # ── STORED AND LOADED: the topic it was, its kind and its agents' bindings.
 ## `topic` through its line and back, in its own channel.
 stored_and_loaded : Topic -> Try(Topic, _)
-stored_and_loaded = |topic| TopicCodec.decode(TopicCodec.encode(topic.fields())).map_ok(|line| Topic.load(topic.at().channel, line))
+stored_and_loaded = |topic| TopicCodec.decode(TopicCodec.encode(topic.fields())).map_ok(
+	|line| Topic.load(
+		topic.at().channel,
+		line,
+	),
+)
 
 expect
 	cobblestones.append(general_chitchat).all(|t| stored_and_loaded(t) == Ok(t))
 expect stored_and_loaded(chitchat).map_ok(|t| t.at().topic.to_str()) == Ok("ChitChat")
-expect stored_and_loaded(agents).map_ok(|t| t.agents(ChannelCast.accounts)) == Ok([ChannelCast.bound(Cc), ChannelCast.bound(Lc)])
+expect stored_and_loaded(agents).map_ok(|t| t.agents(ChannelCast.accounts)) == Ok([
+	ChannelCast.bound(Cc),
+	ChannelCast.bound(Lc),
+])

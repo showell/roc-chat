@@ -183,7 +183,7 @@ hex_value = |c|
 # ── tests
 
 ann : Principal.Id
-ann = Principal.Id.Human(Cast.gid(583231))
+ann = Principal.Id.Human(Cast.hid(583231))
 
 said : List(U8) -> MessageCodec.Fields
 said = |body| {

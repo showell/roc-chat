@@ -1,12 +1,13 @@
 ## **AN ACCOUNT, STORED** (the Roc chat's auth design, section 1): a human,
 ## an agent or a bot, one line in Stored's format:
 ##
-##     account v1 kind=human github=583231 login=octocat generation=3 role=admin name=Steve H.
-##     account v1 kind=agent id=7 owner=583231 generation=4 name=CC
-##     account v1 kind=bot id=9 owner=583231 generation=5 name=commits
+##     account v1 kind=human id=1 github=583231 login=octocat generation=3 role=admin name=Steve H.
+##     account v1 kind=agent id=7 owner=1 generation=4 name=CC
+##     account v1 kind=bot id=9 owner=1 generation=5 name=commits
 ##
-## A human is keyed by its GitHub id; an agent and a bot by the chat's own
-## id, with the GitHub id of the human who owns it. Every account's
+## Every account is keyed by the chat's own id: a human by theirs (one
+## counter), with the GitHub id they sign in as beside it; an agent and a
+## bot by theirs (another), with the id of the human who owns it. Every account's
 ## `generation` (Principal.Generation) is what its sessions, keys, votes
 ## and participations are bound to. The
 ## name is last, as Stored's free text is, and held to DisplayName's rule
@@ -44,7 +45,8 @@ AccountCodec := [].{
 						"account",
 						[
 							("kind", spell_kind(Human)),
-							("github", h.id.to_u64().to_str()),
+							("id", h.id.to_u64().to_str()),
+							("github", github_text(h.sign_in)),
 							("login", login),
 							("generation", h.generation.to_u64().to_str()),
 							("role", AccountCodec.role_text(h.role)),
@@ -102,12 +104,17 @@ AccountCodec := [].{
 		## Two lines hold one id (Principal.unique): a forged copy beside
 		## the real account, which no decision may pick between.
 		DuplicateId(Principal.Id),
+
+		## Two humans sign in as one GitHub id
+		## (Principal.one_sign_in_each): a sign-in could not say whose
+		## account it is.
+		DuplicateSignIn(Principal.GitHubId),
 	]
 
 	## **THE ACCOUNTS LOADER**: a store of account lines, each ending in its
 	## newline (an empty store is no accounts), as the accounts every
 	## decision is made against; refused whole at its first bad line, or
-	## when two lines hold one id. A torn last line is the first's problem
+	## when two lines hold one id or one GitHub id. A torn last line is the first's problem
 	## (`Torn`).
 	load : List(U8) -> Try(List(Principal), _)
 	load = |raw| {
@@ -121,11 +128,12 @@ AccountCodec := [].{
 		decoded = lines.map(|l| l.append('\n')).concat(torn).map_with_index(|bytes, i|
 			AccountCodec.decode(bytes).map_err(|problem| BadLine({ line: i + 1, problem })))
 		accounts = decoded.map_try(|d| d)?
-		Principal.unique(accounts).map_err(|DuplicateId(id)| DuplicateId(id))
+		unique = Principal.unique(accounts).map_err(|DuplicateId(id)| DuplicateId(id))?
+		Principal.one_sign_in_each(unique).map_err(|DuplicateSignIn(g)| DuplicateSignIn(g))
 	}
 
 	## **A PRINCIPAL'S ID AS EVERY STORED RECORD SPELLS IT**: its kind, a
-	## colon, its number (`human:583231`, `agent:7`, `bot:9`); what a key's
+	## colon, its number (`human:1`, `agent:7`, `bot:9`); what a key's
 	## `acts` and an audit entry's `who` hold.
 	id_text : Principal.Id -> Str
 	id_text = |id|
@@ -184,7 +192,7 @@ AccountCodec := [].{
 				)? {
 					Human => Stored.id(
 						after,
-						{ name, make: Principal.GitHubId.from_u64 },
+						{ name, make: Principal.HumanId.from_u64 },
 					).map_ok(|g| Principal.Id.Human(g))
 					Agent => Stored.id(
 						after,
@@ -216,7 +224,10 @@ AccountCodec := [].{
 				human_part,
 			] => {
 				id = AccountCodec.id_from(id_part, name)?
-				generation = Stored.id(generation_part, { name, make: Principal.Generation.from_u64 })?
+				generation = Stored.id(
+					generation_part,
+					{ name, make: Principal.Generation.from_u64 },
+				)?
 				human = Stored.id(human_part, { name, make: Principal.Generation.from_u64 })?
 				match id {
 					Human(_) if generation != human => Err(BadValue(name))
@@ -279,7 +290,7 @@ name_text = |name|
 owned_line : [Agent, Bot],
 {
 	id : Principal.AgentId,
-	owner : Principal.GitHubId,
+	owner : Principal.HumanId,
 	generation : Principal.Generation,
 	name : Str,
 } -> Try(List(U8), _)
@@ -313,11 +324,20 @@ owned_line = |
 	)
 }
 
+## How a human signs in, as the line spells it: the GitHub id.
+github_text : Principal.SignIn -> Str
+github_text = |sign_in|
+	match sign_in {
+		GitHub(g) => g.to_u64().to_str()
+	}
+
 ## A human's fields, after its kind.
 decode_human : Stored.Reader -> Try(Principal, _)
 decode_human = |after_kind| {
-	github = after_kind.field("github")?
-	id = Stored.id(github.value, { name: "github", make: Principal.GitHubId.from_u64 })?
+	id_field = after_kind.field("id")?
+	id = Stored.id(id_field.value, { name: "id", make: Principal.HumanId.from_u64 })?
+	github = id_field.rest.field("github")?
+	github_id = Stored.id(github.value, { name: "github", make: Principal.GitHubId.from_u64 })?
 	login = github.rest.field("login")?
 	login_word =
 		if login.value == [] {
@@ -332,6 +352,7 @@ decode_human = |after_kind| {
 	Ok(
 		Principal.Human({
 			id,
+			sign_in: GitHub(github_id),
 			login: login_word,
 			name,
 			role: role_word,
@@ -345,7 +366,7 @@ decode_owned : Stored.Reader -> Try(
 	{
 		id : Principal.AgentId,
 		name : Str,
-		owner : Principal.GitHubId,
+		owner : Principal.HumanId,
 		generation : Principal.Generation,
 	},
 	_,
@@ -354,7 +375,7 @@ decode_owned = |after_kind| {
 	id_field = after_kind.field("id")?
 	id = Stored.id(id_field.value, { name: "id", make: Principal.AgentId.from_u64 })?
 	owner_field = id_field.rest.field("owner")?
-	owner = Stored.id(owner_field.value, { name: "owner", make: Principal.GitHubId.from_u64 })?
+	owner = Stored.id(owner_field.value, { name: "owner", make: Principal.HumanId.from_u64 })?
 	generation = generation_after(owner_field.rest)?
 	name = stored_name(generation.rest)?
 	Ok({
@@ -393,7 +414,8 @@ stored_name = |fields| {
 human : { name : Str, role : Principal.Role } -> Principal
 human = |{ name, role }|
 	Principal.Human({
-		id: Cast.gid(583231),
+		id: Cast.hid(1),
+		sign_in: GitHub(Cast.gid(583231)),
 		login: "octocat",
 		name,
 		role,
@@ -406,7 +428,7 @@ steve = human({ name: "Steve H.", role: Admin })
 cc : Principal
 cc = Principal.Agent({
 	id: Cast.aid(7),
-	owner: Cast.gid(583231),
+	owner: Cast.hid(1),
 	generation: Cast.gen(4),
 	name: "CC",
 })
@@ -414,7 +436,7 @@ cc = Principal.Agent({
 commits : Principal
 commits = Principal.Bot({
 	id: Cast.aid(9),
-	owner: Cast.gid(583231),
+	owner: Cast.hid(1),
 	generation: Cast.gen(5),
 	name: "commits",
 })
@@ -425,7 +447,8 @@ commits = Principal.Bot({
 Every : [
 	Human(
 		{
-			id : Principal.GitHubId,
+			id : Principal.HumanId,
+			sign_in : Principal.SignIn,
 			login : Str,
 			name : Str,
 			role : Principal.Role,
@@ -436,7 +459,7 @@ Every : [
 		{
 			id : Principal.AgentId,
 			name : Str,
-			owner : Principal.GitHubId,
+			owner : Principal.HumanId,
 			generation : Principal.Generation,
 		},
 	),
@@ -444,7 +467,7 @@ Every : [
 		{
 			id : Principal.AgentId,
 			name : Str,
-			owner : Principal.GitHubId,
+			owner : Principal.HumanId,
 			generation : Principal.Generation,
 		},
 	),
@@ -482,9 +505,9 @@ line_of = |account|
 	}
 
 # The exact lines.
-expect line_of(steve) == "account v1 kind=human github=583231 login=octocat generation=3 role=admin name=Steve H.\n"
-expect line_of(cc) == "account v1 kind=agent id=7 owner=583231 generation=4 name=CC\n"
-expect line_of(commits) == "account v1 kind=bot id=9 owner=583231 generation=5 name=commits\n"
+expect line_of(steve) == "account v1 kind=human id=1 github=583231 login=octocat generation=3 role=admin name=Steve H.\n"
+expect line_of(cc) == "account v1 kind=agent id=7 owner=1 generation=4 name=CC\n"
+expect line_of(commits) == "account v1 kind=bot id=9 owner=1 generation=5 name=commits\n"
 
 # Round trips: every kind, every role, names that look like fields, a
 # non-ASCII name, the longest id.
@@ -503,7 +526,7 @@ expect
 biggest : Principal
 biggest = Principal.Bot({
 	id: Cast.aid(18446744073709551615),
-	owner: Cast.gid(18446744073709551615),
+	owner: Cast.hid(18446744073709551615),
 	generation: Cast.gen(18446744073709551615),
 	name: "max",
 })
@@ -514,7 +537,8 @@ expect round_trip(steve) != round_trip(human({ name: "Steve H.", role: Member })
 # empty, and reads back empty.
 expect is_kept(
 	Principal.Human({
-		id: Cast.gid(5),
+		id: Cast.hid(5),
+		sign_in: Cast.github(5),
 		login: "",
 		name: "Old",
 		role: Member,
@@ -523,18 +547,19 @@ expect is_kept(
 )
 expect line_of(
 	Principal.Human({
-		id: Cast.gid(5),
+		id: Cast.hid(5),
+		sign_in: Cast.github(5),
 		login: "",
 		name: "Old",
 		role: Member,
 		generation: Cast.gen(1),
 	}),
-) == "account v1 kind=human github=5 login= generation=1 role=member name=Old\n"
+) == "account v1 kind=human id=5 github=1005 login= generation=1 role=member name=Old\n"
 
 # Bytes round trip too: a decoded line encodes to the same bytes.
 expect
 	[
-		"account v1 kind=human github=1 login=a generation=7 role=member name=b\n",
+		"account v1 kind=human id=4 github=1 login=a generation=7 role=member name=b\n",
 		"account v1 kind=agent id=7 owner=583231 generation=8 name=CC\n",
 		"account v1 kind=bot id=9 owner=2 generation=9 name=commits bot\n",
 	].all(
@@ -552,7 +577,7 @@ decoded : Str -> Try({}, _)
 decoded = |text| AccountCodec.decode(text.to_utf8()).map_ok(|_| {})
 
 human_line : Str
-human_line = "account v1 kind=human github=1 login=a generation=7 role=member name=b\n"
+human_line = "account v1 kind=human id=4 github=1 login=a generation=7 role=member name=b\n"
 
 agent_line : Str
 agent_line = "account v1 kind=agent id=7 owner=5 generation=2 name=CC\n"
@@ -580,6 +605,16 @@ expect human_but({
 	to: "login=a github=1",
 }) == Err(MissingField("github"))
 expect human_but({ from: " login=a", to: "" }) == Err(MissingField("login"))
+# The human's id is the chat's own, and comes first; it is never the
+# GitHub id beside it.
+expect human_but({ from: " id=4", to: "" }) == Err(MissingField("id"))
+expect human_but({ from: "id=4", to: "id=0" }) == Err(BadValue("id"))
+expect human_but({ from: "id=4 github=1", to: "github=1 id=4" }) == Err(MissingField("id"))
+expect
+	match AccountCodec.decode(human_line.to_utf8()) {
+		Ok(Human(h)) => h.id == Cast.hid(4) and h.sign_in == GitHub(Cast.gid(1))
+		_ => Bool.False
+	}
 expect human_but({ from: "github=1", to: "github=1 github=1" }) == Err(MissingField("login"))
 expect human_but({ from: " role=member", to: "" }) == Err(MissingField("role"))
 expect human_but({ from: " name=b", to: "" }) == Err(MissingField("name"))
@@ -632,7 +667,7 @@ expect AccountCodec.decode([
 expect
 	List.all(
 		[
-			Principal.Id.Human(Cast.gid(583231)),
+			Principal.Id.Human(Cast.hid(583231)),
 			Principal.Id.Agent(Cast.aid(7)),
 			Principal.Id.Bot(Cast.aid(7)),
 		],
@@ -664,7 +699,7 @@ expect AccountCodec.encode(human({ name: " Ann", role: Member })) == Err(NameUnt
 expect AccountCodec.encode(
 	Principal.Agent({
 		id: Cast.aid(1),
-		owner: Cast.gid(1),
+		owner: Cast.hid(1),
 		generation: Cast.gen(1),
 		name: "",
 	}),
@@ -672,7 +707,8 @@ expect AccountCodec.encode(
 expect
 	AccountCodec.encode(
 		Principal.Human({
-			id: Cast.gid(1),
+			id: Cast.hid(1),
+			sign_in: Cast.github(1),
 			login: "bad login",
 			name: "b",
 			role: Member,
@@ -689,9 +725,9 @@ agent_7 : Str
 agent_7 = "account v1 kind=agent id=7 owner=1 generation=2 name=CC\n"
 
 expect loaded("") == Ok([])
-expect loaded(human_line) == Ok([Principal.Id.Human(Cast.gid(1))])
+expect loaded(human_line) == Ok([Principal.Id.Human(Cast.hid(4))])
 expect loaded("${human_line}${agent_7}") == Ok([
-	Principal.Id.Human(Cast.gid(1)),
+	Principal.Id.Human(Cast.hid(4)),
 	Principal.Id.Agent(Cast.aid(7)),
 ])
 # A torn last line, a bad line (its number from 1), a blank line.
@@ -712,5 +748,7 @@ expect loaded("${human_line}\n${agent_7}") == Err(BadLine({ line: 2, problem: Wr
 # claiming another owner, or a human line claiming admin, before the real
 # one; or an agent and a bot from the one counter.
 expect loaded("account v1 kind=agent id=7 owner=9 generation=3 name=CC\n${human_line}${agent_7}") == Err(DuplicateId(Principal.Id.Agent(Cast.aid(7))))
-expect loaded("${human_line.replace_first("role=member", "role=admin")}${human_line}") == Err(DuplicateId(Principal.Id.Human(Cast.gid(1))))
+expect loaded("${human_line.replace_first("role=member", "role=admin")}${human_line}") == Err(DuplicateId(Principal.Id.Human(Cast.hid(4))))
 expect loaded("${agent_7}${agent_7.replace_first("kind=agent", "kind=bot")}") == Err(DuplicateId(Principal.Id.Bot(Cast.aid(7))))
+# Two humans, two ids, one GitHub id: refused, so a sign-in never picks.
+expect loaded("${human_line}${human_line.replace_first("id=4", "id=5").replace_first("name=b", "name=c")}") == Err(DuplicateSignIn(Cast.gid(1)))

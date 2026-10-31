@@ -169,7 +169,29 @@ fn signUp(a: std.mem.Allocator, port: u16, n: u64) ![]const u8 {
 fn signUpAs(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) ![]const u8 {
     const made = try nameFormAnswer(a, port, n, name);
     if (made.status != 303) return error.NotSignedIn;
-    return std.fmt.allocPrint(a, "__Host-session={s}", .{made.cookie("session") orelse return error.NoSessionCookie});
+    const cookie = try std.fmt.allocPrint(a, "__Host-session={s}", .{made.cookie("session") orelse return error.NoSessionCookie});
+    // Who the chat made them: its own id, from its counter, never `n`.
+    const me = try get(a, port, "/me", cookie);
+    const said = "signed in as human:";
+    if (me.status != 200 or !std.mem.startsWith(u8, me.body, said) or !std.mem.endsWith(u8, me.body, "\n")) return error.NotAHuman;
+    const id = try std.fmt.parseInt(u64, me.body[said.len .. me.body.len - 1], 10);
+    if (id == n) return error.GitHubIdAsHumanId;
+    if (n < 1000 or n - 1000 >= human_ids.len or human_ids[n - 1000] != 0) return error.SignedUpTwice;
+    human_ids[n - 1000] = id;
+    return cookie;
+}
+
+/// **EACH HUMAN'S OWN ID, BY THE GITHUB ID THEY SIGNED UP AS** (`n`, at
+/// `n - 1000`): what /me said then. The chat gives a human its own id, the
+/// next of its counter from 1, so no human here is named by the GitHub id
+/// they signed in with, and a step that took one for the other fails.
+var human_ids: [32]u64 = @splat(0);
+
+/// GitHub user `n`'s human id, as a wire id's number; an error if `n`
+/// never signed up.
+fn hid(a: std.mem.Allocator, n: u64) ![]const u8 {
+    if (n < 1000 or n - 1000 >= human_ids.len or human_ids[n - 1000] == 0) return error.NotSignedUp;
+    return std.fmt.allocPrint(a, "{d}", .{human_ids[n - 1000]});
 }
 
 /// GitHub user `n` through the sign-in, then the name form's answer to
@@ -363,7 +385,11 @@ fn signIn(w: *World) !void {
 }
 
 fn start(w: *World) !void {
-    const r = try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002");
+    // Bea named by her GitHub id, which is no human's id here: refused, as
+    // a nobody is, and nothing started.
+    const by_github = try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002");
+    if (by_github.status != 400) return error.GitHubIdTakenForAHuman;
+    const r = try request(w.a, w.port(), "POST", "/conversations", w.ann, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)})));
     if (r.status != 201) return error.NotStarted;
     const prefix = "{\"id\":";
     if (!std.mem.startsWith(u8, r.body, prefix) or !std.mem.endsWith(u8, r.body, "}")) return error.NoId;
@@ -503,7 +529,7 @@ const bea_name_escaped = "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot;";
 
 fn listPage(w: *World) !void {
     // A conversation A is not in: C's, with B.
-    const other = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.cal, "with=human%3A1002"));
+    const other = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.cal, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))));
     const page = try get(w.a, w.port(), "/chat", w.ann);
     if (page.status != 200) return error.NoListPage;
     if (!has(page.body, try std.fmt.allocPrint(w.a, "href=\"/chat/{s}\"", .{w.conv}))) return error.OwnMissing;
@@ -633,7 +659,7 @@ fn logout(w: *World) !void {
 const lifetime_ms_for_test = 500;
 
 fn streamLifetime(w: *World) !void {
-    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, "with=human%3A1001"));
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1001)}))));
     const k = try mint(w, "");
     w.rig.server.stream_lifetime_ms_for_test.store(lifetime_ms_for_test, .release);
     defer w.rig.server.stream_lifetime_ms_for_test.store(0, .release);
@@ -687,7 +713,7 @@ fn overwrite(w: *World, path: []const u8, bytes: []const u8) !void {
 /// (its one line junk, its size the same), so a read is a 500, and the
 /// next post still answers id 2.
 fn postByTally(w: *World) !void {
-    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))));
     if ((try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "one")).status != 201) return error.NotPosted;
     const path = try std.fmt.allocPrint(w.a, "chat/transcripts/{s}", .{conv});
     const was = try w.rig.data.readFileAlloc(io, path, w.a, .limited(1024 * 1024));
@@ -706,12 +732,11 @@ fn postByTally(w: *World) !void {
 /// unchanged; made so it ends one byte short of the cap, and exactly at
 /// it, and the post is taken.
 const transcript_bytes_most = 4_000_000;
-/// A's post of `x`, its transcript line, the first of a tally of none:
-/// `at` is the server's clock in seconds, ten digits until 2286.
-const x_line_len = "message v1 id=1 at=1761600000 by=human:1001 body=x\n".len;
-
 fn transcriptFull(w: *World) !void {
-    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    // A's post of `x`, its transcript line, the first of a tally of none:
+    // `at` is the server's clock in seconds, ten digits until 2286.
+    const x_line_len = (try std.fmt.allocPrint(w.a, "message v1 id=1 at=1761600000 by=human:{s} body=x\n", .{try hid(w.a, 1001)})).len;
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))));
     const over = transcript_bytes_most - x_line_len + 1;
     try fillTranscript(w, conv, over);
     const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "x");
@@ -753,7 +778,7 @@ const page_messages = 100;
 const paged_posts = page_messages + 5;
 
 fn pagesBack(w: *World) !void {
-    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))));
     w.paged = conv;
     const posts = try agentPath(w, conv, "/messages");
     for (1..paged_posts + 1) |n| {
@@ -836,7 +861,7 @@ fn readFromOffset(w: *World) !void {
 const offset_width = 11;
 
 fn offsetsRebuilt(w: *World) !void {
-    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))));
     const posts = try agentPath(w, conv, "/messages");
     for (0..3) |_| if ((try request(w.a, w.port(), "POST", posts, w.ann, "before")).status != 201) return error.NotPosted;
     const path = try std.fmt.allocPrint(w.a, "chat/offsets/{s}", .{conv});
@@ -858,9 +883,9 @@ fn conversationsCapped(w: *World) !void {
     w.rig.auth.cap_for_test.store(small_cap, .release);
     defer w.rig.auth.cap_for_test.store(0, .release);
     for (0..small_cap) |_| {
-        if ((try request(w.a, w.port(), "POST", "/conversations", w.fay, "with=human%3A1002")).status != 201) return error.NotStarted;
+        if ((try request(w.a, w.port(), "POST", "/conversations", w.fay, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)})))).status != 201) return error.NotStarted;
     }
-    const r = try request(w.a, w.port(), "POST", "/conversations", w.fay, "with=human%3A1002");
+    const r = try request(w.a, w.port(), "POST", "/conversations", w.fay, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)})));
     if (r.status != 403) return error.Uncapped;
     if (!has(r.body, "as many conversations")) return error.NotSaid;
 }
@@ -894,7 +919,7 @@ fn invitesCapped(w: *World) !void {
 /// conversation indexes, and their marks, removed (a store from before
 /// them), and her listings are whole again, and the indexes back.
 fn indexRebuilt(w: *World) !void {
-    for ([_][]const u8{ "auth/keys-indexed", "auth/keys-by-human/1010", "chat/indexed", "chat/by-human/1010" }) |path| {
+    for ([_][]const u8{ "auth/keys-indexed", (try std.fmt.allocPrint(w.a, "auth/keys-by-human/{s}", .{try hid(w.a, 1010)})), "chat/indexed", (try std.fmt.allocPrint(w.a, "chat/by-human/{s}", .{try hid(w.a, 1010)})) }) |path| {
         try w.rig.data.deleteFile(io, path);
     }
     const keys = try get(w.a, w.port(), "/keys", w.fay);
@@ -903,7 +928,7 @@ fn indexRebuilt(w: *World) !void {
     const convs = try get(w.a, w.port(), "/conversations", w.fay);
     if (convs.status != 200) return error.ConversationsUnlisted;
     if (count(convs.body, "\"with\":[") != small_cap) return error.ConversationsLost;
-    for ([_][]const u8{ "auth/keys-indexed", "auth/keys-by-human/1010", "chat/indexed", "chat/by-human/1010" }) |path| {
+    for ([_][]const u8{ "auth/keys-indexed", (try std.fmt.allocPrint(w.a, "auth/keys-by-human/{s}", .{try hid(w.a, 1010)})), "chat/indexed", (try std.fmt.allocPrint(w.a, "chat/by-human/{s}", .{try hid(w.a, 1010)})) }) |path| {
         _ = w.rig.data.statFile(io, path, .{}) catch return error.NotRebuilt;
     }
 }
@@ -923,7 +948,7 @@ fn ownIndexOnly(w: *World) !void {
 /// so an upload's image renders, and one of the chat's own routes as a src
 /// is text.
 fn mediaFromUploads(w: *World) !void {
-    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, "with=human%3A1002"));
+    const conv = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.ann, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))));
     const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "<img src=\"/user_uploads/a.png\">\n\n<img src=\"/conversations/1/stream\">");
     if (r.status != 201) return error.NotPosted;
     if (!has(r.body, "<img src=\\\"/user_uploads/a.png\\\">")) return error.UploadNotShown;
@@ -1056,7 +1081,7 @@ fn startPicksAgents(w: *World) !void {
     if (!has(gils.body, tick)) return error.OwnAgentNotOffered;
     const hals = try get(w.a, w.port(), "/chat", w.hal);
     if (has(hals.body, w.gil_agent)) return error.AnothersAgentOffered;
-    const form = try std.fmt.allocPrint(w.a, "with={s}%2Chuman%3A1012", .{w.gil_agent});
+    const form = try std.fmt.allocPrint(w.a, "with={s}%2Chuman%3A{s}", .{ w.gil_agent, try hid(w.a, 1012) });
     _ = try startedId(try pagePost(w, w.gil, "/conversations", form));
 }
 
@@ -1129,7 +1154,7 @@ fn makeAgent(w: *World) !void {
     if (r.status != 201) return error.NotMade;
     w.agent = try field(r.body, "id");
     if (!std.mem.startsWith(u8, w.agent, "agent:")) return error.NotAnAgent;
-    if (!std.mem.eql(u8, try field(r.body, "owner"), "human:1004")) return error.NotSteves;
+    if (!std.mem.eql(u8, try field(r.body, "owner"), (try std.fmt.allocPrint(w.a, "human:{s}", .{try hid(w.a, 1004)})))) return error.NotSteves;
 }
 
 fn inviteForAgent(w: *World) !void {
@@ -1148,7 +1173,7 @@ fn inviteForAgent(w: *World) !void {
 }
 
 fn agentStarts(w: *World) !void {
-    const started = try send(w.a, w.port(), "POST", "/conversations", .{ .key = w.key }, "with=human%3A1004");
+    const started = try send(w.a, w.port(), "POST", "/conversations", .{ .key = w.key }, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1004)})));
     w.agents_conv = try startedId(started);
     const l = try Listener.open(w.a, w.port(), try agentPath(w, w.agents_conv, "/stream"), w.steve, "");
     defer l.close();
@@ -1165,7 +1190,7 @@ fn agentReads(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), w.steve, "hi CC, it's Steve")).status != 201) return error.NotPosted;
     const r = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
     if (r.status != 200) return error.NotRead;
-    if (!has(r.body, "\"by\":\"human:1004\",\"kind\":\"human\",\"login\":\"person1004\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
+    if (!has(r.body, (try std.fmt.allocPrint(w.a, "\"by\":\"human:{s}\",\"kind\":\"human\",\"login\":\"person1004\",\"markdown\":\"hi CC, it's Steve\"", .{try hid(w.a, 1004)})))) return error.NotSeen;
 }
 
 /// **MENTIONS, AS THE SERVER PARSES THEM** (app/Mentions.roc): each
@@ -1186,15 +1211,15 @@ fn mentions(w: *World) !void {
     if (stranger.status != 201 or !has(stranger.body, "\"mentions\":[]")) return error.NamedAStranger;
     // A display name with a space, named by the agent.
     const back = try send(w.a, w.port(), "POST", path, .{ .key = w.key }, "thanks, @Person 1004!");
-    if (back.status != 201 or !has(back.body, "\"mentions\":[\"human:1004\"]")) return error.NotNamedBack;
+    if (back.status != 201 or !has(back.body, (try std.fmt.allocPrint(w.a, "\"mentions\":[\"human:{s}\"]", .{try hid(w.a, 1004)})))) return error.NotNamedBack;
     // Quoting a post that named the agent names nobody again: the chat's
     // quote-reply fence, and a `>` quote, are skipped.
     const quoted = try request(w.a, w.port(), "POST", path, w.steve, "In MSG_1 you said:\n~~~ quote\n@CC, a mention\n~~~\n\n> @CC again\n\nagreed");
     if (quoted.status != 201 or !has(quoted.body, "\"mentions\":[]")) return error.NamedByAQuote;
     try l.until("thanks, @Person 1004!");
-    if (!has(l.got.items, named) or !has(l.got.items, "\"mentions\":[\"human:1004\"]")) return error.NotOnTheStream;
+    if (!has(l.got.items, named) or !has(l.got.items, (try std.fmt.allocPrint(w.a, "\"mentions\":[\"human:{s}\"]", .{try hid(w.a, 1004)})))) return error.NotOnTheStream;
     const read = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
-    if (count(read.body, named) != 1 or count(read.body, "\"mentions\":[\"human:1004\"]") != 1) return error.NotInTheTranscript;
+    if (count(read.body, named) != 1 or count(read.body, (try std.fmt.allocPrint(w.a, "\"mentions\":[\"human:{s}\"]", .{try hid(w.a, 1004)}))) != 1) return error.NotInTheTranscript;
 }
 
 /// **THE SERVER'S BACKSTOP AGAINST RUNAWAY AGENTS**
@@ -1468,13 +1493,13 @@ fn authorKind(w: *World) !void {
     const redeemed = try redeem(w, try field(made_inv.body, "code"));
     if (redeemed.status != 201) return error.NotRedeemed;
     const key = try field(redeemed.body, "secret");
-    const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, "with=human%3A1015"));
+    const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1015)}))));
     const path = try agentPath(w, conv, "/messages");
-    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:1015\",\"login\":\"person1015\",\"markdown\":\"I am Person 1015\"", .{agent});
+    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:{s}\",\"login\":\"person1015\",\"markdown\":\"I am Person 1015\"", .{ agent, try hid(w.a, 1015) });
     const posted = try send(w.a, w.port(), "POST", path, .{ .key = key }, "I am Person 1015");
     if (posted.status != 201 or !has(posted.body, said)) return error.NotSaidAnAgents;
     const owners = try request(w.a, w.port(), "POST", path, ivy, "no, I am");
-    if (owners.status != 201 or !has(owners.body, "\"by\":\"human:1015\",\"kind\":\"human\",\"login\":\"person1015\",\"markdown\":\"no, I am\"")) return error.NotSaidAHumans;
+    if (owners.status != 201 or !has(owners.body, (try std.fmt.allocPrint(w.a, "\"by\":\"human:{s}\",\"kind\":\"human\",\"login\":\"person1015\",\"markdown\":\"no, I am\"", .{try hid(w.a, 1015)})))) return error.NotSaidAHumans;
     const read = try get(w.a, w.port(), try agentPath(w, conv, ""), ivy);
     if (read.status != 200 or !has(read.body, said) or count(read.body, "\"owner\":") != 1) return error.NotInTheTranscript;
 }
@@ -1494,16 +1519,16 @@ fn adminMakesChannel(w: *World) !void {
     w.ivy = try signUp(w.a, w.port(), 1014);
     if (!has((try get(w.a, w.port(), "/chat", w.ivy)).body, "<a href=\"/chat/channels\">")) return error.NoLink;
     if (has((try get(w.a, w.port(), "/chat", w.ann)).body, "/chat/channels")) return error.LinkedForAMember;
-    const r = try pagePost(w, w.ivy, "/channels", "name=Lobby&members=human%3A1001%2Chuman%3A1002");
+    const r = try pagePost(w, w.ivy, "/channels", (try std.fmt.allocPrint(w.a, "name=Lobby&members=human%3A{s}%2Chuman%3A{s}", .{ try hid(w.a, 1001), try hid(w.a, 1002) })));
     if (r.status != 201) return error.NotMade;
-    if (!has(r.body, "{\"name\":\"Lobby\",\"members\":[\"human:1001\",\"human:1002\"]}")) return error.NotTheChannel;
+    if (!has(r.body, (try std.fmt.allocPrint(w.a, "{{\"name\":\"Lobby\",\"members\":[\"human:{s}\",\"human:{s}\"]}}", .{ try hid(w.a, 1001), try hid(w.a, 1002) })))) return error.NotTheChannel;
     if ((try pagePost(w, w.ivy, "/channels", "name=general&members=")).status != 201) return error.NotMade;
     const page = try channelsPage(w, w.ivy);
     if (page.status != 200) return error.NoPage;
     const lobby = std.mem.indexOf(u8, page.body, "<li data-channel=\"Lobby\">") orelse return error.NotListed;
     const general = std.mem.indexOf(u8, page.body, "<li data-channel=\"general\">") orelse return error.NotListed;
     if (general > lobby) return error.NotSortedByKey;
-    if (!has(page.body[lobby..], "(<code>human:1001</code>)") or !has(page.body[lobby..], "(<code>human:1002</code>)")) return error.MembersNotListed;
+    if (!has(page.body[lobby..], (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1001)}))) or !has(page.body[lobby..], (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1002)})))) return error.MembersNotListed;
     if (!has(page.body, "data-path=\"/channels/Lobby/admit\"") or !has(page.body, "data-path=\"/channels/Lobby/remove\"")) return error.NoForms;
 }
 
@@ -1514,13 +1539,13 @@ fn memberRefusedChannels(w: *World) !void {
     const page = try channelsPage(w, w.ann);
     if (page.status != 403 or has(page.body, "Lobby")) return error.PageGiven;
     if ((try pagePost(w, w.ann, "/channels", "name=Annex")).status != 403) return error.MadeByAMember;
-    if ((try pagePost(w, w.ann, "/channels/Lobby/admit", "member=human%3A1003")).status != 403) return error.AdmittedByAMember;
-    if ((try pagePost(w, w.ann, "/channels/Lobby/remove", "member=human%3A1002")).status != 403) return error.RemovedByAMember;
-    if ((try pagePost(w, w.ann, "/channels/Nowhere/admit", "member=human%3A1003")).status != 403) return error.MissingSaid;
+    if ((try pagePost(w, w.ann, "/channels/Lobby/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})))).status != 403) return error.AdmittedByAMember;
+    if ((try pagePost(w, w.ann, "/channels/Lobby/remove", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1002)})))).status != 403) return error.RemovedByAMember;
+    if ((try pagePost(w, w.ann, "/channels/Nowhere/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})))).status != 403) return error.MissingSaid;
     if ((try channelsPage(w, "")).status != 303) return error.SignedOutGivenPage;
     if ((try send(w.a, w.port(), "POST", "/channels", .{}, "name=Annex")).status != 401) return error.MadeSignedOut;
     const listed = (try channelsPage(w, w.ivy)).body;
-    if (has(listed, "Annex") or has(listed, "human:1003") or !has(listed, "(<code>human:1002</code>)")) return error.Changed;
+    if (has(listed, "Annex") or has(listed, (try std.fmt.allocPrint(w.a, "human:{s}", .{try hid(w.a, 1003)}))) or !has(listed, (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1002)})))) return error.Changed;
 }
 
 /// **A KEY CHANGES NO CHANNEL**: Ivy's own key, acting as an admin with
@@ -1533,10 +1558,10 @@ fn keyRefusedChannels(w: *World) !void {
     if ((try send(w.a, w.port(), "GET", "/chat/channels", .{ .key = w.ivy_key }, "")).status != 403) return error.KeyGivenPage;
     const made = try send(w.a, w.port(), "POST", "/channels", .{ .key = w.ivy_key }, "name=Keyed");
     if (made.status != 403 or !has(made.body, "key")) return error.MadeByKey;
-    if ((try send(w.a, w.port(), "POST", "/channels/Lobby/admit", .{ .key = w.ivy_key }, "member=human%3A1003")).status != 403) return error.AdmittedByKey;
-    if ((try send(w.a, w.port(), "POST", "/channels/Lobby/remove", .{ .key = w.ivy_key }, "member=human%3A1001")).status != 403) return error.RemovedByKey;
+    if ((try send(w.a, w.port(), "POST", "/channels/Lobby/admit", .{ .key = w.ivy_key }, (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})))).status != 403) return error.AdmittedByKey;
+    if ((try send(w.a, w.port(), "POST", "/channels/Lobby/remove", .{ .key = w.ivy_key }, (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1001)})))).status != 403) return error.RemovedByKey;
     const listed = (try channelsPage(w, w.ivy)).body;
-    if (has(listed, "Keyed") or has(listed, "human:1003") or !has(listed, "(<code>human:1001</code>)")) return error.Changed;
+    if (has(listed, "Keyed") or has(listed, (try std.fmt.allocPrint(w.a, "human:{s}", .{try hid(w.a, 1003)}))) or !has(listed, (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1001)})))) return error.Changed;
 }
 
 /// **ADMIT AND REMOVE CHANGE WHO IS IN**: Cal let in (the channel named in
@@ -1544,21 +1569,21 @@ fn keyRefusedChannels(w: *World) !void {
 /// on the page; one already in, one not in, an agent, an unknown human and
 /// a channel that is not there refused, each by name.
 fn admitRemove(w: *World) !void {
-    const in = try pagePost(w, w.ivy, "/channels/lobby/admit", "member=human%3A1003");
-    if (in.status != 200 or !has(in.body, "\"human:1003\"")) return error.NotAdmitted;
-    const out = try pagePost(w, w.ivy, "/channels/Lobby/remove", "member=human%3A1001");
-    if (out.status != 200 or has(out.body, "human:1001")) return error.NotRemoved;
+    const in = try pagePost(w, w.ivy, "/channels/lobby/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})));
+    if (in.status != 200 or !has(in.body, (try std.fmt.allocPrint(w.a, "\"human:{s}\"", .{try hid(w.a, 1003)})))) return error.NotAdmitted;
+    const out = try pagePost(w, w.ivy, "/channels/Lobby/remove", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1001)})));
+    if (out.status != 200 or has(out.body, (try std.fmt.allocPrint(w.a, "human:{s}", .{try hid(w.a, 1001)})))) return error.NotRemoved;
     const listed = (try channelsPage(w, w.ivy)).body;
-    if (!has(listed, "(<code>human:1003</code>)") or has(listed, "(<code>human:1001</code>)")) return error.PageUnchanged;
-    const twice = try pagePost(w, w.ivy, "/channels/Lobby/admit", "member=human%3A1003");
+    if (!has(listed, (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1003)}))) or has(listed, (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1001)})))) return error.PageUnchanged;
+    const twice = try pagePost(w, w.ivy, "/channels/Lobby/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})));
     if (twice.status != 409 or !has(twice.body, "already")) return error.AdmittedTwice;
-    const gone = try pagePost(w, w.ivy, "/channels/Lobby/remove", "member=human%3A1001");
+    const gone = try pagePost(w, w.ivy, "/channels/Lobby/remove", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1001)})));
     if (gone.status != 409 or !has(gone.body, "not in")) return error.RemovedTwice;
     const agent = try pagePost(w, w.ivy, "/channels/Lobby/admit", try std.fmt.allocPrint(w.a, "member={s}", .{w.gil_agent}));
     if (agent.status != 400 or !has(agent.body, "no human")) return error.AgentAdmitted;
     const nobody = try pagePost(w, w.ivy, "/channels/Lobby/admit", "member=human%3A999999");
     if (nobody.status != 400 or !has(nobody.body, "no account")) return error.NobodyAdmitted;
-    if ((try pagePost(w, w.ivy, "/channels/Nowhere/admit", "member=human%3A1003")).status != 404) return error.NowhereChanged;
+    if ((try pagePost(w, w.ivy, "/channels/Nowhere/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})))).status != 404) return error.NowhereChanged;
 }
 
 /// **A NAME IS TAKEN IN ANY SPELLING**: Lobby again, as made, in lower and
@@ -1578,24 +1603,24 @@ fn takenName(w: *World) !void {
 fn channelsAudited(w: *World) !void {
     const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
     const wanted = [_][]const u8{
-        "who=human:1014 via=session:",
-        "action=make channel=Lobby members=human:1001,human:1002 verdict=permitted",
+        (try std.fmt.allocPrint(w.a, "who=human:{s} via=session:", .{try hid(w.a, 1014)})),
+        (try std.fmt.allocPrint(w.a, "action=make channel=Lobby members=human:{s},human:{s} verdict=permitted", .{ try hid(w.a, 1001), try hid(w.a, 1002) })),
         "action=make channel=general members= verdict=permitted",
-        "action=admit channel=Lobby members=human:1003 verdict=permitted",
-        "action=remove channel=Lobby members=human:1001 verdict=permitted",
-        "who=human:1001 via=session:",
+        (try std.fmt.allocPrint(w.a, "action=admit channel=Lobby members=human:{s} verdict=permitted", .{try hid(w.a, 1003)})),
+        (try std.fmt.allocPrint(w.a, "action=remove channel=Lobby members=human:{s} verdict=permitted", .{try hid(w.a, 1001)})),
+        (try std.fmt.allocPrint(w.a, "who=human:{s} via=session:", .{try hid(w.a, 1001)})),
         "action=make channel=Annex members= verdict=refused:not-admin",
-        "action=admit channel=Nowhere members=human:1003 verdict=refused:not-admin",
+        (try std.fmt.allocPrint(w.a, "action=admit channel=Nowhere members=human:{s} verdict=refused:not-admin", .{try hid(w.a, 1003)})),
         "via=key:",
         "action=make channel=Keyed members= verdict=refused:needs-session",
         "action=make channel=lobby members= verdict=refused:taken",
         "action=make channel=LOBBY members= verdict=refused:taken",
         "action=make channel= members= verdict=refused:not-a-channel-name",
-        "action=admit channel=Lobby members=human:1003 verdict=refused:already-in",
-        "action=remove channel=Lobby members=human:1001 verdict=refused:not-in",
+        (try std.fmt.allocPrint(w.a, "action=admit channel=Lobby members=human:{s} verdict=refused:already-in", .{try hid(w.a, 1003)})),
+        (try std.fmt.allocPrint(w.a, "action=remove channel=Lobby members=human:{s} verdict=refused:not-in", .{try hid(w.a, 1001)})),
         "verdict=refused:not-a-human",
         "verdict=refused:no-account",
-        "action=admit channel=Nowhere members=human:1003 verdict=refused:no-such-channel",
+        (try std.fmt.allocPrint(w.a, "action=admit channel=Nowhere members=human:{s} verdict=refused:no-such-channel", .{try hid(w.a, 1003)})),
     };
     for (wanted) |line| if (!has(log, line)) return error.NotAudited;
     if (count(log, "channel=Annex") != 1) return error.SignedOutAudited;
@@ -1614,14 +1639,14 @@ fn loginBeside(w: *World) !void {
     const redeemed = try redeem(w, try field(made_inv.body, "code"));
     if (redeemed.status != 201) return error.NotRedeemed;
     const key = try field(redeemed.body, "secret");
-    const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, "with=human%3A1016"));
+    const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, (try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1016)}))));
     // The agent's message: its kind, its owner, and its owner's login.
-    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:1016\",\"login\":\"person1016\",", .{agent});
+    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:{s}\",\"login\":\"person1016\",", .{ agent, try hid(w.a, 1016) });
     const posted = try send(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), .{ .key = key }, "I am Person 1016");
     if (posted.status != 201 or !has(posted.body, said)) return error.NoOwnersLogin;
     // The human's own: their login.
     const theirs = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), una, "no, I am");
-    if (theirs.status != 201 or !has(theirs.body, "\"by\":\"human:1016\",\"kind\":\"human\",\"login\":\"person1016\",")) return error.NoOwnLogin;
+    if (theirs.status != 201 or !has(theirs.body, (try std.fmt.allocPrint(w.a, "\"by\":\"human:{s}\",\"kind\":\"human\",\"login\":\"person1016\",", .{try hid(w.a, 1016)})))) return error.NoOwnLogin;
     // The page: the server's header, and the people list the live script draws from.
     const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{conv}), una);
     if (page.status != 200) return error.NoPage;
@@ -1658,7 +1683,7 @@ const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
-    .{ .name = "A starts a conversation with B", .f = start },
+    .{ .name = "A starts a conversation with B, named by her own id (by her GitHub id, refused)", .f = start },
     .{ .name = "B opens its stream", .f = openStream },
     .{ .name = "A posts a message of many lines", .f = post },
     .{ .name = "B's stream gets the message exactly once", .f = streamOnce },

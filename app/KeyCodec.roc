@@ -363,7 +363,7 @@ narrow = {
 broad : KeyCodec.Record(Conv)
 broad = {
 	id: Cast.kid(18446744073709551615),
-	acts_as: Principal.Id.Human(Cast.gid(583231)),
+	acts_as: Principal.Id.Human(Cast.hid(583231)),
 	generation: Cast.gen(18446744073709551615),
 	human_generation: Cast.gen(18446744073709551615),
 	scope: {

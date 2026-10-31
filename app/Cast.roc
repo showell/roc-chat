@@ -15,6 +15,19 @@ import Stored
 
 Cast := [].{
 
+	## A test's human id; 0, which the type refuses, crashes.
+	hid : U64 -> Principal.HumanId
+	hid = |n|
+		match Principal.HumanId.from_u64(n) {
+			Ok(id) => id
+			Err(NotAnId) => crash "hid: a test's human id is not 0"
+		}
+
+	## **HOW TEST HUMAN `n` SIGNS IN**: GitHub id `n + 1000`, never their
+	## human id, so a test that takes one for the other fails.
+	github : U64 -> Principal.SignIn
+	github = |n| GitHub(Cast.gid(n + 1000))
+
 	## A test's GitHub id; 0, which the type refuses, crashes.
 	gid : U64 -> Principal.GitHubId
 	gid = |n|
@@ -63,12 +76,13 @@ Cast := [].{
 			Err(NotAHash) => crash "token: 32 bytes are a hash"
 		}
 
-	## A test's human: GitHub id `n`, login `h<n>`, name `H<n>`, its role,
-	## generation 1.
+	## A test's human: id `n`, signing in as GitHub id `n + 1000`
+	## (Cast.github), login `h<n>`, name `H<n>`, its role, generation 1.
 	person : U64, Principal.Role -> Principal
 	person = |n, role|
 		Principal.Human({
-			id: Cast.gid(n),
+			id: Cast.hid(n),
+			sign_in: Cast.github(n),
 			login: "h${n.to_str()}",
 			name: "H${n.to_str()}",
 			role,
@@ -76,7 +90,7 @@ Cast := [].{
 		})
 
 	## A test's agent (named `a<id>`) or bot (`b<id>`): its id, and its
-	## owner's GitHub id; generation 1.
+	## owner's id; generation 1.
 	owned : [Agent, Bot], { id : U64, owner : U64 } -> Principal
 	owned = |kind, { id, owner }|
 		match kind {
@@ -84,7 +98,7 @@ Cast := [].{
 				Principal.Agent({
 					id: Cast.aid(id),
 					name: "a${id.to_str()}",
-					owner: Cast.gid(owner),
+					owner: Cast.hid(owner),
 					generation: Cast.gen(1),
 				})
 
@@ -92,12 +106,12 @@ Cast := [].{
 				Principal.Bot({
 					id: Cast.aid(id),
 					name: "b${id.to_str()}",
-					owner: Cast.gid(owner),
+					owner: Cast.hid(owner),
 					generation: Cast.gen(1),
 				})
 		}
 
-	## An admin human, GitHub id 1.
+	## An admin human, id 1 (GitHub id 1001).
 	boss : Principal
 	boss = Cast.person(1, Admin)
 
@@ -105,7 +119,7 @@ Cast := [].{
 	boss_demoted : Principal
 	boss_demoted = Cast.person(1, Member)
 
-	## A member human, GitHub id 2.
+	## A member human, id 2 (GitHub id 1002).
 	ann : Principal
 	ann = Cast.person(2, Member)
 

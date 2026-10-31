@@ -5,7 +5,7 @@
 ##
 ## `generation` is the generation of the human's account the session was
 ## started for (Principal.Generation): a session admits only that account,
-## never one made again later with the same GitHub id. `decode` gives a Line, an opaque value
+## never another made later, whatever GitHub id it signs in as. `decode` gives a Line, an opaque value
 ## only this module makes, and the only thing Session.load takes: a
 ## session comes back from the store through this decoder or not at all,
 ## never from a record a handler built. A record seen before it was created
@@ -29,7 +29,7 @@ SessionCodec := [].{
 	## Session.fields gives back to store.
 	Fields : {
 		id : Principal.SessionId,
-		human : Principal.GitHubId,
+		human : Principal.HumanId,
 		generation : Principal.Generation,
 		token_hash : Stored.SecretHash,
 		created : I64,
@@ -67,7 +67,7 @@ SessionCodec := [].{
 		id_field = fields.field("id")?
 		id = Stored.id(id_field.value, { name: "id", make: Principal.SessionId.from_u64 })?
 		human_field = id_field.rest.field("human")?
-		human = Stored.id(human_field.value, { name: "human", make: Principal.GitHubId.from_u64 })?
+		human = Stored.id(human_field.value, { name: "human", make: Principal.HumanId.from_u64 })?
 		generation_field = human_field.rest.field("generation")?
 		generation = Stored.id(
 			generation_field.value,
@@ -105,7 +105,7 @@ SessionCodec := [].{
 fields_at : { created : I64, seen : I64 } -> SessionCodec.Fields
 fields_at = |{ created, seen }| {
 	id: Cast.sid(12),
-	human: Cast.gid(583231),
+	human: Cast.hid(583231),
 	generation: Cast.gen(3),
 	token_hash: Cast.token(0xab),
 	created,
@@ -139,7 +139,7 @@ expect
 			{
 				..usual,
 				id: Cast.sid(18446744073709551615),
-				human: Cast.gid(18446744073709551615),
+				human: Cast.hid(18446744073709551615),
 				generation: Cast.gen(18446744073709551615),
 			},
 		],

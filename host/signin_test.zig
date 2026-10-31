@@ -250,12 +250,16 @@ test "a new human: the callback with a good code asks for a name, the name makes
 
     const me = try get(a, rig.port(), "/me", try std.fmt.allocPrint(a, "__Host-session={s}", .{session}));
     try std.testing.expectEqual(200, me.status);
-    try std.testing.expectEqualStrings("signed in as human:583231\n", me.body);
+    try std.testing.expectEqualStrings("signed in as human:1\n", me.body);
 
     // The account is stored through AccountCodec, the settings' counter advanced.
     var buf: [1024]u8 = undefined;
     const accounts = try rig.data.dir.readFile(io, "auth/accounts", &buf);
-    try std.testing.expectEqualStrings("account v1 kind=human github=583231 login=octocat generation=1 role=member name=The Octocat\n", accounts);
+    try std.testing.expectEqualStrings("account v1 kind=human id=1 github=583231 login=octocat generation=1 role=member name=The Octocat\n", accounts);
+    // The human is the chat's first (human:1), never their GitHub id; the
+    // counters stand past what was given.
+    var settings_buf: [256]u8 = undefined;
+    try std.testing.expectEqualStrings("settings v1 next=2 agent=1 human=2\n", try rig.data.dir.readFile(io, "auth/settings", &settings_buf));
 
     // The pending sign-up named again: refused, PendingReused said first.
     try expectRefused(try request(a, rig.port(), "POST", "/login/name", both, "name=Another"), "pending-reused");

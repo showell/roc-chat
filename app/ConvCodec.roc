@@ -30,7 +30,7 @@ ConvCodec := [].{
 		id : U64,
 		created : I64,
 		participants : List(Principal.Bound),
-		public_by : List({ human : Principal.GitHubId, generation : Principal.Generation }),
+		public_by : List({ human : Principal.HumanId, generation : Principal.Generation }),
 	}
 
 	## **A LINE THAT DECODED**: its fields, every one checked. Opaque: made
@@ -100,17 +100,17 @@ bound_from : List(U8) -> Try(Principal.Bound, _)
 bound_from = |value| AccountCodec.bound_from(value, "with")
 
 ## A public election as `public` spells it: `<github id>/<generation>`.
-vote_text : { human : Principal.GitHubId, generation : Principal.Generation } -> Str
+vote_text : { human : Principal.HumanId, generation : Principal.Generation } -> Str
 vote_text = |v| "${v.human.to_u64().to_str()}/${v.generation.to_u64().to_str()}"
 
 vote_from : List(U8) -> Try(
-	{ human : Principal.GitHubId, generation : Principal.Generation },
+	{ human : Principal.HumanId, generation : Principal.Generation },
 	_,
 )
 vote_from = |value|
 	match value.split_on('/') {
 		[human_part, generation_part] => {
-			human = Stored.id(human_part, { name: "public", make: Principal.GitHubId.from_u64 })?
+			human = Stored.id(human_part, { name: "public", make: Principal.HumanId.from_u64 })?
 			generation = Stored.id(
 				generation_part,
 				{ name: "public", make: Principal.Generation.from_u64 },
@@ -124,7 +124,7 @@ vote_from = |value|
 
 ann_bound : Principal.Bound
 ann_bound = {
-	id: Principal.Id.Human(Cast.gid(583231)),
+	id: Principal.Id.Human(Cast.hid(583231)),
 	generation: Cast.gen(3),
 	human: Cast.gen(3),
 }
@@ -156,13 +156,13 @@ expect
 		[
 			usual,
 			{ ..usual, participants: [ann_bound] },
-			{ ..usual, public_by: [{ human: Cast.gid(583231), generation: Cast.gen(3) }] },
+			{ ..usual, public_by: [{ human: Cast.hid(583231), generation: Cast.gen(3) }] },
 			{
 				..usual,
 				id: 18446744073709551615,
 				public_by: [
-					{ human: Cast.gid(1), generation: Cast.gen(1) },
-					{ human: Cast.gid(2), generation: Cast.gen(9) },
+					{ human: Cast.hid(1), generation: Cast.gen(1) },
+					{ human: Cast.hid(2), generation: Cast.gen(9) },
 				],
 			},
 		],

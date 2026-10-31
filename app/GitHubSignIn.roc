@@ -47,8 +47,11 @@
 ## list (Admin has no Unbar either).
 ##
 ## **Sign-up is open (Steve):** any GitHub account may make an account,
-## giving a display name (DisplayName's rule). An account is its GitHub id;
-## its login is only what GitHub last called it, so a renamed login signs
+## giving a display name (DisplayName's rule). A new account is given the
+## chat's own next human id (Accounts.next_human_id), never the GitHub id,
+## and is bound to the GitHub id it signed up as (`sign_in`): that binding,
+## one account to a GitHub id, is how it is found again. Its login is only
+## what GitHub last called it, so a renamed login signs
 ## in to the same account, and a login another id gave up is a new account.
 ## **The first admin** is the GitHub id the settings name, made admin when
 ## its account is made and only while there is no admin yet. Pure.
@@ -126,6 +129,13 @@ GitHubSignIn := [].{
 		## The generation counter is spent.
 		GenerationsExhausted,
 
+		## The settings' next human id is not above every human's: the
+		## counter went back, and an id might be given twice.
+		StaleHumanId,
+
+		## The human-id counter is spent.
+		HumanIdsExhausted,
+
 		## The clock is outside Stored's range (before 1970 or past 9999):
 		## no session or account it would stamp could be stored.
 		ClockOutOfRange,
@@ -144,7 +154,8 @@ GitHubSignIn := [].{
 			GitHubDenied | NotACode => Anonymous
 			PendingForged | PendingMismatched | PendingExpired | PendingReused => Anonymous
 			GitHubUnreachable | BadIdentity | Barred | AccountExists => Audited
-			DuplicateAccount | AccountsFull | StaleGeneration | GenerationsExhausted | ClockOutOfRange => Audited
+			DuplicateAccount | AccountsFull | StaleGeneration | GenerationsExhausted => Audited
+			StaleHumanId | HumanIdsExhausted | ClockOutOfRange => Audited
 		}
 
 	## **A NEW SESSION'S FACTS**, the host's: its public number, and the
@@ -166,7 +177,7 @@ GitHubSignIn := [].{
 	## held: the human, the account's generation the session is bound to,
 	## the host's facts of the new session, and the time.
 	Admission :: {
-		human : Principal.GitHubId,
+		human : Principal.HumanId,
 		generation : Principal.Generation,
 		session : GitHubSignIn.NewSession,
 		now : I64,
@@ -174,7 +185,7 @@ GitHubSignIn := [].{
 
 		## What the admission holds, for Session.start.
 		facts : GitHubSignIn.Admission -> {
-			human : Principal.GitHubId,
+			human : Principal.HumanId,
 			generation : Principal.Generation,
 			session : GitHubSignIn.NewSession,
 			now : I64,
@@ -484,7 +495,7 @@ GitHubSignIn := [].{
 			} else if List.contains(settings.barred, p.github) {
 				Refused(Barred)
 			} else {
-				match (pending_use, Principal.find(accounts, Principal.Id.Human(p.github))) {
+				match (pending_use, Principal.github_account(accounts, p.github)) {
 					(UsedBefore, _) => Refused(PendingReused)
 					(FirstUse, Ok(_)) => Refused(AccountExists)
 					(FirstUse, Err(Duplicated)) => Refused(DuplicateAccount)
@@ -496,17 +507,44 @@ GitHubSignIn := [].{
 						match (
 							DisplayName.from_utf8(name),
 							Accounts.next_generation(accounts, settings),
+							Accounts.next_human_id(accounts, settings),
 						) {
-							(Err(problem), _) => NameRefused(problem)
-							(Ok(chosen), _) if Accounts.name_holder(accounts, chosen.to_str()) != Free => NameTaken
-							(Ok(_), Err(why)) => Refused(why)
-							(Ok(chosen), Ok({ this, next })) =>
+							(
+								Err(problem),
+								_,
+								_,
+							) => NameRefused(problem)
+							(
+								Ok(chosen),
+								_,
+								_,
+							) if Accounts.name_holder(
+								accounts,
+								chosen.to_str(),
+							) != Free => NameTaken
+							(
+								Ok(_),
+								Err(why),
+								_,
+							) => Refused(why)
+							(
+								Ok(_),
+								Ok(_),
+								Err(why),
+							) => Refused(why)
+							(
+								Ok(chosen),
+								Ok({ this, next }),
+								Ok(ids),
+							) =>
 								Created({
 									steps: [
 										AdvanceGeneration(next),
+										AdvanceHumanId(ids.next),
 										AddAccount(
 											Principal.Human({
-												id: p.github,
+												id: ids.this,
+												sign_in: GitHub(p.github),
 												login: p.login.to_str(),
 												name: chosen.to_str(),
 												role: first_role({
@@ -526,7 +564,7 @@ GitHubSignIn := [].{
 										),
 									admission: GitHubSignIn.Admission.(
 										{
-											human: p.github,
+											human: ids.this,
 											generation: this,
 											session,
 											now,
@@ -583,35 +621,75 @@ known_account = |
 	if List.contains(settings.barred, github) {
 		Barred
 	} else {
-		match Principal.human_account(accounts, github) {
+		match Principal.github_account(accounts, github) {
 			Err(NoSuchPrincipal) => Unknown
 			Err(Duplicated) => Duplicate
-			Ok(h) => {
-				fresh = login.to_str()
-				Known({
-					steps: (
-						if (h.login == fresh) [] else [
-							SetLogin({
-								human: github,
-								login: fresh,
-							}),
-						]
-					).concat(displaced(accounts, { github, login })),
-					admission: GitHubSignIn.Admission.(
-						{
-							human: github,
-							generation: h.generation,
-							session,
-							now,
-						},
-					),
-				})
-			}
+			Ok(id) => known_human(
+				accounts,
+				id,
+				{
+					github,
+					login,
+					session,
+					now,
+				},
+			)
+		}
+	}
+
+## The human `id` signing in again: their login made GitHub's, and the
+## session admitted to them.
+known_human : List(Principal),
+Principal.HumanId,
+{
+	github : Principal.GitHubId,
+	login : GitHubLogin,
+	session : GitHubSignIn.NewSession,
+	now : I64,
+} -> [
+	Barred,
+	Duplicate,
+	Known(GitHubSignIn.SignedIn),
+	Unknown,
+]
+known_human = |
+	accounts,
+	id,
+	{
+		github,
+		login,
+		session,
+		now,
+	},
+|
+	match Principal.human_account(accounts, id) {
+		Err(NoSuchPrincipal) => Unknown
+		Err(Duplicated) => Duplicate
+		Ok(h) => {
+			fresh = login.to_str()
+			Known({
+				steps: (
+					if (h.login == fresh) [] else [
+						SetLogin({
+							human: h.id,
+							login: fresh,
+						}),
+					]
+				).concat(displaced(accounts, { github, login })),
+				admission: GitHubSignIn.Admission.(
+					{
+						human: h.id,
+						generation: h.generation,
+						session,
+						now,
+					},
+				),
+			})
 		}
 	}
 
 ## **THE OTHER ACCOUNTS HOLDING `login`**, a ClearLogin each: every human
-## but `github` whose stored login is `login` in any case.
+## but the one signing in as `github` whose stored login is `login` in any case.
 displaced : List(Principal),
 {
 	github : Principal.GitHubId,
@@ -624,7 +702,7 @@ displaced = |accounts, { github, login }| {
 		|p|
 			match p {
 				Human(h) =>
-					if h.id != github and h.login != "" and Accounts.lowered_login(h.login) == wanted {
+					if h.sign_in != GitHub(github) and h.login != "" and Accounts.lowered_login(h.login) == wanted {
 						[ClearLogin({ human: h.id, login: h.login })]
 					} else {
 						[]
@@ -664,7 +742,8 @@ first_role = |
 
 # ── tests
 
-## A test's human: GitHub id `n`, its login, name and role, made at 500.
+## A test's human: GitHub id `n`, human id `n + 40` (`hum`), its login,
+## name and role, made at 500.
 human : U64,
 {
 	login : Str,
@@ -679,15 +758,21 @@ human = |
 		role,
 	},
 | Principal.Human({
-	id: Cast.gid(n),
+	id: hum(n),
+	sign_in: GitHub(Cast.gid(n)),
 	login,
 	name,
 	role,
 	generation: Cast.gen(5),
 })
 
-# The cast: Boss (GitHub id 1), the admin; Ann (2), a member; Ann's agent,
-# whose owner id is Ann's.
+## **HUMAN `n`'S OWN ID**: their GitHub id `n` plus 40, never `n`
+## itself, so a test that takes one for the other fails.
+hum : U64 -> Principal.HumanId
+hum = |n| Cast.hid(n + 40)
+
+# The cast: Boss (GitHub id 1, human 41), the admin; Ann (GitHub id 2,
+# human 42), a member; Ann's agent, whose owner is Ann's human id.
 boss : Principal
 boss = human(
 	1,
@@ -711,7 +796,7 @@ ann = human(
 ann_agent : Principal
 ann_agent = Principal.Agent({
 	id: Cast.aid(1),
-	owner: Cast.gid(2),
+	owner: hum(2),
 	name: "Ann's agent",
 	generation: Cast.gen(6),
 })
@@ -733,6 +818,7 @@ usual_settings = {
 	barred: [Cast.gid(66)],
 	next_generation: Cast.gen(10),
 	next_agent_id: Cast.aid(20),
+	next_human_id: Cast.hid(100),
 }
 
 # ── STARTED
@@ -826,7 +912,8 @@ resolved_by = |f| {
 ## A human account, every field, for a test to compare (Principal has no
 ## `==`).
 Seen : {
-	id : Principal.GitHubId,
+	id : Principal.HumanId,
+	sign_in : Principal.SignIn,
 	login : Str,
 	name : Str,
 	role : Principal.Role,
@@ -835,7 +922,7 @@ Seen : {
 
 ## What an admission holds, comparably.
 Facts_ : {
-	human : Principal.GitHubId,
+	human : Principal.HumanId,
 	generation : Principal.Generation,
 	session : GitHubSignIn.NewSession,
 	now : I64,
@@ -851,10 +938,11 @@ seen = |account|
 ## A step, comparably: an added account every field of it.
 SeenStep : [
 	AddAccount(Seen),
-	SetLogin({ human : Principal.GitHubId, login : Str }),
-	ClearLogin({ human : Principal.GitHubId, login : Str }),
+	SetLogin({ human : Principal.HumanId, login : Str }),
+	ClearLogin({ human : Principal.HumanId, login : Str }),
 	AdvanceGeneration(Principal.Generation),
 	AdvanceAgentId(Principal.AgentId),
+	AdvanceHumanId(Principal.HumanId),
 ]
 
 seen_step : Accounts.Change -> SeenStep
@@ -865,6 +953,7 @@ seen_step = |step|
 		ClearLogin(c) => ClearLogin(c)
 		AdvanceGeneration(g) => AdvanceGeneration(g)
 		AdvanceAgentId(id) => AdvanceAgentId(id)
+		AdvanceHumanId(id) => AdvanceHumanId(id)
 	}
 
 ## What resolving says, comparably.
@@ -896,7 +985,7 @@ said = |f|
 ## was made at 500.
 session_for : U64 -> Facts_
 session_for = |n| {
-	human: Cast.gid(n),
+	human: hum(n),
 	generation: Cast.gen(5),
 	session: new_session,
 	now: 1060,
@@ -922,7 +1011,7 @@ expect
 	})
 		== SignedIn({
 			admission: session_for(2),
-			steps: [SetLogin({ human: Cast.gid(2), login: "ann-b" })],
+			steps: [SetLogin({ human: hum(2), login: "ann-b" })],
 		})
 
 # **A LOGIN REUSED BY ANOTHER ID IS ANOTHER ACCOUNT**: GitHub id 3 now
@@ -1151,27 +1240,33 @@ name_said = |n|
 ## The admission a naming at `at` makes for Ann's new account, made then.
 named_at : I64 -> Facts_
 named_at = |at| {
-	human: Cast.gid(2),
+	human: Cast.hid(100),
 	generation: Cast.gen(10),
 	session: new_session,
 	now: at,
 }
 
-## Ann's new account, named `name`, with `role`, made at 1120.
+## Ann's new account, named `name`, with `role`, made at 1120: the
+## settings' next human id (100), never her GitHub id.
 ann_as : Str, Principal.Role -> Seen
 ann_as = |name, role| {
-	id: Cast.gid(2),
+	id: Cast.hid(100),
+	sign_in: GitHub(Cast.gid(2)),
 	login: "ann",
 	name,
 	role,
 	generation: Cast.gen(10),
 }
 
-## Made at 1120 as `account`, the counter advanced, no login cleared.
+## Made at 1120 as `account`, both counters advanced, no login cleared.
 made : Seen -> NameSaid
 made = |account| Created({
 	admission: named_at(1120),
-	steps: [AdvanceGeneration(Cast.gen(11)), AddAccount(account)],
+	steps: [
+		AdvanceGeneration(Cast.gen(11)),
+		AdvanceHumanId(Cast.hid(101)),
+		AddAccount(account),
+	],
 })
 
 # Made: a member, named as given, trimmed, created now; its admission.
@@ -1195,7 +1290,7 @@ cap_filler = |n| List.concat(
 		|_, i| Principal.Agent({
 			id: Cast.aid(1000 + i),
 			name: "A",
-			owner: Cast.gid(1),
+			owner: hum(1),
 			generation: Cast.gen(1),
 		}),
 	),
@@ -1214,7 +1309,10 @@ expect
 expect name_said({ ..usual_naming, name: Str.to_utf8("boss") }) == NameTaken
 expect name_said({ ..usual_naming, name: Str.to_utf8("ANN'S  agent") }) == NameTaken
 expect name_said({ ..usual_naming, name: Str.to_utf8("Boss 2") }) == made(ann_as("Boss 2", Member))
-expect name_said({ ..usual_naming, name: Str.to_utf8("\u(0412)oss") }) == made(ann_as("\u(0412)oss", Member))
+expect name_said({
+	..usual_naming,
+	name: Str.to_utf8("\u(0412)oss"),
+}) == made(ann_as("\u(0412)oss", Member))
 expect name_said({ ..usual_naming, name: [] }) == NameRefused(Empty)
 expect name_said({ ..usual_naming, name: Str.to_utf8("   ") }) == NameRefused(Empty)
 expect name_said({ ..usual_naming, name: Str.to_utf8(Str.repeat("n", 65)) }) == NameRefused(TooLong)
@@ -1321,6 +1419,7 @@ expect name_said({
 	admission: { ..named_at(1120), generation: Cast.gen(7) },
 	steps: [
 		AdvanceGeneration(Cast.gen(8)),
+		AdvanceHumanId(Cast.hid(101)),
 		AddAccount({ ..ann_as("Ann B.", Member), generation: Cast.gen(7) }),
 	],
 })
@@ -1352,7 +1451,11 @@ expect
 	name_said({ ..usual_naming, at: 1659 })
 		== Created({
 			admission: named_at(1659),
-			steps: [AdvanceGeneration(Cast.gen(11)), AddAccount(ann_as("Ann B.", Member))],
+			steps: [
+				AdvanceGeneration(Cast.gen(11)),
+				AdvanceHumanId(Cast.hid(101)),
+				AddAccount(ann_as("Ann B.", Member)),
+			],
 		})
 expect name_said({ ..usual_naming, at: 1660 }) == Refused(PendingExpired)
 expect name_said({ ..usual_naming, at: 1059 }) == Refused(PendingExpired)
@@ -1389,8 +1492,9 @@ expect
 			admission: named_at(1120),
 			steps: [
 				AdvanceGeneration(Cast.gen(11)),
+				AdvanceHumanId(Cast.hid(101)),
 				AddAccount(ann_as("Ann B.", Member)),
-				ClearLogin({ human: Cast.gid(7), login: "ANN" }),
+				ClearLogin({ human: hum(7), login: "ANN" }),
 			],
 		})
 expect
@@ -1404,7 +1508,7 @@ expect
 	})
 		== SignedIn({
 			admission: session_for(2),
-			steps: [ClearLogin({ human: Cast.gid(7), login: "ANN" })],
+			steps: [ClearLogin({ human: hum(7), login: "ANN" })],
 		})
 # A login already cleared is cleared nowhere again.
 expect said({
@@ -1554,11 +1658,94 @@ twice = Accounts.applied(
 expect once.accounts.map(Principal.id) == [
 	Principal.id(boss),
 	Principal.id(ann_agent),
-	Principal.Id.Human(Cast.gid(2)),
+	Principal.Id.Human(Cast.hid(100)),
 ]
 expect twice.accounts.map(Principal.id) == once.accounts.map(Principal.id)
-expect once.settings == { ..usual_settings, next_generation: Cast.gen(11) }
+expect once.settings == {
+	..usual_settings,
+	next_generation: Cast.gen(11),
+	next_human_id: Cast.hid(101),
+}
 expect twice.settings == once.settings
+
+# **A HUMAN'S ID IS THE CHAT'S OWN, GIVEN ONCE.** Ann's second sign-in,
+# as the same GitHub id, lands on the account her first made (human 100);
+# Cy, another GitHub id (3), is made next, as human 101; and once Ann's
+# account is gone, the next sign-up is 102, never her 100 again.
+ann_back : Said
+ann_back = said({
+	..usual,
+	accounts: once.accounts,
+	settings: once.settings,
+})
+expect ann_back == SignedIn({
+	admission: {
+		..session_for(2),
+		human: Cast.hid(100),
+		generation: Cast.gen(10),
+	},
+	steps: [],
+})
+
+cy_naming : { accounts : List(Principal), settings : Accounts.Settings } -> Naming
+cy_naming = |after| {
+	..usual_naming,
+	pending: Signed({
+		..usual_pending,
+		github: 3,
+		login: Str.to_utf8("cy"),
+	}),
+	name: Str.to_utf8("Cy"),
+	accounts: after.accounts,
+	settings: after.settings,
+}
+
+with_cy : { accounts : List(Principal), settings : Accounts.Settings }
+with_cy = Accounts.applied(signed_up(cy_naming(once)), once)
+
+expect with_cy.accounts.map(Principal.id) == [
+	Principal.id(boss),
+	Principal.id(ann_agent),
+	Principal.Id.Human(Cast.hid(100)),
+	Principal.Id.Human(Cast.hid(101)),
+]
+expect Principal.github_account(with_cy.accounts, Cast.gid(3)) == Ok(Cast.hid(101))
+expect Principal.github_account(with_cy.accounts, Cast.gid(2)) == Ok(Cast.hid(100))
+
+ann_gone : { accounts : List(Principal), settings : Accounts.Settings }
+ann_gone = { ..once, accounts: [boss, ann_agent] }
+
+expect
+	match name_said(cy_naming(ann_gone)) {
+		Created(c) => c.admission.human == Cast.hid(101)
+		_ => Bool.False
+	}
+expect Accounts.applied(signed_up(cy_naming(ann_gone)), ann_gone).accounts.map(Principal.id) == [
+	Principal.id(boss),
+	Principal.id(ann_agent),
+	Principal.Id.Human(Cast.hid(101)),
+]
+
+# **THE HUMAN-ID COUNTER, HOSTILE**: gone back to a human's id or below
+# (an id might be given twice), refused; spent, refused; one above every
+# human's, used.
+expect name_said({
+	..usual_naming,
+	settings: { ..usual_settings, next_human_id: hum(1) },
+}) == Refused(StaleHumanId)
+expect name_said({
+	..usual_naming,
+	settings: { ..usual_settings, next_human_id: Cast.hid(3) },
+}) == Refused(StaleHumanId)
+expect name_said({
+	..usual_naming,
+	settings: { ..usual_settings, next_human_id: Cast.hid(18446744073709551615) },
+}) == Refused(HumanIdsExhausted)
+expect
+	match name_said({ ..usual_naming, settings: { ..usual_settings, next_human_id: hum(2) } }) {
+		Created(c) => c.admission.human == hum(2) and c.steps.contains(AdvanceHumanId(hum(3)))
+		_ => Bool.False
+	}
 # The counter is never lowered by a step behind it.
 expect Accounts.applied(
 	[AdvanceGeneration(Cast.gen(3))],
@@ -1579,8 +1766,8 @@ every_step = [
 			},
 		),
 	),
-	SetLogin({ human: Cast.gid(66), login: "back" }),
-	ClearLogin({ human: Cast.gid(66), login: "gone" }),
+	SetLogin({ human: hum(66), login: "back" }),
+	ClearLogin({ human: hum(66), login: "gone" }),
 	AdvanceGeneration(Cast.gen(99)),
 ]
 
@@ -1627,6 +1814,8 @@ expect
 			AccountsFull,
 			StaleGeneration,
 			GenerationsExhausted,
+			StaleHumanId,
+			HumanIdsExhausted,
 			ClockOutOfRange,
 		],
 		|why| GitHubSignIn.audited(why) == Audited,
