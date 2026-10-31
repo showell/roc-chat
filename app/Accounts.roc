@@ -6,6 +6,8 @@
 ## action (Admin) are each a list of these steps, so what a step means is
 ## decided here alone. Pure.
 import Ascii
+import Cast
+import DisplayName
 import Principal
 
 Accounts := [].{
@@ -24,6 +26,17 @@ Accounts := [].{
 		next_generation : Principal.Generation,
 		next_agent_id : Principal.AgentId,
 	}
+
+	## **WHO HOLDS THIS NAME, IF ANYONE?** The account, human, agent or bot,
+	## whose name is the same as `name` (DisplayName.same: case folded, runs
+	## of spaces collapsed), among `accounts`: one namespace for every
+	## principal, so a name is taken whoever holds it.
+	name_holder : List(Principal), Str -> [Held(Principal.Id), Free]
+	name_holder = |accounts, name|
+		match accounts.keep_if(|p| DisplayName.same(name_of(p), name)) {
+			[holder, ..] => Held(holder.id())
+			[] => Free
+		}
 
 	## **ONE STEP OF AN ACCOUNT CHANGE** (a sign-in's, an agent's making),
 	## for the host to apply in order (`applied` says what each does). Steps, never whole records of an
@@ -201,3 +214,39 @@ agent_id_of = |p|
 
 u64_most : U64
 u64_most = 18446744073709551615
+
+## A principal's name, whichever kind it is.
+name_of : Principal -> Str
+name_of = |p|
+	match p {
+		Human(h) => h.name
+		Agent(a) => a.name
+		Bot(b) => b.name
+	}
+
+# One namespace: a name is held whoever holds it, human, agent or bot, in
+# any case and spacing; a near miss is free.
+named : U64, Str -> Principal
+named = |n, name| Principal.Human({
+	id: Cast.gid(n),
+	login: "h${n.to_str()}",
+	name,
+	role: Member,
+	generation: Cast.gen(1),
+})
+
+expect Accounts.name_holder(
+	[named(1, "Debbie Benton")],
+	"debbie  BENTON",
+) == Held(Principal.Id.Human(Cast.gid(1)))
+expect Accounts.name_holder(
+	[Cast.owned(Agent, { id: 4, owner: 1 })],
+	"A4",
+) == Held(Principal.Id.Agent(Cast.aid(4)))
+expect Accounts.name_holder(
+	[Cast.owned(Bot, { id: 5, owner: 1 })],
+	"b5",
+) == Held(Principal.Id.Bot(Cast.aid(5)))
+expect Accounts.name_holder([named(1, "Debbie Benton")], "Debbie Bento") == Free
+expect Accounts.name_holder([named(1, "Ann")], "\u(0410)nn") == Free
+expect Accounts.name_holder([], "Ann") == Free

@@ -145,12 +145,14 @@ Agents := [].{
 	Asked : { default_as : Principal.Id, form : List(U8) }
 
 	## **WHAT MAKING AN AGENT DECIDED**: the agent and the steps that store
-	## it; the name refused (DisplayName's rule); the granter refused, as a
+	## it; the name refused (DisplayName's rule), or taken by any account,
+	## human, agent or bot (Accounts.name_holder: one namespace); the granter refused, as a
 	## grant is (only a live session, never a key); or a counter that cannot
 	## give a fresh id or generation.
 	Made : [
 		Made({ agent : Principal, steps : List(Accounts.Change) }),
 		NameRefused(DisplayName.Problem),
+		NameTaken,
 		Refused(
 			[
 				GrantedByKey,
@@ -219,6 +221,11 @@ Agents := [].{
 											_,
 											_,
 										) => NameRefused(problem)
+										(
+											Ok(chosen),
+											_,
+											_,
+										) if Accounts.name_holder(accounts, chosen.to_str()) != Free => NameTaken
 										(
 											_,
 											Err(why),
@@ -510,6 +517,7 @@ make_agent_for! = |granter, form| {
 				now,
 			}) {
 				NameRefused(_) => Wire.refused(400, "that name is not one we can show")
+				NameTaken => Wire.refused(409, "that name is taken")
 				Capped(AgentsPerHuman) => Wire.refused(
 					403,
 					"you have as many agents as one person may (${Limits.agents_per_human.to_str()})",
@@ -1474,6 +1482,7 @@ Said : [
 		},
 	),
 	NameRefused(DisplayName.Problem),
+	NameTaken,
 	Refused(
 		[
 			GrantedByKey,
@@ -1516,6 +1525,7 @@ said = |made|
 		})
 		Made(_) => Other
 		NameRefused(p) => NameRefused(p)
+		NameTaken => NameTaken
 		Refused(why) => Refused(why)
 		Capped(cap) => Capped(cap)
 		Stuck(why) => Stuck(why)
@@ -1710,6 +1720,17 @@ expect
 		})
 
 # A bad name is refused; so is anyone but a live session.
+# One namespace: an agent named as any account, a human (Cast's ann is
+# "H2") or another agent ("a3"), in any case or spacing, is refused; a near
+# miss is made.
+expect said(made_by(2, "h2")) == NameTaken
+expect said(made_by(2, "A3")) == NameTaken
+expect said(made_by(1, "  b2 ")) == NameTaken
+expect
+	match said(made_by(2, "H2 agent")) {
+		Agent(a) => a.name == "H2 agent"
+		_ => Bool.False
+	}
 expect said(made_by(2, "")) == NameRefused(Empty)
 expect said(made_by(2, "a\nb")) == NameRefused(ControlCharacter)
 expect said(

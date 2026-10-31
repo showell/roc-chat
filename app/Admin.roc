@@ -597,8 +597,9 @@ key_for = |acts_as, { scope, key }|
 		Err(Refused(_)) => crash "key_for: a test's key is grantable"
 	}
 
-# The credentials: sessions signed in at 100000, one a day before 100500
-# (idle by 100500, when the table is decided).
+# The credentials: sessions signed in at 100000, and one dated after
+# 100500, when the table is decided (a session from a time not yet
+# reached is over, as an idle one is: Session.liveness).
 boss_session : Admin.Credential(Str, Str)
 boss_session = Session(
 	session_of({
@@ -626,12 +627,12 @@ cal_session = Session(
 	}),
 )
 
-boss_idle_session : Admin.Credential(Str, Str)
-boss_idle_session = Session(
+boss_stale_session : Admin.Credential(Str, Str)
+boss_stale_session = Session(
 	session_of({
 		n: 3,
 		who: 1,
-		at: 100500 - Session.idle_secs,
+		at: 100501,
 	}),
 )
 
@@ -772,16 +773,16 @@ expect verdict(ann_session, retire_cal) == Refused(NotAdmin)
 expect verdict(ann_session, revoke_cal_agent_keys) == Refused(NotAdmin)
 expect verdict(ann_session, ReadCounters) == Refused(NotAdmin)
 
-# boss's session, a day idle: nothing.
-expect verdict(boss_idle_session, ListAccounts) == Refused(SessionExpired)
-expect verdict(boss_idle_session, retire_ann_agent) == Refused(SessionExpired)
-expect verdict(boss_idle_session, retire_boss) == Refused(SessionExpired)
-expect verdict(boss_idle_session, revoke_ann_keys) == Refused(SessionExpired)
-expect verdict(boss_idle_session, revoke_ann_sessions) == Refused(SessionExpired)
-expect verdict(boss_idle_session, promote_ann) == Refused(SessionExpired)
-expect verdict(boss_idle_session, retire_cal) == Refused(SessionExpired)
-expect verdict(boss_idle_session, revoke_cal_agent_keys) == Refused(SessionExpired)
-expect verdict(boss_idle_session, ReadCounters) == Refused(SessionExpired)
+# boss's session, over (dated after now): nothing.
+expect verdict(boss_stale_session, ListAccounts) == Refused(SessionExpired)
+expect verdict(boss_stale_session, retire_ann_agent) == Refused(SessionExpired)
+expect verdict(boss_stale_session, retire_boss) == Refused(SessionExpired)
+expect verdict(boss_stale_session, revoke_ann_keys) == Refused(SessionExpired)
+expect verdict(boss_stale_session, revoke_ann_sessions) == Refused(SessionExpired)
+expect verdict(boss_stale_session, promote_ann) == Refused(SessionExpired)
+expect verdict(boss_stale_session, retire_cal) == Refused(SessionExpired)
+expect verdict(boss_stale_session, revoke_cal_agent_keys) == Refused(SessionExpired)
+expect verdict(boss_stale_session, ReadCounters) == Refused(SessionExpired)
 
 # boss_agent's admin key: as boss on members' accounts, but never retiring
 # boss, never another admin or their agent, never a role, never a bar.

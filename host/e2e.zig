@@ -167,6 +167,14 @@ fn signUp(a: std.mem.Allocator, port: u16, n: u64) ![]const u8 {
 
 /// The same, with the display name `name`, form-encoded.
 fn signUpAs(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) ![]const u8 {
+    const made = try nameFormAnswer(a, port, n, name);
+    if (made.status != 303) return error.NotSignedIn;
+    return std.fmt.allocPrint(a, "__Host-session={s}", .{made.cookie("session") orelse return error.NoSessionCookie});
+}
+
+/// GitHub user `n` through the sign-in, then the name form's answer to
+/// `name`: a 303 with a session, or the form again saying why not.
+fn nameFormAnswer(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) !Response {
     const login = try get(a, port, "/login", "");
     if (login.status != 303) return error.LoginNotARedirect;
     const location = login.header("location") orelse return error.NoLocation;
@@ -176,9 +184,7 @@ fn signUpAs(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) ![]const 
     const named = try get(a, port, target, state_cookie);
     if (named.status != 200) return error.NoNameForm;
     const both = try std.fmt.allocPrint(a, "{s}; __Host-pending={s}", .{ state_cookie, named.cookie("pending") orelse return error.NoPendingCookie });
-    const made = try request(a, port, "POST", "/login/name", both, try std.fmt.allocPrint(a, "name={s}", .{name}));
-    if (made.status != 303) return error.NotSignedIn;
-    return std.fmt.allocPrint(a, "__Host-session={s}", .{made.cookie("session") orelse return error.NoSessionCookie});
+    return request(a, port, "POST", "/login/name", both, try std.fmt.allocPrint(a, "name={s}", .{name}));
 }
 
 /// A held stream as a browser reads it: its head, then what it says, kept
@@ -568,10 +574,11 @@ const agents_per_human = 20;
 
 fn agentsCapped(w: *World) !void {
     const dee = try signUp(w.a, w.port(), 1006);
-    for (0..agents_per_human) |_| {
-        if ((try request(w.a, w.port(), "POST", "/agents", dee, "name=Many")).status != 201) return error.NotMade;
+    // Each its own name: no two principals hold one.
+    for (0..agents_per_human) |i| {
+        if ((try request(w.a, w.port(), "POST", "/agents", dee, try std.fmt.allocPrint(w.a, "name=Many+{d}", .{i}))).status != 201) return error.NotMade;
     }
-    const r = try request(w.a, w.port(), "POST", "/agents", dee, "name=Many");
+    const r = try request(w.a, w.port(), "POST", "/agents", dee, "name=Many+more");
     if (r.status != 403) return error.Uncapped;
     if (!has(r.body, "as many agents")) return error.NotSaid;
 }
@@ -1445,14 +1452,15 @@ fn anonymousUnaudited(w: *World) !void {
 }
 
 /// **A MESSAGE SAYS ITS POSTER'S KIND, AND AN AGENT'S OWNER**
-/// (app/Conversations.roc's message_json): an agent that took its owner's
-/// own display name posts, and its post's answer and the transcript say
+/// (app/Conversations.roc's message_json): an agent named as a look-alike
+/// of its owner (a Cyrillic `е`: its very name is taken, by the one
+/// namespace) posts, and its post's answer and the transcript say
 /// `"kind":"agent"` and the human it answers to; its owner's post says
 /// `"kind":"human"`, with no owner.
 fn authorKind(w: *World) !void {
     // A human of their own, so no earlier step's caps are in the way.
     const ivy = try signUp(w.a, w.port(), 1015);
-    const made = try request(w.a, w.port(), "POST", "/agents", ivy, "name=Person+1015");
+    const made = try request(w.a, w.port(), "POST", "/agents", ivy, "name=P%D0%B5rson+1015");
     if (made.status != 201) return error.NotMade;
     const agent = try field(made.body, "id");
     const made_inv = try request(w.a, w.port(), "POST", "/invites", ivy, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
@@ -1595,9 +1603,10 @@ fn channelsAudited(w: *World) !void {
 }
 
 fn loginBeside(w: *World) !void {
-    // A human of their own (login person1016), and an agent named as they are.
+    // A human of their own (login person1016), and an agent named as a
+    // look-alike of them (a Cyrillic `е`; their very name is taken).
     const una = try signUp(w.a, w.port(), 1016);
-    const made = try request(w.a, w.port(), "POST", "/agents", una, "name=Person+1016");
+    const made = try request(w.a, w.port(), "POST", "/agents", una, "name=P%D0%B5rson+1016");
     if (made.status != 201) return error.NotMade;
     const agent = try field(made.body, "id");
     const made_inv = try request(w.a, w.port(), "POST", "/invites", una, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
@@ -1616,10 +1625,33 @@ fn loginBeside(w: *World) !void {
     // The page: the server's header, and the people list the live script draws from.
     const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{conv}), una);
     if (page.status != 200) return error.NoPage;
-    const label = "Person 1016 · agent of @person1016";
+    const label = "P\xd0\xb5rson 1016 · agent of @person1016";
     if (!has(page.body, "<header>" ++ label ++ " · <time")) return error.NoLabelOnTheMessage;
     if (!has(page.body, "\">" ++ label ++ "</li>")) return error.NoLabelForTheScript;
     if (!has(page.body, "<header>Person 1016 · @person1016 · <time")) return error.NoLoginBesideTheHuman;
+}
+
+/// **ONE NAMESPACE: A NAME IS HELD ONCE** (app/DisplayName.roc's
+/// `same`, Accounts.name_holder): a second human signing up as a name a
+/// human holds, in another case and spacing, gets the form again saying it
+/// is taken, and no account; a near miss is signed up.
+fn humanNameTaken(w: *World) !void {
+    _ = try signUpAs(w.a, w.port(), 1017, "Debbie+Benton");
+    const again = try nameFormAnswer(w.a, w.port(), 1018, "debbie++BENTON");
+    if (again.status != 400 or !has(again.body, "That name is taken")) return error.NameTakenTwice;
+    if (again.cookie("session") != null) return error.SignedInAnyway;
+    _ = try signUpAs(w.a, w.port(), 1018, "Debbie+Benton+2");
+}
+
+/// The same for an agent: one named as a human (another's, in another
+/// case), or as another's agent, is a 409 saying so; a near miss is made.
+fn agentNameTaken(w: *World) !void {
+    const owner = try signUp(w.a, w.port(), 1019);
+    const as_human = try request(w.a, w.port(), "POST", "/agents", owner, "name=DEBBIE+benton");
+    if (as_human.status != 409 or !has(as_human.body, "that name is taken")) return error.AgentTookAHumansName;
+    if ((try request(w.a, w.port(), "POST", "/agents", owner, "name=Mine+1019")).status != 201) return error.NotMade;
+    if ((try request(w.a, w.port(), "POST", "/agents", owner, "name=mine+1019")).status != 409) return error.AgentNameTwice;
+    if ((try request(w.a, w.port(), "POST", "/agents", owner, "name=Debbie+Bentons")).status != 201) return error.NearMissRefused;
 }
 
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
@@ -1689,14 +1721,16 @@ const steps = [_]Step{
     .{ .name = "a key asking for the agents page is a 403", .f = agentsPageRefusesKey },
     .{ .name = "the start form offers the viewer's own agents to tick, no one else's", .f = startPicksAgents },
     .{ .name = "an invite redeemed with format=secret answers the secret alone, and it works; an unknown format spends nothing", .f = redeemSecretAlone },
-    .{ .name = "an agent's post says its kind and its owner, though it took its owner's name; a human's says no owner", .f = authorKind },
+    .{ .name = "an agent's post says its kind and its owner, though it took a look-alike of its owner's name; a human's says no owner", .f = authorKind },
     .{ .name = "an admin makes channels, linked from /chat for her alone; the channels page lists them by key, with their members", .f = adminMakesChannel },
     .{ .name = "a human who is no admin is refused the channels page and each channel write; signed out, a 303 and a 401", .f = memberRefusedChannels },
     .{ .name = "a key, even an admin's own with admin scope, is refused the channels page and each channel write", .f = keyRefusedChannels },
     .{ .name = "admit and remove change a channel's members; one already in, one not in, an agent, no account and no channel refused by name", .f = admitRemove },
     .{ .name = "a channel's name is taken in any spelling", .f = takenName },
     .{ .name = "every channel change, and every refusal of a named asker, is audited, with no secret", .f = channelsAudited },
-    .{ .name = "an agent named as its owner comes with its owner's login, and the page labels it so, in both renderers", .f = loginBeside },
+    .{ .name = "an agent named as a look-alike of its owner comes with its owner's login, and the page labels it so, in both renderers", .f = loginBeside },
+    .{ .name = "a human signing up as a name another holds, in any case and spacing, is refused; a near miss is signed up", .f = humanNameTaken },
+    .{ .name = "an agent named as a human, or as another agent, in any case, is a 409; a near miss is made", .f = agentNameTaken },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
