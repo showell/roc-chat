@@ -819,33 +819,22 @@ Who : { named : List(Mentions.Named), accounts : List(Principal) }
 ## roc-markdown renders it now. `html` is last: a reader may take it up to
 ## the object's closing `"}` (host/e2e.zig does).
 message_json : MessageCodec.Fields, Who -> JsonOut
-message_json = |m, who|
+message_json = |m, who| {
+	author = [
+		("id", JsonOut.number(m.id)),
+		("at", JsonOut.signed(m.at)),
+		("by", JsonOut.string(AccountCodec.id_text(m.by))),
+		("kind", JsonOut.string(AccountCodec.kind_text(m.by))),
+	].concat(owner_of(who.accounts, m.by))
+	mentioned = Mentions.of(m.body, who.named).map(|id| JsonOut.string(AccountCodec.id_text(id)))
 	JsonOut.object(
-		List.concat(
-			List.concat(
-				[
-					("id", JsonOut.number(m.id)),
-					("at", JsonOut.signed(m.at)),
-					("by", JsonOut.string(AccountCodec.id_text(m.by))),
-					("kind", JsonOut.string(AccountCodec.kind_text(m.by))),
-				],
-				owner_of(who.accounts, m.by),
-			),
-			[
-				("markdown", JsonOut.text(m.body)),
-				(
-					"mentions",
-					JsonOut.array(
-						Mentions.of(
-							m.body,
-							who.named,
-						).map(|id| JsonOut.string(AccountCodec.id_text(id))),
-					),
-				),
-				("html", JsonOut.text(Conversations.html_of(m))),
-			],
-		),
+		author.concat([
+			("markdown", JsonOut.text(m.body)),
+			("mentions", JsonOut.array(mentioned)),
+			("html", JsonOut.text(Conversations.html_of(m))),
+		]),
 	)
+}
 
 ## **THE `owner` A POSTER'S JSON CARRIES**: for an agent or a bot, the
 ## human it answers to (Principal.answers_to), as the accounts say now; for
