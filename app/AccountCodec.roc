@@ -185,6 +185,39 @@ AccountCodec := [].{
 					).map_ok(|b| Principal.Id.Bot(b))
 				}
 		}
+
+	## **A BINDING AS EVERY STORED RECORD SPELLS IT**: `<id>/<generation>/<human
+	## generation>` (Principal.Bound: its account's generation and that of the
+	## human it answers to); what a conversation's `with`, a channel's
+	## `members` and a topic's `agents` hold.
+	bound_text : Principal.Bound -> Str
+	bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()}/${b.human.to_u64().to_str()}"
+
+	## The binding the value `bound_text` spelled, in the field `name`. A
+	## human's two generations are one, so a value whose two differ is
+	## refused, as no binding makes one.
+	bound_from : List(U8), Str -> Try(Principal.Bound, _)
+	bound_from = |value, name|
+		match value.split_on('/') {
+			[
+				id_part,
+				generation_part,
+				human_part,
+			] => {
+				id = AccountCodec.id_from(id_part, name)?
+				generation = Stored.id(generation_part, { name, make: Principal.Generation.from_u64 })?
+				human = Stored.id(human_part, { name, make: Principal.Generation.from_u64 })?
+				match id {
+					Human(_) if generation != human => Err(BadValue(name))
+					_ => Ok({
+						id,
+						generation,
+						human,
+					})
+				}
+			}
+			_ => Err(BadValue(name))
+		}
 }
 
 Kind : [

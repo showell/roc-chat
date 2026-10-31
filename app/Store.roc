@@ -28,6 +28,12 @@
 ##     auth/keys-indexed                 how many keys that indexes
 ##     auth/invites-by-human/<github id> a human's invites, by hash
 ##     auth/invites-indexed              how many invites that indexes
+##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
+##     chat/channels/<channel>/topics/<topic>/topic  a topic, its kind (TopicCodec)
+##
+## A channel's folder is its name's key, and each topic's its name's key
+## in it (ChannelLayout, which names those paths). A topic's transcript,
+## offsets and tally have their paths there but nothing writes them yet.
 ##
 ## **WHAT ONE HUMAN HAS, BY AN INDEX**: a file a
 ## human, one record a line, appended as each thing of theirs is made, so a
@@ -52,6 +58,10 @@ import Accounts
 import AccountCodec
 import AuditCodec
 import Cast
+import Channel
+import ChannelCodec
+import ChannelLayout
+import ChannelName
 import ConvAccess
 import ConvCodec
 import ConvKey
@@ -62,6 +72,9 @@ import Principal
 import SessionCodec
 import SignInWeb
 import Stored
+import Topic
+import TopicCodec
+import TopicName
 
 Store := [].{
 
@@ -663,6 +676,84 @@ Store := [].{
 					)
 				}
 		}
+
+	## **A NEW CHANNEL WRITTEN**, at its name's key: `Taken` when a channel
+	## of that key is there already, in any spelling. Checked then set,
+	## atomic because one handler runs at a time (the turn).
+	save_new_channel! : Channel => [
+		Failed,
+		Taken,
+		Written,
+	]
+	save_new_channel! = |channel| save_new!(
+		ChannelLayout.channel_path(channel.name()),
+		ChannelCodec.encode(channel.fields()),
+	)
+
+	## The channel `name` names, in any spelling: `Missing` when there is
+	## none, and `Failed` when its record will not read or names another
+	## channel than its folder's (a store the chat did not write).
+	load_channel! : ChannelName => Try(Channel, [Missing, Failed])
+	load_channel! = |name| read_channel!(name).map_err(
+		|e|
+			match e {
+				Missing => Missing
+				Malformed | Failed => Failed
+			},
+	)
+
+	## **EVERY CHANNEL STORED** (for an admin's page), in the order the disk
+	## gives their folders. One damaged entry fails only itself: a folder
+	## whose name is no channel's key, or whose record will not read, is
+	## left out and counted in `damaged`. A folder with no record yet (a
+	## stop before its first write landed) holds no channel.
+	load_channels! : {} => Try({ channels : List(Channel), damaged : U64 }, [Failed])
+	load_channels! = |{}| {
+		listed = Host.list!(ChannelLayout.channels_path)
+		match listed.status {
+			Missing => Ok({ channels: [], damaged: 0 })
+			Failed => Err(Failed)
+			Found => collect_channels!(listed.entries, { channels: [], damaged: 0 })
+		}
+	}
+
+	## **A NEW TOPIC WRITTEN** in its channel, at its name's key: `Taken`
+	## when a topic of that key is in the channel already, in any spelling
+	## (another channel's topic of the name is no matter). Checked then set,
+	## as a channel is.
+	save_new_topic! : Topic => [
+		Failed,
+		Taken,
+		Written,
+	]
+	save_new_topic! = |topic| save_new!(
+		ChannelLayout.topic_path(topic.at()),
+		TopicCodec.encode(topic.fields()),
+	)
+
+	## The topic `name` names in `channel` (loaded), in any spelling:
+	## `Missing` when there is none, and `Failed` when its record will not
+	## read or names another topic than its folder's.
+	load_topic! : Channel, TopicName => Try(Topic, [Missing, Failed])
+	load_topic! = |channel, name| read_topic!({ channel: channel.name(), topic: name }).map_err(
+		|e|
+			match e {
+				Missing => Missing
+				Malformed | Failed => Failed
+			},
+	)
+
+	## **EVERY TOPIC OF `channel`** (loaded), in the order the disk gives
+	## their folders; a damaged one left out and counted, as a channel is.
+	load_topics! : Channel => Try({ topics : List(Topic), damaged : U64 }, [Failed])
+	load_topics! = |channel| {
+		listed = Host.list!(ChannelLayout.topics_path(channel.name()))
+		match listed.status {
+			Missing => Ok({ topics: [], damaged: 0 })
+			Failed => Err(Failed)
+			Found => collect_topics!(channel.name(), { folders: listed.entries, kept: { topics: [], damaged: 0 } })
+		}
+	}
 
 	## An audit entry appended. The audit is a record of what happened, not
 	## the request's work, so its failure is the host's to log alone.
@@ -1379,3 +1470,152 @@ expect line_starts("ab\nc\n\nd\n".to_utf8()) == [
 expect line_starts([]) == []
 expect grouped([]) == []
 expect mark_line(12) == "12\n".to_utf8()
+
+## ── the channels and their topics (ChannelLayout) ──
+
+## A folder's entry, as the host lists it.
+FolderEntry : {
+	kind : [
+		Dir,
+		File,
+		Other,
+	],
+	name : List(U8),
+}
+
+## **A RECORD WRITTEN WHERE NONE IS**: `Taken` when the file is there.
+save_new! : List(U8),
+List(U8) => [
+	Failed,
+	Taken,
+	Written,
+]
+save_new! = |path, bytes| {
+	stat = Host.read_stat!(path)
+	match stat.status {
+		Found => Taken
+		Failed => Failed
+		Missing =>
+			match Host.write!(path, bytes) {
+				Failed => Failed
+				Written => Written
+			}
+	}
+}
+
+## The channel at `name`'s key: its record not there (`Missing`), not one
+## the chat wrote there (`Malformed`), or a read that failed.
+read_channel! : ChannelName => Try(
+	Channel,
+	[
+		Missing,
+		Malformed,
+		Failed,
+	],
+)
+read_channel! = |name| {
+	read = Host.read!(ChannelLayout.channel_path(name))
+	match read.status {
+		Missing => Err(Missing)
+		Failed => Err(Failed)
+		Found =>
+			match ChannelCodec.decode(read.bytes) {
+				Ok(line) if line.fields().name == name => Ok(Channel.load(line))
+				_ => Err(Malformed)
+			}
+	}
+}
+
+## The topic at `at`'s keys, as `read_channel!` reads a channel.
+read_topic! : Topic.At => Try(
+	Topic,
+	[
+		Missing,
+		Malformed,
+		Failed,
+	],
+)
+read_topic! = |at| {
+	read = Host.read!(ChannelLayout.topic_path(at))
+	match read.status {
+		Missing => Err(Missing)
+		Failed => Err(Failed)
+		Found =>
+			match TopicCodec.decode(read.bytes) {
+				Ok(line) if line.fields().name == at.topic => Ok(Topic.load(at.channel, line))
+				_ => Err(Malformed)
+			}
+	}
+}
+
+## **THE NAME A FOLDER IS THE KEY OF**: a folder whose name `parse` takes
+## and is its own `key`, the one spelling a path uses.
+folder_key : FolderEntry, { parse : (Str -> Try(a, _)), key : (a -> Str) } -> Try(a, [NotAKey])
+folder_key = |entry, { parse, key }|
+	match (entry.kind, Str.from_utf8(entry.name)) {
+		(Dir, Ok(text)) =>
+			match parse(text) {
+				Ok(name) if key(name) == text => Ok(name)
+				_ => Err(NotAKey)
+			}
+		_ => Err(NotAKey)
+	}
+
+## The channels the listed folders hold, after `kept`.
+collect_channels! : List(FolderEntry),
+{ channels : List(Channel), damaged : U64 } => Try(
+	{ channels : List(Channel), damaged : U64 },
+	[Failed],
+)
+collect_channels! = |entries, kept|
+	match entries {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read =
+				match folder_key(entry, { parse: ChannelName.from_str, key: ChannelName.key }) {
+					Ok(name) => read_channel!(name)
+					Err(NotAKey) => Err(Malformed)
+				}
+			match read {
+				Ok(c) => collect_channels!(rest, { ..kept, channels: kept.channels.append(c) })
+				Err(Missing) => collect_channels!(rest, kept)
+				Err(Malformed) => collect_channels!(rest, { ..kept, damaged: kept.damaged + 1 })
+				Err(Failed) => Err(Failed)
+			}
+		}
+	}
+
+## The topics of `channel` the listed folders hold, after `kept`.
+collect_topics! : ChannelName,
+{
+	folders : List(FolderEntry),
+	kept : { topics : List(Topic), damaged : U64 },
+} => Try(
+	{ topics : List(Topic), damaged : U64 },
+	[Failed],
+)
+collect_topics! = |channel, { folders, kept }|
+	match folders {
+		[] => Ok(kept)
+		[entry, .. as rest] => {
+			read =
+				match folder_key(entry, { parse: TopicName.from_str, key: TopicName.key }) {
+					Ok(topic) => read_topic!({ channel, topic })
+					Err(NotAKey) => Err(Malformed)
+				}
+			next =
+				match read {
+					Ok(t) => { ..kept, topics: kept.topics.append(t) }
+					Err(Missing) => kept
+					Err(Malformed) => { ..kept, damaged: kept.damaged + 1 }
+					Err(Failed) => return Err(Failed)
+				}
+			collect_topics!(channel, { folders: rest, kept: next })
+		}
+	}
+
+expect folder_key({ kind: Dir, name: "cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }).map_ok(ChannelName.to_str) == Ok("cobblestone")
+expect folder_key({ kind: Dir, name: "Cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }) == Err(NotAKey)
+expect folder_key({ kind: File, name: "cobblestone".to_utf8() }, { parse: ChannelName.from_str, key: ChannelName.key }) == Err(NotAKey)
+expect folder_key({ kind: Dir, name: "a--b".to_utf8() }, { parse: TopicName.from_str, key: TopicName.key }) == Err(NotAKey)
+expect folder_key({ kind: Dir, name: "road-trip-2".to_utf8() }, { parse: TopicName.from_str, key: TopicName.key }).is_ok()

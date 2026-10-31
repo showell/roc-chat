@@ -54,7 +54,7 @@ ConvCodec := [].{
 				[
 					("id", c.id.to_str()),
 					("created", Stored.time_text(c.created)),
-					("with", Str.join_with(List.map(c.participants, bound_text), ",")),
+					("with", Str.join_with(List.map(c.participants, AccountCodec.bound_text), ",")),
 					("public", Str.join_with(List.map(c.public_by, vote_text), ",")),
 				],
 			)
@@ -95,37 +95,9 @@ ConvCodec := [].{
 	}
 }
 
-## A participant as `with` spells it: `<id>/<generation>/<human generation>`.
-bound_text : Principal.Bound -> Str
-bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()}/${b.human.to_u64().to_str()}"
-
-## The participant `bound_text` spelled; a human whose two generations
-## differ, refused.
+## A participant, as `with` holds it (AccountCodec.bound_from).
 bound_from : List(U8) -> Try(Principal.Bound, _)
-bound_from = |value|
-	match value.split_on('/') {
-		[
-			id_part,
-			generation_part,
-			human_part,
-		] => {
-			id = AccountCodec.id_from(id_part, "with")?
-			generation = Stored.id(
-				generation_part,
-				{ name: "with", make: Principal.Generation.from_u64 },
-			)?
-			human = Stored.id(human_part, { name: "with", make: Principal.Generation.from_u64 })?
-			match id {
-				Human(_) if generation != human => Err(BadValue("with"))
-				_ => Ok({
-					id,
-					generation,
-					human,
-				})
-			}
-		}
-		_ => Err(BadValue("with"))
-	}
+bound_from = |value| AccountCodec.bound_from(value, "with")
 
 ## A public election as `public` spells it: `<github id>/<generation>`.
 vote_text : { human : Principal.GitHubId, generation : Principal.Generation } -> Str

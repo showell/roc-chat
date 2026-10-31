@@ -28,6 +28,7 @@ import Channel
 import ChannelCast
 import ChannelName
 import Principal
+import TopicCodec
 import TopicName
 
 Topic :: {
@@ -141,6 +142,20 @@ Topic :: {
 			}
 		}
 	}
+
+	## **A TOPIC BACK FROM THE STORE**: the one way in besides `make`, from
+	## a line TopicCodec decoded, every field checked, in `channel` (the
+	## channel loaded, whose folder the line is in).
+	load : ChannelName, TopicCodec.Line -> Topic
+	load = |channel, line| {
+		f = line.fields()
+		Topic.({ at: { channel, topic: f.name }, kind: f.kind })
+	}
+
+	## The topic's fields, to store (TopicCodec.encode); its channel is
+	## where it is stored.
+	fields : Topic -> TopicCodec.Fields
+	fields = |Topic.(t)| { name: t.at.topic, kind: t.kind }
 
 	## Where the topic is.
 	at : Topic -> Topic.At
@@ -976,3 +991,13 @@ expect Topic.find(
 expect Topic.find(cobblestones, at_of("general", "ChitChat")) == Err(NoSuchTopic)
 expect Topic.find(cobblestones, at_of("Cobblestone", "Plans")) == Err(NoSuchTopic)
 expect Topic.find([chitchat, chitchat], chitchat.at()) == Err(Duplicated)
+
+# ── STORED AND LOADED: the topic it was, its kind and its agents' bindings.
+## `topic` through its line and back, in its own channel.
+stored_and_loaded : Topic -> Try(Topic, _)
+stored_and_loaded = |topic| TopicCodec.decode(TopicCodec.encode(topic.fields())).map_ok(|line| Topic.load(topic.at().channel, line))
+
+expect
+	cobblestones.append(general_chitchat).all(|t| stored_and_loaded(t) == Ok(t))
+expect stored_and_loaded(chitchat).map_ok(|t| t.at().topic.to_str()) == Ok("ChitChat")
+expect stored_and_loaded(agents).map_ok(|t| t.agents(ChannelCast.accounts)) == Ok([ChannelCast.bound(Cc), ChannelCast.bound(Lc)])
