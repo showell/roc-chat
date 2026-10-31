@@ -1110,7 +1110,7 @@ fn agentReads(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", try agentPath(w, w.agents_conv, "/messages"), w.steve, "hi CC, it's Steve")).status != 201) return error.NotPosted;
     const r = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
     if (r.status != 200) return error.NotRead;
-    if (!has(r.body, "\"by\":\"human:1004\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
+    if (!has(r.body, "\"by\":\"human:1004\",\"kind\":\"human\",\"markdown\":\"hi CC, it's Steve\"")) return error.NotSeen;
 }
 
 /// **MENTIONS, AS THE SERVER PARSES THEM** (app/Mentions.roc): each
@@ -1379,6 +1379,33 @@ fn anonymousUnaudited(w: *World) !void {
     if (after.len != before.len) return error.AuditGrew;
 }
 
+/// **A MESSAGE SAYS ITS POSTER'S KIND, AND AN AGENT'S OWNER**
+/// (app/Conversations.roc's message_json): an agent that took its owner's
+/// own display name posts, and its post's answer and the transcript say
+/// `"kind":"agent"` and the human it answers to; its owner's post says
+/// `"kind":"human"`, with no owner.
+fn authorKind(w: *World) !void {
+    // A human of their own, so no earlier step's caps are in the way.
+    const ivy = try signUp(w.a, w.port(), 1014);
+    const made = try request(w.a, w.port(), "POST", "/agents", ivy, "name=Person+1014");
+    if (made.status != 201) return error.NotMade;
+    const agent = try field(made.body, "id");
+    const made_inv = try request(w.a, w.port(), "POST", "/invites", ivy, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
+    if (made_inv.status != 201) return error.NotInvited;
+    const redeemed = try redeem(w, try field(made_inv.body, "code"));
+    if (redeemed.status != 201) return error.NotRedeemed;
+    const key = try field(redeemed.body, "secret");
+    const conv = try startedId(try send(w.a, w.port(), "POST", "/conversations", .{ .key = key }, "with=human%3A1014"));
+    const path = try agentPath(w, conv, "/messages");
+    const said = try std.fmt.allocPrint(w.a, "\"by\":\"{s}\",\"kind\":\"agent\",\"owner\":\"human:1014\",\"markdown\":\"I am Person 1014\"", .{agent});
+    const posted = try send(w.a, w.port(), "POST", path, .{ .key = key }, "I am Person 1014");
+    if (posted.status != 201 or !has(posted.body, said)) return error.NotSaidAnAgents;
+    const owners = try request(w.a, w.port(), "POST", path, ivy, "no, I am");
+    if (owners.status != 201 or !has(owners.body, "\"by\":\"human:1014\",\"kind\":\"human\",\"markdown\":\"no, I am\"")) return error.NotSaidAHumans;
+    const read = try get(w.a, w.port(), try agentPath(w, conv, ""), ivy);
+    if (read.status != 200 or !has(read.body, said) or count(read.body, "\"owner\":") != 1) return error.NotInTheTranscript;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -1446,6 +1473,7 @@ const steps = [_]Step{
     .{ .name = "a key asking for the agents page is a 403", .f = agentsPageRefusesKey },
     .{ .name = "the start form offers the viewer's own agents to tick, no one else's", .f = startPicksAgents },
     .{ .name = "an invite redeemed with format=secret answers the secret alone, and it works; an unknown format spends nothing", .f = redeemSecretAlone },
+    .{ .name = "an agent's post says its kind and its owner, though it took its owner's name; a human's says no owner", .f = authorKind },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

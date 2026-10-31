@@ -17,8 +17,10 @@
 ##                                          `Last-Event-ID` when the browser resumes
 ##
 ## A message, in the transcript and on the stream alike, is one JSON object:
-## `{"id":3,"at":1761600000,"by":"human:2","markdown":"…","mentions":["agent:7"],"html":"…"}`,
-## `mentions` the participants it names (Mentions.of), by their names now. On
+## `{"id":3,"at":1761600000,"by":"agent:7","kind":"agent","owner":"human:2","markdown":"…","mentions":["human:2"],"html":"…"}`,
+## `kind` the poster's (`human`, `agent` or `bot`), `owner` the human an
+## agent or a bot answers to (none for a human), `mentions` the participants
+## it names (Mentions.of), by their names now. On
 ## the stream it is the data of an event named `message` whose id is the
 ## message's. Signed out is a 401; a conversation the viewer may not see is
 ## a 404, as one that is not there; one it sees but may not post to, a 403.
@@ -491,7 +493,10 @@ read! = |id|
 											messages.map(
 												|m| message_json(
 													m,
-													named_of(a.conv, a.accounts),
+													{
+														named: named_of(a.conv, a.accounts),
+														accounts: a.accounts,
+													},
 												),
 											),
 										),
@@ -589,7 +594,7 @@ post! = |id| {
 											by,
 											body: got.bytes,
 										},
-										named,
+										who: { named, accounts },
 									})
 								}
 							}
@@ -608,14 +613,14 @@ append_post! : {
 	id : ConvAccess.ConvId,
 	tally : Store.Tally,
 	message : MessageCodec.Fields,
-	named : List(Mentions.Named),
+	who : Who,
 } => Chat.Answer
 append_post! = |
 	{
 		id,
 		tally,
 		message,
-		named,
+		who,
 	},
 |
 	if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
@@ -631,11 +636,11 @@ append_post! = |
 		}) {
 			Failed => Chat.failed
 			Appended => {
-				match frame(message, named) {
+				match frame(message, who) {
 					Ok(f) => Host.publish!(bus_key(id), f)
 					Err(LineBreak) => crash "Conversations.append_post!: a message's JSON holds no line break"
 				}
-				Wire.json(201, message_json(message, named))
+				Wire.json(201, message_json(message, who))
 			}
 		}
 	}
@@ -745,10 +750,10 @@ stream! = |id|
 						Err(Failed) => Chat.failed
 						Ok(messages) => {
 							gap = if (after > 0 and after + 1 < newest.first) gap_frame(newest.first) else []
-							named = named_of(a.conv, a.accounts)
+							who = { named: named_of(a.conv, a.accounts), accounts: a.accounts }
 							backlog = List.concat(
 								gap,
-								List.join(List.keep_oks(messages, |m| frame(m, named))),
+								List.join(List.keep_oks(messages, |m| frame(m, who))),
 							)
 							Chat.stream({
 								key: bus_key(id),
@@ -795,34 +800,67 @@ bus_key : ConvAccess.ConvId -> List(U8)
 bus_key = |id| Str.to_utf8("conversation/${id.to_u64().to_str()}")
 
 ## A message as one SSE event: named `message`, its id the message's.
-frame : MessageCodec.Fields, List(Mentions.Named) -> Try(List(U8), [LineBreak])
-frame = |m, named| Sse.frame({
+frame : MessageCodec.Fields, Who -> Try(List(U8), [LineBreak])
+frame = |m, who| Sse.frame({
 	name: Str.to_utf8("message"),
-	data: message_json(m, named).bytes(),
+	data: message_json(m, who).bytes(),
 	id: Str.to_utf8(m.id.to_str()),
 })
 
-## **A MESSAGE AS THE WIRE SPELLS IT**: its markdown as posted, its html
-## as roc-markdown renders it now, and the participants it names
-## (`named`, the conversation's, by their names now).
-message_json : MessageCodec.Fields, List(Mentions.Named) -> JsonOut
-message_json = |m, named|
-	JsonOut.object([
-		("id", JsonOut.number(m.id)),
-		("at", JsonOut.signed(m.at)),
-		("by", JsonOut.string(AccountCodec.id_text(m.by))),
-		("markdown", JsonOut.text(m.body)),
-		(
-			"mentions",
-			JsonOut.array(
-				Mentions.of(
-					m.body,
-					named,
-				).map(|id| JsonOut.string(AccountCodec.id_text(id))),
+## **WHO A MESSAGE'S JSON IS SPELLED FOR**: the conversation's
+## participants by their names now (`named`, what a mention finds), and the
+## accounts now (`accounts`, whom a poster answers to).
+Who : { named : List(Mentions.Named), accounts : List(Principal) }
+
+## **A MESSAGE AS THE WIRE SPELLS IT**: who posted it, of what kind, and
+## the human an agent or a bot answers to (`owner_of`), so a page tells an
+## agent from the human whose name it took; its markdown as posted, the
+## participants it names (by their names now), and its html as
+## roc-markdown renders it now. `html` is last: a reader may take it up to
+## the object's closing `"}` (host/e2e.zig does).
+message_json : MessageCodec.Fields, Who -> JsonOut
+message_json = |m, who|
+	JsonOut.object(
+		List.concat(
+			List.concat(
+				[
+					("id", JsonOut.number(m.id)),
+					("at", JsonOut.signed(m.at)),
+					("by", JsonOut.string(AccountCodec.id_text(m.by))),
+					("kind", JsonOut.string(AccountCodec.kind_text(m.by))),
+				],
+				owner_of(who.accounts, m.by),
 			),
+			[
+				("markdown", JsonOut.text(m.body)),
+				(
+					"mentions",
+					JsonOut.array(
+						Mentions.of(
+							m.body,
+							who.named,
+						).map(|id| JsonOut.string(AccountCodec.id_text(id))),
+					),
+				),
+				("html", JsonOut.text(Conversations.html_of(m))),
+			],
 		),
-		("html", JsonOut.text(Conversations.html_of(m))),
-	])
+	)
+
+## **THE `owner` A POSTER'S JSON CARRIES**: for an agent or a bot, the
+## human it answers to (Principal.answers_to), as the accounts say now; for
+## a human, none. None too for an agent no account holds now (retired):
+## its owner is no longer known, and `kind` still says it is an agent.
+owner_of : List(Principal), Principal.Id -> List((Str, JsonOut))
+owner_of = |accounts, by|
+	match by {
+		Human(_) => []
+		Agent(_) | Bot(_) =>
+			match Principal.find(accounts, by) {
+				Ok(p) => [("owner", JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(p)))))]
+				Err(_) => []
+			}
+	}
 
 ## A conversation's participants as a mention finds them: each id with the
 ## name the accounts give it now.
@@ -858,6 +896,27 @@ expect others_of(Str.to_utf8("with=human%3A0")) == Err(Malformed)
 
 cid : U64 -> ConvAccess.ConvId
 cid = |n| ConvAccess.ConvId.from_u64(n) ?? crash "cid: not 0"
+
+# A message's JSON names its poster's kind, and an agent's or a bot's
+# owner, before its markdown; a human's has no owner, nor has an agent no
+# account holds now. `html` stays last.
+said_by : Principal.Id -> List(U8)
+said_by = |by|
+	message_json(
+		{
+			id: 3,
+			at: 5,
+			by,
+			body: "hi".to_utf8(),
+		},
+		{ named: [], accounts: Cast.accounts },
+	).bytes()
+
+expect said_by(Cast.ann.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"human:2\",\"kind\":\"human\",\"markdown\":\"hi\",".to_utf8())
+expect said_by(Cast.ann_agent.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:3\",\"kind\":\"agent\",\"owner\":\"human:2\",\"markdown\":\"hi\",".to_utf8())
+expect said_by(Cast.boss_bot.id()).starts_with("{\"id\":3,\"at\":5,\"by\":\"bot:2\",\"kind\":\"bot\",\"owner\":\"human:1\",\"markdown\":\"hi\",".to_utf8())
+expect said_by(Principal.Id.Agent(Cast.aid(9))).starts_with("{\"id\":3,\"at\":5,\"by\":\"agent:9\",\"kind\":\"agent\",\"markdown\":\"hi\",".to_utf8())
+expect Bytes.find(said_by(Cast.ann_agent.id()), { needle: ",\"html\":\"".to_utf8(), at: 0 }).is_ok() and said_by(Cast.ann_agent.id()).ends_with("\"}".to_utf8())
 
 # Pages: the newest, back to the first, and past either end.
 expect Conversations.page_of(0, Newest) == { first: 1, last: 0 }

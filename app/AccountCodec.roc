@@ -130,9 +130,20 @@ AccountCodec := [].{
 	id_text : Principal.Id -> Str
 	id_text = |id|
 		match id {
-			Human(g) => "${spell_kind(Human)}:${g.to_u64().to_str()}"
-			Agent(a) => "${spell_kind(Agent)}:${a.to_u64().to_str()}"
-			Bot(b) => "${spell_kind(Bot)}:${b.to_u64().to_str()}"
+			Human(g) => "${AccountCodec.kind_text(id)}:${g.to_u64().to_str()}"
+			Agent(a) => "${AccountCodec.kind_text(id)}:${a.to_u64().to_str()}"
+			Bot(b) => "${AccountCodec.kind_text(id)}:${b.to_u64().to_str()}"
+		}
+
+	## **A PRINCIPAL'S KIND AS EVERY RECORD SPELLS IT**: `human`, `agent` or
+	## `bot`, the part of `id_text` before its colon; what a message's
+	## `kind` holds on the wire.
+	kind_text : Principal.Id -> Str
+	kind_text = |id|
+		match id {
+			Human(_) => spell_kind(Human)
+			Agent(_) => spell_kind(Agent)
+			Bot(_) => spell_kind(Bot)
 		}
 
 	## **A HUMAN'S ROLE AS EVERY STORED RECORD SPELLS IT**: `admin` or
