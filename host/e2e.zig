@@ -61,6 +61,8 @@ const Rig = struct {
             .secrets = held,
             .github = .{ .oauth_base = r.fake.base(), .api_base = r.fake.base(), .connect_timeout_ms = 1000, .whole_timeout_ms = 3000 },
             .origin = "http://chat.test",
+            // Ivy (step 65 on), the first admin: no earlier step signs her up.
+            .first_admin = "1014",
         };
         r.server = try .init(io, gpa, try .parse("127.0.0.1", 0), .{}, r.data);
         r.server.auth = &r.auth;
@@ -323,6 +325,9 @@ const World = struct {
     gil_agent: []const u8 = "",
     gil_invite: []const u8 = "",
     hal: []const u8 = "",
+    /// Ivy, the admin who works the channels (step 65 on), and her own key.
+    ivy: []const u8 = "",
+    ivy_key: []const u8 = "",
 
     fn port(w: *const World) u16 {
         return w.rig.port();
@@ -1379,6 +1384,129 @@ fn anonymousUnaudited(w: *World) !void {
     if (after.len != before.len) return error.AuditGrew;
 }
 
+// ── the channels, an admin's ──
+
+/// The channels page as `cookie` gets it.
+fn channelsPage(w: *World, cookie: []const u8) !Response {
+    return get(w.a, w.port(), "/chat/channels", cookie);
+}
+
+/// **AN ADMIN MAKES A CHANNEL**: Ivy, the rig's first admin, signs up;
+/// /chat links her to the channels page, and no member; she makes Lobby
+/// with Ann and Bea, and general with no one, and the page lists both, by
+/// key, with their members.
+fn adminMakesChannel(w: *World) !void {
+    w.ivy = try signUp(w.a, w.port(), 1014);
+    if (!has((try get(w.a, w.port(), "/chat", w.ivy)).body, "<a href=\"/chat/channels\">")) return error.NoLink;
+    if (has((try get(w.a, w.port(), "/chat", w.ann)).body, "/chat/channels")) return error.LinkedForAMember;
+    const r = try pagePost(w, w.ivy, "/channels", "name=Lobby&members=human%3A1001%2Chuman%3A1002");
+    if (r.status != 201) return error.NotMade;
+    if (!has(r.body, "{\"name\":\"Lobby\",\"members\":[\"human:1001\",\"human:1002\"]}")) return error.NotTheChannel;
+    if ((try pagePost(w, w.ivy, "/channels", "name=general&members=")).status != 201) return error.NotMade;
+    const page = try channelsPage(w, w.ivy);
+    if (page.status != 200) return error.NoPage;
+    const lobby = std.mem.indexOf(u8, page.body, "<li data-channel=\"Lobby\">") orelse return error.NotListed;
+    const general = std.mem.indexOf(u8, page.body, "<li data-channel=\"general\">") orelse return error.NotListed;
+    if (general > lobby) return error.NotSortedByKey;
+    if (!has(page.body[lobby..], "(<code>human:1001</code>)") or !has(page.body[lobby..], "(<code>human:1002</code>)")) return error.MembersNotListed;
+    if (!has(page.body, "data-path=\"/channels/Lobby/admit\"") or !has(page.body, "data-path=\"/channels/Lobby/remove\"")) return error.NoForms;
+}
+
+/// **A HUMAN WHO IS NO ADMIN IS REFUSED**: Ann gets a 403 for the page and
+/// for each write, a channel that is not there no different; signed out,
+/// the page is a 303 to /login and a write a 401; nothing changes.
+fn memberRefusedChannels(w: *World) !void {
+    const page = try channelsPage(w, w.ann);
+    if (page.status != 403 or has(page.body, "Lobby")) return error.PageGiven;
+    if ((try pagePost(w, w.ann, "/channels", "name=Annex")).status != 403) return error.MadeByAMember;
+    if ((try pagePost(w, w.ann, "/channels/Lobby/admit", "member=human%3A1003")).status != 403) return error.AdmittedByAMember;
+    if ((try pagePost(w, w.ann, "/channels/Lobby/remove", "member=human%3A1002")).status != 403) return error.RemovedByAMember;
+    if ((try pagePost(w, w.ann, "/channels/Nowhere/admit", "member=human%3A1003")).status != 403) return error.MissingSaid;
+    if ((try channelsPage(w, "")).status != 303) return error.SignedOutGivenPage;
+    if ((try send(w.a, w.port(), "POST", "/channels", .{}, "name=Annex")).status != 401) return error.MadeSignedOut;
+    const listed = (try channelsPage(w, w.ivy)).body;
+    if (has(listed, "Annex") or has(listed, "human:1003") or !has(listed, "(<code>human:1002</code>)")) return error.Changed;
+}
+
+/// **A KEY CHANGES NO CHANNEL**: Ivy's own key, acting as an admin with
+/// admin scope, is refused the page (the 403 every page gives a key) and
+/// each write (`needs-session`); nothing changes.
+fn keyRefusedChannels(w: *World) !void {
+    const minted = try request(w.a, w.port(), "POST", "/keys", w.ivy, "admin=on");
+    if (minted.status != 201) return error.NotMinted;
+    w.ivy_key = try field(minted.body, "secret");
+    if ((try send(w.a, w.port(), "GET", "/chat/channels", .{ .key = w.ivy_key }, "")).status != 403) return error.KeyGivenPage;
+    const made = try send(w.a, w.port(), "POST", "/channels", .{ .key = w.ivy_key }, "name=Keyed");
+    if (made.status != 403 or !has(made.body, "key")) return error.MadeByKey;
+    if ((try send(w.a, w.port(), "POST", "/channels/Lobby/admit", .{ .key = w.ivy_key }, "member=human%3A1003")).status != 403) return error.AdmittedByKey;
+    if ((try send(w.a, w.port(), "POST", "/channels/Lobby/remove", .{ .key = w.ivy_key }, "member=human%3A1001")).status != 403) return error.RemovedByKey;
+    const listed = (try channelsPage(w, w.ivy)).body;
+    if (has(listed, "Keyed") or has(listed, "human:1003") or !has(listed, "(<code>human:1001</code>)")) return error.Changed;
+}
+
+/// **ADMIT AND REMOVE CHANGE WHO IS IN**: Cal let in (the channel named in
+/// another spelling), Ann let go, each answered with the channel and shown
+/// on the page; one already in, one not in, an agent, an unknown human and
+/// a channel that is not there refused, each by name.
+fn admitRemove(w: *World) !void {
+    const in = try pagePost(w, w.ivy, "/channels/lobby/admit", "member=human%3A1003");
+    if (in.status != 200 or !has(in.body, "\"human:1003\"")) return error.NotAdmitted;
+    const out = try pagePost(w, w.ivy, "/channels/Lobby/remove", "member=human%3A1001");
+    if (out.status != 200 or has(out.body, "human:1001")) return error.NotRemoved;
+    const listed = (try channelsPage(w, w.ivy)).body;
+    if (!has(listed, "(<code>human:1003</code>)") or has(listed, "(<code>human:1001</code>)")) return error.PageUnchanged;
+    const twice = try pagePost(w, w.ivy, "/channels/Lobby/admit", "member=human%3A1003");
+    if (twice.status != 409 or !has(twice.body, "already")) return error.AdmittedTwice;
+    const gone = try pagePost(w, w.ivy, "/channels/Lobby/remove", "member=human%3A1001");
+    if (gone.status != 409 or !has(gone.body, "not in")) return error.RemovedTwice;
+    const agent = try pagePost(w, w.ivy, "/channels/Lobby/admit", try std.fmt.allocPrint(w.a, "member={s}", .{w.gil_agent}));
+    if (agent.status != 400 or !has(agent.body, "no human")) return error.AgentAdmitted;
+    const nobody = try pagePost(w, w.ivy, "/channels/Lobby/admit", "member=human%3A999999");
+    if (nobody.status != 400 or !has(nobody.body, "no account")) return error.NobodyAdmitted;
+    if ((try pagePost(w, w.ivy, "/channels/Nowhere/admit", "member=human%3A1003")).status != 404) return error.NowhereChanged;
+}
+
+/// **A NAME IS TAKEN IN ANY SPELLING**: Lobby again, as made, in lower and
+/// upper case, and general in capitals, each a 409 that says so; a name
+/// the rule refuses, a 400; still two channels.
+fn takenName(w: *World) !void {
+    for ([_][]const u8{ "Lobby", "lobby", "LOBBY", "GENERAL" }) |name| {
+        const r = try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name={s}", .{name}));
+        if (r.status != 409 or !has(r.body, "there already")) return error.MadeTwice;
+    }
+    if ((try pagePost(w, w.ivy, "/channels", "name=1st")).status != 400) return error.BadNameTaken;
+    if (count((try channelsPage(w, w.ivy)).body, "<li data-channel=") != 2) return error.NotTwo;
+}
+
+/// **EVERY CHANNEL CHANGE, AND EVERY REFUSAL OF A NAMED ASKER, IS
+/// AUDITED**, with no secret; a signed-out write names no one and is not.
+fn channelsAudited(w: *World) !void {
+    const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    const wanted = [_][]const u8{
+        "who=human:1014 via=session:",
+        "action=make channel=Lobby members=human:1001,human:1002 verdict=permitted",
+        "action=make channel=general members= verdict=permitted",
+        "action=admit channel=Lobby members=human:1003 verdict=permitted",
+        "action=remove channel=Lobby members=human:1001 verdict=permitted",
+        "who=human:1001 via=session:",
+        "action=make channel=Annex members= verdict=refused:not-admin",
+        "action=admit channel=Nowhere members=human:1003 verdict=refused:not-admin",
+        "via=key:",
+        "action=make channel=Keyed members= verdict=refused:needs-session",
+        "action=make channel=lobby members= verdict=refused:taken",
+        "action=make channel=LOBBY members= verdict=refused:taken",
+        "action=make channel= members= verdict=refused:not-a-channel-name",
+        "action=admit channel=Lobby members=human:1003 verdict=refused:already-in",
+        "action=remove channel=Lobby members=human:1001 verdict=refused:not-in",
+        "verdict=refused:not-a-human",
+        "verdict=refused:no-account",
+        "action=admit channel=Nowhere members=human:1003 verdict=refused:no-such-channel",
+    };
+    for (wanted) |line| if (!has(log, line)) return error.NotAudited;
+    if (count(log, "channel=Annex") != 1) return error.SignedOutAudited;
+    if (has(log, w.ivy_key)) return error.SecretAudited;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -1446,6 +1574,12 @@ const steps = [_]Step{
     .{ .name = "a key asking for the agents page is a 403", .f = agentsPageRefusesKey },
     .{ .name = "the start form offers the viewer's own agents to tick, no one else's", .f = startPicksAgents },
     .{ .name = "an invite redeemed with format=secret answers the secret alone, and it works; an unknown format spends nothing", .f = redeemSecretAlone },
+    .{ .name = "an admin makes channels, linked from /chat for her alone; the channels page lists them by key, with their members", .f = adminMakesChannel },
+    .{ .name = "a human who is no admin is refused the channels page and each channel write; signed out, a 303 and a 401", .f = memberRefusedChannels },
+    .{ .name = "a key, even an admin's own with admin scope, is refused the channels page and each channel write", .f = keyRefusedChannels },
+    .{ .name = "admit and remove change a channel's members; one already in, one not in, an agent, no account and no channel refused by name", .f = admitRemove },
+    .{ .name = "a channel's name is taken in any spelling", .f = takenName },
+    .{ .name = "every channel change, and every refusal of a named asker, is audited, with no secret", .f = channelsAudited },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
