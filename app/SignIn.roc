@@ -244,7 +244,7 @@ check_callback! = |req| {
 												SignInWeb.pending_body(pending.fields()),
 											)
 											Ok(
-												name_form(Ok({}))
+												name_form(Fresh)
 													|> Chat.with_header(
 														"set-cookie",
 														SignInWeb.set_cookie({
@@ -303,7 +303,8 @@ sign_up! = |{}| {
 						now,
 					}) {
 						Refused(why) => Err(why)
-						NameRefused(problem) => Ok(name_form(Err(problem)))
+						NameRefused(_) => Ok(name_form(Unshowable))
+						NameTaken => Ok(name_form(Taken))
 						Created({ admission, steps }) =>
 							match Store.spend_nonce!(Pending, resumed.nonce()) {
 								Failed => Ok(Chat.failed)
@@ -404,20 +405,23 @@ answer_refused! = |decided|
 		}
 	}
 
-## The name form; with why the last name was refused, a 400.
-name_form : Try({}, _) -> Chat.Answer
+## The name form; with why the last name was refused, a 400: one the
+## rule cannot show, or one an account holds already (the namespace is
+## everyone's: Accounts.name_holder).
+name_form : [Fresh, Unshowable, Taken] -> Chat.Answer
 name_form = |last| {
 	said =
 		match last {
-			Ok({}) => Html.join([])
-			Err(_) => Html.markup("<p>That name is not one we can show. Try another.</p>\n")
+			Fresh => Html.join([])
+			Unshowable => Html.markup("<p>That name is not one we can show. Try another.</p>\n")
+			Taken => Html.markup("<p>That name is taken. Try another.</p>\n")
 		}
 	page = Html.join([
 		Html.markup("<!doctype html>\n<title>Your name</title>\n"),
 		said,
 		Html.markup("<form method=post action=/login/name><label>Your name in the chat <input name=name maxlength=64 required></label> <button>Sign up</button></form>\n"),
 	])
-	Html.respond(if (last.is_ok()) 200 else 400, page)
+	Html.respond(if (last == Fresh) 200 else 400, page)
 }
 
 ## A 303 to `location`.

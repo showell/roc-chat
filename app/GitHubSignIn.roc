@@ -465,6 +465,7 @@ GitHubSignIn := [].{
 				},
 			),
 			NameRefused(DisplayName.Problem),
+			NameTaken,
 			Refused(GitHubSignIn.Refusal),
 		]
 		name = |
@@ -497,6 +498,7 @@ GitHubSignIn := [].{
 							Accounts.next_generation(accounts, settings),
 						) {
 							(Err(problem), _) => NameRefused(problem)
+							(Ok(chosen), _) if Accounts.name_holder(accounts, chosen.to_str()) != Free => NameTaken
 							(Ok(_), Err(why)) => Refused(why)
 							(Ok(chosen), Ok({ this, next })) =>
 								Created({
@@ -1115,6 +1117,7 @@ usual_naming = {
 NameSaid : [
 	Created({ admission : Facts_, steps : List(SeenStep) }),
 	NameRefused(DisplayName.Problem),
+	NameTaken,
 	Refused(GitHubSignIn.Refusal),
 ]
 
@@ -1140,6 +1143,7 @@ name_said = |n|
 					steps: List.map(c.steps, seen_step),
 				})
 				NameRefused(problem) => NameRefused(problem)
+				NameTaken => NameTaken
 				Refused(why) => Refused(why)
 			}
 	}
@@ -1205,6 +1209,12 @@ expect
 		Created(_) => True
 		_ => False
 	}
+# One namespace: a name an account holds, a human's or an agent's, in any
+# case or spacing, is taken; a near miss is a name of its own.
+expect name_said({ ..usual_naming, name: Str.to_utf8("boss") }) == NameTaken
+expect name_said({ ..usual_naming, name: Str.to_utf8("ANN'S  agent") }) == NameTaken
+expect name_said({ ..usual_naming, name: Str.to_utf8("Boss 2") }) == made(ann_as("Boss 2", Member))
+expect name_said({ ..usual_naming, name: Str.to_utf8("\u(0412)oss") }) == made(ann_as("\u(0412)oss", Member))
 expect name_said({ ..usual_naming, name: [] }) == NameRefused(Empty)
 expect name_said({ ..usual_naming, name: Str.to_utf8("   ") }) == NameRefused(Empty)
 expect name_said({ ..usual_naming, name: Str.to_utf8(Str.repeat("n", 65)) }) == NameRefused(TooLong)

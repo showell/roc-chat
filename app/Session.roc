@@ -14,9 +14,11 @@
 ## the flow or a line in the store.
 ##
 ## **ITS LIFETIME, CONSERVATIVE BY DEFAULT:**
-## - **idle:** a session not seen for 24 hours is over;
-## - **absolute:** a session is over 7 days after it was created, however
-##   often it is used, so a stolen cookie is good for a week at most;
+## - **idle:** a session not seen for 30 days is over, every human's alike
+##   (Steve, 2026-10-31: all humans are equal users, GitHub or not);
+## - **absolute:** a session is over 90 days after it was created, however
+##   often it is used, so a stolen cookie is good for 90 days at most (Steve
+##   chose 90 when the idle limit went to 30 days, past the 7 it had been);
 ## - a time from the future (a clock that went back) is trusted for
 ##   nothing: the session is over, as OAuthState's check treats a state;
 ## - **last seen** is written at most once in 5 minutes, so a busy browser
@@ -34,13 +36,13 @@ import Stored
 
 Session :: SessionCodec.Fields.{
 
-	## How long a session may go unseen, in seconds: 24 hours.
+	## How long a session may go unseen, in seconds: 30 days.
 	idle_secs : I64
-	idle_secs = 86400
+	idle_secs = 2592000
 
-	## How long a session may live at all, in seconds: 7 days.
+	## How long a session may live at all, in seconds: 90 days.
 	absolute_secs : I64
-	absolute_secs = 604800
+	absolute_secs = 7776000
 
 	## How stale `last seen` may be before a request writes it again, in
 	## seconds: 5 minutes.
@@ -227,47 +229,47 @@ opened = |
 		seen: at,
 	})
 
-# Created at 100000.
+# Created at 10100000.
 s1 : Session
 s1 = opened({
 	n: 1,
 	who: 1,
-	at: 100000,
+	at: 10100000,
 })
 
-day : I64
-day = Session.idle_secs
+idle : I64
+idle = Session.idle_secs
 
-week : I64
-week = Session.absolute_secs
+lifetime : I64
+lifetime = Session.absolute_secs
 
 # ── THE LIVENESS TABLE
 # Fresh, at each limit's edge, past both, and from the future.
-expect s1.liveness(100000) == Live
-expect s1.liveness(100000 + day - 1) == Live
-expect s1.liveness(100000 + day) == IdleExpired
-expect s1.liveness(100000 + week) == AbsoluteExpired
-expect s1.liveness(99999) == AbsoluteExpired
+expect s1.liveness(10100000) == Live
+expect s1.liveness(10100000 + idle - 1) == Live
+expect s1.liveness(10100000 + idle) == IdleExpired
+expect s1.liveness(10100000 + lifetime) == AbsoluteExpired
+expect s1.liveness(10099999) == AbsoluteExpired
 
 ## `s1`, last seen at `at`.
 seen_at : I64 -> Session
 seen_at = |at| seen_line({
 	n: 1,
 	who: 1,
-	at: 100000,
+	at: 10100000,
 	seen: at,
 })
 
-# Used every day, it lives a week and not a second more.
-expect seen_at(100000 + week - 10).liveness(100000 + week - 1) == Live
-expect seen_at(100000 + week - 10).liveness(100000 + week) == AbsoluteExpired
+# Used every day, it lives its lifetime and not a second more.
+expect seen_at(10100000 + lifetime - 10).liveness(10100000 + lifetime - 1) == Live
+expect seen_at(10100000 + lifetime - 10).liveness(10100000 + lifetime) == AbsoluteExpired
 
-# Idle a day from its last sight, not from its creation.
-expect seen_at(105000).liveness(105000 + day - 1) == Live
-expect seen_at(105000).liveness(105000 + day) == IdleExpired
+# Idle from its last sight, not from its creation.
+expect seen_at(10105000).liveness(10105000 + idle - 1) == Live
+expect seen_at(10105000).liveness(10105000 + idle) == IdleExpired
 
 # Seen in the future: over.
-expect seen_at(105000).liveness(104999) == AbsoluteExpired
+expect seen_at(10105000).liveness(10104999) == AbsoluteExpired
 
 # **NO `now` OVERFLOWS**: I64's ends against the
 # earliest and latest stored times.
@@ -342,27 +344,27 @@ admitted = |session, { among, now }|
 			})
 	}
 
-expect admitted(s1, { among: [ann, bea], now: 100000 }) == Admitted({
+expect admitted(s1, { among: [ann, bea], now: 10100000 }) == Admitted({
 	principal: ann.id(),
 	write: Unchanged,
 })
-expect admitted(s1, { among: [ann, bea], now: 100299 }) == Admitted({
+expect admitted(s1, { among: [ann, bea], now: 10100299 }) == Admitted({
 	principal: ann.id(),
 	write: Unchanged,
 })
-expect admitted(s1, { among: [ann, bea], now: 100300 }) == Admitted({
+expect admitted(s1, { among: [ann, bea], now: 10100300 }) == Admitted({
 	principal: ann.id(),
-	write: Touched(100300),
+	write: Touched(10100300),
 })
-expect admitted(s1, { among: [ann, bea], now: 100000 + day }) == Refused(IdleExpired)
+expect admitted(s1, { among: [ann, bea], now: 10100000 + idle }) == Refused(IdleExpired)
 expect admitted(
-	seen_at(100000 + week - 1),
-	{ among: [ann], now: 100000 + week },
+	seen_at(10100000 + lifetime - 1),
+	{ among: [ann], now: 10100000 + lifetime },
 ) == Refused(AbsoluteExpired)
-expect admitted(s1, { among: [ann], now: 99999 }) == Refused(AbsoluteExpired)
+expect admitted(s1, { among: [ann], now: 10099999 }) == Refused(AbsoluteExpired)
 
 # Ann retired: her live session admits nobody.
-expect admitted(s1, { among: [bea], now: 100000 }) == Refused(NoSuchAccount)
+expect admitted(s1, { among: [bea], now: 10100000 }) == Refused(NoSuchAccount)
 
 # The role is the accounts' now, not the one at sign-in.
 expect
@@ -376,7 +378,7 @@ expect
 				generation: Cast.gen(1),
 			}),
 		],
-		now: 100000,
+		now: 10100000,
 	}) {
 		Admitted({ principal: Human(h), write: _ }) => h.role == Admin
 		_ => Bool.False
@@ -402,10 +404,10 @@ expect admitted(
 			ann,
 			bea,
 		],
-		now: 100000,
+		now: 10100000,
 	},
 ) == Refused(NoSuchAccount)
-expect admitted(s1, { among: [ann, ann_admin_copy], now: 100000 }) == Refused(NoSuchAccount)
+expect admitted(s1, { among: [ann, ann_admin_copy], now: 10100000 }) == Refused(NoSuchAccount)
 
 # **RE-CREATION AFTER RETIREMENT**: Ann retired, then
 # made again with her GitHub id at 200: her old session admits nobody.
@@ -418,7 +420,7 @@ ann_again = Principal.Human({
 	generation: Cast.gen(2),
 })
 
-expect admitted(s1, { among: [ann_again, bea], now: 100000 }) == Refused(NoSuchAccount)
+expect admitted(s1, { among: [ann_again, bea], now: 10100000 }) == Refused(NoSuchAccount)
 
 # ATTACK: Ann made again in the same second her old
 # account was (or under a clock that went back) is a new generation all the
@@ -432,7 +434,7 @@ ann_same_second = Principal.Human({
 	generation: Cast.gen(3),
 })
 
-expect admitted(s1, { among: [ann_same_second, bea], now: 100000 }) == Refused(NoSuchAccount)
+expect admitted(s1, { among: [ann_same_second, bea], now: 10100000 }) == Refused(NoSuchAccount)
 
 # ATTACK: a session live near the end of
 # the store's range, asked at a time past it, is never touched with a time
@@ -515,30 +517,30 @@ flowed : Session
 flowed = signed_in({
 	who: 1,
 	among: [ann, bea],
-	now: 100000,
+	now: 10100000,
 })
 
 expect flowed.fields() == { ..s1.fields(), id: Cast.sid(9) }
-expect admitted(flowed, { among: [ann], now: 100000 }) == Admitted({
+expect admitted(flowed, { among: [ann], now: 10100000 }) == Admitted({
 	principal: ann.id(),
 	write: Unchanged,
 })
-expect admitted(flowed, { among: [ann_again], now: 100000 }) == Refused(NoSuchAccount)
+expect admitted(flowed, { among: [ann_again], now: 10100000 }) == Refused(NoSuchAccount)
 
 # ── LOG OUT EVERYWHERE, AND THE SWEEP
-# Ann's sessions 1 and 2 (2 a day older, idle by 100000), Bea's 3.
+# Ann's sessions 1 and 2 (2 one idle limit older, idle by 10100000), Bea's 3.
 sessions : List(Session)
 sessions = [
 	s1,
 	opened({
 		n: 2,
 		who: 1,
-		at: 100000 - day,
+		at: 10100000 - idle,
 	}),
 	opened({
 		n: 3,
 		who: 2,
-		at: 100000,
+		at: 10100000,
 	}),
 ]
 
@@ -546,12 +548,12 @@ expect Session.log_out_everywhere(sessions, Cast.gid(1)) == [Cast.sid(1), Cast.s
 expect Session.log_out_everywhere(sessions, Cast.gid(2)) == [Cast.sid(3)]
 expect Session.log_out_everywhere(sessions, Cast.gid(9)) == []
 expect Session.log_out_everywhere([], Cast.gid(1)) == []
-expect Session.sweep(sessions, 100000) == [Cast.sid(2)]
-expect Session.sweep(sessions, 100000 + day - 1) == [Cast.sid(2)]
-expect Session.sweep(sessions, 100000 + day) == [
+expect Session.sweep(sessions, 10100000) == [Cast.sid(2)]
+expect Session.sweep(sessions, 10100000 + idle - 1) == [Cast.sid(2)]
+expect Session.sweep(sessions, 10100000 + idle) == [
 	Cast.sid(1),
 	Cast.sid(2),
 	Cast.sid(3),
 ]
-expect Session.sweep(sessions, 99999) == [Cast.sid(1), Cast.sid(3)]
-expect Session.sweep([], 100000) == []
+expect Session.sweep(sessions, 10099999) == [Cast.sid(1), Cast.sid(3)]
+expect Session.sweep([], 10100000) == []

@@ -25,10 +25,23 @@
 ## Anything else goes: letters of any script, punctuation, emoji, spaces
 ## inside. Opaque, so a name that passed is the only kind there is. Pure.
 ##
-## **Look-alikes are not this rule's to solve.** "Аnn" with a Cyrillic А is
-## a name, and confusables are left alone: a renderer shows a display name
-## with its principal's kind and its GitHub login (or its owner's) beside
-## it, so an impersonation is visible there, where both names are.
+## **ONE NAMESPACE, EACH NAME HELD ONCE** (Steve, 2026-10-31): no two
+## principals, humans, agents and bots alike, hold the same name, where
+## the same is equal after folding case and collapsing each run of spaces
+## to one (`same`): `Debbie`, `debbie` and `DEBBIE` are one name, and so
+## are `Debbie Benton` and `Debbie  Benton`. A name keeps the spelling it
+## was given, for display. Case is folded for ASCII letters alone: this
+## Roc's builtins fold no other case (Str's `with_ascii_lowercased` and
+## `caseless_ascii_equals` are all there is), so `Élan` and `élan` are two
+## names until a Unicode fold is at hand. Who holds a name is the accounts'
+## question (Accounts.name_holder); this module only says when two names
+## are one.
+##
+## **Look-alikes from another script are not this rule's to solve.** "Аnn"
+## with a Cyrillic А is another name than "Ann", and confusables are left
+## alone: a renderer shows a display name with its principal's kind and its
+## GitHub login (or its owner's) beside it, so an impersonation is visible
+## there, where both names are.
 import Ascii
 import Bytes
 
@@ -95,7 +108,31 @@ DisplayName :: Str.{
 	to_str : DisplayName -> Str
 	to_str = |DisplayName.(s)| s
 
+	## **ARE THESE ONE NAME?** Equal after folding ASCII case and collapsing
+	## each run of spaces to one (the module's header says why ASCII alone).
+	## The one comparison the namespace is held to.
+	same : Str, Str -> Bool
+	same = |a, b| folded(a) == folded(b)
+
 	is_eq : _
+}
+
+## A name as `same` compares it: ASCII lowercased, each run of spaces one
+## space, none at either end.
+folded : Str -> List(U8)
+folded = |name| {
+	(kept, _) = name.to_utf8().fold(
+		([], Bool.True),
+		|(out, after_space), c|
+			if c == ' ' {
+				(out, Bool.True)
+			} else if after_space and out != [] {
+				(out.append(' ').append(Ascii.to_lowercase(c)), Bool.False)
+			} else {
+				(out.append(Ascii.to_lowercase(c)), Bool.False)
+			},
+	)
+	kept
 }
 
 ## The most bytes a name may have.
@@ -391,3 +428,17 @@ expect named("\u(202E)nimda") == Err(BidiControl)
 # Bytes that are not UTF-8.
 expect DisplayName.from_utf8([0x61, 0xff]).map_ok(DisplayName.to_str) == Err(NotUtf8)
 expect DisplayName.from_utf8(" Ann ".to_utf8()).map_ok(DisplayName.to_str) == Ok("Ann")
+
+# One name: case folded, runs of spaces collapsed.
+expect DisplayName.same("Debbie", "debbie")
+expect DisplayName.same("Debbie", "DEBBIE")
+expect DisplayName.same("Debbie Benton", "Debbie  Benton")
+expect DisplayName.same("Debbie Benton", "  debbie   BENTON ")
+expect DisplayName.same("CC", "cc")
+# Two names: a letter more, a space more inside a word, another script's
+# look-alike, a case only Unicode folds.
+expect !DisplayName.same("Debbie", "Debbi")
+expect !DisplayName.same("Debbie Benton", "DebbieBenton")
+expect !DisplayName.same("Ann", "\u(0410)nn")
+expect !DisplayName.same("\u(c9)lan", "\u(e9)lan")
+expect !DisplayName.same("Steve", "Steve 2")
