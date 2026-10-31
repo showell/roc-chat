@@ -4,6 +4,11 @@
 ## where an ASCII letter, digit or `_` cannot go on it, so `@CCX` and
 ## `a@CC.com` name nobody; a name is matched as its bytes are, case and all.
 ## Only the participants count: a name no participant goes by is text.
+## **A HUMAN'S POST IN A DM WITH ONE AGENT NAMES THE AGENT** (`of_post`):
+## in a conversation of exactly one human and one agent, every post by
+## the human names the agent, whatever it says or quotes, so the agent's
+## listener wakes for a plain "back at you". Not in a larger conversation,
+## nor for the agent's own posts.
 ## **ONLY WHAT THE POST SAYS ITSELF** (`spoken`): fenced code (``` and
 ## ~~~, the chat's `~~~ quote` reply among them) and `>` blockquotes are
 ## skipped, so quoting a post that named someone names nobody again. Their
@@ -29,6 +34,24 @@ Mentions := [].{
 	of = |markdown, participants| {
 		said = spoken(markdown)
 		participants.keep_if(|p| names(said, p.name.to_utf8())).map(|p| p.id)
+	}
+
+	## **THE PARTICIPANTS A POST NAMES, BY WHO POSTED IT**: `of`, and in a
+	## conversation of exactly one human and one agent, the agent, when the
+	## human posted. What the server's `mentions` says, the one answer
+	## every listener reads.
+	of_post : List(U8), { by : Principal.Id, participants : List(Mentions.Named) } -> List(Principal.Id)
+	of_post = |markdown, { by, participants }| {
+		named = Mentions.of(markdown, participants)
+		match participants {
+			[a, b] =>
+				match (a.id, b.id) {
+					(Human(_), Agent(_)) if a.id == by and !named.contains(b.id) => named.append(b.id)
+					(Agent(_), Human(_)) if b.id == by and !named.contains(a.id) => named.prepend(a.id)
+					_ => named
+				}
+			_ => named
+		}
 	}
 
 	## A post as the hop count reads it: when (`at`, seconds), who, what.
@@ -299,3 +322,40 @@ expect Mentions.is_hop(lc.id, [cc.id])
 expect !Mentions.is_hop(lc.id, [lc.id])
 expect !Mentions.is_hop(lc.id, [steve.id])
 expect !Mentions.is_hop(steve.id, [cc.id])
+
+# **A HUMAN'S POST IN A DM WITH ONE AGENT NAMES IT**: a plain post, one
+# that is all quote, and one naming the agent already (named once), in
+# either order of the two; the agent's own post names nobody new; with a
+# second human or a second agent, the rule is off.
+ann : Mentions.Named
+ann = {
+	id: Principal.Id.Human(Principal.HumanId.from_u64(8) ?? crash "ann: a test's human id is not 0"),
+	name: "Ann",
+}
+
+## The DM with a second human, or a second agent.
+with_ann : List(Mentions.Named)
+with_ann = [
+	steve,
+	lc,
+	ann,
+]
+
+with_cc : List(Mentions.Named)
+with_cc = [
+	steve,
+	lc,
+	cc,
+]
+
+expect Mentions.of_post("back at you".to_utf8(), { by: steve.id, participants: [steve, lc] }) == [lc.id]
+expect Mentions.of_post("back at you".to_utf8(), { by: steve.id, participants: [lc, steve] }) == [lc.id]
+expect Mentions.of_post("~~~ quote\n@Steve Howell said\n~~~".to_utf8(), { by: steve.id, participants: [steve, lc] }) == [lc.id]
+expect Mentions.of_post("> a quote alone".to_utf8(), { by: steve.id, participants: [steve, lc] }) == [lc.id]
+expect Mentions.of_post("@LC thanks".to_utf8(), { by: steve.id, participants: [steve, lc] }) == [lc.id]
+expect Mentions.of_post("done".to_utf8(), { by: lc.id, participants: [steve, lc] }) == []
+expect Mentions.of_post("@Steve Howell done".to_utf8(), { by: lc.id, participants: [steve, lc] }) == [steve.id]
+expect Mentions.of_post("back at you".to_utf8(), { by: steve.id, participants: with_ann }) == []
+expect Mentions.of_post("back at you".to_utf8(), { by: steve.id, participants: with_cc }) == []
+expect Mentions.of_post("back at you".to_utf8(), { by: steve.id, participants: [steve, ann] }) == []
+expect Mentions.of_post("back at you".to_utf8(), { by: steve.id, participants: [lc, cc] }) == []

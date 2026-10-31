@@ -1199,8 +1199,12 @@ fn agentReads(w: *World) !void {
 /// message carries the participants its markdown names as a word, by their
 /// names now, in the post's answer, the transcript and the stream alike.
 fn mentions(w: *World) !void {
-    const path = try agentPath(w, w.agents_conv, "/messages");
-    const l = try Listener.open(w.a, w.port(), try agentPath(w, w.agents_conv, "/stream"), w.steve, "");
+    // Steve, his agent and Ann: more than a human and one agent, so a
+    // post names whom its words name, and no one else (dmNamesTheAgent is
+    // the rule for two).
+    const group = try startedId(try request(w.a, w.port(), "POST", "/conversations", w.steve, try std.fmt.allocPrint(w.a, "with={s}%2Chuman%3A{s}", .{ w.agent, try hid(w.a, 1001) })));
+    const path = try agentPath(w, group, "/messages");
+    const l = try Listener.open(w.a, w.port(), try agentPath(w, group, "/stream"), w.steve, "");
     defer l.close();
     const named = try std.fmt.allocPrint(w.a, "\"mentions\":[\"{s}\"]", .{w.agent});
     const to_cc = try request(w.a, w.port(), "POST", path, w.steve, "@CC, a mention");
@@ -1220,8 +1224,41 @@ fn mentions(w: *World) !void {
     if (quoted.status != 201 or !has(quoted.body, "\"mentions\":[]")) return error.NamedByAQuote;
     try l.until("thanks, @Person 1004!");
     if (!has(l.got.items, named) or !has(l.got.items, (try std.fmt.allocPrint(w.a, "\"mentions\":[\"human:{s}\"]", .{try hid(w.a, 1004)})))) return error.NotOnTheStream;
-    const read = try send(w.a, w.port(), "GET", try agentPath(w, w.agents_conv, ""), .{ .key = w.key }, "");
+    const read = try send(w.a, w.port(), "GET", try agentPath(w, group, ""), .{ .key = w.key }, "");
     if (count(read.body, named) != 1 or count(read.body, (try std.fmt.allocPrint(w.a, "\"mentions\":[\"human:{s}\"]", .{try hid(w.a, 1004)}))) != 1) return error.NotInTheTranscript;
+}
+
+/// **A HUMAN'S POST IN A DM WITH ONE AGENT NAMES THE AGENT** (Mentions.of_post):
+/// Steve's plain "back at you" to his agent names it, and so does a post
+/// of his that is all quote; the agent's own post names nobody; the same
+/// plain post with a second human, or a second agent, names nobody.
+fn dmNamesTheAgent(w: *World) !void {
+    // A human of their own (so no earlier step's caps are in the way), and
+    // their agent, keyed by an invite.
+    const owner = try signUp(w.a, w.port(), 1022);
+    const agent = try field((try request(w.a, w.port(), "POST", "/agents", owner, "name=Pal+1022")).body, "id");
+    const inv = try request(w.a, w.port(), "POST", "/invites", owner, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
+    if (inv.status != 201) return error.NotInvited;
+    const redeemed = try redeem(w, try field(inv.body, "code"));
+    if (redeemed.status != 201) return error.NotRedeemed;
+    const key = try field(redeemed.body, "secret");
+    const named = try std.fmt.allocPrint(w.a, "\"mentions\":[\"{s}\"]", .{agent});
+
+    const dm = try agentPath(w, try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with={s}", .{agent}))), "/messages");
+    const plain = try request(w.a, w.port(), "POST", dm, owner, "back at you");
+    if (plain.status != 201 or !has(plain.body, named)) return error.PlainPostNamedNobody;
+    const quoted = try request(w.a, w.port(), "POST", dm, owner, "> what you said");
+    if (quoted.status != 201 or !has(quoted.body, named)) return error.QuoteNamedNobody;
+    const own = try send(w.a, w.port(), "POST", dm, .{ .key = key }, "noted");
+    if (own.status != 201 or !has(own.body, "\"mentions\":[]")) return error.AgentNamedItself;
+
+    const with_human = try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with={s}%2Chuman%3A{s}", .{ agent, try hid(w.a, 1002) })));
+    const three = try request(w.a, w.port(), "POST", try agentPath(w, with_human, "/messages"), owner, "back at you");
+    if (three.status != 201 or !has(three.body, "\"mentions\":[]")) return error.NamedWithASecondHuman;
+    const second = try field((try request(w.a, w.port(), "POST", "/agents", owner, "name=Second+1022")).body, "id");
+    const with_agents = try startedId(try request(w.a, w.port(), "POST", "/conversations", owner, try std.fmt.allocPrint(w.a, "with={s}%2C{s}", .{ agent, second })));
+    const two_agents = try request(w.a, w.port(), "POST", try agentPath(w, with_agents, "/messages"), owner, "back at you");
+    if (two_agents.status != 201 or !has(two_agents.body, "\"mentions\":[]")) return error.NamedWithASecondAgent;
 }
 
 /// **THE SERVER'S BACKSTOP AGAINST RUNAWAY AGENTS**
@@ -1805,6 +1842,7 @@ const steps = [_]Step{
     .{ .name = "an agent named as a look-alike of its owner comes with its owner's login, and the page labels it so, in both renderers", .f = loginBeside },
     .{ .name = "a human signing up as a name another holds, in any case and spacing, is refused; a near miss is signed up", .f = humanNameTaken },
     .{ .name = "an agent named as a human, or as another agent, in any case, is a 409; a near miss is made", .f = agentNameTaken },
+    .{ .name = "a human's post in a DM with one agent names the agent, a quote too; the agent's own names nobody; with a second human or agent, nobody", .f = dmNamesTheAgent },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
 };
 

@@ -890,7 +890,7 @@ message_json = |m, who| {
 			NoLogin => []
 		},
 	)
-	mentioned = Mentions.of(m.body, who.named).map(|id| JsonOut.string(AccountCodec.id_text(id)))
+	mentioned = Mentions.of_post(m.body, { by: m.by, participants: who.named }).map(|id| JsonOut.string(AccountCodec.id_text(id)))
 	JsonOut.object(
 		author.concat([
 			("markdown", JsonOut.text(m.body)),
