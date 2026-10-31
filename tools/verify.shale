@@ -12,6 +12,9 @@
 -- it, as the build finds them), never in a file of yours.
 --
 -- The checks:
+--   - the chat client: ../chat-client at the commit chat-client-rev pins
+--     (any other stops the run, naming both), and its own checks there
+--     (chat-client's tools/check);
 --   - `zig build test`, from an empty cache so every test runs, its Zig
 --     tests counted; and `roc test`, its expects in this repository's own
 --     files counted (roc-markdown's are its own verify's); neither below
@@ -104,6 +107,21 @@ end
 
 if exists(scratch) then remove_tree(scratch) end
 mkdir(scratch)
+
+-- ── the chat client, pinned ──
+-- **THE CHAT CLIENT IS THE COMMIT chat-client-rev NAMES**: the build takes
+-- it by path (../chat-client), so a checkout at any other commit would be
+-- built and verified unseen. A bump is a deliberate one-line commit, made
+-- with both hosts' checks (chat-client's README). Then the client's own
+-- checks, from that checkout (its tools/check).
+const client_want = trim(read("chat-client-rev"))
+const client_have = trim(must(run({"git", "-C", real("repos:chat-client"), "rev-parse", "HEAD"}, {timeout_ms = 30000, whole = 200})).out)
+if client_have ~= client_want then
+  fail("verify: ../chat-client is at " .. client_have .. ", but chat-client-rev pins " .. client_want .. ": check out the pinned commit there, or bump chat-client-rev on purpose")
+end
+say(true, "chat-client at the pinned " .. client_want)
+local cc = run({real("repos:chat-client") .. "/tools/check"}, {cwd = "repos:chat-client", timeout_ms = build_ms, tail = 40})
+say(cc.code == 0, "chat-client's tools/check (exit " .. cc.code .. "; " .. join(last(split(trim(cc.out), "\n"), 1), "") .. ")")
 
 -- ── zig build test, from an empty cache, and its counts ──
 local t = run({"zig", "build", "test", "--cache-dir", cache, "--summary", "all"}, {cwd = ".", timeout_ms = build_ms, tail = 160})

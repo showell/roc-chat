@@ -134,10 +134,14 @@ when you are retired.
     a Zig package whose module `chat_client` holds each script's bytes.
     `build.zig.zon` names it by path.
 
-  Both are taken at whatever their checkouts hold. A pinned, fetched
-  dependency (a tarball by hash, laid out in a generated tree for Roc)
-  would pin them; sibling paths are the simplest thing that works at this
-  Roc's pin.
+  `../roc-markdown` is taken at whatever its checkout holds. A pinned,
+  fetched dependency (a tarball by hash, laid out in a generated tree for
+  Roc) would pin it; a sibling path is the simplest thing that works at
+  this Roc's pin. `../chat-client` is pinned: `chat-client-rev` names the
+  commit, and verify stops, naming both commits, if the checkout is at any
+  other; it then runs the client's own checks (`tools/check` there). To
+  take a new client, check it out there and bump `chat-client-rev` in the
+  same commit.
 
 ## Build, test, serve
 
