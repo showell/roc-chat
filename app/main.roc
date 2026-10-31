@@ -1,6 +1,7 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
-## conversations, Agents.roc's agents and API keys, Pages.roc's pages; the store is Store.roc's, the only module that names a
+## conversations, Agents.roc's agents and API keys, Channels.roc's channels
+## (an admin's), Pages.roc's pages; the store is Store.roc's, the only module that names a
 ## file. Beside them, a hello page (rendered by roc-markdown, the chat's
 ## dialect) and the chat client's scripts (`serve_script!`).
 app [handle!] {
@@ -12,9 +13,10 @@ import pf.Chat
 import pf.Host
 import md.Md
 import Agents
-# The channels model (Channel, Topic, MessageRef, ChannelLayout): pure and
-# not routed yet. Imported so `roc test app/main.roc` runs its expects;
-# the routes item uses it here.
+import Channels
+# The rest of the channels model (Topic, MessageRef, ChannelLayout): pure
+# and not routed yet. Imported so `roc test app/main.roc` runs its
+# expects; the topics' routes use it here.
 import ChannelLayout
 import MessageRef
 import Conversations
@@ -66,10 +68,12 @@ route! = |req|
 		match (
 			Conversations.route(req.path),
 			Agents.route(req.path),
+			Channels.route(req.path),
 			Pages.route(req.path),
 		) {
 			(
 				Ok(route),
+				_,
 				_,
 				_,
 			) => Conversations.answer!(req, route)
@@ -77,14 +81,23 @@ route! = |req|
 				_,
 				Ok(route),
 				_,
+				_,
 			) => Agents.answer!(req, route)
+			(
+				_,
+				_,
+				Ok(route),
+				_,
+			) => Channels.answer!(req, route)
 			# The pages.
 			(
+				_,
 				_,
 				_,
 				Ok(page),
 			) => Pages.answer!(req, page)
 			(
+				Err(_),
 				Err(_),
 				Err(_),
 				Err(_),

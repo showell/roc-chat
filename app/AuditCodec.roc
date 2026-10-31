@@ -11,6 +11,15 @@
 ##     audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12
 ##     audit-invite v1 at=1761600160 invite=3 for=agent:7 verdict=redeemed:key:9
 ##     audit-invite v1 at=1761600170 invite=unknown for=unknown verdict=refused:unknown
+##     audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel=Lobby members=human:2,human:7 verdict=permitted
+##     audit-channel v1 at=1761600210 who=human:2 via=session:12 action=admit channel=Lobby members=human:9 verdict=refused:not-admin
+##
+## And for every admin's change to a channel (Channel.roc), permitted or
+## refused: making one, admitting a member, removing one; the channel by
+## its name (empty when the name asked is no channel's name), the members
+## it names (a make's, or the one admitted or removed; empty for none),
+## and the verdict, a key's refusal after `key:` as in an admin line. A
+## signed-out asker names no one, and is never audited.
 ##
 ## And for every invite (InviteCodec): made, redeemed into a key (its public
 ## id), revoked, or a redemption refused, `grant:` and a grant's word when
@@ -24,14 +33,15 @@
 ## hash, cookie, nonce, OAuth code or login, only public numbers and words;
 ## a sign-in refused before GitHub named anyone is `github=unknown`.
 ##
-## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in`, `of_key`
-## and `of_invite`, which refuse a time outside Stored's range (ClockOutOfRange),
+## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in`, `of_key`,
+## `of_invite` and `of_channel`, which refuse a time outside Stored's range (ClockOutOfRange),
 ## or by `decode`: the encoder never meets a time it cannot write. Pure.
 import AccountCodec
 import Admin
 import ApiKey
 import Bytes
 import Cast
+import ChannelName
 import GitHubSignIn
 import InviteCodec
 import Principal
@@ -92,6 +102,46 @@ AuditCodec := [].{
 		],
 	}
 
+	## **AN ADMIN'S CHANGE TO A CHANNEL, OR ITS REFUSAL**: when, who by
+	## which session or key, what (a channel made, a member admitted or
+	## removed), the channel (`Unnamed` when the name asked is no channel's
+	## name), the members it names, and the verdict.
+	ChannelEvent : {
+		at : I64,
+		who : Principal.Id,
+		via : [Session(Principal.SessionId), Key(Principal.KeyId)],
+		action : AuditCodec.ChannelAction,
+		channel : [Named(ChannelName), Unnamed],
+		members : List(Principal.Id),
+		verdict : [Permitted, Refused(AuditCodec.ChannelRefusal)],
+	}
+
+	## What an admin did to a channel.
+	ChannelAction : [
+		Make,
+		Admit,
+		Remove,
+	]
+
+	## **WHY A CHANNEL'S CHANGE WAS REFUSED**: Channel's refusals of a
+	## named asker, its name and its members (each without the id the
+	## line's `members` holds); a channel that is not there; or the key
+	## asking not standing (ApiKey's word).
+	ChannelRefusal : [
+		NeedsSession,
+		NoSuchPrincipal,
+		NotAdmin,
+		NotAChannelName,
+		Taken,
+		NamedTwice,
+		NotAHuman,
+		NoAccount,
+		AlreadyIn,
+		NotIn,
+		NoSuchChannel,
+		KeyRefused(ApiKey.Refusal),
+	]
+
 	## **ONE LINE OF THE AUDIT LOG**, the log's entry. Opaque: its time
 	## always in Stored's range.
 	Entry :: [
@@ -99,6 +149,7 @@ AuditCodec := [].{
 		SignIn(AuditCodec.SignIn),
 		Key(AuditCodec.KeyEvent),
 		Invite(AuditCodec.Invite),
+		Channel(AuditCodec.ChannelEvent),
 	].{
 
 		## An admin attempt's audit (Admin.decide's).
@@ -124,12 +175,17 @@ AuditCodec := [].{
 		of_invite : AuditCodec.Invite -> Try(AuditCodec.Entry, [ClockOutOfRange])
 		of_invite = |i| if (is_storable(i.at)) Ok(AuditCodec.Entry.(Invite(i))) else Err(ClockOutOfRange)
 
+		## A channel's change, or its refusal.
+		of_channel : AuditCodec.ChannelEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
+		of_channel = |c| if (is_storable(c.at)) Ok(AuditCodec.Entry.(Channel(c))) else Err(ClockOutOfRange)
+
 		## What the entry records.
 		event : AuditCodec.Entry -> [
 			Admin(Admin.Audit),
 			SignIn(AuditCodec.SignIn),
 			Key(AuditCodec.KeyEvent),
 			Invite(AuditCodec.Invite),
+			Channel(AuditCodec.ChannelEvent),
 		]
 		event = |AuditCodec.Entry.(e)| e
 
@@ -208,6 +264,20 @@ AuditCodec := [].{
 					],
 				)
 			}
+
+			Channel(c) =>
+				Stored.line(
+					channel_kind,
+					[
+						("at", Stored.time_text(c.at)),
+						("who", AccountCodec.id_text(c.who)),
+						("via", via_text(c.via)),
+						("action", spell_channel_action(c.action)),
+						("channel", channel_text(c.channel)),
+						("members", Str.join_with(c.members.map(AccountCodec.id_text), ",")),
+						("verdict", channel_verdict_text(c.verdict)),
+					],
+				)
 		}
 
 	## The entry a line holds, of whichever kind its first word names.
@@ -221,10 +291,15 @@ AuditCodec := [].{
 					Err(WrongRecord) =>
 						match Stored.Reader.open(raw, key_kind) {
 							Ok(fields) => decode_key(fields).map_ok(|k| AuditCodec.Entry.(Key(k)))
-							Err(WrongRecord) => {
-								fields = Stored.Reader.open(raw, invite_kind)?
-								decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
-							}
+							Err(WrongRecord) =>
+								match Stored.Reader.open(raw, invite_kind) {
+									Ok(fields) => decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
+									Err(WrongRecord) => {
+										fields = Stored.Reader.open(raw, channel_kind)?
+										decode_channel(fields).map_ok(|c| AuditCodec.Entry.(Channel(c)))
+									}
+									Err(why) => Err(why)
+								}
 							Err(why) => Err(why)
 						}
 					Err(why) => Err(why)
@@ -233,7 +308,7 @@ AuditCodec := [].{
 		}
 }
 
-## The three lines' first words.
+## The lines' first words.
 admin_kind : Str
 admin_kind = "audit"
 
@@ -245,6 +320,192 @@ key_kind = "audit-key"
 
 invite_kind : Str
 invite_kind = "audit-invite"
+
+channel_kind : Str
+channel_kind = "audit-channel"
+
+all_channel_actions : List(AuditCodec.ChannelAction)
+all_channel_actions = [
+	Make,
+	Admit,
+	Remove,
+]
+
+spell_channel_action : AuditCodec.ChannelAction -> Str
+spell_channel_action = |action|
+	match action {
+		Make => "make"
+		Admit => "admit"
+		Remove => "remove"
+	}
+
+## The channel's name as it was made; empty for a name the rule refused.
+channel_text : [Named(ChannelName), Unnamed] -> Str
+channel_text = |channel|
+	match channel {
+		Named(name) => name.to_str()
+		Unnamed => ""
+	}
+
+channel_from : List(U8) -> Try([Named(ChannelName), Unnamed], _)
+channel_from = |value|
+	if value.is_empty() {
+		Ok(Unnamed)
+	} else {
+		match Str.from_utf8(value) {
+			Ok(text) => ChannelName.from_str(text).map_ok(|n| Named(n)).map_err(|_| BadValue("channel"))
+			Err(_) => Err(BadValue("channel"))
+		}
+	}
+
+## A channel's refusal's word, without a key's.
+ChannelWord : [
+	NeedsSession,
+	NoSuchPrincipal,
+	NotAdmin,
+	NotAChannelName,
+	Taken,
+	NamedTwice,
+	NotAHuman,
+	NoAccount,
+	AlreadyIn,
+	NotIn,
+	NoSuchChannel,
+]
+
+all_channel_words : List(ChannelWord)
+all_channel_words = [
+	NeedsSession,
+	NoSuchPrincipal,
+	NotAdmin,
+	NotAChannelName,
+	Taken,
+	NamedTwice,
+	NotAHuman,
+	NoAccount,
+	AlreadyIn,
+	NotIn,
+	NoSuchChannel,
+]
+
+spell_channel_word : ChannelWord -> Str
+spell_channel_word = |word|
+	match word {
+		NeedsSession => "needs-session"
+		NoSuchPrincipal => "no-such-principal"
+		NotAdmin => "not-admin"
+		NotAChannelName => "not-a-channel-name"
+		Taken => "taken"
+		NamedTwice => "named-twice"
+		NotAHuman => "not-a-human"
+		NoAccount => "no-account"
+		AlreadyIn => "already-in"
+		NotIn => "not-in"
+		NoSuchChannel => "no-such-channel"
+	}
+
+## `permitted`, or `refused:` and the refusal's word (`refused:key:` and a
+## key's).
+channel_verdict_text : [Permitted, Refused(AuditCodec.ChannelRefusal)] -> Str
+channel_verdict_text = |verdict|
+	match verdict {
+		Permitted => permitted_word
+		Refused(KeyRefused(why)) => "${refused_prefix}${key_prefix}${spell_key_refusal(why)}"
+		Refused(NeedsSession) => "${refused_prefix}${spell_channel_word(NeedsSession)}"
+		Refused(NoSuchPrincipal) => "${refused_prefix}${spell_channel_word(NoSuchPrincipal)}"
+		Refused(NotAdmin) => "${refused_prefix}${spell_channel_word(NotAdmin)}"
+		Refused(NotAChannelName) => "${refused_prefix}${spell_channel_word(NotAChannelName)}"
+		Refused(Taken) => "${refused_prefix}${spell_channel_word(Taken)}"
+		Refused(NamedTwice) => "${refused_prefix}${spell_channel_word(NamedTwice)}"
+		Refused(NotAHuman) => "${refused_prefix}${spell_channel_word(NotAHuman)}"
+		Refused(NoAccount) => "${refused_prefix}${spell_channel_word(NoAccount)}"
+		Refused(AlreadyIn) => "${refused_prefix}${spell_channel_word(AlreadyIn)}"
+		Refused(NotIn) => "${refused_prefix}${spell_channel_word(NotIn)}"
+		Refused(NoSuchChannel) => "${refused_prefix}${spell_channel_word(NoSuchChannel)}"
+	}
+
+channel_verdict_from : List(U8) -> Try([Permitted, Refused(AuditCodec.ChannelRefusal)], _)
+channel_verdict_from = |value|
+	if value == Str.to_utf8(permitted_word) {
+		Ok(Permitted)
+	} else {
+		match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
+			Err(NoMatch) => Err(UnknownWord("verdict"))
+			Ok(why) =>
+				match Bytes.strip_prefix(why, Str.to_utf8(key_prefix)) {
+					Ok(key_why) =>
+						Stored.word(
+							key_why,
+							{
+								name: "verdict",
+								members: all_key_refusals,
+								spell: spell_key_refusal,
+							},
+						).map_ok(|w| Refused(KeyRefused(w)))
+					Err(NoMatch) =>
+						match Stored.word(
+							why,
+							{
+								name: "verdict",
+								members: all_channel_words,
+								spell: spell_channel_word,
+							},
+						)? {
+							NeedsSession => Ok(Refused(NeedsSession))
+							NoSuchPrincipal => Ok(Refused(NoSuchPrincipal))
+							NotAdmin => Ok(Refused(NotAdmin))
+							NotAChannelName => Ok(Refused(NotAChannelName))
+							Taken => Ok(Refused(Taken))
+							NamedTwice => Ok(Refused(NamedTwice))
+							NotAHuman => Ok(Refused(NotAHuman))
+							NoAccount => Ok(Refused(NoAccount))
+							AlreadyIn => Ok(Refused(AlreadyIn))
+							NotIn => Ok(Refused(NotIn))
+							NoSuchChannel => Ok(Refused(NoSuchChannel))
+						}
+				}
+		}
+	}
+
+decode_channel : Stored.Reader -> Try(AuditCodec.ChannelEvent, _)
+decode_channel = |fields| {
+	at_field = fields.field("at")?
+	at = Stored.time(at_field.value, "at")?
+	who_field = at_field.rest.field("who")?
+	who = AccountCodec.id_from(who_field.value, "who")?
+	via_field = who_field.rest.field("via")?
+	via = via_from(via_field.value)?
+	action_field = via_field.rest.field("action")?
+	action = Stored.word(
+		action_field.value,
+		{
+			name: "action",
+			members: all_channel_actions,
+			spell: spell_channel_action,
+		},
+	)?
+	channel_field = action_field.rest.field("channel")?
+	channel = channel_from(channel_field.value)?
+	members_field = channel_field.rest.field("members")?
+	members =
+		if members_field.value.is_empty() {
+			[]
+		} else {
+			members_field.value.split_on(',').map_try(|v| AccountCodec.id_from(v, "members"))?
+		}
+	verdict_field = members_field.rest.field("verdict")?
+	verdict = channel_verdict_from(verdict_field.value)?
+	verdict_field.rest.close()?
+	Ok({
+		at,
+		who,
+		via,
+		action,
+		channel,
+		members,
+		verdict,
+	})
+}
 
 ## `created:session:12`, `redeemed:key:9`, `revoked:session:12`, or
 ## `refused:` and InviteCodec's word.
@@ -1551,6 +1812,115 @@ expect invite_line_but({
 	to: "refused:grant:stale",
 }) == Err(UnknownWord("verdict"))
 expect invite_line_but({ from: "invite=3", to: "invite=0" }) == Err(BadValue("invite"))
+
+# ── A CHANNEL'S CHANGES: the header's lines, each verdict round-tripped.
+## The name `text` is, in a test where the rule takes it.
+channel_named : Str -> ChannelName
+channel_named = |text|
+	match ChannelName.from_str(text) {
+		Ok(n) => n
+		Err(_) => crash "channel_named: a test's channel name is one"
+	}
+
+## Lobby made by human 1 with humans 2 and 7, by session 3, with `verdict`.
+lobby_made : [Permitted, Refused(AuditCodec.ChannelRefusal)] -> AuditCodec.ChannelEvent
+lobby_made = |verdict| {
+	at: 1761600200,
+	who: Principal.Id.Human(Cast.gid(1)),
+	via: Session(Cast.sid(3)),
+	action: Make,
+	channel: Named(channel_named("Lobby")),
+	members: [Principal.Id.Human(Cast.gid(2)), Principal.Id.Human(Cast.gid(7))],
+	verdict,
+}
+
+## The channel event's line, its time in range.
+channel_line : AuditCodec.ChannelEvent -> Str
+channel_line = |c|
+	match AuditCodec.Entry.of_channel(c) {
+		Ok(e) => line_text(e)
+		Err(ClockOutOfRange) => crash "channel_line: a test's time is in range"
+	}
+
+## The channel event through its line and back.
+channel_round_trip : AuditCodec.ChannelEvent -> Bool
+channel_round_trip = |c|
+	match AuditCodec.Entry.of_channel(c) {
+		Ok(e) => AuditCodec.decode(AuditCodec.encode(e)) == Ok(e)
+		Err(ClockOutOfRange) => Bool.False
+	}
+
+expect channel_line(lobby_made(Permitted)) == "audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel=Lobby members=human:2,human:7 verdict=permitted\n"
+expect
+	channel_line({
+		..lobby_made(Refused(NotAdmin)),
+		at: 1761600210,
+		who: Principal.Id.Human(Cast.gid(2)),
+		via: Session(Cast.sid(12)),
+		action: Admit,
+		members: [Principal.Id.Human(Cast.gid(9))],
+	})
+		== "audit-channel v1 at=1761600210 who=human:2 via=session:12 action=admit channel=Lobby members=human:9 verdict=refused:not-admin\n"
+# A name the rule refused, and no members: both empty.
+expect channel_line({
+	..lobby_made(Refused(NotAChannelName)),
+	channel: Unnamed,
+	members: [],
+}) == "audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel= members= verdict=refused:not-a-channel-name\n"
+expect channel_line({ ..lobby_made(Refused(KeyRefused(Revoked))), via: Key(Cast.kid(4)) }).ends_with(" via=key:4 action=make channel=Lobby members=human:2,human:7 verdict=refused:key:revoked\n")
+expect
+	[
+		Permitted,
+		Refused(NeedsSession),
+		Refused(NoSuchPrincipal),
+		Refused(NotAdmin),
+		Refused(NotAChannelName),
+		Refused(Taken),
+		Refused(NamedTwice),
+		Refused(NotAHuman),
+		Refused(NoAccount),
+		Refused(AlreadyIn),
+		Refused(NotIn),
+		Refused(NoSuchChannel),
+		Refused(KeyRefused(Expired)),
+	].all(|v| channel_round_trip(lobby_made(v)))
+
+## Every channel action, each by a key.
+every_channel_action : List(AuditCodec.ChannelAction)
+every_channel_action = [
+	Make,
+	Admit,
+	Remove,
+]
+
+expect every_channel_action.all(
+	|a| channel_round_trip({
+		..lobby_made(Permitted),
+		action: a,
+		via: Key(Cast.kid(5)),
+	}),
+)
+expect channel_round_trip({
+	..lobby_made(Permitted),
+	channel: Unnamed,
+	members: [],
+})
+expect AuditCodec.Entry.of_channel({ ..lobby_made(Permitted), at: -1 }).map_ok(|_| {}) == Err(ClockOutOfRange)
+
+## A channel line with `from` replaced by `to`, decoded.
+channel_line_but : { from : Str, to : Str } -> Try({}, _)
+channel_line_but = |{ from, to }| {
+	line = channel_line(lobby_made(Permitted)).replace_first(from, to)
+	AuditCodec.decode(Str.to_utf8(line)).map_ok(|_| {})
+}
+
+expect channel_line_but({ from: "", to: "" }) == Ok({})
+expect channel_line_but({ from: "action=make", to: "action=rename" }) == Err(UnknownWord("action"))
+expect channel_line_but({ from: "channel=Lobby", to: "channel=1st" }) == Err(BadValue("channel"))
+expect channel_line_but({ from: "members=human:2,human:7", to: "members=human:2," }) == Err(BadValue("members"))
+expect channel_line_but({ from: "verdict=permitted", to: "verdict=refused:busy" }) == Err(UnknownWord("verdict"))
+expect channel_line_but({ from: "verdict=permitted", to: "verdict=refused:key:taken" }) == Err(UnknownWord("verdict"))
+expect channel_line_but({ from: " channel=Lobby", to: "" }) == Err(MissingField("channel"))
 
 # ── THE MALFORMED TABLE: each line, its named problem.
 usual_line : Str

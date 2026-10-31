@@ -21,7 +21,7 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
---   - fifty planted faults, each red at its own step of the end to
+--   - fifty-three planted faults, each red at its own step of the end to
 --     end: a forged session cookie admitted, a third user's post let
 --     through, a third user's read let through, the subscribe moved out of
 --     the turn, a message's newline written raw into its transcript line,
@@ -46,7 +46,9 @@
 --     and the agents page's: everyone's agents listed, its form posting
 --     nowhere, no live invite listed, a revoked key listed, another
 --     human's page showing Gil's agent, a key given the page, and the start form
---     offering none of the viewer's agents;
+--     offering none of the viewer's agents; and the channels': a human who
+--     is no admin let change them, a key let change them, and a name taken
+--     again;
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
 --     tools/verify_hunts.shale, a run of its own), each count
 --     held at zero: boundaries' `fixed`, errors' `error_alias` and
@@ -61,7 +63,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 2140
 const zig_floor = 203
-const e2e_steps = 65
+const e2e_steps = 71
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 const tree = ".zig-cache/verify/tree"
@@ -337,6 +339,15 @@ plant("a redeem's format=secret answered as JSON",
   "app/Agents.roc", "SecretAlone => Wire.secret(201, SignInWeb.hex(secret))", "SecretAlone => Wire.json(201, key_json(key, Shown(secret)))", 64)
 plant("an unknown redeem format taken as JSON (the invite spent by a typo)",
   "app/Agents.roc", "_ => Err(UnknownFormat)", "_ => Ok(Json)", 64)
+
+-- The channels, an admin's. **WITH THESE, THIS RUN STARTS 64 PROGRAMS, A
+-- RUN'S MOST**: another plant goes in a run of its own, as the hunts do.
+plant("a human who is no admin let change the channels (Channel's admin check skipped)",
+  "app/Channel.roc", "Member => Err(NotAdmin)", "Member => Ok({})", 67)
+plant("a key let change the channels (its NeedsSession let by)",
+  "app/Channel.roc", "Key(_) => Err(NeedsSession)", "Key(_) => Ok({})", 68)
+plant("a channel's name taken again (Channel.make never asks the channels made)",
+  "app/Channel.roc", "if channels.any(|c| c.name() == valid) {", "if channels.any(|c| c.name() == valid) and Bool.False {", 70)
 
 -- Mentions and the agents' backstop.
 plant("mentions never parsed (every message names nobody)",
