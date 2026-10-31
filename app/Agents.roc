@@ -74,6 +74,7 @@ Agents := [].{
 		Invites,
 		Redeem,
 		RevokeInvite(InviteCodec.InviteId),
+		Rename(Principal.AgentId),
 	]
 
 	## The route a path names, if it names one.
@@ -109,8 +110,89 @@ Agents := [].{
 						digits,
 						{ name: "invite", make: InviteCodec.InviteId.from_u64 },
 					).map_ok(|id| RevokeInvite(id)).map_err(|_| NotAgents)
+				[
+					[],
+					agents,
+					digits,
+					act,
+				] if agents == Str.to_utf8("agents") and act == Str.to_utf8("rename") =>
+					Stored.id(
+						digits,
+						{ name: "agent", make: Principal.AgentId.from_u64 },
+					).map_ok(|id| Rename(id)).map_err(|_| NotAgents)
 				_ => Err(NotAgents)
 			}
+		}
+
+	## **AN AGENT'S OR BOT'S RENAMING, DECIDED**: by its owner, by their
+	## own session, to a name DisplayName's rule takes that no other
+	## principal holds (Accounts.name_holder: case folded, spaces
+	## collapsed). Its own name in a new spelling is its own to take. The
+	## step is SetName; its id, keys and conversations are unchanged, and
+	## the old name is free again. Refused: by a key (`ByKey`: a rename is
+	## its owner's, by their own session); the session no longer standing
+	## (`SessionExpired`, `NoSuchGranter`); no agent or bot holding the id
+	## (`NoSuchAgent`); one another human owns (`NotTheOwner`); or the name,
+	## by DisplayName's rule (`NameRefused`) or another principal holding
+	## it (`NameTaken`). Pure.
+	rename : {
+		granter : Agents.Granter,
+		agent : Principal.AgentId,
+		name : List(U8),
+		accounts : List(Principal),
+		now : I64,
+	} -> Try({ account : Principal, step : Accounts.Change }, _)
+	rename = |
+		{
+			granter,
+			agent,
+			name,
+			accounts,
+			now,
+		},
+	|
+		match granter {
+			Key(_) => Err(ByKey)
+			Session(session) =>
+				match session.admit({ accounts, now }) {
+					Refused(IdleExpired) | Refused(AbsoluteExpired) => Err(SessionExpired)
+					Refused(NoSuchAccount) => Err(NoSuchGranter)
+					Admitted({ principal, write: _ }) =>
+						match agent_or_bot(accounts, agent) {
+							Err(NoSuchAgent) => Err(NoSuchAgent)
+							Ok(account) if Principal.answers_to(account) != Principal.answers_to(principal) => Err(NotTheOwner)
+							Ok(account) =>
+								match DisplayName.from_utf8(name) {
+									Err(problem) => Err(NameRefused(problem))
+									Ok(chosen) =>
+										match Accounts.name_holder(accounts, chosen.to_str()) {
+											Held(holder) if holder != account.id() => Err(NameTaken)
+											_ => {
+												new_name = chosen.to_str()
+												renamed =
+													match account {
+														Agent(a) => Principal.Agent({
+															..a,
+															name: new_name,
+														})
+														Bot(b) => Principal.Bot({
+															..b,
+															name: new_name,
+														})
+														Human(_) => crash "Agents.rename: agent_or_bot finds agents and bots alone"
+													}
+												Ok({
+													account: renamed,
+													step: SetName({
+														account: account.id(),
+														name: new_name,
+													}),
+												})
+											}
+										}
+								}
+						}
+				}
 		}
 
 	## **ANSWER A ROUTE**, each to the methods it takes.
@@ -133,6 +215,7 @@ Agents := [].{
 				}
 			Redeem => if (req.method == Post) redeem!({}) else Chat.not_allowed(Post)
 			RevokeInvite(id) => if (req.method == Post) revoke_invite!(id) else Chat.not_allowed(Post)
+			Rename(id) => if (req.method == Post) rename!(id) else Chat.not_allowed(Post)
 		}
 
 	## Who asks to make an agent, mint, invite or revoke: the credential the
@@ -550,6 +633,132 @@ make_agent_for! = |granter, form| {
 					}
 			}
 		_ => Chat.failed
+	}
+}
+
+## **/agents/<n>/rename, POST**: agent or bot `n` renamed by its owner, by
+## their own session (Agents.rename decides), the form's `name=` its new
+## name; stored, audited (permitted or refused, but never a signed-out
+## asker), and answered with the agent as `/agents` answers.
+rename! : Principal.AgentId => Chat.Answer
+rename! = |id| granter_form!(|granter, asked| rename_for!(granter, { agent: id, form: asked.form }))
+
+rename_for! : Agents.Granter, { agent : Principal.AgentId, form : List(U8) } => Chat.Answer
+rename_for! = |granter, { agent: id, form }| {
+	now = Host.read_time!({})
+	name =
+		match SignInWeb.form_field(form, "name") {
+			Ok(n) => n
+			Err(_) => []
+		}
+	match (Store.load_accounts!({}), SignIn.load_settings!({})) {
+		(Ok(accounts), Ok(settings)) => {
+			decided = Agents.rename({
+				granter,
+				agent: id,
+				name,
+				accounts,
+				now,
+			})
+			asked_name =
+				match decided {
+					Err(NameRefused(_)) => ""
+					_ =>
+						match Str.from_utf8(name) {
+							Ok(text) => Str.trim(text)
+							Err(_) => ""
+						}
+				}
+			agent =
+				match agent_or_bot_id_of(accounts, id) {
+					Ok(found) => found
+					Err(NoSuchAgent) => Principal.Id.Agent(id)
+				}
+			verdict =
+				match decided {
+					Ok(_) => Permitted
+					Err(ByKey) => Refused(NeedsSession)
+					Err(NotTheOwner) => Refused(NotTheOwner)
+					Err(NoSuchAgent) => Refused(NoSuchAgent)
+					Err(NameTaken) => Refused(NameTaken)
+					Err(NameRefused(_)) => Refused(NotAName)
+					Err(SessionExpired) | Err(NoSuchGranter) => Unaudited
+				}
+			match verdict {
+				Unaudited => {}
+				Permitted => audit_rename!(
+					granter,
+					{
+						agent,
+						verdict: Permitted,
+						name: asked_name,
+						now,
+					},
+				)
+				Refused(why) => audit_rename!(
+					granter,
+					{
+						agent,
+						verdict: Refused(why),
+						name: asked_name,
+						now,
+					},
+				)
+			}
+			match decided {
+				Err(ByKey) => Wire.refused(
+					403,
+					"an agent is renamed by its owner's own session, never a key",
+				)
+				Err(SessionExpired) | Err(NoSuchGranter) => not_signed_in
+				Err(NoSuchAgent) => Wire.refused(404, "no such agent")
+				Err(NotTheOwner) => Wire.refused(403, "only its owner renames an agent")
+				Err(NameRefused(_)) => Wire.refused(400, "that name is not one we can show")
+				Err(NameTaken) => Wire.refused(409, "that name is taken")
+				Ok({ account, step }) =>
+					match Store.save_accounts!(Accounts.applied([step], { accounts, settings })) {
+						Failed => Chat.failed
+						Written => Wire.json(200, agent_json(account))
+					}
+			}
+		}
+		_ => Chat.failed
+	}
+}
+
+## **A RENAME, AUDITED**: who asked, by which session or key, which agent,
+## the verdict, and the name asked.
+audit_rename! : Agents.Granter,
+{
+	agent : Principal.Id,
+	verdict : [Permitted, Refused(AuditCodec.RenameRefusal)],
+	name : Str,
+	now : I64,
+} => {}
+audit_rename! = |
+	granter,
+	{
+		agent,
+		verdict,
+		name,
+		now,
+	},
+| {
+	(who, via) =
+		match granter {
+			Session(s) => (Principal.Id.Human(s.human()), Session(s.id()))
+			Key(k) => (k.acts_as(), Key(k.id()))
+		}
+	match AuditCodec.Entry.of_rename({
+		at: now,
+		who,
+		via,
+		agent,
+		verdict,
+		name,
+	}) {
+		Ok(entry) => Store.append_audit!(entry)
+		Err(ClockOutOfRange) => {}
 	}
 }
 
@@ -1430,6 +1639,21 @@ expect Agents.route(Str.to_utf8("/invites/redeem")) == Ok(Redeem)
 expect Agents.route(Str.to_utf8("/invites/3/revoke")).map_ok(|r| r == RevokeInvite(iid(3))) == Ok(Bool.True)
 expect Agents.route(Str.to_utf8("/invites/0/revoke")).is_err()
 expect Agents.route(Str.to_utf8("/invites/x/revoke")).is_err()
+expect Agents.route(Str.to_utf8("/agents/7/rename")).map_ok(|r| r == Rename(Cast.aid(7))) == Ok(Bool.True)
+expect Agents.route(Str.to_utf8("/agents/0/rename")).is_err()
+expect Agents.route(Str.to_utf8("/agents/7/renamed")).is_err()
+
+## The id of the agent or bot `id` names, as its kind spells it.
+agent_or_bot_id_of : List(Principal), Principal.AgentId -> Try(Principal.Id, [NoSuchAgent])
+agent_or_bot_id_of = |accounts, id| agent_or_bot(accounts, id).map_ok(|p| p.id())
+
+## The agent or bot `id` names (one counter for both kinds).
+agent_or_bot : List(Principal), Principal.AgentId -> Try(Principal, [NoSuchAgent])
+agent_or_bot = |accounts, id|
+	match accounts.keep_if(|p| p.id() == Principal.Id.Agent(id) or p.id() == Principal.Id.Bot(id)) {
+		[one] => Ok(one)
+		_ => Err(NoSuchAgent)
+	}
 
 ## A test's invite id.
 iid : U64 -> InviteCodec.InviteId
@@ -2085,3 +2309,111 @@ expect
 		}),
 	).bytes()
 		== "{\"id\":\"agent:7\",\"name\":\"Bea \\\"B\\\" \\\\ \\u0001\",\"owner\":\"human:2\"}".to_utf8()
+
+# ── RENAMING
+## `who`, by session, renames agent or bot `id` to `name` among the cast.
+renamed_by : {
+	who : U64,
+	id : U64,
+	name : Str,
+} -> Try(Str, _)
+renamed_by = |
+	{
+		who,
+		id,
+		name,
+	},
+|
+	Agents.rename({
+		granter: Session(session_of(who)),
+		agent: Cast.aid(id),
+		name: name.to_utf8(),
+		accounts: Cast.accounts,
+		now: 50,
+	}).map_ok(
+		|r|
+			match r.account {
+				Agent(a) | Bot(a) => a.name
+				Human(h) => h.name
+			},
+	)
+
+# A free name: taken, as given; its own in a new spelling, too; another's
+# in another spelling (a human's, an agent's, a bot's), refused.
+expect renamed_by({
+	who: 1,
+	id: 1,
+	name: "LC",
+}) == Ok("LC")
+expect renamed_by({
+	who: 1,
+	id: 1,
+	name: "  A1 ",
+}) == Ok("A1")
+expect renamed_by({
+	who: 1,
+	id: 2,
+	name: "B2",
+}) == Ok("B2")
+expect renamed_by({
+	who: 1,
+	id: 1,
+	name: "h2",
+}) == Err(NameTaken)
+expect renamed_by({
+	who: 1,
+	id: 1,
+	name: "A3",
+}) == Err(NameTaken)
+expect renamed_by({
+	who: 1,
+	id: 1,
+	name: "b2",
+}) == Err(NameTaken)
+expect renamed_by({
+	who: 1,
+	id: 1,
+	name: "",
+}) == Err(NameRefused(Empty))
+# Only its owner: ann renames boss's agent, refused; no such agent; and
+# by a key, refused whoever's key it is.
+expect renamed_by({
+	who: 2,
+	id: 1,
+	name: "Mine",
+}) == Err(NotTheOwner)
+expect renamed_by({
+	who: 2,
+	id: 3,
+	name: "Mine",
+}) == Ok("Mine")
+expect renamed_by({
+	who: 1,
+	id: 99,
+	name: "LC",
+}) == Err(NoSuchAgent)
+expect renamed_by({
+	who: 9,
+	id: 1,
+	name: "LC",
+}) == Err(NoSuchGranter)
+# The step: SetName, the id kept, the name freed for another.
+expect
+	match Agents.rename({
+		granter: Session(session_of(1)),
+		agent: Cast.aid(1),
+		name: "LC".to_utf8(),
+		accounts: Cast.accounts,
+		now: 50,
+	}) {
+		Ok({ step, account: _ }) => {
+			after = Accounts.applied(
+				[step],
+				{ accounts: Cast.accounts, settings: settings_after_cast },
+			).accounts
+			Accounts.name_holder(after, "lc") == Held(Principal.Id.Agent(Cast.aid(1)))
+				and Accounts.name_holder(after, "a1") == Free
+				and after.len() == Cast.accounts.len()
+		}
+		Err(_) => Bool.False
+	}

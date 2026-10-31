@@ -13,6 +13,13 @@
 ##     audit-invite v1 at=1761600170 invite=unknown for=unknown verdict=refused:unknown
 ##     audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel=Lobby members=human:2,human:7 verdict=permitted
 ##     audit-channel v1 at=1761600210 who=human:2 via=session:12 action=admit channel=Lobby members=human:9 verdict=refused:not-admin
+##     audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=LC
+##     audit-rename v1 at=1761600310 who=human:2 via=session:12 agent=agent:1 verdict=refused:not-the-owner name=Mine
+##
+## And for every rename of an agent or a bot (Agents.rename), permitted or
+## refused: the agent, the verdict, and the name asked last, as free text
+## (empty when the name rule refused it). A signed-out asker is never
+## audited.
 ##
 ## And for every admin's change to a channel (Channel.roc), permitted or
 ## refused: making one, admitting a member, removing one; the channel by
@@ -34,7 +41,7 @@
 ## a sign-in refused before GitHub named anyone is `github=unknown`.
 ##
 ## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in`, `of_key`,
-## `of_invite` and `of_channel`, which refuse a time outside Stored's range (ClockOutOfRange),
+## `of_invite`, `of_channel` and `of_rename`, which refuse a time outside Stored's range (ClockOutOfRange),
 ## or by `decode`: the encoder never meets a time it cannot write. Pure.
 import AccountCodec
 import Admin
@@ -142,6 +149,29 @@ AuditCodec := [].{
 		KeyRefused(ApiKey.Refusal),
 	]
 
+	## **AN AGENT'S OR BOT'S RENAME, OR ITS REFUSAL**: when, who by which
+	## session or key, the agent, the verdict, and the name asked (empty
+	## for one the name rule refused, which may be anything).
+	RenameEvent : {
+		at : I64,
+		who : Principal.Id,
+		via : [Session(Principal.SessionId), Key(Principal.KeyId)],
+		agent : Principal.Id,
+		verdict : [Permitted, Refused(AuditCodec.RenameRefusal)],
+		name : Str,
+	}
+
+	## **WHY A RENAME WAS REFUSED** (Agents.RenameRefusal, its words): by a
+	## key; not the owner's; no such agent; the name taken; or no name the
+	## rule takes.
+	RenameRefusal : [
+		NeedsSession,
+		NotTheOwner,
+		NoSuchAgent,
+		NameTaken,
+		NotAName,
+	]
+
 	## **ONE LINE OF THE AUDIT LOG**, the log's entry. Opaque: its time
 	## always in Stored's range.
 	Entry :: [
@@ -150,6 +180,7 @@ AuditCodec := [].{
 		Key(AuditCodec.KeyEvent),
 		Invite(AuditCodec.Invite),
 		Channel(AuditCodec.ChannelEvent),
+		Rename(AuditCodec.RenameEvent),
 	].{
 
 		## An admin attempt's audit (Admin.decide's).
@@ -179,6 +210,22 @@ AuditCodec := [].{
 		of_channel : AuditCodec.ChannelEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
 		of_channel = |c| if (is_storable(c.at)) Ok(AuditCodec.Entry.(Channel(c))) else Err(ClockOutOfRange)
 
+		## A rename, or its refusal. Its name is free text, which may hold
+		## no newline (no line could hold it): one that does is written
+		## empty.
+		of_rename : AuditCodec.RenameEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
+		of_rename = |r| {
+			name = if (r.name.to_utf8().contains('\n') or r.name.to_utf8().contains('\r')) "" else r.name
+			if (is_storable(r.at)) Ok(
+				AuditCodec.Entry.(
+					Rename({
+						..r,
+						name,
+					}),
+				),
+			) else Err(ClockOutOfRange)
+		}
+
 		## What the entry records.
 		event : AuditCodec.Entry -> [
 			Admin(Admin.Audit),
@@ -186,6 +233,7 @@ AuditCodec := [].{
 			Key(AuditCodec.KeyEvent),
 			Invite(AuditCodec.Invite),
 			Channel(AuditCodec.ChannelEvent),
+			Rename(AuditCodec.RenameEvent),
 		]
 		event = |AuditCodec.Entry.(e)| e
 
@@ -278,6 +326,19 @@ AuditCodec := [].{
 						("verdict", channel_verdict_text(c.verdict)),
 					],
 				)
+
+			Rename(r) =>
+				Stored.line(
+					rename_kind,
+					[
+						("at", Stored.time_text(r.at)),
+						("who", AccountCodec.id_text(r.who)),
+						("via", via_text(r.via)),
+						("agent", AccountCodec.id_text(r.agent)),
+						("verdict", rename_verdict_text(r.verdict)),
+						("name", r.name),
+					],
+				)
 		}
 
 	## The entry a line holds, of whichever kind its first word names.
@@ -294,10 +355,15 @@ AuditCodec := [].{
 							Err(WrongRecord) =>
 								match Stored.Reader.open(raw, invite_kind) {
 									Ok(fields) => decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
-									Err(WrongRecord) => {
-										fields = Stored.Reader.open(raw, channel_kind)?
-										decode_channel(fields).map_ok(|c| AuditCodec.Entry.(Channel(c)))
-									}
+									Err(WrongRecord) =>
+										match Stored.Reader.open(raw, channel_kind) {
+											Ok(fields) => decode_channel(fields).map_ok(|c| AuditCodec.Entry.(Channel(c)))
+											Err(WrongRecord) => {
+												fields = Stored.Reader.open(raw, rename_kind)?
+												decode_rename(fields).map_ok(|r| AuditCodec.Entry.(Rename(r)))
+											}
+											Err(why) => Err(why)
+										}
 									Err(why) => Err(why)
 								}
 							Err(why) => Err(why)
@@ -323,6 +389,78 @@ invite_kind = "audit-invite"
 
 channel_kind : Str
 channel_kind = "audit-channel"
+
+rename_kind : Str
+rename_kind = "audit-rename"
+
+all_rename_refusals : List(AuditCodec.RenameRefusal)
+all_rename_refusals = [
+	NeedsSession,
+	NotTheOwner,
+	NoSuchAgent,
+	NameTaken,
+	NotAName,
+]
+
+spell_rename_refusal : AuditCodec.RenameRefusal -> Str
+spell_rename_refusal = |why|
+	match why {
+		NeedsSession => "needs-session"
+		NotTheOwner => "not-the-owner"
+		NoSuchAgent => "no-such-agent"
+		NameTaken => "name-taken"
+		NotAName => "not-a-name"
+	}
+
+## `permitted`, or `refused:` and the refusal's word.
+rename_verdict_text : [Permitted, Refused(AuditCodec.RenameRefusal)] -> Str
+rename_verdict_text = |verdict|
+	match verdict {
+		Permitted => permitted_word
+		Refused(why) => "${refused_prefix}${spell_rename_refusal(why)}"
+	}
+
+rename_verdict_from : List(U8) -> Try([Permitted, Refused(AuditCodec.RenameRefusal)], _)
+rename_verdict_from = |value|
+	if value == Str.to_utf8(permitted_word) {
+		Ok(Permitted)
+	} else {
+		match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
+			Err(NoMatch) => Err(UnknownWord("verdict"))
+			Ok(why) =>
+				Stored.word(
+					why,
+					{
+						name: "verdict",
+						members: all_rename_refusals,
+						spell: spell_rename_refusal,
+					},
+				).map_ok(|w| Refused(w))
+		}
+	}
+
+decode_rename : Stored.Reader -> Try(AuditCodec.RenameEvent, _)
+decode_rename = |fields| {
+	at_field = fields.field("at")?
+	at = Stored.time(at_field.value, "at")?
+	who_field = at_field.rest.field("who")?
+	who = AccountCodec.id_from(who_field.value, "who")?
+	via_field = who_field.rest.field("via")?
+	via = via_from(via_field.value)?
+	agent_field = via_field.rest.field("agent")?
+	agent = AccountCodec.id_from(agent_field.value, "agent")?
+	verdict_field = agent_field.rest.field("verdict")?
+	verdict = rename_verdict_from(verdict_field.value)?
+	name = verdict_field.rest.text("name")?
+	Ok({
+		at,
+		who,
+		via,
+		agent,
+		verdict,
+		name,
+	})
+}
 
 all_channel_actions : List(AuditCodec.ChannelAction)
 all_channel_actions = [
@@ -2028,3 +2166,58 @@ expect decoded({
 	from: "who=agent:1 via=key:4",
 	to: "via=key:4 who=agent:1",
 }) == Err(MissingField("who"))
+
+# ── RENAMES
+renamed_entry : AuditCodec.RenameEvent -> AuditCodec.Entry
+renamed_entry = |r|
+	match AuditCodec.Entry.of_rename(r) {
+		Ok(e) => e
+		Err(ClockOutOfRange) => crash "renamed_entry: a test's time is in range"
+	}
+
+rename_lc : AuditCodec.RenameEvent
+rename_lc = {
+	at: 1761600300,
+	who: Principal.Id.Human(Cast.hid(1)),
+	via: Session(Cast.sid(3)),
+	agent: Principal.Id.Agent(Cast.aid(1)),
+	verdict: Permitted,
+	name: "LC",
+}
+
+expect AuditCodec.encode(renamed_entry(rename_lc)) == "audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=LC\n".to_utf8()
+expect
+	List.all(
+		[
+			rename_lc,
+			{ ..rename_lc, name: "Two  words, and = signs" },
+			{
+				..rename_lc,
+				name: "",
+				verdict: Refused(NotAName),
+			},
+			{
+				..rename_lc,
+				verdict: Refused(NotTheOwner),
+				via: Key(Cast.kid(4)),
+				who: Principal.Id.Agent(Cast.aid(2)),
+			},
+			{ ..rename_lc, verdict: Refused(NeedsSession) },
+			{
+				..rename_lc,
+				verdict: Refused(NoSuchAgent),
+				agent: Principal.Id.Bot(Cast.aid(9)),
+			},
+			{ ..rename_lc, verdict: Refused(NameTaken) },
+		],
+		|r| AuditCodec.decode(AuditCodec.encode(renamed_entry(r))) == Ok(renamed_entry(r)),
+	)
+# A name that could end the line is written empty; a verdict unknown, refused.
+expect AuditCodec.encode(
+	renamed_entry({
+		..rename_lc,
+		name: "a\nb",
+	}),
+) == "audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=\n".to_utf8()
+expect AuditCodec.decode("audit-rename v1 at=1 who=human:1 via=session:3 agent=agent:1 verdict=refused:nope name=x\n".to_utf8()).is_err()
+expect AuditCodec.Entry.of_rename({ ..rename_lc, at: -1 }).map_ok(|_| {}) == Err(ClockOutOfRange)

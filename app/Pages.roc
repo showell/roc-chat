@@ -263,7 +263,16 @@ serve_agents_page! = |here|
 		Err(Answered(answer)) => answer
 	}
 
-## The agents page: the viewer's agents, each with its invite button, the
+## An agent's or bot's number, as its rename route names it.
+agent_number : Principal.Id -> U64
+agent_number = |id|
+	match id {
+		Agent(a) | Bot(a) => a.to_u64()
+		Human(h) => h.to_u64()
+	}
+
+## The agents page: the viewer's agents, each with its invite button and
+## its rename form, the
 ## form to make one, the box the script shows a code in, then the live
 ## invites and the keys, each with its revoke button. Everything written
 ## here is escaped; no code, secret or hash is in what it is made of.
@@ -291,7 +300,11 @@ agents_page = |mine| {
 								id_html(id),
 								Html.markup("\" data-name=\""),
 								name(id),
-								Html.markup("\">Invite</button></li>\n"),
+								Html.markup("\">Invite</button> <form class=rename data-path=\"/agents/"),
+								Html.number(agent_number(id)),
+								Html.markup("/rename\"><label>Rename to <input name=name required maxlength=64 value=\""),
+								name(id),
+								Html.markup("\"></label> <button>Rename</button></form></li>\n"),
 							])
 						},
 					),
@@ -648,6 +661,11 @@ agents_js =
 	\\});
 	\\for (const b of document.querySelectorAll("button.revoke")) b.addEventListener("click", async () => {
 	\\  const r = await post(b.dataset.path, "");
+	\\  if (r.ok) location.reload(); else said.textContent = await r.text();
+	\\});
+	\\for (const f of document.querySelectorAll("form.rename")) f.addEventListener("submit", async (e) => {
+	\\  e.preventDefault();
+	\\  const r = await post(f.dataset.path, "name=" + encodeURIComponent(f.elements.name.value.trim()));
 	\\  if (r.ok) location.reload(); else said.textContent = await r.text();
 	\\});
 	\\

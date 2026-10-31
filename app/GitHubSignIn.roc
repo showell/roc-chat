@@ -943,6 +943,7 @@ SeenStep : [
 	AdvanceGeneration(Principal.Generation),
 	AdvanceAgentId(Principal.AgentId),
 	AdvanceHumanId(Principal.HumanId),
+	SetName({ account : Principal.Id, name : Str }),
 ]
 
 seen_step : Accounts.Change -> SeenStep
@@ -954,6 +955,7 @@ seen_step = |step|
 		AdvanceGeneration(g) => AdvanceGeneration(g)
 		AdvanceAgentId(id) => AdvanceAgentId(id)
 		AdvanceHumanId(id) => AdvanceHumanId(id)
+		SetName(s) => SetName(s)
 	}
 
 ## What resolving says, comparably.

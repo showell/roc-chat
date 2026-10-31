@@ -68,6 +68,11 @@ Accounts := [].{
 
 		## Raise the settings' human-id counter to at least this.
 		AdvanceHumanId(Principal.HumanId),
+
+		## Give the agent or bot `account` the name `name`, its owner having
+		## renamed it (Agents.rename decides it may). Its id, keys and
+		## conversations are unchanged; the old name is free again.
+		SetName({ account : Principal.Id, name : Str }),
 	]
 
 	## A login's bytes in lower case: GitHub's logins ignore case.
@@ -130,6 +135,24 @@ Accounts := [].{
 							{ accounts, settings: { ..settings, next_human_id: id } }
 						} else {
 							{ accounts, settings }
+						}
+					SetName({ account, name }) =>
+						{
+							accounts: accounts.map(
+								|p|
+									match p {
+										Agent(a) if Principal.id(p) == account => Principal.Agent({
+											..a,
+											name,
+										})
+										Bot(b) if Principal.id(p) == account => Principal.Bot({
+											..b,
+											name,
+										})
+										_ => p
+									},
+							),
+							settings,
 						}
 				},
 		)

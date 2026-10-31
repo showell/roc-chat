@@ -1681,6 +1681,53 @@ fn agentNameTaken(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", "/agents", owner, "name=Debbie+Bentons")).status != 201) return error.NearMissRefused;
 }
 
+/// **AN AGENT'S OWNER RENAMES IT** (Agents.rename), on /chat/agents: to a
+/// free name, and its old name is free for anyone; to a name another
+/// holds in another spelling, a 409; to its own in a new spelling, taken;
+/// by another human, a 403; by a key, even its owner's, a 403. Each is an
+/// `audit-rename` line.
+fn agentRenamed(w: *World) !void {
+    const owner = try signUp(w.a, w.port(), 1020);
+    const other = try signUp(w.a, w.port(), 1021);
+    const made = try request(w.a, w.port(), "POST", "/agents", owner, "name=Rhee+1020");
+    if (made.status != 201) return error.NotMade;
+    const id = try field(made.body, "id");
+    if (!std.mem.startsWith(u8, id, "agent:")) return error.NotAnAgent;
+    if ((try request(w.a, w.port(), "POST", "/agents", other, "name=Other+1021")).status != 201) return error.NotMade;
+    const path = try std.fmt.allocPrint(w.a, "/agents/{s}/rename", .{id["agent:".len..]});
+
+    // The page offers it, beside its invite button.
+    const page = try agentsPageOf(w, owner);
+    if (!has(page, try std.fmt.allocPrint(w.a, "<form class=rename data-path=\"{s}\">", .{path})) or !has(page, "value=\"Rhee 1020\"")) return error.NoRenameForm;
+
+    const free = try pagePost(w, owner, path, "name=Lee+1020");
+    if (free.status != 200 or !has(free.body, try std.fmt.allocPrint(w.a, "\"id\":\"{s}\",\"name\":\"Lee 1020\"", .{id}))) return error.NotRenamed;
+    if (!has(try agentsPageOf(w, owner), "<b>Lee 1020</b>")) return error.PageUnchanged;
+    // The old name is free again, for anyone's agent.
+    if ((try request(w.a, w.port(), "POST", "/agents", other, "name=rhee+1020")).status != 201) return error.OldNameHeld;
+    // Another's name in another spelling: refused, the name kept.
+    const taken = try pagePost(w, owner, path, "name=OTHER++1021");
+    if (taken.status != 409 or !has(taken.body, "that name is taken")) return error.TakenRenamed;
+    // Its own name in a new spelling: its own to take.
+    const own = try pagePost(w, owner, path, "name=LEE+1020");
+    if (own.status != 200 or !has(own.body, "\"name\":\"LEE 1020\"")) return error.OwnSpellingRefused;
+    // Not the owner's: refused, the name unchanged.
+    const theirs = try pagePost(w, other, path, "name=Mine+1021");
+    if (theirs.status != 403 or !has(theirs.body, "only its owner")) return error.RenamedByAnother;
+    // By a key, even the owner's own: refused.
+    const minted = try request(w.a, w.port(), "POST", "/keys", owner, "");
+    if (minted.status != 201) return error.NotMinted;
+    const by_key = try send(w.a, w.port(), "POST", path, .{ .key = try field(minted.body, "secret") }, "name=Keyed+1020");
+    if (by_key.status != 403 or !has(by_key.body, "owner's own session")) return error.RenamedByKey;
+    if (!has(try agentsPageOf(w, owner), "<b>LEE 1020</b>")) return error.NameChangedByARefusal;
+
+    const log = try w.rig.data.readFileAlloc(io, "auth/audit", w.a, .limited(1024 * 1024));
+    for ([_][]const u8{ "verdict=permitted name=Lee 1020\n", "verdict=refused:name-taken name=OTHER  1021\n", "verdict=permitted name=LEE 1020\n", "verdict=refused:not-the-owner name=Mine 1021\n", "verdict=refused:needs-session name=Keyed 1020\n" }) |tail| {
+        if (!has(log, try std.fmt.allocPrint(w.a, "agent={s} {s}", .{ id, tail }))) return error.NotAudited;
+    }
+    if (count(log, "audit-rename v1 ") != 5) return error.AuditedOtherwise;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -1758,6 +1805,7 @@ const steps = [_]Step{
     .{ .name = "an agent named as a look-alike of its owner comes with its owner's login, and the page labels it so, in both renderers", .f = loginBeside },
     .{ .name = "a human signing up as a name another holds, in any case and spacing, is refused; a near miss is signed up", .f = humanNameTaken },
     .{ .name = "an agent named as a human, or as another agent, in any case, is a 409; a near miss is made", .f = agentNameTaken },
+    .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
