@@ -127,6 +127,36 @@ Access := [].{
 				Session(b) => Session(b)
 				Key(k) => Key(k.who)
 			}
+
+		## **DOES THE CREDENTIAL REACH RESOURCE `id`, TO READ OR TO POST?**
+		## A session reaches what its human may; a key, only where its
+		## scope's read or post reaches; nobody signed out, nothing. Asked
+		## by a layer that names each refusal itself (Topic.roc), before it
+		## decides on the principal.
+		reach : Access.Viewer(id),
+		[Read, Post],
+		id -> [
+			Reaches,
+			OutOfScope,
+			SignedOut,
+		] where [id.is_eq : id, id -> Bool]
+		reach = |
+			Access.Viewer.(v),
+			act,
+			id,
+		|
+			match v {
+				SignedOut => SignedOut
+				Session(_) => Reaches
+				Key(k) => {
+					part =
+						match act {
+							Read => k.read
+							Post => k.post
+						}
+					if (is_reached(part, id)) Reaches else OutOfScope
+				}
+			}
 	}
 
 	## **CAN THIS VIEWER SEE THIS RESOURCE?** A participant always can, and
@@ -524,6 +554,14 @@ expect Access.can_see(reads_plan, public_file)
 expect !Access.can_see(reads_plan, { ..public_file, id: "/notes/other.md" })
 expect !Access.can_post(reads_plan, { ..public_file, participants: [bound(files, stranger)] })
 expect reads_plan.who() == Key(bound(files, stranger))
+# reach: a key's read and post parts, each where it reaches; a session
+# everywhere; nobody signed out nowhere.
+expect reads_plan.reach(Read, "/notes/plan.md") == Reaches
+expect reads_plan.reach(Read, "/notes/other.md") == OutOfScope
+expect reads_plan.reach(Post, "/notes/plan.md") == OutOfScope
+expect viewer_of(files, holder).reach(Post, "/anything") == Reaches
+expect viewer_of(files, agent_holder).reach(Post, "/anything") == Reaches
+expect Access.Viewer.signed_out({}).reach(Read, "/notes/plan.md") == SignedOut
 
 # ── THE KEY DECISION TABLE
 ## **A TEST'S RESOURCE**: a fixed Access.Resource, the accounts not asked.

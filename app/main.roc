@@ -12,6 +12,11 @@ import pf.Chat
 import pf.Host
 import md.Md
 import Agents
+# The channels model (Channel, Topic, MessageRef, ChannelLayout): pure and
+# not routed yet. Imported so `roc test app/main.roc` runs its expects;
+# the routes item uses it here.
+import ChannelLayout
+import MessageRef
 import Conversations
 import Html
 import Origin
