@@ -13,6 +13,8 @@
 -- taken (roc-apps CLAUDE.md, "Testing").
 --
 -- The checks:
+--   - first, the disk: under Shale's cookbook/disk.shale floor of free
+--     space (20 GB) the run stops at once, with its line;
 --   - the chat client: ../chat-client at the commit chat-client-rev pins
 --     (any other stops the run, naming both), and its own checks there
 --     (chat-client's tools/check);
@@ -58,6 +60,21 @@ function say(ok, what)
   board.lines[#board.lines + 1] = mark .. "  " .. what
   print(mark .. "  " .. what)
 end
+
+-- ── the disk, first ──
+-- **A FULL DISK FAILS HERE, NEVER MID-RUN**: Shale's cookbook/disk.shale
+-- stops under its floor of free space, its line naming the biggest growth
+-- spots, and this run stops with that line.
+local disk = run({"shale", real("cookbook:disk.shale")}, {cwd = ".", timeout_ms = 600000, tail = 5, width = 1000})
+local disk_line = re_find(disk.out, "disk: [^\n]*")
+if disk.code ~= 0 then
+  local why = trim(disk.out)
+  if disk_line ~= nil then why = disk_line.text end
+  local steps = re_find(why, " \\(\\d+ steps\\)$")
+  if steps ~= nil then why = sub(why, 1, #why - #steps.text) end
+  fail("verify: " .. why)
+end
+say(disk_line ~= nil, disk_line ~= nil and disk_line.text or ("cookbook:disk.shale gave no line: " .. trim(disk.out)))
 
 -- The number the first group of `pattern` catches in `out`, or -1.
 function number_in(out, pattern)
