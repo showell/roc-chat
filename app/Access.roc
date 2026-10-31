@@ -114,6 +114,27 @@ Access := [].{
 				}
 			}
 
+		## **THE SAME VIEWER, OVER ANOTHER KIND OF RESOURCE** (a
+		## conversation's viewer asking of a channel's topics): a session
+		## reaches what its human may, there as here; a key's read and post
+		## stay on or off, and one that reaches everywhere still does, but
+		## one narrowed to listed resources reaches none of the other kind,
+		## as no list it holds names one.
+		over : Access.Viewer(a) -> Access.Viewer(b)
+		over = |Access.Viewer.(v)|
+			match v {
+				SignedOut => Access.Viewer.(SignedOut)
+				Session(b) => Access.Viewer.(Session(b))
+				Key(k) =>
+					Access.Viewer.(
+						Key({
+							who: k.who,
+							read: narrowed(k.read),
+							post: narrowed(k.post),
+						}),
+					)
+			}
+
 		## Who the viewer is, and by which credential: what the layer's
 		## elections and an audit read. Never its scope.
 		who : Access.Viewer(id) -> [
@@ -278,6 +299,16 @@ is_answerable = |resource, who|
 	}
 
 ## A read's or a post's part of a scope reaches the resource `id`.
+## A key's part over another kind of resource: on everywhere stays so;
+## narrowed to a list, it reaches none of them.
+narrowed : [Off, On(ApiKey.Reach(a))] -> [Off, On(ApiKey.Reach(b))]
+narrowed = |part|
+	match part {
+		Off => Off
+		On(Everywhere) => On(Everywhere)
+		On(Only(_)) => On(Only([]))
+	}
+
 is_reached : [Off, On(ApiKey.Reach(id))], id -> Bool where [id.is_eq : id, id -> Bool]
 is_reached = |part, id|
 	match part {
@@ -829,3 +860,65 @@ expect decided_among({
 		Cast.ann_agent,
 	],
 }) == Refused(NoSuchPrincipal)
+
+# **A VIEWER OVER TOPICS** (`over`): a session reaches a topic as it does
+# a conversation; a key that reads everywhere still does; one narrowed to
+# listed conversations reaches no topic; off stays off.
+topic_at : Str -> Str
+topic_at = |name| name
+
+over_reach : Access.Viewer(U64),
+[Read, Post] -> [
+	Reaches,
+	OutOfScope,
+	SignedOut,
+]
+over_reach = |viewer, act| Access.Viewer.over(viewer).reach(act, topic_at("Lobby/ChitChat"))
+
+expect over_reach(Access.Viewer.signed_out({}), Read) == SignedOut
+expect over_reach(
+	key_viewer([person(1, { g: 1 })], { acts_as: person(1, { g: 1 }), scope: everywhere({}) }),
+	Read,
+) == Reaches
+expect over_reach(
+	key_viewer(
+		[person(1, { g: 1 })],
+		{
+			acts_as: person(1, { g: 1 }),
+			scope: {
+				read: On(Only([3])),
+				post: On(Everywhere),
+				admin: Off,
+			},
+		},
+	),
+	Read,
+) == OutOfScope
+expect over_reach(
+	key_viewer(
+		[person(1, { g: 1 })],
+		{
+			acts_as: person(1, { g: 1 }),
+			scope: {
+				read: On(Only([3])),
+				post: On(Everywhere),
+				admin: Off,
+			},
+		},
+	),
+	Post,
+) == Reaches
+expect over_reach(
+	key_viewer(
+		[person(1, { g: 1 })],
+		{
+			acts_as: person(1, { g: 1 }),
+			scope: {
+				read: Off,
+				post: Off,
+				admin: Off,
+			},
+		},
+	),
+	Post,
+) == OutOfScope

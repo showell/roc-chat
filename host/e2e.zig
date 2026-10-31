@@ -1874,6 +1874,88 @@ fn agentStreamHeld(w: *World) !void {
     if ((try send(w.a, w.port(), "GET", "/stream", .{ .key = pal.key }, "")).status != 401) return error.RevokedKeyStreamed;
 }
 
+/// **A CHANNEL'S HUMAN TOPIC** (Topics, Topic.roc decides): a member makes
+/// one; its name taken again in another case, a bad name, a stranger and
+/// nobody signed in are refused. A member posts, and the message carries
+/// its reference, `MSG_<channel>.<topic>_<n>`; another member reads it
+/// and streams the next; a stranger, and an agent, never reach it.
+fn topicsMade(w: *World) !void {
+    const p = try signUp(w.a, w.port(), 1025);
+    const q = try signUp(w.a, w.port(), 1026);
+    const r = try signUp(w.a, w.port(), 1027);
+    const made = try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Garden&members=human%3A{s}%2Chuman%3A{s}", .{ try hid(w.a, 1025), try hid(w.a, 1026) }));
+    if (made.status != 201) return error.ChannelNotMade;
+
+    const topic = try pagePost(w, p, "/channels/Garden/topics", "name=ChitChat");
+    if (topic.status != 201 or !has(topic.body, "{\"channel\":\"Garden\",\"topic\":\"ChitChat\",\"kind\":\"human\",\"agents\":[]}")) return error.TopicNotMade;
+    if ((try pagePost(w, q, "/channels/garden/topics", "name=CHITCHAT")).status != 409) return error.TakenTwice;
+    if ((try pagePost(w, p, "/channels/Garden/topics", "name=chit_chat")).status != 400) return error.BadNameMade;
+    if ((try pagePost(w, r, "/channels/Garden/topics", "name=Mine")).status != 403) return error.StrangerMade;
+    if ((try request(w.a, w.port(), "POST", "/channels/Garden/topics", "", "name=Nobody")).status != 401) return error.NobodyMade;
+    if ((try pagePost(w, p, "/channels/Nowhere/topics", "name=Lost")).status != 404) return error.NowhereMade;
+
+    const posted = try request(w.a, w.port(), "POST", "/channels/Garden/topics/ChitChat/messages", p, "hello garden");
+    if (posted.status != 201 or !std.mem.startsWith(u8, posted.body, "{\"ref\":\"MSG_Garden.ChitChat_1\",\"id\":1,")) return error.NotPosted;
+    const read = try get(w.a, w.port(), "/channels/garden/topics/chitchat", q);
+    if (read.status != 200 or !has(read.body, "\"markdown\":\"hello garden\"") or !has(read.body, "\"ref\":\"MSG_Garden.ChitChat_1\"") or !has(read.body, "\"earlier\":false")) return error.NotRead;
+    if ((try get(w.a, w.port(), "/channels/Garden/topics/ChitChat", r)).status != 404) return error.StrangerRead;
+    if ((try get(w.a, w.port(), "/channels/Garden/topics/ChitChat", "")).status != 401) return error.NobodyRead;
+    if ((try get(w.a, w.port(), "/channels/Garden/topics/Nope", q)).status != 404) return error.NoTopicRead;
+    if ((try request(w.a, w.port(), "POST", "/channels/Garden/topics/ChitChat/messages", r, "let me in")).status != 404) return error.StrangerPosted;
+
+    const l = try Listener.open(w.a, w.port(), "/channels/Garden/topics/ChitChat/stream", q, "1");
+    defer l.close();
+    if ((try request(w.a, w.port(), "POST", "/channels/Garden/topics/ChitChat/messages", p, "a second")).status != 201) return error.NotPosted;
+    try l.until("\"markdown\":\"a second\"");
+    if (!has(l.got.items, "\"ref\":\"MSG_Garden.ChitChat_2\"") or has(l.got.items, "hello garden")) return error.StreamedWrong;
+
+    // An agent, even a member's own with a key that reads everywhere,
+    // never reaches a human topic.
+    const pal = try ownAgent(w, p, "Pal+1025", "");
+    if ((try send(w.a, w.port(), "GET", "/channels/Garden/topics/ChitChat", .{ .key = pal.key }, "")).status != 404) return error.AgentRead;
+}
+
+/// **AN AGENT TOPIC**: a member makes one naming their own agent (another
+/// member's agent refused); the agent, by its key, reads and posts there,
+/// and its one stream (`GET /stream`) gets the topic's posts, each naming
+/// the channel, the topic and its reference; a member who owns none of
+/// its agents never reaches it.
+fn agentTopic(w: *World) !void {
+    const p = try signUp(w.a, w.port(), 1028);
+    const q = try signUp(w.a, w.port(), 1029);
+    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Workshop&members=human%3A{s}%2Chuman%3A{s}", .{ try hid(w.a, 1028), try hid(w.a, 1029) }))).status != 201) return error.ChannelNotMade;
+    const pal = try ownAgent(w, p, "Pal+1028", "");
+    const qs = try ownAgent(w, q, "Pal+1029", "");
+    const theirs = try pagePost(w, p, "/channels/Workshop/topics", try std.fmt.allocPrint(w.a, "name=Bench&agents={s}", .{qs.id}));
+    if (theirs.status != 403 or !has(theirs.body, "only their own agents")) return error.AnothersAgentNamed;
+    const made = try pagePost(w, p, "/channels/Workshop/topics", try std.fmt.allocPrint(w.a, "name=Desk&agents={s}", .{pal.id}));
+    if (made.status != 201 or !has(made.body, try std.fmt.allocPrint(w.a, "\"kind\":\"agents\",\"agents\":[\"{s}\"]", .{pal.id}))) return error.TopicNotMade;
+
+    const one = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, "");
+    errdefer one.close();
+    if ((try request(w.a, w.port(), "POST", "/channels/Workshop/topics/Desk/messages", p, "a job for you")).status != 201) return error.NotPosted;
+    try one.until("\"markdown\":\"a job for you\"");
+    if (!has(one.got.items, "{\"channel\":\"Workshop\",\"topic\":\"Desk\",\"ref\":\"MSG_Workshop.Desk_1\",\"id\":1,")) return error.NotNamedOnTheStream;
+    if (!has(one.got.items, ".workshop/desk.1\n")) return error.NotItsPlace;
+    // The DM rule's kin: the topic of one human and one agent names it.
+    if (!has(one.got.items, try std.fmt.allocPrint(w.a, "\"mentions\":[\"{s}\"]", .{pal.id}))) return error.AgentNotNamed;
+
+    const by_key = try send(w.a, w.port(), "POST", "/channels/Workshop/topics/Desk/messages", .{ .key = pal.key }, "done");
+    if (by_key.status != 201) return error.AgentNotPosted;
+    const read = try send(w.a, w.port(), "GET", "/channels/Workshop/topics/Desk", .{ .key = pal.key }, "");
+    if (read.status != 200 or !has(read.body, "\"markdown\":\"done\"")) return error.AgentNotRead;
+    if ((try get(w.a, w.port(), "/channels/Workshop/topics/Desk", q)).status != 404) return error.MemberReadAgentTopic;
+    if ((try get(w.a, w.port(), "/channels/Workshop/topics/Desk", p)).status != 200) return error.OwnerNotRead;
+    // Its agent's one stream, resumed, sends the topic's posts it missed.
+    const last = try eventId(one.got.items, "\"markdown\":\"a job for you\"");
+    one.close();
+    if ((try request(w.a, w.port(), "POST", "/channels/Workshop/topics/Desk/messages", p, "and another")).status != 201) return error.NotPosted;
+    const back = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, last);
+    defer back.close();
+    try back.until("\"markdown\":\"and another\"");
+    if (has(back.got.items, "a job for you")) return error.SentTwice;
+}
+
 const Step = struct { name: []const u8, f: *const fn (*World) anyerror!void };
 
 const steps = [_]Step{
@@ -1954,6 +2036,8 @@ const steps = [_]Step{
     .{ .name = "a human's post in a DM with one agent names the agent, a quote too; the agent's own names nobody; with a second human or agent, nobody", .f = dmNamesTheAgent },
     .{ .name = "one stream per agent: each of its conversations' posts, naming the conversation, never another's; resumed with Last-Event-ID, what came meanwhile and nothing twice; a session, a human's key and a scoped key refused", .f = agentStream },
     .{ .name = "the one stream is one of the agent's streams under the cap, and ends at its lifetime once its key is revoked", .f = agentStreamHeld },
+    .{ .name = "a member makes a channel's human topic, posts with its reference, another member reads and streams it; a stranger, nobody, and an agent are refused", .f = topicsMade },
+    .{ .name = "an agent topic: its agent reads and posts by key, its one stream gets the topic's posts naming channel, topic and reference, and resumes; a member owning none of its agents never reaches it", .f = agentTopic },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
 };
 

@@ -36,9 +36,9 @@
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
 -- The floors: the test counts, which may only rise.
-const roc_floor = 2320
+const roc_floor = 2350
 const zig_floor = 206
-const e2e_steps = 78
+const e2e_steps = 80
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 -- A build and a run of everything: minutes, from an empty cache.
@@ -140,7 +140,7 @@ say(v.code == 0 and roc_failed == 0 and roc_count >= roc_floor, "Roc expects, th
 say(zig_count >= zig_floor, "Zig tests: " .. zig_count .. " (floor " .. zig_floor .. ")")
 
 -- ── the end to end, a line a step ──
-local e = run({"zig", "build", "e2e", "--cache-dir", cache}, {cwd = ".", timeout_ms = build_ms, tail = 80})
+local e = run({"zig", "build", "e2e", "--cache-dir", cache}, {cwd = ".", timeout_ms = build_ms, tail = e2e_steps + 40})
 local got = steps_of(e.out)
 for n = 1, e2e_steps do
   local s = get(got.by, "" .. n, nil)
