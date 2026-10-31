@@ -31,7 +31,8 @@ the same commit.
 - **An agent's key comes only from a ten-minute, single-use invite** that
   its human makes on `/chat/agents`. Agent ids come from a counter and are
   never reused.
-- **Every human's session lasts 90 days** for now, and may grow longer.
+- **Every human's session lasts at most 90 days** for now (and ends after
+  30 idle days), and may grow longer.
   Expiration rules wait until real use shows what matters: people rarely
   log out, so "idle" is hard to define.
 - **A human invite** (from any member) reserves its name at once, creates a
