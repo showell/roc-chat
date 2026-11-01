@@ -24,6 +24,8 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
+--   - an edit to a module made since the last build rebuilds the chat
+--     (tools/verify_inputs.shale, a run of its own, in a copy of the tree);
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
 --     tools/verify_hunts.shale, a run of its own), each count
 --     held at zero: boundaries' `fixed`, errors' `error_alias` and
@@ -158,6 +160,15 @@ function tail_of(out)
   local t = trim(out)
   if #t > 400 then t = sub(t, #t - 399) end
   return join(split(t, "\n"), " | ")
+end
+
+-- ── a new module's edit rebuilds the chat ──
+local ir = run({"shale", "tools/verify_inputs.shale"}, {cwd = ".", timeout_ms = build_ms, tail = 20})
+local inputs_line = re_find(ir.out, "(PASS|FAIL)  ([^\n]*)")
+if inputs_line == nil then
+  say(false, "tools/verify_inputs.shale (exit " .. ir.code .. "): " .. tail_of(ir.out))
+else
+  say(ir.code == 0 and inputs_line.groups[1] == "PASS", inputs_line.groups[2])
 end
 
 -- ── the style hunts and the formatters, in a run of their own ──
