@@ -64,6 +64,23 @@ It pulls `/var/lib/roc-chat/data` as one timestamped tar into
 secret is GitHub's to issue again, and a new signing key only signs
 everyone out.
 
+## Starting over (wiping the store)
+
+When a change of the stored format needs no migration (Steve's call, as at
+step 2 of docs/design/humans-without-github.md), production starts empty.
+`data/secrets/` holds the GitHub OAuth id and secret and the signing key,
+and **must survive**; `config.zon` sits outside `data/` and is untouched.
+
+```
+shale tools/backup.shale
+ssh steve@162.243.1.123 'sudo systemctl stop roc-chat && sudo find /var/lib/roc-chat/data -mindepth 1 -maxdepth 1 ! -name secrets -exec rm -rf {} + && sudo ls -la /var/lib/roc-chat/data'
+shale tools/deploy.shale
+```
+
+The listing must show `secrets` alone. Then the first human signs up again
+through GitHub (as `human:1`), and every agent is invited again: old keys,
+conversations and accounts are gone.
+
 ## Pitfalls
 
 - **Signing in needs HTTPS.** The session cookies are `__Host-` and
