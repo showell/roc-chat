@@ -1,7 +1,7 @@
 ## **A CHANNEL AND WHO IS IN IT** (the channels design, Steve's decisions
-## of 2026-10-31): a name (ChannelName), and its members, humans only. An
-## agent or a bot is never a member: it reaches a channel only through an
-## agent topic that names it (Topic.roc).
+## of 2026-10-31 and 2026-11-01): a name (ChannelName), and its members,
+## humans, agents and bots alike. Who is in holds for every topic in it
+## (Topic.roc): a member reads, posts and makes topics in all of them.
 ##
 ## **WHO IS IN IS AN ADMIN'S DECISION, BY THEIR OWN SESSION**: an admin
 ## makes a channel, naming it and its members, and admits or removes a
@@ -33,8 +33,8 @@ Channel :: {
 	## a member, not an admin (`NotAdmin`); a name the rule refuses
 	## (`NotAChannelName`, a DM's `dm-` name too); a name some channel has, in any case (`Taken`,
 	## so no two channels' paths meet, on a disk that folds case too); then
-	## each member: named twice (`NamedTwice`), an agent's or a bot's id
-	## (`NotAHuman`), or no one account holds it (`NoAccount`). No member at
+	## each member: named twice (`NamedTwice`), or no one account holds it
+	## (`NoAccount`). No member at
 	## all is a channel, empty until an admin admits someone.
 	make : {
 		by : Access.Viewer(id),
@@ -66,7 +66,7 @@ Channel :: {
 					if kept.any(|b| b.id == id) {
 						Err(NamedTwice(id))
 					} else {
-						Ok(kept.append(human_bound(accounts, id)?))
+						Ok(kept.append(member_bound(accounts, id)?))
 					}
 				},
 			)?
@@ -118,7 +118,7 @@ Channel :: {
 		}
 	}
 
-	## **AN ADMIN LETS A HUMAN IN**: refused as `make` refuses its asker
+	## **AN ADMIN LETS SOMEONE IN**, a human, an agent or a bot: refused as `make` refuses its asker
 	## and each of its members, and `AlreadyIn` for a member whose binding
 	## holds. A binding of an earlier account with that id (retired, made
 	## again since) is replaced.
@@ -137,7 +137,7 @@ Channel :: {
 		},
 	| {
 		admin(by, accounts)?
-		b = human_bound(accounts, member)?
+		b = member_bound(accounts, member)?
 		if c.members.contains(b) {
 			Err(AlreadyIn(member))
 		} else {
@@ -147,9 +147,8 @@ Channel :: {
 
 	## **AN ADMIN TAKES A MEMBER OUT**, by id, whether their account still
 	## stands or not: refused as `make` refuses its asker, and `NotIn` for
-	## an id the channel does not hold. Their reach goes with it: the
-	## channel's human topics, and any agent topic they reached only as a
-	## member (none: an agent topic is its agents' owners', member or not).
+	## an id the channel does not hold. Their reach goes with it: every
+	## topic in the channel.
 	remove : Channel,
 	{
 		by : Access.Viewer(id),
@@ -205,8 +204,8 @@ Channel :: {
 	members : Channel, List(Principal) -> List(Principal.Bound)
 	members = |Channel.(c), accounts| c.members.keep_if(|b| Principal.holds(accounts, b).is_ok())
 
-	## **IS `who` IN THE CHANNEL, NOW?** A human whose binding is the
-	## channel's and holds among `accounts`; never an agent or a bot.
+	## **IS `who` IN THE CHANNEL, NOW?** Anyone whose binding is the
+	## channel's and holds among `accounts`.
 	membership : Channel,
 	{
 		who : Principal.Bound,
@@ -245,7 +244,15 @@ admin = |by, accounts|
 			}
 	}
 
-## A human's binding to their one account, to let them in.
+## A member's binding to their one account, to let them in.
+member_bound : List(Principal), Principal.Id -> Try(Principal.Bound, [NoAccount(Principal.Id)])
+member_bound = |accounts, id|
+	match Principal.bind(accounts, id) {
+		Ok(b) => Ok(b)
+		Err(_) => Err(NoAccount(id))
+	}
+
+## A human's binding to their one account, for a DM.
 human_bound : List(Principal),
 Principal.Id -> Try(
 	Principal.Bound,
@@ -360,15 +367,19 @@ expect make_by(Steve, { name: "cobblestone", members: [] }) == Err(Taken)
 expect make_by(Steve, { name: "COBBLESTONE", members: [] }) == Err(Taken)
 expect make_by(Steve, { name: "Cobblestone-2", members: [] }).is_ok()
 
-# Its members: humans with an account, each once.
+# Its members: anyone with an account, each once: humans, agents, bots.
 expect make_by(
 	Steve,
 	{ name: "general", members: [Damian, Cc] },
-) == Err(NotAHuman(ChannelCast.id(Cc)))
+).map_ok(|c| ids(c, ChannelCast.accounts)) == Ok([Damian, Cc].map(ChannelCast.id))
 expect make_by(
 	Steve,
-	{ name: "general", members: [SteveBot] },
-) == Err(NotAHuman(ChannelCast.id(SteveBot)))
+	{ name: "general", members: [SteveBot, DamianAgent] },
+).map_ok(|c| ids(c, ChannelCast.accounts)) == Ok([SteveBot, DamianAgent].map(ChannelCast.id))
+expect make_by(
+	Steve,
+	{ name: "general", members: [Cc, Cc] },
+) == Err(NamedTwice(ChannelCast.id(Cc)))
 expect make_by(
 	Steve,
 	{ name: "general", members: [Damian, Damian] },
@@ -386,7 +397,7 @@ with_zed_gone = Channel.make({
 
 expect with_zed_gone == Err(NoAccount(ChannelCast.id(Zed)))
 
-# Membership: humans whose binding holds; never an agent.
+# Membership: anyone whose binding holds; an agent not let in is no member.
 expect cobblestone.membership({
 	who: ChannelCast.bound(Damian),
 	accounts: ChannelCast.accounts,
@@ -444,10 +455,23 @@ expect admitted(
 	Steve,
 	{ who: Damian, accounts: ChannelCast.accounts },
 ) == Err(AlreadyIn(ChannelCast.id(Damian)))
+expect admitted(Steve, { who: Lc, accounts: ChannelCast.accounts }).map_ok(
+	|c| c.membership({
+		who: ChannelCast.bound(Lc),
+		accounts: ChannelCast.accounts,
+	}),
+) == Ok(Member)
+# An agent counts while its account stands: retired, out.
+expect admitted(Steve, { who: Lc, accounts: ChannelCast.accounts }).map_ok(
+	|c| c.membership({
+		who: ChannelCast.bound(Lc),
+		accounts: ChannelCast.without(Lc),
+	}),
+) == Ok(NotAMember)
 expect admitted(
 	Steve,
-	{ who: Lc, accounts: ChannelCast.accounts },
-) == Err(NotAHuman(ChannelCast.id(Lc)))
+	{ who: Lc, accounts: ChannelCast.without(Lc) },
+) == Err(NoAccount(ChannelCast.id(Lc)))
 expect admitted(
 	Steve,
 	{ who: Zed, accounts: ChannelCast.without(Zed) },
@@ -495,6 +519,10 @@ stored_and_loaded : Channel -> Try(Channel, _)
 stored_and_loaded = |channel| ChannelCodec.decode(ChannelCodec.encode(channel.fields())).map_ok(Channel.load)
 
 expect stored_and_loaded(cobblestone) == Ok(cobblestone)
+expect make_by(
+	Steve,
+	{ name: "RocChatDev", members: [Steve, Cc, Lc] },
+).map_ok(|c| stored_and_loaded(c) == Ok(c)) == Ok(Bool.True)
 expect stored_and_loaded(cobblestone).map_ok(|c| c.name().to_str()) == Ok("Cobblestone")
 expect make_by(
 	Steve,

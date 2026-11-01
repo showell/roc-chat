@@ -199,7 +199,6 @@ invite_new! = |inviter, form| {
 			by: inviter.viewer,
 			channel: dm,
 			name: topic_name,
-			kind: Human,
 			topics: [],
 			accounts: after.accounts,
 		}).map_err(

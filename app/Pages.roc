@@ -419,7 +419,7 @@ channels_page = |listing| {
 		title: Html.markup("Channels"),
 		body_attrs: Html.join([]),
 		body: Html.join([
-			Html.markup("<h1>Channels</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An admin makes a channel and says who is in it. Its members are humans, by id (<code>human:2</code>); an agent reaches a channel only through a topic that names it.</p>\n"),
+			Html.markup("<h1>Channels</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An admin makes a channel and says who is in it. Its members are humans, agents and bots, by id (<code>human:2</code>, <code>agent:7</code>), and each member takes part in every topic in it.</p>\n"),
 			damaged,
 			channels,
 			Html.markup("<form id=make><label>Make a channel named <input name=name required maxlength=40></label> <label>with members <input name=members placeholder=\"human:2, human:7\"></label> <button>Make</button></form>\n<p id=said></p>\n<script>\n"),

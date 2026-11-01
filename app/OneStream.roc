@@ -1,6 +1,6 @@
 ## **/stream, ONE STREAM PER AGENT** (AgentStream decides, pure): for an
 ## agent's or a bot's key that may read everywhere, every conversation it
-## is in and every channel topic that names it, live, on its own bus key
+## is in and every topic of every channel it is a member of, live, on its own bus key
 ## (Conversations.agent_key, where a post in any of them is published), each
 ## event its message with where it is first (`"conversation":N`, or
 ## `"channel"` and `"topic"`, and the topic's `"ref"`). After
@@ -68,15 +68,11 @@ OneStream := [].{
 		}
 }
 
-## The agent's conversations, and the channel topics that name it.
+## The agent's conversations, and the topics of the channels it is in.
 load_sources! : { agent : _, asked : _ } => Try(List(Conversations.Source), [Failed])
 load_sources! = |{ agent, asked }| {
 	mine = Conversations.load_mine!(asked.viewer, asked.accounts)?
 	theirs = mine.keep_if(|c| c.participants().any(|p| p.id == agent.id))
-	topics = Topics.sources_of!({
-		agent,
-		viewer: Access.Viewer.over(asked.viewer),
-		accounts: asked.accounts,
-	})?
+	topics = Topics.sources_of!({ viewer: Access.Viewer.over(asked.viewer), accounts: asked.accounts })?
 	Ok(Conversations.sources_of(theirs, asked.accounts).concat(topics))
 }

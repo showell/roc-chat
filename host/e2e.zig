@@ -1605,8 +1605,9 @@ fn keyRefusedChannels(w: *World) !void {
 
 /// **ADMIT AND REMOVE CHANGE WHO IS IN**: Cal let in (the channel named in
 /// another spelling), Ann let go, each answered with the channel and shown
-/// on the page; one already in, one not in, an agent, an unknown human and
-/// a channel that is not there refused, each by name.
+/// on the page; an agent let in and let go as a human is; one already in,
+/// one not in, an unknown id and a channel that is not there refused, each
+/// by name.
 fn admitRemove(w: *World) !void {
     const in = try pagePost(w, w.ivy, "/channels/lobby/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})));
     if (in.status != 200 or !has(in.body, (try std.fmt.allocPrint(w.a, "\"human:{s}\"", .{try hid(w.a, 1003)})))) return error.NotAdmitted;
@@ -1618,8 +1619,12 @@ fn admitRemove(w: *World) !void {
     if (twice.status != 409 or !has(twice.body, "already")) return error.AdmittedTwice;
     const gone = try pagePost(w, w.ivy, "/channels/Lobby/remove", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1001)})));
     if (gone.status != 409 or !has(gone.body, "not in")) return error.RemovedTwice;
+    // An agent is let in as a human is, shown on the page, and let go again.
     const agent = try pagePost(w, w.ivy, "/channels/Lobby/admit", try std.fmt.allocPrint(w.a, "member={s}", .{w.gil_agent}));
-    if (agent.status != 400 or !has(agent.body, "no human")) return error.AgentAdmitted;
+    if (agent.status != 200 or !has(agent.body, try std.fmt.allocPrint(w.a, "\"{s}\"", .{w.gil_agent}))) return error.AgentNotAdmitted;
+    if (!has((try channelsPage(w, w.ivy)).body, try std.fmt.allocPrint(w.a, "(<code>{s}</code>)", .{w.gil_agent}))) return error.AgentNotShown;
+    const agent_out = try pagePost(w, w.ivy, "/channels/Lobby/remove", try std.fmt.allocPrint(w.a, "member={s}", .{w.gil_agent}));
+    if (agent_out.status != 200 or has(agent_out.body, w.gil_agent)) return error.AgentNotRemoved;
     const nobody = try pagePost(w, w.ivy, "/channels/Lobby/admit", "member=human%3A999999");
     if (nobody.status != 400 or !has(nobody.body, "no account")) return error.NobodyAdmitted;
     if ((try pagePost(w, w.ivy, "/channels/Nowhere/admit", (try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1003)})))).status != 404) return error.NowhereChanged;
@@ -1657,7 +1662,8 @@ fn channelsAudited(w: *World) !void {
         "action=make channel= members= verdict=refused:not-a-channel-name",
         (try std.fmt.allocPrint(w.a, "action=admit channel=Lobby members=human:{s} verdict=refused:already-in", .{try hid(w.a, 1003)})),
         (try std.fmt.allocPrint(w.a, "action=remove channel=Lobby members=human:{s} verdict=refused:not-in", .{try hid(w.a, 1001)})),
-        "verdict=refused:not-a-human",
+        (try std.fmt.allocPrint(w.a, "action=admit channel=Lobby members={s} verdict=permitted", .{w.gil_agent})),
+        (try std.fmt.allocPrint(w.a, "action=remove channel=Lobby members={s} verdict=permitted", .{w.gil_agent})),
         "verdict=refused:no-account",
         (try std.fmt.allocPrint(w.a, "action=admit channel=Nowhere members=human:{s} verdict=refused:no-such-channel", .{try hid(w.a, 1003)})),
     };
@@ -1874,11 +1880,12 @@ fn agentStreamHeld(w: *World) !void {
     if ((try send(w.a, w.port(), "GET", "/stream", .{ .key = pal.key }, "")).status != 401) return error.RevokedKeyStreamed;
 }
 
-/// **A CHANNEL'S HUMAN TOPIC** (Topics, Topic.roc decides): a member makes
-/// one; its name taken again in another case, a bad name, a stranger and
-/// nobody signed in are refused. A member posts, and the message carries
-/// its reference, `MSG_<channel>.<topic>_<n>`; another member reads it
-/// and streams the next; a stranger, and an agent, never reach it.
+/// **A CHANNEL'S TOPIC** (Topics, Topic.roc decides): a member makes one;
+/// its name taken again in another case, a bad name, a stranger and nobody
+/// signed in are refused. A member posts, and the message carries its
+/// reference, `MSG_<channel>.<topic>_<n>`; another member reads it and
+/// streams the next; a stranger, and an agent not in the channel, never
+/// reach it.
 fn topicsMade(w: *World) !void {
     const p = try signUp(w.a, w.port(), 1025);
     const q = try signUp(w.a, w.port(), 1026);
@@ -1887,7 +1894,7 @@ fn topicsMade(w: *World) !void {
     if (made.status != 201) return error.ChannelNotMade;
 
     const topic = try pagePost(w, p, "/channels/Garden/topics", "name=ChitChat");
-    if (topic.status != 201 or !has(topic.body, "{\"channel\":\"Garden\",\"topic\":\"ChitChat\",\"kind\":\"human\",\"agents\":[]}")) return error.TopicNotMade;
+    if (topic.status != 201 or !std.mem.eql(u8, topic.body, "{\"channel\":\"Garden\",\"topic\":\"ChitChat\"}")) return error.TopicNotMade;
     if ((try pagePost(w, q, "/channels/garden/topics", "name=CHITCHAT")).status != 409) return error.TakenTwice;
     if ((try pagePost(w, p, "/channels/Garden/topics", "name=chit_chat")).status != 400) return error.BadNameMade;
     if ((try pagePost(w, r, "/channels/Garden/topics", "name=Mine")).status != 403) return error.StrangerMade;
@@ -1909,27 +1916,26 @@ fn topicsMade(w: *World) !void {
     try l.until("\"markdown\":\"a second\"");
     if (!has(l.got.items, "\"ref\":\"MSG_Garden.ChitChat_2\"") or has(l.got.items, "hello garden")) return error.StreamedWrong;
 
-    // An agent, even a member's own with a key that reads everywhere,
-    // never reaches a human topic.
+    // An agent not in the channel, even a member's own with a key that
+    // reads everywhere, never reaches its topics.
     const pal = try ownAgent(w, p, "Pal+1025", "");
     if ((try send(w.a, w.port(), "GET", "/channels/Garden/topics/ChitChat", .{ .key = pal.key }, "")).status != 404) return error.AgentRead;
 }
 
-/// **AN AGENT TOPIC**: a member makes one naming their own agent (another
-/// member's agent refused); the agent, by its key, reads and posts there,
-/// and its one stream (`GET /stream`) gets the topic's posts, each naming
-/// the channel, the topic and its reference; a member who owns none of
-/// its agents never reaches it.
-fn agentTopic(w: *World) !void {
+/// **AN AGENT IN A CHANNEL**: an agent let in is a member as a human is:
+/// by its key it reads and posts in every topic and makes one, and its one
+/// stream (`GET /stream`) gets each topic's posts, naming the channel, the
+/// topic and its reference, and resumes. A human not in the channel never
+/// reaches a topic until let in; an agent not in it, its owner's or not,
+/// never does.
+fn agentMember(w: *World) !void {
     const p = try signUp(w.a, w.port(), 1028);
     const q = try signUp(w.a, w.port(), 1029);
-    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Workshop&members=human%3A{s}%2Chuman%3A{s}", .{ try hid(w.a, 1028), try hid(w.a, 1029) }))).status != 201) return error.ChannelNotMade;
     const pal = try ownAgent(w, p, "Pal+1028", "");
     const qs = try ownAgent(w, q, "Pal+1029", "");
-    const theirs = try pagePost(w, p, "/channels/Workshop/topics", try std.fmt.allocPrint(w.a, "name=Bench&agents={s}", .{qs.id}));
-    if (theirs.status != 403 or !has(theirs.body, "only their own agents")) return error.AnothersAgentNamed;
-    const made = try pagePost(w, p, "/channels/Workshop/topics", try std.fmt.allocPrint(w.a, "name=Desk&agents={s}", .{pal.id}));
-    if (made.status != 201 or !has(made.body, try std.fmt.allocPrint(w.a, "\"kind\":\"agents\",\"agents\":[\"{s}\"]", .{pal.id}))) return error.TopicNotMade;
+    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Workshop&members=human%3A{s}%2C{s}", .{ try hid(w.a, 1028), pal.id }))).status != 201) return error.ChannelNotMade;
+    const made = try pagePost(w, p, "/channels/Workshop/topics", "name=Desk");
+    if (made.status != 201 or !std.mem.eql(u8, made.body, "{\"channel\":\"Workshop\",\"topic\":\"Desk\"}")) return error.TopicNotMade;
 
     const one = try Listener.openAs(w.a, w.port(), "/stream", .{ .key = pal.key }, "");
     errdefer one.close();
@@ -1944,7 +1950,16 @@ fn agentTopic(w: *World) !void {
     if (by_key.status != 201) return error.AgentNotPosted;
     const read = try send(w.a, w.port(), "GET", "/channels/Workshop/topics/Desk", .{ .key = pal.key }, "");
     if (read.status != 200 or !has(read.body, "\"markdown\":\"done\"")) return error.AgentNotRead;
-    if ((try get(w.a, w.port(), "/channels/Workshop/topics/Desk", q)).status != 404) return error.MemberReadAgentTopic;
+    // The agent makes a topic too, and posts in it.
+    if ((try send(w.a, w.port(), "POST", "/channels/Workshop/topics", .{ .key = pal.key }, "name=Notes")).status != 201) return error.AgentMadeNoTopic;
+    if ((try send(w.a, w.port(), "POST", "/channels/Workshop/topics/Notes/messages", .{ .key = pal.key }, "my notes")).status != 201) return error.AgentNotPosted;
+    try one.until("\"markdown\":\"my notes\"");
+    // Q is in no channel: refused, then let in, then reads; Q's agent, never.
+    if ((try get(w.a, w.port(), "/channels/Workshop/topics/Desk", q)).status != 404) return error.StrangerRead;
+    if ((try send(w.a, w.port(), "GET", "/channels/Workshop/topics/Desk", .{ .key = qs.key }, "")).status != 404) return error.OtherAgentRead;
+    if ((try pagePost(w, w.ivy, "/channels/Workshop/admit", try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{try hid(w.a, 1029)}))).status != 200) return error.NotAdmitted;
+    if ((try get(w.a, w.port(), "/channels/Workshop/topics/Desk", q)).status != 200) return error.MemberNotRead;
+    if ((try send(w.a, w.port(), "GET", "/channels/Workshop/topics/Desk", .{ .key = qs.key }, "")).status != 404) return error.OtherAgentRead;
     if ((try get(w.a, w.port(), "/channels/Workshop/topics/Desk", p)).status != 200) return error.OwnerNotRead;
     // Its agent's one stream, resumed, sends the topic's posts it missed.
     const last = try eventId(one.got.items, "\"markdown\":\"a job for you\"");
@@ -2137,8 +2152,8 @@ var browsing: ?Browsing = null;
 
 /// **BROWSE** (`/chat/browse`, app/Browse.roc): every other human as a DM,
 /// by numeric id, then the viewer's channels by name in raw bytes, each
-/// with the topics they read, in byte order; another member's agent topic
-/// is not one of them; a place with no topic says "No sessions yet", and a
+/// with the topics they read, in byte order; a channel they are not in is
+/// not there; a place with no topic says "No sessions yet", and a
 /// human with no DM has the button that makes one, which lands back on
 /// Browse at it. The top bar marks Browse as here and names the viewer as
 /// text. Signed out, a 303 to `/login`; a key, a 403.
@@ -2156,7 +2171,9 @@ fn browse(w: *World) !void {
         if ((try pagePost(w, pip, "/channels/Orchard/topics", try std.fmt.allocPrint(w.a, "name={s}", .{topic}))).status != 201) return error.TopicNotMade;
     }
     const pal = try ownAgent(w, pip, "Pal+1040", "");
-    if ((try pagePost(w, pip, "/channels/Orchard/topics", try std.fmt.allocPrint(w.a, "name=Desk&agents={s}", .{pal.id}))).status != 201) return error.TopicNotMade;
+    // Shed: Pip and his agent Pal, not Quin; its topic Desk is theirs alone.
+    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Shed&members=human%3A{s}%2C{s}", .{ p, pal.id }))).status != 201) return error.ChannelNotMade;
+    if ((try pagePost(w, pip, "/channels/Shed/topics", "name=Desk")).status != 201) return error.TopicNotMade;
     if ((try pagePost(w, pip, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{q}))).status != 201) return error.DmNotMade;
     if ((try pagePost(w, pip, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{q}), "name=ChitChat")).status != 201) return error.TopicNotMade;
     browsing = .{ .pip = pip, .quin = quin, .rue = rue, .p = p, .q = q, .pal_key = pal.key };
@@ -2199,9 +2216,10 @@ fn browse(w: *World) !void {
         at = (std.mem.indexOfPos(u8, b, at, needle) orelse return error.BrowseOutOfOrder) + needle.len;
     }
     if (has(b, "Desk") or has(b, "Pip <b>") or has(b, "<style")) return error.BrowseShowsTooMuch;
-    // The agent topic is its owner's to read, so on Pip's Browse.
+    // Shed is Pip's, so on his Browse, after Orchard, in raw byte order.
     const own = try get(w.a, w.port(), "/chat/browse", pip);
-    if (!has(own.body, "<a href=\"/chat/channel/Orchard/Desk\">Desk</a>") or !has(own.body, "<h2>Person 1041</h2>")) return error.OwnTopicMissing;
+    if (!has(own.body, "<h2># Shed</h2>") or !has(own.body, "<a href=\"/chat/channel/Shed/Desk\">Desk</a>") or !has(own.body, "<h2>Person 1041</h2>")) return error.OwnTopicMissing;
+    if ((std.mem.indexOf(u8, own.body, "<h2># Shed</h2>") orelse 0) < (std.mem.indexOf(u8, own.body, "<h2># Orchard</h2>") orelse return error.OwnTopicMissing)) return error.BrowseOutOfOrder;
     // Rue is in no channel, and sees Pip as a human with no DM yet.
     const theirs = try get(w.a, w.port(), "/chat/browse", rue);
     if (has(theirs.body, "# Orchard") or !has(theirs.body, try std.fmt.allocPrint(w.a, "action=\"/chat/dm/{s}\"", .{p}))) return error.RueSeesWrong;
@@ -2257,14 +2275,14 @@ fn topicPage(w: *World) !void {
     const closed = [_][]const u8{ "/chat/channel/Orchard/Banana", "/chat/channel/Orchard/Banana/stream", "/chat/channel/Orchard/Banana/earlier?before=2", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}) };
     for (closed) |path| if ((try get(w.a, w.port(), path, x.rue)).status != 404) return error.StrangerRead;
     // The page says why, as the old app's did: a channel not there and one
-    // you are not in alike; a topic not there, or one you may not read,
-    // named. The stream and the fragment are the plain 404.
+    // you are not in alike; a topic not there named. The stream and the
+    // fragment are the plain 404.
     const yours = try get(w.a, w.port(), "/chat/channel/Orchard/Banana", x.rue);
     const nowhere = try get(w.a, w.port(), "/chat/channel/Nowhere/Banana", x.rue);
     if (!has(yours.body, "<span class=\"chat-top-title\">Not here</span>") or !has(yours.body, "<p>#Orchard is not a channel you are a member of.</p><p><a href=\"/chat/browse\">Go back</a></p>")) return error.NotHereWrong;
     if (nowhere.status != 404 or !has(nowhere.body, "<p>#Nowhere is not a channel you are a member of.</p>")) return error.NotHereWrong;
-    const desk = try get(w.a, w.port(), "/chat/channel/Orchard/Desk", x.quin);
-    if (desk.status != 404 or !has(desk.body, "<p>There is no topic “Desk” in this conversation.</p>")) return error.AgentTopicRead;
+    const desk = try get(w.a, w.port(), "/chat/channel/Shed/Desk", x.quin);
+    if (desk.status != 404 or !has(desk.body, "<p>#Shed is not a channel you are a member of.</p>")) return error.OtherChannelRead;
     const nope = try get(w.a, w.port(), "/chat/channel/Orchard/Nope", x.quin);
     if (nope.status != 404 or !has(nope.body, "<p>There is no topic “Nope” in this conversation.</p>")) return error.NoTopicRead;
     if (has((try get(w.a, w.port(), "/chat/channel/Orchard/Banana/stream", x.rue)).body, "Not here")) return error.StreamSaidWhy;
@@ -2384,7 +2402,7 @@ fn composeSends(w: *World) !void {
     const bad = try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", x.quin, "\xff\xfe");
     if (bad.status != 400 or !has(bad.body, "a message is UTF-8 text")) return error.BadTextTaken;
     if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", x.rue, "let me in")).status != 404) return error.StrangerSent;
-    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Desk/send", x.quin, "not mine")).status != 404) return error.AgentTopicSent;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Shed/Desk/send", x.quin, "not mine")).status != 404) return error.OtherChannelSent;
     if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", .{ .key = x.pal_key }, "by key")).status != 403) return error.KeySent;
     if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", "", "nobody")).status != 401) return error.NobodySent;
     if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", .{ .cookie = x.quin, .origin = "https://evil.test" }, "forged")).status != 403) return error.ForeignOriginSent;
@@ -2431,9 +2449,9 @@ fn recentFeed(w: *World) !void {
     const at_apple = std.mem.indexOf(u8, b, apple) orelse return error.RecentWrong;
     if (at_apple < (std.mem.indexOf(u8, b, banana) orelse 0) or at_apple < (std.mem.indexOf(u8, b, dm) orelse 0)) return error.RecentOutOfOrder;
     if (has(b, "Desk") or has(b, "Nothing yet.") or has(b, "<style")) return error.RecentShowsTooMuch;
-    // Pip's own: the agent topic, and Quin by first name.
+    // Pip's own: Shed's Desk, and Quin by first name.
     const own = try get(w.a, w.port(), "/chat/recent", x.pip);
-    if (!has(own.body, "data-key=\"/chat/channel/Orchard/Desk\"") or !has(own.body, "<span class=recent-who>Person: </span>from **compose**")) return error.PipSeesWrong;
+    if (!has(own.body, "data-key=\"/chat/channel/Shed/Desk\"") or !has(own.body, "<span class=recent-who>Person: </span>from **compose**")) return error.PipSeesWrong;
     // Rue is in no channel, and her DM with Quin has no topic yet.
     if (!has((try get(w.a, w.port(), "/chat/recent", x.rue)).body, "<p id=recent-empty class=muted>Nothing yet.</p>")) return error.NoEmptyState;
 
@@ -2448,14 +2466,14 @@ fn recentFeed(w: *World) !void {
     // Rue's stream is read until its wait runs out: a tile there fails.
     if (rues.until("recent-tile")) |_| return error.StrangerGotTile else |e| if (e != error.NeverCame) return e;
 
-    // An agent topic, both sides: Pip's post to Desk (his agent's) reaches
-    // his own Recent, and never Quin's, a member who owns none of its agents.
+    // A channel's topic, both sides: Pip's post to Shed's Desk reaches his
+    // own Recent, and never Quin's, who is not in Shed.
     const quins = try Listener.open(w.a, w.port(), "/chat/recent/stream", x.quin, "");
     defer quins.close();
-    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Desk/send", x.pip, "desk note")).status != 201) return error.NotSent;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Shed/Desk/send", x.pip, "desk note")).status != 201) return error.NotSent;
     try pips.until("desk note");
-    if (!has(pips.got.items, "data-key=\"/chat/channel/Orchard/Desk\"") or !has(pips.got.items, "<span class=recent-who>You: </span>desk note")) return error.OwnAgentTopicMissing;
-    if (quins.until("Desk")) |_| return error.AgentTopicLeaked else |e| if (e != error.NeverCame) return e;
+    if (!has(pips.got.items, "data-key=\"/chat/channel/Shed/Desk\"") or !has(pips.got.items, "<span class=recent-who>You: </span>desk note")) return error.OwnTopicMissing;
+    if (quins.until("Desk")) |_| return error.OtherChannelLeaked else |e| if (e != error.NeverCame) return e;
 
     const out = try get(w.a, w.port(), "/chat/recent", "");
     if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Frecent")) return error.NotToLogin;
@@ -2542,7 +2560,7 @@ fn quoteEdit(w: *World) !void {
         if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, base ++ "{s}", .{path}), x.pip)).status != 404) return error.NoMessageFound;
     }
     if ((try get(w.a, w.port(), base ++ "/quote?n=1", x.rue)).status != 404) return error.StrangerQuoted;
-    if ((try get(w.a, w.port(), "/chat/channel/Orchard/Desk/quote?n=1", x.quin)).status != 404) return error.AgentTopicQuoted;
+    if ((try get(w.a, w.port(), "/chat/channel/Shed/Desk/quote?n=1", x.quin)).status != 404) return error.OtherChannelQuoted;
     if ((try get(w.a, w.port(), base ++ "/quote?n=1", "")).status != 401) return error.NobodyQuoted;
     if ((try send(w.a, w.port(), "GET", base ++ "/edit?n=1", .{ .key = x.pal_key }, "")).status != 403) return error.KeyEdited;
     if ((try request(w.a, w.port(), "POST", base ++ "/quote?n=1", x.quin, "")).status != 405) return error.QuotePosted;
@@ -2915,7 +2933,7 @@ const steps = [_]Step{
     .{ .name = "an admin makes channels, linked from /chat for her alone; the channels page lists them by key, with their members", .f = adminMakesChannel },
     .{ .name = "a human who is no admin is refused the channels page and each channel write; signed out, a 303 and a 401", .f = memberRefusedChannels },
     .{ .name = "a key, even an admin's own with admin scope, is refused the channels page and each channel write", .f = keyRefusedChannels },
-    .{ .name = "admit and remove change a channel's members; one already in, one not in, an agent, no account and no channel refused by name", .f = admitRemove },
+    .{ .name = "admit and remove change a channel's members, an agent as a human; one already in, one not in, no account and no channel refused by name", .f = admitRemove },
     .{ .name = "a channel's name is taken in any spelling", .f = takenName },
     .{ .name = "every channel change, and every refusal of a named asker, is audited, with no secret", .f = channelsAudited },
     .{ .name = "an agent named as a look-alike of its owner comes with its owner's login, and the page labels it so, in both renderers", .f = loginBeside },
@@ -2924,17 +2942,17 @@ const steps = [_]Step{
     .{ .name = "a human's post in a DM with one agent names the agent, a quote too; the agent's own names nobody; with a second human or agent, nobody", .f = dmNamesTheAgent },
     .{ .name = "one stream per agent: each of its conversations' posts, naming the conversation, never another's; resumed with Last-Event-ID, what came meanwhile and nothing twice; a session, a human's key and a scoped key refused", .f = agentStream },
     .{ .name = "the one stream is one of the agent's streams under the cap, and ends at its lifetime once its key is revoked", .f = agentStreamHeld },
-    .{ .name = "a member makes a channel's human topic, posts with its reference, another member reads and streams it; a stranger, nobody, and an agent are refused", .f = topicsMade },
-    .{ .name = "an agent topic: its agent reads and posts by key, its one stream gets the topic's posts naming channel, topic and reference, and resumes; a member owning none of its agents never reaches it", .f = agentTopic },
+    .{ .name = "a member makes a channel's topic, posts with its reference, another member reads and streams it; a stranger, nobody, and an agent not in the channel are refused", .f = topicsMade },
+    .{ .name = "an agent in a channel: by key it reads, posts in and makes topics, its one stream gets every topic's posts naming channel, topic and reference, and resumes; a human not in it refused until let in; an agent not in it never", .f = agentMember },
     .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; oneself, an agent, nobody refused; never a channel", .f = humanDm },
     .{ .name = "a human invite: her name held at once, the welcome in their DM, the code in its answer alone; she joins on the plain page under another free name, reads and answers; the code once; again by her inviter or an admin alone; revoked, expired and past ten open refused; audited without the code", .f = humanInvited },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
-    .{ .name = "Browse: every other human as a DM by numeric id, then channels in raw byte order, each with the topics they read in byte order, another's agent topic not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
-    .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, an agent topic and none a 404, the page saying why without naming a channel the viewer is not in; the JSON routes alike; signed out a 303 and a 401, a key a 403", .f = topicPage },
+    .{ .name = "Browse: every other human as a DM by numeric id, then channels in raw byte order, each with the topics they read in byte order, a channel they are not in not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
+    .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, another channel's topic and none a 404, the page saying why without naming a channel the viewer is not in; the JSON routes alike; signed out a 303 and a 401, a key a 403", .f = topicPage },
     .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
-    .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another's agent topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
-    .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, an agent topic's to its owner and not another member; signed out a 303 and a 401, a key a 403", .f = recentFeed },
+    .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another channel's topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
+    .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, a channel they are not in not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, a channel's to its members and not another's; signed out a 303 and a 401, a key a 403", .f = recentFeed },
     .{ .name = "quote-reply and edit: both links on every bubble; a quote under its reference, you or I said, its fence longer than any inside, a DM's short; an edit one's own alone; posted, the original redrawn live, in a resumed backlog and on its earlier page, another's edit ordinary; bad n a 400, no message a 404, a stranger 404, signed out 401, a key 403, a POST 405", .f = quoteEdit },
     .{ .name = "save and the reading list: a save keeps the message's copy and its author's name with its note (read later when none, no length rule), the strip's line drawn by the server, \"✓ saved\" drawn for the viewer's own page and earlier pages and no one else's, saved again the one save at the newest end; the list newest first, everything escaped, the way back (a DM's by its other member); a note changed and a save removed by forms, an id never given twice; a save outlives losing the topic; a list that does not read back leaves the page shown and is never written over; bad n 400, no message 404, a stranger 404, signed out 401, a key 403, a GET 405; Saved in the top bar", .f = saveReadingList },
     .{ .name = "a conversation's page is a topic's: its bubbles, MSG_<id>_<n> page ids, the right pane and scripts, titled Chat w/ the others, no save; its stream sends the agents' route's posts as bubbles, resumed, the agents' JSON stream unchanged; earlier a fragment; a stranger and none the same 404 saying why; signed out a 303 and a 401, a key a 403", .f = conversationClient },

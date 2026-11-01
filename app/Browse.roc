@@ -392,11 +392,7 @@ start_dm! = |other, form| {
 			match topic_named(form) {
 				NoTopic => Ok(see_other("/chat/browse#dm-${other.to_u64().to_str()}"))
 				Named(topic) => {
-					t = Topics.make_topic!({
-						channel: made.dm.name(),
-						name: topic,
-						kind: Human,
-					})?
+					t = Topics.make_topic!({ channel: made.dm.name(), name: topic })?
 					Ok(see_other(Topics.page_path(t.at(), InDm(other))))
 				}
 			}
@@ -417,11 +413,7 @@ new_topic! = |name, form| {
 			match topic_named(form) {
 				NoTopic => Err(Wire.refused(400, "name the topic: topic="))
 				Named(topic) => {
-					t = Topics.make_topic!({
-						channel: name,
-						name: topic,
-						kind: Human,
-					})?
+					t = Topics.make_topic!({ channel: name, name: topic })?
 					Ok(see_other(Topics.page_path(t.at(), InChannel)))
 				}
 			}

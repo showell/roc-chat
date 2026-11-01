@@ -1,8 +1,7 @@
 ## **A CHANNEL'S TOPICS ON THE WIRE** (the channels design; Topic.roc
 ## decides, Store.roc keeps them, Channel.roc says who is a member):
 ##
-##     POST /channels/<channel>/topics                    make one: a form, `name=`, and
-##                                                        `agents=` the agents' ids for an agent topic
+##     POST /channels/<channel>/topics                    make one: a form, `name=`
 ##     GET  /channels/<channel>/topics/<topic>            its messages, a page (`?before=`)
 ##     POST /channels/<channel>/topics/<topic>/messages   post: the body is the markdown
 ##     GET  /channels/<channel>/topics/<topic>/stream     its messages, live (SSE), after
@@ -11,14 +10,14 @@
 ## A topic's message is a conversation's (Conversations.message_json),
 ## its reference first: `{"ref":"MSG_Lobby.ChitChat_3","id":3,...}`, the
 ## one spelling MessageRef writes, which names its channel and its topic
-## and is never ambiguous. **WHO MAY** is Topic's alone (a member reads
-## and posts in a human topic; an agent topic's agents and the humans they
-## answer to in theirs), asked of the viewer over topics
-## (Access.Viewer.over: a key that reads everywhere reaches a topic, one
-## narrowed to conversations reaches none). A topic the viewer may not
-## read is a 404, as one that is not there; one they read but may not
-## post to, a 403. An agent topic's posts reach its agents' one stream
-## (OneStream), as `{"channel":..,"topic":..,"ref":..,...}`.
+## and is never ambiguous. **WHO MAY** is Topic's alone (the channel's
+## members, of every kind, read and post in each of its topics), asked of
+## the viewer over topics (Access.Viewer.over: a key that reads everywhere
+## reaches a topic, one narrowed to conversations reaches none). A topic
+## the viewer may not read is a 404, as one that is not there; one they
+## read but may not post to, a 403. A topic's posts reach the one stream
+## of each agent and bot in its channel (OneStream), as
+## `{"channel":..,"topic":..,"ref":..,...}`.
 import pf.Chat
 import pf.Host
 import pf.Sse
@@ -228,18 +227,8 @@ Topics := [].{
 	## **A TOPIC MADE IN A CHANNEL** (Topic.make decides who may, and its
 	## name): the topic stored once, or the refusal said. The topics' JSON
 	## route and Browse's new-topic forms both make one here.
-	make_topic! : {
-		channel : ChannelName,
-		name : Str,
-		kind : [Human, Agents(List(Principal.Id))],
-	} => Try(Topic, Chat.Answer)
-	make_topic! = |
-		{
-			channel: in_channel,
-			name: topic_name,
-			kind,
-		},
-	| {
+	make_topic! : { channel : ChannelName, name : Str } => Try(Topic, Chat.Answer)
+	make_topic! = |{ channel: in_channel, name: topic_name }| {
 		v = Topics.load_viewer!({})?
 		channel = load_channel!(in_channel)?
 		topics = Store.load_topics!(channel).map_err(|_| Chat.failed)?
@@ -248,7 +237,6 @@ Topics := [].{
 				by: v.viewer,
 				channel,
 				name: topic_name,
-				kind,
 				topics: topics.topics,
 				accounts: v.accounts,
 			}).map_err(make_refused)?
@@ -484,29 +472,22 @@ Topics := [].{
 			_ => Err(Wire.refused(400, "Last-Event-ID is a message's id"))
 		}
 
-	## **THE AGENT TOPICS THAT NAME `agent`**, as sources of its one stream
-	## (OneStream): every channel's agent topics naming it whose binding
-	## holds, and that the viewer (its key) reads. A channel or a topic
-	## record that does not read is left out, as the listings leave it.
+	## **THE TOPICS AN AGENT READS**, as sources of its one stream
+	## (OneStream): every topic of every channel it is a member of that the
+	## viewer (its key) reads. A channel or a topic record that does not
+	## read is left out, as the listings leave it.
 	sources_of! : {
-		agent : Principal.Bound,
 		viewer : Access.Viewer(Topic.At),
 		accounts : List(Principal),
 	} => Try(List(Conversations.Source), [Failed])
-	sources_of! = |
-		{
-			agent,
-			viewer,
-			accounts,
-		},
-	| {
+	sources_of! = |{ viewer, accounts }| {
 		listed = Store.load_channels!({})?
 		listed.channels.map_try!(
 			|channel| {
 				topics = Store.load_topics!(channel)?
 				Ok(
 					topics.topics.keep_if(
-						|t| t.agents(accounts).contains(agent) and t.read({
+						|t| t.read({
 							viewer,
 							channel,
 							accounts,
@@ -708,7 +689,7 @@ list_of! = |name| {
 				JsonOut.object([
 					(
 						"topics",
-						JsonOut.array(readable.map(|t| topic_json(t, v.accounts))),
+						JsonOut.array(readable.map(topic_json)),
 					),
 				]),
 			),
@@ -717,8 +698,7 @@ list_of! = |name| {
 }
 
 ## **WHO A TOPIC'S MESSAGE IS SPELLED FOR**: its people by their names now
-## (Mentions): a human topic's members; an agent topic's agents, and the
-## humans they answer to.
+## (Mentions): its channel's members.
 named_of : Topic, { channel : Channel, accounts : List(Principal) } -> List(Mentions.Named)
 named_of = |topic, who| readers(topic, who).map(
 	|id| {
@@ -727,32 +707,12 @@ named_of = |topic, who| readers(topic, who).map(
 	},
 )
 
-## **WHO READS A TOPIC**, each once, in order, by Topic's rule: a human
-## topic's channel members; an agent topic's agents, then the humans they
-## answer to. Its message names them (`named_of`), and Recent's live tiles
-## go to those of them in the channel (`recent_readers`).
+## **WHO READS A TOPIC**, by Topic's rule: its channel's members now, of
+## every kind, each once, in the order let in. Its message names them
+## (`named_of`), Recent's live tiles go to its humans (`recent_readers`),
+## and the agents' one streams to its agents and bots (`publish!`).
 readers : Topic, { channel : Channel, accounts : List(Principal) } -> List(Principal.Id)
-readers = |topic, { channel, accounts }| {
-	ids =
-		match topic.kind() {
-			Human => channel.members(accounts).map(|b| b.id)
-			Agents => {
-				agents = topic.agents(accounts).map(|b| b.id)
-				owners = agents.keep_oks(
-					|id| Principal.find(
-						accounts,
-						id,
-					).map_ok(|p| Principal.Id.Human(p.answers_to())),
-				)
-				agents.concat(owners.keep_if(|o| !agents.contains(o)))
-			}
-		}
-	dedup(ids)
-}
-
-## The ids, each once, in order.
-dedup : List(Principal.Id) -> List(Principal.Id)
-dedup = |ids| ids.fold([], |kept, id| if (kept.contains(id)) kept else kept.append(id))
+readers = |_topic, { channel, accounts }| channel.members(accounts).map(|b| b.id)
 
 ## A topic's message as its JSON: its reference first.
 message_json : Topic.At,
@@ -851,35 +811,8 @@ make_from! = |name, form| {
 			Ok(n) => Str.from_utf8(n) ?? ""
 			Err(_) => ""
 		}
-	kind =
-		match SignInWeb.form_field(form, "agents") {
-			Err(Missing) => Ok(Human)
-			Ok([]) => Ok(Agents([]))
-			Ok(text) => text.split_on(',').map_try(
-				|id| AccountCodec.id_from(
-					id,
-					"agents",
-				),
-			).map_ok(|ids| Agents(ids)).map_err(
-				|_| Wire.refused(
-					400,
-					"agents= is a list of agents' ids, commas between",
-				),
-			)
-			Err(Malformed) => Err(
-				Wire.refused(
-					400,
-					"agents= is a list of agents' ids, commas between",
-				),
-			)
-		}?
-	made = Topics.make_topic!({
-		channel: name,
-		name: topic_name,
-		kind,
-	})?
-	v = Topics.load_viewer!({})?
-	Ok(Wire.json(201, topic_json(made, v.accounts)))
+	made = Topics.make_topic!({ channel: name, name: topic_name })?
+	Ok(Wire.json(201, topic_json(made)))
 }
 
 ## A refused making, said.
@@ -887,7 +820,6 @@ make_refused : _ -> Chat.Answer
 make_refused = |why|
 	match why {
 		SignedOut | NoSuchPrincipal => not_signed_in
-		NotAHuman => Wire.refused(403, "a topic is a member's to make, by a human")
 		NotATopicName => Wire.refused(
 			400,
 			"a topic's name is letters and digits joined by single hyphens, at most 80",
@@ -895,33 +827,15 @@ make_refused = |why|
 		OutOfScope => Wire.refused(403, "this key does not reach the new topic")
 		NotAMember => Wire.refused(403, "only the channel's members make its topics")
 		Taken => Wire.refused(409, "this channel has a topic of that name, in some spelling")
-		NoAgents => Wire.refused(400, "an agent topic names one agent or more")
-		NamedTwice(_) => Wire.refused(400, "an agent is named twice")
-		NotAnAgent(_) => Wire.refused(400, "agents= names agents and bots, not humans")
-		NoAccount(_) => Wire.refused(400, "agents= names an agent no account holds")
-		NotYours(_) => Wire.refused(403, "a member names only their own agents")
 	}
 
 ## A topic as the wire spells it.
-topic_json : Topic, List(Principal) -> JsonOut
-topic_json = |topic, accounts| {
+topic_json : Topic -> JsonOut
+topic_json = |topic| {
 	at = topic.at()
 	JsonOut.object([
 		("channel", JsonOut.string(at.channel.to_str())),
 		("topic", JsonOut.string(at.topic.to_str())),
-		(
-			"kind",
-			JsonOut.string(
-				match topic.kind() {
-					Human => "human"
-					Agents => "agents"
-				},
-			),
-		),
-		(
-			"agents",
-			JsonOut.array(topic.agents(accounts).map(|b| JsonOut.string(AccountCodec.id_text(b.id)))),
-		),
 	])
 }
 
@@ -1142,24 +1056,29 @@ publish! = |
 		message,
 		who,
 	}) {
-		Ok(g) => topic.agents(who.accounts).for_each!(
-			|b| Host.publish!(
-				Conversations.agent_key(b.id),
-				g,
-			),
+		# Each agent or bot reading it gets it on its one stream (OneStream).
+		Ok(g) => readers(topic, { channel, accounts: who.accounts }).for_each!(
+			|id|
+				match id {
+					Human(_) => {}
+					Agent(_) | Bot(_) => Host.publish!(Conversations.agent_key(id), g)
+				},
 		)
 		Err(LineBreak) => crash "Topics.publish!: a message's JSON holds no line break"
 	}
 }
 
 ## **WHO HAS THE TOPIC ON THEIR RECENT**: its readers (`readers`) who are
-## the channel's members, as Recent lists them: every member for a human
-## topic; for an agent topic, the members its agents answer to.
+## humans, Recent being a human's page.
 recent_readers : Topic, { channel : Channel, accounts : List(Principal) } -> List(Principal.Id)
-recent_readers = |topic, { channel, accounts }| {
-	members = channel.members(accounts).map(|b| b.id)
-	readers(topic, { channel, accounts }).keep_if(|id| members.contains(id))
-}
+recent_readers = |topic, who|
+	readers(topic, who).keep_if(
+		|id|
+			match id {
+				Human(_) => Bool.True
+				Agent(_) | Bot(_) => Bool.False
+			},
+	)
 
 ## The bus key a topic's streams are held on: its channel's key and its
 ## own, as its folder is named.

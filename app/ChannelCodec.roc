@@ -2,13 +2,13 @@
 ## Stored's format, its name as it was made and its members, each bound to
 ## their account as they were when let in:
 ##
-##     channel v1 name=Cobblestone members=human:583231/3/3,human:7/1/1
+##     channel v1 name=Cobblestone members=human:583231/3/3,human:7/1/1,agent:2/1/3
 ##
 ## - `name` is the name as made (ChannelName's rule), its spelling kept for
 ##   display; the folder the line is in is its key.
 ## - `members` is every member, in the order let in, each as
-##   AccountCodec.bound_text spells a binding; humans only, each once;
-##   empty for none, the one spelling of none.
+##   AccountCodec.bound_text spells a binding; humans, agents and bots,
+##   each once; empty for none, the one spelling of none.
 ##
 ## `decode` gives a Line, an opaque value only this module makes, and the
 ## only thing Channel.load takes: a channel comes back from the store through
@@ -37,11 +37,11 @@ ChannelCodec := [].{
 		fields = |ChannelCodec.Line.(f)| f
 	}
 
-	## The channel's line. A member who is not a human, or one named twice,
-	## is no channel Channel makes: a crash.
+	## The channel's line. A member named twice is no channel Channel makes:
+	## a crash.
 	encode : ChannelCodec.Fields -> List(U8)
 	encode = |c|
-		if is_each_human_once(c.members) {
+		if is_each_once(c.members) {
 			Stored.line(
 				"channel",
 				[
@@ -50,7 +50,7 @@ ChannelCodec := [].{
 				],
 			)
 		} else {
-			crash "ChannelCodec.encode: a channel's members are humans, each once"
+			crash "ChannelCodec.encode: a channel's members are each once"
 		}
 
 	## The channel a line holds.
@@ -72,7 +72,7 @@ ChannelCodec := [].{
 				)?
 			}
 		members_field.rest.close()?
-		if is_each_human_once(members) {
+		if is_each_once(members) {
 			Ok(ChannelCodec.Line.({ name, members }))
 		} else {
 			Err(BadValue("members"))
@@ -88,16 +88,9 @@ name_from = |value|
 		Err(_) => crash "ChannelCodec.name_from: Stored.Reader.open checked the line is UTF-8"
 	}
 
-## Whether `members` are humans, each once.
-is_each_human_once : List(Principal.Bound) -> Bool
-is_each_human_once = |members|
-	members.all(
-		|b|
-			match b.id {
-				Human(_) => members.count_if(|other| other.id == b.id) == 1
-				Agent(_) | Bot(_) => Bool.False
-			},
-	)
+## Whether `members` are each once.
+is_each_once : List(Principal.Bound) -> Bool
+is_each_once = |members| members.all(|b| members.count_if(|other| other.id == b.id) == 1)
 
 # ── tests
 ## Human `n`'s binding, at generation `g`.
@@ -107,6 +100,17 @@ human_bound = |n, g| {
 	generation: Cast.gen(g),
 	human: Cast.gen(g),
 }
+
+## Agent 2's binding, its owner at generation 3.
+agent_bound : Principal.Bound
+agent_bound = {
+	id: Principal.Id.Agent(Cast.aid(2)),
+	generation: Cast.gen(1),
+	human: Cast.gen(3),
+}
+
+# An agent member is spelled as any binding is.
+expect ChannelCodec.encode({ ..cobblestone, members: [agent_bound] }) == "channel v1 name=Cobblestone members=agent:2/1/3\n".to_utf8()
 
 cobblestone : ChannelCodec.Fields
 cobblestone = {
@@ -129,6 +133,10 @@ expect
 		cobblestone,
 		{ ..cobblestone, members: [] },
 		{ ..cobblestone, members: [human_bound(1, 9)] },
+		{
+			..cobblestone,
+			members: [human_bound(1, 3), agent_bound],
+		},
 	].all(|f| read_back(ChannelCodec.encode(f)) == Ok(f))
 expect read_back(ChannelCodec.encode(cobblestone)).map_ok(|f| f.name.to_str()) == Ok("Cobblestone")
 expect ChannelCodec.encode(cobblestone).count_if(|c| c == '\n') == 1
@@ -137,8 +145,7 @@ expect ChannelCodec.encode(cobblestone).count_if(|c| c == '\n') == 1
 expect read_back("channel v1 name=1st members=\n".to_utf8()) == Err(BadValue("name"))
 expect read_back("channel v1 name=a/b members=\n".to_utf8()) == Err(BadValue("name"))
 expect read_back("channel v1 name= members=\n".to_utf8()) == Err(BadValue("name"))
-expect read_back("channel v1 name=general members=agent:1/1/1\n".to_utf8()) == Err(BadValue("members"))
-expect read_back("channel v1 name=general members=bot:1/1/1\n".to_utf8()) == Err(BadValue("members"))
+expect read_back("channel v1 name=general members=agent:1/1/1,agent:1/1/1\n".to_utf8()) == Err(BadValue("members"))
 expect read_back("channel v1 name=general members=human:1/1/1,human:1/1/1\n".to_utf8()) == Err(BadValue("members"))
 expect read_back("channel v1 name=general members=human:1/2/1\n".to_utf8()) == Err(BadValue("members"))
 expect read_back("channel v1 name=general members=human:1/1\n".to_utf8()) == Err(BadValue("members"))
