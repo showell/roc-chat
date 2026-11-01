@@ -15,7 +15,9 @@
 ## (the old chat_page.zig's `chat_css`). **NO STYLE FROM THE SERVER**
 ## (Steve, DECISIONS.md "The browser client"): the page is structure and
 ## class names, and js/chrome.js styles the frame, as chat-client's widgets
-## each style their own. Its tab says "Chat", as every old chat page's did.
+## each style their own. **THE THEME IS SET BEFORE FIRST PAINT**: the head
+## loads js/palette.js (the old colours, dark by default), and the top bar
+## carries the old 🌙/☀️ toggle, which chrome.js wires. Its tab says "Chat", as every old chat page's did.
 ## Pure.
 import pf.Chat
 import Bytes
@@ -51,14 +53,14 @@ Chrome := [].{
 			200,
 			Html.join([
 				Html.markup("<!doctype html>\n<html lang=en>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>"),
-				Html.markup("Chat</title>\n<body"),
+				Html.markup("Chat</title>\n<script src=\"/palette.js\"></script>\n<body"),
 				if (kind == Chat) Html.markup(" class=chat-page") else Html.join([]),
 				body_attrs,
 				Html.markup(">\n<header class=\"app-top chat-top\"><div class=\"chat-top-left\"><a class=\"chat-top-home\" href=\"/\">Home</a><span class=\"chat-top-title\">"),
 				title,
 				Html.markup("</span><span class=\"chat-top-links\">"),
 				if (here == Browse) Html.markup("<strong>Browse</strong>") else Html.markup("<a href=\"/chat/browse\">Browse</a>"),
-				Html.markup("</span></div><div class=\"app-top-user\"><strong>"),
+				Html.markup("</span></div><div class=\"app-top-user\"><button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>"),
 				viewer,
 				Html.markup("</strong> · <form class=logout method=post action=\"/logout\"><button>Log out</button></form></div></header>\n<div class=\"app-body-wrap\">\n"),
 				body,

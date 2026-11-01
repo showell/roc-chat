@@ -7,7 +7,8 @@
    chat-client's js/message.js does for the bubbles: the old chrome's top
    bar (angry-gopher's top_bar.zig, with its fallback colours, the colour
    tokens coming with the transcript's styling), the content column, a
-   chat page's height, and Browse's lists; feed.js styles the transcript. Deleting this file deletes the frame's styling. */
+   chat page's height, and Browse's lists; feed.js styles the transcript. It wires the top bar's
+   theme toggle too (js/chat_theme.js), over palette.js's colours. Deleting this file deletes the frame's styling. */
 (function () {
   'use strict';
   var s = document.createElement('style');
@@ -38,4 +39,22 @@
     + '.browse-list li.muted { padding: 4px 8px; font-style: italic; }'
     + '.browse h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--cc-muted-fg, #888); margin: 0 0 6px; }';
   document.head.appendChild(s);
+
+  /* The theme toggle (chat-client's js/chat_theme.js): its glyph is where a
+     click goes, 🌙 to dark and ☀️ to light; palette.js keeps the choice. */
+  var toggle = document.getElementById('chat-theme-toggle');
+  if (toggle) {
+    Object.assign(toggle.style, {
+      background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '0 8px', verticalAlign: 'middle',
+    });
+    var paint = function () {
+      var dark = Palette.current() === 'dark';
+      var label = dark ? 'Switch to light theme' : 'Switch to dark theme';
+      toggle.textContent = dark ? '☀️' : '🌙';
+      toggle.title = label;
+      toggle.setAttribute('aria-label', label);
+    };
+    toggle.addEventListener('click', function () { Palette.toggle(); paint(); });
+    paint();
+  }
 })();

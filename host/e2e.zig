@@ -2224,7 +2224,10 @@ fn topicPage(w: *World) !void {
     const page = try get(w.a, w.port(), "/chat/channel/orchard/banana", x.quin);
     if (page.status != 200) return error.NoTopicPage;
     const want = [_][]const u8{
-        "<title>Chat</title>",
+        // The theme, before first paint: the palette in the head, and the
+        // top bar's toggle.
+        "<title>Chat</title>\n<script src=\"/palette.js\"></script>\n<body class=chat-page",
+        "<button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>Person 1041</strong>",
         try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\">", .{x.q}),
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
         "<a href=\"/chat/browse\">Browse</a>",
@@ -2392,7 +2395,7 @@ fn composeSends(w: *World) !void {
     const dm = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/send", .{x.p}), x.quin, "back at you");
     if (dm.status != 201 or !has(dm.body, "data-ref=\"ChitChat_")) return error.DmNotSent;
 
-    for ([_][]const u8{ "/keys.js", "/compose.js" }) |path| {
+    for ([_][]const u8{ "/keys.js", "/compose.js", "/palette.js" }) |path| {
         if ((try get(w.a, w.port(), path, x.quin)).status != 200) return error.ScriptMissing;
     }
 }

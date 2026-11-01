@@ -11,4 +11,5 @@ pub const scripts = [_]Script{
     .{ .name = "compose.js", .body = @embedFile("compose.js") },
     .{ .name = "feed.js", .body = @embedFile("feed.js") },
     .{ .name = "keys.js", .body = @embedFile("keys.js") },
+    .{ .name = "palette.js", .body = @embedFile("palette.js") },
 };

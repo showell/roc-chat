@@ -43,14 +43,39 @@
   Object.assign(document.querySelector('.chat-mp-nav').style, { marginBottom: '8px' });
   Object.assign(history.style, {
     minWidth: '0', flex: '1', minHeight: '0', overflowY: 'auto',
-    border: '1px solid var(--cc-border, #ccc)', borderRadius: '8px', padding: '12px',
+    border: '1px solid var(--cc-border)', borderRadius: '8px', padding: '12px', background: 'var(--cc-card-bg)',
   });
   Object.assign(document.getElementById('chat-right-sidebar').style, {
     width: '320px', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0',
   });
-  var focusRule = document.createElement('style');
-  focusRule.textContent = '.chat-mp-history:focus { outline: none; }';
-  document.head.appendChild(focusRule);
+  /* The bubbles and the markdown inside them are the server's markup, so
+     their rules go in one <style>: the old client's, near verbatim
+     (js/message.js `ensureStyles`; the selection ring comes with the
+     selection keys). Mine on the right, theirs on the left; the meta line
+     small and muted; references, code, quotes, images and video as the
+     renderer marks them. */
+  var rules = document.createElement('style');
+  rules.textContent = ''
+    + '.chat-mp-history:focus { outline:none; }'
+    + '.chat-msg { margin:0 0 12px; padding:8px 10px; border-radius:8px; max-width:88%; }'
+    + '.chat-msg.mine { background:var(--cc-mine-bg); margin-left:auto; }'
+    + '.chat-msg.theirs { background:var(--cc-theirs-bg); margin-right:auto; }'
+    + '.chat-meta { font-size:11px; color:var(--cc-muted-fg); margin-bottom:3px; }'
+    + '.chat-body { overflow-wrap:anywhere; }'
+    + '.chat-body p:first-child { margin-top:0; }'
+    + '.chat-body p:last-child { margin-bottom:0; }'
+    + '.chat-body a.msg-ref { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:0.9em;'
+    + ' background:var(--cc-accent-soft-bg); color:var(--cc-accent); padding:0 4px; border-radius:3px; text-decoration:none; }'
+    + '.chat-body a.msg-ref:hover { background:var(--cc-accent-soft-hov); }'
+    + '.chat-body pre { background:var(--cc-code-bg); padding:8px; border-radius:4px; overflow-x:auto; }'
+    + '.chat-body pre.chat-quote { font-family:inherit; white-space:pre-wrap; overflow-wrap:anywhere;'
+    + ' background:var(--cc-quote-bg); border-left:3px solid var(--cc-quote-border); border-radius:0 4px 4px 0;'
+    + ' margin:6px 0; padding:6px 10px; color:var(--cc-body-muted-fg); overflow-x:visible; }'
+    + '.chat-body img { max-width:100%; max-height:320px; width:auto; height:auto; display:block; margin:6px 0; border-radius:6px; }'
+    + '.chat-body video { max-width:100%; max-height:480px; display:block; margin:6px 0; border-radius:6px; }'
+    + '.chat-body table { border-collapse:collapse; }'
+    + '.chat-body td, .chat-body th { border:1px solid var(--cc-border); padding:0 .4rem; }';
+  document.head.appendChild(rules);
 
   /* The old client's time: the viewer's zone, as "Jan 2 · 3:04 PM". */
   function formatLocalTime(seconds) {

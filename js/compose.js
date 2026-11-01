@@ -16,7 +16,8 @@
      - no answer in 3 s, or no answer at all: "The host may be down. Please
        retry your send.", the text kept; an answer that comes after that
        still says "sent" (so it is not sent twice), and leaves the box be;
-     - a refusal (the post's 4xx) says the server's own words, the text kept.
+     - a refusal (the post's 4xx) says the server's own words, the text kept;
+       a 5xx is a failure, as a lost answer is: the host-down modal.
    The style is its own (the server sends none): one <style> for the markup
    the server drew, as the old widget's. */
 (function () {
@@ -36,11 +37,13 @@
     + '.chat-compose-body[hidden] { display:none; }'
     + '.chat-compose form { margin:0; display:flex; flex-direction:column; flex:1; min-height:0; }'
     + '.chat-compose textarea { width:100%; flex:1; min-height:0; resize:vertical; box-sizing:border-box;'
-    + ' font-family:inherit; font-size:14px; padding:8px; border:1px solid var(--cc-input-border, #bbb); }'
+    + ' font-family:inherit; font-size:14px; padding:8px; background:var(--cc-card-bg); color:var(--cc-fg); border:1px solid var(--cc-input-border); }'
     + '.chat-compose-actions { display:flex; gap:8px; margin-top:8px; }'
     + '.chat-status { font-size:12px; color:var(--cc-error, #b00020); min-height:16px; margin-top:6px; }'
     + '.chat-hint { font-size:12px; color:var(--cc-soft-muted-fg, #999); margin-top:8px; }'
-    + '.chat-open-compose { font-size:13px; padding:4px 12px; border:1px solid var(--cc-quote-border, #99a); border-radius:6px; cursor:pointer; }'
+    + '.chat-open-compose { font-size:13px; padding:4px 12px; background:var(--cc-mine-bg); color:var(--cc-search-tok-fg); border:1px solid var(--cc-quote-border); border-radius:6px; cursor:pointer; }'
+    + '.chat-open-compose:hover { background:var(--cc-accent-soft-hov); }'
+    + '.chat-alert-dialog { background:var(--cc-bg); color:var(--cc-fg); }'
     + '.chat-alert-dialog { max-width:90vw; border:1px solid var(--cc-dialog-border, #888); border-radius:8px; padding:18px 20px; }'
     + '.chat-alert-dialog::backdrop { background:var(--cc-backdrop, rgba(0,0,0,0.3)); }'
     + '.chat-alert-dialog p { margin:0 0 14px; }'
@@ -133,6 +136,8 @@
             text.focus();
           }
           if (bubble) sentNotice(bubble);
+        } else if (r.status >= 500) {
+          hostDown(mine);
         } else if (pending === mine) {
           settle();
           status.textContent = answer.trim() || ('not sent (' + r.status + ')');
