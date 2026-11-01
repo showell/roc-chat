@@ -279,12 +279,6 @@ Topics := [].{
 		Ok(got.message)
 	}
 
-	## **THE BUS KEY OF A READER'S RECENT** (RecentPage.roc): each post's
-	## tile, drawn for that reader, is published to each of the topic's
-	## readers on theirs.
-	recent_key : Principal.Id -> List(U8)
-	recent_key = |reader| Str.to_utf8("recent/${AccountCodec.id_text(reader)}")
-
 	## **A TOPIC'S ROW ON A READER'S RECENT** (Recent.roc draws it): its page,
 	## its last message's time, author ("You" for the reader) and excerpt; a
 	## DM named for the reader by its other member.
@@ -1139,7 +1133,7 @@ publish! = |
 				accounts: who.accounts,
 				last,
 			})
-			Host.publish!(Topics.recent_key(reader), recent_frame(row))
+			Host.publish!(PageFeed.recent_key(reader), PageFeed.recent_frame(row))
 		},
 	)
 	match Conversations.agent_event({
@@ -1166,18 +1160,6 @@ recent_readers = |topic, { channel, accounts }| {
 	members = channel.members(accounts).map(|b| b.id)
 	readers(topic, { channel, accounts }).keep_if(|id| members.contains(id))
 }
-
-## A Recent tile as one SSE event, named `message`.
-recent_frame : Recent.Row -> List(U8)
-recent_frame = |row|
-	match Sse.frame({
-		name: Str.to_utf8("message"),
-		data: Bubble.data(Recent.tile(row)),
-		id: [],
-	}) {
-		Ok(f) => f
-		Err(LineBreak) => crash "Topics.recent_frame: Bubble.data holds no CR, and the name no line break"
-	}
 
 ## The bus key a topic's streams are held on: its channel's key and its
 ## own, as its folder is named.

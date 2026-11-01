@@ -524,16 +524,9 @@ topic_title = |
 		Html.text("#${at.channel.to_str()}: ${at.topic.to_str()}")
 	}
 
-## **A CONVERSATION PAGE'S TITLE**, as the old app titled a DM, without a
-## topic, which a conversation has not: `Chat w/<names>`, the participants
-## other than the viewer (all of them, to a viewer who is not one), a
-## comma between.
+## A conversation page's title (Conversations.title_text).
 conversation_title : ConvAccess.Conv, { accounts : List(Principal), me : Principal.Bound } -> Html
-conversation_title = |conv, { accounts, me }| {
-	others = conv.participants().keep_if(|b| b.id != me.id)
-	named = if (others.len() == conv.participants().len()) conv.participants() else others
-	Html.text("Chat w/${Str.join_with(named.map(|b| Conversations.name_of(accounts, b.id)), ", ")}")
-}
+conversation_title = |conv, { accounts, me }| Html.text(Conversations.title_text(conv, { accounts, me: me.id }))
 
 ## **THE PAGE**: the newest page of messages, each its bubble, in the feed
 ## column; the button for the page before; the right pane, compose. The

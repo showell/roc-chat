@@ -2940,6 +2940,7 @@ const steps = [_]Step{
     .{ .name = "a conversation's page is a topic's: its bubbles, MSG_<id>_<n> page ids, the right pane and scripts, titled Chat w/ the others, no save; its stream sends the agents' route's posts as bubbles, resumed, the agents' JSON stream unchanged; earlier a fragment; a stranger and none the same 404 saying why; signed out a 303 and a 401, a key a 403", .f = conversationClient },
     .{ .name = "a conversation page's writes are a topic page's: compose sends a 201 bubble, streamed and stored once, the agents' stream told; quote and edit under MSG_<id>_<n>, an edit one's own, redrawn live and on the page, another's or a topic's ordinary; no save route; not UTF-8 400, a stranger 404, a key 403, signed out 401, a foreign Origin 403, a GET 405, bad n 400, no message 404", .f = conversationWrites },
     .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
+    .{ .name = "a conversation on Browse and Recent: each participant's Browse lists it under Conversations, titled Chat w/ the other; each one's Recent has its tile, drawn as a DM's; live, a post's tile to each participant drawn for them and to no one else; a stranger sees none", .f = conversationsListed },
 };
 
 /// **STEVE'S PATH**, his acceptance test for the chat: (1) go to Browse,
@@ -2977,6 +2978,51 @@ fn stevesPath(w: *World) !void {
     if ((try pagePost(w, x.quin, "/chat/channel/Orchard", "")).status != 400) return error.UnnamedTopic;
     if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard", .{ .key = x.pal_key }, "topic=ByKey")).status != 403) return error.KeyMadeTopic;
     if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard", "", "topic=Nobody")).status != 401) return error.NobodyMadeTopic;
+}
+
+/// **A CONVERSATION ON BROWSE AND RECENT** (app/Browse.roc, app/RecentPage.roc):
+/// each participant's Browse lists it under Conversations, a link to its
+/// page titled "Chat w/" the other; each one's Recent has its tile, drawn as
+/// a DM's, an empty one at 0 with no preview. Live, a post's tile goes to
+/// each participant's Recent stream, "You" to its author and the poster's
+/// first name to the other, and to no one else; the page after shows it too.
+fn conversationsListed(w: *World) !void {
+    const wren = try signUpAs(w.a, w.port(), 1060, "Wren+Ash");
+    const yara = try signUpAs(w.a, w.port(), 1061, "Yara+Bell");
+    const x = browsing orelse return error.NoBrowsing;
+    const id = try startedId(try pagePost(w, wren, "/conversations", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1061)})));
+    const link = try std.fmt.allocPrint(w.a, "<li><a href=\"/chat/{s}\">", .{id});
+
+    // Browse: each sees it, titled by the other; a stranger does not.
+    const wb = (try get(w.a, w.port(), "/chat/browse", wren)).body;
+    if (!has(wb, "<section id=conversations><h2>Conversations</h2>") or !has(wb, try std.fmt.allocPrint(w.a, "{s}Chat w/Yara Bell</a></li>", .{link}))) return error.NotOnWrensBrowse;
+    if (!has((try get(w.a, w.port(), "/chat/browse", yara)).body, try std.fmt.allocPrint(w.a, "{s}Chat w/Wren Ash</a></li>", .{link}))) return error.NotOnYarasBrowse;
+    if (has((try get(w.a, w.port(), "/chat/browse", x.rue)).body, link)) return error.OnStrangersBrowse;
+
+    // Recent: an empty conversation's tile, at 0, no preview.
+    const tile = try std.fmt.allocPrint(w.a, "<a class=recent-tile href=\"/chat/{s}\" data-key=\"/chat/{s}\" data-ts=", .{ id, id });
+    const empty = try std.fmt.allocPrint(w.a, "{s}0><div class=recent-lead><div class=recent-avatar>Y</div></div><div class=recent-body><div class=recent-top><div class=recent-title>Chat w/Yara Bell</div><span class=recent-ago></span></div></div></a>", .{tile});
+    if (!has((try get(w.a, w.port(), "/chat/recent", wren)).body, empty)) return error.NotOnWrensRecent;
+    if (has((try get(w.a, w.port(), "/chat/recent", x.rue)).body, tile)) return error.OnStrangersRecent;
+
+    // Live: Wren's post reaches both Recent streams, each drawn for its
+    // reader, and never Rue's.
+    const wrens = try Listener.open(w.a, w.port(), "/chat/recent/stream", wren, "");
+    defer wrens.close();
+    const yaras = try Listener.open(w.a, w.port(), "/chat/recent/stream", yara, "");
+    defer yaras.close();
+    const rues = try Listener.open(w.a, w.port(), "/chat/recent/stream", x.rue, "");
+    defer rues.close();
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/{s}/send", .{id}), wren, "lunch <b>")).status != 201) return error.NotSent;
+    try wrens.until("&lt;b&gt;");
+    try yaras.until("&lt;b&gt;");
+    if (!has(wrens.got.items, try std.fmt.allocPrint(w.a, "event: message\ndata: {s}", .{tile})) or !has(wrens.got.items, "<span class=recent-who>You: </span>lunch &lt;b&gt;</div>")) return error.WrensTileWrong;
+    if (!has(yaras.got.items, "<div class=recent-avatar>W</div>") or !has(yaras.got.items, "<div class=recent-title>Chat w/Wren Ash</div>") or !has(yaras.got.items, "<span class=recent-who>Wren: </span>lunch &lt;b&gt;</div>")) return error.YarasTileWrong;
+    if (rues.until("recent-tile")) |_| return error.StrangerGotTile else |e| if (e != error.NeverCame) return e;
+
+    // The page after: Yara's tile has the message.
+    const after = (try get(w.a, w.port(), "/chat/recent", yara)).body;
+    if (!has(after, tile) or !has(after, "<span class=recent-who>Wren: </span>lunch &lt;b&gt;</div>") or has(after, "Nothing yet.")) return error.NotOnRecentAfter;
 }
 
 /// Every step, in order, each timed and said; true when all passed. With

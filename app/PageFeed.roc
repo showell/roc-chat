@@ -8,6 +8,7 @@
 ## reading list's line names a channel and a topic (SavedCodec).
 import pf.Host
 import pf.Sse
+import AccountCodec
 import Bubble
 import Cast
 import ConvAccess
@@ -15,9 +16,28 @@ import Edits
 import MessageCodec
 import MessageRef
 import Principal
+import Recent
 import Store
 
 PageFeed := [].{
+
+	## **THE BUS KEY OF A READER'S RECENT** (RecentPage.roc): a topic's post
+	## and a conversation's alike publish each reader's tile, drawn for
+	## them, on theirs.
+	recent_key : Principal.Id -> List(U8)
+	recent_key = |reader| Str.to_utf8("recent/${AccountCodec.id_text(reader)}")
+
+	## A Recent tile as one SSE event, named `message`.
+	recent_frame : Recent.Row -> List(U8)
+	recent_frame = |row|
+		match Sse.frame({
+			name: Str.to_utf8("message"),
+			data: Bubble.data(Recent.tile(row)),
+			id: [],
+		}) {
+			Ok(f) => f
+			Err(LineBreak) => crash "PageFeed.recent_frame: Bubble.data holds no CR, and the name no line break"
+		}
 
 	## Its transcript's files.
 	files : MessageRef.Where -> Store.TranscriptFiles

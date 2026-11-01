@@ -1,7 +1,8 @@
 ## **BROWSE: WHERE A HUMAN'S TOPICS ARE**, `GET /chat/browse`: every other
 ## human, as a DM, then the channels the viewer is a member of, each with
 ## the topics they may read there, each topic a link to its page
-## (TopicPage.roc). Its link is the top bar's first (Chrome.roc), where the
+## (TopicPage.roc), then the viewer's conversations, each a link to its
+## page. Its link is the top bar's first (Chrome.roc), where the
 ## old app's "Chat" was.
 ##
 ## **THE OLD APP HAD NO SUCH PAGE**: its counterpart is the left sidebar's
@@ -28,6 +29,7 @@ import Cast
 import Channel
 import ChannelName
 import Chrome
+import ConvAccess
 import Conversations
 import Html
 import Pages
@@ -189,6 +191,7 @@ list! = |path| {
 		[],
 		{ viewer: v.viewer, accounts: v.accounts },
 	)?
+	convs = Conversations.load_mine!(Access.Viewer.over(v.viewer), v.accounts).map_err(|_| Chat.failed)?
 	Ok(
 		Chrome.page({
 			title: Html.markup("Browse"),
@@ -197,9 +200,10 @@ list! = |path| {
 			kind: Plain,
 			body_attrs: Html.join([]),
 			body: Html.join([
-				if (shown.is_empty()) Html.markup("<p>You do not have any conversations.</p>\n") else Html.join([
+				if (shown.is_empty() and convs.is_empty()) Html.markup("<p>You do not have any conversations.</p>\n") else Html.join([
 					Html.markup("<div class=browse>\n"),
 					Html.join(shown.map(place_html)),
+					conversations_html(convs, { accounts: v.accounts, me: me.id }),
 					Html.markup("</div>\n"),
 				]),
 				if (stored.damaged == 0) Html.join([]) else Html.join([
@@ -315,6 +319,32 @@ place_html = |p|
 		},
 		Html.markup("</section>\n"),
 	])
+
+## **THE VIEWER'S CONVERSATIONS** (Conversations.load_mine!), after the
+## channels, each a link to its page, `/chat/<id>`, by its title
+## (Conversations.title_text); none, no section.
+conversations_html : List(ConvAccess.Conv), { accounts : List(Principal), me : Principal.Id } -> Html
+conversations_html = |convs, who|
+	if convs.is_empty() {
+		Html.join([])
+	} else {
+		Html.join([
+			Html.markup("<section id=conversations><h2>Conversations</h2>\n<ul class=browse-list>\n"),
+			Html.join(
+				convs.map(
+					|c|
+						Html.join([
+							Html.markup("<li><a href=\"/chat/"),
+							Html.number(c.id().to_u64()),
+							Html.markup("\">"),
+							Html.text(Conversations.title_text(c, who)),
+							Html.markup("</a></li>\n"),
+						]),
+				),
+			),
+			Html.markup("</ul>\n</section>\n"),
+		])
+	}
 
 ## **THE ADD TOPIC FORM**, posting `topic=` to the place's own path: a
 ## place's first topic is offered as "general", as the old first-topic page

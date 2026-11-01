@@ -44,6 +44,7 @@ import Mentions
 import MessageCodec
 import PageFeed
 import Principal
+import Recent
 import Render
 import SignInWeb
 import Store
@@ -137,6 +138,67 @@ Conversations := [].{
 	## The name a principal goes by (Render.name_of).
 	name_of : List(Principal), Principal.Id -> Str
 	name_of = |accounts, id| Render.name_of(accounts, id)
+
+	## **WHO A CONVERSATION IS WITH, FOR A VIEWER**: the participants other
+	## than the viewer (all of them, to one who is not one), by name, a comma
+	## between.
+	others_text : ConvAccess.Conv, { accounts : List(Principal), me : Principal.Id } -> Str
+	others_text = |conv, { accounts, me }| {
+		others = conv.participants().keep_if(|b| b.id != me)
+		named = if (others.len() == conv.participants().len()) conv.participants() else others
+		Str.join_with(named.map(|b| Conversations.name_of(accounts, b.id)), ", ")
+	}
+
+	## **A CONVERSATION'S TITLE, FOR A VIEWER**, as the old app titled a DM,
+	## without a topic, which a conversation has not: `Chat w/<names>`
+	## (`others_text`). Its page, Browse and Recent all title it so.
+	title_text : ConvAccess.Conv, { accounts : List(Principal), me : Principal.Id } -> Str
+	title_text = |conv, who| "Chat w/${Conversations.others_text(conv, who)}"
+
+	## **A CONVERSATION'S ROW ON A READER'S RECENT** (Recent.roc draws it),
+	## drawn as a DM's: its page, `/chat/<id>`; its lead the initial of whom
+	## it is with; its title; its last message's time, author ("You" for the
+	## reader) and excerpt.
+	recent_row : {
+		conv : ConvAccess.Conv,
+		reader : Principal.Id,
+		accounts : List(Principal),
+		last : [NoMessage, Last({ m : MessageCodec.Fields, excerpt : Str })],
+	} -> Recent.Row
+	recent_row = |
+		{
+			conv,
+			reader,
+			accounts,
+			last,
+		},
+	| {
+		who = { accounts, me: reader }
+		url = "/chat/${conv.id().to_u64().to_str()}"
+		place = Conversations.others_text(conv, who)
+		topic = Conversations.title_text(conv, who)
+		match last {
+			NoMessage => {
+				url,
+				ts: 0,
+				dm: Bool.True,
+				place,
+				topic,
+				last: NoMessage,
+			}
+			Last({ m, excerpt }) => {
+				url,
+				ts: m.at,
+				dm: Bool.True,
+				place,
+				topic,
+				last: Last({
+					who: if (m.by == reader) "You" else Conversations.name_of(accounts, m.by),
+					excerpt,
+				}),
+			}
+		}
+	}
 
 	## The GitHub login beside a poster's name (Render.login_of).
 	login_of : List(Principal), Principal.Id -> [Login(Str), NoLogin]
@@ -800,7 +862,7 @@ take_post! = |
 				}),
 			)
 			Ok(Room) => append_post!({
-				id,
+				conv,
 				tally,
 				message: {
 					id: MessageCodec.next_id(tally.messages),
@@ -820,19 +882,20 @@ take_post! = |
 ## pages (PageFeed, as a bubble), each once: the append and the publish
 ## are in this turn, so no stream subscribes between them.
 append_post! : {
-	id : ConvAccess.ConvId,
+	conv : ConvAccess.Conv,
 	tally : Store.Tally,
 	message : MessageCodec.Fields,
 	who : Who,
 } => Try(MessageCodec.Fields, Chat.Answer)
 append_post! = |
 	{
-		id,
+		conv,
 		tally,
 		message,
 		who,
 	},
-|
+| {
+	id = conv.id()
 	if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
 		Err(
 			Wire.refused(
@@ -874,10 +937,25 @@ append_post! = |
 					_ => crash "Conversations.append_post!: a message's JSON holds no line break"
 				}
 				PageFeed.publish!(InConversation(id), { message, accounts: who.accounts })
+				# A tile on the Recent of each human involved, drawn for them.
+				last = Last({ m: message, excerpt: Recent.excerpt(message.body) })
+				conv.involved(who.accounts).for_each!(
+					|h| {
+						reader = Principal.Id.Human(h)
+						row = Conversations.recent_row({
+							conv,
+							reader,
+							accounts: who.accounts,
+							last,
+						})
+						Host.publish!(PageFeed.recent_key(reader), PageFeed.recent_frame(row))
+					},
+				)
 				Ok(message)
 			}
 		}
 	}
+}
 
 ## **WHETHER AN AGENT MAY POST NOW** (Limits.agent_hops_per_window): a
 ## human always may; an agent or a bot not once the newest page holds that
@@ -1288,6 +1366,70 @@ expect {
 	html = rendered_text("<img src=\"/conversations/1/stream\">")
 	!Str.contains(html, "<img")
 }
+
+## Boss and ann's conversation, number 4 (the tests').
+boss_ann : ConvAccess.Conv
+boss_ann =
+	ConvAccess.Conv.start({
+		id: ConvAccess.ConvId.from_u64(4) ?? crash "boss_ann: 4 is an id",
+		starter: Cast.boss.id(),
+		others: [Cast.ann.id()],
+		accounts: Cast.accounts,
+	}) ?? crash "boss_ann: two humans start one"
+
+# A conversation's title names the others to a participant, everyone to one
+# who is not.
+expect Conversations.title_text(boss_ann, { accounts: Cast.accounts, me: Cast.boss.id() }) == "Chat w/H2"
+expect Conversations.title_text(boss_ann, { accounts: Cast.accounts, me: Cast.ann.id() }) == "Chat w/H1"
+expect Conversations.title_text(boss_ann, { accounts: Cast.accounts, me: Cast.ann_agent.id() }) == "Chat w/H1, H2"
+
+# Its Recent row: its page, drawn as a DM's, led by whom it is with; its
+# last message's time, its author "You" to the author alone.
+expect {
+	hi = {
+		id: 1,
+		at: 77,
+		by: Cast.ann.id(),
+		body: "hi".to_utf8(),
+	}
+	row = |reader|
+		Conversations.recent_row({
+			conv: boss_ann,
+			reader,
+			accounts: Cast.accounts,
+			last: Last({ m: hi, excerpt: "hi" }),
+		})
+	to_boss = row(Cast.boss.id())
+	to_ann = row(Cast.ann.id())
+	to_boss
+		== {
+			url: "/chat/4",
+			ts: 77,
+			dm: Bool.True,
+			place: "H2",
+			topic: "Chat w/H2",
+			last: Last({ who: "H2", excerpt: "hi" }),
+		}
+		and to_ann.last
+			== Last({ who: "You", excerpt: "hi" })
+		and to_ann.place
+			== "H1"
+}
+expect
+	Conversations.recent_row({
+		conv: boss_ann,
+		reader: Cast.boss.id(),
+		accounts: Cast.accounts,
+		last: NoMessage,
+	})
+		== {
+			url: "/chat/4",
+			ts: 0,
+			dm: Bool.True,
+			place: "H2",
+			topic: "Chat w/H2",
+			last: NoMessage,
+		}
 
 ## A message's markdown as the chat renders it, as text (the tests').
 rendered_text : Str -> Str
