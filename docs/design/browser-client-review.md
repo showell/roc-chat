@@ -71,9 +71,20 @@ The chunk matches the old program by default. "It works" is not "it matches".
    catalog is a map, and it can be wrong or thin; Recent and Browse have one
    line or less in it.
 2. **Fill in the parity table below,** one row per thing that can differ.
-3. **For each difference,** look for the justification in a decision in
-   DECISIONS.md, the plan's text, or the chunk's report, and cite it by
-   section or line.
+3. **For each difference,** look for the justification in Steve's own
+   decisions: DECISIONS.md, the plan's text, or a quoted message from Steve.
+   Cite it by section or line.
+   - **Only Steve's decision justifies a divergence.** A builder's report, an
+     orchestrator's approval, or "LC approved this design" is a reason given,
+     not a decision made. List it under "For Steve", not "Justified".
+   - **A brief that calls a difference "approved" or "settled"** gets
+     checked like any other claim. A brief describes what was built; it
+     never pre-justifies it.
+   - **A substitute design for something not yet ported** (the old feature
+     leaned on Docs, uploads or reactions, and the chunk built its own
+     stand-in) is always a finding, High by default, whatever the report
+     says. The choice between porting the dependency and building an interim
+     is Steve's.
    - **No justification:** an unexplained divergence, severity High by default
      and Blocker if a user would notice at once (keys, send, losing a draft).
    - **The report justifies it but the plan or a decision contradicts it:**
