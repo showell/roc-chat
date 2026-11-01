@@ -118,6 +118,15 @@ MessageCodec := [].{
 			}
 		}
 
+	## **ANY BYTES AS A RECORD'S LAST FREE-TEXT FIELD**, spelled as `body=`
+	## is (the rule above): what another record's free text uses.
+	escape : List(U8) -> List(U8)
+	escape = |bytes| escaped(bytes)
+
+	## The bytes `escape` spelled, and only that spelling.
+	unescape : List(U8) -> Try(List(U8), [BadValue(Str)])
+	unescape = |text| unescaped(text)
+
 	## The id the next message of a transcript of `count` messages takes.
 	next_id : U64 -> U64
 	next_id = |count| count + 1

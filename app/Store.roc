@@ -33,6 +33,7 @@
 ##     auth/human-invites-indexed        how many human invites that indexes
 ##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
 ##     chat/channels/<channel>/topics/<topic>/topic  a topic, its kind (TopicCodec)
+##     chat/saved/<id>           a human's reading list, a save a line (SavedCodec)
 ##
 ## A channel's folder is its name's key, and each topic's its name's key
 ## in it (ChannelLayout, which names those paths). A topic's transcript,
@@ -75,6 +76,7 @@ import HumanInviteCodec
 import InviteCodec
 import MessageCodec
 import Principal
+import SavedCodec
 import SessionCodec
 import SignInWeb
 import Stored
@@ -87,6 +89,22 @@ Store := [].{
 	## Which set a spent nonce is kept in: a state's or a pending sign-up's,
 	## each its own (GitHubSignIn: the same nonce is spent once in each).
 	Spent : [State, Pending]
+
+	## **A HUMAN'S READING LIST**, oldest save first; none before their
+	## first save. One that does not read has failed.
+	load_saved! : Principal.HumanId => Try(List(SavedCodec.Fields), [Failed])
+	load_saved! = |human| {
+		read = Host.read!(saved_path(human))
+		match read.status {
+			Missing => Ok([])
+			Failed => Err(Failed)
+			Found => SavedCodec.list(read.bytes).map_err(|_| Failed)
+		}
+	}
+
+	## A human's reading list written, whole.
+	save_saved! : Principal.HumanId, List(SavedCodec.Fields) => [Failed, Written]
+	save_saved! = |human, list| Host.write!(saved_path(human), SavedCodec.file(list))
 
 	## Every account; none before the first.
 	load_accounts! : {} => Try(List(Principal), [Failed])
@@ -876,6 +894,9 @@ Store := [].{
 
 accounts_path : List(U8)
 accounts_path = "auth/accounts".to_utf8()
+
+saved_path : Principal.HumanId -> List(U8)
+saved_path = |human| "chat/saved/${human.to_u64().to_str()}".to_utf8()
 
 settings_path : List(U8)
 settings_path = "auth/settings".to_utf8()
