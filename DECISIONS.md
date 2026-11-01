@@ -50,13 +50,26 @@ the same commit.
 
 ## Channels and topics
 
-- **Channels, not group DMs.** A channel holds topics. Human DMs (pairs)
-  hold topics too.
-- **Two kinds of topic, fixed at creation:** a human topic, open to the
-  channel's members; an agent topic, open only to the agents named when it
-  was made and the humans they answer to. Members name only their own
-  agents. Strict first; it may loosen later.
-- **Admins make channels**, at first. Members are humans.
+- **A conversation is a topic** (Steve, 2026-11-01). Every conversation
+  has a transcript, a topic, and at least one participant. Some happen in
+  a channel; the rest are DMs, of one participant (yourself) or two. A
+  conversation of three or more is a channel's topic: "an enormous
+  simplification". Alice and Steve's DMs need no channel. Whether one
+  human and one agent make a DM is not yet decided, and the `/chat/<id>`
+  conversations stay until DMs are refined.
+- **Who takes part is the channel's**, for every topic in it: its members,
+  humans, agents and bots alike, read, post in and make every topic. The
+  agent topic, open only to the agents it named, is gone ("an ad hoc
+  concept that I only tolerated to let us get up and running").
+- **Admins make channels**, at first, and say who is in them. The owner of
+  a channel invites whoever they want later, someone else's agent too.
+- **Channel names and user names never overlap** (Steve, 2026-11-01): no
+  human or agent goes by a channel's name, and no channel by a user's, in
+  any case. One namespace (Accounts.name_holder).
+- **Conversation 3 became RocChatDev/initial-work** (Steve, 2026-11-01):
+  Steve's, LC's and Cloud's conversation, its history kept, by
+  `tools/migrate_conversation_3.shale`. The other test conversations are
+  wiped before launch.
 - **Topic names are scoped to their channel or DM:** `ChitChat` can be in
   every channel, and no URL or message reference is ambiguous.
 - **Message references:** `MSG_<channel>.<topic>_<n>` in a channel; DMs keep
