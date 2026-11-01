@@ -78,7 +78,10 @@ route! = |req|
 			Err(NotHumanInvites) => Chat.not_found
 		}
 	} else if Browse.route(req.path).is_ok() {
-		Browse.answer!(req)
+		match Browse.route(req.path) {
+			Ok(r) => Browse.answer!(req, r)
+			Err(NotBrowse) => Chat.not_found
+		}
 	} else if TopicPage.route(req.path).is_ok() {
 		match TopicPage.route(req.path) {
 			Ok(r) => TopicPage.answer!(req, r)

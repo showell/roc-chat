@@ -44,9 +44,12 @@ JSON API that the browser renders (Zulip's way).
 - **`js/`:** small files, one per feature where that keeps parallel work
   apart, served by the host as the chat-client bundles are now
   (`host/assets.zig`). The names must not collide with chat-client's.
-- **One stylesheet,** served, not injected from JS. The old colour tokens and
-  bubble rules port near verbatim (`js/colors.js:294-369`,
-  `js/message.js:67-132`).
+- **Styling in the JS, no CSS from the server** (DECISIONS.md, "How it's
+  built and checked"; Steve: "Keep the CSS as it was in JS... We want fairly
+  minimal styling and as little bitrot as possible"). Each widget styles its
+  own elements; rules for server-rendered markup go in one `<style>` its
+  script adds, as `js/message.js` does. The old colour tokens and bubble
+  rules port near verbatim (`js/colors.js:294-369`, `js/message.js:67-132`).
 - **Keys and help:** one registry. A feature registers its key, its link and
   its help line, and a key registered twice fails at load. So q, e, s and the
   rest don't all edit one table, as the old `js/chat_help.js:131` and
@@ -86,8 +89,11 @@ the next, except where noted as parallel. Sizes are the catalog's: S an hour or
 two, M half a day.
 
 1. **Browse, the topic page, and the transcript (M).**
-   - **Browse:** the page that lists the channels and DMs you're in, and their
-     topics. Its link is in the top bar.
+   - **Browse:** every other human as a DM (by numeric id, as the old
+     sidebar's Conversations), then the channels you're in, each with their
+     topics. An existing DM lists its topics; a human with no DM yet has a
+     button that makes one (`POST /chat/dm/<n>`, behind Origin) and lands
+     back on Browse at it (Steve's call). Its link is in the top bar.
    - **The topic page:** a channel or DM topic's transcript, server-rendered,
      its messages live from fragments the server renders.
    - **The viewer known to the page,** so the server can draw mine and theirs.

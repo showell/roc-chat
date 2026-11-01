@@ -1274,21 +1274,18 @@ expect before_of([Str.to_utf8("7"), Str.to_utf8("8")]) == Err(Malformed)
 
 # The chat's uploads rule: an upload's image renders; one of the chat's own
 # routes, as a src, is text.
-expect Str.contains(
-	Str.from_utf8(
-		Md.render(
-			Str.to_utf8("<img src=\"/user_uploads/a.png\">"),
-			Conversations.markdown,
-		),
-	) ?? "",
-	"<img src=\"/user_uploads/a.png\">",
-)
-expect !Str.contains(
-	Str.from_utf8(
-		Md.render(
-			Str.to_utf8("<img src=\"/conversations/1/stream\">"),
-			Conversations.markdown,
-		),
-	) ?? "",
-	"<img",
-)
+expect {
+	html = rendered_text("<img src=\"/user_uploads/a.png\">")
+	Str.contains(html, "<img src=\"/user_uploads/a.png\">")
+}
+expect {
+	html = rendered_text("<img src=\"/conversations/1/stream\">")
+	!Str.contains(html, "<img")
+}
+
+## A message's markdown as the chat renders it, as text (the tests').
+rendered_text : Str -> Str
+rendered_text = |markdown| {
+	html = Md.render(markdown.to_utf8(), Conversations.markdown)
+	Str.from_utf8(html) ?? ""
+}

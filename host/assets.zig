@@ -60,7 +60,9 @@ test "a script found by name, and its ETag matched in a list or by a weak tag" {
     try std.testing.expect(!notModified("\"x\"", &tag));
 }
 
-test "roc-chat's own script is served, its own bytes" {
-    const b = find("feed.js") orelse return error.NoFeedJs;
-    try std.testing.expectEqualStrings(own[0].body, b.body);
+test "each of roc-chat's own scripts is served, its own bytes" {
+    for (own) |s| {
+        const b = find(s.name) orelse return error.NotServed;
+        try std.testing.expectEqualStrings(s.body, b.body);
+    }
 }

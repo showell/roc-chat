@@ -1815,12 +1815,10 @@ expect
 		Made(_) => True
 		_ => False
 	}
-expect said(
-	made_among(
-		1,
-		with_agents(9, Limits.accounts_most - List.len(Cast.accounts)),
-	),
-) == Capped(Accounts)
+expect {
+	room = Limits.accounts_most - List.len(Cast.accounts)
+	said(made_among(1, with_agents(9, room))) == Capped(Accounts)
+}
 
 # The agent id and the generation are the settings'; both counters,
 # advanced. (The cast's agents and bots are 1, 2 and 3.)

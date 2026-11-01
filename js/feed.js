@@ -16,7 +16,10 @@
        the append (js/chat.js:308-316, js/middle_pane.js:88-93);
      - starts at the bottom, held there while images decode, until the
        reader scrolls or 5 s pass (js/message_view.js, `stabilize`);
-     - puts a page of earlier bubbles, from the server, above the first. */
+     - puts a page of earlier bubbles, from the server, above the first;
+     - styles the transcript's column and the right pane on their elements
+       (js/middle_pane.js, js/chat_right_sidebar.js), the server sending no
+       style. */
 (function () {
   'use strict';
 
@@ -26,6 +29,27 @@
   var bubbles = document.getElementById('chat-bubbles');
   var earlier = document.getElementById('earlier');
   var stabilizeMs = 5000;
+  var scrollQuietMs = 150;
+
+  /* The two panes, as the old client set them on its elements; only what
+     cannot be inlined goes in a <style>. */
+  Object.assign(document.querySelector('.chat-layout').style, {
+    display: 'flex', flexDirection: 'row', alignItems: 'stretch', gap: '20px', flex: '1', minHeight: '0',
+  });
+  Object.assign(document.getElementById('chat-feed').style, {
+    minWidth: '0', flex: '1', maxWidth: '600px', display: 'flex', flexDirection: 'column', minHeight: '0',
+  });
+  Object.assign(document.querySelector('.chat-mp-nav').style, { marginBottom: '8px' });
+  Object.assign(history.style, {
+    minWidth: '0', flex: '1', minHeight: '0', overflowY: 'auto',
+    border: '1px solid var(--cc-border, #ccc)', borderRadius: '8px', padding: '12px',
+  });
+  Object.assign(document.getElementById('chat-right-sidebar').style, {
+    width: '320px', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0',
+  });
+  var focusRule = document.createElement('style');
+  focusRule.textContent = '.chat-mp-history:focus { outline: none; }';
+  document.head.appendChild(focusRule);
 
   /* The old client's time: the viewer's zone, as "Jan 2 · 3:04 PM". */
   function formatLocalTime(seconds) {
@@ -61,17 +85,29 @@
   }
 
   /* A scroll the script makes is not the reader's; one the reader makes
-     ends the image stabilizer. */
+     ends the image stabilizer. The script's own scrolls are a window that
+     stays open until 150 ms pass with no scroll event, as the old client's
+     (js/message_view.js, `armedScroll`): a flag cleared by the next event
+     would stay set after a scroll that moved nothing, and the reader's own
+     next scroll would be taken for the script's. */
   var ours = false;
+  var oursTimer = null;
   var readerScrolled = false;
+  function quiet() {
+    if (oursTimer) clearTimeout(oursTimer);
+    oursTimer = setTimeout(function () { ours = false; oursTimer = null; }, scrollQuietMs);
+  }
+  function scrollBy(fn) {
+    ours = true;
+    quiet();
+    fn();
+  }
   history.addEventListener('scroll', function () {
-    if (ours) { ours = false; return; }
+    if (ours) { quiet(); return; }
     readerScrolled = true;
   });
   function toBottom() {
-    if (history.scrollTop + history.clientHeight >= history.scrollHeight) return;
-    ours = true;
-    history.scrollTop = history.scrollHeight;
+    scrollBy(function () { history.scrollTop = history.scrollHeight; });
   }
 
   /* Images grow the transcript without a scroll event, so the bottom is
@@ -141,8 +177,7 @@
         dress(older[j]);
         bubbles.insertBefore(older[j], first);
       }
-      ours = true;
-      history.scrollTop += history.scrollHeight - height;
+      scrollBy(function () { history.scrollTop += history.scrollHeight - height; });
       earlier.hidden = page.dataset.earlier !== '1';
     }, function () { earlier.disabled = false; });
   });

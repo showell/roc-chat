@@ -81,7 +81,7 @@ Topics := [].{
 				topics,
 				t,
 			] if channels == "channels".to_utf8() and topics == "topics".to_utf8() =>
-				at_in(c, t).map_ok(|at| Read(at))
+				Topics.at_in(c, t).map_ok(|at| Read(at))
 			[
 				[],
 				channels,
@@ -91,9 +91,9 @@ Topics := [].{
 				act,
 			] if channels == "channels".to_utf8() and topics == "topics".to_utf8() =>
 				if act == "messages".to_utf8() {
-					at_in(c, t).map_ok(|at| Post(at))
+					Topics.at_in(c, t).map_ok(|at| Post(at))
 				} else if act == "stream".to_utf8() {
-					at_in(c, t).map_ok(|at| Stream(at))
+					Topics.at_in(c, t).map_ok(|at| Stream(at))
 				} else {
 					Err(NotTopics)
 				}
@@ -112,7 +112,7 @@ Topics := [].{
 				topics,
 				t,
 			] if dms == "dms".to_utf8() and topics == "topics".to_utf8() =>
-				dm_in(n, t).map_ok(|d| DmRead(d))
+				Topics.dm_in(n, t).map_ok(|d| DmRead(d))
 			[
 				[],
 				dms,
@@ -122,9 +122,9 @@ Topics := [].{
 				act,
 			] if dms == "dms".to_utf8() and topics == "topics".to_utf8() =>
 				if act == "messages".to_utf8() {
-					dm_in(n, t).map_ok(|d| DmPost(d))
+					Topics.dm_in(n, t).map_ok(|d| DmPost(d))
 				} else if act == "stream".to_utf8() {
-					dm_in(n, t).map_ok(|d| DmStream(d))
+					Topics.dm_in(n, t).map_ok(|d| DmStream(d))
 				} else {
 					Err(NotTopics)
 				}
@@ -174,9 +174,8 @@ Topics := [].{
 			Stream(at) => if (req.method == Get) stream!(at) else Chat.not_allowed(Get)
 		}
 
-	## **WHAT A TOPIC'S PAGE DECIDES ON** (TopicPage.roc): the viewer over
-	## topics, the accounts and the time, from the credential.
-	viewer! : {} => Try(
+	## The viewer over topics, the accounts and the time, from the credential.
+	load_viewer! : {} => Try(
 		{
 			viewer : Access.Viewer(Topic.At),
 			accounts : List(Principal),
@@ -184,21 +183,94 @@ Topics := [].{
 		},
 		Chat.Answer,
 	)
-	viewer! = |{}| load_viewer!({})
+	load_viewer! = |{}| {
+		asked = Credentials.load_viewer!(ListConversations)?
+		Ok({
+			viewer: Access.Viewer.over(asked.viewer),
+			accounts: asked.accounts,
+			now: asked.now,
+		})
+	}
 
-	## **THE TOPIC, IF THIS VIEWER READS IT**, as the topic's own routes
-	## decide (`Topic.read`): its channel and the topic, or the answer that
-	## ends the request (no such channel or topic, or one the viewer may not
-	## read: the same 404).
-	readable! : {
+	## **THE VIEWER'S DM WITH `other`** (Channel.dm decides who may have one),
+	## made once, whichever of the two asks: the DM, and whether this asking
+	## made it. `POST /dms` and Browse's start-a-DM form both make it here.
+	make_dm! : {
 		viewer : Access.Viewer(Topic.At),
 		accounts : List(Principal),
 		now : I64,
 	},
-	Topic.At => Try({ channel : Channel, topic : Topic }, Chat.Answer)
-	readable! = |v, at| {
-		a = read_by!(v, at)?
-		Ok({ channel: a.channel, topic: a.topic })
+	Principal.Id => Try({ dm : Channel, made : Bool }, Chat.Answer)
+	make_dm! = |v, other| {
+		dm =
+			Channel.dm({
+				by: v.viewer,
+				other,
+				accounts: v.accounts,
+			}).map_err(
+				|why|
+					match why {
+						SignedOut | NoSuchPrincipal => not_signed_in
+						NotAHuman(_) => Wire.refused(403, "a DM is two humans'")
+						NoAccount(_) => Wire.refused(404, "no human holds that id")
+						Yourself => Wire.refused(400, "a DM is with someone else")
+					},
+			)?
+		match Store.save_new_channel!(dm) {
+			Written => Ok({ dm, made: Bool.True })
+			Taken => Ok({ dm, made: Bool.False })
+			Failed => Err(Chat.failed)
+		}
+	}
+
+	## **WHETHER THE VIEWER READS THE TOPIC AT `at`** (Topic.read), and if
+	## not, why, in words that leak nothing: a channel that is not there and
+	## one the viewer is not a member of read alike (`NotYours`), as the old
+	## app's did, so no stranger learns which channels exist; a topic that
+	## is not there, or one a member may not read, is `NoTopic`.
+	verdict! : {
+		viewer : Access.Viewer(Topic.At),
+		accounts : List(Principal),
+		now : I64,
+	},
+	Topic.At => Try(
+		{ channel : Channel, topic : Topic },
+		[
+			SignedOut,
+			NotYours,
+			NoTopic,
+			Failed,
+		],
+	)
+	verdict! = |v, at| {
+		who =
+			match v.viewer.who() {
+				SignedOut => Err(SignedOut)
+				Session(b) | Key(b) => Ok(b)
+			}?
+		channel =
+			match Store.load_channel!(at.channel) {
+				Ok(c) => Ok(c)
+				Err(Missing) => Err(NotYours)
+				Err(Failed) => Err(Failed)
+			}?
+		member = channel.membership({ who, accounts: v.accounts }) == Member
+		unread = if (member) NoTopic else NotYours
+		topic =
+			match Store.load_topic!(channel, at.topic) {
+				Ok(t) => Ok(t)
+				Err(Missing) => Err(unread)
+				Err(Failed) => Err(Failed)
+			}?
+		match topic.read({
+			viewer: v.viewer,
+			channel,
+			accounts: v.accounts,
+		}) {
+			Permitted => Ok({ channel, topic })
+			Refused(SignedOut) => Err(SignedOut)
+			Refused(_) => Err(unread)
+		}
 	}
 
 	## **THE BUS KEY A TOPIC'S PAGES ARE HELD ON**, beside its streams'
@@ -220,18 +292,85 @@ Topics := [].{
 			Err(LineBreak) => crash "Topics.page_frame: Bubble.data holds no CR, and the name and id no line break"
 		}
 
-	## A channel topic's place in a path's two parts; a DM's name is no
-	## channel's.
-	channel_topic_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
-	channel_topic_in = |c, t| at_in(c, t)
+	## A topic's place in a path: its channel's name and its own.
+	at_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
+	at_in = |c, t| {
+		channel = channel_in(c)?
+		topic =
+			match Str.from_utf8(t) {
+				Ok(text) => TopicName.from_str(text).map_err(|_| NotTopics)
+				Err(_) => Err(NotTopics)
+			}?
+		Ok({ channel, topic })
+	}
 
-	## A DM's other human and its topic in a path's two parts.
-	dm_topic_in : List(U8), List(U8) -> Try({ other : Principal.HumanId, topic : TopicName }, [NotTopics])
-	dm_topic_in = |n, t| dm_in(n, t)
+	## A DM's other and topic in a path.
+	dm_in : List(U8), List(U8) -> Try({ other : Principal.HumanId, topic : TopicName }, [NotTopics])
+	dm_in = |n, t| {
+		other = human_in(n)?
+		topic =
+			match Str.from_utf8(t) {
+				Ok(text) => TopicName.from_str(text).map_err(|_| NotTopics)
+				Err(_) => Err(NotTopics)
+			}?
+		Ok({ other, topic })
+	}
 
-	## The `gap` event, as a topic's stream sends it.
-	gap : U64 -> List(U8)
-	gap = |before| gap_frame(before)
+	## The `gap` event: the messages before `before` were not sent.
+	gap_frame : U64 -> List(U8)
+	gap_frame = |before|
+		match Sse.frame({
+			name: Str.to_utf8("gap"),
+			data: JsonOut.object([("before", JsonOut.number(before))]).bytes(),
+			id: [],
+		}) {
+			Ok(f) => f
+			Err(LineBreak) => crash "Topics.gap_frame: a gap's JSON holds no line break"
+		}
+
+	## **WHERE A RESUMED STREAM STARTS**, for a topic of `count` messages
+	## asked for those after `after`: at most the newest page
+	## (Conversations.page_of), and a `gap` first, naming that page's first,
+	## when the asker is further behind than that.
+	resume : U64, U64 -> { first : U64, gap : [NoGap, Gap(U64)] }
+	resume = |count, after| {
+		newest = Conversations.page_of(count, Newest)
+		first =
+			if after < newest.first {
+				newest.first
+			} else if after < count {
+				after + 1
+			} else {
+				count + 1
+			}
+		{ first, gap: if (after > 0 and after + 1 < newest.first) Gap(newest.first) else NoGap }
+	}
+
+	## **WHAT A STREAM WAS ASKED TO RESUME AFTER**: its `Last-Event-ID` (a
+	## reconnect's), or else, where the route takes one, `?after=`; neither
+	## is 0. A value that is no message's id is a 400, never read as 0.
+	resume_after! : [HeaderOnly, HeaderOrQuery] => Try(U64, Chat.Answer)
+	resume_after! = |takes|
+		match Host.read_header!(Str.to_utf8("last-event-id")) {
+			[] =>
+				match (takes, Host.read_query!(Str.to_utf8("after"))) {
+					(HeaderOrQuery, [only]) => Stored.count(only, "after").map_err(
+						|_| Wire.refused(
+							400,
+							"after= is a message's id",
+						),
+					)
+					(HeaderOrQuery, [_, ..]) => Err(Wire.refused(400, "after= is a message's id"))
+					_ => Ok(0)
+				}
+			[only] => Stored.count(only, "last-event-id").map_err(
+				|_| Wire.refused(
+					400,
+					"Last-Event-ID is a message's id",
+				),
+			)
+			_ => Err(Wire.refused(400, "Last-Event-ID is a message's id"))
+		}
 
 	## **THE AGENT TOPICS THAT NAME `agent`**, as sources of its one stream
 	## (OneStream): every channel's agent topics naming it whose binding
@@ -325,24 +464,12 @@ human_in = |bytes| Stored.id(
 	{ name: "human", make: Principal.HumanId.from_u64 },
 ).map_err(|_| NotTopics)
 
-## A DM's other and topic in a path.
-dm_in : List(U8), List(U8) -> Try({ other : Principal.HumanId, topic : TopicName }, [NotTopics])
-dm_in = |n, t| {
-	other = human_in(n)?
-	topic =
-		match Str.from_utf8(t) {
-			Ok(text) => TopicName.from_str(text).map_err(|_| NotTopics)
-			Err(_) => Err(NotTopics)
-		}?
-	Ok({ other, topic })
-}
-
 ## **THE DM'S CHANNEL, FOR THE ASKER**: the pair of the asker (a human,
 ## by session or their own key) and `other`. Signed out, a 401; an agent
 ## or a bot, or oneself, has no DM: a 404.
 dm_name! : Principal.HumanId => Try(ChannelName, Chat.Answer)
 dm_name! = |other| {
-	v = load_viewer!({})?
+	v = Topics.load_viewer!({})?
 	match v.viewer.who() {
 		SignedOut => Err(not_signed_in)
 		Session(b) | Key(b) =>
@@ -379,7 +506,7 @@ start_dm! = |{}| {
 
 start_dm_from! : List(U8) => Try(Chat.Answer, Chat.Answer)
 start_dm_from! = |form| {
-	v = load_viewer!({})?
+	v = Topics.load_viewer!({})?
 	other =
 		match SignInWeb.form_field(form, "with") {
 			Ok(text) => AccountCodec.id_from(text, "with").map_err(
@@ -390,26 +517,8 @@ start_dm_from! = |form| {
 			)
 			Err(_) => Err(Wire.refused(400, "with= is the other human's id"))
 		}?
-	made =
-		Channel.dm({
-			by: v.viewer,
-			other,
-			accounts: v.accounts,
-		}).map_err(
-			|why|
-				match why {
-					SignedOut | NoSuchPrincipal => not_signed_in
-					NotAHuman(_) => Wire.refused(403, "a DM is two humans'")
-					NoAccount(_) => Wire.refused(404, "no human holds that id")
-					Yourself => Wire.refused(400, "a DM is with someone else")
-				},
-		)?
-	answer = |status| Wire.json(status, dm_json(made, v.accounts))
-	match Store.save_new_channel!(made) {
-		Written => Ok(answer(201))
-		Taken => Ok(answer(200))
-		Failed => Ok(Chat.failed)
-	}
+	got = Topics.make_dm!(v, other)?
+	Ok(Wire.json(if (got.made) 201 else 200, dm_json(got.dm, v.accounts)))
 }
 
 ## A DM as the wire spells it: its channel's name (`dm-<a>-<b>`), and its
@@ -427,7 +536,7 @@ dm_json = |dm, accounts|
 ## **/dms, GET**: the asker's DMs, each with its topics.
 list_dms! : {} => Chat.Answer
 list_dms! = |{}|
-	match load_viewer!({}) {
+	match Topics.load_viewer!({}) {
 		Err(answer) => answer
 		Ok(v) =>
 			match v.viewer.who() {
@@ -468,7 +577,7 @@ list! = |name|
 
 list_of! : ChannelName => Try(Chat.Answer, Chat.Answer)
 list_of! = |name| {
-	v = load_viewer!({})?
+	v = Topics.load_viewer!({})?
 	if v.viewer.who() == SignedOut {
 		Err(not_signed_in)
 	} else {
@@ -493,18 +602,6 @@ list_of! = |name| {
 			),
 		)
 	}
-}
-
-## A topic's place in a path: its channel's name and its own.
-at_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
-at_in = |c, t| {
-	channel = channel_in(c)?
-	topic =
-		match Str.from_utf8(t) {
-			Ok(text) => TopicName.from_str(text).map_err(|_| NotTopics)
-			Err(_) => Err(NotTopics)
-		}?
-	Ok({ channel, topic })
 }
 
 ## **WHO A TOPIC'S MESSAGE IS SPELLED FOR**: its people by their names now
@@ -577,24 +674,6 @@ Asked : {
 	topic : Topic,
 }
 
-## The viewer over topics, the accounts and the time, from the credential.
-load_viewer! : {} => Try(
-	{
-		viewer : Access.Viewer(Topic.At),
-		accounts : List(Principal),
-		now : I64,
-	},
-	Chat.Answer,
-)
-load_viewer! = |{}| {
-	asked = Credentials.load_viewer!(ListConversations)?
-	Ok({
-		viewer: Access.Viewer.over(asked.viewer),
-		accounts: asked.accounts,
-		now: asked.now,
-	})
-}
-
 ## The channel named, stored.
 load_channel! : ChannelName => Try(Channel, Chat.Answer)
 load_channel! = |name|
@@ -608,7 +687,7 @@ load_channel! = |name|
 ## not read is a 404, as one that is not there (signed out, a 401).
 load_read! : Topic.At => Try(Asked, Chat.Answer)
 load_read! = |at| {
-	v = load_viewer!({})?
+	v = Topics.load_viewer!({})?
 	read_by!(v, at)
 }
 
@@ -619,30 +698,20 @@ read_by! : {
 	now : I64,
 },
 Topic.At => Try(Asked, Chat.Answer)
-read_by! = |v, at| {
-	channel = load_channel!(at.channel)?
-	topic =
-		match Store.load_topic!(channel, at.topic) {
-			Ok(t) => Ok(t)
-			Err(Missing) => Err(no_such_topic)
-			Err(Failed) => Err(Chat.failed)
-		}?
-	match topic.read({
-		viewer: v.viewer,
-		channel,
-		accounts: v.accounts,
-	}) {
-		Permitted => Ok({
+read_by! = |v, at|
+	match Topics.verdict!(v, at) {
+		Ok({ channel, topic }) => Ok({
 			viewer: v.viewer,
 			accounts: v.accounts,
 			now: v.now,
 			channel,
 			topic,
 		})
-		Refused(SignedOut) => Err(not_signed_in)
-		Refused(_) => Err(no_such_topic)
+		Err(SignedOut) => Err(not_signed_in)
+		Err(NotYours) => Err(no_such_channel)
+		Err(NoTopic) => Err(no_such_topic)
+		Err(Failed) => Err(Chat.failed)
 	}
-}
 
 ## **/channels/<channel>/topics, POST**: a member makes a topic (Topic.make
 ## decides), stored once; `201` and the topic.
@@ -661,7 +730,7 @@ make! = |name| {
 
 make_from! : ChannelName, List(U8) => Try(Chat.Answer, Chat.Answer)
 make_from! = |name, form| {
-	v = load_viewer!({})?
+	v = Topics.load_viewer!({})?
 	channel = load_channel!(name)?
 	topics = Store.load_topics!(channel).map_err(|_| Chat.failed)?
 	topic_name =
@@ -973,69 +1042,76 @@ stream! = |asked_at|
 			files = Store.topic_files(at)
 			match Store.load_tally!(files) {
 				Err(Failed) => Chat.failed
-				Ok(tally) => {
-					after =
-						match Host.read_header!(Str.to_utf8("last-event-id")) {
-							[only] => Stored.count(only, "last-event-id") ?? 0
-							_ => 0
-						}
-					newest = Conversations.page_of(tally.messages, Newest)
-					first =
-						if after < newest.first {
-							newest.first
-						} else if after < tally.messages {
-							after + 1
-						} else {
-							tally.messages + 1
-						}
-					match Store.load_span!(
-						files,
-						tally,
-						{ first, last: tally.messages },
-					) {
-						Err(Failed) => Chat.failed
-						Ok(messages) => {
-							who = {
-								named: named_of(
-									a.topic,
-									{ channel: a.channel, accounts: a.accounts },
-								),
-								accounts: a.accounts,
-							}
-							gap = if (after > 0 and after + 1 < newest.first) gap_frame(newest.first) else []
-							Chat.stream({
-								key: bus_key(at),
-								backlog: gap.concat(
-									List.join(
-										messages.keep_oks(
-											|m| frame(
-												at,
-												m,
-												who,
-											),
-										),
-									),
-								),
-								holder: Conversations.holder(a.viewer),
-							})
-						}
+				Ok(tally) =>
+					match Topics.resume_after!(HeaderOnly) {
+						Err(answer) => answer
+						Ok(after) => stream_from!(
+							a,
+							{
+								files,
+								tally,
+								place: Topics.resume(tally.messages, after),
+							},
+						)
 					}
-				}
 			}
 		}
 	}
 
-## The `gap` event: the messages before `before` were not sent.
-gap_frame : U64 -> List(U8)
-gap_frame = |before|
-	match Sse.frame({
-		name: Str.to_utf8("gap"),
-		data: JsonOut.object([("before", JsonOut.number(before))]).bytes(),
-		id: [],
-	}) {
-		Ok(f) => f
-		Err(LineBreak) => crash "Topics.gap_frame: a gap's JSON holds no line break"
+## The stream of a topic the viewer reads, from where it resumes.
+stream_from! : Asked,
+{
+	files : Store.TranscriptFiles,
+	tally : Store.Tally,
+	place : { first : U64, gap : [NoGap, Gap(U64)] },
+} => Chat.Answer
+stream_from! = |
+	a,
+	{
+		files,
+		tally,
+		place,
+	},
+| {
+	at = a.topic.at()
+	first = place.first
+	match Store.load_span!(
+		files,
+		tally,
+		{ first, last: tally.messages },
+	) {
+		Err(Failed) => Chat.failed
+		Ok(messages) => {
+			who = {
+				named: named_of(
+					a.topic,
+					{ channel: a.channel, accounts: a.accounts },
+				),
+				accounts: a.accounts,
+			}
+			gap =
+				match place.gap {
+					Gap(before) => Topics.gap_frame(before)
+					NoGap => []
+				}
+			Chat.stream({
+				key: bus_key(at),
+				backlog: gap.concat(
+					List.join(
+						messages.keep_oks(
+							|m| frame(
+								at,
+								m,
+								who,
+							),
+						),
+					),
+				),
+				holder: Conversations.holder(a.viewer),
+			})
+		}
 	}
+}
 
 no_such_channel : Chat.Answer
 no_such_channel = Wire.refused(404, "no such channel")
@@ -1052,7 +1128,7 @@ not_signed_in = Wire.refused(401, "not signed in")
 # ── tests
 at_of : Str, Str -> Topic.At
 at_of = |c, t|
-	match at_in(c.to_utf8(), t.to_utf8()) {
+	match Topics.at_in(c.to_utf8(), t.to_utf8()) {
 		Ok(at) => at
 		Err(NotTopics) => crash "at_of: a test's names are names"
 	}

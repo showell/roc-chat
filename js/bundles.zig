@@ -7,5 +7,6 @@
 pub const Script = struct { name: []const u8, body: []const u8 };
 
 pub const scripts = [_]Script{
+    .{ .name = "chrome.js", .body = @embedFile("chrome.js") },
     .{ .name = "feed.js", .body = @embedFile("feed.js") },
 };

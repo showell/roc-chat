@@ -2135,19 +2135,21 @@ const pip_name_escaped = "Pip &lt;b&gt;&quot;&amp;&#39;";
 const Browsing = struct { pip: []const u8, quin: []const u8, rue: []const u8, p: []const u8, q: []const u8, pal_key: []const u8 };
 var browsing: ?Browsing = null;
 
-/// **BROWSE** (`/chat/browse`, app/Browse.roc): the viewer's DMs, then
-/// their channels by name, each with the topics they read, in byte order;
-/// an agent topic of another member's agent is not one of them; a place
-/// with no topic says "No sessions yet", and a viewer in nothing "You do
-/// not have any conversations."; the top bar marks Browse as here and
-/// names the viewer as text. Signed out, a 303 to `/login`; a key, a 403.
+/// **BROWSE** (`/chat/browse`, app/Browse.roc): every other human as a DM,
+/// by numeric id, then the viewer's channels by name in raw bytes, each
+/// with the topics they read, in byte order; another member's agent topic
+/// is not one of them; a place with no topic says "No sessions yet", and a
+/// human with no DM has the button that makes one, which lands back on
+/// Browse at it. The top bar marks Browse as here and names the viewer as
+/// text. Signed out, a 303 to `/login`; a key, a 403.
 fn browse(w: *World) !void {
     const pip = try signUpAs(w.a, w.port(), 1040, pip_name_form);
     const quin = try signUp(w.a, w.port(), 1041);
     const rue = try signUp(w.a, w.port(), 1042);
     const p = try hid(w.a, 1040);
     const q = try hid(w.a, 1041);
-    for ([_][]const u8{ "Orchard", "Meadow" }) |name| {
+    const r = try hid(w.a, 1042);
+    for ([_][]const u8{ "Orchard", "Meadow", "apricot" }) |name| {
         if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name={s}&members=human%3A{s}%2Chuman%3A{s}", .{ name, p, q }))).status != 201) return error.ChannelNotMade;
     }
     for ([_][]const u8{ "apple", "Banana" }) |topic| {
@@ -2159,29 +2161,49 @@ fn browse(w: *World) !void {
     if ((try pagePost(w, pip, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{q}), "name=ChitChat")).status != 201) return error.TopicNotMade;
     browsing = .{ .pip = pip, .quin = quin, .rue = rue, .p = p, .q = q, .pal_key = pal.key };
 
+    // Quin and Rue have no DM yet: Rue's row is the button that makes it.
+    const before = try get(w.a, w.port(), "/chat/browse", quin);
+    const rue_button = try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<form class=start-dm method=post action=\"/chat/dm/{s}\"><button>Start a DM</button></form>", .{ r, r });
+    if (before.status != 200 or !has(before.body, rue_button)) return error.NoStartButton;
+    const made = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "");
+    if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", try std.fmt.allocPrint(w.a, "/chat/browse#dm-{s}", .{r}))) return error.DmNotStarted;
+    if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "")).status != 303) return error.DmNotFound;
+    if ((try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "")).status != 400) return error.DmWithOneself;
+    if ((try pagePost(w, quin, "/chat/dm/999999", "")).status != 404) return error.DmWithNobody;
+    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), .{ .key = pal.key }, "")).status != 403) return error.KeyStartedDm;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "", "")).status != 401) return error.NobodyStartedDm;
+    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), .{ .cookie = quin, .origin = "https://evil.test" }, "")).status != 403) return error.ForeignOriginTaken;
+
     const page = try get(w.a, w.port(), "/chat/browse", quin);
     if (page.status != 200) return error.NoBrowse;
     const b = page.body;
-    // In order: the DM by Pip's name, Meadow empty, then Orchard's topics.
+    // In order: Pip's DM (the lower id) with its topic, Rue's (now made, no
+    // topic), then the channels in raw byte order, capitals first.
     const order = [_][]const u8{
+        "<title>Chat</title>",
         "<strong>Browse</strong>",
         "<strong>Person 1041</strong>",
-        "<h2>" ++ pip_name_escaped ++ "</h2>",
+        try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>" ++ pip_name_escaped ++ "</h2>", .{p}),
         try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/ChitChat\">ChitChat</a>", .{p}),
+        try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<ul class=browse-list>\n<li class=muted>No sessions yet</li>", .{r}),
         "<h2># Meadow</h2>\n<ul class=browse-list>\n<li class=muted>No sessions yet</li>",
         "<h2># Orchard</h2>",
         "<a href=\"/chat/channel/Orchard/Banana\">Banana</a>",
         "<a href=\"/chat/channel/Orchard/apple\">apple</a>",
+        "<h2># apricot</h2>",
+        "<script src=\"/chrome.js\"></script>",
     };
     var at: usize = 0;
     for (order) |needle| {
         at = (std.mem.indexOfPos(u8, b, at, needle) orelse return error.BrowseOutOfOrder) + needle.len;
     }
-    if (has(b, "Desk") or has(b, "Pip <b>")) return error.BrowseShowsTooMuch;
+    if (has(b, "Desk") or has(b, "Pip <b>") or has(b, "<style")) return error.BrowseShowsTooMuch;
     // The agent topic is its owner's to read, so on Pip's Browse.
     const own = try get(w.a, w.port(), "/chat/browse", pip);
     if (!has(own.body, "<a href=\"/chat/channel/Orchard/Desk\">Desk</a>") or !has(own.body, "<h2>Person 1041</h2>")) return error.OwnTopicMissing;
-    if (!has((try get(w.a, w.port(), "/chat/browse", rue)).body, "<p>You do not have any conversations.</p>")) return error.NoEmptyState;
+    // Rue is in no channel, and sees Pip as a human with no DM yet.
+    const theirs = try get(w.a, w.port(), "/chat/browse", rue);
+    if (has(theirs.body, "# Orchard") or !has(theirs.body, try std.fmt.allocPrint(w.a, "action=\"/chat/dm/{s}\"", .{p}))) return error.RueSeesWrong;
 
     const out = try get(w.a, w.port(), "/chat/browse", "");
     if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Fbrowse")) return error.NotToLogin;
@@ -2202,32 +2224,51 @@ fn topicPage(w: *World) !void {
     const page = try get(w.a, w.port(), "/chat/channel/orchard/banana", x.quin);
     if (page.status != 200) return error.NoTopicPage;
     const want = [_][]const u8{
-        "<title>#Orchard: Banana · roc-chat</title>",
+        "<title>Chat</title>",
         try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\">", .{x.q}),
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
         "<a href=\"/chat/browse\">Browse</a>",
         "<button id=earlier type=button hidden>Earlier messages</button>",
-        try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-1 data-id=1 data-by=\"human:{s}\"><div class=chat-meta>#1 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time data-at=", .{x.p}),
+        try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-1 data-id=1 data-by=\"human:{s}\"><div class=chat-meta>#1 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p}),
         "<div class=chat-body><p>hello <strong>orchard</strong></p>",
         "<div id=chat-right-sidebar class=chat-compose></div>",
         "<script src=\"/feed.js\"></script>",
     };
     for (want) |needle| if (!has(page.body, needle)) return error.TopicPageWrong;
-    if (has(page.body, "Pip <b>") or has(page.body, "No messages yet")) return error.TopicPageWrong;
+    if (has(page.body, "Pip <b>") or has(page.body, "No messages yet") or has(page.body, "<style")) return error.TopicPageWrong;
+    // The time is there without a script: its datetime and text, in UTC.
+    if (!has(page.body, "Z data-at=") or !has(page.body, " UTC</time>")) return error.NoFallbackTime;
     const empty = try get(w.a, w.port(), "/chat/channel/Orchard/apple", x.quin);
     if (empty.status != 200 or !has(empty.body, "<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>") or has(empty.body, "class=chat-msg")) return error.NoEmptyState;
 
     // A DM's page, from each side, titled by the other's name.
     const dm = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.quin);
-    if (dm.status != 200 or !has(dm.body, "<title>Chat w/" ++ pip_name_escaped ++ ": ChitChat · roc-chat</title>")) return error.NoDmPage;
-    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.q}), x.pip)).body, "<title>Chat w/Person 1041: ChitChat · roc-chat</title>")) return error.NoDmPage;
+    if (dm.status != 200 or !has(dm.body, "<span class=\"chat-top-title\">Chat w/" ++ pip_name_escaped ++ ": ChitChat</span>")) return error.NoDmPage;
+    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.q}), x.pip)).body, "<span class=\"chat-top-title\">Chat w/Person 1041: ChitChat</span>")) return error.NoDmPage;
     if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.pip)).status != 404) return error.DmWithOneself;
 
     // Who may not read it: a stranger, the same 404 as no topic at all.
     const closed = [_][]const u8{ "/chat/channel/Orchard/Banana", "/chat/channel/Orchard/Banana/stream", "/chat/channel/Orchard/Banana/earlier?before=2", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}) };
     for (closed) |path| if ((try get(w.a, w.port(), path, x.rue)).status != 404) return error.StrangerRead;
-    if ((try get(w.a, w.port(), "/chat/channel/Orchard/Desk", x.quin)).status != 404) return error.AgentTopicRead;
-    if ((try get(w.a, w.port(), "/chat/channel/Orchard/Nope", x.quin)).status != 404) return error.NoTopicRead;
+    // The page says why, as the old app's did: a channel not there and one
+    // you are not in alike; a topic not there, or one you may not read,
+    // named. The stream and the fragment are the plain 404.
+    const yours = try get(w.a, w.port(), "/chat/channel/Orchard/Banana", x.rue);
+    const nowhere = try get(w.a, w.port(), "/chat/channel/Nowhere/Banana", x.rue);
+    if (!has(yours.body, "<span class=\"chat-top-title\">Not here</span>") or !has(yours.body, "<p>#Orchard is not a channel you are a member of.</p><p><a href=\"/chat/browse\">Go back</a></p>")) return error.NotHereWrong;
+    if (nowhere.status != 404 or !has(nowhere.body, "<p>#Nowhere is not a channel you are a member of.</p>")) return error.NotHereWrong;
+    const desk = try get(w.a, w.port(), "/chat/channel/Orchard/Desk", x.quin);
+    if (desk.status != 404 or !has(desk.body, "<p>There is no topic “Desk” in this conversation.</p>")) return error.AgentTopicRead;
+    const nope = try get(w.a, w.port(), "/chat/channel/Orchard/Nope", x.quin);
+    if (nope.status != 404 or !has(nope.body, "<p>There is no topic “Nope” in this conversation.</p>")) return error.NoTopicRead;
+    if (has((try get(w.a, w.port(), "/chat/channel/Orchard/Banana/stream", x.rue)).body, "Not here")) return error.StreamSaidWhy;
+    // The topics' own routes: to a stranger, a channel that is not there
+    // and one they are not in answer alike; to a member, no topic is named.
+    const json_yours = try get(w.a, w.port(), "/channels/Orchard/topics/Banana", x.rue);
+    const json_nowhere = try get(w.a, w.port(), "/channels/Nowhere/topics/Banana", x.rue);
+    if (json_yours.status != 404 or !std.mem.eql(u8, json_yours.body, json_nowhere.body)) return error.ChannelLeaked;
+    const json_nope = try get(w.a, w.port(), "/channels/Orchard/topics/Nope", x.quin);
+    if (json_nope.status != 404 or std.mem.eql(u8, json_nope.body, json_yours.body)) return error.MemberToldNothing;
     const out = try get(w.a, w.port(), "/chat/channel/Orchard/Banana", "");
     if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Fchannel%2FOrchard%2FBanana")) return error.NotToLogin;
     if ((try get(w.a, w.port(), "/chat/channel/Orchard/Banana/stream", "")).status != 401) return error.NobodyStreamed;
@@ -2248,7 +2289,7 @@ fn topicPageStream(w: *World) !void {
     defer json.close();
     if ((try request(w.a, w.port(), "POST", "/channels/Orchard/topics/Banana/messages", x.pip, "a *second*")).status != 201) return error.NotPosted;
     try l.until("<em>second</em>");
-    const bubble = try std.fmt.allocPrint(w.a, "event: message\nid: 2\ndata: <div class=chat-msg id=msg-2 data-id=2 data-by=\"human:{s}\"><div class=chat-meta>#2 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time data-at=", .{x.p});
+    const bubble = try std.fmt.allocPrint(w.a, "event: message\nid: 2\ndata: <div class=chat-msg id=msg-2 data-id=2 data-by=\"human:{s}\"><div class=chat-meta>#2 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p});
     if (!has(l.got.items, bubble) or has(l.got.items, "orchard")) return error.StreamedWrong;
     try json.until("\"markdown\":\"a *second*\"");
     if (has(json.got.items, "chat-msg")) return error.JsonStreamChanged;
@@ -2258,6 +2299,25 @@ fn topicPageStream(w: *World) !void {
     try resumed.until("<em>second</em>");
     if (has(resumed.got.items, "orchard")) return error.ResumedTwice;
 
+    // A resume point that is no message's id is a 400, never read as 0.
+    // (Opened as a stream, so a server that took one fails the step within
+    // the listener's wait, never hangs it.)
+    for ([_][]const u8{ "?after=x", "?after=01", "?after=1&after=2" }) |q| {
+        if (Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/channel/Orchard/Banana/stream{s}", .{q}), x.quin, "")) |bad| {
+            bad.close();
+            return error.BadAfterTaken;
+        } else |_| {}
+    }
+    if (Listener.open(w.a, w.port(), "/chat/channel/Orchard/Banana/stream", x.quin, "x")) |bad| {
+        bad.close();
+        return error.BadLastEventIdTaken;
+    } else |_| {}
+    if (Listener.open(w.a, w.port(), "/channels/Orchard/topics/Banana/stream", x.quin, "x")) |bad| {
+        bad.close();
+        return error.BadLastEventIdTaken;
+    } else |_| {}
+
+    if ((try get(w.a, w.port(), "/chrome.js", x.quin)).status != 200) return error.NoChromeJs;
     const script = try get(w.a, w.port(), "/feed.js", x.quin);
     if (script.status != 200 or !std.mem.eql(u8, script.header("content-type") orelse "", "text/javascript; charset=utf-8") or !has(script.body, "new EventSource(root.dataset.stream)")) return error.NoFeedJs;
     if ((try get(w.a, w.port(), "/chat.js", x.quin)).status != 200) return error.NoChatClient;
@@ -2281,6 +2341,12 @@ fn topicPageEarlier(w: *World) !void {
     if (!has(before.body, "id=msg-2 ") or has(before.body, "id=msg-3 ")) return error.EarlierWrong;
     const more = try get(w.a, w.port(), "/chat/channel/Orchard/Banana/earlier?before=102", x.quin);
     if (!std.mem.startsWith(u8, more.body, "<div data-earlier=1>\n<div class=chat-msg id=msg-2 ")) return error.EarlierWrong;
+    // A page further behind than the stream resends gets a `gap` first,
+    // naming the newest page's first, as a topic's stream does.
+    const behind = try Listener.open(w.a, w.port(), "/chat/channel/Orchard/Banana/stream", x.quin, "1");
+    defer behind.close();
+    try behind.until("id: 3\n");
+    if (!has(behind.got.items, "event: gap\ndata: {\"before\":3}\n\n") or has(behind.got.items, "id: 2\n")) return error.NoGap;
     for ([_][]const u8{ "", "?before=x", "?before=03", "?before=1&before=2" }) |q| {
         if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/channel/Orchard/Banana/earlier{s}", .{q}), x.quin)).status != 400) return error.BadBeforeTaken;
     }
@@ -2369,10 +2435,10 @@ const steps = [_]Step{
     .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; oneself, an agent, nobody refused; never a channel", .f = humanDm },
     .{ .name = "a human invite: her name held at once, the welcome in their DM, the code in its answer alone; she joins on the plain page under another free name, reads and answers; the code once; again by her inviter or an admin alone; revoked, expired and past ten open refused; audited without the code", .f = humanInvited },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
-    .{ .name = "Browse: the viewer's DMs, then channels by name, each with the topics they read in byte order, another's agent topic not among them; empty places and an empty viewer said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
-    .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, an agent topic and none a 404 for page, stream and fragment; signed out a 303 and a 401, a key a 403", .f = topicPage },
-    .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; the agents' JSON stream unchanged; feed.js served beside chat-client's scripts", .f = topicPageStream },
-    .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a before= that is no id a 400", .f = topicPageEarlier },
+    .{ .name = "Browse: every other human as a DM by numeric id, then channels in raw byte order, each with the topics they read in byte order, another's agent topic not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
+    .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, an agent topic and none a 404, the page saying why without naming a channel the viewer is not in; the JSON routes alike; signed out a 303 and a 401, a key a 403", .f = topicPage },
+    .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
+    .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

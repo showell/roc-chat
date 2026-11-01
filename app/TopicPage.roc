@@ -16,9 +16,10 @@
 ##     GET .../earlier?before=<id>                  the page of bubbles before
 ##                                                  `<id>`, a fragment
 ##
-## **WHO MAY** is the topic's own routes' (Topics.readable!, Topic.read):
+## **WHO MAY** is the topic's own routes' (Topics.verdict!, Topic.read):
 ## a topic the viewer may not read is the 404 of one that is not there,
-## for the page, its stream and its fragments alike. **A PAGE IS A
+## for the page, its stream and its fragments alike; the page says why, in
+## the old app's words, which name no channel the viewer is not in. **A PAGE IS A
 ## BROWSER'S**: signed out, the page sends the browser to `/login` (its
 ## stream and fragments, a 401); a key, a 403.
 import pf.Chat
@@ -64,9 +65,9 @@ TopicPage := [].{
 			b,
 		|
 			if kind == "channel".to_utf8() {
-				Topics.channel_topic_in(a, b).map_ok(|at| InChannel(at)).map_err(|_| NotATopicPage)
+				Topics.at_in(a, b).map_ok(|at| InChannel(at)).map_err(|_| NotATopicPage)
 			} else if kind == "dm".to_utf8() {
-				Topics.dm_topic_in(a, b).map_ok(|d| InDm(d)).map_err(|_| NotATopicPage)
+				Topics.dm_in(a, b).map_ok(|d| InDm(d)).map_err(|_| NotATopicPage)
 			} else {
 				Err(NotATopicPage)
 			}
@@ -144,19 +145,46 @@ serve! = |path, r| {
 		match r {
 			Page(p) | Stream(p) | Earlier(p) => p
 		}
-	v = Topics.viewer!({})?
+	v = Topics.load_viewer!({})?
 	me =
 		match v.viewer.who() {
 			SignedOut =>
 				match r {
-					Page(_) => Err(Pages.sign_in_first(path))
+					Page(_) => Err(Pages.to_login(path))
 					Stream(_) | Earlier(_) => Err(Wire.refused(401, "not signed in"))
 				}
-			Key(_) => Err(Pages.by_key)
+			Key(_) => Err(Pages.key_refused)
 			Session(b) => Ok(b)
 		}?
 	at = at_of(me, place)?
-	found = Topics.readable!(v, at)?
+	found =
+		match Topics.verdict!(v, at) {
+			Ok(f) => Ok(f)
+			Err(SignedOut) => Err(Wire.refused(401, "not signed in"))
+			Err(Failed) => Err(Chat.failed)
+			Err(NotYours) => Err(
+				not_here(
+					r,
+					{
+						why: NotYours,
+						at,
+						accounts: v.accounts,
+						me,
+					},
+				),
+			)
+			Err(NoTopic) => Err(
+				not_here(
+					r,
+					{
+						why: NoTopic,
+						at,
+						accounts: v.accounts,
+						me,
+					},
+				),
+			)
+		}?
 	shown = {
 		viewer: v.viewer,
 		accounts: v.accounts,
@@ -195,6 +223,52 @@ base_of = |at, place|
 	match place {
 		InChannel(_) => "/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
 		InDm({ other, topic: _ }) => "/chat/dm/${other.to_u64().to_str()}/${at.topic.to_str()}"
+	}
+
+## **A TOPIC'S PAGE THAT IS NOT THERE SAYS WHY**, as the old app's did
+## (angry-gopher's chat.zig, `serveNotFoundPage`): a 404 page titled "Not
+## here", its reason, and the way back. A channel that is not there and one
+## the viewer is not in read alike, so it names no channel a viewer cannot
+## see; a topic not there (or one a member may not read) is named. Its
+## stream and its fragments answer the plain 404.
+not_here : TopicPage.Route,
+{
+	why : [NotYours, NoTopic],
+	at : Topic.At,
+	accounts : List(Principal),
+	me : Principal.Bound,
+} -> Chat.Answer
+not_here = |
+	r,
+	{
+		why,
+		at,
+		accounts,
+		me,
+	},
+|
+	match r {
+		Stream(_) | Earlier(_) => no_such_topic
+		Page(_) => {
+			what =
+				match why {
+					NotYours => "#${at.channel.to_str()} is not a channel you are a member of."
+					NoTopic => "There is no topic “${at.topic.to_str()}” in this conversation."
+				}
+			answer = Chrome.page({
+				title: Html.markup("Not here"),
+				viewer: Html.text(Conversations.name_of(accounts, me.id)),
+				here: Elsewhere,
+				kind: Plain,
+				body_attrs: Html.join([]),
+				body: Html.join([
+					Html.markup("<p>"),
+					Html.text(what),
+					Html.markup("</p><p><a href=\"/chat/browse\">Go back</a></p>\n"),
+				]),
+			})
+			{ ..answer, status: 404 }
+		}
 	}
 
 ## **THE PAGE'S TITLE**, the old app's: `#<channel>: <topic>` for a
@@ -294,37 +368,27 @@ earlier! = |s| {
 ## **THE STREAM**: the bubbles after `Last-Event-ID` (a reconnect's), or
 ## else after `?after=` (the page's newest), at most the newest page of
 ## them, then each one posted, live, built once for every page
-## (Topics.page_frame); a page further behind gets a `gap` first, as a
-## topic's stream does.
+## (Topics.page_frame); a page further behind gets a `gap` first. Where it
+## starts is a topic's stream's one rule (Topics.resume, Topics.resume_after!):
+## a resume point that is no message's id is a 400.
 stream! : Shown => Try(Chat.Answer, Chat.Answer)
 stream! = |s| {
 	at = s.topic.at()
 	files = Store.topic_files(at)
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
-	after =
-		match Host.read_header!(Str.to_utf8("last-event-id")) {
-			[only] => Stored.count(only, "last-event-id") ?? 0
-			_ =>
-				match Host.read_query!(Str.to_utf8("after")) {
-					[only] => Stored.count(only, "after") ?? 0
-					_ => 0
-				}
-		}
-	newest = Conversations.page_of(tally.messages, Newest)
-	first =
-		if after < newest.first {
-			newest.first
-		} else if after < tally.messages {
-			after + 1
-		} else {
-			tally.messages + 1
-		}
+	after = Topics.resume_after!(HeaderOrQuery)?
+	place = Topics.resume(tally.messages, after)
+	first = place.first
 	messages = Store.load_span!(
 		files,
 		tally,
 		{ first, last: tally.messages },
 	).map_err(|_| Chat.failed)?
-	gap = if (after > 0 and after + 1 < newest.first) Topics.gap(newest.first) else []
+	gap =
+		match place.gap {
+			Gap(before) => Topics.gap_frame(before)
+			NoGap => []
+		}
 	Ok(
 		Chat.stream({
 			key: Topics.page_key(at),

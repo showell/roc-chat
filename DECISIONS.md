@@ -96,7 +96,10 @@ the same commit.
 - **Recent comes early:** "one of the most fundamental features of the zig
   app. We all use it religiously."
 - **Browse** is the page of topics. Its link sits with Docs, Recent, Images
-  and Code. Browse and the left sidebar will respect pinning (low priority).
+  and Code. **It lists every human as a DM row, as the old sidebar did**
+  (Steve, 2026-11-01): an existing DM links to its topics; a human you have
+  no DM with gets a button that makes one. Browse and the left sidebar will
+  respect pinning (low priority).
 - **No browser automation** (no Playwright or the like). Dropped streams are
   very low priority: "it was never a big issue with zig chat." Agent
   conversations keep their own page for now.
@@ -116,8 +119,14 @@ the same commit.
 
 - **Data:** a write before a crash stays written.
 - **The SSE stream and its bus are generic**, usable by any Roc web app.
-- **CSS stays embedded.** A skin fork is a `Chrome.roc` shell plus colors.js,
-  when that step comes.
+- **Styling lives in the JS, as chat-client's does; no CSS from the server**
+  (Steve, 2026-11-01): "Keep the CSS as it was in JS... We should generally
+  directly modify styles on the DOM. We want fairly minimal styling and as
+  little bitrot as possible." Each widget owns its DOM and its styling,
+  `Object.assign(el.style, {...})`; only what cannot be inlined (`:hover`,
+  `::backdrop`, rules for server-rendered markup such as the bubbles'
+  classes) goes in one `<style>` its script adds. The server sends structure
+  and class names. A skin fork is a `Chrome.roc` shell plus its scripts.
 - **Ascii.roc is copied** in roc-chat and roc-markdown on purpose, each
   header naming the other, until a package both can share exists.
 - **A planted fault is a one-time proof** that a new test bears load, not a

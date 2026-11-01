@@ -83,14 +83,21 @@ Pages := [].{
 		body,
 	})
 
-	## **SIGNED OUT, TO `/login`**, a 303 naming this page, so the sign-in
-	## ends back on it.
-	sign_in_first : List(U8) -> Chat.Answer
-	sign_in_first = |path| to_login(path)
+	## Signed out: to `/login`, a 303, naming this page (`next`), so the
+	## sign-in ends back on it (SignInWeb.landing).
+	to_login : List(U8) -> Chat.Answer
+	to_login = |path|
+		Chat.respond(303, { content_type: Chat.text, body: [] })
+			|> Chat.with_header(
+				"location",
+				"/login?next=".to_utf8().concat(SignInWeb.url_encode(path)),
+			)
+			|> Chat.with_header("cache-control", "no-store".to_utf8())
 
-	## **A PAGE IS A BROWSER'S**: a key asking for one, a 403.
-	by_key : Chat.Answer
-	by_key = key_refused
+	## **A PAGE IS A BROWSER'S**: a key (an agent, which reads the JSON routes)
+	## asking for one is a 403, whatever it may see.
+	key_refused : Chat.Answer
+	key_refused = Wire.refused(403, "a page is for a browser's session; a key reads /conversations")
 
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
@@ -138,8 +145,8 @@ Pages := [].{
 					},
 				) =>
 					match viewer.who() {
-						SignedOut => to_login(req.path)
-						Key(_) => key_refused
+						SignedOut => Pages.to_login(req.path)
+						Key(_) => Pages.key_refused
 						Session(me) =>
 							match r {
 								ConversationList => list!({
@@ -163,19 +170,6 @@ Pages := [].{
 
 root : List(U8)
 root = "/chat".to_utf8()
-
-## Signed out: to `/login`, a 303, naming this page (`next`), so the
-## sign-in ends back on it (SignInWeb.landing).
-to_login : List(U8) -> Chat.Answer
-to_login = |path|
-	Chat.respond(303, { content_type: Chat.text, body: [] })
-		|> Chat.with_header("location", "/login?next=".to_utf8().concat(SignInWeb.url_encode(path)))
-		|> Chat.with_header("cache-control", "no-store".to_utf8())
-
-## **A PAGE IS A BROWSER'S**: a key (an agent, which reads the JSON routes)
-## asking for one is a 403, whatever it may see.
-key_refused : Chat.Answer
-key_refused = Wire.refused(403, "a page is for a browser's session; a key reads /conversations")
 
 ## The list: the viewer's conversations (Conversations.load_mine!), each its
 ## people's names and a link, and the form that starts one.
@@ -279,8 +273,8 @@ serve_agents_page! : List(U8) => Chat.Answer
 serve_agents_page! = |here|
 	match Agents.load_owned!({}) {
 		Ok(mine) => agents_page(mine)
-		Err(SignedOut) => to_login(here)
-		Err(ByKey) => key_refused
+		Err(SignedOut) => Pages.to_login(here)
+		Err(ByKey) => Pages.key_refused
 		Err(Answered(answer)) => answer
 	}
 
@@ -393,8 +387,8 @@ serve_channels_page! : List(U8) => Chat.Answer
 serve_channels_page! = |here|
 	match Channels.load_listing!({}) {
 		Ok(listing) => channels_page(listing)
-		Err(SignedOut) => to_login(here)
-		Err(ByKey) => key_refused
+		Err(SignedOut) => Pages.to_login(here)
+		Err(ByKey) => Pages.key_refused
 		Err(NotAdmin) => Wire.refused(403, "the channels page is an admin's")
 		Err(Answered(answer)) => answer
 	}
@@ -752,11 +746,19 @@ conversation_js =
 	\\  a.append(h, b);
 	\\  return a;
 	\\}
+	\\// Caught up: the last message's bottom is in view, read before the
+	\\// append, as the browser client's feed reads it; only then is a new
+	\\// message followed, so a reader scrolled back is never yanked.
+	\\function caughtUp() {
+	\\  const last = box.lastElementChild;
+	\\  return !last || last.getBoundingClientRect().bottom <= window.innerHeight + 1;
+	\\}
 	\\function add(m) {
 	\\  if (document.getElementById("m" + m.id)) return;
+	\\  const stick = caughtUp();
 	\\  const a = article(m);
 	\\  box.append(a);
-	\\  a.scrollIntoView({ block: "end" });
+	\\  if (stick) a.scrollIntoView({ block: "end" });
 	\\}
 	\\const earlier = document.getElementById("earlier");
 	\\earlier.addEventListener("click", async () => {
@@ -851,3 +853,6 @@ expect {
 	html.starts_with("<article id=m3><header>Steve Howell · agent of @showell · <time data-at=5>".to_utf8())
 }
 expect conversation_js.contains("heads[li.dataset.id] = li.textContent;") and conversation_js.contains("(heads[m.by] || m.by)")
+# A live message is followed only when the reader was caught up, read
+# before the append: never a scroll on every message.
+expect conversation_js.contains("const stick = caughtUp();\n  const a = article(m);\n  box.append(a);\n  if (stick) a.scrollIntoView") and !conversation_js.contains("box.append(a);\n  a.scrollIntoView")
