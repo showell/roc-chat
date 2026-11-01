@@ -71,6 +71,8 @@ Recent := [].{
 			Html.markup("<span class=recent-ago></span></div>"),
 			match r.last {
 				NoMessage => Html.join([])
+				# An empty excerpt has no preview, as the old tile had none.
+				Last({ who: _, excerpt: "" }) => Html.join([])
 				Last({ who, excerpt }) =>
 					Html.join([
 						Html.markup("<div class=recent-preview><span class=recent-who>"),
@@ -90,22 +92,17 @@ Recent := [].{
 	excerpt : List(U8) -> Str
 	excerpt = |markdown| {
 		lines = markdown.split_on('\n')
-		unquoted = List.join(collapse_quotes(lines, []).map(|l| l.append('\n')))
+		unquoted = List.join(collapse_quotes(lines).map(|l| l.append('\n')))
 		images = md_images(html_images(unquoted, []), [])
 		one_line = spaced(images, { out: [], space: Bool.False })
 		capped(one_line, 350)
 	}
 }
 
-## A name's first character, upper-cased when it is an ASCII letter.
+## A name's first character; the page's script upper-cases it (the old
+## `charAt(0).toUpperCase()`), any letter, not ASCII alone.
 initial : Str -> Str
-initial = |name|
-	match name.to_utf8() {
-		[c, ..] if c >= 'a' and c <= 'z' => Str.from_utf8([c - 32]) ?? "?"
-		[c, ..] if c < 128 => Str.from_utf8([c]) ?? "?"
-		[] => "?"
-		bytes => first_char(bytes)
-	}
+initial = |name| if (name.is_empty()) "?" else first_char(name.to_utf8())
 
 ## The first UTF-8 character of `bytes`, as text.
 first_char : List(U8) -> Str
@@ -128,36 +125,53 @@ first_word = |who|
 		[] => who
 	}
 
-## Each `quote` fence, to its close, as one "[quoted text]" line; any other
-## fence kept whole, so its lines are never read as openers.
-collapse_quotes : List(List(U8)), List(List(U8)) -> List(List(U8))
-collapse_quotes = |lines, done|
-	match lines {
-		[] => done
-		[line, .. as rest] =>
-			match MdFence.open(line) {
-				Err(NotAFence) => collapse_quotes(rest, done.append(line))
-				Ok(fence) => {
-					closes = |l| MdFence.is_close(l, { char: fence.char, count: fence.count })
-					body = take_until(rest, closes)
-					after = rest.drop_first(body.len() + 1)
-					if fence.lang == "quote".to_utf8() {
-						collapse_quotes(after, done.append("[quoted text]".to_utf8()))
-					} else {
-						kept = [line].concat(body).concat(rest.drop_first(body.len()).take_first(1))
-						collapse_quotes(after, done.concat(kept))
+## Each `quote` fence, to its close (or the end), as one "[quoted text]"
+## line; any other fence kept whole, so its lines are never read as
+## openers. One pass over the lines, as the old loop was.
+collapse_quotes : List(List(U8)) -> List(List(U8))
+collapse_quotes = |lines| {
+	done = lines.fold(
+		{ out: [], inside: Outside },
+		|state, line|
+			match state.inside {
+				Outside =>
+					match MdFence.open(line) {
+						Err(NotAFence) => { out: state.out.append(line), inside: Outside }
+						Ok(f) =>
+							if f.lang == "quote".to_utf8() {
+								{
+									out: state.out.append("[quoted text]".to_utf8()),
+									inside: Inside({
+										char: f.char,
+										count: f.count,
+										quote: Bool.True,
+									}),
+								}
+							} else {
+								{
+									out: state.out.append(line),
+									inside: Inside({
+										char: f.char,
+										count: f.count,
+										quote: Bool.False,
+									}),
+								}
+							}
 					}
+				Inside(f) => {
+					out = if (f.quote) state.out else state.out.append(line)
+					inside = if (
+						MdFence.is_close(
+							line,
+							{ char: f.char, count: f.count },
+						)
+					) Outside else Inside(f)
+					{ out, inside }
 				}
-			}
-	}
-
-## The lines before the first that `stop` takes.
-take_until : List(List(U8)), (List(U8) -> Bool) -> List(List(U8))
-take_until = |lines, stop|
-	match lines {
-		[] => []
-		[l, .. as rest] => if (stop(l)) [] else [l].concat(take_until(rest, stop))
-	}
+			},
+	)
+	done.out
+}
 
 ## Each `<img` tag (any case, a whole word), to its `>`, as "[image]".
 html_images : List(U8), List(U8) -> List(U8)
@@ -318,6 +332,29 @@ expect Recent.excerpt(
 ) == Str.concat(Str.repeat("a", 349), "…")
 expect Recent.excerpt("![no close".to_utf8()) == "![no close"
 expect Recent.excerpt([]) == ""
+# An unclosed fence of tens of thousands of lines: one pass, its lines kept.
+expect {
+	body = Str.concat("~~~\n", Str.repeat("x\n", 40000)).to_utf8()
+	Recent.excerpt(body).starts_with("~~~ x x x")
+}
+expect Recent.excerpt(
+	Str.concat(
+		"~~~ quote\n",
+		Str.repeat("x\n", 40000),
+	).to_utf8(),
+) == "[quoted text]"
+# A message whose excerpt is empty has no preview line.
+expect {
+	html = Recent.tile({
+		url: "/u",
+		ts: 1,
+		dm: Bool.False,
+		place: "L",
+		topic: "T",
+		last: Last({ who: "You", excerpt: "" }),
+	}).bytes()
+	!(Str.from_utf8(html) ?? "").contains("recent-preview")
+}
 
 # A DM's tile leads with its partner's initial; a channel's with its bar;
 # every text escaped.
@@ -330,7 +367,7 @@ expect {
 		topic: "Hi",
 		last: Last({ who: "You", excerpt: "<b>" }),
 	}).bytes()
-	html == "<a class=recent-tile href=\"/chat/dm/7/Hi\" data-key=\"/chat/dm/7/Hi\" data-ts=5><div class=recent-lead><div class=recent-avatar>Z</div></div><div class=recent-body><div class=recent-top><div class=recent-title>Hi</div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>&lt;b&gt;</div></div></a>\n".to_utf8()
+	html == "<a class=recent-tile href=\"/chat/dm/7/Hi\" data-key=\"/chat/dm/7/Hi\" data-ts=5><div class=recent-lead><div class=recent-avatar>z</div></div><div class=recent-body><div class=recent-top><div class=recent-title>Hi</div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>&lt;b&gt;</div></div></a>\n".to_utf8()
 }
 expect {
 	html = Recent.tile({
@@ -344,4 +381,6 @@ expect {
 	html == "<a class=recent-tile href=\"/chat/channel/Lobby/T\" data-key=\"/chat/channel/Lobby/T\" data-ts=0><div class=recent-lead><div class=recent-bar data-channel=\"Lobby\"></div></div><div class=recent-body><div class=recent-top><div class=recent-context><span>#Lobby</span><span class=recent-dot>  ·  </span><span class=recent-topic>T</span></div><span class=recent-ago></span></div></div></a>\n".to_utf8()
 }
 expect initial("Ö") == "Ö"
+expect initial("zoë") == "z"
+expect initial("") == "?"
 expect first_word("Steve Howell") == "Steve"

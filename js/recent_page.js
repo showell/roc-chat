@@ -7,7 +7,9 @@
      - a channel's bar, coloured by its name, the old eight colours;
      - the live stream: each new post's tile, drawn for this viewer by the
        server, replaces the tile with its key and goes to its place, newest
-       first, an equal time above the older tile; the empty line goes;
+       first, below a tile of an equal time; the empty line goes;
+     - a page restored from the back-forward cache is drawn again, its
+       stream being dead;
      - the old styling, on the server's markup, in one <style>. */
 (function () {
   'use strict';
@@ -41,11 +43,14 @@
      theme (the old client's). */
   var CHANNEL_COLORS = ['#3faf8a', '#5b8def', '#e07a5f', '#9b72cf', '#e2b340', '#4ecdc4', '#f28482', '#7b8cde'];
   function colour(tile) {
+    /* A DM's initial, upper-cased as the old one (`toUpperCase`, any letter). */
+    var avatar = tile.querySelector('.recent-avatar');
+    if (avatar) avatar.textContent = avatar.textContent.toUpperCase();
     var bar = tile.querySelector('.recent-bar');
     if (!bar) return;
     var name = bar.dataset.channel || '', h = 0;
     for (var i = 0; i < name.length; i++) h = ((h << 5) - h) + name.charCodeAt(i);
-    bar.style.background = CHANNEL_COLORS[Math.abs(h | 0) % CHANNEL_COLORS.length];
+    bar.style.background = CHANNEL_COLORS[Math.abs(h) % CHANNEL_COLORS.length];
   }
 
   /* The old ages: under a minute "just now", then minutes, hours, days. */
@@ -72,12 +77,13 @@
   for (var i = 0; i < drawn.length; i++) { colour(drawn[i]); age(drawn[i]); }
   setInterval(repaint, 20000);
 
-  /* Newest first; an equal time goes above the older tile of that time. */
+  /* Newest first; a tile goes above the first older one, so below any of
+     an equal time (the old insert's strict `<`). */
   function insertSorted(tile) {
     var ts = Number(tile.dataset.ts);
     var tiles = list.querySelectorAll('.recent-tile');
     for (var j = 0; j < tiles.length; j++) {
-      if (Number(tiles[j].dataset.ts) <= ts) { list.insertBefore(tile, tiles[j]); return; }
+      if (Number(tiles[j].dataset.ts) < ts) { list.insertBefore(tile, tiles[j]); return; }
     }
     list.appendChild(tile);
   }
