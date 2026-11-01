@@ -13,15 +13,15 @@
 ## which the server does not know. Pure.
 import AccountCodec
 import Cast
-import Conversations
 import Html
 import MessageCodec
 import Principal
+import Render
 
 Bubble := [].{
 
 	## **THE BUBBLE**: its local reference (`data-ref`, `<topic>_<n>`, the
-	## server's spelling, which the page's notices say), who posted it (Conversations.header_of, the rule
+	## server's spelling, which the page's notices say), who posted it (Render.header_of, the rule
 	## every renderer draws, so an agent named as a human says whose it is)
 	## and when, then roc-markdown's HTML for it. Everything written here is
 	## escaped; the body is the renderer's.
@@ -31,7 +31,9 @@ Bubble := [].{
 	## viewer's own alone, and "save" (s), drawn "✓ saved" (`Saved`) for a
 	## message on the reading list of the one viewer a page is drawn for; a
 	## bubble every page shares (the stream's) is drawn `NotSaved`, and the
-	## script flips it after a confirmed save. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
+	## script flips it after a confirmed save. **WHERE NO SAVE CAN BE KEPT**
+	## (`NoSave`: a conversation's message, which a reading list's line
+	## cannot name, SavedCodec), no save link is drawn. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
 	## "Edited in <the edit's reference>" and its markdown in an "original" spoiler,
 	## in place of its body (js/message.js `markEdited`).
 	of : List(Principal),
@@ -39,7 +41,7 @@ Bubble := [].{
 		m : MessageCodec.Fields,
 		ref : Str,
 		edited : [NotEdited, EditedIn({ id : U64, ref : Str })],
-		saved : [Saved, NotSaved],
+		saved : [Saved, NotSaved, NoSave],
 	} -> Html
 	of = |
 		accounts,
@@ -62,21 +64,22 @@ Bubble := [].{
 			Html.markup("\"><div class=chat-meta>#"),
 			Html.number(m.id),
 			Html.markup(" "),
-			Html.text(Conversations.header_of(accounts, m.by)),
+			Html.text(Render.header_of(accounts, m.by)),
 			Html.markup(" · <time class=chat-time datetime="),
 			Html.text(Bubble.iso(m.at)),
 			Html.markup(" data-at="),
 			Html.signed(m.at),
 			Html.markup(">"),
 			Html.text(Bubble.fallback(m.at)),
-			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button> "),
+			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button>"),
 			match saved {
-				NotSaved => Html.markup("<button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button>")
-				Saved => Html.markup("<button type=button class=\"msg-save saved\" title=\"Save this message to your reading list (s)\">✓ saved</button>")
+				NotSaved => Html.markup(" <button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button>")
+				Saved => Html.markup(" <button type=button class=\"msg-save saved\" title=\"Save this message to your reading list (s)\">✓ saved</button>")
+				NoSave => Html.join([])
 			},
 			Html.markup("</div><div class=chat-body>"),
 			match edited {
-				NotEdited => Html.rendered(Conversations.html_of(m))
+				NotEdited => Html.rendered(Render.html_of(m))
 				EditedIn(e) =>
 					Html.join([
 						Html.markup("<div class=chat-edited-note>Edited in <a class=msg-ref href=\"#msg-"),
@@ -256,4 +259,26 @@ expect {
 		).bytes(),
 	) ?? ""
 	html.contains("<button type=button class=\"msg-save saved\" title=\"Save this message to your reading list (s)\">✓ saved</button></div>")
+}
+
+# Where no save can be kept: quote-reply and edit, and no save link at all.
+expect {
+	m = {
+		id: 2,
+		at: 5,
+		by: human.id(),
+		body: "x".to_utf8(),
+	}
+	html = Str.from_utf8(
+		Bubble.of(
+			[human],
+			{
+				m,
+				ref: "4_2",
+				edited: NotEdited,
+				saved: NoSave,
+			},
+		).bytes(),
+	) ?? ""
+	html.contains("backlink (e)\">edit</button></div><div class=chat-body>") and !html.contains("msg-save")
 }
