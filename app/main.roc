@@ -28,6 +28,7 @@ import Origin
 import Pages
 import SignIn
 import OneStream
+import RecentPage
 import TopicPage
 import Topics
 import Wire
@@ -81,6 +82,11 @@ route! = |req|
 		match Browse.route(req.path) {
 			Ok(r) => Browse.answer!(req, r)
 			Err(NotBrowse) => Chat.not_found
+		}
+	} else if RecentPage.route(req.path).is_ok() {
+		match RecentPage.route(req.path) {
+			Ok(r) => RecentPage.answer!(req, r)
+			Err(NotRecent) => Chat.not_found
 		}
 	} else if TopicPage.route(req.path).is_ok() {
 		match TopicPage.route(req.path) {

@@ -37,6 +37,7 @@ import Mentions
 import MessageCodec
 import MessageRef
 import Principal
+import Recent
 import SignInWeb
 import Store
 import Stored
@@ -248,6 +249,76 @@ Topics := [].{
 	## as the page's notices say it.
 	local_ref : Topic.At, U64 -> Str
 	local_ref = |at, n| "${at.topic.to_str()}_${n.to_str()}"
+
+	## **THE BUS KEY OF A READER'S RECENT** (RecentPage.roc): each post's
+	## tile, drawn for that reader, is published to each of the topic's
+	## readers on theirs.
+	recent_key : Principal.Id -> List(U8)
+	recent_key = |reader| Str.to_utf8("recent/${AccountCodec.id_text(reader)}")
+
+	## **A TOPIC'S ROW ON A READER'S RECENT** (Recent.roc draws it): its page,
+	## its last message's time, author ("You" for the reader) and excerpt; a
+	## DM named for the reader by its other member.
+	recent_row : {
+		channel : Channel,
+		topic : Topic,
+		reader : Principal.Id,
+		accounts : List(Principal),
+		last : [NoMessage, Last(MessageCodec.Fields)],
+	} -> Recent.Row
+	recent_row = |
+		{
+			channel,
+			topic,
+			reader,
+			accounts,
+			last,
+		},
+	| {
+		at = topic.at()
+		dm = at.channel.is_dm()
+		other = channel.members(accounts).keep_if(|b| b.id != reader)
+		place =
+			if dm {
+				match other {
+					[b, ..] => Conversations.name_of(accounts, b.id)
+					[] => at.channel.to_str()
+				}
+			} else {
+				at.channel.to_str()
+			}
+		url =
+			match (dm, other) {
+				(Bool.True, [b, ..]) =>
+					match b.id {
+						Human(h) => "/chat/dm/${h.to_u64().to_str()}/${at.topic.to_str()}"
+						_ => "/chat/browse"
+					}
+				(Bool.True, []) => "/chat/browse"
+				(Bool.False, _) => "/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
+			}
+		match last {
+			NoMessage => {
+				url,
+				ts: 0,
+				dm,
+				place,
+				topic: at.topic.to_str(),
+				last: NoMessage,
+			}
+			Last(m) => {
+				url,
+				ts: m.at,
+				dm,
+				place,
+				topic: at.topic.to_str(),
+				last: Last({
+					who: if (m.by == reader) "You" else Conversations.name_of(accounts, m.by),
+					excerpt: Recent.excerpt(m.body),
+				}),
+			}
+		}
+	}
 
 	## **WHETHER THE VIEWER READS THE TOPIC AT `at`** (Topic.read), and if
 	## not, why, in words that leak nothing: a channel that is not there and
@@ -1008,7 +1079,14 @@ store_post! = |a, body| {
 						named: named_of(a.topic, { channel: a.channel, accounts: a.accounts }),
 						accounts: a.accounts,
 					}
-					publish!(a.topic, { message, who })
+					publish!(
+						a.topic,
+						{
+							channel: a.channel,
+							message,
+							who,
+						},
+					)
 					Ok({ message, who })
 				}
 			}
@@ -1020,10 +1098,18 @@ store_post! = |a, body| {
 ## and each of its agents' one stream, in the turn it was appended in.
 publish! : Topic,
 {
+	channel : Channel,
 	message : MessageCodec.Fields,
 	who : { named : List(Mentions.Named), accounts : List(Principal) },
 } => {}
-publish! = |topic, { message, who }| {
+publish! = |
+	topic,
+	{
+		channel,
+		message,
+		who,
+	},
+| {
 	at = topic.at()
 	match frame(
 		at,
@@ -1041,6 +1127,18 @@ publish! = |topic, { message, who }| {
 			m: message,
 		}),
 	)
+	recent_readers(topic, { channel, accounts: who.accounts }).for_each!(
+		|reader| {
+			row = Topics.recent_row({
+				channel,
+				topic,
+				reader,
+				accounts: who.accounts,
+				last: Last(message),
+			})
+			Host.publish!(Topics.recent_key(reader), recent_frame(row))
+		},
+	)
 	match Conversations.agent_event({
 		lead: lead_of(at).concat(ref_lead(at, message.id)),
 		spot: spot_of(at),
@@ -1056,6 +1154,38 @@ publish! = |topic, { message, who }| {
 		Err(LineBreak) => crash "Topics.publish!: a message's JSON holds no line break"
 	}
 }
+
+## **WHO HAS THE TOPIC ON THEIR RECENT**: the channel's members who read
+## it, as Recent lists them: every member for a human topic; for an agent
+## topic, the members its agents answer to.
+recent_readers : Topic, { channel : Channel, accounts : List(Principal) } -> List(Principal.Id)
+recent_readers = |topic, { channel, accounts }| {
+	members = channel.members(accounts).map(|b| b.id)
+	match topic.kind() {
+		Human => members
+		Agents => {
+			owners = topic.agents(accounts).keep_oks(
+				|b| Principal.find(
+					accounts,
+					b.id,
+				).map_ok(|p| Principal.Id.Human(p.answers_to())),
+			)
+			members.keep_if(|m| owners.contains(m))
+		}
+	}
+}
+
+## A Recent tile as one SSE event, named `message`.
+recent_frame : Recent.Row -> List(U8)
+recent_frame = |row|
+	match Sse.frame({
+		name: Str.to_utf8("message"),
+		data: Bubble.data(Recent.tile(row)),
+		id: [],
+	}) {
+		Ok(f) => f
+		Err(LineBreak) => crash "Topics.recent_frame: Bubble.data holds no CR, and the name no line break"
+	}
 
 ## The bus key a topic's streams are held on: its channel's key and its
 ## own, as its folder is named.

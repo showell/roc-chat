@@ -25,8 +25,12 @@ import Html
 
 Chrome := [].{
 
-	## What the top bar marks as here: Browse, or none (a topic's page).
-	Here : [Browse, Elsewhere]
+	## What the top bar marks as here: Browse, Recent, or none (a topic's page).
+	Here : [
+		Browse,
+		Recent,
+		Elsewhere,
+	]
 
 	## **A PAGE IN THE FRAME**: its title (escaped already), the viewer's
 	## name (escaped already), which link is here, the body's attributes and
@@ -60,6 +64,8 @@ Chrome := [].{
 				title,
 				Html.markup("</span><span class=\"chat-top-links\">"),
 				if (here == Browse) Html.markup("<strong>Browse</strong>") else Html.markup("<a href=\"/chat/browse\">Browse</a>"),
+				Html.markup(" · "),
+				if (here == Recent) Html.markup("<strong>Recent</strong>") else Html.markup("<a href=\"/chat/recent\">Recent</a>"),
 				Html.markup("</span></div><div class=\"app-top-user\"><button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>"),
 				viewer,
 				Html.markup("</strong> · <form class=logout method=post action=\"/logout\"><button>Log out</button></form></div></header>\n<div class=\"app-body-wrap\">\n"),

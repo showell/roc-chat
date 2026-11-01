@@ -2400,6 +2400,60 @@ fn composeSends(w: *World) !void {
     }
 }
 
+/// **RECENT** (`/chat/recent`, app/RecentPage.roc): one tile per topic the
+/// viewer reads in their DMs and channels, by its last message, newest
+/// first, a topic with none last; who wrote it "You" for the viewer, else
+/// their first name, and the old one-line excerpt; another member's agent
+/// topic not there. Nothing at all: "Nothing yet.". Live, each new post's
+/// tile goes to each reader's stream, drawn for them, and to no one else.
+/// The top bar marks Recent as here. Signed out, a 303 and a 401; a key,
+/// a 403.
+fn recentFeed(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const page = try get(w.a, w.port(), "/chat/recent", x.quin);
+    if (page.status != 200) return error.NoRecent;
+    const b = page.body;
+    const banana = "<a class=recent-tile href=\"/chat/channel/Orchard/Banana\" data-key=\"/chat/channel/Orchard/Banana\" data-ts=";
+    const dm = try std.fmt.allocPrint(w.a, "<a class=recent-tile href=\"/chat/dm/{s}/ChitChat\" data-key=\"/chat/dm/{s}/ChitChat\" data-ts=", .{ x.p, x.p });
+    const apple = "<a class=recent-tile href=\"/chat/channel/Orchard/apple\" data-key=\"/chat/channel/Orchard/apple\" data-ts=0>";
+    const want = [_][]const u8{
+        "<a href=\"/chat/browse\">Browse</a> · <strong>Recent</strong>",
+        "<body class=recent-page>",
+        banana,
+        "<div class=recent-bar data-channel=\"Orchard\"></div></div><div class=recent-body><div class=recent-top><div class=recent-context><span>#Orchard</span><span class=recent-dot>  ·  </span><span class=recent-topic>Banana</span></div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>from **compose**</div>",
+        dm,
+        "<div class=recent-avatar>P</div></div><div class=recent-body><div class=recent-top><div class=recent-title>ChitChat</div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>back at you</div>",
+        "<script src=\"/recent_page.js\"></script>",
+    };
+    for (want) |needle| if (!has(b, needle)) return error.RecentWrong;
+    // A topic with no message goes last, with no preview.
+    const at_apple = std.mem.indexOf(u8, b, apple) orelse return error.RecentWrong;
+    if (at_apple < (std.mem.indexOf(u8, b, banana) orelse 0) or at_apple < (std.mem.indexOf(u8, b, dm) orelse 0)) return error.RecentOutOfOrder;
+    if (has(b, "Desk") or has(b, "Nothing yet.") or has(b, "<style")) return error.RecentShowsTooMuch;
+    // Pip's own: the agent topic, and Quin by first name.
+    const own = try get(w.a, w.port(), "/chat/recent", x.pip);
+    if (!has(own.body, "data-key=\"/chat/channel/Orchard/Desk\"") or !has(own.body, "<span class=recent-who>Person: </span>from **compose**")) return error.PipSeesWrong;
+    // Rue is in no channel, and her DM with Quin has no topic yet.
+    if (!has((try get(w.a, w.port(), "/chat/recent", x.rue)).body, "<p id=recent-empty class=muted>Nothing yet.</p>")) return error.NoEmptyState;
+
+    // Live: Pip's stream gets Quin's post, drawn for Pip; Rue's never does.
+    const pips = try Listener.open(w.a, w.port(), "/chat/recent/stream", x.pip, "");
+    defer pips.close();
+    const rues = try Listener.open(w.a, w.port(), "/chat/recent/stream", x.rue, "");
+    defer rues.close();
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", x.quin, "a  live\n\nrecent <b>")).status != 201) return error.NotSent;
+    try pips.until("&lt;b&gt;");
+    if (!has(pips.got.items, "event: message\ndata: " ++ banana) or !has(pips.got.items, "<span class=recent-who>Person: </span>a live recent &lt;b&gt;</div>")) return error.LiveWrong;
+    // Rue's stream is read until its wait runs out: a tile there fails.
+    if (rues.until("recent-tile")) |_| return error.StrangerGotTile else |e| if (e != error.NeverCame) return e;
+
+    const out = try get(w.a, w.port(), "/chat/recent", "");
+    if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Frecent")) return error.NotToLogin;
+    if ((try get(w.a, w.port(), "/chat/recent/stream", "")).status != 401) return error.NobodyStreamed;
+    if ((try send(w.a, w.port(), "GET", "/chat/recent", .{ .key = x.pal_key }, "")).status != 403) return error.KeyRead;
+    if ((try get(w.a, w.port(), "/recent_page.js", x.quin)).status != 200) return error.NoScript;
+}
+
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
     .{ .name = "A starts a conversation with B, named by her own id (by her GitHub id, refused)", .f = start },
@@ -2488,6 +2542,7 @@ const steps = [_]Step{
     .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
     .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another's agent topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
+    .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else; signed out a 303 and a 401, a key a 403", .f = recentFeed },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With
