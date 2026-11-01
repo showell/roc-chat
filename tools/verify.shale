@@ -25,7 +25,7 @@
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
 --   - every script in js/ (the browser client's) parses: `node --check`;
---   - the scripts' rules hold (tools/keys_test.js, tools/quote_test.js, in node);
+--   - the scripts' rules hold (tools/{keys,quote,save}_test.js, in node);
 --   - an edit to a module made since the last build rebuilds the chat
 --     (tools/verify_inputs.shale, a run of its own, in a copy of the tree);
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
@@ -42,7 +42,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 2500
 const zig_floor = 210
-const e2e_steps = 89
+const e2e_steps = 90
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 -- A build and a run of everything: minutes, from an empty cache.
@@ -191,11 +191,12 @@ for name in ls("js") do
   end
 end
 
--- **THE SCRIPTS' RULES, IN NODE**: js/keys.js (tools/keys_test.js) and
--- js/quote.js (tools/quote_test.js), each run against a stubbed page, its
+-- **THE SCRIPTS' RULES, IN NODE**: js/keys.js (tools/keys_test.js),
+-- js/quote.js (tools/quote_test.js) and js/save.js (tools/save_test.js),
+-- each run against a stubbed page, its
 -- every check a line here. Its exit is the verdict; no PASS line at all is
 -- a failure, a test that ran nothing.
-for test in {"tools/keys_test.js", "tools/quote_test.js"} do
+for test in {"tools/keys_test.js", "tools/quote_test.js", "tools/save_test.js"} do
   local kt = run({"node", test}, {cwd = ".", timeout_ms = 60000, tail = 40, want = "tool: JavaScript's syntax, by node's own parser"})
   local checks = 0
   for line in lines(kt.out) do

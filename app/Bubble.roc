@@ -27,8 +27,9 @@ Bubble := [].{
 	## escaped; the body is the renderer's.
 	##
 	## **ITS META LINE'S LINKS** are the old ones (js/message.js `buildMeta`):
-	## "quote-reply" (q), and "edit" (e), which the page's script shows on the
-	## viewer's own alone. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
+	## "quote-reply" (q), "edit" (e), which the page's script shows on the
+	## viewer's own alone, and "save" (s), which it marks "✓ saved" for a
+	## message on the viewer's reading list. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
 	## "Edited in <the edit's reference>" and its markdown in an "original" spoiler,
 	## in place of its body (js/message.js `markEdited`).
 	of : List(Principal),
@@ -64,7 +65,7 @@ Bubble := [].{
 			Html.signed(m.at),
 			Html.markup(">"),
 			Html.text(Bubble.fallback(m.at)),
-			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button></div><div class=chat-body>"),
+			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button> <button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button></div><div class=chat-body>"),
 			match edited {
 				NotEdited => Html.rendered(Conversations.html_of(m))
 				EditedIn(e) =>
@@ -170,7 +171,7 @@ expect {
 			edited: NotEdited,
 		},
 	).bytes()
-	html == "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"&lt;T&gt;_3\" data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
+	html == "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"&lt;T&gt;_3\" data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button> <button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
 }
 
 # A poster no account holds is its id, which says its kind.

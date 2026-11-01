@@ -2,7 +2,7 @@
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
 ## conversations, Topics.roc's channel topics, OneStream.roc's one stream per
 ## agent, Agents.roc's agents and API keys, Channels.roc's channels
-## (an admin's), Pages.roc's pages, Browse.roc's and TopicPage.roc's (the
+## (an admin's), Pages.roc's pages, Browse.roc's, TopicPage.roc's and SavedPage.roc's (the
 ## browser client's); the store is Store.roc's, the only module that names a
 ## file. Beside them, the chat client's scripts (`serve_script!`); the
 ## hello page at `/` is SignIn's, as it says who is signed in.
@@ -29,6 +29,7 @@ import Pages
 import SignIn
 import OneStream
 import RecentPage
+import SavedPage
 import TopicPage
 import Topics
 import Wire
@@ -87,6 +88,11 @@ route! = |req|
 		match RecentPage.route(req.path) {
 			Ok(r) => RecentPage.answer!(req, r)
 			Err(NotRecent) => Chat.not_found
+		}
+	} else if SavedPage.route(req.path).is_ok() {
+		match SavedPage.route(req.path) {
+			Ok(r) => SavedPage.answer!(req, r)
+			Err(NotSaved) => Chat.not_found
 		}
 	} else if TopicPage.route(req.path).is_ok() {
 		match TopicPage.route(req.path) {

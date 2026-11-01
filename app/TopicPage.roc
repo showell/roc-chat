@@ -20,6 +20,9 @@
 ##                                                  new message's bubble
 ##     GET .../quote?n=<id>                         a quote-reply of the message, for
 ##                                                  the compose box: `{"text":…}`
+##     POST .../save                                a save to the viewer's reading list
+##                                                  (`n=`, `note=`): `201` and its
+##                                                  reference (SavedPage.roc)
 ##     GET .../edit?n=<id>                          an edit of one's own message, for
 ##                                                  the compose box: `{"text":…,
 ##                                                  "caret":…}`; another's, a 403
@@ -45,6 +48,9 @@ import JsonOut
 import MessageCodec
 import Pages
 import Principal
+import ReadingList
+import SavedPage
+import SignInWeb
 import Store
 import Stored
 import Topic
@@ -67,6 +73,7 @@ TopicPage := [].{
 		Earlier(TopicPage.Place),
 		Send(TopicPage.Place),
 		Quote(TopicPage.Place),
+		Save(TopicPage.Place),
 		Edit(TopicPage.Place),
 	]
 
@@ -135,6 +142,12 @@ TopicPage := [].{
 						a,
 						b,
 					).map_ok(|p| Edit(p))
+				} else if what == "save".to_utf8() {
+					place(
+						kind,
+						a,
+						b,
+					).map_ok(|p| Save(p))
 				} else {
 					Err(NotATopicPage)
 				}
@@ -155,6 +168,16 @@ TopicPage := [].{
 						Err(Chat.not_allowed(Post))
 					} else {
 						got = Host.read_body!(Conversations.message_most)
+						match got.status {
+							Answered => Err(Chat.answered)
+							Read => Ok(Body(got.bytes))
+						}
+					}
+				Save(_) =>
+					if req.method != Post {
+						Err(Chat.not_allowed(Post))
+					} else {
+						got = Host.read_body!(Wire.form_most)
 						match got.status {
 							Answered => Err(Chat.answered)
 							Read => Ok(Body(got.bytes))
@@ -201,7 +224,7 @@ serve! = |
 | {
 	place =
 		match r {
-			Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) => p
+			Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) => p
 		}
 	v = Topics.load_viewer!({})?
 	me =
@@ -209,7 +232,7 @@ serve! = |
 			SignedOut =>
 				match r {
 					Page(_) => Err(Pages.to_login(path))
-					Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) => Err(
+					Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) => Err(
 						Wire.refused(
 							401,
 							"not signed in",
@@ -267,7 +290,16 @@ serve! = |
 			shown,
 			bytes,
 		)
-		(Send(_), NoBody) => crash "TopicPage.serve!: answer! reads a send's body first"
+		(Save(_), Body(bytes)) => save!(
+			v,
+			shown,
+			bytes,
+		)
+		(
+			Send(_),
+			NoBody,
+		)
+		| (Save(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
 	}
 }
 
@@ -319,7 +351,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) => no_such_topic
 		Page(_) => {
 			what =
 				match why {
@@ -376,6 +408,7 @@ page! = |s| {
 		span,
 	).map_err(|_| Chat.failed)?
 	newest = messages.last().map_ok(|m| m.id) ?? 0
+	saved = load_saved_here!(s)?
 	Ok(
 		Chrome.page({
 			title: title_of(s),
@@ -395,7 +428,11 @@ page! = |s| {
 				Html.text(s.base),
 				Html.markup("/quote\" data-edit=\""),
 				Html.text(s.base),
-				Html.markup("/edit\""),
+				Html.markup("/edit\" data-save=\""),
+				Html.text(s.base),
+				Html.markup("/save\" data-saved=\""),
+				Html.markup(Str.join_with(saved.map(|n| n.to_str()), " ")),
+				Html.markup("\""),
 			]),
 			body: Html.join([
 				Html.markup("<div class=chat-notify id=chat-notify></div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
@@ -405,7 +442,7 @@ page! = |s| {
 				drawn(s, { messages, from_on: messages }),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
-				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
 			]),
 		}),
 	)
@@ -625,6 +662,12 @@ load_asked! = |s| {
 			[only] => Stored.count(only, "n").map_err(|_| bad_n)
 			_ => Err(bad_n)
 		}?
+	load_message!(s, n)
+}
+
+## **LOAD MESSAGE `n` OF THE PAGE'S TOPIC**: a 404 for no message.
+load_message! : Shown, U64 => Try(MessageCodec.Fields, Chat.Answer)
+load_message! = |s, n| {
 	files = Store.topic_files(s.topic.at())
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
 	if n == 0 or n > tally.messages {
@@ -643,6 +686,90 @@ load_asked! = |s| {
 
 bad_n : Chat.Answer
 bad_n = Wire.refused(400, "n= is a message's id")
+
+## **A SAVE FROM THE PAGE** (ReadingList.roc): the form's message (`n=`, one
+## of this topic's) and its note (`note=`, ReadingList's rule), the
+## message's copy as it is now put on the viewer's reading list; `201` and
+## `{"ref":…,"list":"/chat/saved"}`, its reference and the list, for the
+## page's strip. A note not of the rule a 400; a list past its most a 413.
+save! : {
+	viewer : Access.Viewer(Topic.At),
+	accounts : List(Principal),
+	now : I64,
+},
+Shown,
+List(U8) => Try(Chat.Answer, Chat.Answer)
+save! = |
+	v,
+	s,
+	form,
+| {
+	n =
+		match SignInWeb.form_field(form, "n") {
+			Ok(digits) => Stored.count(digits, "n").map_err(|_| bad_n)
+			Err(_) => Err(bad_n)
+		}?
+	raw =
+		match SignInWeb.form_field(form, "note") {
+			Ok(bytes) => Ok(bytes)
+			Err(Missing) => Ok([])
+			Err(Malformed) => Err(Wire.refused(400, "note= is not a form's value"))
+		}?
+	note = ReadingList.note_of(raw).map_err(SavedPage.note_refused)?
+	m = load_message!(s, n)?
+	human = human_of(s.me)?
+	list = Store.load_saved!(human).map_err(|_| Chat.failed)?
+	at = s.topic.at()
+	next = ReadingList.saved(
+		list,
+		{
+			id: 0,
+			saved: v.now,
+			place: at,
+			n: m.id,
+			by: m.by,
+			at: m.at,
+			note,
+			body: m.body,
+		},
+	).map_err(
+		|TooBig| Wire.refused(
+			413,
+			"your reading list is full (${ReadingList.most_bytes.to_str()} bytes): remove some saves first",
+		),
+	)?
+	match Store.save_saved!(human, next) {
+		Failed => Err(Chat.failed)
+		Written => Ok(
+			Wire.json(
+				201,
+				JsonOut.object([
+					("ref", JsonOut.string(Topics.ref_of(at, m.id))),
+					("list", JsonOut.string("/chat/saved")),
+				]),
+			),
+		)
+	}
+}
+
+## The viewer's human id: a page's viewer is signed in by a session, a
+## human's.
+human_of : Principal.Bound -> Try(Principal.HumanId, Chat.Answer)
+human_of = |me|
+	match me.id {
+		Human(h) => Ok(h)
+		_ => Err(Pages.key_refused)
+	}
+
+## **WHICH OF THIS TOPIC'S MESSAGES THE VIEWER SAVED**, by number, as the
+## page's `data-saved` names them: "✓ saved" is the viewer's alone, and a
+## bubble is every viewer's.
+load_saved_here! : Shown => Try(List(U64), Chat.Answer)
+load_saved_here! = |s| {
+	human = human_of(s.me)?
+	list = Store.load_saved!(human).map_err(|_| Chat.failed)?
+	Ok(ReadingList.numbers_in(list, s.topic.at()))
+}
 
 bad_before : Chat.Answer
 bad_before = Wire.refused(400, "before= is a message's id")

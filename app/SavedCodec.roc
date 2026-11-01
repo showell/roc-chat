@@ -54,7 +54,10 @@ SavedCodec := [].{
 					("n", e.n.to_str()),
 					("by", AccountCodec.id_text(e.by)),
 					("at", Stored.time_text(e.at)),
-					("note", Str.from_utf8(spaced(e.note.to_utf8())) ?? crash "SavedCodec.encode: an escape is ASCII"),
+					(
+						"note",
+						Str.from_utf8(spaced(e.note.to_utf8())) ?? crash "SavedCodec.encode: an escape is ASCII",
+					),
 				],
 			)
 			[
@@ -91,7 +94,16 @@ SavedCodec := [].{
 		if id == 0 or n == 0 {
 			Err(BadValue(if (id == 0) "id" else "n"))
 		} else {
-			Ok({ id, saved, place: { channel, topic }, n, by, at, note, body })
+			Ok({
+				id,
+				saved,
+				place: { channel, topic },
+				n,
+				by,
+				at,
+				note,
+				body,
+			})
 		}
 	}
 
@@ -123,7 +135,11 @@ spaced = |bytes|
 	bytes.join_map(
 		|b|
 			if b == '%' or b == ' ' or b < 0x20 or b == 0x7F {
-				['%', hex_digit(b // 16), hex_digit(b % 16)]
+				[
+					'%',
+					hex_digit(b // 16),
+					hex_digit(b % 16),
+				]
 			} else {
 				[b]
 			},
@@ -140,7 +156,12 @@ unspaced_from : List(U8), List(U8) -> Try(List(U8), [BadValue(Str)])
 unspaced_from = |text, out|
 	match text {
 		[] => Ok(out)
-		['%', high, low, .. as rest] =>
+		[
+			'%',
+			high,
+			low,
+			.. as rest,
+		] =>
 			match (hex_value(high), hex_value(low)) {
 				(Ok(h), Ok(l)) => unspaced_from(rest, out.append(h * 16 + l))
 				_ => Err(BadValue("note"))
@@ -184,7 +205,23 @@ one = {
 
 expect SavedCodec.encode(one) == "saved v1 id=2 saved=1761600300 channel=Orchard topic=Banana n=5 by=human:9 at=1761600000 note=read%20later,%20100%25 body=two%0Alines %25\n".to_utf8()
 expect SavedCodec.decode(SavedCodec.encode(one)) == Ok(one)
-expect SavedCodec.list(SavedCodec.file([one, { ..one, id: 3, note: "" }])) == Ok([one, { ..one, id: 3, note: "" }])
+expect SavedCodec.list(
+	SavedCodec.file([
+		one,
+		{
+			..one,
+			id: 3,
+			note: "",
+		},
+	]),
+) == Ok([
+	one,
+	{
+		..one,
+		id: 3,
+		note: "",
+	},
+])
 expect SavedCodec.list([]) == Ok([])
 # One spelling of a note; a torn list; no id 0.
 expect SavedCodec.decode("saved v1 id=2 saved=1 channel=Orchard topic=Banana n=5 by=human:9 at=1 note=read%20later%2 body=x\n".to_utf8()).is_err()

@@ -60,7 +60,15 @@ ReadingList := [].{
 
 	## **WHICH OF `at`'S MESSAGES ARE ON THE LIST**, by number, ascending.
 	numbers_in : List(SavedCodec.Fields), Topic.At -> List(U64)
-	numbers_in = |list, at| list.keep_if(|e| e.place == at).map(|e| e.n).sort_asc()
+	numbers_in = |
+		list,
+		at,
+	| list.keep_if(|e| e.place == at).map(|e| e.n).sort_with(
+		|
+			a,
+			b,
+		| if (a < b) Before else if (a > b) After else Same,
+	)
 
 	## The list without save `id`.
 	without : List(SavedCodec.Fields), U64 -> Try(List(SavedCodec.Fields), [NoSuchSave])
@@ -68,7 +76,11 @@ ReadingList := [].{
 		if (list.any(|e| e.id == id)) Ok(list.drop_if(|e| e.id == id)) else Err(NoSuchSave)
 
 	## The list with save `id`'s note changed, in its place.
-	renoted : List(SavedCodec.Fields), { id : U64, note : Str } -> Try(List(SavedCodec.Fields), [NoSuchSave])
+	renoted : List(SavedCodec.Fields),
+	{ id : U64, note : Str } -> Try(
+		List(SavedCodec.Fields),
+		[NoSuchSave],
+	)
 	renoted = |list, { id, note }|
 		if list.any(|e| e.id == id) {
 			Ok(list.map(|e| if (e.id == id) { ..e, note } else e))
@@ -78,7 +90,7 @@ ReadingList := [].{
 
 	## Newest first, as the list's page shows it.
 	newest_first : List(SavedCodec.Fields) -> List(SavedCodec.Fields)
-	newest_first = |list| list.reverse()
+	newest_first = |list| list.fold(List.with_capacity(list.len()), |done, e| List.prepend(done, e))
 }
 
 # ── tests
@@ -89,8 +101,27 @@ place_of = |c, t|
 		_ => crash "place_of: a test's names are names"
 	}
 
-save_of : Topic.At, U64, Str -> SavedCodec.Fields
-save_of = |place, n, note| { id: 0, saved: 100, place, n, by: Cast.ann.id(), at: 50, note, body: "hi".to_utf8() }
+save_of : {
+	place : Topic.At,
+	n : U64,
+	note : Str,
+} -> SavedCodec.Fields
+save_of = |
+	{
+		place,
+		n,
+		note,
+	},
+| {
+	id: 0,
+	saved: 100,
+	place,
+	n,
+	by: Cast.ann.id(),
+	at: 50,
+	note,
+	body: "hi".to_utf8(),
+}
 
 banana : Topic.At
 banana = place_of("Orchard", "Banana")
@@ -106,33 +137,119 @@ expect ReadingList.note_of([0xFF]) == Err(NotUtf8)
 # A new save takes one past the largest id; a message saved again keeps
 # its id and moves to the end with its new note.
 expect {
-	one = ReadingList.saved([], save_of(banana, 5, "a")) ?? []
-	two = ReadingList.saved(one, save_of(banana, 7, "b")) ?? []
-	again = ReadingList.saved(two, save_of(banana, 5, "c")) ?? []
-	again.map(|e| (e.id, e.n, e.note)) == [(2, 7, "b"), (1, 5, "c")]
+	one = ReadingList.saved(
+		[],
+		save_of({
+			place: banana,
+			n: 5,
+			note: "a",
+		}),
+	) ?? []
+	two = ReadingList.saved(
+		one,
+		save_of({
+			place: banana,
+			n: 7,
+			note: "b",
+		}),
+	) ?? []
+	again = ReadingList.saved(
+		two,
+		save_of({
+			place: banana,
+			n: 5,
+			note: "c",
+		}),
+	) ?? []
+	again.map(
+		|e| (
+			e.id,
+			e.n,
+			e.note,
+		),
+	) == [
+		(
+			2,
+			7,
+			"b",
+		),
+		(
+			1,
+			5,
+			"c",
+		),
+	]
 }
 # The same number in another topic is another message.
 expect {
-	one = ReadingList.saved([], save_of(banana, 5, "a")) ?? []
-	two = ReadingList.saved(one, save_of(place_of("Orchard", "Apple"), 5, "b")) ?? []
+	one = ReadingList.saved(
+		[],
+		save_of({
+			place: banana,
+			n: 5,
+			note: "a",
+		}),
+	) ?? []
+	two = ReadingList.saved(
+		one,
+		save_of({
+			place: place_of("Orchard", "Apple"),
+			n: 5,
+			note: "b",
+		}),
+	) ?? []
 	ReadingList.numbers_in(two, banana) == [5] and two.len() == 2
 }
 expect {
-	list = [save_of(banana, 9, "x"), save_of(banana, 3, "y"), save_of(place_of("Meadow", "Banana"), 4, "z")]
+	list = [
+		save_of({
+			place: banana,
+			n: 9,
+			note: "x",
+		}),
+		save_of({
+			place: banana,
+			n: 3,
+			note: "y",
+		}),
+		save_of({
+			place: place_of("Meadow", "Banana"),
+			n: 4,
+			note: "z",
+		}),
+	]
 	ReadingList.numbers_in(list, banana) == [3, 9]
 }
 # Past the most, refused.
 expect {
-	big = { ..save_of(banana, 1, "a"), body: List.repeat('x', ReadingList.most_bytes) }
+	big = { ..save_of({
+		place: banana,
+		n: 1,
+		note: "a",
+	}), body: List.repeat('x', ReadingList.most_bytes) }
 	ReadingList.saved([], big) == Err(TooBig)
 }
 # Removed and renoted by id; an id not there is said.
 expect {
-	list = ReadingList.saved([], save_of(banana, 5, "a")) ?? []
+	list = ReadingList.saved(
+		[],
+		save_of({
+			place: banana,
+			n: 5,
+			note: "a",
+		}),
+	) ?? []
 	ReadingList.without(list, 1) == Ok([]) and ReadingList.without(list, 2) == Err(NoSuchSave)
 }
 expect {
-	list = ReadingList.saved([], save_of(banana, 5, "a")) ?? []
+	list = ReadingList.saved(
+		[],
+		save_of({
+			place: banana,
+			n: 5,
+			note: "a",
+		}),
+	) ?? []
 	(ReadingList.renoted(list, { id: 1, note: "z" }) ?? []).map(|e| e.note) == ["z"]
-	and ReadingList.renoted(list, { id: 3, note: "z" }) == Err(NoSuchSave)
+		and ReadingList.renoted(list, { id: 3, note: "z" }) == Err(NoSuchSave)
 }
