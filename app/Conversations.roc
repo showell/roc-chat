@@ -42,6 +42,7 @@ import JsonOut
 import Limits
 import Mentions
 import MessageCodec
+import PageFeed
 import Principal
 import Render
 import SignInWeb
@@ -360,6 +361,36 @@ Conversations := [].{
 			Post(id) => if (req.method == Post) post!(id) else Chat.not_allowed(Post)
 			Stream(id) => if (req.method == Get) stream!(id) else Chat.not_allowed(Get)
 		}
+
+	## **A POST BY A VIEWER ALREADY LOADED** (a conversation's page's
+	## compose box): the conversation's own rules, as `POST .../messages`
+	## takes it; the message stored and published, or the refusal that ends
+	## it. Never a key's here (`key` NoKey): a page is a session's.
+	post_by! : {
+		viewer : Access.Viewer(ConvAccess.ConvId),
+		accounts : List(Principal),
+		now : I64,
+		conv : ConvAccess.Conv,
+	},
+	List(U8) => Try(MessageCodec.Fields, Chat.Answer)
+	post_by! = |
+		{
+			viewer,
+			accounts,
+			now,
+			conv,
+		},
+		body,
+	| take_post!(
+		{
+			viewer,
+			accounts,
+			now,
+			conv,
+			key: NoKey,
+		},
+		body,
+	)
 }
 
 ## The most a message's markdown may be, and a start's form.
@@ -703,84 +734,97 @@ post! = |id| {
 		Read =>
 			match load_asked!(id, Post(id)) {
 				Err(answer) => answer
-				Ok(
-					{
-						viewer,
-						accounts,
-						now,
-						conv,
-						key,
-					},
-				) =>
-					if !ConvAccess.can_post(viewer, { conv, accounts }) {
-						audit_out_of_scope!({
-							key,
-							use: Post(id),
-							action: Post(conv),
-							accounts,
-							now,
-						})
-						if (ConvAccess.can_see(viewer, { conv, accounts })) Wire.refused(
-							403,
-							"only its participants post here",
-						) else Conversations.no_such
-					} else if Str.from_utf8(got.bytes).is_err() {
-						Wire.refused(400, "a message is UTF-8 text")
-					} else if Md.hostility(got.bytes, Conversations.markdown) == TooMuchFormatting {
-						Wire.refused(400, Md.too_much_formatting)
-					} else {
-						by =
-							match viewer.who() {
-								SignedOut => crash "Conversations.post!: `load_asked!` let nobody signed out through"
-								Session(b) | Key(b) => b.id
-							}
-						match Store.load_tally!(Store.conversation_files(id)) {
-							Err(Failed) => Chat.failed
-							Ok(tally) => {
-								named = named_of(conv, accounts)
-								match check_hops!({
-									id,
-									tally,
-									by,
-									named,
-									now,
-								}) {
-									Err(Failed) => Chat.failed
-									Ok(Full) => refuse_hops!({
-										key,
-										id,
-										now,
-									})
-									Ok(Room) => append_post!({
-										id,
-										tally,
-										message: {
-											id: MessageCodec.next_id(tally.messages),
-											at: now,
-											by,
-											body: got.bytes,
-										},
-										who: { named, accounts },
-									})
-								}
-							}
-						}
+				Ok(a) =>
+					match take_post!(a, got.bytes) {
+						Err(answer) => answer
+						Ok(message) => Wire.json(201, message_json(message, { named: named_of(a.conv, a.accounts), accounts: a.accounts }))
 					}
 			}
 	}
 }
 
+## **A POST BY A VIEWER ALREADY LOADED** (Conversations.post_by!): the
+## rules `post!` names, in its order; the message stored and published, or
+## the refusal that ends it.
+take_post! : AskedOn, List(U8) => Try(MessageCodec.Fields, Chat.Answer)
+take_post! = |
+	{
+		viewer,
+		accounts,
+		now,
+		conv,
+		key,
+	},
+	body,
+| {
+	id = conv.id()
+	if !ConvAccess.can_post(viewer, { conv, accounts }) {
+		audit_out_of_scope!({
+			key,
+			use: Post(id),
+			action: Post(conv),
+			accounts,
+			now,
+		})
+		if (ConvAccess.can_see(viewer, { conv, accounts })) Err(
+			Wire.refused(
+				403,
+				"only its participants post here",
+			),
+		) else Err(Conversations.no_such)
+	} else if Str.from_utf8(body).is_err() {
+		Err(Wire.refused(400, "a message is UTF-8 text"))
+	} else if Md.hostility(body, Conversations.markdown) == TooMuchFormatting {
+		Err(Wire.refused(400, Md.too_much_formatting))
+	} else {
+		by =
+			match viewer.who() {
+				SignedOut => crash "Conversations.take_post!: its callers let nobody signed out through"
+				Session(b) | Key(b) => b.id
+			}
+		tally = Store.load_tally!(Store.conversation_files(id)).map_err(|_| Chat.failed)?
+		named = named_of(conv, accounts)
+		match check_hops!({
+			id,
+			tally,
+			by,
+			named,
+			now,
+		}) {
+			Err(Failed) => Err(Chat.failed)
+			Ok(Full) => Err(
+				refuse_hops!({
+					key,
+					id,
+					now,
+				}),
+			)
+			Ok(Room) => append_post!({
+				id,
+				tally,
+				message: {
+					id: MessageCodec.next_id(tally.messages),
+					at: now,
+					by,
+					body,
+				},
+				who: { named, accounts },
+			})
+		}
+	}
+}
+
 ## **A POST TAKEN**: refused when the transcript is full
 ## (Limits.transcript_bytes_most, a 413); else appended, as the next id
-## its tally gives, and published to the conversation's streams, each
-## once: the append and the publish are in this turn, so no stream
-## subscribes between them.
+## its tally gives, and published to the conversation's streams and its
+## pages (PageFeed, as a bubble), each once: the append and the publish
+## are in this turn, so no stream subscribes between them.
 append_post! : {
 	id : ConvAccess.ConvId,
 	tally : Store.Tally,
 	message : MessageCodec.Fields,
 	who : Who,
-} => Chat.Answer
+} => Try(MessageCodec.Fields, Chat.Answer)
 append_post! = |
 	{
 		id,
@@ -790,9 +834,11 @@ append_post! = |
 	},
 |
 	if tally.bytes + List.len(MessageCodec.encode(message)) > Limits.transcript_bytes_most {
-		Wire.refused(
-			413,
-			"this conversation is full: its transcript holds as much as one may",
+		Err(
+			Wire.refused(
+				413,
+				"this conversation is full: its transcript holds as much as one may",
+			),
 		)
 	} else {
 		match Store.append_message!({
@@ -800,7 +846,7 @@ append_post! = |
 			tally,
 			message,
 		}) {
-			Failed => Chat.failed
+			Failed => Err(Chat.failed)
 			Appended => {
 				match (
 					frame(message, who),
@@ -827,7 +873,8 @@ append_post! = |
 					}
 					_ => crash "Conversations.append_post!: a message's JSON holds no line break"
 				}
-				Wire.json(201, message_json(message, who))
+				PageFeed.publish!(InConversation(id), { message, accounts: who.accounts })
+				Ok(message)
 			}
 		}
 	}
@@ -972,7 +1019,7 @@ stream! = |id|
 
 ## A conversation's spot on the one stream: its number.
 spot_of : ConvAccess.ConvId -> Str
-spot_of = |id| id.to_u64().to_str()
+spot_of = |id| PageFeed.spot(InConversation(id))
 
 ## What a conversation's events on the one stream carry first.
 lead_of : ConvAccess.ConvId -> List((Str, JsonOut))

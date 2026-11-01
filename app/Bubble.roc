@@ -166,6 +166,61 @@ human = Principal.Human({
 	generation: Cast.gen(1),
 })
 
+# **A NAME HOLDING A SCRIPT IS TEXT ON THE PAGE**, escaped in the meta line.
+expect {
+	scripted = Principal.Human({
+		id: Cast.hid(9),
+		sign_in: Cast.github(9),
+		login: "h9",
+		name: "<script>alert(1)</script>",
+		role: Member,
+		generation: Cast.gen(1),
+	})
+	html = Str.from_utf8(
+		Bubble.of(
+			[scripted],
+			{
+				m: { id: 3, at: 5, by: scripted.id(), body: [] },
+				ref: "4_3",
+				edited: NotEdited,
+				saved: NoSave,
+			},
+		).bytes(),
+	) ?? ""
+	html.contains("<div class=chat-meta>#3 &lt;script&gt;alert(1)&lt;/script&gt; · @h9 · <time") and !html.contains("<script>")
+}
+
+# **AN AGENT NAMED AS A HUMAN SAYS WHOSE IT IS**: the meta line names its
+# kind and its owner's login (Render.header_of).
+expect {
+	owner = Principal.Human({
+		id: Cast.hid(4),
+		sign_in: Cast.github(4),
+		login: "showell",
+		name: "Steve Howell",
+		role: Member,
+		generation: Cast.gen(1),
+	})
+	posing = Principal.Agent({
+		id: Cast.aid(5),
+		name: "Steve Howell",
+		owner: Cast.hid(4),
+		generation: Cast.gen(1),
+	})
+	html = Str.from_utf8(
+		Bubble.of(
+			[owner, posing],
+			{
+				m: { id: 3, at: 5, by: posing.id(), body: [] },
+				ref: "4_3",
+				edited: NotEdited,
+				saved: NoSave,
+			},
+		).bytes(),
+	) ?? ""
+	html.contains("<div class=chat-meta>#3 Steve Howell · agent of @showell · <time")
+}
+
 # **A NAME IS TEXT**: the meta line holds the poster's header escaped, and
 # the author's id as an attribute; the body is roc-markdown's.
 expect {

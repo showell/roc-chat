@@ -36,8 +36,8 @@ import Limits
 import Mentions
 import MessageCodec
 import MessageRef
+import PageFeed
 import Principal
-import Edits
 import Recent
 import SignInWeb
 import Store
@@ -245,12 +245,6 @@ Topics := [].{
 		Ok(got.message)
 	}
 
-	## **A MESSAGE'S LOCAL REFERENCE**, `<topic>_<n>`: the part of its
-	## reference that names it on its topic's page (MessageRef's local id),
-	## as the page's notices say it.
-	local_ref : Topic.At, U64 -> Str
-	local_ref = |at, n| "${at.topic.to_str()}_${n.to_str()}"
-
 	## **THE BUS KEY OF A READER'S RECENT** (RecentPage.roc): each post's
 	## tile, drawn for that reader, is published to each of the topic's
 	## readers on theirs.
@@ -322,80 +316,6 @@ Topics := [].{
 		}
 	}
 
-	## **WHETHER A MESSAGE IS SUPERSEDED**, among `edits` (Edits.superseded
-	## over the messages from it on): the edit that names it, with its
-	## reference, or none.
-	edited_of : Topic.At,
-	{
-		edits : Edits.Supersession,
-		n : U64,
-	} -> [NotEdited, EditedIn({ id : U64, ref : Str })]
-	edited_of = |at, { edits, n }|
-		match Edits.edit_of(edits, n) {
-			EditedIn(e) => EditedIn({ id: e, ref: ref_text(at, e) })
-			NotEdited => NotEdited
-		}
-
-	## **AN EDIT, ON A PAGE** (Edits.roc): when `message` edits an earlier
-	## one of the same author's, that one's bubble drawn again, superseded,
-	## as an `edit` event (no id: it resumes nothing) the page puts in its
-	## place; or nothing, for a message that edits nothing, edits another's,
-	## or whose original does not read. A post publishes it after its own
-	## bubble, and a stream's backlog sends it after each edit it resends.
-	edit_frame! : Topic.At,
-	{
-		message : MessageCodec.Fields,
-		accounts : List(Principal),
-	} => List(U8)
-	edit_frame! = |at, { message, accounts }|
-		match Edits.target(at, message.body) {
-			Err(NotAnEdit) => []
-			Ok(t) => {
-				files = Store.topic_files(at)
-				original =
-					match Store.load_tally!(files) {
-						Err(Failed) => Err(Failed)
-						Ok(tally) => Store.load_span!(
-							files,
-							tally,
-							{ first: t, last: t },
-						).map_err(|_| Failed)
-					}
-				match original {
-					Ok([o]) if Edits.supersedes({ original: o, edit: message }) => {
-						edited = EditedIn({ id: message.id, ref: ref_text(at, message.id) })
-						html = Bubble.data(
-							Bubble.of(
-								accounts,
-								{
-									m: o,
-									ref: Topics.local_ref(at, o.id),
-									edited,
-									# Every page's: the edit frame's body is all a page takes.
-									saved: NotSaved,
-								},
-							),
-						)
-						match Sse.frame({
-							name: Str.to_utf8("edit"),
-							data: html,
-							id: [],
-						}) {
-							Ok(f) => f
-							Err(LineBreak) => crash "Topics.edit_frame!: Bubble.data holds no CR"
-						}
-					}
-					_ => []
-				}
-			}
-		}
-
-	## **A MESSAGE'S REFERENCE, AS IT TRAVELS** (`ref_text`): a channel's
-	## full `MSG_<channel>.<topic>_<n>`, a DM's short `MSG_<topic>_<n>`; what
-	## a quote-reply and an edit write.
-	ref_of : Topic.At, U64 -> Str
-	ref_of = |at, n| ref_text(at, n)
-
 	## **WHERE A TOPIC'S PAGE LIVES**, its names as they were made: a
 	## channel's under `/chat/channel`, a DM's under `/chat/dm/<the other
 	## human's id>`, the one spelling the page, Browse and Recent link to.
@@ -455,46 +375,6 @@ Topics := [].{
 			Refused(_) => Err(unread)
 		}
 	}
-
-	## **THE BUS KEY A TOPIC'S PAGES ARE HELD ON**, beside its streams'
-	## (`bus_key`): each post's bubble, as Bubble.roc draws it, published
-	## once for every page that shows the topic.
-	page_key : Topic.At -> List(U8)
-	page_key = |at| Str.to_utf8("topic-page/${spot_of(at)}")
-
-	## **A BUBBLE AS ONE SSE EVENT**, named `message`, its id the message's,
-	## as a page's stream and a post's publish both write it.
-	page_frame : {
-		at : Topic.At,
-		accounts : List(Principal),
-		m : MessageCodec.Fields,
-	} -> List(U8)
-	page_frame = |
-		{
-			at,
-			accounts,
-			m,
-		},
-	|
-		match Sse.frame({
-			name: Str.to_utf8("message"),
-			data: Bubble.data(
-				Bubble.of(
-					accounts,
-					{
-						m,
-						ref: Topics.local_ref(at, m.id),
-						edited: NotEdited,
-						# Every page's, and new: on no one's list yet.
-						saved: NotSaved,
-					},
-				),
-			),
-			id: Str.to_utf8(m.id.to_str()),
-		}) {
-			Ok(f) => f
-			Err(LineBreak) => crash "Topics.page_frame: Bubble.data holds no CR, and the name and id no line break"
-		}
 
 	## A topic's place in a path: its channel's name and its own.
 	at_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
@@ -637,7 +517,7 @@ source_of = |
 
 ## A topic's spot on the one stream: its channel's key and its own.
 spot_of : Topic.At -> Str
-spot_of = |at| "${at.channel.key()}/${at.topic.key()}"
+spot_of = |at| PageFeed.spot(InTopic(at))
 
 ## What a topic's events on the one stream carry first: its channel and
 ## its name, as they were made.
@@ -867,17 +747,9 @@ message_json = |
 ref_lead : Topic.At, U64 -> List((Str, JsonOut))
 ref_lead = |at, n| [("ref", JsonOut.string(ref_text(at, n)))]
 
-## **A MESSAGE'S REFERENCE**, `MSG_<channel>.<topic>_<n>`, as MessageRef
-## writes and reads it.
+## **A MESSAGE'S REFERENCE**, as it travels (MessageRef.spelled).
 ref_text : Topic.At, U64 -> Str
-ref_text = |at, n| {
-	text = "MSG_${at.channel.to_str()}.${at.topic.to_str()}_${n.to_str()}"
-	match MessageRef.from_str(text) {
-		# A DM's is the short `MSG_<topic>_<n>`: "this topic, on this page".
-		Ok(ref) => if (at.channel.is_dm()) "MSG_${ref.local_id()}" else ref.to_str()
-		Err(NotAReference) => crash "Topics.ref_text: a topic's place and a message id are a reference"
-	}
-}
+ref_text = |at, n| MessageRef.spelled(InTopic(at), n)
 
 ## **WHAT A REQUEST ON A TOPIC DECIDES ON**: the viewer over topics, the
 ## accounts, the time, the channel and the topic; or the answer that ends
@@ -1228,17 +1100,9 @@ publish! = |
 		Ok(f) => Host.publish!(bus_key(at), f)
 		Err(LineBreak) => crash "Topics.publish!: a message's JSON holds no line break"
 	}
-	Host.publish!(
-		Topics.page_key(at),
-		Topics.page_frame({
-			at,
-			accounts: who.accounts,
-			m: message,
-		}),
-	)
-	# An edit by its original's author redraws the original on every page.
-	edit = Topics.edit_frame!(at, { message, accounts: who.accounts })
-	if (!edit.is_empty()) Host.publish!(Topics.page_key(at), edit) else {}
+	# Its bubble on every page, and an edit by its original's author
+	# redraws the original there.
+	PageFeed.publish!(InTopic(at), { message, accounts: who.accounts })
 	# Once a post: the channel's members and the excerpt; then a tile a reader.
 	members = channel.members(who.accounts)
 	last = Last({ m: message, excerpt: Recent.excerpt(message.body) })

@@ -1,0 +1,201 @@
+## **WHAT A PAGE OF MESSAGES IS SENT, FOR A TOPIC OR A CONVERSATION
+## ALIKE** (MessageRef.Where): where its transcript is kept, the bus key
+## its pages are held on, each post as the bubble every page puts in, and
+## an edit's original drawn again. A topic's posts (Topics.roc) and a
+## conversation's (Conversations.roc) publish here, and the one page
+## (TopicPage.roc) reads here, so the two kinds of page never differ but
+## where they must: **A CONVERSATION KEEPS NO SAVES** (`saves`), since a
+## reading list's line names a channel and a topic (SavedCodec).
+import pf.Host
+import pf.Sse
+import Bubble
+import Cast
+import ConvAccess
+import Edits
+import MessageCodec
+import MessageRef
+import Principal
+import Store
+
+PageFeed := [].{
+
+	## Its transcript's files.
+	files : MessageRef.Where -> Store.TranscriptFiles
+	files = |place|
+		match place {
+			InTopic(at) => Store.topic_files(at)
+			InConversation(c) => Store.conversation_files(c)
+		}
+
+	## **ITS SPOT**, as its keys and its events name it: a topic's
+	## channel's key and its own, `<channel>/<topic>`; a conversation's id.
+	spot : MessageRef.Where -> Str
+	spot = |place|
+		match place {
+			InTopic(at) => "${at.channel.key()}/${at.topic.key()}"
+			InConversation(c) => c.to_u64().to_str()
+		}
+
+	## **THE BUS KEY ITS PAGES ARE HELD ON**, beside its streams': each
+	## post's bubble, published once for every page that shows it.
+	page_key : MessageRef.Where -> List(U8)
+	page_key = |place|
+		match place {
+			InTopic(_) => Str.to_utf8("topic-page/${PageFeed.spot(place)}")
+			InConversation(_) => Str.to_utf8("conversation-page/${PageFeed.spot(place)}")
+		}
+
+	## **WHETHER ITS MESSAGES CAN BE SAVED**: a topic's can; a
+	## conversation's cannot, a reading list's line naming a channel and a
+	## topic.
+	saves : MessageRef.Where -> [Saves, NoSaves]
+	saves = |place|
+		match place {
+			InTopic(_) => Saves
+			InConversation(_) => NoSaves
+		}
+
+	## **A BUBBLE NOBODY'S LIST IS KNOWN FOR** (a stream's, every page's):
+	## `NotSaved` where saves are kept, `NoSave` where none can be.
+	unsaved : MessageRef.Where -> [Saved, NotSaved, NoSave]
+	unsaved = |place|
+		match PageFeed.saves(place) {
+			Saves => NotSaved
+			NoSaves => NoSave
+		}
+
+	## **A BUBBLE AS ONE SSE EVENT**, named `message`, its id the message's,
+	## as a page's stream and a post's publish both write it.
+	frame : MessageRef.Where,
+	{
+		accounts : List(Principal),
+		m : MessageCodec.Fields,
+	} -> List(U8)
+	frame = |place, { accounts, m }|
+		match Sse.frame({
+			name: Str.to_utf8("message"),
+			data: Bubble.data(
+				Bubble.of(
+					accounts,
+					{
+						m,
+						ref: MessageRef.local(place, m.id),
+						edited: NotEdited,
+						# Every page's, and new: on no one's list yet.
+						saved: PageFeed.unsaved(place),
+					},
+				),
+			),
+			id: Str.to_utf8(m.id.to_str()),
+		}) {
+			Ok(f) => f
+			Err(LineBreak) => crash "PageFeed.frame: Bubble.data holds no CR, and the name and id no line break"
+		}
+
+	## **WHETHER A MESSAGE IS SUPERSEDED**, among `edits` (Edits.superseded
+	## over the messages from it on): the edit that names it, with its
+	## reference, or none.
+	edited_of : MessageRef.Where,
+	{
+		edits : Edits.Supersession,
+		n : U64,
+	} -> [NotEdited, EditedIn({ id : U64, ref : Str })]
+	edited_of = |place, { edits, n }|
+		match Edits.edit_of(edits, n) {
+			EditedIn(e) => EditedIn({ id: e, ref: MessageRef.spelled(place, e) })
+			NotEdited => NotEdited
+		}
+
+	## **AN EDIT, ON A PAGE** (Edits.roc): when `message` edits an earlier
+	## one of the same author's, that one's bubble drawn again, superseded,
+	## as an `edit` event (no id: it resumes nothing) the page puts in its
+	## place; or nothing, for a message that edits nothing, edits another's,
+	## or whose original does not read. A post publishes it after its own
+	## bubble, and a stream's backlog sends it after each edit it resends.
+	edit_frame! : MessageRef.Where,
+	{
+		message : MessageCodec.Fields,
+		accounts : List(Principal),
+	} => List(U8)
+	edit_frame! = |place, { message, accounts }|
+		match Edits.target(place, message.body) {
+			Err(NotAnEdit) => []
+			Ok(t) => {
+				kept = PageFeed.files(place)
+				original =
+					match Store.load_tally!(kept) {
+						Err(Failed) => Err(Failed)
+						Ok(tally) => Store.load_span!(
+							kept,
+							tally,
+							{ first: t, last: t },
+						).map_err(|_| Failed)
+					}
+				match original {
+					Ok([o]) if Edits.supersedes({ original: o, edit: message }) => {
+						edited = EditedIn({ id: message.id, ref: MessageRef.spelled(place, message.id) })
+						html = Bubble.data(
+							Bubble.of(
+								accounts,
+								{
+									m: o,
+									ref: MessageRef.local(place, o.id),
+									edited,
+									# Every page's: the edit frame's body is all a page takes.
+									saved: PageFeed.unsaved(place),
+								},
+							),
+						)
+						match Sse.frame({
+							name: Str.to_utf8("edit"),
+							data: html,
+							id: [],
+						}) {
+							Ok(f) => f
+							Err(LineBreak) => crash "PageFeed.edit_frame!: Bubble.data holds no CR"
+						}
+					}
+					_ => []
+				}
+			}
+		}
+
+	## **A POST, TO ITS PAGES**: its bubble, then, for an edit by its
+	## original's author, the original redrawn, on every page that shows
+	## it, in the turn it was appended in.
+	publish! : MessageRef.Where,
+	{
+		message : MessageCodec.Fields,
+		accounts : List(Principal),
+	} => {}
+	publish! = |place, { message, accounts }| {
+		Host.publish!(PageFeed.page_key(place), PageFeed.frame(place, { accounts, m: message }))
+		edit = PageFeed.edit_frame!(place, { message, accounts })
+		if (!edit.is_empty()) Host.publish!(PageFeed.page_key(place), edit) else {}
+	}
+}
+
+# ── tests
+## Conversation `n`, in a test.
+conv : U64 -> MessageRef.Where
+conv = |n| InConversation(ConvAccess.ConvId.from_u64(n) ?? crash "conv: a test's id is not 0")
+
+lobby : MessageRef.Where
+lobby = InTopic((MessageRef.from_str("MSG_Lobby.Chat_1") ?? crash "lobby: a reference").at())
+
+# A topic's pages and a conversation's are held apart, each by its own spot.
+expect PageFeed.page_key(lobby) == "topic-page/lobby/chat".to_utf8()
+expect PageFeed.page_key(conv(4)) == "conversation-page/4".to_utf8()
+expect PageFeed.page_key(conv(4)) != PageFeed.page_key(conv(44))
+# A topic's messages are saved; a conversation's cannot be.
+expect PageFeed.unsaved(lobby) == NotSaved
+expect PageFeed.unsaved(conv(4)) == NoSave
+# A conversation's bubble: its page's id, and no save link.
+expect {
+	f = Str.from_utf8(PageFeed.frame(conv(4), { accounts: [], m: { id: 3, at: 0, by: Cast.ann.id(), body: "hi".to_utf8() } })) ?? ""
+	f.starts_with("event: message\nid: 3\ndata: <div class=chat-msg id=msg-3 data-id=3 data-ref=\"4_3\" ") and !f.contains("msg-save")
+}
+expect {
+	f = Str.from_utf8(PageFeed.frame(lobby, { accounts: [], m: { id: 3, at: 0, by: Cast.ann.id(), body: "hi".to_utf8() } })) ?? ""
+	f.contains("data-ref=\"Chat_3\" ") and f.contains("class=msg-save")
+}

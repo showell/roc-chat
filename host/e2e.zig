@@ -549,7 +549,7 @@ fn conversationPage(w: *World) !void {
     const target = try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv});
     const mine = try get(w.a, w.port(), target, w.bea);
     if (mine.status != 200) return error.ParticipantRefused;
-    if (!has(mine.body, try std.fmt.allocPrint(w.a, "data-conv=\"{s}\"", .{w.conv}))) return error.NotTheConversation;
+    if (!has(mine.body, try std.fmt.allocPrint(w.a, "data-stream=\"/chat/{s}/stream?after=", .{w.conv}))) return error.NotTheConversation;
     const theirs = try get(w.a, w.port(), target, w.cal);
     if (theirs.status != 404 and theirs.status != 403) return error.ThirdGotPage;
     // A page is a browser's: Steve's own key, live, is a 403 at both.
@@ -794,7 +794,7 @@ fn pagesBack(w: *World) !void {
     }
     const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{conv}), w.ann);
     if (page.status != 200) return error.NoPage;
-    if (!has(page.body, "<article id=m6>") or has(page.body, "<article id=m5>")) return error.PageNotNewest;
+    if (!has(page.body, "<div class=chat-msg id=msg-6 ") or has(page.body, "<div class=chat-msg id=msg-5 ")) return error.PageNotNewest;
     if (!has(page.body, "<button id=earlier type=button>")) return error.NoEarlierButton;
 }
 
@@ -967,7 +967,7 @@ fn pageHtml(w: *World) !void {
     const html = try unjson(w.a, t.body[from..to]);
     const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{w.conv}), w.ann);
     if (page.status != 200) return error.NoPage;
-    if (!has(page.body, try std.fmt.allocPrint(w.a, "<div class=body>{s}</div>", .{html}))) return error.HtmlDiffers;
+    if (!has(page.body, try std.fmt.allocPrint(w.a, "<div class=chat-body>{s}</div>", .{html}))) return error.HtmlDiffers;
 }
 
 // ── the agents page ──
@@ -1686,13 +1686,13 @@ fn loginBeside(w: *World) !void {
     // The human's own: their login.
     const theirs = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), una, "no, I am");
     if (theirs.status != 201 or !has(theirs.body, (try std.fmt.allocPrint(w.a, "\"by\":\"human:{s}\",\"kind\":\"human\",\"login\":\"person1016\",", .{try hid(w.a, 1016)})))) return error.NoOwnLogin;
-    // The page: the server's header, and the people list the live script draws from.
+    // The page: each bubble's meta line, the one renderer the page and its
+    // stream share.
     const page = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{conv}), una);
     if (page.status != 200) return error.NoPage;
     const label = "P\xd0\xb5rson 1016 · agent of @person1016";
-    if (!has(page.body, "<header>" ++ label ++ " · <time")) return error.NoLabelOnTheMessage;
-    if (!has(page.body, "\">" ++ label ++ "</li>")) return error.NoLabelForTheScript;
-    if (!has(page.body, "<header>Person 1016 · @person1016 · <time")) return error.NoLoginBesideTheHuman;
+    if (!has(page.body, "<div class=chat-meta>#1 " ++ label ++ " · <time")) return error.NoLabelOnTheMessage;
+    if (!has(page.body, "<div class=chat-meta>#2 Person 1016 · @person1016 · <time")) return error.NoLoginBesideTheHuman;
 }
 
 /// **ONE NAMESPACE: A NAME IS HELD ONCE** (app/DisplayName.roc's
@@ -2673,6 +2673,178 @@ fn saveReadingList(w: *World) !void {
     try w.rig.data.deleteFile(io, pips_list);
 }
 
+/// Pip's conversation with Quin, for the steps on a conversation's page.
+var conversing: ?[]const u8 = null;
+
+/// **A CONVERSATION'S PAGE IS A TOPIC'S** (`/chat/<id>`, app/TopicPage.roc):
+/// the same frame, bubbles, right pane, stream and fragments, titled
+/// "Chat w/" the others; its references `MSG_<id>_<n>`, its page's ids
+/// `<id>_<n>`; no save link, no save script, no `data-save`. Its stream
+/// sends each later post, from the agents' route or its own, as the page's
+/// bubble, while the agents' JSON stream is as it was. A stranger, and a
+/// conversation that is not there, the same 404, the page saying why;
+/// signed out a 303 and a 401; a key a 403.
+fn conversationClient(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const id = try startedId(try pagePost(w, x.pip, "/conversations", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{x.q})));
+    conversing = id;
+    const base = try std.fmt.allocPrint(w.a, "/chat/{s}", .{id});
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, id, "/messages"), x.pip, "hello **conversation**")).status != 201) return error.NotPosted;
+    const page = try get(w.a, w.port(), base, x.quin);
+    if (page.status != 200) return error.NoPage;
+    const want = [_][]const u8{
+        "<title>Chat</title>\n<script src=\"/palette.js\"></script>\n<body class=chat-page",
+        "<button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>Person 1041</strong>",
+        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"{s}/stream?after=1\" data-earlier=\"{s}/earlier\" data-quote=\"{s}/quote\" data-edit=\"{s}/edit\">", .{ x.q, base, base, base, base }),
+        "<span class=\"chat-top-title\">Chat w/" ++ pip_name_escaped ++ "</span>",
+        "<a href=\"/chat/browse\">Browse</a>",
+        "<button id=earlier type=button hidden>Earlier messages</button>",
+        try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-1 data-id=1 data-ref=\"{s}_1\" data-by=\"human:{s}\"><div class=chat-meta>#1 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{ id, x.p }),
+        "</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button></div><div class=chat-body><p>hello <strong>conversation</strong></p>",
+        "<div class=chat-notify id=chat-notify></div>",
+        try std.fmt.allocPrint(w.a, "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"{s}/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>", .{base}),
+        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
+    };
+    for (want) |needle| if (!has(page.body, needle)) return error.PageWrong;
+    // No save anywhere on it, and no old page's pieces.
+    if (has(page.body, "msg-save") or has(page.body, "save.js") or has(page.body, "data-save") or has(page.body, "Pip <b>") or has(page.body, "<style") or has(page.body, "<article") or has(page.body, "No messages yet")) return error.PageShowsTooMuch;
+    // From Pip's side, titled by Quin.
+    if (!has((try get(w.a, w.port(), base, x.pip)).body, "<span class=\"chat-top-title\">Chat w/Person 1041</span>")) return error.TitleWrong;
+    // An empty conversation says so.
+    const empty_id = try startedId(try pagePost(w, x.quin, "/conversations", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{x.p})));
+    const empty = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/{s}", .{empty_id}), x.quin);
+    if (empty.status != 200 or !has(empty.body, "<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>") or has(empty.body, "class=chat-msg")) return error.NoEmptyState;
+
+    // The stream: a post by the agents' route comes as the page's bubble;
+    // the agents' JSON stream is as it was.
+    const l = try Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/stream?after=1", .{base}), x.quin, "");
+    defer l.close();
+    const json = try Listener.open(w.a, w.port(), try agentPath(w, id, "/stream"), x.quin, "1");
+    defer json.close();
+    if ((try request(w.a, w.port(), "POST", try agentPath(w, id, "/messages"), x.pip, "a *second*")).status != 201) return error.NotPosted;
+    try l.until("<em>second</em>");
+    const bubble = try std.fmt.allocPrint(w.a, "event: message\nid: 2\ndata: <div class=chat-msg id=msg-2 data-id=2 data-ref=\"{s}_2\" data-by=\"human:{s}\"><div class=chat-meta>#2 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{ id, x.p });
+    if (!has(l.got.items, bubble) or has(l.got.items, "conversation</strong>") or has(l.got.items, "msg-save")) return error.StreamedWrong;
+    try json.until("\"markdown\":\"a *second*\"");
+    if (has(json.got.items, "chat-msg")) return error.JsonStreamChanged;
+    const resumed = try Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/stream", .{base}), x.quin, "1");
+    defer resumed.close();
+    try resumed.until("<em>second</em>");
+    if (has(resumed.got.items, "conversation</strong>")) return error.ResumedTwice;
+    if (Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/stream?after=x", .{base}), x.quin, "")) |bad| {
+        bad.close();
+        return error.BadAfterTaken;
+    } else |_| {}
+    // An earlier page is a fragment, as a topic's.
+    const before = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/earlier?before=2", .{base}), x.quin);
+    if (before.status != 200 or !std.mem.startsWith(u8, before.body, try std.fmt.allocPrint(w.a, "<div data-earlier=0>\n<div class=chat-msg id=msg-1 data-id=1 data-ref=\"{s}_1\" ", .{id})) or has(before.body, "id=msg-2 ")) return error.EarlierWrong;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/earlier?before=x", .{base}), x.quin)).status != 400) return error.BadBeforeTaken;
+
+    // Who may not: a stranger, and a conversation not there, alike.
+    const strange = try get(w.a, w.port(), base, x.rue);
+    if (strange.status != 404 or !has(strange.body, "<span class=\"chat-top-title\">Not here</span>") or !has(strange.body, try std.fmt.allocPrint(w.a, "<p>Conversation {s} is not a conversation you can see.</p><p><a href=\"/chat/browse\">Go back</a></p>", .{id}))) return error.StrangerRead;
+    const nowhere = try get(w.a, w.port(), "/chat/999999", x.rue);
+    if (nowhere.status != 404 or !has(nowhere.body, "<p>Conversation 999999 is not a conversation you can see.</p>")) return error.NotHereWrong;
+    for ([_][]const u8{ "/stream", "/earlier?before=2" }) |tail| {
+        const r = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}{s}", .{ base, tail }), x.rue);
+        if (r.status != 404 or has(r.body, "Not here")) return error.StrangerRead;
+    }
+    const out = try get(w.a, w.port(), base, "");
+    if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", try std.fmt.allocPrint(w.a, "/login?next=%2Fchat%2F{s}", .{id}))) return error.NotToLogin;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/stream", .{base}), "")).status != 401) return error.NobodyStreamed;
+    if ((try send(w.a, w.port(), "GET", base, .{ .key = x.pal_key }, "")).status != 403) return error.KeyRead;
+    if ((try send(w.a, w.port(), "GET", try std.fmt.allocPrint(w.a, "{s}/stream", .{base}), .{ .key = x.pal_key }, "")).status != 403) return error.KeyStreamed;
+    if ((try request(w.a, w.port(), "POST", base, x.quin, "")).status != 405) return error.PagePosted;
+}
+
+/// **A CONVERSATION PAGE'S WRITES ARE A TOPIC PAGE'S**: compose sends (a
+/// 201 with the bubble every page's stream gets, stored once, the agents'
+/// stream told as before), by the conversation's own rules; quote-reply
+/// and edit under `MSG_<id>_<n>`, an edit one's own alone, and posted it
+/// redraws the original live and on the page; another's edit an ordinary
+/// message. `.../save` is no route. Refusals as a topic's: not UTF-8 a
+/// 400, a stranger 404, a key 403, signed out 401, a foreign Origin 403, a
+/// GET 405; bad n 400, no message 404.
+fn conversationWrites(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const id = conversing orelse return error.NoConversation;
+    const base = try std.fmt.allocPrint(w.a, "/chat/{s}", .{id});
+    const path = struct {
+        fn of(a: std.mem.Allocator, b: []const u8, tail: []const u8) ![]const u8 {
+            return std.fmt.allocPrint(a, "{s}{s}", .{ b, tail });
+        }
+    }.of;
+    const l = try Listener.open(w.a, w.port(), try path(w.a, base, "/stream?after=2"), x.pip, "");
+    defer l.close();
+    const json = try Listener.open(w.a, w.port(), try agentPath(w, id, "/stream"), x.pip, "2");
+    defer json.close();
+    const sent = try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.quin, "from **compose**");
+    const bubble = try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"{s}_3\" data-by=\"human:{s}\"><div class=chat-meta>#3 Person 1041 · @person1041 · <time class=chat-time datetime=", .{ id, x.q });
+    if (sent.status != 201 or !std.mem.startsWith(u8, sent.body, bubble) or !has(sent.body, "<p>from <strong>compose</strong></p>") or has(sent.body, "msg-save")) return error.NotSent;
+    if (!std.mem.startsWith(u8, sent.header("content-type") orelse "", "text/html")) return error.NotHtml;
+    try l.until("<strong>compose</strong>");
+    if (!has(l.got.items, bubble)) return error.StreamedOther;
+    try json.until("\"markdown\":\"from **compose**\"");
+    const read = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/conversations/{s}", .{id}), x.pip);
+    if (count(read.body, "\"markdown\":\"from **compose**\"") != 1 or has(read.body, "\"id\":4")) return error.NotStoredOnce;
+
+    // Refusals, each the post's own.
+    const bad = try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.quin, "\xff\xfe");
+    if (bad.status != 400 or !has(bad.body, "a message is UTF-8 text")) return error.BadTextTaken;
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.rue, "let me in")).status != 404) return error.StrangerSent;
+    if ((try send(w.a, w.port(), "POST", try path(w.a, base, "/send"), .{ .key = x.pal_key }, "by key")).status != 403) return error.KeySent;
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), "", "nobody")).status != 401) return error.NobodySent;
+    if ((try send(w.a, w.port(), "POST", try path(w.a, base, "/send"), .{ .cookie = x.quin, .origin = "https://evil.test" }, "forged")).status != 403) return error.ForeignOriginSent;
+    if ((try get(w.a, w.port(), try path(w.a, base, "/send"), x.quin)).status != 405) return error.SendByGet;
+    if (has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/conversations/{s}", .{id}), x.pip)).body, "\"id\":4")) return error.RefusalStored;
+
+    // Quote-reply, by Quin and by Pip, under the conversation's reference.
+    const theirs = try get(w.a, w.port(), try path(w.a, base, "/quote?n=1"), x.quin);
+    if (theirs.status != 200 or !std.mem.eql(u8, theirs.body, try std.fmt.allocPrint(w.a, "{{\"text\":\"In MSG_{s}_1 you said:\\n~~~ quote\\nhello **conversation**\\n~~~\\n\\n\"}}", .{id}))) return error.QuoteWrong;
+    if (!has((try get(w.a, w.port(), try path(w.a, base, "/quote?n=1"), x.pip)).body, try std.fmt.allocPrint(w.a, "In MSG_{s}_1 I said:", .{id}))) return error.QuoteWrong;
+    // An edit: one's own alone.
+    const draft = try get(w.a, w.port(), try path(w.a, base, "/edit?n=3"), x.quin);
+    const draft_text = try std.fmt.allocPrint(w.a, "Edit of MSG_{s}_3\n\n", .{id});
+    if (draft.status != 200 or !std.mem.eql(u8, draft.body, try std.fmt.allocPrint(w.a, "{{\"text\":\"Edit of MSG_{s}_3\\n\\nfrom **compose**\",\"caret\":{d}}}", .{ id, draft_text.len }))) return error.DraftWrong;
+    const not_yours = try get(w.a, w.port(), try path(w.a, base, "/edit?n=1"), x.quin);
+    if (not_yours.status != 403 or !has(not_yours.body, "only its author edits a message")) return error.EditedAnothers;
+
+    // Posted: the original redrawn live, after the edit's own bubble.
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.quin, try std.fmt.allocPrint(w.a, "Edit of MSG_{s}_3\n\nfrom **compose**, fixed", .{id}))).status != 201) return error.NotPosted;
+    try l.until("chat-edited-orig");
+    const redrawn = try std.fmt.allocPrint(w.a, "event: edit\ndata: <div class=chat-msg id=msg-3 data-id=3 data-ref=\"{s}_3\" data-by=\"human:{s}\">", .{ id, x.q });
+    const note = try std.fmt.allocPrint(w.a, "<div class=chat-body><div class=chat-edited-note>Edited in <a class=msg-ref href=\"#msg-4\">MSG_{s}_4</a></div><details class=chat-edited-spoiler><summary>original</summary><div class=chat-edited-orig>from **compose**</div></details></div>", .{id});
+    const at_edit = std.mem.indexOf(u8, l.got.items, redrawn) orelse return error.NoLiveEdit;
+    const at_post = std.mem.indexOf(u8, l.got.items, "id: 4\n") orelse return error.NoLiveEdit;
+    if (at_post > at_edit or !has(l.got.items, note)) return error.LiveEditWrong;
+    // Another's "edit" (Pip's, of Quin's 4) is an ordinary message.
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.pip, try std.fmt.allocPrint(w.a, "Edit of MSG_{s}_4\n\nmine now", .{id}))).status != 201) return error.NotPosted;
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.pip, "after the fake")).status != 201) return error.NotPosted;
+    try l.until("after the fake");
+    if (has(l.got.items, "event: edit\ndata: <div class=chat-msg id=msg-4 ")) return error.AnothersEditApplied;
+    // The page draws the original superseded, and the other not.
+    const shown = try get(w.a, w.port(), base, x.pip);
+    if (!has(shown.body, note) or has(shown.body, "href=\"#msg-5\">")) return error.PageEditWrong;
+    // A topic's reference is no edit here.
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/send"), x.pip, "Edit of MSG_Orchard.Banana_1\n\nnot here")).status != 201) return error.NotPosted;
+    if (has((try get(w.a, w.port(), base, x.pip)).body, "href=\"#msg-7\">")) return error.ForeignEditApplied;
+
+    // No save: no route.
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/save"), x.quin, "n=1")).status != 404) return error.SaveRouted;
+
+    // Refusals.
+    for ([_][]const u8{ "", "?n=x", "?n=01" }) |q| {
+        if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/quote{s}", .{ base, q }), x.quin)).status != 400) return error.BadNTaken;
+        if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/edit{s}", .{ base, q }), x.pip)).status != 400) return error.BadNTaken;
+    }
+    if ((try get(w.a, w.port(), try path(w.a, base, "/quote?n=9999"), x.pip)).status != 404) return error.NoMessageFound;
+    if ((try get(w.a, w.port(), try path(w.a, base, "/quote?n=1"), x.rue)).status != 404) return error.StrangerQuoted;
+    if ((try get(w.a, w.port(), try path(w.a, base, "/edit?n=1"), x.rue)).status != 404) return error.StrangerEdited;
+    if ((try get(w.a, w.port(), try path(w.a, base, "/quote?n=1"), "")).status != 401) return error.NobodyQuoted;
+    if ((try send(w.a, w.port(), "GET", try path(w.a, base, "/edit?n=1"), .{ .key = x.pal_key }, "")).status != 403) return error.KeyEdited;
+    if ((try request(w.a, w.port(), "POST", try path(w.a, base, "/quote?n=1"), x.quin, "")).status != 405) return error.QuotePosted;
+}
+
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
     .{ .name = "A starts a conversation with B, named by her own id (by her GitHub id, refused)", .f = start },
@@ -2764,6 +2936,8 @@ const steps = [_]Step{
     .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, an agent topic's to its owner and not another member; signed out a 303 and a 401, a key a 403", .f = recentFeed },
     .{ .name = "quote-reply and edit: both links on every bubble; a quote under its reference, you or I said, its fence longer than any inside, a DM's short; an edit one's own alone; posted, the original redrawn live, in a resumed backlog and on its earlier page, another's edit ordinary; bad n a 400, no message a 404, a stranger 404, signed out 401, a key 403, a POST 405", .f = quoteEdit },
     .{ .name = "save and the reading list: a save keeps the message's copy and its author's name with its note (read later when none, no length rule), the strip's line drawn by the server, \"✓ saved\" drawn for the viewer's own page and earlier pages and no one else's, saved again the one save at the newest end; the list newest first, everything escaped, the way back (a DM's by its other member); a note changed and a save removed by forms, an id never given twice; a save outlives losing the topic; a list that does not read back leaves the page shown and is never written over; bad n 400, no message 404, a stranger 404, signed out 401, a key 403, a GET 405; Saved in the top bar", .f = saveReadingList },
+    .{ .name = "a conversation's page is a topic's: its bubbles, MSG_<id>_<n> page ids, the right pane and scripts, titled Chat w/ the others, no save; its stream sends the agents' route's posts as bubbles, resumed, the agents' JSON stream unchanged; earlier a fragment; a stranger and none the same 404 saying why; signed out a 303 and a 401, a key a 403", .f = conversationClient },
+    .{ .name = "a conversation page's writes are a topic page's: compose sends a 201 bubble, streamed and stored once, the agents' stream told; quote and edit under MSG_<id>_<n>, an edit one's own, redrawn live and on the page, another's or a topic's ordinary; no save route; not UTF-8 400, a stranger 404, a key 403, signed out 401, a foreign Origin 403, a GET 405, bad n 400, no message 404", .f = conversationWrites },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

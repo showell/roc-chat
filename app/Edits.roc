@@ -5,21 +5,23 @@
 ## (the reference's spelling, the fence, who may edit) stay here. Pure.
 ##
 ## **AN EDIT IS A NEW MESSAGE** that starts "Edit of MSG_<ref>", the
-## reference of an earlier message in its topic. Only its author's edit
+## reference of an earlier message in its topic or its conversation
+## (MessageRef.Where, MessageRef.number_in). Only its author's edit
 ## supersedes it ("no post can hide another's"); the original is kept, and
 ## its bubble shows "Edited in MSG_<the edit>" and the original in a
 ## spoiler. The last of several edits is the one named.
 import Cast
+import ConvAccess
 import MessageCodec
 import MessageRef
-import Topic
 
 Edits := [].{
 
 	## **WHICH MESSAGE AN EDIT EDITS**: its number, when `body` starts
 	## "Edit of " and a reference to a message of this topic, the full one
 	## (`MSG_<channel>.<topic>_<n>`) or the short one (`MSG_<topic>_<n>`, a
-	## DM's, and what the old client wrote in a channel too), ended as the
+	## DM's, and what the old client wrote in a channel too), or of this
+	## conversation (`MSG_<conversation>_<n>`), ended as the
 	## old `\b` ended it: by anything not a letter, a digit or `_`, the
 	## longest reference that leaves (`Edit of MSG_Lobby.Chat_3. Typo`).
 	##
@@ -28,7 +30,7 @@ Edits := [].{
 	## costs what one of 146 bytes does. A run longer than that reference is
 	## read as the old pattern read it: the longest start that ends at a
 	## number followed by a `.` or a `-`.
-	target : Topic.At, List(U8) -> Try(U64, [NotAnEdit])
+	target : MessageRef.Where, List(U8) -> Try(U64, [NotAnEdit])
 	target = |at, body|
 		if !body.starts_with(lead) {
 			Err(NotAnEdit)
@@ -59,7 +61,7 @@ Edits := [].{
 	## is found by its place (`id - first`), never searched for.
 	Supersession : { first : U64, by : List(U64) }
 
-	superseded : Topic.At, List(MessageCodec.Fields) -> Edits.Supersession
+	superseded : MessageRef.Where, List(MessageCodec.Fields) -> Edits.Supersession
 	superseded = |at, messages| {
 		first = messages.first().map_ok(|m| m.id) ?? 1
 		by = messages.fold(
@@ -163,7 +165,7 @@ token_len = |s, i|
 ## **THE LONGEST REFERENCE `run` STARTS WITH**, as the old pattern's
 ## greedy match found it: the whole run, or else its longest start that ends
 ## at a number followed by a `.` or a `-`.
-longest : Topic.At, List(U8) -> Try(U64, [NotAnEdit])
+longest : MessageRef.Where, List(U8) -> Try(U64, [NotAnEdit])
 longest = |at, run|
 	match in_this(at, run) {
 		Ok(n) => Ok(n)
@@ -174,20 +176,13 @@ longest = |at, run|
 			}
 	}
 
-## `MSG_<channel>.<topic>_<n>` or `MSG_<topic>_<n>`, a message of `at`'s.
-in_this : Topic.At, List(U8) -> Try(U64, [NotAnEdit])
-in_this = |at, bytes| {
-	text = Str.from_utf8(bytes) ?? ""
-	ref =
-		match MessageRef.from_str(text) {
-			Ok(r) => Ok(r)
-			Err(NotAReference) => MessageRef.in_topic(at, Str.from_utf8(bytes.drop_first(4)) ?? "")
-		}
-	match ref {
-		Ok(r) if r.at() == at => Ok(r.n())
-		_ => Err(NotAnEdit)
+## A reference to a message of `where`'s (MessageRef.number_in).
+in_this : MessageRef.Where, List(U8) -> Try(U64, [NotAnEdit])
+in_this = |place, bytes|
+	match Str.from_utf8(bytes) {
+		Ok(text) => MessageRef.number_in(place, text).map_err(|_| NotAnEdit)
+		Err(_) => Err(NotAnEdit)
 	}
-}
 
 ## The run's longest start before `i` that ends at a digit with a `.` or a
 ## `-` after it.
@@ -244,8 +239,31 @@ longest_tilde_run = |md| {
 }
 
 # ── tests
-at_of : Str, Str -> Topic.At
-at_of = |c, t| (MessageRef.from_str("MSG_${c}.${t}_1") ?? crash "a test's names are names").at()
+at_of : Str, Str -> MessageRef.Where
+at_of = |c, t| InTopic((MessageRef.from_str("MSG_${c}.${t}_1") ?? crash "a test's names are names").at())
+
+## Conversation `n`'s place, in a test.
+conv_of : U64 -> MessageRef.Where
+conv_of = |n| InConversation(ConvAccess.ConvId.from_u64(n) ?? crash "conv_of: a test's id is not 0")
+
+# A conversation's edit: its own reference, ended as the old `\b` ended
+# it; another conversation's, or a topic's, is no edit.
+expect Edits.target(conv_of(4), "Edit of MSG_4_3\n\nfixed".to_utf8()) == Ok(3)
+expect Edits.target(conv_of(4), "Edit of MSG_4_3. Typo".to_utf8()) == Ok(3)
+expect Edits.target(conv_of(4), "Edit of MSG_4_3x".to_utf8()) == Err(NotAnEdit)
+expect Edits.target(conv_of(4), "Edit of MSG_5_3".to_utf8()) == Err(NotAnEdit)
+expect Edits.target(conv_of(4), "Edit of MSG_Chat_3".to_utf8()) == Err(NotAnEdit)
+expect Edits.target(at_of("Lobby", "Chat"), "Edit of MSG_4_3".to_utf8()) == Err(NotAnEdit)
+expect {
+	found = Edits.superseded(
+		conv_of(4),
+		[
+			{ id: 1, at: 0, by: Cast.ann.id(), body: "hi".to_utf8() },
+			{ id: 2, at: 0, by: Cast.ann.id(), body: "Edit of MSG_4_1\n\nhello".to_utf8() },
+		],
+	)
+	Edits.edit_of(found, 1) == EditedIn(2) and Edits.edit_of(found, 2) == NotEdited
+}
 
 expect Edits.target(at_of("Lobby", "Chat"), "Edit of MSG_Lobby.Chat_3\n\nfixed".to_utf8()) == Ok(3)
 expect Edits.target(at_of("Lobby", "Chat"), "Edit of MSG_Lobby.Chat_3".to_utf8()) == Ok(3)

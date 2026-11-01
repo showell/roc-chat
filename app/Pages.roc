@@ -1,7 +1,8 @@
 ## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: a list of the viewer's
-## conversations, and a conversation to read live and post in, in a
-## browser. Small, plain and replaceable: the browser client's pages,
-## Browse and a topic's, are Browse.roc's and TopicPage.roc's.
+## conversations, their agents and the channels, in a browser. Small,
+## plain and replaceable: the browser client's pages, Browse and a
+## transcript's (a topic's or a conversation's, `/chat/<id>`), are
+## Browse.roc's and TopicPage.roc's.
 ## Every decision is the conversations' (Conversations.roc, ConvAccess), on
 ## the viewer Credentials gives a session's cookie; here are the pages made
 ## of it. A key's Bearer header is a 403: a page is a
@@ -19,20 +20,10 @@
 ##                       its members; a form to make one, and on each a form
 ##                       to admit a member and one to remove one (their
 ##                       routes Channels.roc's); a 403 to anyone else
-##     GET /chat/<id>    a conversation: its newest page of messages (and a button
-##                       for each page before it), then each new one live (its
-##                       stream, by the browser's EventSource, which resumes with
-##                       Last-Event-ID by itself, and reloads the page on a `gap`),
-##                       and a box to post markdown in (Ctrl/⌘-Enter sends, as
-##                       on a topic's page; Enter adds a line)
 ##
 ## **A PAGE IS AN `Html`** (Html.roc), built only from escaped text (a
-## name, an id, a title), numbers and markup written here. **A MESSAGE'S
-## HTML IS THE RENDERER'S OUTPUT, AND ONLY THAT**: the page holds
-## roc-markdown's HTML for it (Conversations.html_of, through
-## `Html.rendered`), as the transcript and the stream give it, and nothing
-## else is ever put in as HTML. Signed out, a page sends the browser to `/login`; a conversation
-## the viewer may not see is the 404 of one that is not there.
+## name, an id, a title), numbers and markup written here. Signed out, a
+## page sends the browser to `/login`.
 ##
 ## **THE AGENTS PAGE IS ITS OWN**, not a section of `/chat`: what it holds
 ## (agents, invites, keys) is the account's, not a conversation's, and its
@@ -46,8 +37,6 @@ import pf.Chat
 import Access
 import AccountCodec
 import Agents
-import Bytes
-import Cast
 import Channel
 import Channels
 import ConvKey
@@ -57,10 +46,8 @@ import ConvAccess
 import Conversations
 import Credentials
 import Html
-import MessageCodec
 import Principal
 import SignInWeb
-import Store
 import Stored
 import Wire
 
@@ -71,7 +58,6 @@ Pages := [].{
 		ConversationList,
 		AgentList,
 		ChannelList,
-		Conversation(ConvAccess.ConvId),
 	]
 
 	## **A PAGE OF ITS OWN**, for a visitor no page here knows (the redeem
@@ -108,13 +94,6 @@ Pages := [].{
 			Ok(AgentList)
 		} else if path == root.concat("/channels".to_utf8()) {
 			Ok(ChannelList)
-		} else if path.starts_with(root.append('/')) {
-			Conversations.id_of(
-				List.drop_first(
-					path,
-					List.len(root) + 1,
-				),
-			).map_ok(|id| Conversation(id)).map_err(|_| NotAPage)
 		} else {
 			Err(NotAPage)
 		}
@@ -129,12 +108,7 @@ Pages := [].{
 		} else if r == ChannelList {
 			serve_channels_page!(req.path)
 		} else {
-			use =
-				match r {
-					ConversationList | AgentList | ChannelList => ListConversations
-					Conversation(id) => Read(id)
-				}
-			match Credentials.load_viewer!(use) {
+			match Credentials.load_viewer!(ListConversations) {
 				Err(answer) => answer
 				Ok(
 					{
@@ -156,11 +130,6 @@ Pages := [].{
 								})
 								AgentList => serve_agents_page!(req.path)
 								ChannelList => serve_channels_page!(req.path)
-								Conversation(id) => serve_conversation!({
-									viewer,
-									accounts,
-									id,
-								})
 							}
 					}
 			}
@@ -491,94 +460,6 @@ key_html = |name, key| {
 	])
 }
 
-## A conversation: its people, its messages, each with roc-markdown's HTML
-## for it, and the box to post in; a 404 to a viewer ConvAccess will not let
-## see it.
-serve_conversation! : {
-	viewer : Access.Viewer(ConvAccess.ConvId),
-	accounts : List(Principal),
-	id : ConvAccess.ConvId,
-} => Chat.Answer
-serve_conversation! = |
-	{
-		viewer,
-		accounts,
-		id,
-	},
-|
-	match Store.load_conversation!(id) {
-		Err(Failed) => Chat.failed
-		Err(Missing) => Conversations.no_such
-		Ok(conv) =>
-			if !ConvAccess.can_see(viewer, { conv, accounts }) {
-				Conversations.no_such
-			} else {
-				match Conversations.load_page!(id, Newest) {
-					Err(Failed) => Chat.failed
-					Ok({ messages, earlier }) =>
-						page({
-							title: names(accounts, conv),
-							body_attrs: Html.join([
-								Html.markup(" data-conv=\""),
-								Html.number(id.to_u64()),
-								Html.markup("\""),
-							]),
-							body: Html.join([
-								Html.markup("<h1>"),
-								names(accounts, conv),
-								Html.markup("</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<ul id=people hidden>\n"),
-								Html.join(
-									posters(accounts, conv).map(
-										|poster| Html.join([
-											Html.markup("<li data-id=\""),
-											id_html(poster),
-											Html.markup("\">"),
-											Html.text(Conversations.header_of(accounts, poster)),
-											Html.markup("</li>\n"),
-										]),
-									),
-								),
-								Html.markup("</ul>\n<p><button id=earlier type=button"),
-								if (earlier) Html.join([]) else Html.markup(" hidden"),
-								Html.markup(">Earlier messages</button></p>\n<div id=messages>\n"),
-								Html.join(messages.map(|m| message_html(accounts, m))),
-								Html.markup("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Ctrl/⌘-Enter sends; Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
-								Html.markup(conversation_js),
-								Html.markup("</script>\n"),
-							]),
-						})
-				}
-			}
-	}
-
-## One message on the page: who (Conversations.header_of: the name, and
-## the login beside it) and when (escaped; the time made local by the
-## page's script), then roc-markdown's HTML for it, as is.
-message_html : List(Principal), MessageCodec.Fields -> Html
-message_html = |accounts, m|
-	Html.join([
-		Html.markup("<article id=m"),
-		Html.number(m.id),
-		Html.markup("><header>"),
-		Html.text(Conversations.header_of(accounts, m.by)),
-		Html.markup(" · <time data-at="),
-		Html.signed(m.at),
-		Html.markup("></time></header><div class=body>"),
-		Html.rendered(Conversations.html_of(m)),
-		Html.markup("</div></article>\n"),
-	])
-
-## **WHO CAN POST IN A CONVERSATION**: its participants, then the humans
-## its agents and bots answer to who are not participants themselves. The
-## page's people list holds each one's header (Conversations.header_of),
-## which its script draws on a live message: the same text the server drew.
-posters : List(Principal), ConvAccess.Conv -> List(Principal.Id)
-posters = |accounts, conv| {
-	ids = conv.participants().map(|b| b.id)
-	owners = conv.involved(accounts).map(|h| Principal.Id.Human(h)).keep_if(|id| !ids.contains(id))
-	ids.concat(owners)
-}
-
 ## A conversation's people, by name, escaped, a comma between.
 names : List(Principal), ConvAccess.Conv -> Html
 names = |accounts, conv|
@@ -728,134 +609,13 @@ channels_js =
 	\\});
 	\\
 
-## The conversation's script. A live message's HTML is roc-markdown's, from
-## the stream, the one thing set as HTML; its author and time are text.
-conversation_js : Str
-conversation_js =
-	\\const conv = document.body.dataset.conv, box = document.getElementById("messages");
-	\\const heads = {};
-	\\for (const li of document.querySelectorAll("#people li")) heads[li.dataset.id] = li.textContent;
-	\\const when = (t) => new Date(t * 1000).toLocaleString();
-	\\for (const t of document.querySelectorAll("time[data-at]")) t.textContent = when(+t.dataset.at);
-	\\function article(m) {
-	\\  const a = document.createElement("article"), h = document.createElement("header"), b = document.createElement("div");
-	\\  a.id = "m" + m.id;
-	\\  h.textContent = (heads[m.by] || m.by) + " · " + when(m.at);
-	\\  b.className = "body";
-	\\  b.innerHTML = m.html;
-	\\  a.append(h, b);
-	\\  return a;
-	\\}
-	\\// Caught up: the last message's bottom is in view, read before the
-	\\// append, as the browser client's feed reads it; only then is a new
-	\\// message followed, so a reader scrolled back is never yanked.
-	\\function caughtUp() {
-	\\  const last = box.lastElementChild;
-	\\  return !last || last.getBoundingClientRect().bottom <= window.innerHeight + 1;
-	\\}
-	\\function add(m) {
-	\\  if (document.getElementById("m" + m.id)) return;
-	\\  const stick = caughtUp();
-	\\  const a = article(m);
-	\\  box.append(a);
-	\\  if (stick) a.scrollIntoView({ block: "end" });
-	\\}
-	\\const earlier = document.getElementById("earlier");
-	\\earlier.addEventListener("click", async () => {
-	\\  const first = box.querySelector("article");
-	\\  const r = await fetch("/conversations/" + conv + "?before=" + first.id.slice(1));
-	\\  if (!r.ok) return;
-	\\  const page = await r.json();
-	\\  for (const m of page.messages.reverse()) if (!document.getElementById("m" + m.id)) box.prepend(article(m));
-	\\  earlier.hidden = !page.earlier;
-	\\});
-	\\const stream = new EventSource("/conversations/" + conv + "/stream");
-	\\stream.addEventListener("message", (e) => add(JSON.parse(e.data)));
-	\\stream.addEventListener("gap", () => location.reload());
-	\\const form = document.getElementById("post"), text = form.elements.body, said = document.getElementById("said");
-	\\text.addEventListener("keydown", (e) => {
-	\\  // Ctrl/⌘-Enter sends and Enter is a newline, as on a topic's page.
-	\\  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
-	\\});
-	\\form.addEventListener("submit", async (e) => {
-	\\  e.preventDefault();
-	\\  if (!text.value.trim()) return;
-	\\  const r = await fetch("/conversations/" + conv + "/messages", { method: "POST", body: text.value });
-	\\  if (r.ok) { add(await r.json()); text.value = ""; said.textContent = ""; } else said.textContent = await r.text();
-	\\});
-	\\
-
 expect Pages.route("/chat".to_utf8()) == Ok(ConversationList)
-expect Pages.route("/chat/7".to_utf8()).is_ok()
-expect Pages.route("/chat/0".to_utf8()).is_err()
-expect Pages.route("/chat/07".to_utf8()).is_err()
-expect Pages.route("/chat/7/x".to_utf8()).is_err()
+# A conversation's page is TopicPage's.
+expect Pages.route("/chat/7".to_utf8()).is_err()
 expect Pages.route("/chatx".to_utf8()).is_err()
 expect Pages.route("/chat/agents".to_utf8()) == Ok(AgentList)
 expect Pages.route("/chat/agents/x".to_utf8()).is_err()
 expect Pages.route("/chat/channels".to_utf8()) == Ok(ChannelList)
 expect Pages.route("/chat/channels/x".to_utf8()).is_err()
-# The one thing a page's script sets as HTML is a message's, from the stream.
-expect conversation_js.contains("b.innerHTML = m.html;") and !list_js.contains("innerHTML") and !agents_js.contains("innerHTML") and !channels_js.contains("innerHTML")
-
-# **A NAME HOLDING A SCRIPT IS TEXT ON THE PAGE**: a message's author named
-# `<script>`, as message_html writes the header, escaped.
-expect {
-	scripted = Principal.Human({
-		id: Cast.hid(9),
-		sign_in: Cast.github(9),
-		login: "h9",
-		name: "<script>alert(1)</script>",
-		role: Member,
-		generation: Cast.gen(1),
-	})
-	html = message_html(
-		[scripted],
-		{
-			id: 3,
-			at: 5,
-			by: scripted.id(),
-			body: [],
-		},
-	).bytes()
-	html.starts_with("<article id=m3><header>&lt;script&gt;alert(1)&lt;/script&gt; · @h9 · <time data-at=5>".to_utf8()) and Bytes.find(
-		html,
-		{ needle: "<script>".to_utf8(), at: 0 },
-	) == Err(NotFound)
-}
-
-# **AN AGENT NAMED AS A HUMAN SAYS WHOSE IT IS**: the header names its kind
-# and its owner's login (Conversations.header_of), as the script draws it
-# from the people list.
-expect {
-	owner = Principal.Human({
-		id: Cast.hid(4),
-		sign_in: Cast.github(4),
-		login: "showell",
-		name: "Steve Howell",
-		role: Member,
-		generation: Cast.gen(1),
-	})
-	posing = Principal.Agent({
-		id: Cast.aid(5),
-		name: "Steve Howell",
-		owner: Cast.hid(4),
-		generation: Cast.gen(1),
-	})
-	html = message_html(
-		[owner, posing],
-		{
-			id: 3,
-			at: 5,
-			by: posing.id(),
-			body: [],
-		},
-	).bytes()
-	html.starts_with("<article id=m3><header>Steve Howell · agent of @showell · <time data-at=5>".to_utf8())
-}
-expect conversation_js.contains("heads[li.dataset.id] = li.textContent;") and conversation_js.contains("(heads[m.by] || m.by)")
-# A live message is followed only when the reader was caught up, read
-# before the append: never a scroll on every message.
-expect conversation_js.contains("const stick = caughtUp();\n  const a = article(m);\n  box.append(a);\n  if (stick) a.scrollIntoView") and !conversation_js.contains("box.append(a);\n  a.scrollIntoView")
-# Ctrl/⌘-Enter sends, as on a topic's page; a plain Enter is a newline.
-expect conversation_js.contains("e.key === \"Enter\" && (e.ctrlKey || e.metaKey)") and !conversation_js.contains("!e.shiftKey")
+# No page's script here sets anything as HTML.
+expect !list_js.contains("innerHTML") and !agents_js.contains("innerHTML") and !channels_js.contains("innerHTML")

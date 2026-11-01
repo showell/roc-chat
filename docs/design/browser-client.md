@@ -79,8 +79,13 @@ or the online help, as in the Zig chat (`js/chat_right_sidebar.js:46-57`).
   of step 2 (`js/chat.js:317-337`). Later features put their notices there.
 - **Verify runs `node --check`** on every file in `js/`.
 
-**Agent conversations keep their own page for now** (`/chat/<id>`). They pick
-up the shared pieces (styling, compose) as those land.
+**A conversation's page is a topic's** (`/chat/<id>`, Steve, 2026-11-01:
+"apart from the agents, the human-to-human conversation should be the same UI
+as the last six months"). One renderer (app/TopicPage.roc) draws both, so a
+feature reaches both or neither. Its references are `MSG_<id>_<n>`
+(MessageRef.roc). It has no save: a reading list's line names a channel and a
+topic, and a conversation is neither, so saving one waits on a storage
+decision.
 
 ## The steps
 
@@ -136,8 +141,7 @@ two, M half a day.
      longer than any inside.
    - **e** writes `Edit of MSG_<ref>`, and the original collapses into a
      spoiler.
-   - Topic messages carry `ref`. Agent conversations need a reference form
-     before they get these.
+   - Topic messages carry `ref`; a conversation's page uses `MSG_<id>_<n>`.
    - Old: §5 q, e.
 7. **s, d, t, reactions (`:` and `+`), and search: each needs a route first.**
    Each is its own chunk, server then client, and they can run in parallel.

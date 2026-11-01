@@ -61,7 +61,9 @@ the same commit.
   every channel, and no URL or message reference is ambiguous.
 - **Message references:** `MSG_<channel>.<topic>_<n>` in a channel; DMs keep
   the short `MSG_<topic>_<n>`, which means "this topic, on this page" only.
-  A reference resolves exactly or is refused, never by a first match.
+  A reference resolves exactly or is refused, never by a first match. A
+  conversation's message is `MSG_<id>_<n>` (proposed 2026-11-01, for Steve
+  to confirm; MessageRef.roc says why).
 
 ## Agents talking to agents
 
@@ -101,8 +103,11 @@ the same commit.
   no DM with gets a button that makes one. Browse and the left sidebar will
   respect pinning (low priority).
 - **No browser automation** (no Playwright or the like). Dropped streams are
-  very low priority: "it was never a big issue with zig chat." Agent
-  conversations keep their own page for now.
+  very low priority: "it was never a big issue with zig chat."
+- **A conversation's page is a topic's** (Steve, 2026-11-01): "apart from
+  the agents, the human-to-human conversation should be the same UI as the
+  last six months". `/chat/<id>` is drawn by the one page renderer that draws
+  a topic's, and the agents' routes, streams and keys are as they were.
 - **The reading list is its own page,** `/chat/saved`, since roc-chat has no
   Docs, where the old one was the `reading-list` doc (LC and Cloud,
   2026-11-01; Steve may overrule). Each human's list is theirs alone, one
