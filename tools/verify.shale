@@ -25,7 +25,7 @@
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
 --   - every script in js/ (the browser client's) parses: `node --check`;
---   - the key table's rules hold (tools/keys_test.js, in node);
+--   - the scripts' rules hold (tools/keys_test.js, tools/quote_test.js, in node);
 --   - an edit to a module made since the last build rebuilds the chat
 --     (tools/verify_inputs.shale, a run of its own, in a copy of the tree);
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
@@ -191,19 +191,22 @@ for name in ls("js") do
   end
 end
 
--- **THE KEY TABLE'S RULES, IN NODE** (tools/keys_test.js): js/keys.js run
--- against a stubbed document, its every check a line here. Its exit is the
--- verdict; no PASS line at all is a failure, a test that ran nothing.
-local kt = run({"node", "tools/keys_test.js"}, {cwd = ".", timeout_ms = 60000, tail = 40, want = "tool: JavaScript's syntax, by node's own parser"})
-local key_checks = 0
-for line in lines(kt.out) do
-  local m = re_find(line, "^(PASS|FAIL)  (.*)$")
-  if m ~= nil then
-    key_checks = key_checks + 1
-    say(m.groups[1] == "PASS", m.groups[2])
+-- **THE SCRIPTS' RULES, IN NODE**: js/keys.js (tools/keys_test.js) and
+-- js/quote.js (tools/quote_test.js), each run against a stubbed page, its
+-- every check a line here. Its exit is the verdict; no PASS line at all is
+-- a failure, a test that ran nothing.
+for test in {"tools/keys_test.js", "tools/quote_test.js"} do
+  local kt = run({"node", test}, {cwd = ".", timeout_ms = 60000, tail = 40, want = "tool: JavaScript's syntax, by node's own parser"})
+  local checks = 0
+  for line in lines(kt.out) do
+    local m = re_find(line, "^(PASS|FAIL)  (.*)$")
+    if m ~= nil then
+      checks = checks + 1
+      say(m.groups[1] == "PASS", m.groups[2])
+    end
   end
+  say(kt.code == 0 and checks > 0, test .. ": " .. checks .. " checks (exit " .. kt.code .. ")")
 end
-say(kt.code == 0 and key_checks > 0, "tools/keys_test.js: " .. key_checks .. " checks (exit " .. kt.code .. ")")
 
 -- ── a new module's edit rebuilds the chat ──
 local ir = run({"shale", "tools/verify_inputs.shale"}, {cwd = ".", timeout_ms = build_ms, tail = 20})

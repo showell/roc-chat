@@ -20,7 +20,8 @@
        a 5xx is a failure, as a lost answer is: the host-down modal;
      - hands quote.js `Compose` (the old ChatCompose's): open the box,
        whether a send is out, put text in at the cursor, set the whole text
-       with the cursor at a place, and say a line in the status.
+       with the cursor at a place, say a line in the status, and the
+       host-down rule (its 3 s and its modal) for a fetch of its own.
    The style is its own (the server sends none): one <style> for the markup
    the server drew, as the old widget's. */
 (function () {
@@ -169,6 +170,8 @@
     insertAtCursor: insertAtCursor,
     setMarkdown: setMarkdown,
     say: function (line) { status.textContent = line; },
+    hostDownMs: hostDownMs,
+    alert: showAlert,
   };
 
   form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
