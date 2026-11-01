@@ -2161,9 +2161,10 @@ fn browse(w: *World) !void {
     if ((try pagePost(w, pip, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{q}), "name=ChitChat")).status != 201) return error.TopicNotMade;
     browsing = .{ .pip = pip, .quin = quin, .rue = rue, .p = p, .q = q, .pal_key = pal.key };
 
-    // Quin and Rue have no DM yet: Rue's row is the button that makes it.
+    // Quin and Rue have no DM yet: Rue's row is the form that makes it (and
+    // a first topic, "general" offered).
     const before = try get(w.a, w.port(), "/chat/browse", quin);
-    const rue_button = try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<form class=start-dm method=post action=\"/chat/dm/{s}\"><button>Start a DM</button></form>", .{ r, r });
+    const rue_button = try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>", .{ r, r });
     if (before.status != 200 or !has(before.body, rue_button)) return error.NoStartButton;
     const made = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "");
     if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", try std.fmt.allocPrint(w.a, "/chat/browse#dm-{s}", .{r}))) return error.DmNotStarted;
@@ -2938,7 +2939,45 @@ const steps = [_]Step{
     .{ .name = "save and the reading list: a save keeps the message's copy and its author's name with its note (read later when none, no length rule), the strip's line drawn by the server, \"✓ saved\" drawn for the viewer's own page and earlier pages and no one else's, saved again the one save at the newest end; the list newest first, everything escaped, the way back (a DM's by its other member); a note changed and a save removed by forms, an id never given twice; a save outlives losing the topic; a list that does not read back leaves the page shown and is never written over; bad n 400, no message 404, a stranger 404, signed out 401, a key 403, a GET 405; Saved in the top bar", .f = saveReadingList },
     .{ .name = "a conversation's page is a topic's: its bubbles, MSG_<id>_<n> page ids, the right pane and scripts, titled Chat w/ the others, no save; its stream sends the agents' route's posts as bubbles, resumed, the agents' JSON stream unchanged; earlier a fragment; a stranger and none the same 404 saying why; signed out a 303 and a 401, a key a 403", .f = conversationClient },
     .{ .name = "a conversation page's writes are a topic page's: compose sends a 201 bubble, streamed and stored once, the agents' stream told; quote and edit under MSG_<id>_<n>, an edit one's own, redrawn live and on the page, another's or a topic's ordinary; no save route; not UTF-8 400, a stranger 404, a key 403, signed out 401, a foreign Origin 403, a GET 405, bad n 400, no message 404", .f = conversationWrites },
+    .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
 };
+
+/// **STEVE'S PATH**, his acceptance test for the chat: (1) go to Browse,
+/// (2) choose Alice, (3) choose a topic name, (4) land on an empty chat with
+/// Alice for that topic, (5) type, (6) Send, (7) see the message.
+fn stevesPath(w: *World) !void {
+    const steve = try signUp(w.a, w.port(), 1062);
+    const alice = try signUp(w.a, w.port(), 1063);
+    const s = try hid(w.a, 1062);
+    const a = try hid(w.a, 1063);
+    // (1) Browse, and (2) Alice's row: the Add topic form, "general" offered.
+    const b = try get(w.a, w.port(), "/chat/browse", steve);
+    const form = try std.fmt.allocPrint(w.a, "<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\">", .{a});
+    if (b.status != 200 or !has(b.body, form)) return error.NoTopicForm;
+    // (3) a topic named; (4) the browser lands on its page, empty.
+    const made = try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{a}), "topic=plans");
+    const mine = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/plans", .{a});
+    if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", mine)) return error.NotLandedOnTopic;
+    const empty = try get(w.a, w.port(), mine, steve);
+    if (empty.status != 200 or !has(empty.body, "No messages yet") or !has(empty.body, "id=chat-form")) return error.TopicNotEmpty;
+    // (5, 6) typed and sent; (7) seen on the page, and by Alice on hers.
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{mine}), steve, "hello Alice")).status != 201) return error.NotSent;
+    if (!has((try get(w.a, w.port(), mine, steve)).body, "hello Alice")) return error.NotSeen;
+    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/plans", .{s}), alice)).body, "hello Alice")) return error.AliceDoesNotSee;
+    // The topic is on both Browse pages now, and named twice is a 409.
+    if (!has((try get(w.a, w.port(), "/chat/browse", alice)).body, try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/plans\">plans</a>", .{s}))) return error.NotOnBrowse;
+    if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{a}), "topic=plans")).status != 409) return error.NamedTwice;
+    if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{a}), "topic=no+spaces")).status != 400) return error.BadNameTaken;
+    // A channel member adds a topic the same way; a stranger can't.
+    const x = browsing orelse return error.NoBrowsing;
+    const pears = try pagePost(w, x.quin, "/chat/channel/Orchard", "topic=Pears");
+    if (pears.status != 303 or !std.mem.eql(u8, pears.header("location") orelse "", "/chat/channel/Orchard/Pears")) return error.ChannelTopicNotMade;
+    if ((try get(w.a, w.port(), "/chat/channel/Orchard/Pears", x.quin)).status != 200) return error.ChannelTopicNoPage;
+    if ((try pagePost(w, x.rue, "/chat/channel/Orchard", "topic=Plums")).status == 303) return error.StrangerMadeTopic;
+    if ((try pagePost(w, x.quin, "/chat/channel/Orchard", "")).status != 400) return error.UnnamedTopic;
+    if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard", .{ .key = x.pal_key }, "topic=ByKey")).status != 403) return error.KeyMadeTopic;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard", "", "topic=Nobody")).status != 401) return error.NobodyMadeTopic;
+}
 
 /// Every step, in order, each timed and said; true when all passed. With
 /// `hold` (`zig build e2e -- --hold`, for tools/browser_check.js), the

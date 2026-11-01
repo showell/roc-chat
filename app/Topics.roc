@@ -225,6 +225,40 @@ Topics := [].{
 		}
 	}
 
+	## **A TOPIC MADE IN A CHANNEL** (Topic.make decides who may, and its
+	## name): the topic stored once, or the refusal said. The topics' JSON
+	## route and Browse's new-topic forms both make one here.
+	make_topic! : {
+		channel : ChannelName,
+		name : Str,
+		kind : [Human, Agents(List(Principal.Id))],
+	} => Try(Topic, Chat.Answer)
+	make_topic! = |
+		{
+			channel: in_channel,
+			name: topic_name,
+			kind,
+		},
+	| {
+		v = Topics.load_viewer!({})?
+		channel = load_channel!(in_channel)?
+		topics = Store.load_topics!(channel).map_err(|_| Chat.failed)?
+		made =
+			Topic.make({
+				by: v.viewer,
+				channel,
+				name: topic_name,
+				kind,
+				topics: topics.topics,
+				accounts: v.accounts,
+			}).map_err(make_refused)?
+		match Store.save_new_topic!(made) {
+			Failed => Err(Chat.failed)
+			Taken => Err(Wire.refused(409, "this channel has a topic of that name, in some spelling"))
+			Written => Ok(made)
+		}
+	}
+
 	## **A POST BY A VIEWER ALREADY LOADED** (a topic's page's compose box):
 	## the topic's own rules, as `POST .../messages` takes it (`read_by!`,
 	## then `store_post!`); the message stored, or the refusal that ends it.
@@ -818,9 +852,6 @@ make! = |name| {
 
 make_from! : ChannelName, List(U8) => Try(Chat.Answer, Chat.Answer)
 make_from! = |name, form| {
-	v = Topics.load_viewer!({})?
-	channel = load_channel!(name)?
-	topics = Store.load_topics!(channel).map_err(|_| Chat.failed)?
 	topic_name =
 		match SignInWeb.form_field(form, "name") {
 			Ok(n) => Str.from_utf8(n) ?? ""
@@ -848,20 +879,13 @@ make_from! = |name, form| {
 				),
 			)
 		}?
-	made =
-		Topic.make({
-			by: v.viewer,
-			channel,
-			name: topic_name,
-			kind,
-			topics: topics.topics,
-			accounts: v.accounts,
-		}).map_err(make_refused)?
-	match Store.save_new_topic!(made) {
-		Failed => Ok(Chat.failed)
-		Taken => Ok(Wire.refused(409, "this channel has a topic of that name, in some spelling"))
-		Written => Ok(Wire.json(201, topic_json(made, v.accounts)))
-	}
+	made = Topics.make_topic!({
+		channel: name,
+		name: topic_name,
+		kind,
+	})?
+	v = Topics.load_viewer!({})?
+	Ok(Wire.json(201, topic_json(made, v.accounts)))
 }
 
 ## A refused making, said.
