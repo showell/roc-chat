@@ -11,7 +11,14 @@
      - e, or a bubble's "edit": one's own message, under "Edit of", in
        place of the box's text, the cursor at its first line;
      - neither while a send is out; with nothing selected, or another's
-       message for e, the key does nothing (the browser keeps it).
+       message for e, the key does nothing (the browser keeps it);
+     - the ask has compose's host-down rule: no answer in 3 s is the same
+       modal ("The host may be down. Please retry."), and an answer after
+       that is dropped; a refusal or a lost answer is said in the compose
+       status, never over a send's "Sending…";
+     - an edited message's "Edited in" link selects the edit, when it is on
+       the page, as the old `msg-ref` click did (the old navigateRef; a ref
+       to a message not loaded is the later N7's).
    The style is the server markup's, one <style>, as the old widget's: the
    meta line's buttons, and an edited message's note and spoiler. */
 (function () {
@@ -34,18 +41,30 @@
     + ' border-left:3px solid var(--cc-border); padding:2px 0 2px 8px; margin-top:4px; }';
   document.head.appendChild(s);
 
-  /* The server's text for the bubble, then `put` with it; a refusal or a
-     lost answer said in the compose box. */
+  /* The server's text for the bubble, then `put` with it, once: the
+     answer, a refusal or a lost answer said in the compose box, or the
+     host-down modal at 3 s, whichever comes first; the rest dropped. */
   function ask(url, bubble, put) {
     Feed.reveal(bubble);
+    var settled = false;
+    function first() {
+      if (settled) return false;
+      settled = true;
+      clearTimeout(timer);
+      return true;
+    }
+    var timer = setTimeout(function () {
+      if (first()) Compose.alert('The host may be down. Please retry.');
+    }, Compose.hostDownMs);
     fetch(url + '?n=' + bubble.dataset.id).then(function (r) {
       if (r.ok) return r.json();
       return r.text().then(function (why) { throw new Error(why.trim() || String(r.status)); });
     }).then(function (answer) {
-      if (Compose.isPending()) return;
+      if (!first() || Compose.isPending()) return;
       Compose.open();
       put(answer);
     }, function (e) {
+      if (!first() || Compose.isPending()) return;
       Compose.open();
       Compose.say('Could not load that message: ' + e.message);
     });
@@ -63,7 +82,12 @@
   bubbles.addEventListener('click', function (e) {
     var t = e.target;
     if (!t.closest) return;
-    if (t.closest('.msg-quote')) quote(t.closest('.chat-msg'));
+    var edited = t.closest('.chat-edited-note a.msg-ref');
+    if (edited) {
+      e.preventDefault();
+      var to = document.getElementById(edited.getAttribute('href').slice(1));
+      if (to) Feed.reveal(to);
+    } else if (t.closest('.msg-quote')) quote(t.closest('.chat-msg'));
     else if (t.closest('.msg-edit')) edit(t.closest('.chat-msg'));
   });
 

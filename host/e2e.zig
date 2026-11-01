@@ -2516,6 +2516,13 @@ fn quoteEdit(w: *World) !void {
     try l.until("after the fake");
     if (has(l.got.items, "id=msg-2 ")) return error.AnothersEditApplied;
 
+    // The newest page draws its own: an edit of 108 (Pip's "after the
+    // fake"), posted as 109, supersedes it on the page itself.
+    if ((try request(w.a, w.port(), "POST", base ++ "/send", x.pip, "Edit of MSG_Orchard.Banana_108\n\nafter the fake, fixed")).status != 201) return error.NotPosted;
+    try l.until("after the fake, fixed");
+    const newest = try get(w.a, w.port(), base, x.quin);
+    if (!has(newest.body, "Edited in <a class=msg-ref href=\"#msg-109\">MSG_Orchard.Banana_109</a></div><details class=chat-edited-spoiler><summary>original</summary><div class=chat-edited-orig>after the fake</div>")) return error.NewestPageEditWrong;
+
     // Resumed: the backlog sends the edit's redraw after the edit.
     const resumed = try Listener.open(w.a, w.port(), base ++ "/stream", x.quin, "105");
     defer resumed.close();

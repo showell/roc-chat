@@ -22,41 +22,79 @@ Edits := [].{
 	## DM's, and what the old client wrote in a channel too), ended as the
 	## old `\b` ended it: by anything not a letter, a digit or `_`, the
 	## longest reference that leaves (`Edit of MSG_Lobby.Chat_3. Typo`).
+	##
+	## **ITS COST IS BOUNDED**, whatever the body: the run is read no
+	## further than the longest reference (`ref_most`), so a body of 64 KB
+	## costs what one of 146 bytes does. A run longer than that reference is
+	## read as the old pattern read it: the longest start that ends at a
+	## number followed by a `.` or a `-`.
 	target : Topic.At, List(U8) -> Try(U64, [NotAnEdit])
-	target = |at, body| {
-		lead = "Edit of MSG_".to_utf8()
+	target = |at, body|
 		if !body.starts_with(lead) {
 			Err(NotAnEdit)
 		} else {
 			rest = body.drop_first(lead.len() - 4)
-			longest(at, rest.take_first(token_len(rest, 0)))
+			run = rest.take_first(token_len(rest, 0))
+			if run.len() <= ref_most {
+				longest(at, run)
+			} else {
+				# Too long to be one: only a start of it can be.
+				match cut(run, run.len()) {
+					Ok(start) => longest(at, start)
+					Err(NotAnEdit) => Err(NotAnEdit)
+				}
+			}
 		}
-	}
 
-	## **WHICH MESSAGES ARE SUPERSEDED, AND BY WHICH EDIT**: each message
-	## of `messages` (one topic's, oldest first) that a later one by the same
-	## author edits, with the last such edit's number.
-	superseded : Topic.At, List(MessageCodec.Fields) -> List({ n : U64, by : U64 })
-	superseded = |at, messages|
-		messages.fold(
-			[],
-			|found, m|
+	## **WHETHER `edit` SUPERSEDES `original`**, the one rule of it: a later
+	## message by the same author (the old `sameAuthor`; so a message never
+	## supersedes itself, and no post hides another's).
+	supersedes : { original : MessageCodec.Fields, edit : MessageCodec.Fields } -> Bool
+	supersedes = |{ original, edit }| original.id < edit.id and original.by == edit.by
+
+	## **WHICH OF `messages` ARE SUPERSEDED, AND BY WHICH EDIT**: one
+	## topic's messages from `first` on, oldest first, each superseded by the
+	## last later message of its author's that edits it (`supersedes`). One
+	## pass: only a body that starts "Edit of MSG_" is read, and its original
+	## is found by its place (`id - first`), never searched for.
+	Supersession : { first : U64, by : List(U64) }
+
+	superseded : Topic.At, List(MessageCodec.Fields) -> Edits.Supersession
+	superseded = |at, messages| {
+		first = messages.first().map_ok(|m| m.id) ?? 1
+		by = messages.fold(
+			List.repeat(0, messages.len()),
+			|marks, m|
 				match Edits.target(at, m.body) {
-					Err(NotAnEdit) => found
-					Ok(t) =>
-						if t >= m.id {
-							found
-						} else {
-							match messages.find_first(|o| o.id == t) {
-								Ok(original) if original.by == m.by => found.keep_if(|f| f.n != t).append({
-									n: t,
-									by: m.id,
-								})
-								_ => found
-							}
+					Ok(t) if t >= first =>
+						match messages.get(t - first) {
+							Ok(original) if Edits.supersedes({
+								original,
+								edit: m,
+							}) => marks.set(
+								t - first,
+								m.id,
+							) ?? crash "Edits.superseded: an original found by its place is in the list"
+							_ => marks
 						}
+					_ => marks
 				},
 		)
+		{ first, by }
+	}
+
+	## **THE EDIT THAT SUPERSEDES MESSAGE `n`**, among those `superseded`
+	## found, or none.
+	edit_of : Edits.Supersession, U64 -> [NotEdited, EditedIn(U64)]
+	edit_of = |{ first, by }, n|
+		if n < first {
+			NotEdited
+		} else {
+			match by.get(n - first) {
+				Ok(e) if e != 0 => EditedIn(e)
+				_ => NotEdited
+			}
+		}
 
 	## **THE QUOTE-REPLY**, as the old `doQuote` wrote it: `In <ref> I said:`
 	## (or `you said:`, by whether the asker wrote it), then the markdown in
@@ -97,16 +135,29 @@ Edits := [].{
 	}
 }
 
+## What an edit starts with.
+lead : List(U8)
+lead = "Edit of MSG_".to_utf8()
+
+## **THE LONGEST REFERENCE**: `MSG_`, a channel's name (at most 40), `.`,
+## a topic's (at most 80), `_` and a message's number (at most 19 digits).
+ref_most : U64
+ref_most = 4 + 40 + 1 + 80 + 1 + 19
+
 ## The reference's run: the bytes a reference can hold (a name's letters,
 ## digits and `-`, the `.` between the names, the `_` before the number).
 token_len : List(U8), U64 -> U64
 token_len = |s, i|
-	match s.get(i) {
-		Ok(c) if (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_' or c == '.' or c == '-' => token_len(
-			s,
-			i + 1,
-		)
-		_ => i
+	if i > ref_most {
+		i
+	} else {
+		match s.get(i) {
+			Ok(c) if (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_' or c == '.' or c == '-' => token_len(
+				s,
+				i + 1,
+			)
+			_ => i
+		}
 	}
 
 ## **THE LONGEST REFERENCE `run` STARTS WITH**, as the old pattern's
@@ -262,8 +313,145 @@ expect {
 			"Edit of MSG_Lobby.Chat_9",
 		),
 	]
-	Edits.superseded(at, msgs) == [{ n: 1, by: 4 }]
+	found = Edits.superseded(at, msgs)
+	[
+		1,
+		2,
+		3,
+		4,
+		5,
+	].map(|n| Edits.edit_of(found, n)) == [
+		EditedIn(4),
+		NotEdited,
+		NotEdited,
+		NotEdited,
+		NotEdited,
+	]
 }
+
+## A message of a test: its number, its author (Ann, or the boss), its body.
+said : {
+	id : U64,
+	boss : Bool,
+	body : Str,
+} -> MessageCodec.Fields
+said = |
+	{
+		id,
+		boss,
+		body,
+	},
+| {
+	id,
+	at: 0,
+	by: if (boss) Cast.boss.id() else Cast.ann.id(),
+	body: body.to_utf8(),
+}
+
+# A message never supersedes itself: "Edit of …_5" posted as 5.
+expect {
+	at = at_of("Lobby", "Chat")
+	found = Edits.superseded(
+		at,
+		[
+			said({
+				id: 5,
+				boss: Bool.False,
+				body: "Edit of MSG_Lobby.Chat_5",
+			}),
+		],
+	)
+	Edits.edit_of(found, 5) == NotEdited
+}
+# An edit of an edit: both are superseded, each by its own.
+expect {
+	at = at_of("Lobby", "Chat")
+	found = Edits.superseded(
+		at,
+		[
+			said({
+				id: 1,
+				boss: Bool.False,
+				body: "hi",
+			}),
+			said({
+				id: 2,
+				boss: Bool.False,
+				body: "Edit of MSG_Lobby.Chat_1\n\nhello",
+			}),
+			said({
+				id: 3,
+				boss: Bool.False,
+				body: "Edit of MSG_Lobby.Chat_2\n\nhello!",
+			}),
+		],
+	)
+	[
+		1,
+		2,
+		3,
+	].map(|n| Edits.edit_of(found, n)) == [
+		EditedIn(2),
+		EditedIn(3),
+		NotEdited,
+	]
+}
+# From a page's first on: an original before it is not among them, one in
+# it is found by its place.
+expect {
+	at = at_of("Lobby", "Chat")
+	found = Edits.superseded(
+		at,
+		[
+			said({
+				id: 7,
+				boss: Bool.True,
+				body: "hi",
+			}),
+			said({
+				id: 8,
+				boss: Bool.True,
+				body: "Edit of MSG_Lobby.Chat_3",
+			}),
+			said({
+				id: 9,
+				boss: Bool.True,
+				body: "Edit of MSG_Lobby.Chat_7",
+			}),
+		],
+	)
+	[
+		3,
+		7,
+		8,
+		9,
+	].map(|n| Edits.edit_of(found, n)) == [
+		NotEdited,
+		EditedIn(9),
+		NotEdited,
+		NotEdited,
+	]
+}
+# A DM's edit, by its short reference or its full one.
+expect {
+	dm = at_of("dm-2-7", "ChitChat")
+	Edits.target(dm, "Edit of MSG_ChitChat_3\n\nx".to_utf8()) == Ok(3)
+		and Edits.target(dm, "Edit of MSG_dm-2-7.ChitChat_3".to_utf8()) == Ok(3)
+		and Edits.target(dm, "Edit of MSG_dm-2-8.ChitChat_3".to_utf8()) == Err(NotAnEdit)
+}
+# A crafted body of 64 KB costs what a reference does: refused, or read to
+# its longest start, never parsed once per `-`.
+dashes : List(U8)
+dashes = List.join(List.repeat("1-".to_utf8(), 32768))
+
+expect Edits.target(
+	at_of("Lobby", "Chat"),
+	"Edit of MSG_1".to_utf8().concat(dashes),
+) == Err(NotAnEdit)
+expect Edits.target(
+	at_of("Lobby", "Chat"),
+	"Edit of MSG_Chat_3-".to_utf8().concat(List.repeat('a', 65536)),
+) == Ok(3)
 
 expect Edits.quote({
 	ref: "MSG_Lobby.Chat_3",

@@ -323,16 +323,17 @@ Topics := [].{
 	}
 
 	## **WHETHER A MESSAGE IS SUPERSEDED**, among `edits` (Edits.superseded
-	## over the messages from it on): the edit that names it, or none.
+	## over the messages from it on): the edit that names it, with its
+	## reference, or none.
 	edited_of : Topic.At,
 	{
-		edits : List({ n : U64, by : U64 }),
+		edits : Edits.Supersession,
 		n : U64,
 	} -> [NotEdited, EditedIn({ id : U64, ref : Str })]
 	edited_of = |at, { edits, n }|
-		match edits.find_first(|e| e.n == n) {
-			Ok(e) => EditedIn({ id: e.by, ref: ref_text(at, e.by) })
-			Err(_) => NotEdited
+		match Edits.edit_of(edits, n) {
+			EditedIn(e) => EditedIn({ id: e, ref: ref_text(at, e) })
+			NotEdited => NotEdited
 		}
 
 	## **AN EDIT, ON A PAGE** (Edits.roc): when `message` edits an earlier
@@ -349,7 +350,6 @@ Topics := [].{
 	edit_frame! = |at, { message, accounts }|
 		match Edits.target(at, message.body) {
 			Err(NotAnEdit) => []
-			Ok(t) if t >= message.id => []
 			Ok(t) => {
 				files = Store.topic_files(at)
 				original =
@@ -362,7 +362,7 @@ Topics := [].{
 						).map_err(|_| Failed)
 					}
 				match original {
-					Ok([o]) if o.by == message.by => {
+					Ok([o]) if Edits.supersedes({ original: o, edit: message }) => {
 						edited = EditedIn({ id: message.id, ref: ref_text(at, message.id) })
 						html = Bubble.data(
 							Bubble.of(
