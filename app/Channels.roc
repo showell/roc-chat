@@ -508,7 +508,7 @@ refusal_text = |why|
 			400,
 			"a channel's name is a letter, then letters, digits and hyphens, at most 40",
 		)
-		Taken => (409, "a channel of that name is there already, in some spelling")
+		Taken => (409, "that name is taken, by a channel or by someone, in some spelling")
 		NamedTwice(id) => (400, "${AccountCodec.id_text(id)} is named twice")
 		NotAHuman(id) => (
 			400,

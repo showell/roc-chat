@@ -46,6 +46,7 @@ import Admin
 import ApiKey
 import AuditCodec
 import Cast
+import ChannelName
 import ConvAccess
 import ConvKey
 import Credentials
@@ -140,6 +141,7 @@ Agents := [].{
 		agent : Principal.AgentId,
 		name : List(U8),
 		accounts : List(Principal),
+		channels : List(ChannelName),
 		now : I64,
 	} -> Try({ account : Principal, step : Accounts.Change }, _)
 	rename = |
@@ -148,6 +150,7 @@ Agents := [].{
 			agent,
 			name,
 			accounts,
+			channels,
 			now,
 		},
 	|
@@ -165,8 +168,9 @@ Agents := [].{
 								match DisplayName.from_utf8(name) {
 									Err(problem) => Err(NameRefused(problem))
 									Ok(chosen) =>
-										match Accounts.name_holder(accounts, chosen.to_str()) {
+										match Accounts.name_holder({ accounts, channels }, chosen.to_str()) {
 											Held(holder) if holder != account.id() => Err(NameTaken)
+											Channel(_) => Err(NameTaken)
 											_ => {
 												new_name = chosen.to_str()
 												renamed =
@@ -269,6 +273,7 @@ Agents := [].{
 		granter : Agents.Granter,
 		name : List(U8),
 		accounts : List(Principal),
+		channels : List(ChannelName),
 		settings : Accounts.Settings,
 		now : I64,
 	} -> Agents.Made
@@ -277,6 +282,7 @@ Agents := [].{
 			granter,
 			name,
 			accounts,
+			channels,
 			settings,
 			now,
 		},
@@ -309,7 +315,7 @@ Agents := [].{
 											_,
 											_,
 										) if Accounts.name_holder(
-											accounts,
+											{ accounts, channels },
 											chosen.to_str(),
 										) != Free => NameTaken
 										(
@@ -593,12 +599,21 @@ make_agent_for! = |granter, form| {
 			Ok(n) => n
 			Err(_) => []
 		}
-	match (Store.load_accounts!({}), SignIn.load_settings!({})) {
-		(Ok(accounts), Ok(settings)) =>
+	match (
+		Store.load_accounts!({}),
+		SignIn.load_settings!({}),
+		Store.load_channel_names!({}),
+	) {
+		(
+			Ok(accounts),
+			Ok(settings),
+			Ok(channels),
+		) =>
 			match Agents.make({
 				granter,
 				name,
 				accounts,
+				channels,
 				settings,
 				now,
 			}) {
@@ -651,13 +666,22 @@ rename_for! = |granter, { agent: id, form }| {
 			Ok(n) => n
 			Err(_) => []
 		}
-	match (Store.load_accounts!({}), SignIn.load_settings!({})) {
-		(Ok(accounts), Ok(settings)) => {
+	match (
+		Store.load_accounts!({}),
+		SignIn.load_settings!({}),
+		Store.load_channel_names!({}),
+	) {
+		(
+			Ok(accounts),
+			Ok(settings),
+			Ok(channels),
+		) => {
 			decided = Agents.rename({
 				granter,
 				agent: id,
 				name,
 				accounts,
+				channels,
 				now,
 			})
 			asked_name =
@@ -1771,6 +1795,7 @@ made_by = |who, name| Agents.make({
 	granter: Session(session_of(who)),
 	name: Str.to_utf8(name),
 	accounts: Cast.accounts,
+	channels: [],
 	settings: settings_after_cast,
 	now: 50,
 })
@@ -1797,6 +1822,7 @@ made_among = |who, accounts| Agents.make({
 	granter: Session(session_of(who)),
 	name: Str.to_utf8("CC"),
 	accounts,
+	channels: [],
 	settings: { ..settings_after_cast, next_agent_id: Cast.aid(100_000) },
 	now: 50,
 })
@@ -1863,6 +1889,7 @@ expect
 			granter: Session(session_of(2)),
 			name: Str.to_utf8("LC"),
 			accounts: after_first.accounts,
+			channels: [],
 			settings: after_first.settings,
 			now: 50,
 		}),
@@ -1882,6 +1909,7 @@ expect said(
 		granter: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: after_first.accounts,
+		channels: [],
 		settings: settings_after_cast,
 		now: 50,
 	}),
@@ -1891,6 +1919,7 @@ expect said(
 		granter: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: after_first.accounts,
+		channels: [],
 		settings: { ..after_first.settings, next_agent_id: Cast.aid(4) },
 		now: 50,
 	}),
@@ -1900,6 +1929,7 @@ expect said(
 		granter: Session(session_of(2)),
 		name: Str.to_utf8("LC"),
 		accounts: Cast.accounts,
+		channels: [],
 		settings: { ..settings_after_cast, next_agent_id: Cast.aid(3) },
 		now: 50,
 	}),
@@ -1935,6 +1965,7 @@ expect
 			granter: Session(session_of(2)),
 			name: Str.to_utf8("CC"),
 			accounts: after_retired.accounts,
+			channels: [],
 			settings: after_retired.settings,
 			now: 70,
 		}),
@@ -1960,6 +1991,38 @@ expect
 		Agent(a) => a.name == "H2 agent"
 		_ => Bool.False
 	}
+# A channel's name is taken too, made or renamed to, in any case; a near
+# miss is free.
+## Boss's agent 1 renamed to `name`, beside the channel RocChatDev.
+renamed_beside_channel : Str -> Try(Str, _)
+renamed_beside_channel = |name|
+	Agents.rename({
+		granter: Session(session_of(1)),
+		agent: Cast.aid(1),
+		name: name.to_utf8(),
+		accounts: Cast.accounts,
+		channels: [ChannelName.from_str("RocChatDev") ?? crash "a channel name"],
+		now: 50,
+	}).map_ok(
+		|r|
+			match r.account {
+				Agent(a) | Bot(a) => a.name
+				Human(h) => h.name
+			},
+	)
+
+expect renamed_beside_channel("rocchatdev") == Err(NameTaken)
+expect renamed_beside_channel("RocChatDev2") == Ok("RocChatDev2")
+expect said(
+	Agents.make({
+		granter: Session(session_of(2)),
+		name: Str.to_utf8("ROCCHATDEV"),
+		accounts: Cast.accounts,
+		channels: [ChannelName.from_str("RocChatDev") ?? crash "a channel name"],
+		settings: settings_after_cast,
+		now: 50,
+	}),
+) == NameTaken
 expect said(made_by(2, "")) == NameRefused(Empty)
 expect said(made_by(2, "a\nb")) == NameRefused(ControlCharacter)
 expect said(
@@ -1967,6 +2030,7 @@ expect said(
 		granter: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
+		channels: [],
 		settings: settings_after_cast,
 		now: Session.idle_secs,
 	}),
@@ -1976,6 +2040,7 @@ expect said(
 		granter: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.without_ann,
+		channels: [],
 		settings: settings_after_cast,
 		now: 50,
 	}),
@@ -1985,6 +2050,7 @@ expect said(
 		granter: Session(session_of(2)),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
+		channels: [],
 		settings: settings_after_cast,
 		now: -1,
 	}),
@@ -2022,6 +2088,7 @@ expect said(
 		granter: Key(ann_key),
 		name: Str.to_utf8("CC"),
 		accounts: Cast.accounts,
+		channels: [],
 		settings: settings_after_cast,
 		now: 50,
 	}),
@@ -2327,6 +2394,7 @@ renamed_by = |
 		agent: Cast.aid(id),
 		name: name.to_utf8(),
 		accounts: Cast.accounts,
+		channels: [],
 		now: 50,
 	}).map_ok(
 		|r|
@@ -2402,6 +2470,7 @@ expect
 		agent: Cast.aid(1),
 		name: "LC".to_utf8(),
 		accounts: Cast.accounts,
+		channels: [],
 		now: 50,
 	}) {
 		Ok({ step, account: _ }) => {
@@ -2409,8 +2478,8 @@ expect
 				[step],
 				{ accounts: Cast.accounts, settings: settings_after_cast },
 			).accounts
-			Accounts.name_holder(after, "lc") == Held(Principal.Id.Agent(Cast.aid(1)))
-				and Accounts.name_holder(after, "a1") == Free
+			Accounts.name_holder({ accounts: after, channels: [] }, "lc") == Held(Principal.Id.Agent(Cast.aid(1)))
+				and Accounts.name_holder({ accounts: after, channels: [] }, "a1") == Free
 				and after.len() == Cast.accounts.len()
 		}
 		Err(_) => Bool.False

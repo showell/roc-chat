@@ -7,6 +7,7 @@
 ## decided here alone. Pure.
 import Ascii
 import Cast
+import ChannelName
 import DisplayName
 import Principal
 
@@ -33,13 +34,26 @@ Accounts := [].{
 
 	## **WHO HOLDS THIS NAME, IF ANYONE?** The account, human, agent or bot,
 	## whose name is the same as `name` (DisplayName.same: case folded, runs
-	## of spaces collapsed), among `accounts`: one namespace for every
-	## principal, so a name is taken whoever holds it.
-	name_holder : List(Principal), Str -> [Held(Principal.Id), Free]
-	name_holder = |accounts, name|
+	## of spaces collapsed), among `accounts`; else the channel of that
+	## name, among `channels`. **ONE NAMESPACE FOR EVERY PRINCIPAL AND EVERY
+	## CHANNEL** (Steve, 2026-11-01): no human signs up as a channel's name,
+	## and no channel is made under a user's, whoever holds it.
+	## Who holds a name: an account, a channel, or nobody.
+	Holder : [
+		Held(Principal.Id),
+		Channel(ChannelName),
+		Free,
+	]
+
+	name_holder : { accounts : List(Principal), channels : List(ChannelName) }, Str -> Accounts.Holder
+	name_holder = |{ accounts, channels }, name|
 		match accounts.keep_if(|p| DisplayName.same(name_of(p), name)) {
 			[holder, ..] => Held(holder.id())
-			[] => Free
+			[] =>
+				match channels.keep_if(|c| DisplayName.same(c.to_str(), name)) {
+					[channel, ..] => Channel(channel)
+					[] => Free
+				}
 		}
 
 	## **ONE STEP OF AN ACCOUNT CHANGE** (a sign-in's, an agent's making),
@@ -299,18 +313,25 @@ named = |n, name| Principal.Human({
 	generation: Cast.gen(1),
 })
 
-expect Accounts.name_holder(
-	[named(1, "Debbie Benton")],
-	"debbie  BENTON",
-) == Held(Principal.Id.Human(Cast.hid(1)))
-expect Accounts.name_holder(
-	[Cast.owned(Agent, { id: 4, owner: 1 })],
-	"A4",
-) == Held(Principal.Id.Agent(Cast.aid(4)))
-expect Accounts.name_holder(
-	[Cast.owned(Bot, { id: 5, owner: 1 })],
-	"b5",
-) == Held(Principal.Id.Bot(Cast.aid(5)))
-expect Accounts.name_holder([named(1, "Debbie Benton")], "Debbie Bento") == Free
-expect Accounts.name_holder([named(1, "Ann")], "\u(0410)nn") == Free
-expect Accounts.name_holder([], "Ann") == Free
+## Who holds `name` among `accounts`, with no channel.
+held_among : List(Principal), Str -> Accounts.Holder
+held_among = |accounts, name| Accounts.name_holder({ accounts, channels: [] }, name)
+
+expect held_among([named(1, "Debbie Benton")], "debbie  BENTON") == Held(Principal.Id.Human(Cast.hid(1)))
+expect held_among([Cast.owned(Agent, { id: 4, owner: 1 })], "A4") == Held(Principal.Id.Agent(Cast.aid(4)))
+expect held_among([Cast.owned(Bot, { id: 5, owner: 1 })], "b5") == Held(Principal.Id.Bot(Cast.aid(5)))
+expect held_among([named(1, "Debbie Benton")], "Debbie Bento") == Free
+expect held_among([named(1, "Ann")], "\u(0410)nn") == Free
+expect held_among([], "Ann") == Free
+
+# A channel's name is held as an account's is, in any case; a near miss,
+# or a name with a space no channel can have, is free.
+rocchatdev : ChannelName
+rocchatdev = ChannelName.from_str("RocChatDev") ?? crash "rocchatdev: a channel name"
+
+expect Accounts.name_holder({ accounts: [], channels: [rocchatdev] }, "RocChatDev") == Channel(rocchatdev)
+expect Accounts.name_holder({ accounts: [], channels: [rocchatdev] }, "rocchatdev") == Channel(rocchatdev)
+expect Accounts.name_holder({ accounts: [], channels: [rocchatdev] }, "RocChatDev2") == Free
+expect Accounts.name_holder({ accounts: [], channels: [rocchatdev] }, "Roc Chat Dev") == Free
+# An account and a channel never share one; were they to, the account is said.
+expect Accounts.name_holder({ accounts: [named(1, "rocchatdev")], channels: [rocchatdev] }, "RocChatDev") == Held(Principal.Id.Human(Cast.hid(1)))

@@ -844,6 +844,12 @@ Store := [].{
 		}
 	}
 
+	## **EVERY CHANNEL'S NAME**, as the one namespace asks it
+	## (Accounts.name_holder) before a person or an agent is named: the
+	## channels `load_channels!` reads, a damaged one left out as it leaves it.
+	load_channel_names! : {} => Try(List(ChannelName), [Failed])
+	load_channel_names! = |{}| Store.load_channels!({}).map_ok(|listed| listed.channels.map(|c| c.name()))
+
 	## **A NEW TOPIC WRITTEN** in its channel, at its name's key: `Taken`
 	## when a topic of that key is in the channel already, in any spelling
 	## (another channel's topic of the name is no matter). Checked then set,

@@ -1636,7 +1636,7 @@ fn admitRemove(w: *World) !void {
 fn takenName(w: *World) !void {
     for ([_][]const u8{ "Lobby", "lobby", "LOBBY", "GENERAL" }) |name| {
         const r = try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name={s}", .{name}));
-        if (r.status != 409 or !has(r.body, "there already")) return error.MadeTwice;
+        if (r.status != 409 or !has(r.body, "that name is taken, by a channel or by someone")) return error.MadeTwice;
     }
     if ((try pagePost(w, w.ivy, "/channels", "name=1st")).status != 400) return error.BadNameTaken;
     if (count((try channelsPage(w, w.ivy)).body, "<li data-channel=") != 2) return error.NotTwo;
@@ -2958,6 +2958,7 @@ const steps = [_]Step{
     .{ .name = "a conversation's page is a topic's: its bubbles, MSG_<id>_<n> page ids, the right pane and scripts, titled Chat w/ the others, no save; its stream sends the agents' route's posts as bubbles, resumed, the agents' JSON stream unchanged; earlier a fragment; a stranger and none the same 404 saying why; signed out a 303 and a 401, a key a 403", .f = conversationClient },
     .{ .name = "a conversation page's writes are a topic page's: compose sends a 201 bubble, streamed and stored once, the agents' stream told; quote and edit under MSG_<id>_<n>, an edit one's own, redrawn live and on the page, another's or a topic's ordinary; no save route; not UTF-8 400, a stranger 404, a key 403, signed out 401, a foreign Origin 403, a GET 405, bad n 400, no message 404", .f = conversationWrites },
     .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
+    .{ .name = "one namespace for channels and users: no channel under a user's name, no human or agent under a channel's, in any case; near misses made", .f = channelNamesTaken },
     .{ .name = "a conversation on Browse and Recent: each participant's Browse lists it under Conversations, titled Chat w/ the other; each one's Recent has its tile, drawn as a DM's; live, a post's tile to each participant drawn for them and to no one else; a stranger sees none", .f = conversationsListed },
 };
 
@@ -2996,6 +2997,26 @@ fn stevesPath(w: *World) !void {
     if ((try pagePost(w, x.quin, "/chat/channel/Orchard", "")).status != 400) return error.UnnamedTopic;
     if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard", .{ .key = x.pal_key }, "topic=ByKey")).status != 403) return error.KeyMadeTopic;
     if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard", "", "topic=Nobody")).status != 401) return error.NobodyMadeTopic;
+}
+
+/// **ONE NAMESPACE FOR CHANNELS AND USERS** (Accounts.name_holder): an
+/// admin's channel under a human's name, in another case, is a 409, and a
+/// near miss is made; a human signing up as a channel's name, in another
+/// case, gets the form again saying it is taken, and an agent so named is
+/// a 409; their near misses are made.
+fn channelNamesTaken(w: *World) !void {
+    const human = try signUpAs(w.a, w.port(), 1058, "Wrenfield");
+    const as_human = try pagePost(w, w.ivy, "/channels", "name=WRENFIELD");
+    if (as_human.status != 409 or !has(as_human.body, "that name is taken, by a channel or by someone")) return error.ChannelTookAHumansName;
+    if ((try pagePost(w, w.ivy, "/channels", "name=Wrenfield2")).status != 201) return error.NearMissRefused;
+    if ((try pagePost(w, w.ivy, "/channels", "name=Harbor")).status != 201) return error.ChannelNotMade;
+    const again = try nameFormAnswer(w.a, w.port(), 1059, "harbor");
+    if (again.status != 400 or !has(again.body, "That name is taken")) return error.HumanTookAChannelsName;
+    if (again.cookie("session") != null) return error.SignedInAnyway;
+    const agent = try request(w.a, w.port(), "POST", "/agents", human, "name=HARBOR");
+    if (agent.status != 409 or !has(agent.body, "that name is taken")) return error.AgentTookAChannelsName;
+    if ((try request(w.a, w.port(), "POST", "/agents", human, "name=Harbor+Pal")).status != 201) return error.NearMissRefused;
+    _ = try signUpAs(w.a, w.port(), 1059, "Harbor+2");
 }
 
 /// **A CONVERSATION ON BROWSE AND RECENT** (app/Browse.roc, app/RecentPage.roc):

@@ -17,6 +17,7 @@
 ## each decision takes the accounts as they are, and the channels already
 ## made, and returns the channel to store or the refusal by name.
 import Access
+import Accounts
 import ChannelCast
 import ChannelCodec
 import ChannelName
@@ -31,8 +32,10 @@ Channel :: {
 	## in this order: nobody signed in (`SignedOut`); a key, not a session
 	## (`NeedsSession`); a session whose account is gone (`NoSuchPrincipal`);
 	## a member, not an admin (`NotAdmin`); a name the rule refuses
-	## (`NotAChannelName`, a DM's `dm-` name too); a name some channel has, in any case (`Taken`,
-	## so no two channels' paths meet, on a disk that folds case too); then
+	## (`NotAChannelName`, a DM's `dm-` name too); a name some channel or
+	## some account has, in any case (`Taken`: one namespace,
+	## Accounts.name_holder, so no two channels' paths meet, on a disk that
+	## folds case too, and no channel goes by a user's name); then
 	## each member: named twice (`NamedTwice`), or no one account holds it
 	## (`NoAccount`). No member at
 	## all is a channel, empty until an admin admits someone.
@@ -57,7 +60,7 @@ Channel :: {
 		# A `dm-` name is a DM's (ChannelName.dm_of), never an admin's.
 		if valid.is_dm() {
 			Err(NotAChannelName)
-		} else if channels.any(|c| c.name() == valid) {
+		} else if Accounts.name_holder({ accounts, channels: channels.map(|c| c.name()) }, valid.to_str()) != Free {
 			Err(Taken)
 		} else {
 			bound = members.fold_try(
@@ -366,6 +369,12 @@ expect make_by(Steve, { name: "a/b", members: [] }) == Err(NotAChannelName)
 expect make_by(Steve, { name: "cobblestone", members: [] }) == Err(Taken)
 expect make_by(Steve, { name: "COBBLESTONE", members: [] }) == Err(Taken)
 expect make_by(Steve, { name: "Cobblestone-2", members: [] }).is_ok()
+# No user's name either, a human's, an agent's or a bot's, in any case
+# (the cast's are H1.., a1.., b3..); a near miss is a name of its own.
+expect make_by(Steve, { name: "H2", members: [] }) == Err(Taken)
+expect make_by(Steve, { name: "a1", members: [] }) == Err(Taken)
+expect make_by(Steve, { name: "B3", members: [] }) == Err(Taken)
+expect make_by(Steve, { name: "H2x", members: [] }).is_ok()
 
 # Its members: anyone with an account, each once: humans, agents, bots.
 expect make_by(

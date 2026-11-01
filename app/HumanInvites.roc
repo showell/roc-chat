@@ -175,6 +175,7 @@ text_or = |form, { name, default }|
 invite_new! : Inviter, List(U8) => Try(Chat.Answer, Chat.Answer)
 invite_new! = |inviter, form| {
 	settings = SignIn.load_settings!({}).map_err(|_| Chat.failed)?
+	channels = Store.load_channel_names!({}).map_err(|_| Chat.failed)?
 	name = SignInWeb.form_field(form, "name") ?? []
 	made =
 		HumanInvite.invite({
@@ -183,6 +184,7 @@ invite_new! = |inviter, form| {
 			open: open_count(inviter),
 			made: List.len(inviter.mine),
 			accounts: inviter.accounts,
+			channels,
 			settings,
 			now: inviter.now,
 		}).map_err(invite_refused)?
@@ -618,6 +620,7 @@ join! = |form| {
 		Ok(record) => {
 			accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?
 			settings = SignIn.load_settings!({}).map_err(|_| Chat.failed)?
+			channels = Store.load_channel_names!({}).map_err(|_| Chat.failed)?
 			name =
 				match SignInWeb.form_field(form, "name") {
 					Ok(bytes) => Chosen(bytes)
@@ -630,6 +633,7 @@ join! = |form| {
 				record,
 				name,
 				accounts,
+				channels,
 				session: { id: sid, token_hash },
 				now,
 			}) {

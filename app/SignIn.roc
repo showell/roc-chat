@@ -342,12 +342,21 @@ sign_up! = |{}| {
 					Ok(n) => n
 					Err(_) => []
 				}
-			match (Store.load_nonce_use!(Pending, resumed.nonce()), load_facts!({})) {
-				(Ok(pending_use), Ok(f)) =>
+			match (
+				Store.load_nonce_use!(Pending, resumed.nonce()),
+				load_facts!({}),
+				Store.load_channel_names!({}),
+			) {
+				(
+					Ok(pending_use),
+					Ok(f),
+					Ok(channels),
+				) =>
 					match resumed.name({
 						name,
 						pending_use,
 						accounts: f.accounts,
+						channels,
 						settings: f.settings,
 						session: f.session,
 						now,

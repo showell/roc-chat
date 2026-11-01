@@ -14,6 +14,7 @@
 ## records are HumanInviteCodec's, the routes HumanInvites'.
 import Accounts
 import Cast
+import ChannelName
 import DisplayName
 import GitHubSignIn
 import Limits
@@ -123,6 +124,7 @@ HumanInvite := [].{
 		open : U64,
 		made : U64,
 		accounts : List(Principal),
+		channels : List(ChannelName),
 		settings : Accounts.Settings,
 		now : I64,
 	} -> Try({ human : Principal, steps : List(Accounts.Change) }, _)
@@ -133,6 +135,7 @@ HumanInvite := [].{
 			open,
 			made,
 			accounts,
+			channels,
 			settings,
 			now,
 		},
@@ -147,7 +150,7 @@ HumanInvite := [].{
 			Err(Capped(Made))
 		} else {
 			chosen = DisplayName.from_utf8(name).map_err(|p| NameRefused(p))?
-			if Accounts.name_holder(accounts, chosen.to_str()) != Free {
+			if Accounts.name_holder({ accounts, channels }, chosen.to_str()) != Free {
 				Err(NameTaken)
 			} else {
 				generation = Accounts.next_generation(accounts, settings).map_err(|why| Stuck(why))?
@@ -213,6 +216,7 @@ HumanInvite := [].{
 		record : HumanInvite.Record,
 		name : [Kept, Chosen(List(U8))],
 		accounts : List(Principal),
+		channels : List(ChannelName),
 		session : GitHubSignIn.NewSession,
 		now : I64,
 	} -> Try(
@@ -228,6 +232,7 @@ HumanInvite := [].{
 			record,
 			name,
 			accounts,
+			channels,
 			session,
 			now,
 		},
@@ -246,7 +251,7 @@ HumanInvite := [].{
 						steps = renamed(
 							principal,
 							name,
-							accounts,
+							{ accounts, channels },
 						)?
 						Ok({
 							admission: HumanInvite.Admission.(
@@ -275,21 +280,22 @@ HumanInvite := [].{
 ## takes); refused when the rule refuses it or another account holds it.
 renamed : Principal,
 [Kept, Chosen(List(U8))],
-List(Principal) -> Try(
+{ accounts : List(Principal), channels : List(ChannelName) } -> Try(
 	List(Accounts.Change),
 	[NameRefused(DisplayName.Problem), NameTaken],
 )
 renamed = |
 	principal,
 	name,
-	accounts,
+	names,
 |
 	match name {
 		Kept => Ok([])
 		Chosen(bytes) => {
 			chosen = DisplayName.from_utf8(bytes).map_err(|p| NameRefused(p))?
-			match Accounts.name_holder(accounts, chosen.to_str()) {
+			match Accounts.name_holder(names, chosen.to_str()) {
 				Held(id) if id != principal.id() => Err(NameTaken)
+				Channel(_) => Err(NameTaken)
 				_ if chosen.to_str() == name_of(principal) => Ok([])
 				_ => Ok([SetName({ account: principal.id(), name: chosen.to_str() })])
 			}
@@ -327,21 +333,26 @@ settings = {
 	next_human_id: Cast.hid(100),
 }
 
-asked : {
+## What an invite asks, in a test.
+Asked : {
 	by : Principal.HumanId,
 	name : List(U8),
 	open : U64,
 	made : U64,
 	accounts : List(Principal),
+	channels : List(ChannelName),
 	settings : Accounts.Settings,
 	now : I64,
 }
+
+asked : Asked
 asked = {
 	by: Cast.hid(2),
 	name: "Zoe".to_utf8(),
 	open: 0,
 	made: 0,
 	accounts: Cast.accounts,
+	channels: [],
 	settings,
 	now: 1761600000,
 }
@@ -391,6 +402,7 @@ redeemed = |now, name|
 		record: zoe_invite,
 		name,
 		accounts: zoe_made.accounts,
+		channels: [],
 		session: new_session,
 		now,
 	})
@@ -416,6 +428,37 @@ expect
 	}
 expect
 	match HumanInvite.invite({ ..asked, name: "a3".to_utf8() }) {
+		Err(NameTaken) => Bool.True
+		_ => Bool.False
+	}
+# A channel's name is taken as an account's is, in any case; a near miss
+# is free.
+roc_chat_dev : List(ChannelName)
+roc_chat_dev = [ChannelName.from_str("RocChatDev") ?? crash "roc_chat_dev: a channel name"]
+
+## Ann's invite of `name`, beside the channel RocChatDev.
+beside_channel : Str -> Asked
+beside_channel = |name| {
+	..asked,
+	name: name.to_utf8(),
+	channels: roc_chat_dev,
+}
+
+expect
+	match HumanInvite.invite(beside_channel("rocchatdev")) {
+		Err(NameTaken) => Bool.True
+		_ => Bool.False
+	}
+expect HumanInvite.invite(beside_channel("RocChatDev2")).is_ok()
+expect
+	match HumanInvite.redeem({
+		record: zoe_invite,
+		name: Chosen("RocChatDev".to_utf8()),
+		accounts: zoe_made.accounts,
+		channels: roc_chat_dev,
+		session: new_session,
+		now: 1761600100,
+	}) {
 		Err(NameTaken) => Bool.True
 		_ => Bool.False
 	}
@@ -505,6 +548,7 @@ expect
 		record: { ..zoe_invite, state: Spent },
 		name: Kept,
 		accounts: zoe_made.accounts,
+		channels: [],
 		session: new_session,
 		now: 1761600100,
 	}) {
@@ -516,6 +560,7 @@ expect
 		record: { ..zoe_invite, state: Revoked },
 		name: Kept,
 		accounts: zoe_made.accounts,
+		channels: [],
 		session: new_session,
 		now: 1761600100,
 	}) {
@@ -527,6 +572,7 @@ expect
 		record: zoe_invite,
 		name: Kept,
 		accounts: Cast.accounts,
+		channels: [],
 		session: new_session,
 		now: 1761600100,
 	}) {

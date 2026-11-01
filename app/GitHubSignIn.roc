@@ -58,6 +58,7 @@
 import Accounts
 import Ascii
 import Cast
+import ChannelName
 import DisplayName
 import GitHubLogin
 import Limits
@@ -465,6 +466,7 @@ GitHubSignIn := [].{
 			name : List(U8),
 			pending_use : [FirstUse, UsedBefore],
 			accounts : List(Principal),
+			channels : List(ChannelName),
 			settings : Accounts.Settings,
 			session : GitHubSignIn.NewSession,
 			now : I64,
@@ -485,6 +487,7 @@ GitHubSignIn := [].{
 				name,
 				pending_use,
 				accounts,
+				channels,
 				settings,
 				session,
 				now,
@@ -519,7 +522,7 @@ GitHubSignIn := [].{
 								_,
 								_,
 							) if Accounts.name_holder(
-								accounts,
+								{ accounts, channels },
 								chosen.to_str(),
 							) != Free => NameTaken
 							(
@@ -1189,6 +1192,7 @@ Naming : {
 	name : List(U8),
 	pending_use : [FirstUse, UsedBefore],
 	accounts : List(Principal),
+	channels : List(ChannelName),
 	settings : Accounts.Settings,
 }
 
@@ -1201,6 +1205,7 @@ usual_naming = {
 	name: Str.to_utf8("Ann B."),
 	pending_use: FirstUse,
 	accounts: [boss, ann_agent],
+	channels: [],
 	settings: usual_settings,
 }
 
@@ -1225,6 +1230,7 @@ name_said = |n|
 				name: n.name,
 				pending_use: n.pending_use,
 				accounts: n.accounts,
+				channels: n.channels,
 				settings: n.settings,
 				session: new_session,
 				now: n.at,
@@ -1310,6 +1316,17 @@ expect
 # case or spacing, is taken; a near miss is a name of its own.
 expect name_said({ ..usual_naming, name: Str.to_utf8("boss") }) == NameTaken
 expect name_said({ ..usual_naming, name: Str.to_utf8("ANN'S  agent") }) == NameTaken
+# A channel's name is taken too, in any case; a near miss is free.
+## Ann naming herself `name` beside the channel RocChatDev.
+beside_channel : Str -> Naming
+beside_channel = |name| {
+	..usual_naming,
+	name: Str.to_utf8(name),
+	channels: [ChannelName.from_str("RocChatDev") ?? crash "a channel name"],
+}
+
+expect name_said(beside_channel("ROCCHATDEV")) == NameTaken
+expect name_said(beside_channel("RocChatDev2")) == made(ann_as("RocChatDev2", Member))
 expect name_said({ ..usual_naming, name: Str.to_utf8("Boss 2") }) == made(ann_as("Boss 2", Member))
 expect name_said({
 	..usual_naming,
@@ -1635,6 +1652,7 @@ signed_up = |n|
 				name: n.name,
 				pending_use: n.pending_use,
 				accounts: n.accounts,
+				channels: n.channels,
 				settings: n.settings,
 				session: new_session,
 				now: n.at,
