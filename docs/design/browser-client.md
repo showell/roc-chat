@@ -61,7 +61,20 @@ or the online help, as in the Zig chat (`js/chat_right_sidebar.js:46-57`).
   re-thinking.
 - **The top bar holds the app's links in the Zig chat's place:** Browse,
   Recent, and later Docs, Images and Code, each as it lands. The old app's
-  are at `zs/chat_chrome.zig:88-93`.
+  are at `zs/chat_chrome.zig:88-93`: "Chat · Docs · Recent · Images · Code".
+  **Browse replaces Chat** (Steve: "The Chat link did a goofy decision on what
+  to show that was never satisfying anyway").
+
+**Settled details** (each matches the old app):
+- **Mine vs theirs:** the server marks each bubble with its author, and the
+  JS adds `mine` from the page's viewer id, since one live fragment goes to
+  every viewer. This is the old client's rule (`js/chat.js:301`).
+- **Times:** the server writes a machine-readable time, and the JS shows it in
+  the viewer's zone as "Jan 2 · 3:04 PM" (`js/message.js:158-165`).
+- **Ctrl/⌘-Enter sends everywhere,** agent conversations included.
+- **The status strip** (`#chat-notify`) and "✓ your message was sent" are part
+  of step 2 (`js/chat.js:317-337`). Later features put their notices there.
+- **Verify runs `node --check`** on every file in `js/`.
 
 **Agent conversations keep their own page for now** (`/chat/<id>`). They pick
 up the shared pieces (styling, compose) as those land.
