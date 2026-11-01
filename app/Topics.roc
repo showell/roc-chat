@@ -659,8 +659,7 @@ list_dms! = |{}|
 	}
 
 ## **A CHANNEL'S (OR A DM'S) TOPICS, GET**: those the viewer may read, by
-## name, with their kind; a channel none of whose topics they read lists
-## none.
+## name; a channel none of whose topics they read lists none.
 list! : ChannelName => Chat.Answer
 list! = |name|
 	match list_of!(name) {
@@ -899,12 +898,17 @@ read! = |asked_at|
 		}
 	}
 
-## Where a page ends: before `?before=`'s message, or the newest.
+## Where a page ends: before `?before=`'s message, or the newest. Ids run
+## from 1, so `0` names no message.
 before_of : List(List(U8)) -> Try([Newest, Before(U64)], [Malformed])
 before_of = |values|
 	match values {
 		[] => Ok(Newest)
-		[only] => Stored.count(only, "before").map_ok(|n| Before(n)).map_err(|_| Malformed)
+		[only] =>
+			match Stored.count(only, "before") {
+				Ok(n) if n > 0 => Ok(Before(n))
+				_ => Err(Malformed)
+			}
 		_ => Err(Malformed)
 	}
 
@@ -1248,6 +1252,9 @@ expect spot_of(at_of("Lobby", "ChitChat")) == "lobby/chitchat"
 expect before_of([]) == Ok(Newest)
 expect before_of(["7".to_utf8()]) == Ok(Before(7))
 expect before_of(["07".to_utf8()]) == Err(Malformed)
+expect before_of(["0".to_utf8()]) == Err(Malformed)
+expect before_of(["1".to_utf8()]) == Ok(Before(1))
+expect before_of(["x".to_utf8()]) == Err(Malformed)
 expect before_of(["7".to_utf8(), "8".to_utf8()]) == Err(Malformed)
 expect ref_text(
 	{ channel: ChannelName.dm_of(1, 2), topic: at_of("Lobby", "ChitChat").topic },
