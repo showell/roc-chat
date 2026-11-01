@@ -138,7 +138,8 @@ root : List(U8)
 root = "/chat".to_utf8()
 
 ## **THE VIEWER'S HOME**: Browse, their agents, the channels for an admin
-## alone (Channel says who administers), and the form that invites someone.
+## alone (Channel says who administers), the form that invites someone,
+## and the one that logs out.
 home : {
 	viewer : Access.Viewer,
 	accounts : List(Principal),
@@ -169,7 +170,9 @@ home = |
 			Html.text(Render.name_of(accounts, me)),
 			Html.markup(" ("),
 			id_html(me),
-			Html.markup(").</p>\n<script>\n"),
+			Html.markup(").</p>\n"),
+			Html.markup(SignInWeb.log_out_form),
+			Html.markup("\n<script>\n"),
 			Html.markup(home_js),
 			Html.markup("</script>\n"),
 		]),

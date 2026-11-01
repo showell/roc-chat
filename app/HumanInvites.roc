@@ -580,9 +580,11 @@ load_named! = |form|
 	}
 
 ## **/join/name**: the name an open invite's account holds, for the redeem
-## page to fill in; any other code, the one 401.
+## page to fill in; any other code, the one 401; a browser signed in
+## already, the 409 that says so (`refuse_signed_in!`).
 answer_name! : List(U8) => Try(Chat.Answer, Chat.Answer)
-answer_name! = |form|
+answer_name! = |form| {
+	refuse_signed_in!({})?
 	match load_named!(form) {
 		Err(Failed) => Ok(Chat.failed)
 		Err(Refused(_)) => Ok(join_refused)
@@ -606,12 +608,37 @@ answer_name! = |form|
 			}
 		}
 	}
+}
 
-## **/join, POST**: the code redeemed (HumanInvite.redeem), the invite
-## spent first so it never signs in twice, the name changed if asked, and
-## a session started on this device, its cookie set.
+## **A BROWSER SIGNED IN ALREADY IS REFUSED** (Steve, 2026-11-01): a
+## redemption would sign this browser in as the invitee, over whoever is
+## signed in. A 409 naming them, the invite unspent: they sign out first,
+## or open the link in a private window. A session not admitted (expired,
+## its account gone) is no one.
+refuse_signed_in! : {} => Try({}, Chat.Answer)
+refuse_signed_in! = |{}|
+	match SignIn.load_signed_in!({}) {
+		Err(Failed) => Err(Chat.failed)
+		Ok(Nobody) => Ok({})
+		Ok(Someone(p)) => Err(Wire.refused(409, "You're signed in as ${Render.name_of([p], p.id())}. Log out first, or open this invite in a private window."))
+	}
+
+## An ended session's answer, as a write's.
+removed_to_written : [Removed, Failed] -> [Failed, Written]
+removed_to_written = |ended|
+	match ended {
+		Removed => Written
+		Failed => Failed
+	}
+
+## **/join, POST**: refused while this browser is signed in
+## (`refuse_signed_in!`); else the code redeemed (HumanInvite.redeem), the
+## invite spent first so it never signs in twice, the name changed if
+## asked, and a session started on this device, its cookie set, any
+## session it held (one not admitted) ended.
 join! : List(U8) => Try(Chat.Answer, Chat.Answer)
 join! = |form| {
+	refuse_signed_in!({})?
 	now = Host.read_time!({})
 	match load_named!(form) {
 		Err(Failed) => Ok(Chat.failed)
@@ -662,7 +689,8 @@ join! = |form| {
 					session = Session.start_invited(redeemed.admission)
 					after = Accounts.applied(redeemed.steps, { accounts, settings })
 					written =
-						Store.save_human_invite!(redeemed.spent)
+						removed_to_written(SignIn.end_cookie_session!({}))
+							|> and_then!(|_| Store.save_human_invite!(redeemed.spent))
 							|> and_then!(|_| if (redeemed.steps.is_empty()) Written else Store.save_accounts!(after))
 							|> and_then!(|_| Store.save_session!(session.fields()))
 					match written {
@@ -788,7 +816,7 @@ join_js =
 	\\const gone = "This invite has been used, revoked, or has expired. Ask the person who invited you for a new one.";
 	\\if (!code) { said.textContent = "This link has no invite code in it."; form.hidden = true; }
 	\\else post("/join/name", "code=" + encodeURIComponent(code)).then(async (r) => {
-	\\  if (r.ok) form.elements.name.value = (await r.json()).name; else { said.textContent = gone; form.hidden = true; }
+	\\  if (r.ok) form.elements.name.value = (await r.json()).name; else { said.textContent = r.status == 409 ? await r.text() : gone; form.hidden = true; }
 	\\});
 	\\form.addEventListener("submit", async (e) => {
 	\\  e.preventDefault();

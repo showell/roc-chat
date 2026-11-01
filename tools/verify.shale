@@ -42,7 +42,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 1761
 const zig_floor = 210
-const e2e_steps = 82
+const e2e_steps = 83
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 -- A build and a run of everything: minutes, from an empty cache.

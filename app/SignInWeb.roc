@@ -20,6 +20,12 @@ import Stored
 
 SignInWeb := [].{
 
+	## **THE FORM THAT LOGS OUT** (SignIn's `/logout`, a POST behind
+	## Origin's check): the one markup every page that offers it draws, the
+	## frame's top bar (Chrome), the hello page and home (Pages).
+	log_out_form : Str
+	log_out_form = "<form class=logout method=post action=\"/logout\"><button>Log out</button></form>"
+
 	## What a signed token is for, written before its body in what is
 	## signed.
 	Purpose : [State, Pending]

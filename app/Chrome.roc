@@ -23,6 +23,7 @@
 import pf.Chat
 import Bytes
 import Html
+import SignInWeb
 
 Chrome := [].{
 
@@ -73,7 +74,9 @@ Chrome := [].{
 				if (here == Saved) Html.markup("<strong>Saved</strong>") else Html.markup("<a href=\"/chat/saved\">Saved</a>"),
 				Html.markup("</span></div><div class=\"app-top-user\"><button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>"),
 				viewer,
-				Html.markup("</strong> · <form class=logout method=post action=\"/logout\"><button>Log out</button></form></div></header>\n<div class=\"app-body-wrap\">\n"),
+				Html.markup("</strong> · "),
+				Html.markup(SignInWeb.log_out_form),
+				Html.markup("</div></header>\n<div class=\"app-body-wrap\">\n"),
 				body,
 				Html.markup("</div>\n<script src=\"/chrome.js\"></script>\n"),
 			]),

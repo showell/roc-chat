@@ -489,6 +489,7 @@ test "the hello page says who is signed in, or that nobody is, and nothing more"
     try std.testing.expectEqual(200, out.status);
     try std.testing.expect(has(out.body, "You're not signed in. <a href=/login>Sign in with GitHub</a>."));
     try std.testing.expect(!has(out.body, "Signed in as"));
+    try std.testing.expect(!has(out.body, "Log out"));
     // A cookie naming no session is nobody too.
     const stale = try get(a, rig.port(), "/", "__Host-session=" ++ forged_hex);
     try std.testing.expect(has(stale.body, "You're not signed in."));
@@ -496,7 +497,7 @@ test "the hello page says who is signed in, or that nobody is, and nothing more"
     const session = try signedUp(a, rig);
     const in = try get(a, rig.port(), "/", session);
     try std.testing.expectEqual(200, in.status);
-    try std.testing.expect(has(in.body, "Signed in as The Octocat (GitHub octocat). Your conversations are at <a href=/chat>/chat</a>."));
+    try std.testing.expect(has(in.body, "Signed in as The Octocat (GitHub octocat). The chat is at <a href=/chat/browse>Browse</a>.</p>\n<form class=logout method=post action=\"/logout\"><button>Log out</button></form>"));
     try std.testing.expect(!has(in.body, "not signed in"));
 }
 

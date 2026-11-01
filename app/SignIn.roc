@@ -104,21 +104,8 @@ SignIn := [].{
 	## Origin's check, as every write is, so another site cannot sign
 	## someone out.
 	serve_logout! : {} => Chat.Answer
-	serve_logout! = |{}| {
-		removed =
-			match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
-				Unsent => Removed
-				Sent(value) =>
-					match SignInWeb.unhex(value) {
-						Err(NotHex) => Removed
-						Ok(secret) =>
-							match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
-								Err(NotAHash) => Failed
-								Ok(token_hash) => Store.remove_session!(token_hash)
-							}
-					}
-			}
-		match removed {
+	serve_logout! = |{}|
+		match SignIn.end_cookie_session!({}) {
 			Failed => Chat.failed
 			Removed =>
 				see_other(Str.to_utf8("/"))
@@ -131,7 +118,43 @@ SignIn := [].{
 						}),
 					)
 		}
-	}
+
+	## **THE SESSION THIS BROWSER'S COOKIE NAMES, ENDED**: its record
+	## removed, so the cookie is a 401 from now on, wherever it was copied.
+	## No cookie, or one naming no session, is ended already. Logout ends
+	## it, and so does every sign-in (`sign_in!`, HumanInvites' join): a
+	## browser holds one session, and the one it held does not live on.
+	end_cookie_session! : {} => [Removed, Failed]
+	end_cookie_session! = |{}|
+		match SignInWeb.cookie(Host.read_header!(Str.to_utf8("cookie")), "session") {
+			Unsent => Removed
+			Sent(value) =>
+				match SignInWeb.unhex(value) {
+					Err(NotHex) => Removed
+					Ok(secret) =>
+						match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
+							Err(NotAHash) => Failed
+							Ok(token_hash) => Store.remove_session!(token_hash)
+						}
+				}
+		}
+
+	## **WHO THIS BROWSER IS SIGNED IN AS, NOW**: the human its cookie's
+	## session admits (Session.admit), or nobody (no cookie, no session,
+	## or one not admitted). What a redemption asks before it signs anyone
+	## in (HumanInvites).
+	load_signed_in! : {} => Try([Nobody, Someone(Principal)], [Failed])
+	load_signed_in! = |{}|
+		match SignIn.load_cookie_session!({})? {
+			NoSession => Ok(Nobody)
+			Found(session) => {
+				accounts = Store.load_accounts!({})?
+				match session.admit({ accounts, now: Host.read_time!({}) }) {
+					Refused(_) => Ok(Nobody)
+					Admitted({ principal, write: _ }) => Ok(Someone(principal))
+				}
+			}
+		}
 
 	## **THE SESSION THIS BROWSER'S COOKIE NAMES**, as stored, not yet
 	## admitted (Credentials admits it, and a grant asks ApiKey). No cookie,
@@ -163,9 +186,9 @@ SignIn := [].{
 	load_settings! : {} => Try(Accounts.Settings, [Failed])
 	load_settings! = |{}| Store.load_settings!(load_first_admin!({})?)
 
-	## **/, THE HELLO PAGE**: who this browser is signed in as, and where
-	## their conversations are; or that it is signed in as nobody, and how
-	## to sign in. Nothing more. A session not admitted (expired, its
+	## **/, THE HELLO PAGE**: who this browser is signed in as, where the
+	## chat is, and the form that logs out; or that it is signed in as
+	## nobody, and how to sign in. Nothing more. A session not admitted (expired, its
 	## account gone) is nobody.
 	serve_hello! : {} => Chat.Answer
 	serve_hello! = |{}| {
@@ -393,7 +416,9 @@ landing! = |{}|
 ## **SIGNED IN**: the plan's steps applied (Accounts.applied: the
 ## settings' counter, then the accounts), the session started
 ## (Session.start), all three stored, and the session cookie set; the
-## state and pending cookies ended.
+## state and pending cookies ended. **THE SESSION THIS BROWSER HELD ENDS
+## FIRST** (`end_cookie_session!`), whoever it was: signing in as someone
+## leaves no other session of this browser's alive.
 sign_in! : Facts,
 {
 	admission : GitHubSignIn.Admission,
@@ -402,11 +427,14 @@ sign_in! : Facts,
 sign_in! = |f, { admission, steps }| {
 	after = Accounts.applied(steps, { accounts: f.accounts, settings: f.settings })
 	session = Session.start(admission)
-	match Store.save_signed_in!({
-		accounts: after.accounts,
-		settings: after.settings,
-		session: session.fields(),
-	}) {
+	ended = SignIn.end_cookie_session!({})
+	match (
+		if (ended == Failed) Failed else Store.save_signed_in!({
+			accounts: after.accounts,
+			settings: after.settings,
+			session: session.fields(),
+		})
+	) {
 		Failed => Chat.failed
 		Written =>
 			see_other(landing!({}))
@@ -448,7 +476,8 @@ hello_page = |who| {
 				Html.join([
 					Html.markup("<p>Signed in as "),
 					Html.text(signed_in_as(principal)),
-					Html.markup(". Your conversations are at <a href=/chat>/chat</a>.</p>\n"),
+					Html.markup(". The chat is at <a href=/chat/browse>Browse</a>.</p>\n"),
+					Html.markup(SignInWeb.log_out_form),
 				])
 		}
 	Html.respond(200, Html.join([Html.markup("<!doctype html>\n<title>roc-chat</title>\n"), said]))

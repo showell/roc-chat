@@ -209,6 +209,19 @@ fn nameFormAnswer(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) !Re
     return request(a, port, "POST", "/login/name", both, try std.fmt.allocPrint(a, "name={s}", .{name}));
 }
 
+/// GitHub user `n`, already signed up, signs in again from a browser that
+/// holds `held` (its session cookie, or nothing): /login, then GitHub's
+/// callback. A returning user's answer: a 303 with a new session.
+fn signInAgain(a: std.mem.Allocator, port: u16, n: u64, held: []const u8) !Response {
+    const login = try get(a, port, "/login", held);
+    if (login.status != 303) return error.LoginNotARedirect;
+    const location = login.header("location") orelse return error.NoLocation;
+    const at = std.mem.indexOf(u8, location, "&state=") orelse return error.NoState;
+    const state = try std.fmt.allocPrint(a, "__Host-state={s}", .{login.cookie("state") orelse return error.NoStateCookie});
+    const cookies = if (held.len == 0) state else try std.fmt.allocPrint(a, "{s}; {s}", .{ held, state });
+    return get(a, port, try std.fmt.allocPrint(a, "/login/github?code=user-id-{d}&state={s}", .{ n, location[at + "&state=".len ..] }), cookies);
+}
+
 /// A held stream as a browser reads it: its head, then what it says, kept
 /// in `got` as it arrives.
 const Listener = struct {
@@ -2634,6 +2647,7 @@ const steps = [_]Step{
     .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
     .{ .name = "one namespace for channels and users: no channel under a user's name, no human or agent under a channel's, in any case; near misses made", .f = channelNamesTaken },
     .{ .name = "no conversation without a topic: the conversation routes and pages are 404s to a session and a key, Browse has no Conversations, and a key narrowed with only: is no grant; a topic still reads", .f = noConversationKind },
+    .{ .name = "one session a browser: an invite opened while signed in is a 409 naming who, unspent, and a fresh browser redeems it; a returning GitHub user signs straight in as themselves, ending the session the browser held and no other; Log out on home and the hello page", .f = oneSessionABrowser },
     .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
 };
 
@@ -2714,6 +2728,55 @@ fn noConversationKind(w: *World) !void {
     if (narrow.status != 400 or !has(narrow.body, "is `everywhere` or `off`")) return error.NarrowKeyGranted;
     // A topic still reads, both ways.
     if ((try get(w.a, w.port(), w.topic, w.ann)).status != 200) return error.TopicUnread;
+}
+
+/// **A BROWSER HOLDS ONE SESSION, AND SIGNING IN NEVER LEAVES ANOTHER
+/// ALIVE** (Steve, 2026-11-01, after an invite's redemption signed him out
+/// as Bob): an invite's link opened in a browser signed in already is a
+/// 409 that names who is signed in, at the name lookup and at the
+/// redemption, and the invite is unspent; a fresh browser redeems it. A
+/// returning GitHub user signs in straight to a session, as themselves,
+/// with no name form; signing in from a browser signed in as another ends
+/// that other's session there (its cookie a 401 after), and leaves the
+/// returning user's other browsers signed in. Home and the hello page
+/// offer Log out, as the frame's top bar does.
+fn oneSessionABrowser(w: *World) !void {
+    const sam = try signUpAs(w.a, w.port(), 1057, "Sam+Vale");
+    const s = try hid(w.a, 1057);
+    const made = try request(w.a, w.port(), "POST", "/human-invites", sam, "name=Jasper");
+    if (made.status != 201) return error.NotInvited;
+    const code = try field(made.body, "code");
+    const form = try std.fmt.allocPrint(w.a, "code={s}", .{code});
+    // Sam's own browser, signed in: refused, saying so, and nothing spent.
+    const named = try request(w.a, w.port(), "POST", "/join/name", sam, form);
+    if (named.status != 409 or !has(named.body, "You're signed in as Sam Vale. Log out first, or open this invite in a private window.")) return error.NameLookupWhileSignedIn;
+    const redeemed_signed_in = try request(w.a, w.port(), "POST", "/join", sam, form);
+    if (redeemed_signed_in.status != 409 or !has(redeemed_signed_in.body, "You're signed in as Sam Vale.")) return error.JoinedWhileSignedIn;
+    const still = try get(w.a, w.port(), "/me", sam);
+    if (!has(still.body, try std.fmt.allocPrint(w.a, "signed in as human:{s}\n", .{s}))) return error.SessionOverwritten;
+    // A fresh browser redeems it: the invite was never spent.
+    const fresh = try request(w.a, w.port(), "POST", "/join", "", form);
+    if (fresh.status != 200) return error.InviteSpentByRefusal;
+    const jasper = try std.fmt.allocPrint(w.a, "__Host-session={s}", .{fresh.cookie("session") orelse return error.NoSessionCookie});
+    if (!has((try get(w.a, w.port(), "/me", jasper)).body, "signed in as human:")) return error.JasperNotSignedIn;
+
+    // Sam signs in again with GitHub, from Jasper's browser: Sam, at once,
+    // and Jasper's session there ends; Sam's own browser stays signed in.
+    const back = try signInAgain(w.a, w.port(), 1057, jasper);
+    if (back.status != 303) return error.ReturningUserNotSignedIn;
+    const again = try std.fmt.allocPrint(w.a, "__Host-session={s}", .{back.cookie("session") orelse return error.NoSessionCookie});
+    if (!has((try get(w.a, w.port(), "/me", again)).body, try std.fmt.allocPrint(w.a, "signed in as human:{s}\n", .{s}))) return error.NotTheSameHuman;
+    if ((try get(w.a, w.port(), "/me", jasper)).status != 401) return error.HeldSessionLives;
+    if (!has((try get(w.a, w.port(), "/me", sam)).body, try std.fmt.allocPrint(w.a, "signed in as human:{s}\n", .{s}))) return error.OtherBrowserSignedOut;
+    // From a browser holding nothing: Sam again, no name form, no new account.
+    const plain = try signInAgain(w.a, w.port(), 1057, "");
+    if (plain.status != 303 or has(plain.body, "Your name")) return error.ReturningUserAskedForName;
+
+    // Log out, offered on home and the hello page.
+    const log_out = "<form class=logout method=post action=\"/logout\"><button>Log out</button></form>";
+    if (!has((try get(w.a, w.port(), "/chat", sam)).body, log_out)) return error.NoLogOutOnHome;
+    if (!has((try get(w.a, w.port(), "/", sam)).body, log_out)) return error.NoLogOutOnHello;
+    if (has((try get(w.a, w.port(), "/", "")).body, log_out)) return error.LogOutWhenSignedOut;
 }
 
 /// **THE AGENTS' LIMIT, IN A TOPIC** (Conversations.check_hops!, fifteen
