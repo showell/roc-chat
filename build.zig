@@ -205,10 +205,18 @@ fn testAppInputs(b: *std.Build, source: []const u8) []const []const u8 {
     return out.items;
 }
 
-/// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
+/// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` under
 /// app/ and platform/, then each in the folder of every package app/main.roc's
 /// header names. A list kept by hand drifts, and a module missing from it
 /// rebuilds nothing when edited.
+///
+/// **THE LIST IS FOUND AGAIN WHEN A FOLDER CHANGES**: Zig caches this
+/// configure logic, so a module made after the list was last found would
+/// stay off it, and an edit to that module would build nothing (an archive
+/// of the old Roc, linked as if new). So each folder listed, and the header
+/// read, is a dependency of the configure logic (`dependOnDirectoryContents`,
+/// `dependOnFileContents`): a module made, removed or renamed, or a package
+/// named anew, finds the list again. tools/verify_inputs.shale proves it.
 fn rocInputs(b: *std.Build) []const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     for ([_][]const u8{ "app", "platform" }) |folder| rocFiles(b, folder, &out);
@@ -216,15 +224,23 @@ fn rocInputs(b: *std.Build) []const []const u8 {
     return out.items;
 }
 
+/// Each `.roc` under `folder`, and in each folder under it; each folder a
+/// dependency of the configure logic, so a module made there finds the
+/// list again.
 fn rocFiles(b: *std.Build, folder: []const u8, out: *std.ArrayList([]const u8)) void {
     const io = b.graph.io;
+    b.dependOnDirectoryContents(b.path(folder));
     var dir = b.root.root_dir.handle.openDir(io, folder, .{ .iterate = true }) catch |e|
         std.process.fatal("the chat's Roc: cannot open {s} ({t})", .{ folder, e });
     defer dir.close(io);
     var it = dir.iterate();
     while (it.next(io) catch |e| std.process.fatal("the chat's Roc: cannot list {s} ({t})", .{ folder, e })) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".roc")) continue;
-        out.append(b.allocator, b.fmt("{s}/{s}", .{ folder, entry.name })) catch @panic("OOM");
+        const path = b.fmt("{s}/{s}", .{ folder, entry.name });
+        switch (entry.kind) {
+            .directory => rocFiles(b, path, out),
+            .file => if (std.mem.endsWith(u8, entry.name, ".roc")) out.append(b.allocator, path) catch @panic("OOM"),
+            else => {},
+        }
     }
 }
 
@@ -234,6 +250,7 @@ fn rocFiles(b: *std.Build, folder: []const u8, out: *std.ArrayList([]const u8)) 
 /// lives: roc-markdown, checked out beside roc-chat.
 fn packageFolders(b: *std.Build, app: []const u8, out: *std.ArrayList([]const u8)) void {
     const io = b.graph.io;
+    b.dependOnFileContents(b.path(app));
     const source = b.root.root_dir.handle.readFileAlloc(io, app, b.allocator, .unlimited) catch |e| std.process.fatal("the chat's packages: cannot read {s} ({t})", .{ app, e });
     const app_at = std.mem.indexOf(u8, source, "\napp [") orelse std.process.fatal("{s}: no app header", .{app});
     const open = std.mem.indexOfScalarPos(u8, source, app_at, '{') orelse std.process.fatal("{s}: an app header with no {{", .{app});

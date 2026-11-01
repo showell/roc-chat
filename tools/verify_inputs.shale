@@ -1,0 +1,70 @@
+-- **AN EDIT TO A NEW MODULE REBUILDS THE CHAT**: Zig caches build.zig's
+-- configure logic, and that logic finds the Roc modules by listing their
+-- folders, so a module made after the last listing would stay off the
+-- list, and an edit to it would build nothing: the old Roc linked as if it
+-- were new (build.zig, "THE LIST IS FOUND AGAIN WHEN A FOLDER CHANGES").
+-- tools/verify.shale runs it, from the repository's root:
+--
+--   shale tools/verify_inputs.shale
+--
+-- In a copy of the tree of its own (.zig-cache/verify/inputs/, app/ copied
+-- and the rest linked, beside links to roc-markdown and chat-client, as the
+-- build finds them), it builds once; makes a module, BuildProbe, whose
+-- number Limits.roc takes for a page's messages, and builds again; then
+-- edits BuildProbe alone and builds a third time. Neither edit is to
+-- main.roc, whose header the configure logic reads (and so depends on):
+-- only the folder's listing can bring BuildProbe in. The third build must
+-- run Roc again and link a different server. It prints one line, `PASS` or `FAIL`, which
+-- verify reads back, and exits 0 only on a pass. It never touches the tree
+-- it copies.
+--
+-- budget: steps=20000000 arena_bytes=200000000 changes=100 change_bytes=10000000 read_bytes=100000000
+
+const root = ".zig-cache/verify/inputs"
+const tree = root .. "/roc-chat"
+const cache = root .. "/cache"
+const build_ms = 1800000
+-- The pinned Roc, as verify finds it.
+const roc = real("tools:roc-" .. trim(read("roc-version")) .. "/roc")
+
+if exists(root) then remove_tree(root) end
+mkdir(tree)
+
+-- The tree: app/ copied (it is what the probe edits), everything else
+-- linked, and the two siblings the build reaches by `..`.
+const here = real(".")
+for name in ls(".") do
+  if name == "app" then
+    must(run({"cp", "-a", here .. "/app", tree .. "/app"}, {timeout_ms = 60000, whole = 2000}))
+  elseif name ~= ".git" and name ~= ".zig-cache" and name ~= "zig-out" then
+    must(run({"ln", "-s", here .. "/" .. name, tree .. "/" .. name}, {timeout_ms = 10000, whole = 2000}))
+  end
+end
+must(run({"ln", "-s", real("repos:roc-markdown"), root .. "/roc-markdown"}, {timeout_ms = 10000, whole = 2000}))
+must(run({"ln", "-s", real("repos:chat-client"), root .. "/chat-client"}, {timeout_ms = 10000, whole = 2000}))
+
+-- A build of the copy: its summary, and the hash of the server it linked.
+function built(what)
+  local b = run({"zig", "build", "-Droc=" .. roc, "--cache-dir", real(cache), "--prefix", real(root) .. "/out", "--summary", "all"}, {cwd = tree, timeout_ms = build_ms, tail = 200})
+  if b.code ~= 0 then
+    print("FAIL  an edit to a new module rebuilds the chat: the " .. what .. " build failed: " .. trim(b.out))
+    fail("the " .. what .. " build failed")
+  end
+  local sum = must(run({"sha256sum", real(root) .. "/out/bin/roc-chat"}, {timeout_ms = 60000, whole = 200})).out
+  local step = re_find(b.out, "roc \\(chat-x64musl\\.a\\) ([a-z]+)")
+  return {hash = sub(sum, 1, 64), roc = step ~= nil and step.group or "unseen"}
+end
+
+mkdir(root .. "/out")
+built("first")
+replace(tree .. "/app/BuildProbe.roc", "## A page's messages, the module this check makes.\nBuildProbe := [].{\n\tn : U64\n\tn = 100\n}\n")
+edit(tree .. "/app/Limits.roc", "import Stored\n", "import Stored\nimport BuildProbe\n")
+edit(tree .. "/app/Limits.roc", "page_messages = 100", "page_messages = BuildProbe.n")
+local made = built("second")
+edit(tree .. "/app/BuildProbe.roc", "n = 100", "n = 101")
+local edited = built("third")
+
+remove_tree(root)
+local ok = edited.roc == "success" and edited.hash ~= made.hash
+print((ok and "PASS" or "FAIL") .. "  an edit to a new module rebuilds the chat: Roc " .. edited.roc .. ", the server " .. (edited.hash ~= made.hash and "relinked" or "the same bytes"))
+if not ok then fail("an edit to a new module built nothing") end
