@@ -60,23 +60,14 @@ MessageRef :: { at : Topic.At, n : U64 }.{
 	number_in : MessageRef.Where, Str -> Try(U64, [NotAReference])
 	number_in = |place, text| {
 		bytes = text.to_utf8()
-		match place {
-			InTopic(at) => {
-				ref =
-					match MessageRef.from_str(text) {
-						Ok(r) => Ok(r)
-						Err(NotAReference) => MessageRef.in_topic(at, Str.from_utf8(bytes.drop_first(prefix.len())) ?? "")
-					}
-				match ref {
-					Ok(r) if r.at() == at and bytes.starts_with(prefix) => Ok(r.n())
-					_ => Err(NotAReference)
-				}
-			}
-			InConversation(c) =>
-				if !bytes.starts_with(prefix) {
-					Err(NotAReference)
-				} else {
-					match List.split_first(bytes.drop_first(prefix.len()), '_') {
+		if !bytes.starts_with(prefix) {
+			Err(NotAReference)
+		} else {
+			rest = bytes.drop_first(prefix.len())
+			match place {
+				InTopic(at) => topic_number(at, text)
+				InConversation(c) =>
+					match List.split_first(rest, '_') {
 						Err(NotFound) => Err(NotAReference)
 						Ok({ before, after }) =>
 							if number_of(before) == Ok(c.to_u64()) {
@@ -85,7 +76,7 @@ MessageRef :: { at : Topic.At, n : U64 }.{
 								Err(NotAReference)
 							}
 					}
-				}
+			}
 		}
 	}
 
@@ -138,6 +129,22 @@ MessageRef :: { at : Topic.At, n : U64 }.{
 	n = |MessageRef.(r)| r.n
 
 	is_eq : _
+}
+
+## A topic's reference in `text` (which starts `MSG_`): its full one, or
+## its short one read in `at`; the number of a message of `at`'s.
+topic_number : Topic.At, Str -> Try(U64, [NotAReference])
+topic_number = |at, text| {
+	short = Str.from_utf8(text.to_utf8().drop_first(prefix.len())) ?? ""
+	ref =
+		match MessageRef.from_str(text) {
+			Ok(r) => Ok(r)
+			Err(NotAReference) => MessageRef.in_topic(at, short)
+		}
+	match ref {
+		Ok(r) if r.at() == at => Ok(r.n())
+		_ => Err(NotAReference)
+	}
 }
 
 ## The written form's head.

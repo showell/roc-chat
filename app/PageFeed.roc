@@ -190,12 +190,22 @@ expect PageFeed.page_key(conv(4)) != PageFeed.page_key(conv(44))
 # A topic's messages are saved; a conversation's cannot be.
 expect PageFeed.unsaved(lobby) == NotSaved
 expect PageFeed.unsaved(conv(4)) == NoSave
+
+## A message by Ann, number 3.
+hi : MessageCodec.Fields
+hi = {
+	id: 3,
+	at: 0,
+	by: Cast.ann.id(),
+	body: "hi".to_utf8(),
+}
+
 # A conversation's bubble: its page's id, and no save link.
 expect {
-	f = Str.from_utf8(PageFeed.frame(conv(4), { accounts: [], m: { id: 3, at: 0, by: Cast.ann.id(), body: "hi".to_utf8() } })) ?? ""
+	f = Str.from_utf8(PageFeed.frame(conv(4), { accounts: [], m: hi })) ?? ""
 	f.starts_with("event: message\nid: 3\ndata: <div class=chat-msg id=msg-3 data-id=3 data-ref=\"4_3\" ") and !f.contains("msg-save")
 }
 expect {
-	f = Str.from_utf8(PageFeed.frame(lobby, { accounts: [], m: { id: 3, at: 0, by: Cast.ann.id(), body: "hi".to_utf8() } })) ?? ""
+	f = Str.from_utf8(PageFeed.frame(lobby, { accounts: [], m: hi })) ?? ""
 	f.contains("data-ref=\"Chat_3\" ") and f.contains("class=msg-save")
 }

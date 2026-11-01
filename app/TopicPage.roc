@@ -128,8 +128,19 @@ TopicPage := [].{
 				a,
 				b,
 				what,
-			] if chat == "chat".to_utf8() => tail(topic_place(kind, a, b)?, what)
-			[[], chat, id] if chat == "chat".to_utf8() => conversation_place(id).map_ok(|p| Page(p))
+			] if chat == "chat".to_utf8() => tail(
+				topic_place(
+					kind,
+					a,
+					b,
+				)?,
+				what,
+			)
+			[
+				[],
+				chat,
+				id,
+			] if chat == "chat".to_utf8() => conversation_place(id).map_ok(|p| Page(p))
 			[
 				[],
 				chat,
@@ -251,9 +262,9 @@ serve! = |
 | {
 	shown =
 		match place_of(r) {
-			InConversation(id) => conversation_shown!(path, r, id)?
-			InChannel(at) => topic_shown!(path, r, InChannel(at))?
-			InDm(d) => topic_shown!(path, r, InDm(d))?
+			InConversation(id) => conversation_shown!({ path, route: r }, id)?
+			InChannel(at) => topic_shown!({ path, route: r }, InChannel(at))?
+			InDm(d) => topic_shown!({ path, route: r }, InDm(d))?
 		}
 	match (r, body) {
 		(Page(_), _) => page!(shown)
@@ -270,6 +281,9 @@ serve! = |
 		| (Save(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
 	}
 }
+
+## **WHAT WAS ASKED**: the path, and the route it names.
+Asked : { path : List(U8), route : TopicPage.Route }
 
 ## The place a route asks of.
 place_of : TopicPage.Route -> TopicPage.Place
@@ -309,12 +323,8 @@ me_of = |
 
 ## **A TOPIC'S PAGE, DECIDED**: the viewer over topics, and the topic's
 ## verdict (Topics.verdict!).
-topic_shown! : List(U8), TopicPage.Route, TopicPage.Place => Try(Shown, Chat.Answer)
-topic_shown! = |
-	path,
-	r,
-	place,
-| {
+topic_shown! : Asked, TopicPage.Place => Try(Shown, Chat.Answer)
+topic_shown! = |{ path, route: r }, place| {
 	v = Topics.load_viewer!({})?
 	me = me_of(
 		r,
@@ -327,8 +337,26 @@ topic_shown! = |
 			Ok(f) => Ok(f)
 			Err(SignedOut) => Err(Wire.refused(401, "not signed in"))
 			Err(Failed) => Err(Chat.failed)
-			Err(NotYours) => Err(not_here(r, Html.text("#${at.channel.to_str()} is not a channel you are a member of."), { accounts: v.accounts, me }))
-			Err(NoTopic) => Err(not_here(r, Html.text("There is no topic “${at.topic.to_str()}” in this conversation."), { accounts: v.accounts, me }))
+			Err(NotYours) => Err(
+				not_here(
+					r,
+					{
+						why: Html.text("#${at.channel.to_str()} is not a channel you are a member of."),
+						accounts: v.accounts,
+						me,
+					},
+				),
+			)
+			Err(NoTopic) => Err(
+				not_here(
+					r,
+					{
+						why: Html.text("There is no topic “${at.topic.to_str()}” in this conversation."),
+						accounts: v.accounts,
+						me,
+					},
+				),
+			)
 		}?
 	made = found.topic.at()
 	Ok({
@@ -352,12 +380,8 @@ topic_shown! = |
 ## **A CONVERSATION'S PAGE, DECIDED**: the viewer over conversations (a
 ## send's, for posting; the rest, for reading), and whether they may see
 ## it (ConvAccess.can_see).
-conversation_shown! : List(U8), TopicPage.Route, ConvAccess.ConvId => Try(Shown, Chat.Answer)
-conversation_shown! = |
-	path,
-	r,
-	id,
-| {
+conversation_shown! : Asked, ConvAccess.ConvId => Try(Shown, Chat.Answer)
+conversation_shown! = |{ path, route: r }, id| {
 	use =
 		match r {
 			Send(_) => Post(id)
@@ -369,7 +393,14 @@ conversation_shown! = |
 		path,
 		a.viewer.who(),
 	)?
-	unseen = not_here(r, Html.text("Conversation ${id.to_u64().to_str()} is not a conversation you can see."), { accounts: a.accounts, me })
+	unseen = not_here(
+		r,
+		{
+			why: Html.text("Conversation ${id.to_u64().to_str()} is not a conversation you can see."),
+			accounts: a.accounts,
+			me,
+		},
+	)
 	conv =
 		match Store.load_conversation!(id) {
 			Ok(c) => Ok(c)
@@ -425,20 +456,20 @@ base_of = |at, place|
 
 ## **A PAGE THAT IS NOT THERE SAYS WHY**, as the old app's did
 ## (angry-gopher's chat.zig, `serveNotFoundPage`): a 404 page titled "Not
-## here", its reason (`what`), and the way back. A channel that is not
+## here", its reason (`why`), and the way back. A channel that is not
 ## there and one the viewer is not in read alike, as do a conversation
 ## that is not there and one they may not see, so it names nothing a
 ## viewer cannot see. Its stream and its fragments answer the plain 404.
 not_here : TopicPage.Route,
-Html,
 {
+	why : Html,
 	accounts : List(Principal),
 	me : Principal.Bound,
 } -> Chat.Answer
 not_here = |
 	r,
-	what,
 	{
+		why,
 		accounts,
 		me,
 	},
@@ -458,7 +489,7 @@ not_here = |
 				body_attrs: Html.join([]),
 				body: Html.join([
 					Html.markup("<p>"),
-					what,
+					why,
 					Html.markup("</p><p><a href=\"/chat/browse\">Go back</a></p>\n"),
 				]),
 			})
@@ -474,7 +505,14 @@ topic_title : Topic.At,
 	accounts : List(Principal),
 	me : Principal.Bound,
 } -> Html
-topic_title = |at, { members, accounts, me }|
+topic_title = |
+	at,
+	{
+		members,
+		accounts,
+		me,
+	},
+|
 	if at.channel.is_dm() {
 		name =
 			match members.keep_if(|b| b.id != me.id) {
@@ -537,7 +575,12 @@ page! = |s| {
 				Html.text(s.base),
 				Html.markup("/edit\""),
 				match saves {
-					Saves => Html.join([Html.markup(" data-save=\""), Html.text(s.base), Html.markup("/save\"")])
+					Saves =>
+						Html.join([
+							Html.markup(" data-save=\""),
+							Html.text(s.base),
+							Html.markup("/save\""),
+						])
 					NoSaves => Html.join([])
 				},
 			]),
@@ -595,7 +638,12 @@ send! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
 send! = |s, bytes| {
 	m =
 		match (s.poster, s.place) {
-			(ToTopic(v), InTopic(at)) => Topics.post_by!(v, at, bytes)?
+			(ToTopic(v), InTopic(at)) =>
+				Topics.post_by!(
+					v,
+					at,
+					bytes,
+				)?
 			(ToConversation(a), InConversation(_)) => Conversations.post_by!(a, bytes)?
 			_ => crash "TopicPage.send!: a page's poster is its place's"
 		}

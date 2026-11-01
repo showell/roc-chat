@@ -180,7 +180,12 @@ expect {
 		Bubble.of(
 			[scripted],
 			{
-				m: { id: 3, at: 5, by: scripted.id(), body: [] },
+				m: {
+					id: 3,
+					at: 5,
+					by: scripted.id(),
+					body: [],
+				},
 				ref: "4_3",
 				edited: NotEdited,
 				saved: NoSave,
@@ -211,7 +216,12 @@ expect {
 		Bubble.of(
 			[owner, posing],
 			{
-				m: { id: 3, at: 5, by: posing.id(), body: [] },
+				m: {
+					id: 3,
+					at: 5,
+					by: posing.id(),
+					body: [],
+				},
 				ref: "4_3",
 				edited: NotEdited,
 				saved: NoSave,

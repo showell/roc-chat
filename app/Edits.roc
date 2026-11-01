@@ -258,8 +258,18 @@ expect {
 	found = Edits.superseded(
 		conv_of(4),
 		[
-			{ id: 1, at: 0, by: Cast.ann.id(), body: "hi".to_utf8() },
-			{ id: 2, at: 0, by: Cast.ann.id(), body: "Edit of MSG_4_1\n\nhello".to_utf8() },
+			{
+				id: 1,
+				at: 0,
+				by: Cast.ann.id(),
+				body: "hi".to_utf8(),
+			},
+			{
+				id: 2,
+				at: 0,
+				by: Cast.ann.id(),
+				body: "Edit of MSG_4_1\n\nhello".to_utf8(),
+			},
 		],
 	)
 	Edits.edit_of(found, 1) == EditedIn(2) and Edits.edit_of(found, 2) == NotEdited
