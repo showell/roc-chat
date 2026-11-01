@@ -142,6 +142,10 @@ two, M half a day.
 7. **s, d, t, reactions (`:` and `+`), and search: each needs a route first.**
    Each is its own chunk, server then client, and they can run in parallel.
    - **s** saves with its link; the reading list is part of the design.
+     **Done** (DECISIONS.md, "The reading list is its own page"): the save
+     route on a topic's page, "✓ saved" drawn by the server for its one
+     viewer, the old popup, and `/chat/saved` with a form to change a note
+     and one to remove a save, in place of the Docs doc.
    - **d** downloads a transcript.
    - **t** opens the raw transcript.
    - **Reactions** are a route and a live fragment.

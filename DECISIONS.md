@@ -103,6 +103,19 @@ the same commit.
 - **No browser automation** (no Playwright or the like). Dropped streams are
   very low priority: "it was never a big issue with zig chat." Agent
   conversations keep their own page for now.
+- **The reading list is its own page,** `/chat/saved`, since roc-chat has no
+  Docs, where the old one was the `reading-list` doc (LC and Cloud,
+  2026-11-01; Steve may overrule). Each human's list is theirs alone, one
+  file of saves; a save is the saver's copy of the message as it was (its
+  markdown, its time, its author's name), with a one-line note ("read later"
+  when empty), and it outlives the saver's access to the topic, as the old
+  doc's blocks did. Two forms per save (change the note, remove it) stand in
+  for editing the doc. Saving a message again is the one save, moved to the
+  newest end with its note and copy as of then, the nearest to the old
+  append without holding a message twice. Save ids are never given twice
+  (the list keeps a mark). The list's 1 MiB is its only size rule. A list
+  that will not read back is said, never read as empty: a topic page is
+  still shown, with the old notice, and nothing writes over the list.
 - **After every chunk, a cold agent reviews it adversarially.** Its first
   question is a divergence from the Zig chat with no stated reason
   (`docs/design/browser-client-review.md`).

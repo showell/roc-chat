@@ -408,7 +408,7 @@ page! = |s| {
 		span,
 	).map_err(|_| Chat.failed)?
 	newest = messages.last().map_ok(|m| m.id) ?? 0
-	saved = load_saved_here!(s)?
+	saved = load_saved_here!(s)
 	Ok(
 		Chrome.page({
 			title: title_of(s),
@@ -430,16 +430,27 @@ page! = |s| {
 				Html.text(s.base),
 				Html.markup("/edit\" data-save=\""),
 				Html.text(s.base),
-				Html.markup("/save\" data-saved=\""),
-				Html.markup(Str.join_with(saved.map(|n| n.to_str()), " ")),
-				Html.markup("\""),
+				Html.markup("/save\""),
 			]),
 			body: Html.join([
-				Html.markup("<div class=chat-notify id=chat-notify></div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
+				Html.markup("<div class=chat-notify id=chat-notify>"),
+				match saved {
+					Known(_) => Html.join([])
+					# The old page's words when the saved set did not load: the page is shown.
+					Unknown => Html.markup("Could not read which messages you saved; reload to try again.")
+				},
+				Html.markup("</div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
 				if (span.first > 1) Html.join([]) else Html.markup(" hidden"),
 				Html.markup(">Earlier messages</button></div>\n<div id=chat-history class=chat-mp-history tabindex=-1><div id=chat-bubbles>\n"),
 				if (messages.is_empty()) Html.markup("<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>\n") else Html.join([]),
-				drawn(s, { messages, from_on: messages }),
+				drawn(
+					s,
+					{
+						messages,
+						from_on: messages,
+						saved,
+					},
+				),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
 				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
@@ -493,6 +504,7 @@ send! = |
 					m,
 					ref: Topics.local_ref(at, m.id),
 					edited: NotEdited,
+					saved: NotSaved,
 				},
 			),
 		),
@@ -535,7 +547,14 @@ earlier! = |s| {
 				Html.markup("<div data-earlier="),
 				Html.number(if (span.first > 1) 1 else 0),
 				Html.markup(">\n"),
-				drawn(s, { messages, from_on }),
+				drawn(
+					s,
+					{
+						messages,
+						from_on,
+						saved: load_saved_here!(s),
+					},
+				),
 				Html.markup("</div>\n"),
 			]),
 		),
@@ -599,9 +618,27 @@ backlog! = |at, { messages, accounts }|
 
 ## **THE BUBBLES OF `messages`**, each superseded by its author's last
 ## edit among `from_on` (the messages from the first of them to the
-## topic's newest), as the page draws it.
-drawn : Shown, { messages : List(MessageCodec.Fields), from_on : List(MessageCodec.Fields) } -> Html
-drawn = |s, { messages, from_on }| {
+## topic's newest), and "✓ saved" on the viewer's reading list (`saved`),
+## as the page draws it for its one viewer.
+drawn : Shown,
+{
+	messages : List(MessageCodec.Fields),
+	from_on : List(MessageCodec.Fields),
+	saved : [Known(List(U64)), Unknown],
+} -> Html
+drawn = |
+	s,
+	{
+		messages,
+		from_on,
+		saved,
+	},
+| {
+	mine =
+		match saved {
+			Known(numbers) => numbers
+			Unknown => []
+		}
 	at = s.topic.at()
 	edits = Edits.superseded(at, from_on)
 	Html.join(
@@ -612,6 +649,7 @@ drawn = |s, { messages, from_on }| {
 					m,
 					ref: Topics.local_ref(at, m.id),
 					edited: Topics.edited_of(at, { edits, n: m.id }),
+					saved: if (mine.contains(m.id)) Saved else NotSaved,
 				},
 			),
 		),
@@ -689,9 +727,11 @@ bad_n = Wire.refused(400, "n= is a message's id")
 
 ## **A SAVE FROM THE PAGE** (ReadingList.roc): the form's message (`n=`, one
 ## of this topic's) and its note (`note=`, ReadingList's rule), the
-## message's copy as it is now put on the viewer's reading list; `201` and
-## `{"ref":…,"list":"/chat/saved"}`, its reference and the list, for the
-## page's strip. A note not of the rule a 400; a list past its most a 413.
+## message's copy as it is now, its author's name with it, put on the
+## viewer's reading list; `201` and the strip's line, drawn here in the old
+## words (js/chat.js `savedStatus`, without "(Docs)"): "MSG_… saved to
+## reading list", the list linked. A refusal says why (SavedPage.refused):
+## the page's popup shows it.
 save! : {
 	viewer : Access.Viewer(Topic.At),
 	accounts : List(Principal),
@@ -715,10 +755,10 @@ save! = |
 			Err(Missing) => Ok([])
 			Err(Malformed) => Err(Wire.refused(400, "note= is not a form's value"))
 		}?
-	note = ReadingList.note_of(raw).map_err(SavedPage.note_refused)?
+	note = ReadingList.note_of(raw).map_err(|NotUtf8| SavedPage.refused(NotUtf8))?
 	m = load_message!(s, n)?
 	human = human_of(s.me)?
-	list = Store.load_saved!(human).map_err(|_| Chat.failed)?
+	list = SavedPage.load_for!(human)?
 	at = s.topic.at()
 	next = ReadingList.saved(
 		list,
@@ -728,24 +768,21 @@ save! = |
 			place: at,
 			n: m.id,
 			by: m.by,
+			from: Conversations.name_of(s.accounts, m.by),
 			at: m.at,
 			note,
 			body: m.body,
 		},
-	).map_err(
-		|TooBig| Wire.refused(
-			413,
-			"your reading list is full (${ReadingList.most_bytes.to_str()} bytes): remove some saves first",
-		),
-	)?
+	).map_err(|TooBig| SavedPage.refused(TooBig))?
 	match Store.save_saved!(human, next) {
 		Failed => Err(Chat.failed)
 		Written => Ok(
-			Wire.json(
+			Html.respond(
 				201,
-				JsonOut.object([
-					("ref", JsonOut.string(Topics.ref_of(at, m.id))),
-					("list", JsonOut.string("/chat/saved")),
+				Html.join([
+					Html.markup("<span class=chat-saved-status>"),
+					Html.text(Topics.ref_of(at, m.id)),
+					Html.markup(" saved to <a href=\"/chat/saved\">reading list</a></span>"),
 				]),
 			),
 		)
@@ -761,15 +798,21 @@ human_of = |me|
 		_ => Err(Pages.key_refused)
 	}
 
-## **WHICH OF THIS TOPIC'S MESSAGES THE VIEWER SAVED**, by number, as the
-## page's `data-saved` names them: "✓ saved" is the viewer's alone, and a
-## bubble is every viewer's.
-load_saved_here! : Shown => Try(List(U64), Chat.Answer)
-load_saved_here! = |s| {
-	human = human_of(s.me)?
-	list = Store.load_saved!(human).map_err(|_| Chat.failed)?
-	Ok(ReadingList.numbers_in(list, s.topic.at()))
-}
+## **WHICH OF THIS TOPIC'S MESSAGES THE VIEWER SAVED**, by number, for the
+## bubbles drawn for them alone ("✓ saved"). A list that will not read is
+## `Unknown`, and the page is still shown, saying so, as the old one did
+## (js/chat.js: "a saved set that will not read says so"): the reading
+## list is not the topic.
+load_saved_here! : Shown => [Known(List(U64)), Unknown]
+load_saved_here! = |s|
+	match s.me.id {
+		Human(h) =>
+			match Store.load_saved!(h) {
+				Ok(book) => Known(ReadingList.numbers_in(book, s.topic.at()))
+				Err(_) => Unknown
+			}
+		_ => Unknown
+	}
 
 bad_before : Chat.Answer
 bad_before = Wire.refused(400, "before= is a message's id")

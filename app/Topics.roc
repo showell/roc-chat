@@ -371,6 +371,8 @@ Topics := [].{
 									m: o,
 									ref: Topics.local_ref(at, o.id),
 									edited,
+									# Every page's: the edit frame's body is all a page takes.
+									saved: NotSaved,
 								},
 							),
 						)
@@ -483,6 +485,8 @@ Topics := [].{
 						m,
 						ref: Topics.local_ref(at, m.id),
 						edited: NotEdited,
+						# Every page's, and new: on no one's list yet.
+						saved: NotSaved,
 					},
 				),
 			),

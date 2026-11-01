@@ -2228,7 +2228,7 @@ fn topicPage(w: *World) !void {
         // top bar's toggle.
         "<title>Chat</title>\n<script src=\"/palette.js\"></script>\n<body class=chat-page",
         "<button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>Person 1041</strong>",
-        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\" data-quote=\"/chat/channel/Orchard/Banana/quote\" data-edit=\"/chat/channel/Orchard/Banana/edit\" data-save=\"/chat/channel/Orchard/Banana/save\" data-saved=\"\">", .{x.q}),
+        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\" data-quote=\"/chat/channel/Orchard/Banana/quote\" data-edit=\"/chat/channel/Orchard/Banana/edit\" data-save=\"/chat/channel/Orchard/Banana/save\">", .{x.q}),
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
         "<a href=\"/chat/browse\">Browse</a>",
         "<button id=earlier type=button hidden>Earlier messages</button>",
@@ -2550,14 +2550,18 @@ fn quoteEdit(w: *World) !void {
 
 /// **SAVE, AND THE READING LIST** (`POST .../save`, `/chat/saved`,
 /// app/ReadingList.roc, app/SavedPage.roc): a save puts the message's copy
-/// on the viewer's list with its note ("read later" when none), a `201`
-/// naming its reference; the page names the viewer's saved numbers there,
-/// and no one else's; saved again, the one save with the new note. The list
-/// shows each save newest first: its note, who and when, the way back, the
-/// body as it was, escaped; its note changed and it removed by forms, each
-/// a 303 back. A note too long a 400, no message a 404, a stranger 404,
-/// signed out 401, a key 403, a GET 405; the list's forms signed out 401,
-/// a save not there 404. "Saved" is in the top bar.
+/// on the viewer's list, its author's name frozen with it, its note ("read
+/// later" when none, no length rule of its own), a `201` and the strip's
+/// line ("MSG_… saved to reading list"); the page draws "✓ saved" for the
+/// viewer's own and no one else's; saved again, the one save, moved to the
+/// newest end. The list shows each save newest first: its note, who and
+/// when, the way back, the body as it was, all escaped; its note changed
+/// and it removed by forms, each a 303 back; an id never given twice. A
+/// save stays when its topic is closed to the saver. A list that does not
+/// read back leaves the topic page shown, saying so, and the list page and a
+/// save refuse in words, never writing over it. Bad n 400, no message 404, a
+/// stranger 404, signed out 401, a key 403, a GET 405; the list's forms
+/// signed out 401, a save not there 404. "Saved" is in the top bar.
 fn saveReadingList(w: *World) !void {
     const x = browsing orelse return error.NoBrowsing;
     const base = "/chat/channel/Orchard/Banana";
@@ -2569,22 +2573,43 @@ fn saveReadingList(w: *World) !void {
     // Pip's first message, saved by Quin with the default note; Pip's third
     // with a note of its own, then again with another.
     const first = try request(w.a, w.port(), "POST", base ++ "/save", x.quin, "n=1&note=");
-    if (first.status != 201 or !std.mem.eql(u8, first.body, "{\"ref\":\"MSG_Orchard.Banana_1\",\"list\":\"/chat/saved\"}")) return error.NotSaved;
-    if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, "n=3&note=look+%3Cb%3E")).status != 201) return error.NotSaved;
+    if (first.status != 201 or !std.mem.eql(u8, first.body, "<span class=chat-saved-status>MSG_Orchard.Banana_1 saved to <a href=\"/chat/saved\">reading list</a></span>")) return error.NotSaved;
+    if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, "n=3&note=look")).status != 201) return error.NotSaved;
     if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, "n=3&note=look+again")).status != 201) return error.NotSaved;
-    // The page names Quin's saved numbers there, and Pip's page none.
-    if (!has((try get(w.a, w.port(), base, x.quin)).body, "data-saved=\"1 3\"")) return error.SavedNotNamed;
-    if (!has((try get(w.a, w.port(), base, x.pip)).body, "data-saved=\"\"")) return error.SavedLeaked;
+    // A message with every character HTML spells, its note the same.
+    const tricky = try request(w.a, w.port(), "POST", base ++ "/send", x.pip, "<b>\"&'");
+    if (tricky.status != 201) return error.NotPosted;
+    const id_at = (std.mem.indexOf(u8, tricky.body, " data-id=") orelse return error.NotPosted) + " data-id=".len;
+    const tricky_n = tricky.body[id_at .. std.mem.indexOfScalarPos(u8, tricky.body, id_at, ' ') orelse return error.NotPosted];
+    if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, try std.fmt.allocPrint(w.a, "n={s}&note=%3Cb%3E%22%26%27", .{tricky_n}))).status != 201) return error.NotSaved;
+    // A note longer than any old cap: the list's 1 MiB is the one rule.
+    const long_note = "n=1&note=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, long_note)).status != 201) return error.LongNoteRefused;
+    if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, "n=1&note=")).status != 201) return error.NotSaved;
+
+    // Quin's page draws Quin's saved messages "✓ saved"; Pip's draws none.
+    const quins = (try get(w.a, w.port(), base, x.quin)).body;
+    const saved_button = "<button type=button class=\"msg-save saved\" title=\"Save this message to your reading list (s)\">✓ saved</button>";
+    if (!has(quins, saved_button) or has(quins, "data-saved")) return error.SavedNotDrawn;
+    const pips = (try get(w.a, w.port(), base, x.pip)).body;
+    if (has(pips, saved_button)) return error.SavedLeaked;
+    // An earlier page is drawn for its viewer too: message 1 and 3 there.
+    const earlier = (try get(w.a, w.port(), base ++ "/earlier?before=5", x.quin)).body;
+    if (std.mem.count(u8, earlier, saved_button) != 2) return error.EarlierSavedWrong;
 
     // The list: newest first, the one save of 3 with its last note, the
-    // copy as saved (1's original, from before its edit), escaped.
+    // copy as saved (1's original, from before its edit), its author's
+    // name as it was, everything escaped.
     const list = try get(w.a, w.port(), "/chat/saved", x.quin);
     const b = list.body;
-    const three = std.mem.indexOf(u8, b, "<article class=saved-entry id=saved-2><h3 class=saved-note>look again</h3><div class=saved-meta>" ++ pip_name_escaped ++ " · <time class=saved-time datetime=") orelse return error.ListWrong;
-    const one = std.mem.indexOf(u8, b, "<article class=saved-entry id=saved-1><h3 class=saved-note>read later</h3>") orelse return error.ListWrong;
-    if (three > one or has(b, "look &lt;b&gt;") or has(b, "Nothing saved yet")) return error.ListWrong;
+    const at_tricky = std.mem.indexOf(u8, b, "<h3 class=saved-note>&lt;b&gt;&quot;&amp;&#39;</h3><div class=saved-meta>" ++ pip_name_escaped ++ " · <time class=saved-time datetime=") orelse return error.ListWrong;
+    const at_three = std.mem.indexOf(u8, b, "<article class=saved-entry id=saved-2><h3 class=saved-note>look again</h3>") orelse return error.ListWrong;
+    const at_one = std.mem.indexOf(u8, b, "<article class=saved-entry id=saved-1><h3 class=saved-note>read later</h3>") orelse return error.ListWrong;
+    // 1 was saved again last: the newest end.
+    if (at_one > at_tricky or at_tricky > at_three or has(b, "Nothing saved yet")) return error.ListOutOfOrder;
+    if (!has(b, "<div class=saved-body>&lt;b&gt;&quot;&amp;&#39;</div>") or !has(b, "value=\"&lt;b&gt;&quot;&amp;&#39;\"")) return error.NotEscaped;
     if (!has(b, "<a class=saved-open href=\"/chat/channel/Orchard/Banana#msg-1\">↩ open in chat</a></div><div class=saved-body>hello **orchard**</div>")) return error.ListWrong;
-    if (!has(b, "<form class=saved-renote method=post action=\"/chat/saved/2/note\"><input name=note maxlength=200 value=\"look again\"")) return error.ListWrong;
+    if (!has(b, "<form class=saved-renote method=post action=\"/chat/saved/2/note\"><input name=note value=\"look again\"")) return error.ListWrong;
     if (!has(b, "<form class=saved-delete method=post action=\"/chat/saved/1/delete\"><button>Remove</button></form>")) return error.ListWrong;
     // A DM's save goes back by the other member, for the saver.
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/save", .{x.p}), x.quin, "n=1")).status != 201) return error.NotSaved;
@@ -2592,20 +2617,27 @@ fn saveReadingList(w: *World) !void {
     // Pip's list is his own: empty.
     if (!has((try get(w.a, w.port(), "/chat/saved", x.pip)).body, "Nothing saved yet.")) return error.ListLeaked;
 
-    // The forms: a note changed, then a save removed, each a 303 back.
+    // The forms: a note changed, then a save removed, each a 303 back; the
+    // removed one's id is never another's.
     const renoted = try request(w.a, w.port(), "POST", "/chat/saved/2/note", x.quin, "note=done+%26+dusted");
     if (renoted.status != 303 or !std.mem.eql(u8, renoted.header("location") orelse "", "/chat/saved#saved-2")) return error.NotRenoted;
-    const removed = try request(w.a, w.port(), "POST", "/chat/saved/1/delete", x.quin, "");
+    const removed = try request(w.a, w.port(), "POST", "/chat/saved/4/delete", x.quin, "");
     if (removed.status != 303 or !std.mem.eql(u8, removed.header("location") orelse "", "/chat/saved")) return error.NotRemoved;
-    const after = try get(w.a, w.port(), "/chat/saved", x.quin);
-    if (!has(after.body, "<h3 class=saved-note>done &amp; dusted</h3>") or has(after.body, "id=saved-1>")) return error.FormsWrong;
-    if (!has((try get(w.a, w.port(), base, x.quin)).body, "data-saved=\"3\"")) return error.FormsWrong;
+    if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, "n=7")).status != 201) return error.NotSaved;
+    const after = (try get(w.a, w.port(), "/chat/saved", x.quin)).body;
+    if (!has(after, "<h3 class=saved-note>done &amp; dusted</h3>") or has(after, "id=saved-4>") or !has(after, "id=saved-5>")) return error.FormsWrong;
+    if ((try request(w.a, w.port(), "POST", "/chat/saved/4/delete", x.quin, "")).status != 404) return error.IdReused;
+
+    // A save outlives the saver's access: Quin saves in Meadow, is removed
+    // from it, and still reads the copy.
+    if ((try pagePost(w, x.pip, "/channels/Meadow/topics", "name=Field")).status != 201) return error.TopicNotMade;
+    if ((try request(w.a, w.port(), "POST", "/channels/Meadow/topics/Field/messages", x.pip, "kept for **later**")).status != 201) return error.NotPosted;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Meadow/Field/save", x.quin, "n=1&note=meadow")).status != 201) return error.NotSaved;
+    if ((try pagePost(w, w.ivy, "/channels/Meadow/remove", try std.fmt.allocPrint(w.a, "member=human%3A{s}", .{x.q}))).status != 200) return error.NotRemoved;
+    if ((try get(w.a, w.port(), "/chat/channel/Meadow/Field", x.quin)).status != 404) return error.StillAMember;
+    if (!has((try get(w.a, w.port(), "/chat/saved", x.quin)).body, "<h3 class=saved-note>meadow</h3>")) return error.SaveLostWithAccess;
 
     // Refusals.
-    // A note of 201 bytes, one past the most.
-    const long = "n=3&note=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-    const too_long = try request(w.a, w.port(), "POST", base ++ "/save", x.quin, long);
-    if (too_long.status != 400 or !has(too_long.body, "a note is at most 200 bytes")) return error.LongNoteTaken;
     for ([_][]const u8{ "", "n=x", "n=01", "note=a" }) |form| {
         if ((try request(w.a, w.port(), "POST", base ++ "/save", x.quin, form)).status != 400) return error.BadNTaken;
     }
@@ -2614,7 +2646,7 @@ fn saveReadingList(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", base ++ "/save", "", "n=1")).status != 401) return error.NobodySaved;
     if ((try send(w.a, w.port(), "POST", base ++ "/save", .{ .key = x.pal_key }, "n=1")).status != 403) return error.KeySaved;
     if ((try get(w.a, w.port(), base ++ "/save", x.quin)).status != 405) return error.SaveByGet;
-    if ((try request(w.a, w.port(), "POST", "/chat/saved/7/delete", x.quin, "")).status != 404) return error.NoSuchSaveRemoved;
+    if ((try request(w.a, w.port(), "POST", "/chat/saved/77/delete", x.quin, "")).status != 404) return error.NoSuchSaveRemoved;
     if ((try request(w.a, w.port(), "POST", "/chat/saved/2/note", "", "note=x")).status != 401) return error.NobodyRenoted;
     if ((try get(w.a, w.port(), "/chat/saved/2/delete", x.quin)).status != 405) return error.RemovedByGet;
     const out = try get(w.a, w.port(), "/chat/saved", "");
@@ -2623,6 +2655,22 @@ fn saveReadingList(w: *World) !void {
     for ([_][]const u8{ "/save.js", "/saved_page.js" }) |path| {
         if ((try get(w.a, w.port(), path, x.quin)).status != 200) return error.NoScript;
     }
+
+    // A list that does not read back: the topic page is still shown, saying
+    // so in the old words; the list and a save refuse in words, and nothing
+    // writes over it.
+    const pips_list = try std.fmt.allocPrint(w.a, "chat/saved/{s}", .{x.p});
+    try w.rig.data.createDirPath(io, "chat/saved");
+    try put(w.rig.data, pips_list, "not a reading list\n");
+    const shown = try get(w.a, w.port(), base, x.pip);
+    if (shown.status != 200 or !has(shown.body, "<div class=chat-notify id=chat-notify>Could not read which messages you saved; reload to try again.</div>") or !has(shown.body, "<div class=chat-msg id=msg-")) return error.PageTakenDown;
+    const listed = try get(w.a, w.port(), "/chat/saved", x.pip);
+    if (listed.status != 500 or !has(listed.body, "your reading list does not read back")) return error.UnreadableNotSaid;
+    const refused = try request(w.a, w.port(), "POST", base ++ "/save", x.pip, "n=1");
+    if (refused.status != 500 or !has(refused.body, "your reading list does not read back")) return error.UnreadableNotSaid;
+    var kept: [64]u8 = undefined;
+    if (!std.mem.eql(u8, try w.rig.data.readFile(io, pips_list, &kept), "not a reading list\n")) return error.UnreadableOverwritten;
+    try w.rig.data.deleteFile(io, pips_list);
 }
 
 const steps = [_]Step{
@@ -2715,7 +2763,7 @@ const steps = [_]Step{
     .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another's agent topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
     .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, an agent topic's to its owner and not another member; signed out a 303 and a 401, a key a 403", .f = recentFeed },
     .{ .name = "quote-reply and edit: both links on every bubble; a quote under its reference, you or I said, its fence longer than any inside, a DM's short; an edit one's own alone; posted, the original redrawn live, in a resumed backlog and on its earlier page, another's edit ordinary; bad n a 400, no message a 404, a stranger 404, signed out 401, a key 403, a POST 405", .f = quoteEdit },
-    .{ .name = "save and the reading list: a save keeps the message's copy with its note (read later when none), the page names the viewer's saved numbers and no one else's, saved again the one save; the list newest first with note, who, when, the way back (a DM's by its other member) and the body escaped; a note changed and a save removed by forms; a long note 400, bad n 400, no message 404, a stranger 404, signed out 401, a key 403, a GET 405; Saved in the top bar", .f = saveReadingList },
+    .{ .name = "save and the reading list: a save keeps the message's copy and its author's name with its note (read later when none, no length rule), the strip's line drawn by the server, \"✓ saved\" drawn for the viewer's own page and earlier pages and no one else's, saved again the one save at the newest end; the list newest first, everything escaped, the way back (a DM's by its other member); a note changed and a save removed by forms, an id never given twice; a save outlives losing the topic; a list that does not read back leaves the page shown and is never written over; bad n 400, no message 404, a stranger 404, signed out 401, a key 403, a GET 405; Saved in the top bar", .f = saveReadingList },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

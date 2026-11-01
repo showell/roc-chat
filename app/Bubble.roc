@@ -28,8 +28,10 @@ Bubble := [].{
 	##
 	## **ITS META LINE'S LINKS** are the old ones (js/message.js `buildMeta`):
 	## "quote-reply" (q), "edit" (e), which the page's script shows on the
-	## viewer's own alone, and "save" (s), which it marks "✓ saved" for a
-	## message on the viewer's reading list. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
+	## viewer's own alone, and "save" (s), drawn "✓ saved" (`Saved`) for a
+	## message on the reading list of the one viewer a page is drawn for; a
+	## bubble every page shares (the stream's) is drawn `NotSaved`, and the
+	## script flips it after a confirmed save. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
 	## "Edited in <the edit's reference>" and its markdown in an "original" spoiler,
 	## in place of its body (js/message.js `markEdited`).
 	of : List(Principal),
@@ -37,6 +39,7 @@ Bubble := [].{
 		m : MessageCodec.Fields,
 		ref : Str,
 		edited : [NotEdited, EditedIn({ id : U64, ref : Str })],
+		saved : [Saved, NotSaved],
 	} -> Html
 	of = |
 		accounts,
@@ -44,6 +47,7 @@ Bubble := [].{
 			m,
 			ref,
 			edited,
+			saved,
 		},
 	|
 		Html.join([
@@ -65,7 +69,12 @@ Bubble := [].{
 			Html.signed(m.at),
 			Html.markup(">"),
 			Html.text(Bubble.fallback(m.at)),
-			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button> <button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button></div><div class=chat-body>"),
+			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button> "),
+			match saved {
+				NotSaved => Html.markup("<button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button>")
+				Saved => Html.markup("<button type=button class=\"msg-save saved\" title=\"Save this message to your reading list (s)\">✓ saved</button>")
+			},
+			Html.markup("</div><div class=chat-body>"),
 			match edited {
 				NotEdited => Html.rendered(Conversations.html_of(m))
 				EditedIn(e) =>
@@ -169,6 +178,7 @@ expect {
 			m,
 			ref: "<T>_3",
 			edited: NotEdited,
+			saved: NotSaved,
 		},
 	).bytes()
 	html == "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"&lt;T&gt;_3\" data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button> <button type=button class=msg-save title=\"Save this message to your reading list (s)\">save</button></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
@@ -188,6 +198,7 @@ expect {
 			m,
 			ref: "T_1",
 			edited: NotEdited,
+			saved: NotSaved,
 		},
 	).bytes().starts_with("<div class=chat-msg id=msg-1 data-id=1 data-ref=\"T_1\" data-by=\"human:9\"><div class=chat-meta>#1 human:9 · ".to_utf8())
 }
@@ -214,6 +225,7 @@ expect {
 				m,
 				ref: "T_2",
 				edited: EditedIn({ id: 7, ref: "MSG_T_7" }),
+				saved: NotSaved,
 			},
 		).bytes(),
 	) ?? ""
@@ -223,3 +235,25 @@ expect {
 # A CR becomes its character reference; an LF stays; nothing else changes.
 expect Bubble.data(Html.markup("a\r\nb")) == "a&#13;\nb".to_utf8()
 expect Bubble.data(Html.markup("<p>x</p>\n")) == "<p>x</p>\n".to_utf8()
+
+# On the viewer's reading list: "✓ saved", the class the script reads.
+expect {
+	m = {
+		id: 2,
+		at: 5,
+		by: human.id(),
+		body: "x".to_utf8(),
+	}
+	html = Str.from_utf8(
+		Bubble.of(
+			[human],
+			{
+				m,
+				ref: "T_2",
+				edited: NotEdited,
+				saved: Saved,
+			},
+		).bytes(),
+	) ?? ""
+	html.contains("<button type=button class=\"msg-save saved\" title=\"Save this message to your reading list (s)\">✓ saved</button></div>")
+}

@@ -15,6 +15,8 @@
 ## them, as the old doc's blocks did. A page is a browser's: signed out, a
 ## 303 to `/login` (the forms, a 401); a key, a 403. Its script
 ## (js/saved_page.js) writes each time in the viewer's zone and styles it.
+## **A LIST THAT DOES NOT READ BACK** is said, a 500 in words, and never
+## read as empty: a write would lose what is there.
 import pf.Chat
 import pf.Host
 import Bubble
@@ -35,16 +37,35 @@ import Wire
 
 SavedPage := [].{
 
-	## **WHY A NOTE IS REFUSED**, in words, a 400: the page's form and the
-	## topic page's save say the same.
-	note_refused : [NotUtf8, TooLong] -> Chat.Answer
-	note_refused = |why|
+	## **WHY A SAVE OR A NOTE IS REFUSED**, in words: the list's page and
+	## the topic page's save say the same, and the page's popup shows it.
+	refused : [
+		NotUtf8,
+		TooBig,
+		Unreadable,
+	] -> Chat.Answer
+	refused = |why|
 		match why {
 			NotUtf8 => Wire.refused(400, "a note is UTF-8 text")
-			TooLong => Wire.refused(
-				400,
-				"a note is at most ${ReadingList.note_most.to_str()} bytes",
+			TooBig => Wire.refused(
+				413,
+				"your reading list is full (${ReadingList.most_bytes.to_str()} bytes): remove some saves first",
 			)
+			# Said, never read as an empty list: a write would lose it.
+			Unreadable => Wire.refused(
+				500,
+				"your reading list does not read back, so it is left as it is; nothing was changed",
+			)
+		}
+
+	## **THE VIEWER'S READING LIST, OR WHY NOT**: one that does not read back
+	## is said (`refused`), and nothing writes over it.
+	load_for! : Principal.HumanId => Try(SavedCodec.Book, Chat.Answer)
+	load_for! = |human|
+		match Store.load_saved!(human) {
+			Ok(book) => Ok(book)
+			Err(Failed) => Err(Chat.failed)
+			Err(Unreadable) => Err(SavedPage.refused(Unreadable))
 		}
 
 	## What a path asks of the reading list.
@@ -144,12 +165,11 @@ serve! = |
 			Human(h) => Ok(h)
 			_ => Err(Pages.key_refused)
 		}?
-	list = Store.load_saved!(human).map_err(|_| Chat.failed)?
+	list = SavedPage.load_for!(human)?
 	match route {
 		Page => Ok(
 			page({
 				list,
-				accounts: v.accounts,
 				me: human,
 				viewer: Conversations.name_of(v.accounts, me.id),
 			}),
@@ -165,8 +185,13 @@ serve! = |
 					Err(Missing) => Ok([])
 					Err(Malformed) => Err(Wire.refused(400, "note= is not a form's value"))
 				}?
-			note = ReadingList.note_of(raw).map_err(SavedPage.note_refused)?
-			next = ReadingList.renoted(list, { id, note }).map_err(|NoSuchSave| no_such_save)?
+			note = ReadingList.note_of(raw).map_err(|NotUtf8| SavedPage.refused(NotUtf8))?
+			next =
+				match ReadingList.renoted(list, { id, note }) {
+					Ok(book) => Ok(book)
+					Err(NoSuchSave) => Err(no_such_save)
+					Err(TooBig) => Err(SavedPage.refused(TooBig))
+				}?
 			write_back!(human, { list: next, back: "/chat/saved#saved-${id.to_str()}" })
 		}
 	}
@@ -175,7 +200,7 @@ serve! = |
 ## **WRITE THE LIST BACK**, then a 303 to `back`.
 write_back! : Principal.HumanId,
 {
-	list : List(SavedCodec.Fields),
+	list : SavedCodec.Book,
 	back : Str,
 } => Try(Chat.Answer, Chat.Answer)
 write_back! = |human, { list, back }|
@@ -192,15 +217,13 @@ no_such_save = Wire.refused(404, "no such save on your reading list")
 
 ## **THE PAGE**: each save, newest first, or the empty list said.
 page : {
-	list : List(SavedCodec.Fields),
-	accounts : List(Principal),
+	list : SavedCodec.Book,
 	me : Principal.HumanId,
 	viewer : Str,
 } -> Chat.Answer
 page = |
 	{
 		list,
-		accounts,
 		me,
 		viewer,
 	},
@@ -218,7 +241,6 @@ page = |
 				saves.map(
 					|e| entry({
 						e,
-						accounts,
 						me,
 					}),
 				),
@@ -234,24 +256,22 @@ page = |
 ## back, the body as it was; then its two forms.
 entry : {
 	e : SavedCodec.Fields,
-	accounts : List(Principal),
 	me : Principal.HumanId,
 } -> Html
 entry = |
 	{
 		e,
-		accounts,
 		me,
 	},
 | {
-	id = e.id.to_str()
 	Html.join([
 		Html.markup("<article class=saved-entry id=saved-"),
-		Html.markup(id),
+		Html.number(e.id),
 		Html.markup("><h3 class=saved-note>"),
 		Html.text(e.note),
 		Html.markup("</h3><div class=saved-meta>"),
-		Html.text(Conversations.name_of(accounts, e.by)),
+		# The author's name as it was when saved, as the old block froze it.
+		Html.text(e.from),
 		Html.markup(" · <time class=saved-time datetime="),
 		Html.markup(Bubble.iso(e.at)),
 		Html.markup(" data-at="),
@@ -269,13 +289,11 @@ entry = |
 		Html.markup("\">↩ open in chat</a></div><div class=saved-body>"),
 		Html.escape(e.body),
 		Html.markup("</div><form class=saved-renote method=post action=\"/chat/saved/"),
-		Html.markup(id),
-		Html.markup("/note\"><input name=note maxlength="),
-		Html.number(ReadingList.note_most),
-		Html.markup(" value=\""),
+		Html.number(e.id),
+		Html.markup("/note\"><input name=note value=\""),
 		Html.text(e.note),
 		Html.markup("\" aria-label=\"Note\"> <button>Change note</button></form><form class=saved-delete method=post action=\"/chat/saved/"),
-		Html.markup(id),
+		Html.number(e.id),
 		Html.markup("/delete\"><button>Remove</button></form></article>\n"),
 	])
 }

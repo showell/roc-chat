@@ -1,19 +1,19 @@
 /* save.js: s, save to the reading list, the old client's (chat-client's
-   js/chat.js `doSave`, `postSave`, `savedStatus` and the saved set;
-   js/chat_save_popup.js; js/message.js `applySaved`). The server draws each
-   bubble's "save" (app/Bubble.roc), keeps the list (app/ReadingList.roc)
-   and names, on the page, which of this topic's messages the viewer saved
-   (`data-saved`: one bubble goes to every viewer, and "✓ saved" is the
-   viewer's alone). This script:
-     - marks those bubbles "✓ saved" in green, and each that comes after
-       (live, or an earlier page);
+   js/chat.js `doSave`, `postSave`, `savedStatus`; js/chat_save_popup.js;
+   js/message.js `applySaved`). The server draws each bubble's "save", and
+   "✓ saved" on the viewer's own page for each message on their list
+   (app/Bubble.roc), keeps the list (app/ReadingList.roc), and draws the
+   strip's line. This script:
      - s, or a bubble's "save": the old popup, a one-line note pre-filled
-       "read later" (Enter saves; Esc, Cancel or the backdrop dismisses),
-       then the save POSTed (`n=`, `note=`); with nothing selected the key
-       does nothing (the browser keeps it);
-     - a confirmed save, never an optimistic one, marks the bubble and
-       says "<ref> saved to your reading list" in the strip, the list
-       linked; anything else says "Save failed".
+       "read later" (Enter saves; Esc, Cancel or the backdrop dismisses), the
+       selection left as it is (the old doSave only opened the popup); with
+       nothing selected the key does nothing (the browser keeps it);
+     - the note POSTed (`n=`, `note=`) while the popup waits: a refusal is
+       the server's own words in the popup, which stays for another try; no
+       answer at all, "Save failed" there;
+     - a confirmed save, never an optimistic one, closes the popup, flips the
+       bubble to "✓ saved" and puts the server's line in the strip ("MSG_…
+       saved to reading list", the list linked).
    The popup styles its own elements (Object.assign); the <style> holds what
    cannot be inlined: the backdrop, and the server markup's button. */
 (function () {
@@ -31,30 +31,19 @@
     + '.chat-meta .msg-save.saved { color:var(--cc-saved-fg); text-decoration:none; }';
   document.head.appendChild(s);
 
-  /* The numbers saved here: the page's, then each confirmed save. */
-  var saved = Object.create(null);
-  (root.dataset.saved || '').split(' ').forEach(function (n) { if (n) saved[n] = true; });
-
-  function mark(bubble) {
+  /* A confirmed save: the bubble's link as the server draws it saved. */
+  function markSaved(bubble) {
     var button = bubble.querySelector('.msg-save');
     if (!button) return;
-    var is = !!saved[bubble.dataset.id];
-    button.textContent = is ? '✓ saved' : 'save';
-    button.classList.toggle('saved', is);
+    button.textContent = '✓ saved';
+    button.classList.add('saved');
   }
-  Array.prototype.forEach.call(bubbles.querySelectorAll('.chat-msg'), mark);
-  /* A bubble put in later (the stream, an earlier page) is marked as it lands. */
-  new MutationObserver(function (changes) {
-    changes.forEach(function (c) {
-      Array.prototype.forEach.call(c.addedNodes, function (n) {
-        if (n.nodeType === 1 && n.classList.contains('chat-msg')) mark(n);
-      });
-    });
-  }).observe(bubbles, { childList: true });
 
-  /* The old ChatSavePopup: a fresh <dialog> each time, removed on close;
-     `onConfirm` only when the note was committed. */
-  function popup(onConfirm) {
+  /* The old ChatSavePopup: a fresh <dialog> each time, removed on close,
+     the focus going back where it was (the dialog's own). A commit calls
+     `send(note, said)`; `said(line)` shows a refusal in the popup, and the
+     popup is closed by the caller once the save is confirmed. */
+  function popup(send) {
     var dlg = document.createElement('dialog');
     dlg.className = 'chat-save-dialog';
     Object.assign(dlg.style, {
@@ -100,37 +89,42 @@
     form.appendChild(input);
     form.appendChild(hint);
     form.appendChild(row);
-    /* Enter, Save or a submit all commit; Cancel, Esc and the backdrop do not. */
-    var committed = false;
-    form.addEventListener('submit', function () { committed = true; });
-    dlg.addEventListener('close', function () {
-      var note = input.value;
-      dlg.remove();
-      Feed.focus();
-      if (committed) onConfirm(note);
+    /* Enter or Save sends, and the popup waits for the answer; Cancel, Esc
+       and the backdrop close it. */
+    var sending = false;
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (sending) return;
+      sending = true;
+      ok.disabled = true;
+      send(input.value, function (line) {
+        sending = false;
+        ok.disabled = false;
+        hint.textContent = line;
+        hint.style.color = 'var(--cc-error, #b00020)';
+      });
     });
+    dlg.addEventListener('close', function () { dlg.remove(); });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
     dlg.appendChild(form);
     document.body.appendChild(dlg);
     dlg.showModal();
     input.focus();
     input.select();
+    return dlg;
   }
 
-  /* The strip: "<ref> saved to your reading list", the list linked. */
-  function say(ref, list) {
-    var span = document.createElement('span');
-    span.appendChild(document.createTextNode(ref + ' saved to '));
-    var a = document.createElement('a');
-    a.href = list;
-    a.textContent = 'your reading list';
-    span.appendChild(a);
+  /* The server's line for the strip, as its elements. */
+  function strip(html) {
+    var t = document.createElement('template');
+    t.innerHTML = html;
     notify.textContent = '';
-    notify.appendChild(span);
+    notify.appendChild(t.content);
   }
-  function failed() { notify.textContent = 'Save failed'; }
 
-  function post(bubble, note) {
+  /* The note sent; the popup closed and the bubble flipped once the save is
+     confirmed, else the refusal's words (or "Save failed") said in it. */
+  function post(bubble, note, dlg, said) {
     var form = new URLSearchParams();
     form.set('n', bubble.dataset.id);
     form.set('note', note);
@@ -139,19 +133,18 @@
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
     }).then(function (r) {
-      return r.status === 201 ? r.json() : null;
-    }).then(function (a) {
-      if (a === null) { failed(); return; }
-      saved[bubble.dataset.id] = true;
-      mark(bubble);
-      say(a.ref, a.list);
-    }, failed);
+      return r.text().then(function (text) { return { ok: r.status === 201, text: text }; });
+    }).then(function (answer) {
+      if (!answer.ok) { said(answer.text.trim() || 'Save failed'); return; }
+      if (dlg.open) dlg.close();
+      markSaved(bubble);
+      strip(answer.text);
+    }, function () { said('Save failed'); });
   }
 
   function save(bubble) {
     if (!bubble) return false;
-    Feed.reveal(bubble);
-    popup(function (note) { post(bubble, note); });
+    var dlg = popup(function (note, said) { post(bubble, note, dlg, said); });
   }
 
   bubbles.addEventListener('click', function (e) {

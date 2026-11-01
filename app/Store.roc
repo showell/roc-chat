@@ -33,7 +33,7 @@
 ##     auth/human-invites-indexed        how many human invites that indexes
 ##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
 ##     chat/channels/<channel>/topics/<topic>/topic  a topic, its kind (TopicCodec)
-##     chat/saved/<id>           a human's reading list, a save a line (SavedCodec)
+##     chat/saved/<id>           a human's reading list: its mark, then a save a line (SavedCodec)
 ##
 ## A channel's folder is its name's key, and each topic's its name's key
 ## in it (ChannelLayout, which names those paths). A topic's transcript,
@@ -90,21 +90,23 @@ Store := [].{
 	## each its own (GitHubSignIn: the same nonce is spent once in each).
 	Spent : [State, Pending]
 
-	## **A HUMAN'S READING LIST**, oldest save first; none before their
-	## first save. One that does not read has failed.
-	load_saved! : Principal.HumanId => Try(List(SavedCodec.Fields), [Failed])
+	## **A HUMAN'S READING LIST**, its mark and its saves; the empty list
+	## before their first save. A read that failed is `Failed`; a file that
+	## is there but does not read back is `Unreadable`, never the empty list,
+	## so nothing writes over it.
+	load_saved! : Principal.HumanId => Try(SavedCodec.Book, [Failed, Unreadable])
 	load_saved! = |human| {
 		read = Host.read!(saved_path(human))
 		match read.status {
-			Missing => Ok([])
+			Missing => Ok(SavedCodec.empty)
 			Failed => Err(Failed)
-			Found => SavedCodec.list(read.bytes).map_err(|_| Failed)
+			Found => SavedCodec.book(read.bytes).map_err(|_| Unreadable)
 		}
 	}
 
 	## A human's reading list written, whole.
-	save_saved! : Principal.HumanId, List(SavedCodec.Fields) => [Failed, Written]
-	save_saved! = |human, list| Host.write!(saved_path(human), SavedCodec.file(list))
+	save_saved! : Principal.HumanId, SavedCodec.Book => [Failed, Written]
+	save_saved! = |human, book| Host.write!(saved_path(human), SavedCodec.file(book))
 
 	## Every account; none before the first.
 	load_accounts! : {} => Try(List(Principal), [Failed])

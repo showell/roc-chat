@@ -4,17 +4,22 @@
 ## save is the saver's copy of a message as it was (SavedCodec), with a
 ## line about it, newest last. Pure.
 ##
-## - **A NOTE** is one line: its ends trimmed, a line break or other
-##   control byte made a space (the old `oneLine`), "read later" when it is
-##   empty (the old popup's default), at most `note_most` bytes.
-## - **A MESSAGE SAVED AGAIN** is the one save, its note, time and copy
-##   those of now, moved to the end: the list never holds a message twice
-##   (the old doc gained a second block).
-## - **THE LIST HOLDS AT MOST `most_bytes`** as stored, as the old doc
-##   did; a save past it is refused.
+## - **A NOTE** is the old `composeEntry`'s: its ends trimmed of spaces,
+##   tabs and line breaks, each line break left inside made a space (the
+##   old `oneLine`), and "read later" when nothing is left (the old popup's
+##   default). Its length has no rule of its own; the list's is the one.
+##   Any other control byte is kept, as the old one kept it; the store
+##   escapes it (SavedCodec).
+## - **A MESSAGE SAVED AGAIN** is the one save, its id kept, moved to the
+##   newest end with its note and copy those of now: the nearest the list
+##   comes to the old doc's appending a second block, without holding the
+##   message twice.
+## - **AN ID IS NEVER GIVEN TWICE**: a new save takes the list's `next`, and
+##   `next` only grows, so a removed save's id is never another's.
+## - **THE LIST HOLDS AT MOST `most_bytes`** as stored, as the old doc did;
+##   a save or a note that would pass it is refused.
 import Cast
 import ChannelName
-import Principal
 import SavedCodec
 import Topic
 import TopicName
@@ -25,73 +30,102 @@ ReadingList := [].{
 	most_bytes : U64
 	most_bytes = 1024 * 1024
 
-	## The longest note, in bytes.
-	note_most : U64
-	note_most = 200
-
 	## **THE NOTE `raw` MAKES**, by the rule above.
-	note_of : List(U8) -> Try(Str, [NotUtf8, TooLong])
+	note_of : List(U8) -> Try(Str, [NotUtf8])
 	note_of = |raw| {
-		flat = raw.map(|b| if (b < 0x20 or b == 0x7F) ' ' else b)
-		trimmed = Str.from_utf8(flat).map_err(|_| NotUtf8)?.trim()
-		if trimmed.is_empty() {
-			Ok("read later")
-		} else if trimmed.to_utf8().len() > ReadingList.note_most {
-			Err(TooLong)
-		} else {
-			Ok(trimmed)
-		}
+		trimmed = trim_end(trim_start(raw))
+		flat = trimmed.map(|b| if (b == '\n' or b == '\r') ' ' else b)
+		text = Str.from_utf8(flat).map_err(|_| NotUtf8)?
+		if (text.is_empty()) Ok("read later") else Ok(text)
 	}
 
-	## **THE LIST WITH `save` IN IT**, at its end: a message already saved
-	## keeps its save's id; a new one takes one past the largest. Past
-	## `most_bytes`, refused.
-	saved : List(SavedCodec.Fields), SavedCodec.Fields -> Try(List(SavedCodec.Fields), [TooBig])
-	saved = |list, save| {
+	## **THE LIST WITH `save` IN IT**, at its newest end: a message already
+	## saved keeps its save's id; a new one takes `next`. Past `most_bytes`,
+	## refused.
+	saved : SavedCodec.Book, SavedCodec.Fields -> Try(SavedCodec.Book, [TooBig])
+	saved = |book, save| {
 		same = |e| e.place == save.place and e.n == save.n
-		id =
-			match list.find_first(same) {
-				Ok(e) => e.id
-				Err(NotFound) => list.fold(0, |most, e| U64.max(most, e.id)) + 1
+		next =
+			match book.saves.find_first(same) {
+				Ok(e) => {
+					next: book.next,
+					saves: book.saves.drop_if(same).append({ ..save, id: e.id }),
+				}
+				Err(NotFound) => {
+					next: book.next + 1,
+					saves: book.saves.append({ ..save, id: book.next }),
+				}
 			}
-		next = list.drop_if(same).append({ ..save, id })
-		if (SavedCodec.file(next).len() > ReadingList.most_bytes) Err(TooBig) else Ok(next)
+		within(next)
 	}
 
 	## **WHICH OF `at`'S MESSAGES ARE ON THE LIST**, by number, ascending.
-	numbers_in : List(SavedCodec.Fields), Topic.At -> List(U64)
-	numbers_in = |
-		list,
-		at,
-	| list.keep_if(|e| e.place == at).map(|e| e.n).sort_with(
-		|
-			a,
-			b,
-		| if (a < b) Before else if (a > b) After else Same,
-	)
+	numbers_in : SavedCodec.Book, Topic.At -> List(U64)
+	numbers_in = |book, at|
+		book.saves.keep_if(|e| e.place == at).map(|e| e.n).sort_with(
+			|
+				a,
+				b,
+			| if (a < b) Before else if (a > b) After else Same,
+		)
 
-	## The list without save `id`.
-	without : List(SavedCodec.Fields), U64 -> Try(List(SavedCodec.Fields), [NoSuchSave])
-	without = |list, id|
-		if (list.any(|e| e.id == id)) Ok(list.drop_if(|e| e.id == id)) else Err(NoSuchSave)
+	## The list without save `id`; its `next` as it was.
+	without : SavedCodec.Book, U64 -> Try(SavedCodec.Book, [NoSuchSave])
+	without = |book, id|
+		if book.saves.any(|e| e.id == id) {
+			Ok({ ..book, saves: book.saves.drop_if(|e| e.id == id) })
+		} else {
+			Err(NoSuchSave)
+		}
 
-	## The list with save `id`'s note changed, in its place.
-	renoted : List(SavedCodec.Fields),
+	## The list with save `id`'s note changed, in its place; past
+	## `most_bytes`, refused.
+	renoted : SavedCodec.Book,
 	{ id : U64, note : Str } -> Try(
-		List(SavedCodec.Fields),
-		[NoSuchSave],
+		SavedCodec.Book,
+		[NoSuchSave, TooBig],
 	)
-	renoted = |list, { id, note }|
-		if list.any(|e| e.id == id) {
-			Ok(list.map(|e| if (e.id == id) { ..e, note } else e))
+	renoted = |book, { id, note }|
+		if book.saves.any(|e| e.id == id) {
+			within({
+				..book,
+				saves: book.saves.map(|e| if (e.id == id) { ..e, note } else e),
+			}).map_err(|TooBig| TooBig)
 		} else {
 			Err(NoSuchSave)
 		}
 
 	## Newest first, as the list's page shows it.
-	newest_first : List(SavedCodec.Fields) -> List(SavedCodec.Fields)
-	newest_first = |list| list.fold(List.with_capacity(list.len()), |done, e| List.prepend(done, e))
+	newest_first : SavedCodec.Book -> List(SavedCodec.Fields)
+	newest_first = |book| book.saves.fold(
+		List.with_capacity(book.saves.len()),
+		|done, e| List.prepend(done, e),
+	)
 }
+
+## The list, if it is within `most_bytes` as stored.
+within : SavedCodec.Book -> Try(SavedCodec.Book, [TooBig])
+within = |book| if (SavedCodec.file(book).len() > ReadingList.most_bytes) Err(TooBig) else Ok(book)
+
+## The bytes without the spaces, tabs and line breaks at their start (the
+## old `std.mem.trim`'s set).
+trim_start : List(U8) -> List(U8)
+trim_start = |bytes|
+	match bytes {
+		[c, .. as rest] if is_trimmed(c) => trim_start(rest)
+		_ => bytes
+	}
+
+## And at their end.
+trim_end : List(U8) -> List(U8)
+trim_end = |bytes|
+	match bytes {
+		[.. as rest, c] if is_trimmed(c) => trim_end(rest)
+		_ => bytes
+	}
+
+is_trimmed : U8 -> Bool
+is_trimmed = |c| c == ' ' or c == '\t' or c == '\r' or c == '\n'
 
 # ── tests
 place_of : Str, Str -> Topic.At
@@ -118,6 +152,7 @@ save_of = |
 	place,
 	n,
 	by: Cast.ann.id(),
+	from: "Ann",
 	at: 50,
 	note,
 	body: "hi".to_utf8(),
@@ -126,42 +161,47 @@ save_of = |
 banana : Topic.At
 banana = place_of("Orchard", "Banana")
 
-# The note's rule.
+## The book after each save, in turn.
+saving : List(SavedCodec.Fields) -> SavedCodec.Book
+saving = |saves| saves.fold(
+	SavedCodec.empty,
+	|book, s| ReadingList.saved(book, s) ?? crash "saving: a test's list is small",
+)
+
+# The note's rule: the old trim and `oneLine`, "read later" for nothing.
 expect ReadingList.note_of("  ".to_utf8()) == Ok("read later")
 expect ReadingList.note_of("".to_utf8()) == Ok("read later")
-expect ReadingList.note_of(" look\r\nagain\t".to_utf8()) == Ok("look  again")
-expect ReadingList.note_of(List.repeat('x', 200)) == Ok(Str.from_utf8(List.repeat('x', 200)) ?? "")
-expect ReadingList.note_of(List.repeat('x', 201)) == Err(TooLong)
+expect ReadingList.note_of(" \r\n look\r\nagain\t\n".to_utf8()) == Ok("look  again")
+expect ReadingList.note_of("a\u(7)b".to_utf8()) == Ok("a\u(7)b")
+expect ReadingList.note_of(
+	List.repeat(
+		'x',
+		5000,
+	),
+) == Ok(Str.from_utf8(List.repeat('x', 5000)) ?? "")
 expect ReadingList.note_of([0xFF]) == Err(NotUtf8)
 
-# A new save takes one past the largest id; a message saved again keeps
-# its id and moves to the end with its new note.
+# A new save takes `next`; a message saved again keeps its id and moves to
+# the newest end with its new note.
 expect {
-	one = ReadingList.saved(
-		[],
+	book = saving([
 		save_of({
 			place: banana,
 			n: 5,
 			note: "a",
 		}),
-	) ?? []
-	two = ReadingList.saved(
-		one,
 		save_of({
 			place: banana,
 			n: 7,
 			note: "b",
 		}),
-	) ?? []
-	again = ReadingList.saved(
-		two,
 		save_of({
 			place: banana,
 			n: 5,
 			note: "c",
 		}),
-	) ?? []
-	again.map(
+	])
+	book.saves.map(
 		|e| (
 			e.id,
 			e.n,
@@ -178,30 +218,26 @@ expect {
 			5,
 			"c",
 		),
-	]
+	] and book.next == 3
 }
 # The same number in another topic is another message.
 expect {
-	one = ReadingList.saved(
-		[],
+	book = saving([
 		save_of({
 			place: banana,
 			n: 5,
 			note: "a",
 		}),
-	) ?? []
-	two = ReadingList.saved(
-		one,
 		save_of({
 			place: place_of("Orchard", "Apple"),
 			n: 5,
 			note: "b",
 		}),
-	) ?? []
-	ReadingList.numbers_in(two, banana) == [5] and two.len() == 2
+	])
+	ReadingList.numbers_in(book, banana) == [5] and book.saves.len() == 2
 }
 expect {
-	list = [
+	book = saving([
 		save_of({
 			place: banana,
 			n: 9,
@@ -217,39 +253,76 @@ expect {
 			n: 4,
 			note: "z",
 		}),
-	]
-	ReadingList.numbers_in(list, banana) == [3, 9]
+	])
+	ReadingList.numbers_in(book, banana) == [3, 9]
 }
-# Past the most, refused.
+# An id is never given twice: removed, its id stays spent.
 expect {
-	big = { ..save_of({
+	book = saving([
+		save_of({
+			place: banana,
+			n: 5,
+			note: "a",
+		}),
+		save_of({
+			place: banana,
+			n: 6,
+			note: "b",
+		}),
+	])
+	gone = ReadingList.without(book, 2) ?? book
+	again = ReadingList.saved(
+		gone,
+		save_of({
+			place: banana,
+			n: 7,
+			note: "c",
+		}),
+	) ?? gone
+	again.saves.map(|e| e.id) == [1, 3] and again.next == 4
+}
+# Past the most, refused: a save, and a note.
+expect ReadingList.saved(
+	SavedCodec.empty,
+	{ ..save_of({
 		place: banana,
 		n: 1,
 		note: "a",
-	}), body: List.repeat('x', ReadingList.most_bytes) }
-	ReadingList.saved([], big) == Err(TooBig)
+	}), body: List.repeat('x', ReadingList.most_bytes) },
+) == Err(TooBig)
+expect {
+	book = saving([
+		save_of({
+			place: banana,
+			n: 5,
+			note: "a",
+		}),
+	])
+	long = Str.from_utf8(List.repeat('x', ReadingList.most_bytes)) ?? ""
+	ReadingList.renoted(book, { id: 1, note: long }) == Err(TooBig)
 }
 # Removed and renoted by id; an id not there is said.
 expect {
-	list = ReadingList.saved(
-		[],
+	book = saving([
 		save_of({
 			place: banana,
 			n: 5,
 			note: "a",
 		}),
-	) ?? []
-	ReadingList.without(list, 1) == Ok([]) and ReadingList.without(list, 2) == Err(NoSuchSave)
+	])
+	ReadingList.without(book, 1) == Ok({
+		next: 2,
+		saves: [],
+	}) and ReadingList.without(book, 2) == Err(NoSuchSave)
 }
 expect {
-	list = ReadingList.saved(
-		[],
+	book = saving([
 		save_of({
 			place: banana,
 			n: 5,
 			note: "a",
 		}),
-	) ?? []
-	(ReadingList.renoted(list, { id: 1, note: "z" }) ?? []).map(|e| e.note) == ["z"]
-		and ReadingList.renoted(list, { id: 3, note: "z" }) == Err(NoSuchSave)
+	])
+	(ReadingList.renoted(book, { id: 1, note: "z" }) ?? book).saves.map(|e| e.note) == ["z"]
+		and ReadingList.renoted(book, { id: 3, note: "z" }) == Err(NoSuchSave)
 }

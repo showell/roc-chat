@@ -1,21 +1,27 @@
-## **A SAVED MESSAGE, STORED** (a human's reading list, Store's
-## `chat/saved/<id>`): one line in Stored's format, a line each, oldest
-## save first:
+## **A READING LIST, STORED** (Store's `chat/saved/<id>`): its mark,
+## then one line a save, in the list's order (newest last):
 ##
-##     saved v1 id=2 saved=1761600300 channel=Orchard topic=Banana n=5 by=human:9 at=1761600000 note=read%20later body=two%0Alines
+##     reading v1 next=4
+##     saved v1 id=2 saved=1761600300 channel=Orchard topic=Banana n=5 by=human:9 from=Pip%20Q at=1761600000 note=read%20later body=two%0Alines
 ##
-## - `id` is the save's number on its list, from 1, never given twice.
-## - `saved` is when it was saved (or saved again, its note changed).
+## - `next` is the id the next save takes: one past every id the list has
+##   ever given, kept so that an id is **never given twice**, even after its
+##   save is removed (a stale page's form can never act on another save).
+##   Every save's id is below it, and no two are the same.
+## - `id` is the save's number on its list, from 1.
+## - `saved` is when it was saved (or saved again).
 ## - `channel`, `topic` and `n` are where the message is: its topic's
 ##   names as made, and its number there.
-## - `by` and `at` are its author and when it was posted, and `body` its
-##   markdown, as it was when saved: the saver's own copy, kept if the
-##   message's topic is ever closed to them, as the old reading list's
-##   blocks were.
-## - `note` is the saver's line about it (ReadingList's rule: one line of
-##   text), with `%`, a space and every control byte as `%` and two
-##   uppercase hex digits, so it is one value; `body` is the last, any
-##   bytes, as a message's body is stored (MessageCodec). Pure.
+## - `by`, `from` and `at` are its author, the author's name and when it
+##   was posted, and `body` its markdown, all as they were when it was
+##   saved: the saver's own copy, kept if the message's topic is ever
+##   closed to them, its author's name frozen as the old block froze its
+##   `from`.
+## - `from` and `note` (the saver's line about it, ReadingList's rule) are
+##   text with `%`, a space and every control byte as `%` and two uppercase
+##   hex digits, so each is one value; `body` is the last, any bytes, as a
+##   message's body is stored (MessageCodec). An empty file, or none, is the
+##   empty list, its `next` 1. Pure.
 import AccountCodec
 import ChannelName
 import MessageCodec
@@ -33,10 +39,18 @@ SavedCodec := [].{
 		place : Topic.At,
 		n : U64,
 		by : Principal.Id,
+		from : Str,
 		at : I64,
 		note : Str,
 		body : List(U8),
 	}
+
+	## **A WHOLE LIST**: the id the next save takes, and its saves in order.
+	Book : { next : U64, saves : List(SavedCodec.Fields) }
+
+	## The empty list: no saves, the next id 1.
+	empty : SavedCodec.Book
+	empty = { next: 1, saves: [] }
 
 	## The save's line. An id or a number of 0 is no save: a crash.
 	encode : SavedCodec.Fields -> List(U8)
@@ -53,11 +67,9 @@ SavedCodec := [].{
 					("topic", e.place.topic.to_str()),
 					("n", e.n.to_str()),
 					("by", AccountCodec.id_text(e.by)),
+					("from", spaced_text(e.from)),
 					("at", Stored.time_text(e.at)),
-					(
-						"note",
-						Str.from_utf8(spaced(e.note.to_utf8())) ?? crash "SavedCodec.encode: an escape is ASCII",
-					),
+					("note", spaced_text(e.note)),
 				],
 			)
 			[
@@ -84,11 +96,12 @@ SavedCodec := [].{
 		n = Stored.count(n_field.value, "n")?
 		by_field = n_field.rest.field("by")?
 		by = AccountCodec.id_from(by_field.value, "by")?
-		at_field = by_field.rest.field("at")?
+		from_field = by_field.rest.field("from")?
+		from = unspaced_text(from_field.value, "from")?
+		at_field = from_field.rest.field("at")?
 		at = Stored.time(at_field.value, "at")?
 		note_field = at_field.rest.field("note")?
-		note_bytes = unspaced(note_field.value)?
-		note = Str.from_utf8(note_bytes).map_err(|_| BadValue("note"))?
+		note = unspaced_text(note_field.value, "note")?
 		body_text = note_field.rest.text("body")?
 		body = MessageCodec.unescape(body_text.to_utf8())?
 		if id == 0 or n == 0 {
@@ -100,6 +113,7 @@ SavedCodec := [].{
 				place: { channel, topic },
 				n,
 				by,
+				from,
 				at,
 				note,
 				body,
@@ -107,21 +121,64 @@ SavedCodec := [].{
 		}
 	}
 
-	## **A READING LIST'S SAVES**, oldest first: every line a save, the last
-	## ended by its newline (a torn write is `Torn`). None, an empty list.
-	list : List(U8) -> Try(List(SavedCodec.Fields), _)
-	list = |raw|
+	## **A LIST AS STORED**: its mark, then every line a save, the last
+	## ended by its newline (a torn write is `Torn`); every id below `next`
+	## and none twice. Empty, the empty list.
+	book : List(U8) -> Try(SavedCodec.Book, _)
+	book = |raw|
 		if raw.is_empty() {
-			Ok([])
+			Ok(SavedCodec.empty)
 		} else if raw.last() != Ok('\n') {
 			Err(Torn)
 		} else {
-			raw.split_on('\n').drop_last(1).map_try(|line| SavedCodec.decode(line.append('\n')))
+			match raw.split_on('\n').drop_last(1) {
+				[] => Err(Torn)
+				[mark, .. as lines] => {
+					fields = Stored.Reader.open(mark.append('\n'), "reading")?
+					next_field = fields.field("next")?
+					next = Stored.count(next_field.value, "next")?
+					next_field.rest.close()?
+					saves = lines.map_try(|line| SavedCodec.decode(line.append('\n')))?
+					ids = saves.map(|e| e.id).sort_with(
+						|
+							a,
+							b,
+						| if (a < b) Before else if (a > b) After else Same,
+					)
+					if next == 0 or saves.any(|e| e.id >= next) {
+						Err(BadValue("next"))
+					} else if ids.map_with_index(
+						|
+							id,
+							i,
+						| ids.get(i + 1) == Ok(id),
+					).any(|twice| twice) {
+						Err(BadValue("id"))
+					} else {
+						Ok({ next, saves })
+					}
+				}
+			}
 		}
 
-	## The list's bytes: each save's line, in order.
-	file : List(SavedCodec.Fields) -> List(U8)
-	file = |saves| saves.map(SavedCodec.encode).join()
+	## The list's bytes: its mark, then each save's line, in order.
+	file : SavedCodec.Book -> List(U8)
+	file = |{ next, saves }|
+		Stored.line(
+			"reading",
+			[("next", next.to_str())],
+		).concat(saves.map(SavedCodec.encode).join())
+}
+
+## A free-text value as one Stored value (`spaced`).
+spaced_text : Str -> Str
+spaced_text = |text| Str.from_utf8(spaced(text.to_utf8())) ?? crash "SavedCodec.spaced_text: an escape is ASCII"
+
+## The text a `spaced` value spelled, in the field `name`.
+unspaced_text : List(U8), Str -> Try(Str, [BadValue(Str)])
+unspaced_text = |value, name| {
+	bytes = unspaced(value).map_err(|_| BadValue(name))?
+	Str.from_utf8(bytes).map_err(|_| BadValue(name))
 }
 
 ## A value Stored's reader read, as text: `open` checked the line is UTF-8.
@@ -198,34 +255,41 @@ one = {
 	place: place_of("Orchard", "Banana"),
 	n: 5,
 	by: Principal.Id.Human(Principal.HumanId.from_u64(9) ?? crash "a test's id"),
+	from: "Pip Q",
 	at: 1761600000,
 	note: "read later, 100%",
 	body: "two\nlines %".to_utf8(),
 }
 
-expect SavedCodec.encode(one) == "saved v1 id=2 saved=1761600300 channel=Orchard topic=Banana n=5 by=human:9 at=1761600000 note=read%20later,%20100%25 body=two%0Alines %25\n".to_utf8()
+expect SavedCodec.encode(one) == "saved v1 id=2 saved=1761600300 channel=Orchard topic=Banana n=5 by=human:9 from=Pip%20Q at=1761600000 note=read%20later,%20100%25 body=two%0Alines %25\n".to_utf8()
 expect SavedCodec.decode(SavedCodec.encode(one)) == Ok(one)
-expect SavedCodec.list(
-	SavedCodec.file([
-		one,
-		{
-			..one,
-			id: 3,
-			note: "",
-		},
-	]),
-) == Ok([
-	one,
-	{
-		..one,
-		id: 3,
-		note: "",
-	},
-])
-expect SavedCodec.list([]) == Ok([])
+expect {
+	book = {
+		next: 4,
+		saves: [
+			one,
+			{
+				..one,
+				id: 3,
+				note: "",
+			},
+		],
+	}
+	SavedCodec.book(SavedCodec.file(book)) == Ok(book)
+}
+expect SavedCodec.file({
+	next: 4,
+	saves: [one],
+}).starts_with("reading v1 next=4\nsaved v1 id=2 ".to_utf8())
+expect SavedCodec.book([]) == Ok(SavedCodec.empty)
+expect SavedCodec.book(SavedCodec.file(SavedCodec.empty)) == Ok(SavedCodec.empty)
 # One spelling of a note; a torn list; no id 0.
-expect SavedCodec.decode("saved v1 id=2 saved=1 channel=Orchard topic=Banana n=5 by=human:9 at=1 note=read%20later%2 body=x\n".to_utf8()).is_err()
-expect SavedCodec.decode("saved v1 id=2 saved=1 channel=Orchard topic=Banana n=5 by=human:9 at=1 note=a%41 body=x\n".to_utf8()).is_err()
-expect SavedCodec.decode("saved v1 id=0 saved=1 channel=Orchard topic=Banana n=5 by=human:9 at=1 note=a body=x\n".to_utf8()).is_err()
-expect SavedCodec.decode("saved v1 id=1 saved=1 channel=Or.chard topic=Banana n=5 by=human:9 at=1 note=a body=x\n".to_utf8()).is_err()
-expect SavedCodec.list(SavedCodec.encode(one).drop_last(1)) == Err(Torn)
+expect SavedCodec.decode("saved v1 id=2 saved=1 channel=Orchard topic=Banana n=5 by=human:9 from=P at=1 note=read%20later%2 body=x\n".to_utf8()).is_err()
+expect SavedCodec.decode("saved v1 id=2 saved=1 channel=Orchard topic=Banana n=5 by=human:9 from=P at=1 note=a%41 body=x\n".to_utf8()).is_err()
+expect SavedCodec.decode("saved v1 id=0 saved=1 channel=Orchard topic=Banana n=5 by=human:9 from=P at=1 note=a body=x\n".to_utf8()).is_err()
+expect SavedCodec.decode("saved v1 id=1 saved=1 channel=Or.chard topic=Banana n=5 by=human:9 from=P at=1 note=a body=x\n".to_utf8()).is_err()
+expect SavedCodec.book(SavedCodec.file({ next: 4, saves: [one] }).drop_last(1)) == Err(Torn)
+# The mark is kept: an id at or past `next`, or one given twice, is refused.
+expect SavedCodec.book(SavedCodec.file({ next: 2, saves: [one] })).is_err()
+expect SavedCodec.book(SavedCodec.file({ next: 9, saves: [one, one] })).is_err()
+expect SavedCodec.book(SavedCodec.encode(one)).is_err()
