@@ -19,7 +19,9 @@
      - puts a page of earlier bubbles, from the server, above the first;
      - keeps the selection, the old view's: the arrows, Home/End and
        PgUp/PgDn (with its jump at an edge), scrolling and clicking select,
-       the ring, and #msg-<id> in the URL after 700 ms;
+       the ring, and #msg-<id> in the URL after 700 ms (a hash the page
+       arrived with kept until the reader moves); Home, and PgUp at the
+       top, load earlier pages to reach the topic's first message;
      - hands compose.js `Feed`: place a bubble, reveal one, focus the feed;
      - styles the transcript's column and the right pane on their elements
        (js/middle_pane.js, js/chat_right_sidebar.js), the server sending no
@@ -153,7 +155,13 @@
   var settleDelay = 700, revealPadTop = 6, revealPadBottom = 48;
   var selected = null, settleTimer = null;
   function all() { return Array.prototype.slice.call(bubbles.querySelectorAll('.chat-msg')); }
-  function record(bubble) { window.history.replaceState({}, '', '#' + bubble.id); }
+  /* A link that arrived with a #msg-<id> keeps it until the reader moves:
+     the deep link itself (going to that message) is a later feature. */
+  var arrivedWithHash = /^#msg-/.test(location.hash);
+  function record(bubble) {
+    if (arrivedWithHash) return;
+    window.history.replaceState({}, '', '#' + bubble.id);
+  }
   function settle(bubble, immediate) {
     if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
     if (selected) selected.classList.remove('mv-selected');
@@ -186,14 +194,18 @@
     return beginning || straddler;
   }
   function syncSelectionToScroll() {
+    /* A scroll of the script's own (a live append, an arrow, a reveal) in
+       the same frame wins: the old rAF callback's `if(progScroll) return`. */
+    if (ours) return;
     var c = selectionCandidate();
     if (c && c !== selected) settle(c, false);
   }
   history.addEventListener('click', function (e) {
     var bubble = e.target.closest && e.target.closest('.chat-msg');
-    if (bubble) settle(bubble, true);
+    if (bubble) { arrivedWithHash = false; settle(bubble, true); }
   }, { capture: true });
   function moveCursor(delta) {
+    arrivedWithHash = false;
     var els = all();
     if (!els.length) { history.scrollTop += delta * 40; return; }
     var pos = els.indexOf(selected);
@@ -212,12 +224,21 @@
     var els = all();
     if (els.length) settle(toBottom ? els[els.length - 1] : els[0], true);
   }
+  /* The topic's real top: the old page held the whole transcript, so Home
+     reached its first message. Here earlier pages load, one after another,
+     until the first message is on the page, and then it is selected. */
+  function toFirst() {
+    arrivedWithHash = false;
+    if (earlier.hidden) { cursorToExtreme(false); return; }
+    loadEarlier().then(function (more) { if (more) toFirst(); else cursorToExtreme(false); });
+  }
   /* A page down (or up) while the transcript can scroll; at its edge, a
      jump to the last (or first) bubble. */
   function pageNav(dir) {
     var canScroll = dir < 0 ? history.scrollTop > 0 : history.scrollTop + history.clientHeight < history.scrollHeight - 1;
     if (canScroll) history.scrollTop += dir * Math.max(40, history.clientHeight - 40);
-    else cursorToExtreme(dir > 0);
+    else if (dir > 0) cursorToExtreme(true);
+    else toFirst();
   }
   /* A bubble brought to the middle of the view and selected (the old
      focusBubble: a "sent" notice's link). */
@@ -232,7 +253,7 @@
      discoverable), registered so no other feature can take them. */
   [
     ['ArrowDown', function () { moveCursor(1); }], ['ArrowUp', function () { moveCursor(-1); }],
-    ['Home', function () { cursorToExtreme(false); }], ['End', function () { cursorToExtreme(true); }],
+    ['Home', toFirst], ['End', function () { arrivedWithHash = false; cursorToExtreme(true); }],
     ['PageDown', function () { pageNav(1); }], ['PageUp', function () { pageNav(-1); }],
   ].forEach(function (k) { Keys.register({ key: k[0], label: k[0], hidden: true, run: k[1] }); });
 
@@ -295,17 +316,21 @@
   /* A page restored from the back-forward cache has a dead stream. */
   window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
 
-  earlier.addEventListener('click', function () {
+  /* The page before the first bubble, from the server, put above it with
+     the view kept where it was; a promise of whether pages come before it
+     (false too when it did not load). */
+  var loading = null;
+  function loadEarlier() {
+    if (loading) return loading;
     var first = bubbles.querySelector('.chat-msg');
-    if (!first || earlier.disabled) return;
+    if (!first) return Promise.resolve(false);
     earlier.disabled = true;
-    fetch(root.dataset.earlier + '?before=' + first.dataset.id).then(function (r) {
+    loading = fetch(root.dataset.earlier + '?before=' + first.dataset.id).then(function (r) {
       return r.ok ? r.text() : null;
     }).then(function (html) {
-      earlier.disabled = false;
-      if (html === null) return;
+      if (html === null) return false;
       var page = parse(html).firstElementChild;
-      if (!page) return;
+      if (!page) return false;
       var height = history.scrollHeight;
       var older = page.querySelectorAll('.chat-msg');
       for (var j = 0; j < older.length; j++) {
@@ -315,8 +340,15 @@
       }
       scrollBy(function () { history.scrollTop += history.scrollHeight - height; });
       earlier.hidden = page.dataset.earlier !== '1';
-    }, function () { earlier.disabled = false; });
-  });
+      return !earlier.hidden;
+    }, function () { return false; }).then(function (more) {
+      earlier.disabled = false;
+      loading = null;
+      return more;
+    });
+    return loading;
+  }
+  earlier.addEventListener('click', function () { loadEarlier(); });
   /* What compose.js and the later features take: put a bubble in; bring
      one to the middle and select it; the selected bubble; give the
      transcript the keyboard (focus without a scroll). */
