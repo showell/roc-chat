@@ -24,6 +24,7 @@
 --     its floor;
 --   - the end to end (`zig build e2e`, host/e2e.zig): every step, a line
 --     each with its time, and exactly `e2e_steps` of them;
+--   - every script in js/ (the browser client's) parses: `node --check`;
 --   - an edit to a module made since the last build rebuilds the chat
 --     (tools/verify_inputs.shale, a run of its own, in a copy of the tree);
 --   - the style hunts (Shale's cookbook/roc recipes over app/, in
@@ -38,9 +39,9 @@
 -- budget: steps=200000000 arena_bytes=1000000000 changes=10000 change_bytes=200000000 read_bytes=1000000000
 
 -- The floors: the test counts, which may only rise.
-const roc_floor = 2442
-const zig_floor = 206
-const e2e_steps = 82
+const roc_floor = 2465
+const zig_floor = 210
+const e2e_steps = 86
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 -- A build and a run of everything: minutes, from an empty cache.
@@ -161,6 +162,24 @@ function tail_of(out)
   if #t > 400 then t = sub(t, #t - 399) end
   return join(split(t, "\n"), " | ")
 end
+
+-- ── the browser client's scripts parse ──
+-- **EVERY FILE IN js/ PASSES `node --check`** (docs/design/browser-client.md,
+-- "Settled details"): a script that does not parse fails here, never in
+-- someone's browser. No script at all is a failure too: the page loads one.
+local scripts = 0
+for name in ls("js") do
+  if ends_with(name, ".js") then
+    scripts = scripts + 1
+    local c = run({"node", "--check", "js/" .. name}, {cwd = ".", timeout_ms = 60000, tail = 20, want = "tool: JavaScript's syntax, by node's own parser"})
+    if c.code == 0 then
+      say(true, "node --check js/" .. name)
+    else
+      say(false, "node --check js/" .. name .. ": " .. tail_of(c.out))
+    end
+  end
+end
+say(scripts > 0, "js/: " .. scripts .. " scripts checked")
 
 -- ── a new module's edit rebuilds the chat ──
 local ir = run({"shale", "tools/verify_inputs.shale"}, {cwd = ".", timeout_ms = build_ms, tail = 20})

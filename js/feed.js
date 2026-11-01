@@ -1,0 +1,149 @@
+/* feed.js: a topic page's transcript, the glue around what the server drew.
+
+   The page arrives rendered (app/TopicPage.roc): every bubble is the
+   server's HTML (app/Bubble.roc), and so is every live one, sent whole on
+   the page's stream. This script only:
+     - marks each bubble mine or theirs, from the page's viewer (data-me)
+       and the bubble's author (data-by), as Gopher Chat's client did
+       (chat-client js/chat.js, `m.mine`), since one fragment goes to every
+       viewer;
+     - writes each time in the viewer's zone, "Jan 2 · 3:04 PM"
+       (js/message.js, formatLocalTime), since the server does not know it;
+     - puts a live bubble in place, once (by its id: the stream starts after
+       the newest message drawn here, and a reconnect resumes after the last
+       one it sent);
+     - follows new messages only when the reader was caught up, read before
+       the append (js/chat.js:308-316, js/middle_pane.js:88-93);
+     - starts at the bottom, held there while images decode, until the
+       reader scrolls or 5 s pass (js/message_view.js, `stabilize`);
+     - puts a page of earlier bubbles, from the server, above the first. */
+(function () {
+  'use strict';
+
+  var root = document.body;
+  var me = root.dataset.me;
+  var history = document.getElementById('chat-history');
+  var bubbles = document.getElementById('chat-bubbles');
+  var earlier = document.getElementById('earlier');
+  var stabilizeMs = 5000;
+
+  /* The old client's time: the viewer's zone, as "Jan 2 · 3:04 PM". */
+  function formatLocalTime(seconds) {
+    var d = new Date(seconds * 1000);
+    if (isNaN(d.getTime())) return '';
+    var day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(d);
+    var time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+    return day + ' · ' + time;
+  }
+
+  /* What the script adds to a bubble the server drew: mine or theirs, and
+     its time as text. */
+  function dress(bubble) {
+    bubble.classList.add(bubble.dataset.by === me ? 'mine' : 'theirs');
+    var t = bubble.querySelector('time.chat-time');
+    if (t) t.textContent = formatLocalTime(Number(t.dataset.at));
+  }
+
+  /* The newest message drawn here: the stream sends only later ones, and
+     one already here is never put in twice. */
+  var newest = 0;
+  function note(bubble) {
+    var id = Number(bubble.dataset.id);
+    if (id > newest) newest = id;
+  }
+
+  /* Caught up: the last bubble's bottom is in view (the old rule). */
+  function caughtUp() {
+    var last = bubbles.lastElementChild;
+    while (last && !last.classList.contains('chat-msg')) last = last.previousElementSibling;
+    if (!last) return true;
+    return last.getBoundingClientRect().bottom <= history.getBoundingClientRect().bottom + 1;
+  }
+
+  /* A scroll the script makes is not the reader's; one the reader makes
+     ends the image stabilizer. */
+  var ours = false;
+  var readerScrolled = false;
+  history.addEventListener('scroll', function () {
+    if (ours) { ours = false; return; }
+    readerScrolled = true;
+  });
+  function toBottom() {
+    if (history.scrollTop + history.clientHeight >= history.scrollHeight) return;
+    ours = true;
+    history.scrollTop = history.scrollHeight;
+  }
+
+  /* Images grow the transcript without a scroll event, so the bottom is
+     taken again as each one loads, until the reader scrolls or 5 s pass. */
+  function stabilize() {
+    readerScrolled = false;
+    var stopAt = Date.now() + stabilizeMs;
+    function fire() {
+      if (Date.now() > stopAt || readerScrolled) return;
+      toBottom();
+    }
+    var imgs = bubbles.querySelectorAll('img');
+    for (var i = 0; i < imgs.length; i++) {
+      if (!imgs[i].complete) {
+        imgs[i].addEventListener('load', fire, { once: true });
+        imgs[i].addEventListener('error', fire, { once: true });
+      }
+    }
+    requestAnimationFrame(function () { fire(); requestAnimationFrame(fire); });
+  }
+
+  /* A fragment the server rendered, as its elements. */
+  function parse(html) {
+    var t = document.createElement('template');
+    t.innerHTML = html;
+    return t.content;
+  }
+
+  var drawn = bubbles.querySelectorAll('.chat-msg');
+  for (var i = 0; i < drawn.length; i++) { dress(drawn[i]); note(drawn[i]); }
+  toBottom();
+  stabilize();
+
+  var stream = new EventSource(root.dataset.stream);
+  stream.addEventListener('message', function (e) {
+    var bubble = parse(e.data).firstElementChild;
+    if (!bubble || !bubble.classList.contains('chat-msg')) return;
+    if (Number(bubble.dataset.id) <= newest || document.getElementById(bubble.id)) return;
+    var stick = caughtUp();
+    var empty = document.getElementById('chat-empty');
+    if (empty) empty.remove();
+    dress(bubble);
+    bubbles.appendChild(bubble);
+    note(bubble);
+    if (stick) toBottom();
+  });
+  /* Further behind than the stream resends: the page drawn again. */
+  stream.addEventListener('gap', function () { location.reload(); });
+  /* A page restored from the back-forward cache has a dead stream. */
+  window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
+
+  earlier.addEventListener('click', function () {
+    var first = bubbles.querySelector('.chat-msg');
+    if (!first || earlier.disabled) return;
+    earlier.disabled = true;
+    fetch(root.dataset.earlier + '?before=' + first.dataset.id).then(function (r) {
+      return r.ok ? r.text() : null;
+    }).then(function (html) {
+      earlier.disabled = false;
+      if (html === null) return;
+      var page = parse(html).firstElementChild;
+      if (!page) return;
+      var height = history.scrollHeight;
+      var older = page.querySelectorAll('.chat-msg');
+      for (var j = 0; j < older.length; j++) {
+        if (document.getElementById(older[j].id)) continue;
+        dress(older[j]);
+        bubbles.insertBefore(older[j], first);
+      }
+      ours = true;
+      history.scrollTop += history.scrollHeight - height;
+      earlier.hidden = page.dataset.earlier !== '1';
+    }, function () { earlier.disabled = false; });
+  });
+})();

@@ -25,6 +25,7 @@ import pf.Sse
 import md.Md
 import Access
 import AccountCodec
+import Bubble
 import Channel
 import ChannelLayout
 import ChannelName
@@ -172,6 +173,65 @@ Topics := [].{
 			Post(at) => if (req.method == Post) post!(at) else Chat.not_allowed(Post)
 			Stream(at) => if (req.method == Get) stream!(at) else Chat.not_allowed(Get)
 		}
+
+	## **WHAT A TOPIC'S PAGE DECIDES ON** (TopicPage.roc): the viewer over
+	## topics, the accounts and the time, from the credential.
+	viewer! : {} => Try(
+		{
+			viewer : Access.Viewer(Topic.At),
+			accounts : List(Principal),
+			now : I64,
+		},
+		Chat.Answer,
+	)
+	viewer! = |{}| load_viewer!({})
+
+	## **THE TOPIC, IF THIS VIEWER READS IT**, as the topic's own routes
+	## decide (`Topic.read`): its channel and the topic, or the answer that
+	## ends the request (no such channel or topic, or one the viewer may not
+	## read: the same 404).
+	readable! : {
+		viewer : Access.Viewer(Topic.At),
+		accounts : List(Principal),
+		now : I64,
+	},
+	Topic.At => Try({ channel : Channel, topic : Topic }, Chat.Answer)
+	readable! = |v, at| {
+		a = read_by!(v, at)?
+		Ok({ channel: a.channel, topic: a.topic })
+	}
+
+	## **THE BUS KEY A TOPIC'S PAGES ARE HELD ON**, beside its streams'
+	## (`bus_key`): each post's bubble, as Bubble.roc draws it, published
+	## once for every page that shows the topic.
+	page_key : Topic.At -> List(U8)
+	page_key = |at| Str.to_utf8("topic-page/${spot_of(at)}")
+
+	## **A BUBBLE AS ONE SSE EVENT**, named `message`, its id the message's,
+	## as a page's stream and a post's publish both write it.
+	page_frame : List(Principal), MessageCodec.Fields -> List(U8)
+	page_frame = |accounts, m|
+		match Sse.frame({
+			name: Str.to_utf8("message"),
+			data: Bubble.data(Bubble.of(accounts, m)),
+			id: Str.to_utf8(m.id.to_str()),
+		}) {
+			Ok(f) => f
+			Err(LineBreak) => crash "Topics.page_frame: Bubble.data holds no CR, and the name and id no line break"
+		}
+
+	## A channel topic's place in a path's two parts; a DM's name is no
+	## channel's.
+	channel_topic_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
+	channel_topic_in = |c, t| at_in(c, t)
+
+	## A DM's other human and its topic in a path's two parts.
+	dm_topic_in : List(U8), List(U8) -> Try({ other : Principal.HumanId, topic : TopicName }, [NotTopics])
+	dm_topic_in = |n, t| dm_in(n, t)
+
+	## The `gap` event, as a topic's stream sends it.
+	gap : U64 -> List(U8)
+	gap = |before| gap_frame(before)
 
 	## **THE AGENT TOPICS THAT NAME `agent`**, as sources of its one stream
 	## (OneStream): every channel's agent topics naming it whose binding
@@ -549,6 +609,17 @@ load_channel! = |name|
 load_read! : Topic.At => Try(Asked, Chat.Answer)
 load_read! = |at| {
 	v = load_viewer!({})?
+	read_by!(v, at)
+}
+
+## The topic at `at` for a viewer already loaded, as `load_read!` decides.
+read_by! : {
+	viewer : Access.Viewer(Topic.At),
+	accounts : List(Principal),
+	now : I64,
+},
+Topic.At => Try(Asked, Chat.Answer)
+read_by! = |v, at| {
 	channel = load_channel!(at.channel)?
 	topic =
 		match Store.load_topic!(channel, at.topic) {
@@ -829,8 +900,8 @@ when_posted! = |a, body| {
 	}
 }
 
-## A posted message, to the topic's streams and to each of its agents'
-## one stream, in the turn it was appended in.
+## A posted message, to the topic's streams, its pages' (as a bubble)
+## and each of its agents' one stream, in the turn it was appended in.
 publish! : Topic,
 {
 	message : MessageCodec.Fields,
@@ -846,6 +917,7 @@ publish! = |topic, { message, who }| {
 		Ok(f) => Host.publish!(bus_key(at), f)
 		Err(LineBreak) => crash "Topics.publish!: a message's JSON holds no line break"
 	}
+	Host.publish!(Topics.page_key(at), Topics.page_frame(who.accounts, message))
 	match Conversations.agent_event({
 		lead: lead_of(at).concat(ref_lead(at, message.id)),
 		spot: spot_of(at),

@@ -13,8 +13,11 @@ pub fn build(b: *std.Build) void {
     linuxOnly(target.result);
 
     const chat_client = b.dependency("chat_client", .{ .target = target, .optimize = optimize });
+    // roc-chat's own browser scripts (js/bundles.zig): each one's bytes.
+    const own_js = b.createModule(.{ .root_source_file = b.path("js/bundles.zig"), .target = target, .optimize = optimize });
     const imports: []const std.Build.Module.Import = &.{
         .{ .name = "chat_client", .module = chat_client.module("chat_client") },
+        .{ .name = "roc_chat_js", .module = own_js },
     };
 
     const roc = rocCompiler(b);

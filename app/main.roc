@@ -2,7 +2,8 @@
 ## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
 ## conversations, Topics.roc's channel topics, OneStream.roc's one stream per
 ## agent, Agents.roc's agents and API keys, Channels.roc's channels
-## (an admin's), Pages.roc's pages; the store is Store.roc's, the only module that names a
+## (an admin's), Pages.roc's pages, Browse.roc's and TopicPage.roc's (the
+## browser client's); the store is Store.roc's, the only module that names a
 ## file. Beside them, the chat client's scripts (`serve_script!`); the
 ## hello page at `/` is SignIn's, as it says who is signed in.
 app [handle!] {
@@ -13,6 +14,7 @@ app [handle!] {
 import pf.Chat
 import pf.Host
 import Agents
+import Browse
 import Channels
 # The rest of the channels model (Topic, MessageRef, ChannelLayout): pure
 # and not routed yet. Imported so `roc test app/main.roc` runs its
@@ -26,6 +28,7 @@ import Origin
 import Pages
 import SignIn
 import OneStream
+import TopicPage
 import Topics
 import Wire
 
@@ -73,6 +76,13 @@ route! = |req|
 		match HumanInvites.route(req.path) {
 			Ok(r) => HumanInvites.answer!(req, r)
 			Err(NotHumanInvites) => Chat.not_found
+		}
+	} else if Browse.route(req.path).is_ok() {
+		Browse.answer!(req)
+	} else if TopicPage.route(req.path).is_ok() {
+		match TopicPage.route(req.path) {
+			Ok(r) => TopicPage.answer!(req, r)
+			Err(NotATopicPage) => Chat.not_found
 		}
 	} else if Topics.route(req.path).is_ok() {
 		match Topics.route(req.path) {

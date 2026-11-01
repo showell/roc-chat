@@ -1,6 +1,7 @@
 ## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: a list of the viewer's
 ## conversations, and a conversation to read live and post in, in a
-## browser. Small, plain and replaceable: the real client is chat-client's.
+## browser. Small, plain and replaceable: the browser client's pages,
+## Browse and a topic's, are Browse.roc's and TopicPage.roc's.
 ## Every decision is the conversations' (Conversations.roc, ConvAccess), on
 ## the viewer Credentials gives a session's cookie; here are the pages made
 ## of it. A key's Bearer header is a 403: a page is a
@@ -81,6 +82,15 @@ Pages := [].{
 		body_attrs: Html.join([]),
 		body,
 	})
+
+	## **SIGNED OUT, TO `/login`**, a 303 naming this page, so the sign-in
+	## ends back on it.
+	sign_in_first : List(U8) -> Chat.Answer
+	sign_in_first = |path| to_login(path)
+
+	## **A PAGE IS A BROWSER'S**: a key asking for one, a 403.
+	by_key : Chat.Answer
+	by_key = key_refused
 
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
@@ -209,6 +219,7 @@ list! = |
 				body_attrs: Html.join([]),
 				body: Html.join([
 					Html.markup("<h1>Your conversations</h1>\n"),
+					Html.markup("<p><a href=\"/chat/browse\">Browse your channels and DMs</a></p>\n"),
 					items,
 					start_form(accounts, me),
 					Html.markup(invite_form),
