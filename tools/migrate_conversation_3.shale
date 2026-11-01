@@ -105,7 +105,8 @@ on_prod("set -e\n"
   .. "sudo cmp " .. DATA .. "/chat/transcripts/3 " .. TOPIC .. "/transcript\n"
   .. "sudo cmp " .. DATA .. "/chat/offsets/3 " .. TOPIC .. "/offsets\n"
   .. "sudo cmp " .. DATA .. "/chat/tallies/3 " .. TOPIC .. "/tally")
-local lines_moved = trim(on_prod("sudo wc -l < " .. TOPIC .. "/transcript").out)
+-- `wc` reads the file itself, as root: a `<` would be the ssh user's shell's.
+local lines_moved = split(trim(on_prod("sudo wc -l " .. TOPIC .. "/transcript").out), " ")[1]
 print("channel: " .. trim(on_prod("sudo cat " .. CHANNEL .. "/channel").out))
 print("topic: " .. trim(on_prod("sudo cat " .. TOPIC .. "/topic").out))
 print("moved " .. lines_moved .. " messages; conversation 3 is RocChatDev/initial-work: " .. PAGE)
