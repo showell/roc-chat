@@ -1,5 +1,5 @@
-## **BROWSE: WHERE A HUMAN'S TOPICS ARE**, `GET /chat/browse`: every other
-## human, as a DM, then the channels the viewer is a member of, each with
+## **BROWSE: WHERE A HUMAN'S TOPICS ARE**, `GET /chat/browse`: every
+## human, as a DM, the viewer too (their self-DM), then the channels the viewer is a member of, each with
 ## the topics they may read there, each topic a link to its page
 ## (TopicPage.roc). Its link is the top bar's first (Chrome.roc), where the
 ## old app's "Chat" was.
@@ -154,7 +154,8 @@ list! = |path| {
 		}?
 	stored = Store.load_channels!({}).map_err(|_| Chat.failed)?
 	member = stored.channels.keep_if(|c| c.membership({ who: me, accounts: v.accounts }) == Member)
-	dms = humans_by_id(v.accounts).keep_if(|h| h.to_u64() != mine).map(
+	# Every human, the viewer too: their own row is their self-DM.
+	dms = humans_by_id(v.accounts).map(
 		|h| {
 			name = ChannelName.dm_of(mine, h.to_u64())
 			label = Render.name_of(v.accounts, Principal.Id.Human(h))

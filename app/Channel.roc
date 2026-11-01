@@ -77,13 +77,14 @@ Channel :: {
 		}
 	}
 
-	## **A HUMAN'S DM WITH ANOTHER**: the pair's channel (ChannelName.dm_of),
-	## its two members bound to their accounts. Asked by a human, by a
-	## session or their own key. Refused, in this order: nobody signed in
-	## (`SignedOut`); an account gone (`NoSuchPrincipal`); an agent or a bot
-	## asking (`NotAHuman`, the asker's id); then the other: an agent's or a
-	## bot's id (`NotAHuman`), no one account holding it (`NoAccount`), or
-	## the asker themselves (`Yourself`).
+	## **A HUMAN'S DM**: the pair's channel (ChannelName.dm_of), its members
+	## bound to their accounts; with oneself, a self-DM, its one member the
+	## asker (Steve, 2026-11-01). Asked by a human, by a session or their own
+	## key. Refused, in this order: nobody signed in (`SignedOut`); an
+	## account gone (`NoSuchPrincipal`); an agent or a bot asking
+	## (`NotAHuman`, the asker's id: no agent has a DM, with itself or
+	## anyone); then the other: an agent's or a bot's id (`NotAHuman`), or no
+	## one account holding it (`NoAccount`).
 	dm : {
 		by : Access.Viewer,
 		other : Principal.Id,
@@ -116,7 +117,7 @@ Channel :: {
 					},
 				),
 			)
-			(Human(_), Human(_)) => Err(Yourself)
+			(Human(a), Human(_)) => Ok(Channel.({ name: ChannelName.dm_of(a.to_u64(), a.to_u64()), members: [me] }))
 			_ => crash "Channel.dm: both are humans by now"
 		}
 	}
@@ -558,7 +559,13 @@ expect
 		Ok(c) => c.name().is_dm() and c.members(ChannelCast.accounts).len() == 2
 		Err(_) => Bool.False
 	}
-expect dm_with(Steve, ChannelCast.id(Steve)).map_ok(|c| c.name()) == Err(Yourself)
+# With oneself: a self-DM, its one member the asker; an agent has none.
+expect
+	match dm_with(Steve, ChannelCast.id(Steve)) {
+		Ok(c) => c.name().to_str() == "dm-1-1" and c.members(ChannelCast.accounts).map(|b| b.id) == [ChannelCast.id(Steve)]
+		Err(_) => Bool.False
+	}
+expect dm_with(Cc, ChannelCast.id(Cc)).map_ok(|c| c.name()) == Err(NotAHuman(ChannelCast.id(Cc)))
 expect dm_with(Steve, ChannelCast.id(Cc)).map_ok(|c| c.name()) == Err(NotAHuman(ChannelCast.id(Cc)))
 expect dm_with(Cc, ChannelCast.id(Steve)).map_ok(|c| c.name()) == Err(NotAHuman(ChannelCast.id(Cc)))
 expect dm_with(

@@ -339,7 +339,7 @@ topic_shown! = |{ path, route: r }, place| {
 }
 
 ## **A DM'S PLACE IS THE ASKER'S**: the pair of the viewer and the other
-## human (ChannelName.dm_of); oneself, or an agent asking, has none, the 404
+## human (ChannelName.dm_of), oneself for a self-DM; an agent asking has none, the 404
 ## of a topic that is not there.
 at_of : Principal.Bound, TopicPage.Place -> Try(Topic.At, Chat.Answer)
 at_of = |me, place|
@@ -347,7 +347,7 @@ at_of = |me, place|
 		InChannel(at) => Ok(at)
 		InDm({ other, topic }) =>
 			match me.id {
-				Human(h) if h != other => Ok({
+				Human(h) => Ok({
 					channel: ChannelName.dm_of(h.to_u64(), other.to_u64()),
 					topic,
 				})
@@ -418,8 +418,10 @@ topic_title = |
 	},
 |
 	if at.channel.is_dm() {
+		others = members.keep_if(|b| b.id != me.id)
+		# A self-DM's other member is the viewer.
 		name =
-			match members.keep_if(|b| b.id != me.id) {
+			match (if (others.is_empty()) members else others) {
 				[b] => Render.name_of(accounts, b.id)
 				_ => at.channel.to_str()
 			}

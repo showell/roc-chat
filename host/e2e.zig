@@ -1815,7 +1815,8 @@ fn agentMember(w: *World) !void {
 /// **A HUMAN DM** (Channel.dm, Topics' `/dms`): two humans' one DM,
 /// whichever asks; topics in it as a channel's, their messages' references
 /// the short `MSG_<topic>_<n>`; a third human never reaches it; with
-/// oneself, an agent or nobody refused; a DM's `dm-` channel is never an
+/// oneself, a self-DM (`dm-<n>-<n>`), its one member; with an agent or
+/// nobody refused; a DM's `dm-` channel is never an
 /// admin's to make, list, admit to or reach as a channel.
 fn humanDm(w: *World) !void {
     const a = try signUp(w.a, w.port(), 1030);
@@ -1830,7 +1831,13 @@ fn humanDm(w: *World) !void {
     if (made.status != 201 or !has(made.body, try std.fmt.allocPrint(w.a, "\"dm\":\"{s}\"", .{name}))) return error.DmNotMade;
     const again = try pagePost(w, b, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}));
     if (again.status != 200 or !has(again.body, name)) return error.NotTheSameDm;
-    if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}))).status != 400) return error.DmWithOneself;
+    const self_dm = try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}));
+    if (self_dm.status != 201 or !has(self_dm.body, try std.fmt.allocPrint(w.a, "{{\"dm\":\"dm-{s}-{s}\",\"members\":[\"human:{s}\"]}}", .{ ha, ha, ha }))) return error.NoSelfDm;
+    if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}))).status != 200) return error.SelfDmTwice;
+    // Another human never reaches it.
+    if ((try pagePost(w, a, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{ha}), "name=mine")).status != 201) return error.TopicNotMade;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/mine", .{ha}), a)).status != 200) return error.SelfDmUnread;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/mine", .{ha}), b)).status != 404) return error.SelfDmLeaked;
     if ((try pagePost(w, a, "/dms", "with=human%3A999999")).status != 404) return error.DmWithNobody;
     const pal = try ownAgent(w, a, "Pal+1030", "");
     if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with={s}", .{pal.id}))).status != 403) return error.DmWithAnAgent;
@@ -2027,7 +2034,15 @@ fn browse(w: *World) !void {
     const made = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "");
     if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", try std.fmt.allocPrint(w.a, "/chat/browse#dm-{s}", .{r}))) return error.DmNotStarted;
     if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "")).status != 303) return error.DmNotFound;
-    if ((try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "")).status != 400) return error.DmWithOneself;
+    // Quin's own row: a topic of his own, the browser on its empty page,
+    // titled with his name, and his post there.
+    const notes = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "topic=notes");
+    const notes_page = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/notes", .{q});
+    if (notes.status != 303 or !std.mem.eql(u8, notes.header("location") orelse "", notes_page)) return error.NoSelfDm;
+    const self_page = try get(w.a, w.port(), notes_page, quin);
+    if (self_page.status != 200 or !has(self_page.body, "<span class=\"chat-top-title\">Chat w/Person 1041: notes</span>") or !has(self_page.body, "No messages yet")) return error.SelfDmPageWrong;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{notes_page}), quin, "a note to self")).status != 201) return error.NotSent;
+    if (!has((try get(w.a, w.port(), notes_page, quin)).body, "a note to self")) return error.NotSeen;
     if ((try pagePost(w, quin, "/chat/dm/999999", "")).status != 404) return error.DmWithNobody;
     if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), .{ .key = pal.key }, "")).status != 403) return error.KeyStartedDm;
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "", "")).status != 401) return error.NobodyStartedDm;
@@ -2110,7 +2125,8 @@ fn topicPage(w: *World) !void {
     const dm = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.quin);
     if (dm.status != 200 or !has(dm.body, "<span class=\"chat-top-title\">Chat w/" ++ pip_name_escaped ++ ": ChitChat</span>")) return error.NoDmPage;
     if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.q}), x.pip)).body, "<span class=\"chat-top-title\">Chat w/Person 1041: ChitChat</span>")) return error.NoDmPage;
-    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.pip)).status != 404) return error.DmWithOneself;
+    // Pip's self-DM has no ChitChat: the 404 of a topic not there.
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.pip)).status != 404) return error.NoTopicRead;
 
     // Who may not read it: a stranger, the same 404 as no topic at all.
     const closed = [_][]const u8{ "/chat/channel/Orchard/Banana", "/chat/channel/Orchard/Banana/stream", "/chat/channel/Orchard/Banana/earlier?before=2", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}) };
@@ -2604,10 +2620,10 @@ const steps = [_]Step{
     .{ .name = "the one stream is one of the agent's streams under the cap, and ends at its lifetime once its key is revoked", .f = agentStreamHeld },
     .{ .name = "a member makes a channel's topic, posts with its reference, another member reads and streams it; a stranger, nobody, and an agent not in the channel are refused", .f = topicsMade },
     .{ .name = "an agent in a channel: by key it reads, posts in and makes topics, its one stream gets every topic's posts naming channel, topic and reference, and resumes; a human not in it refused until let in; an agent not in it never", .f = agentMember },
-    .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; oneself, an agent, nobody refused; never a channel", .f = humanDm },
+    .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; with oneself, a self-DM of one, another never reaching it; an agent, nobody refused; never a channel", .f = humanDm },
     .{ .name = "a human invite: her name held at once, the welcome in their DM, the code in its answer alone; she joins on the plain page under another free name, reads and answers; the code once; again by her inviter or an admin alone; revoked, expired and past ten open refused; audited without the code", .f = humanInvited },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
-    .{ .name = "Browse: every other human as a DM by numeric id, then channels in raw byte order, each with the topics they read in byte order, a channel they are not in not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
+    .{ .name = "Browse: every human as a DM by numeric id, oneself too (a self-DM, a topic of one's own made from it), then channels in raw byte order, each with the topics they read in byte order, a channel they are not in not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
     .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, another channel's topic and none a 404, the page saying why without naming a channel the viewer is not in; the JSON routes alike; signed out a 303 and a 401, a key a 403", .f = topicPage },
     .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },

@@ -215,7 +215,6 @@ Topics := [].{
 						SignedOut | NoSuchPrincipal => not_signed_in
 						NotAHuman(_) => Wire.refused(403, "a DM is two humans'")
 						NoAccount(_) => Wire.refused(404, "no human holds that id")
-						Yourself => Wire.refused(400, "a DM is with someone else")
 					},
 			)?
 		match Store.save_new_channel!(dm) {
@@ -289,10 +288,12 @@ Topics := [].{
 	| {
 		at = topic.at()
 		dm = at.channel.is_dm()
-		# A DM's place is its other member, for this reader; a channel's, its name.
+		# A DM's place is its other member, for this reader (a self-DM's, the
+		# reader); a channel's, its name.
+		others = members.keep_if(|b| b.id != reader)
 		other =
 			if dm {
-				match members.keep_if(|b| b.id != reader).map(|b| b.id) {
+				match (if (others.is_empty()) members else others).map(|b| b.id) {
 					[Human(h), ..] => Other({ id: Principal.Id.Human(h), human: h })
 					_ => NoOther
 				}
@@ -559,8 +560,8 @@ human_in = |bytes| Stored.id(
 ).map_err(|_| NotTopics)
 
 ## **THE DM'S CHANNEL, FOR THE ASKER**: the pair of the asker (a human,
-## by session or their own key) and `other`. Signed out, a 401; an agent
-## or a bot, or oneself, has no DM: a 404.
+## by session or their own key) and `other`, the asker themselves for a
+## self-DM. Signed out, a 401; an agent or a bot has no DM: a 404.
 dm_name! : Principal.HumanId => Try(ChannelName, Chat.Answer)
 dm_name! = |other| {
 	v = Topics.load_viewer!({})?
@@ -568,7 +569,7 @@ dm_name! = |other| {
 		SignedOut => Err(not_signed_in)
 		Session(b) | Key(b) =>
 			match b.id {
-				Human(me) if me != other => Ok(ChannelName.dm_of(me.to_u64(), other.to_u64()))
+				Human(me) => Ok(ChannelName.dm_of(me.to_u64(), other.to_u64()))
 				_ => Err(no_such_dm)
 			}
 	}
