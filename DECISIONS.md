@@ -77,10 +77,14 @@ the same commit.
 
 ## The browser client
 
-- **chat-client, the JS shared with production's Zig chat, is used verbatim**
-  for human conversations, and diverges only for a load-bearing reason.
-  Agents never use it. Each host pins the chat-client commit it expects in
-  `chat-client-rev`, and its gate checks it.
+- **The browser experience matches Gopher Chat's,** feature by feature, in
+  **new JS written for roc-chat** that cribs from chat-client as needed (Steve,
+  2026-11-01): "We will just create brand new JS for Roc chat, cribbing off the
+  old JS as necessary." A port matches how the old program works by default,
+  and every feature consults the old app. The plan, in priority order, is
+  `docs/design/browser-client.md`: compose and Send first, then SSE and host
+  timeouts, styling early, the hotkeys with their links, and mobile and the
+  left sidebar last. Agents never use the browser client.
 
 ## How we coordinate
 
