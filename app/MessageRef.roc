@@ -10,30 +10,19 @@
 ## (`local_id`), its anchor `#msg-<topic>_<n>`, as the client and its
 ## contract want; `in_topic` reads one back only in the topic the page is,
 ## so a page never lends its id to another channel's topic of that name.
-##
-## **A CONVERSATION'S MESSAGE** (`Where`'s `InConversation`) is written
-## `MSG_<conversation>_<n>` (`MSG_4_3`): the conversation's id and the
-## message's, the old app's `MSG_<sid>_<n>` with the conversation as its
-## unit, so it names its conversation, as a channel's reference names its
-## channel. Its page's id is `<conversation>_<n>`. It holds no `.`, so it
-## is never a channel's reference; it reads like a DM's short one only for
-## a DM topic named all in digits, and each is read only on its own page
-## (`number_in`), so no page reads one two ways. Pure.
+## Pure.
 import ChannelName
-import ConvAccess
 import Topic
 import TopicName
 
 MessageRef :: { at : Topic.At, n : U64 }.{
 
-	## **WHERE A MESSAGE IS**: a channel's or a DM's topic, or a
-	## conversation.
-	Where : [InTopic(Topic.At), InConversation(ConvAccess.ConvId)]
+	## **WHERE A MESSAGE IS**: a channel's or a DM's topic.
+	Where : [InTopic(Topic.At)]
 
 	## **A MESSAGE'S REFERENCE, AS IT TRAVELS** (what a quote-reply and an
 	## edit write): a channel's full `MSG_<channel>.<topic>_<n>`, a DM's
-	## short `MSG_<topic>_<n>` ("this topic, on this page"), a
-	## conversation's `MSG_<conversation>_<n>`.
+	## short `MSG_<topic>_<n>` ("this topic, on this page").
 	spelled : MessageRef.Where, U64 -> Str
 	spelled = |place, n|
 		match place {
@@ -41,44 +30,28 @@ MessageRef :: { at : Topic.At, n : U64 }.{
 				ref = MessageRef.({ at, n })
 				if (at.channel.is_dm()) "MSG_${ref.local_id()}" else ref.to_str()
 			}
-			InConversation(_) => "MSG_${MessageRef.local(place, n)}"
 		}
 
-	## **A MESSAGE'S ID ON ITS PAGE**: `<topic>_<n>`, or a conversation's
-	## `<conversation>_<n>`, as the page's notices say it.
+	## **A MESSAGE'S ID ON ITS PAGE**: `<topic>_<n>`, as the page's notices
+	## say it.
 	local : MessageRef.Where, U64 -> Str
 	local = |place, n|
 		match place {
 			InTopic(at) => MessageRef.({ at, n }).local_id()
-			InConversation(c) => "${c.to_u64().to_str()}_${n.to_str()}"
 		}
 
 	## **THE NUMBER OF THE MESSAGE OF `place` THAT `text` REFERS TO**, read
-	## on `place`'s own page: a topic's full reference or its short one, a
-	## conversation's own; anything else, another topic's or another
-	## conversation's included, is no reference here.
+	## on `place`'s own page: a topic's full reference or its short one;
+	## anything else, another topic's included, is no reference here.
 	number_in : MessageRef.Where, Str -> Try(U64, [NotAReference])
-	number_in = |place, text| {
-		bytes = text.to_utf8()
-		if !bytes.starts_with(prefix) {
+	number_in = |place, text|
+		if !text.to_utf8().starts_with(prefix) {
 			Err(NotAReference)
 		} else {
-			rest = bytes.drop_first(prefix.len())
 			match place {
 				InTopic(at) => topic_number(at, text)
-				InConversation(c) =>
-					match List.split_first(rest, '_') {
-						Err(NotFound) => Err(NotAReference)
-						Ok({ before, after }) =>
-							if number_of(before) == Ok(c.to_u64()) {
-								number_of(after)
-							} else {
-								Err(NotAReference)
-							}
-					}
 			}
 		}
-	}
 
 	## The reference `text` spells, `MSG_<channel>.<topic>_<n>`: both names
 	## by their rules, and `n` a decimal from 1, without a leading zero, of
@@ -253,33 +226,16 @@ expect MessageRef.in_topic(
 	"MSG_Cobblestone.ChitChat_5",
 ) == Err(NotAReference)
 
-## Conversation `n`, in a test.
-conv : U64 -> ConvAccess.ConvId
-conv = |n| ConvAccess.ConvId.from_u64(n) ?? crash "conv: a test's id is not 0"
-
 dm_at : Topic.At
 dm_at = { channel: ChannelName.dm_of(1, 2), topic: at_of("Cobblestone", "ChitChat").topic }
 
-# Spelled as each kind travels: a channel's full, a DM's short, a
-# conversation's by its id.
+# Spelled as each kind travels: a channel's full, a DM's short.
 expect MessageRef.spelled(InTopic(at_of("Cobblestone", "ChitChat")), 5) == "MSG_Cobblestone.ChitChat_5"
 expect MessageRef.spelled(InTopic(dm_at), 5) == "MSG_ChitChat_5"
-expect MessageRef.spelled(InConversation(conv(4)), 3) == "MSG_4_3"
 expect MessageRef.local(InTopic(at_of("Cobblestone", "ChitChat")), 5) == "ChitChat_5"
-expect MessageRef.local(InConversation(conv(4)), 3) == "4_3"
-# Read on its own page: a conversation's own reference, and no other.
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_4_3") == Ok(3)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_44_3") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_5_3") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_3") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_4_03") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_04_3") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_4_3_1") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "4_3") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_ChitChat_3") == Err(NotAReference)
-expect MessageRef.number_in(InConversation(conv(4)), "MSG_a.ChitChat_3") == Err(NotAReference)
-# A topic's page reads its full and its short reference, never a
-# conversation's, nor another topic's.
+# A topic's page reads its full and its short reference, never another
+# topic's.
+expect MessageRef.number_in(InTopic(at_of("Cobblestone", "ChitChat")), "ChitChat_5") == Err(NotAReference)
 expect MessageRef.number_in(InTopic(at_of("Cobblestone", "ChitChat")), "MSG_Cobblestone.ChitChat_5") == Ok(5)
 expect MessageRef.number_in(InTopic(at_of("Cobblestone", "ChitChat")), "MSG_ChitChat_5") == Ok(5)
 expect MessageRef.number_in(InTopic(at_of("Cobblestone", "ChitChat")), "MSG_general.ChitChat_5") == Err(NotAReference)

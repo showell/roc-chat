@@ -1,7 +1,6 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
-## routes' work is in their modules: SignIn.roc's sign-in, Conversations.roc's
-## conversations, Topics.roc's channel topics, OneStream.roc's one stream per
-## agent, Agents.roc's agents and API keys, Channels.roc's channels
+## routes' work is in their modules: SignIn.roc's sign-in, Topics.roc's
+## channel topics, OneStream.roc's one stream per agent, Agents.roc's agents and API keys, Channels.roc's channels
 ## (an admin's), Pages.roc's pages, Browse.roc's, TopicPage.roc's and SavedPage.roc's (the
 ## browser client's); the store is Store.roc's, the only module that names a
 ## file. Beside them, the chat client's scripts (`serve_script!`); the
@@ -16,12 +15,8 @@ import pf.Host
 import Agents
 import Browse
 import Channels
-# The rest of the channels model (Topic, MessageRef, ChannelLayout): pure
-# and not routed yet. Imported so `roc test app/main.roc` runs its
-# expects; the topics' routes use it here.
 import ChannelLayout
 import MessageRef
-import Conversations
 import Html
 import HumanInvites
 import Origin
@@ -106,7 +101,6 @@ route! = |req|
 		}
 	} else {
 		match (
-			Conversations.route(req.path),
 			Agents.route(req.path),
 			Channels.route(req.path),
 			Pages.route(req.path),
@@ -115,16 +109,8 @@ route! = |req|
 				Ok(route),
 				_,
 				_,
-				_,
-			) => Conversations.answer!(req, route)
-			(
-				_,
-				Ok(route),
-				_,
-				_,
 			) => Agents.answer!(req, route)
 			(
-				_,
 				_,
 				Ok(route),
 				_,
@@ -133,11 +119,9 @@ route! = |req|
 			(
 				_,
 				_,
-				_,
 				Ok(page),
 			) => Pages.answer!(req, page)
 			(
-				Err(_),
 				Err(_),
 				Err(_),
 				Err(_),

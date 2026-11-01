@@ -50,7 +50,7 @@ InviteCodec := [].{
 	]
 
 	## **AN INVITE'S WHOLE RECORD**.
-	Record(id) : {
+	Record : {
 		id : InviteCodec.InviteId,
 		bound : Principal.Bound,
 		by : InviteCodec.By,
@@ -59,7 +59,7 @@ InviteCodec := [].{
 		expires : I64,
 		state : InviteCodec.State,
 		lifetime : I64,
-		scope : KeyCodec.Scope(id),
+		scope : KeyCodec.Scope,
 	}
 
 	## **WHY A REDEMPTION IS REFUSED**, each audited, and each the same
@@ -91,9 +91,9 @@ InviteCodec := [].{
 		Grant(ApiKey.GrantRefusal),
 	]
 
-	## The record's line, an id spelled by `number`.
-	encode : InviteCodec.Record(id), (id -> U64) -> List(U8)
-	encode = |r, number|
+	## The record's line.
+	encode : InviteCodec.Record -> List(U8)
+	encode = |r|
 		Stored.line(
 			"invite",
 			[
@@ -107,8 +107,8 @@ InviteCodec := [].{
 				("expires", Stored.time_text(r.expires)),
 				("state", spell_state(r.state)),
 				("lifetime", r.lifetime.to_str()),
-				("read", KeyCodec.reach_text(r.scope.read, number)),
-				("post", KeyCodec.reach_text(r.scope.post, number)),
+				("read", KeyCodec.reach_text(r.scope.read)),
+				("post", KeyCodec.reach_text(r.scope.post)),
 				("admin", KeyCodec.admin_text(r.scope.admin)),
 			],
 		)
@@ -116,8 +116,8 @@ InviteCodec := [].{
 	## The record a line holds, an id read by `make`; refused when it is for
 	## a human (an invite is for an agent or a bot), expires before it was
 	## made, or names a key's lifetime no grant gives.
-	decode : List(U8), (U64 -> Try(id, [NotAnId])) -> Try(InviteCodec.Record(id), _)
-	decode = |raw, make| {
+	decode : List(U8) -> Try(InviteCodec.Record, _)
+	decode = |raw| {
 		fields = Stored.Reader.open(raw, "invite")?
 		id_field = fields.field("id")?
 		id = Stored.id(id_field.value, { name: "id", make: InviteCodec.InviteId.from_u64 })?
@@ -153,9 +153,9 @@ InviteCodec := [].{
 		lifetime_field = state_field.rest.field("lifetime")?
 		lifetime = Stored.time(lifetime_field.value, "lifetime")?
 		read_field = lifetime_field.rest.field("read")?
-		read = KeyCodec.reach_from(read_field.value, { name: "read", make })?
+		read = KeyCodec.reach_from(read_field.value, "read")?
 		post_field = read_field.rest.field("post")?
-		post = KeyCodec.reach_from(post_field.value, { name: "post", make })?
+		post = KeyCodec.reach_from(post_field.value, "post")?
 		admin_field = post_field.rest.field("admin")?
 		admin = KeyCodec.admin_from(admin_field.value)?
 		admin_field.rest.close()?
@@ -323,12 +323,8 @@ iid = |n|
 		Err(NotAnId) => crash "iid: a test's invite id is not 0"
 	}
 
-## A conversation's number, as a test's lines hold it.
-number : U64 -> Try(U64, [NotAnId])
-number = |n| if (n == 0) Err(NotAnId) else Ok(n)
-
 ## Agent 7's invite, as it is made: live, everywhere, no admin, a year's key.
-fresh : InviteCodec.Record(U64)
+fresh : InviteCodec.Record
 fresh = {
 	id: iid(3),
 	bound: {
@@ -343,47 +339,45 @@ fresh = {
 	state: Live,
 	lifetime: KeyCodec.max_lifetime_secs,
 	scope: {
-		read: On(Everywhere),
-		post: On(Everywhere),
+		read: On,
+		post: On,
 		admin: Off,
 	},
 }
 
-## Every part at its other value: a bot's, spent, narrowed, admin, a minute.
-other : InviteCodec.Record(U64)
+## Every part at its other value: a bot's, spent, reading nothing, posting
+## nothing, admin, a minute.
+other : InviteCodec.Record
 other = {
 	..fresh,
 	bound: { ..fresh.bound, id: Principal.Id.Bot(Cast.aid(9)) },
 	state: Spent,
 	lifetime: 60,
 	scope: {
-		read: On(Only([3, 9])),
+		read: Off,
 		post: Off,
 		admin: On,
 	},
 }
 
-line_of : InviteCodec.Record(U64) -> Str
+line_of : InviteCodec.Record -> Str
 line_of = |r|
-	match Str.from_utf8(InviteCodec.encode(r, |n| n)) {
+	match Str.from_utf8(InviteCodec.encode(r)) {
 		Ok(s) => s
 		Err(_) => crash "line_of: a line is UTF-8"
 	}
 
 expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:${"11".repeat(32)} hash=${"22".repeat(32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off\n"
-expect InviteCodec.decode(InviteCodec.encode(fresh, |n| n), number) == Ok(fresh)
-expect InviteCodec.decode(InviteCodec.encode(other, |n| n), number) == Ok(other)
-expect InviteCodec.decode(
-	InviteCodec.encode({ ..fresh, state: Revoked }, |n| n),
-	number,
-) == Ok({ ..fresh, state: Revoked })
+expect InviteCodec.decode(InviteCodec.encode(fresh)) == Ok(fresh)
+expect InviteCodec.decode(InviteCodec.encode(other)) == Ok(other)
+expect InviteCodec.decode(InviteCodec.encode({ ..fresh, state: Revoked })) == Ok({ ..fresh, state: Revoked })
+# An invite narrowed to listed resources, as the chat once wrote one,
+# does not decode.
+expect decoded_but({ from: "read=everywhere", to: "read=only:3,9" }) == Err(UnknownWord("read"))
 
 ## `fresh`'s line with `from` made `to`, decoded.
 decoded_but : { from : Str, to : Str } -> Try({}, _)
-decoded_but = |{ from, to }| InviteCodec.decode(
-	line_of(fresh).replace_first(from, to).to_utf8(),
-	number,
-).map_ok(|_| {})
+decoded_but = |{ from, to }| InviteCodec.decode(line_of(fresh).replace_first(from, to).to_utf8()).map_ok(|_| {})
 
 expect decoded_but({ from: "for=agent:7", to: "for=human:7" }) == Err(BadValue("for"))
 expect decoded_but({
@@ -400,10 +394,7 @@ expect decoded_but({ from: "id=3", to: "id=0" }) == Err(BadValue("id"))
 expect decoded_but({ from: " by=", to: " from=" }) == Err(MissingField("by"))
 expect decoded_but({ from: "by=session:", to: "by=cookie:" }) == Err(UnknownWord("by"))
 expect decoded_but({ from: "by=session:11", to: "by=session:1" }) == Err(BadValue("by"))
-expect InviteCodec.decode(
-	InviteCodec.encode({ ..fresh, by: Key(hash_of(0x33)) }, |n| n),
-	number,
-) == Ok({ ..fresh, by: Key(hash_of(0x33)) })
+expect InviteCodec.decode(InviteCodec.encode({ ..fresh, by: Key(hash_of(0x33)) })) == Ok({ ..fresh, by: Key(hash_of(0x33)) })
 expect decoded_but({ from: "admin=off", to: "admin=off x=1" }) == Err(Trailing)
 
 ## A grant's refusal, as a test spells and reads it.

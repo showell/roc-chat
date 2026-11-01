@@ -1,7 +1,7 @@
 ## **AGENTS AND API KEYS ON THE WIRE**: a signed-in human makes an agent
 ## they own, mints a key acting as themselves, invites an agent to redeem
 ## its own, lists their keys and revokes one. Every decision is the core's: who may
-## grant what is ApiKey's (`may_grant`, through ConvKey.issue), what a step
+## grant what is ApiKey's (`may_grant`, through ChatKey.issue), what a step
 ## means is GitHubSignIn's (`applied`), a name's rule is DisplayName's, and
 ## an agent's making is `Agents.make`, here and pure. Here are the facts
 ## asked of the host, the records kept (Store), and the answers made.
@@ -47,8 +47,7 @@ import ApiKey
 import AuditCodec
 import Cast
 import ChannelName
-import ConvAccess
-import ConvKey
+import ChatKey
 import Credentials
 import InviteCodec
 import JsonOut
@@ -224,7 +223,7 @@ Agents := [].{
 
 	## Who asks to make an agent, mint, invite or revoke: the credential the
 	## request came with, as ApiKey's grants take it.
-	Granter : ApiKey.Granter(ConvAccess.Conv, ConvAccess.ConvId)
+	Granter : ApiKey.Granter
 
 	## What a grant route is handed with its granter: the form, and whom a
 	## grant acts as when the form names no one (the human, or the key's own
@@ -363,7 +362,7 @@ Agents := [].{
 	invited : {
 		granter : Agents.Granter,
 		acts_as : Principal.Id,
-		scope : ApiKey.Scope(ConvAccess.ConvId),
+		scope : ApiKey.Scope,
 		lifetime : I64,
 		accounts : List(Principal),
 		now : I64,
@@ -397,16 +396,16 @@ Agents := [].{
 	## **WHAT A REDEMPTION DECIDES**: the key, or why not. A live invite,
 	## before its expiry (a clock before its making is trusted for nothing),
 	## its agent's binding holding now, and the grant decided again as its
-	## granter (ApiKey.may_grant through ConvKey.issue: the session still
+	## granter (ApiKey.may_grant through ChatKey.issue: the session still
 	## live, the agent still its human's) against the accounts now. `granter`
 	## is the invite's, as the store holds it now: `Gone` when it holds none.
 	redeemed : {
-		invite : InviteCodec.Record(ConvAccess.ConvId),
+		invite : InviteCodec.Record,
 		granter : [Found(Agents.Granter), Gone],
 		accounts : List(Principal),
 		now : I64,
 		key : Principal.KeyId,
-	} -> Try(ConvKey.Key, _)
+	} -> Try(ChatKey.Key, _)
 	redeemed = |
 		{
 			invite,
@@ -425,7 +424,7 @@ Agents := [].{
 					(Err(_), _) => Err(NoLongerHolds)
 					(Ok(_), Gone) => Err(Grant(NoSuchGranter))
 					(Ok(_), Found(g)) =>
-						match ConvKey.issue(
+						match ChatKey.issue(
 							{
 								granter: g,
 								acts_as: invite.bound.id,
@@ -443,7 +442,7 @@ Agents := [].{
 
 	## **THE INVITE IS ONE OF THIS HUMAN'S**: for an agent or a bot the
 	## accounts say they own now.
-	is_invited_by : InviteCodec.Record(ConvAccess.ConvId),
+	is_invited_by : InviteCodec.Record,
 	{
 		human : Principal.HumanId,
 		accounts : List(Principal),
@@ -456,7 +455,7 @@ Agents := [].{
 
 	## **THE KEY IS ONE OF THIS HUMAN'S**: it acts as them, or as an agent
 	## or a bot the accounts say they own now.
-	is_owned_by : ConvKey.Key, { human : Principal.HumanId, accounts : List(Principal) } -> Bool
+	is_owned_by : ChatKey.Key, { human : Principal.HumanId, accounts : List(Principal) } -> Bool
 	is_owned_by = |key, { human, accounts }|
 		match Principal.find(accounts, key.acts_as()) {
 			Ok(p) => Principal.answers_to(p) == human
@@ -483,8 +482,8 @@ Agents := [].{
 		me : Principal.HumanId,
 		accounts : List(Principal),
 		agents : List(Principal),
-		keys : List(ConvKey.Key),
-		invites : List(InviteCodec.Record(ConvAccess.ConvId)),
+		keys : List(ChatKey.Key),
+		invites : List(InviteCodec.Record),
 	}
 
 	## **THE AGENTS PAGE'S FACTS**, for a live session; nobody signed in,
@@ -547,7 +546,7 @@ Agents := [].{
 }
 
 ## Not revoked, and before its expiry.
-works : ConvKey.Key, I64 -> Bool
+works : ChatKey.Key, I64 -> Bool
 works = |key, now| {
 	r = key.record()
 	match r.revocation {
@@ -820,7 +819,7 @@ mint_for! = |granter, { default_as, form }|
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 						Err(NotAHash) => Chat.failed
 						Ok(hash) =>
-							match ConvKey.issue(
+							match ChatKey.issue(
 								{
 									granter,
 									acts_as,
@@ -1142,7 +1141,7 @@ redeem_code! = |
 ## **SPENT FIRST**, before the key is stored, so a crash between leaves a
 ## spent invite and no key, never a key and a live invite.
 redeem_now! : {
-	invite : InviteCodec.Record(ConvAccess.ConvId),
+	invite : InviteCodec.Record,
 	format : [Json, SecretAlone],
 	now : I64,
 } => Chat.Answer
@@ -1298,7 +1297,7 @@ list_invites! = |{}|
 	}
 
 ## Live, and before its expiry.
-is_live : InviteCodec.Record(ConvAccess.ConvId), I64 -> Bool
+is_live : InviteCodec.Record, I64 -> Bool
 is_live = |invite, now|
 	match invite.state {
 		Live => now >= invite.created and now < invite.expires
@@ -1306,7 +1305,7 @@ is_live = |invite, now|
 	}
 
 ## The invites in id order, smallest first, as a listing shows them.
-invites_by_id : List(InviteCodec.Record(ConvAccess.ConvId)) -> List(InviteCodec.Record(ConvAccess.ConvId))
+invites_by_id : List(InviteCodec.Record) -> List(InviteCodec.Record)
 invites_by_id = |invites| List.sort_with(invites, |a, b| by_number(a.id.to_u64(), b.id.to_u64()))
 
 ## Two ids' order, smallest first: the listings' one rule.
@@ -1362,7 +1361,7 @@ revoke_invite! = |id|
 
 ## **AN INVITE AS THE WIRE SPELLS IT**: its public id, whom it is for, and
 ## when it expires; its code only when just made (`Shown`), never after.
-invite_json : InviteCodec.Record(ConvAccess.ConvId), [Shown(List(U8)), Hidden] -> JsonOut
+invite_json : InviteCodec.Record, [Shown(List(U8)), Hidden] -> JsonOut
 invite_json = |invite, code| {
 	shown =
 		match code {
@@ -1384,7 +1383,7 @@ asked_grant : List(U8),
 Principal.Id -> Try(
 	{
 		acts_as : Principal.Id,
-		scope : ApiKey.Scope(ConvAccess.ConvId),
+		scope : ApiKey.Scope,
 		lifetime : I64,
 	},
 	Str,
@@ -1426,16 +1425,14 @@ asked_grant = |form, default_as| {
 }
 
 ## A read's or a post's reach, as the form spells it (KeyCodec's one
-## spelling); everywhere when the form names none.
-reach_asked : List(U8), Str -> Try([Off, On(ApiKey.Reach(ConvAccess.ConvId))], Str)
+## spelling); everywhere when the form names none. A key narrowed to
+## listed resources (`only:`) is no more: refused, as any other word.
+reach_asked : List(U8), Str -> Try([Off, On], Str)
 reach_asked = |form, name|
 	match SignInWeb.form_field(form, name) {
-		Err(Missing) => Ok(On(Everywhere))
-		Err(Malformed) => Err("`${name}` is `everywhere`, `off` or `only:` and conversation ids")
-		Ok(v) => KeyCodec.reach_from(
-			v,
-			{ name, make: ConvAccess.ConvId.from_u64 },
-		).map_err(|_| "`${name}` is `everywhere`, `off` or `only:` and conversation ids")
+		Err(Missing) => Ok(On)
+		Err(Malformed) => Err("`${name}` is `everywhere` or `off`")
+		Ok(v) => KeyCodec.reach_from(v, name).map_err(|_| "`${name}` is `everywhere` or `off`")
 	}
 
 ## **/keys, GET**: the session's human's keys and their agents', by id;
@@ -1473,7 +1470,7 @@ list! = |{}|
 	}
 
 ## The keys in id order, smallest first, as a listing shows them.
-keys_by_id : List(ConvKey.Key) -> List(ConvKey.Key)
+keys_by_id : List(ChatKey.Key) -> List(ChatKey.Key)
 keys_by_id = |keys| List.sort_with(keys, |a, b| by_number(a.id().to_u64(), b.id().to_u64()))
 
 ## **/keys/<id>/revoke**: one of the session's keys revoked, for good.
@@ -1618,7 +1615,7 @@ name_of = |p|
 ## **A KEY AS THE WIRE SPELLS IT**: its public id, who it acts as, its
 ## scope in KeyCodec's spelling, when it was made and expires, and whether
 ## it is revoked; its secret only when just minted (`Shown`), never after.
-key_json : ConvKey.Key, [Shown(List(U8)), Hidden] -> JsonOut
+key_json : ChatKey.Key, [Shown(List(U8)), Hidden] -> JsonOut
 key_json = |key, secret| {
 	r = key.record()
 	revoked =
@@ -1640,8 +1637,8 @@ key_json = |key, secret| {
 		[
 			("id", JsonOut.number(r.id.to_u64())),
 			("acts_as", JsonOut.string(AccountCodec.id_text(r.acts_as))),
-			("read", JsonOut.string(KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64))),
-			("post", JsonOut.string(KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64))),
+			("read", JsonOut.string(KeyCodec.reach_text(r.scope.read))),
+			("post", JsonOut.string(KeyCodec.reach_text(r.scope.post))),
 			("admin", JsonOut.string(admin)),
 			("created", JsonOut.signed(r.created)),
 			("expires", JsonOut.signed(r.expires)),
@@ -2057,23 +2054,23 @@ expect said(
 ) == Refused(ClockOutOfRange)
 
 ## The key a test's grant makes.
-granted : Try(ConvKey.Key, [Refused(ApiKey.GrantRefusal)]) -> ConvKey.Key
+granted : Try(ChatKey.Key, [Refused(ApiKey.GrantRefusal)]) -> ChatKey.Key
 granted = |t|
 	match t {
 		Ok(k) => k
 		Err(_) => crash "granted: a test's key is grantable"
 	}
 
-ann_key : ConvKey.Key
+ann_key : ChatKey.Key
 ann_key =
 	granted(
-		ConvKey.issue(
+		ChatKey.issue(
 			{
 				granter: Session(session_of(2)),
 				acts_as: Principal.id(Cast.ann),
 				scope: {
-					read: On(Everywhere),
-					post: On(Everywhere),
+					read: On,
+					post: On,
 					admin: Off,
 				},
 				accounts: Cast.accounts,
@@ -2102,40 +2099,40 @@ expect !Agents.is_owned_by(ann_key, { human: Cast.hid(1), accounts: Cast.account
 expect asked_grant([], Principal.id(Cast.ann)) == Ok({
 	acts_as: Principal.id(Cast.ann),
 	scope: {
-		read: On(Everywhere),
-		post: On(Everywhere),
+		read: On,
+		post: On,
 		admin: Off,
 	},
 	lifetime: KeyCodec.max_lifetime_secs,
 })
 expect
 	asked_grant(
-		Str.to_utf8("as=agent%3A3&read=only%3A3%2C9&post=off&admin=on&lifetime=60"),
+		Str.to_utf8("as=agent%3A3&read=off&post=everywhere&admin=on&lifetime=60"),
 		Principal.id(Cast.ann),
-	).map_ok(
-		|g| (
-			g.acts_as,
-			g.lifetime,
-			g.scope.admin,
-			g.scope.post,
-		),
 	)
-		== Ok((
-			Principal.Id.Agent(Cast.aid(3)),
-			60,
-			On,
-			Off,
-		))
+		== Ok({
+			acts_as: Principal.Id.Agent(Cast.aid(3)),
+			scope: {
+				read: Off,
+				post: On,
+				admin: On,
+			},
+			lifetime: 60,
+		})
 expect asked_grant(Str.to_utf8("read=all"), Principal.id(Cast.ann)).is_err()
+# A key narrowed to listed resources is no more: `only:` is refused, read
+# or post.
+expect asked_grant(Str.to_utf8("read=only%3A3%2C9"), Principal.id(Cast.ann)).is_err()
+expect asked_grant(Str.to_utf8("post=only%3A3"), Principal.id(Cast.ann)).is_err()
 expect asked_grant(Str.to_utf8("as=agent%3A0"), Principal.id(Cast.ann)).is_err()
 expect asked_grant(Str.to_utf8("lifetime=-1"), Principal.id(Cast.ann)).is_err()
 
 # ── INVITES: who may invite (the grant rule, as a mint's), and what a
 # redemption decides.
-plain : ApiKey.Scope(ConvAccess.ConvId)
+plain : ApiKey.Scope
 plain = {
-	read: On(Everywhere),
-	post: On(Everywhere),
+	read: On,
+	post: On,
 	admin: Off,
 }
 
@@ -2207,7 +2204,7 @@ hash_of = |b|
 	}
 
 ## Ann's invite for her agent, made at 50, its key to live 1000 seconds.
-anns_invite : InviteCodec.Record(ConvAccess.ConvId)
+anns_invite : InviteCodec.Record
 anns_invite = {
 	id: iid(1),
 	bound: {
@@ -2227,7 +2224,7 @@ anns_invite = {
 ## What redeeming `invite` at `now` decides, said plainly: the key's
 ## principal and expiry, or the refusal.
 redeemed_at : {
-	invite : InviteCodec.Record(ConvAccess.ConvId),
+	invite : InviteCodec.Record,
 	granter : [Found(Agents.Granter), Gone],
 	accounts : List(Principal),
 	now : I64,

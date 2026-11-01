@@ -24,7 +24,6 @@ import ApiKey
 import AuditCodec
 import Channel
 import ChannelName
-import ConvAccess
 import Credentials
 import JsonOut
 import Principal
@@ -173,7 +172,7 @@ Channels := [].{
 ## and who to audit: a session's human or a key's principal, by its public
 ## id; nobody signed in is never audited.
 Asker : {
-	viewer : Access.Viewer(ConvAccess.ConvId),
+	viewer : Access.Viewer,
 	audit : [Unaudited, As(Named)],
 	accounts : List(Principal),
 	now : I64,
@@ -203,7 +202,7 @@ load_asker! = |{}| {
 	now = Host.read_time!({})
 	accounts = Store.load_accounts!({}).map_err(|_| Answered(Chat.failed))?
 	signed_out = Ok({
-		viewer: Access.Viewer.signed_out({}),
+		viewer: Access.Viewer.signed_out,
 		audit: Unaudited,
 		accounts,
 		now,

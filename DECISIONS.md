@@ -55,8 +55,15 @@ the same commit.
   a channel; the rest are DMs, of one participant (yourself) or two. A
   conversation of three or more is a channel's topic: "an enormous
   simplification". Alice and Steve's DMs need no channel. Whether one
-  human and one agent make a DM is not yet decided, and the `/chat/<id>`
-  conversations stay until DMs are refined.
+  human and one agent make a DM is not yet decided.
+- **No conversation without a topic** (Steve, 2026-11-01): the kind that
+  had none, `/chat/<id>`, a list of participants, is gone, its routes,
+  pages and storage with it, so none can be made.
+- **A key says who you are** (Steve, 2026-11-01): "API keys identify who
+  you are. Then the permissions are governed by other rules." LC reads any
+  topic of RocChatDev as a member, and none of Steve and Alice's DMs. A
+  key's read and post are each on or off; a key narrowed to listed
+  resources (`only:`) is no more.
 - **Who takes part is the channel's**, for every topic in it: its members,
   humans, agents and bots alike, read, post in and make every topic. The
   agent topic, open only to the agents it named, is gone ("an ad hoc
@@ -74,17 +81,17 @@ the same commit.
   every channel, and no URL or message reference is ambiguous.
 - **Message references:** `MSG_<channel>.<topic>_<n>` in a channel; DMs keep
   the short `MSG_<topic>_<n>`, which means "this topic, on this page" only.
-  A reference resolves exactly or is refused, never by a first match. A
-  conversation's message is `MSG_<id>_<n>` (proposed 2026-11-01, for Steve
-  to confirm; MessageRef.roc says why).
+  A reference resolves exactly or is refused, never by a first match.
 
 ## Agents talking to agents
 
 - **A post is for an agent when the server's `mentions` names it.** The
   server parses mentions (quoted and fenced text excluded), so every
   listener agrees.
-- **An agent may make at most 15 agent-to-agent posts an hour**, counting
-  its own since a human last spoke; a human post resets it. Bots count as
+- **An agent may make at most 15 agent-to-agent posts an hour** in a
+  topic, counting its own since a human last spoke; a human post resets
+  it. It guards topics (Steve, 2026-11-01, as the conversation kind went),
+  so RocChatDev keeps it. Bots count as
   agents. "Half the purpose of this is to make less work for the human. As
   long as the human can audit the chats, I think we should be fine." Shale's
   `cookbook/listen.shale` knows these numbers and warns at 12, so an agent
@@ -117,10 +124,6 @@ the same commit.
   respect pinning (low priority).
 - **No browser automation** (no Playwright or the like). Dropped streams are
   very low priority: "it was never a big issue with zig chat."
-- **A conversation's page is a topic's** (Steve, 2026-11-01): "apart from
-  the agents, the human-to-human conversation should be the same UI as the
-  last six months". `/chat/<id>` is drawn by the one page renderer that draws
-  a topic's, and the agents' routes, streams and keys are as they were.
 - **The reading list is its own page,** `/chat/saved`, since roc-chat has no
   Docs, where the old one was the `reading-list` doc (LC and Cloud,
   2026-11-01; Steve may overrule). Each human's list is theirs alone, one

@@ -2617,6 +2617,7 @@ const steps = [_]Step{
     .{ .name = "save and the reading list: a save keeps the message's copy and its author's name with its note (read later when none, no length rule), the strip's line drawn by the server, \"✓ saved\" drawn for the viewer's own page and earlier pages and no one else's, saved again the one save at the newest end; the list newest first, everything escaped, the way back (a DM's by its other member); a note changed and a save removed by forms, an id never given twice; a save outlives losing the topic; a list that does not read back leaves the page shown and is never written over; bad n 400, no message 404, a stranger 404, signed out 401, a key 403, a GET 405; Saved in the top bar", .f = saveReadingList },
     .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
     .{ .name = "one namespace for channels and users: no channel under a user's name, no human or agent under a channel's, in any case; near misses made", .f = channelNamesTaken },
+    .{ .name = "no conversation without a topic: the conversation routes and pages are 404s to a session and a key, Browse has no Conversations, and a key narrowed with only: is no grant; a topic still reads", .f = noConversationKind },
     .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
 };
 
@@ -2675,6 +2676,28 @@ fn channelNamesTaken(w: *World) !void {
     if (agent.status != 409 or !has(agent.body, "that name is taken")) return error.AgentTookAChannelsName;
     if ((try request(w.a, w.port(), "POST", "/agents", human, "name=Harbor+Pal")).status != 201) return error.NearMissRefused;
     _ = try signUpAs(w.a, w.port(), 1059, "Harbor+2");
+}
+
+/// **NO CONVERSATION WITHOUT A TOPIC** (Steve, 2026-11-01): the
+/// conversation kind is gone. Its routes are no routes, a session's and a
+/// key's alike: no start, read, post or stream under `/conversations`, and
+/// no page at `/chat/<id>`; Browse has no Conversations; and a key narrowed
+/// to listed resources (`only:`) is no grant. A topic is still read.
+fn noConversationKind(w: *World) !void {
+    for ([_][]const u8{ "/conversations", "/conversations/1", "/conversations/1/stream", "/chat/1", "/chat/1/stream" }) |path| {
+        if ((try get(w.a, w.port(), path, w.ann)).status != 404) return error.ConversationRouteAnswered;
+    }
+    if ((try request(w.a, w.port(), "POST", "/conversations", w.ann, try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{try hid(w.a, 1002)}))).status != 404) return error.ConversationStarted;
+    if ((try request(w.a, w.port(), "POST", "/conversations/1/messages", w.ann, "hello")).status != 404) return error.ConversationPosted;
+    // Step 28 retired Steve's first agent: one of this step's own.
+    const agent = try field((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Kindless")).body, "id");
+    const k = try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
+    if ((try send(w.a, w.port(), "GET", "/conversations", .{ .key = k.secret }, "")).status != 404) return error.ConversationListedByKey;
+    if (has((try get(w.a, w.port(), "/chat/browse", w.ann)).body, "Conversations")) return error.ConversationsOnBrowse;
+    const narrow = try request(w.a, w.port(), "POST", "/invites", w.steve, try std.fmt.allocPrint(w.a, "as={s}&read=only%3A1", .{agent}));
+    if (narrow.status != 400 or !has(narrow.body, "is `everywhere` or `off`")) return error.NarrowKeyGranted;
+    // A topic still reads, both ways.
+    if ((try get(w.a, w.port(), w.topic, w.ann)).status != 200) return error.TopicUnread;
 }
 
 /// **THE AGENTS' LIMIT, IN A TOPIC** (Conversations.check_hops!, fifteen

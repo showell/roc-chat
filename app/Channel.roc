@@ -40,7 +40,7 @@ Channel :: {
 	## (`NoAccount`). No member at
 	## all is a channel, empty until an admin admits someone.
 	make : {
-		by : Access.Viewer(id),
+		by : Access.Viewer,
 		name : Str,
 		members : List(Principal.Id),
 		channels : List(Channel),
@@ -85,7 +85,7 @@ Channel :: {
 	## bot's id (`NotAHuman`), no one account holding it (`NoAccount`), or
 	## the asker themselves (`Yourself`).
 	dm : {
-		by : Access.Viewer(id),
+		by : Access.Viewer,
 		other : Principal.Id,
 		accounts : List(Principal),
 	} -> Try(Channel, _)
@@ -127,7 +127,7 @@ Channel :: {
 	## again since) is replaced.
 	admit : Channel,
 	{
-		by : Access.Viewer(id),
+		by : Access.Viewer,
 		member : Principal.Id,
 		accounts : List(Principal),
 	} -> Try(Channel, _)
@@ -154,7 +154,7 @@ Channel :: {
 	## topic in the channel.
 	remove : Channel,
 	{
-		by : Access.Viewer(id),
+		by : Access.Viewer,
 		member : Principal.Id,
 		accounts : List(Principal),
 	} -> Try(Channel, _)
@@ -178,7 +178,7 @@ Channel :: {
 	## session, as `make`, `admit` and `remove` each ask first, refused as
 	## they refuse their asker: what an admin's page asks, and a route on a
 	## channel that is not there, before it says so.
-	administers : Access.Viewer(id),
+	administers : Access.Viewer,
 	List(Principal) -> Try(
 		{},
 		[
@@ -221,7 +221,7 @@ Channel :: {
 }
 
 ## **THE ASKER, AN ADMIN BY THEIR OWN SESSION, NOW**, or why not.
-admin : Access.Viewer(id),
+admin : Access.Viewer,
 List(Principal) -> Try(
 	{},
 	[
@@ -337,8 +337,8 @@ by_admin_key = Channel.make({
 	by: ChannelCast.keyed(
 		Steve,
 		{
-			read: On(Everywhere),
-			post: On(Everywhere),
+			read: On,
+			post: On,
 			admin: On,
 		},
 	),

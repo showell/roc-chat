@@ -1,9 +1,10 @@
 ## **API KEYS, FIRST-CLASS AND SCOPED** (the Roc chat's auth design,
 ## sections 3, 9 and 11): a key acts as one principal, with a scope of read,
-## post and admin, each on or off, read and post narrowable to listed
-## resources. It never exceeds its principal: a read or a post is Access's
-## decision (Access.decide, on the viewer the key mints), an admin action
-## the principal's authority as the accounts say now (`administers`).
+## post and admin, each on or off. **A KEY SAYS WHO YOU ARE** (Steve,
+## 2026-11-01): what its holder may reach is the chat's other rules' (a
+## channel's members, Topic.roc), on the viewer the key mints (Access);
+## an admin action is the principal's authority as the accounts say now
+## (`administers`). It never exceeds its principal.
 ##
 ## **ONLY TWO WAYS IN:** `issue`, which asks `may_grant` (a live browser
 ## session, never a key, for the granter's own principals), and `load`,
@@ -17,15 +18,9 @@
 ## only while those very accounts do (Principal.holds); an id retired and
 ## made again, a human's or an agent's, never revives the old keys.
 ##
-## **GENERIC OVER THE RESOURCE, AND BOUND TO IT**: a key is
-## `Key(r, id)`, `r` the resource its layer decides on (the chat's opaque
-## ConvAccess.Conv) and `id` its id (the chat's ConvId). `r` is fixed when
-## the key is issued or loaded, so a key decides only on its own layer's
-## resources: a chat key never takes a resource some other type made up
-## (Access.decide on anything but a Conv does not compile), and a database
-## or a file system keys its own. The chat's entry is ConvKey.roc, which fixes
-## `r` and `id`. The key's secret and its hash are the host's; this is the
-## record the Roc decides on. Pure.
+## The chat issues, stores and loads its keys through ChatKey.roc. The
+## key's secret and its hash are the host's; this is the record the Roc
+## decides on. Pure.
 import Cast
 import KeyCodec
 import Principal
@@ -35,25 +30,21 @@ import Stored
 
 ApiKey := [].{
 
-	## Where a read or a post reaches: every resource its principal may
-	## reach, or only the listed ones (a bot that posts only to #commits).
-	Reach(id) : KeyCodec.Reach(id)
-
 	## **WHAT A KEY MAY DO**, each part on or off. Admin is a scope of its
 	## own: an admin-only key reads nothing.
-	Scope(id) : KeyCodec.Scope(id)
+	Scope : KeyCodec.Scope
 
 	## **WHO ASKS FOR A KEY**: the credential the request came with. Only a
 	## browser's session mints keys; a key asking is refused, whatever its
 	## scope, so a stolen key cannot mint a wider one.
-	Granter(r, id) : [Session(Session), Key(ApiKey.Key(r, id))]
+	Granter : [Session(Session), Key(ApiKey.Key)]
 
 	## A request for a key: who asks, the principal the key would act as,
 	## its scope, and the accounts and the time now.
-	Grant(r, id) : {
-		granter : ApiKey.Granter(r, id),
+	Grant : {
+		granter : ApiKey.Granter,
 		acts_as : Principal.Id,
-		scope : ApiKey.Scope(id),
+		scope : ApiKey.Scope,
 		accounts : List(Principal),
 		now : I64,
 	}
@@ -128,7 +119,7 @@ ApiKey := [].{
 	## admin authority (Principal.authority: an admin human, or an agent an
 	## admin owns). Read and post need no check here: a key's every use is
 	## held to its principal.
-	may_grant : ApiKey.Grant(r, id) -> [Grantable, Refused(ApiKey.GrantRefusal)]
+	may_grant : ApiKey.Grant -> [Grantable, Refused(ApiKey.GrantRefusal)]
 	may_grant = |grant|
 		match granted(grant) {
 			Ok(_) => Grantable
@@ -136,18 +127,18 @@ ApiKey := [].{
 		}
 
 	## **A KEY'S WHOLE RECORD**, as the store keeps it (KeyCodec).
-	Record(id) : KeyCodec.Record(id)
+	Record : KeyCodec.Record
 
 	## **A KEY, AS A STATE MACHINE**: opaque, so `issue` (which asks
 	## `may_grant`) is the one way in, `load` (from a stored line) the way
 	## back, and `revoke` the one transition.
-	Key(r, id) :: KeyCodec.Record(id).{
+	Key :: KeyCodec.Record.{
 
 		## A new key, active, made `now`, when the grant is grantable and the
 		## expiry fits (KeyCodec.is_fitting_expiry); bound to its accounts.
-		issue : ApiKey.Grant(r, id),
+		issue : ApiKey.Grant,
 		{ key : Principal.KeyId, expires : I64 } -> Try(
-			ApiKey.Key(r, id),
+			ApiKey.Key,
 			[Refused(ApiKey.GrantRefusal)],
 		)
 		issue = |grant, { key, expires }|
@@ -180,28 +171,28 @@ ApiKey := [].{
 		## from a key `issue` granted, and every use is still held to its
 		## principal as the accounts say then (`decide`), so a line claiming
 		## more than its principal may do does no more.
-		load : KeyCodec.Line(id) -> ApiKey.Key(r, id)
+		load : KeyCodec.Line -> ApiKey.Key
 		load = |line| ApiKey.Key.(line.entry().record)
 
 		## The key's whole record, to store.
-		record : ApiKey.Key(r, id) -> ApiKey.Record(id)
+		record : ApiKey.Key -> ApiKey.Record
 		record = |ApiKey.Key.(k)| k
 
 		## The only transition: revoked, for good.
-		revoke : ApiKey.Key(r, id) -> ApiKey.Key(r, id)
+		revoke : ApiKey.Key -> ApiKey.Key
 		revoke = |ApiKey.Key.(k)| ApiKey.Key.({ ..k, revocation: Revoked })
 
 		## The key's public id.
-		id : ApiKey.Key(r, id) -> Principal.KeyId
+		id : ApiKey.Key -> Principal.KeyId
 		id = |ApiKey.Key.(k)| k.id
 
 		## The principal it acts as.
-		acts_as : ApiKey.Key(r, id) -> Principal.Id
+		acts_as : ApiKey.Key -> Principal.Id
 		acts_as = |ApiKey.Key.(k)| k.acts_as
 
 		## **IS THE KEY LIVE AT `now`?** Revoked is said first, expired or
 		## not; an expiry at `t` is live before `t` and expired from `t` on.
-		liveness : ApiKey.Key(r, id),
+		liveness : ApiKey.Key,
 		I64 -> [
 			Live,
 			Expired,
@@ -217,7 +208,7 @@ ApiKey := [].{
 		## its principal standing (as for a read or a post); an admin scope; and the
 		## principal's authority Admin as the accounts say now. Which action
 		## is Admin.roc's to decide.
-		administers : ApiKey.Key(r, id), ApiKey.AsOf -> ApiKey.Verdict
+		administers : ApiKey.Key, ApiKey.AsOf -> ApiKey.Verdict
 		administers = |key, { accounts, now }| {
 			ApiKey.Key.(k) = key
 			match standing(key, { accounts, now }) {
@@ -233,7 +224,7 @@ ApiKey := [].{
 
 		## **THE PRINCIPAL A STANDING KEY ACTS AS**, as the accounts have
 		## it now; what Admin acts with.
-		principal : ApiKey.Key(r, id), ApiKey.AsOf -> Try(Principal, [Refused(ApiKey.Refusal)])
+		principal : ApiKey.Key, ApiKey.AsOf -> Try(Principal, [Refused(ApiKey.Refusal)])
 		principal = |key, as_of|
 			match standing(key, as_of) {
 				Standing(p) => Ok(p)
@@ -244,7 +235,7 @@ ApiKey := [].{
 
 ## **THE GRANT, DECIDED**: the principal, bound to the accounts the key
 ## will stand on, or why not.
-granted : ApiKey.Grant(r, id) -> Try(Principal.Bound, _)
+granted : ApiKey.Grant -> Try(Principal.Bound, _)
 granted = |
 	{
 		granter,
@@ -312,7 +303,7 @@ granted = |
 ## the human it answers to (a human, itself; an agent or a bot, its owner),
 ## each held by exactly one account, of the generation the key was granted
 ## for.
-standing : ApiKey.Key(r, id), ApiKey.AsOf -> [Standing(Principal), Refused(ApiKey.Refusal)]
+standing : ApiKey.Key, ApiKey.AsOf -> [Standing(Principal), Refused(ApiKey.Refusal)]
 standing = |key, { accounts, now }| {
 	ApiKey.Key.(k) = key
 	match key.liveness(now) {
@@ -341,7 +332,7 @@ standing = |key, { accounts, now }| {
 #   ann_agent   an agent ann owns
 ## Human `who`'s browser session `n`, signed in at time 0 to the account
 ## made at 1, as the store holds it (a session's only way in but the flow).
-signed_in : { n : U64, who : U64 } -> ApiKey.Granter(Held, U64)
+signed_in : { n : U64, who : U64 } -> ApiKey.Granter
 signed_in = |{ n, who }|
 	stored_session("session v1 id=${n.to_str()} human=${who.to_str()} generation=1 token=${"07".repeat(32)} created=0 seen=0\n")
 
@@ -355,62 +346,55 @@ session_at = |who, at|
 	}
 
 ## The session a stored line holds, as a granter.
-stored_session : Str -> ApiKey.Granter(Held, U64)
+stored_session : Str -> ApiKey.Granter
 stored_session = |text|
 	match SessionCodec.decode(Str.to_utf8(text)) {
 		Ok(line) => Session(Session.load(line))
 		Err(_) => crash "stored_session: a test's session line decodes"
 	}
 
-by_boss : ApiKey.Granter(Held, U64)
+by_boss : ApiKey.Granter
 by_boss = signed_in({ n: 1, who: 1 })
 
-by_ann : ApiKey.Granter(Held, U64)
+by_ann : ApiKey.Granter
 by_ann = signed_in({ n: 2, who: 2 })
 
 # The scopes the tables use.
-plain : ApiKey.Scope(U64)
+plain : ApiKey.Scope
 plain = {
-	read: On(Everywhere),
-	post: On(Everywhere),
+	read: On,
+	post: On,
 	admin: Off,
 }
 
-with_admin : ApiKey.Scope(U64)
+with_admin : ApiKey.Scope
 with_admin = {
-	read: On(Everywhere),
-	post: On(Everywhere),
+	read: On,
+	post: On,
 	admin: On,
 }
 
-admin_only : ApiKey.Scope(U64)
+admin_only : ApiKey.Scope
 admin_only = {
 	read: Off,
 	post: Off,
 	admin: On,
 }
 
-reads_c : ApiKey.Scope(U64)
-reads_c = {
-	read: On(Only([3])),
+reads : ApiKey.Scope
+reads = {
+	read: On,
 	post: Off,
-	admin: Off,
-}
-
-posts_a : ApiKey.Scope(U64)
-posts_a = {
-	read: Off,
-	post: On(Only([1])),
 	admin: Off,
 }
 
 GrantAnswer : [Grantable, Refused(ApiKey.GrantRefusal)]
 
 ## `granter` asks for a key acting as `acts_as`, among `among`, at `now`.
-grant_at : ApiKey.Granter(Held, U64),
+grant_at : ApiKey.Granter,
 {
 	acts_as : Principal,
-	scope : ApiKey.Scope(U64),
+	scope : ApiKey.Scope,
 	among : List(Principal),
 	now : I64,
 } -> GrantAnswer
@@ -432,7 +416,7 @@ grant_at = |
 	})
 
 ## `granter` asks for a key acting as `acts_as`, among `accounts`, at 50.
-grant : ApiKey.Granter(Held, U64), { acts_as : Principal, scope : ApiKey.Scope(U64) } -> GrantAnswer
+grant : ApiKey.Granter, { acts_as : Principal, scope : ApiKey.Scope } -> GrantAnswer
 grant = |granter, { acts_as, scope }|
 	grant_at(
 		granter,
@@ -546,7 +530,7 @@ expect
 
 # ── keys for the tables
 ## A key acting as `acts_as`, granted by its owner's session.
-issued : { acts_as : Principal, scope : ApiKey.Scope(U64) }, I64 -> ApiKey.Key(Held, U64)
+issued : { acts_as : Principal, scope : ApiKey.Scope }, I64 -> ApiKey.Key
 issued = |{ acts_as, scope }, expires|
 	match ApiKey.Key.issue(
 		{
@@ -562,10 +546,10 @@ issued = |{ acts_as, scope }, expires|
 		Err(Refused(_)) => crash "issued: a test's key is grantable"
 	}
 
-ann_year : ApiKey.Key(Held, U64)
+ann_year : ApiKey.Key
 ann_year = issued({ acts_as: Cast.ann, scope: plain }, 1050)
 
-ann_until_100 : ApiKey.Key(Held, U64)
+ann_until_100 : ApiKey.Key
 ann_until_100 = issued({ acts_as: Cast.ann, scope: plain }, 100)
 
 # ── THE LIVENESS TABLE
@@ -649,22 +633,14 @@ expect
 				},
 				{ key: Cast.kid(7), expires },
 			) {
-				Ok(k) => KeyCodec.decode(
-					KeyCodec.encode({ record: k.record(), hash: Cast.token(9) }, |n| n),
-					|n| Ok(n),
-				).is_ok()
+				Ok(k) => KeyCodec.decode(KeyCodec.encode({ record: k.record(), hash: Cast.token(9) })).is_ok()
 				Err(_) => Bool.False
 			},
 	)
 
 # ── STANDING, AND ADMINISTERING
-## **A TEST'S RESOURCE TYPE**: a key is bound to its layer's resource (a
-## chat key to ConvAccess.Conv); Access.roc decides its reads and posts.
-## Here no resource is asked, so the layer is a placeholder.
-Held :: {}
-
 ## The principal a key stands as at `now` among `among`, by id.
-standing_at : ApiKey.Key(Held, U64),
+standing_at : ApiKey.Key,
 { among : List(Principal), now : I64 } -> Try(
 	Principal.Id,
 	[Refused(ApiKey.Refusal)],
@@ -672,7 +648,7 @@ standing_at : ApiKey.Key(Held, U64),
 standing_at = |key, { among, now }| key.principal({ accounts: among, now }).map_ok(Principal.id)
 
 ## The principal a key stands as at 50 among `among`.
-standing_among : ApiKey.Key(Held, U64),
+standing_among : ApiKey.Key,
 List(Principal) -> Try(
 	Principal.Id,
 	[Refused(ApiKey.Refusal)],
@@ -682,29 +658,26 @@ standing_among = |key, among| standing_at(key, { among, now: 50 })
 Answer : [Permitted, Refused(ApiKey.Refusal)]
 
 ## The key's answer to an admin action at time 50, among `accounts`.
-administered : ApiKey.Key(Held, U64) -> Answer
+administered : ApiKey.Key -> Answer
 administered = |key| key.administers({ accounts: Cast.accounts, now: 50 })
 
 ## The key's answer to an admin action at time 50, among `among` instead.
-administers_among : ApiKey.Key(Held, U64), List(Principal) -> Answer
+administers_among : ApiKey.Key, List(Principal) -> Answer
 administers_among = |key, among| key.administers({ accounts: among, now: 50 })
 
-ann_agent_plain : ApiKey.Key(Held, U64)
+ann_agent_plain : ApiKey.Key
 ann_agent_plain = issued({ acts_as: Cast.ann_agent, scope: plain }, 1050)
 
-ann_agent_reads_c : ApiKey.Key(Held, U64)
-ann_agent_reads_c = issued({ acts_as: Cast.ann_agent, scope: reads_c }, 1050)
+ann_agent_reads : ApiKey.Key
+ann_agent_reads = issued({ acts_as: Cast.ann_agent, scope: reads }, 1050)
 
-ann_agent_posts_a : ApiKey.Key(Held, U64)
-ann_agent_posts_a = issued({ acts_as: Cast.ann_agent, scope: posts_a }, 1050)
-
-boss_all : ApiKey.Key(Held, U64)
+boss_all : ApiKey.Key
 boss_all = issued({ acts_as: Cast.boss, scope: with_admin }, 1050)
 
-boss_agent_admin : ApiKey.Key(Held, U64)
+boss_agent_admin : ApiKey.Key
 boss_agent_admin = issued({ acts_as: Cast.boss_agent, scope: admin_only }, 1050)
 
-boss_until_100 : ApiKey.Key(Held, U64)
+boss_until_100 : ApiKey.Key
 boss_until_100 = issued({ acts_as: Cast.boss, scope: with_admin }, 100)
 
 # A standing key stands as its principal.
@@ -713,8 +686,7 @@ expect standing_among(boss_all, Cast.accounts) == Ok(Cast.boss.id())
 
 # Admin: only an admin scope, on an admin's or an admin's agent's key.
 expect administered(ann_agent_plain) == Refused(OutOfScope)
-expect administered(ann_agent_reads_c) == Refused(OutOfScope)
-expect administered(ann_agent_posts_a) == Refused(OutOfScope)
+expect administered(ann_agent_reads) == Refused(OutOfScope)
 expect administered(ann_year) == Refused(OutOfScope)
 expect administered(boss_all) == Permitted
 expect administered(boss_agent_admin) == Permitted
@@ -742,9 +714,9 @@ expect boss_until_100.revoke().administers({ accounts: Cast.accounts, now: 99 })
 # ── LOADING A STORED KEY
 ## The key a stored line holds: `record`, written by KeyCodec and read back
 ## (a key's only way in but a grant).
-from_store : ApiKey.Record(U64) -> ApiKey.Key(Held, U64)
+from_store : ApiKey.Record -> ApiKey.Key
 from_store = |record|
-	match KeyCodec.decode(KeyCodec.encode({ record, hash: Cast.token(9) }, |n| n), |n| Ok(n)) {
+	match KeyCodec.decode(KeyCodec.encode({ record, hash: Cast.token(9) })) {
 		Ok(line) => ApiKey.Key.load(line)
 		Err(_) => crash "from_store: a test's key line decodes"
 	}
@@ -753,20 +725,20 @@ from_store = |record|
 expect [
 	ann_year,
 	boss_until_100,
-	ann_agent_reads_c,
+	ann_agent_reads,
 	boss_agent_admin.revoke(),
 ].all(|key| from_store(key.record()).record() == key.record())
 
 # A line claiming admin for ann, a member, loads as it says, and the key
 # still administers nothing: its use is held to ann.
-ann_claims_admin : ApiKey.Key(Held, U64)
+ann_claims_admin : ApiKey.Key
 ann_claims_admin = from_store({ ..ann_year.record(), scope: with_admin })
 
 expect ann_claims_admin.record().scope == with_admin
 expect administered(ann_claims_admin) == Refused(BeyondPrincipal)
 
-# A narrowed line loads narrowed.
-expect from_store(ann_agent_reads_c.record()).record().scope == reads_c
+# A reading line loads reading, and posting nothing.
+expect from_store(ann_agent_reads.record()).record().scope == reads
 
 # **NO KEY FROM A RECORD**: a key is
 # issued from a live session's grant, or loaded from a KeyCodec.Line, an
@@ -867,7 +839,7 @@ expect grant_at(
 		now: 70,
 	},
 ) == Refused(NoSuchGranter)
-new_ann_session : ApiKey.Granter(Held, U64)
+new_ann_session : ApiKey.Granter
 new_ann_session = stored_session("session v1 id=8 human=2 generation=2 token=${"07".repeat(32)} created=60 seen=60\n")
 
 expect

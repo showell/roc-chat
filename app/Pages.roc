@@ -1,16 +1,13 @@
-## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: a list of the viewer's
-## conversations, their agents and the channels, in a browser. Small,
-## plain and replaceable: the browser client's pages, Browse and a
-## transcript's (a topic's or a conversation's, `/chat/<id>`), are
-## Browse.roc's and TopicPage.roc's.
-## Every decision is the conversations' (Conversations.roc, ConvAccess), on
-## the viewer Credentials gives a session's cookie; here are the pages made
-## of it. A key's Bearer header is a 403: a page is a
+## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: the viewer's home, their
+## agents and the channels, in a browser. Small, plain and replaceable: the
+## browser client's pages, Browse and a topic's, are Browse.roc's and
+## TopicPage.roc's. Every decision is its routes' module's, on the viewer
+## Credentials gives a session's cookie; here are the pages made of it. A key's Bearer header is a 403: a page is a
 ## browser's.
 ##
-##     GET /chat         the viewer's conversations, each a link, and a form to
-##                       start one: with any of the viewer's own agents, ticked,
-##                       and anyone else by id
+##     GET /chat         the viewer's home: links to Browse, their agents and
+##                       (an admin's) the channels, and the form that invites
+##                       someone without GitHub
 ##     GET /chat/agents  the viewer's agents, a form to make one, and a button
 ##                       on each to invite it (its code shown once, by the
 ##                       script, from the invite's own answer); their live
@@ -26,7 +23,7 @@
 ## page sends the browser to `/login`.
 ##
 ## **THE AGENTS PAGE IS ITS OWN**, not a section of `/chat`: what it holds
-## (agents, invites, keys) is the account's, not a conversation's, and its
+## (agents, invites, keys) is the account's, and its
 ## script is the one place a page ever shows a code. **ITS WRITES ARE THE
 ## ROUTES' OWN** (Agents.roc): the script posts the forms `/agents`,
 ## `/invites` and the revokes take, and each decision stays theirs; the
@@ -39,14 +36,14 @@ import AccountCodec
 import Agents
 import Channel
 import Channels
-import ConvKey
+import ChatKey
 import InviteCodec
 import KeyCodec
-import ConvAccess
-import Conversations
+import Messages
 import Credentials
 import Html
 import Principal
+import Render
 import SignInWeb
 import Stored
 import Wire
@@ -55,7 +52,7 @@ Pages := [].{
 
 	## What a page path asks.
 	Route : [
-		ConversationList,
+		Home,
 		AgentList,
 		ChannelList,
 	]
@@ -83,13 +80,13 @@ Pages := [].{
 	## **A PAGE IS A BROWSER'S**: a key (an agent, which reads the JSON routes)
 	## asking for one is a 403, whatever it may see.
 	key_refused : Chat.Answer
-	key_refused = Wire.refused(403, "a page is for a browser's session; a key reads /conversations")
+	key_refused = Wire.refused(403, "a page is for a browser's session; a key reads a topic's JSON routes")
 
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
 	route = |path|
 		if path == root {
-			Ok(ConversationList)
+			Ok(Home)
 		} else if path == root.concat("/agents".to_utf8()) {
 			Ok(AgentList)
 		} else if path == root.concat("/channels".to_utf8()) {
@@ -108,7 +105,7 @@ Pages := [].{
 		} else if r == ChannelList {
 			serve_channels_page!(req.path)
 		} else {
-			match Credentials.load_viewer!(ListConversations) {
+			match Credentials.load_viewer!({}) {
 				Err(answer) => answer
 				Ok(
 					{
@@ -123,7 +120,7 @@ Pages := [].{
 						Key(_) => Pages.key_refused
 						Session(me) =>
 							match r {
-								ConversationList => list!({
+								Home => home({
 									viewer,
 									accounts,
 									me: me.id,
@@ -140,101 +137,43 @@ Pages := [].{
 root : List(U8)
 root = "/chat".to_utf8()
 
-## The list: the viewer's conversations (Conversations.load_mine!), each its
-## people's names and a link, and the form that starts one.
-list! : {
-	viewer : Access.Viewer(ConvAccess.ConvId),
+## **THE VIEWER'S HOME**: Browse, their agents, the channels for an admin
+## alone (Channel says who administers), and the form that invites someone.
+home : {
+	viewer : Access.Viewer,
 	accounts : List(Principal),
 	me : Principal.Id,
-} => Chat.Answer
-list! = |
+} -> Chat.Answer
+home = |
 	{
 		viewer,
 		accounts,
 		me,
 	},
 |
-	match Conversations.load_mine!(viewer, accounts) {
-		Err(Failed) => Chat.failed
-		Ok(convs) => {
-			items =
-				if convs.is_empty() {
-					Html.markup("<p>None yet.</p>\n")
-				} else {
-					Html.join([
-						Html.markup("<ul id=conversations>\n"),
-						Html.join(
-							convs.map(
-								|conv| Html.join([
-									Html.markup("<li><a href=\"/chat/"),
-									Html.number(conv.id().to_u64()),
-									Html.markup("\">"),
-									names(accounts, conv),
-									Html.markup("</a></li>\n"),
-								]),
-							),
-						),
-						Html.markup("</ul>\n"),
-					])
-				}
-			page({
-				title: Html.markup("Conversations"),
-				body_attrs: Html.join([]),
-				body: Html.join([
-					Html.markup("<h1>Your conversations</h1>\n"),
-					Html.markup("<p><a href=\"/chat/browse\">Browse your channels and DMs</a></p>\n"),
-					items,
-					start_form(accounts, me),
-					Html.markup(invite_form),
-					Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n"),
-					# The channels page's link, for an admin alone: Channel
-					# says who administers.
-					if (
-						Channel.administers(
-							viewer,
-							accounts,
-						).is_ok()
-					) Html.markup("<p><a href=\"/chat/channels\">Channels (an admin's)</a></p>\n") else Html.join([]),
-					Html.markup("<p class=quiet>Signed in as "),
-					Html.text(Conversations.name_of(accounts, me)),
-					Html.markup(" ("),
-					id_html(me),
-					Html.markup(").</p>\n<script>\n"),
-					Html.markup(list_js),
-					Html.markup("</script>\n"),
-				]),
-			})
-		}
-	}
-
-## **THE FORM THAT STARTS A CONVERSATION**: a box to tick for each of the
-## viewer's own agents (Agents.agents_of), and anyone else by id, typed;
-## the script sends them all as `with=`, which decides who may be named.
-start_form : List(Principal), Principal.Id -> Html
-start_form = |accounts, me| {
-	mine =
-		match me {
-			Human(human) => Agents.agents_of(accounts, human)
-			Agent(_) | Bot(_) => []
-		}
-	ticks =
-		Html.join(
-			mine.map(
-				|a| Html.join([
-					Html.markup("<label class=pick><input type=checkbox name=agent value=\""),
-					id_html(a.id()),
-					Html.markup("\"> "),
-					Html.text(Conversations.name_of(accounts, a.id())),
-					Html.markup("</label>\n"),
-				]),
-			),
-		)
-	Html.join([
-		Html.markup("<form id=start><p>Start one with:</p>\n"),
-		ticks,
-		Html.markup("<label>Anyone else, by id <input name=with placeholder=\"human:2, agent:7\"></label> <button>Start</button> <span id=said></span></form>\n"),
-	])
-}
+	page({
+		title: Html.markup("Chat"),
+		body_attrs: Html.join([]),
+		body: Html.join([
+			Html.markup("<h1>Chat</h1>\n"),
+			Html.markup("<p><a href=\"/chat/browse\">Browse your channels and DMs</a></p>\n"),
+			Html.markup(invite_form),
+			Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n"),
+			if (
+				Channel.administers(
+					viewer,
+					accounts,
+				).is_ok()
+			) Html.markup("<p><a href=\"/chat/channels\">Channels (an admin's)</a></p>\n") else Html.join([]),
+			Html.markup("<p class=quiet>Signed in as "),
+			Html.text(Render.name_of(accounts, me)),
+			Html.markup(" ("),
+			id_html(me),
+			Html.markup(").</p>\n<script>\n"),
+			Html.markup(home_js),
+			Html.markup("</script>\n"),
+		]),
+	})
 
 ## **/chat/agents**: the page, for a live session; signed out, to
 ## `/login`; a key, the 403 every page gives one.
@@ -262,7 +201,7 @@ agent_number = |id|
 ## here is escaped; no code, secret or hash is in what it is made of.
 agents_page : Agents.Mine -> Chat.Answer
 agents_page = |mine| {
-	name = |id| Html.text(Conversations.name_of(mine.accounts, id))
+	name = |id| Html.text(Render.name_of(mine.accounts, id))
 	agents =
 		if mine.agents.is_empty() {
 			Html.markup("<p>None yet. Make one below.</p>\n")
@@ -336,7 +275,7 @@ agents_page = |mine| {
 		title: Html.markup("Agents"),
 		body_attrs: Html.join([]),
 		body: Html.join([
-			Html.markup("<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n"),
+			Html.markup("<h1>Your agents</h1>\n<p class=quiet><a href=\"/chat\">Home</a></p>\n<p>An agent talks in the chat as itself, and answers to you. Invite one to give it a key of its own: it gets a code to redeem, and never needs yours.</p>\n"),
 			agents,
 			Html.markup("<form id=make><label>Make an agent named <input name=name required maxlength=64></label> <button>Make</button></form>\n<div id=code hidden><p><b>The invite code for <span id=code-for></span>, shown only now:</b></p>\n<p><code id=code-text></code> <button type=button id=copy>Copy</button></p>\n<p>Give it to the agent within ten minutes (until <time id=code-until></time>). It works once: the agent sends it to <code>POST /invites/redeem</code> as <code>code=</code> and gets its own key back. Reload this page and the code is gone; the invite is listed below until it is redeemed or revoked.</p></div>\n<h2>Invites waiting</h2>\n"),
 			invites,
@@ -369,7 +308,7 @@ channels_page : Channels.Listing -> Chat.Answer
 channels_page = |listing| {
 	member = |b| Html.join([
 		Html.markup("<li>"),
-		Html.text(Conversations.name_of(listing.accounts, b.id)),
+		Html.text(Render.name_of(listing.accounts, b.id)),
 		Html.markup(" (<code>"),
 		id_html(b.id),
 		Html.markup("</code>)</li>\n"),
@@ -419,7 +358,7 @@ channels_page = |listing| {
 		title: Html.markup("Channels"),
 		body_attrs: Html.join([]),
 		body: Html.join([
-			Html.markup("<h1>Channels</h1>\n<p class=quiet><a href=\"/chat\">All conversations</a></p>\n<p>An admin makes a channel and says who is in it. Its members are humans, agents and bots, by id (<code>human:2</code>, <code>agent:7</code>), and each member takes part in every topic in it.</p>\n"),
+			Html.markup("<h1>Channels</h1>\n<p class=quiet><a href=\"/chat\">Home</a></p>\n<p>An admin makes a channel and says who is in it. Its members are humans, agents and bots, by id (<code>human:2</code>, <code>agent:7</code>), and each member takes part in every topic in it.</p>\n"),
 			damaged,
 			channels,
 			Html.markup("<form id=make><label>Make a channel named <input name=name required maxlength=40></label> <label>with members <input name=members placeholder=\"human:2, human:7\"></label> <button>Make</button></form>\n<p id=said></p>\n<script>\n"),
@@ -435,7 +374,7 @@ id_html = |id| Html.text(AccountCodec.id_text(id))
 
 ## One key: its id, who it acts as, what it may read and post, how long it
 ## lives, and its revoke button; never its secret or its hash.
-key_html : (Principal.Id -> Html), ConvKey.Key -> Html
+key_html : (Principal.Id -> Html), ChatKey.Key -> Html
 key_html = |name, key| {
 	r = key.record()
 	id = r.id.to_u64()
@@ -449,9 +388,9 @@ key_html = |name, key| {
 		Html.markup(" (<code>"),
 		id_html(r.acts_as),
 		Html.markup("</code>); reads <code>"),
-		Html.text(KeyCodec.reach_text(r.scope.read, ConvAccess.ConvId.to_u64)),
+		Html.text(KeyCodec.reach_text(r.scope.read)),
 		Html.markup("</code>, posts <code>"),
-		Html.text(KeyCodec.reach_text(r.scope.post, ConvAccess.ConvId.to_u64)),
+		Html.text(KeyCodec.reach_text(r.scope.post)),
 		Html.markup("</code>; until <time data-at="),
 		Html.signed(r.expires),
 		Html.markup("></time> <button type=button class=revoke data-path=\"/keys/"),
@@ -459,18 +398,6 @@ key_html = |name, key| {
 		Html.markup("/revoke\">Revoke</button></li>\n"),
 	])
 }
-
-## A conversation's people, by name, escaped, a comma between.
-names : List(Principal), ConvAccess.Conv -> Html
-names = |accounts, conv|
-	Html.join(
-		conv.participants().map_with_index(
-			|b, i| Html.join([
-				if (i == 0) Html.join([]) else Html.markup(", "),
-				Html.text(Conversations.name_of(accounts, b.id)),
-			]),
-		),
-	)
 
 ## The page around a body: its title (escaped already), the few lines of
 ## CSS, never cached.
@@ -513,18 +440,10 @@ css =
 	\\#code { border: 2px solid #c80; padding: 0 .8rem; }
 	\\
 
-list_js : Str
-list_js =
-	\\const form = document.getElementById("start"), said = document.getElementById("said");
-	\\form.addEventListener("submit", async (e) => {
-	\\  e.preventDefault();
-	\\  const ticked = [...form.querySelectorAll("input[name=agent]:checked")].map((i) => i.value);
-	\\  const typed = form.elements.with.value.split(",").map((s) => s.trim()).filter((s) => s);
-	\\  const all = ticked.concat(typed);
-	\\  if (!all.length) { said.textContent = "Tick an agent or type someone's id."; return; }
-	\\  const r = await fetch("/conversations", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "with=" + encodeURIComponent(all.join(",")) });
-	\\  if (r.ok) location = "/chat/" + (await r.json()).id; else said.textContent = await r.text();
-	\\});
+## The home page's script: the invite form posts the name, and the link,
+## from the invite's own answer, is set as text.
+home_js : Str
+home_js =
 	\\const invite = document.getElementById("invite"), invited = document.getElementById("invited");
 	\\const link = document.getElementById("link"), inviteSaid = document.getElementById("invite-said");
 	\\invite.addEventListener("submit", async (e) => {
@@ -609,8 +528,7 @@ channels_js =
 	\\});
 	\\
 
-expect Pages.route("/chat".to_utf8()) == Ok(ConversationList)
-# A conversation's page is TopicPage's.
+expect Pages.route("/chat".to_utf8()) == Ok(Home)
 expect Pages.route("/chat/7".to_utf8()).is_err()
 expect Pages.route("/chatx".to_utf8()).is_err()
 expect Pages.route("/chat/agents".to_utf8()) == Ok(AgentList)
@@ -618,4 +536,4 @@ expect Pages.route("/chat/agents/x".to_utf8()).is_err()
 expect Pages.route("/chat/channels".to_utf8()) == Ok(ChannelList)
 expect Pages.route("/chat/channels/x".to_utf8()).is_err()
 # No page's script here sets anything as HTML.
-expect !list_js.contains("innerHTML") and !agents_js.contains("innerHTML") and !channels_js.contains("innerHTML")
+expect !home_js.contains("innerHTML") and !agents_js.contains("innerHTML") and !channels_js.contains("innerHTML")

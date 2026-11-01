@@ -1,8 +1,7 @@
 ## **RECENT**, `GET /chat/recent`: the old app's "most fundamental"
 ## feature, a flat newest-first feed of the viewer's topics (angry-gopher's
 ## recent.zig, chat-client's js/recent.js): every topic they read in the
-## DMs and channels they are in, and every conversation of theirs, as
-## Browse lists them, one tile each by its last message (Recent.roc draws
+## DMs and channels they are in, as Browse lists them, one tile each by its last message (Recent.roc draws
 ## it), newest first, a tie by its page's path; one with no message yet
 ## goes last. Live, `GET /chat/recent/stream` sends the viewer each new
 ## post's tile, drawn for them (Topics' publish, Conversations'
@@ -15,13 +14,13 @@ import Access
 import Channel
 import ChannelName
 import Chrome
-import ConvAccess
-import Conversations
+import Messages
 import Html
 import MessageCodec
 import PageFeed
 import Pages
 import Principal
+import Render
 import Recent
 import Store
 import Topic
@@ -81,7 +80,7 @@ serve! = |{ path, route }| {
 			Chat.stream({
 				key: PageFeed.recent_key(me.id),
 				backlog: [],
-				holder: Conversations.holder(v.viewer),
+				holder: Messages.holder(v.viewer),
 			}),
 		)
 		Page => {
@@ -101,13 +100,11 @@ serve! = |{ path, route }| {
 					me: me.id,
 				},
 			)?
-			convs = Conversations.load_mine!(Access.Viewer.over(v.viewer), v.accounts).map_err(|_| Chat.failed)?
-			conv_rows = conv_rows_of!(convs, { accounts: v.accounts, me: me.id })?
-			ordered = rows.concat(conv_rows).sort_with(newest_first)
+			ordered = rows.sort_with(newest_first)
 			Ok(
 				Chrome.page({
 					title: Html.markup("Recent"),
-					viewer: Html.text(Conversations.name_of(v.accounts, me.id)),
+					viewer: Html.text(Render.name_of(v.accounts, me.id)),
 					here: Recent,
 					kind: Plain,
 					body_attrs: Html.markup(" class=recent-page"),
@@ -130,7 +127,7 @@ serve! = |{ path, route }| {
 rows_of! : List(Channel),
 List(Recent.Row),
 {
-	viewer : Access.Viewer(Topic.At),
+	viewer : Access.Viewer,
 	accounts : List(Principal),
 	me : Principal.Id,
 } => Try(List(Recent.Row), Chat.Answer)
@@ -212,26 +209,6 @@ rows_in! = |
 					me,
 				},
 			)
-		}
-	}
-
-## **EACH OF THE VIEWER'S CONVERSATIONS** (Conversations.load_mine!), its
-## row with its last message; a transcript that does not load fails the
-## page, never shows it short.
-conv_rows_of! : List(ConvAccess.Conv), { accounts : List(Principal), me : Principal.Id } => Try(List(Recent.Row), Chat.Answer)
-conv_rows_of! = |convs, { accounts, me }|
-	match convs {
-		[] => Ok([])
-		[conv, .. as rest] => {
-			last = last_of!(Store.conversation_files(conv.id()))?
-			row = Conversations.recent_row({
-				conv,
-				reader: me,
-				accounts,
-				last,
-			})
-			more = conv_rows_of!(rest, { accounts, me })?
-			Ok(more.prepend(row))
 		}
 	}
 

@@ -11,7 +11,6 @@
 ## its bubble shows "Edited in MSG_<the edit>" and the original in a
 ## spoiler. The last of several edits is the one named.
 import Cast
-import ConvAccess
 import MessageCodec
 import MessageRef
 
@@ -242,21 +241,11 @@ longest_tilde_run = |md| {
 at_of : Str, Str -> MessageRef.Where
 at_of = |c, t| InTopic((MessageRef.from_str("MSG_${c}.${t}_1") ?? crash "a test's names are names").at())
 
-## Conversation `n`'s place, in a test.
-conv_of : U64 -> MessageRef.Where
-conv_of = |n| InConversation(ConvAccess.ConvId.from_u64(n) ?? crash "conv_of: a test's id is not 0")
-
-# A conversation's edit: its own reference, ended as the old `\b` ended
-# it; another conversation's, or a topic's, is no edit.
-expect Edits.target(conv_of(4), "Edit of MSG_4_3\n\nfixed".to_utf8()) == Ok(3)
-expect Edits.target(conv_of(4), "Edit of MSG_4_3. Typo".to_utf8()) == Ok(3)
-expect Edits.target(conv_of(4), "Edit of MSG_4_3x".to_utf8()) == Err(NotAnEdit)
-expect Edits.target(conv_of(4), "Edit of MSG_5_3".to_utf8()) == Err(NotAnEdit)
-expect Edits.target(conv_of(4), "Edit of MSG_Chat_3".to_utf8()) == Err(NotAnEdit)
+# A conversation's old reference is no edit in a topic.
 expect Edits.target(at_of("Lobby", "Chat"), "Edit of MSG_4_3".to_utf8()) == Err(NotAnEdit)
 expect {
 	found = Edits.superseded(
-		conv_of(4),
+		at_of("Lobby", "Chat"),
 		[
 			{
 				id: 1,
@@ -268,7 +257,7 @@ expect {
 				id: 2,
 				at: 0,
 				by: Cast.ann.id(),
-				body: "Edit of MSG_4_1\n\nhello".to_utf8(),
+				body: "Edit of MSG_Lobby.Chat_1\n\nhello".to_utf8(),
 			},
 		],
 	)

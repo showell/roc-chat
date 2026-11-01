@@ -2,23 +2,23 @@
 ## browser comes with its session cookie (SignIn.load_cookie_session!); an agent
 ## with `Authorization: Bearer <secret>`, the secret a mint showed once,
 ## its hash looked up in the store (Store.load_key!) and the key loaded through
-## ConvKey. A request with both is refused (a 400): which one counts is
+## ChatKey. A request with both is refused (a 400): which one counts is
 ## never guessed. Every decision is the core's: a session is admitted by
 ## Access.Viewer.from_session, a key stands by Access.Viewer.from_key, and
 ## a grant asks ApiKey (Agents.roc). Here are the facts asked of the host
 ## and the answers that end a request before its route's work.
 ##
 ## **A KEY REFUSED IN USE IS AUDITED** (`audit_use!`): revoked, expired or
-## its principal gone, here; outside its scope, by the route that found it
-## so (Conversations). An unknown key names no principal, so it is a 401
-## and nothing more.
+## its principal gone. Every route asks for the viewer alike, so the audit
+## line names one use, AuditCodec's `list:conversations`, the word the log
+## has always written for it. An unknown key names no principal, so it is
+## a 401 and nothing more.
 import pf.Chat
 import pf.Host
 import Access
 import ApiKey
 import AuditCodec
-import ConvAccess
-import ConvKey
+import ChatKey
 import Principal
 import Session
 import SignIn
@@ -34,26 +34,16 @@ Credentials := [].{
 	Credential : [
 		Nobody,
 		Session(Session),
-		Key(ConvKey.Key),
+		Key(ChatKey.Key),
 	]
 
-	## What a key was used for, as its audit line says it: listing the
-	## viewer's conversations, starting one, reading one or posting to one.
-	Use : [
-		ListConversations,
-		Start,
-		Read(ConvAccess.ConvId),
-		Post(ConvAccess.ConvId),
-	]
-
-	## **WHAT A ROUTE ON A CONVERSATION DECIDES ON**: the viewer, the
-	## accounts and the time it was minted at, and the key, when a key
-	## minted it (for the audit of a use outside its scope).
+	## **WHAT A ROUTE DECIDES ON**: the viewer, the accounts and the time it
+	## was minted at, and the key, when a key minted it.
 	Asked : {
-		viewer : Access.Viewer(ConvAccess.ConvId),
+		viewer : Access.Viewer,
 		accounts : List(Principal),
 		now : I64,
-		key : [NoKey, Key(ConvKey.Key)],
+		key : [NoKey, Key(ChatKey.Key)],
 	}
 
 	## **THE CREDENTIAL, OR THE ANSWER THAT ENDS THE REQUEST**: both sent,
@@ -90,13 +80,13 @@ Credentials := [].{
 	## **THE VIEWER**: nobody, a session admitted now (its `last seen`
 	## written when stale; one not admitted is signed out), or a key
 	## standing now (one that does not stand is audited, and a 401).
-	load_viewer! : Credentials.Use => Try(Credentials.Asked, Chat.Answer)
-	load_viewer! = |use| {
+	load_viewer! : {} => Try(Credentials.Asked, Chat.Answer)
+	load_viewer! = |{}| {
 		credential = load_credential!({})?
 		now = Host.read_time!({})
 		accounts = Store.load_accounts!({}).map_err(|_| Chat.failed)?
 		signed_out = Ok({
-			viewer: Access.Viewer.signed_out({}),
+			viewer: Access.Viewer.signed_out,
 			accounts,
 			now,
 			key: NoKey,
@@ -132,14 +122,7 @@ Credentials := [].{
 						key: Key(key),
 					})
 					Err(why) => {
-						audit_use!(
-							key,
-							{
-								use,
-								refusal: why,
-								now,
-							},
-						)
+						audit_use!(key, { refusal: why, now })
 						Err(Wire.refused(401, "key refused"))
 					}
 				}
@@ -147,28 +130,10 @@ Credentials := [].{
 	}
 
 	## **A KEY REFUSED IN USE, AUDITED**: who it acts as, its public id,
-	## what it was used for, and why. Never its secret or its hash.
-	audit_use! : ConvKey.Key,
-	{
-		use : Credentials.Use,
-		refusal : ApiKey.Refusal,
-		now : I64,
-	} => {}
-	audit_use! = |
-		key,
-		{
-			use,
-			refusal,
-			now,
-		},
-	| {
-		action =
-			match use {
-				ListConversations => ListConversations
-				Start => Start
-				Read(id) => Read(id.to_u64())
-				Post(id) => Post(id.to_u64())
-			}
+	## and why. Never its secret or its hash.
+	audit_use! : ChatKey.Key, { refusal : ApiKey.Refusal, now : I64 } => {}
+	audit_use! = |key, { refusal, now }| {
+		action = ListConversations
 		match AuditCodec.Entry.of_key(
 			Use({
 				at: now,

@@ -99,10 +99,10 @@ ChannelCast := [].{
 	## **A VIEWER, AS A HANDLER GETS ONE**, minted among the whole cast at
 	## 10: `Out` signed out; a human by their own session; an agent or a
 	## bot by a key reaching everywhere, granted by its owner.
-	viewer : ChannelCast.Who -> Access.Viewer(id)
+	viewer : ChannelCast.Who -> Access.Viewer
 	viewer = |who|
 		match who {
-			Out => Access.Viewer.signed_out({})
+			Out => Access.Viewer.signed_out
 			_ =>
 				match ChannelCast.principal(who) {
 					Human(h) =>
@@ -116,8 +116,8 @@ ChannelCast := [].{
 					Agent(_) | Bot(_) => ChannelCast.keyed(
 						who,
 						{
-							read: On(Everywhere),
-							post: On(Everywhere),
+							read: On,
+							post: On,
 							admin: Off,
 						},
 					)
@@ -126,7 +126,7 @@ ChannelCast := [].{
 
 	## The viewer a key acting as `who` mints (a human's own key, or an
 	## agent's or a bot's, granted by its owner), of `scope`.
-	keyed : ChannelCast.Who, ApiKey.Scope(id) -> Access.Viewer(id)
+	keyed : ChannelCast.Who, ApiKey.Scope -> Access.Viewer
 	keyed = |who, scope| {
 		acting = ChannelCast.principal(who)
 		key = ApiKey.Key.issue(

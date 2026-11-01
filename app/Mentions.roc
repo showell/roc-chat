@@ -18,7 +18,7 @@
 ## roc-markdown has no indented code block (a line indented four spaces is a
 ## paragraph's text), so a name there is said, and counts. The
 ## listeners (Shale's cookbook/listen.shale) and the cap on agents answering
-## agents (Conversations.post!) both read this one answer. Pure.
+## agents (Messages.post!) both read this one answer. Pure.
 import md.MdFence
 import Ascii
 import Bytes

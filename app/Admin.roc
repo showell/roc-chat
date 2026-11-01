@@ -82,7 +82,7 @@ Admin := [].{
 	## now; or an API key.
 	Credential(r, id) : [
 		Session(Session),
-		Key(ApiKey.Key(r, id)),
+		Key(ApiKey.Key),
 	]
 
 	## Why an admin action is refused. **ONE ALIAS ON PURPOSE**: the
@@ -545,24 +545,24 @@ settings = {
 	next_human_id: Cast.hid(100),
 }
 
-admin_only : ApiKey.Scope(Str)
+admin_only : ApiKey.Scope
 admin_only = {
 	read: Off,
 	post: Off,
 	admin: On,
 }
 
-with_admin : ApiKey.Scope(Str)
+with_admin : ApiKey.Scope
 with_admin = {
-	read: On(Everywhere),
-	post: On(Everywhere),
+	read: On,
+	post: On,
 	admin: On,
 }
 
-plain : ApiKey.Scope(Str)
+plain : ApiKey.Scope
 plain = {
-	read: On(Everywhere),
-	post: On(Everywhere),
+	read: On,
+	post: On,
 	admin: Off,
 }
 
@@ -587,7 +587,7 @@ session_of = |
 
 ## Key number `key` acting as `acts_as`, granted from its owner's session,
 ## expiring at 101000.
-key_for : Principal, { scope : ApiKey.Scope(Str), key : U64 } -> ApiKey.Key(Str, Str)
+key_for : Principal, { scope : ApiKey.Scope, key : U64 } -> ApiKey.Key
 key_for = |acts_as, { scope, key }|
 	match ApiKey.Key.issue(
 		{

@@ -1,12 +1,12 @@
 ## **WHAT EVERY RENDERER OF A MESSAGE DRAWS ALIKE**: the name its poster
 ## goes by, the login beside it, the header those make, and the message's
 ## HTML, roc-markdown's. The JSON routes, the pages and their live
-## fragments (Bubble.roc) all ask here, so none of them disagree; the
-## conversations' routes publish a page's bubbles too, which is why this
-## is a module of its own, below both (Conversations.roc keeps its names
-## for these, each asking here). Pure.
+## fragments (Bubble.roc) all ask here, so none of them disagree; a
+## topic's routes publish a page's bubbles too, which is why this is a
+## module of its own, below both. Pure.
 import md.Md
 import AccountCodec
+import Cast
 import MessageCodec
 import Principal
 
@@ -73,3 +73,64 @@ Render := [].{
 			}
 		}
 }
+
+# ── tests
+# The login beside a name: a human's own, an agent's or a bot's owner's;
+# none once cleared, nor for an owner, or a poster, no account holds.
+## Ann made again with her login cleared.
+cleared : Principal
+cleared = Principal.Human({
+	id: Cast.hid(2),
+	sign_in: Cast.github(2),
+	login: "",
+	name: "H2",
+	role: Member,
+	generation: Cast.gen(1),
+})
+
+## Steve, login `Steve`, his name.
+steve : Principal
+steve = Principal.Human({
+	id: Cast.hid(7),
+	sign_in: Cast.github(7),
+	login: "Steve",
+	name: "Steve",
+	role: Member,
+	generation: Cast.gen(1),
+})
+
+## Ann's agent, named as she is.
+posing : Principal
+posing = Principal.Agent({
+	id: Cast.aid(8),
+	name: "H2",
+	owner: Cast.hid(2),
+	generation: Cast.gen(1),
+})
+
+## A bot of Steve's.
+steve_bot : Principal
+steve_bot = Principal.Bot({
+	id: Cast.aid(9),
+	name: "commits",
+	owner: Cast.hid(7),
+	generation: Cast.gen(1),
+})
+
+expect Render.login_of(Cast.accounts, Cast.ann.id()) == Login("h2")
+expect Render.login_of(Cast.accounts, Cast.ann_agent.id()) == Login("h2")
+expect Render.login_of([cleared, Cast.ann_agent], Cast.ann_agent.id()) == NoLogin
+expect Render.login_of([Cast.ann_agent], Cast.ann_agent.id()) == NoLogin
+expect Render.login_of(Cast.accounts, Principal.Id.Agent(Cast.aid(99))) == NoLogin
+# The header: an agent named like a human says whose it is.
+expect Render.header_of([Cast.ann, posing], posing.id()) == "H2 · agent of @h2"
+expect Render.header_of([Cast.ann, posing], Cast.ann.id()) == "H2 · @h2"
+expect Render.header_of([steve, steve_bot], steve_bot.id()) == "commits · bot of @Steve"
+expect Render.header_of([steve], steve.id()) == "Steve"
+expect Render.header_of([cleared, posing], posing.id()) == "H2 · agent"
+expect Render.header_of([cleared], cleared.id()) == "H2"
+expect Render.header_of([steve_bot], steve_bot.id()) == "commits · bot"
+expect Render.header_of([], posing.id()) == "agent:8"
+# A name, or the id no account holds.
+expect Render.name_of(Cast.accounts, Cast.ann.id()) == "H2"
+expect Render.name_of([], Cast.ann.id()) == "human:2"

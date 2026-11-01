@@ -59,7 +59,7 @@ Topic :: {
 	## in the channel (`NotAMember`); a name a topic of this channel has, in
 	## any case (`Taken`; another channel's topic of that name is no matter).
 	make : {
-		by : Access.Viewer(Topic.At),
+		by : Access.Viewer,
 		channel : Channel,
 		name : Str,
 		topics : List(Topic),
@@ -76,7 +76,7 @@ Topic :: {
 	| {
 		maker = signed_in(by, accounts)?
 		at = { channel: channel.name(), topic: TopicName.from_str(name)? }
-		match by.reach(Post, at) {
+		match by.reach(Post) {
 			Reaches => Ok({})
 			OutOfScope => Err(OutOfScope)
 			SignedOut => crash "Topic.make: a signed-in viewer is not signed out"
@@ -116,7 +116,7 @@ Topic :: {
 	## **MAY THIS VIEWER READ THE TOPIC, NOW?**
 	read : Topic,
 	{
-		viewer : Access.Viewer(Topic.At),
+		viewer : Access.Viewer,
 		channel : Channel,
 		accounts : List(Principal),
 	} -> Topic.Verdict
@@ -130,7 +130,7 @@ Topic :: {
 	## credential's post: whoever reads a topic posts in it.
 	post : Topic,
 	{
-		viewer : Access.Viewer(Topic.At),
+		viewer : Access.Viewer,
 		channel : Channel,
 		accounts : List(Principal),
 	} -> Topic.Verdict
@@ -147,7 +147,7 @@ Topic :: {
 decided : Topic,
 [Read, Post],
 {
-	viewer : Access.Viewer(Topic.At),
+	viewer : Access.Viewer,
 	channel : Channel,
 	accounts : List(Principal),
 } -> Topic.Verdict
@@ -169,7 +169,7 @@ decided = |
 allowed : Topic,
 [Read, Post],
 {
-	viewer : Access.Viewer(Topic.At),
+	viewer : Access.Viewer,
 	channel : Channel,
 	accounts : List(Principal),
 } -> Try({}, _)
@@ -187,7 +187,7 @@ allowed = |
 		Err(OtherChannel)
 	} else {
 		who = signed_in(viewer, accounts)?
-		match viewer.reach(act, at) {
+		match viewer.reach(act) {
 			Reaches => Ok({})
 			OutOfScope => Err(OutOfScope)
 			SignedOut => crash "Topic.allowed: a signed-in viewer is not signed out"
@@ -201,7 +201,7 @@ allowed = |
 
 ## **THE ASKER, SIGNED IN, THEIR ACCOUNT THE ONE THEIR CREDENTIAL WAS MINTED
 ## FOR**, or why not.
-signed_in : Access.Viewer(id), List(Principal) -> Try(Principal.Bound, [SignedOut, NoSuchPrincipal])
+signed_in : Access.Viewer, List(Principal) -> Try(Principal.Bound, [SignedOut, NoSuchPrincipal])
 signed_in = |viewer, accounts|
 	match viewer.who() {
 		SignedOut => Err(SignedOut)
@@ -393,61 +393,53 @@ expect general_chitchat.post({
 	accounts: ChannelCast.accounts,
 }) == Refused(OtherChannel)
 
-# ── A KEY'S SCOPE: its read and its post, each where it reaches, by the
-# topic's place (both names, any case); a reach is no right the rule denies.
-cc_reads_plans : Access.Viewer(Topic.At)
-cc_reads_plans = ChannelCast.keyed(
+# ── A KEY'S SCOPE: its read and its post, each on or off; a reach is no
+# right the rule denies, and a key says who it is, its member's reach
+# being the channel's.
+cc_reads : Access.Viewer
+cc_reads = ChannelCast.keyed(
 	Cc,
 	{
-		read: On(Only([at_of("cobblestone", "PLANS")])),
+		read: On,
 		post: Off,
 		admin: Off,
 	},
 )
 
-steve_reads_chitchat : Access.Viewer(Topic.At)
-steve_reads_chitchat = ChannelCast.keyed(
-	Steve,
-	{
-		read: On(Only([chitchat.at()])),
-		post: On(Only([chitchat.at()])),
-		admin: Off,
-	},
-)
-
 expect plans.read({
-	viewer: cc_reads_plans,
+	viewer: cc_reads,
+	channel: cobblestone,
+	accounts: ChannelCast.accounts,
+}) == Permitted
+expect chitchat.read({
+	viewer: cc_reads,
 	channel: cobblestone,
 	accounts: ChannelCast.accounts,
 }) == Permitted
 expect plans.post({
-	viewer: cc_reads_plans,
+	viewer: cc_reads,
 	channel: cobblestone,
 	accounts: ChannelCast.accounts,
 }) == Refused(OutOfScope)
-expect chitchat.read({
-	viewer: cc_reads_plans,
-	channel: cobblestone,
-	accounts: ChannelCast.accounts,
-}) == Refused(OutOfScope)
-expect chitchat.read({
-	viewer: steve_reads_chitchat,
-	channel: cobblestone,
-	accounts: ChannelCast.accounts,
-}) == Permitted
+
+## Steve's key that posts, and reads nothing.
+steve_posts : Access.Viewer
+steve_posts = ChannelCast.keyed(
+	Steve,
+	{
+		read: Off,
+		post: On,
+		admin: Off,
+	},
+)
+
 expect chitchat.post({
-	viewer: steve_reads_chitchat,
+	viewer: steve_posts,
 	channel: cobblestone,
 	accounts: ChannelCast.accounts,
 }) == Permitted
-# The same name in another channel is another place: out of the key's reach.
-expect general_chitchat.read({
-	viewer: steve_reads_chitchat,
-	channel: general,
-	accounts: ChannelCast.accounts,
-}) == Refused(OutOfScope)
-expect plans.read({
-	viewer: steve_reads_chitchat,
+expect chitchat.read({
+	viewer: steve_posts,
 	channel: cobblestone,
 	accounts: ChannelCast.accounts,
 }) == Refused(OutOfScope)
@@ -456,7 +448,7 @@ expect plans.read({
 	viewer: ChannelCast.keyed(
 		Lc,
 		{
-			read: On(Everywhere),
+			read: On,
 			post: Off,
 			admin: Off,
 		},
@@ -526,13 +518,13 @@ expect make_in(full, { by: Lc, name: "x" }) == Err(NotAMember)
 expect make_in(full, { by: Damian, name: "CHITCHAT" }) == Err(Taken)
 expect make_in({ channel: general, topics: cobblestones }, { by: Apoorva, name: "plans" }).is_ok()
 expect make_in({ channel: general, topics: [general_chitchat] }, { by: Apoorva, name: "chitchat" }) == Err(Taken)
-# A key makes one only where its post reaches the new topic.
+# A key makes one only where its post is on.
 expect Topic.make({
 	by: ChannelCast.keyed(
 		Steve,
 		{
-			read: On(Everywhere),
-			post: On(Only([chitchat.at()])),
+			read: On,
+			post: Off,
 			admin: Off,
 		},
 	),
@@ -546,7 +538,7 @@ expect Topic.make({
 		Steve,
 		{
 			read: Off,
-			post: On(Everywhere),
+			post: On,
 			admin: Off,
 		},
 	),

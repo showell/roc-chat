@@ -13,18 +13,11 @@
 ##     auth/barred               the barred GitHub ids, a line each
 ##     auth/audit                every refusal and admin act, appended (AuditCodec)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
-##     auth/keys/<hash>          an API key, named for its secret's hash (ConvKey)
+##     auth/keys/<hash>          an API key, named for its secret's hash (ChatKey)
 ##     auth/invites/<hash>       an agent's invite, named for its code's hash (InviteCodec)
 ##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInviteCodec)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
-##     chat/conversations/<id>   a conversation, its participants bound (ConvCodec)
-##     chat/transcripts/<id>     its messages, a line each, appended (MessageCodec)
-##     chat/tallies/<id>         its transcript's messages and bytes (`load_tally!`)
-##     chat/offsets/<id>         where each of its messages starts, a record each (`load_span!`)
-##     chat/by-human/<github id> the conversations a human is in, theirs or their agents', by id
-##     chat/started-by/<github id> the conversations a human has started, by id
-##     chat/indexed              how many conversations those two index
 ##     auth/keys-by-human/<github id>    a human's keys and their agents', by hash
 ##     auth/keys-indexed                 how many keys that indexes
 ##     auth/invites-by-human/<github id> a human's invites, by hash
@@ -32,13 +25,15 @@
 ##     auth/human-invites-by-human/<id>  the human invites a human made, by hash
 ##     auth/human-invites-indexed        how many human invites that indexes
 ##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
-##     chat/channels/<channel>/topics/<topic>/topic  a topic, its kind (TopicCodec)
+##     chat/channels/<channel>/topics/<topic>/topic       a topic (TopicCodec)
+##     chat/channels/<channel>/topics/<topic>/transcript  its messages, a line each, appended (MessageCodec)
+##     chat/channels/<channel>/topics/<topic>/tally       its transcript's messages and bytes (`load_tally!`)
+##     chat/channels/<channel>/topics/<topic>/offsets     where each of its messages starts, a record each (`load_span!`)
 ##     chat/saved/<id>           a human's reading list: its mark, then a save a line (SavedCodec)
 ##
 ## A channel's folder is its name's key, and each topic's its name's key
-## in it (ChannelLayout, which names those paths). A topic's transcript,
-## offsets and tally are kept there by the functions that keep a
-## conversation's, given its files (`topic_files`); nothing posts to one yet.
+## in it (ChannelLayout, which names those paths); the functions that keep
+## a transcript reach a topic's files through `topic_files`.
 ##
 ## **WHAT ONE HUMAN HAS, BY AN INDEX**: a file a
 ## human, one record a line, appended as each thing of theirs is made, so a
@@ -53,8 +48,8 @@
 ## markdown escaped (MessageCodec's header says how), so a body of many
 ## lines, a CR, a `%` or bytes that are not UTF-8 reads back as it was
 ## posted. Ids run 1, 2, 3 in a transcript, so a message's id is its place.
-## A conversation's id is the count of conversations before it, plus one:
-## check-then-set, atomic because one handler runs at a time (the turn).
+## A record's id given by a count (a key's, an invite's) is check-then-set,
+## atomic because one handler runs at a time (the turn).
 ##
 ## **`Failed` HAS FAILED THE REQUEST** (Host.roc): a caller answers
 ## anything, and the host answers the 500.
@@ -67,9 +62,7 @@ import Channel
 import ChannelCodec
 import ChannelLayout
 import ChannelName
-import ConvAccess
-import ConvCodec
-import ConvKey
+import ChatKey
 import GitHubSignIn
 import HumanInvite
 import HumanInviteCodec
@@ -237,7 +230,7 @@ Store := [].{
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no key).
 	load_key! : Stored.SecretHash => Try(
-		ConvKey.Entry,
+		ChatKey.Entry,
 		[
 			Missing,
 			Malformed,
@@ -249,13 +242,13 @@ Store := [].{
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => ConvKey.decode(read.bytes).map_err(|_| Malformed)
+			Found => ChatKey.decode(read.bytes).map_err(|_| Malformed)
 		}
 	}
 
 	## **EVERY KEY THAT READS**, in no order; a line that does not read is
 	## left out (one damaged key fails only itself).
-	load_keys! : {} => Try(List(ConvKey.Entry), [Failed])
+	load_keys! : {} => Try(List(ChatKey.Entry), [Failed])
 	load_keys! = |{}| {
 		listed = Host.list!(keys_path)
 		match listed.status {
@@ -274,14 +267,14 @@ Store := [].{
 	}
 
 	## A key written: minted, or revoked.
-	save_key! : ConvKey.Entry => [Failed, Written]
-	save_key! = |entry| Host.write!(key_path(entry.hash), ConvKey.encode(entry))
+	save_key! : ChatKey.Entry => [Failed, Written]
+	save_key! = |entry| Host.write!(key_path(entry.hash), ChatKey.encode(entry))
 
 	## **THE INVITE WHOSE CODE HASHES TO `hash`**: its record, nothing
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no invite).
 	load_invite! : Stored.SecretHash => Try(
-		InviteCodec.Record(ConvAccess.ConvId),
+		InviteCodec.Record,
 		[
 			Missing,
 			Malformed,
@@ -293,16 +286,13 @@ Store := [].{
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => InviteCodec.decode(
-				read.bytes,
-				ConvAccess.ConvId.from_u64,
-			).map_err(|_| Malformed)
+			Found => InviteCodec.decode(read.bytes).map_err(|_| Malformed)
 		}
 	}
 
 	## **EVERY INVITE THAT READS**, in no order; a line that does not read
 	## is left out, as a key's is.
-	load_invites! : {} => Try(List(InviteCodec.Record(ConvAccess.ConvId)), [Failed])
+	load_invites! : {} => Try(List(InviteCodec.Record), [Failed])
 	load_invites! = |{}| {
 		listed = Host.list!(invites_path)
 		match listed.status {
@@ -321,10 +311,10 @@ Store := [].{
 	}
 
 	## An invite written: made, spent or revoked.
-	save_invite! : InviteCodec.Record(ConvAccess.ConvId) => [Failed, Written]
+	save_invite! : InviteCodec.Record => [Failed, Written]
 	save_invite! = |record| Host.write!(
 		invite_path(record.hash),
-		InviteCodec.encode(record, ConvAccess.ConvId.to_u64),
+		InviteCodec.encode(record),
 	)
 
 	## **THE HUMAN INVITE WHOSE CODE HASHES TO `hash`**: its record,
@@ -391,76 +381,13 @@ Store := [].{
 				}
 		}
 
-	## **THE NEXT CONVERSATION'S ID**: one past the count of those stored.
-	load_next_conversation_id! : {} => Try(ConvAccess.ConvId, [Failed])
-	load_next_conversation_id! = |{}| {
-		ConvAccess.ConvId.from_u64(load_one_past_count!(conversations_path)?).map_err(|_| Failed)
-	}
-
-	## The conversation `id`: `Missing` when there is none, and `Failed`
-	## when its record will not read (a store the chat did not write).
-	load_conversation! : ConvAccess.ConvId => Try(ConvAccess.Conv, [Missing, Failed])
-	load_conversation! = |id| {
-		read = Host.read!(conversation_path(id))
-		match read.status {
-			Missing => Err(Missing)
-			Failed => Err(Failed)
-			Found =>
-				match ConvCodec.decode(read.bytes) {
-					Ok(line) => Ok(ConvAccess.Conv.load(line))
-					Err(_) => Err(Failed)
-				}
-		}
-	}
-
-	## **EVERY CONVERSATION STORED**, oldest first. `Failed` when the folder
-	## or a record will not read, or an id up to the count is missing (a
-	## store the chat did not write).
-	load_conversations! : {} => Try(List(ConvAccess.Conv), [Failed])
-	load_conversations! = |{}| {
-		listed = Host.list!(conversations_path)
-		match listed.status {
-			Missing => Ok([])
-			Failed => Err(Failed)
-			Found => {
-				# Ids run 1 to the count, as `load_next_conversation_id!` gives them.
-				var $convs = []
-				var $n = 1
-				while $n <= listed.entries.len() {
-					id = ConvAccess.ConvId.from_u64($n).map_err(|_| Failed)?
-					$convs = $convs.append(Store.load_conversation!(id).map_err(|_| Failed)?)
-					$n = $n + 1
-				}
-				Ok($convs)
-			}
-		}
-	}
-
-	## A conversation written, as it started at `created`.
-	save_conversation! : ConvAccess.Conv, I64 => [Failed, Written]
-	save_conversation! = |conv, created| Host.write!(
-		conversation_path(conv.id()),
-		ConvCodec.encode(conv.fields(created)),
-	)
-
 	## **THE THREE FILES OF A TRANSCRIPT**: its messages, where each starts,
 	## and their tally. The functions that keep a transcript reach the disk
-	## through these alone, so a conversation's and a topic's are kept alike.
+	## through these alone.
 	TranscriptFiles : {
 		transcript : List(U8),
 		offsets : List(U8),
 		tally : List(U8),
-	}
-
-	## A conversation's transcript files, by its id.
-	conversation_files : ConvAccess.ConvId -> Store.TranscriptFiles
-	conversation_files = |id| {
-		n = id.to_u64().to_str()
-		{
-			transcript: "chat/transcripts/${n}".to_utf8(),
-			offsets: "chat/offsets/${n}".to_utf8(),
-			tally: "chat/tallies/${n}".to_utf8(),
-		}
 	}
 
 	## A topic's transcript files, in its folder in its channel's.
@@ -643,67 +570,9 @@ Store := [].{
 			}
 		}
 
-	## **THE CONVERSATIONS OF `human`'S**: each one a participant of answers
-	## to them (the human, or an agent or a bot they own), oldest first, by
-	## their index.
-	load_conversations_of! : Principal.HumanId,
-	List(Principal) => Try(
-		List(ConvAccess.Conv),
-		[Failed],
-	)
-	load_conversations_of! = |human, accounts| {
-		_ = index_conversations!(accounts)?
-		records = load_records!(index_path(by_human_folder, human), offset_width)?
-		load_conversations_at!(records, [])
-	}
-
-	## How many conversations `human` has started, by session or by their
-	## agents' keys.
-	load_started_count! : Principal.HumanId, List(Principal) => Try(U64, [Failed])
-	load_started_count! = |human, accounts| {
-		_ = index_conversations!(accounts)?
-		load_record_count!(index_path(started_folder, human), offset_width)
-	}
-
-	## **A NEW CONVERSATION WRITTEN, THEN INDEXED**: its record, then its id
-	## in its starter's `started-by` index and each involved human's
-	## `by-human` index, then the mark.
-	save_new_conversation! : {
-		conv : ConvAccess.Conv,
-		created : I64,
-		accounts : List(Principal),
-	} => [Failed, Written]
-	save_new_conversation! = |
-		{
-			conv,
-			created,
-			accounts,
-		},
-	|
-		match index_conversations!(accounts) {
-			Err(Failed) => Failed
-			Ok(count) =>
-				match Store.save_conversation!(conv, created) {
-					Failed => Failed
-					Written => {
-						record = offset_record(conv.id().to_u64())
-						started =
-							match starter_of(conv, accounts) {
-								Ok(h) => [index_path(started_folder, h)]
-								Err(Unresolved) => []
-							}
-						involved = humans_of(conv, accounts).map(|h| index_path(by_human_folder, h))
-						match append_each!(started.concat(involved), record) {
-							Failed => Failed
-							Appended => Host.write!(conversations_mark, mark_line(count + 1))
-						}
-					}
-				}
-		}
-
 	## **THE KEYS OF `human`'S**, theirs and their agents', by their index;
 	## one whose file is gone or does not read is left out, as in `load_keys!`.
-	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ConvKey.Entry), [Failed])
+	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ChatKey.Entry), [Failed])
 	load_keys_of! = |human, accounts| {
 		_ = index_keys!(accounts)?
 		records = load_records!(index_path(keys_folder, human), hash_width)?
@@ -721,7 +590,7 @@ Store := [].{
 	## **A NEW KEY WRITTEN, THEN INDEXED** under the human the principal it
 	## acts as answers to (none, for one the accounts do not hold, as the
 	## rebuild leaves it out too).
-	save_new_key! : ConvKey.Entry, List(Principal) => [Failed, Written]
+	save_new_key! : ChatKey.Entry, List(Principal) => [Failed, Written]
 	save_new_key! = |entry, accounts|
 		match index_keys!(accounts) {
 			Err(Failed) => Failed
@@ -744,7 +613,7 @@ Store := [].{
 	## or does not read is left out, as in `load_invites!`.
 	load_invites_of! : Principal.HumanId,
 	List(Principal) => Try(
-		List(InviteCodec.Record(ConvAccess.ConvId)),
+		List(InviteCodec.Record),
 		[Failed],
 	)
 	load_invites_of! = |human, accounts| {
@@ -762,7 +631,7 @@ Store := [].{
 
 	## **A NEW INVITE WRITTEN, THEN INDEXED** under the human its agent
 	## answers to, as a key is.
-	save_new_invite! : InviteCodec.Record(ConvAccess.ConvId), List(Principal) => [Failed, Written]
+	save_new_invite! : InviteCodec.Record, List(Principal) => [Failed, Written]
 	save_new_invite! = |invite, accounts|
 		match index_invites!(accounts) {
 			Err(Failed) => Failed
@@ -915,12 +784,6 @@ barred_path = "auth/barred".to_utf8()
 audit_path : List(U8)
 audit_path = "auth/audit".to_utf8()
 
-conversations_path : List(U8)
-conversations_path = "chat/conversations".to_utf8()
-
-conversation_path : ConvAccess.ConvId -> List(U8)
-conversation_path = |id| "chat/conversations/${id.to_u64().to_str()}".to_utf8()
-
 ## Whether the offsets file holds one record for each message `tally`
 ## counts.
 check_offsets! : Store.TranscriptFiles, Store.Tally => Try(Bool, [Failed])
@@ -998,15 +861,6 @@ line_starts = |raw|
 
 ## ── the indexes by human ──
 
-by_human_folder : Str
-by_human_folder = "chat/by-human"
-
-started_folder : Str
-started_folder = "chat/started-by"
-
-conversations_mark : List(U8)
-conversations_mark = "chat/indexed".to_utf8()
-
 keys_folder : Str
 keys_folder = "auth/keys-by-human"
 
@@ -1049,40 +903,8 @@ check_mark! = |mark, count| {
 	}
 }
 
-## **THE CONVERSATIONS' INDEXES, UP TO DATE**: their count, the indexes
-## rebuilt from every conversation first when their mark is not it.
-index_conversations! : List(Principal) => Try(U64, [Failed])
-index_conversations! = |accounts| {
-	count = load_one_past_count!(conversations_path)? - 1
-	if check_mark!(conversations_mark, count)? {
-		Ok(count)
-	} else {
-		all = Store.load_conversations!({})?
-		involved = all.join_map(
-			|c| humans_of(c, accounts).map(
-				|h| (
-					h,
-					offset_record(c.id().to_u64()),
-				),
-			),
-		)
-		started = all.join_map(
-			|c|
-				match starter_of(c, accounts) {
-					Ok(h) => [(h, offset_record(c.id().to_u64()))]
-					Err(Unresolved) => []
-				},
-		)
-		rewrite_index!(by_human_folder, grouped(involved))?
-		rewrite_index!(started_folder, grouped(started))?
-		match Host.write!(conversations_mark, mark_line(count)) {
-			Failed => Err(Failed)
-			Written => Ok(count)
-		}
-	}
-}
-
-## The keys' index, up to date, as the conversations' are.
+## **THE KEYS' INDEX, UP TO DATE**: their count, the index rebuilt from
+## every key first when its mark is not it.
 index_keys! : List(Principal) => Try(U64, [Failed])
 index_keys! = |accounts| {
 	count = load_one_past_count!(keys_path)? - 1
@@ -1128,7 +950,7 @@ index_human_invites! = |{}| {
 	}
 }
 
-## The invites' index, up to date, as the conversations' are.
+## The invites' index, up to date, as the keys' is.
 index_invites! : List(Principal) => Try(U64, [Failed])
 index_invites! = |accounts| {
 	count = load_one_past_count!(invites_path)? - 1
@@ -1187,33 +1009,6 @@ append_indexed! = |
 		Appended => Host.write!(mark, mark_line(count + 1))
 	}
 }
-
-## **THE HUMANS A CONVERSATION'S PARTICIPANTS ANSWER TO**, each once; one
-## the accounts no longer hold answers for nobody.
-humans_of : ConvAccess.Conv, List(Principal) -> List(Principal.HumanId)
-humans_of = |conv, accounts|
-	List.fold(
-		conv.participants(),
-		[],
-		|humans, b|
-			match Principal.find(accounts, b.id) {
-				Ok(p) if !humans.contains(p.answers_to()) => humans.append(p.answers_to())
-				_ => humans
-			},
-	)
-
-## The human who started it: its first participant's (ConvAccess.Conv.start
-## puts the starter first).
-starter_of : ConvAccess.Conv, List(Principal) -> Try(Principal.HumanId, [Unresolved])
-starter_of = |conv, accounts|
-	match conv.participants().first() {
-		Ok(b) =>
-			match Principal.find(accounts, b.id) {
-				Ok(p) => Ok(p.answers_to())
-				Err(_) => Err(Unresolved)
-			}
-		Err(_) => Err(Unresolved)
-	}
 
 ## Records gathered by human, each human's in the order given.
 grouped : List((Principal.HumanId, List(U8))) -> List(
@@ -1327,23 +1122,7 @@ load_record_count! = |path, width| {
 	}
 }
 
-load_conversations_at! : List(List(U8)),
-List(ConvAccess.Conv) => Try(
-	List(ConvAccess.Conv),
-	[Failed],
-)
-load_conversations_at! = |records, kept|
-	match records {
-		[] => Ok(kept)
-		[record, .. as rest] => {
-			id = offset_of(record).map_err(|_| Failed)?
-			conv_id = ConvAccess.ConvId.from_u64(id).map_err(|_| Failed)?
-			conv = Store.load_conversation!(conv_id).map_err(|_| Failed)?
-			load_conversations_at!(rest, kept.append(conv))
-		}
-	}
-
-load_keys_at! : List(List(U8)), List(ConvKey.Entry) => Try(List(ConvKey.Entry), [Failed])
+load_keys_at! : List(List(U8)), List(ChatKey.Entry) => Try(List(ChatKey.Entry), [Failed])
 load_keys_at! = |records, kept|
 	match records {
 		[] => Ok(kept)
@@ -1358,8 +1137,8 @@ load_keys_at! = |records, kept|
 	}
 
 load_invites_at! : List(List(U8)),
-List(InviteCodec.Record(ConvAccess.ConvId)) => Try(
-	List(InviteCodec.Record(ConvAccess.ConvId)),
+List(InviteCodec.Record) => Try(
+	List(InviteCodec.Record),
 	[Failed],
 )
 load_invites_at! = |records, kept|
@@ -1496,8 +1275,8 @@ collect_invites! : List(
 		name : List(U8),
 	},
 ),
-List(InviteCodec.Record(ConvAccess.ConvId)) => Try(
-	List(InviteCodec.Record(ConvAccess.ConvId)),
+List(InviteCodec.Record) => Try(
+	List(InviteCodec.Record),
 	[Failed],
 )
 collect_invites! = |entries, kept|
@@ -1515,7 +1294,7 @@ collect_invites! = |entries, kept|
 				Failed => Err(Failed)
 				Missing => collect_invites!(rest, kept)
 				Found =>
-					match InviteCodec.decode(read.bytes, ConvAccess.ConvId.from_u64) {
+					match InviteCodec.decode(read.bytes) {
 						Ok(r) => collect_invites!(rest, kept.append(r))
 						Err(_) => collect_invites!(rest, kept)
 					}
@@ -1535,7 +1314,7 @@ collect_keys! : List(
 		name : List(U8),
 	},
 ),
-List(ConvKey.Entry) => Try(List(ConvKey.Entry), [Failed])
+List(ChatKey.Entry) => Try(List(ChatKey.Entry), [Failed])
 collect_keys! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
@@ -1551,7 +1330,7 @@ collect_keys! = |entries, kept|
 				Failed => Err(Failed)
 				Missing => collect_keys!(rest, kept)
 				Found =>
-					match ConvKey.decode(read.bytes) {
+					match ChatKey.decode(read.bytes) {
 						Ok(e) => collect_keys!(rest, kept.append(e))
 						Err(_) => collect_keys!(rest, kept)
 					}
@@ -1911,18 +1690,6 @@ files_list = |f| [
 	f.tally,
 ]
 
-# A conversation's files: where they always were.
-expect
-	match ConvAccess.ConvId.from_u64(12) {
-		Ok(id) =>
-			Store.conversation_files(id)
-				== {
-					transcript: "chat/transcripts/12".to_utf8(),
-					offsets: "chat/offsets/12".to_utf8(),
-					tally: "chat/tallies/12".to_utf8(),
-				}
-		Err(_) => Bool.False
-	}
 # A topic's files: in its own folder, in its own channel's.
 expect
 	Store.topic_files(topic_at("Cobblestone", "ChitChat"))

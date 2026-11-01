@@ -7,7 +7,7 @@
 ##     GET  /channels/<channel>/topics/<topic>/stream     its messages, live (SSE), after
 ##                                                        `Last-Event-ID`
 ##
-## A topic's message is a conversation's (Conversations.message_json),
+## A topic's message is a conversation's (Messages.message_json),
 ## its reference first: `{"ref":"MSG_Lobby.ChitChat_3","id":3,...}`, the
 ## one spelling MessageRef writes, which names its channel and its topic
 ## and is never ambiguous. **WHO MAY** is Topic's alone (the channel's
@@ -28,7 +28,7 @@ import Bubble
 import Channel
 import ChannelLayout
 import ChannelName
-import Conversations
+import Messages
 import Credentials
 import JsonOut
 import Limits
@@ -37,6 +37,7 @@ import MessageCodec
 import MessageRef
 import PageFeed
 import Principal
+import Render
 import Recent
 import SignInWeb
 import Store
@@ -178,16 +179,16 @@ Topics := [].{
 	## The viewer over topics, the accounts and the time, from the credential.
 	load_viewer! : {} => Try(
 		{
-			viewer : Access.Viewer(Topic.At),
+			viewer : Access.Viewer,
 			accounts : List(Principal),
 			now : I64,
 		},
 		Chat.Answer,
 	)
 	load_viewer! = |{}| {
-		asked = Credentials.load_viewer!(ListConversations)?
+		asked = Credentials.load_viewer!({})?
 		Ok({
-			viewer: Access.Viewer.over(asked.viewer),
+			viewer: asked.viewer,
 			accounts: asked.accounts,
 			now: asked.now,
 		})
@@ -197,7 +198,7 @@ Topics := [].{
 	## made once, whichever of the two asks: the DM, and whether this asking
 	## made it. `POST /dms` and Browse's start-a-DM form both make it here.
 	make_dm! : {
-		viewer : Access.Viewer(Topic.At),
+		viewer : Access.Viewer,
 		accounts : List(Principal),
 		now : I64,
 	},
@@ -251,7 +252,7 @@ Topics := [].{
 	## the topic's own rules, as `POST .../messages` takes it (`read_by!`,
 	## then `store_post!`); the message stored, or the refusal that ends it.
 	post_by! : {
-		viewer : Access.Viewer(Topic.At),
+		viewer : Access.Viewer,
 		accounts : List(Principal),
 		now : I64,
 	},
@@ -301,7 +302,7 @@ Topics := [].{
 		(place, url) =
 			match other {
 				Other({ id, human }) => (
-					Conversations.name_of(accounts, id),
+					Render.name_of(accounts, id),
 					Topics.page_path(at, InDm(human)),
 				)
 				NoOther => (
@@ -325,7 +326,7 @@ Topics := [].{
 				place,
 				topic: at.topic.to_str(),
 				last: Last({
-					who: if (m.by == reader) "You" else Conversations.name_of(accounts, m.by),
+					who: if (m.by == reader) "You" else Render.name_of(accounts, m.by),
 					excerpt,
 				}),
 			}
@@ -348,7 +349,7 @@ Topics := [].{
 	## app's did, so no stranger learns which channels exist; a topic that
 	## is not there, or one a member may not read, is `NoTopic`.
 	verdict! : {
-		viewer : Access.Viewer(Topic.At),
+		viewer : Access.Viewer,
 		accounts : List(Principal),
 		now : I64,
 	},
@@ -430,11 +431,11 @@ Topics := [].{
 
 	## **WHERE A RESUMED STREAM STARTS**, for a topic of `count` messages
 	## asked for those after `after`: at most the newest page
-	## (Conversations.page_of), and a `gap` first, naming that page's first,
+	## (Messages.page_of), and a `gap` first, naming that page's first,
 	## when the asker is further behind than that.
 	resume : U64, U64 -> { first : U64, gap : [NoGap, Gap(U64)] }
 	resume = |count, after| {
-		newest = Conversations.page_of(count, Newest)
+		newest = Messages.page_of(count, Newest)
 		first =
 			if after < newest.first {
 				newest.first
@@ -477,9 +478,9 @@ Topics := [].{
 	## viewer (its key) reads. A channel or a topic record that does not
 	## read is left out, as the listings leave it.
 	sources_of! : {
-		viewer : Access.Viewer(Topic.At),
+		viewer : Access.Viewer,
 		accounts : List(Principal),
-	} => Try(List(Conversations.Source), [Failed])
+	} => Try(List(Messages.Source), [Failed])
 	sources_of! = |{ viewer, accounts }| {
 		listed = Store.load_channels!({})?
 		listed.channels.map_try!(
@@ -510,7 +511,7 @@ source_of : {
 	topic : Topic,
 	channel : Channel,
 	accounts : List(Principal),
-} -> Conversations.Source
+} -> Messages.Source
 source_of = |
 	{
 		topic,
@@ -702,7 +703,7 @@ named_of : Topic, { channel : Channel, accounts : List(Principal) } -> List(Ment
 named_of = |topic, who| readers(topic, who).map(
 	|id| {
 		id,
-		name: Conversations.name_of(who.accounts, id),
+		name: Render.name_of(who.accounts, id),
 	},
 )
 
@@ -724,11 +725,11 @@ message_json = |
 	at,
 	m,
 	who,
-| Conversations.json_led(
-	ref_lead(at, m.id),
-	m,
+| Messages.json_led({
+	lead: ref_lead(at, m.id),
+	message: m,
 	who,
-)
+})
 
 ## The `ref` a topic's message carries first.
 ref_lead : Topic.At, U64 -> List((Str, JsonOut))
@@ -742,7 +743,7 @@ ref_text = |at, n| MessageRef.spelled(InTopic(at), n)
 ## accounts, the time, the channel and the topic; or the answer that ends
 ## it (a key refused, no such channel or topic, a failure).
 Asked : {
-	viewer : Access.Viewer(Topic.At),
+	viewer : Access.Viewer,
 	accounts : List(Principal),
 	now : I64,
 	channel : Channel,
@@ -768,7 +769,7 @@ load_read! = |at| {
 
 ## The topic at `at` for a viewer already loaded, as `load_read!` decides.
 read_by! : {
-	viewer : Access.Viewer(Topic.At),
+	viewer : Access.Viewer,
 	accounts : List(Principal),
 	now : I64,
 },
@@ -854,7 +855,7 @@ read! = |asked_at|
 					match Store.load_tally!(files) {
 						Err(Failed) => Chat.failed
 						Ok(tally) => {
-							span = Conversations.page_of(tally.messages, before)
+							span = Messages.page_of(tally.messages, before)
 							match Store.load_span!(
 								files,
 								tally,
@@ -917,7 +918,7 @@ before_of = |values|
 ## streams and to its agents' one stream, and answered.
 post! : Topic.At => Chat.Answer
 post! = |at| {
-	got = Host.read_body!(Conversations.message_most)
+	got = Host.read_body!(Messages.message_most)
 	match got.status {
 		Answered => Chat.answered
 		Read =>
@@ -945,7 +946,7 @@ when_posted! = |a, body|
 
 ## **A POST, DECIDED AND STORED**: by one who may post in the topic
 ## (Topic.post), UTF-8, not too much formatting, an agent within the
-## agents' limit (Conversations.check_hops!, a 429; not audited, a topic's
+## agents' limit (Messages.check_hops!, a 429; not audited, a topic's
 ## post having no audit line), and room in the transcript; appended and
 ## published to every stream. The message and
 ## its people, or the refusal that ends it.
@@ -968,7 +969,7 @@ store_post! = |a, body| {
 		Err(Wire.refused(403, "you read this topic, but may not post in it"))
 	} else if Str.from_utf8(body).is_err() {
 		Err(Wire.refused(400, "a message is UTF-8 text"))
-	} else if Md.hostility(body, Conversations.markdown) == TooMuchFormatting {
+	} else if Md.hostility(body, Render.markdown) == TooMuchFormatting {
 		Err(Wire.refused(400, Md.too_much_formatting))
 	} else {
 		by =
@@ -988,8 +989,8 @@ store_post! = |a, body| {
 			named: named_of(a.topic, { channel: a.channel, accounts: a.accounts }),
 			accounts: a.accounts,
 		}
-		# The agents' limit, as a conversation's (Conversations.check_hops!).
-		hops = Conversations.check_hops!({
+		# The agents' limit, as a conversation's (Messages.check_hops!).
+		hops = Messages.check_hops!({
 			files,
 			tally,
 			by,
@@ -997,7 +998,7 @@ store_post! = |a, body| {
 			now: a.now,
 		}).map_err(|_| Chat.failed)?
 		if hops == Full {
-			Err(Conversations.hops_refused)
+			Err(Messages.hops_refused)
 		} else if tally.bytes + MessageCodec.encode(message).len() > Limits.transcript_bytes_most {
 			Err(Wire.refused(413, "this topic is full: its transcript holds as much as one may"))
 		} else {
@@ -1066,7 +1067,7 @@ publish! = |
 			Host.publish!(PageFeed.recent_key(reader), PageFeed.recent_frame(row))
 		},
 	)
-	match Conversations.agent_event({
+	match Messages.agent_event({
 		lead: lead_of(at).concat(ref_lead(at, message.id)),
 		spot: spot_of(at),
 		message,
@@ -1077,7 +1078,7 @@ publish! = |
 			|id|
 				match id {
 					Human(_) => {}
-					Agent(_) | Bot(_) => Host.publish!(Conversations.agent_key(id), g)
+					Agent(_) | Bot(_) => Host.publish!(Messages.agent_key(id), g)
 				},
 		)
 		Err(LineBreak) => crash "Topics.publish!: a message's JSON holds no line break"
@@ -1200,7 +1201,7 @@ stream_from! = |
 						),
 					),
 				),
-				holder: Conversations.holder(a.viewer),
+				holder: Messages.holder(a.viewer),
 			})
 		}
 	}

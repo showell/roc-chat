@@ -30,7 +30,7 @@ import Accounts
 import AuditCodec
 import Channel
 import ChannelName
-import Conversations
+import Messages
 import Credentials
 import Html
 import HumanInvite
@@ -38,6 +38,7 @@ import JsonOut
 import MessageCodec
 import Pages
 import Principal
+import Render
 import Session
 import SignIn
 import SignInWeb
@@ -119,7 +120,7 @@ answered! = |then!| {
 Inviter : {
 	human : Principal.HumanId,
 	session : Principal.SessionId,
-	viewer : Access.Viewer(Topic.At),
+	viewer : Access.Viewer,
 	accounts : List(Principal),
 	now : I64,
 	mine : List(HumanInvite.Record),
@@ -128,7 +129,7 @@ Inviter : {
 ## The inviter asking, or the answer that refuses them.
 load_inviter! : {} => Try(Inviter, Chat.Answer)
 load_inviter! = |{}| {
-	asked = Credentials.load_viewer!(ListConversations)?
+	asked = Credentials.load_viewer!({})?
 	match asked.viewer.who() {
 		SignedOut => Err(Wire.refused(401, "not signed in"))
 		Key(_) => Err(Wire.refused(403, "a human invites from their own session, never by a key"))
@@ -139,7 +140,7 @@ load_inviter! = |{}| {
 					Ok({
 						human,
 						session: s.id(),
-						viewer: Access.Viewer.over(asked.viewer),
+						viewer: asked.viewer,
 						accounts: asked.accounts,
 						now: asked.now,
 						mine,
@@ -216,7 +217,7 @@ invite_new! = |inviter, form| {
 	body = welcome.to_utf8()
 	if body == [] {
 		Err(Wire.refused(400, "a welcome says something"))
-	} else if Md.hostility(body, Conversations.markdown) == TooMuchFormatting {
+	} else if Md.hostility(body, Render.markdown) == TooMuchFormatting {
 		Err(Wire.refused(400, Md.too_much_formatting))
 	} else {
 		bound = Principal.bind(after.accounts, made.human.id()).map_err(|_| Chat.failed)?

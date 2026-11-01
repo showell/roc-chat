@@ -1,6 +1,5 @@
-## **A TRANSCRIPT'S PAGE, FOR A HUMAN IN A BROWSER**: a channel's or a
-## DM's topic, or a conversation, one page for all three, so no feature
-## reaches one and misses another. Its transcript is drawn here, its new
+## **A TOPIC'S PAGE, FOR A HUMAN IN A BROWSER**: a channel's or a DM's,
+## one page for both, so no feature reaches one and misses the other. Its transcript is drawn here, its new
 ## messages drawn here too (PageFeed) and sent as fragments the page puts
 ## in as they are. The page's script (js/feed.js) is glue: it places a
 ## fragment, marks each bubble mine or theirs from the page's viewer,
@@ -11,7 +10,6 @@
 ##                                                  messages, the transcript and
 ##                                                  the right pane (compose, keys)
 ##     GET /chat/dm/<n>/<topic>                     a DM's (`n` the other human's id)
-##     GET /chat/<id>                               a conversation's
 ##     GET .../stream                               each message, live, as its bubble
 ##                                                  (SSE, `message`, its id the
 ##                                                  message's), after `Last-Event-ID`,
@@ -31,14 +29,8 @@
 ##                                                  the compose box: `{"text":…,
 ##                                                  "caret":…}`; another's, a 403
 ##
-## **A CONVERSATION'S PAGE HAS NO SAVE** (PageFeed.saves): a reading list's
-## line names a channel and a topic (SavedCodec), so its bubbles draw no
-## save link, its page loads no save script, and `.../save` is no route.
-##
-## **WHO MAY** is each kind's own routes': a topic's (Topics.verdict!,
-## Topic.read), a conversation's (ConvAccess: who sees it, who posts in
-## it, Conversations.post_by!). A topic or a conversation the viewer may
-## not read is the 404 of one that is not there, for the page, its stream
+## **WHO MAY** is the topics' own routes' (Topics.verdict!, Topic.read). A
+## topic the viewer may not read is the 404 of one that is not there, for the page, its stream
 ## and its fragments alike; the page says why, in the old app's words,
 ## which name no channel the viewer is not in. **A PAGE IS A BROWSER'S**:
 ## signed out, the page sends the browser to `/login` (its stream and
@@ -50,8 +42,7 @@ import AccountCodec
 import Bubble
 import ChannelName
 import Chrome
-import ConvAccess
-import Conversations
+import Messages
 import Credentials
 import Edits
 import Html
@@ -61,6 +52,7 @@ import MessageRef
 import PageFeed
 import Pages
 import Principal
+import Render
 import ReadingList
 import SavedPage
 import SignInWeb
@@ -73,12 +65,10 @@ import Wire
 
 TopicPage := [].{
 
-	## Which transcript a path names: a channel's topic, a DM's by its other
-	## human, or a conversation.
+	## Which topic a path names: a channel's, or a DM's by its other human.
 	Place : [
 		InChannel(Topic.At),
 		InDm({ other : Principal.HumanId, topic : TopicName }),
-		InConversation(ConvAccess.ConvId),
 	]
 
 	## What a path asks of it.
@@ -93,7 +83,7 @@ TopicPage := [].{
 	]
 
 	## The route a path names, if it names one: a topic's place is a kind
-	## and two parts, a conversation's its id; then the same tail for each.
+	## and two parts, then the tail.
 	route : List(U8) -> Try(TopicPage.Route, [NotATopicPage])
 	route = |path| {
 		topic_place = |
@@ -108,7 +98,6 @@ TopicPage := [].{
 			} else {
 				Err(NotATopicPage)
 			}
-		conversation_place = |digits| Conversations.id_of(digits).map_ok(|id| InConversation(id)).map_err(|_| NotATopicPage)
 		match path.split_on('/') {
 			[
 				[],
@@ -136,17 +125,6 @@ TopicPage := [].{
 				)?,
 				what,
 			)
-			[
-				[],
-				chat,
-				id,
-			] if chat == "chat".to_utf8() => conversation_place(id).map_ok(|p| Page(p))
-			[
-				[],
-				chat,
-				id,
-				what,
-			] if chat == "chat".to_utf8() => tail(conversation_place(id)?, what)
 			_ => Err(NotATopicPage)
 		}
 	}
@@ -163,7 +141,7 @@ TopicPage := [].{
 					if req.method != Post {
 						Err(Chat.not_allowed(Post))
 					} else {
-						got = Host.read_body!(Conversations.message_most)
+						got = Host.read_body!(Messages.message_most)
 						match got.status {
 							Answered => Err(Chat.answered)
 							Read => Ok(Body(got.bytes))
@@ -195,8 +173,7 @@ TopicPage := [].{
 	}
 }
 
-## **A PLACE'S TAIL**: what the path asks after the place. A save is a
-## topic's alone (PageFeed.saves): a conversation's is no route.
+## **A PLACE'S TAIL**: what the path asks after the place.
 tail : TopicPage.Place, List(U8) -> Try(TopicPage.Route, [NotATopicPage])
 tail = |p, what|
 	if what == "stream".to_utf8() {
@@ -210,18 +187,15 @@ tail = |p, what|
 	} else if what == "edit".to_utf8() {
 		Ok(Edit(p))
 	} else if what == "save".to_utf8() {
-		match p {
-			InConversation(_) => Err(NotATopicPage)
-			InChannel(_) | InDm(_) => Ok(Save(p))
-		}
+		Ok(Save(p))
 	} else {
 		Err(NotATopicPage)
 	}
 
 ## **WHAT A REQUEST ON A PAGE DECIDES ON**: the viewer, signed in by their
 ## session (`me`, and the stream's holder); the transcript they read
-## (`place`), its title and where it lives in a path; and whose rules a
-## post from its compose box follows (`poster`).
+## (`place`), its title and where it lives in a path; and the viewer a
+## post from its compose box is decided for (`poster`).
 Shown : {
 	holder : List(U8),
 	accounts : List(Principal),
@@ -229,23 +203,11 @@ Shown : {
 	place : MessageRef.Where,
 	title : Html,
 	base : Str,
-	poster : [
-		ToTopic(
-			{
-				viewer : Access.Viewer(Topic.At),
-				accounts : List(Principal),
-				now : I64,
-			},
-		),
-		ToConversation(
-			{
-				viewer : Access.Viewer(ConvAccess.ConvId),
-				accounts : List(Principal),
-				now : I64,
-				conv : ConvAccess.Conv,
-			},
-		),
-	],
+	poster : {
+		viewer : Access.Viewer,
+		accounts : List(Principal),
+		now : I64,
+	},
 }
 
 serve! : {
@@ -262,7 +224,6 @@ serve! = |
 | {
 	shown =
 		match place_of(r) {
-			InConversation(id) => conversation_shown!({ path, route: r }, id)?
 			InChannel(at) => topic_shown!({ path, route: r }, InChannel(at))?
 			InDm(d) => topic_shown!({ path, route: r }, InDm(d))?
 		}
@@ -360,7 +321,7 @@ topic_shown! = |{ path, route: r }, place| {
 		}?
 	made = found.topic.at()
 	Ok({
-		holder: Conversations.holder(v.viewer),
+		holder: Messages.holder(v.viewer),
 		accounts: v.accounts,
 		me,
 		place: InTopic(made),
@@ -373,58 +334,8 @@ topic_shown! = |{ path, route: r }, place| {
 			},
 		),
 		base: base_of(made, place),
-		poster: ToTopic(v),
+		poster: v,
 	})
-}
-
-## **A CONVERSATION'S PAGE, DECIDED**: the viewer over conversations (a
-## send's, for posting; the rest, for reading), and whether they may see
-## it (ConvAccess.can_see).
-conversation_shown! : Asked, ConvAccess.ConvId => Try(Shown, Chat.Answer)
-conversation_shown! = |{ path, route: r }, id| {
-	use =
-		match r {
-			Send(_) => Post(id)
-			Page(_) | Stream(_) | Earlier(_) | Quote(_) | Edit(_) | Save(_) => Read(id)
-		}
-	a = Credentials.load_viewer!(use)?
-	me = me_of(
-		r,
-		path,
-		a.viewer.who(),
-	)?
-	unseen = not_here(
-		r,
-		{
-			why: Html.text("Conversation ${id.to_u64().to_str()} is not a conversation you can see."),
-			accounts: a.accounts,
-			me,
-		},
-	)
-	conv =
-		match Store.load_conversation!(id) {
-			Ok(c) => Ok(c)
-			Err(Missing) => Err(unseen)
-			Err(Failed) => Err(Chat.failed)
-		}?
-	if !ConvAccess.can_see(a.viewer, { conv, accounts: a.accounts }) {
-		Err(unseen)
-	} else {
-		Ok({
-			holder: Conversations.holder(a.viewer),
-			accounts: a.accounts,
-			me,
-			place: InConversation(id),
-			title: conversation_title(conv, { accounts: a.accounts, me }),
-			base: "/chat/${id.to_u64().to_str()}",
-			poster: ToConversation({
-				viewer: a.viewer,
-				accounts: a.accounts,
-				now: a.now,
-				conv,
-			}),
-		})
-	}
 }
 
 ## **A DM'S PLACE IS THE ASKER'S**: the pair of the viewer and the other
@@ -442,7 +353,6 @@ at_of = |me, place|
 				})
 				_ => Err(no_such_topic)
 			}
-		InConversation(_) => crash "TopicPage.at_of: a conversation's page is decided by conversation_shown!"
 	}
 
 ## Where a topic's page lives, its names as they were made.
@@ -451,14 +361,12 @@ base_of = |at, place|
 	match place {
 		InDm({ other, topic: _ }) => Topics.page_path(at, InDm(other))
 		InChannel(_) => Topics.page_path(at, InChannel)
-		InConversation(_) => crash "TopicPage.base_of: a conversation's page is decided by conversation_shown!"
 	}
 
 ## **A PAGE THAT IS NOT THERE SAYS WHY**, as the old app's did
 ## (angry-gopher's chat.zig, `serveNotFoundPage`): a 404 page titled "Not
 ## here", its reason (`why`), and the way back. A channel that is not
-## there and one the viewer is not in read alike, as do a conversation
-## that is not there and one they may not see, so it names nothing a
+## there and one the viewer is not in read alike, so it names nothing a
 ## viewer cannot see. Its stream and its fragments answer the plain 404.
 not_here : TopicPage.Route,
 {
@@ -475,15 +383,11 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) =>
-			match place_of(r) {
-				InConversation(_) => Conversations.no_such
-				InChannel(_) | InDm(_) => no_such_topic
-			}
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) => no_such_topic
 		Page(_) => {
 			answer = Chrome.page({
 				title: Html.markup("Not here"),
-				viewer: Html.text(Conversations.name_of(accounts, me.id)),
+				viewer: Html.text(Render.name_of(accounts, me.id)),
 				here: Elsewhere,
 				kind: Plain,
 				body_attrs: Html.join([]),
@@ -516,17 +420,13 @@ topic_title = |
 	if at.channel.is_dm() {
 		name =
 			match members.keep_if(|b| b.id != me.id) {
-				[b] => Conversations.name_of(accounts, b.id)
+				[b] => Render.name_of(accounts, b.id)
 				_ => at.channel.to_str()
 			}
 		Html.text("Chat w/${name}: ${at.topic.to_str()}")
 	} else {
 		Html.text("#${at.channel.to_str()}: ${at.topic.to_str()}")
 	}
-
-## A conversation page's title (Conversations.title_text).
-conversation_title : ConvAccess.Conv, { accounts : List(Principal), me : Principal.Bound } -> Html
-conversation_title = |conv, { accounts, me }| Html.text(Conversations.title_text(conv, { accounts, me: me.id }))
 
 ## **THE PAGE**: the newest page of messages, each its bubble, in the feed
 ## column; the button for the page before; the right pane, compose. The
@@ -538,7 +438,7 @@ page! : Shown => Try(Chat.Answer, Chat.Answer)
 page! = |s| {
 	files = PageFeed.files(s.place)
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
-	span = Conversations.page_of(tally.messages, Newest)
+	span = Messages.page_of(tally.messages, Newest)
 	messages = Store.load_span!(
 		files,
 		tally,
@@ -546,11 +446,10 @@ page! = |s| {
 	).map_err(|_| Chat.failed)?
 	newest = messages.last().map_ok(|m| m.id) ?? 0
 	saved = load_saved_here!(s)
-	saves = PageFeed.saves(s.place)
 	Ok(
 		Chrome.page({
 			title: s.title,
-			viewer: Html.text(Conversations.name_of(s.accounts, s.me.id)),
+			viewer: Html.text(Render.name_of(s.accounts, s.me.id)),
 			here: Elsewhere,
 			kind: Chat,
 			body_attrs: Html.join([
@@ -566,16 +465,9 @@ page! = |s| {
 				Html.text(s.base),
 				Html.markup("/quote\" data-edit=\""),
 				Html.text(s.base),
-				Html.markup("/edit\""),
-				match saves {
-					Saves =>
-						Html.join([
-							Html.markup(" data-save=\""),
-							Html.text(s.base),
-							Html.markup("/save\""),
-						])
-					NoSaves => Html.join([])
-				},
+				Html.markup("/edit\" data-save=\""),
+				Html.text(s.base),
+				Html.markup("/save\""),
 			]),
 			body: Html.join([
 				Html.markup("<div class=chat-notify id=chat-notify>"),
@@ -598,12 +490,7 @@ page! = |s| {
 				),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
-				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n"),
-				match saves {
-					Saves => Html.markup("<script src=\"/save.js\"></script>\n")
-					NoSaves => Html.join([])
-				},
-				Html.markup("<script src=\"/keyhelp.js\"></script>\n"),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
 			]),
 		}),
 	)
@@ -623,22 +510,20 @@ compose_html = |base|
 	])
 
 ## **A SEND FROM THE COMPOSE BOX**: the body is the markdown, as the
-## place's own post takes it, decided by its own rules (Topics.post_by!,
-## Conversations.post_by!), and the answer is the new message's bubble, a
+## topic's own post takes it, decided by its own rules (Topics.post_by!),
+## and the answer is the new message's bubble, a
 ## `201`: the page puts it in, and the stream's copy of it, by its id, is
 ## dropped. A refusal is the post's own, its text the page shows.
 send! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
 send! = |s, bytes| {
 	m =
-		match (s.poster, s.place) {
-			(ToTopic(v), InTopic(at)) =>
+		match s.place {
+			InTopic(at) =>
 				Topics.post_by!(
-					v,
+					s.poster,
 					at,
 					bytes,
 				)?
-			(ToConversation(a), InConversation(_)) => Conversations.post_by!(a, bytes)?
-			_ => crash "TopicPage.send!: a page's poster is its place's"
 		}
 	Ok(
 		Html.respond(
@@ -668,7 +553,7 @@ earlier! = |s| {
 		}?
 	files = PageFeed.files(s.place)
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
-	span = Conversations.page_of(tally.messages, Before(before))
+	span = Messages.page_of(tally.messages, Before(before))
 	messages = Store.load_span!(
 		files,
 		tally,
@@ -758,7 +643,7 @@ backlog! = |place, { messages, accounts }|
 ## **THE BUBBLES OF `messages`**, each superseded by its author's last
 ## edit among `from_on` (the messages from the first of them to the
 ## newest), and "✓ saved" on the viewer's reading list (`saved`), as the
-## page draws it for its one viewer; a conversation's draw no save.
+## page draws it for its one viewer.
 drawn : Shown,
 {
 	messages : List(MessageCodec.Fields),
@@ -872,10 +757,10 @@ bad_n = Wire.refused(400, "n= is a message's id")
 ## (SavedPage.refused): the page's popup shows it.
 save! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
 save! = |s, form| {
-	(at, now) =
-		match (s.place, s.poster) {
-			(InTopic(a), ToTopic(v)) => (a, v.now)
-			_ => crash "TopicPage.save!: `tail` routes a save on a topic's page alone"
+	now = s.poster.now
+	at =
+		match s.place {
+			InTopic(a) => a
 		}
 	n =
 		match SignInWeb.form_field(form, "n") {
@@ -900,7 +785,7 @@ save! = |s, form| {
 			place: at,
 			n: m.id,
 			by: m.by,
-			from: Conversations.name_of(s.accounts, m.by),
+			from: Render.name_of(s.accounts, m.by),
 			at: m.at,
 			note,
 			body: m.body,
@@ -934,12 +819,10 @@ human_of = |me|
 ## bubbles drawn for them alone ("✓ saved"). A list that will not read is
 ## `Unknown`, and the page is still shown, saying so, as the old one did
 ## (js/chat.js: "a saved set that will not read says so"): the reading
-## list is not the topic. A conversation's page reads no list: none of its
-## messages can be on one.
+## list is not the topic.
 load_saved_here! : Shown => [Known(List(U64)), Unknown]
 load_saved_here! = |s|
 	match (s.place, s.me.id) {
-		(InConversation(_), _) => Known([])
 		(InTopic(at), Human(h)) =>
 			match Store.load_saved!(h) {
 				Ok(book) => Known(ReadingList.numbers_in(book, at))
@@ -984,41 +867,9 @@ expect TopicPage.route("/chat/room/Lobby/ChitChat".to_utf8()).is_err()
 expect TopicPage.route("/chat/channel/Lobby/ChitChat/other".to_utf8()).is_err()
 expect TopicPage.route("/chat/channel/Lobby".to_utf8()).is_err()
 expect TopicPage.route("/chat/channel/Lobby/ChitChat/stream/x".to_utf8()).is_err()
-# A conversation's page, by its id, and the same tail as a topic's, but a save.
-expect
-	match TopicPage.route("/chat/7".to_utf8()) {
-		Ok(Page(InConversation(id))) => id.to_u64() == 7
-		_ => Bool.False
-	}
-expect
-	match TopicPage.route("/chat/7/stream".to_utf8()) {
-		Ok(Stream(InConversation(id))) => id.to_u64() == 7
-		_ => Bool.False
-	}
-expect
-	match TopicPage.route("/chat/7/send".to_utf8()) {
-		Ok(Send(InConversation(_))) => Bool.True
-		_ => Bool.False
-	}
-expect
-	match TopicPage.route("/chat/7/quote".to_utf8()) {
-		Ok(Quote(InConversation(_))) => Bool.True
-		_ => Bool.False
-	}
-expect
-	match TopicPage.route("/chat/7/edit".to_utf8()) {
-		Ok(Edit(InConversation(_))) => Bool.True
-		_ => Bool.False
-	}
-expect
-	match TopicPage.route("/chat/7/earlier".to_utf8()) {
-		Ok(Earlier(InConversation(_))) => Bool.True
-		_ => Bool.False
-	}
-expect TopicPage.route("/chat/7/save".to_utf8()).is_err()
-expect TopicPage.route("/chat/0".to_utf8()).is_err()
-expect TopicPage.route("/chat/07".to_utf8()).is_err()
-expect TopicPage.route("/chat/7/x".to_utf8()).is_err()
-expect TopicPage.route("/chat/7/stream/x".to_utf8()).is_err()
+# A path of one part after `/chat` names no topic page: the conversation
+# pages, `/chat/<id>`, are no more.
+expect TopicPage.route("/chat/7".to_utf8()).is_err()
+expect TopicPage.route("/chat/7/stream".to_utf8()).is_err()
 expect TopicPage.route("/chat/agents".to_utf8()).is_err()
 expect TopicPage.route("/chat".to_utf8()).is_err()

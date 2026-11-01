@@ -22,10 +22,11 @@ import pf.Host
 import Bubble
 import ChannelName
 import Chrome
-import Conversations
+import Messages
 import Html
 import Pages
 import Principal
+import Render
 import ReadingList
 import SavedCodec
 import SignInWeb
@@ -171,7 +172,7 @@ serve! = |
 			page({
 				list,
 				me: human,
-				viewer: Conversations.name_of(v.accounts, me.id),
+				viewer: Render.name_of(v.accounts, me.id),
 			}),
 		)
 		Delete(id) => {
