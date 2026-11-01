@@ -146,8 +146,11 @@ two, M half a day.
      route on a topic's page, "✓ saved" drawn by the server for its one
      viewer, the old popup, and `/chat/saved` with a form to change a note
      and one to remove a save, in place of the Docs doc.
-   - **d** downloads a transcript.
-   - **t** opens the raw transcript.
+   - **d** downloads a transcript. Skipped for now (Steve): the old bundle
+     held the topic's images and reactions, which roc-chat doesn't have yet.
+   - **t**, the raw transcript, is dropped (Steve: "Nobody really uses it
+     now"). roc-chat stores a message as one line, and the browser is where
+     people read.
    - **Reactions** are a route and a live fragment.
    - **Search** is the largest server piece.
    - Old: §5.
