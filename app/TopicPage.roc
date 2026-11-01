@@ -15,6 +15,9 @@
 ##                                                  or else after `?after=`
 ##     GET .../earlier?before=<id>                  the page of bubbles before
 ##                                                  `<id>`, a fragment
+##     POST .../send                                a post from the compose box: the
+##                                                  body the markdown; `201` and the
+##                                                  new message's bubble
 ##
 ## **WHO MAY** is the topic's own routes' (Topics.verdict!, Topic.read):
 ## a topic the viewer may not read is the 404 of one that is not there,
@@ -54,6 +57,7 @@ TopicPage := [].{
 		Page(TopicPage.Place),
 		Stream(TopicPage.Place),
 		Earlier(TopicPage.Place),
+		Send(TopicPage.Place),
 	]
 
 	## The route a path names, if it names one.
@@ -103,6 +107,12 @@ TopicPage := [].{
 						a,
 						b,
 					).map_ok(|p| Earlier(p))
+				} else if what == "send".to_utf8() {
+					place(
+						kind,
+						a,
+						b,
+					).map_ok(|p| Send(p))
 				} else {
 					Err(NotATopicPage)
 				}
@@ -110,20 +120,36 @@ TopicPage := [].{
 		}
 	}
 
-	## **ANSWER A ROUTE**: a GET (or a HEAD, for the page and a fragment).
+	## **ANSWER A ROUTE**: a GET (or a HEAD, for the page and a fragment);
+	## a send, a POST, its body read first, as a topic's post reads it.
 	answer! : Chat.Request, TopicPage.Route => Chat.Answer
 	answer! = |req, r| {
-		get_only = match r {
-			Stream(_) => req.method != Get
-			Page(_) | Earlier(_) => req.method != Get and req.method != Head
-		}
-		if get_only {
-			Chat.not_allowed(Get)
-		} else {
-			match serve!(req.path, r) {
-				Ok(answer) => answer
-				Err(answer) => answer
+		refused =
+			match r {
+				Stream(_) => if (req.method != Get) Err(Chat.not_allowed(Get)) else Ok(NoBody)
+				Page(_) | Earlier(_) => if (req.method != Get and req.method != Head) Err(Chat.not_allowed(Get)) else Ok(NoBody)
+				Send(_) =>
+					if req.method != Post {
+						Err(Chat.not_allowed(Post))
+					} else {
+						got = Host.read_body!(Conversations.message_most)
+						match got.status {
+							Answered => Err(Chat.answered)
+							Read => Ok(Body(got.bytes))
+						}
+					}
 			}
+		match refused {
+			Err(answer) => answer
+			Ok(body) =>
+				match serve!({
+					path: req.path,
+					route: r,
+					body,
+				}) {
+					Ok(answer) => answer
+					Err(answer) => answer
+				}
 		}
 	}
 }
@@ -139,11 +165,21 @@ Shown : {
 	base : Str,
 }
 
-serve! : List(U8), TopicPage.Route => Try(Chat.Answer, Chat.Answer)
-serve! = |path, r| {
+serve! : {
+	path : List(U8),
+	route : TopicPage.Route,
+	body : [NoBody, Body(List(U8))],
+} => Try(Chat.Answer, Chat.Answer)
+serve! = |
+	{
+		path,
+		route: r,
+		body,
+	},
+| {
 	place =
 		match r {
-			Page(p) | Stream(p) | Earlier(p) => p
+			Page(p) | Stream(p) | Earlier(p) | Send(p) => p
 		}
 	v = Topics.load_viewer!({})?
 	me =
@@ -151,7 +187,7 @@ serve! = |path, r| {
 			SignedOut =>
 				match r {
 					Page(_) => Err(Pages.to_login(path))
-					Stream(_) | Earlier(_) => Err(Wire.refused(401, "not signed in"))
+					Stream(_) | Earlier(_) | Send(_) => Err(Wire.refused(401, "not signed in"))
 				}
 			Key(_) => Err(Pages.key_refused)
 			Session(b) => Ok(b)
@@ -193,10 +229,16 @@ serve! = |path, r| {
 		topic: found.topic,
 		base: base_of(found.topic.at(), place),
 	}
-	match r {
-		Page(_) => page!(shown)
-		Stream(_) => stream!(shown)
-		Earlier(_) => earlier!(shown)
+	match (r, body) {
+		(Page(_), _) => page!(shown)
+		(Stream(_), _) => stream!(shown)
+		(Earlier(_), _) => earlier!(shown)
+		(Send(_), Body(bytes)) => send!(
+			v,
+			shown,
+			bytes,
+		)
+		(Send(_), NoBody) => crash "TopicPage.serve!: answer! reads a send's body first"
 	}
 }
 
@@ -248,7 +290,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) => no_such_topic
 		Page(_) => {
 			what =
 				match why {
@@ -322,15 +364,63 @@ page! = |s| {
 				Html.markup("/earlier\""),
 			]),
 			body: Html.join([
-				Html.markup("<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
+				Html.markup("<div class=chat-notify id=chat-notify></div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
 				if (span.first > 1) Html.join([]) else Html.markup(" hidden"),
 				Html.markup(">Earlier messages</button></div>\n<div id=chat-history class=chat-mp-history tabindex=-1><div id=chat-bubbles>\n"),
 				if (messages.is_empty()) Html.markup("<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>\n") else Html.join([]),
-				Html.join(messages.map(|m| Bubble.of(s.accounts, m))),
-				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose></div>\n</div>\n<script src=\"/feed.js\"></script>\n"),
+				Html.join(
+					messages.map(
+						|m| Bubble.of(
+							s.accounts,
+							{ m, ref: Topics.local_ref(s.topic.at(), m.id) },
+						),
+					),
+				),
+				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
+				compose_html(s.base),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n"),
 			]),
 		}),
 	)
+}
+
+## **THE RIGHT PANE: COMPOSE**, as the old client built it
+## (chat-client's js/chat_right_sidebar.js and js/chat_compose.js): closed
+## to start, its "Open compose box" button showing; open, the form, the
+## status line and the hint. The form posts to the page's `send`, by its
+## script (js/compose.js), which keeps the 3 s watch on it.
+compose_html : Str -> Html
+compose_html = |base|
+	Html.join([
+		Html.markup("<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\""),
+		Html.text(base),
+		Html.markup("/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n"),
+	])
+
+## **A SEND FROM THE COMPOSE BOX**: the body is the markdown, as a topic's
+## post takes it, decided by the topic's own rules (Topics.post_by!), and
+## the answer is the new message's bubble, a `201`: the page puts it in,
+## and the stream's copy of it, by its id, is dropped. A refusal is the
+## post's own, its text the page shows.
+send! : {
+	viewer : Access.Viewer(Topic.At),
+	accounts : List(Principal),
+	now : I64,
+},
+Shown,
+List(U8) => Try(Chat.Answer, Chat.Answer)
+send! = |
+	v,
+	s,
+	bytes,
+| {
+	at = s.topic.at()
+	m = Topics.post_by!(
+		v,
+		at,
+		bytes,
+	)?
+	Ok(Html.respond(201, Bubble.of(s.accounts, { m, ref: Topics.local_ref(at, m.id) })))
 }
 
 ## **THE PAGE OF BUBBLES BEFORE `?before=`**, a fragment: one element
@@ -358,7 +448,14 @@ earlier! = |s| {
 				Html.markup("<div data-earlier="),
 				Html.number(if (span.first > 1) 1 else 0),
 				Html.markup(">\n"),
-				Html.join(messages.map(|m| Bubble.of(s.accounts, m))),
+				Html.join(
+					messages.map(
+						|m| Bubble.of(
+							s.accounts,
+							{ m, ref: Topics.local_ref(s.topic.at(), m.id) },
+						),
+					),
+				),
 				Html.markup("</div>\n"),
 			]),
 		),
@@ -392,7 +489,17 @@ stream! = |s| {
 	Ok(
 		Chat.stream({
 			key: Topics.page_key(at),
-			backlog: gap.concat(List.join(messages.map(|m| Topics.page_frame(s.accounts, m)))),
+			backlog: gap.concat(
+				List.join(
+					messages.map(
+						|m| Topics.page_frame({
+							at,
+							accounts: s.accounts,
+							m,
+						}),
+					),
+				),
+			),
 			holder: Conversations.holder(s.viewer),
 		}),
 	)

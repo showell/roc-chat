@@ -23,8 +23,8 @@
 ##                       for each page before it), then each new one live (its
 ##                       stream, by the browser's EventSource, which resumes with
 ##                       Last-Event-ID by itself, and reloads the page on a `gap`),
-##                       and a box to post markdown in (Enter sends, Shift-Enter
-##                       adds a line)
+##                       and a box to post markdown in (Ctrl/⌘-Enter sends, as
+##                       on a topic's page; Enter adds a line)
 ##
 ## **A PAGE IS AN `Html`** (Html.roc), built only from escaped text (a
 ## name, an id, a title), numbers and markup written here. **A MESSAGE'S
@@ -542,7 +542,7 @@ serve_conversation! = |
 								if (earlier) Html.join([]) else Html.markup(" hidden"),
 								Html.markup(">Earlier messages</button></p>\n<div id=messages>\n"),
 								Html.join(messages.map(|m| message_html(accounts, m))),
-								Html.markup("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Enter sends, Shift-Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
+								Html.markup("</div>\n<form id=post><textarea name=body rows=3 required placeholder=\"Markdown. Ctrl/⌘-Enter sends; Enter adds a line.\"></textarea> <span id=said></span></form>\n<script>\n"),
 								Html.markup(conversation_js),
 								Html.markup("</script>\n"),
 							]),
@@ -774,7 +774,8 @@ conversation_js =
 	\\stream.addEventListener("gap", () => location.reload());
 	\\const form = document.getElementById("post"), text = form.elements.body, said = document.getElementById("said");
 	\\text.addEventListener("keydown", (e) => {
-	\\  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+	\\  // Ctrl/⌘-Enter sends and Enter is a newline, as on a topic's page.
+	\\  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
 	\\});
 	\\form.addEventListener("submit", async (e) => {
 	\\  e.preventDefault();
@@ -856,3 +857,5 @@ expect conversation_js.contains("heads[li.dataset.id] = li.textContent;") and co
 # A live message is followed only when the reader was caught up, read
 # before the append: never a scroll on every message.
 expect conversation_js.contains("const stick = caughtUp();\n  const a = article(m);\n  box.append(a);\n  if (stick) a.scrollIntoView") and !conversation_js.contains("box.append(a);\n  a.scrollIntoView")
+# Ctrl/⌘-Enter sends, as on a topic's page; a plain Enter is a newline.
+expect conversation_js.contains("e.key === \"Enter\" && (e.ctrlKey || e.metaKey)") and !conversation_js.contains("!e.shiftKey")

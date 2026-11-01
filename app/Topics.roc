@@ -223,6 +223,32 @@ Topics := [].{
 		}
 	}
 
+	## **A POST BY A VIEWER ALREADY LOADED** (a topic's page's compose box):
+	## the topic's own rules, as `POST .../messages` takes it (`read_by!`,
+	## then `store_post!`); the message stored, or the refusal that ends it.
+	post_by! : {
+		viewer : Access.Viewer(Topic.At),
+		accounts : List(Principal),
+		now : I64,
+	},
+	Topic.At,
+	List(U8) => Try(MessageCodec.Fields, Chat.Answer)
+	post_by! = |
+		v,
+		at,
+		body,
+	| {
+		a = read_by!(v, at)?
+		got = store_post!(a, body)?
+		Ok(got.message)
+	}
+
+	## **A MESSAGE'S LOCAL REFERENCE**, `<topic>_<n>`: the part of its
+	## reference that names it on its topic's page (MessageRef's local id),
+	## as the page's notices say it.
+	local_ref : Topic.At, U64 -> Str
+	local_ref = |at, n| "${at.topic.to_str()}_${n.to_str()}"
+
 	## **WHETHER THE VIEWER READS THE TOPIC AT `at`** (Topic.read), and if
 	## not, why, in words that leak nothing: a channel that is not there and
 	## one the viewer is not a member of read alike (`NotYours`), as the old
@@ -281,11 +307,21 @@ Topics := [].{
 
 	## **A BUBBLE AS ONE SSE EVENT**, named `message`, its id the message's,
 	## as a page's stream and a post's publish both write it.
-	page_frame : List(Principal), MessageCodec.Fields -> List(U8)
-	page_frame = |accounts, m|
+	page_frame : {
+		at : Topic.At,
+		accounts : List(Principal),
+		m : MessageCodec.Fields,
+	} -> List(U8)
+	page_frame = |
+		{
+			at,
+			accounts,
+			m,
+		},
+	|
 		match Sse.frame({
 			name: Str.to_utf8("message"),
-			data: Bubble.data(Bubble.of(accounts, m)),
+			data: Bubble.data(Bubble.of(accounts, { m, ref: Topics.local_ref(at, m.id) })),
 			id: Str.to_utf8(m.id.to_str()),
 		}) {
 			Ok(f) => f
@@ -906,7 +942,32 @@ post! = |at| {
 }
 
 when_posted! : Asked, List(U8) => Chat.Answer
-when_posted! = |a, body| {
+when_posted! = |a, body|
+	match store_post!(a, body) {
+		Err(answer) => answer
+		Ok({ message, who }) => Wire.json(
+			201,
+			message_json(
+				a.topic.at(),
+				message,
+				who,
+			),
+		)
+	}
+
+## **A POST, DECIDED AND STORED**: by one who may post in the topic
+## (Topic.post), UTF-8, not too much formatting, and room in the
+## transcript; appended and published to every stream. The message and
+## its people, or the refusal that ends it.
+store_post! : Asked,
+List(U8) => Try(
+	{
+		message : MessageCodec.Fields,
+		who : { named : List(Mentions.Named), accounts : List(Principal) },
+	},
+	Chat.Answer,
+)
+store_post! = |a, body| {
 	at = a.topic.at()
 	when = a.topic.post({
 		viewer: a.viewer,
@@ -914,55 +975,41 @@ when_posted! = |a, body| {
 		accounts: a.accounts,
 	})
 	if when != Permitted {
-		Wire.refused(403, "you read this topic, but may not post in it")
+		Err(Wire.refused(403, "you read this topic, but may not post in it"))
 	} else if Str.from_utf8(body).is_err() {
-		Wire.refused(400, "a message is UTF-8 text")
+		Err(Wire.refused(400, "a message is UTF-8 text"))
 	} else if Md.hostility(body, Conversations.markdown) == TooMuchFormatting {
-		Wire.refused(400, Md.too_much_formatting)
+		Err(Wire.refused(400, Md.too_much_formatting))
 	} else {
 		by =
 			match a.viewer.who() {
-				SignedOut => crash "Topics.post!: `load_read!` let nobody signed out through"
+				SignedOut => crash "Topics.posted!: `read_by!` let nobody signed out through"
 				Session(b) | Key(b) => b.id
 			}
 		files = Store.topic_files(at)
-		match Store.load_tally!(files) {
-			Err(Failed) => Chat.failed
-			Ok(tally) => {
-				message = {
-					id: MessageCodec.next_id(tally.messages),
-					at: a.now,
-					by,
-					body,
-				}
-				if tally.bytes + MessageCodec.encode(message).len() > Limits.transcript_bytes_most {
-					Wire.refused(413, "this topic is full: its transcript holds as much as one may")
-				} else {
-					match Store.append_message!({
-						files,
-						tally,
-						message,
-					}) {
-						Failed => Chat.failed
-						Appended => {
-							who = {
-								named: named_of(
-									a.topic,
-									{ channel: a.channel, accounts: a.accounts },
-								),
-								accounts: a.accounts,
-							}
-							publish!(a.topic, { message, who })
-							Wire.json(
-								201,
-								message_json(
-									at,
-									message,
-									who,
-								),
-							)
-						}
+		tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
+		message = {
+			id: MessageCodec.next_id(tally.messages),
+			at: a.now,
+			by,
+			body,
+		}
+		if tally.bytes + MessageCodec.encode(message).len() > Limits.transcript_bytes_most {
+			Err(Wire.refused(413, "this topic is full: its transcript holds as much as one may"))
+		} else {
+			match Store.append_message!({
+				files,
+				tally,
+				message,
+			}) {
+				Failed => Err(Chat.failed)
+				Appended => {
+					who = {
+						named: named_of(a.topic, { channel: a.channel, accounts: a.accounts }),
+						accounts: a.accounts,
 					}
+					publish!(a.topic, { message, who })
+					Ok({ message, who })
 				}
 			}
 		}
@@ -986,7 +1033,14 @@ publish! = |topic, { message, who }| {
 		Ok(f) => Host.publish!(bus_key(at), f)
 		Err(LineBreak) => crash "Topics.publish!: a message's JSON holds no line break"
 	}
-	Host.publish!(Topics.page_key(at), Topics.page_frame(who.accounts, message))
+	Host.publish!(
+		Topics.page_key(at),
+		Topics.page_frame({
+			at,
+			accounts: who.accounts,
+			m: message,
+		}),
+	)
 	match Conversations.agent_event({
 		lead: lead_of(at).concat(ref_lead(at, message.id)),
 		spot: spot_of(at),

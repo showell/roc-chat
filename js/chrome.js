@@ -28,6 +28,8 @@
     + 'form.logout button { font: inherit; color: var(--cc-accent, #000080); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }'
     + 'h1 { color: var(--cc-accent, #000080); }'
     + 'a { color: var(--cc-accent, #000080); }'
+    + '.chat-notify { font-size: 13px; color: var(--cc-notify-fg, #1a5fb4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; margin-bottom: 8px; }'
+    + '.chat-notify a { color: inherit; }'
     + '.muted { color: var(--cc-muted-fg, #888); }'
     + 'html:has(body.chat-page), body.chat-page { height: 100%; }'
     + '.chat-page .app-body-wrap { margin: 10px auto; padding: 0 24px 10px; min-height: 0; max-width: none; display: flex; flex-direction: column; }'

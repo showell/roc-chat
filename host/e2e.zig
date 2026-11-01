@@ -2229,10 +2229,12 @@ fn topicPage(w: *World) !void {
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
         "<a href=\"/chat/browse\">Browse</a>",
         "<button id=earlier type=button hidden>Earlier messages</button>",
-        try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-1 data-id=1 data-by=\"human:{s}\"><div class=chat-meta>#1 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p}),
+        try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-1 data-id=1 data-ref=\"Banana_1\" data-by=\"human:{s}\"><div class=chat-meta>#1 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p}),
         "<div class=chat-body><p>hello <strong>orchard</strong></p>",
-        "<div id=chat-right-sidebar class=chat-compose></div>",
-        "<script src=\"/feed.js\"></script>",
+        // The right pane: compose, closed to start, the old words.
+        "<div class=chat-notify id=chat-notify></div>",
+        "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"/chat/channel/Orchard/Banana/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>",
+        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>",
     };
     for (want) |needle| if (!has(page.body, needle)) return error.TopicPageWrong;
     if (has(page.body, "Pip <b>") or has(page.body, "No messages yet") or has(page.body, "<style")) return error.TopicPageWrong;
@@ -2289,7 +2291,7 @@ fn topicPageStream(w: *World) !void {
     defer json.close();
     if ((try request(w.a, w.port(), "POST", "/channels/Orchard/topics/Banana/messages", x.pip, "a *second*")).status != 201) return error.NotPosted;
     try l.until("<em>second</em>");
-    const bubble = try std.fmt.allocPrint(w.a, "event: message\nid: 2\ndata: <div class=chat-msg id=msg-2 data-id=2 data-by=\"human:{s}\"><div class=chat-meta>#2 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p});
+    const bubble = try std.fmt.allocPrint(w.a, "event: message\nid: 2\ndata: <div class=chat-msg id=msg-2 data-id=2 data-ref=\"Banana_2\" data-by=\"human:{s}\"><div class=chat-meta>#2 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p});
     if (!has(l.got.items, bubble) or has(l.got.items, "orchard")) return error.StreamedWrong;
     try json.until("\"markdown\":\"a *second*\"");
     if (has(json.got.items, "chat-msg")) return error.JsonStreamChanged;
@@ -2349,6 +2351,49 @@ fn topicPageEarlier(w: *World) !void {
     if (!has(behind.got.items, "event: gap\ndata: {\"before\":3}\n\n") or has(behind.got.items, "id: 2\n")) return error.NoGap;
     for ([_][]const u8{ "", "?before=x", "?before=03", "?before=1&before=2" }) |q| {
         if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/channel/Orchard/Banana/earlier{s}", .{q}), x.quin)).status != 400) return error.BadBeforeTaken;
+    }
+}
+
+/// **THE COMPOSE BOX SENDS** (`POST .../send`, app/TopicPage.roc): the body
+/// is the markdown, decided by the topic's own rules; the answer, a 201, is
+/// the new message's bubble, the same the stream sends every page; it is
+/// stored once, as a topic's post. A refusal is the post's, its words its
+/// own: text that is not UTF-8 a 400, a stranger the same 404 as no topic,
+/// a key a 403, signed out a 401, a foreign Origin a 403, a GET a 405. A
+/// DM's compose box sends to the DM's topic. The scripts are served.
+fn composeSends(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const l = try Listener.open(w.a, w.port(), "/chat/channel/Orchard/Banana/stream?after=102", x.pip, "");
+    defer l.close();
+    const sent = try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", x.quin, "from **compose**");
+    const bubble = try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-103 data-id=103 data-ref=\"Banana_103\" data-by=\"human:{s}\"><div class=chat-meta>#103 Person 1041 · @person1041 · <time class=chat-time datetime=", .{x.q});
+    if (sent.status != 201 or !std.mem.startsWith(u8, sent.body, bubble) or !has(sent.body, "<p>from <strong>compose</strong></p>")) return error.NotSent;
+    if (!std.mem.startsWith(u8, sent.header("content-type") orelse "", "text/html")) return error.NotHtml;
+    // Every page's stream gets the same bubble.
+    try l.until("<strong>compose</strong>");
+    if (!has(l.got.items, bubble)) return error.StreamedOther;
+    // Stored once, as a topic's post: the JSON read has it, its markdown as sent.
+    const read = try get(w.a, w.port(), "/channels/Orchard/topics/Banana?before=104", x.pip);
+    if (!has(read.body, "\"markdown\":\"from **compose**\"") or has(read.body, "\"id\":104")) return error.NotStoredOnce;
+
+    // Refusals, each the post's own.
+    const bad = try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", x.quin, "\xff\xfe");
+    if (bad.status != 400 or !has(bad.body, "a message is UTF-8 text")) return error.BadTextTaken;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", x.rue, "let me in")).status != 404) return error.StrangerSent;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Desk/send", x.quin, "not mine")).status != 404) return error.AgentTopicSent;
+    if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", .{ .key = x.pal_key }, "by key")).status != 403) return error.KeySent;
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", "", "nobody")).status != 401) return error.NobodySent;
+    if ((try send(w.a, w.port(), "POST", "/chat/channel/Orchard/Banana/send", .{ .cookie = x.quin, .origin = "https://evil.test" }, "forged")).status != 403) return error.ForeignOriginSent;
+    if ((try get(w.a, w.port(), "/chat/channel/Orchard/Banana/send", x.quin)).status != 405) return error.SendByGet;
+    const after = try get(w.a, w.port(), "/channels/Orchard/topics/Banana?before=105", x.pip);
+    if (has(after.body, "\"id\":104")) return error.RefusalStored;
+
+    // A DM's box sends to the DM's topic.
+    const dm = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/send", .{x.p}), x.quin, "back at you");
+    if (dm.status != 201 or !has(dm.body, "data-ref=\"ChitChat_")) return error.DmNotSent;
+
+    for ([_][]const u8{ "/keys.js", "/compose.js" }) |path| {
+        if ((try get(w.a, w.port(), path, x.quin)).status != 200) return error.ScriptMissing;
     }
 }
 
@@ -2439,6 +2484,7 @@ const steps = [_]Step{
     .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, an agent topic and none a 404, the page saying why without naming a channel the viewer is not in; the JSON routes alike; signed out a 303 and a 401, a key a 403", .f = topicPage },
     .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
+    .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another's agent topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

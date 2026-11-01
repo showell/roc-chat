@@ -20,18 +20,21 @@ import Principal
 
 Bubble := [].{
 
-	## **THE BUBBLE**: who posted it (Conversations.header_of, the rule
+	## **THE BUBBLE**: its local reference (`data-ref`, `<topic>_<n>`, the
+	## server's spelling, which the page's notices say), who posted it (Conversations.header_of, the rule
 	## every renderer draws, so an agent named as a human says whose it is)
 	## and when, then roc-markdown's HTML for it. Everything written here is
 	## escaped; the body is the renderer's.
-	of : List(Principal), MessageCodec.Fields -> Html
-	of = |accounts, m|
+	of : List(Principal), { m : MessageCodec.Fields, ref : Str } -> Html
+	of = |accounts, { m, ref }|
 		Html.join([
 			Html.markup("<div class=chat-msg id=msg-"),
 			Html.number(m.id),
 			Html.markup(" data-id="),
 			Html.number(m.id),
-			Html.markup(" data-by=\""),
+			Html.markup(" data-ref=\""),
+			Html.text(ref),
+			Html.markup("\" data-by=\""),
 			Html.text(AccountCodec.id_text(m.by)),
 			Html.markup("\"><div class=chat-meta>#"),
 			Html.number(m.id),
@@ -123,28 +126,29 @@ human = Principal.Human({
 # **A NAME IS TEXT**: the meta line holds the poster's header escaped, and
 # the author's id as an attribute; the body is roc-markdown's.
 expect {
-	html = Bubble.of(
-		[human],
-		{
-			id: 3,
-			at: 5,
-			by: human.id(),
-			body: "*hi*".to_utf8(),
-		},
-	).bytes()
-	html == "<div class=chat-msg id=msg-3 data-id=3 data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
+	m = {
+		id: 3,
+		at: 5,
+		by: human.id(),
+		body: "*hi*".to_utf8(),
+	}
+	html = Bubble.of([human], { m, ref: "<T>_3" }).bytes()
+	html == "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"&lt;T&gt;_3\" data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
 }
 
 # A poster no account holds is its id, which says its kind.
-expect Bubble.of(
-	[],
-	{
+expect {
+	m = {
 		id: 1,
 		at: 0,
 		by: human.id(),
 		body: [],
-	},
-).bytes().starts_with("<div class=chat-msg id=msg-1 data-id=1 data-by=\"human:9\"><div class=chat-meta>#1 human:9 · ".to_utf8())
+	}
+	Bubble.of(
+		[],
+		{ m, ref: "T_1" },
+	).bytes().starts_with("<div class=chat-msg id=msg-1 data-id=1 data-ref=\"T_1\" data-by=\"human:9\"><div class=chat-meta>#1 human:9 · ".to_utf8())
+}
 
 expect Bubble.iso(0) == "1970-01-01T00:00:00Z"
 expect Bubble.iso(1793537670) == "2026-11-01T12:54:30Z"

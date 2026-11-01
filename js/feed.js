@@ -17,6 +17,7 @@
      - starts at the bottom, held there while images decode, until the
        reader scrolls or 5 s pass (js/message_view.js, `stabilize`);
      - puts a page of earlier bubbles, from the server, above the first;
+     - hands compose.js `Feed`: place a bubble, reveal one, focus the feed;
      - styles the transcript's column and the right pane on their elements
        (js/middle_pane.js, js/chat_right_sidebar.js), the server sending no
        style. */
@@ -142,10 +143,16 @@
   stabilize();
 
   var stream = new EventSource(root.dataset.stream);
-  stream.addEventListener('message', function (e) {
-    var bubble = parse(e.data).firstElementChild;
-    if (!bubble || !bubble.classList.contains('chat-msg')) return;
-    if (Number(bubble.dataset.id) <= newest || document.getElementById(bubble.id)) return;
+  /* A new bubble, the server's HTML, from the stream or from a send's
+     answer: put in once (its id is its message's, the newest so far), and
+     followed only when the reader was caught up. The bubble now on the
+     page, or null for one that was not a bubble. */
+  function place(html) {
+    var bubble = parse(html).firstElementChild;
+    if (!bubble || !bubble.classList.contains('chat-msg')) return null;
+    var here = document.getElementById(bubble.id);
+    if (here) return here;
+    if (Number(bubble.dataset.id) <= newest) return null;
     var stick = caughtUp();
     var empty = document.getElementById('chat-empty');
     if (empty) empty.remove();
@@ -153,7 +160,9 @@
     bubbles.appendChild(bubble);
     note(bubble);
     if (stick) toBottom();
-  });
+    return bubble;
+  }
+  stream.addEventListener('message', function (e) { place(e.data); });
   /* Further behind than the stream resends: the page drawn again. */
   stream.addEventListener('gap', function () { location.reload(); });
   /* A page restored from the back-forward cache has a dead stream. */
@@ -181,4 +190,11 @@
       earlier.hidden = page.dataset.earlier !== '1';
     }, function () { earlier.disabled = false; });
   });
+  /* What compose.js takes: put a bubble in; bring one into view; give
+     the transcript the keyboard (focus without a scroll). */
+  window.Feed = {
+    place: place,
+    reveal: function (bubble) { scrollBy(function () { bubble.scrollIntoView({ block: 'nearest' }); }); },
+    focus: function () { history.focus({ preventScroll: true }); },
+  };
 })();
