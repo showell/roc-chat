@@ -19,7 +19,6 @@
 ## read as empty: a write would lose what is there.
 import pf.Chat
 import pf.Host
-import Bubble
 import ChannelName
 import Chrome
 import Messages
@@ -34,6 +33,7 @@ import Store
 import Stored
 import Topic
 import Topics
+import UtcTime
 import Wire
 
 SavedPage := [].{
@@ -274,11 +274,11 @@ entry = |
 		# The author's name as it was when saved, as the old block froze it.
 		Html.text(e.from),
 		Html.markup(" · <time class=saved-time datetime="),
-		Html.markup(Bubble.iso(e.at)),
+		Html.markup(UtcTime.iso(e.at)),
 		Html.markup(" data-at="),
 		Html.signed(e.at),
 		Html.markup(">"),
-		Html.text(Bubble.fallback(e.at)),
+		Html.text(UtcTime.fallback(e.at)),
 		Html.markup("</time> · <a class=saved-open href=\""),
 		Html.text(
 			way_back({

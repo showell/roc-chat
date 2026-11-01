@@ -79,8 +79,9 @@ PageFeed := [].{
 						m,
 						ref: MessageRef.local(place, m.id),
 						edited: NotEdited,
-						# Every page's, and new: on no one's list yet.
+						# Every page's, and new: on no one's list yet, and no reaction.
 						saved: PageFeed.unsaved(place),
+						reactions: [],
 					},
 				),
 			),
@@ -141,6 +142,7 @@ PageFeed := [].{
 									edited,
 									# Every page's: the edit frame's body is all a page takes.
 									saved: PageFeed.unsaved(place),
+									reactions: [],
 								},
 							),
 						)

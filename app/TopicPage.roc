@@ -25,6 +25,9 @@
 ##                                                  reading list (`n=`, `note=`):
 ##                                                  `201` and its reference
 ##                                                  (SavedPage.roc)
+##     POST .../react                               a reaction turned on or off (`msg=`,
+##                                                  `emoji=`, `on=1|0`): `204`, and the
+##                                                  message's chips to every page live
 ##     GET .../edit?n=<id>                          an edit of one's own message, for
 ##                                                  the compose box: `{"text":…,
 ##                                                  "caret":…}`; another's, a 403
@@ -37,6 +40,7 @@
 ## fragments, a 401); a key, a 403.
 import pf.Chat
 import pf.Host
+import pf.Sse
 import Access
 import AccountCodec
 import Bubble
@@ -52,6 +56,7 @@ import MessageRef
 import PageFeed
 import Pages
 import Principal
+import Reactions
 import Render
 import ReadingList
 import SavedPage
@@ -79,6 +84,7 @@ TopicPage := [].{
 		Send(TopicPage.Place),
 		Quote(TopicPage.Place),
 		Save(TopicPage.Place),
+		React(TopicPage.Place),
 		Edit(TopicPage.Place),
 	]
 
@@ -147,7 +153,7 @@ TopicPage := [].{
 							Read => Ok(Body(got.bytes))
 						}
 					}
-				Save(_) =>
+				Save(_) | React(_) =>
 					if req.method != Post {
 						Err(Chat.not_allowed(Post))
 					} else {
@@ -188,6 +194,8 @@ tail = |p, what|
 		Ok(Edit(p))
 	} else if what == "save".to_utf8() {
 		Ok(Save(p))
+	} else if what == "react".to_utf8() {
+		Ok(React(p))
 	} else {
 		Err(NotATopicPage)
 	}
@@ -235,11 +243,10 @@ serve! = |
 		(Edit(_), _) => edit!(shown)
 		(Send(_), Body(bytes)) => send!(shown, bytes)
 		(Save(_), Body(bytes)) => save!(shown, bytes)
-		(
-			Send(_),
-			NoBody,
-		)
-		| (Save(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
+		(React(_), Body(bytes)) => react!(shown, bytes)
+		(Send(_), NoBody)
+		| (Save(_), NoBody)
+		| (React(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
 	}
 }
 
@@ -250,7 +257,7 @@ Asked : { path : List(U8), route : TopicPage.Route }
 place_of : TopicPage.Route -> TopicPage.Place
 place_of = |r|
 	match r {
-		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) => p
+		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) | React(p) => p
 	}
 
 ## **THE VIEWER A PAGE IS FOR**: a session's; signed out, the page goes to
@@ -271,7 +278,7 @@ me_of = |
 		SignedOut =>
 			match r {
 				Page(_) => Err(Pages.to_login(path))
-				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) => Err(
+				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) => Err(
 					Wire.refused(
 						401,
 						"not signed in",
@@ -383,7 +390,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) => no_such_topic
 		Page(_) => {
 			answer = Chrome.page({
 				title: Html.markup("Not here"),
@@ -434,8 +441,8 @@ topic_title = |
 ## column; the button for the page before; the right pane, compose. The
 ## body names its viewer (`data-me`), its stream, which starts after the
 ## newest message drawn here, where earlier pages come from, where a
-## quote-reply and an edit do, and, where messages can be saved, where a
-## save goes.
+## quote-reply and an edit do, where a save goes, and where a reaction
+## goes; each bubble with its reactions' chips.
 page! : Shown => Try(Chat.Answer, Chat.Answer)
 page! = |s| {
 	files = PageFeed.files(s.place)
@@ -448,6 +455,7 @@ page! = |s| {
 	).map_err(|_| Chat.failed)?
 	newest = messages.last().map_ok(|m| m.id) ?? 0
 	saved = load_saved_here!(s)
+	reactions = load_reactions!(s)?
 	Ok(
 		Chrome.page({
 			title: s.title,
@@ -469,7 +477,9 @@ page! = |s| {
 				Html.text(s.base),
 				Html.markup("/edit\" data-save=\""),
 				Html.text(s.base),
-				Html.markup("/save\""),
+				Html.markup("/save\" data-react=\""),
+				Html.text(s.base),
+				Html.markup("/react\""),
 			]),
 			body: Html.join([
 				Html.markup("<div class=chat-notify id=chat-notify>"),
@@ -488,11 +498,12 @@ page! = |s| {
 						messages,
 						from_on: messages,
 						saved,
+						reactions,
 					},
 				),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
-				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
 			]),
 		}),
 	)
@@ -537,6 +548,8 @@ send! = |s, bytes| {
 					ref: MessageRef.local(s.place, m.id),
 					edited: NotEdited,
 					saved: PageFeed.unsaved(s.place),
+					# New: no reaction yet.
+					reactions: [],
 				},
 			),
 		),
@@ -585,6 +598,7 @@ earlier! = |s| {
 						messages,
 						from_on,
 						saved: load_saved_here!(s),
+						reactions: load_reactions!(s)?,
 					},
 				),
 				Html.markup("</div>\n"),
@@ -644,13 +658,15 @@ backlog! = |place, { messages, accounts }|
 
 ## **THE BUBBLES OF `messages`**, each superseded by its author's last
 ## edit among `from_on` (the messages from the first of them to the
-## newest), and "✓ saved" on the viewer's reading list (`saved`), as the
-## page draws it for its one viewer.
+## newest), "✓ saved" on the viewer's reading list (`saved`), as the
+## page draws it for its one viewer, and its chips (`reactions`, the
+## topic's events).
 drawn : Shown,
 {
 	messages : List(MessageCodec.Fields),
 	from_on : List(MessageCodec.Fields),
 	saved : [Known(List(U64)), Unknown],
+	reactions : List(Reactions.Event),
 } -> Html
 drawn = |
 	s,
@@ -658,6 +674,7 @@ drawn = |
 		messages,
 		from_on,
 		saved,
+		reactions,
 	},
 | {
 	mine =
@@ -675,6 +692,7 @@ drawn = |
 					ref: MessageRef.local(s.place, m.id),
 					edited: PageFeed.edited_of(s.place, { edits, n: m.id }),
 					saved: if (mine.contains(m.id)) Saved else PageFeed.unsaved(s.place),
+					reactions: Reactions.chips_of(reactions, m.id),
 				},
 			),
 		),
@@ -833,6 +851,81 @@ load_saved_here! = |s|
 		(InTopic(_), _) => Unknown
 	}
 
+## **THE TOPIC'S REACTIONS**, every event, for the chips a page draws. A
+## file that will not read fails the page, as its transcript would: its
+## chips are part of each bubble.
+load_reactions! : Shown => Try(List(Reactions.Event), Chat.Answer)
+load_reactions! = |s|
+	match s.place {
+		InTopic(at) => Store.load_reactions!(at).map_ok(|r| r.events).map_err(|_| Chat.failed)
+	}
+
+## **A REACTION** (the old `handleReact`): the form's message (`msg=`, one
+## of this topic's), its emoji (`emoji=`, one glyph's shape) and `on=` (`1`,
+## or left out, on; anything else off, as the old one read it), appended to
+## the topic's reactions with the reactor's name; a `204`, and the
+## message's strip, drawn again from the whole fold for every page,
+## published live as a `reaction` event the page puts in place of the old
+## one. A bad field, or no such message, a 400 in the old words. Who may
+## react is the page's rule (a reader).
+react! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
+react! = |s, form| {
+	at =
+		match s.place {
+			InTopic(a) => a
+		}
+	n =
+		match SignInWeb.form_field(form, "msg") {
+			Ok(digits) => Stored.count(digits, "msg").map_err(|_| react_refused("msg must be a message number"))
+			Err(_) => Err(react_refused("msg must be a message number"))
+		}?
+	emoji =
+		match SignInWeb.form_field(form, "emoji") {
+			Ok(bytes) => Str.from_utf8(bytes).map_err(|_| react_refused("emoji must be one glyph"))
+			Err(_) => Err(react_refused("emoji must be one glyph"))
+		}?
+	on =
+		match SignInWeb.form_field(form, "on") {
+			Ok(value) => value == "1".to_utf8()
+			Err(_) => Bool.True
+		}
+	tally = Store.load_tally!(PageFeed.files(s.place)).map_err(|_| Chat.failed)?
+	if !Reactions.is_emoji(emoji) {
+		Err(react_refused("emoji must be one glyph"))
+	} else if n == 0 or n > tally.messages {
+		Err(react_refused("no such message"))
+	} else {
+		stored = Store.load_reactions!(at).map_err(|_| Chat.failed)?
+		event = {
+			n,
+			by: s.me.id,
+			from: Render.name_of(s.accounts, s.me.id),
+			emoji,
+			on,
+			at: s.poster.now,
+		}
+		match Store.append_reaction!(at, { cut: stored.cut, event }) {
+			Failed => Err(Chat.failed)
+			Appended => {
+				html = Reactions.strip({ n, chips: Reactions.chips_of(stored.events.append(event), n) })
+				match Sse.frame({
+					name: Str.to_utf8("reaction"),
+					data: html.bytes(),
+					id: [],
+				}) {
+					Ok(frame) => Host.publish!(PageFeed.page_key(s.place), frame)
+					Err(LineBreak) => crash "TopicPage.react!: a strip holds no line break"
+				}
+				Ok(Chat.respond(204, { content_type: [], body: [] }))
+			}
+		}
+	}
+}
+
+## A reaction refused, a 400, in the old words.
+react_refused : Str -> Chat.Answer
+react_refused = |why| Wire.refused(400, "react: ${why}")
+
 bad_before : Chat.Answer
 bad_before = Wire.refused(400, "before= is a message's id")
 
@@ -858,6 +951,11 @@ expect
 expect
 	match TopicPage.route("/chat/channel/Lobby/ChitChat/save".to_utf8()) {
 		Ok(Save(_)) => Bool.True
+		_ => Bool.False
+	}
+expect
+	match TopicPage.route("/chat/dm/7/ChitChat/react".to_utf8()) {
+		Ok(React(InDm(_))) => Bool.True
 		_ => Bool.False
 	}
 # A DM's name is no channel's; nor a bad name, an unknown kind or part.

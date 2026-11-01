@@ -2116,7 +2116,7 @@ fn topicPage(w: *World) !void {
         // top bar's toggle.
         "<title>Chat</title>\n<script src=\"/palette.js\"></script>\n<body class=chat-page",
         "<button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>Person 1041</strong>",
-        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\" data-quote=\"/chat/channel/Orchard/Banana/quote\" data-edit=\"/chat/channel/Orchard/Banana/edit\" data-save=\"/chat/channel/Orchard/Banana/save\">", .{x.q}),
+        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\" data-quote=\"/chat/channel/Orchard/Banana/quote\" data-edit=\"/chat/channel/Orchard/Banana/edit\" data-save=\"/chat/channel/Orchard/Banana/save\" data-react=\"/chat/channel/Orchard/Banana/react\">", .{x.q}),
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
         "<a href=\"/chat/browse\">Browse</a>",
         "<button id=earlier type=button hidden>Earlier messages</button>",
@@ -2125,7 +2125,7 @@ fn topicPage(w: *World) !void {
         // The right pane: compose, closed to start, the old words.
         "<div class=chat-notify id=chat-notify></div>",
         "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"/chat/channel/Orchard/Banana/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>",
-        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
+        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
     };
     for (want) |needle| if (!has(page.body, needle)) return error.TopicPageWrong;
     if (has(page.body, "Pip <b>") or has(page.body, "No messages yet") or has(page.body, "<style")) return error.TopicPageWrong;
@@ -2565,6 +2565,72 @@ fn saveReadingList(w: *World) !void {
 /// Pip's conversation with Quin, for the steps on a conversation's page.
 var conversing: ?[]const u8 = null;
 
+/// **REACTIONS** (`POST .../react`, app/Reactions.roc): a reaction turns
+/// one emoji on or off on one message, a `204`; every page's stream gets
+/// the message's chips drawn again from the whole fold (`event:
+/// reaction`), each chip naming its people (ids for the page to mark the
+/// viewer's own, and names), the last event of each person and emoji
+/// winning, an emoji with no one left gone; the page and its earlier pages
+/// draw each bubble's chips. A line cut short at the file's end does not
+/// spoil the next reaction. An emoji not one glyph's shape, or a bad n, a
+/// 400 in the old words, no such message among them; `on` left out is on;
+/// a stranger 404, signed out 401, a key 403, a GET 405.
+fn reactionsLive(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const base = "/chat/channel/Orchard/Banana";
+    const l = try Listener.open(w.a, w.port(), base ++ "/stream?after=1", x.pip, "");
+    defer l.close();
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.quin, "msg=1&emoji=%F0%9F%91%8D&on=1")).status != 204) return error.NotReacted;
+    const one = try std.fmt.allocPrint(w.a, "event: reaction\ndata: <div class=chat-reactions data-n=1><button type=button class=chat-react-chip data-emoji=\"👍\" data-by=\"human:{s}\" data-names=\"Person 1041\">👍 1</button></div>\n\n", .{x.q});
+    try l.until("👍 1</button>");
+    if (!has(l.got.items, one)) return error.LiveChipsWrong;
+    // Kept as the old app kept it: one JSON line, its six fields in the old order.
+    const file = "chat/channels/orchard/topics/banana/reactions.jsonl";
+    var buf: [8192]u8 = undefined;
+    const first = try w.rig.data.readFile(io, file, &buf);
+    const line_head = try std.fmt.allocPrint(w.a, "{{\"msg\":1,\"uid\":\"human:{s}\",\"from\":\"Person 1041\",\"emoji\":\"👍\",\"on\":true,\"at\":\"20", .{x.q});
+    if (!std.mem.startsWith(u8, first, line_head) or !std.mem.endsWith(u8, first, "Z\"}\n") or std.mem.count(u8, first, "\n") != 1) return error.ReactionLineWrong;
+    // Pip on it too, then a second emoji; Quin off the first.
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.pip, "msg=1&emoji=%F0%9F%91%8D&on=1")).status != 204) return error.NotReacted;
+    try l.until("👍 2</button>");
+    if (!has(l.got.items, try std.fmt.allocPrint(w.a, "data-by=\"human:{s} human:{s}\" data-names=\"Person 1041, " ++ pip_name_escaped ++ "\">👍 2</button>", .{ x.q, x.p }))) return error.LiveChipsWrong;
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.pip, "msg=1&emoji=%F0%9F%8E%89&on=1")).status != 204) return error.NotReacted;
+    try l.until("🎉 1</button>");
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.quin, "msg=1&emoji=%F0%9F%91%8D&on=0")).status != 204) return error.NotReacted;
+    const after = try std.fmt.allocPrint(w.a, "data-n=1><button type=button class=chat-react-chip data-emoji=\"👍\" data-by=\"human:{s}\" data-names=\"" ++ pip_name_escaped ++ "\">👍 1</button><button type=button class=chat-react-chip data-emoji=\"🎉\" data-by=\"human:{s}\"", .{ x.p, x.p });
+    try l.until(after);
+    // The earlier page draws message 1's chips; a bubble with none an empty strip.
+    const earlier = (try get(w.a, w.port(), base ++ "/earlier?before=3", x.quin)).body;
+    if (!has(earlier, after) or !has(earlier, "<div class=chat-reactions data-n=2></div>")) return error.PageChipsWrong;
+    // Pip's 🎉 off: the emoji gone from the strip.
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.pip, "msg=1&emoji=%F0%9F%8E%89&on=0")).status != 204) return error.NotReacted;
+    try l.until(try std.fmt.allocPrint(w.a, "data-names=\"" ++ pip_name_escaped ++ "\">👍 1</button></div>\n\n", .{}));
+    // A line cut short at the file's end does not spoil the next one.
+    const kept = try w.rig.data.readFile(io, file, &buf);
+    try put(w.rig.data, file, try std.fmt.allocPrint(w.a, "{s}{{\"msg\":2,\"uid\":\"hu", .{kept}));
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.quin, "msg=2&emoji=%F0%9F%94%A5&on=1")).status != 204) return error.TornSpoiled;
+    const healed = (try get(w.a, w.port(), base ++ "/earlier?before=3", x.quin)).body;
+    const only_pips = try std.fmt.allocPrint(w.a, "data-n=1><button type=button class=chat-react-chip data-emoji=\"👍\" data-by=\"human:{s}\" data-names=\"" ++ pip_name_escaped ++ "\">👍 1</button></div>", .{x.p});
+    if (!has(healed, "data-n=2><button type=button class=chat-react-chip data-emoji=\"🔥\"") or !has(healed, only_pips)) return error.TornSpoiled;
+
+    // Refusals.
+    for ([_][]const u8{ "msg=1&emoji=x", "msg=1&emoji=%F0%9F%91%8D%F0%9F%91%8D%F0%9F%91%8D%F0%9F%91%8D%F0%9F%91%8D", "msg=1&emoji=%F0%9F%91%8D+", "msg=1", "msg=x&emoji=%F0%9F%91%8D", "emoji=%F0%9F%91%8D" }) |form| {
+        const bad = try request(w.a, w.port(), "POST", base ++ "/react", x.quin, form);
+        if (bad.status != 400 or !std.mem.startsWith(u8, bad.body, "react: ")) return error.BadReactionTaken;
+    }
+    // No such message: the old 400, in its words.
+    const none = try request(w.a, w.port(), "POST", base ++ "/react", x.quin, "msg=9999&emoji=%F0%9F%91%8D");
+    if (none.status != 400 or !std.mem.eql(u8, none.body, "react: no such message\n")) return error.NoMessageReacted;
+    // `on` left out is on, as the old form read it.
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.quin, "msg=2&emoji=%F0%9F%91%80")).status != 204) return error.NotReacted;
+    try l.until("👀 1</button>");
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", x.rue, "msg=1&emoji=%F0%9F%91%8D")).status != 404) return error.StrangerReacted;
+    if ((try request(w.a, w.port(), "POST", base ++ "/react", "", "msg=1&emoji=%F0%9F%91%8D")).status != 401) return error.NobodyReacted;
+    if ((try send(w.a, w.port(), "POST", base ++ "/react", .{ .key = x.pal_key }, "msg=1&emoji=%F0%9F%91%8D")).status != 403) return error.KeyReacted;
+    if ((try get(w.a, w.port(), base ++ "/react", x.quin)).status != 405) return error.ReactByGet;
+    if ((try get(w.a, w.port(), "/reactions.js", x.quin)).status != 200) return error.NoScript;
+}
+
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
     .{ .name = "A and B's topic: Ivy makes their channel, Talk, and A its topic, general", .f = start },
@@ -2649,6 +2715,7 @@ const steps = [_]Step{
     .{ .name = "no conversation without a topic: the conversation routes and pages are 404s to a session and a key, Browse has no Conversations, and a key narrowed with only: is no grant; a topic still reads", .f = noConversationKind },
     .{ .name = "one session a browser: an invite opened while signed in is a 409 naming who, unspent, and a fresh browser redeems it; a returning GitHub user signs straight in as themselves, ending the session the browser held and no other; Log out on home and the hello page", .f = oneSessionABrowser },
     .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
+    .{ .name = "reactions: one emoji on or off on one message, a 204; every page's stream gets the message's chips drawn again from the fold, each naming its people, the last event of each person and emoji winning, an emptied emoji gone; earlier pages draw them; a torn last line spoils nothing; a bad emoji or msg, or no such message, the old 400; on left out is on; a stranger 404, signed out 401, a key 403, a GET 405", .f = reactionsLive },
 };
 
 /// **STEVE'S PATH**, his acceptance test for the chat: (1) go to Browse,

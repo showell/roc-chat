@@ -47,6 +47,11 @@ ChannelLayout := [].{
 	## A topic's count of messages and bytes.
 	tally_path : Topic.At -> List(U8)
 	tally_path = |at| "${topic_folder(at)}/tally".to_utf8()
+
+	## A topic's reactions, one JSON event a line, appended (Reactions.roc):
+	## the old app's `<topic>.reactions.jsonl`, in the topic's own folder.
+	reactions_path : Topic.At -> List(U8)
+	reactions_path = |at| "${topic_folder(at)}/reactions.jsonl".to_utf8()
 }
 
 ## A channel's folder.
@@ -75,6 +80,7 @@ paths = |at| [
 	ChannelLayout.transcript_path(at),
 	ChannelLayout.offsets_path(at),
 	ChannelLayout.tally_path(at),
+	ChannelLayout.reactions_path(at),
 ]
 
 expect ChannelLayout.channel_path(

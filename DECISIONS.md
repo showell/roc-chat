@@ -137,6 +137,13 @@ the same commit.
   (the list keeps a mark). The list's 1 MiB is its only size rule. A list
   that will not read back is said, never read as empty: a topic page is
   still shown, with the old notice, and nothing writes over the list.
+- **Reactions are stored in the old app's format** (Steve, 2026-11-02): a
+  topic's `reactions.jsonl`, one JSON object a line, appended, with the old
+  six fields in the old order (`msg`, `uid`, `from`, `emoji`, `on`, `at`), not
+  roc-chat's own line format. Where roc-chat differs: `uid` is its id
+  (`human:9`), and the line reads back only in the one spelling it is
+  written in. The server folds the events and draws the chips (the
+  server-sends-HTML decision above), where the old client folded them.
 - **After every chunk, a cold agent reviews it adversarially.** Its first
   question is a divergence from the Zig chat with no stated reason
   (`docs/design/browser-client-review.md`).

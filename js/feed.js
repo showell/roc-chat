@@ -23,7 +23,8 @@
        arrived with kept until the reader moves); Home, and PgUp at the
        top, load earlier pages to reach the topic's first message;
      - takes an `edit` from the stream: the original's body redrawn,
-       superseded, in place;
+       superseded, in place; and a `reaction`: the message's chips, in
+       place, the viewer's own marked;
      - hands compose.js and quote.js `Feed`: place a bubble, reveal one,
        the selected one, focus the feed;
      - styles the transcript's column and the right pane on their elements
@@ -83,7 +84,15 @@
     + '.chat-body img { max-width:100%; max-height:320px; width:auto; height:auto; display:block; margin:6px 0; border-radius:6px; }'
     + '.chat-body video { max-width:100%; max-height:480px; display:block; margin:6px 0; border-radius:6px; }'
     + '.chat-body table { border-collapse:collapse; }'
-    + '.chat-body td, .chat-body th { border:1px solid var(--cc-border); padding:0 .4rem; }';
+    + '.chat-body td, .chat-body th { border:1px solid var(--cc-border); padding:0 .4rem; }'
+    /* Reaction chips under the body, the old ones: "👍 2", the viewer's own
+       marked; an empty strip takes no room. */
+    + '.chat-reactions { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }'
+    + '.chat-reactions:empty { display:none; }'
+    + '.chat-react-chip { font-size:12px; line-height:1.2; padding:2px 7px; border-radius:10px; cursor:pointer;'
+    + ' background:var(--cc-bg); color:var(--cc-fg); border:1px solid var(--cc-border); }'
+    + '.chat-react-chip:hover { border-color:var(--cc-accent); }'
+    + '.chat-react-chip.mine { background:var(--cc-accent-soft-bg); border-color:var(--cc-accent); }';
   document.head.appendChild(rules);
 
   /* The old client's time: the viewer's zone, as "Jan 2 · 3:04 PM". */
@@ -106,6 +115,17 @@
     if (edit && !mine) edit.remove();
     var t = bubble.querySelector('time.chat-time');
     if (t) t.textContent = formatLocalTime(Number(t.dataset.at));
+    dressChips(bubble);
+  }
+  /* The viewer's own chips marked, and each chip's title the old one's:
+     who, then what a click does (js/message.js `setReactions`). */
+  function dressChips(bubble) {
+    var chips = bubble.querySelectorAll('.chat-react-chip');
+    for (var i = 0; i < chips.length; i++) {
+      var mine = (chips[i].dataset.by || '').split(' ').indexOf(me) >= 0;
+      chips[i].classList.toggle('mine', mine);
+      chips[i].title = chips[i].dataset.names + (mine ? ' — click to remove yours' : ' — click to react too');
+    }
   }
 
   /* The newest message drawn here: the stream sends only later ones, and
@@ -319,9 +339,21 @@
     return bubble;
   }
   stream.addEventListener('message', function (e) { place(e.data); });
+  /* A reaction: the message's chips, drawn again by the server from every
+     event, put in place of the strip here and marked for this viewer. */
+  stream.addEventListener('reaction', function (e) {
+    var fresh = parse(e.data).firstElementChild;
+    if (!fresh || !fresh.classList.contains('chat-reactions')) return;
+    var here = document.getElementById('msg-' + fresh.dataset.n);
+    var strip = here && here.querySelector('.chat-reactions');
+    if (!strip) return;
+    here.replaceChild(fresh, strip);
+    dressChips(here);
+  });
   /* An edit by its author: the original, drawn again by the server
      superseded, its body put in place of the one here (the old
-     markEdited), the bubble and its selection kept. Not here: nothing. */
+     markEdited), the bubble and its selection kept; its chips stay. Not
+     here: nothing. */
   stream.addEventListener('edit', function (e) {
     var fresh = parse(e.data).firstElementChild;
     var here = fresh && fresh.id ? document.getElementById(fresh.id) : null;

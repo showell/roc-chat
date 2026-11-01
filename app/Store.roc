@@ -29,6 +29,7 @@
 ##     chat/channels/<channel>/topics/<topic>/transcript  its messages, a line each, appended (MessageCodec)
 ##     chat/channels/<channel>/topics/<topic>/tally       its transcript's messages and bytes (`load_tally!`)
 ##     chat/channels/<channel>/topics/<topic>/offsets     where each of its messages starts, a record each (`load_span!`)
+##     chat/channels/<channel>/topics/<topic>/reactions.jsonl  its reactions, a JSON event a line, appended (Reactions)
 ##     chat/saved/<id>           a human's reading list: its mark, then a save a line (SavedCodec)
 ##
 ## A channel's folder is its name's key, and each topic's its name's key
@@ -69,6 +70,7 @@ import HumanInviteCodec
 import InviteCodec
 import MessageCodec
 import Principal
+import Reactions
 import SavedCodec
 import SessionCodec
 import SignInWeb
@@ -82,6 +84,38 @@ Store := [].{
 	## Which set a spent nonce is kept in: a state's or a pending sign-up's,
 	## each its own (GitHubSignIn: the same nonce is spent once in each).
 	Spent : [State, Pending]
+
+	## **A TOPIC'S REACTIONS**, oldest first (Reactions.list); none before
+	## the first, and whether the file ends mid-line (for
+	## `append_reaction!`). A read that failed has failed.
+	load_reactions! : Topic.At => Try({ events : List(Reactions.Event), cut : Bool }, [Failed])
+	load_reactions! = |at| {
+		read = Host.read!(ChannelLayout.reactions_path(at))
+		match read.status {
+			Missing => Ok({ events: [], cut: Bool.False })
+			Failed => Err(Failed)
+			Found => Ok({
+				events: Reactions.list(read.bytes),
+				cut: !read.bytes.is_empty() and read.bytes.last() != Ok('\n'),
+			})
+		}
+	}
+
+	## **ONE REACTION APPENDED** to a topic's file. **A TORN LINE STAYS ITS OWN
+	## LINE** (the old `appendReaction`): after an append a stop cut short
+	## (`cut`), a line's end first, so the event is never glued to it and
+	## lost with it.
+	append_reaction! : Topic.At, { cut : Bool, event : Reactions.Event } => [Failed, Appended]
+	append_reaction! = |at, { cut, event }| {
+		lead = if (cut) ['\n'] else []
+		match Host.append!(
+			ChannelLayout.reactions_path(at),
+			lead.concat(Reactions.encode(event)),
+		).status {
+			Appended => Appended
+			Failed => Failed
+		}
+	}
 
 	## **A HUMAN'S READING LIST**, its mark and its saves; the empty list
 	## before their first save. A read that failed is `Failed`; a file that
