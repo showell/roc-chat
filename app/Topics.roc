@@ -940,8 +940,10 @@ when_posted! = |a, body|
 	}
 
 ## **A POST, DECIDED AND STORED**: by one who may post in the topic
-## (Topic.post), UTF-8, not too much formatting, and room in the
-## transcript; appended and published to every stream. The message and
+## (Topic.post), UTF-8, not too much formatting, an agent within the
+## agents' limit (Conversations.check_hops!, a 429; not audited, a topic's
+## post having no audit line), and room in the transcript; appended and
+## published to every stream. The message and
 ## its people, or the refusal that ends it.
 store_post! : Asked,
 List(U8) => Try(
@@ -978,7 +980,21 @@ store_post! = |a, body| {
 			by,
 			body,
 		}
-		if tally.bytes + MessageCodec.encode(message).len() > Limits.transcript_bytes_most {
+		who = {
+			named: named_of(a.topic, { channel: a.channel, accounts: a.accounts }),
+			accounts: a.accounts,
+		}
+		# The agents' limit, as a conversation's (Conversations.check_hops!).
+		hops = Conversations.check_hops!({
+			files,
+			tally,
+			by,
+			named: who.named,
+			now: a.now,
+		}).map_err(|_| Chat.failed)?
+		if hops == Full {
+			Err(Conversations.hops_refused)
+		} else if tally.bytes + MessageCodec.encode(message).len() > Limits.transcript_bytes_most {
 			Err(Wire.refused(413, "this topic is full: its transcript holds as much as one may"))
 		} else {
 			match Store.append_message!({
@@ -988,10 +1004,6 @@ store_post! = |a, body| {
 			}) {
 				Failed => Err(Chat.failed)
 				Appended => {
-					who = {
-						named: named_of(a.topic, { channel: a.channel, accounts: a.accounts }),
-						accounts: a.accounts,
-					}
 					publish!(
 						a.topic,
 						{

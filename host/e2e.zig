@@ -2959,6 +2959,7 @@ const steps = [_]Step{
     .{ .name = "a conversation page's writes are a topic page's: compose sends a 201 bubble, streamed and stored once, the agents' stream told; quote and edit under MSG_<id>_<n>, an edit one's own, redrawn live and on the page, another's or a topic's ordinary; no save route; not UTF-8 400, a stranger 404, a key 403, signed out 401, a foreign Origin 403, a GET 405, bad n 400, no message 404", .f = conversationWrites },
     .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
     .{ .name = "one namespace for channels and users: no channel under a user's name, no human or agent under a channel's, in any case; near misses made", .f = channelNamesTaken },
+    .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
     .{ .name = "a conversation on Browse and Recent: each participant's Browse lists it under Conversations, titled Chat w/ the other; each one's Recent has its tile, drawn as a DM's; live, a post's tile to each participant drawn for them and to no one else; a stranger sees none", .f = conversationsListed },
 };
 
@@ -3017,6 +3018,42 @@ fn channelNamesTaken(w: *World) !void {
     if (agent.status != 409 or !has(agent.body, "that name is taken")) return error.AgentTookAChannelsName;
     if ((try request(w.a, w.port(), "POST", "/agents", human, "name=Harbor+Pal")).status != 201) return error.NearMissRefused;
     _ = try signUpAs(w.a, w.port(), 1059, "Harbor+2");
+}
+
+/// **THE AGENTS' LIMIT, IN A TOPIC** (Conversations.check_hops!, fifteen
+/// an hour, each agent its own): in a channel of Steve and his agents Tick
+/// and Tock, Tick answers Tock fifteen times and Tock answers three, Tock's
+/// never counting toward Tick's; Tick's sixteenth post, even a status, is
+/// a 429 naming the cap, and nothing is stored. An hour on, Tick's fifteen
+/// have left the window and it posts again; back at the hour's start they
+/// count once more, and a human's post resets them.
+fn topicHops(w: *World) !void {
+    const tick = try field((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Tick")).body, "id");
+    const tock = try field((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Tock")).body, "id");
+    const tick_key = (try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}", .{tick}))).secret;
+    const tock_key = (try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}", .{tock}))).secret;
+    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Clock&members=human%3A{s}%2C{s}%2C{s}", .{ try hid(w.a, 1004), tick, tock }))).status != 201) return error.ChannelNotMade;
+    if ((try request(w.a, w.port(), "POST", "/channels/Clock/topics", w.steve, "name=hops")).status != 201) return error.TopicNotMade;
+    const path = "/channels/Clock/topics/hops/messages";
+    for (0..15) |i| {
+        const text = try std.fmt.allocPrint(w.a, "@Tock hop {d}", .{i + 1});
+        if ((try send(w.a, w.port(), "POST", path, .{ .key = tick_key }, text)).status != 201) return error.HopRefused;
+        if (i % 5 == 0 and (try send(w.a, w.port(), "POST", path, .{ .key = tock_key }, "@Tick back")).status != 201) return error.OthersHopsCounted;
+    }
+    const sixteenth = try send(w.a, w.port(), "POST", path, .{ .key = tick_key }, "status: still here");
+    if (sixteenth.status != 429) return error.RunawayAccepted;
+    if (!has(sixteenth.body, "at most 15 times in 60 minutes") or !has(sixteenth.body, "a human's post resets it")) return error.CapNotNamed;
+    const read = try send(w.a, w.port(), "GET", "/channels/Clock/topics/hops", .{ .key = tick_key }, "");
+    if (has(read.body, "still here") or !has(read.body, "@Tock hop 15")) return error.RunawayStored;
+    // An hour and a second on, on the server's clock: the fifteen are out
+    // of the window.
+    w.rig.server.clock_ahead_s_for_test.store(3601, .release);
+    const later = try send(w.a, w.port(), "POST", path, .{ .key = tick_key }, "@Tock an hour on");
+    w.rig.server.clock_ahead_s_for_test.store(0, .release);
+    if (later.status != 201) return error.OldHopsCounted;
+    if ((try send(w.a, w.port(), "POST", path, .{ .key = tick_key }, "@Tock too soon")).status != 429) return error.RunawayAccepted;
+    if ((try request(w.a, w.port(), "POST", path, w.steve, "carry on")).status != 201) return error.HumanRefused;
+    if ((try send(w.a, w.port(), "POST", path, .{ .key = tick_key }, "@Tock five")).status != 201) return error.NotLetGoOn;
 }
 
 /// **A CONVERSATION ON BROWSE AND RECENT** (app/Browse.roc, app/RecentPage.roc):

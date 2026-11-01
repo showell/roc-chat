@@ -139,6 +139,64 @@ Conversations := [].{
 	name_of : List(Principal), Principal.Id -> Str
 	name_of = |accounts, id| Render.name_of(accounts, id)
 
+	## **WHETHER AN AGENT MAY POST NOW** (Limits.agent_hops_per_window), in a
+	## conversation or a topic alike, given its transcript's `files`: a
+	## human always may; an agent or a bot not once the newest page holds
+	## that many of its own posts answering agents, within the window
+	## (Limits.agent_hops_window_s) and since a human last spoke
+	## (Mentions.own_hops). The newest page is read from its first message's
+	## offset (Store.load_span!), never the transcript whole. **A PAGE MAY
+	## NOT HOLD THE WHOLE WINDOW**: past a page's messages since a human
+	## spoke in the hour, the poster's older ones are not counted, so it is
+	## held to the cap within the newest page alone.
+	check_hops! : {
+		files : Store.TranscriptFiles,
+		tally : Store.Tally,
+		by : Principal.Id,
+		named : List(Mentions.Named),
+		now : I64,
+	} => Try([Room, Full], [Failed])
+	check_hops! = |
+		{
+			files,
+			tally,
+			by,
+			named,
+			now,
+		},
+	|
+		match by {
+			Human(_) => Ok(Room)
+			Agent(_) | Bot(_) => {
+				newest = Store.load_span!(
+					files,
+					tally,
+					Conversations.page_of(tally.messages, Newest),
+				)?
+				posts = newest.map(
+					|m| {
+						at: m.at,
+						by: m.by,
+						body: m.body,
+					},
+				)
+				asked = {
+					poster: by,
+					named,
+					since: now - Limits.agent_hops_window_s,
+				}
+				Ok(if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window) Full else Room)
+			}
+		}
+
+	## **AN AGENT'S POST PAST THE CAP** (`check_hops!`): a 429 that says
+	## the rule.
+	hops_refused : Chat.Answer
+	hops_refused = Wire.refused(
+		429,
+		"an agent answers agents at most ${Limits.agent_hops_per_window.to_str()} times in ${(Limits.agent_hops_window_s // 60).to_str()} minutes here, counting its own posts since a human last spoke; a human's post resets it",
+	)
+
 	## **WHO A CONVERSATION IS WITH, FOR A VIEWER**: the participants other
 	## than the viewer (all of them, to one who is not one), by name, a comma
 	## between.
@@ -846,8 +904,8 @@ take_post! = |
 			}
 		tally = Store.load_tally!(Store.conversation_files(id)).map_err(|_| Chat.failed)?
 		named = named_of(conv, accounts)
-		match check_hops!({
-			id,
+		match Conversations.check_hops!({
+			files: Store.conversation_files(id),
 			tally,
 			by,
 			named,
@@ -957,55 +1015,6 @@ append_post! = |
 	}
 }
 
-## **WHETHER AN AGENT MAY POST NOW** (Limits.agent_hops_per_window): a
-## human always may; an agent or a bot not once the newest page holds that
-## many of its own posts answering agents, within the window
-## (Limits.agent_hops_window_s) and since a human last spoke
-## (Mentions.own_hops). The newest page is read from its first message's
-## offset (Store.load_span!), never the transcript whole. **A PAGE MAY NOT
-## HOLD THE WHOLE WINDOW**: past a page's messages since a human spoke in
-## the hour, the poster's older ones are not counted, so it is held to the
-## cap within the newest page alone.
-check_hops! : {
-	id : ConvAccess.ConvId,
-	tally : Store.Tally,
-	by : Principal.Id,
-	named : List(Mentions.Named),
-	now : I64,
-} => Try([Room, Full], [Failed])
-check_hops! = |
-	{
-		id,
-		tally,
-		by,
-		named,
-		now,
-	},
-|
-	match by {
-		Human(_) => Ok(Room)
-		Agent(_) | Bot(_) => {
-			newest = Store.load_span!(
-				Store.conversation_files(id),
-				tally,
-				Conversations.page_of(tally.messages, Newest),
-			)?
-			posts = newest.map(
-				|m| {
-					at: m.at,
-					by: m.by,
-					body: m.body,
-				},
-			)
-			asked = {
-				poster: by,
-				named,
-				since: now - Limits.agent_hops_window_s,
-			}
-			Ok(if (Mentions.own_hops(posts, asked) >= Limits.agent_hops_per_window) Full else Room)
-		}
-	}
-
 ## **AN AGENT'S POST PAST THE CAP**: a 429 naming it, nothing stored, and
 ## the key that posted audited (`agent-hops`, a hop being one agent's post
 ## naming another). Only a key posts as an
@@ -1033,10 +1042,7 @@ refuse_hops! = |
 			},
 		)
 	}
-	Wire.refused(
-		429,
-		"an agent answers agents at most ${Limits.agent_hops_per_window.to_str()} times in ${(Limits.agent_hops_window_s // 60).to_str()} minutes here, counting its own posts since a human last spoke; a human's post resets it",
-	)
+	Conversations.hops_refused
 }
 
 ## **STREAM**: the messages after the one the browser saw last
