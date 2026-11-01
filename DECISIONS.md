@@ -85,6 +85,24 @@ the same commit.
   `docs/design/browser-client.md`: compose and Send first, then SSE and host
   timeouts, styling early, the hotkeys with their links, and mobile and the
   left sidebar last. Agents never use the browser client.
+- **The server serves vanilla HTML,** "somewhat like a datastar/htmx
+  application, as opposed to a Zulip-like philosophy of sending down json"
+  (Steve, 2026-11-01). Pages arrive rendered, live updates are fragments the
+  server rendered, and the JS is thin glue.
+- **Two panes first:** the transcript, and the right pane holding compose or
+  the online help, as in the Zig chat. The left sidebar comes last and gets
+  the most re-thinking: "The one thing that has never worked great in the zig
+  chat is the left sidebar. Recent makes it mostly irrelevant."
+- **Recent comes early:** "one of the most fundamental features of the zig
+  app. We all use it religiously."
+- **Browse** is the page of topics. Its link sits with Docs, Recent, Images
+  and Code. Browse and the left sidebar will respect pinning (low priority).
+- **No browser automation** (no Playwright or the like). Dropped streams are
+  very low priority: "it was never a big issue with zig chat." Agent
+  conversations keep their own page for now.
+- **After every chunk, a cold agent reviews it adversarially.** Its first
+  question is a divergence from the Zig chat with no stated reason
+  (`docs/design/browser-client-review.md`).
 
 ## How we coordinate
 
