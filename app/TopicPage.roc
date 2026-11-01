@@ -7,7 +7,7 @@
 ##
 ##     GET /chat/channel/<channel>/<topic>          the page: the newest page of
 ##                                                  messages, the transcript and
-##                                                  the right pane (empty for now)
+##                                                  the right pane (compose, keys)
 ##     GET /chat/dm/<n>/<topic>                     a DM's (`n` the other human's id)
 ##     GET .../stream                               each message, live, as its bubble
 ##                                                  (SSE, `message`, its id the
@@ -18,6 +18,11 @@
 ##     POST .../send                                a post from the compose box: the
 ##                                                  body the markdown; `201` and the
 ##                                                  new message's bubble
+##     GET .../quote?n=<id>                         a quote-reply of the message, for
+##                                                  the compose box: `{"text":…}`
+##     GET .../edit?n=<id>                          an edit of one's own message, for
+##                                                  the compose box: `{"text":…,
+##                                                  "caret":…}`; another's, a 403
 ##
 ## **WHO MAY** is the topic's own routes' (Topics.verdict!, Topic.read):
 ## a topic the viewer may not read is the 404 of one that is not there,
@@ -34,7 +39,10 @@ import Channel
 import ChannelName
 import Chrome
 import Conversations
+import Edits
 import Html
+import JsonOut
+import MessageCodec
 import Pages
 import Principal
 import Store
@@ -58,6 +66,8 @@ TopicPage := [].{
 		Stream(TopicPage.Place),
 		Earlier(TopicPage.Place),
 		Send(TopicPage.Place),
+		Quote(TopicPage.Place),
+		Edit(TopicPage.Place),
 	]
 
 	## The route a path names, if it names one.
@@ -113,6 +123,18 @@ TopicPage := [].{
 						a,
 						b,
 					).map_ok(|p| Send(p))
+				} else if what == "quote".to_utf8() {
+					place(
+						kind,
+						a,
+						b,
+					).map_ok(|p| Quote(p))
+				} else if what == "edit".to_utf8() {
+					place(
+						kind,
+						a,
+						b,
+					).map_ok(|p| Edit(p))
 				} else {
 					Err(NotATopicPage)
 				}
@@ -127,7 +149,7 @@ TopicPage := [].{
 		refused =
 			match r {
 				Stream(_) => if (req.method != Get) Err(Chat.not_allowed(Get)) else Ok(NoBody)
-				Page(_) | Earlier(_) => if (req.method != Get and req.method != Head) Err(Chat.not_allowed(Get)) else Ok(NoBody)
+				Page(_) | Earlier(_) | Quote(_) | Edit(_) => if (req.method != Get and req.method != Head) Err(Chat.not_allowed(Get)) else Ok(NoBody)
 				Send(_) =>
 					if req.method != Post {
 						Err(Chat.not_allowed(Post))
@@ -179,7 +201,7 @@ serve! = |
 | {
 	place =
 		match r {
-			Page(p) | Stream(p) | Earlier(p) | Send(p) => p
+			Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) => p
 		}
 	v = Topics.load_viewer!({})?
 	me =
@@ -187,7 +209,12 @@ serve! = |
 			SignedOut =>
 				match r {
 					Page(_) => Err(Pages.to_login(path))
-					Stream(_) | Earlier(_) | Send(_) => Err(Wire.refused(401, "not signed in"))
+					Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) => Err(
+						Wire.refused(
+							401,
+							"not signed in",
+						),
+					)
 				}
 			Key(_) => Err(Pages.key_refused)
 			Session(b) => Ok(b)
@@ -233,6 +260,8 @@ serve! = |
 		(Page(_), _) => page!(shown)
 		(Stream(_), _) => stream!(shown)
 		(Earlier(_), _) => earlier!(shown)
+		(Quote(_), _) => quote!(shown)
+		(Edit(_), _) => edit!(shown)
 		(Send(_), Body(bytes)) => send!(
 			v,
 			shown,
@@ -290,7 +319,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) => no_such_topic
 		Page(_) => {
 			what =
 				match why {
@@ -334,7 +363,8 @@ title_of = |s| {
 ## **THE PAGE**: the newest page of messages, each its bubble, in the feed
 ## column; the button for the page before; the right pane, empty for now.
 ## The body names its viewer (`data-me`), its stream, which starts after
-## the newest message drawn here, and where earlier pages come from.
+## the newest message drawn here, where earlier pages come from, and where
+## a quote-reply and an edit do.
 page! : Shown => Try(Chat.Answer, Chat.Answer)
 page! = |s| {
 	files = Store.topic_files(s.topic.at())
@@ -361,24 +391,21 @@ page! = |s| {
 				Html.number(newest),
 				Html.markup("\" data-earlier=\""),
 				Html.text(s.base),
-				Html.markup("/earlier\""),
+				Html.markup("/earlier\" data-quote=\""),
+				Html.text(s.base),
+				Html.markup("/quote\" data-edit=\""),
+				Html.text(s.base),
+				Html.markup("/edit\""),
 			]),
 			body: Html.join([
 				Html.markup("<div class=chat-notify id=chat-notify></div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
 				if (span.first > 1) Html.join([]) else Html.markup(" hidden"),
 				Html.markup(">Earlier messages</button></div>\n<div id=chat-history class=chat-mp-history tabindex=-1><div id=chat-bubbles>\n"),
 				if (messages.is_empty()) Html.markup("<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>\n") else Html.join([]),
-				Html.join(
-					messages.map(
-						|m| Bubble.of(
-							s.accounts,
-							{ m, ref: Topics.local_ref(s.topic.at(), m.id) },
-						),
-					),
-				),
+				drawn(s, { messages, from_on: messages }),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
-				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
 			]),
 		}),
 	)
@@ -420,7 +447,19 @@ send! = |
 		at,
 		bytes,
 	)?
-	Ok(Html.respond(201, Bubble.of(s.accounts, { m, ref: Topics.local_ref(at, m.id) })))
+	Ok(
+		Html.respond(
+			201,
+			Bubble.of(
+				s.accounts,
+				{
+					m,
+					ref: Topics.local_ref(at, m.id),
+					edited: NotEdited,
+				},
+			),
+		),
+	)
 }
 
 ## **THE PAGE OF BUBBLES BEFORE `?before=`**, a fragment: one element
@@ -441,6 +480,17 @@ earlier! = |s| {
 		tally,
 		span,
 	).map_err(|_| Chat.failed)?
+	# Its messages' edits can come in any page after it.
+	from_on =
+		if messages.is_empty() {
+			[]
+		} else {
+			Store.load_span!(
+				files,
+				tally,
+				{ first: span.first, last: tally.messages },
+			).map_err(|_| Chat.failed)?
+		}
 	Ok(
 		Html.respond(
 			200,
@@ -448,14 +498,7 @@ earlier! = |s| {
 				Html.markup("<div data-earlier="),
 				Html.number(if (span.first > 1) 1 else 0),
 				Html.markup(">\n"),
-				Html.join(
-					messages.map(
-						|m| Bubble.of(
-							s.accounts,
-							{ m, ref: Topics.local_ref(s.topic.at(), m.id) },
-						),
-					),
-				),
+				drawn(s, { messages, from_on }),
 				Html.markup("</div>\n"),
 			]),
 		),
@@ -486,24 +529,120 @@ stream! = |s| {
 			Gap(before) => Topics.gap_frame(before)
 			NoGap => []
 		}
+	# Each bubble as its post published it, then the original it edits.
+	frames = backlog!(at, { messages, accounts: s.accounts })
 	Ok(
 		Chat.stream({
 			key: Topics.page_key(at),
-			backlog: gap.concat(
-				List.join(
-					messages.map(
-						|m| Topics.page_frame({
-							at,
-							accounts: s.accounts,
-							m,
-						}),
-					),
-				),
-			),
+			backlog: gap.concat(frames),
 			holder: Conversations.holder(s.viewer),
 		}),
 	)
 }
+
+## **A STREAM'S BACKLOG**: each message as its post published it (its
+## bubble, then the original it edits, redrawn).
+backlog! : Topic.At,
+{
+	messages : List(MessageCodec.Fields),
+	accounts : List(Principal),
+} => List(U8)
+backlog! = |at, { messages, accounts }|
+	match messages {
+		[] => []
+		[m, .. as rest] =>
+			Topics.page_frame({
+				at,
+				accounts,
+				m,
+			})
+				.concat(Topics.edit_frame!(at, { message: m, accounts }))
+				.concat(backlog!(at, { messages: rest, accounts }))
+	}
+
+## **THE BUBBLES OF `messages`**, each superseded by its author's last
+## edit among `from_on` (the messages from the first of them to the
+## topic's newest), as the page draws it.
+drawn : Shown, { messages : List(MessageCodec.Fields), from_on : List(MessageCodec.Fields) } -> Html
+drawn = |s, { messages, from_on }| {
+	at = s.topic.at()
+	edits = Edits.superseded(at, from_on)
+	Html.join(
+		messages.map(
+			|m| Bubble.of(
+				s.accounts,
+				{
+					m,
+					ref: Topics.local_ref(at, m.id),
+					edited: Topics.edited_of(at, { edits, n: m.id }),
+				},
+			),
+		),
+	)
+}
+
+## **A QUOTE-REPLY FOR THE COMPOSE BOX** (Edits.quote): the message
+## `?n=` names, quoted under its reference, "I said" when it is the
+## viewer's own.
+quote! : Shown => Try(Chat.Answer, Chat.Answer)
+quote! = |s| {
+	m = load_asked!(s)?
+	text = Edits.quote({
+		ref: Topics.ref_of(s.topic.at(), m.id),
+		mine: m.by == s.me.id,
+		markdown: m.body,
+	})
+	Ok(Wire.json(200, JsonOut.object([("text", JsonOut.text(text))])))
+}
+
+## **AN EDIT FOR THE COMPOSE BOX** (Edits.draft): the viewer's own message
+## `?n=` names, under "Edit of" its reference, and where the cursor goes.
+## Another's is a 403: only its author's edit supersedes a message.
+edit! : Shown => Try(Chat.Answer, Chat.Answer)
+edit! = |s| {
+	m = load_asked!(s)?
+	if m.by != s.me.id {
+		Err(Wire.refused(403, "only its author edits a message"))
+	} else {
+		d = Edits.draft({ ref: Topics.ref_of(s.topic.at(), m.id), markdown: m.body })
+		Ok(
+			Wire.json(
+				200,
+				JsonOut.object([
+					("text", JsonOut.text(d.text)),
+					("caret", JsonOut.number(d.caret)),
+				]),
+			),
+		)
+	}
+}
+
+## **LOAD THE MESSAGE `?n=` NAMES**: a 400 for no number, a 404 for no message.
+load_asked! : Shown => Try(MessageCodec.Fields, Chat.Answer)
+load_asked! = |s| {
+	n =
+		match Host.read_query!(Str.to_utf8("n")) {
+			[only] => Stored.count(only, "n").map_err(|_| bad_n)
+			_ => Err(bad_n)
+		}?
+	files = Store.topic_files(s.topic.at())
+	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
+	if n == 0 or n > tally.messages {
+		Err(Wire.refused(404, "no such message"))
+	} else {
+		match Store.load_span!(
+			files,
+			tally,
+			{ first: n, last: n },
+		) {
+			Ok([m]) => Ok(m)
+			_ => Err(Chat.failed)
+		}
+	}
+}
+
+bad_n : Chat.Answer
+bad_n = Wire.refused(400, "n= is a message's id")
 
 bad_before : Chat.Answer
 bad_before = Wire.refused(400, "before= is a message's id")

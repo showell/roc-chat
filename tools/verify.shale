@@ -42,7 +42,7 @@
 -- The floors: the test counts, which may only rise.
 const roc_floor = 2500
 const zig_floor = 210
-const e2e_steps = 88
+const e2e_steps = 89
 const scratch = ".zig-cache/verify"
 const cache = ".zig-cache/verify/cache"
 -- A build and a run of everything: minutes, from an empty cache.
@@ -181,6 +181,15 @@ for name in ls("js") do
   end
 end
 say(scripts > 0, "js/: " .. scripts .. " scripts checked")
+-- **EVERY SCRIPT IN js/ IS SERVED** (js/bundles.zig): one the page names
+-- and the server does not send is a 404 in someone's browser, which no
+-- step here would see.
+local bundles = read("js/bundles.zig")
+for name in ls("js") do
+  if ends_with(name, ".js") then
+    say(contains(bundles, "@embedFile(\"" .. name .. "\")"), "js/" .. name .. " is served (js/bundles.zig)")
+  end
+end
 
 -- **THE KEY TABLE'S RULES, IN NODE** (tools/keys_test.js): js/keys.js run
 -- against a stubbed document, its every check a line here. Its exit is the

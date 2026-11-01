@@ -25,8 +25,26 @@ Bubble := [].{
 	## every renderer draws, so an agent named as a human says whose it is)
 	## and when, then roc-markdown's HTML for it. Everything written here is
 	## escaped; the body is the renderer's.
-	of : List(Principal), { m : MessageCodec.Fields, ref : Str } -> Html
-	of = |accounts, { m, ref }|
+	##
+	## **ITS META LINE'S LINKS** are the old ones (js/message.js `buildMeta`):
+	## "quote-reply" (q), and "edit" (e), which the page's script shows on the
+	## viewer's own alone. **AN EDITED MESSAGE** (`EditedIn`, Edits.roc) shows
+	## "Edited in <the edit's reference>" and its markdown in an "original" spoiler,
+	## in place of its body (js/message.js `markEdited`).
+	of : List(Principal),
+	{
+		m : MessageCodec.Fields,
+		ref : Str,
+		edited : [NotEdited, EditedIn({ id : U64, ref : Str })],
+	} -> Html
+	of = |
+		accounts,
+		{
+			m,
+			ref,
+			edited,
+		},
+	|
 		Html.join([
 			Html.markup("<div class=chat-msg id=msg-"),
 			Html.number(m.id),
@@ -46,8 +64,20 @@ Bubble := [].{
 			Html.signed(m.at),
 			Html.markup(">"),
 			Html.text(Bubble.fallback(m.at)),
-			Html.markup("</time></div><div class=chat-body>"),
-			Html.rendered(Conversations.html_of(m)),
+			Html.markup("</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button></div><div class=chat-body>"),
+			match edited {
+				NotEdited => Html.rendered(Conversations.html_of(m))
+				EditedIn(e) =>
+					Html.join([
+						Html.markup("<div class=chat-edited-note>Edited in <a class=msg-ref href=\"#msg-"),
+						Html.number(e.id),
+						Html.markup("\">"),
+						Html.text(e.ref),
+						Html.markup("</a></div><details class=chat-edited-spoiler><summary>original</summary><div class=chat-edited-orig>"),
+						Html.escape(m.body),
+						Html.markup("</div></details>"),
+					])
+			},
 			Html.markup("</div></div>\n"),
 		])
 
@@ -132,8 +162,15 @@ expect {
 		by: human.id(),
 		body: "*hi*".to_utf8(),
 	}
-	html = Bubble.of([human], { m, ref: "<T>_3" }).bytes()
-	html == "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"&lt;T&gt;_3\" data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
+	html = Bubble.of(
+		[human],
+		{
+			m,
+			ref: "<T>_3",
+			edited: NotEdited,
+		},
+	).bytes()
+	html == "<div class=chat-msg id=msg-3 data-id=3 data-ref=\"&lt;T&gt;_3\" data-by=\"human:9\"><div class=chat-meta>#3 &lt;b&gt;&quot;&amp;&#39; · @h9 · <time class=chat-time datetime=1970-01-01T00:00:05Z data-at=5>1970-01-01 00:00 UTC</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button></div><div class=chat-body><p><em>hi</em></p>\n</div></div>\n".to_utf8()
 }
 
 # A poster no account holds is its id, which says its kind.
@@ -146,7 +183,11 @@ expect {
 	}
 	Bubble.of(
 		[],
-		{ m, ref: "T_1" },
+		{
+			m,
+			ref: "T_1",
+			edited: NotEdited,
+		},
 	).bytes().starts_with("<div class=chat-msg id=msg-1 data-id=1 data-ref=\"T_1\" data-by=\"human:9\"><div class=chat-meta>#1 human:9 · ".to_utf8())
 }
 
@@ -155,6 +196,28 @@ expect Bubble.iso(1793537670) == "2026-11-01T12:54:30Z"
 expect Bubble.iso(951782400) == "2000-02-29T00:00:00Z"
 expect Bubble.iso(-1) == "1969-12-31T23:59:59Z"
 expect Bubble.fallback(1793537670) == "2026-11-01 12:54 UTC"
+
+# An edited message shows where it was edited and its original, escaped,
+# in place of its body.
+expect {
+	m = {
+		id: 2,
+		at: 5,
+		by: human.id(),
+		body: "<i>old</i>".to_utf8(),
+	}
+	html = Str.from_utf8(
+		Bubble.of(
+			[human],
+			{
+				m,
+				ref: "T_2",
+				edited: EditedIn({ id: 7, ref: "MSG_T_7" }),
+			},
+		).bytes(),
+	) ?? ""
+	html.contains("<div class=chat-body><div class=chat-edited-note>Edited in <a class=msg-ref href=\"#msg-7\">MSG_T_7</a></div><details class=chat-edited-spoiler><summary>original</summary><div class=chat-edited-orig>&lt;i&gt;old&lt;/i&gt;</div></details></div>") and !html.contains("<i>")
+}
 
 # A CR becomes its character reference; an LF stays; nothing else changes.
 expect Bubble.data(Html.markup("a\r\nb")) == "a&#13;\nb".to_utf8()

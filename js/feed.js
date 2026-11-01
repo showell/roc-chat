@@ -22,7 +22,10 @@
        the ring, and #msg-<id> in the URL after 700 ms (a hash the page
        arrived with kept until the reader moves); Home, and PgUp at the
        top, load earlier pages to reach the topic's first message;
-     - hands compose.js `Feed`: place a bubble, reveal one, focus the feed;
+     - takes an `edit` from the stream: the original's body redrawn,
+       superseded, in place;
+     - hands compose.js and quote.js `Feed`: place a bubble, reveal one,
+       the selected one, focus the feed;
      - styles the transcript's column and the right pane on their elements
        (js/middle_pane.js, js/chat_right_sidebar.js), the server sending no
        style. */
@@ -95,7 +98,12 @@
   /* What the script adds to a bubble the server drew: mine or theirs, and
      its time as text. */
   function dress(bubble) {
-    bubble.classList.add(bubble.dataset.by === me ? 'mine' : 'theirs');
+    var mine = bubble.dataset.by === me;
+    bubble.classList.add(mine ? 'mine' : 'theirs');
+    /* Only one's own message is edited (the old buildMeta drew no "edit"
+       on another's). */
+    var edit = bubble.querySelector('.msg-edit');
+    if (edit && !mine) edit.remove();
     var t = bubble.querySelector('time.chat-time');
     if (t) t.textContent = formatLocalTime(Number(t.dataset.at));
   }
@@ -311,6 +319,16 @@
     return bubble;
   }
   stream.addEventListener('message', function (e) { place(e.data); });
+  /* An edit by its author: the original, drawn again by the server
+     superseded, its body put in place of the one here (the old
+     markEdited), the bubble and its selection kept. Not here: nothing. */
+  stream.addEventListener('edit', function (e) {
+    var fresh = parse(e.data).firstElementChild;
+    var here = fresh && fresh.id ? document.getElementById(fresh.id) : null;
+    if (!here || !here.classList.contains('chat-msg')) return;
+    var body = here.querySelector('.chat-body'), next = fresh.querySelector('.chat-body');
+    if (body && next) here.replaceChild(next, body);
+  });
   /* Further behind than the stream resends: the page drawn again. */
   stream.addEventListener('gap', function () { location.reload(); });
   /* A page restored from the back-forward cache has a dead stream. */

@@ -2228,7 +2228,7 @@ fn topicPage(w: *World) !void {
         // top bar's toggle.
         "<title>Chat</title>\n<script src=\"/palette.js\"></script>\n<body class=chat-page",
         "<button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>Person 1041</strong>",
-        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\">", .{x.q}),
+        try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\" data-quote=\"/chat/channel/Orchard/Banana/quote\" data-edit=\"/chat/channel/Orchard/Banana/edit\">", .{x.q}),
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
         "<a href=\"/chat/browse\">Browse</a>",
         "<button id=earlier type=button hidden>Earlier messages</button>",
@@ -2237,7 +2237,7 @@ fn topicPage(w: *World) !void {
         // The right pane: compose, closed to start, the old words.
         "<div class=chat-notify id=chat-notify></div>",
         "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"/chat/channel/Orchard/Banana/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>",
-        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
+        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
     };
     for (want) |needle| if (!has(page.body, needle)) return error.TopicPageWrong;
     if (has(page.body, "Pip <b>") or has(page.body, "No messages yet") or has(page.body, "<style")) return error.TopicPageWrong;
@@ -2463,6 +2463,84 @@ fn recentFeed(w: *World) !void {
     if ((try get(w.a, w.port(), "/recent_page.js", x.quin)).status != 200) return error.NoScript;
 }
 
+/// **QUOTE-REPLY AND EDIT** (`.../quote?n=`, `.../edit?n=`, app/Edits.roc):
+/// every bubble draws both links; a quote-reply is the message under its
+/// reference, "you said" or "I said", in a fence one tilde longer than any
+/// inside; an edit is one's own message under "Edit of" its reference, the
+/// cursor after the blank line, another's a 403. Posted, an edit by the
+/// author redraws the original on every page, live (`edit`), in a resumed
+/// backlog, and on its earlier page: "Edited in" the edit and the original
+/// in a spoiler; one by anybody else is an ordinary message. A bad `n=`
+/// a 400, no message a 404; a stranger the topic's 404, signed out a 401,
+/// a key a 403, a POST a 405.
+fn quoteEdit(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const base = "/chat/channel/Orchard/Banana";
+    const page = try get(w.a, w.port(), base, x.quin);
+    if (!has(page.body, "</time> <button type=button class=msg-quote title=\"Quote this message in a reply (q)\">quote-reply</button> <button type=button class=msg-edit title=\"Load this message back into compose with an &quot;Edit of MSG_…&quot; backlink (e)\">edit</button></div>")) return error.NoLinks;
+
+    // Pip's first message, quoted by Quin and by Pip.
+    const theirs = try get(w.a, w.port(), base ++ "/quote?n=1", x.quin);
+    if (theirs.status != 200 or !std.mem.eql(u8, theirs.body, "{\"text\":\"In MSG_Orchard.Banana_1 you said:\\n~~~ quote\\nhello **orchard**\\n~~~\\n\\n\"}")) return error.QuoteWrong;
+    if (!std.mem.startsWith(u8, theirs.header("content-type") orelse "", "application/json")) return error.NotJson;
+    const own = try get(w.a, w.port(), base ++ "/quote?n=1", x.pip);
+    if (!has(own.body, "In MSG_Orchard.Banana_1 I said:")) return error.QuoteWrong;
+    // A message holding a fence gets a longer one.
+    if ((try request(w.a, w.port(), "POST", base ++ "/send", x.quin, "see\n~~~~ quote\ninner\n~~~~")).status != 201) return error.NotPosted;
+    const fenced = try get(w.a, w.port(), base ++ "/quote?n=105", x.pip);
+    if (!has(fenced.body, "In MSG_Orchard.Banana_105 you said:\\n~~~~~ quote\\nsee\\n~~~~ quote\\ninner\\n~~~~\\n~~~~~\\n\\n")) return error.FenceWrong;
+    // A DM's reference is the short one.
+    const dm_quote = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/quote?n=1", .{x.p}), x.quin);
+    if (dm_quote.status != 200 or !has(dm_quote.body, "\"In MSG_ChitChat_1 ")) return error.DmQuoteWrong;
+
+    // An edit: one's own alone.
+    const draft = try get(w.a, w.port(), base ++ "/edit?n=1", x.pip);
+    if (draft.status != 200 or !std.mem.eql(u8, draft.body, "{\"text\":\"Edit of MSG_Orchard.Banana_1\\n\\nhello **orchard**\",\"caret\":30}")) return error.DraftWrong;
+    const not_yours = try get(w.a, w.port(), base ++ "/edit?n=1", x.quin);
+    if (not_yours.status != 403 or !has(not_yours.body, "only its author edits a message")) return error.EditedAnothers;
+
+    // Posted: the original redrawn live on every page, after the edit's own.
+    const l = try Listener.open(w.a, w.port(), base ++ "/stream?after=105", x.quin, "");
+    defer l.close();
+    if ((try request(w.a, w.port(), "POST", base ++ "/send", x.pip, "Edit of MSG_Orchard.Banana_1\n\nhello **fixed**")).status != 201) return error.NotPosted;
+    try l.until("chat-edited-orig");
+    const redrawn = try std.fmt.allocPrint(w.a, "event: edit\ndata: <div class=chat-msg id=msg-1 data-id=1 data-ref=\"Banana_1\" data-by=\"human:{s}\">", .{x.p});
+    const note = "<div class=chat-body><div class=chat-edited-note>Edited in <a class=msg-ref href=\"#msg-106\">MSG_Orchard.Banana_106</a></div><details class=chat-edited-spoiler><summary>original</summary><div class=chat-edited-orig>hello **orchard**</div></details></div>";
+    const at_edit = std.mem.indexOf(u8, l.got.items, redrawn) orelse return error.NoLiveEdit;
+    const at_post = std.mem.indexOf(u8, l.got.items, "id: 106\n") orelse return error.NoLiveEdit;
+    if (at_post > at_edit or !has(l.got.items, note)) return error.LiveEditWrong;
+    // Another's "edit" is an ordinary message: no redraw (read up to a
+    // post after it, so a redraw would have come first).
+    if ((try request(w.a, w.port(), "POST", base ++ "/send", x.quin, "Edit of MSG_Orchard.Banana_2\n\nmine now")).status != 201) return error.NotPosted;
+    if ((try request(w.a, w.port(), "POST", base ++ "/send", x.pip, "after the fake")).status != 201) return error.NotPosted;
+    try l.until("after the fake");
+    if (has(l.got.items, "id=msg-2 ")) return error.AnothersEditApplied;
+
+    // Resumed: the backlog sends the edit's redraw after the edit.
+    const resumed = try Listener.open(w.a, w.port(), base ++ "/stream", x.quin, "105");
+    defer resumed.close();
+    try resumed.until("after the fake");
+    if (!has(resumed.got.items, note) or has(resumed.got.items, "id=msg-2 ")) return error.BacklogEditWrong;
+    // The earlier page draws the original superseded, the other one not.
+    const earlier = try get(w.a, w.port(), base ++ "/earlier?before=3", x.quin);
+    if (!has(earlier.body, note) or has(earlier.body, "Edited in <a class=msg-ref href=\"#msg-107\">")) return error.EarlierEditWrong;
+
+    // Refusals.
+    for ([_][]const u8{ "", "?n=x", "?n=01", "?n=1&n=2" }) |q| {
+        if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, base ++ "/quote{s}", .{q}), x.quin)).status != 400) return error.BadNTaken;
+        if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, base ++ "/edit{s}", .{q}), x.pip)).status != 400) return error.BadNTaken;
+    }
+    for ([_][]const u8{ "/quote?n=0", "/quote?n=9999", "/edit?n=9999" }) |path| {
+        if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, base ++ "{s}", .{path}), x.pip)).status != 404) return error.NoMessageFound;
+    }
+    if ((try get(w.a, w.port(), base ++ "/quote?n=1", x.rue)).status != 404) return error.StrangerQuoted;
+    if ((try get(w.a, w.port(), "/chat/channel/Orchard/Desk/quote?n=1", x.quin)).status != 404) return error.AgentTopicQuoted;
+    if ((try get(w.a, w.port(), base ++ "/quote?n=1", "")).status != 401) return error.NobodyQuoted;
+    if ((try send(w.a, w.port(), "GET", base ++ "/edit?n=1", .{ .key = x.pal_key }, "")).status != 403) return error.KeyEdited;
+    if ((try request(w.a, w.port(), "POST", base ++ "/quote?n=1", x.quin, "")).status != 405) return error.QuotePosted;
+    if ((try get(w.a, w.port(), "/quote.js", x.quin)).status != 200) return error.NoScript;
+}
+
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
     .{ .name = "A starts a conversation with B, named by her own id (by her GitHub id, refused)", .f = start },
@@ -2552,6 +2630,7 @@ const steps = [_]Step{
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
     .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another's agent topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
     .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, an agent topic's to its owner and not another member; signed out a 303 and a 401, a key a 403", .f = recentFeed },
+    .{ .name = "quote-reply and edit: both links on every bubble; a quote under its reference, you or I said, its fence longer than any inside, a DM's short; an edit one's own alone; posted, the original redrawn live, in a resumed backlog and on its earlier page, another's edit ordinary; bad n a 400, no message a 404, a stranger 404, signed out 401, a key 403, a POST 405", .f = quoteEdit },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

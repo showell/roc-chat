@@ -17,7 +17,10 @@
        retry your send.", the text kept; an answer that comes after that
        still says "sent" (so it is not sent twice), and leaves the box be;
      - a refusal (the post's 4xx) says the server's own words, the text kept;
-       a 5xx is a failure, as a lost answer is: the host-down modal.
+       a 5xx is a failure, as a lost answer is: the host-down modal;
+     - hands quote.js `Compose` (the old ChatCompose's): open the box,
+       whether a send is out, put text in at the cursor, set the whole text
+       with the cursor at a place, and say a line in the status.
    The style is its own (the server sends none): one <style> for the markup
    the server drew, as the old widget's. */
 (function () {
@@ -145,6 +148,28 @@
       });
     }).catch(function () { hostDown(mine); });
   }
+
+  /* The old insertAtCursor: the text in place of the selection, the
+     cursor after it. */
+  function insertAtCursor(more) {
+    var from = text.selectionStart, to = text.selectionEnd, v = text.value;
+    text.value = v.slice(0, from) + more + v.slice(to);
+    text.selectionStart = text.selectionEnd = from + more.length;
+    text.focus();
+  }
+  /* The old setMarkdown: the whole text, the cursor at `caret`. */
+  function setMarkdown(whole, caret) {
+    text.value = whole;
+    text.focus();
+    if (typeof caret === 'number') text.setSelectionRange(caret, caret);
+  }
+  window.Compose = {
+    open: open,
+    isPending: function () { return pending !== null; },
+    insertAtCursor: insertAtCursor,
+    setMarkdown: setMarkdown,
+    say: function (line) { status.textContent = line; },
+  };
 
   form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
   text.addEventListener('keydown', function (e) {

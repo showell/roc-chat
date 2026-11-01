@@ -13,5 +13,6 @@ pub const scripts = [_]Script{
     .{ .name = "keyhelp.js", .body = @embedFile("keyhelp.js") },
     .{ .name = "keys.js", .body = @embedFile("keys.js") },
     .{ .name = "palette.js", .body = @embedFile("palette.js") },
+    .{ .name = "quote.js", .body = @embedFile("quote.js") },
     .{ .name = "recent_page.js", .body = @embedFile("recent_page.js") },
 };

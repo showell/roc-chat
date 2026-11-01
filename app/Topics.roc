@@ -37,6 +37,7 @@ import Mentions
 import MessageCodec
 import MessageRef
 import Principal
+import Edits
 import Recent
 import SignInWeb
 import Store
@@ -321,6 +322,78 @@ Topics := [].{
 		}
 	}
 
+	## **WHETHER A MESSAGE IS SUPERSEDED**, among `edits` (Edits.superseded
+	## over the messages from it on): the edit that names it, or none.
+	edited_of : Topic.At,
+	{
+		edits : List({ n : U64, by : U64 }),
+		n : U64,
+	} -> [NotEdited, EditedIn({ id : U64, ref : Str })]
+	edited_of = |at, { edits, n }|
+		match edits.find_first(|e| e.n == n) {
+			Ok(e) => EditedIn({ id: e.by, ref: ref_text(at, e.by) })
+			Err(_) => NotEdited
+		}
+
+	## **AN EDIT, ON A PAGE** (Edits.roc): when `message` edits an earlier
+	## one of the same author's, that one's bubble drawn again, superseded,
+	## as an `edit` event (no id: it resumes nothing) the page puts in its
+	## place; or nothing, for a message that edits nothing, edits another's,
+	## or whose original does not read. A post publishes it after its own
+	## bubble, and a stream's backlog sends it after each edit it resends.
+	edit_frame! : Topic.At,
+	{
+		message : MessageCodec.Fields,
+		accounts : List(Principal),
+	} => List(U8)
+	edit_frame! = |at, { message, accounts }|
+		match Edits.target(at, message.body) {
+			Err(NotAnEdit) => []
+			Ok(t) if t >= message.id => []
+			Ok(t) => {
+				files = Store.topic_files(at)
+				original =
+					match Store.load_tally!(files) {
+						Err(Failed) => Err(Failed)
+						Ok(tally) => Store.load_span!(
+							files,
+							tally,
+							{ first: t, last: t },
+						).map_err(|_| Failed)
+					}
+				match original {
+					Ok([o]) if o.by == message.by => {
+						edited = EditedIn({ id: message.id, ref: ref_text(at, message.id) })
+						html = Bubble.data(
+							Bubble.of(
+								accounts,
+								{
+									m: o,
+									ref: Topics.local_ref(at, o.id),
+									edited,
+								},
+							),
+						)
+						match Sse.frame({
+							name: Str.to_utf8("edit"),
+							data: html,
+							id: [],
+						}) {
+							Ok(f) => f
+							Err(LineBreak) => crash "Topics.edit_frame!: Bubble.data holds no CR"
+						}
+					}
+					_ => []
+				}
+			}
+		}
+
+	## **A MESSAGE'S REFERENCE, AS IT TRAVELS** (`ref_text`): a channel's
+	## full `MSG_<channel>.<topic>_<n>`, a DM's short `MSG_<topic>_<n>`; what
+	## a quote-reply and an edit write.
+	ref_of : Topic.At, U64 -> Str
+	ref_of = |at, n| ref_text(at, n)
+
 	## **WHERE A TOPIC'S PAGE LIVES**, its names as they were made: a
 	## channel's under `/chat/channel`, a DM's under `/chat/dm/<the other
 	## human's id>`, the one spelling the page, Browse and Recent link to.
@@ -403,7 +476,16 @@ Topics := [].{
 	|
 		match Sse.frame({
 			name: Str.to_utf8("message"),
-			data: Bubble.data(Bubble.of(accounts, { m, ref: Topics.local_ref(at, m.id) })),
+			data: Bubble.data(
+				Bubble.of(
+					accounts,
+					{
+						m,
+						ref: Topics.local_ref(at, m.id),
+						edited: NotEdited,
+					},
+				),
+			),
 			id: Str.to_utf8(m.id.to_str()),
 		}) {
 			Ok(f) => f
@@ -1150,6 +1232,9 @@ publish! = |
 			m: message,
 		}),
 	)
+	# An edit by its original's author redraws the original on every page.
+	edit = Topics.edit_frame!(at, { message, accounts: who.accounts })
+	if (!edit.is_empty()) Host.publish!(Topics.page_key(at), edit) else {}
 	# Once a post: the channel's members and the excerpt; then a tile a reader.
 	members = channel.members(who.accounts)
 	last = Last({ m: message, excerpt: Recent.excerpt(message.body) })
