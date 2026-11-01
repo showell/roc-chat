@@ -2447,6 +2447,15 @@ fn recentFeed(w: *World) !void {
     // Rue's stream is read until its wait runs out: a tile there fails.
     if (rues.until("recent-tile")) |_| return error.StrangerGotTile else |e| if (e != error.NeverCame) return e;
 
+    // An agent topic, both sides: Pip's post to Desk (his agent's) reaches
+    // his own Recent, and never Quin's, a member who owns none of its agents.
+    const quins = try Listener.open(w.a, w.port(), "/chat/recent/stream", x.quin, "");
+    defer quins.close();
+    if ((try request(w.a, w.port(), "POST", "/chat/channel/Orchard/Desk/send", x.pip, "desk note")).status != 201) return error.NotSent;
+    try pips.until("desk note");
+    if (!has(pips.got.items, "data-key=\"/chat/channel/Orchard/Desk\"") or !has(pips.got.items, "<span class=recent-who>You: </span>desk note")) return error.OwnAgentTopicMissing;
+    if (quins.until("Desk")) |_| return error.AgentTopicLeaked else |e| if (e != error.NeverCame) return e;
+
     const out = try get(w.a, w.port(), "/chat/recent", "");
     if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Frecent")) return error.NotToLogin;
     if ((try get(w.a, w.port(), "/chat/recent/stream", "")).status != 401) return error.NobodyStreamed;
@@ -2542,7 +2551,7 @@ const steps = [_]Step{
     .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
     .{ .name = "the compose box sends: a 201 with the new message's bubble, the same the stream sends, stored once; refusals the post's own (not UTF-8 a 400, a stranger and another's agent topic 404, a key 403, signed out 401, a foreign Origin 403, a GET 405); a DM's box to its topic", .f = composeSends },
-    .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else; signed out a 303 and a 401, a key a 403", .f = recentFeed },
+    .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, another's agent topic not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, an agent topic's to its owner and not another member; signed out a 303 and a 401, a key a 403", .f = recentFeed },
 };
 
 /// Every step, in order, each timed and said; true when all passed. With

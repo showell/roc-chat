@@ -263,8 +263,8 @@ at_of = |me, place|
 base_of : Topic.At, TopicPage.Place -> Str
 base_of = |at, place|
 	match place {
-		InChannel(_) => "/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
-		InDm({ other, topic: _ }) => "/chat/dm/${other.to_u64().to_str()}/${at.topic.to_str()}"
+		InChannel(_) => Topics.page_path(at, InChannel)
+		InDm({ other, topic: _ }) => Topics.page_path(at, InDm(other))
 	}
 
 ## **A TOPIC'S PAGE THAT IS NOT THERE SAYS WHY**, as the old app's did

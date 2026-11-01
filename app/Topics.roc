@@ -260,16 +260,16 @@ Topics := [].{
 	## its last message's time, author ("You" for the reader) and excerpt; a
 	## DM named for the reader by its other member.
 	recent_row : {
-		channel : Channel,
 		topic : Topic,
+		members : List(Principal.Bound),
 		reader : Principal.Id,
 		accounts : List(Principal),
-		last : [NoMessage, Last(MessageCodec.Fields)],
+		last : [NoMessage, Last({ m : MessageCodec.Fields, excerpt : Str })],
 	} -> Recent.Row
 	recent_row = |
 		{
-			channel,
 			topic,
+			members,
 			reader,
 			accounts,
 			last,
@@ -277,25 +277,26 @@ Topics := [].{
 	| {
 		at = topic.at()
 		dm = at.channel.is_dm()
-		other = channel.members(accounts).keep_if(|b| b.id != reader)
-		place =
+		# A DM's place is its other member, for this reader; a channel's, its name.
+		other =
 			if dm {
-				match other {
-					[b, ..] => Conversations.name_of(accounts, b.id)
-					[] => at.channel.to_str()
+				match members.keep_if(|b| b.id != reader).map(|b| b.id) {
+					[Human(h), ..] => Other({ id: Principal.Id.Human(h), human: h })
+					_ => NoOther
 				}
 			} else {
-				at.channel.to_str()
+				NoOther
 			}
-		url =
-			match (dm, other) {
-				(Bool.True, [b, ..]) =>
-					match b.id {
-						Human(h) => "/chat/dm/${h.to_u64().to_str()}/${at.topic.to_str()}"
-						_ => "/chat/browse"
-					}
-				(Bool.True, []) => "/chat/browse"
-				(Bool.False, _) => "/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
+		(place, url) =
+			match other {
+				Other({ id, human }) => (
+					Conversations.name_of(accounts, id),
+					Topics.page_path(at, InDm(human)),
+				)
+				NoOther => (
+					at.channel.to_str(),
+					if (dm) "/chat/browse" else Topics.page_path(at, InChannel),
+				)
 			}
 		match last {
 			NoMessage => {
@@ -306,7 +307,7 @@ Topics := [].{
 				topic: at.topic.to_str(),
 				last: NoMessage,
 			}
-			Last(m) => {
+			Last({ m, excerpt }) => {
 				url,
 				ts: m.at,
 				dm,
@@ -314,11 +315,21 @@ Topics := [].{
 				topic: at.topic.to_str(),
 				last: Last({
 					who: if (m.by == reader) "You" else Conversations.name_of(accounts, m.by),
-					excerpt: Recent.excerpt(m.body),
+					excerpt,
 				}),
 			}
 		}
 	}
+
+	## **WHERE A TOPIC'S PAGE LIVES**, its names as they were made: a
+	## channel's under `/chat/channel`, a DM's under `/chat/dm/<the other
+	## human's id>`, the one spelling the page, Browse and Recent link to.
+	page_path : Topic.At, [InChannel, InDm(Principal.HumanId)] -> Str
+	page_path = |at, place|
+		match place {
+			InChannel => "/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
+			InDm(other) => "/chat/dm/${other.to_u64().to_str()}/${at.topic.to_str()}"
+		}
 
 	## **WHETHER THE VIEWER READS THE TOPIC AT `at`** (Topic.read), and if
 	## not, why, in words that leak nothing: a channel that is not there and
@@ -715,7 +726,19 @@ list_of! = |name| {
 ## (Mentions): a human topic's members; an agent topic's agents, and the
 ## humans they answer to.
 named_of : Topic, { channel : Channel, accounts : List(Principal) } -> List(Mentions.Named)
-named_of = |topic, { channel, accounts }| {
+named_of = |topic, who| readers(topic, who).map(
+	|id| {
+		id,
+		name: Conversations.name_of(who.accounts, id),
+	},
+)
+
+## **WHO READS A TOPIC**, each once, in order, by Topic's rule: a human
+## topic's channel members; an agent topic's agents, then the humans they
+## answer to. Its message names them (`named_of`), and Recent's live tiles
+## go to those of them in the channel (`recent_readers`).
+readers : Topic, { channel : Channel, accounts : List(Principal) } -> List(Principal.Id)
+readers = |topic, { channel, accounts }| {
 	ids =
 		match topic.kind() {
 			Human => channel.members(accounts).map(|b| b.id)
@@ -730,7 +753,7 @@ named_of = |topic, { channel, accounts }| {
 				agents.concat(owners.keep_if(|o| !agents.contains(o)))
 			}
 		}
-	dedup(ids).map(|id| { id, name: Conversations.name_of(accounts, id) })
+	dedup(ids)
 }
 
 ## The ids, each once, in order.
@@ -1127,14 +1150,17 @@ publish! = |
 			m: message,
 		}),
 	)
+	# Once a post: the channel's members and the excerpt; then a tile a reader.
+	members = channel.members(who.accounts)
+	last = Last({ m: message, excerpt: Recent.excerpt(message.body) })
 	recent_readers(topic, { channel, accounts: who.accounts }).for_each!(
 		|reader| {
 			row = Topics.recent_row({
-				channel,
 				topic,
+				members,
 				reader,
 				accounts: who.accounts,
-				last: Last(message),
+				last,
 			})
 			Host.publish!(Topics.recent_key(reader), recent_frame(row))
 		},
@@ -1155,24 +1181,13 @@ publish! = |
 	}
 }
 
-## **WHO HAS THE TOPIC ON THEIR RECENT**: the channel's members who read
-## it, as Recent lists them: every member for a human topic; for an agent
-## topic, the members its agents answer to.
+## **WHO HAS THE TOPIC ON THEIR RECENT**: its readers (`readers`) who are
+## the channel's members, as Recent lists them: every member for a human
+## topic; for an agent topic, the members its agents answer to.
 recent_readers : Topic, { channel : Channel, accounts : List(Principal) } -> List(Principal.Id)
 recent_readers = |topic, { channel, accounts }| {
 	members = channel.members(accounts).map(|b| b.id)
-	match topic.kind() {
-		Human => members
-		Agents => {
-			owners = topic.agents(accounts).keep_oks(
-				|b| Principal.find(
-					accounts,
-					b.id,
-				).map_ok(|p| Principal.Id.Human(p.answers_to())),
-			)
-			members.keep_if(|m| owners.contains(m))
-		}
-	}
+	readers(topic, { channel, accounts }).keep_if(|id| members.contains(id))
 }
 
 ## A Recent tile as one SSE event, named `message`.

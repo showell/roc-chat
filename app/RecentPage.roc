@@ -192,8 +192,8 @@ rows_in! = |
 		[topic, .. as rest] => {
 			last = last_of!(topic)?
 			row = Topics.recent_row({
-				channel,
 				topic,
+				members: channel.members(accounts),
 				reader: me,
 				accounts,
 				last,
@@ -211,7 +211,7 @@ rows_in! = |
 	}
 
 ## A topic's last message, read alone (Store.load_span!), or none.
-last_of! : Topic => Try([NoMessage, Last(MessageCodec.Fields)], Chat.Answer)
+last_of! : Topic => Try([NoMessage, Last({ m : MessageCodec.Fields, excerpt : Str })], Chat.Answer)
 last_of! = |topic| {
 	files = Store.topic_files(topic.at())
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
@@ -224,7 +224,7 @@ last_of! = |topic| {
 			{ first: tally.messages, last: tally.messages },
 		).map_err(|_| Chat.failed)?
 		match span {
-			[m] => Ok(Last(m))
+			[m] => Ok(Last({ m, excerpt: Recent.excerpt(m.body) }))
 			_ => Ok(NoMessage)
 		}
 	}
