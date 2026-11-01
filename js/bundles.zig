@@ -10,6 +10,7 @@ pub const scripts = [_]Script{
     .{ .name = "chrome.js", .body = @embedFile("chrome.js") },
     .{ .name = "compose.js", .body = @embedFile("compose.js") },
     .{ .name = "feed.js", .body = @embedFile("feed.js") },
+    .{ .name = "keyhelp.js", .body = @embedFile("keyhelp.js") },
     .{ .name = "keys.js", .body = @embedFile("keys.js") },
     .{ .name = "palette.js", .body = @embedFile("palette.js") },
     .{ .name = "recent_page.js", .body = @embedFile("recent_page.js") },

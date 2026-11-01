@@ -2237,7 +2237,7 @@ fn topicPage(w: *World) !void {
         // The right pane: compose, closed to start, the old words.
         "<div class=chat-notify id=chat-notify></div>",
         "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"/chat/channel/Orchard/Banana/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>",
-        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>",
+        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
     };
     for (want) |needle| if (!has(page.body, needle)) return error.TopicPageWrong;
     if (has(page.body, "Pip <b>") or has(page.body, "No messages yet") or has(page.body, "<style")) return error.TopicPageWrong;
@@ -2395,7 +2395,7 @@ fn composeSends(w: *World) !void {
     const dm = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/send", .{x.p}), x.quin, "back at you");
     if (dm.status != 201 or !has(dm.body, "data-ref=\"ChitChat_")) return error.DmNotSent;
 
-    for ([_][]const u8{ "/keys.js", "/compose.js", "/palette.js" }) |path| {
+    for ([_][]const u8{ "/keys.js", "/compose.js", "/palette.js", "/keyhelp.js" }) |path| {
         if ((try get(w.a, w.port(), path, x.quin)).status != 200) return error.ScriptMissing;
     }
 }

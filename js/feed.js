@@ -17,6 +17,9 @@
      - starts at the bottom, held there while images decode, until the
        reader scrolls or 5 s pass (js/message_view.js, `stabilize`);
      - puts a page of earlier bubbles, from the server, above the first;
+     - keeps the selection, the old view's: the arrows, Home/End and
+       PgUp/PgDn (with its jump at an edge), scrolling and clicking select,
+       the ring, and #msg-<id> in the URL after 700 ms;
      - hands compose.js `Feed`: place a bubble, reveal one, focus the feed;
      - styles the transcript's column and the right pane on their elements
        (js/middle_pane.js, js/chat_right_sidebar.js), the server sending no
@@ -57,6 +60,7 @@
   var rules = document.createElement('style');
   rules.textContent = ''
     + '.chat-mp-history:focus { outline:none; }'
+    + '.mv-selected { box-shadow:0 0 0 2px #ffcf3a; }'
     + '.chat-msg { margin:0 0 12px; padding:8px 10px; border-radius:8px; max-width:88%; }'
     + '.chat-msg.mine { background:var(--cc-mine-bg); margin-left:auto; }'
     + '.chat-msg.theirs { background:var(--cc-theirs-bg); margin-right:auto; }'
@@ -128,13 +132,109 @@
     quiet();
     fn();
   }
+  var rafPending = false;
   history.addEventListener('scroll', function () {
     if (ours) { quiet(); return; }
     readerScrolled = true;
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(function () { rafPending = false; syncSelectionToScroll(); });
   });
   function toBottom() {
     scrollBy(function () { history.scrollTop = history.scrollHeight; });
   }
+
+  /* ---- the selection (the old js/message_view.js) ----
+     One bubble is selected, ringed; the URL's #msg-<id> follows it after
+     700 ms of rest (at once for a click or a jump to an end), so holding an
+     arrow walks the ring one bubble a press and records only where it
+     stops. Scrolling selects what comes into view; a click selects in the
+     capture phase, before the bubble's own handlers run. */
+  var settleDelay = 700, revealPadTop = 6, revealPadBottom = 48;
+  var selected = null, settleTimer = null;
+  function all() { return Array.prototype.slice.call(bubbles.querySelectorAll('.chat-msg')); }
+  function record(bubble) { window.history.replaceState({}, '', '#' + bubble.id); }
+  function settle(bubble, immediate) {
+    if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+    if (selected) selected.classList.remove('mv-selected');
+    selected = bubble;
+    if (!bubble) return;
+    bubble.classList.add('mv-selected');
+    if (immediate) record(bubble);
+    else settleTimer = setTimeout(function () { settleTimer = null; record(bubble); }, settleDelay);
+  }
+  function revealEl(el) {
+    var hr = history.getBoundingClientRect(), r = el.getBoundingClientRect();
+    if (r.top < hr.top + revealPadTop) {
+      history.scrollTop += r.top - hr.top - revealPadTop;
+    } else if (r.bottom > hr.bottom - revealPadBottom) {
+      var delta = r.bottom - (hr.bottom - revealPadBottom);
+      if (r.top - delta < hr.top + revealPadTop) delta = r.top - hr.top - revealPadTop;
+      history.scrollTop += delta;
+    }
+  }
+  /* The first bubble wholly in view; else the first whose top is in view;
+     else the one straddling the top edge. */
+  function selectionCandidate() {
+    var hr = history.getBoundingClientRect(), beginning = null, straddler = null, els = all();
+    for (var i = 0; i < els.length; i++) {
+      var r = els[i].getBoundingClientRect();
+      if (r.top >= hr.top - 1 && r.bottom <= hr.bottom + 1) return els[i];
+      if (!beginning && r.top >= hr.top - 1 && r.top < hr.bottom) beginning = els[i];
+      if (!straddler && r.top < hr.top && r.bottom > hr.top) straddler = els[i];
+    }
+    return beginning || straddler;
+  }
+  function syncSelectionToScroll() {
+    var c = selectionCandidate();
+    if (c && c !== selected) settle(c, false);
+  }
+  history.addEventListener('click', function (e) {
+    var bubble = e.target.closest && e.target.closest('.chat-msg');
+    if (bubble) settle(bubble, true);
+  }, { capture: true });
+  function moveCursor(delta) {
+    var els = all();
+    if (!els.length) { history.scrollTop += delta * 40; return; }
+    var pos = els.indexOf(selected);
+    if (pos < 0) {
+      pos = els.indexOf(selectionCandidate());
+      if (pos < 0) pos = 0;
+    } else {
+      pos = Math.max(0, Math.min(els.length - 1, pos + delta));
+    }
+    var target = els[pos];
+    settle(target, false);
+    scrollBy(function () { revealEl(target); });
+  }
+  function cursorToExtreme(toBottom) {
+    scrollBy(function () { history.scrollTop = toBottom ? history.scrollHeight : 0; });
+    var els = all();
+    if (els.length) settle(toBottom ? els[els.length - 1] : els[0], true);
+  }
+  /* A page down (or up) while the transcript can scroll; at its edge, a
+     jump to the last (or first) bubble. */
+  function pageNav(dir) {
+    var canScroll = dir < 0 ? history.scrollTop > 0 : history.scrollTop + history.clientHeight < history.scrollHeight - 1;
+    if (canScroll) history.scrollTop += dir * Math.max(40, history.clientHeight - 40);
+    else cursorToExtreme(dir > 0);
+  }
+  /* A bubble brought to the middle of the view and selected (the old
+     focusBubble: a "sent" notice's link). */
+  function focusBubble(bubble) {
+    scrollBy(function () {
+      var cr = history.getBoundingClientRect(), er = bubble.getBoundingClientRect();
+      history.scrollTop += (er.top + er.height / 2) - (cr.top + cr.height / 2);
+    });
+    settle(bubble, true);
+  }
+  /* The navigation keys: the old view's, not in the help panel (they are
+     discoverable), registered so no other feature can take them. */
+  [
+    ['ArrowDown', function () { moveCursor(1); }], ['ArrowUp', function () { moveCursor(-1); }],
+    ['Home', function () { cursorToExtreme(false); }], ['End', function () { cursorToExtreme(true); }],
+    ['PageDown', function () { pageNav(1); }], ['PageUp', function () { pageNav(-1); }],
+  ].forEach(function (k) { Keys.register({ key: k[0], label: k[0], hidden: true, run: k[1] }); });
 
   /* Images grow the transcript without a scroll event, so the bottom is
      taken again as each one loads, until the reader scrolls or 5 s pass. */
@@ -165,6 +265,8 @@
   var drawn = bubbles.querySelectorAll('.chat-msg');
   for (var i = 0; i < drawn.length; i++) { dress(drawn[i]); note(drawn[i]); }
   toBottom();
+  var last = all().pop();
+  if (last) settle(last, true);
   stabilize();
 
   var stream = new EventSource(root.dataset.stream);
@@ -184,7 +286,7 @@
     dress(bubble);
     bubbles.appendChild(bubble);
     note(bubble);
-    if (stick) toBottom();
+    if (stick) cursorToExtreme(true);
     return bubble;
   }
   stream.addEventListener('message', function (e) { place(e.data); });
@@ -215,11 +317,13 @@
       earlier.hidden = page.dataset.earlier !== '1';
     }, function () { earlier.disabled = false; });
   });
-  /* What compose.js takes: put a bubble in; bring one into view; give
-     the transcript the keyboard (focus without a scroll). */
+  /* What compose.js and the later features take: put a bubble in; bring
+     one to the middle and select it; the selected bubble; give the
+     transcript the keyboard (focus without a scroll). */
   window.Feed = {
     place: place,
-    reveal: function (bubble) { scrollBy(function () { bubble.scrollIntoView({ block: 'nearest' }); }); },
+    reveal: focusBubble,
+    selected: function () { return selected; },
     focus: function () { history.focus({ preventScroll: true }); },
   };
 })();
