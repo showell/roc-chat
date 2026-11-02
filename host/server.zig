@@ -41,6 +41,13 @@ pub const Limits = struct {
     write_ms: u32 = 10_000,
     /// The most a body may be; past it a 413, never read, never in the turn.
     body_most: usize = 64 * 1024,
+    /// **AN UPLOAD'S BODY** (a POST to a path ending `/upload`, the topic
+    /// page's, app/TopicPage.roc): an image of 10 MiB in a multipart form,
+    /// with room for the form; the app holds it to its own cap.
+    upload_most: usize = 10 * 1024 * 1024 + 64 * 1024,
+    /// An upload's body, whole, from its head: the old client's patience,
+    /// five minutes, for a big picture on a slow link.
+    upload_ms: u32 = 5 * 60 * 1000,
     /// The most requests a connection serves; its last answer says close.
     requests_most: u32 = 1000,
     /// The most connections open at once that are kept open; past it, an
@@ -70,6 +77,12 @@ pub const Limits = struct {
 
 /// The most a request's head may be: past it, a 431.
 pub const head_most = 16 * 1024;
+
+/// Whether a request is an upload, given its own limits (`upload_most`,
+/// `upload_ms`): a POST to a path whose last part is `upload`.
+fn isUpload(method: std.http.Method, path: []const u8) bool {
+    return method == .POST and std.mem.endsWith(u8, path, "/upload");
+}
 
 /// What a test reads of the turn.
 pub const Stats = struct {
@@ -252,12 +265,14 @@ pub const Server = struct {
             };
             // No length and not chunked: no body (std asserts one or the other).
             if (req.head.transfer_encoding == .none and req.head.content_length == null) req.head.content_length = 0;
-            if (req.head.content_length) |n| if (n > s.limits.body_most) return refuse(&req, call.too_large);
-            s.watch.arm(io, conn, s.limits.body_ms, .recv);
+            const upload = isUpload(copied.method, copied.path);
+            const most = if (upload) s.limits.upload_most else s.limits.body_most;
+            if (req.head.content_length) |n| if (n > most) return refuse(&req, call.too_large);
+            s.watch.arm(io, conn, if (upload) s.limits.upload_ms else s.limits.body_ms, .recv);
             defer s.watch.disarm(io, conn);
             var body_buf: [256]u8 = undefined;
             const body = req.readerExpectContinue(&body_buf) catch return false;
-            copied.body = body.allocRemaining(arena, .limited(s.limits.body_most + 1)) catch |e| switch (e) {
+            copied.body = body.allocRemaining(arena, .limited(most + 1)) catch |e| switch (e) {
                 error.StreamTooLong => return refuse(&req, call.too_large),
                 error.OutOfMemory => return refuse(&req, call.failed),
                 error.ReadFailed => return if (conn.fired.load(.acquire)) refuse(&req, call.too_slow) else false,

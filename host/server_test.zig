@@ -163,6 +163,30 @@ test "the body cap: a length past it is a 413, never read and never in the turn;
     try std.testing.expectEqual(1, r.turns());
 }
 
+test "an upload's own cap: a POST to a path ending /upload past the body cap is read and reaches the Roc; the same body elsewhere, or a GET, is a 413; past the upload cap, a 413 for it too" {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const r = try Running.start(.{ .body_most = 4 * 1024, .upload_most = 8 * 1024 });
+    defer r.stop();
+    const six = try a.alloc(u8, 6 * 1024);
+    @memset(six, 'u');
+    const nine = try a.alloc(u8, 9 * 1024);
+    @memset(nine, 'u');
+
+    const upload = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "POST /chat/channel/A/B/upload HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}", .{ six.len, six })));
+    try std.testing.expect(upload.status != 413);
+    try std.testing.expectEqual(1, r.turns());
+
+    const elsewhere = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "POST /chat/channel/A/B/send HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}", .{ six.len, six })));
+    try std.testing.expectEqual(413, elsewhere.status);
+    const put = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "PUT /chat/channel/A/B/upload HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}", .{ six.len, six })));
+    try std.testing.expectEqual(413, put.status);
+    const too_big = try Response.of(try exchange(a, r.port(), try std.fmt.allocPrint(a, "POST /chat/channel/A/B/upload HTTP/1.1\r\nhost: t\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}", .{ nine.len, nine })));
+    try std.testing.expectEqual(413, too_big.status);
+    try std.testing.expectEqual(1, r.turns());
+}
+
 test "a POST's path and headers survive its body's read, which reuses the buffer the head was in" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();

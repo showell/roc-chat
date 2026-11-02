@@ -9,6 +9,7 @@ import AccountCodec
 import Cast
 import MessageCodec
 import Principal
+import Uploads
 
 Render := [].{
 
@@ -18,11 +19,10 @@ Render := [].{
 	html_of = |m| Md.render(m.body, Render.markdown)
 
 	## **WHAT THE CHAT TELLS THE RENDERER**: its uploads are the paths under
-	## `/user_uploads/`, the only places a member's image or video may load
-	## from; none of the chat's own routes is one. The chat serves no
-	## uploads yet: this is the folder they will be served from.
+	## `/chat/uploads/` (Uploads.prefix, UploadPage.roc), the only places a
+	## member's image may load from; none of the chat's other routes is one.
 	markdown : Md.Options
-	markdown = { uploads: Md.uploads_under(Str.to_utf8("/user_uploads/")) }
+	markdown = { uploads: Md.uploads_under(Str.to_utf8(Uploads.prefix)) }
 
 	## The name a principal goes by, as the accounts say now; its id where
 	## no account holds it.

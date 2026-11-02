@@ -52,6 +52,11 @@ ChannelLayout := [].{
 	## the old app's `<topic>.reactions.jsonl`, in the topic's own folder.
 	reactions_path : Topic.At -> List(U8)
 	reactions_path = |at| "${topic_folder(at)}/reactions.jsonl".to_utf8()
+
+	## An image uploaded to a topic, by its name (Uploads.name_of): the old
+	## app's `<topic>.uploads/` folder, here in the topic's own.
+	upload_path : Topic.At, Str -> List(U8)
+	upload_path = |at, name| "${topic_folder(at)}/uploads/${name}".to_utf8()
 }
 
 ## A channel's folder.

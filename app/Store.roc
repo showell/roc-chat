@@ -30,6 +30,8 @@
 ##     chat/channels/<channel>/topics/<topic>/tally       its transcript's messages and bytes (`load_tally!`)
 ##     chat/channels/<channel>/topics/<topic>/offsets     where each of its messages starts, a record each (`load_span!`)
 ##     chat/channels/<channel>/topics/<topic>/reactions.jsonl  its reactions, a JSON event a line, appended (Reactions)
+##     chat/channels/<channel>/topics/<topic>/uploads/<name>  an image uploaded to it, as uploaded (Uploads)
+##     chat/upload-bytes/<human id>  the bytes a human has uploaded in all, in decimal (Uploads)
 ##     chat/saved/<id>           a human's reading list: its mark, then a save a line (SavedCodec)
 ##
 ## A channel's folder is its name's key, and each topic's its name's key
@@ -78,12 +80,38 @@ import Stored
 import Topic
 import TopicCodec
 import TopicName
+import Uploads
 
 Store := [].{
 
 	## Which set a spent nonce is kept in: a state's or a pending sign-up's,
 	## each its own (GitHubSignIn: the same nonce is spent once in each).
 	Spent : [State, Pending]
+
+	## **AN UPLOADED IMAGE KEPT**, under its topic, by its fresh name.
+	save_upload! : Topic.At, { name : Str, uploaded : List(U8) } => [Failed, Written]
+	save_upload! = |at, { name, uploaded }| Host.write!(ChannelLayout.upload_path(at, name), uploaded)
+
+	## An uploaded image's bytes, by its name.
+	load_upload! : Topic.At, Str => { bytes : List(U8), status : [Failed, Found, Missing] }
+	load_upload! = |at, name| Host.read!(ChannelLayout.upload_path(at, name))
+
+	## **WHAT A HUMAN HAS UPLOADED IN ALL**, in bytes: none before their
+	## first. A file that does not read back is `Unreadable`, never none, so
+	## the allowance is never reset by a write over it.
+	load_uploaded! : Principal.HumanId => Try(U64, [Failed, Unreadable])
+	load_uploaded! = |human| {
+		read = Host.read!(uploaded_path(human))
+		match read.status {
+			Missing => Ok(0)
+			Failed => Err(Failed)
+			Found => Uploads.uploaded_from(read.bytes)
+		}
+	}
+
+	## What a human has uploaded in all, written whole.
+	save_uploaded! : Principal.HumanId, U64 => [Failed, Written]
+	save_uploaded! = |human, n| Host.write!(uploaded_path(human), Uploads.uploaded_text(n))
 
 	## **A TOPIC'S REACTIONS**, oldest first (Reactions.list); none before
 	## the first, and whether the file ends mid-line (for
@@ -808,6 +836,10 @@ accounts_path = "auth/accounts".to_utf8()
 
 saved_path : Principal.HumanId -> List(U8)
 saved_path = |human| "chat/saved/${human.to_u64().to_str()}".to_utf8()
+
+## Where a human's uploaded bytes are counted.
+uploaded_path : Principal.HumanId -> List(U8)
+uploaded_path = |human| "chat/upload-bytes/${human.to_u64().to_str()}".to_utf8()
 
 settings_path : List(U8)
 settings_path = "auth/settings".to_utf8()

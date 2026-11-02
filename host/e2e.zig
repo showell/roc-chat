@@ -132,8 +132,8 @@ fn request(a: std.mem.Allocator, port: u16, method: []const u8, target: []const 
 
 /// What a request carries to say who it is: a browser's cookie, an agent's
 /// key (its secret, in hex, for `Authorization: Bearer`), each when not
-/// empty.
-const Credential = struct { cookie: []const u8 = "", key: []const u8 = "", origin: []const u8 = own_origin };
+/// empty; and its body's type, when not empty (an upload's form).
+const Credential = struct { cookie: []const u8 = "", key: []const u8 = "", origin: []const u8 = own_origin, content_type: []const u8 = "" };
 
 /// The origin a browser on the chat's own pages sends with a write (the
 /// rig's `.origin`); a request's own when not empty.
@@ -147,7 +147,8 @@ fn send(a: std.mem.Allocator, port: u16, method: []const u8, target: []const u8,
     const cookie_line = if (credential.cookie.len > 0) try std.fmt.allocPrint(a, "cookie: {s}\r\n", .{credential.cookie}) else "";
     const key_line = if (credential.key.len > 0) try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{credential.key}) else "";
     const origin_line = if (credential.origin.len > 0) try std.fmt.allocPrint(a, "origin: {s}\r\n", .{credential.origin}) else "";
-    const text = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}{s}{s}content-length: {d}\r\n\r\n{s}", .{ method, target, cookie_line, key_line, origin_line, body.len, body });
+    const type_line = if (credential.content_type.len > 0) try std.fmt.allocPrint(a, "content-type: {s}\r\n", .{credential.content_type}) else "";
+    const text = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: chat.test\r\nconnection: close\r\n{s}{s}{s}{s}content-length: {d}\r\n\r\n{s}", .{ method, target, cookie_line, key_line, origin_line, type_line, body.len, body });
     var w = stream.writer(io, &.{});
     try w.interface.writeAll(text);
     var buf: [4096]u8 = undefined;
@@ -884,14 +885,15 @@ fn invitesCapped(w: *World) !void {
 }
 
 /// **A MESSAGE'S MEDIA LOADS ONLY FROM THE CHAT'S UPLOADS**: the chat tells
-/// the renderer its uploads are `/user_uploads/` (Conversations.markdown),
-/// so an upload's image renders, and one of the chat's own routes as a src
-/// is text.
+/// the renderer its uploads are under `/chat/uploads/` (Render.markdown),
+/// so an upload's image renders, and one of the chat's other routes as a
+/// src, or the old `/user_uploads/`, is text.
 fn mediaFromUploads(w: *World) !void {
     const conv = try topicOf(w, "Media", &.{ try std.fmt.allocPrint(w.a, "human%3A{s}", .{try hid(w.a, 1001)}), try std.fmt.allocPrint(w.a, "human%3A{s}", .{try hid(w.a, 1002)}) }, w.ann);
-    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "<img src=\"/user_uploads/a.png\">\n\n<img src=\"/channels/Media/topics/talk/stream\">");
+    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "<img src=\"/chat/uploads/media/talk/a.png\">\n\n<img src=\"/channels/Media/topics/talk/stream\">\n\n<img src=\"/user_uploads/a.png\">");
     if (r.status != 201) return error.NotPosted;
-    if (!has(r.body, "<img src=\\\"/user_uploads/a.png\\\">")) return error.UploadNotShown;
+    if (!has(r.body, "<img src=\\\"/chat/uploads/media/talk/a.png\\\">")) return error.UploadNotShown;
+    if (!has(r.body, "&lt;img src=&quot;/user_uploads/a.png&quot;&gt;")) return error.OldUploadsShownAsMedia;
     if (!has(r.body, "&lt;img src=&quot;/channels/Media/topics/talk/stream&quot;&gt;")) return error.RouteShownAsMedia;
 }
 
@@ -2124,8 +2126,8 @@ fn topicPage(w: *World) !void {
         "<div class=chat-body><p>hello <strong>orchard</strong></p>",
         // The right pane: compose, closed to start, the old words.
         "<div class=chat-notify id=chat-notify></div>",
-        "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"/chat/channel/Orchard/Banana/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · :emoji: autocompletes · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>",
-        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/emoji.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
+        "<div id=chat-right-sidebar class=chat-compose>\n<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\"/chat/channel/Orchard/Banana/send\" data-upload=\"/chat/channel/Orchard/Banana/upload\" data-image-most=10485760><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button><button type=button id=chat-upload-btn>Upload</button></div></form><input type=file id=chat-file accept=\"image/png,image/jpeg,image/gif,image/webp\" hidden><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · :emoji: autocompletes · attach an image · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n</div>",
+        "<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/emoji.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/upload.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>",
     };
     for (want) |needle| if (!has(page.body, needle)) return error.TopicPageWrong;
     if (has(page.body, "Pip <b>") or has(page.body, "No messages yet") or has(page.body, "<style")) return error.TopicPageWrong;
@@ -2631,6 +2633,104 @@ fn reactionsLive(w: *World) !void {
     if ((try get(w.a, w.port(), "/reactions.js", x.quin)).status != 200) return error.NoScript;
 }
 
+/// A PNG's opening bytes and a little after: what the server sniffs.
+const png_bytes = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+
+/// The compose box's form with one file, as a browser sends it: its body,
+/// and the Content-Type naming its boundary.
+fn uploadForm(a: std.mem.Allocator, part: []const u8, filename: []const u8, data: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(a, "--XyZ\r\nContent-Disposition: form-data; name=\"{s}\"; filename=\"{s}\"\r\nContent-Type: image/png\r\n\r\n{s}\r\n--XyZ--\r\n", .{ part, filename, data });
+}
+const upload_type = "multipart/form-data; boundary=XyZ";
+
+/// The URL an upload's answer names, from its JSON.
+fn uploadUrl(body: []const u8) ![]const u8 {
+    const key = "{\"url\":\"";
+    if (!std.mem.startsWith(u8, body, key)) return error.NoUrl;
+    const end = std.mem.indexOfScalarPos(u8, body, key.len, '"') orelse return error.NoUrl;
+    return body[key.len..end];
+}
+
+/// **UPLOADS** (app/Uploads.roc, UploadPage.roc, the old chat_upload.zig):
+/// the compose box's form, its one part `file`, an image by its bytes, kept
+/// in the topic's folder by a fresh name of 32 hex digits and the
+/// extension its bytes give, its uploader's bytes counted in decimal; the
+/// answer its URL, `/chat/uploads/<channel>/<topic>/<name>`, and the
+/// browser's name. Served to the topic's readers alone, by that one URL
+/// (a DM's the same for both its humans), its type by its extension,
+/// `nosniff`, kept for good; posted, the renderer draws it. Refusals in
+/// the old words: no file a 400, not an image a 415, past 10 MiB a 413,
+/// past the allowance a 403 (nothing kept, nothing counted); a stranger
+/// 404s to the upload and to the image, signed out a 401, a key a 403 to
+/// the upload, a GET of the upload a 405.
+fn uploads(w: *World) !void {
+    const x = browsing orelse return error.NoBrowsing;
+    const base = "/chat/channel/Orchard/Banana";
+    const typed: Credential = .{ .cookie = x.quin, .content_type = upload_type };
+    const up = try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "file", "cat.png", png_bytes));
+    if (up.status != 200 or !std.mem.startsWith(u8, up.header("content-type") orelse "", "application/json")) return error.NotUploaded;
+    const url = try uploadUrl(up.body);
+    const prefix = "/chat/uploads/orchard/banana/";
+    if (!std.mem.startsWith(u8, url, prefix) or url.len != prefix.len + 32 + 4 or !std.mem.endsWith(u8, url, ".png")) return error.UploadUrlWrong;
+    for (url[prefix.len .. prefix.len + 32]) |c| if (!std.ascii.isDigit(c) and !(c >= 'a' and c <= 'f')) return error.UploadUrlWrong;
+    if (!std.mem.endsWith(u8, up.body, ",\"name\":\"cat.png\",\"kind\":\"image\",\"width\":0,\"height\":0}")) return error.UploadAnswerWrong;
+    // Kept in the topic's folder as uploaded; the bytes counted, in decimal.
+    var buf: [256]u8 = undefined;
+    const kept = try w.rig.data.readFile(io, try std.fmt.allocPrint(w.a, "chat/channels/orchard/topics/banana/uploads/{s}", .{url[prefix.len..]}), &buf);
+    if (!std.mem.eql(u8, kept, png_bytes)) return error.UploadNotKept;
+    const counted_path = try std.fmt.allocPrint(w.a, "chat/upload-bytes/{s}", .{x.q});
+    if (!std.mem.eql(u8, try w.rig.data.readFile(io, counted_path, &buf), try std.fmt.allocPrint(w.a, "{d}", .{png_bytes.len}))) return error.UploadNotCounted;
+
+    // Served to a reader: its bytes, its type, nosniff, kept for good.
+    const seen = try get(w.a, w.port(), url, x.pip);
+    if (seen.status != 200 or !std.mem.eql(u8, seen.body, png_bytes) or !std.mem.eql(u8, seen.header("content-type") orelse "", "image/png")) return error.UploadNotServed;
+    if (!std.mem.eql(u8, seen.header("x-content-type-options") orelse "", "nosniff") or !std.mem.eql(u8, seen.header("cache-control") orelse "", "private, max-age=31536000, immutable")) return error.UploadHeadersWrong;
+    // A stranger, a key of no member, a name no upload has: the one 404; signed out a 401.
+    if ((try get(w.a, w.port(), url, x.rue)).status != 404) return error.StrangerSawUpload;
+    if ((try send(w.a, w.port(), "GET", url, .{ .key = x.pal_key }, "")).status != 404) return error.KeySawUpload;
+    if ((try get(w.a, w.port(), prefix ++ "00000000000000000000000000000000.png", x.pip)).status != 404) return error.NoUploadServed;
+    if ((try get(w.a, w.port(), url, "")).status != 401) return error.NobodySawUpload;
+    // Posted, the renderer draws it.
+    const posted = try send(w.a, w.port(), "POST", base ++ "/send", .{ .cookie = x.quin }, try std.fmt.allocPrint(w.a, "<img src=\"{s}\" alt=\"cat.png\">", .{url}));
+    if (posted.status != 201 or !has(posted.body, try std.fmt.allocPrint(w.a, "<img src=\"{s}\" alt=\"cat.png\">", .{url}))) return error.UploadNotDrawn;
+
+    // A DM's: one URL for both its humans; a third human never reaches it.
+    const lo, const hi = if (try std.fmt.parseInt(u64, x.p, 10) < try std.fmt.parseInt(u64, x.q, 10)) .{ x.p, x.q } else .{ x.q, x.p };
+    const dm_up = try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/upload", .{x.q}), .{ .cookie = x.pip, .content_type = upload_type }, try uploadForm(w.a, "file", "dm.png", png_bytes));
+    if (dm_up.status != 200) return error.DmNotUploaded;
+    const dm_url = try uploadUrl(dm_up.body);
+    if (!std.mem.startsWith(u8, dm_url, try std.fmt.allocPrint(w.a, "/chat/uploads/dm-{s}-{s}/chitchat/", .{ lo, hi }))) return error.DmUrlWrong;
+    if ((try get(w.a, w.port(), dm_url, x.quin)).status != 200 or (try get(w.a, w.port(), dm_url, x.pip)).status != 200) return error.DmUploadNotServed;
+    if ((try get(w.a, w.port(), dm_url, x.rue)).status != 404) return error.StrangerSawDmUpload;
+
+    // Refusals, in the old words; nothing counted for any of them.
+    const counted = try std.fmt.allocPrint(w.a, "{s}", .{try w.rig.data.readFile(io, counted_path, &buf)});
+    const text = try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "file", "a.txt", "hello, not an image"));
+    if (text.status != 415 or !std.mem.eql(u8, text.body, "unsupported file type (images: png, jpeg, gif, webp)\n")) return error.TextUploaded;
+    const other = try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "other", "cat.png", png_bytes));
+    if (other.status != 400 or !std.mem.eql(u8, other.body, "no file\n")) return error.FieldlessUploaded;
+    if ((try send(w.a, w.port(), "POST", base ++ "/upload", .{ .cookie = x.quin }, try uploadForm(w.a, "file", "cat.png", png_bytes))).status != 400) return error.BoundlessUploaded;
+    const huge = try w.a.alloc(u8, 10 * 1024 * 1024 + 1);
+    @memcpy(huge[0..png_bytes.len], png_bytes);
+    @memset(huge[png_bytes.len..], 0);
+    const big = try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "file", "big.png", huge));
+    if (big.status != 413 or !std.mem.eql(u8, big.body, "image too large — the limit is 10 MB.\n")) return error.HugeUploaded;
+    if (!std.mem.eql(u8, try w.rig.data.readFile(io, counted_path, &buf), counted)) return error.RefusalCounted;
+    // Past the allowance: refused, nothing kept or counted; just under it, kept.
+    try put(w.rig.data, counted_path, try std.fmt.allocPrint(w.a, "{d}", .{1024 * 1024 * 1024 - png_bytes.len + 1}));
+    const over = try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "file", "cat.png", png_bytes));
+    if (over.status != 403 or !std.mem.eql(u8, over.body, "Upload limit reached — you've used your 1 GB upload allowance.\n")) return error.OverAllowance;
+    try put(w.rig.data, counted_path, try std.fmt.allocPrint(w.a, "{d}", .{1024 * 1024 * 1024 - png_bytes.len}));
+    if ((try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "file", "cat.png", png_bytes))).status != 200) return error.AllowanceEdgeRefused;
+    if (!std.mem.eql(u8, try w.rig.data.readFile(io, counted_path, &buf), "1073741824")) return error.AllowanceEdgeNotCounted;
+    // Who may: a stranger 404, signed out 401, a key 403, a GET 405.
+    if ((try send(w.a, w.port(), "POST", base ++ "/upload", .{ .cookie = x.rue, .content_type = upload_type }, try uploadForm(w.a, "file", "cat.png", png_bytes))).status != 404) return error.StrangerUploaded;
+    if ((try send(w.a, w.port(), "POST", base ++ "/upload", .{ .content_type = upload_type }, try uploadForm(w.a, "file", "cat.png", png_bytes))).status != 401) return error.NobodyUploaded;
+    if ((try send(w.a, w.port(), "POST", base ++ "/upload", .{ .key = x.pal_key, .content_type = upload_type }, try uploadForm(w.a, "file", "cat.png", png_bytes))).status != 403) return error.KeyUploaded;
+    if ((try get(w.a, w.port(), base ++ "/upload", x.quin)).status != 405) return error.UploadByGet;
+    if ((try get(w.a, w.port(), "/upload.js", x.quin)).status != 200) return error.NoScript;
+}
+
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
     .{ .name = "A and B's topic: Ivy makes their channel, Talk, and A its topic, general", .f = start },
@@ -2716,6 +2816,7 @@ const steps = [_]Step{
     .{ .name = "one session a browser: an invite opened while signed in is a 409 naming who, unspent, and a fresh browser redeems it; a returning GitHub user signs straight in as themselves, ending the session the browser held and no other; Log out on home and the hello page", .f = oneSessionABrowser },
     .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
     .{ .name = "reactions: one emoji on or off on one message, a 204; every page's stream gets the message's chips drawn again from the fold, each naming its people, the last event of each person and emoji winning, an emptied emoji gone; earlier pages draw them; a torn last line spoils nothing; a bad emoji or msg, or no such message, the old 400; on left out is on; a stranger 404, signed out 401, a key 403, a GET 405", .f = reactionsLive },
+    .{ .name = "uploads: an image from the compose box's form, kept in its topic's folder by a fresh name, counted; served to the topic's readers by one URL, a DM's the same for both, nosniff, kept for good, and drawn when posted; not an image, no file, past 10 MiB and past the allowance refused in the old words, nothing counted; a stranger, nobody, a key and a GET refused", .f = uploads },
 };
 
 /// **STEVE'S PATH**, his acceptance test for the chat: (1) go to Browse,

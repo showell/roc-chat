@@ -144,6 +144,14 @@ the same commit.
   (`human:9`), and the line reads back only in the one spelling it is
   written in. The server folds the events and draws the chips (the
   server-sends-HTML decision above), where the old client folded them.
+- **Uploaded images are kept as the old app kept them** (Steve, 2026-11-02):
+  in the topic's own folder, served to the topic's readers alone, with the
+  old limits (10 MiB an image, 1 GiB a human in all, counted in decimal in
+  a file of its own). Where roc-chat differs: the URL names the topic by
+  its channel's and topic's keys (`/chat/uploads/<channel>/<topic>/<name>`),
+  since a DM's page path is the viewer's; and the image is written before
+  it is counted (a failed write fails the request, so the old "give the
+  bytes back" could not run). Screencasts (video) are not yet ported.
 - **After every chunk, a cold agent reviews it adversarially.** Its first
   question is a divergence from the Zig chat with no stated reason
   (`docs/design/browser-client-review.md`).

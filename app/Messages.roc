@@ -412,8 +412,12 @@ expect Messages.page_of(250, Before(900)) == { first: 151, last: 250 }
 # The chat's uploads rule: an upload's image renders; one of the chat's own
 # routes, as a src, is text.
 expect {
+	html = rendered_text("<img src=\"/chat/uploads/lobby/chitchat/a.png\">")
+	Str.contains(html, "<img src=\"/chat/uploads/lobby/chitchat/a.png\">")
+}
+expect {
 	html = rendered_text("<img src=\"/user_uploads/a.png\">")
-	Str.contains(html, "<img src=\"/user_uploads/a.png\">")
+	!Str.contains(html, "<img")
 }
 expect {
 	html = rendered_text("<img src=\"/channels/Lobby/topics/ChitChat/stream\">")

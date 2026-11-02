@@ -25,6 +25,9 @@
 ##                                                  reading list (`n=`, `note=`):
 ##                                                  `201` and its reference
 ##                                                  (SavedPage.roc)
+##     POST .../upload                              an image from the compose box (a
+##                                                  form, its one part `file`): its URL
+##                                                  and name, as JSON (Uploads.roc)
 ##     POST .../react                               a reaction turned on or off (`msg=`,
 ##                                                  `emoji=`, `on=1|0`): `204`, and the
 ##                                                  message's chips to every page live
@@ -66,6 +69,7 @@ import Stored
 import Topic
 import TopicName
 import Topics
+import Uploads
 import Wire
 
 TopicPage := [].{
@@ -85,6 +89,7 @@ TopicPage := [].{
 		Quote(TopicPage.Place),
 		Save(TopicPage.Place),
 		React(TopicPage.Place),
+		Upload(TopicPage.Place),
 		Edit(TopicPage.Place),
 	]
 
@@ -153,6 +158,16 @@ TopicPage := [].{
 							Read => Ok(Body(got.bytes))
 						}
 					}
+				Upload(_) =>
+					if req.method != Post {
+						Err(Chat.not_allowed(Post))
+					} else {
+						got = Host.read_body!(Uploads.body_most)
+						match got.status {
+							Answered => Err(Chat.answered)
+							Read => Ok(Body(got.bytes))
+						}
+					}
 				Save(_) | React(_) =>
 					if req.method != Post {
 						Err(Chat.not_allowed(Post))
@@ -196,6 +211,8 @@ tail = |p, what|
 		Ok(Save(p))
 	} else if what == "react".to_utf8() {
 		Ok(React(p))
+	} else if what == "upload".to_utf8() {
+		Ok(Upload(p))
 	} else {
 		Err(NotATopicPage)
 	}
@@ -244,9 +261,11 @@ serve! = |
 		(Send(_), Body(bytes)) => send!(shown, bytes)
 		(Save(_), Body(bytes)) => save!(shown, bytes)
 		(React(_), Body(bytes)) => react!(shown, bytes)
+		(Upload(_), Body(bytes)) => upload!(shown, bytes)
 		(Send(_), NoBody)
 		| (Save(_), NoBody)
-		| (React(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
+		| (React(_), NoBody)
+		| (Upload(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
 	}
 }
 
@@ -257,7 +276,7 @@ Asked : { path : List(U8), route : TopicPage.Route }
 place_of : TopicPage.Route -> TopicPage.Place
 place_of = |r|
 	match r {
-		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) | React(p) => p
+		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) | React(p) | Upload(p) => p
 	}
 
 ## **THE VIEWER A PAGE IS FOR**: a session's; signed out, the page goes to
@@ -278,7 +297,7 @@ me_of = |
 		SignedOut =>
 			match r {
 				Page(_) => Err(Pages.to_login(path))
-				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) => Err(
+				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) => Err(
 					Wire.refused(
 						401,
 						"not signed in",
@@ -390,7 +409,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) => no_such_topic
 		Page(_) => {
 			answer = Chrome.page({
 				title: Html.markup("Not here"),
@@ -503,7 +522,7 @@ page! = |s| {
 				),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
-				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/emoji.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/emoji.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/upload.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
 			]),
 		}),
 	)
@@ -519,7 +538,11 @@ compose_html = |base|
 	Html.join([
 		Html.markup("<div id=chat-compose-body class=chat-compose-body hidden><form id=chat-form data-send=\""),
 		Html.text(base),
-		Html.markup("/send\"><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button></div></form><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · :emoji: autocompletes · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n"),
+		Html.markup("/send\" data-upload=\""),
+		Html.text(base),
+		Html.markup("/upload\" data-image-most="),
+		Html.number(Uploads.image_most),
+		Html.markup("><textarea id=chat-body placeholder=\"Write a message…  Markdown is supported, and longer posts are welcome.\"></textarea><div class=chat-compose-actions><button type=submit>Send</button><button type=button id=chat-upload-btn>Upload</button></div></form><input type=file id=chat-file accept=\"image/png,image/jpeg,image/gif,image/webp\" hidden><div id=chat-status class=chat-status></div><div class=chat-hint>Markdown supported · :emoji: autocompletes · attach an image · Ctrl/⌘-Enter to send</div></div>\n<div id=chat-closed-panel class=chat-closed-panel><button type=button id=chat-open-compose class=chat-open-compose>Open compose box</button></div>\n"),
 	])
 
 ## **A SEND FROM THE COMPOSE BOX**: the body is the markdown, as the
@@ -918,6 +941,51 @@ react! = |s, form| {
 				}
 				Ok(Chat.respond(204, { content_type: [], body: [] }))
 			}
+		}
+	}
+}
+
+## **AN IMAGE FROM THE COMPOSE BOX** (the old `handleUpload`): the form's
+## file (Uploads.file_of), an image by its bytes (Uploads.sniff), at most
+## 10 MiB, within its uploader's allowance; kept in the topic's folder by
+## a fresh name, then counted against the allowance; its URL and its
+## browser's name answered, as JSON. **WRITTEN, THEN COUNTED**: a write
+## that fails fails the request (Host's `Failed`), so the old "give the
+## bytes back" could never run: an image that could not be kept is never
+## counted, and a count that could not be written leaves one kept image
+## uncounted. Refusals in the old words: no file a 400, not an image a
+## 415, too big a 413, past the allowance a 403. Who may is the page's
+## rule (a reader, by a session: a human).
+upload! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
+upload! = |s, body| {
+	at =
+		match s.place {
+			InTopic(a) => a
+		}
+	human = human_of(s.me)?
+	no_file = Wire.refused(400, "no file")
+	boundary =
+		match Host.read_header!(Str.to_utf8("content-type")) {
+			[header] => Uploads.boundary_of(header).map_err(|_| no_file)
+			_ => Err(no_file)
+		}?
+	file = Uploads.file_of(body, boundary).map_err(|_| no_file)?
+	image = Uploads.sniff(file.uploaded).map_err(|_| Wire.refused(415, "unsupported file type (images: png, jpeg, gif, webp)"))?
+	size = file.uploaded.len()
+	uploaded = Store.load_uploaded!(human).map_err(|_| Chat.failed)?
+	if size > Uploads.image_most {
+		Err(Wire.refused(413, "image too large — the limit is 10 MB."))
+	} else if uploaded + size > Uploads.allowance {
+		Err(Wire.refused(403, "Upload limit reached — you've used your 1 GB upload allowance."))
+	} else {
+		name = Uploads.name_of(Host.random_bytes!(16), image)
+		match Store.save_upload!(at, { name, uploaded: file.uploaded }) {
+			Failed => Err(Chat.failed)
+			Written =>
+				match Store.save_uploaded!(human, uploaded + size) {
+					Failed => Err(Chat.failed)
+					Written => Ok(Wire.json(200, Uploads.answer({ url: Uploads.url(at, name), name: Uploads.display_name(file.filename) })))
+				}
 		}
 	}
 }
