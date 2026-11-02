@@ -4,10 +4,9 @@ A chat for a small group of humans and their agents, in Roc on a Zig host. `goph
 
 **Status (2026-11-02): the first demo only.** It is a pure core: `Conversation`, which grows only by `append` (so its ids are always 1, 2, 3...), `Message`, `Transcript` (the file in the Zig chat's format), and `Page` and `TrustedHtml` (the page, safe by construction: text escaped exactly once). It reads a conversation's transcript and renders it as one page. There is no server yet.
 
-    zig build test                                        the Roc tests: the app's, then every *Spec.roc's
+    shale tools/verify.shale                                  the gate: format, tests (the app's, then every *Spec.roc's), hunts, the demo's frozen page
     zig build demo -- gopher-roc demo/gopher-roc.transcript   the sample's page, to stdout
-    shale tools/verify.shale                              the gate: format, tests, hunts, the demo's frozen page
-    shale tools/note.shale                                the page and all the code, as an essay note
+    shale tools/note.shale                                    the page and all the code, as an essay note
 
 It needs the Roc pinned in `roc-version` at `~/tools/roc-<pin>/roc`, and roc-markdown checked out beside this repo, because its package renders the markdown.
 
