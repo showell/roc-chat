@@ -8,6 +8,10 @@
 ## message dated before the conversation's latest is refused (`Backdated`,
 ## a 409), as `Conversation.append` refuses it.
 ##
+## **A TRANSCRIPT NEVER OUTGROWS ITS READ**: a message whose record would
+## grow the file past `Transcript.most_bytes` is refused (`FileFull`, a
+## 409), so no conversation is ever too big for the host to read again.
+##
 ## **EVERY FAILURE IS LOUD**: a transcript that won't decode, or a file the
 ## host could not read or write, is a 500 naming what went wrong.
 import pf.Http
@@ -73,6 +77,7 @@ ConversationRoute :: [].{
 								add_arrival!({
 									key,
 									conversation,
+									file: File(utf8),
 									arrived,
 								})
 							Err(why) => unreadable(why)
@@ -81,6 +86,7 @@ ConversationRoute :: [].{
 						add_arrival!({
 							key,
 							conversation: Conversation.empty(key.topic()),
+							file: NoFile,
 							arrived,
 						})
 					Err(fault) => failed(fault)
@@ -118,25 +124,36 @@ arrival = |
 	Ok({ payload: { author: acting.user().author(), markdown }, time })
 }
 
-## `arrived` appended to `conversation`, its record appended to the file,
-## and a 303 to the page; or why not.
+## `arrived` appended to `conversation`, its record appended to `file`
+## (the transcript `conversation` was read from, or `NoFile`), and a 303 to
+## the page; or why not.
 add_arrival! : {
 	key : ConversationKey,
 	conversation : Conversation,
+	file : [NoFile, File(Transcript.Utf8Transcript)],
 	arrived : Message.Arrival(Author),
 } => Http.Response
 add_arrival! = |
 	{
 		key,
 		conversation,
+		file,
 		arrived,
 	},
 |
 	match conversation.append(arrived) {
 		Ok(grown) =>
-			match FileSystem.append_message!(key, Transcript.message_record(grown.conversation, grown.message)) {
-				Ok({}) => HttpAnswer.see_other(key.url_path())
-				Err(fault) => failed(fault)
+			match Transcript.message_record({
+				conversation: grown.conversation,
+				message: grown.message,
+				file,
+			}) {
+				Ok(record) =>
+					match FileSystem.append_message!(key, record) {
+						Ok({}) => HttpAnswer.see_other(key.url_path())
+						Err(fault) => failed(fault)
+					}
+				Err(FileFull) => refused_by_conversation("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
 			}
 		Err(Backdated) => refused_by_conversation("The message is dated before the conversation's latest.")
 		Err(Full) => refused_by_conversation("The conversation holds as many messages as it can.")

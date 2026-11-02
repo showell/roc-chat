@@ -45,9 +45,14 @@ const log = std.log.scoped(.file_primitives);
 /// only the root's counts, so the server's own log is untouched.)
 pub const std_options: std.Options = .{ .log_level = .err };
 
-/// The most bytes `read_utf8_bytes_from_file` answers: a larger file is a
-/// failed read, so one huge file can't exhaust the request's memory.
-pub const read_most = 16 * 1024 * 1024;
+/// **THE READ CAP, A SAFETY NET**: the most bytes
+/// `read_utf8_bytes_from_file` answers; a larger file is a failed read, so
+/// one huge file can't exhaust the request's memory. 17 MiB, strictly above
+/// the app's own limit on a transcript (16 MiB, `Transcript.most_bytes` in
+/// app/Transcript.roc, the rule's one home), so a file the app grew to its
+/// limit is always read: this cap is reached only by a file the app did
+/// not write.
+pub const read_most = 17 * 1024 * 1024;
 
 /// The longest path the rule allows, in bytes.
 pub const path_most = 1024;
@@ -487,6 +492,21 @@ test "read: found, missing, not UTF-8, refused" {
     // A folder is no file: failed, never missing.
     try testing.expectEqual(ReadAnswer.failed, root.read_utf8_bytes_from_file(a, "d"));
     for (refused_paths) |p| try testing.expectEqual(ReadAnswer.path_refused, root.read_utf8_bytes_from_file(a, p));
+}
+
+test "read: a file at the cap is read, one byte over it fails" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const root = test_root(&tmp);
+    const big = try a.alloc(u8, read_most + 1);
+    @memset(big, 'a');
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "at", .data = big[0..read_most] });
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "over", .data = big });
+    try testing.expectEqual(read_most, root.read_utf8_bytes_from_file(a, "at").found.len);
+    try testing.expectEqual(ReadAnswer.failed, root.read_utf8_bytes_from_file(a, "over"));
 }
 
 test "append: made when missing, then at the end; refused, not UTF-8, no folder" {

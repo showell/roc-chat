@@ -47,11 +47,42 @@ Transcript :: [].{
 		to_utf8_bytes = |Transcript.Utf8TranscriptMessage.(bytes)| bytes
 	}
 
+	## **THE MOST BYTES A TRANSCRIPT FILE HOLDS, THE LIMIT'S ONE HOME**:
+	## 16 MiB. `message_record` refuses a record that would grow the file
+	## past it, so every transcript the chat writes stays one the host will
+	## read. The host's own read cap (`read_most`, host/file_primitives.zig)
+	## sits strictly above this, a safety net and never the rule.
+	most_bytes : U64
+	most_bytes = 16 * 1024 * 1024
+
 	## **THE RECORD OF `message`, THE LATEST OF `conversation`**, as the
-	## transcript file writes it: added at the end of the file that holds
-	## the conversation before it, the file holds `write(conversation)`.
-	message_record : Conversation, Message -> Transcript.Utf8TranscriptMessage
-	message_record = |conversation, message| Transcript.Utf8TranscriptMessage.(write_message(conversation, message).to_utf8())
+	## transcript file writes it: added at the end of `file`, the file that
+	## holds the conversation before it (`NoFile` when there is none yet),
+	## the file holds `write(conversation)`. Unless the file would then hold
+	## more than `most_bytes` (`FileFull`).
+	message_record : {
+		conversation : Conversation,
+		message : Message,
+		file : [NoFile, File(Transcript.Utf8Transcript)],
+	} -> Try(Transcript.Utf8TranscriptMessage, [FileFull])
+	message_record = |
+		{
+			conversation,
+			message,
+			file,
+		},
+	| {
+		record = write_message(conversation, message).to_utf8()
+		held =
+			match file {
+				NoFile => 0
+				File(Transcript.Utf8Transcript.(bytes)) => bytes.len()
+			}
+		match room({ held, adding: record.len() }) {
+			Fits => Ok(Transcript.Utf8TranscriptMessage.(record))
+			Overflows => Err(FileFull)
+		}
+	}
 
 	## **A TRANSCRIPT FILE, DECODED**: `topic`'s conversation, as `read`
 	## reads it, or the first thing wrong with the file (not UTF-8 first).
@@ -86,6 +117,11 @@ Transcript :: [].{
 			read_onto(Conversation.empty(topic), records)
 		}
 }
+
+## **WHETHER `adding` BYTES FIT AFTER THE `held` A FILE HOLDS**, at most
+## `most_bytes` in all.
+room : { held : U64, adding : U64 } -> [Fits, Overflows]
+room = |{ held, adding }| if (held + adding <= Transcript.most_bytes) Fits else Overflows
 
 ## One message as the transcript writes it.
 write_message : Conversation, Message -> Str
@@ -142,3 +178,22 @@ read_message = |c, written| {
 		_ => Err(BadHead(id))
 	}
 }
+
+# ── tests
+# The limit, at and around it: a file may hold exactly `most_bytes`.
+expect
+	[
+		{ held: Transcript.most_bytes - 10, adding: 9 },
+		{ held: Transcript.most_bytes - 10, adding: 10 },
+		{ held: Transcript.most_bytes - 10, adding: 11 },
+		{ held: 0, adding: Transcript.most_bytes },
+		{ held: 0, adding: Transcript.most_bytes + 1 },
+	].map(room)
+		== [
+			Fits,
+			Fits,
+			Overflows,
+			Fits,
+			Overflows,
+		]
+expect Transcript.most_bytes == 16_777_216

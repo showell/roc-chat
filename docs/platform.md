@@ -29,7 +29,7 @@ The same tags mean the same thing everywhere:
 | `MissingDirectory` | A write's folder does not exist. Writes never make folders; `make_directory_and_its_parents!` does. |
 | `NotUtf8` | The bytes to write, or the bytes read, are not UTF-8. Nothing is written, and nothing is handed back. |
 | `PathRefused` | The path breaks the rule above, or passes through a link. |
-| `Failed` | Anything else: a disk error, a folder the server may not enter, a failed fsync, a file over 16 MiB. The host logs the primitive, the path and the error. |
+| `Failed` | Anything else: a disk error, a folder the server may not enter, a failed fsync, a file over 17 MiB. The host logs the primitive, the path and the error. |
 
 `Missing` and `Failed` are never one answer. A file that exists but can't be read must never look absent, or it would be written over.
 
@@ -38,7 +38,9 @@ The same tags mean the same thing everywhere:
 Each takes its path as bytes. Each write is durable before it answers: the file is fsynced, and so is every folder whose entries changed.
 
 **`read_utf8_bytes_from_file! : List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, NotUtf8, PathRefused] }`**
-The whole file, if it is UTF-8 and at most 16 MiB. `bytes` is empty except when the status is `Found`. *Why:* the chat reads a conversation whole.
+The whole file, if it is UTF-8 and at most 17 MiB (`read_most`). `bytes` is empty except when the status is `Found`. *Why:* the chat reads a conversation whole.
+
+**The cap is a safety net, not the rule.** The app limits a transcript to 16 MiB (`Transcript.most_bytes` in `app/Transcript.roc`, its one home): a message whose record would grow the file past that is refused with a 409, before anything is appended. The host's cap sits strictly above it, so every file the app wrote stays readable, and only a file the app did not write can reach it. Without the app's limit, a conversation appended past the cap would answer 500 to every GET and POST for good.
 
 **`append_utf8_bytes_to_file! : List(U8), List(U8) => [Appended, Failed, MissingDirectory, NotUtf8, PathRefused]`**
 Opens the file with `O_APPEND` and makes it when it is missing (then also fsyncs the folder). It writes the bytes and fsyncs the file. A failed fsync answers `Failed`, but the bytes may already be in the file: the answer means they may not last, not that they are absent. *Why:* a message is one record appended to its transcript.

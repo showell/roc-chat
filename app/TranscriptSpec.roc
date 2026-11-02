@@ -241,8 +241,13 @@ expect {
 grown_on_disk : Conversation, Message.Arrival(Author) -> { bytes : List(U8), grown : Conversation }
 grown_on_disk = |before, arrived| {
 	grown = before.append(arrived) ?? crash "TranscriptSpec: a sample's message fits"
-	record = Transcript.message_record(grown.conversation, grown.message)
-	{ bytes: Transcript.write(before).to_utf8().concat(record.to_utf8_bytes()), grown: grown.conversation }
+	file = Transcript.write(before).to_utf8()
+	record = Transcript.message_record({
+		conversation: grown.conversation,
+		message: grown.message,
+		file: File(Transcript.Utf8Transcript.unchecked_from_file(file)),
+	}) ?? crash "TranscriptSpec: a sample's record fits"
+	{ bytes: file.concat(record.to_utf8_bytes()), grown: grown.conversation }
 }
 
 expect
@@ -253,9 +258,34 @@ expect
 				and Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(on_disk.bytes)) == Ok(on_disk.grown)
 		},
 	)
+
+## The first message's record (73 bytes) after `file`, as a test reads it.
+hello_record : [NoFile, File(Transcript.Utf8Transcript)] -> Try(List(U8), [FileFull])
+hello_record = |file|
+	Transcript.message_record({
+		conversation: Sample.hello_and_reply,
+		message: Sample.hello_and_reply.messages().first() ?? crash "TranscriptSpec: hello is first",
+		file,
+	}).map_ok(|record| record.to_utf8_bytes())
+
+## A file of `n` bytes, which only its length matters to.
+file_of : U64 -> [NoFile, File(Transcript.Utf8Transcript)]
+file_of = |n| File(Transcript.Utf8Transcript.unchecked_from_file(List.repeat('a', n)))
+
+expect hello_record(NoFile) == Ok("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8())
+# A record that would grow the file past the most is refused: at the most,
+# one byte under and one byte over.
 expect
-	Transcript.message_record(Sample.hello_and_reply, Sample.hello_and_reply.messages().first() ?? crash "TranscriptSpec: hello is first").to_utf8_bytes()
-		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8()
+	[
+		Transcript.most_bytes - 73,
+		Transcript.most_bytes - 74,
+		Transcript.most_bytes - 72,
+	].map(|n| hello_record(file_of(n)).map_ok(|bytes| bytes.len()))
+		== [
+			Ok(73),
+			Ok(73),
+			Err(FileFull),
+		]
 # Decoding the file's bytes: not UTF-8, empty, and a refusal of the text.
 expect
 	[
