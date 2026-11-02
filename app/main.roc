@@ -45,6 +45,7 @@ words : [
 			BadHead(Message.Id),
 			Author(Message.Id, [Blank, ControlByte]),
 			Time(Message.Id, [WrongShape, OutOfRange]),
+			BadBody(Message.Id),
 			Full,
 		],
 	),
@@ -78,6 +79,7 @@ words = |why|
 				OutOfRange,
 			),
 		) => "message ${id.to_str()}'s date is no time a calendar and clock show"
+		Transcript(BadBody(id)) => "message ${id.to_str()} holds the separator, unescaped, on a line of its own"
 		Transcript(Full) => "it holds more messages than a conversation can"
 	}
 
@@ -123,6 +125,7 @@ expect {
 		Transcript(Author(second, ControlByte)),
 		Transcript(Time(second, WrongShape)),
 		Transcript(Time(second, OutOfRange)),
+		Transcript(BadBody(second)),
 		Transcript(Full),
 	].map(words)
 		== [
@@ -138,6 +141,7 @@ expect {
 			"message 2's author holds a control character",
 			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",
 			"message 2's date is no time a calendar and clock show",
+			"message 2 holds the separator, unescaped, on a line of its own",
 			"it holds more messages than a conversation can",
 		]
 }

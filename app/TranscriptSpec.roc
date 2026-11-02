@@ -7,15 +7,17 @@ import Transcript
 TranscriptSpec :: [].{}
 
 ## **A RECORD'S LINES, AS A TEST WRITES THEM**: its head, its `from:` and
-## `date:` lines, and `gap`, the empty line after them, or not.
+## `date:` lines, `gap`, the empty line after them, or not, and its body as
+## written on disk.
 Lines : {
 	head : Str,
 	from : Str,
 	date : Str,
 	gap : Str,
+	body : Str,
 }
 
-## A record with its lines as given, saying "hi".
+## A record with its lines as given.
 record : Lines -> Str
 record = |
 	{
@@ -23,8 +25,9 @@ record = |
 		from,
 		date,
 		gap,
+		body,
 	},
-| "-------------\n${head}\n${from}\n${date}\n${gap}hi\n\n"
+| "-------------\n${head}\n${from}\n${date}\n${gap}${body}\n\n"
 
 ## Message 1's lines, written well.
 first : Lines
@@ -33,6 +36,7 @@ first = {
 	from: "from: Steve",
 	date: "date: 2026-11-02T19:11:32Z",
 	gap: "\n",
+	body: "hi",
 }
 
 ## Message 2's lines, written well.
@@ -42,6 +46,7 @@ second = {
 	from: "from: CC",
 	date: "date: 2026-11-02T19:12:28Z",
 	gap: "\n",
+	body: "hi",
 }
 
 ## The transcript holding only message 1 as `lines` write it.
@@ -105,6 +110,10 @@ expect one_with({
 	..first,
 	date: "date: 2026-13-02T19:11:32Z",
 }) == Err(Time(Sample.first, OutOfRange))
+# A body line that is the bare separator, which no writer makes, beside
+# the escaped one a writer does.
+expect one_with({ ..first, body: "a\n-------------" }) == Err(BadBody(Sample.first))
+expect again(record({ ..first, body: "a\n\\-------------" })) == Ok(record({ ..first, body: "a\n\\-------------" }))
 # The same at message 2, after a good message 1.
 expect again("${record(first)}${record(second)}") == Ok("${record(first)}${record(second)}")
 expect two_with({ ..second, head: "MSG_plans_1" }) == Err(BadHead(Sample.second))
@@ -122,6 +131,10 @@ expect two_with({
 	..second,
 	date: "date: 2026-02-29T19:12:28Z",
 }) == Err(Time(Sample.second, OutOfRange))
+expect two_with({ ..second, body: "a\n-------------" }) == Err(BadBody(Sample.second))
+expect
+	again("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
+		== Ok("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
 # Another topic's transcript is refused by its references.
 expect Transcript.read(Sample.other, Transcript.write(Sample.two)) == Err(BadHead(Sample.first))
 # A body that holds the separator, or a backslash before it, is written

@@ -11,7 +11,8 @@
 ## Each message opens with the separator, then its reference
 ## (`Message.reference`), its author, its time, an empty line, its markdown
 ## and an empty line. A conversation with no messages is an empty file. No
-## message's markdown can forge the start of another (Separator).
+## message's markdown can forge the start of another, and a body holding
+## the bare separator, which no writer makes, is refused (Separator).
 import Author
 import Conversation
 import Message
@@ -52,6 +53,7 @@ Transcript :: [].{
 			BadHead(Message.Id),
 			Author(Message.Id, [Blank, ControlByte]),
 			Time(Message.Id, [WrongShape, OutOfRange]),
+			BadBody(Message.Id),
 			Full,
 		],
 	)
@@ -96,7 +98,7 @@ read_message = |c, written| {
 			date = date_line.drop_prefix("date: ")
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
 			time = Timestamp.from_str(date).map_err(|why| Time(id, why))?
-			markdown = Separator.unescape(Str.join_with(body, "\n"))
+			markdown = Separator.unescape(Str.join_with(body, "\n")).map_err(|BareSeparator| BadBody(id))?
 			c.append({ payload: { author, markdown }, time })
 		}
 		_ => Err(BadHead(id))
