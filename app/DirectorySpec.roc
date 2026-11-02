@@ -1,44 +1,14 @@
-## **DIRECTORY'S TESTS**: users numbered and named in one namespace with
-## the channels, agents owned only by humans, a name and an id held to
-## match, and channels shaped by an admin.
+## **DIRECTORY'S TESTS**: one namespace for humans, agents and channels,
+## each name refused when taken in any case by any kind; the order of the
+## refusals; and the users and channels it holds, changed through it.
 import Admin
 import ChannelName
 import Directory
 import Sample
 import UserId
+import Users
 
 DirectorySpec :: [].{}
-
-## A user's id, name and role, as a test compares them.
-summary : Directory.User -> {
-	id : Str,
-	name : Str,
-	role : Str,
-}
-summary = |u| {
-	id: u.id().to_str(),
-	name: u.name().to_str(),
-	role: role_of(u),
-}
-
-## A user's role, in words.
-role_of : Directory.User -> Str
-role_of = |u|
-	match u.role() {
-		Human => "human"
-		Agent({ owner }) => "agent of ${owner.to_str()}"
-	}
-
-## The id `count` after Steve's.
-after_steve : U64 -> UserId
-after_steve = |count| List.repeat({}, count).fold(
-	UserId.steve,
-	|at, {}| at.next() ?? crash "DirectorySpec: a test's id fits",
-)
-
-## The sample directory's first id that is no user's.
-stranger : UserId
-stranger = after_steve(3)
 
 ## The channel named `text`, which a test's always is.
 channel_name : Str -> ChannelName
@@ -57,80 +27,66 @@ with_plans = (
 	}) ?? crash "DirectorySpec: plans is free"
 ).directory
 
-## Who `text` would be, added as a human to `directory`, or why not.
-human_added : Directory,
-Str -> Try(
-	{
-		id : Str,
-		name : Str,
-		role : Str,
-	},
-	[Full, NameTaken],
-)
-human_added = |
-	directory,
-	text,
-| directory.add_human(Sample.name(text)).map_ok(|grown| summary(grown.added))
+## **A HUMAN OF ANOTHER DIRECTORY**: Zed, id 1 of their own.
+zed : Users.Human
+zed = (Directory.founded_by(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1").as_human() ?? crash "DirectorySpec: Zed is a human"
 
-## Who `text` would be, added to `directory` as an agent of `owner`, or why
-## not.
+## The id and name of who `text` would be, added as a human to
+## `directory`, or why not.
+human_added : Directory, Str -> Try((Str, Str), [Full, NameTaken])
+human_added = |directory, text|
+	directory.add_human(Sample.name(text)).map_ok(
+		|grown| (
+			grown.added.id().to_str(),
+			grown.added.name().to_str(),
+		),
+	)
+
+## The id and name of who `name` would be, added to `directory` as an
+## agent of `owner`, or why not.
 agent_added : Directory,
-{ name : Str, owner : UserId } -> Try(
-	{
-		id : Str,
-		name : Str,
-		role : Str,
-	},
+{ name : Str, owner : Users.Human } -> Try(
+	(Str, Str),
 	[
 		NoSuchOwner,
-		OwnerIsAgent,
 		Full,
 		NameTaken,
 	],
 )
-agent_added = |directory, { name, owner }| directory.add_agent({
-	name: Sample.name(name),
-	owner,
-}).map_ok(|grown| summary(grown.added))
+agent_added = |directory, { name, owner }|
+	directory.add_agent({ name: Sample.name(name), owner }).map_ok(
+		|grown| (
+			grown.added.id().to_str(),
+			grown.added.name().to_str(),
+		),
+	)
 
-# Steve starts every directory, a human, id 1.
-expect Directory.founded_by(Sample.name("Steve Howell")).users().map(summary) == [
-	{
-		id: "1",
-		name: "Steve Howell",
-		role: "human",
-	},
-]
-# Each user takes the next id, humans and agents in one count.
-expect
-	Sample.directory.users().map(summary)
-		== [
-			{
-				id: "1",
-				name: "Steve",
-				role: "human",
-			},
-			{
-				id: "2",
-				name: "Apoorva",
-				role: "human",
-			},
-			{
-				id: "3",
-				name: "CC",
-				role: "agent of 1",
-			},
-		]
-expect human_added(Sample.directory, "Damian") == Ok({
-	id: "4",
-	name: "Damian",
-	role: "human",
-})
-expect agent_added(Sample.directory, { name: "LC", owner: UserId.steve }) == Ok({
-	id: "4",
-	name: "LC",
-	role: "agent of 1",
-})
+## The name of the channel `text` would be, created in `directory`, or why
+## not.
+channel_created : Directory, Str -> Try(Str, [NameTaken])
+channel_created = |directory, text|
+	directory.create_channel({
+		by: admin,
+		name: channel_name(text),
+	}).map_ok(|grown| grown.created.name().to_str())
+
+# Steve starts every directory, a human, id 1, and no channels; his name
+# is taken from the start.
+expect {
+	founded = Directory.founded_by(Sample.name("Steve Howell"))
+	(founded.users().to_list().map(|u| u.name().to_str()), founded.channels().to_list())
+		== (["Steve Howell"], [])
+}
+expect human_added(
+	Directory.founded_by(Sample.name("Steve Howell")),
+	"steve howell",
+) == Err(NameTaken)
+# A user joins at the users' next id, a human or an agent.
+expect human_added(Sample.directory, "Damian") == Ok(("4", "Damian"))
+expect agent_added(
+	Sample.directory,
+	{ name: "LC", owner: Sample.human("Steve") },
+) == Ok(("4", "LC"))
 # A name taken by a human or an agent, in any case, is refused; a name
 # that differs by more than case is not.
 expect
@@ -144,241 +100,86 @@ expect
 	].map(|text| human_added(Sample.directory, text))
 		== List.repeat(Err(NameTaken), 6)
 expect
-	[
-		"Apoorvaa",
-		"Apoorv",
-		"C C",
-	].map(|text| human_added(Sample.directory, text).map_ok(|added| added.name))
+	["Apoorvaa", "Apoorv", "C C"].map(|text| human_added(Sample.directory, text))
 		== [
-			Ok("Apoorvaa"),
-			Ok("Apoorv"),
-			Ok("C C"),
+			Ok(("4", "Apoorvaa")),
+			Ok(("4", "Apoorv")),
+			Ok(("4", "C C")),
 		]
-expect agent_added(Sample.directory, { name: "apoorva", owner: UserId.steve }) == Err(NameTaken)
+expect agent_added(
+	Sample.directory,
+	{ name: "apoorva", owner: Sample.human("Steve") },
+) == Err(NameTaken)
 # A channel's name is in the same namespace: a user can't take it, in any
-# case, and a channel can't take a user's.
+# case, and a channel can't take a user's or another channel's.
 expect
 	["plans", "Plans", "PLANS"].map(|text| human_added(with_plans, text))
-		== [
-			Err(NameTaken),
-			Err(NameTaken),
-			Err(NameTaken),
-		]
-expect agent_added(with_plans, { name: "Plans", owner: UserId.steve }) == Err(NameTaken)
-expect human_added(with_plans, "Plansy") == Ok({
-	id: "4",
-	name: "Plansy",
-	role: "human",
-})
+		== List.repeat(Err(NameTaken), 3)
+expect agent_added(with_plans, { name: "Plans", owner: Sample.human("Steve") }) == Err(NameTaken)
+expect human_added(with_plans, "Plansy") == Ok(("4", "Plansy"))
 expect
-	[
-		"Steve",
-		"steve",
-		"apoorva",
-		"cc",
-	].map(
-		|text| Sample.directory.create_channel({
-			by: admin,
-			name: channel_name(text),
-		}).map_ok(|grown| grown.created.name()),
-	)
+	["Steve", "steve", "apoorva", "cc"].map(|text| channel_created(Sample.directory, text))
 		== List.repeat(Err(NameTaken), 4)
-expect
-	["plans", "Plans"].map(
-		|text| with_plans.create_channel({
-			by: admin,
-			name: channel_name(text),
-		}).map_ok(|grown| grown.created.name()),
-	)
-		== [Err(NameTaken), Err(NameTaken)]
-expect
-	with_plans.create_channel({
-		by: admin,
-		name: channel_name("general"),
-	}).map_ok(|grown| grown.created.name().to_str())
-		== Ok("general")
-# An agent's owner is a user, and a human, checked before its name.
-expect
-	agent_added(Sample.directory, { name: "Bot", owner: Sample.user("Apoorva").id() })
-		== Ok({
-			id: "4",
-			name: "Bot",
-			role: "agent of 2",
-		})
-expect agent_added(Sample.directory, { name: "Bot", owner: stranger }) == Err(NoSuchOwner)
-expect agent_added(
-	Sample.directory,
-	{ name: "Bot", owner: Sample.user("CC").id() },
-) == Err(OwnerIsAgent)
-expect agent_added(
-	Sample.directory,
-	{ name: "CC", owner: Sample.user("CC").id() },
-) == Err(OwnerIsAgent)
-expect agent_added(Sample.directory, { name: "CC", owner: stranger }) == Err(NoSuchOwner)
-# The last id at, under and over the highest: 254 users take one more,
-# the 255th, and then none, human or agent. `Full` is asked before the
-# name and after the owner.
+expect ["plans", "Plans"].map(|text| channel_created(with_plans, text)) == [
+	Err(NameTaken),
+	Err(NameTaken),
+]
+expect channel_created(with_plans, "general") == Ok("general")
+# An agent's owner must be one of the directory's humans.
+expect agent_added(Sample.directory, { name: "Bot", owner: zed }) == Err(NoSuchOwner)
+# The order of refusals, on a directory with no id left: the owner, then
+# `Full`, then the name. A name that is taken is not reached.
 expect {
 	almost = Sample.crowded(251)
 	full = (almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits").directory
 	{
-		count: almost.users().len(),
 		last: human_added(almost, "Last"),
-		full_count: full.users().len(),
 		human: human_added(full, "Zoë"),
-		agent: agent_added(full, { name: "Bot", owner: UserId.steve }),
 		taken: human_added(full, "Steve"),
-		no_owner: agent_added(full, { name: "Bot", owner: Sample.user("CC").id() }),
+		agent: agent_added(full, { name: "Bot", owner: Sample.human("Steve") }),
+		agent_taken: agent_added(full, { name: "Steve", owner: Sample.human("Steve") }),
+		no_owner: agent_added(full, { name: "Bot", owner: zed }),
+		no_owner_taken: agent_added(full, { name: "Steve", owner: zed }),
 	}
 		== {
-			count: 254,
-			last: Ok({
-				id: "255",
-				name: "Last",
-				role: "human",
-			}),
-			full_count: 255,
+			last: Ok(("255", "Last")),
 			human: Err(Full),
-			agent: Err(Full),
 			taken: Err(Full),
-			no_owner: Err(OwnerIsAgent),
+			agent: Err(Full),
+			agent_taken: Err(Full),
+			no_owner: Err(NoSuchOwner),
+			no_owner_taken: Err(NoSuchOwner),
 		}
 }
-# A user found by id, or none.
-expect [
-	UserId.steve,
-	after_steve(2),
-].map(|id| Sample.directory.user(id).map_ok(summary).map_ok(|s| s.name)) == [Ok("Steve"), Ok("CC")]
-expect Sample.directory.user(stranger) == Err(NoSuchUser)
-# A name and an id together: theirs exactly, or refused, case included.
-expect Sample.directory.check({ id: UserId.steve, name: Sample.name("Steve") }) == Ok(Sample.steve)
-expect
-	[
-		Sample.name("steve"),
-		Sample.name("Apoorva"),
-		Sample.name("Steve Howell"),
-	].map(|name| Sample.directory.check({ id: UserId.steve, name }))
-		== List.repeat(Err(NameMismatch), 3)
-expect Sample.directory.check({ id: stranger, name: Sample.name("Steve") }) == Err(NoSuchUser)
-# A user as an author, and their files' stem.
-expect Sample.directory.users().map(|u| (u.author().to_str(), u.stem())) == [
-	("Steve", "steve-1"),
-	("Apoorva", "apoorva-2"),
-	("CC", "cc-3"),
-]
-# A channel starts empty, and is found by its exact name.
-expect
-	Sample.directory.create_channel({ by: admin, name: channel_name("plans") }).map_ok(
-		|grown| (
-			grown.created.name().to_str(),
-			grown.created.members(),
-		),
-	)
-		== Ok(("plans", []))
-expect with_plans.channel(channel_name("plans")).map_ok(|c| c.name().to_str()) == Ok("plans")
-expect with_plans.channel(channel_name("Plans")) == Err(NoSuchChannel)
-expect Sample.directory.channel(channel_name("plans")) == Err(NoSuchChannel)
-# Admitting: humans and agents, each once; the members in id order.
-## `directory`'s `plans` with each of `ids` admitted in turn.
-admitted : Directory, List(UserId) -> Directory
-admitted = |directory, ids|
-	ids.fold(
-		directory,
-		|so_far, member| so_far.admit({
-			by: admin,
-			channel: channel_name("plans"),
-			member,
-		}) ?? crash "DirectorySpec: a test's member is admitted",
-	)
-
-## The sample's `plans`, with all three of its users.
-everyone : Directory
-everyone = admitted(
-	with_plans,
-	[
-		after_steve(2),
-		after_steve(1),
-		UserId.steve,
-	],
-)
-
-## The ids of `directory`'s `plans`'s members.
-members_of : Directory -> Try(List(Str), [NoSuchChannel])
-members_of = |directory| directory.channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
-
-expect members_of(everyone) == Ok(["1", "2", "3"])
-expect members_of(admitted(with_plans, [after_steve(2)])) == Ok(["3"])
-expect
-	everyone.channel(channel_name("plans")).map_ok(
-		|c| (
-			c.has_member(UserId.steve),
-			c.has_member(stranger),
-		),
-	)
-		== Ok((Bool.True, Bool.False))
-expect
-	[
-		everyone.admit({
-			by: admin,
-			channel: channel_name("plans"),
-			member: UserId.steve,
-		}),
-		with_plans.admit({
-			by: admin,
-			channel: channel_name("general"),
-			member: UserId.steve,
-		}),
-		with_plans.admit({
-			by: admin,
-			channel: channel_name("plans"),
-			member: stranger,
-		}),
-		with_plans.admit({
-			by: admin,
-			channel: channel_name("general"),
-			member: stranger,
-		}),
-	].map(|answer| answer.map_ok(members_of))
-		== [
-			Err(AlreadyMember),
-			Err(NoSuchChannel),
-			Err(NoSuchUser),
-			Err(NoSuchChannel),
-		]
-# Removing: a member goes, once; the rest stay.
-expect
-	everyone.remove({
+# Members change through the directory, as its channels change them.
+expect {
+	admitted = with_plans.admit({
 		by: admin,
 		channel: channel_name("plans"),
-		member: after_steve(1),
-	}).map_ok(members_of)
-		== Ok(Ok(["1", "3"]))
-expect
+		member: Sample.user("CC"),
+	}) ?? crash "DirectorySpec: CC joins plans"
+	removed = admitted.remove({
+		by: admin,
+		channel: channel_name("plans"),
+		member: Sample.user("CC"),
+	}) ?? crash "DirectorySpec: CC leaves plans"
 	[
+		admitted,
+		removed,
+	].map(|d| d.channels().channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str)))
+		== [Ok(["3"]), Ok([])]
+}
+expect
+	(
+		with_plans.admit({
+			by: admin,
+			channel: channel_name("general"),
+			member: Sample.steve,
+		}),
 		with_plans.remove({
 			by: admin,
 			channel: channel_name("plans"),
-			member: UserId.steve,
+			member: Sample.steve,
 		}),
-		everyone.remove({
-			by: admin,
-			channel: channel_name("general"),
-			member: UserId.steve,
-		}),
-		everyone.remove({
-			by: admin,
-			channel: channel_name("plans"),
-			member: stranger,
-		}),
-		everyone.remove({
-			by: admin,
-			channel: channel_name("general"),
-			member: stranger,
-		}),
-	].map(|answer| answer.map_ok(members_of))
-		== [
-			Err(NotMember),
-			Err(NoSuchChannel),
-			Err(NoSuchUser),
-			Err(NoSuchChannel),
-		]
+	)
+		== (Err(NoSuchChannel), Err(NotMember))

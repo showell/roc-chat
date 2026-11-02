@@ -10,7 +10,7 @@
 ## can't be built.
 import Conversation
 import DateTime
-import Directory
+import Users
 import Topic
 import UserId
 
@@ -21,8 +21,8 @@ Dm :: { low : UserId, high : UserId }.{
 	## the message's markdown and time. Both are the directory's users, so
 	## each is known to be a human or an agent.
 	Start : {
-		from : Directory.User,
-		to : Directory.User,
+		from : Users.User,
+		to : Users.User,
 		topic : Topic,
 		markdown : Str,
 		time : DateTime,
@@ -68,7 +68,7 @@ Dm :: { low : UserId, high : UserId }.{
 }
 
 ## Nothing, if `user` is a human; else the refusal naming them.
-human_only : Directory.User -> Try({}, [Agent(UserId)])
+human_only : Users.User -> Try({}, [Agent(UserId)])
 human_only = |user|
 	match user.role() {
 		Human => Ok({})

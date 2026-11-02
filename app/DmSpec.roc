@@ -2,7 +2,7 @@
 ## humans only, named by its pair in numeric order; and no DM's name is a
 ## channel's.
 import ChannelName
-import Directory
+import Users
 import DateTime
 import Dm
 import Message
@@ -18,7 +18,7 @@ noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "DmSpec: a time"
 
 ## **WHO A TEST'S DM IS BETWEEN**: its first message's writer, and who it
 ## is to.
-Ends : { from : Directory.User, to : Directory.User }
+Ends : { from : Users.User, to : Users.User }
 
 ## A DM started from `from` to `to`, in `plans`, saying hello at noon.
 started : Ends -> Try({ dm : Dm, conversation : _ }, [Agent(UserId)])
@@ -42,9 +42,9 @@ named = |pair|
 	)
 
 ## The users the crowded sample numbers 9 and 10.
-nine_and_ten : { nine : Directory.User, ten : Directory.User }
+nine_and_ten : { nine : Users.User, ten : Users.User }
 nine_and_ten = {
-	users = Sample.crowded(7).users()
+	users = Sample.crowded(7).users().to_list()
 	when_found = |at| users.get(at) ?? crash "DmSpec: the crowded sample has ten users"
 	{ nine: when_found(8), ten: when_found(9) }
 }

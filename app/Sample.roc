@@ -9,6 +9,7 @@ import DateTime
 import Name
 import Topic
 import UserId
+import Users
 
 Sample :: [].{
 
@@ -99,9 +100,11 @@ Sample :: [].{
 	directory = {
 		founded = Directory.founded_by(Sample.name("Steve"))
 		with_apoorva = (founded.add_human(Sample.name("Apoorva")) ?? crash "Sample.directory: Apoorva's name is free").directory
+		founder = with_apoorva.users().user(UserId.steve) ?? crash "Sample.directory: Steve is id 1"
+		owner = founder.as_human() ?? crash "Sample.directory: Steve is a human"
 		with_cc = with_apoorva.add_agent({
 			name: Sample.name("CC"),
-			owner: UserId.steve,
+			owner,
 		}) ?? crash "Sample.directory: CC's name is free"
 		with_cc.directory
 	}
@@ -116,19 +119,26 @@ Sample :: [].{
 		)
 
 	## Steve, in the sample directory.
-	steve : Directory.User
+	steve : Users.User
 	steve = Sample.user("Steve")
 
 	## The sample directory's user named `text`, which it holds.
-	user : Str -> Directory.User
+	user : Str -> Users.User
 	user = |text|
-		Sample.directory.users().find_first(|u| u.name().to_str() == text) ?? crash "Sample.user: the sample directory holds ${text}"
+		Sample.directory.users().to_list().find_first(|u| u.name().to_str() == text) ?? crash "Sample.user: the sample directory holds ${text}"
+
+	## The sample directory's human named `text`, which it holds.
+	human : Str -> Users.Human
+	human = |text| Sample.user(text).as_human() ?? crash "Sample.human: ${text} is a human"
 }
 
 ## `at`, below 676, as two letters: 0 is `aa`, 1 `ab`, 26 `ba`.
 place_in_letters : U64 -> Str
 place_in_letters = |at|
-	Str.from_utf8(['a' + (at // 26).to_u8_wrap(), 'a' + (at % 26).to_u8_wrap()]) ?? crash "Sample.place_in_letters: letters are UTF-8"
+	Str.from_utf8([
+		'a' + (at // 26).to_u8_wrap(),
+		'a' + (at % 26).to_u8_wrap(),
+	]) ?? crash "Sample.place_in_letters: letters are UTF-8"
 
 ## `so_far` with `count` more of Steve's hello.
 filled : { so_far : Conversation, count : U64 } -> Conversation
