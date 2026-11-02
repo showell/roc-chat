@@ -172,21 +172,8 @@ refused = |why| {
 
 ## **A TRANSCRIPT FILE THAT WON'T DECODE**: the server's, a 500, saying
 ## why in `TranscriptRefusal`'s words.
-unreadable : _ -> Http.Response
-unreadable = |why| {
-	refusal =
-		match why {
-			NotUtf8 => TranscriptNotUtf8
-			BadEnds => Transcript(BadEnds)
-			BadHead(id) => Transcript(BadHead(id))
-			Author(id, fault) => Transcript(Author(id, fault))
-			DateTime(id, fault) => Transcript(DateTime(id, fault))
-			BadBody(id) => Transcript(BadBody(id))
-			Backdated(id) => Transcript(Backdated(id))
-			Full => Transcript(Full)
-		}
-	HttpAnswer.page(500, Page.refusal(TranscriptRefusal.words(refusal)))
-}
+unreadable : TranscriptRefusal.Why -> Http.Response
+unreadable = |why| HttpAnswer.page(500, Page.refusal(TranscriptRefusal.words(why)))
 
 ## **THE FILE SYSTEM FAILED**: a 500, naming what the host answered (and
 ## the host's log says which file, and why).

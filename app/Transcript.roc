@@ -19,6 +19,7 @@ import Message
 import Separator
 import DateTime
 import Topic
+import TranscriptRefusal
 
 Transcript :: [].{
 
@@ -28,9 +29,9 @@ Transcript :: [].{
 	## Opaque, and only `decode` opens one.
 	Utf8Transcript :: List(U8).{
 
-		## **THE BYTES OF A TRANSCRIPT FILE, UNCHECKED**: the file system's
-		## door, for bytes just read. Nothing is checked here: `decode` checks
-		## everything.
+		## **THE BYTES OF A TRANSCRIPT FILE, UNCHECKED**: the door for bytes
+		## just read from a file (`FileSystem`'s read, the demo's). Nothing is
+		## checked here: `decode` checks everything.
 		unchecked_from_file : List(U8) -> Transcript.Utf8Transcript
 		unchecked_from_file = |bytes| Transcript.Utf8Transcript.(bytes)
 	}
@@ -53,12 +54,14 @@ Transcript :: [].{
 	message_record = |conversation, message| Transcript.Utf8TranscriptMessage.(write_message(conversation, message).to_utf8())
 
 	## **A TRANSCRIPT FILE, DECODED**: `topic`'s conversation, as `read`
-	## reads it, or the first thing wrong with the file (`NotUtf8` first).
+	## reads it, or the first thing wrong with the file (not UTF-8 first).
+	## **ITS REFUSAL IS `TranscriptRefusal`'S TYPE**, made here and nowhere
+	## else, so every reader of a file words it as it comes.
 	decode : Topic, Transcript.Utf8Transcript -> Try(Conversation, _)
 	decode = |topic, Transcript.Utf8Transcript.(bytes)|
 		match Str.from_utf8(bytes) {
-			Ok(text) => Transcript.read(topic, text)
-			Err(_) => Err(NotUtf8)
+			Ok(text) => Transcript.read(topic, text).map_err(|why| Transcript(why))
+			Err(_) => Err(TranscriptNotUtf8)
 		}
 
 	## The transcript of the whole conversation.
@@ -70,7 +73,8 @@ Transcript :: [].{
 
 	## `topic`'s conversation, each message appended in turn, or the first
 	## thing wrong with the transcript, as tags inferred from the body
-	## (main's `Refusal` is the one list of them, and puts them in words).
+	## (`TranscriptRefusal.Why` lists them, under `Transcript`, and puts
+	## them in words).
 	read : Topic, Str -> Try(Conversation, _)
 	read = |topic, text|
 		if (text.is_empty())

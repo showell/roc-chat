@@ -1,7 +1,9 @@
 ## **EVERY WAY A TRANSCRIPT IS REFUSED, AND THE WORDS FOR EACH**: the tags
 ## the demo's door (main's `conversation`) and the server's read of a
 ## transcript file meet, each module's tags under the step that met them,
-## and the one place they become a sentence.
+## and the one place they become a sentence. `Transcript.decode` answers
+## its refusals as these tags itself, so a reader of a file passes them on
+## and never maps them.
 import Message
 import Name
 import StrictName

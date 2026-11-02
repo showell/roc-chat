@@ -2,8 +2,9 @@
 ## until it exists.
 ##
 ## - `page` (the demo, host/demo.zig): a topic's name and its transcript in,
-##   its page out. The host's bytes become unchecked text
-##   (`UnvalidatedString`), then a Conversation or a refusal's tags
+##   its page out. The topic's bytes become unchecked text
+##   (`UnvalidatedString`), the transcript's an unchecked file
+##   (`Transcript.Utf8Transcript`), then a Conversation or a refusal's tags
 ##   (`TranscriptRefusal` puts them in words).
 ## - `handle_http_request!` (the server, host/http.zig): a request in, its
 ##   response out. `Route` chooses the answer; `ConversationRoute` gives it.
@@ -29,6 +30,7 @@ import Page
 import Route
 import SignedIn
 import Topic
+import Transcript
 import TranscriptRefusal
 import UnvalidatedString
 import Users
@@ -44,13 +46,13 @@ page = |topic, transcript| {
 	answer.to_utf8()
 }
 
-## The conversation the host's bytes hold, decoded at the door.
+## The conversation the host's bytes hold, decoded at the door: the topic's
+## name checked, then the transcript file's bytes, by `Transcript.decode`.
 conversation : { topic : List(U8), transcript : List(U8) } -> Try(Conversation, _)
 conversation = |{ topic, transcript }| {
 	name = UnvalidatedString.from_utf8(topic) ? |NotUtf8| TopicNotUtf8
-	text = UnvalidatedString.from_utf8(transcript) ? |NotUtf8| TranscriptNotUtf8
 	checked = name.topic() ? |why| Topic(why)
-	text.conversation(checked).map_err(|why| Transcript(why))
+	Transcript.decode(checked, Transcript.Utf8Transcript.unchecked_from_file(transcript))
 }
 
 ## **ONE REQUEST, ANSWERED**: the route chosen, then answered, the host's
@@ -115,16 +117,17 @@ expect conversation({
 	topic: "plans".to_utf8(),
 	transcript: "\n".to_utf8(),
 }) == Err(Transcript(BadEnds))
-# The order: the topic's bytes, the transcript's, then the topic's name.
+# The order: the topic's bytes, the topic's name, then the transcript.
 expect conversation({ topic: [0xff], transcript: [0xff] }) == Err(TopicNotUtf8)
-expect conversation({ topic: "".to_utf8(), transcript: [0xff] }) == Err(TranscriptNotUtf8)
+expect conversation({ topic: "".to_utf8(), transcript: [0xff] }) == Err(Topic(Empty))
 expect conversation({ topic: "".to_utf8(), transcript: "\n".to_utf8() }) == Err(Topic(Empty))
 # The page, through the host's bytes: a conversation's, or the refusal's.
 expect page(
 	"plans".to_utf8(),
 	[],
 ) == Page.conversation(Conversation.empty(plans)).to_utf8()
-expect page("<b>".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
+expect page("plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
+expect page("<b>".to_utf8(), [0xff]) == Page.refusal("its topic does not start with an ASCII letter").to_utf8()
 
 ## The page a GET of `path` shows, as a test reads it.
 shown : Str -> Str

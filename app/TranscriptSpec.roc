@@ -264,7 +264,7 @@ expect
 		"\n".to_utf8(),
 	].map(|bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes)))
 		== [
-			Err(NotUtf8),
+			Err(TranscriptNotUtf8),
 			Ok(Conversation.empty(Sample.plans)),
-			Err(BadEnds),
+			Err(Transcript(BadEnds)),
 		]

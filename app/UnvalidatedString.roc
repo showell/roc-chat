@@ -3,20 +3,19 @@
 ## checking door says what it is. Opaque, with one way in, `from_utf8`, at
 ## main's door, and no way back to a `Str`: the only ways out are the
 ## checking doors below, each giving a checked type or a refusal's tags.
-## So no `Name`, `Topic`, `ChannelName`, `UserId`, `UserPair`, `DateTime`
-## or `Conversation` is ever built from outside text that skipped its
-## check.
+## So no `Name`, `Topic`, `ChannelName`, `UserId`, `UserPair` or `DateTime`
+## is ever built from outside text that skipped its check. A transcript
+## file's bytes have a door of their own, `Transcript.Utf8Transcript`,
+## which only `Transcript.decode` opens.
 ##
 ## **ONE OF THE TRUST BOUNDARIES**: this is the way in; `TrustedHtml` is
 ## the way out to a page, `SecureImageTag` rules which images a message
 ## may show, and `SignedIn` is who is acting. A security reader starts at
 ## any of the four.
 import ChannelName
-import Conversation
 import DateTime
 import Name
 import Topic
-import Transcript
 import UserId
 import UserPair
 
@@ -92,10 +91,6 @@ UnvalidatedString :: Str.{
 		if (lf.to_utf8().all(|b| b == ' ' or b == '\t' or b == '\n' or b == '\r')) Err(Blank) else Ok(lf)
 	}
 
-	## The conversation under `named`, as the transcript it is, checked by
-	## `Transcript.read`, its refusals as that reader names them.
-	conversation : UnvalidatedString, Topic -> Try(Conversation, _)
-	conversation = |UnvalidatedString.(text), named| Transcript.read(named, text)
 }
 
 # ── tests
@@ -176,8 +171,3 @@ expect
 			Err(Blank),
 			Err(Blank),
 		]
-expect {
-	plans = Topic.from_str("plans") ?? crash "UnvalidatedString's tests: a topic"
-	[wire([]).conversation(plans), wire("\n".to_utf8()).conversation(plans)]
-		== [Ok(Conversation.empty(plans)), Err(BadEnds)]
-}
