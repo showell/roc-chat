@@ -3,6 +3,9 @@
 ## and case-sensitive: someone who signs up as "Steve Howell" is never shown
 ## as "steve howell". Opaque, so `from_str` is the only way in.
 ##
+## **AT MOST `longest` CHARACTERS**, as `StrictName.longest` caps a strict
+## name, so a name fits a transcript's `from:` line and a page's header.
+##
 ## **LETTERS, AND SINGLE SPACES BETWEEN WORDS**: every character is a
 ## letter of the name's alphabet (`NameAlphabet`, an allowlist: ASCII's
 ## letters and the accented Latin ones) or a space, and the spaces fall
@@ -20,18 +23,28 @@ import StrictName
 Name :: Str.{
 
 	## The name `name`, or the first reason, in this order, it is refused:
-	## empty, a character outside the alphabet that is no space, or a space
-	## at either end or beside another.
-	from_str : Str -> Try(Name, [Empty, ForbiddenCharacter, BadSpacing])
+	## empty, longer than `longest`, a character outside the alphabet that
+	## is no space, or a space at either end or beside another. The length
+	## is asked before the characters, so a long text costs no more than a
+	## count.
+	from_str : Str -> Try(Name, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	from_str = |name|
 		if (name.is_empty())
 			Err(Empty)
+		else if (characters(name) > Name.longest)
+			Err(TooLong)
 		else if (!NameAlphabet.is_written_in(name))
 			Err(ForbiddenCharacter)
 		else if (name.starts_with(" ") or name.ends_with(" ") or name.contains("  "))
 			Err(BadSpacing)
 		else
 			Ok(Name.(name))
+
+	## **THE LONGEST NAME, IN CHARACTERS**: an accented letter is one
+	## character, though it is two bytes, so a name is at most twice this in
+	## bytes.
+	longest : U64
+	longest = 60
 
 	## The name, exactly as given.
 	to_str : Name -> Str
@@ -61,9 +74,14 @@ Name :: Str.{
 	is_eq : _
 }
 
+## How many characters `text` holds: its bytes but those that continue a
+## character (0x80 to 0xBF).
+characters : Str -> U64
+characters = |text| text.to_utf8().count_if(|b| b < 0x80 or b >= 0xC0)
+
 # ── tests
 ## The name `text`, as given, or why it is refused.
-named : Str -> Try(Str, [Empty, ForbiddenCharacter, BadSpacing])
+named : Str -> Try(Str, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 named = |text| Name.from_str(text).map_ok(Name.to_str)
 
 # Names of letters, with single spaces between words, kept as given.
@@ -108,8 +126,35 @@ expect
 		"  ",
 	].map(named)
 		== List.repeat(Err(BadSpacing), 5)
-# The order: a forbidden character is named before bad spacing.
+# The length at, under and over the longest, in ASCII letters and in
+# accented ones, which count one apiece though each is two bytes.
+expect Name.longest == 60
+expect
+	[
+		"a".repeat(59),
+		"a".repeat(60),
+		"a".repeat(61),
+		"é".repeat(60),
+		"é".repeat(61),
+		"Zoë ${"a".repeat(56)}",
+		"Zoë ${"a".repeat(57)}",
+	].map(|text| named(text).map_ok(|_| {}))
+		== [
+			Ok({}),
+			Ok({}),
+			Err(TooLong),
+			Ok({}),
+			Err(TooLong),
+			Ok({}),
+			Err(TooLong),
+		]
+# The order: empty, then the length, then a forbidden character, then
+# bad spacing.
 expect named(" Steve!") == Err(ForbiddenCharacter)
+expect named(" ${"a".repeat(60)}") == Err(TooLong)
+expect named("!${"a".repeat(60)}") == Err(TooLong)
+expect named("!${"a".repeat(59)}") == Err(ForbiddenCharacter)
+expect named(" ${"a".repeat(59)}") == Err(BadSpacing)
 # The key: names that differ only in case share one, accented letters
 # included; any other difference keeps them apart.
 ## The key of the name `text`, which a test's text always is.

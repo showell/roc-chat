@@ -8,7 +8,7 @@ import Name
 Author :: Name.{
 
 	## The author named `name`, refused as `Name.from_str` refuses it.
-	from_str : Str -> Try(Author, [Empty, ForbiddenCharacter, BadSpacing])
+	from_str : Str -> Try(Author, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	from_str = |name| Name.from_str(name).map_ok(Author.of)
 
 	## The author of that name.
@@ -31,11 +31,13 @@ Author :: Name.{
 expect
 	[
 		"",
+		"a".repeat(61),
 		"Ste\u(200b)ve",
 		" Steve",
 	].map(Author.from_str)
 		== [
 			Err(Empty),
+			Err(TooLong),
 			Err(ForbiddenCharacter),
 			Err(BadSpacing),
 		]

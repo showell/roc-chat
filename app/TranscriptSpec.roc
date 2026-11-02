@@ -107,6 +107,7 @@ expect one_with({ ..first, date: "dt: 2026-11-02T19:11:32Z" }) == Err(BadHead(Sa
 expect one_with({ ..first, gap: "" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, from: "from: " }) == Err(Author(Sample.first, Empty))
 expect one_with({ ..first, from: "from:  " }) == Err(Author(Sample.first, BadSpacing))
+expect one_with({ ..first, from: "from: ${"a".repeat(61)}" }) == Err(Author(Sample.first, TooLong))
 expect one_with({ ..first, from: "from: Steve\r" }) == Err(Author(Sample.first, ForbiddenCharacter))
 expect one_with({ ..first, from: "from:  Steve" }) == Err(Author(Sample.first, BadSpacing))
 expect one_with({

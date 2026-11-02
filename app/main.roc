@@ -10,6 +10,7 @@ app [page] {
 
 import Conversation
 import Message
+import Name
 import Page
 import StrictName
 import Topic
@@ -46,7 +47,7 @@ Refusal : [
 		[
 			BadEnds,
 			BadHead(Message.Id),
-			Author(Message.Id, [Empty, ForbiddenCharacter, BadSpacing]),
+			Author(Message.Id, [Empty, TooLong, ForbiddenCharacter, BadSpacing]),
 			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Backdated(Message.Id),
@@ -75,6 +76,7 @@ words = |why|
 			said =
 				match fault {
 					Empty => " has no author"
+					TooLong => "'s author is longer than ${Name.longest.to_str()} characters"
 					ForbiddenCharacter => "'s author holds a character that is no letter or space"
 					BadSpacing => "'s author has a space at either end, or two together"
 				}
@@ -129,6 +131,7 @@ expect {
 		Transcript(BadEnds),
 		Transcript(BadHead(second)),
 		Transcript(Author(second, Empty)),
+		Transcript(Author(second, TooLong)),
 		Transcript(Author(second, ForbiddenCharacter)),
 		Transcript(Author(second, BadSpacing)),
 		Transcript(DateTime(second, WrongShape)),
@@ -147,6 +150,7 @@ expect {
 			"a transcript starts with the separator and ends with an empty line",
 			"message 2 does not open with its reference, `from:`, `date:` and an empty line",
 			"message 2 has no author",
+			"message 2's author is longer than 60 characters",
 			"message 2's author holds a character that is no letter or space",
 			"message 2's author has a space at either end, or two together",
 			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",

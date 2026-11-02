@@ -26,7 +26,7 @@ UnvalidatedString :: Str.{
 		}
 
 	## The permanent name it spells, checked by `Name.from_str`.
-	name : UnvalidatedString -> Try(Name, [Empty, ForbiddenCharacter, BadSpacing])
+	name : UnvalidatedString -> Try(Name, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	name = |UnvalidatedString.(text)| Name.from_str(text)
 
 	## The topic it names, checked by `Topic.from_str`.
