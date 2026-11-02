@@ -46,26 +46,20 @@ Limits := [].{
 	human_invites_per_human : U64
 	human_invites_per_human = 200
 
-	## **THE CONVERSATIONS ONE HUMAN HAS STARTED**, by session or by their
-	## agents' keys.
-	conversations_per_human : U64
-	conversations_per_human = 1_000
-
 	## **A TRANSCRIPT'S BYTES**: a post that would take it past this is
-	## refused, and the conversation is full. Far below the host's 16 MiB
+	## refused, and the topic is full. Far below the host's 16 MiB
 	## read (files.read_most), so a whole transcript always reads.
 	transcript_bytes_most : U64
 	transcript_bytes_most = 4_000_000
 
-	## **THE MESSAGES A PAGE OF A TRANSCRIPT HOLDS**: `GET
-	## /conversations/<id>` answers the newest this many, and `before=` pages
-	## back.
+	## **THE MESSAGES A PAGE OF A TRANSCRIPT HOLDS**: a topic's read answers
+	## the newest this many, and `before=` pages back.
 	page_messages : U64
 	page_messages = 100
 
 	## **ONE AGENT ANSWERING AGENTS, IN THE WINDOW, SINCE A HUMAN LAST SPOKE**
 	## (Mentions.own_hops): an agent's or a bot's post once it has made this
-	## many posts naming another agent in its conversation, within
+	## many posts naming another agent in its topic, within
 	## `agent_hops_window_s` and after the last human post there, is refused,
 	## a 429, until a human posts or its oldest such post leaves the window.
 	## Fifteen lets agents work together a good while without a human, which
@@ -88,7 +82,6 @@ Limits := [].{
 	## (Host.read_config!'s `CapForTest`, which only host/e2e.zig sets; prod
 	## has none), so a step reaches a cap in a few requests.
 	load_cap! : [
-		ConversationsPerHuman,
 		InvitesPerHuman,
 		KeysPerHuman,
 	] => U64
@@ -97,7 +90,6 @@ Limits := [].{
 			Ok(n) => n
 			Err(_) =>
 				match which {
-					ConversationsPerHuman => Limits.conversations_per_human
 					InvitesPerHuman => Limits.invites_per_human
 					KeysPerHuman => Limits.keys_per_human
 				}

@@ -1,32 +1,30 @@
 ## **ONE STREAM PER AGENT** (`GET /stream`, for an agent's or a bot's key):
-## every conversation the agent is in, and every channel topic that names
-## it, live, each event naming where it is. Here is what the stream
-## decides, pure; Conversations serves it.
+## every topic of every channel the agent is in, live, each event naming
+## where it is. Here is what the stream decides, pure; OneStream serves it.
 ##
 ## **AN EVENT'S ID IS ITS PLACE**, `<at>.<where>.<message>`: when the
-## message was posted (the server's seconds), where (a conversation by its
-## number, `3`; a channel's topic by its channel's and its own keys,
-## `lobby/chitchat`: neither name holds a `.` or a `/`), and its id there.
-## Ids within one conversation (or topic) rise; across them only the time
-## orders them. A listener resumes with the last one it saw
-## (`Last-Event-ID`), and is sent (`is_after`):
+## message was posted (the server's seconds), where (a channel's topic by
+## its channel's and its own keys, `lobby/chitchat`: neither name holds a
+## `.` or a `/`), and its id there. Ids within one topic rise; across
+## topics only the time orders them. A listener resumes with the last one
+## it saw (`Last-Event-ID`), and is sent (`is_after`):
 ## - every message of a later second;
-## - every later message of the conversation it saw last, whatever its
-##   second;
-## - every other conversation's message of that same second.
+## - every later message of the topic it saw last, whatever its second;
+## - every other topic's message of that same second.
 ## So nothing posted after the last event is missed, and the only messages
-## a resume may send twice are other conversations' of that one second;
-## each event names its conversation and id, so a reader drops a repeat.
-## Without a `Last-Event-ID` the stream is live only: no backlog.
-## **THE BACKLOG IS AT MOST EACH CONVERSATION'S NEWEST PAGE**, as a
-## conversation's own stream's is; one further behind is said by a `gap`
-## event naming the conversation and the first message sent (`gap_of`).
+## a resume may send twice are other topics' of that one second; each
+## event names its topic and id, so a reader drops a repeat. Without a
+## `Last-Event-ID` the stream is live only: no backlog.
+## **THE BACKLOG IS AT MOST EACH TOPIC'S NEWEST PAGE**, as a topic's own
+## stream's is; one further behind is said by a `gap` event naming the
+## topic and the first message sent (`gap_of`). Agents have no DMs, so a
+## spot is always a channel's topic.
 import Stored
 
 AgentStream := [].{
 
-	## Where a message is: its second, its spot (a conversation's number,
-	## or `<channel key>/<topic key>`), its id there.
+	## Where a message is: its second, its spot (`<channel key>/<topic
+	## key>`), its id there.
 	Place : {
 		at : I64,
 		spot : Str,
@@ -136,20 +134,15 @@ AgentStream := [].{
 		}
 }
 
-## **A PLACE'S SPOT, READ BACK**: a conversation's number (a count, as
-## Stored reads one), or two keys of letters, digits and hyphens (a
-## channel's and a topic's, lowercase, 1 to 80 bytes each) with a `/`
+## **A PLACE'S SPOT, READ BACK**: two keys of letters, digits and hyphens
+## (a channel's and a topic's, lowercase, 1 to 80 bytes each) with a `/`
 ## between; anything else is no place.
 spot_of : List(U8) -> Try(Str, [NotAPlace])
 spot_of = |bytes|
-	match Stored.count(bytes, "spot") {
-		Ok(n) => Ok(n.to_str())
-		Err(_) =>
-			match bytes.split_on('/') {
-				[channel, topic] if is_key(channel) and is_key(topic) =>
-					Str.from_utf8(bytes).map_err(|_| NotAPlace)
-				_ => Err(NotAPlace)
-			}
+	match bytes.split_on('/') {
+		[channel, topic] if is_key(channel) and is_key(topic) =>
+			Str.from_utf8(bytes).map_err(|_| NotAPlace)
+		_ => Err(NotAPlace)
 	}
 
 ## A channel's or a topic's key: 1 to 80 lowercase letters, digits and
@@ -168,16 +161,18 @@ bytes_before = |a, b|
 		([x, .. as xs], [y, .. as ys]) => if (x != y) x < y else bytes_before(xs, ys)
 	}
 
-## A place, for a test.
+## A place, for a test: topic `t<conv>` of channel `lobby`.
 place_at : I64, { conv : U64, id : U64 } -> AgentStream.Place
 place_at = |t, { conv, id }| {
 	at: t,
-	spot: conv.to_str(),
+	spot: "lobby/t${conv.to_str()}",
 	id,
 }
 
-expect AgentStream.id_text(place_at(1761600000, { conv: 3, id: 12 })) == "1761600000.3.12"
-expect AgentStream.cursor(["1761600000.3.12".to_utf8()]) == After(
+expect AgentStream.id_text(place_at(1761600000, { conv: 3, id: 12 })) == "1761600000.lobby/t3.12"
+# A spot is a channel's topic: a bare number (the old conversations') is none.
+expect AgentStream.cursor(["1761600000.3.12".to_utf8()]) == Live
+expect AgentStream.cursor(["1761600000.lobby/t3.12".to_utf8()]) == After(
 	place_at(
 		1761600000,
 		{ conv: 3, id: 12 },
@@ -193,8 +188,8 @@ expect AgentStream.cursor(["-1.2.3".to_utf8()]) == Live
 expect AgentStream.cursor(["1.2.3".to_utf8(), "1.2.3".to_utf8()]) == Live
 
 # **NOTHING AFTER THE CURSOR IS MISSED**: a later second anywhere; a later
-# id in its conversation, even of an earlier second (a clock set back);
-# another conversation's of the same second (sent again, at worst).
+# id in its topic, even of an earlier second (a clock set back); another
+# topic's of the same second (sent again, at worst).
 cur : AgentStream.Place
 cur = place_at(100, { conv: 3, id: 12 })
 
@@ -210,7 +205,7 @@ expect !AgentStream.is_after(cur, place_at(99, { conv: 5, id: 40 }))
 expect AgentStream.gap_of(
 	cur,
 	{
-		spot: "3",
+		spot: "lobby/t3",
 		first: 20,
 		first_at: 90,
 	},
@@ -218,7 +213,7 @@ expect AgentStream.gap_of(
 expect AgentStream.gap_of(
 	cur,
 	{
-		spot: "3",
+		spot: "lobby/t3",
 		first: 13,
 		first_at: 90,
 	},
@@ -226,7 +221,7 @@ expect AgentStream.gap_of(
 expect AgentStream.gap_of(
 	cur,
 	{
-		spot: "5",
+		spot: "lobby/t5",
 		first: 7,
 		first_at: 101,
 	},
@@ -234,7 +229,7 @@ expect AgentStream.gap_of(
 expect AgentStream.gap_of(
 	cur,
 	{
-		spot: "5",
+		spot: "lobby/t5",
 		first: 7,
 		first_at: 100,
 	},
@@ -242,7 +237,7 @@ expect AgentStream.gap_of(
 expect AgentStream.gap_of(
 	cur,
 	{
-		spot: "5",
+		spot: "lobby/t5",
 		first: 1,
 		first_at: 500,
 	},
@@ -296,19 +291,20 @@ expect !AgentStream.is_after(
 	},
 	{
 		at: 6,
-		spot: "3",
+		spot: "lobby/t3",
 		id: 9,
 	},
 )
+# The same second: by spot, in byte order (`chitchat` before `t3`).
 expect AgentStream.before(
 	{
 		at: 7,
-		spot: "3",
+		spot: "lobby/chitchat",
 		id: 9,
 	},
 	{
 		at: 7,
-		spot: "lobby/chitchat",
+		spot: "lobby/t3",
 		id: 1,
 	},
 ) == Before

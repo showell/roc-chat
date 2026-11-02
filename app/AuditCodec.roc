@@ -1219,7 +1219,6 @@ all_key_refusals = [
 	NoSuchPrincipal,
 	OutOfScope,
 	BeyondPrincipal,
-	AgentHops,
 ]
 
 spell_key_refusal : ApiKey.Refusal -> Str
@@ -1230,7 +1229,6 @@ spell_key_refusal = |why|
 		NoSuchPrincipal => "no-such-principal"
 		OutOfScope => "out-of-scope"
 		BeyondPrincipal => "beyond-principal"
-		AgentHops => "agent-hops"
 	}
 
 permitted_word : Str

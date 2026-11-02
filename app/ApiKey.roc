@@ -3,8 +3,7 @@
 ## post and admin, each on or off. **A KEY SAYS WHO YOU ARE** (Steve,
 ## 2026-11-01): what its holder may reach is the chat's other rules' (a
 ## channel's members, Topic.roc), on the viewer the key mints (Access);
-## an admin action is the principal's authority as the accounts say now
-## (`administers`). It never exceeds its principal.
+## it never exceeds its principal.
 ##
 ## **ONLY TWO WAYS IN:** `issue`, which asks `may_grant` (a live browser
 ## session, never a key, for the granter's own principals), and `load`,
@@ -106,11 +105,6 @@ ApiKey := [].{
 
 		## The scope reaches it, but the principal itself may not.
 		BeyondPrincipal,
-
-		## An agent's post to a conversation where it has already answered
-		## agents Limits.agent_hops_per_window times in the window since a
-		## human last spoke (Mentions.own_hops).
-		AgentHops,
 	]
 
 	## **MAY THIS GRANTER GIVE A KEY ACTING AS `acts_as` THIS SCOPE?** Only
@@ -204,26 +198,8 @@ ApiKey := [].{
 				Active => if (now < k.expires) Live else Expired
 			}
 
-		## **MAY THIS KEY PERFORM AN ADMIN ACTION, NOW?** The key live and
-		## its principal standing (as for a read or a post); an admin scope; and the
-		## principal's authority Admin as the accounts say now. Which action
-		## is Admin.roc's to decide.
-		administers : ApiKey.Key, ApiKey.AsOf -> ApiKey.Verdict
-		administers = |key, { accounts, now }| {
-			ApiKey.Key.(k) = key
-			match standing(key, { accounts, now }) {
-				Refused(why) => Refused(why)
-				Standing(principal) =>
-					match (k.scope.admin, principal.authority(accounts)) {
-						(Off, _) => Refused(OutOfScope)
-						(On, Admin) => Permitted
-						(On, Member) => Refused(BeyondPrincipal)
-					}
-			}
-		}
-
 		## **THE PRINCIPAL A STANDING KEY ACTS AS**, as the accounts have
-		## it now; what Admin acts with.
+		## it now (Access's viewer).
 		principal : ApiKey.Key, ApiKey.AsOf -> Try(Principal, [Refused(ApiKey.Refusal)])
 		principal = |key, as_of|
 			match standing(key, as_of) {
@@ -655,16 +631,6 @@ List(Principal) -> Try(
 )
 standing_among = |key, among| standing_at(key, { among, now: 50 })
 
-Answer : [Permitted, Refused(ApiKey.Refusal)]
-
-## The key's answer to an admin action at time 50, among `accounts`.
-administered : ApiKey.Key -> Answer
-administered = |key| key.administers({ accounts: Cast.accounts, now: 50 })
-
-## The key's answer to an admin action at time 50, among `among` instead.
-administers_among : ApiKey.Key, List(Principal) -> Answer
-administers_among = |key, among| key.administers({ accounts: among, now: 50 })
-
 ann_agent_plain : ApiKey.Key
 ann_agent_plain = issued({ acts_as: Cast.ann_agent, scope: plain }, 1050)
 
@@ -684,22 +650,10 @@ boss_until_100 = issued({ acts_as: Cast.boss, scope: with_admin }, 100)
 expect standing_among(ann_agent_plain, Cast.accounts) == Ok(Cast.ann_agent.id())
 expect standing_among(boss_all, Cast.accounts) == Ok(Cast.boss.id())
 
-# Admin: only an admin scope, on an admin's or an admin's agent's key.
-expect administered(ann_agent_plain) == Refused(OutOfScope)
-expect administered(ann_agent_reads) == Refused(OutOfScope)
-expect administered(ann_year) == Refused(OutOfScope)
-expect administered(boss_all) == Permitted
-expect administered(boss_agent_admin) == Permitted
-
-# The key never exceeds its principal as the accounts say NOW: boss demoted,
-# boss retired, or the agent itself retired.
-expect administers_among(
-	boss_agent_admin,
-	[Cast.boss_demoted, Cast.boss_agent],
-) == Refused(BeyondPrincipal)
-expect administers_among(boss_agent_admin, [Cast.boss_agent]) == Refused(NoSuchPrincipal)
-expect administers_among(boss_agent_admin, [Cast.boss]) == Refused(NoSuchPrincipal)
-expect administers_among(boss_all, [Cast.boss_demoted]) == Refused(BeyondPrincipal)
+# The key never stands as more than its principal now: the agent itself
+# gone, or its owner gone.
+expect standing_among(boss_agent_admin, [Cast.boss]) == Err(Refused(NoSuchPrincipal))
+expect standing_among(boss_agent_admin, [Cast.boss_agent]) == Err(Refused(NoSuchPrincipal))
 
 # Bug 1: ann retired, her agent's key stands as nobody.
 expect standing_among(ann_agent_plain, Cast.without_ann) == Err(Refused(NoSuchPrincipal))
@@ -709,7 +663,7 @@ expect standing_among(ann_agent_plain, Cast.without_ann) == Err(Refused(NoSuchPr
 expect standing_among(boss_all.revoke(), Cast.accounts) == Err(Refused(Revoked))
 expect standing_at(boss_until_100, { among: Cast.accounts, now: 99 }) == Ok(Cast.boss.id())
 expect standing_at(boss_until_100, { among: Cast.accounts, now: 100 }) == Err(Refused(Expired))
-expect boss_until_100.revoke().administers({ accounts: Cast.accounts, now: 99 }) == Refused(Revoked)
+expect standing_at(boss_until_100.revoke(), { among: Cast.accounts, now: 99 }) == Err(Refused(Revoked))
 
 # ── LOADING A STORED KEY
 ## The key a stored line holds: `record`, written by KeyCodec and read back
@@ -729,13 +683,11 @@ expect [
 	boss_agent_admin.revoke(),
 ].all(|key| from_store(key.record()).record() == key.record())
 
-# A line claiming admin for ann, a member, loads as it says, and the key
-# still administers nothing: its use is held to ann.
+# A line claiming admin for ann, a member, loads as it says.
 ann_claims_admin : ApiKey.Key
 ann_claims_admin = from_store({ ..ann_year.record(), scope: with_admin })
 
 expect ann_claims_admin.record().scope == with_admin
-expect administered(ann_claims_admin) == Refused(BeyondPrincipal)
 
 # A reading line loads reading, and posting nothing.
 expect from_store(ann_agent_reads.record()).record().scope == reads
@@ -799,10 +751,6 @@ expect grant_at(
 		now: 50,
 	},
 ) == Refused(NoSuchGranter)
-expect ann_claims_admin.administers({
-	accounts: ann_admin_first,
-	now: 50,
-}) == Refused(NoSuchPrincipal)
 expect standing_among(ann_agent_plain, ann_admin_first) == Err(Refused(NoSuchPrincipal))
 
 # ── RE-CREATION AFTER RETIREMENT

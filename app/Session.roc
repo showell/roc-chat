@@ -162,18 +162,6 @@ Session :: SessionCodec.Fields.{
 		}
 	}
 
-	## **LOG OUT EVERYWHERE**: of `sessions`, every one of `human`'s, the
-	## one asking included, live or not; nobody else's.
-	log_out_everywhere : List(Session), Principal.HumanId -> List(Principal.SessionId)
-	log_out_everywhere = |sessions, whose|
-		sessions.keep_if(|s| s.human() == whose).map(Session.id)
-
-	## **THE SWEEP**: of `sessions`, every one over at `now`, for the host
-	## to delete.
-	sweep : List(Session), I64 -> List(Principal.SessionId)
-	sweep = |sessions, now|
-		sessions.keep_if(|s| s.liveness(now) != Live).map(Session.id)
-
 	is_eq : _
 }
 
@@ -543,33 +531,3 @@ expect admitted(flowed, { among: [ann], now: 10100000 }) == Admitted({
 })
 expect admitted(flowed, { among: [ann_again], now: 10100000 }) == Refused(NoSuchAccount)
 
-# ── LOG OUT EVERYWHERE, AND THE SWEEP
-# Ann's sessions 1 and 2 (2 one idle limit older, idle by 10100000), Bea's 3.
-sessions : List(Session)
-sessions = [
-	s1,
-	opened({
-		n: 2,
-		who: 1,
-		at: 10100000 - idle,
-	}),
-	opened({
-		n: 3,
-		who: 2,
-		at: 10100000,
-	}),
-]
-
-expect Session.log_out_everywhere(sessions, Cast.hid(1)) == [Cast.sid(1), Cast.sid(2)]
-expect Session.log_out_everywhere(sessions, Cast.hid(2)) == [Cast.sid(3)]
-expect Session.log_out_everywhere(sessions, Cast.hid(9)) == []
-expect Session.log_out_everywhere([], Cast.hid(1)) == []
-expect Session.sweep(sessions, 10100000) == [Cast.sid(2)]
-expect Session.sweep(sessions, 10100000 + idle - 1) == [Cast.sid(2)]
-expect Session.sweep(sessions, 10100000 + idle) == [
-	Cast.sid(1),
-	Cast.sid(2),
-	Cast.sid(3),
-]
-expect Session.sweep(sessions, 10099999) == [Cast.sid(1), Cast.sid(3)]
-expect Session.sweep([], 10100000) == []

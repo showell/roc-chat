@@ -25,12 +25,6 @@ Ascii := [].{
 	is_digit : U8 -> Bool
 	is_digit = |c| c >= '0' and c <= '9'
 
-	## `0`-`9`, `A`-`F` and `a`-`f` (48-57, 65-70, 97-102). Zig `isHex`,
-	## Rust `is_ascii_hexdigit`, C `isxdigit`. `Bool.False` for every byte
-	## from 128 to 255.
-	is_hex_digit : U8 -> Bool
-	is_hex_digit = |c| is_digit(c) or (c >= 'A' and c <= 'F') or (c >= 'a' and c <= 'f')
-
 	## `A`-`Z` and `a`-`z` (65-90, 97-122). Zig `isAlphabetic`, Rust
 	## `is_ascii_alphabetic`, C `isalpha`. `Bool.False` for every byte from
 	## 128 to 255, so `é` (bytes 195 169) is no letter here.
@@ -55,14 +49,6 @@ Ascii := [].{
 	is_whitespace : U8 -> Bool
 	is_whitespace = |c| c == ' ' or (c >= '\t' and c <= '\r')
 
-	## The 32 printable bytes that are neither letters, digits nor space:
-	## ``!"#$%&'()*+,-./`` (33-47), `:;<=>?@` (58-64), ``[\]^_` `` (91-96)
-	## and `{|}~` (123-126). Zig `isPunctuation`, Rust
-	## `is_ascii_punctuation`, C `ispunct`, Python `string.punctuation`.
-	## `Bool.False` for every byte from 128 to 255.
-	is_punctuation : U8 -> Bool
-	is_punctuation = |c| c > ' ' and c < del and !is_alphanumeric(c)
-
 	## 0-31 and DEL (127): every ASCII byte that is not printable. Zig
 	## `isControl`, Rust `is_ascii_control`, C `iscntrl`. `Bool.False` for
 	## every byte from 128 to 255.
@@ -75,12 +61,6 @@ Ascii := [].{
 	## its lowercase only in bit 5 (0x20).
 	to_lowercase : U8 -> U8
 	to_lowercase = |c| if (c >= 'A' and c <= 'Z') c.bitwise_or(0x20) else c
-
-	## `a`-`z` to `A`-`Z`; every other byte, 128 to 255 included, unchanged.
-	## Zig `toUpper`, Rust `to_ascii_uppercase`, C `toupper`, and the per-byte
-	## rule of `Str.with_ascii_uppercased`.
-	to_uppercase : U8 -> U8
-	to_uppercase = |c| if (c >= 'a' and c <= 'z') c.bitwise_xor(0x20) else c
 }
 
 ## DEL, the one control byte above the printable ones. Roc's character
@@ -154,29 +134,23 @@ expect controls.len() == 33
 
 # Each check over all 256 bytes is exactly its set.
 expect all_bytes.keep_if(Ascii.is_digit) == digits
-expect all_bytes.keep_if(Ascii.is_hex_digit) == "0123456789ABCDEFabcdef".to_utf8()
 expect all_bytes.keep_if(Ascii.is_letter) == letters
 expect all_bytes.keep_if(Ascii.is_alphanumeric) == digits.concat(letters)
 expect all_bytes.keep_if(Ascii.is_whitespace) == whitespace
-expect all_bytes.keep_if(Ascii.is_punctuation) == punctuation
 expect all_bytes.keep_if(Ascii.is_control) == controls
 
 # 128-255 are never ASCII: every check is false, and the case maps keep them.
 expect [
 	Ascii.is_digit,
-	Ascii.is_hex_digit,
 	Ascii.is_letter,
 	Ascii.is_alphanumeric,
 	Ascii.is_whitespace,
-	Ascii.is_punctuation,
 	Ascii.is_control,
 ].all(|check| !beyond_ascii.any(check))
 expect beyond_ascii.map(Ascii.to_lowercase) == beyond_ascii
-expect beyond_ascii.map(Ascii.to_uppercase) == beyond_ascii
 
 # The bytes on each side of every range: of each probe, the members.
 expect "/09:".to_utf8().keep_if(Ascii.is_digit) == "09".to_utf8()
-expect "/09:@AFG`afg".to_utf8().keep_if(Ascii.is_hex_digit) == "09AFaf".to_utf8()
 expect "@AZ[`az{".to_utf8().keep_if(Ascii.is_letter) == "AZaz".to_utf8()
 expect "/09:@AZ[`az{".to_utf8().keep_if(Ascii.is_alphanumeric) == "09AZaz".to_utf8()
 expect [
@@ -188,7 +162,6 @@ expect [
 	' ',
 	'!',
 ].keep_if(Ascii.is_whitespace) == "\t\r ".to_utf8()
-expect " !/09:@AZ[`az{~".to_utf8().keep_if(Ascii.is_punctuation) == "!/:@[`{~".to_utf8()
 expect [
 	0,
 	31,
@@ -202,18 +175,10 @@ expect [
 	127,
 ]
 expect "@AZ[`az{".to_utf8().map(Ascii.to_lowercase) == "@az[`az{".to_utf8()
-expect "@AZ[`az{".to_utf8().map(Ascii.to_uppercase) == "@AZ[`AZ{".to_utf8()
 
 # The case maps: each letter to its pair, each letter already in the case
 # kept, every other byte (204 of them) unchanged.
 expect uppers.map(Ascii.to_lowercase) == lowers
 expect lowers.map(Ascii.to_lowercase) == lowers
-expect lowers.map(Ascii.to_uppercase) == uppers
-expect uppers.map(Ascii.to_uppercase) == uppers
 expect non_letters.len() == 204
 expect non_letters.map(Ascii.to_lowercase) == non_letters
-expect non_letters.map(Ascii.to_uppercase) == non_letters
-
-# Every letter round-trips through the other case.
-expect lowers.map(|b| Ascii.to_lowercase(Ascii.to_uppercase(b))) == lowers
-expect uppers.map(|b| Ascii.to_uppercase(Ascii.to_lowercase(b))) == uppers
