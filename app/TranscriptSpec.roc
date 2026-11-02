@@ -1,6 +1,7 @@
 ## **TRANSCRIPT'S TESTS**: the file, written and read, byte for byte, and
 ## each way a transcript is refused, at the first message and the second.
 import Conversation
+import Message
 import Sample
 import Transcript
 
@@ -173,6 +174,34 @@ near = Sample.conversation(
 )
 expect Transcript.write(near) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\na-------------\n-------------x\n\\x\n------------\n\n"
 expect Transcript.read(Sample.plans, Transcript.write(near)) == Ok(near)
+# Markdown that is empty, or ends in one or two newlines, comes back
+# exactly; the empty one's record is written byte for byte.
+edges : List(Str)
+edges = [
+	"",
+	"\n",
+	"\n\n",
+	"a\n",
+	"a\n\n",
+]
+
+## Steve's message saying `markdown`.
+said : Str -> Message.Arrival
+said = |markdown|
+	Sample.arrival({
+		author: "Steve",
+		time: "2026-11-02T19:11:32Z",
+		markdown,
+	})
+
+edged : Conversation
+edged = Sample.conversation(Sample.plans, edges.map(said))
+
+expect edged.messages().map(Message.markdown) == edges
+expect Transcript.read(Sample.plans, Transcript.write(edged)) == Ok(edged)
+expect
+	Transcript.write(Sample.conversation(Sample.plans, [said("")]))
+		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\n\n\n"
 # The most messages a store's `append` takes, at and over: the 65,535th
 # message's record, then none. The reader asks the same `next_id`.
 expect {
@@ -181,4 +210,16 @@ expect {
 	last = Transcript.append(almost, Sample.reply).map_ok(|appended| appended.record)
 	wanted = "-------------\nMSG_plans_65535\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
 	{ last, over: Transcript.append(full, Sample.hello) } == { last: Ok(wanted), over: Err(Full) }
+}
+# The reader at and over the most: 65,535 records read, one more refused.
+expect {
+	almost = Sample.almost_full({})
+	full = almost.append(Sample.reply) ?? crash "TranscriptSpec: the 65,535th message fits"
+	written = Transcript.write(full)
+	over = "${written}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
+	{
+		at: Transcript.read(Sample.plans, written).map_ok(|c| c.messages().len()),
+		over: Transcript.read(Sample.plans, over),
+	}
+		== { at: Ok(65535), over: Err(Full) }
 }

@@ -49,7 +49,12 @@ Timestamp :: Str.{
 				s1,
 				s2,
 			].all(Ascii.is_digit) => {
-				year = number([y1, y2]) * 100 + number([y3, y4])
+				year = number([
+					y1,
+					y2,
+					y3,
+					y4,
+				])
 				month = number([m1, m2])
 				day = number([d1, d2])
 				in_calendar = month >= 1 and month <= 12 and day >= 1 and day <= days_in({

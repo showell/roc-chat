@@ -212,5 +212,8 @@ expect Html.join([
 ]).to_str() == "a&amp;b&lt;"
 # The markdown's own markup kept, its text escaped.
 expect Html.markdown("**hi** <b>").to_str() == "<p><strong>hi</strong> &lt;b&gt;</p>\n"
+# No upload is known, so an image is its link; a `javascript:` link is text.
+expect Html.markdown("![x](a.png)").to_str() == "<p><a href=\"a.png\">x</a></p>\n"
+expect Html.markdown("[x](javascript:alert(1))").to_str() == "<p>[x](javascript:alert(1))</p>\n"
 expect Html.doctype.to_str() == "<!doctype html>\n<meta charset=utf-8>\n"
 expect Html.style("p{x:y}\n").to_str() == "<style>\np{x:y}\n</style>\n"

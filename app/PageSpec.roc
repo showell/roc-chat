@@ -5,7 +5,9 @@ import Sample
 
 PageSpec :: [].{}
 
-## What every page opens with, titled `title` (already escaped).
+## What every page opens with, titled `title` (already escaped). Its style
+## sheet is a frozen answer, copied from Page's, so a change to the style
+## shows here as a deliberate re-freeze.
 head : Str -> Str
 head = |title|
 	"<!doctype html>\n<meta charset=utf-8>\n<title>${title}</title>\n<style>\nbody{font:16px/1.4 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}\n.message{border-top:1px solid #ccc;padding:.5rem 0}\n.author{font-weight:600}\ntime,.ref{color:#777;font-size:.85em}\n.ref{float:right}\n</style>\n"
