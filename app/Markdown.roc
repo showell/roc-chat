@@ -20,7 +20,7 @@ Markdown :: [].{
 	render : Str -> TrustedHtml
 	render = |markdown| {
 		rendered = Md.render(markdown.to_utf8(), { uploads: SecureImageTag.is_conversation_upload })
-		TrustedHtml.dangerously_trust(Str.from_utf8(rendered) ?? crash "Markdown.render: roc-markdown renders UTF-8 from UTF-8")
+		TrustedHtml.dangerously_trust(Str.from_utf8(rendered) ?? crash "Markdown.render: roc-markdown returned bytes that are not UTF-8, from UTF-8 input")
 	}
 }
 
