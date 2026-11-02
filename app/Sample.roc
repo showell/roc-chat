@@ -1,36 +1,13 @@
-## **SAMPLES FOR THE TESTS**: the messages, ids, topic and time the
-## modules' `expect`s share, so each test reads as what it checks. It exists
-## for the tests; nothing else calls it.
+## **SAMPLES FOR THE SPECS**: the topics, payloads and conversation the
+## `*Spec.roc` modules share, so each test reads as what it checks. Only a
+## Spec imports it; no production module does.
 import Author
+import Conversation
 import Message
 import Timestamp
 import Topic
 
 Sample :: [].{
-
-	## A message from `author`, written at `time`.
-	said : {
-		id : Message.Id,
-		author : Str,
-		markdown : Str,
-	} -> Message
-	said = |
-		{
-			id,
-			author,
-			markdown,
-		},
-	|
-		Message.new({
-			id,
-			author: Author.from_str(author) ?? crash "Sample.said: a test's author is a name",
-			time: Sample.time,
-			markdown,
-		})
-
-	## The time every sample message was written.
-	time : Timestamp
-	time = Timestamp.from_str("2026-11-02T19:11:32Z") ?? crash "Sample.time: a real time"
 
 	## The topic the samples are written under.
 	plans : Topic
@@ -40,6 +17,60 @@ Sample :: [].{
 	other : Topic
 	other = Topic.from_str("other") ?? crash "Sample.other: a topic's name"
 
+	## A payload from its parts' text, each a test's own and accepted.
+	payload : {
+		author : Str,
+		time : Str,
+		markdown : Str,
+	} -> Message.Payload
+	payload = |
+		{
+			author,
+			time,
+			markdown,
+		},
+	|
+		{
+			author: Author.from_str(author) ?? crash "Sample.payload: a test's author is a name",
+			time: Timestamp.from_str(time) ?? crash "Sample.payload: a test's time is a time",
+			markdown,
+		}
+
+	## Steve's hello.
+	hello : Message.Payload
+	hello = Sample.payload({
+		author: "Steve",
+		time: "2026-11-02T19:11:32Z",
+		markdown: "Hello",
+	})
+
+	## CC's reply, a minute later, with a list in its markdown.
+	reply : Message.Payload
+	reply = Sample.payload({
+		author: "CC",
+		time: "2026-11-02T19:12:28Z",
+		markdown: "Hi!\n\n- one\n- two",
+	})
+
+	## `topic`'s conversation of `payloads`, appended in order; a test's
+	## conversation is never full.
+	conversation : Topic, List(Message.Payload) -> Conversation
+	conversation = |topic, payloads|
+		payloads.fold(
+			Conversation.empty(topic),
+			|c, p| c.append(p) ?? crash "Sample.conversation: a test's conversation is not full",
+		)
+
+	## `plans`'s hello and reply.
+	two : Conversation
+	two = Sample.conversation(Sample.plans, [Sample.hello, Sample.reply])
+
+	## **A CONVERSATION ONE MESSAGE SHORT OF FULL**: 65,534 of Steve's hello.
+	## A function, not a constant, so the work runs with the test, never in
+	## `roc check`'s compile-time evaluation.
+	almost_full : {} -> Conversation
+	almost_full = |{}| filled({ so_far: Conversation.empty(Sample.plans), count: 65534 })
+
 	## The first message's id.
 	first : Message.Id
 	first = Message.Id.first
@@ -47,28 +78,15 @@ Sample :: [].{
 	## The second message's id.
 	second : Message.Id
 	second = Message.Id.first.next() ?? crash "Sample.second: the first id has a next"
-
-	## Two messages, the second with a list in its markdown.
-	two : List(Message)
-	two = [
-		Sample.said({
-			id: Sample.first,
-			author: "Steve",
-			markdown: "Hello",
-		}),
-		Sample.said({
-			id: Sample.second,
-			author: "CC",
-			markdown: "Hi!\n\n- one\n- two",
-		}),
-	]
 }
 
-# ── tests
-expect Sample.said({
-	id: Sample.first,
-	author: "Steve",
-	markdown: "Hello",
-}).author().to_str() == "Steve"
-expect Sample.time.to_str() == "2026-11-02T19:11:32Z"
-expect Sample.second.to_str() == "2"
+## `so_far` with `count` more of Steve's hello.
+filled : { so_far : Conversation, count : U64 } -> Conversation
+filled = |{ so_far, count }|
+	if (count == 0)
+		so_far
+	else
+		filled({
+			so_far: so_far.append(Sample.hello) ?? crash "Sample.filled: the conversation has room",
+			count: count - 1,
+		})

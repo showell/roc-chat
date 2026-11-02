@@ -4,9 +4,10 @@
 --   shale tools/verify.shale
 --
 -- 1. `roc fmt --check`: the code is laid out as the formatter lays it.
--- 2. `roc test`: every module's expects, the gate's heart, at least
---    `expect_floor` of them (the markdown package's own included), none
---    failing.
+-- 2. `roc test`, twice: from the app (every production module's expects)
+--    and from app/Specs.roc (every `*Spec.roc`), none failing, and between
+--    them at least `expect_floor` of gopher-roc's own, each counted once by
+--    its file and line; roc-markdown's, which the runs include, never count.
 -- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
 --    judges for sure: names, errors, nesting, boundaries, stacking.
 -- 4. Last, the demo built through the host, and its page holding what the
@@ -15,7 +16,7 @@
 -- budget: steps=200000000
 
 const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
-const expect_floor = 331
+const expect_floor = 198
 
 const board = {failed = 0}
 
@@ -30,13 +31,26 @@ end
 local fmt = run({ROC, "fmt", "--check", "app", "platform"}, {timeout_ms = 60000, tail = 10})
 say(fmt.code == 0, "roc fmt --check app platform")
 
--- 2. The expects.
-local tested = run({ROC, "test", "app/main.roc"}, {timeout_ms = 300000, tail = 40})
-local m = re_find(tested.out, "All \\(([0-9]+)\\) tests passed")
-local count = 0
-if m ~= nil then count = tonumber(m.groups[1]) end
-say(tested.code == 0 and count >= expect_floor, "roc test app/main.roc: " .. count .. " passed (floor " .. expect_floor .. ")")
-if tested.code ~= 0 then print(tested.out) end
+-- 2. The expects, from each root; each of ours is a `PASS: app/<file>:<line>`.
+const roots = {
+  {"test", "--verbose", "app/main.roc"},
+  {"test", "--verbose", "app/Specs.roc", "--main=app/main.roc"},
+}
+const ours = {}
+local all_passed = true
+for argv in roots do
+  local full = {ROC}
+  for a in argv do push(full, a) end
+  local tested = run(full, {timeout_ms = 300000, whole = 2000000})
+  local passed = tested.code == 0 and re_find(tested.out, "All \\([0-9]+\\) tests passed") ~= nil
+  if not passed then
+    all_passed = false
+    print(tested.out)
+  end
+  for l in re_lines(tested.out, "^PASS: app/") do ours[l.text] = true end
+end
+const count = #keys(ours)
+say(all_passed and count >= expect_floor, "roc test, the app and the specs: " .. count .. " of ours passed (floor " .. expect_floor .. ")")
 
 -- 3. The hunts, each count read from its summary line.
 const hunts = {

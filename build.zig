@@ -3,7 +3,7 @@ const std = @import("std");
 /// gopher-roc's build, for now the demo: app/main.roc built to an archive
 /// by the pinned Roc (roc-version), linked into host/main.zig.
 ///
-///   zig build test                       roc test app/main.roc
+///   zig build test                       roc test, from the app and from app/Specs.roc
 ///   zig build demo -- <topic> <file>     a transcript's page, to stdout
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -25,10 +25,17 @@ pub fn build(b: *std.Build) void {
     demo.stdio = .inherit;
     b.step("demo", "A transcript's page: -- <topic> <transcript file>").dependOn(&demo.step);
 
-    const roc_test = b.addSystemCommand(&.{ roc, "test", "app/main.roc" });
-    roc_test.setCwd(b.path("."));
-    roc_test.has_side_effects = true;
-    b.step("test", "roc test app/main.roc").dependOn(&roc_test.step);
+    const test_step = b.step("test", "roc test, from the app and from app/Specs.roc");
+    const roots = [_][]const []const u8{
+        &.{ roc, "test", "app/main.roc" },
+        &.{ roc, "test", "app/Specs.roc", "--main=app/main.roc" },
+    };
+    for (roots) |argv| {
+        const roc_test = b.addSystemCommand(argv);
+        roc_test.setCwd(b.path("."));
+        roc_test.has_side_effects = true;
+        test_step.dependOn(&roc_test.step);
+    }
 }
 
 /// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
