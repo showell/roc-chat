@@ -44,7 +44,7 @@ Refusal : [
 		[
 			BadEnds,
 			BadHead(Message.Id),
-			Author(Message.Id, [Blank, ControlByte, Padded]),
+			Author(Message.Id, [Blank, ControlByte, FormatCharacter, Padded]),
 			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Backdated(Message.Id),
@@ -74,6 +74,7 @@ words = |why|
 				match fault {
 					Blank => " has no author"
 					ControlByte => "'s author holds a control character"
+					FormatCharacter => "'s author holds an invisible Unicode format character"
 					Padded => "'s author starts or ends with a space"
 				}
 			"message ${id.to_str()}${said}"
@@ -128,6 +129,7 @@ expect {
 		Transcript(BadHead(second)),
 		Transcript(Author(second, Blank)),
 		Transcript(Author(second, ControlByte)),
+		Transcript(Author(second, FormatCharacter)),
 		Transcript(Author(second, Padded)),
 		Transcript(DateTime(second, WrongShape)),
 		Transcript(DateTime(second, OutOfRange)),
@@ -146,6 +148,7 @@ expect {
 			"message 2 does not open with its reference, `from:`, `date:` and an empty line",
 			"message 2 has no author",
 			"message 2's author holds a control character",
+			"message 2's author holds an invisible Unicode format character",
 			"message 2's author starts or ends with a space",
 			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",
 			"message 2's date is no time a calendar and clock show",

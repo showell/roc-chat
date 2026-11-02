@@ -109,6 +109,10 @@ expect one_with({ ..first, from: "from: " }) == Err(Author(Sample.first, Blank))
 expect one_with({ ..first, from: "from:  " }) == Err(Author(Sample.first, Blank))
 expect one_with({ ..first, from: "from: Steve\r" }) == Err(Author(Sample.first, ControlByte))
 expect one_with({ ..first, from: "from:  Steve" }) == Err(Author(Sample.first, Padded))
+expect one_with({
+	..first,
+	from: "from: Ste\u(202e)ve",
+}) == Err(Author(Sample.first, FormatCharacter))
 expect one_with({ ..first, date: "date: 2026-11-02" }) == Err(DateTime(Sample.first, WrongShape))
 expect one_with({
 	..first,
