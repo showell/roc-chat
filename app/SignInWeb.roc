@@ -9,7 +9,7 @@
 ##   SameSite=Lax, Path=/), and reading one back from the `cookie` header;
 ## - **the query and the form**: GitHub's `code` and `state` as written, and
 ##   a form field decoded.
-## What is stored (the settings' record, the barred ids) is Store.roc's.
+## What is stored (the settings' record) is Store.roc's.
 ## Pure.
 import Bytes
 import Cast
@@ -262,7 +262,6 @@ SignInWeb := [].{
 			NotACode => "GitHub's answer wasn't one we could read. Start again."
 			GitHubUnreachable => "We couldn't reach GitHub just now. Try again in a minute."
 			BadIdentity => "GitHub's answer about your account wasn't one we could read."
-			Barred => "That GitHub account is barred from this chat."
 			PendingForged => "This sign-up isn't one we started. Start again."
 			PendingMismatched => "This sign-up started in another browser or window. Start again here."
 			PendingExpired => "This sign-up expired. Start again."
@@ -482,4 +481,3 @@ expect SignInWeb.next_of([List.repeat('a', 511).prepend('/')]) == Next(List.repe
 # A forged cookie's path is checked again where it is used.
 expect SignInWeb.landing(Next("//evil.example".to_utf8())) == "/chat".to_utf8()
 expect SignInWeb.refusal_words(GitHubDenied) == "GitHub said no."
-expect SignInWeb.refusal_words(Barred) == "That GitHub account is barred from this chat."

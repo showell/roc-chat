@@ -1,9 +1,9 @@
 ## **THE ACCOUNTS AND THEIR COUNTERS, CHANGED A STEP AT A TIME**: the
-## settings every account change reads (the first admin, the barred ids, and
-## the two counters that make an id or a generation once), the steps a
-## change is made of, and what a step leaves (`applied`, their one home). A
-## sign-in's plan (GitHubSignIn), an agent's making (Agents) and an admin's
-## action (Admin) are each a list of these steps, so what a step means is
+## settings every account change reads (the first admin, and the counters
+## that make an id or a generation once), the steps a change is made of,
+## and what a step leaves (`applied`, their one home). A sign-in's plan
+## (GitHubSignIn) and an agent's making (Agents) are each a list of these
+## steps, so what a step means is
 ## decided here alone. Pure.
 import Ascii
 import Cast
@@ -14,19 +14,16 @@ import Principal
 Accounts := [].{
 
 	## **THE SETTINGS EVERY ACCOUNT CHANGE READS**: the GitHub id of the
-	## first admin, if any is named; the GitHub ids barred from signing up
-	## again (their accounts retired); and the generation counter, the generation the next
+	## first admin, if any is named; and the generation counter, the generation the next
 	## account made is given (Principal.Generation), which the host stores
 	## back advanced each time an account is made; and the agent-id counter,
 	## the id the next agent or bot made is given, and the human-id counter,
 	## the id the next human made is given, beside it and kept the same way,
 	## so an id is never given twice (the design's section 13), not even the
-	## id of an account retired since. The first admin and the barred are
-	## GitHub's ids, as the config names them: GitHub accounts, resolved when
-	## that account signs in.
+	## id of an account erased since. The first admin is a GitHub id, as the
+	## config names it: a GitHub account, resolved when it signs in.
 	Settings : {
 		first_admin : [Unnamed, Named(Principal.GitHubId)],
-		barred : List(Principal.GitHubId),
 		next_generation : Principal.Generation,
 		next_agent_id : Principal.AgentId,
 		next_human_id : Principal.HumanId,

@@ -327,7 +327,6 @@ zoe = Principal.Id.Human(Cast.hid(100))
 settings : Accounts.Settings
 settings = {
 	first_admin: Unnamed,
-	barred: [],
 	next_generation: Cast.gen(2),
 	next_agent_id: Cast.aid(4),
 	next_human_id: Cast.hid(100),

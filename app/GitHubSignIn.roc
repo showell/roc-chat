@@ -41,11 +41,6 @@
 ## account's login is cleared (a ClearLogin step), so its GitHub link
 ## never leads to the new owner.
 ##
-## **A BAR IS FOR LIFE** (Admin's header says why): a retired human's
-## GitHub id is barred for good. A barred id is refused at `resolve` and again at
-## `name`, whatever the accounts hold, and no step here touches the barred
-## list (Admin has no Unbar either).
-##
 ## **Sign-up is open (Steve):** any GitHub account may make an account,
 ## giving a display name (DisplayName's rule). A new account is given the
 ## chat's own next human id (Accounts.next_human_id), never the GitHub id,
@@ -96,9 +91,6 @@ GitHubSignIn := [].{
 
 		## GitHub's answer is not an identity: an id of 0, or no login.
 		BadIdentity,
-
-		## The GitHub id's account was retired: it does not sign up again.
-		Barred,
 
 		## The pending sign-up did not come back signed by us.
 		PendingForged,
@@ -154,7 +146,7 @@ GitHubSignIn := [].{
 			StateForged | StateMismatched | StateExpired | StateReused => Anonymous
 			GitHubDenied | NotACode => Anonymous
 			PendingForged | PendingMismatched | PendingExpired | PendingReused => Anonymous
-			GitHubUnreachable | BadIdentity | Barred | AccountExists => Audited
+			GitHubUnreachable | BadIdentity | AccountExists => Audited
 			DuplicateAccount | AccountsFull | StaleGeneration | GenerationsExhausted => Audited
 			StaleHumanId | HumanIdsExhausted | ClockOutOfRange => Audited
 		}
@@ -322,13 +314,12 @@ GitHubSignIn := [].{
 		github : GitHubSignIn.IdentityKnown -> Principal.GitHubId
 		github = |GitHubSignIn.IdentityKnown.(k)| k.github
 
-		## **WHOSE SIGN-IN IS THIS?** In order: a barred id is refused; an
-		## id with an account signs in to it (its login brought up to date);
-		## any other id is a new human, asked for a name.
+		## **WHOSE SIGN-IN IS THIS?** An id with an account signs in to it (its
+		## login brought up to date); any other id is a new human, asked for a
+		## name.
 		resolve : GitHubSignIn.IdentityKnown,
 		{
 			accounts : List(Principal),
-			settings : Accounts.Settings,
 			session : GitHubSignIn.NewSession,
 			now : I64,
 		} -> [
@@ -340,7 +331,6 @@ GitHubSignIn := [].{
 			GitHubSignIn.IdentityKnown.(k),
 			{
 				accounts,
-				settings,
 				session,
 				now,
 			},
@@ -352,11 +342,9 @@ GitHubSignIn := [].{
 					github: k.github,
 					login: k.login,
 					accounts,
-					settings,
 					session,
 					now,
 				}) {
-					Barred => Refused(Barred)
 					Duplicate => Refused(DuplicateAccount)
 					Known(signed_in) => SignedIn(signed_in)
 					Unknown =>
@@ -452,8 +440,7 @@ GitHubSignIn := [].{
 					}
 			}
 
-		## **THE NAME GIVEN**: in order, a barred id is refused; a pending
-		## sign-up named before (its nonce spent) is refused; an id with an
+		## **THE NAME GIVEN**: in order, a pending sign-up named before (its nonce spent) is refused; an id with an
 		## account now (made meanwhile, in a second tab, or by this very
 		## pending sign-up before) is refused, and signs in through /login;
 		## a name the rule refuses is said, to ask again; a generation
@@ -495,8 +482,6 @@ GitHubSignIn := [].{
 		|
 			if now < 0 or now > Stored.max_time {
 				Refused(ClockOutOfRange)
-			} else if List.contains(settings.barred, p.github) {
-				Refused(Barred)
 			} else {
 				match (pending_use, Principal.github_account(accounts, p.github)) {
 					(UsedBefore, _) => Refused(PendingReused)
@@ -596,17 +581,15 @@ is_code = |code|
 		|c| Ascii.is_alphanumeric(c) or c == '-' or c == '_',
 	)
 
-## The id's standing: barred, held by more than one account, an account it
-## signs in to, or none yet.
+## The id's standing: held by more than one account, an account it signs
+## in to, or none yet.
 known_account : {
 	github : Principal.GitHubId,
 	login : GitHubLogin,
 	accounts : List(Principal),
-	settings : Accounts.Settings,
 	session : GitHubSignIn.NewSession,
 	now : I64,
 } -> [
-	Barred,
 	Duplicate,
 	Known(GitHubSignIn.SignedIn),
 	Unknown,
@@ -616,28 +599,23 @@ known_account = |
 		github,
 		login,
 		accounts,
-		settings,
 		session,
 		now,
 	},
 |
-	if List.contains(settings.barred, github) {
-		Barred
-	} else {
-		match Principal.github_account(accounts, github) {
-			Err(NoSuchPrincipal) => Unknown
-			Err(Duplicated) => Duplicate
-			Ok(id) => known_human(
-				accounts,
-				id,
-				{
-					github,
-					login,
-					session,
-					now,
-				},
-			)
-		}
+	match Principal.github_account(accounts, github) {
+		Err(NoSuchPrincipal) => Unknown
+		Err(Duplicated) => Duplicate
+		Ok(id) => known_human(
+			accounts,
+			id,
+			{
+				github,
+				login,
+				session,
+				now,
+			},
+		)
 	}
 
 ## The human `id` signing in again: their login made GitHub's, and the
@@ -650,7 +628,6 @@ Principal.HumanId,
 	session : GitHubSignIn.NewSession,
 	now : I64,
 } -> [
-	Barred,
 	Duplicate,
 	Known(GitHubSignIn.SignedIn),
 	Unknown,
@@ -814,11 +791,10 @@ that_nonce = Str.to_utf8("Wm4kPq8sWm4kPq8s")
 new_session : GitHubSignIn.NewSession
 new_session = { id: Cast.sid(5), token_hash: Cast.token(0x42) }
 
-## Open sign-up, Boss the first admin, GitHub id 66 barred.
+## Open sign-up, Boss the first admin.
 usual_settings : Accounts.Settings
 usual_settings = {
 	first_admin: Named(Cast.gid(1)),
-	barred: [Cast.gid(66)],
 	next_generation: Cast.gen(10),
 	next_agent_id: Cast.aid(20),
 	next_human_id: Cast.hid(100),
@@ -905,7 +881,6 @@ resolved_by = |f| {
 	Ok(
 		known.resolve({
 			accounts: f.accounts,
-			settings: f.settings,
 			session: new_session,
 			now: f.back_at,
 		}),
@@ -1117,27 +1092,12 @@ expect said({
 }) == Refused(BadIdentity)
 expect said({ ..usual, github: Identified({ id: 2, login: [0x61, 0xff] }) }) == Refused(BadIdentity)
 
-# A barred id: refused, even with an account still listed.
+# No bans: an id with no account (one never seen, or an erased human's)
+# is a new human, asked for a name.
 expect said({
 	..usual,
 	github: Identified({ id: 66, login: Str.to_utf8("gone") }),
-}) == Refused(Barred)
-expect
-	said({
-		..usual,
-		accounts: [
-			human(
-				66,
-				{
-					login: "gone",
-					name: "Gone",
-					role: Member,
-				},
-			),
-		],
-		github: Identified({ id: 66, login: Str.to_utf8("gone") }),
-	})
-		== Refused(Barred)
+}) == NeedsName({ github: 66, login: "gone" })
 
 # ATTACK: a sign-in whole under a clock
 # before 1970 admits no session, whose times the store could not write.
@@ -1454,12 +1414,6 @@ expect name_said({
 	at: -50,
 }) == Refused(ClockOutOfRange)
 
-# Barred meanwhile.
-expect name_said({
-	..usual_naming,
-	settings: { ..usual_settings, barred: [Cast.gid(2)] },
-}) == Refused(Barred)
-
 # **THE PENDING SIGN-UP, HOSTILE**: not signed by us; handed to another
 # browser (a login CSRF into a stranger's new account); without a cookie;
 # stale; or signed but not an identity.
@@ -1772,39 +1726,6 @@ expect Accounts.applied(
 	{ accounts: [], settings: usual_settings },
 ).settings == usual_settings
 
-# **A BAR IS FOR LIFE**: no sign-in step, of any kind,
-# takes an id off the barred list; a barred id is refused at both doors.
-every_step : List(Accounts.Change)
-every_step = [
-	AddAccount(
-		human(
-			66,
-			{
-				login: "gone",
-				name: "Gone",
-				role: Member,
-			},
-		),
-	),
-	SetLogin({ human: hum(66), login: "back" }),
-	ClearLogin({ human: hum(66), login: "gone" }),
-	AdvanceGeneration(Cast.gen(99)),
-]
-
-expect Accounts.applied(
-	every_step,
-	{ accounts: [], settings: usual_settings },
-).settings.barred == usual_settings.barred
-expect said({
-	..usual,
-	github: Identified({ id: 66, login: Str.to_utf8("gone") }),
-	accounts: [],
-}) == Refused(Barred)
-expect name_said({
-	..usual_naming,
-	pending: Signed({ ..usual_pending, github: 66 }),
-}) == Refused(Barred)
-
 # Which refusals are audited: each one an anonymous request repeats for
 # free never, each one past GitHub's exchange always; every tag on its side.
 expect
@@ -1828,7 +1749,6 @@ expect
 		[
 			GitHubUnreachable,
 			BadIdentity,
-			Barred,
 			AccountExists,
 			DuplicateAccount,
 			AccountsFull,

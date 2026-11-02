@@ -151,7 +151,7 @@ Principal := [
 	}
 
 	## GitHub's numeric user id, as GitHub's `/user` gives it: only GitHub
-	## sign-in's, and the settings' (first_admin, barred), never a human's
+	## sign-in's, and the settings' (first_admin), never a human's
 	## id. Opaque: made
 	## only by `from_u64`, which refuses 0 (GitHub's ids start at 1, and a
 	## 0 is what a field that failed to decode reads as).

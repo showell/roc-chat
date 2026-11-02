@@ -300,7 +300,6 @@ check_callback! = |req| {
 								Ok(f) =>
 									match known.resolve({
 										accounts: f.accounts,
-										settings: f.settings,
 										session: f.session,
 										now,
 									}) {

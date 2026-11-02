@@ -10,7 +10,6 @@
 ##
 ##     auth/accounts             every account, a line each (AccountCodec)
 ##     auth/settings             the generation and agent-id counters (`settings_line`)
-##     auth/barred               the barred GitHub ids, a line each
 ##     auth/audit                every refusal and admin act, appended (AuditCodec)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
 ##     auth/keys/<hash>          an API key, named for its secret's hash (ChatKey)
@@ -177,7 +176,7 @@ Store := [].{
 	}
 
 	## The settings: `first_admin` (the config's, which the caller reads),
-	## the barred GitHub ids, and the three counters (the generation, the
+	## and the three counters (the generation, the
 	## agent id and the human id, each 1 before its first account). The
 	## store starts empty: no settings read as the counters at 1.
 	load_settings! : [Unnamed, Named(Principal.GitHubId)] => Try(Accounts.Settings, [Failed])
@@ -189,16 +188,8 @@ Store := [].{
 				Failed => Err(Failed)
 				Found => settings_counters(settings_read.bytes).map_err(|_| Failed)
 			}?
-		barred_read = Host.read!(barred_path)
-		barred =
-			match barred_read.status {
-				Missing => Ok([])
-				Failed => Err(Failed)
-				Found => barred_of(barred_read.bytes).map_err(|_| Failed)
-			}
 		Ok({
 			first_admin,
-			barred: barred?,
 			next_generation: counters.next,
 			next_agent_id: counters.agent,
 			next_human_id: counters.human,
@@ -1000,8 +991,6 @@ remove_sessions_from! = |entries, human|
 settings_path : List(U8)
 settings_path = "auth/settings".to_utf8()
 
-barred_path : List(U8)
-barred_path = "auth/barred".to_utf8()
 
 audit_path : List(U8)
 audit_path = "auth/audit".to_utf8()
@@ -1640,69 +1629,6 @@ settings_counters = |raw| {
 	})
 }
 
-## **THE BARRED IDS**, one line each:
-##
-##     barred v1 github=583231
-barred_line : Principal.GitHubId -> List(U8)
-barred_line = |id| Stored.line("barred", [("github", id.to_u64().to_str())])
-
-## The barred ids a store of their lines holds.
-barred_of : List(U8) -> Try(List(Principal.GitHubId), _)
-barred_of = |raw|
-	List.map_try(
-		raw.split_on('\n').drop_last(1),
-		|line| {
-			fields = Stored.Reader.open(line.append('\n'), "barred")?
-			github_field = fields.field("github")?
-			github = Stored.id(
-				github_field.value,
-				{ name: "github", make: Principal.GitHubId.from_u64 },
-			)?
-			github_field.rest.close()?
-			Ok(github)
-		},
-	)
-# The settings' record and the barred ids, round trips and refusals.
-expect settings_counters(
-	settings_line({
-		first_admin: Unnamed,
-		barred: [],
-		next_generation: Cast.gen(3),
-		next_agent_id: Cast.aid(8),
-		next_human_id: Cast.hid(2),
-	}),
-) == Ok({
-	next: Cast.gen(3),
-	agent: Cast.aid(8),
-	human: Cast.hid(2),
-})
-expect settings_line({
-	first_admin: Unnamed,
-	barred: [],
-	next_generation: Cast.gen(3),
-	next_agent_id: Cast.aid(8),
-	next_human_id: Cast.hid(2),
-}) == "settings v1 next=3 agent=8 human=2\n".to_utf8()
-expect settings_counters("settings v1 next=0 agent=1 human=1\n".to_utf8()) == Err(BadValue("next"))
-# Every counter is there; a missing or damaged one is refused, never read
-# as missing (the store started empty with this format).
-expect settings_counters("settings v1 next=3\n".to_utf8()) == Err(MissingField("agent"))
-expect settings_counters("settings v1 next=3 agent=4\n".to_utf8()) == Err(MissingField("human"))
-expect settings_counters("settings v1 next=3 agent=0 human=1\n".to_utf8()) == Err(BadValue("agent"))
-expect settings_counters("settings v1 next=3 agent=4 human=0\n".to_utf8()) == Err(BadValue("human"))
-expect settings_counters("settings v1 next=3 agent=4 human=1 x=1\n".to_utf8()) == Err(Trailing)
-expect first_counters == Ok({
-	next: Cast.gen(1),
-	agent: Cast.aid(1),
-	human: Cast.hid(1),
-})
-
-barred_ids : List(Principal.GitHubId)
-barred_ids = [Cast.gid(7), Cast.gid(583231)]
-
-expect barred_of(barred_ids.join_map(barred_line)) == Ok(barred_ids)
-expect barred_of([]) == Ok([])
-expect barred_of("barred v1 github=x\n".to_utf8()) == Err(BadNumber("github"))
 
 ## **ONE PAST THE COUNT OF A FOLDER'S ENTRIES**: the next id of a record that
 ## is never removed (a key, an invite, a conversation), so no id is given

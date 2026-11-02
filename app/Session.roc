@@ -514,13 +514,6 @@ signed_in = |
 		Ok(k) =>
 			match k.resolve({
 				accounts: among,
-				settings: {
-					first_admin: Unnamed,
-					barred: [],
-					next_generation: Cast.gen(9),
-					next_agent_id: Cast.aid(20),
-					next_human_id: Cast.hid(100),
-				},
 				session: {
 					id: Cast.sid(9),
 					token_hash: Cast.token(1),

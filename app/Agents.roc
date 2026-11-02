@@ -42,7 +42,6 @@ import pf.Chat
 import pf.Host
 import Accounts
 import AccountCodec
-import Admin
 import ApiKey
 import AuditCodec
 import Cast
@@ -1696,7 +1695,6 @@ session_of = |who|
 settings_after_cast : Accounts.Settings
 settings_after_cast = {
 	first_admin: Unnamed,
-	barred: [],
 	next_generation: Cast.gen(2),
 	next_agent_id: Cast.aid(4),
 	next_human_id: Cast.hid(100),
@@ -1932,28 +1930,18 @@ expect said(
 	}),
 ) == Stuck(StaleAgentId)
 
-# **A RETIRED AGENT'S ID IS NEVER GIVEN AGAIN**: the highest agent (4,
-# ann's CC) retired by boss through Admin's plan, the next agent made is 5.
-## Agent `n` retired by boss, through Admin's plan, from `start`.
-retired_by_boss : U64,
+# **A GONE AGENT'S ID IS NEVER GIVEN AGAIN**: the highest agent (4, ann's
+# CC) removed (as Store.erase! removes one), the next agent made is 5.
+## Agent `n`'s account removed from `start`, the settings as they were.
+removed_agent : U64,
 {
 	accounts : List(Principal),
 	settings : Accounts.Settings,
 } -> { accounts : List(Principal), settings : Accounts.Settings }
-retired_by_boss = |n, start|
-	match Admin.decide({
-		credential: Session(session_of(1)),
-		action: Retire(Principal.Id.Agent(Cast.aid(n))),
-		accounts: start.accounts,
-		settings: start.settings,
-		now: 60,
-	}) {
-		Ok({ audit: _, plan }) => Admin.applied(plan, start)
-		Err(_) => crash "retired_by_boss: a test's retirement is decided"
-	}
+removed_agent = |n, start| { ..start, accounts: start.accounts.drop_if(|p| p.id() == Principal.Id.Agent(Cast.aid(n))) }
 
 after_retired : { accounts : List(Principal), settings : Accounts.Settings }
-after_retired = retired_by_boss(4, after_first)
+after_retired = removed_agent(4, after_first)
 
 expect !List.any(after_retired.accounts, |p| Principal.id(p) == Principal.Id.Agent(Cast.aid(4)))
 expect

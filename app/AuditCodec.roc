@@ -1,11 +1,8 @@
 ## **THE AUDIT LOG, STORED** (the Roc chat's auth design, section 9): one
-## line in Stored's format for every admin attempt, permitted or refused,
-## with the whole plan it made; for every sign-in refused; and for every
-## key refused, in use or in its grant:
+## line in Stored's format for every sign-in refused, and for every key
+## refused, in use or in its grant:
 ##
-##     audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=revoke-keys:human:2
-##     audit v1 at=1761600077 who=human:2 via=session:12 action=retire:human:1 verdict=refused:not-admin plan=none
-##     audit-sign-in v1 at=1761600090 github=583231 verdict=refused:barred
+##     audit-sign-in v1 at=1761600090 github=583231 verdict=refused:state-expired
 ##     audit-key v1 at=1761600095 who=agent:7 via=key:4 action=read:3 verdict=refused:out-of-scope
 ##     audit-key v1 at=1761600099 who=human:2 via=session:12 action=grant:agent:3 verdict=refused:not-the-granters-own
 ##     audit-invite v1 at=1761600100 invite=3 for=agent:7 verdict=created:session:12
@@ -47,11 +44,10 @@
 ## hash, cookie, nonce, OAuth code or login, only public numbers and words;
 ## a sign-in refused before GitHub named anyone is `github=unknown`.
 ##
-## **AN ENTRY IS OPAQUE**, made only by `of_admin`, `of_sign_in`, `of_key`,
+## **AN ENTRY IS OPAQUE**, made only by `of_sign_in`, `of_key`,
 ## `of_invite`, `of_human_invite`, `of_channel` and `of_rename`, which refuse a time outside Stored's range (ClockOutOfRange),
 ## or by `decode`: the encoder never meets a time it cannot write. Pure.
 import AccountCodec
-import Admin
 import ApiKey
 import Bytes
 import Cast
@@ -200,7 +196,6 @@ AuditCodec := [].{
 	## **ONE LINE OF THE AUDIT LOG**, the log's entry. Opaque: its time
 	## always in Stored's range.
 	Entry :: [
-		Admin(Admin.Audit),
 		SignIn(AuditCodec.SignIn),
 		Key(AuditCodec.KeyEvent),
 		Invite(AuditCodec.Invite),
@@ -208,10 +203,6 @@ AuditCodec := [].{
 		Channel(AuditCodec.ChannelEvent),
 		Rename(AuditCodec.RenameEvent),
 	].{
-
-		## An admin attempt's audit (Admin.decide's).
-		of_admin : Admin.Audit -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_admin = |audit| if (is_storable(audit.at)) Ok(AuditCodec.Entry.(Admin(audit))) else Err(ClockOutOfRange)
 
 		## A refused sign-in's.
 		of_sign_in : AuditCodec.SignIn -> Try(AuditCodec.Entry, [ClockOutOfRange])
@@ -258,7 +249,6 @@ AuditCodec := [].{
 
 		## What the entry records.
 		event : AuditCodec.Entry -> [
-			Admin(Admin.Audit),
 			SignIn(AuditCodec.SignIn),
 			Key(AuditCodec.KeyEvent),
 			Invite(AuditCodec.Invite),
@@ -280,19 +270,6 @@ AuditCodec := [].{
 	encode : AuditCodec.Entry -> List(U8)
 	encode = |AuditCodec.Entry.(e)|
 		match e {
-			Admin(audit) =>
-				Stored.line(
-					admin_kind,
-					[
-						("at", Stored.time_text(audit.at)),
-						("who", AccountCodec.id_text(audit.who)),
-						("via", via_text(audit.via)),
-						("action", action_text(audit.action)),
-						("verdict", verdict_text(audit.verdict)),
-						("plan", plan_text(audit.plan)),
-					],
-				)
-
 			SignIn(s) =>
 				Stored.line(
 					sign_in_kind,
@@ -395,20 +372,15 @@ AuditCodec := [].{
 	## The entry a line holds, of whichever kind its first word names.
 	decode : List(U8) -> Try(AuditCodec.Entry, _)
 	decode = |raw|
-		match Stored.Reader.open(raw, admin_kind) {
-			Ok(fields) => decode_admin(fields).map_ok(|a| AuditCodec.Entry.(Admin(a)))
+		match Stored.Reader.open(raw, sign_in_kind) {
+			Ok(fields) => decode_sign_in(fields).map_ok(|s| AuditCodec.Entry.(SignIn(s)))
 			Err(WrongRecord) =>
-				match Stored.Reader.open(raw, sign_in_kind) {
-					Ok(fields) => decode_sign_in(fields).map_ok(|s| AuditCodec.Entry.(SignIn(s)))
+				match Stored.Reader.open(raw, key_kind) {
+					Ok(fields) => decode_key(fields).map_ok(|k| AuditCodec.Entry.(Key(k)))
 					Err(WrongRecord) =>
-						match Stored.Reader.open(raw, key_kind) {
-							Ok(fields) => decode_key(fields).map_ok(|k| AuditCodec.Entry.(Key(k)))
-							Err(WrongRecord) =>
-								match Stored.Reader.open(raw, invite_kind) {
-									Ok(fields) => decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
-									Err(WrongRecord) => decode_later(raw)
-									Err(why) => Err(why)
-								}
+						match Stored.Reader.open(raw, invite_kind) {
+							Ok(fields) => decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
+							Err(WrongRecord) => decode_later(raw)
 							Err(why) => Err(why)
 						}
 					Err(why) => Err(why)
@@ -436,9 +408,6 @@ decode_later = |raw|
 	}
 
 ## The lines' first words.
-admin_kind : Str
-admin_kind = "audit"
-
 sign_in_kind : Str
 sign_in_kind = "audit-sign-in"
 
@@ -951,31 +920,6 @@ invite_from = |invite_value, for_value| {
 is_storable : I64 -> Bool
 is_storable = |t| t >= 0 and t <= Stored.max_time
 
-decode_admin : Stored.Reader -> Try(Admin.Audit, _)
-decode_admin = |fields| {
-	at_field = fields.field("at")?
-	at = Stored.time(at_field.value, "at")?
-	who_field = at_field.rest.field("who")?
-	who = AccountCodec.id_from(who_field.value, "who")?
-	via_field = who_field.rest.field("via")?
-	via = via_from(via_field.value)?
-	action_field = via_field.rest.field("action")?
-	action = action_from(action_field.value)?
-	verdict_field = action_field.rest.field("verdict")?
-	verdict = verdict_from(verdict_field.value)?
-	plan_field = verdict_field.rest.field("plan")?
-	plan = plan_from(plan_field.value)?
-	plan_field.rest.close()?
-	Ok({
-		who,
-		via,
-		action,
-		at,
-		verdict,
-		plan,
-	})
-}
-
 decode_sign_in : Stored.Reader -> Try(AuditCodec.SignIn, _)
 decode_sign_in = |fields| {
 	at_field = fields.field("at")?
@@ -1163,7 +1107,6 @@ all_sign_in_refusals = [
 	NotACode,
 	GitHubUnreachable,
 	BadIdentity,
-	Barred,
 	PendingForged,
 	PendingMismatched,
 	PendingExpired,
@@ -1189,7 +1132,6 @@ spell_sign_in_refusal = |why|
 		NotACode => "not-a-code"
 		GitHubUnreachable => "github-unreachable"
 		BadIdentity => "bad-identity"
-		Barred => "barred"
 		PendingForged => "pending-forged"
 		PendingMismatched => "pending-mismatched"
 		PendingExpired => "pending-expired"
@@ -1228,101 +1170,6 @@ spell_grant_refusal = |why|
 		ClockOutOfRange => "clock-out-of-range"
 		BadExpiry => "bad-expiry"
 	}
-
-## A plan's step's word, without its target.
-StepKind : [
-	Bar,
-	RevokeSessions,
-	RevokeKeys,
-	Remove,
-	WithdrawVotes,
-	SetRole,
-]
-
-all_step_kinds : List(StepKind)
-all_step_kinds = [
-	Bar,
-	RevokeSessions,
-	RevokeKeys,
-	Remove,
-	WithdrawVotes,
-	SetRole,
-]
-
-spell_step : StepKind -> Str
-spell_step = |kind|
-	match kind {
-		Bar => "bar"
-		RevokeSessions => "revoke-sessions"
-		RevokeKeys => "revoke-keys"
-		Remove => "remove"
-		WithdrawVotes => "withdraw-votes"
-		SetRole => "set-role"
-	}
-
-## A step's word and its target after a colon.
-step_text : Admin.Step -> Str
-step_text = |step|
-	match step {
-		Bar(g) => "${spell_step(Bar)}${colon}${g.to_u64().to_str()}"
-		RevokeSessionsOf(g) => "${spell_step(RevokeSessions)}${colon}${g.to_u64().to_str()}"
-		RevokeKeysOf(id) => "${spell_step(RevokeKeys)}${colon}${AccountCodec.id_text(id)}"
-		RemoveAccount(id) => "${spell_step(Remove)}${colon}${AccountCodec.id_text(id)}"
-		WithdrawVotes(g) => "${spell_step(WithdrawVotes)}${colon}${g.to_u64().to_str()}"
-		SetRole(
-			{
-				human,
-				role,
-			},
-		) => "${spell_step(SetRole)}${colon}${human.to_u64().to_str()}${colon}${AccountCodec.role_text(role)}"
-	}
-
-step_from : List(U8) -> Try(Admin.Step, _)
-step_from = |value| {
-	{ head, tail } = split_colon(value, "plan")?
-	human = |bytes| Stored.id(bytes, { name: "plan", make: Principal.HumanId.from_u64 })
-	match Stored.word(
-		head,
-		{
-			name: "plan",
-			members: all_step_kinds,
-			spell: spell_step,
-		},
-	)? {
-		Bar => Stored.id(
-			tail,
-			{ name: "plan", make: Principal.GitHubId.from_u64 },
-		).map_ok(|g| Bar(g))
-		RevokeSessions => human(tail).map_ok(|g| RevokeSessionsOf(g))
-		WithdrawVotes => human(tail).map_ok(|g| WithdrawVotes(g))
-		RevokeKeys => AccountCodec.id_from(tail, "plan").map_ok(|id| RevokeKeysOf(id))
-		Remove => AccountCodec.id_from(tail, "plan").map_ok(|id| RemoveAccount(id))
-		SetRole => {
-			parts = split_colon(tail, "plan")?
-			g = human(parts.head)?
-			role = AccountCodec.role_from(parts.tail, "plan")?
-			Ok(SetRole({ human: g, role }))
-		}
-	}
-}
-
-## The steps, commas between; `none` for no step.
-plan_text : List(Admin.Step) -> Str
-plan_text = |plan| if (List.is_empty(plan)) none_word else Str.join_with(
-	List.map(plan, step_text),
-	",",
-)
-
-plan_from : List(U8) -> Try(List(Admin.Step), _)
-plan_from = |value|
-	if value == Str.to_utf8(none_word) {
-		Ok([])
-	} else {
-		List.map_try(List.split_on(value, ','), step_from)
-	}
-
-none_word : Str
-none_word = "none"
 
 Via : [Session(Principal.SessionId), Key(Principal.KeyId)]
 
@@ -1365,140 +1212,6 @@ via_from = |value| {
 	}
 }
 
-## An action's word, without its target.
-ActionKind : [
-	ListAccounts,
-	Retire,
-	RevokeKeys,
-	RevokeSessions,
-	SetRole,
-	ReadCounters,
-]
-
-all_action_kinds : List(ActionKind)
-all_action_kinds = [
-	ListAccounts,
-	Retire,
-	RevokeKeys,
-	RevokeSessions,
-	SetRole,
-	ReadCounters,
-]
-
-spell_action : ActionKind -> Str
-spell_action = |kind|
-	match kind {
-		ListAccounts => "list-accounts"
-		Retire => "retire"
-		RevokeKeys => "revoke-keys"
-		RevokeSessions => "revoke-sessions"
-		SetRole => "set-role"
-		ReadCounters => "read-counters"
-	}
-
-## The action's word, and its target after a colon: a principal's id, a
-## human's GitHub id for their sessions, or a human's GitHub id and the
-## role set, colon between.
-action_text : Admin.Action -> Str
-action_text = |action|
-	match action {
-		ListAccounts => spell_action(ListAccounts)
-		Retire(id) => "${spell_action(Retire)}${colon}${AccountCodec.id_text(id)}"
-		RevokeKeys(id) => "${spell_action(RevokeKeys)}${colon}${AccountCodec.id_text(id)}"
-		RevokeSessions(g) => "${spell_action(RevokeSessions)}${colon}${g.to_u64().to_str()}"
-		SetRole({ human, role }) => {
-			target = "${human.to_u64().to_str()}${colon}${AccountCodec.role_text(role)}"
-			"${spell_action(SetRole)}${colon}${target}"
-		}
-		ReadCounters => spell_action(ReadCounters)
-	}
-
-action_from : List(U8) -> Try(Admin.Action, _)
-action_from = |value|
-	match List.split_first(value, ':') {
-		Err(NotFound) =>
-			match Stored.word(
-				value,
-				{
-					name: "action",
-					members: all_action_kinds,
-					spell: spell_action,
-				},
-			)? {
-				ListAccounts => Ok(ListAccounts)
-				ReadCounters => Ok(ReadCounters)
-				Retire | RevokeKeys | RevokeSessions | SetRole => Err(BadValue("action"))
-			}
-
-		Ok({ before, after }) =>
-			match Stored.word(
-				before,
-				{
-					name: "action",
-					members: all_action_kinds,
-					spell: spell_action,
-				},
-			)? {
-				ListAccounts | ReadCounters => Err(BadValue("action"))
-				Retire => AccountCodec.id_from(after, "action").map_ok(|id| Retire(id))
-				RevokeKeys => AccountCodec.id_from(after, "action").map_ok(|id| RevokeKeys(id))
-				RevokeSessions =>
-					Stored.id(
-						after,
-						{ name: "action", make: Principal.HumanId.from_u64 },
-					).map_ok(|g| RevokeSessions(g))
-				SetRole => {
-					{ head, tail } = split_colon(after, "action")?
-					human = Stored.id(head, { name: "action", make: Principal.HumanId.from_u64 })?
-					role = AccountCodec.role_from(tail, "action")?
-					Ok(SetRole({ human, role }))
-				}
-			}
-	}
-
-Verdict : [Permitted, Refused(Admin.Refusal)]
-
-## The refusals Admin says itself; a key's are ApiKey's, after `key:`.
-AdminRefusal : [
-	NoSuchPrincipal,
-	SessionExpired,
-	NotAdmin,
-	RetiresOwnAuthority,
-	SetsOwnRole,
-	NeedsSession,
-	FirstAdmin,
-	LastAdmin,
-	NoSuchTarget,
-]
-
-all_admin_refusals : List(AdminRefusal)
-all_admin_refusals = [
-	NoSuchPrincipal,
-	SessionExpired,
-	NotAdmin,
-	RetiresOwnAuthority,
-	SetsOwnRole,
-	NeedsSession,
-	FirstAdmin,
-	LastAdmin,
-	NoSuchTarget,
-]
-
-spell_admin_refusal : AdminRefusal -> Str
-spell_admin_refusal = |why|
-	match why {
-		NoSuchPrincipal => "no-such-principal"
-		SessionExpired => "session-expired"
-		NotAdmin => "not-admin"
-		RetiresOwnAuthority => "retires-own-authority"
-		SetsOwnRole => "sets-own-role"
-		NeedsSession => "needs-session"
-		# Its word is the one audit lines have always held.
-		FirstAdmin => "bootstrap-admin"
-		LastAdmin => "last-admin"
-		NoSuchTarget => "no-such-target"
-	}
-
 all_key_refusals : List(ApiKey.Refusal)
 all_key_refusals = [
 	Revoked,
@@ -1518,73 +1231,6 @@ spell_key_refusal = |why|
 		OutOfScope => "out-of-scope"
 		BeyondPrincipal => "beyond-principal"
 		AgentHops => "agent-hops"
-	}
-
-## `permitted`, or `refused:` and the refusal (`refused:key:` and a key's).
-verdict_text : Verdict -> Str
-verdict_text = |verdict|
-	match verdict {
-		Permitted => permitted_word
-		Refused(why) => "${refused_prefix}${refusal_text(why)}"
-	}
-
-## A refusal's word, a key's after `key:`.
-refusal_text : Admin.Refusal -> Str
-refusal_text = |why|
-	match why {
-		KeyRefused(key_why) => "${key_prefix}${spell_key_refusal(key_why)}"
-		NoSuchPrincipal => spell_admin_refusal(NoSuchPrincipal)
-		SessionExpired => spell_admin_refusal(SessionExpired)
-		NotAdmin => spell_admin_refusal(NotAdmin)
-		RetiresOwnAuthority => spell_admin_refusal(RetiresOwnAuthority)
-		SetsOwnRole => spell_admin_refusal(SetsOwnRole)
-		NeedsSession => spell_admin_refusal(NeedsSession)
-		FirstAdmin => spell_admin_refusal(FirstAdmin)
-		LastAdmin => spell_admin_refusal(LastAdmin)
-		NoSuchTarget => spell_admin_refusal(NoSuchTarget)
-	}
-
-verdict_from : List(U8) -> Try(Verdict, _)
-verdict_from = |value|
-	if value == Str.to_utf8(permitted_word) {
-		Ok(Permitted)
-	} else {
-		match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
-			Err(NoMatch) => Err(UnknownWord("verdict"))
-			Ok(why) =>
-				match Bytes.strip_prefix(why, Str.to_utf8(key_prefix)) {
-					Ok(key_why) =>
-						Stored.word(
-							key_why,
-							{
-								name: "verdict",
-								members: all_key_refusals,
-								spell: spell_key_refusal,
-							},
-						)
-							.map_ok(|w| Refused(KeyRefused(w)))
-
-					Err(NoMatch) =>
-						match Stored.word(
-							why,
-							{
-								name: "verdict",
-								members: all_admin_refusals,
-								spell: spell_admin_refusal,
-							},
-						)? {
-							NoSuchPrincipal => Ok(Refused(NoSuchPrincipal))
-							SessionExpired => Ok(Refused(SessionExpired))
-							NotAdmin => Ok(Refused(NotAdmin))
-							RetiresOwnAuthority => Ok(Refused(RetiresOwnAuthority))
-							SetsOwnRole => Ok(Refused(SetsOwnRole))
-							NeedsSession => Ok(Refused(NeedsSession))
-							FirstAdmin => Ok(Refused(FirstAdmin))
-							LastAdmin => Ok(Refused(LastAdmin))
-							NoSuchTarget => Ok(Refused(NoSuchTarget))
-						}
-				}
-		}
 	}
 
 permitted_word : Str
@@ -1609,23 +1255,6 @@ split_colon = |value, name|
 
 # ── tests
 
-## A test's admin audit, with no plan.
-Bare : {
-	who : Principal.Id,
-	via : [Session(Principal.SessionId), Key(Principal.KeyId)],
-	action : Admin.Action,
-	at : I64,
-	verdict : [Permitted, Refused(Admin.Refusal)],
-}
-
-## The entry of an admin audit whose time a test keeps in range.
-admin_entry : Admin.Audit -> AuditCodec.Entry
-admin_entry = |audit|
-	match AuditCodec.Entry.of_admin(audit) {
-		Ok(e) => e
-		Err(ClockOutOfRange) => crash "admin_entry: a test's time is in range"
-	}
-
 ## An entry as text.
 line_text : AuditCodec.Entry -> Str
 line_text = |entry|
@@ -1633,174 +1262,6 @@ line_text = |entry|
 		Ok(text) => text
 		Err(_) => crash "line_text: a stored line is UTF-8"
 	}
-
-## A bare audit as text.
-text_of : Bare -> Str
-text_of = |bare|
-	match Str.from_utf8(
-		AuditCodec.encode(
-			admin_entry({
-				who: bare.who,
-				via: bare.via,
-				action: bare.action,
-				at: bare.at,
-				verdict: bare.verdict,
-				plan: [],
-			}),
-		),
-	) {
-		Ok(text) => text
-		Err(_) => crash "text_of: a stored line is UTF-8"
-	}
-
-expect
-	text_of({
-		who: Principal.Id.Agent(Cast.aid(1)),
-		via: Key(Cast.kid(4)),
-		action: RevokeKeys(Principal.Id.Human(Cast.hid(2))),
-		at: 1761600000,
-		verdict: Permitted,
-	})
-		== "audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n"
-expect
-	text_of({
-		who: Principal.Id.Human(Cast.hid(2)),
-		via: Session(Cast.sid(12)),
-		action: Retire(Principal.Id.Human(Cast.hid(1))),
-		at: 1761600077,
-		verdict: Refused(NotAdmin),
-	})
-		== "audit v1 at=1761600077 who=human:2 via=session:12 action=retire:human:1 verdict=refused:not-admin plan=none\n"
-expect
-	text_of({
-		who: Principal.Id.Bot(Cast.aid(3)),
-		via: Key(Cast.kid(5)),
-		action: ReadCounters,
-		at: 0,
-		verdict: Refused(KeyRefused(OutOfScope)),
-	})
-		== "audit v1 at=0 who=bot:3 via=key:5 action=read-counters verdict=refused:key:out-of-scope plan=none\n"
-expect
-	text_of({
-		who: Principal.Id.Human(Cast.hid(1)),
-		via: Session(Cast.sid(3)),
-		action: SetRole({ human: Cast.hid(2), role: Admin }),
-		at: 1761600100,
-		verdict: Permitted,
-	})
-		== "audit v1 at=1761600100 who=human:1 via=session:3 action=set-role:2:admin verdict=permitted plan=none\n"
-expect
-	text_of({
-		who: Principal.Id.Agent(Cast.aid(1)),
-		via: Key(Cast.kid(4)),
-		action: SetRole({ human: Cast.hid(2), role: Member }),
-		at: 1761600100,
-		verdict: Refused(NeedsSession),
-	})
-		== "audit v1 at=1761600100 who=agent:1 via=key:4 action=set-role:2:member verdict=refused:needs-session plan=none\n"
-
-# ── EVERY ENTRY ROUND-TRIPS: every action against every verdict, by a
-# session and by a key.
-actions : List(Admin.Action)
-actions = [
-	ListAccounts,
-	Retire(Principal.Id.Human(Cast.hid(1))),
-	Retire(Principal.Id.Agent(Cast.aid(2))),
-	Retire(Principal.Id.Bot(Cast.aid(3))),
-	RevokeKeys(Principal.Id.Human(Cast.hid(18446744073709551615))),
-	RevokeKeys(Principal.Id.Agent(Cast.aid(2))),
-	RevokeKeys(Principal.Id.Bot(Cast.aid(3))),
-	RevokeSessions(Cast.hid(583231)),
-	SetRole({ human: Cast.hid(2), role: Admin }),
-	SetRole({ human: Cast.hid(583231), role: Member }),
-	ReadCounters,
-]
-
-verdicts : List(Verdict)
-verdicts = List.concat(
-	List.concat([Permitted], List.map(all_admin_refusals, |w| when_refused(w))),
-	List.map(all_key_refusals, |w| Refused(KeyRefused(w))),
-)
-
-when_refused : AdminRefusal -> Verdict
-when_refused = |why|
-	match why {
-		NoSuchPrincipal => Refused(NoSuchPrincipal)
-		SessionExpired => Refused(SessionExpired)
-		NotAdmin => Refused(NotAdmin)
-		RetiresOwnAuthority => Refused(RetiresOwnAuthority)
-		SetsOwnRole => Refused(SetsOwnRole)
-		NeedsSession => Refused(NeedsSession)
-		FirstAdmin => Refused(FirstAdmin)
-		LastAdmin => Refused(LastAdmin)
-		NoSuchTarget => Refused(NoSuchTarget)
-	}
-
-entries : List(Admin.Audit)
-entries =
-	List.join_map(
-		actions,
-		|action|
-			List.join_map(
-				verdicts,
-				|verdict| [
-					{
-						who: Principal.Id.Human(Cast.hid(1)),
-						via: Session(Cast.sid(9)),
-						action,
-						at: 1761600000,
-						verdict,
-						plan: [],
-					},
-					{
-						who: Principal.Id.Agent(Cast.aid(1)),
-						via: Key(Cast.kid(4)),
-						action,
-						at: 0,
-						verdict,
-						plan: every_step,
-					},
-				],
-			),
-	)
-
-expect List.len(verdicts) == 16
-expect List.len(entries) == 352
-expect List.all(
-	entries,
-	|e| AuditCodec.decode(AuditCodec.encode(admin_entry(e))) == Ok(admin_entry(e)),
-)
-
-## Every step of a plan, each kind once and every target kind.
-every_step : List(Admin.Step)
-every_step = [
-	Bar(Cast.gid(2)),
-	RevokeSessionsOf(Cast.hid(2)),
-	RevokeKeysOf(Principal.Id.Human(Cast.hid(2))),
-	RevokeKeysOf(Principal.Id.Agent(Cast.aid(3))),
-	RemoveAccount(Principal.Id.Agent(Cast.aid(3))),
-	RevokeKeysOf(Principal.Id.Bot(Cast.aid(6))),
-	RemoveAccount(Principal.Id.Bot(Cast.aid(6))),
-	WithdrawVotes(Cast.hid(2)),
-	RemoveAccount(Principal.Id.Human(Cast.hid(2))),
-	SetRole({ human: Cast.hid(4), role: Member }),
-]
-
-# **A RETIREMENT'S WHOLE PLAN IS AUDITED**: the
-# agents and bots that went with the human and the votes withdrawn, each a
-# step on the line, in the plan's order.
-expect
-	line_text(
-		admin_entry({
-			who: Principal.Id.Human(Cast.hid(1)),
-			via: Session(Cast.sid(3)),
-			action: Retire(Principal.Id.Human(Cast.hid(2))),
-			at: 1761600200,
-			verdict: Permitted,
-			plan: List.take_first(every_step, 9),
-		}),
-	)
-		== "audit v1 at=1761600200 who=human:1 via=session:3 action=retire:human:2 verdict=permitted plan=bar:2,revoke-sessions:2,revoke-keys:human:2,revoke-keys:agent:3,remove:agent:3,revoke-keys:bot:6,remove:bot:6,withdraw-votes:2,remove:human:2\n"
 
 # ── SIGN-IN REFUSALS AND KEY REFUSALS
 sign_in_entry : AuditCodec.SignIn -> AuditCodec.Entry
@@ -1821,9 +1282,9 @@ expect line_text(
 	sign_in_entry({
 		at: 1761600090,
 		github: Known(Cast.hid(583231)),
-		refusal: Barred,
+		refusal: StateExpired,
 	}),
-) == "audit-sign-in v1 at=1761600090 github=583231 verdict=refused:barred\n"
+) == "audit-sign-in v1 at=1761600090 github=583231 verdict=refused:state-expired\n"
 expect line_text(
 	sign_in_entry({
 		at: 5,
@@ -1930,7 +1391,7 @@ key_events =
 		),
 	)
 
-expect List.len(all_sign_in_refusals) == 21
+expect List.len(all_sign_in_refusals) == 20
 expect List.len(all_grant_refusals) == 8
 expect List.all(
 	sign_ins,
@@ -1954,14 +1415,6 @@ expect AuditCodec.Entry.of_key(
 		refusal: Expired,
 	}),
 ).map_ok(|_| {}) == Err(ClockOutOfRange)
-expect AuditCodec.Entry.of_admin({
-	who: Principal.Id.Human(Cast.hid(1)),
-	via: Session(Cast.sid(1)),
-	action: ListAccounts,
-	at: -5,
-	verdict: Permitted,
-	plan: [],
-}).map_ok(|_| {}) == Err(ClockOutOfRange)
 
 ## A key line with `from` replaced by `to`, decoded.
 key_line_but : { from : Str, to : Str } -> Try({}, _)
@@ -1992,7 +1445,7 @@ expect key_line_but({
 	from: "verdict=refused:out-of-scope",
 	to: "verdict=permitted",
 }) == Err(UnknownWord("verdict"))
-expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=0 verdict=refused:barred\n")).map_ok(|_| {}) == Err(BadValue("github"))
+expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=0 verdict=refused:state-expired\n")).map_ok(|_| {}) == Err(BadValue("github"))
 expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=2 verdict=permitted\n")).map_ok(|_| {}) == Err(UnknownWord("verdict"))
 expect AuditCodec.decode(Str.to_utf8("audit-login v1 at=7\n")).map_ok(|_| {}) == Err(WrongRecord)
 
@@ -2269,9 +1722,9 @@ expect channel_line_but({
 }) == Err(UnknownWord("verdict"))
 expect channel_line_but({ from: " channel=Lobby", to: "" }) == Err(MissingField("channel"))
 
-# ── THE MALFORMED TABLE: each line, its named problem.
+# ── THE MALFORMED TABLE: each line, its named problem, on a channel's line.
 usual_line : Str
-usual_line = "audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n"
+usual_line = "audit-channel v1 at=1761600200 who=human:1 via=session:3 action=make channel=Lobby members=human:2,human:7 verdict=permitted\n"
 
 decoded : { from : Str, to : Str } -> Try({}, _)
 decoded = |
@@ -2283,76 +1736,26 @@ decoded = |
 
 expect decoded({ from: "", to: "" }) == Ok({})
 expect decoded({ from: "\n", to: "" }) == Err(Torn)
-expect decoded({ from: "audit", to: "audits" }) == Err(WrongRecord)
+expect decoded({ from: "audit-channel", to: "audits" }) == Err(WrongRecord)
 expect decoded({ from: "v1", to: "v9" }) == Err(UnknownVersion)
-expect decoded({ from: "at=1761600000 ", to: "" }) == Err(MissingField("at"))
-expect decoded({ from: "at=1761600000", to: "at=-0" }) == Err(BadNumber("at"))
-expect decoded({ from: "who=agent:1", to: "who=agent:0" }) == Err(BadValue("who"))
-expect decoded({ from: "who=agent:1", to: "who=root" }) == Err(BadValue("who"))
-expect decoded({ from: "via=key:4", to: "via=cookie:4" }) == Err(UnknownWord("via"))
-expect decoded({ from: "via=key:4", to: "via=key" }) == Err(BadValue("via"))
-expect decoded({ from: "via=key:4", to: "via=key:0" }) == Err(BadValue("via"))
-expect decoded({ from: "via=key:4", to: "via=session:x" }) == Err(BadNumber("via"))
-expect decoded({ from: "via=key:4 ", to: "" }) == Err(MissingField("via"))
-expect decoded({
-	from: "revoke-keys:human:2",
-	to: "read-mail:human:2",
-}) == Err(UnknownWord("action"))
-expect decoded({ from: "revoke-keys:human:2", to: "revoke-keys" }) == Err(BadValue("action"))
-expect decoded({
-	from: "revoke-keys:human:2",
-	to: "list-accounts:human:2",
-}) == Err(BadValue("action"))
-expect decoded({
-	from: "revoke-keys:human:2",
-	to: "revoke-keys:human:0",
-}) == Err(BadValue("action"))
-expect decoded({
-	from: "revoke-keys:human:2",
-	to: "revoke-sessions:human:2",
-}) == Err(BadNumber("action"))
-expect decoded({ from: "revoke-keys:human:2", to: "revoke-sessions:2" }) == Ok({})
-expect decoded({ from: "revoke-keys:human:2", to: "list-accounts" }) == Ok({})
-expect decoded({ from: "revoke-keys:human:2", to: "set-role:2:admin" }) == Ok({})
-expect decoded({ from: "revoke-keys:human:2", to: "set-role:2" }) == Err(BadValue("action"))
-expect decoded({ from: "revoke-keys:human:2", to: "set-role" }) == Err(BadValue("action"))
-# No action lifts a bar: `unbar` is no word.
-expect decoded({ from: "revoke-keys:human:2", to: "unbar:66" }) == Err(UnknownWord("action"))
-expect decoded({ from: "revoke-keys:human:2", to: "unbar" }) == Err(UnknownWord("action"))
-expect decoded({ from: "permitted", to: "refused:bootstrap-admin" }) == Ok({})
-expect decoded({ from: "permitted", to: "refused:not-barred" }) == Err(UnknownWord("verdict"))
-expect decoded({ from: "at=1761600000", to: "at=-1" }) == Err(BadNumber("at"))
-expect decoded({ from: "revoke-keys:human:2", to: "set-role:0:admin" }) == Err(BadValue("action"))
-expect decoded({
-	from: "revoke-keys:human:2",
-	to: "set-role:2:owner",
-}) == Err(UnknownWord("action"))
-expect decoded({
-	from: "revoke-keys:human:2",
-	to: "set-role:human:2:admin",
-}) == Err(BadNumber("action"))
-expect decoded({
-	from: "permitted",
-	to: "refused:session-not-human",
-}) == Err(UnknownWord("verdict"))
-expect decoded({ from: "permitted", to: "allowed" }) == Err(UnknownWord("verdict"))
-expect decoded({ from: "permitted", to: "refused:" }) == Err(UnknownWord("verdict"))
-expect decoded({ from: "permitted", to: "refused:not-admin" }) == Ok({})
-expect decoded({ from: "permitted", to: "refused:because" }) == Err(UnknownWord("verdict"))
-expect decoded({ from: "permitted", to: "refused:key:not-admin" }) == Err(UnknownWord("verdict"))
-expect decoded({ from: "permitted", to: "refused:key:" }) == Err(UnknownWord("verdict"))
+expect decoded({ from: "at=1761600200 ", to: "" }) == Err(MissingField("at"))
+expect decoded({ from: "at=1761600200", to: "at=-0" }) == Err(BadNumber("at"))
+expect decoded({ from: "at=1761600200", to: "at=-1" }) == Err(BadNumber("at"))
+expect decoded({ from: "who=human:1", to: "who=human:0" }) == Err(BadValue("who"))
+expect decoded({ from: "who=human:1", to: "who=root" }) == Err(BadValue("who"))
+expect decoded({ from: "via=session:3", to: "via=cookie:3" }) == Err(UnknownWord("via"))
+expect decoded({ from: "via=session:3", to: "via=session" }) == Err(BadValue("via"))
+expect decoded({ from: "via=session:3", to: "via=session:0" }) == Err(BadValue("via"))
+expect decoded({ from: "via=session:3", to: "via=key:x" }) == Err(BadNumber("via"))
+expect decoded({ from: "via=session:3 ", to: "" }) == Err(MissingField("via"))
 expect decoded({ from: " verdict=permitted", to: "" }) == Err(MissingField("verdict"))
-expect decoded({ from: "none\n", to: "none by=steve\n" }) == Err(Trailing)
-expect decoded({ from: " plan=none", to: "" }) == Err(MissingField("plan"))
-expect decoded({ from: "plan=none", to: "plan=" }) == Err(BadValue("plan"))
-expect decoded({ from: "plan=none", to: "plan=bar:2," }) == Err(BadValue("plan"))
-expect decoded({ from: "plan=none", to: "plan=unbar:2" }) == Err(UnknownWord("plan"))
-expect decoded({ from: "plan=none", to: "plan=bar:0" }) == Err(BadValue("plan"))
-expect decoded({ from: "plan=none", to: "plan=remove:human:2,bar:2" }) == Ok({})
+expect decoded({ from: "permitted\n", to: "permitted by=steve\n" }) == Err(Trailing)
 expect decoded({
-	from: "who=agent:1 via=key:4",
-	to: "via=key:4 who=agent:1",
+	from: "who=human:1 via=session:3",
+	to: "via=session:3 who=human:1",
 }) == Err(MissingField("who"))
+# The admin's line of before (`audit v1 ...`) is no entry now.
+expect AuditCodec.decode("audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n".to_utf8()).is_err()
 
 # ── RENAMES
 renamed_entry : AuditCodec.RenameEvent -> AuditCodec.Entry
