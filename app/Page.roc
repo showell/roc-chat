@@ -197,7 +197,7 @@ compose_box = |key|
 			Html.element({
 				name: P,
 				attrs: [Page.class(Help)],
-				inner: Escape.text("Enter sends · Shift+Enter new line"),
+				inner: Escape.text("Ctrl/⌘-Enter to send"),
 			}),
 		]),
 	})

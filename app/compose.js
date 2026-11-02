@@ -8,8 +8,9 @@
 // - the messages fill the window above a fixed compose area, and open
 //   scrolled to the newest;
 // - the textarea has the focus;
-// - Enter sends, Shift+Enter is a new line (and Enter while an input method
-//   is composing a character is the input method's).
+// - Ctrl+Enter (⌘+Enter on a Mac) sends, as the old chat-client's box
+//   does, and plain Enter is a new line (and a key while an input method is
+//   composing a character is the input method's).
 //
 // It styles the elements it arranges itself (`.style`), so the server
 // sends no CSS for them.
@@ -53,14 +54,14 @@
   window.addEventListener('load', scrollToNewest);
   box.focus();
 
-  // One send per page: a second Enter while the first is on its way would
+  // One send per page: a second Ctrl+Enter while the first is on its way would
   // post the message twice. A page shown again from the back button's cache
   // may send again.
   var sending = false;
   form.addEventListener('submit', function () { sending = true; });
   window.addEventListener('pageshow', function () { sending = false; });
   box.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.isComposing) return;
     e.preventDefault();
     if (sending || box.value.trim() === '') return;
     form.requestSubmit(send);

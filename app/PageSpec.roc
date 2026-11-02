@@ -18,7 +18,7 @@ plans_key = ConversationKey.from_url_path({
 ## `url`, its keys in words, and the script. A frozen answer, so a change
 ## to the box shows here as a deliberate re-freeze.
 foot : Str -> Str
-foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Enter sends · Shift+Enter new line</p></div>\n<script src=\"/chat/assets/compose.js\"></script>\n"
+foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Ctrl/⌘-Enter to send</p></div>\n<script src=\"/chat/assets/compose.js\"></script>\n"
 
 ## A conversation's page as a test expects it: the head, then the messages'
 ## pane holding `messages` under the topic `plans`, then the foot.

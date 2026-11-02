@@ -12,7 +12,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `Html` (elements from closed sets and strict tokens);
   - `Markdown` (roc-markdown's output, its images ruled by `SecureImageTag`);
   - `Page`'s fixed head and style sheet.
-- **The page's one script.** `app/compose.js` lays out the two panes and gives the compose box its keys (Enter sends, Shift+Enter is a new line). `ComposeScript` imports it whole at compile time, so the file is its bytes' one home, and the server answers it at `/chat/assets/compose.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without it: the box is a plain form.
+- **The page's one script.** `app/compose.js` lays out the two panes and gives the compose box its keys (Ctrl/⌘-Enter sends, as the old chat-client's does; plain Enter is a new line). `ComposeScript` imports it whole at compile time, so the file is its bytes' one home, and the server answers it at `/chat/assets/compose.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without it: the box is a plain form.
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
 - **Who is acting.** That is a `SignedIn`, and its door, `dangerously_assume`, stands in for sessions.
 - **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
