@@ -10,13 +10,12 @@
 ##
 ## Each message opens with the separator, then its reference
 ## (`Message.reference`), its author, its time, an empty line, its markdown
-## and an empty line. A conversation with no messages is an empty file. A
-## markdown line that is the separator, after any backslashes, is written
-## with one backslash more, and read back with one fewer, so no message can
-## forge the start of another.
+## and an empty line. A conversation with no messages is an empty file. No
+## message's markdown can forge the start of another (Separator).
 import Author
 import Conversation
 import Message
+import Separator
 import Timestamp
 import Topic
 
@@ -68,12 +67,12 @@ Transcript :: [].{
 }
 
 separator : Str
-separator = "-------------"
+separator = Separator.line
 
 ## One message as the transcript writes it.
 record : { topic : Topic, message : { id : Message.Id, payload : Message.Payload } } -> Str
 record = |{ topic, message: { id, payload } }|
-	"${separator}\n${Message.reference(topic, id)}\nfrom: ${payload.author.to_str()}\ndate: ${payload.time.to_str()}\n\n${escape(payload.markdown)}\n\n"
+	"${separator}\n${Message.reference(topic, id)}\nfrom: ${payload.author.to_str()}\ndate: ${payload.time.to_str()}\n\n${Separator.escape(payload.markdown)}\n\n"
 
 ## `so_far` with each record appended in order, or the first record's fault.
 read_onto : Conversation, List(Str) -> Try(Conversation, _)
@@ -103,39 +102,9 @@ read_message = |c, written| {
 			c.append({
 				author,
 				time,
-				markdown: unescape(Str.join_with(body, "\n")),
+				markdown: Separator.unescape(Str.join_with(body, "\n")),
 			})
 		}
 		_ => Err(BadHead(id))
 	}
 }
-
-## Is `line` the separator after some backslashes?
-is_separator_like : Str -> Bool
-is_separator_like = |line| line.ends_with(separator) and line.drop_suffix(separator).to_utf8().all(|b| b == '\\')
-
-escape : Str -> Str
-escape = |md| Str.join_with(
-	md.split_on("\n").map(|l| if (is_separator_like(l)) "\\${l}" else l),
-	"\n",
-)
-
-unescape : Str -> Str
-unescape = |md| Str.join_with(
-	md.split_on("\n").map(|l| if (l.starts_with("\\") and is_separator_like(l)) l.drop_prefix("\\") else l),
-	"\n",
-)
-
-# ── tests
-expect is_separator_like("-------------")
-expect is_separator_like("\\-------------")
-expect is_separator_like("\\\\-------------")
-expect !is_separator_like("a-------------")
-expect !is_separator_like("-------------x")
-expect !is_separator_like("\\x")
-expect !is_separator_like("------------")
-expect !is_separator_like("\\------------")
-expect escape("a\n-------------\n\\-------------\nb") == "a\n\\-------------\n\\\\-------------\nb"
-expect unescape("a\n\\-------------\n\\\\-------------\nb") == "a\n-------------\n\\-------------\nb"
-# A lone backslash, or one before a near miss, is no escape.
-expect unescape("\\\n\\------------") == "\\\n\\------------"

@@ -16,7 +16,7 @@
 -- budget: steps=200000000
 
 const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
-const expect_floor = 198
+const expect_floor = 200
 
 const board = {failed = 0}
 
