@@ -1196,9 +1196,9 @@ fn audited(w: *World) !void {
         "verdict=refused:not-the-granters-own",
         "verdict=refused:granted-by-key", // the key's mint and its agent
         // The revoked key's read of the agent's topic, and the expired one's:
-        // a topic's routes ask the credential as `list:conversations`.
-        "action=list:conversations verdict=refused:revoked",
-        "action=list:conversations verdict=refused:expired",
+        // a refusal comes before the request is known, so each is a `use`.
+        "action=use verdict=refused:revoked",
+        "action=use verdict=refused:expired",
     };
     for (wanted) |line| if (!has(log, line)) return error.NotAudited;
     // A secret is never in it.
@@ -1440,11 +1440,11 @@ fn memberRefusedChannels(w: *World) !void {
     if (has(listed, "Annex") or has(listed, (try std.fmt.allocPrint(w.a, "human:{s}", .{try hid(w.a, 1003)}))) or !has(listed, (try std.fmt.allocPrint(w.a, "(<code>human:{s}</code>)", .{try hid(w.a, 1002)})))) return error.Changed;
 }
 
-/// **A KEY CHANGES NO CHANNEL**: Ivy's own key, acting as an admin with
-/// admin scope, is refused the page (the 403 every page gives a key) and
+/// **A KEY CHANGES NO CHANNEL**: Ivy's own key, acting as an admin, is
+/// refused the page (the 403 every page gives a key) and
 /// each write (`needs-session`); nothing changes.
 fn keyRefusedChannels(w: *World) !void {
-    const minted = try request(w.a, w.port(), "POST", "/keys", w.ivy, "admin=on");
+    const minted = try request(w.a, w.port(), "POST", "/keys", w.ivy, "");
     if (minted.status != 201) return error.NotMinted;
     w.ivy_key = try field(minted.body, "secret");
     if ((try send(w.a, w.port(), "GET", "/chat/channels", .{ .key = w.ivy_key }, "")).status != 403) return error.KeyGivenPage;
@@ -2817,7 +2817,7 @@ const steps = [_]Step{
     .{ .name = "an agent's post says its kind and its owner, though it took a look-alike of its owner's name; a human's says no owner", .f = authorKind },
     .{ .name = "an admin makes channels, linked from /chat for her alone; the channels page lists them by key, with their members", .f = adminMakesChannel },
     .{ .name = "a human who is no admin is refused the channels page and each channel write; signed out, a 303 and a 401", .f = memberRefusedChannels },
-    .{ .name = "a key, even an admin's own with admin scope, is refused the channels page and each channel write", .f = keyRefusedChannels },
+    .{ .name = "a key, even an admin's own, is refused the channels page and each channel write", .f = keyRefusedChannels },
     .{ .name = "admit and remove change a channel's members, an agent as a human; one already in, one not in, no account and no channel refused by name", .f = admitRemove },
     .{ .name = "a channel's name is taken in any spelling", .f = takenName },
     .{ .name = "every channel change, and every refusal of a named asker, is audited, with no secret", .f = channelsAudited },

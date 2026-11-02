@@ -248,7 +248,6 @@ reads_only = key_viewer(
 		scope: {
 			read: On,
 			post: Off,
-			admin: Off,
 		},
 	},
 )
@@ -271,7 +270,6 @@ expect Access.Viewer.from_key(
 			scope: {
 				read: On,
 				post: On,
-				admin: Off,
 			},
 			expires: 1000,
 		},
@@ -300,7 +298,6 @@ expect
 			scope: {
 				read: Off,
 				post: On,
-				admin: Off,
 			},
 		},
 	).reach(Read)

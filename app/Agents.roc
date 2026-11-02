@@ -11,9 +11,8 @@
 ##     POST /agents              make an agent: a form, `name=`
 ##     POST /keys                mint a key: a form, every field optional:
 ##                               `read=` and `post=` (`everywhere`, the
-##                               default, or `off`), `admin=on`
-##                               (off by default), `lifetime=` seconds (a
-##                               year, the most, by default)
+##                               default, or `off`), `lifetime=` seconds
+##                               (a year, the most, by default)
 ##     GET  /keys                this session's keys and its agents'
 ##     POST /keys/<id>/revoke    revoke one of them
 ##     POST /invites             invite an agent: `as=agent:7` and a mint's
@@ -1399,13 +1398,6 @@ asked_grant = |form, default_as| {
 		}?
 	read = reach_asked(form, "read")?
 	post = reach_asked(form, "post")?
-	admin =
-		match SignInWeb.form_field(form, "admin") {
-			Err(Missing) => Ok(Off)
-			Ok(v) if v == Str.to_utf8("off") => Ok(Off)
-			Ok(v) if v == Str.to_utf8("on") => Ok(On)
-			_ => Err("`admin` is `on` or `off`")
-		}?
 	lifetime =
 		match SignInWeb.form_field(form, "lifetime") {
 			Err(Missing) => Ok(KeyCodec.max_lifetime_secs)
@@ -1417,7 +1409,6 @@ asked_grant = |form, default_as| {
 		scope: {
 			read,
 			post,
-			admin,
 		},
 		lifetime,
 	})
@@ -1572,8 +1563,8 @@ audit_grant! = |
 }
 
 ## A refused grant's answer: no live session is a 401, an expiry that does
-## not fit a 400, and anything else (a key asking, not the granter's own,
-## admin beyond the principal) a 403.
+## not fit a 400, and anything else (a key asking, not the granter's own)
+## a 403.
 grant_refused : ApiKey.GrantRefusal -> Chat.Answer
 grant_refused = |why|
 	match why {
@@ -1584,7 +1575,6 @@ grant_refused = |why|
 			403,
 			"a key acts as you, or as an agent or a bot of yours",
 		)
-		AdminBeyondPrincipal => Wire.refused(403, "admin is for an admin, or an admin's agent")
 		ClockOutOfRange => Chat.failed
 	}
 
@@ -1622,11 +1612,6 @@ key_json = |key, secret| {
 			Active => Bool.False
 			Revoked => Bool.True
 		}
-	admin =
-		match r.scope.admin {
-			Off => "off"
-			On => "on"
-		}
 	shown =
 		match secret {
 			Shown(bytes) => [("secret", JsonOut.text(SignInWeb.hex(bytes)))]
@@ -1638,7 +1623,6 @@ key_json = |key, secret| {
 			("acts_as", JsonOut.string(AccountCodec.id_text(r.acts_as))),
 			("read", JsonOut.string(KeyCodec.reach_text(r.scope.read))),
 			("post", JsonOut.string(KeyCodec.reach_text(r.scope.post))),
-			("admin", JsonOut.string(admin)),
 			("created", JsonOut.signed(r.created)),
 			("expires", JsonOut.signed(r.expires)),
 			("revoked", JsonOut.bool(revoked)),
@@ -2059,7 +2043,6 @@ ann_key =
 				scope: {
 					read: On,
 					post: On,
-					admin: Off,
 				},
 				accounts: Cast.accounts,
 				now: 50,
@@ -2089,13 +2072,12 @@ expect asked_grant([], Principal.id(Cast.ann)) == Ok({
 	scope: {
 		read: On,
 		post: On,
-		admin: Off,
 	},
 	lifetime: KeyCodec.max_lifetime_secs,
 })
 expect
 	asked_grant(
-		Str.to_utf8("as=agent%3A3&read=off&post=everywhere&admin=on&lifetime=60"),
+		Str.to_utf8("as=agent%3A3&read=off&post=everywhere&lifetime=60"),
 		Principal.id(Cast.ann),
 	)
 		== Ok({
@@ -2103,7 +2085,6 @@ expect
 			scope: {
 				read: Off,
 				post: On,
-				admin: On,
 			},
 			lifetime: 60,
 		})
@@ -2121,7 +2102,6 @@ plain : ApiKey.Scope
 plain = {
 	read: On,
 	post: On,
-	admin: Off,
 }
 
 ## Ann's agent's id.

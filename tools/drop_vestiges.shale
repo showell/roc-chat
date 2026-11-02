@@ -1,0 +1,89 @@
+-- **THREE STORED VESTIGES OUT, ON PROD** (Steve, 2026-11-02): a topic's
+-- `kind=human` (every topic is a human topic), a key's and an invite's
+-- `admin=` (a key's scope is read and post), and an audit-key use line's
+-- `action=` naming what was asked (a refusal comes before the request is
+-- known: every one says `action=use`). Run once, from roc-chat's root,
+-- right after the deploy whose codecs no longer read them:
+--
+--   shale tools/drop_vestiges.shale
+--
+-- No arguments. Over ssh, as the deploy works:
+-- 1. Counts what it will change, and stops when there is nothing (run
+--    already?).
+-- 2. Copies `auth/` and every topic record into one folder beside the data,
+--    `/var/lib/roc-chat/vestiges-before-<date>`: putting them back undoes
+--    this; removing the copy is Steve's.
+-- 3. Stops the server, rewrites the files in place, and starts it again:
+--    ` kind=human` out of every topic record; ` admin=on` and ` admin=off`
+--    out of every key and invite; in the audit, each `audit-key v1` use
+--    line's action made `use`, and the lines no decoder reads any more
+--    dropped (the old `audit v1 ` line, and refusals the chat no longer
+--    makes: `barred`, `agent-hops`, `admin-beyond-principal`).
+-- 4. Checks none is left, and that the chat answers.
+--
+-- budget: steps=5000000
+
+const HOST = "steve@162.243.1.123"
+const HOME = "/var/lib/roc-chat"
+const DATA = HOME .. "/data"
+const TOPICS = DATA .. "/chat/channels/*/topics/*/topic " .. DATA .. "/chat/dms/*/topics/*/topic"
+const KEYS = DATA .. "/auth/keys/* " .. DATA .. "/auth/invites/*"
+const AUDIT = DATA .. "/auth/audit"
+const OLD_USE = " action=\\(read:[0-9]*\\|post:[0-9]*\\|start\\|list:conversations\\) "
+const DEAD_LINES = "^audit v1 \\|refused:barred\\|agent-hops\\|admin-beyond-principal"
+
+if not exists("deploy/config.zon") then fail("drop_vestiges: run it from roc-chat's root") end
+
+-- A command on prod: it must succeed.
+function on_prod(script)
+  return must(run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: the migration's steps on prod"}))
+end
+
+-- How many lines of `files` match `pattern` (grep's basic syntax), as root.
+function count(pattern, files)
+  return tonumber(trim(on_prod("sudo sh -c 'cat " .. files .. " 2>/dev/null | grep -c -e \"" .. pattern .. "\" || true'").out))
+end
+
+-- What there is to change.
+function tally()
+  return {
+    topics = count(" kind=human", TOPICS),
+    keys = count(" admin=o[nf]f*", KEYS),
+    uses = count("^audit-key v1 .*" .. OLD_USE, AUDIT),
+    dead = count(DEAD_LINES, AUDIT),
+  }
+end
+
+function say(t, when)
+  print(when .. ": " .. t.topics .. " topics with kind=, " .. t.keys .. " keys and invites with admin=, "
+    .. t.uses .. " audit-key uses with an old action, " .. t.dead .. " audit lines no decoder reads")
+end
+
+-- 1. The count.
+local before = tally()
+say(before, "before")
+if before.topics + before.keys + before.uses + before.dead == 0 then fail("drop_vestiges: nothing to change (run already?)") end
+
+-- 2. The copy.
+local stamp = trim(on_prod("date -u +%Y%m%d-%H%M%S").out)
+local copy = HOME .. "/vestiges-before-" .. stamp
+on_prod("set -e\nsudo test ! -e " .. copy .. "\nsudo -u rocchat mkdir -p " .. copy .. "\n"
+  .. "sudo -u rocchat cp -a " .. DATA .. "/auth " .. copy .. "/auth\n"
+  .. "sudo sh -c 'cd " .. DATA .. " && for f in chat/channels/*/topics/*/topic chat/dms/*/topics/*/topic; do [ -f \"$f\" ] && sudo -u rocchat cp -a --parents \"$f\" " .. copy .. "/; done; true'")
+print("copied auth/ and the topic records to " .. copy)
+
+-- 3. The rewrite, with the server stopped.
+on_prod("set -e\nsudo systemctl stop roc-chat\n"
+  .. "sudo sh -c 'for f in " .. TOPICS .. "; do [ -f \"$f\" ] && sudo -u rocchat sed -i \"s/ kind=human//\" \"$f\"; done; true'\n"
+  .. "sudo sh -c 'for f in " .. KEYS .. "; do [ -f \"$f\" ] && sudo -u rocchat sed -i \"s/ admin=on\\$//; s/ admin=off\\$//\" \"$f\"; done; true'\n"
+  .. "sudo -u rocchat sed -i -e '/^audit-key v1 /s/" .. OLD_USE .. "/ action=use /' -e '/" .. DEAD_LINES .. "/d' " .. AUDIT .. "\n"
+  .. "sudo systemctl start roc-chat\n")
+
+-- 4. None left, and the chat up.
+local after = tally()
+say(after, "after")
+if after.topics + after.keys + after.uses + after.dead ~= 0 then fail("drop_vestiges: some are left (the copy is in " .. copy .. ")") end
+local leftover = count("kind=\\| admin=", TOPICS .. " " .. KEYS)
+if leftover ~= 0 then fail("drop_vestiges: " .. leftover .. " lines still say kind= or admin= (the copy is in " .. copy .. ")") end
+on_prod("for i in 1 2 3 4 5 6 7 8 9 10; do curl -s -o /dev/null http://127.0.0.1:9490/ && exit 0; sleep 1; done; exit 1")
+print("done; the chat answers. The copy of before is in " .. copy .. ", and removing it is Steve's")

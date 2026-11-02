@@ -79,12 +79,6 @@ AuditCodec := [].{
 				at : I64,
 				who : Principal.Id,
 				key : Principal.KeyId,
-				action : [
-					Read(U64),
-					Post(U64),
-					Start,
-					ListConversations,
-				],
 				refusal : ApiKey.Refusal,
 			},
 		),
@@ -287,7 +281,7 @@ AuditCodec := [].{
 						("at", Stored.time_text(u.at)),
 						("who", AccountCodec.id_text(u.who)),
 						("via", via_text(Key(u.key))),
-						("action", key_action_text(u.action)),
+						("action", use_word),
 						("verdict", "${refused_prefix}${spell_key_refusal(u.refusal)}"),
 					],
 				)
@@ -950,9 +944,10 @@ decode_key = |fields| {
 	action_field = via_field.rest.field("action")?
 	verdict_field = action_field.rest.field("verdict")?
 	verdict_field.rest.close()?
-	{ head, tail } = split_colon(action_field.value, "action")?
-	if head == Str.to_utf8(grant_word) {
-		acts_as = AccountCodec.id_from(tail, "action")?
+	if action_field.value != Str.to_utf8(use_word) {
+		{ head, tail } = split_colon(action_field.value, "action")?
+		acts_as =
+			if (head == Str.to_utf8(grant_word)) AccountCodec.id_from(tail, "action")? else Err(UnknownWord("action"))?
 		refusal = refused_word(
 			verdict_field.value,
 			{ members: all_grant_refusals, spell: spell_grant_refusal },
@@ -972,7 +967,6 @@ decode_key = |fields| {
 				Key(k) => Ok(k)
 				Session(_) => Err(BadValue("via"))
 			}?
-		action = key_action_from(head, tail)?
 		refusal = refused_word(
 			verdict_field.value,
 			{ members: all_key_refusals, spell: spell_key_refusal },
@@ -982,7 +976,6 @@ decode_key = |fields| {
 				at,
 				who,
 				key,
-				action,
 				refusal,
 			}),
 		)
@@ -1026,76 +1019,10 @@ unknown_word = "unknown"
 grant_word : Str
 grant_word = "grant"
 
-## A key's start of a conversation: `start:conversation`.
-start_word : Str
-start_word = "start"
-
-new_word : Str
-new_word = "conversation"
-
-list_word : Str
-list_word = "list"
-
-conversations_word : Str
-conversations_word = "conversations"
-
-KeyActionKind : [Read, Post]
-
-all_key_action_kinds : List(KeyActionKind)
-all_key_action_kinds = [Read, Post]
-
-spell_key_action : KeyActionKind -> Str
-spell_key_action = |kind|
-	match kind {
-		Read => "read"
-		Post => "post"
-	}
-
-## `read:` or `post:` and the resource's number; `start:conversation`, a
-## new one, which has no number yet; `list:conversations`, the viewer's.
-key_action_text : [
-	Read(U64),
-	Post(U64),
-	Start,
-	ListConversations,
-] -> Str
-key_action_text = |action|
-	match action {
-		Read(n) => "${spell_key_action(Read)}${colon}${n.to_str()}"
-		Post(n) => "${spell_key_action(Post)}${colon}${n.to_str()}"
-		Start => "${start_word}${colon}${new_word}"
-		ListConversations => "${list_word}${colon}${conversations_word}"
-	}
-
-key_action_from : List(U8),
-List(U8) -> Try(
-	[
-		Read(U64),
-		Post(U64),
-		Start,
-		ListConversations,
-	],
-	_,
-)
-key_action_from = |head, tail| if head == Str.to_utf8(start_word) {
-	if (tail == Str.to_utf8(new_word)) Ok(Start) else Err(BadValue("action"))
-} else if head == Str.to_utf8(list_word) {
-	if (tail == Str.to_utf8(conversations_word)) Ok(ListConversations) else Err(BadValue("action"))
-} else {
-	kind = Stored.word(
-		head,
-		{
-			name: "action",
-			members: all_key_action_kinds,
-			spell: spell_key_action,
-		},
-	)?
-	n = Stored.count(tail, "action")?
-	match kind {
-		Read => Ok(Read(n))
-		Post => Ok(Post(n))
-	}
-}
+## A key refused in use: `use`, all the line says of what it was asked
+## (the refusal comes before the request is known).
+use_word : Str
+use_word = "use"
 
 all_sign_in_refusals : List(GitHubSignIn.Refusal)
 all_sign_in_refusals = [
@@ -1153,7 +1080,6 @@ all_grant_refusals = [
 	NoSuchGranter,
 	NotTheGrantersOwn,
 	NoSuchPrincipal,
-	AdminBeyondPrincipal,
 	ClockOutOfRange,
 	BadExpiry,
 ]
@@ -1166,7 +1092,6 @@ spell_grant_refusal = |why|
 		NoSuchGranter => "no-such-granter"
 		NotTheGrantersOwn => "not-the-granters-own"
 		NoSuchPrincipal => "no-such-principal"
-		AdminBeyondPrincipal => "admin-beyond-principal"
 		ClockOutOfRange => "clock-out-of-range"
 		BadExpiry => "bad-expiry"
 	}
@@ -1296,11 +1221,10 @@ expect line_text(
 			at: 1761600095,
 			who: Principal.Id.Agent(Cast.aid(7)),
 			key: Cast.kid(4),
-			action: Read(3),
 			refusal: OutOfScope,
 		}),
 	),
-) == "audit-key v1 at=1761600095 who=agent:7 via=key:4 action=read:3 verdict=refused:out-of-scope\n"
+) == "audit-key v1 at=1761600095 who=agent:7 via=key:4 action=use verdict=refused:out-of-scope\n"
 expect line_text(
 	key_entry(
 		Grant({
@@ -1342,28 +1266,18 @@ key_events =
 					at: 1,
 					who: Principal.Id.Bot(Cast.aid(9)),
 					key: Cast.kid(4),
-					action: Read(18446744073709551615),
 					refusal,
 				}),
 				Use({
 					at: Stored.max_time,
 					who: Principal.Id.Human(Cast.hid(2)),
 					key: Cast.kid(5),
-					action: Post(0),
 					refusal,
 				}),
 				Use({
 					at: 7,
 					who: Principal.Id.Agent(Cast.aid(3)),
 					key: Cast.kid(6),
-					action: Start,
-					refusal,
-				}),
-				Use({
-					at: 7,
-					who: Principal.Id.Agent(Cast.aid(3)),
-					key: Cast.kid(6),
-					action: ListConversations,
 					refusal,
 				}),
 			],
@@ -1390,7 +1304,7 @@ key_events =
 	)
 
 expect List.len(all_sign_in_refusals) == 20
-expect List.len(all_grant_refusals) == 8
+expect List.len(all_grant_refusals) == 7
 expect List.all(
 	sign_ins,
 	|s| AuditCodec.decode(AuditCodec.encode(sign_in_entry(s))) == Ok(sign_in_entry(s)),
@@ -1409,7 +1323,6 @@ expect AuditCodec.Entry.of_key(
 		at: Stored.max_time + 1,
 		who: Principal.Id.Bot(Cast.aid(9)),
 		key: Cast.kid(4),
-		action: Read(1),
 		refusal: Expired,
 	}),
 ).map_ok(|_| {}) == Err(ClockOutOfRange)
@@ -1423,7 +1336,7 @@ key_line_but = |
 	},
 | AuditCodec.decode(
 	Str.to_utf8(
-		"audit-key v1 at=7 who=agent:7 via=key:4 action=read:3 verdict=refused:out-of-scope\n".replace_first(
+		"audit-key v1 at=7 who=agent:7 via=key:4 action=use verdict=refused:out-of-scope\n".replace_first(
 			from,
 			to,
 		),
@@ -1435,10 +1348,12 @@ expect key_line_but({ from: "", to: "" }) == Ok({})
 expect key_line_but({ from: "via=key:4", to: "via=session:4" }) == Err(BadValue("via"))
 expect key_line_but({ from: "out-of-scope", to: "granted-by-key" }) == Err(UnknownWord("verdict"))
 expect key_line_but({
-	from: "action=read:3 verdict=refused:out-of-scope",
+	from: "action=use verdict=refused:out-of-scope",
 	to: "action=grant:agent:3 verdict=refused:out-of-scope",
 }) == Err(UnknownWord("verdict"))
-expect key_line_but({ from: "action=read:3", to: "action=write:3" }) == Err(UnknownWord("action"))
+expect key_line_but({ from: "action=use", to: "action=use:3" }) == Err(UnknownWord("action"))
+expect key_line_but({ from: "action=use", to: "action=read:3" }) == Err(UnknownWord("action"))
+expect key_line_but({ from: "action=use", to: "action=list:conversations" }) == Err(UnknownWord("action"))
 expect key_line_but({
 	from: "verdict=refused:out-of-scope",
 	to: "verdict=permitted",
@@ -1516,7 +1431,7 @@ invite_events = List.join_map(
 	],
 )
 
-expect List.len(invite_events) == 36
+expect List.len(invite_events) == 34
 expect List.all(
 	invite_events,
 	|i| AuditCodec.decode(AuditCodec.encode(invite_entry(i))) == Ok(invite_entry(i)),

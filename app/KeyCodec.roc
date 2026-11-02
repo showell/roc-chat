@@ -2,7 +2,7 @@
 ## one line in Stored's format, the key's hash and never the key, which its
 ## owner is shown once:
 ##
-##     key v1 id=4 acts=agent:7 generation=4 human-generation=3 hash=<64 hex digits> created=1761600000 expires=1793136000 state=active read=everywhere post=off admin=off
+##     key v1 id=4 acts=agent:7 generation=4 human-generation=3 hash=<64 hex digits> created=1761600000 expires=1793136000 state=active read=everywhere post=off
 ##
 ## `generation` is the generation of its principal's account, and
 ## `human-generation` that of the human it answers to (itself, or the owner
@@ -23,10 +23,7 @@
 ## takes. No handler loads a key from a record it built; a key comes from
 ## a grant (ApiKey.Key.issue) or from a stored line.
 ##
-## **ONE SPELLING PER VALUE**: a read or a post is `everywhere` or `off`,
-## admin `on` or `off`. A key acting as a bot with admin on is refused
-## (`AdminForBot`): no grant makes one (a bot is never an admin), so the
-## record is not one the chat wrote.
+## **ONE SPELLING PER VALUE**: a read or a post is `everywhere` or `off`.
 ##
 ## **A LINE PROVES THE PATH, NOT THE SOURCE** (as SessionCodec says): the
 ## decoder accepts any bytes, so a Line proves its checks ran, not that its
@@ -39,12 +36,10 @@ import Stored
 
 KeyCodec := [].{
 
-	## **WHAT A KEY MAY DO**, each part on or off. Admin is a scope of its
-	## own: an admin-only key reads nothing.
+	## **WHAT A KEY MAY DO**, each part on or off.
 	Scope : {
 		read : [Off, On],
 		post : [Off, On],
-		admin : [Off, On],
 	}
 
 	## **THE LONGEST A KEY LIVES**, in seconds: 365 days. Every key expires
@@ -110,22 +105,6 @@ KeyCodec := [].{
 			},
 		)
 
-	## **ADMIN, IN ITS ONE SPELLING** (`on`, `off`), and back: what a key's
-	## line holds, and an invite's (InviteCodec).
-	admin_text : [Off, On] -> Str
-	admin_text = |s| spell_switch(s)
-
-	## The switch a stored `admin` field's value spells.
-	admin_from : List(U8) -> Try([Off, On], _)
-	admin_from = |value| Stored.word(
-		value,
-		{
-			name: "admin",
-			members: all_switches,
-			spell: spell_switch,
-		},
-	)
-
 	## The entry's line, in the one spelling.
 	encode : KeyCodec.Entry -> List(U8)
 	encode = |{ record, hash }|
@@ -142,7 +121,6 @@ KeyCodec := [].{
 				("state", spell_revocation(record.revocation)),
 				("read", spell_reach(record.scope.read)),
 				("post", spell_reach(record.scope.post)),
-				("admin", spell_switch(record.scope.admin)),
 			],
 		)
 
@@ -183,12 +161,9 @@ KeyCodec := [].{
 		read = KeyCodec.reach_from(read_field.value, "read")?
 		post_field = read_field.rest.field("post")?
 		post = KeyCodec.reach_from(post_field.value, "post")?
-		admin_field = post_field.rest.field("admin")?
-		admin = KeyCodec.admin_from(admin_field.value)?
-		admin_field.rest.close()?
-		match (acts_as, admin) {
-			(Bot(_), On) => Err(AdminForBot)
-			(Human(_), _) if generation != human_generation => Err(BadValue("human-generation"))
+		post_field.rest.close()?
+		match acts_as {
+			Human(_) if generation != human_generation => Err(BadValue("human-generation"))
 			_ if !KeyCodec.is_fitting_expiry({ created, expires }) => Err(BadValue("expires"))
 			_ =>
 				Ok(
@@ -202,7 +177,6 @@ KeyCodec := [].{
 								scope: {
 									read,
 									post,
-									admin,
 								},
 								created,
 								expires,
@@ -232,13 +206,6 @@ Switch : [Off, On]
 
 all_switches : List(Switch)
 all_switches = [Off, On]
-
-spell_switch : Switch -> Str
-spell_switch = |s|
-	match s {
-		Off => "off"
-		On => "on"
-	}
 
 ## **THE ONE SPELLING OF A REACH**: `everywhere` on, `off` off.
 spell_reach : Switch -> Str
@@ -274,14 +241,13 @@ reader = {
 	scope: {
 		read: On,
 		post: Off,
-		admin: Off,
 	},
 	created: 1761600000,
 	expires: 1793136000,
 	revocation: Active,
 }
 
-## Every part of a record at its other value: a human's, posting, admin,
+## Every part of a record at its other value: a human's, posting,
 ## expiring, revoked.
 broad : KeyCodec.Record
 broad = {
@@ -292,7 +258,6 @@ broad = {
 	scope: {
 		read: Off,
 		post: On,
-		admin: On,
 	},
 	created: 1761600000,
 	expires: 1761609999,
@@ -314,12 +279,12 @@ hex5a : Str
 hex5a = "5a".repeat(32)
 
 reader_line : Str
-reader_line = "key v1 id=4 acts=agent:7 generation=4 human-generation=3 hash=${hex5a} created=1761600000 expires=1793136000 state=active read=everywhere post=off admin=off\n"
+reader_line = "key v1 id=4 acts=agent:7 generation=4 human-generation=3 hash=${hex5a} created=1761600000 expires=1793136000 state=active read=everywhere post=off\n"
 
 expect encoded(entry(reader)) == reader_line.to_utf8()
 expect
 	encoded(entry(broad))
-		== "key v1 id=18446744073709551615 acts=human:583231 generation=18446744073709551615 human-generation=18446744073709551615 hash=${hex5a} created=1761600000 expires=1761609999 state=revoked read=off post=everywhere admin=on\n".to_utf8()
+		== "key v1 id=18446744073709551615 acts=human:583231 generation=18446744073709551615 human-generation=18446744073709551615 hash=${hex5a} created=1761600000 expires=1761609999 state=revoked read=off post=everywhere\n".to_utf8()
 
 # Round trips: every part at each of its values.
 expect is_kept(entry(reader))
@@ -344,7 +309,6 @@ expect
 				scope: {
 					read: Off,
 					post: Off,
-					admin: Off,
 				},
 			},
 			{
@@ -352,7 +316,6 @@ expect
 				scope: {
 					read: On,
 					post: On,
-					admin: Off,
 				},
 			},
 			{ ..broad, revocation: Active },
@@ -360,8 +323,7 @@ expect
 		|r| is_kept(entry(r)),
 	)
 
-# **THE SCOPE IS THE RECORD'S, EXACTLY**: the reader's key decodes so; its
-# admin stays off.
+# **THE SCOPE IS THE RECORD'S, EXACTLY**: the reader's key decodes so.
 expect read_back(reader_line.to_utf8()).map_ok(|e| e.record.scope) == Ok(reader.scope)
 expect KeyCodec.reach_text(On) == "everywhere"
 expect KeyCodec.reach_text(Off) == "off"
@@ -490,27 +452,14 @@ expect decoded(reader_but({ from: "read=everywhere", to: "read=all" })) == Err(U
 expect decoded(reader_but({ from: "read=everywhere", to: "read=" })) == Err(UnknownWord("read"))
 expect decoded(reader_but({ from: "read=everywhere", to: "read=on" })) == Err(UnknownWord("read"))
 expect decoded(reader_but({ from: "post=off", to: "post=on" })) == Err(UnknownWord("post"))
-expect decoded(reader_but({ from: "post=off ", to: "" })) == Err(MissingField("post"))
-expect decoded(reader_but({ from: "admin=off", to: "admin=yes" })) == Err(UnknownWord("admin"))
-expect decoded(reader_but({ from: "admin=off", to: "admin=everywhere" })) == Err(UnknownWord("admin"))
-expect decoded(reader_but({ from: " admin=off", to: "" })) == Err(MissingField("admin"))
-expect decoded(reader_but({ from: "admin=off\n", to: "admin=off \n" })) == Err(Trailing)
-expect decoded(reader_but({ from: "admin=off\n", to: "admin=off last_used=1\n" })) == Err(Trailing)
+expect decoded(reader_but({ from: " post=off", to: "" })) == Err(MissingField("post"))
+expect decoded(reader_but({ from: "post=off\n", to: "post=off \n" })) == Err(Trailing)
+expect decoded(reader_but({ from: "post=off\n", to: "post=off last_used=1\n" })) == Err(Trailing)
+# The admin scope of before is no field now.
+expect decoded(reader_but({ from: "post=off\n", to: "post=off admin=off\n" })) == Err(Trailing)
 expect decoded(
 	reader_but({
 		from: "read=everywhere post=off",
 		to: "post=off read=everywhere",
 	}),
 ) == Err(MissingField("read"))
-
-# A bot with admin on: no grant makes one.
-expect decoded(reader_but({ from: "acts=agent:7", to: "acts=bot:7" })) == Ok({})
-expect
-	decoded(
-		reader_but({
-			from: "acts=agent:7",
-			to: "acts=bot:7",
-		}).replace_first("admin=off", "admin=on"),
-	)
-		== Err(AdminForBot)
-expect decoded(reader_but({ from: "admin=off", to: "admin=on" })) == Ok({})

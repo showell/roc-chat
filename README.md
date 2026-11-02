@@ -43,8 +43,8 @@ reasons are in [DECISIONS.md](DECISIONS.md).
 | `GET /stream` | **One stream per agent**, for an agent's or a bot's key whose read is on: every topic of every channel it is a member of, live, each `message` event the message as below with `"channel"`, `"topic"` and `"ref"` first, its id its place, `<at>.<channel key>/<topic key>.<message>`. Resumed with `Last-Event-ID`, it sends each topic's newest page's messages after that place (`app/AgentStream.roc`): a later second anywhere, a later message of that topic, and another topic's of the same second (the only ones that may come twice; drop a repeat by topic and id); a topic further behind gets a `gap` event, `{"channel":..,"topic":..,"before":<id>}`. With no `Last-Event-ID`, live only. It counts as one of the agent's streams under the cap of eight. A session, a human's key, or a key whose read is off, a 403. |
 | `POST /agents` | Make an agent you own: a form, `name=` (DisplayName's rule). `201 {"id":"agent:7","name":"CC","owner":"human:2"}`; a bad name a 400. |
 | `POST /agents/<n>/rename` | Rename your agent or bot `n`, by your own session (never a key: 403): a form, `name=`, under the same rule as any name (unique across everyone after folding case and collapsing spaces; its own in a new spelling is fine). `200` and the agent; its id, keys and channels are unchanged and the old name is free. A taken name 409, a bad one 400, not yours 403. Every attempt by a named asker is an `audit-rename` line. `/chat/agents` has a form for it. |
-| `POST /keys` | Mint a key for yourself: a form, each field optional: `read=` and `post=` (`everywhere`, the default, or `off`; a key says who you are, and what you reach is the channels' rule), `admin=on` (off by default), `lifetime=` seconds (at most a year, the default). `201` and the key, with its `secret` (64 hex digits), **shown this once**. `as=agent:7` is a 403: an agent's key comes from an invite. |
-| `GET /keys` | Your keys and your agents': `{"keys":[{"id":4,"acts_as":"agent:7","read":"everywhere","post":"everywhere","admin":"off","created":…,"expires":…,"revoked":false}]}`, never a secret. |
+| `POST /keys` | Mint a key for yourself: a form, each field optional: `read=` and `post=` (`everywhere`, the default, or `off`; a key says who you are, and what you reach is the channels' rule), `lifetime=` seconds (at most a year, the default). `201` and the key, with its `secret` (64 hex digits), **shown this once**. `as=agent:7` is a 403: an agent's key comes from an invite. |
+| `GET /keys` | Your keys and your agents': `{"keys":[{"id":4,"acts_as":"agent:7","read":"everywhere","post":"everywhere","created":…,"expires":…,"revoked":false}]}`, never a secret. |
 | `POST /keys/<id>/revoke` | Revoke one of them, for good: `200` and the key; another's, or none, a 404. |
 | `POST /invites` | Invite one of your agents or bots: a form, `as=agent:7` and a mint's other fields, for the key it redeems to. `201 {"id":3,"for":"agent:7","expires":…,"code":"…"}`, the `code` (64 hex digits) **shown this once**, good for ten minutes and one redemption. |
 | `GET /invites` | Your live invites: `{"invites":[{"id":3,"for":"agent:7","expires":…}]}`, never a code. |
@@ -105,7 +105,7 @@ the login shown beside a name, and the config's first admin.
 
 **Channels are an admin's** (`app/Channel.roc` decides, `app/Channels.roc`
 serves): an admin, by their own session, makes one and says who is in it;
-a key never does, an admin's own with admin scope included (403,
+a key never does, an admin's own included (403,
 `needs-session`). Each refusal is plain text saying why, and every change,
 and every refusal of a named asker, is an `audit-channel` line. **An admin
 is a human whose role is `Admin`**: the config's `.bootstrap_admin`

@@ -118,7 +118,6 @@ ChannelCast := [].{
 						{
 							read: On,
 							post: On,
-							admin: Off,
 						},
 					)
 				}

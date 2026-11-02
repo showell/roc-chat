@@ -428,7 +428,6 @@ cc_reads = ChannelCast.keyed(
 	{
 		read: On,
 		post: Off,
-		admin: Off,
 	},
 )
 
@@ -455,7 +454,6 @@ steve_posts = ChannelCast.keyed(
 	{
 		read: Off,
 		post: On,
-		admin: Off,
 	},
 )
 
@@ -476,7 +474,6 @@ expect plans.read({
 		{
 			read: On,
 			post: Off,
-			admin: Off,
 		},
 	),
 	channel: cobblestone,
@@ -551,7 +548,6 @@ expect Topic.make({
 		{
 			read: On,
 			post: Off,
-			admin: Off,
 		},
 	),
 	channel: cobblestone,
@@ -565,7 +561,6 @@ expect Topic.make({
 		{
 			read: Off,
 			post: On,
-			admin: Off,
 		},
 	),
 	channel: cobblestone,

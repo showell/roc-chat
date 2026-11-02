@@ -133,13 +133,11 @@ Credentials := [].{
 	## and why. Never its secret or its hash.
 	audit_use! : ChatKey.Key, { refusal : ApiKey.Refusal, now : I64 } => {}
 	audit_use! = |key, { refusal, now }| {
-		action = ListConversations
 		match AuditCodec.Entry.of_key(
 			Use({
 				at: now,
 				who: key.acts_as(),
 				key: key.id(),
-				action,
 				refusal,
 			}),
 		) {

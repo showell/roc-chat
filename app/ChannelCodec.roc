@@ -156,4 +156,4 @@ expect read_back("channel v1 members= name=general\n".to_utf8()) == Err(MissingF
 expect read_back("channel v1 name=general members= x=1\n".to_utf8()) == Err(Trailing)
 expect read_back("channel v1 name=general members=".to_utf8()) == Err(Torn)
 expect read_back("channel v2 name=general members=\n".to_utf8()) == Err(UnknownVersion)
-expect read_back("topic v1 name=general kind=human\n".to_utf8()) == Err(WrongRecord)
+expect read_back("topic v1 name=general\n".to_utf8()) == Err(WrongRecord)

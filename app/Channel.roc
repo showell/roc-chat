@@ -329,8 +329,8 @@ expect make_by(Out, { name: "general", members: [] }) == Err(SignedOut)
 expect make_by(Damian, { name: "general", members: [] }) == Err(NotAdmin)
 expect make_by(Cc, { name: "general", members: [] }) == Err(NeedsSession)
 
-## Made by Steve's own key, though its scope administers: a key never
-## lets anyone in.
+## Made by Steve's own key, though Steve is an admin: a key never lets
+## anyone in.
 by_admin_key : Try(Channel, _)
 by_admin_key = Channel.make({
 	by: ChannelCast.keyed(
@@ -338,7 +338,6 @@ by_admin_key = Channel.make({
 		{
 			read: On,
 			post: On,
-			admin: On,
 		},
 	),
 	name: "general",

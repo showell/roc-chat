@@ -1,14 +1,10 @@
 ## **A TOPIC, STORED** (ChannelLayout's `.../topic`): one line in Stored's
 ## format, its name as it was made:
 ##
-##     topic v1 name=ChitChat kind=human
+##     topic v1 name=ChitChat
 ##
-## - `name` is the name as made (TopicName's rule), its spelling kept for
-##   display; the folder the line is in is its key, in its channel's.
-## - `kind` is `human`, the one kind: every topic is its channel's
-##   members' (Topic.roc). The field stays so a stored topic reads as it
-##   was written; the line of an agent topic, a kind no more, does not
-##   decode.
+## `name` is the name as made (TopicName's rule), its spelling kept for
+## display; the folder the line is in is its key, in its channel's.
 ##
 ## The channel is not in the line: the folder the line is in says it, and
 ## Topic.load takes it from the channel loaded. `decode` gives a Line, an
@@ -39,10 +35,7 @@ TopicCodec := [].{
 	encode = |t|
 		Stored.line(
 			"topic",
-			[
-				("name", t.name.to_str()),
-				("kind", spell_kind(Human)),
-			],
+			[("name", t.name.to_str())],
 		)
 
 	## The topic a line holds.
@@ -51,32 +44,10 @@ TopicCodec := [].{
 		fields = Stored.Reader.open(raw, "topic")?
 		name_field = fields.field("name")?
 		name = name_from(name_field.value)?
-		kind_field = name_field.rest.field("kind")?
-		_human = Stored.word(
-			kind_field.value,
-			{
-				name: "kind",
-				members: all_kinds,
-				spell: spell_kind,
-			},
-		)?
-		kind_field.rest.close()?
+		name_field.rest.close()?
 		Ok(TopicCodec.Line.({ name: name }))
 	}
 }
-
-## A topic's kind, as its line's `kind` names it: the one.
-Kind : [Human]
-
-all_kinds : List(Kind)
-all_kinds = [Human]
-
-## The one home of the kind's word.
-spell_kind : Kind -> Str
-spell_kind = |kind|
-	match kind {
-		Human => "human"
-	}
 
 ## The name the field holds, by TopicName's rule.
 name_from : List(U8) -> Try(TopicName, [BadValue(Str)])
@@ -102,20 +73,17 @@ chitchat = { name: named("ChitChat") }
 read_back : List(U8) -> Try(TopicCodec.Fields, _)
 read_back = |raw| TopicCodec.decode(raw).map_ok(TopicCodec.Line.fields)
 
-expect TopicCodec.encode(chitchat) == "topic v1 name=ChitChat kind=human\n".to_utf8()
+expect TopicCodec.encode(chitchat) == "topic v1 name=ChitChat\n".to_utf8()
 
 # Round trips; the spelling as made.
 expect read_back(TopicCodec.encode(chitchat)) == Ok(chitchat)
 expect read_back(TopicCodec.encode({ name: named("initial-work") })) == Ok({ name: named("initial-work") })
 expect read_back(TopicCodec.encode(chitchat)).map_ok(|f| f.name.to_str()) == Ok("ChitChat")
 
-# Refusals, each by name; an agent topic's line among them.
-expect read_back("topic v1 name=x kind=agents agents=agent:1/1/1\n".to_utf8()) == Err(UnknownWord("kind"))
-expect read_back("topic v1 name=a--b kind=human\n".to_utf8()) == Err(BadValue("name"))
-expect read_back("topic v1 name= kind=human\n".to_utf8()) == Err(BadValue("name"))
-expect read_back("topic v1 name=x kind=Human\n".to_utf8()) == Err(UnknownWord("kind"))
-expect read_back("topic v1 name=x kind=human agents=\n".to_utf8()) == Err(Trailing)
-expect read_back("topic v1 name=x\n".to_utf8()) == Err(MissingField("kind"))
-expect read_back("topic v1 kind=human name=x\n".to_utf8()) == Err(MissingField("name"))
-expect read_back("topic v1 name=x kind=human".to_utf8()) == Err(Torn)
+# Refusals, each by name; the old line's `kind` among them.
+expect read_back("topic v1 name=x kind=human\n".to_utf8()) == Err(Trailing)
+expect read_back("topic v1 name=a--b\n".to_utf8()) == Err(BadValue("name"))
+expect read_back("topic v1 name=\n".to_utf8()) == Err(BadValue("name"))
+expect read_back("topic v1\n".to_utf8()) == Err(MissingField("name"))
+expect read_back("topic v1 name=x".to_utf8()) == Err(Torn)
 expect read_back("channel v1 name=x members=\n".to_utf8()) == Err(WrongRecord)

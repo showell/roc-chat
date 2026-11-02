@@ -86,7 +86,6 @@ agent_key =
 			scope: {
 				read: On,
 				post: On,
-				admin: Off,
 			},
 			accounts,
 			now: 10,

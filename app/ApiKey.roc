@@ -1,6 +1,6 @@
 ## **API KEYS, FIRST-CLASS AND SCOPED** (the Roc chat's auth design,
-## sections 3, 9 and 11): a key acts as one principal, with a scope of read,
-## post and admin, each on or off. **A KEY SAYS WHO YOU ARE** (Steve,
+## sections 3, 9 and 11): a key acts as one principal, with a scope of read
+## and post, each on or off. **A KEY SAYS WHO YOU ARE** (Steve,
 ## 2026-11-01): what its holder may reach is the chat's other rules' (a
 ## channel's members, Topic.roc), on the viewer the key mints (Access);
 ## it never exceeds its principal.
@@ -29,8 +29,7 @@ import Stored
 
 ApiKey := [].{
 
-	## **WHAT A KEY MAY DO**, each part on or off. Admin is a scope of its
-	## own: an admin-only key reads nothing.
+	## **WHAT A KEY MAY DO**, each part on or off.
 	Scope : KeyCodec.Scope
 
 	## **WHO ASKS FOR A KEY**: the credential the request came with. Only a
@@ -67,9 +66,6 @@ ApiKey := [].{
 		## The principal is not among the accounts, exactly once (never made,
 		## retired, or a forged copy beside it).
 		NoSuchPrincipal,
-
-		## Admin only for an admin human, or an agent an admin owns.
-		AdminBeyondPrincipal,
 
 		## The clock is outside Stored's range (before 1970 or past 9999):
 		## nothing it would write could be stored.
@@ -109,9 +105,7 @@ ApiKey := [].{
 
 	## **MAY THIS GRANTER GIVE A KEY ACTING AS `acts_as` THIS SCOPE?** Only
 	## a live session, of the account it was started for, for themselves
-	## and for the agents and bots they own; admin only when `acts_as` has
-	## admin authority (Principal.authority: an admin human, or an agent an
-	## admin owns). Read and post need no check here: a key's every use is
+	## and for the agents and bots they own. Read and post need no check here: a key's every use is
 	## held to its principal.
 	may_grant : ApiKey.Grant -> [Grantable, Refused(ApiKey.GrantRefusal)]
 	may_grant = |grant|
@@ -216,7 +210,7 @@ granted = |
 	{
 		granter,
 		acts_as,
-		scope,
+		scope: _,
 		accounts,
 		now,
 	},
@@ -254,11 +248,7 @@ granted = |
 							if Principal.answers_to(current) != h.id {
 								Err(NotTheGrantersOwn)
 							} else {
-								match (scope.admin, current.authority(accounts)) {
-									(Off, _) => Ok(bound)
-									(On, Admin) => Ok(bound)
-									(On, Member) => Err(AdminBeyondPrincipal)
-								}
+								Ok(bound)
 							}
 						(
 							Agent(_),
@@ -340,28 +330,18 @@ plain : ApiKey.Scope
 plain = {
 	read: On,
 	post: On,
-	admin: Off,
 }
 
-with_admin : ApiKey.Scope
-with_admin = {
-	read: On,
-	post: On,
-	admin: On,
-}
-
-admin_only : ApiKey.Scope
-admin_only = {
+mute : ApiKey.Scope
+mute = {
 	read: Off,
 	post: Off,
-	admin: On,
 }
 
 reads : ApiKey.Scope
 reads = {
 	read: On,
 	post: Off,
-	admin: Off,
 }
 
 GrantAnswer : [Grantable, Refused(ApiKey.GrantRefusal)]
@@ -405,59 +385,35 @@ grant = |granter, { acts_as, scope }|
 	)
 
 # ── THE GRANT TABLE
-# Every granter against every principal a key could act as, without admin
-# and with it.
+# Every granter against every principal a key could act as.
 
-# boss's session, an admin's: their own and their agent's admin; never
-# their bot's.
+# boss's session: their own, their agent's and their bot's.
 expect grant(by_boss, { acts_as: Cast.boss, scope: plain }) == Grantable
-expect grant(by_boss, { acts_as: Cast.boss, scope: with_admin }) == Grantable
 expect grant(by_boss, { acts_as: Cast.ann, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_boss, { acts_as: Cast.ann, scope: with_admin }) == Refused(NotTheGrantersOwn)
 expect grant(by_boss, { acts_as: Cast.boss_agent, scope: plain }) == Grantable
-expect grant(by_boss, { acts_as: Cast.boss_agent, scope: with_admin }) == Grantable
 expect grant(by_boss, { acts_as: Cast.boss_bot, scope: plain }) == Grantable
-expect grant(
-	by_boss,
-	{ acts_as: Cast.boss_bot, scope: with_admin },
-) == Refused(AdminBeyondPrincipal)
 expect grant(by_boss, { acts_as: Cast.ann_agent, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_boss, { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
 
-# ann's session, a member's: her own and her agent's, never admin.
+# ann's session: her own and her agent's, whatever the scope.
 expect grant(by_ann, { acts_as: Cast.boss, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: Cast.boss, scope: with_admin }) == Refused(NotTheGrantersOwn)
 expect grant(by_ann, { acts_as: Cast.ann, scope: plain }) == Grantable
-expect grant(by_ann, { acts_as: Cast.ann, scope: with_admin }) == Refused(AdminBeyondPrincipal)
+expect grant(by_ann, { acts_as: Cast.ann, scope: mute }) == Grantable
 expect grant(by_ann, { acts_as: Cast.boss_agent, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: Cast.boss_agent, scope: with_admin }) == Refused(NotTheGrantersOwn)
 expect grant(by_ann, { acts_as: Cast.boss_bot, scope: plain }) == Refused(NotTheGrantersOwn)
-expect grant(by_ann, { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(NotTheGrantersOwn)
 expect grant(by_ann, { acts_as: Cast.ann_agent, scope: plain }) == Grantable
-expect grant(
-	by_ann,
-	{ acts_as: Cast.ann_agent, scope: with_admin },
-) == Refused(AdminBeyondPrincipal)
+expect grant(by_ann, { acts_as: Cast.ann_agent, scope: reads }) == Grantable
 
-# A key, even boss's own with admin: grants nothing (bug 3: keys are minted
-# only from a browser session).
+# A key, even boss's own: grants nothing (bug 3: keys are minted only from
+# a browser session).
 expect grant(Key(boss_all), { acts_as: Cast.boss, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: Cast.boss, scope: with_admin }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.ann, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: Cast.ann, scope: with_admin }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.boss_agent, scope: plain }) == Refused(GrantedByKey)
-expect grant(
-	Key(boss_all),
-	{ acts_as: Cast.boss_agent, scope: with_admin },
-) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.boss_bot, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: Cast.boss_bot, scope: with_admin }) == Refused(GrantedByKey)
 expect grant(Key(boss_all), { acts_as: Cast.ann_agent, scope: plain }) == Refused(GrantedByKey)
-expect grant(Key(boss_all), { acts_as: Cast.ann_agent, scope: with_admin }) == Refused(GrantedByKey)
 
 # The accounts decide, not the caller's copy: a retired agent gets no key,
-# though its owner grants it; a copy claiming boss's admin role for ann, or
-# boss as the owner of ann's agent, is no admin and no owner.
+# though its owner grants it; a copy claiming boss as the owner of ann's
+# agent is no owner.
 expect
 	grant_at(
 		by_ann,
@@ -469,13 +425,9 @@ expect
 		},
 	)
 		== Refused(NoSuchPrincipal)
-ann_as_admin : Principal
-ann_as_admin = Cast.person(2, Admin)
-
 ann_agent_as_boss : Principal
 ann_agent_as_boss = Cast.owned(Agent, { id: 3, owner: 1 })
 
-expect grant(by_ann, { acts_as: ann_as_admin, scope: with_admin }) == Refused(AdminBeyondPrincipal)
 expect grant(by_boss, { acts_as: ann_agent_as_boss, scope: plain }) == Refused(NotTheGrantersOwn)
 
 # The granter is the accounts' too (bug 2): a retired human's session
@@ -544,14 +496,14 @@ expect
 	ApiKey.Key.issue(
 		{
 			granter: by_ann,
-			acts_as: Cast.ann.id(),
-			scope: with_admin,
+			acts_as: Cast.boss.id(),
+			scope: plain,
 			accounts: Cast.accounts,
 			now: 50,
 		},
 		{ key: Cast.kid(7), expires: 1050 },
 	).map_ok(ApiKey.Key.id)
-		== Err(Refused(AdminBeyondPrincipal))
+		== Err(Refused(NotTheGrantersOwn))
 
 # ATTACK: an expiry the store cannot write, one
 # already past, or one past a year, is never granted; nor is any key under
@@ -638,13 +590,13 @@ ann_agent_reads : ApiKey.Key
 ann_agent_reads = issued({ acts_as: Cast.ann_agent, scope: reads }, 1050)
 
 boss_all : ApiKey.Key
-boss_all = issued({ acts_as: Cast.boss, scope: with_admin }, 1050)
+boss_all = issued({ acts_as: Cast.boss, scope: plain }, 1050)
 
-boss_agent_admin : ApiKey.Key
-boss_agent_admin = issued({ acts_as: Cast.boss_agent, scope: admin_only }, 1050)
+boss_agent_mute : ApiKey.Key
+boss_agent_mute = issued({ acts_as: Cast.boss_agent, scope: mute }, 1050)
 
 boss_until_100 : ApiKey.Key
-boss_until_100 = issued({ acts_as: Cast.boss, scope: with_admin }, 100)
+boss_until_100 = issued({ acts_as: Cast.boss, scope: plain }, 100)
 
 # A standing key stands as its principal.
 expect standing_among(ann_agent_plain, Cast.accounts) == Ok(Cast.ann_agent.id())
@@ -652,8 +604,8 @@ expect standing_among(boss_all, Cast.accounts) == Ok(Cast.boss.id())
 
 # The key never stands as more than its principal now: the agent itself
 # gone, or its owner gone.
-expect standing_among(boss_agent_admin, [Cast.boss]) == Err(Refused(NoSuchPrincipal))
-expect standing_among(boss_agent_admin, [Cast.boss_agent]) == Err(Refused(NoSuchPrincipal))
+expect standing_among(boss_agent_mute, [Cast.boss]) == Err(Refused(NoSuchPrincipal))
+expect standing_among(boss_agent_mute, [Cast.boss_agent]) == Err(Refused(NoSuchPrincipal))
 
 # Bug 1: ann retired, her agent's key stands as nobody.
 expect standing_among(ann_agent_plain, Cast.without_ann) == Err(Refused(NoSuchPrincipal))
@@ -680,22 +632,18 @@ expect [
 	ann_year,
 	boss_until_100,
 	ann_agent_reads,
-	boss_agent_admin.revoke(),
+	boss_agent_mute.revoke(),
 ].all(|key| from_store(key.record()).record() == key.record())
 
-# A line claiming admin for ann, a member, loads as it says.
-ann_claims_admin : ApiKey.Key
-ann_claims_admin = from_store({ ..ann_year.record(), scope: with_admin })
-
-expect ann_claims_admin.record().scope == with_admin
-
+# A scope loads as the line says.
+expect from_store({ ..ann_year.record(), scope: mute }).record().scope == mute
 # A reading line loads reading, and posting nothing.
 expect from_store(ann_agent_reads.record()).record().scope == reads
 
 # **NO KEY FROM A RECORD**: a key is
 # issued from a live session's grant, or loaded from a KeyCodec.Line, an
 # opaque value only the decoder makes; there is no `load` of a record, so
-# a handler's `{ acts_as: boss, admin: On }` is no key. A line it writes
+# a handler's `{ acts_as: boss, ... }` is no key. A line it writes
 # out by hand is a forged store, and still held to its principal.
 
 # ── DUPLICATE AND FORGED ACCOUNTS
@@ -733,15 +681,6 @@ expect standing_among(ann_agent_plain, forged_first) == Err(Refused(NoSuchPrinci
 ann_admin_first : List(Principal)
 ann_admin_first = List.prepend(Cast.accounts, Cast.person(2, Admin))
 
-expect grant_at(
-	by_ann,
-	{
-		acts_as: Cast.ann,
-		scope: with_admin,
-		among: ann_admin_first,
-		now: 50,
-	},
-) == Refused(NoSuchGranter)
 expect grant_at(
 	by_ann,
 	{

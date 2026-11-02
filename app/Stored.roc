@@ -78,10 +78,6 @@ Stored := [].{
 
 		## A session seen before it was created (SessionCodec).
 		SeenBeforeCreated,
-
-		## A key acting as a bot with admin scope, which no grant makes
-		## (KeyCodec).
-		AdminForBot,
 	]
 
 	## **A STORED SECRET'S HASH**: 32 bytes, as SHA-256 gives them. What the

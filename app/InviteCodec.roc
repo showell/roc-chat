@@ -2,7 +2,7 @@
 ## humans never pass a durable secret around. One line in Stored's format, the code's hash and never
 ## the code, which the human is shown once and hands to their agent:
 ##
-##     invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:<64 hex digits> hash=<64 hex digits> created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off
+##     invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:<64 hex digits> hash=<64 hex digits> created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere
 ##
 ## `for` is the agent or bot the key will act as, bound to its account's
 ## generation and its owner's (Principal.Bound), as a key is: an agent
@@ -109,7 +109,6 @@ InviteCodec := [].{
 				("lifetime", r.lifetime.to_str()),
 				("read", KeyCodec.reach_text(r.scope.read)),
 				("post", KeyCodec.reach_text(r.scope.post)),
-				("admin", KeyCodec.admin_text(r.scope.admin)),
 			],
 		)
 
@@ -156,9 +155,7 @@ InviteCodec := [].{
 		read = KeyCodec.reach_from(read_field.value, "read")?
 		post_field = read_field.rest.field("post")?
 		post = KeyCodec.reach_from(post_field.value, "post")?
-		admin_field = post_field.rest.field("admin")?
-		admin = KeyCodec.admin_from(admin_field.value)?
-		admin_field.rest.close()?
+		post_field.rest.close()?
 		match invited {
 			Human(_) => Err(BadValue("for"))
 			_ if expires <= created => Err(BadValue("expires"))
@@ -179,7 +176,6 @@ InviteCodec := [].{
 				scope: {
 					read,
 					post,
-					admin,
 				},
 			})
 		}
@@ -323,7 +319,7 @@ iid = |n|
 		Err(NotAnId) => crash "iid: a test's invite id is not 0"
 	}
 
-## Agent 7's invite, as it is made: live, everywhere, no admin, a year's key.
+## Agent 7's invite, as it is made: live, everywhere, a year's key.
 fresh : InviteCodec.Record
 fresh = {
 	id: iid(3),
@@ -341,12 +337,11 @@ fresh = {
 	scope: {
 		read: On,
 		post: On,
-		admin: Off,
 	},
 }
 
 ## Every part at its other value: a bot's, spent, reading nothing, posting
-## nothing, admin, a minute.
+## nothing, a minute.
 other : InviteCodec.Record
 other = {
 	..fresh,
@@ -356,7 +351,6 @@ other = {
 	scope: {
 		read: Off,
 		post: Off,
-		admin: On,
 	},
 }
 
@@ -367,7 +361,7 @@ line_of = |r|
 		Err(_) => crash "line_of: a line is UTF-8"
 	}
 
-expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:${"11".repeat(32)} hash=${"22".repeat(32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere admin=off\n"
+expect line_of(fresh) == "invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:${"11".repeat(32)} hash=${"22".repeat(32)} created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere\n"
 expect InviteCodec.decode(InviteCodec.encode(fresh)) == Ok(fresh)
 expect InviteCodec.decode(InviteCodec.encode(other)) == Ok(other)
 expect InviteCodec.decode(InviteCodec.encode({ ..fresh, state: Revoked })) == Ok({ ..fresh, state: Revoked })
@@ -395,7 +389,9 @@ expect decoded_but({ from: " by=", to: " from=" }) == Err(MissingField("by"))
 expect decoded_but({ from: "by=session:", to: "by=cookie:" }) == Err(UnknownWord("by"))
 expect decoded_but({ from: "by=session:11", to: "by=session:1" }) == Err(BadValue("by"))
 expect InviteCodec.decode(InviteCodec.encode({ ..fresh, by: Key(hash_of(0x33)) })) == Ok({ ..fresh, by: Key(hash_of(0x33)) })
-expect decoded_but({ from: "admin=off", to: "admin=off x=1" }) == Err(Trailing)
+expect decoded_but({ from: "post=everywhere\n", to: "post=everywhere x=1\n" }) == Err(Trailing)
+# The admin scope of before is no field now.
+expect decoded_but({ from: "post=everywhere\n", to: "post=everywhere admin=off\n" }) == Err(Trailing)
 
 ## A grant's refusal, as a test spells and reads it.
 grant_word : ApiKey.GrantRefusal -> Str
