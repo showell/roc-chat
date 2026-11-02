@@ -78,9 +78,9 @@ ApiKey := [].{
 			},
 		)
 
-	## **WHAT THE STORE KEEPS OF A KEY**: the key, and the hash of its
-	## secret, which the host looks it up by and names its file for.
-	Entry : {
+	## **A KEY WITH ITS SECRET'S HASH**: what the store keeps, the hash the
+	## host looks the key up by and names its file for.
+	WithHash : {
 		key : ApiKey.Key,
 		hash : Stored.SecretHash,
 	}
@@ -96,7 +96,7 @@ ApiKey := [].{
 	## human's key holds one generation twice; a line whose two differ is
 	## refused, as no grant makes one. One spelling per value: a read or a
 	## post is `everywhere` or `off`.
-	encode : ApiKey.Entry -> List(U8)
+	encode : ApiKey.WithHash -> List(U8)
 	encode = |{ key, hash }| {
 		record = key.record()
 		Stored.line(
@@ -123,7 +123,7 @@ ApiKey := [].{
 	## its principal as the accounts say then, so a line claiming more than
 	## its principal may do does no more. A line proves its checks ran, not
 	## that its bytes came from the store.
-	decode : List(U8) -> Try(ApiKey.Entry, _)
+	decode : List(U8) -> Try(ApiKey.WithHash, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "key")?
 		id_field = fields.field("id")?

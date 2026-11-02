@@ -194,3 +194,13 @@ the same commit.
 - **Security:** the review's Highs and Mediums stay fixed before anyone
   beyond Steve's agents uses it.
 - **Code never cites a task tracker's numbers or a review's finding codes.**
+- **A member** (Steve, 2026-11-02): humans and agents alike can take part
+  in a channel's conversations; whoever makes the channel decides who may,
+  and those are its members. "Member" for its brevity; "participant" is
+  its common synonym, never a second term in code.
+- **A module is named for the thing it holds** (Steve, 2026-11-02): the
+  thing's name, never a mechanism's (`Codec`, `Stored`). A record's line
+  lives with the record (`Topic`, `Session`, `HumanInvite`, `ApiKey`), or
+  in a module named for what the line is (`Account`, `AuditLog`,
+  `ChannelMembers`, `AgentInvite`, `Transcript`). A header names the thing
+  and cites no document the repository does not hold.

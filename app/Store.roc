@@ -278,7 +278,7 @@ Store := [].{
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no key).
 	load_key! : Stored.SecretHash => Try(
-		ApiKey.Entry,
+		ApiKey.WithHash,
 		[
 			Missing,
 			Malformed,
@@ -296,7 +296,7 @@ Store := [].{
 
 	## **EVERY KEY THAT READS**, in no order; a line that does not read is
 	## left out (one damaged key fails only itself).
-	load_keys! : {} => Try(List(ApiKey.Entry), [Failed])
+	load_keys! : {} => Try(List(ApiKey.WithHash), [Failed])
 	load_keys! = |{}| {
 		listed = Host.list!(keys_path)
 		match listed.status {
@@ -316,7 +316,7 @@ Store := [].{
 	}
 
 	## A key written: minted, or revoked.
-	save_key! : ApiKey.Entry => [Failed, Written]
+	save_key! : ApiKey.WithHash => [Failed, Written]
 	save_key! = |entry| Host.write!(key_path(entry.hash), ApiKey.encode(entry))
 
 	## **THE INVITE WHOSE CODE HASHES TO `hash`**: its record, nothing
@@ -622,7 +622,7 @@ Store := [].{
 
 	## **THE KEYS OF `human`'S**, theirs and their agents', by their index;
 	## one whose file is gone or does not read is left out, as in `load_keys!`.
-	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ApiKey.Entry), [Failed])
+	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ApiKey.WithHash), [Failed])
 	load_keys_of! = |human, accounts| {
 		_ = index_keys!(accounts)?
 		records = load_records!(index_path(keys_folder, human), hash_width)?
@@ -640,7 +640,7 @@ Store := [].{
 	## **A NEW KEY WRITTEN, THEN INDEXED** under the human the principal it
 	## acts as answers to (none, for one the accounts do not hold, as the
 	## rebuild leaves it out too).
-	save_new_key! : ApiKey.Entry, List(Principal) => [Failed, Written]
+	save_new_key! : ApiKey.WithHash, List(Principal) => [Failed, Written]
 	save_new_key! = |entry, accounts|
 		match index_keys!(accounts) {
 			Err(Failed) => Failed
@@ -1324,7 +1324,7 @@ load_record_count! = |path, width| {
 	}
 }
 
-load_keys_at! : List(List(U8)), List(ApiKey.Entry) => Try(List(ApiKey.Entry), [Failed])
+load_keys_at! : List(List(U8)), List(ApiKey.WithHash) => Try(List(ApiKey.WithHash), [Failed])
 load_keys_at! = |records, kept|
 	match records {
 		[] => Ok(kept)
@@ -1516,7 +1516,7 @@ collect_keys! : List(
 		name : List(U8),
 	},
 ),
-List(ApiKey.Entry) => Try(List(ApiKey.Entry), [Failed])
+List(ApiKey.WithHash) => Try(List(ApiKey.WithHash), [Failed])
 collect_keys! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
