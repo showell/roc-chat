@@ -9,7 +9,7 @@
 ##     The markdown, exactly as written.
 ##
 ## Each message opens with the separator, then its reference
-## (`Conversation.reference`), its author, its time, an empty line, its markdown
+## (`MsgAnchor`), its author, its time, an empty line, its markdown
 ## and an empty line. A conversation with no messages is an empty file. No
 ## message's markdown can forge the start of another, and a body holding
 ## the bare separator, which no writer makes, is refused (Separator).
@@ -24,7 +24,10 @@ Transcript :: [].{
 
 	## The transcript of the whole conversation.
 	write : Conversation -> Str
-	write = |conversation| Str.join_with(conversation.messages().map(|m| record(conversation, m)), "")
+	write = |conversation| Str.join_with(
+		conversation.messages().map(|m| record(conversation, m)),
+		"",
+	)
 
 	## `topic`'s conversation, each message appended in turn, or the first
 	## thing wrong with the transcript, as tags inferred from the body
@@ -45,7 +48,7 @@ Transcript :: [].{
 record : Conversation, Message -> Str
 record = |conversation, message|
 	\\${Separator.line}
-	\\${conversation.reference(message.id())}
+	\\${conversation.reference(message.id()).to_str()}
 	\\from: ${message.author().to_str()}
 	\\date: ${message.time().to_str()}
 	\\
@@ -65,7 +68,7 @@ read_onto = |so_far, records|
 read_message : Conversation, Str -> Try(Conversation, _)
 read_message = |c, written| {
 	id = c.next_id()?
-	reference = c.reference(id)
+	reference = c.reference(id).to_str()
 	match written.split_on("\n") {
 		[
 			head,
@@ -78,7 +81,12 @@ read_message = |c, written| {
 			date = date_line.drop_prefix("date: ")
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
 			time = DateTime.from_str(date).map_err(|why| DateTime(id, why))?
-			markdown = Separator.unescape(Str.join_with(body, "\n")).map_err(|BareSeparator| BadBody(id))?
+			markdown = Separator.unescape(
+				Str.join_with(
+					body,
+					"\n",
+				),
+			).map_err(|BareSeparator| BadBody(id))?
 			grown = c.append({ payload: { author, markdown }, time }).map_err(
 				|why|
 					match why {

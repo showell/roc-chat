@@ -4,8 +4,8 @@
 ## only enough style to read, so a client can style the rest.
 ##
 ## **THE PAGE'S VOCABULARY LIVES HERE**: its classes (`Class`, a closed set,
-## so no class is free text), the one anchor rule (`msg-<n>`, which an
-## element's id and a link's `#` both write) and the CSS that styles them.
+## so no class is free text) and the CSS that styles them. How a message
+## is named, its reference and its anchor, is `MsgAnchor`'s.
 ##
 ## **WHAT IS TRUSTED, AND WHO VOUCHES**: every `Str` a page shows goes in
 ## through `Escape.text`, a message's markdown through `Markdown.render`,
@@ -17,6 +17,8 @@ import HtmlElement
 import Escape
 import Markdown
 import Message
+import MsgAnchor
+import Topic
 import TrustedHtml
 
 Page :: [].{
@@ -29,8 +31,8 @@ Page :: [].{
 	class = |chosen| Class(token(class_name(chosen)))
 
 	## **A CONVERSATION'S PAGE**: the topic, then each message under its
-	## author and time, with its reference (`Conversation.reference`) as a
-	## link to itself.
+	## author and time, with its reference (`MsgAnchor`) as a link to
+	## itself.
 	conversation : Conversation -> TrustedHtml
 	conversation = |c| {
 		topic = c.topic()
@@ -77,7 +79,7 @@ Page :: [].{
 ## One message: its header, then its markdown rendered.
 message : Conversation, Message -> TrustedHtml
 message = |c, m| {
-	id = m.id()
+	named = c.reference(m.id())
 	header = TrustedHtml.join([
 		HtmlElement.tag({
 			name: Span,
@@ -93,13 +95,13 @@ message = |c, m| {
 		space,
 		HtmlElement.tag({
 			name: A,
-			attrs: [Page.class(Ref), Href(anchor(id))],
-			inner: Escape.text(c.reference(id)),
+			attrs: [Page.class(Ref), Href(anchor(named))],
+			inner: Escape.text(named.to_str()),
 		}),
 	])
 	article = HtmlElement.tag({
 		name: Article,
-		attrs: [Page.class(Message), Id(anchor(id))],
+		attrs: [Page.class(Message), Id(anchor(named))],
 		inner: TrustedHtml.join([
 			HtmlElement.tag({
 				name: Header,
@@ -165,10 +167,10 @@ class_name = |chosen|
 		Ref => "ref"
 	}
 
-## **A MESSAGE'S ANCHOR**, `msg-<n>`: the one home of its spelling, which
-## an element's id and a link's `#` both write.
-anchor : Message.Id -> HtmlElement.Token
-anchor = |id| token("msg-${id.to_str()}")
+## **A MESSAGE'S ANCHOR**, as a token: `MsgAnchor.page_anchor`'s
+## spelling, which an element's id and a link's `#` both write.
+anchor : MsgAnchor -> HtmlElement.Token
+anchor = |named| token(named.page_anchor())
 
 ## The token `text` spells, for a name this module writes: one that isn't
 ## is this module's bug.
@@ -202,11 +204,14 @@ expect [Author, Body, Empty, Message, Ref].map(|chosen| opened([Page.class(chose
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"
+	plans = Topic.from_str("plans") ?? crash "Page's tests: a topic"
+	first_named = MsgAnchor.of({ topic: plans, id: Message.Id.first })
+	second_named = MsgAnchor.of({ topic: plans, id: second })
 	[
-		opened([Id(anchor(Message.Id.first))]),
-		opened([Href(anchor(Message.Id.first))]),
-		opened([Id(anchor(second))]),
-		opened([Href(anchor(second))]),
+		opened([Id(anchor(first_named))]),
+		opened([Href(anchor(first_named))]),
+		opened([Id(anchor(second_named))]),
+		opened([Href(anchor(second_named))]),
 	]
 		== [
 			"<p id=\"msg-1\"></p>".to_utf8(),

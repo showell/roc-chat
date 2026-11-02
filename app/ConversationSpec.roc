@@ -27,10 +27,10 @@ expect Conversation.empty(Sample.plans).messages() == []
 expect Conversation.empty(Sample.plans).topic() == Sample.plans
 # A message's reference: its conversation's topic and its id, whether or
 # not the conversation holds it yet.
-expect Conversation.empty(Sample.plans).reference(Sample.first) == "MSG_plans_1"
-expect Conversation.empty(Sample.plans).reference(Sample.second) == "MSG_plans_2"
-expect Conversation.empty(Sample.other).reference(Sample.second) == "MSG_other_2"
-expect Sample.two.reference(Sample.second) == "MSG_plans_2"
+expect Conversation.empty(Sample.plans).reference(Sample.first).to_str() == "MSG_plans_1"
+expect Conversation.empty(Sample.plans).reference(Sample.second).to_str() == "MSG_plans_2"
+expect Conversation.empty(Sample.other).reference(Sample.second).to_str() == "MSG_other_2"
+expect Sample.two.reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
 # Each append takes the next id, in order, with what arrived.
 expect summary(Sample.two.messages()) == [
@@ -91,7 +91,10 @@ hello_at = |time|
 ## The ids `arrivals` take after `c`'s messages, each appended alone, or
 ## why each is refused.
 appended_alone : Conversation, List(Message.Arrival(Author)) -> List(Try(Str, [Full, Backdated]))
-appended_alone = |c, arrivals| arrivals.map(|a| c.append(a).map_ok(|grown| grown.added.id().to_str()))
+appended_alone = |
+	c,
+	arrivals,
+| arrivals.map(|a| c.append(a).map_ok(|grown| grown.added.id().to_str()))
 
 expect
 	appended_alone(
@@ -126,7 +129,10 @@ expect
 			Err(Backdated),
 		]
 # The first message has no latest to be before.
-expect appended_alone(Conversation.empty(Sample.plans), [hello_at("0000-01-01T00:00:00Z")]) == [Ok("1")]
+expect appended_alone(
+	Conversation.empty(Sample.plans),
+	[hello_at("0000-01-01T00:00:00Z")],
+) == [Ok("1")]
 # The last id at, under and over the highest: 65,534 messages take one
 # more, the 65,535th, and then none. The refusal past it is `Full`, asked
 # before the time: Steve's hello is also dated before CC's reply.

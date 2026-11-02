@@ -5,6 +5,7 @@
 ## backwards, or whose times run backwards, can't be built.
 import Author
 import Message
+import MsgAnchor
 import Topic
 
 Conversation :: {
@@ -24,7 +25,11 @@ Conversation :: {
 	## **TIMES NEVER GO BACKWARDS**: a message's time is never earlier than
 	## its conversation's latest. Equal is allowed: times are to the
 	## second, and two messages can share one.
-	append : Conversation, Message.Arrival(Author) -> Try({ conversation : Conversation, added : Message }, [Full, Backdated])
+	append : Conversation,
+	Message.Arrival(Author) -> Try(
+		{ conversation : Conversation, added : Message },
+		[Full, Backdated],
+	)
 	append = |conversation, arrival| {
 		id = Conversation.next_id(conversation)?
 		Conversation.(c) = conversation
@@ -32,7 +37,10 @@ Conversation :: {
 			Ok(latest) if arrival.time.compare(latest.time()) == Before => Err(Backdated)
 			_ => {
 				added = Message.numbered({ id, arrival })
-				Ok({ conversation: Conversation.({ ..c, messages: c.messages.append(added) }), added })
+				Ok({
+					conversation: Conversation.({ ..c, messages: c.messages.append(added) }),
+					added,
+				})
 			}
 		}
 	}
@@ -48,10 +56,12 @@ Conversation :: {
 			Err(ListWasEmpty) => Ok(Message.Id.first)
 		}
 
-	## **THE ONE NAME OF A MESSAGE**, `MSG_<topic>_<n>`, as a transcript's
-	## id line and a page's link write it.
-	reference : Conversation, Message.Id -> Str
-	reference = |Conversation.(c), id| "MSG_${c.topic.to_str()}_${id.to_str()}"
+	## **HOW THE MESSAGE `id` IS NAMED** (`MsgAnchor`): its reference,
+	## `MSG_<topic>_<n>`, and its page anchor. Unique only within the
+	## conversation's place, as its topic is: pages and links pair it with
+	## the `Place`.
+	reference : Conversation, Message.Id -> MsgAnchor
+	reference = |Conversation.(c), id| MsgAnchor.of({ topic: c.topic, id })
 
 	## Its topic.
 	topic : Conversation -> Topic
