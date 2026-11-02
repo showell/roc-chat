@@ -58,7 +58,6 @@ The page has no compose box yet. To post, send the form a browser would send:
 
 ## Pitfalls
 
-**A renamed or deleted module breaks the build** with "checking cache failed: file_open FileNotFound app/<Old>.roc". Zig's cache still remembers the old file as an input. Delete `.zig-cache` (it is git-ignored) and build again.
 
 **The demo's page is frozen.** The gate holds the demo's output to `demo/gopher-roc.html` byte for byte, and the end to end holds the server's first GET to the same file. A deliberate change to the page rewrites that file from the demo's output, and the commit says what moved and why.
 

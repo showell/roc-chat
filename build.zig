@@ -65,8 +65,12 @@ const markdown_package = "../roc-markdown/package";
 
 /// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
 /// `folder`, so a change to any module, ours or the markdown package's,
-/// builds the archive again.
+/// builds the archive again. The listing is a dependency of the configure
+/// step too (`dependOnDirectoryContents`): Zig caches what `build` decided,
+/// and without it a module added after the first build is no input, so
+/// edits to it never rebuild the archive.
 fn rocInputs(b: *std.Build, run: *std.Build.Step.Run, folder: []const u8) void {
+    b.dependOnDirectoryContents(b.path(folder));
     const io = b.graph.io;
     var dir = b.root.root_dir.handle.openDir(io, folder, .{ .iterate = true }) catch |e|
         std.process.fatal("the Roc: cannot open {s} ({t})", .{ folder, e });
