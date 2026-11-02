@@ -1,8 +1,8 @@
 ## **WHO IS ASKING: A SESSION'S COOKIE OR AN API KEY, NEVER BOTH.** A
 ## browser comes with its session cookie (SignIn.load_cookie_session!); an agent
 ## with `Authorization: Bearer <secret>`, the secret a mint showed once,
-## its hash looked up in the store (Store.load_key!) and the key loaded through
-## ChatKey. A request with both is refused (a 400): which one counts is
+## its hash looked up in the store (Store.load_key!) and the key decoded by
+## ApiKey. A request with both is refused (a 400): which one counts is
 ## never guessed. Every decision is the core's: a session is admitted by
 ## Access.Viewer.from_session, a key stands by Access.Viewer.from_key, and
 ## a grant asks ApiKey (Agents.roc). Here are the facts asked of the host
@@ -18,7 +18,6 @@ import pf.Host
 import Access
 import ApiKey
 import AuditLog
-import ChatKey
 import Principal
 import Session
 import SignIn
@@ -34,7 +33,7 @@ Credentials := [].{
 	Credential : [
 		Nobody,
 		Session(Session),
-		Key(ChatKey.Key),
+		Key(ApiKey.Key),
 	]
 
 	## **WHAT A ROUTE DECIDES ON**: the viewer, the accounts and the time it
@@ -43,7 +42,7 @@ Credentials := [].{
 		viewer : Access.Viewer,
 		accounts : List(Principal),
 		now : I64,
-		key : [NoKey, Key(ChatKey.Key)],
+		key : [NoKey, Key(ApiKey.Key)],
 	}
 
 	## **THE CREDENTIAL, OR THE ANSWER THAT ENDS THE REQUEST**: both sent,
@@ -131,7 +130,7 @@ Credentials := [].{
 
 	## **A KEY REFUSED IN USE, AUDITED**: who it acts as, its public id,
 	## and why. Never its secret or its hash.
-	audit_use! : ChatKey.Key, { refusal : ApiKey.Refusal, now : I64 } => {}
+	audit_use! : ApiKey.Key, { refusal : ApiKey.Refusal, now : I64 } => {}
 	audit_use! = |key, { refusal, now }| {
 		match AuditLog.Entry.of_key(
 			Use({

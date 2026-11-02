@@ -20,7 +20,6 @@ import AccountCodec
 import ApiKey
 import Bytes
 import Cast
-import KeyCodec
 import Principal
 import Stored
 
@@ -59,7 +58,7 @@ AgentInvite := [].{
 		expires : I64,
 		state : AgentInvite.State,
 		lifetime : I64,
-		scope : KeyCodec.Scope,
+		scope : ApiKey.Scope,
 	}
 
 	## **WHY A REDEMPTION IS REFUSED**, each audited, and each the same
@@ -107,8 +106,8 @@ AgentInvite := [].{
 				("expires", Stored.time_text(r.expires)),
 				("state", spell_state(r.state)),
 				("lifetime", r.lifetime.to_str()),
-				("read", KeyCodec.reach_text(r.scope.read)),
-				("post", KeyCodec.reach_text(r.scope.post)),
+				("read", ApiKey.reach_text(r.scope.read)),
+				("post", ApiKey.reach_text(r.scope.post)),
 			],
 		)
 
@@ -152,9 +151,9 @@ AgentInvite := [].{
 		lifetime_field = state_field.rest.field("lifetime")?
 		lifetime = Stored.time(lifetime_field.value, "lifetime")?
 		read_field = lifetime_field.rest.field("read")?
-		read = KeyCodec.reach_from(read_field.value, "read")?
+		read = ApiKey.reach_from(read_field.value, "read")?
 		post_field = read_field.rest.field("post")?
-		post = KeyCodec.reach_from(post_field.value, "post")?
+		post = ApiKey.reach_from(post_field.value, "post")?
 		post_field.rest.close()?
 		match invited {
 			Human(_) => Err(BadValue("for"))
@@ -182,9 +181,9 @@ AgentInvite := [].{
 	}
 
 	## **A KEY'S LIFETIME AN INVITE MAY CARRY**: more than no time, and a
-	## year at most (KeyCodec.max_lifetime_secs), as a mint's.
+	## year at most (ApiKey.max_lifetime_secs), as a mint's.
 	is_key_lifetime : I64 -> Bool
-	is_key_lifetime = |secs| secs > 0 and secs <= KeyCodec.max_lifetime_secs
+	is_key_lifetime = |secs| secs > 0 and secs <= ApiKey.max_lifetime_secs
 
 	## **A REDEMPTION'S REFUSAL, AS THE AUDIT SPELLS IT**: a word, a grant's
 	## after `grant:` in ApiKey's words (`spell_grant`).
@@ -333,7 +332,7 @@ fresh = {
 	created: 1761600000,
 	expires: 1761600600,
 	state: Live,
-	lifetime: KeyCodec.max_lifetime_secs,
+	lifetime: ApiKey.max_lifetime_secs,
 	scope: {
 		read: On,
 		post: On,

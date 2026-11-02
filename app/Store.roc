@@ -12,7 +12,7 @@
 ##     auth/settings             the generation and agent-id counters (`settings_line`)
 ##     auth/audit                every refusal and admin act, appended (AuditLog)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (Session)
-##     auth/keys/<hash>          an API key, named for its secret's hash (ChatKey)
+##     auth/keys/<hash>          an API key, named for its secret's hash (ApiKey)
 ##     auth/invites/<hash>       an agent's invite, named for its code's hash (AgentInvite)
 ##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInvite)
 ##     auth/spent/state/<hex>    a state's nonce, spent
@@ -64,7 +64,7 @@ import Channel
 import ChannelMembers
 import ChannelLayout
 import ChannelName
-import ChatKey
+import ApiKey
 import Erase
 import GitHubSignIn
 import HumanInvite
@@ -278,7 +278,7 @@ Store := [].{
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no key).
 	load_key! : Stored.SecretHash => Try(
-		ChatKey.Entry,
+		ApiKey.Entry,
 		[
 			Missing,
 			Malformed,
@@ -290,13 +290,13 @@ Store := [].{
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => ChatKey.decode(read.bytes).map_err(|_| Malformed)
+			Found => ApiKey.decode(read.bytes).map_err(|_| Malformed)
 		}
 	}
 
 	## **EVERY KEY THAT READS**, in no order; a line that does not read is
 	## left out (one damaged key fails only itself).
-	load_keys! : {} => Try(List(ChatKey.Entry), [Failed])
+	load_keys! : {} => Try(List(ApiKey.Entry), [Failed])
 	load_keys! = |{}| {
 		listed = Host.list!(keys_path)
 		match listed.status {
@@ -316,8 +316,8 @@ Store := [].{
 	}
 
 	## A key written: minted, or revoked.
-	save_key! : ChatKey.Entry => [Failed, Written]
-	save_key! = |entry| Host.write!(key_path(entry.hash), ChatKey.encode(entry))
+	save_key! : ApiKey.Entry => [Failed, Written]
+	save_key! = |entry| Host.write!(key_path(entry.hash), ApiKey.encode(entry))
 
 	## **THE INVITE WHOSE CODE HASHES TO `hash`**: its record, nothing
 	## there, or a line that does not read (`Malformed`, which a caller takes
@@ -622,7 +622,7 @@ Store := [].{
 
 	## **THE KEYS OF `human`'S**, theirs and their agents', by their index;
 	## one whose file is gone or does not read is left out, as in `load_keys!`.
-	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ChatKey.Entry), [Failed])
+	load_keys_of! : Principal.HumanId, List(Principal) => Try(List(ApiKey.Entry), [Failed])
 	load_keys_of! = |human, accounts| {
 		_ = index_keys!(accounts)?
 		records = load_records!(index_path(keys_folder, human), hash_width)?
@@ -640,7 +640,7 @@ Store := [].{
 	## **A NEW KEY WRITTEN, THEN INDEXED** under the human the principal it
 	## acts as answers to (none, for one the accounts do not hold, as the
 	## rebuild leaves it out too).
-	save_new_key! : ChatKey.Entry, List(Principal) => [Failed, Written]
+	save_new_key! : ApiKey.Entry, List(Principal) => [Failed, Written]
 	save_new_key! = |entry, accounts|
 		match index_keys!(accounts) {
 			Err(Failed) => Failed
@@ -1324,7 +1324,7 @@ load_record_count! = |path, width| {
 	}
 }
 
-load_keys_at! : List(List(U8)), List(ChatKey.Entry) => Try(List(ChatKey.Entry), [Failed])
+load_keys_at! : List(List(U8)), List(ApiKey.Entry) => Try(List(ApiKey.Entry), [Failed])
 load_keys_at! = |records, kept|
 	match records {
 		[] => Ok(kept)
@@ -1516,7 +1516,7 @@ collect_keys! : List(
 		name : List(U8),
 	},
 ),
-List(ChatKey.Entry) => Try(List(ChatKey.Entry), [Failed])
+List(ApiKey.Entry) => Try(List(ApiKey.Entry), [Failed])
 collect_keys! = |entries, kept|
 	match entries {
 		[] => Ok(kept)
@@ -1532,7 +1532,7 @@ collect_keys! = |entries, kept|
 				Failed => Err(Failed)
 				Missing => collect_keys!(rest, kept)
 				Found =>
-					match ChatKey.decode(read.bytes) {
+					match ApiKey.decode(read.bytes) {
 						Ok(e) => collect_keys!(rest, kept.append(e))
 						Err(_) => collect_keys!(rest, kept)
 					}

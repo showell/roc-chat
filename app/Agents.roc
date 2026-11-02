@@ -1,7 +1,7 @@
 ## **AGENTS AND API KEYS ON THE WIRE**: a signed-in human makes an agent
 ## they own, mints a key acting as themselves, invites an agent to redeem
 ## its own, lists their keys and revokes one. Every decision is the core's: who may
-## grant what is ApiKey's (`may_grant`, through ChatKey.issue), what a step
+## grant what is ApiKey's (`may_grant`, through ApiKey.Key.issue), what a step
 ## means is GitHubSignIn's (`applied`), a name's rule is DisplayName's, and
 ## an agent's making is `Agents.make`, here and pure. Here are the facts
 ## asked of the host, the records kept (Store), and the answers made.
@@ -45,14 +45,12 @@ import ApiKey
 import AuditLog
 import Cast
 import ChannelName
-import ChatKey
 import Credentials
 import AgentInvite
 import JsonOut
 import Limits
 import DisplayName
 import GitHubSignIn
-import KeyCodec
 import Principal
 import Session
 import SignIn
@@ -393,7 +391,7 @@ Agents := [].{
 	## **WHAT A REDEMPTION DECIDES**: the key, or why not. A live invite,
 	## before its expiry (a clock before its making is trusted for nothing),
 	## its agent's binding holding now, and the grant decided again as its
-	## granter (ApiKey.may_grant through ChatKey.issue: the session still
+	## granter (ApiKey.may_grant through ApiKey.Key.issue: the session still
 	## live, the agent still its human's) against the accounts now. `granter`
 	## is the invite's, as the store holds it now: `Gone` when it holds none.
 	redeemed : {
@@ -402,7 +400,7 @@ Agents := [].{
 		accounts : List(Principal),
 		now : I64,
 		key : Principal.KeyId,
-	} -> Try(ChatKey.Key, _)
+	} -> Try(ApiKey.Key, _)
 	redeemed = |
 		{
 			invite,
@@ -421,7 +419,7 @@ Agents := [].{
 					(Err(_), _) => Err(NoLongerHolds)
 					(Ok(_), Gone) => Err(Grant(NoSuchGranter))
 					(Ok(_), Found(g)) =>
-						match ChatKey.issue(
+						match ApiKey.Key.issue(
 							{
 								granter: g,
 								acts_as: invite.bound.id,
@@ -452,7 +450,7 @@ Agents := [].{
 
 	## **THE KEY IS ONE OF THIS HUMAN'S**: it acts as them, or as an agent
 	## or a bot the accounts say they own now.
-	is_owned_by : ChatKey.Key, { human : Principal.HumanId, accounts : List(Principal) } -> Bool
+	is_owned_by : ApiKey.Key, { human : Principal.HumanId, accounts : List(Principal) } -> Bool
 	is_owned_by = |key, { human, accounts }|
 		match Principal.find(accounts, key.acts_as()) {
 			Ok(p) => Principal.answers_to(p) == human
@@ -479,7 +477,7 @@ Agents := [].{
 		me : Principal.HumanId,
 		accounts : List(Principal),
 		agents : List(Principal),
-		keys : List(ChatKey.Key),
+		keys : List(ApiKey.Key),
 		invites : List(AgentInvite.Record),
 	}
 
@@ -543,7 +541,7 @@ Agents := [].{
 }
 
 ## Not revoked, and before its expiry.
-works : ChatKey.Key, I64 -> Bool
+works : ApiKey.Key, I64 -> Bool
 works = |key, now| {
 	r = key.record()
 	match r.revocation {
@@ -816,7 +814,7 @@ mint_for! = |granter, { default_as, form }|
 					match Stored.SecretHash.from_bytes(Host.hash!(secret)) {
 						Err(NotAHash) => Chat.failed
 						Ok(hash) =>
-							match ChatKey.issue(
+							match ApiKey.Key.issue(
 								{
 									granter,
 									acts_as,
@@ -1399,7 +1397,7 @@ asked_grant = |form, default_as| {
 	post = reach_asked(form, "post")?
 	lifetime =
 		match SignInWeb.form_field(form, "lifetime") {
-			Err(Missing) => Ok(KeyCodec.max_lifetime_secs)
+			Err(Missing) => Ok(ApiKey.max_lifetime_secs)
 			Err(Malformed) => Err("`lifetime` is seconds")
 			Ok(v) => Stored.time(v, "lifetime").map_err(|_| "`lifetime` is seconds")
 		}?
@@ -1413,7 +1411,7 @@ asked_grant = |form, default_as| {
 	})
 }
 
-## A read's or a post's reach, as the form spells it (KeyCodec's one
+## A read's or a post's reach, as the form spells it (ApiKey's one
 ## spelling); everywhere when the form names none. A key narrowed to
 ## listed resources (`only:`) is no more: refused, as any other word.
 reach_asked : List(U8), Str -> Try([Off, On], Str)
@@ -1421,7 +1419,7 @@ reach_asked = |form, name|
 	match SignInWeb.form_field(form, name) {
 		Err(Missing) => Ok(On)
 		Err(Malformed) => Err("`${name}` is `everywhere` or `off`")
-		Ok(v) => KeyCodec.reach_from(v, name).map_err(|_| "`${name}` is `everywhere` or `off`")
+		Ok(v) => ApiKey.reach_from(v, name).map_err(|_| "`${name}` is `everywhere` or `off`")
 	}
 
 ## **/keys, GET**: the session's human's keys and their agents', by id;
@@ -1459,7 +1457,7 @@ list! = |{}|
 	}
 
 ## The keys in id order, smallest first, as a listing shows them.
-keys_by_id : List(ChatKey.Key) -> List(ChatKey.Key)
+keys_by_id : List(ApiKey.Key) -> List(ApiKey.Key)
 keys_by_id = |keys| List.sort_with(keys, |a, b| by_number(a.id().to_u64(), b.id().to_u64()))
 
 ## **/keys/<id>/revoke**: one of the session's keys revoked, for good.
@@ -1601,9 +1599,9 @@ name_of = |p|
 	}
 
 ## **A KEY AS THE WIRE SPELLS IT**: its public id, who it acts as, its
-## scope in KeyCodec's spelling, when it was made and expires, and whether
+## scope in ApiKey's spelling, when it was made and expires, and whether
 ## it is revoked; its secret only when just minted (`Shown`), never after.
-key_json : ChatKey.Key, [Shown(List(U8)), Hidden] -> JsonOut
+key_json : ApiKey.Key, [Shown(List(U8)), Hidden] -> JsonOut
 key_json = |key, secret| {
 	r = key.record()
 	revoked =
@@ -1620,8 +1618,8 @@ key_json = |key, secret| {
 		[
 			("id", JsonOut.number(r.id.to_u64())),
 			("acts_as", JsonOut.string(AccountCodec.id_text(r.acts_as))),
-			("read", JsonOut.string(KeyCodec.reach_text(r.scope.read))),
-			("post", JsonOut.string(KeyCodec.reach_text(r.scope.post))),
+			("read", JsonOut.string(ApiKey.reach_text(r.scope.read))),
+			("post", JsonOut.string(ApiKey.reach_text(r.scope.post))),
 			("created", JsonOut.signed(r.created)),
 			("expires", JsonOut.signed(r.expires)),
 			("revoked", JsonOut.bool(revoked)),
@@ -2025,17 +2023,17 @@ expect said(
 ) == Refused(ClockOutOfRange)
 
 ## The key a test's grant makes.
-granted : Try(ChatKey.Key, [Refused(ApiKey.GrantRefusal)]) -> ChatKey.Key
+granted : Try(ApiKey.Key, [Refused(ApiKey.GrantRefusal)]) -> ApiKey.Key
 granted = |t|
 	match t {
 		Ok(k) => k
 		Err(_) => crash "granted: a test's key is grantable"
 	}
 
-ann_key : ChatKey.Key
+ann_key : ApiKey.Key
 ann_key =
 	granted(
-		ChatKey.issue(
+		ApiKey.Key.issue(
 			{
 				granter: Session(session_of(2)),
 				acts_as: Principal.id(Cast.ann),
@@ -2072,7 +2070,7 @@ expect asked_grant([], Principal.id(Cast.ann)) == Ok({
 		read: On,
 		post: On,
 	},
-	lifetime: KeyCodec.max_lifetime_secs,
+	lifetime: ApiKey.max_lifetime_secs,
 })
 expect
 	asked_grant(
@@ -2159,7 +2157,7 @@ expect invited_as({
 expect invited_as({
 	granter: Session(session_of(2)),
 	acts_as: ann_agent_id,
-	lifetime: KeyCodec.max_lifetime_secs + 1,
+	lifetime: ApiKey.max_lifetime_secs + 1,
 }) == Err(Refused(BadExpiry))
 
 ## A test's hash: every byte `b`.

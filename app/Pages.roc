@@ -36,9 +36,8 @@ import AccountCodec
 import Agents
 import Channel
 import Channels
-import ChatKey
+import ApiKey
 import AgentInvite
-import KeyCodec
 import Messages
 import Credentials
 import Html
@@ -377,7 +376,7 @@ id_html = |id| Html.text(AccountCodec.id_text(id))
 
 ## One key: its id, who it acts as, what it may read and post, how long it
 ## lives, and its revoke button; never its secret or its hash.
-key_html : (Principal.Id -> Html), ChatKey.Key -> Html
+key_html : (Principal.Id -> Html), ApiKey.Key -> Html
 key_html = |name, key| {
 	r = key.record()
 	id = r.id.to_u64()
@@ -391,9 +390,9 @@ key_html = |name, key| {
 		Html.markup(" (<code>"),
 		id_html(r.acts_as),
 		Html.markup("</code>); reads <code>"),
-		Html.text(KeyCodec.reach_text(r.scope.read)),
+		Html.text(ApiKey.reach_text(r.scope.read)),
 		Html.markup("</code>, posts <code>"),
-		Html.text(KeyCodec.reach_text(r.scope.post)),
+		Html.text(ApiKey.reach_text(r.scope.post)),
 		Html.markup("</code>; until <time data-at="),
 		Html.signed(r.expires),
 		Html.markup("></time> <button type=button class=revoke data-path=\"/keys/"),

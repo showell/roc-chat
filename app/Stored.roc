@@ -23,8 +23,9 @@
 ## is appended to, an attempt a line), `grep` finds a record, a torn append
 ## is visible, and a reader needs no other tool. Why not JSON: it has many
 ## spellings of one value, and a decoder that accepts them all is a decoder
-## that guesses. Each codec (AccountCodec, SessionCodec, KeyCodec,
-## AgentInvite, AuditLog, ConvCodec, Transcript) decodes into the core's types here, at the door. Pure.
+## that guesses. Each record's module (AccountCodec, Session, ApiKey,
+## AgentInvite, HumanInvite, AuditLog, ChannelMembers, Topic, Transcript)
+## decodes into the core's types here, at the door. Pure.
 import Ascii
 import Bytes
 
@@ -236,7 +237,7 @@ Stored := [].{
 	## the clock gave: a crash, as a control byte in a value is. No caller
 	## reaches it: every time written is refused upstream when out of range
 	## (a sign-in's and an admin decision's clock, ClockOutOfRange; a key's
-	## creation and expiry, ApiKey's grant and KeyCodec.is_fitting_expiry; a
+	## creation and expiry, ApiKey's grant and ApiKey.is_fitting_expiry; a
 	## session's touch, Session.liveness), or was read back by `time`.
 	time_text : I64 -> Str
 	time_text = |t|
