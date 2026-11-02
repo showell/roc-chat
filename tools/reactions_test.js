@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
+const emoji = fs.readFileSync(path.join(__dirname, '..', 'js', 'emoji.js'), 'utf8');
 const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'reactions.js'), 'utf8');
 
 function element(tag) {
@@ -61,7 +62,10 @@ function page() {
   };
   ctx.window.innerHeight = 800;
   ctx.innerHeight = 800;
-  vm.runInNewContext(source, ctx);
+  vm.createContext(ctx);
+  vm.runInContext(emoji, ctx);
+  ctx.Emoji = ctx.window.Emoji;
+  vm.runInContext(source, ctx);
   const menu = () => body.children[body.children.length - 1];
   const input = () => menu().children[0];
   const rows = () => menu().children[1].children;

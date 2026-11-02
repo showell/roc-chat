@@ -16,6 +16,7 @@
      - no answer in 3 s, or no answer at all: "The host may be down. Please
        retry your send.", the text kept; an answer that comes after that
        still says "sent" (so it is not sent twice), and leaves the box be;
+     - `:` at a word's start opens the emoji autocomplete (emoji.js);
      - a refusal (the post's 4xx) says the server's own words, the text kept;
        a 5xx is a failure, as a lost answer is: the host-down modal;
      - hands quote.js `Compose` (the old ChatCompose's): open the box,
@@ -174,6 +175,7 @@
     alert: showAlert,
   };
 
+  Emoji.attach(text);
   form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
   text.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send(); return; }
