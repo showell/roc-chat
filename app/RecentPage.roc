@@ -4,8 +4,8 @@
 ## DMs and channels they are in, as Browse lists them, one tile each by its last message (Recent.roc draws
 ## it), newest first, a tie by its page's path; one with no message yet
 ## goes last. Live, `GET /chat/recent/stream` sends the viewer each new
-## post's tile, drawn for them (Topics' publish, Conversations'
-## append_post!), live only: the page is the backlog, as the old
+## post's tile, drawn for them (Topics' publish), live only: the page is
+## the backlog, as the old
 ## page's was. Its script (js/recent_page.js) writes each tile's age and moves a
 ## tile that changed to its place. A page is a browser's: signed out, to
 ## `/login` (the stream, a 401); a key, a 403.

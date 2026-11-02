@@ -14,7 +14,7 @@
 ## **A NEW TOPIC, FROM BROWSE**: each place has the old app's Add Topic form
 ## (chat-client's js/chat_add_topic.js), a topic's name, "general" where the
 ## place has none yet (the old first-topic page, js/chat_first_topic.js).
-## It posts `topic=` to the place's own path, `POST /chat/dm/<n>` or
+## It posts `topic=` to the place's own path, `POST /chat/dm/<pair>` or
 ## `POST /chat/channel/<c>` (a form, behind Origin's check): a DM with
 ## someone not yet met is made first, then the topic, and the browser lands
 ## on the topic's page, empty and ready to write in. A DM's form with no

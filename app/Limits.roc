@@ -2,7 +2,7 @@
 ## the numbers. Sign-up is open, and every request runs in one turn, so a
 ## list anyone can grow without bound is work every other request pays for.
 ## Each cap is refused by name where it binds; none is a silent truncation.
-## The caps on keys, invites and conversations count a human's own index
+## The caps on keys and invites count a human's own index
 ## (Store's `load_*_count!`), never a scan of everyone's, and bind through
 ## `load_cap!`.
 ##

@@ -1,5 +1,7 @@
 # Gopher Chat client features, cataloged for the roc-chat port
 
+> Historical: written before conversations became topics, DMs were named by pairs, and saves and bans were removed (2026-11-02). DECISIONS.md and README.md say what is true now.
+
 As of 2026-11-01. Old client: `~/showell_repos/chat-client` at 7b6358b8 (the
 commit both hosts pin). Old server: `~/showell_repos/angry-gopher/zig-server/src`
 at 8c8b25a5. New: `~/showell_repos/roc-chat` at d18638a. Paths below are

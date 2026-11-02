@@ -1,7 +1,7 @@
 ## **THE CHAT'S ANSWERS ON THE WIRE**, as every route's module spells them:
 ## a JSON answer (never sniffed, and only ever a JsonOut, so built, never
 ## spliced) and a refusal in plain text; and the two sizes every route
-## shares (a form's most, a secret's bytes). Conversations, Agents and
+## shares (a form's most, a secret's bytes). Topics, Agents and
 ## SignIn answer through here, so a JSON answer has one content type and
 ## one escape. Pure.
 import pf.Chat

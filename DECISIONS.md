@@ -74,9 +74,8 @@ the same commit.
   human or agent goes by a channel's name, and no channel by a user's, in
   any case. One namespace (Accounts.name_holder).
 - **Conversation 3 became RocChatDev/initial-work** (Steve, 2026-11-01):
-  Steve's, LC's and Cloud's conversation, its history kept, by
-  `tools/migrate_conversation_3.shale`. The other test conversations are
-  wiped before launch.
+  Steve's, LC's and Cloud's conversation, its history kept (a one-off
+  migration, run and since deleted). The other conversations were removed.
 - **Topic names are scoped to their channel or DM:** `ChitChat` can be in
   every channel, and no URL or message reference is ambiguous.
 - **Message references:** `MSG_<channel>.<topic>_<n>` in a channel; DMs keep
@@ -160,9 +159,9 @@ the same commit.
   and fly-by users), never oneself or an admin. Everything of theirs goes:
   their DMs whole (both sides), their agents, sessions, upload count, and
   their keys and invites and their agents'. A new key's or invite's id is
-  one past the highest stored, so none is given twice. **No bans**:
-  nothing is barred, and they may come back as someone new (Alice again,
-  for testing).
+  one past the highest stored, so none is given twice.
+- **No permanent bans** (Steve, 2026-11-02): no retire, no barred list.
+  An erased human may come back as someone new (Alice again, for testing).
 - **After every chunk, a cold agent reviews it adversarially.** Its first
   question is a divergence from the Zig chat with no stated reason
   (`docs/design/browser-client-review.md`).

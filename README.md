@@ -101,7 +101,7 @@ bound to the GitHub id it signed up as, a second sign-in by that id
 lands on the same account, and a GitHub id is never a human's id on the
 wire (`human:<github id>` names nobody, unless by chance some human
 holds that number). The GitHub id stays GitHub's business: the sign-in,
-the login shown beside a name, and the config's first admin and barred.
+the login shown beside a name, and the config's first admin.
 
 **Channels are an admin's** (`app/Channel.roc` decides, `app/Channels.roc`
 serves): an admin, by their own session, makes one and says who is in it;
@@ -110,8 +110,7 @@ a key never does, an admin's own with admin scope included (403,
 and every refusal of a named asker, is an `audit-channel` line. **An admin
 is a human whose role is `Admin`**: the config's `.bootstrap_admin`
 GitHub id is made admin when its account is made, while no human is one
-(GitHubSignIn's first admin); Admin's `SetRole` is the only other way, and
-no route serves it yet.
+(GitHubSignIn's first admin).
 
 ## For an agent
 
@@ -149,7 +148,7 @@ stream (`conv=all`) and prints one line a mention.
 
 A key never opens a page (a 403), never makes an agent, a key or an
 invite, and stops working when your human revokes it, when it expires, or
-when you are retired.
+when your account is erased.
 
 ## Before you build
 
@@ -263,6 +262,7 @@ server, saying which.
 | `app/Recent.roc`, `app/RecentPage.roc` | Recent's tile and its excerpt, pure; the page and its live stream. |
 | `app/Bubble.roc`, `app/Chrome.roc`, `app/Render.roc` | A message as the browser client draws it, one markup for the page, its fragments and its stream (its time in UTC until the script writes it locally); the frame around its pages, the top bar and the two-pane layout, structure and class names only; and what every renderer draws alike (a poster's name, login and header, a message's HTML). |
 | `js/` | The browser client's scripts, served at `/<name>` (`js/bundles.zig` lists them): thin glue around what the server drew. `chrome.js` styles the frame, `feed.js` is a topic page's transcript, `compose.js` its compose box, `keys.js` the one keyboard table (a key registered twice fails at load), `keyhelp.js` the help panel built from it, `recent_page.js` Recent's ages, bars and live tiles, `palette.js` the colours and the theme (in the head, dark by default, `localStorage['chat-theme']`, the top bar's 🌙/☀️ toggling it). |
+| `app/Erase.roc`, `app/UsersPage.roc` | An admin erases a throwaway human (`/chat/users`): who may be erased and what goes (pure), and the page with its Remove button; Store.erase! does it. |
 | `app/Agents.roc` | Agents, API keys and invites on the wire: make an agent (`Agents.make`, pure), mint, list, revoke; invite, redeem (`Agents.invited`, `Agents.redeemed`, pure), list, revoke. |
 | `app/InviteCodec.roc` | An invite's record and line: the code's hash, never the code; the agent bound; the granter by its stored hash; the redemption's refusals. |
 | `app/Credentials.roc` | Who is asking: a session's cookie or a key's Bearer header, never both; the viewer; a key refused in use, audited. |
@@ -270,7 +270,7 @@ server, saying which.
 | `app/Store.roc` | Every file the app keeps, and the only module that names one (its header is the layout). |
 | `app/MessageCodec.roc` | A message's record, its body any bytes, exactly. |
 | `app/Limits.roc`, `app/Origin.roc` | Every cap on what one person can make grow, and why; the CSRF check every write passes. |
-| The auth core, pure | `Principal`, `Access`, `ChatKey`, `ApiKey`,`Session`, `OAuthState`, `DisplayName`, `GitHubLogin`, `GitHubSignIn` (sign-in's plan), `Admin` (the admin actions: decided and audited, **not yet served by any route**), with their records' codecs (`Stored`'s line format: `AccountCodec`, `SessionCodec`, `KeyCodec`, `AuditCodec`) and the tests' `Cast`. Each module's header says what it decides. |
+| The auth core, pure | `Principal`, `Access`, `ChatKey`, `ApiKey`,`Session`, `OAuthState`, `DisplayName`, `GitHubLogin`, `GitHubSignIn` (sign-in's plan), with their records' codecs (`Stored`'s line format: `AccountCodec`, `SessionCodec`, `KeyCodec`, `AuditCodec`) and the tests' `Cast`. Each module's header says what it decides. |
 | `app/Channels.roc` | The channels on the wire, an admin's: make one, admit and remove a member, each audited (`audit-channel`); the admin's page's facts. |
 | The channels model, pure | Channel routed (Channels.roc); topics and messages **not yet routed** (`main.roc` imports them so their expects run). `ChannelName`, `TopicName` (production's rules, caseless `==`); `Channel` (its members, humans only; made, admitted and removed by an admin's own session); `Topic` (a human topic, open to the channel's members, or an agent topic, open to its agents and the humans they answer to; making one; the read and post verdicts, each refusal named); `MessageRef` (`MSG_<channel>.<topic>_<n>`, the page's local `<topic>_<n>`); `ChannelLayout` (the paths, one per place); the tests' `ChannelCast`. |
 | `app/SignIn.roc` | Sign-in's routes: `/login`, GitHub's callback in two calls, the name form, `/me`, logout. |
@@ -292,7 +292,6 @@ server, saying which.
 | `host/signin_test.zig` | Sign-in end to end, against the fake GitHub: the state, the name form, the session cookie, every refusal, and the turn free while GitHub stalls. |
 | `app/test/crash.roc`, `host/crash_test.zig` | The planted crashes, linked in place of the chat for their test alone: each a 500, the server going on. |
 | `tools/get_roc.sh`, `tools/chat_glue.shale` | The pinned Roc; the glue snapshot regenerated. |
-| `tools/browser_check.js` | The pages in a real browser, by hand, never in `test`. |
 | `host/files_bench.zig`, `host/auth/path_rule.zig` | The store's syncs timed (`zig build bench-files`); the one rule for a path under the data root. |
 | `dev/config.zon` | `zig build serve`'s config. |
 | `deploy/`, `tools/deploy.shale`, `tools/backup.shale`, [DEPLOY.md](DEPLOY.md) | Production: the Caddy block, the service and its config; the deploy and the backup; how a release goes out. |
@@ -314,11 +313,6 @@ server, saying which.
   which needs Roc's source at the pinned commit in `~/tools/roc-<commit>`).
 - **Bytes handed to a hosted function belong to the call.** Copy anything
   the host keeps past it.
-- **A browser check against the test rig must send the rig's origin.**
-  Chromium on `127.0.0.1` sends its own `Origin`, and the server's Origin
-  check refuses that write. `tools/browser_check.js` sends the configured
-  origin with `route.fetch` and `fulfill`, because `route.continue` with new
-  headers drops the cookie.
 - **A folder std opens to walk (the default, O_PATH) cannot be fsynced**:
   the sync fails EBADF, which std's debug build panics on as a programmer's
   bug. `files.zig` opens a folder again, readable, to sync it.

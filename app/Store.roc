@@ -119,18 +119,13 @@ Store := [].{
 	## ended; their uploaded bytes' count and the indexes of their keys and invites removed; and their accounts
 	## (theirs, and their agents' and bots') written out **LAST**, so a stop
 	## part way leaves them erasable again, and a second run finds what the
-	## first left. Their keys and invites stay, inert (Erase.roc says why).
+	## first left (erase_steps!, which says each step).
 	erase! : Erase.Plan => [Failed, Erased]
 	erase! = |plan|
 		match erase_steps!(plan) {
 			Ok({}) => Erased
 			Err(Failed) => Failed
 		}
-
-	## **THE NEXT KEY'S, INVITE'S OR HUMAN INVITE'S PUBLIC ID**: one past the
-	## highest stored, so no id is given twice while its record is there
-	## (erasure removes a human's records; the count of files would then
-	## hand out an id another still holds).
 
 	## **A TOPIC'S REACTIONS**, oldest first (Reactions.list); none before
 	## the first, and whether the file ends mid-line (for
@@ -313,9 +308,9 @@ Store := [].{
 		}
 	}
 
-	## **THE NEXT KEY'S PUBLIC ID**: one past the count of those stored. A
-	## key is never removed (a revoked one stays, revoked), so no id is
-	## given twice.
+	## **THE NEXT KEY'S PUBLIC ID**: one past the highest stored, so none is
+	## given twice while its key is there (erasure removes keys, and the count
+	## of files would then hand out an id another key holds).
 	load_next_key_id! : {} => Try(Principal.KeyId, [Failed])
 	load_next_key_id! = |{}| {
 		keys = Store.load_keys!({})?
@@ -358,9 +353,8 @@ Store := [].{
 		}
 	}
 
-	## **THE NEXT INVITE'S PUBLIC ID**: one past the count of those stored.
-	## An invite is never removed (a spent or revoked one stays), so no id
-	## is given twice.
+	## **THE NEXT INVITE'S PUBLIC ID**: one past the highest stored, as a
+	## key's.
 	load_next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
 	load_next_invite_id! = |{}| {
 		invites = Store.load_invites!({})?
@@ -394,8 +388,8 @@ Store := [].{
 		}
 	}
 
-	## **THE NEXT HUMAN INVITE'S PUBLIC ID**: one past the count of those
-	## stored; none is ever removed, so no id is given twice.
+	## **THE NEXT HUMAN INVITE'S PUBLIC ID**: one past the highest stored,
+	## as a key's.
 	load_next_human_invite_id! : {} => Try(HumanInvite.InviteId, [Failed])
 	load_next_human_invite_id! = |{}| {
 		invites = load_human_invites!({})?
@@ -990,7 +984,6 @@ remove_sessions_from! = |entries, human|
 
 settings_path : List(U8)
 settings_path = "auth/settings".to_utf8()
-
 
 audit_path : List(U8)
 audit_path = "auth/audit".to_utf8()
@@ -1629,10 +1622,9 @@ settings_counters = |raw| {
 	})
 }
 
-
-## **ONE PAST THE COUNT OF A FOLDER'S ENTRIES**: the next id of a record that
-## is never removed (a key, an invite, a conversation), so no id is given
-## twice; 1 for a folder not made yet.
+## **ONE PAST THE COUNT OF A FOLDER'S ENTRIES**; 1 for a folder not made
+## yet. What an index's mark is checked against (a changed count means
+## the index is rebuilt).
 load_one_past_count! : List(U8) => Try(U64, [Failed])
 load_one_past_count! = |folder| {
 	listed = Host.list!(folder)

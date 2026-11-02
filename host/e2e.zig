@@ -32,9 +32,7 @@ var gpa: std.mem.Allocator = undefined;
 pub fn main(init: std.process.Init) !void {
     io = init.io;
     gpa = init.gpa;
-    const args = try init.minimal.args.toSlice(init.arena.allocator());
-    const hold = args.len > 1 and std.mem.eql(u8, args[1], "--hold");
-    const ok = try run(init.arena.allocator(), hold);
+    const ok = try run(init.arena.allocator());
     if (!ok) std.process.exit(1);
 }
 
@@ -1364,7 +1362,7 @@ fn anonymousUnaudited(w: *World) !void {
 }
 
 /// **A MESSAGE SAYS ITS POSTER'S KIND, AND AN AGENT'S OWNER**
-/// (app/Conversations.roc's message_json): an agent named as a look-alike
+/// (app/Messages.roc's message_json): an agent named as a look-alike
 /// of its owner (a Cyrillic `е`: its very name is taken, by the one
 /// namespace) posts, and its post's answer and the transcript say
 /// `"kind":"agent"` and the human it answers to; its owner's post says
@@ -2123,7 +2121,7 @@ fn browse(w: *World) !void {
     if (!has((try get(w.a, w.port(), "/chat", quin)).body, "<a href=\"/chat/browse\">")) return error.NoBrowseLink;
 }
 
-/// **A TOPIC'S PAGE** (`/chat/channel/<c>/<t>`, `/chat/dm/<n>/<t>`,
+/// **A TOPIC'S PAGE** (`/chat/channel/<c>/<t>`, `/chat/dm/<pair>/<t>`,
 /// app/TopicPage.roc): server-rendered, each message its bubble (the
 /// author's id, `#<n> <name> · <time>`, roc-markdown's HTML), the page
 /// naming its viewer and its stream, the right pane there and empty, the
@@ -2980,7 +2978,7 @@ fn oneSessionABrowser(w: *World) !void {
     if (has((try get(w.a, w.port(), "/", "")).body, log_out)) return error.LogOutWhenSignedOut;
 }
 
-/// **THE AGENTS' LIMIT, IN A TOPIC** (Conversations.check_hops!, fifteen
+/// **THE AGENTS' LIMIT, IN A TOPIC** (Messages.check_hops!, fifteen
 /// an hour, each agent its own): in a channel of Steve and his agents Tick
 /// and Tock, Tick answers Tock fifteen times and Tock answers three, Tock's
 /// never counting toward Tick's; Tick's sixteenth post, even a status, is
@@ -3016,11 +3014,8 @@ fn topicHops(w: *World) !void {
     if ((try send(w.a, w.port(), "POST", path, .{ .key = tick_key }, "@Tock five")).status != 201) return error.NotLetGoOn;
 }
 
-/// Every step, in order, each timed and said; true when all passed. With
-/// `hold` (`zig build e2e -- --hold`, for tools/browser_check.js), the
-/// server stays up after the steps, its port and A's and B's session
-/// cookies said, until the process is stopped.
-pub fn run(a: std.mem.Allocator, hold: bool) !bool {
+/// Every step, in order, each timed and said; true when all passed.
+pub fn run(a: std.mem.Allocator) !bool {
     var rig: Rig = undefined;
     try rig.start();
     defer rig.stop();
@@ -3037,10 +3032,6 @@ pub fn run(a: std.mem.Allocator, hold: bool) !bool {
         } else |e| {
             std.debug.print("FAIL  {d:>2}  {s} ({d} ms): {t}\n", .{ n, s.name, ms, e });
         }
-    }
-    if (hold) {
-        std.debug.print("HOLD port={d} topic={s} ann={s} bea={s} hal={s}\n", .{ w.port(), w.topic, w.ann, w.bea, w.hal });
-        while (true) sleepMs(1000);
     }
     if (passed == steps.len) {
         std.debug.print("e2e: {d} of {d} passed\n", .{ passed, steps.len });

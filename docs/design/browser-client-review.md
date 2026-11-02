@@ -1,5 +1,7 @@
 # Reviewing a browser-client chunk
 
+> Historical: written before conversations became topics, DMs were named by pairs, and saves and bans were removed (2026-11-02). DECISIONS.md and README.md say what is true now.
+
 How a cold agent reviews one chunk of [the browser client](browser-client.md)
 adversarially. Run it from this doc alone. **Your job is to find what is wrong,
 not to approve.** A review that finds nothing has to show what it checked.

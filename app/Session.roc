@@ -530,4 +530,3 @@ expect admitted(flowed, { among: [ann], now: 10100000 }) == Admitted({
 	write: Unchanged,
 })
 expect admitted(flowed, { among: [ann_again], now: 10100000 }) == Refused(NoSuchAccount)
-

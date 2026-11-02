@@ -77,7 +77,7 @@ AgentStream := [].{
 
 	## **WHETHER A RESUME SENDS A MESSAGE**: one after the cursor, as the
 	## header says; never the cursor's own, nor one before it in its
-	## conversation.
+	## topic.
 	is_after : AgentStream.Place, AgentStream.Place -> Bool
 	is_after = |from, place|
 		if place.spot == from.spot {
@@ -86,10 +86,10 @@ AgentStream := [].{
 			place.at >= from.at
 		}
 
-	## **A CONVERSATION FURTHER BEHIND THAN ITS NEWEST PAGE**: the `gap`
+	## **A TOPIC FURTHER BEHIND THAN ITS NEWEST PAGE**: the `gap`
 	## event's `before`, the first message of the page, when the messages
 	## before it may hold some after the cursor (the cursor's own
-	## conversation, behind the page; another's, whose page starts past the
+	## topic, behind the page; another's, whose page starts past the
 	## cursor's second and is not its first page).
 	gap_of : AgentStream.Place,
 	{
@@ -170,7 +170,7 @@ place_at = |t, { conv, id }| {
 }
 
 expect AgentStream.id_text(place_at(1761600000, { conv: 3, id: 12 })) == "1761600000.lobby/t3.12"
-# A spot is a channel's topic: a bare number (the old conversations') is none.
+# A spot is a channel's topic: a bare number is none.
 expect AgentStream.cursor(["1761600000.3.12".to_utf8()]) == Live
 expect AgentStream.cursor(["1761600000.lobby/t3.12".to_utf8()]) == After(
 	place_at(

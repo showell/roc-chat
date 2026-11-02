@@ -49,10 +49,10 @@ Principal := [
 
 	## **AN ACCOUNT'S GENERATION**: a number the host's one counter gives
 	## each account as it is made (GitHubSignIn's Settings hold the next),
-	## never given twice, so it never repeats for an id. Sessions, keys,
-	## votes and a conversation's participants are bound to the generation
-	## of the account they were made for (Bound), so an id made again, by
-	## a host bug or a future lifting of a bar, revives nothing; a time
+	## never given twice, so it never repeats for an id. Sessions, keys and
+	## a channel's members are bound to the generation of the account they
+	## were made for (Bound), so an account made again (an erased human
+	## signing up again, or a host bug), revives nothing; a time
 	## would not do, as two accounts can be made in one second, or under a
 	## clock that went back. Opaque: made only by `from_u64`, which refuses
 	## 0.
@@ -119,8 +119,8 @@ Principal := [
 			_ => Err(NoSuchPrincipal)
 		}
 
-	## **A HUMAN'S ROLE**: an admin manages accounts (Admin.roc); set for
-	## the first account by the bootstrap setting, changed only by an admin.
+	## **A HUMAN'S ROLE**: an admin may erase a throwaway human (Erase.roc);
+	## set for the first account by the bootstrap setting.
 	Role : [Admin, Member]
 
 	## **HOW A HUMAN SIGNS IN**: by GitHub, as the GitHub account with this

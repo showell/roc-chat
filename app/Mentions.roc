@@ -1,13 +1,13 @@
-## **WHO A POST NAMES**: the participants of its conversation whose display
+## **WHO A POST NAMES**: the participants of its topic whose display
 ## name the markdown holds as a word, `@Name` anywhere or `Name` leading the
 ## post (`CC, a question`), by the names the accounts give now. A word ends
 ## where an ASCII letter, digit or `_` cannot go on it, so `@CCX` and
 ## `a@CC.com` name nobody; a name is matched as its bytes are, case and all.
 ## Only the participants count: a name no participant goes by is text.
-## **A HUMAN'S POST IN A DM WITH ONE AGENT NAMES THE AGENT** (`of_post`):
-## in a conversation of exactly one human and one agent, every post by
+## **A HUMAN'S POST BESIDE ONE AGENT NAMES THE AGENT** (`of_post`):
+## in a topic of exactly one human and one agent, every post by
 ## the human names the agent, whatever it says or quotes, so the agent's
-## listener wakes for a plain "back at you". Not in a larger conversation,
+## listener wakes for a plain "back at you". Not in a larger topic,
 ## nor for the agent's own posts.
 ## **ONLY WHAT THE POST SAYS ITSELF** (`spoken`): fenced code (``` and
 ## ~~~, the chat's `~~~ quote` reply among them) and `>` blockquotes are
@@ -37,7 +37,7 @@ Mentions := [].{
 	}
 
 	## **THE PARTICIPANTS A POST NAMES, BY WHO POSTED IT**: `of`, and in a
-	## conversation of exactly one human and one agent, the agent, when the
+	## topic of exactly one human and one agent, the agent, when the
 	## human posted. What the server's `mentions` says, the one answer
 	## every listener reads.
 	of_post : List(U8), { by : Principal.Id, participants : List(Mentions.Named) } -> List(Principal.Id)

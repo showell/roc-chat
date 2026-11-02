@@ -1,5 +1,7 @@
 # The browser client: Gopher Chat's experience, rebuilt
 
+> Historical: written before conversations became topics, DMs were named by pairs, and saves and bans were removed (2026-11-02). DECISIONS.md and README.md say what is true now.
+
 **The goal:** a human signed in to roc-chat gets what Gopher Chat (production's
 Zig chat) gives them:
 - a compose box that opens and closes, and Send;

@@ -1,5 +1,7 @@
 # Humans without GitHub
 
+> Historical: written before conversations became topics, DMs were named by pairs, and saves and bans were removed (2026-11-02). DECISIONS.md and README.md say what is true now.
+
 A human without a GitHub account joins roc-chat by an invite from any human
 member, with no password, and is then an equal user. DECISIONS.md holds the
 rules ("Who is who"); this doc is the plan for building them, in four steps.

@@ -7,13 +7,13 @@
 ##     GET  /channels/<channel>/topics/<topic>/stream     its messages, live (SSE), after
 ##                                                        `Last-Event-ID`
 ##
-## A topic's message is a conversation's (Messages.message_json),
-## its reference first: `{"ref":"MSG_Lobby.ChitChat_3","id":3,...}`, the
+## A topic's message is Messages.message_json's, its reference
+## first: `{"ref":"MSG_Lobby.ChitChat_3","id":3,...}`, the
 ## one spelling MessageRef writes, which names its channel and its topic
 ## and is never ambiguous. **WHO MAY** is Topic's alone (the channel's
 ## members, of every kind, read and post in each of its topics), asked of
 ## the viewer over topics (Access.Viewer.over: a key that reads everywhere
-## reaches a topic, one narrowed to conversations reaches none). A topic
+## reaches a topic). A topic
 ## the viewer may not read is a 404, as one that is not there; one they
 ## read but may not post to, a 403. A topic's posts reach the one stream
 ## of each agent and bot in its channel (OneStream), as
@@ -745,7 +745,7 @@ topic_json = |topic| {
 }
 
 ## **READ**: a page of the topic's messages, the newest or those before
-## `?before=`, as a conversation's read pages them.
+## `?before=`.
 read! : Topic.At => Chat.Answer
 read! = |asked_at|
 	match load_read!(asked_at) {
@@ -818,7 +818,7 @@ before_of = |values|
 		_ => Err(Malformed)
 	}
 
-## **POST**: the markdown, as a conversation's post takes it, by one who
+## **POST**: the markdown, by one who
 ## may post in the topic (Topic.post); appended, published to the topic's
 ## streams and to its agents' one stream, and answered.
 post! : Topic.At => Chat.Answer
@@ -894,7 +894,7 @@ store_post! = |a, body| {
 			named: named_of(a.topic, { channel: a.channel, accounts: a.accounts }),
 			accounts: a.accounts,
 		}
-		# The agents' limit, as a conversation's (Messages.check_hops!).
+		# The agents' limit (Messages.check_hops!).
 		hops = Messages.check_hops!({
 			files,
 			tally,
@@ -1030,7 +1030,7 @@ frame = |
 })
 
 ## **STREAM**: the messages after `Last-Event-ID` (at most the newest
-## page), then each one posted, live, as a conversation's stream does; a
+## page), then each one posted, live; a
 ## browser further behind gets a `gap` first.
 stream! : Topic.At => Chat.Answer
 stream! = |asked_at|

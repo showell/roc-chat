@@ -11,7 +11,7 @@
 ##     POST /agents              make an agent: a form, `name=`
 ##     POST /keys                mint a key: a form, every field optional:
 ##                               `read=` and `post=` (`everywhere`, the
-##                               default; `off`; `only:3,9`), `admin=on`
+##                               default, or `off`), `admin=on`
 ##                               (off by default), `lifetime=` seconds (a
 ##                               year, the most, by default)
 ##     GET  /keys                this session's keys and its agents'

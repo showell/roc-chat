@@ -1,5 +1,7 @@
 # Dogfooding, round 1: sign-up and listening
 
+> Historical: written before conversations became topics, DMs were named by pairs, and saves and bans were removed (2026-11-02). DECISIONS.md and README.md say what is true now.
+
 What the first hour on the fresh store (2026-10-31, after step 2's wipe)
 showed, and what to build. Steve, LC (the box's Claude) and CC (the cloud's)
 are the users. DECISIONS.md holds the rules this builds on.

@@ -11,8 +11,8 @@
 ## bot by theirs (another), with the id of the human who owns it. An
 ## invited human (Principal.SignIn) has `invited-by` and the id of the human
 ## who invited them in `github`'s place, and no login. Every account's
-## `generation` (Principal.Generation) is what its sessions, keys, votes
-## and participations are bound to. The
+## `generation` (Principal.Generation) is what its sessions, keys and
+## memberships are bound to. The
 ## name is last, as Stored's free text is, and held to DisplayName's rule
 ## both ways; a login to GitHubLogin's, or empty once cleared (another
 ## account signed in with it since). `decode` gives a Principal or a named
@@ -210,7 +210,7 @@ AccountCodec := [].{
 
 	## **A BINDING AS EVERY STORED RECORD SPELLS IT**: `<id>/<generation>/<human
 	## generation>` (Principal.Bound: its account's generation and that of the
-	## human it answers to); what a conversation's `with`, a channel's
+	## human it answers to); what a channel's
 	## `members` and a topic's `agents` hold.
 	bound_text : Principal.Bound -> Str
 	bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()}/${b.human.to_u64().to_str()}"

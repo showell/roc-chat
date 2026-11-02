@@ -1,10 +1,10 @@
 ## **A MESSAGE, STORED, AND A TRANSCRIPT OF THEM**: a message is one line in
-## Stored's format, and a conversation's transcript is its messages' lines,
+## Stored's format, and a topic's transcript is its messages' lines,
 ## appended in order:
 ##
 ##     message v1 id=3 at=1761600000 by=human:583231 body=two%0Alines, 100%25
 ##
-## - `id` is the message's number in its conversation: 1, 2, 3, never a gap.
+## - `id` is the message's number in its topic: 1, 2, 3, never a gap.
 ## - `by` is who posted it, as every record spells a principal's id.
 ## - `body` is the markdown as it was posted, **ANY BYTES, EXACTLY**: the
 ##   free-text field, last, escaped so the line stays one line of UTF-8.

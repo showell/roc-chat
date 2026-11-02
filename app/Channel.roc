@@ -6,7 +6,7 @@
 ## **WHO IS IN IS AN ADMIN'S DECISION, BY THEIR OWN SESSION**: an admin
 ## makes a channel, naming it and its members, and admits or removes a
 ## member later; nobody else does, and no key does, so one stolen key never
-## lets anyone in (as Admin.roc keeps setting a role to a session). An
+## lets anyone in. An
 ## admin is no member by being one: they read a channel's topics only if
 ## they are in it, as anyone.
 ##

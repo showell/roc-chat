@@ -5,7 +5,7 @@
 ## (the reference's spelling, the fence, who may edit) stay here. Pure.
 ##
 ## **AN EDIT IS A NEW MESSAGE** that starts "Edit of MSG_<ref>", the
-## reference of an earlier message in its topic or its conversation
+## reference of an earlier message in its topic
 ## (MessageRef.Where, MessageRef.number_in). Only its author's edit
 ## supersedes it ("no post can hide another's"); the original is kept, and
 ## its bubble shows "Edited in MSG_<the edit>" and the original in a
@@ -20,8 +20,7 @@ Edits := [].{
 	## **WHICH MESSAGE AN EDIT EDITS**: its number, when `body` starts
 	## "Edit of " and a reference to a message of this topic, the full one
 	## (`MSG_<channel>.<topic>_<n>`) or the short one (`MSG_<topic>_<n>`, a
-	## DM's, and what the old client wrote in a channel too), or of this
-	## conversation (`MSG_<conversation>_<n>`), ended as the
+	## DM's, and what the old client wrote in a channel too), ended as the
 	## old `\b` ended it: by anything not a letter, a digit or `_`, the
 	## longest reference that leaves (`Edit of MSG_Lobby.Chat_3. Typo`).
 	##
@@ -242,7 +241,7 @@ longest_tilde_run = |md| {
 at_of : Str, Str -> MessageRef.Where
 at_of = |c, t| InTopic((MessageRef.from_str("MSG_${c}.${t}_1") ?? crash "a test's names are names").at())
 
-# A conversation's old reference is no edit in a topic.
+# A bare number's reference (`MSG_4_3`) is no edit in a topic.
 expect Edits.target(at_of("Lobby", "Chat"), "Edit of MSG_4_3".to_utf8()) == Err(NotAnEdit)
 expect {
 	found = Edits.superseded(
