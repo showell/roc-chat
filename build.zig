@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
 
     const archive = b.addSystemCommand(&.{ roc, "build", "app/main.roc", "--target=x64musl", "--opt=dev" });
     archive.setCwd(b.path("."));
-    for ([_][]const u8{ "app", "platform" }) |folder| rocInputs(b, archive, folder);
+    for ([_][]const u8{ "app", "platform", markdown_package }) |folder| rocInputs(b, archive, folder);
     archive.addFileInput(.{ .cwd_relative = roc });
     const page = archive.addPrefixedOutputFileArg("--output=", "page-x64musl.a");
 
@@ -38,8 +38,13 @@ pub fn build(b: *std.Build) void {
     }
 }
 
+/// **THE MARKDOWN PACKAGE app/main.roc IMPORTS** (`md`), roc-markdown
+/// checked out beside this repo, from the build's root.
+const markdown_package = "../roc-markdown/package";
+
 /// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
-/// `folder`, so a change to any module builds the archive again.
+/// `folder`, so a change to any module, ours or the markdown package's,
+/// builds the archive again.
 fn rocInputs(b: *std.Build, run: *std.Build.Step.Run, folder: []const u8) void {
     const io = b.graph.io;
     var dir = b.root.root_dir.handle.openDir(io, folder, .{ .iterate = true }) catch |e|
