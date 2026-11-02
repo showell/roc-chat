@@ -1,0 +1,83 @@
+-- **THE GATE**: every check, cheapest first, the slow end last. Run it
+-- from gopher-roc's root; it fails, naming each check that did.
+--
+--   shale tools/verify.shale
+--
+-- 1. `roc fmt --check`: the code is laid out as the formatter lays it.
+-- 2. `roc test`: every module's expects, the gate's heart, at least
+--    `expect_floor` of them (the markdown package's own included), none
+--    failing.
+-- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
+--    judges for sure: names, errors, nesting, boundaries, stacking.
+-- 4. Last, the demo built through the host, and its page holding what the
+--    sample transcript says.
+--
+-- budget: steps=200000000
+
+const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
+const expect_floor = 232
+
+const board = {failed = 0}
+
+function say(ok, what)
+  local mark = "FAIL"
+  if ok then mark = "PASS" end
+  if not ok then board.failed = board.failed + 1 end
+  print(mark .. "  " .. what)
+end
+
+-- 1. The layout.
+local fmt = run({ROC, "fmt", "--check", "app", "platform"}, {timeout_ms = 60000, tail = 10})
+say(fmt.code == 0, "roc fmt --check app platform")
+
+-- 2. The expects.
+local tested = run({ROC, "test", "app/main.roc"}, {timeout_ms = 300000, tail = 40})
+local m = re_find(tested.out, "All \\(([0-9]+)\\) tests passed")
+local count = 0
+if m ~= nil then count = tonumber(m.groups[1]) end
+say(tested.code == 0 and count >= expect_floor, "roc test app/main.roc: " .. count .. " passed (floor " .. expect_floor .. ")")
+if tested.code ~= 0 then print(tested.out) end
+
+-- 3. The hunts, each count read from its summary line.
+const hunts = {
+  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "negative ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)"}},
+  {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)"}},
+  {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
+  {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
+  {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
+}
+for h in hunts do
+  local argv = {"shale", real("cookbook:roc/" .. h.recipe .. ".shale"), "glob=app/**/*.roc"}
+  for a in h.args do push(argv, a) end
+  local r = run(argv, {cwd = ".", timeout_ms = 600000, tail = 40})
+  local last = ""
+  for l in lines(trim(r.out)) do
+    if not starts_with(l, "──") and trim(l) ~= "" then last = l end
+  end
+  local zero = r.code == 0
+  for c in h.counts do
+    local got = re_find(last, c)
+    if got == nil or tonumber(got.groups[1]) ~= 0 then zero = false end
+  end
+  say(zero, "hunt " .. h.recipe .. ": " .. last)
+  if not zero then print(r.out) end
+end
+
+-- 4. The demo, through the host: the sample's page.
+local demo = run({"zig", "build", "demo", "--", "gopher-roc", "demo/gopher-roc.transcript"}, {timeout_ms = 300000, whole = 1000000})
+local page = demo.out
+const wanted = {
+  "<h1>gopher-roc</h1>",
+  "<article class=message id=msg-1><header><span class=author>Steve</span>",
+  "<a class=ref href=\"#msg-5\">MSG_gopher-roc_5</a>",
+  "<p>-------------</p>",
+  "<pre><code class=\"language-roc\">",
+}
+local held = demo.code == 0
+for w in wanted do
+  if not contains(page, w) then held = false end
+end
+say(held and not contains(page, "msg-6"), "the demo's page: five messages, the escaped separator whole, the code fenced")
+
+if board.failed > 0 then fail("verify: " .. board.failed .. " failed") end
+print("verify: every check passed")
