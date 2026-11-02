@@ -47,6 +47,7 @@ Refusal : [
 			Author(Message.Id, [Blank, ControlByte, Padded]),
 			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
+			Backdated(Message.Id),
 			Full,
 		],
 	),
@@ -67,6 +68,7 @@ words = |why|
 		Transcript(Full) => "it holds more messages than a conversation can"
 		Transcript(BadHead(id)) => "message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
 		Transcript(BadBody(id)) => "message ${id.to_str()} holds the separator, unescaped, on a line of its own"
+		Transcript(Backdated(id)) => "message ${id.to_str()} is dated before the message above it"
 		Transcript(Author(id, fault)) => {
 			said =
 				match fault {
@@ -130,6 +132,7 @@ expect {
 		Transcript(DateTime(second, WrongShape)),
 		Transcript(DateTime(second, OutOfRange)),
 		Transcript(BadBody(second)),
+		Transcript(Backdated(second)),
 		Transcript(Full),
 	].map(words)
 		== [
@@ -147,6 +150,7 @@ expect {
 			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",
 			"message 2's date is no time a calendar and clock show",
 			"message 2 holds the separator, unescaped, on a line of its own",
+			"message 2 is dated before the message above it",
 			"it holds more messages than a conversation can",
 		]
 }

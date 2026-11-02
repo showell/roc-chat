@@ -1,7 +1,8 @@
 ## **A CONVERSATION**: a topic and its messages, in id order. It stands
 ## alone: no channel, no DM, no reader, no file. Opaque, so it grows only
-## by `append`, which numbers each message by `next_id`, so a conversation
-## whose ids skip, repeat or run backwards can't be built.
+## by `append`, which numbers each message by `next_id` and refuses one
+## dated before the latest, so a conversation whose ids skip, repeat or run
+## backwards, or whose times run backwards, can't be built.
 import Message
 import Topic
 
@@ -16,13 +17,23 @@ Conversation :: {
 
 	## The conversation with what arrived added as its next message, and
 	## that message, numbered by `next_id`; unless it already holds as many
-	## as an id can number.
-	append : Conversation, Message.Arrival -> Try({ conversation : Conversation, added : Message }, [Full])
+	## as an id can number (`Full`, asked first), or what arrived is dated
+	## before its latest message (`Backdated`).
+	##
+	## **TIMES NEVER GO BACKWARDS**: a message's time is never earlier than
+	## its conversation's latest. Equal is allowed: times are to the
+	## second, and two messages can share one.
+	append : Conversation, Message.Arrival -> Try({ conversation : Conversation, added : Message }, [Full, Backdated])
 	append = |conversation, arrival| {
 		id = Conversation.next_id(conversation)?
 		Conversation.(c) = conversation
-		added = Message.numbered({ id, arrival })
-		Ok({ conversation: Conversation.({ ..c, messages: c.messages.append(added) }), added })
+		match c.messages.last() {
+			Ok(latest) if arrival.time.compare(latest.time()) == Before => Err(Backdated)
+			_ => {
+				added = Message.numbered({ id, arrival })
+				Ok({ conversation: Conversation.({ ..c, messages: c.messages.append(added) }), added })
+			}
+		}
 	}
 
 	## **THE NEXT MESSAGE'S ID, ITS ONE HOME**: 1 for the first, else the

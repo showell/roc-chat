@@ -76,8 +76,59 @@ expect
 			latest: Bool.True,
 			count: 3,
 		})
+# Times never go backwards: at message 2 and message 3, the latest's time
+# again, or a second later, is appended; a second earlier is refused.
+## Steve's hello at `time`.
+hello_at : Str -> Message.Arrival
+hello_at = |time|
+	Sample.arrival({
+		author: "Steve",
+		time,
+		markdown: "Hello",
+	})
+
+## The ids `arrivals` take after `c`'s messages, each appended alone, or
+## why each is refused.
+appended_alone : Conversation, List(Message.Arrival) -> List(Try(Str, [Full, Backdated]))
+appended_alone = |c, arrivals| arrivals.map(|a| c.append(a).map_ok(|grown| grown.added.id().to_str()))
+
+expect
+	appended_alone(
+		Sample.conversation(Sample.plans, [Sample.hello]),
+		[
+			hello_at("2026-11-02T19:11:32Z"),
+			hello_at("2026-11-02T19:11:33Z"),
+			hello_at("2026-11-02T19:11:31Z"),
+			hello_at("2025-11-02T19:11:32Z"),
+		],
+	)
+		== [
+			Ok("2"),
+			Ok("2"),
+			Err(Backdated),
+			Err(Backdated),
+		]
+expect
+	appended_alone(
+		Sample.two,
+		[
+			hello_at("2026-11-02T19:12:28Z"),
+			hello_at("2026-11-02T19:12:29Z"),
+			hello_at("2026-11-02T19:12:27Z"),
+			hello_at("2026-11-02T19:11:32Z"),
+		],
+	)
+		== [
+			Ok("3"),
+			Ok("3"),
+			Err(Backdated),
+			Err(Backdated),
+		]
+# The first message has no latest to be before.
+expect appended_alone(Conversation.empty(Sample.plans), [hello_at("0000-01-01T00:00:00Z")]) == [Ok("1")]
 # The last id at, under and over the highest: 65,534 messages take one
-# more, the 65,535th, and then none.
+# more, the 65,535th, and then none. The refusal past it is `Full`, asked
+# before the time: Steve's hello is also dated before CC's reply.
 expect {
 	almost = Sample.almost_full({})
 	grown = almost.append(Sample.reply) ?? crash "ConversationSpec: the 65,535th message fits"

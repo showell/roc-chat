@@ -1,7 +1,8 @@
 ## **A DATE AND TIME**: when a message was written, as ISO 8601 in UTC, in
 ## exactly one form, `YYYY-MM-DDTHH:MM:SSZ`, so two times compare as text
-## and a transcript reads the same everywhere. Opaque, so `from_str` is the
-## only way in, and every one names a second some calendar and clock show.
+## (`compare`) and a transcript reads the same everywhere. Opaque, so
+## `from_str` is the only way in, and every one names a second some
+## calendar and clock show.
 ##
 ## **WHY IT IS OURS**: the pinned Roc's builtins (Str, List, Num, Dict, Set,
 ## Iter, Stream, Crypto, Hasher, Encoding and the rest) have no date or time
@@ -80,8 +81,24 @@ DateTime :: Str.{
 	to_str : DateTime -> Str
 	to_str = |DateTime.(text)| text
 
+	## **WHICH COMES FIRST**: whether `time` is before, at or after
+	## `other`. Every time is written in the one form, its fields from the
+	## year down to the second, each a fixed width of digits, so the first
+	## byte that differs decides, as it does for the times.
+	compare : DateTime, DateTime -> [Before, Same, After]
+	compare = |DateTime.(time), DateTime.(other)| byte_order(time.to_utf8(), other.to_utf8())
+
 	is_eq : _
 }
+
+## The order of two forms' bytes, by the first that differs.
+byte_order : List(U8), List(U8) -> [Before, Same, After]
+byte_order = |bytes, others|
+	match (bytes, others) {
+		([byte, .. as rest], [other, .. as rest_of_others]) if byte == other => byte_order(rest, rest_of_others)
+		([byte, ..], [other, ..]) => if (byte < other) Before else After
+		_ => Same
+	}
 
 ## The number the digits write, most significant first.
 number : List(U8) -> U64
@@ -154,4 +171,29 @@ expect DateTime.from_str("2024-02-30T19:11:32Z") == Err(OutOfRange)
 expect DateTime.from_str("1900-02-29T19:11:32Z") == Err(OutOfRange)
 expect ok("2000-02-29T19:11:32Z") == Ok("2000-02-29T19:11:32Z")
 expect is_leap(2024) and is_leap(2000) and is_leap(0)
+# The order: the same time, and a second either side of it, within a
+# field and across each field's rollover, both ways round.
+## Each pair's order, both ways round, from the pair's text.
+orders : List((Str, Str)) -> List(([Before, Same, After], [Before, Same, After]))
+orders = |pairs|
+	pairs.map(
+		|(earlier, later)| {
+			first = DateTime.from_str(earlier) ?? crash "DateTime's tests: a time"
+			second = DateTime.from_str(later) ?? crash "DateTime's tests: a time"
+			(first.compare(second), second.compare(first))
+		},
+	)
+
+expect orders([("2026-11-02T19:11:32Z", "2026-11-02T19:11:32Z")]) == [(Same, Same)]
+expect
+	orders([
+		("2026-11-02T19:11:31Z", "2026-11-02T19:11:32Z"),
+		("2026-11-02T19:11:59Z", "2026-11-02T19:12:00Z"),
+		("2026-11-02T19:59:59Z", "2026-11-02T20:00:00Z"),
+		("2026-11-02T23:59:59Z", "2026-11-03T00:00:00Z"),
+		("2026-10-31T23:59:59Z", "2026-11-01T00:00:00Z"),
+		("2025-12-31T23:59:59Z", "2026-01-01T00:00:00Z"),
+		("0999-12-31T23:59:59Z", "1000-01-01T00:00:00Z"),
+	])
+		== List.repeat((Before, After), 7)
 expect !is_leap(2026) and !is_leap(1900) and !is_leap(2100)

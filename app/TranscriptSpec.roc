@@ -57,8 +57,26 @@ one_with = |lines| Transcript.read(Sample.plans, record(lines))
 ## `lines` write it.
 two_with = |lines| Transcript.read(Sample.plans, "${record(first)}${record(lines)}")
 
+## Message 3's lines, written well.
+third : Lines
+third = {
+	head: "MSG_plans_3",
+	from: "from: Steve",
+	date: "date: 2026-11-02T19:13:05Z",
+	gap: "\n",
+	body: "hi",
+}
+
+## The transcript holding messages 1 and 2, written well, then message 3
+## as `lines` write it.
+three_with = |lines| Transcript.read(Sample.plans, "${record(first)}${record(second)}${record(lines)}")
+
 ## Read, then written again: the text itself, when it is accepted.
 again = |text| Transcript.read(Sample.plans, text).map_ok(Transcript.write)
+
+## Is `text` read, and written again, exactly as it is?
+is_round_trip : Str -> Bool
+is_round_trip = |text| again(text) == Ok(text)
 
 # Written exactly, both ways.
 expect Transcript.write(Sample.two) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
@@ -122,6 +140,14 @@ expect two_with({ ..second, body: "a\n-------------" }) == Err(BadBody(Sample.se
 expect
 	again("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
 		== Ok("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
+# Times never go backwards: message 2 and message 3 at the time above
+# them, or a second later, read; a second earlier is refused by its id.
+expect is_round_trip("${record(first)}${record({ ..second, date: "date: 2026-11-02T19:11:32Z" })}")
+expect is_round_trip("${record(first)}${record({ ..second, date: "date: 2026-11-02T19:11:33Z" })}")
+expect two_with({ ..second, date: "date: 2026-11-02T19:11:31Z" }) == Err(Backdated(Sample.second))
+expect is_round_trip("${record(first)}${record(second)}${record({ ..third, date: "date: 2026-11-02T19:12:28Z" })}")
+expect is_round_trip("${record(first)}${record(second)}${record({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
+expect three_with({ ..third, date: "date: 2026-11-02T19:12:27Z" }) == Err(Backdated(Sample.third))
 # Another topic's transcript is refused by its references.
 expect Transcript.read(Sample.other, Transcript.write(Sample.two)) == Err(BadHead(Sample.first))
 # A body that holds the separator, or a backslash before it, is written

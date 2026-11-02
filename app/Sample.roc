@@ -80,6 +80,10 @@ Sample :: [].{
 	## The second message's id.
 	second : Message.Id
 	second = Message.Id.first.next() ?? crash "Sample.second: the first id has a next"
+
+	## The third message's id.
+	third : Message.Id
+	third = Sample.second.next() ?? crash "Sample.third: the second id has a next"
 }
 
 ## `so_far` with `count` more of Steve's hello.

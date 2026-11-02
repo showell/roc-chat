@@ -30,6 +30,7 @@ The answers from our listening session on 2026-11-02, gathered in one place for 
 
 - **A conversation is a series of messages written by authors eligible to take part in it.**
 - **Ids are sequential within a conversation, so a conversation's order is its id order.**
+- **Times are UTC and never go backwards within a conversation.** A message's time is never earlier than the latest message's in its conversation. Equal times are allowed, because times are to the second and two messages can share one. Localising times for display can make two shown times look out of order once a year, when the clocks go back (in the US on 2026-11-01, 1:59 a.m. was followed by 1:00 a.m.), and that is expected.
 - **A conversation can stand alone.** You can hand one over and get a RenderedConversation back, without knowing whether it's a channel's or a DM's. That is also how it gets tested.
 - **Every conversation has a topic name, which is mandatory.** It also has a unique name on disk and a unique URL for those allowed to read it. Clients, and sometimes the server, cut the friction of naming a topic by suggesting "general" or "ChitChat".
 - **A topic name is unique only within its channel or DM.**

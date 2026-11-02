@@ -37,6 +37,7 @@ Transcript :: [].{
 			Author(Message.Id, [Blank, ControlByte, Padded]),
 			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
+			Backdated(Message.Id),
 			Full,
 		],
 	)
@@ -82,7 +83,14 @@ read_message = |c, written| {
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
 			time = DateTime.from_str(date).map_err(|why| DateTime(id, why))?
 			markdown = Separator.unescape(Str.join_with(body, "\n")).map_err(|BareSeparator| BadBody(id))?
-			c.append({ payload: { author, markdown }, time }).map_ok(|grown| grown.conversation)
+			grown = c.append({ payload: { author, markdown }, time }).map_err(
+				|why|
+					match why {
+						Full => Full
+						Backdated => Backdated(id)
+					},
+			)?
+			Ok(grown.conversation)
 		}
 		_ => Err(BadHead(id))
 	}
