@@ -130,7 +130,7 @@ pub const Server = struct {
                 var req = p.req;
                 const response = answer(arena, s.root, s.io, p.parsed);
                 req.respond(response.body, .{ .status = response.status, .keep_alive = false, .extra_headers = response.headers }) catch |e|
-                    log.warn("the answer to {s} was not written ({t})", .{ p.parsed.path, e });
+                    log.warn("the answer to {f} was not written ({t})", .{ files.loggable(p.parsed.path), e });
             },
             .refused => |r| {
                 if (r.req) |req| {
@@ -251,7 +251,7 @@ pub fn answer(arena: std.mem.Allocator, root: *const files.DataRoot, io: Io, par
     seam.end();
     const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .body = "failed\n" };
     const status = std.enums.fromInt(std.http.Status, r.status) orelse {
-        log.warn("the app answered {s} with the status {d}, which is none", .{ parsed.path, r.status });
+        log.warn("the app answered {f} with the status {d}, which is none", .{ files.loggable(parsed.path), r.status });
         return failed;
     };
     const recs = r.headers.slice();
@@ -259,7 +259,7 @@ pub fn answer(arena: std.mem.Allocator, root: *const files.DataRoot, io: Io, par
     for (recs, headers) |rec, *h| {
         h.* = .{ .name = rec.name.slice(), .value = rec.value.slice() };
         if (!header_safe(h.name) or !header_safe(h.value) or h.name.len == 0) {
-            log.warn("the app answered {s} with a header holding CR, LF or NUL", .{parsed.path});
+            log.warn("the app answered {f} with a header holding CR, LF or NUL", .{files.loggable(parsed.path)});
             return failed;
         }
     }

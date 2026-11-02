@@ -54,6 +54,16 @@ pub const std_options: std.Options = .{ .log_level = .err };
 /// not write.
 pub const read_most = 17 * 1024 * 1024;
 
+/// **BYTES FROM OUTSIDE, AS A LOG LINE SHOWS THEM, THE ONE HOME OF THAT
+/// RULE**: printable ASCII as it is, every other byte (a CR, an LF, an
+/// escape, a byte of UTF-8) as `\xNN`, so a path or a client's request can
+/// never start a forged line in the log or drive the terminal reading it.
+/// Every log line that holds such bytes (here, and host/http.zig) prints
+/// them through this, with `{f}`.
+pub fn loggable(bytes: []const u8) std.ascii.HexEscape {
+    return std.ascii.hexEscape(bytes, .lower);
+}
+
 /// The longest path the rule allows, in bytes.
 pub const path_most = 1024;
 
@@ -314,7 +324,7 @@ pub const DataRoot = struct {
     /// path and the error, and answered as `answer`.
     fn failed(root: *const DataRoot, comptime what: []const u8, path: []const u8, e: anyerror, answer: anytype) @TypeOf(answer) {
         _ = root;
-        log.warn(what ++ " {f}: {t}", .{ std.ascii.hexEscape(path, .lower), e });
+        log.warn(what ++ " {f}: {t}", .{ loggable(path), e });
         return answer;
     }
 
@@ -492,6 +502,12 @@ test "read: found, missing, not UTF-8, refused" {
     // A folder is no file: failed, never missing.
     try testing.expectEqual(ReadAnswer.failed, root.read_utf8_bytes_from_file(a, "d"));
     for (refused_paths) |p| try testing.expectEqual(ReadAnswer.path_refused, root.read_utf8_bytes_from_file(a, p));
+}
+
+test "loggable: printable ASCII kept, every other byte escaped" {
+    var buf: [128]u8 = undefined;
+    try testing.expectEqualStrings("/chat/channel/general/plans?x=1", try std.fmt.bufPrint(&buf, "{f}", .{loggable("/chat/channel/general/plans?x=1")}));
+    try testing.expectEqualStrings("/a\\x0d\\x0awarning: forged\\x1b[2J\\x00Zo\\xc3\\xab", try std.fmt.bufPrint(&buf, "{f}", .{loggable("/a\r\nwarning: forged\x1b[2J\x00Zoë")}));
 }
 
 test "read: a file at the cap is read, one byte over it fails" {
