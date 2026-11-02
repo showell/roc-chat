@@ -1,10 +1,13 @@
 const std = @import("std");
 
-/// gopher-roc's build, for now the demo: app/main.roc built to an archive
-/// by the pinned Roc (roc-version), linked into host/main.zig. The tests
-/// are the gate's alone (tools/verify.shale), the one list of their roots.
+/// gopher-roc's build: app/main.roc built to one archive by the pinned Roc
+/// (roc-version), linked into each of the host's programs. The Roc's tests
+/// are the gate's (tools/verify.shale); the host's are `test` here.
 ///
-///   zig build demo -- <topic> <file>     a transcript's page, to stdout
+///   zig build demo -- <topic> <file>         a transcript's page, to stdout
+///   zig build serve -- <data> [--port <n>]   the server, on 127.0.0.1
+///   zig build test                           the host's tests
+///   zig build end-to-end                     the server, driven over HTTP
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -14,16 +17,46 @@ pub fn build(b: *std.Build) void {
     archive.setCwd(b.path("."));
     for ([_][]const u8{ "app", "platform", markdown_package }) |folder| rocInputs(b, archive, folder);
     archive.addFileInput(.{ .cwd_relative = roc });
-    const page = archive.addPrefixedOutputFileArg("--output=", "page-x64musl.a");
+    const app = archive.addPrefixedOutputFileArg("--output=", "app-x64musl.a");
 
-    const mod = b.createModule(.{ .root_source_file = b.path("host/main.zig"), .target = target, .optimize = optimize });
-    mod.addObjectFile(page);
-    const exe = b.addExecutable(.{ .name = "demo", .root_module = mod });
-    b.installArtifact(exe);
-    const demo = b.addRunArtifact(exe);
+    const demo_exe = withApp(b, "demo", "host/demo.zig", app, target, optimize);
+    b.installArtifact(demo_exe);
+    const demo = b.addRunArtifact(demo_exe);
     demo.addPassthruArgs();
     demo.stdio = .inherit;
     b.step("demo", "A transcript's page: -- <topic> <transcript file>").dependOn(&demo.step);
+
+    const server_exe = withApp(b, "gopher-roc", "host/main.zig", app, target, optimize);
+    b.installArtifact(server_exe);
+    const serve = b.addRunArtifact(server_exe);
+    serve.addPassthruArgs();
+    serve.stdio = .inherit;
+    b.step("serve", "The server on 127.0.0.1: -- <data folder> [--port <n>] (9611 by default)").dependOn(&serve.step);
+
+    // **THE HOST'S TESTS**: the file primitives alone; the seam held to
+    // roc glue's layout; the HTTP layer with the app linked.
+    const tests = b.step("test", "The host's tests: the file primitives, the seam against roc glue, the HTTP layer");
+    const primitives = b.createModule(.{ .root_source_file = b.path("host/file_primitives.zig"), .target = target, .optimize = optimize });
+    tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = primitives })).step);
+    for ([_][]const u8{ "host/seam_test.zig", "host/http_test.zig" }) |root| {
+        const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
+        m.addObjectFile(app);
+        tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
+    }
+
+    // **THE END TO END** (host/end_to_end.zig): the real server, in its own
+    // process's task, against a temporary data root, driven over HTTP.
+    const e2e = b.addRunArtifact(withApp(b, "end-to-end", "host/end_to_end.zig", app, target, optimize));
+    e2e.setCwd(b.path("."));
+    e2e.has_side_effects = true;
+    b.step("end-to-end", "The server against a temporary data root: GET, POST, GET, the file on disk").dependOn(&e2e.step);
+}
+
+/// The program `name`, from `root`, with the app's archive linked.
+fn withApp(b: *std.Build, name: []const u8, root: []const u8, app: std.Build.LazyPath, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) *std.Build.Step.Compile {
+    const mod = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
+    mod.addObjectFile(app);
+    return b.addExecutable(.{ .name = name, .root_module = mod });
 }
 
 /// **THE MARKDOWN PACKAGE app/main.roc IMPORTS** (`md`), roc-markdown

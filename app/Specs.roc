@@ -4,6 +4,7 @@
 ## runs, so the gate checks that every `app/*Spec.roc` is imported here.
 import AdminSpec
 import ChannelsSpec
+import ConversationKeySpec
 import ConversationSpec
 import DirectorySpec
 import DmSpec

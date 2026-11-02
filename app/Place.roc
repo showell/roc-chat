@@ -26,6 +26,11 @@ Place :: [Channel(ChannelName), Dm(UserPair)].{
 	dm : Dm -> Place
 	dm = |found| Place.(Dm(found.pair()))
 
+	## **WHICH KIND OF PLACE, AND ITS NAME**: a channel's name, or a DM's
+	## pair. A view only: no place is built from one.
+	which : Place -> [Channel(ChannelName), Dm(UserPair)]
+	which = |Place.(place)| place
+
 	## Its name, as a folder's name and a URL take it.
 	to_str : Place -> Str
 	to_str = |Place.(place)|

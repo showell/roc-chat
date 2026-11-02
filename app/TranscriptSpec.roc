@@ -232,3 +232,39 @@ expect {
 	over = "${Transcript.write(full)}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
 	Transcript.read(Sample.plans, over) == Err(Full)
 }
+# **A RECORD APPENDED IS THE TRANSCRIPT GROWN**: the file of a conversation,
+# with the record of its next message added at the end, is the file of the
+# conversation grown by it, byte for byte, from no messages and from some;
+# and it decodes back to that conversation.
+## The file of `before`, with the record of `arrived` added at its end, and
+## the conversation grown by it.
+grown_on_disk : Conversation, Message.Arrival(Author) -> { bytes : List(U8), grown : Conversation }
+grown_on_disk = |before, arrived| {
+	grown = before.append(arrived) ?? crash "TranscriptSpec: a sample's message fits"
+	record = Transcript.message_record(grown.conversation, grown.message)
+	{ bytes: Transcript.write(before).to_utf8().concat(record.to_utf8_bytes()), grown: grown.conversation }
+}
+
+expect
+	[Conversation.empty(Sample.plans), Sample.conversation(Sample.plans, [Sample.hello])].all(
+		|before| {
+			on_disk = grown_on_disk(before, Sample.reply)
+			on_disk.bytes == Transcript.write(on_disk.grown).to_utf8()
+				and Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(on_disk.bytes)) == Ok(on_disk.grown)
+		},
+	)
+expect
+	Transcript.message_record(Sample.hello_and_reply, Sample.hello_and_reply.messages().first() ?? crash "TranscriptSpec: hello is first").to_utf8_bytes()
+		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8()
+# Decoding the file's bytes: not UTF-8, empty, and a refusal of the text.
+expect
+	[
+		[0xff],
+		[],
+		"\n".to_utf8(),
+	].map(|bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes)))
+		== [
+			Err(NotUtf8),
+			Ok(Conversation.empty(Sample.plans)),
+			Err(BadEnds),
+		]

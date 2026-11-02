@@ -22,6 +22,45 @@ import Topic
 
 Transcript :: [].{
 
+	## **A WHOLE TRANSCRIPT FILE'S BYTES, AS THE DISK HOLDS THEM**: what
+	## `FileSystem.read_transcript!` answers. **UNTRUSTED**: any bytes at
+	## all, until `decode` reads them into a conversation or refuses them.
+	## Opaque, and only `decode` opens one.
+	Utf8Transcript :: List(U8).{
+
+		## **THE BYTES OF A TRANSCRIPT FILE, UNCHECKED**: the file system's
+		## door, for bytes just read. Nothing is checked here: `decode` checks
+		## everything.
+		unchecked_from_file : List(U8) -> Transcript.Utf8Transcript
+		unchecked_from_file = |bytes| Transcript.Utf8Transcript.(bytes)
+	}
+
+	## **ONE MESSAGE'S RECORD, AS A TRANSCRIPT FILE TAKES IT**: what
+	## `FileSystem.append_message!` adds at a transcript's end. Opaque, and
+	## only `message_record` makes one, so its bytes are always one record
+	## this module wrote.
+	Utf8TranscriptMessage :: List(U8).{
+
+		## Its bytes, for the file system to append.
+		to_utf8_bytes : Transcript.Utf8TranscriptMessage -> List(U8)
+		to_utf8_bytes = |Transcript.Utf8TranscriptMessage.(bytes)| bytes
+	}
+
+	## **THE RECORD OF `message`, THE LATEST OF `conversation`**, as the
+	## transcript file writes it: added at the end of the file that holds
+	## the conversation before it, the file holds `write(conversation)`.
+	message_record : Conversation, Message -> Transcript.Utf8TranscriptMessage
+	message_record = |conversation, message| Transcript.Utf8TranscriptMessage.(write_message(conversation, message).to_utf8())
+
+	## **A TRANSCRIPT FILE, DECODED**: `topic`'s conversation, as `read`
+	## reads it, or the first thing wrong with the file (`NotUtf8` first).
+	decode : Topic, Transcript.Utf8Transcript -> Try(Conversation, _)
+	decode = |topic, Transcript.Utf8Transcript.(bytes)|
+		match Str.from_utf8(bytes) {
+			Ok(text) => Transcript.read(topic, text)
+			Err(_) => Err(NotUtf8)
+		}
+
 	## The transcript of the whole conversation.
 	write : Conversation -> Str
 	write = |conversation| Str.join_with(

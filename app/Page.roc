@@ -74,6 +74,19 @@ Page :: [].{
 				inner: Escape.text("Not a transcript: ${why}."),
 			}),
 		})
+
+	## **A PAGE THAT SAYS ONE THING**: `title`, and `said` beneath it (no
+	## such conversation, a refused message, a failure).
+	notice : { title : Str, said : Str } -> TrustedHtml
+	notice = |{ title, said }|
+		document({
+			title,
+			body: Html.element({
+				name: P,
+				attrs: [],
+				inner: Escape.text(said),
+			}),
+		})
 }
 
 ## One message: its header, then its markdown rendered.
@@ -223,3 +236,5 @@ expect {
 expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n".to_utf8()
 expect stylesheet.to_utf8() == "<style>\n${css}</style>\n".to_utf8()
 expect !css.contains("<")
+# A notice: its title and its words, each escaped.
+expect Page.notice({ title: "a<b", said: "x & y" }).to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n<title>a&lt;b</title>\n<style>\n${css}</style>\n<p>x &amp; y</p>".to_utf8()

@@ -19,8 +19,13 @@
 --    stack), boundaries' `single`, `entry`, `constant` and `bool_param`,
 --    and name_hunt's
 --    `stacked_preposition`, which are rules of thumb.
--- 4. Last, the demo built through the host, its page exactly the frozen
+-- 4. The demo built through the host, its page exactly the frozen
 --    demo/gopher-roc.html.
+-- 5. The host's Zig tests (`zig build test`): the file primitives, the
+--    seam held to roc glue's layout, the HTTP layer.
+-- 6. Last, the end to end (`zig build end-to-end`): the real server on a
+--    free port of 127.0.0.1, against a temporary data root, driven over
+--    HTTP; it stops the server and removes the root, pass or fail.
 --
 -- budget: steps=200000000
 
@@ -124,9 +129,22 @@ for h in hunts do
 end
 
 -- 4. The demo, through the host: the sample's page, exactly as frozen.
-local demo = run({"zig", "build", "demo", "--", "gopher-roc", "demo/gopher-roc.transcript"}, {timeout_ms = 300000, whole = 1000000})
+local demo = run({"zig", "build", "demo", "--", "gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000})
 say(demo.code == 0 and demo.out == read("demo/gopher-roc.html"), "the demo's page: exactly demo/gopher-roc.html")
 if demo.code ~= 0 then print(demo.out) end
+
+-- 5. The host's tests.
+local zig_tests = run({"zig", "build", "test", "--summary", "all"}, {timeout_ms = 300000, whole = 1000000})
+local summary = re_find(zig_tests.out, "Build Summary: [^\n]*")
+say(zig_tests.code == 0, "zig build test: " .. (summary and summary.text or "no summary"))
+if zig_tests.code ~= 0 then print(zig_tests.out) end
+
+-- 6. The end to end, last.
+local e2e = run({"zig", "build", "end-to-end"}, {timeout_ms = 300000, whole = 1000000})
+for l in re_lines(e2e.out, "^(PASS|FAIL) ") do print("  " .. l.text) end
+local passed_all = re_find(e2e.out, "end-to-end: every step passed, in [0-9]+ ms")
+say(e2e.code == 0 and passed_all ~= nil, "the end to end: " .. (passed_all and passed_all.text or "failed"))
+if e2e.code ~= 0 then print(e2e.out) end
 
 if board.failed > 0 then fail("verify: " .. board.failed .. " failed") end
 print("verify: every check passed")

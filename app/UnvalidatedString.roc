@@ -65,6 +65,33 @@ UnvalidatedString :: Str.{
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])
 	date_time = |UnvalidatedString.(text)| DateTime.from_str(text)
 
+	## **A URL'S PATH, IN PARTS, STILL UNCHECKED**: the parts between its
+	## `/`s (`/chat/dm/1_1` is `chat`, `dm` and `1_1`), each as unchecked
+	## as the whole; unless it does not start with `/` (`NotAPath`). Nothing
+	## is percent-decoded: every part a route takes is a strict name, which
+	## holds no `%`.
+	url_path_parts : UnvalidatedString -> Try(List(UnvalidatedString), [NotAPath])
+	url_path_parts = |UnvalidatedString.(text)|
+		if (text.starts_with("/"))
+			Ok(text.drop_prefix("/").split_on("/").map(|part| UnvalidatedString.(part)))
+		else
+			Err(NotAPath)
+
+	## **IS IT EXACTLY `word`**, a fixed word the code wrote (a URL's
+	## `chat`)? Byte for byte, case and all.
+	is_exactly : UnvalidatedString, Str -> Bool
+	is_exactly = |UnvalidatedString.(text), word| text == word
+
+	## **A MESSAGE'S MARKDOWN, AS A FORM SENT IT**: the text, each CRLF
+	## made LF (a browser's form sends every newline as CRLF, and a
+	## transcript's lines end in LF); unless it holds nothing but spaces,
+	## tabs and newlines (`Blank`). Otherwise exactly as written.
+	markdown : UnvalidatedString -> Try(Str, [Blank])
+	markdown = |UnvalidatedString.(text)| {
+		lf = Str.join_with(text.split_on("\r\n"), "\n")
+		if (lf.to_utf8().all(|b| b == ' ' or b == '\t' or b == '\n' or b == '\r')) Err(Blank) else Ok(lf)
+	}
+
 	## The conversation under `named`, as the transcript it is, checked by
 	## `Transcript.read`, its refusals as that reader names them.
 	conversation : UnvalidatedString, Topic -> Try(Conversation, _)
@@ -105,6 +132,50 @@ expect wire("9_10".to_utf8()).user_pair().map_ok(UserPair.to_str) == Ok("9_10")
 expect wire("10_9".to_utf8()).user_pair() == Err(NotAUserPair)
 expect wire("2026-11-02T19:11:32Z".to_utf8()).date_time().map_ok(DateTime.to_str) == Ok("2026-11-02T19:11:32Z")
 expect wire("2026-11-02".to_utf8()).date_time() == Err(WrongShape)
+# A URL's path in parts, and a fixed word matched exactly, both sides.
+## The parts of `path`, each as a test reads it, `chat` if it is exactly
+## that, else `other`, between spaces.
+chat_parts : Str -> Try(Str, [NotAPath])
+chat_parts = |path| wire(path.to_utf8()).url_path_parts().map_ok(|parts| Str.join_with(parts.map(|p| if (p.is_exactly("chat")) "chat" else "other"), " "))
+
+expect
+	[
+		"/chat/dm/1_1",
+		"/",
+		"/chat/",
+		"chat/x",
+		"",
+		"/Chat",
+	].map(chat_parts)
+		== [
+			Ok("chat other other"),
+			Ok("other"),
+			Ok("chat other"),
+			Err(NotAPath),
+			Err(NotAPath),
+			Ok("other"),
+		]
+expect wire("/a/plans".to_utf8()).url_path_parts().map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str))) == Ok([Ok("a"), Ok("plans")])
+# Markdown: CRLF to LF, a lone CR and LF kept, blank refused.
+expect
+	[
+		"a\r\nb\r\n",
+		"a\nb",
+		"a\rb",
+		"  x  ",
+		"",
+		" \r\n\t\n",
+		"\n",
+	].map(|text| wire(text.to_utf8()).markdown())
+		== [
+			Ok("a\nb\n"),
+			Ok("a\nb"),
+			Ok("a\rb"),
+			Ok("  x  "),
+			Err(Blank),
+			Err(Blank),
+			Err(Blank),
+		]
 expect {
 	plans = Topic.from_str("plans") ?? crash "UnvalidatedString's tests: a topic"
 	[wire([]).conversation(plans), wire("\n".to_utf8()).conversation(plans)]
