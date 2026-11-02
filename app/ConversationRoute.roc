@@ -248,30 +248,12 @@ expect
 			time: "2026-11-02T19:11:32Z",
 			markdown: "Hi there\nall",
 		})
-expect
-	[
-		"",
-		"markdown=a&markdown=b",
-		"markdown=%G0",
-		"markdown=%FF",
-		"markdown=+",
-	].map(arrived_at_the_sample_time)
-		== [
-			Err(MissingField),
-			Err(RepeatedField),
-			Err(BadEscape),
-			Err(NotUtf8),
-			Err(Blank),
-		]
+expect arrived_at_the_sample_time("") == Err(MissingField)
+expect arrived_at_the_sample_time("markdown=a&markdown=b") == Err(RepeatedField)
+expect arrived_at_the_sample_time("markdown=%G0") == Err(BadEscape)
+expect arrived_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
+expect arrived_at_the_sample_time("markdown=+") == Err(Blank)
 expect arrived_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
-expect
-	[
-		MissingField,
-		Blank,
-		ClockOutOfRange,
-	].map(|why| refused(why).status)
-		== [
-			400,
-			400,
-			500,
-		]
+expect refused(MissingField).status == 400
+expect refused(Blank).status == 400
+expect refused(ClockOutOfRange).status == 500

@@ -123,108 +123,73 @@ verdict = |method, headers|
 	})
 
 # The Host, both sides: exactly one of the two names, at the server's port.
-expect
-	[
-		[("Host", "127.0.0.1:9611")],
-		[("host", "localhost:9611")],
-		[("HOST", "localhost:9611")],
-		[],
-		[("Host", "evil.example:9611")],
-		[("Host", "localhost:9612")],
-		[("Host", "localhost")],
-		[("Host", "LOCALHOST:9611")],
-		[("Host", "127.0.0.1:9611"), ("Host", "127.0.0.1:9611")],
-		[("X-Host", "localhost:9611")],
-	].map(|headers| verdict("GET", headers))
-		== [
-			Ok({}),
-			Ok({}),
-			Ok({}),
-			Err(MissingHost),
-			Err(ForeignHost),
-			Err(ForeignHost),
-			Err(ForeignHost),
-			Err(ForeignHost),
-			Err(ForeignHost),
-			Err(MissingHost),
-		]
+expect verdict("GET", [("Host", "127.0.0.1:9611")]) == Ok({})
+expect verdict("GET", [("host", "localhost:9611")]) == Ok({})
+expect verdict("GET", [("HOST", "localhost:9611")]) == Ok({})
+expect verdict("GET", []) == Err(MissingHost)
+expect verdict("GET", [("Host", "evil.example:9611")]) == Err(ForeignHost)
+expect verdict("GET", [("Host", "localhost:9612")]) == Err(ForeignHost)
+expect verdict("GET", [("Host", "localhost")]) == Err(ForeignHost)
+expect verdict("GET", [("Host", "LOCALHOST:9611")]) == Err(ForeignHost)
+expect verdict("GET", [("Host", "127.0.0.1:9611"), ("Host", "127.0.0.1:9611")]) == Err(ForeignHost)
+expect verdict("GET", [("X-Host", "localhost:9611")]) == Err(MissingHost)
 # A write's Origin and Sec-Fetch-Site, both sides; neither sent (curl) passes.
 ## A POST to localhost:9611 with `more` headers.
 posted : List((Str, Str)) -> Try({}, _)
 posted = |more| verdict("POST", [("Host", "localhost:9611")].concat(more))
 
+expect posted([]) == Ok({})
+expect posted([("Origin", "http://localhost:9611")]) == Ok({})
+expect posted([("origin", "http://127.0.0.1:9611")]) == Ok({})
+expect posted([("Origin", "http://evil.example")]) == Err(ForeignOrigin)
+expect posted([("Origin", "null")]) == Err(ForeignOrigin)
+expect posted([("Origin", "https://localhost:9611")]) == Err(ForeignOrigin)
+expect posted([("Origin", "http://localhost:9612")]) == Err(ForeignOrigin)
 expect
-	[
-		[],
-		[("Origin", "http://localhost:9611")],
-		[("origin", "http://127.0.0.1:9611")],
-		[("Origin", "http://evil.example")],
-		[("Origin", "null")],
-		[("Origin", "https://localhost:9611")],
-		[("Origin", "http://localhost:9612")],
-		[("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")],
-		[("Sec-Fetch-Site", "same-origin")],
-		[("Sec-Fetch-Site", "cross-site")],
-		[("Sec-Fetch-Site", "same-site")],
-		[("Sec-Fetch-Site", "none")],
-		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")],
-		[("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")],
-		[("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "cross-site")],
-		[("Origin", "http://evil.example"), ("Sec-Fetch-Site", "cross-site")],
-	].map(posted)
-		== [
-			Ok({}),
-			Ok({}),
-			Ok({}),
-			Err(ForeignOrigin),
-			Err(ForeignOrigin),
-			Err(ForeignOrigin),
-			Err(ForeignOrigin),
-			Err(ForeignOrigin),
-			Ok({}),
-			Err(CrossSiteFetch),
-			Err(CrossSiteFetch),
-			Err(CrossSiteFetch),
-			Err(CrossSiteFetch),
-			Ok({}),
-			Err(CrossSiteFetch),
-			Err(ForeignOrigin),
-		]
+	posted([("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")])
+		== Err(ForeignOrigin)
+expect posted([("Sec-Fetch-Site", "same-origin")]) == Ok({})
+expect posted([("Sec-Fetch-Site", "cross-site")]) == Err(CrossSiteFetch)
+expect posted([("Sec-Fetch-Site", "same-site")]) == Err(CrossSiteFetch)
+expect posted([("Sec-Fetch-Site", "none")]) == Err(CrossSiteFetch)
+expect
+	posted([("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")])
+		== Err(CrossSiteFetch)
+expect posted([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")]) == Ok({})
+expect
+	posted([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "cross-site")])
+		== Err(CrossSiteFetch)
+expect
+	posted([("Origin", "http://evil.example"), ("Sec-Fetch-Site", "cross-site")])
+		== Err(ForeignOrigin)
 # A write still needs its Host first; a GET is held to its Host alone, and
 # every other method is a write.
+expect verdict("POST", [("Origin", "http://localhost:9611")]) == Err(MissingHost)
 expect
-	[
-		verdict("POST", [("Origin", "http://localhost:9611")]),
-		verdict("POST", [("Host", "evil.example"), ("Origin", "http://localhost:9611")]),
-		verdict(
-			"GET",
-			[
-				("Host", "localhost:9611"),
-				("Origin", "http://evil.example"),
-				("Sec-Fetch-Site", "cross-site"),
-			],
-		),
-		verdict("PUT", [("Host", "localhost:9611"), ("Origin", "http://evil.example")]),
-		verdict("DELETE", [("Host", "localhost:9611"), ("Sec-Fetch-Site", "cross-site")]),
-	]
-		== [
-			Err(MissingHost),
-			Err(ForeignHost),
-			Ok({}),
-			Err(ForeignOrigin),
-			Err(CrossSiteFetch),
-		]
+	verdict("POST", [("Host", "evil.example"), ("Origin", "http://localhost:9611")])
+		== Err(ForeignHost)
+expect
+	verdict(
+		"GET",
+		[
+			("Host", "localhost:9611"),
+			("Origin", "http://evil.example"),
+			("Sec-Fetch-Site", "cross-site"),
+		],
+	)
+		== Ok({})
+expect
+	verdict("PUT", [("Host", "localhost:9611"), ("Origin", "http://evil.example")])
+		== Err(ForeignOrigin)
+expect
+	verdict("DELETE", [("Host", "localhost:9611"), ("Sec-Fetch-Site", "cross-site")])
+		== Err(CrossSiteFetch)
 # Every refusal, in words.
+expect RequestOrigin.words(MissingHost) == "The request names no Host."
 expect
-	[
-		MissingHost,
-		ForeignHost,
-		ForeignOrigin,
-		CrossSiteFetch,
-	].map(RequestOrigin.words)
-		== [
-			"The request names no Host.",
-			"The request's Host is not this server's (127.0.0.1 or localhost, at its port).",
-			"The request comes from a page of another origin.",
-			"The browser says the request comes from another site's page.",
-		]
+	RequestOrigin.words(ForeignHost)
+		== "The request's Host is not this server's (127.0.0.1 or localhost, at its port)."
+expect RequestOrigin.words(ForeignOrigin) == "The request comes from a page of another origin."
+expect
+	RequestOrigin.words(CrossSiteFetch)
+		== "The browser says the request comes from another site's page."

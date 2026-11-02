@@ -206,8 +206,7 @@ expect
 		"a<b",
 		"a#b",
 		"é",
-	].map(Html.Token.from_str)
-		== List.repeat(Err(ForbiddenByte), 15)
+	].all(|text| Html.Token.from_str(text) == Err(ForbiddenByte))
 # No link leaves the page: a scheme, a path or another origin is no token.
 expect
 	[
@@ -215,57 +214,29 @@ expect
 		"https://evil.example",
 		"//evil.example",
 		"/etc",
-	].map(Html.Token.from_str)
-		== List.repeat(Err(ForbiddenByte), 4)
+	].all(|text| Html.Token.from_str(text) == Err(ForbiddenByte))
 # Every attribute, as an open tag writes it: a link is always `#` and a
 # token.
-expect
-	[
-		Class(token("author")),
-		Id(token("msg-1")),
-		Href(token("msg-1")),
-		Href(token("msg-2")),
-	].map(attribute)
-		== [
-			" class=\"author\"",
-			" id=\"msg-1\"",
-			" href=\"#msg-1\"",
-			" href=\"#msg-2\"",
-		]
+expect attribute(Class(token("author"))) == " class=\"author\""
+expect attribute(Id(token("msg-1"))) == " id=\"msg-1\""
+expect attribute(Href(token("msg-1"))) == " href=\"#msg-1\""
+expect attribute(Href(token("msg-2"))) == " href=\"#msg-2\""
 expect
 	DateTime.from_str("2026-11-02T19:11:32Z").map_ok(|time| attribute(DateTime(time)))
 		== Ok(" datetime=\"2026-11-02T19:11:32Z\"")
-expect
-	[
-		A,
-		Article,
-		Button,
-		Div,
-		Form,
-		H1,
-		Header,
-		P,
-		Script,
-		Span,
-		Textarea,
-		Time,
-		Title,
-	].map(name_of)
-		== [
-			"a",
-			"article",
-			"button",
-			"div",
-			"form",
-			"h1",
-			"header",
-			"p",
-			"script",
-			"span",
-			"textarea",
-			"time",
-			"title",
-		]
+expect name_of(A) == "a"
+expect name_of(Article) == "article"
+expect name_of(Button) == "button"
+expect name_of(Div) == "div"
+expect name_of(Form) == "form"
+expect name_of(H1) == "h1"
+expect name_of(Header) == "header"
+expect name_of(P) == "p"
+expect name_of(Script) == "script"
+expect name_of(Span) == "span"
+expect name_of(Textarea) == "textarea"
+expect name_of(Time) == "time"
+expect name_of(Title) == "title"
 # A site path: `/` and parts of letters, digits, `-`, `_` and `.`, both
 # sides of each refusal.
 expect
@@ -274,25 +245,28 @@ expect
 		"/chat/dm/1_1/plans",
 		"/chat/assets/compose.js",
 		"/a",
-	].map(|text| Html.SitePath.from_str(text).map_ok(Html.SitePath.to_str))
-		== [
-			Ok("/chat/channel/general/gopher-roc"),
-			Ok("/chat/dm/1_1/plans"),
-			Ok("/chat/assets/compose.js"),
-			Ok("/a"),
-		]
+	].all(|text| Html.SitePath.from_str(text).map_ok(Html.SitePath.to_str) == Ok(text))
 expect
 	[
 		"chat/x",
 		"",
 		"https://evil.example",
+	].all(|text| Html.SitePath.from_str(text) == Err(NoLeadingSlash))
+expect
+	[
 		"/",
 		"//evil.example",
 		"/a//b",
 		"/a/",
+	].all(|text| Html.SitePath.from_str(text) == Err(EmptyPart))
+expect
+	[
 		"/a/../b",
 		"/.hidden",
 		"/a/.js",
+	].all(|text| Html.SitePath.from_str(text) == Err(HiddenPart))
+expect
+	[
 		"/a:b",
 		"/a b",
 		"/a\"b",
@@ -300,43 +274,17 @@ expect
 		"/a#b",
 		"/a%2e",
 		"/é",
-	].map(Html.SitePath.from_str)
-		== [
-			Err(NoLeadingSlash),
-			Err(NoLeadingSlash),
-			Err(NoLeadingSlash),
-			Err(EmptyPart),
-			Err(EmptyPart),
-			Err(EmptyPart),
-			Err(EmptyPart),
-			Err(HiddenPart),
-			Err(HiddenPart),
-			Err(HiddenPart),
-			Err(ForbiddenByte),
-			Err(ForbiddenByte),
-			Err(ForbiddenByte),
-			Err(ForbiddenByte),
-			Err(ForbiddenByte),
-			Err(ForbiddenByte),
-			Err(ForbiddenByte),
-		]
+	].all(|text| Html.SitePath.from_str(text) == Err(ForbiddenByte))
 # Every new attribute, as an open tag writes it.
 expect {
 	path = |text| Html.SitePath.from_str(text) ?? crash "Html's tests: a site path"
 	[
-		FieldName(token("markdown")),
-		MethodPost,
-		Action(path("/chat/dm/1_1/plans")),
-		Required,
-		Src(path("/chat/assets/compose.js")),
-	].map(attribute)
-		== [
-			" name=\"markdown\"",
-			" method=\"post\"",
-			" action=\"/chat/dm/1_1/plans\"",
-			" required",
-			" src=\"/chat/assets/compose.js\"",
-		]
+		(FieldName(token("markdown")), " name=\"markdown\""),
+		(MethodPost, " method=\"post\""),
+		(Action(path("/chat/dm/1_1/plans")), " action=\"/chat/dm/1_1/plans\""),
+		(Required, " required"),
+		(Src(path("/chat/assets/compose.js")), " src=\"/chat/assets/compose.js\""),
+	].all(|(attr, expected)| attribute(attr) == expected)
 }
 # An element: its attributes in order, `inner` as it is, never escaped
 # again.

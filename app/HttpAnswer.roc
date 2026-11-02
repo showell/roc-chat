@@ -133,42 +133,36 @@ refused_with = |allowed| {
 # The 405 is plain text, not sniffed, allowing each path's own methods; the
 # 303 has no body, so only its place.
 expect
-	[GetAndPost, GetOnly].map(refused_with)
-		== [
-			(
-				[
-					("allow", "GET, POST"),
-					("content-type", "text/plain; charset=utf-8"),
-					("x-content-type-options", "nosniff"),
-				],
-				"GET or POST only\n",
-			),
-			(
-				[
-					("allow", "GET"),
-					("content-type", "text/plain; charset=utf-8"),
-					("x-content-type-options", "nosniff"),
-				],
-				"GET only\n",
-			),
-		]
+	refused_with(GetAndPost)
+		== (
+			[
+				("allow", "GET, POST"),
+				("content-type", "text/plain; charset=utf-8"),
+				("x-content-type-options", "nosniff"),
+			],
+			"GET or POST only\n",
+		)
+expect
+	refused_with(GetOnly)
+		== (
+			[
+				("allow", "GET"),
+				("content-type", "text/plain; charset=utf-8"),
+				("x-content-type-options", "nosniff"),
+			],
+			"GET only\n",
+		)
 expect said(HttpAnswer.see_other("/a")) == [("location", "/a")]
 # A script: JavaScript, never cached unasked, not sniffed, its bytes as
 # given; and no page's policy, which is a document's.
 expect {
 	answered = HttpAnswer.script("x();\n".to_utf8())
-	(
-		answered.status,
-		said(answered),
-		answered.body,
-	)
-		== (
-			200,
-			[
+	answered.status == 200
+		and said(answered)
+			== [
 				("content-type", "text/javascript; charset=utf-8"),
 				("cache-control", "no-cache"),
 				("x-content-type-options", "nosniff"),
-			],
-			"x();\n".to_utf8(),
-		)
+			]
+		and answered.body == "x();\n".to_utf8()
 }

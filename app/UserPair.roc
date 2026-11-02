@@ -58,8 +58,10 @@ spelled : Str, Str -> Str
 spelled = |a, b| UserPair.of({ a: id_of(a), b: id_of(b) }).to_str()
 
 # Either order, one pair, lowest first; numeric, not the text's order.
-expect [spelled("1", "2"), spelled("2", "1")] == ["1_2", "1_2"]
-expect [spelled("9", "10"), spelled("10", "9")] == ["9_10", "9_10"]
+expect spelled("1", "2") == "1_2"
+expect spelled("2", "1") == "1_2"
+expect spelled("9", "10") == "9_10"
+expect spelled("10", "9") == "9_10"
 expect UserPair.of({
 	a: id_of("10"),
 	b: id_of("9"),
@@ -80,14 +82,7 @@ expect
 		"1_2",
 		"1_255",
 		"255_255",
-	].map(|text| UserPair.from_str(text).map_ok(UserPair.to_str))
-		== [
-			Ok("9_10"),
-			Ok("5_5"),
-			Ok("1_2"),
-			Ok("1_255"),
-			Ok("255_255"),
-		]
+	].all(|text| UserPair.from_str(text).map_ok(UserPair.to_str) == Ok(text))
 # Every other spelling refused: out of order, no id, a side missing, an
 # id spelled another way, one `_` too many or a space.
 expect
@@ -110,8 +105,7 @@ expect
 		" 1_2",
 		"1_2 ",
 		"1-2",
-	].map(UserPair.from_str)
-		== List.repeat(Err(NotAUserPair), 18)
+	].all(|text| UserPair.from_str(text) == Err(NotAUserPair))
 # A pair keys a set: equal pairs are one.
 expect Set.empty().insert(
 	UserPair.of({

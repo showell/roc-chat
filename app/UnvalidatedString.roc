@@ -104,17 +104,10 @@ wire = |bytes| UnvalidatedString.from_utf8(bytes) ?? crash "UnvalidatedString's 
 comes_in : List(U8) -> Try({}, [NotUtf8])
 comes_in = |bytes| UnvalidatedString.from_utf8(bytes).map_ok(|_| {})
 
-expect [
-	[0xFF],
-	[0xC3],
-	"Zoë".to_utf8(),
-	[],
-].map(comes_in) == [
-	Err(NotUtf8),
-	Err(NotUtf8),
-	Ok({}),
-	Ok({}),
-]
+expect comes_in([0xFF]) == Err(NotUtf8)
+expect comes_in([0xC3]) == Err(NotUtf8)
+expect comes_in("Zoë".to_utf8()) == Ok({})
+expect comes_in([]) == Ok({})
 # Each way out checks, both sides.
 expect wire("Zoë".to_utf8()).name().map_ok(Name.to_str) == Ok("Zoë")
 expect wire("Zoë!".to_utf8()).name() == Err(ForbiddenCharacter)
@@ -134,41 +127,18 @@ expect wire("2026-11-02".to_utf8()).date_time() == Err(WrongShape)
 chat_parts : Str -> Try(Str, [NotAPath])
 chat_parts = |path| wire(path.to_utf8()).url_path_parts().map_ok(|parts| Str.join_with(parts.map(|p| if (p.is_exactly("chat")) "chat" else "other"), " "))
 
-expect
-	[
-		"/chat/dm/1_1",
-		"/",
-		"/chat/",
-		"chat/x",
-		"",
-		"/Chat",
-	].map(chat_parts)
-		== [
-			Ok("chat other other"),
-			Ok("other"),
-			Ok("chat other"),
-			Err(NotAPath),
-			Err(NotAPath),
-			Ok("other"),
-		]
+expect chat_parts("/chat/dm/1_1") == Ok("chat other other")
+expect chat_parts("/") == Ok("other")
+expect chat_parts("/chat/") == Ok("chat other")
+expect chat_parts("chat/x") == Err(NotAPath)
+expect chat_parts("") == Err(NotAPath)
+expect chat_parts("/Chat") == Ok("other")
 expect wire("/a/plans".to_utf8()).url_path_parts().map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str))) == Ok([Ok("a"), Ok("plans")])
 # Markdown: CRLF to LF, a lone CR and LF kept, blank refused.
-expect
-	[
-		"a\r\nb\r\n",
-		"a\nb",
-		"a\rb",
-		"  x  ",
-		"",
-		" \r\n\t\n",
-		"\n",
-	].map(|text| wire(text.to_utf8()).markdown())
-		== [
-			Ok("a\nb\n"),
-			Ok("a\nb"),
-			Ok("a\rb"),
-			Ok("  x  "),
-			Err(Blank),
-			Err(Blank),
-			Err(Blank),
-		]
+expect wire("a\r\nb\r\n".to_utf8()).markdown() == Ok("a\nb\n")
+expect wire("a\nb".to_utf8()).markdown() == Ok("a\nb")
+expect wire("a\rb".to_utf8()).markdown() == Ok("a\rb")
+expect wire("  x  ".to_utf8()).markdown() == Ok("  x  ")
+expect wire("".to_utf8()).markdown() == Err(Blank)
+expect wire(" \r\n\t\n".to_utf8()).markdown() == Err(Blank)
+expect wire("\n".to_utf8()).markdown() == Err(Blank)

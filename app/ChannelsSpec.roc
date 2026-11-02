@@ -72,7 +72,7 @@ members_of = |channels| channels.channel(channel_name("plans")).map_ok(|c| c.mem
 # A channel starts empty, and is found by its exact name.
 expect {
 	channel = Channels.empty.create({ by: admin, name: channel_name("plans") }).channel
-	(channel.name().to_str(), channel.members()) == ("plans", [])
+	channel.name().to_str() == "plans" and channel.members() == []
 }
 expect with_plans.channel(channel_name("plans")).map_ok(|c| c.name().to_str()) == Ok("plans")
 expect with_plans.channel(channel_name("Plans")) == Err(NoSuchChannel)
@@ -83,60 +83,58 @@ expect with_plans.to_list().map(|c| c.name().to_str()) == ["plans"]
 expect members_of(everyone) == Ok(["1", "2", "3"])
 expect members_of(all_changed(with_plans, [Admit(Sample.user("CC"))])) == Ok(["3"])
 expect
-	everyone.channel(channel_name("plans")).map_ok(
-		|c| (
-			c.has_member(Sample.steve),
-			c.has_member(Sample.user("CC")),
-		),
-	)
-		== Ok((Bool.True, Bool.True))
+	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve)) == Ok(Bool.True)
+expect
+	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.user("CC"))) == Ok(Bool.True)
 expect
 	with_plans.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve))
 		== Ok(Bool.False)
+expect changed(everyone, Admit(Sample.steve)).map_ok(members_of) == Err(AlreadyMember)
 expect
-	[
-		changed(everyone, Admit(Sample.steve)),
-		with_plans.add_member({
-			by: admin,
-			channel: channel_name("general"),
-			member: Sample.steve,
-		}),
-		everyone.add_member({
-			by: admin,
-			channel: channel_name("general"),
-			member: Sample.steve,
-		}),
-	].map(|answer| answer.map_ok(members_of))
-		== [
-			Err(AlreadyMember),
-			Err(NoSuchChannel),
-			Err(NoSuchChannel),
-		]
+	with_plans.add_member({
+		by: admin,
+		channel: channel_name("general"),
+		member: Sample.steve,
+	}).map_ok(members_of)
+		== Err(NoSuchChannel)
+expect
+	everyone.add_member({
+		by: admin,
+		channel: channel_name("general"),
+		member: Sample.steve,
+	}).map_ok(members_of)
+		== Err(NoSuchChannel)
 # Removing: a member goes, once; the rest stay.
 expect changed(everyone, Remove(Sample.user("Apoorva"))).map_ok(members_of) == Ok(Ok(["1", "3"]))
+expect changed(with_plans, Remove(Sample.steve)).map_ok(members_of) == Err(NotMember)
 expect
-	[
-		changed(with_plans, Remove(Sample.steve)),
-		everyone.remove_member({
-			by: admin,
-			channel: channel_name("general"),
-			member: Sample.steve,
-		}),
-		with_plans.remove_member({
-			by: admin,
-			channel: channel_name("general"),
-			member: Sample.steve,
-		}),
-	].map(|answer| answer.map_ok(members_of))
-		== [
-			Err(NotMember),
-			Err(NoSuchChannel),
-			Err(NoSuchChannel),
-		]
+	everyone.remove_member({
+		by: admin,
+		channel: channel_name("general"),
+		member: Sample.steve,
+	}).map_ok(members_of)
+		== Err(NoSuchChannel)
+expect
+	with_plans.remove_member({
+		by: admin,
+		channel: channel_name("general"),
+		member: Sample.steve,
+	}).map_ok(members_of)
+		== Err(NoSuchChannel)
 # A member removed can be admitted again, and removed again.
 expect
-	[
-		all_changed(everyone, [Remove(Sample.user("Apoorva")), Admit(Sample.user("Apoorva"))]),
+	members_of(
+		all_changed(
+			everyone,
+			[
+				Remove(Sample.user("Apoorva")),
+				Admit(Sample.user("Apoorva")),
+			],
+		),
+	)
+		== Ok(["1", "2", "3"])
+expect
+	members_of(
 		all_changed(
 			everyone,
 			[
@@ -145,5 +143,5 @@ expect
 				Remove(Sample.user("Apoorva")),
 			],
 		),
-	].map(members_of)
-		== [Ok(["1", "2", "3"]), Ok(["1", "3"])]
+	)
+		== Ok(["1", "3"])

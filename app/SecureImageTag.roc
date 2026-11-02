@@ -38,6 +38,4 @@ expect
 		"data:image/png;base64,AAAA",
 		"javascript:alert(1)",
 		"",
-	]
-		.map(|source| SecureImageTag.is_conversation_upload(source.to_utf8()))
-		== List.repeat(Bool.False, 6)
+	].all(|source| !SecureImageTag.is_conversation_upload(source.to_utf8()))

@@ -92,16 +92,15 @@ named = |text| Name.from_str(text).map_ok(Name.to_str)
 
 # Names of letters, with single spaces between words, kept as given.
 expect
-	["Steve Howell", "Zoë", "Élodie", "CC", "S", "Zoë Ann Smith", "sTeVe"].map(named)
-		== [
-			Ok("Steve Howell"),
-			Ok("Zoë"),
-			Ok("Élodie"),
-			Ok("CC"),
-			Ok("S"),
-			Ok("Zoë Ann Smith"),
-			Ok("sTeVe"),
-		]
+	[
+		"Steve Howell",
+		"Zoë",
+		"Élodie",
+		"CC",
+		"S",
+		"Zoë Ann Smith",
+		"sTeVe",
+	].all(|text| named(text) == Ok(text))
 expect named("") == Err(Empty)
 # Anything outside the alphabet, anywhere: a digit, punctuation, an emoji,
 # a control byte, a format character, a space that isn't ASCII's.
@@ -119,8 +118,7 @@ expect
 		"Steve-Howell",
 		"O'Brien",
 		"\t",
-	].map(named)
-		== List.repeat(Err(ForbiddenCharacter), 12)
+	].all(|text| named(text) == Err(ForbiddenCharacter))
 # Spaces: one between words kept; two together, or one at either end, or
 # a name of spaces alone, refused.
 expect
@@ -130,8 +128,7 @@ expect
 		"Zoë ",
 		" ",
 		"  ",
-	].map(named)
-		== List.repeat(Err(BadSpacing), 5)
+	].all(|text| named(text) == Err(BadSpacing))
 # The length at, under and over the longest, in ASCII letters and in
 # accented ones, which count one apiece though each is two bytes.
 expect Name.longest == 60
@@ -139,21 +136,15 @@ expect
 	[
 		"a".repeat(59),
 		"a".repeat(60),
-		"a".repeat(61),
 		"é".repeat(60),
-		"é".repeat(61),
 		"Zoë ${"a".repeat(56)}",
+	].all(|text| named(text) == Ok(text))
+expect
+	[
+		"a".repeat(61),
+		"é".repeat(61),
 		"Zoë ${"a".repeat(57)}",
-	].map(|text| named(text).map_ok(|_| {}))
-		== [
-			Ok({}),
-			Ok({}),
-			Err(TooLong),
-			Ok({}),
-			Err(TooLong),
-			Ok({}),
-			Err(TooLong),
-		]
+	].all(|text| named(text) == Err(TooLong))
 # The order: empty, then the length, then a forbidden character, then
 # bad spacing.
 expect named(" Steve!") == Err(ForbiddenCharacter)

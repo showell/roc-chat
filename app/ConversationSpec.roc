@@ -58,25 +58,18 @@ expect
 			conversation: Sample.conversation(Sample.plans, [Sample.hello]),
 			message: Message.numbered({ id: Sample.first, arrival: Sample.hello }),
 		})
-expect
-	Sample.hello_and_reply.append(Sample.reply).map_ok(
-		|{ conversation, message }| {
-			message: summary([message]),
-			latest: conversation.messages().last() == Ok(message),
-			count: conversation.messages().len(),
+expect {
+	grown = Sample.hello_and_reply.append(Sample.reply) ?? crash "ConversationSpec: a third message fits"
+	summary([grown.message]) == [
+		{
+			id: "3",
+			author: "CC",
+			markdown: "Hi!\n\n- one\n- two",
 		},
-	)
-		== Ok({
-			message: [
-				{
-					id: "3",
-					author: "CC",
-					markdown: "Hi!\n\n- one\n- two",
-				},
-			],
-			latest: Bool.True,
-			count: 3,
-		})
+	]
+		and grown.conversation.messages().last() == Ok(grown.message)
+		and grown.conversation.messages().len() == 3
+}
 # Times never go backwards: at message 2 and message 3, the latest's time
 # again, or a second later, is appended; a second earlier is refused.
 ## Steve's hello at `time`.
@@ -88,51 +81,25 @@ hello_at = |time|
 		markdown: "Hello",
 	})
 
-## The ids `arrivals` take after `c`'s messages, each appended alone, or
-## why each is refused.
-appended_alone : Conversation, List(Message.Arrival(Author)) -> List(Try(Str, [Full, Backdated]))
-appended_alone = |
-	c,
-	arrivals,
-| arrivals.map(|a| c.append(a).map_ok(|grown| grown.message.id().to_str()))
+## The id `arrival` takes, appended alone after `c`'s messages, or why it
+## is refused.
+appended_alone : Conversation, Message.Arrival(Author) -> Try(Str, [Full, Backdated])
+appended_alone = |c, arrival| c.append(arrival).map_ok(|grown| grown.message.id().to_str())
 
-expect
-	appended_alone(
-		Sample.conversation(Sample.plans, [Sample.hello]),
-		[
-			hello_at("2026-11-02T19:11:32Z"),
-			hello_at("2026-11-02T19:11:33Z"),
-			hello_at("2026-11-02T19:11:31Z"),
-			hello_at("2025-11-02T19:11:32Z"),
-		],
-	)
-		== [
-			Ok("2"),
-			Ok("2"),
-			Err(Backdated),
-			Err(Backdated),
-		]
-expect
-	appended_alone(
-		Sample.hello_and_reply,
-		[
-			hello_at("2026-11-02T19:12:28Z"),
-			hello_at("2026-11-02T19:12:29Z"),
-			hello_at("2026-11-02T19:12:27Z"),
-			hello_at("2026-11-02T19:11:32Z"),
-		],
-	)
-		== [
-			Ok("3"),
-			Ok("3"),
-			Err(Backdated),
-			Err(Backdated),
-		]
+## The conversation of Steve's hello alone.
+hello_alone : Conversation
+hello_alone = Sample.conversation(Sample.plans, [Sample.hello])
+
+expect appended_alone(hello_alone, hello_at("2026-11-02T19:11:32Z")) == Ok("2")
+expect appended_alone(hello_alone, hello_at("2026-11-02T19:11:33Z")) == Ok("2")
+expect appended_alone(hello_alone, hello_at("2026-11-02T19:11:31Z")) == Err(Backdated)
+expect appended_alone(hello_alone, hello_at("2025-11-02T19:11:32Z")) == Err(Backdated)
+expect appended_alone(Sample.hello_and_reply, hello_at("2026-11-02T19:12:28Z")) == Ok("3")
+expect appended_alone(Sample.hello_and_reply, hello_at("2026-11-02T19:12:29Z")) == Ok("3")
+expect appended_alone(Sample.hello_and_reply, hello_at("2026-11-02T19:12:27Z")) == Err(Backdated)
+expect appended_alone(Sample.hello_and_reply, hello_at("2026-11-02T19:11:32Z")) == Err(Backdated)
 # The first message has no latest to be before.
-expect appended_alone(
-	Conversation.empty(Sample.plans),
-	[hello_at("0000-01-01T00:00:00Z")],
-) == [Ok("1")]
+expect appended_alone(Conversation.empty(Sample.plans), hello_at("0000-01-01T00:00:00Z")) == Ok("1")
 # The last id at, under and over the highest: 65,534 messages take one
 # more, the 65,535th, and then none. The refusal past it is `Full`, asked
 # before the time: Steve's hello is also dated before CC's reply.
@@ -140,18 +107,9 @@ expect {
 	almost = Sample.almost_full
 	grown = almost.append(Sample.reply) ?? crash "ConversationSpec: the 65,535th message fits"
 	full = grown.conversation
-	{
-		next_of_almost: almost.next_id().map_ok(Message.Id.to_str),
-		message: grown.message.id().to_str(),
-		count: full.messages().len(),
-		next_of_full: full.next_id(),
-		appended: full.append(Sample.hello),
-	}
-		== {
-			next_of_almost: Ok("65535"),
-			message: "65535",
-			count: 65535,
-			next_of_full: Err(Full),
-			appended: Err(Full),
-		}
+	almost.next_id().map_ok(Message.Id.to_str) == Ok("65535")
+		and grown.message.id().to_str() == "65535"
+		and full.messages().len() == 65535
+		and full.next_id() == Err(Full)
+		and full.append(Sample.hello) == Err(Full)
 }

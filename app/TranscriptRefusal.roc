@@ -74,44 +74,39 @@ TranscriptRefusal :: [].{
 
 # ── tests
 # The one test of the wording: every refusal, in words.
-expect {
-	second = Message.Id.first.next() ?? crash "TranscriptRefusal's tests: the first id has a next"
-	[
-		PathNotUtf8,
-		TranscriptNotUtf8,
-		Path(NotAConversationPath),
-		Path(BadName),
-		Path(NoSuchChannel),
-		Path(NoSuchHuman),
-		Transcript(NotPrefixedProperly),
-		Transcript(BadHead(second)),
-		Transcript(Author(second, Empty)),
-		Transcript(Author(second, TooLong)),
-		Transcript(Author(second, ForbiddenCharacter)),
-		Transcript(Author(second, BadSpacing)),
-		Transcript(DateTime(second, WrongShape)),
-		Transcript(DateTime(second, OutOfRange)),
-		Transcript(BadBody(second)),
-		Transcript(Backdated(second)),
-		Transcript(Full),
-	].map(TranscriptRefusal.words)
-		== [
-			"its conversation's path is not UTF-8",
-			"it is not UTF-8",
-			"its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>",
-			"its path holds a channel, a pair or a topic that is no name",
-			"its path names no channel the directory holds",
-			"its path names a DM whose member is no human the directory holds",
-			"a transcript starts with the separator and ends with an empty line",
-			"message 2 does not open with its reference, `from:`, `date:` and an empty line",
-			"message 2 has no author",
-			"message 2's author is longer than 60 characters",
-			"message 2's author holds a character that is no letter or space",
-			"message 2's author has a space at either end, or two together",
-			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",
-			"message 2's date is no time a calendar and clock show",
-			"message 2 holds the separator, unescaped, on a line of its own",
-			"message 2 is dated before the message above it",
-			"it holds more messages than a conversation can",
-		]
-}
+
+## Message 2's id, which the refusals below name.
+second : Message.Id
+second = Message.Id.first.next() ?? crash "TranscriptRefusal's tests: the first id has a next"
+
+expect TranscriptRefusal.words(PathNotUtf8) == "its conversation's path is not UTF-8"
+expect TranscriptRefusal.words(TranscriptNotUtf8) == "it is not UTF-8"
+expect
+	TranscriptRefusal.words(Path(NotAConversationPath))
+		== "its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>"
+expect TranscriptRefusal.words(Path(BadName)) == "its path holds a channel, a pair or a topic that is no name"
+expect TranscriptRefusal.words(Path(NoSuchChannel)) == "its path names no channel the directory holds"
+expect TranscriptRefusal.words(Path(NoSuchHuman)) == "its path names a DM whose member is no human the directory holds"
+expect
+	TranscriptRefusal.words(Transcript(NotPrefixedProperly))
+		== "a transcript starts with the separator and ends with an empty line"
+expect
+	TranscriptRefusal.words(Transcript(BadHead(second)))
+		== "message 2 does not open with its reference, `from:`, `date:` and an empty line"
+expect TranscriptRefusal.words(Transcript(Author(second, Empty))) == "message 2 has no author"
+expect TranscriptRefusal.words(Transcript(Author(second, TooLong))) == "message 2's author is longer than 60 characters"
+expect
+	TranscriptRefusal.words(Transcript(Author(second, ForbiddenCharacter)))
+		== "message 2's author holds a character that is no letter or space"
+expect
+	TranscriptRefusal.words(Transcript(Author(second, BadSpacing)))
+		== "message 2's author has a space at either end, or two together"
+expect TranscriptRefusal.words(Transcript(DateTime(second, WrongShape))) == "message 2's date is not YYYY-MM-DDTHH:MM:SSZ"
+expect
+	TranscriptRefusal.words(Transcript(DateTime(second, OutOfRange)))
+		== "message 2's date is no time a calendar and clock show"
+expect
+	TranscriptRefusal.words(Transcript(BadBody(second)))
+		== "message 2 holds the separator, unescaped, on a line of its own"
+expect TranscriptRefusal.words(Transcript(Backdated(second))) == "message 2 is dated before the message above it"
+expect TranscriptRefusal.words(Transcript(Full)) == "it holds more messages than a conversation can"

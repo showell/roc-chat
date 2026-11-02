@@ -173,19 +173,9 @@ read_message = |c, written| {
 
 # ── tests
 # The limit, at and around it: a file may hold exactly `most_bytes`.
-expect
-	[
-		{ held: Transcript.most_bytes - 10, adding: 9 },
-		{ held: Transcript.most_bytes - 10, adding: 10 },
-		{ held: Transcript.most_bytes - 10, adding: 11 },
-		{ held: 0, adding: Transcript.most_bytes },
-		{ held: 0, adding: Transcript.most_bytes + 1 },
-	].map(room)
-		== [
-			Fits,
-			Fits,
-			Overflows,
-			Fits,
-			Overflows,
-		]
+expect room({ held: Transcript.most_bytes - 10, adding: 9 }) == Fits
+expect room({ held: Transcript.most_bytes - 10, adding: 10 }) == Fits
+expect room({ held: Transcript.most_bytes - 10, adding: 11 }) == Overflows
+expect room({ held: 0, adding: Transcript.most_bytes }) == Fits
+expect room({ held: 0, adding: Transcript.most_bytes + 1 }) == Overflows
 expect Transcript.most_bytes == 16_777_216

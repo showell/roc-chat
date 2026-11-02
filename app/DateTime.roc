@@ -227,20 +227,17 @@ expect ok("2000-02-29T19:11:32Z") == Ok("2000-02-29T19:11:32Z")
 expect is_leap(2024) and is_leap(2000) and is_leap(0)
 # The order: the same time, and a second either side of it, within a
 # field and across each field's rollover, both ways round.
-## Each pair's order, both ways round, from the pair's text.
-orders : List((Str, Str)) -> List(([Before, Same, After], [Before, Same, After]))
-orders = |pairs|
-	pairs.map(
-		|(earlier, later)| {
-			first = DateTime.from_str(earlier) ?? crash "DateTime's tests: a time"
-			second = DateTime.from_str(later) ?? crash "DateTime's tests: a time"
-			(first.compare(second), second.compare(first))
-		},
-	)
+## A pair's order, both ways round, from the pair's text.
+order : (Str, Str) -> ([Before, Same, After], [Before, Same, After])
+order = |(earlier, later)| {
+	first = DateTime.from_str(earlier) ?? crash "DateTime's tests: a time"
+	second = DateTime.from_str(later) ?? crash "DateTime's tests: a time"
+	(first.compare(second), second.compare(first))
+}
 
-expect orders([("2026-11-02T19:11:32Z", "2026-11-02T19:11:32Z")]) == [(Same, Same)]
+expect order(("2026-11-02T19:11:32Z", "2026-11-02T19:11:32Z")) == (Same, Same)
 expect
-	orders([
+	[
 		("2026-11-02T19:11:31Z", "2026-11-02T19:11:32Z"),
 		("2026-11-02T19:11:59Z", "2026-11-02T19:12:00Z"),
 		("2026-11-02T19:59:59Z", "2026-11-02T20:00:00Z"),
@@ -248,8 +245,7 @@ expect
 		("2026-10-31T23:59:59Z", "2026-11-01T00:00:00Z"),
 		("2025-12-31T23:59:59Z", "2026-01-01T00:00:00Z"),
 		("0999-12-31T23:59:59Z", "1000-01-01T00:00:00Z"),
-	])
-		== List.repeat((Before, After), 7)
+	].all(|pair| order(pair) == (Before, After))
 expect !is_leap(2026) and !is_leap(1900) and !is_leap(2100)
 # The clock's seconds: the epoch, its last second and the one past it, a
 # second either side of a day, a month, a year and a leap day, and either
@@ -258,38 +254,21 @@ expect !is_leap(2026) and !is_leap(1900) and !is_leap(2100)
 from_clock : I64 -> Try(Str, [OutOfRange])
 from_clock = |seconds| DateTime.from_seconds_since_epoch(seconds).map_ok(DateTime.to_str)
 
-expect
-	[
-		0,
-		59,
-		86399,
-		86400,
-		951782399,
-		951782400,
-		951868800,
-		1709251199,
-		1709251200,
-		1798761599,
-		1798761600,
-		1793646692,
-		253402300799,
-	].map(from_clock)
-		== [
-			Ok("1970-01-01T00:00:00Z"),
-			Ok("1970-01-01T00:00:59Z"),
-			Ok("1970-01-01T23:59:59Z"),
-			Ok("1970-01-02T00:00:00Z"),
-			Ok("2000-02-28T23:59:59Z"),
-			Ok("2000-02-29T00:00:00Z"),
-			Ok("2000-03-01T00:00:00Z"),
-			Ok("2024-02-29T23:59:59Z"),
-			Ok("2024-03-01T00:00:00Z"),
-			Ok("2026-12-31T23:59:59Z"),
-			Ok("2027-01-01T00:00:00Z"),
-			Ok("2026-11-02T19:11:32Z"),
-			Ok("9999-12-31T23:59:59Z"),
-		]
-expect [-1, 253402300800].map(from_clock) == [Err(OutOfRange), Err(OutOfRange)]
+expect from_clock(0) == Ok("1970-01-01T00:00:00Z")
+expect from_clock(59) == Ok("1970-01-01T00:00:59Z")
+expect from_clock(86399) == Ok("1970-01-01T23:59:59Z")
+expect from_clock(86400) == Ok("1970-01-02T00:00:00Z")
+expect from_clock(951782399) == Ok("2000-02-28T23:59:59Z")
+expect from_clock(951782400) == Ok("2000-02-29T00:00:00Z")
+expect from_clock(951868800) == Ok("2000-03-01T00:00:00Z")
+expect from_clock(1709251199) == Ok("2024-02-29T23:59:59Z")
+expect from_clock(1709251200) == Ok("2024-03-01T00:00:00Z")
+expect from_clock(1798761599) == Ok("2026-12-31T23:59:59Z")
+expect from_clock(1798761600) == Ok("2027-01-01T00:00:00Z")
+expect from_clock(1793646692) == Ok("2026-11-02T19:11:32Z")
+expect from_clock(253402300799) == Ok("9999-12-31T23:59:59Z")
+expect from_clock(-1) == Err(OutOfRange)
+expect from_clock(253402300800) == Err(OutOfRange)
 # Every time the clock gives is one `from_str` accepts.
 expect
 	[0, 951782400, 1793560292, 253402300799].all(

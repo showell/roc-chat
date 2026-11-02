@@ -28,21 +28,12 @@ Author :: Name.{
 
 # ── tests
 # Refused as a name is, by each of its refusals; kept exactly as given.
-expect
-	[
-		"",
-		"a".repeat(61),
-		"Ste\u(200b)ve",
-		" Steve",
-	].map(Author.from_str)
-		== [
-			Err(Empty),
-			Err(TooLong),
-			Err(ForbiddenCharacter),
-			Err(BadSpacing),
-		]
+expect Author.from_str("") == Err(Empty)
+expect Author.from_str("a".repeat(61)) == Err(TooLong)
+expect Author.from_str("Ste\u(200b)ve") == Err(ForbiddenCharacter)
+expect Author.from_str(" Steve") == Err(BadSpacing)
 expect Author.from_str("Zoë Ann").map_ok(Author.to_str) == Ok("Zoë Ann")
 expect {
 	steve = Name.from_str("Steve") ?? crash "Author's tests: a name"
-	(Author.of(steve).name(), Author.of(steve).to_str()) == (steve, "Steve")
+	Author.of(steve).name() == steve and Author.of(steve).to_str() == "Steve"
 }

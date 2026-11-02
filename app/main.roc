@@ -135,19 +135,10 @@ expect found_at("/chat/dm/1_1/plans".to_utf8(), []) == Ok((Conversation.empty(pl
 expect found_at([0xff], []) == Err(PathNotUtf8)
 expect found_at("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Err(TranscriptNotUtf8)
 # Each refusal of the path, and of the transcript, through the door.
-expect
-	[
-		"plans",
-		"/chat/channel/general/plans_2",
-		"/chat/channel/other/plans",
-		"/chat/dm/1_2/plans",
-	].map(|path| found_at(path.to_utf8(), []))
-		== [
-			Err(Path(NotAConversationPath)),
-			Err(Path(BadName)),
-			Err(Path(NoSuchChannel)),
-			Err(Path(NoSuchHuman)),
-		]
+expect found_at("plans".to_utf8(), []) == Err(Path(NotAConversationPath))
+expect found_at("/chat/channel/general/plans_2".to_utf8(), []) == Err(Path(BadName))
+expect found_at("/chat/channel/other/plans".to_utf8(), []) == Err(Path(NoSuchChannel))
+expect found_at("/chat/dm/1_2/plans".to_utf8(), []) == Err(Path(NoSuchHuman))
 expect found_at("/chat/dm/1_1/plans".to_utf8(), "\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))
 # The order: the path's bytes, the path's conversation, then the transcript.
 expect found_at([0xff], [0xff]) == Err(PathNotUtf8)
@@ -179,16 +170,7 @@ shown = |path|
 
 # The stand-ins: Steve, id 1, acting; the directory's places.
 expect acting.user().name() == founder_name and acting.user().id().to_str() == "1"
-expect
-	[
-		"/chat/channel/general/plans",
-		"/chat/dm/1_1/plans",
-		"/chat/channel/other/plans",
-		"/chat/dm/1_2/plans",
-	].map(shown)
-		== [
-			"/chat/channel/general/plans",
-			"/chat/dm/1_1/plans",
-			"not found",
-			"not found",
-		]
+expect shown("/chat/channel/general/plans") == "/chat/channel/general/plans"
+expect shown("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
+expect shown("/chat/channel/other/plans") == "not found"
+expect shown("/chat/dm/1_2/plans") == "not found"

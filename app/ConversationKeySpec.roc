@@ -28,16 +28,10 @@ read_back = |path| {
 
 # A channel's and a DM's conversation, the URL read back to the same parts.
 expect
-	[
-		"/chat/channel/plans-room/plans",
-		"/chat/dm/1_2/plans",
-		"/chat/dm/1_1/other",
-	].map(read_back)
-		== [
-			Ok({ url: "/chat/channel/plans-room/plans", parts: "chat channel plans-room plans" }),
-			Ok({ url: "/chat/dm/1_2/plans", parts: "chat dm 1_2 plans" }),
-			Ok({ url: "/chat/dm/1_1/other", parts: "chat dm 1_1 other" }),
-		]
+	read_back("/chat/channel/plans-room/plans")
+		== Ok({ url: "/chat/channel/plans-room/plans", parts: "chat channel plans-room plans" })
+expect read_back("/chat/dm/1_2/plans") == Ok({ url: "/chat/dm/1_2/plans", parts: "chat dm 1_2 plans" })
+expect read_back("/chat/dm/1_1/other") == Ok({ url: "/chat/dm/1_1/other", parts: "chat dm 1_1 other" })
 # Every refusal: a path of another shape, a part that is no name, no such
 # channel, and a DM's member who is no human here (an agent, or nobody).
 expect
@@ -50,24 +44,21 @@ expect
 		"chat/channel/plans-room/plans",
 		"/",
 		"",
-	].map(read_back)
-		== List.repeat(Err(NotAConversationPath), 8)
+	].all(|path| read_back(path) == Err(NotAConversationPath))
 expect
 	[
 		"/chat/channel/plans-room/plans_2",
 		"/chat/channel/plans_room/plans",
 		"/chat/dm/2_1/plans",
 		"/chat/dm/1_2/9lives",
-	].map(read_back)
-		== List.repeat(Err(BadName), 4)
+	].all(|path| read_back(path) == Err(BadName))
 expect read_back("/chat/channel/other-room/plans") == Err(NoSuchChannel)
 expect
 	[
 		"/chat/dm/1_3/plans",
 		"/chat/dm/1_9/plans",
 		"/chat/dm/9_9/plans",
-	].map(read_back)
-		== List.repeat(Err(NoSuchHuman), 3)
+	].all(|path| read_back(path) == Err(NoSuchHuman))
 # A key is its place and its topic: the same URL gives equal keys.
 expect {
 	key = |path| ConversationKey.from_url_path({ path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: UTF-8", directory: with_room })
@@ -90,42 +81,18 @@ chosen = |method, path|
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
 	}
 
-expect
-	[
-		chosen("GET", "/chat/dm/1_2/plans".to_utf8()),
-		chosen("POST", "/chat/dm/1_2/plans".to_utf8()),
-		chosen("PUT", "/chat/dm/1_2/plans".to_utf8()),
-		chosen("get", "/chat/dm/1_2/plans".to_utf8()),
-		chosen("GET", "/chat/dm/1_3/plans".to_utf8()),
-		chosen("POST", "/nowhere".to_utf8()),
-		chosen("GET", [0x2f, 0xff]),
-	]
-		== [
-			"show /chat/dm/1_2/plans",
-			"append /chat/dm/1_2/plans",
-			"not allowed: GET, POST",
-			"not allowed: GET, POST",
-			"not found",
-			"not found",
-			"not found",
-		]
+expect chosen("GET", "/chat/dm/1_2/plans".to_utf8()) == "show /chat/dm/1_2/plans"
+expect chosen("POST", "/chat/dm/1_2/plans".to_utf8()) == "append /chat/dm/1_2/plans"
+expect chosen("PUT", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
+expect chosen("get", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
+expect chosen("GET", "/chat/dm/1_3/plans".to_utf8()) == "not found"
+expect chosen("POST", "/nowhere".to_utf8()) == "not found"
+expect chosen("GET", [0x2f, 0xff]) == "not found"
 # The script's path: GET alone, and exactly its path.
-expect
-	[
-		chosen("GET", "/chat/assets/compose.js".to_utf8()),
-		chosen("POST", "/chat/assets/compose.js".to_utf8()),
-		chosen("HEAD", "/chat/assets/compose.js".to_utf8()),
-		chosen("GET", "/chat/assets/compose.js/".to_utf8()),
-		chosen("GET", "/chat/assets/Compose.js".to_utf8()),
-		chosen("GET", "/chat/assets/other.js".to_utf8()),
-		chosen("GET", "/chat/assets".to_utf8()),
-	]
-		== [
-			"the script",
-			"not allowed: GET",
-			"not allowed: GET",
-			"not found",
-			"not found",
-			"not found",
-			"not found",
-		]
+expect chosen("GET", "/chat/assets/compose.js".to_utf8()) == "the script"
+expect chosen("POST", "/chat/assets/compose.js".to_utf8()) == "not allowed: GET"
+expect chosen("HEAD", "/chat/assets/compose.js".to_utf8()) == "not allowed: GET"
+expect chosen("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
+expect chosen("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
+expect chosen("GET", "/chat/assets/other.js".to_utf8()) == "not found"
+expect chosen("GET", "/chat/assets".to_utf8()) == "not found"

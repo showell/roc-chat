@@ -280,38 +280,25 @@ expect NameAlphabet.written("Zoë Ann").map_ok(NameAlphabet.Written.to_str) == O
 folded_text : Str -> Str
 folded_text = |text| NameAlphabet.folded(Written(in_alphabet(text)))
 
+expect folded_text("AZ") == "az"
+expect folded_text("ÀÖ") == "àö"
+expect folded_text("ØÞ") == "øþ"
+expect folded_text("ĀĮ") == "āį"
+expect folded_text("ĲĶ") == "ĳķ"
+expect folded_text("ĹĽ") == "ĺľ"
+expect folded_text("ŁŇ") == "łň"
+expect folded_text("ŊŶ") == "ŋŷ"
+expect folded_text("ŹŽ") == "źž"
+expect folded_text("Ÿ") == "ÿ"
+expect folded_text("ſ") == "s"
+expect folded_text("ZOË Ann") == "zoë ann"
 expect
 	[
-		"AZ",
-		"ÀÖ",
-		"ØÞ",
-		"ĀĮ",
-		"ĲĶ",
-		"ĹĽ",
-		"ŁŇ",
-		"ŊŶ",
-		"ŹŽ",
-		"Ÿ",
-		"ſ",
-		"ZOË Ann",
-	].map(folded_text)
-		== [
-			"az",
-			"àö",
-			"øþ",
-			"āį",
-			"ĳķ",
-			"ĺľ",
-			"łň",
-			"ŋŷ",
-			"źž",
-			"ÿ",
-			"s",
-			"zoë ann",
-		]
-expect
-	["azàöøþÿ", "āįĳķĺľłňŋŷźž", "ßİ", " "].map(folded_text)
-		== ["azàöøþÿ", "āįĳķĺľłňŋŷźž", "ßİ", " "]
+		"azàöøþÿ",
+		"āįĳķĺľłňŋŷźž",
+		"ßİ",
+		" ",
+	].all(|text| folded_text(text) == text)
 # A strict name folds its letters, and keeps its digits and `-`.
 expect {
 	strict = StrictName.from_str("Gopher-Roc-2") ?? crash "NameAlphabet's tests: a strict name"
@@ -325,50 +312,33 @@ expect
 			NameAlphabet.ascii_spelling(in_alphabet(row)) == ascii.repeat(count)
 		},
 	)
+
+## `text`'s ASCII spelling, written in the alphabet.
+ascii_text : Str -> Str
+ascii_text = |text| NameAlphabet.ascii_spelling(in_alphabet(text))
+
 # The ends of each range, capitals and small letters, folded and spelled.
-expect
-	[
-		"AZaz",
-		"ÀÅàå",
-		"ÇçÈËèëÌÏìï",
-		"ÐðÑñÒÖòöØø",
-		"ÙÜùüÝýÿŸ",
-		"ĀąĆčĎđĒěĜģĤħĨİ",
-		"ĴĵĶķĹľŁłŃňŊŋ",
-		"ŌőŔřŚšŢŧŨųŴŵŶŷŹž",
-		"ſ",
-	].map(|text| NameAlphabet.ascii_spelling(in_alphabet(text)))
-		== [
-			"azaz",
-			"aaaa",
-			"cceeeeiiii",
-			"ddnnoooooo",
-			"uuuuyyyy",
-			"aaccddeegghhii",
-			"jjkkllllnnnn",
-			"oorrssttuuwwyyzz",
-			"s",
-		]
+expect ascii_text("AZaz") == "azaz"
+expect ascii_text("ÀÅàå") == "aaaa"
+expect ascii_text("ÇçÈËèëÌÏìï") == "cceeeeiiii"
+expect ascii_text("ÐðÑñÒÖòöØø") == "ddnnoooooo"
+expect ascii_text("ÙÜùüÝýÿŸ") == "uuuuyyyy"
+expect ascii_text("ĀąĆčĎđĒěĜģĤħĨİ") == "aaccddeegghhii"
+expect ascii_text("ĴĵĶķĹľŁłŃňŊŋ") == "jjkkllllnnnn"
+expect ascii_text("ŌőŔřŚšŢŧŨųŴŵŶŷŹž") == "oorrssttuuwwyyzz"
+expect ascii_text("ſ") == "s"
 # Every letter spelled with more than one: capitals and small letters.
-expect
-	[
-		"ß",
-		"Æ",
-		"æ",
-		"Ĳ",
-		"ĳ",
-		"Œ",
-		"œ",
-		"Þ",
-		"þ",
-	].map(|text| NameAlphabet.ascii_spelling(in_alphabet(text)))
-		== ["ss", "ae", "ae", "ij", "ij", "oe", "oe", "th", "th"]
+expect ascii_text("ß") == "ss"
+expect ascii_text("Æ") == "ae"
+expect ascii_text("æ") == "ae"
+expect ascii_text("Ĳ") == "ij"
+expect ascii_text("ĳ") == "ij"
+expect ascii_text("Œ") == "oe"
+expect ascii_text("œ") == "oe"
+expect ascii_text("Þ") == "th"
+expect ascii_text("þ") == "th"
 # Whole names, spaces kept.
-expect
-	[
-		"Élodie",
-		"Zoë Ann",
-		"Æsir Þór",
-		"Łukasz Ő",
-	].map(|text| NameAlphabet.ascii_spelling(in_alphabet(text)))
-		== ["elodie", "zoe ann", "aesir thor", "lukasz o"]
+expect ascii_text("Élodie") == "elodie"
+expect ascii_text("Zoë Ann") == "zoe ann"
+expect ascii_text("Æsir Þór") == "aesir thor"
+expect ascii_text("Łukasz Ő") == "lukasz o"

@@ -38,23 +38,17 @@ topic_of = |text| Topic.from_str(text) ?? crash "MsgAnchor's tests: a test's top
 second : Message.Id
 second = Message.Id.first.next() ?? crash "MsgAnchor's tests: the first id has a next"
 
-## Each message's reference and page anchor, as a test compares them.
-spelled : List(MsgAnchor) -> List((Str, Str))
-spelled = |anchors| anchors.map(|anchor| (anchor.to_str(), anchor.page_anchor()))
+## A message's reference and page anchor, as a test compares them.
+spelled : MsgAnchor -> (Str, Str)
+spelled = |anchor| (anchor.to_str(), anchor.page_anchor())
 
 # The reference names the topic and the id; the page anchor the id alone,
 # at the first id and the next, under two topics.
+expect spelled(MsgAnchor.of({ topic: topic_of("plans"), id: Message.Id.first })) == ("MSG_plans_1", "msg-1")
+expect spelled(MsgAnchor.of({ topic: topic_of("plans"), id: second })) == ("MSG_plans_2", "msg-2")
 expect
-	spelled([
-		MsgAnchor.of({ topic: topic_of("plans"), id: Message.Id.first }),
-		MsgAnchor.of({ topic: topic_of("plans"), id: second }),
-		MsgAnchor.of({ topic: topic_of("gopher-roc"), id: second }),
-	])
-		== [
-			("MSG_plans_1", "msg-1"),
-			("MSG_plans_2", "msg-2"),
-			("MSG_gopher-roc_2", "msg-2"),
-		]
+	spelled(MsgAnchor.of({ topic: topic_of("gopher-roc"), id: second }))
+		== ("MSG_gopher-roc_2", "msg-2")
 expect
 	MsgAnchor.of({ topic: topic_of("plans"), id: second })
 		== MsgAnchor.of({ topic: topic_of("plans"), id: second })

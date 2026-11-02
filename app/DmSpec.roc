@@ -50,8 +50,7 @@ expect
 	[
 		named({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }),
 		named({ from: Sample.human("Apoorva"), to: Sample.human("Steve") }),
-	]
-		== List.repeat({ name: "1_2", members: ["1", "2"] }, 2)
+	].all(|dm| dm == { name: "1_2", members: ["1", "2"] })
 expect
 	started({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm
 		== started({ from: Sample.human("Apoorva"), to: Sample.human("Steve") }).dm
@@ -60,8 +59,7 @@ expect
 	[
 		named({ from: nine_and_ten.ten, to: nine_and_ten.nine }),
 		named({ from: nine_and_ten.nine, to: nine_and_ten.ten }),
-	]
-		== List.repeat({ name: "9_10", members: ["9", "10"] }, 2)
+	].all(|dm| dm == { name: "9_10", members: ["9", "10"] })
 # One human alone: their own DM, one member.
 expect named({
 	from: Sample.human("Apoorva"),
@@ -73,8 +71,7 @@ expect
 	[
 		Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") }),
 		Dm.between({ a: Sample.human("Apoorva"), b: Sample.human("Steve") }),
-	]
-		== List.repeat(started({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm, 2)
+	].all(|dm| dm == started({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm)
 expect
 	Dm.between({ a: Sample.human("Steve"), b: Sample.human("Steve") })
 		!= Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") })
@@ -86,30 +83,26 @@ expect {
 		from: Sample.human("Apoorva"),
 		to: Sample.human("Steve"),
 	}).conversation
-	{
-		topic: conversation.topic(),
-		messages: conversation.messages().map(
+	conversation.topic() == Sample.plans
+		and conversation.messages().map(
 			|m| (
 				m.id(),
 				m.author().to_str(),
 				m.time(),
 				m.markdown(),
 			),
-		),
-	}
-		== {
-			topic: Sample.plans,
-			messages: [
+		)
+			== [
 				(
 					Message.Id.first,
 					"Apoorva",
 					noon,
 					"hello",
 				),
-			],
-		}
+			]
 }
 # No DM's name is a channel's: each is refused as one, by its first byte.
 expect
-	["1_2", "2_2", "9_10", "255_255"].map(ChannelName.from_str)
-		== List.repeat(Err(StartsWithNonLetter), 4)
+	["1_2", "2_2", "9_10", "255_255"].all(
+		|text| ChannelName.from_str(text) == Err(StartsWithNonLetter),
+	)

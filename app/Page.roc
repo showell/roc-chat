@@ -285,27 +285,14 @@ opened = |attrs|
 	}).to_utf8()
 
 # Every class, each its one spelling.
-expect
-	[
-		Author,
-		Body,
-		Compose,
-		Empty,
-		Help,
-		Message,
-		Messages,
-		Ref,
-	].map(|chosen| opened([Page.class(chosen)]))
-		== [
-			"<p class=\"author\"></p>".to_utf8(),
-			"<p class=\"body\"></p>".to_utf8(),
-			"<p class=\"compose\"></p>".to_utf8(),
-			"<p class=\"empty\"></p>".to_utf8(),
-			"<p class=\"help\"></p>".to_utf8(),
-			"<p class=\"message\"></p>".to_utf8(),
-			"<p class=\"messages\"></p>".to_utf8(),
-			"<p class=\"ref\"></p>".to_utf8(),
-		]
+expect opened([Page.class(Author)]) == "<p class=\"author\"></p>".to_utf8()
+expect opened([Page.class(Body)]) == "<p class=\"body\"></p>".to_utf8()
+expect opened([Page.class(Compose)]) == "<p class=\"compose\"></p>".to_utf8()
+expect opened([Page.class(Empty)]) == "<p class=\"empty\"></p>".to_utf8()
+expect opened([Page.class(Help)]) == "<p class=\"help\"></p>".to_utf8()
+expect opened([Page.class(Message)]) == "<p class=\"message\"></p>".to_utf8()
+expect opened([Page.class(Messages)]) == "<p class=\"messages\"></p>".to_utf8()
+expect opened([Page.class(Ref)]) == "<p class=\"ref\"></p>".to_utf8()
 # The script finds the panes by the classes this module writes, each
 # spelled as a selector there; a class it doesn't use is not.
 expect
@@ -313,14 +300,8 @@ expect
 		Messages,
 		Compose,
 		Help,
-		Message,
-	].map(|chosen| Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(chosen)}'"))
-		== [
-			Bool.True,
-			Bool.True,
-			Bool.True,
-			Bool.False,
-		]
+	].all(|chosen| Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(chosen)}'"))
+expect !Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(Message)}'")
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"
@@ -328,17 +309,11 @@ expect {
 	first_named = MsgAnchor.of({ topic: plans, id: Message.Id.first })
 	second_named = MsgAnchor.of({ topic: plans, id: second })
 	[
-		opened([Id(anchor(first_named))]),
-		opened([Href(anchor(first_named))]),
-		opened([Id(anchor(second_named))]),
-		opened([Href(anchor(second_named))]),
-	]
-		== [
-			"<p id=\"msg-1\"></p>".to_utf8(),
-			"<p href=\"#msg-1\"></p>".to_utf8(),
-			"<p id=\"msg-2\"></p>".to_utf8(),
-			"<p href=\"#msg-2\"></p>".to_utf8(),
-		]
+		(Id(anchor(first_named)), "<p id=\"msg-1\"></p>"),
+		(Href(anchor(first_named)), "<p href=\"#msg-1\"></p>"),
+		(Id(anchor(second_named)), "<p id=\"msg-2\"></p>"),
+		(Href(anchor(second_named)), "<p href=\"#msg-2\"></p>"),
+	].all(|(attr, expected)| opened([attr]) == expected.to_utf8())
 }
 expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n".to_utf8()
 expect stylesheet.to_utf8() == "<style>\n${css}</style>\n".to_utf8()

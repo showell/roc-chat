@@ -21,17 +21,8 @@ Topic :: StrictName.{
 
 # ── tests
 # Refused as a strict name is, by each of its refusals; kept as given.
-expect
-	[
-		"",
-		"1plans",
-		"a".repeat(61),
-		"plans_2",
-	].map(Topic.from_str)
-		== [
-			Err(Empty),
-			Err(StartsWithNonLetter),
-			Err(TooLong),
-			Err(ForbiddenByte),
-		]
+expect Topic.from_str("") == Err(Empty)
+expect Topic.from_str("1plans") == Err(StartsWithNonLetter)
+expect Topic.from_str("a".repeat(61)) == Err(TooLong)
+expect Topic.from_str("plans_2") == Err(ForbiddenByte)
 expect Topic.from_str("gopher-roc-2").map_ok(Topic.to_str) == Ok("gopher-roc-2")

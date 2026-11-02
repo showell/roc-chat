@@ -74,8 +74,8 @@ channel_created = |directory, text|
 # is taken from the start.
 expect {
 	founded = Directory.founded_by(Sample.name("Steve Howell"))
-	(founded.users().to_list().map(|u| u.name().to_str()), founded.channels().to_list())
-		== (["Steve Howell"], [])
+	founded.users().to_list().map(|u| u.name().to_str()) == ["Steve Howell"]
+		and founded.channels().to_list() == []
 }
 expect human_added(
 	Directory.founded_by(Sample.name("Steve Howell")),
@@ -97,33 +97,25 @@ expect
 		"CC",
 		"cC",
 		"sTEVE",
-	].map(|text| human_added(Sample.directory, text))
-		== List.repeat(Err(NameTaken), 6)
-expect
-	["Apoorvaa", "Apoorv", "C C"].map(|text| human_added(Sample.directory, text))
-		== [
-			Ok(("4", "Apoorvaa")),
-			Ok(("4", "Apoorv")),
-			Ok(("4", "C C")),
-		]
+	].all(|text| human_added(Sample.directory, text) == Err(NameTaken))
+expect human_added(Sample.directory, "Apoorvaa") == Ok(("4", "Apoorvaa"))
+expect human_added(Sample.directory, "Apoorv") == Ok(("4", "Apoorv"))
+expect human_added(Sample.directory, "C C") == Ok(("4", "C C"))
 expect agent_added(
 	Sample.directory,
 	{ name: "apoorva", owner: Sample.human("Steve") },
 ) == Err(NameTaken)
 # A channel's name is in the same namespace: a user can't take it, in any
 # case, and a channel can't take a user's or another channel's.
-expect
-	["plans", "Plans", "PLANS"].map(|text| human_added(with_plans, text))
-		== List.repeat(Err(NameTaken), 3)
+expect ["plans", "Plans", "PLANS"].all(|text| human_added(with_plans, text) == Err(NameTaken))
 expect agent_added(with_plans, { name: "Plans", owner: Sample.human("Steve") }) == Err(NameTaken)
 expect human_added(with_plans, "Plansy") == Ok(("4", "Plansy"))
 expect
-	["Steve", "steve", "apoorva", "cc"].map(|text| channel_created(Sample.directory, text))
-		== List.repeat(Err(NameTaken), 4)
-expect ["plans", "Plans"].map(|text| channel_created(with_plans, text)) == [
-	Err(NameTaken),
-	Err(NameTaken),
-]
+	["Steve", "steve", "apoorva", "cc"].all(
+		|text| channel_created(Sample.directory, text) == Err(NameTaken),
+	)
+expect channel_created(with_plans, "plans") == Err(NameTaken)
+expect channel_created(with_plans, "Plans") == Err(NameTaken)
 expect channel_created(with_plans, "general") == Ok("general")
 # An agent's owner must be one of the directory's humans.
 expect agent_added(Sample.directory, { name: "Bot", owner: zed }) == Err(NoSuchOwner)
@@ -132,24 +124,16 @@ expect agent_added(Sample.directory, { name: "Bot", owner: zed }) == Err(NoSuchO
 expect {
 	almost = Sample.crowded(251)
 	full = (almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits").directory
-	{
-		last: human_added(almost, "Last"),
-		human: human_added(full, "Zoë"),
-		taken: human_added(full, "Steve"),
-		agent: agent_added(full, { name: "Bot", owner: Sample.human("Steve") }),
-		agent_taken: agent_added(full, { name: "Steve", owner: Sample.human("Steve") }),
-		no_owner: agent_added(full, { name: "Bot", owner: zed }),
-		no_owner_taken: agent_added(full, { name: "Steve", owner: zed }),
-	}
-		== {
-			last: Ok(("255", "Last")),
-			human: Err(Full),
-			taken: Err(Full),
-			agent: Err(Full),
-			agent_taken: Err(Full),
-			no_owner: Err(NoSuchOwner),
-			no_owner_taken: Err(NoSuchOwner),
-		}
+	steve = Sample.human("Steve")
+	[
+		(human_added(almost, "Last"), Ok(("255", "Last"))),
+		(human_added(full, "Zoë"), Err(Full)),
+		(human_added(full, "Steve"), Err(Full)),
+		(agent_added(full, { name: "Bot", owner: steve }), Err(Full)),
+		(agent_added(full, { name: "Steve", owner: steve }), Err(Full)),
+		(agent_added(full, { name: "Bot", owner: zed }), Err(NoSuchOwner)),
+		(agent_added(full, { name: "Steve", owner: zed }), Err(NoSuchOwner)),
+	].all(|(answer, expected)| answer == expected)
 }
 # Members change through the directory, as its channels change them.
 expect {
@@ -163,23 +147,20 @@ expect {
 		channel: channel_name("plans"),
 		member: Sample.user("CC"),
 	}) ?? crash "DirectorySpec: CC leaves plans"
-	[
-		admitted,
-		removed,
-	].map(|d| d.channels().channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str)))
-		== [Ok(["3"]), Ok([])]
+	plans_members = |d| d.channels().channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
+	plans_members(admitted) == Ok(["3"]) and plans_members(removed) == Ok([])
 }
 expect
-	(
-		with_plans.add_member({
-			by: admin,
-			channel: channel_name("general"),
-			member: Sample.steve,
-		}),
-		with_plans.remove_member({
-			by: admin,
-			channel: channel_name("plans"),
-			member: Sample.steve,
-		}),
-	)
-		== (Err(NoSuchChannel), Err(NotMember))
+	with_plans.add_member({
+		by: admin,
+		channel: channel_name("general"),
+		member: Sample.steve,
+	})
+		== Err(NoSuchChannel)
+expect
+	with_plans.remove_member({
+		by: admin,
+		channel: channel_name("plans"),
+		member: Sample.steve,
+	})
+		== Err(NotMember)

@@ -272,29 +272,17 @@ hello_record = |file|
 file_of : U64 -> [NoFile, File(Transcript.Utf8Transcript)]
 file_of = |n| File(Transcript.Utf8Transcript.unchecked_from_file(List.repeat('a', n)))
 
+## The file of `bytes`, decoded as `plans`' transcript.
+decoded : List(U8) -> Try(Conversation, _)
+decoded = |bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes))
+
 expect hello_record(NoFile) == Ok("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8())
 # A record that would grow the file past the most is refused: at the most,
 # one byte under and one byte over.
-expect
-	[
-		Transcript.most_bytes - 73,
-		Transcript.most_bytes - 74,
-		Transcript.most_bytes - 72,
-	].map(|n| hello_record(file_of(n)).map_ok(|bytes| bytes.len()))
-		== [
-			Ok(73),
-			Ok(73),
-			Err(FileFull),
-		]
+expect hello_record(file_of(Transcript.most_bytes - 73)).map_ok(|bytes| bytes.len()) == Ok(73)
+expect hello_record(file_of(Transcript.most_bytes - 74)).map_ok(|bytes| bytes.len()) == Ok(73)
+expect hello_record(file_of(Transcript.most_bytes - 72)).map_ok(|bytes| bytes.len()) == Err(FileFull)
 # Decoding the file's bytes: not UTF-8, empty, and a refusal of the text.
-expect
-	[
-		[0xff],
-		[],
-		"\n".to_utf8(),
-	].map(|bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes)))
-		== [
-			Err(TranscriptNotUtf8),
-			Ok(Conversation.empty(Sample.plans)),
-			Err(Transcript(NotPrefixedProperly)),
-		]
+expect decoded([0xff]) == Err(TranscriptNotUtf8)
+expect decoded([]) == Ok(Conversation.empty(Sample.plans))
+expect decoded("\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))

@@ -31,14 +31,9 @@ expect Escape.text("").to_utf8() == []
 expect {
 	once = Escape.text("&amp;")
 	[
-		once.to_utf8(),
-		TrustedHtml.join([once]).to_utf8(),
-		TrustedHtml.join([TrustedHtml.join([once]), once]).to_utf8(),
-	]
-		== [
-			"&amp;amp;".to_utf8(),
-			"&amp;amp;".to_utf8(),
-			"&amp;amp;&amp;amp;".to_utf8(),
-		]
+		(once, "&amp;amp;"),
+		(TrustedHtml.join([once]), "&amp;amp;"),
+		(TrustedHtml.join([TrustedHtml.join([once]), once]), "&amp;amp;&amp;amp;"),
+	].all(|(html, expected)| html.to_utf8() == expected.to_utf8())
 }
 expect TrustedHtml.join([Escape.text("a&b"), Escape.text("<")]).to_utf8() == "a&amp;b&lt;".to_utf8()

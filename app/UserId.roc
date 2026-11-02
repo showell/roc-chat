@@ -71,16 +71,7 @@ expect
 		"100",
 		"254",
 		"255",
-	].map(|text| UserId.from_str(text).map_ok(UserId.to_str))
-		== [
-			Ok("1"),
-			Ok("9"),
-			Ok("10"),
-			Ok("99"),
-			Ok("100"),
-			Ok("254"),
-			Ok("255"),
-		]
+	].all(|text| UserId.from_str(text).map_ok(UserId.to_str) == Ok(text))
 expect
 	[
 		"",
@@ -100,14 +91,9 @@ expect
 		"1_000",
 		"0x10",
 		"\u(661)",
-	].map(UserId.from_str)
-		== List.repeat(Err(NotAUserId), 17)
+	].all(|text| UserId.from_str(text) == Err(NotAUserId))
 # The order, both ways round, and the same id.
-expect
-	[
-		UserId.steve.compare(UserId.(2)),
-		UserId.(2).compare(UserId.steve),
-		UserId.(2).compare(UserId.(2)),
-		UserId.(9).compare(UserId.(10)),
-	]
-		== [Before, After, Same, Before]
+expect UserId.steve.compare(UserId.(2)) == Before
+expect UserId.(2).compare(UserId.steve) == After
+expect UserId.(2).compare(UserId.(2)) == Same
+expect UserId.(9).compare(UserId.(10)) == Before

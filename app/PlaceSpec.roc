@@ -52,16 +52,8 @@ expect {
 			.insert((Place.dm(dm_with("Apoorva")), plans), "DM's plans")
 			.insert((Place.dm(dm_with("Apoorva")), other), "DM's other")
 			.insert((Place.channel(channel("plans")), plans), "channel's plans, again")
-	(
-		keyed.len(),
-		keyed.get((Place.channel(channel("plans")), plans)),
-		keyed.get((Place.dm(dm_with("Apoorva")), plans)),
-		keyed.get((Place.dm(dm_with("Steve")), plans)),
-	)
-		== (
-			3,
-			Ok("channel's plans, again"),
-			Ok("DM's plans"),
-			Err(KeyNotFound),
-		)
+	keyed.len() == 3
+		and keyed.get((Place.channel(channel("plans")), plans)) == Ok("channel's plans, again")
+		and keyed.get((Place.dm(dm_with("Apoorva")), plans)) == Ok("DM's plans")
+		and keyed.get((Place.dm(dm_with("Steve")), plans)) == Err(KeyNotFound)
 }

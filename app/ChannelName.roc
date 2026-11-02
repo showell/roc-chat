@@ -27,36 +27,16 @@ ChannelName :: StrictName.{
 
 # ── tests
 # Refused as a strict name is, by each of its refusals.
-expect
-	[
-		"",
-		"1plans",
-		"a".repeat(61),
-		"plans_2",
-	].map(ChannelName.from_str)
-		== [
-			Err(Empty),
-			Err(StartsWithNonLetter),
-			Err(TooLong),
-			Err(ForbiddenByte),
-		]
+expect ChannelName.from_str("") == Err(Empty)
+expect ChannelName.from_str("1plans") == Err(StartsWithNonLetter)
+expect ChannelName.from_str("a".repeat(61)) == Err(TooLong)
+expect ChannelName.from_str("plans_2") == Err(ForbiddenByte)
 # Kept as given, case and all, at both ends of the length; its key is a
 # strict name's.
-expect
-	[
-		"gopher-roc",
-		"Gopher-Roc",
-		"p",
-		"a".repeat(60),
-	].map(
-		|text| ChannelName.from_str(text).map_ok(|c| c.to_str()),
-	)
-		== [
-			Ok("gopher-roc"),
-			Ok("Gopher-Roc"),
-			Ok("p"),
-			Ok("a".repeat(60)),
-		]
+expect ChannelName.from_str("gopher-roc").map_ok(|c| c.to_str()) == Ok("gopher-roc")
+expect ChannelName.from_str("Gopher-Roc").map_ok(|c| c.to_str()) == Ok("Gopher-Roc")
+expect ChannelName.from_str("p").map_ok(|c| c.to_str()) == Ok("p")
+expect ChannelName.from_str("a".repeat(60)).map_ok(|c| c.to_str()) == Ok("a".repeat(60))
 expect {
 	text = "Gopher-Roc"
 	channel = ChannelName.from_str(text) ?? crash "ChannelName's tests: a channel's name"
