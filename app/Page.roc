@@ -3,6 +3,13 @@
 ## sheet, then its body); the page carries structure and class names, and
 ## only enough style to read, so a client can style the rest.
 ##
+## **A CONVERSATION'S PAGE IS TWO PANES**: its messages (`messages`), then
+## the compose box (`compose`): a plain form that posts the field
+## `markdown` back to the conversation's own URL, so it works with no
+## script, and a line of keyboard help. The page's one script
+## (`ComposeScript`, app/compose.js) lays the panes out and gives the box
+## its keys; it finds them by the classes written here.
+##
 ## **THE PAGE'S VOCABULARY LIVES HERE**: its classes (`Class`, a closed set,
 ## so no class is free text) and the CSS that styles them. How a message
 ## is named, its reference and its anchor, is `MsgAnchor`'s.
@@ -12,7 +19,9 @@
 ## and every element through `Html.element`. This module vouches
 ## (`TrustedHtml.dangerously_trust`) for two constants only: the doctype
 ## and the style sheet, both written here, the CSS holding no `<`.
+import ComposeScript
 import Conversation
+import ConversationKey
 import Escape
 import Html
 import Markdown
@@ -20,11 +29,21 @@ import Message
 import MsgAnchor
 import Topic
 import TrustedHtml
+import UrlEncodedForm
 
 Page :: [].{
 
 	## **A CLASS A PAGE USES**: a closed set, so a class is never data.
-	Class : [Author, Body, Empty, Message, Ref]
+	Class : [
+		Author,
+		Body,
+		Compose,
+		Empty,
+		Help,
+		Message,
+		Messages,
+		Ref,
+	]
 
 	## The class attribute for `class`, its one spelling.
 	class : Page.Class -> Html.Attribute
@@ -32,9 +51,10 @@ Page :: [].{
 
 	## **A CONVERSATION'S PAGE**: the topic, then each message under its
 	## author and time, with its reference (`MsgAnchor`) as a link to
-	## itself.
-	conversation : Conversation -> TrustedHtml
-	conversation = |c| {
+	## itself; then the compose box, posting to `key`'s URL; then the
+	## script.
+	conversation : Conversation, ConversationKey -> TrustedHtml
+	conversation = |c, key| {
 		topic = c.topic()
 		heading = Html.element({
 			name: H1,
@@ -56,9 +76,24 @@ Page :: [].{
 		document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
-				heading,
+				Html.element({
+					name: Div,
+					attrs: [Page.class(Messages)],
+					inner: TrustedHtml.join([
+						heading,
+						newline,
+						messages,
+					]),
+				}),
 				newline,
-				messages,
+				compose_box(key),
+				newline,
+				Html.element({
+					name: Script,
+					attrs: [Src(site_path(ComposeScript.url_path))],
+					inner: TrustedHtml.join([]),
+				}),
+				newline,
 			]),
 		})
 	}
@@ -132,6 +167,41 @@ message = |c, m| {
 	TrustedHtml.join([article, newline])
 }
 
+## **THE COMPOSE BOX**: a form posting its one field, a message's
+## markdown (`UrlEncodedForm.markdown_name`), to `key`'s page, as
+## `ConversationRoute.append!` takes it; then the keys, in words.
+compose_box : ConversationKey -> TrustedHtml
+compose_box = |key|
+	Html.element({
+		name: Div,
+		attrs: [Page.class(Compose)],
+		inner: TrustedHtml.join([
+			Html.element({
+				name: Form,
+				attrs: [MethodPost, Action(site_path(key.url_path()))],
+				inner: TrustedHtml.join([
+					Html.element({
+						name: Textarea,
+						attrs: [FieldName(token(UrlEncodedForm.markdown_name)), Required],
+						inner: TrustedHtml.join([]),
+					}),
+					newline,
+					Html.element({
+						name: Button,
+						attrs: [],
+						inner: Escape.text("Send"),
+					}),
+				]),
+			}),
+			newline,
+			Html.element({
+				name: P,
+				attrs: [Page.class(Help)],
+				inner: Escape.text("Enter sends · Shift+Enter new line"),
+			}),
+		]),
+	})
+
 ## **A PAGE'S WHOLE DOCUMENT**, the same for every page: the doctype and charset, `title` as
 ## its title, the style sheet, then `body`.
 document : { title : Str, body : TrustedHtml } -> TrustedHtml
@@ -175,8 +245,11 @@ class_name = |chosen|
 	match chosen {
 		Author => "author"
 		Body => "body"
+		Compose => "compose"
 		Empty => "empty"
+		Help => "help"
 		Message => "message"
+		Messages => "messages"
 		Ref => "ref"
 	}
 
@@ -189,6 +262,11 @@ anchor = |named| token(named.page_anchor())
 ## is this module's bug.
 token : Str -> Html.Token
 token = |text| Html.Token.from_str(text) ?? crash "Page.token: \"${text}\" is a name this module writes, and not a token"
+
+## The site path `text` spells, for a path this server answers (a
+## conversation's, its script's): one that isn't is a bug in its writer.
+site_path : Str -> Html.SitePath
+site_path = |text| Html.SitePath.from_str(text) ?? crash "Page.site_path: \"${text}\" is a path this server answers, and not a site path"
 
 newline : TrustedHtml
 newline = Escape.text("\n")
@@ -207,13 +285,42 @@ opened = |attrs|
 	}).to_utf8()
 
 # Every class, each its one spelling.
-expect [Author, Body, Empty, Message, Ref].map(|chosen| opened([Page.class(chosen)])) == [
-	"<p class=\"author\"></p>".to_utf8(),
-	"<p class=\"body\"></p>".to_utf8(),
-	"<p class=\"empty\"></p>".to_utf8(),
-	"<p class=\"message\"></p>".to_utf8(),
-	"<p class=\"ref\"></p>".to_utf8(),
-]
+expect
+	[
+		Author,
+		Body,
+		Compose,
+		Empty,
+		Help,
+		Message,
+		Messages,
+		Ref,
+	].map(|chosen| opened([Page.class(chosen)]))
+		== [
+			"<p class=\"author\"></p>".to_utf8(),
+			"<p class=\"body\"></p>".to_utf8(),
+			"<p class=\"compose\"></p>".to_utf8(),
+			"<p class=\"empty\"></p>".to_utf8(),
+			"<p class=\"help\"></p>".to_utf8(),
+			"<p class=\"message\"></p>".to_utf8(),
+			"<p class=\"messages\"></p>".to_utf8(),
+			"<p class=\"ref\"></p>".to_utf8(),
+		]
+# The script finds the panes by the classes this module writes, each
+# spelled as a selector there; a class it doesn't use is not.
+expect
+	[
+		Messages,
+		Compose,
+		Help,
+		Message,
+	].map(|chosen| Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(chosen)}'"))
+		== [
+			Bool.True,
+			Bool.True,
+			Bool.True,
+			Bool.False,
+		]
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"

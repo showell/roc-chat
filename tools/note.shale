@@ -14,7 +14,7 @@ for f in {"platform/main.roc", "host/main.zig", "build.zig", "demo/data/chat/cha
 
 if not exists("roc-version") then fail("note: run it from gopher-roc's root") end
 
-local page = must(run({"zig", "build", "demo", "--", "gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000, want = "build: the demo's page"})).out
+local page = must(run({"zig", "build", "demo", "--", "/chat/channel/general/gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000, want = "build: the demo's page"})).out
 
 -- The page's body alone: the note has its own head.
 local body = ""
@@ -25,7 +25,7 @@ for line in lines(page) do
 end
 
 local note = "# gopher-roc: the first demo\n\n"
-  .. "The pure core rendering the sample transcript below. What follows is the demo's page, produced by `zig build demo -- gopher-roc demo/data/chat/channel/general/gopher-roc/transcript`, and then every line of its code.\n\n"
+  .. "The pure core rendering the sample transcript below. What follows is the demo's page, produced by `zig build demo -- /chat/channel/general/gopher-roc demo/data/chat/channel/general/gopher-roc/transcript`, and then every line of its code.\n\n"
   .. "<div class=gopher-roc-demo>\n\n" .. body .. "\n</div>\n\n## The code\n\n"
 for path in SOURCES do
   local fence = "```"

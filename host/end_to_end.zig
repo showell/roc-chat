@@ -3,11 +3,19 @@
 //! root seeded from demo/data. Driven over HTTP, one step a line, timed:
 //!
 //!   1. GET the seeded conversation: exactly the demo's frozen page, with
-//!      its content security policy and `nosniff`;
+//!      its content security policy (scripts from this origin alone) and
+//!      `nosniff`; its compose box a form posting `markdown` to the
+//!      conversation's own URL, and its script's `src`;
 //!   2. POST a message to it: a 303 to its page;
 //!   3. GET it again: the message is there;
 //!   4. the transcript on disk: the seed and exactly one record more, dated
 //!      by the host's clock;
+//!   4a. GET the page's script: 200, JavaScript, `nosniff`, exactly
+//!      app/compose.js; a POST to it is a 405 allowing GET;
+//!   4b. POST exactly as a browser submits the compose box (form-encoded,
+//!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
+//!      same-origin, a navigation's other headers): a 303 to the page, and
+//!      exactly one record more on disk, its newline LF;
 //!   5. GET a DM's conversation with no transcript: the 404 page;
 //!   6. POST to it as a browser's own page would (its `Origin` and
 //!      `Sec-Fetch-Site`): its transcript made, holding exactly the one
@@ -31,6 +39,8 @@ const files = @import("file_primitives.zig");
 const seed_path = "demo/data/chat/channel/general/gopher-roc/transcript";
 const frozen_page = "demo/gopher-roc.html";
 const channel_url = "/chat/channel/general/gopher-roc";
+const script_url = "/chat/assets/compose.js";
+const script_file = "app/compose.js";
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 
@@ -70,8 +80,12 @@ pub fn main(init: std.process.Init) !void {
     const first = try get(a, io, port, channel_url);
     try t.check("GET the seeded conversation: 200, exactly the demo's frozen page", first.status == 200 and
         std.mem.eql(u8, first.body, try cwd.readFileAlloc(io, frozen_page, a, .limited(1024 * 1024))));
-    try t.check("its defences: the content security policy and nosniff, as sent", std.mem.startsWith(u8, first.header("content-security-policy") orelse "", "default-src 'none'; ") and
+    const policy = first.header("content-security-policy") orelse "";
+    try t.check("its defences: the content security policy, scripts from this origin alone, and nosniff, as sent", std.mem.startsWith(u8, policy, "default-src 'none'; ") and
+        has(policy, "; script-src 'self'; ") and !has(policy, "unsafe-eval") and !has(policy, "script-src 'unsafe-inline'") and
         std.mem.eql(u8, first.header("x-content-type-options") orelse "", "nosniff"));
+    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\"><textarea name=\"markdown\" required></textarea>") and
+        has(first.body, "<script src=\"" ++ script_url ++ "\"></script>"));
 
     // 2.
     const before = files.current_utc_seconds_since_epoch(io);
@@ -89,6 +103,29 @@ pub fn main(init: std.process.Init) !void {
     const body = "Hello from the **end to end**!\n\n\\-------------";
     const on_disk = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
     try t.check("the file on disk: the seed and exactly one record, dated by the host's clock", recordFits(a, on_disk, seed, "gopher-roc_6", body, before, after));
+
+    // 4a.
+    const script = try get(a, io, port, script_url);
+    try t.check("GET the page's script: 200, JavaScript, nosniff, exactly app/compose.js", script.status == 200 and
+        std.mem.eql(u8, script.header("content-type") orelse "", "text/javascript; charset=utf-8") and
+        std.mem.eql(u8, script.header("x-content-type-options") orelse "", "nosniff") and
+        std.mem.eql(u8, script.body, try cwd.readFileAlloc(io, script_file, a, .limited(1024 * 1024))));
+    const script_post = try post(a, io, port, .{ .path = script_url, .form = "markdown=x" });
+    try t.check("POST to the script: 405, allowing GET alone", script_post.status == 405 and
+        std.mem.eql(u8, script_post.header("allow") orelse "", "GET"));
+
+    // 4b.
+    const before_box = files.current_utc_seconds_since_epoch(io);
+    const browser = try std.fmt.allocPrint(a, "origin: http://localhost:{d}\r\n" ++
+        "sec-fetch-site: same-origin\r\nsec-fetch-mode: navigate\r\nsec-fetch-user: ?1\r\nsec-fetch-dest: document\r\n" ++
+        "referer: http://localhost:{d}" ++ channel_url ++ "\r\n" ++
+        "accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nupgrade-insecure-requests: 1\r\n", .{ port, port });
+    const boxed = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Sent+from+the+compose+box%0D%0Aa+second+line+%C2%B7+%26+more", .more = browser });
+    const after_box = files.current_utc_seconds_since_epoch(io);
+    const box_disk = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    try t.check("POST as the browser submits the compose box: 303 to the page, exactly one record more", boxed.status == 303 and
+        std.mem.eql(u8, boxed.header("location") orelse "", channel_url) and
+        recordFits(a, box_disk, on_disk, "gopher-roc_7", "Sent from the compose box\na second line · & more", before_box, after_box));
 
     // 5.
     const missing = try get(a, io, port, dm_url);
@@ -122,7 +159,7 @@ pub fn main(init: std.process.Init) !void {
     // 10.
     const channel_now = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
     const dm_now = try data.readFileAlloc(io, dm_transcript, a, .limited(1024 * 1024));
-    try t.check("both files on disk: exactly as before, nothing appended", std.mem.eql(u8, channel_now, on_disk) and
+    try t.check("both files on disk: exactly as before, nothing appended", std.mem.eql(u8, channel_now, box_disk) and
         std.mem.eql(u8, dm_now, dm_file));
 
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});

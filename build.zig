@@ -4,7 +4,7 @@ const std = @import("std");
 /// (roc-version), linked into each of the host's programs. The Roc's tests
 /// are the gate's (tools/verify.shale); the host's are `test` here.
 ///
-///   zig build demo -- <topic> <file>         a transcript's page, to stdout
+///   zig build demo -- <url path> <file>      a transcript's page, to stdout
 ///   zig build serve -- <data> [--port <n>]   the server, on 127.0.0.1
 ///   zig build test                           the host's tests
 ///   zig build end-to-end                     the server, driven over HTTP
@@ -24,7 +24,7 @@ pub fn build(b: *std.Build) void {
     const demo = b.addRunArtifact(demo_exe);
     demo.addPassthruArgs();
     demo.stdio = .inherit;
-    b.step("demo", "A transcript's page: -- <topic> <transcript file>").dependOn(&demo.step);
+    b.step("demo", "A transcript's page: -- <conversation's URL path> <transcript file>").dependOn(&demo.step);
 
     const server_exe = withApp(b, "gopher-roc", "host/main.zig", app, target, optimize);
     b.installArtifact(server_exe);
@@ -63,9 +63,10 @@ fn withApp(b: *std.Build, name: []const u8, root: []const u8, app: std.Build.Laz
 /// checked out beside this repo, from the build's root.
 const markdown_package = "../roc-markdown/package";
 
-/// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
-/// `folder`, so a change to any module, ours or the markdown package's,
-/// builds the archive again. The listing is a dependency of the configure
+/// **EVERY FILE OF THE ROC IS AN INPUT, FOUND, NEVER LISTED**: each file
+/// in `folder`, so a change to any module, ours or the markdown package's,
+/// or to a file a module imports whole (app/compose.js), builds the archive
+/// again. The listing is a dependency of the configure
 /// step too (`dependOnDirectoryContents`): Zig caches what `build` decided,
 /// and without it a module added after the first build is no input, so
 /// edits to it never rebuild the archive.
@@ -77,7 +78,7 @@ fn rocInputs(b: *std.Build, run: *std.Build.Step.Run, folder: []const u8) void {
     defer dir.close(io);
     var it = dir.iterate();
     while (it.next(io) catch |e| std.process.fatal("the Roc: cannot list {s} ({t})", .{ folder, e })) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".roc")) continue;
+        if (entry.kind != .file) continue;
         run.addFileInput(b.path(b.fmt("{s}/{s}", .{ folder, entry.name })));
     }
 }

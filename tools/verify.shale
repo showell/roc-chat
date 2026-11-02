@@ -3,7 +3,9 @@
 --
 --   shale tools/verify.shale
 --
--- 1. `roc fmt --check`: the code is laid out as the formatter lays it.
+-- 1. `roc fmt --check`: the code is laid out as the formatter lays it;
+--    and every `app/*.js` (the page's script, which a Roc module imports
+--    whole) parses, by shale's cookbook:syntax.shale.
 -- 2. `roc test`, twice: from the app (every production module's expects)
 --    and from app/Specs.roc (every `*Spec.roc`), none failing. Each
 --    `app/*.roc`'s top-level expects (its lines starting `expect`) are
@@ -48,6 +50,11 @@ end
 -- 1. The layout.
 local fmt = run({ROC, "fmt", "--check", "app", "platform"}, {timeout_ms = 60000, tail = 10})
 say(fmt.code == 0, "roc fmt --check app platform")
+
+local scripts = glob("app/*.js")
+local parsed = run({"shale", real("cookbook:syntax.shale"), "files=" .. join(scripts, ",")}, {cwd = ".", timeout_ms = 60000, whole = 100000})
+say(#scripts > 0 and parsed.code == 0 and find(parsed.out, "PASS: " .. #scripts .. " files") ~= nil, "the scripts parse: " .. join(scripts, ", "))
+if parsed.code ~= 0 then print(parsed.out) end
 
 -- 2. The expects, from each root; each of ours is a `PASS: app/<file>:<line>`.
 const roots = {
@@ -138,7 +145,7 @@ for h in hunts do
 end
 
 -- 4. The demo, through the host: the sample's page, exactly as frozen.
-local demo = run({"zig", "build", "demo", "--", "gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000})
+local demo = run({"zig", "build", "demo", "--", "/chat/channel/general/gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000})
 say(demo.code == 0 and demo.out == read("demo/gopher-roc.html"), "the demo's page: exactly demo/gopher-roc.html")
 if demo.code ~= 0 then print(demo.out) end
 

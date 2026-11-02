@@ -2,7 +2,7 @@
 
 A chat for a small group of humans and their agents, written in Roc on a Zig host. `gopher-roc` is a code name. `docs/design.md` holds the design, from first principles, and `docs/platform.md` describes what the host gives the Roc. This is a fresh start from roc-chat, which it borrows from as needed.
 
-**Status (2026-11-02): the first server.** It serves a conversation's page and appends a message to it, and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
+**Status (2026-11-02): the first server.** It serves a conversation's page, two panes (the messages above a compose box), and appends a message posted from the box, and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
 
 ## What the code holds
 
@@ -12,6 +12,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `Html` (elements from closed sets and strict tokens);
   - `Markdown` (roc-markdown's output, its images ruled by `SecureImageTag`);
   - `Page`'s fixed head and style sheet.
+- **The page's one script.** `app/compose.js` lays out the two panes and gives the compose box its keys (Enter sends, Shift+Enter is a new line). `ComposeScript` imports it whole at compile time, so the file is its bytes' one home, and the server answers it at `/chat/assets/compose.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without it: the box is a plain form.
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
 - **Who is acting.** That is a `SignedIn`, and its door, `dangerously_assume`, stands in for sessions.
 - **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
@@ -28,7 +29,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
 
     shale tools/verify.shale                    the gate: format, Roc tests, hunts, the demo's frozen page, zig tests, the end to end
     zig build serve -- <data folder>            the server on http://127.0.0.1:9611 (add --port <n> for another)
-    zig build demo -- gopher-roc demo/data/chat/channel/general/gopher-roc/transcript    the sample's page, to stdout
+    zig build demo -- /chat/channel/general/gopher-roc demo/data/chat/channel/general/gopher-roc/transcript    the sample's page, to stdout
     zig build test                              the host's tests
     zig build end-to-end                        the server against a temporary data root: GET, POST, GET, the file on disk
     shale tools/glue.shale                      after a change to platform/: roc glue's snapshot, which `zig build test` holds the seam to
@@ -52,7 +53,7 @@ From your laptop, tunnel the port and browse as if the server were local:
 
 Keep the laptop's port the server's: the server refuses a `Host` that is not `localhost` or `127.0.0.1` at its own port (`app/RequestOrigin.roc`), so `ssh -L 8000:127.0.0.1:9611` answers 403. That refusal is what keeps another site's page, or a name rebound to 127.0.0.1, from acting as Steve through your browser.
 
-The page has no compose box yet. To post, send the form a browser would send:
+Post from the compose box at the bottom of the page, or send the form a browser would send:
 
     curl -i --data-urlencode 'markdown=Hello from **curl**' http://localhost:9611/chat/channel/general/gopher-roc
 

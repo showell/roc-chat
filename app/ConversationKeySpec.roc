@@ -84,8 +84,10 @@ chosen = |method, path|
 	}) {
 		ShowConversation(key) => "show ${key.url_path()}"
 		AppendToConversation(key) => "append ${key.url_path()}"
+		ServeComposeScript => "the script"
 		NotFound => "not found"
-		MethodNotAllowed => "not allowed"
+		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
+		MethodNotAllowed(GetOnly) => "not allowed: GET"
 	}
 
 expect
@@ -101,8 +103,28 @@ expect
 		== [
 			"show /chat/dm/1_2/plans",
 			"append /chat/dm/1_2/plans",
-			"not allowed",
-			"not allowed",
+			"not allowed: GET, POST",
+			"not allowed: GET, POST",
+			"not found",
+			"not found",
+			"not found",
+		]
+# The script's path: GET alone, and exactly its path.
+expect
+	[
+		chosen("GET", "/chat/assets/compose.js".to_utf8()),
+		chosen("POST", "/chat/assets/compose.js".to_utf8()),
+		chosen("HEAD", "/chat/assets/compose.js".to_utf8()),
+		chosen("GET", "/chat/assets/compose.js/".to_utf8()),
+		chosen("GET", "/chat/assets/Compose.js".to_utf8()),
+		chosen("GET", "/chat/assets/other.js".to_utf8()),
+		chosen("GET", "/chat/assets".to_utf8()),
+	]
+		== [
+			"the script",
+			"not allowed: GET",
+			"not allowed: GET",
+			"not found",
 			"not found",
 			"not found",
 			"not found",

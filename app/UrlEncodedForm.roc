@@ -18,7 +18,13 @@ UrlEncodedForm :: [].{
 			NotUtf8,
 		],
 	)
-	markdown_field = |body| field({ body, name: "markdown" })
+	markdown_field = |body| field({ body, name: UrlEncodedForm.markdown_name })
+
+	## **THE NAME OF A MESSAGE'S FIELD**, `markdown`: its one home, which
+	## `markdown_field` reads and the compose box's textarea is named
+	## (`Page`).
+	markdown_name : Str
+	markdown_name = "markdown"
 }
 
 ## **THE FIELD `name` OF `body`**, decoded, still unchecked; unless the

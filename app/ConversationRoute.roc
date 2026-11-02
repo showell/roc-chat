@@ -38,7 +38,7 @@ ConversationRoute :: [].{
 		match FileSystem.read_transcript!(key) {
 			Ok(utf8) =>
 				match Transcript.decode(key.topic(), utf8) {
-					Ok(conversation) => HttpAnswer.page(200, Page.conversation(conversation))
+					Ok(conversation) => HttpAnswer.page(200, Page.conversation(conversation, key))
 					Err(why) => unreadable(why)
 				}
 			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such conversation: ${key.url_path()}" })

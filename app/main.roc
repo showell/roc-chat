@@ -1,11 +1,12 @@
 ## **THE EDGE**: the app's two entries, and what stands in at the edge
 ## until it exists.
 ##
-## - `page` (the demo, host/demo.zig): a topic's name and its transcript in,
-##   its page out. The topic's bytes become unchecked text
-##   (`UnvalidatedString`), the transcript's an unchecked file
-##   (`Transcript.Utf8Transcript`), then a Conversation or a refusal's tags
-##   (`TranscriptRefusal` puts them in words).
+## - `page` (the demo, host/demo.zig): a conversation's URL path and its
+##   transcript in, its page out, as the server would show it. The path's
+##   bytes become unchecked text (`UnvalidatedString`), then a
+##   `ConversationKey` found in the directory; the transcript's an unchecked
+##   file (`Transcript.Utf8Transcript`), then a Conversation; or a refusal's
+##   tags (`TranscriptRefusal` puts them in words).
 ## - `handle_http_request!` (the server, host/http.zig): a request in, its
 ##   response out. `Route` chooses the answer; `ConversationRoute` gives it.
 ##
@@ -21,7 +22,9 @@ import pf.Host
 import pf.Http
 import Admin
 import ChannelName
+import ComposeScript
 import Conversation
+import ConversationKey
 import ConversationRoute
 import Directory
 import HttpAnswer
@@ -36,24 +39,27 @@ import TranscriptRefusal
 import UnvalidatedString
 import Users
 
-## The page for `topic`'s transcript, or a page saying what is wrong with it.
+## The page of the conversation at the URL path `path`, from its
+## transcript, or a page saying what is wrong with either.
 page : List(U8), List(U8) -> List(U8)
-page = |topic, transcript| {
+page = |path, transcript| {
 	answer =
-		match conversation({ topic, transcript }) {
-			Ok(c) => Page.conversation(c)
+		match conversation({ path, transcript }) {
+			Ok(found) => Page.conversation(found.conversation, found.key)
 			Err(why) => Page.refusal(TranscriptRefusal.words(why))
 		}
 	answer.to_utf8()
 }
 
-## The conversation the host's bytes hold, decoded at the door: the topic's
-## name checked, then the transcript file's bytes, by `Transcript.decode`.
-conversation : { topic : List(U8), transcript : List(U8) } -> Try(Conversation, _)
-conversation = |{ topic, transcript }| {
-	name = UnvalidatedString.from_utf8(topic) ? |NotUtf8| TopicNotUtf8
-	checked = name.topic() ? |why| Topic(why)
-	Transcript.decode(checked, Transcript.Utf8Transcript.unchecked_from_file(transcript))
+## The conversation the host's bytes hold, decoded at the door: the URL
+## path read as a conversation's key in `directory`, then the transcript
+## file's bytes, by `Transcript.decode` under the key's topic.
+conversation : { path : List(U8), transcript : List(U8) } -> Try({ conversation : Conversation, key : ConversationKey }, _)
+conversation = |{ path, transcript }| {
+	unchecked = UnvalidatedString.from_utf8(path) ? |NotUtf8| PathNotUtf8
+	key = ConversationKey.from_url_path({ path: unchecked, directory }) ? |why| Path(why)
+	decoded = Transcript.decode(key.topic(), Transcript.Utf8Transcript.unchecked_from_file(transcript))?
+	Ok({ conversation: decoded, key })
 }
 
 ## **ONE REQUEST, ANSWERED**: held first to this server's own origin
@@ -75,6 +81,7 @@ handle_http_request! = |request|
 				directory,
 			}) {
 				ShowConversation(key) => ConversationRoute.show!(key)
+				ServeComposeScript => HttpAnswer.script(ComposeScript.bytes)
 				AppendToConversation(key) =>
 					ConversationRoute.append!({
 						key,
@@ -82,7 +89,7 @@ handle_http_request! = |request|
 						now: Host.current_utc_seconds_since_epoch!({}),
 						body: request.body,
 					})
-				MethodNotAllowed => HttpAnswer.method_not_allowed
+				MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
 				NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
 			}
 	}
@@ -118,29 +125,45 @@ directory = {
 plans : Topic
 plans = Topic.from_str("plans") ?? crash "main's tests: a topic's name"
 
-expect conversation({ topic: "plans".to_utf8(), transcript: [] }) == Ok(Conversation.empty(plans))
-expect conversation({ topic: [0xff], transcript: [] }) == Err(TopicNotUtf8)
-expect conversation({ topic: "plans".to_utf8(), transcript: [0xff] }) == Err(TranscriptNotUtf8)
-# Each refusal of the topic, and of the transcript, through the door.
-expect conversation({ topic: "".to_utf8(), transcript: [] }) == Err(Topic(Empty))
-expect conversation({ topic: "1a".to_utf8(), transcript: [] }) == Err(Topic(StartsWithNonLetter))
-expect conversation({ topic: "a".repeat(61).to_utf8(), transcript: [] }) == Err(Topic(TooLong))
-expect conversation({ topic: "a b".to_utf8(), transcript: [] }) == Err(Topic(ForbiddenByte))
-expect conversation({
-	topic: "plans".to_utf8(),
-	transcript: "\n".to_utf8(),
-}) == Err(Transcript(BadEnds))
-# The order: the topic's bytes, the topic's name, then the transcript.
-expect conversation({ topic: [0xff], transcript: [0xff] }) == Err(TopicNotUtf8)
-expect conversation({ topic: "".to_utf8(), transcript: [0xff] }) == Err(Topic(Empty))
-expect conversation({ topic: "".to_utf8(), transcript: "\n".to_utf8() }) == Err(Topic(Empty))
-# The page, through the host's bytes: a conversation's, or the refusal's.
-expect page(
-	"plans".to_utf8(),
-	[],
-) == Page.conversation(Conversation.empty(plans)).to_utf8()
-expect page("plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
-expect page("<b>".to_utf8(), [0xff]) == Page.refusal("its topic does not start with an ASCII letter").to_utf8()
+## What the door finds at `path` with `transcript`, as a test reads it:
+## the conversation, and its key's URL path.
+found_at : List(U8), List(U8) -> Try((Conversation, Str), _)
+found_at = |path, transcript| conversation({ path, transcript }).map_ok(|found| (found.conversation, found.key.url_path()))
+
+expect found_at("/chat/channel/general/plans".to_utf8(), []) == Ok((Conversation.empty(plans), "/chat/channel/general/plans"))
+expect found_at("/chat/dm/1_1/plans".to_utf8(), []) == Ok((Conversation.empty(plans), "/chat/dm/1_1/plans"))
+expect found_at([0xff], []) == Err(PathNotUtf8)
+expect found_at("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Err(TranscriptNotUtf8)
+# Each refusal of the path, and of the transcript, through the door.
+expect
+	[
+		"plans",
+		"/chat/channel/general/plans_2",
+		"/chat/channel/other/plans",
+		"/chat/dm/1_2/plans",
+	].map(|path| found_at(path.to_utf8(), []))
+		== [
+			Err(Path(NotAConversationPath)),
+			Err(Path(BadName)),
+			Err(Path(NoSuchChannel)),
+			Err(Path(NoSuchHuman)),
+		]
+expect found_at("/chat/dm/1_1/plans".to_utf8(), "\n".to_utf8()) == Err(Transcript(BadEnds))
+# The order: the path's bytes, the path's conversation, then the transcript.
+expect found_at([0xff], [0xff]) == Err(PathNotUtf8)
+expect found_at("plans".to_utf8(), [0xff]) == Err(Path(NotAConversationPath))
+expect found_at("plans".to_utf8(), "\n".to_utf8()) == Err(Path(NotAConversationPath))
+# The page, through the host's bytes: a conversation's, posting to its own
+# path, or the refusal's.
+expect {
+	key = ConversationKey.from_url_path({
+		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
+		directory,
+	}) ?? crash "main's tests: Steve's own DM is a place"
+	page("/chat/dm/1_1/plans".to_utf8(), []) == Page.conversation(Conversation.empty(plans), key).to_utf8()
+}
+expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
+expect page("<b>".to_utf8(), [0xff]) == Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>").to_utf8()
 
 ## The page a GET of `path` shows, as a test reads it.
 shown : Str -> Str
