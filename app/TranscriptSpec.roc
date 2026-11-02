@@ -117,6 +117,11 @@ expect one_with({
 # A body line that is the bare separator, which no writer makes, beside
 # the escaped one a writer does.
 expect one_with({ ..first, body: "a\n-------------" }) == Err(BadBody(Sample.first))
+# A bare separator right after a blank line ends the record there, so
+# what follows it is the next message's head, which is no reference: that
+# message is refused as `BadHead`. Escaped, it is the body's own line.
+expect one_with({ ..first, body: "a\n\n-------------\nb" }) == Err(BadHead(Sample.second))
+expect is_round_trip(record({ ..first, body: "a\n\n\\-------------\nb" }))
 expect again(record({ ..first, body: "a\n\\-------------" })) == Ok(record({ ..first, body: "a\n\\-------------" }))
 # The same at message 2, after a good message 1.
 expect again("${record(first)}${record(second)}") == Ok("${record(first)}${record(second)}")
@@ -137,6 +142,7 @@ expect two_with({
 	date: "date: 2026-02-29T19:12:28Z",
 }) == Err(DateTime(Sample.second, OutOfRange))
 expect two_with({ ..second, body: "a\n-------------" }) == Err(BadBody(Sample.second))
+expect two_with({ ..second, body: "a\n\n-------------\nb" }) == Err(BadHead(Sample.third))
 expect
 	again("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
 		== Ok("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")

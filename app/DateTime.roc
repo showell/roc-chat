@@ -68,10 +68,10 @@ DateTime :: Str.{
 					year,
 					month,
 				})
-				on_clock = number([
-					h1,
-					h2,
-				]) <= 23 and number([n1, n2]) <= 59 and number([s1, s2]) <= 59
+				hour = number([h1, h2])
+				minute = number([n1, n2])
+				second = number([s1, s2])
+				on_clock = hour <= 23 and minute <= 59 and second <= 59
 				if (in_calendar and on_clock) Ok(DateTime.(text)) else Err(OutOfRange)
 			}
 			_ => Err(WrongShape)

@@ -27,20 +27,9 @@ Transcript :: [].{
 	write = |conversation| Str.join_with(conversation.messages().map(|m| record(conversation, m)), "")
 
 	## `topic`'s conversation, each message appended in turn, or the first
-	## thing wrong with the transcript.
-	read : Topic,
-	Str -> Try(
-		Conversation,
-		[
-			BadEnds,
-			BadHead(Message.Id),
-			Author(Message.Id, [Blank, ControlByte, Padded]),
-			DateTime(Message.Id, [WrongShape, OutOfRange]),
-			BadBody(Message.Id),
-			Backdated(Message.Id),
-			Full,
-		],
-	)
+	## thing wrong with the transcript, as tags inferred from the body
+	## (main's `Refusal` is the one list of them, and puts them in words).
+	read : Topic, Str -> Try(Conversation, _)
 	read = |topic, text|
 		if (text.is_empty())
 			Ok(Conversation.empty(topic))
@@ -55,7 +44,14 @@ Transcript :: [].{
 ## One message as the transcript writes it.
 record : Conversation, Message -> Str
 record = |conversation, message|
-	"${Separator.line}\n${conversation.reference(message.id())}\nfrom: ${message.author().to_str()}\ndate: ${message.time().to_str()}\n\n${Separator.escape(message.markdown())}\n\n"
+	\\${Separator.line}
+	\\${conversation.reference(message.id())}
+	\\from: ${message.author().to_str()}
+	\\date: ${message.time().to_str()}
+	\\
+	\\${Separator.escape(message.markdown())}
+	\\
+	\\
 
 ## `so_far` with each record appended in order, or the first record's fault.
 read_onto : Conversation, List(Str) -> Try(Conversation, _)
