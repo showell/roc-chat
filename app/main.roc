@@ -60,9 +60,24 @@ words = |why|
 		Transcript(BadEnds) => "a transcript starts with the separator and ends with an empty line"
 		Transcript(BadHead(id)) => "message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
 		Transcript(Author(id, Blank)) => "message ${id.to_str()} has no author"
-		Transcript(Author(id, ControlByte)) => "message ${id.to_str()}'s author holds a control character"
-		Transcript(Time(id, WrongShape)) => "message ${id.to_str()}'s date is not YYYY-MM-DDTHH:MM:SSZ"
-		Transcript(Time(id, OutOfRange)) => "message ${id.to_str()}'s date is no time a calendar and clock show"
+		Transcript(
+			Author(
+				id,
+				ControlByte,
+			),
+		) => "message ${id.to_str()}'s author holds a control character"
+		Transcript(
+			Time(
+				id,
+				WrongShape,
+			),
+		) => "message ${id.to_str()}'s date is not YYYY-MM-DDTHH:MM:SSZ"
+		Transcript(
+			Time(
+				id,
+				OutOfRange,
+			),
+		) => "message ${id.to_str()}'s date is no time a calendar and clock show"
 		Transcript(Full) => "it holds more messages than a conversation can"
 	}
 

@@ -52,8 +52,14 @@ Timestamp :: Str.{
 				year = number([y1, y2]) * 100 + number([y3, y4])
 				month = number([m1, m2])
 				day = number([d1, d2])
-				in_calendar = month >= 1 and month <= 12 and day >= 1 and day <= days_in({ year, month })
-				on_clock = number([h1, h2]) <= 23 and number([n1, n2]) <= 59 and number([s1, s2]) <= 59
+				in_calendar = month >= 1 and month <= 12 and day >= 1 and day <= days_in({
+					year,
+					month,
+				})
+				on_clock = number([
+					h1,
+					h2,
+				]) <= 23 and number([n1, n2]) <= 59 and number([s1, s2]) <= 59
 				if (in_calendar and on_clock) Ok(Timestamp.(text)) else Err(OutOfRange)
 			}
 			_ => Err(WrongShape)

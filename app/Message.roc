@@ -1,22 +1,35 @@
-## **A MESSAGE**: who wrote it, when, and what (its payload), with the id
-## its conversation gives it. Immutable: an edit is a new message. A message
+## **A MESSAGE**: who wrote it, when, and what, with the id its
+## conversation gives it. Immutable: an edit is a new message. A message
 ## knows nothing of who may write where; that is the conversation's.
 ##
-## There is no way to build a numbered message here: only
-## `Conversation.append` gives a payload its id, so a message's id is always
-## its place in its conversation.
+## Opaque, and its ids come only from a chain: a message is the first, or
+## the one `after` another, so message n exists only after message n - 1.
+## `Conversation.append` is that chain's one keeper, so a conversation's
+## order is its ids' order.
 import Author
 import Timestamp
 import Topic
 
-Message :: [].{
+Message :: {
+	id : Message.Id,
+	author : Author,
+	time : Timestamp,
+	markdown : Str,
+}.{
 
-	## **WHAT A MESSAGE IS BEFORE IT HAS AN ID**: who wrote it, when, and the
-	## markdown, exactly as written.
+	## **WHAT ARRIVES**: who wrote it and the markdown, exactly as written.
+	## The message, with its id and time, is made from it as early as
+	## possible.
 	Payload : {
 		author : Author,
-		time : Timestamp,
 		markdown : Str,
+	}
+
+	## **A PAYLOAD AND ITS TIME**: what a conversation appends, so the id and
+	## the time are added in one place.
+	Arrival : {
+		payload : Message.Payload,
+		time : Timestamp,
 	}
 
 	## **A MESSAGE'S ID**: its number in its conversation, counting from 1,
@@ -40,15 +53,80 @@ Message :: [].{
 		is_eq : _
 	}
 
+	## A conversation's first message.
+	first : Message.Arrival -> Message
+	first = |arrival| numbered({ id: Message.Id.first, arrival })
+
+	## The message after `latest`, unless `latest` has the last id a
+	## conversation holds.
+	after : Message, Message.Arrival -> Try(Message, [Full])
+	after = |Message.(latest), arrival| {
+		id = latest.id.next()?
+		Ok(numbered({ id, arrival }))
+	}
+
+	## Its id.
+	id : Message -> Message.Id
+	id = |Message.(m)| m.id
+
+	## Who wrote it.
+	author : Message -> Author
+	author = |Message.(m)| m.author
+
+	## When.
+	time : Message -> Timestamp
+	time = |Message.(m)| m.time
+
+	## Its markdown, exactly as written.
+	markdown : Message -> Str
+	markdown = |Message.(m)| m.markdown
+
 	## **THE ONE NAME OF A MESSAGE**, `MSG_<topic>_<n>`, as a transcript's
 	## id line and a page's link write it.
 	reference : Topic, Message.Id -> Str
-	reference = |topic, id| "MSG_${topic.to_str()}_${id.to_str()}"
+	reference = |topic, number| "MSG_${topic.to_str()}_${number.to_str()}"
+
+	is_eq : _
 }
+
+## The message numbered `id`, from what arrived.
+numbered : { id : Message.Id, arrival : Message.Arrival } -> Message
+numbered = |{ id, arrival: { payload, time } }|
+	Message.(
+		{
+			id,
+			author: payload.author,
+			time,
+			markdown: payload.markdown,
+		},
+	)
 
 # ── tests
 plans : Topic
 plans = Topic.from_str("plans") ?? crash "Message's tests: a topic's name"
+
+steve : Author
+steve = Author.from_str("Steve") ?? crash "Message's tests: an author's name"
+
+noon : Timestamp
+noon = Timestamp.from_str("2026-11-02T12:00:00Z") ?? crash "Message's tests: a time"
+
+hello : Message.Arrival
+hello = { payload: { author: steve, markdown: "hello" }, time: noon }
+
+## A message's parts, as a test compares them.
+parts : Message -> {
+	id : Str,
+	author : Author,
+	time : Timestamp,
+	markdown : Str,
+}
+parts = |m| {
+	id: m.id().to_str(),
+	author: m.author(),
+	time: m.time(),
+	markdown: m.markdown(),
+}
 
 expect Message.Id.first.to_str() == "1"
 expect Message.Id.first.next().map_ok(Message.Id.to_str) == Ok("2")
@@ -57,3 +135,26 @@ expect Message.Id.first.next().map_ok(|id| Message.reference(plans, id)) == Ok("
 # The last id at, under and over the highest.
 expect Message.Id.(65534).next().map_ok(Message.Id.to_str) == Ok("65535")
 expect Message.Id.(65535).next() == Err(Full)
+# The first message is 1, the one after it 2, each with what arrived.
+expect parts(Message.first(hello)) == {
+	id: "1",
+	author: steve,
+	time: noon,
+	markdown: "hello",
+}
+expect
+	Message.first(hello).after(hello).map_ok(parts)
+		== Ok({
+			id: "2",
+			author: steve,
+			time: noon,
+			markdown: "hello",
+		})
+# After the last id, no message.
+expect numbered({ id: Message.Id.(65534), arrival: hello }).after(hello).map_ok(parts) == Ok({
+	id: "65535",
+	author: steve,
+	time: noon,
+	markdown: "hello",
+})
+expect numbered({ id: Message.Id.(65535), arrival: hello }).after(hello) == Err(Full)

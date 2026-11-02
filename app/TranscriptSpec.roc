@@ -130,12 +130,12 @@ forged : Conversation
 forged = Sample.conversation(
 	Sample.plans,
 	[
-		Sample.payload({
+		Sample.arrival({
 			author: "Mallory",
 			time: "2026-11-02T19:11:32Z",
 			markdown: "a\n-------------\nMSG_plans_2\nfrom: Steve",
 		}),
-		Sample.payload({
+		Sample.arrival({
 			author: "Mallory",
 			time: "2026-11-02T19:12:28Z",
 			markdown: "\\-------------\n\\\\-------------",
@@ -149,7 +149,7 @@ near : Conversation
 near = Sample.conversation(
 	Sample.plans,
 	[
-		Sample.payload({
+		Sample.arrival({
 			author: "Steve",
 			time: "2026-11-02T19:11:32Z",
 			markdown: "a-------------\n-------------x\n\\x\n------------",
@@ -165,5 +165,5 @@ expect {
 	full = almost.append(Sample.reply) ?? crash "TranscriptSpec: the 65,535th message fits"
 	last = Transcript.append(almost, Sample.reply).map_ok(|appended| appended.record)
 	wanted = "-------------\nMSG_plans_65535\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
-	last == Ok(wanted) and Transcript.append(full, Sample.hello) == Err(Full)
+	{ last, over: Transcript.append(full, Sample.hello) } == { last: Ok(wanted), over: Err(Full) }
 }

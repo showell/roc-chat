@@ -56,20 +56,21 @@ Page :: [].{
 }
 
 ## One message: its header, then its markdown rendered.
-message : { topic : Topic, message : { id : Message.Id, payload : Message.Payload } } -> Html
-message = |{ topic, message: { id, payload } }| {
+message : { topic : Topic, message : Message } -> Html
+message = |{ topic, message: m }| {
+	id = m.id()
 	anchor = "msg-${id.to_str()}"
 	header = Html.join([
 		Html.tag({
 			name: Span,
 			attrs: [Class("author")],
-			inner: Html.text(payload.author.to_str()),
+			inner: Html.text(m.author().to_str()),
 		}),
 		space,
 		Html.tag({
 			name: Time,
-			attrs: [Datetime(payload.time)],
-			inner: Html.text(payload.time.to_str()),
+			attrs: [Datetime(m.time())],
+			inner: Html.text(m.time().to_str()),
 		}),
 		space,
 		Html.tag({
@@ -91,7 +92,7 @@ message = |{ topic, message: { id, payload } }| {
 			Html.tag({
 				name: Div,
 				attrs: [Class("body")],
-				inner: Html.markdown(payload.markdown),
+				inner: Html.markdown(m.markdown()),
 			}),
 		]),
 	})

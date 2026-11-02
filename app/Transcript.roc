@@ -33,11 +33,11 @@ Transcript :: [].{
 	Appended : { conversation : Conversation, record : Str }
 
 	## **ONE MESSAGE'S RECORD, FOR A STORE TO APPEND**: the conversation
-	## with `payload` appended, and that message's record, so the file a
+	## with what arrived appended, and that message's record, so the file a
 	## store grows a record at a time is `write` of the conversation.
-	append : Conversation, Message.Payload -> Try(Transcript.Appended, [Full])
-	append = |before, payload| {
-		after = before.append(payload)?
+	append : Conversation, Message.Arrival -> Try(Transcript.Appended, [Full])
+	append = |before, arrival| {
+		after = before.append(arrival)?
 		added = after.messages().last() ?? crash "Transcript.append: an append adds a message"
 		Ok({ conversation: after, record: record({ topic: after.topic(), message: added }) })
 	}
@@ -58,21 +58,18 @@ Transcript :: [].{
 	read = |topic, text|
 		if (text.is_empty())
 			Ok(Conversation.empty(topic))
-		else if (!text.starts_with("${separator}\n") or !text.ends_with("\n\n"))
+		else if (!text.starts_with("${Separator.line}\n") or !text.ends_with("\n\n"))
 			Err(BadEnds)
 		else {
-			records = text.drop_prefix("${separator}\n").drop_suffix("\n\n").split_on("\n\n${separator}\n")
+			records = text.drop_prefix("${Separator.line}\n").drop_suffix("\n\n").split_on("\n\n${Separator.line}\n")
 			read_onto(Conversation.empty(topic), records)
 		}
 }
 
-separator : Str
-separator = Separator.line
-
 ## One message as the transcript writes it.
-record : { topic : Topic, message : { id : Message.Id, payload : Message.Payload } } -> Str
-record = |{ topic, message: { id, payload } }|
-	"${separator}\n${Message.reference(topic, id)}\nfrom: ${payload.author.to_str()}\ndate: ${payload.time.to_str()}\n\n${Separator.escape(payload.markdown)}\n\n"
+record : { topic : Topic, message : Message } -> Str
+record = |{ topic, message }|
+	"${Separator.line}\n${Message.reference(topic, message.id())}\nfrom: ${message.author().to_str()}\ndate: ${message.time().to_str()}\n\n${Separator.escape(message.markdown())}\n\n"
 
 ## `so_far` with each record appended in order, or the first record's fault.
 read_onto : Conversation, List(Str) -> Try(Conversation, _)
@@ -99,11 +96,8 @@ read_message = |c, written| {
 			date = date_line.drop_prefix("date: ")
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
 			time = Timestamp.from_str(date).map_err(|why| Time(id, why))?
-			c.append({
-				author,
-				time,
-				markdown: Separator.unescape(Str.join_with(body, "\n")),
-			})
+			markdown = Separator.unescape(Str.join_with(body, "\n"))
+			c.append({ payload: { author, markdown }, time })
 		}
 		_ => Err(BadHead(id))
 	}

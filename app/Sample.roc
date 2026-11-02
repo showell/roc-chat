@@ -17,13 +17,13 @@ Sample :: [].{
 	other : Topic
 	other = Topic.from_str("other") ?? crash "Sample.other: a topic's name"
 
-	## A payload from its parts' text, each a test's own and accepted.
-	payload : {
+	## What arrives, from its parts' text, each a test's own and accepted.
+	arrival : {
 		author : Str,
 		time : Str,
 		markdown : Str,
-	} -> Message.Payload
-	payload = |
+	} -> Message.Arrival
+	arrival = |
 		{
 			author,
 			time,
@@ -31,34 +31,36 @@ Sample :: [].{
 		},
 	|
 		{
-			author: Author.from_str(author) ?? crash "Sample.payload: a test's author is a name",
-			time: Timestamp.from_str(time) ?? crash "Sample.payload: a test's time is a time",
-			markdown,
+			payload: {
+				author: Author.from_str(author) ?? crash "Sample.arrival: a test's author is a name",
+				markdown,
+			},
+			time: Timestamp.from_str(time) ?? crash "Sample.arrival: a test's time is a time",
 		}
 
 	## Steve's hello.
-	hello : Message.Payload
-	hello = Sample.payload({
+	hello : Message.Arrival
+	hello = Sample.arrival({
 		author: "Steve",
 		time: "2026-11-02T19:11:32Z",
 		markdown: "Hello",
 	})
 
 	## CC's reply, a minute later, with a list in its markdown.
-	reply : Message.Payload
-	reply = Sample.payload({
+	reply : Message.Arrival
+	reply = Sample.arrival({
 		author: "CC",
 		time: "2026-11-02T19:12:28Z",
 		markdown: "Hi!\n\n- one\n- two",
 	})
 
-	## `topic`'s conversation of `payloads`, appended in order; a test's
+	## `topic`'s conversation of `arrivals`, appended in order; a test's
 	## conversation is never full.
-	conversation : Topic, List(Message.Payload) -> Conversation
-	conversation = |topic, payloads|
-		payloads.fold(
+	conversation : Topic, List(Message.Arrival) -> Conversation
+	conversation = |topic, arrivals|
+		arrivals.fold(
 			Conversation.empty(topic),
-			|c, p| c.append(p) ?? crash "Sample.conversation: a test's conversation is not full",
+			|c, a| c.append(a) ?? crash "Sample.conversation: a test's conversation is not full",
 		)
 
 	## `plans`'s hello and reply.
