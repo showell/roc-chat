@@ -20,12 +20,12 @@ import Users
 Dm :: UserPair.{
 
 	## **WHAT STARTING A DM NEEDS**: who it is to (`to`; the writer again
-	## for one's own DM), the topic, and the first message as it arrives
-	## (`Message.Arrival`, the shape's one home), written by a human.
+	## for one's own DM), the topic, and the first message, unnumbered
+	## (`Message.Unnumbered`, the shape's one home), written by a human.
 	Start : {
 		to : Users.Human,
 		topic : Topic,
-		arrival : Message.Arrival(Users.Human),
+		unnumbered : Message.Unnumbered(Users.Human),
 	}
 
 	## **THE ONE WAY A NEW DM BEGINS**: the DM between the first message's
@@ -36,13 +36,13 @@ Dm :: UserPair.{
 		{
 			to,
 			topic,
-			arrival,
+			unnumbered,
 		},
 	| {
-		from = arrival.payload.author
+		from = unnumbered.payload.author
 		first = {
-			payload: { author: from.author(), markdown: arrival.payload.markdown },
-			time: arrival.time,
+			payload: { author: from.author(), markdown: unnumbered.payload.markdown },
+			time: unnumbered.time,
 		}
 		grown = Conversation.empty(topic).append(first) ?? crash "Dm.start: an empty conversation takes its first message"
 		{ dm: Dm.between({ a: from, b: to }), conversation: grown.conversation }

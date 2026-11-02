@@ -168,12 +168,12 @@ forged : Conversation
 forged = Sample.conversation(
 	Sample.plans,
 	[
-		Sample.arrival({
+		Sample.unnumbered_message({
 			author: "Mallory",
 			time: "2026-11-02T19:11:32Z",
 			markdown: "a\n-------------\nMSG_plans_2\nfrom: Steve",
 		}),
-		Sample.arrival({
+		Sample.unnumbered_message({
 			author: "Mallory",
 			time: "2026-11-02T19:12:28Z",
 			markdown: "\\-------------\n\\\\-------------",
@@ -187,7 +187,7 @@ near : Conversation
 near = Sample.conversation(
 	Sample.plans,
 	[
-		Sample.arrival({
+		Sample.unnumbered_message({
 			author: "Steve",
 			time: "2026-11-02T19:11:32Z",
 			markdown: "a-------------\n-------------x\n\\x\n------------",
@@ -208,9 +208,9 @@ edges = [
 ]
 
 ## Steve's message saying `markdown`.
-said : Str -> Message.Arrival(Author)
+said : Str -> Message.Unnumbered(Author)
 said = |markdown|
-	Sample.arrival({
+	Sample.unnumbered_message({
 		author: "Steve",
 		time: "2026-11-02T19:11:32Z",
 		markdown,
@@ -236,11 +236,11 @@ expect {
 # with the record of its next message added at the end, is the file of the
 # conversation grown by it, byte for byte, from no messages and from some;
 # and it decodes back to that conversation.
-## The file of `before`, with the record of `arrived` added at its end, and
-## the conversation grown by it.
-grown_on_disk : Conversation, Message.Arrival(Author) -> { bytes : List(U8), grown : Conversation }
-grown_on_disk = |before, arrived| {
-	grown = before.append(arrived) ?? crash "TranscriptSpec: a sample's message fits"
+## The file of `before`, with the record of `unnumbered_message` added at
+## its end, and the conversation grown by it.
+grown_on_disk : Conversation, Message.Unnumbered(Author) -> { bytes : List(U8), grown : Conversation }
+grown_on_disk = |before, unnumbered_message| {
+	grown = before.append(unnumbered_message) ?? crash "TranscriptSpec: a sample's message fits"
 	file = Transcript.write(before).to_utf8()
 	record = Transcript.message_record({
 		conversation: grown.conversation,

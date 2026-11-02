@@ -63,45 +63,45 @@ ConversationRoute :: [].{
 			body,
 		},
 	|
-		match arrival({
+		match unnumbered_message_from_post({
 			acting,
 			now,
 			body,
 		}) {
 			Err(why) => refused(why)
-			Ok(arrived) =>
+			Ok(unnumbered_message) =>
 				match FileSystem.read_transcript!(key) {
 					Ok(utf8) =>
 						match Transcript.decode(key.topic(), utf8) {
 							Ok(conversation) =>
-								add_arrival!({
+								append_unnumbered_message!({
 									key,
 									conversation,
 									file: File(utf8),
-									arrived,
+									unnumbered_message,
 								})
 							Err(why) => unreadable(why)
 						}
 					Err(Missing) =>
-						add_arrival!({
+						append_unnumbered_message!({
 							key,
 							conversation: Conversation.empty(key.topic()),
 							file: NoFile,
-							arrived,
+							unnumbered_message,
 						})
 					Err(fault) => failed(fault)
 				}
 		}
 }
 
-## **WHAT ARRIVED**: the markdown in `body`'s field `markdown`, by the
-## acting user, at `now`; or why it is refused.
-arrival : {
+## **THE POST'S UNNUMBERED MESSAGE**: the markdown in `body`'s field
+## `markdown`, by the acting user, at `now`; or why it is refused.
+unnumbered_message_from_post : {
 	acting : SignedIn,
 	now : I64,
 	body : List(U8),
 } -> Try(
-	Message.Arrival(Author),
+	Message.Unnumbered(Author),
 	[
 		MissingField,
 		RepeatedField,
@@ -111,7 +111,7 @@ arrival : {
 		ClockOutOfRange,
 	],
 )
-arrival = |
+unnumbered_message_from_post = |
 	{
 		acting,
 		now,
@@ -124,24 +124,24 @@ arrival = |
 	Ok({ payload: { author: acting.user().author(), markdown }, time })
 }
 
-## `arrived` appended to `conversation`, its record appended to `file`
-## (the transcript `conversation` was read from, or `NoFile`), and a 303 to
-## the page; or why not.
-add_arrival! : {
+## `unnumbered_message` appended to `conversation`, its record appended to
+## `file` (the transcript `conversation` was read from, or `NoFile`), and a
+## 303 to the page; or why not.
+append_unnumbered_message! : {
 	key : ConversationKey,
 	conversation : Conversation,
 	file : [NoFile, File(Transcript.Utf8Transcript)],
-	arrived : Message.Arrival(Author),
+	unnumbered_message : Message.Unnumbered(Author),
 } => Http.Response
-add_arrival! = |
+append_unnumbered_message! = |
 	{
 		key,
 		conversation,
 		file,
-		arrived,
+		unnumbered_message,
 	},
 |
-	match conversation.append(arrived) {
+	match conversation.append(unnumbered_message) {
 		Ok(grown) =>
 			match Transcript.message_record({
 				conversation: grown.conversation,
@@ -215,17 +215,17 @@ steve = {
 	SignedIn.dangerously_assume(founded.to_list().first() ?? crash "ConversationRoute's tests: Steve is the first user")
 }
 
-## A test's arrival, as it reads it.
-Arrived : {
+## An unnumbered message's parts, as a test reads them.
+UnnumberedMessageText : {
 	author : Str,
 	time : Str,
 	markdown : Str,
 }
 
-## What arrived from `body` at `now`, as a test reads it.
-arrived_at : I64, Str -> Try(Arrived, _)
-arrived_at = |now, body|
-	arrival({
+## The unnumbered message posted as `body` at `now`, as a test reads it.
+unnumbered_message_at : I64, Str -> Try(UnnumberedMessageText, _)
+unnumbered_message_at = |now, body|
+	unnumbered_message_from_post({
 		acting: steve,
 		now,
 		body: body.to_utf8(),
@@ -237,23 +237,23 @@ arrived_at = |now, body|
 		},
 	)
 
-## What arrived from `body` at 2026-11-02T19:11:32Z.
-arrived_at_the_sample_time : Str -> Try(Arrived, _)
-arrived_at_the_sample_time = |body| arrived_at(1793646692, body)
+## The unnumbered message posted as `body` at 2026-11-02T19:11:32Z.
+unnumbered_message_at_the_sample_time : Str -> Try(UnnumberedMessageText, _)
+unnumbered_message_at_the_sample_time = |body| unnumbered_message_at(1793646692, body)
 
 expect
-	arrived_at_the_sample_time("markdown=Hi+there%0D%0Aall")
+	unnumbered_message_at_the_sample_time("markdown=Hi+there%0D%0Aall")
 		== Ok({
 			author: "Steve",
 			time: "2026-11-02T19:11:32Z",
 			markdown: "Hi there\nall",
 		})
-expect arrived_at_the_sample_time("") == Err(MissingField)
-expect arrived_at_the_sample_time("markdown=a&markdown=b") == Err(RepeatedField)
-expect arrived_at_the_sample_time("markdown=%G0") == Err(BadEscape)
-expect arrived_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
-expect arrived_at_the_sample_time("markdown=+") == Err(Blank)
-expect arrived_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
+expect unnumbered_message_at_the_sample_time("") == Err(MissingField)
+expect unnumbered_message_at_the_sample_time("markdown=a&markdown=b") == Err(RepeatedField)
+expect unnumbered_message_at_the_sample_time("markdown=%G0") == Err(BadEscape)
+expect unnumbered_message_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
+expect unnumbered_message_at_the_sample_time("markdown=+") == Err(Blank)
+expect unnumbered_message_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
 expect refused(MissingField).status == 400
 expect refused(Blank).status == 400
 expect refused(ClockOutOfRange).status == 500

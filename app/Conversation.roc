@@ -17,26 +17,26 @@ Conversation :: {
 	empty : Topic -> Conversation
 	empty = |topic| Conversation.({ topic, messages: [] })
 
-	## The conversation with what arrived added as its next message, and
-	## that message, numbered by `next_id`; unless it already holds as many
-	## as an id can number (`Full`, asked first), or what arrived is dated
-	## before its latest message (`Backdated`).
+	## The conversation with the unnumbered message added as its next
+	## message, and that message, numbered by `next_id`; unless it already
+	## holds as many as an id can number (`Full`, asked first), or the
+	## unnumbered message is dated before its latest message (`Backdated`).
 	##
 	## **TIMES NEVER GO BACKWARDS**: a message's time is never earlier than
 	## its conversation's latest. Equal is allowed: times are to the
 	## second, and two messages can share one.
 	append : Conversation,
-	Message.Arrival(Author) -> Try(
+	Message.Unnumbered(Author) -> Try(
 		{ conversation : Conversation, message : Message },
 		[Full, Backdated],
 	)
-	append = |conversation, arrival| {
+	append = |conversation, unnumbered_message| {
 		id = Conversation.next_id(conversation)?
 		Conversation.(c) = conversation
 		match c.messages.last() {
-			Ok(latest) if arrival.time.compare(latest.time()) == Before => Err(Backdated)
+			Ok(latest) if unnumbered_message.time.compare(latest.time()) == Before => Err(Backdated)
 			_ => {
-				message = Message.numbered({ id, arrival })
+				message = Message.numbered({ id, unnumbered: unnumbered_message })
 				Ok({
 					conversation: Conversation.({ ..c, messages: c.messages.append(message) }),
 					message,

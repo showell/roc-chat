@@ -25,7 +25,7 @@ started = |{ from, to }|
 	Dm.start({
 		to,
 		topic: Sample.plans,
-		arrival: { payload: { author: from, markdown: "hello" }, time: noon },
+		unnumbered: { payload: { author: from, markdown: "hello" }, time: noon },
 	})
 
 ## A started DM's name and members, as a test compares them.

@@ -32,7 +32,8 @@ expect Conversation.empty(Sample.plans).reference(Sample.second).to_str() == "MS
 expect Conversation.empty(Sample.other).reference(Sample.second).to_str() == "MSG_other_2"
 expect Sample.hello_and_reply.reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
-# Each append takes the next id, in order, with what arrived.
+# Each append takes the next id, in order, with the unnumbered message's
+# parts.
 expect summary(Sample.hello_and_reply.messages()) == [
 	{
 		id: "1",
@@ -56,7 +57,7 @@ expect
 	Conversation.empty(Sample.plans).append(Sample.hello)
 		== Ok({
 			conversation: Sample.conversation(Sample.plans, [Sample.hello]),
-			message: Message.numbered({ id: Sample.first, arrival: Sample.hello }),
+			message: Message.numbered({ id: Sample.first, unnumbered: Sample.hello }),
 		})
 expect {
 	grown = Sample.hello_and_reply.append(Sample.reply) ?? crash "ConversationSpec: a third message fits"
@@ -73,18 +74,19 @@ expect {
 # Times never go backwards: at message 2 and message 3, the latest's time
 # again, or a second later, is appended; a second earlier is refused.
 ## Steve's hello at `time`.
-hello_at : Str -> Message.Arrival(Author)
+hello_at : Str -> Message.Unnumbered(Author)
 hello_at = |time|
-	Sample.arrival({
+	Sample.unnumbered_message({
 		author: "Steve",
 		time,
 		markdown: "Hello",
 	})
 
-## The id `arrival` takes, appended alone after `c`'s messages, or why it
-## is refused.
-appended_alone : Conversation, Message.Arrival(Author) -> Try(Str, [Full, Backdated])
-appended_alone = |c, arrival| c.append(arrival).map_ok(|grown| grown.message.id().to_str())
+## The id `unnumbered_message` takes, appended alone after `c`'s messages,
+## or why it is refused.
+appended_alone : Conversation, Message.Unnumbered(Author) -> Try(Str, [Full, Backdated])
+appended_alone = |c, unnumbered_message|
+	c.append(unnumbered_message).map_ok(|grown| grown.message.id().to_str())
 
 ## The conversation of Steve's hello alone.
 hello_alone : Conversation

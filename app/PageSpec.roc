@@ -44,7 +44,7 @@ expect
 		Sample.conversation(
 			Sample.plans,
 			[
-				Sample.arrival({
+				Sample.unnumbered_message({
 					author: "Eve",
 					time: "2026-11-02T19:11:32Z",
 					markdown: "**hi** <b>",

@@ -16,18 +16,19 @@ Message :: {
 	markdown : Str,
 }.{
 
-	## **WHAT ARRIVES**: who wrote it and the markdown, exactly as written.
-	## The message, with its id and time, is made from it as early as
-	## possible. A conversation takes it from an `Author`; a DM's start
+	## **WHAT A MESSAGE SAYS, AND WHO SAID IT**: who wrote it and the
+	## markdown, exactly as written. The message, with its id and time, is
+	## made from it as early as possible. A conversation takes it from an `Author`; a DM's start
 	## (`Dm.start`) from a human, so its writer's kind is in its type.
 	Payload(writer) : {
 		author : writer,
 		markdown : Str,
 	}
 
-	## **A PAYLOAD AND ITS TIME, THE SHAPE'S ONE HOME**: what a conversation
-	## appends, so the id and the time are added in one place.
-	Arrival(writer) : {
+	## **AN UNNUMBERED MESSAGE, THE SHAPE'S ONE HOME**: a payload and its
+	## time, every part checked, waiting only for the id its conversation
+	## gives it (`Conversation.append`). Written `Message.Unnumbered`.
+	Unnumbered(writer) : {
 		payload : Message.Payload(writer),
 		time : DateTime,
 	}
@@ -53,9 +54,9 @@ Message :: {
 		is_eq : _
 	}
 
-	## The message numbered `id`, from what arrived.
-	numbered : { id : Message.Id, arrival : Message.Arrival(Author) } -> Message
-	numbered = |{ id, arrival: { payload, time } }|
+	## The unnumbered message, numbered `id`.
+	numbered : { id : Message.Id, unnumbered : Message.Unnumbered(Author) } -> Message
+	numbered = |{ id, unnumbered: { payload, time } }|
 		Message.(
 			{
 				id,
@@ -91,7 +92,7 @@ steve = Author.from_str("Steve") ?? crash "Message's tests: an author's name"
 noon : DateTime
 noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "Message's tests: a time"
 
-hello : Message.Arrival(Author)
+hello : Message.Unnumbered(Author)
 hello = { payload: { author: steve, markdown: "hello" }, time: noon }
 
 cc : Author
@@ -100,9 +101,9 @@ cc = Author.from_str("CC") ?? crash "Message's tests: an author's name"
 later : DateTime
 later = DateTime.from_str("2026-11-02T12:01:00Z") ?? crash "Message's tests: a time"
 
-## A second arrival, every part unlike `hello`'s, so a message is seen to
-## carry its own.
-reply : Message.Arrival(Author)
+## A second unnumbered message, every part unlike `hello`'s, so a message
+## is seen to carry its own.
+reply : Message.Unnumbered(Author)
 reply = { payload: { author: cc, markdown: "hi" }, time: later }
 
 ## A message's parts, as a test compares them.
@@ -124,14 +125,15 @@ expect Message.Id.first.next().map_ok(Message.Id.to_str) == Ok("2")
 # The last id at, under and over the highest.
 expect Message.Id.(65534).next().map_ok(Message.Id.to_str) == Ok("65535")
 expect Message.Id.(65535).next() == Err(Full)
-# A message numbered with the id it is given, each part what arrived.
-expect parts(Message.numbered({ id: Message.Id.first, arrival: hello })) == {
+# A message numbered with the id it is given, each other part the
+# unnumbered message's.
+expect parts(Message.numbered({ id: Message.Id.first, unnumbered: hello })) == {
 	id: "1",
 	author: steve,
 	time: noon,
 	markdown: "hello",
 }
-expect parts(Message.numbered({ id: Message.Id.(65535), arrival: reply })) == {
+expect parts(Message.numbered({ id: Message.Id.(65535), unnumbered: reply })) == {
 	id: "65535",
 	author: cc,
 	time: later,

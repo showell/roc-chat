@@ -23,13 +23,14 @@ Sample :: [].{
 	other : Topic
 	other = Topic.from_str("other") ?? crash "Sample.other: a topic's name"
 
-	## What arrives, from its parts' text, each a test's own and accepted.
-	arrival : {
+	## An unnumbered message, from its parts' text, each a test's own and
+	## accepted.
+	unnumbered_message : {
 		author : Str,
 		time : Str,
 		markdown : Str,
-	} -> Message.Arrival(Author)
-	arrival = |
+	} -> Message.Unnumbered(Author)
+	unnumbered_message = |
 		{
 			author,
 			time,
@@ -38,33 +39,33 @@ Sample :: [].{
 	|
 		{
 			payload: {
-				author: Author.from_str(author) ?? crash "Sample.arrival: a test's author is a name",
+				author: Author.from_str(author) ?? crash "Sample.unnumbered_message: a test's author is a name",
 				markdown,
 			},
-			time: DateTime.from_str(time) ?? crash "Sample.arrival: a test's time is a time",
+			time: DateTime.from_str(time) ?? crash "Sample.unnumbered_message: a test's time is a time",
 		}
 
 	## Steve's hello.
-	hello : Message.Arrival(Author)
-	hello = Sample.arrival({
+	hello : Message.Unnumbered(Author)
+	hello = Sample.unnumbered_message({
 		author: "Steve",
 		time: "2026-11-02T19:11:32Z",
 		markdown: "Hello",
 	})
 
 	## CC's reply, a minute later, with a list in its markdown.
-	reply : Message.Arrival(Author)
-	reply = Sample.arrival({
+	reply : Message.Unnumbered(Author)
+	reply = Sample.unnumbered_message({
 		author: "CC",
 		time: "2026-11-02T19:12:28Z",
 		markdown: "Hi!\n\n- one\n- two",
 	})
 
-	## `topic`'s conversation of `arrivals`, appended in order; a test's
-	## conversation is never full, and its times never go backwards.
-	conversation : Topic, List(Message.Arrival(Author)) -> Conversation
-	conversation = |topic, arrivals|
-		arrivals.fold(
+	## `topic`'s conversation of `unnumbered_messages`, appended in order; a
+	## test's conversation is never full, and its times never go backwards.
+	conversation : Topic, List(Message.Unnumbered(Author)) -> Conversation
+	conversation = |topic, unnumbered_messages|
+		unnumbered_messages.fold(
 			Conversation.empty(topic),
 			|c, a| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated").conversation,
 		)
