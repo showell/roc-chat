@@ -6,14 +6,6 @@
 ## A GET answers with a conversation's page. A POST takes a form whose
 ## field `markdown` holds a new message, adds the message to the
 ## conversation, and sends the browser back to the page (a 303).
-##
-## The rules it relies on live in those modules. A message's time is the
-## host's clock, and a message dated before the conversation's latest is
-## refused (`Backdated`, a 409). A message that would grow the file past
-## `Transcript.most_bytes` is refused too (`FileFull`, a 409), so every
-## transcript stays small enough for the host to read. Every failure is
-## loud: a transcript that won't decode, or a file the host could not read
-## or write, answers 500 and names what went wrong.
 import pf.Http
 import Author
 import Conversation
