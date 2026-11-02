@@ -68,7 +68,7 @@ message = |{ topic, message: m }| {
 		space,
 		Html.tag({
 			name: Time,
-			attrs: [Datetime(m.time())],
+			attrs: [DateTime(m.time())],
 			inner: Html.text(m.time().to_str()),
 		}),
 		space,

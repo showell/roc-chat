@@ -12,8 +12,8 @@ The answers from our listening session on 2026-11-02, gathered in one place for 
 
 ### Message
 
-- **A message is Author + Timestamp + MarkdownContent, plus the id its conversation gives it.**
-- A **MessagePayload** is Author + MarkdownContent, which is what arrives. The full Message, with its Id and Timestamp, is made as early as possible.
+- **A message is Author + DateTime + MarkdownContent, plus the id its conversation gives it.**
+- A **MessagePayload** is Author + MarkdownContent, which is what arrives. The full Message, with its Id and DateTime, is made as early as possible.
 - **Content is markdown text, and may include images.** The flavour is whatever our markdown implementation accepts. Images are opaque to a message: a message with an image tag is valid even when the image can't be reached.
 - **Messages are immutable.** An edit is a new message that edits an earlier one. When rendered, a RenderedMessage can be `IsEdited`, or `EditsPriorMessage(MessageId)`.
 - **A message doesn't care about eligibility.** "Steve said hello on Tuesday" is a message. Whether Steve may say that in a given place is up to the conversation, not the message.

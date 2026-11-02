@@ -7,13 +7,13 @@
 ## `Conversation.append` is that chain's one keeper, so a conversation's
 ## order is its ids' order.
 import Author
-import Timestamp
+import DateTime
 import Topic
 
 Message :: {
 	id : Message.Id,
 	author : Author,
-	time : Timestamp,
+	time : DateTime,
 	markdown : Str,
 }.{
 
@@ -29,7 +29,7 @@ Message :: {
 	## the time are added in one place.
 	Arrival : {
 		payload : Message.Payload,
-		time : Timestamp,
+		time : DateTime,
 	}
 
 	## **A MESSAGE'S ID**: its number in its conversation, counting from 1,
@@ -74,7 +74,7 @@ Message :: {
 	author = |Message.(m)| m.author
 
 	## When.
-	time : Message -> Timestamp
+	time : Message -> DateTime
 	time = |Message.(m)| m.time
 
 	## Its markdown, exactly as written.
@@ -108,8 +108,8 @@ plans = Topic.from_str("plans") ?? crash "Message's tests: a topic's name"
 steve : Author
 steve = Author.from_str("Steve") ?? crash "Message's tests: an author's name"
 
-noon : Timestamp
-noon = Timestamp.from_str("2026-11-02T12:00:00Z") ?? crash "Message's tests: a time"
+noon : DateTime
+noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "Message's tests: a time"
 
 hello : Message.Arrival
 hello = { payload: { author: steve, markdown: "hello" }, time: noon }
@@ -117,8 +117,8 @@ hello = { payload: { author: steve, markdown: "hello" }, time: noon }
 cc : Author
 cc = Author.from_str("CC") ?? crash "Message's tests: an author's name"
 
-later : Timestamp
-later = Timestamp.from_str("2026-11-02T12:01:00Z") ?? crash "Message's tests: a time"
+later : DateTime
+later = DateTime.from_str("2026-11-02T12:01:00Z") ?? crash "Message's tests: a time"
 
 ## A second arrival, every part unlike `hello`'s, so a message `after`
 ## another is seen to carry its own.
@@ -129,7 +129,7 @@ reply = { payload: { author: cc, markdown: "hi" }, time: later }
 parts : Message -> {
 	id : Str,
 	author : Author,
-	time : Timestamp,
+	time : DateTime,
 	markdown : Str,
 }
 parts = |m| {

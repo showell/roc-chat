@@ -45,7 +45,7 @@ Refusal : [
 			BadEnds,
 			BadHead(Message.Id),
 			Author(Message.Id, [Blank, ControlByte, Padded]),
-			Time(Message.Id, [WrongShape, OutOfRange]),
+			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Full,
 		],
@@ -76,7 +76,7 @@ words = |why|
 				}
 			"message ${id.to_str()}${said}"
 		}
-		Transcript(Time(id, fault)) => {
+		Transcript(DateTime(id, fault)) => {
 			said =
 				match fault {
 					WrongShape => "is not YYYY-MM-DDTHH:MM:SSZ"
@@ -127,8 +127,8 @@ expect {
 		Transcript(Author(second, Blank)),
 		Transcript(Author(second, ControlByte)),
 		Transcript(Author(second, Padded)),
-		Transcript(Time(second, WrongShape)),
-		Transcript(Time(second, OutOfRange)),
+		Transcript(DateTime(second, WrongShape)),
+		Transcript(DateTime(second, OutOfRange)),
 		Transcript(BadBody(second)),
 		Transcript(Full),
 	].map(words)

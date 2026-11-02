@@ -107,11 +107,11 @@ expect one_with({ ..first, from: "from: " }) == Err(Author(Sample.first, Blank))
 expect one_with({ ..first, from: "from:  " }) == Err(Author(Sample.first, Blank))
 expect one_with({ ..first, from: "from: Steve\r" }) == Err(Author(Sample.first, ControlByte))
 expect one_with({ ..first, from: "from:  Steve" }) == Err(Author(Sample.first, Padded))
-expect one_with({ ..first, date: "date: 2026-11-02" }) == Err(Time(Sample.first, WrongShape))
+expect one_with({ ..first, date: "date: 2026-11-02" }) == Err(DateTime(Sample.first, WrongShape))
 expect one_with({
 	..first,
 	date: "date: 2026-13-02T19:11:32Z",
-}) == Err(Time(Sample.first, OutOfRange))
+}) == Err(DateTime(Sample.first, OutOfRange))
 # A body line that is the bare separator, which no writer makes, beside
 # the escaped one a writer does.
 expect one_with({ ..first, body: "a\n-------------" }) == Err(BadBody(Sample.first))
@@ -129,11 +129,11 @@ expect two_with({ ..second, from: "from: CC " }) == Err(Author(Sample.second, Pa
 expect two_with({
 	..second,
 	date: "date: 2026-11-02T19:12:28",
-}) == Err(Time(Sample.second, WrongShape))
+}) == Err(DateTime(Sample.second, WrongShape))
 expect two_with({
 	..second,
 	date: "date: 2026-02-29T19:12:28Z",
-}) == Err(Time(Sample.second, OutOfRange))
+}) == Err(DateTime(Sample.second, OutOfRange))
 expect two_with({ ..second, body: "a\n-------------" }) == Err(BadBody(Sample.second))
 expect
 	again("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")

@@ -17,7 +17,7 @@ import Author
 import Conversation
 import Message
 import Separator
-import Timestamp
+import DateTime
 import Topic
 
 Transcript :: [].{
@@ -52,7 +52,7 @@ Transcript :: [].{
 			BadEnds,
 			BadHead(Message.Id),
 			Author(Message.Id, [Blank, ControlByte, Padded]),
-			Time(Message.Id, [WrongShape, OutOfRange]),
+			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Full,
 		],
@@ -97,7 +97,7 @@ read_message = |c, written| {
 			name = from_line.drop_prefix("from: ")
 			date = date_line.drop_prefix("date: ")
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
-			time = Timestamp.from_str(date).map_err(|why| Time(id, why))?
+			time = DateTime.from_str(date).map_err(|why| DateTime(id, why))?
 			markdown = Separator.unescape(Str.join_with(body, "\n")).map_err(|BareSeparator| BadBody(id))?
 			c.append({ payload: { author, markdown }, time })
 		}

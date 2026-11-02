@@ -4,7 +4,7 @@
 import Author
 import Conversation
 import Message
-import Timestamp
+import DateTime
 import Topic
 
 Sample :: [].{
@@ -35,7 +35,7 @@ Sample :: [].{
 				author: Author.from_str(author) ?? crash "Sample.arrival: a test's author is a name",
 				markdown,
 			},
-			time: Timestamp.from_str(time) ?? crash "Sample.arrival: a test's time is a time",
+			time: DateTime.from_str(time) ?? crash "Sample.arrival: a test's time is a time",
 		}
 
 	## Steve's hello.

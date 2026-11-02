@@ -7,7 +7,7 @@
 ## `join`. `to_str` is the one way out.
 import md.Md
 import Message
-import Timestamp
+import DateTime
 
 Html :: Str.{
 
@@ -23,12 +23,12 @@ Html :: Str.{
 
 	## **AN ATTRIBUTE, ITS NAME BY ITS TAG**, so a name and its value can't
 	## be swapped, and no value is ever text: a class from its closed set,
-	## an id and a link from a `Target`, a time from a `Timestamp`.
+	## an id and a link from a `Target`, a time from a `DateTime`.
 	Attribute : [
 		Class(Html.Class),
 		Id(Html.Target),
 		Href(Html.Target),
-		Datetime(Timestamp),
+		DateTime(DateTime),
 	]
 
 	## **TEXT AS HTML TEXT**: its `&`, `<`, `>`, `"` and `'` as entities, so
@@ -137,7 +137,7 @@ attribute = |attr| {
 			Class(class) => ("class", class_name(class))
 			Id(target) => ("id", anchor_name(target))
 			Href(target) => ("href", "#${anchor_name(target)}")
-			Datetime(t) => ("datetime", t.to_str())
+			DateTime(t) => ("datetime", t.to_str())
 		}
 	" ${name}=\"${Html.text(value).to_str()}\""
 }
@@ -186,11 +186,11 @@ expect
 	}).to_str()
 		== "<p>hi</p>"
 expect
-	Timestamp.from_str("2026-11-02T19:11:32Z").map_ok(
+	DateTime.from_str("2026-11-02T19:11:32Z").map_ok(
 		|t|
 			Html.tag({
 				name: Time,
-				attrs: [Datetime(t)],
+				attrs: [DateTime(t)],
 				inner: Html.join([]),
 			}).to_str(),
 	)
