@@ -6,7 +6,7 @@ import Sample
 PageSpec :: [].{}
 
 ## What every page opens with, titled `title` (already escaped). Its style
-## sheet is a frozen answer, copied from `TrustedHtml.style`, so a change to
+## sheet is a frozen answer, copied from `Page`'s style sheet, so a change to
 ## the style shows here as a deliberate re-freeze.
 head : Str -> Str
 head = |title|

@@ -4,6 +4,7 @@
 ## runs, so the gate checks that every `app/*Spec.roc` is imported here.
 import ConversationSpec
 import PageSpec
+import SecureImageTagSpec
 import TranscriptSpec
 
 Specs :: [].{}

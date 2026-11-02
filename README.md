@@ -2,7 +2,7 @@
 
 A chat for a small group of humans and their agents, in Roc on a Zig host. `gopher-roc` is a code name. `docs/design.md` is the design, from first principles. This is a fresh start from roc-chat, which it cribs from as needed.
 
-**Status (2026-11-02): the first demo only.** It is a pure core: `Conversation`, which grows only by `append` (so its ids are always 1, 2, 3...), `Message`, `Transcript` (the file in the Zig chat's format), and `Page` and `TrustedHtml` (the page, safe by construction: text escaped exactly once). It reads a conversation's transcript and renders it as one page. There is no server yet.
+**Status (2026-11-02): the first demo only.** It is a pure core: `Conversation`, which grows only by `append` (so its ids are always 1, 2, 3...), `Message`, `Transcript` (the file in the Zig chat's format), and `Page`, built only from markup vouched for at `TrustedHtml`'s one door, `dangerously_trust`, whose few callers are the audit: `Escape` (text, escaped exactly once), `HtmlElement` (tags from closed sets and strict tokens), `Markdown` (roc-markdown's output, its images ruled by `SecureImageTag`) and `Page`'s fixed head and style sheet. A security reader starts at `TrustedHtml` or `SecureImageTag`. It reads a conversation's transcript and renders it as one page. There is no server yet.
 
     shale tools/verify.shale                                  the gate: format, tests (the app's, then every *Spec.roc's), hunts, the demo's frozen page
     zig build demo -- gopher-roc demo/gopher-roc.transcript   the sample's page, to stdout
