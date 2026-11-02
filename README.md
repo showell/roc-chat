@@ -11,4 +11,6 @@ A chat for a small group of humans and their agents, in Roc on a Zig host. `goph
 
 It needs the Roc pinned in `roc-version` at `~/tools/roc-<pin>/roc`, and roc-markdown checked out beside this repo, because its package renders the markdown.
 
+**Pitfall: a renamed or deleted module breaks `zig build demo`** with "checking cache failed: file_open FileNotFound app/<Old>.roc". Zig's cache still remembers the old file as an input. Delete `.zig-cache` (it's git-ignored) and build again.
+
 **Pitfall: the demo's page is frozen.** The gate holds `zig build demo -- gopher-roc demo/gopher-roc.transcript` to `demo/gopher-roc.html` byte for byte. A deliberate change to the page rewrites that file from the demo's output, and the commit says what moved and why.
