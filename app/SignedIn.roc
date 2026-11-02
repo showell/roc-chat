@@ -10,8 +10,9 @@
 ##
 ## **ONE OF THE TRUST BOUNDARIES**: this is who is acting;
 ## `UnvalidatedString` is the way text from outside comes in, `TrustedHtml`
-## the way out to a page, and `SecureImageTag` rules which images a message
-## may show. A security reader starts at any of the four.
+## the way out to a page, `SecureImageTag` rules which images a message
+## may show, and `RequestOrigin` refuses a request from any origin but the
+## server's own. A security reader starts at any of the five.
 import Name
 import Users
 

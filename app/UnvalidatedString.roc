@@ -10,8 +10,9 @@
 ##
 ## **ONE OF THE TRUST BOUNDARIES**: this is the way in; `TrustedHtml` is
 ## the way out to a page, `SecureImageTag` rules which images a message
-## may show, and `SignedIn` is who is acting. A security reader starts at
-## any of the four.
+## may show, `SignedIn` is who is acting, and `RequestOrigin` refuses a
+## request from any origin but the server's own. A security reader starts
+## at any of the five.
 import ChannelName
 import DateTime
 import Name

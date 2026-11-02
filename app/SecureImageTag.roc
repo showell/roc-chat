@@ -17,8 +17,8 @@
 ##
 ## What the renderer's output becomes on a page is vouched for at
 ## `TrustedHtml`'s one door; see its header for the others. Text from
-## outside comes in only through `UnvalidatedString`, and who is acting
-## is `SignedIn`.
+## outside comes in only through `UnvalidatedString`, who is acting is
+## `SignedIn`, and which origins may ask is `RequestOrigin`.
 SecureImageTag :: [].{
 
 	## Is `source` one of the message's conversation's uploads? No
