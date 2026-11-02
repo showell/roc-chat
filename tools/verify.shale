@@ -5,18 +5,29 @@
 --
 -- 1. `roc fmt --check`: the code is laid out as the formatter lays it.
 -- 2. `roc test`, twice: from the app (every production module's expects)
---    and from app/Specs.roc (every `*Spec.roc`), none failing, and between
---    them at least `expect_floor` of gopher-roc's own, each counted once by
---    its file and line; roc-markdown's, which the runs include, never count.
+--    and from app/Specs.roc (every `*Spec.roc`), none failing. Each
+--    `app/*.roc`'s top-level expects (its lines starting `expect`) are
+--    exactly the lines that pass for it, `PASS: app/<file>:<line>` from
+--    either run, each counted once; roc-markdown's, which the runs include,
+--    never count. The source is the count, so no floor needs keeping, and an
+--    expect that stops running fails here. Every `app/*Spec.roc` is
+--    imported by app/Specs.roc, the only run that reaches it.
 -- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
---    judges for sure: names, errors, nesting, boundaries, stacking.
+--    judges for sure: names, errors, nesting, boundaries, stacking. Their
+--    other counts are questions for a reader, so they print but don't gate:
+--    stack's long lines (a frozen answer or a long string has nothing to
+--    stack), boundaries' `constant` (Sample.almost_full stays a `{}`
+--    function so its work runs with its test, never in `roc check`), its
+--    `single`, `entry` and `bool_param`, errors' `set_fallback` and
+--    `placeholder`, and name_hunt's softer categories (vague, name_type,
+--    noun_effect, preposition_split, short_name, worker_name,
+--    stacked_preposition), which are rules of thumb.
 -- 4. Last, the demo built through the host, its page exactly the frozen
 --    demo/gopher-roc.html.
 --
 -- budget: steps=200000000
 
 const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
-const expect_floor = 200
 
 const board = {failed = 0}
 
@@ -36,21 +47,57 @@ const roots = {
   {"test", "--verbose", "app/main.roc"},
   {"test", "--verbose", "app/Specs.roc", "--main=app/main.roc"},
 }
-const ours = {}
+const passed = {}
 local all_passed = true
 for argv in roots do
   local full = {ROC}
   for a in argv do push(full, a) end
   local tested = run(full, {timeout_ms = 300000, whole = 2000000})
-  local passed = tested.code == 0 and re_find(tested.out, "All \\([0-9]+\\) tests passed") ~= nil
-  if not passed then
+  local ok = tested.code == 0 and re_find(tested.out, "All \\([0-9]+\\) tests passed") ~= nil
+  if not ok then
     all_passed = false
     print(tested.out)
   end
-  for l in re_lines(tested.out, "^PASS: app/") do ours[l.text] = true end
+  for l in re_lines(tested.out, "^PASS: app/") do passed[trim(sub(l.text, 7))] = true end
 end
-const count = #keys(ours)
-say(all_passed and count >= expect_floor, "roc test, the app and the specs: " .. count .. " of ours passed (floor " .. expect_floor .. ")")
+say(all_passed, "roc test, the app and the specs: none failed")
+
+-- Each file's expects, from its source, against what passed for it.
+const written = {}
+local total = 0
+local astray = 0
+for path in glob("app/*.roc") do
+  local count = 0
+  for m in re_lines(read(path), "^expect( |$)") do
+    written[path .. ":" .. m.line] = true
+    count = count + 1
+    if not has_key(passed, path .. ":" .. m.line) then
+      astray = astray + 1
+      print("  not passed: " .. path .. ":" .. m.line)
+    end
+  end
+  total = total + count
+end
+for at in keys(passed) do
+  if not has_key(written, at) then
+    astray = astray + 1
+    print("  passed, but no top-level expect in the source: " .. at)
+  end
+end
+say(astray == 0, "every expect in app/*.roc passed, once: " .. total .. " in the source, " .. #keys(passed) .. " passed")
+
+-- Every Spec reaches a run.
+const specs = read("app/Specs.roc")
+local unimported = 0
+for path in glob("app/*Spec.roc") do
+  local name = basename(path)
+  local module = sub(name, 1, #name - 4)
+  if #re_lines(specs, "^import " .. module .. "$") == 0 then
+    unimported = unimported + 1
+    print("  not imported by app/Specs.roc: " .. module)
+  end
+end
+say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 
 -- 3. The hunts, each count read from its summary line.
 const hunts = {
