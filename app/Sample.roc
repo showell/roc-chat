@@ -107,12 +107,12 @@ Sample :: [].{
 	}
 
 	## **THE SAMPLE DIRECTORY, CROWDED**: with `count` more humans, each
-	## named for their place (`filler-0`, `filler-1`...).
+	## named for their place in letters (`Filler aa`, `Filler ab`...).
 	crowded : U64 -> Directory
 	crowded = |count|
 		List.from_iter(U64.until(0, count)).fold(
 			Sample.directory,
-			|so_far, at| (so_far.add_human(Sample.name("filler-${at.to_str()}")) ?? crash "Sample.crowded: a filler's name is free").directory,
+			|so_far, at| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded: a filler's name is free").directory,
 		)
 
 	## Steve, in the sample directory.
@@ -124,6 +124,11 @@ Sample :: [].{
 	user = |text|
 		Sample.directory.users().find_first(|u| u.name().to_str() == text) ?? crash "Sample.user: the sample directory holds ${text}"
 }
+
+## `at`, below 676, as two letters: 0 is `aa`, 1 `ab`, 26 `ba`.
+place_in_letters : U64 -> Str
+place_in_letters = |at|
+	Str.from_utf8(['a' + (at // 26).to_u8_wrap(), 'a' + (at % 26).to_u8_wrap()]) ?? crash "Sample.place_in_letters: letters are UTF-8"
 
 ## `so_far` with `count` more of Steve's hello.
 filled : { so_far : Conversation, count : U64 } -> Conversation

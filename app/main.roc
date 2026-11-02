@@ -45,7 +45,7 @@ Refusal : [
 		[
 			BadEnds,
 			BadHead(Message.Id),
-			Author(Message.Id, [Blank, ControlByte, FormatCharacter, Padded]),
+			Author(Message.Id, [Empty, ForbiddenCharacter, BadSpacing]),
 			DateTime(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Backdated(Message.Id),
@@ -73,10 +73,9 @@ words = |why|
 		Transcript(Author(id, fault)) => {
 			said =
 				match fault {
-					Blank => " has no author"
-					ControlByte => "'s author holds a control character"
-					FormatCharacter => "'s author holds an invisible Unicode format character"
-					Padded => "'s author starts or ends with a space"
+					Empty => " has no author"
+					ForbiddenCharacter => "'s author holds a character that is no letter or space"
+					BadSpacing => "'s author has a space at either end, or two together"
 				}
 			"message ${id.to_str()}${said}"
 		}
@@ -128,10 +127,9 @@ expect {
 		Topic(ForbiddenByte),
 		Transcript(BadEnds),
 		Transcript(BadHead(second)),
-		Transcript(Author(second, Blank)),
-		Transcript(Author(second, ControlByte)),
-		Transcript(Author(second, FormatCharacter)),
-		Transcript(Author(second, Padded)),
+		Transcript(Author(second, Empty)),
+		Transcript(Author(second, ForbiddenCharacter)),
+		Transcript(Author(second, BadSpacing)),
 		Transcript(DateTime(second, WrongShape)),
 		Transcript(DateTime(second, OutOfRange)),
 		Transcript(BadBody(second)),
@@ -148,9 +146,8 @@ expect {
 			"a transcript starts with the separator and ends with an empty line",
 			"message 2 does not open with its reference, `from:`, `date:` and an empty line",
 			"message 2 has no author",
-			"message 2's author holds a control character",
-			"message 2's author holds an invisible Unicode format character",
-			"message 2's author starts or ends with a space",
+			"message 2's author holds a character that is no letter or space",
+			"message 2's author has a space at either end, or two together",
 			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",
 			"message 2's date is no time a calendar and clock show",
 			"message 2 holds the separator, unescaped, on a line of its own",

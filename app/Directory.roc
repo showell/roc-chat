@@ -184,7 +184,7 @@ Directory :: {
 	## user or a channel.
 	create_channel : Directory, { by : Admin, name : ChannelName } -> Try(Directory.Created, [NameTaken])
 	create_channel = |Directory.(d), { by: _, name }| {
-		key = name.name().key()
+		key = name.key()
 		if (d.keys.contains(key))
 			Err(NameTaken)
 		else {

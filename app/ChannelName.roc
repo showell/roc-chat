@@ -1,9 +1,8 @@
 ## **A CHANNEL'S NAME**: it becomes a folder's name and a URL, so it is a
 ## strict name (`StrictName`), and it lives in the one namespace with the
-## users' names, so it is a permanent name too (`name`, which uniqueness
-## keys). Opaque, so `from_str` is the only way in. A strict name starts
-## with a letter and holds no `_`, so no channel's name is ever a DM's
-## (`7_11`).
+## users' names, where its place is its key (`Name.Key.of_strict`).
+## Opaque, so `from_str` is the only way in. A strict name starts with a
+## letter and holds no `_`, so no channel's name is ever a DM's (`7_11`).
 import Name
 import StrictName
 
@@ -18,12 +17,9 @@ ChannelName :: StrictName.{
 	to_str : ChannelName -> Str
 	to_str = |ChannelName.(strict)| strict.to_str()
 
-	## **THE NAME IN THE NAMESPACE**: the permanent name it spells. A strict
-	## name is never blank and holds only letters, digits and `-`, so every
-	## one is a permanent name; one that isn't is a broken promise.
-	name : ChannelName -> Name
-	name = |ChannelName.(strict)|
-		Name.from_str(strict.to_str()) ?? crash "ChannelName.name: a strict name is always a permanent name, and \"${strict.to_str()}\" is not"
+	## Its place in the namespace it shares with the users.
+	key : ChannelName -> Name.Key
+	key = |ChannelName.(strict)| Name.Key.of_strict(strict)
 
 	is_eq : _
 	to_hash : _
@@ -44,8 +40,8 @@ expect
 			Err(TooLong),
 			Err(ForbiddenByte),
 		]
-# Its permanent name is its own spelling, case kept, at both ends of the
-# length.
+# Kept as given, case and all, at both ends of the length; its key is a
+# strict name's.
 expect
 	[
 		"gopher-roc",
@@ -53,11 +49,17 @@ expect
 		"p",
 		"a".repeat(60),
 	].map(
-		|text| ChannelName.from_str(text).map_ok(|c| (c.to_str(), c.name().to_str())),
+		|text| ChannelName.from_str(text).map_ok(|c| c.to_str()),
 	)
 		== [
-			Ok(("gopher-roc", "gopher-roc")),
-			Ok(("Gopher-Roc", "Gopher-Roc")),
-			Ok(("p", "p")),
-			Ok(("a".repeat(60), "a".repeat(60))),
+			Ok("gopher-roc"),
+			Ok("Gopher-Roc"),
+			Ok("p"),
+			Ok("a".repeat(60)),
 		]
+expect {
+	text = "Gopher-Roc"
+	channel = ChannelName.from_str(text) ?? crash "ChannelName's tests: a channel's name"
+	strict = StrictName.from_str(text) ?? crash "ChannelName's tests: a strict name"
+	channel.key() == Name.Key.of_strict(strict)
+}

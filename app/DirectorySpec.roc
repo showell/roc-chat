@@ -145,12 +145,12 @@ expect
 		== List.repeat(Err(NameTaken), 6)
 expect
 	[
-		"Apoorva2",
+		"Apoorvaa",
 		"Apoorv",
 		"C C",
 	].map(|text| human_added(Sample.directory, text).map_ok(|added| added.name))
 		== [
-			Ok("Apoorva2"),
+			Ok("Apoorvaa"),
 			Ok("Apoorv"),
 			Ok("C C"),
 		]
@@ -165,9 +165,9 @@ expect
 			Err(NameTaken),
 		]
 expect agent_added(with_plans, { name: "Plans", owner: UserId.steve }) == Err(NameTaken)
-expect human_added(with_plans, "plans-2") == Ok({
+expect human_added(with_plans, "Plansy") == Ok({
 	id: "4",
-	name: "plans-2",
+	name: "Plansy",
 	role: "human",
 })
 expect

@@ -105,14 +105,14 @@ expect one_with({ ..first, head: "MSG_other_1" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, from: "frm: Steve" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, date: "dt: 2026-11-02T19:11:32Z" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, gap: "" }) == Err(BadHead(Sample.first))
-expect one_with({ ..first, from: "from: " }) == Err(Author(Sample.first, Blank))
-expect one_with({ ..first, from: "from:  " }) == Err(Author(Sample.first, Blank))
-expect one_with({ ..first, from: "from: Steve\r" }) == Err(Author(Sample.first, ControlByte))
-expect one_with({ ..first, from: "from:  Steve" }) == Err(Author(Sample.first, Padded))
+expect one_with({ ..first, from: "from: " }) == Err(Author(Sample.first, Empty))
+expect one_with({ ..first, from: "from:  " }) == Err(Author(Sample.first, BadSpacing))
+expect one_with({ ..first, from: "from: Steve\r" }) == Err(Author(Sample.first, ForbiddenCharacter))
+expect one_with({ ..first, from: "from:  Steve" }) == Err(Author(Sample.first, BadSpacing))
 expect one_with({
 	..first,
 	from: "from: Ste\u(202e)ve",
-}) == Err(Author(Sample.first, FormatCharacter))
+}) == Err(Author(Sample.first, ForbiddenCharacter))
 expect one_with({ ..first, date: "date: 2026-11-02" }) == Err(DateTime(Sample.first, WrongShape))
 expect one_with({
 	..first,
@@ -134,9 +134,9 @@ expect two_with({ ..second, head: "MSG_plans_3" }) == Err(BadHead(Sample.second)
 expect two_with({ ..second, from: "frm: CC" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, date: "dt: 2026-11-02T19:12:28Z" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, gap: "" }) == Err(BadHead(Sample.second))
-expect two_with({ ..second, from: "from: " }) == Err(Author(Sample.second, Blank))
-expect two_with({ ..second, from: "from: C\u(0)C" }) == Err(Author(Sample.second, ControlByte))
-expect two_with({ ..second, from: "from: CC " }) == Err(Author(Sample.second, Padded))
+expect two_with({ ..second, from: "from: " }) == Err(Author(Sample.second, Empty))
+expect two_with({ ..second, from: "from: C\u(0)C" }) == Err(Author(Sample.second, ForbiddenCharacter))
+expect two_with({ ..second, from: "from: CC " }) == Err(Author(Sample.second, BadSpacing))
 expect two_with({
 	..second,
 	date: "date: 2026-11-02T19:12:28",
