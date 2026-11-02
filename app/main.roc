@@ -10,6 +10,7 @@ app [page] {
 import Conversation
 import Message
 import Page
+import StrictName
 import Topic
 import Transcript
 
@@ -62,7 +63,7 @@ words = |why|
 		TranscriptNotUtf8 => "it is not UTF-8"
 		Topic(Empty) => "its topic is empty"
 		Topic(StartsWithNonLetter) => "its topic does not start with an ASCII letter"
-		Topic(TooLong) => "its topic is longer than ${Topic.longest.to_str()} characters"
+		Topic(TooLong) => "its topic is longer than ${StrictName.longest.to_str()} characters"
 		Topic(ForbiddenByte) => "its topic holds more than ASCII letters, digits and -"
 		Transcript(BadEnds) => "a transcript starts with the separator and ends with an empty line"
 		Transcript(Full) => "it holds more messages than a conversation can"
