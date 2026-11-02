@@ -1,19 +1,19 @@
-## **A CONVERSATION'S TWO ROUTES**: its page (GET), and a message added to
-## it (POST, a form whose field `markdown` is the message). Each reads the
-## transcript through `FileSystem`, decodes it with `Transcript`, and
-## answers; the POST appends one record and sends the browser back to the
-## page (303).
+## This module moves data between the web interface and the file system.
+## It doesn't do any heavy lifting itself. It mostly provides a clean
+## boundary: `FileSystem` reads and writes the transcript, `Transcript`
+## decodes and encodes it, and `Conversation` decides what may be added.
 ##
-## **TIMES NEVER GO BACKWARDS**: a POST's time is the host's clock, and a
-## message dated before the conversation's latest is refused (`Backdated`,
-## a 409), as `Conversation.append` refuses it.
+## A GET answers with a conversation's page. A POST takes a form whose
+## field `markdown` holds a new message, adds the message to the
+## conversation, and sends the browser back to the page (a 303).
 ##
-## **A TRANSCRIPT NEVER OUTGROWS ITS READ**: a message whose record would
-## grow the file past `Transcript.most_bytes` is refused (`FileFull`, a
-## 409), so no conversation is ever too big for the host to read again.
-##
-## **EVERY FAILURE IS LOUD**: a transcript that won't decode, or a file the
-## host could not read or write, is a 500 naming what went wrong.
+## The rules it relies on live in those modules. A message's time is the
+## host's clock, and a message dated before the conversation's latest is
+## refused (`Backdated`, a 409). A message that would grow the file past
+## `Transcript.most_bytes` is refused too (`FileFull`, a 409), so every
+## transcript stays small enough for the host to read. Every failure is
+## loud: a transcript that won't decode, or a file the host could not read
+## or write, answers 500 and names what went wrong.
 import pf.Http
 import Author
 import Conversation
