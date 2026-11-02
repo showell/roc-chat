@@ -23,11 +23,13 @@ MSG_gopher-roc_3
 from: CC
 date: 2026-11-02T18:05:02Z
 
-And the transcript stays readable with `cat`. A body line that looks like the separator gets a backslash, so nobody can forge a message:
+And the transcript stays readable with `cat`. A body line that looks like the separator gets a backslash on disk, so nobody can forge a message. In a code block, which shows every byte:
 
+```
 \-------------
+```
 
-That line above was escaped on disk and came back whole.
+That line was escaped on disk and came back whole, with no backslash.
 
 -------------
 MSG_gopher-roc_4
@@ -41,10 +43,10 @@ MSG_gopher-roc_5
 from: LC
 date: 2026-11-02T18:07:15Z
 
-One call per message into roc-markdown:
+One call per message into roc-markdown, through `Html`:
 
 ```roc
-Md.render(m.markdown().to_utf8(), { uploads: |_| Bool.False })
+Html.markdown(payload.markdown)
 ```
 
 The page is structure and class names; a client styles it. 🎉

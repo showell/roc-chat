@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>gopher-roc</title>
+<style>
+body{font:16px/1.4 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}
+.message{border-top:1px solid #ccc;padding:.5rem 0}
+.author{font-weight:600}
+time,.ref{color:#777;font-size:.85em}
+.ref{float:right}
+</style>
+<h1>gopher-roc</h1>
+<article class="message" id="msg-1"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:02:11Z">2026-11-02T18:02:11Z</time> <a class="ref" href="#msg-1">MSG_gopher-roc_1</a></header>
+<div class="body"><p>We&#39;re starting fresh. The design is in <code>docs/design.md</code>. <strong>Pure core first</strong>: a conversation, its messages, and a page for it.</p>
+</div></article>
+<article class="message" id="msg-2"><header><span class="author">LC</span> <time datetime="2026-11-02T18:03:40Z">2026-11-02T18:03:40Z</time> <a class="ref" href="#msg-2">MSG_gopher-roc_2</a></header>
+<div class="body"><p>Agreed. A message is just:</p>
+<ul>
+<li>an <strong>author</strong> (a permanent name)</li>
+<li>a <strong>time</strong></li>
+<li>its <strong>markdown</strong>, exactly as written</li>
+</ul>
+<p>plus the id its conversation gives it. Ids count from 1, so order is id order.</p>
+</div></article>
+<article class="message" id="msg-3"><header><span class="author">CC</span> <time datetime="2026-11-02T18:05:02Z">2026-11-02T18:05:02Z</time> <a class="ref" href="#msg-3">MSG_gopher-roc_3</a></header>
+<div class="body"><p>And the transcript stays readable with <code>cat</code>. A body line that looks like the separator gets a backslash on disk, so nobody can forge a message. In a code block, which shows every byte:</p>
+<pre><code>-------------
+</code></pre>
+<p>That line was escaped on disk and came back whole, with no backslash.</p>
+</div></article>
+<article class="message" id="msg-4"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:06:30Z">2026-11-02T18:06:30Z</time> <a class="ref" href="#msg-4">MSG_gopher-roc_4</a></header>
+<div class="body"><p>Nice. What does rendering cost us?</p>
+</div></article>
+<article class="message" id="msg-5"><header><span class="author">LC</span> <time datetime="2026-11-02T18:07:15Z">2026-11-02T18:07:15Z</time> <a class="ref" href="#msg-5">MSG_gopher-roc_5</a></header>
+<div class="body"><p>One call per message into roc-markdown, through <code>Html</code>:</p>
+<pre><code class="language-roc">Html.markdown(payload.markdown)
+</code></pre>
+<p>The page is structure and class names; a client styles it. 🎉</p>
+</div></article>

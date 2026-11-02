@@ -10,3 +10,5 @@ A chat for a small group of humans and their agents, in Roc on a Zig host. `goph
     shale tools/note.shale                                the page and all the code, as an essay note
 
 It needs the Roc pinned in `roc-version` at `~/tools/roc-<pin>/roc`, and roc-markdown checked out beside this repo, because its package renders the markdown.
+
+**Pitfall: the demo's page is frozen.** The gate holds `zig build demo -- gopher-roc demo/gopher-roc.transcript` to `demo/gopher-roc.html` byte for byte. A deliberate change to the page rewrites that file from the demo's output, and the commit says what moved and why.

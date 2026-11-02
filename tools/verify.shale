@@ -10,8 +10,8 @@
 --    its file and line; roc-markdown's, which the runs include, never count.
 -- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
 --    judges for sure: names, errors, nesting, boundaries, stacking.
--- 4. Last, the demo built through the host, and its page holding what the
---    sample transcript says.
+-- 4. Last, the demo built through the host, its page exactly the frozen
+--    demo/gopher-roc.html.
 --
 -- budget: steps=200000000
 
@@ -77,21 +77,10 @@ for h in hunts do
   if not zero then print(r.out) end
 end
 
--- 4. The demo, through the host: the sample's page.
+-- 4. The demo, through the host: the sample's page, exactly as frozen.
 local demo = run({"zig", "build", "demo", "--", "gopher-roc", "demo/gopher-roc.transcript"}, {timeout_ms = 300000, whole = 1000000})
-local page = demo.out
-const wanted = {
-  "<h1>gopher-roc</h1>",
-  "<article class=\"message\" id=\"msg-1\"><header><span class=\"author\">Steve</span>",
-  "<a class=\"ref\" href=\"#msg-5\">MSG_gopher-roc_5</a>",
-  "<p>-------------</p>",
-  "<pre><code class=\"language-roc\">",
-}
-local held = demo.code == 0
-for w in wanted do
-  if not contains(page, w) then held = false end
-end
-say(held and not contains(page, "msg-6"), "the demo's page: five messages, the escaped separator whole, the code fenced")
+say(demo.code == 0 and demo.out == read("demo/gopher-roc.html"), "the demo's page: exactly demo/gopher-roc.html")
+if demo.code ~= 0 then print(demo.out) end
 
 if board.failed > 0 then fail("verify: " .. board.failed .. " failed") end
 print("verify: every check passed")
