@@ -19,7 +19,7 @@
 import pf.Chat
 import pf.Host
 import Access
-import AccountCodec
+import Account
 import ApiKey
 import AuditLog
 import Channel
@@ -163,7 +163,7 @@ Channels := [].{
 			("name", JsonOut.string(channel.name().to_str())),
 			(
 				"members",
-				JsonOut.array(channel.members(accounts).map(|b| JsonOut.string(AccountCodec.id_text(b.id)))),
+				JsonOut.array(channel.members(accounts).map(|b| JsonOut.string(Account.id_text(b.id)))),
 			),
 		])
 }
@@ -508,14 +508,14 @@ refusal_text = |why|
 			"a channel's name is a letter, then letters, digits and hyphens, at most 40",
 		)
 		Taken => (409, "that name is taken, by a channel or by someone, in some spelling")
-		NamedTwice(id) => (400, "${AccountCodec.id_text(id)} is named twice")
+		NamedTwice(id) => (400, "${Account.id_text(id)} is named twice")
 		NotAHuman(id) => (
 			400,
-			"${AccountCodec.id_text(id)} is no human: a channel's members are humans",
+			"${Account.id_text(id)} is no human: a channel's members are humans",
 		)
-		NoAccount(id) => (400, "no account is ${AccountCodec.id_text(id)}")
-		AlreadyIn(id) => (409, "${AccountCodec.id_text(id)} is in the channel already")
-		NotIn(id) => (409, "${AccountCodec.id_text(id)} is not in the channel")
+		NoAccount(id) => (400, "no account is ${Account.id_text(id)}")
+		AlreadyIn(id) => (409, "${Account.id_text(id)} is in the channel already")
+		NotIn(id) => (409, "${Account.id_text(id)} is not in the channel")
 		NoSuchChannel => (404, "no such channel")
 	}
 
@@ -569,7 +569,7 @@ asked_members = |form|
 		Err(Missing) => Ok([])
 		Ok([]) => Ok([])
 		Ok(text) => text.split_on(',').map_try(
-			|id| AccountCodec.id_from(
+			|id| Account.id_from(
 				id,
 				"members",
 			),
@@ -584,7 +584,7 @@ members_problem = "`members` is humans' ids, commas between, as `human:2,human:7
 asked_member : List(U8) -> Try(Principal.Id, Str)
 asked_member = |form|
 	match SignInWeb.form_field(form, "member") {
-		Ok(text) => AccountCodec.id_from(text, "member").map_err(|_| member_problem)
+		Ok(text) => Account.id_from(text, "member").map_err(|_| member_problem)
 		Err(_) => Err(member_problem)
 	}
 

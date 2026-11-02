@@ -5,7 +5,7 @@
 ## here.
 import pf.Host
 import pf.Sse
-import AccountCodec
+import Account
 import Bubble
 import Cast
 import Edits
@@ -20,7 +20,7 @@ PageFeed := [].{
 	## **THE BUS KEY OF A READER'S RECENT** (RecentPage.roc): a topic's post
 	## publishes each reader's tile, drawn for them, on theirs.
 	recent_key : Principal.Id -> List(U8)
-	recent_key = |reader| Str.to_utf8("recent/${AccountCodec.id_text(reader)}")
+	recent_key = |reader| Str.to_utf8("recent/${Account.id_text(reader)}")
 
 	## A Recent tile as one SSE event, named `message`.
 	recent_frame : Recent.Row -> List(U8)

@@ -1,5 +1,5 @@
-## **A CHANNEL, STORED** (ChannelLayout's `.../channel`): one line in
-## Stored's format, its name as it was made and its members, each bound to
+## **A CHANNEL'S MEMBERS** (ChannelLayout's `.../channel`): one line in
+## Stored's format, the channel's name as it was made and its members, each bound to
 ## their account as they were when let in:
 ##
 ##     channel v1 name=Cobblestone members=human:583231/3/3,human:7/1/1,agent:2/1/3
@@ -7,13 +7,13 @@
 ## - `name` is the name as made (ChannelName's rule), its spelling kept for
 ##   display; the folder the line is in is its key.
 ## - `members` is every member, in the order let in, each as
-##   AccountCodec.bound_text spells a binding; humans, agents and bots,
+##   Account.bound_text spells a binding; humans, agents and bots,
 ##   each once; empty for none, the one spelling of none.
 ##
 ## `decode` gives a Line, an opaque value only this module makes, and the
 ## only thing Channel.load takes: a channel comes back from the store through
 ## this decoder, never from a record a handler built. Pure.
-import AccountCodec
+import Account
 import Cast
 import ChannelName
 import Principal
@@ -46,7 +46,7 @@ ChannelMembers := [].{
 				"channel",
 				[
 					("name", c.name.to_str()),
-					("members", Str.join_with(c.members.map(AccountCodec.bound_text), ",")),
+					("members", Str.join_with(c.members.map(Account.bound_text), ",")),
 				],
 			)
 		} else {
@@ -65,7 +65,7 @@ ChannelMembers := [].{
 				[]
 			} else {
 				members_field.value.split_on(',').map_try(
-					|v| AccountCodec.bound_from(
+					|v| Account.bound_from(
 						v,
 						"members",
 					),

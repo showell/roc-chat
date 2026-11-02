@@ -1,14 +1,14 @@
 ## **THE STORE: EVERY FILE THE APP KEEPS, AND THE ONLY MODULE THAT NAMES
 ## ONE.** Its functions take and give the core's types (the accounts, the
 ## settings, a session, an audit entry); the paths, the line formats
-## (the core's codecs) and the host's file functions are kept here. A
+## (each record's module) and the host's file functions are kept here. A
 ## handler never names a path, so the store's layout is read in one module,
 ## and a fork that keeps its records elsewhere (a database) rewrites this
 ## module and the host's file functions, never a handler.
 ##
 ## The layout, under the data root:
 ##
-##     auth/accounts             every account, a line each (AccountCodec)
+##     auth/accounts             every account, a line each (Account)
 ##     auth/settings             the generation and agent-id counters (`settings_line`)
 ##     auth/audit                every refusal and admin act, appended (AuditLog)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (Session)
@@ -57,7 +57,7 @@
 ## anything, and the host answers the 500.
 import pf.Host
 import Accounts
-import AccountCodec
+import Account
 import AuditLog
 import Cast
 import Channel
@@ -164,7 +164,7 @@ Store := [].{
 		match read.status {
 			Missing => Ok([])
 			Failed => Err(Failed)
-			Found => AccountCodec.load(read.bytes).map_err(|_| Failed)
+			Found => Account.load(read.bytes).map_err(|_| Failed)
 		}
 	}
 
@@ -265,7 +265,7 @@ Store := [].{
 		settings : Accounts.Settings,
 	} => [Failed, Written]
 	save_accounts! = |{ accounts, settings }|
-		match accounts.map_try(AccountCodec.encode) {
+		match accounts.map_try(Account.encode) {
 			Err(_) => Failed
 			Ok(lines) =>
 				match Host.write!(settings_path, settings_line(settings)) {
@@ -839,7 +839,7 @@ erase_steps! = |plan| {
 	by_or_for = |r| r.by == plan.human or r.human.id == Principal.Id.Human(plan.human)
 	step(remove_each!(human_invites.keep_if(by_or_for).map(|r| human_invite_path(r.hash))))?
 	step(remove_each!(own_paths(plan.human)))?
-	lines = plan.left.map_try(AccountCodec.encode).map_err(|_| Failed)?
+	lines = plan.left.map_try(Account.encode).map_err(|_| Failed)?
 	match Host.write!(accounts_path, List.join(lines)) {
 		Failed => Err(Failed)
 		Written => Ok({})

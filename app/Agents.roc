@@ -40,7 +40,7 @@
 import pf.Chat
 import pf.Host
 import Accounts
-import AccountCodec
+import Account
 import ApiKey
 import AuditLog
 import Cast
@@ -1366,7 +1366,7 @@ invite_json = |invite, code| {
 	JsonOut.object(
 		[
 			("id", JsonOut.number(invite.id.to_u64())),
-			("for", JsonOut.string(AccountCodec.id_text(invite.bound.id))),
+			("for", JsonOut.string(Account.id_text(invite.bound.id))),
 			("expires", JsonOut.signed(invite.expires)),
 		].concat(shown),
 	)
@@ -1388,7 +1388,7 @@ asked_grant = |form, default_as| {
 		match SignInWeb.form_field(form, "as") {
 			Err(Missing) => Ok(default_as)
 			Err(Malformed) => Err("`as` names who the key acts as, as `agent:7`")
-			Ok(text) => AccountCodec.id_from(
+			Ok(text) => Account.id_from(
 				text,
 				"as",
 			).map_err(|_| "`as` names who the key acts as, as `agent:7`")
@@ -1582,11 +1582,11 @@ not_signed_in = Wire.refused(401, "not signed in")
 agent_json : Principal -> JsonOut
 agent_json = |agent|
 	JsonOut.object([
-		("id", JsonOut.string(AccountCodec.id_text(Principal.id(agent)))),
+		("id", JsonOut.string(Account.id_text(Principal.id(agent)))),
 		("name", JsonOut.string(name_of(agent))),
 		(
 			"owner",
-			JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(agent)))),
+			JsonOut.string(Account.id_text(Principal.Id.Human(Principal.answers_to(agent)))),
 		),
 	])
 
@@ -1617,7 +1617,7 @@ key_json = |key, secret| {
 	JsonOut.object(
 		[
 			("id", JsonOut.number(r.id.to_u64())),
-			("acts_as", JsonOut.string(AccountCodec.id_text(r.acts_as))),
+			("acts_as", JsonOut.string(Account.id_text(r.acts_as))),
 			("read", JsonOut.string(ApiKey.reach_text(r.scope.read))),
 			("post", JsonOut.string(ApiKey.reach_text(r.scope.post))),
 			("created", JsonOut.signed(r.created)),

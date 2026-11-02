@@ -42,7 +42,7 @@ import pf.Chat
 import pf.Host
 import pf.Sse
 import Access
-import AccountCodec
+import Account
 import Bubble
 import ChannelName
 import Chrome
@@ -476,7 +476,7 @@ page! = |s| {
 			kind: Chat,
 			body_attrs: Html.join([
 				Html.markup(" data-me=\""),
-				Html.text(AccountCodec.id_text(s.me.id)),
+				Html.text(Account.id_text(s.me.id)),
 				Html.markup("\" data-stream=\""),
 				Html.text(s.base),
 				Html.markup("/stream?after="),

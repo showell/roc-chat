@@ -12,7 +12,7 @@
 ## makes, which Session.start_invited takes, as GitHub sign-in's does
 ## Session.start: no handler mints an invited human's session. Pure; the
 ## routes are HumanInvites'.
-import AccountCodec
+import Account
 import Accounts
 import Cast
 import ChannelName
@@ -291,8 +291,8 @@ HumanInvite := [].{
 			"human-invite",
 			[
 				("id", r.id.to_u64().to_str()),
-				("for", AccountCodec.bound_text(r.human)),
-				("by", AccountCodec.id_text(Principal.Id.Human(r.by))),
+				("for", Account.bound_text(r.human)),
+				("by", Account.id_text(Principal.Id.Human(r.by))),
 				("hash", Stored.hash_text(r.hash)),
 				("created", Stored.time_text(r.created)),
 				("expires", Stored.time_text(r.expires)),
@@ -308,9 +308,9 @@ HumanInvite := [].{
 		id_field = fields.field("id")?
 		id = Stored.id(id_field.value, { name: "id", make: HumanInvite.InviteId.from_u64 })?
 		for_field = id_field.rest.field("for")?
-		human = AccountCodec.bound_from(for_field.value, "for")?
+		human = Account.bound_from(for_field.value, "for")?
 		by_field = for_field.rest.field("by")?
-		by = AccountCodec.id_from(by_field.value, "by")?
+		by = Account.id_from(by_field.value, "by")?
 		hash_field = by_field.rest.field("hash")?
 		hash = Stored.hash(hash_field.value, "hash")?
 		created_field = hash_field.rest.field("created")?
@@ -429,7 +429,6 @@ spell_refusal = |why|
 		Expired => "expired"
 		NoLongerHolds => "no-longer-holds"
 	}
-
 
 # ── tests
 

@@ -5,7 +5,7 @@
 ## topic's routes publish a page's bubbles too, which is why this is a
 ## module of its own, below both. Pure.
 import md.Md
-import AccountCodec
+import Account
 import Cast
 import Transcript
 import Principal
@@ -33,7 +33,7 @@ Render := [].{
 			Ok(Human(h)) => h.name
 			Ok(Agent(a)) => a.name
 			Ok(Bot(b)) => b.name
-			Err(_) => AccountCodec.id_text(id)
+			Err(_) => Account.id_text(id)
 		}
 
 	## **THE GITHUB LOGIN BESIDE A POSTER'S NAME** (DisplayName's promise:
@@ -60,7 +60,7 @@ Render := [].{
 	header_of : List(Principal), Principal.Id -> Str
 	header_of = |accounts, id|
 		match Principal.find(accounts, id) {
-			Err(_) => AccountCodec.id_text(id)
+			Err(_) => Account.id_text(id)
 			Ok(p) => {
 				name = Render.name_of(accounts, id)
 				match (p, Render.login_of(accounts, id)) {

@@ -25,7 +25,7 @@ import pf.Chat
 import pf.Host
 import md.Md
 import Access
-import AccountCodec
+import Account
 import Accounts
 import AuditLog
 import Channel
@@ -300,7 +300,7 @@ taken_as_written = |result|
 invite_again! : Inviter, List(U8) => Try(Chat.Answer, Chat.Answer)
 invite_again! = |inviter, text| {
 	human =
-		match AccountCodec.id_from(text, "for") {
+		match Account.id_from(text, "for") {
 			Ok(Human(h)) => Ok(h)
 			_ => Err(Wire.refused(400, "for= is the invited human's id"))
 		}?
@@ -468,7 +468,7 @@ invite_json = |
 	JsonOut.object(
 		[
 			("id", JsonOut.number(r.id.to_u64())),
-			("for", JsonOut.string(AccountCodec.id_text(r.human.id))),
+			("for", JsonOut.string(Account.id_text(r.human.id))),
 			("name", JsonOut.string(name)),
 			("expires", JsonOut.signed(r.expires)),
 		]
@@ -707,7 +707,7 @@ join! = |form| {
 									JsonOut.object([
 										(
 											"human",
-											JsonOut.string(AccountCodec.id_text(record.human.id)),
+											JsonOut.string(Account.id_text(record.human.id)),
 										),
 										(
 											"name",

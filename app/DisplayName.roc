@@ -1,4 +1,4 @@
-## **THE NAME A PRINCIPAL GOES BY** (the Roc chat's auth design, section 1):
+## **THE NAME A PRINCIPAL GOES BY**:
 ## a human chooses one at sign-up, and it "doesn't even have to be a real
 ## one" (Steve), but one is required; an agent's and a bot's names are held
 ## to the same rule. What the rule refuses is only what would hurt a reader

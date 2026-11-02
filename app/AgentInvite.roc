@@ -1,6 +1,6 @@
-## **AN AGENT'S INVITE, STORED**: a short-lived invite (ten minutes), so
-## humans never pass a durable secret around. One line in Stored's format, the code's hash and never
-## the code, which the human is shown once and hands to their agent:
+## **AN AGENT'S INVITE**: a short-lived invite (ten minutes), so humans
+## never pass a durable secret around. One line in Stored's format, the
+## code's hash and never the code, which the human is shown once and hands to their agent:
 ##
 ##     invite v1 id=3 for=agent:7 generation=5 human-generation=4 by=session:<64 hex digits> hash=<64 hex digits> created=1761600000 expires=1761600600 state=live lifetime=31536000 read=everywhere post=everywhere
 ##
@@ -16,7 +16,7 @@
 ##
 ## The refusals of a redemption are here too, so the audit spells them
 ## (AuditLog) without asking the wire. Pure.
-import AccountCodec
+import Account
 import ApiKey
 import Bytes
 import Cast
@@ -97,7 +97,7 @@ AgentInvite := [].{
 			"invite",
 			[
 				("id", r.id.to_u64().to_str()),
-				("for", AccountCodec.id_text(r.bound.id)),
+				("for", Account.id_text(r.bound.id)),
 				("generation", r.bound.generation.to_u64().to_str()),
 				("human-generation", r.bound.human.to_u64().to_str()),
 				("by", by_text(r.by)),
@@ -120,7 +120,7 @@ AgentInvite := [].{
 		id_field = fields.field("id")?
 		id = Stored.id(id_field.value, { name: "id", make: AgentInvite.InviteId.from_u64 })?
 		for_field = id_field.rest.field("for")?
-		invited = AccountCodec.id_from(for_field.value, "for")?
+		invited = Account.id_from(for_field.value, "for")?
 		generation_field = for_field.rest.field("generation")?
 		generation = Stored.id(
 			generation_field.value,

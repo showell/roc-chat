@@ -7,7 +7,7 @@
 import pf.Chat
 import pf.Host
 import Accounts
-import AccountCodec
+import Account
 import AuditLog
 import GitHubSignIn
 import Html
@@ -248,7 +248,7 @@ admit! = |session, as_of|
 					Touched(s) => Store.save_session!(s)
 				}
 			if touched == Written {
-				Chat.plain(Str.to_utf8("signed in as ${AccountCodec.id_text(Principal.id(principal))}\n"))
+				Chat.plain(Str.to_utf8("signed in as ${Account.id_text(Principal.id(principal))}\n"))
 			} else {
 				Chat.failed
 			}

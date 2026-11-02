@@ -3,7 +3,7 @@
 -- `admin=` (a key's scope is read and post), and an audit-key use line's
 -- `action=` naming what was asked (a refusal comes before the request is
 -- known: every one says `action=use`). Run once, from roc-chat's root,
--- right after the deploy whose codecs no longer read them:
+-- right after the deploy whose decoders no longer read them:
 --
 --   shale tools/drop_vestiges.shale
 --

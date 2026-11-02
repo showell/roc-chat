@@ -275,7 +275,7 @@ test "a new human: the callback with a good code asks for a name, the name makes
     try std.testing.expectEqual(200, me.status);
     try std.testing.expectEqualStrings("signed in as human:1\n", me.body);
 
-    // The account is stored through AccountCodec, the settings' counter advanced.
+    // The account is stored through Account, the settings' counter advanced.
     var buf: [1024]u8 = undefined;
     const accounts = try rig.data.dir.readFile(io, "auth/accounts", &buf);
     try std.testing.expectEqualStrings("account v1 kind=human id=1 github=583231 login=octocat generation=1 role=member name=The Octocat\n", accounts);

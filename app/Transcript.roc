@@ -1,6 +1,5 @@
-## **A MESSAGE, STORED, AND A TRANSCRIPT OF THEM**: a message is one line in
-## Stored's format, and a topic's transcript is its messages' lines,
-## appended in order:
+## **A TOPIC'S TRANSCRIPT**: its messages, each one line in Stored's
+## format, appended in order:
 ##
 ##     message v1 id=3 at=1761600000 by=human:583231 body=two%0Alines, 100%25
 ##
@@ -16,7 +15,7 @@
 ##   needless `%41`) is refused.
 ##
 ## `decode` gives a Line, an opaque value only this module makes. Pure.
-import AccountCodec
+import Account
 import Cast
 import Principal
 import Stored
@@ -52,7 +51,7 @@ Transcript := [].{
 				[
 					("id", m.id.to_str()),
 					("at", Stored.time_text(m.at)),
-					("by", AccountCodec.id_text(m.by)),
+					("by", Account.id_text(m.by)),
 				],
 			)
 			[
@@ -72,7 +71,7 @@ Transcript := [].{
 		at_field = id_field.rest.field("at")?
 		at = Stored.time(at_field.value, "at")?
 		by_field = at_field.rest.field("by")?
-		by = AccountCodec.id_from(by_field.value, "by")?
+		by = Account.id_from(by_field.value, "by")?
 		text = by_field.rest.text("body")?
 		body = unescaped(text.to_utf8())?
 		if id == 0 {

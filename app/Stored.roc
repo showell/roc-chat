@@ -23,7 +23,7 @@
 ## is appended to, an attempt a line), `grep` finds a record, a torn append
 ## is visible, and a reader needs no other tool. Why not JSON: it has many
 ## spellings of one value, and a decoder that accepts them all is a decoder
-## that guesses. Each record's module (AccountCodec, Session, ApiKey,
+## that guesses. Each record's module (Account, Session, ApiKey,
 ## AgentInvite, HumanInvite, AuditLog, ChannelMembers, Topic, Transcript)
 ## decodes into the core's types here, at the door. Pure.
 import Ascii
@@ -37,11 +37,11 @@ Stored := [].{
 
 	## **WHY A STORED RECORD IS REFUSED**, one name each. A field's name is
 	## the payload where one field is at fault. **ONE ALIAS ON PURPOSE**:
-	## every codec reads its line through Reader, so each decoder can fail
+	## every record's decoder reads its line through Reader, so each decoder can fail
 	## with nearly all of these, and its callers pass the refusal on whole
 	## (only the audit's decoder looks inside, trying the next kind on
 	## `WrongRecord`); a decoder's tags listed in place would be this list
-	## copied into each codec.
+	## copied into each decoder.
 	Problem : [
 		## No newline at the end: a torn write.
 		Torn,
@@ -102,7 +102,7 @@ Stored := [].{
 
 	## **THE ONE LINE OF A RECORD**: its kind, the version, then each field
 	## as `name=value`, a space before each, and the newline. Only the last
-	## value may hold a space; no value holds a control byte. The codecs
+	## value may hold a space; no value holds a control byte. The decoders
 	## make their values from types that hold neither (a free-text value is
 	## checked by its rule first), so a value that does is a bug: a crash.
 	line : Str, List((Str, Str)) -> List(U8)
@@ -249,7 +249,7 @@ Stored := [].{
 
 	## **A WORD FROM A CLOSED SET**: the one of `members` whose `spell` it is.
 	## `spell` is the one home of each member's word (an exhaustive match);
-	## `members` lists them all, and each codec's round trips hold it whole.
+	## `members` lists them all, and each record's round trips hold it whole.
 	word : List(U8),
 	{
 		name : Str,

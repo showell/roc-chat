@@ -32,7 +32,7 @@
 ## list.
 import pf.Chat
 import Access
-import AccountCodec
+import Account
 import Agents
 import Channel
 import Channels
@@ -372,7 +372,7 @@ channels_page = |listing| {
 
 ## An id as the page writes it, escaped.
 id_html : Principal.Id -> Html
-id_html = |id| Html.text(AccountCodec.id_text(id))
+id_html = |id| Html.text(Account.id_text(id))
 
 ## One key: its id, who it acts as, what it may read and post, how long it
 ## lives, and its revoke button; never its secret or its hash.

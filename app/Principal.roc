@@ -1,4 +1,4 @@
-## **WHO IS ACTING** (the Roc chat's auth design, section 1): every request
+## **WHO IS ACTING**: every request
 ## acts as exactly one principal, a human, or an agent or a bot a human
 ## owns. Each kind's id is a type of its own, so a human's id, a GitHub id,
 ## an agent's id and a key's id cannot be passed for one another. Pure;

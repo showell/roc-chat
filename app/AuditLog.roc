@@ -1,5 +1,4 @@
-## **THE AUDIT LOG, STORED** (the Roc chat's auth design, section 9): one
-## line in Stored's format for every sign-in refused, and for every key
+## **THE AUDIT LOG**: one line in Stored's format for every sign-in refused, and for every key
 ## refused, in use or in its grant:
 ##
 ##     audit-sign-in v1 at=1761600090 github=583231 verdict=refused:state-expired
@@ -36,7 +35,7 @@
 ## public number); revoked, by whom; or a redemption refused. Never the
 ## code, nor its hash.
 ##
-## Who (a principal's id, as AccountCodec spells it), by which session or
+## Who (a principal's id, as Account spells it), by which session or
 ## key (its public number), what, when, and the verdict, each spelled once:
 ## an action as a word and its target after a colon, a refusal as a word (a
 ## key's after `key:` in an admin line), a plan as its steps, commas
@@ -47,7 +46,7 @@
 ## **AN ENTRY IS OPAQUE**, made only by `of_sign_in`, `of_key`,
 ## `of_invite`, `of_human_invite`, `of_channel` and `of_rename`, which refuse a time outside Stored's range (ClockOutOfRange),
 ## or by `decode`: the encoder never meets a time it cannot write. Pure.
-import AccountCodec
+import Account
 import ApiKey
 import Bytes
 import Cast
@@ -278,7 +277,7 @@ AuditLog := [].{
 					key_kind,
 					[
 						("at", Stored.time_text(u.at)),
-						("who", AccountCodec.id_text(u.who)),
+						("who", Account.id_text(u.who)),
 						("via", via_text(Key(u.key))),
 						("action", use_word),
 						("verdict", "${refused_prefix}${spell_key_refusal(u.refusal)}"),
@@ -290,9 +289,9 @@ AuditLog := [].{
 					key_kind,
 					[
 						("at", Stored.time_text(g.at)),
-						("who", AccountCodec.id_text(g.who)),
+						("who", Account.id_text(g.who)),
 						("via", via_text(g.via)),
-						("action", "${grant_word}${colon}${AccountCodec.id_text(g.acts_as)}"),
+						("action", "${grant_word}${colon}${Account.id_text(g.acts_as)}"),
 						("verdict", "${refused_prefix}${spell_grant_refusal(g.refusal)}"),
 					],
 				)
@@ -301,7 +300,7 @@ AuditLog := [].{
 				(invite, agent) =
 					match i.invite {
 						Unknown => (unknown_word, unknown_word)
-						Known(k) => (k.id.to_u64().to_str(), AccountCodec.id_text(k.agent))
+						Known(k) => (k.id.to_u64().to_str(), Account.id_text(k.agent))
 					}
 				Stored.line(
 					invite_kind,
@@ -320,7 +319,7 @@ AuditLog := [].{
 						Unknown => (unknown_word, unknown_word)
 						Known(k) => (
 							k.id.to_u64().to_str(),
-							AccountCodec.id_text(Principal.Id.Human(k.human)),
+							Account.id_text(Principal.Id.Human(k.human)),
 						)
 					}
 				Stored.line(
@@ -339,11 +338,11 @@ AuditLog := [].{
 					channel_kind,
 					[
 						("at", Stored.time_text(c.at)),
-						("who", AccountCodec.id_text(c.who)),
+						("who", Account.id_text(c.who)),
 						("via", via_text(c.via)),
 						("action", spell_channel_action(c.action)),
 						("channel", channel_text(c.channel)),
-						("members", Str.join_with(c.members.map(AccountCodec.id_text), ",")),
+						("members", Str.join_with(c.members.map(Account.id_text), ",")),
 						("verdict", channel_verdict_text(c.verdict)),
 					],
 				)
@@ -353,9 +352,9 @@ AuditLog := [].{
 					rename_kind,
 					[
 						("at", Stored.time_text(r.at)),
-						("who", AccountCodec.id_text(r.who)),
+						("who", Account.id_text(r.who)),
 						("via", via_text(r.via)),
-						("agent", AccountCodec.id_text(r.agent)),
+						("agent", Account.id_text(r.agent)),
 						("verdict", rename_verdict_text(r.verdict)),
 						("name", r.name),
 					],
@@ -470,11 +469,11 @@ decode_rename = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
 	who_field = at_field.rest.field("who")?
-	who = AccountCodec.id_from(who_field.value, "who")?
+	who = Account.id_from(who_field.value, "who")?
 	via_field = who_field.rest.field("via")?
 	via = via_from(via_field.value)?
 	agent_field = via_field.rest.field("agent")?
-	agent = AccountCodec.id_from(agent_field.value, "agent")?
+	agent = Account.id_from(agent_field.value, "agent")?
 	verdict_field = agent_field.rest.field("verdict")?
 	verdict = rename_verdict_from(verdict_field.value)?
 	name = verdict_field.rest.text("name")?
@@ -636,7 +635,7 @@ decode_channel = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
 	who_field = at_field.rest.field("who")?
-	who = AccountCodec.id_from(who_field.value, "who")?
+	who = Account.id_from(who_field.value, "who")?
 	via_field = who_field.rest.field("via")?
 	via = via_from(via_field.value)?
 	action_field = via_field.rest.field("action")?
@@ -655,7 +654,7 @@ decode_channel = |fields| {
 		if members_field.value.is_empty() {
 			[]
 		} else {
-			members_field.value.split_on(',').map_try(|v| AccountCodec.id_from(v, "members"))?
+			members_field.value.split_on(',').map_try(|v| Account.id_from(v, "members"))?
 		}
 	verdict_field = members_field.rest.field("verdict")?
 	verdict = channel_verdict_from(verdict_field.value)?
@@ -785,7 +784,7 @@ human_invite_verdict_text = |verdict| {
 	by = |
 		act,
 		h,
-	| "${spell_human_invite_act(act)}${colon}${AccountCodec.id_text(Principal.Id.Human(h))}"
+	| "${spell_human_invite_act(act)}${colon}${Account.id_text(Principal.Id.Human(h))}"
 	match verdict {
 		Created(h) => by(Created, h)
 		Reinvited(h) => by(Reinvited, h)
@@ -825,7 +824,7 @@ human_invite_verdict_from = |value|
 						Key(_) => Err(BadValue("verdict"))
 					}
 				_ =>
-					match (act, AccountCodec.id_from(tail, "verdict")?) {
+					match (act, Account.id_from(tail, "verdict")?) {
 						(Created, Human(h)) => Ok(Created(h))
 						(Reinvited, Human(h)) => Ok(Reinvited(h))
 						(Revoked, Human(h)) => Ok(Revoked(h))
@@ -866,7 +865,7 @@ human_invite_from = |invite_value, for_value| {
 		Err(BadValue("for"))
 	} else {
 		id = Stored.id(invite_value, { name: "invite", make: HumanInvite.InviteId.from_u64 })?
-		match AccountCodec.id_from(for_value, "for")? {
+		match Account.id_from(for_value, "for")? {
 			Human(h) => Ok(Known({ id, human: h }))
 			_ => Err(BadValue("for"))
 		}
@@ -904,7 +903,7 @@ invite_from = |invite_value, for_value| {
 		Err(BadValue("for"))
 	} else {
 		id = Stored.id(invite_value, { name: "invite", make: AgentInvite.InviteId.from_u64 })?
-		agent = AccountCodec.id_from(for_value, "for")?
+		agent = Account.id_from(for_value, "for")?
 		Ok(Known({ id, agent }))
 	}
 }
@@ -937,7 +936,7 @@ decode_key = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
 	who_field = at_field.rest.field("who")?
-	who = AccountCodec.id_from(who_field.value, "who")?
+	who = Account.id_from(who_field.value, "who")?
 	via_field = who_field.rest.field("via")?
 	via = via_from(via_field.value)?
 	action_field = via_field.rest.field("action")?
@@ -946,7 +945,7 @@ decode_key = |fields| {
 	if action_field.value != Str.to_utf8(use_word) {
 		{ head, tail } = split_colon(action_field.value, "action")?
 		acts_as =
-			if (head == Str.to_utf8(grant_word)) AccountCodec.id_from(tail, "action")? else Err(UnknownWord("action"))?
+			if (head == Str.to_utf8(grant_word)) Account.id_from(tail, "action")? else Err(UnknownWord("action"))?
 		refusal = refused_word(
 			verdict_field.value,
 			{ members: all_grant_refusals, spell: spell_grant_refusal },

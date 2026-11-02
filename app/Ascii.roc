@@ -1,5 +1,5 @@
 ## ASCII BYTE CHECKS: seven questions about one byte, and its two case
-## maps, for the codecs and the name rules. Pure. roc-markdown keeps its
+## maps, for the line formats and the name rules. Pure. roc-markdown keeps its
 ## own copy, on purpose, until a package both can share exists.
 ##
 ## **ONE BYTE AT A TIME, SAFE ON UTF-8 BY CONSTRUCTION.** Every byte of a

@@ -1,5 +1,4 @@
-## **A CHANNEL AND WHO IS IN IT** (the channels design, Steve's decisions
-## of 2026-10-31 and 2026-11-01): a name (ChannelName), and its members,
+## **A CHANNEL AND WHO IS IN IT**: a name (ChannelName), and its members,
 ## humans, agents and bots alike. Who is in holds for every topic in it
 ## (Topic.roc): a member reads, posts and makes topics in all of them.
 ##

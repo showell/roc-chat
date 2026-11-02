@@ -1,4 +1,4 @@
-## **A GITHUB LOGIN** (the Roc chat's auth design, section 1): the name a
+## **A GITHUB LOGIN**: the name a
 ## GitHub account goes by, kept for display and for the link to its GitHub
 ## page. Never the key of an account: a login can be renamed, and a freed
 ## login taken by another account, so an account is its numeric GitHub id

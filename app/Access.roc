@@ -1,4 +1,4 @@
-## **WHO IS ASKING** (the Roc chat's auth design, sections 4 and 11): the
+## **WHO IS ASKING**: the
 ## viewer every decision takes. **A KEY SAYS WHO YOU ARE** (Steve,
 ## 2026-11-01): what the viewer may reach is the chat's other rules' (a
 ## channel's members, Topic.roc), asked of `who`; a key adds only whether

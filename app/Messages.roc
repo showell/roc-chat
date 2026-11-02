@@ -18,7 +18,7 @@ import pf.Chat
 import pf.Sse
 import md.Md
 import Access
-import AccountCodec
+import Account
 import AgentStream
 import Bytes
 import Cast
@@ -154,7 +154,7 @@ Messages := [].{
 
 	## The bus key an agent's or a bot's one stream is held on.
 	agent_key : Principal.Id -> List(U8)
-	agent_key = |id| Str.to_utf8("agent/${AccountCodec.id_text(id)}")
+	agent_key = |id| Str.to_utf8("agent/${Account.id_text(id)}")
 
 	## **A MESSAGE AS THE ONE STREAM'S EVENT**: named `message`, its data
 	## the message's JSON with `lead` first, its id its place
@@ -269,7 +269,7 @@ Messages := [].{
 	holder = |viewer|
 		match viewer.who() {
 			SignedOut => crash "Messages.holder: a stream is held by someone signed in"
-			Session(b) | Key(b) => Str.to_utf8(AccountCodec.id_text(b.id))
+			Session(b) | Key(b) => Str.to_utf8(Account.id_text(b.id))
 		}
 }
 
@@ -292,8 +292,8 @@ message_fields = |m, who| {
 	author = [
 		("id", JsonOut.number(m.id)),
 		("at", JsonOut.signed(m.at)),
-		("by", JsonOut.string(AccountCodec.id_text(m.by))),
-		("kind", JsonOut.string(AccountCodec.kind_text(m.by))),
+		("by", JsonOut.string(Account.id_text(m.by))),
+		("kind", JsonOut.string(Account.kind_text(m.by))),
 	].concat(owner_of(who.accounts, m.by)).concat(
 		match Render.login_of(who.accounts, m.by) {
 			Login(l) => [("login", JsonOut.string(l))]
@@ -303,7 +303,7 @@ message_fields = |m, who| {
 	mentioned = Mentions.of_post(
 		m.body,
 		{ by: m.by, participants: who.named },
-	).map(|id| JsonOut.string(AccountCodec.id_text(id)))
+	).map(|id| JsonOut.string(Account.id_text(id)))
 	author.concat([
 		("markdown", JsonOut.text(m.body)),
 		("mentions", JsonOut.array(mentioned)),
@@ -324,7 +324,7 @@ owner_of = |accounts, by|
 				Ok(p) => [
 					(
 						"owner",
-						JsonOut.string(AccountCodec.id_text(Principal.Id.Human(Principal.answers_to(p)))),
+						JsonOut.string(Account.id_text(Principal.Id.Human(Principal.answers_to(p)))),
 					),
 				]
 				Err(_) => []

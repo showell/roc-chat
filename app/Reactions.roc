@@ -30,7 +30,7 @@
 ## (`strip`), as it draws every bubble (Steve's decision: the server sends
 ## HTML, never JSON for the page to draw), the page's script only marking
 ## the viewer's own. Pure.
-import AccountCodec
+import Account
 import Html
 import JsonOut
 import Principal
@@ -75,7 +75,7 @@ Reactions := [].{
 		} else {
 			JsonOut.object([
 				("msg", JsonOut.number(e.n)),
-				("uid", JsonOut.string(AccountCodec.id_text(e.by))),
+				("uid", JsonOut.string(Account.id_text(e.by))),
 				("from", JsonOut.string(e.from)),
 				("emoji", JsonOut.string(e.emoji)),
 				("on", JsonOut.bool(e.on)),
@@ -94,7 +94,7 @@ Reactions := [].{
 		n = Stored.count(n_digits, "msg").map_err(|_| NotAReaction)?
 		uid_at = after(msg.drop_first(n_digits.len()), ",\"uid\":")?
 		uid = json_string(uid_at)?
-		by = AccountCodec.id_from(uid.text, "uid").map_err(|_| NotAReaction)?
+		by = Account.id_from(uid.text, "uid").map_err(|_| NotAReaction)?
 		from = json_string(after(uid.rest, ",\"from\":")?)?
 		emoji = json_string(after(from.rest, ",\"emoji\":")?)?
 		on_rest = after(emoji.rest, ",\"on\":")?
@@ -155,7 +155,7 @@ Reactions := [].{
 						Html.markup("<button type=button class=chat-react-chip data-emoji=\""),
 						Html.text(c.emoji),
 						Html.markup("\" data-by=\""),
-						Html.text(Str.join_with(c.by.map(|who| AccountCodec.id_text(who.id)), " ")),
+						Html.text(Str.join_with(c.by.map(|who| Account.id_text(who.id)), " ")),
 						Html.markup("\" data-names=\""),
 						Html.text(Str.join_with(c.by.map(|who| who.name), ", ")),
 						Html.markup("\">"),

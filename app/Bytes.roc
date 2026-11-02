@@ -1,4 +1,4 @@
-## BYTE SEARCHES AND TRIMS THE CODECS SHARE: finding a run of bytes,
+## BYTE SEARCHES AND TRIMS THE LINE FORMATS SHARE: finding a run of bytes,
 ## counting the bytes that keep a test from either end, and trimming a set
 ## off both ends, on bytes, never Str (a stored line or a name is bytes
 ## until it is checked). Splits and prefix tests are List's own

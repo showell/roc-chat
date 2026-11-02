@@ -1,5 +1,4 @@
-## **A TOPIC, AND WHO MAY READ AND POST IN IT** (the channels design,
-## Steve's decisions of 2026-10-31 and 2026-11-01): a topic is its channel
+## **A TOPIC, AND WHO MAY READ AND POST IN IT**: a topic is its channel
 ## and its name (TopicName, scoped to that channel). **WHO TAKES PART IS
 ## THE CHANNEL'S**: every member of the channel, human, agent or bot,
 ## reads, posts in and makes every one of its topics, and nobody else does.

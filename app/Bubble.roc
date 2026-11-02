@@ -11,7 +11,7 @@
 ## publishes is built once, for every stream. Its time is machine-readable
 ## (`data-at`, unix seconds) and the script writes it in the viewer's zone,
 ## which the server does not know. Pure.
-import AccountCodec
+import Account
 import Cast
 import Html
 import Transcript
@@ -59,7 +59,7 @@ Bubble := [].{
 			Html.markup(" data-ref=\""),
 			Html.text(ref),
 			Html.markup("\" data-by=\""),
-			Html.text(AccountCodec.id_text(m.by)),
+			Html.text(Account.id_text(m.by)),
 			Html.markup("\"><div class=chat-meta>#"),
 			Html.number(m.id),
 			Html.markup(" "),

@@ -1,4 +1,4 @@
-## **A CHANNEL'S TOPICS ON THE WIRE** (the channels design; Topic.roc
+## **A CHANNEL'S TOPICS ON THE WIRE** (Topic.roc
 ## decides, Store.roc keeps them, Channel.roc says who is a member):
 ##
 ##     POST /channels/<channel>/topics                    make one: a form, `name=`
@@ -23,7 +23,7 @@ import pf.Host
 import pf.Sse
 import md.Md
 import Access
-import AccountCodec
+import Account
 import Bubble
 import Channel
 import ChannelLayout
@@ -507,7 +507,7 @@ start_dm_from! = |form| {
 	v = Topics.load_viewer!({})?
 	other =
 		match SignInWeb.form_field(form, "with") {
-			Ok(text) => AccountCodec.id_from(text, "with").map_err(
+			Ok(text) => Account.id_from(text, "with").map_err(
 				|_| Wire.refused(
 					400,
 					"with= is the other human's id",
@@ -528,7 +528,7 @@ dm_json = |dm, accounts|
 		("dm", JsonOut.string(dm.name().to_str())),
 		(
 			"members",
-			JsonOut.array(dm.members(accounts).map(|b| JsonOut.string(AccountCodec.id_text(b.id)))),
+			JsonOut.array(dm.members(accounts).map(|b| JsonOut.string(Account.id_text(b.id)))),
 		),
 	])
 

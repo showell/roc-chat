@@ -1,5 +1,5 @@
-## **AN ACCOUNT, STORED** (the Roc chat's auth design, section 1): a human,
-## an agent or a bot, one line in Stored's format:
+## **AN ACCOUNT**: a human, an agent or a bot, one line in Stored's
+## format:
 ##
 ##     account v1 kind=human id=1 github=583231 login=octocat generation=3 role=admin name=Steve H.
 ##     account v1 kind=human id=5 invited-by=1 login= generation=6 role=member name=Ann
@@ -24,7 +24,7 @@ import GitHubLogin
 import Principal
 import Stored
 
-AccountCodec := [].{
+Account := [].{
 
 	## Why an account will not encode: a name or a login its rule refuses
 	## (an account built by hand; the sign-in flow makes only good ones).
@@ -52,7 +52,7 @@ AccountCodec := [].{
 							sign_in_field(h.sign_in),
 							("login", login),
 							("generation", h.generation.to_u64().to_str()),
-							("role", AccountCodec.role_text(h.role)),
+							("role", Account.role_text(h.role)),
 							("name", name),
 						],
 					),
@@ -129,7 +129,7 @@ AccountCodec := [].{
 				_ => []
 			}
 		decoded = lines.map(|l| l.append('\n')).concat(torn).map_with_index(|bytes, i|
-			AccountCodec.decode(bytes).map_err(|problem| BadLine({ line: i + 1, problem })))
+			Account.decode(bytes).map_err(|problem| BadLine({ line: i + 1, problem })))
 		accounts = decoded.map_try(|d| d)?
 		unique = Principal.unique(accounts).map_err(|DuplicateId(id)| DuplicateId(id))?
 		Principal.one_sign_in_each(unique).map_err(|DuplicateSignIn(g)| DuplicateSignIn(g))
@@ -141,9 +141,9 @@ AccountCodec := [].{
 	id_text : Principal.Id -> Str
 	id_text = |id|
 		match id {
-			Human(g) => "${AccountCodec.kind_text(id)}:${g.to_u64().to_str()}"
-			Agent(a) => "${AccountCodec.kind_text(id)}:${a.to_u64().to_str()}"
-			Bot(b) => "${AccountCodec.kind_text(id)}:${b.to_u64().to_str()}"
+			Human(g) => "${Account.kind_text(id)}:${g.to_u64().to_str()}"
+			Agent(a) => "${Account.kind_text(id)}:${a.to_u64().to_str()}"
+			Bot(b) => "${Account.kind_text(id)}:${b.to_u64().to_str()}"
 		}
 
 	## **A PRINCIPAL'S KIND AS EVERY RECORD SPELLS IT**: `human`, `agent` or
@@ -175,7 +175,7 @@ AccountCodec := [].{
 			{
 				name,
 				members: all_roles,
-				spell: AccountCodec.role_text,
+				spell: Account.role_text,
 			},
 		)
 
@@ -213,7 +213,7 @@ AccountCodec := [].{
 	## human it answers to); what a channel's
 	## `members` and a topic's `agents` hold.
 	bound_text : Principal.Bound -> Str
-	bound_text = |b| "${AccountCodec.id_text(b.id)}/${b.generation.to_u64().to_str()}/${b.human.to_u64().to_str()}"
+	bound_text = |b| "${Account.id_text(b.id)}/${b.generation.to_u64().to_str()}/${b.human.to_u64().to_str()}"
 
 	## The binding the value `bound_text` spelled, in the field `name`. A
 	## human's two generations are one, so a value whose two differ is
@@ -226,7 +226,7 @@ AccountCodec := [].{
 				generation_part,
 				human_part,
 			] => {
-				id = AccountCodec.id_from(id_part, name)?
+				id = Account.id_from(id_part, name)?
 				generation = Stored.id(
 					generation_part,
 					{ name, make: Principal.Generation.from_u64 },
@@ -373,7 +373,7 @@ decode_human = |after_kind| {
 		}
 	generation = generation_after(login.rest)?
 	role = generation.rest.field("role")?
-	role_word = AccountCodec.role_from(role.value, "role")?
+	role_word = Account.role_from(role.value, "role")?
 	name = stored_name(role.rest)?
 	Ok(
 		Principal.Human({
@@ -508,10 +508,10 @@ every = |principal|
 	}
 
 ## The account, stored and read back.
-round_trip : Principal -> Try(Every, [Encode(AccountCodec.EncodeProblem), Decode(Stored.Problem)])
+round_trip : Principal -> Try(Every, [Encode(Account.EncodeProblem), Decode(Stored.Problem)])
 round_trip = |account| {
-	line = AccountCodec.encode(account).map_err(|why| Encode(why))?
-	AccountCodec.decode(line).map_err(|why| Decode(why)).map_ok(every)
+	line = Account.encode(account).map_err(|why| Encode(why))?
+	Account.decode(line).map_err(|why| Decode(why)).map_ok(every)
 }
 
 ## The account survives a round trip whole.
@@ -521,7 +521,7 @@ is_kept = |account| round_trip(account) == Ok(every(account))
 ## The account's line, as text.
 line_of : Principal -> Str
 line_of = |account|
-	match AccountCodec.encode(account) {
+	match Account.encode(account) {
 		Ok(bytes) =>
 			match Str.from_utf8(bytes) {
 				Ok(text) => text
@@ -592,8 +592,8 @@ expect
 	].all(
 		|text| {
 			raw = text.to_utf8()
-			match AccountCodec.decode(raw) {
-				Ok(account) => AccountCodec.encode(account) == Ok(raw)
+			match Account.decode(raw) {
+				Ok(account) => Account.encode(account) == Ok(raw)
 				Err(_) => Bool.False
 			}
 		},
@@ -601,7 +601,7 @@ expect
 
 # ── THE MALFORMED TABLE: each line, its named problem.
 decoded : Str -> Try({}, _)
-decoded = |text| AccountCodec.decode(text.to_utf8()).map_ok(|_| {})
+decoded = |text| Account.decode(text.to_utf8()).map_ok(|_| {})
 
 human_line : Str
 human_line = "account v1 kind=human id=4 github=1 login=a generation=7 role=member name=b\n"
@@ -638,14 +638,14 @@ expect human_but({ from: " id=4", to: "" }) == Err(MissingField("id"))
 expect human_but({ from: "id=4", to: "id=0" }) == Err(BadValue("id"))
 expect human_but({ from: "id=4 github=1", to: "github=1 id=4" }) == Err(MissingField("id"))
 expect
-	match AccountCodec.decode(human_line.to_utf8()) {
+	match Account.decode(human_line.to_utf8()) {
 		Ok(Human(h)) => h.id == Cast.hid(4) and h.sign_in == GitHub(Cast.gid(1))
 		_ => Bool.False
 	}
 expect human_but({ from: "github=1", to: "github=1 github=1" }) == Err(MissingField("login"))
 # An invited human: `invited-by` in `github`'s place, kept both ways.
 expect
-	match AccountCodec.decode(
+	match Account.decode(
 		human_line.replace_first(
 			"github=1 login=a",
 			"invited-by=2 login=",
@@ -698,7 +698,7 @@ expect agent_but({
 	from: "kind=agent id=7",
 	to: "kind=bot id=18446744073709551616",
 }) == Err(BadNumber("id"))
-expect AccountCodec.decode([
+expect Account.decode([
 	0x61,
 	0xff,
 	'\n',
@@ -713,11 +713,11 @@ expect
 			Principal.Id.Agent(Cast.aid(7)),
 			Principal.Id.Bot(Cast.aid(7)),
 		],
-		|id| AccountCodec.id_from(AccountCodec.id_text(id).to_utf8(), "who") == Ok(id),
+		|id| Account.id_from(Account.id_text(id).to_utf8(), "who") == Ok(id),
 	)
-expect AccountCodec.id_text(Principal.Id.Bot(Cast.aid(9))) == "bot:9"
+expect Account.id_text(Principal.Id.Bot(Cast.aid(9))) == "bot:9"
 id_read : Str -> Try(Principal.Id, _)
-id_read = |text| AccountCodec.id_from(text.to_utf8(), "who")
+id_read = |text| Account.id_from(text.to_utf8(), "who")
 
 expect id_read("human:0") == Err(BadValue("who"))
 expect id_read("human") == Err(BadValue("who"))
@@ -730,15 +730,15 @@ expect id_read("agent:7:8") == Err(BadNumber("who"))
 
 # What will not encode: a name the rule refuses, one untrimmed, a login
 # GitHub would not give.
-expect AccountCodec.encode(human({ name: "", role: Member })) == Err(NameRefused(Empty))
-expect AccountCodec.encode(
+expect Account.encode(human({ name: "", role: Member })) == Err(NameRefused(Empty))
+expect Account.encode(
 	human({
 		name: "a\nrole=admin",
 		role: Member,
 	}),
 ) == Err(NameRefused(ControlCharacter))
-expect AccountCodec.encode(human({ name: " Ann", role: Member })) == Err(NameUntrimmed)
-expect AccountCodec.encode(
+expect Account.encode(human({ name: " Ann", role: Member })) == Err(NameUntrimmed)
+expect Account.encode(
 	Principal.Agent({
 		id: Cast.aid(1),
 		owner: Cast.hid(1),
@@ -747,7 +747,7 @@ expect AccountCodec.encode(
 	}),
 ) == Err(NameRefused(Empty))
 expect
-	AccountCodec.encode(
+	Account.encode(
 		Principal.Human({
 			id: Cast.hid(1),
 			sign_in: Cast.github(1),
@@ -761,7 +761,7 @@ expect
 
 # ── THE ACCOUNTS LOADER
 loaded : Str -> Try(List(Principal.Id), _)
-loaded = |text| AccountCodec.load(text.to_utf8()).map_ok(|list| list.map(Principal.id))
+loaded = |text| Account.load(text.to_utf8()).map_ok(|list| list.map(Principal.id))
 
 agent_7 : Str
 agent_7 = "account v1 kind=agent id=7 owner=1 generation=2 name=CC\n"

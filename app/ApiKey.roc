@@ -17,14 +17,13 @@
 ##
 ## The key's secret and its hash are the host's; this is the record the
 ## Roc decides on, and its line. Pure.
-import AccountCodec
+import Account
 import Cast
 import Principal
 import Session
 import Stored
 
 ApiKey := [].{
-
 
 	## **WHAT A KEY MAY DO**, each part on or off.
 	Scope : {
@@ -104,7 +103,7 @@ ApiKey := [].{
 			"key",
 			[
 				("id", record.id.to_u64().to_str()),
-				("acts", AccountCodec.id_text(record.acts_as)),
+				("acts", Account.id_text(record.acts_as)),
 				("generation", record.generation.to_u64().to_str()),
 				("human-generation", record.human_generation.to_u64().to_str()),
 				("hash", Stored.hash_text(hash)),
@@ -130,7 +129,7 @@ ApiKey := [].{
 		id_field = fields.field("id")?
 		id = Stored.id(id_field.value, { name: "id", make: Principal.KeyId.from_u64 })?
 		acts_field = id_field.rest.field("acts")?
-		acts_as = AccountCodec.id_from(acts_field.value, "acts")?
+		acts_as = Account.id_from(acts_field.value, "acts")?
 		generation_field = acts_field.rest.field("generation")?
 		generation = Stored.id(
 			generation_field.value,
@@ -165,26 +164,24 @@ ApiKey := [].{
 			Human(_) if generation != human_generation => Err(BadValue("human-generation"))
 			_ if !ApiKey.is_fitting_expiry({ created, expires }) => Err(BadValue("expires"))
 			_ =>
-				Ok(
-					{
-						key: ApiKey.Key.(
-							{
-								id,
-								acts_as,
-								generation,
-								human_generation,
-								scope: {
-									read,
-									post,
-								},
-								created,
-								expires,
-								revocation,
+				Ok({
+					key: ApiKey.Key.(
+						{
+							id,
+							acts_as,
+							generation,
+							human_generation,
+							scope: {
+								read,
+								post,
 							},
-						),
-						hash,
-					},
-				)
+							created,
+							expires,
+							revocation,
+						},
+					),
+					hash,
+				})
 		}
 	}
 

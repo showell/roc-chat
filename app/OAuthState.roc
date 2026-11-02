@@ -1,4 +1,4 @@
-## **THE OAUTH `state`, CHECKED** (the Roc chat's auth design, section 2):
+## **THE OAUTH `state`, CHECKED**:
 ## what stops login CSRF. `/login` sends GitHub a state carrying a random
 ## nonce and the time it was issued, and sets the same nonce in a cookie
 ## for this browser; GitHub hands the state back on `/login/github`. The

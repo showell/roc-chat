@@ -362,7 +362,7 @@ expect opened({
 	at: 0,
 }).liveness(-9223372036854775808) == AbsoluteExpired
 
-# Loading: a line round-trips through the codec.
+# Loading: a line round-trips through its line.
 expect Session.decode(s1.encode()) == Ok(s1)
 
 # ── ADMITTING A REQUEST
