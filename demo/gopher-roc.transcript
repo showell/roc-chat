@@ -43,10 +43,10 @@ MSG_gopher-roc_5
 from: LC
 date: 2026-11-02T18:07:15Z
 
-One call per message into roc-markdown, through `Html`:
+One call per message into roc-markdown, through `Markdown`:
 
 ```roc
-Html.markdown(payload.markdown)
+Markdown.render(m.markdown())
 ```
 
 The page is structure and class names; a client styles it. 🎉

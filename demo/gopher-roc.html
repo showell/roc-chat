@@ -31,8 +31,8 @@ time,.ref{color:#777;font-size:.85em}
 <div class="body"><p>Nice. What does rendering cost us?</p>
 </div></article>
 <article class="message" id="msg-5"><header><span class="author">LC</span> <time datetime="2026-11-02T18:07:15Z">2026-11-02T18:07:15Z</time> <a class="ref" href="#msg-5">MSG_gopher-roc_5</a></header>
-<div class="body"><p>One call per message into roc-markdown, through <code>Html</code>:</p>
-<pre><code class="language-roc">Html.markdown(payload.markdown)
+<div class="body"><p>One call per message into roc-markdown, through <code>Markdown</code>:</p>
+<pre><code class="language-roc">Markdown.render(m.markdown())
 </code></pre>
 <p>The page is structure and class names; a client styles it. 🎉</p>
 </div></article>
