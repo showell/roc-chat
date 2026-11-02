@@ -33,7 +33,6 @@
 ##     chat/channels/<channel>/topics/<topic>/reactions.jsonl  its reactions, a JSON event a line, appended (Reactions)
 ##     chat/channels/<channel>/topics/<topic>/uploads/<name>  an image uploaded to it, as uploaded (Uploads)
 ##     chat/upload-bytes/<human id>  the bytes a human has uploaded in all, in decimal (Uploads)
-##     chat/saved/<id>           a human's reading list: its mark, then a save a line (SavedCodec)
 ##
 ## A channel's folder is its name's key, and each topic's its name's key
 ## in it (ChannelLayout, which names those paths); the functions that keep
@@ -75,7 +74,6 @@ import InviteCodec
 import MessageCodec
 import Principal
 import Reactions
-import SavedCodec
 import SessionCodec
 import SignInWeb
 import Stored
@@ -118,10 +116,8 @@ Store := [].{
 	save_uploaded! = |human, n| Host.write!(uploaded_path(human), Uploads.uploaded_text(n))
 
 	## **A HUMAN ERASED, AS DECIDED** (Erase.plan, which says what goes and
-	## why): every DM of theirs removed, folder by folder; the saves of those
-	## DMs' messages dropped from every reading list that reads; their
-	## sessions ended; their reading list, their uploaded bytes' count and
-	## the indexes of their keys and invites removed; and their accounts
+	## why): every DM of theirs removed, folder by folder; their sessions
+	## ended; their uploaded bytes' count and the indexes of their keys and invites removed; and their accounts
 	## (theirs, and their agents' and bots') written out **LAST**, so a stop
 	## part way leaves them erasable again, and a second run finds what the
 	## first left. Their keys and invites stay, inert (Erase.roc says why).
@@ -130,22 +126,18 @@ Store := [].{
 		match remove_places!(plan.dms) {
 			Failed => Failed
 			Removed =>
-				match drop_saves_in!(plan.dms) {
+				match remove_sessions_of!(plan.human) {
 					Failed => Failed
 					Removed =>
-						match remove_sessions_of!(plan.human) {
+						match remove_each!(own_paths(plan.human)) {
 							Failed => Failed
 							Removed =>
-								match remove_each!(own_paths(plan.human)) {
-									Failed => Failed
-									Removed =>
-										match plan.left.map_try(AccountCodec.encode) {
-											Err(_) => Failed
-											Ok(lines) =>
-												match Host.write!(accounts_path, List.join(lines)) {
-													Failed => Failed
-													Written => Erased
-												}
+								match plan.left.map_try(AccountCodec.encode) {
+									Err(_) => Failed
+									Ok(lines) =>
+										match Host.write!(accounts_path, List.join(lines)) {
+											Failed => Failed
+											Written => Erased
 										}
 								}
 						}
@@ -183,24 +175,6 @@ Store := [].{
 			Failed => Failed
 		}
 	}
-
-	## **A HUMAN'S READING LIST**, its mark and its saves; the empty list
-	## before their first save. A read that failed is `Failed`; a file that
-	## is there but does not read back is `Unreadable`, never the empty list,
-	## so nothing writes over it.
-	load_saved! : Principal.HumanId => Try(SavedCodec.Book, [Failed, Unreadable])
-	load_saved! = |human| {
-		read = Host.read!(saved_path(human))
-		match read.status {
-			Missing => Ok(SavedCodec.empty)
-			Failed => Err(Failed)
-			Found => SavedCodec.book(read.bytes).map_err(|_| Unreadable)
-		}
-	}
-
-	## A human's reading list written, whole.
-	save_saved! : Principal.HumanId, SavedCodec.Book => [Failed, Written]
-	save_saved! = |human, book| Host.write!(saved_path(human), SavedCodec.file(book))
 
 	## Every account; none before the first.
 	load_accounts! : {} => Try(List(Principal), [Failed])
@@ -869,20 +843,16 @@ Store := [].{
 accounts_path : List(U8)
 accounts_path = "auth/accounts".to_utf8()
 
-saved_path : Principal.HumanId -> List(U8)
-saved_path = |human| "chat/saved/${human.to_u64().to_str()}".to_utf8()
-
 ## Where a human's uploaded bytes are counted.
 uploaded_path : Principal.HumanId -> List(U8)
 uploaded_path = |human| "chat/upload-bytes/${human.to_u64().to_str()}".to_utf8()
 
-## **A HUMAN'S OWN FILES, AS ERASURE TAKES THEM**: their reading list, their
-## uploaded bytes' count, and the indexes of their keys, agents' invites and
+## **A HUMAN'S OWN FILES, AS ERASURE TAKES THEM**: their uploaded bytes'
+## count, and the indexes of their keys, agents' invites and
 ## human invites (an index rebuilds from the files it indexes, so dropping a
 ## human's leaves the others whole).
 own_paths : Principal.HumanId -> List(List(U8))
 own_paths = |human| [
-	saved_path(human),
 	uploaded_path(human),
 	index_path(keys_folder, human),
 	index_path(invites_folder, human),
@@ -950,49 +920,6 @@ remove_entries! = |path, entries|
 			match done {
 				Failed => Failed
 				Removed => remove_entries!(path, rest)
-			}
-		}
-	}
-
-## **THE SAVES OF `dms`' MESSAGES, DROPPED FROM EVERY READING LIST**: each
-## list that reads and holds one, written without them; one that does not
-## read is left as it is (never written over, as everywhere).
-drop_saves_in! : List(ChannelName) => [Failed, Removed]
-drop_saves_in! = |dms| {
-	listed = Host.list!("chat/saved".to_utf8())
-	match listed.status {
-		Missing => Removed
-		Failed => Failed
-		Found => drop_saves_from!(listed.entries, dms)
-	}
-}
-
-drop_saves_from! : List(FolderEntry), List(ChannelName) => [Failed, Removed]
-drop_saves_from! = |entries, dms|
-	match entries {
-		[] => Removed
-		[entry, .. as rest] => {
-			done =
-				match Stored.id(entry.name, { name: "saved", make: Principal.HumanId.from_u64 }) {
-					Err(_) => Removed
-					Ok(human) =>
-						match Store.load_saved!(human) {
-							Err(Failed) => Failed
-							Err(Unreadable) => Removed
-							Ok(book) =>
-								if book.saves.any(|s| dms.contains(s.place.channel)) {
-									match Store.save_saved!(human, { ..book, saves: book.saves.drop_if(|s| dms.contains(s.place.channel)) }) {
-										Failed => Failed
-										Written => Removed
-									}
-								} else {
-									Removed
-								}
-						}
-				}
-			match done {
-				Failed => Failed
-				Removed => drop_saves_from!(rest, dms)
 			}
 		}
 	}

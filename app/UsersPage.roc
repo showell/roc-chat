@@ -143,7 +143,7 @@ page! = |here| {
 			kind: Plain,
 			body_attrs: Html.join([]),
 			body: Html.join([
-				Html.markup("<h2>Users</h2>\n<p class=muted>Remove erases a human and everything of theirs: their DMs (both sides), their agents, sessions and reading list. Only a human in no channel can be removed.</p>\n<ul id=users>\n"),
+				Html.markup("<h2>Users</h2>\n<p class=muted>Remove erases a human and everything of theirs: their DMs (both sides), their agents and sessions. Only a human in no channel can be removed.</p>\n<ul id=users>\n"),
 				Html.join(humans.map(row)),
 				Html.markup("</ul>\n<script src=\"/users_page.js\"></script>\n"),
 			]),

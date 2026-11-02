@@ -10,8 +10,7 @@
 ##
 ## **WHAT GOES**: their account and every agent and bot they own; every DM
 ## they are in, whole, the other human's half too (a DM is the pair's);
-## the saves of those DMs' messages on anyone's reading list; their
-## sessions, their reading list, their uploaded bytes' count, and the
+## their sessions, their uploaded bytes' count, and the
 ## indexes of their keys and invites (Store.erase!). **WHAT STAYS**: their
 ## keys and invites, inert (each names an account no longer there, and an
 ## id is never given twice, so none comes back to life); the audit, as

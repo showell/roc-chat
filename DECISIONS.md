@@ -120,23 +120,14 @@ the same commit.
 - **Browse** is the page of topics. Its link sits with Docs, Recent, Images
   and Code. **It lists every human as a DM row, as the old sidebar did**
   (Steve, 2026-11-01): an existing DM links to its topics; a human you have
-  no DM with gets a button that makes one. Browse and the left sidebar will
-  respect pinning (low priority).
+  no DM with gets a button that makes one. No pinning (Steve, 2026-11-02:
+  "my actual users never pin topics").
 - **No browser automation** (no Playwright or the like). Dropped streams are
   very low priority: "it was never a big issue with zig chat."
-- **The reading list is its own page,** `/chat/saved`, since roc-chat has no
-  Docs, where the old one was the `reading-list` doc (LC and Cloud,
-  2026-11-01; Steve may overrule). Each human's list is theirs alone, one
-  file of saves; a save is the saver's copy of the message as it was (its
-  markdown, its time, its author's name), with a one-line note ("read later"
-  when empty), and it outlives the saver's access to the topic, as the old
-  doc's blocks did. Two forms per save (change the note, remove it) stand in
-  for editing the doc. Saving a message again is the one save, moved to the
-  newest end with its note and copy as of then, the nearest to the old
-  append without holding a message twice. Save ids are never given twice
-  (the list keeps a mark). The list's 1 MiB is its only size rule. A list
-  that will not read back is said, never read as empty: a topic page is
-  still shown, with the old notice, and nothing writes over the list.
+- **No saves, no reading list** (Steve, 2026-11-02): "completely broken";
+  the old chat's save was never meant for public saves. The save route, the
+  `/chat/saved` page, the save button and `s`, and the stored lists are
+  gone.
 - **Reactions are stored in the old app's format** (Steve, 2026-11-02): a
   topic's `reactions.jsonl`, one JSON object a line, appended, with the old
   six fields in the old order (`msg`, `uid`, `from`, `emoji`, `on`, `at`), not
@@ -167,8 +158,7 @@ the same commit.
   page (`/chat/users`), a Remove button with a plain are-you-sure. Only a
   human in no channel, nor any agent of theirs (the proxy for throwaway
   and fly-by users), never oneself or an admin. Everything of theirs goes:
-  their DMs whole (both sides), their agents, sessions, reading list and
-  upload count, the indexes of their keys and invites; their keys and
+  their DMs whole (both sides), their agents, sessions and upload count, the indexes of their keys and invites; their keys and
   invites stay, inert, since an id is never given twice. **No bans**:
   nothing is barred, and they may come back as someone new (Alice again,
   for testing).

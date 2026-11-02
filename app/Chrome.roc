@@ -6,8 +6,8 @@
 ## **THE TOP BAR**: Home, the page's title, and the app's links, then the
 ## viewer's name and Log out. The links are the old app's in its place
 ## ("Chat · Docs · Recent · Images · Code"), each as it lands: Browse,
-## where Chat was, is the first; Saved, the reading list (the old app's
-## lived in Docs), after Recent; the page it names is bold, not a link.
+## where Chat was, is the first, then Recent; the page it names is bold,
+## not a link.
 ## Log out is the form `/logout` takes (a POST, behind Origin's check),
 ## where the old app's was a link.
 ##
@@ -27,12 +27,11 @@ import SignInWeb
 
 Chrome := [].{
 
-	## What the top bar marks as here: Browse, Recent, Saved (the reading
-	## list), or none (a topic's page).
+	## What the top bar marks as here: Browse, Recent, or none (a topic's
+	## page).
 	Here : [
 		Browse,
 		Recent,
-		Saved,
 		Elsewhere,
 	]
 
@@ -70,8 +69,6 @@ Chrome := [].{
 				if (here == Browse) Html.markup("<strong>Browse</strong>") else Html.markup("<a href=\"/chat/browse\">Browse</a>"),
 				Html.markup(" · "),
 				if (here == Recent) Html.markup("<strong>Recent</strong>") else Html.markup("<a href=\"/chat/recent\">Recent</a>"),
-				Html.markup(" · "),
-				if (here == Saved) Html.markup("<strong>Saved</strong>") else Html.markup("<a href=\"/chat/saved\">Saved</a>"),
 				Html.markup("</span></div><div class=\"app-top-user\"><button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>"),
 				viewer,
 				Html.markup("</strong> · "),

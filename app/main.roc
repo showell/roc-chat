@@ -1,7 +1,7 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Topics.roc's
 ## channel topics, OneStream.roc's one stream per agent, Agents.roc's agents and API keys, Channels.roc's channels
-## (an admin's), Pages.roc's pages, Browse.roc's, TopicPage.roc's and SavedPage.roc's (the
+## (an admin's), Pages.roc's pages, Browse.roc's, TopicPage.roc's and UsersPage.roc's (the
 ## browser client's); the store is Store.roc's, the only module that names a
 ## file. Beside them, the chat client's scripts (`serve_script!`); the
 ## hello page at `/` is SignIn's, as it says who is signed in.
@@ -24,7 +24,6 @@ import Pages
 import SignIn
 import OneStream
 import RecentPage
-import SavedPage
 import TopicPage
 import UsersPage
 import Topics
@@ -89,11 +88,6 @@ route! = |req|
 		match UsersPage.route(req.path) {
 			Ok(r) => UsersPage.answer!(req, r)
 			Err(NotUsers) => Chat.not_found
-		}
-	} else if SavedPage.route(req.path).is_ok() {
-		match SavedPage.route(req.path) {
-			Ok(r) => SavedPage.answer!(req, r)
-			Err(NotSaved) => Chat.not_found
 		}
 	} else if TopicPage.route(req.path).is_ok() {
 		match TopicPage.route(req.path) {

@@ -57,11 +57,6 @@ PageFeed := [].{
 			InTopic(_) => Str.to_utf8("topic-page/${PageFeed.spot(place)}")
 		}
 
-	## **A BUBBLE NOBODY'S LIST IS KNOWN FOR** (a stream's, every page's):
-	## on no one's list yet, its save link drawn.
-	unsaved : MessageRef.Where -> [Saved, NotSaved, NoSave]
-	unsaved = |_place| NotSaved
-
 	## **A BUBBLE AS ONE SSE EVENT**, named `message`, its id the message's,
 	## as a page's stream and a post's publish both write it.
 	frame : MessageRef.Where,
@@ -80,7 +75,6 @@ PageFeed := [].{
 						ref: MessageRef.local(place, m.id),
 						edited: NotEdited,
 						# Every page's, and new: on no one's list yet, and no reaction.
-						saved: PageFeed.unsaved(place),
 						reactions: [],
 					},
 				),
@@ -141,7 +135,6 @@ PageFeed := [].{
 									ref: MessageRef.local(place, o.id),
 									edited,
 									# Every page's: the edit frame's body is all a page takes.
-									saved: PageFeed.unsaved(place),
 									reactions: [],
 								},
 							),
@@ -182,7 +175,6 @@ lobby = InTopic((MessageRef.from_str("MSG_Lobby.Chat_1") ?? crash "lobby: a refe
 # A topic's pages are held by its spot, each topic's apart.
 expect PageFeed.page_key(lobby) == "topic-page/lobby/chat".to_utf8()
 expect PageFeed.page_key(InTopic((MessageRef.from_str("MSG_Lobby.Chats_1") ?? crash "a reference").at())) != PageFeed.page_key(lobby)
-expect PageFeed.unsaved(lobby) == NotSaved
 
 ## A message by Ann, number 3.
 hi : MessageCodec.Fields
@@ -193,8 +185,8 @@ hi = {
 	body: "hi".to_utf8(),
 }
 
-# A topic's bubble: its page's id, and its save link.
+# A topic's bubble: its page's id, and its quote-reply link.
 expect {
 	f = Str.from_utf8(PageFeed.frame(lobby, { accounts: [], m: hi })) ?? ""
-	f.contains("data-ref=\"Chat_3\" ") and f.contains("class=msg-save")
+	f.contains("data-ref=\"Chat_3\" ") and f.contains("class=msg-quote")
 }

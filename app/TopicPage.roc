@@ -22,10 +22,6 @@
 ##                                                  new message's bubble
 ##     GET .../quote?n=<id>                         a quote-reply of the message, for
 ##                                                  the compose box: `{"text":…}`
-##     POST .../save                                a topic's: a save to the viewer's
-##                                                  reading list (`n=`, `note=`):
-##                                                  `201` and its reference
-##                                                  (SavedPage.roc)
 ##     POST .../upload                              an image from the compose box (a
 ##                                                  form, its one part `file`): its URL
 ##                                                  and name, as JSON (Uploads.roc)
@@ -62,8 +58,6 @@ import Pages
 import Principal
 import Reactions
 import Render
-import ReadingList
-import SavedPage
 import SignInWeb
 import Store
 import Stored
@@ -86,7 +80,6 @@ TopicPage := [].{
 		Earlier(TopicPage.Place),
 		Send(TopicPage.Place),
 		Quote(TopicPage.Place),
-		Save(TopicPage.Place),
 		React(TopicPage.Place),
 		Upload(TopicPage.Place),
 		Uploaded(
@@ -198,7 +191,7 @@ TopicPage := [].{
 							Read => Ok(Body(got.bytes))
 						}
 					}
-				Save(_) | React(_) =>
+				React(_) =>
 					if req.method != Post {
 						Err(Chat.not_allowed(Post))
 					} else {
@@ -237,8 +230,6 @@ tail = |p, what|
 		Ok(Quote(p))
 	} else if what == "edit".to_utf8() {
 		Ok(Edit(p))
-	} else if what == "save".to_utf8() {
-		Ok(Save(p))
 	} else if what == "react".to_utf8() {
 		Ok(React(p))
 	} else if what == "upload".to_utf8() {
@@ -286,12 +277,10 @@ serve! = |
 		(Quote(_), _) => quote!(shown)
 		(Edit(_), _) => edit!(shown)
 		(Send(_), Body(bytes)) => send!(shown, bytes)
-		(Save(_), Body(bytes)) => save!(shown, bytes)
 		(React(_), Body(bytes)) => react!(shown, bytes)
 		(Upload(_), Body(bytes)) => upload!(shown, bytes)
 		(Uploaded(u), _) => serve_upload!(shown, { name: u.name, image: u.image })
 		(Send(_), NoBody)
-		| (Save(_), NoBody)
 		| (React(_), NoBody)
 		| (Upload(_), NoBody) => crash "TopicPage.serve!: answer! reads a POST's body first"
 	}
@@ -304,7 +293,7 @@ Asked : { path : List(U8), route : TopicPage.Route }
 place_of : TopicPage.Route -> TopicPage.Place
 place_of = |r|
 	match r {
-		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) | React(p) | Upload(p) => p
+		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | React(p) | Upload(p) => p
 		Uploaded(u) => u.at
 	}
 
@@ -326,7 +315,7 @@ me_of = |
 		SignedOut =>
 			match r {
 				Page(_) => Err(Pages.to_login(path))
-				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) | Uploaded(_) => Err(
+				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | React(_) | Upload(_) | Uploaded(_) => Err(
 					Wire.refused(
 						401,
 						"not signed in",
@@ -414,7 +403,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) | Uploaded(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | React(_) | Upload(_) | Uploaded(_) => no_such_topic
 		Page(_) => {
 			answer = Chrome.page({
 				title: Html.markup("Not here"),
@@ -465,8 +454,8 @@ topic_title = |
 ## column; the button for the page before; the right pane, compose. The
 ## body names its viewer (`data-me`), its stream, which starts after the
 ## newest message drawn here, where earlier pages come from, where a
-## quote-reply and an edit do, where a save goes, and where a reaction
-## goes; each bubble with its reactions' chips.
+## quote-reply and an edit do, and where a reaction goes; each bubble
+## with its reactions' chips.
 page! : Shown => Try(Chat.Answer, Chat.Answer)
 page! = |s| {
 	files = PageFeed.files(s.place)
@@ -478,7 +467,6 @@ page! = |s| {
 		span,
 	).map_err(|_| Chat.failed)?
 	newest = messages.last().map_ok(|m| m.id) ?? 0
-	saved = load_saved_here!(s)
 	reactions = load_reactions!(s)?
 	Ok(
 		Chrome.page({
@@ -499,20 +487,12 @@ page! = |s| {
 				Html.text(s.base),
 				Html.markup("/quote\" data-edit=\""),
 				Html.text(s.base),
-				Html.markup("/edit\" data-save=\""),
-				Html.text(s.base),
-				Html.markup("/save\" data-react=\""),
+				Html.markup("/edit\" data-react=\""),
 				Html.text(s.base),
 				Html.markup("/react\""),
 			]),
 			body: Html.join([
-				Html.markup("<div class=chat-notify id=chat-notify>"),
-				match saved {
-					Known(_) => Html.join([])
-					# The old page's words when the saved set did not load: the page is shown.
-					Unknown => Html.markup("Could not read which messages you saved; reload to try again.")
-				},
-				Html.markup("</div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
+				Html.markup("<div class=chat-notify id=chat-notify></div>\n<div class=chat-layout>\n<div id=chat-feed class=chat-mp-main>\n<div class=chat-mp-nav><button id=earlier type=button"),
 				if (span.first > 1) Html.join([]) else Html.markup(" hidden"),
 				Html.markup(">Earlier messages</button></div>\n<div id=chat-history class=chat-mp-history tabindex=-1><div id=chat-bubbles>\n"),
 				if (messages.is_empty()) Html.markup("<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>\n") else Html.join([]),
@@ -521,13 +501,12 @@ page! = |s| {
 					{
 						messages,
 						from_on: messages,
-						saved,
 						reactions,
 					},
 				),
 				Html.markup("</div></div>\n</div>\n<div id=chat-right-sidebar class=chat-compose>\n"),
 				compose_html(s.base),
-				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/emoji.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/upload.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/save.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
+				Html.markup("</div>\n</div>\n<script src=\"/keys.js\"></script>\n<script src=\"/feed.js\"></script>\n<script src=\"/emoji.js\"></script>\n<script src=\"/compose.js\"></script>\n<script src=\"/upload.js\"></script>\n<script src=\"/quote.js\"></script>\n<script src=\"/reactions.js\"></script>\n<script src=\"/keyhelp.js\"></script>\n"),
 			]),
 		}),
 	)
@@ -575,7 +554,6 @@ send! = |s, bytes| {
 					m,
 					ref: MessageRef.local(s.place, m.id),
 					edited: NotEdited,
-					saved: PageFeed.unsaved(s.place),
 					# New: no reaction yet.
 					reactions: [],
 				},
@@ -625,7 +603,6 @@ earlier! = |s| {
 					{
 						messages,
 						from_on,
-						saved: load_saved_here!(s),
 						reactions: load_reactions!(s)?,
 					},
 				),
@@ -686,14 +663,11 @@ backlog! = |place, { messages, accounts }|
 
 ## **THE BUBBLES OF `messages`**, each superseded by its author's last
 ## edit among `from_on` (the messages from the first of them to the
-## newest), "✓ saved" on the viewer's reading list (`saved`), as the
-## page draws it for its one viewer, and its chips (`reactions`, the
-## topic's events).
+## newest), and its chips (`reactions`, the topic's events).
 drawn : Shown,
 {
 	messages : List(MessageCodec.Fields),
 	from_on : List(MessageCodec.Fields),
-	saved : [Known(List(U64)), Unknown],
 	reactions : List(Reactions.Event),
 } -> Html
 drawn = |
@@ -701,15 +675,9 @@ drawn = |
 	{
 		messages,
 		from_on,
-		saved,
 		reactions,
 	},
 | {
-	mine =
-		match saved {
-			Known(numbers) => numbers
-			Unknown => []
-		}
 	edits = Edits.superseded(s.place, from_on)
 	Html.join(
 		messages.map(
@@ -719,7 +687,6 @@ drawn = |
 					m,
 					ref: MessageRef.local(s.place, m.id),
 					edited: PageFeed.edited_of(s.place, { edits, n: m.id }),
-					saved: if (mine.contains(m.id)) Saved else PageFeed.unsaved(s.place),
 					reactions: Reactions.chips_of(reactions, m.id),
 				},
 			),
@@ -796,64 +763,6 @@ load_message! = |s, n| {
 bad_n : Chat.Answer
 bad_n = Wire.refused(400, "n= is a message's id")
 
-## **A SAVE FROM THE PAGE** (ReadingList.roc), a topic's: the form's
-## message (`n=`, one of this topic's) and its note (`note=`, ReadingList's
-## rule), the message's copy as it is now, its author's name with it, put
-## on the viewer's reading list; `201` and the strip's line, drawn here in
-## the old words (js/chat.js `savedStatus`, without "(Docs)"): "MSG_…
-## saved to reading list", the list linked. A refusal says why
-## (SavedPage.refused): the page's popup shows it.
-save! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
-save! = |s, form| {
-	now = s.poster.now
-	at =
-		match s.place {
-			InTopic(a) => a
-		}
-	n =
-		match SignInWeb.form_field(form, "n") {
-			Ok(digits) => Stored.count(digits, "n").map_err(|_| bad_n)
-			Err(_) => Err(bad_n)
-		}?
-	raw =
-		match SignInWeb.form_field(form, "note") {
-			Ok(bytes) => Ok(bytes)
-			Err(Missing) => Ok([])
-			Err(Malformed) => Err(Wire.refused(400, "note= is not a form's value"))
-		}?
-	note = ReadingList.note_of(raw).map_err(|NotUtf8| SavedPage.refused(NotUtf8))?
-	m = load_message!(s, n)?
-	human = human_of(s.me)?
-	list = SavedPage.load_for!(human)?
-	next = ReadingList.saved(
-		list,
-		{
-			id: 0,
-			saved: now,
-			place: at,
-			n: m.id,
-			by: m.by,
-			from: Render.name_of(s.accounts, m.by),
-			at: m.at,
-			note,
-			body: m.body,
-		},
-	).map_err(|TooBig| SavedPage.refused(TooBig))?
-	match Store.save_saved!(human, next) {
-		Failed => Err(Chat.failed)
-		Written => Ok(
-			Html.respond(
-				201,
-				Html.join([
-					Html.markup("<span class=chat-saved-status>"),
-					Html.text(MessageRef.spelled(s.place, m.id)),
-					Html.markup(" saved to <a href=\"/chat/saved\">reading list</a></span>"),
-				]),
-			),
-		)
-	}
-}
-
 ## The viewer's human id: a page's viewer is signed in by a session, a
 ## human's.
 human_of : Principal.Bound -> Try(Principal.HumanId, Chat.Answer)
@@ -861,22 +770,6 @@ human_of = |me|
 	match me.id {
 		Human(h) => Ok(h)
 		_ => Err(Pages.key_refused)
-	}
-
-## **WHICH OF THIS TOPIC'S MESSAGES THE VIEWER SAVED**, by number, for the
-## bubbles drawn for them alone ("✓ saved"). A list that will not read is
-## `Unknown`, and the page is still shown, saying so, as the old one did
-## (js/chat.js: "a saved set that will not read says so"): the reading
-## list is not the topic.
-load_saved_here! : Shown => [Known(List(U64)), Unknown]
-load_saved_here! = |s|
-	match (s.place, s.me.id) {
-		(InTopic(at), Human(h)) =>
-			match Store.load_saved!(h) {
-				Ok(book) => Known(ReadingList.numbers_in(book, at))
-				Err(_) => Unknown
-			}
-		(InTopic(_), _) => Unknown
 	}
 
 ## **THE TOPIC'S REACTIONS**, every event, for the chips a page draws. A
@@ -1039,11 +932,8 @@ expect
 		Ok(Earlier(_)) => Bool.True
 		_ => Bool.False
 	}
-expect
-	match TopicPage.route("/chat/channel/Lobby/ChitChat/save".to_utf8()) {
-		Ok(Save(_)) => Bool.True
-		_ => Bool.False
-	}
+# Saves are gone: `save` is no tail.
+expect TopicPage.route("/chat/channel/Lobby/ChitChat/save".to_utf8()).is_err()
 expect
 	match TopicPage.route("/chat/dm/5_5/ChitChat/react".to_utf8()) {
 		Ok(React(at)) => at.channel == ChannelName.dm_of(5, 5)
