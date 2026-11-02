@@ -83,7 +83,7 @@ handle_http_request! = |request|
 				ShowConversation(key) => ConversationRoute.show!(key)
 				ServeComposeScript => HttpAnswer.script(ComposeScript.bytes)
 				AppendToConversation(key) =>
-					ConversationRoute.append!({
+					ConversationRoute.post_sent_message!({
 						key,
 						acting,
 						now: Host.current_utc_seconds_since_epoch!({}),

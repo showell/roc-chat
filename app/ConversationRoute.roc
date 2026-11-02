@@ -39,23 +39,23 @@ ConversationRoute :: [].{
 			Ok(utf8) =>
 				match Transcript.decode(key.topic(), utf8) {
 					Ok(conversation) => HttpAnswer.page(200, Page.conversation(conversation, key))
-					Err(why) => unreadable(why)
+					Err(why) => unreadable_transcript_response(why)
 				}
 			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such conversation: ${key.url_path()}" })
-			Err(fault) => failed(fault)
+			Err(fault) => file_system_failure_response(fault)
 		}
 
 	## **POST**: the message in `body`'s field `markdown`, by `acting`, at
 	## `now` (the host's clock, seconds since the epoch), appended to the
 	## conversation; the first message of one with no transcript yet starts
 	## it. Then a 303 to its page.
-	append! : {
+	post_sent_message! : {
 		key : ConversationKey,
 		acting : SignedIn,
 		now : I64,
 		body : List(U8),
 	} => Http.Response
-	append! = |
+	post_sent_message! = |
 		{
 			key,
 			acting,
@@ -68,7 +68,7 @@ ConversationRoute :: [].{
 			now,
 			body,
 		}) {
-			Err(why) => refused(why)
+			Err(why) => post_refusal_response(why)
 			Ok(unnumbered_message) =>
 				match FileSystem.read_transcript!(key) {
 					Ok(utf8) =>
@@ -80,7 +80,7 @@ ConversationRoute :: [].{
 									file: File(utf8),
 									unnumbered_message,
 								})
-							Err(why) => unreadable(why)
+							Err(why) => unreadable_transcript_response(why)
 						}
 					Err(Missing) =>
 						append_unnumbered_message!({
@@ -89,7 +89,7 @@ ConversationRoute :: [].{
 							file: NoFile,
 							unnumbered_message,
 						})
-					Err(fault) => failed(fault)
+					Err(fault) => file_system_failure_response(fault)
 				}
 		}
 }
@@ -151,21 +151,21 @@ append_unnumbered_message! = |
 				Ok(record) =>
 					match FileSystem.append_message!(key, record) {
 						Ok({}) => HttpAnswer.see_other(key.url_path())
-						Err(fault) => failed(fault)
+						Err(fault) => file_system_failure_response(fault)
 					}
-				Err(FileFull) => refused_by_conversation("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
+				Err(FileFull) => conversation_refusal_response("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
 			}
-		Err(Backdated) => refused_by_conversation("The message is dated before the conversation's latest.")
-		Err(Full) => refused_by_conversation("The conversation holds as many messages as it can.")
+		Err(Backdated) => conversation_refusal_response("The message is dated before the conversation's latest.")
+		Err(Full) => conversation_refusal_response("The conversation holds as many messages as it can.")
 	}
 
 ## **A MESSAGE THE CONVERSATION REFUSES**, saying why: a 409.
-refused_by_conversation : Str -> Http.Response
-refused_by_conversation = |said| HttpAnswer.notice(409, { title: "Message refused", said })
+conversation_refusal_response : Str -> Http.Response
+conversation_refusal_response = |said| HttpAnswer.notice(409, { title: "Message refused", said })
 
 ## **A REFUSED MESSAGE, IN WORDS**: a 400, but a clock out of range, which
 ## is the server's (a 500).
-refused : [
+post_refusal_response : [
 	MissingField,
 	RepeatedField,
 	BadEscape,
@@ -173,7 +173,7 @@ refused : [
 	Blank,
 	ClockOutOfRange,
 ] -> Http.Response
-refused = |why| {
+post_refusal_response = |why| {
 	said =
 		match why {
 			MissingField => "The form has no field `markdown`."
@@ -189,13 +189,13 @@ refused = |why| {
 
 ## **A TRANSCRIPT FILE THAT WON'T DECODE**: the server's, a 500, saying
 ## why in `TranscriptRefusal`'s words.
-unreadable : TranscriptRefusal.Why -> Http.Response
-unreadable = |why| HttpAnswer.page(500, Page.refusal(TranscriptRefusal.words(why)))
+unreadable_transcript_response : TranscriptRefusal.Why -> Http.Response
+unreadable_transcript_response = |why| HttpAnswer.page(500, Page.refusal(TranscriptRefusal.words(why)))
 
 ## **THE FILE SYSTEM FAILED**: a 500, naming what the host answered (and
 ## the host's log says which file, and why).
-failed : _ -> Http.Response
-failed = |fault| {
+file_system_failure_response : _ -> Http.Response
+file_system_failure_response = |fault| {
 	said =
 		match fault {
 			Missing => "Missing"
@@ -254,6 +254,6 @@ expect unnumbered_message_at_the_sample_time("markdown=%G0") == Err(BadEscape)
 expect unnumbered_message_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
 expect unnumbered_message_at_the_sample_time("markdown=+") == Err(Blank)
 expect unnumbered_message_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
-expect refused(MissingField).status == 400
-expect refused(Blank).status == 400
-expect refused(ClockOutOfRange).status == 500
+expect post_refusal_response(MissingField).status == 400
+expect post_refusal_response(Blank).status == 400
+expect post_refusal_response(ClockOutOfRange).status == 500

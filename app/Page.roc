@@ -169,7 +169,7 @@ message = |c, m| {
 
 ## **THE COMPOSE BOX**: a form posting its one field, a message's
 ## markdown (`UrlEncodedForm.markdown_name`), to `key`'s page, as
-## `ConversationRoute.append!` takes it; then the keys, in words.
+## `ConversationRoute.post_sent_message!` takes it; then the keys, in words.
 compose_box : ConversationKey -> TrustedHtml
 compose_box = |key|
 	Html.element({
