@@ -2,6 +2,7 @@
 ## so it is a strict name (`StrictName`, the one home of that rule). A
 ## topic is unique only within its channel or DM. Opaque, so `from_str` is
 ## the only way in, and a topic is never mistaken for a channel's name.
+## With its place (`Place`), it keys a map.
 import StrictName
 
 Topic :: StrictName.{
@@ -15,6 +16,7 @@ Topic :: StrictName.{
 	to_str = |Topic.(strict)| strict.to_str()
 
 	is_eq : _
+	to_hash : _
 }
 
 # ── tests

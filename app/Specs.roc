@@ -8,6 +8,7 @@ import ConversationSpec
 import DirectorySpec
 import DmSpec
 import PageSpec
+import PlaceSpec
 import SecureImageTagSpec
 import TranscriptSpec
 import UsersSpec

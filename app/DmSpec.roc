@@ -5,7 +5,6 @@ import ChannelName
 import DateTime
 import Dm
 import Message
-import Place
 import Sample
 import UserId
 import Users
@@ -109,12 +108,6 @@ expect {
 				),
 			],
 		}
-}
-# A place's name: a channel's own, or a DM's pair.
-expect {
-	plans = ChannelName.from_str("plans") ?? crash "DmSpec: plans is a channel's name"
-	dm = started({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm
-	[Place.(Channel(plans)).to_str(), Place.(Dm(dm)).to_str()] == ["plans", "1_2"]
 }
 # No DM's name is a channel's: each is refused as one, by its first byte.
 expect
