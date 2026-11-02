@@ -21,7 +21,7 @@ page = |topic, transcript| {
 			Ok(c) => Page.conversation(c)
 			Err(why) => Page.refused(words(why))
 		}
-	answer.to_str().to_utf8()
+	answer.to_utf8()
 }
 
 ## The conversation the host's bytes hold, decoded at the door.
@@ -110,8 +110,8 @@ expect conversation({ topic: "".to_utf8(), transcript: "\n".to_utf8() }) == Err(
 expect page(
 	"plans".to_utf8(),
 	[],
-) == Page.conversation(Conversation.empty(plans)).to_str().to_utf8()
-expect page("<b>".to_utf8(), [0xff]) == Page.refused("it is not UTF-8").to_str().to_utf8()
+) == Page.conversation(Conversation.empty(plans)).to_utf8()
+expect page("<b>".to_utf8(), [0xff]) == Page.refused("it is not UTF-8").to_utf8()
 # The one test of the wording: every refusal, in words.
 expect {
 	second = Message.Id.first.next() ?? crash "main's tests: the first id has a next"

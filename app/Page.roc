@@ -1,40 +1,41 @@
 ## **THE PAGES**: a conversation's, and the one that says why there is
 ## none. Every page is the same skeleton (the doctype, its title, the style,
 ## then its body); the page carries structure and class names, and only
-## enough style to read, so a client can style the rest.
+## enough style to read (`TrustedHtml.style`), so a client can style the
+## rest. Every `Str` a page shows goes in through `TrustedHtml.text`.
 import Conversation
-import Html
 import Message
 import Topic
+import TrustedHtml
 
 Page :: [].{
 
 	## **A CONVERSATION'S PAGE**: the topic, then each message under its
 	## author and time, with its reference (`Message.reference`) as a link to
 	## itself.
-	conversation : Conversation -> Html
+	conversation : Conversation -> TrustedHtml
 	conversation = |c| {
 		topic = c.topic()
-		heading = Html.tag({
+		heading = TrustedHtml.tag({
 			name: H1,
 			attrs: [],
-			inner: Html.text(topic.to_str()),
+			inner: TrustedHtml.text(topic.to_str()),
 		})
 		messages =
 			if (c.messages().is_empty())
-				Html.join([
-					Html.tag({
+				TrustedHtml.join([
+					TrustedHtml.tag({
 						name: P,
 						attrs: [Class(Empty)],
-						inner: Html.text("No messages yet."),
+						inner: TrustedHtml.text("No messages yet."),
 					}),
 					newline,
 				])
 			else
-				Html.join(c.messages().map(|m| message({ topic, message: m })))
+				TrustedHtml.join(c.messages().map(|m| message({ topic, message: m })))
 		whole({
 			title: topic.to_str(),
-			body: Html.join([
+			body: TrustedHtml.join([
 				heading,
 				newline,
 				messages,
@@ -43,94 +44,79 @@ Page :: [].{
 	}
 
 	## **THE PAGE FOR A REFUSED TRANSCRIPT**, saying why in `why`'s words.
-	refused : Str -> Html
+	refused : Str -> TrustedHtml
 	refused = |why|
 		whole({
 			title: "Not a transcript",
-			body: Html.tag({
+			body: TrustedHtml.tag({
 				name: P,
 				attrs: [],
-				inner: Html.text("Not a transcript: ${why}."),
+				inner: TrustedHtml.text("Not a transcript: ${why}."),
 			}),
 		})
 }
 
 ## One message: its header, then its markdown rendered.
-message : { topic : Topic, message : Message } -> Html
+message : { topic : Topic, message : Message } -> TrustedHtml
 message = |{ topic, message: m }| {
 	id = m.id()
-	header = Html.join([
-		Html.tag({
+	header = TrustedHtml.join([
+		TrustedHtml.tag({
 			name: Span,
 			attrs: [Class(Author)],
-			inner: Html.text(m.author().to_str()),
+			inner: TrustedHtml.text(m.author().to_str()),
 		}),
 		space,
-		Html.tag({
+		TrustedHtml.tag({
 			name: Time,
 			attrs: [DateTime(m.time())],
-			inner: Html.text(m.time().to_str()),
+			inner: TrustedHtml.text(m.time().to_str()),
 		}),
 		space,
-		Html.tag({
+		TrustedHtml.tag({
 			name: A,
 			attrs: [Class(Ref), Href(Anchor(id))],
-			inner: Html.text(Message.reference(topic, id)),
+			inner: TrustedHtml.text(Message.reference(topic, id)),
 		}),
 	])
-	article = Html.tag({
+	article = TrustedHtml.tag({
 		name: Article,
 		attrs: [Class(Message), Id(Anchor(id))],
-		inner: Html.join([
-			Html.tag({
+		inner: TrustedHtml.join([
+			TrustedHtml.tag({
 				name: Header,
 				attrs: [],
 				inner: header,
 			}),
 			newline,
-			Html.tag({
+			TrustedHtml.tag({
 				name: Div,
 				attrs: [Class(Body)],
-				inner: Html.markdown(m.markdown()),
+				inner: TrustedHtml.markdown(m.markdown()),
 			}),
 		]),
 	})
-	Html.join([article, newline])
+	TrustedHtml.join([article, newline])
 }
 
 ## **THE SKELETON EVERY PAGE SHARES**: the doctype and charset, `title` as
 ## its title, the style, then `body`.
-whole : { title : Str, body : Html } -> Html
+whole : { title : Str, body : TrustedHtml } -> TrustedHtml
 whole = |{ title, body }|
-	Html.join([
-		Html.doctype,
-		Html.tag({
+	TrustedHtml.join([
+		TrustedHtml.doctype,
+		TrustedHtml.tag({
 			name: Title,
 			attrs: [],
-			inner: Html.text(title),
+			inner: TrustedHtml.text(title),
 		}),
 		newline,
-		Html.style(style),
+		TrustedHtml.style,
 		body,
 	])
 
-newline : Html
-newline = Html.text("\n")
+newline : TrustedHtml
+newline = TrustedHtml.text("\n")
 
-space : Html
-space = Html.text(" ")
-
-## Only enough style to read; a client styles the rest.
-style : Str
-style =
-	\\body{font:16px/1.4 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}
-	\\.message{border-top:1px solid #ccc;padding:.5rem 0}
-	\\.author{font-weight:600}
-	\\time,.ref{color:#777;font-size:.85em}
-	\\.ref{float:right}
-	\\
-
-# ── tests
-expect
-	Page.refused("it <is> not UTF-8").to_str()
-		== "<!doctype html>\n<meta charset=utf-8>\n<title>Not a transcript</title>\n<style>\n${style}</style>\n<p>Not a transcript: it &lt;is&gt; not UTF-8.</p>"
+space : TrustedHtml
+space = TrustedHtml.text(" ")
