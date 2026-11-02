@@ -54,7 +54,6 @@ import Cast
 import ChannelName
 import GitHubSignIn
 import HumanInvite
-import HumanInviteCodec
 import AgentInvite
 import Principal
 import Stored
@@ -792,7 +791,7 @@ human_invite_verdict_text = |verdict| {
 		Reinvited(h) => by(Reinvited, h)
 		Revoked(h) => by(Revoked, h)
 		Redeemed(s) => "${spell_human_invite_act(Redeemed)}${colon}${via_text(Session(s))}"
-		Refused(why) => "${refused_prefix}${HumanInviteCodec.refusal_text(why)}"
+		Refused(why) => "${refused_prefix}${HumanInvite.refusal_text(why)}"
 	}
 }
 
@@ -808,7 +807,7 @@ human_invite_verdict_from : List(U8) -> Try(
 )
 human_invite_verdict_from = |value|
 	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
-		Ok(why) => HumanInviteCodec.refusal_from(why).map_ok(|r| Refused(r))
+		Ok(why) => HumanInvite.refusal_from(why).map_ok(|r| Refused(r))
 		Err(NoMatch) => {
 			{ head, tail } = split_colon(value, "verdict")?
 			act = Stored.word(

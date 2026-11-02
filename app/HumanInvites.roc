@@ -1,5 +1,5 @@
-## **HUMAN INVITES ON THE WIRE** (HumanInvite decides, HumanInviteCodec
-## and Store keep them, AuditLog records each):
+## **HUMAN INVITES ON THE WIRE** (HumanInvite decides and
+## writes their lines, Store keeps them, AuditLog records each):
 ##
 ##     POST /human-invites              invite someone: a form, `name=`, and
 ##                                      `topic=` and `welcome=` if not the defaults;
@@ -779,7 +779,7 @@ human_of : HumanInvite.Record -> Principal.HumanId
 human_of = |r|
 	match r.human.id {
 		Human(h) => h
-		Agent(_) | Bot(_) => crash "HumanInvites.human_of: a human invite is for a human (HumanInviteCodec refuses others)"
+		Agent(_) | Bot(_) => crash "HumanInvites.human_of: a human invite is for a human (HumanInvite refuses others)"
 	}
 
 ## **THE REDEEM PAGE**, the same for every code (the code after `#` is the

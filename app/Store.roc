@@ -14,7 +14,7 @@
 ##     auth/sessions/<hash>      a session, named for its secret's hash (Session)
 ##     auth/keys/<hash>          an API key, named for its secret's hash (ChatKey)
 ##     auth/invites/<hash>       an agent's invite, named for its code's hash (AgentInvite)
-##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInviteCodec)
+##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInvite)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
 ##     auth/keys-by-human/<github id>    a human's keys and their agents', by hash
@@ -68,7 +68,6 @@ import ChatKey
 import Erase
 import GitHubSignIn
 import HumanInvite
-import HumanInviteCodec
 import AgentInvite
 import Transcript
 import Principal
@@ -383,7 +382,7 @@ Store := [].{
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => HumanInviteCodec.decode(read.bytes).map_err(|_| Malformed)
+			Found => HumanInvite.decode(read.bytes).map_err(|_| Malformed)
 		}
 	}
 
@@ -399,7 +398,7 @@ Store := [].{
 	save_human_invite! : HumanInvite.Record => [Failed, Written]
 	save_human_invite! = |record| Host.write!(
 		human_invite_path(record.hash),
-		HumanInviteCodec.encode(record),
+		HumanInvite.encode(record),
 	)
 
 	## **THE HUMAN INVITES `human` MADE**, by their index; one whose file
@@ -1435,7 +1434,7 @@ collect_human_invites! = |entries, kept|
 				Failed => Err(Failed)
 				Missing => collect_human_invites!(rest, kept)
 				Found =>
-					match HumanInviteCodec.decode(read.bytes) {
+					match HumanInvite.decode(read.bytes) {
 						Ok(r) => collect_human_invites!(rest, kept.append(r))
 						Err(_) => collect_human_invites!(rest, kept)
 					}
