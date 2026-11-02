@@ -15,14 +15,17 @@ Http := [].{
 
 	## **A REQUEST, PARSED BY THE HOST**: the method (`GET`), the path up to
 	## any `?` (`/chat/dm/1_1/plans`), the query after the `?` (empty when
-	## there is none), each header as sent, and the body, read whole to the
-	## host's cap.
+	## there is none), each header as sent, the body, read whole to the
+	## host's cap, and the port the server listens on (a fact of the
+	## server's, so the app can tell its own origin's `Host` from another's:
+	## app/RequestOrigin.roc).
 	Request : {
 		method : List(U8),
 		path : List(U8),
 		query : List(U8),
 		headers : List(Http.Header),
 		body : List(U8),
+		port : U16,
 	}
 
 	## **THE APP'S ANSWER**: the status, the headers and the body, written

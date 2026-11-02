@@ -8,7 +8,16 @@
 //!   4. the transcript on disk: the seed and exactly one record more, dated
 //!      by the host's clock;
 //!   5. GET a DM's conversation with no transcript: the 404 page;
-//!   6. POST to it: its transcript made, holding exactly the one record.
+//!   6. POST to it as a browser's own page would (its `Origin` and
+//!      `Sec-Fetch-Site`): its transcript made, holding exactly the one
+//!      record;
+//!   7. GET under another `Host` (a rebound name): 403;
+//!   8. POST from another origin's page: 403;
+//!   9. POST that the browser says is cross-site: 403;
+//!  10. both files on disk: exactly as before 7, nothing appended.
+//!
+//! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
+//! `Origin`, no `Sec-Fetch-Site`.
 //!
 //! The server stops and the data root goes before it returns, pass or
 //! fail, so nothing is left running and nothing is left behind.
@@ -22,6 +31,7 @@ const seed_path = "demo/data/chat/channel/general/gopher-roc/transcript";
 const frozen_page = "demo/gopher-roc.html";
 const channel_url = "/chat/channel/general/gopher-roc";
 const dm_url = "/chat/dm/1_1/plans";
+const dm_transcript = "chat/dm/1_1/plans/transcript";
 
 const RunResult = @typeInfo(@TypeOf(http.Server.run)).@"fn".return_type.?;
 
@@ -62,9 +72,9 @@ pub fn main(init: std.process.Init) !void {
 
     // 2.
     const before = files.current_utc_seconds_since_epoch(io);
-    const posted = try post(a, io, port, channel_url, "markdown=Hello+from+the+**end+to+end**%21%0D%0A%0D%0A-------------");
+    const posted = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Hello+from+the+**end+to+end**%21%0D%0A%0D%0A-------------" });
     const after = files.current_utc_seconds_since_epoch(io);
-    try t.check("POST a message: 303 to the conversation's page", posted.status == 303 and
+    try t.check("POST a message as the README's curl does: 303 to the conversation's page", posted.status == 303 and
         std.mem.eql(u8, posted.header("location") orelse "", channel_url));
 
     // 3.
@@ -84,11 +94,33 @@ pub fn main(init: std.process.Init) !void {
 
     // 6.
     const before_dm = files.current_utc_seconds_since_epoch(io);
-    const started = try post(a, io, port, dm_url, "markdown=Note+to+self");
+    const own_page = try std.fmt.allocPrint(a, "origin: http://localhost:{d}\r\nsec-fetch-site: same-origin\r\n", .{port});
+    const started = try post(a, io, port, .{ .path = dm_url, .form = "markdown=Note+to+self", .more = own_page });
     const after_dm = files.current_utc_seconds_since_epoch(io);
-    const dm_file = data.readFileAlloc(io, "chat/dm/1_1/plans/transcript", a, .limited(1024 * 1024)) catch "";
-    try t.check("POST to it: 303, its transcript made, exactly one record", started.status == 303 and
+    const dm_file = data.readFileAlloc(io, dm_transcript, a, .limited(1024 * 1024)) catch "";
+    try t.check("POST to it from the server's own page: 303, its transcript made, exactly one record", started.status == 303 and
         recordFits(a, dm_file, "", "plans_1", "Note to self", before_dm, after_dm));
+
+    // 7.
+    const rebound = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ channel_url ++ " HTTP/1.1\r\nhost: rebound.example:{d}\r\n\r\n", .{port}));
+    try t.check("GET under another Host: 403, saying so", rebound.status == 403 and
+        has(rebound.body, "The request&#39;s Host is not this server&#39;s"));
+
+    // 8.
+    const forged = try post(a, io, port, .{ .path = channel_url, .form = "markdown=forged", .more = "origin: http://evil.example\r\n" });
+    try t.check("POST from another origin's page: 403, saying so", forged.status == 403 and
+        has(forged.body, "another origin"));
+
+    // 9.
+    const cross = try post(a, io, port, .{ .path = dm_url, .form = "markdown=forged", .more = "sec-fetch-site: cross-site\r\n" });
+    try t.check("POST the browser says is cross-site: 403, saying so", cross.status == 403 and
+        has(cross.body, "another site"));
+
+    // 10.
+    const channel_now = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const dm_now = try data.readFileAlloc(io, dm_transcript, a, .limited(1024 * 1024));
+    try t.check("both files on disk: exactly as before, nothing appended", std.mem.eql(u8, channel_now, on_disk) and
+        std.mem.eql(u8, dm_now, dm_file));
 
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
 }
@@ -151,12 +183,21 @@ const Response = struct {
     }
 };
 
+/// A GET of `path`, its Host this server's, as a browser's would be.
 fn get(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8) !Response {
-    return exchange(a, io, port, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost\r\n\r\n");
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{port}));
 }
 
-fn post(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8, comptime form: []const u8) !Response {
-    return exchange(a, io, port, std.fmt.comptimePrint("POST " ++ path ++ " HTTP/1.1\r\nhost: localhost\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n" ++ form, .{form.len}));
+/// A form POSTed to `path`, its Host this server's, with `more` headers
+/// (each ending CRLF; none, as curl sends).
+const Post = struct { path: []const u8, form: []const u8, more: []const u8 = "" };
+
+fn post(a: std.mem.Allocator, io: Io, port: u16, p: Post) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(
+        a,
+        "POST {s} HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n{s}\r\n{s}",
+        .{ p.path, port, p.form.len, p.more, p.form },
+    ));
 }
 
 /// `request` on a connection of its own, and the response, read to the

@@ -95,13 +95,14 @@ pub const HeaderList = RocList(HeaderRec, std.http.Header, struct {
     }
 }.rec);
 
-/// Http.roc's `Request`: five lists, by name.
+/// Http.roc's `Request`: five lists, by name, then the U16.
 pub const Request = extern struct {
     body: RocBytes,
     headers: HeaderList,
     method: RocBytes,
     path: RocBytes,
     query: RocBytes,
+    port: u16,
 };
 
 /// Http.roc's `Response`: the lists by name, then the U16.
@@ -113,7 +114,7 @@ pub const Response = extern struct {
 
 comptime {
     const w = @sizeOf(usize);
-    std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 15 * w and @sizeOf(Response) == 7 * w);
+    std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 16 * w and @sizeOf(Response) == 7 * w);
 }
 
 // ── the file primitives' answers ────────────────────────────────────────────

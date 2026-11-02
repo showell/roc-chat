@@ -18,7 +18,10 @@
 //! **A TRUST BOUNDARY: 127.0.0.1 ONLY** (`listen`). Until sign-in exists,
 //! the app takes every request as Steve's (app/main.roc's `acting`), so
 //! anyone who can reach the server can post as him. The bind address is
-//! not an option, so nothing but this machine can reach it.
+//! not an option, so nothing but this machine can reach it. A browser here
+//! still carries other sites' requests to it: app/RequestOrigin.roc, the
+//! other half of this boundary, refuses any not from the server's own
+//! origin, by the headers and the port this layer hands it.
 
 const std = @import("std");
 const Io = std.Io;
@@ -113,7 +116,7 @@ pub const Server = struct {
                 return;
             };
             defer watchdog.cancel(s.io);
-            break :blk read_request(arena, &http, s.limits, &fired);
+            break :blk read_request(arena, &http, .{ .limits = s.limits, .port = s.port() }, &fired);
         };
         if (request == .gone) return;
         var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.limits.write_ms, net.ShutdownHow.both, &fired }) catch |e| {
@@ -149,7 +152,12 @@ pub const Parsed = struct {
     query: []const u8,
     headers: []const std.http.Header,
     body: []const u8,
+    /// The port the server listens on, so the app knows its own origin.
+    port: u16,
 };
+
+/// What a read needs of its server: the limits, and the port it listens on.
+const Reading = struct { limits: Limits, port: u16 };
 
 /// A response as the host writes it: a status std knows, and headers each
 /// free of CR, LF and NUL.
@@ -169,7 +177,8 @@ const Read = union(enum) {
 
 /// The request on `http`, head and body, copied into `arena`; or the
 /// refusal to send.
-fn read_request(arena: std.mem.Allocator, http: *std.http.Server, limits: Limits, fired: *std.atomic.Value(bool)) Read {
+fn read_request(arena: std.mem.Allocator, http: *std.http.Server, reading: Reading, fired: *std.atomic.Value(bool)) Read {
+    const limits = reading.limits;
     var req = http.receiveHead() catch |e| return switch (e) {
         error.HttpHeadersOversize => .{ .refused = .{ .req = null, .status = .request_header_fields_too_large, .body = "" } },
         error.HttpHeadersInvalid => .{ .refused = .{ .req = null, .status = .bad_request, .body = "" } },
@@ -178,7 +187,7 @@ fn read_request(arena: std.mem.Allocator, http: *std.http.Server, limits: Limits
         else
             .gone,
     };
-    const parsed = copy_head(arena, &req) catch return .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } };
+    const parsed = copy_head(arena, &req, reading.port) catch return .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } };
     var with_body = parsed;
     if (req.head.method.requestHasBody()) {
         // No length and not chunked: no body (std asserts one or the other).
@@ -207,7 +216,7 @@ fn timed_out(req: std.http.Server.Request) Read {
     return .{ .refused = .{ .req = req, .status = .request_timeout, .body = "the request was too slow\n" } };
 }
 
-fn copy_head(arena: std.mem.Allocator, req: *const std.http.Server.Request) !Parsed {
+fn copy_head(arena: std.mem.Allocator, req: *const std.http.Server.Request, port: u16) !Parsed {
     const target = req.head.target;
     const at = std.mem.indexOfScalar(u8, target, '?');
     var headers: std.ArrayList(std.http.Header) = .empty;
@@ -222,6 +231,7 @@ fn copy_head(arena: std.mem.Allocator, req: *const std.http.Server.Request) !Par
         .query = try arena.dupe(u8, if (at) |q| target[q + 1 ..] else ""),
         .headers = headers.items,
         .body = "",
+        .port = port,
     };
 }
 
@@ -236,6 +246,7 @@ pub fn answer(arena: std.mem.Allocator, root: *const files.DataRoot, io: Io, par
         .method = .from(parsed.method),
         .path = .from(parsed.path),
         .query = .from(parsed.query),
+        .port = parsed.port,
     });
     seam.end();
     const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .body = "failed\n" };

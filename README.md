@@ -14,9 +14,10 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `Page`'s fixed head and style sheet.
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
 - **Who is acting.** That is a `SignedIn`, and its door, `dangerously_assume`, stands in for sessions.
-- **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag` or `SignedIn`, and at the host's path rule (`host/file_primitives.zig`).
+- **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
 - **The directory.** `Directory`, `Users`, `Channels`, `Name`, `Dm` and `Place` are pure.
 - **The server's parts.**
+  - `RequestOrigin` holds every request to this server's own origin first: its `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, and a POST from another origin's page is refused (403).
   - `Route` chooses an answer from the method and path.
   - `ConversationKey` is a place plus a topic, and the one home of the layout: a URL `/chat/channel/<channel>/<topic>` names the folder `chat/channel/<channel>/<topic>/`, and `/chat/dm/<pair>/<topic>` names `chat/dm/<pair>/<topic>/`.
   - `ConversationRoute` answers GET and POST.
@@ -48,6 +49,8 @@ From your laptop, tunnel the port and browse as if the server were local:
 
     ssh -L 9611:127.0.0.1:9611 <box>
     open http://localhost:9611/chat/channel/general/gopher-roc
+
+Keep the laptop's port the server's: the server refuses a `Host` that is not `localhost` or `127.0.0.1` at its own port (`app/RequestOrigin.roc`), so `ssh -L 8000:127.0.0.1:9611` answers 403. That refusal is what keeps another site's page, or a name rebound to 127.0.0.1, from acting as Steve through your browser.
 
 The page has no compose box yet. To post, send the form a browser would send:
 

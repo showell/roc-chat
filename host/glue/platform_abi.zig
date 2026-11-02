@@ -889,13 +889,14 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct_28ccb911c4112e6d
-pub const __AnonStruct_28ccb911c4112e6d = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_ee8027c43e25493f
+pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct {
     body: RocListWith(u8, false),
     headers: RocList(__AnonStruct_288155b7e13051cb),
     method: RocListWith(u8, false),
     path: RocListWith(u8, false),
     query: RocListWith(u8, false),
+    port: u16,
     /// Recursively decrement Roc-owned fields.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
         const value = self;
@@ -921,6 +922,7 @@ pub const __AnonStruct_28ccb911c4112e6d = if (@sizeOf(usize) == 4) extern struct
     method: RocListWith(u8, false),
     path: RocListWith(u8, false),
     query: RocListWith(u8, false),
+    port: u16,
     /// Recursively decrement Roc-owned fields.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
         const value = self;
@@ -944,12 +946,12 @@ pub const __AnonStruct_28ccb911c4112e6d = if (@sizeOf(usize) == 4) extern struct
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct_28ccb911c4112e6d) != 120) @compileError("__AnonStruct_28ccb911c4112e6d size mismatch");
-        if (@alignOf(__AnonStruct_28ccb911c4112e6d) != 8) @compileError("__AnonStruct_28ccb911c4112e6d alignment mismatch");
+        if (@sizeOf(__AnonStruct_ee8027c43e25493f) != 128) @compileError("__AnonStruct_ee8027c43e25493f size mismatch");
+        if (@alignOf(__AnonStruct_ee8027c43e25493f) != 8) @compileError("__AnonStruct_ee8027c43e25493f alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct_28ccb911c4112e6d) != 60) @compileError("__AnonStruct_28ccb911c4112e6d size mismatch");
-        if (@alignOf(__AnonStruct_28ccb911c4112e6d) != 4) @compileError("__AnonStruct_28ccb911c4112e6d alignment mismatch");
+        if (@sizeOf(__AnonStruct_ee8027c43e25493f) != 64) @compileError("__AnonStruct_ee8027c43e25493f size mismatch");
+        if (@alignOf(__AnonStruct_ee8027c43e25493f) != 4) @compileError("__AnonStruct_ee8027c43e25493f alignment mismatch");
     }
 }
 
@@ -1205,7 +1207,7 @@ pub const HostReplace_file_with_utf8_bytes_atomicallyArgs = extern struct {
 
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
-pub const Handle_for_hostArg0 = __AnonStruct_28ccb911c4112e6d;
+pub const Handle_for_hostArg0 = __AnonStruct_ee8027c43e25493f;
 pub const Handle_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
 pub const Handle_for_host = __AnonStruct_b6e04da7cefe56b7;
 pub const Handle_for_hostHeaders = __AnonStruct_288155b7e13051cb;
@@ -1236,8 +1238,8 @@ pub const __AnonStruct_288155b7e13051cbRelease = struct {
     }
 };
 
-pub const __AnonStruct_28ccb911c4112e6dRelease = struct {
-    pub fn release(value: __AnonStruct_28ccb911c4112e6d, roc_host: *RocHost) void {
+pub const __AnonStruct_ee8027c43e25493fRelease = struct {
+    pub fn release(value: __AnonStruct_ee8027c43e25493f, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -1267,7 +1269,7 @@ fn rocReleasePolicy(comptime T: type) type {
     if (T == __AnonStruct_b6e04da7cefe56b7) return __AnonStruct_b6e04da7cefe56b7Release;
     if (T == RocList(__AnonStruct_288155b7e13051cb)) return RocListRelease(RocList(__AnonStruct_288155b7e13051cb), __AnonStruct_288155b7e13051cbRelease);
     if (T == __AnonStruct_288155b7e13051cb) return __AnonStruct_288155b7e13051cbRelease;
-    if (T == __AnonStruct_28ccb911c4112e6d) return __AnonStruct_28ccb911c4112e6dRelease;
+    if (T == __AnonStruct_ee8027c43e25493f) return __AnonStruct_ee8027c43e25493fRelease;
     @compileError("generated glue has no recursive release policy for " ++ @typeName(T));
 }
 
@@ -1488,8 +1490,8 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
 //
 // Roc exports these symbols from the app with their natural C ABI signatures.
 
+/// Entrypoint: handle_for_host!
+pub extern fn roc_handle_http_request(arg0: __AnonStruct_ee8027c43e25493f) callconv(.c) __AnonStruct_b6e04da7cefe56b7;
+
 /// Entrypoint: page_for_host
 pub extern fn roc_page(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
-
-/// Entrypoint: handle_for_host!
-pub extern fn roc_handle_http_request(arg0: __AnonStruct_28ccb911c4112e6d) callconv(.c) __AnonStruct_b6e04da7cefe56b7;

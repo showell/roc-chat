@@ -69,7 +69,7 @@ That many bytes from the OS's secure source, at most 1,024. Asking for more, or 
 
 `roc_handle_http_request : Http.Request => Http.Response`
 
-- **A request** is `{ method, path, query, headers, body }`, all as bytes. The method is `GET` and so on. The path runs up to any `?`, and the query is what follows it, undecoded. The headers are as sent, and the body is read whole.
+- **A request** is `{ method, path, query, headers, body, port }`, all but the port as bytes. The method is `GET` and so on. The path runs up to any `?`, and the query is what follows it, undecoded. The headers are as sent, and the body is read whole. The port is the one the server listens on, a fact the app needs to know its own origin (`app/RequestOrigin.roc`).
 - **The response** is `{ status : U16, headers, body }`, written as given. A status that isn't a real one, or a header holding CR, LF or NUL, is a bug in the app: the host answers 500 instead.
 
 **Limits:** a head of at most 16 KiB (past it, 431), and a body of at most 64 KiB (past it, 413). The request must arrive whole within 10 s, or the answer is 408. The answer must be written within 10 s, or the connection is cut.
@@ -77,6 +77,8 @@ That many bytes from the OS's secure source, at most 1,024. Asking for more, or 
 **The server handles one request at a time, one per connection.** It accepts a connection, reads its single request, answers it and closes it before accepting the next. No two requests ever run at once, so two writes never race, and no lock is needed. At this scale that costs nothing. Each answer says `connection: close`.
 
 **The server listens on 127.0.0.1 only**, and the bind address is not an option. Until sign-in exists, the app takes every request as Steve's (`acting` in `app/main.roc`, through `SignedIn.dangerously_assume`). Anyone who could reach the server could therefore post as him. The port defaults to 9611 (`--port` changes it).
+
+**127.0.0.1 alone does not keep out a web page.** A browser on this machine, or on a laptop through `ssh -L`, carries any page's requests to the server: a form on another site can POST to `http://localhost:9611/...`, and a name rebound to 127.0.0.1 can read a page. So the app holds every request to its own origin before routing it (`app/RequestOrigin.roc`): the `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`, and a request that writes is refused when its `Origin` or `Sec-Fetch-Site` names another origin. Each refusal is a 403. The host decides none of this; it hands the app the headers and the port.
 
 ## Memory and crashes
 

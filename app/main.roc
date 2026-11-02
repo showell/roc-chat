@@ -27,6 +27,7 @@ import Directory
 import HttpAnswer
 import Name
 import Page
+import RequestOrigin
 import Route
 import SignedIn
 import Topic
@@ -55,31 +56,43 @@ conversation = |{ topic, transcript }| {
 	Transcript.decode(checked, Transcript.Utf8Transcript.unchecked_from_file(transcript))
 }
 
-## **ONE REQUEST, ANSWERED**: the route chosen, then answered, the host's
-## clock read once, for a POST.
+## **ONE REQUEST, ANSWERED**: held first to this server's own origin
+## (`RequestOrigin`, a trust boundary: a 403 when it comes from elsewhere),
+## then the route chosen and answered, the host's clock read once, for a
+## POST.
 handle_http_request! : Http.Request => Http.Response
 handle_http_request! = |request|
-	match Route.choose({
+	match RequestOrigin.check({
 		method: request.method,
-		path: request.path,
-		directory,
+		headers: request.headers,
+		port: request.port,
 	}) {
-		ShowConversation(key) => ConversationRoute.show!(key)
-		AppendToConversation(key) =>
-			ConversationRoute.append!({
-				key,
-				acting,
-				now: Host.current_utc_seconds_since_epoch!({}),
-				body: request.body,
-			})
-		MethodNotAllowed => HttpAnswer.method_not_allowed
-		NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
+		Err(why) => HttpAnswer.notice(403, { title: "Forbidden", said: RequestOrigin.words(why) })
+		Ok({}) =>
+			match Route.choose({
+				method: request.method,
+				path: request.path,
+				directory,
+			}) {
+				ShowConversation(key) => ConversationRoute.show!(key)
+				AppendToConversation(key) =>
+					ConversationRoute.append!({
+						key,
+						acting,
+						now: Host.current_utc_seconds_since_epoch!({}),
+						body: request.body,
+					})
+				MethodNotAllowed => HttpAnswer.method_not_allowed
+				NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
+			}
 	}
 
 ## **STEVE (ID 1), TAKEN AS SIGNED IN WITH NOTHING CHECKED: THE SCARY
 ## DOOR.** No sessions exist yet, so every request acts as Steve: anyone
 ## who can reach the server can post as him. That is why the host listens
-## on 127.0.0.1 alone (host/http.zig). Sessions replace this.
+## on 127.0.0.1 alone (host/http.zig), and why every request is held to
+## this server's own origin first (`RequestOrigin`), so no other site's
+## page can act through a browser here. Sessions replace this.
 acting : SignedIn
 acting = SignedIn.dangerously_assume(steve)
 
