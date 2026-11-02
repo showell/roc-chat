@@ -67,6 +67,7 @@ import ChannelCodec
 import ChannelLayout
 import ChannelName
 import ChatKey
+import Erase
 import GitHubSignIn
 import HumanInvite
 import HumanInviteCodec
@@ -115,6 +116,41 @@ Store := [].{
 	## What a human has uploaded in all, written whole.
 	save_uploaded! : Principal.HumanId, U64 => [Failed, Written]
 	save_uploaded! = |human, n| Host.write!(uploaded_path(human), Uploads.uploaded_text(n))
+
+	## **A HUMAN ERASED, AS DECIDED** (Erase.plan, which says what goes and
+	## why): every DM of theirs removed, folder by folder; the saves of those
+	## DMs' messages dropped from every reading list that reads; their
+	## sessions ended; their reading list, their uploaded bytes' count and
+	## the indexes of their keys and invites removed; and their accounts
+	## (theirs, and their agents' and bots') written out **LAST**, so a stop
+	## part way leaves them erasable again, and a second run finds what the
+	## first left. Their keys and invites stay, inert (Erase.roc says why).
+	erase! : Erase.Plan => [Failed, Erased]
+	erase! = |plan|
+		match remove_places!(plan.dms) {
+			Failed => Failed
+			Removed =>
+				match drop_saves_in!(plan.dms) {
+					Failed => Failed
+					Removed =>
+						match remove_sessions_of!(plan.human) {
+							Failed => Failed
+							Removed =>
+								match remove_each!(own_paths(plan.human)) {
+									Failed => Failed
+									Removed =>
+										match plan.left.map_try(AccountCodec.encode) {
+											Err(_) => Failed
+											Ok(lines) =>
+												match Host.write!(accounts_path, List.join(lines)) {
+													Failed => Failed
+													Written => Erased
+												}
+										}
+								}
+						}
+				}
+		}
 
 	## **A TOPIC'S REACTIONS**, oldest first (Reactions.list); none before
 	## the first, and whether the file ends mid-line (for
@@ -839,6 +875,160 @@ saved_path = |human| "chat/saved/${human.to_u64().to_str()}".to_utf8()
 ## Where a human's uploaded bytes are counted.
 uploaded_path : Principal.HumanId -> List(U8)
 uploaded_path = |human| "chat/upload-bytes/${human.to_u64().to_str()}".to_utf8()
+
+## **A HUMAN'S OWN FILES, AS ERASURE TAKES THEM**: their reading list, their
+## uploaded bytes' count, and the indexes of their keys, agents' invites and
+## human invites (an index rebuilds from the files it indexes, so dropping a
+## human's leaves the others whole).
+own_paths : Principal.HumanId -> List(List(U8))
+own_paths = |human| [
+	saved_path(human),
+	uploaded_path(human),
+	index_path(keys_folder, human),
+	index_path(invites_folder, human),
+	index_path(human_invites_folder, human),
+]
+
+## Each file of `paths` removed, in order; one not there is gone already.
+remove_each! : List(List(U8)) => [Failed, Removed]
+remove_each! = |paths|
+	match paths {
+		[] => Removed
+		[path, .. as rest] =>
+			match Host.remove!(path) {
+				Failed => Failed
+				Removed => remove_each!(rest)
+			}
+	}
+
+## **EACH DM'S FOLDER REMOVED, WHOLE**: a DM's alone (a channel's name is
+## never one, ChannelName.dm_pair), so no channel's folder is ever taken.
+remove_places! : List(ChannelName) => [Failed, Removed]
+remove_places! = |dms|
+	match dms {
+		[] => Removed
+		[dm, .. as rest] =>
+			if !dm.is_dm() {
+				Failed
+			} else {
+				match remove_tree!(ChannelLayout.place_path(dm)) {
+					Failed => Failed
+					Removed => remove_places!(rest)
+				}
+			}
+	}
+
+## **A FOLDER AND EVERYTHING IN IT REMOVED**, depth first, never through a
+## link (the host's listing says what each entry is; one neither a file
+## nor a folder fails it); a folder not there is gone already.
+remove_tree! : List(U8) => [Failed, Removed]
+remove_tree! = |path| {
+	listed = Host.list!(path)
+	match listed.status {
+		Missing => Removed
+		Failed => Failed
+		Found =>
+			match remove_entries!(path, listed.entries) {
+				Failed => Failed
+				Removed => Host.remove!(path)
+			}
+	}
+}
+
+remove_entries! : List(U8), List(FolderEntry) => [Failed, Removed]
+remove_entries! = |path, entries|
+	match entries {
+		[] => Removed
+		[entry, .. as rest] => {
+			child = path.concat(['/']).concat(entry.name)
+			done =
+				match entry.kind {
+					Dir => remove_tree!(child)
+					File => Host.remove!(child)
+					Other => Failed
+				}
+			match done {
+				Failed => Failed
+				Removed => remove_entries!(path, rest)
+			}
+		}
+	}
+
+## **THE SAVES OF `dms`' MESSAGES, DROPPED FROM EVERY READING LIST**: each
+## list that reads and holds one, written without them; one that does not
+## read is left as it is (never written over, as everywhere).
+drop_saves_in! : List(ChannelName) => [Failed, Removed]
+drop_saves_in! = |dms| {
+	listed = Host.list!("chat/saved".to_utf8())
+	match listed.status {
+		Missing => Removed
+		Failed => Failed
+		Found => drop_saves_from!(listed.entries, dms)
+	}
+}
+
+drop_saves_from! : List(FolderEntry), List(ChannelName) => [Failed, Removed]
+drop_saves_from! = |entries, dms|
+	match entries {
+		[] => Removed
+		[entry, .. as rest] => {
+			done =
+				match Stored.id(entry.name, { name: "saved", make: Principal.HumanId.from_u64 }) {
+					Err(_) => Removed
+					Ok(human) =>
+						match Store.load_saved!(human) {
+							Err(Failed) => Failed
+							Err(Unreadable) => Removed
+							Ok(book) =>
+								if book.saves.any(|s| dms.contains(s.place.channel)) {
+									match Store.save_saved!(human, { ..book, saves: book.saves.drop_if(|s| dms.contains(s.place.channel)) }) {
+										Failed => Failed
+										Written => Removed
+									}
+								} else {
+									Removed
+								}
+						}
+				}
+			match done {
+				Failed => Failed
+				Removed => drop_saves_from!(rest, dms)
+			}
+		}
+	}
+
+## **EVERY SESSION OF `human`'S ENDED**: each stored session that reads and
+## is theirs removed (a session is named for its secret's hash, so they are
+## found by reading each).
+remove_sessions_of! : Principal.HumanId => [Failed, Removed]
+remove_sessions_of! = |human| {
+	listed = Host.list!("auth/sessions".to_utf8())
+	match listed.status {
+		Missing => Removed
+		Failed => Failed
+		Found => remove_sessions_from!(listed.entries, human)
+	}
+}
+
+remove_sessions_from! : List(FolderEntry), Principal.HumanId => [Failed, Removed]
+remove_sessions_from! = |entries, human|
+	match entries {
+		[] => Removed
+		[entry, .. as rest] => {
+			path = "auth/sessions/".to_utf8().concat(entry.name)
+			read = Host.read!(path)
+			theirs =
+				match read.status {
+					Found => SessionCodec.decode(read.bytes).map_ok(|line| line.fields().human == human) ?? Bool.False
+					Missing | Failed => Bool.False
+				}
+			done = if (theirs) Host.remove!(path) else Removed
+			match done {
+				Failed => Failed
+				Removed => remove_sessions_from!(rest, human)
+			}
+		}
+	}
 
 settings_path : List(U8)
 settings_path = "auth/settings".to_utf8()

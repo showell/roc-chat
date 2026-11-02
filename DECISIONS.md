@@ -163,6 +163,15 @@ the same commit.
   humans. No channel's name is ever a pair's (the rule refuses a leading
   digit and `_`). **The store asks for proof of the read** (Topic.Readable)
   before it touches a topic's uploads, so images are safe by construction.
+- **An admin erases a throwaway human** (Steve, 2026-11-02): from the users
+  page (`/chat/users`), a Remove button with a plain are-you-sure. Only a
+  human in no channel, nor any agent of theirs (the proxy for throwaway
+  and fly-by users), never oneself or an admin. Everything of theirs goes:
+  their DMs whole (both sides), their agents, sessions, reading list and
+  upload count, the indexes of their keys and invites; their keys and
+  invites stay, inert, since an id is never given twice. **No bans**:
+  nothing is barred, and they may come back as someone new (Alice again,
+  for testing).
 - **After every chunk, a cold agent reviews it adversarially.** Its first
   question is a divergence from the Zig chat with no stated reason
   (`docs/design/browser-client-review.md`).

@@ -26,6 +26,7 @@ import OneStream
 import RecentPage
 import SavedPage
 import TopicPage
+import UsersPage
 import Topics
 import Wire
 
@@ -83,6 +84,11 @@ route! = |req|
 		match RecentPage.route(req.path) {
 			Ok(r) => RecentPage.answer!(req, r)
 			Err(NotRecent) => Chat.not_found
+		}
+	} else if UsersPage.route(req.path).is_ok() {
+		match UsersPage.route(req.path) {
+			Ok(r) => UsersPage.answer!(req, r)
+			Err(NotUsers) => Chat.not_found
 		}
 	} else if SavedPage.route(req.path).is_ok() {
 		match SavedPage.route(req.path) {

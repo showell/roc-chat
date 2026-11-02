@@ -210,9 +210,11 @@ pub const Files = struct {
         return st.size + bytes.len;
     }
 
-    /// The file gone; one not there is gone already. A link is refused,
-    /// not removed (unlinking never follows, so the check cannot be raced
-    /// into an escape).
+    /// The file gone, or the folder when it is empty (a folder still
+    /// holding anything stays, and is an error: nothing goes wholesale);
+    /// one not there is gone already. A link is refused, not removed
+    /// (unlinking never follows, so the check cannot be raced into an
+    /// escape).
     pub fn remove(f: *const Files, path: []const u8) !void {
         if (!pathOk(path)) return error.BadPath;
         var dir = f.walk(path, .open) catch |e| switch (e) {
@@ -224,6 +226,10 @@ pub const Files = struct {
         try refuseLink(f, dir, name);
         dir.deleteFile(f.io, name) catch |e| switch (e) {
             error.FileNotFound => return,
+            error.IsDir => dir.deleteDir(f.io, name) catch |d| switch (d) {
+                error.FileNotFound => return,
+                else => return d,
+            },
             else => return e,
         };
         try f.syncDir(dir);
@@ -593,6 +599,14 @@ test "readAt, stat, list and remove" {
     try f.remove("d/t");
     try f.remove("gone/d/t");
     try testing.expectEqual(Read.missing, f.read(a, "d/t"));
+    // A folder still holding anything stays, and is an error; emptied, it goes.
+    try testing.expectError(error.DirNotEmpty, f.remove("d"));
+    try testing.expectEqual(1, f.list(a, "d").found.len);
+    try f.remove("d/sub/u");
+    try f.remove("d/sub");
+    try f.remove("d");
+    try testing.expectEqual(Listing.missing, f.list(a, "d"));
+    try f.remove("d");
 }
 
 fn readFound(f: *const Files, path: []const u8) ![]const u8 {

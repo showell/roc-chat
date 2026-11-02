@@ -20,4 +20,5 @@ pub const scripts = [_]Script{
     .{ .name = "save.js", .body = @embedFile("save.js") },
     .{ .name = "saved_page.js", .body = @embedFile("saved_page.js") },
     .{ .name = "upload.js", .body = @embedFile("upload.js") },
+    .{ .name = "users_page.js", .body = @embedFile("users_page.js") },
 };

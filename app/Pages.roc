@@ -165,7 +165,7 @@ home = |
 					viewer,
 					accounts,
 				).is_ok()
-			) Html.markup("<p><a href=\"/chat/channels\">Channels (an admin's)</a></p>\n") else Html.join([]),
+			) Html.markup("<p><a href=\"/chat/channels\">Channels (an admin's)</a></p>\n<p><a href=\"/chat/users\">Users (an admin's)</a></p>\n") else Html.join([]),
 			Html.markup("<p class=quiet>Signed in as "),
 			Html.text(Render.name_of(accounts, me)),
 			Html.markup(" ("),

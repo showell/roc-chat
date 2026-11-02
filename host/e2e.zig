@@ -186,7 +186,7 @@ fn signUpAs(a: std.mem.Allocator, port: u16, n: u64, name: []const u8) ![]const 
 /// `n - 1000`): what /me said then. The chat gives a human its own id, the
 /// next of its counter from 1, so no human here is named by the GitHub id
 /// they signed in with, and a step that took one for the other fails.
-var human_ids: [64]u64 = @splat(0);
+var human_ids: [128]u64 = @splat(0);
 
 /// GitHub user `n`'s human id, as a wire id's number; an error if `n`
 /// never signed up.
@@ -2765,6 +2765,98 @@ fn uploads(w: *World) !void {
     if ((try get(w.a, w.port(), "/upload.js", x.quin)).status != 200) return error.NoScript;
 }
 
+/// Whether the data root has a file at `path`.
+fn onDisk(w: *World, path: []const u8) bool {
+    var buf: [65536]u8 = undefined;
+    _ = w.rig.data.readFile(io, path, &buf) catch return false;
+    return true;
+}
+
+/// **A HUMAN ERASED** (app/Erase.roc, UsersPage.roc, Store.erase!): an
+/// admin's users page lists every human, each with a Remove button (its
+/// are-you-sure the page's script's) or why not: oneself, an admin, one in
+/// a channel or whose agent is. Removed: their DMs whole (both sides, their
+/// images too), others' saves of those DMs' messages, their agents and
+/// their keys' use, their sessions, their reading list and upload count;
+/// their name free for someone new; anyone else's things untouched. A
+/// second time, a 404. Who may: an admin by session; another human 403,
+/// a key 403, signed out 401 (the page a 303), a foreign Origin 403, a GET
+/// of the removal 405.
+fn eraseHuman(w: *World) !void {
+    const xena = try signUpAs(w.a, w.port(), 1080, "Xena+Throw");
+    const yuri = try signUp(w.a, w.port(), 1081);
+    const zack = try signUp(w.a, w.port(), 1082);
+    const x = try hid(w.a, 1080);
+    const y = try hid(w.a, 1081);
+    const z = try hid(w.a, 1082);
+    // Zack is in a channel; Yuri's agent is in one: neither may go.
+    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Keep&members=human%3A{s}", .{z}))).status != 201) return error.ChannelNotMade;
+    const yuri_agent = try ownAgent(w, yuri, "Yuri+Bot", "");
+    if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=KeepToo&members={s}", .{yuri_agent.id}))).status != 201) return error.ChannelNotMade;
+    // Xena: a DM with Yuri, both posting, an image; her self-DM; saves on both sides; an agent with a key.
+    const xy = try pairOf(w.a, x, y);
+    if ((try pagePost(w, xena, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{xy}), "topic=hi")).status != 303) return error.DmNotMade;
+    const dm_page = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/hi", .{xy});
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{dm_page}), xena, "hello Yuri")).status != 201) return error.NotSent;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{dm_page}), yuri, "hello Xena")).status != 201) return error.NotSent;
+    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/upload", .{dm_page}), .{ .cookie = xena, .content_type = upload_type }, try uploadForm(w.a, "file", "x.png", png_bytes))).status != 200) return error.NotUploaded;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/save", .{dm_page}), yuri, "n=1")).status != 201) return error.NotSaved;
+    if (!has((try get(w.a, w.port(), "/chat/saved", yuri)).body, "hello Yuri")) return error.NotSaved;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/save", .{dm_page}), xena, "n=2")).status != 201) return error.NotSaved;
+    const xx = try pairOf(w.a, x, x);
+    if ((try pagePost(w, xena, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{xx}), "topic=notes")).status != 303) return error.DmNotMade;
+    const xena_agent = try ownAgent(w, xena, "Xena+Bot", "");
+    // Yuri's own self-DM, to stay.
+    const yy = try pairOf(w.a, y, y);
+    if ((try pagePost(w, yuri, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{yy}), "topic=mine")).status != 303) return error.DmNotMade;
+
+    // The page: Xena's Remove button, naming her; why not for the rest.
+    const page = try get(w.a, w.port(), "/chat/users", w.ivy);
+    if (page.status != 200) return error.NoUsersPage;
+    if (!has(page.body, try std.fmt.allocPrint(w.a, "<form class=erase method=post action=\"/chat/users/{s}/remove\" data-name=\"Xena Throw\"><button>Remove</button></form>", .{x}))) return error.NoRemoveButton;
+    if (!has(page.body, try std.fmt.allocPrint(w.a, "<li data-human={s}>Person 1082 (<code>human:{s}</code>) <span class=muted>in a channel: Keep</span>", .{ z, z }))) return error.ChannelMemberRemovable;
+    if (!has(page.body, try std.fmt.allocPrint(w.a, "<li data-human={s}>Person 1081 (<code>human:{s}</code>) <span class=muted>in a channel: KeepToo</span>", .{ y, y }))) return error.AgentOwnerRemovable;
+    if (!has(page.body, "<span class=muted>you cannot remove yourself</span>") or !has(page.body, "<script src=\"/users_page.js\"></script>")) return error.UsersPageWrong;
+    if (!has((try get(w.a, w.port(), "/chat", w.ivy)).body, "<a href=\"/chat/users\">Users (an admin's)</a>")) return error.NoUsersLink;
+    if (has((try get(w.a, w.port(), "/chat", yuri)).body, "/chat/users")) return error.UsersLinkForAll;
+
+    // Who may not: another human, a key, nobody, a foreign Origin, a GET.
+    const remove_x = try std.fmt.allocPrint(w.a, "/chat/users/{s}/remove", .{x});
+    if ((try get(w.a, w.port(), "/chat/users", yuri)).status != 403 or (try get(w.a, w.port(), "/chat/users", zack)).status != 403) return error.MemberSawUsers;
+    if ((try pagePost(w, yuri, remove_x, "")).status != 403) return error.MemberRemoved;
+    if ((try send(w.a, w.port(), "POST", remove_x, .{ .key = xena_agent.key }, "")).status != 403) return error.KeyRemoved;
+    if ((try request(w.a, w.port(), "POST", remove_x, "", "")).status != 401) return error.NobodyRemoved;
+    if ((try get(w.a, w.port(), "/chat/users", "")).status != 303) return error.NobodySawUsers;
+    if ((try send(w.a, w.port(), "POST", remove_x, .{ .cookie = w.ivy, .origin = "https://evil.test" }, "")).status != 403) return error.ForeignOriginRemoved;
+    if ((try get(w.a, w.port(), remove_x, w.ivy)).status != 405) return error.RemovedByGet;
+    // Who may not be: one in a channel, one whose agent is, nobody's id.
+    const zack_no = try pagePost(w, w.ivy, try std.fmt.allocPrint(w.a, "/chat/users/{s}/remove", .{z}), "");
+    if (zack_no.status != 409 or !std.mem.eql(u8, zack_no.body, "in a channel: Keep\n")) return error.ChannelMemberRemoved;
+    if ((try pagePost(w, w.ivy, try std.fmt.allocPrint(w.a, "/chat/users/{s}/remove", .{y}), "")).status != 409) return error.AgentOwnerRemoved;
+    if ((try pagePost(w, w.ivy, "/chat/users/999999/remove", "")).status != 404) return error.NobodyErased;
+    if (!onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{xy}))) return error.ErasedEarly;
+
+    // Erased: back to the page, and every trace of her gone.
+    const gone = try pagePost(w, w.ivy, remove_x, "");
+    if (gone.status != 303 or !std.mem.eql(u8, gone.header("location") orelse "", "/chat/users")) return error.NotErased;
+    if ((try get(w.a, w.port(), "/me", xena)).status != 401) return error.SessionLived;
+    if ((try send(w.a, w.port(), "GET", "/dms", .{ .key = xena_agent.key }, "")).status != 401) return error.AgentKeyLived;
+    if (onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{xy})) or onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/topics/hi/transcript", .{xy})) or onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{xx}))) return error.DmLived;
+    var buf: [256]u8 = undefined;
+    if (w.rig.data.readFile(io, try std.fmt.allocPrint(w.a, "chat/dms/{s}", .{xy}), &buf)) |_| return error.DmFolderLived else |_| {}
+    if (onDisk(w, try std.fmt.allocPrint(w.a, "chat/saved/{s}", .{x})) or onDisk(w, try std.fmt.allocPrint(w.a, "chat/upload-bytes/{s}", .{x}))) return error.OwnFilesLived;
+    if ((try get(w.a, w.port(), dm_page, yuri)).status != 404) return error.DmPageLived;
+    if (has((try get(w.a, w.port(), "/chat/saved", yuri)).body, "hello Yuri")) return error.SaveLived;
+    if (has((try get(w.a, w.port(), "/chat/users", w.ivy)).body, "Xena Throw")) return error.StillListed;
+    // Nobody else's things: Yuri, his agent, his self-DM, Zack's channel.
+    if ((try get(w.a, w.port(), "/me", yuri)).status != 200) return error.OtherSessionGone;
+    if ((try send(w.a, w.port(), "GET", "/dms", .{ .key = yuri_agent.key }, "")).status != 200) return error.OtherKeyGone;
+    if (!onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{yy})) or !onDisk(w, "chat/channels/keep/channel")) return error.OtherPlaceGone;
+    // Her name is free for someone new; a second removal finds no one.
+    if ((try pagePost(w, w.ivy, remove_x, "")).status != 404) return error.ErasedTwice;
+    _ = try signUpAs(w.a, w.port(), 1083, "Xena+Throw");
+}
+
 const steps = [_]Step{
     .{ .name = "A and B sign in (and C, the third user)", .f = signIn },
     .{ .name = "A and B's topic: Ivy makes their channel, Talk, and A its topic, general", .f = start },
@@ -2851,6 +2943,7 @@ const steps = [_]Step{
     .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
     .{ .name = "reactions: one emoji on or off on one message, a 204; every page's stream gets the message's chips drawn again from the fold, each naming its people, the last event of each person and emoji winning, an emptied emoji gone; earlier pages draw them; a torn last line spoils nothing; a bad emoji or msg, or no such message, the old 400; on left out is on; a stranger 404, signed out 401, a key 403, a GET 405", .f = reactionsLive },
     .{ .name = "uploads: an image from the compose box's form, kept in its topic's folder by a fresh name, counted; served to the topic's readers by one URL, a DM's the same for both, nosniff, kept for good, and drawn when posted; not an image, no file, past 10 MiB and past the allowance refused in the old words, nothing counted; a stranger, nobody, a key and a GET refused", .f = uploads },
+    .{ .name = "a human erased: the admin's users page, a Remove button or why not (oneself, a channel's member, one whose agent is); removed, their DMs whole, others' saves of them, their agents' keys, their sessions and files gone, nobody else's, their name free again; a second time a 404; another human, a key, nobody, a foreign Origin and a GET refused", .f = eraseHuman },
 };
 
 /// **STEVE'S PATH**, his acceptance test for the chat: (1) go to Browse,

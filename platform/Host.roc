@@ -99,7 +99,8 @@ Host := [].{
 	## bytes (a separator, a torn line's newline) is the Roc's.
 	append! : List(U8), List(U8) => { size : U64, status : [Appended, Failed] }
 
-	## The file removed; one not there is gone already.
+	## The file removed, or the folder when it is empty (one still holding
+	## anything stays: `Failed`); one not there is gone already.
 	remove! : List(U8) => [Failed, Removed]
 
 	## **SIGN-IN'S FACTS** (host/signin.zig, host/auth/): the request's

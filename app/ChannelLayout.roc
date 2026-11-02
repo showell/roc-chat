@@ -35,6 +35,10 @@ ChannelLayout := [].{
 	dms_path : List(U8)
 	dms_path = "chat/dms".to_utf8()
 
+	## **A CHANNEL'S FOLDER, OR A DM'S**: everything of it is in here.
+	place_path : ChannelName -> List(U8)
+	place_path = |name| folder(name).to_utf8()
+
 	## A channel's own record: its name, as made, and its members.
 	channel_path : ChannelName -> List(U8)
 	channel_path = |name| "${folder(name)}/channel".to_utf8()
