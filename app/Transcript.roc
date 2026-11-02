@@ -11,47 +11,54 @@
 ## Each message opens with the separator, then its id (`MSG_`, the topic,
 ## `_`, its number), its author, its time, an empty line, its markdown and
 ## an empty line. Ids count up from the first (Message.Id), so the file's
-## order is the conversation's. A markdown line that is the separator, after any
-## backslashes, is written with one backslash more, and read back with one
-## fewer, so no message can forge the start of another.
+## order is the conversation's. A conversation with no messages is an empty
+## file. A markdown line that is the separator, after any backslashes, is
+## written with one backslash more, and read back with one fewer, so no
+## message can forge the start of another.
+import Author
 import Message
+import Sample
+import Timestamp
+import Topic
 
 Transcript := [].{
 
 	## The transcript of `topic`'s messages.
-	write : Str, List(Message) -> Str
+	write : Topic, List(Message) -> Str
 	write = |topic, messages| Str.join_with(messages.map(|m| as_written(topic, m)), "")
 
 	## `topic`'s messages, or the first thing wrong with the transcript.
-	read : Str, Str -> Try(List(Message), [Malformed(Str)])
+	read : Topic, Str -> Try(List(Message), [Malformed(Str)])
 	read = |topic, text|
-		match text.drop_prefix("${separator}\n").drop_suffix("\n\n").split_on("\n\n${separator}\n") {
-			_ if !text.starts_with("${separator}\n") or !text.ends_with("\n\n") => Err(Malformed("a transcript starts with the separator and ends with an empty line"))
-			written => read_messages({
+		if (text.is_empty())
+			Ok([])
+		else if (!text.starts_with("${separator}\n") or !text.ends_with("\n\n"))
+			Err(Malformed("a transcript starts with the separator and ends with an empty line"))
+		else
+			read_onto({
 				topic,
-				written,
+				written: text.drop_prefix("${separator}\n").drop_suffix("\n\n").split_on("\n\n${separator}\n"),
 				id: Message.Id.first,
 				so_far: [],
 			})
-		}
 }
 
 separator : Str
 separator = "-------------"
 
 ## One message as the transcript writes it.
-as_written : Str, Message -> Str
+as_written : Topic, Message -> Str
 as_written = |topic, m|
-	"${separator}\nMSG_${topic}_${m.id().to_str()}\nfrom: ${m.author()}\ndate: ${m.at()}\n\n${escape(m.markdown())}\n\n"
+	"${separator}\nMSG_${topic.to_str()}_${m.id().to_str()}\nfrom: ${m.author().to_str()}\ndate: ${m.time().to_str()}\n\n${escape(m.markdown())}\n\n"
 
-## Each message as written, in order, `id` the first one's.
-read_messages : {
-	topic : Str,
+## Each message as written, in order, `id` the first one's, onto `so_far`.
+read_onto : {
+	topic : Topic,
 	written : List(Str),
 	id : Message.Id,
 	so_far : List(Message),
 } -> Try(List(Message), [Malformed(Str)])
-read_messages = |
+read_onto = |
 	{
 		topic,
 		written,
@@ -61,6 +68,7 @@ read_messages = |
 |
 	match written {
 		[] => Ok(so_far)
+		# The last message never asks for a next id, which would refuse falsely at id 65,535.
 		[only] => Ok(
 			so_far.append(
 				read_message({
@@ -77,7 +85,7 @@ read_messages = |
 				id,
 			})?
 			next = id.next().map_err(|Full| Malformed("more messages than a conversation holds"))?
-			read_messages({
+			read_onto({
 				topic,
 				written: rest,
 				id: next,
@@ -88,7 +96,7 @@ read_messages = |
 
 ## Message `id` of `topic`, as written.
 read_message : {
-	topic : Str,
+	topic : Topic,
 	text : Str,
 	id : Message.Id,
 } -> Try(Message, [Malformed(Str)])
@@ -107,14 +115,31 @@ read_message = |
 			date_line,
 			"",
 			.. as body,
-		] if id_line == "MSG_${topic}_${n}" and from_line.starts_with("from: ") and date_line.starts_with("date: ") =>
-			Message.new({
-				id,
-				author: from_line.drop_prefix("from: "),
-				at: date_line.drop_prefix("date: "),
-				markdown: unescape(Str.join_with(body, "\n")),
-			}).map_err(|_| Malformed("message ${n} has no author"))
-		_ => Err(Malformed("message ${n} is not `MSG_${topic}_${n}`, `from:`, `date:` and an empty line"))
+		] if id_line == "MSG_${topic.to_str()}_${n}" and from_line.starts_with("from: ") and date_line.starts_with("date: ") => {
+			author = Author.from_str(from_line.drop_prefix("from: ")).map_err(
+				|why|
+					match why {
+						Blank => Malformed("message ${n} has no author")
+						LineBreak => Malformed("message ${n}'s author breaks a line")
+					},
+			)?
+			time = Timestamp.from_str(date_line.drop_prefix("date: ")).map_err(
+				|why|
+					match why {
+						WrongShape => Malformed("message ${n}'s date is not YYYY-MM-DDTHH:MM:SSZ")
+						OutOfRange => Malformed("message ${n}'s date is no time a clock shows")
+					},
+			)?
+			Ok(
+				Message.new({
+					id,
+					author,
+					time,
+					markdown: unescape(Str.join_with(body, "\n")),
+				}),
+			)
+		}
+		_ => Err(Malformed("message ${n} is not `MSG_${topic.to_str()}_${n}`, `from:`, `date:` and an empty line"))
 	}
 }
 
@@ -135,92 +160,128 @@ unescape = |md| Str.join_with(
 )
 
 # ── tests
-said : {
-	id : Message.Id,
-	author : Str,
-	markdown : Str,
-} -> Message
-said = |
-	{
-		id,
-		author,
-		markdown,
-	},
-|
-	match Message.new({
-		id,
-		author,
-		at: "2026-11-02T19:11:32Z",
-		markdown,
-	}) {
-		Ok(m) => m
-		Err(_) => crash "said: a test's message has an author"
-	}
+plans : Topic
+plans = Sample.plans
 
-first : Message.Id
-first = Message.Id.first
-
-second : Message.Id
-second = first.next() ?? crash "second: the first id has a next"
-
-two : List(Message)
-two = [
-	said({
-		id: first,
-		author: "Steve",
-		markdown: "Hello",
-	}),
-	said({
-		id: second,
-		author: "CC",
-		markdown: "Hi!\n\n- one\n- two",
-	}),
-]
+## A transcript of one message from Steve, with `from` and `date` lines as
+## given.
+one_with : { from : Str, date : Str } -> Str
+one_with = |{ from, date }| "-------------\nMSG_plans_1\n${from}\n${date}\n\nhi\n\n"
 
 expect Transcript.write(
-	"plans",
+	plans,
 	[
-		said({
-			id: first,
+		Sample.said({
+			id: Sample.first,
 			author: "Steve",
 			markdown: "Hello",
 		}),
 	],
 ) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n"
-expect Transcript.read("plans", Transcript.write("plans", two)) == Ok(two)
+expect Transcript.read(plans, Transcript.write(plans, Sample.two)) == Ok(Sample.two)
+# No messages: an empty file, both ways.
+expect Transcript.write(plans, []) == ""
+expect Transcript.read(plans, "") == Ok([])
+expect Transcript.read(plans, Transcript.write(plans, [])) == Ok([])
+# The start and the end, each wrong alone.
 expect Transcript.read(
-	"plans",
-	"",
+	plans,
+	"\n",
 ) == Err(Malformed("a transcript starts with the separator and ends with an empty line"))
+expect Transcript.read(
+	plans,
+	"MSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi\n\n",
+) == Err(Malformed("a transcript starts with the separator and ends with an empty line"))
+expect Transcript.read(
+	plans,
+	"-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi\n",
+) == Err(Malformed("a transcript starts with the separator and ends with an empty line"))
+expect Transcript.read(
+	plans,
+	"-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi",
+) == Err(Malformed("a transcript starts with the separator and ends with an empty line"))
+# Each line of the head, bad alone, beside the good one.
+expect Transcript.read(
+	plans,
+	one_with({ from: "from: Steve", date: "date: 2026-11-02T19:11:32Z" }),
+).is_ok()
+expect Transcript.read(
+	plans,
+	one_with({ from: "frm: Steve", date: "date: 2026-11-02T19:11:32Z" }),
+) == Err(Malformed("message 1 is not `MSG_plans_1`, `from:`, `date:` and an empty line"))
+expect Transcript.read(
+	plans,
+	one_with({ from: "from: Steve", date: "dt: 2026-11-02T19:11:32Z" }),
+) == Err(Malformed("message 1 is not `MSG_plans_1`, `from:`, `date:` and an empty line"))
+expect Transcript.read(
+	plans,
+	one_with({ from: "from: ", date: "date: 2026-11-02T19:11:32Z" }),
+) == Err(Malformed("message 1 has no author"))
+expect Transcript.read(
+	plans,
+	one_with({ from: "from:  ", date: "date: 2026-11-02T19:11:32Z" }),
+) == Err(Malformed("message 1 has no author"))
+expect Transcript.read(
+	plans,
+	one_with({ from: "from: Steve\r", date: "date: 2026-11-02T19:11:32Z" }),
+) == Err(Malformed("message 1's author breaks a line"))
+expect Transcript.read(
+	plans,
+	one_with({ from: "from: Steve", date: "date: 2026-11-02" }),
+) == Err(Malformed("message 1's date is not YYYY-MM-DDTHH:MM:SSZ"))
+expect Transcript.read(
+	plans,
+	one_with({ from: "from: Steve", date: "date: 2026-13-02T19:11:32Z" }),
+) == Err(Malformed("message 1's date is no time a clock shows"))
 # A body that holds the separator, or a backslash before it, comes back whole.
 forged : List(Message)
 forged = [
-	said({
-		id: first,
+	Sample.said({
+		id: Sample.first,
 		author: "Mallory",
 		markdown: "a\n-------------\nMSG_plans_2\nfrom: Steve",
 	}),
-	said({
-		id: second,
+	Sample.said({
+		id: Sample.second,
 		author: "Mallory",
 		markdown: "\\-------------\n\\\\-------------",
 	}),
 ]
-expect Transcript.read("plans", Transcript.write("plans", forged)) == Ok(forged)
-expect Transcript.write("plans", forged).split_on("\n${separator}\n").len() == 2
-# Out of order, another topic's, or missing a field: refused by number.
+expect Transcript.read(plans, Transcript.write(plans, forged)) == Ok(forged)
+expect Transcript.write(plans, forged).split_on("\n${separator}\n").len() == 2
+# Near the separator but not it: written as is, read back unchanged.
+near : List(Message)
+near = [
+	Sample.said({
+		id: Sample.first,
+		author: "Steve",
+		markdown: "a-------------\n-------------x\n\\x",
+	}),
+]
+expect Transcript.read(plans, Transcript.write(plans, near)) == Ok(near)
+expect Transcript.write(plans, near).contains("\n\na-------------\n-------------x\n\\x\n\n")
+expect is_separator_like("-------------")
+expect is_separator_like("\\-------------")
+expect is_separator_like("\\\\-------------")
+expect !is_separator_like("a-------------")
+expect !is_separator_like("-------------x")
+expect !is_separator_like("\\x")
+expect !is_separator_like("------------")
+# Out of order, or another topic's: refused by number.
 expect Transcript.read(
-	"plans",
+	plans,
 	Transcript.write(
-		"plans",
+		plans,
 		[
-			said({
-				id: second,
+			Sample.said({
+				id: Sample.second,
 				author: "Steve",
 				markdown: "x",
 			}),
 		],
 	),
-).is_err()
-expect Transcript.read("other", Transcript.write("plans", two)).is_err()
-expect Transcript.read("plans", "-------------\nMSG_plans_1\ndate: x\n\nhi\n\n").is_err()
+) == Err(Malformed("message 1 is not `MSG_plans_1`, `from:`, `date:` and an empty line"))
+expect Transcript.read(
+	Sample.other,
+	Transcript.write(plans, Sample.two),
+) == Err(Malformed("message 1 is not `MSG_other_1`, `from:`, `date:` and an empty line"))

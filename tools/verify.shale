@@ -15,7 +15,7 @@
 -- budget: steps=200000000
 
 const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
-const expect_floor = 232
+const expect_floor = 331
 
 const board = {failed = 0}
 
@@ -68,8 +68,8 @@ local demo = run({"zig", "build", "demo", "--", "gopher-roc", "demo/gopher-roc.t
 local page = demo.out
 const wanted = {
   "<h1>gopher-roc</h1>",
-  "<article class=message id=msg-1><header><span class=author>Steve</span>",
-  "<a class=ref href=\"#msg-5\">MSG_gopher-roc_5</a>",
+  "<article class=\"message\" id=\"msg-1\"><header><span class=\"author\">Steve</span>",
+  "<a class=\"ref\" href=\"#msg-5\">MSG_gopher-roc_5</a>",
   "<p>-------------</p>",
   "<pre><code class=\"language-roc\">",
 }
