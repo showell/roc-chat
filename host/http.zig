@@ -14,6 +14,10 @@
 //! written within `Limits.write_ms`; past either, a watchdog shuts the
 //! socket, which ends the read or write blocked on it. A head past its cap
 //! is a 431, a body past its cap a 413, a request past its deadline a 408.
+//! After a refusal the server drains the client for at most
+//! `Limits.linger_ms`. So one connection holds the server at most
+//! `read_ms + write_ms` (20 s), and docs/platform.md says what that bound
+//! means for a client that connects again and again.
 //!
 //! **A TRUST BOUNDARY: 127.0.0.1 ONLY** (`listen`). Until sign-in exists,
 //! the app takes every request as Steve's (app/main.roc's `acting`), so
@@ -41,6 +45,9 @@ pub const Limits = struct {
     write_ms: u32 = 10_000,
     /// The most a body may be: a message's form, with room to spare.
     body_most: usize = 64 * 1024,
+    /// After a refusal, the most time spent draining what the client still
+    /// sends (`linger`), inside the write deadline.
+    linger_ms: u32 = 1_000,
 };
 
 /// The most a request's head may be: past it, a 431.
@@ -138,7 +145,7 @@ pub const Server = struct {
                     refused.head.expect = null;
                     refused.respond(r.body, .{ .status = r.status, .keep_alive = false }) catch return;
                 } else raw(&http, r.status);
-                linger(s.io, connection);
+                linger(s.io, connection, s.limits.linger_ms);
             },
         }
     }
@@ -282,10 +289,17 @@ fn shut_after(io: Io, connection: net.Stream, ms: u32, how: net.ShutdownHow, fir
 /// **A REFUSED REQUEST'S UNREAD BYTES ARE DRAINED BEFORE THE CLOSE**:
 /// closed with the client's bytes unread, the socket resets, and the client
 /// may lose the refusal it was sent. So the server's side is shut, and what
-/// the client still sends is read and dropped, until it closes or the write
-/// deadline's watchdog shuts the socket.
-fn linger(io: Io, connection: net.Stream) void {
+/// the client still sends is read and dropped, until it closes or `ms`
+/// pass (its own watchdog, so a client that never closes holds the server
+/// that long, not the write deadline's whole).
+fn linger(io: Io, connection: net.Stream, ms: u32) void {
     connection.shutdown(io, .send) catch return;
+    var fired = std.atomic.Value(bool).init(false);
+    var watchdog = io.concurrent(shut_after, .{ io, connection, ms, net.ShutdownHow.recv, &fired }) catch |e| {
+        log.warn("no task for the linger's watchdog ({t}): closed", .{e});
+        return;
+    };
+    defer watchdog.cancel(io);
     var buf: [4096]u8 = undefined;
     var r = connection.reader(io, &buf);
     _ = r.interface.discardRemaining() catch {};

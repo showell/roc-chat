@@ -129,6 +129,31 @@ test "a request too slow is a 408, and the server serves the next" {
     try testing.expectEqual(404, try status(next));
 }
 
+test "a refused client that never closes holds the server for the linger, not the write deadline" {
+    const r = try Running.start(.{ .body_most = 64, .write_ms = 5_000, .linger_ms = 200 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+    const held = try addr.connect(io, .{ .mode = .stream });
+    defer held.close(io);
+    var w = held.writer(io, &.{});
+    try w.interface.writeAll("POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: x\r\ncontent-length: 1000\r\n\r\n");
+    var buf: [4096]u8 = undefined;
+    var rd = held.reader(io, &buf);
+    // The refusal, read to the server's shut of its side; this side stays open.
+    try testing.expectEqual(413, try status(try rd.interface.allocRemaining(a, .limited(64 * 1024))));
+    const began = Io.Clock.now(.awake, io);
+    const next = try exchange(a, port, try ours(a, port, "GET /nowhere HTTP/1.1", "\r\n"));
+    const waited = began.untilNow(io, .awake).toMilliseconds();
+    try testing.expectEqual(404, try status(next));
+    // It drained (it waited out most of the linger), and it stopped there.
+    try testing.expect(waited >= 100);
+    try testing.expect(waited < 2_000);
+}
+
 test "it listens on 127.0.0.1 alone" {
     const r = try Running.start(.{});
     defer r.stop();
