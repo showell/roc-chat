@@ -221,7 +221,7 @@ load_asker! = |{}| {
 						now,
 					})
 				Ok({ viewer, write: Touched(s) }) =>
-					match Store.save_session!(s.fields()) {
+					match Store.save_session!(s) {
 						Failed => Err(Answered(Chat.failed))
 						Written =>
 							Ok({

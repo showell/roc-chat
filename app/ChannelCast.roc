@@ -16,7 +16,6 @@ import ApiKey
 import Cast
 import Principal
 import Session
-import SessionCodec
 
 ChannelCast := [].{
 
@@ -153,8 +152,8 @@ ChannelCast := [].{
 ## line, signed in at 0.
 session_of : U64 -> Session
 session_of = |who|
-	match SessionCodec.decode(Str.to_utf8("session v1 id=${who.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("01", 32)} created=0 seen=0\n")) {
-		Ok(line) => Session.load(line)
+	match Session.decode(Str.to_utf8("session v1 id=${who.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("01", 32)} created=0 seen=0\n")) {
+		Ok(session) => session
 		Err(_) => crash "session_of: a test's session line decodes"
 	}
 

@@ -1,5 +1,5 @@
-## **A SIGN-IN SESSION, AND HOW LONG IT LIVES** (the Roc chat's auth design,
-## section 2): a browser signed in as a human. The cookie carries a random
+## **A SIGN-IN SESSION, AND HOW LONG IT LIVES**: a browser signed in as a
+## human. The cookie carries a random
 ## secret; the store keeps the secret's hash (the host hashes, and looks a
 ## session up by it), the human, the generation of the account it was
 ## started for (Principal.Generation), when it was created and when it was last seen. A record on
@@ -9,10 +9,20 @@
 ## **ONLY THREE WAYS IN:** `start`, which takes the sign-in flow's Admission
 ## (GitHubSignIn: an opaque value only the flow makes, once every step
 ## held); `start_invited`, which takes a redeemed invite's (HumanInvite's,
-## made only by its redemption); and `load`, which takes a SessionCodec.Line (an opaque value only
-## the decoder makes, from a stored line). There is no constructor from a
-## record, so no handler mints a session, an admin's or anyone's, without
-## the flow or a line in the store.
+## made only by its redemption); and `decode`, from a stored line, every field checked. There is
+## no constructor from a record, so no handler mints a session, an admin's
+## or anyone's, without the flow or a line in the store.
+##
+## **ITS LINE**, in Stored's format, the cookie secret's hash and never the
+## secret:
+##
+##     session v1 id=12 human=583231 generation=3 token=<64 hex digits> created=1761600000 seen=1761603600
+##
+## A line seen before it was created is refused (`SeenBeforeCreated`), as
+## every other malformed line is, by name. **A LINE PROVES THE PATH, NOT
+## THE SOURCE**: `decode` accepts any bytes, so a session decoded proves
+## its checks ran, not that its bytes came from the store; real provenance
+## needs an opaque read value from the platform, a host task.
 ##
 ## **ITS LIFETIME, CONSERVATIVE BY DEFAULT:**
 ## - **idle:** a session not seen for 30 days is over, every human's alike
@@ -33,10 +43,9 @@ import Cast
 import GitHubSignIn
 import HumanInvite
 import Principal
-import SessionCodec
 import Stored
 
-Session :: SessionCodec.Fields.{
+Session :: Session.Fields.{
 
 	## How long a session may go unseen, in seconds: 30 days.
 	idle_secs : I64
@@ -51,8 +60,15 @@ Session :: SessionCodec.Fields.{
 	touch_secs : I64
 	touch_secs = 300
 
-	## A session's stored fields, as SessionCodec writes and reads them.
-	Fields : SessionCodec.Fields
+	## **A SESSION'S FIELDS**: what its line holds.
+	Fields : {
+		id : Principal.SessionId,
+		human : Principal.HumanId,
+		generation : Principal.Generation,
+		token_hash : Stored.SecretHash,
+		created : I64,
+		last_seen : I64,
+	}
 
 	## What a session is at a time.
 	Liveness : [
@@ -72,14 +88,68 @@ Session :: SessionCodec.Fields.{
 	start_invited : HumanInvite.Admission -> Session
 	start_invited = |admission| begun(admission.facts())
 
-	## **A SESSION AS ITS STORED LINE HOLDS IT**: the only way back from
-	## the store (SessionCodec checked the line whole).
-	load : SessionCodec.Line -> Session
-	load = |line| Session.(line.fields())
+	## The session's line.
+	encode : Session -> List(U8)
+	encode = |Session.(s)|
+		Stored.line(
+			"session",
+			[
+				("id", s.id.to_u64().to_str()),
+				("human", s.human.to_u64().to_str()),
+				("generation", s.generation.to_u64().to_str()),
+				("token", Stored.hash_text(s.token_hash)),
+				("created", Stored.time_text(s.created)),
+				("seen", Stored.time_text(s.last_seen)),
+			],
+		)
 
-	## The session's fields, to store.
+	## **A SESSION AS ITS STORED LINE HOLDS IT**: the only way back from
+	## the store, every field checked.
+	decode : List(U8) -> Try(Session, _)
+	decode = |raw| {
+		fields = Stored.Reader.open(raw, "session")?
+		id_field = fields.field("id")?
+		id = Stored.id(id_field.value, { name: "id", make: Principal.SessionId.from_u64 })?
+		human_field = id_field.rest.field("human")?
+		human = Stored.id(human_field.value, { name: "human", make: Principal.HumanId.from_u64 })?
+		generation_field = human_field.rest.field("generation")?
+		generation = Stored.id(
+			generation_field.value,
+			{ name: "generation", make: Principal.Generation.from_u64 },
+		)?
+		token_field = generation_field.rest.field("token")?
+		token_hash = Stored.hash(token_field.value, "token")?
+		created_field = token_field.rest.field("created")?
+		created = Stored.time(created_field.value, "created")?
+		seen_field = created_field.rest.field("seen")?
+		last_seen = Stored.time(seen_field.value, "seen")?
+		seen_field.rest.close()?
+		if last_seen < created {
+			Err(SeenBeforeCreated)
+		} else {
+			Ok(
+				Session.(
+					{
+						id,
+						human,
+						generation,
+						token_hash,
+						created,
+						last_seen,
+					},
+				),
+			)
+		}
+	}
+
+	## The session's fields.
 	fields : Session -> Session.Fields
 	fields = |Session.(s)| s
+
+	## The hash of the session's cookie secret, which the store names its
+	## file by.
+	token_hash : Session -> Stored.SecretHash
+	token_hash = |Session.(s)| s.token_hash
 
 	## The session's public number.
 	id : Session -> Principal.SessionId
@@ -186,11 +256,11 @@ begun = |a|
 
 # ── tests
 
-## The session a stored line holds, through the codec, the store's way in.
+## The session a stored line holds, the store's way in.
 stored : Str -> Session
 stored = |text|
-	match SessionCodec.decode(Str.to_utf8(text)) {
-		Ok(line) => Session.load(line)
+	match Session.decode(Str.to_utf8(text)) {
+		Ok(session) => session
 		Err(_) => crash "stored: a test's session line decodes"
 	}
 
@@ -293,13 +363,7 @@ expect opened({
 }).liveness(-9223372036854775808) == AbsoluteExpired
 
 # Loading: a line round-trips through the codec.
-expect Session.load(
-	match SessionCodec.decode(SessionCodec.encode(s1.fields())) {
-		Ok(line) => line
-		Err(_) => crash "a stored session decodes"
-	},
-)
-	== s1
+expect Session.decode(s1.encode()) == Ok(s1)
 
 # ── ADMITTING A REQUEST
 ann : Principal
@@ -530,3 +594,132 @@ expect admitted(flowed, { among: [ann], now: 10100000 }) == Admitted({
 	write: Unchanged,
 })
 expect admitted(flowed, { among: [ann_again], now: 10100000 }) == Refused(NoSuchAccount)
+
+# ── ITS LINE: what it writes, round trips, and each malformed line by name.
+## Session 12 of human 583231, created at `created` and seen at `seen`.
+fields_at : { created : I64, seen : I64 } -> Session.Fields
+fields_at = |{ created, seen }| {
+	id: Cast.sid(12),
+	human: Cast.hid(583231),
+	generation: Cast.gen(3),
+	token_hash: Cast.token(0xab),
+	created,
+	last_seen: seen,
+}
+
+usual : Session.Fields
+usual = fields_at({ created: 1761600000, seen: 1761603600 })
+
+ab64 : Str
+ab64 = "ab".repeat(32)
+
+usual_line : Str
+usual_line = "session v1 id=12 human=583231 generation=3 token=${ab64} created=1761600000 seen=1761603600\n"
+
+expect Session.(usual).encode() == usual_line.to_utf8()
+
+## The fields a line decodes to.
+read_back : List(U8) -> Try(Session.Fields, _)
+read_back = |raw| Session.decode(raw).map_ok(Session.fields)
+
+# Round trips: the usual, a fresh one (seen when created), times at 0 and
+# at the last a record may hold, the biggest ids.
+expect read_back(Session.(usual).encode()) == Ok(usual)
+expect
+	List.all(
+		[
+			fields_at({ created: 5, seen: 5 }),
+			fields_at({ created: 0, seen: 0 }),
+			fields_at({ created: 0, seen: Stored.max_time }),
+			{
+				..usual,
+				id: Cast.sid(18446744073709551615),
+				human: Cast.hid(18446744073709551615),
+				generation: Cast.gen(18446744073709551615),
+			},
+		],
+		|f| read_back(Session.(f).encode()) == Ok(f),
+	)
+
+# ── THE MALFORMED TABLE: each line, its named problem.
+decoded : Str -> Try({}, _)
+decoded = |text| Session.decode(text.to_utf8()).map_ok(|_| {})
+
+## The usual line with `from` replaced by `to`.
+usual_but : { from : Str, to : Str } -> Str
+usual_but = |{ from, to }| usual_line.replace_first(from, to)
+
+expect decoded(usual_but({ from: "", to: "" })) == Ok({})
+expect decoded(usual_but({ from: "\n", to: "" })) == Err(Torn)
+expect decoded(usual_but({ from: "\n", to: "\n\n" })) == Err(ExtraLine)
+expect decoded(usual_but({ from: "session", to: "account" })) == Err(WrongRecord)
+expect decoded(usual_but({ from: "v1", to: "v0" })) == Err(UnknownVersion)
+expect decoded(usual_but({ from: "id=12 ", to: "" })) == Err(MissingField("id"))
+expect decoded(usual_but({ from: "id=12", to: "id=0" })) == Err(BadValue("id"))
+expect decoded(usual_but({ from: "id=12", to: "id=012" })) == Err(BadNumber("id"))
+expect decoded(usual_but({ from: "human=583231 ", to: "" })) == Err(MissingField("human"))
+expect decoded(usual_but({ from: "human=583231", to: "human=0" })) == Err(BadValue("human"))
+expect decoded(usual_but({ from: "generation=3 ", to: "" })) == Err(MissingField("generation"))
+expect decoded(
+	usual_but({
+		from: "generation=3",
+		to: "generation=-1",
+	}),
+) == Err(BadNumber("generation"))
+expect decoded(
+	usual_but({
+		from: "generation=3",
+		to: "generation=0",
+	}),
+) == Err(BadValue("generation"))
+expect decoded(
+	usual_but({
+		from: "generation=3",
+		to: "account=3",
+	}),
+) == Err(MissingField("generation"))
+expect decoded(usual_but({ from: "token=${ab64} ", to: "" })) == Err(MissingField("token"))
+expect decoded(usual_but({ from: ab64, to: "AB".repeat(32) })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: ab64, to: "ab".repeat(31) })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: ab64, to: "ab".repeat(33) })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: ab64, to: "" })) == Err(BadValue("token"))
+expect decoded(usual_but({ from: "created=1761600000 ", to: "" })) == Err(MissingField("created"))
+expect decoded(
+	usual_but({
+		from: "created=1761600000",
+		to: "created=1761600000.5",
+	}),
+) == Err(BadNumber("created"))
+expect decoded(usual_but({ from: " seen=1761603600", to: "" })) == Err(MissingField("seen"))
+expect decoded(usual_but({ from: "seen=1761603600", to: "seen=" })) == Err(BadNumber("seen"))
+expect decoded(
+	usual_but({
+		from: "seen=1761603600",
+		to: "seen=1761599999",
+	}),
+) == Err(SeenBeforeCreated)
+expect decoded(usual_but({ from: "1761603600\n", to: "1761603600 \n" })) == Err(Trailing)
+expect decoded(usual_but({ from: "1761603600\n", to: "1761603600 device=x\n" })) == Err(Trailing)
+expect decoded(
+	usual_but({
+		from: "created=1761600000 seen=1761603600",
+		to: "seen=1761603600 created=1761600000",
+	}),
+) == Err(MissingField("created"))
+expect Session.decode([0xff, '\n']).map_ok(|_| {}) == Err(NotUtf8)
+
+# **THE ATTACKER'S EXTREME SESSION**: created at I64's
+# minimum, its liveness overflowed. A time before 1970 is no record the chat
+# wrote: refused at the door, as is one past 9999.
+expect decoded(
+	usual_but({
+		from: "created=1761600000",
+		to: "created=-9223372036854775808",
+	}),
+) == Err(BadNumber("created"))
+expect decoded(
+	usual_but({
+		from: "seen=1761603600",
+		to: "seen=9223372036854775807",
+	}),
+) == Err(BadNumber("seen"))

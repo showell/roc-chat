@@ -55,7 +55,6 @@ import GitHubSignIn
 import KeyCodec
 import Principal
 import Session
-import SessionCodec
 import SignIn
 import SignInWeb
 import Store
@@ -1212,7 +1211,7 @@ load_granter! = |by|
 	match by {
 		Session(h) =>
 			match Store.load_session!(h) {
-				Ok(line) => Ok(Found(Session(Session.load(line))))
+				Ok(session) => Ok(Found(Session(session)))
 				Err(Missing) | Err(Malformed) => Ok(Gone)
 				Err(Failed) => Err(Failed)
 			}
@@ -1670,8 +1669,8 @@ iid = |n|
 ## Human `who`'s session, signed in at 0 to their account of generation 1.
 session_of : U64 -> Session
 session_of = |who|
-	match SessionCodec.decode(Str.to_utf8("session v1 id=${who.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("07", 32)} created=0 seen=0\n")) {
-		Ok(line) => Session.load(line)
+	match Session.decode(Str.to_utf8("session v1 id=${who.to_str()} human=${who.to_str()} generation=1 token=${Str.repeat("07", 32)} created=0 seen=0\n")) {
+		Ok(session) => session
 		Err(_) => crash "session_of: a test's session line decodes"
 	}
 

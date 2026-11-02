@@ -692,7 +692,7 @@ join! = |form| {
 						removed_to_written(SignIn.end_cookie_session!({}))
 							|> and_then!(|_| Store.save_human_invite!(redeemed.spent))
 							|> and_then!(|_| if (redeemed.steps.is_empty()) Written else Store.save_accounts!(after))
-							|> and_then!(|_| Store.save_session!(session.fields()))
+							|> and_then!(|_| Store.save_session!(session))
 					match written {
 						Failed => Ok(Chat.failed)
 						Written => {

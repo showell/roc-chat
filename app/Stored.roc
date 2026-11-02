@@ -76,7 +76,7 @@ Stored := [].{
 		## a name the name rule refuses, a login GitHub would not give.
 		BadValue(Str),
 
-		## A session seen before it was created (SessionCodec).
+		## A session seen before it was created (Session).
 		SeenBeforeCreated,
 	]
 

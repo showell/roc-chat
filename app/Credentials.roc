@@ -103,7 +103,7 @@ Credentials := [].{
 						key: NoKey,
 					})
 					Ok({ viewer, write: Touched(s) }) =>
-						match Store.save_session!(s.fields()) {
+						match Store.save_session!(s) {
 							Written => Ok({
 								viewer,
 								accounts,

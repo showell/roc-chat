@@ -175,7 +175,7 @@ SignIn := [].{
 									Err(Failed) => Err(Failed)
 									Err(Missing) => Ok(NoSession)
 									Err(Malformed) => Ok(NoSession)
-									Ok(line) => Ok(Found(Session.load(line)))
+									Ok(session) => Ok(Found(session))
 								}
 						}
 				}
@@ -206,7 +206,7 @@ SignIn := [].{
 								match write {
 									Unchanged => hello_page(Someone(principal))
 									Touched(s) =>
-										if Store.save_session!(s.fields()) == Written {
+										if Store.save_session!(s) == Written {
 											hello_page(Someone(principal))
 										} else {
 											Chat.failed
@@ -245,7 +245,7 @@ admit! = |session, as_of|
 			touched =
 				match write {
 					Unchanged => Written
-					Touched(s) => Store.save_session!(s.fields())
+					Touched(s) => Store.save_session!(s)
 				}
 			if touched == Written {
 				Chat.plain(Str.to_utf8("signed in as ${AccountCodec.id_text(Principal.id(principal))}\n"))
@@ -431,7 +431,7 @@ sign_in! = |f, { admission, steps }| {
 		if (ended == Failed) Failed else Store.save_signed_in!({
 			accounts: after.accounts,
 			settings: after.settings,
-			session: session.fields(),
+			session,
 		})
 	) {
 		Failed => Chat.failed

@@ -24,7 +24,6 @@ import Cast
 import KeyCodec
 import Principal
 import Session
-import SessionCodec
 import Stored
 
 ApiKey := [].{
@@ -306,16 +305,16 @@ signed_in = |{ n, who }|
 ## 1, from its stored line.
 session_at : U64, I64 -> Session
 session_at = |who, at|
-	match SessionCodec.decode(Str.to_utf8("session v1 id=3 human=${who.to_str()} generation=1 token=${Str.repeat("07", 32)} created=${at.to_str()} seen=${at.to_str()}\n")) {
-		Ok(line) => Session.load(line)
+	match Session.decode(Str.to_utf8("session v1 id=3 human=${who.to_str()} generation=1 token=${Str.repeat("07", 32)} created=${at.to_str()} seen=${at.to_str()}\n")) {
+		Ok(session) => session
 		Err(_) => crash "session_at: a test's session line decodes"
 	}
 
 ## The session a stored line holds, as a granter.
 stored_session : Str -> ApiKey.Granter
 stored_session = |text|
-	match SessionCodec.decode(Str.to_utf8(text)) {
-		Ok(line) => Session(Session.load(line))
+	match Session.decode(Str.to_utf8(text)) {
+		Ok(session) => Session(session)
 		Err(_) => crash "stored_session: a test's session line decodes"
 	}
 

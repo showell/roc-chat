@@ -11,7 +11,7 @@
 ##     auth/accounts             every account, a line each (AccountCodec)
 ##     auth/settings             the generation and agent-id counters (`settings_line`)
 ##     auth/audit                every refusal and admin act, appended (AuditLog)
-##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
+##     auth/sessions/<hash>      a session, named for its secret's hash (Session)
 ##     auth/keys/<hash>          an API key, named for its secret's hash (ChatKey)
 ##     auth/invites/<hash>       an agent's invite, named for its code's hash (AgentInvite)
 ##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInviteCodec)
@@ -73,7 +73,7 @@ import AgentInvite
 import Transcript
 import Principal
 import Reactions
-import SessionCodec
+import Session
 import SignInWeb
 import Stored
 import Topic
@@ -205,11 +205,11 @@ Store := [].{
 	spend_nonce! : Store.Spent, List(U8) => [Failed, Written]
 	spend_nonce! = |set, nonce| Host.write!(spent_path(set, nonce), [])
 
-	## The session whose secret hashes to `hash`: its stored line, nothing
-	## there, or a line that does not read (`Malformed`, which a caller
+	## The session whose secret hashes to `hash`, nothing there, or a line
+	## that does not read (`Malformed`, which a caller
 	## takes for no session).
 	load_session! : Stored.SecretHash => Try(
-		SessionCodec.Line,
+		Session,
 		[
 			Missing,
 			Malformed,
@@ -221,15 +221,15 @@ Store := [].{
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => SessionCodec.decode(read.bytes).map_err(|_| Malformed)
+			Found => Session.decode(read.bytes).map_err(|_| Malformed)
 		}
 	}
 
 	## A session written: started, or its `last seen` touched.
-	save_session! : SessionCodec.Fields => [Failed, Written]
-	save_session! = |fields| Host.write!(
-		session_path(fields.token_hash),
-		SessionCodec.encode(fields),
+	save_session! : Session => [Failed, Written]
+	save_session! = |session| Host.write!(
+		session_path(session.token_hash()),
+		session.encode(),
 	)
 
 	## A session ended: its record removed (a logout).
@@ -243,7 +243,7 @@ Store := [].{
 	save_signed_in! : {
 		accounts : List(Principal),
 		settings : Accounts.Settings,
-		session : SessionCodec.Fields,
+		session : Session,
 	} => [Failed, Written]
 	save_signed_in! = |
 		{
@@ -970,7 +970,7 @@ remove_sessions_from! = |entries, human|
 			read = Host.read!(path)
 			theirs =
 				match read.status {
-					Found => SessionCodec.decode(read.bytes).map_ok(|line| line.fields().human == human) ?? Bool.False
+					Found => Session.decode(read.bytes).map_ok(|s| s.human() == human) ?? Bool.False
 					Missing | Failed => Bool.False
 				}
 			done = if (theirs) Host.remove!(path) else Removed

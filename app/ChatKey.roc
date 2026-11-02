@@ -8,7 +8,6 @@ import Cast
 import KeyCodec
 import Principal
 import Session
-import SessionCodec
 import Stored
 
 ChatKey := [].{
@@ -71,8 +70,8 @@ accounts = [bea, bea_agent]
 ## Bea's session, signed in at 0, as a granter.
 bea_session : ApiKey.Granter
 bea_session =
-	match SessionCodec.decode(Str.to_utf8("session v1 id=2 human=2 generation=1 token=${Str.repeat("01", 32)} created=0 seen=0\n")) {
-		Ok(line) => Session(Session.load(line))
+	match Session.decode(Str.to_utf8("session v1 id=2 human=2 generation=1 token=${Str.repeat("01", 32)} created=0 seen=0\n")) {
+		Ok(session) => Session(session)
 		Err(_) => crash "bea_session: a test's session line decodes"
 	}
 
