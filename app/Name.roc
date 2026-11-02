@@ -20,7 +20,7 @@
 import NameAlphabet
 import StrictName
 
-Name :: Str.{
+Name :: NameAlphabet.Written.{
 
 	## The name `name`, or the first reason, in this order, it is refused:
 	## empty, longer than `longest`, a character outside the alphabet that
@@ -33,12 +33,13 @@ Name :: Str.{
 			Err(Empty)
 		else if (characters(name) > Name.longest)
 			Err(TooLong)
-		else if (!NameAlphabet.is_written_in(name))
-			Err(ForbiddenCharacter)
-		else if (name.starts_with(" ") or name.ends_with(" ") or name.contains("  "))
-			Err(BadSpacing)
-		else
-			Ok(Name.(name))
+		else {
+			written = NameAlphabet.written(name)?
+			if (name.starts_with(" ") or name.ends_with(" ") or name.contains("  "))
+				Err(BadSpacing)
+			else
+				Ok(Name.(written))
+		}
 
 	## **THE LONGEST NAME, IN CHARACTERS**: an accented letter is one
 	## character, though it is two bytes, so a name is at most twice this in
@@ -48,7 +49,12 @@ Name :: Str.{
 
 	## The name, exactly as given.
 	to_str : Name -> Str
-	to_str = |Name.(name)| name
+	to_str = |Name.(text)| text.to_str()
+
+	## The name, as text written in the alphabet, for what reads its
+	## letters (`NameAlphabet.ascii_spelling`).
+	written : Name -> NameAlphabet.Written
+	written = |Name.(text)| text
 
 	## **WHAT UNIQUENESS COMPARES**: two names are the same name in the
 	## namespace exactly when their keys are equal. Opaque, so a key is only
@@ -60,7 +66,7 @@ Name :: Str.{
 		## `Plans` share one. A strict name is ASCII, and its digits and `-`,
 		## which no name holds, are kept as they are.
 		of_strict : StrictName -> Name.Key
-		of_strict = |strict| Name.Key.(NameAlphabet.folded(strict.to_str()))
+		of_strict = |strict| Name.Key.(NameAlphabet.folded(Strict(strict)))
 
 		is_eq : _
 		to_hash : _
@@ -69,7 +75,7 @@ Name :: Str.{
 	## **THE NAME'S KEY**: its letters case-folded (`NameAlphabet.folded`),
 	## so `Zoë` and `ZOË` are one name.
 	key : Name -> Name.Key
-	key = |Name.(name)| Name.Key.(NameAlphabet.folded(name))
+	key = |Name.(text)| Name.Key.(NameAlphabet.folded(Written(text)))
 
 	is_eq : _
 }
