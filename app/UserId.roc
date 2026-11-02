@@ -9,6 +9,8 @@
 ## 255 is many times that. Every id that lasts is written as its decimal
 ## digits (a file's name, a URL, a DM's name), so a wider type later moves
 ## no byte on disk.
+import Ascii
+
 UserId :: U8.{
 
 	## Steve's id, always: the first user, and the admin (`Admin`).
@@ -18,6 +20,23 @@ UserId :: U8.{
 	## The id after this one, unless this is the last a chat holds.
 	next : UserId -> Try(UserId, [Full])
 	next = |UserId.(n)| if (n == U8.highest) Err(Full) else Ok(UserId.(n + 1))
+
+	## **THE ID A URL OR A FILE'S NAME SPELLS**: exactly the spellings
+	## `to_str` writes, the digits of 1 to 255 with no leading `0`, so an id
+	## has one spelling; any other text is refused.
+	from_str : Str -> Try(UserId, [NotAUserId])
+	from_str = |text| {
+		bytes = text.to_utf8()
+		match bytes {
+			[] => Err(NotAUserId)
+			['0', ..] => Err(NotAUserId)
+			_ if bytes.len() > 3 or !bytes.all(Ascii.is_digit) => Err(NotAUserId)
+			_ => {
+				number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
+				if (number > U8.highest.to_u64()) Err(NotAUserId) else Ok(UserId.(number.to_u8_wrap()))
+			}
+		}
+	}
 
 	## The number, as a URL, a file's name and a DM's name write it.
 	to_str : UserId -> Str
@@ -41,6 +60,48 @@ expect UserId.steve.next().map_ok(UserId.to_str) == Ok("2")
 # The last id at, under and over the highest.
 expect UserId.(254).next().map_ok(UserId.to_str) == Ok("255")
 expect UserId.(255).next() == Err(Full)
+# Spelled as `to_str` writes it, at the ends of the range and at each
+# count of digits; every other spelling refused.
+expect
+	[
+		"1",
+		"9",
+		"10",
+		"99",
+		"100",
+		"254",
+		"255",
+	].map(|text| UserId.from_str(text).map_ok(UserId.to_str))
+		== [
+			Ok("1"),
+			Ok("9"),
+			Ok("10"),
+			Ok("99"),
+			Ok("100"),
+			Ok("254"),
+			Ok("255"),
+		]
+expect
+	[
+		"",
+		"0",
+		"00",
+		"01",
+		"007",
+		"256",
+		"999",
+		"1000",
+		"+1",
+		"-1",
+		" 1",
+		"1 ",
+		"1a",
+		"a",
+		"1_000",
+		"0x10",
+		"\u(661)",
+	].map(UserId.from_str)
+		== List.repeat(Err(NotAUserId), 17)
 # The order, both ways round, and the same id.
 expect
 	[

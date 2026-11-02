@@ -3,6 +3,7 @@
 ## by `append`, which numbers each message by `next_id` and refuses one
 ## dated before the latest, so a conversation whose ids skip, repeat or run
 ## backwards, or whose times run backwards, can't be built.
+import Author
 import Message
 import Topic
 
@@ -23,7 +24,7 @@ Conversation :: {
 	## **TIMES NEVER GO BACKWARDS**: a message's time is never earlier than
 	## its conversation's latest. Equal is allowed: times are to the
 	## second, and two messages can share one.
-	append : Conversation, Message.Arrival -> Try({ conversation : Conversation, added : Message }, [Full, Backdated])
+	append : Conversation, Message.Arrival(Author) -> Try({ conversation : Conversation, added : Message }, [Full, Backdated])
 	append = |conversation, arrival| {
 		id = Conversation.next_id(conversation)?
 		Conversation.(c) = conversation

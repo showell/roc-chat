@@ -18,16 +18,17 @@ Message :: {
 
 	## **WHAT ARRIVES**: who wrote it and the markdown, exactly as written.
 	## The message, with its id and time, is made from it as early as
-	## possible.
-	Payload : {
-		author : Author,
+	## possible. A conversation takes it from an `Author`; a DM's start
+	## (`Dm.start`) from a human, so its writer's kind is in its type.
+	Payload(writer) : {
+		author : writer,
 		markdown : Str,
 	}
 
-	## **A PAYLOAD AND ITS TIME**: what a conversation appends, so the id and
-	## the time are added in one place.
-	Arrival : {
-		payload : Message.Payload,
+	## **A PAYLOAD AND ITS TIME, THE SHAPE'S ONE HOME**: what a conversation
+	## appends, so the id and the time are added in one place.
+	Arrival(writer) : {
+		payload : Message.Payload(writer),
 		time : DateTime,
 	}
 
@@ -53,7 +54,7 @@ Message :: {
 	}
 
 	## The message numbered `id`, from what arrived.
-	numbered : { id : Message.Id, arrival : Message.Arrival } -> Message
+	numbered : { id : Message.Id, arrival : Message.Arrival(Author) } -> Message
 	numbered = |{ id, arrival: { payload, time } }|
 		Message.(
 			{
@@ -90,7 +91,7 @@ steve = Author.from_str("Steve") ?? crash "Message's tests: an author's name"
 noon : DateTime
 noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "Message's tests: a time"
 
-hello : Message.Arrival
+hello : Message.Arrival(Author)
 hello = { payload: { author: steve, markdown: "hello" }, time: noon }
 
 cc : Author
@@ -101,7 +102,7 @@ later = DateTime.from_str("2026-11-02T12:01:00Z") ?? crash "Message's tests: a t
 
 ## A second arrival, every part unlike `hello`'s, so a message is seen to
 ## carry its own.
-reply : Message.Arrival
+reply : Message.Arrival(Author)
 reply = { payload: { author: cc, markdown: "hi" }, time: later }
 
 ## A message's parts, as a test compares them.

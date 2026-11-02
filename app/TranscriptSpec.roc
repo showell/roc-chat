@@ -1,5 +1,6 @@
 ## **TRANSCRIPT'S TESTS**: the file, written and read, byte for byte, and
 ## each way a transcript is refused, at the first message and the second.
+import Author
 import Conversation
 import Message
 import Sample
@@ -207,7 +208,7 @@ edges = [
 ]
 
 ## Steve's message saying `markdown`.
-said : Str -> Message.Arrival
+said : Str -> Message.Arrival(Author)
 said = |markdown|
 	Sample.arrival({
 		author: "Steve",

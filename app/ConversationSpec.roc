@@ -1,5 +1,6 @@
 ## **CONVERSATION'S TESTS**: numbering by `append`, from the first id to
 ## the last a conversation holds.
+import Author
 import Conversation
 import Message
 import Sample
@@ -79,7 +80,7 @@ expect
 # Times never go backwards: at message 2 and message 3, the latest's time
 # again, or a second later, is appended; a second earlier is refused.
 ## Steve's hello at `time`.
-hello_at : Str -> Message.Arrival
+hello_at : Str -> Message.Arrival(Author)
 hello_at = |time|
 	Sample.arrival({
 		author: "Steve",
@@ -89,7 +90,7 @@ hello_at = |time|
 
 ## The ids `arrivals` take after `c`'s messages, each appended alone, or
 ## why each is refused.
-appended_alone : Conversation, List(Message.Arrival) -> List(Try(Str, [Full, Backdated]))
+appended_alone : Conversation, List(Message.Arrival(Author)) -> List(Try(Str, [Full, Backdated]))
 appended_alone = |c, arrivals| arrivals.map(|a| c.append(a).map_ok(|grown| grown.added.id().to_str()))
 
 expect

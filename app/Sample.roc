@@ -28,7 +28,7 @@ Sample :: [].{
 		author : Str,
 		time : Str,
 		markdown : Str,
-	} -> Message.Arrival
+	} -> Message.Arrival(Author)
 	arrival = |
 		{
 			author,
@@ -45,7 +45,7 @@ Sample :: [].{
 		}
 
 	## Steve's hello.
-	hello : Message.Arrival
+	hello : Message.Arrival(Author)
 	hello = Sample.arrival({
 		author: "Steve",
 		time: "2026-11-02T19:11:32Z",
@@ -53,7 +53,7 @@ Sample :: [].{
 	})
 
 	## CC's reply, a minute later, with a list in its markdown.
-	reply : Message.Arrival
+	reply : Message.Arrival(Author)
 	reply = Sample.arrival({
 		author: "CC",
 		time: "2026-11-02T19:12:28Z",
@@ -62,7 +62,7 @@ Sample :: [].{
 
 	## `topic`'s conversation of `arrivals`, appended in order; a test's
 	## conversation is never full, and its times never go backwards.
-	conversation : Topic, List(Message.Arrival) -> Conversation
+	conversation : Topic, List(Message.Arrival(Author)) -> Conversation
 	conversation = |topic, arrivals|
 		arrivals.fold(
 			Conversation.empty(topic),
