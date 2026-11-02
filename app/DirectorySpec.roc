@@ -16,7 +16,7 @@ channel_name = |text| ChannelName.from_str(text) ?? crash "DirectorySpec: a test
 
 ## Steve, as an admin.
 admin : Admin
-admin = Admin.of(UserId.steve) ?? crash "DirectorySpec: Steve is an admin"
+admin = Sample.admin
 
 ## The sample directory with an empty channel, `plans`.
 with_plans : Directory

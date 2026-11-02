@@ -16,7 +16,7 @@ channel_name = |text| ChannelName.from_str(text) ?? crash "ChannelsSpec: a test'
 
 ## Steve, as an admin.
 admin : Admin
-admin = Admin.of(UserId.steve) ?? crash "ChannelsSpec: Steve is an admin"
+admin = Sample.admin
 
 ## An empty channel, `plans`, alone.
 with_plans : Channels

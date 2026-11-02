@@ -14,7 +14,8 @@
 ## already vouched for, so it vouches for nothing new.
 ##
 ## **THE OTHER TRUST BOUNDARIES**: `UnvalidatedString`, the way text from
-## outside comes in, and `SecureImageTag`, which images a message may show.
+## outside comes in; `SecureImageTag`, which images a message may show;
+## and `SignedIn`, who is acting.
 ##
 ## **THE WAY OUT IS BYTES**: `to_utf8`, for the host. There is no way back
 ## to a `Str`, so trusted markup can't be handed to `Escape.text` and

@@ -1,12 +1,14 @@
 ## **SAMPLES FOR THE SPECS**: the topics, payloads and conversation the
 ## `*Spec.roc` modules share, so each test reads as what it checks. Only a
 ## Spec imports it; no production module does.
+import Admin
 import Author
 import Conversation
 import Directory
 import Message
 import DateTime
 import Name
+import SignedIn
 import Topic
 import UserId
 import Users
@@ -117,6 +119,11 @@ Sample :: [].{
 			Sample.directory,
 			|so_far, at| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded: a filler's name is free").directory,
 		)
+
+	## **STEVE, SIGNED IN AS AN ADMIN**: the specs' one way to an admin,
+	## through the door that stands in for a session (`SignedIn`).
+	admin : Admin
+	admin = Admin.of(SignedIn.dangerously_assume(Sample.steve)) ?? crash "Sample.admin: Steve is an admin"
 
 	## Steve, in the sample directory.
 	steve : Users.User

@@ -7,8 +7,9 @@
 ## outside text that skipped its check.
 ##
 ## **ONE OF THE TRUST BOUNDARIES**: this is the way in; `TrustedHtml` is
-## the way out to a page, and `SecureImageTag` rules which images a
-## message may show. A security reader starts at any of the three.
+## the way out to a page, `SecureImageTag` rules which images a message
+## may show, and `SignedIn` is who is acting. A security reader starts at
+## any of the four.
 import Conversation
 import DateTime
 import Name
