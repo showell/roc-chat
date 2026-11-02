@@ -569,7 +569,11 @@ earlier! : Shown => Try(Chat.Answer, Chat.Answer)
 earlier! = |s| {
 	before =
 		match Host.read_query!(Str.to_utf8("before")) {
-			[only] => Stored.count(only, "before").map_err(|_| bad_before)
+			[only] =>
+				match Stored.count(only, "before") {
+					Ok(n) if n > 0 => Ok(n)
+					_ => Err(bad_before)
+				}
 			_ => Err(bad_before)
 		}?
 	files = PageFeed.files(s.place)

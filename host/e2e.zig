@@ -2245,7 +2245,7 @@ fn topicPageStream(w: *World) !void {
 /// **EARLIER MESSAGES, A FRAGMENT**: past the newest page (100), the page
 /// shows its Earlier button and names its newest; the page before comes as
 /// one element of bubbles, oldest first, saying whether more come before
-/// it; `before=` that is no message's id is a 400.
+/// it; `before=` that is no message's id (`0` among them) is a 400.
 fn topicPageEarlier(w: *World) !void {
     const x = browsing orelse return error.NoBrowsing;
     var n: usize = 3;
@@ -2266,7 +2266,7 @@ fn topicPageEarlier(w: *World) !void {
     defer behind.close();
     try behind.until("id: 3\n");
     if (!has(behind.got.items, "event: gap\ndata: {\"before\":3}\n\n") or has(behind.got.items, "id: 2\n")) return error.NoGap;
-    for ([_][]const u8{ "", "?before=x", "?before=03", "?before=1&before=2" }) |q| {
+    for ([_][]const u8{ "", "?before=x", "?before=0", "?before=03", "?before=1&before=2" }) |q| {
         if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/channel/Orchard/Banana/earlier{s}", .{q}), x.quin)).status != 400) return error.BadBeforeTaken;
     }
 }
