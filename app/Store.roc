@@ -123,26 +123,15 @@ Store := [].{
 	## first left. Their keys and invites stay, inert (Erase.roc says why).
 	erase! : Erase.Plan => [Failed, Erased]
 	erase! = |plan|
-		match remove_places!(plan.dms) {
-			Failed => Failed
-			Removed =>
-				match remove_sessions_of!(plan.human) {
-					Failed => Failed
-					Removed =>
-						match remove_each!(own_paths(plan.human)) {
-							Failed => Failed
-							Removed =>
-								match plan.left.map_try(AccountCodec.encode) {
-									Err(_) => Failed
-									Ok(lines) =>
-										match Host.write!(accounts_path, List.join(lines)) {
-											Failed => Failed
-											Written => Erased
-										}
-								}
-						}
-				}
+		match erase_steps!(plan) {
+			Ok({}) => Erased
+			Err(Failed) => Failed
 		}
+
+	## **THE NEXT KEY'S, INVITE'S OR HUMAN INVITE'S PUBLIC ID**: one past the
+	## highest stored, so no id is given twice while its record is there
+	## (erasure removes a human's records; the count of files would then
+	## hand out an id another still holds).
 
 	## **A TOPIC'S REACTIONS**, oldest first (Reactions.list); none before
 	## the first, and whether the file ends mid-line (for
@@ -338,7 +327,8 @@ Store := [].{
 	## given twice.
 	load_next_key_id! : {} => Try(Principal.KeyId, [Failed])
 	load_next_key_id! = |{}| {
-		Principal.KeyId.from_u64(load_one_past_count!(keys_path)?).map_err(|_| Failed)
+		keys = Store.load_keys!({})?
+		Principal.KeyId.from_u64(one_past_highest(keys.map(|e| e.key.id().to_u64()))).map_err(|_| Failed)
 	}
 
 	## A key written: minted, or revoked.
@@ -382,7 +372,8 @@ Store := [].{
 	## is given twice.
 	load_next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
 	load_next_invite_id! = |{}| {
-		InviteCodec.InviteId.from_u64(load_one_past_count!(invites_path)?).map_err(|_| Failed)
+		invites = Store.load_invites!({})?
+		InviteCodec.InviteId.from_u64(one_past_highest(invites.map(|r| r.id.to_u64()))).map_err(|_| Failed)
 	}
 
 	## An invite written: made, spent or revoked.
@@ -416,7 +407,8 @@ Store := [].{
 	## stored; none is ever removed, so no id is given twice.
 	load_next_human_invite_id! : {} => Try(HumanInvite.InviteId, [Failed])
 	load_next_human_invite_id! = |{}| {
-		HumanInvite.InviteId.from_u64(load_one_past_count!(human_invites_path)?).map_err(|_| Failed)
+		invites = load_human_invites!({})?
+		HumanInvite.InviteId.from_u64(one_past_highest(invites.map(|r| r.id.to_u64()))).map_err(|_| Failed)
 	}
 
 	## A human invite written: spent or revoked.
@@ -846,6 +838,54 @@ accounts_path = "auth/accounts".to_utf8()
 ## Where a human's uploaded bytes are counted.
 uploaded_path : Principal.HumanId -> List(U8)
 uploaded_path = |human| "chat/upload-bytes/${human.to_u64().to_str()}".to_utf8()
+
+## **ERASURE, STEP BY STEP** (Store.erase!): each DM's folder; the
+## human's sessions; every key acting as one who goes (the human, their
+## agents and bots); every agent invite for one of them; every human invite
+## made by the human or for them; the human's own files; then the
+## accounts, written out last. A step that fails stops the rest.
+erase_steps! : Erase.Plan => Try({}, [Failed])
+erase_steps! = |plan| {
+	step(remove_places!(plan.dms))?
+	step(remove_sessions_of!(plan.human))?
+	keys = Store.load_keys!({})?
+	step(remove_each!(keys.keep_if(|e| plan.gone.contains(e.key.acts_as())).map(|e| key_path(e.hash))))?
+	invites = Store.load_invites!({})?
+	step(remove_each!(invites.keep_if(|r| plan.gone.contains(r.bound.id)).map(|r| invite_path(r.hash))))?
+	human_invites = load_human_invites!({})?
+	by_or_for = |r| r.by == plan.human or r.human.id == Principal.Id.Human(plan.human)
+	step(remove_each!(human_invites.keep_if(by_or_for).map(|r| human_invite_path(r.hash))))?
+	step(remove_each!(own_paths(plan.human)))?
+	lines = plan.left.map_try(AccountCodec.encode).map_err(|_| Failed)?
+	match Host.write!(accounts_path, List.join(lines)) {
+		Failed => Err(Failed)
+		Written => Ok({})
+	}
+}
+
+## A removal's answer as a step's.
+step : [Failed, Removed] -> Try({}, [Failed])
+step = |answer|
+	match answer {
+		Failed => Err(Failed)
+		Removed => Ok({})
+	}
+
+## One past the highest of `ids`; 1 for none.
+one_past_highest : List(U64) -> U64
+one_past_highest = |ids| ids.fold(0, |most, id| if (id > most) id else most) + 1
+
+## **EVERY HUMAN INVITE THAT READS**, in no order; one that does not read is
+## left out, as a key's is.
+load_human_invites! : {} => Try(List(HumanInvite.Record), [Failed])
+load_human_invites! = |{}| {
+	listed = Host.list!(human_invites_path)
+	match listed.status {
+		Missing => Ok([])
+		Failed => Err(Failed)
+		Found => collect_human_invites!(listed.entries, [])
+	}
+}
 
 ## **A HUMAN'S OWN FILES, AS ERASURE TAKES THEM**: their uploaded bytes'
 ## count, and the indexes of their keys, agents' invites and

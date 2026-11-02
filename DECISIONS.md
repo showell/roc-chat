@@ -158,8 +158,9 @@ the same commit.
   page (`/chat/users`), a Remove button with a plain are-you-sure. Only a
   human in no channel, nor any agent of theirs (the proxy for throwaway
   and fly-by users), never oneself or an admin. Everything of theirs goes:
-  their DMs whole (both sides), their agents, sessions and upload count, the indexes of their keys and invites; their keys and
-  invites stay, inert, since an id is never given twice. **No bans**:
+  their DMs whole (both sides), their agents, sessions, upload count, and
+  their keys and invites and their agents'. A new key's or invite's id is
+  one past the highest stored, so none is given twice. **No bans**:
   nothing is barred, and they may come back as someone new (Alice again,
   for testing).
 - **After every chunk, a cold agent reviews it adversarially.** Its first

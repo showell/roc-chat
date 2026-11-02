@@ -10,11 +10,11 @@
 ##
 ## **WHAT GOES**: their account and every agent and bot they own; every DM
 ## they are in, whole, the other human's half too (a DM is the pair's);
-## their sessions, their uploaded bytes' count, and the
-## indexes of their keys and invites (Store.erase!). **WHAT STAYS**: their
-## keys and invites, inert (each names an account no longer there, and an
-## id is never given twice, so none comes back to life); the audit, as
-## history.
+## their sessions; every key of theirs and their agents', every invite
+## for their agents, every human invite they made or that made them;
+## their uploaded bytes' count and their indexes (Store.erase!). A new
+## key's or invite's id is one past the highest stored, so none is given
+## twice. **WHAT STAYS**: the audit, as history.
 import Channel
 import ChannelCast
 import ChannelName

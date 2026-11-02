@@ -2655,6 +2655,16 @@ fn uploads(w: *World) !void {
     if ((try get(w.a, w.port(), "/upload.js", x.quin)).status != 200) return error.NoScript;
 }
 
+/// How many entries the data root's folder `path` holds; none when it is not there.
+fn filesIn(w: *World, path: []const u8) !usize {
+    var dir = w.rig.data.openDir(io, path, .{ .iterate = true }) catch return 0;
+    defer dir.close(io);
+    var it = dir.iterate();
+    var n: usize = 0;
+    while (try it.next(io)) |_| n += 1;
+    return n;
+}
+
 /// Whether the data root has a file at `path`.
 fn onDisk(w: *World, path: []const u8) bool {
     var buf: [65536]u8 = undefined;
@@ -2693,6 +2703,8 @@ fn eraseHuman(w: *World) !void {
     const xx = try pairOf(w.a, x, x);
     if ((try pagePost(w, xena, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{xx}), "topic=notes")).status != 303) return error.DmNotMade;
     const xena_agent = try ownAgent(w, xena, "Xena+Bot", "");
+    // Zack's key comes after Xena's: erasing hers must not hand out its id again.
+    const zack_agent = try ownAgent(w, zack, "Zack+Bot", "");
     // Yuri's own self-DM, to stay.
     const yy = try pairOf(w.a, y, y);
     if ((try pagePost(w, yuri, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{yy}), "topic=mine")).status != 303) return error.DmNotMade;
@@ -2723,11 +2735,18 @@ fn eraseHuman(w: *World) !void {
     if ((try pagePost(w, w.ivy, "/chat/users/999999/remove", "")).status != 404) return error.NobodyErased;
     if (!onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{xy}))) return error.ErasedEarly;
 
-    // Erased: back to the page, and every trace of her gone.
+    // Erased: back to the page, and every trace of her gone, her agent's key
+    // and its invite too, and nobody else's.
+    const keys_before = try filesIn(w, "auth/keys");
+    const invites_before = try filesIn(w, "auth/invites");
     const gone = try pagePost(w, w.ivy, remove_x, "");
     if (gone.status != 303 or !std.mem.eql(u8, gone.header("location") orelse "", "/chat/users")) return error.NotErased;
     if ((try get(w.a, w.port(), "/me", xena)).status != 401) return error.SessionLived;
     if ((try send(w.a, w.port(), "GET", "/dms", .{ .key = xena_agent.key }, "")).status != 401) return error.AgentKeyLived;
+    if (try filesIn(w, "auth/keys") != keys_before - 1 or try filesIn(w, "auth/invites") != invites_before - 1) return error.KeysOrInvitesLived;
+    // A key minted now takes an id past every one still held.
+    const later = try ownAgent(w, yuri, "Yuri+Two", "");
+    if (try std.fmt.parseInt(u64, later.key_id, 10) <= try std.fmt.parseInt(u64, zack_agent.key_id, 10)) return error.KeyIdGivenTwice;
     if (onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{xy})) or onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/topics/hi/transcript", .{xy})) or onDisk(w, try std.fmt.allocPrint(w.a, "chat/dms/{s}/channel", .{xx}))) return error.DmLived;
     var buf: [256]u8 = undefined;
     if (w.rig.data.readFile(io, try std.fmt.allocPrint(w.a, "chat/dms/{s}", .{xy}), &buf)) |_| return error.DmFolderLived else |_| {}
