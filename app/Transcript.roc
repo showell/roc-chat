@@ -51,7 +51,7 @@ Transcript :: [].{
 		[
 			BadEnds,
 			BadHead(Message.Id),
-			Author(Message.Id, [Blank, ControlByte]),
+			Author(Message.Id, [Blank, ControlByte, Padded]),
 			Time(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Full,

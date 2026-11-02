@@ -33,9 +33,10 @@ conversation = |{ topic, transcript }| {
 	Transcript.read(checked, text).map_err(|why| Transcript(why))
 }
 
-## **WHY A TRANSCRIPT IS REFUSED, IN WORDS**: the one place a refusal's
-## tags become a sentence.
-words : [
+## **EVERY WAY THE DOOR REFUSES**: what `words` takes, each module's tags
+## under the step that met them. A handler's input, so `conversation`'s
+## own error stays inferred from its body.
+Refusal : [
 	TopicNotUtf8,
 	TranscriptNotUtf8,
 	Topic([Empty, StartsWithNonLetter, TooLong, ForbiddenByte]),
@@ -43,13 +44,17 @@ words : [
 		[
 			BadEnds,
 			BadHead(Message.Id),
-			Author(Message.Id, [Blank, ControlByte]),
+			Author(Message.Id, [Blank, ControlByte, Padded]),
 			Time(Message.Id, [WrongShape, OutOfRange]),
 			BadBody(Message.Id),
 			Full,
 		],
 	),
-] -> Str
+]
+
+## **WHY A TRANSCRIPT IS REFUSED, IN WORDS**: the one place a refusal's
+## tags become a sentence.
+words : Refusal -> Str
 words = |why|
 	match why {
 		TopicNotUtf8 => "its topic is not UTF-8"
@@ -59,28 +64,26 @@ words = |why|
 		Topic(TooLong) => "its topic is longer than ${Topic.longest.to_str()} characters"
 		Topic(ForbiddenByte) => "its topic holds more than ASCII letters, digits and -"
 		Transcript(BadEnds) => "a transcript starts with the separator and ends with an empty line"
-		Transcript(BadHead(id)) => "message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
-		Transcript(Author(id, Blank)) => "message ${id.to_str()} has no author"
-		Transcript(
-			Author(
-				id,
-				ControlByte,
-			),
-		) => "message ${id.to_str()}'s author holds a control character"
-		Transcript(
-			Time(
-				id,
-				WrongShape,
-			),
-		) => "message ${id.to_str()}'s date is not YYYY-MM-DDTHH:MM:SSZ"
-		Transcript(
-			Time(
-				id,
-				OutOfRange,
-			),
-		) => "message ${id.to_str()}'s date is no time a calendar and clock show"
-		Transcript(BadBody(id)) => "message ${id.to_str()} holds the separator, unescaped, on a line of its own"
 		Transcript(Full) => "it holds more messages than a conversation can"
+		Transcript(BadHead(id)) => "message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
+		Transcript(BadBody(id)) => "message ${id.to_str()} holds the separator, unescaped, on a line of its own"
+		Transcript(Author(id, fault)) => {
+			said =
+				match fault {
+					Blank => " has no author"
+					ControlByte => "'s author holds a control character"
+					Padded => "'s author starts or ends with a space"
+				}
+			"message ${id.to_str()}${said}"
+		}
+		Transcript(Time(id, fault)) => {
+			said =
+				match fault {
+					WrongShape => "is not YYYY-MM-DDTHH:MM:SSZ"
+					OutOfRange => "is no time a calendar and clock show"
+				}
+			"message ${id.to_str()}'s date ${said}"
+		}
 	}
 
 # ── tests
@@ -123,6 +126,7 @@ expect {
 		Transcript(BadHead(second)),
 		Transcript(Author(second, Blank)),
 		Transcript(Author(second, ControlByte)),
+		Transcript(Author(second, Padded)),
 		Transcript(Time(second, WrongShape)),
 		Transcript(Time(second, OutOfRange)),
 		Transcript(BadBody(second)),
@@ -139,6 +143,7 @@ expect {
 			"message 2 does not open with its reference, `from:`, `date:` and an empty line",
 			"message 2 has no author",
 			"message 2's author holds a control character",
+			"message 2's author starts or ends with a space",
 			"message 2's date is not YYYY-MM-DDTHH:MM:SSZ",
 			"message 2's date is no time a calendar and clock show",
 			"message 2 holds the separator, unescaped, on a line of its own",

@@ -105,6 +105,7 @@ expect one_with({ ..first, gap: "" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, from: "from: " }) == Err(Author(Sample.first, Blank))
 expect one_with({ ..first, from: "from:  " }) == Err(Author(Sample.first, Blank))
 expect one_with({ ..first, from: "from: Steve\r" }) == Err(Author(Sample.first, ControlByte))
+expect one_with({ ..first, from: "from:  Steve" }) == Err(Author(Sample.first, Padded))
 expect one_with({ ..first, date: "date: 2026-11-02" }) == Err(Time(Sample.first, WrongShape))
 expect one_with({
 	..first,
@@ -123,6 +124,7 @@ expect two_with({ ..second, date: "dt: 2026-11-02T19:12:28Z" }) == Err(BadHead(S
 expect two_with({ ..second, gap: "" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, from: "from: " }) == Err(Author(Sample.second, Blank))
 expect two_with({ ..second, from: "from: C\u(0)C" }) == Err(Author(Sample.second, ControlByte))
+expect two_with({ ..second, from: "from: CC " }) == Err(Author(Sample.second, Padded))
 expect two_with({
 	..second,
 	date: "date: 2026-11-02T19:12:28",
