@@ -148,7 +148,7 @@ expect
 			Err(Path(NoSuchChannel)),
 			Err(Path(NoSuchHuman)),
 		]
-expect found_at("/chat/dm/1_1/plans".to_utf8(), "\n".to_utf8()) == Err(Transcript(BadEnds))
+expect found_at("/chat/dm/1_1/plans".to_utf8(), "\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))
 # The order: the path's bytes, the path's conversation, then the transcript.
 expect found_at([0xff], [0xff]) == Err(PathNotUtf8)
 expect found_at("plans".to_utf8(), [0xff]) == Err(Path(NotAConversationPath))

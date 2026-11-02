@@ -86,19 +86,19 @@ expect Transcript.read(Sample.plans, Transcript.write(Sample.hello_and_reply)) =
 expect Transcript.write(Conversation.empty(Sample.plans)) == ""
 expect Transcript.read(Sample.plans, "") == Ok(Conversation.empty(Sample.plans))
 # The start and the end, each wrong alone.
-expect Transcript.read(Sample.plans, "\n") == Err(BadEnds)
+expect Transcript.read(Sample.plans, "\n") == Err(NotPrefixedProperly)
 expect Transcript.read(
 	Sample.plans,
 	"MSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi\n\n",
-) == Err(BadEnds)
+) == Err(NotPrefixedProperly)
 expect Transcript.read(
 	Sample.plans,
 	"-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi\n",
-) == Err(BadEnds)
+) == Err(NotPrefixedProperly)
 expect Transcript.read(
 	Sample.plans,
 	"-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi",
-) == Err(BadEnds)
+) == Err(NotPrefixedProperly)
 # Each line of message 1's head, bad alone, beside the good one.
 expect again(write_message(first)) == Ok(write_message(first))
 expect one_with({ ..first, head: "MSG_plans_2" }) == Err(BadHead(Sample.first))
@@ -296,5 +296,5 @@ expect
 		== [
 			Err(TranscriptNotUtf8),
 			Ok(Conversation.empty(Sample.plans)),
-			Err(Transcript(BadEnds)),
+			Err(Transcript(NotPrefixedProperly)),
 		]

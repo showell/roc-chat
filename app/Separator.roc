@@ -5,11 +5,29 @@
 ## separator on disk, and every markdown comes back exactly as written. A
 ## written body holding the bare separator is one no writer made, so the
 ## reader refuses it rather than accept a file it could never write back.
+## Where the separators fall in a transcript's text, its newlines and all,
+## is this module's too (`records`); what a record holds is not.
 Separator :: [].{
 
 	## The line that opens each message.
 	line : Str
 	line = "-------------"
+
+	## **THE RECORDS `text` HOLDS, THE SEPARATOR'S LAYOUT'S ONE HOME**: the
+	## text between one separator and the next, in order. `text` opens with
+	## the separator's line and ends with an empty line, or it is
+	## `NotPrefixedProperly`; a record ends at a blank line followed by the
+	## separator's line. No text holds no records.
+	records : Str -> Try(List(Str), [NotPrefixedProperly])
+	records = |text| {
+		opening = "${Separator.line}\n"
+		if (text.is_empty())
+			Ok([])
+		else if (!text.starts_with(opening) or !text.ends_with("\n\n"))
+			Err(NotPrefixedProperly)
+		else
+			Ok(text.drop_prefix(opening).drop_suffix("\n\n").split_on("\n\n${opening}"))
+	}
 
 	## `markdown` as the transcript writes it: no line of it the separator.
 	escape : Str -> Str
@@ -54,6 +72,29 @@ expect Separator.unescape("a\n-------------") == Err(BareSeparator)
 expect Separator.unescape("-------------\na") == Err(BareSeparator)
 expect Separator.unescape("\\-------------") == Ok("-------------")
 expect Separator.unescape("------------") == Ok("------------")
+# The records: one, two, none; a record's own trailing newline kept.
+expect Separator.records("-------------\na\n\n") == Ok(["a"])
+expect Separator.records("-------------\na\n\n-------------\nb\n\n") == Ok(["a", "b"])
+expect Separator.records("") == Ok([])
+expect Separator.records("-------------\na\n\n\n") == Ok(["a\n"])
+# No leading separator, or one not on a line of its own.
+expect Separator.records("a\n\n") == Err(NotPrefixedProperly)
+expect Separator.records("\n-------------\na\n\n") == Err(NotPrefixedProperly)
+expect Separator.records("-------------a\n\n") == Err(NotPrefixedProperly)
+expect Separator.records("------------\na\n\n") == Err(NotPrefixedProperly)
+# No final blank line: one newline, or none.
+expect Separator.records("-------------\na\n") == Err(NotPrefixedProperly)
+expect Separator.records("-------------\na") == Err(NotPrefixedProperly)
+expect Separator.records("\n") == Err(NotPrefixedProperly)
+# CRLF is no newline here: at the start, at the end, or between records,
+# where it splits nothing.
+expect Separator.records("-------------\r\na\n\n") == Err(NotPrefixedProperly)
+expect Separator.records("-------------\na\r\n\r\n") == Err(NotPrefixedProperly)
+expect Separator.records("-------------\na\r\n\r\n-------------\nb\n\n") == Ok(["a\r\n\r\n-------------\nb"])
+# An escaped separator after a blank line is a record's own line; a bare
+# one with no blank line before it is too, for `unescape` to refuse.
+expect Separator.records("-------------\na\n\n\\-------------\nb\n\n") == Ok(["a\n\n\\-------------\nb"])
+expect Separator.records("-------------\na\n-------------\nb\n\n") == Ok(["a\n-------------\nb"])
 # Escaping, then unescaping, gives the markdown back, separators and all.
 expect
 	[

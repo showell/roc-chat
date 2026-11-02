@@ -25,7 +25,7 @@ TranscriptRefusal :: [].{
 		),
 		Transcript(
 			[
-				BadEnds,
+				NotPrefixedProperly,
 				BadHead(Message.Id),
 				Author(Message.Id, [Empty, TooLong, ForbiddenCharacter, BadSpacing]),
 				DateTime(Message.Id, [WrongShape, OutOfRange]),
@@ -46,7 +46,7 @@ TranscriptRefusal :: [].{
 			Path(BadName) => "its path holds a channel, a pair or a topic that is no name"
 			Path(NoSuchChannel) => "its path names no channel the directory holds"
 			Path(NoSuchHuman) => "its path names a DM whose member is no human the directory holds"
-			Transcript(BadEnds) => "a transcript starts with the separator and ends with an empty line"
+			Transcript(NotPrefixedProperly) => "a transcript starts with the separator and ends with an empty line"
 			Transcript(Full) => "it holds more messages than a conversation can"
 			Transcript(BadHead(id)) => "message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
 			Transcript(BadBody(id)) => "message ${id.to_str()} holds the separator, unescaped, on a line of its own"
@@ -83,7 +83,7 @@ expect {
 		Path(BadName),
 		Path(NoSuchChannel),
 		Path(NoSuchHuman),
-		Transcript(BadEnds),
+		Transcript(NotPrefixedProperly),
 		Transcript(BadHead(second)),
 		Transcript(Author(second, Empty)),
 		Transcript(Author(second, TooLong)),

@@ -107,15 +107,7 @@ Transcript :: [].{
 	## (`TranscriptRefusal.Why` lists them, under `Transcript`, and puts
 	## them in words).
 	read : Topic, Str -> Try(Conversation, _)
-	read = |topic, text|
-		if (text.is_empty())
-			Ok(Conversation.empty(topic))
-		else if (!text.starts_with("${Separator.line}\n") or !text.ends_with("\n\n"))
-			Err(BadEnds)
-		else {
-			records = text.drop_prefix("${Separator.line}\n").drop_suffix("\n\n").split_on("\n\n${Separator.line}\n")
-			read_onto(Conversation.empty(topic), records)
-		}
+	read = |topic, text| read_onto(Conversation.empty(topic), Separator.records(text)?)
 }
 
 ## **WHETHER `adding` BYTES FIT AFTER THE `held` A FILE HOLDS**, at most
