@@ -34,12 +34,12 @@ changed : Channels,
 )
 changed = |channels, change|
 	match change {
-		Admit(member) => channels.admit({
+		Admit(member) => channels.add_member({
 			by: admin,
 			channel: channel_name("plans"),
 			member,
 		})
-		Remove(member) => channels.remove({
+		Remove(member) => channels.remove_member({
 			by: admin,
 			channel: channel_name("plans"),
 			member,
@@ -71,8 +71,8 @@ members_of = |channels| channels.channel(channel_name("plans")).map_ok(|c| c.mem
 
 # A channel starts empty, and is found by its exact name.
 expect {
-	created = Channels.empty.create({ by: admin, name: channel_name("plans") }).created
-	(created.name().to_str(), created.members()) == ("plans", [])
+	channel = Channels.empty.create({ by: admin, name: channel_name("plans") }).channel
+	(channel.name().to_str(), channel.members()) == ("plans", [])
 }
 expect with_plans.channel(channel_name("plans")).map_ok(|c| c.name().to_str()) == Ok("plans")
 expect with_plans.channel(channel_name("Plans")) == Err(NoSuchChannel)
@@ -96,12 +96,12 @@ expect
 expect
 	[
 		changed(everyone, Admit(Sample.steve)),
-		with_plans.admit({
+		with_plans.add_member({
 			by: admin,
 			channel: channel_name("general"),
 			member: Sample.steve,
 		}),
-		everyone.admit({
+		everyone.add_member({
 			by: admin,
 			channel: channel_name("general"),
 			member: Sample.steve,
@@ -117,12 +117,12 @@ expect changed(everyone, Remove(Sample.user("Apoorva"))).map_ok(members_of) == O
 expect
 	[
 		changed(with_plans, Remove(Sample.steve)),
-		everyone.remove({
+		everyone.remove_member({
 			by: admin,
 			channel: channel_name("general"),
 			member: Sample.steve,
 		}),
-		with_plans.remove({
+		with_plans.remove_member({
 			by: admin,
 			channel: channel_name("general"),
 			member: Sample.steve,

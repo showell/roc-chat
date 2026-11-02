@@ -19,10 +19,10 @@ Directory :: {
 }.{
 
 	## **A USER JOINED**: the directory they joined, and the user.
-	Joined : { directory : Directory, added : Users.User }
+	Joined : { directory : Directory, user : Users.User }
 
 	## **A CHANNEL CREATED**: the directory that holds it, and the channel.
-	Created : { directory : Directory, created : Channels.Channel }
+	Created : { directory : Directory, channel : Channels.Channel }
 
 	## **A DIRECTORY'S START: STEVE, ALWAYS ID 1**, named `name`, a human,
 	## and no channels.
@@ -41,7 +41,7 @@ Directory :: {
 	## name is, in any case (`NameTaken`).
 	add_human : Directory, Name -> Try(Directory.Joined, [Full, NameTaken])
 	add_human = |directory, name|
-		added({
+		add_user({
 			directory,
 			name,
 			joining: Human,
@@ -67,7 +67,7 @@ Directory :: {
 			NameTaken,
 		],
 	)
-	add_agent = |directory, { name, owner }| added({
+	add_agent = |directory, { name, owner }| add_user({
 		directory,
 		name,
 		joining: AgentOf(owner),
@@ -95,24 +95,24 @@ Directory :: {
 						keys: d.keys.insert(key),
 					},
 				),
-				created: grown.created,
+				channel: grown.channel,
 			})
 		}
 	}
 
 	## The directory with a member admitted to a channel by an admin, as
-	## `Channels.admit` admits them, or its refusal.
-	admit : Directory, Channels.Membership -> Try(Directory, [NoSuchChannel, AlreadyMember])
-	admit = |Directory.(d), change| {
-		channels = d.channels.admit(change)?
+	## `Channels.add_member` adds them, or its refusal.
+	add_member : Directory, Channels.Membership -> Try(Directory, [NoSuchChannel, AlreadyMember])
+	add_member = |Directory.(d), change| {
+		channels = d.channels.add_member(change)?
 		Ok(Directory.({ ..d, channels }))
 	}
 
 	## The directory with a member removed from a channel by an admin, as
-	## `Channels.remove` removes them, or its refusal.
-	remove : Directory, Channels.Membership -> Try(Directory, [NoSuchChannel, NotMember])
-	remove = |Directory.(d), change| {
-		channels = d.channels.remove(change)?
+	## `Channels.remove_member` removes them, or its refusal.
+	remove_member : Directory, Channels.Membership -> Try(Directory, [NoSuchChannel, NotMember])
+	remove_member = |Directory.(d), change| {
+		channels = d.channels.remove_member(change)?
 		Ok(Directory.({ ..d, channels }))
 	}
 
@@ -132,12 +132,12 @@ Directory :: {
 ## (`NoSuchOwner`, `Full`), or the name is taken, in any case
 ## (`NameTaken`). The users are asked first, so `Full` comes before the
 ## name.
-added : {
+add_user : {
 	directory : Directory,
 	name : Name,
 	joining : Users.Joining,
 } -> Try(Directory.Joined, [NoSuchOwner, Full, NameTaken])
-added = |
+add_user = |
 	{
 		directory: Directory.(d),
 		name,
@@ -157,6 +157,6 @@ added = |
 					keys: d.keys.insert(key),
 				},
 			),
-			added: grown.added,
+			user: grown.user,
 		})
 }

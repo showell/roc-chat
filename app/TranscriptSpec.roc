@@ -19,9 +19,9 @@ Lines : {
 	body : Str,
 }
 
-## A record with its lines as given.
-record : Lines -> Str
-record = |
+## One message as the transcript writes it, its lines as given.
+write_message : Lines -> Str
+write_message = |
 	{
 		head,
 		from,
@@ -52,11 +52,11 @@ second = {
 }
 
 ## The transcript holding only message 1 as `lines` write it.
-one_with = |lines| Transcript.read(Sample.plans, record(lines))
+one_with = |lines| Transcript.read(Sample.plans, write_message(lines))
 
 ## The transcript holding message 1, written well, then message 2 as
 ## `lines` write it.
-two_with = |lines| Transcript.read(Sample.plans, "${record(first)}${record(lines)}")
+two_with = |lines| Transcript.read(Sample.plans, "${write_message(first)}${write_message(lines)}")
 
 ## Message 3's lines, written well.
 third : Lines
@@ -70,7 +70,7 @@ third = {
 
 ## The transcript holding messages 1 and 2, written well, then message 3
 ## as `lines` write it.
-three_with = |lines| Transcript.read(Sample.plans, "${record(first)}${record(second)}${record(lines)}")
+three_with = |lines| Transcript.read(Sample.plans, "${write_message(first)}${write_message(second)}${write_message(lines)}")
 
 ## Read, then written again: the text itself, when it is accepted.
 again = |text| Transcript.read(Sample.plans, text).map_ok(Transcript.write)
@@ -80,8 +80,8 @@ is_round_trip : Str -> Bool
 is_round_trip = |text| again(text) == Ok(text)
 
 # Written exactly, both ways.
-expect Transcript.write(Sample.two) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
-expect Transcript.read(Sample.plans, Transcript.write(Sample.two)) == Ok(Sample.two)
+expect Transcript.write(Sample.hello_and_reply) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
+expect Transcript.read(Sample.plans, Transcript.write(Sample.hello_and_reply)) == Ok(Sample.hello_and_reply)
 # No messages: an empty file, both ways.
 expect Transcript.write(Conversation.empty(Sample.plans)) == ""
 expect Transcript.read(Sample.plans, "") == Ok(Conversation.empty(Sample.plans))
@@ -100,7 +100,7 @@ expect Transcript.read(
 	"-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nhi",
 ) == Err(BadEnds)
 # Each line of message 1's head, bad alone, beside the good one.
-expect again(record(first)) == Ok(record(first))
+expect again(write_message(first)) == Ok(write_message(first))
 expect one_with({ ..first, head: "MSG_plans_2" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, head: "MSG_other_1" }) == Err(BadHead(Sample.first))
 expect one_with({ ..first, from: "frm: Steve" }) == Err(BadHead(Sample.first))
@@ -127,10 +127,10 @@ expect one_with({ ..first, body: "a\n-------------" }) == Err(BadBody(Sample.fir
 # what follows it is the next message's head, which is no reference: that
 # message is refused as `BadHead`. Escaped, it is the body's own line.
 expect one_with({ ..first, body: "a\n\n-------------\nb" }) == Err(BadHead(Sample.second))
-expect is_round_trip(record({ ..first, body: "a\n\n\\-------------\nb" }))
-expect again(record({ ..first, body: "a\n\\-------------" })) == Ok(record({ ..first, body: "a\n\\-------------" }))
+expect is_round_trip(write_message({ ..first, body: "a\n\n\\-------------\nb" }))
+expect again(write_message({ ..first, body: "a\n\\-------------" })) == Ok(write_message({ ..first, body: "a\n\\-------------" }))
 # The same at message 2, after a good message 1.
-expect again("${record(first)}${record(second)}") == Ok("${record(first)}${record(second)}")
+expect again("${write_message(first)}${write_message(second)}") == Ok("${write_message(first)}${write_message(second)}")
 expect two_with({ ..second, head: "MSG_plans_1" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, head: "MSG_plans_3" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, from: "frm: CC" }) == Err(BadHead(Sample.second))
@@ -150,18 +150,18 @@ expect two_with({
 expect two_with({ ..second, body: "a\n-------------" }) == Err(BadBody(Sample.second))
 expect two_with({ ..second, body: "a\n\n-------------\nb" }) == Err(BadHead(Sample.third))
 expect
-	again("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
-		== Ok("${record(first)}${record({ ..second, body: "a\n\\-------------" })}")
+	again("${write_message(first)}${write_message({ ..second, body: "a\n\\-------------" })}")
+		== Ok("${write_message(first)}${write_message({ ..second, body: "a\n\\-------------" })}")
 # Times never go backwards: message 2 and message 3 at the time above
 # them, or a second later, read; a second earlier is refused by its id.
-expect is_round_trip("${record(first)}${record({ ..second, date: "date: 2026-11-02T19:11:32Z" })}")
-expect is_round_trip("${record(first)}${record({ ..second, date: "date: 2026-11-02T19:11:33Z" })}")
+expect is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:32Z" })}")
+expect is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:33Z" })}")
 expect two_with({ ..second, date: "date: 2026-11-02T19:11:31Z" }) == Err(Backdated(Sample.second))
-expect is_round_trip("${record(first)}${record(second)}${record({ ..third, date: "date: 2026-11-02T19:12:28Z" })}")
-expect is_round_trip("${record(first)}${record(second)}${record({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
+expect is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:28Z" })}")
+expect is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
 expect three_with({ ..third, date: "date: 2026-11-02T19:12:27Z" }) == Err(Backdated(Sample.third))
 # Another topic's transcript is refused by its references.
-expect Transcript.read(Sample.other, Transcript.write(Sample.two)) == Err(BadHead(Sample.first))
+expect Transcript.read(Sample.other, Transcript.write(Sample.hello_and_reply)) == Err(BadHead(Sample.first))
 # A body that holds the separator, or a backslash before it, is written
 # with one backslash more, and comes back whole.
 forged : Conversation

@@ -4,7 +4,7 @@
 ## chooses its members. A channel's name unique in the namespace it shares
 ## with the users is `Directory`'s, which holds the chat's channels.
 ##
-## **TELL, DON'T ASK**: `admit` and `remove` take the `User` itself, which
+## **TELL, DON'T ASK**: `add_member` and `remove_member` take the `User` itself, which
 ## the caller already holds, never an id to look up.
 import Admin
 import ChannelName
@@ -44,7 +44,7 @@ Channels :: List(Channels.Channel).{
 	}
 
 	## **A CHANNEL CREATED**: the channels that hold it, and the channel.
-	Created : { channels : Channels, created : Channels.Channel }
+	Created : { channels : Channels, channel : Channels.Channel }
 
 	## No channels.
 	empty : Channels
@@ -54,8 +54,8 @@ Channels :: List(Channels.Channel).{
 	## admin, and that channel.
 	create : Channels, { by : Admin, name : ChannelName } -> Channels.Created
 	create = |Channels.(all), { by: _, name }| {
-		created = Channels.Channel.({ name, members: Set.empty() })
-		{ channels: Channels.(all.append(created)), created }
+		channel = Channels.Channel.({ name, members: Set.empty() })
+		{ channels: Channels.(all.append(channel)), channel }
 	}
 
 	## The channel named `name`, exactly, unless there is none.
@@ -69,8 +69,8 @@ Channels :: List(Channels.Channel).{
 	## The channels with `member` admitted to `channel` by an admin;
 	## unless, in this order, there is no such channel, or they are
 	## already a member.
-	admit : Channels, Channels.Membership -> Try(Channels, [NoSuchChannel, AlreadyMember])
-	admit = |channels, change| {
+	add_member : Channels, Channels.Membership -> Try(Channels, [NoSuchChannel, AlreadyMember])
+	add_member = |channels, change| {
 		Channels.Channel.(c) = channels.channel(change.channel)?
 		member = change.member.id()
 		if (c.members.contains(member))
@@ -87,8 +87,8 @@ Channels :: List(Channels.Channel).{
 	## The channels with `member` removed from `channel` by an admin;
 	## unless, in this order, there is no such channel, or they are not a
 	## member.
-	remove : Channels, Channels.Membership -> Try(Channels, [NoSuchChannel, NotMember])
-	remove = |channels, change| {
+	remove_member : Channels, Channels.Membership -> Try(Channels, [NoSuchChannel, NotMember])
+	remove_member = |channels, change| {
 		Channels.Channel.(c) = channels.channel(change.channel)?
 		member = change.member.id()
 		if (c.members.contains(member))
@@ -110,7 +110,7 @@ Channels :: List(Channels.Channel).{
 }
 
 ## `channels` with `changed` in place of its channel of that name, which
-## it holds: `admit` and `remove` found it there.
+## it holds: `add_member` and `remove_member` found it there.
 with_channel : Channels, Channels.Channel -> Channels
 with_channel = |Channels.(all), changed| {
 	name = changed.name()

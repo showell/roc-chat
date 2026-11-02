@@ -30,10 +30,10 @@ expect Conversation.empty(Sample.plans).topic() == Sample.plans
 expect Conversation.empty(Sample.plans).reference(Sample.first).to_str() == "MSG_plans_1"
 expect Conversation.empty(Sample.plans).reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.other).reference(Sample.second).to_str() == "MSG_other_2"
-expect Sample.two.reference(Sample.second).to_str() == "MSG_plans_2"
+expect Sample.hello_and_reply.reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
 # Each append takes the next id, in order, with what arrived.
-expect summary(Sample.two.messages()) == [
+expect summary(Sample.hello_and_reply.messages()) == [
 	{
 		id: "1",
 		author: "Steve",
@@ -45,10 +45,10 @@ expect summary(Sample.two.messages()) == [
 		markdown: "Hi!\n\n- one\n- two",
 	},
 ]
-expect Sample.two.messages().map(Message.time) == [Sample.hello.time, Sample.reply.time]
-expect Sample.two.next_id().map_ok(Message.Id.to_str) == Ok("3")
+expect Sample.hello_and_reply.messages().map(Message.time) == [Sample.hello.time, Sample.reply.time]
+expect Sample.hello_and_reply.next_id().map_ok(Message.Id.to_str) == Ok("3")
 expect Sample.conversation(Sample.plans, [Sample.hello]).next_id() == Ok(Sample.second)
-expect Sample.two.topic() == Sample.plans
+expect Sample.hello_and_reply.topic() == Sample.plans
 # `append` gives back the conversation grown by one and the message it
 # added, which is that conversation's latest, at the first id and the
 # third.
@@ -56,18 +56,18 @@ expect
 	Conversation.empty(Sample.plans).append(Sample.hello)
 		== Ok({
 			conversation: Sample.conversation(Sample.plans, [Sample.hello]),
-			added: Message.numbered({ id: Sample.first, arrival: Sample.hello }),
+			message: Message.numbered({ id: Sample.first, arrival: Sample.hello }),
 		})
 expect
-	Sample.two.append(Sample.reply).map_ok(
-		|{ conversation, added }| {
-			added: summary([added]),
-			latest: conversation.messages().last() == Ok(added),
+	Sample.hello_and_reply.append(Sample.reply).map_ok(
+		|{ conversation, message }| {
+			message: summary([message]),
+			latest: conversation.messages().last() == Ok(message),
 			count: conversation.messages().len(),
 		},
 	)
 		== Ok({
-			added: [
+			message: [
 				{
 					id: "3",
 					author: "CC",
@@ -94,7 +94,7 @@ appended_alone : Conversation, List(Message.Arrival(Author)) -> List(Try(Str, [F
 appended_alone = |
 	c,
 	arrivals,
-| arrivals.map(|a| c.append(a).map_ok(|grown| grown.added.id().to_str()))
+| arrivals.map(|a| c.append(a).map_ok(|grown| grown.message.id().to_str()))
 
 expect
 	appended_alone(
@@ -114,7 +114,7 @@ expect
 		]
 expect
 	appended_alone(
-		Sample.two,
+		Sample.hello_and_reply,
 		[
 			hello_at("2026-11-02T19:12:28Z"),
 			hello_at("2026-11-02T19:12:29Z"),
@@ -142,14 +142,14 @@ expect {
 	full = grown.conversation
 	{
 		next_of_almost: almost.next_id().map_ok(Message.Id.to_str),
-		added: grown.added.id().to_str(),
+		message: grown.message.id().to_str(),
 		count: full.messages().len(),
 		next_of_full: full.next_id(),
 		appended: full.append(Sample.hello),
 	}
 		== {
 			next_of_almost: Ok("65535"),
-			added: "65535",
+			message: "65535",
 			count: 65535,
 			next_of_full: Err(Full),
 			appended: Err(Full),

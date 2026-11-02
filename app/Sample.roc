@@ -70,8 +70,8 @@ Sample :: [].{
 		)
 
 	## `plans`'s hello and reply.
-	two : Conversation
-	two = Sample.conversation(Sample.plans, [Sample.hello, Sample.reply])
+	hello_and_reply : Conversation
+	hello_and_reply = Sample.conversation(Sample.plans, [Sample.hello, Sample.reply])
 
 	## **A CONVERSATION ONE MESSAGE SHORT OF FULL**: 65,534 of Steve's hello.
 	## A constant, so the specs that need it share one, built once: the

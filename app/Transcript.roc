@@ -25,7 +25,7 @@ Transcript :: [].{
 	## The transcript of the whole conversation.
 	write : Conversation -> Str
 	write = |conversation| Str.join_with(
-		conversation.messages().map(|m| record(conversation, m)),
+		conversation.messages().map(|m| write_message(conversation, m)),
 		"",
 	)
 
@@ -45,8 +45,8 @@ Transcript :: [].{
 }
 
 ## One message as the transcript writes it.
-record : Conversation, Message -> Str
-record = |conversation, message|
+write_message : Conversation, Message -> Str
+write_message = |conversation, message|
 	\\${Separator.line}
 	\\${conversation.reference(message.id()).to_str()}
 	\\from: ${message.author().to_str()}

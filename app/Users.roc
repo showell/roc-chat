@@ -86,7 +86,7 @@ Users :: List(Users.User).{
 	Joining : [Human, AgentOf(Users.Human)]
 
 	## **A USER JOINED**: the users they joined, and the user.
-	Joined : { users : Users, added : Users.User }
+	Joined : { users : Users, user : Users.User }
 
 	## **A NAME AND AN ID, TOGETHER**, as a URL, a file's stem or a
 	## session gives them: `check` holds them to match.
@@ -130,7 +130,7 @@ Users :: List(Users.User).{
 			},
 		)
 		Users.(all) = users
-		Ok({ users: Users.(all.append(user)), added: user })
+		Ok({ users: Users.(all.append(user)), user })
 	}
 
 	## The user `id`, unless there is none.

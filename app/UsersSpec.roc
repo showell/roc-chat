@@ -60,7 +60,7 @@ joined : Users,
 joined = |users, { name, joining }| users.add({
 	name: Sample.name(name),
 	joining,
-}).map_ok(|grown| summary(grown.added))
+}).map_ok(|grown| summary(grown.user))
 
 # Steve starts every Users, a human, id 1.
 expect Users.founded_by(Sample.name("Steve Howell")).to_list().map(summary) == [
@@ -104,7 +104,7 @@ expect
 				name: "Bot",
 				joining: AgentOf(owner),
 			},
-		).map_ok(|added| added.role),
+		).map_ok(|user| user.role),
 	)
 		== [Ok("agent of 1"), Ok("agent of 2")]
 # A human of other users is no owner here: one whose id is no user's, and
@@ -125,7 +125,7 @@ expect
 		== [Err(NoSuchOwner), Err(NoSuchOwner)]
 # Names are not this module's: unique names in the namespace are
 # `Directory`'s, so the users alone take a name twice.
-expect joined(sample, { name: "Apoorva", joining: Human }).map_ok(|added| added.id) == Ok("4")
+expect joined(sample, { name: "Apoorva", joining: Human }).map_ok(|user| user.id) == Ok("4")
 # A human, or an agent refused as one, by id.
 expect
 	[

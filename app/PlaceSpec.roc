@@ -13,7 +13,7 @@ PlaceSpec :: [].{}
 channel : Str -> Channels.Channel
 channel = |text| {
 	name = ChannelName.from_str(text) ?? crash "PlaceSpec: a test's channel name is one"
-	Channels.empty.create({ by: Sample.admin, name }).created
+	Channels.empty.create({ by: Sample.admin, name }).channel
 }
 
 ## The DM between Steve and `text`.

@@ -27,7 +27,7 @@ Conversation :: {
 	## second, and two messages can share one.
 	append : Conversation,
 	Message.Arrival(Author) -> Try(
-		{ conversation : Conversation, added : Message },
+		{ conversation : Conversation, message : Message },
 		[Full, Backdated],
 	)
 	append = |conversation, arrival| {
@@ -36,10 +36,10 @@ Conversation :: {
 		match c.messages.last() {
 			Ok(latest) if arrival.time.compare(latest.time()) == Before => Err(Backdated)
 			_ => {
-				added = Message.numbered({ id, arrival })
+				message = Message.numbered({ id, arrival })
 				Ok({
-					conversation: Conversation.({ ..c, messages: c.messages.append(added) }),
-					added,
+					conversation: Conversation.({ ..c, messages: c.messages.append(message) }),
+					message,
 				})
 			}
 		}

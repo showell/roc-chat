@@ -37,8 +37,8 @@ human_added : Directory, Str -> Try((Str, Str), [Full, NameTaken])
 human_added = |directory, text|
 	directory.add_human(Sample.name(text)).map_ok(
 		|grown| (
-			grown.added.id().to_str(),
-			grown.added.name().to_str(),
+			grown.user.id().to_str(),
+			grown.user.name().to_str(),
 		),
 	)
 
@@ -56,8 +56,8 @@ agent_added : Directory,
 agent_added = |directory, { name, owner }|
 	directory.add_agent({ name: Sample.name(name), owner }).map_ok(
 		|grown| (
-			grown.added.id().to_str(),
-			grown.added.name().to_str(),
+			grown.user.id().to_str(),
+			grown.user.name().to_str(),
 		),
 	)
 
@@ -68,7 +68,7 @@ channel_created = |directory, text|
 	directory.create_channel({
 		by: admin,
 		name: channel_name(text),
-	}).map_ok(|grown| grown.created.name().to_str())
+	}).map_ok(|grown| grown.channel.name().to_str())
 
 # Steve starts every directory, a human, id 1, and no channels; his name
 # is taken from the start.
@@ -153,12 +153,12 @@ expect {
 }
 # Members change through the directory, as its channels change them.
 expect {
-	admitted = with_plans.admit({
+	admitted = with_plans.add_member({
 		by: admin,
 		channel: channel_name("plans"),
 		member: Sample.user("CC"),
 	}) ?? crash "DirectorySpec: CC joins plans"
-	removed = admitted.remove({
+	removed = admitted.remove_member({
 		by: admin,
 		channel: channel_name("plans"),
 		member: Sample.user("CC"),
@@ -171,12 +171,12 @@ expect {
 }
 expect
 	(
-		with_plans.admit({
+		with_plans.add_member({
 			by: admin,
 			channel: channel_name("general"),
 			member: Sample.steve,
 		}),
-		with_plans.remove({
+		with_plans.remove_member({
 			by: admin,
 			channel: channel_name("plans"),
 			member: Sample.steve,

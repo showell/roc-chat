@@ -1,4 +1,4 @@
-## **AN HTML ELEMENT, BUILT ONLY FROM SAFE PARTS**: `tag` writes
+## **AN HTML ELEMENT, BUILT ONLY FROM SAFE PARTS**: `element` writes
 ## `<name a="v">inner</name>`, and vouches (`TrustedHtml`) for the two tags
 ## it writes around `inner`, which is already trusted. Each part of a tag
 ## is safe by its type, so nothing is escaped and nothing needs to be:
@@ -18,7 +18,7 @@ import Ascii
 import DateTime
 import TrustedHtml
 
-HtmlElement :: [].{
+Html :: [].{
 
 	## **AN ELEMENT A PAGE USES**: a closed set, so a tag's name is never data.
 	Name : [A, Article, Div, H1, Header, P, Span, Time, Title]
@@ -28,18 +28,18 @@ HtmlElement :: [].{
 	Token :: Str.{
 
 		## The token `text` spells, or why it is refused.
-		from_str : Str -> Try(HtmlElement.Token, [Empty, ForbiddenByte])
+		from_str : Str -> Try(Html.Token, [Empty, ForbiddenByte])
 		from_str = |text|
 			if (text.is_empty())
 				Err(Empty)
 			else if (text.to_utf8().all(is_token_byte))
-				Ok(HtmlElement.Token.(text))
+				Ok(Html.Token.(text))
 			else
 				Err(ForbiddenByte)
 
 		## The token as written.
-		to_str : HtmlElement.Token -> Str
-		to_str = |HtmlElement.Token.(text)| text
+		to_str : Html.Token -> Str
+		to_str = |Html.Token.(text)| text
 
 		is_eq : _
 	}
@@ -47,20 +47,20 @@ HtmlElement :: [].{
 	## **AN ATTRIBUTE, ITS NAME BY ITS TAG**: a class, an id and a link to
 	## an id on this page, each a token, and a time.
 	Attribute : [
-		Class(HtmlElement.Token),
-		Id(HtmlElement.Token),
-		Href(HtmlElement.Token),
+		Class(Html.Token),
+		Id(Html.Token),
+		Href(Html.Token),
 		DateTime(DateTime),
 	]
 
 	## **AN ELEMENT**: `<name a="v">inner</name>`, `inner` as it is,
 	## already trusted.
-	tag : {
-		name : HtmlElement.Name,
-		attrs : List(HtmlElement.Attribute),
+	element : {
+		name : Html.Name,
+		attrs : List(Html.Attribute),
 		inner : TrustedHtml,
 	} -> TrustedHtml
-	tag = |
+	element = |
 		{
 			name,
 			attrs,
@@ -80,7 +80,7 @@ HtmlElement :: [].{
 is_token_byte : U8 -> Bool
 is_token_byte = |b| Ascii.is_letter(b) or Ascii.is_digit(b) or b == '-'
 
-name_of : HtmlElement.Name -> Str
+name_of : Html.Name -> Str
 name_of = |name|
 	match name {
 		A => "a"
@@ -95,7 +95,7 @@ name_of = |name|
 	}
 
 ## One attribute as an element's open tag writes it, space first.
-attribute : HtmlElement.Attribute -> Str
+attribute : Html.Attribute -> Str
 attribute = |attr|
 	match attr {
 		Class(token) => " class=\"${token.to_str()}\""
@@ -106,14 +106,14 @@ attribute = |attr|
 
 # ── tests
 ## The token `text` spells, which a test knows is one.
-token : Str -> HtmlElement.Token
-token = |text| HtmlElement.Token.from_str(text) ?? crash "HtmlElement's tests: a token"
+token : Str -> Html.Token
+token = |text| Html.Token.from_str(text) ?? crash "Html's tests: a token"
 
 # A token: letters, digits and `-`, and the bytes beside each range refused.
-expect HtmlElement.Token.from_str("aAzZ09-").map_ok(HtmlElement.Token.to_str) == Ok("aAzZ09-")
-expect HtmlElement.Token.from_str("-").map_ok(HtmlElement.Token.to_str) == Ok("-")
-expect HtmlElement.Token.from_str("msg-1").map_ok(HtmlElement.Token.to_str) == Ok("msg-1")
-expect HtmlElement.Token.from_str("") == Err(Empty)
+expect Html.Token.from_str("aAzZ09-").map_ok(Html.Token.to_str) == Ok("aAzZ09-")
+expect Html.Token.from_str("-").map_ok(Html.Token.to_str) == Ok("-")
+expect Html.Token.from_str("msg-1").map_ok(Html.Token.to_str) == Ok("msg-1")
+expect Html.Token.from_str("") == Err(Empty)
 expect
 	[
 		"a/",
@@ -131,7 +131,7 @@ expect
 		"a<b",
 		"a#b",
 		"é",
-	].map(HtmlElement.Token.from_str)
+	].map(Html.Token.from_str)
 		== List.repeat(Err(ForbiddenByte), 15)
 # No link leaves the page: a scheme, a path or another origin is no token.
 expect
@@ -140,7 +140,7 @@ expect
 		"https://evil.example",
 		"//evil.example",
 		"/etc",
-	].map(HtmlElement.Token.from_str)
+	].map(Html.Token.from_str)
 		== List.repeat(Err(ForbiddenByte), 4)
 # Every attribute, as an open tag writes it: a link is always `#` and a
 # token.
@@ -174,14 +174,14 @@ expect [A, Article, Div, H1, Header, P, Span, Time, Title].map(name_of) == [
 # An element: its attributes in order, `inner` as it is, never escaped
 # again.
 expect
-	HtmlElement.tag({
+	Html.element({
 		name: A,
 		attrs: [Class(token("ref")), Href(token("msg-1"))],
 		inner: TrustedHtml.dangerously_trust("&lt;i&gt;"),
 	}).to_utf8()
 		== "<a class=\"ref\" href=\"#msg-1\">&lt;i&gt;</a>".to_utf8()
 expect
-	HtmlElement.tag({
+	Html.element({
 		name: P,
 		attrs: [],
 		inner: TrustedHtml.join([]),

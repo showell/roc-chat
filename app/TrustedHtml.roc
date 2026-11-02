@@ -6,7 +6,7 @@
 ## **THE ONE DOOR IS `dangerously_trust`, AND ITS CALLERS ARE THE AUDIT**,
 ## named to be seen at every call: each
 ## vouches only for HTML it built or escaped itself. They are few, and
-## each is small: `Escape.text` (text, escaped), `HtmlElement.tag` (an
+## each is small: `Escape.text` (text, escaped), `Html.element` (an
 ## element's tags, from closed sets and strict tokens), `Markdown.render`
 ## (roc-markdown's output, whose images `SecureImageTag` rules: the other
 ## trust boundary a security reader wants), and

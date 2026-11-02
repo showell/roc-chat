@@ -9,12 +9,12 @@
 ##
 ## **WHAT IS TRUSTED, AND WHO VOUCHES**: every `Str` a page shows goes in
 ## through `Escape.text`, a message's markdown through `Markdown.render`,
-## and every element through `HtmlElement.tag`. This module vouches
+## and every element through `Html.element`. This module vouches
 ## (`TrustedHtml.dangerously_trust`) for two constants only: the doctype
 ## and the style sheet, both written here, the CSS holding no `<`.
 import Conversation
-import HtmlElement
 import Escape
+import Html
 import Markdown
 import Message
 import MsgAnchor
@@ -27,7 +27,7 @@ Page :: [].{
 	Class : [Author, Body, Empty, Message, Ref]
 
 	## The class attribute for `class`, its one spelling.
-	class : Page.Class -> HtmlElement.Attribute
+	class : Page.Class -> Html.Attribute
 	class = |chosen| Class(token(class_name(chosen)))
 
 	## **A CONVERSATION'S PAGE**: the topic, then each message under its
@@ -36,7 +36,7 @@ Page :: [].{
 	conversation : Conversation -> TrustedHtml
 	conversation = |c| {
 		topic = c.topic()
-		heading = HtmlElement.tag({
+		heading = Html.element({
 			name: H1,
 			attrs: [],
 			inner: Escape.text(topic.to_str()),
@@ -44,7 +44,7 @@ Page :: [].{
 		messages =
 			if (c.messages().is_empty())
 				TrustedHtml.join([
-					HtmlElement.tag({
+					Html.element({
 						name: P,
 						attrs: [Page.class(Empty)],
 						inner: Escape.text("No messages yet."),
@@ -53,7 +53,7 @@ Page :: [].{
 				])
 			else
 				TrustedHtml.join(c.messages().map(|m| message(c, m)))
-		whole({
+		document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
 				heading,
@@ -64,11 +64,11 @@ Page :: [].{
 	}
 
 	## **THE PAGE FOR A REFUSED TRANSCRIPT**, saying why in `why`'s words.
-	refused : Str -> TrustedHtml
-	refused = |why|
-		whole({
+	refusal : Str -> TrustedHtml
+	refusal = |why|
+		document({
 			title: "Not a transcript",
-			body: HtmlElement.tag({
+			body: Html.element({
 				name: P,
 				attrs: [],
 				inner: Escape.text("Not a transcript: ${why}."),
@@ -81,35 +81,35 @@ message : Conversation, Message -> TrustedHtml
 message = |c, m| {
 	named = c.reference(m.id())
 	header = TrustedHtml.join([
-		HtmlElement.tag({
+		Html.element({
 			name: Span,
 			attrs: [Page.class(Author)],
 			inner: Escape.text(m.author().to_str()),
 		}),
 		space,
-		HtmlElement.tag({
+		Html.element({
 			name: Time,
 			attrs: [DateTime(m.time())],
 			inner: Escape.text(m.time().to_str()),
 		}),
 		space,
-		HtmlElement.tag({
+		Html.element({
 			name: A,
 			attrs: [Page.class(Ref), Href(anchor(named))],
 			inner: Escape.text(named.to_str()),
 		}),
 	])
-	article = HtmlElement.tag({
+	article = Html.element({
 		name: Article,
 		attrs: [Page.class(Message), Id(anchor(named))],
 		inner: TrustedHtml.join([
-			HtmlElement.tag({
+			Html.element({
 				name: Header,
 				attrs: [],
 				inner: header,
 			}),
 			newline,
-			HtmlElement.tag({
+			Html.element({
 				name: Div,
 				attrs: [Page.class(Body)],
 				inner: Markdown.render(m.markdown()),
@@ -119,13 +119,13 @@ message = |c, m| {
 	TrustedHtml.join([article, newline])
 }
 
-## **THE SKELETON EVERY PAGE SHARES**: the doctype and charset, `title` as
+## **A PAGE'S WHOLE DOCUMENT**, the same for every page: the doctype and charset, `title` as
 ## its title, the style sheet, then `body`.
-whole : { title : Str, body : TrustedHtml } -> TrustedHtml
-whole = |{ title, body }|
+document : { title : Str, body : TrustedHtml } -> TrustedHtml
+document = |{ title, body }|
 	TrustedHtml.join([
 		doctype,
-		HtmlElement.tag({
+		Html.element({
 			name: Title,
 			attrs: [],
 			inner: Escape.text(title),
@@ -169,13 +169,13 @@ class_name = |chosen|
 
 ## **A MESSAGE'S ANCHOR**, as a token: `MsgAnchor.page_anchor`'s
 ## spelling, which an element's id and a link's `#` both write.
-anchor : MsgAnchor -> HtmlElement.Token
+anchor : MsgAnchor -> Html.Token
 anchor = |named| token(named.page_anchor())
 
 ## The token `text` spells, for a name this module writes: one that isn't
 ## is this module's bug.
-token : Str -> HtmlElement.Token
-token = |text| HtmlElement.Token.from_str(text) ?? crash "Page.token: \"${text}\" is a name this module writes, and not a token"
+token : Str -> Html.Token
+token = |text| Html.Token.from_str(text) ?? crash "Page.token: \"${text}\" is a name this module writes, and not a token"
 
 newline : TrustedHtml
 newline = Escape.text("\n")
@@ -185,9 +185,9 @@ space = Escape.text(" ")
 
 # ── tests
 ## An element `attrs` alone opens, as a test reads it.
-opened : List(HtmlElement.Attribute) -> List(U8)
+opened : List(Html.Attribute) -> List(U8)
 opened = |attrs|
-	HtmlElement.tag({
+	Html.element({
 		name: P,
 		attrs,
 		inner: TrustedHtml.join([]),
