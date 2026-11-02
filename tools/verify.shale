@@ -13,15 +13,13 @@
 --    expect that stops running fails here. Every `app/*Spec.roc` is
 --    imported by app/Specs.roc, the only run that reaches it.
 -- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
---    judges for sure: names, errors, nesting, boundaries, stacking. Their
---    other counts are questions for a reader, so they print but don't gate:
+--    judges: names, errors, nesting, boundaries, stacking. Their other
+--    counts are questions for a reader, so they print but don't gate:
 --    stack's long lines (a frozen answer or a long string has nothing to
 --    stack), boundaries' `constant` (Sample.almost_full stays a `{}`
 --    function so its work runs with its test, never in `roc check`), its
---    `single`, `entry` and `bool_param`, errors' `set_fallback` and
---    `placeholder`, and name_hunt's softer categories (vague, name_type,
---    noun_effect, preposition_split, short_name, worker_name,
---    stacked_preposition), which are rules of thumb.
+--    `single`, `entry` and `bool_param`, and name_hunt's
+--    `stacked_preposition`, which are rules of thumb.
 -- 4. Last, the demo built through the host, its page exactly the frozen
 --    demo/gopher-roc.html.
 --
@@ -101,8 +99,8 @@ say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 
 -- 3. The hunts, each count read from its summary line.
 const hunts = {
-  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "negative ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)"}},
-  {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)"}},
+  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)"}},
+  {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)"}},
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
   {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
