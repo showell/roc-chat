@@ -5,7 +5,12 @@
 --
 --   shale tools/note.shale
 
-const SOURCES = {"app/Message.roc", "app/Transcript.roc", "app/Conversation.roc", "app/main.roc", "platform/main.roc", "host/main.zig", "build.zig", "demo/gopher-roc.transcript"}
+-- Every Roc module, then the platform, the host, the build and the sample.
+const SOURCES = {}
+for f in lines(trim(must(run({"ls", "app"}, {timeout_ms = 5000, whole = 100000, want = "list: the modules"})).out)) do
+  if ends_with(f, ".roc") then push(SOURCES, "app/" .. f) end
+end
+for f in {"platform/main.roc", "host/main.zig", "build.zig", "demo/gopher-roc.transcript"} do push(SOURCES, f) end
 
 if not exists("roc-version") then fail("note: run it from gopher-roc's root") end
 

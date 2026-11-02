@@ -1,0 +1,106 @@
+-- **THE DESIGN AS PICTURES**, drawn from the code, never by hand, so a
+-- picture can't drift from what it shows:
+--
+-- - `modules`: each module in app/ and what it imports (a package is a box
+--   of its own);
+-- - `types`: each module's types, a module a cluster, and an arrow from a
+--   type to each type its definition names.
+--
+-- Both go into one note, ../essay-repl-server/notes/gopher-roc-pictures.md,
+-- as ```dot blocks, which the essay surface draws in the browser.
+-- Committing and pushing the note is the caller's.
+--
+--   shale tools/diagram.shale
+
+const OUT = "../essay-repl-server/notes/"
+
+if not exists("roc-version") then fail("diagram: run it from gopher-roc's root") end
+
+-- The modules: app/*.roc but the app's entry.
+const files = must(run({"ls", "app"}, {timeout_ms = 5000, whole = 100000, want = "list: the modules"})).out
+const modules = {}
+for f in lines(trim(files)) do
+  if ends_with(f, ".roc") and f ~= "main.roc" then push(modules, sub(f, 1, #f - 4)) end
+end
+
+-- What each module imports, and the types it declares (`X ::` or `X :=`,
+-- at the top or one tab in, a type nested in its module's block), each with
+-- the text of its definition up to the next blank line.
+function scan(name)
+  local text = read("app/" .. name .. ".roc")
+  local imports = {}
+  local types = {}
+  local current = nil
+  for line in lines(text) do
+    local imp = re_find(line, "^import ([A-Za-z.]+)")
+    if imp ~= nil then push(imports, imp.groups[1]) end
+    local decl = re_find(line, "^\\t?([A-Z][A-Za-z]*) (::|:=) (.*)$")
+    if decl ~= nil and not starts_with(line, "#") then
+      current = {name = decl.groups[1], kind = decl.groups[2], body = decl.groups[3]}
+      push(types, current)
+    elseif current ~= nil and trim(line) == "" then
+      current = nil
+    elseif current ~= nil and not starts_with(trim(line), "##") then
+      current.body = current.body .. " " .. line
+    end
+  end
+  return {imports = imports, types = types}
+end
+
+const scanned = {}
+for m in modules do scanned[m] = scan(m) end
+
+-- A type's dot id: module, then type, so two modules' `Id`s are two nodes.
+function node_id(module, t)
+  if t == module then return "\"" .. module .. "\"" end
+  return "\"" .. module .. "." .. t .. "\""
+end
+
+-- 1. The modules and their imports.
+local mods = "digraph modules {\n  rankdir=LR;\n  node [shape=box, style=rounded, fontname=\"sans-serif\"];\n"
+for m in modules do
+  for i in scanned[m].imports do
+    if contains(i, ".") then
+      mods = mods .. "  \"" .. i .. "\" [shape=box3d];\n"
+    end
+    mods = mods .. "  \"" .. m .. "\" -> \"" .. i .. "\";\n"
+  end
+  mods = mods .. "  \"" .. m .. "\";\n"
+end
+mods = mods .. "}\n"
+
+-- 2. The types, each module a cluster; an arrow where a definition names a
+-- type the code declares (`Message.Id`, or a module's own type by name).
+local declared = {}
+for m in modules do
+  for t in scanned[m].types do push(declared, {module = m, name = t.name}) end
+end
+local tys = "digraph types {\n  rankdir=LR;\n  compound=true;\n  node [shape=box, fontname=\"sans-serif\"];\n"
+for m in modules do
+  tys = tys .. "  subgraph \"cluster_" .. m .. "\" {\n    label=\"" .. m .. ".roc\";\n    style=rounded;\n"
+  for t in scanned[m].types do
+    local shape = "box"
+    if t.kind == "::" then shape = "box, style=bold" end
+    tys = tys .. "    " .. node_id(m, t.name) .. " [label=\"" .. t.name .. " " .. t.kind .. "\", shape=" .. shape .. "];\n"
+  end
+  tys = tys .. "  }\n"
+end
+for m in modules do
+  for t in scanned[m].types do
+    for d in declared do
+      local qualified = d.module .. "." .. d.name
+      local named = contains(t.body, qualified) or (d.name == d.module and contains(t.body, d.name)) or (d.module == m and contains(t.body, m .. "." .. d.name))
+      if named and not (d.module == m and d.name == t.name) then
+        tys = tys .. "  " .. node_id(m, t.name) .. " -> " .. node_id(d.module, d.name) .. ";\n"
+      end
+    end
+  end
+end
+tys = tys .. "}\n"
+
+const note = "# gopher-roc: the design in pictures\n\n"
+  .. "Drawn from the code by `tools/diagram.shale`; never edited by hand.\n\n"
+  .. "## Modules and what they import\n\n```dot\n" .. mods .. "```\n\n"
+  .. "## Types, by module\n\nA bold box is opaque (`::`); a plain one nominal (`:=`). An arrow: the type's definition names the other.\n\n```dot\n" .. tys .. "```\n"
+must(run({"tee", OUT .. "gopher-roc-pictures.md"}, {stdin = note, timeout_ms = 5000, whole = 100000, want = "write: the note"}))
+print("wrote " .. OUT .. "gopher-roc-pictures.md")

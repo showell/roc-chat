@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
 
     const archive = b.addSystemCommand(&.{ roc, "build", "app/main.roc", "--target=x64musl", "--opt=dev" });
     archive.setCwd(b.path("."));
-    for ([_][]const u8{ "app/main.roc", "app/Message.roc", "app/Transcript.roc", "app/Conversation.roc", "platform/main.roc" }) |f| archive.addFileInput(b.path(f));
+    for ([_][]const u8{ "app", "platform" }) |folder| rocInputs(b, archive, folder);
     archive.addFileInput(.{ .cwd_relative = roc });
     const page = archive.addPrefixedOutputFileArg("--output=", "page-x64musl.a");
 
@@ -29,6 +29,20 @@ pub fn build(b: *std.Build) void {
     roc_test.setCwd(b.path("."));
     roc_test.has_side_effects = true;
     b.step("test", "roc test app/main.roc").dependOn(&roc_test.step);
+}
+
+/// **EVERY ROC MODULE IS AN INPUT, FOUND, NEVER LISTED**: each `.roc` in
+/// `folder`, so a change to any module builds the archive again.
+fn rocInputs(b: *std.Build, run: *std.Build.Step.Run, folder: []const u8) void {
+    const io = b.graph.io;
+    var dir = b.root.root_dir.handle.openDir(io, folder, .{ .iterate = true }) catch |e|
+        std.process.fatal("the Roc: cannot open {s} ({t})", .{ folder, e });
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (it.next(io) catch |e| std.process.fatal("the Roc: cannot list {s} ({t})", .{ folder, e })) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".roc")) continue;
+        run.addFileInput(b.path(b.fmt("{s}/{s}", .{ folder, entry.name })));
+    }
 }
 
 const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \n");
