@@ -42,6 +42,7 @@ The answers from our listening session on 2026-11-02, gathered in one place for 
 - **A DM is a channel whose members are exactly one or two humans.** One human is your own DM with yourself.
 - **DMs are for humans only, for now.** Agents take part only in channels. A channel holding just an agent and its owner is still a named channel.
 - **Only an admin creates a channel and chooses its members, for now.** This is very likely to change.
+- **A DM is named by its pair of user ids, in numeric order:** `7_11`, never `11_7`, and one human alone is `5_5`, as in the previous app. A channel's name starts with a letter and holds no `_`, so the two never collide.
 - **A DM begins with its first message.** Later, an invite's redemption might start one automatically, for example with a "hi" from the inviter.
 
 ### Reaction

@@ -218,16 +218,8 @@ expect agent_added(Sample.directory, { name: "CC", owner: stranger }) == Err(NoS
 # The last id at, under and over the highest: 254 users take one more,
 # the 255th, and then none, human or agent. `Full` is asked before the
 # name and after the owner.
-## `directory` with `count` more humans, each named for their place.
-filled : Directory, U64 -> Directory
-filled = |directory, count|
-	List.from_iter(U64.until(0, count)).fold(
-		directory,
-		|so_far, at| (so_far.add_human(Sample.name("filler-${at.to_str()}")) ?? crash "DirectorySpec: a filler's name is free").directory,
-	)
-
 expect {
-	almost = filled(Sample.directory, 251)
+	almost = Sample.crowded(251)
 	full = (almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits").directory
 	{
 		count: almost.users().len(),

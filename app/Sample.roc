@@ -106,6 +106,15 @@ Sample :: [].{
 		with_cc.directory
 	}
 
+	## **THE SAMPLE DIRECTORY, CROWDED**: with `count` more humans, each
+	## named for their place (`filler-0`, `filler-1`...).
+	crowded : U64 -> Directory
+	crowded = |count|
+		List.from_iter(U64.until(0, count)).fold(
+			Sample.directory,
+			|so_far, at| (so_far.add_human(Sample.name("filler-${at.to_str()}")) ?? crash "Sample.crowded: a filler's name is free").directory,
+		)
+
 	## Steve, in the sample directory.
 	steve : Directory.User
 	steve = Sample.user("Steve")
