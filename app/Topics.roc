@@ -142,7 +142,7 @@ Topics := [].{
 
 	## **THE VIEWER'S DM WITH `other`** (Channel.dm decides who may have one),
 	## made once, whichever of the two asks: the DM, and whether this asking
-	## made it. `POST /dms` and Browse's start-a-DM form both make it here.
+	## made it. `POST /dms` and home's start-a-DM form both make it here.
 	make_dm! : {
 		viewer : Access.Viewer,
 		accounts : List(Principal),
@@ -172,7 +172,7 @@ Topics := [].{
 
 	## **A TOPIC MADE IN A CHANNEL** (Topic.make decides who may, and its
 	## name): the topic stored once, or the refusal said. The topics' JSON
-	## route and Browse's new-topic forms both make one here.
+	## route and home's new-topic forms both make one here.
 	make_topic! : { channel : ChannelName, name : Str } => Try(Topic, Chat.Answer)
 	make_topic! = |{ channel: in_channel, name: topic_name }| {
 		v = Topics.load_viewer!({})?

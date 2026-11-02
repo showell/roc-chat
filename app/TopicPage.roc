@@ -414,7 +414,7 @@ not_here = |
 				body: Html.join([
 					Html.markup("<p>"),
 					why,
-					Html.markup("</p><p><a href=\"/chat/browse\">Go back</a></p>\n"),
+					Html.markup("</p><p><a href=\"/chat\">Go back</a></p>\n"),
 				]),
 			})
 			{ ..answer, status: 404 }

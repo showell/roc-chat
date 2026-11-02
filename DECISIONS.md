@@ -116,8 +116,11 @@ the same commit.
   chat is the left sidebar. Recent makes it mostly irrelevant."
 - **Recent comes early:** "one of the most fundamental features of the zig
   app. We all use it religiously."
-- **Browse** is the page of topics. Its link sits with Docs, Recent, Images
-  and Code. **It lists every human as a DM row, as the old sidebar did**
+- **Home** (`/chat`) is the page of topics, and the one home page (Steve,
+  2026-11-02: `/` was useless, `/chat` redundant, Browse the useful one):
+  below the topics, the invite form, your agents and an admin's pages.
+  `/` sends a browser signed in on to it, and shows one signed out how to
+  sign in. Its link sits with Docs, Recent, Images and Code. **It lists every human as a DM row, as the old sidebar did**
   (Steve, 2026-11-01): an existing DM links to its topics; a human you have
   no DM with gets a button that makes one. No pinning (Steve, 2026-11-02:
   "my actual users never pin topics").

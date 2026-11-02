@@ -12,14 +12,14 @@ const Response = h.Response;
 const exchange = h.exchange;
 const has = h.has;
 
-test "GET / is the Roc's hello page, saying nobody is signed in, with the Roc's own cache-control header" {
+test "GET / signed out is the door's page, how to sign in, with the Roc's own cache-control header" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const r = try Running.start(.{});
     defer r.stop();
     const got = try Response.of(try exchange(arena.allocator(), r.port(), "GET / HTTP/1.1\r\nhost: t\r\nconnection: close\r\n\r\n"));
     try std.testing.expectEqual(200, got.status);
-    try std.testing.expect(has(got.body, "You're not signed in. <a href=/login>Sign in with GitHub</a>."));
+    try std.testing.expect(has(got.body, "<p><a href=/login>Sign in with GitHub</a>.</p>\n<p>Invited without GitHub? Open the link from your invite.</p>"));
     try std.testing.expectEqualStrings("no-store", got.header("cache-control").?);
     try std.testing.expectEqualStrings("text/html; charset=utf-8", got.header("content-type").?);
     try std.testing.expectEqual(1, r.turns());

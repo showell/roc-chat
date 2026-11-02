@@ -1,7 +1,7 @@
 ## **RECENT**, `GET /chat/recent`: the old app's "most fundamental"
 ## feature, a flat newest-first feed of the viewer's topics (angry-gopher's
 ## recent.zig, chat-client's js/recent.js): every topic they read in the
-## DMs and channels they are in, as Browse lists them, one tile each by its last message (Recent.roc draws
+## DMs and channels they are in, as home lists them, one tile each by its last message (Recent.roc draws
 ## it), newest first, a tie by its page's path; one with no message yet
 ## goes last. Live, `GET /chat/recent/stream` sends the viewer each new
 ## post's tile, drawn for them (Topics' publish), live only: the page is

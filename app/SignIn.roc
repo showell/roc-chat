@@ -186,32 +186,23 @@ SignIn := [].{
 	load_settings! : {} => Try(Accounts.Settings, [Failed])
 	load_settings! = |{}| Store.load_settings!(load_first_admin!({})?)
 
-	## **/, THE HELLO PAGE**: who this browser is signed in as, where the
-	## chat is, and the form that logs out; or that it is signed in as
-	## nobody, and how to sign in. Nothing more. A session not admitted (expired, its
-	## account gone) is nobody.
-	serve_hello! : {} => Chat.Answer
-	serve_hello! = |{}| {
+	## **/, THE DOOR**: a browser signed in goes on to home (`/chat`, a
+	## 303); one signed in as nobody (no session, or one not admitted:
+	## expired, its account gone) is shown how to sign in, and that someone
+	## invited without GitHub opens their invite's link instead.
+	serve_door! : {} => Chat.Answer
+	serve_door! = |{}| {
 		now = Host.read_time!({})
 		match SignIn.load_cookie_session!({}) {
 			Err(Failed) => Chat.failed
-			Ok(NoSession) => hello_page(Nobody)
+			Ok(NoSession) => signed_out_page
 			Ok(Found(session)) =>
 				match Store.load_accounts!({}) {
 					Err(Failed) => Chat.failed
 					Ok(accounts) =>
 						match session.admit({ accounts, now }) {
-							Refused(_) => hello_page(Nobody)
-							Admitted({ principal, write }) =>
-								match write {
-									Unchanged => hello_page(Someone(principal))
-									Touched(s) =>
-										if Store.save_session!(s) == Written {
-											hello_page(Someone(principal))
-										} else {
-											Chat.failed
-										}
-								}
+							Refused(_) => signed_out_page
+							Admitted(_) => see_other("/chat".to_utf8())
 						}
 				}
 		}
@@ -465,32 +456,12 @@ sign_in! = |f, { admission, steps }| {
 	}
 }
 
-## The hello page, never cached: who is signed in, or nobody.
-hello_page : [Nobody, Someone(Principal)] -> Chat.Answer
-hello_page = |who| {
-	said =
-		match who {
-			Nobody => Html.markup("<p>You're not signed in. <a href=/login>Sign in with GitHub</a>.</p>\n")
-			Someone(principal) =>
-				Html.join([
-					Html.markup("<p>Signed in as "),
-					Html.text(signed_in_as(principal)),
-					Html.markup(". The chat is at <a href=/chat/browse>Browse</a>.</p>\n"),
-					Html.markup(SignInWeb.log_out_form),
-				])
-		}
-	Html.respond(200, Html.join([Html.markup("<!doctype html>\n<title>roc-chat</title>\n"), said]))
-}
-
-## A principal as the hello page names them: a human's name, and their
-## GitHub login beside it while they have one.
-signed_in_as : Principal -> Str
-signed_in_as = |principal|
-	match principal {
-		Human(h) => if (h.login == "") h.name else "${h.name} (GitHub ${h.login})"
-		Agent(a) => a.name
-		Bot(b) => b.name
-	}
+## The door's page to a browser signed in as nobody.
+signed_out_page : Chat.Answer
+signed_out_page = Html.respond(
+	200,
+	Html.markup("<!doctype html>\n<title>Chat</title>\n<p><a href=/login>Sign in with GitHub</a>.</p>\n<p>Invited without GitHub? Open the link from your invite.</p>\n"),
+)
 
 ## The cookie `name` ended.
 ended_cookie : Str -> List(U8)

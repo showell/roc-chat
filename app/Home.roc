@@ -1,8 +1,9 @@
-## **BROWSE: WHERE A HUMAN'S TOPICS ARE**, `GET /chat/browse`: every
-## human, as a DM, the viewer too (their self-DM), then the channels the viewer is a member of, each with
-## the topics they may read there, each topic a link to its page
-## (TopicPage.roc). Its link is the top bar's first (Chrome.roc), where the
-## old app's "Chat" was.
+## **HOME: WHERE A HUMAN'S TOPICS ARE**, `GET /chat`: every human, as a
+## DM, the viewer too (their self-DM), then the channels the viewer is a
+## member of, each with the topics they may read there, each topic a link
+## to its page (TopicPage.roc); below them, the form that invites someone,
+## the viewer's agents, and an admin's pages (Pages.home_extras). Its link
+## is the top bar's first (Chrome.roc), where the old app's "Chat" was.
 ##
 ## **THE OLD APP HAD NO SUCH PAGE**: its counterpart is the left sidebar's
 ## Conversations list (chat-client's js/chat_left_sidebar.js, angry-gopher's
@@ -11,14 +12,14 @@
 ## viewer's channels, each `# <name>`, in byte order of their names
 ## (`lessThanStr`); topics in byte order of theirs; a place with none, "No
 ## sessions yet"; nothing at all, "You do not have any conversations.".
-## **A NEW TOPIC, FROM BROWSE**: each place has the old app's Add Topic form
+## **A NEW TOPIC, FROM HOME**: each place has the old app's Add Topic form
 ## (chat-client's js/chat_add_topic.js), a topic's name, "general" where the
 ## place has none yet (the old first-topic page, js/chat_first_topic.js).
 ## It posts `topic=` to the place's own path, `POST /chat/dm/<pair>` or
 ## `POST /chat/channel/<c>` (a form, behind Origin's check): a DM with
 ## someone not yet met is made first, then the topic, and the browser lands
 ## on the topic's page, empty and ready to write in. A DM's form with no
-## `topic=` makes the DM alone and lands back on Browse at it. Who reads
+## `topic=` makes the DM alone and lands back on home at it. Who reads
 ## which topic is Topic.read's, as the topics' routes ask it. A page is a
 ## browser's: signed out, to `/login`; a key, a 403.
 import pf.Chat
@@ -40,9 +41,9 @@ import Topic
 import Topics
 import Wire
 
-Browse := [].{
+Home := [].{
 
-	## What a path asks of Browse: the page; a DM (and perhaps its first
+	## What a path asks of home: the page; a DM (and perhaps its first
 	## topic) made with a human; or a topic made in a channel.
 	Route : [
 		List,
@@ -51,9 +52,9 @@ Browse := [].{
 	]
 
 	## The route a path names, if it names one.
-	route : List(U8) -> Try(Browse.Route, [NotBrowse])
+	route : List(U8) -> Try(Home.Route, [NotHome])
 	route = |path|
-		if path == "/chat/browse".to_utf8() {
+		if path == "/chat".to_utf8() {
 			Ok(List)
 		} else {
 			match path.split_on('/') {
@@ -64,8 +65,8 @@ Browse := [].{
 					n,
 				] if chat == "chat".to_utf8() and dm == "dm".to_utf8() =>
 					match Str.from_utf8(n) {
-						Ok(text) => ChannelName.dm_from(text).map_ok(|pair| StartDm(pair)).map_err(|_| NotBrowse)
-						Err(_) => Err(NotBrowse)
+						Ok(text) => ChannelName.dm_from(text).map_ok(|pair| StartDm(pair)).map_err(|_| NotHome)
+						Err(_) => Err(NotHome)
 					}
 				[
 					[],
@@ -75,16 +76,16 @@ Browse := [].{
 				] if chat == "chat".to_utf8() and channel == "channel".to_utf8() =>
 					match Str.from_utf8(c) {
 						Ok(text) =>
-							ChannelName.from_str(text).map_ok(|name| NewTopic(name)).map_err(|_| NotBrowse)
-						Err(_) => Err(NotBrowse)
+							ChannelName.from_str(text).map_ok(|name| NewTopic(name)).map_err(|_| NotHome)
+						Err(_) => Err(NotHome)
 					}
-				_ => Err(NotBrowse)
+				_ => Err(NotHome)
 			}
 		}
 
 	## **ANSWER IT**: the page to a GET or a HEAD; a DM or a topic made to a
 	## POST, its form read first.
-	answer! : Chat.Request, Browse.Route => Chat.Answer
+	answer! : Chat.Request, Home.Route => Chat.Answer
 	answer! = |req, r| {
 		got =
 			match r {
@@ -127,7 +128,7 @@ see_other = |location|
 	Chat.respond(303, { content_type: Chat.text, body: [] })
 		|> Chat.with_header("location", location.to_utf8())
 
-## One place on Browse: what it is called, where it lives on the page
+## One place on home: what it is called, where it lives on the page
 ## (`id`), and either its topics' links or the button that makes it.
 Place : {
 	label : Str,
@@ -190,9 +191,9 @@ list! = |path| {
 	)?
 	Ok(
 		Chrome.page({
-			title: Html.markup("Browse"),
+			title: Html.markup("Home"),
 			viewer: Html.text(Render.name_of(v.accounts, me.id)),
-			here: Browse,
+			here: Home,
 			kind: Plain,
 			body_attrs: Html.join([]),
 			body: Html.join([
@@ -206,7 +207,7 @@ list! = |path| {
 					Html.number(stored.damaged),
 					Html.markup(" channel records do not read, and are not listed.</p>\n"),
 				]),
-				Html.markup("<p class=muted><a href=\"/chat\">Your agents</a></p>\n"),
+				Pages.home_extras({ viewer: v.viewer, accounts: v.accounts }),
 			]),
 		}),
 	)
@@ -346,10 +347,10 @@ topic_html = |base, t|
 		Html.markup("</a></li>\n"),
 	])
 
-## **A DM MADE FROM BROWSE** (`POST /chat/dm/<pair>`): the pair's DM
+## **A DM MADE FROM HOME** (`POST /chat/dm/<pair>`): the pair's DM
 ## (Topics.make_dm!, as `POST /dms` makes it), made once, by one of its
 ## two humans; with a `topic=`, that topic is made in it too, and the
-## browser lands on its page; without one, back to Browse at the DM. A 303
+## browser lands on its page; without one, back to home at the DM. A 303
 ## either way. Someone not of the pair, a 404; signed out, a 401; a key, a
 ## 403.
 start_dm! : ChannelName, List(U8) => Try(Chat.Answer, Chat.Answer)
@@ -362,7 +363,7 @@ start_dm! = |pair, form| {
 			other = other_of(pair, me.id)?
 			made = Topics.make_dm!(v, Principal.Id.Human(other))?
 			match topic_named(form) {
-				NoTopic => Ok(see_other("/chat/browse#dm-${other.to_u64().to_str()}"))
+				NoTopic => Ok(see_other("/chat#dm-${other.to_u64().to_str()}"))
 				Named(topic) => {
 					t = Topics.make_topic!({ channel: made.dm.name(), name: topic })?
 					Ok(see_other(Topics.page_path(t.at())))
@@ -392,7 +393,7 @@ other_of = |pair, me| {
 	}
 }
 
-## **A TOPIC MADE IN A CHANNEL FROM BROWSE**: `topic=` made there (Topic.make
+## **A TOPIC MADE IN A CHANNEL FROM HOME**: `topic=` made there (Topic.make
 ## decides who may), and the browser lands on its page, a 303. Signed out,
 ## a 401; a key, a 403; no `topic=`, a 400.
 new_topic! : ChannelName, List(U8) => Try(Chat.Answer, Chat.Answer)
@@ -439,9 +440,10 @@ expect by_bytes("Bea".to_utf8(), "Ann".to_utf8()) == After
 expect by_bytes("Ann".to_utf8(), "Ann".to_utf8()) == Same
 expect by_bytes("An".to_utf8(), "Ann".to_utf8()) == Before
 expect by_bytes("Zoe".to_utf8(), "ann".to_utf8()) == Before
-expect Browse.route("/chat/browse".to_utf8()) == Ok(List)
+expect Home.route("/chat".to_utf8()) == Ok(List)
+expect Home.route("/chat/browse".to_utf8()).is_err()
 expect
-	match Browse.route("/chat/dm/7_11".to_utf8()) {
+	match Home.route("/chat/dm/7_11".to_utf8()) {
 		Ok(StartDm(pair)) => pair == ChannelName.dm_of(11, 7)
 		_ => Bool.False
 	}
@@ -452,14 +454,14 @@ expect
 		"/chat/dm/07_11",
 		"/chat/dm/7",
 		"/chat/dm/x",
-	].all(|path| Browse.route(path.to_utf8()).is_err())
+	].all(|path| Home.route(path.to_utf8()).is_err())
 # The pair's other human, for either of them (themselves in a self-DM); anyone else, none.
 expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Human(Cast.hid(7))).map_ok(|h| h.to_u64()) == Ok(11)
 expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Human(Cast.hid(11))).map_ok(|h| h.to_u64()) == Ok(7)
 expect other_of(ChannelName.dm_of(5, 5), Principal.Id.Human(Cast.hid(5))).map_ok(|h| h.to_u64()) == Ok(5)
 expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Human(Cast.hid(9))).is_err()
 expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Agent(Cast.aid(7))).is_err()
-expect Browse.route("/chat/browse/x".to_utf8()).is_err()
+expect Home.route("/chat/browse/x".to_utf8()).is_err()
 
 # A topic's link is under its place's base; an empty place says so and
 # offers "general" as its first topic; a human with no DM has the same form,
@@ -481,6 +483,6 @@ expect {
 	html == "<section id=\"dm-9\"><h2>Zoe</h2>\n<form class=add-topic method=post action=\"/chat/dm/2_9\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>\n</section>\n".to_utf8()
 }
 # A channel's path names a topic's making there; a DM's pair never.
-expect Browse.route("/chat/channel/Lobby".to_utf8()) == Ok(NewTopic(ChannelName.from_str("Lobby") ?? crash "a channel name"))
-expect Browse.route("/chat/channel/1_2".to_utf8()).is_err()
-expect Browse.route("/chat/channel/Lobby/general".to_utf8()).is_err()
+expect Home.route("/chat/channel/Lobby".to_utf8()) == Ok(NewTopic(ChannelName.from_str("Lobby") ?? crash "a channel name"))
+expect Home.route("/chat/channel/1_2".to_utf8()).is_err()
+expect Home.route("/chat/channel/Lobby/general".to_utf8()).is_err()

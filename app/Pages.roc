@@ -1,13 +1,10 @@
-## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: the viewer's home, their
-## agents and the channels, in a browser. Small, plain and replaceable: the
-## browser client's pages, Browse and a topic's, are Browse.roc's and
-## TopicPage.roc's. Every decision is its routes' module's, on the viewer
+## **THE CHAT'S PAGES, THE PLAINEST THAT WORK**: the viewer's agents and
+## the channels, in a browser, and the home page's things below its
+## conversations. Small, plain and replaceable: the browser client's
+## pages, home and a topic's, are Home.roc's and TopicPage.roc's. Every decision is its routes' module's, on the viewer
 ## Credentials gives a session's cookie; here are the pages made of it. A key's Bearer header is a 403: a page is a
 ## browser's.
 ##
-##     GET /chat         the viewer's home: links to Browse, their agents and
-##                       (an admin's) the channels, and the form that invites
-##                       someone without GitHub
 ##     GET /chat/agents  the viewer's agents, a form to make one, and a button
 ##                       on each to invite it (its code shown once, by the
 ##                       script, from the invite's own answer); their live
@@ -22,7 +19,7 @@
 ## name, an id, a title), numbers and markup written here. Signed out, a
 ## page sends the browser to `/login`.
 ##
-## **THE AGENTS PAGE IS ITS OWN**, not a section of `/chat`: what it holds
+## **THE AGENTS PAGE IS ITS OWN**, not a section of home: what it holds
 ## (agents, invites, keys) is the account's, and its
 ## script is the one place a page ever shows a code. **ITS WRITES ARE THE
 ## ROUTES' OWN** (Agents.roc): the script posts the forms `/agents`,
@@ -51,7 +48,6 @@ Pages := [].{
 
 	## What a page path asks.
 	Route : [
-		Home,
 		AgentList,
 		ChannelList,
 	]
@@ -84,9 +80,7 @@ Pages := [].{
 	## The page a path names, if it names one.
 	route : List(U8) -> Try(Pages.Route, [NotAPage])
 	route = |path|
-		if path == root {
-			Ok(Home)
-		} else if path == root.concat("/agents".to_utf8()) {
+		if path == root.concat("/agents".to_utf8()) {
 			Ok(AgentList)
 		} else if path == root.concat("/channels".to_utf8()) {
 			Ok(ChannelList)
@@ -99,64 +93,20 @@ Pages := [].{
 	answer! = |req, r|
 		if req.method != Get and req.method != Head {
 			Chat.not_allowed(Get)
-		} else if r == AgentList {
-			serve_agents_page!(req.path)
-		} else if r == ChannelList {
-			serve_channels_page!(req.path)
 		} else {
-			match Credentials.load_viewer!({}) {
-				Err(answer) => answer
-				Ok(
-					{
-						viewer,
-						accounts,
-						now: _,
-						key: _,
-					},
-				) =>
-					match viewer.who() {
-						SignedOut => Pages.to_login(req.path)
-						Key(_) => Pages.key_refused
-						Session(me) =>
-							match r {
-								Home => home({
-									viewer,
-									accounts,
-									me: me.id,
-								})
-								AgentList => serve_agents_page!(req.path)
-								ChannelList => serve_channels_page!(req.path)
-							}
-					}
+			match r {
+				AgentList => serve_agents_page!(req.path)
+				ChannelList => serve_channels_page!(req.path)
 			}
 		}
 
-}
-
-root : List(U8)
-root = "/chat".to_utf8()
-
-## **THE VIEWER'S HOME**: Browse, their agents, the channels for an admin
-## alone (Channel says who administers), the form that invites someone,
-## and the one that logs out.
-home : {
-	viewer : Access.Viewer,
-	accounts : List(Principal),
-	me : Principal.Id,
-} -> Chat.Answer
-home = |
-	{
-		viewer,
-		accounts,
-		me,
-	},
-|
-	page({
-		title: Html.markup("Chat"),
-		body_attrs: Html.join([]),
-		body: Html.join([
-			Html.markup("<h1>Chat</h1>\n"),
-			Html.markup("<p><a href=\"/chat/browse\">Browse your channels and DMs</a></p>\n"),
+	## **HOME'S OTHER THINGS**, below its conversations (Home.roc): the
+	## form that invites someone without GitHub, the viewer's agents, and
+	## the channels and the users for an admin alone (Channel says who
+	## administers).
+	home_extras : { viewer : Access.Viewer, accounts : List(Principal) } -> Html
+	home_extras = |{ viewer, accounts }|
+		Html.join([
 			Html.markup(invite_form),
 			Html.markup("<p><a href=\"/chat/agents\">Your agents, invites and keys</a></p>\n"),
 			if (
@@ -165,17 +115,15 @@ home = |
 					accounts,
 				).is_ok()
 			) Html.markup("<p><a href=\"/chat/channels\">Channels (an admin's)</a></p>\n<p><a href=\"/chat/users\">Users (an admin's)</a></p>\n") else Html.join([]),
-			Html.markup("<p class=quiet>Signed in as "),
-			Html.text(Render.name_of(accounts, me)),
-			Html.markup(" ("),
-			id_html(me),
-			Html.markup(").</p>\n"),
-			Html.markup(SignInWeb.log_out_form),
 			Html.markup("\n<script>\n"),
 			Html.markup(home_js),
 			Html.markup("</script>\n"),
-		]),
-	})
+		])
+
+}
+
+root : List(U8)
+root = "/chat".to_utf8()
 
 ## **/chat/agents**: the page, for a live session; signed out, to
 ## `/login`; a key, the 403 every page gives one.
@@ -530,7 +478,7 @@ channels_js =
 	\\});
 	\\
 
-expect Pages.route("/chat".to_utf8()) == Ok(Home)
+expect Pages.route("/chat".to_utf8()).is_err()
 expect Pages.route("/chat/7".to_utf8()).is_err()
 expect Pages.route("/chatx".to_utf8()).is_err()
 expect Pages.route("/chat/agents".to_utf8()) == Ok(AgentList)

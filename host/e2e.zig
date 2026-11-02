@@ -2028,12 +2028,12 @@ const pip_name_escaped = "Pip &lt;b&gt;&quot;&amp;&#39;";
 const Browsing = struct { pip: []const u8, quin: []const u8, rue: []const u8, p: []const u8, q: []const u8, pal_key: []const u8 };
 var browsing: ?Browsing = null;
 
-/// **BROWSE** (`/chat/browse`, app/Browse.roc): every other human as a DM,
+/// **HOME** (`/chat`, app/Home.roc): every other human as a DM,
 /// by numeric id, then the viewer's channels by name in raw bytes, each
 /// with the topics they read, in byte order; a channel they are not in is
 /// not there; a place with no topic says "No sessions yet", and a
 /// human with no DM has the button that makes one, which lands back on
-/// Browse at it. The top bar marks Browse as here and names the viewer as
+/// home at it. The top bar marks Home as here and names the viewer as
 /// text. Signed out, a 303 to `/login`; a key, a 403.
 fn browse(w: *World) !void {
     const pip = try signUpAs(w.a, w.port(), 1040, pip_name_form);
@@ -2058,7 +2058,7 @@ fn browse(w: *World) !void {
 
     // Quin and Rue have no DM yet: Rue's row is the form that makes it (and
     // a first topic, "general" offered).
-    const before = try get(w.a, w.port(), "/chat/browse", quin);
+    const before = try get(w.a, w.port(), "/chat", quin);
     const qr = try pairOf(w.a, q, r);
     const rue_button = try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>", .{ r, qr });
     if (before.status != 200 or !has(before.body, rue_button)) return error.NoStartButton;
@@ -2066,7 +2066,7 @@ fn browse(w: *World) !void {
     if ((try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{try pairBackwards(w.a, q, r)}), "")).status != 404) return error.BackwardsPairMade;
     if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{try pairOf(w.a, p, q)}), "")).status != 404) return error.StrangerMadeDm;
     const made = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), "");
-    if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", try std.fmt.allocPrint(w.a, "/chat/browse#dm-{s}", .{r}))) return error.DmNotStarted;
+    if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", try std.fmt.allocPrint(w.a, "/chat#dm-{s}", .{r}))) return error.DmNotStarted;
     if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), "")).status != 303) return error.DmNotFound;
     // Quin's own row: a topic of his own, the browser on its empty page,
     // titled with his name, and his post there.
@@ -2083,14 +2083,14 @@ fn browse(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), "", "")).status != 401) return error.NobodyStartedDm;
     if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), .{ .cookie = quin, .origin = "https://evil.test" }, "")).status != 403) return error.ForeignOriginTaken;
 
-    const page = try get(w.a, w.port(), "/chat/browse", quin);
+    const page = try get(w.a, w.port(), "/chat", quin);
     if (page.status != 200) return error.NoBrowse;
     const b = page.body;
     // In order: Pip's DM (the lower id) with its topic, Rue's (now made, no
     // topic), then the channels in raw byte order, capitals first.
     const order = [_][]const u8{
         "<title>Chat</title>",
-        "<strong>Browse</strong>",
+        "<strong>Home</strong>",
         "<strong>Person 1041</strong>",
         try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>" ++ pip_name_escaped ++ "</h2>", .{p}),
         try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/ChitChat\">ChitChat</a>", .{try pairOf(w.a, p, q)}),
@@ -2107,18 +2107,19 @@ fn browse(w: *World) !void {
         at = (std.mem.indexOfPos(u8, b, at, needle) orelse return error.BrowseOutOfOrder) + needle.len;
     }
     if (has(b, "Desk") or has(b, "Pip <b>") or has(b, "<style")) return error.BrowseShowsTooMuch;
-    // Shed is Pip's, so on his Browse, after Orchard, in raw byte order.
-    const own = try get(w.a, w.port(), "/chat/browse", pip);
+    // Shed is Pip's, so on his home, after Orchard, in raw byte order.
+    const own = try get(w.a, w.port(), "/chat", pip);
     if (!has(own.body, "<h2># Shed</h2>") or !has(own.body, "<a href=\"/chat/channel/Shed/Desk\">Desk</a>") or !has(own.body, "<h2>Person 1041</h2>")) return error.OwnTopicMissing;
     if ((std.mem.indexOf(u8, own.body, "<h2># Shed</h2>") orelse 0) < (std.mem.indexOf(u8, own.body, "<h2># Orchard</h2>") orelse return error.OwnTopicMissing)) return error.BrowseOutOfOrder;
     // Rue is in no channel, and sees Pip as a human with no DM yet.
-    const theirs = try get(w.a, w.port(), "/chat/browse", rue);
+    const theirs = try get(w.a, w.port(), "/chat", rue);
     if (has(theirs.body, "# Orchard") or !has(theirs.body, try std.fmt.allocPrint(w.a, "action=\"/chat/dm/{s}\"", .{try pairOf(w.a, p, r)}))) return error.RueSeesWrong;
 
-    const out = try get(w.a, w.port(), "/chat/browse", "");
-    if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Fbrowse")) return error.NotToLogin;
-    if ((try send(w.a, w.port(), "GET", "/chat/browse", .{ .key = pal.key }, "")).status != 403) return error.KeyBrowsed;
-    if (!has((try get(w.a, w.port(), "/chat", quin)).body, "<a href=\"/chat/browse\">")) return error.NoBrowseLink;
+    const out = try get(w.a, w.port(), "/chat", "");
+    if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat")) return error.NotToLogin;
+    if ((try send(w.a, w.port(), "GET", "/chat", .{ .key = pal.key }, "")).status != 403) return error.KeyBrowsed;
+    // Home is the one page: Browse is no path of its own.
+    if ((try get(w.a, w.port(), "/chat/browse", quin)).status != 404) return error.BrowseStillThere;
 }
 
 /// **A TOPIC'S PAGE** (`/chat/channel/<c>/<t>`, `/chat/dm/<pair>/<t>`,
@@ -2140,7 +2141,7 @@ fn topicPage(w: *World) !void {
         "<button id=chat-theme-toggle type=button title=\"Toggle theme\" aria-label=\"Toggle theme\"></button> · <strong>Person 1041</strong>",
         try std.fmt.allocPrint(w.a, "<body class=chat-page data-me=\"human:{s}\" data-stream=\"/chat/channel/Orchard/Banana/stream?after=1\" data-earlier=\"/chat/channel/Orchard/Banana/earlier\" data-quote=\"/chat/channel/Orchard/Banana/quote\" data-edit=\"/chat/channel/Orchard/Banana/edit\" data-react=\"/chat/channel/Orchard/Banana/react\">", .{x.q}),
         "<span class=\"chat-top-title\">#Orchard: Banana</span>",
-        "<a href=\"/chat/browse\">Browse</a>",
+        "<a href=\"/chat\">Home</a>",
         "<button id=earlier type=button hidden>Earlier messages</button>",
         try std.fmt.allocPrint(w.a, "<div class=chat-msg id=msg-1 data-id=1 data-ref=\"Banana_1\" data-by=\"human:{s}\"><div class=chat-meta>#1 " ++ pip_name_escaped ++ " · @person1040 · <time class=chat-time datetime=", .{x.p}),
         "<div class=chat-body><p>hello <strong>orchard</strong></p>",
@@ -2173,7 +2174,7 @@ fn topicPage(w: *World) !void {
     // fragment are the plain 404.
     const yours = try get(w.a, w.port(), "/chat/channel/Orchard/Banana", x.rue);
     const nowhere = try get(w.a, w.port(), "/chat/channel/Nowhere/Banana", x.rue);
-    if (!has(yours.body, "<span class=\"chat-top-title\">Not here</span>") or !has(yours.body, "<p>#Orchard is not a channel you are a member of.</p><p><a href=\"/chat/browse\">Go back</a></p>")) return error.NotHereWrong;
+    if (!has(yours.body, "<span class=\"chat-top-title\">Not here</span>") or !has(yours.body, "<p>#Orchard is not a channel you are a member of.</p><p><a href=\"/chat\">Go back</a></p>")) return error.NotHereWrong;
     if (nowhere.status != 404 or !has(nowhere.body, "<p>#Nowhere is not a channel you are a member of.</p>")) return error.NotHereWrong;
     const desk = try get(w.a, w.port(), "/chat/channel/Shed/Desk", x.quin);
     if (desk.status != 404 or !has(desk.body, "<p>#Shed is not a channel you are a member of.</p>")) return error.OtherChannelRead;
@@ -2331,7 +2332,7 @@ fn recentFeed(w: *World) !void {
     const dm = try std.fmt.allocPrint(w.a, "<a class=recent-tile href=\"/chat/dm/{s}/ChitChat\" data-key=\"/chat/dm/{s}/ChitChat\" data-ts=", .{ pq, pq });
     const apple = "<a class=recent-tile href=\"/chat/channel/Orchard/apple\" data-key=\"/chat/channel/Orchard/apple\" data-ts=0>";
     const want = [_][]const u8{
-        "<a href=\"/chat/browse\">Browse</a> · <strong>Recent</strong>",
+        "<a href=\"/chat\">Home</a> · <strong>Recent</strong>",
         "<body class=recent-page>",
         banana,
         "<div class=recent-bar data-channel=\"Orchard\"></div></div><div class=recent-body><div class=recent-top><div class=recent-context><span>#Orchard</span><span class=recent-dot>  ·  </span><span class=recent-topic>Banana</span></div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>from **compose**</div>",
@@ -2831,7 +2832,7 @@ const steps = [_]Step{
     .{ .name = "a human DM: the pair's one, whichever asks; its topics' references short; a third human never reaches it; with oneself, a self-DM of one, another never reaching it; an agent, nobody refused; never a channel", .f = humanDm },
     .{ .name = "a human invite: her name held at once, the welcome in their DM, the code in its answer alone; she joins on the plain page under another free name, reads and answers; the code once; again by her inviter or an admin alone; revoked, expired and past ten open refused; audited without the code", .f = humanInvited },
     .{ .name = "an agent's owner renames it: a free name, its old name freed; another's in another spelling, a 409; its own in a new spelling, taken; another human or a key, a 403; each audited", .f = agentRenamed },
-    .{ .name = "Browse: every human as a DM by numeric id, oneself too (a self-DM, a topic of one's own made from it), then channels in raw byte order, each with the topics they read in byte order, a channel they are not in not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Browse; signed out a 303, a key a 403", .f = browse },
+    .{ .name = "home: every human as a DM by numeric id, oneself too (a self-DM, a topic of one's own made from it), then channels in raw byte order, each with the topics they read in byte order, a channel they are not in not among them; a human with no DM has a button that makes one; empty places said; the top bar marks Home; signed out a 303, a key a 403", .f = browse },
     .{ .name = "a topic's page: server-rendered bubbles with author, number, name as text and markdown, its viewer and stream named, the right pane empty, the old titles; a stranger, another channel's topic and none a 404, the page saying why without naming a channel the viewer is not in; the JSON routes alike; signed out a 303 and a 401, a key a 403", .f = topicPage },
     .{ .name = "a topic page's stream sends each later post as the page's own bubble, after ?after= and resumed by Last-Event-ID, nothing twice; a bad resume point a 400; the agents' JSON stream unchanged; the scripts served beside chat-client's", .f = topicPageStream },
     .{ .name = "past a page of messages, the Earlier button shows, and the page before comes as a fragment of bubbles saying whether more come before; a page far behind gets a gap; a before= that is no id a 400", .f = topicPageEarlier },
@@ -2839,17 +2840,17 @@ const steps = [_]Step{
     .{ .name = "Recent: one tile per topic the viewer reads, by its last message, newest first, an empty topic last, You or a first name and the old excerpt, a channel they are not in not there; Nothing yet for none; live, each post's tile to each reader drawn for them and to no one else, a channel's to its members and not another's; signed out a 303 and a 401, a key a 403", .f = recentFeed },
     .{ .name = "quote-reply and edit: both links on every bubble; a quote under its reference, you or I said, its fence longer than any inside, a DM's short; an edit one's own alone; posted, the original redrawn live, in a resumed backlog and on its earlier page, another's edit ordinary; bad n a 400, no message a 404, a stranger 404, signed out 401, a key 403, a POST 405", .f = quoteEdit },
     .{ .name = "no saves: no save route, no reading list page, no Saved link, no save button, no save script", .f = noSaves },
-    .{ .name = "Steve's path: Browse, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
+    .{ .name = "Steve's path: home, the other human's Add topic form, a topic named, the browser on its empty page, a message sent, seen by both; a channel member adds a topic the same way; a stranger, a key, nobody and a name that is no topic name refused", .f = stevesPath },
     .{ .name = "one namespace for channels and users: no channel under a user's name, no human or agent under a channel's, in any case; near misses made", .f = channelNamesTaken },
-    .{ .name = "no conversation without a topic: the conversation routes and pages are 404s to a session and a key, Browse has no Conversations, and a key narrowed with only: is no grant; a topic still reads", .f = noConversationKind },
-    .{ .name = "one session a browser: an invite opened while signed in is a 409 naming who, unspent, and a fresh browser redeems it; a returning GitHub user signs straight in as themselves, ending the session the browser held and no other; Log out on home and the hello page", .f = oneSessionABrowser },
+    .{ .name = "no conversation without a topic: the conversation routes and pages are 404s to a session and a key, home has no Conversations, and a key narrowed with only: is no grant; a topic still reads", .f = noConversationKind },
+    .{ .name = "one session a browser: an invite opened while signed in is a 409 naming who, unspent, and a fresh browser redeems it; a returning GitHub user signs straight in as themselves, ending the session the browser held and no other; Log out on home; `/` on to home, or how to sign in", .f = oneSessionABrowser },
     .{ .name = "the agents' limit in a topic: an agent's sixteenth post answering agents within the hour is a 429, its own alone counted; an hour-old one no longer counts, and a human's post resets them", .f = topicHops },
     .{ .name = "reactions: one emoji on or off on one message, a 204; every page's stream gets the message's chips drawn again from the fold, each naming its people, the last event of each person and emoji winning, an emptied emoji gone; earlier pages draw them; a torn last line spoils nothing; a bad emoji or msg, or no such message, the old 400; on left out is on; a stranger 404, signed out 401, a key 403, a GET 405", .f = reactionsLive },
     .{ .name = "uploads: an image from the compose box's form, kept in its topic's folder by a fresh name, counted; served to the topic's readers by one URL, a DM's the same for both, nosniff, kept for good, and drawn when posted; not an image, no file, past 10 MiB and past the allowance refused in the old words, nothing counted; a stranger, nobody, a key and a GET refused", .f = uploads },
     .{ .name = "a human erased: the admin's users page, a Remove button or why not (oneself, a channel's member, one whose agent is); removed, their DMs whole, their agents' keys, their sessions and files gone, nobody else's, their name free again; a second time a 404; another human, a key, nobody, a foreign Origin and a GET refused", .f = eraseHuman },
 };
 
-/// **STEVE'S PATH**, his acceptance test for the chat: (1) go to Browse,
+/// **STEVE'S PATH**, his acceptance test for the chat: (1) go to home,
 /// (2) choose Alice, (3) choose a topic name, (4) land on an empty chat with
 /// Alice for that topic, (5) type, (6) Send, (7) see the message.
 fn stevesPath(w: *World) !void {
@@ -2858,8 +2859,8 @@ fn stevesPath(w: *World) !void {
     const s = try hid(w.a, 1062);
     const a = try hid(w.a, 1063);
     const sa = try pairOf(w.a, s, a);
-    // (1) Browse, and (2) Alice's row: the Add topic form, "general" offered.
-    const b = try get(w.a, w.port(), "/chat/browse", steve);
+    // (1) Home, and (2) Alice's row: the Add topic form, "general" offered.
+    const b = try get(w.a, w.port(), "/chat", steve);
     const form = try std.fmt.allocPrint(w.a, "<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\">", .{sa});
     if (b.status != 200 or !has(b.body, form)) return error.NoTopicForm;
     // (3) a topic named; (4) the browser lands on its page, empty.
@@ -2872,8 +2873,8 @@ fn stevesPath(w: *World) !void {
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{mine}), steve, "hello Alice")).status != 201) return error.NotSent;
     if (!has((try get(w.a, w.port(), mine, steve)).body, "hello Alice")) return error.NotSeen;
     if (!has((try get(w.a, w.port(), mine, alice)).body, "hello Alice")) return error.AliceDoesNotSee;
-    // The topic is on both Browse pages now, by the one URL, and named twice is a 409.
-    if (!has((try get(w.a, w.port(), "/chat/browse", alice)).body, try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/plans\">plans</a>", .{sa}))) return error.NotOnBrowse;
+    // The topic is on both home pages now, by the one URL, and named twice is a 409.
+    if (!has((try get(w.a, w.port(), "/chat", alice)).body, try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/plans\">plans</a>", .{sa}))) return error.NotOnBrowse;
     if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{sa}), "topic=plans")).status != 409) return error.NamedTwice;
     if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{sa}), "topic=no+spaces")).status != 400) return error.BadNameTaken;
     // A channel member adds a topic the same way; a stranger can't.
@@ -2910,7 +2911,7 @@ fn channelNamesTaken(w: *World) !void {
 /// **NO CONVERSATION WITHOUT A TOPIC** (Steve, 2026-11-01): the
 /// conversation kind is gone. Its routes are no routes, a session's and a
 /// key's alike: no start, read, post or stream under `/conversations`, and
-/// no page at `/chat/<id>`; Browse has no Conversations; and a key narrowed
+/// no page at `/chat/<id>`; home has no Conversations; and a key narrowed
 /// to listed resources (`only:`) is no grant. A topic is still read.
 fn noConversationKind(w: *World) !void {
     for ([_][]const u8{ "/conversations", "/conversations/1", "/conversations/1/stream", "/chat/1", "/chat/1/stream" }) |path| {
@@ -2922,7 +2923,7 @@ fn noConversationKind(w: *World) !void {
     const agent = try field((try request(w.a, w.port(), "POST", "/agents", w.steve, "name=Kindless")).body, "id");
     const k = try agentKey(w, try std.fmt.allocPrint(w.a, "as={s}", .{agent}));
     if ((try send(w.a, w.port(), "GET", "/conversations", .{ .key = k.secret }, "")).status != 404) return error.ConversationListedByKey;
-    if (has((try get(w.a, w.port(), "/chat/browse", w.ann)).body, "Conversations")) return error.ConversationsOnBrowse;
+    if (has((try get(w.a, w.port(), "/chat", w.ann)).body, "Conversations")) return error.ConversationsOnBrowse;
     const narrow = try request(w.a, w.port(), "POST", "/invites", w.steve, try std.fmt.allocPrint(w.a, "as={s}&read=only%3A1", .{agent}));
     if (narrow.status != 400 or !has(narrow.body, "is `everywhere` or `off`")) return error.NarrowKeyGranted;
     // A topic still reads, both ways.
@@ -2937,8 +2938,9 @@ fn noConversationKind(w: *World) !void {
 /// returning GitHub user signs in straight to a session, as themselves,
 /// with no name form; signing in from a browser signed in as another ends
 /// that other's session there (its cookie a 401 after), and leaves the
-/// returning user's other browsers signed in. Home and the hello page
-/// offer Log out, as the frame's top bar does.
+/// returning user's other browsers signed in. Home offers Log out, as
+/// the frame's top bar does; `/` sends a browser signed in on to home,
+/// and shows one signed in as nobody how to sign in.
 fn oneSessionABrowser(w: *World) !void {
     const sam = try signUpAs(w.a, w.port(), 1057, "Sam+Vale");
     const s = try hid(w.a, 1057);
@@ -2971,11 +2973,13 @@ fn oneSessionABrowser(w: *World) !void {
     const plain = try signInAgain(w.a, w.port(), 1057, "");
     if (plain.status != 303 or has(plain.body, "Your name")) return error.ReturningUserAskedForName;
 
-    // Log out, offered on home and the hello page.
+    // Log out, offered on home; `/`, the door, on to home or to sign in.
     const log_out = "<form class=logout method=post action=\"/logout\"><button>Log out</button></form>";
     if (!has((try get(w.a, w.port(), "/chat", sam)).body, log_out)) return error.NoLogOutOnHome;
-    if (!has((try get(w.a, w.port(), "/", sam)).body, log_out)) return error.NoLogOutOnHello;
-    if (has((try get(w.a, w.port(), "/", "")).body, log_out)) return error.LogOutWhenSignedOut;
+    const door = try get(w.a, w.port(), "/", sam);
+    if (door.status != 303 or !std.mem.eql(u8, door.header("location") orelse "", "/chat")) return error.DoorNotToHome;
+    const shut = try get(w.a, w.port(), "/", "");
+    if (shut.status != 200 or has(shut.body, log_out) or !has(shut.body, "<a href=/login>Sign in with GitHub</a>") or !has(shut.body, "Invited without GitHub? Open the link from your invite.")) return error.DoorSignedOutWrong;
 }
 
 /// **THE AGENTS' LIMIT, IN A TOPIC** (Messages.check_hops!, fifteen

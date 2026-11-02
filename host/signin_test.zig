@@ -264,7 +264,7 @@ test "a new human: the callback with a good code asks for a name, the name makes
 
     const made = try request(a, rig.port(), "POST", "/login/name", both, "name=The+Octocat");
     try std.testing.expectEqual(303, made.status);
-    // It ends on /chat, the chat itself, never the hello page.
+    // It ends on /chat, home itself, never the door at /.
     try std.testing.expectEqualStrings("/chat", made.header("location").?);
     const line = made.setCookie("session").?;
     try std.testing.expect(std.mem.endsWith(u8, line, "; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=7776000"));
@@ -478,7 +478,7 @@ test "a sign-in ends where it started: /chat by default, the page /login?next= n
     try std.testing.expectEqualStrings("/chat", ignored.header("location").?);
 }
 
-test "the hello page says who is signed in, or that nobody is, and nothing more" {
+test "the door sends a browser signed in on to home, and shows one signed in as nobody how to sign in" {
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();
@@ -487,18 +487,19 @@ test "the hello page says who is signed in, or that nobody is, and nothing more"
 
     const out = try get(a, rig.port(), "/", "");
     try std.testing.expectEqual(200, out.status);
-    try std.testing.expect(has(out.body, "You're not signed in. <a href=/login>Sign in with GitHub</a>."));
-    try std.testing.expect(!has(out.body, "Signed in as"));
+    try std.testing.expect(has(out.body, "<a href=/login>Sign in with GitHub</a>."));
+    try std.testing.expect(has(out.body, "Invited without GitHub? Open the link from your invite."));
     try std.testing.expect(!has(out.body, "Log out"));
     // A cookie naming no session is nobody too.
     const stale = try get(a, rig.port(), "/", "__Host-session=" ++ forged_hex);
-    try std.testing.expect(has(stale.body, "You're not signed in."));
+    try std.testing.expectEqual(200, stale.status);
+    try std.testing.expect(has(stale.body, "Sign in with GitHub"));
 
     const session = try signedUp(a, rig);
     const in = try get(a, rig.port(), "/", session);
-    try std.testing.expectEqual(200, in.status);
-    try std.testing.expect(has(in.body, "Signed in as The Octocat (GitHub octocat). The chat is at <a href=/chat/browse>Browse</a>.</p>\n<form class=logout method=post action=\"/logout\"><button>Log out</button></form>"));
-    try std.testing.expect(!has(in.body, "not signed in"));
+    try std.testing.expectEqual(303, in.status);
+    try std.testing.expectEqualStrings("/chat", in.header("location").?);
+    try std.testing.expect(!has(in.body, "Sign in with GitHub"));
 }
 
 test "a sign-in started over leftover state and pending cookies is never blocked: /login ends the pending one and replaces the state" {

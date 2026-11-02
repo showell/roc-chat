@@ -1,7 +1,7 @@
 ## THE ROC CHAT'S ROUTE TABLE: which module answers which request. The
 ## routes' work is in their modules: SignIn.roc's sign-in, Topics.roc's
 ## channel topics, OneStream.roc's one stream per agent, Agents.roc's agents and API keys, Channels.roc's channels
-## (an admin's), Pages.roc's pages, Browse.roc's, TopicPage.roc's and UsersPage.roc's (the
+## (an admin's), Pages.roc's pages, Home.roc's, TopicPage.roc's and UsersPage.roc's (the
 ## browser client's); the store is Store.roc's, the only module that names a
 ## file. Beside them, the chat client's scripts (`serve_script!`); the
 ## hello page at `/` is SignIn's, as it says who is signed in.
@@ -13,7 +13,7 @@ app [handle!] {
 import pf.Chat
 import pf.Host
 import Agents
-import Browse
+import Home
 import Channels
 import ChannelLayout
 import MessageRef
@@ -53,7 +53,7 @@ route! : Chat.Request => Chat.Answer
 route! = |req|
 	if req.path == "/".to_utf8() {
 		if req.method == Get or req.method == Head {
-			SignIn.serve_hello!({})
+			SignIn.serve_door!({})
 		} else {
 			Chat.not_allowed(Get)
 		}
@@ -74,10 +74,10 @@ route! = |req|
 			Ok(r) => HumanInvites.answer!(req, r)
 			Err(NotHumanInvites) => Chat.not_found
 		}
-	} else if Browse.route(req.path).is_ok() {
-		match Browse.route(req.path) {
-			Ok(r) => Browse.answer!(req, r)
-			Err(NotBrowse) => Chat.not_found
+	} else if Home.route(req.path).is_ok() {
+		match Home.route(req.path) {
+			Ok(r) => Home.answer!(req, r)
+			Err(NotHome) => Chat.not_found
 		}
 	} else if RecentPage.route(req.path).is_ok() {
 		match RecentPage.route(req.path) {

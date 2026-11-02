@@ -7,7 +7,7 @@
    chat-client's js/message.js does for the bubbles: the old chrome's top
    bar (angry-gopher's top_bar.zig, with its fallback colours, the colour
    tokens coming with the transcript's styling), the content column, a
-   chat page's height, and Browse's lists; feed.js styles the transcript. It wires the top bar's
+   chat page's height, and home's lists; feed.js styles the transcript. It wires the top bar's
    theme toggle too (js/chat_theme.js), over palette.js's colours. Deleting this file deletes the frame's styling. */
 (function () {
   'use strict';
@@ -19,8 +19,6 @@
     + '.app-top-user { font-size: 13px; color: var(--cc-body-muted-fg, #444); }'
     + '.app-top-user a { color: var(--cc-accent, #000080); }'
     + '.chat-top .chat-top-left { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; min-width: 0; }'
-    + '.chat-top-home { color: var(--cc-accent, #000080); text-decoration: none; font-size: 13px; }'
-    + '.chat-top-home:hover { text-decoration: underline; }'
     + '.chat-top-title { font-weight: bold; color: var(--cc-accent, #000080); }'
     + '.chat-top-links { font-size: 13px; }'
     + '.chat-top-links a { color: var(--cc-accent, #000080); text-decoration: none; }'
