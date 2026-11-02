@@ -3,6 +3,7 @@
 ## runs beside `roc test app/main.roc`). A Spec left out of this list never
 ## runs, so the gate checks that every `app/*Spec.roc` is imported here.
 import ConversationSpec
+import DirectorySpec
 import PageSpec
 import SecureImageTagSpec
 import TranscriptSpec

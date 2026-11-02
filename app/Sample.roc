@@ -3,9 +3,12 @@
 ## Spec imports it; no production module does.
 import Author
 import Conversation
+import Directory
 import Message
 import DateTime
+import Name
 import Topic
+import UserId
 
 Sample :: [].{
 
@@ -85,6 +88,32 @@ Sample :: [].{
 	## The third message's id.
 	third : Message.Id
 	third = Sample.second.next() ?? crash "Sample.third: the second id has a next"
+
+	## The permanent name `text`, which a test's always is.
+	name : Str -> Name
+	name = |text| Name.from_str(text) ?? crash "Sample.name: a test's name is a name"
+
+	## **THE SAMPLE DIRECTORY**: Steve (1) and Apoorva (2), humans, and CC
+	## (3), Steve's agent.
+	directory : Directory
+	directory = {
+		founded = Directory.founded_by(Sample.name("Steve"))
+		with_apoorva = (founded.add_human(Sample.name("Apoorva")) ?? crash "Sample.directory: Apoorva's name is free").directory
+		with_cc = with_apoorva.add_agent({
+			name: Sample.name("CC"),
+			owner: UserId.steve,
+		}) ?? crash "Sample.directory: CC's name is free"
+		with_cc.directory
+	}
+
+	## Steve, in the sample directory.
+	steve : Directory.User
+	steve = Sample.user("Steve")
+
+	## The sample directory's user named `text`, which it holds.
+	user : Str -> Directory.User
+	user = |text|
+		Sample.directory.users().find_first(|u| u.name().to_str() == text) ?? crash "Sample.user: the sample directory holds ${text}"
 }
 
 ## `so_far` with `count` more of Steve's hello.

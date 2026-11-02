@@ -1,7 +1,8 @@
 ## **AN AUTHOR**: who wrote a message, by their permanent name (`Name`,
 ## the one home of the rule a name obeys). An author is a user in the role
 ## of writing, and the transcript records only the name, so an author is
-## only the name.
+## only the name: the directory says whose it is (`Directory.User.author`,
+## `Directory.check`).
 import Name
 
 Author :: Name.{
