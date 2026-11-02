@@ -16,7 +16,7 @@ import Channel
 import ChannelCast
 import ChannelName
 import Principal
-import TopicCodec
+import Stored
 import TopicName
 
 Topic :: {
@@ -114,16 +114,26 @@ Topic :: {
 		if (topics.any(|t| t.at() == at)) Err(Taken) else Ok(Topic.({ at: at }))
 	}
 
-	## **A TOPIC BACK FROM THE STORE**: the one way in besides `make`, from
-	## a line TopicCodec decoded, every field checked, in `channel` (the
-	## channel loaded, whose folder the line is in).
-	load : ChannelName, TopicCodec.Line -> Topic
-	load = |channel, line| Topic.({ at: { channel, topic: line.fields().name } })
+	## **A TOPIC'S LINE** (ChannelLayout's `.../topic`), in Stored's format:
+	## its name as it was made, the spelling kept for display:
+	##
+	##     topic v1 name=ChitChat
+	##
+	## The channel is not in the line: the folder the line is in says it.
+	encode : Topic -> List(U8)
+	encode = |Topic.(t)| Stored.line("topic", [("name", t.at.topic.to_str())])
 
-	## The topic's fields, to store (TopicCodec.encode); its channel is
-	## where it is stored.
-	fields : Topic -> TopicCodec.Fields
-	fields = |Topic.(t)| { name: t.at.topic }
+	## **A TOPIC BACK FROM THE STORE**: the one way in besides `make`, its
+	## line checked, in `channel` (the channel loaded, whose folder the line
+	## is in).
+	decode : List(U8), ChannelName -> Try(Topic, _)
+	decode = |raw, channel| {
+		fields = Stored.Reader.open(raw, "topic")?
+		name_field = fields.field("name")?
+		name = name_from(name_field.value)?
+		name_field.rest.close()?
+		Ok(Topic.({ at: { channel, topic: name } }))
+	}
 
 	## Where the topic is.
 	at : Topic -> Topic.At
@@ -236,6 +246,14 @@ signed_in = |viewer, accounts|
 				Ok(_) => Ok(b)
 				Err(NoSuchPrincipal) => Err(NoSuchPrincipal)
 			}
+	}
+
+## The name a topic line's field holds, by TopicName's rule.
+name_from : List(U8) -> Try(TopicName, [BadValue(Str)])
+name_from = |value|
+	match Str.from_utf8(value) {
+		Ok(text) => TopicName.from_str(text).map_err(|_| BadValue("name"))
+		Err(_) => crash "Topic.name_from: Stored.Reader.open checked the line is UTF-8"
 	}
 
 # ── tests
@@ -593,12 +611,22 @@ expect Topic.find([chitchat, chitchat], chitchat.at()) == Err(Duplicated)
 # ── STORED AND LOADED: the topic it was.
 ## `topic` through its line and back, in its own channel.
 stored_and_loaded : Topic -> Try(Topic, _)
-stored_and_loaded = |topic| TopicCodec.decode(TopicCodec.encode(topic.fields())).map_ok(
-	|line| Topic.load(
-		topic.at().channel,
-		line,
-	),
-)
+stored_and_loaded = |topic| Topic.decode(topic.encode(), topic.at().channel)
+
+## A line decoded in General, or why not.
+line_in_general : Str -> Try({}, _)
+line_in_general = |text| Topic.decode(text.to_utf8(), at_of("General", "x").channel).map_ok(|_| {})
+
+expect chitchat.encode() == "topic v1 name=ChitChat\n".to_utf8()
+
+# Refusals, each by name; the old line's `kind` among them.
+expect line_in_general("topic v1 name=ChitChat\n") == Ok({})
+expect line_in_general("topic v1 name=x kind=human\n") == Err(Trailing)
+expect line_in_general("topic v1 name=a--b\n") == Err(BadValue("name"))
+expect line_in_general("topic v1 name=\n") == Err(BadValue("name"))
+expect line_in_general("topic v1\n") == Err(MissingField("name"))
+expect line_in_general("topic v1 name=x") == Err(Torn)
+expect line_in_general("channel v1 name=x members=\n") == Err(WrongRecord)
 
 expect
 	cobblestones.append(general_chitchat).all(|t| stored_and_loaded(t) == Ok(t))

@@ -33,7 +33,7 @@ import Credentials
 import JsonOut
 import Limits
 import Mentions
-import MessageCodec
+import Transcript
 import MessageRef
 import PageFeed
 import Principal
@@ -202,7 +202,7 @@ Topics := [].{
 		now : I64,
 	},
 	Topic.At,
-	List(U8) => Try(MessageCodec.Fields, Chat.Answer)
+	List(U8) => Try(Transcript.Fields, Chat.Answer)
 	post_by! = |
 		v,
 		at,
@@ -221,7 +221,7 @@ Topics := [].{
 		members : List(Principal.Bound),
 		reader : Principal.Id,
 		accounts : List(Principal),
-		last : [NoMessage, Last({ m : MessageCodec.Fields, excerpt : Str })],
+		last : [NoMessage, Last({ m : Transcript.Fields, excerpt : Str })],
 	} -> Recent.Row
 	recent_row = |
 		{
@@ -621,7 +621,7 @@ readers = |_topic, { channel, accounts }| channel.members(accounts).map(|b| b.id
 
 ## A topic's message as its JSON: its reference first.
 message_json : Topic.At,
-MessageCodec.Fields,
+Transcript.Fields,
 {
 	named : List(Mentions.Named),
 	accounts : List(Principal),
@@ -858,7 +858,7 @@ when_posted! = |a, body|
 store_post! : Asked,
 List(U8) => Try(
 	{
-		message : MessageCodec.Fields,
+		message : Transcript.Fields,
 		who : { named : List(Mentions.Named), accounts : List(Principal) },
 	},
 	Chat.Answer,
@@ -885,7 +885,7 @@ store_post! = |a, body| {
 		files = Store.topic_files(at)
 		tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
 		message = {
-			id: MessageCodec.next_id(tally.messages),
+			id: Transcript.next_id(tally.messages),
 			at: a.now,
 			by,
 			body,
@@ -904,7 +904,7 @@ store_post! = |a, body| {
 		}).map_err(|_| Chat.failed)?
 		if hops == Full {
 			Err(Messages.hops_refused)
-		} else if tally.bytes + MessageCodec.encode(message).len() > Limits.transcript_bytes_most {
+		} else if tally.bytes + Transcript.encode(message).len() > Limits.transcript_bytes_most {
 			Err(Wire.refused(413, "this topic is full: its transcript holds as much as one may"))
 		} else {
 			match Store.append_message!({
@@ -934,7 +934,7 @@ store_post! = |a, body| {
 publish! : Topic,
 {
 	channel : Channel,
-	message : MessageCodec.Fields,
+	message : Transcript.Fields,
 	who : { named : List(Mentions.Named), accounts : List(Principal) },
 } => {}
 publish! = |
@@ -1010,7 +1010,7 @@ bus_key = |at| Str.to_utf8("topic/${spot_of(at)}")
 ## A topic's message as one SSE event, named `message`, its id the
 ## message's.
 frame : Topic.At,
-MessageCodec.Fields,
+Transcript.Fields,
 {
 	named : List(Mentions.Named),
 	accounts : List(Principal),

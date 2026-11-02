@@ -51,7 +51,7 @@ import Credentials
 import Edits
 import Html
 import JsonOut
-import MessageCodec
+import Transcript
 import MessageRef
 import PageFeed
 import Pages
@@ -649,7 +649,7 @@ stream! = |s| {
 ## bubble, then the original it edits, redrawn).
 backlog! : MessageRef.Where,
 {
-	messages : List(MessageCodec.Fields),
+	messages : List(Transcript.Fields),
 	accounts : List(Principal),
 } => List(U8)
 backlog! = |place, { messages, accounts }|
@@ -666,8 +666,8 @@ backlog! = |place, { messages, accounts }|
 ## newest), and its chips (`reactions`, the topic's events).
 drawn : Shown,
 {
-	messages : List(MessageCodec.Fields),
-	from_on : List(MessageCodec.Fields),
+	messages : List(Transcript.Fields),
+	from_on : List(Transcript.Fields),
 	reactions : List(Reactions.Event),
 } -> Html
 drawn = |
@@ -731,7 +731,7 @@ edit! = |s| {
 }
 
 ## **LOAD THE MESSAGE `?n=` NAMES**: a 400 for no number, a 404 for no message.
-load_asked! : Shown => Try(MessageCodec.Fields, Chat.Answer)
+load_asked! : Shown => Try(Transcript.Fields, Chat.Answer)
 load_asked! = |s| {
 	n =
 		match Host.read_query!(Str.to_utf8("n")) {
@@ -742,7 +742,7 @@ load_asked! = |s| {
 }
 
 ## **LOAD MESSAGE `n` OF THE PAGE'S TRANSCRIPT**: a 404 for no message.
-load_message! : Shown, U64 => Try(MessageCodec.Fields, Chat.Answer)
+load_message! : Shown, U64 => Try(Transcript.Fields, Chat.Answer)
 load_message! = |s, n| {
 	files = PageFeed.files(s.place)
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?

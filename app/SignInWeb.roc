@@ -250,7 +250,7 @@ SignInWeb := [].{
 		}
 
 	## **A REFUSED SIGN-IN IN PLAIN WORDS**, for the page that says so; the
-	## audit keeps the exact reason (AuditCodec's spelling).
+	## audit keeps the exact reason (AuditLog's spelling).
 	refusal_words : GitHubSignIn.Refusal -> Str
 	refusal_words = |why|
 		match why {

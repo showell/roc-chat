@@ -10,14 +10,14 @@
 ##
 ## **A KEY REFUSED IN USE IS AUDITED** (`audit_use!`): revoked, expired or
 ## its principal gone. Every route asks for the viewer alike, so the audit
-## line names one use, AuditCodec's `list:conversations`, the word the log
+## line names one use, AuditLog's `list:conversations`, the word the log
 ## has always written for it. An unknown key names no principal, so it is
 ## a 401 and nothing more.
 import pf.Chat
 import pf.Host
 import Access
 import ApiKey
-import AuditCodec
+import AuditLog
 import ChatKey
 import Principal
 import Session
@@ -133,7 +133,7 @@ Credentials := [].{
 	## and why. Never its secret or its hash.
 	audit_use! : ChatKey.Key, { refusal : ApiKey.Refusal, now : I64 } => {}
 	audit_use! = |key, { refusal, now }| {
-		match AuditCodec.Entry.of_key(
+		match AuditLog.Entry.of_key(
 			Use({
 				at: now,
 				who: key.acts_as(),

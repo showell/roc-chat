@@ -11,7 +11,7 @@
 ##
 ## A change answers the channel as JSON (`Channels.channel_json`); a refusal
 ## is plain text that says why. **EVERY CHANGE, AND EVERY REFUSAL OF A
-## NAMED ASKER, IS AUDITED** (AuditCodec's `audit-channel`): a session's or
+## NAMED ASKER, IS AUDITED** (AuditLog's `audit-channel`): a session's or
 ## a key's, never a signed-out request's, which names no one. A form that
 ## does not read (a member that is no id) is a 400 before any decision, and
 ## names nothing to audit. The admin's page of them is Pages'
@@ -21,7 +21,7 @@ import pf.Host
 import Access
 import AccountCodec
 import ApiKey
-import AuditCodec
+import AuditLog
 import Channel
 import ChannelName
 import Credentials
@@ -474,10 +474,10 @@ Refusal : [
 
 ## The change's event, without its asker.
 Event : {
-	action : AuditCodec.ChannelAction,
+	action : AuditLog.ChannelAction,
 	channel : [Named(ChannelName), Unnamed],
 	members : List(Principal.Id),
-	verdict : [Permitted, Refused(AuditCodec.ChannelRefusal)],
+	verdict : [Permitted, Refused(AuditLog.ChannelRefusal)],
 }
 
 ## **A CHANGE REFUSED**: audited when the asker is named, and answered in
@@ -520,7 +520,7 @@ refusal_text = |why|
 	}
 
 ## A refusal's word in its audit line (a signed-out one is never written).
-word_of : Refusal -> AuditCodec.ChannelRefusal
+word_of : Refusal -> AuditLog.ChannelRefusal
 word_of = |why|
 	match why {
 		SignedOut | NeedsSession => NeedsSession
@@ -554,9 +554,9 @@ audit! = |asker, event|
 	}
 
 ## A channel's event, appended to the audit.
-append_audit! : AuditCodec.ChannelEvent => {}
+append_audit! : AuditLog.ChannelEvent => {}
 append_audit! = |event|
-	match AuditCodec.Entry.of_channel(event) {
+	match AuditLog.Entry.of_channel(event) {
 		Ok(entry) => Store.append_audit!(entry)
 		Err(ClockOutOfRange) => {}
 	}

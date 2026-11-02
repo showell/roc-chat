@@ -1,5 +1,5 @@
 ## **HUMAN INVITES ON THE WIRE** (HumanInvite decides, HumanInviteCodec
-## and Store keep them, AuditCodec records each):
+## and Store keep them, AuditLog records each):
 ##
 ##     POST /human-invites              invite someone: a form, `name=`, and
 ##                                      `topic=` and `welcome=` if not the defaults;
@@ -27,7 +27,7 @@ import md.Md
 import Access
 import AccountCodec
 import Accounts
-import AuditCodec
+import AuditLog
 import Channel
 import ChannelName
 import Messages
@@ -35,7 +35,7 @@ import Credentials
 import Html
 import HumanInvite
 import JsonOut
-import MessageCodec
+import Transcript
 import Pages
 import Principal
 import Render
@@ -236,7 +236,7 @@ invite_new! = |inviter, form| {
 									files,
 									tally,
 									message: {
-										id: MessageCodec.next_id(tally.messages),
+										id: Transcript.next_id(tally.messages),
 										at: inviter.now,
 										by: Principal.Id.Human(inviter.human),
 										body,
@@ -767,9 +767,9 @@ audit! = |
 	})
 
 ## The audit's line written; a time outside its range writes none.
-write_audit! : AuditCodec.HumanInviteEvent => {}
+write_audit! : AuditLog.HumanInviteEvent => {}
 write_audit! = |event|
-	match AuditCodec.Entry.of_human_invite(event) {
+	match AuditLog.Entry.of_human_invite(event) {
 		Ok(entry) => Store.append_audit!(entry)
 		Err(ClockOutOfRange) => {}
 	}

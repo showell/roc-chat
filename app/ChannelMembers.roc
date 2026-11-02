@@ -19,7 +19,7 @@ import ChannelName
 import Principal
 import Stored
 
-ChannelCodec := [].{
+ChannelMembers := [].{
 
 	## **A CHANNEL'S STORED FIELDS**: what the line holds, and what
 	## Channel.fields gives back to store.
@@ -30,16 +30,16 @@ ChannelCodec := [].{
 
 	## **A LINE THAT DECODED**: its fields, every one checked. Opaque: made
 	## only by `decode`.
-	Line :: ChannelCodec.Fields.{
+	Line :: ChannelMembers.Fields.{
 
 		## The line's fields, for Channel.load.
-		fields : ChannelCodec.Line -> ChannelCodec.Fields
-		fields = |ChannelCodec.Line.(f)| f
+		fields : ChannelMembers.Line -> ChannelMembers.Fields
+		fields = |ChannelMembers.Line.(f)| f
 	}
 
 	## The channel's line. A member named twice is no channel Channel makes:
 	## a crash.
-	encode : ChannelCodec.Fields -> List(U8)
+	encode : ChannelMembers.Fields -> List(U8)
 	encode = |c|
 		if is_each_once(c.members) {
 			Stored.line(
@@ -50,11 +50,11 @@ ChannelCodec := [].{
 				],
 			)
 		} else {
-			crash "ChannelCodec.encode: a channel's members are each once"
+			crash "ChannelMembers.encode: a channel's members are each once"
 		}
 
 	## The channel a line holds.
-	decode : List(U8) -> Try(ChannelCodec.Line, _)
+	decode : List(U8) -> Try(ChannelMembers.Line, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "channel")?
 		name_field = fields.field("name")?
@@ -73,7 +73,7 @@ ChannelCodec := [].{
 			}
 		members_field.rest.close()?
 		if is_each_once(members) {
-			Ok(ChannelCodec.Line.({ name, members }))
+			Ok(ChannelMembers.Line.({ name, members }))
 		} else {
 			Err(BadValue("members"))
 		}
@@ -85,7 +85,7 @@ name_from : List(U8) -> Try(ChannelName, [BadValue(Str)])
 name_from = |value|
 	match Str.from_utf8(value) {
 		Ok(text) => ChannelName.from_stored(text).map_err(|_| BadValue("name"))
-		Err(_) => crash "ChannelCodec.name_from: Stored.Reader.open checked the line is UTF-8"
+		Err(_) => crash "ChannelMembers.name_from: Stored.Reader.open checked the line is UTF-8"
 	}
 
 ## Whether `members` are each once.
@@ -110,9 +110,9 @@ agent_bound = {
 }
 
 # An agent member is spelled as any binding is.
-expect ChannelCodec.encode({ ..cobblestone, members: [agent_bound] }) == "channel v1 name=Cobblestone members=agent:2/1/3\n".to_utf8()
+expect ChannelMembers.encode({ ..cobblestone, members: [agent_bound] }) == "channel v1 name=Cobblestone members=agent:2/1/3\n".to_utf8()
 
-cobblestone : ChannelCodec.Fields
+cobblestone : ChannelMembers.Fields
 cobblestone = {
 	name: match ChannelName.from_str("Cobblestone") {
 		Ok(n) => n
@@ -122,10 +122,10 @@ cobblestone = {
 }
 
 ## The fields a line decodes to.
-read_back : List(U8) -> Try(ChannelCodec.Fields, _)
-read_back = |raw| ChannelCodec.decode(raw).map_ok(ChannelCodec.Line.fields)
+read_back : List(U8) -> Try(ChannelMembers.Fields, _)
+read_back = |raw| ChannelMembers.decode(raw).map_ok(ChannelMembers.Line.fields)
 
-expect ChannelCodec.encode(cobblestone) == "channel v1 name=Cobblestone members=human:583231/3/3,human:7/1/1\n".to_utf8()
+expect ChannelMembers.encode(cobblestone) == "channel v1 name=Cobblestone members=human:583231/3/3,human:7/1/1\n".to_utf8()
 
 # Round trips: the usual, no members, one member; the spelling as made.
 expect
@@ -137,9 +137,9 @@ expect
 			..cobblestone,
 			members: [human_bound(1, 3), agent_bound],
 		},
-	].all(|f| read_back(ChannelCodec.encode(f)) == Ok(f))
-expect read_back(ChannelCodec.encode(cobblestone)).map_ok(|f| f.name.to_str()) == Ok("Cobblestone")
-expect ChannelCodec.encode(cobblestone).count_if(|c| c == '\n') == 1
+	].all(|f| read_back(ChannelMembers.encode(f)) == Ok(f))
+expect read_back(ChannelMembers.encode(cobblestone)).map_ok(|f| f.name.to_str()) == Ok("Cobblestone")
+expect ChannelMembers.encode(cobblestone).count_if(|c| c == '\n') == 1
 
 # Refusals, each by name.
 expect read_back("channel v1 name=1st members=\n".to_utf8()) == Err(BadValue("name"))

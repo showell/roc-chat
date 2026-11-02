@@ -24,7 +24,7 @@
 ## is visible, and a reader needs no other tool. Why not JSON: it has many
 ## spellings of one value, and a decoder that accepts them all is a decoder
 ## that guesses. Each codec (AccountCodec, SessionCodec, KeyCodec,
-## InviteCodec, AuditCodec, ConvCodec, MessageCodec) decodes into the core's types here, at the door. Pure.
+## AgentInvite, AuditLog, ConvCodec, Transcript) decodes into the core's types here, at the door. Pure.
 import Ascii
 import Bytes
 

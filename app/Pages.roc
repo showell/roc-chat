@@ -37,7 +37,7 @@ import Agents
 import Channel
 import Channels
 import ChatKey
-import InviteCodec
+import AgentInvite
 import KeyCodec
 import Messages
 import Credentials

@@ -16,7 +16,7 @@ import ChannelName
 import Chrome
 import Messages
 import Html
-import MessageCodec
+import Transcript
 import PageFeed
 import Pages
 import Principal
@@ -213,7 +213,7 @@ rows_in! = |
 	}
 
 ## A transcript's last message, read alone (Store.load_span!), or none.
-last_of! : Store.TranscriptFiles => Try([NoMessage, Last({ m : MessageCodec.Fields, excerpt : Str })], Chat.Answer)
+last_of! : Store.TranscriptFiles => Try([NoMessage, Last({ m : Transcript.Fields, excerpt : Str })], Chat.Answer)
 last_of! = |files| {
 	tally = Store.load_tally!(files).map_err(|_| Chat.failed)?
 	if tally.messages == 0 {

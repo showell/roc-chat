@@ -19,7 +19,7 @@
 import Access
 import Accounts
 import ChannelCast
-import ChannelCodec
+import ChannelMembers
 import ChannelName
 import Principal
 
@@ -190,12 +190,12 @@ Channel :: {
 	administers = |by, accounts| admin(by, accounts)
 
 	## **A CHANNEL BACK FROM THE STORE**: the one way in besides `make`, from
-	## a line ChannelCodec decoded, every field checked.
-	load : ChannelCodec.Line -> Channel
+	## a line ChannelMembers decoded, every field checked.
+	load : ChannelMembers.Line -> Channel
 	load = |line| Channel.(line.fields())
 
-	## The channel's fields, to store (ChannelCodec.encode).
-	fields : Channel -> ChannelCodec.Fields
+	## The channel's fields, to store (ChannelMembers.encode).
+	fields : Channel -> ChannelMembers.Fields
 	fields = |Channel.(c)| c
 
 	## The channel's name.
@@ -523,7 +523,7 @@ expect removed_retired.is_ok()
 # Stored and loaded: the channel it was, its members' bindings and all.
 ## `channel` through its line and back.
 stored_and_loaded : Channel -> Try(Channel, _)
-stored_and_loaded = |channel| ChannelCodec.decode(ChannelCodec.encode(channel.fields())).map_ok(Channel.load)
+stored_and_loaded = |channel| ChannelMembers.decode(ChannelMembers.encode(channel.fields())).map_ok(Channel.load)
 
 expect stored_and_loaded(cobblestone) == Ok(cobblestone)
 expect make_by(

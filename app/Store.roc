@@ -10,10 +10,10 @@
 ##
 ##     auth/accounts             every account, a line each (AccountCodec)
 ##     auth/settings             the generation and agent-id counters (`settings_line`)
-##     auth/audit                every refusal and admin act, appended (AuditCodec)
+##     auth/audit                every refusal and admin act, appended (AuditLog)
 ##     auth/sessions/<hash>      a session, named for its secret's hash (SessionCodec)
 ##     auth/keys/<hash>          an API key, named for its secret's hash (ChatKey)
-##     auth/invites/<hash>       an agent's invite, named for its code's hash (InviteCodec)
+##     auth/invites/<hash>       an agent's invite, named for its code's hash (AgentInvite)
 ##     auth/human-invites/<hash> a human invite, named for its code's hash (HumanInviteCodec)
 ##     auth/spent/state/<hex>    a state's nonce, spent
 ##     auth/spent/pending/<hex>  a pending sign-up's nonce, spent
@@ -23,10 +23,10 @@
 ##     auth/invites-indexed              how many invites that indexes
 ##     auth/human-invites-by-human/<id>  the human invites a human made, by hash
 ##     auth/human-invites-indexed        how many human invites that indexes
-##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
+##     chat/channels/<channel>/channel   a channel, its members bound (ChannelMembers)
 ##     chat/dms/<pair>/...               a DM (`7_11`), laid out as a channel is below it (ChannelLayout)
-##     chat/channels/<channel>/topics/<topic>/topic       a topic (TopicCodec)
-##     chat/channels/<channel>/topics/<topic>/transcript  its messages, a line each, appended (MessageCodec)
+##     chat/channels/<channel>/topics/<topic>/topic       a topic (Topic)
+##     chat/channels/<channel>/topics/<topic>/transcript  its messages, a line each, appended (Transcript)
 ##     chat/channels/<channel>/topics/<topic>/tally       its transcript's messages and bytes (`load_tally!`)
 ##     chat/channels/<channel>/topics/<topic>/offsets     where each of its messages starts, a record each (`load_span!`)
 ##     chat/channels/<channel>/topics/<topic>/reactions.jsonl  its reactions, a JSON event a line, appended (Reactions)
@@ -47,7 +47,7 @@
 ## counted again.
 ##
 ## **A TRANSCRIPT HOLDS ANY BODY EXACTLY**: a message is one line, its
-## markdown escaped (MessageCodec's header says how), so a body of many
+## markdown escaped (Transcript's header says how), so a body of many
 ## lines, a CR, a `%` or bytes that are not UTF-8 reads back as it was
 ## posted. Ids run 1, 2, 3 in a transcript, so a message's id is its place.
 ## A record's id given by a count (a key's, an invite's) is check-then-set,
@@ -58,10 +58,10 @@
 import pf.Host
 import Accounts
 import AccountCodec
-import AuditCodec
+import AuditLog
 import Cast
 import Channel
-import ChannelCodec
+import ChannelMembers
 import ChannelLayout
 import ChannelName
 import ChatKey
@@ -69,15 +69,14 @@ import Erase
 import GitHubSignIn
 import HumanInvite
 import HumanInviteCodec
-import InviteCodec
-import MessageCodec
+import AgentInvite
+import Transcript
 import Principal
 import Reactions
 import SessionCodec
 import SignInWeb
 import Stored
 import Topic
-import TopicCodec
 import TopicName
 import Uploads
 
@@ -325,7 +324,7 @@ Store := [].{
 	## there, or a line that does not read (`Malformed`, which a caller takes
 	## for no invite).
 	load_invite! : Stored.SecretHash => Try(
-		InviteCodec.Record,
+		AgentInvite.Record,
 		[
 			Missing,
 			Malformed,
@@ -337,13 +336,13 @@ Store := [].{
 		match read.status {
 			Failed => Err(Failed)
 			Missing => Err(Missing)
-			Found => InviteCodec.decode(read.bytes).map_err(|_| Malformed)
+			Found => AgentInvite.decode(read.bytes).map_err(|_| Malformed)
 		}
 	}
 
 	## **EVERY INVITE THAT READS**, in no order; a line that does not read
 	## is left out, as a key's is.
-	load_invites! : {} => Try(List(InviteCodec.Record), [Failed])
+	load_invites! : {} => Try(List(AgentInvite.Record), [Failed])
 	load_invites! = |{}| {
 		listed = Host.list!(invites_path)
 		match listed.status {
@@ -355,17 +354,17 @@ Store := [].{
 
 	## **THE NEXT INVITE'S PUBLIC ID**: one past the highest stored, as a
 	## key's.
-	load_next_invite_id! : {} => Try(InviteCodec.InviteId, [Failed])
+	load_next_invite_id! : {} => Try(AgentInvite.InviteId, [Failed])
 	load_next_invite_id! = |{}| {
 		invites = Store.load_invites!({})?
-		InviteCodec.InviteId.from_u64(one_past_highest(invites.map(|r| r.id.to_u64()))).map_err(|_| Failed)
+		AgentInvite.InviteId.from_u64(one_past_highest(invites.map(|r| r.id.to_u64()))).map_err(|_| Failed)
 	}
 
 	## An invite written: made, spent or revoked.
-	save_invite! : InviteCodec.Record => [Failed, Written]
+	save_invite! : AgentInvite.Record => [Failed, Written]
 	save_invite! = |record| Host.write!(
 		invite_path(record.hash),
-		InviteCodec.encode(record),
+		AgentInvite.encode(record),
 	)
 
 	## **THE HUMAN INVITE WHOSE CODE HASHES TO `hash`**: its record,
@@ -453,15 +452,15 @@ Store := [].{
 	## **A TRANSCRIPT'S MESSAGES**, oldest first; none before the first.
 	## `Failed` when the transcript will not read whole (a torn append, a
 	## line the chat did not write).
-	load_transcript! : Store.TranscriptFiles => Try(List(MessageCodec.Fields), [Failed])
+	load_transcript! : Store.TranscriptFiles => Try(List(Transcript.Fields), [Failed])
 	load_transcript! = |files| {
 		read = Host.read!(files.transcript)
 		match read.status {
 			Missing => Ok([])
 			Failed => Err(Failed)
 			Found =>
-				match MessageCodec.transcript(read.bytes) {
-					Ok(lines) => Ok(lines.map(MessageCodec.Line.fields))
+				match Transcript.transcript(read.bytes) {
+					Ok(lines) => Ok(lines.map(Transcript.Line.fields))
 					Err(_) => Err(Failed)
 				}
 		}
@@ -515,7 +514,7 @@ Store := [].{
 	load_span! : Store.TranscriptFiles,
 	Store.Tally,
 	{ first : U64, last : U64 } => Try(
-		List(MessageCodec.Fields),
+		List(Transcript.Fields),
 		[Failed],
 	)
 	load_span! = |
@@ -558,8 +557,8 @@ Store := [].{
 							if text.status != Found or text.bytes.len() != to - from {
 								Err(Failed)
 							} else {
-								match MessageCodec.span(text.bytes, first) {
-									Ok(lines) if lines.len() == last - first + 1 => Ok(lines.map(MessageCodec.Line.fields))
+								match Transcript.span(text.bytes, first) {
+									Ok(lines) if lines.len() == last - first + 1 => Ok(lines.map(Transcript.Line.fields))
 									_ => Err(Failed)
 								}
 							}
@@ -581,7 +580,7 @@ Store := [].{
 	append_message! : {
 		files : Store.TranscriptFiles,
 		tally : Store.Tally,
-		message : MessageCodec.Fields,
+		message : Transcript.Fields,
 	} => [Failed, Appended]
 	append_message! = |
 		{
@@ -593,7 +592,7 @@ Store := [].{
 		match check_offsets!(files, tally) {
 			Err(Failed) => Failed
 			Ok(kept) => {
-				appended = Host.append!(files.transcript, MessageCodec.encode(message))
+				appended = Host.append!(files.transcript, Transcript.encode(message))
 				match appended.status {
 					Failed => Failed
 					Appended => {
@@ -665,7 +664,7 @@ Store := [].{
 	## or does not read is left out, as in `load_invites!`.
 	load_invites_of! : Principal.HumanId,
 	List(Principal) => Try(
-		List(InviteCodec.Record),
+		List(AgentInvite.Record),
 		[Failed],
 	)
 	load_invites_of! = |human, accounts| {
@@ -683,7 +682,7 @@ Store := [].{
 
 	## **A NEW INVITE WRITTEN, THEN INDEXED** under the human its agent
 	## answers to, as a key is.
-	save_new_invite! : InviteCodec.Record, List(Principal) => [Failed, Written]
+	save_new_invite! : AgentInvite.Record, List(Principal) => [Failed, Written]
 	save_new_invite! = |invite, accounts|
 		match index_invites!(accounts) {
 			Err(Failed) => Failed
@@ -712,7 +711,7 @@ Store := [].{
 	]
 	save_new_channel! = |channel| save_new!(
 		ChannelLayout.channel_path(channel.name()),
-		ChannelCodec.encode(channel.fields()),
+		ChannelMembers.encode(channel.fields()),
 	)
 
 	## **A CHANNEL WRITTEN OVER ITS RECORD** (a member let in or let go):
@@ -731,7 +730,7 @@ Store := [].{
 			Missing => Missing
 			Failed => Failed
 			Found =>
-				match Host.write!(path, ChannelCodec.encode(channel.fields())) {
+				match Host.write!(path, ChannelMembers.encode(channel.fields())) {
 					Failed => Failed
 					Written => Written
 				}
@@ -778,7 +777,7 @@ Store := [].{
 	]
 	save_new_topic! = |topic| save_new!(
 		ChannelLayout.topic_path(topic.at()),
-		TopicCodec.encode(topic.fields()),
+		topic.encode(),
 	)
 
 	## The topic `name` names in `channel` (loaded), in any spelling:
@@ -810,9 +809,9 @@ Store := [].{
 
 	## An audit entry appended. The audit is a record of what happened, not
 	## the request's work, so its failure is the host's to log alone.
-	append_audit! : AuditCodec.Entry => {}
+	append_audit! : AuditLog.Entry => {}
 	append_audit! = |entry| {
-		_ = Host.append!(audit_path, AuditCodec.encode(entry))
+		_ = Host.append!(audit_path, AuditLog.encode(entry))
 		{}
 	}
 }
@@ -1341,8 +1340,8 @@ load_keys_at! = |records, kept|
 	}
 
 load_invites_at! : List(List(U8)),
-List(InviteCodec.Record) => Try(
-	List(InviteCodec.Record),
+List(AgentInvite.Record) => Try(
+	List(AgentInvite.Record),
 	[Failed],
 )
 load_invites_at! = |records, kept|
@@ -1479,8 +1478,8 @@ collect_invites! : List(
 		name : List(U8),
 	},
 ),
-List(InviteCodec.Record) => Try(
-	List(InviteCodec.Record),
+List(AgentInvite.Record) => Try(
+	List(AgentInvite.Record),
 	[Failed],
 )
 collect_invites! = |entries, kept|
@@ -1498,7 +1497,7 @@ collect_invites! = |entries, kept|
 				Failed => Err(Failed)
 				Missing => collect_invites!(rest, kept)
 				Found =>
-					match InviteCodec.decode(read.bytes) {
+					match AgentInvite.decode(read.bytes) {
 						Ok(r) => collect_invites!(rest, kept.append(r))
 						Err(_) => collect_invites!(rest, kept)
 					}
@@ -1697,7 +1696,7 @@ read_channel! = |name| {
 		Missing => Err(Missing)
 		Failed => Err(Failed)
 		Found =>
-			match ChannelCodec.decode(read.bytes) {
+			match ChannelMembers.decode(read.bytes) {
 				Ok(line) if line.fields().name == name => Ok(Channel.load(line))
 				_ => Err(Malformed)
 			}
@@ -1719,8 +1718,8 @@ read_topic! = |at| {
 		Missing => Err(Missing)
 		Failed => Err(Failed)
 		Found =>
-			match TopicCodec.decode(read.bytes) {
-				Ok(line) if line.fields().name == at.topic => Ok(Topic.load(at.channel, line))
+			match Topic.decode(read.bytes, at.channel) {
+				Ok(topic) if topic.at() == at => Ok(topic)
 				_ => Err(Malformed)
 			}
 	}

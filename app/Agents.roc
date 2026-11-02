@@ -42,12 +42,12 @@ import pf.Host
 import Accounts
 import AccountCodec
 import ApiKey
-import AuditCodec
+import AuditLog
 import Cast
 import ChannelName
 import ChatKey
 import Credentials
-import InviteCodec
+import AgentInvite
 import JsonOut
 import Limits
 import DisplayName
@@ -71,7 +71,7 @@ Agents := [].{
 		Revoke(Principal.KeyId),
 		Invites,
 		Redeem,
-		RevokeInvite(InviteCodec.InviteId),
+		RevokeInvite(AgentInvite.InviteId),
 		Rename(Principal.AgentId),
 	]
 
@@ -106,7 +106,7 @@ Agents := [].{
 				] if invites == Str.to_utf8("invites") and act == Str.to_utf8("revoke") =>
 					Stored.id(
 						digits,
-						{ name: "invite", make: InviteCodec.InviteId.from_u64 },
+						{ name: "invite", make: AgentInvite.InviteId.from_u64 },
 					).map_ok(|id| RevokeInvite(id)).map_err(|_| NotAgents)
 				[
 					[],
@@ -386,7 +386,7 @@ Agents := [].{
 			Grantable =>
 				match acts_as {
 					Human(_) => Err(NotAnAgent)
-					_ if !InviteCodec.is_key_lifetime(lifetime) => Err(Refused(BadExpiry))
+					_ if !AgentInvite.is_key_lifetime(lifetime) => Err(Refused(BadExpiry))
 					_ => Principal.bind(accounts, acts_as).map_err(|_| Refused(NoSuchPrincipal))
 				}
 		}
@@ -398,7 +398,7 @@ Agents := [].{
 	## live, the agent still its human's) against the accounts now. `granter`
 	## is the invite's, as the store holds it now: `Gone` when it holds none.
 	redeemed : {
-		invite : InviteCodec.Record,
+		invite : AgentInvite.Record,
 		granter : [Found(Agents.Granter), Gone],
 		accounts : List(Principal),
 		now : I64,
@@ -440,7 +440,7 @@ Agents := [].{
 
 	## **THE INVITE IS ONE OF THIS HUMAN'S**: for an agent or a bot the
 	## accounts say they own now.
-	is_invited_by : InviteCodec.Record,
+	is_invited_by : AgentInvite.Record,
 	{
 		human : Principal.HumanId,
 		accounts : List(Principal),
@@ -481,7 +481,7 @@ Agents := [].{
 		accounts : List(Principal),
 		agents : List(Principal),
 		keys : List(ChatKey.Key),
-		invites : List(InviteCodec.Record),
+		invites : List(AgentInvite.Record),
 	}
 
 	## **THE AGENTS PAGE'S FACTS**, for a live session; nobody signed in,
@@ -752,7 +752,7 @@ rename_for! = |granter, { agent: id, form }| {
 audit_rename! : Agents.Granter,
 {
 	agent : Principal.Id,
-	verdict : [Permitted, Refused(AuditCodec.RenameRefusal)],
+	verdict : [Permitted, Refused(AuditLog.RenameRefusal)],
 	name : Str,
 	now : I64,
 } => {}
@@ -770,7 +770,7 @@ audit_rename! = |
 			Session(s) => (Principal.Id.Human(s.human()), Session(s.id()))
 			Key(k) => (k.acts_as(), Key(k.id()))
 		}
-	match AuditCodec.Entry.of_rename({
+	match AuditLog.Entry.of_rename({
 		at: now,
 		who,
 		via,
@@ -1018,7 +1018,7 @@ invite_for! = |granter, { default_as, form }|
 
 ## **THE GRANTER BY ITS STORED HASH**: a session's cookie's, a key's
 ## Bearer secret's, as the store keeps each.
-load_granter_hash! : Agents.Granter => Try(InviteCodec.By, [Failed])
+load_granter_hash! : Agents.Granter => Try(AgentInvite.By, [Failed])
 load_granter_hash! = |granter|
 	match granter {
 		Session(s) => Ok(Session(s.fields().token_hash))
@@ -1139,7 +1139,7 @@ redeem_code! = |
 ## **SPENT FIRST**, before the key is stored, so a crash between leaves a
 ## spent invite and no key, never a key and a live invite.
 redeem_now! : {
-	invite : InviteCodec.Record,
+	invite : AgentInvite.Record,
 	format : [Json, SecretAlone],
 	now : I64,
 } => Chat.Answer
@@ -1207,7 +1207,7 @@ redeem_now! = |
 }
 
 ## The granter an invite names, as the store holds it now.
-load_granter! : InviteCodec.By => Try([Found(Agents.Granter), Gone], [Failed])
+load_granter! : AgentInvite.By => Try([Found(Agents.Granter), Gone], [Failed])
 load_granter! = |by|
 	match by {
 		Session(h) =>
@@ -1229,8 +1229,8 @@ load_granter! = |by|
 ## with a credential before any invite is read) is anyone's to repeat for
 ## free, and is never audited.
 invite_refused! : {
-	invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
-	why : InviteCodec.Refusal,
+	invite : [Unknown, Known({ id : AgentInvite.InviteId, agent : Principal.Id })],
+	why : AgentInvite.Refusal,
 	now : I64,
 } => Chat.Answer
 invite_refused! = |
@@ -1253,9 +1253,9 @@ invite_refused! = |
 }
 
 ## An invite's life, audited.
-audit_invite! : AuditCodec.Invite => {}
+audit_invite! : AuditLog.Invite => {}
 audit_invite! = |event|
-	match AuditCodec.Entry.of_invite(event) {
+	match AuditLog.Entry.of_invite(event) {
 		Ok(entry) => Store.append_audit!(entry)
 		Err(ClockOutOfRange) => {}
 	}
@@ -1295,7 +1295,7 @@ list_invites! = |{}|
 	}
 
 ## Live, and before its expiry.
-is_live : InviteCodec.Record, I64 -> Bool
+is_live : AgentInvite.Record, I64 -> Bool
 is_live = |invite, now|
 	match invite.state {
 		Live => now >= invite.created and now < invite.expires
@@ -1303,7 +1303,7 @@ is_live = |invite, now|
 	}
 
 ## The invites in id order, smallest first, as a listing shows them.
-invites_by_id : List(InviteCodec.Record) -> List(InviteCodec.Record)
+invites_by_id : List(AgentInvite.Record) -> List(AgentInvite.Record)
 invites_by_id = |invites| List.sort_with(invites, |a, b| by_number(a.id.to_u64(), b.id.to_u64()))
 
 ## Two ids' order, smallest first: the listings' one rule.
@@ -1316,7 +1316,7 @@ U64 -> [
 by_number = |a, b| if (a < b) Before else if (a > b) After else Same
 
 ## **/invites/<id>/revoke**: one of the session's live invites revoked.
-revoke_invite! : InviteCodec.InviteId => Chat.Answer
+revoke_invite! : AgentInvite.InviteId => Chat.Answer
 revoke_invite! = |id|
 	match load_owner!({}) {
 		Err(answer) => answer
@@ -1359,7 +1359,7 @@ revoke_invite! = |id|
 
 ## **AN INVITE AS THE WIRE SPELLS IT**: its public id, whom it is for, and
 ## when it expires; its code only when just made (`Shown`), never after.
-invite_json : InviteCodec.Record, [Shown(List(U8)), Hidden] -> JsonOut
+invite_json : AgentInvite.Record, [Shown(List(U8)), Hidden] -> JsonOut
 invite_json = |invite, code| {
 	shown =
 		match code {
@@ -1548,7 +1548,7 @@ audit_grant! = |
 			Session(s) => (Principal.Id.Human(s.human()), Session(s.id()))
 			Key(k) => (k.acts_as(), Key(k.id()))
 		}
-	match AuditCodec.Entry.of_key(
+	match AuditLog.Entry.of_key(
 		Grant({
 			at: now,
 			who,
@@ -1660,9 +1660,9 @@ agent_or_bot = |accounts, id|
 	}
 
 ## A test's invite id.
-iid : U64 -> InviteCodec.InviteId
+iid : U64 -> AgentInvite.InviteId
 iid = |n|
-	match InviteCodec.InviteId.from_u64(n) {
+	match AgentInvite.InviteId.from_u64(n) {
 		Ok(id) => id
 		Err(NotAnId) => crash "iid: a test's invite id is not 0"
 	}
@@ -2172,7 +2172,7 @@ hash_of = |b|
 	}
 
 ## Ann's invite for her agent, made at 50, its key to live 1000 seconds.
-anns_invite : InviteCodec.Record
+anns_invite : AgentInvite.Record
 anns_invite = {
 	id: iid(1),
 	bound: {
@@ -2192,7 +2192,7 @@ anns_invite = {
 ## What redeeming `invite` at `now` decides, said plainly: the key's
 ## principal and expiry, or the refusal.
 redeemed_at : {
-	invite : InviteCodec.Record,
+	invite : AgentInvite.Record,
 	granter : [Found(Agents.Granter), Gone],
 	accounts : List(Principal),
 	now : I64,

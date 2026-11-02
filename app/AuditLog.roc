@@ -27,7 +27,7 @@
 ## and the verdict, a key's refusal after `key:` as in an admin line. A
 ## signed-out asker names no one, and is never audited.
 ##
-## And for every invite (InviteCodec): made, redeemed into a key (its public
+## And for every invite (AgentInvite): made, redeemed into a key (its public
 ## id), revoked, or a redemption refused, `grant:` and a grant's word when
 ## the grant decided again refused it.
 ##
@@ -55,11 +55,11 @@ import ChannelName
 import GitHubSignIn
 import HumanInvite
 import HumanInviteCodec
-import InviteCodec
+import AgentInvite
 import Principal
 import Stored
 
-AuditCodec := [].{
+AuditLog := [].{
 
 	## A sign-in refused: when, the GitHub id when GitHub had named one, and
 	## why.
@@ -99,12 +99,12 @@ AuditCodec := [].{
 	## session, or a redemption refused.
 	Invite : {
 		at : I64,
-		invite : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
+		invite : [Unknown, Known({ id : AgentInvite.InviteId, agent : Principal.Id })],
 		verdict : [
 			Created([Session(Principal.SessionId), Key(Principal.KeyId)]),
 			Redeemed(Principal.KeyId),
 			Revoked(Principal.SessionId),
-			Refused(InviteCodec.Refusal),
+			Refused(AgentInvite.Refusal),
 		],
 	}
 
@@ -132,10 +132,10 @@ AuditCodec := [].{
 		at : I64,
 		who : Principal.Id,
 		via : [Session(Principal.SessionId), Key(Principal.KeyId)],
-		action : AuditCodec.ChannelAction,
+		action : AuditLog.ChannelAction,
 		channel : [Named(ChannelName), Unnamed],
 		members : List(Principal.Id),
-		verdict : [Permitted, Refused(AuditCodec.ChannelRefusal)],
+		verdict : [Permitted, Refused(AuditLog.ChannelRefusal)],
 	}
 
 	## What an admin did to a channel.
@@ -172,7 +172,7 @@ AuditCodec := [].{
 		who : Principal.Id,
 		via : [Session(Principal.SessionId), Key(Principal.KeyId)],
 		agent : Principal.Id,
-		verdict : [Permitted, Refused(AuditCodec.RenameRefusal)],
+		verdict : [Permitted, Refused(AuditLog.RenameRefusal)],
 		name : Str,
 	}
 
@@ -190,49 +190,49 @@ AuditCodec := [].{
 	## **ONE LINE OF THE AUDIT LOG**, the log's entry. Opaque: its time
 	## always in Stored's range.
 	Entry :: [
-		SignIn(AuditCodec.SignIn),
-		Key(AuditCodec.KeyEvent),
-		Invite(AuditCodec.Invite),
-		HumanInvite(AuditCodec.HumanInviteEvent),
-		Channel(AuditCodec.ChannelEvent),
-		Rename(AuditCodec.RenameEvent),
+		SignIn(AuditLog.SignIn),
+		Key(AuditLog.KeyEvent),
+		Invite(AuditLog.Invite),
+		HumanInvite(AuditLog.HumanInviteEvent),
+		Channel(AuditLog.ChannelEvent),
+		Rename(AuditLog.RenameEvent),
 	].{
 
 		## A refused sign-in's.
-		of_sign_in : AuditCodec.SignIn -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_sign_in = |s| if (is_storable(s.at)) Ok(AuditCodec.Entry.(SignIn(s))) else Err(ClockOutOfRange)
+		of_sign_in : AuditLog.SignIn -> Try(AuditLog.Entry, [ClockOutOfRange])
+		of_sign_in = |s| if (is_storable(s.at)) Ok(AuditLog.Entry.(SignIn(s))) else Err(ClockOutOfRange)
 
 		## A refused key's, in use or in its grant.
-		of_key : AuditCodec.KeyEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
+		of_key : AuditLog.KeyEvent -> Try(AuditLog.Entry, [ClockOutOfRange])
 		of_key = |e| {
 			at =
 				match e {
 					Use(u) => u.at
 					Grant(g) => g.at
 				}
-			if (is_storable(at)) Ok(AuditCodec.Entry.(Key(e))) else Err(ClockOutOfRange)
+			if (is_storable(at)) Ok(AuditLog.Entry.(Key(e))) else Err(ClockOutOfRange)
 		}
 
 		## An invite's.
-		of_invite : AuditCodec.Invite -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_invite = |i| if (is_storable(i.at)) Ok(AuditCodec.Entry.(Invite(i))) else Err(ClockOutOfRange)
+		of_invite : AuditLog.Invite -> Try(AuditLog.Entry, [ClockOutOfRange])
+		of_invite = |i| if (is_storable(i.at)) Ok(AuditLog.Entry.(Invite(i))) else Err(ClockOutOfRange)
 
 		## A human invite's.
-		of_human_invite : AuditCodec.HumanInviteEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_human_invite = |i| if (is_storable(i.at)) Ok(AuditCodec.Entry.(HumanInvite(i))) else Err(ClockOutOfRange)
+		of_human_invite : AuditLog.HumanInviteEvent -> Try(AuditLog.Entry, [ClockOutOfRange])
+		of_human_invite = |i| if (is_storable(i.at)) Ok(AuditLog.Entry.(HumanInvite(i))) else Err(ClockOutOfRange)
 
 		## A channel's change, or its refusal.
-		of_channel : AuditCodec.ChannelEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
-		of_channel = |c| if (is_storable(c.at)) Ok(AuditCodec.Entry.(Channel(c))) else Err(ClockOutOfRange)
+		of_channel : AuditLog.ChannelEvent -> Try(AuditLog.Entry, [ClockOutOfRange])
+		of_channel = |c| if (is_storable(c.at)) Ok(AuditLog.Entry.(Channel(c))) else Err(ClockOutOfRange)
 
 		## A rename, or its refusal. Its name is free text, which may hold
 		## no newline (no line could hold it): one that does is written
 		## empty.
-		of_rename : AuditCodec.RenameEvent -> Try(AuditCodec.Entry, [ClockOutOfRange])
+		of_rename : AuditLog.RenameEvent -> Try(AuditLog.Entry, [ClockOutOfRange])
 		of_rename = |r| {
 			name = if (r.name.to_utf8().contains('\n') or r.name.to_utf8().contains('\r')) "" else r.name
 			if (is_storable(r.at)) Ok(
-				AuditCodec.Entry.(
+				AuditLog.Entry.(
 					Rename({
 						..r,
 						name,
@@ -242,15 +242,15 @@ AuditCodec := [].{
 		}
 
 		## What the entry records.
-		event : AuditCodec.Entry -> [
-			SignIn(AuditCodec.SignIn),
-			Key(AuditCodec.KeyEvent),
-			Invite(AuditCodec.Invite),
-			HumanInvite(AuditCodec.HumanInviteEvent),
-			Channel(AuditCodec.ChannelEvent),
-			Rename(AuditCodec.RenameEvent),
+		event : AuditLog.Entry -> [
+			SignIn(AuditLog.SignIn),
+			Key(AuditLog.KeyEvent),
+			Invite(AuditLog.Invite),
+			HumanInvite(AuditLog.HumanInviteEvent),
+			Channel(AuditLog.ChannelEvent),
+			Rename(AuditLog.RenameEvent),
 		]
-		event = |AuditCodec.Entry.(e)| e
+		event = |AuditLog.Entry.(e)| e
 
 		is_eq : _
 	}
@@ -261,8 +261,8 @@ AuditCodec := [].{
 	sign_in_refusal_text = |why| spell_sign_in_refusal(why)
 
 	## The entry's line.
-	encode : AuditCodec.Entry -> List(U8)
-	encode = |AuditCodec.Entry.(e)|
+	encode : AuditLog.Entry -> List(U8)
+	encode = |AuditLog.Entry.(e)|
 		match e {
 			SignIn(s) =>
 				Stored.line(
@@ -364,16 +364,16 @@ AuditCodec := [].{
 		}
 
 	## The entry a line holds, of whichever kind its first word names.
-	decode : List(U8) -> Try(AuditCodec.Entry, _)
+	decode : List(U8) -> Try(AuditLog.Entry, _)
 	decode = |raw|
 		match Stored.Reader.open(raw, sign_in_kind) {
-			Ok(fields) => decode_sign_in(fields).map_ok(|s| AuditCodec.Entry.(SignIn(s)))
+			Ok(fields) => decode_sign_in(fields).map_ok(|s| AuditLog.Entry.(SignIn(s)))
 			Err(WrongRecord) =>
 				match Stored.Reader.open(raw, key_kind) {
-					Ok(fields) => decode_key(fields).map_ok(|k| AuditCodec.Entry.(Key(k)))
+					Ok(fields) => decode_key(fields).map_ok(|k| AuditLog.Entry.(Key(k)))
 					Err(WrongRecord) =>
 						match Stored.Reader.open(raw, invite_kind) {
-							Ok(fields) => decode_invite(fields).map_ok(|i| AuditCodec.Entry.(Invite(i)))
+							Ok(fields) => decode_invite(fields).map_ok(|i| AuditLog.Entry.(Invite(i)))
 							Err(WrongRecord) => decode_later(raw)
 							Err(why) => Err(why)
 						}
@@ -385,16 +385,16 @@ AuditCodec := [].{
 
 ## The entry a line of a later kind holds: a human invite's, a channel's
 ## or a rename's.
-decode_later : List(U8) -> Try(AuditCodec.Entry, _)
+decode_later : List(U8) -> Try(AuditLog.Entry, _)
 decode_later = |raw|
 	match Stored.Reader.open(raw, human_invite_kind) {
-		Ok(fields) => decode_human_invite(fields).map_ok(|i| AuditCodec.Entry.(HumanInvite(i)))
+		Ok(fields) => decode_human_invite(fields).map_ok(|i| AuditLog.Entry.(HumanInvite(i)))
 		Err(WrongRecord) =>
 			match Stored.Reader.open(raw, channel_kind) {
-				Ok(fields) => decode_channel(fields).map_ok(|c| AuditCodec.Entry.(Channel(c)))
+				Ok(fields) => decode_channel(fields).map_ok(|c| AuditLog.Entry.(Channel(c)))
 				Err(WrongRecord) => {
 					fields = Stored.Reader.open(raw, rename_kind)?
-					decode_rename(fields).map_ok(|r| AuditCodec.Entry.(Rename(r)))
+					decode_rename(fields).map_ok(|r| AuditLog.Entry.(Rename(r)))
 				}
 				Err(why) => Err(why)
 			}
@@ -420,7 +420,7 @@ channel_kind = "audit-channel"
 rename_kind : Str
 rename_kind = "audit-rename"
 
-all_rename_refusals : List(AuditCodec.RenameRefusal)
+all_rename_refusals : List(AuditLog.RenameRefusal)
 all_rename_refusals = [
 	NeedsSession,
 	NotTheOwner,
@@ -429,7 +429,7 @@ all_rename_refusals = [
 	NotAName,
 ]
 
-spell_rename_refusal : AuditCodec.RenameRefusal -> Str
+spell_rename_refusal : AuditLog.RenameRefusal -> Str
 spell_rename_refusal = |why|
 	match why {
 		NeedsSession => "needs-session"
@@ -440,14 +440,14 @@ spell_rename_refusal = |why|
 	}
 
 ## `permitted`, or `refused:` and the refusal's word.
-rename_verdict_text : [Permitted, Refused(AuditCodec.RenameRefusal)] -> Str
+rename_verdict_text : [Permitted, Refused(AuditLog.RenameRefusal)] -> Str
 rename_verdict_text = |verdict|
 	match verdict {
 		Permitted => permitted_word
 		Refused(why) => "${refused_prefix}${spell_rename_refusal(why)}"
 	}
 
-rename_verdict_from : List(U8) -> Try([Permitted, Refused(AuditCodec.RenameRefusal)], _)
+rename_verdict_from : List(U8) -> Try([Permitted, Refused(AuditLog.RenameRefusal)], _)
 rename_verdict_from = |value|
 	if value == Str.to_utf8(permitted_word) {
 		Ok(Permitted)
@@ -466,7 +466,7 @@ rename_verdict_from = |value|
 		}
 	}
 
-decode_rename : Stored.Reader -> Try(AuditCodec.RenameEvent, _)
+decode_rename : Stored.Reader -> Try(AuditLog.RenameEvent, _)
 decode_rename = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -489,14 +489,14 @@ decode_rename = |fields| {
 	})
 }
 
-all_channel_actions : List(AuditCodec.ChannelAction)
+all_channel_actions : List(AuditLog.ChannelAction)
 all_channel_actions = [
 	Make,
 	Admit,
 	Remove,
 ]
 
-spell_channel_action : AuditCodec.ChannelAction -> Str
+spell_channel_action : AuditLog.ChannelAction -> Str
 spell_channel_action = |action|
 	match action {
 		Make => "make"
@@ -571,7 +571,7 @@ spell_channel_word = |word|
 
 ## `permitted`, or `refused:` and the refusal's word (`refused:key:` and a
 ## key's).
-channel_verdict_text : [Permitted, Refused(AuditCodec.ChannelRefusal)] -> Str
+channel_verdict_text : [Permitted, Refused(AuditLog.ChannelRefusal)] -> Str
 channel_verdict_text = |verdict|
 	match verdict {
 		Permitted => permitted_word
@@ -589,7 +589,7 @@ channel_verdict_text = |verdict|
 		Refused(NoSuchChannel) => "${refused_prefix}${spell_channel_word(NoSuchChannel)}"
 	}
 
-channel_verdict_from : List(U8) -> Try([Permitted, Refused(AuditCodec.ChannelRefusal)], _)
+channel_verdict_from : List(U8) -> Try([Permitted, Refused(AuditLog.ChannelRefusal)], _)
 channel_verdict_from = |value|
 	if value == Str.to_utf8(permitted_word) {
 		Ok(Permitted)
@@ -632,7 +632,7 @@ channel_verdict_from = |value|
 		}
 	}
 
-decode_channel : Stored.Reader -> Try(AuditCodec.ChannelEvent, _)
+decode_channel : Stored.Reader -> Try(AuditLog.ChannelEvent, _)
 decode_channel = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -673,19 +673,19 @@ decode_channel = |fields| {
 }
 
 ## `created:session:12`, `redeemed:key:9`, `revoked:session:12`, or
-## `refused:` and InviteCodec's word.
+## `refused:` and AgentInvite's word.
 invite_verdict_text : [
 	Created([Session(Principal.SessionId), Key(Principal.KeyId)]),
 	Redeemed(Principal.KeyId),
 	Revoked(Principal.SessionId),
-	Refused(InviteCodec.Refusal),
+	Refused(AgentInvite.Refusal),
 ] -> Str
 invite_verdict_text = |verdict|
 	match verdict {
 		Created(via) => "${spell_invite_act(Created)}${colon}${via_text(via)}"
 		Redeemed(k) => "${spell_invite_act(Redeemed)}${colon}${via_text(Key(k))}"
 		Revoked(s) => "${spell_invite_act(Revoked)}${colon}${via_text(Session(s))}"
-		Refused(why) => "${refused_prefix}${InviteCodec.refusal_text(why, spell_grant_refusal)}"
+		Refused(why) => "${refused_prefix}${AgentInvite.refusal_text(why, spell_grant_refusal)}"
 	}
 
 InviteAct : [
@@ -714,13 +714,13 @@ invite_verdict_from : List(U8) -> Try(
 		Created([Session(Principal.SessionId), Key(Principal.KeyId)]),
 		Redeemed(Principal.KeyId),
 		Revoked(Principal.SessionId),
-		Refused(InviteCodec.Refusal),
+		Refused(AgentInvite.Refusal),
 	],
 	_,
 )
 invite_verdict_from = |value|
 	match Bytes.strip_prefix(value, Str.to_utf8(refused_prefix)) {
-		Ok(why) => InviteCodec.refusal_from(
+		Ok(why) => AgentInvite.refusal_from(
 			why,
 			|g| Stored.word(
 				g,
@@ -836,7 +836,7 @@ human_invite_verdict_from = |value|
 		}
 	}
 
-decode_human_invite : Stored.Reader -> Try(AuditCodec.HumanInviteEvent, _)
+decode_human_invite : Stored.Reader -> Try(AuditLog.HumanInviteEvent, _)
 decode_human_invite = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -874,7 +874,7 @@ human_invite_from = |invite_value, for_value| {
 	}
 }
 
-decode_invite : Stored.Reader -> Try(AuditCodec.Invite, _)
+decode_invite : Stored.Reader -> Try(AuditLog.Invite, _)
 decode_invite = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -894,7 +894,7 @@ decode_invite = |fields| {
 ## Both `unknown`, or an invite's id and whom it is for: never one of each.
 invite_from : List(U8),
 List(U8) -> Try(
-	[Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })],
+	[Unknown, Known({ id : AgentInvite.InviteId, agent : Principal.Id })],
 	_,
 )
 invite_from = |invite_value, for_value| {
@@ -904,7 +904,7 @@ invite_from = |invite_value, for_value| {
 	} else if invite_value == unknown or for_value == unknown {
 		Err(BadValue("for"))
 	} else {
-		id = Stored.id(invite_value, { name: "invite", make: InviteCodec.InviteId.from_u64 })?
+		id = Stored.id(invite_value, { name: "invite", make: AgentInvite.InviteId.from_u64 })?
 		agent = AccountCodec.id_from(for_value, "for")?
 		Ok(Known({ id, agent }))
 	}
@@ -914,7 +914,7 @@ invite_from = |invite_value, for_value| {
 is_storable : I64 -> Bool
 is_storable = |t| t >= 0 and t <= Stored.max_time
 
-decode_sign_in : Stored.Reader -> Try(AuditCodec.SignIn, _)
+decode_sign_in : Stored.Reader -> Try(AuditLog.SignIn, _)
 decode_sign_in = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -933,7 +933,7 @@ decode_sign_in = |fields| {
 	})
 }
 
-decode_key : Stored.Reader -> Try(AuditCodec.KeyEvent, _)
+decode_key : Stored.Reader -> Try(AuditLog.KeyEvent, _)
 decode_key = |fields| {
 	at_field = fields.field("at")?
 	at = Stored.time(at_field.value, "at")?
@@ -1179,24 +1179,24 @@ split_colon = |value, name|
 # ── tests
 
 ## An entry as text.
-line_text : AuditCodec.Entry -> Str
+line_text : AuditLog.Entry -> Str
 line_text = |entry|
-	match Str.from_utf8(AuditCodec.encode(entry)) {
+	match Str.from_utf8(AuditLog.encode(entry)) {
 		Ok(text) => text
 		Err(_) => crash "line_text: a stored line is UTF-8"
 	}
 
 # ── SIGN-IN REFUSALS AND KEY REFUSALS
-sign_in_entry : AuditCodec.SignIn -> AuditCodec.Entry
+sign_in_entry : AuditLog.SignIn -> AuditLog.Entry
 sign_in_entry = |s|
-	match AuditCodec.Entry.of_sign_in(s) {
+	match AuditLog.Entry.of_sign_in(s) {
 		Ok(e) => e
 		Err(ClockOutOfRange) => crash "sign_in_entry: a test's time is in range"
 	}
 
-key_entry : AuditCodec.KeyEvent -> AuditCodec.Entry
+key_entry : AuditLog.KeyEvent -> AuditLog.Entry
 key_entry = |k|
-	match AuditCodec.Entry.of_key(k) {
+	match AuditLog.Entry.of_key(k) {
 		Ok(e) => e
 		Err(ClockOutOfRange) => crash "key_entry: a test's time is in range"
 	}
@@ -1239,7 +1239,7 @@ expect line_text(
 
 # Every sign-in refusal, and every key refusal in use and in grant, round
 # trips; a time the store cannot write makes no entry at all.
-sign_ins : List(AuditCodec.SignIn)
+sign_ins : List(AuditLog.SignIn)
 sign_ins = List.join_map(
 	all_sign_in_refusals,
 	|refusal| [
@@ -1256,7 +1256,7 @@ sign_ins = List.join_map(
 	],
 )
 
-key_events : List(AuditCodec.KeyEvent)
+key_events : List(AuditLog.KeyEvent)
 key_events =
 	List.concat(
 		List.join_map(
@@ -1307,18 +1307,18 @@ expect List.len(all_sign_in_refusals) == 20
 expect List.len(all_grant_refusals) == 7
 expect List.all(
 	sign_ins,
-	|s| AuditCodec.decode(AuditCodec.encode(sign_in_entry(s))) == Ok(sign_in_entry(s)),
+	|s| AuditLog.decode(AuditLog.encode(sign_in_entry(s))) == Ok(sign_in_entry(s)),
 )
 expect List.all(
 	key_events,
-	|k| AuditCodec.decode(AuditCodec.encode(key_entry(k))) == Ok(key_entry(k)),
+	|k| AuditLog.decode(AuditLog.encode(key_entry(k))) == Ok(key_entry(k)),
 )
-expect AuditCodec.Entry.of_sign_in({
+expect AuditLog.Entry.of_sign_in({
 	at: -1,
 	github: Unknown,
 	refusal: StateForged,
 }).map_ok(|_| {}) == Err(ClockOutOfRange)
-expect AuditCodec.Entry.of_key(
+expect AuditLog.Entry.of_key(
 	Use({
 		at: Stored.max_time + 1,
 		who: Principal.Id.Bot(Cast.aid(9)),
@@ -1334,7 +1334,7 @@ key_line_but = |
 		from,
 		to,
 	},
-| AuditCodec.decode(
+| AuditLog.decode(
 	Str.to_utf8(
 		"audit-key v1 at=7 who=agent:7 via=key:4 action=use verdict=refused:out-of-scope\n".replace_first(
 			from,
@@ -1358,28 +1358,28 @@ expect key_line_but({
 	from: "verdict=refused:out-of-scope",
 	to: "verdict=permitted",
 }) == Err(UnknownWord("verdict"))
-expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=0 verdict=refused:state-expired\n")).map_ok(|_| {}) == Err(BadValue("github"))
-expect AuditCodec.decode(Str.to_utf8("audit-sign-in v1 at=7 github=2 verdict=permitted\n")).map_ok(|_| {}) == Err(UnknownWord("verdict"))
-expect AuditCodec.decode(Str.to_utf8("audit-login v1 at=7\n")).map_ok(|_| {}) == Err(WrongRecord)
+expect AuditLog.decode(Str.to_utf8("audit-sign-in v1 at=7 github=0 verdict=refused:state-expired\n")).map_ok(|_| {}) == Err(BadValue("github"))
+expect AuditLog.decode(Str.to_utf8("audit-sign-in v1 at=7 github=2 verdict=permitted\n")).map_ok(|_| {}) == Err(UnknownWord("verdict"))
+expect AuditLog.decode(Str.to_utf8("audit-login v1 at=7\n")).map_ok(|_| {}) == Err(WrongRecord)
 
 # ── AN INVITE'S LIFE: every verdict round-trips, known and unknown; the
 # lines read as the header shows them; a mixed or mismatched line refused.
-invite_entry : AuditCodec.Invite -> AuditCodec.Entry
+invite_entry : AuditLog.Invite -> AuditLog.Entry
 invite_entry = |i|
-	match AuditCodec.Entry.of_invite(i) {
+	match AuditLog.Entry.of_invite(i) {
 		Ok(e) => e
 		Err(ClockOutOfRange) => crash "invite_entry: a test's time is storable"
 	}
 
 ## Invite `n`, for agent 7.
-invite_for_seven : U64 -> [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })]
+invite_for_seven : U64 -> [Unknown, Known({ id : AgentInvite.InviteId, agent : Principal.Id })]
 invite_for_seven = |n|
-	match InviteCodec.InviteId.from_u64(n) {
+	match AgentInvite.InviteId.from_u64(n) {
 		Ok(id) => Known({ id, agent: Principal.Id.Agent(Cast.aid(7)) })
 		Err(NotAnId) => crash "invite_for_seven: a test's invite id is not 0"
 	}
 
-invite_three : [Unknown, Known({ id : InviteCodec.InviteId, agent : Principal.Id })]
+invite_three : [Unknown, Known({ id : AgentInvite.InviteId, agent : Principal.Id })]
 invite_three = invite_for_seven(3)
 
 invite_verdicts : List(
@@ -1387,7 +1387,7 @@ invite_verdicts : List(
 		Created([Session(Principal.SessionId), Key(Principal.KeyId)]),
 		Redeemed(Principal.KeyId),
 		Revoked(Principal.SessionId),
-		Refused(InviteCodec.Refusal),
+		Refused(AgentInvite.Refusal),
 	],
 )
 invite_verdicts = List.concat(
@@ -1401,7 +1401,7 @@ invite_verdicts = List.concat(
 )
 
 ## Every refusal an invite's redemption can give.
-invite_refusals : List(InviteCodec.Refusal)
+invite_refusals : List(AgentInvite.Refusal)
 invite_refusals = List.concat(
 	[
 		Unknown,
@@ -1414,7 +1414,7 @@ invite_refusals = List.concat(
 	List.map(all_grant_refusals, |g| Grant(g)),
 )
 
-invite_events : List(AuditCodec.Invite)
+invite_events : List(AuditLog.Invite)
 invite_events = List.join_map(
 	invite_verdicts,
 	|v| [
@@ -1434,7 +1434,7 @@ invite_events = List.join_map(
 expect List.len(invite_events) == 34
 expect List.all(
 	invite_events,
-	|i| AuditCodec.decode(AuditCodec.encode(invite_entry(i))) == Ok(invite_entry(i)),
+	|i| AuditLog.decode(AuditLog.encode(invite_entry(i))) == Ok(invite_entry(i)),
 )
 expect line_text(
 	invite_entry({
@@ -1464,7 +1464,7 @@ expect line_text(
 		verdict: Refused(Grant(SessionExpired)),
 	}),
 ) == "audit-invite v1 at=7 invite=3 for=agent:7 verdict=refused:grant:session-expired\n"
-expect AuditCodec.Entry.of_invite({
+expect AuditLog.Entry.of_invite({
 	at: -1,
 	invite: Unknown,
 	verdict: Refused(Unknown),
@@ -1477,7 +1477,7 @@ invite_line_but = |
 		from,
 		to,
 	},
-| AuditCodec.decode(
+| AuditLog.decode(
 	Str.to_utf8(
 		"audit-invite v1 at=7 invite=3 for=agent:7 verdict=created:session:12\n".replace_first(
 			from,
@@ -1521,7 +1521,7 @@ channel_named = |text|
 	}
 
 ## Lobby made by human 1 with humans 2 and 7, by session 3, with `verdict`.
-lobby_made : [Permitted, Refused(AuditCodec.ChannelRefusal)] -> AuditCodec.ChannelEvent
+lobby_made : [Permitted, Refused(AuditLog.ChannelRefusal)] -> AuditLog.ChannelEvent
 lobby_made = |verdict| {
 	at: 1761600200,
 	who: Principal.Id.Human(Cast.hid(1)),
@@ -1533,18 +1533,18 @@ lobby_made = |verdict| {
 }
 
 ## The channel event's line, its time in range.
-channel_line : AuditCodec.ChannelEvent -> Str
+channel_line : AuditLog.ChannelEvent -> Str
 channel_line = |c|
-	match AuditCodec.Entry.of_channel(c) {
+	match AuditLog.Entry.of_channel(c) {
 		Ok(e) => line_text(e)
 		Err(ClockOutOfRange) => crash "channel_line: a test's time is in range"
 	}
 
 ## The channel event through its line and back.
-channel_round_trip : AuditCodec.ChannelEvent -> Bool
+channel_round_trip : AuditLog.ChannelEvent -> Bool
 channel_round_trip = |c|
-	match AuditCodec.Entry.of_channel(c) {
-		Ok(e) => AuditCodec.decode(AuditCodec.encode(e)) == Ok(e)
+	match AuditLog.Entry.of_channel(c) {
+		Ok(e) => AuditLog.decode(AuditLog.encode(e)) == Ok(e)
 		Err(ClockOutOfRange) => Bool.False
 	}
 
@@ -1587,7 +1587,7 @@ expect
 	].all(|v| channel_round_trip(lobby_made(v)))
 
 ## Every channel action, each by a key.
-every_channel_action : List(AuditCodec.ChannelAction)
+every_channel_action : List(AuditLog.ChannelAction)
 every_channel_action = [
 	Make,
 	Admit,
@@ -1606,7 +1606,7 @@ expect channel_round_trip({
 	channel: Unnamed,
 	members: [],
 })
-expect AuditCodec.Entry.of_channel({
+expect AuditLog.Entry.of_channel({
 	..lobby_made(Permitted),
 	at: -1,
 }).map_ok(|_| {}) == Err(ClockOutOfRange)
@@ -1615,7 +1615,7 @@ expect AuditCodec.Entry.of_channel({
 channel_line_but : { from : Str, to : Str } -> Try({}, _)
 channel_line_but = |{ from, to }| {
 	line = channel_line(lobby_made(Permitted)).replace_first(from, to)
-	AuditCodec.decode(Str.to_utf8(line)).map_ok(|_| {})
+	AuditLog.decode(Str.to_utf8(line)).map_ok(|_| {})
 }
 
 expect channel_line_but({ from: "", to: "" }) == Ok({})
@@ -1645,7 +1645,7 @@ decoded = |
 		from,
 		to,
 	},
-| AuditCodec.decode(Str.to_utf8(usual_line.replace_first(from, to))).map_ok(|_| {})
+| AuditLog.decode(Str.to_utf8(usual_line.replace_first(from, to))).map_ok(|_| {})
 
 expect decoded({ from: "", to: "" }) == Ok({})
 expect decoded({ from: "\n", to: "" }) == Err(Torn)
@@ -1668,17 +1668,17 @@ expect decoded({
 	to: "via=session:3 who=human:1",
 }) == Err(MissingField("who"))
 # The admin's line of before (`audit v1 ...`) is no entry now.
-expect AuditCodec.decode("audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n".to_utf8()).is_err()
+expect AuditLog.decode("audit v1 at=1761600000 who=agent:1 via=key:4 action=revoke-keys:human:2 verdict=permitted plan=none\n".to_utf8()).is_err()
 
 # ── RENAMES
-renamed_entry : AuditCodec.RenameEvent -> AuditCodec.Entry
+renamed_entry : AuditLog.RenameEvent -> AuditLog.Entry
 renamed_entry = |r|
-	match AuditCodec.Entry.of_rename(r) {
+	match AuditLog.Entry.of_rename(r) {
 		Ok(e) => e
 		Err(ClockOutOfRange) => crash "renamed_entry: a test's time is in range"
 	}
 
-rename_lc : AuditCodec.RenameEvent
+rename_lc : AuditLog.RenameEvent
 rename_lc = {
 	at: 1761600300,
 	who: Principal.Id.Human(Cast.hid(1)),
@@ -1688,7 +1688,7 @@ rename_lc = {
 	name: "LC",
 }
 
-expect AuditCodec.encode(renamed_entry(rename_lc)) == "audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=LC\n".to_utf8()
+expect AuditLog.encode(renamed_entry(rename_lc)) == "audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=LC\n".to_utf8()
 expect
 	List.all(
 		[
@@ -1713,27 +1713,27 @@ expect
 			},
 			{ ..rename_lc, verdict: Refused(NameTaken) },
 		],
-		|r| AuditCodec.decode(AuditCodec.encode(renamed_entry(r))) == Ok(renamed_entry(r)),
+		|r| AuditLog.decode(AuditLog.encode(renamed_entry(r))) == Ok(renamed_entry(r)),
 	)
 # A name that could end the line is written empty; a verdict unknown, refused.
-expect AuditCodec.encode(
+expect AuditLog.encode(
 	renamed_entry({
 		..rename_lc,
 		name: "a\nb",
 	}),
 ) == "audit-rename v1 at=1761600300 who=human:1 via=session:3 agent=agent:1 verdict=permitted name=\n".to_utf8()
-expect AuditCodec.decode("audit-rename v1 at=1 who=human:1 via=session:3 agent=agent:1 verdict=refused:nope name=x\n".to_utf8()).is_err()
-expect AuditCodec.Entry.of_rename({ ..rename_lc, at: -1 }).map_ok(|_| {}) == Err(ClockOutOfRange)
+expect AuditLog.decode("audit-rename v1 at=1 who=human:1 via=session:3 agent=agent:1 verdict=refused:nope name=x\n".to_utf8()).is_err()
+expect AuditLog.Entry.of_rename({ ..rename_lc, at: -1 }).map_ok(|_| {}) == Err(ClockOutOfRange)
 
 # A human invite's lines: each verdict round trips; the code is in none.
-human_invited : AuditCodec.HumanInviteEvent -> AuditCodec.Entry
+human_invited : AuditLog.HumanInviteEvent -> AuditLog.Entry
 human_invited = |i|
-	match AuditCodec.Entry.of_human_invite(i) {
+	match AuditLog.Entry.of_human_invite(i) {
 		Ok(e) => e
 		Err(ClockOutOfRange) => crash "human_invited: a test's time is in range"
 	}
 
-zoe_invited : AuditCodec.HumanInviteEvent
+zoe_invited : AuditLog.HumanInviteEvent
 zoe_invited = {
 	at: 1761600180,
 	invite: Known({
@@ -1743,8 +1743,8 @@ zoe_invited = {
 	verdict: Created(Cast.hid(2)),
 }
 
-expect AuditCodec.encode(human_invited(zoe_invited)) == "audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:human:2\n".to_utf8()
-expect AuditCodec.encode(
+expect AuditLog.encode(human_invited(zoe_invited)) == "audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:human:2\n".to_utf8()
+expect AuditLog.encode(
 	human_invited({
 		..zoe_invited,
 		verdict: Redeemed(Cast.sid(9)),
@@ -1765,10 +1765,10 @@ expect
 			invite: Unknown,
 			verdict: Refused(Unknown),
 		},
-	].all(|i| AuditCodec.decode(AuditCodec.encode(human_invited(i))) == Ok(human_invited(i)))
-expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=agent:1 verdict=created:human:2\n".to_utf8()) == Err(BadValue("for"))
-expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=unknown verdict=created:human:2\n".to_utf8()) == Err(BadValue("for"))
-expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:agent:2\n".to_utf8()) == Err(BadValue("verdict"))
-expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=redeemed:key:2\n".to_utf8()) == Err(BadValue("verdict"))
-expect AuditCodec.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=refused:grant:x\n".to_utf8()) == Err(UnknownWord("verdict"))
-expect AuditCodec.Entry.of_human_invite({ ..zoe_invited, at: -1 }) == Err(ClockOutOfRange)
+	].all(|i| AuditLog.decode(AuditLog.encode(human_invited(i))) == Ok(human_invited(i)))
+expect AuditLog.decode("audit-human-invite v1 at=1761600180 invite=3 for=agent:1 verdict=created:human:2\n".to_utf8()) == Err(BadValue("for"))
+expect AuditLog.decode("audit-human-invite v1 at=1761600180 invite=3 for=unknown verdict=created:human:2\n".to_utf8()) == Err(BadValue("for"))
+expect AuditLog.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=created:agent:2\n".to_utf8()) == Err(BadValue("verdict"))
+expect AuditLog.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=redeemed:key:2\n".to_utf8()) == Err(BadValue("verdict"))
+expect AuditLog.decode("audit-human-invite v1 at=1761600180 invite=3 for=human:100 verdict=refused:grant:x\n".to_utf8()) == Err(UnknownWord("verdict"))
+expect AuditLog.Entry.of_human_invite({ ..zoe_invited, at: -1 }) == Err(ClockOutOfRange)

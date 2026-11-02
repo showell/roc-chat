@@ -8,7 +8,7 @@
 ## `bound_text`); `by` the human who made it, the inviter or an admin
 ## re-inviting. The state is `live` until it is `spent` (redeemed, once)
 ## or `revoked`. A redemption's refusals are spelled here too, so the audit
-## spells them (AuditCodec) without asking the wire. Pure.
+## spells them (AuditLog) without asking the wire. Pure.
 import AccountCodec
 import Cast
 import HumanInvite

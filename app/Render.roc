@@ -7,7 +7,7 @@
 import md.Md
 import AccountCodec
 import Cast
-import MessageCodec
+import Transcript
 import Principal
 import Uploads
 
@@ -15,7 +15,7 @@ Render := [].{
 
 	## A message's HTML: roc-markdown's render of its markdown, the one
 	## the transcript, the stream and the pages all give.
-	html_of : MessageCodec.Fields -> List(U8)
+	html_of : Transcript.Fields -> List(U8)
 	html_of = |m| Md.render(m.body, Render.markdown)
 
 	## **WHAT THE CHAT TELLS THE RENDERER**: its uploads are the paths under

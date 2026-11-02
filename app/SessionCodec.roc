@@ -13,7 +13,7 @@
 ## name.
 ##
 ## **A LINE PROVES THE PATH, NOT THE SOURCE**: `decode`, like every codec's
-## decoder here (AccountCodec, KeyCodec, AuditCodec), accepts any bytes,
+## decoder here (AccountCodec, KeyCodec, AuditLog), accepts any bytes,
 ## so a Line proves that its value came through this decoder's checks, not
 ## that its bytes came from the store. A handler that decodes bytes it made
 ## up gets a session of its making. Real provenance needs an opaque read

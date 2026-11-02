@@ -48,7 +48,7 @@ ApiKey := [].{
 	}
 
 	## Why a grant is refused. **ONE ALIAS ON PURPOSE**: ApiKey, Agents and
-	## the audit share it, and AuditCodec spells each tag (`all_grant_refusals`).
+	## the audit share it, and AuditLog spells each tag (`all_grant_refusals`).
 	GrantRefusal : [
 		## A key asked: keys are minted only from a browser session.
 		GrantedByKey,
@@ -85,7 +85,7 @@ ApiKey := [].{
 	Verdict : [Permitted, Refused(ApiKey.Refusal)]
 
 	## Why a key may not do what it was asked. **ONE ALIAS ON PURPOSE**:
-	## Access, Admin and the audit share it, and AuditCodec spells each tag
+	## Access, Admin and the audit share it, and AuditLog spells each tag
 	## (`all_key_refusals`).
 	Refusal : [
 		Revoked,

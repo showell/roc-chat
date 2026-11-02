@@ -8,7 +8,7 @@ import pf.Chat
 import pf.Host
 import Accounts
 import AccountCodec
-import AuditCodec
+import AuditLog
 import GitHubSignIn
 import Html
 import OAuthState
@@ -506,7 +506,7 @@ not_signed_in = Chat.respond(401, { content_type: Chat.text, body: Str.to_utf8("
 
 ## **A REFUSED SIGN-IN**: audited unless anonymous (GitHubSignIn.audited),
 ## and a 403 page saying why in plain words (SignInWeb.refusal_words),
-## the audit's spelling beside them (AuditCodec), and a link to start
+## the audit's spelling beside them (AuditLog), and a link to start
 ## again; the pending sign-up cookie ended.
 answer_refused! : Try(Chat.Answer, GitHubSignIn.Refusal) => Chat.Answer
 answer_refused! = |decided|
@@ -516,7 +516,7 @@ answer_refused! = |decided|
 			match GitHubSignIn.audited(why) {
 				Anonymous => {}
 				Audited =>
-					match AuditCodec.Entry.of_sign_in({
+					match AuditLog.Entry.of_sign_in({
 						at: Host.read_time!({}),
 						github: Unknown,
 						refusal: why,
@@ -531,7 +531,7 @@ answer_refused! = |decided|
 					Html.markup("<!doctype html>\n<title>Sign-in refused</title>\n<p>"),
 					Html.text(SignInWeb.refusal_words(why)),
 					Html.markup(" <a href=/login>Sign in again</a>.</p>\n<p><small>sign-in refused: <code>"),
-					Html.text(AuditCodec.sign_in_refusal_text(why)),
+					Html.text(AuditLog.sign_in_refusal_text(why)),
 					Html.markup("</code></small></p>\n"),
 				]),
 			)

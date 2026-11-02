@@ -21,7 +21,7 @@ import Cast
 import Principal
 import Stored
 
-MessageCodec := [].{
+Transcript := [].{
 
 	## **A MESSAGE'S STORED FIELDS.** `id` is never 0.
 	Fields : {
@@ -33,17 +33,17 @@ MessageCodec := [].{
 
 	## **A LINE THAT DECODED**: its fields, every one checked. Opaque: made
 	## only by `decode` and `transcript`.
-	Line :: MessageCodec.Fields.{
+	Line :: Transcript.Fields.{
 
-		fields : MessageCodec.Line -> MessageCodec.Fields
-		fields = |MessageCodec.Line.(f)| f
+		fields : Transcript.Line -> Transcript.Fields
+		fields = |Transcript.Line.(f)| f
 	}
 
 	## The message's line. An id of 0 is no message: a crash.
-	encode : MessageCodec.Fields -> List(U8)
+	encode : Transcript.Fields -> List(U8)
 	encode = |m|
 		if m.id == 0 {
-			crash "MessageCodec.encode: a message's id is not 0"
+			crash "Transcript.encode: a message's id is not 0"
 		} else {
 			# Stored.line refuses a control byte in a value, and the escape
 			# leaves none: the body goes in after it, as its free text.
@@ -64,7 +64,7 @@ MessageCodec := [].{
 		}
 
 	## The message a line holds.
-	decode : List(U8) -> Try(MessageCodec.Line, _)
+	decode : List(U8) -> Try(Transcript.Line, _)
 	decode = |raw| {
 		fields = Stored.Reader.open(raw, "message")?
 		id_field = fields.field("id")?
@@ -79,7 +79,7 @@ MessageCodec := [].{
 			Err(BadValue("id"))
 		} else {
 			Ok(
-				MessageCodec.Line.(
+				Transcript.Line.(
 					{
 						id,
 						at,
@@ -95,13 +95,13 @@ MessageCodec := [].{
 	## last ended by its newline (a torn append is `Torn`), and the ids 1,
 	## 2, 3 in order (`BadValue("id")` for a gap, a repeat or a start past
 	## 1). An empty transcript has none.
-	transcript : List(U8) -> Try(List(MessageCodec.Line), _)
-	transcript = |raw| MessageCodec.span(raw, 1)
+	transcript : List(U8) -> Try(List(Transcript.Line), _)
+	transcript = |raw| Transcript.span(raw, 1)
 
 	## **A RUN OF A TRANSCRIPT'S LINES**, read from where its message `first`
 	## starts (Store.load_span!): the same rule, its ids `first`, `first`
 	## plus one, and on.
-	span : List(U8), U64 -> Try(List(MessageCodec.Line), _)
+	span : List(U8), U64 -> Try(List(Transcript.Line), _)
 	span = |raw, first|
 		if raw.is_empty() {
 			Ok([])
@@ -109,7 +109,7 @@ MessageCodec := [].{
 			Err(Torn)
 		} else {
 			lines = raw.split_on('\n').drop_last(1)
-			decoded = lines.map_try(|line| MessageCodec.decode(line.append('\n')))?
+			decoded = lines.map_try(|line| Transcript.decode(line.append('\n')))?
 			in_order = decoded.map_with_index(|m, i| m.fields().id == first + i)
 			if in_order.all(|ok| ok) {
 				Ok(decoded)
@@ -190,7 +190,7 @@ hex_value = |c|
 ann : Principal.Id
 ann = Principal.Id.Human(Cast.hid(583231))
 
-said : List(U8) -> MessageCodec.Fields
+said : List(U8) -> Transcript.Fields
 said = |body| {
 	id: 3,
 	at: 1761600000,
@@ -199,7 +199,7 @@ said = |body| {
 }
 
 ## The message numbered `id`, of `body`.
-numbered : U64, List(U8) -> MessageCodec.Fields
+numbered : U64, List(U8) -> Transcript.Fields
 numbered = |id, body| {
 	id,
 	at: 1761600000,
@@ -207,12 +207,12 @@ numbered = |id, body| {
 	body,
 }
 
-read_back : List(U8) -> Try(MessageCodec.Fields, _)
-read_back = |raw| MessageCodec.decode(raw).map_ok(MessageCodec.Line.fields)
+read_back : List(U8) -> Try(Transcript.Fields, _)
+read_back = |raw| Transcript.decode(raw).map_ok(Transcript.Line.fields)
 
-expect MessageCodec.encode(said("two\nlines, 100%".to_utf8())) == "message v1 id=3 at=1761600000 by=human:583231 body=two%0Alines, 100%25\n".to_utf8()
-expect MessageCodec.encode(said("é and 🎉".to_utf8())) == "message v1 id=3 at=1761600000 by=human:583231 body=é and 🎉\n".to_utf8()
-expect MessageCodec.encode(
+expect Transcript.encode(said("two\nlines, 100%".to_utf8())) == "message v1 id=3 at=1761600000 by=human:583231 body=two%0Alines, 100%25\n".to_utf8()
+expect Transcript.encode(said("é and 🎉".to_utf8())) == "message v1 id=3 at=1761600000 by=human:583231 body=é and 🎉\n".to_utf8()
+expect Transcript.encode(
 	said([
 		0xFF,
 		'a',
@@ -247,7 +247,7 @@ bodies = [
 	"| a | b |\n| - | - |\n| `x` | **y** |".to_utf8(),
 ].concat(every_byte.map(|b| [b]))
 
-expect bodies.all(|body| read_back(MessageCodec.encode(said(body))) == Ok(said(body)))
+expect bodies.all(|body| read_back(Transcript.encode(said(body))) == Ok(said(body)))
 
 # One spelling: lowercase hex, a needless escape, a bad escape, a raw
 # control byte (Stored refuses the line: it is two).
@@ -259,24 +259,24 @@ expect read_back("message v1 id=0 at=1 by=human:1 body=x\n".to_utf8()) == Err(Ba
 expect read_back("message v1 id=3 at=1 by=nobody:1 body=x\n".to_utf8()) == Err(UnknownWord("by"))
 
 # Transcripts: none, in order, torn, out of order.
-transcript_of : List(MessageCodec.Fields) -> List(U8)
-transcript_of = |ms| ms.join_map(MessageCodec.encode)
+transcript_of : List(Transcript.Fields) -> List(U8)
+transcript_of = |ms| ms.join_map(Transcript.encode)
 
-expect MessageCodec.transcript([]).map_ok(|ls| ls.len()) == Ok(0)
-three : List(MessageCodec.Fields)
+expect Transcript.transcript([]).map_ok(|ls| ls.len()) == Ok(0)
+three : List(Transcript.Fields)
 three = [
 	numbered(1, "a\nb".to_utf8()),
 	numbered(2, []),
 	numbered(3, "c".to_utf8()),
 ]
 
-expect MessageCodec.transcript(transcript_of(three)).map_ok(
-	|ls| ls.map(MessageCodec.Line.fields),
+expect Transcript.transcript(transcript_of(three)).map_ok(
+	|ls| ls.map(Transcript.Line.fields),
 ) == Ok(three)
-expect MessageCodec.transcript(
+expect Transcript.transcript(
 	transcript_of([numbered(1, [])]).drop_last(1),
 ).map_ok(|ls| ls.len()) == Err(Torn)
-expect MessageCodec.transcript(
+expect Transcript.transcript(
 	transcript_of([
 		numbered(
 			2,
@@ -284,18 +284,18 @@ expect MessageCodec.transcript(
 		),
 	]),
 ).map_ok(|ls| ls.len()) == Err(BadValue("id"))
-expect MessageCodec.transcript(
+expect Transcript.transcript(
 	transcript_of([
 		numbered(1, []),
 		numbered(1, []),
 	]),
 ).map_ok(|ls| ls.len()) == Err(BadValue("id"))
 # A span: the ids from its first, as a slice of a transcript holds them.
-expect MessageCodec.span(
+expect Transcript.span(
 	transcript_of(three.drop_first(1)),
 	2,
-).map_ok(|ls| ls.map(MessageCodec.Line.fields)) == Ok(three.drop_first(1))
-expect MessageCodec.span(
+).map_ok(|ls| ls.map(Transcript.Line.fields)) == Ok(three.drop_first(1))
+expect Transcript.span(
 	transcript_of(three.drop_first(1)),
 	1,
 ).map_ok(|ls| ls.len()) == Err(BadValue("id"))

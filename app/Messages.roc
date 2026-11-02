@@ -25,7 +25,7 @@ import Cast
 import JsonOut
 import Limits
 import Mentions
-import MessageCodec
+import Transcript
 import Principal
 import Render
 import Store
@@ -45,7 +45,7 @@ Messages := [].{
 	## posted, the members it names (by their names now), and its html as
 	## roc-markdown renders it now. `html` is last: a reader may take it up
 	## to the object's closing `"}` (host/e2e.zig does).
-	message_json : MessageCodec.Fields, Messages.Who -> JsonOut
+	message_json : Transcript.Fields, Messages.Who -> JsonOut
 	message_json = |m, who| JsonOut.object(message_fields(m, who))
 
 	## **A MESSAGE'S JSON WITH `lead` FIRST** (a topic's reference, or its
@@ -53,7 +53,7 @@ Messages := [].{
 	## (`message_json`, its html still last): one object, built.
 	json_led : {
 		lead : List((Str, JsonOut)),
-		message : MessageCodec.Fields,
+		message : Transcript.Fields,
 		who : Messages.Who,
 	} -> JsonOut
 	json_led = |
@@ -162,7 +162,7 @@ Messages := [].{
 	agent_event : {
 		lead : List((Str, JsonOut)),
 		spot : Str,
-		message : MessageCodec.Fields,
+		message : Transcript.Fields,
 		who : Messages.Who,
 	} -> Try(List(U8), [LineBreak])
 	agent_event = |
@@ -287,7 +287,7 @@ lead_gap_frame = |lead, before|
 	}
 
 ## The fields `message_json` holds, in its order (`html` last).
-message_fields : MessageCodec.Fields, Messages.Who -> List((Str, JsonOut))
+message_fields : Transcript.Fields, Messages.Who -> List((Str, JsonOut))
 message_fields = |m, who| {
 	author = [
 		("id", JsonOut.number(m.id)),

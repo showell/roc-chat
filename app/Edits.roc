@@ -12,7 +12,7 @@
 ## spoiler. The last of several edits is the one named.
 import Cast
 import ChannelName
-import MessageCodec
+import Transcript
 import MessageRef
 
 Edits := [].{
@@ -50,7 +50,7 @@ Edits := [].{
 	## **WHETHER `edit` SUPERSEDES `original`**, the one rule of it: a later
 	## message by the same author (the old `sameAuthor`; so a message never
 	## supersedes itself, and no post hides another's).
-	supersedes : { original : MessageCodec.Fields, edit : MessageCodec.Fields } -> Bool
+	supersedes : { original : Transcript.Fields, edit : Transcript.Fields } -> Bool
 	supersedes = |{ original, edit }| original.id < edit.id and original.by == edit.by
 
 	## **WHICH OF `messages` ARE SUPERSEDED, AND BY WHICH EDIT**: one
@@ -60,7 +60,7 @@ Edits := [].{
 	## is found by its place (`id - first`), never searched for.
 	Supersession : { first : U64, by : List(U64) }
 
-	superseded : MessageRef.Where, List(MessageCodec.Fields) -> Edits.Supersession
+	superseded : MessageRef.Where, List(Transcript.Fields) -> Edits.Supersession
 	superseded = |at, messages| {
 		first = messages.first().map_ok(|m| m.id) ?? 1
 		by = messages.fold(
@@ -351,7 +351,7 @@ said : {
 	id : U64,
 	boss : Bool,
 	body : Str,
-} -> MessageCodec.Fields
+} -> Transcript.Fields
 said = |
 	{
 		id,

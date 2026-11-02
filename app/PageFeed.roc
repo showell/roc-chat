@@ -9,7 +9,7 @@ import AccountCodec
 import Bubble
 import Cast
 import Edits
-import MessageCodec
+import Transcript
 import MessageRef
 import Principal
 import Recent
@@ -62,7 +62,7 @@ PageFeed := [].{
 	frame : MessageRef.Where,
 	{
 		accounts : List(Principal),
-		m : MessageCodec.Fields,
+		m : Transcript.Fields,
 	} -> List(U8)
 	frame = |place, { accounts, m }|
 		match Sse.frame({
@@ -107,7 +107,7 @@ PageFeed := [].{
 	## bubble, and a stream's backlog sends it after each edit it resends.
 	edit_frame! : MessageRef.Where,
 	{
-		message : MessageCodec.Fields,
+		message : Transcript.Fields,
 		accounts : List(Principal),
 	} => List(U8)
 	edit_frame! = |place, { message, accounts }|
@@ -158,7 +158,7 @@ PageFeed := [].{
 	## it, in the turn it was appended in.
 	publish! : MessageRef.Where,
 	{
-		message : MessageCodec.Fields,
+		message : Transcript.Fields,
 		accounts : List(Principal),
 	} => {}
 	publish! = |place, { message, accounts }| {
@@ -177,7 +177,7 @@ expect PageFeed.page_key(lobby) == "topic-page/lobby/chat".to_utf8()
 expect PageFeed.page_key(InTopic((MessageRef.from_str("MSG_Lobby.Chats_1") ?? crash "a reference").at())) != PageFeed.page_key(lobby)
 
 ## A message by Ann, number 3.
-hi : MessageCodec.Fields
+hi : Transcript.Fields
 hi = {
 	id: 3,
 	at: 0,

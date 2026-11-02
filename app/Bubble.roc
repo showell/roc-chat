@@ -14,7 +14,7 @@
 import AccountCodec
 import Cast
 import Html
-import MessageCodec
+import Transcript
 import Principal
 import Reactions
 import Render
@@ -37,7 +37,7 @@ Bubble := [].{
 	## in place of its body (js/message.js `markEdited`).
 	of : List(Principal),
 	{
-		m : MessageCodec.Fields,
+		m : Transcript.Fields,
 		ref : Str,
 		edited : [NotEdited, EditedIn({ id : U64, ref : Str })],
 		reactions : List(Reactions.Chip),
