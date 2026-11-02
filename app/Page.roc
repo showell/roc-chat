@@ -11,7 +11,7 @@ import TrustedHtml
 Page :: [].{
 
 	## **A CONVERSATION'S PAGE**: the topic, then each message under its
-	## author and time, with its reference (`Message.reference`) as a link to
+	## author and time, with its reference (`Conversation.reference`) as a link to
 	## itself.
 	conversation : Conversation -> TrustedHtml
 	conversation = |c| {
@@ -32,7 +32,7 @@ Page :: [].{
 					newline,
 				])
 			else
-				TrustedHtml.join(c.messages().map(|m| message({ topic, message: m })))
+				TrustedHtml.join(c.messages().map(|m| message(c, m)))
 		whole({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
@@ -57,8 +57,8 @@ Page :: [].{
 }
 
 ## One message: its header, then its markdown rendered.
-message : { topic : Topic, message : Message } -> TrustedHtml
-message = |{ topic, message: m }| {
+message : Conversation, Message -> TrustedHtml
+message = |c, m| {
 	id = m.id()
 	header = TrustedHtml.join([
 		TrustedHtml.tag({
@@ -76,7 +76,7 @@ message = |{ topic, message: m }| {
 		TrustedHtml.tag({
 			name: A,
 			attrs: [Class(Ref), Href(Anchor(id))],
-			inner: TrustedHtml.text(Message.reference(topic, id)),
+			inner: TrustedHtml.text(c.reference(id)),
 		}),
 	])
 	article = TrustedHtml.tag({

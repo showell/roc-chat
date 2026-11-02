@@ -36,6 +36,11 @@ Conversation :: {
 			Err(ListWasEmpty) => Ok(Message.Id.first)
 		}
 
+	## **THE ONE NAME OF A MESSAGE**, `MSG_<topic>_<n>`, as a transcript's
+	## id line and a page's link write it.
+	reference : Conversation, Message.Id -> Str
+	reference = |Conversation.(c), id| "MSG_${c.topic.to_str()}_${id.to_str()}"
+
 	## Its topic.
 	topic : Conversation -> Topic
 	topic = |Conversation.(c)| c.topic

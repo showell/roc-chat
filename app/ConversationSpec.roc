@@ -24,6 +24,12 @@ summary = |c| c.messages().map(
 
 expect Conversation.empty(Sample.plans).messages() == []
 expect Conversation.empty(Sample.plans).topic() == Sample.plans
+# A message's reference: its conversation's topic and its id, whether or
+# not the conversation holds it yet.
+expect Conversation.empty(Sample.plans).reference(Sample.first) == "MSG_plans_1"
+expect Conversation.empty(Sample.plans).reference(Sample.second) == "MSG_plans_2"
+expect Conversation.empty(Sample.other).reference(Sample.second) == "MSG_other_2"
+expect Sample.two.reference(Sample.second) == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
 # Each append takes the next id, in order, with what arrived.
 expect summary(Sample.two) == [

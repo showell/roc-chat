@@ -9,7 +9,7 @@
 ##     The markdown, exactly as written.
 ##
 ## Each message opens with the separator, then its reference
-## (`Message.reference`), its author, its time, an empty line, its markdown
+## (`Conversation.reference`), its author, its time, an empty line, its markdown
 ## and an empty line. A conversation with no messages is an empty file. No
 ## message's markdown can forge the start of another, and a body holding
 ## the bare separator, which no writer makes, is refused (Separator).
@@ -24,10 +24,7 @@ Transcript :: [].{
 
 	## The transcript of the whole conversation.
 	write : Conversation -> Str
-	write = |conversation| {
-		topic = conversation.topic()
-		Str.join_with(conversation.messages().map(|m| record({ topic, message: m })), "")
-	}
+	write = |conversation| Str.join_with(conversation.messages().map(|m| record(conversation, m)), "")
 
 	## What `append` gives: the conversation grown by one, and the one
 	## message's record.
@@ -40,7 +37,7 @@ Transcript :: [].{
 	append = |before, arrival| {
 		after = before.append(arrival)?
 		added = after.messages().last() ?? crash "Transcript.append: an append adds a message"
-		Ok({ conversation: after, record: record({ topic: after.topic(), message: added }) })
+		Ok({ conversation: after, record: record(after, added) })
 	}
 
 	## `topic`'s conversation, each message appended in turn, or the first
@@ -69,9 +66,9 @@ Transcript :: [].{
 }
 
 ## One message as the transcript writes it.
-record : { topic : Topic, message : Message } -> Str
-record = |{ topic, message }|
-	"${Separator.line}\n${Message.reference(topic, message.id())}\nfrom: ${message.author().to_str()}\ndate: ${message.time().to_str()}\n\n${Separator.escape(message.markdown())}\n\n"
+record : Conversation, Message -> Str
+record = |conversation, message|
+	"${Separator.line}\n${conversation.reference(message.id())}\nfrom: ${message.author().to_str()}\ndate: ${message.time().to_str()}\n\n${Separator.escape(message.markdown())}\n\n"
 
 ## `so_far` with each record appended in order, or the first record's fault.
 read_onto : Conversation, List(Str) -> Try(Conversation, _)
@@ -85,7 +82,7 @@ read_onto = |so_far, records|
 read_message : Conversation, Str -> Try(Conversation, _)
 read_message = |c, written| {
 	id = c.next_id()?
-	reference = Message.reference(c.topic(), id)
+	reference = c.reference(id)
 	match written.split_on("\n") {
 		[
 			head,

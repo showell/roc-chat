@@ -8,7 +8,6 @@
 ## order is its ids' order.
 import Author
 import DateTime
-import Topic
 
 Message :: {
 	id : Message.Id,
@@ -81,11 +80,6 @@ Message :: {
 	markdown : Message -> Str
 	markdown = |Message.(m)| m.markdown
 
-	## **THE ONE NAME OF A MESSAGE**, `MSG_<topic>_<n>`, as a transcript's
-	## id line and a page's link write it.
-	reference : Topic, Message.Id -> Str
-	reference = |topic, number| "MSG_${topic.to_str()}_${number.to_str()}"
-
 	is_eq : _
 }
 
@@ -102,9 +96,6 @@ numbered = |{ id, arrival: { payload, time } }|
 	)
 
 # ── tests
-plans : Topic
-plans = Topic.from_str("plans") ?? crash "Message's tests: a topic's name"
-
 steve : Author
 steve = Author.from_str("Steve") ?? crash "Message's tests: an author's name"
 
@@ -141,8 +132,6 @@ parts = |m| {
 
 expect Message.Id.first.to_str() == "1"
 expect Message.Id.first.next().map_ok(Message.Id.to_str) == Ok("2")
-expect Message.reference(plans, Message.Id.first) == "MSG_plans_1"
-expect Message.Id.first.next().map_ok(|id| Message.reference(plans, id)) == Ok("MSG_plans_2")
 # The last id at, under and over the highest.
 expect Message.Id.(65534).next().map_ok(Message.Id.to_str) == Ok("65535")
 expect Message.Id.(65535).next() == Err(Full)
