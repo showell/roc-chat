@@ -114,6 +114,17 @@ noon = Timestamp.from_str("2026-11-02T12:00:00Z") ?? crash "Message's tests: a t
 hello : Message.Arrival
 hello = { payload: { author: steve, markdown: "hello" }, time: noon }
 
+cc : Author
+cc = Author.from_str("CC") ?? crash "Message's tests: an author's name"
+
+later : Timestamp
+later = Timestamp.from_str("2026-11-02T12:01:00Z") ?? crash "Message's tests: a time"
+
+## A second arrival, every part unlike `hello`'s, so a message `after`
+## another is seen to carry its own.
+reply : Message.Arrival
+reply = { payload: { author: cc, markdown: "hi" }, time: later }
+
 ## A message's parts, as a test compares them.
 parts : Message -> {
 	id : Str,
@@ -143,18 +154,18 @@ expect parts(Message.first(hello)) == {
 	markdown: "hello",
 }
 expect
-	Message.first(hello).after(hello).map_ok(parts)
+	Message.first(hello).after(reply).map_ok(parts)
 		== Ok({
 			id: "2",
-			author: steve,
-			time: noon,
-			markdown: "hello",
+			author: cc,
+			time: later,
+			markdown: "hi",
 		})
 # After the last id, no message.
-expect numbered({ id: Message.Id.(65534), arrival: hello }).after(hello).map_ok(parts) == Ok({
+expect numbered({ id: Message.Id.(65534), arrival: hello }).after(reply).map_ok(parts) == Ok({
 	id: "65535",
-	author: steve,
-	time: noon,
-	markdown: "hello",
+	author: cc,
+	time: later,
+	markdown: "hi",
 })
-expect numbered({ id: Message.Id.(65535), arrival: hello }).after(hello) == Err(Full)
+expect numbered({ id: Message.Id.(65535), arrival: hello }).after(reply) == Err(Full)
