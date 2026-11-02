@@ -13,6 +13,9 @@
 ## `Page`'s fixed head and style sheet. `join` builds only from what is
 ## already vouched for, so it vouches for nothing new.
 ##
+## **THE OTHER TRUST BOUNDARIES**: `UnvalidatedString`, the way text from
+## outside comes in, and `SecureImageTag`, which images a message may show.
+##
 ## **THE WAY OUT IS BYTES**: `to_utf8`, for the host. There is no way back
 ## to a `Str`, so trusted markup can't be handed to `Escape.text` and
 ## escaped again without a deliberate, fallible `Str.from_utf8`.

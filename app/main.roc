@@ -1,7 +1,8 @@
 ## **THE DEMO**: a topic's name and its transcript in, its page out. The
 ## host (host/main.zig) reads the file and writes the page; everything
-## else is the pure core. The door: the host's bytes become a Conversation
-## or a refusal's tags here, and only here are the tags put into words.
+## else is the pure core. The door: the host's bytes become unchecked text
+## (`UnvalidatedString`), then a Conversation or a refusal's tags, here,
+## and only here are the tags put into words.
 app [page] {
 	md: "../../roc-markdown/package/main.roc",
 	pf: platform "../platform/main.roc",
@@ -12,7 +13,7 @@ import Message
 import Page
 import StrictName
 import Topic
-import Transcript
+import UnvalidatedString
 
 ## The page for `topic`'s transcript, or a page saying what is wrong with it.
 page : List(U8), List(U8) -> List(U8)
@@ -28,10 +29,10 @@ page = |topic, transcript| {
 ## The conversation the host's bytes hold, decoded at the door.
 conversation : { topic : List(U8), transcript : List(U8) } -> Try(Conversation, _)
 conversation = |{ topic, transcript }| {
-	name = Str.from_utf8(topic) ? |_| TopicNotUtf8
-	text = Str.from_utf8(transcript) ? |_| TranscriptNotUtf8
-	checked = Topic.from_str(name) ? |why| Topic(why)
-	Transcript.read(checked, text).map_err(|why| Transcript(why))
+	name = UnvalidatedString.from_utf8(topic) ? |NotUtf8| TopicNotUtf8
+	text = UnvalidatedString.from_utf8(transcript) ? |NotUtf8| TranscriptNotUtf8
+	checked = name.topic() ? |why| Topic(why)
+	text.conversation(checked).map_err(|why| Transcript(why))
 }
 
 ## **EVERY WAY THE DOOR REFUSES**: what `words` takes, each module's tags

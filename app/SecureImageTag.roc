@@ -16,7 +16,8 @@
 ## uploads exist, this rule asks the conversation for its own.
 ##
 ## What the renderer's output becomes on a page is vouched for at
-## `TrustedHtml`'s one door; see its header for the others.
+## `TrustedHtml`'s one door; see its header for the others. Text from
+## outside comes in only through `UnvalidatedString`.
 SecureImageTag :: [].{
 
 	## Is `source` one of the message's conversation's uploads? No
