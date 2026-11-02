@@ -2,7 +2,8 @@
 //! port of 127.0.0.1, on a task of this process, against a temporary data
 //! root seeded from demo/data. Driven over HTTP, one step a line, timed:
 //!
-//!   1. GET the seeded conversation: exactly the demo's frozen page;
+//!   1. GET the seeded conversation: exactly the demo's frozen page, with
+//!      its content security policy and `nosniff`;
 //!   2. POST a message to it: a 303 to its page;
 //!   3. GET it again: the message is there;
 //!   4. the transcript on disk: the seed and exactly one record more, dated
@@ -69,6 +70,8 @@ pub fn main(init: std.process.Init) !void {
     const first = try get(a, io, port, channel_url);
     try t.check("GET the seeded conversation: 200, exactly the demo's frozen page", first.status == 200 and
         std.mem.eql(u8, first.body, try cwd.readFileAlloc(io, frozen_page, a, .limited(1024 * 1024))));
+    try t.check("its defences: the content security policy and nosniff, as sent", std.mem.startsWith(u8, first.header("content-security-policy") orelse "", "default-src 'none'; ") and
+        std.mem.eql(u8, first.header("x-content-type-options") orelse "", "nosniff"));
 
     // 2.
     const before = files.current_utc_seconds_since_epoch(io);
