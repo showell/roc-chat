@@ -32,7 +32,7 @@ Channel :: {
 	## in this order: nobody signed in (`SignedOut`); a key, not a session
 	## (`NeedsSession`); a session whose account is gone (`NoSuchPrincipal`);
 	## a member, not an admin (`NotAdmin`); a name the rule refuses
-	## (`NotAChannelName`, a DM's `dm-` name too); a name some channel or
+	## (`NotAChannelName`, a DM's pair, `7_11`, too); a name some channel or
 	## some account has, in any case (`Taken`: one namespace,
 	## Accounts.name_holder, so no two channels' paths meet, on a disk that
 	## folds case too, and no channel goes by a user's name); then
@@ -56,11 +56,9 @@ Channel :: {
 		},
 	| {
 		admin(by, accounts)?
+		# The rule never takes a DM's name (`7_11`): no admin makes one.
 		valid = ChannelName.from_str(name)?
-		# A `dm-` name is a DM's (ChannelName.dm_of), never an admin's.
-		if valid.is_dm() {
-			Err(NotAChannelName)
-		} else if Accounts.name_holder({ accounts, channels: channels.map(|c| c.name()) }, valid.to_str()) != Free {
+		if Accounts.name_holder({ accounts, channels: channels.map(|c| c.name()) }, valid.to_str()) != Free {
 			Err(Taken)
 		} else {
 			bound = members.fold_try(
@@ -542,7 +540,7 @@ expect make_by(
 # **A HUMAN'S DM WITH ANOTHER** (Channel.dm): the pair's one channel,
 # whichever of them asks, its two members; refused, an agent asking,
 # naming an agent, naming nobody's account, or oneself, and nobody signed
-# in. No admin makes a `dm-` channel.
+# in. No admin makes a channel named as a DM.
 dm_with : ChannelCast.Who, Principal.Id -> Try(Channel, _)
 dm_with = |by, other| Channel.dm({
 	by: ChannelCast.viewer(by),
@@ -562,7 +560,7 @@ expect
 # With oneself: a self-DM, its one member the asker; an agent has none.
 expect
 	match dm_with(Steve, ChannelCast.id(Steve)) {
-		Ok(c) => c.name().to_str() == "dm-1-1" and c.members(ChannelCast.accounts).map(|b| b.id) == [ChannelCast.id(Steve)]
+		Ok(c) => c.name().to_str() == "1_1" and c.members(ChannelCast.accounts).map(|b| b.id) == [ChannelCast.id(Steve)]
 		Err(_) => Bool.False
 	}
 expect dm_with(Cc, ChannelCast.id(Cc)).map_ok(|c| c.name()) == Err(NotAHuman(ChannelCast.id(Cc)))
@@ -573,4 +571,4 @@ expect dm_with(
 	Principal.Id.Human(Principal.HumanId.from_u64(999) ?? crash "999 is an id"),
 ).map_ok(|c| c.name()) == Err(NoAccount(Principal.Id.Human(Principal.HumanId.from_u64(999) ?? crash "999 is an id")))
 expect dm_with(Out, ChannelCast.id(Steve)).map_ok(|c| c.name()) == Err(SignedOut)
-expect make_by(Steve, { name: "dm-1-2", members: [] }).map_ok(|c| c.name()) == Err(NotAChannelName)
+expect make_by(Steve, { name: "1_2", members: [] }).map_ok(|c| c.name()) == Err(NotAChannelName)

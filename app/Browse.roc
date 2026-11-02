@@ -46,7 +46,7 @@ Browse := [].{
 	## topic) made with a human; or a topic made in a channel.
 	Route : [
 		List,
-		StartDm(Principal.HumanId),
+		StartDm(ChannelName),
 		NewTopic(ChannelName),
 	]
 
@@ -63,10 +63,10 @@ Browse := [].{
 					dm,
 					n,
 				] if chat == "chat".to_utf8() and dm == "dm".to_utf8() =>
-					Stored.id(
-						n,
-						{ name: "human", make: Principal.HumanId.from_u64 },
-					).map_ok(|h| StartDm(h)).map_err(|_| NotBrowse)
+					match Str.from_utf8(n) {
+						Ok(text) => ChannelName.dm_from(text).map_ok(|pair| StartDm(pair)).map_err(|_| NotBrowse)
+						Err(_) => Err(NotBrowse)
+					}
 				[
 					[],
 					chat,
@@ -75,10 +75,7 @@ Browse := [].{
 				] if chat == "chat".to_utf8() and channel == "channel".to_utf8() =>
 					match Str.from_utf8(c) {
 						Ok(text) =>
-							match ChannelName.from_str(text) {
-								Ok(name) if !name.is_dm() => Ok(NewTopic(name))
-								_ => Err(NotBrowse)
-							}
+							ChannelName.from_str(text).map_ok(|name| NewTopic(name)).map_err(|_| NotBrowse)
 						Err(_) => Err(NotBrowse)
 					}
 				_ => Err(NotBrowse)
@@ -135,7 +132,7 @@ see_other = |location|
 Place : {
 	label : Str,
 	id : Str,
-	shows : [Topics({ base : Str, topics : List(Topic) }), NoDmYet(Principal.HumanId)],
+	shows : [Topics({ base : Str, topics : List(Topic) }), NoDmYet(ChannelName)],
 }
 
 list! : List(U8) => Try(Chat.Answer, Chat.Answer)
@@ -164,12 +161,12 @@ list! = |path| {
 				[c, ..] => {
 					label,
 					id,
-					shows: Channel(c, "/chat/dm/${h.to_u64().to_str()}"),
+					shows: Channel(c, "/chat/dm/${name.to_str()}"),
 				}
 				[] => {
 					label,
 					id,
-					shows: NoDm(h),
+					shows: NoDm(name),
 				}
 			}
 		},
@@ -238,7 +235,7 @@ with_topics! : List(
 	{
 		label : Str,
 		id : Str,
-		shows : [Channel(Channel, Str), NoDm(Principal.HumanId)],
+		shows : [Channel(Channel, Str), NoDm(ChannelName)],
 	},
 ),
 List(Place),
@@ -299,7 +296,7 @@ place_html = |p|
 		Html.text(p.label),
 		Html.markup("</h2>\n"),
 		match p.shows {
-			NoDmYet(h) => add_topic_html("/chat/dm/${h.to_u64().to_str()}", First)
+			NoDmYet(pair) => add_topic_html("/chat/dm/${pair.to_str()}", First)
 			Topics({ base, topics }) =>
 				Html.join([
 					Html.markup("<ul class=browse-list>\n"),
@@ -349,26 +346,49 @@ topic_html = |base, t|
 		Html.markup("</a></li>\n"),
 	])
 
-## **A DM MADE FROM BROWSE**: the viewer's DM with `other` (Topics.make_dm!,
-## as `POST /dms` makes it), made once. With a `topic=`, that topic is made
-## in it too, and the browser lands on its page; without one, back to Browse
-## at the DM. A 303 either way. Signed out, a 401; a key, a 403.
-start_dm! : Principal.HumanId, List(U8) => Try(Chat.Answer, Chat.Answer)
-start_dm! = |other, form| {
+## **A DM MADE FROM BROWSE** (`POST /chat/dm/<pair>`): the pair's DM
+## (Topics.make_dm!, as `POST /dms` makes it), made once, by one of its
+## two humans; with a `topic=`, that topic is made in it too, and the
+## browser lands on its page; without one, back to Browse at the DM. A 303
+## either way. Someone not of the pair, a 404; signed out, a 401; a key, a
+## 403.
+start_dm! : ChannelName, List(U8) => Try(Chat.Answer, Chat.Answer)
+start_dm! = |pair, form| {
 	v = Topics.load_viewer!({})?
 	match v.viewer.who() {
 		SignedOut => Err(Wire.refused(401, "not signed in"))
 		Key(_) => Err(Pages.key_refused)
-		Session(_) => {
+		Session(me) => {
+			other = other_of(pair, me.id)?
 			made = Topics.make_dm!(v, Principal.Id.Human(other))?
 			match topic_named(form) {
 				NoTopic => Ok(see_other("/chat/browse#dm-${other.to_u64().to_str()}"))
 				Named(topic) => {
 					t = Topics.make_topic!({ channel: made.dm.name(), name: topic })?
-					Ok(see_other(Topics.page_path(t.at(), InDm(other))))
+					Ok(see_other(Topics.page_path(t.at())))
 				}
 			}
 		}
+	}
+}
+
+## **THE PAIR'S OTHER HUMAN, FOR ONE OF THEM** (themselves, in a self-DM);
+## anyone else asking is not of the pair: the 404 of a page not there.
+other_of : ChannelName, Principal.Id -> Try(Principal.HumanId, Chat.Answer)
+other_of = |pair, me| {
+	not_yours = Wire.refused(404, "no such DM")
+	ids = pair.dm_pair().map_err(|_| not_yours)?
+	mine =
+		match me {
+			Human(h) => Ok(h.to_u64())
+			_ => Err(not_yours)
+		}?
+	if mine == ids.lo {
+		Principal.HumanId.from_u64(ids.hi).map_err(|_| not_yours)
+	} else if mine == ids.hi {
+		Principal.HumanId.from_u64(ids.lo).map_err(|_| not_yours)
+	} else {
+		Err(not_yours)
 	}
 }
 
@@ -386,7 +406,7 @@ new_topic! = |name, form| {
 				NoTopic => Err(Wire.refused(400, "name the topic: topic="))
 				Named(topic) => {
 					t = Topics.make_topic!({ channel: name, name: topic })?
-					Ok(see_other(Topics.page_path(t.at(), InChannel)))
+					Ok(see_other(Topics.page_path(t.at())))
 				}
 			}
 	}
@@ -421,12 +441,24 @@ expect by_bytes("An".to_utf8(), "Ann".to_utf8()) == Before
 expect by_bytes("Zoe".to_utf8(), "ann".to_utf8()) == Before
 expect Browse.route("/chat/browse".to_utf8()) == Ok(List)
 expect
-	match Browse.route("/chat/dm/7".to_utf8()) {
-		Ok(StartDm(h)) => h.to_u64() == 7
+	match Browse.route("/chat/dm/7_11".to_utf8()) {
+		Ok(StartDm(pair)) => pair == ChannelName.dm_of(11, 7)
 		_ => Bool.False
 	}
-expect Browse.route("/chat/dm/07".to_utf8()).is_err()
-expect Browse.route("/chat/dm/x".to_utf8()).is_err()
+# A pair in its one spelling alone: 11_7, an id with a leading zero, one id, none.
+expect
+	[
+		"/chat/dm/11_7",
+		"/chat/dm/07_11",
+		"/chat/dm/7",
+		"/chat/dm/x",
+	].all(|path| Browse.route(path.to_utf8()).is_err())
+# The pair's other human, for either of them (themselves in a self-DM); anyone else, none.
+expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Human(Cast.hid(7))).map_ok(|h| h.to_u64()) == Ok(11)
+expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Human(Cast.hid(11))).map_ok(|h| h.to_u64()) == Ok(7)
+expect other_of(ChannelName.dm_of(5, 5), Principal.Id.Human(Cast.hid(5))).map_ok(|h| h.to_u64()) == Ok(5)
+expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Human(Cast.hid(9))).is_err()
+expect other_of(ChannelName.dm_of(7, 11), Principal.Id.Agent(Cast.aid(7))).is_err()
 expect Browse.route("/chat/browse/x".to_utf8()).is_err()
 
 # A topic's link is under its place's base; an empty place says so and
@@ -444,11 +476,11 @@ expect {
 	html = place_html({
 		label: "Zoe",
 		id: "dm-9",
-		shows: NoDmYet(Cast.hid(9)),
+		shows: NoDmYet(ChannelName.dm_of(9, 2)),
 	}).bytes()
-	html == "<section id=\"dm-9\"><h2>Zoe</h2>\n<form class=add-topic method=post action=\"/chat/dm/9\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>\n</section>\n".to_utf8()
+	html == "<section id=\"dm-9\"><h2>Zoe</h2>\n<form class=add-topic method=post action=\"/chat/dm/2_9\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>\n</section>\n".to_utf8()
 }
-# A channel's path names a topic's making there; a DM's channel name never.
+# A channel's path names a topic's making there; a DM's pair never.
 expect Browse.route("/chat/channel/Lobby".to_utf8()) == Ok(NewTopic(ChannelName.from_str("Lobby") ?? crash "a channel name"))
-expect Browse.route("/chat/channel/dm-1-2".to_utf8()).is_err()
+expect Browse.route("/chat/channel/1_2".to_utf8()).is_err()
 expect Browse.route("/chat/channel/Lobby/general".to_utf8()).is_err()

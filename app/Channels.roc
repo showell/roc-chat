@@ -601,16 +601,12 @@ Channel -> [
 by_name_key = |a, b| compare_bytes(a.name().key().to_utf8(), b.name().key().to_utf8())
 
 ## The name a path's part spells, when the rule takes it.
-## A channel's name in a path; a DM's (`dm-`) is no channel's route: an
+## A channel's name in a path, by the rule, which no DM's pair passes: an
 ## admin never admits to or removes from a pair's DM.
 name_in_path : List(U8) -> Try(ChannelName, [NotChannels])
 name_in_path = |part|
 	match Str.from_utf8(part) {
-		Ok(text) =>
-			match ChannelName.from_str(text) {
-				Ok(name) if !name.is_dm() => Ok(name)
-				_ => Err(NotChannels)
-			}
+		Ok(text) => ChannelName.from_str(text).map_err(|_| NotChannels)
 		Err(_) => Err(NotChannels)
 	}
 
@@ -636,7 +632,7 @@ compare_bytes = |x, y|
 			}
 	}
 
-expect Channels.route("/channels/dm-1-2/admit".to_utf8()).is_err()
+expect Channels.route("/channels/1_2/admit".to_utf8()).is_err()
 expect Channels.route("/channels".to_utf8()) == Ok(Make)
 expect ChannelName.from_str("lobby").map_ok(|n| Channels.route("/channels/Lobby/admit".to_utf8()) == Ok(Admit(n))) == Ok(Bool.True)
 expect Channels.route("/channels/Lobby/remove".to_utf8()).is_ok()

@@ -1,0 +1,99 @@
+-- **EVERY DM TO ITS PAIR'S NAME AND FOLDER, ON PROD** (Steve, 2026-11-02):
+-- a DM is named by its two humans' ids in number order, `7_11`, and laid
+-- out as a channel is under `chat/dms/<pair>/`, where it was a channel named
+-- `dm-7-11` under `chat/channels/`. Run once, from roc-chat's root, right
+-- after the deploy that names DMs by their pairs:
+--
+--   shale tools/migrate_dms.shale
+--
+-- No arguments. Over ssh, as the deploy works, each step refusing by name
+-- what it cannot do, before anything moves:
+-- 1. Lists the `dm-<a>-<b>` folders under `chat/channels`, and stops when a
+--    name is not exactly that (`a` and `b` numbers with no leading zero,
+--    `a` at most `b`), or when a pair's folder under `chat/dms` is there
+--    already (a DM made since the deploy: Steve decides).
+-- 2. Copies, never moves, every DM folder and every reading list into one
+--    folder beside the data, `/var/lib/roc-chat/dms-before-<date>`: putting
+--    them back undoes this; removing the copy is Steve's.
+-- 3. Moves each DM's folder to `chat/dms/<a>_<b>`, its record's
+--    `name=dm-<a>-<b>` written `name=<a>_<b>`, and each reading list's
+--    `channel=dm-<a>-<b>` written `channel=<a>_<b>`; then checks every
+--    record says its pair.
+-- What it leaves: the audit log's history (a `dm-<a>-<b>` there still reads,
+-- as a name of its time), and images in DM messages posted with the URLs of
+-- before (`/chat/uploads/...`), which no longer draw.
+--
+-- budget: steps=5000000
+
+const HOST = "steve@162.243.1.123"
+const HOME = "/var/lib/roc-chat"
+const DATA = HOME .. "/data"
+
+if not exists("deploy/config.zon") then fail("migrate: run it from roc-chat's root") end
+
+-- A command on prod: it must succeed.
+function on_prod(script)
+  return must(run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: the migration's steps on prod"}))
+end
+
+-- A command on prod whose exit is an answer: 0 yes, 1 no.
+function asks_prod(script)
+  local r = run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: a question to prod, its exit the answer"})
+  if r.code ~= 0 and r.code ~= 1 then fail("migrate: prod could not be asked (ssh exit " .. r.code .. "): " .. trim(r.out)) end
+  return r.code == 0
+end
+
+-- An id as a DM's name writes it: digits, no leading zero, not 0.
+function is_id(text)
+  return re_find(text, "^[1-9][0-9]*$") ~= nil
+end
+
+-- 1. The DM folders there, each `dm-<a>-<b>` exactly, `a` at most `b`, none
+-- moved yet.
+local listed = trim(on_prod("sudo sh -c 'ls " .. DATA .. "/chat/channels | grep \"^dm-\" || true'").out)
+local dms = {}
+for name in lines(listed) do
+  if trim(name) ~= "" then
+    local m = re_find(name, "^dm-([0-9]+)-([0-9]+)$")
+    if m == nil or not is_id(m.groups[1]) or not is_id(m.groups[2]) then fail("migrate: `" .. name .. "` is no DM's name (dm-<a>-<b>); nothing was moved") end
+    local a = tonumber(m.groups[1])
+    local b = tonumber(m.groups[2])
+    if a > b then fail("migrate: `" .. name .. "` has its ids out of order; nothing was moved") end
+    local pair = m.groups[1] .. "_" .. m.groups[2]
+    if asks_prod("sudo test -e " .. DATA .. "/chat/dms/" .. pair) then fail("migrate: " .. DATA .. "/chat/dms/" .. pair .. " is there already (a DM made since the deploy?); nothing was moved. Steve decides.") end
+    push(dms, {old = name, pair = pair})
+  end
+end
+print("DMs to move: " .. #dms)
+if #dms == 0 then fail("migrate: no dm- folders under chat/channels: nothing to do (run already?)") end
+
+-- 2. A copy of every DM and every reading list, beside the data.
+local stamp = trim(on_prod("date -u +%Y%m%d-%H%M%S").out)
+local copy = HOME .. "/dms-before-" .. stamp
+if asks_prod("sudo test -e " .. copy) then fail("migrate: " .. copy .. " is there already") end
+on_prod("sudo -u rocchat mkdir -p " .. copy .. "/channels")
+for dm in dms do
+  on_prod("sudo -u rocchat cp -a " .. DATA .. "/chat/channels/" .. dm.old .. " " .. copy .. "/channels/" .. dm.old)
+end
+if asks_prod("sudo test -d " .. DATA .. "/chat/saved") then
+  on_prod("sudo -u rocchat cp -a " .. DATA .. "/chat/saved " .. copy .. "/saved")
+end
+print("copied the DMs and the reading lists to " .. copy)
+
+-- 3. Each DM to its pair's folder and name; the reading lists' places too.
+on_prod("sudo -u rocchat mkdir -p " .. DATA .. "/chat/dms")
+for dm in dms do
+  local to = DATA .. "/chat/dms/" .. dm.pair
+  on_prod("sudo -u rocchat mv " .. DATA .. "/chat/channels/" .. dm.old .. " " .. to)
+  on_prod("sudo -u rocchat sed -i 's/^channel v1 name=" .. dm.old .. " /channel v1 name=" .. dm.pair .. " /' " .. to .. "/channel")
+  if not asks_prod("sudo grep -q '^channel v1 name=" .. dm.pair .. " ' " .. to .. "/channel") then fail("migrate: " .. to .. "/channel does not name " .. dm.pair .. " (the copy is in " .. copy .. ")") end
+  if asks_prod("sudo test -d " .. DATA .. "/chat/saved") then
+    on_prod("sudo sh -c 'for f in " .. DATA .. "/chat/saved/*; do [ -f \"$f\" ] && sudo -u rocchat sed -i \"s/ channel=" .. dm.old .. " / channel=" .. dm.pair .. " /\" \"$f\"; done; true'")
+  end
+  print("moved " .. dm.old .. " to chat/dms/" .. dm.pair)
+end
+local left = trim(on_prod("sudo sh -c 'ls " .. DATA .. "/chat/channels | grep -c \"^dm-\" || true'").out)
+local saved_left = trim(on_prod("sudo sh -c 'grep -l \" channel=dm-[0-9]*-[0-9]* \" " .. DATA .. "/chat/saved/* 2>/dev/null | wc -l'").out)
+if left ~= "0" then fail("migrate: " .. left .. " dm- folders are still under chat/channels") end
+if saved_left ~= "0" then fail("migrate: " .. saved_left .. " reading lists still name a dm- channel") end
+print("every DM is under chat/dms by its pair; the copy of before is in " .. copy .. ", and removing it is Steve's")

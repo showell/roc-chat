@@ -25,6 +25,7 @@
 ##     auth/human-invites-by-human/<id>  the human invites a human made, by hash
 ##     auth/human-invites-indexed        how many human invites that indexes
 ##     chat/channels/<channel>/channel   a channel, its members bound (ChannelCodec)
+##     chat/dms/<pair>/...               a DM (`7_11`), laid out as a channel is below it (ChannelLayout)
 ##     chat/channels/<channel>/topics/<topic>/topic       a topic (TopicCodec)
 ##     chat/channels/<channel>/topics/<topic>/transcript  its messages, a line each, appended (MessageCodec)
 ##     chat/channels/<channel>/topics/<topic>/tally       its transcript's messages and bytes (`load_tally!`)
@@ -88,13 +89,15 @@ Store := [].{
 	## each its own (GitHubSignIn: the same nonce is spent once in each).
 	Spent : [State, Pending]
 
-	## **AN UPLOADED IMAGE KEPT**, under its topic, by its fresh name.
-	save_upload! : Topic.At, { name : Str, uploaded : List(U8) } => [Failed, Written]
-	save_upload! = |at, { name, uploaded }| Host.write!(ChannelLayout.upload_path(at, name), uploaded)
+	## **AN UPLOADED IMAGE KEPT**, under its topic, by its fresh name. **ONLY
+	## WITH PROOF OF THE READ** (Topic.Readable, which Topic.readable alone
+	## makes): no way to a topic's uploads skips the topic's rule.
+	save_upload! : Topic.Readable, { name : Str, uploaded : List(U8) } => [Failed, Written]
+	save_upload! = |readable, { name, uploaded }| Host.write!(ChannelLayout.upload_path(readable.at(), name), uploaded)
 
-	## An uploaded image's bytes, by its name.
-	load_upload! : Topic.At, Str => { bytes : List(U8), status : [Failed, Found, Missing] }
-	load_upload! = |at, name| Host.read!(ChannelLayout.upload_path(at, name))
+	## An uploaded image's bytes, by its name, with proof of the read.
+	load_upload! : Topic.Readable, Str => { bytes : List(U8), status : [Failed, Found, Missing] }
+	load_upload! = |readable, name| Host.read!(ChannelLayout.upload_path(readable.at(), name))
 
 	## **WHAT A HUMAN HAS UPLOADED IN ALL**, in bytes: none before their
 	## first. A file that does not read back is `Unreadable`, never none, so
@@ -760,19 +763,15 @@ Store := [].{
 			},
 	)
 
-	## **EVERY CHANNEL STORED** (for an admin's page), in the order the disk
-	## gives their folders. One damaged entry fails only itself: a folder
+	## **EVERY CHANNEL AND DM STORED**, the channels first, each in the
+	## order the disk gives their folders. One damaged entry fails only itself: a folder
 	## whose name is no channel's key, or whose record will not read, is
 	## left out and counted in `damaged`. A folder with no record yet (a
 	## stop before its first write landed) holds no channel.
 	load_channels! : {} => Try({ channels : List(Channel), damaged : U64 }, [Failed])
 	load_channels! = |{}| {
-		listed = Host.list!(ChannelLayout.channels_path)
-		match listed.status {
-			Missing => Ok({ channels: [], damaged: 0 })
-			Failed => Err(Failed)
-			Found => collect_channels!(listed.entries, { channels: [], damaged: 0 })
-		}
+		channels = load_folder_of!(ChannelLayout.channels_path, { parse: ChannelName.from_str, kept: { channels: [], damaged: 0 } })?
+		load_folder_of!(ChannelLayout.dms_path, { parse: |text| ChannelName.dm_from(text).map_err(|_| NotAChannelName), kept: channels })
 	}
 
 	## **EVERY CHANNEL'S NAME**, as the one namespace asks it
@@ -1665,25 +1664,44 @@ folder_key = |entry, { parse, key }|
 		_ => Err(NotAKey)
 	}
 
+## **THE CHANNELS (OR DMS) ONE FOLDER HOLDS**, after `kept`: each entry
+## whose name `parse` takes as its key.
+load_folder_of! : List(U8),
+{
+	parse : Str -> Try(ChannelName, [NotAChannelName]),
+	kept : { channels : List(Channel), damaged : U64 },
+} => Try({ channels : List(Channel), damaged : U64 }, [Failed])
+load_folder_of! = |path, { parse, kept }| {
+	listed = Host.list!(path)
+	match listed.status {
+		Missing => Ok(kept)
+		Failed => Err(Failed)
+		Found => collect_channels!(listed.entries, { parse, kept })
+	}
+}
+
 ## The channels the listed folders hold, after `kept`.
 collect_channels! : List(FolderEntry),
-{ channels : List(Channel), damaged : U64 } => Try(
+{
+	parse : Str -> Try(ChannelName, [NotAChannelName]),
+	kept : { channels : List(Channel), damaged : U64 },
+} => Try(
 	{ channels : List(Channel), damaged : U64 },
 	[Failed],
 )
-collect_channels! = |entries, kept|
+collect_channels! = |entries, { parse, kept }|
 	match entries {
 		[] => Ok(kept)
 		[entry, .. as rest] => {
 			read =
-				match folder_key(entry, { parse: ChannelName.from_str, key: ChannelName.key }) {
+				match folder_key(entry, { parse, key: ChannelName.key }) {
 					Ok(name) => read_channel!(name)
 					Err(NotAKey) => Err(Malformed)
 				}
 			match read {
-				Ok(c) => collect_channels!(rest, { ..kept, channels: kept.channels.append(c) })
-				Err(Missing) => collect_channels!(rest, kept)
-				Err(Malformed) => collect_channels!(rest, { ..kept, damaged: kept.damaged + 1 })
+				Ok(c) => collect_channels!(rest, { parse, kept: { ..kept, channels: kept.channels.append(c) } })
+				Err(Missing) => collect_channels!(rest, { parse, kept })
+				Err(Malformed) => collect_channels!(rest, { parse, kept: { ..kept, damaged: kept.damaged + 1 } })
 				Err(Failed) => Err(Failed)
 			}
 		}

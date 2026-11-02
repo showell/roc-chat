@@ -360,14 +360,14 @@ expect {
 # every text escaped.
 expect {
 	html = Recent.tile({
-		url: "/chat/dm/7/Hi",
+		url: "/chat/dm/7_11/Hi",
 		ts: 5,
 		dm: Bool.True,
 		place: "zoë",
 		topic: "Hi",
 		last: Last({ who: "You", excerpt: "<b>" }),
 	}).bytes()
-	html == "<a class=recent-tile href=\"/chat/dm/7/Hi\" data-key=\"/chat/dm/7/Hi\" data-ts=5><div class=recent-lead><div class=recent-avatar>z</div></div><div class=recent-body><div class=recent-top><div class=recent-title>Hi</div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>&lt;b&gt;</div></div></a>\n".to_utf8()
+	html == "<a class=recent-tile href=\"/chat/dm/7_11/Hi\" data-key=\"/chat/dm/7_11/Hi\" data-ts=5><div class=recent-lead><div class=recent-avatar>z</div></div><div class=recent-body><div class=recent-top><div class=recent-title>Hi</div><span class=recent-ago></span></div><div class=recent-preview><span class=recent-who>You: </span>&lt;b&gt;</div></div></a>\n".to_utf8()
 }
 expect {
 	html = Recent.tile({

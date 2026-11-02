@@ -26,7 +26,6 @@ import OneStream
 import RecentPage
 import SavedPage
 import TopicPage
-import UploadPage
 import Topics
 import Wire
 
@@ -89,11 +88,6 @@ route! = |req|
 		match SavedPage.route(req.path) {
 			Ok(r) => SavedPage.answer!(req, r)
 			Err(NotSaved) => Chat.not_found
-		}
-	} else if UploadPage.route(req.path).is_ok() {
-		match UploadPage.route(req.path) {
-			Ok(r) => UploadPage.answer!(req, r)
-			Err(NotAnUpload) => Chat.not_found
 		}
 	} else if TopicPage.route(req.path).is_ok() {
 		match TopicPage.route(req.path) {

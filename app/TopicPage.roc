@@ -9,7 +9,8 @@
 ##     GET /chat/channel/<channel>/<topic>          the page: the newest page of
 ##                                                  messages, the transcript and
 ##                                                  the right pane (compose, keys)
-##     GET /chat/dm/<n>/<topic>                     a DM's (`n` the other human's id)
+##     GET /chat/dm/<pair>/<topic>                  a DM's (`<pair>` its humans' ids, `7_11`),
+##                                                  the same for both, and the same below
 ##     GET .../stream                               each message, live, as its bubble
 ##                                                  (SSE, `message`, its id the
 ##                                                  message's), after `Last-Event-ID`,
@@ -74,11 +75,9 @@ import Wire
 
 TopicPage := [].{
 
-	## Which topic a path names: a channel's, or a DM's by its other human.
-	Place : [
-		InChannel(Topic.At),
-		InDm({ other : Principal.HumanId, topic : TopicName }),
-	]
+	## **WHICH TOPIC A PATH NAMES**, a channel's or a DM's: its place, the
+	## same for every reader.
+	Place : Topic.At
 
 	## What a path asks of it.
 	Route : [
@@ -90,6 +89,13 @@ TopicPage := [].{
 		Save(TopicPage.Place),
 		React(TopicPage.Place),
 		Upload(TopicPage.Place),
+		Uploaded(
+			{
+				at : TopicPage.Place,
+				name : Str,
+				image : Uploads.Image,
+			},
+		),
 		Edit(TopicPage.Place),
 	]
 
@@ -103,9 +109,9 @@ TopicPage := [].{
 			b,
 		|
 			if kind == "channel".to_utf8() {
-				Topics.at_in(a, b).map_ok(|at| InChannel(at)).map_err(|_| NotATopicPage)
+				Topics.at_in(a, b).map_err(|_| NotATopicPage)
 			} else if kind == "dm".to_utf8() {
-				Topics.dm_in(a, b).map_ok(|d| InDm(d)).map_err(|_| NotATopicPage)
+				Topics.dm_in(a, b).map_err(|_| NotATopicPage)
 			} else {
 				Err(NotATopicPage)
 			}
@@ -136,6 +142,30 @@ TopicPage := [].{
 				)?,
 				what,
 			)
+			[
+				[],
+				chat,
+				kind,
+				a,
+				b,
+				uploads,
+				file,
+			] if chat == "chat".to_utf8() and uploads == "uploads".to_utf8() => {
+				at = topic_place(
+					kind,
+					a,
+					b,
+				)?
+				image = Uploads.image_named(file).map_err(|_| NotATopicPage)?
+				name = Str.from_utf8(file).map_err(|_| NotATopicPage)?
+				Ok(
+					Uploaded({
+						at,
+						name,
+						image,
+					}),
+				)
+			}
 			_ => Err(NotATopicPage)
 		}
 	}
@@ -147,7 +177,7 @@ TopicPage := [].{
 		refused =
 			match r {
 				Stream(_) => if (req.method != Get) Err(Chat.not_allowed(Get)) else Ok(NoBody)
-				Page(_) | Earlier(_) | Quote(_) | Edit(_) => if (req.method != Get and req.method != Head) Err(Chat.not_allowed(Get)) else Ok(NoBody)
+				Page(_) | Earlier(_) | Quote(_) | Edit(_) | Uploaded(_) => if (req.method != Get and req.method != Head) Err(Chat.not_allowed(Get)) else Ok(NoBody)
 				Send(_) =>
 					if req.method != Post {
 						Err(Chat.not_allowed(Post))
@@ -228,6 +258,7 @@ Shown : {
 	place : MessageRef.Where,
 	title : Html,
 	base : Str,
+	readable : Topic.Readable,
 	poster : {
 		viewer : Access.Viewer,
 		accounts : List(Principal),
@@ -247,11 +278,7 @@ serve! = |
 		body,
 	},
 | {
-	shown =
-		match place_of(r) {
-			InChannel(at) => topic_shown!({ path, route: r }, InChannel(at))?
-			InDm(d) => topic_shown!({ path, route: r }, InDm(d))?
-		}
+	shown = topic_shown!({ path, route: r }, place_of(r))?
 	match (r, body) {
 		(Page(_), _) => page!(shown)
 		(Stream(_), _) => stream!(shown)
@@ -262,6 +289,7 @@ serve! = |
 		(Save(_), Body(bytes)) => save!(shown, bytes)
 		(React(_), Body(bytes)) => react!(shown, bytes)
 		(Upload(_), Body(bytes)) => upload!(shown, bytes)
+		(Uploaded(u), _) => serve_upload!(shown, { name: u.name, image: u.image })
 		(Send(_), NoBody)
 		| (Save(_), NoBody)
 		| (React(_), NoBody)
@@ -277,6 +305,7 @@ place_of : TopicPage.Route -> TopicPage.Place
 place_of = |r|
 	match r {
 		Page(p) | Stream(p) | Earlier(p) | Send(p) | Quote(p) | Edit(p) | Save(p) | React(p) | Upload(p) => p
+		Uploaded(u) => u.at
 	}
 
 ## **THE VIEWER A PAGE IS FOR**: a session's; signed out, the page goes to
@@ -297,7 +326,7 @@ me_of = |
 		SignedOut =>
 			match r {
 				Page(_) => Err(Pages.to_login(path))
-				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) => Err(
+				Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) | Uploaded(_) => Err(
 					Wire.refused(
 						401,
 						"not signed in",
@@ -318,7 +347,7 @@ topic_shown! = |{ path, route: r }, place| {
 		path,
 		v.viewer.who(),
 	)?
-	at = at_of(me, place)?
+	at = place
 	found =
 		match Topics.verdict!(v, at) {
 			Ok(f) => Ok(f)
@@ -328,7 +357,7 @@ topic_shown! = |{ path, route: r }, place| {
 				not_here(
 					r,
 					{
-						why: Html.text("#${at.channel.to_str()} is not a channel you are a member of."),
+						why: Html.text(if (at.channel.is_dm()) "This DM is not yours." else "#${at.channel.to_str()} is not a channel you are a member of."),
 						accounts: v.accounts,
 						me,
 					},
@@ -347,6 +376,7 @@ topic_shown! = |{ path, route: r }, place| {
 		}?
 	made = found.topic.at()
 	Ok({
+		readable: found.readable,
 		holder: Messages.holder(v.viewer),
 		accounts: v.accounts,
 		me,
@@ -359,35 +389,10 @@ topic_shown! = |{ path, route: r }, place| {
 				me,
 			},
 		),
-		base: base_of(made, place),
+		base: Topics.page_path(made),
 		poster: v,
 	})
 }
-
-## **A DM'S PLACE IS THE ASKER'S**: the pair of the viewer and the other
-## human (ChannelName.dm_of), oneself for a self-DM; an agent asking has none, the 404
-## of a topic that is not there.
-at_of : Principal.Bound, TopicPage.Place -> Try(Topic.At, Chat.Answer)
-at_of = |me, place|
-	match place {
-		InChannel(at) => Ok(at)
-		InDm({ other, topic }) =>
-			match me.id {
-				Human(h) => Ok({
-					channel: ChannelName.dm_of(h.to_u64(), other.to_u64()),
-					topic,
-				})
-				_ => Err(no_such_topic)
-			}
-	}
-
-## Where a topic's page lives, its names as they were made.
-base_of : Topic.At, TopicPage.Place -> Str
-base_of = |at, place|
-	match place {
-		InDm({ other, topic: _ }) => Topics.page_path(at, InDm(other))
-		InChannel(_) => Topics.page_path(at, InChannel)
-	}
 
 ## **A PAGE THAT IS NOT THERE SAYS WHY**, as the old app's did
 ## (angry-gopher's chat.zig, `serveNotFoundPage`): a 404 page titled "Not
@@ -409,7 +414,7 @@ not_here = |
 	},
 |
 	match r {
-		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) => no_such_topic
+		Stream(_) | Earlier(_) | Send(_) | Quote(_) | Edit(_) | Save(_) | React(_) | Upload(_) | Uploaded(_) => no_such_topic
 		Page(_) => {
 			answer = Chrome.page({
 				title: Html.markup("Not here"),
@@ -958,10 +963,6 @@ react! = |s, form| {
 ## rule (a reader, by a session: a human).
 upload! : Shown, List(U8) => Try(Chat.Answer, Chat.Answer)
 upload! = |s, body| {
-	at =
-		match s.place {
-			InTopic(a) => a
-		}
 	human = human_of(s.me)?
 	no_file = Wire.refused(400, "no file")
 	boundary =
@@ -979,14 +980,36 @@ upload! = |s, body| {
 		Err(Wire.refused(403, "Upload limit reached — you've used your 1 GB upload allowance."))
 	} else {
 		name = Uploads.name_of(Host.random_bytes!(16), image)
-		match Store.save_upload!(at, { name, uploaded: file.uploaded }) {
+		match Store.save_upload!(s.readable, { name, uploaded: file.uploaded }) {
 			Failed => Err(Chat.failed)
 			Written =>
 				match Store.save_uploaded!(human, uploaded + size) {
 					Failed => Err(Chat.failed)
-					Written => Ok(Wire.json(200, Uploads.answer({ url: Uploads.url(at, name), name: Uploads.display_name(file.filename) })))
+					Written => Ok(Wire.json(200, Uploads.answer({ url: Uploads.url(s.base, name), name: Uploads.display_name(file.filename) })))
 				}
 		}
+	}
+}
+
+## **AN UPLOADED IMAGE, SERVED** (the old `serveUpload`), under its topic's
+## page: to whoever reads the topic (the page's verdict, whose proof the
+## store asks for), its type by its name's extension, the browser never
+## guessing another (`nosniff`), kept by the browser for good (the old
+## `private, max-age=31536000, immutable`: a name is never given twice).
+## A name no upload has, the one 404 a stranger gets too.
+serve_upload! : Shown, { name : Str, image : Uploads.Image } => Try(Chat.Answer, Chat.Answer)
+serve_upload! = |s, { name, image }| {
+	read = Store.load_upload!(s.readable, name)
+	match read.status {
+		Missing => Err(no_such_topic)
+		Failed => Err(Chat.failed)
+		Found => Ok(
+			Chat.with_header(
+				{ ..Chat.respond(200, { content_type: Uploads.content_type(image), body: read.bytes }), sniff: Forbid },
+				"cache-control",
+				"private, max-age=31536000, immutable".to_utf8(),
+			),
+		)
 	}
 }
 
@@ -1003,12 +1026,12 @@ no_such_topic = Wire.refused(404, "no such topic")
 # ── tests
 expect
 	match TopicPage.route("/chat/channel/Lobby/ChitChat".to_utf8()) {
-		Ok(Page(InChannel(at))) => at.channel.to_str() == "Lobby" and at.topic.to_str() == "ChitChat"
+		Ok(Page(at)) => at.channel.to_str() == "Lobby" and at.topic.to_str() == "ChitChat"
 		_ => Bool.False
 	}
 expect
-	match TopicPage.route("/chat/dm/7/ChitChat/stream".to_utf8()) {
-		Ok(Stream(InDm({ other, topic: _ }))) => other.to_u64() == 7
+	match TopicPage.route("/chat/dm/7_11/ChitChat/stream".to_utf8()) {
+		Ok(Stream(at)) => at.channel == ChannelName.dm_of(11, 7) and at.channel.to_str() == "7_11"
 		_ => Bool.False
 	}
 expect
@@ -1022,12 +1045,15 @@ expect
 		_ => Bool.False
 	}
 expect
-	match TopicPage.route("/chat/dm/7/ChitChat/react".to_utf8()) {
-		Ok(React(InDm(_))) => Bool.True
+	match TopicPage.route("/chat/dm/5_5/ChitChat/react".to_utf8()) {
+		Ok(React(at)) => at.channel == ChannelName.dm_of(5, 5)
 		_ => Bool.False
 	}
 # A DM's name is no channel's; nor a bad name, an unknown kind or part.
-expect TopicPage.route("/chat/channel/dm-1-2/ChitChat".to_utf8()).is_err()
+expect TopicPage.route("/chat/channel/1_2/ChitChat".to_utf8()).is_err()
+# A pair in its one spelling alone: 11_7 is not 7_11's page, nor a page at all.
+expect TopicPage.route("/chat/dm/11_7/ChitChat".to_utf8()).is_err() and TopicPage.route("/chat/dm/7/ChitChat".to_utf8()).is_err()
+expect TopicPage.route("/chat/dm/Lobby/ChitChat".to_utf8()).is_err()
 expect TopicPage.route("/chat/channel/Lobby/chit_chat".to_utf8()).is_err()
 expect TopicPage.route("/chat/dm/07/ChitChat".to_utf8()).is_err()
 expect TopicPage.route("/chat/dm/human:7/ChitChat".to_utf8()).is_err()

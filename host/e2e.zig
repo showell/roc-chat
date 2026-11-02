@@ -885,14 +885,14 @@ fn invitesCapped(w: *World) !void {
 }
 
 /// **A MESSAGE'S MEDIA LOADS ONLY FROM THE CHAT'S UPLOADS**: the chat tells
-/// the renderer its uploads are under `/chat/uploads/` (Render.markdown),
-/// so an upload's image renders, and one of the chat's other routes as a
-/// src, or the old `/user_uploads/`, is text.
+/// the renderer its uploads are under a topic's page (`.../uploads/<name>`,
+/// Render.markdown), so an upload's image renders, and one of the chat's
+/// other routes as a src, or an old uploads path, is text.
 fn mediaFromUploads(w: *World) !void {
     const conv = try topicOf(w, "Media", &.{ try std.fmt.allocPrint(w.a, "human%3A{s}", .{try hid(w.a, 1001)}), try std.fmt.allocPrint(w.a, "human%3A{s}", .{try hid(w.a, 1002)}) }, w.ann);
-    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "<img src=\"/chat/uploads/media/talk/a.png\">\n\n<img src=\"/channels/Media/topics/talk/stream\">\n\n<img src=\"/user_uploads/a.png\">");
+    const r = try request(w.a, w.port(), "POST", try agentPath(w, conv, "/messages"), w.ann, "<img src=\"/chat/channel/Media/talk/uploads/00000000000000000000000000000000.png\">\n\n<img src=\"/channels/Media/topics/talk/stream\">\n\n<img src=\"/user_uploads/a.png\">");
     if (r.status != 201) return error.NotPosted;
-    if (!has(r.body, "<img src=\\\"/chat/uploads/media/talk/a.png\\\">")) return error.UploadNotShown;
+    if (!has(r.body, "<img src=\\\"/chat/channel/Media/talk/uploads/00000000000000000000000000000000.png\\\">")) return error.UploadNotShown;
     if (!has(r.body, "&lt;img src=&quot;/user_uploads/a.png&quot;&gt;")) return error.OldUploadsShownAsMedia;
     if (!has(r.body, "&lt;img src=&quot;/channels/Media/topics/talk/stream&quot;&gt;")) return error.RouteShownAsMedia;
 }
@@ -1827,12 +1827,29 @@ fn agentMember(w: *World) !void {
     if (has(back.got.items, "a job for you")) return error.SentTwice;
 }
 
+/// **A DM'S NAME**: its two humans' ids in NUMBER order, `7_11` (never
+/// `11_7`, and 7 before 11 though "11" sorts first as text).
+fn pairOf(a: std.mem.Allocator, x: []const u8, y: []const u8) ![]const u8 {
+    const i = try std.fmt.parseInt(u64, x, 10);
+    const j = try std.fmt.parseInt(u64, y, 10);
+    return std.fmt.allocPrint(a, "{d}_{d}", .{ @min(i, j), @max(i, j) });
+}
+
+/// The same pair the wrong way round, `11_7`: no DM's name (a self-DM's
+/// pair has no wrong way).
+fn pairBackwards(a: std.mem.Allocator, x: []const u8, y: []const u8) ![]const u8 {
+    const i = try std.fmt.parseInt(u64, x, 10);
+    const j = try std.fmt.parseInt(u64, y, 10);
+    return std.fmt.allocPrint(a, "{d}_{d}", .{ @max(i, j), @min(i, j) });
+}
+
 /// **A HUMAN DM** (Channel.dm, Topics' `/dms`): two humans' one DM,
-/// whichever asks; topics in it as a channel's, their messages' references
-/// the short `MSG_<topic>_<n>`; a third human never reaches it; with
-/// oneself, a self-DM (`dm-<n>-<n>`), its one member; with an agent or
-/// nobody refused; a DM's `dm-` channel is never an
-/// admin's to make, list, admit to or reach as a channel.
+/// whichever asks, named by their pair (`7_11`), its routes a channel's
+/// under `/dms/<pair>`, the same for both; topics in it as a channel's,
+/// their messages' references the short `MSG_<topic>_<n>`; a third human
+/// never reaches it, nor the pair the wrong way round; with oneself, a
+/// self-DM (`<n>_<n>`), its one member; with an agent or nobody refused;
+/// a DM is never an admin's to make, list, admit to or reach as a channel.
 fn humanDm(w: *World) !void {
     const a = try signUp(w.a, w.port(), 1030);
     const b = try signUp(w.a, w.port(), 1031);
@@ -1840,35 +1857,35 @@ fn humanDm(w: *World) !void {
     const ha = try hid(w.a, 1030);
     const hb = try hid(w.a, 1031);
     const made = try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{hb}));
-    const lo = @min(try std.fmt.parseInt(u64, ha, 10), try std.fmt.parseInt(u64, hb, 10));
-    const hi = @max(try std.fmt.parseInt(u64, ha, 10), try std.fmt.parseInt(u64, hb, 10));
-    const name = try std.fmt.allocPrint(w.a, "dm-{d}-{d}", .{ lo, hi });
+    const name = try pairOf(w.a, ha, hb);
+    const self = try pairOf(w.a, ha, ha);
     if (made.status != 201 or !has(made.body, try std.fmt.allocPrint(w.a, "\"dm\":\"{s}\"", .{name}))) return error.DmNotMade;
     const again = try pagePost(w, b, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}));
     if (again.status != 200 or !has(again.body, name)) return error.NotTheSameDm;
     const self_dm = try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}));
-    if (self_dm.status != 201 or !has(self_dm.body, try std.fmt.allocPrint(w.a, "{{\"dm\":\"dm-{s}-{s}\",\"members\":[\"human:{s}\"]}}", .{ ha, ha, ha }))) return error.NoSelfDm;
+    if (self_dm.status != 201 or !has(self_dm.body, try std.fmt.allocPrint(w.a, "{{\"dm\":\"{s}\",\"members\":[\"human:{s}\"]}}", .{ self, ha }))) return error.NoSelfDm;
     if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{ha}))).status != 200) return error.SelfDmTwice;
     // Another human never reaches it.
-    if ((try pagePost(w, a, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{ha}), "name=mine")).status != 201) return error.TopicNotMade;
-    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/mine", .{ha}), a)).status != 200) return error.SelfDmUnread;
-    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/mine", .{ha}), b)).status != 404) return error.SelfDmLeaked;
+    if ((try pagePost(w, a, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{self}), "name=mine")).status != 201) return error.TopicNotMade;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/mine", .{self}), a)).status != 200) return error.SelfDmUnread;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/mine", .{self}), b)).status != 404) return error.SelfDmLeaked;
     if ((try pagePost(w, a, "/dms", "with=human%3A999999")).status != 404) return error.DmWithNobody;
     const pal = try ownAgent(w, a, "Pal+1030", "");
     if ((try pagePost(w, a, "/dms", try std.fmt.allocPrint(w.a, "with={s}", .{pal.id}))).status != 403) return error.DmWithAnAgent;
     if ((try request(w.a, w.port(), "POST", "/dms", "", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{hb}))).status != 401) return error.DmByNobody;
 
-    const topics = try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{hb});
+    const topics = try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{name});
     if ((try pagePost(w, a, topics, "name=ChitChat")).status != 201) return error.TopicNotMade;
-    const listed = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{ha}), b);
+    const listed = try get(w.a, w.port(), topics, b);
     if (listed.status != 200 or !has(listed.body, "\"topic\":\"ChitChat\"")) return error.TopicNotListed;
     const posted = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/ChitChat/messages", .{topics}), a, "hi b");
     if (posted.status != 201 or !std.mem.startsWith(u8, posted.body, "{\"ref\":\"MSG_ChitChat_1\",")) return error.NotPosted;
-    const read = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{ha}), b);
+    const read = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/ChitChat", .{topics}), b);
     if (read.status != 200 or !has(read.body, "\"markdown\":\"hi b\"")) return error.NotRead;
-    // A third human: their DM with a is another, not there.
-    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{ha}), c)).status != 404) return error.ThirdRead;
-    const l = try Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat/stream", .{ha}), b, "1");
+    // A third human never reaches it; the pair the wrong way round is no DM's.
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/ChitChat", .{topics}), c)).status != 404) return error.ThirdRead;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{try pairBackwards(w.a, ha, hb)}), a)).status != 404) return error.BackwardsPairRead;
+    const l = try Listener.open(w.a, w.port(), try std.fmt.allocPrint(w.a, "{s}/ChitChat/stream", .{topics}), b, "1");
     defer l.close();
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/ChitChat/messages", .{topics}), a, "again")).status != 201) return error.NotPosted;
     try l.until("\"ref\":\"MSG_ChitChat_2\"");
@@ -1880,7 +1897,7 @@ fn humanDm(w: *World) !void {
     // admit to, or list.
     if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/channels/{s}/topics/ChitChat", .{name}), a)).status != 404) return error.DmAsAChannel;
     if ((try pagePost(w, w.ivy, try std.fmt.allocPrint(w.a, "/channels/{s}/admit", .{name}), "member=human%3A1")).status != 404) return error.AdmittedToADm;
-    if ((try pagePost(w, w.ivy, "/channels", "name=dm-90-91&members=")).status != 400) return error.AdminMadeADm;
+    if ((try pagePost(w, w.ivy, "/channels", "name=90_91&members=")).status != 400) return error.AdminMadeADm;
     if (has((try get(w.a, w.port(), "/chat/channels", w.ivy)).body, name)) return error.DmListedAsAChannel;
 }
 
@@ -1918,7 +1935,7 @@ fn humanInvited(w: *World) !void {
     const code = try field(made.body, "code");
     if (code.len != 64 or !has(made.body, try std.fmt.allocPrint(w.a, "\"link\":\"/join#{s}\"", .{code}))) return error.NoLink;
     const zoe = (try field(made.body, "for"))["human:".len..];
-    const dm = try std.fmt.allocPrint(w.a, "\"dm\":\"dm-{s}-{s}\"", .{ try hid(w.a, 1033), zoe });
+    const dm = try std.fmt.allocPrint(w.a, "\"dm\":\"{s}\"", .{try pairOf(w.a, try hid(w.a, 1033), zoe)});
     if (!has(made.body, dm)) return error.NoDm;
     // Her name is held now, in any spelling, by anyone.
     if ((try pagePost(w, a, "/agents", "name=ZOE+inv")).status != 409) return error.NameNotHeld;
@@ -1928,7 +1945,8 @@ fn humanInvited(w: *World) !void {
     if (listed.status != 200 or !has(listed.body, "\"name\":\"Zoe Inv\"") or has(listed.body, code)) return error.NotListed;
     if (has((try get(w.a, w.port(), "/human-invites", c)).body, "Zoe Inv")) return error.ListedToAnother;
     // The welcome waits in their DM.
-    const welcome = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{zoe}), a);
+    const ours = try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{try pairOf(w.a, try hid(w.a, 1033), zoe)});
+    const welcome = try get(w.a, w.port(), ours, a);
     if (welcome.status != 200 or !has(welcome.body, "\"markdown\":\"Hi! This is an automated message from Person 1033\"")) return error.NoWelcome;
 
     // The page: the plain words first, the fine print after; the name filled in.
@@ -1945,10 +1963,9 @@ fn humanInvited(w: *World) !void {
     const me = try get(w.a, w.port(), "/me", zc);
     if (!has(me.body, try std.fmt.allocPrint(w.a, "signed in as human:{s}\n", .{zoe}))) return error.NotHer;
     if ((try pagePost(w, a, "/agents", "name=Zoe+Inv")).status != 201) return error.OldNameHeld;
-    const theirs = try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{try hid(w.a, 1033)});
-    if (!has((try get(w.a, w.port(), theirs, zc)).body, "automated message")) return error.WelcomeUnread;
-    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/messages", .{theirs}), zc, "thanks!")).status != 201) return error.NoAnswer;
-    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/dms/{s}/topics/ChitChat", .{zoe}), a)).body, "\"markdown\":\"thanks!\"")) return error.AnswerUnread;
+    if (!has((try get(w.a, w.port(), ours, zc)).body, "automated message")) return error.WelcomeUnread;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/messages", .{ours}), zc, "thanks!")).status != 201) return error.NoAnswer;
+    if (!has((try get(w.a, w.port(), ours, a)).body, "\"markdown\":\"thanks!\"")) return error.AnswerUnread;
     if ((try join(w, code, "")).status != 401) return error.JoinedTwice;
 
     // Again: by her inviter (another device), or an admin; no one else.
@@ -2038,30 +2055,35 @@ fn browse(w: *World) !void {
     if ((try pagePost(w, w.ivy, "/channels", try std.fmt.allocPrint(w.a, "name=Shed&members=human%3A{s}%2C{s}", .{ p, pal.id }))).status != 201) return error.ChannelNotMade;
     if ((try pagePost(w, pip, "/channels/Shed/topics", "name=Desk")).status != 201) return error.TopicNotMade;
     if ((try pagePost(w, pip, "/dms", try std.fmt.allocPrint(w.a, "with=human%3A{s}", .{q}))).status != 201) return error.DmNotMade;
-    if ((try pagePost(w, pip, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{q}), "name=ChitChat")).status != 201) return error.TopicNotMade;
+    if ((try pagePost(w, pip, try std.fmt.allocPrint(w.a, "/dms/{s}/topics", .{try pairOf(w.a, p, q)}), "name=ChitChat")).status != 201) return error.TopicNotMade;
     browsing = .{ .pip = pip, .quin = quin, .rue = rue, .p = p, .q = q, .pal_key = pal.key };
 
     // Quin and Rue have no DM yet: Rue's row is the form that makes it (and
     // a first topic, "general" offered).
     const before = try get(w.a, w.port(), "/chat/browse", quin);
-    const rue_button = try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>", .{ r, r });
+    const qr = try pairOf(w.a, q, r);
+    const rue_button = try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\"> <button>Add topic</button></form>", .{ r, qr });
     if (before.status != 200 or !has(before.body, rue_button)) return error.NoStartButton;
-    const made = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "");
+    // The pair the wrong way round makes nothing; nor one not of the pair.
+    if ((try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{try pairBackwards(w.a, q, r)}), "")).status != 404) return error.BackwardsPairMade;
+    if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{try pairOf(w.a, p, q)}), "")).status != 404) return error.StrangerMadeDm;
+    const made = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), "");
     if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", try std.fmt.allocPrint(w.a, "/chat/browse#dm-{s}", .{r}))) return error.DmNotStarted;
-    if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "")).status != 303) return error.DmNotFound;
+    if ((try pagePost(w, rue, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), "")).status != 303) return error.DmNotFound;
     // Quin's own row: a topic of his own, the browser on its empty page,
     // titled with his name, and his post there.
-    const notes = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{q}), "topic=notes");
-    const notes_page = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/notes", .{q});
+    const qq = try pairOf(w.a, q, q);
+    const notes = try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qq}), "topic=notes");
+    const notes_page = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/notes", .{qq});
     if (notes.status != 303 or !std.mem.eql(u8, notes.header("location") orelse "", notes_page)) return error.NoSelfDm;
     const self_page = try get(w.a, w.port(), notes_page, quin);
     if (self_page.status != 200 or !has(self_page.body, "<span class=\"chat-top-title\">Chat w/Person 1041: notes</span>") or !has(self_page.body, "No messages yet")) return error.SelfDmPageWrong;
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{notes_page}), quin, "a note to self")).status != 201) return error.NotSent;
     if (!has((try get(w.a, w.port(), notes_page, quin)).body, "a note to self")) return error.NotSeen;
-    if ((try pagePost(w, quin, "/chat/dm/999999", "")).status != 404) return error.DmWithNobody;
-    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), .{ .key = pal.key }, "")).status != 403) return error.KeyStartedDm;
-    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), "", "")).status != 401) return error.NobodyStartedDm;
-    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{r}), .{ .cookie = quin, .origin = "https://evil.test" }, "")).status != 403) return error.ForeignOriginTaken;
+    if ((try pagePost(w, quin, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{try pairOf(w.a, q, "999999")}), "")).status != 404) return error.DmWithNobody;
+    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), .{ .key = pal.key }, "")).status != 403) return error.KeyStartedDm;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), "", "")).status != 401) return error.NobodyStartedDm;
+    if ((try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{qr}), .{ .cookie = quin, .origin = "https://evil.test" }, "")).status != 403) return error.ForeignOriginTaken;
 
     const page = try get(w.a, w.port(), "/chat/browse", quin);
     if (page.status != 200) return error.NoBrowse;
@@ -2073,7 +2095,7 @@ fn browse(w: *World) !void {
         "<strong>Browse</strong>",
         "<strong>Person 1041</strong>",
         try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>" ++ pip_name_escaped ++ "</h2>", .{p}),
-        try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/ChitChat\">ChitChat</a>", .{p}),
+        try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/ChitChat\">ChitChat</a>", .{try pairOf(w.a, p, q)}),
         try std.fmt.allocPrint(w.a, "<section id=\"dm-{s}\"><h2>Person 1042</h2>\n<ul class=browse-list>\n<li class=muted>No sessions yet</li>", .{r}),
         "<h2># Meadow</h2>\n<ul class=browse-list>\n<li class=muted>No sessions yet</li>",
         "<h2># Orchard</h2>",
@@ -2093,7 +2115,7 @@ fn browse(w: *World) !void {
     if ((std.mem.indexOf(u8, own.body, "<h2># Shed</h2>") orelse 0) < (std.mem.indexOf(u8, own.body, "<h2># Orchard</h2>") orelse return error.OwnTopicMissing)) return error.BrowseOutOfOrder;
     // Rue is in no channel, and sees Pip as a human with no DM yet.
     const theirs = try get(w.a, w.port(), "/chat/browse", rue);
-    if (has(theirs.body, "# Orchard") or !has(theirs.body, try std.fmt.allocPrint(w.a, "action=\"/chat/dm/{s}\"", .{p}))) return error.RueSeesWrong;
+    if (has(theirs.body, "# Orchard") or !has(theirs.body, try std.fmt.allocPrint(w.a, "action=\"/chat/dm/{s}\"", .{try pairOf(w.a, p, r)}))) return error.RueSeesWrong;
 
     const out = try get(w.a, w.port(), "/chat/browse", "");
     if (out.status != 303 or !std.mem.eql(u8, out.header("location") orelse "", "/login?next=%2Fchat%2Fbrowse")) return error.NotToLogin;
@@ -2137,14 +2159,16 @@ fn topicPage(w: *World) !void {
     if (empty.status != 200 or !has(empty.body, "<p id=chat-empty class=muted>No messages yet. Say hello 👋</p>") or has(empty.body, "class=chat-msg")) return error.NoEmptyState;
 
     // A DM's page, from each side, titled by the other's name.
-    const dm = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.quin);
+    // One page for the DM, the same URL for both of its humans.
+    const dm = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{try pairOf(w.a, x.p, x.q)}), x.quin);
     if (dm.status != 200 or !has(dm.body, "<span class=\"chat-top-title\">Chat w/" ++ pip_name_escaped ++ ": ChitChat</span>")) return error.NoDmPage;
-    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.q}), x.pip)).body, "<span class=\"chat-top-title\">Chat w/Person 1041: ChitChat</span>")) return error.NoDmPage;
+    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{try pairOf(w.a, x.p, x.q)}), x.pip)).body, "<span class=\"chat-top-title\">Chat w/Person 1041: ChitChat</span>")) return error.NoDmPage;
     // Pip's self-DM has no ChitChat: the 404 of a topic not there.
-    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}), x.pip)).status != 404) return error.NoTopicRead;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{try pairOf(w.a, x.p, x.p)}), x.pip)).status != 404) return error.NoTopicRead;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{try pairBackwards(w.a, x.p, x.q)}), x.pip)).status != 404) return error.BackwardsPairShown;
 
     // Who may not read it: a stranger, the same 404 as no topic at all.
-    const closed = [_][]const u8{ "/chat/channel/Orchard/Banana", "/chat/channel/Orchard/Banana/stream", "/chat/channel/Orchard/Banana/earlier?before=2", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{x.p}) };
+    const closed = [_][]const u8{ "/chat/channel/Orchard/Banana", "/chat/channel/Orchard/Banana/stream", "/chat/channel/Orchard/Banana/earlier?before=2", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat", .{try pairOf(w.a, x.p, x.q)}) };
     for (closed) |path| if ((try get(w.a, w.port(), path, x.rue)).status != 404) return error.StrangerRead;
     // The page says why, as the old app's did: a channel not there and one
     // you are not in alike; a topic not there named. The stream and the
@@ -2283,7 +2307,7 @@ fn composeSends(w: *World) !void {
     if (has(after.body, "\"id\":104")) return error.RefusalStored;
 
     // A DM's box sends to the DM's topic.
-    const dm = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/send", .{x.p}), x.quin, "back at you");
+    const dm = try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/send", .{try pairOf(w.a, x.p, x.q)}), x.quin, "back at you");
     if (dm.status != 201 or !has(dm.body, "data-ref=\"ChitChat_")) return error.DmNotSent;
 
     for ([_][]const u8{ "/keys.js", "/compose.js", "/palette.js", "/keyhelp.js" }) |path| {
@@ -2305,7 +2329,8 @@ fn recentFeed(w: *World) !void {
     if (page.status != 200) return error.NoRecent;
     const b = page.body;
     const banana = "<a class=recent-tile href=\"/chat/channel/Orchard/Banana\" data-key=\"/chat/channel/Orchard/Banana\" data-ts=";
-    const dm = try std.fmt.allocPrint(w.a, "<a class=recent-tile href=\"/chat/dm/{s}/ChitChat\" data-key=\"/chat/dm/{s}/ChitChat\" data-ts=", .{ x.p, x.p });
+    const pq = try pairOf(w.a, x.p, x.q);
+    const dm = try std.fmt.allocPrint(w.a, "<a class=recent-tile href=\"/chat/dm/{s}/ChitChat\" data-key=\"/chat/dm/{s}/ChitChat\" data-ts=", .{ pq, pq });
     const apple = "<a class=recent-tile href=\"/chat/channel/Orchard/apple\" data-key=\"/chat/channel/Orchard/apple\" data-ts=0>";
     const want = [_][]const u8{
         "<a href=\"/chat/browse\">Browse</a> · <strong>Recent</strong>",
@@ -2381,7 +2406,7 @@ fn quoteEdit(w: *World) !void {
     const fenced = try get(w.a, w.port(), base ++ "/quote?n=105", x.pip);
     if (!has(fenced.body, "In MSG_Orchard.Banana_105 you said:\\n~~~~~ quote\\nsee\\n~~~~ quote\\ninner\\n~~~~\\n~~~~~\\n\\n")) return error.FenceWrong;
     // A DM's reference is the short one.
-    const dm_quote = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/quote?n=1", .{x.p}), x.quin);
+    const dm_quote = try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/quote?n=1", .{try pairOf(w.a, x.p, x.q)}), x.quin);
     if (dm_quote.status != 200 or !has(dm_quote.body, "\"In MSG_ChitChat_1 ")) return error.DmQuoteWrong;
 
     // An edit: one's own alone.
@@ -2503,8 +2528,8 @@ fn saveReadingList(w: *World) !void {
     if (!has(b, "<form class=saved-renote method=post action=\"/chat/saved/2/note\"><input name=note value=\"look again\"")) return error.ListWrong;
     if (!has(b, "<form class=saved-delete method=post action=\"/chat/saved/1/delete\"><button>Remove</button></form>")) return error.ListWrong;
     // A DM's save goes back by the other member, for the saver.
-    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/save", .{x.p}), x.quin, "n=1")).status != 201) return error.NotSaved;
-    if (!has((try get(w.a, w.port(), "/chat/saved", x.quin)).body, try std.fmt.allocPrint(w.a, "href=\"/chat/dm/{s}/ChitChat#msg-1\"", .{x.p}))) return error.DmWayBackWrong;
+    if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/save", .{try pairOf(w.a, x.p, x.q)}), x.quin, "n=1")).status != 201) return error.NotSaved;
+    if (!has((try get(w.a, w.port(), "/chat/saved", x.quin)).body, try std.fmt.allocPrint(w.a, "href=\"/chat/dm/{s}/ChitChat#msg-1\"", .{try pairOf(w.a, x.p, x.q)}))) return error.DmWayBackWrong;
     // Pip's list is his own: empty.
     if (!has((try get(w.a, w.port(), "/chat/saved", x.pip)).body, "Nothing saved yet.")) return error.ListLeaked;
 
@@ -2655,14 +2680,16 @@ fn uploadUrl(body: []const u8) ![]const u8 {
 /// the compose box's form, its one part `file`, an image by its bytes, kept
 /// in the topic's folder by a fresh name of 32 hex digits and the
 /// extension its bytes give, its uploader's bytes counted in decimal; the
-/// answer its URL, `/chat/uploads/<channel>/<topic>/<name>`, and the
+/// answer its URL, under its topic's page (`.../uploads/<name>`), and the
 /// browser's name. Served to the topic's readers alone, by that one URL
-/// (a DM's the same for both its humans), its type by its extension,
+/// (a DM's the same for both its humans, kept under `chat/dms/<pair>`),
+/// from its own topic's folder alone (another topic's path for its name
+/// finds nothing; the old `/chat/uploads/...` is gone), its type by its extension,
 /// `nosniff`, kept for good; posted, the renderer draws it. Refusals in
 /// the old words: no file a 400, not an image a 415, past 10 MiB a 413,
 /// past the allowance a 403 (nothing kept, nothing counted); a stranger
 /// 404s to the upload and to the image, signed out a 401, a key a 403 to
-/// the upload, a GET of the upload a 405.
+/// both (an image is its page's, a browser's), a GET of the upload a 405.
 fn uploads(w: *World) !void {
     const x = browsing orelse return error.NoBrowsing;
     const base = "/chat/channel/Orchard/Banana";
@@ -2670,7 +2697,7 @@ fn uploads(w: *World) !void {
     const up = try send(w.a, w.port(), "POST", base ++ "/upload", typed, try uploadForm(w.a, "file", "cat.png", png_bytes));
     if (up.status != 200 or !std.mem.startsWith(u8, up.header("content-type") orelse "", "application/json")) return error.NotUploaded;
     const url = try uploadUrl(up.body);
-    const prefix = "/chat/uploads/orchard/banana/";
+    const prefix = base ++ "/uploads/";
     if (!std.mem.startsWith(u8, url, prefix) or url.len != prefix.len + 32 + 4 or !std.mem.endsWith(u8, url, ".png")) return error.UploadUrlWrong;
     for (url[prefix.len .. prefix.len + 32]) |c| if (!std.ascii.isDigit(c) and !(c >= 'a' and c <= 'f')) return error.UploadUrlWrong;
     if (!std.mem.endsWith(u8, up.body, ",\"name\":\"cat.png\",\"kind\":\"image\",\"width\":0,\"height\":0}")) return error.UploadAnswerWrong;
@@ -2685,21 +2712,28 @@ fn uploads(w: *World) !void {
     const seen = try get(w.a, w.port(), url, x.pip);
     if (seen.status != 200 or !std.mem.eql(u8, seen.body, png_bytes) or !std.mem.eql(u8, seen.header("content-type") orelse "", "image/png")) return error.UploadNotServed;
     if (!std.mem.eql(u8, seen.header("x-content-type-options") orelse "", "nosniff") or !std.mem.eql(u8, seen.header("cache-control") orelse "", "private, max-age=31536000, immutable")) return error.UploadHeadersWrong;
-    // A stranger, a key of no member, a name no upload has: the one 404; signed out a 401.
+    // A stranger, a name no upload has: the one 404; signed out a 401; a
+    // key a 403, as for every page (an image is the page's, a browser's).
     if ((try get(w.a, w.port(), url, x.rue)).status != 404) return error.StrangerSawUpload;
-    if ((try send(w.a, w.port(), "GET", url, .{ .key = x.pal_key }, "")).status != 404) return error.KeySawUpload;
+    if ((try send(w.a, w.port(), "GET", url, .{ .key = x.pal_key }, "")).status != 403) return error.KeySawUpload;
     if ((try get(w.a, w.port(), prefix ++ "00000000000000000000000000000000.png", x.pip)).status != 404) return error.NoUploadServed;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/channel/Orchard/apple/uploads/{s}", .{url[prefix.len..]}), x.pip)).status != 404) return error.UploadInAnotherTopic;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/uploads/orchard/banana/{s}", .{url[prefix.len..]}), x.pip)).status != 404) return error.OldUploadUrlServed;
     if ((try get(w.a, w.port(), url, "")).status != 401) return error.NobodySawUpload;
     // Posted, the renderer draws it.
     const posted = try send(w.a, w.port(), "POST", base ++ "/send", .{ .cookie = x.quin }, try std.fmt.allocPrint(w.a, "<img src=\"{s}\" alt=\"cat.png\">", .{url}));
     if (posted.status != 201 or !has(posted.body, try std.fmt.allocPrint(w.a, "<img src=\"{s}\" alt=\"cat.png\">", .{url}))) return error.UploadNotDrawn;
 
     // A DM's: one URL for both its humans; a third human never reaches it.
-    const lo, const hi = if (try std.fmt.parseInt(u64, x.p, 10) < try std.fmt.parseInt(u64, x.q, 10)) .{ x.p, x.q } else .{ x.q, x.p };
-    const dm_up = try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/upload", .{x.q}), .{ .cookie = x.pip, .content_type = upload_type }, try uploadForm(w.a, "file", "dm.png", png_bytes));
+    const pq = try pairOf(w.a, x.p, x.q);
+    const dm_up = try send(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/upload", .{pq}), .{ .cookie = x.pip, .content_type = upload_type }, try uploadForm(w.a, "file", "dm.png", png_bytes));
     if (dm_up.status != 200) return error.DmNotUploaded;
     const dm_url = try uploadUrl(dm_up.body);
-    if (!std.mem.startsWith(u8, dm_url, try std.fmt.allocPrint(w.a, "/chat/uploads/dm-{s}-{s}/chitchat/", .{ lo, hi }))) return error.DmUrlWrong;
+    const dm_prefix = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/uploads/", .{pq});
+    if (!std.mem.startsWith(u8, dm_url, dm_prefix)) return error.DmUrlWrong;
+    const dm_kept = try w.rig.data.readFile(io, try std.fmt.allocPrint(w.a, "chat/dms/{s}/topics/chitchat/uploads/{s}", .{ pq, dm_url[dm_prefix.len..] }), &buf);
+    if (!std.mem.eql(u8, dm_kept, png_bytes)) return error.DmUploadNotKept;
+    if ((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/ChitChat/uploads/{s}", .{ try pairBackwards(w.a, x.p, x.q), dm_url[dm_prefix.len..] }), x.pip)).status != 404) return error.BackwardsPairUpload;
     if ((try get(w.a, w.port(), dm_url, x.quin)).status != 200 or (try get(w.a, w.port(), dm_url, x.pip)).status != 200) return error.DmUploadNotServed;
     if ((try get(w.a, w.port(), dm_url, x.rue)).status != 404) return error.StrangerSawDmUpload;
 
@@ -2827,24 +2861,25 @@ fn stevesPath(w: *World) !void {
     const alice = try signUp(w.a, w.port(), 1063);
     const s = try hid(w.a, 1062);
     const a = try hid(w.a, 1063);
+    const sa = try pairOf(w.a, s, a);
     // (1) Browse, and (2) Alice's row: the Add topic form, "general" offered.
     const b = try get(w.a, w.port(), "/chat/browse", steve);
-    const form = try std.fmt.allocPrint(w.a, "<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\">", .{a});
+    const form = try std.fmt.allocPrint(w.a, "<form class=add-topic method=post action=\"/chat/dm/{s}\"><input name=topic placeholder=\"new topic\" required value=\"general\">", .{sa});
     if (b.status != 200 or !has(b.body, form)) return error.NoTopicForm;
     // (3) a topic named; (4) the browser lands on its page, empty.
-    const made = try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{a}), "topic=plans");
-    const mine = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/plans", .{a});
+    const made = try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{sa}), "topic=plans");
+    const mine = try std.fmt.allocPrint(w.a, "/chat/dm/{s}/plans", .{sa});
     if (made.status != 303 or !std.mem.eql(u8, made.header("location") orelse "", mine)) return error.NotLandedOnTopic;
     const empty = try get(w.a, w.port(), mine, steve);
     if (empty.status != 200 or !has(empty.body, "No messages yet") or !has(empty.body, "id=chat-form")) return error.TopicNotEmpty;
     // (5, 6) typed and sent; (7) seen on the page, and by Alice on hers.
     if ((try request(w.a, w.port(), "POST", try std.fmt.allocPrint(w.a, "{s}/send", .{mine}), steve, "hello Alice")).status != 201) return error.NotSent;
     if (!has((try get(w.a, w.port(), mine, steve)).body, "hello Alice")) return error.NotSeen;
-    if (!has((try get(w.a, w.port(), try std.fmt.allocPrint(w.a, "/chat/dm/{s}/plans", .{s}), alice)).body, "hello Alice")) return error.AliceDoesNotSee;
-    // The topic is on both Browse pages now, and named twice is a 409.
-    if (!has((try get(w.a, w.port(), "/chat/browse", alice)).body, try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/plans\">plans</a>", .{s}))) return error.NotOnBrowse;
-    if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{a}), "topic=plans")).status != 409) return error.NamedTwice;
-    if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{a}), "topic=no+spaces")).status != 400) return error.BadNameTaken;
+    if (!has((try get(w.a, w.port(), mine, alice)).body, "hello Alice")) return error.AliceDoesNotSee;
+    // The topic is on both Browse pages now, by the one URL, and named twice is a 409.
+    if (!has((try get(w.a, w.port(), "/chat/browse", alice)).body, try std.fmt.allocPrint(w.a, "<a href=\"/chat/dm/{s}/plans\">plans</a>", .{sa}))) return error.NotOnBrowse;
+    if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{sa}), "topic=plans")).status != 409) return error.NamedTwice;
+    if ((try pagePost(w, steve, try std.fmt.allocPrint(w.a, "/chat/dm/{s}", .{sa}), "topic=no+spaces")).status != 400) return error.BadNameTaken;
     // A channel member adds a topic the same way; a stranger can't.
     const x = browsing orelse return error.NoBrowsing;
     const pears = try pagePost(w, x.quin, "/chat/channel/Orchard", "topic=Pears");

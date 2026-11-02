@@ -147,11 +147,22 @@ the same commit.
 - **Uploaded images are kept as the old app kept them** (Steve, 2026-11-02):
   in the topic's own folder, served to the topic's readers alone, with the
   old limits (10 MiB an image, 1 GiB a human in all, counted in decimal in
-  a file of its own). Where roc-chat differs: the URL names the topic by
-  its channel's and topic's keys (`/chat/uploads/<channel>/<topic>/<name>`),
-  since a DM's page path is the viewer's; and the image is written before
-  it is counted (a failed write fails the request, so the old "give the
-  bytes back" could not run). Screencasts (video) are not yet ported.
+  a file of its own), under the topic's page (`.../uploads/<name>`). Where
+  roc-chat differs: the image is written before it is counted (a failed
+  write fails the request, so the old "give the bytes back" could not
+  run); a key gets a 403, as for every page. Screencasts (video) are not
+  yet ported.
+- **A DM is a pair's, named by its ids** (Steve, 2026-11-02): almost a
+  channel built in for every two humans (not called a channel to people),
+  named `<lower id>_<higher id>` in NUMBER order (`7_11`, never `11_7`;
+  `5_5` a self-DM). Ids are no secret: "knowing that Alice is the 5th user"
+  is fine. Below the DM-or-channel level everything is one scheme: URLs
+  (`/chat/dm/7_11/<topic>/...` beside `/chat/channel/<name>/<topic>/...`,
+  `/dms/7_11/...` beside `/channels/<name>/...`) and folders
+  (`chat/dms/7_11/` beside `chat/channels/<name>/`), the same for both
+  humans. No channel's name is ever a pair's (the rule refuses a leading
+  digit and `_`). **The store asks for proof of the read** (Topic.Readable)
+  before it touches a topic's uploads, so images are safe by construction.
 - **After every chunk, a cold agent reviews it adversarially.** Its first
   question is a divergence from the Zig chat with no stated reason
   (`docs/design/browser-client-review.md`).

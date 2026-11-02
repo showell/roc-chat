@@ -84,7 +84,7 @@ ChannelCodec := [].{
 name_from : List(U8) -> Try(ChannelName, [BadValue(Str)])
 name_from = |value|
 	match Str.from_utf8(value) {
-		Ok(text) => ChannelName.from_str(text).map_err(|_| BadValue("name"))
+		Ok(text) => ChannelName.from_stored(text).map_err(|_| BadValue("name"))
 		Err(_) => crash "ChannelCodec.name_from: Stored.Reader.open checked the line is UTF-8"
 	}
 

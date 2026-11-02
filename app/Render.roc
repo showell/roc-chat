@@ -19,10 +19,11 @@ Render := [].{
 	html_of = |m| Md.render(m.body, Render.markdown)
 
 	## **WHAT THE CHAT TELLS THE RENDERER**: its uploads are the paths under
-	## `/chat/uploads/` (Uploads.prefix, UploadPage.roc), the only places a
-	## member's image may load from; none of the chat's other routes is one.
+	## a topic's page, `.../uploads/<name>` (Uploads.is_upload_path), the
+	## only places a member's image may load from; none of the chat's other
+	## routes is one.
 	markdown : Md.Options
-	markdown = { uploads: Md.uploads_under(Str.to_utf8(Uploads.prefix)) }
+	markdown = { uploads: Uploads.is_upload_path }
 
 	## The name a principal goes by, as the accounts say now; its id where
 	## no account holds it.

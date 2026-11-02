@@ -13,14 +13,15 @@
 ## - **ITS NAME IS FRESH AND SAYS ITS KIND**: 32 lowercase hex digits (16
 ##   random bytes) and the extension its bytes give, so no name a person
 ##   chose reaches the disk or a URL.
-## - **ITS URL NAMES ITS TOPIC BY KEYS**: `/chat/uploads/<channel>/<topic>/
-##   <name>`, the same for every reader, where a DM's page path is the
-##   viewer's (`/chat/dm/<the other>/…`); the old one named the
-##   conversation, the same for both, too.
+## - **ITS URL IS UNDER ITS TOPIC'S PAGE**: `<page>/uploads/<name>`
+##   (`/chat/channel/<name>/<topic>/…`, `/chat/dm/<pair>/<topic>/…`), the
+##   same for every reader; the renderer draws an image from such a path
+##   and no other (`is_upload_path`).
 import Bytes
+import ChannelName
 import JsonOut
 import SignInWeb
-import Topic
+import TopicName
 
 Uploads := [].{
 
@@ -162,14 +163,38 @@ Uploads := [].{
 			_ => Err(NotAnUpload)
 		}
 
-	## **WHERE AN UPLOAD IS SERVED**, the same for every reader.
-	url : Topic.At, Str -> Str
-	url = |at, name| "${Uploads.prefix}${at.channel.key()}/${at.topic.key()}/${name}"
+	## **WHERE AN UPLOAD IS SERVED**: under its topic's page (`page`, the
+	## same for every reader, Topics.page_path).
+	url : Str, Str -> Str
+	url = |page, name| "${page}/uploads/${name}"
 
-	## The path every upload's URL starts with: the renderer's rule for
-	## where a message's image may load from (Render.markdown).
-	prefix : Str
-	prefix = "/chat/uploads/"
+	## **WHETHER A PATH IS AN UPLOAD'S**: a channel's topic's page or a DM's,
+	## each name by its rule, then `uploads/` and an upload's name; the
+	## renderer's rule for where a message's image may load from
+	## (Render.markdown), and nothing else is one.
+	is_upload_path : List(U8) -> Bool
+	is_upload_path = |path|
+		match path.split_on('/') {
+			[
+				[],
+				chat,
+				kind,
+				place,
+				topic,
+				uploads,
+				name,
+			] if chat == "chat".to_utf8() and uploads == "uploads".to_utf8() => {
+				place_ok =
+					match Str.from_utf8(place) {
+						Ok(text) if kind == "channel".to_utf8() => ChannelName.from_str(text).is_ok()
+						Ok(text) if kind == "dm".to_utf8() => ChannelName.dm_from(text).is_ok()
+						_ => Bool.False
+					}
+				topic_ok = Str.from_utf8(topic).map_ok(|text| TopicName.from_str(text).is_ok()) ?? Bool.False
+				place_ok and topic_ok and Uploads.image_named(name).is_ok()
+			}
+			_ => Bool.False
+		}
 
 	## **THE UPLOAD'S ANSWER** (the old one's): its URL, the browser's name
 	## for it, its kind, and no size (0 and 0: the page's script then gives
@@ -321,6 +346,33 @@ expect
 		"${Str.repeat("0", 32)}",
 		"../${Str.repeat("0", 29)}.png",
 	].all(|name| Uploads.image_named(name.to_utf8()) == Err(NotAnUpload))
+
+# An upload's URL is under its topic's page; a path is an upload's only
+# under a channel's topic's page or a DM's, each name by its rule.
+expect Uploads.url("/chat/dm/7_11/Hi", "a.png") == "/chat/dm/7_11/Hi/uploads/a.png"
+expect {
+	name = "${Str.repeat("0", 32)}.png"
+	[
+		"/chat/dm/7_11/Hi/uploads/${name}",
+		"/chat/dm/5_5/Hi/uploads/${name}",
+		"/chat/channel/Lobby/Hi/uploads/${name}",
+	].all(|p| Uploads.is_upload_path(p.to_utf8()))
+}
+expect {
+	name = "${Str.repeat("0", 32)}.png"
+	[
+		"/chat/dm/11_7/Hi/uploads/${name}",
+		"/chat/dm/Lobby/Hi/uploads/${name}",
+		"/chat/channel/7_11/Hi/uploads/${name}",
+		"/chat/channel/Lobby/../uploads/${name}",
+		"/chat/channel/Lobby/Hi/uploads/x.png",
+		"/chat/channel/Lobby/Hi/stream",
+		"/chat/uploads/lobby/hi/${name}",
+		"/user_uploads/${name}",
+		"/chat/room/Lobby/Hi/uploads/${name}",
+		"https://evil.example/chat/channel/Lobby/Hi/uploads/${name}",
+	].all(|p| !Uploads.is_upload_path(p.to_utf8()))
+}
 
 # What was spent: decimal, space around it passed over; else unreadable.
 expect Uploads.uploaded_from("1234".to_utf8()) == Ok(1234) and Uploads.uploaded_from(" 7\n".to_utf8()) == Ok(7)

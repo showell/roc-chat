@@ -11,6 +11,7 @@
 ## its bubble shows "Edited in MSG_<the edit>" and the original in a
 ## spoiler. The last of several edits is the one named.
 import Cast
+import ChannelName
 import MessageCodec
 import MessageRef
 
@@ -449,12 +450,15 @@ expect {
 		NotEdited,
 	]
 }
-# A DM's edit, by its short reference or its full one.
+# A DM's edit, by its short reference, the one a DM's references are: the
+# full form never names a DM (its pair, `2_7`, holds a `_`).
 expect {
-	dm = at_of("dm-2-7", "ChitChat")
+	dm =
+		match at_of("Lobby", "ChitChat") {
+			InTopic(at) => InTopic({ ..at, channel: ChannelName.dm_of(7, 2) })
+		}
 	Edits.target(dm, "Edit of MSG_ChitChat_3\n\nx".to_utf8()) == Ok(3)
-		and Edits.target(dm, "Edit of MSG_dm-2-7.ChitChat_3".to_utf8()) == Ok(3)
-		and Edits.target(dm, "Edit of MSG_dm-2-8.ChitChat_3".to_utf8()) == Err(NotAnEdit)
+		and Edits.target(dm, "Edit of MSG_2_7.ChitChat_3".to_utf8()) == Err(NotAnEdit)
 }
 # A crafted body of 64 KB costs what a reference does: refused, or read to
 # its longest start, never parsed once per `-`.

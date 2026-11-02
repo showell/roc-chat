@@ -55,81 +55,49 @@ Topics := [].{
 		Post(Topic.At),
 		Stream(Topic.At),
 
-		## A human DM (`/dms`, `/dms/<n>/...`, `n` the other human's id):
-		## the pair's channel (ChannelName.dm_of), found from the asker's
-		## own id when they ask.
+		## `/dms`: the asker's DMs, or one made. A DM's own topics are the
+		## routes above, under `/dms/<pair>` (`7_11`) in place of
+		## `/channels/<name>`: one scheme for both.
 		Dms,
-		DmMake(Principal.HumanId),
-		DmRead({ other : Principal.HumanId, topic : TopicName }),
-		DmPost({ other : Principal.HumanId, topic : TopicName }),
-		DmStream({ other : Principal.HumanId, topic : TopicName }),
 	]
 
 	## The route a path names, if it names one.
 	route : List(U8) -> Try(Topics.Route, [NotTopics])
 	route = |path|
 		match path.split_on('/') {
-			[
-				[],
-				channels,
-				c,
-				topics,
-			] if channels == "channels".to_utf8() and topics == "topics".to_utf8() =>
-				channel_in(c).map_ok(|name| Make(name))
-			[
-				[],
-				channels,
-				c,
-				topics,
-				t,
-			] if channels == "channels".to_utf8() and topics == "topics".to_utf8() =>
-				Topics.at_in(c, t).map_ok(|at| Read(at))
-			[
-				[],
-				channels,
-				c,
-				topics,
-				t,
-				act,
-			] if channels == "channels".to_utf8() and topics == "topics".to_utf8() =>
-				if act == "messages".to_utf8() {
-					Topics.at_in(c, t).map_ok(|at| Post(at))
-				} else if act == "stream".to_utf8() {
-					Topics.at_in(c, t).map_ok(|at| Stream(at))
-				} else {
-					Err(NotTopics)
-				}
 			[[], dms] if dms == "dms".to_utf8() => Ok(Dms)
 			[
 				[],
-				dms,
-				n,
+				kind,
+				c,
 				topics,
-			] if dms == "dms".to_utf8() and topics == "topics".to_utf8() =>
-				human_in(n).map_ok(|other| DmMake(other))
+			] if topics == "topics".to_utf8() =>
+				place_in(kind, c).map_ok(|name| Make(name))
 			[
 				[],
-				dms,
-				n,
+				kind,
+				c,
 				topics,
 				t,
-			] if dms == "dms".to_utf8() and topics == "topics".to_utf8() =>
-				Topics.dm_in(n, t).map_ok(|d| DmRead(d))
+			] if topics == "topics".to_utf8() =>
+				topic_in(place_in(kind, c)?, t).map_ok(|at| Read(at))
 			[
 				[],
-				dms,
-				n,
+				kind,
+				c,
 				topics,
 				t,
 				act,
-			] if dms == "dms".to_utf8() and topics == "topics".to_utf8() =>
+			] if topics == "topics".to_utf8() => {
+				at = topic_in(place_in(kind, c)?, t)?
 				if act == "messages".to_utf8() {
-					Topics.dm_in(n, t).map_ok(|d| DmPost(d))
+					Ok(Post(at))
 				} else if act == "stream".to_utf8() {
-					Topics.dm_in(n, t).map_ok(|d| DmStream(d))
+					Ok(Stream(at))
 				} else {
 					Err(NotTopics)
 				}
+			}
 			_ => Err(NotTopics)
 		}
 
@@ -149,28 +117,6 @@ Topics := [].{
 					Get => list_dms!({})
 					_ => Chat.not_allowed(Post)
 				}
-			DmMake(other) =>
-				match dm_name!(other) {
-					Err(answer) => answer
-					Ok(name) =>
-						match req.method {
-							Post => make!(name)
-							Get => list!(name)
-							_ => Chat.not_allowed(Post)
-						}
-				}
-			DmRead({ other, topic }) => if (req.method == Get) in_dm!(
-				{ other, topic },
-				read!,
-			) else Chat.not_allowed(Get)
-			DmPost({ other, topic }) => if (req.method == Post) in_dm!(
-				{ other, topic },
-				post!,
-			) else Chat.not_allowed(Post)
-			DmStream({ other, topic }) => if (req.method == Get) in_dm!(
-				{ other, topic },
-				stream!,
-			) else Chat.not_allowed(Get)
 			Read(at) => if (req.method == Get) read!(at) else Chat.not_allowed(Get)
 			Post(at) => if (req.method == Post) post!(at) else Chat.not_allowed(Post)
 			Stream(at) => if (req.method == Get) stream!(at) else Chat.not_allowed(Get)
@@ -291,26 +237,16 @@ Topics := [].{
 		# A DM's place is its other member, for this reader (a self-DM's, the
 		# reader); a channel's, its name.
 		others = members.keep_if(|b| b.id != reader)
-		other =
+		place =
 			if dm {
-				match (if (others.is_empty()) members else others).map(|b| b.id) {
-					[Human(h), ..] => Other({ id: Principal.Id.Human(h), human: h })
-					_ => NoOther
+				match (if (others.is_empty()) members else others) {
+					[b, ..] => Render.name_of(accounts, b.id)
+					[] => at.channel.to_str()
 				}
 			} else {
-				NoOther
+				at.channel.to_str()
 			}
-		(place, url) =
-			match other {
-				Other({ id, human }) => (
-					Render.name_of(accounts, id),
-					Topics.page_path(at, InDm(human)),
-				)
-				NoOther => (
-					at.channel.to_str(),
-					if (dm) "/chat/browse" else Topics.page_path(at, InChannel),
-				)
-			}
+		url = Topics.page_path(at)
 		match last {
 			NoMessage => {
 				url,
@@ -334,28 +270,34 @@ Topics := [].{
 		}
 	}
 
-	## **WHERE A TOPIC'S PAGE LIVES**, its names as they were made: a
-	## channel's under `/chat/channel`, a DM's under `/chat/dm/<the other
-	## human's id>`, the one spelling the page, Browse and Recent link to.
-	page_path : Topic.At, [InChannel, InDm(Principal.HumanId)] -> Str
-	page_path = |at, place|
-		match place {
-			InChannel => "/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
-			InDm(other) => "/chat/dm/${other.to_u64().to_str()}/${at.topic.to_str()}"
+	## **WHERE A TOPIC'S PAGE LIVES**, the same for every reader, its names
+	## as they were made: a channel's under `/chat/channel/<name>`, a DM's
+	## under `/chat/dm/<pair>` (`7_11`); below that, one scheme for both.
+	page_path : Topic.At -> Str
+	page_path = |at|
+		if at.channel.is_dm() {
+			"/chat/dm/${at.channel.to_str()}/${at.topic.to_str()}"
+		} else {
+			"/chat/channel/${at.channel.to_str()}/${at.topic.to_str()}"
 		}
 
 	## **WHETHER THE VIEWER READS THE TOPIC AT `at`** (Topic.read), and if
 	## not, why, in words that leak nothing: a channel that is not there and
 	## one the viewer is not a member of read alike (`NotYours`), as the old
 	## app's did, so no stranger learns which channels exist; a topic that
-	## is not there, or one a member may not read, is `NoTopic`.
+	## is not there, or one a member may not read, is `NoTopic`. Read, the
+	## proof of it (Topic.Readable), which a topic's uploads ask for.
 	verdict! : {
 		viewer : Access.Viewer,
 		accounts : List(Principal),
 		now : I64,
 	},
 	Topic.At => Try(
-		{ channel : Channel, topic : Topic },
+		{
+			channel : Channel,
+			topic : Topic,
+			readable : Topic.Readable,
+		},
 		[
 			SignedOut,
 			NotYours,
@@ -383,40 +325,28 @@ Topics := [].{
 				Err(Missing) => Err(unread)
 				Err(Failed) => Err(Failed)
 			}?
-		match topic.read({
+		match topic.readable({
 			viewer: v.viewer,
 			channel,
 			accounts: v.accounts,
 		}) {
-			Permitted => Ok({ channel, topic })
-			Refused(SignedOut) => Err(SignedOut)
-			Refused(_) => Err(unread)
+			Ok(readable) => Ok({
+				channel,
+				topic,
+				readable,
+			})
+			Err(SignedOut) => Err(SignedOut)
+			Err(_) => Err(unread)
 		}
 	}
 
-	## A topic's place in a path: its channel's name and its own.
+	## A channel's topic in a path: the channel's name and the topic's.
 	at_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
-	at_in = |c, t| {
-		channel = channel_in(c)?
-		topic =
-			match Str.from_utf8(t) {
-				Ok(text) => TopicName.from_str(text).map_err(|_| NotTopics)
-				Err(_) => Err(NotTopics)
-			}?
-		Ok({ channel, topic })
-	}
+	at_in = |c, t| topic_in(place_in("channels".to_utf8(), c)?, t)
 
-	## A DM's other and topic in a path.
-	dm_in : List(U8), List(U8) -> Try({ other : Principal.HumanId, topic : TopicName }, [NotTopics])
-	dm_in = |n, t| {
-		other = human_in(n)?
-		topic =
-			match Str.from_utf8(t) {
-				Ok(text) => TopicName.from_str(text).map_err(|_| NotTopics)
-				Err(_) => Err(NotTopics)
-			}?
-		Ok({ other, topic })
-	}
+	## A DM's topic in a path: the pair (`7_11`) and the topic's name.
+	dm_in : List(U8), List(U8) -> Try(Topic.At, [NotTopics])
+	dm_in = |pair, t| topic_in(place_in("dms".to_utf8(), pair)?, t)
 
 	## The `gap` event: the messages before `before` were not sent.
 	gap_frame : U64 -> List(U8)
@@ -538,49 +468,22 @@ lead_of = |at| [
 	("topic", JsonOut.string(at.topic.to_str())),
 ]
 
-## The channel's name in a path; none that its rule refuses.
-## A channel's name in a path; a DM's (`dm-`) is reached by `/dms` alone,
-## by the pair, never as a channel.
-channel_in : List(U8) -> Try(ChannelName, [NotTopics])
-channel_in = |bytes|
+## **THE PLACE A PATH NAMES**: `channels/<name>` a channel, by its rule;
+## `dms/<pair>` a DM, by its one spelling (ChannelName.dm_from, `7_11`).
+place_in : List(U8), List(U8) -> Try(ChannelName, [NotTopics])
+place_in = |kind, bytes|
 	match Str.from_utf8(bytes) {
-		Ok(text) =>
-			match ChannelName.from_str(text) {
-				Ok(name) if !name.is_dm() => Ok(name)
-				_ => Err(NotTopics)
-			}
+		Ok(text) if kind == "channels".to_utf8() => ChannelName.from_str(text).map_err(|_| NotTopics)
+		Ok(text) if kind == "dms".to_utf8() => ChannelName.dm_from(text).map_err(|_| NotTopics)
+		_ => Err(NotTopics)
+	}
+
+## The topic a path names in `channel`.
+topic_in : ChannelName, List(U8) -> Try(Topic.At, [NotTopics])
+topic_in = |channel, t|
+	match Str.from_utf8(t) {
+		Ok(text) => TopicName.from_str(text).map_ok(|topic| { channel, topic }).map_err(|_| NotTopics)
 		Err(_) => Err(NotTopics)
-	}
-
-## A human's id in a path, its digits (a DM's other).
-human_in : List(U8) -> Try(Principal.HumanId, [NotTopics])
-human_in = |bytes| Stored.id(
-	bytes,
-	{ name: "human", make: Principal.HumanId.from_u64 },
-).map_err(|_| NotTopics)
-
-## **THE DM'S CHANNEL, FOR THE ASKER**: the pair of the asker (a human,
-## by session or their own key) and `other`, the asker themselves for a
-## self-DM. Signed out, a 401; an agent or a bot has no DM: a 404.
-dm_name! : Principal.HumanId => Try(ChannelName, Chat.Answer)
-dm_name! = |other| {
-	v = Topics.load_viewer!({})?
-	match v.viewer.who() {
-		SignedOut => Err(not_signed_in)
-		Session(b) | Key(b) =>
-			match b.id {
-				Human(me) => Ok(ChannelName.dm_of(me.to_u64(), other.to_u64()))
-				_ => Err(no_such_dm)
-			}
-	}
-}
-
-## A DM route, its topic's place found for the asker, answered by `then!`.
-in_dm! : { other : Principal.HumanId, topic : TopicName }, (Topic.At => Chat.Answer) => Chat.Answer
-in_dm! = |{ other, topic }, then!|
-	match dm_name!(other) {
-		Err(answer) => answer
-		Ok(channel) => then!({ channel, topic })
 	}
 
 ## **/dms, POST**: the asker's DM with `with=human:<n>` (Channel.dm
@@ -616,7 +519,8 @@ start_dm_from! = |form| {
 	Ok(Wire.json(if (got.made) 201 else 200, dm_json(got.dm, v.accounts)))
 }
 
-## A DM as the wire spells it: its channel's name (`dm-<a>-<b>`), and its
+## A DM as the wire spells it: its pair (`7_11`, the place `/dms/<pair>`
+## names), and its
 ## two members.
 dm_json : Channel, List(Principal) -> JsonOut
 dm_json = |dm, accounts|
@@ -777,12 +681,12 @@ read_by! : {
 Topic.At => Try(Asked, Chat.Answer)
 read_by! = |v, at|
 	match Topics.verdict!(v, at) {
-		Ok({ channel, topic }) => Ok({
+		Ok(found) => Ok({
 			viewer: v.viewer,
 			accounts: v.accounts,
 			now: v.now,
-			channel,
-			topic,
+			channel: found.channel,
+			topic: found.topic,
 		})
 		Err(SignedOut) => Err(not_signed_in)
 		Err(NotYours) => Err(no_such_channel)
@@ -1262,13 +1166,23 @@ expect ref_text(
 	{ channel: ChannelName.dm_of(1, 2), topic: at_of("Lobby", "ChitChat").topic },
 	4,
 ) == "MSG_ChitChat_4"
-expect Topics.route("/channels/dm-1-2/topics".to_utf8()).is_err()
 expect Topics.route("/dms".to_utf8()) == Ok(Dms)
+# A DM's routes are a channel's, under `/dms/<pair>`: the pair in number order.
 expect
-	match Topics.route("/dms/7/topics/ChitChat/messages".to_utf8()) {
-		Ok(DmPost({ other, topic: _ })) => other.to_u64() == 7
+	match Topics.route("/dms/7_11/topics/ChitChat/messages".to_utf8()) {
+		Ok(Post(at)) => at.channel == ChannelName.dm_of(11, 7) and at.topic.to_str() == "ChitChat"
 		_ => Bool.False
 	}
-expect Topics.route("/dms/07/topics".to_utf8()).is_err()
-expect Topics.route("/dms/0/topics".to_utf8()).is_err()
-expect Topics.route("/dms/human:7/topics".to_utf8()).is_err()
+expect Topics.route("/dms/7_11/topics".to_utf8()) == Ok(Make(ChannelName.dm_of(7, 11)))
+expect Topics.route("/channels/Lobby/topics".to_utf8()) == Ok(Make(at_of("Lobby", "x").channel))
+# A pair in another spelling, a pair as a channel, a channel as a pair, another kind: none.
+expect
+	[
+		"/dms/11_7/topics",
+		"/dms/07_11/topics",
+		"/dms/7/topics",
+		"/dms/Lobby/topics",
+		"/channels/7_11/topics",
+		"/rooms/Lobby/topics",
+		"/dms/7_11/topics/ChitChat/other",
+	].all(|path| Topics.route(path.to_utf8()).is_err())

@@ -32,6 +32,7 @@ import SignInWeb
 import Store
 import Stored
 import Topic
+import TopicName
 import Topics
 import UtcTime
 import Wire
@@ -169,11 +170,7 @@ serve! = |
 	list = SavedPage.load_for!(human)?
 	match route {
 		Page => Ok(
-			page({
-				list,
-				me: human,
-				viewer: Render.name_of(v.accounts, me.id),
-			}),
+			page({ list, viewer: Render.name_of(v.accounts, me.id) }),
 		)
 		Delete(id) => {
 			next = ReadingList.without(list, id).map_err(|NoSuchSave| no_such_save)?
@@ -217,18 +214,8 @@ no_such_save : Chat.Answer
 no_such_save = Wire.refused(404, "no such save on your reading list")
 
 ## **THE PAGE**: each save, newest first, or the empty list said.
-page : {
-	list : SavedCodec.Book,
-	me : Principal.HumanId,
-	viewer : Str,
-} -> Chat.Answer
-page = |
-	{
-		list,
-		me,
-		viewer,
-	},
-| {
+page : { list : SavedCodec.Book, viewer : Str } -> Chat.Answer
+page = |{ list, viewer }| {
 	saves = ReadingList.newest_first(list)
 	Chrome.page({
 		title: Html.markup("Saved"),
@@ -239,12 +226,7 @@ page = |
 		body: Html.join([
 			Html.markup("<div class=chat-notify id=chat-notify></div>\n<h2 class=saved-title>Reading list</h2>\n<div id=saved-list>\n"),
 			Html.join(
-				saves.map(
-					|e| entry({
-						e,
-						me,
-					}),
-				),
+				saves.map(entry),
 			),
 			Html.markup("</div>\n"),
 			if (saves.is_empty()) Html.markup("<p id=saved-empty class=muted>Nothing saved yet. Press s on a message, or its “save”, to keep it here.</p>\n") else Html.join([]),
@@ -255,16 +237,8 @@ page = |
 
 ## **ONE SAVE**, the old block's parts: the note, who and when and the way
 ## back, the body as it was; then its two forms.
-entry : {
-	e : SavedCodec.Fields,
-	me : Principal.HumanId,
-} -> Html
-entry = |
-	{
-		e,
-		me,
-	},
-| {
+entry : SavedCodec.Fields -> Html
+entry = |e| {
 	Html.join([
 		Html.markup("<article class=saved-entry id=saved-"),
 		Html.number(e.id),
@@ -281,11 +255,7 @@ entry = |
 		Html.text(UtcTime.fallback(e.at)),
 		Html.markup("</time> · <a class=saved-open href=\""),
 		Html.text(
-			way_back({
-				place: e.place,
-				n: e.n,
-				me,
-			}),
+			way_back({ place: e.place, n: e.n }),
 		),
 		Html.markup("\">↩ open in chat</a></div><div class=saved-body>"),
 		Html.escape(e.body),
@@ -300,55 +270,12 @@ entry = |
 }
 
 ## **THE WAY BACK** (the old `jumpURL`, built from the place the save
-## kept, never searched for): the topic's page at the message. A DM's page
-## is named by its other member, for the saver.
-way_back : {
-	place : Topic.At,
-	n : U64,
-	me : Principal.HumanId,
-} -> Str
-way_back = |
-	{
-		place,
-		n,
-		me,
-	},
-| {
-	anchor = "#msg-${n.to_str()}"
-	match dm_other(place.channel, me) {
-		Ok(other) => "${Topics.page_path(place, InDm(other))}${anchor}"
-		Err(NotADm) => "${Topics.page_path(place, InChannel)}${anchor}"
-	}
-}
-
-## **A DM'S OTHER MEMBER, FOR `me`**: the name `dm-<a>-<b>` read back, and
-## only when ChannelName.dm_of spells it so.
-dm_other : ChannelName, Principal.HumanId -> Try(Principal.HumanId, [NotADm])
-dm_other = |name, me|
-	if !name.is_dm() {
-		Err(NotADm)
-	} else {
-		match name.to_str().split_on("-") {
-			[
-				_,
-				a,
-				b,
-			] =>
-				match (U64.from_str(a), U64.from_str(b)) {
-					(Ok(x), Ok(y)) if ChannelName.dm_of(x, y) == name => {
-						other = if (x == me.to_u64()) y else x
-						Principal.HumanId.from_u64(other).map_err(|_| NotADm)
-					}
-					_ => Err(NotADm)
-				}
-			_ => Err(NotADm)
-		}
-	}
+## kept, never searched for): the topic's page at the message, a DM's the
+## same for both of its humans.
+way_back : { place : Topic.At, n : U64 } -> Str
+way_back = |{ place, n }| "${Topics.page_path(place)}#msg-${n.to_str()}"
 
 # ── tests
-human_of : U64 -> Principal.HumanId
-human_of = |n| Principal.HumanId.from_u64(n) ?? crash "human_of: a test's id is not 0"
-
 name_of : Str -> ChannelName
 name_of = |text| ChannelName.from_str(text) ?? crash "name_of: a test's name is a name"
 
@@ -360,8 +287,6 @@ expect SavedPage.route("/chat/saved/03/delete".to_utf8()) == Err(NotSaved)
 expect SavedPage.route("/chat/saved/3/other".to_utf8()) == Err(NotSaved)
 expect SavedPage.route("/chat/saved/".to_utf8()) == Err(NotSaved)
 
-# A DM's other member, for either of the two; a channel is none.
-expect dm_other(ChannelName.dm_of(2, 7), human_of(2)) == Ok(human_of(7))
-expect dm_other(ChannelName.dm_of(2, 7), human_of(7)) == Ok(human_of(2))
-expect dm_other(name_of("Orchard"), human_of(2)) == Err(NotADm)
-expect dm_other(name_of("dm-07-2"), human_of(2)) == Err(NotADm)
+# The way back: a channel's page, or a DM's, the same for both its humans, at the message.
+expect way_back({ place: { channel: name_of("Orchard"), topic: TopicName.from_str("Apple") ?? crash "a name" }, n: 3 }) == "/chat/channel/Orchard/Apple#msg-3"
+expect way_back({ place: { channel: ChannelName.dm_of(11, 7), topic: TopicName.from_str("Hi") ?? crash "a name" }, n: 9 }) == "/chat/dm/7_11/Hi#msg-9"

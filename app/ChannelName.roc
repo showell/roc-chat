@@ -35,20 +35,53 @@ ChannelName :: Str.{
 	key : ChannelName -> Str
 	key = |ChannelName.(name)| lowercase(name)
 
-	## **A DM'S CHANNEL** (human DMs: a pair of humans with topics, the same
-	## machinery as a channel's): `dm-<lower id>-<higher id>`, one name for
-	## the pair whichever of them asks. The `dm-` names are the DMs' alone:
-	## no admin makes one (Channel.make), and the channels' routes and
-	## listings never show one.
+	## **A PAIR OF HUMANS' DM** (Steve, 2026-11-02: almost a channel built
+	## in for every pair, the same machinery and layout): `<lower id>_<higher
+	## id>`, the ids in NUMBER order (`7_11`, never `11_7`), one name for the
+	## pair whichever of them asks; `5_5` is human 5's self-DM. Ids are no
+	## secret (Steve's call). The rule above never takes one (a channel's
+	## name starts with a letter and holds no `_`), so no channel is ever
+	## named as a DM.
 	dm_of : U64, U64 -> ChannelName
 	dm_of = |a, b| {
 		(lo, hi) = if (a <= b) (a, b) else (b, a)
-		ChannelName.("dm-${lo.to_str()}-${hi.to_str()}")
+		ChannelName.("${lo.to_str()}_${hi.to_str()}")
 	}
 
-	## Whether the name is a DM's (`dm-`, in any case).
+	## **THE DM A PATH OR A RECORD NAMES**: exactly the name `dm_of` gives
+	## its pair (each id a number with no leading zero, never 0, the lower
+	## first), so `11_7`, `07_11` and `7_011` name no DM.
+	dm_from : Str -> Try(ChannelName, [NotADm])
+	dm_from = |text| {
+		pair = ChannelName.dm_pair(ChannelName.(text))?
+		if (ChannelName.dm_of(pair.lo, pair.hi).to_str() == text) Ok(ChannelName.(text)) else Err(NotADm)
+	}
+
+	## **THE PAIR A DM'S NAME IS**, its lower id first; a channel's name is
+	## no pair.
+	dm_pair : ChannelName -> Try({ lo : U64, hi : U64 }, [NotADm])
+	dm_pair = |ChannelName.(name)|
+		match name.to_utf8().split_on('_') {
+			[a, b] =>
+				match (id_of(a), id_of(b)) {
+					(Ok(lo), Ok(hi)) if lo <= hi => Ok({ lo, hi })
+					_ => Err(NotADm)
+				}
+			_ => Err(NotADm)
+		}
+
+	## **A NAME AS STORED**: a channel's, by the rule, or a DM's, by
+	## `dm_from`: what a record that names where it is reads back.
+	from_stored : Str -> Try(ChannelName, [NotAChannelName])
+	from_stored = |text|
+		match ChannelName.from_str(text) {
+			Ok(name) => Ok(name)
+			Err(NotAChannelName) => ChannelName.dm_from(text).map_err(|_| NotAChannelName)
+		}
+
+	## Whether the name is a DM's.
 	is_dm : ChannelName -> Bool
-	is_dm = |ChannelName.(name)| lowercase(name).starts_with("dm-")
+	is_dm = |name| ChannelName.dm_pair(name).is_ok()
 
 	## Two names are one channel when they differ only in ASCII case.
 	is_eq : ChannelName, ChannelName -> Bool
@@ -58,6 +91,15 @@ ChannelName :: Str.{
 ## The longest name, in bytes.
 max_bytes : U64
 max_bytes = 40
+
+## An id as a DM's name writes it: digits, no leading zero, not 0.
+id_of : List(U8) -> Try(U64, [NotADm])
+id_of = |digits|
+	match digits {
+		[first, ..] if first >= '1' and first <= '9' and digits.all(|b| b >= '0' and b <= '9') =>
+			U64.from_int_digits(digits.map(|b| b - '0')).map_err(|_| NotADm)
+		_ => Err(NotADm)
+	}
 
 ## ASCII's lowercase of a name the rule took (ASCII alone).
 lowercase : Str -> Str
@@ -104,9 +146,31 @@ expect named("Cobblestone").key() == "cobblestone"
 expect named("cOBBLE-stone-9").key() == named("Cobble-Stone-9").key()
 expect [named("General")].contains(named("general"))
 
-expect ChannelName.dm_of(7, 2).to_str() == "dm-2-7"
-expect ChannelName.dm_of(2, 7) == ChannelName.dm_of(7, 2)
-expect ChannelName.dm_of(2, 7).is_dm()
-expect named("DM-2-7").is_dm()
-expect !named("dmz").is_dm()
-expect !named("Lobby").is_dm()
+# A DM's name: the ids in NUMBER order, whichever asks; 7 before 11.
+expect ChannelName.dm_of(11, 7).to_str() == "7_11" and ChannelName.dm_of(7, 11).to_str() == "7_11"
+expect ChannelName.dm_of(2, 7) == ChannelName.dm_of(7, 2) and ChannelName.dm_of(5, 5).to_str() == "5_5"
+expect ChannelName.dm_of(7, 11).is_dm() and ChannelName.dm_pair(ChannelName.dm_of(11, 7)) == Ok({ lo: 7, hi: 11 })
+expect !named("Lobby").is_dm() and !named("dm-2-7").is_dm() and named("Lobby").dm_pair() == Err(NotADm)
+# Read back: only the one spelling of a pair.
+expect ChannelName.dm_from("7_11") == Ok(ChannelName.dm_of(7, 11)) and ChannelName.dm_from("5_5").is_ok()
+expect
+	[
+		"11_7",
+		"07_11",
+		"7_011",
+		"0_1",
+		"7_",
+		"_7",
+		"7_11_12",
+		"7-11",
+		"a_1",
+		"7_1a",
+		"+7_11",
+		"",
+		"99999999999999999999_99999999999999999999",
+	].all(|text| ChannelName.dm_from(text) == Err(NotADm))
+# No channel is ever named as a DM: the rule refuses every `<number>_<number>`.
+expect ["7_11", "5_5", "1_2"].all(|text| ChannelName.from_str(text) == Err(NotAChannelName))
+# As stored: a channel's name or a DM's; anything else neither.
+expect ChannelName.from_stored("Lobby") == Ok(named("Lobby")) and ChannelName.from_stored("7_11") == Ok(ChannelName.dm_of(7, 11))
+expect ChannelName.from_stored("11_7") == Err(NotAChannelName) and ChannelName.from_stored("a_b") == Err(NotAChannelName)

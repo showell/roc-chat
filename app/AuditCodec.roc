@@ -555,7 +555,7 @@ channel_from = |value|
 		Ok(Unnamed)
 	} else {
 		match Str.from_utf8(value) {
-			Ok(text) => ChannelName.from_str(text).map_ok(|n| Named(n)).map_err(|_| BadValue("channel"))
+			Ok(text) => ChannelName.from_stored(text).map_ok(|n| Named(n)).map_err(|_| BadValue("channel"))
 			Err(_) => Err(BadValue("channel"))
 		}
 	}

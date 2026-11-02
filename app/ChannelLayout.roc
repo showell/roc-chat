@@ -8,6 +8,12 @@
 ##     chat/channels/<channel>/topics/<topic>/transcript     its messages
 ##     chat/channels/<channel>/topics/<topic>/offsets        where each starts
 ##     chat/channels/<channel>/topics/<topic>/tally          their count, bytes
+##     chat/channels/<channel>/topics/<topic>/reactions.jsonl  its reactions
+##     chat/channels/<channel>/topics/<topic>/uploads/<name>   its images
+##
+## **A DM IS LAID OUT AS A CHANNEL IS**, under `chat/dms/<pair>/`
+## (`7_11`, ChannelName.dm_of) in place of `chat/channels/<channel>/`:
+## below that, the same files.
 ##
 ## **ONE PLACE, ONE PATH**: names `==` (caselessly) give the same path, and
 ## different places different paths, so two channels' `ChitChat`s never
@@ -23,6 +29,11 @@ ChannelLayout := [].{
 	## The folder of every channel.
 	channels_path : List(U8)
 	channels_path = "chat/channels".to_utf8()
+
+	## **THE FOLDER OF EVERY DM** (ChannelName.dm_of): a pair's beside the
+	## channels, laid out as a channel's below it.
+	dms_path : List(U8)
+	dms_path = "chat/dms".to_utf8()
 
 	## A channel's own record: its name, as made, and its members.
 	channel_path : ChannelName -> List(U8)
@@ -59,9 +70,9 @@ ChannelLayout := [].{
 	upload_path = |at, name| "${topic_folder(at)}/uploads/${name}".to_utf8()
 }
 
-## A channel's folder.
+## A channel's folder, or a DM's.
 folder : ChannelName -> Str
-folder = |name| "chat/channels/${name.key()}"
+folder = |name| if (name.is_dm()) "chat/dms/${name.key()}" else "chat/channels/${name.key()}"
 
 ## A topic's folder, in its channel's.
 topic_folder : Topic.At -> Str

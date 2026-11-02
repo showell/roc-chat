@@ -52,6 +52,32 @@ Topic :: {
 	## A read's or a post's answer.
 	Verdict : [Permitted, Refused(Topic.Refusal)]
 
+	## **PROOF THAT A VIEWER MAY READ A TOPIC, NOW**: made by `readable`
+	## alone, when `read` permits, so the store's reads and writes of a
+	## topic's own files that take one (its uploads, Store.load_upload!) are
+	## reached by nothing that skipped the rule. Opaque.
+	Readable :: Topic.At.{
+
+		## The topic it proves the read of.
+		at : Topic.Readable -> Topic.At
+		at = |Topic.Readable.(place)| place
+	}
+
+	## **MAY THIS VIEWER READ THE TOPIC, NOW? AND THE PROOF IF SO**: as
+	## `read`, its refusal by name.
+	readable : Topic,
+	{
+		viewer : Access.Viewer,
+		channel : Channel,
+		accounts : List(Principal),
+	} -> Try(Topic.Readable, _)
+	readable = |topic, request|
+		allowed(
+			topic,
+			Read,
+			request,
+		).map_ok(|{}| Topic.Readable.(topic.at()))
+
 	## **A MEMBER MAKES A TOPIC** in `channel`, named `name`. Refused, in
 	## this order: nobody signed in (`SignedOut`); an account gone
 	## (`NoSuchPrincipal`); a name the rule refuses (`NotATopicName`); a key
