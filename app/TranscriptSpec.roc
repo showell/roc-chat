@@ -66,22 +66,6 @@ expect Transcript.read(Sample.plans, Transcript.write(Sample.two)) == Ok(Sample.
 # No messages: an empty file, both ways.
 expect Transcript.write(Conversation.empty(Sample.plans)) == ""
 expect Transcript.read(Sample.plans, "") == Ok(Conversation.empty(Sample.plans))
-# A store's one record: what `write` adds for the appended message.
-expect
-	Transcript.append(Conversation.empty(Sample.plans), Sample.hello)
-		== Ok({
-			conversation: Sample.conversation(Sample.plans, [Sample.hello]),
-			record: "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n",
-		})
-expect
-	Transcript.append(
-		Sample.conversation(Sample.plans, [Sample.hello]),
-		Sample.reply,
-	).map_ok(|{ conversation, record: added }| (conversation, added))
-		== Ok((
-			Sample.two,
-			"-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n",
-		))
 # The start and the end, each wrong alone.
 expect Transcript.read(Sample.plans, "\n") == Err(BadEnds)
 expect Transcript.read(
@@ -202,19 +186,10 @@ expect Transcript.read(Sample.plans, Transcript.write(edged)) == Ok(edged)
 expect
 	Transcript.write(Sample.conversation(Sample.plans, [said("")]))
 		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\n\n\n"
-# The most messages a store's `append` takes, at and over: the 65,535th
-# message's record, then none. The reader asks the same `next_id`.
-expect {
-	almost = Sample.almost_full({})
-	full = almost.append(Sample.reply) ?? crash "TranscriptSpec: the 65,535th message fits"
-	last = Transcript.append(almost, Sample.reply).map_ok(|appended| appended.record)
-	wanted = "-------------\nMSG_plans_65535\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
-	{ last, over: Transcript.append(full, Sample.hello) } == { last: Ok(wanted), over: Err(Full) }
-}
 # The reader at and over the most: 65,535 records read, one more refused.
 expect {
 	almost = Sample.almost_full({})
-	full = almost.append(Sample.reply) ?? crash "TranscriptSpec: the 65,535th message fits"
+	full = almost.append(Sample.reply).map_ok(|grown| grown.conversation) ?? crash "TranscriptSpec: the 65,535th message fits"
 	written = Transcript.write(full)
 	over = "${written}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
 	{

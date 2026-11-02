@@ -26,20 +26,6 @@ Transcript :: [].{
 	write : Conversation -> Str
 	write = |conversation| Str.join_with(conversation.messages().map(|m| record(conversation, m)), "")
 
-	## What `append` gives: the conversation grown by one, and the one
-	## message's record.
-	Appended : { conversation : Conversation, record : Str }
-
-	## **ONE MESSAGE'S RECORD, FOR A STORE TO APPEND**: the conversation
-	## with what arrived appended, and that message's record, so the file a
-	## store grows a record at a time is `write` of the conversation.
-	append : Conversation, Message.Arrival -> Try(Transcript.Appended, [Full])
-	append = |before, arrival| {
-		after = before.append(arrival)?
-		added = after.messages().last() ?? crash "Transcript.append: an append adds a message"
-		Ok({ conversation: after, record: record(after, added) })
-	}
-
 	## `topic`'s conversation, each message appended in turn, or the first
 	## thing wrong with the transcript.
 	read : Topic,
@@ -96,7 +82,7 @@ read_message = |c, written| {
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
 			time = DateTime.from_str(date).map_err(|why| DateTime(id, why))?
 			markdown = Separator.unescape(Str.join_with(body, "\n")).map_err(|BareSeparator| BadBody(id))?
-			c.append({ payload: { author, markdown }, time })
+			c.append({ payload: { author, markdown }, time }).map_ok(|grown| grown.conversation)
 		}
 		_ => Err(BadHead(id))
 	}

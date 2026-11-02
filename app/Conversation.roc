@@ -1,6 +1,6 @@
 ## **A CONVERSATION**: a topic and its messages, in id order. It stands
-## alone: no channel, no DM, no reader, no file. It grows only by `append`,
-## which makes each message the one after its latest, so a conversation
+## alone: no channel, no DM, no reader, no file. Opaque, so it grows only
+## by `append`, which numbers each message by `next_id`, so a conversation
 ## whose ids skip, repeat or run backwards can't be built.
 import Message
 import Topic
@@ -14,21 +14,21 @@ Conversation :: {
 	empty : Topic -> Conversation
 	empty = |topic| Conversation.({ topic, messages: [] })
 
-	## The conversation with what arrived added as its next message, its id
-	## and time given here, unless it already holds as many as an id can
-	## number.
-	append : Conversation, Message.Arrival -> Try(Conversation, [Full])
-	append = |Conversation.(c), arrival| {
-		added =
-			match c.messages.last() {
-				Ok(latest) => latest.after(arrival)?
-				Err(ListWasEmpty) => Message.first(arrival)
-			}
-		Ok(Conversation.({ ..c, messages: c.messages.append(added) }))
+	## The conversation with what arrived added as its next message, and
+	## that message, numbered by `next_id`; unless it already holds as many
+	## as an id can number.
+	append : Conversation, Message.Arrival -> Try({ conversation : Conversation, added : Message }, [Full])
+	append = |conversation, arrival| {
+		id = Conversation.next_id(conversation)?
+		Conversation.(c) = conversation
+		added = Message.numbered({ id, arrival })
+		Ok({ conversation: Conversation.({ ..c, messages: c.messages.append(added) }), added })
 	}
 
-	## The id `append` gives the next message, unless the conversation is
-	## full.
+	## **THE NEXT MESSAGE'S ID, ITS ONE HOME**: 1 for the first, else the
+	## one after the latest's, unless the conversation is full. `append`
+	## numbers by it, and a reader asks it first, to name the message it is
+	## reading in a refusal.
 	next_id : Conversation -> Try(Message.Id, [Full])
 	next_id = |Conversation.(c)|
 		match c.messages.last() {

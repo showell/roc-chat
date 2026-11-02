@@ -60,7 +60,7 @@ Sample :: [].{
 	conversation = |topic, arrivals|
 		arrivals.fold(
 			Conversation.empty(topic),
-			|c, a| c.append(a) ?? crash "Sample.conversation: a test's conversation is not full",
+			|c, a| (c.append(a) ?? crash "Sample.conversation: a test's conversation is not full").conversation,
 		)
 
 	## `plans`'s hello and reply.
@@ -89,6 +89,6 @@ filled = |{ so_far, count }|
 		so_far
 	else
 		filled({
-			so_far: so_far.append(Sample.hello) ?? crash "Sample.filled: the conversation has room",
+			so_far: (so_far.append(Sample.hello) ?? crash "Sample.filled: the conversation has room").conversation,
 			count: count - 1,
 		})
