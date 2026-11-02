@@ -142,7 +142,7 @@ civil_from_days = |days| {
 padded : I64, U64 -> Str
 padded = |n, width| {
 	written = n.to_str()
-	"0".repeat(width - Str.count_utf8_bytes(written)) |> Str.concat(written)
+	"0".repeat(width - written.count_utf8_bytes()).concat(written)
 }
 
 ## The order of two forms' bytes, by the first that differs.

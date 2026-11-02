@@ -13,7 +13,12 @@
 --    expect that stops running fails here. Every `app/*Spec.roc` is
 --    imported by app/Specs.roc, the only run that reaches it.
 -- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
---    judges: names, errors, nesting, boundaries, stacking. Their other
+--    judges: names, errors, nesting, boundaries, stacking, and `methods`
+--    (no `Module.fn(x, ...)` call that would check as `x.fn(...)`, judged
+--    by Roc's own types from both apps, app/main.roc and app/Specs.roc; its
+--    trials are written in place and put back, so it runs under
+--    `--undo-on-stop`, and its calls left are the types' reasons, not
+--    findings). Their other
 --    counts are questions for a reader, so they print but don't gate:
 --    stack's long lines (a frozen answer or a long string has nothing to
 --    stack), boundaries' `single`, `entry`, `constant` and `bool_param`,
@@ -47,7 +52,7 @@ say(fmt.code == 0, "roc fmt --check app platform")
 -- 2. The expects, from each root; each of ours is a `PASS: app/<file>:<line>`.
 const roots = {
   {"test", "--verbose", "app/main.roc"},
-  {"test", "--verbose", "app/Specs.roc", "--main=app/main.roc"},
+  {"test", "--verbose", "app/Specs.roc"},
 }
 const passed = {}
 local all_passed = true
@@ -108,9 +113,13 @@ const hunts = {
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
   {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
+  {recipe = "methods", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}},
 }
 for h in hunts do
-  local argv = {"shale", real("cookbook:roc/" .. h.recipe .. ".shale"), "glob=app/**/*.roc"}
+  local argv = {"shale"}
+  for f in get(h, "flags", {}) do push(argv, f) end
+  push(argv, real("cookbook:roc/" .. h.recipe .. ".shale"))
+  push(argv, "glob=app/**/*.roc")
   for a in h.args do push(argv, a) end
   -- `whole`, not `tail`: `tail` cuts a long line, and name_hunt's summary
   -- runs past the cut to its last count, `taken_word`.
