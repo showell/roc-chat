@@ -25,7 +25,7 @@ Page :: [].{
 				Html.join([
 					Html.tag({
 						name: P,
-						attrs: [Class("empty")],
+						attrs: [Class(Empty)],
 						inner: Html.text("No messages yet."),
 					}),
 					newline,
@@ -59,11 +59,10 @@ Page :: [].{
 message : { topic : Topic, message : Message } -> Html
 message = |{ topic, message: m }| {
 	id = m.id()
-	anchor = "msg-${id.to_str()}"
 	header = Html.join([
 		Html.tag({
 			name: Span,
-			attrs: [Class("author")],
+			attrs: [Class(Author)],
 			inner: Html.text(m.author().to_str()),
 		}),
 		space,
@@ -75,13 +74,13 @@ message = |{ topic, message: m }| {
 		space,
 		Html.tag({
 			name: A,
-			attrs: [Class("ref"), Href("#${anchor}")],
+			attrs: [Class(Ref), Href(Anchor(id))],
 			inner: Html.text(Message.reference(topic, id)),
 		}),
 	])
 	article = Html.tag({
 		name: Article,
-		attrs: [Class("message"), Id(anchor)],
+		attrs: [Class(Message), Id(Anchor(id))],
 		inner: Html.join([
 			Html.tag({
 				name: Header,
@@ -91,7 +90,7 @@ message = |{ topic, message: m }| {
 			newline,
 			Html.tag({
 				name: Div,
-				attrs: [Class("body")],
+				attrs: [Class(Body)],
 				inner: Html.markdown(m.markdown()),
 			}),
 		]),

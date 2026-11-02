@@ -2,10 +2,11 @@
 ## module nothing makes one from a `Str`. The ways in: `text` (anything a
 ## person, an agent or a file supplied, escaped), `markdown` (a message's
 ## markdown, rendered by roc-markdown, the one HTML this chat does not
-## write), `tag` (an element the pages use, its attributes typed and their
-## values escaped), `doctype` and `style` (the page's head, fixed) and
+## write), `tag` (an element the pages use, each attribute's value built
+## from a closed set or a domain value, never from text), `doctype` and `style` (the page's head, fixed) and
 ## `join`. `to_str` is the one way out.
 import md.Md
+import Message
 import Timestamp
 
 Html :: Str.{
@@ -13,12 +14,20 @@ Html :: Str.{
 	## **AN ELEMENT A PAGE USES**: a closed set, so a tag's name is never data.
 	Name : [A, Article, Div, H1, Header, P, Span, Time, Title]
 
+	## **A CLASS A PAGE USES**: a closed set, so a class is never data.
+	Class : [Author, Body, Empty, Message, Ref]
+
+	## **A PLACE ON A PAGE**: what an element's id names and a link goes
+	## to, built only from a domain value, so no link leaves the page.
+	Target : [Anchor(Message.Id)]
+
 	## **AN ATTRIBUTE, ITS NAME BY ITS TAG**, so a name and its value can't
-	## be swapped, and a time is a `Timestamp`, never any text.
+	## be swapped, and no value is ever text: a class from its closed set,
+	## an id and a link from a `Target`, a time from a `Timestamp`.
 	Attribute : [
-		Class(Str),
-		Id(Str),
-		Href(Str),
+		Class(Html.Class),
+		Id(Html.Target),
+		Href(Html.Target),
 		Datetime(Timestamp),
 	]
 
@@ -100,14 +109,34 @@ name_of = |name|
 		Title => "title"
 	}
 
-## One attribute as an element's open tag writes it, space first.
+class_name : Html.Class -> Str
+class_name = |class|
+	match class {
+		Author => "author"
+		Body => "body"
+		Empty => "empty"
+		Message => "message"
+		Ref => "ref"
+	}
+
+## **A TARGET'S NAME**, `msg-<n>` for a message: the one home of its
+## spelling, which an element's id and a link's `#` both write.
+anchor_name : Html.Target -> Str
+anchor_name = |target|
+	match target {
+		Anchor(id) => "msg-${id.to_str()}"
+	}
+
+## One attribute as an element's open tag writes it, space first. Each
+## value is escaped as text too, so a value added to a set later can
+## still never close its quote.
 attribute : Html.Attribute -> Str
 attribute = |attr| {
 	(name, value) =
 		match attr {
-			Class(v) => ("class", v)
-			Id(v) => ("id", v)
-			Href(v) => ("href", v)
+			Class(class) => ("class", class_name(class))
+			Id(target) => ("id", anchor_name(target))
+			Href(target) => ("href", "#${anchor_name(target)}")
 			Datetime(t) => ("datetime", t.to_str())
 		}
 	" ${name}=\"${Html.text(value).to_str()}\""
@@ -117,21 +146,38 @@ attribute = |attr| {
 expect Html.text("Bea <i>x</i> & \"co\" 'q'").to_str() == "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;"
 expect Html.text("&lt;").to_str() == "&amp;lt;"
 expect Html.text("café 🎉").to_str() == "café 🎉"
-# A value holding a quote and a script is text inside its attribute.
-expect
-	Html.tag({
-		name: Span,
-		attrs: [Class("<script>\"")],
-		inner: Html.text("<i>"),
-	}).to_str()
-		== "<span class=\"&lt;script&gt;&quot;\">&lt;i&gt;</span>"
+# Every attribute a page can write: each class, and a message's anchor as
+# an id and as a link, at the first id and the next. No other value can be
+# written, so no `href` leaves the page.
+expect [Author, Body, Empty, Message, Ref].map(|class| attribute(Class(class))) == [
+	" class=\"author\"",
+	" class=\"body\"",
+	" class=\"empty\"",
+	" class=\"message\"",
+	" class=\"ref\"",
+]
+expect {
+	second = Message.Id.first.next() ?? crash "Html's tests: the first id has a next"
+	[
+		Id(Anchor(Message.Id.first)),
+		Href(Anchor(Message.Id.first)),
+		Id(Anchor(second)),
+		Href(Anchor(second)),
+	].map(attribute)
+		== [
+			" id=\"msg-1\"",
+			" href=\"#msg-1\"",
+			" id=\"msg-2\"",
+			" href=\"#msg-2\"",
+		]
+}
 expect
 	Html.tag({
 		name: A,
-		attrs: [Id("x"), Href("#y")],
-		inner: Html.join([]),
+		attrs: [Class(Ref), Href(Anchor(Message.Id.first))],
+		inner: Html.text("<i>"),
 	}).to_str()
-		== "<a id=\"x\" href=\"#y\"></a>"
+		== "<a class=\"ref\" href=\"#msg-1\">&lt;i&gt;</a>"
 expect
 	Html.tag({
 		name: P,
