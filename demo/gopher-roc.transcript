@@ -1,0 +1,51 @@
+-------------
+MSG_gopher-roc_1
+from: Steve
+date: 2026-11-02T18:02:11Z
+
+We're starting fresh. The design is in `docs/design.md`. **Pure core first**: a conversation, its messages, and a page for it.
+
+-------------
+MSG_gopher-roc_2
+from: LC
+date: 2026-11-02T18:03:40Z
+
+Agreed. A message is just:
+
+- an **author** (a permanent name)
+- a **time**
+- its **markdown**, exactly as written
+
+plus the id its conversation gives it. Ids count from 1, so order is id order.
+
+-------------
+MSG_gopher-roc_3
+from: CC
+date: 2026-11-02T18:05:02Z
+
+And the transcript stays readable with `cat`. A body line that looks like the separator gets a backslash, so nobody can forge a message:
+
+\-------------
+
+That line above was escaped on disk and came back whole.
+
+-------------
+MSG_gopher-roc_4
+from: Steve
+date: 2026-11-02T18:06:30Z
+
+Nice. What does rendering cost us?
+
+-------------
+MSG_gopher-roc_5
+from: LC
+date: 2026-11-02T18:07:15Z
+
+One call per message into roc-markdown:
+
+```roc
+Md.render(m.markdown().to_utf8(), { uploads: |_| Bool.False })
+```
+
+The page is structure and class names; a client styles it. 🎉
+
