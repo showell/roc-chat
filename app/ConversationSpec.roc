@@ -130,7 +130,7 @@ expect appended_alone(Conversation.empty(Sample.plans), [hello_at("0000-01-01T00
 # more, the 65,535th, and then none. The refusal past it is `Full`, asked
 # before the time: Steve's hello is also dated before CC's reply.
 expect {
-	almost = Sample.almost_full({})
+	almost = Sample.almost_full
 	grown = almost.append(Sample.reply) ?? crash "ConversationSpec: the 65,535th message fits"
 	full = grown.conversation
 	{

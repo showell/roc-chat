@@ -16,9 +16,8 @@
 --    judges: names, errors, nesting, boundaries, stacking. Their other
 --    counts are questions for a reader, so they print but don't gate:
 --    stack's long lines (a frozen answer or a long string has nothing to
---    stack), boundaries' `constant` (Sample.almost_full stays a `{}`
---    function so its work runs with its test, never in `roc check`), its
---    `single`, `entry` and `bool_param`, and name_hunt's
+--    stack), boundaries' `single`, `entry`, `constant` and `bool_param`,
+--    and name_hunt's
 --    `stacked_preposition`, which are rules of thumb.
 -- 4. Last, the demo built through the host, its page exactly the frozen
 --    demo/gopher-roc.html.

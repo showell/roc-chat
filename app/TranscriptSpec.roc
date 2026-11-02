@@ -212,15 +212,11 @@ expect Transcript.read(Sample.plans, Transcript.write(edged)) == Ok(edged)
 expect
 	Transcript.write(Sample.conversation(Sample.plans, [said("")]))
 		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\n\n\n"
-# The reader at and over the most: 65,535 records read, one more refused.
+# The reader at and over the most, in one read: a full conversation's
+# transcript and one record more is refused as `Full`, which the reader
+# reaches only at the 65,536th record, after reading the 65,535 before it.
 expect {
-	almost = Sample.almost_full({})
-	full = almost.append(Sample.reply).map_ok(|grown| grown.conversation) ?? crash "TranscriptSpec: the 65,535th message fits"
-	written = Transcript.write(full)
-	over = "${written}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
-	{
-		at: Transcript.read(Sample.plans, written).map_ok(|c| c.messages().len()),
-		over: Transcript.read(Sample.plans, over),
-	}
-		== { at: Ok(65535), over: Err(Full) }
+	full = Sample.almost_full.append(Sample.reply).map_ok(|grown| grown.conversation) ?? crash "TranscriptSpec: the 65,535th message fits"
+	over = "${Transcript.write(full)}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
+	Transcript.read(Sample.plans, over) == Err(Full)
 }

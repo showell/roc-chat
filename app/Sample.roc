@@ -55,12 +55,12 @@ Sample :: [].{
 	})
 
 	## `topic`'s conversation of `arrivals`, appended in order; a test's
-	## conversation is never full.
+	## conversation is never full, and its times never go backwards.
 	conversation : Topic, List(Message.Arrival) -> Conversation
 	conversation = |topic, arrivals|
 		arrivals.fold(
 			Conversation.empty(topic),
-			|c, a| (c.append(a) ?? crash "Sample.conversation: a test's conversation is not full").conversation,
+			|c, a| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated").conversation,
 		)
 
 	## `plans`'s hello and reply.
@@ -68,10 +68,11 @@ Sample :: [].{
 	two = Sample.conversation(Sample.plans, [Sample.hello, Sample.reply])
 
 	## **A CONVERSATION ONE MESSAGE SHORT OF FULL**: 65,534 of Steve's hello.
-	## A function, not a constant, so the work runs with the test, never in
-	## `roc check`'s compile-time evaluation.
-	almost_full : {} -> Conversation
-	almost_full = |{}| filled({ so_far: Conversation.empty(Sample.plans), count: 65534 })
+	## A constant, so the specs that need it share one, built once: the
+	## build is about a second of a cold run. Only the tests of the most a
+	## conversation holds use it.
+	almost_full : Conversation
+	almost_full = filled({ so_far: Conversation.empty(Sample.plans), count: 65534 })
 
 	## The first message's id.
 	first : Message.Id
