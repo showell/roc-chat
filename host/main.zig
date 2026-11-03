@@ -54,7 +54,13 @@ pub fn main(init: std.process.Init) !void {
     const dir = std.Io.Dir.cwd().openDir(io, folder, .{}) catch |e|
         std.process.fatal("the data folder {s} cannot be opened ({t})", .{ folder, e });
     const root: files.DataRoot = .{ .io = io, .dir = dir };
-    var server = try http.Server.listen(io, init.gpa, .{ .port = port, .root = &root, .public_origin = public_origin });
+    var server = http.Server.listen(io, init.gpa, .{ .port = port, .root = &root, .public_origin = public_origin }) catch |e| switch (e) {
+        error.SecretOpenToOthers => std.process.fatal(
+            "{s}/{s} may be read or written by others than its owner, so it signs no session: `chmod 600` it, or remove it and start again to make a new one (every session then ends)",
+            .{ folder, sign_in.secret_name },
+        ),
+        else => return e,
+    };
     std.debug.print("gopher-roc: http://127.0.0.1:{d}/, its data in {s}{s}{s}\n", .{ server.port(), folder, if (public_origin.len > 0) ", public as " else "", public_origin });
     try server.run();
 }

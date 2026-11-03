@@ -596,7 +596,7 @@ fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
     io.random(&salt);
     var hash_buf: [60]u8 = undefined;
     const hash = try std.crypto.pwhash.bcrypt.strHashWithSalt(steve_password, .{
-        .params = .{ .rounds_log = 4, .silently_truncate_password = false },
+        .params = .{ .rounds_log = 10, .silently_truncate_password = false },
         .encoding = .crypt,
     }, &hash_buf, salt);
     try data.writeFile(io, .{ .sub_path = "auth/1/password", .data = try std.fmt.allocPrint(a, "{s}\n", .{hash}) });

@@ -5,11 +5,12 @@
 //!
 //! The server's secret is a file in the data root, `.session-secret`, made
 //! once, at the server's first start, from 32 random bytes written as 64
-//! hex digits, readable by its owner alone. Its name starts with `.`, so
-//! the path rule (host/file_primitives.zig) keeps it from every file
-//! primitive: the app can sign and check bytes with it, and can never read
-//! it. Removing the file and starting the server again makes a new one,
-//! and every session signed with the old one stops admitting anyone.
+//! hex digits, readable by its owner alone; the server refuses to start on
+//! one that its group or anyone else may read or write. Its name starts
+//! with `.`, so the path rule (host/file_primitives.zig) keeps it from every
+//! file primitive: the app can sign and check bytes with it, and can never
+//! read it. Removing the file and starting the server again makes a new
+//! one, and every session signed with the old one stops admitting anyone.
 
 const std = @import("std");
 const Io = std.Io;
@@ -43,8 +44,9 @@ pub const ServerSecret = struct {
     }
 
     /// The secret in `dir`, the data root: made first when there is none.
-    /// A secret file shorter than 32 bytes or longer than 256 is refused
-    /// (`error.SecretUnusable`) rather than half used.
+    /// A secret file its group or anyone else may read or write is refused
+    /// (`error.SecretOpenToOthers`), as one shorter than 32 bytes or longer
+    /// than 256 is (`error.SecretUnusable`), rather than used.
     pub fn load_or_create(io: Io, dir: Io.Dir) !ServerSecret {
         create(io, dir) catch |e| switch (e) {
             error.PathAlreadyExists => {},
@@ -52,7 +54,17 @@ pub const ServerSecret = struct {
         };
         var s: ServerSecret = .{ .bytes = undefined, .len = 0 };
         var buf: [secret_most + 1]u8 = undefined;
-        const read = try dir.readFile(io, secret_name, &buf);
+        // The mode is read from the file that is read, so a file swapped
+        // between the two is never the one judged.
+        const file = try dir.openFile(io, secret_name, .{ .allow_directory = false });
+        defer file.close(io);
+        const st = try file.stat(io);
+        if (st.permissions.toMode() & 0o077 != 0) return error.SecretOpenToOthers;
+        var reader = file.reader(io, &.{});
+        const n = reader.interface.readSliceShort(&buf) catch |e| switch (e) {
+            error.ReadFailed => return reader.err.?,
+        };
+        const read = buf[0..n];
         if (read.len < secret_fewest or read.len > secret_most) return error.SecretUnusable;
         @memcpy(s.bytes[0..read.len], read);
         s.len = read.len;
@@ -88,14 +100,34 @@ fn hash_with_salt(password: []const u8, out: *[bcrypt_hash_length]u8, salt: [bcr
     }, out, salt) catch |e| std.debug.panic("bcrypt_hash_of_password: {t}", .{e});
 }
 
+/// The lowest and the highest cost a stored hash may name. Below 10 a hash
+/// is cheap to guess against; above 14 one check takes over a second, a
+/// cost a planted file could make every sign-in pay.
+pub const bcrypt_cost_lowest = 10;
+pub const bcrypt_cost_highest = 14;
+
+/// Whether `hash` is a bcrypt hash this server checks against: 60 bytes,
+/// `$2a$`, `$2b$` or `$2y$`, then a cost of two digits from
+/// `bcrypt_cost_lowest` to `bcrypt_cost_highest`, then a `$`. std checks the
+/// salt and the digest after it.
+pub fn is_acceptable_bcrypt_hash(hash: []const u8) bool {
+    if (hash.len != bcrypt_hash_length) return false;
+    const scheme = hash[0..4];
+    if (!std.mem.eql(u8, scheme, "$2a$") and !std.mem.eql(u8, scheme, "$2b$") and !std.mem.eql(u8, scheme, "$2y$")) return false;
+    if (!std.ascii.isDigit(hash[4]) or !std.ascii.isDigit(hash[5]) or hash[6] != '$') return false;
+    const cost = (hash[4] - '0') * 10 + (hash[5] - '0');
+    return cost >= bcrypt_cost_lowest and cost <= bcrypt_cost_highest;
+}
+
 /// Whether `password` is the one `hash` was made from; `not_a_bcrypt_hash`
-/// when `hash` is no bcrypt hash, so a torn file is never read as a wrong
+/// when `hash` is no bcrypt hash this server accepts
+/// (`is_acceptable_bcrypt_hash`), so a torn file is never read as a wrong
 /// password. A hash written as `$2a$` or `$2y$` is read as `$2b$`: the
 /// three name one computation, and std checks the whole string.
 pub const PasswordVerdict = enum(u8) { does_not_match, matches, not_a_bcrypt_hash };
 
 pub fn password_matches_bcrypt_hash(password: []const u8, hash: []const u8) PasswordVerdict {
-    if (hash.len != bcrypt_hash_length or !std.mem.startsWith(u8, hash, "$2")) return .not_a_bcrypt_hash;
+    if (!is_acceptable_bcrypt_hash(hash)) return .not_a_bcrypt_hash;
     var buf: [bcrypt_hash_length]u8 = undefined;
     @memcpy(&buf, hash);
     buf[2] = 'b';
@@ -158,6 +190,28 @@ test "no hash: empty, short, long, another scheme, or torn, is never a wrong pas
     }
 }
 
+test "a stored hash: `$2a$`, `$2b$` or `$2y$` at a cost of 10 to 14 is checked; any other scheme or cost is no hash" {
+    const rest = known_hash[7..];
+    inline for (.{ "$2a$10$", "$2b$10$", "$2y$10$", "$2b$11$", "$2b$14$" }) |head| {
+        try testing.expect(is_acceptable_bcrypt_hash(head ++ rest));
+    }
+    inline for (.{ "$2b$09$", "$2b$04$", "$2b$15$", "$2b$99$", "$2b$1a$", "$2b$10x", "$2x$10$", "$2$$10$", "$3b$10$", "x2b$10$" }) |head| {
+        try testing.expect(!is_acceptable_bcrypt_hash(head ++ rest));
+    }
+    // A real hash at cost 4, which std would check, is no hash here; the
+    // same password and salt at cost 10 matches.
+    const codec = std.base64.Base64Decoder.init("./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".*, null);
+    var salt: [bcrypt.salt_length]u8 = undefined;
+    try codec.decode(&salt, known_hash[7..29]);
+    var cheap_buf: [bcrypt_hash_length]u8 = undefined;
+    const cheap = try bcrypt.strHashWithSalt(known_password, .{
+        .params = .{ .rounds_log = 4, .silently_truncate_password = false },
+        .encoding = .crypt,
+    }, &cheap_buf, salt);
+    try testing.expectEqual(PasswordVerdict.not_a_bcrypt_hash, password_matches_bcrypt_hash(known_password, cheap));
+    try testing.expectEqual(PasswordVerdict.matches, password_matches_bcrypt_hash(known_password, known_hash));
+}
+
 test "an HMAC matches its bytes and its secret alone, at its own length alone" {
     const secret = "0123456789abcdef0123456789abcdef";
     const mac = hmac_sha256(secret, "1\n1700000000");
@@ -190,4 +244,18 @@ test "the secret: made once, 64 hex digits, its owner's alone; read the same aft
     try testing.expectEqualStrings(&@as([secret_fewest]u8, @splat('x')), (try ServerSecret.load_or_create(testing.io, tmp.dir)).slice());
     try tmp.dir.writeFile(testing.io, .{ .sub_path = secret_name, .data = &@as([secret_most + 1]u8, @splat('x')) });
     try testing.expectError(error.SecretUnusable, ServerSecret.load_or_create(testing.io, tmp.dir));
+}
+
+test "the secret: refused when its group or anyone else may read, write or run it; its owner's alone, read" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const first = try ServerSecret.load_or_create(testing.io, tmp.dir);
+    for ([_]u32{ 0o640, 0o620, 0o610, 0o604, 0o602, 0o601, 0o644, 0o666 }) |mode| {
+        try tmp.dir.setFilePermissions(testing.io, secret_name, .fromMode(mode), .{});
+        try testing.expectError(error.SecretOpenToOthers, ServerSecret.load_or_create(testing.io, tmp.dir));
+    }
+    for ([_]u32{ 0o600, 0o400, 0o700 }) |mode| {
+        try tmp.dir.setFilePermissions(testing.io, secret_name, .fromMode(mode), .{});
+        try testing.expectEqualStrings(first.slice(), (try ServerSecret.load_or_create(testing.io, tmp.dir)).slice());
+    }
 }

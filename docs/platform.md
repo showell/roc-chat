@@ -76,7 +76,7 @@ The SHA-256 digest of the bytes, 32 bytes, from Zig's standard library. *Why:* t
 
 ## Passwords and the server's secret
 
-The server's secret is the file `.session-secret` in the data root: 32 random bytes as 64 lowercase hex digits, readable by its owner alone, made once when the server starts on a folder that has none (`ServerSecret` in `host/sign_in_primitives.zig`), and read then; one shorter than 32 bytes or longer than 256 stops the start. Its name starts with `.`, so the path rule keeps every file primitive from it: the Roc signs and checks bytes with it, and can never read it. Removing it and starting again makes a new one, and every signature made with the old one stops matching.
+The server's secret is the file `.session-secret` in the data root: 32 random bytes as 64 lowercase hex digits, readable by its owner alone, made once when the server starts on a folder that has none (`ServerSecret` in `host/sign_in_primitives.zig`), and read then; one shorter than 32 bytes or longer than 256 stops the start, and so does one whose mode gives its group or anyone else any right (`mode & 0o077`), with a message saying to `chmod 600` it. Its name starts with `.`, so the path rule keeps every file primitive from it: the Roc signs and checks bytes with it, and can never read it. Removing it and starting again makes a new one, and every signature made with the old one stops matching.
 
 **`hmac_sha256_with_server_secret! : List(U8) => List(U8)`**
 The HMAC-SHA256 of the bytes under the server's secret, 32 bytes. *Why:* the app signs a session (`app/Session.roc`) and never holds the key.
@@ -88,7 +88,7 @@ Whether the second is the HMAC-SHA256 of the first under the server's secret, co
 A fresh bcrypt hash of the password, at cost 10, under 16 random bytes of salt, in its modular-crypt form (`$2b$10$` and 53 more bytes). A password longer than 72 bytes is hashed by HMAC-SHA512 first, as Zig's bcrypt does. *Why:* the same hash `gopher-roc hash-password` writes, for an invited human's password, which they choose as they redeem their invite (`app/HumanInvitesRoute.roc`).
 
 **`password_matches_bcrypt_hash! : List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash]`**
-Whether the password, the first, is the one the bcrypt hash, the second, was made from; `$2a$`, `$2b$` and `$2y$` hashes are read alike. A second that is no bcrypt hash is `NotABcryptHash`, never a wrong password, so a torn file is said as one. A check costs about 70 ms in a release build, and runs in the turn. *Why:* signing in (`app/SignInRoute.roc`).
+Whether the password, the first, is the one the bcrypt hash, the second, was made from; `$2a$`, `$2b$` and `$2y$` hashes are read alike, at a cost from 10 to 14 (`is_acceptable_bcrypt_hash`). A second that is no bcrypt hash, another scheme or a cost outside that range included, is `NotABcryptHash`, never a wrong password, so a torn file is said as one. A check costs about 70 ms in a release build, and runs in the turn. *Why:* signing in (`app/SignInRoute.roc`).
 
 **`gopher-roc hash-password`** is the way a password's hash is made on the server's machine: from a terminal it asks twice with the echo off, else it reads stdin's first line; it refuses an empty password, one over 72 bytes, or two that differ, and prints the hash and a line end. Its owner redirects it into the user's `password` file (docs/design.md, "Storage"); the password reaches no log, no argument list and no agent.
 
