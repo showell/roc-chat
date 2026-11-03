@@ -75,7 +75,7 @@ ConversationStream :: [].{
 	| {
 		held = conversation.messages().len()
 		if (seen.to_u64() > held)
-			HttpAnswer.notice(400, { title: "Bad stream", said: "The stream asks for the messages after ${seen.to_str()}, and the conversation holds ${held.to_str()}." })
+			HttpAnswer.page(400, Page.notice({ title: "Bad stream", said: "The stream asks for the messages after ${seen.to_str()}, and the conversation holds ${held.to_str()}." }))
 		else
 			HttpAnswer.stream({
 				key: bus_key(key),

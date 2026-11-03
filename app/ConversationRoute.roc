@@ -261,7 +261,7 @@ refusal_notice = |why|
 refusal_page : Refusal -> Http.Response
 refusal_page = |why| {
 	notice = refusal_notice(why)
-	HttpAnswer.notice(notice.status, notice.words)
+	HttpAnswer.page(notice.status, Page.notice(notice.words))
 }
 
 ## A fault in the posted form, saying what: a 400.

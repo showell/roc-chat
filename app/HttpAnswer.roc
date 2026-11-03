@@ -1,17 +1,17 @@
-## **THE RESPONSES THE CHAT GIVES**, built once each: a page with its
-## status, a script, a redirect after a POST, the refusal of a method, and
-## an event stream; and for an upload, an uploaded image, the JSON that
-## answers an upload, and a refusal in plain words, which the compose box
-## shows as it is.
+## This module builds the responses the chat gives, each in one place: a
+## page with its status, a script, a redirect after a POST, the refusal of
+## a method, and an event stream; and for an upload, an uploaded image, the
+## JSON that answers an upload, and a refusal in plain words, which the
+## compose box shows as it is. It knows nothing of what a page says: the
+## routes build their pages with `Page` and hand them here.
 ##
-## **EVERY PAGE CARRIES ITS DEFENCES** (`page_headers`, their one home): a
+## Every page carries its defences (`page_headers`, their one home): a
 ## Content-Security-Policy that lets the page load nothing but its own
 ## inline style sheet, same-origin images and same-origin scripts (never
 ## an inline one), be framed by no one and post only to itself; and
 ## `nosniff`, so a browser takes each answer as the type it says.
 import pf.Http
 import JsonOut
-import Page
 import TrustedHtml
 
 HttpAnswer :: [].{
@@ -25,11 +25,7 @@ HttpAnswer :: [].{
 			body: html.to_utf8(),
 		})
 
-	## **A NOTICE PAGE** (`Page.notice`) with `status`.
-	notice : U16, { title : Str, said : Str } -> Http.Response
-	notice = |status, words| HttpAnswer.page(status, Page.notice(words))
-
-	## **303 SEE OTHER**, to `url_path`: after a POST, the browser GETs the
+	## A 303 See Other, to `url_path`: after a POST, the browser GETs the
 	## page, so a reload never posts again.
 	see_other : Str -> Http.Response
 	see_other = |url_path|
@@ -39,7 +35,7 @@ HttpAnswer :: [].{
 			body: [],
 		})
 
-	## **A SCRIPT**, `bytes` (the app's own: `Script`), as UTF-8
+	## A script, `bytes` (the app's own: `Script`), as UTF-8
 	## JavaScript, which `nosniff` requires of a script a page runs. A
 	## browser asks again before using its copy (`no-cache`), so a changed
 	## script is never stale.
@@ -95,7 +91,7 @@ HttpAnswer :: [].{
 			body: "${words}\n".to_utf8(),
 		})
 
-	## **405**: the path takes only the methods `allowed` names: a
+	## A 405: the path takes only the methods `allowed` names: a
 	## conversation's GET and POST, an upload's POST, or a script's, a
 	## stream's or an uploaded image's GET.
 	method_not_allowed : [GetAndPost, GetOnly, PostOnly] -> Http.Response
@@ -117,7 +113,7 @@ HttpAnswer :: [].{
 		})
 	}
 
-	## **AN EVENT STREAM** the host holds open on the bus key `key`, for
+	## An event stream the host holds open on the bus key `key`, for
 	## `holder`: `backlog` first, then every frame published to `key`. The
 	## host writes the stream's type; it is not sniffed.
 	stream : {
@@ -162,7 +158,7 @@ whole = |
 	stream_holder: [],
 }
 
-## **A PAGE'S HEADERS**: its type, and its defences.
+## A page's headers: its type, and its defences.
 ##
 ## The policy: nothing by default (`default-src 'none'`); the one `<style>`
 ## Page writes inline (`style-src 'unsafe-inline'`), and the styles a
@@ -197,7 +193,8 @@ content_security_policy = Str.join_with(
 	"; ",
 )
 
-## **TAKE THE ANSWER AS THE TYPE IT SAYS**: no browser guesses another.
+## The header that has a browser take the answer as the type it says,
+## never guessing another.
 nosniff : Http.Header
 nosniff = { name: "x-content-type-options".to_utf8(), value: "nosniff".to_utf8() }
 
@@ -210,7 +207,7 @@ header_pairs = |response| response.headers.map(|h| (Str.from_utf8_lossy(h.name),
 expect
 	[200, 404, 500].all(
 		|status|
-			header_pairs(HttpAnswer.notice(status, { title: "t", said: "s" }))
+			header_pairs(HttpAnswer.page(status, TrustedHtml.join([])))
 				== [
 					("content-type", "text/html; charset=utf-8"),
 					("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
@@ -288,7 +285,7 @@ expect {
 # holder, its backlog first, not sniffed.
 expect
 	[
-		HttpAnswer.notice(404, { title: "t", said: "s" }),
+		HttpAnswer.page(404, TrustedHtml.join([])),
 		HttpAnswer.see_other("/a"),
 		HttpAnswer.script([]),
 		HttpAnswer.method_not_allowed(GetOnly),

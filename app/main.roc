@@ -135,7 +135,7 @@ handle_http_request! = |request| {
 
 ## The 403 for a request from elsewhere, saying why.
 origin_refusal : RequestOrigin.Refusal -> Http.Response
-origin_refusal = |why| HttpAnswer.notice(403, { title: "Forbidden", said: RequestOrigin.words(why) })
+origin_refusal = |why| HttpAnswer.page(403, Page.notice({ title: "Forbidden", said: RequestOrigin.words(why) }))
 
 ## `answer`, which no other site's page may load: a browser refuses to hand
 ## a page elsewhere any answer of this server's (`Cross-Origin-Resource-Policy`),
@@ -194,7 +194,7 @@ serve_route! = |request|
 			})
 		ServeUploadedImage(found) => UploadRoute.serve_uploaded_image!(found)
 		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
-		NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
+		NotFound => HttpAnswer.page(404, Page.notice({ title: "Not found", said: "Nothing is here." }))
 	}
 
 ## Steve (id 1), taken as signed in with nothing checked: the scary door.

@@ -30,6 +30,7 @@ import FileSystem
 import HttpAnswer
 import JsonOut
 import MultipartForm
+import Page
 import RequestHeader
 import SignedIn
 import UploadTotal
@@ -71,8 +72,8 @@ UploadRoute :: [].{
 	serve_uploaded_image! = |{ key, image }|
 		match FileSystem.read_uploaded_image!(key, image) {
 			Ok(bytes) => HttpAnswer.image({ content_type: image.content_type(), bytes })
-			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such image." })
-			Err(fault) => HttpAnswer.notice(500, { title: "Failed", said: FileSystem.fault_words(fault) })
+			Err(Missing) => HttpAnswer.page(404, Page.notice({ title: "Not found", said: "No such image." }))
+			Err(fault) => HttpAnswer.page(500, Page.notice({ title: "Failed", said: FileSystem.fault_words(fault) }))
 		}
 }
 
