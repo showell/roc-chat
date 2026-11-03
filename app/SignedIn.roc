@@ -1,27 +1,26 @@
-## **WHO IS ACTING, AS THE EDGE CHECKED THEM**: proof that the user doing
-## something is that user, the one thing a `Users.User` alone never
-## proves. What only the acting user may do asks for one in its type, so
-## an admin is only ever someone signed in (`Admin.of`).
+## A `SignedIn` is proof that the user doing something is that user, which
+## a `Users.User` alone never proves. Whatever only the acting user may do
+## asks for a `SignedIn` in its type, so an admin, for one, is always
+## someone signed in (`Admin.of`).
 ##
-## **THE DOOR IS DANGEROUS UNTIL SESSIONS EXIST**: its one door belongs to
-## the session check, which the edge will make. Until then the door is
-## `dangerously_assume`, which checks nothing, and only the edge, the demo
-## and tests may call it. Its callers are the audit.
+## The program has no sessions yet, so nothing checks a sign-in. The one
+## way in is `dangerously_assume`, which checks nothing; only main and tests
+## call it, and its callers are what a security reader audits. When
+## sessions exist, the session check becomes the way in.
 ##
-## **ONE OF THE TRUST BOUNDARIES**: this is who is acting;
-## `UnvalidatedString` is the way text from outside comes in, `TrustedHtml`
-## the way out to a page, `SecureImageTag` rules which images a message
-## may show, and `RequestOrigin` refuses a request from any origin but the
-## server's own. A security reader starts at any of the five.
+## This module is one of the program's five trust boundaries, and says who
+## is acting. The others are `UnvalidatedString`, the way text comes in;
+## `TrustedHtml`, the way markup goes out to a page; `SecureImageTag`, which
+## images a message may show; and `RequestOrigin`, which refuses a request
+## from any origin but the server's own.
 import Name
 import Users
 
 SignedIn :: Users.User.{
 
-	## **THE DOOR, AND IT IS DANGEROUS**: `user`, taken as signed in with
-	## nothing checked. It stands in for the session check until sessions
-	## exist; only the edge, the demo and tests may call it. A wrong
-	## promise lets anyone act as anyone.
+	## `user`, taken as signed in with nothing checked. This is dangerous:
+	## a wrong call lets anyone act as anyone. It stands in for the session
+	## check until sessions exist, and only main and tests call it.
 	dangerously_assume : Users.User -> SignedIn
 	dangerously_assume = |user| SignedIn.(user)
 
@@ -34,7 +33,7 @@ SignedIn :: Users.User.{
 
 # ── tests
 expect {
-	steve = Users.founded_by(Name.from_str("Steve") ?? crash "SignedIn's tests: a name").to_list()
-	when_found = steve.first() ?? crash "SignedIn's tests: Steve is the first user"
-	SignedIn.dangerously_assume(when_found).user() == when_found
+	founded = Users.founded_by(Name.from_str("Steve") ?? crash "SignedIn's tests: Steve is a name")
+	steve = founded.to_list().first() ?? crash "SignedIn's tests: Steve is the first user"
+	SignedIn.dangerously_assume(steve).user() == steve
 }

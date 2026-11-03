@@ -1,31 +1,32 @@
-## **MARKUP SOME CODE HAS VOUCHED FOR**: a `TrustedHtml` is a string that
-## code in this program has decided is ready to deliver as HTML. A `Str` is
-## text, never markup. The type says which a value is, so text can't reach
-## a page unescaped, and markup can't be escaped a second time.
+## A `TrustedHtml` is markup that code in this program has vouched for as
+## ready to deliver in a page. A `Str` is text, never markup. The type says
+## which a value is, so text can't reach a page unescaped, and markup can't
+## be escaped a second time.
 ##
-## **THE ONE DOOR IS `dangerously_trust`, AND ITS CALLERS ARE THE AUDIT**,
-## named to be seen at every call: each
-## vouches only for HTML it built or escaped itself. They are few, and
-## each is small: `Escape.text` (text, escaped), `Html.element` (an
-## element's tags, from closed sets and strict tokens), `Markdown.render`
-## (roc-markdown's output, whose images `SecureImageTag` rules: the other
-## trust boundary a security reader wants), and
-## `Page`'s fixed head and style sheet. `join` builds only from what is
-## already vouched for, so it vouches for nothing new.
+## The one way in is `dangerously_trust`, named so that every call stands
+## out, and its callers are what a security reader audits. Each vouches
+## only for markup it built or escaped itself, and each is small:
+## `Escape.text` (text, escaped), `Html.element` (an element's tags, from
+## closed sets and strict tokens), `Markdown.render` (roc-markdown's output,
+## whose images `SecureImageTag` rules), and `Page`'s fixed doctype and
+## style sheet. `join` builds only from markup already vouched for, so it
+## vouches for nothing new.
 ##
-## **THE OTHER TRUST BOUNDARIES**: `UnvalidatedString`, the way text from
-## outside comes in; `SecureImageTag`, which images a message may show;
-## `SignedIn`, who is acting; and `RequestOrigin`, which origins may ask.
-##
-## **THE WAY OUT IS BYTES**: `to_utf8`, for the host. There is no way back
+## The one way out is bytes for the host (`to_utf8`). There is no way back
 ## to a `Str`, so trusted markup can't be handed to `Escape.text` and
 ## escaped again without a deliberate, fallible `Str.from_utf8`.
+##
+## This module is one of the program's five trust boundaries, and the way
+## markup goes out to a page. The others are `UnvalidatedString`, the way
+## text comes in; `SecureImageTag`, which images a message may show;
+## `SignedIn`, who is acting; and `RequestOrigin`, which refuses a request
+## from any origin but the server's own.
 TrustedHtml :: Str.{
 
-	## **THE DOOR, AND IT IS DANGEROUS**: `html`, delivered as it is, with
-	## nothing escaped. The caller promises that its own code built or
-	## escaped every byte of `html`, so no text a person, an agent or a file
-	## supplied is in it unescaped. A wrong promise is an injection.
+	## `html`, delivered as it is, with nothing escaped. This is dangerous.
+	## The caller promises that its own code built or escaped every byte of
+	## `html`, so no text a person, an agent or a file supplied is in it
+	## unescaped. A wrong promise is an injection.
 	dangerously_trust : Str -> TrustedHtml
 	dangerously_trust = |html| TrustedHtml.(html)
 
@@ -33,7 +34,7 @@ TrustedHtml :: Str.{
 	join : List(TrustedHtml) -> TrustedHtml
 	join = |pieces| TrustedHtml.(Str.join_with(pieces.map(|TrustedHtml.(html)| html), ""))
 
-	## The page's bytes, for the host: the one way out.
+	## The markup's bytes, for the host.
 	to_utf8 : TrustedHtml -> List(U8)
 	to_utf8 = |TrustedHtml.(html)| html.to_utf8()
 }

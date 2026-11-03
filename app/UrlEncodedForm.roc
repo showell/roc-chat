@@ -1,14 +1,16 @@
-## **A FORM'S BODY, AS A BROWSER SENDS IT** (`application/x-www-form-urlencoded`):
-## `name=value` fields joined by `&`, each `+` a space and each `%XX` a byte.
-## Parsing at the door, so it works in bytes; the one field a caller asks
-## for comes out as an `UnvalidatedString`, as unchecked as the rest of the
-## request, or a refusal's tag.
+## This module reads a form's body as a browser sends it, encoded as
+## `application/x-www-form-urlencoded`: `name=value` fields joined by `&`,
+## in which each `+` is a space and each `%XX` is the byte XX. A form is
+## read in bytes, because the decoding happens before the text is known to
+## be UTF-8. The field a caller asks for comes out as an
+## `UnvalidatedString`, as unchecked as the rest of the request, or as a
+## refusal.
 import UnvalidatedString
 
 UrlEncodedForm :: [].{
 
-	## **THE FIELD `markdown` OF `body`**, a message's form, decoded, as
-	## `field` reads it.
+	## The field that holds a message's markdown, decoded, from a message
+	## form's `body`; or why there is none (see `field`).
 	markdown_field : List(U8) -> Try(
 		UnvalidatedString,
 		[
@@ -20,17 +22,16 @@ UrlEncodedForm :: [].{
 	)
 	markdown_field = |body| field({ body, name: UrlEncodedForm.markdown_name })
 
-	## **THE NAME OF A MESSAGE'S FIELD**, `markdown`: its one home, which
-	## `markdown_field` reads and the compose box's textarea is named
-	## (`Page`).
+	## The name of the field that holds a message's markdown. The compose
+	## box's textarea takes this name (`Page`).
 	markdown_name : Str
 	markdown_name = "markdown"
 }
 
-## **THE FIELD `name` OF `body`**, decoded, still unchecked; unless the
-## body has no such field (`MissingField`), has it more than once
-## (`RepeatedField`), a `%` starts no two hex digits there (`BadEscape`),
-## or the decoded value is not UTF-8 (`NotUtf8`).
+## The field `name` of `body`, decoded and still unchecked; unless the body
+## has no such field (`MissingField`), has it more than once
+## (`RepeatedField`), has a `%` in it that is not followed by two hex digits
+## (`BadEscape`), or its decoded value is not UTF-8 (`NotUtf8`).
 field : { body : List(U8), name : Str } -> Try(
 	UnvalidatedString,
 	[
@@ -53,9 +54,9 @@ field = |{ body, name }| {
 	}
 }
 
-## A field's name: its bytes before the first `=` (all of them when there
-## is none). Names are compared undecoded: the ones asked for need no
-## escape.
+## A field's name: its bytes before the first `=`, or all of them when
+## there is none. Names are compared undecoded, since the one a caller asks
+## for needs no escape.
 field_name : List(U8) -> List(U8)
 field_name = |pair|
 	match pair.split_first('=') {
@@ -63,7 +64,8 @@ field_name = |pair|
 		Err(NotFound) => pair
 	}
 
-## A field's value: its bytes after the first `=` (none when there is none).
+## A field's value: its bytes after the first `=`, or none when there is
+## none.
 field_value : List(U8) -> List(U8)
 field_value = |pair|
 	match pair.split_first('=') {
@@ -71,32 +73,33 @@ field_value = |pair|
 		Err(NotFound) => []
 	}
 
-## `value` decoded: `+` a space, `%XX` the byte XX (hex, either case).
+## `value` decoded: each `+` a space, and each `%XX` the byte XX, its hex
+## digits in either case.
 decoded : List(U8) -> Try(List(U8), [BadEscape])
-decoded = |value| decoded_onto([], value)
+decoded = |value| decoded_onto({ out: [], rest: value })
 
-decoded_onto : List(U8), List(U8) -> Try(List(U8), [BadEscape])
-decoded_onto = |so_far, rest|
+decoded_onto : { out : List(U8), rest : List(U8) } -> Try(List(U8), [BadEscape])
+decoded_onto = |{ out, rest }|
 	match rest {
-		[] => Ok(so_far)
+		[] => Ok(out)
 		[
 			'%',
 			high,
 			low,
 			.. as after,
 		] =>
-			match (hex(high), hex(low)) {
-				(Ok(h), Ok(l)) => decoded_onto(so_far.append(h * 16 + l), after)
+			match (hex_value(high), hex_value(low)) {
+				(Ok(h), Ok(l)) => decoded_onto({ out: out.append(h * 16 + l), rest: after })
 				_ => Err(BadEscape)
 			}
 		['%', ..] => Err(BadEscape)
-		['+', .. as after] => decoded_onto(so_far.append(' '), after)
-		[byte, .. as after] => decoded_onto(so_far.append(byte), after)
+		['+', .. as after] => decoded_onto({ out: out.append(' '), rest: after })
+		[byte, .. as after] => decoded_onto({ out: out.append(byte), rest: after })
 	}
 
-## The value of one hex digit.
-hex : U8 -> Try(U8, [NotHex])
-hex = |digit|
+## The value of one hex digit, in either case.
+hex_value : U8 -> Try(U8, [NotHex])
+hex_value = |digit|
 	if (digit >= '0' and digit <= '9')
 		Ok(digit - '0')
 	else if (digit >= 'a' and digit <= 'f')
@@ -107,7 +110,25 @@ hex = |digit|
 		Err(NotHex)
 
 # ── tests
-## The field `name` of `body`, as a test reads it: its markdown, or why not.
+# Each range's ends, and the byte just outside each.
+expect
+	[
+		('0', Ok(0)),
+		('9', Ok(9)),
+		('a', Ok(10)),
+		('f', Ok(15)),
+		('A', Ok(10)),
+		('F', Ok(15)),
+		('/', Err(NotHex)),
+		(':', Err(NotHex)),
+		('`', Err(NotHex)),
+		('g', Err(NotHex)),
+		('@', Err(NotHex)),
+		('G', Err(NotHex)),
+	].all(|(digit, expected)| hex_value(digit) == expected)
+
+## The markdown of a message form's `body`, as a test reads it, or why
+## there is none.
 markdown_of : Str -> Try(Str, [MissingField, RepeatedField, BadEscape, NotUtf8, Blank])
 markdown_of = |body| {
 	value = UrlEncodedForm.markdown_field(body.to_utf8())?
@@ -123,10 +144,12 @@ expect markdown_of("markdown=%2a%2A") == Ok("**")
 # Both sides of each refusal.
 expect markdown_of("") == Err(MissingField)
 expect markdown_of("markdowns=x&mark=y") == Err(MissingField)
+expect markdown_of("mark%64own=x") == Err(MissingField)
 expect markdown_of("markdown=a&markdown=b") == Err(RepeatedField)
 expect markdown_of("markdown=%") == Err(BadEscape)
 expect markdown_of("markdown=%4") == Err(BadEscape)
 expect markdown_of("markdown=%G1") == Err(BadEscape)
+expect markdown_of("markdown=%1G") == Err(BadEscape)
 expect markdown_of("markdown=%FF") == Err(NotUtf8)
 expect markdown_of("markdown=") == Err(Blank)
 expect markdown_of("markdown") == Err(Blank)

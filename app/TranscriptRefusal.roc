@@ -1,17 +1,17 @@
-## **EVERY WAY A TRANSCRIPT IS REFUSED, AND THE WORDS FOR EACH**: the tags
-## the demo's door (main's `conversation`: the conversation's URL path,
-## then its transcript) and the server's read of a
-## transcript file meet, each module's tags under the step that met them,
-## and the one place they become a sentence. `Transcript.decode` answers
-## its refusals as these tags itself, so a reader of a file passes them on
-## and never maps them.
+## This module lists every way a conversation's transcript can be refused,
+## and puts each into words. Two readers meet these refusals: the demo
+## (main's `conversation`, which reads a URL path and then a transcript),
+## and the server when it reads a transcript file (`ConversationRoute`).
+## Each refusal sits under the step that met it, the path or the transcript.
+## `Transcript.decode` answers with these tags itself, so a reader passes
+## them on without mapping them.
 import Message
 import Name
 
 TranscriptRefusal :: [].{
 
-	## What `words` takes. A handler's input, so each reader's own error
-	## stays inferred from its body.
+	## Every refusal, as `words` takes it. Each reader's own error type
+	## stays inferred from its body; this union is only the handler's input.
 	Why : [
 		PathNotUtf8,
 		TranscriptNotUtf8,
@@ -36,7 +36,7 @@ TranscriptRefusal :: [].{
 		),
 	]
 
-	## **WHY A TRANSCRIPT IS REFUSED, IN WORDS**.
+	## Why a transcript is refused, in words for a refusal page.
 	words : TranscriptRefusal.Why -> Str
 	words = |why|
 		match why {
@@ -73,11 +73,11 @@ TranscriptRefusal :: [].{
 }
 
 # ── tests
-# The one test of the wording: every refusal, in words.
+# Every refusal, in words.
 
 ## Message 2's id, which the refusals below name.
-second : Message.Id
-second = Message.Id.first.next() ?? crash "TranscriptRefusal's tests: the first id has a next"
+second_id : Message.Id
+second_id = Message.Id.first.next() ?? crash "TranscriptRefusal's tests: the first id has a next"
 
 expect TranscriptRefusal.words(PathNotUtf8) == "its conversation's path is not UTF-8"
 expect TranscriptRefusal.words(TranscriptNotUtf8) == "it is not UTF-8"
@@ -91,22 +91,22 @@ expect
 	TranscriptRefusal.words(Transcript(NotPrefixedProperly))
 		== "a transcript starts with the separator and ends with an empty line"
 expect
-	TranscriptRefusal.words(Transcript(BadHead(second)))
+	TranscriptRefusal.words(Transcript(BadHead(second_id)))
 		== "message 2 does not open with its reference, `from:`, `date:` and an empty line"
-expect TranscriptRefusal.words(Transcript(Author(second, Empty))) == "message 2 has no author"
-expect TranscriptRefusal.words(Transcript(Author(second, TooLong))) == "message 2's author is longer than 60 characters"
+expect TranscriptRefusal.words(Transcript(Author(second_id, Empty))) == "message 2 has no author"
+expect TranscriptRefusal.words(Transcript(Author(second_id, TooLong))) == "message 2's author is longer than 60 characters"
 expect
-	TranscriptRefusal.words(Transcript(Author(second, ForbiddenCharacter)))
+	TranscriptRefusal.words(Transcript(Author(second_id, ForbiddenCharacter)))
 		== "message 2's author holds a character that is no letter or space"
 expect
-	TranscriptRefusal.words(Transcript(Author(second, BadSpacing)))
+	TranscriptRefusal.words(Transcript(Author(second_id, BadSpacing)))
 		== "message 2's author has a space at either end, or two together"
-expect TranscriptRefusal.words(Transcript(DateTime(second, WrongShape))) == "message 2's date is not YYYY-MM-DDTHH:MM:SSZ"
+expect TranscriptRefusal.words(Transcript(DateTime(second_id, WrongShape))) == "message 2's date is not YYYY-MM-DDTHH:MM:SSZ"
 expect
-	TranscriptRefusal.words(Transcript(DateTime(second, OutOfRange)))
+	TranscriptRefusal.words(Transcript(DateTime(second_id, OutOfRange)))
 		== "message 2's date is no time a calendar and clock show"
 expect
-	TranscriptRefusal.words(Transcript(BadBody(second)))
+	TranscriptRefusal.words(Transcript(BadBody(second_id)))
 		== "message 2 holds the separator, unescaped, on a line of its own"
-expect TranscriptRefusal.words(Transcript(Backdated(second))) == "message 2 is dated before the message above it"
+expect TranscriptRefusal.words(Transcript(Backdated(second_id))) == "message 2 is dated before the message above it"
 expect TranscriptRefusal.words(Transcript(Full)) == "it holds more messages than a conversation can"

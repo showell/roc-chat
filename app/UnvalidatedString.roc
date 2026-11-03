@@ -1,18 +1,17 @@
-## **TEXT FROM THE WIRE, NOT YET CHECKED**: whatever arrives from outside
-## (a request, a file the host read) is an `UnvalidatedString` until a
-## checking door says what it is. Opaque, with one way in, `from_utf8`, at
-## main's door, and no way back to a `Str`: the only ways out are the
-## checking doors below, each giving a checked type or a refusal's tags.
-## So no `Name`, `Topic`, `ChannelName`, `UserId`, `UserPair`, `DateTime` or
-## `UploadedImage` is ever built from outside text that skipped its check. A transcript
-## file's bytes have a door of their own, `Transcript.Utf8Transcript`,
-## which only `Transcript.decode` opens.
+## Text that arrives from outside, such as a request's path or a form's
+## field, is an `UnvalidatedString` until a check says what it is. The type
+## is opaque. Its one way in is `from_utf8`, and it has no way back to a
+## `Str`: each way out runs a check and gives a checked type (a `Name`, a
+## `Topic`, a `UserId` and so on) or the check's refusal. So no checked
+## value is built from outside text that skipped its check. A transcript
+## file's bytes have their own type, `Transcript.Utf8Transcript`, which only
+## `Transcript.decode` opens.
 ##
-## **ONE OF THE TRUST BOUNDARIES**: this is the way in; `TrustedHtml` is
-## the way out to a page, `SecureImageTag` rules which images a message
-## may show, `SignedIn` is who is acting, and `RequestOrigin` refuses a
-## request from any origin but the server's own. A security reader starts
-## at any of the five.
+## This module is one of the program's five trust boundaries, and the way
+## text comes in. The others are `TrustedHtml`, the way markup goes out to a
+## page; `SecureImageTag`, which images a message may show; `SignedIn`, who
+## is acting; and `RequestOrigin`, which refuses a request from any origin
+## but the server's own. A security reader can start at any of the five.
 import ChannelName
 import DateTime
 import Name
@@ -23,7 +22,7 @@ import UserPair
 
 UnvalidatedString :: Str.{
 
-	## **THE WAY IN**: the host's `bytes`, unless they are not UTF-8.
+	## The text `bytes` hold, unless they are not UTF-8.
 	from_utf8 : List(U8) -> Try(UnvalidatedString, [NotUtf8])
 	from_utf8 = |bytes|
 		match Str.from_utf8(bytes) {
@@ -71,11 +70,10 @@ UnvalidatedString :: Str.{
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])
 	date_time = |UnvalidatedString.(text)| DateTime.from_str(text)
 
-	## **A URL'S PATH, IN PARTS, STILL UNCHECKED**: the parts between its
-	## `/`s (`/chat/dm/1_1` is `chat`, `dm` and `1_1`), each as unchecked
-	## as the whole; unless it does not start with `/` (`NotAPath`). Nothing
-	## is percent-decoded: every part a route takes is a strict name, which
-	## holds no `%`.
+	## A URL's path, split at its `/`s (`/chat/dm/1_1` is `chat`, `dm` and
+	## `1_1`), each part as unchecked as the whole; unless it does not start
+	## with `/` (`NotAPath`). Nothing is percent-decoded, because every part
+	## a route takes is a strict name, which holds no `%`.
 	url_path_parts : UnvalidatedString -> Try(List(UnvalidatedString), [NotAPath])
 	url_path_parts = |UnvalidatedString.(text)|
 		if (text.starts_with("/"))
@@ -83,21 +81,20 @@ UnvalidatedString :: Str.{
 		else
 			Err(NotAPath)
 
-	## **IS IT EXACTLY `word`**, a fixed word the code wrote (a URL's
-	## `chat`)? Byte for byte, case and all.
+	## Is it exactly `word`, a fixed word the code wrote (a URL's `chat`),
+	## byte for byte and case and all?
 	is_exactly : UnvalidatedString, Str -> Bool
 	is_exactly = |UnvalidatedString.(text), word| text == word
 
-	## **A MESSAGE'S MARKDOWN, AS A FORM SENT IT**: the text, each CRLF
-	## made LF (a browser's form sends every newline as CRLF, and a
-	## transcript's lines end in LF); unless it holds nothing but spaces,
-	## tabs and newlines (`Blank`). Otherwise exactly as written.
+	## A message's markdown, as a form sent it: the text with each CRLF made
+	## LF, and otherwise exactly as written; unless it holds nothing but
+	## spaces, tabs, CRs and LFs (`Blank`). A browser's form sends every
+	## newline as CRLF, and a transcript's lines end in LF.
 	markdown : UnvalidatedString -> Try(Str, [Blank])
 	markdown = |UnvalidatedString.(text)| {
 		lf = Str.join_with(text.split_on("\r\n"), "\n")
 		if (lf.to_utf8().all(|b| b == ' ' or b == '\t' or b == '\n' or b == '\r')) Err(Blank) else Ok(lf)
 	}
-
 }
 
 # ── tests
@@ -133,7 +130,10 @@ expect wire("cat.png".to_utf8()).uploaded_image() == Err(NotAnUploadName)
 ## The parts of `path`, each as a test reads it, `chat` if it is exactly
 ## that, else `other`, between spaces.
 chat_parts : Str -> Try(Str, [NotAPath])
-chat_parts = |path| wire(path.to_utf8()).url_path_parts().map_ok(|parts| Str.join_with(parts.map(|p| if (p.is_exactly("chat")) "chat" else "other"), " "))
+chat_parts = |path| {
+	parts = wire(path.to_utf8()).url_path_parts()?
+	Ok(Str.join_with(parts.map(|p| if (p.is_exactly("chat")) "chat" else "other"), " "))
+}
 
 expect chat_parts("/chat/dm/1_1") == Ok("chat other other")
 expect chat_parts("/") == Ok("other")
@@ -142,11 +142,21 @@ expect chat_parts("chat/x") == Err(NotAPath)
 expect chat_parts("") == Err(NotAPath)
 expect chat_parts("/Chat") == Ok("other")
 expect wire("/a/plans".to_utf8()).url_path_parts().map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str))) == Ok([Ok("a"), Ok("plans")])
-# Markdown: CRLF to LF, a lone CR and LF kept, blank refused.
+# Markdown: CRLF to LF, a lone CR and LF kept.
 expect wire("a\r\nb\r\n".to_utf8()).markdown() == Ok("a\nb\n")
 expect wire("a\nb".to_utf8()).markdown() == Ok("a\nb")
 expect wire("a\rb".to_utf8()).markdown() == Ok("a\rb")
 expect wire("  x  ".to_utf8()).markdown() == Ok("  x  ")
-expect wire("".to_utf8()).markdown() == Err(Blank)
-expect wire(" \r\n\t\n".to_utf8()).markdown() == Err(Blank)
-expect wire("\n".to_utf8()).markdown() == Err(Blank)
+# Blank is nothing, or only spaces, tabs, CRs and LFs; any other space,
+# such as a form feed or a no-break space, is text.
+expect
+	[
+		"",
+		" ",
+		"\t",
+		"\r",
+		"\n",
+		" \r\n\t\n",
+	].all(|text| wire(text.to_utf8()).markdown() == Err(Blank))
+expect wire("\u(c)".to_utf8()).markdown() == Ok("\u(c)")
+expect wire("\u(a0)".to_utf8()).markdown() == Ok("\u(a0)")

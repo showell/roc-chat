@@ -1,5 +1,5 @@
-## An image uploaded to a conversation: what kind of image it is, and the
-## name it is kept and served under. Pure.
+## An uploaded image is an image a conversation holds: what kind of image
+## it is, and the name it is kept and served under.
 ##
 ## The kind is judged by the file's opening bytes (`kind_of_bytes`): PNG,
 ## JPEG, GIF or WebP, never what the browser's filename or type says, and
@@ -8,11 +8,12 @@
 ## The name is 32 lowercase hex digits, from 16 random bytes, then `.` and
 ## the extension the kind gives (`fresh`), so no name a person chose reaches
 ## the disk or a URL. A name read back from a URL (`from_name`) must have
-## exactly that shape, and its extension gives its kind. Where an image is
-## kept and served is `ConversationKey`'s.
+## exactly that shape, and its extension gives its kind. The type keeps the
+## digits and the kind, so a name's extension always matches its kind.
+## Where an image is kept and served is `ConversationKey`'s.
 import Ascii
 
-UploadedImage :: { kind : UploadedImage.Kind, name : Str }.{
+UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 
 	## The kinds of image an upload may be.
 	Kind : [Png, Jpeg, Gif, Webp]
@@ -42,7 +43,7 @@ UploadedImage :: { kind : UploadedImage.Kind, name : Str }.{
 	fresh = |{ random_bytes, kind }|
 		if random_bytes.len() == name_random_bytes {
 			digits = Str.from_utf8(random_bytes.join_map(hex_digits)) ?? crash "UploadedImage.fresh: hex digits are ASCII"
-			UploadedImage.({ kind, name: "${digits}.${extension(kind)}" })
+			UploadedImage.({ kind, digits })
 		} else
 			crash "UploadedImage.fresh: a name takes 16 random bytes"
 
@@ -53,14 +54,15 @@ UploadedImage :: { kind : UploadedImage.Kind, name : Str }.{
 		match text.to_utf8().split_first('.') {
 			Ok({ before, after }) if before.len() == name_random_bytes * 2 and before.all(is_lower_hex_digit) => {
 				kind = kind_of_extension(after)?
-				Ok(UploadedImage.({ kind, name: text }))
+				digits = Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
+				Ok(UploadedImage.({ kind, digits }))
 			}
 			_ => Err(NotAnUploadName)
 		}
 
 	## Its name, as its file and its URL end.
 	name : UploadedImage -> Str
-	name = |UploadedImage.(image)| image.name
+	name = |UploadedImage.(image)| "${image.digits}.${extension(image.kind)}"
 
 	## Its kind.
 	kind : UploadedImage -> UploadedImage.Kind
@@ -111,9 +113,11 @@ kind_of_extension = |bytes|
 hex_digits : U8 -> List(U8)
 hex_digits = |byte| [hex_digit(byte // 16), hex_digit(byte % 16)]
 
+## The lowercase hex digit for `n`, which is under 16.
 hex_digit : U8 -> U8
 hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
 
+## Is `b` one of `0` to `9` or `a` to `f`?
 is_lower_hex_digit : U8 -> Bool
 is_lower_hex_digit = |b| Ascii.is_digit(b) or (b >= 'a' and b <= 'f')
 
@@ -122,6 +126,8 @@ is_lower_hex_digit = |b| Ascii.is_digit(b) or (b >= 'a' and b <= 'f')
 expect UploadedImage.kind_of_bytes(png_signature.concat([0, 0])) == Ok(Png)
 expect UploadedImage.kind_of_bytes(png_signature) == Ok(Png)
 expect UploadedImage.kind_of_bytes([0xFF, 0xD8, 0xFF, 0xE0]) == Ok(Jpeg)
+expect UploadedImage.kind_of_bytes([0xFF, 0xD8, 0xFF]) == Ok(Jpeg)
+expect UploadedImage.kind_of_bytes("RIFF\u(0)\u(0)\u(0)\u(0)WEBP".to_utf8()) == Ok(Webp)
 expect UploadedImage.kind_of_bytes("GIF89a..".to_utf8()) == Ok(Gif)
 expect UploadedImage.kind_of_bytes("GIF87a".to_utf8()) == Ok(Gif)
 expect UploadedImage.kind_of_bytes("RIFF\u(0)\u(0)\u(0)\u(0)WEBPVP8 ".to_utf8()) == Ok(Webp)
@@ -166,6 +172,10 @@ expect {
 	image = UploadedImage.fresh({ random_bytes: List.repeat(0x5C, 16), kind: Gif })
 	UploadedImage.from_name(image.name()) == Ok(image)
 }
+expect
+	["png", "jpg", "gif", "webp"].all(
+		|ext| UploadedImage.from_name("${"0".repeat(32)}.${ext}").map_ok(UploadedImage.name) == Ok("${"0".repeat(32)}.${ext}"),
+	)
 expect UploadedImage.from_name("${"0".repeat(32)}.jpg").map_ok(UploadedImage.kind) == Ok(Jpeg)
 expect UploadedImage.from_name("${"9".repeat(32)}.webp").map_ok(UploadedImage.kind) == Ok(Webp)
 expect

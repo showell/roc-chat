@@ -1,11 +1,11 @@
-## **PLACE'S TESTS**: both kinds of place, a channel's and a DM's, named
-## as a folder and a URL take them; equal only to themselves; and, with a
-## topic, a map's key.
+## These are Place's tests: both kinds of place, a channel and a DM, with
+## their names; each equal only to itself; and, with a topic, a map's key.
 import ChannelName
 import Channels
 import Dm
 import Place
 import Sample
+import UserPair
 
 PlaceSpec :: [].{}
 
@@ -29,11 +29,23 @@ places = [
 	Place.dm(dm_with("Steve")),
 ]
 
-# Each tag's name: a channel's own, or a DM's pair.
+## A place as a test reads it: its kind, then its name.
+kind_and_name : Place -> Str
+kind_and_name = |place|
+	match place.which() {
+		Channel(name) => "channel ${name.to_str()}"
+		Dm(pair) => "DM ${pair.to_str()}"
+	}
+
+# Each place's kind and name.
+expect places.map(kind_and_name) == ["channel plans", "channel general", "DM 1_2", "DM 1_1"]
 expect places.map(Place.to_str) == ["plans", "general", "1_2", "1_1"]
+# No channel's name is a pair, and no pair is a channel's name, so the two
+# kinds never share a name.
+expect ["1_2", "1_1"].all(|text| ChannelName.from_str(text).is_err() and UserPair.from_str(text).is_ok())
+expect ["plans", "general"].all(|text| ChannelName.from_str(text).is_ok() and UserPair.from_str(text).is_err())
 # Each place equals itself, made again, and no other.
-expect
-	places.map(|place| places.keep_if(|other| other == place).len()) == [1, 1, 1, 1]
+expect places.all(|place| places.keep_if(|other| other == place).len() == 1)
 expect Place.channel(channel("plans")) == Place.channel(channel("plans"))
 expect Place.dm(
 	Dm.between({
