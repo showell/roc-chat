@@ -152,8 +152,8 @@
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
 //!
-//! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
-//! `Origin`, no `Sec-Fetch-Site`.
+//! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, the
+//! session's cookie, no `Origin`, no `Sec-Fetch-Site`.
 //!
 //! The server stops and the data root goes before it returns, pass or
 //! fail, so nothing is left running and nothing is left behind.

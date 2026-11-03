@@ -314,6 +314,10 @@ test "a stream held its longest is ended, so its client reconnects and is asked 
     const began = Io.Clock.now(.awake, io);
     try stream.open(a, port, "1");
     defer stream.connection.close(io);
+    // A stream never ended by the server is shut here, so the test fails
+    // on its time rather than hang.
+    var watchdog = try io.concurrent(shut_after, .{ stream.connection, 3_000 });
+    defer watchdog.cancel(io);
     // Within its age a frame still comes.
     const posted = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=y"));
     try testing.expectEqual(303, try status(posted));
@@ -321,6 +325,11 @@ test "a stream held its longest is ended, so its client reconnects and is asked 
     while (try stream.line()) |_| {}
     const held = began.untilNow(io, .awake).toMilliseconds();
     try testing.expect(held >= 300 and held < 2_000);
+}
+
+fn shut_after(connection: Io.net.Stream, ms: u32) void {
+    Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch return;
+    connection.shutdown(io, .both) catch {};
 }
 
 test "a public name is a stranger's when the server has no public origin" {
@@ -524,4 +533,17 @@ test "the app's start: an empty data folder gets the first chat; one holding par
     // Mended, it starts.
     try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "2\n" });
     try http.start_app(io, gpa, &partial_root);
+
+    // An account cut short as it was made, its owner written and no name:
+    // no account, and the chat still starts. Its name written, it is one.
+    try partial.dir.createDirPath(io, "auth/2");
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/2/owner", .data = "1" });
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "3\n" });
+    try http.start_app(io, gpa, &partial_root);
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/2/name", .data = "CC" });
+    try http.start_app(io, gpa, &partial_root);
+    // A name that is no name still stops the start: only a missing one is
+    // an account cut short.
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/2/name", .data = "C!C" });
+    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
 }

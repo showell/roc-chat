@@ -1,5 +1,4 @@
-## This module is the app's edge. It holds the app's four entries, and the
-## one thing that stands in at the edge until the real thing exists.
+## This module is the app's edge. It holds the app's four entries.
 ##
 ## - `page` (the demo, host/demo.zig): a conversation's URL path and its
 ##   transcript in, its page out, as the server would show it to the
@@ -28,9 +27,12 @@
 ## with an `Authorization` header by that header alone, as the agent its
 ## key admits, or a 401; any other by its session cookie, as the human the
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
-## (`Anonymous`). No one may use only the routes `Route` says are open (the
-## scripts, signing in and out, and redeeming an invite); every other page
-## sends them to sign in, and every other request is a 401.
+## (`Anonymous`). A request that proves no one may use only the routes
+## `Route` says are open (the scripts, signing in and out, and redeeming an
+## invite); any other page sends it to sign in, and any other request is a
+## 401. Only the first start, which makes Steve before anyone can sign in,
+## and the demo's page take him as signed in with nothing checked
+## (`SignedIn.dangerously_assume`); no request does.
 app [
 	check_request_head!,
 	handle_http_request!,

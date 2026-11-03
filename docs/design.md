@@ -111,6 +111,7 @@ apoorvavpendse@gmail.com would be better
   | `auth/next-id.txt` | the next user id's decimal digits and a line end, `3\n`; `256\n` once every id is taken | the Zig chat's counter |
   | `auth/<id>/name` | the user's name, exactly as given, UTF-8 | the Zig chat |
   | `auth/<id>/owner` | an agent's owner's id, its digits; a human has no `owner` file | roc-chat's fact |
+  | `auth/<id>/password` | a human's password's bcrypt hash, 60 bytes, `$2b$10$` and 53 more (a `$2a$` or `$2y$` hash reads the same), with a line end or none; never the password. The server's owner writes it on the server's machine, `gopher-roc hash-password > auth/<id>/password`, readable by them alone; the server only reads it. A human with none can't sign in, and removing it ends every session of theirs; an agent has none | the Zig chat's `password` |
   | `auth/<agent>/keys/<n>/created`, `expires` | when the key was made, and when it stops admitting, in seconds since 1970, digits | roc-chat's facts |
   | `auth/<agent>/keys/<n>/state` | `active` or `revoked` | roc-chat's words |
   | `auth/<agent>/keys/<n>/read`, `post` | the key's scope: `everywhere` or `off` each | roc-chat's words |
@@ -119,10 +120,13 @@ apoorvavpendse@gmail.com would be better
   | `auth/<agent>/invites/<n>/state` | `live`, `spent` or `revoked` | roc-chat's words |
   | `chat/channel/<name>.channel` | the channel's members, one id a line, each with a line end; a blank line or one starting `#` is skipped | the Zig chat's `<name>.channel`, beside the channel's folder of topics |
   | `users/<id>/upload-bytes` | the user's lifetime upload total, digits | the Zig chat |
+  | `.session-secret` | the server's secret, which signs and checks every session: 32 random bytes as 64 lowercase hex digits (any 32 to 256 bytes are read), readable by its owner alone. The host makes it once, at the server's first start on the folder, and holds it; its name starts with `.`, so no file primitive, and so no Roc, can read or write it. Removing it and starting the server again makes a new one and ends every session | the Zig chat's `_session_secret` |
 
   A key's or invite's number `<n>` counts 1, 2, 3 within its agent's folder, and is never given twice, as nothing in an agent's folder is removed. A record of several files is written a file at a time, each made once, `hash` last: a record cut short by a crash has no hash, so it admits no one. A revoke or a redemption rewrites `state` alone, atomically. An account is written `owner` first and `name` last, after the counter, so an id is never given twice and an agent is never read as a human. The first start writes Steve's `name`, `general.channel` holding `1`, and the counter last; a data folder holding accounts or channels and no counter is part of a chat, and the server refuses to start on it.
 
-  Channel membership has no page yet: an admin edits a channel's `.channel` file, as in the Zig chat. A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash.
+  Channel membership has no page yet: an admin edits a channel's `.channel` file, as in the Zig chat. A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash, and a password only as its bcrypt hash.
+
+  A session is not on disk: it is the cookie `__Host-gopher_auth`, whose value is the user's id in base64url (unpadded), a `.`, the second it was signed at in decimal, a `.`, and the HMAC-SHA256 under `.session-secret` of the id's digits, a line feed and that second, in base64url, as the Zig chat's sessions are. It admits its human for a year from its second, and not at all when signed more than five minutes ahead of the clock; it is set `Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`. Signing out clears the browser's cookie; a copy kept elsewhere stays good until its year is out, its human's password file is removed, or the secret is replaced.
 - **Feel like REST over the file system.** A database isn't ruled out in the long run.
 - **Anything that can become a URL or a file name is strictly named**, which covers channels and topics. Escaping is allowed but used pragmatically: our users write English, which fits in ASCII. Message text can be any unicode, emoji included.
 
@@ -134,6 +138,7 @@ apoorvavpendse@gmail.com would be better
 ## Sign-in
 
 - **GitHub sign-in, or an invite link for people without GitHub.**
+- **Built now, as the Zig chat did it:** a human signs in at `/login` with their name and a password, checked against the bcrypt hash in their account folder, and gets a signed session (above). Steve is the one human with a password; he writes its hash on the server's machine, so it never passes through an agent or a log. A request with neither a session nor an API key may only sign in, load the pages' scripts, and redeem an agent's invite: any other page sends it to sign in, and any other request is a 401.
 
 ## Scope
 
@@ -152,4 +157,4 @@ apoorvavpendse@gmail.com would be better
 - **Eligibility:** who may read and write a conversation, beyond channel membership and an owner's limits on their agents. You deferred this on purpose.
 - **Rate limiting:** one mechanism for humans and agents.
 - **How a browser's live connections are split.** My call, after reading the Zig chat.
-- **What exactly sessions look like on disk.** That is yours to decide when we get there. Invites and keys are proposed in the storage section above, for your review.
+- **Sessions are on no disk**: a signed cookie, as the Zig chat's (the storage section above), for your review, with invites and keys. Signing out ends a browser's session, not a copy of its cookie; a per-user record of sign-outs would end those too.
