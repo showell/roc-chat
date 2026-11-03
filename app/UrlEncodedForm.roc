@@ -5,6 +5,7 @@
 ## be UTF-8. The field a caller asks for comes out as an
 ## `UnvalidatedString`, as unchecked as the rest of the request, or as a
 ## refusal.
+import Hex
 import UnvalidatedString
 
 UrlEncodedForm :: [].{
@@ -88,7 +89,7 @@ decode_value_onto = |{ out, rest }|
 			low,
 			.. as after,
 		] =>
-			match (hex_value(high), hex_value(low)) {
+			match (Hex.digit_value(high), Hex.digit_value(low)) {
 				(Ok(h), Ok(l)) => decode_value_onto({ out: out.append(h * 16 + l), rest: after })
 				_ => Err(BadEscape)
 			}
@@ -97,36 +98,7 @@ decode_value_onto = |{ out, rest }|
 		[byte, .. as after] => decode_value_onto({ out: out.append(byte), rest: after })
 	}
 
-## The value of one hex digit, in either case.
-hex_value : U8 -> Try(U8, [NotHex])
-hex_value = |digit|
-	if (digit >= '0' and digit <= '9')
-		Ok(digit - '0')
-	else if (digit >= 'a' and digit <= 'f')
-		Ok(digit - 'a' + 10)
-	else if (digit >= 'A' and digit <= 'F')
-		Ok(digit - 'A' + 10)
-	else
-		Err(NotHex)
-
 # ── tests
-# Each range's ends, and the byte just outside each.
-expect
-	[
-		('0', Ok(0)),
-		('9', Ok(9)),
-		('a', Ok(10)),
-		('f', Ok(15)),
-		('A', Ok(10)),
-		('F', Ok(15)),
-		('/', Err(NotHex)),
-		(':', Err(NotHex)),
-		('`', Err(NotHex)),
-		('g', Err(NotHex)),
-		('@', Err(NotHex)),
-		('G', Err(NotHex)),
-	].all(|(digit, expected)| hex_value(digit) == expected)
-
 ## The markdown of a message form's `body`, as a test reads it, or why
 ## there is none.
 markdown_of : Str -> Try(Str, [MissingField, RepeatedField, BadEscape, NotUtf8, Blank])

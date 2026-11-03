@@ -7,6 +7,8 @@
 ##
 ## It is a copy of roc-chat's `app/JsonOut.roc`, kept on purpose and cut to
 ## what this chat writes, until a package both can share exists.
+import Hex
+
 JsonOut :: List(U8).{
 
 	## Text as a JSON string: quoted, its `"` and `\` escaped, a line feed
@@ -26,7 +28,7 @@ JsonOut :: List(U8).{
 						} else if b == '\n' {
 							['\\', 'n']
 						} else if b < 0x20 or b == 0x7F {
-							"\\u00".to_utf8().concat([hex_digit(b // 16), hex_digit(b % 16)])
+							"\\u00${Hex.to_hex([b])}".to_utf8()
 						} else {
 							[b]
 						},
@@ -67,10 +69,6 @@ JsonOut :: List(U8).{
 	bytes : JsonOut -> List(U8)
 	bytes = |JsonOut.(b)| b
 }
-
-## The lowercase hex digit for `n`, which is under 16.
-hex_digit : U8 -> U8
-hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
 
 ## Each part, a comma between each two.
 commas : List(List(U8)) -> List(U8)

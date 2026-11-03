@@ -12,7 +12,7 @@
 ## exactly that shape, and its extension gives its kind. The type keeps the
 ## digits and the kind, so a name's extension always matches its kind.
 ## Where an image is kept and served is `ConversationKey`'s.
-import Ascii
+import Hex
 
 UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 
@@ -41,8 +41,7 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	with_random_name : { random_bytes : List(U8), kind : UploadedImage.Kind } -> UploadedImage
 	with_random_name = |{ random_bytes, kind }|
 		if random_bytes.len() == UploadedImage.random_bytes_per_name {
-			digits = Str.from_utf8(random_bytes.join_map(hex_digits)) ?? crash "UploadedImage.with_random_name: hex digits are ASCII"
-			UploadedImage.({ kind, digits })
+			UploadedImage.({ kind, digits: Hex.to_hex(random_bytes) })
 		} else
 			crash "UploadedImage.with_random_name: a name takes ${UploadedImage.random_bytes_per_name.to_str()} random bytes"
 
@@ -51,7 +50,7 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	from_name : Str -> Try(UploadedImage, [NotAnUploadName])
 	from_name = |text|
 		match text.to_utf8().split_first('.') {
-			Ok({ before, after }) if before.len() == UploadedImage.random_bytes_per_name * 2 and before.all(is_lower_hex_digit) => {
+			Ok({ before, after }) if before.len() == UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
 				kind = kind_of_extension(after)?
 				digits = Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
 				Ok(UploadedImage.({ kind, digits }))
@@ -118,18 +117,6 @@ kind_of_extension = |bytes|
 		Gif,
 		Webp,
 	].find_first(|kind| extension(kind).to_utf8() == bytes).map_err(|_| NotAnUploadName)
-
-## A byte as two lowercase hex digits.
-hex_digits : U8 -> List(U8)
-hex_digits = |byte| [hex_digit(byte // 16), hex_digit(byte % 16)]
-
-## The lowercase hex digit for `n`, which is under 16.
-hex_digit : U8 -> U8
-hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
-
-## Is `b` one of `0` to `9` or `a` to `f`?
-is_lower_hex_digit : U8 -> Bool
-is_lower_hex_digit = |b| Ascii.is_digit(b) or (b >= 'a' and b <= 'f')
 
 # ── tests
 # An image is what its bytes say: each kind at its opening bytes.
