@@ -3,11 +3,14 @@
 ##
 ## The cookie is `__Host-gopher_auth`, and its value is three parts joined by
 ## `.`: the user's id in base64url (`Base64Url`), the second it was signed
-## at, in decimal, and the HMAC-SHA256 of the id, a line feed and that
-## second, in base64url. The host signs and checks the HMAC with the
+## at, in decimal, and the HMAC-SHA256 of the id, a line feed, that second,
+## a line feed and the bcrypt hash of the human's password as their file
+## keeps it, in base64url. The host signs and checks the HMAC with the
 ## server's secret (`Host.hmac_sha256_with_server_secret!`), which the app
 ## never holds. A session admits its human for a year from its second, and
 ## one signed more than five minutes ahead of the clock admits no one.
+## Because the hash is signed and not sent, rewriting a human's password
+## file ends every session of theirs, and keeping it costs nothing.
 ##
 ## The cookie is `HttpOnly`, so no script reads it; `Secure`, so a browser
 ## sends it only over HTTPS or to this machine; `SameSite=Lax`, so another
@@ -46,12 +49,14 @@ Session :: [].{
 		mac : List(U8),
 	}.{
 
-		## The bytes its signature is over: the id's digits, a line feed,
-		## the second's digits.
-		signed_bytes : Session.Claim -> List(U8)
-		signed_bytes = |Session.Claim.(claim)| Session.signed_bytes({
+		## The bytes its signature is over, when its human's password file
+		## keeps `password_hash`: the id's digits, a line feed, the second's
+		## digits, a line feed, the hash.
+		signed_bytes : Session.Claim, List(U8) -> List(U8)
+		signed_bytes = |Session.Claim.(claim), password_hash| Session.signed_bytes({
 			id: claim.id,
 			signed_at: claim.signed_at,
+			password_hash,
 		})
 
 		## The signature it carries, for the host to check.
@@ -67,9 +72,20 @@ Session :: [].{
 		signed_at = |Session.Claim.(claim)| claim.signed_at
 	}
 
-	## The bytes a session for `id`, signed at `signed_at`, is signed over.
-	signed_bytes : { id : UserId, signed_at : I64 } -> List(U8)
-	signed_bytes = |{ id, signed_at }| "${id.to_str()}\n${signed_at.to_str()}".to_utf8()
+	## The bytes a session for `id`, signed at `signed_at`, is signed over,
+	## its human's password file keeping `password_hash`.
+	signed_bytes : {
+		id : UserId,
+		signed_at : I64,
+		password_hash : List(U8),
+	} -> List(U8)
+	signed_bytes = |
+		{
+			id,
+			signed_at,
+			password_hash,
+		},
+	| "${id.to_str()}\n${signed_at.to_str()}\n".to_utf8().concat(password_hash)
 
 	## The claim of the request's `Cookie` header, `header`; unless it holds
 	## no session cookie (`NoSession`), or one that is no claim, or more than
@@ -244,11 +260,11 @@ cookie_for = |
 | "${cookie_prefix_text}${Session.cookie_value({ id: id_of(id), signed_at, mac: mac_of(b) })}".to_utf8()
 
 ## What `header` claims, as a test reads it: the bytes its signature is
-## over, and the signature.
+## over, its human's password file keeping `h`, and the signature.
 claim_text : List(U8) -> Try((Str, List(U8)), [NoSession, BadSession])
 claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
 	|claim| (
-		Str.from_utf8_lossy(claim.signed_bytes()),
+		Str.from_utf8_lossy(claim.signed_bytes("h".to_utf8())),
 		claim.mac(),
 	),
 )
@@ -262,7 +278,18 @@ expect Session.cookie_value({
 expect Session.signed_bytes({
 	id: UserId.steve,
 	signed_at: 1700000000,
-}) == "1\n1700000000".to_utf8()
+	password_hash: "$2b$10$x".to_utf8(),
+}) == "1\n1700000000\n$2b$10$x".to_utf8()
+# Another hash, or none, is other bytes: a password rewritten ends its
+# sessions.
+expect
+	[
+		"$2b$10$y",
+		"",
+	].all(
+		|password_hash| Session.signed_bytes({ id: UserId.steve, signed_at: 1700000000, password_hash: password_hash.to_utf8() })
+			!= "1\n1700000000\n$2b$10$x".to_utf8(),
+	)
 # A claim read back from its cookie, among others or alone; its signed bytes
 # and its signature as written.
 expect claim_text(
@@ -271,10 +298,10 @@ expect claim_text(
 		signed_at: 1700000000,
 		b: 7,
 	}),
-) == Ok(("1\n1700000000", mac_of(7)))
+) == Ok(("1\n1700000000\nh", mac_of(7)))
 expect
 	claim_text("theme=dark; ${Str.from_utf8_lossy(cookie_for({ id: "42", signed_at: 0, b: 1 }))} ;x=y".to_utf8())
-		== Ok(("42\n0", mac_of(1)))
+		== Ok(("42\n0\nh", mac_of(1)))
 # No session cookie: none, another, or one whose name only starts the same.
 expect
 	[
@@ -314,7 +341,7 @@ expect {
 	].all(|header| claim_text(header.to_utf8()) == Err(BadSession))
 }
 expect claim_text("${cookie_prefix_text}MQ.9223372036854775807.${Base64Url.encode(mac_of(7))}".to_utf8()) == Ok((
-	"1\n9223372036854775807",
+	"1\n9223372036854775807\nh",
 	mac_of(7),
 ))
 

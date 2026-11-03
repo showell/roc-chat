@@ -24,9 +24,10 @@
 ##
 ## `sign_in_by_session!` is the check a request with a session cookie, and
 ## no `Authorization` header, passes before any route (main's
-## `load_actor!`): the host checks the signature, `Session.admit` decides,
-## and the human must still have a password, so removing a password file
-## ends every session of its human. `SignedIn.by_session` is its one door.
+## `load_actor!`): the host checks the signature over the hash the human's
+## password file keeps now, and `Session.admit` decides. So rewriting or
+## removing a password file ends every session of its human.
+## `SignedIn.by_session` is its one door.
 import pf.Host
 import pf.Http
 import FactFile
@@ -72,18 +73,20 @@ SignInRoute :: [].{
 		},
 	| {
 		claim = Session.claim_from_cookie_header(cookie)?
-		verdict = Host.hmac_sha256_with_server_secret_matches!(claim.signed_bytes(), claim.mac())
+		password_hash =
+			match FileSystem.read_password_hash!(claim.id()) {
+				Ok(File(bytes)) => Ok(FactFile.word_from_file(bytes))
+				Ok(NoFile) => Err(NoPassword)
+				Err(fault) => Err(FileSystem(fault))
+			}?
+		verdict = Host.hmac_sha256_with_server_secret_matches!(claim.signed_bytes(password_hash), claim.mac())
 		admitted = Session.admit({
 			claim,
 			verdict,
 			now,
 			users,
 		})?
-		match FileSystem.read_password_hash!(admitted.human().id()) {
-			Ok(File(_)) => Ok(SignedIn.by_session(admitted))
-			Ok(NoFile) => Err(NoPassword)
-			Err(fault) => Err(FileSystem(fault))
-		}
+		Ok(SignedIn.by_session(admitted))
 	}
 
 	## A GET of `/login`: the sign-in page for `viewer`, going to the
@@ -131,10 +134,10 @@ SignInRoute :: [].{
 						users,
 						body,
 					}) {
-						Ok(human) =>
+						Ok({ human, password_hash }) =>
 							HttpAnswer.with_header(
 								HttpAnswer.see_other(next.to_str()),
-								sign_session_cookie!({ human, now }),
+								sign_session_cookie!({ human, password_hash, now }),
 							)
 						Err(NoMatch) => HttpAnswer.page(
 							401,
@@ -162,12 +165,13 @@ SignInRoute :: [].{
 	}
 
 	## The answer to a human invite redeemed at `now`: a session for the
-	## human its admission admits, and a 303 to `default_next` with its
-	## cookie. The redemption has set their password, which the session
-	## needs (`sign_in_by_session!`). Never stored.
-	start_session_by_invite! : HumanInvite.Admission, I64 => Http.Response
-	start_session_by_invite! = |admission, now| {
-		cookie = sign_session_cookie!({ human: admission.human(), now })
+	## human its admission admits, signed over `password_hash`, the hash the
+	## redemption wrote to their password file, and a 303 to `default_next`
+	## with its cookie. Every session signed over the hash the file held
+	## before stops admitting them (`sign_in_by_session!`). Never stored.
+	start_session_by_invite! : { admission : HumanInvite.Admission, password_hash : List(U8) }, I64 => Http.Response
+	start_session_by_invite! = |{ admission, password_hash }, now| {
+		cookie = sign_session_cookie!({ human: admission.human(), password_hash, now })
 		onward = HttpAnswer.see_other(default_next.to_str())
 		HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
 	}
@@ -189,13 +193,25 @@ SignInRoute :: [].{
 }
 
 ## The `Set-Cookie` header of a session for `human`, signed at `now` by the
-## host's HMAC under the server's secret.
-sign_session_cookie! : { human : Users.Human, now : I64 } => Http.Header
-sign_session_cookie! = |{ human, now }| {
+## host's HMAC under the server's secret, over `password_hash`, the hash
+## their password file keeps.
+sign_session_cookie! : {
+	human : Users.Human,
+	password_hash : List(U8),
+	now : I64,
+} => Http.Header
+sign_session_cookie! = |
+	{
+		human,
+		password_hash,
+		now,
+	},
+| {
 	mac = Host.hmac_sha256_with_server_secret!(
 		Session.signed_bytes({
 			id: human.id(),
 			signed_at: now,
+			password_hash,
 		}),
 	)
 	cookie = Session.cookie_value({
@@ -264,17 +280,18 @@ next_from_form = |body|
 		Ok(unchecked) => unchecked.site_path().map_err(|NotASitePath| BadNext)
 	}
 
-## The human whose name and password the form `body` holds, among `users`;
-## unless they don't match a human's (`NoMatch`: no such name, an agent's,
-## no password, a password file holding no hash, or another password),
-## `viewer` holds an API key (`ByApiKey`), the host refuses the check
-## (`TooManyChecks`), or the password's file can't be read.
+## The human whose name and password the form `body` holds, among `users`,
+## and the hash the password was checked against, which their session is
+## signed over; unless they don't match a human's (`NoMatch`: no such name,
+## an agent's, no password, a password file holding no hash, or another
+## password), `viewer` holds an API key (`ByApiKey`), the host refuses the
+## check (`TooManyChecks`), or the password's file can't be read.
 find_human_by_password! : {
 	viewer : SignedIn.Actor,
 	users : Users,
 	body : List(U8),
 } => Try(
-	Users.Human,
+	{ human : Users.Human, password_hash : List(U8) },
 	[
 		NoMatch,
 		ByApiKey,
@@ -307,35 +324,36 @@ find_human_by_password! = |
 		Ok(user) =>
 			match user.as_human() {
 				Err(Agent(_)) => Err(check_against_dummy_hash!(password))
-				Ok(human) => check_password_of!(human, password)
+				Ok(human) => check_password_of!({ human, password })
 			}
 	}
 }
 
-## `human`, when `password` is the one their password file's hash was made
-## from; unless it isn't, they have no file or one holding no hash the host
-## checks (`NoMatch`), the host refuses the check (`TooManyChecks`), or the
-## file can't be read.
-check_password_of! : Users.Human,
-Password => Try(
-	Users.Human,
+## `human` and the hash their password file keeps, when `password` is the
+## one the hash was made from; unless it isn't, they have no file or one
+## holding no hash the host checks (`NoMatch`), the host refuses the check
+## (`TooManyChecks`), or the file can't be read.
+check_password_of! : { human : Users.Human, password : Password } => Try(
+	{ human : Users.Human, password_hash : List(U8) },
 	[
 		NoMatch,
 		TooManyChecks,
 		FileSystem(FileSystem.Fault),
 	],
 )
-check_password_of! = |human, password|
+check_password_of! = |{ human, password }|
 	match FileSystem.read_password_hash!(human.id()) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(NoFile) => Err(check_against_dummy_hash!(password))
-		Ok(File(bytes)) =>
-			match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), FactFile.word_from_file(bytes)) {
-				Matches => Ok(human)
+		Ok(File(bytes)) => {
+			password_hash = FactFile.word_from_file(bytes)
+			match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), password_hash) {
+				Matches => Ok({ human, password_hash })
 				DoesNotMatch => Err(NoMatch)
 				NotABcryptHash => Err(check_against_dummy_hash!(password))
 				TooManyChecks => Err(TooManyChecks)
 			}
+		}
 	}
 
 ## `password` checked against `dummy_hash`, which no sign-in may match: the

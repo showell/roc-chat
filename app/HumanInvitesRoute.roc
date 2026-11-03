@@ -90,7 +90,7 @@ HumanInvitesRoute :: [].{
 	} => Http.Response
 	redeem! = |request|
 		match redeem_invite!(request) {
-			Ok(admission) => SignInRoute.start_session_by_invite!(admission, request.now)
+			Ok(redeemed) => SignInRoute.start_session_by_invite!(redeemed, request.now)
 			Err(why) => HttpAnswer.never_stored(refusal_page(why))
 		}
 }
@@ -247,13 +247,15 @@ issue_invite! = |
 	Ok(SecretToken.of({ user: human, secret }))
 }
 
-## The redemption: the form read, the invite spent, the password written.
+## The redemption: the form read, the invite spent, the password written;
+## then the admission, and the hash written, which the session is signed
+## over.
 redeem_invite! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
 	now : I64,
-} => Try(HumanInvite.Admission, _)
+} => Try({ admission : HumanInvite.Admission, password_hash : List(U8) }, _)
 redeem_invite! = |
 	{
 		actor,
@@ -294,7 +296,7 @@ redeem_invite! = |
 	FileSystem.replace_human_invite_state!(token.user(), redeemed.spent) ? |fault| FileSystem(fault)
 	hash = Host.bcrypt_hash_of_password!(password.bytes_to_check())
 	FileSystem.replace_password_hash!(token.user(), hash) ? |fault| FileSystem(fault)
-	Ok(redeemed.admission)
+	Ok({ admission: redeemed.admission, password_hash: hash })
 }
 
 ## Every human of `directory`.

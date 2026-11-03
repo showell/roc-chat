@@ -13,8 +13,7 @@
 //!      page again, no cookie, never stored;
 //!  0c. sign in with the right one: a 303 to `next`, the session's cookie
 //!      set for a year, `HttpOnly`, `Secure`, `SameSite=Lax`, signed by the
-//!      server's secret, never stored; every step of Steve's after 0e
-//!      carries it;
+//!      server's secret over his password file's hash, never stored;
 //!  0d. a cookie whose signature is forged, one a year and a second old,
 //!      one signed ahead of the clock past its skew, and one for an id no
 //!      human has: the page a 303 to sign in, a message a 401, nothing
@@ -23,6 +22,9 @@
 //!      POST and an upload are 401 each, nothing stored; `/agents` a 303
 //!      to sign in; an upload past a form's room is a 413, its body never
 //!      read, as the large room is only a member's.
+//!  0f. Steve's password file rewritten, the same password under a new
+//!      salt: his session's page a 303 to sign in; signed in again, the new
+//!      session's page 200. Every step of his after 0f carries the new one.
 //!
 //! Then, as Steve:
 //!
@@ -592,14 +594,7 @@ pub fn main(init: std.process.Init) !void {
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and
 /// of a session, Steve signed in (`steve_session`), and what no one may do.
 fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !void {
-    var salt: [std.crypto.pwhash.bcrypt.salt_length]u8 = undefined;
-    io.random(&salt);
-    var hash_buf: [60]u8 = undefined;
-    const hash = try std.crypto.pwhash.bcrypt.strHashWithSalt(steve_password, .{
-        .params = .{ .rounds_log = 10, .silently_truncate_password = false },
-        .encoding = .crypt,
-    }, &hash_buf, salt);
-    try data.writeFile(io, .{ .sub_path = "auth/1/password", .data = try std.fmt.allocPrint(a, "{s}\n", .{hash}) });
+    const hash = try writePassword(a, io, data);
 
     // 0a.
     const anonymous = try anonymousGet(a, io, port, channel_url);
@@ -628,7 +623,7 @@ fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
         std.mem.eql(u8, signed_in.header("location") orelse "", channel_url) and
         std.mem.endsWith(u8, cookie, "; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
         std.mem.eql(u8, signed_in.header("cache-control") orelse "", "no-store") and
-        try sessionSignedNear(a, io, data, value, before));
+        try sessionSignedNear(a, io, data, .{ .value = value, .from = before, .password_hash = hash }));
 
     // 0d.
     const secret = try data.readFileAlloc(io, ".session-secret", a, .limited(256));
@@ -639,9 +634,10 @@ fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
     forged_value[flipped] = if (forged_value[flipped] == 'A') 'B' else 'A';
     const refused_cookies = [_][]const u8{
         forged_value,
-        try sessionValue(a, secret, "1", now - 365 * 24 * 60 * 60 - 1),
-        try sessionValue(a, secret, "1", now + 5 * 60 + 60),
-        try sessionValue(a, secret, "7", now),
+        try sessionValue(a, secret, .{ .id = "1", .signed_at = now - 365 * 24 * 60 * 60 - 1, .password_hash = hash }),
+        try sessionValue(a, secret, .{ .id = "1", .signed_at = now + 5 * 60 + 60, .password_hash = hash }),
+        try sessionValue(a, secret, .{ .id = "7", .signed_at = now, .password_hash = hash }),
+        try sessionValue(a, secret, .{ .id = "1", .signed_at = now, .password_hash = "" }),
     };
     const transcript_before = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
     var refused_all = true;
@@ -651,8 +647,8 @@ fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
         const refused_post = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ channel_url ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: 10\r\n\r\nmarkdown=x", .{ port, line }));
         refused_all = refused_all and refused_page.status == 303 and refused_post.status == 401;
     }
-    const by_hand = try getWith(a, io, port, channel_url, try std.fmt.allocPrint(a, "cookie: {s}{s}\r\n", .{ name, try sessionValue(a, secret, "1", now) }));
-    try t.check("a forged cookie, an expired one, one ahead of the clock, one for no human: the page a 303 to sign in, a message a 401, nothing appended; one signed now: the page", refused_all and
+    const by_hand = try getWith(a, io, port, channel_url, try std.fmt.allocPrint(a, "cookie: {s}{s}\r\n", .{ name, try sessionValue(a, secret, .{ .id = "1", .signed_at = now, .password_hash = hash }) }));
+    try t.check("a forged cookie, an expired one, one ahead of the clock, one for no human, one signed over no hash: the page a 303 to sign in, a message a 401, nothing appended; one signed now over his hash: the page", refused_all and
         by_hand.status == 200 and std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), transcript_before));
 
     // 0e.
@@ -677,15 +673,47 @@ fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
         has(refused_post.body, "No one is signed in") and !(try exists(io, data, channel_uploads)) and !(try exists(io, data, "auth/2")) and
         std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), transcript_before));
 
+    // 0f.
+    const old_line = try std.fmt.allocPrint(a, "cookie: {s}{s}\r\n", .{ name, value });
+    const rewritten = try writePassword(a, io, data);
+    const old_page = try getWith(a, io, port, channel_url, old_line);
+    const again = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple&" ++ next_field);
+    const again_cookie = again.header("set-cookie") orelse "";
+    const again_value = if (std.mem.startsWith(u8, again_cookie, name)) again_cookie[name.len .. std.mem.indexOfScalar(u8, again_cookie, ';') orelse name.len] else "";
+    const new_page = try getWith(a, io, port, channel_url, try std.fmt.allocPrint(a, "cookie: {s}{s}\r\n", .{ name, again_value }));
+    try t.check("Steve's password file rewritten: his old session's page a 303 to sign in; signed in again, the new session's page 200", !std.mem.eql(u8, rewritten, hash) and
+        old_page.status == 303 and again.status == 303 and new_page.status == 200 and !std.mem.eql(u8, again_value, value));
+
     // Every later step of Steve's carries his session, beside another cookie.
-    steve_session = try std.fmt.allocPrint(a, "cookie: theme=dark; {s}{s}\r\n", .{ name, value });
+    steve_session = try std.fmt.allocPrint(a, "cookie: theme=dark; {s}{s}\r\n", .{ name, again_value });
 }
 
-/// The value of a session cookie for the id `id` signed at `signed_at`
-/// with `secret`, as app/Session.roc spells one: a second opinion on it,
-/// from std's HMAC and base64url.
-fn sessionValue(a: std.mem.Allocator, secret: []const u8, id: []const u8, signed_at: i64) ![]const u8 {
-    const signed = try std.fmt.allocPrint(a, "{s}\n{d}", .{ id, signed_at });
+/// Steve's password file written as its owner would write it: a fresh
+/// bcrypt hash of `steve_password`, at the cost the server writes, and a
+/// line end. Its hash.
+fn writePassword(a: std.mem.Allocator, io: Io, data: Io.Dir) ![]const u8 {
+    var salt: [std.crypto.pwhash.bcrypt.salt_length]u8 = undefined;
+    io.random(&salt);
+    const hash_buf = try a.alloc(u8, 60);
+    const hash = try std.crypto.pwhash.bcrypt.strHashWithSalt(steve_password, .{
+        .params = .{ .rounds_log = 10, .silently_truncate_password = false },
+        .encoding = .crypt,
+    }, hash_buf[0..60], salt);
+    try data.writeFile(io, .{ .sub_path = "auth/1/password", .data = try std.fmt.allocPrint(a, "{s}\n", .{hash}) });
+    return hash;
+}
+
+/// What a session cookie claims: whose it is, when it was signed, and the
+/// hash its human's password file keeps.
+const Claim = struct { id: []const u8, signed_at: i64, password_hash: []const u8 };
+
+/// The value of a session cookie for `claim`, signed with `secret`, as
+/// app/Session.roc spells one: a second opinion on it, from std's HMAC and
+/// base64url.
+fn sessionValue(a: std.mem.Allocator, secret: []const u8, claim: Claim) ![]const u8 {
+    const id = claim.id;
+    const signed_at = claim.signed_at;
+    const signed = try std.fmt.allocPrint(a, "{s}\n{d}\n{s}", .{ id, signed_at, claim.password_hash });
     var mac: [32]u8 = undefined;
     std.crypto.auth.hmac.sha2.HmacSha256.create(&mac, signed, secret);
     const b64 = std.base64.url_safe_no_pad.Encoder;
@@ -694,13 +722,13 @@ fn sessionValue(a: std.mem.Allocator, secret: []const u8, id: []const u8, signed
     return std.fmt.allocPrint(a, "{s}.{d}.{s}", .{ b64.encode(id_text, id), signed_at, b64.encode(mac_text, &mac) });
 }
 
-/// Whether `value` is Steve's session signed by the server's secret at a
-/// second from `from` to now.
-fn sessionSignedNear(a: std.mem.Allocator, io: Io, data: Io.Dir, value: []const u8, from: i64) !bool {
+/// Whether `near.value` is Steve's session signed by the server's secret,
+/// over `near.password_hash`, at a second from `near.from` to now.
+fn sessionSignedNear(a: std.mem.Allocator, io: Io, data: Io.Dir, near: struct { value: []const u8, from: i64, password_hash: []const u8 }) !bool {
     const secret = try data.readFileAlloc(io, ".session-secret", a, .limited(256));
-    var second = from;
+    var second = near.from;
     while (second <= files.current_utc_seconds_since_epoch(io)) : (second += 1) {
-        if (std.mem.eql(u8, value, try sessionValue(a, secret, "1", second))) return true;
+        if (std.mem.eql(u8, near.value, try sessionValue(a, secret, .{ .id = "1", .signed_at = second, .password_hash = near.password_hash }))) return true;
     }
     return false;
 }

@@ -65,18 +65,21 @@ pub fn exchange(arena: std.mem.Allocator, port: u16, request: []const u8) ![]u8 
 
 /// The cookie header that signs Steve in to the server the test runs, as
 /// the app reads a session (app/Session.roc): his id, the second it was
-/// signed at and its HMAC under the server's secret. The tests run one at
-/// a time, so the running server's is the one here.
+/// signed at and its HMAC under the server's secret, over those and his
+/// password file's hash. The tests run one at a time, so the running
+/// server's is the one here.
 var steve_cookie_buf: [256]u8 = undefined;
 var steve_cookie: []const u8 = "";
 
 /// Steve signed in to `r`'s server: a password file, which a session needs
-/// its human to have, and a session signed now.
+/// its human to have, and a session signed now over it. A test that
+/// rewrites the file ends that session.
 fn sign_in_steve(r: *Running) !void {
-    try r.data.dir.writeFile(io, .{ .sub_path = "auth/1/password", .data = "a hash the tests never check" });
+    const password_hash = "a hash the tests never check";
+    try r.data.dir.writeFile(io, .{ .sub_path = "auth/1/password", .data = password_hash });
     const now = files.current_utc_seconds_since_epoch(io);
-    var signed_buf: [32]u8 = undefined;
-    const signed = try std.fmt.bufPrint(&signed_buf, "1\n{d}", .{now});
+    var signed_buf: [64]u8 = undefined;
+    const signed = try std.fmt.bufPrint(&signed_buf, "1\n{d}\n" ++ password_hash, .{now});
     const mac = sign_in.hmac_sha256(r.server.secret.slice(), signed);
     var mac_text: [64]u8 = undefined;
     const b64 = std.base64.url_safe_no_pad.Encoder;
