@@ -28,6 +28,7 @@ import pf.Http
 import ConversationKey
 import FileSystem
 import HttpAnswer
+import JsonOut
 import MultipartForm
 import RequestHeader
 import SignedIn
@@ -114,7 +115,7 @@ keep_upload! : {
 	headers : List(Http.Header),
 	body : List(U8),
 } => Try(
-	List(U8),
+	JsonOut,
 	[
 		NoFile,
 		NotAnImage,
@@ -204,33 +205,15 @@ upload_refusal_response = |why|
 ## The answer to an upload, as the old chat's was: the image's URL, the
 ## browser's name for it, its kind, and no size (0 and 0, so the compose
 ## box gives the image no width or height).
-upload_answer_json : { url : Str, name : Str } -> List(U8)
+upload_answer_json : { url : Str, name : Str } -> JsonOut
 upload_answer_json = |{ url, name }|
-	"{\"url\":${json_string(url)},\"name\":${json_string(name)},\"kind\":\"image\",\"width\":0,\"height\":0}".to_utf8()
-
-## Text as a JSON string: quoted, its `"` and `\` escaped, a line feed as
-## `\n`, and every other control byte as `\u00XX`, as roc-chat's `JsonOut`
-## writes one.
-json_string : Str -> Str
-json_string = |text| {
-	escaped = text.to_utf8().join_map(
-		|b|
-			if (b == '"')
-				['\\', '"']
-			else if (b == '\\')
-				['\\', '\\']
-			else if (b == '\n')
-				['\\', 'n']
-			else if (b < 0x20 or b == 0x7F)
-				"\\u00".to_utf8().concat([hex_digit(b // 16), hex_digit(b % 16)])
-			else
-				[b],
-	)
-	"\"${Str.from_utf8(escaped) ?? crash "UploadRoute.json_string: escaping UTF-8 keeps it UTF-8"}\""
-}
-
-hex_digit : U8 -> U8
-hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
+	JsonOut.json_object([
+		("url", JsonOut.string(url)),
+		("name", JsonOut.string(name)),
+		("kind", JsonOut.string("image")),
+		("width", JsonOut.zero),
+		("height", JsonOut.zero),
+	])
 
 # ── tests
 png : List(U8)
@@ -296,5 +279,5 @@ expect {
 # The answer: the URL and the name, the name's quote, backslash and
 # control bytes escaped, so it stays one JSON string.
 expect
-	upload_answer_json({ url: "/chat/dm/1_1/plans/uploads/a.png", name: "c\"a\\t\n\u(1)é.png" })
+	upload_answer_json({ url: "/chat/dm/1_1/plans/uploads/a.png", name: "c\"a\\t\n\u(1)é.png" }).bytes()
 		== "{\"url\":\"/chat/dm/1_1/plans/uploads/a.png\",\"name\":\"c\\\"a\\\\t\\n\\u0001é.png\",\"kind\":\"image\",\"width\":0,\"height\":0}".to_utf8()

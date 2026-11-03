@@ -10,6 +10,7 @@
 ## an inline one), be framed by no one and post only to itself; and
 ## `nosniff`, so a browser takes each answer as the type it says.
 import pf.Http
+import JsonOut
 import Page
 import TrustedHtml
 
@@ -69,16 +70,16 @@ HttpAnswer :: [].{
 			body: bytes,
 		})
 
-	## JSON, `bytes`, with `status`.
-	json : U16, List(U8) -> Http.Response
-	json = |status, bytes|
+	## The JSON `answer`, with `status`.
+	json : U16, JsonOut -> Http.Response
+	json = |status, answer|
 		whole({
 			status,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "application/json".to_utf8() },
 				nosniff,
 			],
-			body: bytes,
+			body: answer.bytes(),
 		})
 
 	## A refusal in plain words, a line of text with `status`: the compose
@@ -272,7 +273,7 @@ expect {
 }
 # JSON and a plain refusal, each its type, not sniffed; the refusal one line.
 expect {
-	answered = HttpAnswer.json(200, "{}".to_utf8())
+	answered = HttpAnswer.json(200, JsonOut.json_object([]))
 	answered.status == 200
 		and header_pairs(answered) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
 		and answered.body == "{}".to_utf8()
@@ -292,7 +293,7 @@ expect
 		HttpAnswer.script([]),
 		HttpAnswer.method_not_allowed(GetOnly),
 		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
-		HttpAnswer.json(200, []),
+		HttpAnswer.json(200, JsonOut.json_object([])),
 		HttpAnswer.text(400, "x"),
 	].all(|answered| answered.kind == Whole and answered.stream_key == [] and answered.stream_holder == [])
 expect {

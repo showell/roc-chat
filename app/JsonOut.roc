@@ -1,0 +1,96 @@
+## This module builds JSON; nothing else writes it. A value is made only by
+## its builders (`string`, `zero`, `json_object`), so every field of every
+## answer is a whole value, escaped: no quote in a name ends a string, and
+## no text becomes a field. The type is opaque, and `bytes` is its only way
+## out; `HttpAnswer.json` is the only taker of a whole answer. It writes no
+## spaces, and fields in the order given.
+##
+## It is a copy of roc-chat's `app/JsonOut.roc`, kept on purpose and cut to
+## what this chat writes, until a package both can share exists.
+JsonOut :: List(U8).{
+
+	## Text as a JSON string: quoted, its `"` and `\` escaped, a line feed
+	## as `\n`, and every other control byte (and DEL) as `\u00XX`, so the
+	## string is one line.
+	string : Str -> JsonOut
+	string = |text|
+		JsonOut.(
+			[
+				['"'],
+				text.to_utf8().join_map(
+					|b|
+						if b == '"' {
+							['\\', '"']
+						} else if b == '\\' {
+							['\\', '\\']
+						} else if b == '\n' {
+							['\\', 'n']
+						} else if b < 0x20 or b == 0x7F {
+							"\\u00".to_utf8().concat([hex_digit(b // 16), hex_digit(b % 16)])
+						} else {
+							[b]
+						},
+				),
+				['"'],
+			].join(),
+		)
+
+	## The number 0, the only number this chat writes (an upload's answer
+	## gives its image no size). roc-chat's `number` writes any `U64`; it
+	## comes back here when a second number is written.
+	zero : JsonOut
+	zero = JsonOut.("0".to_utf8())
+
+	## The fields in order, each a name and a value: `{"name":value,...}`.
+	## A name is escaped as a string is.
+	json_object : List((Str, JsonOut)) -> JsonOut
+	json_object = |fields|
+		JsonOut.(
+			[
+				['{'],
+				commas(
+					fields.map(
+						|(name, value)| [
+							JsonOut.bytes(JsonOut.string(name)),
+							[':'],
+							JsonOut.bytes(value),
+						].join(),
+					),
+				),
+				['}'],
+			].join(),
+		)
+
+	## The value's bytes.
+	bytes : JsonOut -> List(U8)
+	bytes = |JsonOut.(b)| b
+}
+
+## The lowercase hex digit for `n`, which is under 16.
+hex_digit : U8 -> U8
+hex_digit = |n| if (n < 10) '0' + n else 'a' + n - 10
+
+## Each part, a comma between each two.
+commas : List(List(U8)) -> List(U8)
+commas = |parts| parts.map_with_index(|part, i| if (i == 0) part else part.prepend(',')).join()
+
+# ── tests
+# A quote, a backslash, a line feed, a carriage return, DEL and a
+# multi-byte character: each as roc-chat's wire spells it.
+expect JsonOut.string("a\"b\\c\nd\re\u(7f)é").bytes() == "\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"".to_utf8()
+expect JsonOut.string("").bytes() == "\"\"".to_utf8()
+expect JsonOut.zero.bytes() == "0".to_utf8()
+# A name holding a quote, a backslash and a control byte stays one string.
+expect
+	JsonOut.json_object([
+		("name", JsonOut.string("Bea \"B\" \\ \u(01)")),
+		("n", JsonOut.zero),
+	]).bytes()
+		== "{\"name\":\"Bea \\\"B\\\" \\\\ \\u0001\",\"n\":0}".to_utf8()
+expect JsonOut.json_object([]).bytes() == "{}".to_utf8()
+# A field's name is escaped too, and an object nests.
+expect
+	JsonOut.json_object([
+		("a\"b", JsonOut.json_object([("c", JsonOut.zero)])),
+	]).bytes()
+		== "{\"a\\\"b\":{\"c\":0}}".to_utf8()
