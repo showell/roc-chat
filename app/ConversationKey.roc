@@ -13,11 +13,17 @@
 ## `from_url_path` reads those parts back, here beside the writer. A
 ## conversation's stream is at its page's URL and `/stream`, which
 ## `from_stream_url_path` reads back.
+##
+## An image is uploaded to a conversation by a POST to its page's URL and
+## `/upload` (`from_upload_url_path`), and is served at its page's URL,
+## `/uploads/` and the image's name (`from_uploaded_image_url_path`).
+## `FileSystem` keeps it in the conversation's folder, as `uploads/<name>`.
 import Directory
 import Dm
 import Place
 import Topic
 import UnvalidatedString
+import UploadedImage
 
 ConversationKey :: { place : Place, topic : Topic }.{
 
@@ -107,6 +113,52 @@ ConversationKey :: { place : Place, topic : Topic }.{
 		],
 	)
 	from_stream_url_path = |{ path, directory }|
+		key_before_last_part({
+			path,
+			last: stream_part,
+			directory,
+		})
+
+	## The URL path an image is uploaded to: its page's, then `/upload`.
+	upload_url_path : ConversationKey -> Str
+	upload_url_path = |key| "${key.url_path()}/${upload_part}"
+
+	## The conversation a URL's path uploads to, refused as
+	## `from_url_path` refuses a page's.
+	from_upload_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
+		ConversationKey,
+		[
+			NotAConversationPath,
+			BadName,
+			NoSuchChannel,
+			NoSuchHuman,
+		],
+	)
+	from_upload_url_path = |{ path, directory }|
+		key_before_last_part({
+			path,
+			last: upload_part,
+			directory,
+		})
+
+	## The URL path an uploaded image is served at: its page's, then
+	## `/uploads/` and the image's name.
+	uploaded_image_url_path : ConversationKey, UploadedImage -> Str
+	uploaded_image_url_path = |key, image| "${key.url_path()}/${uploads_part}/${image.name()}"
+
+	## The conversation and the uploaded image a URL's path names, refused
+	## as `from_url_path` refuses a page's, and as `NotAConversationPath`
+	## when the last part is no uploaded image's name.
+	from_uploaded_image_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
+		{ key : ConversationKey, image : UploadedImage },
+		[
+			NotAConversationPath,
+			BadName,
+			NoSuchChannel,
+			NoSuchHuman,
+		],
+	)
+	from_uploaded_image_url_path = |{ path, directory }|
 		match path.url_path_parts() {
 			Ok(
 				[
@@ -114,15 +166,19 @@ ConversationKey :: { place : Place, topic : Topic }.{
 					kind,
 					name,
 					topic_part,
-					stream,
+					uploads,
+					image_name,
 				],
-			) if chat.is_exactly("chat") and stream.is_exactly(stream_part) =>
-				key_named({
+			) if chat.is_exactly("chat") and uploads.is_exactly(uploads_part) => {
+				image = image_name.uploaded_image() ? |NotAnUploadName| NotAConversationPath
+				key = key_named({
 					kind,
 					name,
 					topic_part,
 					directory,
-				})
+				})?
+				Ok({ key, image })
+			}
 			_ => Err(NotAConversationPath)
 		}
 
@@ -133,6 +189,54 @@ ConversationKey :: { place : Place, topic : Topic }.{
 ## The last part of a stream's URL path.
 stream_part : Str
 stream_part = "stream"
+
+## The last part of an upload's URL path.
+upload_part : Str
+upload_part = "upload"
+
+## The part before an uploaded image's name in its URL path.
+uploads_part : Str
+uploads_part = "uploads"
+
+## The conversation whose page's URL path, then `/` and `last`, is `path`.
+key_before_last_part : {
+	path : UnvalidatedString,
+	last : Str,
+	directory : Directory,
+} -> Try(
+	ConversationKey,
+	[
+		NotAConversationPath,
+		BadName,
+		NoSuchChannel,
+		NoSuchHuman,
+	],
+)
+key_before_last_part = |
+	{
+		path,
+		last,
+		directory,
+	},
+|
+	match path.url_path_parts() {
+		Ok(
+			[
+				chat,
+				kind,
+				name,
+				topic_part,
+				last_part,
+			],
+		) if chat.is_exactly("chat") and last_part.is_exactly(last) =>
+			key_named({
+				kind,
+				name,
+				topic_part,
+				directory,
+			})
+		_ => Err(NotAConversationPath)
+	}
 
 ## The conversation under `topic_part` in the place of `kind` that `name`
 ## names, if `directory` holds it.

@@ -3,8 +3,8 @@
 ## checking door says what it is. Opaque, with one way in, `from_utf8`, at
 ## main's door, and no way back to a `Str`: the only ways out are the
 ## checking doors below, each giving a checked type or a refusal's tags.
-## So no `Name`, `Topic`, `ChannelName`, `UserId`, `UserPair` or `DateTime`
-## is ever built from outside text that skipped its check. A transcript
+## So no `Name`, `Topic`, `ChannelName`, `UserId`, `UserPair`, `DateTime` or
+## `UploadedImage` is ever built from outside text that skipped its check. A transcript
 ## file's bytes have a door of their own, `Transcript.Utf8Transcript`,
 ## which only `Transcript.decode` opens.
 ##
@@ -17,6 +17,7 @@ import ChannelName
 import DateTime
 import Name
 import Topic
+import UploadedImage
 import UserId
 import UserPair
 
@@ -60,6 +61,11 @@ UnvalidatedString :: Str.{
 	## checked by `UserPair.from_str`.
 	user_pair : UnvalidatedString -> Try(UserPair, [NotAUserPair])
 	user_pair = |UnvalidatedString.(text)| UserPair.from_str(text)
+
+	## The uploaded image it names, as a URL carries its name, checked by
+	## `UploadedImage.from_name`.
+	uploaded_image : UnvalidatedString -> Try(UploadedImage, [NotAnUploadName])
+	uploaded_image = |UnvalidatedString.(text)| UploadedImage.from_name(text)
 
 	## The time it writes, checked by `DateTime.from_str`.
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])
@@ -121,6 +127,8 @@ expect wire("9_10".to_utf8()).user_pair().map_ok(UserPair.to_str) == Ok("9_10")
 expect wire("10_9".to_utf8()).user_pair() == Err(NotAUserPair)
 expect wire("2026-11-02T19:11:32Z".to_utf8()).date_time().map_ok(DateTime.to_str) == Ok("2026-11-02T19:11:32Z")
 expect wire("2026-11-02".to_utf8()).date_time() == Err(WrongShape)
+expect wire("${"0a".repeat(16)}.png".to_utf8()).uploaded_image().map_ok(UploadedImage.name) == Ok("${"0a".repeat(16)}.png")
+expect wire("cat.png".to_utf8()).uploaded_image() == Err(NotAnUploadName)
 # A URL's path in parts, and a fixed word matched exactly, both sides.
 ## The parts of `path`, each as a test reads it, `chat` if it is exactly
 ## that, else `other`, between spaces.

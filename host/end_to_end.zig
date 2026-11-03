@@ -5,7 +5,8 @@
 //!   1. GET the seeded conversation: exactly the demo's frozen page, with
 //!      its content security policy (scripts from this origin alone) and
 //!      `nosniff`; its compose box a form posting `markdown` to the
-//!      conversation's own URL, and its script's `src`;
+//!      conversation's own URL and naming its `/upload`, and its script's
+//!      `src`;
 //!   2. POST a message to it: a 303 to its page;
 //!   3. GET it again: the message is there;
 //!   4. the transcript on disk: the seed and exactly one record more, dated
@@ -35,6 +36,23 @@
 //!  15. POST to the channel again: its stream's next event is exactly that
 //!      message's frame, so it got nothing of the DM's;
 //!  16. the stream under another `Host`: 403; with no count: 400.
+//!  17. upload a PNG to the channel as the compose box does (a multipart
+//!      form, `Origin` this server): 200, JSON naming its URL under the
+//!      channel's page, a fresh name of 32 hex digits and `.png`;
+//!  18. the image on disk in the channel's folder, byte for byte;
+//!  19. GET its URL: 200, `image/png`, `nosniff`, kept for good, byte for
+//!      byte;
+//!  20. the same name under the DM's page: 404; a name never given under
+//!      the channel's: 404;
+//!  21. upload a file that is no image: 415, in the old words;
+//!  22. upload an image of exactly 10 MiB: 200; of one byte more: 413, in
+//!      the old words;
+//!  23. upload from another origin's page, and one the browser says is
+//!      cross-site: 403 each;
+//!  24. the channel's uploads on disk: exactly the PNG and the 10 MiB image,
+//!      nothing of 21, the second half of 22, or 23;
+//!  25. a message holding an `<img>` of the PNG, as the compose box inserts
+//!      it: on the channel's page an image; posted to the DM, text.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
@@ -54,6 +72,9 @@ const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
+const channel_uploads = "chat/channel/general/gopher-roc/uploads";
+/// A browser's own boundary, as Chrome writes one.
+const upload_type = "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW";
 
 const RunResult = @typeInfo(@TypeOf(http.Server.run)).@"fn".return_type.?;
 
@@ -95,7 +116,7 @@ pub fn main(init: std.process.Init) !void {
     try t.check("its defences: the content security policy, scripts from this origin alone, and nosniff, as sent", std.mem.startsWith(u8, policy, "default-src 'none'; ") and
         has(policy, "; script-src 'self'; ") and !has(policy, "unsafe-eval") and !has(policy, "script-src 'unsafe-inline'") and
         std.mem.eql(u8, first.header("x-content-type-options") orelse "", "nosniff"));
-    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\"><textarea name=\"markdown\" required></textarea>") and
+    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, uploading to its `/upload`, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\" data-upload=\"" ++ channel_url ++ "/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>") and
         has(first.body, "<script src=\"" ++ script_url ++ "\"></script>"));
 
     // 2.
@@ -209,6 +230,73 @@ pub fn main(init: std.process.Init) !void {
     const uncounted = try get(a, io, port, channel_url ++ "/stream");
     try t.check("the stream under another Host: 403; with no count: 400", rebound_stream.status == 403 and uncounted.status == 400 and
         has(uncounted.body, "names no count"));
+
+    // 17.
+    const png = try onePixelPng(a);
+    const image_prefix = channel_url ++ "/uploads/";
+    const uploaded = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
+    const url = jsonUrl(uploaded.body) orelse "";
+    const name = if (url.len > image_prefix.len) url[image_prefix.len..] else "";
+    try t.check("upload a PNG as the compose box does: 200, JSON naming its URL under the channel's page, a fresh name", uploaded.status == 200 and
+        std.mem.eql(u8, uploaded.header("content-type") orelse "", "application/json") and
+        std.mem.startsWith(u8, url, image_prefix) and isFreshName(name, ".png") and
+        std.mem.endsWith(u8, uploaded.body, ",\"name\":\"cat.png\",\"kind\":\"image\",\"width\":0,\"height\":0}"));
+
+    // 18.
+    const kept = data.readFileAlloc(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ channel_uploads, name }), a, .limited(1024 * 1024)) catch "";
+    try t.check("the image on disk in the channel's folder, byte for byte", std.mem.eql(u8, kept, png));
+
+    // 19.
+    const served = try getAt(a, io, port, url);
+    try t.check("GET its URL: 200, image/png, nosniff, kept for good, byte for byte", served.status == 200 and
+        std.mem.eql(u8, served.header("content-type") orelse "", "image/png") and
+        std.mem.eql(u8, served.header("x-content-type-options") orelse "", "nosniff") and
+        std.mem.eql(u8, served.header("cache-control") orelse "", "private, max-age=31536000, immutable") and
+        std.mem.eql(u8, served.body, png));
+
+    // 20.
+    const elsewhere = try getAt(a, io, port, try std.fmt.allocPrint(a, dm_url ++ "/uploads/{s}", .{name}));
+    const never = try getAt(a, io, port, image_prefix ++ "00000000000000000000000000000000.png");
+    try t.check("the same name under the DM's page: 404; a name never given under the channel's: 404", elsewhere.status == 404 and never.status == 404);
+
+    // 21.
+    const text = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "a.png", "hello, not an image"), .more = own_page });
+    try t.check("upload a file that is no image: 415, in the old words", text.status == 415 and
+        std.mem.eql(u8, text.body, "unsupported file type (images: png, jpeg, gif, webp)\n"));
+
+    // 22.
+    const most = 10 * 1024 * 1024;
+    const big = try a.alloc(u8, most + 1);
+    @memset(big, 0);
+    @memcpy(big[0..png.len], png);
+    const at_most = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "big.png", big[0..most]), .more = own_page });
+    const at_most_url = jsonUrl(at_most.body) orelse "";
+    const over = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "big.png", big), .more = own_page });
+    try t.check("upload an image of exactly 10 MiB: 200; of one byte more: 413, in the old words", at_most.status == 200 and
+        std.mem.startsWith(u8, at_most_url, image_prefix) and isFreshName(at_most_url[image_prefix.len..], ".png") and
+        over.status == 413 and std.mem.eql(u8, over.body, "image too large — the limit is 10 MB.\n"));
+
+    // 23.
+    const foreign = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = "origin: http://evil.example\r\n" });
+    const cross_site = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = "sec-fetch-site: cross-site\r\n" });
+    try t.check("upload from another origin's page, and one the browser says is cross-site: 403 each", foreign.status == 403 and cross_site.status == 403);
+
+    // 24.
+    const names = try namesIn(a, io, data, channel_uploads);
+    const at_most_kept = data.readFileAlloc(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ channel_uploads, at_most_url[image_prefix.len..] }), a, .limited(most + 1)) catch "";
+    try t.check("the channel's uploads on disk: exactly the PNG and the 10 MiB image, nothing refused kept", names.len == 2 and
+        std.mem.eql(u8, kept, png) and std.mem.eql(u8, at_most_kept, big[0..most]) and
+        (std.mem.eql(u8, names[0], name) or std.mem.eql(u8, names[1], name)));
+
+    // 25.
+    const img = try std.fmt.allocPrint(a, "<img src=\"{s}\" alt=\"cat.png\">", .{url});
+    const with_image = try post(a, io, port, .{ .path = channel_url, .form = try formEncoded(a, img) });
+    const channel_page = try get(a, io, port, channel_url);
+    const dm_with_image = try post(a, io, port, .{ .path = dm_url, .form = try formEncoded(a, img) });
+    const dm_page_now = try get(a, io, port, dm_url);
+    try t.check("a message holding an <img> of the PNG: on the channel's page an image; posted to the DM, text", with_image.status == 303 and
+        has(channel_page.body, img) and dm_with_image.status == 303 and !has(dm_page_now.body, img) and
+        has(dm_page_now.body, try std.fmt.allocPrint(a, "&lt;img src=&quot;{s}&quot;", .{url})));
 
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
 }
@@ -354,16 +442,92 @@ fn get(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8) !Resp
     return exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{port}));
 }
 
-/// A form POSTed to `path`, its Host this server's, with `more` headers
-/// (each ending CRLF; none, as curl sends).
-const Post = struct { path: []const u8, form: []const u8, more: []const u8 = "" };
+/// A form POSTed to `path`, its Host this server's, of `content_type`, with
+/// `more` headers (each ending CRLF; none, as curl sends).
+const Post = struct { path: []const u8, form: []const u8, content_type: []const u8 = "application/x-www-form-urlencoded", more: []const u8 = "" };
 
 fn post(a: std.mem.Allocator, io: Io, port: u16, p: Post) !Response {
     return exchange(a, io, port, try std.fmt.allocPrint(
         a,
-        "POST {s} HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n{s}\r\n{s}",
-        .{ p.path, port, p.form.len, p.more, p.form },
+        "POST {s} HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-type: {s}\r\ncontent-length: {d}\r\n{s}\r\n{s}",
+        .{ p.path, port, p.content_type, p.form.len, p.more, p.form },
     ));
+}
+
+/// A GET of `path`, a path made as the run goes.
+fn getAt(a: std.mem.Allocator, io: Io, port: u16, path: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{ path, port }));
+}
+
+/// The compose box's form for one file, `data`, named `filename`, as a
+/// browser sends it under `upload_type`.
+fn uploadForm(a: std.mem.Allocator, filename: []const u8, data: []const u8) ![]const u8 {
+    const boundary = upload_type["multipart/form-data; boundary=".len..];
+    return std.fmt.allocPrint(a, "--{s}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{s}\"\r\nContent-Type: image/png\r\n\r\n{s}\r\n--{s}--\r\n", .{ boundary, filename, data, boundary });
+}
+
+/// `markdown` as the compose box's form field, percent-encoded.
+fn formEncoded(a: std.mem.Allocator, markdown: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "markdown=");
+    for (markdown) |c| {
+        if (std.ascii.isAlphanumeric(c)) try out.append(a, c) else try out.print(a, "%{X:0>2}", .{c});
+    }
+    return out.items;
+}
+
+/// The `url` an upload's JSON answer names, or null.
+fn jsonUrl(body: []const u8) ?[]const u8 {
+    const key = "{\"url\":\"";
+    if (!std.mem.startsWith(u8, body, key)) return null;
+    const end = std.mem.indexOfScalarPos(u8, body, key.len, '"') orelse return null;
+    return body[key.len..end];
+}
+
+/// Whether `name` is a fresh image's: 32 lowercase hex digits, then `ext`.
+fn isFreshName(name: []const u8, comptime ext: []const u8) bool {
+    if (name.len != 32 + ext.len or !std.mem.endsWith(u8, name, ext)) return false;
+    for (name[0..32]) |c| if (!std.ascii.isDigit(c) and !(c >= 'a' and c <= 'f')) return false;
+    return true;
+}
+
+/// The names in the folder `path` of `dir`.
+fn namesIn(a: std.mem.Allocator, io: Io, dir: Io.Dir, path: []const u8) ![]const []const u8 {
+    var folder = try dir.openDir(io, path, .{ .iterate = true });
+    defer folder.close(io);
+    var names: std.ArrayList([]const u8) = .empty;
+    var it = folder.iterate();
+    while (try it.next(io)) |entry| try names.append(a, try a.dupe(u8, entry.name));
+    return names.items;
+}
+
+/// A PNG of one pixel, whole and valid: its signature, then the IHDR,
+/// IDAT and IEND chunks, the pixel's row in a stored zlib block.
+fn onePixelPng(a: std.mem.Allocator) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "\x89PNG\r\n\x1a\n");
+    // One by one, 8 bits, RGB.
+    try pngChunk(a, &out, "IHDR", "\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00");
+    const row = "\x00\x80\x00\xff";
+    var idat: std.ArrayList(u8) = .empty;
+    try idat.appendSlice(a, "\x78\x01\x01\x04\x00\xfb\xff" ++ row);
+    var adler: [4]u8 = undefined;
+    std.mem.writeInt(u32, &adler, std.hash.Adler32.hash(row), .big);
+    try idat.appendSlice(a, &adler);
+    try pngChunk(a, &out, "IDAT", idat.items);
+    try pngChunk(a, &out, "IEND", "");
+    return out.items;
+}
+
+fn pngChunk(a: std.mem.Allocator, out: *std.ArrayList(u8), comptime kind: []const u8, bytes: []const u8) !void {
+    var word: [4]u8 = undefined;
+    std.mem.writeInt(u32, &word, @intCast(bytes.len), .big);
+    try out.appendSlice(a, &word);
+    const start = out.items.len;
+    try out.appendSlice(a, kind);
+    try out.appendSlice(a, bytes);
+    std.mem.writeInt(u32, &word, std.hash.Crc32.hash(out.items[start..]), .big);
+    try out.appendSlice(a, &word);
 }
 
 /// `request` on a connection of its own, and the response, read to the

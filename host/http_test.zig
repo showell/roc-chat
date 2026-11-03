@@ -112,6 +112,56 @@ test "a body over the cap is a 413, one at it is read; a head over the cap is a 
     try testing.expectEqual(431, try status(head));
 }
 
+test "an upload's own cap: a POST to a path ending /upload past the body cap reaches the Roc; the same body elsewhere, or a PUT, is a 413; past the upload cap, a 413 for it too" {
+    const r = try Running.start(.{ .body_most = 64, .upload_body_most = 128 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const hundred = "content-length: 100\r\n\r\n" ++ @as([100]u8, @splat('u'));
+    // Read, and the Roc refuses it as no form of one file.
+    const upload = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", hundred));
+    try testing.expectEqual(400, try status(upload));
+    const message = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", hundred));
+    try testing.expectEqual(413, try status(message));
+    const put = try exchange(a, port, try ours(a, port, "PUT /chat/dm/1_1/plans/upload HTTP/1.1", hundred));
+    try testing.expectEqual(413, try status(put));
+    const over = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", "content-length: 129\r\n\r\n" ++ @as([129]u8, @splat('u'))));
+    try testing.expectEqual(413, try status(over));
+    try testing.expect(http.is_upload(.{ .method = "POST", .path = "/a/upload", .query = "", .headers = &.{}, .body = "", .port = 1 }));
+    try testing.expect(!http.is_upload(.{ .method = "GET", .path = "/a/upload", .query = "", .headers = &.{}, .body = "", .port = 1 }));
+    try testing.expect(!http.is_upload(.{ .method = "POST", .path = "/a/uploads", .query = "", .headers = &.{}, .body = "", .port = 1 }));
+}
+
+test "an upload's body has its own time: one that pauses past the read's time is read whole; a message's is a 408" {
+    const r = try Running.start(.{ .read_ms = 200, .upload_body_read_ms = 5_000 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const upload = try paused(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", "content-length: 9\r\n\r\nupl"), "oaded!");
+    try testing.expectEqual(400, try status(upload));
+    const message = try paused(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 9\r\n\r\nmar"), "kdown=");
+    try testing.expectEqual(408, try status(message));
+}
+
+/// `first` on a connection of its own, then a pause of 400 ms, then `rest`,
+/// and everything sent back.
+fn paused(arena: std.mem.Allocator, port: u16, first: []const u8, rest: []const u8) ![]u8 {
+    const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+    const connection = try addr.connect(io, .{ .mode = .stream });
+    defer connection.close(io);
+    var w = connection.writer(io, &.{});
+    try w.interface.writeAll(first);
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(400) }, io);
+    w.interface.writeAll(rest) catch {};
+    var buf: [4096]u8 = undefined;
+    var r = connection.reader(io, &buf);
+    return r.interface.allocRemaining(arena, .limited(4 * 1024 * 1024));
+}
+
 test "a request too slow is a 408, and the server serves the next" {
     const r = try Running.start(.{ .read_ms = 100 });
     defer r.stop();

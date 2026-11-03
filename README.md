@@ -2,7 +2,7 @@
 
 A chat for a small group of humans and their agents, written in Roc on a Zig host. `gopher-roc` is a code name. `docs/design.md` holds the design, from first principles, and `docs/platform.md` describes what the host gives the Roc. This is a fresh start from roc-chat, which it borrows from as needed.
 
-**Status (2026-11-03): the first server.** It serves a conversation's page, two panes (the messages, and a compose box beside or below them), appends a message posted from the box, and shows each new message on every open page of the conversation without a reload, and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
+**Status (2026-11-03): the first server.** It serves a conversation's page, two panes (the messages, and a compose box beside or below them), appends a message posted from the box, shows each new message on every open page of the conversation without a reload, and takes an image uploaded from the box (its Upload button, or a paste), and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
 
 ## What the code holds
 
@@ -23,6 +23,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `ConversationKey` is a place plus a topic, and the one home of the layout: a URL `/chat/channel/<channel>/<topic>` names the folder `chat/channel/<channel>/<topic>/`, and `/chat/dm/<pair>/<topic>` names `chat/dm/<pair>/<topic>/`.
   - `ConversationRoute` answers GET and POST, and opens a conversation's stream.
   - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `Page.message` writes for the page.
+  - `UploadRoute` answers an upload and an uploaded image. An image is what its opening bytes say, PNG, JPEG, GIF or WebP, at most 10 MiB, named by 16 random bytes in hex (`UploadedImage`); it is read out of the compose box's form (`MultipartForm`), kept in its conversation's folder as `uploads/<name>`, and served at the conversation's URL and `/uploads/<name>`. A message shows an image only from its own conversation's uploads (`SecureImageTag`).
   - `FileSystem` is the only module that touches files.
   - `app/main.roc` is the edge, holding both stand-ins: the directory, until one is stored (Steve, plus the channel `general`), and `acting`, which is Steve, assumed.
 

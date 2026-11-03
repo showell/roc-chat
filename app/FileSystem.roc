@@ -16,9 +16,13 @@
 ## own, passed on as it said them (`NotUtf8`, `PathRefused`, `Failed`,
 ## `MissingDirectory`). Every one but `Missing` is a bug or a broken disk,
 ## and the caller answers it loudly.
+##
+## A conversation's uploaded images are kept in its folder, under
+## `uploads/`, each by its own name (`UploadedImage`), as bytes.
 import pf.Host
 import ConversationKey
 import Transcript
+import UploadedImage
 
 FileSystem :: [].{
 
@@ -58,7 +62,7 @@ FileSystem :: [].{
 		],
 	)
 	append_message! = |key, record| {
-		make_folder!(key)?
+		make_folder!(folder_path(key))?
 		match Host.append_utf8_bytes_to_file!(transcript_path(key), record.to_utf8_bytes()) {
 			Appended => Ok({})
 			MissingDirectory => Err(MissingDirectory)
@@ -67,7 +71,60 @@ FileSystem :: [].{
 			Failed => Err(Failed)
 		}
 	}
+
+	## An uploaded image's bytes, kept in its conversation's uploads folder
+	## under its name, the folders made as needed; unless the host refused.
+	## A name already there is `AlreadyExists`, and nothing is changed.
+	store_uploaded_image! : ConversationKey,
+	{ image : UploadedImage, bytes : List(U8) } => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			PathRefused,
+			Failed,
+		],
+	)
+	store_uploaded_image! = |key, { image, bytes }| {
+		make_folder!(uploads_folder_path(key))?
+		match Host.create_file_with_binary_bytes_unless_it_exists!(uploaded_image_path(key, image), bytes) {
+			Created => Ok({})
+			AlreadyExists => Err(AlreadyExists)
+			MissingDirectory => Err(MissingDirectory)
+			PathRefused => Err(PathRefused)
+			Failed => Err(Failed)
+		}
+	}
+
+	## An uploaded image's bytes, as kept; unless the conversation has no
+	## image of its name (`Missing`), or the host's read failed.
+	read_uploaded_image! : ConversationKey,
+	UploadedImage => Try(
+		List(U8),
+		[
+			Missing,
+			PathRefused,
+			Failed,
+		],
+	)
+	read_uploaded_image! = |key, image| {
+		read = Host.read_binary_bytes_from_file!(uploaded_image_path(key, image))
+		match read.status {
+			Found => Ok(read.bytes)
+			Missing => Err(Missing)
+			PathRefused => Err(PathRefused)
+			Failed => Err(Failed)
+		}
+	}
 }
+
+## The folder a conversation's uploaded images are kept in.
+uploads_folder_path : ConversationKey -> Str
+uploads_folder_path = |key| "${folder_path(key)}/uploads"
+
+## The path of an uploaded image of the conversation.
+uploaded_image_path : ConversationKey, UploadedImage -> List(U8)
+uploaded_image_path = |key, image| "${uploads_folder_path(key)}/${image.name()}".to_utf8()
 
 ## **A CONVERSATION'S FOLDER**: its key's parts. Its transcript is the file
 ## `transcript` in it.
@@ -78,10 +135,10 @@ folder_path = |key| Str.join_with(key.parts(), "/")
 transcript_path : ConversationKey -> List(U8)
 transcript_path = |key| "${folder_path(key)}/transcript".to_utf8()
 
-## The conversation's folder, and those above it, made as needed.
-make_folder! : ConversationKey => Try({}, [PathRefused, Failed])
-make_folder! = |key|
-	match Host.make_directory_and_its_parents!(folder_path(key).to_utf8()) {
+## The folder `path`, and those above it, made as needed.
+make_folder! : Str => Try({}, [PathRefused, Failed])
+make_folder! = |path|
+	match Host.make_directory_and_its_parents!(path.to_utf8()) {
 		Made => Ok({})
 		PathRefused => Err(PathRefused)
 		Failed => Err(Failed)

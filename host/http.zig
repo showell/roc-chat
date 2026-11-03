@@ -12,7 +12,8 @@
 //! Reads must finish within `Limits.read_ms` and writes within
 //! `Limits.write_ms`. A watchdog shuts the socket of a client that is too
 //! slow. An oversized head gets a 431, an oversized body a 413, and a late
-//! request a 408.
+//! request a 408. An upload (`is_upload`) has a larger cap and more time
+//! for its body, and every other request keeps the message form's.
 //!
 //! When the app marks an answer as a `Stream`, the connection stays open
 //! and sends the frames the app publishes to the stream's key
@@ -43,6 +44,13 @@ pub const Limits = struct {
     write_ms: u32 = 10_000,
     /// The most a body may be: a message's form, with room to spare.
     body_most: usize = 64 * 1024,
+    /// The most an upload's body may be (`is_upload`): an image of 10 MiB
+    /// in a multipart form, with room for the form. The app holds the image
+    /// to its own limit (app/UploadedImage.roc).
+    upload_body_most: usize = 10 * 1024 * 1024 + 64 * 1024,
+    /// An upload's body, read whole from the end of its head: five minutes,
+    /// the compose box's patience, for a large image on a slow link.
+    upload_body_read_ms: u32 = 5 * 60 * 1000,
     /// After a refusal, the most time spent draining what the client still
     /// sends (`linger`), inside the write deadline.
     linger_ms: u32 = 1_000,
@@ -136,13 +144,30 @@ pub const Server = struct {
         var http = std.http.Server.init(&sr.interface, &sw.interface);
 
         var fired = std.atomic.Value(bool).init(false);
-        const request = blk: {
+        const began = Io.Clock.now(.awake, s.io);
+        const head = blk: {
             var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.limits.read_ms, net.ShutdownHow.recv, &fired }) catch |e| {
                 log.warn("no task for the read's watchdog ({t}): closed", .{e});
                 return;
             };
             defer watchdog.cancel(s.io);
-            break :blk read_request(arena, &http, .{ .limits = s.limits, .port = s.port() }, &fired);
+            break :blk read_head(arena, &http, s.port(), &fired);
+        };
+        // The body has what is left of the read's time, or an upload's own
+        // time, and an upload's own cap.
+        const request = switch (head) {
+            .parsed => |received| if (!received.req.head.method.requestHasBody()) head else blk: {
+                const upload = is_upload(received.parsed);
+                const spent: u64 = @intCast(@max(0, began.untilNow(s.io, .awake).toMilliseconds()));
+                const ms: u32 = if (upload) s.limits.upload_body_read_ms else @intCast(@as(u64, s.limits.read_ms) -| spent);
+                var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, ms, net.ShutdownHow.recv, &fired }) catch |e| {
+                    log.warn("no task for the body's watchdog ({t}): closed", .{e});
+                    return;
+                };
+                defer watchdog.cancel(s.io);
+                break :blk read_body(arena, received, if (upload) s.limits.upload_body_most else s.limits.body_most, &fired);
+            },
+            .refused, .gone => head,
         };
         switch (request) {
             .gone => return,
@@ -275,9 +300,6 @@ pub const Parsed = struct {
     port: u16,
 };
 
-/// What a read needs of its server: the limits, and the port it listens on.
-const Reading = struct { limits: Limits, port: u16 };
-
 /// A response as the host writes it: a status std knows, and headers each
 /// free of CR, LF and NUL.
 const Written = struct {
@@ -286,18 +308,27 @@ const Written = struct {
     body: []const u8,
 };
 
+/// A request read: std's, to answer it by, and its parts copied out.
+const Received = struct { req: std.http.Server.Request, parsed: Parsed };
+
 const Read = union(enum) {
-    parsed: struct { req: std.http.Server.Request, parsed: Parsed },
+    parsed: Received,
     /// Refused before the Roc is asked: `req` when the head was read.
     refused: struct { req: ?std.http.Server.Request, status: std.http.Status, body: []const u8 },
     /// Nothing to answer: the client went.
     gone,
 };
 
-/// The request on `http`, head and body, copied into `arena`; or the
-/// refusal to send.
-fn read_request(arena: std.mem.Allocator, http: *std.http.Server, reading: Reading, fired: *std.atomic.Value(bool)) Read {
-    const limits = reading.limits;
+/// Whether a request is an upload, which has its own cap and time
+/// (`Limits.upload_body_most`, `Limits.upload_body_read_ms`): a POST to a
+/// path whose last part is `upload`, as app/Route.roc routes an upload.
+pub fn is_upload(parsed: Parsed) bool {
+    return std.mem.eql(u8, parsed.method, "POST") and std.mem.endsWith(u8, parsed.path, "/upload");
+}
+
+/// The head of the request on `http`, copied into `arena`, its body not yet
+/// read; or the refusal to send.
+fn read_head(arena: std.mem.Allocator, http: *std.http.Server, port: u16, fired: *std.atomic.Value(bool)) Read {
     var req = http.receiveHead() catch |e| return switch (e) {
         error.HttpHeadersOversize => .{ .refused = .{ .req = null, .status = .request_header_fields_too_large, .body = "" } },
         error.HttpHeadersInvalid => .{ .refused = .{ .req = null, .status = .bad_request, .body = "" } },
@@ -306,24 +337,29 @@ fn read_request(arena: std.mem.Allocator, http: *std.http.Server, reading: Readi
         else
             .gone,
     };
-    const parsed = copy_head(arena, &req, reading.port) catch return .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } };
-    var with_body = parsed;
-    if (req.head.method.requestHasBody()) {
-        // No length and not chunked: no body (std asserts one or the other).
-        if (req.head.transfer_encoding == .none and req.head.content_length == null) req.head.content_length = 0;
-        if (req.head.content_length) |n| if (n > limits.body_most) return too_large(req);
-        var body_buf: [256]u8 = undefined;
-        const body = req.readerExpectContinue(&body_buf) catch return .gone;
-        with_body.body = body.allocRemaining(arena, .limited(limits.body_most + 1)) catch |e| return switch (e) {
-            error.StreamTooLong => too_large(req),
-            error.OutOfMemory => .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } },
-            error.ReadFailed => if (fired.load(.acquire)) timed_out(req) else .gone,
-        };
-        // std's reader treats a closed socket as the body's end, with no
-        // error, and the watchdog closes the socket. So check for a short body.
-        if (fired.load(.acquire)) return timed_out(req);
-        if (req.head.content_length) |n| if (with_body.body.len != n) return .gone;
-    }
+    const parsed = copy_head(arena, &req, port) catch return .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } };
+    return .{ .parsed = .{ .req = req, .parsed = parsed } };
+}
+
+/// The body of the request `received`, at most `body_most` bytes, copied
+/// into `arena`; or the refusal to send.
+fn read_body(arena: std.mem.Allocator, received: Received, body_most: usize, fired: *std.atomic.Value(bool)) Read {
+    var req = received.req;
+    var with_body = received.parsed;
+    // No length and not chunked: no body (std asserts one or the other).
+    if (req.head.transfer_encoding == .none and req.head.content_length == null) req.head.content_length = 0;
+    if (req.head.content_length) |n| if (n > body_most) return too_large(req);
+    var body_buf: [256]u8 = undefined;
+    const body = req.readerExpectContinue(&body_buf) catch return .gone;
+    with_body.body = body.allocRemaining(arena, .limited(body_most + 1)) catch |e| return switch (e) {
+        error.StreamTooLong => too_large(req),
+        error.OutOfMemory => .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } },
+        error.ReadFailed => if (fired.load(.acquire)) timed_out(req) else .gone,
+    };
+    // std's reader treats a closed socket as the body's end, with no
+    // error, and the watchdog closes the socket. So check for a short body.
+    if (fired.load(.acquire)) return timed_out(req);
+    if (req.head.content_length) |n| if (with_body.body.len != n) return .gone;
     return .{ .parsed = .{ .req = req, .parsed = with_body } };
 }
 

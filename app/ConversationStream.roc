@@ -75,7 +75,14 @@ ConversationStream :: [].{
 			HttpAnswer.stream({
 				key: bus_key(key),
 				holder: acting.user().id().to_str().to_utf8(),
-				backlog: conversation.messages_after(seen).join_map(|m| ConversationStream.frame(conversation, m)),
+				backlog: conversation.messages_after(seen).join_map(
+					|m|
+						ConversationStream.frame({
+							key,
+							conversation,
+							message: m,
+						}),
+				),
 			})
 	}
 
@@ -92,13 +99,37 @@ ConversationStream :: [].{
 			conversation,
 			message,
 		},
-	| Host.publish_bytes_to_streams_on_key!(bus_key(key), ConversationStream.frame(conversation, message))
+	|
+		Host.publish_bytes_to_streams_on_key!(
+			bus_key(key),
+			ConversationStream.frame({
+				key,
+				conversation,
+				message,
+			}),
+		)
 
 	## **ONE MESSAGE AS ONE EVENT**: `id:` its number, then its HTML, a
 	## `data:` line a line, then the blank line that ends it.
-	frame : Conversation, Message -> List(U8)
-	frame = |conversation, message| {
-		html = line_feeds_only(Page.message(conversation, message).to_utf8())
+	frame : {
+		key : ConversationKey,
+		conversation : Conversation,
+		message : Message,
+	} -> List(U8)
+	frame = |
+		{
+			key,
+			conversation,
+			message,
+		},
+	| {
+		html = line_feeds_only(
+			Page.message({
+				conversation,
+				key,
+				message,
+			}).to_utf8(),
+		)
 		"id: ${message.id().to_str()}\n"
 			.to_utf8()
 			.concat(html.split_on('\n').join_map(|line| "data: ".to_utf8().concat(line).append('\n')))
@@ -244,12 +275,22 @@ expect {
 	conversation = plans_holding(["Hello", "- one\n- two"])
 	conversation.messages().all(
 		|m| {
+			framed = ConversationStream.frame({
+				key: plans_key,
+				conversation,
+				message: m,
+			})
 			data =
-				Str.from_utf8_lossy(ConversationStream.frame(conversation, m))
+				Str.from_utf8_lossy(framed)
 					.split_on("\n")
 					.keep_if(|line| line.starts_with("data: "))
 					.map(|line| line.drop_prefix("data: "))
-			Str.join_with(data, "\n").to_utf8() == Page.message(conversation, m).to_utf8()
+			Str.join_with(data, "\n").to_utf8()
+				== Page.message({
+					conversation,
+					key: plans_key,
+					message: m,
+				}).to_utf8()
 		},
 	)
 }

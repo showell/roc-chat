@@ -15,10 +15,11 @@ plans_key = ConversationKey.from_url_path({
 }) ?? crash "PageSpec: Steve's own DM is a place"
 
 ## What every conversation's page ends with: the compose box, posting to
-## `url`, its keys in words, and the script. A frozen answer, so a change
+## `url` and uploading to `url` and `/upload`, its help in words, and the
+## script. A frozen answer, so a change
 ## to the box shows here as a deliberate re-freeze.
 foot : Str -> Str
-foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · Ctrl/⌘-Enter to send</p></div>\n<script src=\"/chat/assets/compose.js\"></script>\n"
+foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-upload=\"${url}/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n<script src=\"/chat/assets/compose.js\"></script>\n"
 
 ## A conversation's page as a test expects it: the head, then the messages'
 ## pane, naming its stream and the `count` of messages it shows, holding

@@ -8,7 +8,8 @@
 ##   file (`Transcript.Utf8Transcript`), then a Conversation; or a refusal's
 ##   tags (`TranscriptRefusal` puts them in words).
 ## - `handle_http_request!` (the server, host/http.zig): a request in, its
-##   response out. `Route` chooses the answer; `ConversationRoute` gives it.
+##   response out. `Route` chooses the answer; `ConversationRoute` gives
+##   it, or `UploadRoute` for an uploaded image.
 ##   A conversation's stream is held by the signed-in user (`acting`).
 ##
 ## **TWO STAND-INS, BOTH HERE AT THE EDGE**: the directory, until one is
@@ -38,6 +39,7 @@ import Topic
 import Transcript
 import TranscriptRefusal
 import UnvalidatedString
+import UploadRoute
 import Users
 
 ## The page of the conversation at the URL path `path`, from its
@@ -97,6 +99,13 @@ handle_http_request! = |request|
 						now: Host.current_utc_seconds_since_epoch!({}),
 						body: request.body,
 					})
+				UploadToConversation(key) =>
+					UploadRoute.post_upload!({
+						key,
+						headers: request.headers,
+						body: request.body,
+					})
+				ServeUploadedImage(found) => UploadRoute.serve_uploaded_image!(found)
 				MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
 				NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
 			}
@@ -174,6 +183,7 @@ shown = |path|
 	}) {
 		ShowConversation(key) => key.url_path()
 		OpenConversationStream(key) => "the stream of ${key.url_path()}"
+		ServeUploadedImage(found) => "the image ${found.image.name()} of ${found.key.url_path()}"
 		_ => "not found"
 	}
 
@@ -185,3 +195,5 @@ expect shown("/chat/channel/other/plans") == "not found"
 expect shown("/chat/dm/1_2/plans") == "not found"
 expect shown("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
 expect shown("/chat/dm/1_2/plans/stream") == "not found"
+expect shown("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
+expect shown("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"

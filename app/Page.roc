@@ -6,13 +6,15 @@
 ## **A CONVERSATION'S PAGE IS TWO PANES**: its messages (`messages`), then
 ## the compose box (`compose`): a plain form that posts the field
 ## `markdown` back to the conversation's own URL, so it works with no
-## script, and a line of help: markdown, and the key that sends. The page's
-## one script (`ComposeScript`, app/compose.js) lays the panes out (a wide
-## window's compose box a rail on the right, with its keyboard help), gives
-## the box its keys, and appends each message the conversation's stream brings; it
-## finds them by the classes written here, and the stream by the messages
-## pane's `data-stream` and `data-after`. A message on the stream is
-## written by `message`, as the page writes it.
+## script, and a line of help: markdown, attaching an image, and the key
+## that sends. The page's one script (`ComposeScript`, app/compose.js) lays
+## the panes out (a wide window's compose box a rail on the right, with its
+## keyboard help), gives the box its keys and its Upload button, and
+## appends each message the conversation's stream brings; it finds them by
+## the classes written here, the stream by the messages pane's
+## `data-stream` and `data-after`, and where to upload an image, and the
+## most an image may be, by the form's `data-upload` and `data-image-most`.
+## A message on the stream is written by `message`, as the page writes it.
 ##
 ## **THE PAGE'S VOCABULARY LIVES HERE**: its classes (`Class`, a closed set,
 ## so no class is free text) and the CSS that styles them. How a message
@@ -33,6 +35,7 @@ import Message
 import MsgAnchor
 import Topic
 import TrustedHtml
+import UploadedImage
 import UrlEncodedForm
 
 Page :: [].{
@@ -76,7 +79,16 @@ Page :: [].{
 					newline,
 				])
 			else
-				TrustedHtml.join(c.messages().map(|m| Page.message(c, m)))
+				TrustedHtml.join(
+					c.messages().map(
+						|m|
+							Page.message({
+								conversation: c,
+								key,
+								message: m,
+							}),
+					),
+				)
 		document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
@@ -118,10 +130,20 @@ Page :: [].{
 			}),
 		})
 
-	## **ONE MESSAGE OF `c`**, as its page and its stream write it: its
-	## header, then its markdown rendered.
-	message : Conversation, Message -> TrustedHtml
-	message = |c, m| {
+	## One message of `conversation`, the conversation `key`, as its page
+	## and its stream write it: its header, then its markdown rendered.
+	message : {
+		conversation : Conversation,
+		key : ConversationKey,
+		message : Message,
+	} -> TrustedHtml
+	message = |
+		{
+			conversation: c,
+			key,
+			message: m,
+		},
+	| {
 		named = c.reference(m.id())
 		header = TrustedHtml.join([
 			Html.element({
@@ -155,7 +177,7 @@ Page :: [].{
 				Html.element({
 					name: Div,
 					attrs: [Page.class(Body)],
-					inner: Markdown.render(m.markdown()),
+					inner: Markdown.render(m.markdown(), key),
 				}),
 			]),
 		})
@@ -178,7 +200,9 @@ Page :: [].{
 
 ## **THE COMPOSE BOX**: a form posting its one field, a message's
 ## markdown (`UrlEncodedForm.markdown_name`), to `key`'s page, as
-## `ConversationRoute.post_sent_message!` takes it; then its help line.
+## `ConversationRoute.post_sent_message!` takes it, and naming for the
+## script where an image is uploaded and the most it may be
+## (`UploadRoute`); then its help line.
 compose_box : ConversationKey -> TrustedHtml
 compose_box = |key|
 	Html.element({
@@ -187,7 +211,12 @@ compose_box = |key|
 		inner: TrustedHtml.join([
 			Html.element({
 				name: Form,
-				attrs: [MethodPost, Action(site_path(key.url_path()))],
+				attrs: [
+					MethodPost,
+					Action(site_path(key.url_path())),
+					DataUpload(site_path(key.upload_url_path())),
+					DataImageMost(token(UploadedImage.most_bytes.to_str())),
+				],
 				inner: TrustedHtml.join([
 					Html.element({
 						name: Textarea,
@@ -206,7 +235,7 @@ compose_box = |key|
 			Html.element({
 				name: P,
 				attrs: [Page.class(Help)],
-				inner: Escape.text("Markdown supported · Ctrl/⌘-Enter to send"),
+				inner: Escape.text("Markdown supported · attach an image · Ctrl/⌘-Enter to send"),
 			}),
 		]),
 	})
@@ -314,6 +343,9 @@ expect
 expect !Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(Message)}'")
 # The script finds the stream by the attributes `Html` writes for it.
 expect ["data-stream", "data-after"].all(|name| Str.from_utf8_lossy(ComposeScript.bytes).contains("'${name}'"))
+# The script finds where to upload, and the most an image may be, by the
+# attributes `Html` writes for them.
+expect ["data-upload", "data-image-most"].all(|name| Str.from_utf8_lossy(ComposeScript.bytes).contains("'${name}'"))
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"

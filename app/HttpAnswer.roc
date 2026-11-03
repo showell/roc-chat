@@ -1,6 +1,8 @@
 ## **THE RESPONSES THE CHAT GIVES**, built once each: a page with its
 ## status, a script, a redirect after a POST, the refusal of a method, and
-## an event stream.
+## an event stream; and for an upload, an uploaded image, the JSON that
+## answers an upload, and a refusal in plain words, which the compose box
+## shows as it is.
 ##
 ## **EVERY PAGE CARRIES ITS DEFENCES** (`page_headers`, their one home): a
 ## Content-Security-Policy that lets the page load nothing but its own
@@ -52,14 +54,56 @@ HttpAnswer :: [].{
 			body: bytes,
 		})
 
+	## An uploaded image, `bytes`, served as `content_type`, which
+	## `nosniff` holds the browser to. The browser keeps it for good, as the
+	## old chat's did, since a name is never given twice.
+	image : { content_type : Str, bytes : List(U8) } -> Http.Response
+	image = |{ content_type, bytes }|
+		whole({
+			status: 200,
+			headers: [
+				{ name: "content-type".to_utf8(), value: content_type.to_utf8() },
+				{ name: "cache-control".to_utf8(), value: "private, max-age=31536000, immutable".to_utf8() },
+				nosniff,
+			],
+			body: bytes,
+		})
+
+	## JSON, `bytes`, with `status`.
+	json : U16, List(U8) -> Http.Response
+	json = |status, bytes|
+		whole({
+			status,
+			headers: [
+				{ name: "content-type".to_utf8(), value: "application/json".to_utf8() },
+				nosniff,
+			],
+			body: bytes,
+		})
+
+	## A refusal in plain words, a line of text with `status`: the compose
+	## box shows an upload's refusal as the server words it.
+	text : U16, Str -> Http.Response
+	text = |status, words|
+		whole({
+			status,
+			headers: [
+				{ name: "content-type".to_utf8(), value: "text/plain; charset=utf-8".to_utf8() },
+				nosniff,
+			],
+			body: "${words}\n".to_utf8(),
+		})
+
 	## **405**: the path takes only the methods `allowed` names: a
-	## conversation's GET and POST, or a script's GET.
-	method_not_allowed : [GetAndPost, GetOnly] -> Http.Response
+	## conversation's GET and POST, an upload's POST, or a script's, a
+	## stream's or an uploaded image's GET.
+	method_not_allowed : [GetAndPost, GetOnly, PostOnly] -> Http.Response
 	method_not_allowed = |allowed| {
 		methods =
 			match allowed {
 				GetAndPost => { header: "GET, POST", said: "GET or POST only\n" }
 				GetOnly => { header: "GET", said: "GET only\n" }
+				PostOnly => { header: "POST", said: "POST only\n" }
 			}
 		whole({
 			status: 405,
@@ -174,7 +218,7 @@ expect
 	)
 
 ## A 405's headers and words, as a test reads them.
-refused_with : [GetAndPost, GetOnly] -> (List((Str, Str)), Str)
+refused_with : [GetAndPost, GetOnly, PostOnly] -> (List((Str, Str)), Str)
 refused_with = |allowed| {
 	answered = HttpAnswer.method_not_allowed(allowed)
 	(said(answered), Str.from_utf8_lossy(answered.body))
@@ -202,7 +246,43 @@ expect
 			],
 			"GET only\n",
 		)
+expect
+	refused_with(PostOnly)
+		== (
+			[
+				("allow", "POST"),
+				("content-type", "text/plain; charset=utf-8"),
+				("x-content-type-options", "nosniff"),
+			],
+			"POST only\n",
+		)
 expect said(HttpAnswer.see_other("/a")) == [("location", "/a")]
+# An uploaded image: its type, kept for good, not sniffed, its bytes as
+# given.
+expect {
+	answered = HttpAnswer.image({ content_type: "image/png", bytes: [0x89, 0, 0xFF] })
+	answered.status == 200
+		and said(answered)
+			== [
+				("content-type", "image/png"),
+				("cache-control", "private, max-age=31536000, immutable"),
+				("x-content-type-options", "nosniff"),
+			]
+		and answered.body == [0x89, 0, 0xFF]
+}
+# JSON and a plain refusal, each its type, not sniffed; the refusal one line.
+expect {
+	answered = HttpAnswer.json(200, "{}".to_utf8())
+	answered.status == 200
+		and said(answered) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
+		and answered.body == "{}".to_utf8()
+}
+expect {
+	answered = HttpAnswer.text(415, "no & <b>")
+	answered.status == 415
+		and said(answered) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
+		and answered.body == "no & <b>\n".to_utf8()
+}
 # Every whole answer names no stream; a stream is a 200 on its key, for its
 # holder, its backlog first, not sniffed.
 expect
@@ -211,6 +291,9 @@ expect
 		HttpAnswer.see_other("/a"),
 		HttpAnswer.script([]),
 		HttpAnswer.method_not_allowed(GetOnly),
+		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
+		HttpAnswer.json(200, []),
+		HttpAnswer.text(400, "x"),
 	].all(|answered| answered.kind == Whole and answered.stream_key == [] and answered.stream_holder == [])
 expect {
 	answered = HttpAnswer.stream({
