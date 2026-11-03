@@ -749,6 +749,52 @@ comptime {
     }
 }
 
+/// Element type for __AnonStruct_b5c92d79cb1e25e2
+pub const __AnonStruct_b5c92d79cb1e25e2 = if (@sizeOf(usize) == 4) extern struct {
+    bytes: RocListWith(u8, false),
+    status: FailedOrFoundOrMissingOrPathRefused,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.bytes.decref(roc_host);
+        value.status.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.bytes.incref(amount);
+        value.status.incref(amount);
+    }
+} else extern struct {
+    bytes: RocListWith(u8, false),
+    status: FailedOrFoundOrMissingOrPathRefused,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.bytes.decref(roc_host);
+        value.status.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.bytes.incref(amount);
+        value.status.incref(amount);
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct_b5c92d79cb1e25e2) != 32) @compileError("__AnonStruct_b5c92d79cb1e25e2 size mismatch");
+        if (@alignOf(__AnonStruct_b5c92d79cb1e25e2) != 8) @compileError("__AnonStruct_b5c92d79cb1e25e2 alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(__AnonStruct_b5c92d79cb1e25e2) != 16) @compileError("__AnonStruct_b5c92d79cb1e25e2 size mismatch");
+        if (@alignOf(__AnonStruct_b5c92d79cb1e25e2) != 4) @compileError("__AnonStruct_b5c92d79cb1e25e2 alignment mismatch");
+    }
+}
+
 /// Element type for __AnonStruct_e6f4ccf1b682ebd2
 pub const __AnonStruct_e6f4ccf1b682ebd2 = if (@sizeOf(usize) == 4) extern struct {
     names: RocList(RocListWith(u8, false)),
@@ -1098,6 +1144,67 @@ comptime {
     }
 }
 
+/// Tag union: FailedOrFoundOrMissingOrPathRefused
+pub const FailedOrFoundOrMissingOrPathRefused = enum(u8) {
+    failed = 0,
+    found = 1,
+    missing = 2,
+    path_refused = 3,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(FailedOrFoundOrMissingOrPathRefused) != 1) @compileError("FailedOrFoundOrMissingOrPathRefused size mismatch");
+        if (@alignOf(FailedOrFoundOrMissingOrPathRefused) != 1) @compileError("FailedOrFoundOrMissingOrPathRefused alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(FailedOrFoundOrMissingOrPathRefused) != 1) @compileError("FailedOrFoundOrMissingOrPathRefused size mismatch");
+        if (@alignOf(FailedOrFoundOrMissingOrPathRefused) != 1) @compileError("FailedOrFoundOrMissingOrPathRefused alignment mismatch");
+    }
+}
+
+/// Tag union: AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused
+pub const AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused = enum(u8) {
+    already_exists = 0,
+    created = 1,
+    failed = 2,
+    missing_directory = 3,
+    path_refused = 4,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused) != 1) @compileError("AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused size mismatch");
+        if (@alignOf(AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused) != 1) @compileError("AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused) != 1) @compileError("AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused size mismatch");
+        if (@alignOf(AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused) != 1) @compileError("AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused alignment mismatch");
+    }
+}
+
 /// Tag union: FailedOrMadeOrPathRefused
 pub const FailedOrMadeOrPathRefused = enum(u8) {
     failed = 0,
@@ -1176,6 +1283,27 @@ comptime {
     }
 }
 
+/// Return type record for Host.read_binary_bytes_from_file!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostRead_binary_bytes_from_fileRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    bytes: RocListWith(u8, false),
+    status: FailedOrFoundOrMissingOrPathRefused,
+} else extern struct {
+    bytes: RocListWith(u8, false),
+    status: FailedOrFoundOrMissingOrPathRefused,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostRead_binary_bytes_from_fileRetRecord) != 32) @compileError("HostRead_binary_bytes_from_fileRetRecord size mismatch");
+        if (@alignOf(HostRead_binary_bytes_from_fileRetRecord) != 8) @compileError("HostRead_binary_bytes_from_fileRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostRead_binary_bytes_from_fileRetRecord) != 16) @compileError("HostRead_binary_bytes_from_fileRetRecord size mismatch");
+        if (@alignOf(HostRead_binary_bytes_from_fileRetRecord) != 4) @compileError("HostRead_binary_bytes_from_fileRetRecord alignment mismatch");
+    }
+}
+
 /// Return type record for Host.read_utf8_bytes_from_file!
 /// Fields ordered by compiler-emitted ABI offsets.
 pub const HostRead_utf8_bytes_from_fileRetRecord = if (@sizeOf(usize) == 4) extern struct {
@@ -1201,6 +1329,14 @@ comptime {
 /// Roc signature: List(U8), List(U8) => [Appended, Failed, MissingDirectory, NotUtf8, PathRefused]
 /// Refcounted fields are owned by the hosted function.
 pub const HostAppend_utf8_bytes_to_fileArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: RocListWith(u8, false),
+};
+
+/// Arguments for Host.create_file_with_binary_bytes_unless_it_exists!
+/// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]
+/// Refcounted fields are owned by the hosted function.
+pub const HostCreate_file_with_binary_bytes_unless_it_existsArgs = extern struct {
     arg0: RocListWith(u8, false),
     arg1: RocListWith(u8, false),
 };
@@ -1242,6 +1378,13 @@ pub const HostPublish_bytes_to_streams_on_keyArgs = extern struct {
     arg1: RocListWith(u8, false),
 };
 
+/// Arguments for Host.read_binary_bytes_from_file!
+/// Roc signature: List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, PathRefused] }
+/// Refcounted fields are owned by the hosted function.
+pub const HostRead_binary_bytes_from_fileArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 /// Arguments for Host.read_utf8_bytes_from_file!
 /// Roc signature: List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, NotUtf8, PathRefused] }
 /// Refcounted fields are owned by the hosted function.
@@ -1260,6 +1403,7 @@ pub const HostReplace_file_with_utf8_bytes_atomicallyArgs = extern struct {
 // Platform Type Aliases
 
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
+pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
 pub const Handle_for_hostArg0 = __AnonStruct_ee8027c43e25493f;
 pub const Handle_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
@@ -1270,6 +1414,12 @@ pub const Handle_for_hostHeaders = __AnonStruct_288155b7e13051cb;
 
 pub const __AnonStruct_c2b10c7c13915346Release = struct {
     pub fn release(value: __AnonStruct_c2b10c7c13915346, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
+
+pub const __AnonStruct_b5c92d79cb1e25e2Release = struct {
+    pub fn release(value: __AnonStruct_b5c92d79cb1e25e2, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -1318,6 +1468,7 @@ fn rocReleasePolicy(comptime T: type) type {
     if (T == RocStr) return RocStrRelease;
     if (T == __AnonStruct_c2b10c7c13915346) return __AnonStruct_c2b10c7c13915346Release;
     if (T == RocListWith(u8, false)) return RocListSpineRelease(RocListWith(u8, false));
+    if (T == __AnonStruct_b5c92d79cb1e25e2) return __AnonStruct_b5c92d79cb1e25e2Release;
     if (T == __AnonStruct_e6f4ccf1b682ebd2) return __AnonStruct_e6f4ccf1b682ebd2Release;
     if (T == RocList(RocListWith(u8, false))) return RocListRelease(RocList(RocListWith(u8, false)), RocListSpineRelease(RocListWith(u8, false)));
     if (T == __AnonStruct_2caab9c0de63c7b6) return __AnonStruct_2caab9c0de63c7b6Release;
@@ -1356,6 +1507,14 @@ pub extern fn roc_crashed(bytes: [*]const u8, len: usize) callconv(.c) void;
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
 pub extern fn append_utf8_bytes_to_file(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) AppendedOrFailedOrMissingDirectoryOrNotUtf8OrPathRefused;
+
+/// Hosted symbol for Host.create_file_with_binary_bytes_unless_it_exists!
+/// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+///     arg1.decref(roc_host);
+pub extern fn create_file_with_binary_bytes_unless_it_exists(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) AlreadyExistsOrCreatedOrFailedOrMissingDirectoryOrPathRefused;
 
 /// Hosted symbol for Host.create_file_with_utf8_bytes_unless_it_exists!
 /// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, NotUtf8, PathRefused]
@@ -1396,6 +1555,14 @@ pub extern fn make_directory_and_its_parents(arg0: RocListWith(u8, false)) callc
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
 pub extern fn publish_bytes_to_streams_on_key(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
+
+/// Hosted symbol for Host.read_binary_bytes_from_file!
+/// Roc signature: List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, PathRefused] }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn read_binary_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_b5c92d79cb1e25e2;
 
 /// Hosted symbol for Host.read_utf8_bytes_from_file!
 /// Roc signature: List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, NotUtf8, PathRefused] }

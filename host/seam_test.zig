@@ -178,9 +178,9 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
-test "roc glue declares every function seam.zig has, and no other: nine primitives and two entries" {
+test "roc glue declares every function seam.zig has, and no other: eleven primitives and two entries" {
     try std.testing.expectEqual(seam_names.len, glue_names.len);
-    try std.testing.expectEqual(11, seam_names.len);
+    try std.testing.expectEqual(13, seam_names.len);
 }
 
 test "a swap fails the check, naming the function, the field and the offsets" {

@@ -133,9 +133,13 @@ pub const ReadStatus = enum(u8) { failed, found, missing, not_utf8, path_refused
 pub const ReadRec = extern struct { bytes: RocBytes, status: ReadStatus };
 /// Host.roc's `list_names_in_directory!` answer.
 pub const ListRec = extern struct { names: RocBytesList, status: ReadStatus };
+/// Host.roc's `read_binary_bytes_from_file!` status, alphabetical.
+pub const BinaryReadStatus = enum(u8) { failed, found, missing, path_refused };
+/// Host.roc's `read_binary_bytes_from_file!` answer: the list, then the tag.
+pub const BinaryReadRec = extern struct { bytes: RocBytes, status: BinaryReadStatus };
 
 comptime {
-    for (.{ ReadStatus, files.AppendAnswer, files.CreateAnswer, files.ReplaceAnswer, files.MakeDirectoryAnswer }) |E| {
+    for (.{ ReadStatus, BinaryReadStatus, files.AppendAnswer, files.CreateAnswer, files.BinaryCreateAnswer, files.ReplaceAnswer, files.MakeDirectoryAnswer }) |E| {
         std.debug.assert(@sizeOf(E) == 1);
     }
 }
@@ -199,6 +203,20 @@ pub export fn read_utf8_bytes_from_file(path: RocBytes) callconv(.c) ReadRec {
         .path_refused => .{ .bytes = .from(""), .status = .path_refused },
         .failed => .{ .bytes = .from(""), .status = .failed },
     };
+}
+
+pub export fn read_binary_bytes_from_file(path: RocBytes) callconv(.c) BinaryReadRec {
+    const what = "read_binary_bytes_from_file";
+    return switch (root_of(what).read_binary_bytes_from_file(call(what).arena, path.slice())) {
+        .found => |b| .{ .bytes = .from(b), .status = .found },
+        .missing => .{ .bytes = .from(""), .status = .missing },
+        .path_refused => .{ .bytes = .from(""), .status = .path_refused },
+        .failed => .{ .bytes = .from(""), .status = .failed },
+    };
+}
+
+pub export fn create_file_with_binary_bytes_unless_it_exists(path: RocBytes, bytes: RocBytes) callconv(.c) files.BinaryCreateAnswer {
+    return root_of("create_file_with_binary_bytes_unless_it_exists").create_file_with_binary_bytes_unless_it_exists(path.slice(), bytes.slice());
 }
 
 pub export fn append_utf8_bytes_to_file(path: RocBytes, bytes: RocBytes) callconv(.c) files.AppendAnswer {

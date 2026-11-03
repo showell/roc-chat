@@ -20,6 +20,11 @@
 //! every write (nothing is written) and on every read (nothing is handed
 //! back). Never a crash.
 //!
+//! The two binary primitives, `read_binary_bytes_from_file` and
+//! `create_file_with_binary_bytes_unless_it_exists`, take and give bytes as
+//! they are, for files that are not text, such as an uploaded image. They
+//! keep every other rule here.
+//!
 //! **MISSING AND FAILED ARE NEVER ONE ANSWER**: a file read as missing may
 //! be written afresh, so a file that exists but cannot be read must never
 //! look missing.
@@ -76,9 +81,18 @@ pub const ReadAnswer = union(enum) {
     path_refused,
 };
 
+pub const BinaryReadAnswer = union(enum) {
+    failed,
+    found: []const u8,
+    missing,
+    path_refused,
+};
+
 pub const AppendAnswer = enum(u8) { appended, failed, missing_directory, not_utf8, path_refused };
 
 pub const CreateAnswer = enum(u8) { already_exists, created, failed, missing_directory, not_utf8, path_refused };
+
+pub const BinaryCreateAnswer = enum(u8) { already_exists, created, failed, missing_directory, path_refused };
 
 pub const ReplaceAnswer = enum(u8) { failed, missing_directory, not_utf8, path_refused, replaced };
 
@@ -132,26 +146,43 @@ pub const DataRoot = struct {
     /// **THE FILE'S TEXT**: `found`, its bytes in `arena`; `missing` when
     /// it, or a folder on its path, is not there.
     pub fn read_utf8_bytes_from_file(root: *const DataRoot, arena: std.mem.Allocator, path: []const u8) ReadAnswer {
+        return switch (root.read_whole_file("read_utf8_bytes_from_file", arena, path)) {
+            .found => |bytes| if (std.unicode.utf8ValidateSlice(bytes)) .{ .found = bytes } else .not_utf8,
+            .missing => .missing,
+            .path_refused => .path_refused,
+            .failed => .failed,
+        };
+    }
+
+    /// The file's bytes, as they are: `found`, its bytes in `arena`;
+    /// `missing` when it, or a folder on its path, is not there. At most
+    /// `read_most` bytes, as a text read.
+    pub fn read_binary_bytes_from_file(root: *const DataRoot, arena: std.mem.Allocator, path: []const u8) BinaryReadAnswer {
+        return root.read_whole_file("read_binary_bytes_from_file", arena, path);
+    }
+
+    /// The whole file at `path`, read for the primitive `what`, which a
+    /// failure's log line names.
+    fn read_whole_file(root: *const DataRoot, comptime what: []const u8, arena: std.mem.Allocator, path: []const u8) BinaryReadAnswer {
         if (!path_rule(path)) return .path_refused;
         const dir = root.walk(path, .open) catch |e| return switch (e) {
             error.IsLink => .path_refused,
             error.FileNotFound, error.NotDir => .missing,
-            else => root.failed("read_utf8_bytes_from_file", path, e, @as(ReadAnswer, .failed)),
+            else => root.failed(what, path, e, @as(BinaryReadAnswer, .failed)),
         };
         defer root.close_walked(dir);
         const name = std.fs.path.basename(path);
         const file = dir.openFile(root.io, name, .{ .follow_symlinks = false, .allow_directory = false }) catch |e| return switch (link_or(root, dir, name, e)) {
             error.IsLink => .path_refused,
             error.FileNotFound => .missing,
-            else => |other| root.failed("read_utf8_bytes_from_file", path, other, @as(ReadAnswer, .failed)),
+            else => |other| root.failed(what, path, other, @as(BinaryReadAnswer, .failed)),
         };
         defer file.close(root.io);
-        const st = file.stat(root.io) catch |e| return root.failed("read_utf8_bytes_from_file", path, e, @as(ReadAnswer, .failed));
-        if (st.kind != .file) return root.failed("read_utf8_bytes_from_file", path, error.NotAFile, @as(ReadAnswer, .failed));
-        if (st.size > read_most) return root.failed("read_utf8_bytes_from_file", path, error.FileTooBig, @as(ReadAnswer, .failed));
-        const buf = arena.alloc(u8, @intCast(st.size)) catch |e| return root.failed("read_utf8_bytes_from_file", path, e, @as(ReadAnswer, .failed));
-        const got = file.readPositionalAll(root.io, buf, 0) catch |e| return root.failed("read_utf8_bytes_from_file", path, e, @as(ReadAnswer, .failed));
-        if (!std.unicode.utf8ValidateSlice(buf[0..got])) return .not_utf8;
+        const st = file.stat(root.io) catch |e| return root.failed(what, path, e, @as(BinaryReadAnswer, .failed));
+        if (st.kind != .file) return root.failed(what, path, error.NotAFile, @as(BinaryReadAnswer, .failed));
+        if (st.size > read_most) return root.failed(what, path, error.FileTooBig, @as(BinaryReadAnswer, .failed));
+        const buf = arena.alloc(u8, @intCast(st.size)) catch |e| return root.failed(what, path, e, @as(BinaryReadAnswer, .failed));
+        const got = file.readPositionalAll(root.io, buf, 0) catch |e| return root.failed(what, path, e, @as(BinaryReadAnswer, .failed));
         return .{ .found = buf[0..got] };
     }
 
@@ -200,30 +231,49 @@ pub const DataRoot = struct {
     /// changed). O_EXCL, so two creates never both succeed. Its folder must
     /// exist.
     pub fn create_file_with_utf8_bytes_unless_it_exists(root: *const DataRoot, path: []const u8, bytes: []const u8) CreateAnswer {
-        const what = "create_file_with_utf8_bytes_unless_it_exists";
         if (!path_rule(path)) return .path_refused;
         if (!std.unicode.utf8ValidateSlice(bytes)) return .not_utf8;
+        return switch (root.create_file_unless_it_exists("create_file_with_utf8_bytes_unless_it_exists", path, bytes)) {
+            .already_exists => .already_exists,
+            .created => .created,
+            .failed => .failed,
+            .missing_directory => .missing_directory,
+            .path_refused => .path_refused,
+        };
+    }
+
+    /// A one-time file of any bytes, as `create_file_with_utf8_bytes_unless_it_exists`
+    /// makes a text one: made holding exactly `bytes` unless something is
+    /// already at its name. An uploaded image is one, under a fresh name.
+    pub fn create_file_with_binary_bytes_unless_it_exists(root: *const DataRoot, path: []const u8, bytes: []const u8) BinaryCreateAnswer {
+        return root.create_file_unless_it_exists("create_file_with_binary_bytes_unless_it_exists", path, bytes);
+    }
+
+    /// The exclusive create both one-time primitives make, for the
+    /// primitive `what`, which a failure's log line names.
+    fn create_file_unless_it_exists(root: *const DataRoot, comptime what: []const u8, path: []const u8, bytes: []const u8) BinaryCreateAnswer {
+        if (!path_rule(path)) return .path_refused;
         const dir = root.walk(path, .open) catch |e| return switch (e) {
             error.IsLink => .path_refused,
             error.FileNotFound, error.NotDir => .missing_directory,
-            else => root.failed(what, path, e, CreateAnswer.failed),
+            else => root.failed(what, path, e, BinaryCreateAnswer.failed),
         };
         defer root.close_walked(dir);
         const name = std.fs.path.basename(path);
         refuse_link(root, dir, name) catch |e| return switch (e) {
             error.IsLink => .path_refused,
-            else => root.failed(what, path, e, CreateAnswer.failed),
+            else => root.failed(what, path, e, BinaryCreateAnswer.failed),
         };
         const file = dir.createFile(root.io, name, .{ .exclusive = true }) catch |e| return switch (e) {
             error.PathAlreadyExists => .already_exists,
-            else => root.failed(what, path, e, CreateAnswer.failed),
+            else => root.failed(what, path, e, BinaryCreateAnswer.failed),
         };
         {
             defer file.close(root.io);
-            file.writeStreamingAll(root.io, bytes) catch |e| return root.failed(what, path, e, CreateAnswer.failed);
-            root.fsync_fd(file.handle) catch |e| return root.failed(what, path, e, CreateAnswer.failed);
+            file.writeStreamingAll(root.io, bytes) catch |e| return root.failed(what, path, e, BinaryCreateAnswer.failed);
+            root.fsync_fd(file.handle) catch |e| return root.failed(what, path, e, BinaryCreateAnswer.failed);
         }
-        root.fsync_dir(dir) catch |e| return root.failed(what, path, e, CreateAnswer.failed);
+        root.fsync_dir(dir) catch |e| return root.failed(what, path, e, BinaryCreateAnswer.failed);
         return .created;
     }
 
@@ -568,6 +618,53 @@ test "create unless it exists: once, then already_exists, the first bytes kept" 
     for (refused_paths) |p| try testing.expectEqual(CreateAnswer.path_refused, root.create_file_with_utf8_bytes_unless_it_exists(p, "x"));
 }
 
+test "the binary primitives: any bytes kept and read back as they are; once, then already_exists; missing, no folder, refused" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const root = test_root(&tmp);
+    try tmp.dir.createDirPath(testing.io, "u");
+    const image = "\x89PNG\r\n\x1a\n\x00\xff\xfe";
+    try testing.expectEqual(BinaryCreateAnswer.created, root.create_file_with_binary_bytes_unless_it_exists("u/a.png", image));
+    try testing.expectEqualStrings(image, root.read_binary_bytes_from_file(a, "u/a.png").found);
+    // The text read refuses what the binary one reads.
+    try testing.expectEqual(ReadAnswer.not_utf8, root.read_utf8_bytes_from_file(a, "u/a.png"));
+    // Text is bytes too, both ways.
+    try testing.expectEqual(BinaryCreateAnswer.created, root.create_file_with_binary_bytes_unless_it_exists("u/t", "Zoë\n"));
+    try testing.expectEqualStrings("Zoë\n", root.read_utf8_bytes_from_file(a, "u/t").found);
+    try testing.expectEqual(BinaryCreateAnswer.created, root.create_file_with_binary_bytes_unless_it_exists("u/empty", ""));
+    try testing.expectEqualStrings("", root.read_binary_bytes_from_file(a, "u/empty").found);
+    // Once: the first bytes kept; a folder at the name exists too.
+    try testing.expectEqual(BinaryCreateAnswer.already_exists, root.create_file_with_binary_bytes_unless_it_exists("u/a.png", "second"));
+    try testing.expectEqualStrings(image, root.read_binary_bytes_from_file(a, "u/a.png").found);
+    try testing.expectEqual(BinaryCreateAnswer.already_exists, root.create_file_with_binary_bytes_unless_it_exists("u", "x"));
+    try testing.expectEqual(BinaryCreateAnswer.missing_directory, root.create_file_with_binary_bytes_unless_it_exists("nope/x", "x"));
+    try testing.expectEqual(BinaryReadAnswer.missing, root.read_binary_bytes_from_file(a, "u/nope"));
+    try testing.expectEqual(BinaryReadAnswer.missing, root.read_binary_bytes_from_file(a, "nope/x"));
+    try testing.expectEqual(BinaryReadAnswer.failed, root.read_binary_bytes_from_file(a, "u"));
+    for (refused_paths) |p| {
+        try testing.expectEqual(BinaryCreateAnswer.path_refused, root.create_file_with_binary_bytes_unless_it_exists(p, "x"));
+        try testing.expectEqual(BinaryReadAnswer.path_refused, root.read_binary_bytes_from_file(a, p));
+    }
+}
+
+test "the binary read: a file at the cap is read, one byte over it fails" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const root = test_root(&tmp);
+    const big = try a.alloc(u8, read_most + 1);
+    @memset(big, 0xff);
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "at", .data = big[0..read_most] });
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "over", .data = big });
+    try testing.expectEqual(read_most, root.read_binary_bytes_from_file(a, "at").found.len);
+    try testing.expectEqual(BinaryReadAnswer.failed, root.read_binary_bytes_from_file(a, "over"));
+}
+
 test "replace: whole, atomically; a stop before the rename leaves the old file whole" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -670,6 +767,8 @@ test "a link is refused by every primitive: as the file, as a folder on the way,
         try testing.expectEqual(AppendAnswer.path_refused, root.append_utf8_bytes_to_file(p, "through"));
         try testing.expectEqual(CreateAnswer.path_refused, root.create_file_with_utf8_bytes_unless_it_exists(p, "through"));
         try testing.expectEqual(ReplaceAnswer.path_refused, root.replace_file_with_utf8_bytes_atomically(p, "through"));
+        try testing.expectEqual(BinaryReadAnswer.path_refused, root.read_binary_bytes_from_file(a, p));
+        try testing.expectEqual(BinaryCreateAnswer.path_refused, root.create_file_with_binary_bytes_unless_it_exists(p, "through"));
     }
     for ([_][]const u8{ "via", "away", "away/sub" }) |p| {
         try testing.expectEqual(ListAnswer.path_refused, root.list_names_in_directory(a, p));
@@ -705,6 +804,8 @@ test "missing and failed differ: a folder of mode 000 is a failure" {
     if (linux.geteuid() == 0) return error.RunAsAUserNotRoot;
     try testing.expectEqual(ReadAnswer.failed, root.read_utf8_bytes_from_file(a, "locked/x"));
     try testing.expectEqual(ReadAnswer.failed, root.read_utf8_bytes_from_file(a, "locked/nope"));
+    try testing.expectEqual(BinaryReadAnswer.failed, root.read_binary_bytes_from_file(a, "locked/x"));
+    try testing.expectEqual(BinaryCreateAnswer.failed, root.create_file_with_binary_bytes_unless_it_exists("locked/new", "lost"));
     try testing.expectEqual(ListAnswer.failed, root.list_names_in_directory(a, "locked"));
     try testing.expectEqual(AppendAnswer.failed, root.append_utf8_bytes_to_file("locked/x", "lost"));
 }

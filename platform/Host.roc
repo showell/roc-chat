@@ -9,6 +9,7 @@
 ##
 ## **TEXT ONLY, BOTH WAYS**: bytes that are not UTF-8 are `NotUtf8`, on
 ## every write (nothing is written) and every read (nothing is handed back).
+## The two binary primitives take and give bytes as they are.
 ##
 ## **`Failed` IS EVERYTHING ELSE** (a disk error, a folder the server may
 ## not enter, a failed fsync): the host logs it, naming the primitive, the
@@ -66,6 +67,32 @@ Host := [].{
 		NotUtf8,
 		PathRefused,
 		Replaced,
+	]
+
+	## The file's bytes as they are (`Found`, in `bytes`), for a file that is
+	## not text, such as an uploaded image; or why not, as
+	## `read_utf8_bytes_from_file!` says it.
+	read_binary_bytes_from_file! : List(U8) => {
+		bytes : List(U8),
+		status : [
+			Failed,
+			Found,
+			Missing,
+			PathRefused,
+		],
+	}
+
+	## A one-time file of any bytes, such as an uploaded image under a fresh
+	## name: made holding exactly `bytes` (O_EXCL), unless something is
+	## already at its name (`AlreadyExists`, nothing changed). Its folder
+	## must exist.
+	create_file_with_binary_bytes_unless_it_exists! : List(U8),
+	List(U8) => [
+		AlreadyExists,
+		Created,
+		Failed,
+		MissingDirectory,
+		PathRefused,
 	]
 
 	## The folder and each folder above it, made as needed (`Made` when

@@ -27,7 +27,7 @@ The same tags mean the same thing everywhere:
 |---|---|
 | `Missing` | Nothing is there: the file, or a folder on its path. |
 | `MissingDirectory` | A write's folder does not exist. Writes never make folders; `make_directory_and_its_parents!` does. |
-| `NotUtf8` | The bytes to write, or the bytes read, are not UTF-8. Nothing is written, and nothing is handed back. |
+| `NotUtf8` | The bytes to write, or the bytes read, are not UTF-8. Nothing is written, and nothing is handed back. The binary primitives never answer it. |
 | `PathRefused` | The path breaks the rule above, or passes through a link. |
 | `Failed` | Anything else: a disk error, a folder the server may not enter, a failed fsync, a file over 17 MiB. The host logs the primitive, the path and the error. |
 
@@ -50,6 +50,12 @@ An exclusive create (`O_EXCL`), fsynced. If anything is already at the name, the
 
 **`replace_file_with_utf8_bytes_atomically! : List(U8), List(U8) => [Failed, MissingDirectory, NotUtf8, PathRefused, Replaced]`**
 Writes a temporary beside the file (`.<name>.replacing`), fsyncs it, renames it over the file, and fsyncs the folder. A failure before the rename leaves the old file whole. The next replace takes over a temporary left by a stopped one. *Why:* rewriting a small file, such as reactions or preferences, without ever leaving a half-written one.
+
+**`read_binary_bytes_from_file! : List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, PathRefused] }`**
+The whole file as it is, with no UTF-8 check, at most 17 MiB (`read_most`, as a text read). *Why:* an uploaded image is served from its file.
+
+**`create_file_with_binary_bytes_unless_it_exists! : List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]`**
+The exclusive create above, for bytes of any kind. *Why:* an uploaded image is kept under a fresh name, and a name is never written twice.
 
 **`make_directory_and_its_parents! : List(U8) => [Failed, Made, PathRefused]`**
 Makes each missing folder on the path and fsyncs its parent. Folders that already exist count as `Made`. A file in the way is `Failed`. *Why:* the writes above never make folders, so making them is a separate, visible step.
