@@ -39,7 +39,7 @@
 // upload runs at a time, its progress shown, and it is given up after five
 // minutes. The server keeps the image in the conversation and answers its
 // URL, and the script puts an <img> of it at the cursor. The form names where
-// to upload (data-upload) and the most an image may be (data-image-most).
+// to upload (data-upload) and the most an image may be (data-image-byte-limit).
 //
 // The messages pane, its stream and the newest message's place in view are
 // feed.js's; this script runs before it, so the panes are laid out by the
@@ -372,9 +372,9 @@
   });
 
   var uploadUrl = form.getAttribute('data-upload');
-  var imageMost = Number(form.getAttribute('data-image-most'));
-  if (!uploadUrl || !(imageMost > 0)) {
-    throw new Error('compose.js: the form has no data-upload, or a data-image-most that is no count');
+  var imageByteLimit = Number(form.getAttribute('data-image-byte-limit'));
+  if (!uploadUrl || !(imageByteLimit > 0)) {
+    throw new Error('compose.js: the form has no data-upload, or a data-image-byte-limit that is no count');
   }
   var UPLOAD_PATIENCE_MS = 5 * 60 * 1000;
   var PHOTO_LONGEST_PX = 2048;
@@ -460,8 +460,8 @@
   }
 
   function sendFile(file) {
-    if (file.size > imageMost) {
-      return uploadDone('That image is ' + megabytes(file.size) + ' — too big to send (limit ' + (imageMost / 1048576) + ' MB). Try compressing or resizing it.');
+    if (file.size > imageByteLimit) {
+      return uploadDone('That image is ' + megabytes(file.size) + ' — too big to send (limit ' + (imageByteLimit / 1048576) + ' MB). Try compressing or resizing it.');
     }
     status.style.color = MUTED;
     status.textContent = 'Uploading image: 0% of ' + megabytes(file.size) + '…';

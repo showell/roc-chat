@@ -10,23 +10,23 @@
 ## name, and below it two panes. The first holds the messages, and the
 ## second is the compose box: a form that posts the field `markdown` back
 ## to the conversation's own URL, and a line of help. The script sends the
-## same form to the conversation's `/send` instead, so the page stays put. app/chrome.js
-## styles the top bar and adds its theme toggle.
-## app/compose.js lays the panes out, gives the compose
-## box its keys and its Upload button, and sends a message without a
-## reload. app/feed.js styles the messages, marks the
-## viewer's own, writes each time in the viewer's time zone, appends each
-## message the conversation's stream brings, which `message` writes as the
-## page does, and lets the reader select a message and move between them
-## from the keyboard.
+## same form to the conversation's `/send` instead, so the page stays put.
+## app/chrome.js styles the top bar and adds its theme toggle.
+## app/compose.js lays the panes out, gives the compose box its keys and
+## its Upload button, and sends a message without a reload. app/feed.js
+## styles the messages, marks the viewer's own, writes each time in the
+## viewer's time zone, appends each message the conversation's stream
+## brings, which `message` writes as the page does, and lets the reader
+## select a message and move between them from the keyboard.
 ##
-## The scripts find what they need by the classes in `Class` and by
-## attributes. The messages pane names its stream (`data-stream`), how
-## many messages it shows (`data-after`) and the viewer's id
-## (`data-viewer`). A message names its author's id (`data-author`) when
-## its author is a user of the chat. The form names where the script sends
-## a message (`data-send`), where to upload an image (`data-upload`) and
-## the most an image may be (`data-image-most`).
+## The scripts find what they need by the classes in `Class` and by the
+## `data-` attributes in `DataAttribute`. The messages pane names its
+## stream (`data-stream`), how many messages it shows (`data-after`) and
+## the viewer's id (`data-viewer`). A message names its author's id
+## (`data-author`) when its author is a user of the chat. The form names
+## where the script sends a message (`data-send`), where to upload an image
+## (`data-upload`) and the most bytes an image may be
+## (`data-image-byte-limit`).
 ##
 ## Every `Str` a page shows goes in through `Escape.text`, a message's
 ## markdown through `Markdown.render`, and every element through
@@ -69,6 +69,31 @@ Page :: [].{
 	## The class attribute for `class`, its one spelling.
 	class : Page.Class -> Html.Attribute
 	class = |chosen| Class(token(class_name(chosen)))
+
+	## A `data-` attribute a page writes for its scripts, with its value:
+	## a closed set, so `data_attribute` is the one spelling of each name.
+	DataAttribute : [
+		Stream(Html.SitePath),
+		After(Html.Token),
+		Viewer(Html.Token),
+		Author(Html.Token),
+		Send(Html.SitePath),
+		Upload(Html.SitePath),
+		ImageByteLimit(Html.Token),
+	]
+
+	## The `data-` attribute `chosen` names, with its value.
+	data_attribute : Page.DataAttribute -> Html.Attribute
+	data_attribute = |chosen|
+		match chosen {
+			Stream(path) => Data(token("stream"), Path(path))
+			After(count) => Data(token("after"), Token(count))
+			Viewer(id) => Data(token("viewer"), Token(id))
+			Author(id) => Data(token("author"), Token(id))
+			Send(path) => Data(token("send"), Path(path))
+			Upload(path) => Data(token("upload"), Path(path))
+			ImageByteLimit(count) => Data(token("image-byte-limit"), Token(count))
+		}
 
 	## The page of `conversation`, the conversation `key`, for `viewer`. Each
 	## message of it is found among `users` by its author's name, to name its
@@ -123,9 +148,9 @@ Page :: [].{
 							name: Div,
 							attrs: [
 								Page.class(Messages),
-								DataStream(site_path(key.url_path(Stream))),
-								DataAfter(token(c.messages().len().to_str())),
-								DataViewer(user_id(viewer.user())),
+								Page.data_attribute(Stream(site_path(key.url_path(Stream)))),
+								Page.data_attribute(After(token(c.messages().len().to_str()))),
+								Page.data_attribute(Viewer(user_id(viewer.user()))),
 							],
 							inner: TrustedHtml.join([newline, messages]),
 						}),
@@ -178,7 +203,7 @@ Page :: [].{
 		message_reference = c.reference(m.id())
 		author_attrs =
 			match users.user_by_name(m.author().name()) {
-				Ok(user) => [DataAuthor(user_id(user))]
+				Ok(user) => [Page.data_attribute(Author(user_id(user)))]
 				Err(NoSuchUser) => []
 			}
 		header = TrustedHtml.join([
@@ -251,9 +276,9 @@ compose_box = |key|
 				attrs: [
 					MethodPost,
 					Action(site_path(key.url_path(Page))),
-					DataSend(site_path(key.url_path(Send))),
-					DataUpload(site_path(key.url_path(Upload))),
-					DataImageMost(token(UploadedImage.most_bytes.to_str())),
+					Page.data_attribute(Send(site_path(key.url_path(Send)))),
+					Page.data_attribute(Upload(site_path(key.url_path(Upload)))),
+					Page.data_attribute(ImageByteLimit(token(UploadedImage.most_bytes.to_str()))),
 				],
 				inner: TrustedHtml.join([
 					Html.element({
@@ -414,6 +439,19 @@ expect
 		(TopUser, "top-user"),
 		(Viewer, "viewer"),
 	].all(|(chosen, spelled)| empty_paragraph([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8())
+# Every `data-` attribute, each its one spelling, a path or a token.
+expect {
+	path = site_path("/chat/dm/1_1/plans")
+	[
+		(Stream(path), "<p data-stream=\"/chat/dm/1_1/plans\"></p>"),
+		(After(token("6")), "<p data-after=\"6\"></p>"),
+		(Viewer(token("1")), "<p data-viewer=\"1\"></p>"),
+		(Author(token("3")), "<p data-author=\"3\"></p>"),
+		(Send(path), "<p data-send=\"/chat/dm/1_1/plans\"></p>"),
+		(Upload(path), "<p data-upload=\"/chat/dm/1_1/plans\"></p>"),
+		(ImageByteLimit(token("10485760")), "<p data-image-byte-limit=\"10485760\"></p>"),
+	].all(|(chosen, expected)| empty_paragraph([Page.data_attribute(chosen)]) == expected.to_utf8())
+}
 
 ## Whether the script `bytes` finds the class `chosen` by its selector.
 is_found_by : List(U8), Page.Class -> Bool
@@ -454,7 +492,7 @@ expect
 	[
 		"data-send",
 		"data-upload",
-		"data-image-most",
+		"data-image-byte-limit",
 	].all(|name| is_read_by(Script.Compose.bytes(), name) and !is_read_by(Script.Feed.bytes(), name))
 # The classes only styled are styled by the script that owns them.
 expect [TopTitle, Viewer].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))

@@ -153,7 +153,7 @@ pub fn main(init: std.process.Init) !void {
     try t.check("its defences: the content security policy, scripts from this origin alone, and nosniff, as sent", std.mem.startsWith(u8, policy, "default-src 'none'; ") and
         has(policy, "; script-src 'self'; ") and !has(policy, "unsafe-eval") and !has(policy, "script-src 'unsafe-inline'") and
         std.mem.eql(u8, first.header("x-content-type-options") orelse "", "nosniff"));
-    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, sending to its `/send`, uploading to its `/upload`, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\" data-send=\"" ++ channel_url ++ "/send\" data-upload=\"" ++ channel_url ++ "/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>") and
+    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, sending to its `/send`, uploading to its `/upload`, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\" data-send=\"" ++ channel_url ++ "/send\" data-upload=\"" ++ channel_url ++ "/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>") and
         has(first.body, "<script src=\"" ++ script_url ++ "\"></script>"));
 
     // 2.

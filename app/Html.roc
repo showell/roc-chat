@@ -1,30 +1,32 @@
-## **AN HTML ELEMENT, BUILT ONLY FROM SAFE PARTS**: `element` writes
-## `<name a="v">inner</name>`, and vouches (`TrustedHtml`) for the two tags
-## it writes around `inner`, which is already trusted. Each part of a tag
-## is safe by its type, so nothing is escaped and nothing needs to be:
+## This module builds an HTML element only from safe parts. `element`
+## writes `<name a="v">inner</name>`, and vouches (`TrustedHtml`) for the
+## two tags it writes around `inner`, which is already trusted. Each part of
+## a tag is safe by its type, so nothing is escaped and nothing needs to be:
 ##
 ## - a name is from a closed set (`Name`), so a tag's name is never data;
 ## - an attribute's name is its tag (`Attribute`), so a name and its value
-##   can't be swapped;
+##   can't be swapped; a `data-` attribute's name is a `Token`;
 ## - every value is a `Token` (ASCII letters, digits and `-`, checked by
 ##   `Token.from_str`), a `SitePath` (`/` and parts of letters, digits,
 ##   `-`, `_` and `.`, checked by `SitePath.from_str`) or a `DateTime` (its
 ##   one form, digits and `-:TZ`), so no value holds a quote, `&`, `<`, a
 ##   space or a `:`; a flag (`MethodPost`, `Required`) holds no value.
 ##
-## **NO LINK LEAVES THE SITE**: `Href` always writes `#` and a token, a
-## fragment of this page, and a token can't spell a scheme or a path; a
-## form's `Action` and a script's `Src` are a `SitePath`, which starts
-## with one `/` and can't spell a scheme or another host.
-## **NO CLASS IS FREE TEXT**: a class is a token, never a sentence or a
-## list; which classes a page uses is the page's closed set (`Page.Class`).
+## No link leaves the site. `Href` always writes `#` and a token, a
+## fragment of this page, and a token can't spell a scheme or a path. A
+## form's `Action` and a script's `Src` are a `SitePath`, which starts with
+## one `/` and can't spell a scheme or another host.
+##
+## No class is free text. A class is a token, never a sentence or a list.
+## Which classes a page uses, and which `data-` attributes, is the page's
+## to say (`Page.Class`, `Page.DataAttribute`).
 import Ascii
 import DateTime
 import TrustedHtml
 
 Html :: [].{
 
-	## **AN ELEMENT A PAGE USES**: a closed set, so a tag's name is never data.
+	## An element a page uses: a closed set, so a tag's name is never data.
 	Name : [
 		A,
 		Article,
@@ -41,7 +43,7 @@ Html :: [].{
 		Title,
 	]
 
-	## **A STRICT TOKEN**: one or more ASCII letters, digits and `-`, so it
+	## A strict token: one or more ASCII letters, digits and `-`, so it
 	## can stand in an attribute's quotes, and after a `#`, as it is.
 	Token :: Str.{
 
@@ -62,7 +64,7 @@ Html :: [].{
 		is_eq : _
 	}
 
-	## **A PATH ON THIS SITE**: `/`, then one or more parts joined by `/`,
+	## A path on this site: `/`, then one or more parts joined by `/`,
 	## each of ASCII letters, digits, `-`, `_` and `.`, and none starting
 	## with `.`. So it can stand in an attribute's quotes as it is, and can't
 	## name another host (`//`), a scheme (`:`) or a folder above (`..`).
@@ -91,13 +93,11 @@ Html :: [].{
 		is_eq : _
 	}
 
-	## **AN ATTRIBUTE, ITS NAME BY ITS TAG**: a class, an id and a link to
-	## an id on this page, each a token; a time; a form's field name, its
-	## method (always POST) and where it posts; whether a field is required;
-	## a script's source; and, for the page's script, where the page's
-	## stream is, how many messages the page already shows, where the
-	## compose box sends a message and uploads an image, the most bytes an image may be, who is
-	## viewing the page, and who wrote a message (each a user's id).
+	## An attribute, its name by its tag: a class, an id and a link to an id
+	## on this page, each a token; a time; a form's field name, its method
+	## (always POST) and where it posts; whether a field is required; a
+	## script's source; and a `data-` attribute for a page's scripts: its
+	## name after `data-`, a token, then its value, a token or a site path.
 	Attribute : [
 		Class(Html.Token),
 		Id(Html.Token),
@@ -108,17 +108,11 @@ Html :: [].{
 		Action(Html.SitePath),
 		Required,
 		Src(Html.SitePath),
-		DataStream(Html.SitePath),
-		DataAfter(Html.Token),
-		DataSend(Html.SitePath),
-		DataUpload(Html.SitePath),
-		DataImageMost(Html.Token),
-		DataViewer(Html.Token),
-		DataAuthor(Html.Token),
+		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
 	]
 
-	## **AN ELEMENT**: `<name a="v">inner</name>`, `inner` as it is,
-	## already trusted.
+	## An element: `<name a="v">inner</name>`, `inner` as it is, already
+	## trusted.
 	element : {
 		name : Html.Name,
 		attrs : List(Html.Attribute),
@@ -187,13 +181,8 @@ attribute = |attr|
 		Action(path) => " action=\"${path.to_str()}\""
 		Required => " required"
 		Src(path) => " src=\"${path.to_str()}\""
-		DataStream(path) => " data-stream=\"${path.to_str()}\""
-		DataAfter(token) => " data-after=\"${token.to_str()}\""
-		DataSend(path) => " data-send=\"${path.to_str()}\""
-		DataUpload(path) => " data-upload=\"${path.to_str()}\""
-		DataImageMost(token) => " data-image-most=\"${token.to_str()}\""
-		DataViewer(token) => " data-viewer=\"${token.to_str()}\""
-		DataAuthor(token) => " data-author=\"${token.to_str()}\""
+		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
+		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
 	}
 
 # ── tests
@@ -238,18 +227,11 @@ expect attribute(Class(token("author"))) == " class=\"author\""
 expect attribute(Id(token("msg-1"))) == " id=\"msg-1\""
 expect attribute(Href(token("msg-1"))) == " href=\"#msg-1\""
 expect attribute(Href(token("msg-2"))) == " href=\"#msg-2\""
-expect attribute(DataAfter(token("6"))) == " data-after=\"6\""
-expect attribute(DataImageMost(token("10485760"))) == " data-image-most=\"10485760\""
-expect attribute(DataViewer(token("1"))) == " data-viewer=\"1\""
-expect attribute(DataAuthor(token("3"))) == " data-author=\"3\""
+# A `data-` attribute: its name after `data-`, and a token or a site path.
+expect attribute(Data(token("after"), Token(token("6")))) == " data-after=\"6\""
+expect attribute(Data(token("image-byte-limit"), Token(token("10485760")))) == " data-image-byte-limit=\"10485760\""
 expect
-	Html.SitePath.from_str("/chat/dm/1_1/plans/upload").map_ok(|path| attribute(DataUpload(path)))
-		== Ok(" data-upload=\"/chat/dm/1_1/plans/upload\"")
-expect
-	Html.SitePath.from_str("/chat/dm/1_1/plans/send").map_ok(|path| attribute(DataSend(path)))
-		== Ok(" data-send=\"/chat/dm/1_1/plans/send\"")
-expect
-	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(|path| attribute(DataStream(path)))
+	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(|path| attribute(Data(token("stream"), Path(path))))
 		== Ok(" data-stream=\"/chat/dm/1_1/plans/stream\"")
 expect
 	DateTime.from_str("2026-11-02T19:11:32Z").map_ok(|time| attribute(DateTime(time)))
