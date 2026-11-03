@@ -29,7 +29,9 @@
 ## (`AccountFolder`): the counter
 ## of user ids, `auth/next-id.txt`, and each user's `auth/<id>/` (`Users`),
 ## with an agent's keys under `keys/<number>/` (`AgentKey`) and its invites
-## under `invites/<number>/` (`AgentInvite`), one file per fact. A record
+## under `invites/<number>/` (`AgentInvite`); an invited human's inviter in
+## `inviter`, their invites under `human-invites/<number>/` (`HumanInvite`),
+## and their password's bcrypt hash in `password`; one file per fact. A record
 ## of several files is written one file at a time, each made once, the
 ## file that makes it count written last. A channel's members are its file
 ## beside its folder of topics (`Channels`).
@@ -41,6 +43,7 @@ import ChannelName
 import Channels
 import ConversationKey
 import Directory
+import HumanInvite
 import Name
 import Topic
 import Transcript
@@ -292,6 +295,128 @@ FileSystem :: [].{
 		folder = account_folder_path(AccountFolder.of(user.id()))
 		create_facts!(folder, owner_fact.append(("name", files.name)))
 	}
+
+	## A new invited human's account folder, made once: the id of the human
+	## who invited them, `inviter`, then the `name`, whose file makes the
+	## folder an account. The counter of ids is the caller's to advance
+	## first, as for any account.
+	create_invited_account! : { human : Users.User, inviter : UserId } => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_invited_account! = |{ human, inviter }| {
+		files = Users.account_files(human)
+		folder = account_folder_path(AccountFolder.of(human.id()))
+		create_facts!(
+			folder,
+			[
+				("inviter", inviter.to_str().to_utf8()),
+				("name", files.name),
+			],
+		)
+	}
+
+	## The `inviter` file of the human `id`, as it is, or `NoFile` when they
+	## have none; unless the host's read failed.
+	read_inviter_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
+	read_inviter_file! = |id| read_fact!("${account_folder_path(AccountFolder.of(id))}/inviter")
+
+	## The human `id`'s password's bcrypt hash written whole over the one
+	## before, atomically: a redeemed invite's choice. The hash is the
+	## host's (`Host.bcrypt_hash_of_password!`); the password is never kept.
+	replace_password_hash! : UserId,
+	List(U8) => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_password_hash! = |id, hash| replace_fact!(password_path(id), hash)
+
+	## The invites in the human `human`'s account folder, each whole; one cut
+	## short or damaged is left out, as an agent's is.
+	read_human_invites! : UserId => Try(List(HumanInvite), [NotUtf8, PathRefused, Failed])
+	read_human_invites! = |human| {
+		ids = list_names_in!(human_invites_folder_path(human))?.keep_oks(HumanInvite.Id.from_str)
+		var $invites = []
+		for id in ids {
+			match read_human_invite_facts!(human_invite_folder_path(human, id)) {
+				Ok(files) =>
+					match HumanInvite.from_files(id, files) {
+						Ok(invite) => {
+							$invites = $invites.append(invite)
+						}
+						Err(BadFact(_)) => {}
+					}
+				Err(Missing) => {}
+				Err(NotUtf8) => return Err(NotUtf8)
+				Err(PathRefused) => return Err(PathRefused)
+				Err(Failed) => return Err(Failed)
+			}
+		}
+		Ok($invites)
+	}
+
+	## The number the next invite of the human `human` will have: after every
+	## invite folder's, one cut short included, so no number is given twice.
+	find_next_human_invite_id! : UserId => Try(HumanInvite.Id, [Full, NotUtf8, PathRefused, Failed])
+	find_next_human_invite_id! = |human| {
+		ids = list_names_in!(human_invites_folder_path(human))?.keep_oks(HumanInvite.Id.from_str)
+		HumanInvite.Id.next_after(ids)
+	}
+
+	## A new invite in the human `human`'s account folder, made once, its
+	## hash last.
+	create_human_invite! : UserId,
+	HumanInvite => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_human_invite! = |human, invite| {
+		files = invite.to_files()
+		create_facts!(
+			human_invite_folder_path(human, invite.id()),
+			[
+				("created", files.created),
+				("expires", files.expires),
+				("by", files.by),
+				("state", files.state),
+				("hash", files.hash),
+			],
+		)
+	}
+
+	## A human invite's state, written over the one before, as `invite`
+	## holds it.
+	replace_human_invite_state! : UserId,
+	HumanInvite => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_human_invite_state! = |human, invite| replace_fact!(
+		"${human_invite_folder_path(human, invite.id())}/state",
+		invite.to_files().state,
+	)
 
 	## The bcrypt hash of the user `id`'s password, as its file keeps it,
 	## or `NoFile` when they have none; unless the host's read failed. Only
@@ -568,6 +693,32 @@ invites_folder_path = |agent| "${account_folder_path(AccountFolder.of(agent))}/i
 invite_folder_path : UserId, AgentInvite.Id -> Str
 invite_folder_path = |agent, id| "${invites_folder_path(agent)}/${id.to_str()}"
 
+## The folder of a human's invites.
+human_invites_folder_path : UserId -> Str
+human_invites_folder_path = |human| "${account_folder_path(AccountFolder.of(human))}/human-invites"
+
+## The folder of one of a human's invites.
+human_invite_folder_path : UserId, HumanInvite.Id -> Str
+human_invite_folder_path = |human, id| "${human_invites_folder_path(human)}/${id.to_str()}"
+
+## The fact files of the human invite in `folder`; unless one is missing or
+## the host's read failed.
+read_human_invite_facts! : Str => Try(HumanInvite.Files, _)
+read_human_invite_facts! = |folder| {
+	hash = read_needed_fact!("${folder}/hash")?
+	created = read_needed_fact!("${folder}/created")?
+	expires = read_needed_fact!("${folder}/expires")?
+	state = read_needed_fact!("${folder}/state")?
+	by = read_needed_fact!("${folder}/by")?
+	Ok({
+		created,
+		expires,
+		state,
+		by,
+		hash,
+	})
+}
+
 ## The folder of the channels: what holds each channel's folder and its
 ## members file.
 channels_folder_path : Str
@@ -701,6 +852,11 @@ expect {
 		and key_folder_path(agent, key) == "auth/12/keys/3"
 		and invites_folder_path(agent) == "auth/12/invites"
 		and invite_folder_path(agent, invite) == "auth/12/invites/4"
+}
+expect {
+	human = UserId.from_str("7") ?? crash "FileSystem's tests: an id"
+	invite = HumanInvite.Id.from_str("2") ?? crash "FileSystem's tests: an invite's number"
+	human_invites_folder_path(human) == "auth/7/human-invites" and human_invite_folder_path(human, invite) == "auth/7/human-invites/2"
 }
 expect channels_folder_path == "chat/channel"
 expect {

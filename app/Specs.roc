@@ -20,6 +20,7 @@ import ConversationKeySpec
 import ConversationSpec
 import DirectorySpec
 import DmSpec
+import HumanInvitesSpec
 import PageSpec
 import PlaceSpec
 import RouteSpec

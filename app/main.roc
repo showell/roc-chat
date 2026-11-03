@@ -20,8 +20,8 @@
 ##   The directory is read from disk (`load_directory!`), who is acting is
 ##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
-##   `ConversationRoute`, `UploadRoute`, `AgentsRoute`, `ChannelMembersRoute`
-##   or `SignInRoute` gives the answer.
+##   `ConversationRoute`, `UploadRoute`, `AgentsRoute`, `ChannelMembersRoute`,
+##   `HumanInvitesRoute` or `SignInRoute` gives the answer.
 ##
 ## Who is acting is found from the request alone (`load_actor!`): a request
 ## with an `Authorization` header by that header alone, as the agent its
@@ -29,7 +29,7 @@
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
 ## `Route` says are open (the scripts, signing in and out, and redeeming an
-## invite); any other page sends it to sign in, and any other request is a
+## agent's or a human's invite); any other page sends it to sign in, and any other request is a
 ## 401. Only the first start, which makes Steve before anyone can sign in,
 ## and the demo's page take him as signed in with nothing checked
 ## (`SignedIn.dangerously_assume`); no request does.
@@ -56,6 +56,7 @@ import ConversationKey
 import ConversationRoute
 import Directory
 import FileSystem
+import HumanInvitesRoute
 import Html
 import HttpAnswer
 import Name
@@ -366,6 +367,10 @@ upload_asked = |choice|
 		SignedInOnly(ShowChannelMembers(_)) => NoUpload
 		SignedInOnly(AddChannelMember(_)) => NoUpload
 		SignedInOnly(RemoveChannelMember(_)) => NoUpload
+		SignedInOnly(ShowInvites) => NoUpload
+		SignedInOnly(InviteHuman) => NoUpload
+		SignedInOnly(InviteHumanAgain(_)) => NoUpload
+		Open(RedeemHumanInvite) => NoUpload
 		Open(ServeScript(_)) => NoUpload
 		Open(ShowLogin) => NoUpload
 		Open(SignIn) => NoUpload
@@ -553,6 +558,9 @@ access_asked = |asked|
 		ShowChannelMembers(_) => AsksNoConversation
 		AddChannelMember(_) => AsksNoConversation
 		RemoveChannelMember(_) => AsksNoConversation
+		ShowInvites => AsksNoConversation
+		InviteHuman => AsksNoConversation
+		InviteHumanAgain(_) => AsksNoConversation
 	}
 
 ## The 403 for a reader or a writer the place doesn't admit.
@@ -579,6 +587,9 @@ anonymous_refusal = |asked|
 		CreateChannel => no_one_refusal
 		AddChannelMember(_) => no_one_refusal
 		RemoveChannelMember(_) => no_one_refusal
+		ShowInvites => SignInRoute.login_redirect(site_path_of("/invites"))
+		InviteHuman => no_one_refusal
+		InviteHumanAgain(_) => no_one_refusal
 		AppendToConversation(_) => no_one_refusal
 		SendToConversation(_) => no_one_refusal
 		OpenConversationStream(_) => no_one_refusal
@@ -676,6 +687,13 @@ answer_open_route! = |
 		SignOut => SignInRoute.sign_out
 		RedeemInvite =>
 			AgentsRoute.redeem!({
+				actor,
+				directory,
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		RedeemHumanInvite =>
+			HumanInvitesRoute.redeem!({
 				actor,
 				directory,
 				body: request.body,
@@ -834,6 +852,21 @@ answer_route! = |
 				directory,
 				channel,
 				member,
+			})
+		ShowInvites => HumanInvitesRoute.show!({ acting, directory })
+		InviteHuman =>
+			HumanInvitesRoute.invite!({
+				acting,
+				directory,
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		InviteHumanAgain(human) =>
+			HumanInvitesRoute.invite_again!({
+				acting,
+				directory,
+				human,
+				now: Host.current_utc_seconds_since_epoch!({}),
 			})
 	}
 

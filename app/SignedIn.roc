@@ -20,7 +20,9 @@
 ## signed in: only the routes that take an `Actor` answer it.
 ##
 ## This module is one of the program's five trust boundaries, and says who
-## is acting, with `AgentKey` and `AgentInvite` behind its key door. The
+## is acting, with `AgentKey` and `AgentInvite` behind its key door, and
+## `HumanInvite` behind the door a redeemed invite opens
+## (`SignInRoute.start_session_by_invite!`). The
 ## others are `UnvalidatedString`, the way text comes in; `TrustedHtml`, the
 ## way markup goes out to a page; `SecureImageTag`, which images a message
 ## may show; and `RequestOrigin`, which refuses a request from any origin

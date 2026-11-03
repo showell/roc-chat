@@ -29,9 +29,14 @@
 ##     GET  /channels/<name>                   its members, to add or remove
 ##     POST /channels/<name>/members/<id>/add  add a user to it
 ##     POST /channels/<name>/members/<id>/remove   remove one
+##     GET  /invites                           your human invites
+##     POST /invites                           invite someone: `name=`
+##     POST /invites/<id>/again                invite a human again
+##     POST /invites/redeem                    redeem: `code=`, `password=`
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
-## included: the scripts, the sign-in routes and an invite's redemption.
+## included: the scripts, the sign-in routes and the two invites'
+## redemptions, an agent's and a human's.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and main answers each `SignedInOnly`
 ## route to no one but someone signed in.
@@ -72,6 +77,7 @@ Route :: [].{
 		SignIn,
 		SignOut,
 		RedeemInvite,
+		RedeemHumanInvite,
 	]
 
 	## The routes only someone signed in may use.
@@ -94,6 +100,9 @@ Route :: [].{
 		ShowChannelMembers(ChannelName),
 		AddChannelMember({ channel : ChannelName, member : UserId }),
 		RemoveChannelMember({ channel : ChannelName, member : UserId }),
+		ShowInvites,
+		InviteHuman,
+		InviteHumanAgain(UserId),
 	]
 
 	## The route for `method` and `path`, as the host handed them, each
@@ -130,6 +139,69 @@ Route :: [].{
 		}
 	}
 }
+
+## The route for `method` and a path under `/invites`, a conversation's, or
+## nothing here.
+invites_or_conversation_choice : {
+	path : UnvalidatedString,
+	method : [Get, Post, Other],
+	directory : Directory,
+} -> Route.Choice
+invites_or_conversation_choice = |
+	{
+		path,
+		method,
+		directory,
+	},
+|
+	match invites_resource(path) {
+		Ok(resource) => invites_choice({ resource, method })
+		Err(NotInvites) =>
+			conversation_path_choice({
+				path,
+				method,
+				directory,
+			})
+	}
+
+## What a path under `/invites` names.
+InvitesResource : [
+	Invites,
+	Again(UserId),
+	HumanRedeem,
+]
+
+## What `path` names under `/invites`, or `NotInvites`.
+invites_resource : UnvalidatedString -> Try(InvitesResource, [NotInvites])
+invites_resource = |path|
+	match path.url_path_parts() {
+		Ok([invites]) if invites.is_exactly("invites") => Ok(Invites)
+		Ok([invites, last]) if invites.is_exactly("invites") and last.is_exactly("redeem") => Ok(HumanRedeem)
+		Ok(
+			[
+				invites,
+				id,
+				again,
+			],
+		) if invites.is_exactly("invites") and again.is_exactly("again") =>
+			id.user_id().map_ok(|human| Again(human)).map_err(|_| NotInvites)
+		_ => Err(NotInvites)
+	}
+
+## The route for `method` and an `/invites` path's `resource`.
+invites_choice : { resource : InvitesResource, method : [Get, Post, Other] } -> Route.Choice
+invites_choice = |{ resource, method }|
+	match (resource, method) {
+		(Invites, Get) => SignedInOnly(ShowInvites)
+		(Invites, Post) => SignedInOnly(InviteHuman)
+		(Invites, Other) => MethodNotAllowed(GetAndPost)
+		(Again(_), Get) => MethodNotAllowed(PostOnly)
+		(Again(human), Post) => SignedInOnly(InviteHumanAgain(human))
+		(Again(_), Other) => MethodNotAllowed(PostOnly)
+		(HumanRedeem, Get) => MethodNotAllowed(PostOnly)
+		(HumanRedeem, Post) => Open(RedeemHumanInvite)
+		(HumanRedeem, Other) => MethodNotAllowed(PostOnly)
+	}
 
 ## The route for `method` and a path that is a conversation's, or nothing
 ## here.
@@ -178,7 +250,7 @@ path_choice = |
 				Err(NotAgents) =>
 					match channels_resource(path) {
 						Ok(resource) => channels_choice({ resource, method })
-						Err(NotChannels) => conversation_path_choice({
+						Err(NotChannels) => invites_or_conversation_choice({
 							path,
 							method,
 							directory,

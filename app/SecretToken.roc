@@ -1,24 +1,24 @@
-## A secret token names an agent and carries a secret: the agent's id, a
-## `-`, and the secret's 64 hex digits, such as `7-0a1b...`. An agent's API
-## key is one, sent as
-## `Authorization: Bearer <token>`, and so is an invite's one-time code,
-## which the agent redeems for its key. The id says whose keys or invites to
-## look in; the secret is checked against their hashes (`AgentKey`,
-## `AgentInvite`).
+## A secret token names a user and carries a secret: the user's id, a `-`,
+## and the secret's 64 hex digits, such as `7-0a1b...`. An agent's API key
+## is one, sent as `Authorization: Bearer <token>`; so is an agent's
+## invite's one-time code, which the agent redeems for its key, and a
+## human's invite's, which the invited human redeems for a password and a
+## session. The id says whose keys or invites to look in; the secret is
+## checked against their hashes (`AgentKey`, `AgentInvite`, `HumanInvite`).
 ##
 ## Text from a request becomes a token through `UnvalidatedString`.
 import Secret
 import UserId
 
-SecretToken :: { agent : UserId, secret : Secret }.{
+SecretToken :: { user : UserId, secret : Secret }.{
 
-	## The token for the agent `agent`, carrying `secret`.
-	of : { agent : UserId, secret : Secret } -> SecretToken
+	## The token for the user `user`, carrying `secret`.
+	of : { user : UserId, secret : Secret } -> SecretToken
 	of = |token| SecretToken.(token)
 
-	## The agent the token names.
-	agent : SecretToken -> UserId
-	agent = |SecretToken.(token)| token.agent
+	## The user the token names.
+	user : SecretToken -> UserId
+	user = |SecretToken.(token)| token.user
 
 	## The secret it carries.
 	secret : SecretToken -> Secret
@@ -27,7 +27,7 @@ SecretToken :: { agent : UserId, secret : Secret }.{
 	## The token as it is shown once and sent back: the id, `-`, the
 	## secret's hex digits.
 	to_str : SecretToken -> Str
-	to_str = |SecretToken.(token)| "${token.agent.to_str()}-${token.secret.to_hex()}"
+	to_str = |SecretToken.(token)| "${token.user.to_str()}-${token.secret.to_hex()}"
 
 	## The token `text` spells as `to_str` writes it; unless it is anything
 	## else (`NotAToken`).
@@ -36,7 +36,7 @@ SecretToken :: { agent : UserId, secret : Secret }.{
 		match text.split_on("-") {
 			[id, hex] =>
 				match (UserId.from_str(id), Secret.from_hex(hex)) {
-					(Ok(named), Ok(carried)) => Ok(SecretToken.({ agent: named, secret: carried }))
+					(Ok(named), Ok(carried)) => Ok(SecretToken.({ user: named, secret: carried }))
 					_ => Err(NotAToken)
 				}
 			_ => Err(NotAToken)
@@ -57,12 +57,12 @@ bearer_prefix : Str
 bearer_prefix = "Bearer "
 
 # ── tests
-## The token for agent `id`, its secret's every byte `b`, as `to_str`
+## The token for user `id`, its secret's every byte `b`, as `to_str`
 ## writes it.
 token_text : { id : Str, b : U8 } -> Str
 token_text = |{ id, b }|
 	SecretToken.of({
-		agent: UserId.from_str(id) ?? crash "SecretToken's tests: an id",
+		user: UserId.from_str(id) ?? crash "SecretToken's tests: an id",
 		secret: Secret.from_random_bytes(List.repeat(b, 32)),
 	}).to_str()
 
@@ -73,7 +73,7 @@ expect SecretToken.from_str(
 		b: 0xff,
 	}),
 ).map_ok(SecretToken.to_str) == Ok(token_text({ id: "255", b: 0xff }))
-expect SecretToken.from_str(token_text({ id: "7", b: 1 })).map_ok(|t| t.agent().to_str()) == Ok("7")
+expect SecretToken.from_str(token_text({ id: "7", b: 1 })).map_ok(|t| t.user().to_str()) == Ok("7")
 # No `-`, a bad id, a bad secret, a second `-`, or a space: refused.
 expect
 	[

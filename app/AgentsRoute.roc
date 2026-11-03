@@ -44,6 +44,11 @@ import Users
 
 AgentsRoute :: [].{
 
+	## The hash of `secret`, as the host computes it: the one way a key's,
+	## or an invite's code's, secret is hashed, an agent's or a human's.
+	hash_secret! : Secret => SecretHash
+	hash_secret! = |secret| SecretHash.of_digest(Host.sha256_of_bytes!(secret.bytes_to_hash()))
+
 	## The agent the bearer `token` names, signed in by its key at `now`;
 	## unless the key admits no one (`KeyRefused`: no such agent, no key
 	## with the secret's hash, or a revoked or expired one), or the files
@@ -60,11 +65,11 @@ AgentsRoute :: [].{
 			now,
 		},
 	|
-		match directory.users().user(token.agent()) {
+		match directory.users().user(token.user()) {
 			Err(NoSuchUser) => Err(KeyRefused)
 			Ok(user) => {
 				keys = FileSystem.read_agent_keys!(user.id()) ? |fault| FileSystem(fault)
-				hash = hash_secret!(token.secret())
+				hash = AgentsRoute.hash_secret!(token.secret())
 				match AgentKey.admit({
 					user,
 					keys,
@@ -299,7 +304,7 @@ invite_agent! = |
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = AgentInvite.make({
 		id,
-		hash: hash_secret!(secret),
+		hash: AgentsRoute.hash_secret!(secret),
 		now,
 		scope,
 	})
@@ -307,7 +312,7 @@ invite_agent! = |
 	load_agents_page!({
 		acting,
 		directory,
-		shown: Code({ agent: invited, code: SecretToken.of({ agent, secret }) }),
+		shown: Code({ agent: invited, code: SecretToken.of({ user: agent, secret }) }),
 	})
 }
 
@@ -383,7 +388,7 @@ redeem_invite! = |
 				}
 		}?
 	code = Agents.code_from_form(body) ? |why| Refused(why)
-	agent = code.agent()
+	agent = code.user()
 	is_agent =
 		match directory.users().user(agent) {
 			Ok(user) => user.role() != Human
@@ -395,7 +400,7 @@ redeem_invite! = |
 		invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
 		spent = AgentInvite.redeem({
 			invites,
-			hash: hash_secret!(code.secret()),
+			hash: AgentsRoute.hash_secret!(code.secret()),
 			now,
 		}) ? |_| Refused(CodeRefused)
 		FileSystem.replace_agent_invite_state!(agent, spent) ? |fault| FileSystem(fault)
@@ -403,12 +408,12 @@ redeem_invite! = |
 		secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 		key = AgentKey.mint({
 			id,
-			hash: hash_secret!(secret),
+			hash: AgentsRoute.hash_secret!(secret),
 			now,
 			scope: spent.scope(),
 		})
 		FileSystem.create_agent_key!(agent, key) ? |fault| FileSystem(fault)
-		Ok(SecretToken.of({ agent, secret }))
+		Ok(SecretToken.of({ user: agent, secret }))
 	}
 }
 
@@ -479,10 +484,6 @@ load_readable_conversations! = |directory, agent| {
 	}
 	$read
 }
-
-## The hash of `secret`, as the host computes it.
-hash_secret! : Secret => SecretHash
-hash_secret! = |secret| SecretHash.of_digest(Host.sha256_of_bytes!(secret.bytes_to_hash()))
 
 ## A next number refused: the agent's folder is full, or the file system's
 ## fault.

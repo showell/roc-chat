@@ -1,6 +1,6 @@
 ## This module decides what the channel routes may do, with no effects, so
 ## its tests reach every rule; `ChannelMembersRoute` reads and writes the
-## files and answers. The rule is roc-chat's: who is in a channel is the
+## files and answers. The rule: who is in a channel is the
 ## admin's decision, made by their own session. The admin creates a channel,
 ## and adds or removes its members, humans and agents alike. Nobody else
 ## does, and no API key does, whoever it names, so one stolen key never lets

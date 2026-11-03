@@ -119,9 +119,14 @@ expect
 		})
 
 ## The sign-in page as a test expects it, going on to `/agents`, with
-## `above`, what comes between its heading and its form.
+## `above`, what comes between its heading and its form; then the form that
+## redeems a human invite, its code and the password chosen.
 login_page : Str -> Str
-login_page = |above| "${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n"
+login_page = |above| "${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n${redeem_part}"
+
+## The sign-in page's last part: the form that redeems a human invite.
+redeem_part : Str
+redeem_part = "<p>Invited? Enter your invite&#39;s code and the password you choose.</p>\n<form method=\"post\" action=\"/invites/redeem\"><p>Invite code <input type=\"text\" name=\"code\" required></p>\n<p>New password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n"
 
 ## The sign-in page for `viewer`, with `problem`, as a test reads it.
 login_for : SignedIn.Actor, [NoProblem, Problem(Str)] -> Str

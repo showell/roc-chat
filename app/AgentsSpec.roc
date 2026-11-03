@@ -422,7 +422,7 @@ expect {
 		}).to_utf8(),
 	)
 	code = SecretToken.of({
-		agent: cc.id(),
+		user: cc.id(),
 		secret: Secret.from_random_bytes(List.repeat(0xab, 32)),
 	})
 	showing = Str.from_utf8_lossy(

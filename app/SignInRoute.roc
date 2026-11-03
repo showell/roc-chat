@@ -13,6 +13,10 @@
 ##   Neither answer may be kept by a browser or a proxy.
 ## - `POST /logout` has the browser forget the cookie, and sends it to the
 ##   sign-in page.
+## - A human invite's redemption (`HumanInvitesRoute`) starts a session the
+##   same way, once it has set the invited human's password
+##   (`start_session_by_invite!`, which takes only what
+##   `HumanInvite.redeem` makes).
 ##
 ## `sign_in_by_session!` is the check a request with a session cookie, and
 ## no `Authorization` header, passes before any route (main's
@@ -25,6 +29,7 @@ import FactFile
 import FileSystem
 import Html
 import HttpAnswer
+import HumanInvite
 import Page
 import Session
 import SignedIn
@@ -121,23 +126,11 @@ SignInRoute :: [].{
 						users,
 						body,
 					}) {
-						Ok(human) => {
-							mac = Host.hmac_sha256_with_server_secret!(
-								Session.signed_bytes({
-									id: human.id(),
-									signed_at: now,
-								}),
-							)
-							cookie = Session.cookie_value({
-								id: human.id(),
-								signed_at: now,
-								mac,
-							})
+						Ok(human) =>
 							HttpAnswer.with_header(
 								HttpAnswer.see_other(next.to_str()),
-								set_cookie_header(Session.set_cookie_text(cookie)),
+								sign_session_cookie!({ human, now }),
 							)
-						}
 						Err(NoMatch) => HttpAnswer.page(
 							401,
 							Page.login({
@@ -166,6 +159,17 @@ SignInRoute :: [].{
 		HttpAnswer.never_stored(answer)
 	}
 
+	## The answer to a human invite redeemed at `now`: a session for the
+	## human its admission admits, and a 303 to `default_next` with its
+	## cookie. The redemption has set their password, which the session
+	## needs (`sign_in_by_session!`). Never stored.
+	start_session_by_invite! : HumanInvite.Admission, I64 => Http.Response
+	start_session_by_invite! = |admission, now| {
+		cookie = sign_session_cookie!({ human: admission.human(), now })
+		onward = HttpAnswer.see_other(default_next.to_str())
+		HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
+	}
+
 	## A POST of `/logout`: the browser forgets the session's cookie, and goes
 	## to the sign-in page. Never stored.
 	sign_out : Http.Response
@@ -180,6 +184,24 @@ SignInRoute :: [].{
 	## page asked for by no one signed in.
 	login_redirect : Html.SitePath -> Http.Response
 	login_redirect = |next| HttpAnswer.see_other("/login?next=${next.to_str()}")
+}
+
+## The `Set-Cookie` header of a session for `human`, signed at `now` by the
+## host's HMAC under the server's secret.
+sign_session_cookie! : { human : Users.Human, now : I64 } => Http.Header
+sign_session_cookie! = |{ human, now }| {
+	mac = Host.hmac_sha256_with_server_secret!(
+		Session.signed_bytes({
+			id: human.id(),
+			signed_at: now,
+		}),
+	)
+	cookie = Session.cookie_value({
+		id: human.id(),
+		signed_at: now,
+		mac,
+	})
+	set_cookie_header(Session.set_cookie_text(cookie))
 }
 
 ## A `Set-Cookie` header of `text`.

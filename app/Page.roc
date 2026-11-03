@@ -35,7 +35,6 @@
 ## for one constant: the doctype and the head's two `<meta>` elements.
 import AgentInvite
 import AgentKey
-import Channels
 import Conversation
 import ConversationKey
 import DateTime
@@ -320,93 +319,105 @@ Page :: [].{
 		})
 	}
 
-	## The channels page, for `viewer`, the admin: each of `channels`,
-	## linked to its page, then a form that creates one.
-	channels : { viewer : SignedIn, channels : List(Channels.Channel) } -> TrustedHtml
-	channels = |{ viewer, channels: all }| {
-		listed = all.map(
-			|channel|
-				TrustedHtml.join([
-					Html.element({
-						name: P,
-						attrs: [],
-						inner: Html.element({
-							name: A,
-							attrs: [Link(site_path("/channels/${channel.name().to_str()}"))],
-							inner: Escape.text("#${channel.name().to_str()}"),
-						}),
-					}),
-					newline,
-				]),
-		)
-		create_form = Html.element({
-			name: Form,
-			attrs: [MethodPost, Action(site_path("/channels"))],
-			inner: TrustedHtml.join([
-				labelled_input({
-					label: "Name",
-					attrs: [
-						InputType(Text),
-						FieldName(token("name")),
-						Required,
-					],
-				}),
-				Html.element({
-					name: Button,
-					attrs: [],
-					inner: Escape.text("Create a channel"),
-				}),
-			]),
-		})
-		document({
-			title: "Channels",
-			body: TrustedHtml.join([
-				top_bar({ title: "Channels", viewer }),
-				newline,
-				TrustedHtml.join(listed),
-				create_form,
-				newline,
-			]),
-		})
-	}
-
-	## A channel's page, for `viewer`, the admin: its members, each with a
-	## button that removes them, then every other of `users` with a button
-	## that adds them.
-	channel_members : {
+	## A page of a signed-in human's, for another module that builds one
+	## (`PeoplePages`): the document, its top bar of `title` and `viewer`,
+	## then `parts`.
+	signed_in_page : {
+		title : Str,
 		viewer : SignedIn,
-		channel : Channels.Channel,
-		users : List(Users.User),
+		parts : List(TrustedHtml),
 	} -> TrustedHtml
-	channel_members = |
+	signed_in_page = |
 		{
+			title,
 			viewer,
-			channel,
-			users,
+			parts,
 		},
-	| {
-		title = "#${channel.name().to_str()}"
-		folder = "/channels/${channel.name().to_str()}/members"
-		row = |user, act|
-			member_button({
-				folder,
-				user,
-				act,
-			})
-		members = users.keep_if(|user| channel.has_member(user))
-		others = users.drop_if(|user| channel.has_member(user))
+	|
 		document({
 			title,
-			body: TrustedHtml.join([
-				top_bar({ title, viewer }),
-				newline,
-				paragraph("Members: ${members.len().to_str()}."),
-				TrustedHtml.join(members.map(|user| row(user, Remove))),
-				paragraph("Everyone else:"),
-				TrustedHtml.join(others.map(|user| row(user, Add))),
-			]),
+			body: TrustedHtml.join([top_bar({ title, viewer }), newline].concat(parts)),
 		})
-	}
+
+	## A paragraph of `said`, for another module's page.
+	text_paragraph : Str -> TrustedHtml
+	text_paragraph = |said| paragraph(said)
+
+	## A form of one button posting nothing to `action`, a path this server
+	## answers, for another module's page.
+	button_form : { action : Str, label : Str } -> TrustedHtml
+	button_form = |button| post_button(button)
+
+	## A form posting to `action` its text fields, each a label and its
+	## field's name, and a button of `label`, for another module's page.
+	text_form : {
+		action : Str,
+		fields : List({ label : Str, name : Str }),
+		label : Str,
+	} -> TrustedHtml
+	text_form = |
+		{
+			action,
+			fields,
+			label,
+		},
+	|
+		Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path(action))],
+			inner: TrustedHtml.join(
+				fields.map(
+					|field|
+						labelled_input({
+							label: field.label,
+							attrs: [
+								InputType(Text),
+								FieldName(token(field.name)),
+								Required,
+							],
+						}),
+				).append(
+					Html.element({
+						name: Button,
+						attrs: [],
+						inner: Escape.text(label),
+					}),
+				),
+			),
+		})
+
+	## A paragraph holding a link to `path`, a page of this site, of `text`,
+	## for another module's page.
+	link_paragraph : { path : Str, text : Str } -> TrustedHtml
+	link_paragraph = |{ path, text }|
+		TrustedHtml.join([
+			Html.element({
+				name: P,
+				attrs: [],
+				inner: Html.element({
+					name: A,
+					attrs: [Link(site_path(path))],
+					inner: Escape.text(text),
+				}),
+			}),
+			newline,
+		])
+
+	## A one-time code shown on a page, in the class a reader finds it by.
+	shown_code : Str -> TrustedHtml
+	shown_code = |code|
+		TrustedHtml.join([
+			Html.element({
+				name: P,
+				attrs: [Page.class(InviteCode)],
+				inner: Escape.text(code),
+			}),
+			newline,
+		])
+
+	## A time in seconds since the epoch, as a page writes it.
+	time_words : I64 -> Str
+	time_words = |seconds| time_text(seconds)
 
 	## A page that says one thing: `title`, and `text` beneath it (no such
 	## conversation, a refused message, a failure).
@@ -499,10 +510,46 @@ Page :: [].{
 				signed_in,
 				form,
 				newline,
+				paragraph("Invited? Enter your invite's code and the password you choose."),
+				redeem_form,
+				newline,
 			]),
 		})
 	}
 }
+
+## The sign-in page's second form: a human invite's code and the password
+## its human chooses, posted to `/invites/redeem` (`HumanInvitesRoute`).
+redeem_form : TrustedHtml
+redeem_form =
+	Html.element({
+		name: Form,
+		attrs: [MethodPost, Action(site_path("/invites/redeem"))],
+		inner: TrustedHtml.join([
+			labelled_input({
+				label: "Invite code",
+				attrs: [
+					InputType(Text),
+					FieldName(token("code")),
+					Required,
+				],
+			}),
+			labelled_input({
+				label: "New password",
+				attrs: [
+					InputType(Password),
+					FieldName(token("password")),
+					Autocomplete(NewPassword),
+					Required,
+				],
+			}),
+			Html.element({
+				name: Button,
+				attrs: [],
+				inner: Escape.text("Join"),
+			}),
+		]),
+	})
 
 ## A paragraph of `label` and an input of `attrs`, and a line end.
 labelled_input : { label : Str, attrs : List(Html.Attribute) } -> TrustedHtml
@@ -648,43 +695,6 @@ paragraph = |said|
 		}),
 		newline,
 	])
-
-## A user as a channel's page names them: their name, whether a human or an
-## agent, and their id.
-user_label : Users.User -> Str
-user_label = |user| {
-	kind =
-		match user.role() {
-			Human => "human"
-			Agent(_) => "agent"
-		}
-	"${user.name().to_str()} (${kind}, id ${user.id().to_str()})"
-}
-
-## A channel page's button that adds `user` to the channel whose members'
-## paths are under `folder`, or removes them.
-member_button : {
-	folder : Str,
-	user : Users.User,
-	act : [Add, Remove],
-} -> TrustedHtml
-member_button = |
-	{
-		folder,
-		user,
-		act,
-	},
-| {
-	(word, label) =
-		match act {
-			Add => ("add", "Add")
-			Remove => ("remove", "Remove")
-		}
-	post_button({
-		action: "${folder}/${user.id().to_str()}/${word}",
-		label: "${label} ${user_label(user)}",
-	})
-}
 
 invite_state_word : AgentInvite.State -> Str
 invite_state_word = |state|

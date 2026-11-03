@@ -20,6 +20,7 @@ import Directory
 import FileSystem
 import HttpAnswer
 import Page
+import PeoplePages
 import SignedIn
 import UserId
 
@@ -32,7 +33,7 @@ ChannelMembersRoute :: [].{
 		match ChannelMembers.admin_of(acting) {
 			Ok(_) => HttpAnswer.page(
 				200,
-				Page.channels({
+				PeoplePages.channels({
 					viewer: acting,
 					channels: directory.channels().to_list(),
 				}),
@@ -81,7 +82,7 @@ ChannelMembersRoute :: [].{
 		match ChannelMembers.members_page_of(directory, { acting, channel }) {
 			Ok(found) => HttpAnswer.page(
 				200,
-				Page.channel_members({
+				PeoplePages.channel_members({
 					viewer: acting,
 					channel: found.channel,
 					users: found.users,
