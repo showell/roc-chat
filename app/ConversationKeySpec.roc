@@ -35,6 +35,14 @@ upload_read_back = |path| {
 	Ok(key.upload_url_path())
 }
 
+## The key whose send `path` names in `with_room`, as its send's URL path.
+send_read_back : Str -> Try(Str, _)
+send_read_back = |path| {
+	unchecked = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
+	key = ConversationKey.from_send_url_path({ path: unchecked, directory: with_room })?
+	Ok(key.send_url_path())
+}
+
 ## The key and the image an uploaded image's `path` names in `with_room`,
 ## as the image's URL path.
 image_read_back : Str -> Try(Str, _)
@@ -128,6 +136,23 @@ expect
 expect upload_read_back("/chat/dm/2_1/plans/upload") == Err(BadName)
 expect upload_read_back("/chat/channel/other-room/plans/upload") == Err(NoSuchChannel)
 expect upload_read_back("/chat/dm/1_3/plans/upload") == Err(NoSuchHuman)
+# A script's send path: a conversation's page's, then `/send`, read back to
+# the same path; each refusal of the conversation's parts as a page's.
+expect send_read_back("/chat/channel/plans-room/plans/send") == Ok("/chat/channel/plans-room/plans/send")
+expect send_read_back("/chat/dm/1_2/send/send") == Ok("/chat/dm/1_2/send/send")
+expect read_back("/chat/dm/1_2/send") == Ok({ url: "/chat/dm/1_2/send", parts: "chat dm 1_2 send" })
+expect
+	[
+		"/chat/dm/1_2/plans",
+		"/chat/dm/1_2/plans/send/",
+		"/chat/dm/1_2/plans/Send",
+		"/chat/dm/1_2/plans/upload",
+		"/chat/dm/1_2/plans/send/x",
+		"/talk/dm/1_2/plans/send",
+	].all(|path| send_read_back(path) == Err(NotAConversationPath))
+expect send_read_back("/chat/dm/2_1/plans/send") == Err(BadName)
+expect send_read_back("/chat/channel/other-room/plans/send") == Err(NoSuchChannel)
+expect send_read_back("/chat/dm/1_3/plans/send") == Err(NoSuchHuman)
 # An uploaded image's path: a conversation's page's, `/uploads/` and an
 # image's name, read back to the same path; a name of another shape, or
 # another path, is none; each refusal of the conversation's parts.
@@ -163,6 +188,7 @@ chosen = |method, path|
 	}) {
 		ShowConversation(key) => "show ${key.url_path()}"
 		AppendToConversation(key) => "append ${key.url_path()}"
+		SendToConversation(key) => "send ${key.url_path()}"
 		OpenConversationStream(key) => "stream ${key.url_path()}"
 		UploadToConversation(key) => "upload ${key.url_path()}"
 		ServeUploadedImage(found) => "image ${found.image.name()} of ${found.key.url_path()}"
@@ -189,6 +215,11 @@ expect chosen("POST", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GE
 expect chosen("HEAD", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
 expect chosen("GET", "/chat/dm/1_3/plans/stream".to_utf8()) == "not found"
 expect chosen("GET", "/chat/dm/1_2/plans/stream/x".to_utf8()) == "not found"
+# A script's send: POST alone, under a place that exists.
+expect chosen("POST", "/chat/dm/1_2/plans/send".to_utf8()) == "send /chat/dm/1_2/plans"
+expect chosen("GET", "/chat/dm/1_2/plans/send".to_utf8()) == "not allowed: POST"
+expect chosen("PUT", "/chat/dm/1_2/plans/send".to_utf8()) == "not allowed: POST"
+expect chosen("POST", "/chat/dm/1_3/plans/send".to_utf8()) == "not found"
 # An upload: POST alone. An uploaded image: GET alone, under a place that
 # exists.
 expect chosen("POST", "/chat/dm/1_2/plans/upload".to_utf8()) == "upload /chat/dm/1_2/plans"

@@ -9,20 +9,23 @@
 ## A conversation's page has a top bar, with the topic and the viewer's
 ## name, and below it two panes. The first holds the messages, and the
 ## second is the compose box: a form that posts the field `markdown` back
-## to the conversation's own URL, and a line of help. app/chrome.js
+## to the conversation's own URL, and a line of help. The script sends the
+## same form to the conversation's `/send` instead, so the page stays put. app/chrome.js
 ## (`ChromeScript`) styles the top bar and adds its theme toggle.
-## app/compose.js (`ComposeScript`) lays the panes out and gives the
-## compose box its keys and its Upload button. app/feed.js (`FeedScript`)
-## styles the messages, marks the viewer's own, writes each time in the
-## viewer's time zone, and appends each message the conversation's stream
-## brings, which `message` writes as the page does.
+## app/compose.js (`ComposeScript`) lays the panes out, gives the compose
+## box its keys and its Upload button, and sends a message without a
+## reload. app/feed.js (`FeedScript`) styles the messages, marks the
+## viewer's own, writes each time in the viewer's time zone, appends each
+## message the conversation's stream brings, which `message` writes as the
+## page does.
 ##
 ## The scripts find what they need by the classes in `Class` and by
 ## attributes. The messages pane names its stream (`data-stream`), how
 ## many messages it shows (`data-after`) and the viewer's id
 ## (`data-viewer`). A message names its author's id (`data-author`) when
-## its author is a user of the chat. The form names where to upload an
-## image (`data-upload`) and the most an image may be (`data-image-most`).
+## its author is a user of the chat. The form names where the script sends
+## a message (`data-send`), where to upload an image (`data-upload`) and
+## the most an image may be (`data-image-most`).
 ##
 ## Every `Str` a page shows goes in through `Escape.text`, a message's
 ## markdown through `Markdown.render`, and every element through
@@ -237,7 +240,8 @@ Page :: [].{
 ## (`UrlEncodedForm.markdown_name`), to `key`'s page, as
 ## `ConversationRoute.post_sent_message!` takes it, and naming for the
 ## script where an image is uploaded and the most it may be
-## (`UploadRoute`); then its help line.
+## (`UploadRoute`), and where the script sends the same field
+## (`ConversationRoute.post_message_without_reload!`); then its help line.
 compose_box : ConversationKey -> TrustedHtml
 compose_box = |key|
 	Html.element({
@@ -249,6 +253,7 @@ compose_box = |key|
 				attrs: [
 					MethodPost,
 					Action(site_path(key.url_path())),
+					DataSend(site_path(key.send_url_path())),
 					DataUpload(site_path(key.upload_url_path())),
 					DataImageMost(token(UploadedImage.most_bytes.to_str())),
 				],
@@ -447,7 +452,12 @@ expect
 		"data-viewer",
 		"data-author",
 	].all(|name| is_read_by(FeedScript.bytes, name) and !is_read_by(ComposeScript.bytes, name))
-expect ["data-upload", "data-image-most"].all(|name| is_read_by(ComposeScript.bytes, name) and !is_read_by(FeedScript.bytes, name))
+expect
+	[
+		"data-send",
+		"data-upload",
+		"data-image-most",
+	].all(|name| is_read_by(ComposeScript.bytes, name) and !is_read_by(FeedScript.bytes, name))
 # The classes only styled are styled by the script that owns them.
 expect [TopTitle, Viewer].all(|chosen| Str.from_utf8_lossy(ChromeScript.bytes).contains(".${class_name(chosen)} {"))
 # A message's anchor as an id and as a link, at the first id and the next.

@@ -4,6 +4,7 @@
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
 ##     GET  /chat/dm/<pair>/<topic>
 ##     POST the same paths, a form field `markdown`: a message appended
+##     POST the same paths and `/send`, the same: the script's send
 ##     GET  the same paths and `/stream`       the conversation's stream
 ##     POST the same paths and `/upload`       an image uploaded to it
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
@@ -31,6 +32,7 @@ Route :: [].{
 	Choice : [
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
+		SendToConversation(ConversationKey),
 		OpenConversationStream(ConversationKey),
 		UploadToConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
@@ -96,7 +98,8 @@ script_url_path = |script|
 	}
 
 ## The route for `method` and a conversation's `path`: its page, its
-## stream, its upload or one of its uploaded images, each tried in turn.
+## stream, its script's send, its upload or one of its uploaded images,
+## each tried in turn.
 conversation_choice : {
 	method : List(U8),
 	path : UnvalidatedString,
@@ -123,14 +126,38 @@ conversation_choice = |
 			match ConversationKey.from_stream_url_path({ path, directory }) {
 				Ok(key) => if (is_get) OpenConversationStream(key) else MethodNotAllowed(GetOnly)
 				Err(_) =>
-					match ConversationKey.from_upload_url_path({ path, directory }) {
-						Ok(key) => if (is_post) UploadToConversation(key) else MethodNotAllowed(PostOnly)
+					match ConversationKey.from_send_url_path({ path, directory }) {
+						Ok(key) => if (is_post) SendToConversation(key) else MethodNotAllowed(PostOnly)
 						Err(_) =>
-							match ConversationKey.from_uploaded_image_url_path({ path, directory }) {
-								Ok(found) => if (is_get) ServeUploadedImage(found) else MethodNotAllowed(GetOnly)
-								Err(_) => NotFound
-							}
+							upload_choice({
+								method,
+								path,
+								directory,
+							})
 					}
 			}
 	}
 }
+
+## The route for `method` and a path under a conversation's uploads: an
+## upload, or one of its uploaded images.
+upload_choice : {
+	method : List(U8),
+	path : UnvalidatedString,
+	directory : Directory,
+} -> Route.Choice
+upload_choice = |
+	{
+		method,
+		path,
+		directory,
+	},
+|
+	match ConversationKey.from_upload_url_path({ path, directory }) {
+		Ok(key) => if (method == "POST".to_utf8()) UploadToConversation(key) else MethodNotAllowed(PostOnly)
+		Err(_) =>
+			match ConversationKey.from_uploaded_image_url_path({ path, directory }) {
+				Ok(found) => if (method == "GET".to_utf8()) ServeUploadedImage(found) else MethodNotAllowed(GetOnly)
+				Err(_) => NotFound
+			}
+	}

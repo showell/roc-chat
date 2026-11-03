@@ -116,6 +116,14 @@ handle_http_request! = |request|
 						now: Host.current_utc_seconds_since_epoch!({}),
 						body: request.body,
 					})
+				SendToConversation(key) =>
+					ConversationRoute.post_message_without_reload!({
+						key,
+						acting,
+						users: directory.users(),
+						now: Host.current_utc_seconds_since_epoch!({}),
+						body: request.body,
+					})
 				UploadToConversation(key) =>
 					UploadRoute.post_upload!({
 						key,

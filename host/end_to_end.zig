@@ -5,8 +5,8 @@
 //!   1. GET the seeded conversation: exactly the demo's frozen page, with
 //!      its content security policy (scripts from this origin alone) and
 //!      `nosniff`; its compose box a form posting `markdown` to the
-//!      conversation's own URL and naming its `/upload`, and its script's
-//!      `src`;
+//!      conversation's own URL and naming its `/send` and its `/upload`, and
+//!      its script's `src`;
 //!   2. POST a message to it: a 303 to its page;
 //!   3. GET it again: the message is there;
 //!   4. the transcript on disk: the seed and exactly one record more, dated
@@ -63,6 +63,17 @@
 //!      exactly 1 GiB;
 //!  28. the total seeded with text that is no number: its upload a 500
 //!      saying so, nothing stored, the total unchanged.
+//!  29. with the channel's stream open after its tenth message, send as the
+//!      compose box's script does (form-encoded to `/send`, `Origin` this
+//!      server, `Sec-Fetch-Site` same-origin): 201, HTML, exactly the
+//!      message's HTML as the page writes it; one record more on disk; the
+//!      stream's next event exactly that message's frame;
+//!  30. the next message's frame comes next on that stream, so the sent one
+//!      came exactly once;
+//!  31. a blank send: 400, "The message is blank." in plain text, nothing
+//!      stored;
+//!  32. a send from another origin's page, and one the browser says is
+//!      cross-site: 403 each, nothing stored.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
@@ -132,7 +143,7 @@ pub fn main(init: std.process.Init) !void {
     try t.check("its defences: the content security policy, scripts from this origin alone, and nosniff, as sent", std.mem.startsWith(u8, policy, "default-src 'none'; ") and
         has(policy, "; script-src 'self'; ") and !has(policy, "unsafe-eval") and !has(policy, "script-src 'unsafe-inline'") and
         std.mem.eql(u8, first.header("x-content-type-options") orelse "", "nosniff"));
-    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, uploading to its `/upload`, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\" data-upload=\"" ++ channel_url ++ "/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>") and
+    try t.check("its compose box: a form posting `markdown` to the conversation's own URL, sending to its `/send`, uploading to its `/upload`, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\" data-send=\"" ++ channel_url ++ "/send\" data-upload=\"" ++ channel_url ++ "/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>") and
         has(first.body, "<script src=\"" ++ script_url ++ "\"></script>"));
 
     // 2.
@@ -349,6 +360,45 @@ pub fn main(init: std.process.Init) !void {
         std.mem.eql(u8, garbled.body, "Upload failed: your upload total is not a number.\n") and
         (try namesIn(a, io, data, channel_uploads)).len == 3 and std.mem.eql(u8, try uploadTotal(a, io, data), "lots"));
 
+    // 29.
+    var send_stream = try Stream.open(a, io, port, channel_url ++ "/stream?after=10");
+    defer send_stream.close();
+    const script_fetch = try std.fmt.allocPrint(a, "origin: http://localhost:{d}\r\n" ++
+        "sec-fetch-site: same-origin\r\nsec-fetch-mode: cors\r\nsec-fetch-dest: empty\r\n" ++
+        "referer: http://localhost:{d}" ++ channel_url ++ "\r\naccept: */*\r\n", .{ port, port });
+    const before_send = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const sent_before = files.current_utc_seconds_since_epoch(io);
+    const sent = try post(a, io, port, .{ .path = channel_url ++ "/send", .form = "markdown=Sent+**without**+a+reload%0Atwo+lines", .more = script_fetch });
+    const sent_after = files.current_utc_seconds_since_epoch(io);
+    const after_send = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const page_of_eleven = try get(a, io, port, channel_url);
+    try t.check("send as the compose box's script does: 201, HTML, exactly the message's HTML as the page writes it, one record more", sent.status == 201 and
+        std.mem.eql(u8, sent.header("content-type") orelse "", "text/html; charset=utf-8") and
+        std.mem.eql(u8, sent.body, try articleOf(page_of_eleven.body, "11")) and
+        recordFits(a, after_send, before_send, "gopher-roc_11", "Sent **without** a reload\ntwo lines", sent_before, sent_after));
+    try t.check("the open stream's next event: exactly that message's frame", std.mem.eql(u8, try send_stream.event(), try frameOf(a, page_of_eleven.body, "11")));
+
+    // 30.
+    const next_sent = try post(a, io, port, .{ .path = channel_url ++ "/send", .form = "markdown=And+the+next", .more = script_fetch });
+    const page_of_twelve = try get(a, io, port, channel_url);
+    try t.check("send the next: 201, and the stream's next event is its frame, so the one before came once", next_sent.status == 201 and
+        std.mem.eql(u8, try send_stream.event(), try frameOf(a, page_of_twelve.body, "12")));
+
+    // 31.
+    const before_refusals = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const blank = try post(a, io, port, .{ .path = channel_url ++ "/send", .form = "markdown=+%0A", .more = script_fetch });
+    try t.check("a blank send: 400, its words in plain text, nothing stored", blank.status == 400 and
+        std.mem.eql(u8, blank.header("content-type") orelse "", "text/plain; charset=utf-8") and
+        std.mem.eql(u8, blank.body, "The message is blank.\n") and
+        std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), before_refusals));
+
+    // 32.
+    const foreign_send = try post(a, io, port, .{ .path = channel_url ++ "/send", .form = "markdown=forged", .more = "origin: http://evil.example\r\n" });
+    const cross_send = try post(a, io, port, .{ .path = channel_url ++ "/send", .form = "markdown=forged", .more = "sec-fetch-site: cross-site\r\n" });
+    try t.check("a send from another origin's page, and one the browser says is cross-site: 403 each, nothing stored", foreign_send.status == 403 and
+        has(foreign_send.body, "another origin") and cross_send.status == 403 and has(cross_send.body, "another site") and
+        std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), before_refusals));
+
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
 }
 
@@ -428,6 +478,14 @@ fn frameOf(a: std.mem.Allocator, page: []const u8, comptime id: []const u8) ![]c
     while (lines.next()) |line| try out.print(a, "data: {s}\n", .{line});
     try out.append(a, '\n');
     return out.items;
+}
+
+/// The HTML of the message `id` that `page` shows, as the page writes it:
+/// its article, and the line feed after it.
+fn articleOf(page: []const u8, comptime id: []const u8) ![]const u8 {
+    const from = std.mem.indexOf(u8, page, "<article class=\"message\" id=\"msg-" ++ id ++ "\"") orelse return error.NoSuchMessage;
+    const to = (std.mem.indexOfPos(u8, page, from, "</article>\n") orelse return error.NoSuchMessage) + "</article>\n".len;
+    return page[from..to];
 }
 
 /// Each step said on its own line, with the time since the start; a step

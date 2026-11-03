@@ -7,12 +7,23 @@
 // the right. The rail is either open, its textarea as tall as the window,
 // or closed, showing an "Open compose box" button and the keyboard help. It
 // starts closed, and opens with the button or the c key. Escape closes it
-// when the textarea is empty, so a draft stays where it is. After a send, the page
-// that comes back has the rail open again. In a narrower window, the
-// compose box is always open, below the messages.
+// when the textarea is empty, so a draft stays where it is. In a narrower
+// window, the compose box is always open, below the messages.
 //
 // Ctrl+Enter (⌘+Enter on a Mac) sends, as chat-client does; plain Enter is
 // a new line.
+//
+// A send stays on the page, as chat-client's did (js/chat_compose.js). The
+// script posts the form to the conversation's `/send` (the form's
+// data-send), and the box and its buttons are off until the server answers,
+// the status line saying "Sending…". The server answers a 201 with the
+// message's HTML once the message is stored; then the box empties and comes
+// back on. The message itself appears through the stream, as everyone else
+// sees it, and when it arrives there the status line says it was sent,
+// linking to it. A refusal shows the server's own words and keeps the
+// draft. With no answer in 3 seconds, a dialog says the host may be down,
+// and the draft is kept; an answer that comes later still says "sent" when
+// the message arrives, so it is not sent twice.
 //
 // An image goes into a message as chat-client's compose box puts one there.
 // The Upload button picks a file, and an image pasted into the box is sent
@@ -27,7 +38,8 @@
 //
 // The messages pane, its stream and the newest message's place in view are
 // feed.js's; this script runs before it, so the panes are laid out by the
-// time feed.js first scrolls to the newest message.
+// time feed.js first scrolls to the newest message, and Compose is there for
+// feed.js to use.
 //
 // The script styles what it arranges, with one style sheet of its own, so
 // the server sends no CSS for it. Its colours are palette.js's.
@@ -88,6 +100,13 @@
       'border:1px solid var(--cc-border);border-bottom-width:2px;border-radius:4px;margin-right:7px;cursor:pointer}',
     '.keyhelp-key:hover{background:var(--cc-quote-bg);border-color:var(--cc-quote-border)}',
     '.keyhelp-key:active{background:var(--cc-mine-bg);border-bottom-width:1px;transform:translateY(1px)}',
+
+    // The "host may be down" dialog, chat-client's.
+    '.compose-alert{max-width:90vw;border:1px solid var(--cc-dialog-border);background:var(--cc-bg);color:var(--cc-fg);' +
+      'border-radius:8px;padding:18px 20px}',
+    '.compose-alert::backdrop{background:var(--cc-backdrop)}',
+    '.compose-alert p{margin:0 0 14px}',
+    '.compose-alert button{padding:5px 16px}',
   ].join('\n');
   document.head.appendChild(styleSheet);
 
@@ -190,38 +209,146 @@
   applyLayout();
   narrowQuery.addEventListener('change', applyLayout);
 
-  // A send reloads the page, and the rail opens again on the page that comes
-  // back, as chat-client's stays open after a send. This tab's storage
-  // carries that across the reload.
-  var OPEN_AFTER_SEND_KEY = 'gopher-roc compose open after send';
-  function takeOpenAfterSend() {
-    try {
-      var wanted = sessionStorage.getItem(OPEN_AFTER_SEND_KEY) !== null;
-      sessionStorage.removeItem(OPEN_AFTER_SEND_KEY);
-      return wanted;
-    } catch (err) {
-      return false;
-    }
-  }
-  if (takeOpenAfterSend() || isNarrow()) {
+  if (isNarrow()) {
     openCompose();
   } else {
     messages.focus();
   }
 
-  // One send per page: a second Ctrl+Enter while the first is on its way would
-  // post the message twice. A page shown again from the back button's cache
-  // may send again.
-  var sending = false;
-  form.addEventListener('submit', function () {
-    sending = true;
-    try {
-      sessionStorage.setItem(OPEN_AFTER_SEND_KEY, '1');
-    } catch (err) {
-      // With no storage, the page that comes back starts with the rail closed.
+  var sendUrl = form.getAttribute('data-send');
+  if (!sendUrl) throw new Error('compose.js: the form has no data-send');
+  var MUTED = 'var(--cc-muted-fg)';
+  var HOST_DOWN_MS = 3000;
+
+  // The one send on its way, if any: its timer. A second send waits for it,
+  // so one Ctrl+Enter pressed twice never posts the message twice.
+  var pending = null;
+  // The ids of the messages this page sent whose arrival on the stream is
+  // still to be noticed.
+  var awaitingArrival = Object.create(null);
+
+  function setEnabled(on) {
+    box.disabled = !on;
+    var buttons = form.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) buttons[i].disabled = !on;
+  }
+  function settle() {
+    clearTimeout(pending.timer);
+    pending = null;
+    status.textContent = '';
+    status.style.color = '';
+    setEnabled(true);
+  }
+
+  function showAlert(said) {
+    var dialog = document.createElement('dialog');
+    dialog.className = 'compose-alert';
+    var p = document.createElement('p');
+    p.textContent = said;
+    var ok = document.createElement('button');
+    ok.type = 'button';
+    ok.textContent = 'OK';
+    ok.addEventListener('click', function () { dialog.close(); });
+    dialog.appendChild(p);
+    dialog.appendChild(ok);
+    dialog.addEventListener('close', function () { dialog.remove(); box.focus(); });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+  }
+  function hostDown(mine) {
+    if (pending !== mine) return;
+    settle();
+    showAlert('The host may be down. Please retry your send.');
+  }
+
+  // The server's words for a refusal: its plain text, or the words of the
+  // page it answered with (a 403 is a page).
+  function refusalWords(answer, code) {
+    var said = answer.trim();
+    if (said.charAt(0) === '<') {
+      var parsed = document.createElement('template');
+      parsed.innerHTML = said;
+      var p = parsed.content.querySelector('p');
+      said = p ? p.textContent.trim() : '';
     }
+    return said || 'Not sent (the server answered ' + code + ').';
+  }
+
+  // The status line's notice that a message this page sent has arrived, a
+  // link that brings it into view.
+  function sentNotice(article) {
+    var ref = article.querySelector('header a');
+    var link = document.createElement('a');
+    link.href = '#' + article.id;
+    link.textContent = '✓ your message was sent to ' + (ref ? ref.textContent : article.id);
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      Feed.reveal(article);
+    });
+    status.textContent = '';
+    status.style.color = 'var(--cc-notify-fg)';
+    status.appendChild(link);
+  }
+  function expectArrival(id) {
+    var here = document.getElementById(id);
+    if (here) sentNotice(here);
+    else awaitingArrival[id] = true;
+  }
+
+  // The id of the message a 201 answers with: its element's.
+  function sentId(answer) {
+    var parsed = document.createElement('template');
+    parsed.innerHTML = answer;
+    var article = parsed.content.querySelector('article');
+    return article ? article.id : '';
+  }
+
+  function sendMessage() {
+    if (pending) return;
+    var markdown = box.value;
+    if (!markdown.trim()) return;
+    var mine = { timer: null };
+    pending = mine;
+    setEnabled(false);
+    status.style.color = MUTED;
+    status.textContent = 'Sending…';
+    mine.timer = setTimeout(function () { hostDown(mine); }, HOST_DOWN_MS);
+    fetch(sendUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: box.name + '=' + encodeURIComponent(markdown),
+    }).then(function (r) {
+      return r.text().then(function (answer) {
+        if (r.status === 201) {
+          if (pending === mine) {
+            settle();
+            box.value = '';
+            box.focus();
+          }
+          var id = sentId(answer);
+          if (id) expectArrival(id);
+        } else if (pending === mine) {
+          settle();
+          status.textContent = refusalWords(answer, r.status);
+          box.focus();
+        }
+      });
+    }).catch(function () { hostDown(mine); });
+  }
+
+  // feed.js hands each message the stream brings to Compose.arrived.
+  window.Compose = {
+    arrived: function (article) {
+      if (!awaitingArrival[article.id]) return;
+      delete awaitingArrival[article.id];
+      sentNotice(article);
+    },
+  };
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    sendMessage();
   });
-  window.addEventListener('pageshow', function () { sending = false; });
   box.addEventListener('keydown', function (e) {
     if (e.isComposing) return;
     if (e.key === 'Escape' && !isNarrow() && box.value.trim() === '') {
@@ -231,8 +358,7 @@
     }
     if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
-    if (sending || box.value.trim() === '') return;
-    form.requestSubmit(send);
+    sendMessage();
   });
 
   var uploadUrl = form.getAttribute('data-upload');
@@ -240,7 +366,6 @@
   if (!uploadUrl || !(imageMost > 0)) {
     throw new Error('compose.js: the form has no data-upload, or a data-image-most that is no count');
   }
-  var MUTED = 'var(--cc-muted-fg)';
   var UPLOAD_PATIENCE_MS = 5 * 60 * 1000;
   var PHOTO_LONGEST_PX = 2048;
   var PHOTO_REENCODE_OVER_BYTES = 1.5 * 1048576;

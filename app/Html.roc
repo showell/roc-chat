@@ -96,7 +96,7 @@ Html :: [].{
 	## method (always POST) and where it posts; whether a field is required;
 	## a script's source; and, for the page's script, where the page's
 	## stream is, how many messages the page already shows, where the
-	## compose box uploads an image, the most bytes an image may be, who is
+	## compose box sends a message and uploads an image, the most bytes an image may be, who is
 	## viewing the page, and who wrote a message (each a user's id).
 	Attribute : [
 		Class(Html.Token),
@@ -110,6 +110,7 @@ Html :: [].{
 		Src(Html.SitePath),
 		DataStream(Html.SitePath),
 		DataAfter(Html.Token),
+		DataSend(Html.SitePath),
 		DataUpload(Html.SitePath),
 		DataImageMost(Html.Token),
 		DataViewer(Html.Token),
@@ -188,6 +189,7 @@ attribute = |attr|
 		Src(path) => " src=\"${path.to_str()}\""
 		DataStream(path) => " data-stream=\"${path.to_str()}\""
 		DataAfter(token) => " data-after=\"${token.to_str()}\""
+		DataSend(path) => " data-send=\"${path.to_str()}\""
 		DataUpload(path) => " data-upload=\"${path.to_str()}\""
 		DataImageMost(token) => " data-image-most=\"${token.to_str()}\""
 		DataViewer(token) => " data-viewer=\"${token.to_str()}\""
@@ -243,6 +245,9 @@ expect attribute(DataAuthor(token("3"))) == " data-author=\"3\""
 expect
 	Html.SitePath.from_str("/chat/dm/1_1/plans/upload").map_ok(|path| attribute(DataUpload(path)))
 		== Ok(" data-upload=\"/chat/dm/1_1/plans/upload\"")
+expect
+	Html.SitePath.from_str("/chat/dm/1_1/plans/send").map_ok(|path| attribute(DataSend(path)))
+		== Ok(" data-send=\"/chat/dm/1_1/plans/send\"")
 expect
 	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(|path| attribute(DataStream(path)))
 		== Ok(" data-stream=\"/chat/dm/1_1/plans/stream\"")

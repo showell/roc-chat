@@ -14,6 +14,9 @@
 ## conversation's stream is at its page's URL and `/stream`, which
 ## `from_stream_url_path` reads back.
 ##
+## A page's script sends a message by a POST to its page's URL and `/send`
+## (`from_send_url_path`), and gets the message back without a reload.
+##
 ## An image is uploaded to a conversation by a POST to its page's URL and
 ## `/upload` (`from_upload_url_path`), and is served at its page's URL,
 ## `/uploads/` and the image's name (`from_uploaded_image_url_path`).
@@ -119,6 +122,29 @@ ConversationKey :: { place : Place, topic : Topic }.{
 			directory,
 		})
 
+	## The URL path a page's script sends a message to: its page's, then
+	## `/send`.
+	send_url_path : ConversationKey -> Str
+	send_url_path = |key| "${key.url_path()}/${send_part}"
+
+	## The conversation a URL's path sends a message to, refused as
+	## `from_url_path` refuses a page's.
+	from_send_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
+		ConversationKey,
+		[
+			NotAConversationPath,
+			BadName,
+			NoSuchChannel,
+			NoSuchHuman,
+		],
+	)
+	from_send_url_path = |{ path, directory }|
+		key_before_last_part({
+			path,
+			last: send_part,
+			directory,
+		})
+
 	## The URL path an image is uploaded to: its page's, then `/upload`.
 	upload_url_path : ConversationKey -> Str
 	upload_url_path = |key| "${key.url_path()}/${upload_part}"
@@ -189,6 +215,10 @@ ConversationKey :: { place : Place, topic : Topic }.{
 ## The last part of a stream's URL path.
 stream_part : Str
 stream_part = "stream"
+
+## The last part of the URL path a page's script sends a message to.
+send_part : Str
+send_part = "send"
 
 ## The last part of an upload's URL path.
 upload_part : Str

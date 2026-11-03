@@ -22,12 +22,14 @@
 // connection drops, the browser reconnects by itself and says the last
 // message it saw, so the server sends only what was missed. If the stream
 // dies for good, the page reloads itself; if it dies again soon after, the
-// page says so instead.
+// page says so instead. Each message the stream brings is handed to
+// compose.js (Compose.arrived), which says when one this page sent arrives.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
   var compose = document.querySelector('.compose');
   if (!messages || !compose) throw new Error('feed.js: the page has no .messages, or no .compose');
+  if (!window.Compose) throw new Error('feed.js: compose.js runs first, and gives Compose');
   var stream = messages.getAttribute('data-stream');
   var after = messages.getAttribute('data-after');
   var viewer = messages.getAttribute('data-viewer');
@@ -109,10 +111,19 @@
     if (empty) empty.remove();
     var parsed = document.createElement('template');
     parsed.innerHTML = e.data;
-    var arrived = parsed.content.querySelectorAll('.message');
+    var arrived = Array.prototype.slice.call(parsed.content.querySelectorAll('.message'));
     for (var j = 0; j < arrived.length; j++) dress(arrived[j]);
     messages.appendChild(parsed.content);
     if (follow) scrollToNewest();
+    for (var k = 0; k < arrived.length; k++) Compose.arrived(arrived[k]);
+  };
+  // Brings `article` to the middle of the pane: the sent notice's link.
+  window.Feed = {
+    reveal: function (article) {
+      var pane = messages.getBoundingClientRect();
+      var box = article.getBoundingClientRect();
+      messages.scrollTop += (box.top + box.height / 2) - (pane.top + pane.height / 2);
+    },
   };
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for

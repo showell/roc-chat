@@ -33,7 +33,7 @@ page_for = |viewer, conversation|
 ## of the layout, and the scripts. A frozen answer, so a change to the box
 ## shows here as a deliberate re-freeze.
 foot : Str -> Str
-foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-upload=\"${url}/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n"
+foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-most=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n"
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
