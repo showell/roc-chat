@@ -12,10 +12,9 @@
 ## Names are not checked for clashes here. `Directory` holds the users with
 ## the channels, and keeps every name unique across both.
 ##
-## The users are kept on disk as the Zig chat keeps its account store
-## (`FileSystem`): the counter of the next id, `auth/next-id.txt`, its
-## digits and a line end, as the Zig chat's counter writes it (`256` when
-## every id is taken); and a folder per user, `auth/<id>/`, holding the
+## The users are kept on disk (`FileSystem`) as small files under the auth
+## root: the counter of the next id, `auth/next-id.txt`, its digits and a
+## line end (`256` when every id is taken); and a folder per user, `auth/<id>/`, holding the
 ## user's name, exactly as given, in `name`, and an agent's owner's id, its
 ## digits, in `owner`. A human has no `owner` file. `from_files` reads them
 ## back, and `account_files` and `counter_file` write them.

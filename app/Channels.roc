@@ -6,11 +6,10 @@
 ## Channel names are not checked for clashes here. `Directory` holds the
 ## channels with the users, and keeps every name unique across both.
 ##
-## A channel's members are kept as the Zig chat keeps them (`FileSystem`):
-## a file per channel, `chat/channel/<name>.channel`, beside the channel's
+## A channel's members are kept (`FileSystem`) in a file per channel, `chat/channel/<name>.channel`, beside the channel's
 ## folder of topics, holding one member's id a line. An admin edits the file
 ## to change the members. `members_file` writes it, and `from_files` reads
-## it back as the Zig chat does: each line's spaces off, a blank line or one
+## it back: each line's spaces off, a blank line or one
 ## starting `#` skipped, and any other line exactly an id, once.
 import Admin
 import Ascii

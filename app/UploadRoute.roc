@@ -1,7 +1,5 @@
 ## This module answers the two upload routes: a POST of an image from the
-## compose box, and a GET of an uploaded image. It follows the old Zig
-## chat's `handleUpload` and `serveUpload` (angry-gopher's chat_upload.zig),
-## by way of roc-chat's.
+## compose box, and a GET of an uploaded image.
 ##
 ## A POST holds a form of one file (`MultipartForm`). The file must be an
 ## image by its opening bytes and at most 10 MiB (`UploadedImage`). Its
@@ -14,7 +12,7 @@
 ## compose box puts in the message as an `<img>`. An image that can't be
 ## stored gives its bytes back to the allowance.
 ##
-## A refusal is a line of plain text in the old words, which the compose
+## A refusal is a line of plain text saying why, which the compose
 ## box shows as it is: no file is a 400, not an image a 415, too large a
 ## 413, and an allowance used up a 403. A total that can't be read, or isn't
 ## a number, is a 500, and nothing is stored.
@@ -181,7 +179,7 @@ reserve_upload_bytes! = |folder, adding| {
 	Ok(before)
 }
 
-## An upload refused, in the old chat's words, as a line of plain text; or
+## An upload refused, as a line of plain text saying why; or
 ## one that couldn't be counted or kept, a 500 saying that the user's
 ## upload total is no number, or what the file system answered.
 upload_refusal_response : [
@@ -202,7 +200,7 @@ upload_refusal_response = |why|
 		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileSystem.fault_words(fault)}")
 	}
 
-## The answer to an upload, as the old chat's was: the image's URL, the
+## The answer to an upload: the image's URL, the
 ## browser's name for it, its kind, and no size (0 and 0, so the compose
 ## box gives the image no width or height).
 upload_answer_json : { url : Str, name : Str } -> JsonOut

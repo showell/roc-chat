@@ -68,8 +68,8 @@ ConversationRoute :: [].{
 		}
 
 	## A GET of the conversation's `/raw`: its transcript file's bytes,
-	## exactly as kept, as plain UTF-8 text, as the Zig chat's `/raw` serves
-	## them. A conversation with no transcript is a 404.
+	## exactly as kept, as plain UTF-8 text. A conversation with no
+	## transcript is a 404.
 	serve_raw! : ConversationKey => Http.Response
 	serve_raw! = |key|
 		match FileSystem.read_transcript!(key) {

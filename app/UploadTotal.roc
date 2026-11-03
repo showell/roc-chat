@@ -1,6 +1,6 @@
 ## This module is a user's upload total: how many bytes of images they have
 ## uploaded over the life of their account. One user may upload at most
-## 1 GiB in all (`most_bytes`), as in the Zig chat. That is a backstop
+## 1 GiB in all (`most_bytes`). That is a backstop
 ## against abuse, not a tight quota.
 ##
 ## `FileSystem` keeps the total as a file of decimal digits in the user's
@@ -54,8 +54,8 @@ expect UploadTotal.most_bytes == 1073741824
 # No file is none uploaded.
 expect UploadTotal.from_file(NoFile) == Ok(UploadTotal.(0))
 expect UploadTotal.from_file(NoFile).map_ok(|total| total.to_file()) == Ok("0".to_utf8())
-# A file's digits, with the Zig chat's padding around them, and the most a
-# U64 holds.
+# A file's digits, with spaces, tabs or line ends around them, and the most
+# a U64 holds.
 expect
 	[
 		("0", "0"),

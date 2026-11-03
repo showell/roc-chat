@@ -26,7 +26,7 @@
 ## file per fact: their upload total (`UploadTotal`) is `upload-bytes`.
 ##
 ## Who a user is, and how they prove it, is kept apart under the auth root
-## (`AccountFolder`), as the Zig chat keeps its account store: the counter
+## (`AccountFolder`): the counter
 ## of user ids, `auth/next-id.txt`, and each user's `auth/<id>/` (`Users`),
 ## with an agent's keys under `keys/<number>/` (`AgentKey`) and its invites
 ## under `invites/<number>/` (`AgentInvite`), one file per fact. A record
@@ -218,7 +218,7 @@ FileSystem :: [].{
 	## The files the directory is kept in, unchecked, for `Users.from_files`
 	## and `Channels.from_files` to read: the counter of user ids (`NoFile`
 	## before the first start), each account folder's facts (a folder whose
-	## name is no id is not an account, as in the Zig chat), and each
+	## name is no id is not an account), and each
 	## channel's members file. No auth root, or no folder of channels, holds
 	## none. An account with no `name` is `Missing`.
 	read_directory_files! : {} => Try(

@@ -49,9 +49,9 @@
 //!      byte;
 //!  20. the same name under the DM's page: 404; a name never given under
 //!      the channel's: 404;
-//!  21. upload a file that is no image: 415, in the old words;
-//!  22. upload an image of exactly 10 MiB: 200; of one byte more: 413, in
-//!      the old words;
+//!  21. upload a file that is no image: 415, saying so;
+//!  22. upload an image of exactly 10 MiB: 200; of one byte more: 413,
+//!      saying so;
 //!  23. upload from another origin's page, and one the browser says is
 //!      cross-site: 403 each;
 //!  24. the channel's uploads on disk: exactly the PNG and the 10 MiB image,
@@ -60,7 +60,7 @@
 //!  25. a message holding an `<img>` of the PNG, as the compose box inserts
 //!      it: on the channel's page an image; posted to the DM, text.
 //!  26. the total seeded one byte short of room for the PNG: its upload a
-//!      403 in the Zig chat's words, nothing stored, the total unchanged;
+//!      403 saying the limit is reached, nothing stored, the total unchanged;
 //!  27. the total seeded with exactly room for it: 200, stored, the total
 //!      exactly 1 GiB;
 //!  28. the total seeded with text that is no number: its upload a 500
@@ -349,7 +349,7 @@ pub fn main(init: std.process.Init) !void {
 
     // 21.
     const text = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "a.png", "hello, not an image"), .more = own_page });
-    try t.check("upload a file that is no image: 415, in the old words", text.status == 415 and
+    try t.check("upload a file that is no image: 415, saying so", text.status == 415 and
         std.mem.eql(u8, text.body, "unsupported file type (images: png, jpeg, gif, webp)\n"));
 
     // 22.
@@ -360,7 +360,7 @@ pub fn main(init: std.process.Init) !void {
     const at_most = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "big.png", big[0..most]), .more = own_page });
     const at_most_url = jsonUrl(at_most.body) orelse "";
     const over = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "big.png", big), .more = own_page });
-    try t.check("upload an image of exactly 10 MiB: 200; of one byte more: 413, in the old words", at_most.status == 200 and
+    try t.check("upload an image of exactly 10 MiB: 200; of one byte more: 413, saying so", at_most.status == 200 and
         std.mem.startsWith(u8, at_most_url, image_prefix) and isFreshName(at_most_url[image_prefix.len..], ".png") and
         over.status == 413 and std.mem.eql(u8, over.body, "image too large — the limit is 10 MB.\n"));
 
@@ -392,7 +392,7 @@ pub fn main(init: std.process.Init) !void {
     const one_over = try std.fmt.allocPrint(a, "{d}", .{allowance - png.len + 1});
     try data.writeFile(io, .{ .sub_path = total_path, .data = one_over });
     const spent = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
-    try t.check("upload a PNG one byte past Steve's 1 GiB allowance: 403, in the Zig chat's words; nothing stored or counted", spent.status == 403 and
+    try t.check("upload a PNG one byte past Steve's 1 GiB allowance: 403, saying the limit is reached; nothing stored or counted", spent.status == 403 and
         std.mem.eql(u8, spent.body, "Upload limit reached — you've used your 1 GB upload allowance.\n") and
         (try namesIn(a, io, data, channel_uploads)).len == 2 and std.mem.eql(u8, try uploadTotal(a, io, data), one_over));
 

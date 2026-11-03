@@ -210,8 +210,8 @@ team_read = |text| {
 	Ok(channels.to_list().join_map(|channel| channel.members().map(UserId.to_str)))
 }
 
-# A members file: one id a line, lowest first; read as the Zig chat reads
-# it, spaces off each line, blank lines and `#` lines skipped.
+# A members file: one id a line, lowest first; read with spaces off each
+# line, blank lines and `#` lines skipped.
 expect (with_team.channels().channel(ChannelName.from_str("team") ?? crash "a name") ?? crash "team").members_file() == "1\n3\n".to_utf8()
 expect team_read("1\n3\n") == Ok(["1", "3"])
 expect team_read("# the team\n\n 3 \r\n1") == Ok(["1", "3"])

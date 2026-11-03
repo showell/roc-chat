@@ -1,5 +1,5 @@
 ## A conversation's transcript is its messages as one file, readable with
-## `cat`, in the Zig chat's format:
+## `cat`, in this format:
 ##
 ##     -------------
 ##     MSG_planning_1

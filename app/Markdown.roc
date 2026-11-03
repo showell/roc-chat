@@ -1,7 +1,7 @@
 ## This module renders a message's markdown. It is the one entry to
 ## roc-markdown (the `md` package), and the only module that imports it.
-## The dialect is "Steve flavor" markdown, roc-markdown's own, held byte for
-## byte to the Zig chat's renderer. roc-markdown takes and gives bytes;
+## The dialect is "Steve flavor" markdown, roc-markdown's own.
+## roc-markdown takes and gives bytes;
 ## this module takes a `Str` and gives `TrustedHtml`, so the rest of the
 ## chat never handles the renderer's bytes.
 ##

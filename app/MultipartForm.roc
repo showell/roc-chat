@@ -1,6 +1,5 @@
-## This module reads the one file in the form the compose box sends to
-## upload an image. It reads the form as the old Zig chat's
-## `parseMultipartFile` does.
+## This module reads a single file in the form the compose box sends to
+## upload an image.
 ##
 ## The form is `multipart/form-data`: its parts are split by a boundary,
 ## which its Content-Type header names (`boundary_from_content_type`). The
@@ -112,8 +111,7 @@ count_from_end = |bytes, passes|
 		Err(NotFound) => bytes.len()
 	}
 
-## A quoted `<name>="value"` in a part's headers, as the old chat's
-## `attrVal` read one. A letter just before `name` puts the match inside
+## A quoted `<name>="value"` in a part's headers. A letter just before `name` puts the match inside
 ## another attribute's name (`name` in `filename`), so the search goes on.
 quoted_attribute : List(U8), Str -> Try(List(U8), [Missing])
 quoted_attribute = |headers, name| quoted_attribute_from(headers, { needle: name.to_utf8().concat("=\"".to_utf8()), from: 0 })

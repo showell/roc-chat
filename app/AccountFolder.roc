@@ -1,6 +1,6 @@
 ## This module names a user's account folder, `auth/<id>`, under the auth
-## root, where the chat keeps who a user is and how they prove it, as the
-## Zig chat's account store does: the user's name and an agent's owner
+## root, where the chat keeps who a user is and how they prove it: the
+## user's name and an agent's owner
 ## (`Users`), and an agent's keys and invites (`AgentKey`, `AgentInvite`),
 ## each fact a small file. Those are kept apart from what a user has done,
 ## such as their upload total, in their private folder (`UserFolder`): a

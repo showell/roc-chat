@@ -52,8 +52,8 @@ HttpAnswer :: [].{
 		})
 
 	## An uploaded image, `bytes`, served as `content_type`, which
-	## `nosniff` holds the browser to. The browser keeps it for good, as the
-	## old chat's did, since a name is never given twice.
+	## `nosniff` holds the browser to. The browser keeps it for good, since a
+	## name is never given twice.
 	image : { content_type : Str, bytes : List(U8) } -> Http.Response
 	image = |{ content_type, bytes }|
 		whole_response({

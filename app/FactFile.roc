@@ -1,8 +1,7 @@
-## This module is the one home of how the chat spells a fact file, as the
-## Zig chat keeps its account store: a small file holding one decimal number
-## or one word, written bare, with no line end. A reader takes the spaces,
-## tabs and line ends at either end off first, as the Zig chat's readers do,
-## so a file edited by hand still reads. What each number or word means is
+## This module is the one home of how the chat spells a fact file: a small
+## file holding one decimal number or one word, written bare, with no line
+## end. A reader takes the spaces, tabs and line ends at either end off
+## first, so a file edited by hand still reads. What each number or word means is
 ## its own module's to say: an upload total (`UploadTotal`), a user's owner
 ## (`Users`), a key's expiry (`AgentKey`).
 import Ascii

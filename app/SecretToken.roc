@@ -1,6 +1,6 @@
 ## A secret token names an agent and carries a secret: the agent's id, a
-## `-`, and the secret's 64 hex digits, such as `7-0a1b...`, as the Zig chat
-## spelled its API keys. An agent's API key is one, sent as
+## `-`, and the secret's 64 hex digits, such as `7-0a1b...`. An agent's API
+## key is one, sent as
 ## `Authorization: Bearer <token>`, and so is an invite's one-time code,
 ## which the agent redeems for its key. The id says whose keys or invites to
 ## look in; the secret is checked against their hashes (`AgentKey`,

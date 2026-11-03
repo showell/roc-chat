@@ -1,7 +1,7 @@
 ## This module names a user's private folder, `users/<id>`, where the chat
 ## keeps what it knows of one user as one small file per fact. A user's
 ## upload total (`UploadTotal`) is one such file. The folder is named by the
-## user's id alone, as the Zig chat's are.
+## user's id alone.
 ##
 ## It is the one home of that folder's place in the data root, as
 ## `ConversationKey` is for a conversation's: `FileSystem` builds every path
