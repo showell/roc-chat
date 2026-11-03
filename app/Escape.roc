@@ -9,13 +9,13 @@ Escape :: [].{
 
 	## `text`, escaped, as markup a page can hold.
 	text : Str -> TrustedHtml
-	text = |s| TrustedHtml.dangerously_trust(escaped(s))
+	text = |s| TrustedHtml.dangerously_trust(escaped_text(s))
 }
 
 ## `s` with `&`, `<`, `>`, `"` and `'` written as entities. `&` is escaped
 ## first, so no entity written here is escaped again.
-escaped : Str -> Str
-escaped = |s|
+escaped_text : Str -> Str
+escaped_text = |s|
 	s
 		.replace_each("&", "&amp;")
 		.replace_each("<", "&lt;")

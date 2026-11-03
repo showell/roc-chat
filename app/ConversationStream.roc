@@ -33,7 +33,7 @@ ConversationStream :: [].{
 	## neither names a count.
 	seen_count : { query : List(U8), headers : List(Http.Header) } -> Try(U16, [NoCount, BadCount])
 	seen_count = |{ query, headers }|
-		match RequestHeader.sent(headers, "last-event-id") {
+		match RequestHeader.header_value(headers, "last-event-id") {
 			Sent(id) => count_of(id)
 			Repeated => Err(BadCount)
 			Unsent =>
@@ -231,7 +231,7 @@ expect ConversationStream.words(BadCount) == "The stream's count of the messages
 
 ## The users of the tests' directory: Steve alone, id 1.
 users : Users
-users = Directory.founded_by(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name").users()
+users = Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name").users()
 
 ## Steve, the founder of the tests' directory, signed in as a test assumes him.
 steve : SignedIn
@@ -241,7 +241,7 @@ steve = SignedIn.dangerously_assume(users.to_list().first() ?? crash "Conversati
 plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
 	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "ConversationStream's tests: a path is UTF-8",
-	directory: Directory.founded_by(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name"),
+	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name"),
 }) ?? crash "ConversationStream's tests: Steve's own DM is a place"
 
 ## `plans`, holding a message by Steve of each markdown, at one time.

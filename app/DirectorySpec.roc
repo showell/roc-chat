@@ -29,7 +29,7 @@ with_plans = (
 
 ## Zed is id 1 of another directory, so no human of the sample's.
 zed : Users.Human
-zed = (Directory.founded_by(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1").as_human() ?? crash "DirectorySpec: Zed is a human"
+zed = (Directory.with_founder(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1").as_human() ?? crash "DirectorySpec: Zed is a human"
 
 ## The id and name of who `text` would be, added as a human to
 ## `directory`, or why not.
@@ -73,12 +73,12 @@ channel_created = |directory, text|
 # Steve starts every directory, a human, id 1, and no channels; his name
 # is taken from the start.
 expect {
-	founded = Directory.founded_by(Sample.name("Steve Howell"))
+	founded = Directory.with_founder(Sample.name("Steve Howell"))
 	founded.users().to_list().map(|u| u.name().to_str()) == ["Steve Howell"]
 		and founded.channels().to_list() == []
 }
 expect human_added(
-	Directory.founded_by(Sample.name("Steve Howell")),
+	Directory.with_founder(Sample.name("Steve Howell")),
 	"steve howell",
 ) == Err(NameTaken)
 # A user joins at the users' next id, a human or an agent.
@@ -122,7 +122,7 @@ expect agent_added(Sample.directory, { name: "Bot", owner: zed }) == Err(NoSuchO
 # The order of refusals, on a directory with no id left: the owner, then
 # `Full`, then the name. A name that is taken is not reached.
 expect {
-	almost = Sample.crowded(251)
+	almost = Sample.crowded_directory(251)
 	full = (almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits").directory
 	steve = Sample.human("Steve")
 	[

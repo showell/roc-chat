@@ -179,8 +179,8 @@ expect {
 }
 
 ## The route `method` and `path` choose in `with_room`, as a test reads it.
-chosen : Str, List(U8) -> Str
-chosen = |method, path|
+chosen_route : Str, List(U8) -> Str
+chosen_route = |method, path|
 	match Route.choose({
 		method: method.to_utf8(),
 		path,
@@ -202,34 +202,34 @@ chosen = |method, path|
 		MethodNotAllowed(PostOnly) => "not allowed: POST"
 	}
 
-expect chosen("GET", "/chat/dm/1_2/plans".to_utf8()) == "show /chat/dm/1_2/plans"
-expect chosen("POST", "/chat/dm/1_2/plans".to_utf8()) == "append /chat/dm/1_2/plans"
-expect chosen("PUT", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
-expect chosen("get", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
-expect chosen("GET", "/chat/dm/1_3/plans".to_utf8()) == "not found"
-expect chosen("POST", "/nowhere".to_utf8()) == "not found"
-expect chosen("GET", [0x2f, 0xff]) == "not found"
+expect chosen_route("GET", "/chat/dm/1_2/plans".to_utf8()) == "show /chat/dm/1_2/plans"
+expect chosen_route("POST", "/chat/dm/1_2/plans".to_utf8()) == "append /chat/dm/1_2/plans"
+expect chosen_route("PUT", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
+expect chosen_route("get", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
+expect chosen_route("GET", "/chat/dm/1_3/plans".to_utf8()) == "not found"
+expect chosen_route("POST", "/nowhere".to_utf8()) == "not found"
+expect chosen_route("GET", [0x2f, 0xff]) == "not found"
 # A conversation's stream: GET alone.
-expect chosen("GET", "/chat/dm/1_2/plans/stream".to_utf8()) == "stream /chat/dm/1_2/plans"
-expect chosen("POST", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
-expect chosen("HEAD", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
-expect chosen("GET", "/chat/dm/1_3/plans/stream".to_utf8()) == "not found"
-expect chosen("GET", "/chat/dm/1_2/plans/stream/x".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/dm/1_2/plans/stream".to_utf8()) == "stream /chat/dm/1_2/plans"
+expect chosen_route("POST", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
+expect chosen_route("HEAD", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
+expect chosen_route("GET", "/chat/dm/1_3/plans/stream".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/dm/1_2/plans/stream/x".to_utf8()) == "not found"
 # A script's send: POST alone, under a place that exists.
-expect chosen("POST", "/chat/dm/1_2/plans/send".to_utf8()) == "send /chat/dm/1_2/plans"
-expect chosen("GET", "/chat/dm/1_2/plans/send".to_utf8()) == "not allowed: POST"
-expect chosen("PUT", "/chat/dm/1_2/plans/send".to_utf8()) == "not allowed: POST"
-expect chosen("POST", "/chat/dm/1_3/plans/send".to_utf8()) == "not found"
+expect chosen_route("POST", "/chat/dm/1_2/plans/send".to_utf8()) == "send /chat/dm/1_2/plans"
+expect chosen_route("GET", "/chat/dm/1_2/plans/send".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/chat/dm/1_2/plans/send".to_utf8()) == "not allowed: POST"
+expect chosen_route("POST", "/chat/dm/1_3/plans/send".to_utf8()) == "not found"
 # An upload: POST alone. An uploaded image: GET alone, under a place that
 # exists.
-expect chosen("POST", "/chat/dm/1_2/plans/upload".to_utf8()) == "upload /chat/dm/1_2/plans"
-expect chosen("GET", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
-expect chosen("PUT", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
-expect chosen("POST", "/chat/dm/1_3/plans/upload".to_utf8()) == "not found"
-expect chosen("GET", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "image ${image_name} of /chat/dm/1_2/plans"
-expect chosen("POST", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "not allowed: GET"
-expect chosen("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8()) == "not found"
-expect chosen("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
+expect chosen_route("POST", "/chat/dm/1_2/plans/upload".to_utf8()) == "upload /chat/dm/1_2/plans"
+expect chosen_route("GET", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
+expect chosen_route("POST", "/chat/dm/1_3/plans/upload".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "image ${image_name} of /chat/dm/1_2/plans"
+expect chosen_route("POST", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "not allowed: GET"
+expect chosen_route("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
 # Each script's path: GET alone, and exactly its path.
 expect
 	[
@@ -240,12 +240,12 @@ expect
 	].all(
 		|name| {
 			path = "/chat/assets/${name}".to_utf8()
-			chosen("GET", path) == "the script ${name}"
-				and chosen("POST", path) == "not allowed: GET"
-				and chosen("HEAD", path) == "not allowed: GET"
+			chosen_route("GET", path) == "the script ${name}"
+				and chosen_route("POST", path) == "not allowed: GET"
+				and chosen_route("HEAD", path) == "not allowed: GET"
 		},
 	)
-expect chosen("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
-expect chosen("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
-expect chosen("GET", "/chat/assets/other.js".to_utf8()) == "not found"
-expect chosen("GET", "/chat/assets".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/assets/other.js".to_utf8()) == "not found"
+expect chosen_route("GET", "/chat/assets".to_utf8()) == "not found"

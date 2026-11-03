@@ -22,7 +22,7 @@ with_plans : Channels
 with_plans = Channels.empty.create({ by: admin, name: channel_name("plans") }).channels
 
 ## `channels` with `change` made to `plans` by the admin.
-changed : Channels,
+apply_change : Channels,
 [Add(Users.User), Remove(Users.User)] -> Try(
 	Channels,
 	[
@@ -31,7 +31,7 @@ changed : Channels,
 		NotMember,
 	],
 )
-changed = |channels, change|
+apply_change = |channels, change|
 	match change {
 		Add(member) => channels.add_member({
 			by: admin,
@@ -50,7 +50,7 @@ all_changed : Channels, List([Add(Users.User), Remove(Users.User)]) -> Channels
 all_changed = |channels, changes|
 	changes.fold(
 		channels,
-		|so_far, change| changed(so_far, change) ?? crash "ChannelsSpec: a test's change is made",
+		|so_far, change| apply_change(so_far, change) ?? crash "ChannelsSpec: a test's change is made",
 	)
 
 ## `plans` with all three of the sample's users.
@@ -88,7 +88,7 @@ expect
 expect
 	with_plans.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve))
 		== Ok(Bool.False)
-expect changed(everyone, Add(Sample.steve)).map_ok(members_of) == Err(AlreadyMember)
+expect apply_change(everyone, Add(Sample.steve)).map_ok(members_of) == Err(AlreadyMember)
 expect
 	with_plans.add_member({
 		by: admin,
@@ -104,8 +104,8 @@ expect
 	}).map_ok(members_of)
 		== Err(NoSuchChannel)
 # Removing: a member goes, once; the rest stay.
-expect changed(everyone, Remove(Sample.user("Apoorva"))).map_ok(members_of) == Ok(Ok(["1", "3"]))
-expect changed(with_plans, Remove(Sample.steve)).map_ok(members_of) == Err(NotMember)
+expect apply_change(everyone, Remove(Sample.user("Apoorva"))).map_ok(members_of) == Ok(Ok(["1", "3"]))
+expect apply_change(with_plans, Remove(Sample.steve)).map_ok(members_of) == Err(NotMember)
 expect
 	everyone.remove_member({
 		by: admin,
@@ -147,14 +147,14 @@ expect
 # A change to one channel leaves the others as they were.
 expect {
 	both = Channels.empty.create({ by: admin, name: channel_name("plans") }).channels.create({ by: admin, name: channel_name("general") }).channels
-	grown = changed(both, Add(Sample.steve)) ?? crash "ChannelsSpec: Steve joins plans"
+	grown = apply_change(both, Add(Sample.steve)) ?? crash "ChannelsSpec: Steve joins plans"
 	members_of(grown) == Ok(["1"])
 		and grown.channel(channel_name("general")).map_ok(|c| c.members()) == Ok([])
 		and grown.to_list().map(|c| c.name().to_str()) == ["plans", "general"]
 }
 # The members are in the ids' numeric order, not their text's: 9 before 10.
 expect {
-	users = Sample.crowded(7).users()
+	users = Sample.crowded_directory(7).users()
 	user_at = |text| users.user(UserId.from_str(text) ?? crash "ChannelsSpec: a test's id is an id") ?? crash "ChannelsSpec: the crowded sample has ten users"
 	members_of(
 		all_changed(

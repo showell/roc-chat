@@ -208,8 +208,8 @@ edges = [
 ]
 
 ## Steve's message saying `markdown`.
-said : Str -> Message.Unnumbered(Author)
-said = |markdown|
+steve_message : Str -> Message.Unnumbered(Author)
+steve_message = |markdown|
 	Sample.unnumbered_message({
 		author: "Steve",
 		time: "2026-11-02T19:11:32Z",
@@ -217,12 +217,12 @@ said = |markdown|
 	})
 
 edged : Conversation
-edged = Sample.conversation(Sample.plans, edges.map(said))
+edged = Sample.conversation(Sample.plans, edges.map(steve_message))
 
 expect edged.messages().map(Message.markdown) == edges
 expect Transcript.read(Sample.plans, Transcript.write(edged)) == Ok(edged)
 expect
-	Transcript.write(Sample.conversation(Sample.plans, [said("")]))
+	Transcript.write(Sample.conversation(Sample.plans, [steve_message("")]))
 		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\n\n\n"
 # The reader at and over the most, in one read: a full conversation's
 # transcript and one record more is refused as `Full`, which the reader
@@ -273,8 +273,8 @@ file_of : U64 -> [NoFile, File(Transcript.Utf8Transcript)]
 file_of = |n| File(Transcript.Utf8Transcript.unchecked_from_file(List.repeat('a', n)))
 
 ## The file of `bytes`, decoded as `plans`' transcript.
-decoded : List(U8) -> Try(Conversation, _)
-decoded = |bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes))
+decoded_conversation : List(U8) -> Try(Conversation, _)
+decoded_conversation = |bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes))
 
 expect hello_record(NoFile) == Ok("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8())
 # A record that would grow the file past the most is refused: at the most,
@@ -283,6 +283,6 @@ expect hello_record(file_of(Transcript.most_bytes - 73)).map_ok(|bytes| bytes.le
 expect hello_record(file_of(Transcript.most_bytes - 74)).map_ok(|bytes| bytes.len()) == Ok(73)
 expect hello_record(file_of(Transcript.most_bytes - 72)).map_ok(|bytes| bytes.len()) == Err(FileFull)
 # Decoding the file's bytes: not UTF-8, empty, and a refusal of the text.
-expect decoded([0xff]) == Err(TranscriptNotUtf8)
-expect decoded([]) == Ok(Conversation.empty(Sample.plans))
-expect decoded("\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))
+expect decoded_conversation([0xff]) == Err(TranscriptNotUtf8)
+expect decoded_conversation([]) == Ok(Conversation.empty(Sample.plans))
+expect decoded_conversation("\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))

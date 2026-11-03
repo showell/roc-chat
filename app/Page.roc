@@ -178,9 +178,9 @@ Page :: [].{
 			message: m,
 		},
 	| {
-		named = c.reference(m.id())
+		message_reference = c.reference(m.id())
 		author_attrs =
-			match users.named(m.author().name()) {
+			match users.user_by_name(m.author().name()) {
 				Ok(user) => [DataAuthor(user_id(user))]
 				Err(NoSuchUser) => []
 			}
@@ -199,13 +199,13 @@ Page :: [].{
 			space,
 			Html.element({
 				name: A,
-				attrs: [Page.class(Ref), Href(anchor(named))],
-				inner: Escape.text(named.to_str()),
+				attrs: [Page.class(Ref), Href(anchor(message_reference))],
+				inner: Escape.text(message_reference.to_str()),
 			}),
 		])
 		article = Html.element({
 			name: Article,
-			attrs: [Page.class(Message), Id(anchor(named))].concat(author_attrs),
+			attrs: [Page.class(Message), Id(anchor(message_reference))].concat(author_attrs),
 			inner: TrustedHtml.join([
 				Html.element({
 					name: Header,
@@ -372,7 +372,7 @@ class_name = |chosen|
 ## A message's anchor, as a token: `MsgAnchor.page_anchor`'s spelling,
 ## which an element's id and a link's `#` both write.
 anchor : MsgAnchor -> Html.Token
-anchor = |named| token(named.page_anchor())
+anchor = |message_reference| token(message_reference.page_anchor())
 
 ## The token `text` spells, for a name this module writes: one that isn't
 ## is this module's bug.
@@ -392,8 +392,8 @@ space = Escape.text(" ")
 
 # ── tests
 ## An element `attrs` alone opens, as a test reads it.
-opened : List(Html.Attribute) -> List(U8)
-opened = |attrs|
+empty_paragraph : List(Html.Attribute) -> List(U8)
+empty_paragraph = |attrs|
 	Html.element({
 		name: P,
 		attrs,
@@ -416,7 +416,7 @@ expect
 		(TopTitle, "top-title"),
 		(TopUser, "top-user"),
 		(Viewer, "viewer"),
-	].all(|(chosen, spelled)| opened([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8())
+	].all(|(chosen, spelled)| empty_paragraph([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8())
 
 ## Whether the script `bytes` finds the class `chosen` by its selector.
 is_found_by : List(U8), Page.Class -> Bool
@@ -472,7 +472,7 @@ expect {
 		(Href(anchor(first_named)), "<p href=\"#msg-1\"></p>"),
 		(Id(anchor(second_named)), "<p id=\"msg-2\"></p>"),
 		(Href(anchor(second_named)), "<p href=\"#msg-2\"></p>"),
-	].all(|(attr, expected)| opened([attr]) == expected.to_utf8())
+	].all(|(attr, expected)| empty_paragraph([attr]) == expected.to_utf8())
 }
 expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
 # A notice: its title and its words, each escaped, under the colour script.

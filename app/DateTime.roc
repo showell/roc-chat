@@ -90,7 +90,7 @@ DateTime :: Str.{
 			days = seconds // 86400
 			of_day = seconds % 86400
 			date = civil_from_days(days)
-			text = "${padded(date.year, 4)}-${padded(date.month, 2)}-${padded(date.day, 2)}T${padded(of_day // 3600, 2)}:${padded((of_day % 3600) // 60, 2)}:${padded(of_day % 60, 2)}Z"
+			text = "${padded_digits(date.year, 4)}-${padded_digits(date.month, 2)}-${padded_digits(date.day, 2)}T${padded_digits(of_day // 3600, 2)}:${padded_digits((of_day % 3600) // 60, 2)}:${padded_digits(of_day % 60, 2)}Z"
 			Ok(DateTime.(text))
 		}
 
@@ -139,8 +139,8 @@ civil_from_days = |days| {
 }
 
 ## `n`, zero or more, in at least `width` digits, zeros before.
-padded : I64, U64 -> Str
-padded = |n, width| {
+padded_digits : I64, U64 -> Str
+padded_digits = |n, width| {
 	written = n.to_str()
 	"0".repeat(width - written.count_utf8_bytes()).concat(written)
 }
