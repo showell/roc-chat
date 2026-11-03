@@ -1,6 +1,7 @@
-## **DIRECTORY'S TESTS**: one namespace for humans, agents and channels,
-## each name refused when taken in any case by any kind; the order of the
-## refusals; and the users and channels it holds, changed through it.
+## These are the tests of `Directory`: one namespace for humans, agents
+## and channels, with each name refused when any kind has taken it in any
+## case; the order of the refusals; and the users and channels it holds,
+## changed through it.
 import Admin
 import ChannelName
 import Directory
@@ -14,7 +15,6 @@ DirectorySpec :: [].{}
 channel_name : Str -> ChannelName
 channel_name = |text| ChannelName.from_str(text) ?? crash "DirectorySpec: a test's channel name is one"
 
-## Steve, as an admin.
 admin : Admin
 admin = Sample.admin
 
@@ -27,7 +27,7 @@ with_plans = (
 	}) ?? crash "DirectorySpec: plans is free"
 ).directory
 
-## **A HUMAN OF ANOTHER DIRECTORY**: Zed, id 1 of their own.
+## Zed is id 1 of another directory, so no human of the sample's.
 zed : Users.Human
 zed = (Directory.founded_by(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1").as_human() ?? crash "DirectorySpec: Zed is a human"
 
@@ -164,3 +164,23 @@ expect
 		member: Sample.steve,
 	})
 		== Err(NotMember)
+expect
+	with_plans.remove_member({
+		by: admin,
+		channel: channel_name("general"),
+		member: Sample.steve,
+	})
+		== Err(NoSuchChannel)
+expect {
+	admitted = with_plans.add_member({
+		by: admin,
+		channel: channel_name("plans"),
+		member: Sample.steve,
+	}) ?? crash "DirectorySpec: Steve joins plans"
+	admitted.add_member({
+		by: admin,
+		channel: channel_name("plans"),
+		member: Sample.steve,
+	})
+		== Err(AlreadyMember)
+}

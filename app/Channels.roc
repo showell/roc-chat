@@ -1,11 +1,10 @@
-## **THE CHANNELS**: each named set of members, humans and agents. Opaque,
-## so it changes only by its own functions, and each asks for an `Admin`,
-## the proof `Admin.of` alone makes: only an admin creates a channel and
-## chooses its members. A channel's name unique in the namespace it shares
-## with the users is `Directory`'s, which holds the chat's channels.
+## This module holds the chat's channels. A channel has a name and a set of
+## members, who may be humans or agents. Only an admin may create a channel
+## or change its members, so each of those functions asks for an `Admin`,
+## which only `Admin.of` makes.
 ##
-## **TELL, DON'T ASK**: `add_member` and `remove_member` take the `User` itself, which
-## the caller already holds, never an id to look up.
+## Channel names are not checked for clashes here. `Directory` holds the
+## channels with the users, and keeps every name unique across both.
 import Admin
 import ChannelName
 import UserId
@@ -13,52 +12,48 @@ import Users
 
 Channels :: List(Channels.Channel).{
 
-	## **A CHANNEL**: its name and its members, humans and agents. A view
-	## only this module makes.
+	## A channel: its name and its members' ids.
 	Channel :: {
 		name : ChannelName,
 		members : Set(UserId),
 	}.{
 
-		## Its name.
 		name : Channels.Channel -> ChannelName
 		name = |Channels.Channel.(c)| c.name
 
-		## Its members' ids, lowest first.
+		## The members' ids, lowest first.
 		members : Channels.Channel -> List(UserId)
 		members = |Channels.Channel.(c)| c.members.to_list().sort_with(UserId.compare)
 
-		## Is `user` one of its members?
 		has_member : Channels.Channel, Users.User -> Bool
 		has_member = |Channels.Channel.(c), user| c.members.contains(user.id())
 
 		is_eq : _
 	}
 
-	## **A CHANGE TO A CHANNEL'S MEMBERS**, by an admin: who joins or
-	## leaves which channel.
-	Membership : {
+	## An admin's change to one channel's members: the admin, the channel,
+	## and the user who joins or leaves it.
+	MemberChange : {
 		by : Admin,
 		channel : ChannelName,
 		member : Users.User,
 	}
 
-	## **A CHANNEL CREATED**: the channels that hold it, and the channel.
+	## The channels after a channel was created, and the channel.
 	Created : { channels : Channels, channel : Channels.Channel }
 
-	## No channels.
 	empty : Channels
 	empty = Channels.([])
 
-	## The channels with an empty channel named `name`, created by an
-	## admin, and that channel.
+	## The channels with an empty channel named `name` added, and that
+	## channel.
 	create : Channels, { by : Admin, name : ChannelName } -> Channels.Created
 	create = |Channels.(all), { by: _, name }| {
 		channel = Channels.Channel.({ name, members: Set.empty() })
 		{ channels: Channels.(all.append(channel)), channel }
 	}
 
-	## The channel named `name`, exactly, unless there is none.
+	## The channel named exactly `name`, if there is one.
 	channel : Channels, ChannelName -> Try(Channels.Channel, [NoSuchChannel])
 	channel = |Channels.(all), name|
 		match all.find_first(|candidate| candidate.name() == name) {
@@ -66,10 +61,10 @@ Channels :: List(Channels.Channel).{
 			Err(NotFound) => Err(NoSuchChannel)
 		}
 
-	## The channels with `member` admitted to `channel` by an admin;
-	## unless, in this order, there is no such channel, or they are
-	## already a member.
-	add_member : Channels, Channels.Membership -> Try(Channels, [NoSuchChannel, AlreadyMember])
+	## The channels with the change's member added to its channel. The
+	## channel must exist (`NoSuchChannel`), and then the user must not be
+	## a member already (`AlreadyMember`).
+	add_member : Channels, Channels.MemberChange -> Try(Channels, [NoSuchChannel, AlreadyMember])
 	add_member = |channels, change| {
 		Channels.Channel.(c) = channels.channel(change.channel)?
 		member = change.member.id()
@@ -84,10 +79,10 @@ Channels :: List(Channels.Channel).{
 			)
 	}
 
-	## The channels with `member` removed from `channel` by an admin;
-	## unless, in this order, there is no such channel, or they are not a
-	## member.
-	remove_member : Channels, Channels.Membership -> Try(Channels, [NoSuchChannel, NotMember])
+	## The channels with the change's member removed from its channel. The
+	## channel must exist (`NoSuchChannel`), and then the user must be a
+	## member (`NotMember`).
+	remove_member : Channels, Channels.MemberChange -> Try(Channels, [NoSuchChannel, NotMember])
 	remove_member = |channels, change| {
 		Channels.Channel.(c) = channels.channel(change.channel)?
 		member = change.member.id()
@@ -109,8 +104,7 @@ Channels :: List(Channels.Channel).{
 	is_eq : _
 }
 
-## `channels` with `changed` in place of its channel of that name, which
-## it holds: `add_member` and `remove_member` found it there.
+## The channels with `changed` in place of the channel of the same name.
 with_channel : Channels, Channels.Channel -> Channels
 with_channel = |Channels.(all), changed| {
 	name = changed.name()

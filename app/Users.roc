@@ -1,16 +1,16 @@
-## **THE USERS**: every human and agent, numbered in one count, the one
-## home of ids and of who owns which agent. Opaque, so it grows only by
-## `add`: `founded_by` starts it with Steve, id 1, and `add` numbers each
-## user by `next_id` and gives an agent only a human of these users as its
-## owner. So two users of one id, or an agent whose owner is not one of
-## its humans, can't be built. Names unique in the namespace the users
-## share with the channels are `Directory`'s, which holds the chat's users.
+## This module holds every user of the chat, human or agent, and gives each
+## one an id. Ids count up from Steve's, 1, in one count shared by humans
+## and agents. An agent always has an owner, and the owner is always a human
+## among the same users.
 ##
-## **WHAT IT HANDS OUT IS UNFORGEABLE**: a `User` and a `Human` are views
-## only this module makes. Holding a `User` proves only that a `Users`
-## made it, never who is acting: that is `SignedIn`'s. Names, ids and
-## roles are permanent, so a view never goes stale. What comes in from
-## outside is an id, or an id with a name, which `check` holds to match.
+## The users can only grow through `add_human` and `add_agent`, so two
+## users with one id, or an agent owned by a stranger, can't be built. The
+## `User` and `Human` values handed out are made only here. Holding a `User`
+## proves that this module made it, but not who is acting; that proof is a
+## `SignedIn`.
+##
+## Names are not checked for clashes here. `Directory` holds the users with
+## the channels, and keeps every name unique across both.
 import Author
 import Name
 import UserId
@@ -18,36 +18,31 @@ import UserStem
 
 Users :: List(Users.User).{
 
-	## **A USER**: a human or an agent, as a `Users` numbered and named
-	## them. It proves only that a `Users` made it.
+	## A human or an agent, with the id and name these users gave them.
 	User :: {
 		id : UserId,
 		name : Name,
 		role : Users.Role,
 	}.{
 
-		## Its id.
 		id : Users.User -> UserId
 		id = |Users.User.(u)| u.id
 
-		## Its permanent name.
 		name : Users.User -> Name
 		name = |Users.User.(u)| u.name
 
-		## A human, or an agent and its owner.
 		role : Users.User -> Users.Role
 		role = |Users.User.(u)| u.role
 
-		## The user in the role of writing, as a message records them.
+		## The user as the author of a message.
 		author : Users.User -> Author
 		author = |Users.User.(u)| Author.of(u.name)
 
-		## Its files' stem (`UserStem`).
+		## The stem of the user's file names, such as `apoorva-2`.
 		stem : Users.User -> Str
 		stem = |Users.User.(u)| UserStem.of({ name: u.name, id: u.id })
 
-		## The user as a human; unless they are an agent (`Agent`, naming
-		## them).
+		## The user as a human; an agent is refused, by its id.
 		as_human : Users.User -> Try(Users.Human, [Agent(UserId)])
 		as_human = |user|
 			match user.role() {
@@ -58,41 +53,35 @@ Users :: List(Users.User).{
 		is_eq : _
 	}
 
-	## **A HUMAN**: a user known to be no agent. Opaque, so
-	## `User.as_human` is the only way in, and what only a human may be (a
-	## DM's member, an agent's owner) asks for one in its type.
+	## A user who is known not to be an agent. Only `User.as_human` makes
+	## one, so a function that only a human may use, such as owning an
+	## agent or joining a DM, asks for a `Human` in its type.
 	Human :: Users.User.{
 
-		## The user.
 		user : Users.Human -> Users.User
 		user = |Users.Human.(known)| known
 
-		## Its id.
 		id : Users.Human -> UserId
 		id = |Users.Human.(known)| known.id()
 
-		## The human in the role of writing.
+		## The human as the author of a message.
 		author : Users.Human -> Author
 		author = |Users.Human.(known)| known.author()
 
 		is_eq : _
 	}
 
-	## **A HUMAN, OR AN AGENT AND ITS OWNER**: every agent has exactly one
-	## owner, always a human of the same users.
+	## A user is a human, or an agent with the id of its human owner.
 	Role : [Human, Agent({ owner : UserId })]
 
-	## **WHO JOINS**: a human, or an agent of a human already here.
-	Joining : [Human, AgentOf(Users.Human)]
-
-	## **A USER JOINED**: the users they joined, and the user.
+	## The users after someone joined, and the user who joined.
 	Joined : { users : Users, user : Users.User }
 
-	## **A NAME AND AN ID, TOGETHER**, as a URL, a file's stem or a
-	## session gives them: `check` holds them to match.
+	## An id and a name that arrived together, as a URL, a file's name or a
+	## session gives them. `check` holds them to match.
 	Identity : { id : UserId, name : Name }
 
-	## **THE USERS' START: STEVE, ALWAYS ID 1**, named `name`, a human.
+	## New users, holding only Steve, id 1, as a human named `name`.
 	founded_by : Name -> Users
 	founded_by = |name|
 		Users.(
@@ -107,7 +96,7 @@ Users :: List(Users.User).{
 			],
 		)
 
-	## **THE NEXT USER'S ID, ITS ONE HOME**: the one after the latest's,
+	## The id the next user will get: the one after the latest user's,
 	## unless every id is taken.
 	next_id : Users -> Try(UserId, [Full])
 	next_id = |Users.(all)| {
@@ -115,25 +104,23 @@ Users :: List(Users.User).{
 		latest.id().next()
 	}
 
-	## The users with `name` added as `joining`, at the next id, and that
-	## user; unless, in this order, an agent's owner is not one of these
-	## users (`NoSuchOwner`), or every id is taken (`Full`).
-	add : Users, { name : Name, joining : Users.Joining } -> Try(Users.Joined, [NoSuchOwner, Full])
-	add = |users, { name, joining }| {
-		role = role_of({ users, joining })?
-		id = users.next_id()?
-		user = Users.User.(
-			{
-				id,
-				name,
-				role,
-			},
-		)
-		Users.(all) = users
-		Ok({ users: Users.(all.append(user)), user })
-	}
+	## The users with a human named `name` added at the next id, and that
+	## human; unless every id is taken.
+	add_human : Users, Name -> Try(Users.Joined, [Full])
+	add_human = |users, name| added(users, { name, role: Human })
 
-	## The user `id`, unless there is none.
+	## The users with an agent named `name`, owned by `owner`, added at the
+	## next id, and that agent. The owner is checked first: they must be a
+	## human of these users, with the same id and name (`NoSuchOwner`).
+	## Then the agent needs a free id (`Full`).
+	add_agent : Users, { name : Name, owner : Users.Human } -> Try(Users.Joined, [NoSuchOwner, Full])
+	add_agent = |users, { name, owner }|
+		if (users.user(owner.id()) == Ok(owner.user()))
+			added(users, { name, role: Agent({ owner: owner.id() }) })
+		else
+			Err(NoSuchOwner)
+
+	## The user with the id `id`, if there is one.
 	user : Users, UserId -> Try(Users.User, [NoSuchUser])
 	user = |Users.(all), id|
 		match all.find_first(|candidate| candidate.id() == id) {
@@ -141,9 +128,8 @@ Users :: List(Users.User).{
 			Err(NotFound) => Err(NoSuchUser)
 		}
 
-	## **WHERE A NAME AND AN ID COME TOGETHER, THEY MATCH**: the user `id`,
-	## if `name` is theirs exactly (names are case-sensitive); unless there
-	## is no such user, or the name is another's spelling.
+	## The user with the identity's id, if the identity's name is exactly
+	## theirs. Names are case-sensitive, so `steve` is not `Steve`.
 	check : Users, Users.Identity -> Try(Users.User, [NoSuchUser, NameMismatch])
 	check = |users, { id, name }| {
 		found = users.user(id)?
@@ -157,15 +143,18 @@ Users :: List(Users.User).{
 	is_eq : _
 }
 
-## The role of the user `joining` `users`; unless an agent's owner is not
-## one of them, exactly: the same id, name and role.
-role_of : { users : Users, joining : Users.Joining } -> Try(Users.Role, [NoSuchOwner])
-role_of = |{ users, joining }|
-	match joining {
-		Human => Ok(Human)
-		AgentOf(owner) =>
-			if (users.user(owner.id()) == Ok(owner.user()))
-				Ok(Agent({ owner: owner.id() }))
-			else
-				Err(NoSuchOwner)
-	}
+## The users with a user named `name` added in the role `role`, at the next
+## id, and that user; unless every id is taken.
+added : Users, { name : Name, role : Users.Role } -> Try(Users.Joined, [Full])
+added = |users, { name, role }| {
+	id = users.next_id()?
+	user = Users.User.(
+		{
+			id,
+			name,
+			role,
+		},
+	)
+	Users.(all) = users
+	Ok({ users: Users.(all.append(user)), user })
+}
