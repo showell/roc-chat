@@ -5,8 +5,8 @@
 // Mac) send, as chat-client does; plain Enter is a new line.
 //
 // New messages arrive on the conversation's stream as the page's own HTML,
-// and the script appends them. The view follows them only when the newest
-// message was already in view. When the connection drops, the browser
+// and the script appends them. The view follows them when it was at or near
+// the newest message. When the connection drops, the browser
 // reconnects by itself and says the last message it saw, so the server
 // sends only what was missed. If the stream dies for good, the page
 // reloads itself; if it dies again soon after, the page says so instead.
@@ -70,17 +70,19 @@
     form.requestSubmit(send);
   });
 
-  // Whether the newest message's bottom is in view, read before a new one
-  // is appended below it.
-  function newestInView() {
-    var newest = messages.lastElementChild;
-    if (!newest) return true;
-    return newest.getBoundingClientRect().bottom <= messages.getBoundingClientRect().bottom + 1;
+  // Whether the view is at or near the newest message, read before a new one
+  // is appended below it. Near means the hidden part below is at most a tenth
+  // of the view's height: guessing wrong not to follow is the worse mistake,
+  // especially on a phone.
+  var NEAR_BOTTOM_FRACTION = 0.1;
+  function nearNewest() {
+    var hiddenBelow = messages.scrollHeight - messages.scrollTop - messages.clientHeight;
+    return hiddenBelow <= messages.clientHeight * NEAR_BOTTOM_FRACTION;
   }
 
   var events = new EventSource(stream + '?after=' + after);
   events.onmessage = function (e) {
-    var follow = newestInView();
+    var follow = nearNewest();
     var empty = messages.querySelector('.empty');
     if (empty) empty.remove();
     messages.insertAdjacentHTML('beforeend', e.data);
