@@ -102,7 +102,8 @@
 //!  39. invite CC: the page shows its code, once; redeem it: 200, the key on
 //!      one line; redeem it again: 401;
 //!  40. an invite whose `expires` has passed (its file set back): 401;
-//!  41. CC's stream opened with the key: a 200 event stream;
+//!  41. CC's stream opened with the key: a 200 event stream; asked for with
+//!      no key: 403;
 //!  42. POST as CC with the key: a 303, and the message's author on disk is
 //!      CC; its stream's event is that message, in JSON;
 //!  43. Steve posts in `private`, then in `general`: CC's stream's next
@@ -114,6 +115,8 @@
 //!  45. GET `/raw` with the key: 200, plain text, the transcript's bytes;
 //!  46. a wrong secret, a malformed bearer, and a key used to make an agent,
 //!      to invite, to redeem, or to list agents: 401, 401, then 403 each;
+//! 46a. a key invited `read=off&post=off`: reading, posting and listening
+//!      are 403 each;
 //!  47. revoke the key: a 303, and the key is then a 401;
 //!  48. on disk: the key's hash is SHA-256 of its secret, and no file under
 //!      the data root holds the key's secret or any invite's code.
@@ -532,7 +535,10 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     // 41.
     var listening = try Stream.openWith(a, io, port, "/agents/stream", bearer);
     defer listening.close();
-    try t.check("CC's stream, opened with its key: a 200 event stream", listening.isEventStream());
+    var by_session = try Stream.openWith(a, io, port, "/agents/stream", "");
+    defer by_session.close();
+    try t.check("CC's stream, opened with its key: a 200 event stream; asked for with no key: 403", listening.isEventStream() and
+        std.mem.startsWith(u8, by_session.head, "HTTP/1.1 403 "));
 
     // 42.
     const before_cc = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
@@ -597,6 +603,19 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
         key_redeems.status == 403 and key_lists.status == 403 and !(try exists(io, data, "auth/3")) and
         !(try exists(io, data, "auth/2/invites/3")) and !(try exists(io, data, "auth/2/keys/2")));
 
+    // 46a.
+    const scoped = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=off&post=off" });
+    const scoped_code = between(scoped.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const scoped_key = std.mem.trimEnd(u8, (try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{scoped_code}) })).body, "\n");
+    const scoped_bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{scoped_key});
+    const scoped_read = try getWith(a, io, port, channel_url ++ "/raw", scoped_bearer);
+    const scoped_post = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Scoped", .more = scoped_bearer });
+    var scoped_stream = try Stream.openWith(a, io, port, "/agents/stream", scoped_bearer);
+    defer scoped_stream.close();
+    try t.check("a key invited with read=off and post=off: reading, posting and listening are 403 each", isToken(scoped_key, "2-") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/2/read"), "off") and
+        scoped_read.status == 403 and scoped_post.status == 403 and std.mem.startsWith(u8, scoped_stream.head, "HTTP/1.1 403 "));
+
     // 47.
     const revoked = try post(a, io, port, .{ .path = "/agents/2/keys/1/revoke", .form = "" });
     const after_revoke = try getWith(a, io, port, channel_url ++ "/raw", bearer);
@@ -616,7 +635,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     try allFiles(a, io, data, "", &on_disk);
     for (on_disk.items) |path| {
         const bytes = try data.readFileAlloc(io, path, a, .limited(16 * 1024 * 1024));
-        for ([_][]const u8{ secret_hex, code["2-".len..], late_code["2-".len..] }) |hex| {
+        for ([_][]const u8{ secret_hex, scoped_key["2-".len..], code["2-".len..], late_code["2-".len..], scoped_code["2-".len..] }) |hex| {
             if (has(bytes, hex)) secrets_on_disk += 1;
         }
     }

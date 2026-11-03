@@ -336,7 +336,7 @@ pub fn start_app(io: Io, gpa: std.mem.Allocator, root: *const files.DataRoot) er
     const started = seam.roc_start();
     seam.end();
     if (started != .ready) {
-        log.err("the app cannot start on its data folder: it holds part of a chat, or cannot be read", .{});
+        log.warn("the app cannot start on its data folder: it holds part of a chat, or cannot be read", .{});
         return error.AppStartFailed;
     }
 }

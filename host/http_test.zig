@@ -441,3 +441,30 @@ test "a held stream keeps none of its call's arena: the transcript read, decoded
     try testing.expect(counting.held.load(.monotonic) < 64 * 1024);
     try testing.expect(transcript.items.len > 400_000);
 }
+
+test "the app's start: an empty data folder gets the first chat; one holding part of a chat, or a broken one, is refused, and the server doesn't listen" {
+    var empty = testing.tmpDir(.{});
+    defer empty.cleanup();
+    const empty_root: files.DataRoot = .{ .io = io, .dir = empty.dir };
+    try http.start_app(io, gpa, &empty_root);
+    var buf: [64]u8 = undefined;
+    try testing.expectEqualStrings("2\n", try empty.dir.readFile(io, "auth/next-id.txt", &buf));
+    // Started again, it reads the chat it made.
+    try http.start_app(io, gpa, &empty_root);
+
+    // An account and no counter of ids: part of a chat.
+    var partial = testing.tmpDir(.{});
+    defer partial.cleanup();
+    try partial.dir.createDirPath(io, "auth/1");
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/1/name", .data = "Steve" });
+    const partial_root: files.DataRoot = .{ .io = io, .dir = partial.dir };
+    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
+    try testing.expectError(error.AppStartFailed, http.Server.listen(io, gpa, 0, .{}, &partial_root));
+
+    // A counter behind its users: no chat.
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "1\n" });
+    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
+    // Mended, it starts.
+    try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "2\n" });
+    try http.start_app(io, gpa, &partial_root);
+}
