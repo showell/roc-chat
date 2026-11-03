@@ -1,5 +1,5 @@
--- **THE GATE**: every check, cheapest first, the slow end last. Run it
--- from gopher-roc's root; it fails, naming each check that did.
+-- This is the gate: every check, cheapest first, the slow end last. Run
+-- it from gopher-roc's root; it fails, naming each check that did.
 --
 --   shale tools/verify.shale
 --

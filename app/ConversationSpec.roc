@@ -1,5 +1,5 @@
-## **CONVERSATION'S TESTS**: numbering by `append`, from the first id to
-## the last a conversation holds.
+## These are the tests of `Conversation`: numbering by `append`, from the
+## first id to the last a conversation holds.
 import Author
 import Conversation
 import Message

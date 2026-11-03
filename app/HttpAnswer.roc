@@ -1,14 +1,14 @@
 ## This module builds the responses the chat gives, each in one place: a
 ## page with its status, a script, a redirect after a POST, the refusal of
-## a method, and an event stream; and for an upload, an uploaded image, the
-## JSON that answers an upload, and a refusal in plain words, which the
-## compose box shows as it is. It knows nothing of what a page says: the
-## routes build their pages with `Page` and hand them here.
+## a method, and an event stream; an uploaded image, and the JSON that
+## answers an upload; and a refusal in plain words, of an upload or a send,
+## which the compose box shows as it is. It knows nothing of what a page
+## says: the routes build their pages with `Page` and hand them here.
 ##
 ## Every page carries its defences (`page_headers`, their one home): a
-## Content-Security-Policy that lets the page load nothing but its own
-## inline style sheet, same-origin images and same-origin scripts (never
-## an inline one), be framed by no one and post only to itself; and
+## Content-Security-Policy that lets the page load nothing but the styles
+## its scripts add, same-origin images and same-origin scripts (never an
+## inline one), be framed by no one and post only to itself; and
 ## `nosniff`, so a browser takes each answer as the type it says.
 import pf.Http
 import JsonOut
@@ -79,7 +79,8 @@ HttpAnswer :: [].{
 		})
 
 	## A refusal in plain words, a line of text with `status`: the compose
-	## box shows an upload's refusal as the server words it.
+	## box shows the refusal of an upload or of a send as the server words
+	## it.
 	text : U16, Str -> Http.Response
 	text = |status, words|
 		whole({
@@ -160,16 +161,17 @@ whole = |
 
 ## A page's headers: its type, and its defences.
 ##
-## The policy: nothing by default (`default-src 'none'`); the one `<style>`
-## Page writes inline (`style-src 'unsafe-inline'`), and the styles a
-## script sets; scripts from this origin's own files alone (`script-src
-## 'self'`: `Script`'s, never an inline `<script>` or an event
-## attribute, so markup that slipped into a page still runs nothing); images and video from
-## this origin alone (`img-src` and `media-src 'self'`), the most
+## The policy: nothing by default (`default-src 'none'`); inline styles
+## (`style-src 'unsafe-inline'`), for the `<style>` each of the page's
+## scripts adds and the styles a script sets on an element; scripts from
+## this origin's own files alone (`script-src 'self'`: the files `Script`
+## serves, never an inline `<script>` or an event attribute, so markup that
+## slipped into a page still runs nothing); images and video from this
+## origin alone (`img-src` and `media-src 'self'`), the most
 ## `SecureImageTag` will ever allow, a conversation's own uploads; no
 ## framing (`frame-ancestors 'none'`), no `<base>` (`base-uri 'none'`), a
-## form posts only back here (`form-action 'self'`), and the script's
-## stream connects only here (`connect-src 'self'`).
+## form posts only back here (`form-action 'self'`), and a script's
+## stream, send or upload connects only here (`connect-src 'self'`).
 page_headers : List(Http.Header)
 page_headers = [
 	{ name: "content-type".to_utf8(), value: "text/html; charset=utf-8".to_utf8() },

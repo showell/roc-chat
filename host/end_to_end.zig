@@ -1,6 +1,7 @@
-//! **THE END TO END**: the real server, with the app linked, on a free
-//! port of 127.0.0.1, on a task of this process, against a temporary data
-//! root seeded from demo/data. Driven over HTTP, one step a line, timed:
+//! The end to end runs the real server, with the app linked, on a free port
+//! of 127.0.0.1, on a task of this process, against a temporary data root
+//! seeded from demo/data. It drives the server over HTTP, one step a line,
+//! timed:
 //!
 //!   1. GET the seeded conversation: exactly the demo's frozen page, with
 //!      its content security policy (scripts from this origin alone) and

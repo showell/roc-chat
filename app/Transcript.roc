@@ -1,5 +1,5 @@
-## **A CONVERSATION'S TRANSCRIPT**: its messages as one file, readable
-## with `cat`, in the Zig chat's format:
+## A conversation's transcript is its messages as one file, readable with
+## `cat`, in the Zig chat's format:
 ##
 ##     -------------
 ##     MSG_planning_1
@@ -23,23 +23,23 @@ import TranscriptRefusal
 
 Transcript :: [].{
 
-	## **A WHOLE TRANSCRIPT FILE'S BYTES, AS THE DISK HOLDS THEM**: what
-	## `FileSystem.read_transcript!` answers. **UNTRUSTED**: any bytes at
-	## all, until `decode` reads them into a conversation or refuses them.
-	## Opaque, and only `decode` opens one.
+	## A whole transcript file's bytes, as the disk holds them, which is what
+	## `FileSystem.read_transcript!` answers. They are untrusted: any bytes
+	## at all, until `decode` reads them into a conversation or refuses
+	## them. The type is opaque, and only `decode` opens one.
 	Utf8Transcript :: List(U8).{
 
-		## **THE BYTES OF A TRANSCRIPT FILE, UNCHECKED**: the door for bytes
-		## just read from a file (`FileSystem`'s read, the demo's). Nothing is
-		## checked here: `decode` checks everything.
+		## The bytes just read from a transcript file (`FileSystem`'s read,
+		## the demo's), unchecked. Nothing is checked here: `decode` checks
+		## everything.
 		unchecked_from_file : List(U8) -> Transcript.Utf8Transcript
 		unchecked_from_file = |bytes| Transcript.Utf8Transcript.(bytes)
 	}
 
-	## **ONE MESSAGE'S RECORD, AS A TRANSCRIPT FILE TAKES IT**: what
-	## `FileSystem.append_message!` adds at a transcript's end. Opaque, and
-	## only `message_record` makes one, so its bytes are always one record
-	## this module wrote.
+	## One message's record, as a transcript file takes it, which is what
+	## `FileSystem.append_message!` adds at a transcript's end. The type is
+	## opaque, and only `message_record` makes one, so its bytes are always
+	## one record this module wrote.
 	Utf8TranscriptMessage :: List(U8).{
 
 		## Its bytes, for the file system to append.
@@ -47,19 +47,19 @@ Transcript :: [].{
 		to_utf8_bytes = |Transcript.Utf8TranscriptMessage.(bytes)| bytes
 	}
 
-	## **THE MOST BYTES A TRANSCRIPT FILE HOLDS, THE LIMIT'S ONE HOME**:
-	## 16 MiB. `message_record` refuses a record that would grow the file
+	## The most bytes a transcript file holds, 16 MiB; this is the limit's
+	## one home. `message_record` refuses a record that would grow the file
 	## past it, so every transcript the chat writes stays one the host will
 	## read. The host's own read cap (`read_most`, host/file_primitives.zig)
 	## sits strictly above this, a safety net and never the rule.
 	most_bytes : U64
 	most_bytes = 16 * 1024 * 1024
 
-	## **THE RECORD OF `message`, THE LATEST OF `conversation`**, as the
-	## transcript file writes it: added at the end of `file`, the file that
-	## holds the conversation before it (`NoFile` when there is none yet),
-	## the file holds `write(conversation)`. Unless the file would then hold
-	## more than `most_bytes` (`FileFull`).
+	## The record of `message`, the latest message of `conversation`, as
+	## the transcript file writes it. Added at the end of `file`, which holds
+	## the conversation before `message` (`NoFile` when there is no file
+	## yet), it makes the file hold `write(conversation)`. It is refused
+	## (`FileFull`) when the file would then hold more than `most_bytes`.
 	message_record : {
 		conversation : Conversation,
 		message : Message,
@@ -84,10 +84,10 @@ Transcript :: [].{
 		}
 	}
 
-	## **A TRANSCRIPT FILE, DECODED**: `topic`'s conversation, as `read`
+	## `topic`'s conversation, decoded from a transcript file as `read`
 	## reads it, or the first thing wrong with the file (not UTF-8 first).
-	## **ITS REFUSAL IS `TranscriptRefusal`'S TYPE**, made here and nowhere
-	## else, so every reader of a file words it as it comes.
+	## The refusal is `TranscriptRefusal`'s type, made here and nowhere
+	## else, so every reader of a file puts it in the same words.
 	decode : Topic, Transcript.Utf8Transcript -> Try(Conversation, _)
 	decode = |topic, Transcript.Utf8Transcript.(bytes)|
 		match Str.from_utf8(bytes) {
@@ -110,7 +110,7 @@ Transcript :: [].{
 	read = |topic, text| read_onto(Conversation.empty(topic), Separator.records(text)?)
 }
 
-## **WHETHER `adding` BYTES FIT AFTER THE `held` A FILE HOLDS**, at most
+## Whether `adding` bytes fit after the `held` bytes a file holds, at most
 ## `most_bytes` in all.
 room : { held : U64, adding : U64 } -> [Fits, Overflows]
 room = |{ held, adding }| if (held + adding <= Transcript.most_bytes) Fits else Overflows

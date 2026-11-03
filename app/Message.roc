@@ -1,8 +1,8 @@
-## **A MESSAGE**: who wrote it, when, and what, with the id its
-## conversation gives it. Immutable: an edit is a new message. A message
-## knows nothing of who may write where; that is the conversation's.
+## A message is who wrote it, when, and what, with the id its conversation
+## gives it. A message never changes: an edit is a new message. It knows
+## nothing of who may write where; that is the conversation's.
 ##
-## Opaque, so its parts are read, never changed. A message keeps no order
+## The type is opaque, so its parts are read, never changed. A message keeps no order
 ## of its own: `numbered_message` takes whatever id it is given. The order is
 ## kept by `Conversation`, which is opaque too, and whose `append` is the
 ## only way a message joins one, numbered by `Conversation.next_id`.
@@ -16,8 +16,8 @@ Message :: {
 	markdown : Str,
 }.{
 
-	## **WHAT A MESSAGE SAYS, AND WHO SAID IT**: who wrote it and the
-	## markdown, exactly as written. The message, with its id and time, is
+	## A message's payload is who wrote it and the markdown, exactly as
+	## written. The message, with its id and time, is
 	## made from it as early as possible. A conversation takes it from an `Author`; a DM's start
 	## (`Dm.start`) from a human, so its writer's kind is in its type.
 	Payload(writer) : {
@@ -25,15 +25,16 @@ Message :: {
 		markdown : Str,
 	}
 
-	## **AN UNNUMBERED MESSAGE, THE SHAPE'S ONE HOME**: a payload and its
-	## time, every part checked, waiting only for the id its conversation
-	## gives it (`Conversation.append`). Written `Message.Unnumbered`.
+	## An unnumbered message is a payload and its time, every part checked,
+	## waiting only for the id its conversation gives it
+	## (`Conversation.append`). This is the shape's one home, written
+	## `Message.Unnumbered`.
 	Unnumbered(writer) : {
 		payload : Message.Payload(writer),
 		time : DateTime,
 	}
 
-	## **A MESSAGE'S ID**: its number in its conversation, counting from 1,
+	## A message's id is its number in its conversation, counting from 1,
 	## so a conversation's order is its ids' order. At most U16's highest,
 	## 65,535: a conversation that long is archived, never grown.
 	Id :: U16.{

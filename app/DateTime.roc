@@ -1,14 +1,13 @@
-## **A DATE AND TIME**: when a message was written, as ISO 8601 in UTC, in
+## A date and time says when a message was written, as ISO 8601 in UTC, in
 ## exactly one form, `YYYY-MM-DDTHH:MM:SSZ`, so two times compare as text
-## (`compare`) and a transcript reads the same everywhere. Opaque, so
-## `from_str` is the only way in, and every one names a second some
-## calendar and clock show.
+## (`compare`) and a transcript reads the same everywhere. The type is
+## opaque, so `from_str` and `from_seconds_since_epoch` are the only ways
+## in, and every value names a second that a calendar and a clock can show.
 ##
-## **WHY IT IS OURS**: the pinned Roc's builtins (Str, List, Num, Dict, Set,
-## Iter, Stream, Crypto, Hasher, Encoding and the rest) have no date or time
-## type at all, so this module keeps to what the chat needs, the one form
-## read and written and the calendar's check, and gives way to the builtins'
-## once they have one.
+## The chat has its own date type because the pinned Roc's builtins have
+## none. This module keeps to what the chat needs, the one form read and
+## written and the calendar's check, and should give way to the builtins'
+## type once they have one.
 import Ascii
 
 DateTime :: Str.{
@@ -77,11 +76,10 @@ DateTime :: Str.{
 			_ => Err(WrongShape)
 		}
 
-	## **THE TIME A CLOCK GIVES**: `seconds` since 1970-01-01T00:00:00Z (the
-	## host's clock), unless it is before then, or after the last second
-	## the form can write, 9999-12-31T23:59:59Z (`OutOfRange`). The
-	## Gregorian calendar, days to a date by Howard Hinnant's
-	## `civil_from_days`.
+	## The time `seconds` after 1970-01-01T00:00:00Z, as the host's clock
+	## gives it. A time before then, or after the last second the form can
+	## write, 9999-12-31T23:59:59Z, is `OutOfRange`. Days become a date in
+	## the Gregorian calendar by Howard Hinnant's `civil_from_days`.
 	from_seconds_since_epoch : I64 -> Try(DateTime, [OutOfRange])
 	from_seconds_since_epoch = |seconds|
 		if (seconds < 0 or seconds > last_second)
@@ -98,10 +96,10 @@ DateTime :: Str.{
 	to_str : DateTime -> Str
 	to_str = |DateTime.(text)| text
 
-	## **WHICH COMES FIRST**: whether `time` is before, at or after
-	## `other`. Every time is written in the one form, its fields from the
-	## year down to the second, each a fixed width of digits, so the first
-	## byte that differs decides, as it does for the times.
+	## Whether `time` is before, at or after `other`. Every time is
+	## written in the one form, its fields from the year down to the
+	## second, each a fixed width of digits, so the first byte that differs
+	## decides.
 	compare : DateTime, DateTime -> [Before, Same, After]
 	compare = |DateTime.(time), DateTime.(other)| byte_order(time.to_utf8(), other.to_utf8())
 
@@ -113,8 +111,8 @@ DateTime :: Str.{
 last_second : I64
 last_second = 253402300799
 
-## **THE DATE `days` AFTER 1970-01-01**, for `days` of zero or more:
-## Hinnant's `civil_from_days`, counting in 400-year eras from 0000-03-01,
+## The date `days` after 1970-01-01, for `days` of zero or more, by
+## Hinnant's `civil_from_days`. It counts in 400-year eras from 0000-03-01,
 ## so February, with its leap day, ends each counted year.
 civil_from_days : I64 -> {
 	year : I64,

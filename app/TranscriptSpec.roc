@@ -1,5 +1,6 @@
-## **TRANSCRIPT'S TESTS**: the file, written and read, byte for byte, and
-## each way a transcript is refused, at the first message and the second.
+## These are the tests of `Transcript`: the file, written and read, byte
+## for byte, and each way a transcript is refused, at the first message and
+## the second.
 import Author
 import Conversation
 import Message
@@ -8,9 +9,9 @@ import Transcript
 
 TranscriptSpec :: [].{}
 
-## **A RECORD'S LINES, AS A TEST WRITES THEM**: its head, its `from:` and
-## `date:` lines, `gap`, the empty line after them, or not, and its body as
-## written on disk.
+## A record's lines, as a test writes them: its head, its `from:` and
+## `date:` lines, `gap` (the empty line after them, or not), and its body
+## as written on disk.
 Lines : {
 	head : Str,
 	from : Str,

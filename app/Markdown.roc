@@ -1,11 +1,11 @@
-## **A MESSAGE'S MARKDOWN, RENDERED**: the one entry to roc-markdown (the
-## `md` package), and the only module that imports it. Its dialect is
-## "Steve flavor" markdown, roc-markdown's own, held byte for byte to the
-## Zig chat's renderer. roc-markdown takes and gives bytes; this module
-## takes a `Str` and gives `TrustedHtml`, so the rest of the chat never
-## handles the renderer's bytes.
+## This module renders a message's markdown. It is the one entry to
+## roc-markdown (the `md` package), and the only module that imports it.
+## The dialect is "Steve flavor" markdown, roc-markdown's own, held byte for
+## byte to the Zig chat's renderer. roc-markdown takes and gives bytes;
+## this module takes a `Str` and gives `TrustedHtml`, so the rest of the
+## chat never handles the renderer's bytes.
 ##
-## **WHY ITS OUTPUT IS VOUCHED FOR** (`TrustedHtml`): roc-markdown escapes
+## The output is vouched for (`TrustedHtml`) because roc-markdown escapes
 ## every byte of a member's text through its one escape, lets through only
 ## the markup its own allowlist rebuilds, refuses a `javascript:` link, and
 ## shows media only from a source the uploads rule passes. That rule is

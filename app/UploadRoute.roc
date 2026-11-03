@@ -8,8 +8,7 @@
 ## bytes are then counted against the uploader's lifetime allowance
 ## (`UploadTotal`): the total is read, the image's size added, and the new
 ## total written, all before the image is stored, so no image is kept
-## uncounted. The server answers one request at a time, so nothing comes
-## between the read and the write. The image is kept in its conversation's
+## uncounted. The image is kept in its conversation's
 ## folder under a fresh name (`FileSystem.store_uploaded_image!`), and the
 ## answer is JSON giving its URL and the browser's name for it, which the
 ## compose box puts in the message as an `<img>`. An image that can't be

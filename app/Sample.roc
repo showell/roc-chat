@@ -1,6 +1,6 @@
-## **SAMPLES FOR THE SPECS**: the topics, payloads and conversation the
-## `*Spec.roc` modules share, so each test reads as what it checks. Only a
-## Spec imports it; no production module does.
+## This module holds the samples the `*Spec.roc` modules share: topics,
+## messages, conversations and a directory of users, so each test reads as
+## what it checks. Only a Spec imports it; no production module does.
 import Admin
 import Author
 import Conversation
@@ -74,8 +74,8 @@ Sample :: [].{
 	hello_and_reply : Conversation
 	hello_and_reply = Sample.conversation(Sample.plans, [Sample.hello, Sample.reply])
 
-	## **A CONVERSATION ONE MESSAGE SHORT OF FULL**: 65,534 of Steve's hello.
-	## A constant, so the specs that need it share one, built once: the
+	## A conversation one message short of full: 65,534 of Steve's hello.
+	## It is a constant, so the specs that need it share one, built once: the
 	## build is about a second of a cold run. Only the tests of the most a
 	## conversation holds use it.
 	almost_full : Conversation
@@ -97,8 +97,8 @@ Sample :: [].{
 	name : Str -> Name
 	name = |text| Name.from_str(text) ?? crash "Sample.name: a test's name is a name"
 
-	## **THE SAMPLE DIRECTORY**: Steve (1) and Apoorva (2), humans, and CC
-	## (3), Steve's agent.
+	## The sample directory: Steve (1) and Apoorva (2), who are humans, and
+	## CC (3), Steve's agent.
 	directory : Directory
 	directory = {
 		founded = Directory.with_founder(Sample.name("Steve"))
@@ -112,7 +112,7 @@ Sample :: [].{
 		with_cc.directory
 	}
 
-	## **THE SAMPLE DIRECTORY, CROWDED**: with `count` more humans, each
+	## The sample directory with `count` more humans, each
 	## named for their place in letters (`Filler aa`, `Filler ab`...).
 	crowded_directory : U64 -> Directory
 	crowded_directory = |count|
@@ -121,7 +121,7 @@ Sample :: [].{
 			|so_far, at| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded_directory: a filler's name is free").directory,
 		)
 
-	## **STEVE, SIGNED IN AS AN ADMIN**: the specs' one way to an admin,
+	## Steve, signed in as an admin. This is the specs' one way to an admin,
 	## through the door that stands in for a session (`SignedIn`).
 	admin : Admin
 	admin = Admin.of(SignedIn.dangerously_assume(Sample.steve)) ?? crash "Sample.admin: Steve is an admin"

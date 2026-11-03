@@ -6,8 +6,7 @@
 ## A frame is one event, its id the message's number and its data the
 ## message's HTML. A page asks for the messages after the count it shows
 ## (`?after=<count>`), and a browser that reconnects says the last id it
-## saw (`Last-Event-ID`), which wins. The host subscribes the stream in
-## the call that read its backlog, so a page sees every message once.
+## saw (`Last-Event-ID`), which wins.
 import pf.Host
 import pf.Http
 import Ascii
