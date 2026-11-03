@@ -4,13 +4,21 @@
 ## by way of roc-chat's.
 ##
 ## A POST holds a form of one file (`MultipartForm`). The file must be an
-## image by its opening bytes and at most 10 MiB (`UploadedImage`). The
-## image is kept in its conversation's folder under a fresh name
-## (`FileSystem.store_uploaded_image!`), and the answer is JSON giving its
-## URL and the browser's name for it, which the compose box puts in the
-## message as an `<img>`. A refusal is a line of plain text in the old
-## words, which the compose box shows as it is: no file is a 400, not an
-## image a 415, and too large a 413.
+## image by its opening bytes and at most 10 MiB (`UploadedImage`). Its
+## bytes are then counted against the uploader's lifetime allowance
+## (`UploadTotal`): the total is read, the image's size added, and the new
+## total written, all before the image is stored, so no image is kept
+## uncounted. The server answers one request at a time, so nothing comes
+## between the read and the write. The image is kept in its conversation's
+## folder under a fresh name (`FileSystem.store_uploaded_image!`), and the
+## answer is JSON giving its URL and the browser's name for it, which the
+## compose box puts in the message as an `<img>`. An image that can't be
+## stored gives its bytes back to the allowance.
+##
+## A refusal is a line of plain text in the old words, which the compose
+## box shows as it is: no file is a 400, not an image a 415, too large a
+## 413, and an allowance used up a 403. A total that can't be read, or isn't
+## a number, is a 500, and nothing is stored.
 ##
 ## A GET answers an image of the conversation its URL names, by its name,
 ## with its type and `nosniff`. An image is only ever found under its own
@@ -22,40 +30,38 @@ import FileSystem
 import HttpAnswer
 import MultipartForm
 import RequestHeader
+import SignedIn
+import UploadTotal
 import UploadedImage
+import UserFolder
 
 UploadRoute :: [].{
 
 	## POST: the image in `body`, a form of the Content-Type in `headers`,
-	## kept in the conversation `key`, and its URL answered as JSON.
+	## counted against the allowance of the user `acting`, kept in the
+	## conversation `key`, and its URL answered as JSON.
 	post_upload! : {
 		key : ConversationKey,
+		acting : SignedIn,
 		headers : List(Http.Header),
 		body : List(U8),
 	} => Http.Response
 	post_upload! = |
 		{
 			key,
+			acting,
 			headers,
 			body,
 		},
 	|
-		match image_upload_from_form({ headers, body }) {
+		match keep_upload!({
+			key,
+			acting,
+			headers,
+			body,
+		}) {
+			Ok(answer_json) => HttpAnswer.json(200, answer_json)
 			Err(why) => upload_refusal_response(why)
-			Ok(upload) => {
-				image = UploadedImage.fresh({ random_bytes: Host.fill_with_random_bytes!(16), kind: upload.kind })
-				match FileSystem.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
-					Ok({}) =>
-						HttpAnswer.json(
-							200,
-							upload_answer_json({
-								url: key.uploaded_image_url_path(image),
-								name: MultipartForm.display_name(upload.filename),
-							}),
-						)
-					Err(fault) => upload_failure_response(fault)
-				}
-			}
 		}
 
 	## GET: the conversation `key`'s uploaded `image`, as kept; a 404 when
@@ -106,28 +112,110 @@ image_upload_from_form = |{ headers, body }| {
 image_size_checked : U64 -> Try(U64, [TooLarge])
 image_size_checked = |count| if (count > UploadedImage.most_bytes) Err(TooLarge) else Ok(count)
 
-## An upload refused, in the old chat's words, as a line of plain text.
-upload_refusal_response : [NoFile, NotAnImage, TooLarge] -> Http.Response
+## The image in a POST's form, counted against the allowance of the user
+## `acting` and kept in the conversation `key`: the JSON that answers it;
+## or why it was refused, or couldn't be counted or kept.
+keep_upload! : {
+	key : ConversationKey,
+	acting : SignedIn,
+	headers : List(Http.Header),
+	body : List(U8),
+} => Try(
+	List(U8),
+	[
+		NoFile,
+		NotAnImage,
+		TooLarge,
+		LimitReached,
+		NotANumber,
+		NotUtf8,
+		AlreadyExists,
+		MissingDirectory,
+		PathRefused,
+		Failed,
+	],
+)
+keep_upload! = |
+	{
+		key,
+		acting,
+		headers,
+		body,
+	},
+| {
+	upload = image_upload_from_form({ headers, body })?
+	folder = UserFolder.of(acting.user().id())
+	before = reserve_upload_bytes!(folder, upload.bytes.len())?
+	image = UploadedImage.fresh({ random_bytes: Host.fill_with_random_bytes!(16), kind: upload.kind })
+	match FileSystem.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
+		Ok({}) =>
+			Ok(
+				upload_answer_json({
+					url: key.uploaded_image_url_path(image),
+					name: MultipartForm.display_name(upload.filename),
+				}),
+			)
+		Err(fault) => {
+			# The image's bytes go back to the allowance. The answer is the
+			# image's 500 either way, and the host logs a failed write of the
+			# total.
+			_ = FileSystem.replace_upload_total!(folder, before)
+			Err(fault)
+		}
+	}
+}
+
+## The user's upload total before an upload of `adding` bytes, once the
+## total with them is written to their folder; unless that would pass the
+## allowance (`LimitReached`), or the total can't be read or written.
+reserve_upload_bytes! : UserFolder,
+U64 => Try(
+	UploadTotal,
+	[
+		LimitReached,
+		NotANumber,
+		NotUtf8,
+		MissingDirectory,
+		PathRefused,
+		Failed,
+	],
+)
+reserve_upload_bytes! = |folder, adding| {
+	before = FileSystem.read_upload_total!(folder)?
+	after = before.with_upload(adding)?
+	FileSystem.replace_upload_total!(folder, after)?
+	Ok(before)
+}
+
+## An upload refused, in the old chat's words, as a line of plain text; or
+## one that couldn't be counted or kept, a 500 naming what the host
+## answered (and the host's log says which file, and why), or saying that
+## the user's upload total is no number.
+upload_refusal_response : [
+	NoFile,
+	NotAnImage,
+	TooLarge,
+	LimitReached,
+	NotANumber,
+	NotUtf8,
+	AlreadyExists,
+	MissingDirectory,
+	PathRefused,
+	Failed,
+] -> Http.Response
 upload_refusal_response = |why|
 	match why {
 		NoFile => HttpAnswer.text(400, "no file")
 		NotAnImage => HttpAnswer.text(415, "unsupported file type (images: png, jpeg, gif, webp)")
 		TooLarge => HttpAnswer.text(413, "image too large — the limit is 10 MB.")
+		LimitReached => HttpAnswer.text(403, "Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GB upload allowance.")
+		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
+		NotUtf8 => HttpAnswer.text(500, "Upload failed: the file system answered NotUtf8.")
+		AlreadyExists => HttpAnswer.text(500, "Upload failed: the file system answered AlreadyExists.")
+		MissingDirectory => HttpAnswer.text(500, "Upload failed: the file system answered MissingDirectory.")
+		PathRefused => HttpAnswer.text(500, "Upload failed: the file system answered PathRefused.")
+		Failed => HttpAnswer.text(500, "Upload failed: the file system answered Failed.")
 	}
-
-## The file system failed to keep an upload: a 500, naming what the host
-## answered (and the host's log says which file, and why).
-upload_failure_response : [AlreadyExists, MissingDirectory, PathRefused, Failed] -> Http.Response
-upload_failure_response = |fault| {
-	said =
-		match fault {
-			AlreadyExists => "AlreadyExists"
-			MissingDirectory => "MissingDirectory"
-			PathRefused => "PathRefused"
-			Failed => "Failed"
-		}
-	HttpAnswer.text(500, "Upload failed: the file system answered ${said}.")
-}
 
 ## The answer to an upload, as the old chat's was: the image's URL, the
 ## browser's name for it, its kind, and no size (0 and 0, so the compose
@@ -214,8 +302,16 @@ expect {
 	answered = upload_refusal_response(TooLarge)
 	answered.status == 413 and answered.body == "image too large — the limit is 10 MB.\n".to_utf8()
 }
-expect upload_failure_response(Failed).status == 500
-expect upload_failure_response(AlreadyExists).body == "Upload failed: the file system answered AlreadyExists.\n".to_utf8()
+expect {
+	answered = upload_refusal_response(LimitReached)
+	answered.status == 403 and answered.body == "Upload limit reached — you've used your 1 GB upload allowance.\n".to_utf8()
+}
+expect {
+	answered = upload_refusal_response(NotANumber)
+	answered.status == 500 and answered.body == "Upload failed: your upload total is not a number.\n".to_utf8()
+}
+expect upload_refusal_response(Failed).status == 500
+expect upload_refusal_response(AlreadyExists).body == "Upload failed: the file system answered AlreadyExists.\n".to_utf8()
 # The answer: the URL and the name, the name's quote, backslash and
 # control bytes escaped, so it stays one JSON string.
 expect

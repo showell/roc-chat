@@ -102,6 +102,7 @@ handle_http_request! = |request|
 				UploadToConversation(key) =>
 					UploadRoute.post_upload!({
 						key,
+						acting,
 						headers: request.headers,
 						body: request.body,
 					})

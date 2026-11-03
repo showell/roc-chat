@@ -19,10 +19,15 @@
 ##
 ## A conversation's uploaded images are kept in its folder, under
 ## `uploads/`, each by its own name (`UploadedImage`), as bytes.
+##
+## A user's own facts are kept in their folder (`UserFolder`), one small
+## file per fact: their upload total (`UploadTotal`) is `upload-bytes`.
 import pf.Host
 import ConversationKey
 import Transcript
+import UploadTotal
 import UploadedImage
+import UserFolder
 
 FileSystem :: [].{
 
@@ -116,7 +121,60 @@ FileSystem :: [].{
 			Failed => Err(Failed)
 		}
 	}
+
+	## A user's upload total, as their folder keeps it, read by
+	## `UploadTotal.from_file`; unless the host's read failed.
+	read_upload_total! : UserFolder => Try(
+		UploadTotal,
+		[
+			NotANumber,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	read_upload_total! = |folder| {
+		read = Host.read_utf8_bytes_from_file!(upload_total_path(folder))
+		match read.status {
+			Found => UploadTotal.from_file(Kept(read.bytes))
+			Missing => UploadTotal.from_file(NoFile)
+			NotUtf8 => Err(NotUtf8)
+			PathRefused => Err(PathRefused)
+			Failed => Err(Failed)
+		}
+	}
+
+	## A user's upload total, written whole over the one before, their folder
+	## made as needed; unless the host refused, and then the file is as it
+	## was.
+	replace_upload_total! : UserFolder,
+	UploadTotal => Try(
+		{},
+		[
+			MissingDirectory,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_upload_total! = |folder, total| {
+		make_folder!(user_folder_path(folder))?
+		match Host.replace_file_with_utf8_bytes_atomically!(upload_total_path(folder), total.to_file()) {
+			Replaced => Ok({})
+			MissingDirectory => Err(MissingDirectory)
+			NotUtf8 => crash "FileSystem.replace_upload_total!: a total's digits are UTF-8"
+			PathRefused => Err(PathRefused)
+			Failed => Err(Failed)
+		}
+	}
 }
+
+## A user's folder: its parts.
+user_folder_path : UserFolder -> Str
+user_folder_path = |folder| Str.join_with(folder.parts(), "/")
+
+## The path of a user's upload total.
+upload_total_path : UserFolder -> List(U8)
+upload_total_path = |folder| "${user_folder_path(folder)}/upload-bytes".to_utf8()
 
 ## The folder a conversation's uploaded images are kept in.
 uploads_folder_path : ConversationKey -> Str
