@@ -1,5 +1,6 @@
 ## **THE RESPONSES THE CHAT GIVES**, built once each: a page with its
-## status, a script, a redirect after a POST, and the refusal of a method.
+## status, a script, a redirect after a POST, the refusal of a method, and
+## an event stream.
 ##
 ## **EVERY PAGE CARRIES ITS DEFENCES** (`page_headers`, their one home): a
 ## Content-Security-Policy that lets the page load nothing but its own
@@ -14,11 +15,12 @@ HttpAnswer :: [].{
 
 	## `page`, with `status`, as UTF-8 HTML.
 	page : U16, TrustedHtml -> Http.Response
-	page = |status, html| {
-		status,
-		headers: page_headers,
-		body: html.to_utf8(),
-	}
+	page = |status, html|
+		whole({
+			status,
+			headers: page_headers,
+			body: html.to_utf8(),
+		})
 
 	## **A NOTICE PAGE** (`Page.notice`) with `status`.
 	notice : U16, { title : Str, said : Str } -> Http.Response
@@ -27,26 +29,28 @@ HttpAnswer :: [].{
 	## **303 SEE OTHER**, to `url_path`: after a POST, the browser GETs the
 	## page, so a reload never posts again.
 	see_other : Str -> Http.Response
-	see_other = |url_path| {
-		status: 303,
-		headers: [{ name: "location".to_utf8(), value: url_path.to_utf8() }],
-		body: [],
-	}
+	see_other = |url_path|
+		whole({
+			status: 303,
+			headers: [{ name: "location".to_utf8(), value: url_path.to_utf8() }],
+			body: [],
+		})
 
 	## **A SCRIPT**, `bytes` (the app's own: `ComposeScript`), as UTF-8
 	## JavaScript, which `nosniff` requires of a script a page runs. A
 	## browser asks again before using its copy (`no-cache`), so a changed
 	## script is never stale.
 	script : List(U8) -> Http.Response
-	script = |bytes| {
-		status: 200,
-		headers: [
-			{ name: "content-type".to_utf8(), value: "text/javascript; charset=utf-8".to_utf8() },
-			{ name: "cache-control".to_utf8(), value: "no-cache".to_utf8() },
-			nosniff,
-		],
-		body: bytes,
-	}
+	script = |bytes|
+		whole({
+			status: 200,
+			headers: [
+				{ name: "content-type".to_utf8(), value: "text/javascript; charset=utf-8".to_utf8() },
+				{ name: "cache-control".to_utf8(), value: "no-cache".to_utf8() },
+				nosniff,
+			],
+			body: bytes,
+		})
 
 	## **405**: the path takes only the methods `allowed` names: a
 	## conversation's GET and POST, or a script's GET.
@@ -57,7 +61,7 @@ HttpAnswer :: [].{
 				GetAndPost => { header: "GET, POST", said: "GET or POST only\n" }
 				GetOnly => { header: "GET", said: "GET only\n" }
 			}
-		{
+		whole({
 			status: 405,
 			headers: [
 				{ name: "allow".to_utf8(), value: methods.header.to_utf8() },
@@ -65,8 +69,52 @@ HttpAnswer :: [].{
 				nosniff,
 			],
 			body: methods.said.to_utf8(),
-		}
+		})
 	}
+
+	## **AN EVENT STREAM** the host holds open on the bus key `key`, for
+	## `holder`: `backlog` first, then every frame published to `key`. The
+	## host writes the stream's type; it is not sniffed.
+	stream : {
+		key : List(U8),
+		holder : List(U8),
+		backlog : List(U8),
+	} -> Http.Response
+	stream = |
+		{
+			key,
+			holder,
+			backlog,
+		},
+	| {
+		status: 200,
+		headers: [nosniff],
+		body: backlog,
+		kind: Stream,
+		stream_key: key,
+		stream_holder: holder,
+	}
+}
+
+## An answer that is its body, naming no stream.
+whole : {
+	status : U16,
+	headers : List(Http.Header),
+	body : List(U8),
+} -> Http.Response
+whole = |
+	{
+		status,
+		headers,
+		body,
+	},
+| {
+	status,
+	headers,
+	body,
+	kind: Whole,
+	stream_key: [],
+	stream_holder: [],
 }
 
 ## **A PAGE'S HEADERS**: its type, and its defences.
@@ -78,8 +126,9 @@ HttpAnswer :: [].{
 ## attribute, so markup that slipped into a page still runs nothing); images and video from
 ## this origin alone (`img-src` and `media-src 'self'`), the most
 ## `SecureImageTag` will ever allow, a conversation's own uploads; no
-## framing (`frame-ancestors 'none'`), no `<base>` (`base-uri 'none'`), and
-## a form posts only back here (`form-action 'self'`).
+## framing (`frame-ancestors 'none'`), no `<base>` (`base-uri 'none'`), a
+## form posts only back here (`form-action 'self'`), and the script's
+## stream connects only here (`connect-src 'self'`).
 page_headers : List(Http.Header)
 page_headers = [
 	{ name: "content-type".to_utf8(), value: "text/html; charset=utf-8".to_utf8() },
@@ -98,6 +147,7 @@ content_security_policy = Str.join_with(
 		"frame-ancestors 'none'",
 		"base-uri 'none'",
 		"form-action 'self'",
+		"connect-src 'self'",
 	],
 	"; ",
 )
@@ -118,7 +168,7 @@ expect
 			said(HttpAnswer.notice(status, { title: "t", said: "s" }))
 				== [
 					("content-type", "text/html; charset=utf-8"),
-					("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+					("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
 					("x-content-type-options", "nosniff"),
 				],
 	)
@@ -153,6 +203,28 @@ expect
 			"GET only\n",
 		)
 expect said(HttpAnswer.see_other("/a")) == [("location", "/a")]
+# Every whole answer names no stream; a stream is a 200 on its key, for its
+# holder, its backlog first, not sniffed.
+expect
+	[
+		HttpAnswer.notice(404, { title: "t", said: "s" }),
+		HttpAnswer.see_other("/a"),
+		HttpAnswer.script([]),
+		HttpAnswer.method_not_allowed(GetOnly),
+	].all(|answered| answered.kind == Whole and answered.stream_key == [] and answered.stream_holder == [])
+expect {
+	answered = HttpAnswer.stream({
+		key: "k".to_utf8(),
+		holder: "1".to_utf8(),
+		backlog: "id: 1\n".to_utf8(),
+	})
+	answered.kind == Stream
+		and answered.status == 200
+		and answered.stream_key == "k".to_utf8()
+		and answered.stream_holder == "1".to_utf8()
+		and answered.body == "id: 1\n".to_utf8()
+		and said(answered) == [("x-content-type-options", "nosniff")]
+}
 # A script: JavaScript, never cached unasked, not sniffed, its bytes as
 # given; and no page's policy, which is a document's.
 expect {

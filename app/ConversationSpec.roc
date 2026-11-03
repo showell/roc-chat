@@ -32,6 +32,11 @@ expect Conversation.empty(Sample.plans).reference(Sample.second).to_str() == "MS
 expect Conversation.empty(Sample.other).reference(Sample.second).to_str() == "MSG_other_2"
 expect Sample.hello_and_reply.reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
+# The messages past a count, at none, one, all and past all.
+expect summary(Sample.hello_and_reply.messages_after(0)) == summary(Sample.hello_and_reply.messages())
+expect summary(Sample.hello_and_reply.messages_after(1)).map(|m| m.id) == ["2"]
+expect Sample.hello_and_reply.messages_after(2) == []
+expect Sample.hello_and_reply.messages_after(3) == []
 # Each append takes the next id, in order, with the unnumbered message's
 # parts.
 expect summary(Sample.hello_and_reply.messages()) == [

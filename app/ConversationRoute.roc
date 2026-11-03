@@ -5,11 +5,14 @@
 ##
 ## A GET answers with a conversation's page. A POST takes a form whose
 ## field `markdown` holds a new message, adds the message to the
-## conversation, and sends the browser back to the page (a 303).
+## conversation, sends it to the conversation's open pages
+## (`ConversationStream`), and sends the browser back to the page (a 303).
+## A GET of the conversation's stream answers with the stream.
 import pf.Http
 import Author
 import Conversation
 import ConversationKey
+import ConversationStream
 import DateTime
 import FileSystem
 import HttpAnswer
@@ -35,6 +38,50 @@ ConversationRoute :: [].{
 				}
 			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such conversation: ${key.url_path()}" })
 			Err(fault) => file_system_failure_response(fault)
+		}
+
+	## **GET THE STREAM**: the conversation's stream for `acting`, after
+	## the count of messages the request has seen (`query` and `headers`,
+	## `ConversationStream.seen_count`); one with no transcript yet is
+	## empty until its first message.
+	open_stream! : {
+		key : ConversationKey,
+		acting : SignedIn,
+		query : List(U8),
+		headers : List(Http.Header),
+	} => Http.Response
+	open_stream! = |
+		{
+			key,
+			acting,
+			query,
+			headers,
+		},
+	|
+		match ConversationStream.seen_count({ query, headers }) {
+			Err(why) => HttpAnswer.notice(400, { title: "Bad stream", said: ConversationStream.words(why) })
+			Ok(seen) =>
+				match FileSystem.read_transcript!(key) {
+					Ok(utf8) =>
+						match Transcript.decode(key.topic(), utf8) {
+							Ok(conversation) =>
+								ConversationStream.response({
+									key,
+									acting,
+									conversation,
+									seen,
+								})
+							Err(why) => unreadable_transcript_response(why)
+						}
+					Err(Missing) =>
+						ConversationStream.response({
+							key,
+							acting,
+							conversation: Conversation.empty(key.topic()),
+							seen,
+						})
+					Err(fault) => file_system_failure_response(fault)
+				}
 		}
 
 	## **POST**: the message in `body`'s field `markdown`, by `acting`, at
@@ -117,8 +164,9 @@ unnumbered_message_from_post = |
 }
 
 ## `unnumbered_message` appended to `conversation`, its record appended to
-## `file` (the transcript `conversation` was read from, or `NoFile`), and a
-## 303 to the page; or why not.
+## `file` (the transcript `conversation` was read from, or `NoFile`), the
+## message sent to the conversation's stream, and a 303 to the page; or why
+## not.
 append_unnumbered_message! : {
 	key : ConversationKey,
 	conversation : Conversation,
@@ -142,7 +190,14 @@ append_unnumbered_message! = |
 			}) {
 				Ok(record) =>
 					match FileSystem.append_message!(key, record) {
-						Ok({}) => HttpAnswer.see_other(key.url_path())
+						Ok({}) => {
+							ConversationStream.publish!({
+								key,
+								conversation: grown.conversation,
+								message: grown.message,
+							})
+							HttpAnswer.see_other(key.url_path())
+						}
 						Err(fault) => file_system_failure_response(fault)
 					}
 				Err(FileFull) => conversation_refusal_response("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")

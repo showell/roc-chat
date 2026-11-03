@@ -71,5 +71,11 @@ Conversation :: {
 	messages : Conversation -> List(Message)
 	messages = |Conversation.(c)| c.messages
 
+	## **THE MESSAGES A READER HAS NOT SEEN**, oldest first: those past the
+	## first `count`, which are the ones numbered past `count`, as `append`
+	## numbers from 1 with no gap.
+	messages_after : Conversation, U16 -> List(Message)
+	messages_after = |Conversation.(c), count| c.messages.drop_first(count.to_u64())
+
 	is_eq : _
 }

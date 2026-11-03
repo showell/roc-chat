@@ -7,7 +7,8 @@
 //!     `roc_handle_http_request` (the server), and the records the second
 //!     takes and answers (platform/Http.roc);
 //!   - the hosted functions (platform/Host.roc), each exported under its
-//!     Roc name and answered by host/file_primitives.zig.
+//!     Roc name and answered by host/file_primitives.zig, or, for a
+//!     stream's frames, host/bus.zig.
 //!
 //! **EVERY RECORD IS LAID OUT AS ROC LAYS IT**: fields by alignment, then
 //! by name; a tag union with no payloads is one byte, its tags numbered
@@ -15,9 +16,9 @@
 //! field, and every enum, tag by tag, to what `roc glue` makes of the
 //! platform.
 //!
-//! **ONE CALL AT A TIME, ITS MEMORY ONE ARENA**: the server answers one
-//! request at a time (host/http.zig), so the call's arena and data root
-//! are held here, set as the call begins (`Call.begin`). Everything Roc
+//! **ONE CALL AT A TIME, ITS MEMORY ONE ARENA**: the server makes one Roc
+//! call at a time (the turn, host/http.zig), so the call's arena, data
+//! root and hub are held here, set as the call begins (`begin`). Everything Roc
 //! allocates is in that arena, freed whole when the request ends, so
 //! `roc_dealloc` frees nothing and nothing is refcounted by hand.
 //!
@@ -27,6 +28,7 @@
 const std = @import("std");
 const Io = std.Io;
 const files = @import("file_primitives.zig");
+const bus = @import("bus.zig");
 
 // ── the lists ───────────────────────────────────────────────────────────────
 
@@ -105,16 +107,22 @@ pub const Request = extern struct {
     port: u16,
 };
 
-/// Http.roc's `Response`: the lists by name, then the U16.
+/// Http.roc's `Response`'s `kind`, alphabetical.
+pub const AnswerKind = enum(u8) { stream, whole };
+
+/// Http.roc's `Response`: the lists by name, then the U16, then the tag.
 pub const Response = extern struct {
     body: RocBytes,
     headers: HeaderList,
+    stream_holder: RocBytes,
+    stream_key: RocBytes,
     status: u16,
+    kind: AnswerKind,
 };
 
 comptime {
     const w = @sizeOf(usize);
-    std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 16 * w and @sizeOf(Response) == 7 * w);
+    std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 16 * w and @sizeOf(Response) == 13 * w);
 }
 
 // ── the file primitives' answers ────────────────────────────────────────────
@@ -135,21 +143,23 @@ comptime {
 // ── the call ────────────────────────────────────────────────────────────────
 
 /// What a call to the Roc may use, set for its length: its arena, and,
-/// for the server's, the data root and the Io the primitives answer with.
-const Call = struct {
+/// for the server's, the data root and the Io the primitives answer with,
+/// and the hub its frames are published on.
+pub const Call = struct {
     arena: std.mem.Allocator,
-    root: ?*const files.DataRoot,
-    io: ?Io,
+    root: ?*const files.DataRoot = null,
+    io: ?Io = null,
+    hub: ?*bus.Hub = null,
 };
 
 var current: ?Call = null;
 
-/// **A CALL BEGINS**: `arena` holds everything it allocates; `root` and
-/// `io` answer the hosted functions (null for the demo, which asks none).
-/// A call begun inside another is a bug in the host.
-pub fn begin(arena: std.mem.Allocator, root: ?*const files.DataRoot, io: ?Io) void {
+/// **A CALL BEGINS**: its arena holds everything it allocates; its root,
+/// Io and hub answer the hosted functions (none for the demo, which asks
+/// none). A call begun inside another is a bug in the host.
+pub fn begin(c: Call) void {
     if (current != null) @panic("seam.begin: a call is already open (one call at a time)");
-    current = .{ .arena = arena, .root = root, .io = io };
+    current = c;
 }
 
 /// The call is over.
@@ -167,6 +177,10 @@ fn root_of(comptime what: []const u8) *const files.DataRoot {
 
 fn io_of(comptime what: []const u8) Io {
     return call(what).io orelse @panic(what ++ ": this call has no Io (the demo's asks for none)");
+}
+
+fn hub_of(comptime what: []const u8) *bus.Hub {
+    return call(what).hub orelse @panic(what ++ ": this call has no hub (the demo's publishes nothing)");
 }
 
 // ── the entries ─────────────────────────────────────────────────────────────
@@ -227,6 +241,11 @@ pub export fn fill_with_random_bytes(count: u64) callconv(.c) RocBytes {
     const n: usize = @intCast(count);
     files.fill_with_random_bytes(io_of(what), buf[0..n]) catch |e| std.debug.panic(what ++ ": {t}", .{e});
     return .from(buf[0..n]);
+}
+
+/// The hub copies the bytes, so they outlive the call's arena.
+pub export fn publish_bytes_to_streams_on_key(key: RocBytes, bytes: RocBytes) callconv(.c) void {
+    hub_of("publish_bytes_to_streams_on_key").publish(key.slice(), bytes.slice());
 }
 
 // ── the runtime ─────────────────────────────────────────────────────────────

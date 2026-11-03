@@ -7,8 +7,11 @@
 ## the compose box (`compose`): a plain form that posts the field
 ## `markdown` back to the conversation's own URL, so it works with no
 ## script, and a line of keyboard help. The page's one script
-## (`ComposeScript`, app/compose.js) lays the panes out and gives the box
-## its keys; it finds them by the classes written here.
+## (`ComposeScript`, app/compose.js) lays the panes out, gives the box its
+## keys, and appends each message the conversation's stream brings; it
+## finds them by the classes written here, and the stream by the messages
+## pane's `data-stream` and `data-after`. A message on the stream is
+## written by `message`, as the page writes it.
 ##
 ## **THE PAGE'S VOCABULARY LIVES HERE**: its classes (`Class`, a closed set,
 ## so no class is free text) and the CSS that styles them. How a message
@@ -72,13 +75,17 @@ Page :: [].{
 					newline,
 				])
 			else
-				TrustedHtml.join(c.messages().map(|m| message(c, m)))
+				TrustedHtml.join(c.messages().map(|m| Page.message(c, m)))
 		document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
 				Html.element({
 					name: Div,
-					attrs: [Page.class(Messages)],
+					attrs: [
+						Page.class(Messages),
+						DataStream(site_path(key.stream_url_path())),
+						DataAfter(token(c.messages().len().to_str())),
+					],
 					inner: TrustedHtml.join([
 						heading,
 						newline,
@@ -110,6 +117,50 @@ Page :: [].{
 			}),
 		})
 
+	## **ONE MESSAGE OF `c`**, as its page and its stream write it: its
+	## header, then its markdown rendered.
+	message : Conversation, Message -> TrustedHtml
+	message = |c, m| {
+		named = c.reference(m.id())
+		header = TrustedHtml.join([
+			Html.element({
+				name: Span,
+				attrs: [Page.class(Author)],
+				inner: Escape.text(m.author().to_str()),
+			}),
+			space,
+			Html.element({
+				name: Time,
+				attrs: [DateTime(m.time())],
+				inner: Escape.text(m.time().to_str()),
+			}),
+			space,
+			Html.element({
+				name: A,
+				attrs: [Page.class(Ref), Href(anchor(named))],
+				inner: Escape.text(named.to_str()),
+			}),
+		])
+		article = Html.element({
+			name: Article,
+			attrs: [Page.class(Message), Id(anchor(named))],
+			inner: TrustedHtml.join([
+				Html.element({
+					name: Header,
+					attrs: [],
+					inner: header,
+				}),
+				newline,
+				Html.element({
+					name: Div,
+					attrs: [Page.class(Body)],
+					inner: Markdown.render(m.markdown()),
+				}),
+			]),
+		})
+		TrustedHtml.join([article, newline])
+	}
+
 	## **A PAGE THAT SAYS ONE THING**: `title`, and `said` beneath it (no
 	## such conversation, a refused message, a failure).
 	notice : { title : Str, said : Str } -> TrustedHtml
@@ -122,49 +173,6 @@ Page :: [].{
 				inner: Escape.text(said),
 			}),
 		})
-}
-
-## One message: its header, then its markdown rendered.
-message : Conversation, Message -> TrustedHtml
-message = |c, m| {
-	named = c.reference(m.id())
-	header = TrustedHtml.join([
-		Html.element({
-			name: Span,
-			attrs: [Page.class(Author)],
-			inner: Escape.text(m.author().to_str()),
-		}),
-		space,
-		Html.element({
-			name: Time,
-			attrs: [DateTime(m.time())],
-			inner: Escape.text(m.time().to_str()),
-		}),
-		space,
-		Html.element({
-			name: A,
-			attrs: [Page.class(Ref), Href(anchor(named))],
-			inner: Escape.text(named.to_str()),
-		}),
-	])
-	article = Html.element({
-		name: Article,
-		attrs: [Page.class(Message), Id(anchor(named))],
-		inner: TrustedHtml.join([
-			Html.element({
-				name: Header,
-				attrs: [],
-				inner: header,
-			}),
-			newline,
-			Html.element({
-				name: Div,
-				attrs: [Page.class(Body)],
-				inner: Markdown.render(m.markdown()),
-			}),
-		]),
-	})
-	TrustedHtml.join([article, newline])
 }
 
 ## **THE COMPOSE BOX**: a form posting its one field, a message's
@@ -300,8 +308,11 @@ expect
 		Messages,
 		Compose,
 		Help,
+		Empty,
 	].all(|chosen| Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(chosen)}'"))
 expect !Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(Message)}'")
+# The script finds the stream by the attributes `Html` writes for it.
+expect ["data-stream", "data-after"].all(|name| Str.from_utf8_lossy(ComposeScript.bytes).contains("'${name}'"))
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"

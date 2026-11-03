@@ -23,7 +23,18 @@
 //!   7. GET under another `Host` (a rebound name): 403;
 //!   8. POST from another origin's page: 403;
 //!   9. POST that the browser says is cross-site: 403;
-//!  10. both files on disk: exactly as before 7, nothing appended.
+//!  10. both files on disk: exactly as before 7, nothing appended;
+//!  11. open the channel's stream after its sixth message, and the DM's
+//!      after its first: each a 200 event stream, not sniffed, the
+//!      channel's first event exactly the seventh message's frame, its data
+//!      the page's own HTML for it;
+//!  12. while both are open, a plain GET of the channel's page: 200;
+//!  13. POST to the channel: its stream gets exactly that message's frame;
+//!  14. POST to the DM: its stream's first event is exactly that message's
+//!      frame, so it got nothing of the channel's;
+//!  15. POST to the channel again: its stream's next event is exactly that
+//!      message's frame, so it got nothing of the DM's;
+//!  16. the stream under another `Host`: 403; with no count: 400.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
@@ -162,7 +173,122 @@ pub fn main(init: std.process.Init) !void {
     try t.check("both files on disk: exactly as before, nothing appended", std.mem.eql(u8, channel_now, box_disk) and
         std.mem.eql(u8, dm_now, dm_file));
 
+    // 11.
+    var channel_stream = try Stream.open(a, io, port, channel_url ++ "/stream?after=6");
+    defer channel_stream.close();
+    var dm_stream = try Stream.open(a, io, port, dm_url ++ "/stream?after=1");
+    defer dm_stream.close();
+    const page_of_seven = try get(a, io, port, channel_url);
+    try t.check("open the channel's stream and the DM's: 200 event streams, not sniffed, never cached", channel_stream.isEventStream() and dm_stream.isEventStream());
+    try t.check("the channel's backlog: exactly the seventh message's frame, the page's own HTML", std.mem.eql(u8, try channel_stream.event(), try frameOf(a, page_of_seven.body, "7")));
+
+    // 12.
+    const while_open = try get(a, io, port, channel_url);
+    try t.check("a plain GET while both streams are open: 200, the same page", while_open.status == 200 and std.mem.eql(u8, while_open.body, page_of_seven.body));
+
+    // 13.
+    const live = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Live+on+the+**stream**" });
+    const page_of_eight = try get(a, io, port, channel_url);
+    try t.check("POST to the channel: 303, and its stream gets exactly that message's frame", live.status == 303 and
+        std.mem.eql(u8, try channel_stream.event(), try frameOf(a, page_of_eight.body, "8")));
+
+    // 14.
+    const to_dm = try post(a, io, port, .{ .path = dm_url, .form = "markdown=Only+for+the+DM" });
+    const dm_page = try get(a, io, port, dm_url);
+    try t.check("POST to the DM: its stream's first event is exactly that message's frame, none of the channel's", to_dm.status == 303 and
+        std.mem.eql(u8, try dm_stream.event(), try frameOf(a, dm_page.body, "2")));
+
+    // 15.
+    const again_live = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Live+again" });
+    const page_of_nine = try get(a, io, port, channel_url);
+    try t.check("POST to the channel again: its stream's next event is exactly that message's frame, none of the DM's", again_live.status == 303 and
+        std.mem.eql(u8, try channel_stream.event(), try frameOf(a, page_of_nine.body, "9")));
+
+    // 16.
+    const rebound_stream = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ channel_url ++ "/stream?after=0 HTTP/1.1\r\nhost: rebound.example:{d}\r\n\r\n", .{port}));
+    const uncounted = try get(a, io, port, channel_url ++ "/stream");
+    try t.check("the stream under another Host: 403; with no count: 400", rebound_stream.status == 403 and uncounted.status == 400 and
+        has(uncounted.body, "names no count"));
+
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
+}
+
+/// A stream held open: its head read whole, then its events one at a
+/// time. A watchdog shuts it after `stream_ms`, so a frame that never comes
+/// fails its step rather than hang the run.
+const Stream = struct {
+    a: std.mem.Allocator,
+    io: Io,
+    connection: Io.net.Stream,
+    reader: Io.net.Stream.Reader,
+    watchdog: Io.Future(void),
+    head: []const u8,
+    buf: *[64 * 1024]u8,
+
+    const stream_ms = 5_000;
+
+    fn open(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8) !*Stream {
+        const s = try a.create(Stream);
+        s.a = a;
+        s.io = io;
+        s.buf = try a.create([64 * 1024]u8);
+        const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+        s.connection = try addr.connect(io, .{ .mode = .stream });
+        s.watchdog = try io.concurrent(shutAfter, .{ io, s.connection, stream_ms });
+        var w = s.connection.writer(io, &.{});
+        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n\r\n", .{port}));
+        s.reader = s.connection.reader(io, s.buf);
+        var head: std.ArrayList(u8) = .empty;
+        while (!std.mem.endsWith(u8, head.items, "\r\n\r\n")) try head.append(a, try s.reader.interface.takeByte());
+        s.head = head.items;
+        return s;
+    }
+
+    fn close(s: *Stream) void {
+        s.watchdog.cancel(s.io);
+        s.connection.close(s.io);
+    }
+
+    fn header(s: *const Stream, comptime name: []const u8) ?[]const u8 {
+        const r: Response = .{ .status = 0, .head = s.head[0 .. s.head.len - 2], .body = "" };
+        return r.header(name);
+    }
+
+    fn isEventStream(s: *const Stream) bool {
+        return std.mem.startsWith(u8, s.head, "HTTP/1.1 200 ") and
+            std.mem.eql(u8, s.header("content-type") orelse "", "text/event-stream") and
+            std.mem.eql(u8, s.header("cache-control") orelse "", "no-cache") and
+            std.mem.eql(u8, s.header("x-content-type-options") orelse "", "nosniff");
+    }
+
+    /// The next event, its lines to the blank one that ends it.
+    fn event(s: *Stream) ![]const u8 {
+        var bytes: std.ArrayList(u8) = .empty;
+        while (true) {
+            const line = try s.reader.interface.takeDelimiterInclusive('\n');
+            try bytes.appendSlice(s.a, line);
+            if (line.len == 1) return bytes.items;
+        }
+    }
+};
+
+fn shutAfter(io: Io, connection: Io.net.Stream, ms: u32) void {
+    Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch return;
+    connection.shutdown(io, .both) catch {};
+}
+
+/// The frame a stream sends for the message `id` that `page` shows: `id:`,
+/// then its article's HTML, to the line after it, a `data:` line a line,
+/// then a blank line.
+fn frameOf(a: std.mem.Allocator, page: []const u8, comptime id: []const u8) ![]const u8 {
+    const from = std.mem.indexOf(u8, page, "<article class=\"message\" id=\"msg-" ++ id ++ "\">") orelse return error.NoSuchMessage;
+    const to = (std.mem.indexOfPos(u8, page, from, "</article>\n") orelse return error.NoSuchMessage) + "</article>\n".len;
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "id: " ++ id ++ "\n");
+    var lines = std.mem.splitScalar(u8, page[from..to], '\n');
+    while (lines.next()) |line| try out.print(a, "data: {s}\n", .{line});
+    try out.append(a, '\n');
+    return out.items;
 }
 
 /// Each step said on its own line, with the time since the start; a step

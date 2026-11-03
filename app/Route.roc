@@ -4,6 +4,7 @@
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
 ##     GET  /chat/dm/<pair>/<topic>
 ##     POST the same paths, a form field `markdown`: a message appended
+##     GET  the same paths and `/stream`       the conversation's stream
 ##     GET  /chat/assets/compose.js            the page's script
 ##
 ## A conversation's path is `ConversationKey`'s to read, the layout's one
@@ -20,6 +21,7 @@ Route :: [].{
 	Choice : [
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
+		OpenConversationStream(ConversationKey),
 		ServeComposeScript,
 		NotFound,
 		MethodNotAllowed([GetAndPost, GetOnly]),
@@ -41,21 +43,21 @@ Route :: [].{
 	|
 		if (path == ComposeScript.url_path.to_utf8())
 			if (method == "GET".to_utf8()) ServeComposeScript else MethodNotAllowed(GetOnly)
-		else {
-			key =
-				match UnvalidatedString.from_utf8(path) {
-					Ok(unchecked) => ConversationKey.from_url_path({ path: unchecked, directory })
-					Err(NotUtf8) => Err(NotAConversationPath)
-				}
-			match key {
-				Ok(found) =>
-					if (method == "GET".to_utf8())
-						ShowConversation(found)
-					else if (method == "POST".to_utf8())
-						AppendToConversation(found)
-					else
-						MethodNotAllowed(GetAndPost)
-				Err(_) => NotFound
+		else
+			match UnvalidatedString.from_utf8(path) {
+				Ok(unchecked) =>
+					match (ConversationKey.from_url_path({ path: unchecked, directory }), ConversationKey.from_stream_url_path({ path: unchecked, directory })) {
+						(Ok(found), _) =>
+							if (method == "GET".to_utf8())
+								ShowConversation(found)
+							else if (method == "POST".to_utf8())
+								AppendToConversation(found)
+							else
+								MethodNotAllowed(GetAndPost)
+						(_, Ok(found)) =>
+							if (method == "GET".to_utf8()) OpenConversationStream(found) else MethodNotAllowed(GetOnly)
+						_ => NotFound
+					}
+				Err(NotUtf8) => NotFound
 			}
-		}
 }

@@ -94,7 +94,8 @@ Html :: [].{
 	## **AN ATTRIBUTE, ITS NAME BY ITS TAG**: a class, an id and a link to
 	## an id on this page, each a token; a time; a form's field name, its
 	## method (always POST) and where it posts; whether a field is required;
-	## and a script's source.
+	## a script's source; and, for the page's script, where the page's
+	## stream is and how many messages the page already shows.
 	Attribute : [
 		Class(Html.Token),
 		Id(Html.Token),
@@ -105,6 +106,8 @@ Html :: [].{
 		Action(Html.SitePath),
 		Required,
 		Src(Html.SitePath),
+		DataStream(Html.SitePath),
+		DataAfter(Html.Token),
 	]
 
 	## **AN ELEMENT**: `<name a="v">inner</name>`, `inner` as it is,
@@ -177,6 +180,8 @@ attribute = |attr|
 		Action(path) => " action=\"${path.to_str()}\""
 		Required => " required"
 		Src(path) => " src=\"${path.to_str()}\""
+		DataStream(path) => " data-stream=\"${path.to_str()}\""
+		DataAfter(token) => " data-after=\"${token.to_str()}\""
 	}
 
 # ── tests
@@ -221,6 +226,10 @@ expect attribute(Class(token("author"))) == " class=\"author\""
 expect attribute(Id(token("msg-1"))) == " id=\"msg-1\""
 expect attribute(Href(token("msg-1"))) == " href=\"#msg-1\""
 expect attribute(Href(token("msg-2"))) == " href=\"#msg-2\""
+expect attribute(DataAfter(token("6"))) == " data-after=\"6\""
+expect
+	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(|path| attribute(DataStream(path)))
+		== Ok(" data-stream=\"/chat/dm/1_1/plans/stream\"")
 expect
 	DateTime.from_str("2026-11-02T19:11:32Z").map_ok(|time| attribute(DateTime(time)))
 		== Ok(" datetime=\"2026-11-02T19:11:32Z\"")

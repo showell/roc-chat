@@ -10,7 +10,9 @@
 ##     /chat/channel/<channel>/<topic>     chat/channel/<channel>/<topic>/
 ##     /chat/dm/<pair>/<topic>             chat/dm/<pair>/<topic>/
 ##
-## `from_url_path` reads those parts back, here beside the writer.
+## `from_url_path` reads those parts back, here beside the writer. A
+## conversation's stream is at its page's URL and `/stream`, which
+## `from_stream_url_path` reads back.
 import Directory
 import Dm
 import Place
@@ -56,6 +58,10 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	url_path : ConversationKey -> Str
 	url_path = |key| "/${Str.join_with(key.parts(), "/")}"
 
+	## Its stream's URL path: its page's, then `/stream`.
+	stream_url_path : ConversationKey -> Str
+	stream_url_path = |key| "${key.url_path()}/${stream_part}"
+
 	## **THE CONVERSATION A URL'S PATH NAMES**, its place found in
 	## `directory`; unless the path is not a conversation's
 	## (`NotAConversationPath`), a part is no name (`BadName`), no such
@@ -79,20 +85,86 @@ ConversationKey :: { place : Place, topic : Topic }.{
 					name,
 					topic_part,
 				],
-			) if chat.is_exactly("chat") => {
-				found = place_named({
+			) if chat.is_exactly("chat") =>
+				key_named({
 					kind,
 					name,
+					topic_part,
 					directory,
-				})?
-				named = topic_part.topic() ? |_| BadName
-				Ok(ConversationKey.({ place: found, topic: named }))
-			}
+				})
+			_ => Err(NotAConversationPath)
+		}
+
+	## **THE CONVERSATION WHOSE STREAM A URL'S PATH NAMES**, refused as
+	## `from_url_path` refuses a page's.
+	from_stream_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
+		ConversationKey,
+		[
+			NotAConversationPath,
+			BadName,
+			NoSuchChannel,
+			NoSuchHuman,
+		],
+	)
+	from_stream_url_path = |{ path, directory }|
+		match path.url_path_parts() {
+			Ok(
+				[
+					chat,
+					kind,
+					name,
+					topic_part,
+					stream,
+				],
+			) if chat.is_exactly("chat") and stream.is_exactly(stream_part) =>
+				key_named({
+					kind,
+					name,
+					topic_part,
+					directory,
+				})
 			_ => Err(NotAConversationPath)
 		}
 
 	is_eq : _
 	to_hash : _
+}
+
+## The last part of a stream's URL path.
+stream_part : Str
+stream_part = "stream"
+
+## The conversation under `topic_part` in the place of `kind` that `name`
+## names, if `directory` holds it.
+key_named : {
+	kind : UnvalidatedString,
+	name : UnvalidatedString,
+	topic_part : UnvalidatedString,
+	directory : Directory,
+} -> Try(
+	ConversationKey,
+	[
+		NotAConversationPath,
+		BadName,
+		NoSuchChannel,
+		NoSuchHuman,
+	],
+)
+key_named = |
+	{
+		kind,
+		name,
+		topic_part,
+		directory,
+	},
+| {
+	found = place_named({
+		kind,
+		name,
+		directory,
+	})?
+	named = topic_part.topic() ? |_| BadName
+	Ok(ConversationKey.({ place: found, topic: named }))
 }
 
 ## The place of `kind` (`channel` or `dm`) that `name` names, if

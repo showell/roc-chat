@@ -27,8 +27,9 @@
 //! **EVERY WRITE IS DURABLE BEFORE IT ANSWERS**: the file is fsynced, and so
 //! is each folder whose entries changed. A failed fsync fails the write.
 //!
-//! **NO LOCKS**: the server answers one request at a time (host/http.zig),
-//! so two writes of one file never meet.
+//! **NO LOCKS**: the server makes one Roc call at a time (the turn,
+//! host/http.zig), and only a Roc call writes, so two writes of one file
+//! never meet.
 //!
 //! **EACH ANSWER'S TAGS ARE IN ROC'S ORDER, ALPHABETICAL**: a tag union with
 //! no payloads crosses to the Roc as one byte numbered so, and these enums

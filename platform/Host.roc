@@ -90,4 +90,8 @@ Host := [].{
 	## `count` bytes from the OS's secure random source, at most 1,024: more
 	## is the app's bug, and the host stops.
 	fill_with_random_bytes! : U64 => List(U8)
+
+	## `bytes` sent, as they are, to every stream held open on `key`
+	## (`Http.Response`'s `Stream`); none there, and nothing is sent.
+	publish_bytes_to_streams_on_key! : List(U8), List(U8) => {}
 }

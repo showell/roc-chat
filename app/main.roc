@@ -9,6 +9,7 @@
 ##   tags (`TranscriptRefusal` puts them in words).
 ## - `handle_http_request!` (the server, host/http.zig): a request in, its
 ##   response out. `Route` chooses the answer; `ConversationRoute` gives it.
+##   A conversation's stream is held by the signed-in user (`acting`).
 ##
 ## **TWO STAND-INS, BOTH HERE AT THE EDGE**: the directory, until one is
 ## stored (`directory`), and who is acting, until sessions exist
@@ -81,6 +82,13 @@ handle_http_request! = |request|
 				directory,
 			}) {
 				ShowConversation(key) => ConversationRoute.show!(key)
+				OpenConversationStream(key) =>
+					ConversationRoute.open_stream!({
+						key,
+						acting,
+						query: request.query,
+						headers: request.headers,
+					})
 				ServeComposeScript => HttpAnswer.script(ComposeScript.bytes)
 				AppendToConversation(key) =>
 					ConversationRoute.post_sent_message!({
@@ -165,6 +173,7 @@ shown = |path|
 		directory,
 	}) {
 		ShowConversation(key) => key.url_path()
+		OpenConversationStream(key) => "the stream of ${key.url_path()}"
 		_ => "not found"
 	}
 
@@ -174,3 +183,5 @@ expect shown("/chat/channel/general/plans") == "/chat/channel/general/plans"
 expect shown("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
 expect shown("/chat/channel/other/plans") == "not found"
 expect shown("/chat/dm/1_2/plans") == "not found"
+expect shown("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
+expect shown("/chat/dm/1_2/plans/stream") == "not found"

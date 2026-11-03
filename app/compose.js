@@ -10,7 +10,13 @@
 // - the textarea has the focus;
 // - Ctrl+Enter (⌘+Enter on a Mac) sends, as the old chat-client's box
 //   does, and plain Enter is a new line (and a key while an input method is
-//   composing a character is the input method's).
+//   composing a character is the input method's);
+// - each message added after the page was drawn, by any tab or by curl,
+//   arrives on the conversation's stream (`.messages`' data-stream, after
+//   the data-after messages it shows) as the page's own HTML, and is
+//   appended; the view follows it only when the newest was in view, as
+//   chat-client's does. The browser's EventSource reconnects by itself,
+//   saying the last message it saw, so none is missed or shown twice.
 //
 // It styles the elements it arranges itself (`.style`), so the server
 // sends no CSS for them.
@@ -24,6 +30,11 @@
   var help = compose && compose.querySelector('.help');
   if (!messages || !box || !send || !help) {
     throw new Error('compose.js: the page has no .messages, or no .compose with a form, its textarea, its button and .help');
+  }
+  var stream = messages.getAttribute('data-stream');
+  var after = messages.getAttribute('data-after');
+  if (!stream || !/^[0-9]+$/.test(after || '')) {
+    throw new Error('compose.js: .messages has no data-stream, or a data-after that is no count');
   }
 
   var body = document.body;
@@ -66,4 +77,24 @@
     if (sending || box.value.trim() === '') return;
     form.requestSubmit(send);
   });
+
+  // Whether the newest message's bottom is in view, read before a new one
+  // is appended below it.
+  function newestInView() {
+    var newest = messages.lastElementChild;
+    if (!newest) return true;
+    return newest.getBoundingClientRect().bottom <= messages.getBoundingClientRect().bottom + 1;
+  }
+
+  var events = new EventSource(stream + '?after=' + after);
+  events.onmessage = function (e) {
+    var follow = newestInView();
+    var empty = messages.querySelector('.empty');
+    if (empty) empty.remove();
+    messages.insertAdjacentHTML('beforeend', e.data);
+    if (follow) scrollToNewest();
+  };
+  // A page restored from the back button's cache has a stream that was
+  // torn down; chat-client reloads it, and so does this.
+  window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
 })();

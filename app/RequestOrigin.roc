@@ -24,6 +24,7 @@
 ## (a page out), `SecureImageTag` (a message's images) and `SignedIn` (who
 ## is acting).
 import pf.Http
+import RequestHeader
 
 RequestOrigin :: [].{
 
@@ -42,7 +43,7 @@ RequestOrigin :: [].{
 		},
 	| {
 		hosts = ["127.0.0.1:${port.to_str()}".to_utf8(), "localhost:${port.to_str()}".to_utf8()]
-		match sent(headers, "host") {
+		match RequestHeader.sent(headers, "host") {
 			Unsent => Err(MissingHost)
 			Sent(host) if hosts.contains(host) =>
 				if (method == "GET".to_utf8())
@@ -79,35 +80,12 @@ RequestOrigin :: [].{
 writer_of : List(Http.Header), List(List(U8)) -> Try({}, [ForeignOrigin, CrossSiteFetch])
 writer_of = |headers, hosts| {
 	origins = hosts.map(|host| "http://".to_utf8().concat(host))
-	match (sent(headers, "origin"), sent(headers, "sec-fetch-site")) {
+	match (RequestHeader.sent(headers, "origin"), RequestHeader.sent(headers, "sec-fetch-site")) {
 		(Sent(origin), _) if !origins.contains(origin) => Err(ForeignOrigin)
 		(Repeated, _) => Err(ForeignOrigin)
 		(_, Sent(site)) if site != "same-origin".to_utf8() => Err(CrossSiteFetch)
 		(_, Repeated) => Err(CrossSiteFetch)
 		_ => Ok({})
-	}
-}
-
-## **THE HEADER `name`** (written in lowercase; a header's name is matched
-## without case): its value when sent once, else `Unsent` or `Repeated`.
-sent : List(Http.Header),
-Str -> [
-	Sent(List(U8)),
-	Unsent,
-	Repeated,
-]
-sent = |headers, name| {
-	named = headers.keep_if(
-		|header|
-			match Str.from_utf8(header.name) {
-				Ok(text) => text.with_ascii_lowercased() == name
-				Err(_) => Bool.False
-			},
-	)
-	match named {
-		[] => Unsent
-		[only] => Sent(only.value)
-		_ => Repeated
 	}
 }
 

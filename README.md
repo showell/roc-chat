@@ -2,7 +2,7 @@
 
 A chat for a small group of humans and their agents, written in Roc on a Zig host. `gopher-roc` is a code name. `docs/design.md` holds the design, from first principles, and `docs/platform.md` describes what the host gives the Roc. This is a fresh start from roc-chat, which it borrows from as needed.
 
-**Status (2026-11-02): the first server.** It serves a conversation's page, two panes (the messages above a compose box), and appends a message posted from the box, and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
+**Status (2026-11-03): the first server.** It serves a conversation's page, two panes (the messages above a compose box), appends a message posted from the box, and shows each new message on every open page of the conversation without a reload, and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
 
 ## What the code holds
 
@@ -12,7 +12,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `Html` (elements from closed sets and strict tokens);
   - `Markdown` (roc-markdown's output, its images ruled by `SecureImageTag`);
   - `Page`'s fixed head and style sheet.
-- **The page's one script.** `app/compose.js` lays out the two panes and gives the compose box its keys (Ctrl/⌘-Enter sends, as the old chat-client's does; plain Enter is a new line). `ComposeScript` imports it whole at compile time, so the file is its bytes' one home, and the server answers it at `/chat/assets/compose.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without it: the box is a plain form.
+- **The page's one script.** `app/compose.js` lays out the two panes, gives the compose box its keys (Ctrl/⌘-Enter sends, as the old chat-client's does; plain Enter is a new line), and appends each message the conversation's stream brings (an `EventSource`, at the page's URL and `/stream`). `ComposeScript` imports it whole at compile time, so the file is its bytes' one home, and the server answers it at `/chat/assets/compose.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without it: the box is a plain form.
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
 - **Who is acting.** That is a `SignedIn`, and its door, `dangerously_assume`, stands in for sessions.
 - **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
@@ -21,7 +21,8 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `RequestOrigin` holds every request to this server's own origin first: its `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, and a POST from another origin's page is refused (403).
   - `Route` chooses an answer from the method and path.
   - `ConversationKey` is a place plus a topic, and the one home of the layout: a URL `/chat/channel/<channel>/<topic>` names the folder `chat/channel/<channel>/<topic>/`, and `/chat/dm/<pair>/<topic>` names `chat/dm/<pair>/<topic>/`.
-  - `ConversationRoute` answers GET and POST.
+  - `ConversationRoute` answers GET and POST, and opens a conversation's stream.
+  - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `Page.message` writes for the page.
   - `FileSystem` is the only module that touches files.
   - `app/main.roc` is the edge, holding both stand-ins: the directory, until one is stored (Steve, plus the channel `general`), and `acting`, which is Steve, assumed.
 

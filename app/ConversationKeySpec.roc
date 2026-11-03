@@ -17,6 +17,15 @@ with_room = {
 	(Sample.directory.create_channel({ by: Sample.admin, name }) ?? crash "ConversationKeySpec: the name is free").directory
 }
 
+## The key whose stream `path` names in `with_room`, as its stream's URL
+## path.
+stream_read_back : Str -> Try(Str, _)
+stream_read_back = |path| {
+	unchecked = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
+	key = ConversationKey.from_stream_url_path({ path: unchecked, directory: with_room })?
+	Ok(key.stream_url_path())
+}
+
 ## The key `path` names in `with_room`, as its URL path and its parts
 ## between spaces.
 read_back : Str -> Try({ url : Str, parts : Str }, _)
@@ -59,6 +68,27 @@ expect
 		"/chat/dm/1_9/plans",
 		"/chat/dm/9_9/plans",
 	].all(|path| read_back(path) == Err(NoSuchHuman))
+# A stream's path: a conversation's page's, then `/stream`, read back to the
+# same path; a page's path is no stream's, and a stream's no page's; each
+# refusal of the conversation's parts as a page's.
+expect stream_read_back("/chat/channel/plans-room/plans/stream") == Ok("/chat/channel/plans-room/plans/stream")
+expect stream_read_back("/chat/dm/1_2/stream/stream") == Ok("/chat/dm/1_2/stream/stream")
+expect read_back("/chat/dm/1_2/stream") == Ok({ url: "/chat/dm/1_2/stream", parts: "chat dm 1_2 stream" })
+expect
+	[
+		"/chat/dm/1_2/plans",
+		"/chat/dm/1_2/plans/stream/",
+		"/chat/dm/1_2/plans/Stream",
+		"/chat/dm/1_2/plans/streams",
+		"/chat/dm/1_2/plans/stream/stream",
+		"/talk/dm/1_2/plans/stream",
+		"/chat/group/1_2/plans/stream",
+	].all(|path| stream_read_back(path) == Err(NotAConversationPath))
+expect read_back("/chat/dm/1_2/plans/stream") == Err(NotAConversationPath)
+expect stream_read_back("/chat/dm/2_1/plans/stream") == Err(BadName)
+expect stream_read_back("/chat/dm/1_2/plans_2/stream") == Err(BadName)
+expect stream_read_back("/chat/channel/other-room/plans/stream") == Err(NoSuchChannel)
+expect stream_read_back("/chat/dm/1_3/plans/stream") == Err(NoSuchHuman)
 # A key is its place and its topic: the same URL gives equal keys.
 expect {
 	key = |path| ConversationKey.from_url_path({ path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: UTF-8", directory: with_room })
@@ -75,6 +105,7 @@ chosen = |method, path|
 	}) {
 		ShowConversation(key) => "show ${key.url_path()}"
 		AppendToConversation(key) => "append ${key.url_path()}"
+		OpenConversationStream(key) => "stream ${key.url_path()}"
 		ServeComposeScript => "the script"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
@@ -88,6 +119,12 @@ expect chosen("get", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
 expect chosen("GET", "/chat/dm/1_3/plans".to_utf8()) == "not found"
 expect chosen("POST", "/nowhere".to_utf8()) == "not found"
 expect chosen("GET", [0x2f, 0xff]) == "not found"
+# A conversation's stream: GET alone.
+expect chosen("GET", "/chat/dm/1_2/plans/stream".to_utf8()) == "stream /chat/dm/1_2/plans"
+expect chosen("POST", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
+expect chosen("HEAD", "/chat/dm/1_2/plans/stream".to_utf8()) == "not allowed: GET"
+expect chosen("GET", "/chat/dm/1_3/plans/stream".to_utf8()) == "not found"
+expect chosen("GET", "/chat/dm/1_2/plans/stream/x".to_utf8()) == "not found"
 # The script's path: GET alone, and exactly its path.
 expect chosen("GET", "/chat/assets/compose.js".to_utf8()) == "the script"
 expect chosen("POST", "/chat/assets/compose.js".to_utf8()) == "not allowed: GET"

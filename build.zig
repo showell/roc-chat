@@ -33,11 +33,13 @@ pub fn build(b: *std.Build) void {
     serve.stdio = .inherit;
     b.step("serve", "The server on 127.0.0.1: -- <data folder> [--port <n>] (9611 by default)").dependOn(&serve.step);
 
-    // **THE HOST'S TESTS**: the file primitives alone; the seam held to
-    // roc glue's layout; the HTTP layer with the app linked.
-    const tests = b.step("test", "The host's tests: the file primitives, the seam against roc glue, the HTTP layer");
-    const primitives = b.createModule(.{ .root_source_file = b.path("host/file_primitives.zig"), .target = target, .optimize = optimize });
-    tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = primitives })).step);
+    // **THE HOST'S TESTS**: the file primitives and the bus alone; the
+    // seam held to roc glue's layout; the HTTP layer with the app linked.
+    const tests = b.step("test", "The host's tests: the file primitives, the bus, the seam against roc glue, the HTTP layer");
+    for ([_][]const u8{ "host/file_primitives.zig", "host/bus.zig" }) |root| {
+        const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
+        tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
+    }
     for ([_][]const u8{ "host/seam_test.zig", "host/http_test.zig" }) |root| {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
         m.addObjectFile(app);

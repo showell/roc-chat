@@ -129,8 +129,8 @@ test "a request too slow is a 408, and the server serves the next" {
     try testing.expectEqual(404, try status(next));
 }
 
-test "a refused client that never closes holds the server for the linger, not the write deadline" {
-    const r = try Running.start(.{ .body_most = 64, .write_ms = 5_000, .linger_ms = 200 });
+test "a refused client that never closes holds its own connection, not the server" {
+    const r = try Running.start(.{ .body_most = 64, .write_ms = 5_000, .linger_ms = 1_000 });
     defer r.stop();
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
@@ -149,9 +149,8 @@ test "a refused client that never closes holds the server for the linger, not th
     const next = try exchange(a, port, try ours(a, port, "GET /nowhere HTTP/1.1", "\r\n"));
     const waited = began.untilNow(io, .awake).toMilliseconds();
     try testing.expectEqual(404, try status(next));
-    // It drained (it waited out most of the linger), and it stopped there.
-    try testing.expect(waited >= 100);
-    try testing.expect(waited < 2_000);
+    // Answered on its own task while the refused connection lingers.
+    try testing.expect(waited < 500);
 }
 
 test "it listens on 127.0.0.1 alone" {
@@ -165,4 +164,49 @@ test "it listens on 127.0.0.1 alone" {
 test "a header with a CR, an LF or a NUL is never written" {
     try testing.expect(http.header_safe("text/html; charset=utf-8"));
     for ([_][]const u8{ "a\rb", "a\nb", "a\x00b", "\r\n" }) |v| try testing.expect(!http.header_safe(v));
+}
+
+/// A stream of the conversation `path`, held open, its head read.
+const HeldStream = struct {
+    connection: Io.net.Stream,
+    reader: Io.net.Stream.Reader,
+    buf: [16 * 1024]u8,
+
+    fn open(s: *HeldStream, a: std.mem.Allocator, port: u16) !void {
+        const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+        s.connection = try addr.connect(io, .{ .mode = .stream });
+        var w = s.connection.writer(io, &.{});
+        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=0 HTTP/1.1", "\r\n"));
+        s.reader = s.connection.reader(io, &s.buf);
+        var last: [4]u8 = @splat(0);
+        while (!std.mem.eql(u8, &last, "\r\n\r\n")) {
+            std.mem.copyForwards(u8, last[0..3], last[1..4]);
+            last[3] = try s.reader.interface.takeByte();
+        }
+    }
+
+    /// The next line the stream sends, or null when the server ended it.
+    fn line(s: *HeldStream) !?[]const u8 {
+        return s.reader.interface.takeDelimiterInclusive('\n') catch |e| switch (e) {
+            error.EndOfStream => null,
+            else => e,
+        };
+    }
+};
+
+test "a holder at its cap ends its own oldest stream, and its newer ones still get every frame" {
+    const r = try Running.start(.{ .streams_per_holder = 2 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    var streams: [3]HeldStream = undefined;
+    for (&streams) |*s| try s.open(a, port);
+    defer for (&streams) |*s| s.connection.close(io);
+    const posted = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=x"));
+    try testing.expectEqual(303, try status(posted));
+    // The first was ended for the third, before the post: closed, no frame.
+    try testing.expectEqual(null, try streams[0].line());
+    for (streams[1..]) |*s| try testing.expectEqualStrings("id: 1\n", (try s.line()).?);
 }

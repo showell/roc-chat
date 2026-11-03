@@ -15,7 +15,7 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(a);
     if (args.len != 3) std.process.fatal("usage: demo <conversation's URL path> <transcript file>", .{});
     const text = try Io.Dir.cwd().readFileAlloc(io, args[2], a, .unlimited);
-    seam.begin(a, null, null);
+    seam.begin(.{ .arena = a });
     const html = seam.roc_page(.from(args[1]), .from(text));
     seam.end();
     var buf: [64 * 1024]u8 = undefined;
