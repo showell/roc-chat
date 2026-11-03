@@ -1,6 +1,6 @@
-## **CHANNELS' TESTS**: a channel starts empty, is found by its exact
-## name, and takes and loses members, humans and agents, each once, by an
-## admin.
+## These are the tests of `Channels`: a channel starts empty, is found by
+## its exact name, and gains and loses members, humans and agents, each
+## once, by an admin.
 import Admin
 import ChannelName
 import Channels
@@ -14,7 +14,6 @@ ChannelsSpec :: [].{}
 channel_name : Str -> ChannelName
 channel_name = |text| ChannelName.from_str(text) ?? crash "ChannelsSpec: a test's channel name is one"
 
-## Steve, as an admin.
 admin : Admin
 admin = Sample.admin
 
@@ -24,7 +23,7 @@ with_plans = Channels.empty.create({ by: admin, name: channel_name("plans") }).c
 
 ## `channels` with `change` made to `plans` by the admin.
 changed : Channels,
-[Admit(Users.User), Remove(Users.User)] -> Try(
+[Add(Users.User), Remove(Users.User)] -> Try(
 	Channels,
 	[
 		NoSuchChannel,
@@ -34,7 +33,7 @@ changed : Channels,
 )
 changed = |channels, change|
 	match change {
-		Admit(member) => channels.add_member({
+		Add(member) => channels.add_member({
 			by: admin,
 			channel: channel_name("plans"),
 			member,
@@ -47,7 +46,7 @@ changed = |channels, change|
 	}
 
 ## `channels` with each change made in turn, which a test's always can be.
-all_changed : Channels, List([Admit(Users.User), Remove(Users.User)]) -> Channels
+all_changed : Channels, List([Add(Users.User), Remove(Users.User)]) -> Channels
 all_changed = |channels, changes|
 	changes.fold(
 		channels,
@@ -59,9 +58,9 @@ everyone : Channels
 everyone = all_changed(
 	with_plans,
 	[
-		Admit(Sample.user("CC")),
-		Admit(Sample.user("Apoorva")),
-		Admit(Sample.steve),
+		Add(Sample.user("CC")),
+		Add(Sample.user("Apoorva")),
+		Add(Sample.steve),
 	],
 )
 
@@ -79,9 +78,9 @@ expect with_plans.channel(channel_name("Plans")) == Err(NoSuchChannel)
 expect Channels.empty.channel(channel_name("plans")) == Err(NoSuchChannel)
 expect Channels.empty.to_list() == []
 expect with_plans.to_list().map(|c| c.name().to_str()) == ["plans"]
-# Admitting: humans and agents, each once; the members in id order.
+# Adding: humans and agents, each once; the members in id order.
 expect members_of(everyone) == Ok(["1", "2", "3"])
-expect members_of(all_changed(with_plans, [Admit(Sample.user("CC"))])) == Ok(["3"])
+expect members_of(all_changed(with_plans, [Add(Sample.user("CC"))])) == Ok(["3"])
 expect
 	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve)) == Ok(Bool.True)
 expect
@@ -89,7 +88,7 @@ expect
 expect
 	with_plans.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve))
 		== Ok(Bool.False)
-expect changed(everyone, Admit(Sample.steve)).map_ok(members_of) == Err(AlreadyMember)
+expect changed(everyone, Add(Sample.steve)).map_ok(members_of) == Err(AlreadyMember)
 expect
 	with_plans.add_member({
 		by: admin,
@@ -121,14 +120,14 @@ expect
 		member: Sample.steve,
 	}).map_ok(members_of)
 		== Err(NoSuchChannel)
-# A member removed can be admitted again, and removed again.
+# A member removed can be added again, and removed again.
 expect
 	members_of(
 		all_changed(
 			everyone,
 			[
 				Remove(Sample.user("Apoorva")),
-				Admit(Sample.user("Apoorva")),
+				Add(Sample.user("Apoorva")),
 			],
 		),
 	)
@@ -139,9 +138,33 @@ expect
 			everyone,
 			[
 				Remove(Sample.user("Apoorva")),
-				Admit(Sample.user("Apoorva")),
+				Add(Sample.user("Apoorva")),
 				Remove(Sample.user("Apoorva")),
 			],
 		),
 	)
 		== Ok(["1", "3"])
+# A change to one channel leaves the others as they were.
+expect {
+	both = Channels.empty.create({ by: admin, name: channel_name("plans") }).channels.create({ by: admin, name: channel_name("general") }).channels
+	grown = changed(both, Add(Sample.steve)) ?? crash "ChannelsSpec: Steve joins plans"
+	members_of(grown) == Ok(["1"])
+		and grown.channel(channel_name("general")).map_ok(|c| c.members()) == Ok([])
+		and grown.to_list().map(|c| c.name().to_str()) == ["plans", "general"]
+}
+# The members are in the ids' numeric order, not their text's: 9 before 10.
+expect {
+	users = Sample.crowded(7).users()
+	user_at = |text| users.user(UserId.from_str(text) ?? crash "ChannelsSpec: a test's id is an id") ?? crash "ChannelsSpec: the crowded sample has ten users"
+	members_of(
+		all_changed(
+			with_plans,
+			[
+				Add(user_at("10")),
+				Add(user_at("9")),
+				Add(user_at("1")),
+			],
+		),
+	)
+		== Ok(["1", "9", "10"])
+}
