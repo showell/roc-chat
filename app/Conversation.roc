@@ -1,8 +1,8 @@
-## **A CONVERSATION**: a topic and its messages, in id order. It stands
-## alone: no channel, no DM, no reader, no file. Opaque, so it grows only
-## by `append`, which numbers each message by `next_id` and refuses one
-## dated before the latest, so a conversation whose ids skip, repeat or run
-## backwards, or whose times run backwards, can't be built.
+## A conversation is a topic and its messages, in order. It knows nothing
+## about where it lives (a channel or a DM), who reads it, or how it is
+## stored. The type is opaque, and `append` is the only way to add a
+## message, so every conversation has ids 1, 2, 3 and so on, and times that
+## don't go backwards.
 import Author
 import Message
 import MsgAnchor
@@ -17,14 +17,9 @@ Conversation :: {
 	empty : Topic -> Conversation
 	empty = |topic| Conversation.({ topic, messages: [] })
 
-	## The conversation with the unnumbered message added as its next
-	## message, and that message, numbered by `next_id`; unless it already
-	## holds as many as an id can number (`Full`, asked first), or the
-	## unnumbered message is dated before its latest message (`Backdated`).
-	##
-	## **TIMES NEVER GO BACKWARDS**: a message's time is never earlier than
-	## its conversation's latest. Equal is allowed: times are to the
-	## second, and two messages can share one.
+	## Adds a message, giving it the next id. It refuses a message dated
+	## before the latest one. A message dated the same second as the latest
+	## is fine, since times are to the second.
 	append : Conversation,
 	Message.Unnumbered(Author) -> Try(
 		{ conversation : Conversation, message : Message },
@@ -45,10 +40,8 @@ Conversation :: {
 		}
 	}
 
-	## **THE NEXT MESSAGE'S ID, ITS ONE HOME**: 1 for the first, else the
-	## one after the latest's, unless the conversation is full. `append`
-	## numbers by it, and a reader asks it first, to name the message it is
-	## reading in a refusal.
+	## The id the next message will get. `Transcript` also uses it, to name
+	## the message it is reading when it refuses a file.
 	next_id : Conversation -> Try(Message.Id, [Full])
 	next_id = |Conversation.(c)|
 		match c.messages.last() {
@@ -56,24 +49,20 @@ Conversation :: {
 			Err(ListWasEmpty) => Ok(Message.Id.first)
 		}
 
-	## **HOW THE MESSAGE `id` IS NAMED** (`MsgAnchor`): its reference,
-	## `MSG_<topic>_<n>`, and its page anchor. Unique only within the
-	## conversation's place, as its topic is: pages and links pair it with
-	## the `Place`.
+	## The reference for message `id`, `MSG_<topic>_<n>`. It's unique only
+	## within the conversation's channel or DM, as the topic is.
 	reference : Conversation, Message.Id -> MsgAnchor
 	reference = |Conversation.(c), id| MsgAnchor.of({ topic: c.topic, id })
 
-	## Its topic.
 	topic : Conversation -> Topic
 	topic = |Conversation.(c)| c.topic
 
-	## Its messages, oldest first, each numbered by `append`.
+	## Oldest first.
 	messages : Conversation -> List(Message)
 	messages = |Conversation.(c)| c.messages
 
-	## **THE MESSAGES A READER HAS NOT SEEN**, oldest first: those past the
-	## first `count`, which are the ones numbered past `count`, as `append`
-	## numbers from 1 with no gap.
+	## The messages after the first `count`: what a reader who has seen
+	## `count` messages hasn't seen yet. Oldest first.
 	messages_after : Conversation, U16 -> List(Message)
 	messages_after = |Conversation.(c), count| c.messages.drop_first(count.to_u64())
 
