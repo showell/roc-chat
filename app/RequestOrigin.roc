@@ -1,35 +1,36 @@
-## **A TRUST BOUNDARY: ONLY THIS SERVER'S OWN ORIGIN MAY ASK**. The
-## server listens on 127.0.0.1 alone (host/http.zig), but a browser on this
-## machine, or on a laptop through `ssh -L`, carries any web page's
-## requests to it. A page elsewhere can POST a plain form to
+## This module refuses any request that does not come from this server's
+## own origin. The server listens on 127.0.0.1 alone (host/http.zig), but a
+## browser on this machine, or on a laptop through `ssh -L`, carries any web
+## page's requests to it. A page elsewhere can POST a plain form to
 ## `http://localhost:<port>/...`, which needs no preflight; and a name an
 ## attacker rebinds to 127.0.0.1 lets their page GET a transcript and read
-## it. Until sign-in exists every request acts as Steve (main's `acting`),
-## so either would write or read as him.
+## it. Until sign-in exists, every request acts as Steve (main's `acting`),
+## so either attack would write or read as him.
 ##
-## So main holds every request here before it is routed:
+## So main checks every request here before it routes it:
 ##
-## - its `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`,
-##   `<port>` the one the server listens on (`Http.Request.port`); a
-##   rebound name arrives under its own name, and is refused;
-## - a request that writes (every method but GET) is refused when it
+## - Its `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`,
+##   where `<port>` is the one the server listens on (`Http.Request.port`).
+##   A rebound name arrives under its own name, and is refused.
+## - A request that writes (every method but GET) is refused when it
 ##   carries an `Origin` that is not `http://` and one of those two, or a
 ##   `Sec-Fetch-Site` that is not `same-origin`. A client that sends
 ##   neither (curl, as the README posts) passes.
 ##
 ## A header sent twice names no one value, and is refused as a foreign one.
-## Each refusal is a named tag, a 403 in main.
+## Each refusal is a named tag, which main answers with a 403.
 ##
-## The other trust boundaries: `UnvalidatedString` (text in), `TrustedHtml`
-## (a page out), `SecureImageTag` (a message's images) and `SignedIn` (who
-## is acting).
+## This module is one of the program's five trust boundaries. The others
+## are `UnvalidatedString`, the way text comes in; `TrustedHtml`, the way
+## markup goes out to a page; `SecureImageTag`, which images a message may
+## show; and `SignedIn`, who is acting.
 import pf.Http
 import RequestHeader
 
 RequestOrigin :: [].{
 
-	## **WHETHER THE REQUEST COMES FROM THIS SERVER'S OWN ORIGIN**, by its
-	## `method` and `headers`, the server listening on `port`; or why not.
+	## `Ok` when a request, by its `method` and `headers`, comes from the
+	## origin of this server, listening on `port`; else why not.
 	check : {
 		method : List(U8),
 		headers : List(Http.Header),
@@ -49,13 +50,13 @@ RequestOrigin :: [].{
 				if (method == "GET".to_utf8())
 					Ok({})
 				else
-					writer_of(headers, hosts)
+					write_verdict(headers, hosts)
 			_ => Err(ForeignHost)
 		}
 	}
 
-	## What `words` takes: every refusal `check` answers. A handler's input,
-	## so `check`'s own error stays listed in place.
+	## Every refusal `check` answers, as `words` takes it. `check` lists its
+	## own errors in place; this union is only the handler's input.
 	Refusal : [
 		MissingHost,
 		ForeignHost,
@@ -63,7 +64,7 @@ RequestOrigin :: [].{
 		CrossSiteFetch,
 	]
 
-	## **WHY A REQUEST IS REFUSED, IN WORDS**.
+	## Why a request is refused, in words for the 403's page.
 	words : RequestOrigin.Refusal -> Str
 	words = |why|
 		match why {
@@ -74,11 +75,11 @@ RequestOrigin :: [].{
 		}
 }
 
-## **A REQUEST THAT WRITES**: refused when its `Origin` is not one of
-## `hosts`' origins, or its `Sec-Fetch-Site` not `same-origin`, each when
-## sent.
-writer_of : List(Http.Header), List(List(U8)) -> Try({}, [ForeignOrigin, CrossSiteFetch])
-writer_of = |headers, hosts| {
+## The verdict on a request that writes, by its `headers`: refused when it
+## sends an `Origin` that is not `http://` and one of `hosts`, or a
+## `Sec-Fetch-Site` that is not `same-origin`, or either header twice.
+write_verdict : List(Http.Header), List(List(U8)) -> Try({}, [ForeignOrigin, CrossSiteFetch])
+write_verdict = |headers, hosts| {
 	origins = hosts.map(|host| "http://".to_utf8().concat(host))
 	match (RequestHeader.sent(headers, "origin"), RequestHeader.sent(headers, "sec-fetch-site")) {
 		(Sent(origin), _) if !origins.contains(origin) => Err(ForeignOrigin)
@@ -123,6 +124,7 @@ expect posted([("Origin", "http://evil.example")]) == Err(ForeignOrigin)
 expect posted([("Origin", "null")]) == Err(ForeignOrigin)
 expect posted([("Origin", "https://localhost:9611")]) == Err(ForeignOrigin)
 expect posted([("Origin", "http://localhost:9612")]) == Err(ForeignOrigin)
+expect posted([("Origin", "http://localhost:9611/")]) == Err(ForeignOrigin)
 expect
 	posted([("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")])
 		== Err(ForeignOrigin)
@@ -158,6 +160,12 @@ expect
 		== Ok({})
 expect
 	verdict("PUT", [("Host", "localhost:9611"), ("Origin", "http://evil.example")])
+		== Err(ForeignOrigin)
+expect
+	verdict("HEAD", [("Host", "localhost:9611"), ("Origin", "http://evil.example")])
+		== Err(ForeignOrigin)
+expect
+	verdict("get", [("Host", "localhost:9611"), ("Origin", "http://evil.example")])
 		== Err(ForeignOrigin)
 expect
 	verdict("DELETE", [("Host", "localhost:9611"), ("Sec-Fetch-Site", "cross-site")])

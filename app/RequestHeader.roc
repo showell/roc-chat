@@ -1,32 +1,37 @@
-## A request's header, by its name: the one way the app reads a header, so
-## every reader treats a header sent twice alike.
+## This module reads one of a request's headers by its name. It is the one
+## way the app reads a header, so every reader treats a header sent twice
+## the same way: as naming no one value.
 import pf.Http
 
 RequestHeader :: [].{
 
-	## **THE HEADER `name`** (written in lowercase; a header's name is
-	## matched without case): its value when sent once, else `Unsent` or
-	## `Repeated`, which names no one value.
+	## The header `name`: its value when it was sent once, else `Unsent`, or
+	## `Repeated` when it was sent more than once. A header's name is matched
+	## without case, so `name` is written in lowercase, or this crashes: a
+	## name with a capital letter would never match.
 	sent : List(Http.Header),
 	Str -> [
 		Sent(List(U8)),
 		Unsent,
 		Repeated,
 	]
-	sent = |headers, name| {
-		named = headers.keep_if(
-			|header|
-				match Str.from_utf8(header.name) {
-					Ok(text) => text.with_ascii_lowercased() == name
-					Err(_) => Bool.False
-				},
-		)
-		match named {
-			[] => Unsent
-			[only] => Sent(only.value)
-			_ => Repeated
+	sent = |headers, name|
+		if (name != name.with_ascii_lowercased())
+			crash "RequestHeader.sent: the name ${name} is not written in lowercase"
+		else {
+			named = headers.keep_if(
+				|header|
+					match Str.from_utf8(header.name) {
+						Ok(text) => text.with_ascii_lowercased() == name
+						Err(_) => Bool.False
+					},
+			)
+			match named {
+				[] => Unsent
+				[only] => Sent(only.value)
+				_ => Repeated
+			}
 		}
-	}
 }
 
 # ── tests
@@ -44,8 +49,13 @@ looked_up = |headers, name|
 		Repeated => Repeated
 	}
 
+# Sent once, in any case, its value exactly as sent.
 expect looked_up([("Last-Event-ID", "6")], "last-event-id") == Sent("6")
 expect looked_up([("last-event-id", "")], "last-event-id") == Sent("")
+expect looked_up([("Host", "x"), ("Content-Type", "Text/HTML")], "content-type") == Sent("Text/HTML")
+# Not sent: no headers, another header, or a name that is not UTF-8.
 expect looked_up([("Host", "x")], "last-event-id") == Unsent
 expect looked_up([], "last-event-id") == Unsent
+expect RequestHeader.sent([{ name: [0xFF], value: "x".to_utf8() }], "host") == Unsent
+# Sent twice, in any case, even with the same value.
 expect looked_up([("Last-Event-ID", "6"), ("last-event-id", "6")], "last-event-id") == Repeated
