@@ -1,25 +1,17 @@
-// THE CONVERSATION PAGE'S SCRIPT: the two panes and the compose box's keys.
+// This script runs on a conversation page, which app/Page.roc builds and
+// app/ComposeScript.roc serves. The page works without it: the form posts,
+// and the messages read top to bottom. The script makes the messages fill
+// the window above a fixed compose box, and makes Ctrl+Enter (⌘+Enter on a
+// Mac) send, as chat-client does; plain Enter is a new line.
 //
-// app/Page.roc builds the markup (`.messages`, then `.compose` holding the
-// form and its keyboard help); app/ComposeScript.roc serves this file, its
-// bytes' one home being this file. The page works without it: the form
-// posts, and the messages read top to bottom. With it:
+// New messages arrive on the conversation's stream as the page's own HTML,
+// and the script appends them. The view follows them only when the newest
+// message was already in view. When the connection drops, the browser
+// reconnects by itself and says the last message it saw, so the server
+// sends only what was missed. If the stream dies for good, the page
+// reloads itself; if it dies again soon after, the page says so instead.
 //
-// - the messages fill the window above a fixed compose area, and open
-//   scrolled to the newest;
-// - the textarea has the focus;
-// - Ctrl+Enter (⌘+Enter on a Mac) sends, as the old chat-client's box
-//   does, and plain Enter is a new line (and a key while an input method is
-//   composing a character is the input method's);
-// - each message added after the page was drawn, by any tab or by curl,
-//   arrives on the conversation's stream (`.messages`' data-stream, after
-//   the data-after messages it shows) as the page's own HTML, and is
-//   appended; the view follows it only when the newest was in view, as
-//   chat-client's does. The browser's EventSource reconnects by itself,
-//   saying the last message it saw, so none is missed or shown twice.
-//
-// It styles the elements it arranges itself (`.style`), so the server
-// sends no CSS for them.
+// The script styles what it arranges, so the server sends no CSS.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
@@ -94,7 +86,46 @@
     messages.insertAdjacentHTML('beforeend', e.data);
     if (follow) scrollToNewest();
   };
-  // A page restored from the back button's cache has a stream that was
-  // torn down; chat-client reloads it, and so does this.
+  // A stream that has closed for good doesn't reconnect, and the page would
+  // go on looking fine. So the page reloads, unless it already reloaded for
+  // this reason in the last minute; then it shows a notice and stops trying.
+  var RELOAD_KEY = 'gopher-roc stream reloaded at';
+  var RELOAD_WINDOW_MS = 60000;
+  function reloadedRecently() {
+    try {
+      return Date.now() - Number(sessionStorage.getItem(RELOAD_KEY) || 0) < RELOAD_WINDOW_MS;
+    } catch (err) {
+      return true; // With no storage to count reloads, never risk a reload loop.
+    }
+  }
+  function showLostNotice() {
+    if (document.querySelector('.stream-lost')) return;
+    var notice = document.createElement('p');
+    notice.className = 'stream-lost';
+    notice.textContent = 'The connection to the server was lost, and reloading did not bring it back. New messages will not appear until you reload the page.';
+    notice.style.margin = '0';
+    notice.style.padding = '.5rem';
+    notice.style.background = '#fdd';
+    notice.style.color = '#600';
+    compose.insertBefore(notice, compose.firstChild);
+  }
+  function recoverStream() {
+    if (reloadedRecently()) {
+      showLostNotice();
+      return;
+    }
+    try {
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    } catch (err) {
+      showLostNotice();
+      return;
+    }
+    location.reload();
+  }
+  events.onerror = function () {
+    if (events.readyState === EventSource.CLOSED) recoverStream();
+  };
+  // A page restored from the back button's cache has a stream that was torn
+  // down, so it reloads, as chat-client's does.
   window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
 })();

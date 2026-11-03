@@ -74,7 +74,7 @@ The answers from our listening session on 2026-11-02, gathered in one place for 
 - **When a message lands, every member of the channel who is signed in gets it straight away.** There are no notifications and no tracking of unread messages.
 - **Recent** has one tile per conversation, newest first, by each conversation's latest message.
 - **A live message arrives as the same HTML a full reload would show.**
-- **If a browser's connection drops, reloading the whole conversation is how it catches up.**
+- **If a browser's connection drops, it catches up as the Zig chat's did:** the browser reconnects by itself and the server sends only the messages it missed. If the stream dies for good, the page reloads itself; if it dies again within a minute, the page shows a notice instead (Steve, 2026-11-03).
 - **An agent holds one connection carrying all of its channels.** If that's awkward to build, that's a design smell. When the connection drops, the agent catches up by asking for **everything since a timestamp** (message ids would also work).
 - How a browser's connections are split is my call, checked against what the Zig chat does. New messages matter more than, say, presence, and the two can run at different rates.
 - **Presence:** eventually, as lean as the Zig chat's.

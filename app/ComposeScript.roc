@@ -1,23 +1,19 @@
-## **THE CONVERSATION PAGE'S ONE SCRIPT**: app/compose.js, imported whole
-## at compile time, so the file is its bytes' one home and the server
-## answers them fixed, from the app. Its URL path's one home is here too:
-## `Route` answers it, and `Page` names it in the page's `<script src>`,
-## which the page's policy (`script-src 'self'`) lets run.
+## This module serves the conversation page's script, app/compose.js. The
+## file is compiled into the app, so the server always sends exactly what
+## the file holds. `Route` serves it at `url_path`, and `Page` links to it.
 import "compose.js" as source : Str
 
 ComposeScript :: [].{
 
-	## **WHERE THE SCRIPT IS SERVED**: a path on this site.
 	url_path : Str
 	url_path = "/chat/assets/compose.js"
 
-	## **THE SCRIPT'S BYTES**, as app/compose.js holds them.
 	bytes : List(U8)
 	bytes = source.to_utf8()
 }
 
 # ── tests
-# The file, whole: its headline first, its last statement closing it.
-expect source.starts_with("// THE CONVERSATION PAGE'S SCRIPT: ")
+# The whole file, from its first line to its last.
+expect source.starts_with("// This script runs on a conversation page")
 expect source.ends_with("\n})();\n")
 expect ComposeScript.bytes == source.to_utf8()
