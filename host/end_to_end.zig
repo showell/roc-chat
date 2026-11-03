@@ -12,7 +12,8 @@
 //!   4. the transcript on disk: the seed and exactly one record more, dated
 //!      by the host's clock;
 //!   4a. GET the page's script: 200, JavaScript, `nosniff`, exactly
-//!      app/compose.js; a POST to it is a 405 allowing GET;
+//!      app/compose.js; palette.js, chrome.js and feed.js the same; a POST
+//!      to compose.js is a 405 allowing GET;
 //!   4b. POST exactly as a browser submits the compose box (form-encoded,
 //!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
 //!      same-origin, a navigation's other headers): a 303 to the page, and
@@ -70,6 +71,8 @@ const frozen_page = "demo/gopher-roc.html";
 const channel_url = "/chat/channel/general/gopher-roc";
 const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
+/// The page's other scripts, each served as compose.js is.
+const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 const channel_uploads = "chat/channel/general/gopher-roc/uploads";
@@ -142,6 +145,14 @@ pub fn main(init: std.process.Init) !void {
         std.mem.eql(u8, script.header("content-type") orelse "", "text/javascript; charset=utf-8") and
         std.mem.eql(u8, script.header("x-content-type-options") orelse "", "nosniff") and
         std.mem.eql(u8, script.body, try cwd.readFileAlloc(io, script_file, a, .limited(1024 * 1024))));
+    var others_served = true;
+    inline for (other_scripts) |name| {
+        const other = try get(a, io, port, "/chat/assets/" ++ name);
+        others_served = others_served and other.status == 200 and
+            std.mem.eql(u8, other.header("content-type") orelse "", "text/javascript; charset=utf-8") and
+            std.mem.eql(u8, other.body, try cwd.readFileAlloc(io, "app/" ++ name, a, .limited(1024 * 1024)));
+    }
+    try t.check("GET the page's other scripts: 200, JavaScript, each exactly its app/ file", others_served);
     const script_post = try post(a, io, port, .{ .path = script_url, .form = "markdown=x" });
     try t.check("POST to the script: 405, allowing GET alone", script_post.status == 405 and
         std.mem.eql(u8, script_post.header("allow") orelse "", "GET"));
@@ -369,7 +380,7 @@ fn shutAfter(io: Io, connection: Io.net.Stream, ms: u32) void {
 /// then its article's HTML, to the line after it, a `data:` line a line,
 /// then a blank line.
 fn frameOf(a: std.mem.Allocator, page: []const u8, comptime id: []const u8) ![]const u8 {
-    const from = std.mem.indexOf(u8, page, "<article class=\"message\" id=\"msg-" ++ id ++ "\">") orelse return error.NoSuchMessage;
+    const from = std.mem.indexOf(u8, page, "<article class=\"message\" id=\"msg-" ++ id ++ "\"") orelse return error.NoSuchMessage;
     const to = (std.mem.indexOfPos(u8, page, from, "</article>\n") orelse return error.NoSuchMessage) + "</article>\n".len;
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(a, "id: " ++ id ++ "\n");

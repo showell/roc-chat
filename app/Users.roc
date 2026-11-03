@@ -128,6 +128,15 @@ Users :: List(Users.User).{
 			Err(NotFound) => Err(NoSuchUser)
 		}
 
+	## The user named `name`, if there is one. Names are case-sensitive, so
+	## `steve` is not `Steve`.
+	named : Users, Name -> Try(Users.User, [NoSuchUser])
+	named = |Users.(all), name|
+		match all.find_first(|candidate| candidate.name() == name) {
+			Ok(found) => Ok(found)
+			Err(NotFound) => Err(NoSuchUser)
+		}
+
 	## The user with the identity's id, if the identity's name is exactly
 	## theirs. Names are case-sensitive, so `steve` is not `Steve`.
 	check : Users, Users.Identity -> Try(Users.User, [NoSuchUser, NameMismatch])

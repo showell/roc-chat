@@ -166,7 +166,10 @@ chosen = |method, path|
 		OpenConversationStream(key) => "stream ${key.url_path()}"
 		UploadToConversation(key) => "upload ${key.url_path()}"
 		ServeUploadedImage(found) => "image ${found.image.name()} of ${found.key.url_path()}"
-		ServeComposeScript => "the script"
+		ServeScript(Palette) => "the script palette.js"
+		ServeScript(Chrome) => "the script chrome.js"
+		ServeScript(Compose) => "the script compose.js"
+		ServeScript(Feed) => "the script feed.js"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
@@ -196,10 +199,21 @@ expect chosen("GET", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "i
 expect chosen("POST", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "not allowed: GET"
 expect chosen("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8()) == "not found"
 expect chosen("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
-# The script's path: GET alone, and exactly its path.
-expect chosen("GET", "/chat/assets/compose.js".to_utf8()) == "the script"
-expect chosen("POST", "/chat/assets/compose.js".to_utf8()) == "not allowed: GET"
-expect chosen("HEAD", "/chat/assets/compose.js".to_utf8()) == "not allowed: GET"
+# Each script's path: GET alone, and exactly its path.
+expect
+	[
+		"palette.js",
+		"chrome.js",
+		"compose.js",
+		"feed.js",
+	].all(
+		|name| {
+			path = "/chat/assets/${name}".to_utf8()
+			chosen("GET", path) == "the script ${name}"
+				and chosen("POST", path) == "not allowed: GET"
+				and chosen("HEAD", path) == "not allowed: GET"
+		},
+	)
 expect chosen("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
 expect chosen("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
 expect chosen("GET", "/chat/assets/other.js".to_utf8()) == "not found"

@@ -2,7 +2,7 @@
 
 A chat for a small group of humans and their agents, written in Roc on a Zig host. `gopher-roc` is a code name. `docs/design.md` holds the design, from first principles, and `docs/platform.md` describes what the host gives the Roc. This is a fresh start from roc-chat, which it borrows from as needed.
 
-**Status (2026-11-03): the first server.** It serves a conversation's page, two panes (the messages, and a compose box beside or below them), appends a message posted from the box, shows each new message on every open page of the conversation without a reload, and takes an image uploaded from the box (its Upload button, or a paste), and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
+**Status (2026-11-03): the first server.** It serves a conversation's page, a top bar over two panes (the messages, and a compose box beside or below them), in a dark or light theme, appends a message posted from the box, shows each new message on every open page of the conversation without a reload, and takes an image uploaded from the box (its Upload button, or a paste), and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
 
 ## What the code holds
 
@@ -11,8 +11,12 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `Escape` (text, escaped exactly once);
   - `Html` (elements from closed sets and strict tokens);
   - `Markdown` (roc-markdown's output, its images ruled by `SecureImageTag`);
-  - `Page`'s fixed head and style sheet.
-- **The page's one script.** `app/compose.js` lays out the two panes as chat-client does (in a window wider than 768 pixels, the compose box is a 320-pixel rail on the right, closed at first, showing an "Open compose box" button and the keyboard help, and opened by the button or `c`; narrower, the box sits below the messages), gives the compose box its keys (Ctrl/⌘-Enter sends, as the old chat-client's does; plain Enter is a new line; Escape in an empty box closes the rail), and appends each message the conversation's stream brings (an `EventSource`, at the page's URL and `/stream`). `ComposeScript` imports it whole at compile time, so the file is its bytes' one home, and the server answers it at `/chat/assets/compose.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without it: the box is a plain form.
+  - `Page`'s fixed head.
+- **The pages' scripts.** The server sends no CSS; four small scripts style what they find, as roc-chat's and chat-client's do. Each is imported whole at compile time by its own module (`PaletteScript`, `ChromeScript`, `ComposeScript`, `FeedScript`), so the file is its bytes' one home, and served at `/chat/assets/<name>.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without them: the messages read top to bottom, and the box is a plain form.
+  - `app/palette.js`, in every page's head: chat-client's colours, light and dark, dark unless the viewer chose light; the theme is set before the first paint.
+  - `app/chrome.js`: the frame, a top bar (the topic; the 🌙/☀️ theme toggle and the viewer's name) over the panes, filling the window.
+  - `app/compose.js`: lays out the two panes as chat-client does (in a window wider than 768 pixels, the compose box is a 320-pixel rail on the right, closed at first, showing an "Open compose box" button and the keyboard help, and opened by the button or `c`; narrower, the box sits below the messages), and gives the compose box its keys (Ctrl/⌘-Enter sends, as the old chat-client's does; plain Enter is a new line; Escape in an empty box closes the rail) and its Upload button.
+  - `app/feed.js`: the messages pane, a card at most 600 pixels wide and the only part that scrolls; each message a bubble, the viewer's own on the right (the pane's `data-viewer` against the message's `data-author`), each time in the viewer's zone; and each message the conversation's stream brings (an `EventSource`, at the page's URL and `/stream`), dressed the same and appended.
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
 - **Who is acting.** That is a `SignedIn`, and its door, `dangerously_assume`, stands in for sessions.
 - **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).

@@ -11,6 +11,7 @@
 import pf.Host
 import pf.Http
 import Ascii
+import Author
 import Conversation
 import ConversationKey
 import DateTime
@@ -23,6 +24,7 @@ import RequestHeader
 import SignedIn
 import Topic
 import UnvalidatedString
+import Users
 
 ConversationStream :: [].{
 
@@ -53,10 +55,12 @@ ConversationStream :: [].{
 
 	## **THE STREAM OF `key`'S CONVERSATION FOR `acting`**, `conversation`
 	## as it is now: the messages after the reader's `seen` first, then
-	## each one added; a 400 when `seen` is more than it holds.
+	## each one added; a 400 when `seen` is more than it holds. Each
+	## message's author is found among `users`, as the page finds them.
 	response : {
 		key : ConversationKey,
 		acting : SignedIn,
+		users : Users,
 		conversation : Conversation,
 		seen : U16,
 	} -> Http.Response
@@ -64,6 +68,7 @@ ConversationStream :: [].{
 		{
 			key,
 			acting,
+			users,
 			conversation,
 			seen,
 		},
@@ -79,6 +84,7 @@ ConversationStream :: [].{
 					|m|
 						ConversationStream.frame({
 							key,
+							users,
 							conversation,
 							message: m,
 						}),
@@ -87,15 +93,17 @@ ConversationStream :: [].{
 	}
 
 	## **`message`, ADDED TO `conversation`, SENT TO EVERY PAGE ON `key`'S
-	## STREAM**.
+	## STREAM**, its author found among `users`.
 	publish! : {
 		key : ConversationKey,
+		users : Users,
 		conversation : Conversation,
 		message : Message,
 	} => {}
 	publish! = |
 		{
 			key,
+			users,
 			conversation,
 			message,
 		},
@@ -104,6 +112,7 @@ ConversationStream :: [].{
 			bus_key(key),
 			ConversationStream.frame({
 				key,
+				users,
 				conversation,
 				message,
 			}),
@@ -113,12 +122,14 @@ ConversationStream :: [].{
 	## `data:` line a line, then the blank line that ends it.
 	frame : {
 		key : ConversationKey,
+		users : Users,
 		conversation : Conversation,
 		message : Message,
 	} -> List(U8)
 	frame = |
 		{
 			key,
+			users,
 			conversation,
 			message,
 		},
@@ -127,6 +138,7 @@ ConversationStream :: [].{
 			Page.message({
 				conversation,
 				key,
+				users,
 				message,
 			}).to_utf8(),
 		)
@@ -217,12 +229,13 @@ expect seen_by("after=6", [("Last-Event-ID", "9"), ("Last-Event-ID", "9")]) == E
 expect ConversationStream.words(NoCount) == "The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."
 expect ConversationStream.words(BadCount) == "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
 
+## The users of the tests' directory: Steve alone, id 1.
+users : Users
+users = Directory.founded_by(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name").users()
+
 ## Steve, the founder of the tests' directory, signed in as a test assumes him.
 steve : SignedIn
-steve = {
-	founded = Directory.founded_by(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name")
-	SignedIn.dangerously_assume(founded.users().to_list().first() ?? crash "ConversationStream's tests: Steve is the first user")
-}
+steve = SignedIn.dangerously_assume(users.to_list().first() ?? crash "ConversationStream's tests: Steve is the first user")
 
 ## `plans` in Steve's own DM.
 plans_key : ConversationKey
@@ -233,12 +246,16 @@ plans_key = ConversationKey.from_url_path({
 
 ## `plans`, holding a message by Steve of each markdown, at one time.
 plans_holding : List(Str) -> Conversation
-plans_holding = |markdowns| {
+plans_holding = |markdowns| plans_holding_by(steve.user().author(), markdowns)
+
+## `plans`, holding a message by `author` of each markdown, at one time.
+plans_holding_by : Author, List(Str) -> Conversation
+plans_holding_by = |author, markdowns| {
 	plans = Topic.from_str("plans") ?? crash "ConversationStream's tests: a topic"
 	time = DateTime.from_str("2026-11-02T19:11:32Z") ?? crash "ConversationStream's tests: a time"
 	markdowns.fold(
 		Conversation.empty(plans),
-		|so_far, markdown| (so_far.append({ payload: { author: steve.user().author(), markdown }, time }) ?? crash "ConversationStream's tests: a message joins").conversation,
+		|so_far, markdown| (so_far.append({ payload: { author, markdown }, time }) ?? crash "ConversationStream's tests: a message joins").conversation,
 	)
 }
 
@@ -250,6 +267,7 @@ streamed_after = |seen| {
 	answered = ConversationStream.response({
 		key: plans_key,
 		acting: steve,
+		users,
 		conversation: plans_holding(["Hello", "Hi!"]),
 		seen,
 	})
@@ -264,10 +282,10 @@ streamed_after = |seen| {
 plans_stream : Str
 plans_stream = "200 stream on /chat/dm/1_1/plans for 1"
 
-## The frame of the message `n` of `plans`, by Steve, its markdown a
+## The frame of the message `n` of `plans`, by Steve, id 1, its markdown a
 ## paragraph `said`, as frozen.
 frozen_frame : Str, Str -> Str
-frozen_frame = |n, said| "id: ${n}\ndata: <article class=\"message\" id=\"msg-${n}\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${n}\">MSG_plans_${n}</a></header>\ndata: <div class=\"body\"><p>${said}</p>\ndata: </div></article>\ndata: \n\n"
+frozen_frame = |n, said| "id: ${n}\ndata: <article class=\"message\" id=\"msg-${n}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${n}\">MSG_plans_${n}</a></header>\ndata: <div class=\"body\"><p>${said}</p>\ndata: </div></article>\ndata: \n\n"
 
 # A frame's data lines, joined by LF as a browser joins them, are exactly
 # the page's HTML for the message, a list's lines and all.
@@ -277,6 +295,7 @@ expect {
 		|m| {
 			framed = ConversationStream.frame({
 				key: plans_key,
+				users,
 				conversation,
 				message: m,
 			})
@@ -289,10 +308,28 @@ expect {
 				== Page.message({
 					conversation,
 					key: plans_key,
+					users,
 					message: m,
 				}).to_utf8()
 		},
 	)
+}
+# A message by an author no user is names no author's id; one by a user does.
+expect {
+	stranger = Author.from_str("LC") ?? crash "ConversationStream's tests: a name"
+	framed_by = |author| {
+		conversation = plans_holding_by(author, ["Hello"])
+		Str.from_utf8_lossy(
+			ConversationStream.frame({
+				key: plans_key,
+				users,
+				conversation,
+				message: conversation.messages().first() ?? crash "ConversationStream's tests: one message",
+			}),
+		)
+	}
+	framed_by(stranger).starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\"><header><span class=\"author\">LC</span>")
+		and framed_by(steve.user().author()).starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span>")
 }
 # The backlog after each count: every frame, the one after, none; past the
 # conversation, a 400.

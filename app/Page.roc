@@ -1,73 +1,92 @@
-## **THE PAGES**: a conversation's, and the one that says why there is
-## none. Every page is the same skeleton (the doctype, its title, the style
-## sheet, then its body); the page carries structure and class names, and
-## only enough style to read, so a client can style the rest.
+## This module builds the chat's pages: a conversation's page, a page that
+## says why a transcript was refused, and a page that says one thing. The
+## server sends structure and class names only. Every page loads
+## app/palette.js in its head (`PaletteScript`), which sets the colours and
+## the theme before the first paint, and a conversation's page ends with
+## its three scripts, which style what they find and add behaviour. The
+## page reads top to bottom without them, and its form still posts.
 ##
-## **A CONVERSATION'S PAGE IS TWO PANES**: its messages (`messages`), then
-## the compose box (`compose`): a plain form that posts the field
-## `markdown` back to the conversation's own URL, so it works with no
-## script, and a line of help: markdown, attaching an image, and the key
-## that sends. The page's one script (`ComposeScript`, app/compose.js) lays
-## the panes out (a wide window's compose box a rail on the right, with its
-## keyboard help), gives the box its keys and its Upload button, and
-## appends each message the conversation's stream brings; it finds them by
-## the classes written here, the stream by the messages pane's
-## `data-stream` and `data-after`, and where to upload an image, and the
-## most an image may be, by the form's `data-upload` and `data-image-most`.
-## A message on the stream is written by `message`, as the page writes it.
+## A conversation's page has a top bar, with the topic and the viewer's
+## name, and below it two panes. The first holds the messages, and the
+## second is the compose box: a form that posts the field `markdown` back
+## to the conversation's own URL, and a line of help. app/chrome.js
+## (`ChromeScript`) styles the top bar and adds its theme toggle.
+## app/compose.js (`ComposeScript`) lays the panes out and gives the
+## compose box its keys and its Upload button. app/feed.js (`FeedScript`)
+## styles the messages, marks the viewer's own, writes each time in the
+## viewer's time zone, and appends each message the conversation's stream
+## brings, which `message` writes as the page does.
 ##
-## **THE PAGE'S VOCABULARY LIVES HERE**: its classes (`Class`, a closed set,
-## so no class is free text) and the CSS that styles them. How a message
-## is named, its reference and its anchor, is `MsgAnchor`'s.
+## The scripts find what they need by the classes in `Class` and by
+## attributes. The messages pane names its stream (`data-stream`), how
+## many messages it shows (`data-after`) and the viewer's id
+## (`data-viewer`). A message names its author's id (`data-author`) when
+## its author is a user of the chat. The form names where to upload an
+## image (`data-upload`) and the most an image may be (`data-image-most`).
 ##
-## **WHAT IS TRUSTED, AND WHO VOUCHES**: every `Str` a page shows goes in
-## through `Escape.text`, a message's markdown through `Markdown.render`,
-## and every element through `Html.element`. This module vouches
-## (`TrustedHtml.dangerously_trust`) for two constants only: the doctype
-## and the style sheet, both written here, the CSS holding no `<`.
+## Every `Str` a page shows goes in through `Escape.text`, a message's
+## markdown through `Markdown.render`, and every element through
+## `Html.element`. This module vouches (`TrustedHtml.dangerously_trust`)
+## for one constant: the doctype and the head's two `<meta>` elements.
+import ChromeScript
 import ComposeScript
 import Conversation
 import ConversationKey
 import Escape
+import FeedScript
 import Html
 import Markdown
 import Message
 import MsgAnchor
+import PaletteScript
+import SignedIn
 import Topic
 import TrustedHtml
 import UploadedImage
 import UrlEncodedForm
+import Users
 
 Page :: [].{
 
-	## **A CLASS A PAGE USES**: a closed set, so a class is never data.
+	## A class a page uses: a closed set, so a class is never data.
 	Class : [
 		Author,
 		Body,
 		Compose,
 		Empty,
 		Help,
+		Layout,
 		Message,
 		Messages,
 		Ref,
+		TopBar,
+		TopTitle,
+		TopUser,
+		Viewer,
 	]
 
 	## The class attribute for `class`, its one spelling.
 	class : Page.Class -> Html.Attribute
 	class = |chosen| Class(token(class_name(chosen)))
 
-	## **A CONVERSATION'S PAGE**: the topic, then each message under its
-	## author and time, with its reference (`MsgAnchor`) as a link to
-	## itself; then the compose box, posting to `key`'s URL; then the
-	## script.
-	conversation : Conversation, ConversationKey -> TrustedHtml
-	conversation = |c, key| {
+	## The page of `conversation`, the conversation `key`, for `viewer`. Each
+	## message of it is found among `users` by its author's name, to name its
+	## author's id.
+	conversation : {
+		conversation : Conversation,
+		key : ConversationKey,
+		viewer : SignedIn,
+		users : Users,
+	} -> TrustedHtml
+	conversation = |
+		{
+			conversation: c,
+			key,
+			viewer,
+			users,
+		},
+	| {
 		topic = c.topic()
-		heading = Html.element({
-			name: H1,
-			attrs: [],
-			inner: Escape.text(topic.to_str()),
-		})
 		messages =
 			if (c.messages().is_empty())
 				TrustedHtml.join([
@@ -85,6 +104,7 @@ Page :: [].{
 							Page.message({
 								conversation: c,
 								key,
+								users,
 								message: m,
 							}),
 					),
@@ -92,33 +112,40 @@ Page :: [].{
 		document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
+				top_bar({ title: topic.to_str(), viewer }),
+				newline,
 				Html.element({
 					name: Div,
-					attrs: [
-						Page.class(Messages),
-						DataStream(site_path(key.stream_url_path())),
-						DataAfter(token(c.messages().len().to_str())),
-					],
+					attrs: [Page.class(Layout)],
 					inner: TrustedHtml.join([
-						heading,
+						Html.element({
+							name: Div,
+							attrs: [
+								Page.class(Messages),
+								DataStream(site_path(key.stream_url_path())),
+								DataAfter(token(c.messages().len().to_str())),
+								DataViewer(user_id(viewer.user())),
+							],
+							inner: TrustedHtml.join([newline, messages]),
+						}),
 						newline,
-						messages,
+						compose_box(key),
+						newline,
 					]),
 				}),
 				newline,
-				compose_box(key),
-				newline,
-				Html.element({
-					name: Script,
-					attrs: [Src(site_path(ComposeScript.url_path))],
-					inner: TrustedHtml.join([]),
-				}),
-				newline,
+				TrustedHtml.join(
+					[
+						ChromeScript.url_path,
+						ComposeScript.url_path,
+						FeedScript.url_path,
+					].map(|url_path| TrustedHtml.join([script(url_path), newline])),
+				),
 			]),
 		})
 	}
 
-	## **THE PAGE FOR A REFUSED TRANSCRIPT**, saying why in `why`'s words.
+	## The page for a refused transcript, saying why in `why`'s words.
 	refusal : Str -> TrustedHtml
 	refusal = |why|
 		document({
@@ -131,20 +158,28 @@ Page :: [].{
 		})
 
 	## One message of `conversation`, the conversation `key`, as its page
-	## and its stream write it: its header, then its markdown rendered.
+	## and its stream write it: its header, then its markdown rendered. Its
+	## author's id is named when `users` holds a user of its author's name.
 	message : {
 		conversation : Conversation,
 		key : ConversationKey,
+		users : Users,
 		message : Message,
 	} -> TrustedHtml
 	message = |
 		{
 			conversation: c,
 			key,
+			users,
 			message: m,
 		},
 	| {
 		named = c.reference(m.id())
+		author_attrs =
+			match users.named(m.author().name()) {
+				Ok(user) => [DataAuthor(user_id(user))]
+				Err(NoSuchUser) => []
+			}
 		header = TrustedHtml.join([
 			Html.element({
 				name: Span,
@@ -166,7 +201,7 @@ Page :: [].{
 		])
 		article = Html.element({
 			name: Article,
-			attrs: [Page.class(Message), Id(anchor(named))],
+			attrs: [Page.class(Message), Id(anchor(named))].concat(author_attrs),
 			inner: TrustedHtml.join([
 				Html.element({
 					name: Header,
@@ -184,8 +219,8 @@ Page :: [].{
 		TrustedHtml.join([article, newline])
 	}
 
-	## **A PAGE THAT SAYS ONE THING**: `title`, and `said` beneath it (no
-	## such conversation, a refused message, a failure).
+	## A page that says one thing: `title`, and `said` beneath it (no such
+	## conversation, a refused message, a failure).
 	notice : { title : Str, said : Str } -> TrustedHtml
 	notice = |{ title, said }|
 		document({
@@ -198,8 +233,8 @@ Page :: [].{
 		})
 }
 
-## **THE COMPOSE BOX**: a form posting its one field, a message's
-## markdown (`UrlEncodedForm.markdown_name`), to `key`'s page, as
+## The compose box: a form posting its one field, a message's markdown
+## (`UrlEncodedForm.markdown_name`), to `key`'s page, as
 ## `ConversationRoute.post_sent_message!` takes it, and naming for the
 ## script where an image is uploaded and the most it may be
 ## (`UploadRoute`); then its help line.
@@ -240,8 +275,49 @@ compose_box = |key|
 		]),
 	})
 
-## **A PAGE'S WHOLE DOCUMENT**, the same for every page: the doctype and charset, `title` as
-## its title, the style sheet, then `body`.
+## The top bar: `title` on the left, and the name of `viewer`, the user
+## viewing the page, on the right.
+top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
+top_bar = |{ title, viewer }|
+	Html.element({
+		name: Header,
+		attrs: [Page.class(TopBar)],
+		inner: TrustedHtml.join([
+			Html.element({
+				name: Span,
+				attrs: [Page.class(TopTitle)],
+				inner: Escape.text(title),
+			}),
+			space,
+			Html.element({
+				name: Div,
+				attrs: [Page.class(TopUser)],
+				inner: Html.element({
+					name: Span,
+					attrs: [Page.class(Viewer)],
+					inner: Escape.text(viewer.user().name().to_str()),
+				}),
+			}),
+		]),
+	})
+
+## A user's id, which the scripts compare: a message's author's with the
+## viewer's.
+user_id : Users.User -> Html.Token
+user_id = |user| token(user.id().to_str())
+
+## The script at `url_path`, one of this server's.
+script : Str -> TrustedHtml
+script = |url_path|
+	Html.element({
+		name: Script,
+		attrs: [Src(site_path(url_path))],
+		inner: TrustedHtml.join([]),
+	})
+
+## A page's whole document, the same for every page: the doctype and the
+## head's `<meta>` elements, `title` as its title, the colour script, then
+## `body`.
 document : { title : Str, body : TrustedHtml } -> TrustedHtml
 document = |{ title, body }|
 	TrustedHtml.join([
@@ -252,30 +328,21 @@ document = |{ title, body }|
 			inner: Escape.text(title),
 		}),
 		newline,
-		stylesheet,
+		script(PaletteScript.url_path),
+		newline,
 		body,
 	])
 
-## The doctype and the charset, which every page opens with: a constant,
-## vouched for here.
+## The doctype, the charset, and the viewport a phone lays the page out
+## in, which every page opens with: a constant, vouched for here.
 doctype : TrustedHtml
-doctype = TrustedHtml.dangerously_trust("<!doctype html>\n<meta charset=utf-8>\n")
+doctype = TrustedHtml.dangerously_trust(doctype_text)
 
-## **THE STYLE SHEET EVERY PAGE CARRIES**: only enough to read, so a client
-## styles the rest. Vouched for here: `css` is this module's constant, and
-## holds no `<`, so it can't close its element early.
-stylesheet : TrustedHtml
-stylesheet = TrustedHtml.dangerously_trust("<style>\n${css}</style>\n")
-
-## The style sheet's rules, for the classes in `Class`. CSS is code, never
-## data.
-css : Str
-css =
-	\\body{font:16px/1.4 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}
-	\\.message{border-top:1px solid #ccc;padding:.5rem 0}
-	\\.author{font-weight:600}
-	\\time,.ref{color:#777;font-size:.85em}
-	\\.ref{float:right}
+doctype_text : Str
+doctype_text =
+	\\<!doctype html>
+	\\<meta charset=utf-8>
+	\\<meta name=viewport content="width=device-width, initial-scale=1">
 	\\
 
 class_name : Page.Class -> Str
@@ -286,13 +353,18 @@ class_name = |chosen|
 		Compose => "compose"
 		Empty => "empty"
 		Help => "help"
+		Layout => "layout"
 		Message => "message"
 		Messages => "messages"
 		Ref => "ref"
+		TopBar => "top-bar"
+		TopTitle => "top-title"
+		TopUser => "top-user"
+		Viewer => "viewer"
 	}
 
-## **A MESSAGE'S ANCHOR**, as a token: `MsgAnchor.page_anchor`'s
-## spelling, which an element's id and a link's `#` both write.
+## A message's anchor, as a token: `MsgAnchor.page_anchor`'s spelling,
+## which an element's id and a link's `#` both write.
 anchor : MsgAnchor -> Html.Token
 anchor = |named| token(named.page_anchor())
 
@@ -323,29 +395,61 @@ opened = |attrs|
 	}).to_utf8()
 
 # Every class, each its one spelling.
-expect opened([Page.class(Author)]) == "<p class=\"author\"></p>".to_utf8()
-expect opened([Page.class(Body)]) == "<p class=\"body\"></p>".to_utf8()
-expect opened([Page.class(Compose)]) == "<p class=\"compose\"></p>".to_utf8()
-expect opened([Page.class(Empty)]) == "<p class=\"empty\"></p>".to_utf8()
-expect opened([Page.class(Help)]) == "<p class=\"help\"></p>".to_utf8()
-expect opened([Page.class(Message)]) == "<p class=\"message\"></p>".to_utf8()
-expect opened([Page.class(Messages)]) == "<p class=\"messages\"></p>".to_utf8()
-expect opened([Page.class(Ref)]) == "<p class=\"ref\"></p>".to_utf8()
-# The script finds the panes by the classes this module writes, each
-# spelled as a selector there; a class it doesn't use is not.
+expect
+	[
+		(Author, "author"),
+		(Body, "body"),
+		(Compose, "compose"),
+		(Empty, "empty"),
+		(Help, "help"),
+		(Layout, "layout"),
+		(Message, "message"),
+		(Messages, "messages"),
+		(Ref, "ref"),
+		(TopBar, "top-bar"),
+		(TopTitle, "top-title"),
+		(TopUser, "top-user"),
+		(Viewer, "viewer"),
+	].all(|(chosen, spelled)| opened([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8())
+
+## Whether the script `bytes` finds the class `chosen` by its selector.
+is_found_by : List(U8), Page.Class -> Bool
+is_found_by = |bytes, chosen| Str.from_utf8_lossy(bytes).contains("'.${class_name(chosen)}'")
+
+## Whether the script `bytes` reads the attribute `name`.
+is_read_by : List(U8), Str -> Bool
+is_read_by = |bytes, name| Str.from_utf8_lossy(bytes).contains("'${name}'")
+
+# Each script finds the elements it works on by the classes this module
+# writes, and reads the attributes `Html` writes for it; a class or an
+# attribute it leaves to another script is not in it.
+expect [TopBar, TopUser].all(|chosen| is_found_by(ChromeScript.bytes, chosen))
+expect
+	[
+		Layout,
+		Messages,
+		Compose,
+		Help,
+	].all(|chosen| is_found_by(ComposeScript.bytes, chosen))
 expect
 	[
 		Messages,
 		Compose,
-		Help,
+		Message,
 		Empty,
-	].all(|chosen| Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(chosen)}'"))
-expect !Str.from_utf8_lossy(ComposeScript.bytes).contains("'.${class_name(Message)}'")
-# The script finds the stream by the attributes `Html` writes for it.
-expect ["data-stream", "data-after"].all(|name| Str.from_utf8_lossy(ComposeScript.bytes).contains("'${name}'"))
-# The script finds where to upload, and the most an image may be, by the
-# attributes `Html` writes for them.
-expect ["data-upload", "data-image-most"].all(|name| Str.from_utf8_lossy(ComposeScript.bytes).contains("'${name}'"))
+	].all(|chosen| is_found_by(FeedScript.bytes, chosen))
+expect !is_found_by(ComposeScript.bytes, Message) and !is_found_by(ComposeScript.bytes, Empty)
+expect !is_found_by(FeedScript.bytes, Help) and !is_found_by(ChromeScript.bytes, Messages)
+expect
+	[
+		"data-stream",
+		"data-after",
+		"data-viewer",
+		"data-author",
+	].all(|name| is_read_by(FeedScript.bytes, name) and !is_read_by(ComposeScript.bytes, name))
+expect ["data-upload", "data-image-most"].all(|name| is_read_by(ComposeScript.bytes, name) and !is_read_by(FeedScript.bytes, name))
+# The classes only styled are styled by the script that owns them.
+expect [TopTitle, Viewer].all(|chosen| Str.from_utf8_lossy(ChromeScript.bytes).contains(".${class_name(chosen)} {"))
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"
@@ -359,8 +463,6 @@ expect {
 		(Href(anchor(second_named)), "<p href=\"#msg-2\"></p>"),
 	].all(|(attr, expected)| opened([attr]) == expected.to_utf8())
 }
-expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n".to_utf8()
-expect stylesheet.to_utf8() == "<style>\n${css}</style>\n".to_utf8()
-expect !css.contains("<")
-# A notice: its title and its words, each escaped.
-expect Page.notice({ title: "a<b", said: "x & y" }).to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n<title>a&lt;b</title>\n<style>\n${css}</style>\n<p>x &amp; y</p>".to_utf8()
+expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
+# A notice: its title and its words, each escaped, under the colour script.
+expect Page.notice({ title: "a<b", said: "x & y" }).to_utf8() == "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()

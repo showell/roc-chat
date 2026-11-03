@@ -159,6 +159,15 @@ expect {
 expect sample.user(UserId.steve).map_ok(|u| u.name().to_str()) == Ok("Steve")
 expect sample.user(after_steve(2)).map_ok(|u| u.name().to_str()) == Ok("CC")
 expect sample.user(stranger) == Err(NoSuchUser)
+# A user found by name, a human's or an agent's, or none; the case counts.
+expect sample.named(Sample.name("Steve")) == Ok(Sample.steve)
+expect sample.named(Sample.name("CC")).map_ok(|u| u.id().to_str()) == Ok("3")
+expect
+	[
+		"steve",
+		"Eve",
+		"Steve Howell",
+	].all(|text| sample.named(Sample.name(text)) == Err(NoSuchUser))
 # An id and a name together: theirs exactly, or refused, case included.
 expect sample.check({ id: UserId.steve, name: Sample.name("Steve") }) == Ok(Sample.steve)
 expect

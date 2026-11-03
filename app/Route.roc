@@ -7,14 +7,21 @@
 ##     GET  the same paths and `/stream`       the conversation's stream
 ##     POST the same paths and `/upload`       an image uploaded to it
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
-##     GET  /chat/assets/compose.js            the page's script
+##     GET  /chat/assets/palette.js            the pages' scripts
+##     GET  /chat/assets/chrome.js
+##     GET  /chat/assets/compose.js
+##     GET  /chat/assets/feed.js
 ##
 ## A conversation's path is `ConversationKey`'s to read, the layout's one
-## home, and the script's is `ComposeScript`'s; a path that names no
-## conversation the directory holds is not found.
+## home, and each script's is its own module's (`PaletteScript` and the
+## rest); a path that names no conversation the directory holds is not
+## found.
+import ChromeScript
 import ComposeScript
 import ConversationKey
 import Directory
+import FeedScript
+import PaletteScript
 import UnvalidatedString
 import UploadedImage
 
@@ -27,9 +34,17 @@ Route :: [].{
 		OpenConversationStream(ConversationKey),
 		UploadToConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
-		ServeComposeScript,
+		ServeScript(Route.Script),
 		NotFound,
 		MethodNotAllowed([GetAndPost, GetOnly, PostOnly]),
+	]
+
+	## A script the pages load, each served from its own module.
+	Script : [
+		Palette,
+		Chrome,
+		Compose,
+		Feed,
 	]
 
 	## **THE ROUTE FOR `method` AND `path`**, as the host handed them, each
@@ -46,19 +61,39 @@ Route :: [].{
 			directory,
 		},
 	|
-		if (path == ComposeScript.url_path.to_utf8())
-			if (method == "GET".to_utf8()) ServeComposeScript else MethodNotAllowed(GetOnly)
-		else
-			match UnvalidatedString.from_utf8(path) {
-				Ok(unchecked) =>
-					conversation_choice({
-						method,
-						path: unchecked,
-						directory,
-					})
-				Err(NotUtf8) => NotFound
-			}
+		match scripts.find_first(|script| path == script_url_path(script).to_utf8()) {
+			Ok(script) => if (method == "GET".to_utf8()) ServeScript(script) else MethodNotAllowed(GetOnly)
+			Err(NotFound) =>
+				match UnvalidatedString.from_utf8(path) {
+					Ok(unchecked) =>
+						conversation_choice({
+							method,
+							path: unchecked,
+							directory,
+						})
+					Err(NotUtf8) => NotFound
+				}
+		}
 }
+
+## Every script the pages load.
+scripts : List(Route.Script)
+scripts = [
+	Palette,
+	Chrome,
+	Compose,
+	Feed,
+]
+
+## Where `script` is served.
+script_url_path : Route.Script -> Str
+script_url_path = |script|
+	match script {
+		Palette => PaletteScript.url_path
+		Chrome => ChromeScript.url_path
+		Compose => ComposeScript.url_path
+		Feed => FeedScript.url_path
+	}
 
 ## The route for `method` and a conversation's `path`: its page, its
 ## stream, its upload or one of its uploaded images, each tried in turn.

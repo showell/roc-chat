@@ -9,7 +9,8 @@
 ##   tags (`TranscriptRefusal` puts them in words).
 ## - `handle_http_request!` (the server, host/http.zig): a request in, its
 ##   response out. `Route` chooses the answer; `ConversationRoute` gives
-##   it, or `UploadRoute` for an uploaded image.
+##   it, or `UploadRoute` for an uploaded image, or a script the pages
+##   load.
 ##   A conversation's stream is held by the signed-in user (`acting`).
 ##
 ## **TWO STAND-INS, BOTH HERE AT THE EDGE**: the directory, until one is
@@ -24,14 +25,17 @@ import pf.Host
 import pf.Http
 import Admin
 import ChannelName
+import ChromeScript
 import ComposeScript
 import Conversation
 import ConversationKey
 import ConversationRoute
 import Directory
+import FeedScript
 import HttpAnswer
 import Name
 import Page
+import PaletteScript
 import RequestOrigin
 import Route
 import SignedIn
@@ -48,7 +52,13 @@ page : List(U8), List(U8) -> List(U8)
 page = |path, transcript| {
 	answer =
 		match conversation({ path, transcript }) {
-			Ok(found) => Page.conversation(found.conversation, found.key)
+			Ok(found) =>
+				Page.conversation({
+					conversation: found.conversation,
+					key: found.key,
+					viewer: acting,
+					users: directory.users(),
+				})
 			Err(why) => Page.refusal(TranscriptRefusal.words(why))
 		}
 	answer.to_utf8()
@@ -83,19 +93,26 @@ handle_http_request! = |request|
 				path: request.path,
 				directory,
 			}) {
-				ShowConversation(key) => ConversationRoute.show!(key)
+				ShowConversation(key) =>
+					ConversationRoute.show!({
+						key,
+						acting,
+						users: directory.users(),
+					})
 				OpenConversationStream(key) =>
 					ConversationRoute.open_stream!({
 						key,
 						acting,
+						users: directory.users(),
 						query: request.query,
 						headers: request.headers,
 					})
-				ServeComposeScript => HttpAnswer.script(ComposeScript.bytes)
+				ServeScript(script) => HttpAnswer.script(script_bytes(script))
 				AppendToConversation(key) =>
 					ConversationRoute.post_sent_message!({
 						key,
 						acting,
+						users: directory.users(),
 						now: Host.current_utc_seconds_since_epoch!({}),
 						body: request.body,
 					})
@@ -109,6 +126,16 @@ handle_http_request! = |request|
 				MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
 				NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
 			}
+	}
+
+## The bytes of `script`, each its own module's.
+script_bytes : Route.Script -> List(U8)
+script_bytes = |script|
+	match script {
+		Palette => PaletteScript.bytes
+		Chrome => ChromeScript.bytes
+		Compose => ComposeScript.bytes
+		Feed => FeedScript.bytes
 	}
 
 ## **STEVE (ID 1), TAKEN AS SIGNED IN WITH NOTHING CHECKED: THE SCARY
@@ -168,7 +195,13 @@ expect {
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
 		directory,
 	}) ?? crash "main's tests: Steve's own DM is a place"
-	page("/chat/dm/1_1/plans".to_utf8(), []) == Page.conversation(Conversation.empty(plans), key).to_utf8()
+	page("/chat/dm/1_1/plans".to_utf8(), [])
+		== Page.conversation({
+			conversation: Conversation.empty(plans),
+			key,
+			viewer: acting,
+			users: directory.users(),
+		}).to_utf8()
 }
 expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
 expect page("<b>".to_utf8(), [0xff]) == Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>").to_utf8()
@@ -197,3 +230,6 @@ expect shown("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
 expect shown("/chat/dm/1_2/plans/stream") == "not found"
 expect shown("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
 expect shown("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
+# Each script's bytes are its own module's.
+expect script_bytes(Palette) == PaletteScript.bytes and script_bytes(Chrome) == ChromeScript.bytes
+expect script_bytes(Compose) == ComposeScript.bytes and script_bytes(Feed) == FeedScript.bytes

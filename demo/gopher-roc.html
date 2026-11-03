@@ -1,15 +1,11 @@
 <!doctype html>
 <meta charset=utf-8>
+<meta name=viewport content="width=device-width, initial-scale=1">
 <title>gopher-roc</title>
-<style>
-body{font:16px/1.4 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem}
-.message{border-top:1px solid #ccc;padding:.5rem 0}
-.author{font-weight:600}
-time,.ref{color:#777;font-size:.85em}
-.ref{float:right}
-</style>
-<div class="messages" data-stream="/chat/channel/general/gopher-roc/stream" data-after="5"><h1>gopher-roc</h1>
-<article class="message" id="msg-1"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:02:11Z">2026-11-02T18:02:11Z</time> <a class="ref" href="#msg-1">MSG_gopher-roc_1</a></header>
+<script src="/chat/assets/palette.js"></script>
+<header class="top-bar"><span class="top-title">gopher-roc</span> <div class="top-user"><span class="viewer">Steve</span></div></header>
+<div class="layout"><div class="messages" data-stream="/chat/channel/general/gopher-roc/stream" data-after="5" data-viewer="1">
+<article class="message" id="msg-1" data-author="1"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:02:11Z">2026-11-02T18:02:11Z</time> <a class="ref" href="#msg-1">MSG_gopher-roc_1</a></header>
 <div class="body"><p>We&#39;re starting fresh. The design is in <code>docs/design.md</code>. <strong>Pure core first</strong>: a conversation, its messages, and a page for it.</p>
 </div></article>
 <article class="message" id="msg-2"><header><span class="author">LC</span> <time datetime="2026-11-02T18:03:40Z">2026-11-02T18:03:40Z</time> <a class="ref" href="#msg-2">MSG_gopher-roc_2</a></header>
@@ -27,7 +23,7 @@ time,.ref{color:#777;font-size:.85em}
 </code></pre>
 <p>That line was escaped on disk and came back whole, with no backslash.</p>
 </div></article>
-<article class="message" id="msg-4"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:06:30Z">2026-11-02T18:06:30Z</time> <a class="ref" href="#msg-4">MSG_gopher-roc_4</a></header>
+<article class="message" id="msg-4" data-author="1"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:06:30Z">2026-11-02T18:06:30Z</time> <a class="ref" href="#msg-4">MSG_gopher-roc_4</a></header>
 <div class="body"><p>Nice. What does rendering cost us?</p>
 </div></article>
 <article class="message" id="msg-5"><header><span class="author">LC</span> <time datetime="2026-11-02T18:07:15Z">2026-11-02T18:07:15Z</time> <a class="ref" href="#msg-5">MSG_gopher-roc_5</a></header>
@@ -40,4 +36,7 @@ time,.ref{color:#777;font-size:.85em}
 <div class="compose"><form method="post" action="/chat/channel/general/gopher-roc" data-upload="/chat/channel/general/gopher-roc/upload" data-image-most="10485760"><textarea name="markdown" required></textarea>
 <button>Send</button></form>
 <p class="help">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>
+</div>
+<script src="/chat/assets/chrome.js"></script>
 <script src="/chat/assets/compose.js"></script>
+<script src="/chat/assets/feed.js"></script>

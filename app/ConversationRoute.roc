@@ -27,13 +27,33 @@ import Users
 
 ConversationRoute :: [].{
 
-	## **GET**: the conversation's page; a 404 when it has no transcript.
-	show! : ConversationKey => Http.Response
-	show! = |key|
+	## **GET**: the conversation's page for `acting`, each message's author
+	## found among `users`; a 404 when it has no transcript.
+	show! : {
+		key : ConversationKey,
+		acting : SignedIn,
+		users : Users,
+	} => Http.Response
+	show! = |
+		{
+			key,
+			acting,
+			users,
+		},
+	|
 		match FileSystem.read_transcript!(key) {
 			Ok(utf8) =>
 				match Transcript.decode(key.topic(), utf8) {
-					Ok(conversation) => HttpAnswer.page(200, Page.conversation(conversation, key))
+					Ok(conversation) =>
+						HttpAnswer.page(
+							200,
+							Page.conversation({
+								conversation,
+								key,
+								viewer: acting,
+								users,
+							}),
+						)
 					Err(why) => unreadable_transcript_response(why)
 				}
 			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such conversation: ${key.url_path()}" })
@@ -43,10 +63,12 @@ ConversationRoute :: [].{
 	## **GET THE STREAM**: the conversation's stream for `acting`, after
 	## the count of messages the request has seen (`query` and `headers`,
 	## `ConversationStream.seen_count`); one with no transcript yet is
-	## empty until its first message.
+	## empty until its first message. Each message's author is found among
+	## `users`.
 	open_stream! : {
 		key : ConversationKey,
 		acting : SignedIn,
+		users : Users,
 		query : List(U8),
 		headers : List(Http.Header),
 	} => Http.Response
@@ -54,6 +76,7 @@ ConversationRoute :: [].{
 		{
 			key,
 			acting,
+			users,
 			query,
 			headers,
 		},
@@ -68,6 +91,7 @@ ConversationRoute :: [].{
 								ConversationStream.response({
 									key,
 									acting,
+									users,
 									conversation,
 									seen,
 								})
@@ -77,6 +101,7 @@ ConversationRoute :: [].{
 						ConversationStream.response({
 							key,
 							acting,
+							users,
 							conversation: Conversation.empty(key.topic()),
 							seen,
 						})
@@ -87,10 +112,12 @@ ConversationRoute :: [].{
 	## **POST**: the message in `body`'s field `markdown`, by `acting`, at
 	## `now` (the host's clock, seconds since the epoch), appended to the
 	## conversation; the first message of one with no transcript yet starts
-	## it. Then a 303 to its page.
+	## it. Then a 303 to its page. The message goes to the conversation's
+	## stream with its author found among `users`.
 	post_sent_message! : {
 		key : ConversationKey,
 		acting : SignedIn,
+		users : Users,
 		now : I64,
 		body : List(U8),
 	} => Http.Response
@@ -98,6 +125,7 @@ ConversationRoute :: [].{
 		{
 			key,
 			acting,
+			users,
 			now,
 			body,
 		},
@@ -115,6 +143,7 @@ ConversationRoute :: [].{
 							Ok(conversation) =>
 								append_unnumbered_message!({
 									key,
+									users,
 									conversation,
 									file: File(utf8),
 									unnumbered_message,
@@ -124,6 +153,7 @@ ConversationRoute :: [].{
 					Err(Missing) =>
 						append_unnumbered_message!({
 							key,
+							users,
 							conversation: Conversation.empty(key.topic()),
 							file: NoFile,
 							unnumbered_message,
@@ -165,10 +195,11 @@ unnumbered_message_from_post = |
 
 ## `unnumbered_message` appended to `conversation`, its record appended to
 ## `file` (the transcript `conversation` was read from, or `NoFile`), the
-## message sent to the conversation's stream, and a 303 to the page; or why
-## not.
+## message sent to the conversation's stream (its author found among
+## `users`), and a 303 to the page; or why not.
 append_unnumbered_message! : {
 	key : ConversationKey,
+	users : Users,
 	conversation : Conversation,
 	file : [NoFile, File(Transcript.Utf8Transcript)],
 	unnumbered_message : Message.Unnumbered(Author),
@@ -176,6 +207,7 @@ append_unnumbered_message! : {
 append_unnumbered_message! = |
 	{
 		key,
+		users,
 		conversation,
 		file,
 		unnumbered_message,
@@ -193,6 +225,7 @@ append_unnumbered_message! = |
 						Ok({}) => {
 							ConversationStream.publish!({
 								key,
+								users,
 								conversation: grown.conversation,
 								message: grown.message,
 							})

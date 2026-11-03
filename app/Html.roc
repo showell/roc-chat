@@ -96,7 +96,8 @@ Html :: [].{
 	## method (always POST) and where it posts; whether a field is required;
 	## a script's source; and, for the page's script, where the page's
 	## stream is, how many messages the page already shows, where the
-	## compose box uploads an image, and the most bytes an image may be.
+	## compose box uploads an image, the most bytes an image may be, who is
+	## viewing the page, and who wrote a message (each a user's id).
 	Attribute : [
 		Class(Html.Token),
 		Id(Html.Token),
@@ -111,6 +112,8 @@ Html :: [].{
 		DataAfter(Html.Token),
 		DataUpload(Html.SitePath),
 		DataImageMost(Html.Token),
+		DataViewer(Html.Token),
+		DataAuthor(Html.Token),
 	]
 
 	## **AN ELEMENT**: `<name a="v">inner</name>`, `inner` as it is,
@@ -187,6 +190,8 @@ attribute = |attr|
 		DataAfter(token) => " data-after=\"${token.to_str()}\""
 		DataUpload(path) => " data-upload=\"${path.to_str()}\""
 		DataImageMost(token) => " data-image-most=\"${token.to_str()}\""
+		DataViewer(token) => " data-viewer=\"${token.to_str()}\""
+		DataAuthor(token) => " data-author=\"${token.to_str()}\""
 	}
 
 # ── tests
@@ -233,6 +238,8 @@ expect attribute(Href(token("msg-1"))) == " href=\"#msg-1\""
 expect attribute(Href(token("msg-2"))) == " href=\"#msg-2\""
 expect attribute(DataAfter(token("6"))) == " data-after=\"6\""
 expect attribute(DataImageMost(token("10485760"))) == " data-image-most=\"10485760\""
+expect attribute(DataViewer(token("1"))) == " data-viewer=\"1\""
+expect attribute(DataAuthor(token("3"))) == " data-author=\"3\""
 expect
 	Html.SitePath.from_str("/chat/dm/1_1/plans/upload").map_ok(|path| attribute(DataUpload(path)))
 		== Ok(" data-upload=\"/chat/dm/1_1/plans/upload\"")
