@@ -107,7 +107,7 @@ apoorvavpendse@gmail.com would be better
 
 ## Pages
 
-- **The server renders HTML.** JavaScript adds only live updates and styling. The server sends very little styling, and the HTML carries enough for a client to style it well.
+- **The server renders HTML.** JavaScript adds live updates, the compose box's behaviour, and all the styling: the server sends no CSS, and the HTML carries enough for the scripts to style it well. Without JavaScript the page is plain HTML, still readable, and the form still posts.
 - **The layout is the Zig chat's: three panes.** A left sidebar, the messages, and the compose box with keyboard help. Mobile comes last.
 
 ## Sign-in
