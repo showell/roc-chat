@@ -41,7 +41,7 @@ The answers from our listening session on 2026-11-02, gathered in one place for 
 - **A channel is a named set of members, plus its topics (its conversations).** It may later track more, such as when it was made.
 - **A DM is a channel whose members are exactly one or two humans.** One human is your own DM with yourself.
 - **DMs are for humans only, for now.** Agents take part only in channels. A channel holding just an agent and its owner is still a named channel.
-- **Only an admin creates a channel and chooses its members, for now.** This is very likely to change.
+- **Only an admin creates a channel and chooses its members, for now, by their own session and never by an API key (roc-chat's rule).** This is very likely to change.
 - **A DM is named by its pair of user ids, in numeric order:** `7_11`, never `11_7`, and one human alone is `5_5`, as in the previous app. A channel's name starts with a letter and holds no `_`, so the two never collide.
 - **A DM begins with its first message.** Later, an invite's redemption might start one automatically, for example with a "hi" from the inviter.
 
@@ -124,7 +124,7 @@ apoorvavpendse@gmail.com would be better
 
   A key's or invite's number `<n>` counts 1, 2, 3 within its agent's folder, and is never given twice, as nothing in an agent's folder is removed. A record of several files is written a file at a time, each made once, `hash` last: a record cut short by a crash has no hash, so it admits no one. A revoke or a redemption rewrites `state` alone, atomically. An account is written `owner` first and `name` last, after the counter, so an id is never given twice and an agent is never read as a human. The first start writes Steve's `name`, `general.channel` holding `1`, and the counter last; a data folder holding accounts or channels and no counter is part of a chat, and the server refuses to start on it.
 
-  Channel membership has no page yet: an admin edits a channel's `.channel` file, as in the Zig chat. A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash, and a password only as its bcrypt hash.
+  The admin creates a channel at `/channels` and adds or removes its members, humans or agents, on its page, `/channels/<name>` (`app/ChannelMembers.roc`), which rewrites its `.channel` file whole, atomically; an admin may still edit the file by hand, as in the Zig chat. Removing a member never removes their account or their id. A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash, and a password only as its bcrypt hash.
 
   A session is not on disk: it is the cookie `__Host-gopher_auth`, whose value is the user's id in base64url (unpadded), a `.`, the second it was signed at in decimal, a `.`, and the HMAC-SHA256 under `.session-secret` of the id's digits, a line feed and that second, in base64url, as the Zig chat's sessions are. It admits its human for a year from its second, and not at all when signed more than five minutes ahead of the clock; it is set `Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`. Signing out clears the browser's cookie; a copy kept elsewhere stays good until its year is out, its human's password file is removed, or the secret is replaced.
 - **Feel like REST over the file system.** A database isn't ruled out in the long run.

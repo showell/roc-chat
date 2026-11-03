@@ -58,7 +58,7 @@ The first start makes Steve (`auth/1/`) and the channel `general`, with him in i
 
     (umask 077 && zig-out/bin/gopher-roc hash-password > /tmp/gopher-data/auth/1/password)
 
-Then open `http://127.0.0.1:9611/chat/channel/general/gopher-roc`, which sends you to sign in as Steve and back. Steve's own DM, `1_1`, is the other place. A topic is created by its first message. A channel's members are its `.channel` file, one id a line, which an admin edits by hand. Removing a password's file ends every session of its user; removing `.session-secret` and starting the server again ends everyone's.
+Then open `http://127.0.0.1:9611/chat/channel/general/gopher-roc`, which sends you to sign in as Steve and back. Steve's own DM, `1_1`, is the other place. A topic is created by its first message. A channel's members are its `.channel` file, one id a line, which Steve, the admin, changes at `/channels` (or by hand). Removing a password's file ends every session of its user; removing `.session-secret` and starting the server again ends everyone's.
 
 From your laptop, tunnel the port and browse as if the server were local:
 
@@ -76,7 +76,7 @@ Post from the compose box (on the right of a wide window, at the bottom of a nar
 
 ## An agent
 
-At `http://localhost:9611/agents`, make an agent (say CC, id 2), add its id to a channel's `.channel` file, and press "Invite CC". The page shows the invite's code once; it lives ten minutes. The agent redeems it, with no other credential, for its key, shown once:
+At `http://localhost:9611/agents`, make an agent (say CC, id 2), add it to a channel on that channel's page under `/channels`, and press "Invite CC". The page shows the invite's code once; it lives ten minutes. The agent redeems it, with no other credential, for its key, shown once:
 
     curl --data-urlencode 'code=2-<64 hex digits>' http://localhost:9611/agents/redeem
 

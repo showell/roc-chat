@@ -17,8 +17,9 @@
 ##
 ## No link leaves the site. `Href` always writes `#` and a token, a
 ## fragment of this page, and a token can't spell a scheme or a path. A
-## form's `Action` and a script's `Src` are a `SitePath`, which starts with
-## one `/` and can't spell a scheme or another host.
+## `Link` to another page, a form's `Action` and a script's `Src` are a
+## `SitePath`, which starts with one `/` and can't spell a scheme or another
+## host.
 ##
 ## No class is free text. A class is a token, never a sentence or a list.
 ## Which classes a page uses, and which `data-` attributes, is the page's
@@ -97,7 +98,8 @@ Html :: [].{
 	}
 
 	## An attribute, its name by its tag: a class, an id and a link to an id
-	## on this page, each a token; a time; a form's field name, its method
+	## on this page, each a token; a link to another page of this site, a
+	## site path; a time; a form's field name, its method
 	## (always POST) and where it posts; whether a field is required; an
 	## input's type, its value (a site path) and what a browser may fill it
 	## with; a script's source; and a `data-` attribute for a page's
@@ -107,6 +109,7 @@ Html :: [].{
 		Class(Html.Token),
 		Id(Html.Token),
 		Href(Html.Token),
+		Link(Html.SitePath),
 		DateTime(DateTime),
 		FieldName(Html.Token),
 		MethodPost,
@@ -114,7 +117,7 @@ Html :: [].{
 		Required,
 		InputType([Hidden, Password, Text]),
 		Value(Html.SitePath),
-		Autocomplete([Username, CurrentPassword]),
+		Autocomplete([Username, CurrentPassword, NewPassword]),
 		Src(Html.SitePath),
 		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
 	]
@@ -187,6 +190,7 @@ attribute = |attr|
 		Class(token) => " class=\"${token.to_str()}\""
 		Id(token) => " id=\"${token.to_str()}\""
 		Href(token) => " href=\"#${token.to_str()}\""
+		Link(path) => " href=\"${path.to_str()}\""
 		DateTime(time) => " datetime=\"${time.to_str()}\""
 		FieldName(token) => " name=\"${token.to_str()}\""
 		MethodPost => " method=\"post\""
@@ -198,6 +202,7 @@ attribute = |attr|
 		Value(path) => " value=\"${path.to_str()}\""
 		Autocomplete(Username) => " autocomplete=\"username\""
 		Autocomplete(CurrentPassword) => " autocomplete=\"current-password\""
+		Autocomplete(NewPassword) => " autocomplete=\"new-password\""
 		Src(path) => " src=\"${path.to_str()}\""
 		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
 		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
@@ -338,8 +343,13 @@ expect {
 		(Value(path), " value=\"/agents\""),
 		(Autocomplete(Username), " autocomplete=\"username\""),
 		(Autocomplete(CurrentPassword), " autocomplete=\"current-password\""),
+		(Autocomplete(NewPassword), " autocomplete=\"new-password\""),
 	].all(|(attr, expected)| attribute(attr) == expected)
 }
+# A link to another page of this site: its site path, as it is.
+expect
+	Html.SitePath.from_str("/channels/general").map_ok(|path| attribute(Link(path)))
+		== Ok(" href=\"/channels/general\"")
 # An input: its attributes in order, no end tag.
 expect
 	Html.input([

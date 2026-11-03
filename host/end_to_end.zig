@@ -149,6 +149,23 @@
 //!      is then a 401;
 //!  48. on disk: the key's hash is SHA-256 of its secret, and no file under
 //!      the data root holds the key's secret or any invite's code;
+//!
+//! Then the channels' pages (`memberSteps`), Steve the admin:
+//!
+//! 48a. GET /channels: each channel linked, and a form creating one;
+//! 48b. create #crew: a 303 to its page, its members file empty; the name
+//!      again in other letters: 409;
+//! 48c. its page: no members, a button adding CC;
+//! 48d. a new key for CC; its post in #crew before it is a member: 403;
+//!      add CC: a 303, the members file `2`, again 409, no such user 404;
+//!      CC then posts in #crew and reads it;
+//! 48e. remove CC: a 303, the file empty, CC's open stream ended at once,
+//!      again 409; CC's post and read then 403 each, its account standing;
+//! 48f. CC's key listing, creating or adding: 403 each; no one: the page a
+//!      303 to sign in, an add a 401;
+//! 48g. a cross-site form post creating, adding or removing: 403 each,
+//!      nothing changed.
+//!
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
 //!
@@ -535,6 +552,7 @@ pub fn main(init: std.process.Init) !void {
         std.mem.count(u8, dm_after_public.body, "Through the proxy") == 1);
 
     try agentSteps(a, io, port, data, t);
+    try memberSteps(a, io, port, data, t);
 
     // 49.
     const signed_out = try post(a, io, port, .{ .path = "/logout", .form = "" });
@@ -840,6 +858,87 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     }
     try t.check("on disk: the key's hash is SHA-256 of its secret; no file holds the secret or a code", std.mem.eql(u8, kept, &digest_hex) and
         on_disk.items.len > 10 and secrets_on_disk == 0);
+}
+
+/// Steps 48a to 48g: a channel created, an agent added to it and removed
+/// on its page, what the agent may do either side, and each refusal.
+fn memberSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !void {
+    // 48a.
+    const listed = try get(a, io, port, "/channels");
+    try t.check("GET /channels: Steve's page, each channel linked, a form that creates one", listed.status == 200 and
+        has(listed.body, "<a href=\"/channels/general\">#general</a>") and has(listed.body, "<a href=\"/channels/private\">#private</a>") and
+        has(listed.body, "<form method=\"post\" action=\"/channels\">"));
+
+    // 48b.
+    const created = try post(a, io, port, .{ .path = "/channels", .form = "name=crew" });
+    const taken = try post(a, io, port, .{ .path = "/channels", .form = "name=CREW" });
+    try t.check("create #crew: 303 to its page, its members file on disk, empty; the name again in any case: 409", created.status == 303 and
+        std.mem.eql(u8, created.header("location") orelse "", "/channels/crew") and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/crew.channel"), "") and taken.status == 409);
+
+    // 48c.
+    const page = try get(a, io, port, "/channels/crew");
+    try t.check("GET /channels/crew: no members, a button adding CC", page.status == 200 and has(page.body, "Members: 0.") and
+        has(page.body, "<form method=\"post\" action=\"/channels/crew/members/2/add\"><button>Add CC (agent, id 2)</button></form>"));
+
+    // 48d.
+    const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const code = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const key = std.mem.trimEnd(u8, (try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{code}))).body, "\n");
+    const bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{key});
+    const crew_url = "/chat/channel/crew/plans";
+    const before = try post(a, io, port, .{ .path = crew_url, .form = "markdown=Before", .more = bearer });
+    const added = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "" });
+    const twice = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "" });
+    const nobody = try post(a, io, port, .{ .path = "/channels/crew/members/99/add", .form = "" });
+    const cc_post = try post(a, io, port, .{ .path = crew_url, .form = "markdown=CC+on+the+crew", .more = bearer });
+    const cc_read = try getWith(a, io, port, crew_url ++ "/raw", bearer);
+    try t.check("CC's key posting in #crew before it is a member: 403", isToken(key, "2-") and before.status == 403);
+    try t.check("add CC to #crew: 303 to its page, the members file `2`; again: 409; no such user: 404", added.status == 303 and
+        std.mem.eql(u8, added.header("location") orelse "", "/channels/crew") and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/crew.channel"), "2\n") and twice.status == 409 and nobody.status == 404);
+    try t.check("CC, a member now, posts in #crew and reads it: 303, then 200 holding its message", cc_post.status == 303 and
+        cc_read.status == 200 and has(cc_read.body, "from: CC") and has(cc_read.body, "CC on the crew"));
+
+    // 48e.
+    var listening = try Stream.openWith(a, io, port, "/agents/stream", bearer);
+    defer listening.close();
+    const removing = Io.Clock.now(.awake, io);
+    const removed = try post(a, io, port, .{ .path = "/channels/crew/members/2/remove", .form = "" });
+    const stream_ended = if (listening.event()) |_| false else |e| e == error.EndOfStream;
+    const ended_ms = removing.untilNow(io, .awake).toMilliseconds();
+    const not_in = try post(a, io, port, .{ .path = "/channels/crew/members/2/remove", .form = "" });
+    const after_post = try post(a, io, port, .{ .path = crew_url, .form = "markdown=Still+here%3F", .more = bearer });
+    const after_read = try getWith(a, io, port, crew_url ++ "/raw", bearer);
+    try t.check("remove CC from #crew: 303, the members file empty, CC's open stream ended at once; again: 409", listening.isEventStream() and
+        removed.status == 303 and std.mem.eql(u8, try readFile(a, io, data, "chat/channel/crew.channel"), "") and
+        stream_ended and ended_ms < Stream.stream_ms / 2 and not_in.status == 409);
+    try t.check("CC, removed, posting in #crew and reading it: 403 each; its account stands", after_post.status == 403 and after_read.status == 403 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/name"), "CC"));
+
+    // 48f.
+    const key_lists = try getWith(a, io, port, "/channels", bearer);
+    const key_creates = try post(a, io, port, .{ .path = "/channels", .form = "name=keyed", .more = bearer });
+    const key_adds = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "", .more = bearer });
+    const anon_page = try anonymousGet(a, io, port, "/channels/crew");
+    const anon_adds = try anonymousPost(a, io, port, "/channels/crew/members/2/add", "");
+    try t.check("CC's key listing, creating or adding: 403 each; no one: the page a 303 to sign in, an add a 401; nothing changed", key_lists.status == 403 and
+        key_creates.status == 403 and key_adds.status == 403 and anon_page.status == 303 and anon_adds.status == 401 and
+        !(try exists(io, data, "chat/channel/keyed.channel")) and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/crew.channel"), ""));
+
+    // 48g.
+    const evil = "origin: http://evil.example\r\n";
+    const cross = "sec-fetch-site: cross-site\r\n";
+    const forged_create = try post(a, io, port, .{ .path = "/channels", .form = "name=forged", .more = evil });
+    const forged_add = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "", .more = evil });
+    const cross_add = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "", .more = cross });
+    const forged_remove = try post(a, io, port, .{ .path = "/channels/general/members/1/remove", .form = "", .more = evil });
+    try t.check("a cross-site form post creating, adding or removing: 403 each; nothing changed", forged_create.status == 403 and
+        forged_add.status == 403 and cross_add.status == 403 and forged_remove.status == 403 and
+        !(try exists(io, data, "chat/channel/forged.channel")) and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/crew.channel"), "") and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/general.channel"), "1\n2\n"));
 }
 
 /// The file `path` of `dir`, whole.

@@ -24,6 +24,11 @@
 ##     POST /agents/<id>/keys/<n>/revoke       revoke a key
 ##     POST /agents/redeem                     an agent's: `code=`, its key
 ##     GET  /agents/stream                     an agent's one stream
+##     GET  /channels                          the channels (the admin's)
+##     POST /channels                          create one: `name=`
+##     GET  /channels/<name>                   its members, to add or remove
+##     POST /channels/<name>/members/<id>/add  add a user to it
+##     POST /channels/<name>/members/<id>/remove   remove one
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
 ## included: the scripts, the sign-in routes and an invite's redemption.
@@ -35,12 +40,13 @@
 ## of its resources the path names, and each script's is `Script`'s. A
 ## path that names no conversation the directory holds is not found. Who
 ## may use each route is decided later: a conversation's by `Access`, an
-## agent's by `Agents`.
+## agent's by `Agents`, a channel's by `ChannelMembers`.
 ##
 ## Every pairing of a resource and a method is written out, so a new
 ## method or resource is a decision here rather than a wildcard's.
 import AgentInvite
 import AgentKey
+import ChannelName
 import ConversationKey
 import Directory
 import Script
@@ -83,6 +89,11 @@ Route :: [].{
 		RevokeInvite({ agent : UserId, invite : AgentInvite.Id }),
 		RevokeKey({ agent : UserId, key : AgentKey.Id }),
 		OpenAgentStream,
+		ShowChannels,
+		CreateChannel,
+		ShowChannelMembers(ChannelName),
+		AddChannelMember({ channel : ChannelName, member : UserId }),
+		RemoveChannelMember({ channel : ChannelName, member : UserId }),
 	]
 
 	## The route for `method` and `path`, as the host handed them, each
@@ -120,6 +131,32 @@ Route :: [].{
 	}
 }
 
+## The route for `method` and a path that is a conversation's, or nothing
+## here.
+conversation_path_choice : {
+	path : UnvalidatedString,
+	method : [Get, Post, Other],
+	directory : Directory,
+} -> Route.Choice
+conversation_path_choice = |
+	{
+		path,
+		method,
+		directory,
+	},
+|
+	match ConversationKey.from_url_path({ path, directory }) {
+		Ok(found) => conversation_choice({
+			key: found.key,
+			resource: found.resource,
+			method,
+		})
+		Err(NotAConversationPath) => NotFound
+		Err(BadName) => NotFound
+		Err(NoSuchChannel) => NotFound
+		Err(NoSuchHuman) => NotFound
+	}
+
 ## The route for `method` and a path that is no script's, as text.
 path_choice : {
 	path : UnvalidatedString,
@@ -139,16 +176,13 @@ path_choice = |
 			match agents_resource(path) {
 				Ok(resource) => agents_choice({ resource, method })
 				Err(NotAgents) =>
-					match ConversationKey.from_url_path({ path, directory }) {
-						Ok(found) => conversation_choice({
-							key: found.key,
-							resource: found.resource,
+					match channels_resource(path) {
+						Ok(resource) => channels_choice({ resource, method })
+						Err(NotChannels) => conversation_path_choice({
+							path,
 							method,
+							directory,
 						})
-						Err(NotAConversationPath) => NotFound
-						Err(BadName) => NotFound
-						Err(NoSuchChannel) => NotFound
-						Err(NoSuchHuman) => NotFound
 					}
 			}
 	}
@@ -304,4 +338,58 @@ agents_choice = |{ resource, method }|
 		(AgentStream, Get) => SignedInOnly(OpenAgentStream)
 		(AgentStream, Post) => MethodNotAllowed(GetOnly)
 		(AgentStream, Other) => MethodNotAllowed(GetOnly)
+	}
+
+## What a path under `/channels` names.
+ChannelsResource : [
+	Channels,
+	Members(ChannelName),
+	MemberAdd({ channel : ChannelName, member : UserId }),
+	MemberRemove({ channel : ChannelName, member : UserId }),
+]
+
+## What `path` names under `/channels`, or `NotChannels`.
+channels_resource : UnvalidatedString -> Try(ChannelsResource, [NotChannels])
+channels_resource = |path|
+	match path.url_path_parts() {
+		Ok([channels]) if channels.is_exactly("channels") => Ok(Channels)
+		Ok([channels, name]) if channels.is_exactly("channels") =>
+			name.channel_name().map_ok(|channel| Members(channel)).map_err(|_| NotChannels)
+		Ok(
+			[
+				channels,
+				name,
+				members,
+				id,
+				act,
+			],
+		) if channels.is_exactly("channels") and members.is_exactly("members") => {
+			channel = name.channel_name() ? |_| NotChannels
+			member = id.user_id() ? |_| NotChannels
+			if (act.is_exactly("add"))
+				Ok(MemberAdd({ channel, member }))
+			else if (act.is_exactly("remove"))
+				Ok(MemberRemove({ channel, member }))
+			else
+				Err(NotChannels)
+		}
+		_ => Err(NotChannels)
+	}
+
+## The route for `method` and a `/channels` path's `resource`.
+channels_choice : { resource : ChannelsResource, method : [Get, Post, Other] } -> Route.Choice
+channels_choice = |{ resource, method }|
+	match (resource, method) {
+		(Channels, Get) => SignedInOnly(ShowChannels)
+		(Channels, Post) => SignedInOnly(CreateChannel)
+		(Channels, Other) => MethodNotAllowed(GetAndPost)
+		(Members(channel), Get) => SignedInOnly(ShowChannelMembers(channel))
+		(Members(_), Post) => MethodNotAllowed(GetOnly)
+		(Members(_), Other) => MethodNotAllowed(GetOnly)
+		(MemberAdd(_), Get) => MethodNotAllowed(PostOnly)
+		(MemberAdd(named), Post) => SignedInOnly(AddChannelMember(named))
+		(MemberAdd(_), Other) => MethodNotAllowed(PostOnly)
+		(MemberRemove(_), Get) => MethodNotAllowed(PostOnly)
+		(MemberRemove(named), Post) => SignedInOnly(RemoveChannelMember(named))
+		(MemberRemove(_), Other) => MethodNotAllowed(PostOnly)
 	}

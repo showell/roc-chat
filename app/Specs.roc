@@ -14,6 +14,7 @@ app [main] {
 import AdminSpec
 import AgentKeySpec
 import AgentsSpec
+import ChannelMembersSpec
 import ChannelsSpec
 import ConversationKeySpec
 import ConversationSpec

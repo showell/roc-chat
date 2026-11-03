@@ -53,6 +53,17 @@ UrlEncodedForm :: [].{
 			_ => Err(RepeatedField)
 		}
 	}
+
+	## Why the field `name` could not be read (`field`'s refusals), in words
+	## for a 400.
+	fault_words : { fault : [MissingField, RepeatedField, BadEscape, NotUtf8], name : Str } -> Str
+	fault_words = |{ fault, name }|
+		match fault {
+			MissingField => "The form has no field `${name}`."
+			RepeatedField => "The form has the field `${name}` more than once."
+			BadEscape => "The form's `${name}` holds a % that starts no two hex digits."
+			NotUtf8 => "The form's `${name}` is not UTF-8."
+		}
 }
 
 ## A field's name: its bytes before the first `=`, or all of them when
@@ -126,3 +137,11 @@ expect markdown_of("markdown=%FF") == Err(NotUtf8)
 expect markdown_of("markdown=") == Err(Blank)
 expect markdown_of("markdown") == Err(Blank)
 expect markdown_of("markdown=+%0A") == Err(Blank)
+# Each refusal of a field, in words that name the field.
+expect
+	[
+		(MissingField, "The form has no field `code`."),
+		(RepeatedField, "The form has the field `code` more than once."),
+		(BadEscape, "The form's `code` holds a % that starts no two hex digits."),
+		(NotUtf8, "The form's `code` is not UTF-8."),
+	].all(|(fault, expected)| UrlEncodedForm.fault_words({ fault, name: "code" }) == expected)

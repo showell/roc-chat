@@ -114,7 +114,7 @@ Agents :: [].{
 	)
 	make = |directory, { owner, body }| {
 		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
-			form_words({
+			UrlEncodedForm.fault_words({
 				fault,
 				name: "name",
 			}),
@@ -143,7 +143,7 @@ Agents :: [].{
 	code_from_form : List(U8) -> Try(SecretToken, [BadForm(Str), CodeRefused])
 	code_from_form = |body| {
 		unchecked = UrlEncodedForm.field({ body, name: "code" }) ? |fault| BadForm(
-			form_words({
+			UrlEncodedForm.fault_words({
 				fault,
 				name: "code",
 			}),
@@ -182,16 +182,6 @@ reach_field : { body : List(U8), name : Str } -> Try(KeyScope.Reach, [BadForm(St
 reach_field = |{ body, name }|
 	match UrlEncodedForm.field({ body, name }) {
 		Err(MissingField) => Ok(Everywhere)
-		Err(fault) => Err(BadForm(form_words({ fault, name })))
+		Err(fault) => Err(BadForm(UrlEncodedForm.fault_words({ fault, name })))
 		Ok(unchecked) => unchecked.reach().map_err(|NotAReach| BadForm("The form's `${name}` is `everywhere` or `off`."))
-	}
-
-## A form's fault with its field `name`, in words.
-form_words : { fault : [MissingField, RepeatedField, BadEscape, NotUtf8], name : Str } -> Str
-form_words = |{ fault, name }|
-	match fault {
-		MissingField => "The form has no field `${name}`."
-		RepeatedField => "The form has the field `${name}` more than once."
-		BadEscape => "The form's `${name}` holds a % that starts no two hex digits."
-		NotUtf8 => "The form's `${name}` is not UTF-8."
 	}

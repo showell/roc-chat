@@ -20,8 +20,8 @@
 ##   The directory is read from disk (`load_directory!`), who is acting is
 ##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
-##   `ConversationRoute`, `UploadRoute`, `AgentsRoute` or `SignInRoute`
-##   gives the answer.
+##   `ConversationRoute`, `UploadRoute`, `AgentsRoute`, `ChannelMembersRoute`
+##   or `SignInRoute` gives the answer.
 ##
 ## Who is acting is found from the request alone (`load_actor!`): a request
 ## with an `Authorization` header by that header alone, as the agent its
@@ -48,6 +48,7 @@ import pf.Http
 import Access
 import Admin
 import AgentsRoute
+import ChannelMembersRoute
 import ChannelName
 import Channels
 import Conversation
@@ -360,6 +361,11 @@ upload_asked = |choice|
 		SignedInOnly(RevokeInvite(_)) => NoUpload
 		SignedInOnly(RevokeKey(_)) => NoUpload
 		SignedInOnly(OpenAgentStream) => NoUpload
+		SignedInOnly(ShowChannels) => NoUpload
+		SignedInOnly(CreateChannel) => NoUpload
+		SignedInOnly(ShowChannelMembers(_)) => NoUpload
+		SignedInOnly(AddChannelMember(_)) => NoUpload
+		SignedInOnly(RemoveChannelMember(_)) => NoUpload
 		Open(ServeScript(_)) => NoUpload
 		Open(ShowLogin) => NoUpload
 		Open(SignIn) => NoUpload
@@ -542,6 +548,11 @@ access_asked = |asked|
 		RevokeInvite(_) => AsksNoConversation
 		RevokeKey(_) => AsksNoConversation
 		OpenAgentStream => AsksNoConversation
+		ShowChannels => AsksNoConversation
+		CreateChannel => AsksNoConversation
+		ShowChannelMembers(_) => AsksNoConversation
+		AddChannelMember(_) => AsksNoConversation
+		RemoveChannelMember(_) => AsksNoConversation
 	}
 
 ## The 403 for a reader or a writer the place doesn't admit.
@@ -563,6 +574,11 @@ anonymous_refusal = |asked|
 	match asked {
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
+		ShowChannels => SignInRoute.login_redirect(site_path_of("/channels"))
+		ShowChannelMembers(channel) => SignInRoute.login_redirect(site_path_of("/channels/${channel.to_str()}"))
+		CreateChannel => no_one_refusal
+		AddChannelMember(_) => no_one_refusal
+		RemoveChannelMember(_) => no_one_refusal
 		AppendToConversation(_) => no_one_refusal
 		SendToConversation(_) => no_one_refusal
 		OpenConversationStream(_) => no_one_refusal
@@ -794,6 +810,31 @@ answer_route! = |
 			directory,
 			query: request.query,
 		})
+		ShowChannels => ChannelMembersRoute.show_channels({ acting, directory })
+		CreateChannel => ChannelMembersRoute.create!({
+			acting,
+			directory,
+			body: request.body,
+		})
+		ShowChannelMembers(channel) => ChannelMembersRoute.show_members({
+			acting,
+			directory,
+			channel,
+		})
+		AddChannelMember({ channel, member }) =>
+			ChannelMembersRoute.add!({
+				acting,
+				directory,
+				channel,
+				member,
+			})
+		RemoveChannelMember({ channel, member }) =>
+			ChannelMembersRoute.remove!({
+				acting,
+				directory,
+				channel,
+				member,
+			})
 	}
 
 ## A message's POST to the conversation `key`, by `acting`, at the host's

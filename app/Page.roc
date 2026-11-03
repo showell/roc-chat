@@ -35,6 +35,7 @@
 ## for one constant: the doctype and the head's two `<meta>` elements.
 import AgentInvite
 import AgentKey
+import Channels
 import Conversation
 import ConversationKey
 import DateTime
@@ -319,6 +320,94 @@ Page :: [].{
 		})
 	}
 
+	## The channels page, for `viewer`, the admin: each of `channels`,
+	## linked to its page, then a form that creates one.
+	channels : { viewer : SignedIn, channels : List(Channels.Channel) } -> TrustedHtml
+	channels = |{ viewer, channels: all }| {
+		listed = all.map(
+			|channel|
+				TrustedHtml.join([
+					Html.element({
+						name: P,
+						attrs: [],
+						inner: Html.element({
+							name: A,
+							attrs: [Link(site_path("/channels/${channel.name().to_str()}"))],
+							inner: Escape.text("#${channel.name().to_str()}"),
+						}),
+					}),
+					newline,
+				]),
+		)
+		create_form = Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path("/channels"))],
+			inner: TrustedHtml.join([
+				labelled_input({
+					label: "Name",
+					attrs: [
+						InputType(Text),
+						FieldName(token("name")),
+						Required,
+					],
+				}),
+				Html.element({
+					name: Button,
+					attrs: [],
+					inner: Escape.text("Create a channel"),
+				}),
+			]),
+		})
+		document({
+			title: "Channels",
+			body: TrustedHtml.join([
+				top_bar({ title: "Channels", viewer }),
+				newline,
+				TrustedHtml.join(listed),
+				create_form,
+				newline,
+			]),
+		})
+	}
+
+	## A channel's page, for `viewer`, the admin: its members, each with a
+	## button that removes them, then every other of `users` with a button
+	## that adds them.
+	channel_members : {
+		viewer : SignedIn,
+		channel : Channels.Channel,
+		users : List(Users.User),
+	} -> TrustedHtml
+	channel_members = |
+		{
+			viewer,
+			channel,
+			users,
+		},
+	| {
+		title = "#${channel.name().to_str()}"
+		folder = "/channels/${channel.name().to_str()}/members"
+		row = |user, act|
+			member_button({
+				folder,
+				user,
+				act,
+			})
+		members = users.keep_if(|user| channel.has_member(user))
+		others = users.drop_if(|user| channel.has_member(user))
+		document({
+			title,
+			body: TrustedHtml.join([
+				top_bar({ title, viewer }),
+				newline,
+				paragraph("Members: ${members.len().to_str()}."),
+				TrustedHtml.join(members.map(|user| row(user, Remove))),
+				paragraph("Everyone else:"),
+				TrustedHtml.join(others.map(|user| row(user, Add))),
+			]),
+		})
+	}
+
 	## A page that says one thing: `title`, and `text` beneath it (no such
 	## conversation, a refused message, a failure).
 	notice : { title : Str, text : Str } -> TrustedHtml
@@ -559,6 +648,43 @@ paragraph = |said|
 		}),
 		newline,
 	])
+
+## A user as a channel's page names them: their name, whether a human or an
+## agent, and their id.
+user_label : Users.User -> Str
+user_label = |user| {
+	kind =
+		match user.role() {
+			Human => "human"
+			Agent(_) => "agent"
+		}
+	"${user.name().to_str()} (${kind}, id ${user.id().to_str()})"
+}
+
+## A channel page's button that adds `user` to the channel whose members'
+## paths are under `folder`, or removes them.
+member_button : {
+	folder : Str,
+	user : Users.User,
+	act : [Add, Remove],
+} -> TrustedHtml
+member_button = |
+	{
+		folder,
+		user,
+		act,
+	},
+| {
+	(word, label) =
+		match act {
+			Add => ("add", "Add")
+			Remove => ("remove", "Remove")
+		}
+	post_button({
+		action: "${folder}/${user.id().to_str()}/${word}",
+		label: "${label} ${user_label(user)}",
+	})
+}
 
 invite_state_word : AgentInvite.State -> Str
 invite_state_word = |state|
