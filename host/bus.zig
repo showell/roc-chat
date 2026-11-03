@@ -30,6 +30,8 @@ pub const Subscriber = struct {
     head: usize = 0,
     count: usize = 0,
     missed: bool = false,
+    /// Set by `end`: the stream is over, and its task should stop waiting.
+    ended: bool = false,
 
     pub const cap = 16;
 
@@ -38,6 +40,8 @@ pub const Subscriber = struct {
         frame: []u8,
         /// Nothing came within the wait: a keepalive is due.
         idle,
+        /// The stream was ended from outside (`end`).
+        ended,
         /// The stream's task was canceled, as the server stops.
         canceled,
     };
@@ -77,14 +81,36 @@ pub const Subscriber = struct {
         return s.missed;
     }
 
-    /// The oldest frame, waiting at most `wait_ms` for one. A spurious wake
-    /// is an early `.idle`, which costs one more keepalive.
+    fn has_ended(s: *Subscriber) bool {
+        s.mutex.lockUncancelable(s.io);
+        defer s.mutex.unlock(s.io);
+        return s.ended;
+    }
+
+    /// The stream is over: a `next` waiting now returns `.ended` at once,
+    /// and so does every later one. It never waits.
+    pub fn end(s: *Subscriber) void {
+        {
+            s.mutex.lockUncancelable(s.io);
+            defer s.mutex.unlock(s.io);
+            s.ended = true;
+        }
+        _ = s.seq.fetchAdd(1, .release);
+        s.io.futexWake(u32, &s.seq.raw, 1);
+    }
+
+    /// The oldest frame, waiting at most `wait_ms` for one, or `.ended`. A
+    /// spurious wake is an early `.idle`, which costs one more keepalive.
     pub fn next(s: *Subscriber, wait_ms: u32) Next {
-        if (s.take()) |m| return .{ .frame = m };
+        // The snapshot comes first: a push or an `end` after it changes
+        // `seq`, so the wait below returns at once rather than missing it.
         const expected = s.seq.load(.acquire);
+        if (s.has_ended()) return .ended;
+        if (s.take()) |m| return .{ .frame = m };
         s.io.futexWaitTimeout(u32, &s.seq.raw, expected, .{
             .duration = .{ .raw = .fromMilliseconds(wait_ms), .clock = .awake },
         }) catch return .canceled;
+        if (s.has_ended()) return .ended;
         if (s.take()) |m| return .{ .frame = m };
         return .idle;
     }
@@ -212,4 +238,24 @@ test "an empty mailbox answers idle when its wait is over, not before" {
     const t0 = Io.Clock.now(.awake, testing.io);
     try testing.expect(sub.next(30) == .idle);
     try testing.expect(t0.untilNow(testing.io, .awake).toMilliseconds() >= 30);
+}
+
+fn wait_for_next(sub: *Subscriber) Subscriber.Next {
+    return sub.next(25_000);
+}
+
+test "ending a subscriber wakes its waiting task at once, and every later wait answers ended" {
+    var hub = Hub.init(testing.io, testing.allocator);
+    defer hub.deinit();
+    const sub = try hub.open("k");
+    defer hub.close(sub);
+    const t0 = Io.Clock.now(.awake, testing.io);
+    var waiting = try testing.io.concurrent(wait_for_next, .{sub});
+    // Time for the task to reach its wait.
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(50) }, testing.io);
+    sub.end();
+    try testing.expect(waiting.await(testing.io) == .ended);
+    try testing.expect(t0.untilNow(testing.io, .awake).toMilliseconds() < 1_000);
+    hub.publish("k", "after the end");
+    try testing.expect(sub.next(25_000) == .ended);
 }

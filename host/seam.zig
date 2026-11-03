@@ -3,9 +3,9 @@
 //!
 //!   - the runtime: `roc_alloc`, `roc_realloc`, `roc_dealloc`,
 //!     `roc_crashed`, `roc_dbg` and `roc_expect_failed`;
-//!   - the app's two entries: `roc_page` (the demo) and
-//!     `roc_handle_http_request` (the server), and the records the second
-//!     takes and answers (platform/Http.roc);
+//!   - the app's three entries: `roc_page` (the demo), and `roc_admission`
+//!     and `roc_handle_http_request` (the server), and the records the
+//!     last two take and answer (platform/Http.roc);
 //!   - the hosted functions (platform/Host.roc), each exported under its
 //!     Roc name and answered by host/file_primitives.zig, or, for a
 //!     stream's frames, host/bus.zig.
@@ -120,9 +120,31 @@ pub const Response = extern struct {
     kind: AnswerKind,
 };
 
+/// Http.roc's `RequestHead`: three lists, by name, then the U16.
+pub const RequestHead = extern struct {
+    headers: HeaderList,
+    method: RocBytes,
+    path: RocBytes,
+    port: u16,
+};
+
+/// The admission's `verdict`, alphabetical.
+pub const Verdict = enum(u8) { admit, refuse };
+
+/// Http.roc's `Admission`, as platform/main.roc lays it flat for the host:
+/// the U64, the response, the U32, then the tag. Only the fields of its
+/// `verdict` mean anything.
+pub const Admission = extern struct {
+    body_most: u64,
+    refusal: Response,
+    body_grace_ms: u32,
+    verdict: Verdict,
+};
+
 comptime {
     const w = @sizeOf(usize);
     std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 16 * w and @sizeOf(Response) == 13 * w);
+    std.debug.assert(@sizeOf(RequestHead) == 10 * w and @sizeOf(Admission) == 15 * w);
 }
 
 // ── the file primitives' answers ────────────────────────────────────────────
@@ -190,6 +212,7 @@ fn hub_of(comptime what: []const u8) *bus.Hub {
 // ── the entries ─────────────────────────────────────────────────────────────
 
 pub extern fn roc_page(topic: RocBytes, transcript: RocBytes) callconv(.c) RocBytes;
+pub extern fn roc_admission(head: RequestHead) callconv(.c) Admission;
 pub extern fn roc_handle_http_request(request: Request) callconv(.c) Response;
 
 // ── the hosted functions ────────────────────────────────────────────────────

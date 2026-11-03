@@ -74,6 +74,15 @@
 //!      stored;
 //!  32. a send from another origin's page, and one the browser says is
 //!      cross-site: 403 each, nothing stored.
+//!  33. open the channel's stream as another site's page would (an
+//!      `EventSource`, its `Origin` and `Sec-Fetch-Site` cross-site; or a
+//!      `same-site` page on another port, no `Origin`): 403 each;
+//!  34. open it as this server's own page does (`Origin` this server,
+//!      `Sec-Fetch-Site` same-origin, `Sec-Fetch-Mode` cors): a 200 event
+//!      stream that no other site may load;
+//!  35. follow a link to the channel's page from another site (a
+//!      navigation: `Sec-Fetch-Site` cross-site, `Sec-Fetch-Mode`
+//!      navigate): 200, the page.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
@@ -399,6 +408,28 @@ pub fn main(init: std.process.Init) !void {
         has(foreign_send.body, "another origin") and cross_send.status == 403 and has(cross_send.body, "another site") and
         std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), before_refusals));
 
+    // 33. Opened as streams, so one wrongly held open ends at its watchdog
+    // rather than hanging the run.
+    var cross_stream = try Stream.openWith(a, io, port, channel_url ++ "/stream?after=0", "origin: http://evil.example\r\nsec-fetch-site: cross-site\r\nsec-fetch-mode: cors\r\nsec-fetch-dest: empty\r\n");
+    defer cross_stream.close();
+    var same_site_stream = try Stream.openWith(a, io, port, channel_url ++ "/stream?after=0", "sec-fetch-site: same-site\r\nsec-fetch-mode: no-cors\r\nsec-fetch-dest: script\r\n");
+    defer same_site_stream.close();
+    try t.check("open the channel's stream as another site's page would: 403 each", std.mem.startsWith(u8, cross_stream.head, "HTTP/1.1 403 ") and
+        std.mem.startsWith(u8, same_site_stream.head, "HTTP/1.1 403 "));
+
+    // 34.
+    const own_stream_headers = try std.fmt.allocPrint(a, "origin: http://localhost:{d}\r\nsec-fetch-site: same-origin\r\nsec-fetch-mode: cors\r\nsec-fetch-dest: empty\r\n", .{port});
+    var own_stream = try Stream.openWith(a, io, port, channel_url ++ "/stream?after=12", own_stream_headers);
+    defer own_stream.close();
+    try t.check("open it as this server's own page does: a 200 event stream no other site may load", own_stream.isEventStream() and
+        std.mem.eql(u8, own_stream.header("cross-origin-resource-policy") orelse "", "same-origin"));
+
+    // 35.
+    const followed = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ channel_url ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n" ++
+        "sec-fetch-site: cross-site\r\nsec-fetch-mode: navigate\r\nsec-fetch-dest: document\r\nsec-fetch-user: ?1\r\n\r\n", .{port}));
+    try t.check("follow a link to the channel's page from another site: 200, the page", followed.status == 200 and
+        has(followed.body, "id=\"msg-12\""));
+
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
 }
 
@@ -417,6 +448,11 @@ const Stream = struct {
     const stream_ms = 5_000;
 
     fn open(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8) !*Stream {
+        return openWith(a, io, port, path, "");
+    }
+
+    /// A stream opened with `more` headers, each ending CRLF.
+    fn openWith(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8, more: []const u8) !*Stream {
         const s = try a.create(Stream);
         s.a = a;
         s.io = io;
@@ -425,7 +461,7 @@ const Stream = struct {
         s.connection = try addr.connect(io, .{ .mode = .stream });
         s.watchdog = try io.concurrent(shutAfter, .{ io, s.connection, stream_ms });
         var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n\r\n", .{port}));
+        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}\r\n", .{ port, more }));
         s.reader = s.connection.reader(io, s.buf);
         var head: std.ArrayList(u8) = .empty;
         while (!std.mem.endsWith(u8, head.items, "\r\n\r\n")) try head.append(a, try s.reader.interface.takeByte());

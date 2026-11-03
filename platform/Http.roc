@@ -28,6 +28,27 @@ Http := [].{
 		port : U16,
 	}
 
+	## A request's head, as the host hands it before reading any body: the
+	## method, the path up to any `?`, each header as sent, and the port
+	## the server listens on, each as in `Request`.
+	RequestHead : {
+		method : List(U8),
+		path : List(U8),
+		headers : List(Http.Header),
+		port : U16,
+	}
+
+	## What the app makes of a request's head, before the host reads its
+	## body. `Admit` lets the host read a body of at most `body_most` bytes,
+	## within what is left of the request's read time and `body_grace_ms`
+	## more, then ask the app to answer the whole request. `Refuse` is the
+	## answer, written without reading the body. A refusal that is a stream
+	## is the app's bug, and the host answers a 500 instead.
+	Admission : [
+		Admit({ body_most : U64, body_grace_ms : U32 }),
+		Refuse(Http.Response),
+	]
+
 	## **THE APP'S ANSWER**: the status, the headers and the body, written
 	## by the host as given. A header name or value holding a CR, an LF or
 	## a NUL is the app's bug: the host answers a 500 instead.

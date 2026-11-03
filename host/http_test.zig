@@ -26,12 +26,17 @@ pub const Running = struct {
     root: files.DataRoot,
 
     pub fn start(limits: http.Limits) !*Running {
+        return start_on(limits, gpa);
+    }
+
+    /// A server whose own allocations are `server_gpa`'s.
+    pub fn start_on(limits: http.Limits, server_gpa: std.mem.Allocator) !*Running {
         const r = try gpa.create(Running);
         errdefer gpa.destroy(r);
         r.data = testing.tmpDir(.{});
         errdefer r.data.cleanup();
         r.root = .{ .io = io, .dir = r.data.dir };
-        r.server = try .listen(io, gpa, 0, limits, &r.root);
+        r.server = try .listen(io, server_gpa, 0, limits, &r.root);
         r.run = try io.concurrent(http.Server.run, .{&r.server});
         return r;
     }
@@ -95,47 +100,117 @@ test "the Roc routes: no such path is its 404, another method its 405, and each 
     try testing.expect(has(missing, "No such conversation: /chat/dm/1_1/plans"));
 }
 
-test "a body over the cap is a 413, one at it is read; a head over the cap is a 431" {
-    const r = try Running.start(.{ .body_most = 64 });
+/// The app's caps on a body (app/main.roc's allowances): a form's, and an
+/// upload's, an image of 10 MiB and 64 KiB for its form.
+const form_most = 64 * 1024;
+const upload_most = 10 * 1024 * 1024 + 64 * 1024;
+
+test "a body over the app's cap is a 413, one at it is read; a head over the cap is a 431" {
+    const r = try Running.start(.{});
     defer r.stop();
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const port = r.server.port();
-    const over = try exchange(a, port, "POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: x\r\ncontent-length: 65\r\n\r\n" ++ @as([65]u8, @splat('m')));
+    // Refused by its length alone, its body never sent.
+    const over = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most + 1})));
     try testing.expectEqual(413, try status(over));
     // At the cap: read, and the Roc refuses the form (no `markdown`).
-    const at = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 64\r\n\r\n" ++ @as([64]u8, @splat('m'))));
+    const at = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most}) ++ @as([form_most]u8, @splat('m'))));
     try testing.expectEqual(400, try status(at));
     try testing.expect(has(at, "The form has no field `markdown`."));
     const head = try exchange(a, port, "GET / HTTP/1.1\r\nx-big: " ++ @as([http.head_most]u8, @splat('h')) ++ "\r\n\r\n");
     try testing.expectEqual(431, try status(head));
 }
 
-test "an upload's own cap: a POST to a path ending /upload past the body cap reaches the Roc; the same body elsewhere, or a PUT, is a 413; past the upload cap, a 413 for it too" {
-    const r = try Running.start(.{ .body_most = 64, .upload_body_most = 128 });
+test "an upload's own cap: a routed upload at it reaches the Roc; past it, a 413; past a form's cap, a 413 for a message, a PUT, and a path ending /upload that is no conversation's" {
+    const r = try Running.start(.{});
     defer r.stop();
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const port = r.server.port();
-    const hundred = "content-length: 100\r\n\r\n" ++ @as([100]u8, @splat('u'));
-    // Read, and the Roc refuses it as no form of one file.
-    const upload = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", hundred));
+    const at_most = try a.alloc(u8, upload_most);
+    @memset(at_most, 'u');
+    // Read whole, and the Roc refuses it as no form of one file.
+    const upload = try exchange(a, port, try std.fmt.allocPrint(a, "POST /chat/dm/1_1/plans/upload HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, upload_most, at_most }));
     try testing.expectEqual(400, try status(upload));
-    const message = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", hundred));
-    try testing.expectEqual(413, try status(message));
-    const put = try exchange(a, port, try ours(a, port, "PUT /chat/dm/1_1/plans/upload HTTP/1.1", hundred));
-    try testing.expectEqual(413, try status(put));
-    const over = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", "content-length: 129\r\n\r\n" ++ @as([129]u8, @splat('u'))));
+    try testing.expect(has(upload, "no file"));
+    // Each refused by its length alone, its body never sent.
+    const past_form = std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most + 1});
+    const over = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{upload_most + 1})));
     try testing.expectEqual(413, try status(over));
-    try testing.expect(http.is_upload(.{ .method = "POST", .path = "/a/upload", .query = "", .headers = &.{}, .body = "", .port = 1 }));
-    try testing.expect(!http.is_upload(.{ .method = "GET", .path = "/a/upload", .query = "", .headers = &.{}, .body = "", .port = 1 }));
-    try testing.expect(!http.is_upload(.{ .method = "POST", .path = "/a/uploads", .query = "", .headers = &.{}, .body = "", .port = 1 }));
+    const message = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", past_form));
+    try testing.expectEqual(413, try status(message));
+    const put = try exchange(a, port, try ours(a, port, "PUT /chat/dm/1_1/plans/upload HTTP/1.1", past_form));
+    try testing.expectEqual(413, try status(put));
+    const unrouted = try exchange(a, port, try ours(a, port, "POST /x/upload HTTP/1.1", past_form));
+    try testing.expectEqual(413, try status(unrouted));
+}
+
+test "a request from elsewhere is refused from its head, its body never waited for; one from here waits for its body" {
+    const r = try Running.start(.{ .read_ms = 2_000 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    // A head whose body never comes: a page elsewhere, then this server's.
+    const began = Io.Clock.now(.awake, io);
+    const foreign = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", "origin: http://evil.example\r\ncontent-length: 1000\r\n\r\n"));
+    try testing.expectEqual(403, try status(foreign));
+    try testing.expect(has(foreign, "another origin"));
+    try testing.expect(has(foreign, "cross-origin-resource-policy: same-origin"));
+    try testing.expect(began.untilNow(io, .awake).toMilliseconds() < 1_000);
+    const rebound = try exchange(a, port, "POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: rebound.example\r\ncontent-length: 1000\r\n\r\n");
+    try testing.expectEqual(403, try status(rebound));
+    const own = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "origin: http://127.0.0.1:0\r\ncontent-length: 1000\r\n\r\n"));
+    try testing.expectEqual(403, try status(own));
+    const here = try exchange(a, port, try std.fmt.allocPrint(a, "POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\norigin: http://127.0.0.1:{d}\r\ncontent-length: 1000\r\n\r\n", .{ port, port }));
+    try testing.expectEqual(408, try status(here));
+}
+
+test "the body bytes in flight are capped across connections: past the cap a 503, its body unread; at it, read; once answered, given back" {
+    const r = try Running.start(.{ .body_bytes_in_flight_most = 100 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    // A message of 60 bytes, held part sent.
+    const held_form = "markdown=" ++ @as([51]u8, @splat('h'));
+    const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+    const held = try addr.connect(io, .{ .mode = .stream });
+    defer held.close(io);
+    var w = held.writer(io, &.{});
+    try w.interface.writeAll(try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 60\r\n\r\n" ++ held_form[0..9]));
+    try wait_until_in_flight(r, 60);
+    const sixty = "markdown=" ++ @as([51]u8, @splat('s'));
+    const busy = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 60\r\n\r\n" ++ sixty));
+    try testing.expectEqual(503, try status(busy));
+    const forty = "markdown=" ++ @as([31]u8, @splat('f'));
+    const fits = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 40\r\n\r\n" ++ forty));
+    try testing.expectEqual(303, try status(fits));
+    try w.interface.writeAll(held_form[9..]);
+    var buf: [4096]u8 = undefined;
+    var rd = held.reader(io, &buf);
+    try testing.expectEqual(303, try status(try rd.interface.allocRemaining(a, .limited(64 * 1024))));
+    try wait_until_in_flight(r, 0);
+    const after = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 60\r\n\r\n" ++ sixty));
+    try testing.expectEqual(303, try status(after));
+}
+
+/// Waits, at most 2 s, for the server's body bytes in flight to be `n`.
+fn wait_until_in_flight(r: *Running, n: usize) !void {
+    for (0..200) |_| {
+        if (r.server.body_bytes_in_flight.load(.monotonic) == n) return;
+        try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(10) }, io);
+    }
+    return error.TestInFlightNeverReached;
 }
 
 test "an upload's body has its own time: one that pauses past the read's time is read whole; a message's is a 408" {
-    const r = try Running.start(.{ .read_ms = 200, .upload_body_read_ms = 5_000 });
+    const r = try Running.start(.{ .read_ms = 200 });
     defer r.stop();
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
@@ -173,14 +248,14 @@ test "a request too slow is a 408, and the server serves the next" {
     const slow_head = try exchange(a, port, "GET /nowhere HTTP/1.1\r\nhost: x\r\n");
     try testing.expectEqual(408, try status(slow_head));
     // A body shorter than its length says.
-    const slow_body = try exchange(a, port, "POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: x\r\ncontent-length: 20\r\n\r\nmarkdown=x");
+    const slow_body = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 20\r\n\r\nmarkdown=x"));
     try testing.expectEqual(408, try status(slow_body));
     const next = try exchange(a, port, try ours(a, port, "GET /nowhere HTTP/1.1", "\r\n"));
     try testing.expectEqual(404, try status(next));
 }
 
 test "a refused client that never closes holds its own connection, not the server" {
-    const r = try Running.start(.{ .body_most = 64, .write_ms = 5_000, .linger_ms = 1_000 });
+    const r = try Running.start(.{ .write_ms = 5_000, .linger_ms = 1_000 });
     defer r.stop();
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
@@ -190,7 +265,7 @@ test "a refused client that never closes holds its own connection, not the serve
     const held = try addr.connect(io, .{ .mode = .stream });
     defer held.close(io);
     var w = held.writer(io, &.{});
-    try w.interface.writeAll("POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: x\r\ncontent-length: 1000\r\n\r\n");
+    try w.interface.writeAll(try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most + 1})));
     var buf: [4096]u8 = undefined;
     var rd = held.reader(io, &buf);
     // The refusal, read to the server's shut of its side; this side stays open.
@@ -259,4 +334,102 @@ test "a holder at its cap ends its own oldest stream, and its newer ones still g
     // The first was ended for the third, before the post: closed, no frame.
     try testing.expectEqual(null, try streams[0].line());
     for (streams[1..]) |*s| try testing.expectEqualStrings("id: 1\n", (try s.line()).?);
+}
+
+test "a stream ended for a newer one of its holder lets go of its subscriber and its slot at once" {
+    const r = try Running.start(.{ .streams_per_holder = 1 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    var streams: [2]HeldStream = undefined;
+    try streams[0].open(a, port);
+    defer streams[0].connection.close(io);
+    try testing.expectEqual(1, r.server.hub.count());
+    try streams[1].open(a, port);
+    defer streams[1].connection.close(io);
+    try testing.expectEqual(null, try streams[0].line());
+    // Its task wakes now, not at its keepalive, 25 s on.
+    for (0..200) |_| {
+        if (r.server.hub.count() == 1) break;
+        try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(10) }, io);
+    }
+    try testing.expectEqual(1, r.server.hub.count());
+    try testing.expectEqual(1, r.server.slots.count(io));
+}
+
+/// An allocator that counts the bytes its child holds for it, so a test can
+/// see how much a server keeps.
+const Counting = struct {
+    child: std.mem.Allocator,
+    held: std.atomic.Value(usize) = .init(0),
+
+    fn allocator(c: *Counting) std.mem.Allocator {
+        return .{ .ptr = c, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
+    }
+
+    fn of(ctx: *anyopaque) *Counting {
+        return @ptrCast(@alignCast(ctx));
+    }
+
+    fn moved(c: *Counting, from: usize, to: usize) void {
+        if (to >= from) _ = c.held.fetchAdd(to - from, .monotonic) else _ = c.held.fetchSub(from - to, .monotonic);
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
+        const p = of(ctx).child.rawAlloc(len, alignment, ret) orelse return null;
+        of(ctx).moved(0, len);
+        return p;
+    }
+
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret: usize) bool {
+        if (!of(ctx).child.rawResize(memory, alignment, new_len, ret)) return false;
+        of(ctx).moved(memory.len, new_len);
+        return true;
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret: usize) ?[*]u8 {
+        const p = of(ctx).child.rawRemap(memory, alignment, new_len, ret) orelse return null;
+        of(ctx).moved(memory.len, new_len);
+        return p;
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
+        of(ctx).child.rawFree(memory, alignment, ret);
+        of(ctx).moved(memory.len, 0);
+    }
+};
+
+test "a held stream keeps none of its call's arena: the transcript read, decoded and rendered is freed once its backlog is sent" {
+    var counting: Counting = .{ .child = gpa };
+    const r = try Running.start_on(.{}, counting.allocator());
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    // A transcript of 100 messages of 4,000 bytes each.
+    const messages = 100;
+    var transcript: std.ArrayList(u8) = .empty;
+    for (1..messages + 1) |n| try transcript.print(a, "-------------\nMSG_plans_{d}\nfrom: Steve\ndate: 2026-11-02T18:02:11Z\n\n{s}\n\n", .{ n, @as([4000]u8, @splat('x')) });
+    try r.data.dir.createDirPath(io, "chat/dm/1_1/plans");
+    try r.data.dir.writeFile(io, .{ .sub_path = "chat/dm/1_1/plans/transcript", .data = transcript.items });
+    var stream: HeldStream = undefined;
+    try stream.open(a, port);
+    defer stream.connection.close(io);
+    // The backlog whole: every message's frame.
+    var frames: usize = 0;
+    while (frames < messages) {
+        const line = (try stream.line()) orelse return error.TestStreamEnded;
+        if (std.mem.startsWith(u8, line, "id: ")) frames += 1;
+    }
+    // What the server holds while the stream stays open: a few small
+    // records, none of the transcript.
+    for (0..200) |_| {
+        if (counting.held.load(.monotonic) < 64 * 1024) break;
+        try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(10) }, io);
+    }
+    try testing.expect(counting.held.load(.monotonic) < 64 * 1024);
+    try testing.expect(transcript.items.len > 400_000);
 }

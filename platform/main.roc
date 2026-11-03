@@ -1,14 +1,18 @@
-## **GOPHER-ROC'S PLATFORM**: two entries into the app, and the host's
-## primitives as effects (Host.roc).
+## This is gopher-roc's platform. It gives the host three entries into the
+## app, and gives the app the host's primitives as effects (Host.roc).
 ##
 ## - `roc_page` (the demo, host/demo.zig): a topic's name and its transcript
 ##   in, the page out.
-## - `roc_handle_http_request` (the server, host/http.zig): a request in
-##   (Http.roc), the response out. The host routes nothing: the app does.
+## - `roc_admission` (the server, host/http.zig): a request's head in
+##   (Http.roc), before any body is read; out comes how much body to read,
+##   or the refusal to write instead.
+## - `roc_handle_http_request` (the server): a request in (Http.roc), the
+##   response out. The host routes nothing: the app does.
 ##
 ## Each hosted function's symbol is its name in Host.roc, without the `!`.
 platform ""
 	requires {
+		admission : Http.RequestHead -> Http.Admission,
 		handle_http_request! : Http.Request => Http.Response,
 		page : List(U8), List(U8) -> List(U8)
 	}
@@ -18,6 +22,7 @@ platform ""
 	]
 	packages {}
 	provides {
+		"roc_admission": admission_for_host,
 		"roc_handle_http_request": handle_for_host!,
 		"roc_page": page_for_host,
 	}
@@ -49,3 +54,36 @@ page_for_host = |topic, transcript| page(topic, transcript)
 
 handle_for_host! : Http.Request => Http.Response
 handle_for_host! = |request| handle_http_request!(request)
+
+## The app's `Http.Admission`, laid flat for the host: `verdict` says which
+## tag it was, and only that tag's fields are read. An admission's
+## `refusal` is an empty answer, which the host never reads or writes, and
+## a refusal's body limits are zero.
+admission_for_host : Http.RequestHead -> {
+	verdict : [Admit, Refuse],
+	body_most : U64,
+	body_grace_ms : U32,
+	refusal : Http.Response,
+}
+admission_for_host = |head|
+	match admission(head) {
+		Admit({ body_most, body_grace_ms }) => {
+			verdict: Admit,
+			body_most,
+			body_grace_ms,
+			refusal: {
+				status: 0,
+				headers: [],
+				body: [],
+				kind: Whole,
+				stream_key: [],
+				stream_holder: [],
+			},
+		}
+		Refuse(refusal) => {
+			verdict: Refuse,
+			body_most: 0,
+			body_grace_ms: 0,
+			refusal,
+		}
+	}

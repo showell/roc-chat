@@ -1,19 +1,26 @@
-//! This is the HTTP server. It reads each request whole, hands it to the
-//! Roc app (`roc_handle_http_request`), and writes back whatever response
-//! the app gives. It does no routing: app/Route.roc decides what each path
-//! means.
+//! This is the HTTP server. It reads each request's head, asks the Roc app
+//! whether to read its body and how much (`roc_admission`), reads it, hands
+//! the whole request to the app (`roc_handle_http_request`), and writes back
+//! whatever response the app gives. It does no routing: app/Route.roc
+//! decides what each path means.
 //!
 //! Each connection gets a task of its own and one request, and every answer
 //! says `connection: close`. A single mutex, the turn, is held while the
-//! app handles a request, so the app handles one request at a time. The
-//! turn is taken only after the request has been read, and let go before
-//! the answer is written, so a slow client delays nobody else.
+//! app judges a head or handles a request, so the app makes one call at a
+//! time. The turn is never held while the network is read or written, so a
+//! slow client delays nobody else.
 //!
 //! Reads must finish within `Limits.read_ms` and writes within
 //! `Limits.write_ms`. A watchdog shuts the socket of a client that is too
 //! slow. An oversized head gets a 431, an oversized body a 413, and a late
-//! request a 408. An upload (`is_upload`) has a larger cap and more time
-//! for its body, and every other request keeps the message form's.
+//! request a 408.
+//!
+//! The app judges each request's head before any body is read
+//! (`roc_admission`): it refuses a request outright, or says how large a
+//! body to read and how much longer than the request's read time it may
+//! take. The bodies being read or held, across every connection, are held
+//! to `Limits.body_bytes_in_flight_most`; a request whose body would pass
+//! it gets a 503, its body unread.
 //!
 //! When the app marks an answer as a `Stream`, the connection stays open
 //! and sends the frames the app publishes to the stream's key
@@ -42,15 +49,11 @@ pub const Limits = struct {
     read_ms: u32 = 10_000,
     /// The response, written whole.
     write_ms: u32 = 10_000,
-    /// The most a body may be: a message's form, with room to spare.
-    body_most: usize = 64 * 1024,
-    /// The most an upload's body may be (`is_upload`): an image of 10 MiB
-    /// in a multipart form, with room for the form. The app holds the image
-    /// to its own limit (app/UploadedImage.roc).
-    upload_body_most: usize = 10 * 1024 * 1024 + 64 * 1024,
-    /// An upload's body, read whole from the end of its head: five minutes,
-    /// the compose box's patience, for a large image on a slow link.
-    upload_body_read_ms: u32 = 5 * 60 * 1000,
+    /// The most body bytes read or held at once, across every connection:
+    /// a few uploads at their largest (the app's `upload_body_allowance`).
+    /// A request is charged its stated length, or its allowance when its
+    /// body is chunked, from before its body is read until it is answered.
+    body_bytes_in_flight_most: usize = 64 * 1024 * 1024,
     /// After a refusal, the most time spent draining what the client still
     /// sends (`linger`), inside the write deadline.
     linger_ms: u32 = 1_000,
@@ -78,6 +81,8 @@ pub const Server = struct {
     /// Every held stream, by its key.
     hub: bus.Hub,
     slots: sse.Slots = .{},
+    /// The body bytes charged to requests not yet answered.
+    body_bytes_in_flight: std.atomic.Value(usize) = .init(0),
 
     /// Listens on 127.0.0.1 at `at_port`. Tests pass 0 to get any free port.
     pub fn listen(io: Io, gpa: std.mem.Allocator, at_port: u16, limits: Limits, root: *const files.DataRoot) !Server {
@@ -128,9 +133,10 @@ pub const Server = struct {
         listening.shutdown(s.io, .both) catch {};
     }
 
-    /// One connection: its request read under the read deadline, answered
-    /// by the Roc in the turn, the answer written under the write deadline
-    /// or held open as a stream, then closed.
+    /// One connection: its head read under the read deadline and judged by
+    /// the Roc in the turn, then the body it admits read, the request
+    /// answered by the Roc in the turn, and the answer written under the
+    /// write deadline or held open as a stream, then closed.
     fn serve(s: *Server, connection: net.Stream) void {
         defer connection.close(s.io);
         var arena_state = std.heap.ArenaAllocator.init(s.gpa);
@@ -153,21 +159,33 @@ pub const Server = struct {
             defer watchdog.cancel(s.io);
             break :blk read_head(arena, &http, s.port(), &fired);
         };
-        // The body has what is left of the read's time, or an upload's own
-        // time, and an upload's own cap.
-        const request = switch (head) {
-            .parsed => |received| if (!received.req.head.method.requestHasBody()) head else blk: {
-                const upload = is_upload(received.parsed);
-                const spent: u64 = @intCast(@max(0, began.untilNow(s.io, .awake).toMilliseconds()));
-                const ms: u32 = if (upload) s.limits.upload_body_read_ms else @intCast(@as(u64, s.limits.read_ms) -| spent);
-                var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, ms, net.ShutdownHow.recv, &fired }) catch |e| {
-                    log.warn("no task for the body's watchdog ({t}): closed", .{e});
-                    return;
-                };
-                defer watchdog.cancel(s.io);
-                break :blk read_body(arena, received, if (upload) s.limits.upload_body_most else s.limits.body_most, &fired);
-            },
-            .refused, .gone => head,
+        const received = switch (head) {
+            .parsed => |r| r,
+            .refused => |r| return s.refuse(connection, &http, r),
+            .gone => return,
+        };
+        const allowance = switch (s.admit_in_turn(arena, received.parsed)) {
+            .admit => |a| a,
+            .refuse => |refusal| return s.refuse(connection, &http, .{ .req = received.req, .answer = refusal }),
+        };
+        var charged: usize = 0;
+        defer _ = s.body_bytes_in_flight.fetchSub(charged, .monotonic);
+        // The body has what is left of the read's time, and the app's grace.
+        const request: Read = if (!received.req.head.method.requestHasBody()) head else blk: {
+            const wanted = body_bytes_wanted(received.req.head, allowance.body_most);
+            if (!s.charge_body_bytes(wanted)) {
+                log.warn("{d} body bytes for {f} would pass the {d} in flight: answered 503", .{ wanted, files.loggable(received.parsed.path), s.limits.body_bytes_in_flight_most });
+                break :blk .{ .refused = .{ .req = received.req, .answer = in_flight_full } };
+            }
+            charged = wanted;
+            const spent: u64 = @intCast(@max(0, began.untilNow(s.io, .awake).toMilliseconds()));
+            const ms: u32 = @intCast(@min(std.math.maxInt(u32), (@as(u64, s.limits.read_ms) -| spent) + allowance.body_grace_ms));
+            var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, ms, net.ShutdownHow.recv, &fired }) catch |e| {
+                log.warn("no task for the body's watchdog ({t}): closed", .{e});
+                return;
+            };
+            defer watchdog.cancel(s.io);
+            break :blk read_body(arena, received, allowance.body_most, &fired);
         };
         switch (request) {
             .gone => return,
@@ -183,23 +201,45 @@ pub const Server = struct {
                         req.respond(response.body, .{ .status = response.status, .keep_alive = false, .extra_headers = response.headers }) catch |e|
                             log.warn("the answer to {f} was not written ({t})", .{ files.loggable(p.parsed.path), e });
                     },
-                    .stream => |stream| s.serve_stream(arena, connection, &req, stream),
+                    .stream => |stream| s.serve_stream(&arena_state, connection, &req, stream),
                 }
             },
-            .refused => |r| {
-                var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.limits.write_ms, net.ShutdownHow.both, &fired }) catch |e| {
-                    log.warn("no task for the write's watchdog ({t}): closed", .{e});
-                    return;
-                };
-                defer watchdog.cancel(s.io);
-                if (r.req) |req| {
-                    var refused = req;
-                    refused.head.expect = null;
-                    refused.respond(r.body, .{ .status = r.status, .keep_alive = false }) catch return;
-                } else raw(&http, r.status);
-                linger(s.io, connection, s.limits.linger_ms);
-            },
+            .refused => |r| s.refuse(connection, &http, r),
         }
+    }
+
+    /// The refusal `r` written under the write deadline, its body unread,
+    /// then what the client still sends drained (`linger`).
+    fn refuse(s: *Server, connection: net.Stream, http: *std.http.Server, r: Refusal) void {
+        var fired = std.atomic.Value(bool).init(false);
+        var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.limits.write_ms, net.ShutdownHow.both, &fired }) catch |e| {
+            log.warn("no task for the write's watchdog ({t}): closed", .{e});
+            return;
+        };
+        defer watchdog.cancel(s.io);
+        if (r.req) |req| {
+            var refused = req;
+            // No `100 Continue`: the body is never wanted.
+            refused.head.expect = null;
+            refused.respond(r.answer.body, .{ .status = r.answer.status, .keep_alive = false, .extra_headers = r.answer.headers }) catch return;
+        } else raw(http, r.answer.status);
+        linger(s.io, connection, s.limits.linger_ms);
+    }
+
+    /// `n` more body bytes charged to the bytes in flight, unless they would
+    /// pass the most: whether they were.
+    fn charge_body_bytes(s: *Server, n: usize) bool {
+        const before = s.body_bytes_in_flight.fetchAdd(n, .monotonic);
+        if (before + n <= s.limits.body_bytes_in_flight_most) return true;
+        _ = s.body_bytes_in_flight.fetchSub(n, .monotonic);
+        return false;
+    }
+
+    /// The Roc's judgement of `parsed`'s head, in the turn.
+    fn admit_in_turn(s: *Server, arena: std.mem.Allocator, parsed: Parsed) Admitted {
+        s.turn.lockUncancelable(s.io);
+        defer s.turn.unlock(s.io);
+        return admit(arena, .{ .root = s.root, .io = s.io, .hub = &s.hub }, parsed);
     }
 
     /// The Roc's answer to `parsed`, in the turn. A stream subscribes to
@@ -226,13 +266,22 @@ pub const Server = struct {
     /// write deadline, so a reader that stops reading is shut. It ends when
     /// a write fails, when its mailbox missed a frame (the browser
     /// reconnects and the app resumes it), or when a newer stream of its
-    /// holder takes its slot.
-    fn serve_stream(s: *Server, arena: std.mem.Allocator, connection: net.Stream, req: *std.http.Server.Request, opened: OpenStream) void {
+    /// holder takes its slot, which wakes it at once.
+    ///
+    /// Once the first bytes are written, the call's arena is freed: the
+    /// stream needs nothing of it after them (the hub keeps its own key, and
+    /// its slot its own holder), so a stream held for hours holds none of
+    /// the transcript its call read, decoded and rendered.
+    fn serve_stream(s: *Server, arena_state: *std.heap.ArenaAllocator, connection: net.Stream, req: *std.http.Server.Request, opened: OpenStream) void {
         const sub = opened.sub;
         defer s.hub.close(sub);
-        const held = s.slots.hold(s.io, .{ .all = s.limits.streams_most, .per_holder = s.limits.streams_per_holder }, opened.answer.holder, connection);
+        const held = s.slots.hold(s.io, .{ .all = s.limits.streams_most, .per_holder = s.limits.streams_per_holder }, .{
+            .holder = opened.answer.holder,
+            .stream = connection,
+            .sub = sub,
+        });
         defer s.slots.let_go(s.io, held);
-        const headers = std.mem.concat(arena, std.http.Header, &.{ &sse.headers, opened.answer.headers }) catch return;
+        const headers = std.mem.concat(arena_state.allocator(), std.http.Header, &.{ &sse.headers, opened.answer.headers }) catch return;
         var head_buf: [4096]u8 = undefined;
         var body = blk: {
             var fired = std.atomic.Value(bool).init(false);
@@ -248,11 +297,12 @@ pub const Server = struct {
         // The head goes with the first bytes, even none, so the browser
         // knows it is connected.
         if (!s.push(connection, &body, opened.answer.body)) return;
+        _ = arena_state.reset(.free_all);
         while (!sub.has_missed()) {
             const frame = switch (sub.next(s.limits.stream_ping_ms)) {
                 .frame => |m| m,
                 .idle => null,
-                .canceled => return,
+                .ended, .canceled => return,
             };
             defer if (frame) |f| sub.gpa.free(f);
             if (!s.push(connection, &body, frame orelse sse.ping)) return;
@@ -313,31 +363,40 @@ const Received = struct { req: std.http.Server.Request, parsed: Parsed };
 
 const Read = union(enum) {
     parsed: Received,
-    /// Refused before the Roc is asked: `req` when the head was read.
-    refused: struct { req: ?std.http.Server.Request, status: std.http.Status, body: []const u8 },
+    refused: Refusal,
     /// Nothing to answer: the client went.
     gone,
 };
 
-/// Whether a request is an upload, which has its own cap and time
-/// (`Limits.upload_body_most`, `Limits.upload_body_read_ms`): a POST to a
-/// path whose last part is `upload`, as app/Route.roc routes an upload.
-pub fn is_upload(parsed: Parsed) bool {
-    return std.mem.eql(u8, parsed.method, "POST") and std.mem.endsWith(u8, parsed.path, "/upload");
+/// A request refused before the Roc answers it, its body unread or not
+/// read whole: `req` when its head was read, else only `answer.status` is
+/// written.
+const Refusal = struct { req: ?std.http.Server.Request, answer: Written };
+
+/// The answer when the bytes in flight are full.
+const in_flight_full: Written = .{ .status = .service_unavailable, .headers = &.{}, .body = "the server is busy; try again\n" };
+
+/// The body bytes a request may bring into memory, charged before it is
+/// read: none when it has no body, or states a length past `most` (it is
+/// refused unread), else its stated length, or `most` when it is chunked.
+fn body_bytes_wanted(head: std.http.Server.Request.Head, most: usize) usize {
+    if (head.content_length) |n| return if (n > most) 0 else @intCast(n);
+    if (head.transfer_encoding == .none) return 0;
+    return most;
 }
 
 /// The head of the request on `http`, copied into `arena`, its body not yet
 /// read; or the refusal to send.
 fn read_head(arena: std.mem.Allocator, http: *std.http.Server, port: u16, fired: *std.atomic.Value(bool)) Read {
     var req = http.receiveHead() catch |e| return switch (e) {
-        error.HttpHeadersOversize => .{ .refused = .{ .req = null, .status = .request_header_fields_too_large, .body = "" } },
-        error.HttpHeadersInvalid => .{ .refused = .{ .req = null, .status = .bad_request, .body = "" } },
+        error.HttpHeadersOversize => status_only(.request_header_fields_too_large),
+        error.HttpHeadersInvalid => status_only(.bad_request),
         error.HttpRequestTruncated, error.HttpConnectionClosing, error.ReadFailed => if (fired.load(.acquire))
-            .{ .refused = .{ .req = null, .status = .request_timeout, .body = "" } }
+            status_only(.request_timeout)
         else
             .gone,
     };
-    const parsed = copy_head(arena, &req, port) catch return .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } };
+    const parsed = copy_head(arena, &req, port) catch return .{ .refused = .{ .req = req, .answer = failed } };
     return .{ .parsed = .{ .req = req, .parsed = parsed } };
 }
 
@@ -353,7 +412,7 @@ fn read_body(arena: std.mem.Allocator, received: Received, body_most: usize, fir
     const body = req.readerExpectContinue(&body_buf) catch return .gone;
     with_body.body = body.allocRemaining(arena, .limited(body_most + 1)) catch |e| return switch (e) {
         error.StreamTooLong => too_large(req),
-        error.OutOfMemory => .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } },
+        error.OutOfMemory => .{ .refused = .{ .req = req, .answer = failed } },
         error.ReadFailed => if (fired.load(.acquire)) timed_out(req) else .gone,
     };
     // std's reader treats a closed socket as the body's end, with no
@@ -364,11 +423,16 @@ fn read_body(arena: std.mem.Allocator, received: Received, body_most: usize, fir
 }
 
 fn too_large(req: std.http.Server.Request) Read {
-    return .{ .refused = .{ .req = req, .status = .payload_too_large, .body = "the body is too large\n" } };
+    return .{ .refused = .{ .req = req, .answer = .{ .status = .payload_too_large, .headers = &.{}, .body = "the body is too large\n" } } };
 }
 
 fn timed_out(req: std.http.Server.Request) Read {
-    return .{ .refused = .{ .req = req, .status = .request_timeout, .body = "the request was too slow\n" } };
+    return .{ .refused = .{ .req = req, .answer = .{ .status = .request_timeout, .headers = &.{}, .body = "the request was too slow\n" } } };
+}
+
+/// A refusal with no head to answer: its status alone.
+fn status_only(status: std.http.Status) Read {
+    return .{ .refused = .{ .req = null, .answer = .{ .status = status, .headers = &.{}, .body = "" } } };
 }
 
 fn copy_head(arena: std.mem.Allocator, req: *const std.http.Server.Request, port: u16) !Parsed {
@@ -421,6 +485,46 @@ pub fn answer(arena: std.mem.Allocator, answering: Answering, parsed: Parsed) An
         .port = parsed.port,
     });
     seam.end();
+    return checked(arena, parsed, r);
+}
+
+/// What the Roc judges of a request's head: refused, with its answer, or
+/// admitted, with the most its body may be and how much longer than what
+/// is left of the request's read time it may take.
+pub const Admitted = union(enum) { admit: Allowance, refuse: Written };
+
+pub const Allowance = struct { body_most: usize, body_grace_ms: u32 };
+
+/// Asks the app to judge `parsed`'s head, its body not yet read, and copies
+/// a refusal into `arena`. A refusal the app got wrong (a stream, or one
+/// `checked` refuses) becomes a 500.
+pub fn admit(arena: std.mem.Allocator, answering: Answering, parsed: Parsed) Admitted {
+    seam.begin(.{ .arena = arena, .root = answering.root, .io = answering.io, .hub = answering.hub });
+    const r = seam.roc_admission(.{
+        .headers = .from(parsed.headers),
+        .method = .from(parsed.method),
+        .path = .from(parsed.path),
+        .port = parsed.port,
+    });
+    seam.end();
+    return switch (r.verdict) {
+        .admit => .{ .admit = .{
+            .body_most = std.math.cast(usize, r.body_most) orelse std.math.maxInt(usize),
+            .body_grace_ms = r.body_grace_ms,
+        } },
+        .refuse => switch (checked(arena, parsed, r.refusal)) {
+            .whole => |w| .{ .refuse = w },
+            .stream => {
+                log.warn("the app refused {f} with a stream", .{files.loggable(parsed.path)});
+                return .{ .refuse = failed };
+            },
+        },
+    };
+}
+
+/// The app's answer `r` to `parsed`, its headers copied into `arena`, or a
+/// 500 for an answer the app got wrong.
+fn checked(arena: std.mem.Allocator, parsed: Parsed, r: seam.Response) Answered {
     const status = std.enums.fromInt(std.http.Status, r.status) orelse {
         log.warn("the app answered {f} with the status {d}, which is none", .{ files.loggable(parsed.path), r.status });
         return .{ .whole = failed };

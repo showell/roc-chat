@@ -7,6 +7,7 @@
 const std = @import("std");
 const Io = std.Io;
 const net = Io.net;
+const bus = @import("bus.zig");
 
 /// The host's stream headers, written before the app's: the type, never
 /// cached, and never buffered by a proxy, so frames arrive live.
@@ -28,8 +29,9 @@ pub const holder_most = 64;
 /// its holder, the bytes the app gives. A holder at its own cap ends its
 /// own oldest stream, never another's, so one user opening streams ends
 /// only their own. When every slot is held, the oldest stream of the
-/// holder holding the most is ended. An ended stream's socket is shut, so
-/// its next write fails and its task lets the slot go.
+/// holder holding the most is ended. An ended stream's socket is shut and
+/// its subscriber ended, so its task stops waiting at once and lets the
+/// slot go.
 pub const Slots = struct {
     mutex: Io.Mutex = .init,
     held: [most_ever]?Slot = @splat(null),
@@ -40,6 +42,7 @@ pub const Slots = struct {
 
     const Slot = struct {
         stream: net.Stream,
+        sub: *bus.Subscriber,
         ticket: u64,
         holder: [holder_most]u8,
         holder_len: usize,
@@ -51,13 +54,18 @@ pub const Slots = struct {
 
     pub const Held = struct { slot: usize, ticket: u64 };
 
+    /// A stream wanting a slot: its holder, its socket, and its subscriber,
+    /// which lives until its task lets the slot go.
+    pub const Holding = struct { holder: []const u8, stream: net.Stream, sub: *bus.Subscriber };
+
     /// The slots in use, of `most_ever`, and the most one holder may hold.
     pub const Most = struct { all: u32, per_holder: u32 };
 
-    /// A slot for `stream`, held by `holder`: that holder's oldest ended
+    /// A slot for `wanting.stream`, held by `wanting.holder`: that holder's oldest ended
     /// for it when it holds `most.per_holder`; else a free one; else the
     /// oldest of the holder holding the most.
-    pub fn hold(s: *Slots, io: Io, most: Most, holder: []const u8, stream: net.Stream) Held {
+    pub fn hold(s: *Slots, io: Io, most: Most, wanting: Holding) Held {
+        const holder = wanting.holder;
         std.debug.assert(holder.len <= holder_most);
         s.mutex.lockUncancelable(io);
         defer s.mutex.unlock(io);
@@ -78,14 +86,16 @@ pub const Slots = struct {
             s.end(io, own_oldest.?)
         else
             free orelse s.end(io, s.busiest_oldest(n));
-        var slot: Slot = .{ .stream = stream, .ticket = s.tickets, .holder = undefined, .holder_len = holder.len };
+        var slot: Slot = .{ .stream = wanting.stream, .sub = wanting.sub, .ticket = s.tickets, .holder = undefined, .holder_len = holder.len };
         @memcpy(slot.holder[0..holder.len], holder);
         s.held[i] = slot;
         return .{ .slot = i, .ticket = s.tickets };
     }
 
-    /// Slot `i`'s stream ended, its socket shut: `i`.
+    /// Slot `i`'s stream ended, its socket shut and its subscriber ended:
+    /// `i`.
     fn end(s: *Slots, io: Io, i: usize) usize {
+        s.held[i].?.sub.end();
         s.held[i].?.stream.shutdown(io, .both) catch {};
         return i;
     }
