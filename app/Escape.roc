@@ -1,20 +1,21 @@
-## **TEXT, ESCAPED ONCE, ON ITS WAY IN**: the door for every `Str` a page
-## shows, from a person, an agent or a file. It vouches (`TrustedHtml`)
-## only for what it has just escaped, so no text it is given is ever
-## markup, in an element or an attribute.
+## This module turns text into markup a page can show. Every `Str` a page
+## shows, whether a person, an agent or a file supplied it, goes through
+## `Escape.text`. It vouches for its answer (`TrustedHtml`) because it has
+## just escaped every character that could start markup, so no text it is
+## given becomes markup, in an element or in an attribute.
 import TrustedHtml
 
 Escape :: [].{
 
-	## `s`, escaped, as markup a page can hold.
+	## `text`, escaped, as markup a page can hold.
 	text : Str -> TrustedHtml
-	text = |s| TrustedHtml.dangerously_trust(escape(s))
+	text = |s| TrustedHtml.dangerously_trust(escaped(s))
 }
 
-## **THE ESCAPE**: `&`, `<`, `>`, `"` and `'` as entities. `&` goes first,
-## so no entity this writes is escaped again.
-escape : Str -> Str
-escape = |s|
+## `s` with `&`, `<`, `>`, `"` and `'` written as entities. `&` is escaped
+## first, so no entity written here is escaped again.
+escaped : Str -> Str
+escaped = |s|
 	s
 		.replace_each("&", "&amp;")
 		.replace_each("<", "&lt;")
@@ -23,11 +24,25 @@ escape = |s|
 		.replace_each("'", "&#39;")
 
 # ── tests
-expect Escape.text("Bea <i>x</i> & \"co\" 'q'").to_utf8() == "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;".to_utf8()
-expect Escape.text("café 🎉").to_utf8() == "café 🎉".to_utf8()
-expect Escape.text("").to_utf8() == []
+## The bytes of `text`, escaped.
+escaped_bytes : Str -> List(U8)
+escaped_bytes = |text| Escape.text(text).to_utf8()
+
+# Each of the five characters becomes its entity.
+expect
+	[
+		("&", "&amp;"),
+		("<", "&lt;"),
+		(">", "&gt;"),
+		("\"", "&quot;"),
+		("'", "&#39;"),
+	].all(|(text, expected)| escaped_bytes(text) == expected.to_utf8())
+expect escaped_bytes("Bea <i>x</i> & \"co\" 'q'") == "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;".to_utf8()
+# Anything else is kept as it is.
+expect escaped_bytes("café 🎉 =/;#") == "café 🎉 =/;#".to_utf8()
+expect escaped_bytes("") == []
 # Text is escaped exactly once: `&amp;` as text is `&amp;amp;`, and that
-# fragment, joined into another, comes out unchanged.
+# markup, joined into more markup, is not escaped again.
 expect {
 	once = Escape.text("&amp;")
 	[

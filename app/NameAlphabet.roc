@@ -1,28 +1,27 @@
-## **THE ALPHABET A NAME IS WRITTEN IN**: an allowlist, the one home of
-## which letters a permanent name may hold (`Name`), how their case folds,
-## and how each is spelled in ASCII. The letters are ASCII's `A`-`Z` and
-## `a`-`z`, and the accented Latin ones of Latin-1 (U+00C0 to U+00FF) and
-## Latin Extended-A (U+0100 to U+017F) whose fold has an ASCII spelling in
-## `spellings`. Anything else (a digit, punctuation, `×`, `÷`, an emoji, a
-## control character, an invisible format character such as U+202E or
-## U+200B) is refused by not being listed.
+## This module is the alphabet a person's, an agent's or a channel's name is
+## written in (`Name`). It decides which letters a name may hold, how each
+## letter's case folds, and how each letter is spelled in ASCII.
 ##
-## **NO LETTER PASSES FOR ANOTHER NAME'S**: `ı`, `ĸ`, `ŀ` and `ŉ` are left
-## out of `spellings`, so they are refused, and so is `Ŀ`, whose fold is
-## `ŀ`. A dotless `i`, a kra drawn as `k`, an `l` with a dot after it and
-## an `n` with an apostrophe before it each let one name look like another.
+## The alphabet is an allowlist. Its letters are ASCII's `A` to `Z` and `a`
+## to `z`, and the accented Latin letters of Latin-1 (U+00C0 to U+00FF) and
+## Latin Extended-A (U+0100 to U+017F) that have a row in `spellings`.
+## Anything else is refused because it isn't listed: a digit, punctuation,
+## `×`, `÷`, an emoji, a control character, or an invisible character such
+## as U+202E or U+200B.
 ##
-## **BYTE BY BYTE**: every accented letter is two UTF-8 bytes, a lead of
-## 0xC3, 0xC4 or 0xC5 and one more, so the rules read bytes, and a `Str`,
-## always valid UTF-8, needs no decoder.
+## Some Latin letters are left out because they let one name pass for
+## another: a dotless `ı`, a kra `ĸ` that looks like `k`, the dotted `ŀ`
+## and its capital `Ŀ`, and `ŉ` with its apostrophe.
+##
+## Every accented letter is two bytes of UTF-8, so the module reads a
+## name's bytes directly; a `Str` is always valid UTF-8.
 import Ascii
-import StrictName
 
 NameAlphabet :: [].{
 
-	## **TEXT WRITTEN IN THE ALPHABET**: every character a letter of it or
-	## a space. Opaque, so `written` is the only way in, and `folded` and
-	## `ascii_spelling` never meet a character they have no rule for.
+	## Text written in the alphabet: every character is a letter of it or a
+	## space. Only `written` makes one, so `folded` and `ascii_spelling`
+	## never meet a character they have no rule for.
 	Written :: Str.{
 
 		## The text, exactly as given.
@@ -32,8 +31,8 @@ NameAlphabet :: [].{
 		is_eq : _
 	}
 
-	## `text`, written in the alphabet; unless a character of it is no
-	## letter of the alphabet and no space.
+	## `text` as written text, or `ForbiddenCharacter` if any character
+	## of it is neither a letter of the alphabet nor a space.
 	written : Str -> Try(NameAlphabet.Written, [ForbiddenCharacter])
 	written = |text|
 		if (is_all_letters_or_spaces(text.to_utf8()))
@@ -41,33 +40,30 @@ NameAlphabet :: [].{
 		else
 			Err(ForbiddenCharacter)
 
-	## **THE CASE-FOLDED SPELLING**: each letter of a name's text, or of a
-	## strict name, folded by Unicode's simple case folding, so names that
-	## differ only in case, `ZOË` and `Zoë`, fold alike. `ſ` folds to `s`,
-	## and `ß` and `İ` stay as they are. A strict name's digits and `-`
-	## stay as they are.
-	folded : [Written(NameAlphabet.Written), Strict(StrictName)] -> Str
+	## `text` with each letter case-folded by Unicode's simple case
+	## folding, so `ZOË` and `Zoë` fold to the same text. `ſ` folds to `s`;
+	## `ß` and `İ` have no simple fold and stay as they are.
+	folded : NameAlphabet.Written -> Str
 	folded = |text|
-		letters(text)
+		code_points(text)
 			.map(|point| encoded(fold(point)))
 			.join()
-			|> utf8("NameAlphabet.folded: a letter folds to a letter, and letters are UTF-8")
+			|> decoded("NameAlphabet.folded: a letter folds to a letter, and letters are UTF-8")
 
-	## **THE ASCII SPELLING**: each letter of `text` folded, then spelled
-	## in ASCII by `spellings`, so in small letters: `Élodie` is `elodie`,
-	## `Æsir` is `aesir`; spaces stay as they are.
+	## `text` folded, then each letter spelled in ASCII by `spellings`:
+	## `Élodie` is `elodie`, and `Æsir` is `aesir`. Spaces stay as they are.
 	ascii_spelling : NameAlphabet.Written -> Str
 	ascii_spelling = |text|
-		letters(Written(text))
+		code_points(text)
 			.map(|point| spelled(fold(point)))
 			.join()
-			|> utf8("NameAlphabet.ascii_spelling: an ASCII spelling is UTF-8")
+			|> decoded("NameAlphabet.ascii_spelling: an ASCII spelling is UTF-8")
 }
 
-## **EACH ACCENTED LETTER'S ASCII SPELLING, ITS ONE HOME**: the folded
-## letters, in rows, each row spelled as one ASCII text. A two-byte letter
-## is in the alphabet exactly when its fold is in a row. `İ` folds to
-## itself, so it sits among the small letters.
+## Each accented letter's ASCII spelling. A row holds folded letters and
+## the ASCII text each one is spelled as. A two-byte letter is in the
+## alphabet exactly when its fold is in a row. `İ` folds to itself, so it
+## sits among the small letters.
 spellings : List((Str, Str))
 spellings = [
 	("àáâãäåāăą", "a"),
@@ -96,8 +92,8 @@ spellings = [
 	("źżž", "z"),
 ]
 
-## The ASCII spelling of the folded letter `point`, a space or a letter
-## of the alphabet: itself, if it is ASCII; else its row's.
+## The ASCII spelling of the folded letter or space `point`: itself if it
+## is ASCII, else its row's spelling.
 spelled : U32 -> List(U8)
 spelled = |point|
 	if (point < 0x80)
@@ -108,14 +104,14 @@ spelled = |point|
 			Err(NotFound) => crash "NameAlphabet.spelled: written text holds only letters whose fold has a row"
 		}
 
-## The row of `spellings` holding the two-byte letter `point`.
+## The row of `spellings` that holds the two-byte letter `point`.
 row_of : U32 -> Try((Str, Str), [NotFound])
 row_of = |point| {
-	letter = utf8(encoded(point), "NameAlphabet.row_of: a code point below U+0800 is UTF-8")
+	letter = decoded(encoded(point), "NameAlphabet.row_of: a code point below U+0800 is UTF-8")
 	spellings.find_first(|(row, _)| row.contains(letter))
 }
 
-## Is `point`, folded, a letter of the alphabet?
+## Is `point`, once folded, a letter of the alphabet?
 is_letter : U32 -> Bool
 is_letter = |point| {
 	folded = fold(point)
@@ -125,54 +121,48 @@ is_letter = |point| {
 		row_of(folded).is_ok()
 }
 
-## Is every character `bytes` hold a letter or a space?
+## Is every character of `bytes` a letter of the alphabet or a space?
 is_all_letters_or_spaces : List(U8) -> Bool
 is_all_letters_or_spaces = |bytes|
 	match bytes {
 		[] => Bool.True
 		[b, .. as rest] if b == ' ' or Ascii.is_letter(b) => is_all_letters_or_spaces(rest)
 		[lead, b, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
-			is_letter(two_byte(lead, b)) and is_all_letters_or_spaces(rest)
+			is_letter(two_byte_code_point(lead, b)) and is_all_letters_or_spaces(rest)
 		_ => Bool.False
 	}
 
-## The characters of a name's text or a strict name, as code points.
-letters : [Written(NameAlphabet.Written), Strict(StrictName)] -> List(U32)
-letters = |text| {
-	bytes =
-		match text {
-			Written(written) => written.to_str().to_utf8()
-			Strict(strict) => strict.to_str().to_utf8()
-		}
-	letters_onto({ out: [], bytes })
-}
+## The code points of `text`'s characters.
+code_points : NameAlphabet.Written -> List(U32)
+code_points = |text| code_points_onto({ out: [], bytes: text.to_str().to_utf8() })
 
-## `out` with each character of `bytes`, one or two bytes each, as a code
-## point.
-letters_onto : { out : List(U32), bytes : List(U8) } -> List(U32)
-letters_onto = |{ out, bytes }|
+## `out` with the code point of each character of `bytes` appended. Every
+## character of written text is one or two bytes.
+code_points_onto : { out : List(U32), bytes : List(U8) } -> List(U32)
+code_points_onto = |{ out, bytes }|
 	match bytes {
 		[] => out
-		[b, .. as rest] if b < 0x80 => letters_onto({ out: out.append(b.to_u32()), bytes: rest })
+		[b, .. as rest] if b < 0x80 => code_points_onto({ out: out.append(b.to_u32()), bytes: rest })
 		[lead, b, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
-			letters_onto({ out: out.append(two_byte(lead, b)), bytes: rest })
-		_ => crash "NameAlphabet.letters_onto: written text and strict names hold only one- and two-byte characters"
+			code_points_onto({ out: out.append(two_byte_code_point(lead, b)), bytes: rest })
+		_ => crash "NameAlphabet.code_points_onto: written text holds only one- and two-byte characters"
 	}
 
-## The code point of the two-byte character `lead`, `b`.
-two_byte : U8, U8 -> U32
-two_byte = |lead, b| (lead - 0xC0).to_u32() * 64 + (b - 0x80).to_u32()
+## The code point of the two-byte character whose bytes are `lead`, `b`.
+two_byte_code_point : U8, U8 -> U32
+two_byte_code_point = |lead, b| (lead - 0xC0).to_u32() * 64 + (b - 0x80).to_u32()
 
-## `bytes` as text, which they always are; `why` says why, if not.
-utf8 : List(U8), Str -> Str
-utf8 = |bytes, why|
+## `bytes` decoded as UTF-8, which they always are; a crash saying `why`
+## if they aren't.
+decoded : List(U8), Str -> Str
+decoded = |bytes, why|
 	match Str.from_utf8(bytes) {
 		Ok(text) => text
 		Err(_) => crash why
 	}
 
-## **ONE LETTER'S FOLD**: its lower case, where it has one by Unicode's
-## simple case folding.
+## The fold of the letter `point`, by Unicode's simple case folding: its
+## small letter if it is a capital, else itself.
 fold : U32 -> U32
 fold = |point|
 	if (point >= 'A' and point <= 'Z')
@@ -183,15 +173,16 @@ fold = |point|
 		0xFF
 	else if (point == 0x17F)
 		's'
-	else if (is_upper_of_pair(point))
+	else if (is_capital_of_pair(point))
 		point + 1
 	else
 		point
 
-## **LATIN EXTENDED-A'S CASE PAIRS**: each capital is followed by its small
-## letter, from an even code point in three runs and an odd one in two.
-is_upper_of_pair : U32 -> Bool
-is_upper_of_pair = |point| {
+## Is `point` a capital in Latin Extended-A whose small letter follows it?
+## The pairs start on an even code point in three runs and an odd one in
+## two.
+is_capital_of_pair : U32 -> Bool
+is_capital_of_pair = |point| {
 	is_even = point % 2 == 0
 	(point >= 0x100 and point <= 0x12F and is_even)
 		or (point >= 0x132 and point <= 0x137 and is_even)
@@ -200,7 +191,8 @@ is_upper_of_pair = |point| {
 		or (point >= 0x179 and point <= 0x17E and !is_even)
 }
 
-## A code point below U+0800 as UTF-8: one byte below 0x80, else two.
+## The UTF-8 bytes of a code point below U+0800: one byte below 0x80, else
+## two.
 encoded : U32 -> List(U8)
 encoded = |point|
 	if (point < 0x80)
@@ -213,13 +205,13 @@ encoded = |point|
 is_written : Str -> Bool
 is_written = |text| NameAlphabet.written(text).is_ok()
 
-## The text `text`, written in the alphabet, which a test's always is.
+## `text` as written text, which a test's text always is.
 in_alphabet : Str -> NameAlphabet.Written
 in_alphabet = |text| NameAlphabet.written(text) ?? crash "NameAlphabet's tests: a test's text is written in the alphabet"
 
-# Each end of every listed range kept, and the character beside it, past
-# the list, refused: ASCII's letters, Latin-1's (around `×` and `÷`) and
-# Latin Extended-A's.
+# Each end of every range is kept, and the character just past it is
+# refused: ASCII's letters, Latin-1's (around `×` and `÷`) and Latin
+# Extended-A's.
 expect
 	[
 		"A",
@@ -264,8 +256,8 @@ expect
 		"😀",
 		"李",
 	].all(|text| !is_written(text))
-# The letters that pass for others' are refused, each beside the letter
-# next to it, kept; `Ŀ` with its small letter.
+# The letters that pass for others are refused; the letters beside them
+# are kept.
 expect ["ı", "ĸ", "Ŀ", "ŀ", "ŉ"].all(|text| !is_written(text))
 expect ["İ", "ķ", "Ľ", "ľ", "Ł", "ň", "Ŋ"].all(is_written)
 # One stray character anywhere refuses the whole text.
@@ -274,12 +266,12 @@ expect NameAlphabet.written("R2D2") == Err(ForbiddenCharacter)
 expect NameAlphabet.written("Zoëı") == Err(ForbiddenCharacter)
 expect NameAlphabet.written("").map_ok(NameAlphabet.Written.to_str) == Ok("")
 expect NameAlphabet.written("Zoë Ann").map_ok(NameAlphabet.Written.to_str) == Ok("Zoë Ann")
-# The fold: each run's capitals to their small letters, at each run's
-# ends; small letters and the uncased ones as they are.
-## `text`'s fold, written in the alphabet.
-folded_text : Str -> Str
-folded_text = |text| NameAlphabet.folded(Written(in_alphabet(text)))
 
+## The fold of `text`.
+folded_text : Str -> Str
+folded_text = |text| NameAlphabet.folded(in_alphabet(text))
+
+# Each run's capitals fold to their small letters, at each run's ends.
 expect folded_text("AZ") == "az"
 expect folded_text("ÀÖ") == "àö"
 expect folded_text("ØÞ") == "øþ"
@@ -292,6 +284,7 @@ expect folded_text("ŹŽ") == "źž"
 expect folded_text("Ÿ") == "ÿ"
 expect folded_text("ſ") == "s"
 expect folded_text("ZOË Ann") == "zoë ann"
+# Small letters, the letters with no simple fold, and spaces stay.
 expect
 	[
 		"azàöøþÿ",
@@ -299,21 +292,16 @@ expect
 		"ßİ",
 		" ",
 	].all(|text| folded_text(text) == text)
-# A strict name folds its letters, and keeps its digits and `-`.
-expect {
-	strict = StrictName.from_str("Gopher-Roc-2") ?? crash "NameAlphabet's tests: a strict name"
-	NameAlphabet.folded(Strict(strict)) == "gopher-roc-2"
-}
-# The ASCII spelling: every row's letters, each its row's spelling.
+# Every letter of every row is spelled as its row says.
 expect
 	spellings.all(
 		|(row, ascii)| {
-			count = letters(Written(in_alphabet(row))).len()
+			count = code_points(in_alphabet(row)).len()
 			NameAlphabet.ascii_spelling(in_alphabet(row)) == ascii.repeat(count)
 		},
 	)
 
-## `text`'s ASCII spelling, written in the alphabet.
+## The ASCII spelling of `text`.
 ascii_text : Str -> Str
 ascii_text = |text| NameAlphabet.ascii_spelling(in_alphabet(text))
 
@@ -327,7 +315,7 @@ expect ascii_text("ĀąĆčĎđĒěĜģĤħĨİ") == "aaccddeegghhii"
 expect ascii_text("ĴĵĶķĹľŁłŃňŊŋ") == "jjkkllllnnnn"
 expect ascii_text("ŌőŔřŚšŢŧŨųŴŵŶŷŹž") == "oorrssttuuwwyyzz"
 expect ascii_text("ſ") == "s"
-# Every letter spelled with more than one: capitals and small letters.
+# Every letter spelled with more than one, capital and small.
 expect ascii_text("ß") == "ss"
 expect ascii_text("Æ") == "ae"
 expect ascii_text("æ") == "ae"
@@ -337,7 +325,7 @@ expect ascii_text("Œ") == "oe"
 expect ascii_text("œ") == "oe"
 expect ascii_text("Þ") == "th"
 expect ascii_text("þ") == "th"
-# Whole names, spaces kept.
+# Whole names, with their spaces.
 expect ascii_text("Élodie") == "elodie"
 expect ascii_text("Zoë Ann") == "zoe ann"
 expect ascii_text("Æsir Þór") == "aesir thor"

@@ -1,37 +1,30 @@
-## **A PERMANENT NAME**: a human's, an agent's or a channel's, exactly as
-## given, the one home of the rule every name obeys. Names are permanent
-## and case-sensitive: someone who signs up as "Steve Howell" is never shown
-## as "steve howell". Opaque, so `from_str` is the only way in.
+## This module is a person's, an agent's or a channel's permanent name. A
+## name is kept exactly as it was given, case and all: someone who signs up
+## as "Steve Howell" is never shown as "steve howell".
 ##
-## **AT MOST `longest` CHARACTERS**, as `StrictName.longest` caps a strict
-## name, so a name fits a transcript's `from:` line and a page's header.
+## A name is made of letters of `NameAlphabet` and single spaces between
+## words, and is at most `longest` characters long. So a name holds no
+## digit, punctuation, emoji, control character, or invisible character
+## that could make it look like another name.
 ##
-## **LETTERS, AND SINGLE SPACES BETWEEN WORDS**: every character is a
-## letter of the name's alphabet (`NameAlphabet`, an allowlist: ASCII's
-## letters and the accented Latin ones) or a space, and the spaces fall
-## only between words, one at a time. So no name holds a digit,
-## punctuation, an emoji, a control byte that could end a transcript's
-## `from:` line, or an invisible character that could draw it as another
-## name, and a permanent name looks like itself.
-##
-## **ONE NAMESPACE, UNIQUE REGARDLESS OF CASE**: humans, agents and
-## channels share it, so no two of them have names that differ only in
-## case. `key` is the one spelling that uniqueness compares.
+## People, agents and channels share one namespace, in which two names that
+## differ only in case are the same name. A name's `key` is what that
+## comparison uses.
 import NameAlphabet
 import StrictName
 
 Name :: NameAlphabet.Written.{
 
-	## The name `name`, or the first reason, in this order, it is refused:
-	## empty, longer than `longest`, a character outside the alphabet that
-	## is no space, or a space at either end or beside another. The length
-	## is asked before the characters, so a long text costs no more than a
-	## count.
+	## The name `name`, or the first reason it is refused, checked in this
+	## order: it is empty, it is longer than `longest`, it holds a
+	## character that is neither a letter nor a space, or it has a space at
+	## either end or two together. The length is checked before the
+	## characters, so a long text costs no more than a count.
 	from_str : Str -> Try(Name, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	from_str = |name|
 		if (name.is_empty())
 			Err(Empty)
-		else if (characters(name) > Name.longest)
+		else if (character_count(name) > Name.longest)
 			Err(TooLong)
 		else {
 			written = NameAlphabet.written(name)?
@@ -41,9 +34,8 @@ Name :: NameAlphabet.Written.{
 				Ok(Name.(written))
 		}
 
-	## **THE LONGEST NAME, IN CHARACTERS**: an accented letter is one
-	## character, though it is two bytes, so a name is at most twice this in
-	## bytes.
+	## The most characters a name holds. An accented letter is one
+	## character but two bytes, so a name is at most twice this in bytes.
 	longest : U64
 	longest = 60
 
@@ -51,46 +43,45 @@ Name :: NameAlphabet.Written.{
 	to_str : Name -> Str
 	to_str = |Name.(text)| text.to_str()
 
-	## The name, as text written in the alphabet, for what reads its
-	## letters (`NameAlphabet.ascii_spelling`).
+	## The name as text written in the alphabet, for `NameAlphabet`'s
+	## functions to read.
 	written : Name -> NameAlphabet.Written
 	written = |Name.(text)| text
 
-	## **WHAT UNIQUENESS COMPARES**: two names are the same name in the
-	## namespace exactly when their keys are equal. Opaque, so a key is only
-	## ever a name's, and is never shown.
+	## A name's place in the namespace: two names are the same name exactly
+	## when their keys are equal. Only a name or a strict name makes a key,
+	## and a key is never shown.
 	Key :: Str.{
 
-		## **A CHANNEL'S PLACE IN THE NAMESPACE**: a strict name's key, its
-		## letters folded as a name's are, so a channel `plans` and a user
-		## `Plans` share one. A strict name is ASCII, and its digits and `-`,
-		## which no name holds, are kept as they are.
+		## A strict name's place in the namespace, so a channel `plans` and
+		## a user `Plans` have the same key. A strict name is ASCII, so its
+		## letters fold as ASCII's do, and its digits and `-` stay.
 		of_strict : StrictName -> Name.Key
-		of_strict = |strict| Name.Key.(NameAlphabet.folded(Strict(strict)))
+		of_strict = |strict| Name.Key.(strict.to_str().with_ascii_lowercased())
 
 		is_eq : _
 		to_hash : _
 	}
 
-	## **THE NAME'S KEY**: its letters case-folded (`NameAlphabet.folded`),
-	## so `Zoë` and `ZOË` are one name.
+	## The name's key: its letters case-folded (`NameAlphabet.folded`), so
+	## `Zoë` and `ZOË` have the same key.
 	key : Name -> Name.Key
-	key = |Name.(text)| Name.Key.(NameAlphabet.folded(Written(text)))
+	key = |Name.(text)| Name.Key.(NameAlphabet.folded(text))
 
 	is_eq : _
 }
 
-## How many characters `text` holds: its bytes but those that continue a
-## character (0x80 to 0xBF).
-characters : Str -> U64
-characters = |text| text.to_utf8().count_if(|b| b < 0x80 or b >= 0xC0)
+## How many characters `text` holds: its bytes, less those that continue
+## a character (0x80 to 0xBF).
+character_count : Str -> U64
+character_count = |text| text.to_utf8().count_if(|b| b < 0x80 or b >= 0xC0)
 
 # ── tests
 ## The name `text`, as given, or why it is refused.
 named : Str -> Try(Str, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 named = |text| Name.from_str(text).map_ok(Name.to_str)
 
-# Names of letters, with single spaces between words, kept as given.
+# Letters, with single spaces between words, kept as given.
 expect
 	[
 		"Steve Howell",
@@ -103,7 +94,7 @@ expect
 	].all(|text| named(text) == Ok(text))
 expect named("") == Err(Empty)
 # Anything outside the alphabet, anywhere: a digit, punctuation, an emoji,
-# a control byte, a format character, a space that isn't ASCII's.
+# a control byte, an invisible character, a space that isn't ASCII's.
 expect
 	[
 		"Steve!",
@@ -119,8 +110,7 @@ expect
 		"O'Brien",
 		"\t",
 	].all(|text| named(text) == Err(ForbiddenCharacter))
-# Spaces: one between words kept; two together, or one at either end, or
-# a name of spaces alone, refused.
+# Two spaces together, a space at either end, or spaces alone.
 expect
 	[
 		"Steve  Howell",
@@ -145,19 +135,22 @@ expect
 		"é".repeat(61),
 		"Zoë ${"a".repeat(57)}",
 	].all(|text| named(text) == Err(TooLong))
-# The order: empty, then the length, then a forbidden character, then
-# bad spacing.
+# The order: empty, then the length, then a forbidden character, then the
+# spacing.
 expect named(" Steve!") == Err(ForbiddenCharacter)
 expect named(" ${"a".repeat(60)}") == Err(TooLong)
 expect named("!${"a".repeat(60)}") == Err(TooLong)
 expect named("!${"a".repeat(59)}") == Err(ForbiddenCharacter)
 expect named(" ${"a".repeat(59)}") == Err(BadSpacing)
-# The key: names that differ only in case share one, accented letters
-# included; any other difference keeps them apart.
+# The name keeps its case; only its key folds it.
+expect Name.from_str("Steve") != Name.from_str("steve")
+
 ## The key of the name `text`, which a test's text always is.
 key_of : Str -> Name.Key
 key_of = |text| (Name.from_str(text) ?? crash "Name's tests: a test's name is a name").key()
 
+# Names that differ only in case have one key, accented letters included;
+# any other difference keeps them apart.
 expect key_of("Steve Howell") == key_of("sTeVe hoWEll")
 expect key_of("CC") == key_of("cc")
 expect key_of("Zoë") == key_of("ZOË")
@@ -166,15 +159,19 @@ expect key_of("ſteve") == key_of("Steve")
 expect key_of("Steve Howell") != key_of("Steve Howel")
 expect key_of("Steve Howell") != key_of("SteveHowell")
 expect key_of("Zoë") != key_of("Zoe")
-# A strict name's key: a user's of the same letters in any case, and no
-# user's while it holds a digit or `-`.
-## The key of the strict name `text`, which a test's always is.
+
+## The key of the strict name `text`, which a test's text always is.
 strict_key_of : Str -> Name.Key
 strict_key_of = |text| Name.Key.of_strict(StrictName.from_str(text) ?? crash "Name's tests: a test's strict name is one")
 
+# A strict name has a name's key when its letters match in any case, and
+# no name's key while it holds a digit or `-`; its own digits and `-` stay
+# in its key.
 expect strict_key_of("Plans") == key_of("plans")
 expect strict_key_of("plans") == key_of("PLANS")
+expect strict_key_of("AZaz") == key_of("azAZ")
 expect strict_key_of("gopher-roc") != key_of("gopherroc")
 expect strict_key_of("gopher-roc") == strict_key_of("Gopher-Roc")
-# The name keeps its case; only the key folds it.
-expect Name.from_str("Steve") != Name.from_str("steve")
+expect strict_key_of("Gopher-Roc-2") == strict_key_of("gopher-roc-2")
+expect strict_key_of("gopher-roc-2") != strict_key_of("gopher-roc-3")
+expect strict_key_of("gopher-roc") != strict_key_of("gopherroc")

@@ -1,16 +1,14 @@
-## **A DM'S PAIR**: two users' ids in numeric order, the one home of that
-## spelling, which a DM's folder and URL take: `9_10`, never `10_9`, and
-## one user alone, in their own DM, `5_5`. Opaque, so its doors keep the
-## order: `of` sorts two ids, and `from_str` reads only the spellings
-## `to_str` writes. A pair's spelling starts with a digit and holds a `_`,
-## and a strict name never does (`StrictName`), so no pair's is a
-## channel's.
+## This module is a DM's pair: the ids of the two users in a DM, lowest
+## first. A DM's folder and URL are named by its pair's spelling, `9_10`,
+## never `10_9`. A user's DM with themself is the pair `5_5`.
+##
+## Only `of`, which sorts its two ids, and `from_str`, which reads only the
+## spellings `to_str` writes, make a pair, so every pair is in order.
 import UserId
 
 UserPair :: { low : UserId, high : UserId }.{
 
-	## The pair of `a` and `b`, in either order, lowest first; one user
-	## alone, if they are the same.
+	## The pair of `a` and `b`, given in either order.
 	of : { a : UserId, b : UserId } -> UserPair
 	of = |{ a, b }|
 		match a.compare(b) {
@@ -18,9 +16,9 @@ UserPair :: { low : UserId, high : UserId }.{
 			_ => UserPair.({ low: a, high: b })
 		}
 
-	## The pair `text` spells, as `to_str` writes it: two ids
-	## (`UserId.from_str`), lowest first, joined by one `_`; unless it spells
-	## none.
+	## The pair `text` spells, or `NotAUserPair`. A pair is spelled as
+	## `to_str` writes it: two ids (`UserId.from_str`), lowest first, joined
+	## by one `_`.
 	from_str : Str -> Try(UserPair, [NotAUserPair])
 	from_str = |text|
 		match text.split_on("_") {
@@ -35,12 +33,13 @@ UserPair :: { low : UserId, high : UserId }.{
 			_ => Err(NotAUserPair)
 		}
 
-	## **ITS SPELLING**, as a folder's name and a URL take it: the ids,
+	## The pair's spelling, as a folder's name and a URL take it: the ids,
 	## lowest first, joined by `_`.
 	to_str : UserPair -> Str
 	to_str = |UserPair.({ low, high })| "${low.to_str()}_${high.to_str()}"
 
-	## Its users' ids, lowest first: two, or one for one user alone.
+	## The pair's users' ids, lowest first: two, or one for a user's DM with
+	## themself.
 	members : UserPair -> List(UserId)
 	members = |UserPair.({ low, high })| if (low == high) [low] else [low, high]
 
@@ -49,31 +48,25 @@ UserPair :: { low : UserId, high : UserId }.{
 }
 
 # ── tests
-## The id `text` spells, which a test's always does.
+## The id `text` spells, which a test's text always does.
 id_of : Str -> UserId
 id_of = |text| UserId.from_str(text) ?? crash "UserPair's tests: a test's id is an id"
 
-## The spelling of the pair of `a` and `b`.
-spelled : Str, Str -> Str
-spelled = |a, b| UserPair.of({ a: id_of(a), b: id_of(b) }).to_str()
+## The pair of the ids `a` and `b` spell.
+pair_of : { a : Str, b : Str } -> UserPair
+pair_of = |{ a, b }| UserPair.of({ a: id_of(a), b: id_of(b) })
 
-# Either order, one pair, lowest first; numeric, not the text's order.
-expect spelled("1", "2") == "1_2"
-expect spelled("2", "1") == "1_2"
-expect spelled("9", "10") == "9_10"
-expect spelled("10", "9") == "9_10"
-expect UserPair.of({
-	a: id_of("10"),
-	b: id_of("9"),
-}) == UserPair.of({ a: id_of("9"), b: id_of("10") })
-expect UserPair.of({
-	a: id_of("1"),
-	b: id_of("2"),
-}) != UserPair.of({ a: id_of("1"), b: id_of("3") })
-# One user alone: their own pair, one member.
-expect spelled("5", "5") == "5_5"
-expect UserPair.of({ a: id_of("5"), b: id_of("5") }).members() == [id_of("5")]
-expect UserPair.of({ a: id_of("11"), b: id_of("7") }).members() == [id_of("7"), id_of("11")]
+# Either order makes one pair, lowest first, by number rather than by text.
+expect pair_of({ a: "1", b: "2" }).to_str() == "1_2"
+expect pair_of({ a: "2", b: "1" }).to_str() == "1_2"
+expect pair_of({ a: "9", b: "10" }).to_str() == "9_10"
+expect pair_of({ a: "10", b: "9" }).to_str() == "9_10"
+expect pair_of({ a: "10", b: "9" }) == pair_of({ a: "9", b: "10" })
+expect pair_of({ a: "1", b: "2" }) != pair_of({ a: "1", b: "3" })
+# A user's DM with themself: one id, written twice, one member.
+expect pair_of({ a: "5", b: "5" }).to_str() == "5_5"
+expect pair_of({ a: "5", b: "5" }).members() == [id_of("5")]
+expect pair_of({ a: "11", b: "7" }).members() == [id_of("7"), id_of("11")]
 # Read back from its spelling, at the ends of the ids' range.
 expect
 	[
@@ -84,7 +77,7 @@ expect
 		"255_255",
 	].all(|text| UserPair.from_str(text).map_ok(UserPair.to_str) == Ok(text))
 # Every other spelling refused: out of order, no id, a side missing, an
-# id spelled another way, one `_` too many or a space.
+# id spelled another way, one `_` too many, or a space.
 expect
 	[
 		"10_9",
@@ -106,10 +99,8 @@ expect
 		"1_2 ",
 		"1-2",
 	].all(|text| UserPair.from_str(text) == Err(NotAUserPair))
-# A pair keys a set: equal pairs are one.
-expect Set.empty().insert(
-	UserPair.of({
-		a: id_of("2"),
-		b: id_of("1"),
-	}),
-).insert(UserPair.of({ a: id_of("1"), b: id_of("2") })).len() == 1
+# Equal pairs are one key of a set.
+expect {
+	pairs = Set.empty().insert(pair_of({ a: "2", b: "1" })).insert(pair_of({ a: "1", b: "2" }))
+	pairs.len() == 1
+}

@@ -1,13 +1,11 @@
-## **A USER'S FILE STEM**: `apoorva-2`, from a user's name and id, the one
-## home of that spelling. A user's files are named from it
-## (`apoorva-2.info`); what each holds is not decided here.
+## This module spells a user's file stem, such as `elodie-5`, from the
+## user's name and id. A user's files are named from their stem
+## (`elodie-5.info`).
 ##
-## **STRICT, SO SAFE AS A FILE'S NAME AND IN A URL**: the name's ASCII
-## spelling (`NameAlphabet.ascii_spelling`: each letter folded, then
-## spelled in ASCII, so `Élodie` is `elodie`), its words joined by `-`;
-## then `-` and the id. Every letter has a spelling, so no word is ever
-## lost. The id makes a stem unique, so the name's part is only for a
-## reader finding the file.
+## The stem is the name's ASCII spelling (`NameAlphabet.ascii_spelling`),
+## with `-` between its words, then `-` and the id. So it is safe as a
+## file's name and in a URL. The id alone makes a stem unique; the name is
+## there for a reader looking for the file.
 import Name
 import NameAlphabet
 import UserId
@@ -25,26 +23,24 @@ UserStem :: [].{
 }
 
 # ── tests
-## The stem of `text`'s user, whose id is the one after `count` others'.
-stem : Str, U64 -> Str
-stem = |text, count| {
-	name = Name.from_str(text) ?? crash "UserStem's tests: a test's name is a name"
-	id = List.repeat({}, count).fold(
-		UserId.steve,
-		|at, {}| at.next() ?? crash "UserStem's tests: a test's id fits",
-	)
-	UserStem.of({ name, id })
-}
+## The stem of the user whose name is `name` and whose id `id` spells.
+stem : { name : Str, id : Str } -> Str
+stem = |{ name, id }|
+	UserStem.of({
+		name: Name.from_str(name) ?? crash "UserStem's tests: a test's name is a name",
+		id: UserId.from_str(id) ?? crash "UserStem's tests: a test's id is an id",
+	})
 
-expect stem("Steve", 0) == "steve-1"
-expect stem("apoorva", 1) == "apoorva-2"
-expect stem("Steve Howell", 0) == "steve-howell-1"
-expect stem("CC", 2) == "cc-3"
-# Accented letters as ASCII, one letter or several, in every word.
-expect stem("Zoë Ann", 3) == "zoe-ann-4"
-expect stem("Élodie", 4) == "elodie-5"
-expect stem("Zoë Ő Ann", 5) == "zoe-o-ann-6"
-expect stem("Æsir Þór Straße", 6) == "aesir-thor-strasse-7"
-# A name of accented letters alone, at the first id and the last.
-expect stem("Éé", 0) == "ee-1"
-expect stem("Ő Ű", 254) == "o-u-255"
+expect stem({ name: "Steve", id: "1" }) == "steve-1"
+expect stem({ name: "apoorva", id: "2" }) == "apoorva-2"
+expect stem({ name: "Steve Howell", id: "1" }) == "steve-howell-1"
+expect stem({ name: "CC", id: "3" }) == "cc-3"
+# Accented letters in ASCII, spelled with one letter or several, in every
+# word.
+expect stem({ name: "Zoë Ann", id: "4" }) == "zoe-ann-4"
+expect stem({ name: "Élodie", id: "5" }) == "elodie-5"
+expect stem({ name: "Zoë Ő Ann", id: "6" }) == "zoe-o-ann-6"
+expect stem({ name: "Æsir Þór Straße", id: "7" }) == "aesir-thor-strasse-7"
+# A name of accented letters alone, at the lowest id and the highest.
+expect stem({ name: "Éé", id: "1" }) == "ee-1"
+expect stem({ name: "Ő Ű", id: "255" }) == "o-u-255"
