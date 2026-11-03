@@ -32,10 +32,7 @@ chosen_route = |method, path|
 		OpenConversationStream(key) => "stream ${key.url_path(Page)}"
 		UploadToConversation(key) => "upload ${key.url_path(Page)}"
 		ServeUploadedImage(found) => "image ${found.image.name()} of ${found.key.url_path(Page)}"
-		ServeScript(Palette) => "the script palette.js"
-		ServeScript(Chrome) => "the script chrome.js"
-		ServeScript(Compose) => "the script compose.js"
-		ServeScript(Feed) => "the script feed.js"
+		ServeScript(script) => "the script at ${script.url_path()}"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
@@ -83,7 +80,7 @@ expect
 	].all(
 		|name| {
 			path = "/chat/assets/${name}".to_utf8()
-			chosen_route("GET", path) == "the script ${name}"
+			chosen_route("GET", path) == "the script at /chat/assets/${name}"
 				and chosen_route("POST", path) == "not allowed: GET"
 				and chosen_route("HEAD", path) == "not allowed: GET"
 		},

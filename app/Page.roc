@@ -1,7 +1,7 @@
 ## This module builds the chat's pages: a conversation's page, a page that
 ## says why a transcript was refused, and a page that says one thing. The
 ## server sends structure and class names only. Every page loads
-## app/palette.js in its head (`PaletteScript`), which sets the colours and
+## app/palette.js in its head (`Script`), which sets the colours and
 ## the theme before the first paint, and a conversation's page ends with
 ## its three scripts, which style what they find and add behaviour. The
 ## page reads top to bottom without them, and its form still posts.
@@ -11,10 +11,10 @@
 ## second is the compose box: a form that posts the field `markdown` back
 ## to the conversation's own URL, and a line of help. The script sends the
 ## same form to the conversation's `/send` instead, so the page stays put. app/chrome.js
-## (`ChromeScript`) styles the top bar and adds its theme toggle.
-## app/compose.js (`ComposeScript`) lays the panes out, gives the compose
+## styles the top bar and adds its theme toggle.
+## app/compose.js lays the panes out, gives the compose
 ## box its keys and its Upload button, and sends a message without a
-## reload. app/feed.js (`FeedScript`) styles the messages, marks the
+## reload. app/feed.js styles the messages, marks the
 ## viewer's own, writes each time in the viewer's time zone, appends each
 ## message the conversation's stream brings, which `message` writes as the
 ## page does, and lets the reader select a message and move between them
@@ -32,17 +32,14 @@
 ## markdown through `Markdown.render`, and every element through
 ## `Html.element`. This module vouches (`TrustedHtml.dangerously_trust`)
 ## for one constant: the doctype and the head's two `<meta>` elements.
-import ChromeScript
-import ComposeScript
 import Conversation
 import ConversationKey
 import Escape
-import FeedScript
 import Html
 import Markdown
 import Message
 import MsgAnchor
-import PaletteScript
+import Script
 import SignedIn
 import Topic
 import TrustedHtml
@@ -140,10 +137,10 @@ Page :: [].{
 				newline,
 				TrustedHtml.join(
 					[
-						ChromeScript.url_path,
-						ComposeScript.url_path,
-						FeedScript.url_path,
-					].map(|url_path| TrustedHtml.join([script(url_path), newline])),
+						Script.Chrome,
+						Script.Compose,
+						Script.Feed,
+					].map(|chosen| TrustedHtml.join([script(chosen), newline])),
 				),
 			]),
 		})
@@ -312,12 +309,12 @@ top_bar = |{ title, viewer }|
 user_id : Users.User -> Html.Token
 user_id = |user| token(user.id().to_str())
 
-## The script at `url_path`, one of this server's.
-script : Str -> TrustedHtml
-script = |url_path|
+## The element that loads `chosen`, one of this server's scripts.
+script : Script -> TrustedHtml
+script = |chosen|
 	Html.element({
 		name: Script,
-		attrs: [Src(site_path(url_path))],
+		attrs: [Src(site_path(chosen.url_path()))],
 		inner: TrustedHtml.join([]),
 	})
 
@@ -334,7 +331,7 @@ document = |{ title, body }|
 			inner: Escape.text(title),
 		}),
 		newline,
-		script(PaletteScript.url_path),
+		script(Script.Palette),
 		newline,
 		body,
 	])
@@ -429,38 +426,38 @@ is_read_by = |bytes, name| Str.from_utf8_lossy(bytes).contains("'${name}'")
 # Each script finds the elements it works on by the classes this module
 # writes, and reads the attributes `Html` writes for it; a class or an
 # attribute it leaves to another script is not in it.
-expect [TopBar, TopUser].all(|chosen| is_found_by(ChromeScript.bytes, chosen))
+expect [TopBar, TopUser].all(|chosen| is_found_by(Script.Chrome.bytes(), chosen))
 expect
 	[
 		Layout,
 		Messages,
 		Compose,
 		Help,
-	].all(|chosen| is_found_by(ComposeScript.bytes, chosen))
+	].all(|chosen| is_found_by(Script.Compose.bytes(), chosen))
 expect
 	[
 		Messages,
 		Compose,
 		Message,
 		Empty,
-	].all(|chosen| is_found_by(FeedScript.bytes, chosen))
-expect !is_found_by(ComposeScript.bytes, Message) and !is_found_by(ComposeScript.bytes, Empty)
-expect !is_found_by(FeedScript.bytes, Help) and !is_found_by(ChromeScript.bytes, Messages)
+	].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
+expect !is_found_by(Script.Compose.bytes(), Message) and !is_found_by(Script.Compose.bytes(), Empty)
+expect !is_found_by(Script.Feed.bytes(), Help) and !is_found_by(Script.Chrome.bytes(), Messages)
 expect
 	[
 		"data-stream",
 		"data-after",
 		"data-viewer",
 		"data-author",
-	].all(|name| is_read_by(FeedScript.bytes, name) and !is_read_by(ComposeScript.bytes, name))
+	].all(|name| is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name))
 expect
 	[
 		"data-send",
 		"data-upload",
 		"data-image-most",
-	].all(|name| is_read_by(ComposeScript.bytes, name) and !is_read_by(FeedScript.bytes, name))
+	].all(|name| is_read_by(Script.Compose.bytes(), name) and !is_read_by(Script.Feed.bytes(), name))
 # The classes only styled are styled by the script that owns them.
-expect [TopTitle, Viewer].all(|chosen| Str.from_utf8_lossy(ChromeScript.bytes).contains(".${class_name(chosen)} {"))
+expect [TopTitle, Viewer].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"

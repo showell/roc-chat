@@ -1,5 +1,5 @@
 // This script runs on a conversation page, which app/Page.roc builds and
-// app/FeedScript.roc serves. It looks after the messages pane. The page
+// app/Script.roc serves. It looks after the messages pane. The page
 // works without it: the messages read top to bottom, each with its time in
 // UTC.
 //

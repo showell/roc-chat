@@ -31,17 +31,13 @@ import pf.Host
 import pf.Http
 import Admin
 import ChannelName
-import ChromeScript
-import ComposeScript
 import Conversation
 import ConversationKey
 import ConversationRoute
 import Directory
-import FeedScript
 import HttpAnswer
 import Name
 import Page
-import PaletteScript
 import RequestOrigin
 import Route
 import SignedIn
@@ -172,7 +168,7 @@ serve_route! = |request|
 				query: request.query,
 				headers: request.headers,
 			})
-		ServeScript(script) => HttpAnswer.script(script_bytes(script))
+		ServeScript(script) => HttpAnswer.script(script.bytes())
 		AppendToConversation(key) =>
 			ConversationRoute.post_sent_message!({
 				key,
@@ -199,16 +195,6 @@ serve_route! = |request|
 		ServeUploadedImage(found) => UploadRoute.serve_uploaded_image!(found)
 		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
 		NotFound => HttpAnswer.notice(404, { title: "Not found", said: "Nothing is here." })
-	}
-
-## The bytes of `script`, each its own module's.
-script_bytes : Route.Script -> List(U8)
-script_bytes = |script|
-	match script {
-		Palette => PaletteScript.bytes
-		Chrome => ChromeScript.bytes
-		Compose => ComposeScript.bytes
-		Feed => FeedScript.bytes
 	}
 
 ## Steve (id 1), taken as signed in with nothing checked: the scary door.
@@ -303,9 +289,6 @@ expect page_for_get("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/
 expect page_for_get("/chat/dm/1_2/plans/stream") == "not found"
 expect page_for_get("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
 expect page_for_get("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
-# Each script's bytes are its own module's.
-expect script_bytes(Palette) == PaletteScript.bytes and script_bytes(Chrome) == ChromeScript.bytes
-expect script_bytes(Compose) == ComposeScript.bytes and script_bytes(Feed) == FeedScript.bytes
 
 ## The head of a request whose request line is `line` (`POST /a`), its Host
 ## this server's at port 9611, with `more` headers (name, value).

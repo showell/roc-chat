@@ -38,7 +38,7 @@ HttpAnswer :: [].{
 			body: [],
 		})
 
-	## **A SCRIPT**, `bytes` (the app's own: `ComposeScript`), as UTF-8
+	## **A SCRIPT**, `bytes` (the app's own: `Script`), as UTF-8
 	## JavaScript, which `nosniff` requires of a script a page runs. A
 	## browser asks again before using its copy (`no-cache`), so a changed
 	## script is never stale.
@@ -166,7 +166,7 @@ whole = |
 ## The policy: nothing by default (`default-src 'none'`); the one `<style>`
 ## Page writes inline (`style-src 'unsafe-inline'`), and the styles a
 ## script sets; scripts from this origin's own files alone (`script-src
-## 'self'`: `ComposeScript`, never an inline `<script>` or an event
+## 'self'`: `Script`'s, never an inline `<script>` or an event
 ## attribute, so markup that slipped into a page still runs nothing); images and video from
 ## this origin alone (`img-src` and `media-src 'self'`), the most
 ## `SecureImageTag` will ever allow, a conversation's own uploads; no

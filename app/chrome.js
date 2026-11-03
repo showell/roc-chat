@@ -1,5 +1,5 @@
 // This script runs on a conversation page, which app/Page.roc builds and
-// app/ChromeScript.roc serves. It styles the page's frame, which the server
+// app/Script.roc serves. It styles the page's frame, which the server
 // sends as structure and class names only, and adds the theme toggle.
 //
 // The frame is roc-chat's (its js/chrome.js), which is the old chat's: a top

@@ -1,5 +1,5 @@
 // This script runs in the head of every page, which app/Page.roc builds and
-// app/PaletteScript.roc serves. It sets the colours before the first paint,
+// app/Script.roc serves. It sets the colours before the first paint,
 // so a page never flashes the other theme.
 //
 // The colours are chat-client's (js/colors.js), as roc-chat's palette.js

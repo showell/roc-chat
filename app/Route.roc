@@ -15,15 +15,11 @@
 ##     GET  /chat/assets/feed.js
 ##
 ## A conversation's path is `ConversationKey`'s to read, which says which
-## of its resources the path names, and each script's is its own module's
-## (`PaletteScript` and the rest). A path that names no conversation the
-## directory holds is not found.
-import ChromeScript
-import ComposeScript
+## of its resources the path names, and each script's is `Script`'s. A
+## path that names no conversation the directory holds is not found.
 import ConversationKey
 import Directory
-import FeedScript
-import PaletteScript
+import Script
 import UnvalidatedString
 import UploadedImage
 
@@ -37,17 +33,9 @@ Route :: [].{
 		OpenConversationStream(ConversationKey),
 		UploadToConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
-		ServeScript(Route.Script),
+		ServeScript(Script),
 		NotFound,
 		MethodNotAllowed([GetAndPost, GetOnly, PostOnly]),
-	]
-
-	## A script the pages load, each served from its own module.
-	Script : [
-		Palette,
-		Chrome,
-		Compose,
-		Feed,
 	]
 
 	## The route for `method` and `path`, as the host handed them, each
@@ -65,7 +53,7 @@ Route :: [].{
 		},
 	| {
 		asked = method_of(method)
-		match scripts.find_first(|script| path == script_url_path(script).to_utf8()) {
+		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
 			Ok(script) =>
 				match asked {
 					Get => ServeScript(script)
@@ -87,25 +75,6 @@ Route :: [].{
 		}
 	}
 }
-
-## Every script the pages load.
-scripts : List(Route.Script)
-scripts = [
-	Palette,
-	Chrome,
-	Compose,
-	Feed,
-]
-
-## Where `script` is served.
-script_url_path : Route.Script -> Str
-script_url_path = |script|
-	match script {
-		Palette => PaletteScript.url_path
-		Chrome => ChromeScript.url_path
-		Compose => ComposeScript.url_path
-		Feed => FeedScript.url_path
-	}
 
 ## The method the host handed, as a route takes it: GET, POST, or any other
 ## (a method is case-sensitive, so `get` is another).
