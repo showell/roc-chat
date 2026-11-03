@@ -17,7 +17,8 @@
 ## reload. app/feed.js (`FeedScript`) styles the messages, marks the
 ## viewer's own, writes each time in the viewer's time zone, appends each
 ## message the conversation's stream brings, which `message` writes as the
-## page does.
+## page does, and lets the reader select a message and move between them
+## from the keyboard.
 ##
 ## The scripts find what they need by the classes in `Class` and by
 ## attributes. The messages pane names its stream (`data-stream`), how

@@ -24,12 +24,24 @@
 // dies for good, the page reloads itself; if it dies again soon after, the
 // page says so instead. Each message the stream brings is handed to
 // compose.js (Compose.arrived), which says when one this page sent arrives.
+//
+// One message is selected, ringed, as chat-client's message view did
+// (js/message_view.js). The page starts with the newest selected. The arrow
+// keys move the selection to the next or previous message, Home and End to
+// the first or last, and Page Up and Page Down scroll a page, or select the
+// first or last message when there is no further to scroll. Scrolling
+// selects the first message wholly in view, and a click selects the message
+// clicked. Once the selection has rested for 700 ms, the address bar's
+// #msg-<n> names it, so a reload or a copied address comes back to it; an
+// address that arrived with its own #msg-<n> keeps it until the reader
+// moves. The keys are registered in compose.js's table (Keys), so the
+// keyboard help lists them.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
   var compose = document.querySelector('.compose');
   if (!messages || !compose) throw new Error('feed.js: the page has no .messages, or no .compose');
-  if (!window.Compose) throw new Error('feed.js: compose.js runs first, and gives Compose');
+  if (!window.Keys || !window.Compose) throw new Error('feed.js: compose.js runs first, and gives Keys and Compose');
   var stream = messages.getAttribute('data-stream');
   var after = messages.getAttribute('data-after');
   var viewer = messages.getAttribute('data-viewer');
@@ -43,6 +55,7 @@
       ' border: 1px solid var(--cc-border); border-radius: 8px; padding: 12px; background: var(--cc-card-bg); }',
     '.messages:focus { outline: none; }',
     '.messages .empty { color: var(--cc-muted-fg); margin: 0; }',
+    '.message.selected { box-shadow: 0 0 0 2px var(--cc-select-ring); }',
     '.message { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; max-width: 88%; }',
     '.message.mine { background: var(--cc-mine-bg); margin-left: auto; }',
     '.message.theirs { background: var(--cc-theirs-bg); margin-right: auto; }',
@@ -89,8 +102,154 @@
   var drawn = messages.querySelectorAll('.message');
   for (var i = 0; i < drawn.length; i++) dress(drawn[i]);
 
-  function scrollToNewest() { messages.scrollTop = messages.scrollHeight; }
+  // A scroll the script makes is not the reader's, so it selects nothing.
+  // The script's own scrolls are a window that stays open until 150 ms pass
+  // with no scroll event, as chat-client's were: a flag cleared by the next
+  // event would stay set after a scroll that moved nothing, and the
+  // reader's next scroll would be taken for the script's.
+  var SCROLL_QUIET_MS = 150;
+  var ours = false;
+  var oursTimer = null;
+  function quiet() {
+    if (oursTimer) clearTimeout(oursTimer);
+    oursTimer = setTimeout(function () { ours = false; oursTimer = null; }, SCROLL_QUIET_MS);
+  }
+  function scrollAsScript(move) {
+    ours = true;
+    quiet();
+    move();
+  }
+
+  function scrollToNewest() {
+    scrollAsScript(function () { messages.scrollTop = messages.scrollHeight; });
+  }
+
+  // The selection. The ring moves at once, a message a key press; the
+  // address bar follows once it rests, or at once for a click or a jump to
+  // either end.
+  var SETTLE_MS = 700;
+  var REVEAL_PAD_TOP = 6;
+  var REVEAL_PAD_BOTTOM = 48;
+  var selected = null;
+  var settleTimer = null;
+  var arrivedWithHash = /^#msg-/.test(location.hash);
+  function allMessages() { return Array.prototype.slice.call(messages.querySelectorAll('.message')); }
+  function recordInAddress(article) {
+    if (arrivedWithHash) return;
+    window.history.replaceState(null, '', '#' + article.id);
+  }
+  function select(article, immediate) {
+    if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+    if (selected) selected.classList.remove('selected');
+    selected = article;
+    if (!article) return;
+    article.classList.add('selected');
+    if (immediate) recordInAddress(article);
+    else settleTimer = setTimeout(function () { settleTimer = null; recordInAddress(article); }, SETTLE_MS);
+  }
+  // Scrolls just enough to bring `article` into view, with a little room
+  // above it and more below.
+  function reveal(article) {
+    var pane = messages.getBoundingClientRect();
+    var box = article.getBoundingClientRect();
+    if (box.top < pane.top + REVEAL_PAD_TOP) {
+      messages.scrollTop += box.top - pane.top - REVEAL_PAD_TOP;
+    } else if (box.bottom > pane.bottom - REVEAL_PAD_BOTTOM) {
+      var delta = box.bottom - (pane.bottom - REVEAL_PAD_BOTTOM);
+      if (box.top - delta < pane.top + REVEAL_PAD_TOP) delta = box.top - pane.top - REVEAL_PAD_TOP;
+      messages.scrollTop += delta;
+    }
+  }
+  // The message scrolling selects: the first wholly in view; else the first
+  // whose top is in view; else the one across the top edge.
+  function selectionCandidate() {
+    var pane = messages.getBoundingClientRect();
+    var topInView = null;
+    var acrossTop = null;
+    var all = allMessages();
+    for (var k = 0; k < all.length; k++) {
+      var box = all[k].getBoundingClientRect();
+      if (box.top >= pane.top - 1 && box.bottom <= pane.bottom + 1) return all[k];
+      if (!topInView && box.top >= pane.top - 1 && box.top < pane.bottom) topInView = all[k];
+      if (!acrossTop && box.top < pane.top && box.bottom > pane.top) acrossTop = all[k];
+    }
+    return topInView || acrossTop;
+  }
+  var framePending = false;
+  messages.addEventListener('scroll', function () {
+    if (ours) { quiet(); return; }
+    if (framePending) return;
+    framePending = true;
+    requestAnimationFrame(function () {
+      framePending = false;
+      if (ours) return;
+      var candidate = selectionCandidate();
+      if (candidate && candidate !== selected) select(candidate, false);
+    });
+  });
+  // A click selects in the capture phase, before a link in the message
+  // acts, so a link to another message selects that one after.
+  messages.addEventListener('click', function (e) {
+    var article = e.target.closest && e.target.closest('.message');
+    if (!article) return;
+    arrivedWithHash = false;
+    select(article, true);
+  }, { capture: true });
+
+  function moveSelection(step) {
+    arrivedWithHash = false;
+    var all = allMessages();
+    if (!all.length) return;
+    var at = all.indexOf(selected);
+    if (at < 0) {
+      at = all.indexOf(selectionCandidate());
+      if (at < 0) at = 0;
+    } else {
+      at = Math.max(0, Math.min(all.length - 1, at + step));
+    }
+    var target = all[at];
+    select(target, false);
+    scrollAsScript(function () { reveal(target); });
+  }
+  function selectEnd(end) {
+    arrivedWithHash = false;
+    scrollAsScript(function () { messages.scrollTop = end === 'last' ? messages.scrollHeight : 0; });
+    var all = allMessages();
+    if (all.length) select(end === 'last' ? all[all.length - 1] : all[0], true);
+  }
+  // A page down (or up) while the pane can scroll that way; at its end, the
+  // last (or first) message selected.
+  function page(direction) {
+    var canScroll = direction === 'up'
+      ? messages.scrollTop > 0
+      : messages.scrollTop + messages.clientHeight < messages.scrollHeight - 1;
+    var step = Math.max(40, messages.clientHeight - 40);
+    if (canScroll) messages.scrollTop += direction === 'up' ? -step : step;
+    else selectEnd(direction === 'up' ? 'first' : 'last');
+  }
+  // Brings `article` to the middle of the pane and selects it: the sent
+  // notice's link.
+  function centre(article) {
+    arrivedWithHash = false;
+    scrollAsScript(function () {
+      var pane = messages.getBoundingClientRect();
+      var box = article.getBoundingClientRect();
+      messages.scrollTop += (box.top + box.height / 2) - (pane.top + pane.height / 2);
+    });
+    select(article, true);
+  }
+
+  Keys.register({ key: 'ArrowDown', cap: '↓', label: 'next message', run: function () { moveSelection(1); } });
+  Keys.register({ key: 'ArrowUp', cap: '↑', label: 'previous message', run: function () { moveSelection(-1); } });
+  Keys.register({ key: 'Home', label: 'first message', run: function () { selectEnd('first'); } });
+  Keys.register({ key: 'End', label: 'last message', run: function () { selectEnd('last'); } });
+  Keys.register({ key: 'PageUp', cap: 'PgUp', label: 'a page up', run: function () { page('up'); } });
+  Keys.register({ key: 'PageDown', cap: 'PgDn', label: 'a page down', run: function () { page('down'); } });
+  window.Feed = { reveal: centre };
+
   scrollToNewest();
+  var newestDrawn = allMessages().pop();
+  if (newestDrawn) select(newestDrawn, true);
   // Images lay out late; the newest message stays in view once they have.
   window.addEventListener('load', scrollToNewest);
 
@@ -114,16 +273,11 @@
     var arrived = Array.prototype.slice.call(parsed.content.querySelectorAll('.message'));
     for (var j = 0; j < arrived.length; j++) dress(arrived[j]);
     messages.appendChild(parsed.content);
-    if (follow) scrollToNewest();
+    if (follow) {
+      scrollToNewest();
+      if (arrived.length) select(arrived[arrived.length - 1], false);
+    }
     for (var k = 0; k < arrived.length; k++) Compose.arrived(arrived[k]);
-  };
-  // Brings `article` to the middle of the pane: the sent notice's link.
-  window.Feed = {
-    reveal: function (article) {
-      var pane = messages.getBoundingClientRect();
-      var box = article.getBoundingClientRect();
-      messages.scrollTop += (box.top + box.height / 2) - (pane.top + pane.height / 2);
-    },
   };
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for

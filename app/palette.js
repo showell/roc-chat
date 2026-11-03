@@ -21,7 +21,7 @@ window.Palette = (function () {
     searchSelBg: '#eef0ff', searchTokFg: '#23235a', searchMarkBg: '#ffe680',
     error: '#b00020', savedFg: '#1a7a3a', backdrop: 'rgba(0,0,0,0.4)', notifyFg: '#1a5fb4',
     topBarBg: '#f0ede4', topBarBorder: '#c9bfa7', presenceIdle: '#3b82f6', presenceOnline: '#22c55e',
-    lostBg: '#fdd', lostFg: '#600',
+    lostBg: '#fdd', lostFg: '#600', selectRing: '#ffcf3a',
   };
   // GitHub's dark colours, the bubbles a desaturated blue (the viewer's own)
   // and a desaturated warm grey (everyone else's).
@@ -34,7 +34,7 @@ window.Palette = (function () {
     searchSelBg: '#1f2d4a', searchTokFg: '#a8b1c5', searchMarkBg: '#6b5210',
     error: '#ff7b72', savedFg: '#56d364', backdrop: 'rgba(0,0,0,0.6)', notifyFg: '#79b8ff',
     topBarBg: '#161b22', topBarBorder: '#30363d', presenceIdle: '#58a6ff', presenceOnline: '#3fb950',
-    lostBg: '#3d1418', lostFg: '#ffb3ad',
+    lostBg: '#3d1418', lostFg: '#ffb3ad', selectRing: '#ffcf3a',
   };
 
   function varName(camel) {

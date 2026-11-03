@@ -25,6 +25,11 @@
 // and the draft is kept; an answer that comes later still says "sent" when
 // the message arrives, so it is not sent twice.
 //
+// The page's keys are one table, Keys, here: each key a feature registers
+// is listed in the closed rail's keyboard help, as a button that does what
+// the key does, so the help lists exactly the keys that work. feed.js
+// registers the keys that move between messages.
+//
 // An image goes into a message as chat-client's compose box puts one there.
 // The Upload button picks a file, and an image pasted into the box is sent
 // the same way. A large photo is first shrunk in the browser: its longest
@@ -38,8 +43,8 @@
 //
 // The messages pane, its stream and the newest message's place in view are
 // feed.js's; this script runs before it, so the panes are laid out by the
-// time feed.js first scrolls to the newest message, and Compose is there for
-// feed.js to use.
+// time feed.js first scrolls to the newest message, and Keys and Compose
+// are there for feed.js to use.
 //
 // The script styles what it arranges, with one style sheet of its own, so
 // the server sends no CSS for it. Its colours are palette.js's.
@@ -150,12 +155,6 @@
     messages.focus();
   }
 
-  // Each key the keyboard help lists, with what it does. A key's button in
-  // the help does the same.
-  var shortcuts = [
-    { key: 'c', label: 'compose', action: openCompose },
-  ];
-
   var closedPanel = document.createElement('div');
   closedPanel.className = 'compose-closed';
   var openButton = document.createElement('button');
@@ -170,36 +169,47 @@
   keyhelpTitle.className = 'keyhelp-title';
   keyhelpTitle.textContent = 'Keyboard';
   keyhelp.appendChild(keyhelpTitle);
-  shortcuts.forEach(function (shortcut) {
-    var row = document.createElement('div');
-    row.className = 'keyhelp-row';
-    var keyButton = document.createElement('button');
-    keyButton.type = 'button';
-    keyButton.className = 'keyhelp-key';
-    keyButton.textContent = shortcut.key;
-    keyButton.title = shortcut.label;
-    keyButton.addEventListener('click', shortcut.action);
-    row.appendChild(keyButton);
-    row.appendChild(document.createTextNode(' ' + shortcut.label));
-    keyhelp.appendChild(row);
-  });
   closedPanel.appendChild(keyhelp);
   compose.appendChild(closedPanel);
 
-  // A shortcut key works when no text field has the focus and no modifier
-  // is held, as in chat-client.
-  document.addEventListener('keydown', function (e) {
-    var focused = document.activeElement;
-    if (focused && (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT' || focused.isContentEditable)) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    for (var i = 0; i < shortcuts.length; i++) {
-      if (shortcuts[i].key === e.key) {
-        e.preventDefault();
-        shortcuts[i].action();
-        return;
+  // The page's one key table. Keys.register({ key, cap, label, run }) takes
+  // the key's name (KeyboardEvent.key), what its button in the help shows
+  // (the name, when no cap is given), what it does, and the function that
+  // does it, and adds its row to the help. A key registered twice is an
+  // error, so two features never both think they own one. A key works when
+  // no text field has the focus and no modifier is held, as in chat-client.
+  window.Keys = (function () {
+    var byKey = Object.create(null);
+    function register(entry) {
+      if (!entry || !entry.key || !entry.label || typeof entry.run !== 'function') {
+        throw new Error('Keys.register: a key, a label and a run');
       }
+      if (byKey[entry.key]) throw new Error('Keys.register: "' + entry.key + '" is registered twice');
+      byKey[entry.key] = entry;
+      var row = document.createElement('div');
+      row.className = 'keyhelp-row';
+      var keyButton = document.createElement('button');
+      keyButton.type = 'button';
+      keyButton.className = 'keyhelp-key';
+      keyButton.textContent = entry.cap || entry.key;
+      keyButton.title = entry.label;
+      keyButton.addEventListener('click', function () { entry.run(); });
+      row.appendChild(keyButton);
+      row.appendChild(document.createTextNode(' ' + entry.label));
+      keyhelp.appendChild(row);
     }
-  });
+    document.addEventListener('keydown', function (e) {
+      var focused = document.activeElement;
+      if (focused && (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT' || focused.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      var entry = byKey[e.key];
+      if (!entry) return;
+      e.preventDefault();
+      entry.run();
+    });
+    return { register: register };
+  })();
+  Keys.register({ key: 'c', label: 'compose', run: openCompose });
 
   function applyLayout() {
     var root = document.documentElement;
@@ -275,7 +285,7 @@
   }
 
   // The status line's notice that a message this page sent has arrived, a
-  // link that brings it into view.
+  // link that brings it into view and selects it.
   function sentNotice(article) {
     var ref = article.querySelector('header a');
     var link = document.createElement('a');
