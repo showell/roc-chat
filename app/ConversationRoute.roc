@@ -156,12 +156,7 @@ load_conversation! : ConversationKey => Try(
 	[Unreadable(TranscriptRefusal.Why), FileSystem(_)],
 )
 load_conversation! = |key| {
-	file =
-		match FileSystem.read_transcript!(key) {
-			Ok(utf8) => Ok(File(utf8))
-			Err(Missing) => Ok(NoFile)
-			Err(fault) => Err(FileSystem(fault))
-		}?
+	file = FileSystem.read_transcript!(key) ? |fault| FileSystem(fault)
 	conversation =
 		match file {
 			File(utf8) => Transcript.decode(key.topic(), utf8) ? |why| Unreadable(why)

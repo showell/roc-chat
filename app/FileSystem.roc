@@ -12,10 +12,11 @@
 ## append takes one message's `Utf8TranscriptMessage`, which only
 ## `Transcript` makes.
 ##
-## Every failure is named (`Fault`): `Missing` (no such file yet),
-## `AlreadyExists` (a name taken), and the host's own, passed on as it said
-## them (`NotUtf8`, `PathRefused`, `MissingDirectory`, `Failed`). Each
-## function answers only the ones it can meet. Every one but `Missing` is a
+## A file that may not exist yet is read as `NoFile` or `File(...)`. Every
+## failure is named (`Fault`): `Missing` (no such file, for a read that
+## needs one), `AlreadyExists` (a name taken), and the host's own, passed
+## on as it said them (`NotUtf8`, `PathRefused`, `MissingDirectory`,
+## `Failed`). Each function answers only the ones it can meet. Every one but `Missing` is a
 ## bug or a broken disk, and the caller answers it loudly, in `fault_words`.
 ##
 ## A conversation's uploaded images are kept in its folder, under
@@ -47,12 +48,11 @@ FileSystem :: [].{
 	fault_words : FileSystem.Fault -> Str
 	fault_words = |fault| "The file system answered ${fault_name(fault)}."
 
-	## A conversation's transcript, the whole file, unchecked; unless there
-	## is none yet (`Missing`), or the host's read failed.
+	## A conversation's transcript, the whole file, unchecked, or `NoFile`
+	## when there is none yet; unless the host's read failed.
 	read_transcript! : ConversationKey => Try(
-		Transcript.Utf8Transcript,
+		[NoFile, File(Transcript.Utf8Transcript)],
 		[
-			Missing,
 			NotUtf8,
 			PathRefused,
 			Failed,
@@ -61,8 +61,8 @@ FileSystem :: [].{
 	read_transcript! = |key| {
 		read = Host.read_utf8_bytes_from_file!(transcript_path(key))
 		match read.status {
-			Found => Ok(Transcript.Utf8Transcript.unchecked_from_file(read.bytes))
-			Missing => Err(Missing)
+			Found => Ok(File(Transcript.Utf8Transcript.unchecked_from_file(read.bytes)))
+			Missing => Ok(NoFile)
 			NotUtf8 => Err(NotUtf8)
 			PathRefused => Err(PathRefused)
 			Failed => Err(Failed)
@@ -153,7 +153,7 @@ FileSystem :: [].{
 	read_upload_total! = |folder| {
 		read = Host.read_utf8_bytes_from_file!(upload_total_path(folder))
 		match read.status {
-			Found => UploadTotal.from_file(Kept(read.bytes))
+			Found => UploadTotal.from_file(File(read.bytes))
 			Missing => UploadTotal.from_file(NoFile)
 			NotUtf8 => Err(NotUtf8)
 			PathRefused => Err(PathRefused)

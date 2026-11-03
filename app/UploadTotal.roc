@@ -23,11 +23,11 @@ UploadTotal :: U64.{
 	## yet (`NoFile`), else the file's decimal digits, with any spaces, tabs
 	## and line ends around them taken off, as the Zig chat reads it.
 	## Anything else is `NotANumber`, a number too big for a `U64` included.
-	from_file : [NoFile, Kept(List(U8))] -> Try(UploadTotal, [NotANumber])
+	from_file : [NoFile, File(List(U8))] -> Try(UploadTotal, [NotANumber])
 	from_file = |file|
 		match file {
 			NoFile => Ok(UploadTotal.(0))
-			Kept(bytes) => {
+			File(bytes) => {
 				digits = without_padding(bytes)
 				if digits.is_empty() or !digits.all(Ascii.is_digit) {
 					Err(NotANumber)
@@ -69,7 +69,7 @@ is_padding = |b| b == ' ' or b == '\t' or b == '\r' or b == '\n'
 # ── tests
 ## A file of `text`, read as a total and written back, as a test reads it.
 read_back : Str -> Try(Str, [NotANumber])
-read_back = |text| UploadTotal.from_file(Kept(text.to_utf8())).map_ok(|total| Str.from_utf8_lossy(total.to_file()))
+read_back = |text| UploadTotal.from_file(File(text.to_utf8())).map_ok(|total| Str.from_utf8_lossy(total.to_file()))
 
 expect UploadTotal.most_bytes == 1073741824
 # No file is none uploaded.
