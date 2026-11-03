@@ -12,6 +12,8 @@ app [main] {
 }
 
 import AdminSpec
+import AgentKeySpec
+import AgentsSpec
 import ChannelsSpec
 import ConversationKeySpec
 import ConversationSpec
@@ -21,6 +23,7 @@ import PageSpec
 import PlaceSpec
 import RouteSpec
 import SecureImageTagSpec
+import StoredDirectorySpec
 import TranscriptSpec
 import UsersSpec
 

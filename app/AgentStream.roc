@@ -23,14 +23,19 @@
 ## (`publish!`), so the host knows nothing of channels.
 import pf.Host
 import pf.Http
+import Author
 import Conversation
 import ConversationKey
 import DateTime
+import Directory
 import HttpAnswer
 import JsonOut
 import Message
+import Name
+import Topic
 import UnvalidatedString
 import UserId
+import UserPair
 
 AgentStream :: [].{
 
@@ -150,3 +155,126 @@ by_time_then_place = |a, b|
 ## Which of two places comes first.
 order_of : U64, U64 -> [Before, Same, After]
 order_of = |a, b| if (a < b) Before else if (a == b) Same else After
+
+# ── tests
+## The time `text` writes.
+time_of : Str -> DateTime
+time_of = |text| DateTime.from_str(text) ?? crash "AgentStream's tests: a time"
+
+## The key of `topic` in Steve's own DM.
+key_of : Str -> ConversationKey
+key_of = |topic| {
+	directory = Directory.with_founder(Name.from_str("Steve") ?? crash "AgentStream's tests: a name")
+	place = directory.place(
+		Dm(
+			UserPair.of({
+				a: UserId.steve,
+				b: UserId.steve,
+			}),
+		),
+	) ?? crash "AgentStream's tests: Steve's own DM"
+	ConversationKey.of({
+		place,
+		topic: Topic.from_str(topic) ?? crash "AgentStream's tests: a topic",
+	})
+}
+
+## `topic`'s conversation of Steve's messages, each a time and its markdown.
+conversation_of : Str, List((Str, Str)) -> { key : ConversationKey, conversation : Conversation }
+conversation_of = |topic, messages| {
+	key = key_of(topic)
+	author = Author.from_str("Steve") ?? crash "AgentStream's tests: a name"
+	conversation = messages.fold(
+		Conversation.empty(key.topic()),
+		|so_far, (time, markdown)| (
+			so_far.append({
+				payload: { author, markdown },
+				time: time_of(time),
+			}) ?? crash "AgentStream's tests: a message joins"
+		).conversation,
+	)
+	{ key, conversation }
+}
+
+## The markdown an event of a test's carries, which holds no quote.
+markdown_in : Str -> Str
+markdown_in = |event|
+	match event.split_on("\"markdown\":\"") {
+		[_, after] => after.drop_suffix("\"}")
+		_ => crash "AgentStream's tests: an event names its markdown once"
+	}
+
+## The events `bytes` hold, one line of JSON each, as a test reads them.
+events_of : List(U8) -> List(Str)
+events_of = |bytes| Str.from_utf8_lossy(bytes).split_on("\n\n").drop_if(Str.is_empty)
+
+# A start: live with no query; since a date; anything else refused.
+expect AgentStream.start([]) == Ok(Live)
+expect AgentStream.start("since=2026-11-02T19:11:32Z".to_utf8()) == Ok(Since(time_of("2026-11-02T19:11:32Z")))
+expect
+	[
+		"since=",
+		"since=2026-11-02",
+		"after=3",
+		"since=2026-11-02T19:11:32Z&x=1",
+		"Since=2026-11-02T19:11:32Z",
+	].all(
+		|query| AgentStream.start(query.to_utf8()) == Err(BadSince),
+	)
+expect AgentStream.start([0x73, 0x69, 0x6e, 0x63, 0x65, 0x3d, 0xff]) == Err(BadSince)
+# One message, one event: one line of JSON, its markdown's line ends and
+# quotes escaped, then a blank line.
+expect {
+	held = conversation_of("plans", [("2026-11-02T19:11:32Z", "Hi \"all\"\nsecond line")])
+	message = held.conversation.messages().first() ?? crash "AgentStream's tests: one message"
+	AgentStream.frame({ key: held.key, message })
+		== "data: {\"conversation\":\"/chat/dm/1_1/plans\",\"id\":1,\"from\":\"Steve\",\"date\":\"2026-11-02T19:11:32Z\",\"markdown\":\"Hi \\\"all\\\"\\nsecond line\"}\n\n".to_utf8()
+}
+# A backlog: every message at or after its date, oldest first across the
+# conversations; one second's messages in the conversations' order, then
+# their own.
+expect {
+	plans = conversation_of(
+		"plans",
+		[
+			("2026-11-02T19:00:00Z", "p1"),
+			("2026-11-02T19:00:05Z", "p2"),
+			("2026-11-02T19:00:09Z", "p3"),
+		],
+	)
+	other = conversation_of(
+		"other",
+		[
+			("2026-11-02T19:00:01Z", "o1"),
+			("2026-11-02T19:00:05Z", "o2"),
+			("2026-11-02T19:00:05Z", "o3"),
+		],
+	)
+	events = events_of(
+		AgentStream.backlog({
+			conversations: [plans, other],
+			since: time_of("2026-11-02T19:00:01Z"),
+		}),
+	)
+	events.map(markdown_in) == ["o1", "p2", "o2", "o3", "p3"]
+}
+# A date past every message, none; before every message, all.
+expect AgentStream.backlog({
+	conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],
+	since: time_of("2026-11-02T19:00:01Z"),
+}) == []
+expect events_of(
+	AgentStream.backlog({
+		conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],
+		since: time_of("2026-11-02T19:00:00Z"),
+	}),
+).len() == 1
+# The stream: on the agent's own key, held by the agent, its backlog first.
+expect {
+	answered = AgentStream.response({ agent: UserId.steve, backlog: "data: x\n\n".to_utf8() })
+	answered.kind == Stream
+		and answered.stream_key == "/agents/1/stream".to_utf8()
+		and answered.stream_holder == "agent-1".to_utf8()
+		and answered.body == "data: x\n\n".to_utf8()
+}
+expect AgentStream.words(BadSince) == "The stream's start is not one: none, or `?since=<date>`, a date as 2026-11-02T19:11:32Z."

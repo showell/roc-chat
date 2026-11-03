@@ -85,6 +85,12 @@ expect JsonOut.string("").bytes() == "\"\"".to_utf8()
 # 0x7E kept and 0x7F, DEL, escaped.
 expect JsonOut.string("\u(1f) ~\u(7f)").bytes() == "\"\\u001f ~\\u007f\"".to_utf8()
 expect JsonOut.zero.bytes() == "0".to_utf8()
+expect
+	[
+		(0, "0"),
+		(7, "7"),
+		(18446744073709551615, "18446744073709551615"),
+	].all(|(n, digits)| JsonOut.number(n).bytes() == digits.to_utf8())
 # A name holding a quote, a backslash and a control byte stays one string.
 expect
 	JsonOut.json_object([

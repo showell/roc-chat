@@ -344,3 +344,12 @@ expect {
 			]
 		and response.body == "x();\n".to_utf8()
 }
+# A transcript's plain text: a 200, UTF-8 text, not sniffed, its bytes as
+# kept, a final line end and all.
+expect {
+	response = HttpAnswer.plain_text_file("a <b>\n".to_utf8())
+	response.status == 200
+		and header_pairs(response) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
+		and response.body == "a <b>\n".to_utf8()
+		and response.kind == Whole
+}
