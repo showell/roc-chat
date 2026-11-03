@@ -291,7 +291,8 @@ test "a header with a CR, an LF or a NUL is never written" {
     for ([_][]const u8{ "a\rb", "a\nb", "a\x00b", "\r\n" }) |v| try testing.expect(!http.header_safe(v));
 }
 
-/// A stream of the conversation `path`, held open, its head read.
+/// A stream of the conversation `/chat/dm/1_1/plans` after its first
+/// message, held open, its head read.
 const HeldStream = struct {
     connection: Io.net.Stream,
     reader: Io.net.Stream.Reader,
@@ -301,7 +302,7 @@ const HeldStream = struct {
         const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
         s.connection = try addr.connect(io, .{ .mode = .stream });
         var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=0 HTTP/1.1", "\r\n"));
+        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=1 HTTP/1.1", "\r\n"));
         s.reader = s.connection.reader(io, &s.buf);
         var last: [4]u8 = @splat(0);
         while (!std.mem.eql(u8, &last, "\r\n\r\n")) {
@@ -326,14 +327,18 @@ test "a holder at its cap ends its own oldest stream, and its newer ones still g
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const port = r.server.port();
+    // A conversation's stream needs its transcript, so the first message
+    // starts it.
+    const started = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=x"));
+    try testing.expectEqual(303, try status(started));
     var streams: [3]HeldStream = undefined;
     for (&streams) |*s| try s.open(a, port);
     defer for (&streams) |*s| s.connection.close(io);
-    const posted = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=x"));
+    const posted = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=y"));
     try testing.expectEqual(303, try status(posted));
     // The first was ended for the third, before the post: closed, no frame.
     try testing.expectEqual(null, try streams[0].line());
-    for (streams[1..]) |*s| try testing.expectEqualStrings("id: 1\n", (try s.line()).?);
+    for (streams[1..]) |*s| try testing.expectEqualStrings("id: 2\n", (try s.line()).?);
 }
 
 test "a stream ended for a newer one of its holder lets go of its subscriber and its slot at once" {

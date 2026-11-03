@@ -11,12 +11,17 @@
 ## and is answered with a 201 and the message's HTML, or with why not in
 ## plain words, so the page stays put. A GET of the conversation's stream
 ## answers with the stream.
+##
+## Only a message's POST starts a conversation. A GET of the page or of the
+## stream of a conversation with no transcript is a 404, as in the Zig
+## chat. Every route words its refusals through `refusal_notice`.
 import pf.Http
 import Author
 import Conversation
 import ConversationKey
 import ConversationStream
 import DateTime
+import Directory
 import FileSystem
 import HttpAnswer
 import Message
@@ -25,13 +30,14 @@ import Page
 import SignedIn
 import Transcript
 import TranscriptRefusal
+import UnvalidatedString
 import UrlEncodedForm
 import Users
 
 ConversationRoute :: [].{
 
-	## **GET**: the conversation's page for `acting`, each message's author
-	## found among `users`; a 404 when it has no transcript.
+	## A GET of the conversation `key`: its page for `acting`, each
+	## message's author found among `users`.
 	show! : {
 		key : ConversationKey,
 		acting : SignedIn,
@@ -44,30 +50,24 @@ ConversationRoute :: [].{
 			users,
 		},
 	|
-		match FileSystem.read_transcript!(key) {
-			Ok(utf8) =>
-				match Transcript.decode(key.topic(), utf8) {
-					Ok(conversation) =>
-						HttpAnswer.page(
-							200,
-							Page.conversation({
-								conversation,
-								key,
-								viewer: acting,
-								users,
-							}),
-						)
-					Err(why) => unreadable_transcript_response(why)
-				}
-			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such conversation: ${key.url_path()}" })
-			Err(fault) => file_system_failure_response(fault)
+		match load_existing_conversation!(key) {
+			Ok(conversation) =>
+				HttpAnswer.page(
+					200,
+					Page.conversation({
+						conversation,
+						key,
+						viewer: acting,
+						users,
+					}),
+				)
+			Err(why) => refusal_page(why)
 		}
 
-	## **GET THE STREAM**: the conversation's stream for `acting`, after
-	## the count of messages the request has seen (`query` and `headers`,
-	## `ConversationStream.seen_count`); one with no transcript yet is
-	## empty until its first message. Each message's author is found among
-	## `users`.
+	## A GET of the conversation's stream, for `acting`: the messages after
+	## the count the request has seen (`query` and `headers`, read by
+	## `ConversationStream.seen_count`), then each one added. Each message's
+	## author is found among `users`.
 	open_stream! : {
 		key : ConversationKey,
 		acting : SignedIn,
@@ -85,50 +85,35 @@ ConversationRoute :: [].{
 		},
 	|
 		match ConversationStream.seen_count({ query, headers }) {
-			Err(why) => HttpAnswer.notice(400, { title: "Bad stream", said: ConversationStream.words(why) })
+			Err(why) => refusal_page(why)
 			Ok(seen) =>
-				match FileSystem.read_transcript!(key) {
-					Ok(utf8) =>
-						match Transcript.decode(key.topic(), utf8) {
-							Ok(conversation) =>
-								ConversationStream.response({
-									key,
-									acting,
-									users,
-									conversation,
-									seen,
-								})
-							Err(why) => unreadable_transcript_response(why)
-						}
-					Err(Missing) =>
+				match load_existing_conversation!(key) {
+					Ok(conversation) =>
 						ConversationStream.response({
 							key,
 							acting,
 							users,
-							conversation: Conversation.empty(key.topic()),
+							conversation,
 							seen,
 						})
-					Err(fault) => file_system_failure_response(fault)
+					Err(why) => refusal_page(why)
 				}
 		}
 
-	## **POST**: the message in `body`'s field `markdown`, by `acting`, at
-	## `now` (the host's clock, seconds since the epoch), appended to the
-	## conversation; the first message of one with no transcript yet starts
-	## it. Then a 303 to its page. The message goes to the conversation's
-	## stream with its author found among `users`.
+	## A POST of the message in `body`'s field `markdown`, by `acting`, at
+	## `now` (the host's clock, seconds since the epoch): the message is
+	## appended to the conversation, and the first message of a conversation
+	## with no transcript yet starts it. Then a 303 to its page. The message
+	## goes to the conversation's stream with its author found among
+	## `users`.
 	post_sent_message! : ConversationRoute.Post => Http.Response
 	post_sent_message! = |post|
 		match append_posted_message!(post) {
 			Ok(_) => HttpAnswer.see_other(post.key.url_path())
-			Err(Unreadable(why)) => unreadable_transcript_response(why)
-			Err(why) => {
-				refused = refusal_notice(why)
-				HttpAnswer.notice(refused.status, refused.words)
-			}
+			Err(why) => refusal_page(why)
 		}
 
-	## **POST FROM THE PAGE'S SCRIPT**: the message appended as
+	## A POST from the page's script: the message appended as
 	## `post_sent_message!` appends it, then a 201 with the message's HTML,
 	## as the stream writes it. A refusal is its status and its words in
 	## plain text, which the compose box shows as they are.
@@ -146,8 +131,8 @@ ConversationRoute :: [].{
 					}),
 				)
 			Err(why) => {
-				refused = refusal_notice(why)
-				HttpAnswer.text(refused.status, refused.words.said)
+				notice = refusal_notice(why)
+				HttpAnswer.text(notice.status, notice.words.said)
 			}
 		}
 
@@ -163,9 +148,50 @@ ConversationRoute :: [].{
 	}
 }
 
-## **THE POSTED MESSAGE, APPENDED**: the message in `post`'s form, added to
-## its conversation and to the transcript, then sent to the conversation's
-## stream; the conversation it grew and the message; or why not.
+## The conversation `key` names, as its transcript holds it, and the
+## transcript file it was read from. A conversation with no transcript yet
+## is empty, and its file is `NoFile`.
+load_conversation! : ConversationKey => Try(
+	{ conversation : Conversation, file : [NoFile, File(Transcript.Utf8Transcript)] },
+	[Unreadable(TranscriptRefusal.Why), FileSystem(_)],
+)
+load_conversation! = |key| {
+	file =
+		match FileSystem.read_transcript!(key) {
+			Ok(utf8) => Ok(File(utf8))
+			Err(Missing) => Ok(NoFile)
+			Err(fault) => Err(FileSystem(fault))
+		}?
+	conversation =
+		match file {
+			File(utf8) => Transcript.decode(key.topic(), utf8) ? |why| Unreadable(why)
+			NoFile => Conversation.empty(key.topic())
+		}
+	Ok({ conversation, file })
+}
+
+## The conversation `key` names, for a reader: a conversation with no
+## transcript is `NoSuchConversation`, since only a message's POST starts
+## one.
+load_existing_conversation! : ConversationKey => Try(
+	Conversation,
+	[
+		NoSuchConversation(ConversationKey),
+		Unreadable(TranscriptRefusal.Why),
+		FileSystem(_),
+	],
+)
+load_existing_conversation! = |key| {
+	loaded = load_conversation!(key)?
+	match loaded.file {
+		File(_) => Ok(loaded.conversation)
+		NoFile => Err(NoSuchConversation(key))
+	}
+}
+
+## The message in `post`'s form, added to its conversation and to the
+## transcript, then sent to the conversation's stream: the conversation it
+## grew and the message; or why not.
 append_posted_message! : ConversationRoute.Post => Try({ conversation : Conversation, message : Message }, _)
 append_posted_message! = |post| {
 	unnumbered_message = unnumbered_message_from_post({
@@ -173,22 +199,12 @@ append_posted_message! = |post| {
 		now: post.now,
 		body: post.body,
 	})?
-	file =
-		match FileSystem.read_transcript!(post.key) {
-			Ok(utf8) => Ok(File(utf8))
-			Err(Missing) => Ok(NoFile)
-			Err(fault) => Err(FileSystem(fault))
-		}?
-	conversation =
-		match file {
-			File(utf8) => Transcript.decode(post.key.topic(), utf8) ? |why| Unreadable(why)
-			NoFile => Conversation.empty(post.key.topic())
-		}
-	grown = conversation.append(unnumbered_message)?
+	loaded = load_conversation!(post.key)?
+	grown = loaded.conversation.append(unnumbered_message)?
 	record = Transcript.message_record({
 		conversation: grown.conversation,
 		message: grown.message,
-		file,
+		file: loaded.file,
 	})?
 	FileSystem.append_message!(post.key, record) ? |fault| FileSystem(fault)
 	ConversationStream.publish!({
@@ -200,8 +216,7 @@ append_posted_message! = |post| {
 	Ok(grown)
 }
 
-## Every reason `append_posted_message!` refuses a message, as
-## `refusal_notice` takes it.
+## Every reason a route refuses a request, as `refusal_notice` takes it.
 Refusal : [
 	MissingField,
 	RepeatedField,
@@ -209,6 +224,9 @@ Refusal : [
 	NotUtf8,
 	Blank,
 	ClockOutOfRange,
+	NoCount,
+	BadCount,
+	NoSuchConversation(ConversationKey),
 	Unreadable(TranscriptRefusal.Why),
 	FileSystem(
 		[
@@ -224,9 +242,10 @@ Refusal : [
 	FileFull,
 ]
 
-## **A REFUSED MESSAGE, IN WORDS**: its status, a title for a page, and
-## what is wrong. The form's faults are a 400, the conversation's refusals
-## a 409, and the server's own a 500.
+## A refusal in words: its status, a title for a page, and what is wrong.
+## A fault in the request (the form or the stream's count) is a 400, a
+## conversation with no transcript a 404, the conversation's refusal of a
+## message a 409, and the server's own failure a 500.
 refusal_notice : Refusal -> { status : U16, words : { title : Str, said : Str } }
 refusal_notice = |why|
 	match why {
@@ -236,12 +255,22 @@ refusal_notice = |why|
 		NotUtf8 => form_fault("The form's `markdown` is not UTF-8.")
 		Blank => form_fault("The message is blank.")
 		ClockOutOfRange => { status: 500, words: { title: "Message refused", said: "The server's clock is out of range." } }
+		NoCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(NoCount) } }
+		BadCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(BadCount) } }
+		NoSuchConversation(key) => { status: 404, words: { title: "Not found", said: "No such conversation: ${key.url_path()}" } }
 		Unreadable(fault) => { status: 500, words: { title: "Not a transcript", said: "Not a transcript: ${TranscriptRefusal.words(fault)}." } }
 		FileSystem(fault) => { status: 500, words: { title: "Failed", said: "The file system answered ${file_system_fault_name(fault)}." } }
 		Backdated => conversation_refusal("The message is dated before the conversation's latest.")
 		Full => conversation_refusal("The conversation holds as many messages as it can.")
 		FileFull => conversation_refusal("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
 	}
+
+## A refusal as a page, with its status.
+refusal_page : Refusal -> Http.Response
+refusal_page = |why| {
+	notice = refusal_notice(why)
+	HttpAnswer.notice(notice.status, notice.words)
+}
 
 ## A fault in the posted form, saying what: a 400.
 form_fault : Str -> { status : U16, words : { title : Str, said : Str } }
@@ -251,7 +280,7 @@ form_fault = |said| { status: 400, words: { title: "Message refused", said } }
 conversation_refusal : Str -> { status : U16, words : { title : Str, said : Str } }
 conversation_refusal = |said| { status: 409, words: { title: "Message refused", said } }
 
-## **THE POST'S UNNUMBERED MESSAGE**: the markdown in `body`'s field
+## The unnumbered message a POST holds: the markdown in `body`'s field
 ## `markdown`, by the acting user, at `now`; or why it is refused.
 unnumbered_message_from_post : {
 	acting : SignedIn,
@@ -280,16 +309,6 @@ unnumbered_message_from_post = |
 	time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
 	Ok({ payload: { author: acting.user().author(), markdown }, time })
 }
-
-## **A TRANSCRIPT FILE THAT WON'T DECODE**: the server's, a 500, saying
-## why in `TranscriptRefusal`'s words.
-unreadable_transcript_response : TranscriptRefusal.Why -> Http.Response
-unreadable_transcript_response = |why| HttpAnswer.page(500, Page.refusal(TranscriptRefusal.words(why)))
-
-## **THE FILE SYSTEM FAILED**: a 500, naming what the host answered (and
-## the host's log says which file, and why).
-file_system_failure_response : _ -> Http.Response
-file_system_failure_response = |fault| HttpAnswer.notice(500, { title: "Failed", said: "The file system answered ${file_system_fault_name(fault)}." })
 
 ## A fault the host's file system answered, by its tag's name.
 file_system_fault_name : [
@@ -342,6 +361,13 @@ unnumbered_message_at = |now, body|
 unnumbered_message_at_the_sample_time : Str -> Try(UnnumberedMessageText, _)
 unnumbered_message_at_the_sample_time = |body| unnumbered_message_at(1793646692, body)
 
+## `plans` in Steve's own DM.
+plans_key : ConversationKey
+plans_key = ConversationKey.from_url_path({
+	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "ConversationRoute's tests: a path is UTF-8",
+	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name"),
+}) ?? crash "ConversationRoute's tests: Steve's own DM is a place"
+
 expect
 	unnumbered_message_at_the_sample_time("markdown=Hi+there%0D%0Aall")
 		== Ok({
@@ -355,8 +381,8 @@ expect unnumbered_message_at_the_sample_time("markdown=%G0") == Err(BadEscape)
 expect unnumbered_message_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
 expect unnumbered_message_at_the_sample_time("markdown=+") == Err(Blank)
 expect unnumbered_message_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
-# Each refusal: the form's faults a 400, the conversation's a 409, the
-# server's a 500, each in its own words.
+# Each refusal: the request's faults a 400, no transcript a 404, the
+# conversation's refusals a 409, the server's a 500, each in its own words.
 expect
 	[
 		(MissingField, "The form has no field `markdown`."),
@@ -365,6 +391,12 @@ expect
 		(NotUtf8, "The form's `markdown` is not UTF-8."),
 		(Blank, "The message is blank."),
 	].all(|(why, said)| refusal_notice(why) == { status: 400, words: { title: "Message refused", said } })
+expect
+	[
+		(NoCount, "The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."),
+		(BadCount, "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."),
+	].all(|(why, said)| refusal_notice(why) == { status: 400, words: { title: "Bad stream", said } })
+expect refusal_notice(NoSuchConversation(plans_key)) == { status: 404, words: { title: "Not found", said: "No such conversation: /chat/dm/1_1/plans" } }
 expect
 	[
 		(Backdated, "The message is dated before the conversation's latest."),
@@ -381,3 +413,8 @@ expect
 		(MissingDirectory, "MissingDirectory"),
 		(Failed, "Failed"),
 	].all(|(fault, name)| refusal_notice(FileSystem(fault)) == { status: 500, words: { title: "Failed", said: "The file system answered ${name}." } })
+# A refusal's page: its status, and its notice's title and words.
+expect {
+	answered = refusal_page(NoSuchConversation(plans_key))
+	answered.status == 404 and answered.body == Page.notice({ title: "Not found", said: "No such conversation: /chat/dm/1_1/plans" }).to_utf8()
+}

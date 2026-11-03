@@ -18,7 +18,8 @@
 //!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
 //!      same-origin, a navigation's other headers): a 303 to the page, and
 //!      exactly one record more on disk, its newline LF;
-//!   5. GET a DM's conversation with no transcript: the 404 page;
+//!   5. GET a DM's conversation with no transcript, and its stream: the
+//!      404 page each, since only a message's POST starts a conversation;
 //!   6. POST to it as a browser's own page would (its `Origin` and
 //!      `Sec-Fetch-Site`): its transcript made, holding exactly the one
 //!      record;
@@ -205,8 +206,10 @@ pub fn main(init: std.process.Init) !void {
 
     // 5.
     const missing = try get(a, io, port, dm_url);
-    try t.check("GET a DM's conversation with no transcript: 404, saying so", missing.status == 404 and
-        has(missing.body, "No such conversation: " ++ dm_url));
+    const missing_stream = try get(a, io, port, dm_url ++ "/stream?after=0");
+    try t.check("GET a DM's conversation with no transcript, and its stream: 404 each, saying so", missing.status == 404 and
+        has(missing.body, "No such conversation: " ++ dm_url) and missing_stream.status == 404 and
+        has(missing_stream.body, "No such conversation: " ++ dm_url));
 
     // 6.
     const before_dm = files.current_utc_seconds_since_epoch(io);
