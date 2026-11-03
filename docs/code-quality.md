@@ -2,6 +2,10 @@
 
 This is the standard the Roc code is held to. The general Roc rules are in roc-apps' `CLAUDE.md` and `docs/roc-style.md`. Read both, cover to cover, before judging any Roc. They are living documents: when work here shows a general lesson they lack, or a rule that is wrong, the guide changes too. This page adds what gopher-roc asks for on top of them. The shale hunts in `tools/verify.shale` catch some of it automatically; the rest is judgement.
 
+## The model
+
+`app/Conversation.roc` is the module to imitate. Steve called it the first piece of code he would hand a Roc newcomer building a chat, one that would fit almost any architecture. It is a pure type that stands alone, knowing nothing of storage, places or readers. It has one way in (`append`), so its rules live in the type, and its few comments are plain sentences.
+
 ## Show off Roc
 
 Use Roc's types to make bad values impossible, rather than checking for them in many places. A message id is a `Message.Id`, made only by `first` and `next`, not a bare number. Give each domain number a nominal type, at the smallest integer that fits. Prefer an opaque type whose constructors enforce the rule over a comment that states it.
