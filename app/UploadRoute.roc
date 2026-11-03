@@ -98,19 +98,13 @@ image_upload_from_form = |{ headers, body }| {
 		}?
 	boundary = MultipartForm.boundary_from_content_type(content_type)?
 	file = MultipartForm.file_part(body, boundary)?
-	kind = UploadedImage.kind_of_bytes(file.bytes)?
-	_ = image_size_checked(file.bytes.len())?
+	kind = UploadedImage.checked_bytes(file.bytes)?
 	Ok({
 		kind,
 		filename: file.filename,
 		bytes: file.bytes,
 	})
 }
-
-## An image's size, `count` bytes, unless it is over the most an image
-## may be.
-image_size_checked : U64 -> Try(U64, [TooLarge])
-image_size_checked = |count| if (count > UploadedImage.most_bytes) Err(TooLarge) else Ok(count)
 
 ## The image in a POST's form, counted against the allowance of the user
 ## `acting` and kept in the conversation `key`: the JSON that answers it;
@@ -271,11 +265,6 @@ expect
 			bytes: png,
 		})
 expect image_upload_from_form(form_of({ filename: "cat.txt", file: png })).map_ok(|u| u.kind) == Ok(Png)
-# Its size: at the most and under it, and one byte over. (The end to end
-# sends both whole.)
-expect image_size_checked(UploadedImage.most_bytes) == Ok(UploadedImage.most_bytes)
-expect image_size_checked(1) == Ok(1)
-expect image_size_checked(UploadedImage.most_bytes + 1) == Err(TooLarge)
 # Refused: not an image, no form, no file in it.
 expect image_upload_from_form(form_of({ filename: "cat.png", file: "hello, not an image".to_utf8() })) == Err(NotAnImage)
 expect image_upload_from_form({ headers: [], body: form_of({ filename: "cat.png", file: png }).body }) == Err(NoFile)

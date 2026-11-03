@@ -1,9 +1,10 @@
 ## An uploaded image is an image a conversation holds: what kind of image
 ## it is, and the name it is kept and served under.
 ##
-## The kind is judged by the file's opening bytes (`kind_of_bytes`): PNG,
-## JPEG, GIF or WebP, never what the browser's filename or type says, and
-## anything else is refused. An image is at most 10 MiB (`most_bytes`).
+## An upload's bytes are checked here (`checked_bytes`). The kind is judged
+## by the file's opening bytes: PNG, JPEG, GIF or WebP, never what the
+## browser's filename or type says, and anything else is refused. An image
+## is at most 10 MiB (`most_bytes`).
 ##
 ## The name is 32 lowercase hex digits, from 16 random bytes, then `.` and
 ## the extension the kind gives (`fresh`), so no name a person chose reaches
@@ -22,20 +23,14 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	most_bytes : U64
 	most_bytes = 10 * 1024 * 1024
 
-	## The kind of image `bytes` are, by how they open; unless they open as
-	## none of the four (`NotAnImage`).
-	kind_of_bytes : List(U8) -> Try(UploadedImage.Kind, [NotAnImage])
-	kind_of_bytes = |bytes|
-		if (bytes.starts_with(png_signature))
-			Ok(Png)
-		else if (bytes.starts_with([0xFF, 0xD8, 0xFF]))
-			Ok(Jpeg)
-		else if (bytes.starts_with("GIF87a".to_utf8()) or bytes.starts_with("GIF89a".to_utf8()))
-			Ok(Gif)
-		else if (bytes.starts_with("RIFF".to_utf8()) and bytes.sublist({ start: 8, len: 4 }) == "WEBP".to_utf8())
-			Ok(Webp)
-		else
-			Err(NotAnImage)
+	## The kind of image an upload's `bytes` are, by how they open; unless
+	## they open as none of the four (`NotAnImage`), or are more than
+	## `most_bytes` (`TooLarge`).
+	checked_bytes : List(U8) -> Try(UploadedImage.Kind, [NotAnImage, TooLarge])
+	checked_bytes = |bytes| {
+		kind = kind_of_bytes(bytes)?
+		if (bytes.len() > UploadedImage.most_bytes) Err(TooLarge) else Ok(kind)
+	}
 
 	## How many random bytes an image's name is made from.
 	random_bytes_per_name : U64
@@ -85,6 +80,21 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	is_eq : _
 }
 
+## The kind of image `bytes` are, by how they open; unless they open as
+## none of the four (`NotAnImage`).
+kind_of_bytes : List(U8) -> Try(UploadedImage.Kind, [NotAnImage])
+kind_of_bytes = |bytes|
+	if (bytes.starts_with(png_signature))
+		Ok(Png)
+	else if (bytes.starts_with([0xFF, 0xD8, 0xFF]))
+		Ok(Jpeg)
+	else if (bytes.starts_with("GIF87a".to_utf8()) or bytes.starts_with("GIF89a".to_utf8()))
+		Ok(Gif)
+	else if (bytes.starts_with("RIFF".to_utf8()) and bytes.sublist({ start: 8, len: 4 }) == "WEBP".to_utf8())
+		Ok(Webp)
+	else
+		Err(NotAnImage)
+
 ## The eight bytes every PNG file opens with.
 png_signature : List(U8)
 png_signature = [0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n']
@@ -123,14 +133,14 @@ is_lower_hex_digit = |b| Ascii.is_digit(b) or (b >= 'a' and b <= 'f')
 
 # ── tests
 # An image is what its bytes say: each kind at its opening bytes.
-expect UploadedImage.kind_of_bytes(png_signature.concat([0, 0])) == Ok(Png)
-expect UploadedImage.kind_of_bytes(png_signature) == Ok(Png)
-expect UploadedImage.kind_of_bytes([0xFF, 0xD8, 0xFF, 0xE0]) == Ok(Jpeg)
-expect UploadedImage.kind_of_bytes([0xFF, 0xD8, 0xFF]) == Ok(Jpeg)
-expect UploadedImage.kind_of_bytes("RIFF\u(0)\u(0)\u(0)\u(0)WEBP".to_utf8()) == Ok(Webp)
-expect UploadedImage.kind_of_bytes("GIF89a..".to_utf8()) == Ok(Gif)
-expect UploadedImage.kind_of_bytes("GIF87a".to_utf8()) == Ok(Gif)
-expect UploadedImage.kind_of_bytes("RIFF\u(0)\u(0)\u(0)\u(0)WEBPVP8 ".to_utf8()) == Ok(Webp)
+expect UploadedImage.checked_bytes(png_signature.concat([0, 0])) == Ok(Png)
+expect UploadedImage.checked_bytes(png_signature) == Ok(Png)
+expect UploadedImage.checked_bytes([0xFF, 0xD8, 0xFF, 0xE0]) == Ok(Jpeg)
+expect UploadedImage.checked_bytes([0xFF, 0xD8, 0xFF]) == Ok(Jpeg)
+expect UploadedImage.checked_bytes("RIFF\u(0)\u(0)\u(0)\u(0)WEBP".to_utf8()) == Ok(Webp)
+expect UploadedImage.checked_bytes("GIF89a..".to_utf8()) == Ok(Gif)
+expect UploadedImage.checked_bytes("GIF87a".to_utf8()) == Ok(Gif)
+expect UploadedImage.checked_bytes("RIFF\u(0)\u(0)\u(0)\u(0)WEBPVP8 ".to_utf8()) == Ok(Webp)
 # Anything else is none, a kind's opening cut short or one byte off among it.
 expect
 	[
@@ -142,11 +152,17 @@ expect
 		"<svg>",
 		"%PDF-1.4",
 		"hello, not an image",
-	].all(|text| UploadedImage.kind_of_bytes(text.to_utf8()) == Err(NotAnImage))
-expect UploadedImage.kind_of_bytes([0x89, 'P', 'N', 'G']) == Err(NotAnImage)
-expect UploadedImage.kind_of_bytes([0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, 'x']) == Err(NotAnImage)
-expect UploadedImage.kind_of_bytes([0xFF, 0xD8]) == Err(NotAnImage)
+	].all(|text| UploadedImage.checked_bytes(text.to_utf8()) == Err(NotAnImage))
+expect UploadedImage.checked_bytes([0x89, 'P', 'N', 'G']) == Err(NotAnImage)
+expect UploadedImage.checked_bytes([0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, 'x']) == Err(NotAnImage)
+expect UploadedImage.checked_bytes([0xFF, 0xD8]) == Err(NotAnImage)
 expect UploadedImage.most_bytes == 10485760
+# Its size: at the most and one byte under it, and one byte over, an image
+# whatever follows its opening; one too large and no image is no image.
+expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 8))) == Ok(Png)
+expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 9))) == Ok(Png)
+expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 7))) == Err(TooLarge)
+expect UploadedImage.checked_bytes(List.repeat(0, UploadedImage.most_bytes + 1)) == Err(NotAnImage)
 # A fresh name: the random bytes in lowercase hex, and its kind's extension.
 expect
 	UploadedImage.fresh({ random_bytes: List.repeat(0xAB, 16), kind: Webp }).name()
