@@ -1,5 +1,5 @@
 //! **ROC GLUE HOLDS EVERY SEAM RECORD**: each C function `roc glue`
-//! declares for the platform (Host.roc's primitives, and the app's four
+//! declares for the platform (Host.roc's primitives, and the app's five
 //! entries) is held at compile time to host/seam.zig's function of that
 //! symbol, argument by argument and the answer: a record field by field by
 //! name (its offset, and what it holds, down through records and lists), a
@@ -178,9 +178,23 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
-test "roc glue declares every function seam.zig has, and no other: seventeen primitives and four entries" {
+test "roc glue declares every function seam.zig has, and no other: seventeen primitives and five entries" {
     try std.testing.expectEqual(seam_names.len, glue_names.len);
-    try std.testing.expectEqual(21, seam_names.len);
+    try std.testing.expectEqual(22, seam_names.len);
+}
+
+test "the password rule `hash-password` asks is the app's: 1 to 72 bytes of UTF-8" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    seam.begin(.{ .arena = a });
+    defer seam.end();
+    for ([_][]const u8{ "hunter2", "x", try repeated(a, "x", 72), try repeated(a, "é", 36) }) |good| {
+        try std.testing.expectEqual(seam.PasswordRule.accepted, seam.roc_password_verdict(.from(good)));
+    }
+    for ([_][]const u8{ "", try repeated(a, "x", 73), try repeated(a, "é", 37), "\xff", "hunter\xc3" }) |bad| {
+        try std.testing.expectEqual(seam.PasswordRule.refused, seam.roc_password_verdict(.from(bad)));
+    }
 }
 
 test "a swap fails the check, naming the function, the field and the offsets" {
@@ -193,4 +207,10 @@ test "a swap fails the check, naming the function, the field and the offsets" {
     const Renumbered = enum(u8) { appended, failed, not_utf8, missing_directory, path_refused };
     const t = comptime mismatch(Renumbered, answerOf(glue.append_utf8_bytes_to_file), "answer").?;
     try std.testing.expect(contains(t, "is 3 in "));
+}
+/// `text`, `n` times over.
+fn repeated(a: std.mem.Allocator, text: []const u8, n: usize) ![]const u8 {
+    const out = try a.alloc(u8, text.len * n);
+    for (0..n) |i| @memcpy(out[i * text.len ..][0..text.len], text);
+    return out;
 }

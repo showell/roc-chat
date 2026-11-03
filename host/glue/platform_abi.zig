@@ -1464,6 +1464,34 @@ comptime {
     }
 }
 
+/// Tag union: AcceptedOrRefused
+pub const AcceptedOrRefused = enum(u8) {
+    accepted = 0,
+    refused = 1,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(AcceptedOrRefused) != 1) @compileError("AcceptedOrRefused size mismatch");
+        if (@alignOf(AcceptedOrRefused) != 1) @compileError("AcceptedOrRefused alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(AcceptedOrRefused) != 1) @compileError("AcceptedOrRefused size mismatch");
+        if (@alignOf(AcceptedOrRefused) != 1) @compileError("AcceptedOrRefused alignment mismatch");
+    }
+}
+
 /// Tag union: FailedOrReady
 pub const FailedOrReady = enum(u8) {
     failed = 0,
@@ -2067,6 +2095,9 @@ pub extern fn roc_handle_http_request(arg0: __AnonStruct_4ab266d2399976c2) callc
 
 /// Entrypoint: page_for_host
 pub extern fn roc_page(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Entrypoint: password_verdict_for_host
+pub extern fn roc_password_verdict(arg0: RocListWith(u8, false)) callconv(.c) AcceptedOrRefused;
 
 /// Entrypoint: start_for_host!
 pub extern fn roc_start() callconv(.c) FailedOrReady;

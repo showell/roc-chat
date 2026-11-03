@@ -3,9 +3,10 @@
 //!
 //!   - the runtime: `roc_alloc`, `roc_realloc`, `roc_dealloc`,
 //!     `roc_crashed`, `roc_dbg` and `roc_expect_failed`;
-//!   - the app's four entries: `roc_page` (the demo), and `roc_start`,
-//!     `roc_admission` and `roc_handle_http_request` (the server), and the
-//!     records the last two take and answer (platform/Http.roc);
+//!   - the app's five entries: `roc_page` (the demo), `roc_start`,
+//!     `roc_admission` and `roc_handle_http_request` (the server), and
+//!     `roc_password_verdict` (`gopher-roc hash-password`), and the records
+//!     the server's take and answer (platform/Http.roc);
 //!   - the hosted functions (platform/Host.roc), each exported under its
 //!     Roc name and answered by host/file_primitives.zig; for a stream's
 //!     frames, host/bus.zig, and for ending a holder's streams,
@@ -141,6 +142,9 @@ pub const RequestHead = extern struct {
 /// platform/main.roc's `start!` answer, alphabetical.
 pub const StartAnswer = enum(u8) { failed, ready };
 
+/// platform/main.roc's `password_verdict` answer, alphabetical.
+pub const PasswordRule = enum(u8) { accepted, refused };
+
 /// The admission's `verdict`, alphabetical.
 pub const Verdict = enum(u8) { admit, refuse };
 
@@ -243,6 +247,7 @@ pub extern fn roc_page(topic: RocBytes, transcript: RocBytes) callconv(.c) RocBy
 pub extern fn roc_start() callconv(.c) StartAnswer;
 pub extern fn roc_admission(head: RequestHead) callconv(.c) Admission;
 pub extern fn roc_handle_http_request(request: Request) callconv(.c) Response;
+pub extern fn roc_password_verdict(bytes: RocBytes) callconv(.c) PasswordRule;
 
 // ── the hosted functions ────────────────────────────────────────────────────
 

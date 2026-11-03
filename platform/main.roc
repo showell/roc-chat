@@ -1,4 +1,4 @@
-## This is gopher-roc's platform. It gives the host four entries into the
+## This is gopher-roc's platform. It gives the host five entries into the
 ## app, and gives the app the host's primitives as effects (Host.roc).
 ##
 ## - `roc_page` (the demo, host/demo.zig): a topic's name and its transcript
@@ -11,6 +11,9 @@
 ##   write instead.
 ## - `roc_handle_http_request` (the server): a request in (Http.roc), the
 ##   response out. The host routes nothing: the app does.
+## - `roc_password_verdict` (`gopher-roc hash-password`): a line's bytes in,
+##   and out whether they are a password the sign-in form takes, so the
+##   rule has one home, the app's.
 ##
 ## Each hosted function's symbol is its name in Host.roc, without the `!`.
 platform ""
@@ -18,6 +21,7 @@ platform ""
 		check_request_head! : Http.RequestHead => Http.Admission,
 		handle_http_request! : Http.Request => Http.Response,
 		page : List(U8), List(U8) -> List(U8),
+		password_verdict : List(U8) -> [Accepted, Refused],
 		start! : {} => [Failed, Ready]
 	}
 	exposes [
@@ -29,6 +33,7 @@ platform ""
 		"roc_admission": admission_for_host!,
 		"roc_handle_http_request": handle_for_host!,
 		"roc_page": page_for_host,
+		"roc_password_verdict": password_verdict_for_host,
 		"roc_start": start_for_host!,
 	}
 	hosted {
@@ -62,6 +67,9 @@ import Http
 
 page_for_host : List(U8), List(U8) -> List(U8)
 page_for_host = |topic, transcript| page(topic, transcript)
+
+password_verdict_for_host : List(U8) -> [Accepted, Refused]
+password_verdict_for_host = |bytes| password_verdict(bytes)
 
 start_for_host! : {} => [Failed, Ready]
 start_for_host! = |{}| start!({})

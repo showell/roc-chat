@@ -12,7 +12,9 @@
 //!
 //! The second reads a password and writes its bcrypt hash, one line, to
 //! stdout, as the app keeps a user's password. From a terminal it asks
-//! twice, without echoing; else it reads the first line of stdin. So a
+//! twice, without echoing, and puts the echo back however it ends; else it
+//! reads the first line of stdin. It refuses a password the sign-in form
+//! would refuse, by asking the app (`password_verdict`). So a
 //! password reaches no log and no argument list: its owner types it on the
 //! server's machine and redirects the hash into the user's `password` file
 //! (docs/design.md, "Storage").
@@ -21,6 +23,7 @@ const std = @import("std");
 const http = @import("http.zig");
 const files = @import("file_primitives.zig");
 const sign_in = @import("sign_in_primitives.zig");
+const seam = @import("seam.zig");
 
 const usage =
     \\usage: gopher-roc <data folder> [--port <n>] [--public-origin https://<name>]
@@ -97,24 +100,26 @@ test "a public origin: https and a host name, a port or none; nothing else" {
     }
 }
 
-/// The longest password bcrypt reads whole. A longer one would be hashed
-/// by a second scheme first, which another bcrypt would not read.
-const password_most = 72;
+/// The most bytes `hash-password` reads of a line: a bound on its memory
+/// alone. What a password may be is the app's rule (`password_verdict` in
+/// app/main.roc), asked through the seam, so the command and the sign-in
+/// form keep one.
+const line_most = 4096;
 
 /// A password read without echo, twice, from a terminal; or the first line
 /// of stdin; then its bcrypt hash, one line, on stdout.
 fn hash_password(io: std.Io) !void {
     const stdin = std.Io.File.stdin();
-    var first: [password_most + 2]u8 = undefined;
-    var second: [password_most + 2]u8 = undefined;
+    var first: [line_most]u8 = undefined;
+    var second: [line_most]u8 = undefined;
     const password = if (stdin.isTty(io) catch false) blk: {
-        const a = try read_unechoed(io, "Password: ", &first);
-        const b = try read_unechoed(io, "Again: ", &second);
+        restore_terminal_on_signals();
+        const a = read_unechoed(io, "Password: ", &first) catch |e| return line_failure(e);
+        const b = read_unechoed(io, "Again: ", &second) catch |e| return line_failure(e);
         if (!std.mem.eql(u8, a, b)) fail("hash-password: the two differ; nothing written");
         break :blk a;
-    } else try read_line(io, &first);
-    if (password.len == 0) fail("hash-password: no password");
-    if (password.len > password_most) fail("hash-password: bcrypt reads 72 bytes at most; choose a shorter password");
+    } else read_line(io, &first) catch |e| return line_failure(e);
+    if (!is_password(password)) fail("hash-password: that is no password the sign-in form takes (app/Password.roc says which); nothing written");
     var out: [sign_in.bcrypt_hash_length]u8 = undefined;
     const hash = sign_in.bcrypt_hash_of_password(io, password, &out);
     var out_buf: [128]u8 = undefined;
@@ -123,24 +128,74 @@ fn hash_password(io: std.Io) !void {
     try writer.interface.flush();
 }
 
+/// Whether the app takes `password` as the sign-in form would.
+fn is_password(password: []const u8) bool {
+    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_state.deinit();
+    seam.begin(.{ .arena = arena_state.allocator() });
+    defer seam.end();
+    return seam.roc_password_verdict(.from(password)) == .accepted;
+}
+
+/// A line that could not be read: one past `line_most` said so, and the
+/// command stopped; any other error handed on.
+fn line_failure(e: anyerror) anyerror {
+    if (e == error.LineTooLong) fail(std.fmt.comptimePrint("hash-password: a line of more than {d} bytes; nothing written", .{line_most}));
+    return e;
+}
+
+/// The terminal as it was before its echo went off, while it is off, so
+/// that a signal can put it back.
+var terminal_before: ?struct { fd: std.posix.fd_t, termios: std.posix.termios } = null;
+
+/// The terminal's echo back on, if this command turned it off.
+fn restore_terminal() void {
+    if (terminal_before) |t| std.posix.tcsetattr(t.fd, .NOW, t.termios) catch {};
+}
+
+/// Ctrl-C (SIGINT), and a hang-up, a quit or a stop asked for (SIGHUP,
+/// SIGQUIT, SIGTERM), put the terminal back before the command ends, as a
+/// signal's default would end it with the echo still off.
+fn restore_terminal_on_signals() void {
+    const action: std.posix.Sigaction = .{
+        .handler = .{ .handler = end_on_signal },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    for ([_]std.posix.SIG{ .INT, .HUP, .QUIT, .TERM }) |sig| std.posix.sigaction(sig, &action, null);
+}
+
+/// The handler: the terminal put back, a line end so the shell's prompt
+/// starts its own line, and the command ended as the signal ends one,
+/// 128 and the signal's number. Each call is one system call, safe in a
+/// handler.
+fn end_on_signal(sig: std.posix.SIG) callconv(.c) void {
+    restore_terminal();
+    _ = std.os.linux.write(2, "\n", 1);
+    std.os.linux.exit_group(128 + @as(i32, @intCast(@intFromEnum(sig))));
+}
+
 /// A line from the terminal on stdin, its echo off while it is typed,
-/// after `prompt` on stderr.
+/// after `prompt` on stderr. The echo is back on before it returns, however
+/// it returns.
 fn read_unechoed(io: std.Io, prompt: []const u8, buf: []u8) ![]const u8 {
     std.debug.print("{s}", .{prompt});
     const fd = std.Io.File.stdin().handle;
     const before = try std.posix.tcgetattr(fd);
     var quiet = before;
     quiet.lflag.ECHO = false;
-    try std.posix.tcsetattr(fd, .NOW, quiet);
+    terminal_before = .{ .fd = fd, .termios = before };
     defer {
-        std.posix.tcsetattr(fd, .NOW, before) catch {};
+        restore_terminal();
+        terminal_before = null;
         std.debug.print("\n", .{});
     }
+    try std.posix.tcsetattr(fd, .NOW, quiet);
     return read_line(io, buf);
 }
 
-/// The first line of stdin, without its line end; a line longer than `buf`
-/// stops the command.
+/// The first line of stdin, without its line end; `error.LineTooLong` for
+/// one longer than `buf`.
 fn read_line(io: std.Io, buf: []u8) ![]const u8 {
     var in_buf: [256]u8 = undefined;
     var reader = std.Io.File.stdin().reader(io, &in_buf);
@@ -151,7 +206,7 @@ fn read_line(io: std.Io, buf: []u8) ![]const u8 {
             else => return e,
         };
         if (byte == '\n') break;
-        if (at == buf.len) fail("hash-password: bcrypt reads 72 bytes at most; choose a shorter password");
+        if (at == buf.len) return error.LineTooLong;
         buf[at] = byte;
         at += 1;
     }

@@ -287,7 +287,11 @@ expect
 		"$2b$10$y",
 		"",
 	].all(
-		|password_hash| Session.signed_bytes({ id: UserId.steve, signed_at: 1700000000, password_hash: password_hash.to_utf8() })
+		|password_hash| Session.signed_bytes({
+			id: UserId.steve,
+			signed_at: 1700000000,
+			password_hash: password_hash.to_utf8(),
+		})
 			!= "1\n1700000000\n$2b$10$x".to_utf8(),
 	)
 # A claim read back from its cookie, among others or alone; its signed bytes

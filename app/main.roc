@@ -1,4 +1,4 @@
-## This module is the app's edge. It holds the app's four entries.
+## This module is the app's edge. It holds the app's five entries.
 ##
 ## - `page` (the demo, host/demo.zig): a conversation's URL path and its
 ##   transcript in, its page out, as the server would show it to the
@@ -22,6 +22,9 @@
 ##   whether the actor may read or post in a conversation, and
 ##   `ConversationRoute`, `UploadRoute`, `AgentsRoute`, `ChannelMembersRoute`,
 ##   `HumanInvitesRoute` or `SignInRoute` gives the answer.
+## - `password_verdict` (`gopher-roc hash-password`, host/main.zig): a line
+##   in, and whether it is a password the sign-in form takes, so the
+##   command hashes none that could never sign in.
 ##
 ## Who is acting is found from the request alone (`load_actor!`): a request
 ## with an `Authorization` header by that header alone, as the agent its
@@ -37,6 +40,7 @@ app [
 	check_request_head!,
 	handle_http_request!,
 	page,
+	password_verdict,
 	start!,
 ] {
 	md: "../../roc-markdown/package/main.roc",
@@ -112,6 +116,20 @@ conversation = |{ path, transcript }| {
 	)?
 	Ok({ conversation: decoded, key: found.key })
 }
+
+## Whether `bytes` are a password the sign-in form takes, read as the form
+## reads one (`UnvalidatedString`, then `Password`): `Accepted`, or else
+## `Refused`.
+password_verdict : List(U8) -> [Accepted, Refused]
+password_verdict = |bytes|
+	match UnvalidatedString.from_utf8(bytes) {
+		Err(NotUtf8) => Refused
+		Ok(text) =>
+			match text.password() {
+				Ok(_) => Accepted
+				Err(NotAPassword) => Refused
+			}
+	}
 
 ## The demo's viewer: the founder, as the first start makes him.
 demo_viewer : SignedIn
@@ -1305,3 +1323,20 @@ expect
 # Each access refusal: a 403 saying which.
 expect access_refusal(NotAMember).status == 403 and access_refusal(ScopeOff).status == 403
 expect access_refusal(NotAMember).body != access_refusal(ScopeOff).body
+# A line `hash-password` reads is a password as the sign-in form's is: 1 to
+# 72 bytes of UTF-8, at the edges and just past them.
+expect
+	[
+		"hunter2",
+		"x",
+		"x".repeat(72),
+		"é".repeat(36),
+	].all(|text| password_verdict(text.to_utf8()) == Accepted)
+expect
+	[
+		[],
+		"x".repeat(73).to_utf8(),
+		"é".repeat(37).to_utf8(),
+		[0xff],
+		"hunter".to_utf8().append(0xc3),
+	].all(|bytes| password_verdict(bytes) == Refused)
