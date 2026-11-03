@@ -23,14 +23,15 @@ import Page
 import RequestHeader
 import SignedIn
 import Topic
+import TrustedHtml
 import UnvalidatedString
 import Users
 
 ConversationStream :: [].{
 
-	## **HOW MANY MESSAGES THE READER HAS SEEN**: the request's
-	## `Last-Event-ID` when it is sent, else its query's `after`; or why
-	## neither names a count.
+	## How many messages the reader has seen: the request's `Last-Event-ID`
+	## when it is sent, else its query's `after`; or why neither names a
+	## count.
 	seen_count : { query : List(U8), headers : List(Http.Header) } -> Try(U16, [NoCount, BadCount])
 	seen_count = |{ query, headers }|
 		match RequestHeader.header_value(headers, "last-event-id") {
@@ -53,8 +54,8 @@ ConversationStream :: [].{
 			BadCount => "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
 		}
 
-	## **THE STREAM OF `key`'S CONVERSATION FOR `acting`**, `conversation`
-	## as it is now: the messages after the reader's `seen` first, then
+	## The stream of `key`'s conversation for `acting`, `conversation` as it
+	## is now: the messages after the reader's `seen` first, then
 	## each one added; a 400 when `seen` is more than it holds. Each
 	## message's author is found among `users`, as the page finds them.
 	response : {
@@ -83,68 +84,42 @@ ConversationStream :: [].{
 				backlog: conversation.messages_after(seen).join_map(
 					|m|
 						ConversationStream.frame({
-							key,
-							users,
-							conversation,
-							message: m,
+							id: m.id(),
+							html: Page.message({
+								conversation,
+								key,
+								users,
+								message: m,
+							}),
 						}),
 				),
 			})
 	}
 
-	## **`message`, ADDED TO `conversation`, SENT TO EVERY PAGE ON `key`'S
-	## STREAM**, its author found among `users`.
+	## Sends a message just added to the conversation `key` to every page on
+	## its stream: its id, and its `html` as `Page.message` writes it.
 	publish! : {
 		key : ConversationKey,
-		users : Users,
-		conversation : Conversation,
-		message : Message,
+		id : Message.Id,
+		html : TrustedHtml,
 	} => {}
 	publish! = |
 		{
 			key,
-			users,
-			conversation,
-			message,
+			id,
+			html,
 		},
 	|
-		Host.publish_bytes_to_streams_on_key!(
-			bus_key(key),
-			ConversationStream.frame({
-				key,
-				users,
-				conversation,
-				message,
-			}),
-		)
+		Host.publish_bytes_to_streams_on_key!(bus_key(key), ConversationStream.frame({ id, html }))
 
-	## **ONE MESSAGE AS ONE EVENT**: `id:` its number, then its HTML, a
+	## One message as one event: `id:` its number, then its `html`, a
 	## `data:` line a line, then the blank line that ends it.
-	frame : {
-		key : ConversationKey,
-		users : Users,
-		conversation : Conversation,
-		message : Message,
-	} -> List(U8)
-	frame = |
-		{
-			key,
-			users,
-			conversation,
-			message,
-		},
-	| {
-		html = line_feeds_only(
-			Page.message({
-				conversation,
-				key,
-				users,
-				message,
-			}).to_utf8(),
-		)
-		"id: ${message.id().to_str()}\n"
+	frame : { id : Message.Id, html : TrustedHtml } -> List(U8)
+	frame = |{ id, html }| {
+		lines = line_feeds_only(html.to_utf8())
+		"id: ${id.to_str()}\n"
 			.to_utf8()
-			.concat(html.split_on('\n').join_map(|line| "data: ".to_utf8().concat(line).append('\n')))
+			.concat(lines.split_on('\n').join_map(|line| "data: ".to_utf8().concat(line).append('\n')))
 			.append('\n')
 	}
 }
@@ -156,7 +131,7 @@ after_prefix = "after=".to_utf8()
 bus_key : ConversationKey -> List(U8)
 bus_key = |key| key.url_path(Page).to_utf8()
 
-## **THE COUNT `bytes` SPELL**: the digits of 0 to 65535, with no leading
+## The count `bytes` spell: the digits of 0 to 65535, with no leading
 ## `0`, so a count has one spelling.
 count_of : List(U8) -> Try(U16, [BadCount])
 count_of = |bytes|
@@ -171,8 +146,8 @@ count_of = |bytes|
 		}
 	}
 
-## **EACH CR LF AND EACH LONE CR AS AN LF**: an event's data can't hold a
-## CR, and an HTML parser reads both as an LF, so the page shows the same.
+## The bytes with each CR LF and each lone CR made an LF: an event's data
+## can't hold a CR, and an HTML parser reads both as an LF, so the page shows the same.
 line_feeds_only : List(U8) -> List(U8)
 line_feeds_only = |bytes|
 	bytes.fold(
@@ -287,18 +262,27 @@ plans_stream = "200 stream on /chat/dm/1_1/plans for 1"
 frozen_frame : Str, Str -> Str
 frozen_frame = |n, said| "id: ${n}\ndata: <article class=\"message\" id=\"msg-${n}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${n}\">MSG_plans_${n}</a></header>\ndata: <div class=\"body\"><p>${said}</p>\ndata: </div></article>\ndata: \n\n"
 
+## The frame of `message` of `conversation`, in `plans_key`, its HTML as
+## the page writes it.
+message_frame : Conversation, Message -> List(U8)
+message_frame = |conversation, message|
+	ConversationStream.frame({
+		id: message.id(),
+		html: Page.message({
+			conversation,
+			key: plans_key,
+			users,
+			message,
+		}),
+	})
+
 # A frame's data lines, joined by LF as a browser joins them, are exactly
 # the page's HTML for the message, a list's lines and all.
 expect {
 	conversation = plans_holding(["Hello", "- one\n- two"])
 	conversation.messages().all(
 		|m| {
-			framed = ConversationStream.frame({
-				key: plans_key,
-				users,
-				conversation,
-				message: m,
-			})
+			framed = message_frame(conversation, m)
 			data =
 				Str.from_utf8_lossy(framed)
 					.split_on("\n")
@@ -320,12 +304,7 @@ expect {
 	framed_by = |author| {
 		conversation = plans_holding_by(author, ["Hello"])
 		Str.from_utf8_lossy(
-			ConversationStream.frame({
-				key: plans_key,
-				users,
-				conversation,
-				message: conversation.messages().first() ?? crash "ConversationStream's tests: one message",
-			}),
+			message_frame(conversation, conversation.messages().first() ?? crash "ConversationStream's tests: one message"),
 		)
 	}
 	framed_by(stranger).starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\"><header><span class=\"author\">LC</span>")

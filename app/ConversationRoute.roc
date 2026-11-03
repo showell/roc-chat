@@ -30,6 +30,7 @@ import Page
 import SignedIn
 import Transcript
 import TranscriptRefusal
+import TrustedHtml
 import UnvalidatedString
 import UrlEncodedForm
 import Users
@@ -120,16 +121,7 @@ ConversationRoute :: [].{
 	post_message_without_reload! : ConversationRoute.Post => Http.Response
 	post_message_without_reload! = |post|
 		match append_posted_message!(post) {
-			Ok(sent) =>
-				HttpAnswer.page(
-					201,
-					Page.message({
-						conversation: sent.conversation,
-						key: post.key,
-						users: post.users,
-						message: sent.message,
-					}),
-				)
+			Ok(html) => HttpAnswer.page(201, html)
 			Err(why) => {
 				notice = refusal_notice(why)
 				HttpAnswer.text(notice.status, notice.words.said)
@@ -185,9 +177,9 @@ load_existing_conversation! = |key| {
 }
 
 ## The message in `post`'s form, added to its conversation and to the
-## transcript, then sent to the conversation's stream: the conversation it
-## grew and the message; or why not.
-append_posted_message! : ConversationRoute.Post => Try({ conversation : Conversation, message : Message }, _)
+## transcript, then sent to the conversation's stream: the message's HTML,
+## as the page and the stream write it, made once for both; or why not.
+append_posted_message! : ConversationRoute.Post => Try(TrustedHtml, _)
 append_posted_message! = |post| {
 	unnumbered_message = unnumbered_message_from_post({
 		acting: post.acting,
@@ -202,13 +194,18 @@ append_posted_message! = |post| {
 		file: loaded.file,
 	})?
 	FileSystem.append_message!(post.key, record) ? |fault| FileSystem(fault)
-	ConversationStream.publish!({
+	html = Page.message({
+		conversation: grown.conversation,
 		key: post.key,
 		users: post.users,
-		conversation: grown.conversation,
 		message: grown.message,
 	})
-	Ok(grown)
+	ConversationStream.publish!({
+		key: post.key,
+		id: grown.message.id(),
+		html,
+	})
+	Ok(html)
 }
 
 ## Every reason a route refuses a request, as `refusal_notice` takes it.

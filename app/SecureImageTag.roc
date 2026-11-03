@@ -1,13 +1,13 @@
-## **SECURE IMAGE TAGS: WHICH IMAGES A MESSAGE MAY SHOW**, the one home of
-## that rule. A message's markdown may hold an image (`![alt](src)` or an
-## `<img>`, and a `<video>` too, which roc-markdown rules the same way);
+## This module decides which images a message may show, and is the one
+## home of that rule. A message's markdown may hold an image (`![alt](src)`
+## or an `<img>`, and a `<video>` too, which roc-markdown rules the same way);
 ## `Markdown.render` hands roc-markdown `is_conversation_upload`, for the
 ## message's own conversation, as its uploads rule, and roc-markdown shows
 ## as media only a source that passes it, after judging the source safe as
 ## a same-origin URL itself. A source that fails is left as text: an image
 ## becomes a plain link.
 ##
-## **THE RULE** (`docs/design.md`, "Images"): an uploaded image belongs to
+## The rule (`docs/design.md`, "Images"): an uploaded image belongs to
 ## one conversation, and exactly that conversation's readers can see it.
 ## So a message may show an image only from its own conversation's
 ## uploads: a source that is exactly the URL path `ConversationKey` gives
