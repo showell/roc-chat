@@ -71,13 +71,13 @@
   });
 
   // Whether the view is at or near the newest message, read before a new one
-  // is appended below it. Near means the hidden part below is at most a tenth
-  // of the view's height: guessing wrong not to follow is the worse mistake,
-  // especially on a phone.
-  var NEAR_BOTTOM_FRACTION = 0.1;
+  // is appended below it. Near means the hidden part below is at most 15% of
+  // the window's height (the whole window, compose box included): guessing
+  // wrong not to follow is the worse mistake, especially on a phone.
+  var NEAR_BOTTOM_FRACTION = 0.15;
   function nearNewest() {
     var hiddenBelow = messages.scrollHeight - messages.scrollTop - messages.clientHeight;
-    return hiddenBelow <= messages.clientHeight * NEAR_BOTTOM_FRACTION;
+    return hiddenBelow <= window.innerHeight * NEAR_BOTTOM_FRACTION;
   }
 
   var events = new EventSource(stream + '?after=' + after);
