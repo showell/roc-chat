@@ -1,15 +1,9 @@
-## **A DM**: a place for exactly one or two humans, never an agent, named
-## by its pair of user ids in numeric order (`UserPair`, the one home of
-## that spelling): `7_11`, never `11_7`, and one human alone, in their own
-## DM, `5_5`. Its doors take only `Users.Human`s, so a DM holding an agent
-## can't be typed.
+## A DM is a place where two humans talk, or where one human writes alone.
+## Agents can't be in a DM: every way to make one takes `Users.Human`s.
 ##
-## **A DM BEGINS WITH ITS FIRST MESSAGE**: enforced where a DM is created.
-## `start` is the one door that makes a new DM, and it gives the DM
-## together with its first conversation, holding that message, so no new
-## DM is ever empty. `between` loads a DM that already exists, from its
-## folder on disk; a DM's folder is written only with the conversation
-## `start` gives, so a DM that was never started is never loaded.
+## A DM is named by its members' ids, lowest first, joined by `_`: the DM
+## between users 7 and 11 is `7_11`, never `11_7`, and user 5's own DM is
+## `5_5`. `UserPair` decides that spelling.
 import Conversation
 import Message
 import Topic
@@ -19,50 +13,45 @@ import Users
 
 Dm :: UserPair.{
 
-	## **WHAT STARTING A DM NEEDS**: who it is to (`to`; the writer again
-	## for one's own DM), the topic, and the first message, unnumbered
-	## (`Message.Unnumbered`, the shape's one home), written by a human.
+	## What starting a DM takes: who it is to (the writer again, for their
+	## own DM), the topic, and the first message, written by a human.
 	Start : {
 		to : Users.Human,
 		topic : Topic,
-		unnumbered : Message.Unnumbered(Users.Human),
+		first_message : Message.Unnumbered(Users.Human),
 	}
 
-	## **THE ONE WAY A NEW DM BEGINS**: the DM between the first message's
-	## writer and `to`, and its conversation under `topic`, holding that
-	## message.
+	## The DM between the first message's writer and `to`, and its
+	## conversation under `topic`, holding that message.
 	start : Dm.Start -> { dm : Dm, conversation : Conversation }
 	start = |
 		{
 			to,
 			topic,
-			unnumbered,
+			first_message,
 		},
 	| {
-		from = unnumbered.payload.author
+		from = first_message.payload.author
 		first = {
-			payload: { author: from.author(), markdown: unnumbered.payload.markdown },
-			time: unnumbered.time,
+			payload: { author: from.author(), markdown: first_message.payload.markdown },
+			time: first_message.time,
 		}
 		grown = Conversation.empty(topic).append(first) ?? crash "Dm.start: an empty conversation takes its first message"
 		{ dm: Dm.between({ a: from, b: to }), conversation: grown.conversation }
 	}
 
-	## **A DM THAT EXISTS, LOADED**: the DM between `a` and `b`, in either
-	## order, for a DM already on disk (`start` makes a new one).
+	## The DM between `a` and `b`, given in either order.
 	between : { a : Users.Human, b : Users.Human } -> Dm
 	between = |{ a, b }| Dm.(UserPair.of({ a: a.id(), b: b.id() }))
 
-	## Its pair of ids.
 	pair : Dm -> UserPair
 	pair = |Dm.(ids)| ids
 
-	## Its members' ids, lowest first: two, or one for one's own DM.
+	## The members' ids, lowest first: two, or one for a human's own DM.
 	members : Dm -> List(UserId)
 	members = |Dm.(ids)| ids.members()
 
-	## **ITS NAME**, as a folder's name and a URL take it: its pair's
-	## spelling.
+	## The DM's name, as its folder and its URL spell it.
 	to_str : Dm -> Str
 	to_str = |Dm.(ids)| ids.to_str()
 

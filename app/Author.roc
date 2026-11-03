@@ -1,8 +1,6 @@
-## **AN AUTHOR**: who wrote a message, by their permanent name (`Name`,
-## the one home of the rule a name obeys). An author is a user in the role
-## of writing, and the transcript records only the name, so an author is
-## only the name: the users say whose it is (`Users.User.author`,
-## `Users.check`).
+## An author is who wrote a message. A transcript records an author only by
+## name, so an `Author` is just a `Name`. The name follows the rules in
+## `Name`. A user becomes an author through `Users.User.author`.
 import Name
 
 Author :: Name.{
@@ -11,11 +9,9 @@ Author :: Name.{
 	from_str : Str -> Try(Author, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	from_str = |name| Name.from_str(name).map_ok(Author.of)
 
-	## The author of that name.
 	of : Name -> Author
 	of = |given| Author.(given)
 
-	## The permanent name.
 	name : Author -> Name
 	name = |Author.(given)| given
 
@@ -30,6 +26,7 @@ Author :: Name.{
 # Refused as a name is, by each of its refusals; kept exactly as given.
 expect Author.from_str("") == Err(Empty)
 expect Author.from_str("a".repeat(61)) == Err(TooLong)
+expect Author.from_str("a".repeat(60)).map_ok(Author.to_str) == Ok("a".repeat(60))
 expect Author.from_str("Ste\u(200b)ve") == Err(ForbiddenCharacter)
 expect Author.from_str(" Steve") == Err(BadSpacing)
 expect Author.from_str("Zoë Ann").map_ok(Author.to_str) == Ok("Zoë Ann")

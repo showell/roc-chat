@@ -1,6 +1,6 @@
-## **DM'S TESTS**: a new DM starts with its first message, between humans,
-## named by its pair in numeric order; a DM that exists loads by the same
-## pair; and no DM's name is a channel's.
+## These are the tests of `Dm`: a DM started with its first message,
+## between humans, named by its pair in numeric order; the same DM made by
+## `between`; and no DM's name a channel's.
 import ChannelName
 import DateTime
 import Dm
@@ -15,8 +15,8 @@ DmSpec :: [].{}
 noon : DateTime
 noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "DmSpec: a time"
 
-## **WHO A TEST'S DM IS BETWEEN**: its first message's writer, and who it
-## is to.
+## Who a test's DM is between: its first message's writer, and who it is
+## to.
 Ends : { from : Users.Human, to : Users.Human }
 
 ## A DM started from `from` to `to`, in `plans`, saying hello at noon.
@@ -25,7 +25,7 @@ started = |{ from, to }|
 	Dm.start({
 		to,
 		topic: Sample.plans,
-		unnumbered: { payload: { author: from, markdown: "hello" }, time: noon },
+		first_message: { payload: { author: from, markdown: "hello" }, time: noon },
 	})
 
 ## A started DM's name and members, as a test compares them.
@@ -65,8 +65,8 @@ expect named({
 	from: Sample.human("Apoorva"),
 	to: Sample.human("Apoorva"),
 }) == { name: "2_2", members: ["2"] }
-# A DM that exists loads by its pair, either way round, as the DM `start`
-# made; a different pair is a different DM.
+# `between` makes the DM `start` made, either way round; a different pair
+# is a different DM.
 expect
 	[
 		Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") }),

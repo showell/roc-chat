@@ -1,5 +1,5 @@
-## **ADMIN'S TESTS**: Steve, signed in, is an admin; every other user
-## signed in, a human or an agent, is not.
+## These are the tests of `Admin`: Steve, signed in, is an admin, and every
+## other user signed in, human or agent, is not.
 import Admin
 import Sample
 import SignedIn
