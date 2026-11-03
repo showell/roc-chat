@@ -1,0 +1,47 @@
+# gopher-roc on the prod droplet, behind Caddy (deploy/chat.lynrummy.com.caddy),
+# installed by tools/deploy.shale as /etc/systemd/system/gopher-roc.service.
+#
+# **CONFINED, BESIDE lynrummy.com's FRONT DOOR**: Caddy holds the site's
+# certificates on this machine, so gopher-roc runs as its own system user,
+# listens on 127.0.0.1 alone (the host has no other bind), and can write
+# nothing but its own folder, /var/lib/gopher-roc (data/, the chat's whole
+# store, its .session-secret included). The binary, /opt/gopher-roc/gopher-roc,
+# is root's and read-only to it.
+[Unit]
+Description=gopher-roc, the Roc chat (chat.lynrummy.com)
+After=network.target
+
+[Service]
+User=gopherroc
+Group=gopherroc
+WorkingDirectory=/var/lib/gopher-roc
+ExecStart=/opt/gopher-roc/gopher-roc /var/lib/gopher-roc/data --port 9611 --public-origin https://chat.lynrummy.com
+Restart=on-failure
+RestartSec=2
+
+# The confinement.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gopher-roc
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

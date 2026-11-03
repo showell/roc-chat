@@ -45,6 +45,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
     zig build end-to-end                        the server against a temporary data root: GET, POST, GET, the file on disk
     shale tools/glue.shale                      after a change to platform/: roc glue's snapshot, which `zig build test` holds the seam to
     shale tools/note.shale                      the page and all the code, as an essay note
+    shale tools/deploy.shale                    the prod deploy to https://chat.lynrummy.com (docs/deploy.md: the cutover from roc-chat, the way back, what Caddy must do)
 
 You need the Roc pinned in `roc-version` at `~/tools/roc-<pin>/roc`, and roc-markdown checked out beside this repo, because its package renders the markdown.
 

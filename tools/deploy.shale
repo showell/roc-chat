@@ -1,0 +1,180 @@
+-- **THE PROD DEPLOY**: gopher-roc, built here, to the prod droplet, behind
+-- its Caddy at https://chat.lynrummy.com (docs/deploy.md has the cutover
+-- from roc-chat and the one-time steps).
+--
+--   shale tools/deploy.shale
+--
+-- No arguments. In order, each step refusing, by name, what it cannot do:
+-- 1. **Refuses** when chat.lynrummy.com does not resolve to the droplet,
+--    when the tree has changes not committed or is not on `main`, when
+--    prod's Caddyfile does not import /etc/caddy/sites/*.caddy or define the
+--    `access_log` snippet (that Caddyfile is angry-gopher's deploy/Caddyfile;
+--    this never edits it), or while roc-chat still runs there (the cutover
+--    stops it first: docs/deploy.md). Then pushes, so what serves is on
+--    GitHub.
+-- 2. Builds the binary here: static (musl), ReleaseSafe, so bcrypt runs at
+--    release speed and every safety check stays on.
+-- 3. Makes, once, the `gopherroc` system user, /opt/gopher-roc (root's) and
+--    /var/lib/gopher-roc with its data/ (gopherroc's, mode 700). An empty
+--    data/ gets the first chat at the first start: Steve as id 1, the
+--    channel `general`, and the server's `.session-secret`.
+-- 4. Copies the binary and proves the copy (its sha256 on prod is this
+--    one's), swaps it in whole (a rename), installs the systemd unit when it
+--    changed, restarts, and waits for 127.0.0.1:9611 to answer.
+-- 5. Installs deploy/chat.lynrummy.com.caddy when it changed, its access log
+--    made Caddy's first; Caddy validates the whole config before the reload,
+--    and the old block goes back if the new one fails.
+-- 6. Over HTTPS: `/login` answers 200 with gopher-roc's
+--    `Cross-Origin-Resource-Policy: same-origin`, and `/agents` sends a
+--    browser with no session to `/login?next=/agents`. Then says whether
+--    Steve has a password yet (docs/deploy.md, "Steve's password").
+--
+-- budget: steps=50000000
+
+const HOST = "steve@162.243.1.123"
+const IP = "162.243.1.123"
+const NAME = "chat.lynrummy.com"
+const ORIGIN = "https://chat.lynrummy.com"
+const PORT = "9611"
+const HOME = "/var/lib/gopher-roc"
+const DATA = "/var/lib/gopher-roc/data"
+const BIN = "/opt/gopher-roc/gopher-roc"
+const UNIT = "gopher-roc.service"
+const BLOCK = "chat.lynrummy.com.caddy"
+const LOG = "/var/log/caddy/chat-access.log"
+const OUT = ".zig-cache/deploy"
+
+if not exists("deploy/" .. BLOCK) or not exists("deploy/" .. UNIT) then fail("deploy: run it from gopher-roc's root") end
+
+-- A command on prod: it must succeed.
+function on_prod(script)
+  return must(run({"ssh", HOST, script}, {timeout_ms = 120000, whole = 100000, want = "ssh: the deploy's own steps on prod"}))
+end
+
+-- A command on prod whose exit is an answer: 0 yes, 1 no.
+function asks_prod(script)
+  local r = run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: a question to prod, its exit the answer"})
+  if r.code ~= 0 and r.code ~= 1 then fail("deploy: prod could not be asked (ssh exit " .. r.code .. "): " .. trim(r.out)) end
+  return r.code == 0
+end
+
+function copy_to_prod(local_path, remote_path)
+  must(run({"scp", "-q", local_path, HOST .. ":" .. remote_path}, {timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod"}))
+end
+
+-- 1. Refusals, then the push.
+local dns = run({"dig", "+short", "@1.1.1.1", "A", NAME}, {timeout_ms = 30000, whole = 10000, want = "dig: the name's public answer"})
+local resolved = trim(dns.out)
+local last = resolved
+for line in lines(resolved) do last = trim(line) end
+if last ~= IP then fail("deploy: " .. NAME .. " resolves to '" .. resolved .. "', not " .. IP) end
+local dirty = run({"git", "status", "--porcelain"}, {timeout_ms = 30000, whole = 100000})
+if trim(dirty.out) ~= "" then fail("deploy: the tree has changes not committed; commit them first:\n" .. dirty.out) end
+local branch = trim(must(run({"git", "rev-parse", "--abbrev-ref", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
+if branch ~= "main" then fail("deploy: the checkout is on `" .. branch .. "`; prod serves main") end
+if not asks_prod("grep -qxF 'import /etc/caddy/sites/*.caddy' /etc/caddy/Caddyfile") then
+  fail("deploy: prod's Caddyfile does not import /etc/caddy/sites/*.caddy (angry-gopher's deploy/Caddyfile does)")
+end
+if not asks_prod("grep -q '^(access_log) {' /etc/caddy/Caddyfile") then
+  fail("deploy: prod's Caddyfile does not define the access_log snippet " .. BLOCK .. " imports (angry-gopher's deploy/Caddyfile does)")
+end
+-- is-active exits 3 when stopped and 4 when there is no unit: both are "no".
+if asks_prod("if systemctl is-active --quiet roc-chat; then exit 0; else exit 1; fi") then
+  fail("deploy: roc-chat still runs on prod; docs/deploy.md, \"The cutover\", stops it first")
+end
+must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
+local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
+print("deploying gopher-roc " .. commit .. " to " .. HOST)
+
+-- 2. The binary.
+must(run({"zig", "build", "-Dtarget=x86_64-linux-musl", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20}))
+local built = OUT .. "/bin/gopher-roc"
+local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
+print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
+
+-- Everything copied to prod is staged in a folder of its own, made fresh
+-- under steve's home (mode 700, a name no one can guess before it is made),
+-- never at a fixed /tmp name another local user could plant first.
+const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" gopher-roc-deploy.XXXXXXXX").out)
+if find(STAGE, "/gopher-roc-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
+
+-- 3. The user and the folders, once.
+on_prod("set -e\n"
+  .. "id gopherroc >/dev/null 2>&1 || sudo useradd --system --home-dir " .. HOME .. " --no-create-home --shell /usr/sbin/nologin gopherroc\n"
+  .. "sudo install -d -o root -g root -m 755 /opt/gopher-roc\n"
+  .. "sudo install -d -o gopherroc -g gopherroc -m 700 " .. HOME .. " " .. DATA)
+
+-- 4. The binary in, proven, swapped whole; the unit; the restart.
+copy_to_prod(built, STAGE .. "/gopher-roc.new")
+local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/gopher-roc.new").out), " ")[1]
+if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
+on_prod("set -e\nsudo install -o root -g root -m 755 " .. STAGE .. "/gopher-roc.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f " .. STAGE .. "/gopher-roc.new")
+copy_to_prod("deploy/" .. UNIT, STAGE .. "/" .. UNIT)
+-- cmp exits 2 on a file that is not there: a first deploy's unit is "changed".
+if asks_prod("[ -f /etc/systemd/system/" .. UNIT .. " ] && cmp -s " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT) then
+  print("the unit is unchanged")
+else
+  on_prod("set -e\nsudo install -o root -g root -m 644 " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT .. "\nsudo systemctl daemon-reload\nsudo systemctl enable gopher-roc")
+  print("installed the unit")
+end
+on_prod("rm -f " .. STAGE .. "/" .. UNIT)
+on_prod("set -e\nsudo systemctl restart gopher-roc\n"
+  .. "for _ in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/login 2>/dev/null && break; sleep 0.1; done\n"
+  .. "systemctl is-active gopher-roc\n"
+  .. "curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/login")
+print("gopher-roc " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
+
+-- 5. The site block, validated before it counts.
+copy_to_prod("deploy/" .. BLOCK, STAGE .. "/" .. BLOCK)
+if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
+  print("the site block is unchanged")
+else
+  on_prod("set -e\n"
+    .. "sudo install -d -m 755 /etc/caddy/sites\n"
+    .. "# The block's log, Caddy's before validate: validate runs as root and would make it root's.\n"
+    .. "[ -f " .. LOG .. " ] || sudo install -o caddy -g caddy -m 640 /dev/null " .. LOG .. "\n"
+    .. "if [ -f /etc/caddy/sites/" .. BLOCK .. " ]; then sudo cp /etc/caddy/sites/" .. BLOCK .. " " .. STAGE .. "/" .. BLOCK .. ".old; else rm -f " .. STAGE .. "/" .. BLOCK .. ".old; fi\n"
+    .. "sudo install -m 644 " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK .. "\n"
+    .. "if ! sudo caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >" .. STAGE .. "/" .. BLOCK .. ".validate 2>&1; then\n"
+    .. "  tail -5 " .. STAGE .. "/" .. BLOCK .. ".validate\n"
+    .. "  if [ -f " .. STAGE .. "/" .. BLOCK .. ".old ]; then sudo install -m 644 " .. STAGE .. "/" .. BLOCK .. ".old /etc/caddy/sites/" .. BLOCK .. "; else sudo rm -f /etc/caddy/sites/" .. BLOCK .. "; fi\n"
+    .. "  echo 'the new block did not validate; the old one is back'; exit 1\n"
+    .. "fi\n"
+    .. "sudo systemctl reload caddy\n"
+    .. "rm -f " .. STAGE .. "/" .. BLOCK .. ".old " .. STAGE .. "/" .. BLOCK .. ".validate")
+  print("installed the site block")
+end
+on_prod("rm -f " .. STAGE .. "/" .. BLOCK)
+
+on_prod("rm -rf " .. STAGE)
+
+-- 6. The front door, over HTTPS. curl, not http(): a handshake that fails
+-- while Caddy reloads is a try to repeat, not an error to stop on.
+local code = ""
+local tries = 0
+while tries < 30 do
+  local r = run({"curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", ORIGIN .. "/login"}, {timeout_ms = 30000, whole = 10000, want = "curl: a try at the front door, its failures expected while Caddy reloads"})
+  code = trim(r.out)
+  if code == "200" then break end
+  tries = tries + 1
+  sleep(2000)
+end
+if code ~= "200" then fail("deploy: " .. ORIGIN .. "/login answers '" .. code .. "', not 200, after a minute") end
+local login = http("GET", ORIGIN .. "/login")
+local corp = ""
+if has_key(login.headers, "cross-origin-resource-policy") then corp = login.headers["cross-origin-resource-policy"] end
+if login.status ~= 200 or corp ~= "same-origin" then
+  fail("deploy: " .. ORIGIN .. "/login answers " .. login.status .. " with Cross-Origin-Resource-Policy '" .. corp .. "': not gopher-roc's sign-in page")
+end
+local agents = http("GET", ORIGIN .. "/agents")
+local where = ""
+if has_key(agents.headers, "location") then where = agents.headers.location end
+if agents.status ~= 303 or where ~= "/login?next=/agents" then
+  fail("deploy: " .. ORIGIN .. "/agents answers " .. agents.status .. " to '" .. where .. "', not a 303 to /login?next=/agents")
+end
+print("deployed: " .. ORIGIN .. "/login (gopher-roc " .. commit .. "); /agents sends a browser with no session to sign in")
+if asks_prod("sudo test -s " .. DATA .. "/auth/1/password") then
+  print("Steve has a password")
+else
+  print("Steve has no password yet: docs/deploy.md, \"Steve's password\", says how to write its hash")
+end
