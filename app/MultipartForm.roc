@@ -28,16 +28,16 @@ MultipartForm :: [].{
 		key = "boundary=".to_utf8()
 		at = index_of(header, { needle: key, from: 0 }) ? |NotFound| NoFile
 		value = header.drop_first(at + key.len())
-		bare =
+		candidate =
 			match value {
 				['"', .. as rest] =>
 					match rest.find_first_index(|b| b == '"') {
 						Ok(end) => rest.take_first(end)
 						Err(NotFound) => []
 					}
-				_ => trimmed_of_spaces(before_first(value, ';'))
+				_ => Ascii.trim_spaces(before_first(value, ';'))
 			}
-		if (bare.is_empty() or bare.len() > 70) Err(NoFile) else Ok(MultipartForm.Boundary.(bare))
+		if (candidate.is_empty() or candidate.len() > 70) Err(NoFile) else Ok(MultipartForm.Boundary.(candidate))
 	}
 
 	## The file in the form `body`, whose parts `boundary` splits: the
@@ -55,8 +55,8 @@ MultipartForm :: [].{
 			headers_end = index_of(body, { needle: "\r\n\r\n".to_utf8(), from: headers_at }) ? |NotFound| NoFile
 			headers = body.sublist({ start: headers_at, len: headers_end - headers_at })
 			closing = "\r\n".to_utf8().concat(delimiter).concat("--".to_utf8())
-			kept = body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
-			if (quoted_attribute(headers, "name") != Ok("file".to_utf8()) or !kept.ends_with(closing))
+			file_and_closing = body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
+			if (quoted_attribute(headers, "name") != Ok("file".to_utf8()) or !file_and_closing.ends_with(closing))
 				Err(NoFile)
 			else {
 				filename =
@@ -64,7 +64,7 @@ MultipartForm :: [].{
 						Ok(given) => given
 						Err(Missing) => "image".to_utf8()
 					}
-				Ok({ filename, bytes: kept.drop_last(closing.len()) })
+				Ok({ filename, bytes: file_and_closing.drop_last(closing.len()) })
 			}
 		}
 	}
@@ -99,27 +99,10 @@ before_first = |bytes, stop|
 		Err(NotFound) => bytes
 	}
 
-## `bytes` with the ASCII spaces, tabs, CRs and LFs off both ends: a
-## header's value, whose spaces are ASCII alone.
-trimmed_of_spaces : List(U8) -> List(U8)
-trimmed_of_spaces = |bytes| {
-	is_space = |b| b == ' ' or b == '\t' or b == '\r' or b == '\n'
-	front = bytes.drop_first(count_from_start(bytes, is_space))
-	front.drop_last(count_from_end(front, is_space))
-}
-
 ## How many CRs and LFs end `body`: a client may end the form with a line
 ## break after its closing delimiter.
 trailing_line_breaks : List(U8) -> U64
 trailing_line_breaks = |body| count_from_end(body, |b| b == '\r' or b == '\n')
-
-## How many bytes from the start pass `passes`.
-count_from_start : List(U8), (U8 -> Bool) -> U64
-count_from_start = |bytes, passes|
-	match bytes.find_first_index(|b| !passes(b)) {
-		Ok(i) => i
-		Err(NotFound) => bytes.len()
-	}
 
 ## How many bytes from the end pass `passes`.
 count_from_end : List(U8), (U8 -> Bool) -> U64
@@ -175,8 +158,8 @@ form = |{ headers, file }|
 
 ## The boundary a form's Content-Type names after `boundary=`, as a test
 ## reads it, or why there is none.
-boundary_named : Str -> Try(Str, [NoFile])
-boundary_named = |given|
+boundary_after : Str -> Try(Str, [NoFile])
+boundary_after = |given|
 	MultipartForm.boundary_from_content_type("multipart/form-data; boundary=${given}".to_utf8())
 		.map_ok(|MultipartForm.Boundary.(bytes)| Str.from_utf8_lossy(bytes))
 
@@ -189,30 +172,35 @@ file_of : List(U8) -> Try({ filename : List(U8), bytes : List(U8) }, [NoFile])
 file_of = |body| MultipartForm.file_part(body, boundary("XyZ"))
 
 ## A file part's headers, naming it `file` and no filename.
-named_file : Str
-named_file = "Content-Disposition: form-data; name=\"file\""
+file_part_headers : Str
+file_part_headers = "Content-Disposition: form-data; name=\"file\""
 
 # The boundary, quoted or not, up to a `;`, with ASCII spaces trimmed.
-expect boundary_named("XyZ") == Ok("XyZ")
-expect boundary_named("\"a b\"; x=1") == Ok("a b")
-expect boundary_named("XyZ; charset=x") == Ok("XyZ")
-expect boundary_named(" XyZ\t; x=1") == Ok("XyZ")
-expect boundary_named("\"a;b\"") == Ok("a;b")
+expect boundary_after("XyZ") == Ok("XyZ")
+expect boundary_after("\"a b\"; x=1") == Ok("a b")
+expect boundary_after("XyZ; charset=x") == Ok("XyZ")
+expect boundary_after(" XyZ\t; x=1") == Ok("XyZ")
+expect boundary_after("\"a;b\"") == Ok("a;b")
 # None, an empty one, an unclosed quote, or one past 70 bytes: no file.
 expect MultipartForm.boundary_from_content_type("multipart/form-data".to_utf8()) == Err(NoFile)
-expect boundary_named("") == Err(NoFile)
-expect boundary_named("\"\"") == Err(NoFile)
-expect boundary_named("\"XyZ") == Err(NoFile)
-expect boundary_named("b".repeat(70)) == Ok("b".repeat(70))
-expect boundary_named("b".repeat(71)) == Err(NoFile)
-expect boundary_named("b") == Ok("b")
+expect boundary_after("") == Err(NoFile)
+expect boundary_after("\"\"") == Err(NoFile)
+expect boundary_after("\"XyZ") == Err(NoFile)
+expect boundary_after("b".repeat(70)) == Ok("b".repeat(70))
+expect boundary_after("b".repeat(71)) == Err(NoFile)
+expect boundary_after("b") == Ok("b")
+# The media type is not checked: a Content-Type that is no form, such as
+# `text/plain`, still names a boundary.
+expect
+	MultipartForm.boundary_from_content_type("text/plain; boundary=x".to_utf8()).map_ok(|MultipartForm.Boundary.(bytes)| bytes)
+		== Ok("x".to_utf8())
 # The file: its name and its bytes exactly, a CR LF and a near delimiter
 # inside them kept.
 expect {
 	data = png.concat("\r\n--Xy".to_utf8())
 	got = file_of(
 		form({
-			headers: "${named_file}; filename=\"cat.png\"\r\nContent-Type: image/png",
+			headers: "${file_part_headers}; filename=\"cat.png\"\r\nContent-Type: image/png",
 			file: data,
 		}),
 	)
@@ -220,7 +208,7 @@ expect {
 }
 # No line break after the closing delimiter, or two: the same file.
 expect {
-	body = "--XyZ\r\n${named_file}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())
+	body = "--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())
 	file_of(body) == Ok({ filename: "image".to_utf8(), bytes: png })
 		and file_of(body.concat("\r\n\r\n".to_utf8())) == Ok({ filename: "image".to_utf8(), bytes: png })
 }
@@ -230,14 +218,14 @@ expect file_of(form({ headers: "Content-Disposition: form-data; filename=\"x\"; 
 expect file_of(form({ headers: "name=\"file\"", file: png })) == Ok({ filename: "image".to_utf8(), bytes: png })
 expect file_of(form({ headers: "Content-Disposition: form-data; filename=\"file\"", file: png })) == Err(NoFile)
 # An empty file is a file, of no bytes.
-expect file_of(form({ headers: named_file, file: [] })) == Ok({ filename: "image".to_utf8(), bytes: [] })
+expect file_of(form({ headers: file_part_headers, file: [] })) == Ok({ filename: "image".to_utf8(), bytes: [] })
 # Another field, another boundary, no closing delimiter, no empty line
 # after the headers, no CR LF after the opening delimiter, nothing: no file.
 expect file_of(form({ headers: "Content-Disposition: form-data; name=\"other\"", file: png })) == Err(NoFile)
-expect MultipartForm.file_part(form({ headers: named_file, file: png }), boundary("Abc")) == Err(NoFile)
-expect file_of("--XyZ\r\n${named_file}\r\n\r\n".to_utf8().concat(png)) == Err(NoFile)
-expect file_of("--XyZ\r\n${named_file}\r\n".to_utf8().concat(png)) == Err(NoFile)
-expect file_of("--XyZ${named_file}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())) == Err(NoFile)
+expect MultipartForm.file_part(form({ headers: file_part_headers, file: png }), boundary("Abc")) == Err(NoFile)
+expect file_of("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png)) == Err(NoFile)
+expect file_of("--XyZ\r\n${file_part_headers}\r\n".to_utf8().concat(png)) == Err(NoFile)
+expect file_of("--XyZ${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())) == Err(NoFile)
 expect file_of([]) == Err(NoFile)
 # The browser's name: UTF-8 as it is; else ASCII kept and the rest U+FFFD.
 expect MultipartForm.display_name("café.png".to_utf8()) == "café.png"

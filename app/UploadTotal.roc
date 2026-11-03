@@ -20,15 +20,16 @@ UploadTotal :: U64.{
 	most_bytes = UploadTotal.most_gib * 1024 * 1024 * 1024
 
 	## The total a user's file holds: none uploaded when there is no file
-	## yet (`NoFile`), else the file's decimal digits, with any spaces, tabs
-	## and line ends around them taken off, as the Zig chat reads it.
-	## Anything else is `NotANumber`, a number too big for a `U64` included.
+	## yet (`NoFile`), else the file's decimal digits, with any ASCII spaces
+	## around them taken off (`Ascii.trim_spaces`), as the Zig chat reads
+	## it. Anything else is `NotANumber`, a number too big for a `U64`
+	## included.
 	from_file : [NoFile, File(List(U8))] -> Try(UploadTotal, [NotANumber])
 	from_file = |file|
 		match file {
 			NoFile => Ok(UploadTotal.(0))
 			File(bytes) => {
-				digits = without_padding(bytes)
+				digits = Ascii.trim_spaces(bytes)
 				if digits.is_empty() or !digits.all(Ascii.is_digit) {
 					Err(NotANumber)
 				} else {
@@ -53,18 +54,6 @@ UploadTotal :: U64.{
 
 	is_eq : _
 }
-
-## The bytes with the spaces, tabs and line ends at either end taken off.
-## The set is ASCII's four, the Zig chat's, not `Str.trim`'s Unicode spaces.
-without_padding : List(U8) -> List(U8)
-without_padding = |bytes|
-	match (bytes.find_first_index(|b| !is_padding(b)), bytes.find_last_index(|b| !is_padding(b))) {
-		(Ok(first), Ok(last)) => bytes.sublist({ start: first, len: last - first + 1 })
-		_ => []
-	}
-
-is_padding : U8 -> Bool
-is_padding = |b| b == ' ' or b == '\t' or b == '\r' or b == '\n'
 
 # ── tests
 ## A file of `text`, read as a total and written back, as a test reads it.

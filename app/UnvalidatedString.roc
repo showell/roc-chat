@@ -12,6 +12,7 @@
 ## page; `SecureImageTag`, which images a message may show; `SignedIn`, who
 ## is acting; and `RequestOrigin`, which refuses a request from any origin
 ## but the server's own. A security reader can start at any of the five.
+import Ascii
 import ChannelName
 import DateTime
 import Name
@@ -88,12 +89,13 @@ UnvalidatedString :: Str.{
 
 	## A message's markdown, as a form sent it: the text with each CRLF made
 	## LF, and otherwise exactly as written; unless it holds nothing but
-	## spaces, tabs, CRs and LFs (`Blank`). A browser's form sends every
+	## ASCII spaces (`Ascii.is_space`: spaces, tabs, CRs and LFs), when it
+	## is `Blank`. A browser's form sends every
 	## newline as CRLF, and a transcript's lines end in LF.
 	markdown : UnvalidatedString -> Try(Str, [Blank])
 	markdown = |UnvalidatedString.(text)| {
 		lf = Str.join_with(text.split_on("\r\n"), "\n")
-		if (lf.to_utf8().all(|b| b == ' ' or b == '\t' or b == '\n' or b == '\r')) Err(Blank) else Ok(lf)
+		if (lf.to_utf8().all(Ascii.is_space)) Err(Blank) else Ok(lf)
 	}
 }
 
