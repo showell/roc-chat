@@ -13,7 +13,7 @@ plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
 	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "PageSpec: a path is UTF-8",
 	directory: Sample.directory,
-}) ?? crash "PageSpec: Steve's own DM is a place"
+}).map_ok(|found| found.key) ?? crash "PageSpec: Steve's own DM is a place"
 
 ## The page of `conversation` in `plans_key`, for the sample's user named
 ## `viewer`, its authors found among the sample's users.

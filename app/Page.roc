@@ -126,7 +126,7 @@ Page :: [].{
 							name: Div,
 							attrs: [
 								Page.class(Messages),
-								DataStream(site_path(key.stream_url_path())),
+								DataStream(site_path(key.url_path(Stream))),
 								DataAfter(token(c.messages().len().to_str())),
 								DataViewer(user_id(viewer.user())),
 							],
@@ -253,9 +253,9 @@ compose_box = |key|
 				name: Form,
 				attrs: [
 					MethodPost,
-					Action(site_path(key.url_path())),
-					DataSend(site_path(key.send_url_path())),
-					DataUpload(site_path(key.upload_url_path())),
+					Action(site_path(key.url_path(Page))),
+					DataSend(site_path(key.url_path(Send))),
+					DataUpload(site_path(key.url_path(Upload))),
 					DataImageMost(token(UploadedImage.most_bytes.to_str())),
 				],
 				inner: TrustedHtml.join([

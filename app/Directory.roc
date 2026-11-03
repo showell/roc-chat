@@ -6,10 +6,15 @@
 ##
 ## The directory checks names and nothing else. What each kind keeps besides
 ## its name (ids and owners, members) is checked by `Users` and `Channels`.
+## It also finds the place a channel's name or a DM's pair names (`place`),
+## since only the directory knows which channels and humans exist.
 import Admin
 import ChannelName
 import Channels
+import Dm
 import Name
+import Place
+import UserPair
 import Users
 
 Directory :: {
@@ -99,6 +104,33 @@ Directory :: {
 		channels = d.channels.remove_member(change)?
 		Ok(Directory.({ ..d, channels }))
 	}
+
+	## The place a channel's name or a DM's pair names, if the directory
+	## holds it: a channel it holds (else `NoSuchChannel`), or a DM whose
+	## every member is a human it holds (else `NoSuchHuman`), since an agent
+	## can't be in a DM.
+	place : Directory, [Channel(ChannelName), Dm(UserPair)] -> Try(Place, [NoSuchChannel, NoSuchHuman])
+	place = |Directory.(d), named|
+		match named {
+			Channel(name) => {
+				channel = d.channels.channel(name)?
+				Ok(Place.channel(channel))
+			}
+			Dm(pair) => {
+				humans = pair.members().map_try(
+					|id|
+						match d.users.user(id) {
+							Ok(user) => user.as_human().map_err(|_| NoSuchHuman)
+							Err(NoSuchUser) => Err(NoSuchHuman)
+						},
+				)?
+				match humans {
+					[alone] => Ok(Place.dm(Dm.between({ a: alone, b: alone })))
+					[a, b] => Ok(Place.dm(Dm.between({ a, b })))
+					_ => crash "Directory.place: a pair has one member or two"
+				}
+			}
+		}
 
 	users : Directory -> Users
 	users = |Directory.(d)| d.users

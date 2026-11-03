@@ -34,7 +34,7 @@ SecureImageTag :: [].{
 				match Str.from_utf8(name) {
 					Ok(text) =>
 						match UploadedImage.from_name(text) {
-							Ok(image) => key.uploaded_image_url_path(image).to_utf8() == source
+							Ok(image) => key.url_path(UploadedImage(image)).to_utf8() == source
 							Err(NotAnUploadName) => Bool.False
 						}
 					Err(_) => Bool.False

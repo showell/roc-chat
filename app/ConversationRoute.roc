@@ -109,7 +109,7 @@ ConversationRoute :: [].{
 	post_sent_message! : ConversationRoute.Post => Http.Response
 	post_sent_message! = |post|
 		match append_posted_message!(post) {
-			Ok(_) => HttpAnswer.see_other(post.key.url_path())
+			Ok(_) => HttpAnswer.see_other(post.key.url_path(Page))
 			Err(why) => refusal_page(why)
 		}
 
@@ -257,7 +257,7 @@ refusal_notice = |why|
 		ClockOutOfRange => { status: 500, words: { title: "Message refused", said: "The server's clock is out of range." } }
 		NoCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(NoCount) } }
 		BadCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(BadCount) } }
-		NoSuchConversation(key) => { status: 404, words: { title: "Not found", said: "No such conversation: ${key.url_path()}" } }
+		NoSuchConversation(key) => { status: 404, words: { title: "Not found", said: "No such conversation: ${key.url_path(Page)}" } }
 		Unreadable(fault) => { status: 500, words: { title: "Not a transcript", said: "Not a transcript: ${TranscriptRefusal.words(fault)}." } }
 		FileSystem(fault) => { status: 500, words: { title: "Failed", said: "The file system answered ${file_system_fault_name(fault)}." } }
 		Backdated => conversation_refusal("The message is dated before the conversation's latest.")
@@ -366,7 +366,7 @@ plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
 	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "ConversationRoute's tests: a path is UTF-8",
 	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name"),
-}) ?? crash "ConversationRoute's tests: Steve's own DM is a place"
+}).map_ok(|found| found.key) ?? crash "ConversationRoute's tests: Steve's own DM is a place"
 
 expect
 	unnumbered_message_at_the_sample_time("markdown=Hi+there%0D%0Aall")

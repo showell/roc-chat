@@ -151,7 +151,7 @@ keep_upload! = |
 		Ok({}) =>
 			Ok(
 				upload_answer_json({
-					url: key.uploaded_image_url_path(image),
+					url: key.url_path(UploadedImage(image)),
 					name: MultipartForm.display_name(upload.filename),
 				}),
 			)

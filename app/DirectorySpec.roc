@@ -1,12 +1,15 @@
 ## These are the tests of `Directory`: one namespace for humans, agents
 ## and channels, with each name refused when any kind has taken it in any
-## case; the order of the refusals; and the users and channels it holds,
-## changed through it.
+## case; the order of the refusals; the users and channels it holds,
+## changed through it; and the place a channel's name or a DM's pair
+## names.
 import Admin
 import ChannelName
 import Directory
+import Place
 import Sample
 import UserId
+import UserPair
 import Users
 
 DirectorySpec :: [].{}
@@ -184,3 +187,26 @@ expect {
 	})
 		== Err(AlreadyMember)
 }
+
+## The place `named` names in `with_plans`, as its folder's name, or why
+## there is none.
+place_named : [Channel(ChannelName), Dm(UserPair)] -> Try(Str, [NoSuchChannel, NoSuchHuman])
+place_named = |named| with_plans.place(named).map_ok(Place.to_str)
+
+## The pair `low` and `high` spell, which a test's always do.
+pair : Str -> UserPair
+pair = |text| UserPair.from_str(text) ?? crash "DirectorySpec: a test's pair is one"
+
+# A place: a channel it holds, and a DM of two humans or one human's own;
+# no such channel, and a DM with an agent (CC, 3) or nobody (4) in it.
+expect place_named(Channel(channel_name("plans"))) == Ok("plans")
+expect place_named(Channel(channel_name("other"))) == Err(NoSuchChannel)
+expect place_named(Dm(pair("1_2"))) == Ok("1_2")
+expect place_named(Dm(pair("2_2"))) == Ok("2_2")
+expect
+	[
+		"1_3",
+		"3_3",
+		"1_4",
+		"4_4",
+	].all(|text| place_named(Dm(pair(text))) == Err(NoSuchHuman))

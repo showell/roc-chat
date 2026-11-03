@@ -77,9 +77,9 @@ page = |path, transcript| {
 conversation : { path : List(U8), transcript : List(U8) } -> Try({ conversation : Conversation, key : ConversationKey }, _)
 conversation = |{ path, transcript }| {
 	unchecked = UnvalidatedString.from_utf8(path) ? |NotUtf8| PathNotUtf8
-	key = ConversationKey.from_url_path({ path: unchecked, directory }) ? |why| Path(why)
-	decoded = Transcript.decode(key.topic(), Transcript.Utf8Transcript.unchecked_from_file(transcript))?
-	Ok({ conversation: decoded, key })
+	found = ConversationKey.from_url_path({ path: unchecked, directory }) ? |why| Path(why)
+	decoded = Transcript.decode(found.key.topic(), Transcript.Utf8Transcript.unchecked_from_file(transcript))?
+	Ok({ conversation: decoded, key: found.key })
 }
 
 ## What the host may do with a request, judged from its head alone. A
@@ -245,7 +245,7 @@ plans = Topic.from_str("plans") ?? crash "main's tests: a topic's name"
 ## What the door finds at `path` with `transcript`, as a test reads it:
 ## the conversation, and its key's URL path.
 found_at : List(U8), List(U8) -> Try((Conversation, Str), _)
-found_at = |path, transcript| conversation({ path, transcript }).map_ok(|found| (found.conversation, found.key.url_path()))
+found_at = |path, transcript| conversation({ path, transcript }).map_ok(|found| (found.conversation, found.key.url_path(Page)))
 
 expect found_at("/chat/channel/general/plans".to_utf8(), []) == Ok((Conversation.empty(plans), "/chat/channel/general/plans"))
 expect found_at("/chat/dm/1_1/plans".to_utf8(), []) == Ok((Conversation.empty(plans), "/chat/dm/1_1/plans"))
@@ -267,7 +267,7 @@ expect {
 	key = ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
 		directory,
-	}) ?? crash "main's tests: Steve's own DM is a place"
+	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	page("/chat/dm/1_1/plans".to_utf8(), [])
 		== Page.conversation({
 			conversation: Conversation.empty(plans),
@@ -287,9 +287,9 @@ page_for_get = |path|
 		path: path.to_utf8(),
 		directory,
 	}) {
-		ShowConversation(key) => key.url_path()
-		OpenConversationStream(key) => "the stream of ${key.url_path()}"
-		ServeUploadedImage(found) => "the image ${found.image.name()} of ${found.key.url_path()}"
+		ShowConversation(key) => key.url_path(Page)
+		OpenConversationStream(key) => "the stream of ${key.url_path(Page)}"
+		ServeUploadedImage(found) => "the image ${found.image.name()} of ${found.key.url_path(Page)}"
 		_ => "not found"
 	}
 

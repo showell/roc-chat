@@ -1,34 +1,41 @@
-## **WHICH CONVERSATION**: its place and its topic, the pair that names one
-## conversation (a topic is unique only within its place). Opaque, so its
-## doors are the only ways in: `of`, from a place that exists, and
+## A conversation key names one conversation: its place and its topic, the
+## pair that is unique (a topic is unique only within its place). The type
+## is opaque, so its ways in are `of`, from a place that exists, and
 ## `from_url_path`, which finds that place in a directory.
 ##
-## **THE LAYOUT, ITS ONE HOME**: a conversation's URL and its folder on disk
-## are the same parts (`parts`), so a URL names its folder and no second
-## spelling can drift:
+## This module is the one home of a conversation's URLs and its folder.
+## Both are spelled from the same parts (`parts`), so a URL names its
+## folder and no second spelling can drift:
 ##
 ##     /chat/channel/<channel>/<topic>     chat/channel/<channel>/<topic>/
 ##     /chat/dm/<pair>/<topic>             chat/dm/<pair>/<topic>/
 ##
-## `from_url_path` reads those parts back, here beside the writer. A
-## conversation's stream is at its page's URL and `/stream`, which
-## `from_stream_url_path` reads back.
-##
-## A page's script sends a message by a POST to its page's URL and `/send`
-## (`from_send_url_path`), and gets the message back without a reload.
-##
-## An image is uploaded to a conversation by a POST to its page's URL and
-## `/upload` (`from_upload_url_path`), and is served at its page's URL,
-## `/uploads/` and the image's name (`from_uploaded_image_url_path`).
-## `FileSystem` keeps it in the conversation's folder, as `uploads/<name>`.
+## Each thing a conversation serves (`Resource`) is at its page's URL and
+## a suffix: its stream at `/stream`, the send of its page's script at
+## `/send`, an image's upload at `/upload`, and an uploaded image at
+## `/uploads/<name>`. `url_path` writes each, and `from_url_path` reads
+## each back. `FileSystem` keeps an uploaded image in the conversation's
+## folder, as `uploads/<name>`.
+import ChannelName
 import Directory
-import Dm
 import Place
 import Topic
 import UnvalidatedString
 import UploadedImage
+import UserPair
 
 ConversationKey :: { place : Place, topic : Topic }.{
+
+	## What a conversation's URL names: its page, its stream, where its
+	## page's script sends a message, where an image is uploaded to it, or
+	## one of its uploaded images.
+	Resource : [
+		Page,
+		Stream,
+		Send,
+		Upload,
+		UploadedImage(UploadedImage),
+	]
 
 	## The conversation under `topic` in `place`.
 	of : { place : Place, topic : Topic } -> ConversationKey
@@ -42,8 +49,8 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	topic : ConversationKey -> Topic
 	topic = |ConversationKey.(key)| key.topic
 
-	## **ITS PARTS, AS ITS URL AND ITS FOLDER BOTH SPELL THEM**: `chat`,
-	## the kind of place, the place's name, the topic.
+	## The parts its URL and its folder both spell: `chat`, the kind of
+	## place, the place's name, and the topic.
 	parts : ConversationKey -> List(Str)
 	parts = |ConversationKey.(key)|
 		match key.place.which() {
@@ -63,21 +70,18 @@ ConversationKey :: { place : Place, topic : Topic }.{
 				]
 		}
 
-	## Its page's URL path: `/` and its parts.
-	url_path : ConversationKey -> Str
-	url_path = |key| "/${Str.join_with(key.parts(), "/")}"
+	## The URL path of the conversation's `resource`: `/`, its parts, then
+	## the resource's own.
+	url_path : ConversationKey, ConversationKey.Resource -> Str
+	url_path = |key, resource| "/${Str.join_with(key.parts().concat(resource_parts(resource)), "/")}"
 
-	## Its stream's URL path: its page's, then `/stream`.
-	stream_url_path : ConversationKey -> Str
-	stream_url_path = |key| "${key.url_path()}/${stream_part}"
-
-	## **THE CONVERSATION A URL'S PATH NAMES**, its place found in
-	## `directory`; unless the path is not a conversation's
-	## (`NotAConversationPath`), a part is no name (`BadName`), no such
-	## channel is there (`NoSuchChannel`), or a DM's member is no human
-	## there (`NoSuchHuman`).
+	## The conversation a URL's path names, its place found in `directory`,
+	## and which of its resources the path names. Unless the path is no
+	## conversation's (`NotAConversationPath`), a part is no name
+	## (`BadName`), or the directory holds no such place (`NoSuchChannel`,
+	## `NoSuchHuman`, as `Directory.place` answers).
 	from_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
-		ConversationKey,
+		{ key : ConversationKey, resource : ConversationKey.Resource },
 		[
 			NotAConversationPath,
 			BadName,
@@ -85,274 +89,68 @@ ConversationKey :: { place : Place, topic : Topic }.{
 			NoSuchHuman,
 		],
 	)
-	from_url_path = |{ path, directory }|
-		match path.url_path_parts() {
-			Ok(
-				[
-					chat,
-					kind,
-					name,
-					topic_part,
-				],
-			) if chat.is_exactly("chat") =>
-				key_named({
-					kind,
-					name,
-					topic_part,
-					directory,
-				})
-			_ => Err(NotAConversationPath)
-		}
-
-	## **THE CONVERSATION WHOSE STREAM A URL'S PATH NAMES**, refused as
-	## `from_url_path` refuses a page's.
-	from_stream_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
-		ConversationKey,
-		[
-			NotAConversationPath,
-			BadName,
-			NoSuchChannel,
-			NoSuchHuman,
-		],
-	)
-	from_stream_url_path = |{ path, directory }|
-		key_before_last_part({
-			path,
-			last: stream_part,
-			directory,
-		})
-
-	## The URL path a page's script sends a message to: its page's, then
-	## `/send`.
-	send_url_path : ConversationKey -> Str
-	send_url_path = |key| "${key.url_path()}/${send_part}"
-
-	## The conversation a URL's path sends a message to, refused as
-	## `from_url_path` refuses a page's.
-	from_send_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
-		ConversationKey,
-		[
-			NotAConversationPath,
-			BadName,
-			NoSuchChannel,
-			NoSuchHuman,
-		],
-	)
-	from_send_url_path = |{ path, directory }|
-		key_before_last_part({
-			path,
-			last: send_part,
-			directory,
-		})
-
-	## The URL path an image is uploaded to: its page's, then `/upload`.
-	upload_url_path : ConversationKey -> Str
-	upload_url_path = |key| "${key.url_path()}/${upload_part}"
-
-	## The conversation a URL's path uploads to, refused as
-	## `from_url_path` refuses a page's.
-	from_upload_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
-		ConversationKey,
-		[
-			NotAConversationPath,
-			BadName,
-			NoSuchChannel,
-			NoSuchHuman,
-		],
-	)
-	from_upload_url_path = |{ path, directory }|
-		key_before_last_part({
-			path,
-			last: upload_part,
-			directory,
-		})
-
-	## The URL path an uploaded image is served at: its page's, then
-	## `/uploads/` and the image's name.
-	uploaded_image_url_path : ConversationKey, UploadedImage -> Str
-	uploaded_image_url_path = |key, image| "${key.url_path()}/${uploads_part}/${image.name()}"
-
-	## The conversation and the uploaded image a URL's path names, refused
-	## as `from_url_path` refuses a page's, and as `NotAConversationPath`
-	## when the last part is no uploaded image's name.
-	from_uploaded_image_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
-		{ key : ConversationKey, image : UploadedImage },
-		[
-			NotAConversationPath,
-			BadName,
-			NoSuchChannel,
-			NoSuchHuman,
-		],
-	)
-	from_uploaded_image_url_path = |{ path, directory }|
-		match path.url_path_parts() {
-			Ok(
-				[
-					chat,
-					kind,
-					name,
-					topic_part,
-					uploads,
-					image_name,
-				],
-			) if chat.is_exactly("chat") and uploads.is_exactly(uploads_part) => {
-				image = image_name.uploaded_image() ? |NotAnUploadName| NotAConversationPath
-				key = key_named({
-					kind,
-					name,
-					topic_part,
-					directory,
-				})?
-				Ok({ key, image })
-			}
-			_ => Err(NotAConversationPath)
-		}
-
-	is_eq : _
-	to_hash : _
-}
-
-## The last part of a stream's URL path.
-stream_part : Str
-stream_part = "stream"
-
-## The last part of the URL path a page's script sends a message to.
-send_part : Str
-send_part = "send"
-
-## The last part of an upload's URL path.
-upload_part : Str
-upload_part = "upload"
-
-## The part before an uploaded image's name in its URL path.
-uploads_part : Str
-uploads_part = "uploads"
-
-## The conversation whose page's URL path, then `/` and `last`, is `path`.
-key_before_last_part : {
-	path : UnvalidatedString,
-	last : Str,
-	directory : Directory,
-} -> Try(
-	ConversationKey,
-	[
-		NotAConversationPath,
-		BadName,
-		NoSuchChannel,
-		NoSuchHuman,
-	],
-)
-key_before_last_part = |
-	{
-		path,
-		last,
-		directory,
-	},
-|
-	match path.url_path_parts() {
-		Ok(
+	from_url_path = |{ path, directory }| {
+		path_parts = path.url_path_parts() ? |NotAPath| NotAConversationPath
+		match path_parts {
 			[
 				chat,
 				kind,
 				name,
 				topic_part,
-				last_part,
-			],
-		) if chat.is_exactly("chat") and last_part.is_exactly(last) =>
-			key_named({
-				kind,
-				name,
-				topic_part,
-				directory,
-			})
+				..,
+			] if chat.is_exactly("chat") => {
+				resource = resource_of_suffix(path_parts.drop_first(4))?
+				named_place = place_named({ kind, name })?
+				found_place = directory.place(named_place)?
+				found_topic = topic_part.topic() ? |_| BadName
+				Ok({ key: ConversationKey.({ place: found_place, topic: found_topic }), resource })
+			}
+			_ => Err(NotAConversationPath)
+		}
+	}
+
+	is_eq : _
+	to_hash : _
+}
+
+## The parts a resource's URL path adds after its conversation's.
+resource_parts : ConversationKey.Resource -> List(Str)
+resource_parts = |resource|
+	match resource {
+		Page => []
+		Stream => ["stream"]
+		Send => ["send"]
+		Upload => ["upload"]
+		UploadedImage(image) => ["uploads", image.name()]
+	}
+
+## The resource whose parts are `suffix`, the parts of a URL's path after
+## its conversation's, as `resource_parts` writes them.
+resource_of_suffix : List(UnvalidatedString) -> Try(ConversationKey.Resource, [NotAConversationPath])
+resource_of_suffix = |suffix|
+	match suffix {
+		[] => Ok(Page)
+		[last] if last.is_exactly("stream") => Ok(Stream)
+		[last] if last.is_exactly("send") => Ok(Send)
+		[last] if last.is_exactly("upload") => Ok(Upload)
+		[uploads, image_name] if uploads.is_exactly("uploads") =>
+			match image_name.uploaded_image() {
+				Ok(image) => Ok(UploadedImage(image))
+				Err(NotAnUploadName) => Err(NotAConversationPath)
+			}
 		_ => Err(NotAConversationPath)
 	}
 
-## The conversation under `topic_part` in the place of `kind` that `name`
-## names, if `directory` holds it.
-key_named : {
-	kind : UnvalidatedString,
-	name : UnvalidatedString,
-	topic_part : UnvalidatedString,
-	directory : Directory,
-} -> Try(
-	ConversationKey,
-	[
-		NotAConversationPath,
-		BadName,
-		NoSuchChannel,
-		NoSuchHuman,
-	],
+## The place a URL's `kind` (`channel` or `dm`) and `name` spell, still to
+## be found in a directory.
+place_named : { kind : UnvalidatedString, name : UnvalidatedString } -> Try(
+	[Channel(ChannelName), Dm(UserPair)],
+	[NotAConversationPath, BadName],
 )
-key_named = |
-	{
-		kind,
-		name,
-		topic_part,
-		directory,
-	},
-| {
-	found = place_named({
-		kind,
-		name,
-		directory,
-	})?
-	named = topic_part.topic() ? |_| BadName
-	Ok(ConversationKey.({ place: found, topic: named }))
-}
-
-## The place of `kind` (`channel` or `dm`) that `name` names, if
-## `directory` holds it.
-place_named : {
-	kind : UnvalidatedString,
-	name : UnvalidatedString,
-	directory : Directory,
-} -> Try(
-	Place,
-	[
-		NotAConversationPath,
-		BadName,
-		NoSuchChannel,
-		NoSuchHuman,
-	],
-)
-place_named = |
-	{
-		kind,
-		name,
-		directory,
-	},
-|
+place_named = |{ kind, name }|
 	if (kind.is_exactly("channel"))
-		channel_place({ name, directory })
+		name.channel_name().map_ok(|channel| Channel(channel)).map_err(|_| BadName)
 	else if (kind.is_exactly("dm"))
-		dm_place({ name, directory })
+		name.user_pair().map_ok(|pair| Dm(pair)).map_err(|_| BadName)
 	else
 		Err(NotAConversationPath)
-
-## The channel `name` names, as a place, if `directory` holds it.
-channel_place : { name : UnvalidatedString, directory : Directory } -> Try(Place, [BadName, NoSuchChannel])
-channel_place = |{ name, directory }| {
-	checked = name.channel_name() ? |_| BadName
-	channel = directory.channels().channel(checked)?
-	Ok(Place.channel(channel))
-}
-
-## The DM `name` spells, as a place, if both its members are humans in
-## `directory`.
-dm_place : { name : UnvalidatedString, directory : Directory } -> Try(Place, [BadName, NoSuchHuman])
-dm_place = |{ name, directory }| {
-	pair = name.user_pair() ? |_| BadName
-	humans = pair.members().map_try(
-		|id|
-			match directory.users().user(id) {
-				Ok(user) => user.as_human().map_err(|_| NoSuchHuman)
-				Err(NoSuchUser) => Err(NoSuchHuman)
-			},
-	)?
-	match humans {
-		[alone] => Ok(Place.dm(Dm.between({ a: alone, b: alone })))
-		[a, b] => Ok(Place.dm(Dm.between({ a, b })))
-		_ => crash "ConversationKey.dm_place: a pair has one member or two"
-	}
-}

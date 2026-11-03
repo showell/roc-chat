@@ -154,7 +154,7 @@ after_prefix = "after=".to_utf8()
 
 ## The stream's bus key: the conversation's URL path.
 bus_key : ConversationKey -> List(U8)
-bus_key = |key| key.url_path().to_utf8()
+bus_key = |key| key.url_path(Page).to_utf8()
 
 ## **THE COUNT `bytes` SPELL**: the digits of 0 to 65535, with no leading
 ## `0`, so a count has one spelling.
@@ -242,7 +242,7 @@ plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
 	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "ConversationStream's tests: a path is UTF-8",
 	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name"),
-}) ?? crash "ConversationStream's tests: Steve's own DM is a place"
+}).map_ok(|found| found.key) ?? crash "ConversationStream's tests: Steve's own DM is a place"
 
 ## `plans`, holding a message by Steve of each markdown, at one time.
 plans_holding : List(Str) -> Conversation

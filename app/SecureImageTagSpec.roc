@@ -27,7 +27,7 @@ key_at = |path|
 	ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "SecureImageTagSpec: a path is UTF-8",
 		directory: with_room,
-	}) ?? crash "SecureImageTagSpec: a test's path is a conversation's"
+	}).map_ok(|found| found.key) ?? crash "SecureImageTagSpec: a test's path is a conversation's"
 
 ## `plans` in Steve's own DM.
 plans : ConversationKey

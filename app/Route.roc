@@ -1,5 +1,6 @@
-## **THE ROUTES**: which answer a request's method and path ask for, a pure
-## decision, so its tests reach every route. The host routes nothing.
+## This module decides which answer a request's method and path ask for.
+## It is a pure decision, so its tests (`RouteSpec`) reach every route, and
+## the host routes nothing.
 ##
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
 ##     GET  /chat/dm/<pair>/<topic>
@@ -13,10 +14,10 @@
 ##     GET  /chat/assets/compose.js
 ##     GET  /chat/assets/feed.js
 ##
-## A conversation's path is `ConversationKey`'s to read, the layout's one
-## home, and each script's is its own module's (`PaletteScript` and the
-## rest); a path that names no conversation the directory holds is not
-## found.
+## A conversation's path is `ConversationKey`'s to read, which says which
+## of its resources the path names, and each script's is its own module's
+## (`PaletteScript` and the rest). A path that names no conversation the
+## directory holds is not found.
 import ChromeScript
 import ComposeScript
 import ConversationKey
@@ -49,7 +50,7 @@ Route :: [].{
 		Feed,
 	]
 
-	## **THE ROUTE FOR `method` AND `path`**, as the host handed them, each
+	## The route for `method` and `path`, as the host handed them, each
 	## place looked up in `directory`.
 	choose : {
 		method : List(U8),
@@ -62,20 +63,29 @@ Route :: [].{
 			path,
 			directory,
 		},
-	|
+	| {
+		asked = method_of(method)
 		match scripts.find_first(|script| path == script_url_path(script).to_utf8()) {
-			Ok(script) => if (method == "GET".to_utf8()) ServeScript(script) else MethodNotAllowed(GetOnly)
+			Ok(script) =>
+				match asked {
+					Get => ServeScript(script)
+					Post | Other => MethodNotAllowed(GetOnly)
+				}
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) =>
-						conversation_choice({
-							method,
-							path: unchecked,
-							directory,
-						})
+						match ConversationKey.from_url_path({ path: unchecked, directory }) {
+							Ok(found) => conversation_choice({
+								key: found.key,
+								resource: found.resource,
+								method: asked,
+							})
+							Err(_) => NotFound
+						}
 					Err(NotUtf8) => NotFound
 				}
 		}
+	}
 }
 
 ## Every script the pages load.
@@ -97,67 +107,40 @@ script_url_path = |script|
 		Feed => FeedScript.url_path
 	}
 
-## The route for `method` and a conversation's `path`: its page, its
-## stream, its script's send, its upload or one of its uploaded images,
-## each tried in turn.
+## The method the host handed, as a route takes it: GET, POST, or any other
+## (a method is case-sensitive, so `get` is another).
+method_of : List(U8) -> [Get, Post, Other]
+method_of = |method|
+	if (method == "GET".to_utf8())
+		Get
+	else if (method == "POST".to_utf8())
+		Post
+	else
+		Other
+
+## The route for `method` and the conversation `key`'s `resource`.
 conversation_choice : {
-	method : List(U8),
-	path : UnvalidatedString,
-	directory : Directory,
+	key : ConversationKey,
+	resource : ConversationKey.Resource,
+	method : [Get, Post, Other],
 } -> Route.Choice
 conversation_choice = |
 	{
+		key,
+		resource,
 		method,
-		path,
-		directory,
-	},
-| {
-	is_get = method == "GET".to_utf8()
-	is_post = method == "POST".to_utf8()
-	match ConversationKey.from_url_path({ path, directory }) {
-		Ok(key) =>
-			if (is_get)
-				ShowConversation(key)
-			else if (is_post)
-				AppendToConversation(key)
-			else
-				MethodNotAllowed(GetAndPost)
-		Err(_) =>
-			match ConversationKey.from_stream_url_path({ path, directory }) {
-				Ok(key) => if (is_get) OpenConversationStream(key) else MethodNotAllowed(GetOnly)
-				Err(_) =>
-					match ConversationKey.from_send_url_path({ path, directory }) {
-						Ok(key) => if (is_post) SendToConversation(key) else MethodNotAllowed(PostOnly)
-						Err(_) =>
-							upload_choice({
-								method,
-								path,
-								directory,
-							})
-					}
-			}
-	}
-}
-
-## The route for `method` and a path under a conversation's uploads: an
-## upload, or one of its uploaded images.
-upload_choice : {
-	method : List(U8),
-	path : UnvalidatedString,
-	directory : Directory,
-} -> Route.Choice
-upload_choice = |
-	{
-		method,
-		path,
-		directory,
 	},
 |
-	match ConversationKey.from_upload_url_path({ path, directory }) {
-		Ok(key) => if (method == "POST".to_utf8()) UploadToConversation(key) else MethodNotAllowed(PostOnly)
-		Err(_) =>
-			match ConversationKey.from_uploaded_image_url_path({ path, directory }) {
-				Ok(found) => if (method == "GET".to_utf8()) ServeUploadedImage(found) else MethodNotAllowed(GetOnly)
-				Err(_) => NotFound
-			}
+	match (resource, method) {
+		(Page, Get) => ShowConversation(key)
+		(Page, Post) => AppendToConversation(key)
+		(Page, Other) => MethodNotAllowed(GetAndPost)
+		(Stream, Get) => OpenConversationStream(key)
+		(Stream, _) => MethodNotAllowed(GetOnly)
+		(Send, Post) => SendToConversation(key)
+		(Send, _) => MethodNotAllowed(PostOnly)
+		(Upload, Post) => UploadToConversation(key)
+		(Upload, _) => MethodNotAllowed(PostOnly)
+		(UploadedImage(image), Get) => ServeUploadedImage({ key, image })
+		(UploadedImage(_), _) => MethodNotAllowed(GetOnly)
 	}
