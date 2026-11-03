@@ -291,18 +291,19 @@ test "a header with a CR, an LF or a NUL is never written" {
     for ([_][]const u8{ "a\rb", "a\nb", "a\x00b", "\r\n" }) |v| try testing.expect(!http.header_safe(v));
 }
 
-/// A stream of the conversation `/chat/dm/1_1/plans` after its first
-/// message, held open, its head read.
+/// A stream of the conversation `/chat/dm/1_1/plans` after its `after`
+/// messages, held open, its head read. The conversation needs its
+/// transcript: a stream of one with none is a 404.
 const HeldStream = struct {
     connection: Io.net.Stream,
     reader: Io.net.Stream.Reader,
     buf: [16 * 1024]u8,
 
-    fn open(s: *HeldStream, a: std.mem.Allocator, port: u16) !void {
+    fn open(s: *HeldStream, a: std.mem.Allocator, port: u16, comptime after: []const u8) !void {
         const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
         s.connection = try addr.connect(io, .{ .mode = .stream });
         var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=1 HTTP/1.1", "\r\n"));
+        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=" ++ after ++ " HTTP/1.1", "\r\n"));
         s.reader = s.connection.reader(io, &s.buf);
         var last: [4]u8 = @splat(0);
         while (!std.mem.eql(u8, &last, "\r\n\r\n")) {
@@ -332,7 +333,7 @@ test "a holder at its cap ends its own oldest stream, and its newer ones still g
     const started = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=x"));
     try testing.expectEqual(303, try status(started));
     var streams: [3]HeldStream = undefined;
-    for (&streams) |*s| try s.open(a, port);
+    for (&streams) |*s| try s.open(a, port, "1");
     defer for (&streams) |*s| s.connection.close(io);
     const posted = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=y"));
     try testing.expectEqual(303, try status(posted));
@@ -348,11 +349,13 @@ test "a stream ended for a newer one of its holder lets go of its subscriber and
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const port = r.server.port();
+    const started = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=x"));
+    try testing.expectEqual(303, try status(started));
     var streams: [2]HeldStream = undefined;
-    try streams[0].open(a, port);
+    try streams[0].open(a, port, "1");
     defer streams[0].connection.close(io);
     try testing.expectEqual(1, r.server.hub.count());
-    try streams[1].open(a, port);
+    try streams[1].open(a, port, "1");
     defer streams[1].connection.close(io);
     try testing.expectEqual(null, try streams[0].line());
     // Its task wakes now, not at its keepalive, 25 s on.
@@ -421,7 +424,7 @@ test "a held stream keeps none of its call's arena: the transcript read, decoded
     try r.data.dir.createDirPath(io, "chat/dm/1_1/plans");
     try r.data.dir.writeFile(io, .{ .sub_path = "chat/dm/1_1/plans/transcript", .data = transcript.items });
     var stream: HeldStream = undefined;
-    try stream.open(a, port);
+    try stream.open(a, port, "0");
     defer stream.connection.close(io);
     // The backlog whole: every message's frame.
     var frames: usize = 0;
