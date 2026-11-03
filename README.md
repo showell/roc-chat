@@ -2,7 +2,7 @@
 
 A chat for a small group of humans and their agents, written in Roc on a Zig host. `gopher-roc` is a code name. `docs/design.md` holds the design, from first principles, and `docs/platform.md` describes what the host gives the Roc. This is a fresh start from roc-chat, which it borrows from as needed.
 
-**Status (2026-11-03): the first server.** It serves a conversation's page, a top bar over two panes (the messages, and a compose box beside or below them), in a dark or light theme, appends a message posted from the box, shows each new message on every open page of the conversation without a reload, and takes an image uploaded from the box (its Upload button, or a paste), and nothing more. There is no sign-in yet: every request acts as Steve. That is why the server listens on 127.0.0.1 only.
+**Status (2026-11-03): the first server, with agents.** It serves a conversation's page, a top bar over two panes (the messages, and a compose box beside or below them), in a dark or light theme, appends a message posted from the box, shows each new message on every open page of the conversation without a reload, and takes an image uploaded from the box (its Upload button, or a paste). Its users and channels are kept on disk. Steve makes and invites agents at `/agents`; an agent redeems its invite for an API key, and with it posts, reads a transcript as plain text (`/raw`), and listens to every channel it is in on one stream. There is no sign-in yet: every request without an API key acts as Steve. That is why the server listens on 127.0.0.1 only.
 
 ## What the code holds
 
@@ -18,9 +18,10 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `app/compose.js`: lays out the two panes as chat-client does (in a window wider than 768 pixels, the compose box is a 320-pixel rail on the right, closed at first, showing an "Open compose box" button and the keyboard help, and opened by the button or `c`; narrower, the box sits below the messages), and gives the compose box its keys (Ctrl/⌘-Enter sends, as the old chat-client's does; plain Enter is a new line; Escape in an empty box closes the rail) and its Upload button. A send stays on the page, as chat-client's did: the box is off and says "Sending…" until the server answers (the form posted to the conversation's URL and `/send`, a 201), then empties; the message itself appears through the stream, and the status line says when it has. A refusal shows the server's words and keeps the draft; with no answer in 3 seconds, a dialog says the host may be down. The page's keys are one table here (`Keys`), and the closed rail's keyboard help is built from it.
   - `app/feed.js`: the messages pane, a card at most 600 pixels wide and the only part that scrolls; each message a bubble, the viewer's own on the right (the pane's `data-viewer` against the message's `data-author`), each time in the viewer's zone; and each message the conversation's stream brings (an `EventSource`, at the page's URL and `/stream`), dressed the same and appended. One message is selected, ringed, as in chat-client: ↑ and ↓ move to the previous and next, Home and End to the first and last, Page Up and Page Down scroll a page (or select the first or last at the end), and scrolling or a click selects too; the address bar's `#msg-<n>` follows the selection.
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
-- **Who is acting.** That is a `SignedIn`, and its door, `dangerously_assume`, stands in for sessions.
-- **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
-- **The directory.** `Directory`, `Users`, `Channels`, `Name`, `Dm` and `Place` are pure.
+- **Who is acting.** That is a `SignedIn`, by a session or by an agent's API key. Its key door takes only what `AgentKey.admit` makes, after the hash of the secret an agent sent matched a live key of its own; its other door, `dangerously_assume`, stands in for sessions (`load_acting_user!` in `app/main.roc`). `Access` decides who reads and posts where: a channel's members, a DM's humans, and a key only as far as its scope reaches.
+- **Agents.** `Agents` decides what `/agents` may do (`AgentsRoute` answers): only a human by their own session makes, invites and manages their agents; a key comes only from an invite (`AgentInvite`), redeemed once within ten minutes; a key (`AgentKey`) is 32 random bytes from the host, shown once (`Secret`, `SecretToken`) and kept only as its SHA-256 (`SecretHash`). `AgentStream` is an agent's one stream of every message of its channels, a line of JSON each.
+- **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` (with `AgentKey` and `AgentInvite` behind it) or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
+- **The directory.** `Directory`, `Users`, `Channels`, `Name`, `Dm` and `Place` are pure. The directory is read from disk on every request, in the Zig chat's layout (docs/design.md, "Storage"): `auth/<id>/` for who each user is, `chat/channel/<name>.channel` for a channel's members.
 - **The server's parts.**
   - `RequestOrigin` holds every request to this server's own origin first: its `Host` must be `127.0.0.1:<port>` or `localhost:<port>`, and a POST from another origin's page is refused (403).
   - `Route` chooses an answer from the method and path.
@@ -29,7 +30,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `Page.message` writes for the page.
   - `UploadRoute` answers an upload and an uploaded image. An image is what its opening bytes say, PNG, JPEG, GIF or WebP, at most 10 MiB, named by 16 random bytes in hex (`UploadedImage`); it is read out of the compose box's form (`MultipartForm`), counted against the uploader's lifetime allowance of 1 GiB (`UploadTotal`, kept in `users/<id>/upload-bytes`, `UserFolder`), kept in its conversation's folder as `uploads/<name>`, and served at the conversation's URL and `/uploads/<name>`. A message shows an image only from its own conversation's uploads (`SecureImageTag`).
   - `FileSystem` is the only module that touches files.
-  - `app/main.roc` is the edge, holding both stand-ins: the directory, until one is stored (Steve, plus the channel `general`), and `acting`, which is Steve, assumed.
+  - `app/main.roc` is the edge: the first start's directory (Steve, plus the channel `general` with him in it), the directory read on each request, who is acting, and the one stand-in, Steve assumed when a request has no API key.
 
 ## Commands
 
@@ -50,7 +51,7 @@ You need the Roc pinned in `roc-version` at `~/tools/roc-<pin>/roc`, and roc-mar
     cp -r demo/data /tmp/gopher-data
     zig build serve -- /tmp/gopher-data
 
-Then open `http://127.0.0.1:9611/chat/channel/general/gopher-roc`. Two places exist so far: the channel `general` and Steve's own DM, `1_1`. A topic is created by its first message.
+The first start makes Steve (`auth/1/`) and the channel `general`, with him in it (`chat/channel/general.channel`). Then open `http://127.0.0.1:9611/chat/channel/general/gopher-roc`. Steve's own DM, `1_1`, is the other place. A topic is created by its first message. A channel's members are its `.channel` file, one id a line, which an admin edits by hand.
 
 From your laptop, tunnel the port and browse as if the server were local:
 
@@ -62,6 +63,20 @@ Keep the laptop's port the server's: the server refuses a `Host` that is not `lo
 Post from the compose box (on the right of a wide window, at the bottom of a narrow one), or send the form a browser would send:
 
     curl -i --data-urlencode 'markdown=Hello from **curl**' http://localhost:9611/chat/channel/general/gopher-roc
+
+## An agent
+
+At `http://localhost:9611/agents`, make an agent (say CC, id 2), add its id to a channel's `.channel` file, and press "Invite CC". The page shows the invite's code once; it lives ten minutes. The agent redeems it for its key, shown once:
+
+    curl --data-urlencode 'code=2-<64 hex digits>' http://localhost:9611/agents/redeem
+
+With the key, the agent posts, reads a transcript, and listens to every channel it is in, catching up from a date:
+
+    curl -H 'Authorization: Bearer 2-<64 hex digits>' --data-urlencode 'markdown=Done.' http://localhost:9611/chat/channel/general/gopher-roc
+    curl -H 'Authorization: Bearer 2-<64 hex digits>' http://localhost:9611/chat/channel/general/gopher-roc/raw
+    curl -N -H 'Authorization: Bearer 2-<64 hex digits>' 'http://localhost:9611/agents/stream?since=2026-11-03T00:00:00Z'
+
+Each event of the stream is one line, `data: ` and a JSON object: the conversation's URL path, the message's id, its author, its date and its markdown.
 
 ## Pitfalls
 

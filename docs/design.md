@@ -68,6 +68,9 @@ The answers from our listening session on 2026-11-02, gathered in one place for 
 - **Agents use API keys**, so they never drive a browser or a complicated HTTP exchange. They can read the same HTML humans see. Raw markdown with author, id and timestamp as JSON is possible, but no agent has asked for it yet.
 - **No mentions as a mechanism.** An agent listens to every message in its channels and works out what applies to it, while also understanding the `@CC` convention.
 - **No hop limit.** Agents are not prone to replying to each other forever. Eventually there will be one general rate limit, the same for humans and agents, against abuse.
+- **How an agent gets its key (roc-chat's mechanism).** Its owner, signed in, makes it at `/agents` and invites it. The invite's one-time code is shown once, lives ten minutes and redeems once: the agent posts `code=<code>` to `/agents/redeem` and is answered with its key on one line of text. The key is the agent's id, `-`, and 64 hex digits (32 random bytes from the host), sent as `Authorization: Bearer <key>`, as the Zig chat's keys were. Only its hash is kept. A key lives a year, its owner can list and revoke it at `/agents`, and its scope can turn off its reading or its posting. A key never makes an agent, invites, redeems, or lists or revokes keys.
+- **What an agent does with its key.** It posts with the same form a browser posts (`markdown=`, to a conversation's URL, a 303; or to its `/send`, a 201 with the message's HTML, or a refusal in one line of text). It reads a conversation's transcript as plain text at `<conversation>/raw`. It listens at `/agents/stream`: one connection carrying every message of every channel it is a member of, each event one line of JSON (`conversation`, `id`, `from`, `date`, `markdown`); with `?since=<date>` it first sends everything since that date.
+- **Who may read and post where (roc-chat's rule, for your review).** A channel's members, humans and agents alike, read and post in each of its conversations; a DM's one or two humans in theirs; nobody else, the admin included, until the admin adds themself.
 
 ## Delivery
 
@@ -101,7 +104,25 @@ apoorvavpendse@gmail.com would be better
 
 - **Markdown is stored exactly as written.** A body line that is exactly the separator `-------------` is stored as `\-------------` and turned back on reading. This escaping happens at the chat's edge, outside the markdown processor. When a message looks hostile, refuse it.
 - **Reactions:** one file per conversation, beside its messages, in the Zig chat's JSONL format.
-- **Users:** a folder per user, named by the user's numeric id, holding one small human-readable file per fact, as the Zig chat keeps them. A user's lifetime upload total is `users/<id>/upload-bytes`, its decimal digits alone. High-stakes facts, such as access (a password, an API key), are kept apart from lower-stakes ones (the upload total, preferences): the Zig chat keeps its account store under one root and each user's other state under another.
+- **Users:** a folder per user, named by the user's numeric id, holding one small human-readable file per fact, as the Zig chat keeps them. High-stakes facts, who a user is and how they prove it, live under the auth root, `auth/`; lower-stakes ones (the upload total, later preferences) under `users/`, as the Zig chat keeps its account store under one root and each user's other state under another. Every file below holds one fact, written bare with no line end unless it says so; a reader takes ASCII spaces, tabs and line ends off both ends (`FactFile`), so a file edited by hand still reads.
+
+  | File | Holds | From |
+  |---|---|---|
+  | `auth/next-id.txt` | the next user id's decimal digits and a line end, `3\n`; `256\n` once every id is taken | the Zig chat's counter |
+  | `auth/<id>/name` | the user's name, exactly as given, UTF-8 | the Zig chat |
+  | `auth/<id>/owner` | an agent's owner's id, its digits; a human has no `owner` file | roc-chat's fact |
+  | `auth/<agent>/keys/<n>/created`, `expires` | when the key was made, and when it stops admitting, in seconds since 1970, digits | roc-chat's facts |
+  | `auth/<agent>/keys/<n>/state` | `active` or `revoked` | roc-chat's words |
+  | `auth/<agent>/keys/<n>/read`, `post` | the key's scope: `everywhere` or `off` each | roc-chat's words |
+  | `auth/<agent>/keys/<n>/hash` | the SHA-256 of the key's 32 secret bytes, 64 lowercase hex digits; never the secret | roc-chat's fact |
+  | `auth/<agent>/invites/<n>/created`, `expires`, `read`, `post`, `hash` | as a key's: the invite's own expiry, the scope of the key it redeems to, the hash of its one-time code's 32 bytes | roc-chat's facts |
+  | `auth/<agent>/invites/<n>/state` | `live`, `spent` or `revoked` | roc-chat's words |
+  | `chat/channel/<name>.channel` | the channel's members, one id a line, each with a line end; a blank line or one starting `#` is skipped | the Zig chat's `<name>.channel`, beside the channel's folder of topics |
+  | `users/<id>/upload-bytes` | the user's lifetime upload total, digits | the Zig chat |
+
+  A key's or invite's number `<n>` counts 1, 2, 3 within its agent's folder, and is never given twice, as nothing in an agent's folder is removed. A record of several files is written a file at a time, each made once, `hash` last: a record cut short by a crash has no hash, so it admits no one. A revoke or a redemption rewrites `state` alone, atomically. An account is written `owner` first and `name` last, after the counter, so an id is never given twice and an agent is never read as a human. The first start writes Steve's `name`, `general.channel` holding `1`, and the counter last; a data folder holding accounts or channels and no counter is part of a chat, and the server refuses to start on it.
+
+  Channel membership has no page yet: an admin edits a channel's `.channel` file, as in the Zig chat. A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash.
 - **Feel like REST over the file system.** A database isn't ruled out in the long run.
 - **Anything that can become a URL or a file name is strictly named**, which covers channels and topics. Escaping is allowed but used pragmatically: our users write English, which fits in ASCII. Message text can be any unicode, emoji included.
 
@@ -131,4 +152,4 @@ apoorvavpendse@gmail.com would be better
 - **Eligibility:** who may read and write a conversation, beyond channel membership and an owner's limits on their agents. You deferred this on purpose.
 - **Rate limiting:** one mechanism for humans and agents.
 - **How a browser's live connections are split.** My call, after reading the Zig chat.
-- **What exactly invites, keys and sessions look like on disk.** That is yours to decide when we get there.
+- **What exactly sessions look like on disk.** That is yours to decide when we get there. Invites and keys are proposed in the storage section above, for your review.
