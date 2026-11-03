@@ -6,9 +6,10 @@
 ## **A CONVERSATION'S PAGE IS TWO PANES**: its messages (`messages`), then
 ## the compose box (`compose`): a plain form that posts the field
 ## `markdown` back to the conversation's own URL, so it works with no
-## script, and a line of keyboard help. The page's one script
-## (`ComposeScript`, app/compose.js) lays the panes out, gives the box its
-## keys, and appends each message the conversation's stream brings; it
+## script, and a line of help: markdown, and the key that sends. The page's
+## one script (`ComposeScript`, app/compose.js) lays the panes out (a wide
+## window's compose box a rail on the right, with its keyboard help), gives
+## the box its keys, and appends each message the conversation's stream brings; it
 ## finds them by the classes written here, and the stream by the messages
 ## pane's `data-stream` and `data-after`. A message on the stream is
 ## written by `message`, as the page writes it.
@@ -177,7 +178,7 @@ Page :: [].{
 
 ## **THE COMPOSE BOX**: a form posting its one field, a message's
 ## markdown (`UrlEncodedForm.markdown_name`), to `key`'s page, as
-## `ConversationRoute.post_sent_message!` takes it; then the keys, in words.
+## `ConversationRoute.post_sent_message!` takes it; then its help line.
 compose_box : ConversationKey -> TrustedHtml
 compose_box = |key|
 	Html.element({
@@ -205,7 +206,7 @@ compose_box = |key|
 			Html.element({
 				name: P,
 				attrs: [Page.class(Help)],
-				inner: Escape.text("Ctrl/⌘-Enter to send"),
+				inner: Escape.text("Markdown supported · Ctrl/⌘-Enter to send"),
 			}),
 		]),
 	})
