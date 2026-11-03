@@ -607,6 +607,6 @@ fn linger(io: Io, connection: net.Stream, ms: u32) void {
 /// A status written with no request to answer (a head that never came
 /// whole, or was too big), then the close.
 fn raw(http: *std.http.Server, status: std.http.Status) void {
-    http.out.print("HTTP/1.1 {d} {s}\r\nconnection: close\r\ncontent-length: 0\r\n\r\n", .{ @intFromEnum(status), status.phrase() orelse "" }) catch return;
+    http.out.print("HTTP/1.1 {d} {s}\r\nconnection: close\r\ncontent-length: 0\r\n\r\n", .{ @backingInt(status), status.phrase() orelse "" }) catch return;
     http.out.flush() catch {};
 }

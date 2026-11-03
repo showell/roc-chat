@@ -90,6 +90,34 @@
 //!      navigation: `Sec-Fetch-Site` cross-site, `Sec-Fetch-Mode`
 //!      navigate): 200, the page.
 //!
+//! Then the agents (`agentSteps`), on the users the server's first start
+//! made:
+//!
+//!  36. the first start's files: Steve's account, `general` with him in it,
+//!      the counter of ids at 2;
+//!  37. GET /agents: Steve's page, a form that makes an agent, no agent;
+//!  38. POST /agents `name=CC`: a 303 to /agents, CC's account on disk as
+//!      Steve's agent, the counter at 3; Steve adds CC to `general` in its
+//!      members file, and makes `private`, without CC, the same way;
+//!  39. invite CC: the page shows its code, once; redeem it: 200, the key on
+//!      one line; redeem it again: 401;
+//!  40. an invite whose `expires` has passed (its file set back): 401;
+//!  41. CC's stream opened with the key: a 200 event stream;
+//!  42. POST as CC with the key: a 303, and the message's author on disk is
+//!      CC; its stream's event is that message, in JSON;
+//!  43. Steve posts in `private`, then in `general`: CC's stream's next
+//!      event is `general`'s, so nothing of `private`'s came; CC's POST to
+//!      `private` is a 403;
+//!  44. a stream opened `?since=` CC's message's date: the messages of that
+//!      second before it, then CC's, then #general's next, and nothing of
+//!      #private's;
+//!  45. GET `/raw` with the key: 200, plain text, the transcript's bytes;
+//!  46. a wrong secret, a malformed bearer, and a key used to make an agent,
+//!      to invite, to redeem, or to list agents: 401, 401, then 403 each;
+//!  47. revoke the key: a 303, and the key is then a 401;
+//!  48. on disk: the key's hash is SHA-256 of its secret, and no file under
+//!      the data root holds the key's secret or any invite's code.
+//!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
 //!
@@ -449,7 +477,203 @@ pub fn main(init: std.process.Init) !void {
     try t.check("follow a link to the channel's page from another site: 200, the page", followed.status == 200 and
         has(followed.body, "id=\"msg-12\""));
 
+    try agentSteps(a, io, port, data, t);
+
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
+}
+
+/// Steps 36 to 48: an agent made, invited, redeemed, posting, listening
+/// and reading, each refusal, and what is on disk after.
+fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !void {
+    // 36.
+    try t.check("the first start's files: Steve's account, #general's members, the counter of ids", std.mem.eql(u8, try readFile(a, io, data, "auth/1/name"), "Steve") and
+        !(try exists(io, data, "auth/1/owner")) and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/general.channel"), "1\n") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "2\n"));
+
+    // 37.
+    const empty = try get(a, io, port, "/agents");
+    try t.check("GET /agents: Steve's page, a form making an agent, no agent yet", empty.status == 200 and
+        has(empty.body, "<form method=\"post\" action=\"/agents\"><textarea name=\"name\" required></textarea>") and !has(empty.body, "<h1>"));
+
+    // 38.
+    const made = try post(a, io, port, .{ .path = "/agents", .form = "name=CC" });
+    try t.check("POST /agents name=CC: 303 to /agents; CC's account on disk, Steve's; the counter at 3", made.status == 303 and
+        std.mem.eql(u8, made.header("location") orelse "", "/agents") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/name"), "CC") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/owner"), "1") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "3\n"));
+    try data.writeFile(io, .{ .sub_path = "chat/channel/general.channel", .data = "1\n2\n" });
+    try data.writeFile(io, .{ .sub_path = "chat/channel/private.channel", .data = "1\n" });
+    const listed = try get(a, io, port, "/agents");
+    try t.check("Steve adds CC to #general by its members file; /agents lists CC with its invite button", listed.status == 200 and
+        has(listed.body, "<h1>CC (id 2)</h1>") and has(listed.body, "action=\"/agents/2/invites\""));
+
+    // 39.
+    const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const code = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const redeemed = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{code}) });
+    const key = std.mem.trimEnd(u8, redeemed.body, "\n");
+    const again = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{code}) });
+    try t.check("invite CC: its code shown once; redeemed: 200, the key on one line, `2-` and 64 hex digits; redeemed again: 401", invited.status == 200 and
+        isToken(code, "2-") and redeemed.status == 200 and isToken(key, "2-") and !std.mem.eql(u8, key, code) and
+        std.mem.eql(u8, redeemed.header("content-type") orelse "", "text/plain; charset=utf-8") and
+        again.status == 401 and std.mem.eql(u8, again.body, "The invite code is not live.\n"));
+    const bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{key});
+
+    // 40.
+    const second = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const late_code = between(second.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    try data.writeFile(io, .{ .sub_path = "auth/2/invites/2/expires", .data = "1000" });
+    const late = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{late_code}) });
+    try t.check("an invite past its expiry (its file set back): 401, and it is still live on disk", isToken(late_code, "2-") and late.status == 401 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/invites/2/state"), "live"));
+
+    // 41.
+    var listening = try Stream.openWith(a, io, port, "/agents/stream", bearer);
+    defer listening.close();
+    try t.check("CC's stream, opened with its key: a 200 event stream", listening.isEventStream());
+
+    // 42.
+    const before_cc = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const cc_posted = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Hello+from+CC", .more = bearer });
+    const after_cc = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const added = after_cc[@min(before_cc.len, after_cc.len)..];
+    const cc_event = try listening.event();
+    try t.check("POST as CC with its key: 303; the record on disk is CC's", cc_posted.status == 303 and
+        std.mem.startsWith(u8, added, "-------------\nMSG_gopher-roc_13\nfrom: CC\ndate: ") and std.mem.endsWith(u8, added, "\n\nHello from CC\n\n"));
+    try t.check("CC's stream: that message, one line of JSON", std.mem.startsWith(u8, cc_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":13,\"from\":\"CC\",\"date\":\"") and
+        std.mem.endsWith(u8, cc_event, "\",\"markdown\":\"Hello from CC\"}\n\n"));
+
+    // 43.
+    const in_private = try post(a, io, port, .{ .path = "/chat/channel/private/secrets", .form = "markdown=Not+for+CC" });
+    const in_general = try post(a, io, port, .{ .path = channel_url, .form = "markdown=For+CC+too" });
+    const next_event = try listening.event();
+    const cc_private = try post(a, io, port, .{ .path = "/chat/channel/private/secrets", .form = "markdown=Let+me+in", .more = bearer });
+    const cc_private_read = try getWith(a, io, port, "/chat/channel/private/secrets/raw", bearer);
+    try t.check("Steve posts in #private, then #general: CC's next event is #general's, none of #private's", in_private.status == 303 and in_general.status == 303 and
+        std.mem.startsWith(u8, next_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":14,\"from\":\"Steve\",") and
+        has(next_event, "\"markdown\":\"For CC too\"") and !has(next_event, "Not for CC"));
+    try t.check("CC's key posting to, or reading, #private, which CC is not in: 403 each", cc_private.status == 403 and cc_private_read.status == 403);
+
+    // 44.
+    const date = between(cc_event, "\"date\":\"", "\"") orelse "";
+    var caught_up = try Stream.openWith(a, io, port, try std.fmt.allocPrint(a, "/agents/stream?since={s}", .{date}), bearer);
+    defer caught_up.close();
+    // Messages of the same second that came before CC's come first; then
+    // CC's, then #general's next, and never #private's.
+    var caught: std.ArrayList([]const u8) = .empty;
+    while (caught.items.len < 12) {
+        const event = try caught_up.event();
+        try caught.append(a, event);
+        if (std.mem.eql(u8, event, next_event)) break;
+    }
+    var at_cc: ?usize = null;
+    var private_seen = false;
+    for (caught.items, 0..) |event, i| {
+        if (std.mem.eql(u8, event, cc_event)) at_cc = i;
+        if (has(event, "Not for CC")) private_seen = true;
+    }
+    try t.check("a stream since CC's message's date: CC's message, then #general's next, none of #private's", caught_up.isEventStream() and
+        at_cc != null and at_cc.? + 2 == caught.items.len and std.mem.eql(u8, caught.items[caught.items.len - 1], next_event) and !private_seen);
+
+    // 45.
+    const raw = try getWith(a, io, port, channel_url ++ "/raw", bearer);
+    try t.check("GET /raw with the key: 200, plain text, exactly the transcript's bytes", raw.status == 200 and
+        std.mem.eql(u8, raw.header("content-type") orelse "", "text/plain; charset=utf-8") and
+        std.mem.eql(u8, raw.body, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024))));
+
+    // 46.
+    const zeros: [64]u8 = @splat('0');
+    const wrong = try std.fmt.allocPrint(a, "authorization: Bearer 2-{s}\r\n", .{&zeros});
+    const by_wrong = try getWith(a, io, port, channel_url ++ "/raw", wrong);
+    const by_malformed = try getWith(a, io, port, channel_url ++ "/raw", "authorization: Bearer 2-xyz\r\n");
+    const key_makes = try post(a, io, port, .{ .path = "/agents", .form = "name=Rogue", .more = bearer });
+    const key_invites = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "", .more = bearer });
+    const key_redeems = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{late_code}), .more = bearer });
+    const key_lists = try getWith(a, io, port, "/agents", bearer);
+    try t.check("a wrong secret and a malformed bearer: 401 each", by_wrong.status == 401 and by_malformed.status == 401);
+    try t.check("a key making an agent, inviting, redeeming, listing: 403 each; nothing made", key_makes.status == 403 and key_invites.status == 403 and
+        key_redeems.status == 403 and key_lists.status == 403 and !(try exists(io, data, "auth/3")) and
+        !(try exists(io, data, "auth/2/invites/3")) and !(try exists(io, data, "auth/2/keys/2")));
+
+    // 47.
+    const revoked = try post(a, io, port, .{ .path = "/agents/2/keys/1/revoke", .form = "" });
+    const after_revoke = try getWith(a, io, port, channel_url ++ "/raw", bearer);
+    try t.check("revoke the key: 303; the key is then a 401; its state on disk revoked", revoked.status == 303 and after_revoke.status == 401 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/1/state"), "revoked"));
+
+    // 48.
+    const secret_hex = key["2-".len..];
+    var secret: [32]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&secret, secret_hex);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(&secret, &digest, .{});
+    const digest_hex = std.fmt.bytesToHex(digest, .lower);
+    const kept = try readFile(a, io, data, "auth/2/keys/1/hash");
+    var secrets_on_disk: usize = 0;
+    var on_disk: std.ArrayList([]const u8) = .empty;
+    try allFiles(a, io, data, "", &on_disk);
+    for (on_disk.items) |path| {
+        const bytes = try data.readFileAlloc(io, path, a, .limited(16 * 1024 * 1024));
+        for ([_][]const u8{ secret_hex, code["2-".len..], late_code["2-".len..] }) |hex| {
+            if (has(bytes, hex)) secrets_on_disk += 1;
+        }
+    }
+    try t.check("on disk: the key's hash is SHA-256 of its secret; no file holds the secret or a code", std.mem.eql(u8, kept, &digest_hex) and
+        on_disk.items.len > 10 and secrets_on_disk == 0);
+}
+
+/// The file `path` of `dir`, whole.
+fn readFile(a: std.mem.Allocator, io: Io, dir: Io.Dir, path: []const u8) ![]const u8 {
+    return dir.readFileAlloc(io, path, a, .limited(1024 * 1024)) catch |e| switch (e) {
+        error.FileNotFound => "(none)",
+        else => e,
+    };
+}
+
+/// Whether anything is at `path` in `dir`.
+fn exists(io: Io, dir: Io.Dir, path: []const u8) !bool {
+    _ = dir.statFile(io, path, .{}) catch |e| switch (e) {
+        error.FileNotFound => return false,
+        else => return e,
+    };
+    return true;
+}
+
+/// Every file under the folder `path` of `dir` (`""` for `dir` itself),
+/// each by its path from `dir`, appended to `out`.
+fn allFiles(a: std.mem.Allocator, io: Io, dir: Io.Dir, path: []const u8, out: *std.ArrayList([]const u8)) !void {
+    var folder = if (path.len == 0) try dir.openDir(io, ".", .{ .iterate = true }) else try dir.openDir(io, path, .{ .iterate = true });
+    defer folder.close(io);
+    var it = folder.iterate();
+    while (try it.next(io)) |entry| {
+        const sub = if (path.len == 0) try a.dupe(u8, entry.name) else try std.fmt.allocPrint(a, "{s}/{s}", .{ path, entry.name });
+        switch (entry.kind) {
+            .directory => try allFiles(a, io, dir, sub, out),
+            .file => try out.append(a, sub),
+            else => {},
+        }
+    }
+}
+
+/// The text of `body` between the first `from` and the `to` after it.
+fn between(body: []const u8, from: []const u8, to: []const u8) ?[]const u8 {
+    const start = (std.mem.indexOf(u8, body, from) orelse return null) + from.len;
+    const end = std.mem.indexOfPos(u8, body, start, to) orelse return null;
+    return body[start..end];
+}
+
+/// Whether `text` is `prefix` and then 64 lowercase hex digits.
+fn isToken(text: []const u8, prefix: []const u8) bool {
+    if (text.len != prefix.len + 64 or !std.mem.startsWith(u8, text, prefix)) return false;
+    for (text[prefix.len..]) |c| if (!std.ascii.isDigit(c) and !(c >= 'a' and c <= 'f')) return false;
+    return true;
+}
+
+/// A GET of `path`, with `more` headers (each ending CRLF).
+fn getWith(a: std.mem.Allocator, io: Io, port: u16, path: []const u8, more: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}\r\n", .{ path, port, more }));
 }
 
 /// A stream held open: its head read whole, then its events one at a
@@ -471,7 +695,7 @@ const Stream = struct {
     }
 
     /// A stream opened with `more` headers, each ending CRLF.
-    fn openWith(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8, more: []const u8) !*Stream {
+    fn openWith(a: std.mem.Allocator, io: Io, port: u16, path: []const u8, more: []const u8) !*Stream {
         const s = try a.create(Stream);
         s.a = a;
         s.io = io;
@@ -480,7 +704,7 @@ const Stream = struct {
         s.connection = try addr.connect(io, .{ .mode = .stream });
         s.watchdog = try io.concurrent(shutAfter, .{ io, s.connection, stream_ms });
         var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}\r\n", .{ port, more }));
+        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}\r\n", .{ path, port, more }));
         s.reader = s.connection.reader(io, s.buf);
         var head: std.ArrayList(u8) = .empty;
         while (!std.mem.endsWith(u8, head.items, "\r\n\r\n")) try head.append(a, try s.reader.interface.takeByte());
