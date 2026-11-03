@@ -101,7 +101,7 @@ apoorvavpendse@gmail.com would be better
 
 - **Markdown is stored exactly as written.** A body line that is exactly the separator `-------------` is stored as `\-------------` and turned back on reading. This escaping happens at the chat's edge, outside the markdown processor. When a message looks hostile, refuse it.
 - **Reactions:** one file per conversation, beside its messages, in the Zig chat's JSONL format.
-- **Users:** one human-readable file per user, easy to find and named by name and id (e.g. `apoorva-2.info`). A user may have several files, so that high-stakes data (passwords) is kept apart from low-stakes data (preferences).
+- **Users:** a folder per user, named by the user's numeric id, holding one small human-readable file per fact, as the Zig chat keeps them. A user's lifetime upload total is `users/<id>/upload-bytes`, its decimal digits alone. High-stakes facts, such as access (a password, an API key), are kept apart from lower-stakes ones (the upload total, preferences): the Zig chat keeps its account store under one root and each user's other state under another.
 - **Feel like REST over the file system.** A database isn't ruled out in the long run.
 - **Anything that can become a URL or a file name is strictly named**, which covers channels and topics. Escaping is allowed but used pragmatically: our users write English, which fits in ASCII. Message text can be any unicode, emoji included.
 
