@@ -71,8 +71,7 @@ UploadRoute :: [].{
 		match FileSystem.read_uploaded_image!(key, image) {
 			Ok(bytes) => HttpAnswer.image({ content_type: image.content_type(), bytes })
 			Err(Missing) => HttpAnswer.notice(404, { title: "Not found", said: "No such image." })
-			Err(PathRefused) => HttpAnswer.notice(500, { title: "Failed", said: "The file system answered PathRefused." })
-			Err(Failed) => HttpAnswer.notice(500, { title: "Failed", said: "The file system answered Failed." })
+			Err(fault) => HttpAnswer.notice(500, { title: "Failed", said: FileSystem.fault_words(fault) })
 		}
 }
 
@@ -122,11 +121,7 @@ keep_upload! : {
 		TooLarge,
 		LimitReached,
 		NotANumber,
-		NotUtf8,
-		AlreadyExists,
-		MissingDirectory,
-		PathRefused,
-		Failed,
+		FileSystem(FileSystem.Fault),
 	],
 )
 keep_upload! = |
@@ -154,7 +149,7 @@ keep_upload! = |
 			# image's 500 either way, and the host logs a failed write of the
 			# total.
 			_ = FileSystem.replace_upload_total!(folder, before)
-			Err(fault)
+			Err(FileSystem(fault))
 		}
 	}
 }
@@ -168,34 +163,33 @@ U64 => Try(
 	[
 		LimitReached,
 		NotANumber,
-		NotUtf8,
-		MissingDirectory,
-		PathRefused,
-		Failed,
+		FileSystem(FileSystem.Fault),
 	],
 )
 reserve_upload_bytes! = |folder, adding| {
-	before = FileSystem.read_upload_total!(folder)?
+	before =
+		match FileSystem.read_upload_total!(folder) {
+			Ok(total) => Ok(total)
+			Err(NotANumber) => Err(NotANumber)
+			Err(NotUtf8) => Err(FileSystem(NotUtf8))
+			Err(PathRefused) => Err(FileSystem(PathRefused))
+			Err(Failed) => Err(FileSystem(Failed))
+		}?
 	after = before.with_upload(adding)?
-	FileSystem.replace_upload_total!(folder, after)?
+	FileSystem.replace_upload_total!(folder, after) ? |fault| FileSystem(fault)
 	Ok(before)
 }
 
 ## An upload refused, in the old chat's words, as a line of plain text; or
-## one that couldn't be counted or kept, a 500 naming what the host
-## answered (and the host's log says which file, and why), or saying that
-## the user's upload total is no number.
+## one that couldn't be counted or kept, a 500 saying that the user's
+## upload total is no number, or what the file system answered.
 upload_refusal_response : [
 	NoFile,
 	NotAnImage,
 	TooLarge,
 	LimitReached,
 	NotANumber,
-	NotUtf8,
-	AlreadyExists,
-	MissingDirectory,
-	PathRefused,
-	Failed,
+	FileSystem(FileSystem.Fault),
 ] -> Http.Response
 upload_refusal_response = |why|
 	match why {
@@ -204,11 +198,7 @@ upload_refusal_response = |why|
 		TooLarge => HttpAnswer.text(413, "image too large — the limit is 10 MB.")
 		LimitReached => HttpAnswer.text(403, "Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GB upload allowance.")
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
-		NotUtf8 => HttpAnswer.text(500, "Upload failed: the file system answered NotUtf8.")
-		AlreadyExists => HttpAnswer.text(500, "Upload failed: the file system answered AlreadyExists.")
-		MissingDirectory => HttpAnswer.text(500, "Upload failed: the file system answered MissingDirectory.")
-		PathRefused => HttpAnswer.text(500, "Upload failed: the file system answered PathRefused.")
-		Failed => HttpAnswer.text(500, "Upload failed: the file system answered Failed.")
+		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileSystem.fault_words(fault)}")
 	}
 
 ## The answer to an upload, as the old chat's was: the image's URL, the
@@ -299,8 +289,10 @@ expect {
 	answered = upload_refusal_response(NotANumber)
 	answered.status == 500 and answered.body == "Upload failed: your upload total is not a number.\n".to_utf8()
 }
-expect upload_refusal_response(Failed).status == 500
-expect upload_refusal_response(AlreadyExists).body == "Upload failed: the file system answered AlreadyExists.\n".to_utf8()
+expect {
+	answered = upload_refusal_response(FileSystem(AlreadyExists))
+	answered.status == 500 and answered.body == "Upload failed. The file system answered AlreadyExists.\n".to_utf8()
+}
 # The answer: the URL and the name, the name's quote, backslash and
 # control bytes escaped, so it stays one JSON string.
 expect

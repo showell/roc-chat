@@ -1,21 +1,22 @@
-## **THE FILE SYSTEM, THE CHAT'S ONLY WAY TO ITS FILES**: the one module
-## that calls the host's file primitives (platform/Host.roc). Each function
-## turns domain values into a path and calls one or two primitives, so the
-## chat's rules are here and the host's stay general.
+## This module is the chat's only way to its files: the one module that
+## calls the host's file primitives (platform/Host.roc). Each function turns
+## domain values into a path and calls one or two primitives, so the chat's
+## rules are here and the host's stay general.
 ##
-## **CALLERS NEVER PASS A PATH**: a path is built here from a typed key
+## Callers never pass a path. A path is built here from a typed key
 ## (`ConversationKey`, whose parts are the layout's one home), so no caller
 ## can name a file outside the layout.
 ##
-## **SYMMETRIC TYPES, EACH OF `Transcript`'S MAKING**: a read answers a
-## whole `Utf8Transcript`, untrusted until `Transcript.decode` reads it; an
+## The transcript's types are `Transcript`'s making. A read answers a whole
+## `Utf8Transcript`, untrusted until `Transcript.decode` reads it, and an
 ## append takes one message's `Utf8TranscriptMessage`, which only
 ## `Transcript` makes.
 ##
-## **EVERY FAILURE NAMED**: `Missing` (no transcript yet), and the host's
-## own, passed on as it said them (`NotUtf8`, `PathRefused`, `Failed`,
-## `MissingDirectory`). Every one but `Missing` is a bug or a broken disk,
-## and the caller answers it loudly.
+## Every failure is named (`Fault`): `Missing` (no such file yet),
+## `AlreadyExists` (a name taken), and the host's own, passed on as it said
+## them (`NotUtf8`, `PathRefused`, `MissingDirectory`, `Failed`). Each
+## function answers only the ones it can meet. Every one but `Missing` is a
+## bug or a broken disk, and the caller answers it loudly, in `fault_words`.
 ##
 ## A conversation's uploaded images are kept in its folder, under
 ## `uploads/`, each by its own name (`UploadedImage`), as bytes.
@@ -31,8 +32,23 @@ import UserFolder
 
 FileSystem :: [].{
 
-	## **A CONVERSATION'S TRANSCRIPT, THE WHOLE FILE**, unchecked; unless
-	## there is none yet (`Missing`), or the host's read failed.
+	## Every failure a function here answers, as `fault_words` takes it.
+	Fault : [
+		Missing,
+		AlreadyExists,
+		NotUtf8,
+		PathRefused,
+		MissingDirectory,
+		Failed,
+	]
+
+	## What the file system answered, in words for a refusal. The host's
+	## log says which file, and why.
+	fault_words : FileSystem.Fault -> Str
+	fault_words = |fault| "The file system answered ${fault_name(fault)}."
+
+	## A conversation's transcript, the whole file, unchecked; unless there
+	## is none yet (`Missing`), or the host's read failed.
 	read_transcript! : ConversationKey => Try(
 		Transcript.Utf8Transcript,
 		[
@@ -53,9 +69,10 @@ FileSystem :: [].{
 		}
 	}
 
-	## **ONE MESSAGE'S RECORD, AT THE END OF ITS CONVERSATION'S TRANSCRIPT**:
-	## the conversation's folder made as needed, then the record appended
-	## (the file made when it is the first); unless the host refused.
+	## One message's record, added at the end of its conversation's
+	## transcript: the conversation's folder made as needed, then the record
+	## appended (the file made when it is the first); unless the host
+	## refused.
 	append_message! : ConversationKey,
 	Transcript.Utf8TranscriptMessage => Try(
 		{},
@@ -184,7 +201,7 @@ uploads_folder_path = |key| "${folder_path(key)}/uploads"
 uploaded_image_path : ConversationKey, UploadedImage -> List(U8)
 uploaded_image_path = |key, image| "${uploads_folder_path(key)}/${image.name()}".to_utf8()
 
-## **A CONVERSATION'S FOLDER**: its key's parts. Its transcript is the file
+## A conversation's folder: its key's parts. Its transcript is the file
 ## `transcript` in it.
 folder_path : ConversationKey -> Str
 folder_path = |key| Str.join_with(key.parts(), "/")
@@ -201,3 +218,27 @@ make_folder! = |path|
 		PathRefused => Err(PathRefused)
 		Failed => Err(Failed)
 	}
+
+## A fault, by its tag's name.
+fault_name : FileSystem.Fault -> Str
+fault_name = |fault|
+	match fault {
+		Missing => "Missing"
+		AlreadyExists => "AlreadyExists"
+		NotUtf8 => "NotUtf8"
+		PathRefused => "PathRefused"
+		MissingDirectory => "MissingDirectory"
+		Failed => "Failed"
+	}
+
+# ── tests
+# Every fault, in words.
+expect
+	[
+		(Missing, "Missing"),
+		(AlreadyExists, "AlreadyExists"),
+		(NotUtf8, "NotUtf8"),
+		(PathRefused, "PathRefused"),
+		(MissingDirectory, "MissingDirectory"),
+		(Failed, "Failed"),
+	].all(|(fault, name)| FileSystem.fault_words(fault) == "The file system answered ${name}.")

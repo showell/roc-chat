@@ -228,15 +228,7 @@ Refusal : [
 	BadCount,
 	NoSuchConversation(ConversationKey),
 	Unreadable(TranscriptRefusal.Why),
-	FileSystem(
-		[
-			Missing,
-			NotUtf8,
-			PathRefused,
-			MissingDirectory,
-			Failed,
-		],
-	),
+	FileSystem(FileSystem.Fault),
 	Backdated,
 	Full,
 	FileFull,
@@ -259,7 +251,7 @@ refusal_notice = |why|
 		BadCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(BadCount) } }
 		NoSuchConversation(key) => { status: 404, words: { title: "Not found", said: "No such conversation: ${key.url_path(Page)}" } }
 		Unreadable(fault) => { status: 500, words: { title: "Not a transcript", said: "Not a transcript: ${TranscriptRefusal.words(fault)}." } }
-		FileSystem(fault) => { status: 500, words: { title: "Failed", said: "The file system answered ${file_system_fault_name(fault)}." } }
+		FileSystem(fault) => { status: 500, words: { title: "Failed", said: FileSystem.fault_words(fault) } }
 		Backdated => conversation_refusal("The message is dated before the conversation's latest.")
 		Full => conversation_refusal("The conversation holds as many messages as it can.")
 		FileFull => conversation_refusal("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
@@ -309,23 +301,6 @@ unnumbered_message_from_post = |
 	time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
 	Ok({ payload: { author: acting.user().author(), markdown }, time })
 }
-
-## A fault the host's file system answered, by its tag's name.
-file_system_fault_name : [
-	Missing,
-	NotUtf8,
-	PathRefused,
-	MissingDirectory,
-	Failed,
-] -> Str
-file_system_fault_name = |fault|
-	match fault {
-		Missing => "Missing"
-		NotUtf8 => "NotUtf8"
-		PathRefused => "PathRefused"
-		MissingDirectory => "MissingDirectory"
-		Failed => "Failed"
-	}
 
 # ── tests
 ## Steve, signed in, as a test assumes him.
@@ -405,14 +380,7 @@ expect
 	].all(|(why, said)| refusal_notice(why) == { status: 409, words: { title: "Message refused", said } })
 expect refusal_notice(ClockOutOfRange) == { status: 500, words: { title: "Message refused", said: "The server's clock is out of range." } }
 expect refusal_notice(Unreadable(TranscriptNotUtf8)) == { status: 500, words: { title: "Not a transcript", said: "Not a transcript: it is not UTF-8." } }
-expect
-	[
-		(Missing, "Missing"),
-		(NotUtf8, "NotUtf8"),
-		(PathRefused, "PathRefused"),
-		(MissingDirectory, "MissingDirectory"),
-		(Failed, "Failed"),
-	].all(|(fault, name)| refusal_notice(FileSystem(fault)) == { status: 500, words: { title: "Failed", said: "The file system answered ${name}." } })
+expect refusal_notice(FileSystem(PathRefused)) == { status: 500, words: { title: "Failed", said: "The file system answered PathRefused." } }
 # A refusal's page: its status, and its notice's title and words.
 expect {
 	answered = refusal_page(NoSuchConversation(plans_key))
