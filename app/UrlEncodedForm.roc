@@ -20,37 +20,37 @@ UrlEncodedForm :: [].{
 			NotUtf8,
 		],
 	)
-	markdown_field = |body| field({ body, name: UrlEncodedForm.markdown_name })
+	markdown_field = |body| UrlEncodedForm.field({ body, name: UrlEncodedForm.markdown_name })
 
 	## The name of the field that holds a message's markdown. The compose
 	## box's textarea takes this name (`Page`).
 	markdown_name : Str
 	markdown_name = "markdown"
-}
 
-## The field `name` of `body`, decoded and still unchecked; unless the body
-## has no such field (`MissingField`), has it more than once
-## (`RepeatedField`), has a `%` in it that is not followed by two hex digits
-## (`BadEscape`), or its decoded value is not UTF-8 (`NotUtf8`).
-field : { body : List(U8), name : Str } -> Try(
-	UnvalidatedString,
-	[
-		MissingField,
-		RepeatedField,
-		BadEscape,
-		NotUtf8,
-	],
-)
-field = |{ body, name }| {
-	wanted = name.to_utf8()
-	values = body.split_on('&').keep_if(|pair| field_name(pair) == wanted).map(field_value)
-	match values {
-		[] => Err(MissingField)
-		[value] => {
-			bytes = decode_value(value)?
-			UnvalidatedString.from_utf8(bytes)
+	## The field `name` of `body`, decoded and still unchecked; unless the body
+	## has no such field (`MissingField`), has it more than once
+	## (`RepeatedField`), has a `%` in it that is not followed by two hex digits
+	## (`BadEscape`), or its decoded value is not UTF-8 (`NotUtf8`).
+	field : { body : List(U8), name : Str } -> Try(
+		UnvalidatedString,
+		[
+			MissingField,
+			RepeatedField,
+			BadEscape,
+			NotUtf8,
+		],
+	)
+	field = |{ body, name }| {
+		wanted = name.to_utf8()
+		values = body.split_on('&').keep_if(|pair| field_name(pair) == wanted).map(field_value)
+		match values {
+			[] => Err(MissingField)
+			[value] => {
+				bytes = decode_value(value)?
+				UnvalidatedString.from_utf8(bytes)
+			}
+			_ => Err(RepeatedField)
 		}
-		_ => Err(RepeatedField)
 	}
 }
 

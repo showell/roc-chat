@@ -118,6 +118,11 @@ Host := [].{
 	## is the app's bug, and the host stops.
 	fill_with_random_bytes! : U64 => List(U8)
 
+	## The SHA-256 digest of `bytes`: 32 bytes. A secret the chat hands out
+	## is kept only as its digest, so the hash is the host's, as the Roc
+	## holds no crypto of its own.
+	sha256_of_bytes! : List(U8) => List(U8)
+
 	## `bytes` sent, as they are, to every stream held open on `key`
 	## (`Http.Response`'s `Stream`); none there, and nothing is sent.
 	publish_bytes_to_streams_on_key! : List(U8), List(U8) => {}

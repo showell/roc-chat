@@ -84,8 +84,10 @@ pub const Server = struct {
     /// The body bytes charged to requests not yet answered.
     body_bytes_in_flight: std.atomic.Value(usize) = .init(0),
 
-    /// Listens on 127.0.0.1 at `at_port`. Tests pass 0 to get any free port.
+    /// Starts the app on `root` (`start_app`), then listens on 127.0.0.1
+    /// at `at_port`. Tests pass 0 to get any free port.
     pub fn listen(io: Io, gpa: std.mem.Allocator, at_port: u16, limits: Limits, root: *const files.DataRoot) !Server {
+        try start_app(io, gpa, root);
         const addr: net.IpAddress = try .parse("127.0.0.1", at_port);
         return .{
             .io = io,
@@ -323,6 +325,21 @@ pub const Server = struct {
         return true;
     }
 };
+
+/// The app's start, once, before the server listens (`roc_start`): it
+/// makes the first data in an empty data folder, and refuses a folder that
+/// holds part of a chat, so the server never serves from one.
+pub fn start_app(io: Io, gpa: std.mem.Allocator, root: *const files.DataRoot) error{AppStartFailed}!void {
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    seam.begin(.{ .arena = arena_state.allocator(), .root = root, .io = io });
+    const started = seam.roc_start();
+    seam.end();
+    if (started != .ready) {
+        log.err("the app cannot start on its data folder: it holds part of a chat, or cannot be read", .{});
+        return error.AppStartFailed;
+    }
+}
 
 /// What the turn gives a connection: a whole answer to write, or a stream
 /// and its subscriber.

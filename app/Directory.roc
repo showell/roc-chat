@@ -14,6 +14,7 @@ import Channels
 import Dm
 import Name
 import Place
+import UserId
 import UserPair
 import Users
 
@@ -132,6 +133,44 @@ Directory :: {
 			}
 		}
 
+	## The directory of `users` and `channels`, as their files hold them;
+	## unless two of their names are the same name (`NameTaken`), or a
+	## channel has a member no user is (`UnknownMember`, naming it).
+	from_files : { users : Users, channels : Channels } -> Try(
+		Directory,
+		[NameTaken, UnknownMember(ChannelName)],
+	)
+	from_files = |{ users, channels }| {
+		all_keys = users.to_list().map(|user| user.name().key()).concat(channels.to_list().map(|channel| channel.name().key()))
+		keys = Set.from_list(all_keys)
+		if (keys.len() != all_keys.len())
+			Err(NameTaken)
+		else
+			match channels.to_list().find_first(
+				|channel| !channel.members().all(
+					|id| is_user(
+						users,
+						id,
+					),
+				),
+			) {
+				Ok(stray) => Err(UnknownMember(stray.name()))
+				Err(NotFound) => Ok(
+					Directory.(
+						{
+							users,
+							channels,
+							keys,
+						},
+					),
+				)
+			}
+	}
+
+	## The founder: Steve, id 1, the first human.
+	founder : Directory -> Users.User
+	founder = |Directory.(d)| d.users.user(UserId.steve) ?? crash "Directory.founder: every directory holds its founder, id 1"
+
 	users : Directory -> Users
 	users = |Directory.(d)| d.users
 
@@ -157,6 +196,14 @@ admit_new_user = |Directory.(d), grown| {
 		user: grown.user,
 	})
 }
+
+## Whether `users` holds the user `id`.
+is_user : Users, UserId -> Bool
+is_user = |users, id|
+	match users.user(id) {
+		Ok(_) => Bool.True
+		Err(NoSuchUser) => Bool.False
+	}
 
 ## The taken names' keys with `key` added; unless it is already there.
 claim_key : Set(Name.Key), Name.Key -> Try(Set(Name.Key), [NameTaken])

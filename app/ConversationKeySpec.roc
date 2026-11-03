@@ -38,6 +38,7 @@ resource_name = |resource|
 		Send => "send"
 		Upload => "upload"
 		UploadedImage(image) => "image ${image.name()}"
+		Raw => "raw"
 	}
 
 ## The parts of the key `path` names in `with_room`, between spaces.
@@ -95,6 +96,9 @@ expect read_back("/chat/dm/1_2/send") == Ok("page /chat/dm/1_2/send")
 expect read_back("/chat/channel/plans-room/plans/upload") == Ok("upload /chat/channel/plans-room/plans/upload")
 expect read_back("/chat/dm/1_2/upload/upload") == Ok("upload /chat/dm/1_2/upload/upload")
 expect read_back("/chat/dm/1_2/upload") == Ok("page /chat/dm/1_2/upload")
+expect read_back("/chat/channel/plans-room/plans/raw") == Ok("raw /chat/channel/plans-room/plans/raw")
+expect read_back("/chat/dm/1_2/raw/raw") == Ok("raw /chat/dm/1_2/raw/raw")
+expect read_back("/chat/dm/1_2/raw") == Ok("page /chat/dm/1_2/raw")
 expect read_back("/chat/dm/1_2/plans/uploads/${image_name}") == Ok("image ${image_name} /chat/dm/1_2/plans/uploads/${image_name}")
 expect
 	read_back("/chat/channel/plans-room/plans/uploads/${image_name}")
@@ -111,6 +115,9 @@ expect
 		"/chat/dm/1_2/plans/Send",
 		"/chat/dm/1_2/plans/send/x",
 		"/chat/dm/1_2/plans/upload/",
+		"/chat/dm/1_2/plans/raw/",
+		"/chat/dm/1_2/plans/Raw",
+		"/chat/dm/1_2/plans/raw/x",
 		"/chat/dm/1_2/plans/Upload",
 		"/chat/dm/1_2/plans/uploads",
 		"/chat/dm/1_2/plans/uploads/cat.png",
@@ -160,6 +167,7 @@ expect {
 			"/chat/dm/1_2/plans/send",
 			"/chat/dm/1_2/plans/upload",
 			"/chat/dm/1_2/plans/uploads/${image_name}",
+			"/chat/dm/1_2/plans/raw",
 		].all(|path| key(path) == page)
 		and key("/chat/dm/1_1/plans") != page
 		and key("/chat/dm/1_2/other") != page

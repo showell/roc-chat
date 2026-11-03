@@ -3,9 +3,9 @@
 //!
 //!   - the runtime: `roc_alloc`, `roc_realloc`, `roc_dealloc`,
 //!     `roc_crashed`, `roc_dbg` and `roc_expect_failed`;
-//!   - the app's three entries: `roc_page` (the demo), and `roc_admission`
-//!     and `roc_handle_http_request` (the server), and the records the
-//!     last two take and answer (platform/Http.roc);
+//!   - the app's four entries: `roc_page` (the demo), and `roc_start`,
+//!     `roc_admission` and `roc_handle_http_request` (the server), and the
+//!     records the last two take and answer (platform/Http.roc);
 //!   - the hosted functions (platform/Host.roc), each exported under its
 //!     Roc name and answered by host/file_primitives.zig, or, for a
 //!     stream's frames, host/bus.zig.
@@ -128,6 +128,9 @@ pub const RequestHead = extern struct {
     port: u16,
 };
 
+/// platform/main.roc's `start!` answer, alphabetical.
+pub const StartAnswer = enum(u8) { failed, ready };
+
 /// The admission's `verdict`, alphabetical.
 pub const Verdict = enum(u8) { admit, refuse };
 
@@ -212,6 +215,7 @@ fn hub_of(comptime what: []const u8) *bus.Hub {
 // ── the entries ─────────────────────────────────────────────────────────────
 
 pub extern fn roc_page(topic: RocBytes, transcript: RocBytes) callconv(.c) RocBytes;
+pub extern fn roc_start() callconv(.c) StartAnswer;
 pub extern fn roc_admission(head: RequestHead) callconv(.c) Admission;
 pub extern fn roc_handle_http_request(request: Request) callconv(.c) Response;
 
@@ -282,6 +286,15 @@ pub export fn fill_with_random_bytes(count: u64) callconv(.c) RocBytes {
     const n: usize = @intCast(count);
     files.fill_with_random_bytes(io_of(what), buf[0..n]) catch |e| std.debug.panic(what ++ ": {t}", .{e});
     return .from(buf[0..n]);
+}
+
+/// SHA-256, from Zig's standard library: the digest of a secret the app
+/// keeps in its place.
+pub export fn sha256_of_bytes(bytes: RocBytes) callconv(.c) RocBytes {
+    _ = call("sha256_of_bytes");
+    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(bytes.slice(), &digest, .{});
+    return .from(&digest);
 }
 
 /// The hub copies the bytes, so they outlive the call's arena.

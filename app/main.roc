@@ -1,27 +1,36 @@
-## This module is the app's edge. It holds the app's three entries, and
-## what stands in at the edge until the real thing exists.
+## This module is the app's edge. It holds the app's four entries, and the
+## one thing that stands in at the edge until the real thing exists.
 ##
 ## - `page` (the demo, host/demo.zig): a conversation's URL path and its
-##   transcript in, its page out, as the server would show it. The path's
-##   bytes become unchecked text (`UnvalidatedString`), then a
-##   `ConversationKey` found in the directory; the transcript's an unchecked
-##   file (`Transcript.Utf8Transcript`), then a Conversation; or a refusal's
-##   tags (`TranscriptRefusal` puts them in words).
-## - `admission` (the server, host/http.zig): a request's head in, before
-##   the host reads any body; out comes a refusal, or how large a body to
-##   read and how long to wait for it.
+##   transcript in, its page out, as the server would show it to the
+##   founder at the first start (`first_directory`). The path's bytes become
+##   unchecked text (`UnvalidatedString`), then a `ConversationKey` found in
+##   the directory; the transcript's an unchecked file
+##   (`Transcript.Utf8Transcript`), then a Conversation; or a refusal's tags
+##   (`TranscriptRefusal` puts them in words).
+## - `start!` (the server, host/http.zig, once, before it listens): when the
+##   data folder holds no chat yet, the founder, Steve, id 1, is made, with
+##   the channel `general`, of which he is the one member
+##   (`first_directory`). A folder that holds a chat is read, and one that
+##   holds part of one is refused, so the server never starts on it.
+## - `check_request_head!` (the server): a request's head in, before the host reads
+##   any body; out comes a refusal, or how large a body to read and how
+##   long to wait for it.
 ## - `handle_http_request!` (the server): a request in, its response out.
-##   `Route` chooses the answer; `ConversationRoute` gives it, or
-##   `UploadRoute` for an uploaded image, or a script the pages load. A
-##   conversation's stream is held by the signed-in user (`acting`).
+##   The directory is read from disk (`load_directory!`), who is acting is
+##   found (`load_acting_user!`), `Route` chooses the answer, `Access` decides
+##   whether the actor may read or post in a conversation, and
+##   `ConversationRoute`, `UploadRoute` or `AgentsRoute` gives the answer.
 ##
-## Two things stand in here: the directory, until one is stored
-## (`directory`), and who is acting, until sessions exist (`acting`, which
-## is dangerous).
+## Who is acting stands in until sessions exist: a request with no
+## `Authorization` header acts as Steve, signed in with nothing checked
+## (`load_acting_user!`, which is dangerous); one with a bearer key acts as the
+## agent its key admits, or is refused.
 app [
-	admission,
+	check_request_head!,
 	handle_http_request!,
 	page,
+	start!,
 ] {
 	md: "../../roc-markdown/package/main.roc",
 	pf: platform "../platform/main.roc",
@@ -29,15 +38,20 @@ app [
 
 import pf.Host
 import pf.Http
+import Access
 import Admin
+import AgentsRoute
 import ChannelName
+import Channels
 import Conversation
 import ConversationKey
 import ConversationRoute
 import Directory
+import FileSystem
 import HttpAnswer
 import Name
 import Page
+import RequestHeader
 import RequestOrigin
 import Route
 import SignedIn
@@ -47,6 +61,7 @@ import TranscriptRefusal
 import UnvalidatedString
 import UploadRoute
 import UploadedImage
+import UserId
 import Users
 
 ## The page of the conversation at the URL path `path`, from its
@@ -59,8 +74,8 @@ page = |path, transcript| {
 				Page.conversation({
 					conversation: found.conversation,
 					key: found.key,
-					viewer: acting,
-					users: directory.users(),
+					viewer: demo_viewer,
+					users: first_directory.users(),
 				})
 			Err(why) => Page.refusal(TranscriptRefusal.words(why))
 		}
@@ -68,23 +83,177 @@ page = |path, transcript| {
 }
 
 ## The conversation the host's bytes hold, decoded at the door: the URL
-## path read as a conversation's key in `directory`, then the transcript
-## file's bytes, by `Transcript.decode` under the key's topic.
-conversation : { path : List(U8), transcript : List(U8) } -> Try({ conversation : Conversation, key : ConversationKey }, _)
+## path read as a conversation's key in `first_directory`, then the
+## transcript file's bytes, by `Transcript.decode` under the key's topic.
+conversation : { path : List(U8), transcript : List(U8) } -> Try(
+	{ conversation : Conversation, key : ConversationKey },
+	_,
+)
 conversation = |{ path, transcript }| {
 	unchecked = UnvalidatedString.from_utf8(path) ? |NotUtf8| PathNotUtf8
-	found = ConversationKey.from_url_path({ path: unchecked, directory }) ? |why| Path(why)
-	decoded = Transcript.decode(found.key.topic(), Transcript.Utf8Transcript.unchecked_from_file(transcript))?
+	found = ConversationKey.from_url_path({
+		path: unchecked,
+		directory: first_directory,
+	}) ? |why| Path(why)
+	decoded = Transcript.decode(
+		found.key.topic(),
+		Transcript.Utf8Transcript.unchecked_from_file(transcript),
+	)?
 	Ok({ conversation: decoded, key: found.key })
+}
+
+## The demo's viewer: the founder, as the first start makes him.
+demo_viewer : SignedIn
+demo_viewer = SignedIn.dangerously_assume(first_directory.founder())
+
+## Whether the server may start on its data folder: `Ready` when the folder
+## holds a whole chat, or held none and now holds the first
+## (`first_directory`); else `Failed`, and the host stops.
+start! : {} => [Failed, Ready]
+start! = |{}|
+	match FileSystem.read_directory_files!({}) {
+		Err(_) => Failed
+		Ok(files) =>
+			match files.counter {
+				File(_) =>
+					match directory_from_files(files) {
+						Ok(_) => Ready
+						Err(_) => Failed
+					}
+				NoFile if files.accounts.is_empty() and files.channels.is_empty() =>
+					match write_first_directory!({}) {
+						Ok({}) => Ready
+						Err(_) => Failed
+					}
+				NoFile => Failed
+			}
+	}
+
+## The first directory written: the founder's account, `general`'s members,
+## then the counter of ids, which says the chat exists, last.
+write_first_directory! : {} => Try({}, _)
+write_first_directory! = |{}| {
+	FileSystem.create_account!(first_directory.founder())?
+	for channel in first_directory.channels().to_list() {
+		FileSystem.replace_channel_members!(channel)?
+	}
+	FileSystem.replace_user_counter!(first_directory.users())?
+	Ok({})
+}
+
+## The directory at the first start: Steve (id 1), a human, and one
+## channel, `general`, which he creates as the chat's first admin and is
+## the one member of. Steve acts here with nothing checked (`SignedIn`),
+## as no one has signed in before the chat exists.
+first_directory : Directory
+first_directory = {
+	founded = Directory.with_founder(founder_name)
+	founder = founded.founder()
+	admin = Admin.of(SignedIn.dangerously_assume(founder)) ?? crash "main.first_directory: Steve, id 1, is an admin"
+	general = ChannelName.from_str("general") ?? crash "main.first_directory: general is a channel's name"
+	created = (
+		founded.create_channel({
+			by: admin,
+			name: general,
+		}) ?? crash "main.first_directory: the name general is free"
+	).directory
+	created.add_member({
+		by: admin,
+		channel: general,
+		member: founder,
+	}) ?? crash "main.first_directory: Steve joins general"
+}
+
+founder_name : Name
+founder_name = Name.from_str("Steve") ?? crash "main.founder_name: Steve is a name"
+
+## The directory as the data folder holds it now; or why not.
+load_directory! : {} => Try(Directory, [FileSystem(FileSystem.Fault), StoredDirectory(Str)])
+load_directory! = |{}| {
+	files = FileSystem.read_directory_files!({}) ? |fault| FileSystem(fault)
+	directory_from_files(files)
+}
+
+## The directory the files hold; or why not, in words.
+directory_from_files : FileSystem.DirectoryFiles -> Try(Directory, [StoredDirectory(Str)])
+directory_from_files = |files| {
+	counter =
+		match files.counter {
+			File(bytes) => Ok(bytes)
+			NoFile => Err(StoredDirectory("there is no counter of user ids"))
+		}?
+	users = Users.from_files({
+		counter,
+		accounts: files.accounts,
+	}) ? |why| StoredDirectory(users_words(why))
+	channels = Channels.from_files(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
+	directory = Directory.from_files({
+		users,
+		channels,
+	}) ? |why| StoredDirectory(directory_words(why))
+	Ok(directory)
+}
+
+users_words : [
+	BadCounter,
+	BadName(UserId),
+	BadOwner(UserId),
+	NoFounder,
+	CounterBehind,
+] -> Str
+users_words = |why|
+	match why {
+		BadCounter => "the counter of user ids is not one"
+		BadName(id) => "user ${id.to_str()}'s name is not a name"
+		BadOwner(id) => "user ${id.to_str()}'s owner is no human"
+		NoFounder => "there is no founder, a human of id 1"
+		CounterBehind => "the counter of user ids is behind a user's id"
+	}
+
+directory_words : [NameTaken, UnknownMember(ChannelName)] -> Str
+directory_words = |why|
+	match why {
+		NameTaken => "two names are the same name"
+		UnknownMember(name) => "#${name.to_str()} has a member who is no user"
+	}
+
+## The 500 for a directory that can't be read.
+directory_refusal : [FileSystem(FileSystem.Fault), StoredDirectory(Str)] -> Http.Response
+directory_refusal = |why| {
+	said =
+		match why {
+			FileSystem(fault) => FileSystem.fault_words(fault)
+			StoredDirectory(words) => "The chat's directory on disk is not whole: ${words}."
+		}
+	HttpAnswer.page(500, Page.notice({ title: "Failed", said }))
 }
 
 ## What the host may do with a request, judged from its head alone. A
 ## request from elsewhere (`RequestOrigin`, a trust boundary) is refused
-## with a 403, so the host never reads its body. Any other is admitted,
-## with room for an upload's body when its route is an upload, and for a
-## form's otherwise.
-admission : Http.RequestHead -> Http.Admission
-admission = |head|
+## with a 403 before anything is read, so the host never reads its body.
+## Any other is judged in the directory as the disk holds it
+## (`admission_in`), or refused with a 500 when it can't be read.
+check_request_head! : Http.RequestHead => Http.Admission
+check_request_head! = |head|
+	match RequestOrigin.check({
+		method: head.method,
+		headers: head.headers,
+		port: head.port,
+	}) {
+		Err(why) => Refuse(for_this_origin_alone(origin_refusal(why)))
+		Ok({}) =>
+			match load_directory!({}) {
+				Err(why) => Refuse(for_this_origin_alone(directory_refusal(why)))
+				Ok(directory) => admission_in(head, directory)
+			}
+	}
+
+## What the host may do with a request, from its head, in `directory`: a
+## request from elsewhere refused with a 403; any other admitted, with room
+## for an upload's body when its route is an upload, and for a form's
+## otherwise.
+admission_in : Http.RequestHead, Directory -> Http.Admission
+admission_in = |head, directory|
 	match RequestOrigin.check({
 		method: head.method,
 		headers: head.headers,
@@ -112,13 +281,16 @@ form_body_allowance = { body_most: 64 * 1024, body_grace_ms: 0 }
 ## it. It has five minutes more to arrive, the compose box's patience for
 ## a large image on a slow link.
 upload_body_allowance : { body_most : U64, body_grace_ms : U32 }
-upload_body_allowance = { body_most: UploadedImage.most_bytes + 64 * 1024, body_grace_ms: 5 * 60 * 1000 }
+upload_body_allowance = {
+	body_most: UploadedImage.most_bytes + 64 * 1024,
+	body_grace_ms: 5 * 60 * 1000,
+}
 
-## One request, answered: held to this server's own origin, then the route
-## chosen and answered, the host's clock read once, for a POST. The host
-## asks `admission` first, so a request from elsewhere is refused before
-## its body is read; the check here holds the answer to its origin even
-## when a host does not ask.
+## One request, answered: held to this server's own origin, then the
+## directory read, who is acting found, and the route chosen and answered.
+## The host asks `check_request_head!` first, so a request from elsewhere is refused
+## before its body is read; the check here holds the answer to its origin
+## even when a host does not ask.
 handle_http_request! : Http.Request => Http.Response
 handle_http_request! = |request| {
 	answer =
@@ -128,14 +300,78 @@ handle_http_request! = |request| {
 			port: request.port,
 		}) {
 			Err(why) => origin_refusal(why)
-			Ok({}) => serve_route!(request)
+			Ok({}) =>
+				match load_directory!({}) {
+					Err(why) => directory_refusal(why)
+					Ok(directory) =>
+						match load_acting_user!({ headers: request.headers, directory }) {
+							Err(why) => identity_refusal(why)
+							Ok(acting) => serve_route!({
+								request,
+								directory,
+								acting,
+							})
+						}
+				}
 		}
 	for_this_origin_alone(answer)
 }
 
+## Who is acting. With no `Authorization` header, Steve, taken as signed
+## in with nothing checked: the scary door. No sessions exist yet, so anyone
+## who can reach the server can act as him. That is why the host listens
+## on 127.0.0.1 alone (host/http.zig), and why every request is held to
+## this server's own origin first (`RequestOrigin`), so no other site's
+## page can act through a browser here. The session check replaces this
+## one line. With `Authorization: Bearer <id>-<secret>`, the agent its key
+## admits (`AgentsRoute.sign_in_by_key!`); any other `Authorization` is
+## refused, never taken as Steve.
+load_acting_user! : { headers : List(Http.Header), directory : Directory } => Try(
+	SignedIn,
+	[
+		BadBearer,
+		KeyRefused,
+		FileSystem(FileSystem.Fault),
+	],
+)
+load_acting_user! = |{ headers, directory }|
+	match RequestHeader.header_value(headers, "authorization") {
+		Unsent => Ok(SignedIn.dangerously_assume(directory.founder()))
+		Repeated => Err(BadBearer)
+		Sent(value) => {
+			unchecked = UnvalidatedString.from_utf8(value) ? |NotUtf8| BadBearer
+			token = unchecked.bearer_token() ? |NotABearer| BadBearer
+			AgentsRoute.sign_in_by_key!({
+				token,
+				directory,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		}
+	}
+
+## A request whose credential is refused: one 401 that says no more, or a
+## 500 when the keys can't be read.
+identity_refusal : [
+	BadBearer,
+	KeyRefused,
+	FileSystem(FileSystem.Fault),
+] -> Http.Response
+identity_refusal = |why|
+	match why {
+		BadBearer => HttpAnswer.text(401, key_refusal_words)
+		KeyRefused => HttpAnswer.text(401, key_refusal_words)
+		FileSystem(fault) => HttpAnswer.text(500, FileSystem.fault_words(fault))
+	}
+
+key_refusal_words : Str
+key_refusal_words = "The API key is not accepted: send Authorization: Bearer <id>-<secret>, a live key."
+
 ## The 403 for a request from elsewhere, saying why.
 origin_refusal : RequestOrigin.Refusal -> Http.Response
-origin_refusal = |why| HttpAnswer.page(403, Page.notice({ title: "Forbidden", said: RequestOrigin.words(why) }))
+origin_refusal = |why| HttpAnswer.page(
+	403,
+	Page.notice({ title: "Forbidden", said: RequestOrigin.words(why) }),
+)
 
 ## `answer`, which no other site's page may load: a browser refuses to hand
 ## a page elsewhere any answer of this server's (`Cross-Origin-Resource-Policy`),
@@ -143,17 +379,107 @@ origin_refusal = |why| HttpAnswer.page(403, Page.notice({ title: "Forbidden", sa
 for_this_origin_alone : Http.Response -> Http.Response
 for_this_origin_alone = |answer| {
 	..answer,
-	headers: answer.headers.append({ name: "cross-origin-resource-policy".to_utf8(), value: "same-origin".to_utf8() }),
+	headers: answer.headers.append({
+		name: "cross-origin-resource-policy".to_utf8(),
+		value: "same-origin".to_utf8(),
+	}),
 }
 
-## The answer the route of `request` gives.
-serve_route! : Http.Request => Http.Response
-serve_route! = |request|
-	match Route.choose({
+## What a route asks of `Access` before it is answered: to read or post in
+## a conversation, or nothing.
+access_asked : Route.Choice -> [
+	Asks({ key : ConversationKey, act : Access.Act }),
+	AsksNoConversation,
+]
+access_asked = |choice|
+	match choice {
+		ShowConversation(key) => Asks({ key, act: Read })
+		OpenConversationStream(key) => Asks({ key, act: Read })
+		ServeRawTranscript(key) => Asks({ key, act: Read })
+		ServeUploadedImage(found) => Asks({ key: found.key, act: Read })
+		AppendToConversation(key) => Asks({ key, act: Post })
+		SendToConversation(key) => Asks({ key, act: Post })
+		UploadToConversation(key) => Asks({ key, act: Post })
+		ServeScript(_) => AsksNoConversation
+		ShowAgents => AsksNoConversation
+		MakeAgent => AsksNoConversation
+		InviteAgent(_) => AsksNoConversation
+		RevokeInvite(_) => AsksNoConversation
+		RevokeKey(_) => AsksNoConversation
+		RedeemInvite => AsksNoConversation
+		OpenAgentStream => AsksNoConversation
+		NotFound => AsksNoConversation
+		MethodNotAllowed(_) => AsksNoConversation
+	}
+
+## The 403 for a reader or a writer the place doesn't admit.
+access_refusal : [NotAMember, ScopeOff] -> Http.Response
+access_refusal = |why| {
+	said =
+		match why {
+			NotAMember => "Only the members of this conversation's channel or DM may read or post in it."
+			ScopeOff => "This API key's scope doesn't reach that."
+		}
+	HttpAnswer.page(403, Page.notice({ title: "Forbidden", said }))
+}
+
+## The answer the route of `request` gives `acting`, once `Access` admits
+## them.
+serve_route! : {
+	request : Http.Request,
+	directory : Directory,
+	acting : SignedIn,
+} => Http.Response
+serve_route! = |
+	{
+		request,
+		directory,
+		acting,
+	},
+| {
+	choice = Route.choose({
 		method: request.method,
 		path: request.path,
 		directory,
-	}) {
+	})
+	admitted =
+		match access_asked(choice) {
+			AsksNoConversation => Ok({})
+			Asks({ key, act }) =>
+				Access.check({
+					acting,
+					place: key.place(),
+					directory,
+					act,
+				})
+		}
+	match admitted {
+		Err(why) => access_refusal(why)
+		Ok({}) => answer_route!({
+			choice,
+			request,
+			directory,
+			acting,
+		})
+	}
+}
+
+## The answer to `choice`, which `Access` has admitted.
+answer_route! : {
+	choice : Route.Choice,
+	request : Http.Request,
+	directory : Directory,
+	acting : SignedIn,
+} => Http.Response
+answer_route! = |
+	{
+		choice,
+		request,
+		directory,
+		acting,
+	},
+|
+	match choice {
 		ShowConversation(key) =>
 			ConversationRoute.show!({
 				key,
@@ -168,23 +494,26 @@ serve_route! = |request|
 				query: request.query,
 				headers: request.headers,
 			})
+		ServeRawTranscript(key) => ConversationRoute.serve_raw!(key)
 		ServeScript(script) => HttpAnswer.script(script.bytes())
 		AppendToConversation(key) =>
-			ConversationRoute.post_sent_message!({
-				key,
-				acting,
-				users: directory.users(),
-				now: Host.current_utc_seconds_since_epoch!({}),
-				body: request.body,
-			})
+			ConversationRoute.post_sent_message!(
+				make_message_post!({
+					key,
+					request,
+					directory,
+					acting,
+				}),
+			)
 		SendToConversation(key) =>
-			ConversationRoute.post_message_without_reload!({
-				key,
-				acting,
-				users: directory.users(),
-				now: Host.current_utc_seconds_since_epoch!({}),
-				body: request.body,
-			})
+			ConversationRoute.post_message_without_reload!(
+				make_message_post!({
+					key,
+					request,
+					directory,
+					acting,
+				}),
+			)
 		UploadToConversation(key) =>
 			UploadRoute.post_upload!({
 				key,
@@ -193,35 +522,75 @@ serve_route! = |request|
 				body: request.body,
 			})
 		ServeUploadedImage(found) => UploadRoute.serve_uploaded_image!(found)
+		ShowAgents => AgentsRoute.show!({ acting, directory })
+		MakeAgent => AgentsRoute.make!({
+			acting,
+			directory,
+			body: request.body,
+		})
+		InviteAgent(agent) =>
+			AgentsRoute.invite!({
+				acting,
+				directory,
+				agent,
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		RevokeInvite({ agent, invite }) =>
+			AgentsRoute.revoke_invite!({
+				acting,
+				directory,
+				agent,
+				invite,
+			})
+		RevokeKey({ agent, key }) =>
+			AgentsRoute.revoke_key!({
+				acting,
+				directory,
+				agent,
+				key,
+			})
+		RedeemInvite =>
+			AgentsRoute.redeem!({
+				acting,
+				directory,
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		OpenAgentStream => AgentsRoute.open_stream!({
+			acting,
+			directory,
+			query: request.query,
+		})
 		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
-		NotFound => HttpAnswer.page(404, Page.notice({ title: "Not found", said: "Nothing is here." }))
+		NotFound => HttpAnswer.page(
+			404,
+			Page.notice({ title: "Not found", said: "Nothing is here." }),
+		)
 	}
 
-## Steve (id 1), taken as signed in with nothing checked: the scary door.
-## No sessions exist yet, so every request acts as Steve: anyone
-## who can reach the server can post as him. That is why the host listens
-## on 127.0.0.1 alone (host/http.zig), and why every request is held to
-## this server's own origin first (`RequestOrigin`), so no other site's
-## page can act through a browser here. Sessions replace this.
-acting : SignedIn
-acting = SignedIn.dangerously_assume(steve)
-
-## Steve, the directory's founder, always id 1.
-steve : Users.User
-steve = Directory.with_founder(founder_name).users().to_list().first() ?? crash "main.steve: a directory starts with its founder"
-
-founder_name : Name
-founder_name = Name.from_str("Steve") ?? crash "main.founder_name: Steve is a name"
-
-## The directory, until one is stored: Steve (id 1), a human, and one
-## channel, `general`, which he created as its admin. So the DM `1_1`
-## (Steve's own) and the channel `general` are the places a URL can name.
-directory : Directory
-directory = {
-	founded = Directory.with_founder(founder_name)
-	admin = Admin.of(acting) ?? crash "main.directory: Steve, id 1, is an admin"
-	general = ChannelName.from_str("general") ?? crash "main.directory: general is a channel's name"
-	(founded.create_channel({ by: admin, name: general }) ?? crash "main.directory: the name general is free").directory
+## A message's POST to the conversation `key`, by `acting`, at the host's
+## clock, heard by its channel's agent members.
+make_message_post! : {
+	key : ConversationKey,
+	request : Http.Request,
+	directory : Directory,
+	acting : SignedIn,
+} => ConversationRoute.Post
+make_message_post! = |
+	{
+		key,
+		request,
+		directory,
+		acting,
+	},
+| {
+	key,
+	acting,
+	users: directory.users(),
+	now: Host.current_utc_seconds_since_epoch!({}),
+	body: request.body,
+	agents: Access.agent_members({ place: key.place(), directory }),
 }
 
 # ── tests
@@ -231,10 +600,21 @@ plans = Topic.from_str("plans") ?? crash "main's tests: a topic's name"
 ## What the door finds at `path` with `transcript`, as a test reads it:
 ## the conversation, and its key's URL path.
 found_at : List(U8), List(U8) -> Try((Conversation, Str), _)
-found_at = |path, transcript| conversation({ path, transcript }).map_ok(|found| (found.conversation, found.key.url_path(Page)))
+found_at = |path, transcript| conversation({ path, transcript }).map_ok(
+	|found| (
+		found.conversation,
+		found.key.url_path(Page),
+	),
+)
 
-expect found_at("/chat/channel/general/plans".to_utf8(), []) == Ok((Conversation.empty(plans), "/chat/channel/general/plans"))
-expect found_at("/chat/dm/1_1/plans".to_utf8(), []) == Ok((Conversation.empty(plans), "/chat/dm/1_1/plans"))
+expect found_at("/chat/channel/general/plans".to_utf8(), []) == Ok((
+	Conversation.empty(plans),
+	"/chat/channel/general/plans",
+))
+expect found_at("/chat/dm/1_1/plans".to_utf8(), []) == Ok((
+	Conversation.empty(plans),
+	"/chat/dm/1_1/plans",
+))
 expect found_at([0xff], []) == Err(PathNotUtf8)
 expect found_at("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Err(TranscriptNotUtf8)
 # Each refusal of the path, and of the transcript, through the door.
@@ -242,7 +622,10 @@ expect found_at("plans".to_utf8(), []) == Err(Path(NotAConversationPath))
 expect found_at("/chat/channel/general/plans_2".to_utf8(), []) == Err(Path(BadName))
 expect found_at("/chat/channel/other/plans".to_utf8(), []) == Err(Path(NoSuchChannel))
 expect found_at("/chat/dm/1_2/plans".to_utf8(), []) == Err(Path(NoSuchHuman))
-expect found_at("/chat/dm/1_1/plans".to_utf8(), "\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))
+expect found_at(
+	"/chat/dm/1_1/plans".to_utf8(),
+	"\n".to_utf8(),
+) == Err(Transcript(NotPrefixedProperly))
 # The order: the path's bytes, the path's conversation, then the transcript.
 expect found_at([0xff], [0xff]) == Err(PathNotUtf8)
 expect found_at("plans".to_utf8(), [0xff]) == Err(Path(NotAConversationPath))
@@ -252,18 +635,21 @@ expect found_at("plans".to_utf8(), "\n".to_utf8()) == Err(Path(NotAConversationP
 expect {
 	key = ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
-		directory,
+		directory: first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	page("/chat/dm/1_1/plans".to_utf8(), [])
 		== Page.conversation({
 			conversation: Conversation.empty(plans),
 			key,
-			viewer: acting,
-			users: directory.users(),
+			viewer: demo_viewer,
+			users: first_directory.users(),
 		}).to_utf8()
 }
 expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
-expect page("<b>".to_utf8(), [0xff]) == Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>").to_utf8()
+expect page(
+	"<b>".to_utf8(),
+	[0xff],
+) == Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>").to_utf8()
 
 ## The page a GET of `path` shows, as a test reads it.
 page_for_get : Str -> Str
@@ -271,7 +657,7 @@ page_for_get = |path|
 	match Route.choose({
 		method: "GET".to_utf8(),
 		path: path.to_utf8(),
-		directory,
+		directory: first_directory,
 	}) {
 		ShowConversation(key) => key.url_path(Page)
 		OpenConversationStream(key) => "the stream of ${key.url_path(Page)}"
@@ -279,8 +665,17 @@ page_for_get = |path|
 		_ => "not found"
 	}
 
-# The stand-ins: Steve, id 1, acting; the directory's places.
-expect acting.user().name() == founder_name and acting.user().id().to_str() == "1"
+# The first start: Steve, id 1, a human, the demo's viewer; `general`, its
+# one member Steve; the counter at 2.
+expect demo_viewer.user().name() == founder_name and demo_viewer.user().id() == UserId.steve
+expect first_directory.users().to_list().map(|user| user.role()) == [Human]
+expect first_directory.channels().to_list().map(
+	|channel| (
+		channel.name().to_str(),
+		channel.members().map(UserId.to_str),
+	),
+) == [("general", ["1"])]
+expect first_directory.users().counter_file() == "2\n".to_utf8()
 expect page_for_get("/chat/channel/general/plans") == "/chat/channel/general/plans"
 expect page_for_get("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
 expect page_for_get("/chat/channel/other/plans") == "not found"
@@ -289,6 +684,85 @@ expect page_for_get("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/
 expect page_for_get("/chat/dm/1_2/plans/stream") == "not found"
 expect page_for_get("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
 expect page_for_get("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
+
+## The directory files of the first start, as the disk holds them.
+first_files : FileSystem.DirectoryFiles
+first_files = {
+	founder = first_directory.founder()
+	{
+		counter: File(first_directory.users().counter_file()),
+		accounts: [{ id: founder.id(), files: Users.account_files(founder) }],
+		channels: first_directory.channels().to_list().map(
+			|channel| {
+				name: channel.name(),
+				members: channel.members_file(),
+			},
+		),
+	}
+}
+
+# The first start's files read back are the first directory; with no
+# counter, or a counter that is no number, the files are no chat's.
+expect directory_from_files(first_files) == Ok(first_directory)
+expect directory_from_files({
+	..first_files,
+	counter: NoFile,
+}) == Err(StoredDirectory("there is no counter of user ids"))
+expect directory_from_files({
+	..first_files,
+	counter: File("x".to_utf8()),
+}) == Err(StoredDirectory("the counter of user ids is not one"))
+expect
+	directory_from_files({
+		..first_files,
+		channels: [
+			{
+				name: ChannelName.from_str("general") ?? crash "main's tests: a name",
+				members: "1\n2\n".to_utf8(),
+			},
+		],
+	})
+		== Err(StoredDirectory("#general has a member who is no user"))
+expect
+	directory_from_files({
+		..first_files,
+		channels: [
+			{
+				name: ChannelName.from_str("steve") ?? crash "main's tests: a name",
+				members: "1\n".to_utf8(),
+			},
+		],
+	})
+		== Err(StoredDirectory("two names are the same name"))
+
+# Each route asks what it does of `Access`: every conversation's GET reads,
+# every write posts, and nothing else asks.
+expect {
+	key = ConversationKey.from_url_path({
+		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
+		directory: first_directory,
+	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
+	image = UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
+	[
+		ShowConversation(key),
+		OpenConversationStream(key),
+		ServeRawTranscript(key),
+		ServeUploadedImage({ key, image }),
+	].all(|choice| access_asked(choice) == Asks({ key, act: Read }))
+		and [
+			AppendToConversation(key),
+			SendToConversation(key),
+			UploadToConversation(key),
+		].all(|choice| access_asked(choice) == Asks({ key, act: Post }))
+		and [
+			ShowAgents,
+			MakeAgent,
+			RedeemInvite,
+			OpenAgentStream,
+			NotFound,
+			InviteAgent(UserId.steve),
+		].all(|choice| access_asked(choice) == AsksNoConversation)
+}
 
 ## The head of a request whose request line is `line` (`POST /a`), its Host
 ## this server's at port 9611, with `more` headers (name, value).
@@ -302,18 +776,30 @@ head_of = |line, more| {
 	{
 		method: method.to_utf8(),
 		path: path.to_utf8(),
-		headers: [("Host", "localhost:9611")].concat(more).map(|(name, value)| { name: name.to_utf8(), value: value.to_utf8() }),
+		headers: [("Host", "localhost:9611")].concat(more).map(
+			|(name, value)| {
+				name: name.to_utf8(),
+				value: value.to_utf8(),
+			},
+		),
 		port: 9611,
 	}
 }
 
-## What `admission` makes of `head`, as a test reads it: the allowance it
-## admits it with, or its refusal's status and headers.
-admission_verdict : Http.RequestHead -> [Admitted({ body_most : U64, body_grace_ms : U32 }), Refused(U16, List((Str, Str)))]
+## What `admission_in` makes of `head` in the first directory, as a test
+## reads it: the allowance it admits it with, or its refusal's status and
+## headers.
+admission_verdict : Http.RequestHead -> [
+	Admitted({ body_most : U64, body_grace_ms : U32 }),
+	Refused(U16, List((Str, Str))),
+]
 admission_verdict = |head|
-	match admission(head) {
+	match admission_in(head, first_directory) {
 		Admit(allowance) => Admitted(allowance)
-		Refuse(answer) => Refused(answer.status, answer.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value))))
+		Refuse(answer) => Refused(
+			answer.status,
+			answer.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value))),
+		)
 	}
 
 # The allowances: a form's 64 KiB in the request's own time; an upload's
@@ -327,7 +813,10 @@ expect upload_body_allowance == { body_most: 10_551_296, body_grace_ms: 300_000 
 expect
 	[
 		head_of("POST /chat/dm/1_1/plans/upload", []),
-		head_of("POST /chat/channel/general/plans/upload", [("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")]),
+		head_of(
+			"POST /chat/channel/general/plans/upload",
+			[("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")],
+		),
 	].all(|head| admission_verdict(head) == Admitted(upload_body_allowance))
 expect
 	[
@@ -336,7 +825,11 @@ expect
 		head_of("POST /chat/dm/1_2/plans/upload", []),
 		head_of("GET /chat/dm/1_1/plans/upload", []),
 		head_of("PUT /chat/dm/1_1/plans/upload", []),
-		head_of("GET /chat/dm/1_1/plans/stream", [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")]),
+		head_of(
+			"GET /chat/dm/1_1/plans/stream",
+			[("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")],
+		),
+		head_of("POST /agents/redeem", []),
 	].all(|head| admission_verdict(head) == Admitted(form_body_allowance))
 # Refused from its head, whatever its route: a 403 that no other site's page
 # may load.
@@ -344,7 +837,10 @@ expect
 forbidden_headers : List((Str, Str))
 forbidden_headers = [
 	("content-type", "text/html; charset=utf-8"),
-	("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
+	(
+		"content-security-policy",
+		"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'",
+	),
 	("x-content-type-options", "nosniff"),
 	("cross-origin-resource-policy", "same-origin"),
 ]
@@ -362,7 +858,11 @@ expect
 		head_of("POST /chat/dm/1_1/plans/upload", [("Origin", "http://evil.example")]),
 		head_of("POST /chat/dm/1_1/plans/upload", [("Sec-Fetch-Site", "cross-site")]),
 		head_of("GET /chat/dm/1_1/plans/stream", event_source_elsewhere),
-		head_of("GET /chat/dm/1_1/plans/stream", [("Sec-Fetch-Site", "same-site"), ("Sec-Fetch-Mode", "no-cors")]),
+		head_of(
+			"GET /chat/dm/1_1/plans/stream",
+			[("Sec-Fetch-Site", "same-site"), ("Sec-Fetch-Mode", "no-cors")],
+		),
+		head_of("POST /agents", [("Origin", "http://evil.example")]),
 		{ ..head_of("POST /chat/dm/1_1/plans/upload", []), port: 9612 },
 	].all(|head| admission_verdict(head) == Refused(403, forbidden_headers))
 # Every answer ends with its resource policy, after its own headers.
@@ -372,3 +872,14 @@ expect
 			{ name: "location".to_utf8(), value: "/a".to_utf8() },
 			{ name: "cross-origin-resource-policy".to_utf8(), value: "same-origin".to_utf8() },
 		]
+# A credential refused is one 401 in plain text, whatever was wrong with it.
+expect
+	[BadBearer, KeyRefused].all(
+		|why| {
+			answered = identity_refusal(why)
+			answered.status == 401 and answered.body == "${key_refusal_words}\n".to_utf8()
+		},
+	)
+# Each access refusal: a 403 saying which.
+expect access_refusal(NotAMember).status == 403 and access_refusal(ScopeOff).status == 403
+expect access_refusal(NotAMember).body != access_refusal(ScopeOff).body

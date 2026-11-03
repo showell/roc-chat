@@ -10,11 +10,15 @@
 ##     /chat/channel/<channel>/<topic>     chat/channel/<channel>/<topic>/
 ##     /chat/dm/<pair>/<topic>             chat/dm/<pair>/<topic>/
 ##
+## A channel's folder holds its conversations' folders
+## (`channel_folder_parts`), and its members file sits beside it
+## (`Channels`).
+##
 ## Each thing a conversation serves (`Resource`) is at its page's URL and
 ## a suffix: its stream at `/stream`, the send of its page's script at
-## `/send`, an image's upload at `/upload`, and an uploaded image at
-## `/uploads/<name>`. `url_path` writes each, and `from_url_path` reads
-## each back. `FileSystem` keeps an uploaded image in the conversation's
+## `/send`, an image's upload at `/upload`, an uploaded image at
+## `/uploads/<name>`, and its transcript as plain text at `/raw`.
+## `url_path` writes each, and `from_url_path` reads each back. `FileSystem` keeps an uploaded image in the conversation's
 ## folder, as `uploads/<name>`.
 import ChannelName
 import Directory
@@ -35,6 +39,7 @@ ConversationKey :: { place : Place, topic : Topic }.{
 		Send,
 		Upload,
 		UploadedImage(UploadedImage),
+		Raw,
 	]
 
 	## The conversation under `topic` in `place`.
@@ -49,18 +54,22 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	topic : ConversationKey -> Topic
 	topic = |ConversationKey.(key)| key.topic
 
+	## The parts of the folder of the channel `name`, which holds its
+	## conversations' folders: `chat`, `channel`, and the name.
+	channel_folder_parts : ChannelName -> List(Str)
+	channel_folder_parts = |name| ConversationKey.channels_folder_parts.append(name.to_str())
+
+	## The parts of the folder that holds every channel's folder: `chat`
+	## and `channel`.
+	channels_folder_parts : List(Str)
+	channels_folder_parts = ["chat", "channel"]
+
 	## The parts its URL and its folder both spell: `chat`, the kind of
 	## place, the place's name, and the topic.
 	parts : ConversationKey -> List(Str)
 	parts = |ConversationKey.(key)|
 		match key.place.which() {
-			Channel(name) =>
-				[
-					"chat",
-					"channel",
-					name.to_str(),
-					key.topic.to_str(),
-				]
+			Channel(name) => ConversationKey.channel_folder_parts(name).append(key.topic.to_str())
 			Dm(pair) =>
 				[
 					"chat",
@@ -122,6 +131,7 @@ resource_parts = |resource|
 		Send => ["send"]
 		Upload => ["upload"]
 		UploadedImage(image) => ["uploads", image.name()]
+		Raw => ["raw"]
 	}
 
 ## The resource whose parts are `suffix`, the parts of a URL's path after
@@ -133,6 +143,7 @@ resource_of_suffix = |suffix|
 		[last] if last.is_exactly("stream") => Ok(Stream)
 		[last] if last.is_exactly("send") => Ok(Send)
 		[last] if last.is_exactly("upload") => Ok(Upload)
+		[last] if last.is_exactly("raw") => Ok(Raw)
 		[uploads, image_name] if uploads.is_exactly("uploads") =>
 			match image_name.uploaded_image() {
 				Ok(image) => Ok(UploadedImage(image))

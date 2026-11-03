@@ -92,6 +92,19 @@ HttpAnswer :: [].{
 			body: "${words}\n".to_utf8(),
 		})
 
+	## A file's text, `bytes`, as it is kept, served as plain UTF-8 text,
+	## which `nosniff` holds the browser to: a transcript's `/raw`.
+	plain_text_file : List(U8) -> Http.Response
+	plain_text_file = |bytes|
+		whole_response({
+			status: 200,
+			headers: [
+				{ name: "content-type".to_utf8(), value: "text/plain; charset=utf-8".to_utf8() },
+				nosniff,
+			],
+			body: bytes,
+		})
+
 	## A 405: the path takes only the methods `allowed` names: a
 	## conversation's GET and POST, an upload's POST, or a script's, a
 	## stream's or an uploaded image's GET.

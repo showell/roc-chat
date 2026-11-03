@@ -16,6 +16,7 @@
 ## stream of a conversation with no transcript is a 404, as in the Zig
 ## chat. Every route words its refusals through `refusal_notice`.
 import pf.Http
+import AgentStream
 import Author
 import Conversation
 import ConversationKey
@@ -33,6 +34,7 @@ import TranscriptRefusal
 import TrustedHtml
 import UnvalidatedString
 import UrlEncodedForm
+import UserId
 import Users
 
 ConversationRoute :: [].{
@@ -63,6 +65,17 @@ ConversationRoute :: [].{
 					}),
 				)
 			Err(why) => refusal_page(why)
+		}
+
+	## A GET of the conversation's `/raw`: its transcript file's bytes,
+	## exactly as kept, as plain UTF-8 text, as the Zig chat's `/raw` serves
+	## them. A conversation with no transcript is a 404.
+	serve_raw! : ConversationKey => Http.Response
+	serve_raw! = |key|
+		match FileSystem.read_transcript!(key) {
+			Ok(File(utf8)) => HttpAnswer.plain_text_file(utf8.to_plain_text())
+			Ok(NoFile) => refusal_page(NoSuchConversation(key))
+			Err(fault) => refusal_page(FileSystem(fault))
 		}
 
 	## A GET of the conversation's stream, for `acting`: the messages after
@@ -130,13 +143,15 @@ ConversationRoute :: [].{
 
 	## A message's POST: the conversation `key`, the user `acting`, the
 	## users each message's author is found among, the host's clock `now`
-	## (seconds since the epoch), and the form in `body`.
+	## (seconds since the epoch), the form in `body`, and the agents who
+	## hear each message on their own streams (`AgentStream`).
 	Post : {
 		key : ConversationKey,
 		acting : SignedIn,
 		users : Users,
 		now : I64,
 		body : List(U8),
+		agents : List(UserId),
 	}
 }
 
@@ -204,6 +219,11 @@ append_posted_message! = |post| {
 		key: post.key,
 		id: grown.message.id(),
 		html,
+	})
+	AgentStream.publish!({
+		key: post.key,
+		message: grown.message,
+		agents: post.agents,
 	})
 	Ok(html)
 }

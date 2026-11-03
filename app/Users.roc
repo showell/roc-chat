@@ -11,12 +11,21 @@
 ##
 ## Names are not checked for clashes here. `Directory` holds the users with
 ## the channels, and keeps every name unique across both.
+##
+## The users are kept on disk as the Zig chat keeps its account store
+## (`FileSystem`): the counter of the next id, `auth/next-id.txt`, its
+## digits and a line end, as the Zig chat's counter writes it (`256` when
+## every id is taken); and a folder per user, `auth/<id>/`, holding the
+## user's name, exactly as given, in `name`, and an agent's owner's id, its
+## digits, in `owner`. A human has no `owner` file. `from_files` reads them
+## back, and `account_files` and `counter_file` write them.
 import Author
+import FactFile
 import Name
 import UserId
 import UserStem
 
-Users :: List(Users.User).{
+Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 
 	## A human or an agent, with the id and name these users gave them.
 	User :: {
@@ -86,23 +95,99 @@ Users :: List(Users.User).{
 	with_founder : Name -> Users
 	with_founder = |name|
 		Users.(
-			[
-				Users.User.(
-					{
-						id: UserId.steve,
-						name,
-						role: Human,
-					},
-				),
-			],
+			{
+				everyone: [
+					Users.User.(
+						{
+							id: UserId.steve,
+							name,
+							role: Human,
+						},
+					),
+				],
+				next: next_after(UserId.steve),
+			},
 		)
 
-	## The id the next user will get: the one after the latest user's,
-	## unless every id is taken.
+	## The id the next user will get, unless every id is taken. It is never
+	## one given before, as the counter on disk holds it.
 	next_id : Users -> Try(UserId, [Full])
-	next_id = |Users.(all)| {
-		latest = all.last() ?? crash "Users.next_id: Steve, the first user, is in every Users"
-		latest.id().next()
+	next_id = |Users.(users)|
+		match users.next {
+			Next(id) => Ok(id)
+			Full => Err(Full)
+		}
+
+	## One user's files as `auth/<id>/` holds them: the name's bytes, and an
+	## agent's owner's id, its digits (`NoFile` for a human).
+	AccountFiles : { name : List(U8), owner : [NoFile, File(List(U8))] }
+
+	## A user's files as they were read, with the id their folder is named
+	## by.
+	StoredAccount : { id : UserId, files : Users.AccountFiles }
+
+	## The user's files, as `from_files` reads them back.
+	account_files : Users.User -> Users.AccountFiles
+	account_files = |user| {
+		name: user.name().to_str().to_utf8(),
+		owner: match user.role() {
+			Human => NoFile
+			Agent({ owner }) => File(owner.to_str().to_utf8())
+		},
+	}
+
+	## The counter file: the next id's digits and a line end, `256` when
+	## every id is taken.
+	counter_file : Users -> List(U8)
+	counter_file = |Users.(users)| {
+		digits =
+			match users.next {
+				Next(id) => id.to_str()
+				Full => (U8.highest.to_u64() + 1).to_str()
+			}
+		"${digits}\n".to_utf8()
+	}
+
+	## The users the files hold: the counter `counter`, and each account
+	## folder read, in any order. Refused when the counter is no id after
+	## the first (`BadCounter`); when a name is no name (`BadName`) or an
+	## owner no id (`BadOwner`), each naming the user; when there is no
+	## founder, a human with id 1 (`NoFounder`); when an id is at or past
+	## the counter (`CounterBehind`); or when an agent's owner is no human
+	## among them (`BadOwner`).
+	from_files : {
+		counter : List(U8),
+		accounts : List(Users.StoredAccount),
+	} -> Try(
+		Users,
+		[
+			BadCounter,
+			BadName(UserId),
+			BadOwner(UserId),
+			NoFounder,
+			CounterBehind,
+		],
+	)
+	from_files = |{ counter, accounts }| {
+		next = next_from_file(counter)?
+		all = accounts.sort_with(|a, b| a.id.compare(b.id)).map_try(user_from_files)?
+		founder_is_human =
+			match all.first() {
+				Ok(first) => first.id() == UserId.steve and first.role() == Human
+				Err(ListWasEmpty) => Bool.False
+			}
+		if !founder_is_human {
+			Err(NoFounder)
+		} else {
+			match (next, all.last()) {
+				(Next(id), Ok(latest)) if latest.id().compare(id) != Before => Err(CounterBehind)
+				_ =>
+					match all.find_first(|user| !has_human_owner(all, user)) {
+						Ok(stray) => Err(BadOwner(stray.id()))
+						Err(NotFound) => Ok(Users.({ everyone: all, next }))
+					}
+			}
+		}
 	}
 
 	## The users with a human named `name` added at the next id, and that
@@ -114,7 +199,11 @@ Users :: List(Users.User).{
 	## next id, and that agent. The owner is checked first: they must be a
 	## human of these users, with the same id and name (`NoSuchOwner`).
 	## Then the agent needs a free id (`Full`).
-	add_agent : Users, { name : Name, owner : Users.Human } -> Try(Users.Addition, [NoSuchOwner, Full])
+	add_agent : Users,
+	{ name : Name, owner : Users.Human } -> Try(
+		Users.Addition,
+		[NoSuchOwner, Full],
+	)
 	add_agent = |users, { name, owner }|
 		if (users.user(owner.id()) == Ok(owner.user()))
 			add_user(users, { name, role: Agent({ owner: owner.id() }) })
@@ -123,8 +212,8 @@ Users :: List(Users.User).{
 
 	## The user with the id `id`, if there is one.
 	user : Users, UserId -> Try(Users.User, [NoSuchUser])
-	user = |Users.(all), id|
-		match all.find_first(|candidate| candidate.id() == id) {
+	user = |Users.(users), id|
+		match users.everyone.find_first(|candidate| candidate.id() == id) {
 			Ok(found) => Ok(found)
 			Err(NotFound) => Err(NoSuchUser)
 		}
@@ -132,8 +221,8 @@ Users :: List(Users.User).{
 	## The user named `name`, if there is one. Names are case-sensitive, so
 	## `steve` is not `Steve`.
 	user_by_name : Users, Name -> Try(Users.User, [NoSuchUser])
-	user_by_name = |Users.(all), name|
-		match all.find_first(|candidate| candidate.name() == name) {
+	user_by_name = |Users.(users), name|
+		match users.everyone.find_first(|candidate| candidate.name() == name) {
 			Ok(found) => Ok(found)
 			Err(NotFound) => Err(NoSuchUser)
 		}
@@ -148,10 +237,74 @@ Users :: List(Users.User).{
 
 	## Every user, in id order.
 	to_list : Users -> List(Users.User)
-	to_list = |Users.(all)| all
+	to_list = |Users.(users)| users.everyone
 
 	is_eq : _
 }
+
+## The counter's place after `id`, unless `id` is the highest.
+next_after : UserId -> [Next(UserId), Full]
+next_after = |id|
+	match id.next() {
+		Ok(next) => Next(next)
+		Err(Full) => Full
+	}
+
+## The next id a counter file holds: the digits of 2 to 255, or 256 when
+## every id is taken.
+next_from_file : List(U8) -> Try([Next(UserId), Full], [BadCounter])
+next_from_file = |bytes| {
+	number = FactFile.number_from_file(bytes) ? |NotANumber| BadCounter
+	if (number == U8.highest.to_u64() + 1)
+		Ok(Full)
+	else
+		match UserId.from_str(number.to_str()) {
+			Ok(id) if id != UserId.steve => Ok(Next(id))
+			_ => Err(BadCounter)
+		}
+}
+
+## The user an account folder's files make.
+user_from_files : Users.StoredAccount -> Try(Users.User, [BadName(UserId), BadOwner(UserId)])
+user_from_files = |{ id, files }| {
+	written = Str.from_utf8(FactFile.word_from_file(files.name)) ? |_| BadName(id)
+	name = Name.from_str(written) ? |_| BadName(id)
+	role = role_from_file(files.owner) ? |NotAnOwner| BadOwner(id)
+	Ok(
+		Users.User.(
+			{
+				id,
+				name,
+				role,
+			},
+		),
+	)
+}
+
+## The role an `owner` file gives: none, a human; an id's digits, an agent
+## of that owner.
+role_from_file : [NoFile, File(List(U8))] -> Try(Users.Role, [NotAnOwner])
+role_from_file = |owner_file|
+	match owner_file {
+		NoFile => Ok(Human)
+		File(bytes) =>
+			match Str.from_utf8(FactFile.word_from_file(bytes)) {
+				Ok(digits) =>
+					match UserId.from_str(digits) {
+						Ok(owner) => Ok(Agent({ owner: owner }))
+						Err(NotAUserId) => Err(NotAnOwner)
+					}
+				Err(_) => Err(NotAnOwner)
+			}
+	}
+
+## Whether `user` is a human, or an agent whose owner is a human of `all`.
+has_human_owner : List(Users.User), Users.User -> Bool
+has_human_owner = |all, user|
+	match user.role() {
+		Human => Bool.True
+		Agent({ owner }) => all.any(|candidate| candidate.id() == owner and candidate.role() == Human)
+	}
 
 ## The users with a user named `name` added in the role `role`, at the next
 ## id, and that user; unless every id is taken.
@@ -165,6 +318,6 @@ add_user = |users, { name, role }| {
 			role,
 		},
 	)
-	Users.(all) = users
-	Ok({ users: Users.(all.append(user)), user })
+	Users.(held) = users
+	Ok({ users: Users.({ everyone: held.everyone.append(user), next: next_after(id) }), user })
 }

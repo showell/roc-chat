@@ -32,7 +32,15 @@ chosen_route = |method, path|
 		OpenConversationStream(key) => "stream ${key.url_path(Page)}"
 		UploadToConversation(key) => "upload ${key.url_path(Page)}"
 		ServeUploadedImage(found) => "image ${found.image.name()} of ${found.key.url_path(Page)}"
+		ServeRawTranscript(key) => "raw ${key.url_path(Page)}"
 		ServeScript(script) => "the script at ${script.url_path()}"
+		ShowAgents => "agents"
+		MakeAgent => "make an agent"
+		InviteAgent(agent) => "invite ${agent.to_str()}"
+		RevokeInvite({ agent, invite }) => "revoke invite ${invite.to_str()} of ${agent.to_str()}"
+		RevokeKey({ agent, key }) => "revoke key ${key.to_str()} of ${agent.to_str()}"
+		RedeemInvite => "redeem"
+		OpenAgentStream => "the agents' stream"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
@@ -89,3 +97,54 @@ expect chosen_route("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/assets/other.js".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/assets".to_utf8()) == "not found"
+# A conversation's transcript as plain text: GET alone, under a place that
+# exists.
+expect chosen_route("GET", "/chat/dm/1_2/plans/raw".to_utf8()) == "raw /chat/dm/1_2/plans"
+expect chosen_route(
+	"GET",
+	"/chat/channel/plans-room/plans/raw".to_utf8(),
+) == "raw /chat/channel/plans-room/plans"
+expect chosen_route("POST", "/chat/dm/1_2/plans/raw".to_utf8()) == "not allowed: GET"
+expect chosen_route("PUT", "/chat/dm/1_2/plans/raw".to_utf8()) == "not allowed: GET"
+expect chosen_route("GET", "/chat/dm/1_3/plans/raw".to_utf8()) == "not found"
+# The agents' page: GET and POST.
+expect chosen_route("GET", "/agents".to_utf8()) == "agents"
+expect chosen_route("POST", "/agents".to_utf8()) == "make an agent"
+expect chosen_route("PUT", "/agents".to_utf8()) == "not allowed: GET, POST"
+# An invite, and each revoke: POST alone.
+expect chosen_route("POST", "/agents/3/invites".to_utf8()) == "invite 3"
+expect chosen_route("GET", "/agents/3/invites".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/agents/3/invites".to_utf8()) == "not allowed: POST"
+expect chosen_route("POST", "/agents/3/invites/2/revoke".to_utf8()) == "revoke invite 2 of 3"
+expect chosen_route("GET", "/agents/3/invites/2/revoke".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/agents/3/invites/2/revoke".to_utf8()) == "not allowed: POST"
+expect chosen_route("POST", "/agents/3/keys/1/revoke".to_utf8()) == "revoke key 1 of 3"
+expect chosen_route("GET", "/agents/3/keys/1/revoke".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/agents/3/keys/1/revoke".to_utf8()) == "not allowed: POST"
+# A redemption: POST alone. The agents' stream: GET alone.
+expect chosen_route("POST", "/agents/redeem".to_utf8()) == "redeem"
+expect chosen_route("GET", "/agents/redeem".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/agents/redeem".to_utf8()) == "not allowed: POST"
+expect chosen_route("GET", "/agents/stream".to_utf8()) == "the agents' stream"
+expect chosen_route("POST", "/agents/stream".to_utf8()) == "not allowed: GET"
+expect chosen_route("PUT", "/agents/stream".to_utf8()) == "not allowed: GET"
+# Not the agents' routes: an id or a number of another spelling, another
+# kind, another word, a part too many or too few.
+expect
+	[
+		"/agents/",
+		"/Agents",
+		"/agents/03/invites",
+		"/agents/0/invites",
+		"/agents/x/invites",
+		"/agents/3/invite",
+		"/agents/3/invites/0/revoke",
+		"/agents/3/invites/02/revoke",
+		"/agents/3/keys/x/revoke",
+		"/agents/3/tokens/1/revoke",
+		"/agents/3/keys/1/remove",
+		"/agents/3/keys/1",
+		"/agents/3/keys/1/revoke/x",
+		"/agents/redeem/x",
+		"/agents/3",
+	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")

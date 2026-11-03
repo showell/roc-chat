@@ -1394,6 +1394,34 @@ comptime {
     }
 }
 
+/// Tag union: FailedOrReady
+pub const FailedOrReady = enum(u8) {
+    failed = 0,
+    ready = 1,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(FailedOrReady) != 1) @compileError("FailedOrReady size mismatch");
+        if (@alignOf(FailedOrReady) != 1) @compileError("FailedOrReady alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(FailedOrReady) != 1) @compileError("FailedOrReady size mismatch");
+        if (@alignOf(FailedOrReady) != 1) @compileError("FailedOrReady alignment mismatch");
+    }
+}
+
 /// Return type record for Host.list_names_in_directory!
 /// Fields ordered by compiler-emitted ABI offsets.
 pub const HostList_names_in_directoryRetRecord = if (@sizeOf(usize) == 4) extern struct {
@@ -1530,6 +1558,13 @@ pub const HostRead_utf8_bytes_from_fileArgs = extern struct {
 pub const HostReplace_file_with_utf8_bytes_atomicallyArgs = extern struct {
     arg0: RocListWith(u8, false),
     arg1: RocListWith(u8, false),
+};
+
+/// Arguments for Host.sha256_of_bytes!
+/// Roc signature: List(U8) => List(U8)
+/// Refcounted fields are owned by the hosted function.
+pub const HostSha256_of_bytesArgs = extern struct {
+    arg0: RocListWith(u8, false),
 };
 
 // Platform Type Aliases
@@ -1731,6 +1766,14 @@ pub extern fn read_utf8_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.
 ///     arg1.decref(roc_host);
 pub extern fn replace_file_with_utf8_bytes_atomically(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) FailedOrMissingDirectoryOrNotUtf8OrPathRefusedOrReplaced;
 
+/// Hosted symbol for Host.sha256_of_bytes!
+/// Roc signature: List(U8) => List(U8)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn sha256_of_bytes(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
 /// Default memory management functions for Roc platforms.
 ///
 /// Uses `RocEnv.allocator` for allocation. Each allocation prepends
@@ -1870,7 +1913,7 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
 //
 // Roc exports these symbols from the app with their natural C ABI signatures.
 
-/// Entrypoint: admission_for_host
+/// Entrypoint: admission_for_host!
 pub extern fn roc_admission(arg0: __AnonStruct_da3f526429c244e0) callconv(.c) __AnonStruct_3358763e51fbcf53;
 
 /// Entrypoint: handle_for_host!
@@ -1878,3 +1921,6 @@ pub extern fn roc_handle_http_request(arg0: __AnonStruct_ee8027c43e25493f) callc
 
 /// Entrypoint: page_for_host
 pub extern fn roc_page(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Entrypoint: start_for_host!
+pub extern fn roc_start() callconv(.c) FailedOrReady;

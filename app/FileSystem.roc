@@ -24,14 +24,39 @@
 ##
 ## A user's own facts are kept in their folder (`UserFolder`), one small
 ## file per fact: their upload total (`UploadTotal`) is `upload-bytes`.
+##
+## Who a user is, and how they prove it, is kept apart under the auth root
+## (`AccountFolder`), as the Zig chat keeps its account store: the counter
+## of user ids, `auth/next-id.txt`, and each user's `auth/<id>/` (`Users`),
+## with an agent's keys under `keys/<number>/` (`AgentKey`) and its invites
+## under `invites/<number>/` (`AgentInvite`), one file per fact. A record
+## of several files is written one file at a time, each made once, the
+## file that makes it count written last. A channel's members are its file
+## beside its folder of topics (`Channels`).
 import pf.Host
+import AccountFolder
+import AgentInvite
+import AgentKey
+import ChannelName
+import Channels
 import ConversationKey
+import Topic
 import Transcript
 import UploadTotal
 import UploadedImage
 import UserFolder
+import UserId
+import Users
 
 FileSystem :: [].{
+
+	## The files the directory is kept in, as read: the counter of user ids,
+	## every account folder's, and every channel's members file.
+	DirectoryFiles : {
+		counter : [NoFile, File(List(U8))],
+		accounts : List(Users.StoredAccount),
+		channels : List(Channels.StoredChannel),
+	}
 
 	## Every failure a function here answers, as `fault_words` takes it.
 	Fault : [
@@ -109,7 +134,10 @@ FileSystem :: [].{
 	)
 	store_uploaded_image! = |key, { image, bytes }| {
 		make_folder!(uploads_folder_path(key))?
-		match Host.create_file_with_binary_bytes_unless_it_exists!(uploaded_image_path(key, image), bytes) {
+		match Host.create_file_with_binary_bytes_unless_it_exists!(
+			uploaded_image_path(key, image),
+			bytes,
+		) {
 			Created => Ok({})
 			AlreadyExists => Err(AlreadyExists)
 			MissingDirectory => Err(MissingDirectory)
@@ -175,7 +203,10 @@ FileSystem :: [].{
 	)
 	replace_upload_total! = |folder, total| {
 		make_folder!(user_folder_path(folder))?
-		match Host.replace_file_with_utf8_bytes_atomically!(upload_total_path(folder), total.to_file()) {
+		match Host.replace_file_with_utf8_bytes_atomically!(
+			upload_total_path(folder),
+			total.to_file(),
+		) {
 			Replaced => Ok({})
 			MissingDirectory => Err(MissingDirectory)
 			NotUtf8 => crash "FileSystem.replace_upload_total!: a total's digits are UTF-8"
@@ -183,6 +214,403 @@ FileSystem :: [].{
 			Failed => Err(Failed)
 		}
 	}
+
+	## The files the directory is kept in, unchecked, for `Users.from_files`
+	## and `Channels.from_files` to read: the counter of user ids (`NoFile`
+	## before the first start), each account folder's facts (a folder whose
+	## name is no id is not an account, as in the Zig chat), and each
+	## channel's members file. No auth root, or no folder of channels, holds
+	## none. An account with no `name` is `Missing`.
+	read_directory_files! : {} => Try(
+		FileSystem.DirectoryFiles,
+		[
+			Missing,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	read_directory_files! = |{}| {
+		counter = read_fact!(user_counter_path)?
+		account_ids = list_names_in!(AccountFolder.auth_root)?.keep_oks(UserId.from_str)
+		var $accounts = []
+		for id in account_ids {
+			folder = account_folder_path(AccountFolder.of(id))
+			name = read_needed_fact!("${folder}/name")?
+			owner = read_fact!("${folder}/owner")?
+			$accounts = $accounts.append({ id, files: { name, owner } })
+		}
+		channel_names = list_names_in!(channels_folder_path)?.keep_oks(
+			|file_name|
+				if (file_name.ends_with(channel_members_suffix))
+					ChannelName.from_str(file_name.drop_suffix(channel_members_suffix))
+				else
+					Err(NotAMembersFile),
+		)
+		var $channels = []
+		for name in channel_names {
+			members = read_needed_fact!(channel_members_path(name))?
+			$channels = $channels.append({ name, members })
+		}
+		Ok({
+			counter,
+			accounts: $accounts,
+			channels: $channels,
+		})
+	}
+
+	## A new user's account folder, made once: an agent's `owner`, then the
+	## `name`, whose file makes the folder an account. The counter of ids is
+	## the caller's to advance first (`replace_user_counter!`), so an id is
+	## never given twice.
+	create_account! : Users.User => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_account! = |user| {
+		files = Users.account_files(user)
+		owner_fact =
+			match files.owner {
+				NoFile => []
+				File(bytes) => [("owner", bytes)]
+			}
+		folder = account_folder_path(AccountFolder.of(user.id()))
+		create_facts!(folder, owner_fact.append(("name", files.name)))
+	}
+
+	## The counter of user ids, written whole as `users` holds it.
+	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
+	replace_user_counter! = |users| {
+		make_folder!(AccountFolder.auth_root)?
+		replace_fact!(user_counter_path, users.counter_file())
+	}
+
+	## A channel's members file, written whole as `channel` holds them.
+	replace_channel_members! : Channels.Channel => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_channel_members! = |channel| {
+		make_folder!(channels_folder_path)?
+		replace_fact!(channel_members_path(channel.name()), channel.members_file())
+	}
+
+	## The topics of the channel `name`'s conversations, by its folders; a
+	## folder whose name is no topic is left out. A channel with no
+	## conversation yet has none.
+	list_channel_topics! : ChannelName => Try(List(Topic), [NotUtf8, PathRefused, Failed])
+	list_channel_topics! = |name| {
+		names = list_names_in!(channel_folder_path(name))?
+		Ok(names.keep_oks(Topic.from_str))
+	}
+
+	## The keys in `agent`'s account folder, each whole. A key whose files
+	## are not all there, or don't each hold their fact, is left out: it
+	## admits no one, and fails only itself.
+	read_agent_keys! : UserId => Try(List(AgentKey), [NotUtf8, PathRefused, Failed])
+	read_agent_keys! = |agent| {
+		ids = list_names_in!(keys_folder_path(agent))?.keep_oks(AgentKey.Id.from_str)
+		var $keys = []
+		for id in ids {
+			match read_record_facts!(key_folder_path(agent, id)) {
+				Ok(files) =>
+					match AgentKey.from_files(id, files) {
+						Ok(key) => {
+							$keys = $keys.append(key)
+						}
+						Err(BadFact(_)) => {}
+					}
+				Err(Missing) => {}
+				Err(NotUtf8) => return Err(NotUtf8)
+				Err(PathRefused) => return Err(PathRefused)
+				Err(Failed) => return Err(Failed)
+			}
+		}
+		Ok($keys)
+	}
+
+	## The number the next key of `agent`'s will have: after every key
+	## folder's, a key cut short included, so no number is given twice.
+	find_next_agent_key_id! : UserId => Try(AgentKey.Id, [Full, NotUtf8, PathRefused, Failed])
+	find_next_agent_key_id! = |agent| {
+		ids = list_names_in!(keys_folder_path(agent))?.keep_oks(AgentKey.Id.from_str)
+		AgentKey.Id.next_after(ids)
+	}
+
+	## The number the next invite of `agent`'s will have, as a key's is.
+	find_next_agent_invite_id! : UserId => Try(AgentInvite.Id, [Full, NotUtf8, PathRefused, Failed])
+	find_next_agent_invite_id! = |agent| {
+		ids = list_names_in!(invites_folder_path(agent))?.keep_oks(AgentInvite.Id.from_str)
+		AgentInvite.Id.next_after(ids)
+	}
+
+	## A new key in `agent`'s account folder, made once, its hash last.
+	create_agent_key! : UserId,
+	AgentKey => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_agent_key! = |agent, key| create_facts!(
+		key_folder_path(agent, key.id()),
+		record_facts(key.to_files()),
+	)
+
+	## A key's state, written over the one before, as `key` holds it.
+	replace_agent_key_state! : UserId,
+	AgentKey => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_agent_key_state! = |agent, key| replace_fact!(
+		"${key_folder_path(agent, key.id())}/state",
+		key.to_files().state,
+	)
+
+	## The invites in `agent`'s account folder, each whole; one cut short
+	## or damaged is left out, as a key is.
+	read_agent_invites! : UserId => Try(List(AgentInvite), [NotUtf8, PathRefused, Failed])
+	read_agent_invites! = |agent| {
+		ids = list_names_in!(invites_folder_path(agent))?.keep_oks(AgentInvite.Id.from_str)
+		var $invites = []
+		for id in ids {
+			match read_record_facts!(invite_folder_path(agent, id)) {
+				Ok(files) =>
+					match AgentInvite.from_files(id, files) {
+						Ok(invite) => {
+							$invites = $invites.append(invite)
+						}
+						Err(BadFact(_)) => {}
+					}
+				Err(Missing) => {}
+				Err(NotUtf8) => return Err(NotUtf8)
+				Err(PathRefused) => return Err(PathRefused)
+				Err(Failed) => return Err(Failed)
+			}
+		}
+		Ok($invites)
+	}
+
+	## A new invite in `agent`'s account folder, made once, its hash last.
+	create_agent_invite! : UserId,
+	AgentInvite => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_agent_invite! = |agent, invite| create_facts!(
+		invite_folder_path(agent, invite.id()),
+		record_facts(invite.to_files()),
+	)
+
+	## An invite's state, written over the one before, as `invite` holds it.
+	replace_agent_invite_state! : UserId,
+	AgentInvite => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_agent_invite_state! = |agent, invite| replace_fact!(
+		"${invite_folder_path(agent, invite.id())}/state",
+		invite.to_files().state,
+	)
+}
+
+## A fact file's bytes, or `NoFile` when there is none; unless the host's
+## read failed.
+read_fact! : Str => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
+read_fact! = |path| {
+	read = Host.read_utf8_bytes_from_file!(path.to_utf8())
+	match read.status {
+		Found => Ok(File(read.bytes))
+		Missing => Ok(NoFile)
+		NotUtf8 => Err(NotUtf8)
+		PathRefused => Err(PathRefused)
+		Failed => Err(Failed)
+	}
+}
+
+## A fact file a record needs: its bytes, or `Missing`.
+read_needed_fact! : Str => Try(List(U8), _)
+read_needed_fact! = |path|
+	match read_fact!(path)? {
+		File(bytes) => Ok(bytes)
+		NoFile => Err(Missing)
+	}
+
+## The names in the folder `path`, as text, or none when there is no such
+## folder.
+list_names_in! : Str => Try(List(Str), [NotUtf8, PathRefused, Failed])
+list_names_in! = |path| {
+	listed = Host.list_names_in_directory!(path.to_utf8())
+	match listed.status {
+		Found => Ok(listed.names.keep_oks(|name| Str.from_utf8(name)))
+		Missing => Ok([])
+		NotUtf8 => Err(NotUtf8)
+		PathRefused => Err(PathRefused)
+		Failed => Err(Failed)
+	}
+}
+
+## A fact file made holding `bytes`, once: one already there is
+## `AlreadyExists`, and nothing is changed.
+create_fact! : Str, List(U8) => Try({}, _)
+create_fact! = |path, bytes|
+	match Host.create_file_with_utf8_bytes_unless_it_exists!(path.to_utf8(), bytes) {
+		Created => Ok({})
+		AlreadyExists => Err(AlreadyExists)
+		MissingDirectory => Err(MissingDirectory)
+		NotUtf8 => Err(NotUtf8)
+		PathRefused => Err(PathRefused)
+		Failed => Err(Failed)
+	}
+
+## A fact file written whole over the one before, atomically.
+replace_fact! : Str, List(U8) => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
+replace_fact! = |path, bytes|
+	match Host.replace_file_with_utf8_bytes_atomically!(path.to_utf8(), bytes) {
+		Replaced => Ok({})
+		MissingDirectory => Err(MissingDirectory)
+		NotUtf8 => Err(NotUtf8)
+		PathRefused => Err(PathRefused)
+		Failed => Err(Failed)
+	}
+
+## Each of `facts`, a name and its bytes, made once in the folder `folder`,
+## in order, the folder made first; stopping at the first that fails.
+create_facts! : Str, List((Str, List(U8))) => Try({}, _)
+create_facts! = |folder, facts| {
+	make_folder!(folder)?
+	create_facts_from!({ folder, facts })
+}
+
+create_facts_from! : { folder : Str, facts : List((Str, List(U8))) } => Try({}, _)
+create_facts_from! = |{ folder, facts }|
+	match facts {
+		[] => Ok({})
+		[(name, bytes), .. as rest] => {
+			create_fact!("${folder}/${name}", bytes)?
+			create_facts_from!({ folder, facts: rest })
+		}
+	}
+
+## The account folder's path.
+account_folder_path : AccountFolder -> Str
+account_folder_path = |folder| Str.join_with(folder.parts(), "/")
+
+## The path of the counter of user ids.
+user_counter_path : Str
+user_counter_path = "${AccountFolder.auth_root}/next-id.txt"
+
+## The folder of an agent's keys.
+keys_folder_path : UserId -> Str
+keys_folder_path = |agent| "${account_folder_path(AccountFolder.of(agent))}/keys"
+
+## The folder of one of an agent's keys.
+key_folder_path : UserId, AgentKey.Id -> Str
+key_folder_path = |agent, id| "${keys_folder_path(agent)}/${id.to_str()}"
+
+## The folder of an agent's invites.
+invites_folder_path : UserId -> Str
+invites_folder_path = |agent| "${account_folder_path(AccountFolder.of(agent))}/invites"
+
+## The folder of one of an agent's invites.
+invite_folder_path : UserId, AgentInvite.Id -> Str
+invite_folder_path = |agent, id| "${invites_folder_path(agent)}/${id.to_str()}"
+
+## The folder of the channels: what holds each channel's folder and its
+## members file.
+channels_folder_path : Str
+channels_folder_path = Str.join_with(ConversationKey.channels_folder_parts, "/")
+
+## The channel `name`'s folder, which holds its conversations' folders.
+channel_folder_path : ChannelName -> Str
+channel_folder_path = |name| Str.join_with(ConversationKey.channel_folder_parts(name), "/")
+
+## The channel `name`'s members file, beside its folder.
+channel_members_path : ChannelName -> Str
+channel_members_path = |name| "${channel_folder_path(name)}${channel_members_suffix}"
+
+channel_members_suffix : Str
+channel_members_suffix = ".channel"
+
+## The fact files of a key or an invite, in the order they are written: the
+## hash last, so a record cut short is never whole.
+record_facts : {
+	created : List(U8),
+	expires : List(U8),
+	state : List(U8),
+	read : List(U8),
+	post : List(U8),
+	hash : List(U8),
+} -> List((Str, List(U8)))
+record_facts = |files| [
+	("created", files.created),
+	("expires", files.expires),
+	("read", files.read),
+	("post", files.post),
+	("state", files.state),
+	("hash", files.hash),
+]
+
+## The fact files of the record in `folder`; unless one is missing or the
+## host's read failed.
+read_record_facts! : Str => Try(
+	{
+		created : List(U8),
+		expires : List(U8),
+		state : List(U8),
+		read : List(U8),
+		post : List(U8),
+		hash : List(U8),
+	},
+	_,
+)
+read_record_facts! = |folder| {
+	hash = read_needed_fact!("${folder}/hash")?
+	created = read_needed_fact!("${folder}/created")?
+	expires = read_needed_fact!("${folder}/expires")?
+	state = read_needed_fact!("${folder}/state")?
+	read = read_needed_fact!("${folder}/read")?
+	post = read_needed_fact!("${folder}/post")?
+	Ok({
+		created,
+		expires,
+		state,
+		read,
+		post,
+		hash,
+	})
 }
 
 ## A user's folder: its parts.

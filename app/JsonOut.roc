@@ -35,11 +35,13 @@ JsonOut :: List(U8).{
 			].join(),
 		)
 
-	## The number 0, the only number this chat writes (an upload's answer
-	## gives its image no size). roc-chat's `number` writes any `U64`; it
-	## comes back here when a second number is written.
+	## The number 0: an upload's answer gives its image no size.
 	zero : JsonOut
 	zero = JsonOut.("0".to_utf8())
+
+	## A number, its decimal digits: a message's id in an agent's stream.
+	number : U64 -> JsonOut
+	number = |n| JsonOut.(n.to_str().to_utf8())
 
 	## The fields in order, each a name and a value: `{"name":value,...}`.
 	## A name is escaped as a string is.

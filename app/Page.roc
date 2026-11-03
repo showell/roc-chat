@@ -32,14 +32,19 @@
 ## markdown through `Markdown.render`, and every element through
 ## `Html.element`. This module vouches (`TrustedHtml.dangerously_trust`)
 ## for one constant: the doctype and the head's two `<meta>` elements.
+import AgentInvite
+import AgentKey
 import Conversation
 import ConversationKey
+import DateTime
 import Escape
 import Html
 import Markdown
 import Message
 import MsgAnchor
+import KeyScope
 import Script
+import SecretToken
 import SignedIn
 import Topic
 import TrustedHtml
@@ -56,6 +61,7 @@ Page :: [].{
 		Compose,
 		Empty,
 		Help,
+		InviteCode,
 		Layout,
 		Message,
 		Messages,
@@ -245,6 +251,73 @@ Page :: [].{
 		TrustedHtml.join([article, newline])
 	}
 
+	## One agent on the agents page, with its keys and its invites.
+	AgentSummary : {
+		agent : Users.User,
+		keys : List(AgentKey),
+		invites : List(AgentInvite),
+	}
+
+	## The agents page, for `viewer`: a form that makes an agent, then each
+	## of `agents` with a button that invites it, and its keys and invites,
+	## each live one with a button that revokes it. When an invite was just
+	## made, its code comes first (`shown`), the one time it is shown.
+	agents : {
+		viewer : SignedIn,
+		agents : List(Page.AgentSummary),
+		shown : [NoCode, Code({ agent : Users.User, code : SecretToken })],
+	} -> TrustedHtml
+	agents = |
+		{
+			viewer,
+			agents: summaries,
+			shown,
+		},
+	| {
+		code =
+			match shown {
+				NoCode => TrustedHtml.join([])
+				Code({ agent, code: shown_code }) =>
+					TrustedHtml.join([
+						paragraph("The invite code for ${agent.name().to_str()}, shown this once. It lives ten minutes and redeems once: the agent posts it as `code` to /agents/redeem for its key."),
+						Html.element({
+							name: P,
+							attrs: [Page.class(InviteCode)],
+							inner: Escape.text(shown_code.to_str()),
+						}),
+						newline,
+					])
+			}
+		make_form = Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path("/agents"))],
+			inner: TrustedHtml.join([
+				Html.element({
+					name: Textarea,
+					attrs: [FieldName(token("name")), Required],
+					inner: TrustedHtml.join([]),
+				}),
+				newline,
+				Html.element({
+					name: Button,
+					attrs: [],
+					inner: Escape.text("Make an agent"),
+				}),
+			]),
+		})
+		document({
+			title: "Agents",
+			body: TrustedHtml.join([
+				top_bar({ title: "Agents", viewer }),
+				newline,
+				code,
+				make_form,
+				newline,
+				TrustedHtml.join(summaries.map(agent_section)),
+			]),
+		})
+	}
+
 	## A page that says one thing: `title`, and `said` beneath it (no such
 	## conversation, a refused message, a failure).
 	notice : { title : Str, said : Str } -> TrustedHtml
@@ -302,6 +375,112 @@ compose_box = |key|
 			}),
 		]),
 	})
+
+## One agent's part of the agents page: its name and id, the button that
+## invites it, then its keys and its invites.
+agent_section : Page.AgentSummary -> TrustedHtml
+agent_section = |
+	{
+		agent,
+		keys,
+		invites,
+	},
+| {
+	folder = "/agents/${agent.id().to_str()}"
+	TrustedHtml.join([
+		Html.element({
+			name: H1,
+			attrs: [],
+			inner: Escape.text("${agent.name().to_str()} (id ${agent.id().to_str()})"),
+		}),
+		newline,
+		post_button({ action: "${folder}/invites", label: "Invite ${agent.name().to_str()}" }),
+		TrustedHtml.join(
+			keys.map(
+				|key| {
+					state_word =
+						match key.state() {
+							Active => "active"
+							Revoked => "revoked"
+						}
+					said = "Key ${key.id().to_str()}: ${state_word}, expires ${time_text(key.expires())}, read ${KeyScope.reach_word(key.scope().read())}, post ${KeyScope.reach_word(key.scope().post())}."
+					revoke =
+						match key.state() {
+							Active => post_button({
+								action: "${folder}/keys/${key.id().to_str()}/revoke",
+								label: "Revoke key ${key.id().to_str()}",
+							})
+							Revoked => TrustedHtml.join([])
+						}
+					TrustedHtml.join([paragraph(said), revoke])
+				},
+			),
+		),
+		TrustedHtml.join(
+			invites.map(
+				|invite| {
+					said = "Invite ${invite.id().to_str()}: ${invite_state_word(invite.state())}, expires ${time_text(invite.expires())}."
+					revoke =
+						match invite.state() {
+							Live => post_button({
+								action: "${folder}/invites/${invite.id().to_str()}/revoke",
+								label: "Revoke invite ${invite.id().to_str()}",
+							})
+							Spent => TrustedHtml.join([])
+							Revoked => TrustedHtml.join([])
+						}
+					TrustedHtml.join([paragraph(said), revoke])
+				},
+			),
+		),
+	])
+}
+
+## A form of one button, posting nothing to `action`, a path this server
+## answers.
+post_button : { action : Str, label : Str } -> TrustedHtml
+post_button = |{ action, label }|
+	TrustedHtml.join([
+		Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path(action))],
+			inner: Html.element({
+				name: Button,
+				attrs: [],
+				inner: Escape.text(label),
+			}),
+		}),
+		newline,
+	])
+
+## A paragraph of `said`, and a line end.
+paragraph : Str -> TrustedHtml
+paragraph = |said|
+	TrustedHtml.join([
+		Html.element({
+			name: P,
+			attrs: [],
+			inner: Escape.text(said),
+		}),
+		newline,
+	])
+
+invite_state_word : AgentInvite.State -> Str
+invite_state_word = |state|
+	match state {
+		Live => "live"
+		Spent => "redeemed"
+		Revoked => "revoked"
+	}
+
+## A time in seconds since the epoch as a transcript writes one, or its
+## seconds when it is out of a date's range.
+time_text : I64 -> Str
+time_text = |seconds|
+	match DateTime.from_seconds_since_epoch(seconds) {
+		Ok(time) => time.to_str()
+		Err(OutOfRange) => "at ${seconds.to_str()} seconds"
+	}
 
 ## The top bar: `title` on the left, and the name of `viewer`, the user
 ## viewing the page, on the right.
@@ -381,6 +560,7 @@ class_name = |chosen|
 		Compose => "compose"
 		Empty => "empty"
 		Help => "help"
+		InviteCode => "invite-code"
 		Layout => "layout"
 		Message => "message"
 		Messages => "messages"
@@ -430,6 +610,7 @@ expect
 		(Compose, "compose"),
 		(Empty, "empty"),
 		(Help, "help"),
+		(InviteCode, "invite-code"),
 		(Layout, "layout"),
 		(Message, "message"),
 		(Messages, "messages"),

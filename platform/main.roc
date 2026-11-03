@@ -1,20 +1,24 @@
-## This is gopher-roc's platform. It gives the host three entries into the
+## This is gopher-roc's platform. It gives the host four entries into the
 ## app, and gives the app the host's primitives as effects (Host.roc).
 ##
 ## - `roc_page` (the demo, host/demo.zig): a topic's name and its transcript
 ##   in, the page out.
-## - `roc_admission` (the server, host/http.zig): a request's head in
-##   (Http.roc), before any body is read; out comes how much body to read,
-##   or the refusal to write instead.
+## - `roc_start` (the server, host/http.zig, once, before it listens): the
+##   app makes its first data if there is none, and says whether it can
+##   serve.
+## - `roc_admission` (the server): a request's head in (Http.roc), before
+##   any body is read; out comes how much body to read, or the refusal to
+##   write instead.
 ## - `roc_handle_http_request` (the server): a request in (Http.roc), the
 ##   response out. The host routes nothing: the app does.
 ##
 ## Each hosted function's symbol is its name in Host.roc, without the `!`.
 platform ""
 	requires {
-		admission : Http.RequestHead -> Http.Admission,
+		check_request_head! : Http.RequestHead => Http.Admission,
 		handle_http_request! : Http.Request => Http.Response,
-		page : List(U8), List(U8) -> List(U8)
+		page : List(U8), List(U8) -> List(U8),
+		start! : {} => [Failed, Ready]
 	}
 	exposes [
 		Host,
@@ -22,9 +26,10 @@ platform ""
 	]
 	packages {}
 	provides {
-		"roc_admission": admission_for_host,
+		"roc_admission": admission_for_host!,
 		"roc_handle_http_request": handle_for_host!,
 		"roc_page": page_for_host,
+		"roc_start": start_for_host!,
 	}
 	hosted {
 		"append_utf8_bytes_to_file": Host.append_utf8_bytes_to_file!,
@@ -38,6 +43,7 @@ platform ""
 		"read_binary_bytes_from_file": Host.read_binary_bytes_from_file!,
 		"read_utf8_bytes_from_file": Host.read_utf8_bytes_from_file!,
 		"replace_file_with_utf8_bytes_atomically": Host.replace_file_with_utf8_bytes_atomically!,
+		"sha256_of_bytes": Host.sha256_of_bytes!,
 	}
 	targets: {
 		x64musl: {
@@ -52,6 +58,9 @@ import Http
 page_for_host : List(U8), List(U8) -> List(U8)
 page_for_host = |topic, transcript| page(topic, transcript)
 
+start_for_host! : {} => [Failed, Ready]
+start_for_host! = |{}| start!({})
+
 handle_for_host! : Http.Request => Http.Response
 handle_for_host! = |request| handle_http_request!(request)
 
@@ -59,14 +68,14 @@ handle_for_host! = |request| handle_http_request!(request)
 ## tag it was, and only that tag's fields are read. An admission's
 ## `refusal` is an empty answer, which the host never reads or writes, and
 ## a refusal's body limits are zero.
-admission_for_host : Http.RequestHead -> {
+admission_for_host! : Http.RequestHead => {
 	verdict : [Admit, Refuse],
 	body_most : U64,
 	body_grace_ms : U32,
 	refusal : Http.Response,
 }
-admission_for_host = |head|
-	match admission(head) {
+admission_for_host! = |head|
+	match check_request_head!(head) {
 		Admit({ body_most, body_grace_ms }) => {
 			verdict: Admit,
 			body_most,

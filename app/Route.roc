@@ -7,21 +7,37 @@
 ##     POST the same paths, a form field `markdown`: a message appended
 ##     POST the same paths and `/send`, the same: the script's send
 ##     GET  the same paths and `/stream`       the conversation's stream
+##     GET  the same paths and `/raw`          its transcript, plain text
 ##     POST the same paths and `/upload`       an image uploaded to it
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
 ##     GET  /chat/assets/palette.js            the pages' scripts
 ##     GET  /chat/assets/chrome.js
 ##     GET  /chat/assets/compose.js
 ##     GET  /chat/assets/feed.js
+##     GET  /agents                            your agents, keys, invites
+##     POST /agents                            make an agent: `name=`
+##     POST /agents/<id>/invites               invite it: `read=`, `post=`
+##     POST /agents/<id>/invites/<n>/revoke    revoke an invite
+##     POST /agents/<id>/keys/<n>/revoke       revoke a key
+##     POST /agents/redeem                     an agent's: `code=`, its key
+##     GET  /agents/stream                     an agent's one stream
 ##
 ## A conversation's path is `ConversationKey`'s to read, which says which
 ## of its resources the path names, and each script's is `Script`'s. A
-## path that names no conversation the directory holds is not found.
+## path that names no conversation the directory holds is not found. Who
+## may use each route is decided later: a conversation's by `Access`, an
+## agent's by `Agents`.
+##
+## Every pairing of a resource and a method is written out, so a new
+## method or resource is a decision here rather than a wildcard's.
+import AgentInvite
+import AgentKey
 import ConversationKey
 import Directory
 import Script
 import UnvalidatedString
 import UploadedImage
+import UserId
 
 Route :: [].{
 
@@ -31,9 +47,17 @@ Route :: [].{
 		AppendToConversation(ConversationKey),
 		SendToConversation(ConversationKey),
 		OpenConversationStream(ConversationKey),
+		ServeRawTranscript(ConversationKey),
 		UploadToConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
 		ServeScript(Script),
+		ShowAgents,
+		MakeAgent,
+		InviteAgent(UserId),
+		RevokeInvite({ agent : UserId, invite : AgentInvite.Id }),
+		RevokeKey({ agent : UserId, key : AgentKey.Id }),
+		RedeemInvite,
+		OpenAgentStream,
 		NotFound,
 		MethodNotAllowed([GetAndPost, GetOnly, PostOnly]),
 	]
@@ -57,18 +81,26 @@ Route :: [].{
 			Ok(script) =>
 				match asked {
 					Get => ServeScript(script)
-					Post | Other => MethodNotAllowed(GetOnly)
+					Post => MethodNotAllowed(GetOnly)
+					Other => MethodNotAllowed(GetOnly)
 				}
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) =>
-						match ConversationKey.from_url_path({ path: unchecked, directory }) {
-							Ok(found) => conversation_choice({
-								key: found.key,
-								resource: found.resource,
-								method: asked,
-							})
-							Err(_) => NotFound
+						match agents_resource(unchecked) {
+							Ok(resource) => agents_choice({ resource, method: asked })
+							Err(NotAgents) =>
+								match ConversationKey.from_url_path({
+									path: unchecked,
+									directory,
+								}) {
+									Ok(found) => conversation_choice({
+										key: found.key,
+										resource: found.resource,
+										method: asked,
+									})
+									Err(_) => NotFound
+								}
 						}
 					Err(NotUtf8) => NotFound
 				}
@@ -105,11 +137,102 @@ conversation_choice = |
 		(Page, Post) => AppendToConversation(key)
 		(Page, Other) => MethodNotAllowed(GetAndPost)
 		(Stream, Get) => OpenConversationStream(key)
-		(Stream, _) => MethodNotAllowed(GetOnly)
+		(Stream, Post) => MethodNotAllowed(GetOnly)
+		(Stream, Other) => MethodNotAllowed(GetOnly)
+		(Raw, Get) => ServeRawTranscript(key)
+		(Raw, Post) => MethodNotAllowed(GetOnly)
+		(Raw, Other) => MethodNotAllowed(GetOnly)
+		(Send, Get) => MethodNotAllowed(PostOnly)
 		(Send, Post) => SendToConversation(key)
-		(Send, _) => MethodNotAllowed(PostOnly)
+		(Send, Other) => MethodNotAllowed(PostOnly)
+		(Upload, Get) => MethodNotAllowed(PostOnly)
 		(Upload, Post) => UploadToConversation(key)
-		(Upload, _) => MethodNotAllowed(PostOnly)
+		(Upload, Other) => MethodNotAllowed(PostOnly)
 		(UploadedImage(image), Get) => ServeUploadedImage({ key, image })
-		(UploadedImage(_), _) => MethodNotAllowed(GetOnly)
+		(UploadedImage(_), Post) => MethodNotAllowed(GetOnly)
+		(UploadedImage(_), Other) => MethodNotAllowed(GetOnly)
+	}
+
+## What a path under `/agents` names.
+AgentsResource : [
+	Agents,
+	Invites(UserId),
+	InviteRevoke({ agent : UserId, invite : AgentInvite.Id }),
+	KeyRevoke({ agent : UserId, key : AgentKey.Id }),
+	Redeem,
+	AgentStream,
+]
+
+## What `path` names under `/agents`, or `NotAgents`.
+agents_resource : UnvalidatedString -> Try(AgentsResource, [NotAgents])
+agents_resource = |path|
+	match path.url_path_parts() {
+		Ok([agents]) if agents.is_exactly("agents") => Ok(Agents)
+		Ok(
+			[
+				agents,
+				last,
+			],
+		) if agents.is_exactly("agents") and last.is_exactly("redeem") => Ok(Redeem)
+		Ok(
+			[
+				agents,
+				last,
+			],
+		) if agents.is_exactly("agents") and last.is_exactly("stream") => Ok(AgentStream)
+		Ok(
+			[
+				agents,
+				id,
+				invites,
+			],
+		) if agents.is_exactly("agents") and invites.is_exactly("invites") =>
+			id.user_id().map_ok(|agent| Invites(agent)).map_err(|_| NotAgents)
+		Ok(
+			[
+				agents,
+				id,
+				kind,
+				number,
+				revoke,
+			],
+		) if agents.is_exactly("agents") and revoke.is_exactly("revoke") => {
+			agent = id.user_id() ? |_| NotAgents
+			if (kind.is_exactly("invites"))
+				number.invite_id().map_ok(
+					|invite| InviteRevoke({
+						agent,
+						invite,
+					}),
+				).map_err(|_| NotAgents)
+			else if (kind.is_exactly("keys"))
+				number.key_id().map_ok(|key| KeyRevoke({ agent, key })).map_err(|_| NotAgents)
+			else
+				Err(NotAgents)
+		}
+		_ => Err(NotAgents)
+	}
+
+## The route for `method` and an `/agents` path's `resource`.
+agents_choice : { resource : AgentsResource, method : [Get, Post, Other] } -> Route.Choice
+agents_choice = |{ resource, method }|
+	match (resource, method) {
+		(Agents, Get) => ShowAgents
+		(Agents, Post) => MakeAgent
+		(Agents, Other) => MethodNotAllowed(GetAndPost)
+		(Invites(_), Get) => MethodNotAllowed(PostOnly)
+		(Invites(agent), Post) => InviteAgent(agent)
+		(Invites(_), Other) => MethodNotAllowed(PostOnly)
+		(InviteRevoke(_), Get) => MethodNotAllowed(PostOnly)
+		(InviteRevoke(named), Post) => RevokeInvite(named)
+		(InviteRevoke(_), Other) => MethodNotAllowed(PostOnly)
+		(KeyRevoke(_), Get) => MethodNotAllowed(PostOnly)
+		(KeyRevoke(named), Post) => RevokeKey(named)
+		(KeyRevoke(_), Other) => MethodNotAllowed(PostOnly)
+		(Redeem, Get) => MethodNotAllowed(PostOnly)
+		(Redeem, Post) => RedeemInvite
+		(Redeem, Other) => MethodNotAllowed(PostOnly)
+		(AgentStream, Get) => OpenAgentStream
+		(AgentStream, Post) => MethodNotAllowed(GetOnly)
+		(AgentStream, Other) => MethodNotAllowed(GetOnly)
 	}

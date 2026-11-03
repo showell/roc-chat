@@ -7,7 +7,7 @@
 ## folder (`UserFolder`). A user with no file has uploaded nothing. A file
 ## that doesn't hold a number refuses every upload, because reading it as 0
 ## would give the user their whole allowance again.
-import Ascii
+import FactFile
 
 UploadTotal :: U64.{
 
@@ -20,28 +20,18 @@ UploadTotal :: U64.{
 	most_bytes = UploadTotal.most_gib * 1024 * 1024 * 1024
 
 	## The total a user's file holds: none uploaded when there is no file
-	## yet (`NoFile`), else the file's decimal digits, with any ASCII spaces
-	## around them taken off (`Ascii.trim_spaces`), as the Zig chat reads
-	## it. Anything else is `NotANumber`, a number too big for a `U64`
-	## included.
+	## yet (`NoFile`), else the number the file spells (`FactFile`).
+	## Anything else is `NotANumber`, a number too big for a `U64` included.
 	from_file : [NoFile, File(List(U8))] -> Try(UploadTotal, [NotANumber])
 	from_file = |file|
 		match file {
 			NoFile => Ok(UploadTotal.(0))
-			File(bytes) => {
-				digits = Ascii.trim_spaces(bytes)
-				if digits.is_empty() or !digits.all(Ascii.is_digit) {
-					Err(NotANumber)
-				} else {
-					number = U64.from_int_digits(digits.map(|b| b - '0')) ? |OutOfRange| NotANumber
-					Ok(UploadTotal.(number))
-				}
-			}
+			File(bytes) => FactFile.number_from_file(bytes).map_ok(|number| UploadTotal.(number))
 		}
 
 	## The total as its file keeps it: its decimal digits.
 	to_file : UploadTotal -> List(U8)
-	to_file = |UploadTotal.(total)| total.to_str().to_utf8()
+	to_file = |UploadTotal.(total)| FactFile.number_to_file(total)
 
 	## The total after an upload of `adding` bytes, unless that would take it
 	## past `most_bytes` (`LimitReached`).

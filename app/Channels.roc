@@ -5,7 +5,15 @@
 ##
 ## Channel names are not checked for clashes here. `Directory` holds the
 ## channels with the users, and keeps every name unique across both.
+##
+## A channel's members are kept as the Zig chat keeps them (`FileSystem`):
+## a file per channel, `chat/channel/<name>.channel`, beside the channel's
+## folder of topics, holding one member's id a line. An admin edits the file
+## to change the members. `members_file` writes it, and `from_files` reads
+## it back as the Zig chat does: each line's spaces off, a blank line or one
+## starting `#` skipped, and any other line exactly an id, once.
 import Admin
+import Ascii
 import ChannelName
 import UserId
 import Users
@@ -28,8 +36,29 @@ Channels :: List(Channels.Channel).{
 		has_member : Channels.Channel, Users.User -> Bool
 		has_member = |Channels.Channel.(c), user| c.members.contains(user.id())
 
+		## The channel's members file: each member's id and a line end,
+		## lowest first.
+		members_file : Channels.Channel -> List(U8)
+		members_file = |channel| channel.members().join_map(|id| "${id.to_str()}\n".to_utf8())
+
 		is_eq : _
 	}
+
+	## A channel's members file as it was read, with the name its file is
+	## named by.
+	StoredChannel : { name : ChannelName, members : List(U8) }
+
+	## The channels the members files hold, in the order given. Refused
+	## when a line is no id, or an id twice (`BadMembers`, naming the
+	## channel).
+	from_files : List(Channels.StoredChannel) -> Try(Channels, [BadMembers(ChannelName)])
+	from_files = |stored|
+		stored.map_try(
+			|{ name, members }| {
+				ids = members_from_file(members) ? |_| BadMembers(name)
+				Ok(Channels.Channel.({ name, members: Set.from_list(ids) }))
+			},
+		).map_ok(|all| Channels.(all))
 
 	## An admin's change to one channel's members: the admin, the channel,
 	## and the user who joins or leaves it.
@@ -102,6 +131,20 @@ Channels :: List(Channels.Channel).{
 	to_list = |Channels.(all)| all
 
 	is_eq : _
+}
+
+## The members a members file names, one id a line, each once.
+members_from_file : List(U8) -> Try(List(UserId), [NotAMembersFile])
+members_from_file = |bytes| {
+	lines = bytes.split_on('\n').map(Ascii.trim_spaces).drop_if(|line| line.is_empty() or line.starts_with(['#']))
+	ids = lines.map_try(
+		|line|
+			match Str.from_utf8(line) {
+				Ok(text) => UserId.from_str(text).map_err(|NotAUserId| NotAMembersFile)
+				Err(_) => Err(NotAMembersFile)
+			},
+	)?
+	if (Set.from_list(ids).len() == ids.len()) Ok(ids) else Err(NotAMembersFile)
 }
 
 ## The channels with `changed` in place of the channel of the same name.

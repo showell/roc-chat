@@ -1,5 +1,5 @@
 //! **ROC GLUE HOLDS EVERY SEAM RECORD**: each C function `roc glue`
-//! declares for the platform (Host.roc's primitives, and the app's three
+//! declares for the platform (Host.roc's primitives, and the app's four
 //! entries) is held at compile time to host/seam.zig's function of that
 //! symbol, argument by argument and the answer: a record field by field by
 //! name (its offset, and what it holds, down through records and lists), a
@@ -178,9 +178,9 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
-test "roc glue declares every function seam.zig has, and no other: eleven primitives and three entries" {
+test "roc glue declares every function seam.zig has, and no other: twelve primitives and four entries" {
     try std.testing.expectEqual(seam_names.len, glue_names.len);
-    try std.testing.expectEqual(14, seam_names.len);
+    try std.testing.expectEqual(16, seam_names.len);
 }
 
 test "a swap fails the check, naming the function, the field and the offsets" {

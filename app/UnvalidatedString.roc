@@ -13,9 +13,13 @@
 ## is acting; and `RequestOrigin`, which refuses a request from any origin
 ## but the server's own. A security reader can start at any of the five.
 import Ascii
+import AgentInvite
+import AgentKey
 import ChannelName
 import DateTime
+import KeyScope
 import Name
+import SecretToken
 import Topic
 import UploadedImage
 import UserId
@@ -66,6 +70,31 @@ UnvalidatedString :: Str.{
 	## `UploadedImage.from_name`.
 	uploaded_image : UnvalidatedString -> Try(UploadedImage, [NotAnUploadName])
 	uploaded_image = |UnvalidatedString.(text)| UploadedImage.from_name(text)
+
+	## The number of an agent's key it spells, as a URL carries it, checked
+	## by `AgentKey.Id.from_str`.
+	key_id : UnvalidatedString -> Try(AgentKey.Id, [NotAKeyId])
+	key_id = |UnvalidatedString.(text)| AgentKey.Id.from_str(text)
+
+	## The number of an agent's invite it spells, as a URL carries it,
+	## checked by `AgentInvite.Id.from_str`.
+	invite_id : UnvalidatedString -> Try(AgentInvite.Id, [NotAnInviteId])
+	invite_id = |UnvalidatedString.(text)| AgentInvite.Id.from_str(text)
+
+	## The secret token it spells, as an invite's code is posted, checked by
+	## `SecretToken.from_str`.
+	secret_token : UnvalidatedString -> Try(SecretToken, [NotAToken])
+	secret_token = |UnvalidatedString.(text)| SecretToken.from_str(text)
+
+	## The secret token an `Authorization` header's value names as a
+	## bearer, checked by `SecretToken.from_bearer`.
+	bearer_token : UnvalidatedString -> Try(SecretToken, [NotABearer])
+	bearer_token = |UnvalidatedString.(text)| SecretToken.from_bearer(text)
+
+	## The reach of a key's scope it names, as a form's `read` or `post`
+	## field holds it, checked by `KeyScope.reach_from_word`.
+	reach : UnvalidatedString -> Try(KeyScope.Reach, [NotAReach])
+	reach = |UnvalidatedString.(text)| KeyScope.reach_from_word(text)
 
 	## The time it writes, checked by `DateTime.from_str`.
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])

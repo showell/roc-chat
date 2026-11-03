@@ -34,6 +34,12 @@ Transcript :: [].{
 		## everything.
 		unchecked_from_file : List(U8) -> Transcript.Utf8Transcript
 		unchecked_from_file = |bytes| Transcript.Utf8Transcript.(bytes)
+
+		## The file's bytes as the disk holds them, to serve as plain text
+		## (`/raw`), never as markup: what a reader of the file with `cat`
+		## sees.
+		to_plain_text : Transcript.Utf8Transcript -> List(U8)
+		to_plain_text = |Transcript.Utf8Transcript.(bytes)| bytes
 	}
 
 	## One message's record, as a transcript file takes it, which is what
