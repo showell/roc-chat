@@ -146,7 +146,7 @@ keep_upload! = |
 	upload = image_upload_from_form({ headers, body })?
 	folder = UserFolder.of(acting.user().id())
 	before = reserve_upload_bytes!(folder, upload.bytes.len())?
-	image = UploadedImage.fresh({ random_bytes: Host.fill_with_random_bytes!(16), kind: upload.kind })
+	image = UploadedImage.fresh({ random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name), kind: upload.kind })
 	match FileSystem.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
 		Ok({}) =>
 			Ok(

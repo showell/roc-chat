@@ -37,11 +37,15 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 		else
 			Err(NotAnImage)
 
-	## A fresh image of `kind`, named by `random_bytes`, which are 16 bytes
-	## from the host's secure source.
+	## How many random bytes an image's name is made from.
+	random_bytes_per_name : U64
+	random_bytes_per_name = 16
+
+	## A fresh image of `kind`, named by `random_bytes`, which are
+	## `random_bytes_per_name` bytes from the host's secure source.
 	fresh : { random_bytes : List(U8), kind : UploadedImage.Kind } -> UploadedImage
 	fresh = |{ random_bytes, kind }|
-		if random_bytes.len() == name_random_bytes {
+		if random_bytes.len() == UploadedImage.random_bytes_per_name {
 			digits = Str.from_utf8(random_bytes.join_map(hex_digits)) ?? crash "UploadedImage.fresh: hex digits are ASCII"
 			UploadedImage.({ kind, digits })
 		} else
@@ -52,7 +56,7 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	from_name : Str -> Try(UploadedImage, [NotAnUploadName])
 	from_name = |text|
 		match text.to_utf8().split_first('.') {
-			Ok({ before, after }) if before.len() == name_random_bytes * 2 and before.all(is_lower_hex_digit) => {
+			Ok({ before, after }) if before.len() == UploadedImage.random_bytes_per_name * 2 and before.all(is_lower_hex_digit) => {
 				kind = kind_of_extension(after)?
 				digits = Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
 				Ok(UploadedImage.({ kind, digits }))
@@ -80,10 +84,6 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 
 	is_eq : _
 }
-
-## How many random bytes name an image.
-name_random_bytes : U64
-name_random_bytes = 16
 
 ## The eight bytes every PNG file opens with.
 png_signature : List(U8)
