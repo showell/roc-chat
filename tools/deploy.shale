@@ -10,8 +10,8 @@
 --    prod's Caddyfile does not import /etc/caddy/sites/*.caddy or define the
 --    `access_log` snippet (that Caddyfile is angry-gopher's deploy/Caddyfile;
 --    this never edits it), or while roc-chat still runs there (the cutover
---    stops it first: docs/deploy.md). Then pushes, so what serves is on
---    GitHub.
+--    stops it first: docs/deploy.md), or when main has no upstream. Then
+--    pushes, so what serves is on GitHub.
 -- 2. Builds the binary here: static (musl), ReleaseSafe, so bcrypt runs at
 --    release speed and every safety check stays on.
 -- 3. Makes, once, the `gopherroc` system user, /opt/gopher-roc (root's) and
@@ -82,6 +82,7 @@ end
 if asks_prod("if systemctl is-active --quiet roc-chat; then exit 0; else exit 1; fi") then
   fail("deploy: roc-chat still runs on prod; docs/deploy.md, \"The cutover\", stops it first")
 end
+if git_upstream("") == nil then fail("deploy: main has no upstream to push to; what serves must be on GitHub first") end
 must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
 local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
 print("deploying gopher-roc " .. commit .. " to " .. HOST)

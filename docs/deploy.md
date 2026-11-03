@@ -24,6 +24,8 @@ It runs from gopher-roc's root, on `main`, with no arguments. It refuses on a di
 
 Run these in order. Nothing of roc-chat's is deleted: its binary, unit, data and secrets stay where they are, for the way back.
 
+**0. Before the first deploy, gopher-roc needs a GitHub remote** for `main` to track: the deploy pushes, so what serves is on GitHub, and refuses when `main` has no upstream.
+
 **1. A backup of roc-chat's data** (on this box, in `~/build/roc-chat-backups`):
 
 ```
