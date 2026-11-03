@@ -24,8 +24,8 @@ image_name = "${"0a".repeat(16)}.png"
 ## the URL path the key writes for it.
 read_back : Str -> Try(Str, _)
 read_back = |path| {
-	unchecked = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
-	found = ConversationKey.from_url_path({ path: unchecked, directory: with_room })?
+	unvalidated_path = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
+	found = ConversationKey.from_url_path({ path: unvalidated_path, directory: with_room })?
 	Ok("${resource_name(found.resource)} ${found.key.url_path(found.resource)}")
 }
 
@@ -43,8 +43,8 @@ resource_name = |resource|
 ## The parts of the key `path` names in `with_room`, between spaces.
 parts_at : Str -> Try(Str, _)
 parts_at = |path| {
-	unchecked = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
-	found = ConversationKey.from_url_path({ path: unchecked, directory: with_room })?
+	unvalidated_path = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
+	found = ConversationKey.from_url_path({ path: unvalidated_path, directory: with_room })?
 	Ok(Str.join_with(found.key.parts(), " "))
 }
 
@@ -147,13 +147,21 @@ expect
 		"/chat/dm/1_3/plans/upload",
 		"/chat/dm/1_3/plans/uploads/${image_name}",
 	].all(|path| read_back(path) == Err(NoSuchHuman))
-# A key is its place and its topic: the same URL gives equal keys, and a
-# resource's URL the key of its page.
+# A key is its place and its topic: every resource's URL gives the key of
+# its page, and another place or another topic gives another key.
 expect {
 	key = |path|
 		ConversationKey.from_url_path({ path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: UTF-8", directory: with_room })
 			.map_ok(|found| found.key)
-	key("/chat/dm/1_2/plans") == key("/chat/dm/1_2/plans")
-		and key("/chat/dm/1_2/plans/stream") == key("/chat/dm/1_2/plans")
-		and key("/chat/dm/1_2/plans") != key("/chat/dm/1_1/plans")
+	page = key("/chat/dm/1_2/plans")
+	page.is_ok()
+		and [
+			"/chat/dm/1_2/plans/stream",
+			"/chat/dm/1_2/plans/send",
+			"/chat/dm/1_2/plans/upload",
+			"/chat/dm/1_2/plans/uploads/${image_name}",
+		].all(|path| key(path) == page)
+		and key("/chat/dm/1_1/plans") != page
+		and key("/chat/dm/1_2/other") != page
+		and key("/chat/channel/plans-room/plans") != page
 }

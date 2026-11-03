@@ -65,6 +65,10 @@
 //!      exactly 1 GiB;
 //!  28. the total seeded with text that is no number: its upload a 500
 //!      saying so, nothing stored, the total unchanged.
+//!  28a. a plain file where the DM's uploads folder would be, so an image
+//!      uploaded there can't be stored: a 500 saying what the file system
+//!      answered, and the image's bytes given back to the allowance, the
+//!      total exactly as before;
 //!  29. with the channel's stream open after its tenth message, send as the
 //!      compose box's script does (form-encoded to `/send`, `Origin` this
 //!      server, `Sec-Fetch-Site` same-origin): 201, HTML, exactly the
@@ -107,6 +111,8 @@ const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 const channel_uploads = "chat/channel/general/gopher-roc/uploads";
+/// Where the DM's uploads folder would be; step 28a puts a plain file there.
+const dm_uploads = "chat/dm/1_1/plans/uploads";
 /// Steve's upload total, the bytes he has uploaded, in his own folder.
 const total_path = "users/1/upload-bytes";
 /// What `uploadTotal` says when there is no total file.
@@ -372,6 +378,15 @@ pub fn main(init: std.process.Init) !void {
     try t.check("upload with a total that is no number: 500, saying so; nothing stored, the total as it was", garbled.status == 500 and
         std.mem.eql(u8, garbled.body, "Upload failed: your upload total is not a number.\n") and
         (try namesIn(a, io, data, channel_uploads)).len == 3 and std.mem.eql(u8, try uploadTotal(a, io, data), "lots"));
+
+    // 28a.
+    try data.writeFile(io, .{ .sub_path = total_path, .data = "100" });
+    try data.writeFile(io, .{ .sub_path = dm_uploads, .data = "a file, not a folder" });
+    const unstored = try post(a, io, port, .{ .path = dm_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
+    try t.check("upload an image that can't be stored: 500, saying what the file system answered; its bytes given back, the total as it was", unstored.status == 500 and
+        std.mem.startsWith(u8, unstored.body, "Upload failed. The file system answered ") and
+        std.mem.eql(u8, try uploadTotal(a, io, data), "100") and
+        std.mem.eql(u8, try data.readFileAlloc(io, dm_uploads, a, .limited(1024)), "a file, not a folder"));
 
     // 29.
     var send_stream = try Stream.open(a, io, port, channel_url ++ "/stream?after=10");

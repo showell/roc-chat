@@ -19,7 +19,7 @@ HttpAnswer :: [].{
 	## `page`, with `status`, as UTF-8 HTML.
 	page : U16, TrustedHtml -> Http.Response
 	page = |status, html|
-		whole({
+		whole_response({
 			status,
 			headers: page_headers,
 			body: html.to_utf8(),
@@ -29,7 +29,7 @@ HttpAnswer :: [].{
 	## page, so a reload never posts again.
 	see_other : Str -> Http.Response
 	see_other = |url_path|
-		whole({
+		whole_response({
 			status: 303,
 			headers: [{ name: "location".to_utf8(), value: url_path.to_utf8() }],
 			body: [],
@@ -41,7 +41,7 @@ HttpAnswer :: [].{
 	## script is never stale.
 	script : List(U8) -> Http.Response
 	script = |bytes|
-		whole({
+		whole_response({
 			status: 200,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "text/javascript; charset=utf-8".to_utf8() },
@@ -56,7 +56,7 @@ HttpAnswer :: [].{
 	## old chat's did, since a name is never given twice.
 	image : { content_type : Str, bytes : List(U8) } -> Http.Response
 	image = |{ content_type, bytes }|
-		whole({
+		whole_response({
 			status: 200,
 			headers: [
 				{ name: "content-type".to_utf8(), value: content_type.to_utf8() },
@@ -69,7 +69,7 @@ HttpAnswer :: [].{
 	## The JSON `answer`, with `status`.
 	json : U16, JsonOut -> Http.Response
 	json = |status, answer|
-		whole({
+		whole_response({
 			status,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "application/json".to_utf8() },
@@ -83,7 +83,7 @@ HttpAnswer :: [].{
 	## it.
 	text : U16, Str -> Http.Response
 	text = |status, words|
-		whole({
+		whole_response({
 			status,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "text/plain; charset=utf-8".to_utf8() },
@@ -99,18 +99,18 @@ HttpAnswer :: [].{
 	method_not_allowed = |allowed| {
 		methods =
 			match allowed {
-				GetAndPost => { header: "GET, POST", said: "GET or POST only\n" }
-				GetOnly => { header: "GET", said: "GET only\n" }
-				PostOnly => { header: "POST", said: "POST only\n" }
+				GetAndPost => { header: "GET, POST", text: "GET or POST only\n" }
+				GetOnly => { header: "GET", text: "GET only\n" }
+				PostOnly => { header: "POST", text: "POST only\n" }
 			}
-		whole({
+		whole_response({
 			status: 405,
 			headers: [
 				{ name: "allow".to_utf8(), value: methods.header.to_utf8() },
 				{ name: "content-type".to_utf8(), value: "text/plain; charset=utf-8".to_utf8() },
 				nosniff,
 			],
-			body: methods.said.to_utf8(),
+			body: methods.text.to_utf8(),
 		})
 	}
 
@@ -139,12 +139,12 @@ HttpAnswer :: [].{
 }
 
 ## An answer that is its body, naming no stream.
-whole : {
+whole_response : {
 	status : U16,
 	headers : List(Http.Header),
 	body : List(U8),
 } -> Http.Response
-whole = |
+whole_response = |
 	{
 		status,
 		headers,
@@ -205,29 +205,33 @@ nosniff = { name: "x-content-type-options".to_utf8(), value: "nosniff".to_utf8()
 header_pairs : Http.Response -> List((Str, Str))
 header_pairs = |response| response.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value)))
 
-# A page carries its type, the policy and nosniff, whatever its status.
+# A page has the status it is given and its HTML as the body, and carries
+# its type, the policy and nosniff, whatever its status.
 expect
 	[200, 404, 500].all(
-		|status|
-			header_pairs(HttpAnswer.page(status, TrustedHtml.join([])))
-				== [
-					("content-type", "text/html; charset=utf-8"),
-					("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
-					("x-content-type-options", "nosniff"),
-				],
+		|status| {
+			response = HttpAnswer.page(status, TrustedHtml.dangerously_trust("<p>x</p>"))
+			response.status == status
+				and response.body == "<p>x</p>".to_utf8()
+				and header_pairs(response)
+					== [
+						("content-type", "text/html; charset=utf-8"),
+						("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
+						("x-content-type-options", "nosniff"),
+					]
+		},
 	)
 
 ## A 405's headers and words, as a test reads them.
-refused_with : [GetAndPost, GetOnly, PostOnly] -> (List((Str, Str)), Str)
-refused_with = |allowed| {
-	answered = HttpAnswer.method_not_allowed(allowed)
-	(header_pairs(answered), Str.from_utf8_lossy(answered.body))
+method_refusal : [GetAndPost, GetOnly, PostOnly] -> (List((Str, Str)), Str)
+method_refusal = |allowed| {
+	response = HttpAnswer.method_not_allowed(allowed)
+	(header_pairs(response), Str.from_utf8_lossy(response.body))
 }
 
-# The 405 is plain text, not sniffed, allowing each path's own methods; the
-# 303 has no body, so only its place.
+# The 405 is plain text, not sniffed, allowing each path's own methods.
 expect
-	refused_with(GetAndPost)
+	method_refusal(GetAndPost)
 		== (
 			[
 				("allow", "GET, POST"),
@@ -237,7 +241,7 @@ expect
 			"GET or POST only\n",
 		)
 expect
-	refused_with(GetOnly)
+	method_refusal(GetOnly)
 		== (
 			[
 				("allow", "GET"),
@@ -247,7 +251,7 @@ expect
 			"GET only\n",
 		)
 expect
-	refused_with(PostOnly)
+	method_refusal(PostOnly)
 		== (
 			[
 				("allow", "POST"),
@@ -256,32 +260,38 @@ expect
 			],
 			"POST only\n",
 		)
-expect header_pairs(HttpAnswer.see_other("/a")) == [("location", "/a")]
+# The 303 has no body, only its place.
+expect {
+	response = HttpAnswer.see_other("/a")
+	response.status == 303
+		and response.body == []
+		and header_pairs(response) == [("location", "/a")]
+}
 # An uploaded image: its type, kept for good, not sniffed, its bytes as
 # given.
 expect {
-	answered = HttpAnswer.image({ content_type: "image/png", bytes: [0x89, 0, 0xFF] })
-	answered.status == 200
-		and header_pairs(answered)
+	response = HttpAnswer.image({ content_type: "image/png", bytes: [0x89, 0, 0xFF] })
+	response.status == 200
+		and header_pairs(response)
 			== [
 				("content-type", "image/png"),
 				("cache-control", "private, max-age=31536000, immutable"),
 				("x-content-type-options", "nosniff"),
 			]
-		and answered.body == [0x89, 0, 0xFF]
+		and response.body == [0x89, 0, 0xFF]
 }
 # JSON and a plain refusal, each its type, not sniffed; the refusal one line.
 expect {
-	answered = HttpAnswer.json(200, JsonOut.json_object([]))
-	answered.status == 200
-		and header_pairs(answered) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
-		and answered.body == "{}".to_utf8()
+	response = HttpAnswer.json(200, JsonOut.json_object([]))
+	response.status == 200
+		and header_pairs(response) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
+		and response.body == "{}".to_utf8()
 }
 expect {
-	answered = HttpAnswer.text(415, "no & <b>")
-	answered.status == 415
-		and header_pairs(answered) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
-		and answered.body == "no & <b>\n".to_utf8()
+	response = HttpAnswer.text(415, "no & <b>")
+	response.status == 415
+		and header_pairs(response) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
+		and response.body == "no & <b>\n".to_utf8()
 }
 # Every whole answer names no stream; a stream is a 200 on its key, for its
 # holder, its backlog first, not sniffed.
@@ -294,30 +304,30 @@ expect
 		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
 		HttpAnswer.json(200, JsonOut.json_object([])),
 		HttpAnswer.text(400, "x"),
-	].all(|answered| answered.kind == Whole and answered.stream_key == [] and answered.stream_holder == [])
+	].all(|response| response.kind == Whole and response.stream_key == [] and response.stream_holder == [])
 expect {
-	answered = HttpAnswer.stream({
+	response = HttpAnswer.stream({
 		key: "k".to_utf8(),
 		holder: "1".to_utf8(),
 		backlog: "id: 1\n".to_utf8(),
 	})
-	answered.kind == Stream
-		and answered.status == 200
-		and answered.stream_key == "k".to_utf8()
-		and answered.stream_holder == "1".to_utf8()
-		and answered.body == "id: 1\n".to_utf8()
-		and header_pairs(answered) == [("x-content-type-options", "nosniff")]
+	response.kind == Stream
+		and response.status == 200
+		and response.stream_key == "k".to_utf8()
+		and response.stream_holder == "1".to_utf8()
+		and response.body == "id: 1\n".to_utf8()
+		and header_pairs(response) == [("x-content-type-options", "nosniff")]
 }
 # A script: JavaScript, never cached unasked, not sniffed, its bytes as
 # given; and no page's policy, which is a document's.
 expect {
-	answered = HttpAnswer.script("x();\n".to_utf8())
-	answered.status == 200
-		and header_pairs(answered)
+	response = HttpAnswer.script("x();\n".to_utf8())
+	response.status == 200
+		and header_pairs(response)
 			== [
 				("content-type", "text/javascript; charset=utf-8"),
 				("cache-control", "no-cache"),
 				("x-content-type-options", "nosniff"),
 			]
-		and answered.body == "x();\n".to_utf8()
+		and response.body == "x();\n".to_utf8()
 }

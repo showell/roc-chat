@@ -7,8 +7,8 @@
 ## is at most 10 MiB (`most_bytes`).
 ##
 ## The name is 32 lowercase hex digits, from 16 random bytes, then `.` and
-## the extension the kind gives (`fresh`), so no name a person chose reaches
-## the disk or a URL. A name read back from a URL (`from_name`) must have
+## the extension the kind gives (`with_random_name`), so no name a person
+## chose reaches the disk or a URL. A name read back from a URL (`from_name`) must have
 ## exactly that shape, and its extension gives its kind. The type keeps the
 ## digits and the kind, so a name's extension always matches its kind.
 ## Where an image is kept and served is `ConversationKey`'s.
@@ -36,15 +36,15 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	random_bytes_per_name : U64
 	random_bytes_per_name = 16
 
-	## A fresh image of `kind`, named by `random_bytes`, which are
+	## A new image of `kind`, named by `random_bytes`, which are
 	## `random_bytes_per_name` bytes from the host's secure source.
-	fresh : { random_bytes : List(U8), kind : UploadedImage.Kind } -> UploadedImage
-	fresh = |{ random_bytes, kind }|
+	with_random_name : { random_bytes : List(U8), kind : UploadedImage.Kind } -> UploadedImage
+	with_random_name = |{ random_bytes, kind }|
 		if random_bytes.len() == UploadedImage.random_bytes_per_name {
-			digits = Str.from_utf8(random_bytes.join_map(hex_digits)) ?? crash "UploadedImage.fresh: hex digits are ASCII"
+			digits = Str.from_utf8(random_bytes.join_map(hex_digits)) ?? crash "UploadedImage.with_random_name: hex digits are ASCII"
 			UploadedImage.({ kind, digits })
 		} else
-			crash "UploadedImage.fresh: a name takes 16 random bytes"
+			crash "UploadedImage.with_random_name: a name takes ${UploadedImage.random_bytes_per_name.to_str()} random bytes"
 
 	## The image a name read back from a URL names: 32 lowercase hex digits,
 	## `.`, and one kind's extension; anything else is `NotAnUploadName`.
@@ -165,27 +165,28 @@ expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedI
 expect UploadedImage.checked_bytes(List.repeat(0, UploadedImage.most_bytes + 1)) == Err(NotAnImage)
 # A fresh name: the random bytes in lowercase hex, and its kind's extension.
 expect
-	UploadedImage.fresh({ random_bytes: List.repeat(0xAB, 16), kind: Webp }).name()
+	UploadedImage.with_random_name({ random_bytes: List.repeat(0xAB, 16), kind: Webp }).name()
 		== "${"ab".repeat(16)}.webp"
 expect
-	UploadedImage.fresh({ random_bytes: List.from_iter(U8.until(0, 16)), kind: Png }).name()
+	UploadedImage.with_random_name({ random_bytes: List.from_iter(U8.until(0, 16)), kind: Png }).name()
 		== "000102030405060708090a0b0c0d0e0f.png"
 
-## A fresh image of `kind`, as a test reads it: its name, then its type.
-fresh_said : UploadedImage.Kind -> Str
-fresh_said = |kind| {
-	image = UploadedImage.fresh({ random_bytes: List.repeat(0xF0, 16), kind })
+## An image of `kind` with a random name, as a test reads it: its name,
+## then its type.
+name_and_type : UploadedImage.Kind -> Str
+name_and_type = |kind| {
+	image = UploadedImage.with_random_name({ random_bytes: List.repeat(0xF0, 16), kind })
 	"${image.name()} ${image.content_type()}"
 }
 
-expect fresh_said(Png) == "${"f0".repeat(16)}.png image/png"
-expect fresh_said(Jpeg) == "${"f0".repeat(16)}.jpg image/jpeg"
-expect fresh_said(Gif) == "${"f0".repeat(16)}.gif image/gif"
-expect fresh_said(Webp) == "${"f0".repeat(16)}.webp image/webp"
-expect UploadedImage.fresh({ random_bytes: List.repeat(0, 16), kind: Jpeg }).kind() == Jpeg
+expect name_and_type(Png) == "${"f0".repeat(16)}.png image/png"
+expect name_and_type(Jpeg) == "${"f0".repeat(16)}.jpg image/jpeg"
+expect name_and_type(Gif) == "${"f0".repeat(16)}.gif image/gif"
+expect name_and_type(Webp) == "${"f0".repeat(16)}.webp image/webp"
+expect UploadedImage.with_random_name({ random_bytes: List.repeat(0, 16), kind: Jpeg }).kind() == Jpeg
 # A name read back: exactly a fresh name's shape, its kind by its extension.
 expect {
-	image = UploadedImage.fresh({ random_bytes: List.repeat(0x5C, 16), kind: Gif })
+	image = UploadedImage.with_random_name({ random_bytes: List.repeat(0x5C, 16), kind: Gif })
 	UploadedImage.from_name(image.name()) == Ok(image)
 }
 expect

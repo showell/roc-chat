@@ -125,12 +125,12 @@ Html :: [].{
 			inner,
 		},
 	| {
-		written = name_of(name)
-		opened = Str.join_with(attrs.map(attribute), "")
+		tag_name = name_of(name)
+		attributes_text = Str.join_with(attrs.map(attribute), "")
 		TrustedHtml.join([
-			TrustedHtml.dangerously_trust("<${written}${opened}>"),
+			TrustedHtml.dangerously_trust("<${tag_name}${attributes_text}>"),
 			inner,
-			TrustedHtml.dangerously_trust("</${written}>"),
+			TrustedHtml.dangerously_trust("</${tag_name}>"),
 		])
 	}
 }

@@ -233,33 +233,30 @@ plans_holding_by = |author, markdowns| {
 	)
 }
 
-## The stream of `plans` holding "Hello" and "Hi!" for Steve, after `seen`,
-## as a test reads it: its status, kind, key and holder in a line, and its
-## body.
-streamed_after : U16 -> (Str, Str)
-streamed_after = |seen| {
-	answered = ConversationStream.response({
+## The stream of `plans` holding "Hello" and "Hi!" for Steve, after `seen`.
+streamed_after : U16 -> Http.Response
+streamed_after = |seen|
+	ConversationStream.response({
 		key: plans_key,
 		acting: steve,
 		users,
 		conversation: plans_holding(["Hello", "Hi!"]),
 		seen,
 	})
-	kind = if (answered.kind == Stream) "stream" else "whole"
-	(
-		"${answered.status.to_str()} ${kind} on ${Str.from_utf8_lossy(answered.stream_key)} for ${Str.from_utf8_lossy(answered.stream_holder)}",
-		Str.from_utf8_lossy(answered.body),
-	)
-}
 
-## What every stream of `plans` for Steve says of itself.
-plans_stream : Str
-plans_stream = "200 stream on /chat/dm/1_1/plans for 1"
+## Is `response` a 200 stream of `plans` for Steve, its backlog `backlog`?
+is_plans_stream_with : Http.Response, Str -> Bool
+is_plans_stream_with = |response, backlog|
+	response.status == 200
+		and response.kind == Stream
+		and response.stream_key == "/chat/dm/1_1/plans".to_utf8()
+		and response.stream_holder == "1".to_utf8()
+		and response.body == backlog.to_utf8()
 
-## The frame of the message `n` of `plans`, by Steve, id 1, its markdown a
-## paragraph `said`, as frozen.
-frozen_frame : Str, Str -> Str
-frozen_frame = |n, said| "id: ${n}\ndata: <article class=\"message\" id=\"msg-${n}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${n}\">MSG_plans_${n}</a></header>\ndata: <div class=\"body\"><p>${said}</p>\ndata: </div></article>\ndata: \n\n"
+## The frame of the message `id` of `plans`, by Steve, user 1, its markdown
+## the one paragraph `paragraph`, as frozen.
+frozen_frame : { id : Str, paragraph : Str } -> Str
+frozen_frame = |{ id, paragraph }| "id: ${id}\ndata: <article class=\"message\" id=\"msg-${id}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${id}\">MSG_plans_${id}</a></header>\ndata: <div class=\"body\"><p>${paragraph}</p>\ndata: </div></article>\ndata: \n\n"
 
 ## The frame of `message` of `conversation`, in `plans_key`, its HTML as
 ## the page writes it.
@@ -311,10 +308,17 @@ expect {
 }
 # The backlog after each count: every frame, the one after, none; past the
 # conversation, a 400.
-expect streamed_after(0) == (plans_stream, "${frozen_frame("1", "Hello")}${frozen_frame("2", "Hi!")}")
-expect streamed_after(1) == (plans_stream, frozen_frame("2", "Hi!"))
-expect streamed_after(2) == (plans_stream, "")
+expect
+	is_plans_stream_with(
+		streamed_after(0),
+		"${frozen_frame({ id: "1", paragraph: "Hello" })}${frozen_frame({ id: "2", paragraph: "Hi!" })}",
+	)
+expect is_plans_stream_with(streamed_after(1), frozen_frame({ id: "2", paragraph: "Hi!" }))
+expect is_plans_stream_with(streamed_after(2), "")
 expect {
-	(said, body) = streamed_after(3)
-	said == "400 whole on  for " and body.contains("The stream asks for the messages after 3, and the conversation holds 2.")
+	response = streamed_after(3)
+	response.status == 400
+		and response.kind == Whole
+		and response.stream_key == []
+		and Str.from_utf8_lossy(response.body).contains("The stream asks for the messages after 3, and the conversation holds 2.")
 }

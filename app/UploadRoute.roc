@@ -136,7 +136,7 @@ keep_upload! = |
 	upload = image_upload_from_form({ headers, body })?
 	folder = UserFolder.of(acting.user().id())
 	before = reserve_upload_bytes!(folder, upload.bytes.len())?
-	image = UploadedImage.fresh({ random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name), kind: upload.kind })
+	image = UploadedImage.with_random_name({ random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name), kind: upload.kind })
 	match FileSystem.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
 		Ok({}) =>
 			Ok(
@@ -251,31 +251,72 @@ expect
 	})
 		== Err(NoFile)
 expect image_upload_from_form({ headers: form_of({ filename: "c", file: png }).headers, body: "markdown=x".to_utf8() }) == Err(NoFile)
-# Each refusal: its status and its words, a line of plain text.
-expect {
-	answered = upload_refusal_response(NoFile)
-	answered.status == 400 and answered.body == "no file\n".to_utf8()
-}
-expect {
-	answered = upload_refusal_response(NotAnImage)
-	answered.status == 415 and answered.body == "unsupported file type (images: png, jpeg, gif, webp)\n".to_utf8()
-}
-expect {
-	answered = upload_refusal_response(TooLarge)
-	answered.status == 413 and answered.body == "image too large — the limit is 10 MB.\n".to_utf8()
-}
-expect {
-	answered = upload_refusal_response(LimitReached)
-	answered.status == 403 and answered.body == "Upload limit reached — you've used your 1 GB upload allowance.\n".to_utf8()
-}
-expect {
-	answered = upload_refusal_response(NotANumber)
-	answered.status == 500 and answered.body == "Upload failed: your upload total is not a number.\n".to_utf8()
-}
-expect {
-	answered = upload_refusal_response(FileSystem(AlreadyExists))
-	answered.status == 500 and answered.body == "Upload failed. The file system answered AlreadyExists.\n".to_utf8()
-}
+# Each refusal: its status and its words, a line of plain text; every
+# fault of the file system among them.
+expect
+	[
+		(
+			NoFile,
+			400,
+			"no file",
+		),
+		(
+			NotAnImage,
+			415,
+			"unsupported file type (images: png, jpeg, gif, webp)",
+		),
+		(
+			TooLarge,
+			413,
+			"image too large — the limit is 10 MB.",
+		),
+		(
+			LimitReached,
+			403,
+			"Upload limit reached — you've used your 1 GB upload allowance.",
+		),
+		(
+			NotANumber,
+			500,
+			"Upload failed: your upload total is not a number.",
+		),
+		(
+			FileSystem(AlreadyExists),
+			500,
+			"Upload failed. The file system answered AlreadyExists.",
+		),
+		(
+			FileSystem(MissingDirectory),
+			500,
+			"Upload failed. The file system answered MissingDirectory.",
+		),
+		(
+			FileSystem(NotUtf8),
+			500,
+			"Upload failed. The file system answered NotUtf8.",
+		),
+		(
+			FileSystem(PathRefused),
+			500,
+			"Upload failed. The file system answered PathRefused.",
+		),
+		(
+			FileSystem(Failed),
+			500,
+			"Upload failed. The file system answered Failed.",
+		),
+	].all(
+		|
+			(
+				why,
+				status,
+				words,
+			),
+		| {
+			response = upload_refusal_response(why)
+			response.status == status and response.body == "${words}\n".to_utf8()
+		},
+	)
 # The answer: the URL and the name, the name's quote, backslash and
 # control bytes escaped, so it stays one JSON string.
 expect
