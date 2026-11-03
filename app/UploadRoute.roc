@@ -92,7 +92,7 @@ image_upload_from_form : { headers : List(Http.Header), body : List(U8) } -> Try
 )
 image_upload_from_form = |{ headers, body }| {
 	content_type =
-		match RequestHeader.sent(headers, "content-type") {
+		match RequestHeader.header_value(headers, "content-type") {
 			Sent(value) => Ok(value)
 			Unsent | Repeated => Err(NoFile)
 		}?

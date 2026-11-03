@@ -27,7 +27,7 @@ Name :: NameAlphabet.Written.{
 		else if (character_count(name) > Name.longest)
 			Err(TooLong)
 		else {
-			written = NameAlphabet.written(name)?
+			written = NameAlphabet.written_text(name)?
 			if (name.starts_with(" ") or name.ends_with(" ") or name.contains("  "))
 				Err(BadSpacing)
 			else
@@ -45,8 +45,8 @@ Name :: NameAlphabet.Written.{
 
 	## The name as text written in the alphabet, for `NameAlphabet`'s
 	## functions to read.
-	written : Name -> NameAlphabet.Written
-	written = |Name.(text)| text
+	written_text : Name -> NameAlphabet.Written
+	written_text = |Name.(text)| text
 
 	## A name's place in the namespace: two names are the same name exactly
 	## when their keys are equal. Only a name or a strict name makes a key,
@@ -63,10 +63,10 @@ Name :: NameAlphabet.Written.{
 		to_hash : _
 	}
 
-	## The name's key: its letters case-folded (`NameAlphabet.folded`), so
+	## The name's key: its letters case-folded (`NameAlphabet.case_fold`), so
 	## `Zoë` and `ZOË` have the same key.
 	key : Name -> Name.Key
-	key = |Name.(text)| Name.Key.(NameAlphabet.folded(text))
+	key = |Name.(text)| Name.Key.(NameAlphabet.case_fold(text))
 
 	is_eq : _
 }
@@ -78,8 +78,8 @@ character_count = |text| text.to_utf8().count_if(|b| b < 0x80 or b >= 0xC0)
 
 # ── tests
 ## The name `text`, as given, or why it is refused.
-named : Str -> Try(Str, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
-named = |text| Name.from_str(text).map_ok(Name.to_str)
+checked_name : Str -> Try(Str, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
+checked_name = |text| Name.from_str(text).map_ok(Name.to_str)
 
 # Letters, with single spaces between words, kept as given.
 expect
@@ -91,8 +91,8 @@ expect
 		"S",
 		"Zoë Ann Smith",
 		"sTeVe",
-	].all(|text| named(text) == Ok(text))
-expect named("") == Err(Empty)
+	].all(|text| checked_name(text) == Ok(text))
+expect checked_name("") == Err(Empty)
 # Anything outside the alphabet, anywhere: a digit, punctuation, an emoji,
 # a control byte, an invisible character, a space that isn't ASCII's.
 expect
@@ -109,7 +109,7 @@ expect
 		"Steve-Howell",
 		"O'Brien",
 		"\t",
-	].all(|text| named(text) == Err(ForbiddenCharacter))
+	].all(|text| checked_name(text) == Err(ForbiddenCharacter))
 # Two spaces together, a space at either end, or spaces alone.
 expect
 	[
@@ -118,7 +118,7 @@ expect
 		"Zoë ",
 		" ",
 		"  ",
-	].all(|text| named(text) == Err(BadSpacing))
+	].all(|text| checked_name(text) == Err(BadSpacing))
 # The length at, under and over the longest, in ASCII letters and in
 # accented ones, which count one apiece though each is two bytes.
 expect Name.longest == 60
@@ -128,20 +128,20 @@ expect
 		"a".repeat(60),
 		"é".repeat(60),
 		"Zoë ${"a".repeat(56)}",
-	].all(|text| named(text) == Ok(text))
+	].all(|text| checked_name(text) == Ok(text))
 expect
 	[
 		"a".repeat(61),
 		"é".repeat(61),
 		"Zoë ${"a".repeat(57)}",
-	].all(|text| named(text) == Err(TooLong))
+	].all(|text| checked_name(text) == Err(TooLong))
 # The order: empty, then the length, then a forbidden character, then the
 # spacing.
-expect named(" Steve!") == Err(ForbiddenCharacter)
-expect named(" ${"a".repeat(60)}") == Err(TooLong)
-expect named("!${"a".repeat(60)}") == Err(TooLong)
-expect named("!${"a".repeat(59)}") == Err(ForbiddenCharacter)
-expect named(" ${"a".repeat(59)}") == Err(BadSpacing)
+expect checked_name(" Steve!") == Err(ForbiddenCharacter)
+expect checked_name(" ${"a".repeat(60)}") == Err(TooLong)
+expect checked_name("!${"a".repeat(60)}") == Err(TooLong)
+expect checked_name("!${"a".repeat(59)}") == Err(ForbiddenCharacter)
+expect checked_name(" ${"a".repeat(59)}") == Err(BadSpacing)
 # The name keeps its case; only its key folds it.
 expect Name.from_str("Steve") != Name.from_str("steve")
 

@@ -3,7 +3,7 @@
 ## knows nothing of who may write where; that is the conversation's.
 ##
 ## Opaque, so its parts are read, never changed. A message keeps no order
-## of its own: `numbered` takes whatever id it is given. The order is
+## of its own: `numbered_message` takes whatever id it is given. The order is
 ## kept by `Conversation`, which is opaque too, and whose `append` is the
 ## only way a message joins one, numbered by `Conversation.next_id`.
 import Author
@@ -55,8 +55,8 @@ Message :: {
 	}
 
 	## The unnumbered message, numbered `id`.
-	numbered : { id : Message.Id, unnumbered : Message.Unnumbered(Author) } -> Message
-	numbered = |{ id, unnumbered: { payload, time } }|
+	numbered_message : { id : Message.Id, unnumbered : Message.Unnumbered(Author) } -> Message
+	numbered_message = |{ id, unnumbered: { payload, time } }|
 		Message.(
 			{
 				id,
@@ -127,13 +127,13 @@ expect Message.Id.(65534).next().map_ok(Message.Id.to_str) == Ok("65535")
 expect Message.Id.(65535).next() == Err(Full)
 # A message numbered with the id it is given, each other part the
 # unnumbered message's.
-expect parts(Message.numbered({ id: Message.Id.first, unnumbered: hello })) == {
+expect parts(Message.numbered_message({ id: Message.Id.first, unnumbered: hello })) == {
 	id: "1",
 	author: steve,
 	time: noon,
 	markdown: "hello",
 }
-expect parts(Message.numbered({ id: Message.Id.(65535), unnumbered: reply })) == {
+expect parts(Message.numbered_message({ id: Message.Id.(65535), unnumbered: reply })) == {
 	id: "65535",
 	author: cc,
 	time: later,

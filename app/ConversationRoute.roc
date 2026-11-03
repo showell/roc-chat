@@ -291,7 +291,7 @@ file_system_failure_response = |fault| {
 ## Steve, signed in, as a test assumes him.
 steve : SignedIn
 steve = {
-	founded = Users.founded_by(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name")
+	founded = Users.with_founder(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name")
 	SignedIn.dangerously_assume(founded.to_list().first() ?? crash "ConversationRoute's tests: Steve is the first user")
 }
 

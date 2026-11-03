@@ -115,7 +115,7 @@ say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 
 -- 3. The hunts, each count read from its summary line.
 const hunts = {
-  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "taken_word ([0-9]+)"}},
+  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)"}},
   {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)"}},
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
@@ -129,7 +129,7 @@ for h in hunts do
   push(argv, "glob=app/**/*.roc")
   for a in h.args do push(argv, a) end
   -- `whole`, not `tail`: `tail` cuts a long line, and name_hunt's summary
-  -- runs past the cut to its last count, `taken_word`.
+  -- runs past the cut to its last count, `bare_participle`.
   local r = run(argv, {cwd = ".", timeout_ms = 600000, whole = 1000000})
   local last = ""
   for l in lines(trim(r.out)) do

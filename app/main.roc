@@ -150,7 +150,7 @@ acting = SignedIn.dangerously_assume(steve)
 
 ## Steve, the directory's founder, always id 1.
 steve : Users.User
-steve = Directory.founded_by(founder_name).users().to_list().first() ?? crash "main.steve: a directory starts with its founder"
+steve = Directory.with_founder(founder_name).users().to_list().first() ?? crash "main.steve: a directory starts with its founder"
 
 founder_name : Name
 founder_name = Name.from_str("Steve") ?? crash "main.founder_name: Steve is a name"
@@ -160,7 +160,7 @@ founder_name = Name.from_str("Steve") ?? crash "main.founder_name: Steve is a na
 ## (Steve's own) and the channel `general` are the places a URL can name.
 directory : Directory
 directory = {
-	founded = Directory.founded_by(founder_name)
+	founded = Directory.with_founder(founder_name)
 	admin = Admin.of(acting) ?? crash "main.directory: Steve, id 1, is an admin"
 	general = ChannelName.from_str("general") ?? crash "main.directory: general is a channel's name"
 	(founded.create_channel({ by: admin, name: general }) ?? crash "main.directory: the name general is free").directory
@@ -208,8 +208,8 @@ expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not U
 expect page("<b>".to_utf8(), [0xff]) == Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>").to_utf8()
 
 ## The page a GET of `path` shows, as a test reads it.
-shown : Str -> Str
-shown = |path|
+page_for_get : Str -> Str
+page_for_get = |path|
 	match Route.choose({
 		method: "GET".to_utf8(),
 		path: path.to_utf8(),
@@ -223,14 +223,14 @@ shown = |path|
 
 # The stand-ins: Steve, id 1, acting; the directory's places.
 expect acting.user().name() == founder_name and acting.user().id().to_str() == "1"
-expect shown("/chat/channel/general/plans") == "/chat/channel/general/plans"
-expect shown("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
-expect shown("/chat/channel/other/plans") == "not found"
-expect shown("/chat/dm/1_2/plans") == "not found"
-expect shown("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
-expect shown("/chat/dm/1_2/plans/stream") == "not found"
-expect shown("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
-expect shown("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
+expect page_for_get("/chat/channel/general/plans") == "/chat/channel/general/plans"
+expect page_for_get("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
+expect page_for_get("/chat/channel/other/plans") == "not found"
+expect page_for_get("/chat/dm/1_2/plans") == "not found"
+expect page_for_get("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
+expect page_for_get("/chat/dm/1_2/plans/stream") == "not found"
+expect page_for_get("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
+expect page_for_get("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
 # Each script's bytes are its own module's.
 expect script_bytes(Palette) == PaletteScript.bytes and script_bytes(Chrome) == ChromeScript.bytes
 expect script_bytes(Compose) == ComposeScript.bytes and script_bytes(Feed) == FeedScript.bytes

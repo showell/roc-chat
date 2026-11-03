@@ -31,7 +31,7 @@ Conversation :: {
 		match c.messages.last() {
 			Ok(latest) if unnumbered_message.time.compare(latest.time()) == Before => Err(Backdated)
 			_ => {
-				message = Message.numbered({ id, unnumbered: unnumbered_message })
+				message = Message.numbered_message({ id, unnumbered: unnumbered_message })
 				Ok({
 					conversation: Conversation.({ ..c, messages: c.messages.append(message) }),
 					message,

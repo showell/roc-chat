@@ -79,7 +79,7 @@ Sample :: [].{
 	## build is about a second of a cold run. Only the tests of the most a
 	## conversation holds use it.
 	almost_full : Conversation
-	almost_full = filled({ so_far: Conversation.empty(Sample.plans), count: 65534 })
+	almost_full = append_hellos({ so_far: Conversation.empty(Sample.plans), count: 65534 })
 
 	## The first message's id.
 	first : Message.Id
@@ -101,7 +101,7 @@ Sample :: [].{
 	## (3), Steve's agent.
 	directory : Directory
 	directory = {
-		founded = Directory.founded_by(Sample.name("Steve"))
+		founded = Directory.with_founder(Sample.name("Steve"))
 		with_apoorva = (founded.add_human(Sample.name("Apoorva")) ?? crash "Sample.directory: Apoorva's name is free").directory
 		founder = with_apoorva.users().user(UserId.steve) ?? crash "Sample.directory: Steve is id 1"
 		owner = founder.as_human() ?? crash "Sample.directory: Steve is a human"
@@ -114,11 +114,11 @@ Sample :: [].{
 
 	## **THE SAMPLE DIRECTORY, CROWDED**: with `count` more humans, each
 	## named for their place in letters (`Filler aa`, `Filler ab`...).
-	crowded : U64 -> Directory
-	crowded = |count|
+	crowded_directory : U64 -> Directory
+	crowded_directory = |count|
 		List.from_iter(U64.until(0, count)).fold(
 			Sample.directory,
-			|so_far, at| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded: a filler's name is free").directory,
+			|so_far, at| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded_directory: a filler's name is free").directory,
 		)
 
 	## **STEVE, SIGNED IN AS AN ADMIN**: the specs' one way to an admin,
@@ -149,12 +149,12 @@ place_in_letters = |at|
 	]) ?? crash "Sample.place_in_letters: letters are UTF-8"
 
 ## `so_far` with `count` more of Steve's hello.
-filled : { so_far : Conversation, count : U64 } -> Conversation
-filled = |{ so_far, count }|
+append_hellos : { so_far : Conversation, count : U64 } -> Conversation
+append_hellos = |{ so_far, count }|
 	if (count == 0)
 		so_far
 	else
-		filled({
-			so_far: (so_far.append(Sample.hello) ?? crash "Sample.filled: the conversation has room").conversation,
+		append_hellos({
+			so_far: (so_far.append(Sample.hello) ?? crash "Sample.append_hellos: the conversation has room").conversation,
 			count: count - 1,
 		})

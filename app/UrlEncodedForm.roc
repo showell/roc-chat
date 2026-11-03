@@ -47,7 +47,7 @@ field = |{ body, name }| {
 	match values {
 		[] => Err(MissingField)
 		[value] => {
-			bytes = decoded(value)?
+			bytes = decode_value(value)?
 			UnvalidatedString.from_utf8(bytes)
 		}
 		_ => Err(RepeatedField)
@@ -75,11 +75,11 @@ field_value = |pair|
 
 ## `value` decoded: each `+` a space, and each `%XX` the byte XX, its hex
 ## digits in either case.
-decoded : List(U8) -> Try(List(U8), [BadEscape])
-decoded = |value| decoded_onto({ out: [], rest: value })
+decode_value : List(U8) -> Try(List(U8), [BadEscape])
+decode_value = |value| decode_value_onto({ out: [], rest: value })
 
-decoded_onto : { out : List(U8), rest : List(U8) } -> Try(List(U8), [BadEscape])
-decoded_onto = |{ out, rest }|
+decode_value_onto : { out : List(U8), rest : List(U8) } -> Try(List(U8), [BadEscape])
+decode_value_onto = |{ out, rest }|
 	match rest {
 		[] => Ok(out)
 		[
@@ -89,12 +89,12 @@ decoded_onto = |{ out, rest }|
 			.. as after,
 		] =>
 			match (hex_value(high), hex_value(low)) {
-				(Ok(h), Ok(l)) => decoded_onto({ out: out.append(h * 16 + l), rest: after })
+				(Ok(h), Ok(l)) => decode_value_onto({ out: out.append(h * 16 + l), rest: after })
 				_ => Err(BadEscape)
 			}
 		['%', ..] => Err(BadEscape)
-		['+', .. as after] => decoded_onto({ out: out.append(' '), rest: after })
-		[byte, .. as after] => decoded_onto({ out: out.append(byte), rest: after })
+		['+', .. as after] => decode_value_onto({ out: out.append(' '), rest: after })
+		[byte, .. as after] => decode_value_onto({ out: out.append(byte), rest: after })
 	}
 
 ## The value of one hex digit, in either case.

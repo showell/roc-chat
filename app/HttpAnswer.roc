@@ -202,14 +202,14 @@ nosniff = { name: "x-content-type-options".to_utf8(), value: "nosniff".to_utf8()
 
 # ── tests
 ## An answer's headers, as a test reads them.
-said : Http.Response -> List((Str, Str))
-said = |response| response.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value)))
+header_pairs : Http.Response -> List((Str, Str))
+header_pairs = |response| response.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value)))
 
 # A page carries its type, the policy and nosniff, whatever its status.
 expect
 	[200, 404, 500].all(
 		|status|
-			said(HttpAnswer.notice(status, { title: "t", said: "s" }))
+			header_pairs(HttpAnswer.notice(status, { title: "t", said: "s" }))
 				== [
 					("content-type", "text/html; charset=utf-8"),
 					("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
@@ -221,7 +221,7 @@ expect
 refused_with : [GetAndPost, GetOnly, PostOnly] -> (List((Str, Str)), Str)
 refused_with = |allowed| {
 	answered = HttpAnswer.method_not_allowed(allowed)
-	(said(answered), Str.from_utf8_lossy(answered.body))
+	(header_pairs(answered), Str.from_utf8_lossy(answered.body))
 }
 
 # The 405 is plain text, not sniffed, allowing each path's own methods; the
@@ -256,13 +256,13 @@ expect
 			],
 			"POST only\n",
 		)
-expect said(HttpAnswer.see_other("/a")) == [("location", "/a")]
+expect header_pairs(HttpAnswer.see_other("/a")) == [("location", "/a")]
 # An uploaded image: its type, kept for good, not sniffed, its bytes as
 # given.
 expect {
 	answered = HttpAnswer.image({ content_type: "image/png", bytes: [0x89, 0, 0xFF] })
 	answered.status == 200
-		and said(answered)
+		and header_pairs(answered)
 			== [
 				("content-type", "image/png"),
 				("cache-control", "private, max-age=31536000, immutable"),
@@ -274,13 +274,13 @@ expect {
 expect {
 	answered = HttpAnswer.json(200, "{}".to_utf8())
 	answered.status == 200
-		and said(answered) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
+		and header_pairs(answered) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
 		and answered.body == "{}".to_utf8()
 }
 expect {
 	answered = HttpAnswer.text(415, "no & <b>")
 	answered.status == 415
-		and said(answered) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
+		and header_pairs(answered) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
 		and answered.body == "no & <b>\n".to_utf8()
 }
 # Every whole answer names no stream; a stream is a 200 on its key, for its
@@ -306,14 +306,14 @@ expect {
 		and answered.stream_key == "k".to_utf8()
 		and answered.stream_holder == "1".to_utf8()
 		and answered.body == "id: 1\n".to_utf8()
-		and said(answered) == [("x-content-type-options", "nosniff")]
+		and header_pairs(answered) == [("x-content-type-options", "nosniff")]
 }
 # A script: JavaScript, never cached unasked, not sniffed, its bytes as
 # given; and no page's policy, which is a document's.
 expect {
 	answered = HttpAnswer.script("x();\n".to_utf8())
 	answered.status == 200
-		and said(answered)
+		and header_pairs(answered)
 			== [
 				("content-type", "text/javascript; charset=utf-8"),
 				("cache-control", "no-cache"),

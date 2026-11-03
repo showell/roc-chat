@@ -38,8 +38,8 @@ image_name : Str
 image_name = "${"0a".repeat(16)}.png"
 
 ## `markdown` rendered as a message of `plans`, as a test reads it.
-shown : Str -> Str
-shown = |markdown| Str.from_utf8(Markdown.render(markdown, plans).to_utf8()) ?? crash "SecureImageTagSpec: a render is UTF-8"
+message_html : Str -> Str
+message_html = |markdown| Str.from_utf8(Markdown.render(markdown, plans).to_utf8()) ?? crash "SecureImageTagSpec: a render is UTF-8"
 
 # The rule: exactly the conversation's own uploaded image's path, each kind.
 expect
@@ -84,29 +84,29 @@ expect !SecureImageTag.is_conversation_upload(plans, "/chat/dm/1_1/plans/uploads
 
 # Through the renderer: the conversation's own image is an image, by
 # markdown or by an `<img>` tag, as the compose box inserts one.
-expect shown("![cat](/chat/dm/1_1/plans/uploads/${image_name})") == "<p><img src=\"/chat/dm/1_1/plans/uploads/${image_name}\" alt=\"cat\"></p>\n"
-expect shown("<img src=\"/chat/dm/1_1/plans/uploads/${image_name}\" alt=\"cat.png\">") == "<img src=\"/chat/dm/1_1/plans/uploads/${image_name}\" alt=\"cat.png\">"
+expect message_html("![cat](/chat/dm/1_1/plans/uploads/${image_name})") == "<p><img src=\"/chat/dm/1_1/plans/uploads/${image_name}\" alt=\"cat\"></p>\n"
+expect message_html("<img src=\"/chat/dm/1_1/plans/uploads/${image_name}\" alt=\"cat.png\">") == "<img src=\"/chat/dm/1_1/plans/uploads/${image_name}\" alt=\"cat.png\">"
 
 # Another conversation's image is its link, or text.
-expect shown("![x](/chat/dm/1_2/plans/uploads/${image_name})") == "<p><a href=\"/chat/dm/1_2/plans/uploads/${image_name}\">x</a></p>\n"
-expect shown("<img src=\"/chat/dm/1_1/other/uploads/${image_name}\">") == "&lt;img src=&quot;/chat/dm/1_1/other/uploads/${image_name}&quot;&gt;"
+expect message_html("![x](/chat/dm/1_2/plans/uploads/${image_name})") == "<p><a href=\"/chat/dm/1_2/plans/uploads/${image_name}\">x</a></p>\n"
+expect message_html("<img src=\"/chat/dm/1_1/other/uploads/${image_name}\">") == "&lt;img src=&quot;/chat/dm/1_1/other/uploads/${image_name}&quot;&gt;"
 # `![alt](src)`: a relative, an absolute, another origin's, a `data:` and
 # a `javascript:` source. Each is a plain link, or text, never an image.
-expect shown("![x](a.png)") == "<p><a href=\"a.png\">x</a></p>\n"
-expect shown("![x](/user_uploads/a.png)") == "<p><a href=\"/user_uploads/a.png\">x</a></p>\n"
-expect shown("![x](https://evil.example/a.png)") == "<p><a href=\"https://evil.example/a.png\" target=\"_blank\" rel=\"noopener\">x</a></p>\n"
-expect shown("![x](data:image/png;base64,AAAA)") == "<p><a href=\"data:image/png;base64,AAAA\">x</a></p>\n"
-expect shown("![x](javascript:alert(1))") == "<p>![x](javascript:alert(1))</p>\n"
+expect message_html("![x](a.png)") == "<p><a href=\"a.png\">x</a></p>\n"
+expect message_html("![x](/user_uploads/a.png)") == "<p><a href=\"/user_uploads/a.png\">x</a></p>\n"
+expect message_html("![x](https://evil.example/a.png)") == "<p><a href=\"https://evil.example/a.png\" target=\"_blank\" rel=\"noopener\">x</a></p>\n"
+expect message_html("![x](data:image/png;base64,AAAA)") == "<p><a href=\"data:image/png;base64,AAAA\">x</a></p>\n"
+expect message_html("![x](javascript:alert(1))") == "<p>![x](javascript:alert(1))</p>\n"
 # An `<img>` tag, the same four sources: each is text, escaped.
-expect shown("<img src=\"a.png\">") == "&lt;img src=&quot;a.png&quot;&gt;"
-expect shown("<img src=\"/user_uploads/a.png\">") == "&lt;img src=&quot;/user_uploads/a.png&quot;&gt;"
-expect shown("<img src=\"data:image/png;base64,AAAA\">") == "&lt;img src=&quot;data:image/png;base64,AAAA&quot;&gt;"
-expect shown("<img src=\"javascript:alert(1)\">") == "&lt;img src=&quot;javascript:alert(1)&quot;&gt;"
+expect message_html("<img src=\"a.png\">") == "&lt;img src=&quot;a.png&quot;&gt;"
+expect message_html("<img src=\"/user_uploads/a.png\">") == "&lt;img src=&quot;/user_uploads/a.png&quot;&gt;"
+expect message_html("<img src=\"data:image/png;base64,AAAA\">") == "&lt;img src=&quot;data:image/png;base64,AAAA&quot;&gt;"
+expect message_html("<img src=\"javascript:alert(1)\">") == "&lt;img src=&quot;javascript:alert(1)&quot;&gt;"
 # The renderer's own markup kept, the text in it escaped; a `javascript:`
 # link is text.
-expect shown("**hi** <b>") == "<p><strong>hi</strong> &lt;b&gt;</p>\n"
-expect shown("a & <b>") == "<p>a &amp; &lt;b&gt;</p>\n"
-expect shown("[x](javascript:alert(1))") == "<p>[x](javascript:alert(1))</p>\n"
+expect message_html("**hi** <b>") == "<p><strong>hi</strong> &lt;b&gt;</p>\n"
+expect message_html("a & <b>") == "<p>a &amp; &lt;b&gt;</p>\n"
+expect message_html("[x](javascript:alert(1))") == "<p>[x](javascript:alert(1))</p>\n"
 # Rendered markup is trusted as it is: joined, its entities stay single.
 expect
 	TrustedHtml.join([TrustedHtml.dangerously_trust("&amp;"), Markdown.render("a & <b>", plans)]).to_utf8()

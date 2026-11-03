@@ -74,16 +74,17 @@ Users :: List(Users.User).{
 	## A user is a human, or an agent with the id of its human owner.
 	Role : [Human, Agent({ owner : UserId })]
 
-	## The users after someone joined, and the user who joined.
-	Joined : { users : Users, user : Users.User }
+	## What adding a user gives: the users that hold them, and the user.
+	Addition : { users : Users, user : Users.User }
 
 	## An id and a name that arrived together, as a URL, a file's name or a
 	## session gives them. `check` holds them to match.
 	Identity : { id : UserId, name : Name }
 
-	## New users, holding only Steve, id 1, as a human named `name`.
-	founded_by : Name -> Users
-	founded_by = |name|
+	## The chat's users at the start, when the only user is the founder: the
+	## first human, id 1, named `name`.
+	with_founder : Name -> Users
+	with_founder = |name|
 		Users.(
 			[
 				Users.User.(
@@ -106,17 +107,17 @@ Users :: List(Users.User).{
 
 	## The users with a human named `name` added at the next id, and that
 	## human; unless every id is taken.
-	add_human : Users, Name -> Try(Users.Joined, [Full])
-	add_human = |users, name| added(users, { name, role: Human })
+	add_human : Users, Name -> Try(Users.Addition, [Full])
+	add_human = |users, name| add_user(users, { name, role: Human })
 
 	## The users with an agent named `name`, owned by `owner`, added at the
 	## next id, and that agent. The owner is checked first: they must be a
 	## human of these users, with the same id and name (`NoSuchOwner`).
 	## Then the agent needs a free id (`Full`).
-	add_agent : Users, { name : Name, owner : Users.Human } -> Try(Users.Joined, [NoSuchOwner, Full])
+	add_agent : Users, { name : Name, owner : Users.Human } -> Try(Users.Addition, [NoSuchOwner, Full])
 	add_agent = |users, { name, owner }|
 		if (users.user(owner.id()) == Ok(owner.user()))
-			added(users, { name, role: Agent({ owner: owner.id() }) })
+			add_user(users, { name, role: Agent({ owner: owner.id() }) })
 		else
 			Err(NoSuchOwner)
 
@@ -130,8 +131,8 @@ Users :: List(Users.User).{
 
 	## The user named `name`, if there is one. Names are case-sensitive, so
 	## `steve` is not `Steve`.
-	named : Users, Name -> Try(Users.User, [NoSuchUser])
-	named = |Users.(all), name|
+	user_by_name : Users, Name -> Try(Users.User, [NoSuchUser])
+	user_by_name = |Users.(all), name|
 		match all.find_first(|candidate| candidate.name() == name) {
 			Ok(found) => Ok(found)
 			Err(NotFound) => Err(NoSuchUser)
@@ -154,8 +155,8 @@ Users :: List(Users.User).{
 
 ## The users with a user named `name` added in the role `role`, at the next
 ## id, and that user; unless every id is taken.
-added : Users, { name : Name, role : Users.Role } -> Try(Users.Joined, [Full])
-added = |users, { name, role }| {
+add_user : Users, { name : Name, role : Users.Role } -> Try(Users.Addition, [Full])
+add_user = |users, { name, role }| {
 	id = users.next_id()?
 	user = Users.User.(
 		{

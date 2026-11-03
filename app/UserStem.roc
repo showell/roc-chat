@@ -19,7 +19,7 @@ UserStem :: [].{
 			name,
 			id,
 		},
-	| "${NameAlphabet.ascii_spelling(name.written()).replace_each(" ", "-")}-${id.to_str()}"
+	| "${NameAlphabet.ascii_spelling(name.written_text()).replace_each(" ", "-")}-${id.to_str()}"
 }
 
 # ── tests

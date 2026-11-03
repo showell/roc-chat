@@ -42,7 +42,7 @@ sample = Sample.directory.users()
 
 ## Zed is id 1 of other users, so no human of the sample's.
 zed : Users.Human
-zed = (Users.founded_by(Sample.name("Zed")).user(UserId.steve) ?? crash "UsersSpec: Zed is id 1").as_human() ?? crash "UsersSpec: Zed is a human"
+zed = (Users.with_founder(Sample.name("Zed")).user(UserId.steve) ?? crash "UsersSpec: Zed is id 1").as_human() ?? crash "UsersSpec: Zed is a human"
 
 ## Who a human named `name` would be, added to `users`, or why not.
 human_added : Users,
@@ -72,7 +72,7 @@ agent_added = |users, { name, owner }| users.add_agent({
 }).map_ok(|grown| summary(grown.user))
 
 # Steve starts every Users, a human, id 1.
-expect Users.founded_by(Sample.name("Steve Howell")).to_list().map(summary) == [
+expect Users.with_founder(Sample.name("Steve Howell")).to_list().map(summary) == [
 	{
 		id: "1",
 		name: "Steve Howell",
@@ -117,7 +117,7 @@ expect
 # one whose id is a user's of another name.
 expect
 	[
-		(Sample.crowded(1).users().user(stranger) ?? crash "UsersSpec: the crowded sample has id 4").as_human() ?? crash "UsersSpec: a filler is a human",
+		(Sample.crowded_directory(1).users().user(stranger) ?? crash "UsersSpec: the crowded sample has id 4").as_human() ?? crash "UsersSpec: a filler is a human",
 		zed,
 	].all(|owner| agent_added(sample, { name: "Bot", owner }) == Err(NoSuchOwner))
 # The users alone take a name twice: `Directory` keeps names unique.
@@ -135,7 +135,7 @@ expect Sample.human("Apoorva").user() == Sample.user("Apoorva")
 # the 255th, and then none, human or agent. The owner is asked before
 # `Full`.
 expect {
-	almost = Sample.crowded(251).users()
+	almost = Sample.crowded_directory(251).users()
 	full = (almost.add_human(Sample.name("Last")) ?? crash "UsersSpec: the 255th user fits").users
 	almost.to_list().len() == 254
 		and almost.next_id().map_ok(UserId.to_str) == Ok("255")
@@ -160,14 +160,14 @@ expect sample.user(UserId.steve).map_ok(|u| u.name().to_str()) == Ok("Steve")
 expect sample.user(after_steve(2)).map_ok(|u| u.name().to_str()) == Ok("CC")
 expect sample.user(stranger) == Err(NoSuchUser)
 # A user found by name, a human's or an agent's, or none; the case counts.
-expect sample.named(Sample.name("Steve")) == Ok(Sample.steve)
-expect sample.named(Sample.name("CC")).map_ok(|u| u.id().to_str()) == Ok("3")
+expect sample.user_by_name(Sample.name("Steve")) == Ok(Sample.steve)
+expect sample.user_by_name(Sample.name("CC")).map_ok(|u| u.id().to_str()) == Ok("3")
 expect
 	[
 		"steve",
 		"Eve",
 		"Steve Howell",
-	].all(|text| sample.named(Sample.name(text)) == Err(NoSuchUser))
+	].all(|text| sample.user_by_name(Sample.name(text)) == Err(NoSuchUser))
 # An id and a name together: theirs exactly, or refused, case included.
 expect sample.check({ id: UserId.steve, name: Sample.name("Steve") }) == Ok(Sample.steve)
 expect

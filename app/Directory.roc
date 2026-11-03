@@ -18,19 +18,19 @@ Directory :: {
 	keys : Set(Name.Key),
 }.{
 
-	## The directory after a user joined it, and the user.
-	Joined : { directory : Directory, user : Users.User }
+	## What adding a user gives: the directory that holds them, and the user.
+	Addition : { directory : Directory, user : Users.User }
 
 	## The directory after a channel was created in it, and the channel.
 	Created : { directory : Directory, channel : Channels.Channel }
 
-	## A new directory, holding no channels and one user: Steve, id 1, as a
-	## human named `name`.
-	founded_by : Name -> Directory
-	founded_by = |name|
+	## The chat's directory at the start, when the only user is the founder:
+	## the first human, id 1, named `name`. It holds no channels.
+	with_founder : Name -> Directory
+	with_founder = |name|
 		Directory.(
 			{
-				users: Users.founded_by(name),
+				users: Users.with_founder(name),
 				channels: Channels.empty,
 				keys: Set.empty().insert(name.key()),
 			},
@@ -39,10 +39,10 @@ Directory :: {
 	## The directory with a human named `name` added, and that human. The
 	## users are asked first, so a full directory answers `Full` even when
 	## the name is also taken.
-	add_human : Directory, Name -> Try(Directory.Joined, [Full, NameTaken])
+	add_human : Directory, Name -> Try(Directory.Addition, [Full, NameTaken])
 	add_human = |directory, name| {
 		grown = directory.users().add_human(name)?
-		joined(directory, grown)
+		admit_new_user(directory, grown)
 	}
 
 	## The directory with an agent named `name`, owned by `owner`, added,
@@ -50,7 +50,7 @@ Directory :: {
 	## `Full`), and then the name.
 	add_agent : Directory,
 	{ name : Name, owner : Users.Human } -> Try(
-		Directory.Joined,
+		Directory.Addition,
 		[
 			NoSuchOwner,
 			Full,
@@ -59,7 +59,7 @@ Directory :: {
 	)
 	add_agent = |directory, { name, owner }| {
 		grown = directory.users().add_agent({ name, owner })?
-		joined(directory, grown)
+		admit_new_user(directory, grown)
 	}
 
 	## The directory with an empty channel named `name`, created by an
@@ -70,7 +70,7 @@ Directory :: {
 		name : ChannelName,
 	} -> Try(Directory.Created, [NameTaken])
 	create_channel = |Directory.(d), { by, name }| {
-		keys = claimed(d.keys, name.key())?
+		keys = claim_key(d.keys, name.key())?
 		grown = d.channels.create({ by, name })
 		Ok({
 			directory: Directory.(
@@ -111,9 +111,9 @@ Directory :: {
 
 ## The directory holding `grown`'s users, and the user who joined them;
 ## unless that user's name is already taken.
-joined : Directory, Users.Joined -> Try(Directory.Joined, [NameTaken])
-joined = |Directory.(d), grown| {
-	keys = claimed(d.keys, grown.user.name().key())?
+admit_new_user : Directory, Users.Addition -> Try(Directory.Addition, [NameTaken])
+admit_new_user = |Directory.(d), grown| {
+	keys = claim_key(d.keys, grown.user.name().key())?
 	Ok({
 		directory: Directory.(
 			{
@@ -127,5 +127,5 @@ joined = |Directory.(d), grown| {
 }
 
 ## The taken names' keys with `key` added; unless it is already there.
-claimed : Set(Name.Key), Name.Key -> Try(Set(Name.Key), [NameTaken])
-claimed = |keys, key| if (keys.contains(key)) Err(NameTaken) else Ok(keys.insert(key))
+claim_key : Set(Name.Key), Name.Key -> Try(Set(Name.Key), [NameTaken])
+claim_key = |keys, key| if (keys.contains(key)) Err(NameTaken) else Ok(keys.insert(key))

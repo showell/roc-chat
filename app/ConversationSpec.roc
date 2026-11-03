@@ -62,7 +62,7 @@ expect
 	Conversation.empty(Sample.plans).append(Sample.hello)
 		== Ok({
 			conversation: Sample.conversation(Sample.plans, [Sample.hello]),
-			message: Message.numbered({ id: Sample.first, unnumbered: Sample.hello }),
+			message: Message.numbered_message({ id: Sample.first, unnumbered: Sample.hello }),
 		})
 expect {
 	grown = Sample.hello_and_reply.append(Sample.reply) ?? crash "ConversationSpec: a third message fits"

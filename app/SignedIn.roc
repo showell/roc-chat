@@ -33,7 +33,7 @@ SignedIn :: Users.User.{
 
 # ── tests
 expect {
-	founded = Users.founded_by(Name.from_str("Steve") ?? crash "SignedIn's tests: Steve is a name")
+	founded = Users.with_founder(Name.from_str("Steve") ?? crash "SignedIn's tests: Steve is a name")
 	steve = founded.to_list().first() ?? crash "SignedIn's tests: Steve is the first user"
 	SignedIn.dangerously_assume(steve).user() == steve
 }

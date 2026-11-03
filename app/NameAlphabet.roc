@@ -20,7 +20,7 @@ import Ascii
 NameAlphabet :: [].{
 
 	## Text written in the alphabet: every character is a letter of it or a
-	## space. Only `written` makes one, so `folded` and `ascii_spelling`
+	## space. Only `written_text` makes one, so `case_fold` and `ascii_spelling`
 	## never meet a character they have no rule for.
 	Written :: Str.{
 
@@ -33,8 +33,8 @@ NameAlphabet :: [].{
 
 	## `text` as written text, or `ForbiddenCharacter` if any character
 	## of it is neither a letter of the alphabet nor a space.
-	written : Str -> Try(NameAlphabet.Written, [ForbiddenCharacter])
-	written = |text|
+	written_text : Str -> Try(NameAlphabet.Written, [ForbiddenCharacter])
+	written_text = |text|
 		if (is_all_letters_or_spaces(text.to_utf8()))
 			Ok(NameAlphabet.Written.(text))
 		else
@@ -43,21 +43,21 @@ NameAlphabet :: [].{
 	## `text` with each letter case-folded by Unicode's simple case
 	## folding, so `ZOË` and `Zoë` fold to the same text. `ſ` folds to `s`;
 	## `ß` and `İ` have no simple fold and stay as they are.
-	folded : NameAlphabet.Written -> Str
-	folded = |text|
+	case_fold : NameAlphabet.Written -> Str
+	case_fold = |text|
 		code_points(text)
-			.map(|point| encoded(fold(point)))
+			.map(|point| utf8_bytes(fold(point)))
 			.join()
-			|> decoded("NameAlphabet.folded: a letter folds to a letter, and letters are UTF-8")
+			|> decode_utf8("NameAlphabet.case_fold: a letter folds to a letter, and letters are UTF-8")
 
 	## `text` folded, then each letter spelled in ASCII by `spellings`:
 	## `Élodie` is `elodie`, and `Æsir` is `aesir`. Spaces stay as they are.
 	ascii_spelling : NameAlphabet.Written -> Str
 	ascii_spelling = |text|
 		code_points(text)
-			.map(|point| spelled(fold(point)))
+			.map(|point| point_spelling(fold(point)))
 			.join()
-			|> decoded("NameAlphabet.ascii_spelling: an ASCII spelling is UTF-8")
+			|> decode_utf8("NameAlphabet.ascii_spelling: an ASCII spelling is UTF-8")
 }
 
 ## Each accented letter's ASCII spelling. A row holds folded letters and
@@ -94,20 +94,20 @@ spellings = [
 
 ## The ASCII spelling of the folded letter or space `point`: itself if it
 ## is ASCII, else its row's spelling.
-spelled : U32 -> List(U8)
-spelled = |point|
+point_spelling : U32 -> List(U8)
+point_spelling = |point|
 	if (point < 0x80)
 		[point.to_u8_wrap()]
 	else
 		match row_of(point) {
 			Ok((_, ascii)) => ascii.to_utf8()
-			Err(NotFound) => crash "NameAlphabet.spelled: written text holds only letters whose fold has a row"
+			Err(NotFound) => crash "NameAlphabet.point_spelling: written text holds only letters whose fold has a row"
 		}
 
 ## The row of `spellings` that holds the two-byte letter `point`.
 row_of : U32 -> Try((Str, Str), [NotFound])
 row_of = |point| {
-	letter = decoded(encoded(point), "NameAlphabet.row_of: a code point below U+0800 is UTF-8")
+	letter = decode_utf8(utf8_bytes(point), "NameAlphabet.row_of: a code point below U+0800 is UTF-8")
 	spellings.find_first(|(row, _)| row.contains(letter))
 }
 
@@ -154,8 +154,8 @@ two_byte_code_point = |lead, b| (lead - 0xC0).to_u32() * 64 + (b - 0x80).to_u32(
 
 ## `bytes` decoded as UTF-8, which they always are; a crash saying `why`
 ## if they aren't.
-decoded : List(U8), Str -> Str
-decoded = |bytes, why|
+decode_utf8 : List(U8), Str -> Str
+decode_utf8 = |bytes, why|
 	match Str.from_utf8(bytes) {
 		Ok(text) => text
 		Err(_) => crash why
@@ -193,8 +193,8 @@ is_capital_of_pair = |point| {
 
 ## The UTF-8 bytes of a code point below U+0800: one byte below 0x80, else
 ## two.
-encoded : U32 -> List(U8)
-encoded = |point|
+utf8_bytes : U32 -> List(U8)
+utf8_bytes = |point|
 	if (point < 0x80)
 		[point.to_u8_wrap()]
 	else
@@ -203,11 +203,11 @@ encoded = |point|
 # ── tests
 ## Is `text` written in the alphabet?
 is_written : Str -> Bool
-is_written = |text| NameAlphabet.written(text).is_ok()
+is_written = |text| NameAlphabet.written_text(text).is_ok()
 
 ## `text` as written text, which a test's text always is.
 in_alphabet : Str -> NameAlphabet.Written
-in_alphabet = |text| NameAlphabet.written(text) ?? crash "NameAlphabet's tests: a test's text is written in the alphabet"
+in_alphabet = |text| NameAlphabet.written_text(text) ?? crash "NameAlphabet's tests: a test's text is written in the alphabet"
 
 # Each end of every range is kept, and the character just past it is
 # refused: ASCII's letters, Latin-1's (around `×` and `÷`) and Latin
@@ -261,15 +261,15 @@ expect
 expect ["ı", "ĸ", "Ŀ", "ŀ", "ŉ"].all(|text| !is_written(text))
 expect ["İ", "ķ", "Ľ", "ľ", "Ł", "ň", "Ŋ"].all(is_written)
 # One stray character anywhere refuses the whole text.
-expect NameAlphabet.written("Steve!") == Err(ForbiddenCharacter)
-expect NameAlphabet.written("R2D2") == Err(ForbiddenCharacter)
-expect NameAlphabet.written("Zoëı") == Err(ForbiddenCharacter)
-expect NameAlphabet.written("").map_ok(NameAlphabet.Written.to_str) == Ok("")
-expect NameAlphabet.written("Zoë Ann").map_ok(NameAlphabet.Written.to_str) == Ok("Zoë Ann")
+expect NameAlphabet.written_text("Steve!") == Err(ForbiddenCharacter)
+expect NameAlphabet.written_text("R2D2") == Err(ForbiddenCharacter)
+expect NameAlphabet.written_text("Zoëı") == Err(ForbiddenCharacter)
+expect NameAlphabet.written_text("").map_ok(NameAlphabet.Written.to_str) == Ok("")
+expect NameAlphabet.written_text("Zoë Ann").map_ok(NameAlphabet.Written.to_str) == Ok("Zoë Ann")
 
 ## The fold of `text`.
 folded_text : Str -> Str
-folded_text = |text| NameAlphabet.folded(in_alphabet(text))
+folded_text = |text| NameAlphabet.case_fold(in_alphabet(text))
 
 # Each run's capitals fold to their small letters, at each run's ends.
 expect folded_text("AZ") == "az"

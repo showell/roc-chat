@@ -44,7 +44,7 @@ RequestOrigin :: [].{
 		},
 	| {
 		hosts = ["127.0.0.1:${port.to_str()}".to_utf8(), "localhost:${port.to_str()}".to_utf8()]
-		match RequestHeader.sent(headers, "host") {
+		match RequestHeader.header_value(headers, "host") {
 			Unsent => Err(MissingHost)
 			Sent(host) if hosts.contains(host) =>
 				if (method == "GET".to_utf8())
@@ -81,7 +81,7 @@ RequestOrigin :: [].{
 write_verdict : List(Http.Header), List(List(U8)) -> Try({}, [ForeignOrigin, CrossSiteFetch])
 write_verdict = |headers, hosts| {
 	origins = hosts.map(|host| "http://".to_utf8().concat(host))
-	match (RequestHeader.sent(headers, "origin"), RequestHeader.sent(headers, "sec-fetch-site")) {
+	match (RequestHeader.header_value(headers, "origin"), RequestHeader.header_value(headers, "sec-fetch-site")) {
 		(Sent(origin), _) if !origins.contains(origin) => Err(ForeignOrigin)
 		(Repeated, _) => Err(ForeignOrigin)
 		(_, Sent(site)) if site != "same-origin".to_utf8() => Err(CrossSiteFetch)
@@ -114,33 +114,33 @@ expect verdict("GET", [("Host", "127.0.0.1:9611"), ("Host", "127.0.0.1:9611")]) 
 expect verdict("GET", [("X-Host", "localhost:9611")]) == Err(MissingHost)
 # A write's Origin and Sec-Fetch-Site, both sides; neither sent (curl) passes.
 ## A POST to localhost:9611 with `more` headers.
-posted : List((Str, Str)) -> Try({}, _)
-posted = |more| verdict("POST", [("Host", "localhost:9611")].concat(more))
+post_verdict : List((Str, Str)) -> Try({}, _)
+post_verdict = |more| verdict("POST", [("Host", "localhost:9611")].concat(more))
 
-expect posted([]) == Ok({})
-expect posted([("Origin", "http://localhost:9611")]) == Ok({})
-expect posted([("origin", "http://127.0.0.1:9611")]) == Ok({})
-expect posted([("Origin", "http://evil.example")]) == Err(ForeignOrigin)
-expect posted([("Origin", "null")]) == Err(ForeignOrigin)
-expect posted([("Origin", "https://localhost:9611")]) == Err(ForeignOrigin)
-expect posted([("Origin", "http://localhost:9612")]) == Err(ForeignOrigin)
-expect posted([("Origin", "http://localhost:9611/")]) == Err(ForeignOrigin)
+expect post_verdict([]) == Ok({})
+expect post_verdict([("Origin", "http://localhost:9611")]) == Ok({})
+expect post_verdict([("origin", "http://127.0.0.1:9611")]) == Ok({})
+expect post_verdict([("Origin", "http://evil.example")]) == Err(ForeignOrigin)
+expect post_verdict([("Origin", "null")]) == Err(ForeignOrigin)
+expect post_verdict([("Origin", "https://localhost:9611")]) == Err(ForeignOrigin)
+expect post_verdict([("Origin", "http://localhost:9612")]) == Err(ForeignOrigin)
+expect post_verdict([("Origin", "http://localhost:9611/")]) == Err(ForeignOrigin)
 expect
-	posted([("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")])
+	post_verdict([("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")])
 		== Err(ForeignOrigin)
-expect posted([("Sec-Fetch-Site", "same-origin")]) == Ok({})
-expect posted([("Sec-Fetch-Site", "cross-site")]) == Err(CrossSiteFetch)
-expect posted([("Sec-Fetch-Site", "same-site")]) == Err(CrossSiteFetch)
-expect posted([("Sec-Fetch-Site", "none")]) == Err(CrossSiteFetch)
+expect post_verdict([("Sec-Fetch-Site", "same-origin")]) == Ok({})
+expect post_verdict([("Sec-Fetch-Site", "cross-site")]) == Err(CrossSiteFetch)
+expect post_verdict([("Sec-Fetch-Site", "same-site")]) == Err(CrossSiteFetch)
+expect post_verdict([("Sec-Fetch-Site", "none")]) == Err(CrossSiteFetch)
 expect
-	posted([("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")])
+	post_verdict([("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")])
 		== Err(CrossSiteFetch)
-expect posted([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")]) == Ok({})
+expect post_verdict([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")]) == Ok({})
 expect
-	posted([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "cross-site")])
+	post_verdict([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "cross-site")])
 		== Err(CrossSiteFetch)
 expect
-	posted([("Origin", "http://evil.example"), ("Sec-Fetch-Site", "cross-site")])
+	post_verdict([("Origin", "http://evil.example"), ("Sec-Fetch-Site", "cross-site")])
 		== Err(ForeignOrigin)
 # A write still needs its Host first; a GET is held to its Host alone, and
 # every other method is a write.

@@ -20,8 +20,8 @@ noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "DmSpec: a time"
 Ends : { from : Users.Human, to : Users.Human }
 
 ## A DM started from `from` to `to`, in `plans`, saying hello at noon.
-started : Ends -> { dm : Dm, conversation : _ }
-started = |{ from, to }|
+start_dm : Ends -> { dm : Dm, conversation : _ }
+start_dm = |{ from, to }|
 	Dm.start({
 		to,
 		topic: Sample.plans,
@@ -29,16 +29,16 @@ started = |{ from, to }|
 	})
 
 ## A started DM's name and members, as a test compares them.
-named : Ends -> { name : Str, members : List(Str) }
-named = |pair| {
-	dm = started(pair).dm
+name_and_members : Ends -> { name : Str, members : List(Str) }
+name_and_members = |pair| {
+	dm = start_dm(pair).dm
 	{ name: dm.to_str(), members: dm.members().map(UserId.to_str) }
 }
 
 ## The humans the crowded sample numbers 9 and 10.
 nine_and_ten : { nine : Users.Human, ten : Users.Human }
 nine_and_ten = {
-	users = Sample.crowded(7).users()
+	users = Sample.crowded_directory(7).users()
 	human = |at| ((users.user(at) ?? crash "DmSpec: the crowded sample has ten users").as_human()) ?? crash "DmSpec: a filler is a human"
 	nine = UserId.from_str("9") ?? crash "DmSpec: 9 is an id"
 	ten = UserId.from_str("10") ?? crash "DmSpec: 10 is an id"
@@ -48,20 +48,20 @@ nine_and_ten = {
 # Two humans, either one starting: one DM, lowest id first.
 expect
 	[
-		named({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }),
-		named({ from: Sample.human("Apoorva"), to: Sample.human("Steve") }),
+		name_and_members({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }),
+		name_and_members({ from: Sample.human("Apoorva"), to: Sample.human("Steve") }),
 	].all(|dm| dm == { name: "1_2", members: ["1", "2"] })
 expect
-	started({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm
-		== started({ from: Sample.human("Apoorva"), to: Sample.human("Steve") }).dm
+	start_dm({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm
+		== start_dm({ from: Sample.human("Apoorva"), to: Sample.human("Steve") }).dm
 # The order is numeric, not the names' text: 9 before 10, both ways.
 expect
 	[
-		named({ from: nine_and_ten.ten, to: nine_and_ten.nine }),
-		named({ from: nine_and_ten.nine, to: nine_and_ten.ten }),
+		name_and_members({ from: nine_and_ten.ten, to: nine_and_ten.nine }),
+		name_and_members({ from: nine_and_ten.nine, to: nine_and_ten.ten }),
 	].all(|dm| dm == { name: "9_10", members: ["9", "10"] })
 # One human alone: their own DM, one member.
-expect named({
+expect name_and_members({
 	from: Sample.human("Apoorva"),
 	to: Sample.human("Apoorva"),
 }) == { name: "2_2", members: ["2"] }
@@ -71,7 +71,7 @@ expect
 	[
 		Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") }),
 		Dm.between({ a: Sample.human("Apoorva"), b: Sample.human("Steve") }),
-	].all(|dm| dm == started({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm)
+	].all(|dm| dm == start_dm({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm)
 expect
 	Dm.between({ a: Sample.human("Steve"), b: Sample.human("Steve") })
 		!= Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") })
@@ -79,7 +79,7 @@ expect Dm.between({ a: nine_and_ten.ten, b: nine_and_ten.nine }).pair().to_str()
 # The DM begins with its first message: the writer's, numbered 1, under
 # the topic, at its time, as its author.
 expect {
-	conversation = started({
+	conversation = start_dm({
 		from: Sample.human("Apoorva"),
 		to: Sample.human("Steve"),
 	}).conversation
