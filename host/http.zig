@@ -1,34 +1,27 @@
-//! **THE HTTP LAYER, WITH NO ROUTING**: a request read and parsed (its
-//! method, path, query, headers and body), handed whole to the Roc
-//! (`roc_handle_http_request`), and the Roc's response written as given.
-//! Which path means what is the Roc's alone (app/Route.roc).
+//! This is the HTTP server. It reads each request whole, hands it to the
+//! Roc app (`roc_handle_http_request`), and writes back whatever response
+//! the app gives. It does no routing: app/Route.roc decides what each path
+//! means.
 //!
-//! Each connection is served on a task of its own (`Io.Group.concurrent`),
-//! one request a connection, and every answer says `connection: close`.
-//! One mutex, the turn, is held while a request's Roc call runs and only
-//! then, so the Roc never sees two calls at once and two writes of one
-//! file never meet. The turn never waits on the network: a request's head
-//! and body are read whole before it is taken, and the answer is written
-//! after it is let go.
+//! Each connection gets a task of its own and one request, and every answer
+//! says `connection: close`. A single mutex, the turn, is held while the
+//! app handles a request, so the app handles one request at a time. The
+//! turn is taken only after the request has been read, and let go before
+//! the answer is written, so a slow client delays nobody else.
 //!
-//! A slow client holds only its own task. The request's head and body must
-//! arrive whole within `Limits.read_ms`, and each write must finish within
-//! `Limits.write_ms`; past either, a watchdog shuts the socket, which ends
-//! the read or write blocked on it. A head past its cap is a 431, a body
-//! past its cap a 413, a request past its deadline a 408. After a refusal
-//! the server drains the client for at most `Limits.linger_ms`.
+//! Reads must finish within `Limits.read_ms` and writes within
+//! `Limits.write_ms`. A watchdog shuts the socket of a client that is too
+//! slow. An oversized head gets a 431, an oversized body a 413, and a late
+//! request a 408.
 //!
-//! An answer the app marks `Stream` is held open on its connection's task
-//! (`serve_stream`): host/bus.zig carries the frames the app publishes to
-//! its key, and host/sse.zig caps the streams held at once.
+//! When the app marks an answer as a `Stream`, the connection stays open
+//! and sends the frames the app publishes to the stream's key
+//! (host/bus.zig). host/sse.zig limits how many streams are open at once.
 //!
-//! **A TRUST BOUNDARY: 127.0.0.1 ONLY** (`listen`). Until sign-in exists,
-//! the app takes every request as Steve's (app/main.roc's `acting`), so
-//! anyone who can reach the server can post as him. The bind address is
-//! not an option, so nothing but this machine can reach it. A browser here
-//! still carries other sites' requests to it: app/RequestOrigin.roc, the
-//! other half of this boundary, refuses any not from the server's own
-//! origin, by the headers and the port this layer hands it.
+//! The server listens on 127.0.0.1 only. Until sign-in exists, the app
+//! treats every request as Steve's, so only this machine may reach it.
+//! app/RequestOrigin.roc refuses requests that other web sites make
+//! through a browser on this machine.
 
 const std = @import("std");
 const Io = std.Io;
@@ -78,8 +71,7 @@ pub const Server = struct {
     hub: bus.Hub,
     slots: sse.Slots = .{},
 
-    /// **LISTENING ON 127.0.0.1 ALONE**, at `port` (0: any free port, a
-    /// test's).
+    /// Listens on 127.0.0.1 at `at_port`. Tests pass 0 to get any free port.
     pub fn listen(io: Io, gpa: std.mem.Allocator, at_port: u16, limits: Limits, root: *const files.DataRoot) !Server {
         const addr: net.IpAddress = try .parse("127.0.0.1", at_port);
         return .{
@@ -327,8 +319,8 @@ fn read_request(arena: std.mem.Allocator, http: *std.http.Server, reading: Readi
             error.OutOfMemory => .{ .refused = .{ .req = req, .status = .internal_server_error, .body = "failed\n" } },
             error.ReadFailed => if (fired.load(.acquire)) timed_out(req) else .gone,
         };
-        // **A BODY CUT SHORT IS NO BODY**: std's reader ends a body at the
-        // socket's end with no error, and the watchdog's shut is such an end.
+        // std's reader treats a closed socket as the body's end, with no
+        // error, and the watchdog closes the socket. So check for a short body.
         if (fired.load(.acquire)) return timed_out(req);
         if (req.head.content_length) |n| if (with_body.body.len != n) return .gone;
     }
@@ -379,10 +371,9 @@ pub const Answering = struct { root: *const files.DataRoot, io: Io, hub: *bus.Hu
 
 const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .body = "failed\n" };
 
-/// **THE ROC'S ANSWER TO `parsed`**, copied into `arena` with the call
-/// ended; a 500 when it names no status std knows, a header holding a CR,
-/// an LF or a NUL, or a stream that is not one (each the app's bug, never
-/// written).
+/// Asks the app to answer `parsed`, and copies the answer into `arena`.
+/// An answer the app got wrong becomes a 500: a status std doesn't know, a
+/// header containing a CR, LF or NUL, or a malformed stream.
 pub fn answer(arena: std.mem.Allocator, answering: Answering, parsed: Parsed) Answered {
     seam.begin(.{ .arena = arena, .root = answering.root, .io = answering.io, .hub = answering.hub });
     const r = seam.roc_handle_http_request(.{
@@ -431,21 +422,18 @@ pub fn header_safe(bytes: []const u8) bool {
     return std.mem.indexOfAny(u8, bytes, "\r\n\x00") == null;
 }
 
-/// **THE WATCHDOG**: after `ms`, the socket shut `how` (a read's `.recv`,
-/// so a 408 can still be written; a write's `.both`), and `fired` set.
-/// Canceled when the work it guards is done in time.
+/// The watchdog. After `ms` it sets `fired` and shuts the socket: `.recv`
+/// for a read, so a 408 can still be written, and `.both` for a write. The
+/// caller cancels it when the work finishes in time.
 fn shut_after(io: Io, connection: net.Stream, ms: u32, how: net.ShutdownHow, fired: *std.atomic.Value(bool)) void {
     Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch return;
     fired.store(true, .release);
     connection.shutdown(io, how) catch {};
 }
 
-/// **A REFUSED REQUEST'S UNREAD BYTES ARE DRAINED BEFORE THE CLOSE**:
-/// closed with the client's bytes unread, the socket resets, and the client
-/// may lose the refusal it was sent. So the server's side is shut, and what
-/// the client still sends is read and dropped, until it closes or `ms`
-/// pass (its own watchdog, so a client that never closes holds the server
-/// that long, not the write deadline's whole).
+/// After a refusal, reads and drops whatever the client is still sending,
+/// for at most `ms`. Closing a socket with unread bytes resets it, and the
+/// client could lose the refusal.
 fn linger(io: Io, connection: net.Stream, ms: u32) void {
     connection.shutdown(io, .send) catch return;
     var fired = std.atomic.Value(bool).init(false);
