@@ -8,9 +8,13 @@
 ##   their password file must hold a bcrypt hash, and the host must say the
 ##   password matches it (`Host.password_matches_bcrypt_hash!`). Then the
 ##   answer signs a session (`Session`) and sends the browser to `next`
-##   with its cookie (a 303). A wrong name or password, or a human with no
-##   password, is one 401 that says no more, on the sign-in page again.
-##   Neither answer may be kept by a browser or a proxy.
+##   with its cookie (a 303). A wrong name or password, a human with no
+##   password, or one whose file holds no hash the host checks, is one 401
+##   that says no more, on the sign-in page again. Each of those runs one
+##   bcrypt check, against `dummy_hash` where there is no hash, so how long
+##   the answer takes says nothing of which names exist. When the host has
+##   run as many checks as it lets run for now, the answer is a 429, at once.
+##   No answer may be kept by a browser or a proxy.
 ## - `POST /logout` has the browser forget the cookie, and sends it to the
 ##   sign-in page.
 ## - A human invite's redemption (`HumanInvitesRoute`) starts a session the
@@ -31,6 +35,7 @@ import Html
 import HttpAnswer
 import HumanInvite
 import Page
+import Password
 import Session
 import SignedIn
 import UnvalidatedString
@@ -143,12 +148,9 @@ SignInRoute :: [].{
 							403,
 							Page.notice({ title: "Refused", text: "An API key never signs in." }),
 						)
-						Err(NotABcryptHash) => HttpAnswer.page(
-							500,
-							Page.notice({
-								title: "Failed",
-								text: "The password's file holds no bcrypt hash.",
-							}),
+						Err(TooManyChecks) => HttpAnswer.page(
+							429,
+							Page.notice({ title: "Too many sign-ins", text: too_many_words }),
 						)
 						Err(FileSystem(fault)) => HttpAnswer.page(
 							500,
@@ -216,6 +218,17 @@ default_next = Html.SitePath.from_str("/agents") ?? crash "SignInRoute.default_n
 no_match_words : Str
 no_match_words = "The name and the password don't match a human's."
 
+## The sign-in's words when the host has run as many checks as it lets run
+## for now.
+too_many_words : Str
+too_many_words = "Too many sign-ins are being tried. Wait a few seconds, then try again."
+
+## A bcrypt hash at the cost `gopher-roc hash-password` writes, of a password
+## nobody knows, checked where there is no hash to check, so that a sign-in
+## takes as long for a name that is no human's as for a wrong password.
+dummy_hash : List(U8)
+dummy_hash = "$2b$10$v5yDSgBNCAzrmaBwxRL5GuCqhQGND3Nw3mq3QGBC1d2MZltsLFCJ6".to_utf8()
+
 ## The 400 for a `next` that is no path on this site.
 bad_next_answer : Http.Response
 bad_next_answer = HttpAnswer.page(
@@ -253,8 +266,9 @@ next_from_form = |body|
 
 ## The human whose name and password the form `body` holds, among `users`;
 ## unless they don't match a human's (`NoMatch`: no such name, an agent's,
-## no password, or another password), `viewer` holds an API key
-## (`ByApiKey`), or the password's file is not a hash or can't be read.
+## no password, a password file holding no hash, or another password),
+## `viewer` holds an API key (`ByApiKey`), the host refuses the check
+## (`TooManyChecks`), or the password's file can't be read.
 find_human_by_password! : {
 	viewer : SignedIn.Actor,
 	users : Users,
@@ -264,7 +278,7 @@ find_human_by_password! : {
 	[
 		NoMatch,
 		ByApiKey,
-		NotABcryptHash,
+		TooManyChecks,
 		FileSystem(FileSystem.Fault),
 	],
 )
@@ -288,20 +302,53 @@ find_human_by_password! = |
 	name = name_text.name() ? |_| NoMatch
 	password_text = UrlEncodedForm.field({ body, name: "password" }) ? |_| NoMatch
 	password = password_text.password() ? |NotAPassword| NoMatch
-	user = users.user_by_name(name) ? |NoSuchUser| NoMatch
-	human = user.as_human() ? |Agent(_)| NoMatch
-	hash =
-		match FileSystem.read_password_hash!(human.id()) {
-			Ok(File(bytes)) => Ok(FactFile.word_from_file(bytes))
-			Ok(NoFile) => Err(NoMatch)
-			Err(fault) => Err(FileSystem(fault))
-		}?
-	match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), hash) {
-		Matches => Ok(human)
-		DoesNotMatch => Err(NoMatch)
-		NotABcryptHash => Err(NotABcryptHash)
+	match users.user_by_name(name) {
+		Err(NoSuchUser) => Err(check_against_dummy_hash!(password))
+		Ok(user) =>
+			match user.as_human() {
+				Err(Agent(_)) => Err(check_against_dummy_hash!(password))
+				Ok(human) => check_password_of!(human, password)
+			}
 	}
 }
+
+## `human`, when `password` is the one their password file's hash was made
+## from; unless it isn't, they have no file or one holding no hash the host
+## checks (`NoMatch`), the host refuses the check (`TooManyChecks`), or the
+## file can't be read.
+check_password_of! : Users.Human,
+Password => Try(
+	Users.Human,
+	[
+		NoMatch,
+		TooManyChecks,
+		FileSystem(FileSystem.Fault),
+	],
+)
+check_password_of! = |human, password|
+	match FileSystem.read_password_hash!(human.id()) {
+		Err(fault) => Err(FileSystem(fault))
+		Ok(NoFile) => Err(check_against_dummy_hash!(password))
+		Ok(File(bytes)) =>
+			match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), FactFile.word_from_file(bytes)) {
+				Matches => Ok(human)
+				DoesNotMatch => Err(NoMatch)
+				NotABcryptHash => Err(check_against_dummy_hash!(password))
+				TooManyChecks => Err(TooManyChecks)
+			}
+	}
+
+## `password` checked against `dummy_hash`, which no sign-in may match: the
+## time a check takes, spent where there is no hash to check (`NoMatch`);
+## unless the host refuses the check (`TooManyChecks`).
+check_against_dummy_hash! : Password => [NoMatch, TooManyChecks]
+check_against_dummy_hash! = |password|
+	match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), dummy_hash) {
+		Matches => NoMatch
+		DoesNotMatch => NoMatch
+		NotABcryptHash => crash "SignInRoute.check_against_dummy_hash!: dummy_hash is a bcrypt hash at cost 10, which the host checks"
+		TooManyChecks => TooManyChecks
+	}
 
 # ── tests
 ## The `next` a query or a form names, as a test reads it.

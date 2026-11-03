@@ -20,7 +20,9 @@
 //!
 //! **ONE CALL AT A TIME, ITS MEMORY ONE ARENA**: the server makes one Roc
 //! call at a time (the turn, host/http.zig), so the call's arena, data
-//! root and hub are held here, set as the call begins (`begin`). Everything Roc
+//! root and hub are held here, set as the call begins (`begin`). A
+//! password's check alone lets the turn go while bcrypt runs, setting its
+//! call aside and taking it back with the turn. Everything Roc
 //! allocates is in that arena, freed whole when the request ends, so
 //! `roc_dealloc` frees nothing and nothing is refcounted by hand.
 //!
@@ -33,6 +35,8 @@ const files = @import("file_primitives.zig");
 const bus = @import("bus.zig");
 const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
+
+const log = std.log.scoped(.seam);
 
 // ── the lists ───────────────────────────────────────────────────────────────
 
@@ -179,8 +183,9 @@ comptime {
 
 /// What a call to the Roc may use, set for its length: its arena, and,
 /// for the server's, the data root and the Io the primitives answer with,
-/// the hub its frames are published on, the slots of its held streams, and
-/// the secret it signs with.
+/// the hub its frames are published on, the slots of its held streams, the
+/// secret it signs with, the bucket its password checks are taken from,
+/// and the turn it holds, which a password's check lets go of.
 pub const Call = struct {
     arena: std.mem.Allocator,
     root: ?*const files.DataRoot = null,
@@ -188,6 +193,8 @@ pub const Call = struct {
     hub: ?*bus.Hub = null,
     slots: ?*sse.Slots = null,
     secret: ?*const sign_in.ServerSecret = null,
+    password_checks: ?*sign_in.PasswordChecks = null,
+    turn: ?*Io.Mutex = null,
 };
 
 var current: ?Call = null;
@@ -330,9 +337,28 @@ pub export fn bcrypt_hash_of_password(password: RocBytes) callconv(.c) RocBytes 
     return .from(sign_in.bcrypt_hash_of_password(io_of("bcrypt_hash_of_password"), password.slice(), &out));
 }
 
+/// The check is spent from the bucket in the turn, and refused there when
+/// the bucket is empty, nothing compared. Then bcrypt runs with the turn
+/// let go, so the server answers other requests meanwhile: the call is set
+/// aside (`current` is null) until the turn is held again. The check reads
+/// only the two lists, which live in this call's arena. A stored hash that
+/// is no bcrypt hash is logged here, since the app answers it as a wrong
+/// password.
 pub export fn password_matches_bcrypt_hash(password: RocBytes, hash: RocBytes) callconv(.c) sign_in.PasswordVerdict {
-    _ = call("password_matches_bcrypt_hash");
-    return sign_in.password_matches_bcrypt_hash(password.slice(), hash.slice());
+    const what = "password_matches_bcrypt_hash";
+    const this_call = call(what);
+    const io = io_of(what);
+    const checks = this_call.password_checks orelse @panic(what ++ ": this call has no bucket (only the server's checks a password)");
+    const turn = this_call.turn orelse @panic(what ++ ": this call holds no turn (only the server's checks a password)");
+    if (!checks.take(Io.Clock.now(.awake, io).toMilliseconds())) return .too_many_checks;
+    _ = checks.spent.fetchAdd(1, .monotonic);
+    current = null;
+    turn.unlock(io);
+    const verdict = sign_in.password_matches_bcrypt_hash(password.slice(), hash.slice());
+    turn.lockUncancelable(io);
+    current = this_call;
+    if (verdict == .not_a_bcrypt_hash) log.warn(what ++ ": a stored hash is no bcrypt hash this server checks (`$2a$`, `$2b$` or `$2y$` at a cost of {d} to {d}), answered as a wrong password", .{ sign_in.bcrypt_cost_lowest, sign_in.bcrypt_cost_highest });
+    return verdict;
 }
 
 pub export fn hmac_sha256_with_server_secret(bytes: RocBytes) callconv(.c) RocBytes {

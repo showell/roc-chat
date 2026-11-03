@@ -547,3 +547,107 @@ test "the app's start: an empty data folder gets the first chat; one holding par
     try partial.dir.writeFile(io, .{ .sub_path = "auth/2/name", .data = "C!C" });
     try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
 }
+
+/// A sign-in by no one, the form `form`, on a connection of its own, with
+/// memory of its own, so several can run at once: its status, and how long
+/// its answer took.
+fn sign_in_by_form(port: u16, form: []const u8) !SignIn {
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const began = Io.Clock.now(.awake, io);
+    const bytes = try exchange(a, port, try std.fmt.allocPrint(a, "POST /login HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, form.len, form }));
+    return .{ .status = try status(bytes), .ms = began.untilNow(io, .awake).toMilliseconds() };
+}
+
+const SignIn = struct { status: u16, ms: i64 };
+
+const SignInAnswer = @typeInfo(@TypeOf(sign_in_by_form)).@"fn".return_type.?;
+
+/// Steve's password file holding a bcrypt hash, at the cost the server
+/// writes one, of `password`.
+fn set_steve_password(r: *Running, password: []const u8) !void {
+    var buf: [sign_in.bcrypt_hash_length]u8 = undefined;
+    try r.data.dir.writeFile(io, .{ .sub_path = "auth/1/password", .data = sign_in.bcrypt_hash_of_password(io, password, &buf) });
+}
+
+test "the checks' bucket: a burst at once is checked, the one past it a 429 with no check run, and any after it too until the bucket refills" {
+    const r = try Running.start(.{ .password_check_burst = 5, .password_check_refill_ms = 600_000 });
+    defer r.stop();
+    const port = r.server.port();
+    try set_steve_password(r, "right");
+    var burst: [6]Io.Future(SignInAnswer) = undefined;
+    for (&burst) |*f| f.* = try io.concurrent(sign_in_by_form, .{ port, "name=Nobody&password=guess" });
+    var checked: usize = 0;
+    var refused: usize = 0;
+    for (&burst) |*f| {
+        const answer = try f.await(io);
+        if (answer.status == 401) checked += 1;
+        if (answer.status == 429) refused += 1;
+    }
+    try testing.expectEqual(5, checked);
+    try testing.expectEqual(1, refused);
+    try testing.expectEqual(5, r.server.password_checks.spent.load(.monotonic));
+    // The right password for a human: still a 429, nothing checked.
+    try testing.expectEqual(429, (try sign_in_by_form(port, "name=Steve&password=right")).status);
+    try testing.expectEqual(5, r.server.password_checks.spent.load(.monotonic));
+}
+
+test "a sign-in runs a check on every path a name can take, each as slow as a wrong password's; a stored hash that is no hash answers as a wrong password" {
+    const r = try Running.start(.{ .password_check_burst = 20 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const made = try exchange(a, port, try ours(a, port, "POST /agents HTTP/1.1", "content-type: application/x-www-form-urlencoded\r\ncontent-length: 7\r\n\r\nname=CC"));
+    try testing.expectEqual(303, try status(made));
+    const spent = &r.server.password_checks.spent;
+    // Running's own password file, which holds no hash: the host refuses
+    // it unchecked, then the dummy hash is checked.
+    const no_hash = try sign_in_by_form(port, "name=Steve&password=guess");
+    try testing.expectEqual(401, no_hash.status);
+    try testing.expectEqual(2, spent.load(.monotonic));
+    try set_steve_password(r, "right");
+    const wrong = try sign_in_by_form(port, "name=Steve&password=guess");
+    try testing.expectEqual(401, wrong.status);
+    try testing.expectEqual(303, (try sign_in_by_form(port, "name=Steve&password=right")).status);
+    try testing.expectEqual(4, spent.load(.monotonic));
+    const nobody = try sign_in_by_form(port, "name=Nobody&password=guess");
+    const agent = try sign_in_by_form(port, "name=CC&password=guess");
+    try r.data.dir.deleteFile(io, "auth/1/password");
+    const no_file = try sign_in_by_form(port, "name=Steve&password=guess");
+    try testing.expectEqual(7, spent.load(.monotonic));
+    for ([_]SignIn{ no_hash, nobody, agent, no_file }) |answer| {
+        try testing.expectEqual(401, answer.status);
+        try testing.expect(answer.ms * 2 >= wrong.ms);
+    }
+    // A form that names no one at all is refused by its spelling, unchecked.
+    try testing.expectEqual(401, (try sign_in_by_form(port, "name=No%20one!&password=guess")).status);
+    try testing.expectEqual(401, (try sign_in_by_form(port, "name=Nobody&password=")).status);
+    try testing.expectEqual(7, spent.load(.monotonic));
+}
+
+test "a password's check lets the turn go: a page is answered while bcrypt runs" {
+    const r = try Running.start(.{});
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    try set_steve_password(r, "right");
+    const began = Io.Clock.now(.awake, io);
+    var check = try io.concurrent(sign_in_by_form, .{ port, "name=Steve&password=guess" });
+    const head_start_ms = 50;
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(head_start_ms) }, io);
+    const page_began = Io.Clock.now(.awake, io);
+    const page = try exchange(a, port, try std.fmt.allocPrint(a, "GET /login HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\n\r\n", .{port}));
+    const page_ms = page_began.untilNow(io, .awake).toMilliseconds();
+    const checked = try check.await(io);
+    const check_ms = began.untilNow(io, .awake).toMilliseconds();
+    try testing.expectEqual(200, try status(page));
+    try testing.expectEqual(401, checked.status);
+    // bcrypt took long enough to matter, and the page took a fraction of it.
+    try testing.expect(check_ms >= head_start_ms + 30);
+    try testing.expect(page_ms * 2 < check_ms - head_start_ms);
+}

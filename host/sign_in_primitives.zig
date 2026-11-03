@@ -124,7 +124,9 @@ pub fn is_acceptable_bcrypt_hash(hash: []const u8) bool {
 /// (`is_acceptable_bcrypt_hash`), so a torn file is never read as a wrong
 /// password. A hash written as `$2a$` or `$2y$` is read as `$2b$`: the
 /// three name one computation, and std checks the whole string.
-pub const PasswordVerdict = enum(u8) { does_not_match, matches, not_a_bcrypt_hash };
+/// `too_many_checks` is the seam's alone (host/seam.zig): the bucket
+/// refused the check, and nothing was compared.
+pub const PasswordVerdict = enum(u8) { does_not_match, matches, not_a_bcrypt_hash, too_many_checks };
 
 pub fn password_matches_bcrypt_hash(password: []const u8, hash: []const u8) PasswordVerdict {
     if (!is_acceptable_bcrypt_hash(hash)) return .not_a_bcrypt_hash;
@@ -137,6 +139,48 @@ pub fn password_matches_bcrypt_hash(password: []const u8, hash: []const u8) Pass
     };
     return .matches;
 }
+
+/// The password checks the server lets run, one bucket for every client:
+/// it holds `burst` checks, and gains one back each `refill_ms`. A check it
+/// refuses is answered without running bcrypt. Behind a proxy every client
+/// is 127.0.0.1, so the bucket is the server's, not a client's. It is taken
+/// from only in the turn (host/http.zig), so it needs no lock of its own.
+pub const PasswordChecks = struct {
+    burst: u32,
+    refill_ms: u32,
+    /// What the bucket holds, in milliseconds of refill: a check spends
+    /// `refill_ms` of it.
+    held_ms: i64,
+    /// When `held_ms` was last brought up to date, on the awake clock.
+    at_ms: i64,
+    /// How many checks the bucket has let run, which the tests read from
+    /// outside the turn.
+    spent: std.atomic.Value(u64) = .init(0),
+
+    /// A full bucket at `now_ms`.
+    pub fn init(limits: struct { burst: u32, refill_ms: u32 }, now_ms: i64) PasswordChecks {
+        std.debug.assert(limits.burst > 0 and limits.refill_ms > 0);
+        return .{
+            .burst = limits.burst,
+            .refill_ms = limits.refill_ms,
+            .held_ms = @as(i64, limits.burst) * limits.refill_ms,
+            .at_ms = now_ms,
+        };
+    }
+
+    /// Whether a check may run at `now_ms`, spending it from the bucket
+    /// when it may. A clock read earlier than the last one gains nothing.
+    pub fn take(c: *PasswordChecks, now_ms: i64) bool {
+        const full = @as(i64, c.burst) * c.refill_ms;
+        if (now_ms > c.at_ms) {
+            c.held_ms = @min(full, c.held_ms + (now_ms - c.at_ms));
+            c.at_ms = now_ms;
+        }
+        if (c.held_ms < c.refill_ms) return false;
+        c.held_ms -= c.refill_ms;
+        return true;
+    }
+};
 
 /// The HMAC-SHA256 of `bytes` under `secret`.
 pub fn hmac_sha256(secret: []const u8, bytes: []const u8) [mac_length]u8 {
@@ -210,6 +254,20 @@ test "a stored hash: `$2a$`, `$2b$` or `$2y$` at a cost of 10 to 14 is checked; 
     }, &cheap_buf, salt);
     try testing.expectEqual(PasswordVerdict.not_a_bcrypt_hash, password_matches_bcrypt_hash(known_password, cheap));
     try testing.expectEqual(PasswordVerdict.matches, password_matches_bcrypt_hash(known_password, known_hash));
+}
+
+test "the checks' bucket: a burst of 5 runs, the sixth is refused; one comes back a second later, and no more than the burst ever" {
+    var c: PasswordChecks = .init(.{ .burst = 5, .refill_ms = 1000 }, 50_000);
+    for (0..5) |_| try testing.expect(c.take(50_000));
+    try testing.expect(!c.take(50_000));
+    try testing.expect(!c.take(50_999));
+    try testing.expect(c.take(51_000));
+    try testing.expect(!c.take(51_000));
+    // A clock read from before the last gains nothing.
+    try testing.expect(!c.take(40_000));
+    // Long idle, the bucket is full again, and holds the burst alone.
+    for (0..5) |_| try testing.expect(c.take(1_000_000));
+    try testing.expect(!c.take(1_000_000));
 }
 
 test "an HMAC matches its bytes and its secret alone, at its own length alone" {

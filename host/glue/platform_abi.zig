@@ -1350,11 +1350,12 @@ comptime {
     }
 }
 
-/// Tag union: DoesNotMatchOrMatchesOrNotABcryptHash
-pub const DoesNotMatchOrMatchesOrNotABcryptHash = enum(u8) {
+/// Tag union: DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks
+pub const DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks = enum(u8) {
     does_not_match = 0,
     matches = 1,
     not_abcrypt_hash = 2,
+    too_many_checks = 3,
     /// Recursively decrement Roc-owned payloads.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
         _ = self;
@@ -1370,12 +1371,12 @@ pub const DoesNotMatchOrMatchesOrNotABcryptHash = enum(u8) {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash size mismatch");
-        if (@alignOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash alignment mismatch");
+        if (@sizeOf(DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks size mismatch");
+        if (@alignOf(DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash size mismatch");
-        if (@alignOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash alignment mismatch");
+        if (@sizeOf(DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks size mismatch");
+        if (@alignOf(DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks alignment mismatch");
     }
 }
 
@@ -1629,7 +1630,7 @@ pub const HostMake_directory_and_its_parentsArgs = extern struct {
 };
 
 /// Arguments for Host.password_matches_bcrypt_hash!
-/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash]
+/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash, TooManyChecks]
 /// Refcounted fields are owned by the hosted function.
 pub const HostPassword_matches_bcrypt_hashArgs = extern struct {
     arg0: RocListWith(u8, false),
@@ -1872,12 +1873,12 @@ pub extern fn list_names_in_directory(arg0: RocListWith(u8, false)) callconv(.c)
 pub extern fn make_directory_and_its_parents(arg0: RocListWith(u8, false)) callconv(.c) FailedOrMadeOrPathRefused;
 
 /// Hosted symbol for Host.password_matches_bcrypt_hash!
-/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash]
+/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash, TooManyChecks]
 /// Owned arguments. Release each exactly once before returning, unless it is
 /// moved into storage or into the result:
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
-pub extern fn password_matches_bcrypt_hash(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) DoesNotMatchOrMatchesOrNotABcryptHash;
+pub extern fn password_matches_bcrypt_hash(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks;
 
 /// Hosted symbol for Host.publish_bytes_to_streams_on_key!
 /// Roc signature: List(U8), List(U8) => {}

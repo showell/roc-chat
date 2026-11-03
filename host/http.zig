@@ -71,6 +71,13 @@ pub const Limits = struct {
     /// The longest a stream is held: then it ends, and its client, which
     /// reconnects, is asked again who it is.
     stream_most_ms: u32 = 60 * 60 * 1000,
+    /// The password checks run back to back before the bucket is empty: a
+    /// human who mistypes a few times signs in without waiting.
+    password_check_burst: u32 = 5,
+    /// How often the bucket gains a check back: one a second keeps guessing
+    /// to 86,400 a day at most, and the CPU bcrypt takes to a few percent of
+    /// one core, whatever floods the sign-in page.
+    password_check_refill_ms: u32 = 1000,
 };
 
 /// How a server is set up: its port (0 for any free one), its limits, its
@@ -94,13 +101,16 @@ pub const Server = struct {
     /// The data root the file primitives answer from, the caller's, open
     /// for the server's life.
     root: *const files.DataRoot,
-    /// Held while a request's Roc call runs, and only then.
+    /// Held while a request's Roc call runs, and only then; a password's
+    /// check lets it go while bcrypt runs (host/seam.zig).
     turn: Io.Mutex = .init,
     /// Every held stream, by its key.
     hub: bus.Hub,
     slots: sse.Slots = .{},
     /// The secret sessions are signed with, read from the data root.
     secret: sign_in.ServerSecret,
+    /// The bucket every password check is taken from.
+    password_checks: sign_in.PasswordChecks,
     /// `https://` and the name a proxy serves this server under, or empty.
     public_origin: []const u8,
     /// The body bytes charged to requests not yet answered.
@@ -121,6 +131,10 @@ pub const Server = struct {
             .root = setup.root,
             .hub = .init(io, gpa),
             .secret = secret,
+            .password_checks = .init(.{
+                .burst = setup.limits.password_check_burst,
+                .refill_ms = setup.limits.password_check_refill_ms,
+            }, Io.Clock.now(.awake, io).toMilliseconds()),
             .public_origin = setup.public_origin,
         };
     }
@@ -133,6 +147,8 @@ pub const Server = struct {
             .hub = &s.hub,
             .slots = &s.slots,
             .secret = &s.secret,
+            .password_checks = &s.password_checks,
+            .turn = &s.turn,
             .public_origin = s.public_origin,
         };
     }
@@ -534,6 +550,8 @@ pub const Answering = struct {
     hub: *bus.Hub,
     slots: *sse.Slots,
     secret: *const sign_in.ServerSecret,
+    password_checks: *sign_in.PasswordChecks,
+    turn: *Io.Mutex,
     public_origin: []const u8,
 };
 
@@ -565,6 +583,8 @@ fn call_of(arena: std.mem.Allocator, answering: Answering) seam.Call {
         .hub = answering.hub,
         .slots = answering.slots,
         .secret = answering.secret,
+        .password_checks = answering.password_checks,
+        .turn = answering.turn,
     };
 }
 

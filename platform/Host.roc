@@ -138,12 +138,17 @@ Host := [].{
 
 	## Whether `password`, the first argument, is the one the bcrypt hash,
 	## the second, was made from; `NotABcryptHash` when the second is no
-	## bcrypt hash, so a torn file is never taken for a wrong password.
+	## bcrypt hash, so a torn file is never taken for a wrong password; or
+	## `TooManyChecks`, nothing compared, when the server has run as many
+	## checks as it lets run for now. The host lets other requests be
+	## answered while bcrypt runs, so what the app read before this call may
+	## have changed by its answer.
 	password_matches_bcrypt_hash! : List(U8),
 	List(U8) => [
 		DoesNotMatch,
 		Matches,
 		NotABcryptHash,
+		TooManyChecks,
 	]
 
 	## The HMAC-SHA256 of `bytes` under the server's secret: 32 bytes. The
