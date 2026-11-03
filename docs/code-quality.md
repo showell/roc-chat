@@ -1,6 +1,6 @@
 # Code quality in gopher-roc
 
-This is the standard the Roc code is held to. The general Roc rules are in roc-apps' `CLAUDE.md` and `docs/roc-style.md`; read those first. This page adds what gopher-roc asks for on top of them. The shale hunts in `tools/verify.shale` catch some of it automatically; the rest is judgement.
+This is the standard the Roc code is held to. The general Roc rules are in roc-apps' `CLAUDE.md` and `docs/roc-style.md`. Read both, cover to cover, before judging any Roc. They are living documents: when work here shows a general lesson they lack, or a rule that is wrong, the guide changes too. This page adds what gopher-roc asks for on top of them. The shale hunts in `tools/verify.shale` catch some of it automatically; the rest is judgement.
 
 ## Show off Roc
 
@@ -41,6 +41,6 @@ The tests sit at the bottom of each module (or in its `Spec`), and they read lik
 
 ## How a module is polished
 
-1. A cold agent reads this page, the Roc guides, the module and its callers, and fixes what falls short, keeping behaviour the same.
+1. A cold agent reads this page, both Roc guides cover to cover, the module and its callers, and fixes what falls short, keeping behaviour the same. It proposes any change the guides need.
 2. `shale tools/verify.shale` passes.
 3. Steve reviews the module on the essay surface when he wants to, and the agent's choices are checked against his replies.
