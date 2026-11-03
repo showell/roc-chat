@@ -40,7 +40,9 @@
 //!  17. upload a PNG to the channel as the compose box does (a multipart
 //!      form, `Origin` this server): 200, JSON naming its URL under the
 //!      channel's page, a fresh name of 32 hex digits and `.png`;
-//!  18. the image on disk in the channel's folder, byte for byte;
+//!  18. the image on disk in the channel's folder, byte for byte; Steve's
+//!      upload total, `users/1/upload-bytes`, none before 17 and exactly
+//!      the image's bytes after;
 //!  19. GET its URL: 200, `image/png`, `nosniff`, kept for good, byte for
 //!      byte;
 //!  20. the same name under the DM's page: 404; a name never given under
@@ -51,9 +53,16 @@
 //!  23. upload from another origin's page, and one the browser says is
 //!      cross-site: 403 each;
 //!  24. the channel's uploads on disk: exactly the PNG and the 10 MiB image,
-//!      nothing of 21, the second half of 22, or 23;
+//!      nothing of 21, the second half of 22, or 23; the upload total
+//!      exactly their bytes;
 //!  25. a message holding an `<img>` of the PNG, as the compose box inserts
 //!      it: on the channel's page an image; posted to the DM, text.
+//!  26. the total seeded one byte short of room for the PNG: its upload a
+//!      403 in the Zig chat's words, nothing stored, the total unchanged;
+//!  27. the total seeded with exactly room for it: 200, stored, the total
+//!      exactly 1 GiB;
+//!  28. the total seeded with text that is no number: its upload a 500
+//!      saying so, nothing stored, the total unchanged.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
@@ -76,6 +85,10 @@ const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 const channel_uploads = "chat/channel/general/gopher-roc/uploads";
+/// Steve's upload total, the bytes he has uploaded, in his own folder.
+const total_path = "users/1/upload-bytes";
+/// What `uploadTotal` says when there is no total file.
+const no_total = "(none)";
 /// A browser's own boundary, as Chrome writes one.
 const upload_type = "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW";
 
@@ -243,6 +256,7 @@ pub fn main(init: std.process.Init) !void {
         has(uncounted.body, "names no count"));
 
     // 17.
+    const total_before = try uploadTotal(a, io, data);
     const png = try onePixelPng(a);
     const image_prefix = channel_url ++ "/uploads/";
     const uploaded = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
@@ -256,6 +270,8 @@ pub fn main(init: std.process.Init) !void {
     // 18.
     const kept = data.readFileAlloc(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ channel_uploads, name }), a, .limited(1024 * 1024)) catch "";
     try t.check("the image on disk in the channel's folder, byte for byte", std.mem.eql(u8, kept, png));
+    try t.check("Steve's upload total: none before, exactly the image's bytes after", std.mem.eql(u8, total_before, no_total) and
+        std.mem.eql(u8, try uploadTotal(a, io, data), try std.fmt.allocPrint(a, "{d}", .{png.len})));
 
     // 19.
     const served = try getAt(a, io, port, url);
@@ -298,6 +314,7 @@ pub fn main(init: std.process.Init) !void {
     try t.check("the channel's uploads on disk: exactly the PNG and the 10 MiB image, nothing refused kept", names.len == 2 and
         std.mem.eql(u8, kept, png) and std.mem.eql(u8, at_most_kept, big[0..most]) and
         (std.mem.eql(u8, names[0], name) or std.mem.eql(u8, names[1], name)));
+    try t.check("Steve's upload total: exactly the two images' bytes, nothing refused counted", std.mem.eql(u8, try uploadTotal(a, io, data), try std.fmt.allocPrint(a, "{d}", .{png.len + most})));
 
     // 25.
     const img = try std.fmt.allocPrint(a, "<img src=\"{s}\" alt=\"cat.png\">", .{url});
@@ -308,6 +325,29 @@ pub fn main(init: std.process.Init) !void {
     try t.check("a message holding an <img> of the PNG: on the channel's page an image; posted to the DM, text", with_image.status == 303 and
         has(channel_page.body, img) and dm_with_image.status == 303 and !has(dm_page_now.body, img) and
         has(dm_page_now.body, try std.fmt.allocPrint(a, "&lt;img src=&quot;{s}&quot;", .{url})));
+
+    // 26.
+    const allowance = 1 << 30;
+    const one_over = try std.fmt.allocPrint(a, "{d}", .{allowance - png.len + 1});
+    try data.writeFile(io, .{ .sub_path = total_path, .data = one_over });
+    const spent = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
+    try t.check("upload a PNG one byte past Steve's 1 GiB allowance: 403, in the Zig chat's words; nothing stored or counted", spent.status == 403 and
+        std.mem.eql(u8, spent.body, "Upload limit reached — you've used your 1 GB upload allowance.\n") and
+        (try namesIn(a, io, data, channel_uploads)).len == 2 and std.mem.eql(u8, try uploadTotal(a, io, data), one_over));
+
+    // 27.
+    try data.writeFile(io, .{ .sub_path = total_path, .data = try std.fmt.allocPrint(a, "{d}", .{allowance - png.len}) });
+    const last_fit = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
+    try t.check("upload a PNG that fills the allowance exactly: 200, stored, the total exactly 1 GiB", last_fit.status == 200 and
+        std.mem.startsWith(u8, jsonUrl(last_fit.body) orelse "", image_prefix) and
+        (try namesIn(a, io, data, channel_uploads)).len == 3 and std.mem.eql(u8, try uploadTotal(a, io, data), "1073741824"));
+
+    // 28.
+    try data.writeFile(io, .{ .sub_path = total_path, .data = "lots" });
+    const garbled = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
+    try t.check("upload with a total that is no number: 500, saying so; nothing stored, the total as it was", garbled.status == 500 and
+        std.mem.eql(u8, garbled.body, "Upload failed: your upload total is not a number.\n") and
+        (try namesIn(a, io, data, channel_uploads)).len == 3 and std.mem.eql(u8, try uploadTotal(a, io, data), "lots"));
 
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
 }
@@ -510,6 +550,14 @@ fn namesIn(a: std.mem.Allocator, io: Io, dir: Io.Dir, path: []const u8) ![]const
     var it = folder.iterate();
     while (try it.next(io)) |entry| try names.append(a, try a.dupe(u8, entry.name));
     return names.items;
+}
+
+/// Steve's upload total file, as it is on disk, or `no_total`.
+fn uploadTotal(a: std.mem.Allocator, io: Io, dir: Io.Dir) ![]const u8 {
+    return dir.readFileAlloc(io, total_path, a, .limited(1024)) catch |e| switch (e) {
+        error.FileNotFound => no_total,
+        else => e,
+    };
 }
 
 /// A PNG of one pixel, whole and valid: its signature, then the IHDR,
