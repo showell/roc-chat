@@ -137,7 +137,11 @@ SignInRoute :: [].{
 						Ok({ human, password_hash }) =>
 							HttpAnswer.with_header(
 								HttpAnswer.see_other(next.to_str()),
-								sign_session_cookie!({ human, password_hash, now }),
+								sign_session_cookie!({
+									human,
+									password_hash,
+									now,
+								}),
 							)
 						Err(NoMatch) => HttpAnswer.page(
 							401,
@@ -171,7 +175,11 @@ SignInRoute :: [].{
 	## before stops admitting them (`sign_in_by_session!`). Never stored.
 	start_session_by_invite! : { admission : HumanInvite.Admission, password_hash : List(U8) }, I64 => Http.Response
 	start_session_by_invite! = |{ admission, password_hash }, now| {
-		cookie = sign_session_cookie!({ human: admission.human(), password_hash, now })
+		cookie = sign_session_cookie!({
+			human: admission.human(),
+			password_hash,
+			now,
+		})
 		onward = HttpAnswer.see_other(default_next.to_str())
 		HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
 	}

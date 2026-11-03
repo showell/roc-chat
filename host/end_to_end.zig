@@ -257,7 +257,10 @@ pub fn main(init: std.process.Init) !void {
     try data.writeFile(io, .{ .sub_path = seed_path["demo/data/".len..], .data = seed });
 
     const root: files.DataRoot = .{ .io = io, .dir = data };
-    var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root, .public_origin = public_origin });
+    // The run signs in more often than the bucket of password checks
+    // refills, so its burst is the run's sign-ins; host/http_test.zig tests
+    // the bucket at its own size.
+    var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root, .public_origin = public_origin, .limits = .{ .password_check_burst = 50 } });
     var running = try io.concurrent(http.Server.run, .{&server});
     defer {
         server.stop();
@@ -1076,6 +1079,10 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Debbie") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "5\n") and re_redeemed.status == 303);
     try t.check("then her old password: 401; her new one: 303", old_password.status == 401 and new_password.status == 303);
+    const old_session = try getAs(a, io, port, debbie, "/invites");
+    const redeemed_session = try getAs(a, io, port, try cookieLine(a, re_redeemed), "/invites");
+    try t.check("her session from before the redemption: its page a 303 to sign in; the redemption's own session: 200", old_session.status == 303 and
+        std.mem.startsWith(u8, old_session.header("location") orelse "", "/login") and redeemed_session.status == 200);
     const her_again = try postAs(a, io, port, try cookieLine(a, new_password), "/invites/4/again", "");
     const founder_again = try post(a, io, port, .{ .path = "/invites/1/again", .form = "" });
     const agent_again = try post(a, io, port, .{ .path = "/invites/2/again", .form = "" });
