@@ -7,7 +7,13 @@
 ## after a change (a 303). An agent's two, the redemption and the stream,
 ## answer what a script reads: the key as one line of text, and an event
 ## stream (`AgentStream`). A refusal of an invite's code is one 401 that
-## says no more.
+## says no more. The page that shows an invite's code, and the line that
+## holds a key, are never stored by a browser or a proxy.
+##
+## The redemption is the one route here that answers a request that proves
+## no one (`SignedIn.Actor`'s `Anonymous`): the invite's code is its
+## credential. Revoking a key ends every stream its agent holds, so a
+## listener that held one reconnects and is asked for a live key.
 ##
 ## `sign_in_by_key!` is the check an agent's `Authorization: Bearer`
 ## request passes before any route (main's `load_acting_user!`): `AgentKey.admit`
@@ -20,6 +26,7 @@ import AgentStream
 import Agents
 import Conversation
 import ConversationKey
+import ConversationStream
 import Directory
 import FileSystem
 import HttpAnswer
@@ -118,12 +125,12 @@ AgentsRoute :: [].{
 	} => Http.Response
 	invite! = |request|
 		match invite_agent!(request) {
-			Ok(html) => HttpAnswer.page(200, html)
+			Ok(html) => HttpAnswer.never_stored(HttpAnswer.page(200, html))
 			Err(why) => refusal_page(why)
 		}
 
-	## A POST of `/agents/<id>/keys/<n>/revoke`: the key revoked; then back
-	## to `/agents`.
+	## A POST of `/agents/<id>/keys/<n>/revoke`: the key revoked, and every
+	## stream its agent holds ended; then back to `/agents`.
 	revoke_key! : {
 		acting : SignedIn,
 		directory : Directory,
@@ -150,18 +157,19 @@ AgentsRoute :: [].{
 			Err(why) => refusal_page(why)
 		}
 
-	## A POST of `/agents/redeem`: the invite the form's `code` names spent
-	## at `now`, and a key made for its agent; answered with the key, as the
-	## agent sends it back (`SecretToken`), on one line of plain text.
+	## A POST of `/agents/redeem`, by `actor`, anyone but a request with an
+	## API key: the invite the form's `code` names spent at `now`, and a key
+	## made for its agent; answered with the key, as the agent sends it back
+	## (`SecretToken`), on one line of plain text, never stored.
 	redeem! : {
-		acting : SignedIn,
+		actor : SignedIn.Actor,
 		directory : Directory,
 		body : List(U8),
 		now : I64,
 	} => Http.Response
 	redeem! = |request|
 		match redeem_invite!(request) {
-			Ok(key) => HttpAnswer.text(200, key.to_str())
+			Ok(key) => HttpAnswer.never_stored(HttpAnswer.text(200, key.to_str()))
 			Err(why) => refusal_text(why)
 		}
 
@@ -206,7 +214,7 @@ failure_notice = |why|
 refusal_page : Failure -> Http.Response
 refusal_page = |why| {
 	notice = failure_notice(why)
-	HttpAnswer.page(notice.status, Page.notice({ title: "Refused", said: notice.said }))
+	HttpAnswer.page(notice.status, Page.notice({ title: "Refused", text: notice.said }))
 }
 
 ## A failure as a line of plain text, for a script.
@@ -322,6 +330,8 @@ revoke_agent_key! = |
 	keys = FileSystem.read_agent_keys!(agent) ? |fault| FileSystem(fault)
 	revoked = Agents.revoked_key(keys, key) ? |why| Refused(why)
 	FileSystem.replace_agent_key_state!(agent, revoked) ? |fault| FileSystem(fault)
+	Host.end_every_stream_of_holder!(AgentStream.holder(agent))
+	Host.end_every_stream_of_holder!(ConversationStream.holder(agent))
 	Ok({})
 }
 
@@ -350,23 +360,27 @@ revoke_agent_invite! = |
 ## The redemption: the invite spent before the key is made, so a code
 ## redeems once even when making the key fails.
 redeem_invite! : {
-	acting : SignedIn,
+	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
 	now : I64,
 } => Try(SecretToken, _)
 redeem_invite! = |
 	{
-		acting,
+		actor,
 		directory,
 		body,
 		now,
 	},
 | {
 	_ =
-		match acting.credential() {
-			ApiKey(_) => Err(Refused(ByApiKey))
-			Session => Ok({})
+		match actor {
+			Anonymous => Ok({})
+			SignedIn(acting) =>
+				match acting.credential() {
+					ApiKey(_) => Err(Refused(ByApiKey))
+					Session => Ok({})
+				}
 		}?
 	code = Agents.code_from_form(body) ? |why| Refused(why)
 	agent = code.agent()

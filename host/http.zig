@@ -24,12 +24,16 @@
 //!
 //! When the app marks an answer as a `Stream`, the connection stays open
 //! and sends the frames the app publishes to the stream's key
-//! (host/bus.zig). host/sse.zig limits how many streams are open at once.
+//! (host/bus.zig). host/sse.zig limits how many streams are open at once,
+//! and a stream open for `Limits.stream_most_ms` is ended, so its client
+//! reconnects and is asked again who it is.
 //!
-//! The server listens on 127.0.0.1 only. Until sign-in exists, the app
-//! treats every request as Steve's, so only this machine may reach it.
-//! app/RequestOrigin.roc refuses requests that other web sites make
-//! through a browser on this machine.
+//! The server listens on 127.0.0.1 only; a public name reaches it through
+//! a proxy on the same machine. The app decides who each request is (a
+//! signed session, or an agent's key) and refuses requests that other web
+//! sites make through a browser (app/RequestOrigin.roc). The server's
+//! secret, which signs sessions, is the host's alone
+//! (host/sign_in_primitives.zig).
 
 const std = @import("std");
 const Io = std.Io;
@@ -38,6 +42,7 @@ const seam = @import("seam.zig");
 const files = @import("file_primitives.zig");
 const bus = @import("bus.zig");
 const sse = @import("sse.zig");
+const sign_in = @import("sign_in_primitives.zig");
 
 const log = std.log.scoped(.http);
 
@@ -63,6 +68,19 @@ pub const Limits = struct {
     streams_most: u32 = sse.Slots.most_ever,
     /// The most streams one holder holds at once.
     streams_per_holder: u32 = 8,
+    /// The longest a stream is held: then it ends, and its client, which
+    /// reconnects, is asked again who it is.
+    stream_most_ms: u32 = 60 * 60 * 1000,
+};
+
+/// How a server is set up: its port (0 for any free one), its limits, its
+/// data root, and its public origin, `https://` and the name a proxy
+/// serves it under, or empty for none.
+pub const Setup = struct {
+    port: u16,
+    limits: Limits = .{},
+    root: *const files.DataRoot,
+    public_origin: []const u8 = "",
 };
 
 /// The most a request's head may be: past it, a 431.
@@ -81,21 +99,41 @@ pub const Server = struct {
     /// Every held stream, by its key.
     hub: bus.Hub,
     slots: sse.Slots = .{},
+    /// The secret sessions are signed with, read from the data root.
+    secret: sign_in.ServerSecret,
+    /// `https://` and the name a proxy serves this server under, or empty.
+    public_origin: []const u8,
     /// The body bytes charged to requests not yet answered.
     body_bytes_in_flight: std.atomic.Value(usize) = .init(0),
 
-    /// Starts the app on `root` (`start_app`), then listens on 127.0.0.1
-    /// at `at_port`. Tests pass 0 to get any free port.
-    pub fn listen(io: Io, gpa: std.mem.Allocator, at_port: u16, limits: Limits, root: *const files.DataRoot) !Server {
-        try start_app(io, gpa, root);
-        const addr: net.IpAddress = try .parse("127.0.0.1", at_port);
+    /// Starts the app on `setup.root` (`start_app`), reads the secret
+    /// there (made first when there is none), then listens on 127.0.0.1 at
+    /// `setup.port`. Tests pass 0 to get any free port.
+    pub fn listen(io: Io, gpa: std.mem.Allocator, setup: Setup) !Server {
+        try start_app(io, gpa, setup.root);
+        const secret = try sign_in.ServerSecret.load_or_create(io, setup.root.dir);
+        const addr: net.IpAddress = try .parse("127.0.0.1", setup.port);
         return .{
             .io = io,
             .gpa = gpa,
-            .limits = limits,
+            .limits = setup.limits,
             .listener = try addr.listen(io, .{ .reuse_address = true }),
-            .root = root,
+            .root = setup.root,
             .hub = .init(io, gpa),
+            .secret = secret,
+            .public_origin = setup.public_origin,
+        };
+    }
+
+    /// What this server's Roc calls answer from.
+    fn answering(s: *Server) Answering {
+        return .{
+            .root = s.root,
+            .io = s.io,
+            .hub = &s.hub,
+            .slots = &s.slots,
+            .secret = &s.secret,
+            .public_origin = s.public_origin,
         };
     }
 
@@ -241,7 +279,7 @@ pub const Server = struct {
     fn admit_in_turn(s: *Server, arena: std.mem.Allocator, parsed: Parsed) Admitted {
         s.turn.lockUncancelable(s.io);
         defer s.turn.unlock(s.io);
-        return admit(arena, .{ .root = s.root, .io = s.io, .hub = &s.hub }, parsed);
+        return admit(arena, s.answering(), parsed);
     }
 
     /// The Roc's answer to `parsed`, in the turn. A stream subscribes to
@@ -250,7 +288,7 @@ pub const Server = struct {
     fn answer_in_turn(s: *Server, arena: std.mem.Allocator, parsed: Parsed) Opened {
         s.turn.lockUncancelable(s.io);
         defer s.turn.unlock(s.io);
-        return switch (answer(arena, .{ .root = s.root, .io = s.io, .hub = &s.hub }, parsed)) {
+        return switch (answer(arena, s.answering(), parsed)) {
             .whole => |w| .{ .whole = w },
             .stream => |st| .{ .stream = .{
                 .answer = st,
@@ -267,8 +305,9 @@ pub const Server = struct {
     /// key, and the keepalive when it is quiet. Each write is under the
     /// write deadline, so a reader that stops reading is shut. It ends when
     /// a write fails, when its mailbox missed a frame (the browser
-    /// reconnects and the app resumes it), or when a newer stream of its
-    /// holder takes its slot, which wakes it at once.
+    /// reconnects and the app resumes it), when a newer stream of its
+    /// holder takes its slot or the app ends its holder's streams, which
+    /// wakes it at once, or when it has been held `stream_most_ms`.
     ///
     /// Once the first bytes are written, the call's arena is freed: the
     /// stream needs nothing of it after them (the hub keeps its own key, and
@@ -300,8 +339,12 @@ pub const Server = struct {
         // knows it is connected.
         if (!s.push(connection, &body, opened.answer.body)) return;
         _ = arena_state.reset(.free_all);
+        const opened_at = Io.Clock.now(.awake, s.io);
         while (!sub.has_missed()) {
-            const frame = switch (sub.next(s.limits.stream_ping_ms)) {
+            const held_ms: u64 = @intCast(@max(0, opened_at.untilNow(s.io, .awake).toMilliseconds()));
+            if (held_ms >= s.limits.stream_most_ms) return;
+            const wait: u32 = @intCast(@min(s.limits.stream_ping_ms, s.limits.stream_most_ms - held_ms));
+            const frame = switch (sub.next(wait)) {
                 .frame => |m| m,
                 .idle => null,
                 .ended, .canceled => return,
@@ -483,8 +526,16 @@ pub const Streamed = struct {
     holder: []const u8,
 };
 
-/// What a call's hosted functions answer from.
-pub const Answering = struct { root: *const files.DataRoot, io: Io, hub: *bus.Hub };
+/// What a call's hosted functions answer from, and the public origin the
+/// app is told of.
+pub const Answering = struct {
+    root: *const files.DataRoot,
+    io: Io,
+    hub: *bus.Hub,
+    slots: *sse.Slots,
+    secret: *const sign_in.ServerSecret,
+    public_origin: []const u8,
+};
 
 const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .body = "failed\n" };
 
@@ -492,17 +543,29 @@ const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .b
 /// An answer the app got wrong becomes a 500: a status std doesn't know, a
 /// header containing a CR, LF or NUL, or a malformed stream.
 pub fn answer(arena: std.mem.Allocator, answering: Answering, parsed: Parsed) Answered {
-    seam.begin(.{ .arena = arena, .root = answering.root, .io = answering.io, .hub = answering.hub });
+    seam.begin(call_of(arena, answering));
     const r = seam.roc_handle_http_request(.{
         .body = .from(parsed.body),
         .headers = .from(parsed.headers),
         .method = .from(parsed.method),
         .path = .from(parsed.path),
+        .public_origin = .from(answering.public_origin),
         .query = .from(parsed.query),
         .port = parsed.port,
     });
     seam.end();
     return checked(arena, parsed, r);
+}
+
+fn call_of(arena: std.mem.Allocator, answering: Answering) seam.Call {
+    return .{
+        .arena = arena,
+        .root = answering.root,
+        .io = answering.io,
+        .hub = answering.hub,
+        .slots = answering.slots,
+        .secret = answering.secret,
+    };
 }
 
 /// What the Roc judges of a request's head: refused, with its answer, or
@@ -516,11 +579,12 @@ pub const Allowance = struct { body_most: usize, body_grace_ms: u32 };
 /// a refusal into `arena`. A refusal the app got wrong (a stream, or one
 /// `checked` refuses) becomes a 500.
 pub fn admit(arena: std.mem.Allocator, answering: Answering, parsed: Parsed) Admitted {
-    seam.begin(.{ .arena = arena, .root = answering.root, .io = answering.io, .hub = answering.hub });
+    seam.begin(call_of(arena, answering));
     const r = seam.roc_admission(.{
         .headers = .from(parsed.headers),
         .method = .from(parsed.method),
         .path = .from(parsed.path),
+        .public_origin = .from(answering.public_origin),
         .port = parsed.port,
     });
     seam.end();

@@ -40,9 +40,12 @@ import AgentKey
 import ChannelName
 import Channels
 import ConversationKey
+import Directory
+import Name
 import Topic
 import Transcript
 import UploadTotal
+import UnvalidatedString
 import UploadedImage
 import UserFolder
 import UserId
@@ -220,7 +223,9 @@ FileSystem :: [].{
 	## before the first start), each account folder's facts (a folder whose
 	## name is no id is not an account), and each
 	## channel's members file. No auth root, or no folder of channels, holds
-	## none. An account with no `name` is `Missing`.
+	## none. An account folder with no `name` is no account: it is one cut
+	## short as it was made, and the counter of ids was advanced before it,
+	## so its id is never given again.
 	read_directory_files! : {} => Try(
 		FileSystem.DirectoryFiles,
 		[
@@ -236,9 +241,13 @@ FileSystem :: [].{
 		var $accounts = []
 		for id in account_ids {
 			folder = account_folder_path(AccountFolder.of(id))
-			name = read_needed_fact!("${folder}/name")?
-			owner = read_fact!("${folder}/owner")?
-			$accounts = $accounts.append({ id, files: { name, owner } })
+			match read_fact!("${folder}/name")? {
+				NoFile => {}
+				File(name) => {
+					owner = read_fact!("${folder}/owner")?
+					$accounts = $accounts.append({ id, files: { name, owner } })
+				}
+			}
 		}
 		channel_names = list_names_in!(channels_folder_path)?.keep_oks(
 			|file_name|
@@ -283,6 +292,13 @@ FileSystem :: [].{
 		folder = account_folder_path(AccountFolder.of(user.id()))
 		create_facts!(folder, owner_fact.append(("name", files.name)))
 	}
+
+	## The bcrypt hash of the user `id`'s password, as its file keeps it,
+	## or `NoFile` when they have none; unless the host's read failed. Only
+	## the hash is ever kept, and the server's owner writes it
+	## (docs/design.md, "Storage").
+	read_password_hash! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
+	read_password_hash! = |id| read_fact!(password_path(id))
 
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
@@ -528,6 +544,10 @@ create_facts_from! = |{ folder, facts }|
 account_folder_path : AccountFolder -> Str
 account_folder_path = |folder| Str.join_with(folder.parts(), "/")
 
+## The path of the user `id`'s password's hash.
+password_path : UserId -> Str
+password_path = |id| "${account_folder_path(AccountFolder.of(id))}/password"
+
 ## The path of the counter of user ids.
 user_counter_path : Str
 user_counter_path = "${AccountFolder.auth_root}/next-id.txt"
@@ -660,6 +680,46 @@ fault_name = |fault|
 	}
 
 # ── tests
+# The paths each builder makes, under the auth root, the users' folders
+# and a conversation's folder.
+## The key of `path`, a conversation's URL path, in the first start's
+## directory.
+key_at : Str -> ConversationKey
+key_at = |path| ConversationKey.from_url_path({
+	path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "FileSystem's tests: a path is UTF-8",
+	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "FileSystem's tests: a name"),
+}).map_ok(|found| found.key) ?? crash "FileSystem's tests: a conversation's path"
+
+expect account_folder_path(AccountFolder.of(UserId.steve)) == "auth/1"
+expect password_path(UserId.steve) == "auth/1/password"
+expect user_counter_path == "auth/next-id.txt"
+expect {
+	agent = UserId.from_str("12") ?? crash "FileSystem's tests: an id"
+	key = AgentKey.Id.from_str("3") ?? crash "FileSystem's tests: a key's number"
+	invite = AgentInvite.Id.from_str("4") ?? crash "FileSystem's tests: an invite's number"
+	keys_folder_path(agent) == "auth/12/keys"
+		and key_folder_path(agent, key) == "auth/12/keys/3"
+		and invites_folder_path(agent) == "auth/12/invites"
+		and invite_folder_path(agent, invite) == "auth/12/invites/4"
+}
+expect channels_folder_path == "chat/channel"
+expect {
+	general = ChannelName.from_str("general") ?? crash "FileSystem's tests: a channel's name"
+	channel_folder_path(general) == "chat/channel/general" and channel_members_path(general) == "chat/channel/general.channel"
+}
+expect user_folder_path(UserFolder.of(UserId.steve)) == "users/1"
+expect upload_total_path(UserFolder.of(UserId.steve)) == "users/1/upload-bytes".to_utf8()
+expect {
+	key = key_at("/chat/dm/1_1/plans")
+	image = UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "FileSystem's tests: an image's name"
+	folder_path(key) == "chat/dm/1_1/plans"
+		and transcript_path(key) == "chat/dm/1_1/plans/transcript".to_utf8()
+		and uploads_folder_path(key) == "chat/dm/1_1/plans/uploads"
+		and uploaded_image_path(
+			key,
+			image,
+		) == "chat/dm/1_1/plans/uploads/${"0a".repeat(16)}.png".to_utf8()
+}
 # Every fault, in words.
 expect
 	[

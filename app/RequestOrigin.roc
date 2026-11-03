@@ -1,26 +1,33 @@
-## This module refuses any request that does not come from this server's
-## own origin. The server listens on 127.0.0.1 alone (host/http.zig), but a
-## browser on this machine, or on a laptop through `ssh -L`, carries any web
-## page's requests to it. A page elsewhere can POST a plain form to
-## `http://localhost:<port>/...`, which needs no preflight; and a name an
-## attacker rebinds to 127.0.0.1 lets their page GET a transcript and read
-## it. Until sign-in exists, every request acts as Steve (main's `acting`),
-## so either attack would write or read as him.
+## This module refuses any request that does not come from one of this
+## server's own origins. The server listens on 127.0.0.1 alone
+## (host/http.zig), and has two kinds of origin: the local one, which a
+## browser on this machine, or on a laptop through `ssh -L`, reaches; and
+## the public one it was started with, `https://` and the name a proxy on
+## this machine serves it under, if any (`Http.Request.public_origin`).
+## A browser carries any web page's requests to either. A page elsewhere
+## can POST a plain form to the server, which needs no preflight, and the
+## browser sends the signed-in human's session cookie with a top-level
+## one; and a name an attacker rebinds to 127.0.0.1 lets their page GET a
+## transcript and read it. Either attack would write or read as the human.
 ##
 ## A page elsewhere can also read through a browser here without reading
-## the answer: an `EventSource` on a conversation's stream takes one of
-## Steve's stream slots, ending his own tabs' streams, and makes the server
-## render the whole transcript.
+## the answer: an `EventSource` on a conversation's stream takes one of the
+## human's stream slots, ending their own tabs' streams, and makes the
+## server render the whole transcript.
 ##
 ## So main checks every request here from its head, before the host reads
 ## its body:
 ##
-## - Its `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`,
-##   where `<port>` is the one the server listens on (`Http.Request.port`).
-##   A rebound name arrives under its own name, and is refused.
-## - Any request carrying an `Origin` that is not `http://` and one of
-##   those two is refused, whatever its method. A browser sends `Origin`
-##   with every write and every script's fetch, an `EventSource` included.
+## - Its `Host` must be exactly one of this server's: `127.0.0.1:<port>`
+##   or `localhost:<port>`, where `<port>` is the one the server listens
+##   on (`Http.Request.port`), or the public origin's name. A rebound name
+##   arrives under its own name, and is refused.
+## - Any request carrying an `Origin` that is not the one its `Host`
+##   names is refused, whatever its method: `http://` and one of the two
+##   local names for a local `Host`, and the public origin exactly for the
+##   public one. A browser sends `Origin` with every write and every
+##   script's fetch, an `EventSource` included. The check never relies on
+##   a proxy taking an `Origin` off.
 ## - A request that writes (every method but GET) is refused when its
 ##   `Sec-Fetch-Site` is not `same-origin`.
 ## - A GET is refused when its `Sec-Fetch-Site` says another site's page
@@ -41,33 +48,38 @@ import RequestHeader
 
 RequestOrigin :: [].{
 
-	## `Ok` when a request, by its `method` and `headers`, comes from the
-	## origin of this server, listening on `port`; else why not.
+	## `Ok` when a request, by its `method` and `headers`, comes from one of
+	## the origins of this server, listening on `port`, its public origin
+	## `public_origin` (empty for none); else why not.
 	check : {
 		method : List(U8),
 		headers : List(Http.Header),
 		port : U16,
+		public_origin : List(U8),
 	} -> Try({}, [MissingHost, ForeignHost, ForeignOrigin, CrossSiteFetch])
 	check = |
 		{
 			method,
 			headers,
 			port,
+			public_origin,
 		},
 	| {
-		hosts = ["127.0.0.1:${port.to_str()}".to_utf8(), "localhost:${port.to_str()}".to_utf8()]
-		origins = hosts.map(|host| "http://".to_utf8().concat(host))
-		match (RequestHeader.header_value(headers, "host"), RequestHeader.header_value(headers, "origin")) {
-			(Unsent, _) => Err(MissingHost)
-			(Sent(host), _) if !hosts.contains(host) => Err(ForeignHost)
-			(Repeated, _) => Err(ForeignHost)
-			(_, Sent(origin)) if !origins.contains(origin) => Err(ForeignOrigin)
-			(_, Repeated) => Err(ForeignOrigin)
-			_ =>
-				if (method == "GET".to_utf8())
-					read_verdict(headers)
-				else
-					write_verdict(headers)
+		own = own_origins({ port, public_origin })
+		match RequestHeader.header_value(headers, "host") {
+			Unsent => Err(MissingHost)
+			Repeated => Err(ForeignHost)
+			Sent(host) =>
+				match own.find_first(|kind| kind.hosts.contains(host)) {
+					Err(NotFound) => Err(ForeignHost)
+					Ok(kind) =>
+						match RequestHeader.header_value(headers, "origin") {
+							Sent(origin) if !kind.origins.contains(origin) => Err(ForeignOrigin)
+							Repeated => Err(ForeignOrigin)
+							Sent(_) => fetch_verdict({ method, headers })
+							Unsent => fetch_verdict({ method, headers })
+						}
+				}
 		}
 	}
 
@@ -85,11 +97,48 @@ RequestOrigin :: [].{
 	words = |why|
 		match why {
 			MissingHost => "The request names no Host."
-			ForeignHost => "The request's Host is not this server's (127.0.0.1 or localhost, at its port)."
+			ForeignHost => "The request's Host is not this server's (127.0.0.1 or localhost, at its port, or its public name)."
 			ForeignOrigin => "The request comes from a page of another origin."
 			CrossSiteFetch => "The browser says the request comes from another site's page."
 		}
 }
+
+## Each kind of this server's own origin: the `Host`s that name it, and the
+## `Origin`s a page of it sends. The local kind, at `port`; and the public
+## kind, when `public_origin` names one: its name alone, and the origin
+## exactly. The host takes only `https://` and a name for a public origin
+## (host/main.zig), so any other is the host's bug.
+own_origins : { port : U16, public_origin : List(U8) } -> List(
+	{
+		hosts : List(List(U8)),
+		origins : List(List(U8)),
+	},
+)
+own_origins = |{ port, public_origin }| {
+	local_hosts = ["127.0.0.1:${port.to_str()}".to_utf8(), "localhost:${port.to_str()}".to_utf8()]
+	local = {
+		hosts: local_hosts,
+		origins: local_hosts.map(|host| "http://".to_utf8().concat(host)),
+	}
+	if (public_origin.is_empty())
+		[local]
+	else if (public_origin.starts_with(https_prefix))
+		[local, { hosts: [public_origin.drop_first(https_prefix.len())], origins: [public_origin] }]
+	else
+		crash "RequestOrigin.own_origins: a public origin is `https://` and a name"
+}
+
+https_prefix : List(U8)
+https_prefix = "https://".to_utf8()
+
+## The verdict on a request whose origin is this server's, by its
+## `method`: a GET's by `read_verdict`, any other's by `write_verdict`.
+fetch_verdict : { method : List(U8), headers : List(Http.Header) } -> Try({}, [CrossSiteFetch])
+fetch_verdict = |{ method, headers }|
+	if (method == "GET".to_utf8())
+		read_verdict(headers)
+	else
+		write_verdict(headers)
 
 ## The verdict on a request that writes, by its `headers`: refused when its
 ## `Sec-Fetch-Site` is not `same-origin`, or is sent twice.
@@ -106,7 +155,10 @@ write_verdict = |headers|
 ## not `navigate`, or when the site is sent twice.
 read_verdict : List(Http.Header) -> Try({}, [CrossSiteFetch])
 read_verdict = |headers|
-	match (RequestHeader.header_value(headers, "sec-fetch-site"), RequestHeader.header_value(headers, "sec-fetch-mode")) {
+	match (
+		RequestHeader.header_value(headers, "sec-fetch-site"),
+		RequestHeader.header_value(headers, "sec-fetch-mode"),
+	) {
 		(Sent(site), Sent(mode)) if is_another_site(site) and mode == "navigate".to_utf8() => Ok({})
 		(Sent(site), _) if is_another_site(site) => Err(CrossSiteFetch)
 		(Repeated, _) => Err(CrossSiteFetch)
@@ -120,13 +172,33 @@ is_another_site = |site| site == "cross-site".to_utf8() or site == "same-site".t
 
 # ── tests
 ## The verdict on a request by `method`, with `headers` (name, value), at
-## port 9611.
+## port 9611, with no public origin.
 verdict : Str, List((Str, Str)) -> Try({}, _)
-verdict = |method, headers|
+verdict = |method, headers| public_verdict({
+	method,
+	headers,
+	public_origin: "",
+})
+
+## The verdict on a request by `method`, with `headers` (name, value), at
+## port 9611, the server's public origin `public_origin`.
+public_verdict : {
+	method : Str,
+	headers : List((Str, Str)),
+	public_origin : Str,
+} -> Try({}, _)
+public_verdict = |
+	{
+		method,
+		headers,
+		public_origin,
+	},
+|
 	RequestOrigin.check({
 		method: method.to_utf8(),
 		headers: headers.map(|(name, value)| { name: name.to_utf8(), value: value.to_utf8() }),
 		port: 9611,
+		public_origin: public_origin.to_utf8(),
 	})
 
 # The Host, both sides: exactly one of the two names, at the server's port.
@@ -163,7 +235,10 @@ expect post_verdict([("Sec-Fetch-Site", "none")]) == Err(CrossSiteFetch)
 expect
 	post_verdict([("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")])
 		== Err(CrossSiteFetch)
-expect post_verdict([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "same-origin")]) == Ok({})
+expect post_verdict([
+	("Origin", "http://localhost:9611"),
+	("Sec-Fetch-Site", "same-origin"),
+]) == Ok({})
 expect
 	post_verdict([("Origin", "http://localhost:9611"), ("Sec-Fetch-Site", "cross-site")])
 		== Err(CrossSiteFetch)
@@ -235,11 +310,125 @@ expect
 		[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Mode", "navigate")],
 		[("Sec-Fetch-Mode", "cors")],
 	].all(|more| get_verdict(more) == Ok({}))
+# The public origin, both sides: configured, its name is a Host of this
+# server's, its origin the one Origin for it, and the local ones still
+# serve the tunnel; not configured, its name is a stranger's.
+## A request by `method` to the public name `chat.example.com`, with
+## `more` headers, when the server has `public_origin`.
+public_name_verdict : {
+	method : Str,
+	more : List((Str, Str)),
+	public_origin : Str,
+} -> Try({}, _)
+public_name_verdict = |
+	{
+		method,
+		more,
+		public_origin,
+	},
+|
+	public_verdict({
+		method,
+		headers: [("Host", "chat.example.com")].concat(more),
+		public_origin,
+	})
+
+expect
+	[
+		("GET", []),
+		("GET", [("Origin", "https://chat.example.com"), ("Sec-Fetch-Site", "same-origin")]),
+		("POST", [("Origin", "https://chat.example.com"), ("Sec-Fetch-Site", "same-origin")]),
+		("POST", []),
+		("GET", [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")]),
+	].all(
+		|(method, more)| public_name_verdict({
+			method,
+			more,
+			public_origin: "https://chat.example.com",
+		}) == Ok({}),
+	)
+expect
+	[
+		[("Origin", "http://chat.example.com")],
+		[("Origin", "https://chat.example.com:443")],
+		[("Origin", "https://chat.example.com/")],
+		[("Origin", "https://evil.example")],
+		[("Origin", "http://localhost:9611")],
+		[("Origin", "https://chat.example.com"), ("Origin", "https://chat.example.com")],
+	].all(
+		|more| public_name_verdict({
+			method: "POST",
+			more,
+			public_origin: "https://chat.example.com",
+		}) == Err(ForeignOrigin),
+	)
+expect public_name_verdict({
+	method: "POST",
+	more: [("Sec-Fetch-Site", "cross-site")],
+	public_origin: "https://chat.example.com",
+}) == Err(CrossSiteFetch)
+expect public_name_verdict({
+	method: "GET",
+	more: [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "cors")],
+	public_origin: "https://chat.example.com",
+}) == Err(CrossSiteFetch)
+expect public_name_verdict({
+	method: "GET",
+	more: [],
+	public_origin: "",
+}) == Err(ForeignHost)
+expect public_name_verdict({
+	method: "POST",
+	more: [("Origin", "https://chat.example.com")],
+	public_origin: "",
+}) == Err(ForeignHost)
+expect
+	[
+		"Chat.example.com",
+		"chat.example.com:443",
+		"chat.example.com.",
+		"evil.example",
+	].all(
+		|host|
+			public_verdict({
+				method: "GET",
+				headers: [("Host", host)],
+				public_origin: "https://chat.example.com",
+			})
+				== Err(ForeignHost),
+	)
+# A local Host takes only a local Origin, the public origin configured or not.
+expect
+	public_verdict({
+		method: "POST",
+		headers: [("Host", "localhost:9611"), ("Origin", "https://chat.example.com")],
+		public_origin: "https://chat.example.com",
+	})
+		== Err(ForeignOrigin)
+expect
+	public_verdict({
+		method: "POST",
+		headers: [
+			("Host", "localhost:9611"),
+			("Origin", "http://localhost:9611"),
+			("Sec-Fetch-Site", "same-origin"),
+		],
+		public_origin: "https://chat.example.com",
+	})
+		== Ok({})
+# A public origin with a port: its Host carries the port too.
+expect
+	public_verdict({
+		method: "POST",
+		headers: [("Host", "chat.example.com:8443"), ("Origin", "https://chat.example.com:8443")],
+		public_origin: "https://chat.example.com:8443",
+	})
+		== Ok({})
 # Every refusal, in words.
 expect RequestOrigin.words(MissingHost) == "The request names no Host."
 expect
 	RequestOrigin.words(ForeignHost)
-		== "The request's Host is not this server's (127.0.0.1 or localhost, at its port)."
+		== "The request's Host is not this server's (127.0.0.1 or localhost, at its port, or its public name)."
 expect RequestOrigin.words(ForeignOrigin) == "The request comes from a page of another origin."
 expect
 	RequestOrigin.words(CrossSiteFetch)

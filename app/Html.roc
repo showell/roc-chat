@@ -12,6 +12,9 @@
 ##   one form, digits and `-:TZ`), so no value holds a quote, `&`, `<`, a
 ##   space or a `:`; a flag (`MethodPost`, `Required`) holds no value.
 ##
+## An `<input>` has no end tag and holds nothing (`input`). Its value, the
+## one an input field may carry, is a site path, a form's hidden `next`.
+##
 ## No link leaves the site. `Href` always writes `#` and a token, a
 ## fragment of this page, and a token can't spell a scheme or a path. A
 ## form's `Action` and a script's `Src` are a `SitePath`, which starts with
@@ -95,9 +98,11 @@ Html :: [].{
 
 	## An attribute, its name by its tag: a class, an id and a link to an id
 	## on this page, each a token; a time; a form's field name, its method
-	## (always POST) and where it posts; whether a field is required; a
-	## script's source; and a `data-` attribute for a page's scripts: its
-	## name after `data-`, a token, then its value, a token or a site path.
+	## (always POST) and where it posts; whether a field is required; an
+	## input's type, its value (a site path) and what a browser may fill it
+	## with; a script's source; and a `data-` attribute for a page's
+	## scripts: its name after `data-`, a token, then its value, a token or
+	## a site path.
 	Attribute : [
 		Class(Html.Token),
 		Id(Html.Token),
@@ -107,6 +112,9 @@ Html :: [].{
 		MethodPost,
 		Action(Html.SitePath),
 		Required,
+		InputType([Hidden, Password, Text]),
+		Value(Html.SitePath),
+		Autocomplete([Username, CurrentPassword]),
 		Src(Html.SitePath),
 		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
 	]
@@ -133,6 +141,10 @@ Html :: [].{
 			TrustedHtml.dangerously_trust("</${tag_name}>"),
 		])
 	}
+
+	## An input: `<input a="v">`, which has no end tag and holds nothing.
+	input : List(Html.Attribute) -> TrustedHtml
+	input = |attrs| TrustedHtml.dangerously_trust("<input${Str.join_with(attrs.map(attribute), "")}>")
 }
 
 is_token_byte : U8 -> Bool
@@ -180,6 +192,12 @@ attribute = |attr|
 		MethodPost => " method=\"post\""
 		Action(path) => " action=\"${path.to_str()}\""
 		Required => " required"
+		InputType(Hidden) => " type=\"hidden\""
+		InputType(Password) => " type=\"password\""
+		InputType(Text) => " type=\"text\""
+		Value(path) => " value=\"${path.to_str()}\""
+		Autocomplete(Username) => " autocomplete=\"username\""
+		Autocomplete(CurrentPassword) => " autocomplete=\"current-password\""
 		Src(path) => " src=\"${path.to_str()}\""
 		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
 		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
@@ -229,9 +247,21 @@ expect attribute(Href(token("msg-1"))) == " href=\"#msg-1\""
 expect attribute(Href(token("msg-2"))) == " href=\"#msg-2\""
 # A `data-` attribute: its name after `data-`, and a token or a site path.
 expect attribute(Data(token("after"), Token(token("6")))) == " data-after=\"6\""
-expect attribute(Data(token("image-byte-limit"), Token(token("10485760")))) == " data-image-byte-limit=\"10485760\""
+expect attribute(
+	Data(
+		token("image-byte-limit"),
+		Token(token("10485760")),
+	),
+) == " data-image-byte-limit=\"10485760\""
 expect
-	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(|path| attribute(Data(token("stream"), Path(path))))
+	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(
+		|path| attribute(
+			Data(
+				token("stream"),
+				Path(path),
+			),
+		),
+	)
 		== Ok(" data-stream=\"/chat/dm/1_1/plans/stream\"")
 expect
 	DateTime.from_str("2026-11-02T19:11:32Z").map_ok(|time| attribute(DateTime(time)))
@@ -298,6 +328,27 @@ expect {
 		(Src(path("/chat/assets/compose.js")), " src=\"/chat/assets/compose.js\""),
 	].all(|(attr, expected)| attribute(attr) == expected)
 }
+# An input's attributes, each as an open tag writes it.
+expect {
+	path = Html.SitePath.from_str("/agents") ?? crash "Html's tests: a site path"
+	[
+		(InputType(Hidden), " type=\"hidden\""),
+		(InputType(Password), " type=\"password\""),
+		(InputType(Text), " type=\"text\""),
+		(Value(path), " value=\"/agents\""),
+		(Autocomplete(Username), " autocomplete=\"username\""),
+		(Autocomplete(CurrentPassword), " autocomplete=\"current-password\""),
+	].all(|(attr, expected)| attribute(attr) == expected)
+}
+# An input: its attributes in order, no end tag.
+expect
+	Html.input([
+		InputType(Password),
+		FieldName(token("password")),
+		Required,
+	]).to_utf8()
+		== "<input type=\"password\" name=\"password\" required>".to_utf8()
+expect Html.input([]).to_utf8() == "<input>".to_utf8()
 # An element: its attributes in order, `inner` as it is, never escaped
 # again.
 expect

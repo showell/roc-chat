@@ -11,6 +11,7 @@ pub const std_options: std.Options = .{ .log_level = .err };
 const Io = std.Io;
 const http = @import("http.zig");
 const files = @import("file_primitives.zig");
+const sign_in = @import("sign_in_primitives.zig");
 
 const io = std.testing.io;
 const gpa = std.testing.allocator;
@@ -36,8 +37,9 @@ pub const Running = struct {
         r.data = testing.tmpDir(.{});
         errdefer r.data.cleanup();
         r.root = .{ .io = io, .dir = r.data.dir };
-        r.server = try .listen(io, server_gpa, 0, limits, &r.root);
+        r.server = try .listen(io, server_gpa, .{ .port = 0, .limits = limits, .root = &r.root });
         r.run = try io.concurrent(http.Server.run, .{&r.server});
+        try sign_in_steve(r);
         return r;
     }
 
@@ -61,11 +63,32 @@ pub fn exchange(arena: std.mem.Allocator, port: u16, request: []const u8) ![]u8 
     return r.interface.allocRemaining(arena, .limited(4 * 1024 * 1024));
 }
 
-/// A request to the server at `port`: `line`, its request line, then the
-/// Host that names this server (the app refuses any other, app/RequestOrigin.roc),
-/// then `rest`, the other headers, the empty line and any body.
+/// The cookie header that signs Steve in to the server the test runs, as
+/// the app reads a session (app/Session.roc): his id, the second it was
+/// signed at and its HMAC under the server's secret. The tests run one at
+/// a time, so the running server's is the one here.
+var steve_cookie_buf: [256]u8 = undefined;
+var steve_cookie: []const u8 = "";
+
+/// Steve signed in to `r`'s server: a password file, which a session needs
+/// its human to have, and a session signed now.
+fn sign_in_steve(r: *Running) !void {
+    try r.data.dir.writeFile(io, .{ .sub_path = "auth/1/password", .data = "a hash the tests never check" });
+    const now = files.current_utc_seconds_since_epoch(io);
+    var signed_buf: [32]u8 = undefined;
+    const signed = try std.fmt.bufPrint(&signed_buf, "1\n{d}", .{now});
+    const mac = sign_in.hmac_sha256(r.server.secret.slice(), signed);
+    var mac_text: [64]u8 = undefined;
+    const b64 = std.base64.url_safe_no_pad.Encoder;
+    steve_cookie = try std.fmt.bufPrint(&steve_cookie_buf, "cookie: __Host-gopher_auth=MQ.{d}.{s}\r\n", .{ now, b64.encode(&mac_text, &mac) });
+}
+
+/// A request to the server at `port`, by Steve: `line`, its request line,
+/// then the Host that names this server (the app refuses any other,
+/// app/RequestOrigin.roc) and Steve's session, then `rest`, the other
+/// headers, the empty line and any body.
 fn ours(a: std.mem.Allocator, port: u16, comptime line: []const u8, comptime rest: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(a, line ++ "\r\nhost: 127.0.0.1:{d}\r\n" ++ rest, .{port});
+    return std.fmt.allocPrint(a, line ++ "\r\nhost: 127.0.0.1:{d}\r\n{s}" ++ rest, .{ port, steve_cookie });
 }
 
 fn status(bytes: []const u8) !u16 {
@@ -133,7 +156,7 @@ test "an upload's own cap: a routed upload at it reaches the Roc; past it, a 413
     const at_most = try a.alloc(u8, upload_most);
     @memset(at_most, 'u');
     // Read whole, and the Roc refuses it as no form of one file.
-    const upload = try exchange(a, port, try std.fmt.allocPrint(a, "POST /chat/dm/1_1/plans/upload HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, upload_most, at_most }));
+    const upload = try exchange(a, port, try std.fmt.allocPrint(a, "POST /chat/dm/1_1/plans/upload HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\n{s}content-length: {d}\r\n\r\n{s}", .{ port, steve_cookie, upload_most, at_most }));
     try testing.expectEqual(400, try status(upload));
     try testing.expect(has(upload, "no file"));
     // Each refused by its length alone, its body never sent.
@@ -276,6 +299,40 @@ test "a refused client that never closes holds its own connection, not the serve
     try testing.expectEqual(404, try status(next));
     // Answered on its own task while the refused connection lingers.
     try testing.expect(waited < 500);
+}
+
+test "a stream held its longest is ended, so its client reconnects and is asked again who it is; one younger is held" {
+    const r = try Running.start(.{ .stream_most_ms = 300 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const started = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=x"));
+    try testing.expectEqual(303, try status(started));
+    var stream: HeldStream = undefined;
+    const began = Io.Clock.now(.awake, io);
+    try stream.open(a, port, "1");
+    defer stream.connection.close(io);
+    // Within its age a frame still comes.
+    const posted = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 10\r\n\r\nmarkdown=y"));
+    try testing.expectEqual(303, try status(posted));
+    try testing.expectEqualStrings("id: 2\n", (try stream.line()).?);
+    while (try stream.line()) |_| {}
+    const held = began.untilNow(io, .awake).toMilliseconds();
+    try testing.expect(held >= 300 and held < 2_000);
+}
+
+test "a public name is a stranger's when the server has no public origin" {
+    const r = try Running.start(.{});
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const public = try exchange(a, port, try std.fmt.allocPrint(a, "GET /chat/dm/1_1/plans HTTP/1.1\r\nhost: chat.example.test\r\norigin: https://chat.example.test\r\n{s}\r\n", .{steve_cookie}));
+    try testing.expectEqual(403, try status(public));
+    try testing.expect(has(public, "Host is not this server"));
 }
 
 test "it listens on 127.0.0.1 alone" {
@@ -459,7 +516,7 @@ test "the app's start: an empty data folder gets the first chat; one holding par
     try partial.dir.writeFile(io, .{ .sub_path = "auth/1/name", .data = "Steve" });
     const partial_root: files.DataRoot = .{ .io = io, .dir = partial.dir };
     try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
-    try testing.expectError(error.AppStartFailed, http.Server.listen(io, gpa, 0, .{}, &partial_root));
+    try testing.expectError(error.AppStartFailed, http.Server.listen(io, gpa, .{ .port = 0, .root = &partial_root }));
 
     // A counter behind its users: no chat.
     try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "1\n" });

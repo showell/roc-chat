@@ -5,7 +5,8 @@ const std = @import("std");
 /// are the gate's (tools/verify.shale); the host's are `test` here.
 ///
 ///   zig build demo -- <url path> <file>      a transcript's page, to stdout
-///   zig build serve -- <data> [--port <n>]   the server, on 127.0.0.1
+///   zig build serve -- <data> [--port <n>] [--public-origin https://<name>]
+///                                            the server, on 127.0.0.1
 ///   zig build test                           the host's tests
 ///   zig build end-to-end                     the server, driven over HTTP
 pub fn build(b: *std.Build) void {
@@ -31,12 +32,13 @@ pub fn build(b: *std.Build) void {
     const serve = b.addRunArtifact(server_exe);
     serve.addPassthruArgs();
     serve.stdio = .inherit;
-    b.step("serve", "The server on 127.0.0.1: -- <data folder> [--port <n>] (9611 by default)").dependOn(&serve.step);
+    b.step("serve", "The server on 127.0.0.1: -- <data folder> [--port <n>] [--public-origin https://<name>] (9611 by default); or -- hash-password").dependOn(&serve.step);
 
-    // **THE HOST'S TESTS**: the file primitives and the bus alone; the
-    // seam held to roc glue's layout; the HTTP layer with the app linked.
-    const tests = b.step("test", "The host's tests: the file primitives, the bus, the seam against roc glue, the HTTP layer");
-    for ([_][]const u8{ "host/file_primitives.zig", "host/bus.zig" }) |root| {
+    // **THE HOST'S TESTS**: the file primitives, the bus, the sign-in
+    // primitives and the command line alone; the seam held to roc glue's
+    // layout; the HTTP layer with the app linked.
+    const tests = b.step("test", "The host's tests: the file primitives, the bus, the sign-in primitives, the seam against roc glue, the HTTP layer, the command line");
+    for ([_][]const u8{ "host/file_primitives.zig", "host/bus.zig", "host/sign_in_primitives.zig", "host/main.zig" }) |root| {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
         tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
     }

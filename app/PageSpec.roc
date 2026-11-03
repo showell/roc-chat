@@ -1,6 +1,7 @@
 ## These are the tests of `Page`: each page, byte for byte.
 import Conversation
 import ConversationKey
+import Html
 import Page
 import Sample
 import SignedIn
@@ -56,8 +57,8 @@ plans_page = |
 	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> <div class=\"top-user\"><span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
-steves_page : Str, Str -> Str
-steves_page = |count, messages|
+steves_page : { count : Str, messages : Str } -> Str
+steves_page = |{ count, messages }|
 	plans_page({
 		viewer: "Steve",
 		viewer_id: "1",
@@ -77,8 +78,14 @@ hello_and_reply : Str
 hello_and_reply = "<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p>Hello</p>\n</div></article>\n<article class=\"message\" id=\"msg-2\" data-author=\"3\"><header><span class=\"author\">CC</span> <time datetime=\"2026-11-02T19:12:28Z\">2026-11-02T19:12:28Z</time> <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Hi!</p>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</div></article>\n"
 
 # No messages: the page says so, and only then.
-expect page_for("Steve", Conversation.empty(Sample.plans)) == steves_page("0", "<p class=\"empty\">No messages yet.</p>\n")
-expect page_for("Steve", Sample.hello_and_reply) == steves_page("2", hello_and_reply)
+expect page_for("Steve", Conversation.empty(Sample.plans)) == steves_page({
+	count: "0",
+	messages: "<p class=\"empty\">No messages yet.</p>\n",
+})
+expect page_for("Steve", Sample.hello_and_reply) == steves_page({
+	count: "2",
+	messages: hello_and_reply,
+})
 # Another viewer: their name in the top bar and their id on the pane; each
 # message names its author's id, the same for every viewer.
 expect
@@ -106,6 +113,33 @@ expect
 			],
 		),
 	)
-		== steves_page("1", "<article class=\"message\" id=\"msg-1\"><header><span class=\"author\">Eve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p><strong>hi</strong> &lt;b&gt;</p>\n</div></article>\n")
+		== steves_page({
+			count: "1",
+			messages: "<article class=\"message\" id=\"msg-1\"><header><span class=\"author\">Eve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p><strong>hi</strong> &lt;b&gt;</p>\n</div></article>\n",
+		})
+
+## The sign-in page as a test expects it, going on to `/agents`, with
+## `above`, what comes between its heading and its form.
+login_page : Str -> Str
+login_page = |above| "${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n"
+
+## The sign-in page for `viewer`, with `problem`, as a test reads it.
+login_for : SignedIn.Actor, [NoProblem, Problem(Str)] -> Str
+login_for = |viewer, problem|
+	Str.from_utf8_lossy(
+		Page.login({
+			viewer,
+			next: Html.SitePath.from_str("/agents") ?? crash "PageSpec: a site path",
+			problem,
+		}).to_utf8(),
+	)
+
+# The sign-in page: for no one, the form alone; with a problem, it first;
+# for someone signed in, who and the button that signs them out.
+expect login_for(Anonymous, NoProblem) == login_page("")
+expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;match&gt;.</p>\n")
+expect
+	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
+		== login_page("<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n")
 # A refusal's words are text on its page.
 expect Page.refusal("it <is> not UTF-8").to_utf8() == "${head("Not a transcript")}<p>Not a transcript: it &lt;is&gt; not UTF-8.</p>".to_utf8()

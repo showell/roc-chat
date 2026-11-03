@@ -123,6 +123,18 @@ pub const Slots = struct {
         return best;
     }
 
+    /// Every stream `holder` holds ended now, each socket shut and each
+    /// subscriber ended, so each task stops at once and lets its slot go.
+    /// The app asks this when what admitted the holder stops admitting it,
+    /// such as an agent's key revoked.
+    pub fn end_holder(s: *Slots, io: Io, holder: []const u8) void {
+        s.mutex.lockUncancelable(io);
+        defer s.mutex.unlock(io);
+        for (s.held, 0..) |h, i| if (h) |x| if (x.held_by(holder)) {
+            _ = s.end(io, i);
+        };
+    }
+
     /// `h`'s slot given back, unless a newer stream has taken it.
     pub fn let_go(s: *Slots, io: Io, h: Held) void {
         s.mutex.lockUncancelable(io);

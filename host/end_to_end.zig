@@ -1,7 +1,30 @@
 //! The end to end runs the real server, with the app linked, on a free port
-//! of 127.0.0.1, on a task of this process, against a temporary data root
-//! seeded from demo/data. It drives the server over HTTP, one step a line,
-//! timed:
+//! of 127.0.0.1, told a public origin (`public_origin`), on a task of this
+//! process, against a temporary data root seeded from demo/data. It drives
+//! the server over HTTP, one step a line, timed.
+//!
+//! First Steve signs in (`signInSteps`), his password's bcrypt hash written
+//! to `auth/1/password` as its owner would write it:
+//!
+//!  0a. GET the seeded conversation with no session: a 303 to the sign-in
+//!      page, naming the conversation as `next`; the sign-in page: 200,
+//!      its form, `next` in it;
+//!  0b. sign in with a wrong password, and as no such user: 401 each, the
+//!      page again, no cookie, never stored;
+//!  0c. sign in with the right one: a 303 to `next`, the session's cookie
+//!      set for a year, `HttpOnly`, `Secure`, `SameSite=Lax`, signed by the
+//!      server's secret, never stored; every step of Steve's after 0e
+//!      carries it;
+//!  0d. a cookie whose signature is forged, one a year and a second old,
+//!      one signed ahead of the clock past its skew, and one for an id no
+//!      human has: the page a 303 to sign in, a message a 401, nothing
+//!      appended; one signed now, by the server's secret: the page;
+//!  0e. no session at all: a message, a send, a stream, `/raw`, `/agents`'s
+//!      POST and an upload are 401 each, nothing stored; `/agents` a 303
+//!      to sign in; an upload past a form's room is a 413, its body never
+//!      read, as the large room is only a member's.
+//!
+//! Then, as Steve:
 //!
 //!   1. GET the seeded conversation: exactly the demo's frozen page, with
 //!      its content security policy (scripts from this origin alone) and
@@ -88,7 +111,11 @@
 //!      stream that no other site may load;
 //!  35. follow a link to the channel's page from another site (a
 //!      navigation: `Sec-Fetch-Site` cross-site, `Sec-Fetch-Mode`
-//!      navigate): 200, the page.
+//!      navigate), its session cookie carried as `SameSite=Lax` allows:
+//!      200, the page;
+//! 35a. through the public origin: the page under its `Host`, 200; a POST
+//!      to the DM from a page of it, a 303; one whose `Origin` is the local
+//!      one, or another site's, 403 each.
 //!
 //! Then the agents (`agentSteps`), on the users the server's first start
 //! made:
@@ -99,8 +126,9 @@
 //!  38. POST /agents `name=CC`: a 303 to /agents, CC's account on disk as
 //!      Steve's agent, the counter at 3; Steve adds CC to `general` in its
 //!      members file, and makes `private`, without CC, the same way;
-//!  39. invite CC: the page shows its code, once; redeem it: 200, the key on
-//!      one line; redeem it again: 401;
+//!  39. invite CC: the page shows its code, once, never stored; redeem it
+//!      with no credential at all: 200, the key on one line, never stored;
+//!      redeem it again: 401;
 //!  40. an invite whose `expires` has passed (its file set back): 401;
 //!  41. CC's stream opened with the key: a 200 event stream; asked for with
 //!      no key: 403;
@@ -117,9 +145,12 @@
 //!      to invite, to redeem, or to list agents: 401, 401, then 403 each;
 //! 46a. a key invited `read=off&post=off`: reading, posting and listening
 //!      are 403 each;
-//!  47. revoke the key: a 303, and the key is then a 401;
+//!  47. revoke the key: a 303, CC's open streams ended at once, and the key
+//!      is then a 401;
 //!  48. on disk: the key's hash is SHA-256 of its secret, and no file under
-//!      the data root holds the key's secret or any invite's code.
+//!      the data root holds the key's secret or any invite's code;
+//!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
+//!      stored.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, no
 //! `Origin`, no `Sec-Fetch-Site`.
@@ -135,6 +166,8 @@ const files = @import("file_primitives.zig");
 const seed_path = "demo/data/chat/channel/general/gopher-roc/transcript";
 const frozen_page = "demo/gopher-roc.html";
 const channel_url = "/chat/channel/general/gopher-roc";
+/// The origin the server is told a proxy serves it under.
+const public_origin = "https://chat.example.test";
 const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
 /// The page's other scripts, each served as compose.js is.
@@ -152,6 +185,13 @@ const no_total = "(none)";
 const upload_type = "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW";
 
 const RunResult = @typeInfo(@TypeOf(http.Server.run)).@"fn".return_type.?;
+
+/// Steve's password, which the run writes the hash of.
+const steve_password = "correct horse battery staple";
+
+/// The session cookie's header line that signs Steve in, once he has
+/// signed in (step 0c): every request of his carries it.
+var steve_session: []const u8 = "";
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -174,7 +214,7 @@ pub fn main(init: std.process.Init) !void {
     try data.writeFile(io, .{ .sub_path = seed_path["demo/data/".len..], .data = seed });
 
     const root: files.DataRoot = .{ .io = io, .dir = data };
-    var server = try http.Server.listen(io, gpa, 0, .{}, &root);
+    var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root, .public_origin = public_origin });
     var running = try io.concurrent(http.Server.run, .{&server});
     defer {
         server.stop();
@@ -182,6 +222,8 @@ pub fn main(init: std.process.Init) !void {
     }
     const port = server.port();
     const t: Steps = .{ .io = io, .began = began };
+
+    try signInSteps(a, io, port, data, t);
 
     // 1.
     const first = try get(a, io, port, channel_url);
@@ -475,14 +517,165 @@ pub fn main(init: std.process.Init) !void {
         std.mem.eql(u8, own_stream.header("cross-origin-resource-policy") orelse "", "same-origin"));
 
     // 35.
-    const followed = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ channel_url ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n" ++
-        "sec-fetch-site: cross-site\r\nsec-fetch-mode: navigate\r\nsec-fetch-dest: document\r\nsec-fetch-user: ?1\r\n\r\n", .{port}));
+    const followed = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ channel_url ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n{s}" ++
+        "sec-fetch-site: cross-site\r\nsec-fetch-mode: navigate\r\nsec-fetch-dest: document\r\nsec-fetch-user: ?1\r\n\r\n", .{ port, steve_session }));
     try t.check("follow a link to the channel's page from another site: 200, the page", followed.status == 200 and
         has(followed.body, "id=\"msg-12\""));
 
+    // 35a.
+    const public_host = public_origin["https://".len..];
+    const public_page = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ channel_url ++ " HTTP/1.1\r\nhost: {s}\r\n{s}\r\n", .{ public_host, steve_session }));
+    const public_form = "markdown=Through+the+proxy";
+    const public_post = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ dm_url ++ " HTTP/1.1\r\nhost: {s}\r\n{s}origin: {s}\r\nsec-fetch-site: same-origin\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ public_host, steve_session, public_origin, public_form.len, public_form }));
+    const local_origin = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ dm_url ++ " HTTP/1.1\r\nhost: {s}\r\n{s}origin: http://localhost:{d}\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ public_host, steve_session, port, public_form.len, public_form }));
+    const evil_origin = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ dm_url ++ " HTTP/1.1\r\nhost: {s}\r\n{s}origin: https://evil.example\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ public_host, steve_session, public_form.len, public_form }));
+    const dm_after_public = try get(a, io, port, dm_url);
+    try t.check("through the public origin: the page, 200; a POST from its own page, 303; from the local origin's page or another site's, 403 each", public_page.status == 200 and
+        has(public_page.body, "id=\"msg-12\"") and public_post.status == 303 and local_origin.status == 403 and evil_origin.status == 403 and
+        std.mem.count(u8, dm_after_public.body, "Through the proxy") == 1);
+
     try agentSteps(a, io, port, data, t);
 
+    // 49.
+    const signed_out = try post(a, io, port, .{ .path = "/logout", .form = "" });
+    try t.check("sign out: a 303 to the sign-in page, the cookie cleared, never stored", signed_out.status == 303 and
+        std.mem.eql(u8, signed_out.header("location") orelse "", "/login") and
+        std.mem.eql(u8, signed_out.header("set-cookie") orelse "", "__Host-gopher_auth=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax") and
+        std.mem.eql(u8, signed_out.header("cache-control") orelse "", "no-store"));
+
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
+}
+
+/// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and
+/// of a session, Steve signed in (`steve_session`), and what no one may do.
+fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !void {
+    var salt: [std.crypto.pwhash.bcrypt.salt_length]u8 = undefined;
+    io.random(&salt);
+    var hash_buf: [60]u8 = undefined;
+    const hash = try std.crypto.pwhash.bcrypt.strHashWithSalt(steve_password, .{
+        .params = .{ .rounds_log = 4, .silently_truncate_password = false },
+        .encoding = .crypt,
+    }, &hash_buf, salt);
+    try data.writeFile(io, .{ .sub_path = "auth/1/password", .data = try std.fmt.allocPrint(a, "{s}\n", .{hash}) });
+
+    // 0a.
+    const anonymous = try anonymousGet(a, io, port, channel_url);
+    const page = try anonymousGet(a, io, port, "/login?next=" ++ channel_url);
+    try t.check("GET the conversation with no session: a 303 to sign in, naming it next; the sign-in page: 200, its form", anonymous.status == 303 and
+        std.mem.eql(u8, anonymous.header("location") orelse "", "/login?next=" ++ channel_url) and
+        page.status == 200 and has(page.body, "<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"" ++ channel_url ++ "\">") and
+        has(page.body, "<input type=\"password\" name=\"password\""));
+
+    // 0b.
+    const next_field = "next=%2Fchat%2Fchannel%2Fgeneral%2Fgopher-roc";
+    const wrong = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+stapler&" ++ next_field);
+    const nobody = try anonymousPost(a, io, port, "/login", "name=Nobody&password=correct+horse+battery+staple&" ++ next_field);
+    try t.check("sign in with a wrong password, and as no such user: 401 each, the page again, no cookie, never stored", wrong.status == 401 and nobody.status == 401 and
+        has(wrong.body, "don&#39;t match") and wrong.header("set-cookie") == null and nobody.header("set-cookie") == null and
+        std.mem.eql(u8, wrong.header("cache-control") orelse "", "no-store"));
+
+    // 0c.
+    const before = files.current_utc_seconds_since_epoch(io);
+    const signed_in = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple&" ++ next_field);
+    const cookie = signed_in.header("set-cookie") orelse "";
+    const value_end = std.mem.indexOfScalar(u8, cookie, ';') orelse 0;
+    const name = "__Host-gopher_auth=";
+    const value = if (std.mem.startsWith(u8, cookie, name)) cookie[name.len..value_end] else "";
+    try t.check("sign in with the right password: a 303 to next, the session's cookie set for a year, HttpOnly, Secure, SameSite=Lax; never stored", signed_in.status == 303 and
+        std.mem.eql(u8, signed_in.header("location") orelse "", channel_url) and
+        std.mem.endsWith(u8, cookie, "; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
+        std.mem.eql(u8, signed_in.header("cache-control") orelse "", "no-store") and
+        try sessionSignedNear(a, io, data, value, before));
+
+    // 0d.
+    const secret = try data.readFileAlloc(io, ".session-secret", a, .limited(256));
+    const now = files.current_utc_seconds_since_epoch(io);
+    var forged_value = try a.dupe(u8, value);
+    // A character in the signature's middle, all of whose bits it uses.
+    const flipped = forged_value.len - 5;
+    forged_value[flipped] = if (forged_value[flipped] == 'A') 'B' else 'A';
+    const refused_cookies = [_][]const u8{
+        forged_value,
+        try sessionValue(a, secret, "1", now - 365 * 24 * 60 * 60 - 1),
+        try sessionValue(a, secret, "1", now + 5 * 60 + 60),
+        try sessionValue(a, secret, "7", now),
+    };
+    const transcript_before = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    var refused_all = true;
+    for (refused_cookies) |refused| {
+        const line = try std.fmt.allocPrint(a, "cookie: {s}{s}\r\n", .{ name, refused });
+        const refused_page = try getWith(a, io, port, channel_url, line);
+        const refused_post = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ channel_url ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: 10\r\n\r\nmarkdown=x", .{ port, line }));
+        refused_all = refused_all and refused_page.status == 303 and refused_post.status == 401;
+    }
+    const by_hand = try getWith(a, io, port, channel_url, try std.fmt.allocPrint(a, "cookie: {s}{s}\r\n", .{ name, try sessionValue(a, secret, "1", now) }));
+    try t.check("a forged cookie, an expired one, one ahead of the clock, one for no human: the page a 303 to sign in, a message a 401, nothing appended; one signed now: the page", refused_all and
+        by_hand.status == 200 and std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), transcript_before));
+
+    // 0e.
+    const form = "markdown=Not+signed+in";
+    const refused_post = try anonymousPost(a, io, port, channel_url, form);
+    const refused_send = try anonymousPost(a, io, port, channel_url ++ "/send", form);
+    const refused_make = try anonymousPost(a, io, port, "/agents", "name=Rogue");
+    const refused_raw = try anonymousGet(a, io, port, channel_url ++ "/raw");
+    const refused_agents = try anonymousGet(a, io, port, "/agents");
+    var refused_stream = try Stream.openWith(a, io, port, channel_url ++ "/stream?after=0", "");
+    defer refused_stream.close();
+    const png = try onePixelPng(a);
+    const small_upload = try anonymousUpload(a, io, port, try uploadForm(a, "cat.png", png));
+    const big = try a.alloc(u8, 64 * 1024 + 1);
+    @memset(big, 0);
+    @memcpy(big[0..png.len], png);
+    const big_upload = try anonymousUpload(a, io, port, try uploadForm(a, "big.png", big));
+    try t.check("no session: a message, a send, an agent, /raw, a stream and an upload are 401 each; /agents a 303 to sign in; an upload past a form's room a 413; nothing stored", refused_post.status == 401 and
+        refused_send.status == 401 and refused_make.status == 401 and refused_raw.status == 401 and
+        std.mem.startsWith(u8, refused_stream.head, "HTTP/1.1 401 ") and small_upload.status == 401 and big_upload.status == 413 and
+        refused_agents.status == 303 and std.mem.eql(u8, refused_agents.header("location") orelse "", "/login?next=/agents") and
+        has(refused_post.body, "No one is signed in") and !(try exists(io, data, channel_uploads)) and !(try exists(io, data, "auth/2")) and
+        std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), transcript_before));
+
+    // Every later step of Steve's carries his session, beside another cookie.
+    steve_session = try std.fmt.allocPrint(a, "cookie: theme=dark; {s}{s}\r\n", .{ name, value });
+}
+
+/// The value of a session cookie for the id `id` signed at `signed_at`
+/// with `secret`, as app/Session.roc spells one: a second opinion on it,
+/// from std's HMAC and base64url.
+fn sessionValue(a: std.mem.Allocator, secret: []const u8, id: []const u8, signed_at: i64) ![]const u8 {
+    const signed = try std.fmt.allocPrint(a, "{s}\n{d}", .{ id, signed_at });
+    var mac: [32]u8 = undefined;
+    std.crypto.auth.hmac.sha2.HmacSha256.create(&mac, signed, secret);
+    const b64 = std.base64.url_safe_no_pad.Encoder;
+    const id_text = try a.alloc(u8, b64.calcSize(id.len));
+    const mac_text = try a.alloc(u8, b64.calcSize(mac.len));
+    return std.fmt.allocPrint(a, "{s}.{d}.{s}", .{ b64.encode(id_text, id), signed_at, b64.encode(mac_text, &mac) });
+}
+
+/// Whether `value` is Steve's session signed by the server's secret at a
+/// second from `from` to now.
+fn sessionSignedNear(a: std.mem.Allocator, io: Io, data: Io.Dir, value: []const u8, from: i64) !bool {
+    const secret = try data.readFileAlloc(io, ".session-secret", a, .limited(256));
+    var second = from;
+    while (second <= files.current_utc_seconds_since_epoch(io)) : (second += 1) {
+        if (std.mem.eql(u8, value, try sessionValue(a, secret, "1", second))) return true;
+    }
+    return false;
+}
+
+/// A GET of `path` with no credential at all.
+fn anonymousGet(a: std.mem.Allocator, io: Io, port: u16, path: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{ path, port }));
+}
+
+/// A form POSTed to `path` with no credential at all.
+fn anonymousPost(a: std.mem.Allocator, io: Io, port: u16, path: []const u8, form: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "POST {s} HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ path, port, form.len, form }));
+}
+
+/// An upload of `form` to the channel's conversation with no credential at
+/// all.
+fn anonymousUpload(a: std.mem.Allocator, io: Io, port: u16, form: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ channel_url ++ "/upload HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-type: " ++ upload_type ++ "\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, form.len, form }));
 }
 
 /// Steps 36 to 48: an agent made, invited, redeemed, posting, listening
@@ -515,12 +708,14 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     // 39.
     const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
     const code = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
-    const redeemed = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{code}) });
+    const redeemed = try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{code}));
     const key = std.mem.trimEnd(u8, redeemed.body, "\n");
-    const again = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{code}) });
-    try t.check("invite CC: its code shown once; redeemed: 200, the key on one line, `2-` and 64 hex digits; redeemed again: 401", invited.status == 200 and
+    const again = try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{code}));
+    try t.check("invite CC: its code shown once, never stored; redeemed with no credential: 200, the key on one line, `2-` and 64 hex digits, never stored; redeemed again: 401", invited.status == 200 and
+        std.mem.eql(u8, invited.header("cache-control") orelse "", "no-store") and
         isToken(code, "2-") and redeemed.status == 200 and isToken(key, "2-") and !std.mem.eql(u8, key, code) and
         std.mem.eql(u8, redeemed.header("content-type") orelse "", "text/plain; charset=utf-8") and
+        std.mem.eql(u8, redeemed.header("cache-control") orelse "", "no-store") and
         again.status == 401 and std.mem.eql(u8, again.body, "The invite code is not live.\n"));
     const bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{key});
 
@@ -528,7 +723,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     const second = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
     const late_code = between(second.body, "<p class=\"invite-code\">", "</p>") orelse "";
     try data.writeFile(io, .{ .sub_path = "auth/2/invites/2/expires", .data = "1000" });
-    const late = try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{late_code}) });
+    const late = try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{late_code}));
     try t.check("an invite past its expiry (its file set back): 401, and it is still live on disk", isToken(late_code, "2-") and late.status == 401 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/2/invites/2/state"), "live"));
 
@@ -606,7 +801,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     // 46a.
     const scoped = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=off&post=off" });
     const scoped_code = between(scoped.body, "<p class=\"invite-code\">", "</p>") orelse "";
-    const scoped_key = std.mem.trimEnd(u8, (try post(a, io, port, .{ .path = "/agents/redeem", .form = try std.fmt.allocPrint(a, "code={s}", .{scoped_code}) })).body, "\n");
+    const scoped_key = std.mem.trimEnd(u8, (try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{scoped_code}))).body, "\n");
     const scoped_bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{scoped_key});
     const scoped_read = try getWith(a, io, port, channel_url ++ "/raw", scoped_bearer);
     const scoped_post = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Scoped", .more = scoped_bearer });
@@ -617,9 +812,13 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
         scoped_read.status == 403 and scoped_post.status == 403 and std.mem.startsWith(u8, scoped_stream.head, "HTTP/1.1 403 "));
 
     // 47.
+    const revoking = Io.Clock.now(.awake, io);
     const revoked = try post(a, io, port, .{ .path = "/agents/2/keys/1/revoke", .form = "" });
+    const stream_ended = if (listening.event()) |_| false else |e| e == error.EndOfStream;
+    const ended_ms = revoking.untilNow(io, .awake).toMilliseconds();
     const after_revoke = try getWith(a, io, port, channel_url ++ "/raw", bearer);
-    try t.check("revoke the key: 303; the key is then a 401; its state on disk revoked", revoked.status == 303 and after_revoke.status == 401 and
+    try t.check("revoke the key: 303; CC's open stream ended at once; the key is then a 401; its state on disk revoked", revoked.status == 303 and
+        stream_ended and ended_ms < Stream.stream_ms / 2 and after_revoke.status == 401 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/1/state"), "revoked"));
 
     // 48.
@@ -692,7 +891,7 @@ fn isToken(text: []const u8, prefix: []const u8) bool {
 
 /// A GET of `path`, with `more` headers (each ending CRLF).
 fn getWith(a: std.mem.Allocator, io: Io, port: u16, path: []const u8, more: []const u8) !Response {
-    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}\r\n", .{ path, port, more }));
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}{s}\r\n", .{ path, port, steve_session, more }));
 }
 
 /// A stream held open: its head read whole, then its events one at a
@@ -723,7 +922,7 @@ const Stream = struct {
         s.connection = try addr.connect(io, .{ .mode = .stream });
         s.watchdog = try io.concurrent(shutAfter, .{ io, s.connection, stream_ms });
         var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}\r\n", .{ path, port, more }));
+        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}{s}\r\n", .{ path, port, steve_session, more }));
         s.reader = s.connection.reader(io, s.buf);
         var head: std.ArrayList(u8) = .empty;
         while (!std.mem.endsWith(u8, head.items, "\r\n\r\n")) try head.append(a, try s.reader.interface.takeByte());
@@ -844,9 +1043,10 @@ const Response = struct {
     }
 };
 
-/// A GET of `path`, its Host this server's, as a browser's would be.
+/// A GET of `path`, its Host this server's, as Steve's browser's would be,
+/// his session carried, as every helper here but the anonymous ones does.
 fn get(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8) !Response {
-    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{port}));
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET " ++ path ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n{s}\r\n", .{ port, steve_session }));
 }
 
 /// A form POSTed to `path`, its Host this server's, of `content_type`, with
@@ -856,14 +1056,14 @@ const Post = struct { path: []const u8, form: []const u8, content_type: []const 
 fn post(a: std.mem.Allocator, io: Io, port: u16, p: Post) !Response {
     return exchange(a, io, port, try std.fmt.allocPrint(
         a,
-        "POST {s} HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-type: {s}\r\ncontent-length: {d}\r\n{s}\r\n{s}",
-        .{ p.path, port, p.content_type, p.form.len, p.more, p.form },
+        "POST {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: {s}\r\ncontent-length: {d}\r\n{s}\r\n{s}",
+        .{ p.path, port, steve_session, p.content_type, p.form.len, p.more, p.form },
     ));
 }
 
 /// A GET of `path`, a path made as the run goes.
 fn getAt(a: std.mem.Allocator, io: Io, port: u16, path: []const u8) !Response {
-    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{ path, port }));
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}\r\n", .{ path, port, steve_session }));
 }
 
 /// The compose box's form for one file, `data`, named `filename`, as a

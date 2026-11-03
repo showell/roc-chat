@@ -6,12 +6,18 @@
 ## human may do by their own session, such as making an agent or inviting
 ## one, asks `human_in_session`, so a key never does it.
 ##
-## There are two ways in. `by_api_key` takes an `AgentKey.Admitted`, which
-## only `AgentKey.admit` makes, after the hash of the secret an agent sent
-## matched a live key of its own (`AgentInvite` is how a key is got). The
-## other, `dangerously_assume`, checks nothing: the program has no sessions
-## yet, and it stands in for the session check. Only main and tests call
-## it, and its callers are what a security reader audits.
+## There are three ways in. `by_session` takes a `Session.Admitted`, which
+## only `Session.admit` makes, after the host said the session cookie's
+## signature matches and its second is in date (`SignInRoute` checks the
+## password that signs one). `by_api_key` takes an `AgentKey.Admitted`,
+## which only `AgentKey.admit` makes, after the hash of the secret an agent
+## sent matched a live key of its own (`AgentInvite` is how a key is got).
+## The third, `dangerously_assume`, checks nothing. Only main's first start,
+## which makes the founder before anyone can sign in, and tests call it,
+## and its callers are what a security reader audits.
+##
+## A request that proves nothing is `Anonymous` (`Actor`), never someone
+## signed in: only the routes that take an `Actor` answer it.
 ##
 ## This module is one of the program's five trust boundaries, and says who
 ## is acting, with `AgentKey` and `AgentInvite` behind its key door. The
@@ -22,6 +28,7 @@
 import AgentKey
 import KeyScope
 import Name
+import Session
 import UserId
 import Users
 
@@ -31,12 +38,19 @@ SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
 	## key, with its scope.
 	Credential : [Session, ApiKey(KeyScope)]
 
+	## Who is acting: someone signed in, or a request that proves no one
+	## (`Anonymous`).
+	Actor : [SignedIn(SignedIn), Anonymous]
+
 	## `user`, taken as signed in by a session with nothing checked. This is
-	## dangerous: a wrong call lets anyone act as anyone. It stands in for
-	## the session check until sessions exist, and only main and tests call
-	## it.
+	## dangerous: a wrong call lets anyone act as anyone. Only main's first
+	## start, which makes the founder, and tests call it.
 	dangerously_assume : Users.User -> SignedIn
 	dangerously_assume = |user| SignedIn.({ user, credential: Session })
+
+	## The human a session admitted, signed in by that session.
+	by_session : Session.Admitted -> SignedIn
+	by_session = |admitted| SignedIn.({ user: admitted.human().user(), credential: Session })
 
 	## The agent a key admitted, signed in by that key, with its scope.
 	by_api_key : AgentKey.Admitted -> SignedIn

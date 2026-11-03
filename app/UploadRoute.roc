@@ -69,8 +69,14 @@ UploadRoute :: [].{
 	serve_uploaded_image! = |{ key, image }|
 		match FileSystem.read_uploaded_image!(key, image) {
 			Ok(bytes) => HttpAnswer.image({ content_type: image.content_type(), bytes })
-			Err(Missing) => HttpAnswer.page(404, Page.notice({ title: "Not found", said: "No such image." }))
-			Err(fault) => HttpAnswer.page(500, Page.notice({ title: "Failed", said: FileSystem.fault_words(fault) }))
+			Err(Missing) => HttpAnswer.page(
+				404,
+				Page.notice({ title: "Not found", text: "No such image." }),
+			)
+			Err(fault) => HttpAnswer.page(
+				500,
+				Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
+			)
 		}
 }
 
@@ -134,7 +140,10 @@ keep_upload! = |
 	upload = image_upload_from_form({ headers, body })?
 	folder = UserFolder.of(acting.user().id())
 	before = reserve_upload_bytes!(folder, upload.bytes.len())?
-	image = UploadedImage.with_random_name({ random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name), kind: upload.kind })
+	image = UploadedImage.with_random_name({
+		random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name),
+		kind: upload.kind,
+	})
 	match FileSystem.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
 		Ok({}) =>
 			Ok(
@@ -195,7 +204,10 @@ upload_refusal_response = |why|
 		NoFile => HttpAnswer.text(400, "no file")
 		NotAnImage => HttpAnswer.text(415, "unsupported file type (images: png, jpeg, gif, webp)")
 		TooLarge => HttpAnswer.text(413, "image too large — the limit is 10 MB.")
-		LimitReached => HttpAnswer.text(403, "Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GB upload allowance.")
+		LimitReached => HttpAnswer.text(
+			403,
+			"Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GB upload allowance.",
+		)
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
 		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileSystem.fault_words(fault)}")
 	}
@@ -220,7 +232,12 @@ png = [0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 0]
 ## A form as the compose box sends one file, with its Content-Type.
 form_of : { filename : Str, file : List(U8) } -> { headers : List(Http.Header), body : List(U8) }
 form_of = |{ filename, file }| {
-	headers: [{ name: "Content-Type".to_utf8(), value: "multipart/form-data; boundary=XyZ".to_utf8() }],
+	headers: [
+		{
+			name: "Content-Type".to_utf8(),
+			value: "multipart/form-data; boundary=XyZ".to_utf8(),
+		},
+	],
 	body: "--XyZ\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${filename}\"\r\nContent-Type: image/png\r\n\r\n"
 		.to_utf8()
 		.concat(file)
@@ -235,20 +252,42 @@ expect
 			filename: "cat.png".to_utf8(),
 			bytes: png,
 		})
-expect image_upload_from_form(form_of({ filename: "cat.txt", file: png })).map_ok(|u| u.kind) == Ok(Png)
+expect image_upload_from_form(
+	form_of({
+		filename: "cat.txt",
+		file: png,
+	}),
+).map_ok(|u| u.kind) == Ok(Png)
 # Refused: not an image, no form, no file in it.
-expect image_upload_from_form(form_of({ filename: "cat.png", file: "hello, not an image".to_utf8() })) == Err(NotAnImage)
-expect image_upload_from_form({ headers: [], body: form_of({ filename: "cat.png", file: png }).body }) == Err(NoFile)
+expect image_upload_from_form(
+	form_of({
+		filename: "cat.png",
+		file: "hello, not an image".to_utf8(),
+	}),
+) == Err(NotAnImage)
+expect image_upload_from_form({
+	headers: [],
+	body: form_of({ filename: "cat.png", file: png }).body,
+}) == Err(NoFile)
 expect
 	image_upload_from_form({
 		headers: [
-			{ name: "content-type".to_utf8(), value: "multipart/form-data; boundary=XyZ".to_utf8() },
-			{ name: "content-type".to_utf8(), value: "multipart/form-data; boundary=XyZ".to_utf8() },
+			{
+				name: "content-type".to_utf8(),
+				value: "multipart/form-data; boundary=XyZ".to_utf8(),
+			},
+			{
+				name: "content-type".to_utf8(),
+				value: "multipart/form-data; boundary=XyZ".to_utf8(),
+			},
 		],
 		body: form_of({ filename: "cat.png", file: png }).body,
 	})
 		== Err(NoFile)
-expect image_upload_from_form({ headers: form_of({ filename: "c", file: png }).headers, body: "markdown=x".to_utf8() }) == Err(NoFile)
+expect image_upload_from_form({
+	headers: form_of({ filename: "c", file: png }).headers,
+	body: "markdown=x".to_utf8(),
+}) == Err(NoFile)
 # Each refusal: its status and its words, a line of plain text; every
 # fault of the file system among them.
 expect
@@ -318,5 +357,8 @@ expect
 # The answer: the URL and the name, the name's quote, backslash and
 # control bytes escaped, so it stays one JSON string.
 expect
-	upload_answer_json({ url: "/chat/dm/1_1/plans/uploads/a.png", name: "c\"a\\t\n\u(1)é.png" }).bytes()
+	upload_answer_json({
+		url: "/chat/dm/1_1/plans/uploads/a.png",
+		name: "c\"a\\t\n\u(1)é.png",
+	}).bytes()
 		== "{\"url\":\"/chat/dm/1_1/plans/uploads/a.png\",\"name\":\"c\\\"a\\\\t\\n\\u0001é.png\",\"kind\":\"image\",\"width\":0,\"height\":0}".to_utf8()

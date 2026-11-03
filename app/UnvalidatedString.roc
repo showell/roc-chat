@@ -17,8 +17,10 @@ import AgentInvite
 import AgentKey
 import ChannelName
 import DateTime
+import Html
 import KeyScope
 import Name
+import Password
 import SecretToken
 import Topic
 import UploadedImage
@@ -96,6 +98,16 @@ UnvalidatedString :: Str.{
 	reach : UnvalidatedString -> Try(KeyScope.Reach, [NotAReach])
 	reach = |UnvalidatedString.(text)| KeyScope.reach_from_word(text)
 
+	## The password it is, as the sign-in form sends it, checked by
+	## `Password.from_str`.
+	password : UnvalidatedString -> Try(Password, [NotAPassword])
+	password = |UnvalidatedString.(text)| Password.from_str(text)
+
+	## The path on this site it names, as a sign-in's `next` carries it,
+	## checked by `Html.SitePath.from_str`.
+	site_path : UnvalidatedString -> Try(Html.SitePath, [NotASitePath])
+	site_path = |UnvalidatedString.(text)| Html.SitePath.from_str(text).map_err(|_| NotASitePath)
+
 	## The time it writes, checked by `DateTime.from_str`.
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])
 	date_time = |UnvalidatedString.(text)| DateTime.from_str(text)
@@ -157,6 +169,15 @@ expect wire("2026-11-02T19:11:32Z".to_utf8()).date_time().map_ok(DateTime.to_str
 expect wire("2026-11-02".to_utf8()).date_time() == Err(WrongShape)
 expect wire("${"0a".repeat(16)}.png".to_utf8()).uploaded_image().map_ok(UploadedImage.name) == Ok("${"0a".repeat(16)}.png")
 expect wire("cat.png".to_utf8()).uploaded_image() == Err(NotAnUploadName)
+expect wire("hunter2".to_utf8()).password().map_ok(Password.bytes_to_check) == Ok("hunter2".to_utf8())
+expect wire("".to_utf8()).password().map_ok(|_| {}) == Err(NotAPassword)
+expect wire("/chat/dm/1_1/plans".to_utf8()).site_path().map_ok(Html.SitePath.to_str) == Ok("/chat/dm/1_1/plans")
+expect [
+	"//evil.example",
+	"https://evil.example",
+	"/a/../b",
+	"",
+].all(|text| wire(text.to_utf8()).site_path() == Err(NotASitePath))
 # A URL's path in parts, and a fixed word matched exactly, both sides.
 ## The parts of `path`, each as a test reads it, `chat` if it is exactly
 ## that, else `other`, between spaces.
@@ -172,7 +193,10 @@ expect chat_parts("/chat/") == Ok("chat other")
 expect chat_parts("chat/x") == Err(NotAPath)
 expect chat_parts("") == Err(NotAPath)
 expect chat_parts("/Chat") == Ok("other")
-expect wire("/a/plans".to_utf8()).url_path_parts().map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str))) == Ok([Ok("a"), Ok("plans")])
+expect wire("/a/plans".to_utf8()).url_path_parts().map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str))) == Ok([
+	Ok("a"),
+	Ok("plans"),
+])
 # Markdown: CRLF to LF, a lone CR and LF kept.
 expect wire("a\r\nb\r\n".to_utf8()).markdown() == Ok("a\nb\n")
 expect wire("a\nb".to_utf8()).markdown() == Ok("a\nb")

@@ -33,12 +33,17 @@ platform ""
 	}
 	hosted {
 		"append_utf8_bytes_to_file": Host.append_utf8_bytes_to_file!,
+		"bcrypt_hash_of_password": Host.bcrypt_hash_of_password!,
 		"create_file_with_binary_bytes_unless_it_exists": Host.create_file_with_binary_bytes_unless_it_exists!,
 		"create_file_with_utf8_bytes_unless_it_exists": Host.create_file_with_utf8_bytes_unless_it_exists!,
 		"current_utc_seconds_since_epoch": Host.current_utc_seconds_since_epoch!,
+		"end_every_stream_of_holder": Host.end_every_stream_of_holder!,
 		"fill_with_random_bytes": Host.fill_with_random_bytes!,
+		"hmac_sha256_with_server_secret": Host.hmac_sha256_with_server_secret!,
+		"hmac_sha256_with_server_secret_matches": Host.hmac_sha256_with_server_secret_matches!,
 		"list_names_in_directory": Host.list_names_in_directory!,
 		"make_directory_and_its_parents": Host.make_directory_and_its_parents!,
+		"password_matches_bcrypt_hash": Host.password_matches_bcrypt_hash!,
 		"publish_bytes_to_streams_on_key": Host.publish_bytes_to_streams_on_key!,
 		"read_binary_bytes_from_file": Host.read_binary_bytes_from_file!,
 		"read_utf8_bytes_from_file": Host.read_utf8_bytes_from_file!,

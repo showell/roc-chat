@@ -12,11 +12,15 @@
 ## exactly as written.
 ##
 ## Without a query the stream is live only. With `?since=<date>`, a date
-## written as the events write it, it first sends every message of those
-## conversations dated at or after it, oldest first, then the live ones. An
-## agent whose connection drops reconnects with the date of the last event
-## it read: the messages of that one second may come twice, and each names
-## its conversation and id, so a repeat is easy to drop.
+## written as the events write it, it first sends the messages of those
+## conversations dated at or after it, oldest first, then the live ones: at
+## most each conversation's newest 100 (`backlog_most_per_conversation`),
+## so a stream's start is bounded however old its date. An agent further
+## behind sees the gap in a conversation's ids, and reads the rest from its
+## `/raw` transcript. An agent whose connection drops reconnects with the
+## date of the last event it read: the messages of that one second may come
+## twice, and each names its conversation and id, so a repeat is easy to
+## drop.
 ##
 ## The host holds the stream on the agent's own bus key; each message
 ## posted is published to the key of every agent member of its channel
@@ -70,9 +74,14 @@ AgentStream :: [].{
 		"data: ".to_utf8().concat(fields.bytes()).concat("\n\n".to_utf8())
 	}
 
-	## The events of every message of `conversations` dated at or after
-	## `since`, oldest first; messages of one second in the order of
-	## `conversations`, then of their ids.
+	## The most messages of one conversation a backlog sends: its newest.
+	backlog_most_per_conversation : U64
+	backlog_most_per_conversation = 100
+
+	## The events of the messages of `conversations` dated at or after
+	## `since`, at most each conversation's newest
+	## `backlog_most_per_conversation`, oldest first; messages of one second
+	## in the order of `conversations`, then of their ids.
 	backlog : {
 		conversations : List({ key : ConversationKey, conversation : Conversation }),
 		since : DateTime,
@@ -80,20 +89,28 @@ AgentStream :: [].{
 	backlog = |{ conversations, since }| {
 		dated = conversations.map_with_index(
 			|{ key, conversation }, place|
-				conversation.messages().map_with_index(
-					|message, at| {
-						key,
-						message,
-						place,
-						at,
-					},
-				),
+				conversation
+					.messages()
+					.map_with_index(
+						|message, at| {
+							key,
+							message,
+							place,
+							at,
+						},
+					)
+					.keep_if(|m| m.message.time().compare(since) != Before)
+					.take_last(AgentStream.backlog_most_per_conversation),
 		).join()
 		dated
-			.keep_if(|m| m.message.time().compare(since) != Before)
 			.sort_with(by_time_then_place)
 			.join_map(|m| AgentStream.frame({ key: m.key, message: m.message }))
 	}
+
+	## Who holds the agent `agent`'s stream, as the host counts streams:
+	## the agent, under a name no user's id is.
+	holder : UserId -> List(U8)
+	holder = |agent| "agent-${agent.to_str()}".to_utf8()
 
 	## The agent `agent`'s stream: `backlog` first, then every event
 	## published to it.
@@ -101,7 +118,7 @@ AgentStream :: [].{
 	response = |{ agent, backlog: events }|
 		HttpAnswer.stream({
 			key: bus_key(agent),
-			holder: "agent-${agent.to_str()}".to_utf8(),
+			holder: AgentStream.holder(agent),
 			backlog: events,
 		})
 
@@ -258,6 +275,45 @@ expect {
 	)
 	events.map(markdown_in) == ["o1", "p2", "o2", "o3", "p3"]
 }
+# A backlog sends at most each conversation's newest 100: of 101 at or after
+# the date, the last 100; of 100, all; and each conversation is capped on
+# its own.
+## `topic`'s conversation of `count` messages of Steve's, all at one time,
+## the markdown of each its number from 1.
+conversation_of_count : Str, U64 -> { key : ConversationKey, conversation : Conversation }
+conversation_of_count = |topic, count| conversation_of(
+	topic,
+	List.from_iter(U64.to(1, count)).map(|n| ("2026-11-02T19:00:00Z", n.to_str())),
+)
+
+## The markdown of each event of the backlog of `conversations` since the
+## time of their messages.
+backlog_markdown : List({ key : ConversationKey, conversation : Conversation }) -> List(Str)
+backlog_markdown = |conversations| events_of(
+	AgentStream.backlog({
+		conversations,
+		since: time_of("2026-11-02T19:00:00Z"),
+	}),
+).map(markdown_in)
+
+expect backlog_markdown([
+	conversation_of_count(
+		"plans",
+		101,
+	),
+]) == List.from_iter(U64.to(2, 101)).map(U64.to_str)
+expect backlog_markdown([
+	conversation_of_count(
+		"plans",
+		100,
+	),
+]) == List.from_iter(U64.to(1, 100)).map(U64.to_str)
+expect backlog_markdown([conversation_of_count("plans", 99)]).len() == 99
+expect backlog_markdown([
+	conversation_of_count("plans", 101),
+	conversation_of_count("other", 3),
+]).len() == 103
+expect AgentStream.holder(UserId.steve) == "agent-1".to_utf8()
 # A date past every message, none; before every message, all.
 expect AgentStream.backlog({
 	conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],

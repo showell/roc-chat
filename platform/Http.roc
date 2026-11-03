@@ -16,9 +16,11 @@ Http := [].{
 	## **A REQUEST, PARSED BY THE HOST**: the method (`GET`), the path up to
 	## any `?` (`/chat/dm/1_1/plans`), the query after the `?` (empty when
 	## there is none), each header as sent, the body, read whole to the
-	## host's cap, and the port the server listens on (a fact of the
-	## server's, so the app can tell its own origin's `Host` from another's:
-	## app/RequestOrigin.roc).
+	## host's cap, the port the server listens on, and the public origin it
+	## was started with (`https://` and a host name, or empty when it has
+	## none). The last two are facts of the server's, so the app can tell
+	## its own origin's `Host` and `Origin` from another's
+	## (app/RequestOrigin.roc).
 	Request : {
 		method : List(U8),
 		path : List(U8),
@@ -26,16 +28,18 @@ Http := [].{
 		headers : List(Http.Header),
 		body : List(U8),
 		port : U16,
+		public_origin : List(U8),
 	}
 
 	## A request's head, as the host hands it before reading any body: the
-	## method, the path up to any `?`, each header as sent, and the port
-	## the server listens on, each as in `Request`.
+	## method, the path up to any `?`, each header as sent, the port the
+	## server listens on and its public origin, each as in `Request`.
 	RequestHead : {
 		method : List(U8),
 		path : List(U8),
 		headers : List(Http.Header),
 		port : U16,
+		public_origin : List(U8),
 	}
 
 	## What the app makes of a request's head, before the host reads its

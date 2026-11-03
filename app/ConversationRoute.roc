@@ -80,7 +80,7 @@ ConversationRoute :: [].{
 
 	## A GET of the conversation's stream, for `acting`: the messages after
 	## the count the request has seen (`query` and `headers`, read by
-	## `ConversationStream.seen_count`), then each one added. Each message's
+	## `ConversationStream.request_seen_count`), then each one added. Each message's
 	## author is found among `users`.
 	open_stream! : {
 		key : ConversationKey,
@@ -98,9 +98,9 @@ ConversationRoute :: [].{
 			headers,
 		},
 	|
-		match ConversationStream.seen_count({ query, headers }) {
+		match ConversationStream.request_seen_count({ query, headers }) {
 			Err(why) => refusal_page(why)
-			Ok(seen) =>
+			Ok(seen_count) =>
 				match load_existing_conversation!(key) {
 					Ok(conversation) =>
 						ConversationStream.response({
@@ -108,7 +108,7 @@ ConversationRoute :: [].{
 							acting,
 							users,
 							conversation,
-							seen,
+							seen_count,
 						})
 					Err(why) => refusal_page(why)
 				}
@@ -137,7 +137,7 @@ ConversationRoute :: [].{
 			Ok(html) => HttpAnswer.page(201, html)
 			Err(why) => {
 				notice = refusal_notice(why)
-				HttpAnswer.text(notice.status, notice.words.said)
+				HttpAnswer.text(notice.status, notice.words.text)
 			}
 		}
 
@@ -250,7 +250,7 @@ Refusal : [
 ## A fault in the request (the form or the stream's count) is a 400, a
 ## conversation with no transcript a 404, the conversation's refusal of a
 ## message a 409, and the server's own failure a 500.
-refusal_notice : Refusal -> { status : U16, words : { title : Str, said : Str } }
+refusal_notice : Refusal -> { status : U16, words : { title : Str, text : Str } }
 refusal_notice = |why|
 	match why {
 		MissingField => form_fault("The form has no field `markdown`.")
@@ -258,12 +258,33 @@ refusal_notice = |why|
 		BadEscape => form_fault("The form's `markdown` holds a % that starts no two hex digits.")
 		NotUtf8 => form_fault("The form's `markdown` is not UTF-8.")
 		Blank => form_fault("The message is blank.")
-		ClockOutOfRange => { status: 500, words: { title: "Message refused", said: "The server's clock is out of range." } }
-		NoCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(NoCount) } }
-		BadCount => { status: 400, words: { title: "Bad stream", said: ConversationStream.words(BadCount) } }
-		NoSuchConversation(key) => { status: 404, words: { title: "Not found", said: "No such conversation: ${key.url_path(Page)}" } }
-		Unreadable(fault) => { status: 500, words: { title: "Not a transcript", said: "Not a transcript: ${TranscriptRefusal.words(fault)}." } }
-		FileSystem(fault) => { status: 500, words: { title: "Failed", said: FileSystem.fault_words(fault) } }
+		ClockOutOfRange => {
+			status: 500,
+			words: { title: "Message refused", text: "The server's clock is out of range." },
+		}
+		NoCount => {
+			status: 400,
+			words: { title: "Bad stream", text: ConversationStream.count_refusal_words(NoCount) },
+		}
+		BadCount => {
+			status: 400,
+			words: { title: "Bad stream", text: ConversationStream.count_refusal_words(BadCount) },
+		}
+		NoSuchConversation(key) => {
+			status: 404,
+			words: { title: "Not found", text: "No such conversation: ${key.url_path(Page)}" },
+		}
+		Unreadable(fault) => {
+			status: 500,
+			words: {
+				title: "Not a transcript",
+				text: "Not a transcript: ${TranscriptRefusal.words(fault)}.",
+			},
+		}
+		FileSystem(fault) => {
+			status: 500,
+			words: { title: "Failed", text: FileSystem.fault_words(fault) },
+		}
 		Backdated => conversation_refusal("The message is dated before the conversation's latest.")
 		Full => conversation_refusal("The conversation holds as many messages as it can.")
 		FileFull => conversation_refusal("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
@@ -277,12 +298,12 @@ refusal_page = |why| {
 }
 
 ## A fault in the posted form, saying what: a 400.
-form_fault : Str -> { status : U16, words : { title : Str, said : Str } }
-form_fault = |said| { status: 400, words: { title: "Message refused", said } }
+form_fault : Str -> { status : U16, words : { title : Str, text : Str } }
+form_fault = |text| { status: 400, words: { title: "Message refused", text } }
 
 ## A message the conversation refuses, saying why: a 409.
-conversation_refusal : Str -> { status : U16, words : { title : Str, said : Str } }
-conversation_refusal = |said| { status: 409, words: { title: "Message refused", said } }
+conversation_refusal : Str -> { status : U16, words : { title : Str, text : Str } }
+conversation_refusal = |text| { status: 409, words: { title: "Message refused", text } }
 
 ## The unnumbered message a POST holds: the markdown in `body`'s field
 ## `markdown`, by the acting user, at `now`; or why it is refused.
@@ -308,8 +329,8 @@ unnumbered_message_from_post = |
 		body,
 	},
 | {
-	unchecked = UrlEncodedForm.markdown_field(body)?
-	markdown = unchecked.markdown()?
+	markdown_text = UrlEncodedForm.markdown_field(body)?
+	markdown = markdown_text.markdown()?
 	time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
 	Ok({ payload: { author: acting.user().author(), markdown }, time })
 }
@@ -368,6 +389,14 @@ expect unnumbered_message_at_the_sample_time("markdown=%G0") == Err(BadEscape)
 expect unnumbered_message_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
 expect unnumbered_message_at_the_sample_time("markdown=+") == Err(Blank)
 expect unnumbered_message_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
+# The clock at its first second, the edge of its range: a message then.
+expect
+	unnumbered_message_at(0, "markdown=x")
+		== Ok({
+			author: "Steve",
+			time: "1970-01-01T00:00:00Z",
+			markdown: "x",
+		})
 # Each refusal: the request's faults a 400, no transcript a 404, the
 # conversation's refusals a 409, the server's a 500, each in its own words.
 expect
@@ -377,24 +406,75 @@ expect
 		(BadEscape, "The form's `markdown` holds a % that starts no two hex digits."),
 		(NotUtf8, "The form's `markdown` is not UTF-8."),
 		(Blank, "The message is blank."),
-	].all(|(why, said)| refusal_notice(why) == { status: 400, words: { title: "Message refused", said } })
+	].all(
+		|(why, text)| refusal_notice(why) == {
+			status: 400,
+			words: { title: "Message refused", text },
+		},
+	)
 expect
 	[
-		(NoCount, "The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."),
-		(BadCount, "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."),
-	].all(|(why, said)| refusal_notice(why) == { status: 400, words: { title: "Bad stream", said } })
-expect refusal_notice(NoSuchConversation(plans_key)) == { status: 404, words: { title: "Not found", said: "No such conversation: /chat/dm/1_1/plans" } }
+		(
+			NoCount,
+			"The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID.",
+		),
+		(
+			BadCount,
+			"The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0.",
+		),
+	].all(
+		|(why, text)| refusal_notice(why) == {
+			status: 400,
+			words: { title: "Bad stream", text },
+		},
+	)
+expect refusal_notice(NoSuchConversation(plans_key)) == {
+	status: 404,
+	words: { title: "Not found", text: "No such conversation: /chat/dm/1_1/plans" },
+}
 expect
 	[
 		(Backdated, "The message is dated before the conversation's latest."),
 		(Full, "The conversation holds as many messages as it can."),
 		(FileFull, "The conversation's transcript holds as much as it can: 16 MiB."),
-	].all(|(why, said)| refusal_notice(why) == { status: 409, words: { title: "Message refused", said } })
-expect refusal_notice(ClockOutOfRange) == { status: 500, words: { title: "Message refused", said: "The server's clock is out of range." } }
-expect refusal_notice(Unreadable(TranscriptNotUtf8)) == { status: 500, words: { title: "Not a transcript", said: "Not a transcript: it is not UTF-8." } }
-expect refusal_notice(FileSystem(PathRefused)) == { status: 500, words: { title: "Failed", said: "The file system answered PathRefused." } }
-# A refusal's page: its status, and its notice's title and words.
-expect {
-	answered = refusal_page(NoSuchConversation(plans_key))
-	answered.status == 404 and answered.body == Page.notice({ title: "Not found", said: "No such conversation: /chat/dm/1_1/plans" }).to_utf8()
+	].all(
+		|(why, text)| refusal_notice(why) == {
+			status: 409,
+			words: { title: "Message refused", text },
+		},
+	)
+expect refusal_notice(ClockOutOfRange) == {
+	status: 500,
+	words: { title: "Message refused", text: "The server's clock is out of range." },
 }
+expect refusal_notice(Unreadable(TranscriptNotUtf8)) == {
+	status: 500,
+	words: { title: "Not a transcript", text: "Not a transcript: it is not UTF-8." },
+}
+expect refusal_notice(FileSystem(PathRefused)) == {
+	status: 500,
+	words: { title: "Failed", text: "The file system answered PathRefused." },
+}
+# A refusal's page: its notice's status passed through, and its title and
+# words; for each kind of status.
+expect
+	[
+		NoSuchConversation(plans_key),
+		Blank,
+		Backdated,
+		FileSystem(Failed),
+	].all(
+		|why| {
+			refusal_response = refusal_page(why)
+			notice = refusal_notice(why)
+			refusal_response.status == notice.status and refusal_response.body == Page.notice(notice.words).to_utf8()
+		},
+	)
+expect refusal_page(NoSuchConversation(plans_key)).status == 404
+expect refusal_page(Blank).status == 400
+expect refusal_page(Backdated).status == 409
+expect refusal_page(FileSystem(Failed)).status == 500
+expect refusal_page(NoSuchConversation(plans_key)).body == Page.notice({
+	title: "Not found",
+	text: "No such conversation: /chat/dm/1_1/plans",
+}).to_utf8()

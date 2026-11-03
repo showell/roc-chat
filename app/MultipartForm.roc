@@ -19,31 +19,30 @@ MultipartForm :: [].{
 	}
 
 	## The boundary a form's Content-Type names
-	## (`multipart/form-data; boundary=...`, quoted or not); unless it names
-	## none, or one of a length RFC 2046 does not allow, when the form holds
-	## no file this module reads (`NoFile`).
+	## (`multipart/form-data; boundary=...`, quoted or not); unless the
+	## Content-Type is not `multipart/form-data` (its media type, in any
+	## case, before the first `;`), or it names no boundary, or one of a
+	## length RFC 2046 does not allow, when the form holds no file this
+	## module reads (`NoFile`).
 	boundary_from_content_type : List(U8) -> Try(MultipartForm.Boundary, [NoFile])
 	boundary_from_content_type = |header| {
-		key = "boundary=".to_utf8()
-		at = index_of(header, { needle: key, from: 0 }) ? |NotFound| NoFile
-		value = header.drop_first(at + key.len())
-		candidate =
-			match value {
-				['"', .. as rest] =>
-					match rest.find_first_index(|b| b == '"') {
-						Ok(end) => rest.take_first(end)
-						Err(NotFound) => []
-					}
-				_ => Ascii.trim_spaces(before_first(value, ';'))
-			}
-		if (candidate.is_empty() or candidate.len() > 70) Err(NoFile) else Ok(MultipartForm.Boundary.(candidate))
+		media_type = Ascii.trim_spaces(before_first_semicolon(header))
+		if Str.from_utf8_lossy(media_type).with_ascii_lowercased() != "multipart/form-data" {
+			Err(NoFile)
+		} else {
+			boundary_after_media_type(header)
+		}
 	}
 
 	## The file in the form `body`, whose parts `boundary` splits: the
 	## first part, which must be named `file`, with its filename (`image`
 	## when it gives none) and its bytes, up to the form's closing delimiter
 	## at the body's end; else `NoFile`.
-	file_part : List(U8), MultipartForm.Boundary -> Try({ filename : List(U8), bytes : List(U8) }, [NoFile])
+	file_part : List(U8),
+	MultipartForm.Boundary -> Try(
+		{ filename : List(U8), bytes : List(U8) },
+		[NoFile],
+	)
 	file_part = |body, MultipartForm.Boundary.(boundary)| {
 		delimiter = "--".to_utf8().concat(boundary)
 		opening = index_of(body, { needle: delimiter, from: 0 }) ? |NotFound| NoFile
@@ -51,11 +50,19 @@ MultipartForm :: [].{
 		if (body.sublist({ start: opening + delimiter.len(), len: 2 }) != "\r\n".to_utf8())
 			Err(NoFile)
 		else {
-			headers_end = index_of(body, { needle: "\r\n\r\n".to_utf8(), from: headers_at }) ? |NotFound| NoFile
+			headers_end = index_of(
+				body,
+				{ needle: "\r\n\r\n".to_utf8(), from: headers_at },
+			) ? |NotFound| NoFile
 			headers = body.sublist({ start: headers_at, len: headers_end - headers_at })
 			closing = "\r\n".to_utf8().concat(delimiter).concat("--".to_utf8())
 			file_and_closing = body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
-			if (quoted_attribute(headers, "name") != Ok("file".to_utf8()) or !file_and_closing.ends_with(closing))
+			if (
+				quoted_attribute(
+					headers,
+					"name",
+				) != Ok("file".to_utf8()) or !file_and_closing.ends_with(closing)
+			)
 				Err(NoFile)
 			else {
 				filename =
@@ -80,6 +87,26 @@ MultipartForm :: [].{
 		}
 }
 
+## The boundary a form's Content-Type `header` names after `boundary=`,
+## quoted or not; unless it names none, or one of a length RFC 2046 does
+## not allow.
+boundary_after_media_type : List(U8) -> Try(MultipartForm.Boundary, [NoFile])
+boundary_after_media_type = |header| {
+	key = "boundary=".to_utf8()
+	at = index_of(header, { needle: key, from: 0 }) ? |NotFound| NoFile
+	value = header.drop_first(at + key.len())
+	candidate =
+		match value {
+			['"', .. as rest] =>
+				match rest.find_first_index(|b| b == '"') {
+					Ok(end) => rest.take_first(end)
+					Err(NotFound) => []
+				}
+			_ => Ascii.trim_spaces(before_first_semicolon(value))
+		}
+	if (candidate.is_empty() or candidate.len() > 70) Err(NoFile) else Ok(MultipartForm.Boundary.(candidate))
+}
+
 ## Where `needle` first starts in `bytes`, at `from` or after.
 index_of : List(U8), { needle : List(U8), from : U64 } -> Try(U64, [NotFound])
 index_of = |bytes, { needle, from }|
@@ -90,10 +117,11 @@ index_of = |bytes, { needle, from }|
 	else
 		index_of(bytes, { needle, from: from + 1 })
 
-## The bytes before the first `stop`, or all of them.
-before_first : List(U8), U8 -> List(U8)
-before_first = |bytes, stop|
-	match bytes.find_first_index(|b| b == stop) {
+## The bytes before the first `;`, or all of them: a Content-Type's
+## parameters are split by it.
+before_first_semicolon : List(U8) -> List(U8)
+before_first_semicolon = |bytes|
+	match bytes.find_first_index(|b| b == ';') {
 		Ok(i) => bytes.take_first(i)
 		Err(NotFound) => bytes
 	}
@@ -114,7 +142,10 @@ count_from_end = |bytes, passes|
 ## A quoted `<name>="value"` in a part's headers. A letter just before `name` puts the match inside
 ## another attribute's name (`name` in `filename`), so the search goes on.
 quoted_attribute : List(U8), Str -> Try(List(U8), [Missing])
-quoted_attribute = |headers, name| quoted_attribute_from(headers, { needle: name.to_utf8().concat("=\"".to_utf8()), from: 0 })
+quoted_attribute = |headers, name| quoted_attribute_from(
+	headers,
+	{ needle: name.to_utf8().concat("=\"".to_utf8()), from: 0 },
+)
 
 quoted_attribute_from : List(U8), { needle : List(U8), from : U64 } -> Try(List(U8), [Missing])
 quoted_attribute_from = |headers, { needle, from }|
@@ -187,11 +218,23 @@ expect boundary_after("\"XyZ") == Err(NoFile)
 expect boundary_after("b".repeat(70)) == Ok("b".repeat(70))
 expect boundary_after("b".repeat(71)) == Err(NoFile)
 expect boundary_after("b") == Ok("b")
-# The media type is not checked: a Content-Type that is no form, such as
-# `text/plain`, still names a boundary.
+# The media type must be `multipart/form-data`, in any case, spaces around
+# it taken off: any other names no boundary this module reads.
 expect
-	MultipartForm.boundary_from_content_type("text/plain; boundary=x".to_utf8()).map_ok(|MultipartForm.Boundary.(bytes)| bytes)
-		== Ok("x".to_utf8())
+	[
+		"text/plain; boundary=x",
+		"multipart/mixed; boundary=x",
+		"multipart/form-data-x; boundary=x",
+		"application/x-www-form-urlencoded; boundary=x",
+		"boundary=x",
+		"; boundary=x",
+	].all(|header| MultipartForm.boundary_from_content_type(header.to_utf8()) == Err(NoFile))
+expect
+	[
+		"multipart/form-data; boundary=x",
+		"Multipart/Form-Data; boundary=x",
+		" multipart/form-data ;boundary=x",
+	].all(|header| MultipartForm.boundary_from_content_type(header.to_utf8()).map_ok(|MultipartForm.Boundary.(bytes)| bytes) == Ok("x".to_utf8()))
 # The file: its name and its bytes exactly, a CR LF and a near delimiter
 # inside them kept.
 expect {
@@ -208,19 +251,46 @@ expect {
 expect {
 	body = "--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())
 	file_of(body) == Ok({ filename: "image".to_utf8(), bytes: png })
-		and file_of(body.concat("\r\n\r\n".to_utf8())) == Ok({ filename: "image".to_utf8(), bytes: png })
+		and file_of(body.concat("\r\n\r\n".to_utf8())) == Ok({
+			filename: "image".to_utf8(),
+			bytes: png,
+		})
 }
 # `name` is read past the one inside `filename`, and at the headers' very
 # start; a `name` only inside `filename` is no name.
-expect file_of(form({ headers: "Content-Disposition: form-data; filename=\"x\"; name=\"file\"", file: png })) == Ok({ filename: "x".to_utf8(), bytes: png })
-expect file_of(form({ headers: "name=\"file\"", file: png })) == Ok({ filename: "image".to_utf8(), bytes: png })
-expect file_of(form({ headers: "Content-Disposition: form-data; filename=\"file\"", file: png })) == Err(NoFile)
+expect file_of(
+	form({
+		headers: "Content-Disposition: form-data; filename=\"x\"; name=\"file\"",
+		file: png,
+	}),
+) == Ok({ filename: "x".to_utf8(), bytes: png })
+expect file_of(form({ headers: "name=\"file\"", file: png })) == Ok({
+	filename: "image".to_utf8(),
+	bytes: png,
+})
+expect file_of(
+	form({
+		headers: "Content-Disposition: form-data; filename=\"file\"",
+		file: png,
+	}),
+) == Err(NoFile)
 # An empty file is a file, of no bytes.
-expect file_of(form({ headers: file_part_headers, file: [] })) == Ok({ filename: "image".to_utf8(), bytes: [] })
+expect file_of(form({ headers: file_part_headers, file: [] })) == Ok({
+	filename: "image".to_utf8(),
+	bytes: [],
+})
 # Another field, another boundary, no closing delimiter, no empty line
 # after the headers, no CR LF after the opening delimiter, nothing: no file.
-expect file_of(form({ headers: "Content-Disposition: form-data; name=\"other\"", file: png })) == Err(NoFile)
-expect MultipartForm.file_part(form({ headers: file_part_headers, file: png }), boundary("Abc")) == Err(NoFile)
+expect file_of(
+	form({
+		headers: "Content-Disposition: form-data; name=\"other\"",
+		file: png,
+	}),
+) == Err(NoFile)
+expect MultipartForm.file_part(
+	form({ headers: file_part_headers, file: png }),
+	boundary("Abc"),
+) == Err(NoFile)
 expect file_of("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png)) == Err(NoFile)
 expect file_of("--XyZ\r\n${file_part_headers}\r\n".to_utf8().concat(png)) == Err(NoFile)
 expect file_of("--XyZ${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())) == Err(NoFile)

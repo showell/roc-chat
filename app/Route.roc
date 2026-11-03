@@ -14,6 +14,9 @@
 ##     GET  /chat/assets/chrome.js
 ##     GET  /chat/assets/compose.js
 ##     GET  /chat/assets/feed.js
+##     GET  /login                             the sign-in page
+##     POST /login                             sign in: `name=`, `password=`
+##     POST /logout                            sign out
 ##     GET  /agents                            your agents, keys, invites
 ##     POST /agents                            make an agent: `name=`
 ##     POST /agents/<id>/invites               invite it: `read=`, `post=`
@@ -21,6 +24,12 @@
 ##     POST /agents/<id>/keys/<n>/revoke       revoke a key
 ##     POST /agents/redeem                     an agent's: `code=`, its key
 ##     GET  /agents/stream                     an agent's one stream
+##
+## A route is `Open`, answered to anyone, a request that proves no one
+## included: the scripts, the sign-in routes and an invite's redemption.
+## Every other is `SignedInOnly`. So which routes answer someone not signed
+## in is said here once, by the type, and main answers each `SignedInOnly`
+## route to no one but someone signed in.
 ##
 ## A conversation's path is `ConversationKey`'s to read, which says which
 ## of its resources the path names, and each script's is `Script`'s. A
@@ -41,8 +50,26 @@ import UserId
 
 Route :: [].{
 
-	## What a request asks for.
+	## What a request asks for: a route anyone may use, one only someone
+	## signed in may, nothing here, or a method the path does not take.
 	Choice : [
+		Open(Route.OpenChoice),
+		SignedInOnly(Route.SignedInChoice),
+		NotFound,
+		MethodNotAllowed([GetAndPost, GetOnly, PostOnly]),
+	]
+
+	## The routes anyone may use, a request that proves no one included.
+	OpenChoice : [
+		ServeScript(Script),
+		ShowLogin,
+		SignIn,
+		SignOut,
+		RedeemInvite,
+	]
+
+	## The routes only someone signed in may use.
+	SignedInChoice : [
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
 		SendToConversation(ConversationKey),
@@ -50,16 +77,12 @@ Route :: [].{
 		ServeRawTranscript(ConversationKey),
 		UploadToConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
-		ServeScript(Script),
 		ShowAgents,
 		MakeAgent,
 		InviteAgent(UserId),
 		RevokeInvite({ agent : UserId, invite : AgentInvite.Id }),
 		RevokeKey({ agent : UserId, key : AgentKey.Id }),
-		RedeemInvite,
 		OpenAgentStream,
-		NotFound,
-		MethodNotAllowed([GetAndPost, GetOnly, PostOnly]),
 	]
 
 	## The route for `method` and `path`, as the host handed them, each
@@ -80,33 +103,55 @@ Route :: [].{
 		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
 			Ok(script) =>
 				match asked {
-					Get => ServeScript(script)
+					Get => Open(ServeScript(script))
 					Post => MethodNotAllowed(GetOnly)
 					Other => MethodNotAllowed(GetOnly)
 				}
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
-					Ok(unchecked) =>
-						match agents_resource(unchecked) {
-							Ok(resource) => agents_choice({ resource, method: asked })
-							Err(NotAgents) =>
-								match ConversationKey.from_url_path({
-									path: unchecked,
-									directory,
-								}) {
-									Ok(found) => conversation_choice({
-										key: found.key,
-										resource: found.resource,
-										method: asked,
-									})
-									Err(_) => NotFound
-								}
-						}
+					Ok(unchecked) => path_choice({
+						path: unchecked,
+						method: asked,
+						directory,
+					})
 					Err(NotUtf8) => NotFound
 				}
 		}
 	}
 }
+
+## The route for `method` and a path that is no script's, as text.
+path_choice : {
+	path : UnvalidatedString,
+	method : [Get, Post, Other],
+	directory : Directory,
+} -> Route.Choice
+path_choice = |
+	{
+		path,
+		method,
+		directory,
+	},
+|
+	match sign_in_resource(path) {
+		Ok(resource) => sign_in_choice({ resource, method })
+		Err(NotSignIn) =>
+			match agents_resource(path) {
+				Ok(resource) => agents_choice({ resource, method })
+				Err(NotAgents) =>
+					match ConversationKey.from_url_path({ path, directory }) {
+						Ok(found) => conversation_choice({
+							key: found.key,
+							resource: found.resource,
+							method,
+						})
+						Err(NotAConversationPath) => NotFound
+						Err(BadName) => NotFound
+						Err(NoSuchChannel) => NotFound
+						Err(NoSuchHuman) => NotFound
+					}
+			}
+	}
 
 ## The method the host handed, as a route takes it: GET, POST, or any other
 ## (a method is case-sensitive, so `get` is another).
@@ -133,24 +178,48 @@ conversation_choice = |
 	},
 |
 	match (resource, method) {
-		(Page, Get) => ShowConversation(key)
-		(Page, Post) => AppendToConversation(key)
+		(Page, Get) => SignedInOnly(ShowConversation(key))
+		(Page, Post) => SignedInOnly(AppendToConversation(key))
 		(Page, Other) => MethodNotAllowed(GetAndPost)
-		(Stream, Get) => OpenConversationStream(key)
+		(Stream, Get) => SignedInOnly(OpenConversationStream(key))
 		(Stream, Post) => MethodNotAllowed(GetOnly)
 		(Stream, Other) => MethodNotAllowed(GetOnly)
-		(Raw, Get) => ServeRawTranscript(key)
+		(Raw, Get) => SignedInOnly(ServeRawTranscript(key))
 		(Raw, Post) => MethodNotAllowed(GetOnly)
 		(Raw, Other) => MethodNotAllowed(GetOnly)
 		(Send, Get) => MethodNotAllowed(PostOnly)
-		(Send, Post) => SendToConversation(key)
+		(Send, Post) => SignedInOnly(SendToConversation(key))
 		(Send, Other) => MethodNotAllowed(PostOnly)
 		(Upload, Get) => MethodNotAllowed(PostOnly)
-		(Upload, Post) => UploadToConversation(key)
+		(Upload, Post) => SignedInOnly(UploadToConversation(key))
 		(Upload, Other) => MethodNotAllowed(PostOnly)
-		(UploadedImage(image), Get) => ServeUploadedImage({ key, image })
+		(UploadedImage(image), Get) => SignedInOnly(ServeUploadedImage({ key, image }))
 		(UploadedImage(_), Post) => MethodNotAllowed(GetOnly)
 		(UploadedImage(_), Other) => MethodNotAllowed(GetOnly)
+	}
+
+## What a sign-in path names.
+SignInResource : [Login, Logout]
+
+## What `path` names among the sign-in routes, or `NotSignIn`.
+sign_in_resource : UnvalidatedString -> Try(SignInResource, [NotSignIn])
+sign_in_resource = |path|
+	match path.url_path_parts() {
+		Ok([only]) if only.is_exactly("login") => Ok(Login)
+		Ok([only]) if only.is_exactly("logout") => Ok(Logout)
+		_ => Err(NotSignIn)
+	}
+
+## The route for `method` and a sign-in path's `resource`.
+sign_in_choice : { resource : SignInResource, method : [Get, Post, Other] } -> Route.Choice
+sign_in_choice = |{ resource, method }|
+	match (resource, method) {
+		(Login, Get) => Open(ShowLogin)
+		(Login, Post) => Open(SignIn)
+		(Login, Other) => MethodNotAllowed(GetAndPost)
+		(Logout, Get) => MethodNotAllowed(PostOnly)
+		(Logout, Post) => Open(SignOut)
+		(Logout, Other) => MethodNotAllowed(PostOnly)
 	}
 
 ## What a path under `/agents` names.
@@ -217,22 +286,22 @@ agents_resource = |path|
 agents_choice : { resource : AgentsResource, method : [Get, Post, Other] } -> Route.Choice
 agents_choice = |{ resource, method }|
 	match (resource, method) {
-		(Agents, Get) => ShowAgents
-		(Agents, Post) => MakeAgent
+		(Agents, Get) => SignedInOnly(ShowAgents)
+		(Agents, Post) => SignedInOnly(MakeAgent)
 		(Agents, Other) => MethodNotAllowed(GetAndPost)
 		(Invites(_), Get) => MethodNotAllowed(PostOnly)
-		(Invites(agent), Post) => InviteAgent(agent)
+		(Invites(agent), Post) => SignedInOnly(InviteAgent(agent))
 		(Invites(_), Other) => MethodNotAllowed(PostOnly)
 		(InviteRevoke(_), Get) => MethodNotAllowed(PostOnly)
-		(InviteRevoke(named), Post) => RevokeInvite(named)
+		(InviteRevoke(named), Post) => SignedInOnly(RevokeInvite(named))
 		(InviteRevoke(_), Other) => MethodNotAllowed(PostOnly)
 		(KeyRevoke(_), Get) => MethodNotAllowed(PostOnly)
-		(KeyRevoke(named), Post) => RevokeKey(named)
+		(KeyRevoke(named), Post) => SignedInOnly(RevokeKey(named))
 		(KeyRevoke(_), Other) => MethodNotAllowed(PostOnly)
 		(Redeem, Get) => MethodNotAllowed(PostOnly)
-		(Redeem, Post) => RedeemInvite
+		(Redeem, Post) => Open(RedeemInvite)
 		(Redeem, Other) => MethodNotAllowed(PostOnly)
-		(AgentStream, Get) => OpenAgentStream
+		(AgentStream, Get) => SignedInOnly(OpenAgentStream)
 		(AgentStream, Post) => MethodNotAllowed(GetOnly)
 		(AgentStream, Other) => MethodNotAllowed(GetOnly)
 	}

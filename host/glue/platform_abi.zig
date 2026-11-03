@@ -1003,11 +1003,12 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct_da3f526429c244e0
-pub const __AnonStruct_da3f526429c244e0 = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_8ba57119b983c03c
+pub const __AnonStruct_8ba57119b983c03c = if (@sizeOf(usize) == 4) extern struct {
     headers: RocList(__AnonStruct_288155b7e13051cb),
     method: RocListWith(u8, false),
     path: RocListWith(u8, false),
+    public_origin: RocListWith(u8, false),
     port: u16,
     /// Recursively decrement Roc-owned fields.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
@@ -1015,6 +1016,7 @@ pub const __AnonStruct_da3f526429c244e0 = if (@sizeOf(usize) == 4) extern struct
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.method.decref(roc_host);
         value.path.decref(roc_host);
+        value.public_origin.decref(roc_host);
     }
 
     /// Increment Roc-owned fields.
@@ -1023,11 +1025,13 @@ pub const __AnonStruct_da3f526429c244e0 = if (@sizeOf(usize) == 4) extern struct
         value.headers.incref(amount);
         value.method.incref(amount);
         value.path.incref(amount);
+        value.public_origin.incref(amount);
     }
 } else extern struct {
     headers: RocList(__AnonStruct_288155b7e13051cb),
     method: RocListWith(u8, false),
     path: RocListWith(u8, false),
+    public_origin: RocListWith(u8, false),
     port: u16,
     /// Recursively decrement Roc-owned fields.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
@@ -1035,6 +1039,7 @@ pub const __AnonStruct_da3f526429c244e0 = if (@sizeOf(usize) == 4) extern struct
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.method.decref(roc_host);
         value.path.decref(roc_host);
+        value.public_origin.decref(roc_host);
     }
 
     /// Increment Roc-owned fields.
@@ -1043,26 +1048,28 @@ pub const __AnonStruct_da3f526429c244e0 = if (@sizeOf(usize) == 4) extern struct
         value.headers.incref(amount);
         value.method.incref(amount);
         value.path.incref(amount);
+        value.public_origin.incref(amount);
     }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct_da3f526429c244e0) != 80) @compileError("__AnonStruct_da3f526429c244e0 size mismatch");
-        if (@alignOf(__AnonStruct_da3f526429c244e0) != 8) @compileError("__AnonStruct_da3f526429c244e0 alignment mismatch");
+        if (@sizeOf(__AnonStruct_8ba57119b983c03c) != 104) @compileError("__AnonStruct_8ba57119b983c03c size mismatch");
+        if (@alignOf(__AnonStruct_8ba57119b983c03c) != 8) @compileError("__AnonStruct_8ba57119b983c03c alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct_da3f526429c244e0) != 40) @compileError("__AnonStruct_da3f526429c244e0 size mismatch");
-        if (@alignOf(__AnonStruct_da3f526429c244e0) != 4) @compileError("__AnonStruct_da3f526429c244e0 alignment mismatch");
+        if (@sizeOf(__AnonStruct_8ba57119b983c03c) != 52) @compileError("__AnonStruct_8ba57119b983c03c size mismatch");
+        if (@alignOf(__AnonStruct_8ba57119b983c03c) != 4) @compileError("__AnonStruct_8ba57119b983c03c alignment mismatch");
     }
 }
 
-/// Element type for __AnonStruct_ee8027c43e25493f
-pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_4ab266d2399976c2
+pub const __AnonStruct_4ab266d2399976c2 = if (@sizeOf(usize) == 4) extern struct {
     body: RocListWith(u8, false),
     headers: RocList(__AnonStruct_288155b7e13051cb),
     method: RocListWith(u8, false),
     path: RocListWith(u8, false),
+    public_origin: RocListWith(u8, false),
     query: RocListWith(u8, false),
     port: u16,
     /// Recursively decrement Roc-owned fields.
@@ -1072,6 +1079,7 @@ pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.method.decref(roc_host);
         value.path.decref(roc_host);
+        value.public_origin.decref(roc_host);
         value.query.decref(roc_host);
     }
 
@@ -1082,6 +1090,7 @@ pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct
         value.headers.incref(amount);
         value.method.incref(amount);
         value.path.incref(amount);
+        value.public_origin.incref(amount);
         value.query.incref(amount);
     }
 } else extern struct {
@@ -1089,6 +1098,7 @@ pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct
     headers: RocList(__AnonStruct_288155b7e13051cb),
     method: RocListWith(u8, false),
     path: RocListWith(u8, false),
+    public_origin: RocListWith(u8, false),
     query: RocListWith(u8, false),
     port: u16,
     /// Recursively decrement Roc-owned fields.
@@ -1098,6 +1108,7 @@ pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.method.decref(roc_host);
         value.path.decref(roc_host);
+        value.public_origin.decref(roc_host);
         value.query.decref(roc_host);
     }
 
@@ -1108,18 +1119,19 @@ pub const __AnonStruct_ee8027c43e25493f = if (@sizeOf(usize) == 4) extern struct
         value.headers.incref(amount);
         value.method.incref(amount);
         value.path.incref(amount);
+        value.public_origin.incref(amount);
         value.query.incref(amount);
     }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct_ee8027c43e25493f) != 128) @compileError("__AnonStruct_ee8027c43e25493f size mismatch");
-        if (@alignOf(__AnonStruct_ee8027c43e25493f) != 8) @compileError("__AnonStruct_ee8027c43e25493f alignment mismatch");
+        if (@sizeOf(__AnonStruct_4ab266d2399976c2) != 152) @compileError("__AnonStruct_4ab266d2399976c2 size mismatch");
+        if (@alignOf(__AnonStruct_4ab266d2399976c2) != 8) @compileError("__AnonStruct_4ab266d2399976c2 alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct_ee8027c43e25493f) != 64) @compileError("__AnonStruct_ee8027c43e25493f size mismatch");
-        if (@alignOf(__AnonStruct_ee8027c43e25493f) != 4) @compileError("__AnonStruct_ee8027c43e25493f alignment mismatch");
+        if (@sizeOf(__AnonStruct_4ab266d2399976c2) != 76) @compileError("__AnonStruct_4ab266d2399976c2 size mismatch");
+        if (@alignOf(__AnonStruct_4ab266d2399976c2) != 4) @compileError("__AnonStruct_4ab266d2399976c2 alignment mismatch");
     }
 }
 
@@ -1338,6 +1350,63 @@ comptime {
     }
 }
 
+/// Tag union: DoesNotMatchOrMatchesOrNotABcryptHash
+pub const DoesNotMatchOrMatchesOrNotABcryptHash = enum(u8) {
+    does_not_match = 0,
+    matches = 1,
+    not_abcrypt_hash = 2,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash size mismatch");
+        if (@alignOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash size mismatch");
+        if (@alignOf(DoesNotMatchOrMatchesOrNotABcryptHash) != 1) @compileError("DoesNotMatchOrMatchesOrNotABcryptHash alignment mismatch");
+    }
+}
+
+/// Tag union: DoesNotMatchOrMatches
+pub const DoesNotMatchOrMatches = enum(u8) {
+    does_not_match = 0,
+    matches = 1,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(DoesNotMatchOrMatches) != 1) @compileError("DoesNotMatchOrMatches size mismatch");
+        if (@alignOf(DoesNotMatchOrMatches) != 1) @compileError("DoesNotMatchOrMatches alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(DoesNotMatchOrMatches) != 1) @compileError("DoesNotMatchOrMatches size mismatch");
+        if (@alignOf(DoesNotMatchOrMatches) != 1) @compileError("DoesNotMatchOrMatches alignment mismatch");
+    }
+}
+
 /// Tag union: StreamOrWhole
 pub const StreamOrWhole = enum(u8) {
     stream = 0,
@@ -1493,6 +1562,13 @@ pub const HostAppend_utf8_bytes_to_fileArgs = extern struct {
     arg1: RocListWith(u8, false),
 };
 
+/// Arguments for Host.bcrypt_hash_of_password!
+/// Roc signature: List(U8) => List(U8)
+/// Refcounted fields are owned by the hosted function.
+pub const HostBcrypt_hash_of_passwordArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 /// Arguments for Host.create_file_with_binary_bytes_unless_it_exists!
 /// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]
 /// Refcounted fields are owned by the hosted function.
@@ -1509,11 +1585,33 @@ pub const HostCreate_file_with_utf8_bytes_unless_it_existsArgs = extern struct {
     arg1: RocListWith(u8, false),
 };
 
+/// Arguments for Host.end_every_stream_of_holder!
+/// Roc signature: List(U8) => {}
+/// Refcounted fields are owned by the hosted function.
+pub const HostEnd_every_stream_of_holderArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 /// Arguments for Host.fill_with_random_bytes!
 /// Roc signature: U64 => List(U8)
 /// Refcounted fields are owned by the hosted function.
 pub const HostFill_with_random_bytesArgs = extern struct {
     arg0: u64,
+};
+
+/// Arguments for Host.hmac_sha256_with_server_secret!
+/// Roc signature: List(U8) => List(U8)
+/// Refcounted fields are owned by the hosted function.
+pub const HostHmac_sha256_with_server_secretArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
+/// Arguments for Host.hmac_sha256_with_server_secret_matches!
+/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches]
+/// Refcounted fields are owned by the hosted function.
+pub const HostHmac_sha256_with_server_secret_matchesArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: RocListWith(u8, false),
 };
 
 /// Arguments for Host.list_names_in_directory!
@@ -1528,6 +1626,14 @@ pub const HostList_names_in_directoryArgs = extern struct {
 /// Refcounted fields are owned by the hosted function.
 pub const HostMake_directory_and_its_parentsArgs = extern struct {
     arg0: RocListWith(u8, false),
+};
+
+/// Arguments for Host.password_matches_bcrypt_hash!
+/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash]
+/// Refcounted fields are owned by the hosted function.
+pub const HostPassword_matches_bcrypt_hashArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: RocListWith(u8, false),
 };
 
 /// Arguments for Host.publish_bytes_to_streams_on_key!
@@ -1572,12 +1678,12 @@ pub const HostSha256_of_bytesArgs = extern struct {
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
 pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
-pub const Admission_for_hostArg0 = __AnonStruct_da3f526429c244e0;
+pub const Admission_for_hostArg0 = __AnonStruct_8ba57119b983c03c;
 pub const Admission_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
 pub const Admission_for_host = __AnonStruct_3358763e51fbcf53;
 pub const Admission_for_hostRefusal = __AnonStruct_2caab9c0de63c7b6;
 pub const Admission_for_hostRefusalHeaders = __AnonStruct_288155b7e13051cb;
-pub const Handle_for_hostArg0 = __AnonStruct_ee8027c43e25493f;
+pub const Handle_for_hostArg0 = __AnonStruct_4ab266d2399976c2;
 pub const Handle_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
 pub const Handle_for_host = __AnonStruct_2caab9c0de63c7b6;
 pub const Handle_for_hostHeaders = __AnonStruct_288155b7e13051cb;
@@ -1620,14 +1726,14 @@ pub const __AnonStruct_288155b7e13051cbRelease = struct {
     }
 };
 
-pub const __AnonStruct_da3f526429c244e0Release = struct {
-    pub fn release(value: __AnonStruct_da3f526429c244e0, roc_host: *RocHost) void {
+pub const __AnonStruct_8ba57119b983c03cRelease = struct {
+    pub fn release(value: __AnonStruct_8ba57119b983c03c, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
 
-pub const __AnonStruct_ee8027c43e25493fRelease = struct {
-    pub fn release(value: __AnonStruct_ee8027c43e25493f, roc_host: *RocHost) void {
+pub const __AnonStruct_4ab266d2399976c2Release = struct {
+    pub fn release(value: __AnonStruct_4ab266d2399976c2, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -1659,8 +1765,8 @@ fn rocReleasePolicy(comptime T: type) type {
     if (T == __AnonStruct_2caab9c0de63c7b6) return __AnonStruct_2caab9c0de63c7b6Release;
     if (T == RocList(__AnonStruct_288155b7e13051cb)) return RocListRelease(RocList(__AnonStruct_288155b7e13051cb), __AnonStruct_288155b7e13051cbRelease);
     if (T == __AnonStruct_288155b7e13051cb) return __AnonStruct_288155b7e13051cbRelease;
-    if (T == __AnonStruct_da3f526429c244e0) return __AnonStruct_da3f526429c244e0Release;
-    if (T == __AnonStruct_ee8027c43e25493f) return __AnonStruct_ee8027c43e25493fRelease;
+    if (T == __AnonStruct_8ba57119b983c03c) return __AnonStruct_8ba57119b983c03cRelease;
+    if (T == __AnonStruct_4ab266d2399976c2) return __AnonStruct_4ab266d2399976c2Release;
     @compileError("generated glue has no recursive release policy for " ++ @typeName(T));
 }
 
@@ -1694,6 +1800,14 @@ pub extern fn roc_crashed(bytes: [*]const u8, len: usize) callconv(.c) void;
 ///     arg1.decref(roc_host);
 pub extern fn append_utf8_bytes_to_file(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) AppendedOrFailedOrMissingDirectoryOrNotUtf8OrPathRefused;
 
+/// Hosted symbol for Host.bcrypt_hash_of_password!
+/// Roc signature: List(U8) => List(U8)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn bcrypt_hash_of_password(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
 /// Hosted symbol for Host.create_file_with_binary_bytes_unless_it_exists!
 /// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]
 /// Owned arguments. Release each exactly once before returning, unless it is
@@ -1714,10 +1828,33 @@ pub extern fn create_file_with_utf8_bytes_unless_it_exists(arg0: RocListWith(u8,
 /// Roc signature: {} => I64
 pub extern fn current_utc_seconds_since_epoch() callconv(.c) i64;
 
+/// Hosted symbol for Host.end_every_stream_of_holder!
+/// Roc signature: List(U8) => {}
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn end_every_stream_of_holder(arg0: RocListWith(u8, false)) callconv(.c) void;
+
 /// Hosted symbol for Host.fill_with_random_bytes!
 /// Roc signature: U64 => List(U8)
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn fill_with_random_bytes(arg0: u64) callconv(.c) RocListWith(u8, false);
+
+/// Hosted symbol for Host.hmac_sha256_with_server_secret!
+/// Roc signature: List(U8) => List(U8)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn hmac_sha256_with_server_secret(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Hosted symbol for Host.hmac_sha256_with_server_secret_matches!
+/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches]
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+///     arg1.decref(roc_host);
+pub extern fn hmac_sha256_with_server_secret_matches(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) DoesNotMatchOrMatches;
 
 /// Hosted symbol for Host.list_names_in_directory!
 /// Roc signature: List(U8) => { names : List(List(U8)), status : [Failed, Found, Missing, NotUtf8, PathRefused] }
@@ -1733,6 +1870,14 @@ pub extern fn list_names_in_directory(arg0: RocListWith(u8, false)) callconv(.c)
 /// moved into storage or into the result:
 ///     arg0.decref(roc_host);
 pub extern fn make_directory_and_its_parents(arg0: RocListWith(u8, false)) callconv(.c) FailedOrMadeOrPathRefused;
+
+/// Hosted symbol for Host.password_matches_bcrypt_hash!
+/// Roc signature: List(U8), List(U8) => [DoesNotMatch, Matches, NotABcryptHash]
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+///     arg1.decref(roc_host);
+pub extern fn password_matches_bcrypt_hash(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) DoesNotMatchOrMatchesOrNotABcryptHash;
 
 /// Hosted symbol for Host.publish_bytes_to_streams_on_key!
 /// Roc signature: List(U8), List(U8) => {}
@@ -1914,10 +2059,10 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
 // Roc exports these symbols from the app with their natural C ABI signatures.
 
 /// Entrypoint: admission_for_host!
-pub extern fn roc_admission(arg0: __AnonStruct_da3f526429c244e0) callconv(.c) __AnonStruct_3358763e51fbcf53;
+pub extern fn roc_admission(arg0: __AnonStruct_8ba57119b983c03c) callconv(.c) __AnonStruct_3358763e51fbcf53;
 
 /// Entrypoint: handle_for_host!
-pub extern fn roc_handle_http_request(arg0: __AnonStruct_ee8027c43e25493f) callconv(.c) __AnonStruct_2caab9c0de63c7b6;
+pub extern fn roc_handle_http_request(arg0: __AnonStruct_4ab266d2399976c2) callconv(.c) __AnonStruct_2caab9c0de63c7b6;
 
 /// Entrypoint: page_for_host
 pub extern fn roc_page(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);

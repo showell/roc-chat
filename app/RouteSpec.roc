@@ -11,14 +11,20 @@ RouteSpec :: [].{}
 with_room : Directory
 with_room = {
 	name = ChannelName.from_str("plans-room") ?? crash "RouteSpec: a channel's name"
-	(Sample.directory.create_channel({ by: Sample.admin, name }) ?? crash "RouteSpec: the name is free").directory
+	(
+		Sample.directory.create_channel({
+			by: Sample.admin,
+			name,
+		}) ?? crash "RouteSpec: the name is free"
+	).directory
 }
 
 ## A name of an uploaded image's shape.
 image_name : Str
 image_name = "${"0a".repeat(16)}.png"
 
-## The route `method` and `path` choose in `with_room`, as a test reads it.
+## The route `method` and `path` choose in `with_room`, as a test reads it:
+## what it does, and `(open)` after a route anyone may use.
 chosen_route : Str, List(U8) -> Str
 chosen_route = |method, path|
 	match Route.choose({
@@ -26,21 +32,31 @@ chosen_route = |method, path|
 		path,
 		directory: with_room,
 	}) {
-		ShowConversation(key) => "show ${key.url_path(Page)}"
-		AppendToConversation(key) => "append ${key.url_path(Page)}"
-		SendToConversation(key) => "send ${key.url_path(Page)}"
-		OpenConversationStream(key) => "stream ${key.url_path(Page)}"
-		UploadToConversation(key) => "upload ${key.url_path(Page)}"
-		ServeUploadedImage(found) => "image ${found.image.name()} of ${found.key.url_path(Page)}"
-		ServeRawTranscript(key) => "raw ${key.url_path(Page)}"
-		ServeScript(script) => "the script at ${script.url_path()}"
-		ShowAgents => "agents"
-		MakeAgent => "make an agent"
-		InviteAgent(agent) => "invite ${agent.to_str()}"
-		RevokeInvite({ agent, invite }) => "revoke invite ${invite.to_str()} of ${agent.to_str()}"
-		RevokeKey({ agent, key }) => "revoke key ${key.to_str()} of ${agent.to_str()}"
-		RedeemInvite => "redeem"
-		OpenAgentStream => "the agents' stream"
+		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
+		SignedInOnly(AppendToConversation(key)) => "append ${key.url_path(Page)}"
+		SignedInOnly(SendToConversation(key)) => "send ${key.url_path(Page)}"
+		SignedInOnly(OpenConversationStream(key)) => "stream ${key.url_path(Page)}"
+		SignedInOnly(UploadToConversation(key)) => "upload ${key.url_path(Page)}"
+		SignedInOnly(ServeUploadedImage(found)) => "image ${found.image.name()} of ${found.key.url_path(Page)}"
+		SignedInOnly(ServeRawTranscript(key)) => "raw ${key.url_path(Page)}"
+		SignedInOnly(ShowAgents) => "agents"
+		SignedInOnly(MakeAgent) => "make an agent"
+		SignedInOnly(InviteAgent(agent)) => "invite ${agent.to_str()}"
+		SignedInOnly(
+			RevokeInvite(
+				{
+					agent,
+					invite,
+				},
+			),
+		) => "revoke invite ${invite.to_str()} of ${agent.to_str()}"
+		SignedInOnly(RevokeKey({ agent, key })) => "revoke key ${key.to_str()} of ${agent.to_str()}"
+		SignedInOnly(OpenAgentStream) => "the agents' stream"
+		Open(ServeScript(script)) => "the script at ${script.url_path()} (open)"
+		Open(ShowLogin) => "the sign-in page (open)"
+		Open(SignIn) => "sign in (open)"
+		Open(SignOut) => "sign out (open)"
+		Open(RedeemInvite) => "redeem (open)"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
@@ -52,7 +68,10 @@ expect chosen_route("GET", "/chat/dm/1_2/plans".to_utf8()) == "show /chat/dm/1_2
 expect chosen_route("POST", "/chat/dm/1_2/plans".to_utf8()) == "append /chat/dm/1_2/plans"
 expect chosen_route("PUT", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
 expect chosen_route("get", "/chat/dm/1_2/plans".to_utf8()) == "not allowed: GET, POST"
-expect chosen_route("GET", "/chat/channel/plans-room/plans".to_utf8()) == "show /chat/channel/plans-room/plans"
+expect chosen_route(
+	"GET",
+	"/chat/channel/plans-room/plans".to_utf8(),
+) == "show /chat/channel/plans-room/plans"
 expect chosen_route("GET", "/chat/dm/1_3/plans".to_utf8()) == "not found"
 expect chosen_route("POST", "/nowhere".to_utf8()) == "not found"
 expect chosen_route("GET", [0x2f, 0xff]) == "not found"
@@ -73,9 +92,18 @@ expect chosen_route("POST", "/chat/dm/1_2/plans/upload".to_utf8()) == "upload /c
 expect chosen_route("GET", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
 expect chosen_route("POST", "/chat/dm/1_3/plans/upload".to_utf8()) == "not found"
-expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "image ${image_name} of /chat/dm/1_2/plans"
-expect chosen_route("POST", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "not allowed: GET"
-expect chosen_route("PUT", "/chat/dm/1_2/plans/uploads/${image_name}".to_utf8()) == "not allowed: GET"
+expect chosen_route(
+	"GET",
+	"/chat/dm/1_2/plans/uploads/${image_name}".to_utf8(),
+) == "image ${image_name} of /chat/dm/1_2/plans"
+expect chosen_route(
+	"POST",
+	"/chat/dm/1_2/plans/uploads/${image_name}".to_utf8(),
+) == "not allowed: GET"
+expect chosen_route(
+	"PUT",
+	"/chat/dm/1_2/plans/uploads/${image_name}".to_utf8(),
+) == "not allowed: GET"
 expect chosen_route("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
 # Each script's path: GET alone, and exactly its path.
@@ -88,7 +116,7 @@ expect
 	].all(
 		|name| {
 			path = "/chat/assets/${name}".to_utf8()
-			chosen_route("GET", path) == "the script at /chat/assets/${name}"
+			chosen_route("GET", path) == "the script at /chat/assets/${name} (open)"
 				and chosen_route("POST", path) == "not allowed: GET"
 				and chosen_route("HEAD", path) == "not allowed: GET"
 		},
@@ -122,12 +150,28 @@ expect chosen_route("POST", "/agents/3/keys/1/revoke".to_utf8()) == "revoke key 
 expect chosen_route("GET", "/agents/3/keys/1/revoke".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/agents/3/keys/1/revoke".to_utf8()) == "not allowed: POST"
 # A redemption: POST alone. The agents' stream: GET alone.
-expect chosen_route("POST", "/agents/redeem".to_utf8()) == "redeem"
+expect chosen_route("POST", "/agents/redeem".to_utf8()) == "redeem (open)"
 expect chosen_route("GET", "/agents/redeem".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/agents/redeem".to_utf8()) == "not allowed: POST"
 expect chosen_route("GET", "/agents/stream".to_utf8()) == "the agents' stream"
 expect chosen_route("POST", "/agents/stream".to_utf8()) == "not allowed: GET"
 expect chosen_route("PUT", "/agents/stream".to_utf8()) == "not allowed: GET"
+# Signing in: the page by GET and the sign-in by POST to /login; signing
+# out by POST alone; each open; no other spelling.
+expect chosen_route("GET", "/login".to_utf8()) == "the sign-in page (open)"
+expect chosen_route("POST", "/login".to_utf8()) == "sign in (open)"
+expect chosen_route("PUT", "/login".to_utf8()) == "not allowed: GET, POST"
+expect chosen_route("POST", "/logout".to_utf8()) == "sign out (open)"
+expect chosen_route("GET", "/logout".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/logout".to_utf8()) == "not allowed: POST"
+expect
+	[
+		"/login/",
+		"/Login",
+		"/login/x",
+		"/logouts",
+		"login",
+	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
 # Not the agents' routes: an id or a number of another spelling, another
 # kind, another word, a part too many or too few.
 expect

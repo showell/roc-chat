@@ -1,5 +1,6 @@
-## This module builds the chat's pages: a conversation's page, a page that
-## says why a transcript was refused, and a page that says one thing. The
+## This module builds the chat's pages: a conversation's page, the agents
+## page, the sign-in page, a page that says why a transcript was refused,
+## and a page that says one thing. The
 ## server sends structure and class names only. Every page loads
 ## app/palette.js in its head (`Script`), which sets the colours and
 ## the theme before the first paint, and a conversation's page ends with
@@ -318,19 +319,113 @@ Page :: [].{
 		})
 	}
 
-	## A page that says one thing: `title`, and `said` beneath it (no such
+	## A page that says one thing: `title`, and `text` beneath it (no such
 	## conversation, a refused message, a failure).
-	notice : { title : Str, said : Str } -> TrustedHtml
-	notice = |{ title, said }|
+	notice : { title : Str, text : Str } -> TrustedHtml
+	notice = |{ title, text }|
 		document({
 			title,
 			body: Html.element({
 				name: P,
 				attrs: [],
-				inner: Escape.text(said),
+				inner: Escape.text(text),
 			}),
 		})
+
+	## The sign-in page, for `viewer`: a form posting a name and a password
+	## to `/login`, and `next`, where to go once signed in, as a hidden
+	## field. Above it, `problem` when there is one, and for a human signed
+	## in, who they are and a button that signs them out.
+	login : {
+		viewer : SignedIn.Actor,
+		next : Html.SitePath,
+		problem : [NoProblem, Problem(Str)],
+	} -> TrustedHtml
+	login = |
+		{
+			viewer,
+			next,
+			problem,
+		},
+	| {
+		said =
+			match problem {
+				NoProblem => TrustedHtml.join([])
+				Problem(text) => paragraph(text)
+			}
+		signed_in =
+			match viewer {
+				Anonymous => TrustedHtml.join([])
+				SignedIn(acting) =>
+					TrustedHtml.join([
+						paragraph("You are signed in as ${acting.user().name().to_str()}."),
+						post_button({ action: "/logout", label: "Sign out" }),
+					])
+			}
+		form = Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path("/login"))],
+			inner: TrustedHtml.join([
+				Html.input([
+					InputType(Hidden),
+					FieldName(token("next")),
+					Value(next),
+				]),
+				newline,
+				labelled_input({
+					label: "Name",
+					attrs: [
+						InputType(Text),
+						FieldName(token("name")),
+						Autocomplete(Username),
+						Required,
+					],
+				}),
+				labelled_input({
+					label: "Password",
+					attrs: [
+						InputType(Password),
+						FieldName(token("password")),
+						Autocomplete(CurrentPassword),
+						Required,
+					],
+				}),
+				Html.element({
+					name: Button,
+					attrs: [],
+					inner: Escape.text("Sign in"),
+				}),
+			]),
+		})
+		document({
+			title: "Sign in",
+			body: TrustedHtml.join([
+				Html.element({
+					name: H1,
+					attrs: [],
+					inner: Escape.text("Sign in"),
+				}),
+				newline,
+				said,
+				signed_in,
+				form,
+				newline,
+			]),
+		})
+	}
 }
+
+## A paragraph of `label` and an input of `attrs`, and a line end.
+labelled_input : { label : Str, attrs : List(Html.Attribute) } -> TrustedHtml
+labelled_input = |{ label, attrs }|
+	TrustedHtml.join([
+		Html.element({
+			name: P,
+			attrs: [],
+			inner: TrustedHtml.join([Escape.text("${label} "), Html.input(attrs)]),
+		}),
+		newline,
+	])
 
 ## The compose box: a form posting its one field, a message's markdown
 ## (`UrlEncodedForm.markdown_name`), to `key`'s page, as
@@ -619,7 +714,14 @@ expect
 		(TopTitle, "top-title"),
 		(TopUser, "top-user"),
 		(Viewer, "viewer"),
-	].all(|(chosen, spelled)| empty_paragraph([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8())
+	].all(
+		|
+			(
+				chosen,
+				spelled,
+			),
+		| empty_paragraph([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8(),
+	)
 # Every `data-` attribute, each its one spelling, a path or a token.
 expect {
 	path = site_path("/chat/dm/1_1/plans")
@@ -634,13 +736,40 @@ expect {
 	].all(|(chosen, expected)| empty_paragraph([Page.data_attribute(chosen)]) == expected.to_utf8())
 }
 
-## Whether the script `bytes` finds the class `chosen` by its selector.
+## Whether the script `bytes` finds the class `chosen` by its selector, a
+## string literal in any of JavaScript's three quotes.
 is_found_by : List(U8), Page.Class -> Bool
-is_found_by = |bytes, chosen| Str.from_utf8_lossy(bytes).contains("'.${class_name(chosen)}'")
+is_found_by = |bytes, chosen| has_quoted(bytes, ".${class_name(chosen)}")
 
-## Whether the script `bytes` reads the attribute `name`.
+## Whether the script `bytes` reads the attribute `name`, a string literal
+## in any of JavaScript's three quotes.
 is_read_by : List(U8), Str -> Bool
-is_read_by = |bytes, name| Str.from_utf8_lossy(bytes).contains("'${name}'")
+is_read_by = |bytes, name| has_quoted(bytes, name)
+
+## Whether the script `bytes` holds `text` as a whole string literal, in
+## single quotes, double quotes or backticks.
+has_quoted : List(U8), Str -> Bool
+has_quoted = |bytes, text| {
+	script_text = Str.from_utf8_lossy(bytes)
+	[
+		"'",
+		"\"",
+		"`",
+	].any(|quote| script_text.contains("${quote}${text}${quote}"))
+}
+
+# A literal is found in each of the three quotes, and only whole.
+expect [
+	"'.x'",
+	"\".x\"",
+	"`.x`",
+].all(|held| has_quoted(held.to_utf8(), ".x"))
+expect [
+	"'.xy'",
+	"\".x'",
+	".x",
+	"'.x\"",
+].all(|held| !has_quoted(held.to_utf8(), ".x"))
 
 # Each script finds the elements it works on by the classes this module
 # writes, and reads the attributes `Html` writes for it; a class or an
@@ -668,15 +797,28 @@ expect
 		"data-after",
 		"data-viewer",
 		"data-author",
-	].all(|name| is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name))
+	].all(
+		|name| is_read_by(Script.Feed.bytes(), name) and !is_read_by(
+			Script.Compose.bytes(),
+			name,
+		),
+	)
 expect
 	[
 		"data-send",
 		"data-upload",
 		"data-image-byte-limit",
-	].all(|name| is_read_by(Script.Compose.bytes(), name) and !is_read_by(Script.Feed.bytes(), name))
+	].all(
+		|name| is_read_by(
+			Script.Compose.bytes(),
+			name,
+		) and !is_read_by(Script.Feed.bytes(), name),
+	)
 # The classes only styled are styled by the script that owns them.
-expect [TopTitle, Viewer].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))
+expect [
+	TopTitle,
+	Viewer,
+].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))
 # A message's anchor as an id and as a link, at the first id and the next.
 expect {
 	second = Message.Id.first.next() ?? crash "Page's tests: the first id has a next"
@@ -692,4 +834,7 @@ expect {
 }
 expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
 # A notice: its title and its words, each escaped, under the colour script.
-expect Page.notice({ title: "a<b", said: "x & y" }).to_utf8() == "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()
+expect Page.notice({
+	title: "a<b",
+	text: "x & y",
+}).to_utf8() == "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()

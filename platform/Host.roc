@@ -126,4 +126,32 @@ Host := [].{
 	## `bytes` sent, as they are, to every stream held open on `key`
 	## (`Http.Response`'s `Stream`); none there, and nothing is sent.
 	publish_bytes_to_streams_on_key! : List(U8), List(U8) => {}
+
+	## Every stream held by `holder` (`Http.Response`'s `stream_holder`)
+	## ended now, its connection closed; none held, and nothing happens.
+	end_every_stream_of_holder! : List(U8) => {}
+
+	## A fresh bcrypt hash of `password`, under a random salt, in its
+	## modular-crypt form: 60 bytes, `$2b$10$` and the rest. A password is
+	## kept only as its hash.
+	bcrypt_hash_of_password! : List(U8) => List(U8)
+
+	## Whether `password`, the first argument, is the one the bcrypt hash,
+	## the second, was made from; `NotABcryptHash` when the second is no
+	## bcrypt hash, so a torn file is never taken for a wrong password.
+	password_matches_bcrypt_hash! : List(U8),
+	List(U8) => [
+		DoesNotMatch,
+		Matches,
+		NotABcryptHash,
+	]
+
+	## The HMAC-SHA256 of `bytes` under the server's secret: 32 bytes. The
+	## secret is the host's alone, kept in a file no file primitive reaches,
+	## so the app signs with it and never holds it.
+	hmac_sha256_with_server_secret! : List(U8) => List(U8)
+
+	## Whether the second argument is the HMAC-SHA256 of the first under the
+	## server's secret, compared in constant time.
+	hmac_sha256_with_server_secret_matches! : List(U8), List(U8) => [DoesNotMatch, Matches]
 }

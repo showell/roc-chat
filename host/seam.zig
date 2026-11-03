@@ -7,8 +7,10 @@
 //!     `roc_admission` and `roc_handle_http_request` (the server), and the
 //!     records the last two take and answer (platform/Http.roc);
 //!   - the hosted functions (platform/Host.roc), each exported under its
-//!     Roc name and answered by host/file_primitives.zig, or, for a
-//!     stream's frames, host/bus.zig.
+//!     Roc name and answered by host/file_primitives.zig; for a stream's
+//!     frames, host/bus.zig, and for ending a holder's streams,
+//!     host/sse.zig; for a password or a signature,
+//!     host/sign_in_primitives.zig.
 //!
 //! **EVERY RECORD IS LAID OUT AS ROC LAYS IT**: fields by alignment, then
 //! by name; a tag union with no payloads is one byte, its tags numbered
@@ -29,6 +31,8 @@ const std = @import("std");
 const Io = std.Io;
 const files = @import("file_primitives.zig");
 const bus = @import("bus.zig");
+const sse = @import("sse.zig");
+const sign_in = @import("sign_in_primitives.zig");
 
 // ── the lists ───────────────────────────────────────────────────────────────
 
@@ -97,12 +101,13 @@ pub const HeaderList = RocList(HeaderRec, std.http.Header, struct {
     }
 }.rec);
 
-/// Http.roc's `Request`: five lists, by name, then the U16.
+/// Http.roc's `Request`: six lists, by name, then the U16.
 pub const Request = extern struct {
     body: RocBytes,
     headers: HeaderList,
     method: RocBytes,
     path: RocBytes,
+    public_origin: RocBytes,
     query: RocBytes,
     port: u16,
 };
@@ -120,11 +125,12 @@ pub const Response = extern struct {
     kind: AnswerKind,
 };
 
-/// Http.roc's `RequestHead`: three lists, by name, then the U16.
+/// Http.roc's `RequestHead`: four lists, by name, then the U16.
 pub const RequestHead = extern struct {
     headers: HeaderList,
     method: RocBytes,
     path: RocBytes,
+    public_origin: RocBytes,
     port: u16,
 };
 
@@ -146,8 +152,8 @@ pub const Admission = extern struct {
 
 comptime {
     const w = @sizeOf(usize);
-    std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 16 * w and @sizeOf(Response) == 13 * w);
-    std.debug.assert(@sizeOf(RequestHead) == 10 * w and @sizeOf(Admission) == 15 * w);
+    std.debug.assert(@sizeOf(HeaderRec) == 6 * w and @sizeOf(Request) == 19 * w and @sizeOf(Response) == 13 * w);
+    std.debug.assert(@sizeOf(RequestHead) == 13 * w and @sizeOf(Admission) == 15 * w);
 }
 
 // ── the file primitives' answers ────────────────────────────────────────────
@@ -164,7 +170,7 @@ pub const BinaryReadStatus = enum(u8) { failed, found, missing, path_refused };
 pub const BinaryReadRec = extern struct { bytes: RocBytes, status: BinaryReadStatus };
 
 comptime {
-    for (.{ ReadStatus, BinaryReadStatus, files.AppendAnswer, files.CreateAnswer, files.BinaryCreateAnswer, files.ReplaceAnswer, files.MakeDirectoryAnswer }) |E| {
+    for (.{ ReadStatus, BinaryReadStatus, files.AppendAnswer, files.CreateAnswer, files.BinaryCreateAnswer, files.ReplaceAnswer, files.MakeDirectoryAnswer, sign_in.PasswordVerdict, sign_in.MacVerdict }) |E| {
         std.debug.assert(@sizeOf(E) == 1);
     }
 }
@@ -173,12 +179,15 @@ comptime {
 
 /// What a call to the Roc may use, set for its length: its arena, and,
 /// for the server's, the data root and the Io the primitives answer with,
-/// and the hub its frames are published on.
+/// the hub its frames are published on, the slots of its held streams, and
+/// the secret it signs with.
 pub const Call = struct {
     arena: std.mem.Allocator,
     root: ?*const files.DataRoot = null,
     io: ?Io = null,
     hub: ?*bus.Hub = null,
+    slots: ?*sse.Slots = null,
+    secret: ?*const sign_in.ServerSecret = null,
 };
 
 var current: ?Call = null;
@@ -210,6 +219,15 @@ fn io_of(comptime what: []const u8) Io {
 
 fn hub_of(comptime what: []const u8) *bus.Hub {
     return call(what).hub orelse @panic(what ++ ": this call has no hub (the demo's publishes nothing)");
+}
+
+fn slots_of(comptime what: []const u8) *sse.Slots {
+    return call(what).slots orelse @panic(what ++ ": this call has no streams (only the server's holds any)");
+}
+
+fn secret_of(comptime what: []const u8) []const u8 {
+    const s = call(what).secret orelse @panic(what ++ ": this call has no secret (only the server's signs)");
+    return s.slice();
 }
 
 // ── the entries ─────────────────────────────────────────────────────────────
@@ -300,6 +318,30 @@ pub export fn sha256_of_bytes(bytes: RocBytes) callconv(.c) RocBytes {
 /// The hub copies the bytes, so they outlive the call's arena.
 pub export fn publish_bytes_to_streams_on_key(key: RocBytes, bytes: RocBytes) callconv(.c) void {
     hub_of("publish_bytes_to_streams_on_key").publish(key.slice(), bytes.slice());
+}
+
+pub export fn end_every_stream_of_holder(holder: RocBytes) callconv(.c) void {
+    const what = "end_every_stream_of_holder";
+    slots_of(what).end_holder(io_of(what), holder.slice());
+}
+
+pub export fn bcrypt_hash_of_password(password: RocBytes) callconv(.c) RocBytes {
+    var out: [sign_in.bcrypt_hash_length]u8 = undefined;
+    return .from(sign_in.bcrypt_hash_of_password(io_of("bcrypt_hash_of_password"), password.slice(), &out));
+}
+
+pub export fn password_matches_bcrypt_hash(password: RocBytes, hash: RocBytes) callconv(.c) sign_in.PasswordVerdict {
+    _ = call("password_matches_bcrypt_hash");
+    return sign_in.password_matches_bcrypt_hash(password.slice(), hash.slice());
+}
+
+pub export fn hmac_sha256_with_server_secret(bytes: RocBytes) callconv(.c) RocBytes {
+    const mac = sign_in.hmac_sha256(secret_of("hmac_sha256_with_server_secret"), bytes.slice());
+    return .from(&mac);
+}
+
+pub export fn hmac_sha256_with_server_secret_matches(bytes: RocBytes, mac: RocBytes) callconv(.c) sign_in.MacVerdict {
+    return sign_in.hmac_sha256_matches(secret_of("hmac_sha256_with_server_secret_matches"), bytes.slice(), mac.slice());
 }
 
 // ── the runtime ─────────────────────────────────────────────────────────────

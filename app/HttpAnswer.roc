@@ -44,7 +44,10 @@ HttpAnswer :: [].{
 		whole_response({
 			status: 200,
 			headers: [
-				{ name: "content-type".to_utf8(), value: "text/javascript; charset=utf-8".to_utf8() },
+				{
+					name: "content-type".to_utf8(),
+					value: "text/javascript; charset=utf-8".to_utf8(),
+				},
 				{ name: "cache-control".to_utf8(), value: "no-cache".to_utf8() },
 				nosniff,
 			],
@@ -60,7 +63,10 @@ HttpAnswer :: [].{
 			status: 200,
 			headers: [
 				{ name: "content-type".to_utf8(), value: content_type.to_utf8() },
-				{ name: "cache-control".to_utf8(), value: "private, max-age=31536000, immutable".to_utf8() },
+				{
+					name: "cache-control".to_utf8(),
+					value: "private, max-age=31536000, immutable".to_utf8(),
+				},
 				nosniff,
 			],
 			body: bytes,
@@ -126,6 +132,20 @@ HttpAnswer :: [].{
 			body: methods.text.to_utf8(),
 		})
 	}
+
+	## `answer`, with `header` after its own.
+	with_header : Http.Response, Http.Header -> Http.Response
+	with_header = |answer, header| { ..answer, headers: answer.headers.append(header) }
+
+	## `answer`, which no browser or proxy may keep (`cache-control:
+	## no-store`): a page or a line that shows a secret, a key or an
+	## invite's code, or answers a password.
+	never_stored : Http.Response -> Http.Response
+	never_stored = |answer|
+		HttpAnswer.with_header(
+			answer,
+			{ name: "cache-control".to_utf8(), value: "no-store".to_utf8() },
+		)
 
 	## An event stream the host holds open on the bus key `key`, for
 	## `holder`: `backlog` first, then every frame published to `key`. The
@@ -216,7 +236,12 @@ nosniff = { name: "x-content-type-options".to_utf8(), value: "nosniff".to_utf8()
 # ── tests
 ## An answer's headers, as a test reads them.
 header_pairs : Http.Response -> List((Str, Str))
-header_pairs = |response| response.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value)))
+header_pairs = |response| response.headers.map(
+	|h| (
+		Str.from_utf8_lossy(h.name),
+		Str.from_utf8_lossy(h.value),
+	),
+)
 
 # A page has the status it is given and its HTML as the body, and carries
 # its type, the policy and nosniff, whatever its status.
@@ -229,7 +254,10 @@ expect
 				and header_pairs(response)
 					== [
 						("content-type", "text/html; charset=utf-8"),
-						("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'"),
+						(
+							"content-security-policy",
+							"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self'",
+						),
 						("x-content-type-options", "nosniff"),
 					]
 		},
@@ -297,13 +325,19 @@ expect {
 expect {
 	response = HttpAnswer.json(200, JsonOut.json_object([]))
 	response.status == 200
-		and header_pairs(response) == [("content-type", "application/json"), ("x-content-type-options", "nosniff")]
+		and header_pairs(response) == [
+			("content-type", "application/json"),
+			("x-content-type-options", "nosniff"),
+		]
 		and response.body == "{}".to_utf8()
 }
 expect {
 	response = HttpAnswer.text(415, "no & <b>")
 	response.status == 415
-		and header_pairs(response) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
+		and header_pairs(response) == [
+			("content-type", "text/plain; charset=utf-8"),
+			("x-content-type-options", "nosniff"),
+		]
 		and response.body == "no & <b>\n".to_utf8()
 }
 # Every whole answer names no stream; a stream is a 200 on its key, for its
@@ -331,6 +365,25 @@ expect {
 		and response.body == "id: 1\n".to_utf8()
 		and header_pairs(response) == [("x-content-type-options", "nosniff")]
 }
+# An answer never stored: its own headers, then `no-store`; its status and
+# body as they were.
+expect {
+	response = HttpAnswer.never_stored(HttpAnswer.text(200, "7-key"))
+	response.status == 200
+		and response.body == "7-key\n".to_utf8()
+		and header_pairs(response)
+			== [
+				("content-type", "text/plain; charset=utf-8"),
+				("x-content-type-options", "nosniff"),
+				("cache-control", "no-store"),
+			]
+}
+expect header_pairs(
+	HttpAnswer.with_header(
+		HttpAnswer.see_other("/a"),
+		{ name: "x".to_utf8(), value: "y".to_utf8() },
+	),
+) == [("location", "/a"), ("x", "y")]
 # A script: JavaScript, never cached unasked, not sniffed, its bytes as
 # given; and no page's policy, which is a document's.
 expect {
@@ -349,7 +402,10 @@ expect {
 expect {
 	response = HttpAnswer.plain_text_file("a <b>\n".to_utf8())
 	response.status == 200
-		and header_pairs(response) == [("content-type", "text/plain; charset=utf-8"), ("x-content-type-options", "nosniff")]
+		and header_pairs(response) == [
+			("content-type", "text/plain; charset=utf-8"),
+			("x-content-type-options", "nosniff"),
+		]
 		and response.body == "a <b>\n".to_utf8()
 		and response.kind == Whole
 }

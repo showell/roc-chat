@@ -13,19 +13,24 @@
 ##   the channel `general`, of which he is the one member
 ##   (`first_directory`). A folder that holds a chat is read, and one that
 ##   holds part of one is refused, so the server never starts on it.
-## - `check_request_head!` (the server): a request's head in, before the host reads
-##   any body; out comes a refusal, or how large a body to read and how
-##   long to wait for it.
+## - `check_request_head!` (the server): a request's head in, before the
+##   host reads any body; out comes a refusal, or how large a body to read
+##   and how long to wait for it. Only someone signed in who may post in a
+##   conversation gets an upload's room there (`body_allowance`).
 ## - `handle_http_request!` (the server): a request in, its response out.
 ##   The directory is read from disk (`load_directory!`), who is acting is
-##   found (`load_acting_user!`), `Route` chooses the answer, `Access` decides
+##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
-##   `ConversationRoute`, `UploadRoute` or `AgentsRoute` gives the answer.
+##   `ConversationRoute`, `UploadRoute`, `AgentsRoute` or `SignInRoute`
+##   gives the answer.
 ##
-## Who is acting stands in until sessions exist: a request with no
-## `Authorization` header acts as Steve, signed in with nothing checked
-## (`load_acting_user!`, which is dangerous); one with a bearer key acts as the
-## agent its key admits, or is refused.
+## Who is acting is found from the request alone (`load_actor!`): a request
+## with an `Authorization` header by that header alone, as the agent its
+## key admits, or a 401; any other by its session cookie, as the human the
+## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
+## (`Anonymous`). No one may use only the routes `Route` says are open (the
+## scripts, signing in and out, and redeeming an invite); every other page
+## sends them to sign in, and every other request is a 401.
 app [
 	check_request_head!,
 	handle_http_request!,
@@ -48,12 +53,14 @@ import ConversationKey
 import ConversationRoute
 import Directory
 import FileSystem
+import Html
 import HttpAnswer
 import Name
 import Page
 import RequestHeader
 import RequestOrigin
 import Route
+import SignInRoute
 import SignedIn
 import Topic
 import Transcript
@@ -225,50 +232,139 @@ directory_refusal = |why| {
 			FileSystem(fault) => FileSystem.fault_words(fault)
 			StoredDirectory(words) => "The chat's directory on disk is not whole: ${words}."
 		}
-	HttpAnswer.page(500, Page.notice({ title: "Failed", said }))
+	HttpAnswer.page(500, Page.notice({ title: "Failed", text: said }))
 }
 
 ## What the host may do with a request, judged from its head alone. A
 ## request from elsewhere (`RequestOrigin`, a trust boundary) is refused
 ## with a 403 before anything is read, so the host never reads its body.
-## Any other is judged in the directory as the disk holds it
-## (`admission_in`), or refused with a 500 when it can't be read.
+## Then the directory is read and who is acting is found, as for the whole
+## request (`load_actor!`): a credential refused is its 401 here, and a
+## directory that can't be read its 500. Any other is judged by
+## `admission_in`.
 check_request_head! : Http.RequestHead => Http.Admission
 check_request_head! = |head|
-	match RequestOrigin.check({
-		method: head.method,
-		headers: head.headers,
-		port: head.port,
-	}) {
+	match RequestOrigin.check(origin_of_head(head)) {
 		Err(why) => Refuse(for_this_origin_alone(origin_refusal(why)))
 		Ok({}) =>
 			match load_directory!({}) {
 				Err(why) => Refuse(for_this_origin_alone(directory_refusal(why)))
-				Ok(directory) => admission_in(head, directory)
+				Ok(directory) =>
+					match load_actor!({ headers: head.headers, directory }) {
+						Err(why) => Refuse(for_this_origin_alone(identity_refusal(why)))
+						Ok(actor) => admission_in({
+							head,
+							directory,
+							actor,
+						})
+					}
 			}
 	}
 
-## What the host may do with a request, from its head, in `directory`: a
-## request from elsewhere refused with a 403; any other admitted, with room
-## for an upload's body when its route is an upload, and for a form's
-## otherwise.
-admission_in : Http.RequestHead, Directory -> Http.Admission
-admission_in = |head, directory|
-	match RequestOrigin.check({
-		method: head.method,
-		headers: head.headers,
-		port: head.port,
-	}) {
+## What `RequestOrigin` judges of a request's head.
+origin_of_head : Http.RequestHead -> {
+	method : List(U8),
+	headers : List(Http.Header),
+	port : U16,
+	public_origin : List(U8),
+}
+origin_of_head = |head| {
+	method: head.method,
+	headers: head.headers,
+	port: head.port,
+	public_origin: head.public_origin,
+}
+
+## What the host may do with a request, from its `head`, in `directory`,
+## `actor` acting: a request from elsewhere refused with a 403; any other
+## admitted, with the room `body_allowance` gives it.
+admission_in : {
+	head : Http.RequestHead,
+	directory : Directory,
+	actor : SignedIn.Actor,
+} -> Http.Admission
+admission_in = |
+	{
+		head,
+		directory,
+		actor,
+	},
+|
+	match RequestOrigin.check(origin_of_head(head)) {
 		Err(why) => Refuse(for_this_origin_alone(origin_refusal(why)))
-		Ok({}) =>
-			match Route.choose({
+		Ok({}) => {
+			choice = Route.choose({
 				method: head.method,
 				path: head.path,
 				directory,
+			})
+			Admit(
+				body_allowance({
+					choice,
+					directory,
+					actor,
+				}),
+			)
+		}
+	}
+
+## The body a request may have: an upload's room for an upload to a
+## conversation by someone signed in who may post there, and a form's for
+## any other request, an upload by anyone else included. So no one gets
+## the large room or its time before their credential is checked.
+body_allowance : {
+	choice : Route.Choice,
+	directory : Directory,
+	actor : SignedIn.Actor,
+} -> { body_most : U64, body_grace_ms : U32 }
+body_allowance = |
+	{
+		choice,
+		directory,
+		actor,
+	},
+|
+	match (upload_asked(choice), actor) {
+		(UploadTo(key), SignedIn(acting)) =>
+			match Access.check({
+				acting,
+				place: key.place(),
+				directory,
+				act: Post,
 			}) {
-				UploadToConversation(_) => Admit(upload_body_allowance)
-				_ => Admit(form_body_allowance)
+				Ok({}) => upload_body_allowance
+				Err(NotAMember) => form_body_allowance
+				Err(ScopeOff) => form_body_allowance
 			}
+		(UploadTo(_), Anonymous) => form_body_allowance
+		(NoUpload, SignedIn(_)) => form_body_allowance
+		(NoUpload, Anonymous) => form_body_allowance
+	}
+
+## Whether a route uploads to a conversation, and to which.
+upload_asked : Route.Choice -> [UploadTo(ConversationKey), NoUpload]
+upload_asked = |choice|
+	match choice {
+		SignedInOnly(UploadToConversation(key)) => UploadTo(key)
+		SignedInOnly(ShowConversation(_)) => NoUpload
+		SignedInOnly(AppendToConversation(_)) => NoUpload
+		SignedInOnly(SendToConversation(_)) => NoUpload
+		SignedInOnly(OpenConversationStream(_)) => NoUpload
+		SignedInOnly(ServeRawTranscript(_)) => NoUpload
+		SignedInOnly(ServeUploadedImage(_)) => NoUpload
+		SignedInOnly(ShowAgents) => NoUpload
+		SignedInOnly(MakeAgent) => NoUpload
+		SignedInOnly(InviteAgent(_)) => NoUpload
+		SignedInOnly(RevokeInvite(_)) => NoUpload
+		SignedInOnly(RevokeKey(_)) => NoUpload
+		SignedInOnly(OpenAgentStream) => NoUpload
+		Open(ServeScript(_)) => NoUpload
+		Open(ShowLogin) => NoUpload
+		Open(SignIn) => NoUpload
+		Open(SignOut) => NoUpload
+		Open(RedeemInvite) => NoUpload
+		NotFound => NoUpload
+		MethodNotAllowed(_) => NoUpload
 	}
 
 ## The body a form may have: a message as the compose box posts it, 64 KiB
@@ -298,18 +394,19 @@ handle_http_request! = |request| {
 			method: request.method,
 			headers: request.headers,
 			port: request.port,
+			public_origin: request.public_origin,
 		}) {
 			Err(why) => origin_refusal(why)
 			Ok({}) =>
 				match load_directory!({}) {
 					Err(why) => directory_refusal(why)
 					Ok(directory) =>
-						match load_acting_user!({ headers: request.headers, directory }) {
+						match load_actor!({ headers: request.headers, directory }) {
 							Err(why) => identity_refusal(why)
-							Ok(acting) => serve_route!({
+							Ok(actor) => serve_route!({
 								request,
 								directory,
-								acting,
+								actor,
 							})
 						}
 				}
@@ -317,36 +414,73 @@ handle_http_request! = |request| {
 	for_this_origin_alone(answer)
 }
 
-## Who is acting. With no `Authorization` header, Steve, taken as signed
-## in with nothing checked: the scary door. No sessions exist yet, so anyone
-## who can reach the server can act as him. That is why the host listens
-## on 127.0.0.1 alone (host/http.zig), and why every request is held to
-## this server's own origin first (`RequestOrigin`), so no other site's
-## page can act through a browser here. The session check replaces this
-## one line. With `Authorization: Bearer <id>-<secret>`, the agent its key
-## admits (`AgentsRoute.sign_in_by_key!`); any other `Authorization` is
-## refused, never taken as Steve.
-load_acting_user! : { headers : List(Http.Header), directory : Directory } => Try(
-	SignedIn,
+## Who is acting. With `Authorization: Bearer <id>-<secret>`, the agent its
+## key admits (`AgentsRoute.sign_in_by_key!`); any other `Authorization` is
+## refused, and a request with one is never judged by its cookie, so a key
+## refused never falls back to a session. With none, the human the session
+## cookie admits (`load_session_actor!`), or no one.
+load_actor! : { headers : List(Http.Header), directory : Directory } => Try(
+	SignedIn.Actor,
 	[
 		BadBearer,
 		KeyRefused,
 		FileSystem(FileSystem.Fault),
 	],
 )
-load_acting_user! = |{ headers, directory }|
+load_actor! = |{ headers, directory }| {
+	now = Host.current_utc_seconds_since_epoch!({})
 	match RequestHeader.header_value(headers, "authorization") {
-		Unsent => Ok(SignedIn.dangerously_assume(directory.founder()))
+		Unsent => load_session_actor!({
+			headers,
+			directory,
+			now,
+		})
 		Repeated => Err(BadBearer)
 		Sent(value) => {
-			unchecked = UnvalidatedString.from_utf8(value) ? |NotUtf8| BadBearer
-			token = unchecked.bearer_token() ? |NotABearer| BadBearer
-			AgentsRoute.sign_in_by_key!({
+			bearer_text = UnvalidatedString.from_utf8(value) ? |NotUtf8| BadBearer
+			token = bearer_text.bearer_token() ? |NotABearer| BadBearer
+			signed_in_by_key = AgentsRoute.sign_in_by_key!({
 				token,
 				directory,
-				now: Host.current_utc_seconds_since_epoch!({}),
-			})
+				now,
+			})?
+			Ok(SignedIn(signed_in_by_key))
 		}
+	}
+}
+
+## Who a request with no `Authorization` header is: the human its session
+## cookie admits at `now`, or no one (`Anonymous`) when it carries none, or
+## one that admits no one. Only a password's file that can't be read fails
+## the request.
+load_session_actor! : {
+	headers : List(Http.Header),
+	directory : Directory,
+	now : I64,
+} => Try(SignedIn.Actor, [FileSystem(FileSystem.Fault)])
+load_session_actor! = |
+	{
+		headers,
+		directory,
+		now,
+	},
+|
+	match RequestHeader.header_value(headers, "cookie") {
+		Unsent => Ok(Anonymous)
+		Repeated => Ok(Anonymous)
+		Sent(cookie) =>
+			match SignInRoute.sign_in_by_session!({
+				cookie,
+				users: directory.users(),
+				now,
+			}) {
+				Ok(signed_in_by_session) => Ok(SignedIn(signed_in_by_session))
+				Err(NoSession) => Ok(Anonymous)
+				Err(BadSession) => Ok(Anonymous)
+				Err(SessionRefused) => Ok(Anonymous)
+				Err(NoPassword) => Ok(Anonymous)
+				Err(FileSystem(fault)) => Err(FileSystem(fault))
+			}
 	}
 
 ## A request whose credential is refused: one 401 that says no more, or a
@@ -370,7 +504,7 @@ key_refusal_words = "The API key is not accepted: send Authorization: Bearer <id
 origin_refusal : RequestOrigin.Refusal -> Http.Response
 origin_refusal = |why| HttpAnswer.page(
 	403,
-	Page.notice({ title: "Forbidden", said: RequestOrigin.words(why) }),
+	Page.notice({ title: "Forbidden", text: RequestOrigin.words(why) }),
 )
 
 ## `answer`, which no other site's page may load: a browser refuses to hand
@@ -387,12 +521,12 @@ for_this_origin_alone = |answer| {
 
 ## What a route asks of `Access` before it is answered: to read or post in
 ## a conversation, or nothing.
-access_asked : Route.Choice -> [
+access_asked : Route.SignedInChoice -> [
 	Asks({ key : ConversationKey, act : Access.Act }),
 	AsksNoConversation,
 ]
-access_asked = |choice|
-	match choice {
+access_asked = |asked|
+	match asked {
 		ShowConversation(key) => Asks({ key, act: Read })
 		OpenConversationStream(key) => Asks({ key, act: Read })
 		ServeRawTranscript(key) => Asks({ key, act: Read })
@@ -400,16 +534,12 @@ access_asked = |choice|
 		AppendToConversation(key) => Asks({ key, act: Post })
 		SendToConversation(key) => Asks({ key, act: Post })
 		UploadToConversation(key) => Asks({ key, act: Post })
-		ServeScript(_) => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
 		InviteAgent(_) => AsksNoConversation
 		RevokeInvite(_) => AsksNoConversation
 		RevokeKey(_) => AsksNoConversation
-		RedeemInvite => AsksNoConversation
 		OpenAgentStream => AsksNoConversation
-		NotFound => AsksNoConversation
-		MethodNotAllowed(_) => AsksNoConversation
 	}
 
 ## The 403 for a reader or a writer the place doesn't admit.
@@ -420,30 +550,138 @@ access_refusal = |why| {
 			NotAMember => "Only the members of this conversation's channel or DM may read or post in it."
 			ScopeOff => "This API key's scope doesn't reach that."
 		}
-	HttpAnswer.page(403, Page.notice({ title: "Forbidden", said }))
+	HttpAnswer.page(403, Page.notice({ title: "Forbidden", text: said }))
 }
 
-## The answer the route of `request` gives `acting`, once `Access` admits
+## The answer to a route only someone signed in may use, asked for by no
+## one: a page sends the browser to sign in, and comes back after; any
+## other request is a 401.
+anonymous_refusal : Route.SignedInChoice -> Http.Response
+anonymous_refusal = |asked|
+	match asked {
+		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
+		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
+		AppendToConversation(_) => no_one_refusal
+		SendToConversation(_) => no_one_refusal
+		OpenConversationStream(_) => no_one_refusal
+		ServeRawTranscript(_) => no_one_refusal
+		UploadToConversation(_) => no_one_refusal
+		ServeUploadedImage(_) => no_one_refusal
+		MakeAgent => no_one_refusal
+		InviteAgent(_) => no_one_refusal
+		RevokeInvite(_) => no_one_refusal
+		RevokeKey(_) => no_one_refusal
+		OpenAgentStream => no_one_refusal
+	}
+
+## The 401 for a request that proves no one, at a route only someone
+## signed in may use.
+no_one_refusal : Http.Response
+no_one_refusal = HttpAnswer.text(401, no_one_words)
+
+no_one_words : Str
+no_one_words = "No one is signed in: sign in at /login, or send Authorization: Bearer <id>-<secret>, a live key."
+
+## The site path `text` spells, a path this server answers: one that isn't
+## is a bug in its writer.
+site_path_of : Str -> Html.SitePath
+site_path_of = |text| Html.SitePath.from_str(text) ?? crash "main.site_path_of: \"${text}\" is a path this server answers, and not a site path"
+
+## The answer the route of `request` gives `actor`: an open route's to
+## anyone; any other's to someone signed in alone, once `Access` admits
 ## them.
 serve_route! : {
 	request : Http.Request,
 	directory : Directory,
-	acting : SignedIn,
+	actor : SignedIn.Actor,
 } => Http.Response
 serve_route! = |
 	{
 		request,
 		directory,
-		acting,
+		actor,
 	},
-| {
-	choice = Route.choose({
+|
+	match Route.choose({
 		method: request.method,
 		path: request.path,
 		directory,
-	})
+	}) {
+		Open(open) => answer_open_route!({
+			open,
+			request,
+			directory,
+			actor,
+		})
+		SignedInOnly(asked) =>
+			match actor {
+				Anonymous => anonymous_refusal(asked)
+				SignedIn(acting) => serve_signed_in_route!({
+					asked,
+					request,
+					directory,
+					acting,
+				})
+			}
+		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
+		NotFound => HttpAnswer.page(
+			404,
+			Page.notice({ title: "Not found", text: "Nothing is here." }),
+		)
+	}
+
+## The answer to an open route, for `actor`, whoever it is.
+answer_open_route! : {
+	open : Route.OpenChoice,
+	request : Http.Request,
+	directory : Directory,
+	actor : SignedIn.Actor,
+} => Http.Response
+answer_open_route! = |
+	{
+		open,
+		request,
+		directory,
+		actor,
+	},
+|
+	match open {
+		ServeScript(script) => HttpAnswer.script(script.bytes())
+		ShowLogin => SignInRoute.show_login({ viewer: actor, query: request.query })
+		SignIn =>
+			SignInRoute.sign_in!({
+				viewer: actor,
+				users: directory.users(),
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		SignOut => SignInRoute.sign_out
+		RedeemInvite =>
+			AgentsRoute.redeem!({
+				actor,
+				directory,
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+	}
+
+## The answer the route `asked` gives `acting`, once `Access` admits them.
+serve_signed_in_route! : {
+	asked : Route.SignedInChoice,
+	request : Http.Request,
+	directory : Directory,
+	acting : SignedIn,
+} => Http.Response
+serve_signed_in_route! = |
+	{
+		asked,
+		request,
+		directory,
+		acting,
+	},
+| {
 	admitted =
-		match access_asked(choice) {
+		match access_asked(asked) {
 			AsksNoConversation => Ok({})
 			Asks({ key, act }) =>
 				Access.check({
@@ -456,7 +694,7 @@ serve_route! = |
 	match admitted {
 		Err(why) => access_refusal(why)
 		Ok({}) => answer_route!({
-			choice,
+			asked,
 			request,
 			directory,
 			acting,
@@ -464,22 +702,22 @@ serve_route! = |
 	}
 }
 
-## The answer to `choice`, which `Access` has admitted.
+## The answer to `asked`, which `Access` has admitted.
 answer_route! : {
-	choice : Route.Choice,
+	asked : Route.SignedInChoice,
 	request : Http.Request,
 	directory : Directory,
 	acting : SignedIn,
 } => Http.Response
 answer_route! = |
 	{
-		choice,
+		asked,
 		request,
 		directory,
 		acting,
 	},
 |
-	match choice {
+	match asked {
 		ShowConversation(key) =>
 			ConversationRoute.show!({
 				key,
@@ -495,7 +733,6 @@ answer_route! = |
 				headers: request.headers,
 			})
 		ServeRawTranscript(key) => ConversationRoute.serve_raw!(key)
-		ServeScript(script) => HttpAnswer.script(script.bytes())
 		AppendToConversation(key) =>
 			ConversationRoute.post_sent_message!(
 				make_message_post!({
@@ -550,23 +787,11 @@ answer_route! = |
 				agent,
 				key,
 			})
-		RedeemInvite =>
-			AgentsRoute.redeem!({
-				acting,
-				directory,
-				body: request.body,
-				now: Host.current_utc_seconds_since_epoch!({}),
-			})
 		OpenAgentStream => AgentsRoute.open_stream!({
 			acting,
 			directory,
 			query: request.query,
 		})
-		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
-		NotFound => HttpAnswer.page(
-			404,
-			Page.notice({ title: "Not found", said: "Nothing is here." }),
-		)
 	}
 
 ## A message's POST to the conversation `key`, by `acting`, at the host's
@@ -599,37 +824,49 @@ plans = Topic.from_str("plans") ?? crash "main's tests: a topic's name"
 
 ## What the door finds at `path` with `transcript`, as a test reads it:
 ## the conversation, and its key's URL path.
-found_at : List(U8), List(U8) -> Try((Conversation, Str), _)
-found_at = |path, transcript| conversation({ path, transcript }).map_ok(
+found_at : { path : List(U8), transcript : List(U8) } -> Try((Conversation, Str), _)
+found_at = |held| conversation(held).map_ok(
 	|found| (
 		found.conversation,
 		found.key.url_path(Page),
 	),
 )
 
-expect found_at("/chat/channel/general/plans".to_utf8(), []) == Ok((
+expect found_at({ path: "/chat/channel/general/plans".to_utf8(), transcript: [] }) == Ok((
 	Conversation.empty(plans),
 	"/chat/channel/general/plans",
 ))
-expect found_at("/chat/dm/1_1/plans".to_utf8(), []) == Ok((
+expect found_at({ path: "/chat/dm/1_1/plans".to_utf8(), transcript: [] }) == Ok((
 	Conversation.empty(plans),
 	"/chat/dm/1_1/plans",
 ))
-expect found_at([0xff], []) == Err(PathNotUtf8)
-expect found_at("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Err(TranscriptNotUtf8)
+expect found_at({ path: [0xff], transcript: [] }) == Err(PathNotUtf8)
+expect found_at({
+	path: "/chat/dm/1_1/plans".to_utf8(),
+	transcript: [0xff],
+}) == Err(TranscriptNotUtf8)
 # Each refusal of the path, and of the transcript, through the door.
-expect found_at("plans".to_utf8(), []) == Err(Path(NotAConversationPath))
-expect found_at("/chat/channel/general/plans_2".to_utf8(), []) == Err(Path(BadName))
-expect found_at("/chat/channel/other/plans".to_utf8(), []) == Err(Path(NoSuchChannel))
-expect found_at("/chat/dm/1_2/plans".to_utf8(), []) == Err(Path(NoSuchHuman))
-expect found_at(
-	"/chat/dm/1_1/plans".to_utf8(),
-	"\n".to_utf8(),
-) == Err(Transcript(NotPrefixedProperly))
+expect found_at({ path: "plans".to_utf8(), transcript: [] }) == Err(Path(NotAConversationPath))
+expect found_at({
+	path: "/chat/channel/general/plans_2".to_utf8(),
+	transcript: [],
+}) == Err(Path(BadName))
+expect found_at({
+	path: "/chat/channel/other/plans".to_utf8(),
+	transcript: [],
+}) == Err(Path(NoSuchChannel))
+expect found_at({ path: "/chat/dm/1_2/plans".to_utf8(), transcript: [] }) == Err(Path(NoSuchHuman))
+expect found_at({
+	path: "/chat/dm/1_1/plans".to_utf8(),
+	transcript: "\n".to_utf8(),
+}) == Err(Transcript(NotPrefixedProperly))
 # The order: the path's bytes, the path's conversation, then the transcript.
-expect found_at([0xff], [0xff]) == Err(PathNotUtf8)
-expect found_at("plans".to_utf8(), [0xff]) == Err(Path(NotAConversationPath))
-expect found_at("plans".to_utf8(), "\n".to_utf8()) == Err(Path(NotAConversationPath))
+expect found_at({ path: [0xff], transcript: [0xff] }) == Err(PathNotUtf8)
+expect found_at({ path: "plans".to_utf8(), transcript: [0xff] }) == Err(Path(NotAConversationPath))
+expect found_at({
+	path: "plans".to_utf8(),
+	transcript: "\n".to_utf8(),
+}) == Err(Path(NotAConversationPath))
 # The page, through the host's bytes: a conversation's, posting to its own
 # path, or the refusal's.
 expect {
@@ -659,9 +896,9 @@ page_for_get = |path|
 		path: path.to_utf8(),
 		directory: first_directory,
 	}) {
-		ShowConversation(key) => key.url_path(Page)
-		OpenConversationStream(key) => "the stream of ${key.url_path(Page)}"
-		ServeUploadedImage(found) => "the image ${found.image.name()} of ${found.key.url_path(Page)}"
+		SignedInOnly(ShowConversation(key)) => key.url_path(Page)
+		SignedInOnly(OpenConversationStream(key)) => "the stream of ${key.url_path(Page)}"
+		SignedInOnly(ServeUploadedImage(found)) => "the image ${found.image.name()} of ${found.key.url_path(Page)}"
 		_ => "not found"
 	}
 
@@ -757,9 +994,7 @@ expect {
 		and [
 			ShowAgents,
 			MakeAgent,
-			RedeemInvite,
 			OpenAgentStream,
-			NotFound,
 			InviteAgent(UserId.steve),
 		].all(|choice| access_asked(choice) == AsksNoConversation)
 }
@@ -783,24 +1018,135 @@ head_of = |line, more| {
 			},
 		),
 		port: 9611,
+		public_origin: [],
 	}
 }
 
-## What `admission_in` makes of `head` in the first directory, as a test
-## reads it: the allowance it admits it with, or its refusal's status and
-## headers.
-admission_verdict : Http.RequestHead -> [
+## What `admission_in` makes of `head` in `directory`, `actor` acting, as a
+## test reads it: the allowance it admits it with, or its refusal's status
+## and headers.
+admission_verdict_for : {
+	head : Http.RequestHead,
+	directory : Directory,
+	actor : SignedIn.Actor,
+} -> [
 	Admitted({ body_most : U64, body_grace_ms : U32 }),
 	Refused(U16, List((Str, Str))),
 ]
-admission_verdict = |head|
-	match admission_in(head, first_directory) {
+admission_verdict_for = |admission|
+	match admission_in(admission) {
 		Admit(allowance) => Admitted(allowance)
 		Refuse(answer) => Refused(
 			answer.status,
 			answer.headers.map(|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value))),
 		)
 	}
+
+## What `admission_in` makes of `head` in the first directory, Steve
+## signed in, as a test reads it.
+admission_verdict : Http.RequestHead -> [
+	Admitted({ body_most : U64, body_grace_ms : U32 }),
+	Refused(U16, List((Str, Str))),
+]
+admission_verdict = |head|
+	admission_verdict_for({
+		head,
+		directory: first_directory,
+		actor: SignedIn(demo_viewer),
+	})
+
+## The first directory with a second human, Apoorva, id 2, whose own DM,
+## `2_2`, Steve may not post in.
+with_apoorva : Directory
+with_apoorva = {
+	apoorva = Name.from_str("Apoorva") ?? crash "main's tests: a name"
+	(first_directory.add_human(apoorva) ?? crash "main's tests: Apoorva joins").directory
+}
+
+# An upload's room goes to someone signed in who may post there, and to no
+# one else: not to no one, and not to one who may not post in the place.
+expect
+	admission_verdict_for({
+		head: head_of("POST /chat/dm/2_2/plans/upload", []),
+		directory: with_apoorva,
+		actor: SignedIn(demo_viewer),
+	})
+		== Admitted(form_body_allowance)
+expect
+	admission_verdict_for({
+		head: head_of("POST /chat/dm/1_1/plans/upload", []),
+		directory: with_apoorva,
+		actor: SignedIn(demo_viewer),
+	})
+		== Admitted(upload_body_allowance)
+expect
+	[
+		"POST /chat/dm/1_1/plans/upload",
+		"POST /chat/channel/general/plans/upload",
+		"POST /chat/dm/1_1/plans",
+	].all(
+		|line|
+			admission_verdict_for({
+				head: head_of(line, []),
+				directory: first_directory,
+				actor: Anonymous,
+			})
+				== Admitted(form_body_allowance),
+	)
+# A public origin reaches the admission: its Host is this server's when the
+# server has it, and a stranger's when it has none.
+expect {
+	public_head = {
+		..head_of("POST /chat/dm/1_1/plans/upload", []),
+		headers: [
+			{ name: "Host".to_utf8(), value: "chat.example.com".to_utf8() },
+			{ name: "Origin".to_utf8(), value: "https://chat.example.com".to_utf8() },
+		],
+	}
+	admission_verdict({
+		..public_head,
+		public_origin: "https://chat.example.com".to_utf8(),
+	}) == Admitted(upload_body_allowance)
+		and admission_verdict(public_head) == Refused(403, forbidden_headers)
+}
+# No one asking for a page is sent to sign in, and back after; any other
+# route only someone signed in may use is a 401 to no one.
+expect {
+	key = ConversationKey.from_url_path({
+		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
+		directory: first_directory,
+	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
+	image = UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
+	shown = anonymous_refusal(ShowConversation(key))
+	agents = anonymous_refusal(ShowAgents)
+	shown.status == 303
+		and shown.headers == [
+			{
+				name: "location".to_utf8(),
+				value: "/login?next=/chat/dm/1_1/plans".to_utf8(),
+			},
+		]
+		and agents.status == 303
+		and agents.headers == [
+			{
+				name: "location".to_utf8(),
+				value: "/login?next=/agents".to_utf8(),
+			},
+		]
+		and [
+			AppendToConversation(key),
+			SendToConversation(key),
+			OpenConversationStream(key),
+			ServeRawTranscript(key),
+			UploadToConversation(key),
+			ServeUploadedImage({ key, image }),
+			MakeAgent,
+			InviteAgent(UserId.steve),
+			OpenAgentStream,
+		].all(|asked| anonymous_refusal(asked) == no_one_refusal)
+		and no_one_refusal.status == 401
+		and no_one_refusal.body == "${no_one_words}\n".to_utf8()
+}
 
 # The allowances: a form's 64 KiB in the request's own time; an upload's
 # image at its largest and 64 KiB of form, with five minutes more.
