@@ -157,7 +157,7 @@ stick-to-bottom. Glue that grows past that needs its reason in the report.
     that agent topics stay theirs and their humans', and that Browse and
     Recent list only what ConvAccess or Topic allow.
 - **The repo's rules:**
-  - for Roc, roc-apps CLAUDE.md (§6 testing, §8 docs, §9 security) and
+  - for Roc, roc-apps CLAUDE.md (§6 testing, §11 docs, §14 security) and
     docs/roc-style.md;
   - comments carry a why, in present tense, with no narrative or history;
   - no tracker or finding codes in code;
