@@ -103,7 +103,12 @@ RequestOrigin :: [].{
 			Unsent => Err(MissingHost)
 			Repeated => Err(ForeignHost)
 			Sent(host) => {
-				pairs = own_origins({ port, public_origin }).join_map(|kind| List.map2(kind.hosts, kind.origins, |named, origin| (named, origin)))
+				pairs = own_origins({ port, public_origin }).join_map(
+					|kind| kind.hosts.map2(
+						kind.origins,
+						|named, origin| (named, origin),
+					),
+				)
 				match pairs.find_first(|(named, _)| named == host) {
 					Ok((_, origin)) => Str.from_utf8(origin).map_err(|_| ForeignHost)
 					Err(NotFound) => Err(ForeignHost)
@@ -475,8 +480,14 @@ origin_at = |{ host, public_origin }|
 # A link's origin is the one the request came to: either local name, or the
 # public one; another name or port, or no `Host`, is refused.
 expect origin_at({ host: "localhost:9611", public_origin: "" }) == Ok("http://localhost:9611")
-expect origin_at({ host: "127.0.0.1:9611", public_origin: "https://chat.example.com" }) == Ok("http://127.0.0.1:9611")
-expect origin_at({ host: "chat.example.com", public_origin: "https://chat.example.com" }) == Ok("https://chat.example.com")
+expect origin_at({
+	host: "127.0.0.1:9611",
+	public_origin: "https://chat.example.com",
+}) == Ok("http://127.0.0.1:9611")
+expect origin_at({
+	host: "chat.example.com",
+	public_origin: "https://chat.example.com",
+}) == Ok("https://chat.example.com")
 expect origin_at({ host: "chat.example.com", public_origin: "" }) == Err(ForeignHost)
 expect origin_at({ host: "localhost:9612", public_origin: "" }) == Err(ForeignHost)
 expect

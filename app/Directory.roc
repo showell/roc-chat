@@ -82,7 +82,13 @@ Directory :: {
 		renamed = d.users.rename_human({ human, name })?
 		keys = claim_key(d.keys.remove(human.user().name().key()), name.key())?
 		Ok({
-			directory: Directory.({ ..d, users: renamed.users, keys }),
+			directory: Directory.(
+				{
+					..d,
+					users: renamed.users,
+					keys,
+				},
+			),
 			human: renamed.human,
 		})
 	}
@@ -129,7 +135,11 @@ Directory :: {
 	## holds it: a channel it holds (else `NoSuchChannel`), or a DM whose
 	## every member is a human it holds (else `NoSuchHuman`), since an agent
 	## can't be in a DM.
-	place : Directory, [Channel(ChannelName), Dm(UserPair)] -> Try(Place, [NoSuchChannel, NoSuchHuman])
+	place : Directory,
+	[Channel(ChannelName), Dm(UserPair)] -> Try(
+		Place,
+		[NoSuchChannel, NoSuchHuman],
+	)
 	place = |Directory.(d), named|
 		match named {
 			Channel(name) => {

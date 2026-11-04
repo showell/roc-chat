@@ -72,11 +72,11 @@ HttpAnswer :: [].{
 			body: bytes,
 		})
 
-	## The JSON `answer`, with `status`.
-	json : U16, JsonOut -> Http.Response
-	json = |status, answer|
+	## The JSON `answer`, a 200.
+	json : JsonOut -> Http.Response
+	json = |answer|
 		whole_response({
-			status,
+			status: 200,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "application/json".to_utf8() },
 				nosniff,
@@ -323,7 +323,7 @@ expect {
 }
 # JSON and a plain refusal, each its type, not sniffed; the refusal one line.
 expect {
-	response = HttpAnswer.json(200, JsonOut.json_object([]))
+	response = HttpAnswer.json(JsonOut.json_object([]))
 	response.status == 200
 		and header_pairs(response) == [
 			("content-type", "application/json"),
@@ -349,7 +349,7 @@ expect
 		HttpAnswer.script([]),
 		HttpAnswer.method_not_allowed(GetOnly),
 		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
-		HttpAnswer.json(200, JsonOut.json_object([])),
+		HttpAnswer.json(JsonOut.json_object([])),
 		HttpAnswer.text(400, "x"),
 	].all(|response| response.kind == Whole and response.stream_key == [] and response.stream_holder == [])
 expect {

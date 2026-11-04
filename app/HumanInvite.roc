@@ -135,7 +135,11 @@ HumanInvite :: {
 
 	## The redeemable invite spent, and `human` admitted: the human among
 	## whose invites it was found, as named once they chose their name.
-	redeem : HumanInvite.Redeemable, Users.Human -> { spent : HumanInvite, admission : HumanInvite.Admission }
+	redeem : HumanInvite.Redeemable,
+	Users.Human -> {
+		spent : HumanInvite,
+		admission : HumanInvite.Admission,
+	}
 	redeem = |HumanInvite.Redeemable.(HumanInvite.(invite)), human| {
 		spent: HumanInvite.({ ..invite, state: Spent }),
 		admission: HumanInvite.Admission.(human),

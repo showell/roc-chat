@@ -99,16 +99,23 @@ HumanInvitesRoute :: [].{
 	## A POST of `/join/name`, by `actor`, who may join: the name the human
 	## the form's `code` names holds, while the invite is open at `now`, as
 	## JSON, `{"name":...}`; or the refusal, a line of text. Never stored.
-	look_up_join_name! : {
+	serve_join_name! : {
 		actor : SignedIn.Actor,
 		directory : Directory,
 		body : List(U8),
 		now : I64,
 	} => Http.Response
-	look_up_join_name! = |request| {
+	serve_join_name! = |request| {
 		answer =
-			match find_join_name!(request) {
-				Ok(name) => HttpAnswer.json(200, JsonOut.json_object([("name", JsonOut.string(name.to_str()))]))
+			match load_join_name!(request) {
+				Ok(name) => HttpAnswer.json(
+					JsonOut.json_object([
+						(
+							"name",
+							JsonOut.string(name.to_str()),
+						),
+					]),
+				)
 				Err(why) => {
 					notice = failure_notice(why)
 					HttpAnswer.text(notice.status, notice.said)
@@ -146,7 +153,10 @@ failure_notice : Failure -> { status : U16, said : Str }
 failure_notice = |why|
 	match why {
 		Refused(refusal) => HumanInvites.refusal_notice(refusal)
-		BadInviter(id) => { status: 500, said: "The inviter file of user ${id.to_str()} names no user." }
+		BadInviter(id) => {
+			status: 500,
+			said: "The inviter file of user ${id.to_str()} names no user.",
+		}
 		FileSystem(fault) => { status: 500, said: FileSystem.fault_words(fault) }
 	}
 
@@ -215,7 +225,10 @@ invite_human! = |
 		},
 	) ? |why| Refused(why)
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.create_invited_account!({ human: made.human, inviter: made.inviter.id() }) ? |fault| FileSystem(fault)
+	FileSystem.create_invited_account!({
+		human: made.human,
+		inviter: made.inviter.id(),
+	}) ? |fault| FileSystem(fault)
 	code = issue_invite!({
 		human: made.human.id(),
 		by: made.inviter.id(),
@@ -334,13 +347,13 @@ load_join_code! = |
 }
 
 ## The name the invite a join's form names holds, for the join page.
-find_join_name! : {
+load_join_name! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
 	now : I64,
 } => Try(Name, _)
-find_join_name! = |request| {
+load_join_name! = |request| {
 	code = load_join_code!(request)?
 	found = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
 	Ok(found.human.user().name())

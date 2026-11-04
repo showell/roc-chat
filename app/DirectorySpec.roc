@@ -221,7 +221,11 @@ apoorva_renamed = |directory, text| {
 			Ok(_) => "Apoorva free"
 			Err(_) => "Apoorva taken"
 		}
-	Ok((done.human.id().to_str(), done.human.user().name().to_str(), freed))
+	Ok((
+		done.human.id().to_str(),
+		done.human.user().name().to_str(),
+		freed,
+	))
 }
 
 # A human renamed keeps their id, and the name they leave is free again; a
@@ -230,13 +234,23 @@ apoorva_renamed = |directory, text| {
 expect apoorva_renamed(Sample.directory, "Debbie") == Ok(("2", "Debbie", "Apoorva free"))
 expect apoorva_renamed(Sample.directory, "APOORVA") == Ok(("2", "APOORVA", "Apoorva taken"))
 expect apoorva_renamed(Sample.directory, "Apoorva") == Ok(("2", "Apoorva", "Apoorva taken"))
-expect ["Steve", "steve", "cc"].all(|text| apoorva_renamed(Sample.directory, text) == Err(NameTaken))
+expect [
+	"Steve",
+	"steve",
+	"cc",
+].all(|text| apoorva_renamed(Sample.directory, text) == Err(NameTaken))
 expect ["plans", "PLANS"].all(|text| apoorva_renamed(with_plans, text) == Err(NameTaken))
 expect {
-	done = Sample.directory.rename_human({ human: Sample.human("Apoorva"), name: Sample.name("Debbie") }) ?? crash "DirectorySpec: Debbie is free"
+	done = Sample.directory.rename_human({
+		human: Sample.human("Apoorva"),
+		name: Sample.name("Debbie"),
+	}) ?? crash "DirectorySpec: Debbie is free"
 	human_added(done.directory, "debbie") == Err(NameTaken)
 		and done.directory.users().user_by_name(Sample.name("Debbie")).map_ok(|u| u.id().to_str()) == Ok("2")
 		and done.directory.users().user_by_name(Sample.name("Apoorva")).map_ok(|_| {}) == Err(NoSuchUser)
 }
 # A human of another directory is none of this one's.
-expect Sample.directory.rename_human({ human: zed, name: Sample.name("Debbie") }).map_ok(|_| {}) == Err(NoSuchHuman)
+expect Sample.directory.rename_human({
+	human: zed,
+	name: Sample.name("Debbie"),
+}).map_ok(|_| {}) == Err(NoSuchHuman)

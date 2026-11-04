@@ -65,7 +65,10 @@ HumanInvites :: [].{
 	refusal_notice : HumanInvites.Refusal -> { status : U16, said : Str }
 	refusal_notice = |why|
 		match why {
-			ByApiKey => { status: 403, said: "An API key can't invite or join: only a human, signed in, invites." }
+			ByApiKey => {
+				status: 403,
+				said: "An API key can't invite or join: only a human, signed in, invites.",
+			}
 			Agent(_) => { status: 403, said: "An agent can't invite anyone." }
 			Capped => {
 				status: 403,
@@ -102,7 +105,10 @@ HumanInvites :: [].{
 
 	## How many of `invites` the human `by` made that are open at `now`.
 	open_count : List(HumanInvite), { by : UserId, now : I64 } -> U64
-	open_count = |invites, { by, now }| invites.count_if(|invite| invite.by() == by and invite.is_open(now))
+	open_count = |
+		invites,
+		{ by, now },
+	| invites.count_if(|invite| invite.by() == by and invite.is_open(now))
 
 	## Who invited a human: the human `InvitedBy` names, or no one
 	## (`NoInviter`: the founder, or a human the server's owner made by hand).
@@ -229,7 +235,12 @@ HumanInvites :: [].{
 	## The name a form `body` holds in its field `name`; or why not.
 	name_from_form : List(U8) -> Try(Name, [BadForm(Str), BadName])
 	name_from_form = |body| {
-		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(UrlEncodedForm.fault_words({ fault, name: "name" }))
+		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
+			UrlEncodedForm.fault_words({
+				fault,
+				name: "name",
+			}),
+		)
 		unchecked.name().map_err(|_| BadName)
 	}
 
@@ -237,7 +248,12 @@ HumanInvites :: [].{
 	## `password`; or why not.
 	password_from_form : List(U8) -> Try(Password, [BadForm(Str), BadPassword])
 	password_from_form = |body| {
-		unchecked = UrlEncodedForm.field({ body, name: "password" }) ? |fault| BadForm(UrlEncodedForm.fault_words({ fault, name: "password" }))
+		unchecked = UrlEncodedForm.field({ body, name: "password" }) ? |fault| BadForm(
+			UrlEncodedForm.fault_words({
+				fault,
+				name: "password",
+			}),
+		)
 		unchecked.password().map_err(|NotAPassword| BadPassword)
 	}
 
@@ -279,7 +295,15 @@ HumanInvites :: [].{
 		{ human : Users.Human, redeemable : HumanInvite.Redeemable },
 		[CodeRefused],
 	)
-	find_invitee = |directory, { token, invites, hash, now }| {
+	find_invitee = |
+		directory,
+		{
+			token,
+			invites,
+			hash,
+			now,
+		},
+	| {
 		user = directory.users().user(token.user()) ? |NoSuchUser| CodeRefused
 		human = user.as_human() ? |Agent(_)| CodeRefused
 		redeemable = HumanInvite.find_redeemable(invites, { hash, now }) ? |_| CodeRefused
@@ -309,7 +333,11 @@ HumanInvites :: [].{
 		found = HumanInvites.find_invitee(directory, code)?
 		if found.human.user().name() == name {
 			redeemed = HumanInvite.redeem(found.redeemable, found.human)
-			Ok({ spent: redeemed.spent, admission: redeemed.admission, name: Kept })
+			Ok({
+				spent: redeemed.spent,
+				admission: redeemed.admission,
+				name: Kept,
+			})
 		} else if code.invites.any(|made| made.state() == Spent) {
 			Err(NameChosen)
 		} else {
@@ -320,7 +348,11 @@ HumanInvites :: [].{
 					Err(NoSuchHuman) => crash "HumanInvites.join: the invitee is a human of the directory, found in it by id"
 				}?
 			redeemed = HumanInvite.redeem(found.redeemable, renamed)
-			Ok({ spent: redeemed.spent, admission: redeemed.admission, name: Changed })
+			Ok({
+				spent: redeemed.spent,
+				admission: redeemed.admission,
+				name: Changed,
+			})
 		}
 	}
 }

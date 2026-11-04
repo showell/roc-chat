@@ -714,7 +714,7 @@ answer_open_route! = |
 			})
 		ShowJoin => HumanInvitesRoute.join_page
 		LookUpJoinName =>
-			HumanInvitesRoute.look_up_join_name!({
+			HumanInvitesRoute.serve_join_name!({
 				actor,
 				directory,
 				body: request.body,

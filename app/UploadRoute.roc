@@ -59,7 +59,7 @@ UploadRoute :: [].{
 			headers,
 			body,
 		}) {
-			Ok(answer_json) => HttpAnswer.json(200, answer_json)
+			Ok(answer_json) => HttpAnswer.json(answer_json)
 			Err(why) => upload_refusal_response(why)
 		}
 
