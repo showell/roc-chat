@@ -322,6 +322,23 @@ FileSystem :: [].{
 		)
 	}
 
+	## The user's `name` file written whole over the one before, atomically:
+	## the name an invited human chose as they joined.
+	replace_account_name! : Users.User => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_account_name! = |user|
+		replace_fact!(
+			"${account_folder_path(AccountFolder.of(user.id()))}/name",
+			Users.account_files(user).name,
+		)
+
 	## The `inviter` file of the human `id`, as it is, or `NoFile` when they
 	## have none; unless the host's read failed.
 	read_inviter_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])

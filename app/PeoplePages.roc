@@ -1,12 +1,11 @@
 ## This module builds the pages that say who is in the chat, from `Page`'s
 ## parts: the channels page, `/channels`, and a channel's page of its
 ## members, `/channels/<name>`, the admin's (`ChannelMembersRoute`); and the
-## human invites' page, `/invites` (`HumanInvitesRoute`). How a human invite
-## is redeemed is on the sign-in page (`Page.login`).
+## human invites' page, `/invites` (`HumanInvitesRoute`). The invited human
+## joins at the link that page shows (`Page.join`).
 import Channels
 import HumanInvite
 import Page
-import SecretToken
 import SignedIn
 import TrustedHtml
 import Users
@@ -73,13 +72,13 @@ PeoplePages :: [].{
 	InvitedHuman : { human : Users.User, invites : List(HumanInvite) }
 
 	## The invites page, for `viewer`: a form that invites someone by a
-	## name; when an invite was just made, its code, the one time it is
-	## shown (`shown`); then each of `invited`, with their invites and a
-	## button that invites them again.
+	## name; when an invite was just made, the link that joins by it, the
+	## one time it is shown (`shown`); then each of `invited`, with their
+	## invites and a button that invites them again.
 	invites : {
 		viewer : SignedIn,
 		invited : List(PeoplePages.InvitedHuman),
-		shown : [NoCode, Code({ human : Users.User, code : SecretToken })],
+		shown : [NoLink, Link({ human : Users.User, link : Str })],
 	} -> TrustedHtml
 	invites = |
 		{
@@ -90,10 +89,10 @@ PeoplePages :: [].{
 	| {
 		code =
 			match shown {
-				NoCode => []
-				Code({ human, code: shown_code }) => [
-					Page.text_paragraph("The invite code for ${human.name().to_str()}, shown this once. It lives seven days and redeems once: they enter it, with the password they choose, on the sign-in page, /login."),
-					Page.shown_code(shown_code.to_str()),
+				NoLink => []
+				Link({ human, link }) => [
+					Page.text_paragraph("The link that lets ${human.name().to_str()} join, shown this once. Send it to them: it works once, for seven days. They keep the name you chose, or choose another, and choose their password."),
+					Page.shown_code(link),
 				]
 			}
 		form = Page.text_form({

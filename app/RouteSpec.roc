@@ -60,7 +60,9 @@ chosen_route = |method, path|
 		SignedInOnly(ShowInvites) => "invites"
 		SignedInOnly(InviteHuman) => "invite a human"
 		SignedInOnly(InviteHumanAgain(human)) => "invite ${human.to_str()} again"
-		Open(RedeemHumanInvite) => "redeem a human invite (open)"
+		Open(ShowJoin) => "the join page (open)"
+		Open(LookUpJoinName) => "the name to join under (open)"
+		Open(Join) => "join (open)"
 		Open(ServeScript(script)) => "the script at ${script.url_path()} (open)"
 		Open(ShowLogin) => "the sign-in page (open)"
 		Open(SignIn) => "sign in (open)"
@@ -180,6 +182,23 @@ expect
 		"/login/x",
 		"/logouts",
 		"login",
+	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
+# Joining: the page by GET and the join by POST to /join; the name to join
+# under by POST alone to /join/name; each open; no other spelling.
+expect chosen_route("GET", "/join".to_utf8()) == "the join page (open)"
+expect chosen_route("POST", "/join".to_utf8()) == "join (open)"
+expect chosen_route("PUT", "/join".to_utf8()) == "not allowed: GET, POST"
+expect chosen_route("POST", "/join/name".to_utf8()) == "the name to join under (open)"
+expect chosen_route("GET", "/join/name".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/join/name".to_utf8()) == "not allowed: POST"
+expect
+	[
+		"/join/",
+		"/Join",
+		"/join/names",
+		"/join/name/x",
+		"/joins",
+		"/invites/redeem",
 	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
 # Not the agents' routes: an id or a number of another spelling, another
 # kind, another word, a part too many or too few.

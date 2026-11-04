@@ -1,8 +1,8 @@
 ## A human invite is how someone joins the chat. A human signed in by their
 ## own session invites them by a name, which a new account holds at once,
-## and is shown the invite's one-time code once; the invited human redeems
-## the code, with no other credential, choosing their password as they do,
-## and is signed in. The chat keeps the code's hash, never the code. An
+## and is shown a link holding the invite's one-time code once; the invited
+## human redeems the code, with no other credential, choosing their name and
+## their password as they do, and is signed in. The chat keeps the code's hash, never the code. An
 ## invite lives seven days (`lifetime_seconds`) and
 ## redeems once. Inviting someone again is a new invite for the same
 ## account (`HumanInvites.reinvite`), and redeeming it sets a new password.
@@ -13,7 +13,10 @@
 ## the human who made it, the inviter or the admin inviting them again), and
 ## `hash` (the code's hash), written last.
 ##
-## Redeeming one ends in an `Admission`, which only `redeem` makes, and
+## Redeeming one is two steps: `find_redeemable` finds the invite a code's
+## hash names, open at that moment, and `redeem` spends it for its human,
+## once the caller has settled their name. It ends in an `Admission`, which
+## only `redeem` makes, and
 ## which `SignInRoute.start_session_by_invite!` takes to sign the human in:
 ## no other route mints a session without a password checked. This module
 ## is a trust boundary with `SignedIn`, `AgentKey` and `AgentInvite`: an
@@ -103,44 +106,40 @@ HumanInvite :: {
 			Spent => Bool.False
 		}
 
-	## The invite among the human `human`'s `invites` whose code's hash is
-	## `hash`, redeemed at `now`: spent, and the human admitted. Refused when
-	## none has the hash (`NoSuchInvite`), when it is spent (`Spent`), or when
-	## `now` is at or past its expiry, or before its making (`Expired`).
-	redeem : {
-		human : Users.Human,
-		invites : List(HumanInvite),
-		hash : SecretHash,
-		now : I64,
-	} -> Try(
-		{ spent : HumanInvite, admission : HumanInvite.Admission },
+	## The invite among `invites` whose code's hash is `hash`, open for
+	## redemption at `now`. Refused when none has the hash (`NoSuchInvite`),
+	## when it is spent (`Spent`), or when `now` is at or past its expiry, or
+	## before its making (`Expired`).
+	find_redeemable : List(HumanInvite),
+	{ hash : SecretHash, now : I64 } -> Try(
+		HumanInvite.Redeemable,
 		[
 			NoSuchInvite,
 			Spent,
 			Expired,
 		],
 	)
-	redeem = |
-		{
-			human,
-			invites,
-			hash,
-			now,
-		},
-	|
+	find_redeemable = |invites, { hash, now }|
 		match invites.find_first(|HumanInvite.(invite)| invite.hash == hash) {
 			Err(NotFound) => Err(NoSuchInvite)
 			Ok(HumanInvite.(invite)) =>
 				match invite.state {
 					Spent => Err(Spent)
 					Live if now < invite.created or now >= invite.expires => Err(Expired)
-					Live =>
-						Ok({
-							spent: HumanInvite.({ ..invite, state: Spent }),
-							admission: HumanInvite.Admission.(human),
-						})
+					Live => Ok(HumanInvite.Redeemable.(HumanInvite.(invite)))
 				}
 		}
+
+	## An invite `find_redeemable` found open. Only it makes one.
+	Redeemable :: HumanInvite.{}
+
+	## The redeemable invite spent, and `human` admitted: the human among
+	## whose invites it was found, as named once they chose their name.
+	redeem : HumanInvite.Redeemable, Users.Human -> { spent : HumanInvite, admission : HumanInvite.Admission }
+	redeem = |HumanInvite.Redeemable.(HumanInvite.(invite)), human| {
+		spent: HumanInvite.({ ..invite, state: Spent }),
+		admission: HumanInvite.Admission.(human),
+	}
 
 	## A human an invite's redemption admitted. Only `redeem` makes one.
 	Admission :: Users.Human.{

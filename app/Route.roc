@@ -32,11 +32,13 @@
 ##     GET  /invites                           your human invites
 ##     POST /invites                           invite someone: `name=`
 ##     POST /invites/<id>/again                invite a human again
-##     POST /invites/redeem                    redeem: `code=`, `password=`
+##     GET  /join                              the join page, the code after `#`
+##     POST /join/name                         the name a code's invite holds
+##     POST /join                              join: `code=`, `name=`, `password=`
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
-## included: the scripts, the sign-in routes and the two invites'
-## redemptions, an agent's and a human's.
+## included: the scripts, the sign-in routes, an agent's redemption, and
+## the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and main answers each `SignedInOnly`
 ## route to no one but someone signed in.
@@ -77,7 +79,9 @@ Route :: [].{
 		SignIn,
 		SignOut,
 		RedeemInvite,
-		RedeemHumanInvite,
+		ShowJoin,
+		LookUpJoinName,
+		Join,
 	]
 
 	## The routes only someone signed in may use.
@@ -168,7 +172,6 @@ invites_or_conversation_choice = |
 InvitesResource : [
 	Invites,
 	Again(UserId),
-	HumanRedeem,
 ]
 
 ## What `path` names under `/invites`, or `NotInvites`.
@@ -176,7 +179,6 @@ invites_resource : UnvalidatedString -> Try(InvitesResource, [NotInvites])
 invites_resource = |path|
 	match path.url_path_parts() {
 		Ok([invites]) if invites.is_exactly("invites") => Ok(Invites)
-		Ok([invites, last]) if invites.is_exactly("invites") and last.is_exactly("redeem") => Ok(HumanRedeem)
 		Ok(
 			[
 				invites,
@@ -198,9 +200,6 @@ invites_choice = |{ resource, method }|
 		(Again(_), Get) => MethodNotAllowed(PostOnly)
 		(Again(human), Post) => SignedInOnly(InviteHumanAgain(human))
 		(Again(_), Other) => MethodNotAllowed(PostOnly)
-		(HumanRedeem, Get) => MethodNotAllowed(PostOnly)
-		(HumanRedeem, Post) => Open(RedeemHumanInvite)
-		(HumanRedeem, Other) => MethodNotAllowed(PostOnly)
 	}
 
 ## The route for `method` and a path that is a conversation's, or nothing
@@ -304,8 +303,8 @@ conversation_choice = |
 		(UploadedImage(_), Other) => MethodNotAllowed(GetOnly)
 	}
 
-## What a sign-in path names.
-SignInResource : [Login, Logout]
+## What a sign-in path names: signing in or out, or joining.
+SignInResource : [Login, Logout, JoinPage, JoinName]
 
 ## What `path` names among the sign-in routes, or `NotSignIn`.
 sign_in_resource : UnvalidatedString -> Try(SignInResource, [NotSignIn])
@@ -313,6 +312,8 @@ sign_in_resource = |path|
 	match path.url_path_parts() {
 		Ok([only]) if only.is_exactly("login") => Ok(Login)
 		Ok([only]) if only.is_exactly("logout") => Ok(Logout)
+		Ok([only]) if only.is_exactly("join") => Ok(JoinPage)
+		Ok([join, name]) if join.is_exactly("join") and name.is_exactly("name") => Ok(JoinName)
 		_ => Err(NotSignIn)
 	}
 
@@ -326,6 +327,12 @@ sign_in_choice = |{ resource, method }|
 		(Logout, Get) => MethodNotAllowed(PostOnly)
 		(Logout, Post) => Open(SignOut)
 		(Logout, Other) => MethodNotAllowed(PostOnly)
+		(JoinPage, Get) => Open(ShowJoin)
+		(JoinPage, Post) => Open(Join)
+		(JoinPage, Other) => MethodNotAllowed(GetAndPost)
+		(JoinName, Get) => MethodNotAllowed(PostOnly)
+		(JoinName, Post) => Open(LookUpJoinName)
+		(JoinName, Other) => MethodNotAllowed(PostOnly)
 	}
 
 ## What a path under `/agents` names.

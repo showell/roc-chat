@@ -14,15 +14,19 @@
 ## - A human has at most `open_most` open invites at once, counting every
 ##   invite they made that is live and unexpired.
 ##
-## A human signs in with a password, so the
-## redemption sets the invited human's password, and redeeming a second
-## invite for the same account sets a new one. The redemption needs no
-## other credential, and a request with an API key may not redeem.
+## The invited human joins from a link that holds the code. Joining
+## redeems it: they keep the name their inviter chose or take any other free
+## name, and choose a password, as they sign in with one. Their name is
+## theirs from then on: redeeming a later invite for the same account keeps
+## it, and sets a new password. Joining needs no other credential; a
+## request with an API key, or from a browser signed in already, may not
+## join. A name refused spends nothing, so the human tries another.
 import Admin
 import Agents
 import Directory
 import FactFile
 import HumanInvite
+import Name
 import Password
 import SecretHash
 import SecretToken
@@ -48,17 +52,20 @@ HumanInvites :: [].{
 		NotYours,
 		BadPassword,
 		CodeRefused,
+		SignedInAlready,
+		NameChosen,
 	]
 
 	## A refusal in words, with its status: a request with a key, an agent,
 	## a human at the cap, or one who may not invite this human again, a
 	## 403; no such human, a 404; a form at fault, a name that is no name or
-	## a password that is none, a 400; a name taken or the chat full, a 409;
-	## and any refusal of an invite's code one 401 that says no more.
+	## a password that is none, a 400; a name taken or chosen already, the
+	## chat full, or a browser signed in already, a 409; and any refusal of
+	## an invite's code one 401 that says no more.
 	refusal_notice : HumanInvites.Refusal -> { status : U16, said : Str }
 	refusal_notice = |why|
 		match why {
-			ByApiKey => { status: 403, said: "An API key can't invite or redeem: only a human, signed in, invites." }
+			ByApiKey => { status: 403, said: "An API key can't invite or join: only a human, signed in, invites." }
 			Agent(_) => { status: 403, said: "An agent can't invite anyone." }
 			Capped => {
 				status: 403,
@@ -79,6 +86,14 @@ HumanInvites :: [].{
 			}
 			BadPassword => { status: 400, said: "A password is 1 to 72 bytes." }
 			CodeRefused => { status: 401, said: "The invite code is not live." }
+			SignedInAlready => {
+				status: 409,
+				said: "You are signed in already. Sign out first, or open the link in a private window.",
+			}
+			NameChosen => {
+				status: 409,
+				said: "Your name is chosen already, and stays as it is: join under it.",
+			}
 		}
 
 	## The most open invites one human may have at once.
@@ -142,8 +157,7 @@ HumanInvites :: [].{
 		if open >= HumanInvites.open_most {
 			Err(Capped)
 		} else {
-			unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(UrlEncodedForm.fault_words({ fault, name: "name" }))
-			name = unchecked.name() ? |_| BadName
+			name = HumanInvites.name_from_form(body)?
 			addition = directory.add_human(name)?
 			Ok({
 				directory: addition.directory,
@@ -212,6 +226,13 @@ HumanInvites :: [].{
 		}
 	}
 
+	## The name a form `body` holds in its field `name`; or why not.
+	name_from_form : List(U8) -> Try(Name, [BadForm(Str), BadName])
+	name_from_form = |body| {
+		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(UrlEncodedForm.fault_words({ fault, name: "name" }))
+		unchecked.name().map_err(|_| BadName)
+	}
+
 	## The password a redemption's form `body` holds in its field
 	## `password`; or why not.
 	password_from_form : List(U8) -> Try(Password, [BadForm(Str), BadPassword])
@@ -226,36 +247,80 @@ HumanInvites :: [].{
 	code_from_form : List(U8) -> Try(SecretToken, [BadForm(Str), CodeRefused])
 	code_from_form = |body| Agents.code_from_form(body)
 
-	## The redemption of the code `token`, whose secret's hash is `hash`, at
-	## `now`, among the invites of the human it names, `invites`: the invite
-	## spent, and the human admitted; or `CodeRefused`, whatever was wrong,
-	## a token naming no human included.
-	redeem : Directory,
-	{
+	## Whether `actor` may join: anyone signed in by no one. A request with
+	## an API key is refused (`ByApiKey`), and so is a browser signed in
+	## already (`SignedInAlready`), as joining would sign it in as someone
+	## else.
+	admit_joiner : SignedIn.Actor -> Try({}, [ByApiKey, SignedInAlready])
+	admit_joiner = |actor|
+		match actor {
+			Anonymous => Ok({})
+			SignedIn(acting) =>
+				match acting.credential() {
+					ApiKey(_) => Err(ByApiKey)
+					Session => Err(SignedInAlready)
+				}
+		}
+
+	## A code, the invite it names, and that invite's human, as joining
+	## reads them.
+	JoinCode : {
 		token : SecretToken,
 		invites : List(HumanInvite),
 		hash : SecretHash,
 		now : I64,
-	} -> Try(
-		{ spent : HumanInvite, admission : HumanInvite.Admission },
+	}
+
+	## The human the code `token` names, whose secret's hash is `hash`, and
+	## the invite among theirs, `invites`, it opens at `now`; or
+	## `CodeRefused`, whatever was wrong, a token naming no human included.
+	find_invitee : Directory,
+	HumanInvites.JoinCode -> Try(
+		{ human : Users.Human, redeemable : HumanInvite.Redeemable },
 		[CodeRefused],
 	)
-	redeem = |
-		directory,
-		{
-			token,
-			invites,
-			hash,
-			now,
-		},
-	| {
+	find_invitee = |directory, { token, invites, hash, now }| {
 		user = directory.users().user(token.user()) ? |NoSuchUser| CodeRefused
 		human = user.as_human() ? |Agent(_)| CodeRefused
-		HumanInvite.redeem({
-			human,
-			invites,
-			hash,
-			now,
-		}).map_err(|_| CodeRefused)
+		redeemable = HumanInvite.find_redeemable(invites, { hash, now }) ? |_| CodeRefused
+		Ok({ human, redeemable })
+	}
+
+	## The human the code names joining under `name`: the invite spent, the
+	## human admitted as named, and whether the name `Changed` or was
+	## `Kept`. The code is judged first (`CodeRefused`), so a name is judged
+	## only for its invitee. A human who redeemed an invite before chose
+	## their name then, and keeps it (`NameChosen`); a new name another
+	## user or a channel has, in any case, is refused (`NameTaken`).
+	join : Directory,
+	{ code : HumanInvites.JoinCode, name : Name } -> Try(
+		{
+			spent : HumanInvite,
+			admission : HumanInvite.Admission,
+			name : [Kept, Changed],
+		},
+		[
+			CodeRefused,
+			NameChosen,
+			NameTaken,
+		],
+	)
+	join = |directory, { code, name }| {
+		found = HumanInvites.find_invitee(directory, code)?
+		if found.human.user().name() == name {
+			redeemed = HumanInvite.redeem(found.redeemable, found.human)
+			Ok({ spent: redeemed.spent, admission: redeemed.admission, name: Kept })
+		} else if code.invites.any(|made| made.state() == Spent) {
+			Err(NameChosen)
+		} else {
+			renamed =
+				match directory.rename_human({ human: found.human, name }) {
+					Ok(done) => Ok(done.human)
+					Err(NameTaken) => Err(NameTaken)
+					Err(NoSuchHuman) => crash "HumanInvites.join: the invitee is a human of the directory, found in it by id"
+				}?
+			redeemed = HumanInvite.redeem(found.redeemable, renamed)
+			Ok({ spent: redeemed.spent, admission: redeemed.admission, name: Changed })
+		}
 	}
 }

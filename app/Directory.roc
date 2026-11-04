@@ -68,6 +68,25 @@ Directory :: {
 		admit_new_user(directory, grown)
 	}
 
+	## The directory with the human `human` named `name` instead, and that
+	## human as renamed; unless another user or a channel has the name, in
+	## any case (`NameTaken`), or `human` is not among its users
+	## (`NoSuchHuman`). The human's own name is theirs, so they may keep it
+	## in another case, and the name they leave is free again.
+	rename_human : Directory,
+	{ human : Users.Human, name : Name } -> Try(
+		{ directory : Directory, human : Users.Human },
+		[NameTaken, NoSuchHuman],
+	)
+	rename_human = |Directory.(d), { human, name }| {
+		renamed = d.users.rename_human({ human, name })?
+		keys = claim_key(d.keys.remove(human.user().name().key()), name.key())?
+		Ok({
+			directory: Directory.({ ..d, users: renamed.users, keys }),
+			human: renamed.human,
+		})
+	}
+
 	## The directory with an empty channel named `name`, created by an
 	## admin, and that channel.
 	create_channel : Directory,

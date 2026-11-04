@@ -31,8 +31,8 @@
 ## key admits, or a 401; any other by its session cookie, as the human the
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
-## `Route` says are open (the scripts, signing in and out, and redeeming an
-## agent's or a human's invite); any other page sends it to sign in, and any other request is a
+## `Route` says are open (the scripts, signing in and out, redeeming an
+## agent's invite, and joining by a human's); any other page sends it to sign in, and any other request is a
 ## 401. Only the first start, which makes Steve before anyone can sign in,
 ## and the demo's page take him as signed in with nothing checked
 ## (`SignedIn.dangerously_assume`); no request does.
@@ -388,7 +388,9 @@ upload_asked = |choice|
 		SignedInOnly(ShowInvites) => NoUpload
 		SignedInOnly(InviteHuman) => NoUpload
 		SignedInOnly(InviteHumanAgain(_)) => NoUpload
-		Open(RedeemHumanInvite) => NoUpload
+		Open(ShowJoin) => NoUpload
+		Open(LookUpJoinName) => NoUpload
+		Open(Join) => NoUpload
 		Open(ServeScript(_)) => NoUpload
 		Open(ShowLogin) => NoUpload
 		Open(SignIn) => NoUpload
@@ -710,8 +712,16 @@ answer_open_route! = |
 				body: request.body,
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
-		RedeemHumanInvite =>
-			HumanInvitesRoute.redeem!({
+		ShowJoin => HumanInvitesRoute.join_page
+		LookUpJoinName =>
+			HumanInvitesRoute.look_up_join_name!({
+				actor,
+				directory,
+				body: request.body,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		Join =>
+			HumanInvitesRoute.join!({
 				actor,
 				directory,
 				body: request.body,
@@ -877,6 +887,7 @@ answer_route! = |
 				acting,
 				directory,
 				body: request.body,
+				origin: own_origin_of(request),
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
 		InviteHumanAgain(human) =>
@@ -884,8 +895,22 @@ answer_route! = |
 				acting,
 				directory,
 				human,
+				origin: own_origin_of(request),
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
+	}
+
+## The origin `request` came to, which `handle_http_request!` has held to
+## one of this server's own.
+own_origin_of : Http.Request -> Str
+own_origin_of = |request|
+	match RequestOrigin.origin_of_host({
+		headers: request.headers,
+		port: request.port,
+		public_origin: request.public_origin,
+	}) {
+		Ok(origin) => origin
+		Err(_) => crash "main.own_origin_of: the request's Host passed RequestOrigin.check, so it names one of this server's origins"
 	}
 
 ## A message's POST to the conversation `key`, by `acting`, at the host's

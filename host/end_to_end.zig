@@ -171,24 +171,31 @@
 //! Then the human invites (`inviteSteps`):
 //!
 //! 48h. GET /invites: a form inviting someone by name;
-//! 48i. invite Debbie: her code shown once, never stored; her account
-//!      holding the name at once, `inviter` Steve, no password; the invite
-//!      live, by Steve, for seven days; her name again: 409; signing in as
-//!      her before she redeems: 401;
-//! 48j. redeem with no password: 400; with one: a 303 to /agents and her
-//!      session's cookie, never stored, the invite spent, her password's
-//!      bcrypt hash (cost 10) on disk; the code again: 401;
+//! 48i. invite Deb: the link `http://localhost:<port>/join#<code>` shown
+//!      once, never stored; her account holding the name at once,
+//!      `inviter` Steve, no password; the invite live, by Steve, for seven
+//!      days; her name again: 409; signing in as her before she joins: 401;
+//! 48j. GET /join: the form and its script; POST /join/name: her name as
+//!      JSON; joining under a taken name, a name that is no name, or no
+//!      password: 409, 400, 400, nothing spent; joining as Debbie: a 303 to
+//!      /agents and her session's cookie, never stored, her name Debbie,
+//!      the invite spent, her password's bcrypt hash (cost 10) on disk, the
+//!      session signed in; the code again, to join or for its name: 401;
+//!      /invites/redeem: 404;
 //! 48k. Debbie signs in with her password; adding a member or listing the
 //!      channels, 403 each; Steve adds her to #crew, and she posts there;
-//! 48l. an invite past its expiry: 401; its secret under another id: 401;
-//! 48m. Steve invites Debbie again: a new code, the same account; redeemed
-//!      with a new password, her old one is then a 401 and her new one
-//!      signs in; Debbie inviting again someone Steve invited, and Steve
-//!      inviting again the founder: 403 each; an agent: 404;
+//! 48l. Deb, the name she left, is free: Steve invites a new Deb; her
+//!      invite past its expiry: 401; its secret under another id: 401;
+//! 48m. Steve invites Debbie again: a new link, the same account; from a
+//!      browser signed in, joining or asking the name: 409; joining under
+//!      another name than the one she chose: 409; joining as Debbie with a
+//!      new password: her old one is then a 401 and her new one signs in;
+//!      Debbie inviting again someone Steve invited, and Steve inviting
+//!      again the founder: 403 each; an agent: 404;
 //! 48n. ten open invites: each made; an eleventh, again or new: 403;
-//! 48o. CC's key inviting or redeeming: 403 each; no one: /invites a 303
-//!      to sign in, an invite a 401;
-//! 48p. a cross-site form post inviting, inviting again or redeeming: 403
+//! 48o. CC's key inviting, joining or asking the name: 403 each; no one:
+//!      /invites a 303 to sign in, an invite a 401;
+//! 48p. a cross-site form post inviting, inviting again or joining: 403
 //!      each, nothing made;
 //! 48q. no file holds an invite's code or a password.
 //!
@@ -1010,36 +1017,64 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(page.body, "<form method=\"post\" action=\"/invites\"><p>Name <input type=\"text\" name=\"name\" required></p>"));
 
     // 48i.
-    const invited = try post(a, io, port, .{ .path = "/invites", .form = "name=Debbie" });
-    const code = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const invited = try post(a, io, port, .{ .path = "/invites", .form = "name=Deb" });
+    const link = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const link_start = try std.fmt.allocPrint(a, "http://localhost:{d}/join#", .{port});
+    const code = if (std.mem.startsWith(u8, link, link_start)) link[link_start.len..] else "";
     const created = try std.fmt.parseInt(i64, try readFile(a, io, data, "auth/3/human-invites/1/created"), 10);
     const expires = try std.fmt.parseInt(i64, try readFile(a, io, data, "auth/3/human-invites/1/expires"), 10);
-    try t.check("invite Debbie: 200, her code shown once, never stored; her account holds the name at once, inviter Steve, no password; the invite live, by Steve, seven days", invited.status == 200 and
+    try t.check("invite Deb: 200, the link that joins by her code, http://localhost:<port>/join#<code>, shown once, never stored; her account holds the name at once, inviter Steve, no password; the invite live, by Steve, seven days", invited.status == 200 and
         std.mem.eql(u8, invited.header("cache-control") orelse "", "no-store") and isToken(code, "3-") and
-        std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Debbie") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Deb") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/inviter"), "1") and
         !(try exists(io, data, "auth/3/password")) and !(try exists(io, data, "auth/3/owner")) and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "live") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/by"), "1") and
         expires - created == 7 * 24 * 60 * 60 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "4\n"));
-    const taken = try post(a, io, port, .{ .path = "/invites", .form = "name=DEBBIE" });
-    const unready = try anonymousPost(a, io, port, "/login", "name=Debbie&password=anything");
-    try t.check("her name again in any case: 409; signing in as her before she redeems: 401", taken.status == 409 and unready.status == 401);
+    const taken = try post(a, io, port, .{ .path = "/invites", .form = "name=DEB" });
+    const unready = try anonymousPost(a, io, port, "/login", "name=Deb&password=anything");
+    try t.check("her name again in any case: 409; signing in as her before she joins: 401", taken.status == 409 and unready.status == 401);
 
     // 48j.
+    const join_page = try anonymousGet(a, io, port, "/join");
+    const join_script = try anonymousGet(a, io, port, "/chat/assets/join.js");
+    try t.check("GET /join, signed in by no one: 200, a form posting a hidden code, a name and a new password, and the script that reads the code from the link", join_page.status == 200 and
+        has(join_page.body, "<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">") and
+        has(join_page.body, "name=\"name\" autocomplete=\"username\" required") and
+        has(join_page.body, "name=\"password\" autocomplete=\"new-password\" required") and
+        has(join_page.body, "<script src=\"/chat/assets/join.js\"></script>") and
+        join_script.status == 200 and has(join_script.body, "location.hash") and has(join_script.body, "\"/join/name\""));
+    const code_form = try std.fmt.allocPrint(a, "code={s}", .{code});
+    const looked_up = try anonymousPost(a, io, port, "/join/name", code_form);
+    try t.check("POST /join/name with her code: 200, the name the invite holds, as JSON, never stored", looked_up.status == 200 and
+        std.mem.eql(u8, looked_up.body, "{\"name\":\"Deb\"}") and
+        std.mem.eql(u8, looked_up.header("content-type") orelse "", "application/json") and
+        std.mem.eql(u8, looked_up.header("cache-control") orelse "", "no-store"));
+    const taken_name = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=steve&password=x", .{code}));
+    const no_name = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Deb%21&password=x", .{code}));
+    const no_password = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=", .{code}));
+    try t.check("join under a name taken in any case: 409; under a name that is no name: 400; with no password: 400; each spends nothing, her name and invite as they were", taken_name.status == 409 and
+        no_name.status == 400 and no_password.status == 400 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "live") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Deb") and !(try exists(io, data, "auth/3/password")));
     const debbie_password = "debbie's own secret";
-    const no_password = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=", .{code}));
-    const redeemed = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=debbie%27s+own+secret", .{code}));
+    const redeemed = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=debbie%27s+own+secret", .{code}));
     const hash = try readFile(a, io, data, "auth/3/password");
-    const again = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=another", .{code}));
-    try t.check("redeem with no password: 400, the invite still live; with one: a 303 to /agents, her session's cookie, never stored; the invite spent; her password's bcrypt hash, cost 10, on disk", no_password.status == 400 and
-        redeemed.status == 303 and std.mem.eql(u8, redeemed.header("location") orelse "", "/agents") and
+    try t.check("she joins as Debbie, not Deb: a 303 to /agents and her session's cookie, never stored; her name now Debbie; the invite spent; her password's bcrypt hash, cost 10, on disk", redeemed.status == 303 and
+        std.mem.eql(u8, redeemed.header("location") orelse "", "/agents") and
         std.mem.startsWith(u8, redeemed.header("set-cookie") orelse "", "__Host-gopher_auth=") and
         std.mem.eql(u8, redeemed.header("cache-control") orelse "", "no-store") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Debbie") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "spent") and
         std.mem.startsWith(u8, hash, "$2b$10$") and hash.len == 60 and !has(hash, debbie_password));
-    try t.check("redeem the same code again: 401, her password unchanged", again.status == 401 and
+    const joined_page = try getAs(a, io, port, try cookieLine(a, redeemed), "/invites");
+    try t.check("the session joining started: her own /invites, 200, signed in as Debbie", joined_page.status == 200 and has(joined_page.body, "Debbie"));
+    const again = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=another", .{code}));
+    const again_name = try anonymousPost(a, io, port, "/join/name", code_form);
+    const old_route = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=another", .{code}));
+    try t.check("her code again, to join or for its name: 401 each, her password unchanged; /invites/redeem: 404", again.status == 401 and
+        again_name.status == 401 and old_route.status == 404 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/password"), hash));
 
     // 48k.
@@ -1058,19 +1093,31 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(crew, "\nfrom: Debbie\n") and has(crew, "\n\nHello from Debbie\n\n"));
 
     // 48l.
-    const erin = try post(a, io, port, .{ .path = "/invites", .form = "name=Erin" });
-    const erin_code = between(erin.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const deb = try post(a, io, port, .{ .path = "/invites", .form = "name=Deb" });
+    const deb_link = between(deb.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const deb_code = if (std.mem.startsWith(u8, deb_link, link_start)) deb_link[link_start.len..] else "";
+    try t.check("Deb, the name Debbie left, is free again: Steve invites her, 200, a new account 4 holding it", isToken(deb_code, "4-") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/4/name"), "Deb"));
     try data.writeFile(io, .{ .sub_path = "auth/4/human-invites/1/expires", .data = "1000" });
-    const late = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=erins", .{erin_code}));
-    const wrong_user = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code=2-{s}&password=erins", .{erin_code["4-".len..]}));
-    try t.check("an invite past its expiry (its file set back): 401, still live, no password made; its secret under another id: 401", isToken(erin_code, "4-") and
-        late.status == 401 and wrong_user.status == 401 and
+    const late = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Deb&password=debs", .{deb_code}));
+    const late_name = try anonymousPost(a, io, port, "/join/name", try std.fmt.allocPrint(a, "code={s}", .{deb_code}));
+    const wrong_user = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code=2-{s}&name=Deb&password=debs", .{deb_code["4-".len..]}));
+    try t.check("an invite past its expiry (its file set back), to join or for its name: 401 each, still live, no password made; its secret under another id: 401", late.status == 401 and
+        late_name.status == 401 and wrong_user.status == 401 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/4/human-invites/1/state"), "live") and !(try exists(io, data, "auth/4/password")));
 
     // 48m.
     const reinvited = try post(a, io, port, .{ .path = "/invites/3/again", .form = "" });
-    const re_code = between(reinvited.body, "<p class=\"invite-code\">", "</p>") orelse "";
-    const re_redeemed = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=a+new+one", .{re_code}));
+    const re_link = between(reinvited.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const re_code = if (std.mem.startsWith(u8, re_link, link_start)) re_link[link_start.len..] else "";
+    const signed_in_join = try postAs(a, io, port, debbie, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=a+new+one", .{re_code}));
+    const signed_in_name = try postAs(a, io, port, debbie, "/join/name", try std.fmt.allocPrint(a, "code={s}", .{re_code}));
+    const renamed_again = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debra&password=a+new+one", .{re_code}));
+    try t.check("a browser signed in already, joining or asking the name: 409 each; joining again under another name than the one she chose: 409; the invite still live, her name Debbie", signed_in_join.status == 409 and
+        signed_in_name.status == 409 and renamed_again.status == 409 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/2/state"), "live") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Debbie"));
+    const re_redeemed = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=a+new+one", .{re_code}));
     const old_password = try anonymousPost(a, io, port, "/login", "name=Debbie&password=debbie%27s+own+secret");
     const new_password = try anonymousPost(a, io, port, "/login", "name=Debbie&password=a+new+one");
     try t.check("Steve invites Debbie again: 200, a new code for the same account, invite 2, by Steve; redeemed with a new password: 303", reinvited.status == 200 and
@@ -1086,7 +1133,7 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const her_again = try postAs(a, io, port, try cookieLine(a, new_password), "/invites/4/again", "");
     const founder_again = try post(a, io, port, .{ .path = "/invites/1/again", .form = "" });
     const agent_again = try post(a, io, port, .{ .path = "/invites/2/again", .form = "" });
-    try t.check("Debbie inviting Erin again, whom Steve invited: 403; Steve inviting the founder again, whom no one invited: 403; an agent: 404", her_again.status == 403 and
+    try t.check("Debbie inviting Deb again, whom Steve invited: 403; Steve inviting the founder again, whom no one invited: 403; an agent: 404", her_again.status == 403 and
         founder_again.status == 403 and agent_again.status == 404 and !(try exists(io, data, "auth/1/human-invites")));
 
     // 48n.
@@ -1103,19 +1150,20 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
 
     // 48o.
     const key_invites = try post(a, io, port, .{ .path = "/invites", .form = "name=Gus", .more = cc_bearer });
-    const key_redeems = try post(a, io, port, .{ .path = "/invites/redeem", .form = try std.fmt.allocPrint(a, "code={s}&password=x", .{erin_code}), .more = cc_bearer });
+    const key_redeems = try post(a, io, port, .{ .path = "/join", .form = try std.fmt.allocPrint(a, "code={s}&name=Deb&password=x", .{deb_code}), .more = cc_bearer });
+    const key_names = try post(a, io, port, .{ .path = "/join/name", .form = try std.fmt.allocPrint(a, "code={s}", .{deb_code}), .more = cc_bearer });
     const anon_page = try anonymousGet(a, io, port, "/invites");
     const anon_invites = try anonymousPost(a, io, port, "/invites", "name=Gus");
-    try t.check("CC's key inviting or redeeming: 403 each; no one: /invites a 303 to sign in, an invite a 401; nothing made", key_invites.status == 403 and
-        key_redeems.status == 403 and anon_page.status == 303 and anon_invites.status == 401 and !(try exists(io, data, "auth/5")));
+    try t.check("CC's key inviting, joining or asking the name: 403 each; no one: /invites a 303 to sign in, an invite a 401; nothing made", key_invites.status == 403 and
+        key_redeems.status == 403 and key_names.status == 403 and anon_page.status == 303 and anon_invites.status == 401 and !(try exists(io, data, "auth/5")));
 
     // 48p.
     const evil = "origin: http://evil.example\r\n";
     const forged_invite = try post(a, io, port, .{ .path = "/invites", .form = "name=Gus", .more = evil });
     const forged_again = try post(a, io, port, .{ .path = "/invites/3/again", .form = "", .more = evil });
-    const forged_redeem = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /invites/redeem HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\ncode={s}&password=x", .{ port, evil, "code=&password=x".len + re_code.len, re_code }));
-    const cross_redeem = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /invites/redeem HTTP/1.1\r\nhost: localhost:{d}\r\nsec-fetch-site: cross-site\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: 16\r\n\r\ncode=&password=x", .{port}));
-    try t.check("a cross-site form post inviting, inviting again or redeeming: 403 each; nothing made", forged_invite.status == 403 and
+    const forged_redeem = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /join HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\ncode={s}&password=x", .{ port, evil, "code=&password=x".len + re_code.len, re_code }));
+    const cross_redeem = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /join HTTP/1.1\r\nhost: localhost:{d}\r\nsec-fetch-site: cross-site\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: 16\r\n\r\ncode=&password=x", .{port}));
+    try t.check("a cross-site form post inviting, inviting again or joining: 403 each; nothing made", forged_invite.status == 403 and
         forged_again.status == 403 and forged_redeem.status == 403 and cross_redeem.status == 403 and
         !(try exists(io, data, "auth/5")) and !(try exists(io, data, "auth/3/human-invites/3")));
 
@@ -1125,7 +1173,7 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     var secrets_on_disk: usize = 0;
     for (on_disk.items) |path| {
         const bytes = try data.readFileAlloc(io, path, a, .limited(16 * 1024 * 1024));
-        for ([_][]const u8{ code[2..], erin_code[2..], re_code[2..], debbie_password, "a new one" }) |secret| {
+        for ([_][]const u8{ code[2..], deb_code[2..], re_code[2..], debbie_password, "a new one" }) |secret| {
             if (has(bytes, secret)) secrets_on_disk += 1;
         }
     }

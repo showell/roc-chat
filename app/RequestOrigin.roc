@@ -83,6 +83,34 @@ RequestOrigin :: [].{
 		}
 	}
 
+	## The origin a request came to, by its `Host`: `http://` and the host
+	## for one of the local names, or the public origin for its name. A
+	## link the chat hands out starts with it, so it leads back here by the
+	## way the asker came. Refused as `check` refuses a `Host`.
+	origin_of_host : {
+		headers : List(Http.Header),
+		port : U16,
+		public_origin : List(U8),
+	} -> Try(Str, [MissingHost, ForeignHost])
+	origin_of_host = |
+		{
+			headers,
+			port,
+			public_origin,
+		},
+	|
+		match RequestHeader.header_value(headers, "host") {
+			Unsent => Err(MissingHost)
+			Repeated => Err(ForeignHost)
+			Sent(host) => {
+				pairs = own_origins({ port, public_origin }).join_map(|kind| List.map2(kind.hosts, kind.origins, |named, origin| (named, origin)))
+				match pairs.find_first(|(named, _)| named == host) {
+					Ok((_, origin)) => Str.from_utf8(origin).map_err(|_| ForeignHost)
+					Err(NotFound) => Err(ForeignHost)
+				}
+			}
+		}
+
 	## Every refusal `check` answers, as `words` takes it. `check` lists its
 	## own errors in place; this union is only the handler's input.
 	Refusal : [
@@ -433,3 +461,28 @@ expect RequestOrigin.words(ForeignOrigin) == "The request comes from a page of a
 expect
 	RequestOrigin.words(CrossSiteFetch)
 		== "The browser says the request comes from another site's page."
+
+## The origin a request came to by the `Host` `host`, at port 9611, the
+## server's public origin `public_origin`.
+origin_at : { host : Str, public_origin : Str } -> Try(Str, _)
+origin_at = |{ host, public_origin }|
+	RequestOrigin.origin_of_host({
+		headers: [{ name: "host".to_utf8(), value: host.to_utf8() }],
+		port: 9611,
+		public_origin: public_origin.to_utf8(),
+	})
+
+# A link's origin is the one the request came to: either local name, or the
+# public one; another name or port, or no `Host`, is refused.
+expect origin_at({ host: "localhost:9611", public_origin: "" }) == Ok("http://localhost:9611")
+expect origin_at({ host: "127.0.0.1:9611", public_origin: "https://chat.example.com" }) == Ok("http://127.0.0.1:9611")
+expect origin_at({ host: "chat.example.com", public_origin: "https://chat.example.com" }) == Ok("https://chat.example.com")
+expect origin_at({ host: "chat.example.com", public_origin: "" }) == Err(ForeignHost)
+expect origin_at({ host: "localhost:9612", public_origin: "" }) == Err(ForeignHost)
+expect
+	RequestOrigin.origin_of_host({
+		headers: [],
+		port: 9611,
+		public_origin: [],
+	})
+		== Err(MissingHost)

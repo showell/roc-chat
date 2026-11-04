@@ -1,5 +1,5 @@
 ## This module builds the chat's pages: a conversation's page, the agents
-## page, the sign-in page, a page that says why a transcript was refused,
+## page, the sign-in page, the join page, a page that says why a transcript was refused,
 ## and a page that says one thing. The
 ## server sends structure and class names only. Every page loads
 ## app/palette.js in its head (`Script`), which sets the colours and
@@ -510,46 +510,66 @@ Page :: [].{
 				signed_in,
 				form,
 				newline,
-				paragraph("Invited? Enter your invite's code and the password you choose."),
-				redeem_form,
+			]),
+		})
+	}
+
+	## The join page, the same for every invite: the invite's code is after
+	## the link's `#`, which only the page's script (app/join.js) reads. Its
+	## form posts to `/join` the code, in a hidden field the script fills;
+	## the name, which the script fills with the name the invite holds, for
+	## the invitee to keep or change; and the password they choose.
+	join : TrustedHtml
+	join = {
+		form = Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path("/join"))],
+			inner: TrustedHtml.join([
+				Html.input([InputType(Hidden), FieldName(token("code"))]),
+				newline,
+				labelled_input({
+					label: "Your name",
+					attrs: [
+						InputType(Text),
+						FieldName(token("name")),
+						Autocomplete(Username),
+						Required,
+					],
+				}),
+				labelled_input({
+					label: "Your password",
+					attrs: [
+						InputType(Password),
+						FieldName(token("password")),
+						Autocomplete(NewPassword),
+						Required,
+					],
+				}),
+				Html.element({
+					name: Button,
+					attrs: [],
+					inner: Escape.text("Join"),
+				}),
+			]),
+		})
+		document({
+			title: "Join",
+			body: TrustedHtml.join([
+				Html.element({
+					name: H1,
+					attrs: [],
+					inner: Escape.text("Join the chat"),
+				}),
+				newline,
+				paragraph("Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it."),
+				form,
+				newline,
+				script(Script.Join),
 				newline,
 			]),
 		})
 	}
 }
-
-## The sign-in page's second form: a human invite's code and the password
-## its human chooses, posted to `/invites/redeem` (`HumanInvitesRoute`).
-redeem_form : TrustedHtml
-redeem_form =
-	Html.element({
-		name: Form,
-		attrs: [MethodPost, Action(site_path("/invites/redeem"))],
-		inner: TrustedHtml.join([
-			labelled_input({
-				label: "Invite code",
-				attrs: [
-					InputType(Text),
-					FieldName(token("code")),
-					Required,
-				],
-			}),
-			labelled_input({
-				label: "New password",
-				attrs: [
-					InputType(Password),
-					FieldName(token("password")),
-					Autocomplete(NewPassword),
-					Required,
-				],
-			}),
-			Html.element({
-				name: Button,
-				attrs: [],
-				inner: Escape.text("Join"),
-			}),
-		]),
-	})
 
 ## A paragraph of `label` and an input of `attrs`, and a line end.
 labelled_input : { label : Str, attrs : List(Html.Attribute) } -> TrustedHtml

@@ -209,6 +209,30 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 		else
 			Err(NoSuchOwner)
 
+	## The users with the human `human` named `name` instead, and that human
+	## as renamed; unless `human` is not one of these users, by the same id
+	## and name (`NoSuchHuman`). `Directory` keeps the new name unique.
+	rename_human : Users,
+	{ human : Users.Human, name : Name } -> Try(
+		{ users : Users, human : Users.Human },
+		[NoSuchHuman],
+	)
+	rename_human = |users, { human, name }|
+		if users.user(human.id()) == Ok(human.user()) {
+			renamed = Users.User.(
+				{
+					id: human.id(),
+					name,
+					role: Human,
+				},
+			)
+			Users.(held) = users
+			everyone = held.everyone.map(|user| if (user.id() == human.id()) renamed else user)
+			Ok({ users: Users.({ ..held, everyone }), human: Users.Human.(renamed) })
+		} else {
+			Err(NoSuchHuman)
+		}
+
 	## The user with the id `id`, if there is one.
 	user : Users, UserId -> Try(Users.User, [NoSuchUser])
 	user = |Users.(users), id|

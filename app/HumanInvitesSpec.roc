@@ -324,25 +324,36 @@ invite_made = |{ n, by }|
 zoe : Users.Human
 zoe = (with_zoe_and_bob.users().user(id("4")) ?? crash "HumanInvitesSpec: Zoe is 4").as_human() ?? crash "HumanInvitesSpec: Zoe is a human"
 
-## Zoe's invite 1 redeemed at `now` by its own code: its state after, and
-## whom it admits; or why not.
-redemption_at : I64 -> Try(Str, _)
-redemption_at = |now|
-	HumanInvite.redeem({
-		human: zoe,
-		invites: [invite_made({ n: 1, by: "2" })],
-		hash: hash(1),
-		now,
-	}).map_ok(
-		|r| {
-			state =
-				match r.spent.state() {
-					Live => "live"
-					Spent => "spent"
-				}
-			"${state}, admits ${r.admission.human().id().to_str()}"
+## Zoe's invite 1 found by the hash `hash(code)` at `now`, and spent for
+## her: its state after, and whom it admits; or why not.
+redemption_of : { invites : List(HumanInvite), code : U8, now : I64 } -> Try(Str, _)
+redemption_of = |{ invites, code, now }|
+	HumanInvite.find_redeemable(invites, { hash: hash(code), now }).map_ok(
+		|redeemable| {
+			redeemed = HumanInvite.redeem(redeemable, zoe)
+			"${state_word(redeemed.spent)}, admits ${redeemed.admission.human().id().to_str()}"
 		},
 	)
+
+## An invite's state, as a test reads it.
+state_word : HumanInvite -> Str
+state_word = |invite|
+	match invite.state() {
+		Live => "live"
+		Spent => "spent"
+	}
+
+## Zoe's invite 1, made at 1000, found and spent at `now` by its own code.
+redemption_at : I64 -> Try(Str, _)
+redemption_at = |now| redemption_of({ invites: [invite_made({ n: 1, by: "2" })], code: 1, now })
+
+## Zoe's invite 1, spent.
+spent_invite : HumanInvite
+spent_invite =
+	match HumanInvite.find_redeemable([invite_made({ n: 1, by: "2" })], { hash: hash(1), now: 1000 }) {
+		Ok(redeemable) => HumanInvite.redeem(redeemable, zoe).spent
+		Err(_) => crash "HumanInvitesSpec: Zoe's invite 1 is redeemable at 1000"
+	}
 
 # A redemption: spent, admitting its human; at its making, and just before
 # its expiry; refused at its expiry, before its making, and by any other
@@ -352,37 +363,20 @@ expect redemption_at(1000 + HumanInvite.lifetime_seconds - 1) == Ok("spent, admi
 expect redemption_at(1000 + HumanInvite.lifetime_seconds) == Err(Expired)
 expect redemption_at(999) == Err(Expired)
 expect HumanInvite.lifetime_seconds == 604800
+expect redemption_of({ invites: [invite_made({ n: 1, by: "2" })], code: 2, now: 1000 }) == Err(NoSuchInvite)
+# Redeemed once: the spent invite redeems no more, and another of hers still
+# does.
+expect state_word(spent_invite) == "spent"
+expect redemption_of({ invites: [spent_invite], code: 1, now: 1000 }) == Err(Spent)
 expect
-	HumanInvite.redeem({
-		human: zoe,
-		invites: [invite_made({ n: 1, by: "2" })],
-		hash: hash(2),
-		now: 1000,
-	}).map_ok(|_| {})
-		== Err(NoSuchInvite)
-# Redeemed once: the spent invite redeems no more.
-expect
-	match HumanInvite.redeem({
-		human: zoe,
-		invites: [invite_made({ n: 1, by: "2" })],
-		hash: hash(1),
-		now: 1000,
-	}) {
-		Ok(r) =>
-			HumanInvite.redeem({
-				human: zoe,
-				invites: [r.spent],
-				hash: hash(1),
-				now: 1000,
-			}).map_ok(|_| {})
-				== Err(Spent)
-		Err(_) => Bool.False
-	}
+	redemption_of({ invites: [spent_invite, invite_made({ n: 2, by: "2" })], code: 2, now: 1000 })
+		== Ok("spent, admits 4")
 # Open: live, from its making to just before its expiry.
 expect invite_made({ n: 1, by: "2" }).is_open(1000)
 expect invite_made({ n: 1, by: "2" }).is_open(1000 + HumanInvite.lifetime_seconds - 1)
 expect !invite_made({ n: 1, by: "2" }).is_open(1000 + HumanInvite.lifetime_seconds)
 expect !invite_made({ n: 1, by: "2" }).is_open(999)
+expect !spent_invite.is_open(1000)
 
 # The open invites a human made: theirs, live and unexpired, among every
 # human's.
@@ -395,53 +389,100 @@ expect HumanInvites.open_count(
 	{ by: id("2"), now: 1000 },
 ) == 2
 expect HumanInvites.open_count([invite_made({ n: 1, by: "2" })], { by: id("2"), now: 1000 + HumanInvite.lifetime_seconds }) == 0
-expect
-	match HumanInvite.redeem({
-		human: zoe,
-		invites: [invite_made({ n: 1, by: "2" })],
-		hash: hash(1),
-		now: 1000,
-	}) {
-		Ok(r) => HumanInvites.open_count(
-			[
-				r.spent,
-				invite_made({ n: 2, by: "2" }),
-			],
-			{ by: id("2"), now: 1000 },
-		) == 1
-		Err(_) => Bool.False
-	}
+expect HumanInvites.open_count([spent_invite, invite_made({ n: 2, by: "2" })], { by: id("2"), now: 1000 }) == 1
 
-## The redemption of a token for the user `user`, carrying the secret of
-## every byte 1, among Zoe's one invite.
-token_redemption : Str -> Try(Str, _)
-token_redemption = |user|
-	HumanInvites.redeem(
-		with_zoe_and_bob,
-		{
-			token: SecretToken.of({ user: id(user), secret: secret(1) }),
-			invites: [invite_made({ n: 1, by: "2" })],
-			hash: hash(1),
-			now: 1000,
-		},
-	).map_ok(|r| r.admission.human().id().to_str())
+## A code for the user `user`, carrying the secret of every byte 1, among
+## `invites`, its hash `hash(code)`, at 1000.
+join_code : { user : Str, invites : List(HumanInvite), code : U8 } -> HumanInvites.JoinCode
+join_code = |{ user, invites, code }| {
+	token: SecretToken.of({ user: id(user), secret: secret(1) }),
+	invites,
+	hash: hash(code),
+	now: 1000,
+}
 
-# A code redeems for the human it names; one naming an agent or no one, or
-# whose secret matches no invite, is the one refusal.
-expect token_redemption("4") == Ok("4")
-expect token_redemption("3") == Err(CodeRefused)
-expect token_redemption("9") == Err(CodeRefused)
-expect
-	HumanInvites.redeem(
+## The invitee a code for the user `user` finds among Zoe's one invite, by
+## its own hash: their id and name.
+invitee_of : Str -> Try(Str, _)
+invitee_of = |user|
+	HumanInvites.find_invitee(
 		with_zoe_and_bob,
-		{
-			token: SecretToken.of({ user: id("4"), secret: secret(1) }),
-			invites: [invite_made({ n: 1, by: "2" })],
-			hash: hash(2),
-			now: 1000,
-		},
-	).map_ok(|_| {})
+		join_code({ user, invites: [invite_made({ n: 1, by: "2" })], code: 1 }),
+	).map_ok(|found| "${found.human.id().to_str()} ${found.human.user().name().to_str()}")
+
+# A code finds the human it names and the name they hold; one naming an
+# agent or no one, or whose secret matches no invite or a spent one, is the
+# one refusal.
+expect invitee_of("4") == Ok("4 Zoe")
+expect invitee_of("3") == Err(CodeRefused)
+expect invitee_of("9") == Err(CodeRefused)
+expect
+	HumanInvites.find_invitee(with_zoe_and_bob, join_code({ user: "4", invites: [invite_made({ n: 1, by: "2" })], code: 2 })).map_ok(|_| {})
 		== Err(CodeRefused)
+expect
+	HumanInvites.find_invitee(with_zoe_and_bob, join_code({ user: "4", invites: [spent_invite], code: 1 })).map_ok(|_| {})
+		== Err(CodeRefused)
+
+## Zoe, by the code for `user` among `invites` with the hash `hash(code)`,
+## joining as `name`: the invite's state after, whom it admits and under
+## what name, and whether the name changed; or why not.
+join_as : { user : Str, invites : List(HumanInvite), code : U8, name : Str } -> Try(Str, _)
+join_as = |{ user, invites, code, name }|
+	HumanInvites.join(
+		with_zoe_and_bob,
+		{
+			code: join_code({ user, invites, code }),
+			name: Sample.name(name),
+		},
+	).map_ok(
+		|joined| {
+			changed =
+				match joined.name {
+					Kept => "kept"
+					Changed => "changed"
+				}
+			human = joined.admission.human()
+			"${state_word(joined.spent)}, admits ${human.id().to_str()} as ${human.user().name().to_str()}, ${changed}"
+		},
+	)
+
+## Zoe's first invite, which she has never redeemed.
+first_invite : List(HumanInvite)
+first_invite = [invite_made({ n: 1, by: "2" })]
+
+# Zoe joins under the name her inviter chose, or under any other free name,
+# her own in another case included; a name another user or a channel has,
+# in any case, is refused, and nothing is spent.
+expect join_as({ user: "4", invites: first_invite, code: 1, name: "Zoe" }) == Ok("spent, admits 4 as Zoe, kept")
+expect join_as({ user: "4", invites: first_invite, code: 1, name: "Zoey" }) == Ok("spent, admits 4 as Zoey, changed")
+expect join_as({ user: "4", invites: first_invite, code: 1, name: "ZOE" }) == Ok("spent, admits 4 as ZOE, changed")
+expect ["Bob", "bob", "Steve", "CC"].all(|name| join_as({ user: "4", invites: first_invite, code: 1, name }) == Err(NameTaken))
+# The code is judged before the name: a bad code is the one refusal, whatever
+# the name.
+expect ["Zoe", "Zoey", "Bob"].all(|name| join_as({ user: "4", invites: first_invite, code: 2, name }) == Err(CodeRefused))
+expect join_as({ user: "4", invites: [spent_invite], code: 1, name: "Zoe" }) == Err(CodeRefused)
+# A human who redeemed an invite before chose her name then: redeeming a
+# later one keeps it exactly, and any other name, her own in another case
+# included, is refused.
+expect
+	join_as({ user: "4", invites: [spent_invite, invite_made({ n: 2, by: "1" })], code: 2, name: "Zoe" })
+		== Ok("spent, admits 4 as Zoe, kept")
+expect
+	["Zoey", "ZOE", "Bob"].all(
+		|name| join_as({ user: "4", invites: [spent_invite, invite_made({ n: 2, by: "1" })], code: 2, name }) == Err(NameChosen),
+	)
+
+# Who may join: no one signed in; never a key, never a browser signed in.
+expect HumanInvites.admit_joiner(Anonymous) == Ok({})
+expect HumanInvites.admit_joiner(SignedIn(cc_by_key)) == Err(ByApiKey)
+expect [steve, apoorva, cc_by_session].all(|acting| HumanInvites.admit_joiner(SignedIn(acting)) == Err(SignedInAlready))
+
+# A join's name: a name; none, or one that is no name, refused; a form at
+# fault said.
+expect HumanInvites.name_from_form("code=x&name=Zoey&password=y".to_utf8()).map_ok(|name| name.to_str()) == Ok("Zoey")
+expect HumanInvites.name_from_form("name=".to_utf8()).map_ok(|_| {}) == Err(BadName)
+expect HumanInvites.name_from_form("name=Zoe%21".to_utf8()).map_ok(|_| {}) == Err(BadName)
+expect HumanInvites.name_from_form("code=x".to_utf8()).map_ok(|_| {}) == Err(BadForm("The form has no field `name`."))
 
 # Its facts to their files and back; each fact that holds no such fact
 # refused, naming its file.
@@ -487,6 +528,8 @@ expect
 		(NotYours, 403),
 		(BadPassword, 400),
 		(CodeRefused, 401),
+		(SignedInAlready, 409),
+		(NameChosen, 409),
 	].all(|(why, status)| HumanInvites.refusal_notice(why).status == status)
 
 ## The route `method` and `path` choose, in the sample directory.
@@ -505,9 +548,9 @@ expect route_of("PUT", "/invites") == MethodNotAllowed(GetAndPost)
 expect route_of("POST", "/invites/4/again") == SignedInOnly(InviteHumanAgain(id("4")))
 expect route_of("GET", "/invites/4/again") == MethodNotAllowed(PostOnly)
 expect route_of("PUT", "/invites/4/again") == MethodNotAllowed(PostOnly)
-expect route_of("POST", "/invites/redeem") == Open(RedeemHumanInvite)
-expect route_of("GET", "/invites/redeem") == MethodNotAllowed(PostOnly)
-expect route_of("PUT", "/invites/redeem") == MethodNotAllowed(PostOnly)
+expect route_of("GET", "/join") == Open(ShowJoin)
+expect route_of("POST", "/join") == Open(Join)
+expect route_of("POST", "/join/name") == Open(LookUpJoinName)
 expect
 	[
 		"/invites/x/again",
