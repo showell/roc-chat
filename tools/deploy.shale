@@ -1,33 +1,39 @@
--- **THE PROD DEPLOY**: gopher-roc, built here, to the prod droplet, behind
--- its Caddy at https://chat.lynrummy.com (docs/deploy.md has the cutover
--- from roc-chat and the one-time steps).
+-- This script deploys gopher-roc, built on this box, to the prod droplet behind
+-- its Caddy at https://chat.lynrummy.com. It takes no arguments and runs from
+-- gopher-roc's root, on `main`. docs/deploy.md is the runbook: the cutover from
+-- roc-chat is three runs of this script, each stopping where the runbook says.
 --
 --   shale tools/deploy.shale
 --
--- No arguments. In order, each step refusing, by name, what it cannot do:
--- 1. **Refuses** when chat.lynrummy.com does not resolve to the droplet,
---    when the tree has changes not committed or is not on `main`, when
---    prod's Caddyfile does not import /etc/caddy/sites/*.caddy or define the
---    `access_log` snippet (that Caddyfile is angry-gopher's deploy/Caddyfile;
---    this never edits it), or while roc-chat still runs there (the cutover
---    stops it first: docs/deploy.md), or when main has no upstream. Then
---    pushes, so what serves is on GitHub.
--- 2. Builds the binary here: static (musl), ReleaseSafe, so bcrypt runs at
---    release speed and every safety check stays on.
--- 3. Makes, once, the `gopherroc` system user, /opt/gopher-roc (root's) and
---    /var/lib/gopher-roc with its data/ (gopherroc's, mode 700). An empty
---    data/ gets the first chat at the first start: Steve as id 1, the
---    channel `general`, and the server's `.session-secret`.
--- 4. Copies the binary and proves the copy (its sha256 on prod is this
---    one's), swaps it in whole (a rename), installs the systemd unit when it
---    changed, restarts, and waits for 127.0.0.1:9611 to answer.
--- 5. Installs deploy/chat.lynrummy.com.caddy when it changed, its access log
---    made Caddy's first; Caddy validates the whole config before the reload,
+-- Each step refuses, by name, what it cannot do:
+--
+-- 1. It refuses unless chat.lynrummy.com resolves to the droplet, the tree is
+--    clean and on `main`, and prod's Caddyfile imports /etc/caddy/sites/*.caddy
+--    and defines the `access_log` snippet. That Caddyfile is angry-gopher's
+--    deploy/Caddyfile, and this script never edits it.
+-- 2. It makes, once, the `gopherroc` system user, /opt/gopher-roc (root's) and
+--    /var/lib/gopher-roc with data/ (gopherroc's, mode 700).
+-- 3. It refuses when .github-client-id or .github-client-secret is not in the
+--    data root. The server reads them only at its start, and sign-up is by
+--    GitHub, so it never starts without them.
+-- 4. It builds the binary here: static (musl) and ReleaseSafe, so bcrypt runs
+--    at release speed and the safety checks stay on.
+-- 5. It refuses while roc-chat still runs on prod, as the cutover stops it first.
+-- 6. It pushes `main` when `main` has an upstream, and says so when it has none,
+--    as this repo has no remote yet.
+-- 7. It copies the binary, proves the copy by its sha256, swaps it in whole by a
+--    rename, installs the systemd unit when it changed, restarts, and waits for
+--    127.0.0.1:9611 to answer.
+-- 8. It refuses to go on unless the first start seeded the chat: the owner's
+--    account, the channel `general`, the counter of ids and .session-secret.
+--    No sign-up can reach a server that lacks them.
+-- 9. It installs deploy/chat.lynrummy.com.caddy when it changed, with its access
+--    log made Caddy's first. Caddy validates the whole config before the reload,
 --    and the old block goes back if the new one fails.
--- 6. Over HTTPS: `/login` answers 200 with gopher-roc's
---    `Cross-Origin-Resource-Policy: same-origin`, and `/agents` sends a
---    browser with no session to `/login?next=/agents`. Then says whether
---    Steve has a password yet (docs/deploy.md, "Steve's password").
+-- 10. Over HTTPS it checks the doors: `/` goes to Browse, `/chat` and `/agents`
+--    go to sign in, `/login` is gopher-roc's page and offers GitHub, and
+--    `/login/github/start` goes to GitHub. Then it says whether the owner has a
+--    password and has linked GitHub yet.
 --
 -- budget: steps=50000000
 
@@ -46,12 +52,12 @@ const OUT = ".zig-cache/deploy"
 
 if not exists("deploy/" .. BLOCK) or not exists("deploy/" .. UNIT) then fail("deploy: run it from gopher-roc's root") end
 
--- A command on prod: it must succeed.
+-- A command on prod that must succeed.
 function on_prod(script)
   return must(run({"ssh", HOST, script}, {timeout_ms = 120000, whole = 100000, want = "ssh: the deploy's own steps on prod"}))
 end
 
--- A command on prod whose exit is an answer: 0 yes, 1 no.
+-- A command on prod whose exit is an answer: 0 is yes and 1 is no.
 function asks_prod(script)
   local r = run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: a question to prod, its exit the answer"})
   if r.code ~= 0 and r.code ~= 1 then fail("deploy: prod could not be asked (ssh exit " .. r.code .. "): " .. trim(r.out)) end
@@ -62,7 +68,21 @@ function copy_to_prod(local_path, remote_path)
   must(run({"scp", "-q", local_path, HOST .. ":" .. remote_path}, {timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod"}))
 end
 
--- 1. Refusals, then the push.
+-- The Location of a GET of `path`, which must be a 303.
+function location_of(path)
+  local r = http("GET", ORIGIN .. path)
+  local where = ""
+  if has_key(r.headers, "location") then where = r.headers.location end
+  if r.status ~= 303 then fail("deploy: " .. ORIGIN .. path .. " answers " .. r.status .. ", not a 303") end
+  return where
+end
+
+function must_send(path, to)
+  local where = location_of(path)
+  if where ~= to then fail("deploy: " .. ORIGIN .. path .. " sends the browser to '" .. where .. "', not " .. to) end
+end
+
+-- 1. The refusals that change nothing.
 local dns = run({"dig", "+short", "@1.1.1.1", "A", NAME}, {timeout_ms = 30000, whole = 10000, want = "dig: the name's public answer"})
 local resolved = trim(dns.out)
 local last = resolved
@@ -78,40 +98,54 @@ end
 if not asks_prod("grep -q '^(access_log) {' /etc/caddy/Caddyfile") then
   fail("deploy: prod's Caddyfile does not define the access_log snippet " .. BLOCK .. " imports (angry-gopher's deploy/Caddyfile does)")
 end
--- is-active exits 3 when stopped and 4 when there is no unit: both are "no".
-if asks_prod("if systemctl is-active --quiet roc-chat; then exit 0; else exit 1; fi") then
-  fail("deploy: roc-chat still runs on prod; docs/deploy.md, \"The cutover\", stops it first")
-end
-if git_upstream("") == nil then fail("deploy: main has no upstream to push to; what serves must be on GitHub first") end
-must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
-local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
-print("deploying gopher-roc " .. commit .. " to " .. HOST)
 
--- 2. The binary.
-must(run({"zig", "build", "-Dtarget=x86_64-linux-musl", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20}))
-local built = OUT .. "/bin/gopher-roc"
-local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
-print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
-
--- Everything copied to prod is staged in a folder of its own, made fresh
--- under steve's home (mode 700, a name no one can guess before it is made),
--- never at a fixed /tmp name another local user could plant first.
-const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" gopher-roc-deploy.XXXXXXXX").out)
-if find(STAGE, "/gopher-roc-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
-
--- 3. The user and the folders, once.
+-- 2. The user and the folders, once.
 on_prod("set -e\n"
   .. "id gopherroc >/dev/null 2>&1 || sudo useradd --system --home-dir " .. HOME .. " --no-create-home --shell /usr/sbin/nologin gopherroc\n"
   .. "sudo install -d -o root -g root -m 755 /opt/gopher-roc\n"
   .. "sudo install -d -o gopherroc -g gopherroc -m 700 " .. HOME .. " " .. DATA)
 
--- 4. The binary in, proven, swapped whole; the unit; the restart.
+-- 3. The OAuth app's id and secret, which the owner copies on prod.
+for name in {".github-client-id", ".github-client-secret"} do
+  if not asks_prod("sudo test -s " .. DATA .. "/" .. name) then
+    fail("deploy: " .. DATA .. "/" .. name .. " is missing or empty on prod; docs/deploy.md, step 4, copies it from roc-chat's")
+  end
+end
+
+-- 4. The binary.
+must(run({"zig", "build", "-Dtarget=x86_64-linux-musl", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20}))
+local built = OUT .. "/bin/gopher-roc"
+local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
+print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
+
+-- 5. roc-chat. is-active exits 3 when stopped and 4 when there is no unit, and
+-- both are "no".
+if asks_prod("if systemctl is-active --quiet roc-chat; then exit 0; else exit 1; fi") then
+  fail("deploy: roc-chat still runs on prod; the build is ready, and docs/deploy.md, step 6, stops it")
+end
+
+-- 6. The push.
+if git_upstream("") == nil then
+  print("main has no upstream, so nothing is pushed: what serves is on this box alone")
+else
+  must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
+end
+local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
+print("deploying gopher-roc " .. commit .. " to " .. HOST)
+
+-- Everything copied to prod is staged in a folder of its own, made fresh under
+-- steve's home with mode 700 and a name no one can guess, so no other local
+-- user can plant a file there first.
+const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" gopher-roc-deploy.XXXXXXXX").out)
+if find(STAGE, "/gopher-roc-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
+
+-- 7. The binary, the unit and the restart.
 copy_to_prod(built, STAGE .. "/gopher-roc.new")
 local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/gopher-roc.new").out), " ")[1]
 if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
 on_prod("set -e\nsudo install -o root -g root -m 755 " .. STAGE .. "/gopher-roc.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f " .. STAGE .. "/gopher-roc.new")
 copy_to_prod("deploy/" .. UNIT, STAGE .. "/" .. UNIT)
--- cmp exits 2 on a file that is not there: a first deploy's unit is "changed".
+-- cmp exits 2 on a file that is not there, so a first deploy's unit counts as changed.
 if asks_prod("[ -f /etc/systemd/system/" .. UNIT .. " ] && cmp -s " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT) then
   print("the unit is unchanged")
 else
@@ -125,14 +159,21 @@ on_prod("set -e\nsudo systemctl restart gopher-roc\n"
   .. "curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/login")
 print("gopher-roc " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
 
--- 5. The site block, validated before it counts.
+-- 8. What the first start seeds, before any sign-up can arrive.
+for name in {"auth/1/name", "auth/next-id.txt", "chat/channel/general.channel", ".session-secret"} do
+  if not asks_prod("sudo test -s " .. DATA .. "/" .. name) then
+    fail("deploy: " .. DATA .. "/" .. name .. " is missing or empty after the start, so the chat is not seeded; the site block is left as it was")
+  end
+end
+
+-- 9. The site block, validated before it counts.
 copy_to_prod("deploy/" .. BLOCK, STAGE .. "/" .. BLOCK)
 if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
   print("the site block is unchanged")
 else
   on_prod("set -e\n"
     .. "sudo install -d -m 755 /etc/caddy/sites\n"
-    .. "# The block's log, Caddy's before validate: validate runs as root and would make it root's.\n"
+    .. "# The log is made Caddy's before validate, which runs as root and would make it root's.\n"
     .. "[ -f " .. LOG .. " ] || sudo install -o caddy -g caddy -m 640 /dev/null " .. LOG .. "\n"
     .. "if [ -f /etc/caddy/sites/" .. BLOCK .. " ]; then sudo cp /etc/caddy/sites/" .. BLOCK .. " " .. STAGE .. "/" .. BLOCK .. ".old; else rm -f " .. STAGE .. "/" .. BLOCK .. ".old; fi\n"
     .. "sudo install -m 644 " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK .. "\n"
@@ -149,8 +190,8 @@ on_prod("rm -f " .. STAGE .. "/" .. BLOCK)
 
 on_prod("rm -rf " .. STAGE)
 
--- 6. The front door, over HTTPS. curl, not http(): a handshake that fails
--- while Caddy reloads is a try to repeat, not an error to stop on.
+-- 10. The doors, over HTTPS. The first try uses curl, not http(), because a
+-- handshake that fails while Caddy reloads is a try to repeat, not an error.
 local code = ""
 local tries = 0
 while tries < 30 do
@@ -167,15 +208,21 @@ if has_key(login.headers, "cross-origin-resource-policy") then corp = login.head
 if login.status ~= 200 or corp ~= "same-origin" then
   fail("deploy: " .. ORIGIN .. "/login answers " .. login.status .. " with Cross-Origin-Resource-Policy '" .. corp .. "': not gopher-roc's sign-in page")
 end
-local agents = http("GET", ORIGIN .. "/agents")
-local where = ""
-if has_key(agents.headers, "location") then where = agents.headers.location end
-if agents.status ~= 303 or where ~= "/login?next=/agents" then
-  fail("deploy: " .. ORIGIN .. "/agents answers " .. agents.status .. " to '" .. where .. "', not a 303 to /login?next=/agents")
+if find(login.body, "/login/github/start") == nil then fail("deploy: " .. ORIGIN .. "/login offers no GitHub sign-in: the server did not take its GitHub files") end
+must_send("/", "/chat")
+must_send("/chat", "/login?next=/chat")
+must_send("/agents", "/login?next=/agents")
+if not starts_with(location_of("/login/github/start"), "https://github.com/login/oauth/authorize?") then
+  fail("deploy: " .. ORIGIN .. "/login/github/start does not send the browser to GitHub's authorize page")
 end
-print("deployed: " .. ORIGIN .. "/login (gopher-roc " .. commit .. "); /agents sends a browser with no session to sign in")
+print("deployed: " .. ORIGIN .. "/ (gopher-roc " .. commit .. "); the doors answer as they should")
 if asks_prod("sudo test -s " .. DATA .. "/auth/1/password") then
-  print("Steve has a password")
+  print("the owner has a password")
 else
-  print("Steve has no password yet: docs/deploy.md, \"Steve's password\", says how to write its hash")
+  print("the owner has no password yet: docs/deploy.md, step 8, sets it")
+end
+if asks_prod("sudo test -s " .. DATA .. "/auth/1/github-id") then
+  print("the owner has linked GitHub")
+else
+  print("the owner has not linked GitHub yet: docs/deploy.md, step 9, comes before signing in with GitHub")
 end

@@ -1,22 +1,25 @@
-# gopher-roc in prod, https://chat.lynrummy.com. The prod droplet's Caddyfile
-# (angry-gopher's deploy/Caddyfile) imports /etc/caddy/sites/*.caddy, where
-# tools/deploy.shale installs this file beside lynrummy.com's and
-# roc.lynrummy.com's site blocks. Every request is logged to
-# /var/log/caddy/chat-access.log by the `access_log` snippet that Caddyfile
-# defines for every site on prod.
+# This is gopher-roc's site block on the prod droplet, for
+# https://chat.lynrummy.com. tools/deploy.shale installs it as
+# /etc/caddy/sites/chat.lynrummy.com.caddy, in roc-chat's block's place. The
+# droplet's Caddyfile (angry-gopher's deploy/Caddyfile) imports that folder and
+# defines the `access_log` snippet, which logs every request to
+# /var/log/caddy/chat-access.log.
 #
-# **CADDY TERMINATES HTTPS AND PASSES THE REQUEST THROUGH AS IT CAME**: the
-# app holds every request to its own origin from its head (Host, Origin,
-# Sec-Fetch-Site, Sec-Fetch-Mode; app/RequestOrigin.roc), and finds who is
-# acting from Cookie or Authorization. reverse_proxy keeps all of them by
-# default, Host included, so nothing here may set, rewrite or strip one, and
-# no path prefix is added: a rewritten Host or Origin is a 403 from the app.
-# Caddy caches nothing unless told to; nothing here tells it to.
+# Caddy terminates HTTPS and passes each request through as it came. The app
+# holds every request to its own origin from its Host, Origin, Sec-Fetch-Site
+# and Sec-Fetch-Mode (app/RequestOrigin.roc), and finds who is acting from its
+# Cookie or Authorization. reverse_proxy keeps all of them by default, Host
+# included, so nothing here may set, rewrite or strip one, and no path prefix
+# is added: the app answers a rewritten Host or Origin with a 403.
+#
+# This block holds no per-client cap on connections, because the stock Caddy
+# prod runs has no directive for one. docs/deploy.md, "The per-client cap", says
+# what bounds a client today and what the choices are.
 chat.lynrummy.com {
 	import access_log chat
-	# **NEVER AN EVENT STREAM**: gzip buffers what it compresses, so an SSE
-	# frame could sit in the encoder instead of reaching the browser. Only
-	# the types listed are compressed; text/event-stream is not among them.
+	# Gzip buffers what it compresses, which would hold back an event stream.
+	# Only the types listed here are compressed, and text/event-stream is not
+	# among them.
 	encode {
 		gzip
 		match {
@@ -29,14 +32,14 @@ chat.lynrummy.com {
 		}
 	}
 
-	# The outer cap: the app's largest admission, an upload's 10 MiB image
-	# and 64 KiB of form (`upload_body_allowance` in app/main.roc,
-	# 10,551,296 bytes). The app refuses past its own cap per route.
+	# This is the app's largest admission, an upload's 10 MiB image and 64 KiB
+	# of form (`upload_body_allowance` in app/main.roc). The app holds each
+	# route to its own smaller cap.
 	request_body {
 		max_size 10551296
 	}
 
-	# The security headers are lynrummy.com's.
+	# These security headers are lynrummy.com's.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
@@ -44,11 +47,10 @@ chat.lynrummy.com {
 		X-Frame-Options "SAMEORIGIN"
 	}
 
-	# **A STREAM IS WRITTEN THROUGH AS IT COMES**: flush_interval -1, so an
-	# SSE frame reaches the browser at once and is never held in a buffer.
-	# No timeout here ends one: the app ends a stream after an hour
-	# (`Limits.stream_most_ms`), and Caddy sets no stream or read timeout
-	# unless told. A Caddy reload ends every stream; the clients reconnect.
+	# flush_interval -1 writes an event through as it comes. No timeout is set
+	# here, so the app ends a stream itself after an hour
+	# (`Limits.stream_most_ms`). A Caddy reload ends every stream, and the
+	# clients reconnect.
 	reverse_proxy 127.0.0.1:9611 {
 		flush_interval -1
 	}

@@ -1,12 +1,13 @@
-# gopher-roc on the prod droplet, behind Caddy (deploy/chat.lynrummy.com.caddy),
-# installed by tools/deploy.shale as /etc/systemd/system/gopher-roc.service.
+# This unit runs gopher-roc on the prod droplet, behind Caddy
+# (deploy/chat.lynrummy.com.caddy). tools/deploy.shale installs it as
+# /etc/systemd/system/gopher-roc.service.
 #
-# **CONFINED, BESIDE lynrummy.com's FRONT DOOR**: Caddy holds the site's
-# certificates on this machine, so gopher-roc runs as its own system user,
-# listens on 127.0.0.1 alone (the host has no other bind), and can write
-# nothing but its own folder, /var/lib/gopher-roc (data/, the chat's whole
-# store, its .session-secret included). The binary, /opt/gopher-roc/gopher-roc,
-# is root's and read-only to it.
+# Caddy holds the site's certificates on this machine, so gopher-roc runs as
+# its own system user. It listens on 127.0.0.1 alone, as the host has no other
+# bind, and it can write only /var/lib/gopher-roc, which holds data/, the
+# chat's whole store and its secrets. The binary, /opt/gopher-roc/gopher-roc,
+# is root's and read-only to it. GitHub sign-in needs its outbound HTTPS, and
+# reads the system's certificates, which ProtectSystem leaves readable.
 [Unit]
 Description=gopher-roc, the Roc chat (chat.lynrummy.com)
 After=network.target
