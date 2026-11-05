@@ -1,7 +1,8 @@
 ## This module holds the chat's channels. A channel has a name and a set of
 ## members, who may be humans or agents. Only an admin may create a channel
 ## or change its members, so each of those functions asks for an `Admin`,
-## which only `Admin.of` makes.
+## which only `Admin.of` makes. The one exception is a new human, who starts
+## in the default channel with no one's say (`add_new_human`).
 ##
 ## Channel names are not checked for clashes here. `Directory` holds the
 ## channels with the users, and keeps every name unique across both.
@@ -61,6 +62,11 @@ Channels :: List(Channels.Channel).{
 			},
 		).map_ok(|all| Channels.(all))
 
+	## The channel every new human starts in, which the first start makes.
+	default_name : ChannelName
+	default_name =
+		ChannelName.from_str("general") ?? crash "Channels.default_name: general is a channel's name"
+
 	## An admin's change to one channel's members: the admin, the channel,
 	## and the user who joins or leaves it.
 	MemberChange : {
@@ -90,6 +96,16 @@ Channels :: List(Channels.Channel).{
 			Ok(found) => Ok(found)
 			Err(NotFound) => Err(NoSuchChannel)
 		}
+
+	## The channels with `human`, whose account is just being made, added to
+	## the default channel, and that channel; unless it is gone
+	## (`NoDefaultChannel`), as its members file was removed by hand.
+	add_new_human : Channels, Users.Human -> Try(Channels.Created, [NoDefaultChannel])
+	add_new_human = |channels, human| {
+		Channels.Channel.(c) = channels.channel(Channels.default_name) ? |NoSuchChannel| NoDefaultChannel
+		joined = Channels.Channel.({ ..c, members: c.members.insert(human.id()) })
+		Ok({ channels: with_channel(channels, joined), channel: joined })
+	}
 
 	## The channels with the change's member added to its channel. The
 	## channel must exist (`NoSuchChannel`), and then the user must not be

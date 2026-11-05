@@ -22,6 +22,28 @@ admin = Sample.admin
 with_plans : Channels
 with_plans = Channels.empty.create({ by: admin, name: channel_name("plans") }).channels
 
+## The default channel, holding Steve, and `plans`.
+with_default : Channels
+with_default =
+	Channels.from_files([
+		{ name: Channels.default_name, members: "1\n".to_utf8() },
+		{ name: channel_name("plans"), members: "1\n".to_utf8() },
+	]) ?? crash "ChannelsSpec: the members files read"
+
+# The default channel is the one the chat starts with.
+expect Channels.default_name.to_str() == "general"
+# A new human joins it, with no admin, and no other channel.
+expect {
+	joined =
+		with_default.add_new_human(Sample.human("Apoorva")) ?? crash "ChannelsSpec: it is there"
+	plans = joined.channels.channel(channel_name("plans")) ?? crash "ChannelsSpec: plans is there"
+	joined.channel.name() == Channels.default_name
+		and joined.channel.members_file() == "1\n2\n".to_utf8()
+		and plans.members_file() == "1\n".to_utf8()
+}
+# With no default channel there is nowhere to join.
+expect with_plans.add_new_human(Sample.human("Apoorva")).map_ok(|_| {}) == Err(NoDefaultChannel)
+
 ## `channels` with `change` made to `plans` by the admin.
 apply_change : Channels,
 [Add(Users.User), Remove(Users.User)] -> Try(

@@ -4,7 +4,8 @@
 ## `HumanInvites`' to decide; this module reads, writes and answers.
 ##
 ## Inviting someone writes, in order: the counter of ids, the new human's
-## account (`inviter`, then `name`), then the invite (its `hash` last). A
+## account (`inviter`, then `name`), the default channel's members, then the
+## invite (its `hash` last). A
 ## failure part way leaves an account holding the name with no code, which
 ## its inviter invites again, never a code for a half-made account. The
 ## page shows the link that joins by the code, `<origin>/join#<code>`,
@@ -24,12 +25,14 @@
 ## a code redeems once even when that write fails; then the human's
 ## password's bcrypt hash, made by the host at its standard cost, replaces
 ## any before it, and a session starts
-## (`SignInRoute.start_session_by_invite!`).
+## (`SignInRoute.start_session_by_invite!`), landing where `FirstPage` says.
 import pf.Host
 import pf.Http
 import AgentsRoute
 import Directory
 import FileSystem
+import FirstPage
+import Html
 import HttpAnswer
 import HumanInvite
 import HumanInvites
@@ -229,6 +232,7 @@ invite_human! = |
 		human: made.human,
 		inviter: made.inviter.id(),
 	}) ? |fault| FileSystem(fault)
+	FileSystem.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
 	code = issue_invite!({
 		human: made.human.id(),
 		by: made.inviter.id(),
@@ -360,20 +364,32 @@ load_join_name! = |request| {
 }
 
 ## The join: the form read, the name decided, then written if it changed,
-## the invite spent, and the password written; then the admission, and the
-## hash written, which the session is signed over.
+## the invite spent, and the password written; then the admission, the hash
+## written, which the session is signed over, and where the human lands.
 join_by_invite! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
 	now : I64,
-} => Try({ admission : HumanInvite.Admission, password_hash : List(U8) }, _)
+} => Try(
+	{
+		admission : HumanInvite.Admission,
+		password_hash : List(U8),
+		next : Html.SitePath,
+	},
+	_,
+)
 join_by_invite! = |request| {
 	code = load_join_code!(request)?
 	name = HumanInvites.name_from_form(request.body) ? |why| Refused(why)
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
 	joined = HumanInvites.join(request.directory, { code, name }) ? |why| Refused(why)
 	human = joined.admission.human()
+	next = FirstPage.load!({
+		directory: request.directory,
+		human,
+		wanted: SignInRoute.default_next,
+	})?
 	_ =
 		match joined.name {
 			Kept => Ok({})
@@ -382,7 +398,11 @@ join_by_invite! = |request| {
 	FileSystem.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
 	hash = Host.bcrypt_hash_of_password!(password.bytes_to_check())
 	FileSystem.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
-	Ok({ admission: joined.admission, password_hash: hash })
+	Ok({
+		admission: joined.admission,
+		password_hash: hash,
+		next,
+	})
 }
 
 ## Every human of `directory`.

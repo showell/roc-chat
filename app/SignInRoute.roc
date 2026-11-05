@@ -184,16 +184,24 @@ SignInRoute :: [].{
 
 	## The answer to a human invite redeemed at `now`: a session for the
 	## human its admission admits, signed over `password_hash`, the hash the
-	## redemption wrote to their password file, and a 303 to `default_next`,
-	## with its cookie. Every session signed over the hash the file held
+	## redemption wrote to their password file, and a 303 to `next` with its
+	## cookie. Every session signed over the hash the file held
 	## before stops admitting them (`sign_in_by_session!`). A 500 when their
 	## GitHub files can't be read. Never stored.
 	start_session_by_invite! : {
 		admission : HumanInvite.Admission,
 		password_hash : List(U8),
+		next : Html.SitePath,
 	},
 	I64 => Http.Response
-	start_session_by_invite! = |{ admission, password_hash }, now|
+	start_session_by_invite! = |
+		{
+			admission,
+			password_hash,
+			next,
+		},
+		now,
+	|
 		match load_material_with_password!({ id: admission.human().id(), password_hash }) {
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 			Ok(material) => {
@@ -202,7 +210,7 @@ SignInRoute :: [].{
 					material,
 					now,
 				})
-				onward = HttpAnswer.see_other(SignInRoute.default_next.to_str())
+				onward = HttpAnswer.see_other(next.to_str())
 				HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
 			}
 		}

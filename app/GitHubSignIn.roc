@@ -39,6 +39,7 @@
 ## mints a session by calling a constructor. This module is a trust boundary
 ## with `SignedIn`, `AgentKey`, `AgentInvite` and `HumanInvite`. The client
 ## secret and GitHub's token stay in the host (host/github_client.zig).
+import Channels
 import Directory
 import GitHubCode
 import GitHubId
@@ -92,6 +93,9 @@ GitHubSignIn :: [].{
 
 		## The sign-up's id has an account now, which signs in with GitHub.
 		AccountExists,
+
+		## The default channel is gone, so a new human has nowhere to start.
+		NoDefaultChannel,
 
 		## The session that came back is not the human the link's state names.
 		LinkNotYours,
@@ -391,7 +395,9 @@ GitHubSignIn :: [].{
 		## is each human's `github-id` file as it was read. An id any human
 		## holds now is refused first (`AccountExists`, or `DuplicateAccount`),
 		## and then the name (`NameTaken`), so a refused name leaves the
-		## sign-up good, and the human tries another.
+		## sign-up good, and the human tries another. The human starts in the
+		## default channel, whose members file `channel` is for the caller to
+		## write.
 		create_account : GitHubSignIn.SignUpResumed,
 		{
 			name : Name,
@@ -401,6 +407,7 @@ GitHubSignIn :: [].{
 			{
 				directory : Directory,
 				human : Users.User,
+				channel : Channels.Channel,
 				github : GitHubId,
 				admission : GitHubSignIn.Admission,
 			},
@@ -409,6 +416,7 @@ GitHubSignIn :: [].{
 				DuplicateAccount,
 				NameTaken,
 				Full,
+				NoDefaultChannel,
 			],
 		)
 		create_account = |
@@ -427,13 +435,14 @@ GitHubSignIn :: [].{
 				[_] => Err(AccountExists)
 				[_, _, ..] => Err(DuplicateAccount)
 				[] => {
-					addition = directory.add_human(name)?
+					addition = directory.add_new_human(name)?
 					human =
 						addition.user.as_human()
-							?? crash "GitHubSignIn.create_account: add_human makes a human"
+							?? crash "GitHubSignIn.create_account: add_new_human makes a human"
 					Ok({
 						directory: addition.directory,
 						human: addition.user,
+						channel: addition.channel,
 						github: resumed.github,
 						admission: GitHubSignIn.Admission.({ human, next: resumed.next }),
 					})
@@ -451,6 +460,11 @@ GitHubSignIn :: [].{
 		## Where they go once signed in.
 		next : GitHubSignIn.Admission -> Html.SitePath
 		next = |GitHubSignIn.Admission.(admission)| admission.next
+
+		## The same admission, going to `landing` instead.
+		going_to : GitHubSignIn.Admission, Html.SitePath -> GitHubSignIn.Admission
+		going_to = |GitHubSignIn.Admission.(admission), landing|
+			GitHubSignIn.Admission.({ ..admission, next: landing })
 	}
 }
 
@@ -540,9 +554,9 @@ good_code = GitHubCode.from_str("good") ?? crash "GitHubSignIn's tests: a code"
 tests_name : Str -> Name
 tests_name = |text| Name.from_str(text) ?? crash "GitHubSignIn's tests: a name"
 
-## Steve, 1, Apoorva, 2, and Steve's agent CC, 3.
-tests_directory : Directory
-tests_directory = {
+## Steve, 1, Apoorva, 2, and Steve's agent CC, 3, with no channel.
+tests_directory_of_no_channel : Directory
+tests_directory_of_no_channel = {
 	founded = Directory.with_founder(tests_name("Steve"))
 	steve = founded.founder().as_human() ?? crash "GitHubSignIn's tests: Steve is a human"
 	with_apoorva = (founded.add_human(tests_name("Apoorva")) ?? crash "GitHubSignIn's tests: room").directory
@@ -552,6 +566,16 @@ tests_directory = {
 			owner: steve,
 		}) ?? crash "GitHubSignIn's tests: room"
 	).directory
+}
+
+## Those users, with Steve in the default channel.
+tests_directory : Directory
+tests_directory = {
+	channels =
+		Channels.from_files([{ name: Channels.default_name, members: "1\n".to_utf8() }])
+			?? crash "GitHubSignIn's tests: a members file"
+	Directory.from_files({ users: tests_directory_of_no_channel.users(), channels })
+		?? crash "GitHubSignIn's tests: Steve is a user"
 }
 
 tests_users : Users
@@ -881,6 +905,7 @@ account_made : {
 		next : Str,
 		github : Str,
 		counter : List(U8),
+		members : List(U8),
 	},
 	_,
 )
@@ -902,6 +927,7 @@ account_made = |
 		next: made.admission.next().to_str(),
 		github: made.github.to_str(),
 		counter: made.directory.users().counter_file(),
+		members: made.channel.members_file(),
 	})
 }
 
@@ -914,8 +940,9 @@ account_named = |name|
 		directory: tests_directory,
 	})
 
-# A free name makes the next human, admitted, with the id bound and the
-# counter past them. Their name need not be their login.
+# A free name makes the next human, admitted, with the id bound, the counter
+# past them and the default channel holding them. Their name need not be their
+# login.
 expect
 	account_named("Zoë Ann")
 		== Ok({
@@ -924,7 +951,16 @@ expect
 			next: "/agents",
 			github: "300",
 			counter: "5\n".to_utf8(),
+			members: "1\n4\n".to_utf8(),
 		})
+# A chat whose default channel is gone makes no account.
+expect
+	account_made({
+		name: "Zoe",
+		files: bound_files,
+		directory: tests_directory_of_no_channel,
+	})
+		== Err(NoDefaultChannel)
 # A name another has, in any case, an agent's included, is refused and makes
 # nothing, and the same sign-up then takes a free one.
 expect

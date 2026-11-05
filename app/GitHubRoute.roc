@@ -11,8 +11,9 @@
 ##   refusal is the sign-in page again, saying why in plain words.
 ## - `POST /login/github/name` is that name: the sign-up checked, the account
 ##   made, and a session started. The counter of ids is written first, then
-##   `github-id`, then `name`, all in one turn, so two submits can't both
-##   see the id free. A name refused is the form again, the sign-up still
+##   `github-id`, then `name`, then the default channel's members, all in one
+##   turn, so two submits can't both see the id free. They land where
+##   `FirstPage` says. A name refused is the form again, the sign-up still
 ##   good.
 ## - `POST /login/github/link` is a signed-in human asking to link GitHub to
 ##   their account: a trip to GitHub like a sign-in's, whose state names them.
@@ -28,8 +29,10 @@
 import pf.Host
 import pf.Http
 import Ascii
+import Channels
 import Directory
 import FileSystem
+import FirstPage
 import GitHubCode
 import GitHubSignIn
 import GitHubSignUp
@@ -303,9 +306,7 @@ load_human_to_link! = |viewer| {
 	match FileSystem.read_github_id_file!(human.id()) {
 		Ok(NoFile) => Ok(human)
 		Ok(File(_)) => Err(AlreadyLinked)
-		Err(NotUtf8) => Err(FileSystem(NotUtf8))
-		Err(PathRefused) => Err(FileSystem(PathRefused))
-		Err(Failed) => Err(FileSystem(Failed))
+		Err(fault) => Err(FileSystem(fault))
 	}
 }
 
@@ -466,12 +467,18 @@ sign_up! = |
 		files,
 		directory,
 	}) ? |why| account_refusal({ name, why })
+	landing = FirstPage.load!({
+		directory: made.directory,
+		human: made.admission.human(),
+		wanted: made.admission.next(),
+	})?
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	FileSystem.create_github_account!({
 		human: made.human,
 		github: made.github,
 	}) ? |fault| FileSystem(fault)
-	Ok(made.admission)
+	FileSystem.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
+	Ok(made.admission.going_to(landing))
 }
 
 ## Why `name` made no account: a sign-up that ends here, or a name to try
@@ -483,6 +490,7 @@ account_refusal : {
 		DuplicateAccount,
 		NameTaken,
 		Full,
+		NoDefaultChannel,
 	],
 } -> [
 	Refused(GitHubSignIn.Refusal),
@@ -494,6 +502,7 @@ account_refusal = |{ name, why }|
 		DuplicateAccount => Refused(DuplicateAccount)
 		NameTaken => NameRefused({ name: Named(name), why: NameTaken })
 		Full => NameRefused({ name: Named(name), why: Full })
+		NoDefaultChannel => Refused(NoDefaultChannel)
 	}
 
 ## The sign-up the request's cookie holds: `Signed` when the host says its
@@ -616,10 +625,14 @@ refusal_said = |why|
 		SignUpForged => { status: 403, words: "That sign-up did not start in this browser. Please try again." }
 		SignUpExpired => { status: 403, words: "That sign-up took too long. Please try again." }
 		AccountExists => { status: 403, words: "That GitHub account has an account here. Sign in with GitHub." }
+		NoDefaultChannel => { status: 500, words: no_default_channel_words }
 		LinkNotYours => { status: 403, words: "That link did not start from this account. Please try again." }
 		AlreadyLinked => { status: 409, words: already_linked_words }
 		GitHubIdTaken => { status: 409, words: "That GitHub account is linked to someone here already." }
 	}
+
+no_default_channel_words : Str
+no_default_channel_words = "This chat has no ${Channels.default_name.to_str()} channel for a new human to start in."
 
 already_linked_words : Str
 already_linked_words = "You have linked GitHub already."
@@ -678,6 +691,7 @@ expect
 	].all(|why| refusal_said(why).status == 403)
 expect [GitHubUnreachable, BadIdentity].all(|why| refusal_said(why).status == 502)
 expect [AlreadyLinked, GitHubIdTaken].all(|why| refusal_said(why).status == 409)
+expect refusal_said(NoDefaultChannel).status == 500
 # A link refused before the trip, each way.
 expect link_refusal_answer(NotSignedIn).status == 401
 expect [ByApiKey, Agent(UserId.steve)].all(|why| link_refusal_answer(why).status == 403)

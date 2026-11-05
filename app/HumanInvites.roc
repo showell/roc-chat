@@ -13,6 +13,8 @@
 ##   was never invited, is not.
 ## - A human has at most `open_most` open invites at once, counting every
 ##   invite they made that is live and unexpired.
+## - The new account starts in the default channel, so the invited human has
+##   somewhere to land when they join.
 ##
 ## The invited human joins from a link that holds the code. Joining
 ## redeems it: they keep the name their inviter chose or take any other free
@@ -23,6 +25,7 @@
 ## join. A name refused spends nothing, so the human tries another.
 import Admin
 import Agents
+import Channels
 import Directory
 import FactFile
 import HumanInvite
@@ -47,6 +50,7 @@ HumanInvites :: [].{
 		BadName,
 		NameTaken,
 		Full,
+		NoDefaultChannel,
 		NoSuchHuman,
 		NotInvited,
 		NotYours,
@@ -60,8 +64,8 @@ HumanInvites :: [].{
 	## a human at the cap, or one who may not invite this human again, a
 	## 403; no such human, a 404; a form at fault, a name that is no name or
 	## a password that is none, a 400; a name taken or chosen already, the
-	## chat full, or a browser signed in already, a 409; and any refusal of
-	## an invite's code one 401 that says no more.
+	## chat full, or a browser signed in already, a 409; no default channel,
+	## a 500; and any refusal of an invite's code one 401 that says no more.
 	refusal_notice : HumanInvites.Refusal -> { status : U16, said : Str }
 	refusal_notice = |why|
 		match why {
@@ -81,6 +85,10 @@ HumanInvites :: [].{
 			}
 			NameTaken => { status: 409, said: "The name is taken." }
 			Full => { status: 409, said: "The chat holds as many as it can." }
+			NoDefaultChannel => {
+				status: 500,
+				said: "This chat has no ${Channels.default_name.to_str()} channel for a new human to start in.",
+			}
 			NoSuchHuman => { status: 404, said: "No such human." }
 			NotInvited => { status: 403, said: "Only a human someone invited is invited again." }
 			NotYours => {
@@ -132,7 +140,8 @@ HumanInvites :: [].{
 
 	## `directory` with a human named by the form `body`'s field `name`,
 	## invited by `acting`, who has `open` invites open now; the new human,
-	## and the human who invited them; or why not.
+	## the human who invited them, and the default channel, which holds the
+	## new human; or why not.
 	invite : Directory,
 	{
 		acting : SignedIn,
@@ -143,6 +152,7 @@ HumanInvites :: [].{
 			directory : Directory,
 			human : Users.User,
 			inviter : Users.Human,
+			channel : Channels.Channel,
 		},
 		[
 			ByApiKey,
@@ -152,6 +162,7 @@ HumanInvites :: [].{
 			BadName,
 			NameTaken,
 			Full,
+			NoDefaultChannel,
 		],
 	)
 	invite = |
@@ -167,11 +178,12 @@ HumanInvites :: [].{
 			Err(Capped)
 		} else {
 			name = HumanInvites.name_from_form(body)?
-			addition = directory.add_human(name)?
+			addition = directory.add_new_human(name)?
 			Ok({
 				directory: addition.directory,
 				human: addition.user,
 				inviter,
+				channel: addition.channel,
 			})
 		}
 	}

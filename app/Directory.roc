@@ -30,6 +30,14 @@ Directory :: {
 	## The directory after a channel was created in it, and the channel.
 	Created : { directory : Directory, channel : Channels.Channel }
 
+	## What making a new human's account gives: the directory that holds them,
+	## the human, and the default channel, which they are in.
+	NewHuman : {
+		directory : Directory,
+		user : Users.User,
+		channel : Channels.Channel,
+	}
+
 	## The chat's directory at the start, when the only user is the founder:
 	## the first human, id 1, named `name`. It holds no channels.
 	with_founder : Name -> Directory
@@ -49,6 +57,23 @@ Directory :: {
 	add_human = |directory, name| {
 		grown = directory.users().add_human(name)?
 		admit_new_user(directory, grown)
+	}
+
+	## The directory with a new human's account, named `name`: `add_human`, and
+	## them in the default channel (`Channels.add_new_human`), so the chat has
+	## a page for them. This is how a sign-up or an invite makes a human.
+	add_new_human : Directory, Name -> Try(Directory.NewHuman, [Full, NameTaken, NoDefaultChannel])
+	add_new_human = |directory, name| {
+		addition = directory.add_human(name)?
+		human =
+			addition.user.as_human() ?? crash "Directory.add_new_human: add_human makes a human"
+		Directory.(d) = addition.directory
+		joined = d.channels.add_new_human(human)?
+		Ok({
+			directory: Directory.({ ..d, channels: joined.channels }),
+			user: addition.user,
+			channel: joined.channel,
+		})
 	}
 
 	## The directory with an agent named `name`, owned by `owner`, added,

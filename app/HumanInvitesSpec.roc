@@ -57,12 +57,16 @@ cc_by_session = SignedIn.dangerously_assume(Sample.user("CC"))
 id : Str -> UserId
 id = |text| UserId.from_str(text) ?? crash "HumanInvitesSpec: an id"
 
+## The sample directory, with the default channel a new human starts in.
+with_default_channel : Directory
+with_default_channel = Sample.with_default_channel(Sample.directory)
+
 ## What inviting by the form `body`, by `acting` with `open` open invites,
 ## gives: the new human's name and id and their inviter's id, or why not.
 invite_of : SignedIn, { body : Str, open : U64 } -> Try(Str, _)
 invite_of = |acting, { body, open }|
 	HumanInvites.invite(
-		Sample.directory,
+		with_default_channel,
 		{
 			acting,
 			body: body.to_utf8(),
@@ -94,7 +98,7 @@ expect invite_of(
 ) == Ok("Zoe Smith 4 by 2")
 expect
 	HumanInvites.invite(
-		Sample.directory,
+		with_default_channel,
 		{
 			acting: steve,
 			body: "name=Zoe".to_utf8(),
@@ -103,11 +107,23 @@ expect
 	).map_ok(
 		|made|
 			match made.directory.users().user(id("4")) {
-				Ok(user) => user.role() == Human
+				Ok(user) => user.role() == Human and made.channel.members_file() == "1\n4\n".to_utf8()
 				Err(NoSuchUser) => Bool.False
 			},
 	)
 		== Ok(Bool.True)
+# A chat whose default channel is gone invites no one.
+expect
+	HumanInvites.invite(
+		Sample.directory,
+		{
+			acting: steve,
+			body: "name=Zoe".to_utf8(),
+			open: 0,
+		},
+	).map_ok(|_| {})
+		== Err(NoDefaultChannel)
+expect HumanInvites.refusal_notice(NoDefaultChannel).status == 500
 expect invite_of(
 	cc_by_key,
 	{
@@ -180,7 +196,7 @@ expect
 with_zoe_and_bob : Directory
 with_zoe_and_bob = {
 	with_zoe =
-		(Sample.directory.add_human(Sample.name("Zoe")) ?? crash "HumanInvitesSpec: Zoe's name is free")
+		(with_default_channel.add_human(Sample.name("Zoe")) ?? crash "HumanInvitesSpec: Zoe's name is free")
 			.directory
 	(with_zoe.add_human(Sample.name("Bob")) ?? crash "HumanInvitesSpec: Bob's name is free")
 		.directory

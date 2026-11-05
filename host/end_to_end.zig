@@ -178,7 +178,7 @@
 //! 48j. GET /join: the form and its script; POST /join/name: her name as
 //!      JSON; joining under a taken name, a name that is no name, or no
 //!      password: 409, 400, 400, nothing spent; joining as Debbie: a 303 to
-//!      /agents and her session's cookie, never stored, her name Debbie,
+//!      #general's first topic and her session's cookie, never stored, her name Debbie,
 //!      the invite spent, her password's bcrypt hash (cost 10) on disk, the
 //!      session signed in; the code again, to join or for its name: 401;
 //!      /invites/redeem: 404;
@@ -251,7 +251,13 @@
 //!      binding kept;
 //! 48zk. a forged state, a state naming another human, and a session that has
 //!      gone: 403 each, nothing bound; a stale session secret is replaced;
-//! 48zl. a key: 403; no one: 401; a GET: 405; a cross-site post: 403.
+//! 48zl. a key: 403; no one: 401; a GET: 405; a cross-site post: 403;
+//! 48zm. a new human by GitHub lands, in #general, on a page they can read:
+//!      the conversation they were heading for when they may read it and it
+//!      exists, else general's first topic, whether they were heading for
+//!      another channel's, /channels, /agents or a topic with no messages;
+//! 48zn. with general's members file gone: a sign-up and an invite, a 500
+//!      each, nothing made.
 //!
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
@@ -652,6 +658,7 @@ pub fn main(init: std.process.Init) !void {
     try inviteSteps(a, io, port, data, t, cc_bearer);
     try gitHubSteps(a, io, port, data, t, .{ .fake = fake, .cc_bearer = cc_bearer });
     try linkSteps(a, io, port, data, t, .{ .fake = fake, .cc_bearer = cc_bearer });
+    try firstPageSteps(a, io, port, data, t, fake);
 
     // 49.
     const signed_out = try post(a, io, port, .{ .path = "/logout", .form = "" });
@@ -1094,6 +1101,7 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/by"), "1") and
         expires - created == 7 * 24 * 60 * 60 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "4\n"));
+    try t.check("her account starts in #general", std.mem.eql(u8, try readFile(a, io, data, "chat/channel/general.channel"), "1\n2\n3\n"));
     const taken = try post(a, io, port, .{ .path = "/invites", .form = "name=DEB" });
     const unready = try anonymousPost(a, io, port, "/login", "name=Deb&password=anything");
     try t.check("her name again in any case: 409; signing in as her before she joins: 401", taken.status == 409 and unready.status == 401);
@@ -1123,15 +1131,17 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const debbie_password = "debbie's own secret";
     const redeemed = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=debbie%27s+own+secret", .{code}));
     const hash = try readFile(a, io, data, "auth/3/password");
-    try t.check("she joins as Debbie, not Deb: a 303 to /agents and her session's cookie, never stored; her name now Debbie; the invite spent; her password's bcrypt hash, cost 10, on disk", redeemed.status == 303 and
-        std.mem.eql(u8, redeemed.header("location") orelse "", "/agents") and
+    try t.check("she joins as Debbie, not Deb: a 303 to #general's first topic and her session's cookie, never stored; her name now Debbie; the invite spent; her password's bcrypt hash, cost 10, on disk", redeemed.status == 303 and
+        std.mem.eql(u8, redeemed.header("location") orelse "", channel_url) and
         std.mem.startsWith(u8, redeemed.header("set-cookie") orelse "", "__Host-gopher_auth=") and
         std.mem.eql(u8, redeemed.header("cache-control") orelse "", "no-store") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Debbie") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "spent") and
         std.mem.startsWith(u8, hash, "$2b$10$") and hash.len == 60 and !has(hash, debbie_password));
     const joined_page = try getAs(a, io, port, try cookieLine(a, redeemed), "/invites");
-    try t.check("the session joining started: her own /invites, 200, signed in as Debbie", joined_page.status == 200 and has(joined_page.body, "Debbie"));
+    const first_page = try getAs(a, io, port, try cookieLine(a, redeemed), redeemed.header("location") orelse "");
+    try t.check("the session joining started: her first page, 200, in #general; her own /invites, 200, signed in as Debbie", first_page.status == 200 and
+        has(first_page.body, "id=\"msg-12\"") and joined_page.status == 200 and has(joined_page.body, "Debbie"));
     const again = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=another", .{code}));
     const again_name = try anonymousPost(a, io, port, "/join/name", code_form);
     const old_route = try anonymousPost(a, io, port, "/invites/redeem", try std.fmt.allocPrint(a, "code={s}&password=another", .{code}));
@@ -1259,7 +1269,12 @@ fn writeGitHubSettings(io: Io, data: Io.Dir, fake: *fake_github.Fake) !void {
 const GitHubStart = struct { cookie: []const u8, authorize: []const u8, state: []const u8 };
 
 fn startGitHub(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake) !GitHubStart {
-    const started = try anonymousGet(a, io, port, "/login/github/start?next=" ++ channel_url);
+    return startGitHubTo(a, io, port, fake, channel_url);
+}
+
+/// The same, going to `next` after.
+fn startGitHubTo(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, next: []const u8) !GitHubStart {
+    const started = try anonymousGet(a, io, port, try std.fmt.allocPrint(a, "/login/github/start?next={s}", .{next}));
     const location = started.header("location") orelse return error.NoLocation;
     if (!std.mem.startsWith(u8, location, fake.base())) return error.NotTheFake;
     const at = std.mem.indexOf(u8, location, "&state=") orelse return error.NoState;
@@ -1718,6 +1733,55 @@ fn linkSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, he
     const cross_site = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{hal_line}), "/login/github/link", "");
     try t.check("a link by CC's key: 403; by no one: 401; by GET: 405; a cross-site post: 403", by_key.status == 403 and
         has(by_key.body, "An API key never signs in") and by_no_one.status == 401 and by_get.status == 405 and cross_site.status == 403);
+}
+
+/// A new human through the fake, heading for `next`, GitHub's code `code`,
+/// who chooses `name`: the answer that makes their account.
+fn signUpHeadingTo(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, next: []const u8, code: []const u8, name: []const u8) !Response {
+    const begun = try startGitHubTo(a, io, port, fake, next);
+    const back = try atGitHub(a, io, port, fake, .{ .authorize = begun.authorize, .code = code });
+    const asked = try backFromGitHub(a, io, port, begun.cookie, back);
+    return chooseName(a, io, port, try signUpLine(a, asked), name);
+}
+
+/// Whether the new human `made` lands in #general: at `expected`, a page of
+/// theirs, a 200.
+fn landsAt(a: std.mem.Allocator, io: Io, port: u16, made: Response, expected: []const u8) !bool {
+    const location = made.header("location") orelse return false;
+    const page = try getAs(a, io, port, try cookieLine(a, made), location);
+    return made.status == 303 and std.mem.eql(u8, location, expected) and page.status == 200 and has(page.body, "id=\"msg-12\"");
+}
+
+/// Steps 48zm and 48zn.
+fn firstPageSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, fake: *fake_github.Fake) !void {
+    // 48zm.
+    const heading_there = try signUpHeadingTo(a, io, port, fake, channel_url, "user-id-40", "Una");
+    try t.check("a new human heading for a conversation in #general: there, a 200, as a member; #general's file holds her", try landsAt(a, io, port, heading_there, channel_url) and
+        has(try readFile(a, io, data, "chat/channel/general.channel"), "\n12\n"));
+    const heading_to_crew = try signUpHeadingTo(a, io, port, fake, "/chat/channel/crew/plans", "user-id-41", "Vic");
+    const heading_to_channels = try signUpHeadingTo(a, io, port, fake, "/channels", "user-id-42", "Wes");
+    const heading_to_agents = try signUpHeadingTo(a, io, port, fake, "/agents", "user-id-43", "Xan");
+    const heading_nowhere = try signUpHeadingTo(a, io, port, fake, "/chat/channel/general/no-such-topic", "user-id-44", "Yao");
+    try t.check("heading for another channel's conversation, the admin's /channels, /agents, or a topic with no messages: #general's first topic, a 200 each", try landsAt(a, io, port, heading_to_crew, channel_url) and
+        try landsAt(a, io, port, heading_to_channels, channel_url) and try landsAt(a, io, port, heading_to_agents, channel_url) and
+        try landsAt(a, io, port, heading_nowhere, channel_url));
+
+    // 48zn.
+    const members_path = "chat/channel/general.channel";
+    const members = try readFile(a, io, data, members_path);
+    const counter = try readFile(a, io, data, "auth/next-id.txt");
+    const debbie = try cookieLine(a, try anonymousPost(a, io, port, "/login", "name=Debbie&password=a+new+one"));
+    const begun = try startGitHub(a, io, port, fake);
+    const back = try atGitHub(a, io, port, fake, .{ .authorize = begun.authorize, .code = "user-id-45" });
+    const asked = try backFromGitHub(a, io, port, begun.cookie, back);
+    try data.deleteFile(io, members_path);
+    const signed_up = try chooseName(a, io, port, try signUpLine(a, asked), "Zed");
+    const invited = try postAs(a, io, port, debbie, "/invites", "name=Zed");
+    const counter_after = try readFile(a, io, data, "auth/next-id.txt");
+    try data.writeFile(io, .{ .sub_path = members_path, .data = members });
+    try t.check("with #general's members file gone, a sign-up and an invite: 500 each, saying so, no session, nothing made", signed_up.status == 500 and
+        has(signed_up.body, "no general channel") and !has(signed_up.head, "__Host-gopher_auth=") and invited.status == 500 and has(invited.body, "no general channel") and
+        std.mem.eql(u8, counter_after, counter));
 }
 
 /// The session cookie a sign-in's answer sets, as a request's `Cookie`

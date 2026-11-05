@@ -5,6 +5,7 @@
 ## names.
 import Admin
 import ChannelName
+import Channels
 import Directory
 import Place
 import Sample
@@ -48,6 +49,25 @@ human_added = |directory, text|
 			grown.user.name().to_str(),
 		),
 	)
+
+# A new human's account: the next id, in the default channel, as the
+# directory now says too.
+expect {
+	made =
+		Sample.with_default_channel(Sample.directory).add_new_human(Sample.name("Zoe"))
+			?? crash "DirectorySpec: Zoe's name is free"
+	stored =
+		made.directory.channels().channel(Channels.default_name)
+			?? crash "DirectorySpec: the default channel is there"
+	made.user.id().to_str() == "4"
+		and made.channel == stored
+		and made.channel.members_file() == "1\n4\n".to_utf8()
+}
+# Refused as a human is, and when there is no default channel.
+expect
+	Sample.with_default_channel(Sample.directory).add_new_human(Sample.name("steve")).map_ok(|_| {})
+		== Err(NameTaken)
+expect Sample.directory.add_new_human(Sample.name("Zoe")).map_ok(|_| {}) == Err(NoDefaultChannel)
 
 ## The id and name of who `name` would be, added to `directory` as an
 ## agent of `owner`, or why not.

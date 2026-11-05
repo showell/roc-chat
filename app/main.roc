@@ -175,8 +175,8 @@ write_first_directory! = |{}| {
 }
 
 ## The directory at the first start: Steve (id 1), a human, and one
-## channel, `general`, which he creates as the chat's first admin and is
-## the one member of. Steve acts here with nothing checked (`SignedIn`),
+## channel, the default one, which he creates as the chat's first admin and
+## is the one member of. Steve acts here with nothing checked (`SignedIn`),
 ## as no one has signed in before the chat exists.
 first_directory : Directory
 first_directory = {
@@ -185,19 +185,17 @@ first_directory = {
 	admin =
 		Admin.of(SignedIn.dangerously_assume(founder))
 			?? crash "main.first_directory: Steve, id 1, is an admin"
-	general =
-		ChannelName.from_str("general") ?? crash "main.first_directory: general is a channel's name"
 	created = (
 		founded.create_channel({
 			by: admin,
-			name: general,
-		}) ?? crash "main.first_directory: the name general is free"
+			name: Channels.default_name,
+		}) ?? crash "main.first_directory: the default channel's name is free"
 	).directory
 	created.add_member({
 		by: admin,
-		channel: general,
+		channel: Channels.default_name,
 		member: founder,
-	}) ?? crash "main.first_directory: Steve joins general"
+	}) ?? crash "main.first_directory: Steve joins the default channel"
 }
 
 founder_name : Name

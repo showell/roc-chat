@@ -3,6 +3,7 @@
 ## what it checks. Only a Spec imports it; no production module does.
 import Admin
 import Author
+import Channels
 import Conversation
 import Directory
 import Message
@@ -118,6 +119,16 @@ Sample :: [].{
 			owner,
 		}) ?? crash "Sample.directory: CC's name is free"
 		with_cc.directory
+	}
+
+	## `users_of`'s users, with one channel: the default one, holding Steve.
+	with_default_channel : Directory -> Directory
+	with_default_channel = |users_of| {
+		channels =
+			Channels.from_files([{ name: Channels.default_name, members: "1\n".to_utf8() }])
+				?? crash "Sample.with_default_channel: a members file"
+		Directory.from_files({ users: users_of.users(), channels })
+			?? crash "Sample.with_default_channel: Steve is a user"
 	}
 
 	## The sample directory with `count` more humans, each
