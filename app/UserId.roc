@@ -60,10 +60,7 @@ UserId :: U16.{
 	## Which of two ids comes first, by number. A DM's pair and a channel's
 	## members are written in this order.
 	compare : UserId, UserId -> [Before, Same, After]
-	compare = |
-		UserId.(n),
-		UserId.(other),
-	| if n < other {
+	compare = |UserId.(n), UserId.(other)| if n < other {
 		Before
 	} else if n == other {
 		Same

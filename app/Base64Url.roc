@@ -85,11 +85,7 @@ decode_group = |group|
 			(b % 16) * 16 + c // 4,
 			(c % 4) * 64 + d,
 		])
-		[
-			a,
-			b,
-			c,
-		] => if c % 4 == 0 {
+		[a, b, c] => if c % 4 == 0 {
 			Ok([a * 4 + b // 16, (b % 16) * 16 + c // 4])
 		} else {
 			Err(NotBase64Url)
