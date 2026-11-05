@@ -2,9 +2,8 @@
 // app/Script.roc serves. It sets the colours before the first paint,
 // so a page never flashes the other theme.
 //
-// The colours are chat-client's (js/colors.js), as roc-chat's palette.js
-// carries them: one palette of CSS custom properties (--cc-...), light under
-// :root and dark under html[data-theme="dark"]. The theme is the one saved in
+// The colours are chat-client's (js/colors.js): one palette of CSS custom
+// properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is the one saved in
 // localStorage under 'chat-theme', and dark when none is saved. Every other
 // script styles its widgets with var(--cc-...). Palette.toggle() flips the
 // theme and saves the choice; chrome.js wires it to the top bar's button.

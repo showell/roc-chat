@@ -62,7 +62,7 @@ AgentInvite :: {
 		hash : List(U8),
 	}
 
-	## How long an invite lives: ten minutes, roc-chat's.
+	## How long an invite lives: ten minutes.
 	lifetime_seconds : I64
 	lifetime_seconds = 10 * 60
 

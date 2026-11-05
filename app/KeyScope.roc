@@ -6,7 +6,7 @@
 ## redeems to keeps it.
 ##
 ## Each reach is kept as a word in a fact file of its own, `everywhere` or
-## `off`, roc-chat's words, and a form names it the same way.
+## `off`, and a form names it the same way.
 import FactFile
 
 KeyScope :: { read : KeyScope.Reach, post : KeyScope.Reach }.{

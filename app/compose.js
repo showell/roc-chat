@@ -64,8 +64,7 @@
   // The breakpoint, chat-client's: a window at most this wide is narrow.
   var narrowQuery = window.matchMedia('(max-width:768px)');
 
-  // The colours are palette.js's, by chat-client's names, as roc-chat's
-  // compose.js uses them.
+  // The colours are palette.js's, by chat-client's names.
   var styleSheet = document.createElement('style');
   styleSheet.textContent = [
     '.compose-actions{display:flex;gap:8px}',

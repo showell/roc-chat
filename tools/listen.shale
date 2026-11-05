@@ -1,6 +1,6 @@
 -- This listens to roc-chat's agent stream for LC, printing one line for
--- each post that names it. It is cookbook:listen.shale adapted to
--- roc-chat (docs/deploy.md, "LC's listener"). Run it from the repo's root.
+-- each post that names it. It is cookbook:listen.shale adapted to this
+-- server (docs/deploy.md, "LC's listener"). Run it from the repo's root.
 --
 --   shale tools/listen.shale once=1
 --   shale tools/listen.shale log=listen.log
@@ -92,8 +92,7 @@ function quote_opened(line)
 end
 
 -- The post's own lines: its markdown without fenced blocks and blockquotes.
--- A quote runs on through its lazy lines to a blank one. This is the rule of
--- roc-chat's app/Mentions.roc.
+-- A quote runs on through its lazy lines to a blank one.
 function spoken(markdown)
   local kept = {}
   local fence = nil

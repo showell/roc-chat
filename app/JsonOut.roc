@@ -4,9 +4,6 @@
 ## no text becomes a field. The type is opaque, and `bytes` is its only way
 ## out; `HttpAnswer.json` is the only taker of a whole answer. It writes no
 ## spaces, and fields in the order given.
-##
-## It is a copy of roc-chat's `app/JsonOut.roc`, kept on purpose and cut to
-## what this chat writes, until a package both can share exists.
 import Hex
 
 JsonOut :: List(U8).{
@@ -82,7 +79,7 @@ commas = |parts| parts.map_with_index(
 
 # ── tests
 # A quote, a backslash, a line feed, a carriage return, DEL and a
-# multi-byte character: each as roc-chat's wire spells it.
+# multi-byte character: each as the wire spells it.
 expect
 	JsonOut.string("a\"b\\c\nd\re\u(7f)é").bytes()
 		== "\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"".to_utf8()

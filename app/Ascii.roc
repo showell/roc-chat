@@ -7,9 +7,6 @@
 ## The checks are safe on UTF-8 text: every byte of a multi-byte character
 ## is 128 or more, and no check answers `Bool.True` for such a byte. So a
 ## caller can check the bytes of `Str.to_utf8` as they are.
-##
-## roc-chat keeps its own copy of this module (`app/Ascii.roc`), on purpose,
-## until there is a package both can share.
 Ascii :: [].{
 
 	## Is `c` one of `0` to `9`?

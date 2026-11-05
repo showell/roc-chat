@@ -1,8 +1,7 @@
 //! Server-sent events: a stream's headers, its keepalive, and the cap on
 //! the streams held at once. host/http.zig writes a stream: the head and
 //! the app's first bytes, then each frame published to its key, as it is.
-//! The body ends when the connection does, never chunked. Cribbed from
-//! roc-chat's host/sse.zig.
+//! The body ends when the connection does, never chunked.
 
 const std = @import("std");
 const Io = std.Io;

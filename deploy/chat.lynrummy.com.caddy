@@ -1,8 +1,8 @@
 # This is roc-chat's site block on the prod droplet, for
 # https://chat.lynrummy.com. tools/deploy.shale installs it as
-# /etc/caddy/sites/chat.lynrummy.com.caddy, in roc-chat's block's place. The
-# droplet's Caddyfile (angry-gopher's deploy/Caddyfile) imports that folder and
-# defines the `access_log` snippet, which logs every request to
+# /etc/caddy/sites/chat.lynrummy.com.caddy. The droplet's Caddyfile
+# (angry-gopher's deploy/Caddyfile) imports that folder and defines the
+# `access_log` snippet, which logs every request to
 # /var/log/caddy/chat-access.log.
 #
 # Caddy terminates HTTPS and passes each request through as it came. The app

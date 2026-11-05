@@ -3,10 +3,9 @@
 // works without it: the messages read top to bottom, each with its time in
 // UTC.
 //
-// Each message is a bubble, as roc-chat's feed.js draws them, which is as
-// chat-client drew them (js/message.js). The viewer's own messages sit on the
-// right in one colour, everyone else's on the left in another. One message's
-// HTML is the same for every viewer, so the script decides which is which:
+// Each message is a bubble, as chat-client drew them (js/message.js). The
+// viewer's own messages sit on the right in one colour, everyone else's on the
+// left in another. One message's HTML is the same for every viewer, so the script decides which is which:
 // the messages pane names the viewer's id (data-viewer) and each message its
 // author's (data-author). A message by someone who is not a user of the chat
 // names no author, so it is never the viewer's. Each time is written in the

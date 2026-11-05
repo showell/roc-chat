@@ -1,6 +1,6 @@
 ## This module decides what the `/agents` routes may do, with no effects,
 ## so its tests reach every rule; `AgentsRoute` reads and writes the files
-## and answers. The rules are roc-chat's:
+## and answers. The rules are:
 ##
 ## - A human signed in by their own session makes an agent, which they
 ##   then own, and invites it. A request with an API key may do neither,

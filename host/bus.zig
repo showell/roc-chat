@@ -2,7 +2,7 @@
 //! on that key. The app publishes a frame (`Host.publish_bytes_to_streams_on_key!`),
 //! each stream subscribed to the key gets its own copy in its mailbox, and
 //! the stream's task writes it out as it is. The bus knows keys and bytes,
-//! never what they mean. Cribbed from roc-chat's host/bus.zig.
+//! never what they mean.
 //!
 //! A stream never skips a frame silently. A mailbox holds 16 frames; a
 //! frame that finds it full is dropped and the subscriber marked missed,

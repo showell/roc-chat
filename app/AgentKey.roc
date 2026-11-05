@@ -65,7 +65,7 @@ AgentKey :: {
 		hash : List(U8),
 	}
 
-	## How long a key lives: a year, roc-chat's longest.
+	## How long a key lives: a year.
 	lifetime_seconds : I64
 	lifetime_seconds = 365 * 24 * 60 * 60
 
