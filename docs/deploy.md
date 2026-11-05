@@ -37,13 +37,13 @@ The owner has no password until step 8, so no one can sign in as him until then,
 
 ## The cutover
 
-### 0. Merge, and run the gate
+### 0. Run the gate
 
 ```
-cd ~/showell_repos/gopher-roc && git merge --ff-only deploy/prod && shale tools/verify.shale
+cd ~/showell_repos/gopher-roc && shale tools/verify.shale
 ```
 
-This proves that what deploys is `main`, and that `main` passes. It ends `verify: every check passed`.
+This proves that `main`, which is what deploys, passes. It ends `verify: every check passed`.
 
 ### 1. Look at prod (read-only)
 
@@ -135,7 +135,7 @@ The deploy has already checked the doors. These steps check what it can't, in a 
 | Open the topic in a second window, and post from the first, once at once and once after two minutes. Both appear in the second. | Caddy doesn't buffer a stream, and the keepalive holds it past a quiet spell. |
 | Upload an image from the compose box. | A large body passes Caddy's cap, and an image is served back. |
 | At `/invites`, invite someone, and open the link in a private window. Join with a name and a password. | Human invites work behind the proxy. You land in a DM with the owner holding the welcome, and `general` is on your Browse. |
-| Have Apoorva sign in with GitHub, or use a second GitHub account in a private window. | Open sign-up works against the real GitHub. She chooses a name, lands in the DM with the welcome, and has `general`. |
+| Have Apoorva sign in with GitHub, or use a second GitHub account in a private window. | Open sign-up works against the real GitHub. The new human chooses a name, lands in the DM with the welcome, and has `general`. |
 
 Then look at the server's side (read-only):
 
