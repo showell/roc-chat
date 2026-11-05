@@ -11,7 +11,7 @@ gopher-roc runs on the prod droplet (162.243.1.123), beside Caddy, on 127.0.0.1:
 | the data root | `/var/lib/gopher-roc/data` | seeded by the first start (below) |
 | the GitHub app's id and secret | `.github-client-id`, `.github-client-secret` in the data root, mode 600 | copied from roc-chat's on prod, step 4 |
 | the session secret | `.session-secret` in the data root, mode 600 | made by the first start |
-| the owner's password's hash | `auth/1/password` in the data root | the owner, step 8 |
+| the owner's GitHub id | `auth/1/github-id` in the data root | the owner, step 8 |
 | the unit | `/etc/systemd/system/gopher-roc.service` | `deploy/gopher-roc.service` |
 | the site block | `/etc/caddy/sites/chat.lynrummy.com.caddy` | `deploy/chat.lynrummy.com.caddy`, in place of roc-chat's |
 | the access log | `/var/log/caddy/chat-access.log` | Caddy's, the file roc-chat's block wrote |
@@ -19,7 +19,7 @@ gopher-roc runs on the prod droplet (162.243.1.123), beside Caddy, on 127.0.0.1:
 ## What carries over, and what doesn't
 
 - **The GitHub OAuth app carries over.** roc-chat's app already calls back to `https://chat.lynrummy.com/login/github`, the URL gopher-roc uses, so GitHub needs no change. Step 4 copies its id and secret on prod, and they never leave the droplet.
-- **The owner's account carries over in name only.** The first start makes `Steve` as id 1. roc-chat's accounts are in another format, so the owner gets a new password (step 8) and links GitHub to it (step 9).
+- **The owner's account carries over in name only.** The first start makes `Steve` as id 1. roc-chat's accounts are in another format, so the owner's GitHub id is written to it by hand (step 8), and he signs in with GitHub (step 9).
 - **The session key doesn't carry over.** gopher-roc could read roc-chat's `signing-key` as its `.session-secret`, but keeping it would keep nothing. The cookie has another name and signs other bytes, so every browser signs in again either way, and one key would then serve two formats. The first start makes a fresh one.
 - **Conversations, other accounts, agents and their keys don't carry over.** Apoorva signs in fresh with GitHub. Every agent is made and invited again.
 - **Nothing of roc-chat's is deleted.** Its binary, unit, data, secrets and port 9490 stay as they are, for the way back.
@@ -33,7 +33,7 @@ An empty data root gets the first chat at the server's first start, before it li
 - `auth/next-id.txt`, holding `2`, written last;
 - `.session-secret`.
 
-The owner has no password until step 8, so no one can sign in as him until then, and his name can't be taken. Each new human then starts in `general`, with a DM from the owner under the topic `ChitChat` holding the welcome message, which names the owner from `auth/1/name`. The deploy refuses to point the site at a server missing any of these files.
+The owner has no password and no GitHub id until step 8, so no one can sign in as him until then, and his name can't be taken. Each new human then starts in `general`, with a DM from the owner under the topic `ChitChat` holding the welcome message, which names the owner from `auth/1/name`. The deploy refuses to point the site at a server missing any of these files.
 
 ## The cutover
 
@@ -101,29 +101,23 @@ cd ~/showell_repos/gopher-roc && shale tools/deploy.shale
 
 The run copies the binary and proves its sha256, installs the unit, starts the server, checks that the first start seeded the chat, installs the site block after Caddy validates it, and reloads Caddy. This is the first time the block meets a Caddy, as this box has none to run. Its directives are those of roc-chat's live block, with another port and body size. If it fails to validate, the old block goes back and the run stops, and the way back below applies.
 
-The run ends with the checks over HTTPS: `/` goes to `/chat`, `/chat` and `/agents` go to sign in, `/login` is gopher-roc's page and offers GitHub, and `/login/github/start` goes to GitHub. It then says the owner has no password yet and hasn't linked GitHub. The site is up from here, and open to GitHub sign-ups.
+The run ends with the checks over HTTPS: `/` goes to `/chat`, `/chat` and `/agents` go to sign in, `/login` is gopher-roc's page and offers GitHub, and `/login/github/start` goes to GitHub. It then says the owner hasn't linked GitHub. The site is up from here, and open to GitHub sign-ups.
 
-### 8. Set the owner's password **[PROD WRITE]**
+### 8. Link the owner's GitHub account **[PROD WRITE]**
 
-```
-ssh -t steve@162.243.1.123 "sudo -u gopherroc sh -c 'cd / && umask 077 && /opt/gopher-roc/gopher-roc hash-password > /var/lib/gopher-roc/data/auth/1/password'"
-```
-
-You type it twice on the droplet, with no echo. Only its bcrypt hash is written, readable by `gopherroc` alone, and the password reaches no agent, log or argument list. The server reads the file at each sign-in, so there is no restart. If the two typings differ, it says so and leaves the file empty, which admits no one: run it again.
-
-### 9. Sign in with the password, then link GitHub
-
-**Don't press "Sign in with GitHub" before this step is done.** With no link, GitHub makes a second account, and accounts are never removed. Your GitHub account would then be taken, and a link from `Steve` would be refused.
-
-1. At https://chat.lynrummy.com/, sign in as `Steve` with the password from step 8. You land on Browse.
-2. At https://chat.lynrummy.com/agents, press "Link GitHub", and authorize. You land back on Browse, still signed in.
-3. Sign out, and sign in with GitHub. The top bar says Steve. This proves the link.
-
-If GitHub made a second account first, the page it landed on, `/chat/dm/1_<n>/ChitChat`, gives its number `<n>`. This command frees your GitHub account **[PROD WRITE]**. Then sign out and do this step again. The stray account stays in the chat, with no way to sign in.
+The owner has no password. This writes the numeric id of the GitHub account `showell`, which is public, to the owner's `github-id`, so GitHub is how he signs in.
 
 ```
-ssh steve@162.243.1.123 'sudo rm /var/lib/gopher-roc/data/auth/<n>/github-id'
+ssh steve@162.243.1.123 "sudo -u gopherroc sh -c 'cd / && umask 077 && printf 142908 > /var/lib/gopher-roc/data/auth/1/github-id' && sudo stat -c '%U %a %s %n' /var/lib/gopher-roc/data/auth/1/github-id"
 ```
+
+The output must show `gopherroc 600 6`. The server reads the file at each sign-in, so there is no restart.
+
+**Don't press "Sign in with GitHub" before this step is done.** With no link, GitHub makes a second account, and accounts are never removed.
+
+### 9. Sign in with GitHub
+
+At https://chat.lynrummy.com/, press "Sign in with GitHub". You land on Browse, the top bar says Steve, and no form asks for a name. This proves the link. A browser already signed in to GitHub, on an app it has authorized, goes there and back with no page to see.
 
 ### 10. The smoke test
 
@@ -179,7 +173,7 @@ roc-chat's data, secrets, binary, unit and port were never touched, so going bac
 ssh steve@162.243.1.123 'set -e; sudo systemctl disable --now gopher-roc; sudo install -m 644 ~/roc-chat-rollback/chat.lynrummy.com.caddy /etc/caddy/sites/chat.lynrummy.com.caddy; sudo caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile; sudo systemctl reload caddy; sudo systemctl enable --now roc-chat; systemctl is-active roc-chat'
 ```
 
-The last line must say `active`, and https://chat.lynrummy.com/login then sends the browser to GitHub. That proves roc-chat serves again. Its accounts, sessions and agents' keys work as before, and whatever was posted on gopher-roc stays in gopher-roc's folder, unseen by roc-chat. To go forward again, run steps 6 and 7. The password, the link and everything else in the data root are still there.
+The last line must say `active`, and https://chat.lynrummy.com/login then sends the browser to GitHub. That proves roc-chat serves again. Its accounts, sessions and agents' keys work as before, and whatever was posted on gopher-roc stays in gopher-roc's folder, unseen by roc-chat. To go forward again, run steps 6 and 7. The link and everything else in the data root are still there.
 
 ## What Caddy must do, and must not
 

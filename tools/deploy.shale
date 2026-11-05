@@ -32,8 +32,8 @@
 --    and the old block goes back if the new one fails.
 -- 10. Over HTTPS it checks the doors: `/` goes to Browse, `/chat` and `/agents`
 --    go to sign in, `/login` is gopher-roc's page and offers GitHub, and
---    `/login/github/start` goes to GitHub. Then it says whether the owner has a
---    password and has linked GitHub yet.
+--    `/login/github/start` goes to GitHub. Then it says whether the owner has
+--    linked GitHub yet.
 --
 -- budget: steps=50000000
 
@@ -216,13 +216,8 @@ if not starts_with(location_of("/login/github/start"), "https://github.com/login
   fail("deploy: " .. ORIGIN .. "/login/github/start does not send the browser to GitHub's authorize page")
 end
 print("deployed: " .. ORIGIN .. "/ (gopher-roc " .. commit .. "); the doors answer as they should")
-if asks_prod("sudo test -s " .. DATA .. "/auth/1/password") then
-  print("the owner has a password")
-else
-  print("the owner has no password yet: docs/deploy.md, step 8, sets it")
-end
 if asks_prod("sudo test -s " .. DATA .. "/auth/1/github-id") then
   print("the owner has linked GitHub")
 else
-  print("the owner has not linked GitHub yet: docs/deploy.md, step 9, comes before signing in with GitHub")
+  print("the owner has not linked GitHub yet: docs/deploy.md, step 8, comes before signing in with GitHub")
 end
