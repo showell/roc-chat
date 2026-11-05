@@ -1,7 +1,7 @@
 -- This script deploys roc-chat, built on this box, to the prod droplet behind
 -- its Caddy at https://chat.lynrummy.com. It takes no arguments and runs from
--- roc-chat's root, on `main`. docs/deploy.md is the runbook: the cutover from
--- roc-chat is three runs of this script, each stopping where the runbook says.
+-- roc-chat's root, on `main`, while the server runs. docs/deploy.md is the
+-- runbook.
 --
 --   shale tools/deploy.shale
 --
@@ -18,19 +18,17 @@
 --    GitHub, so it never starts without them.
 -- 4. It builds the binary here: static (musl) and ReleaseSafe, so bcrypt runs
 --    at release speed and the safety checks stay on.
--- 5. It refuses while roc-chat still runs on prod, as the cutover stops it first.
--- 6. It pushes `main` when `main` has an upstream, and says so when it has none,
---    as this repo has no remote yet.
--- 7. It copies the binary, proves the copy by its sha256, swaps it in whole by a
+-- 5. It pushes `main` when `main` has an upstream, and says so when it has none.
+-- 6. It copies the binary, proves the copy by its sha256, swaps it in whole by a
 --    rename, installs the systemd unit when it changed, restarts, and waits for
 --    127.0.0.1:9611 to answer.
--- 8. It refuses to go on unless the first start seeded the chat: the owner's
+-- 7. It refuses to go on unless the first start seeded the chat: the owner's
 --    account, the channel `general`, the counter of ids and .session-secret.
 --    No sign-up can reach a server that lacks them.
--- 9. It installs deploy/chat.lynrummy.com.caddy when it changed, with its access
+-- 8. It installs deploy/chat.lynrummy.com.caddy when it changed, with its access
 --    log made Caddy's first. Caddy validates the whole config before the reload,
 --    and the old block goes back if the new one fails.
--- 10. Over HTTPS it checks the doors: `/` goes to Browse, `/chat` and `/agents`
+-- 9. Over HTTPS it checks the doors: `/` goes to Browse, `/chat` and `/agents`
 --    go to sign in, `/login` is roc-chat's page and offers GitHub, and
 --    `/login/github/start` goes to GitHub. Then it says whether the owner has
 --    linked GitHub yet.
@@ -105,10 +103,10 @@ on_prod("set -e\n"
   .. "sudo install -d -o root -g root -m 755 /opt/roc-chat\n"
   .. "sudo install -d -o rocchat -g rocchat -m 700 " .. HOME .. " " .. DATA)
 
--- 3. The OAuth app's id and secret, which the owner copies on prod.
+-- 3. The OAuth app's id and secret, which the owner writes on prod.
 for name in {".github-client-id", ".github-client-secret"} do
   if not asks_prod("sudo test -s " .. DATA .. "/" .. name) then
-    fail("deploy: " .. DATA .. "/" .. name .. " is missing or empty on prod; docs/deploy.md, step 4, copies it from roc-chat's")
+    fail("deploy: " .. DATA .. "/" .. name .. " is missing or empty on prod; see docs/deploy.md, \"GitHub setup\"")
   end
 end
 
@@ -118,13 +116,7 @@ local built = OUT .. "/bin/roc-chat"
 local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
 print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
 
--- 5. roc-chat. is-active exits 3 when stopped and 4 when there is no unit, and
--- both are "no".
-if asks_prod("if systemctl is-active --quiet roc-chat; then exit 0; else exit 1; fi") then
-  fail("deploy: roc-chat still runs on prod; the build is ready, and docs/deploy.md, step 6, stops it")
-end
-
--- 6. The push.
+-- 5. The push.
 if git_upstream("") == nil then
   print("main has no upstream, so nothing is pushed: what serves is on this box alone")
 else
@@ -139,7 +131,7 @@ print("deploying roc-chat " .. commit .. " to " .. HOST)
 const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" roc-chat-deploy.XXXXXXXX").out)
 if find(STAGE, "/roc-chat-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
 
--- 7. The binary, the unit and the restart.
+-- 6. The binary, the unit and the restart.
 copy_to_prod(built, STAGE .. "/roc-chat.new")
 local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/roc-chat.new").out), " ")[1]
 if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
@@ -159,14 +151,14 @@ on_prod("set -e\nsudo systemctl restart roc-chat\n"
   .. "curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/login")
 print("roc-chat " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
 
--- 8. What the first start seeds, before any sign-up can arrive.
+-- 7. What the first start seeds, before any sign-up can arrive.
 for name in {"auth/1/name", "auth/next-id.txt", "chat/channel/general.channel", ".session-secret"} do
   if not asks_prod("sudo test -s " .. DATA .. "/" .. name) then
     fail("deploy: " .. DATA .. "/" .. name .. " is missing or empty after the start, so the chat is not seeded; the site block is left as it was")
   end
 end
 
--- 9. The site block, validated before it counts.
+-- 8. The site block, validated before it counts.
 copy_to_prod("deploy/" .. BLOCK, STAGE .. "/" .. BLOCK)
 if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
   print("the site block is unchanged")
@@ -190,7 +182,7 @@ on_prod("rm -f " .. STAGE .. "/" .. BLOCK)
 
 on_prod("rm -rf " .. STAGE)
 
--- 10. The doors, over HTTPS. The first try uses curl, not http(), because a
+-- 9. The doors, over HTTPS. The first try uses curl, not http(), because a
 -- handshake that fails while Caddy reloads is a try to repeat, not an error.
 local code = ""
 local tries = 0
@@ -219,5 +211,5 @@ print("deployed: " .. ORIGIN .. "/ (roc-chat " .. commit .. "); the doors answer
 if asks_prod("sudo test -s " .. DATA .. "/auth/1/github-id") then
   print("the owner has linked GitHub")
 else
-  print("the owner has not linked GitHub yet: docs/deploy.md, step 8, comes before signing in with GitHub")
+  print("the owner has not linked GitHub yet: docs/deploy.md, \"Linking the owner's GitHub account\", comes before signing in with GitHub")
 end
