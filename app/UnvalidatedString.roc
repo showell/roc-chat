@@ -51,12 +51,7 @@ UnvalidatedString :: Str.{
 	## `ChannelName.from_str`.
 	channel_name : UnvalidatedString -> Try(
 		ChannelName,
-		[
-			Empty,
-			StartsWithNonLetter,
-			TooLong,
-			ForbiddenByte,
-		],
+		[Empty, StartsWithNonLetter, TooLong, ForbiddenByte],
 	)
 	channel_name = |UnvalidatedString.(text)| ChannelName.from_str(text)
 
@@ -222,10 +217,7 @@ expect
 	wire("/a/plans".to_utf8())
 		.url_path_parts()
 		.map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str)))
-		== Ok([
-			Ok("a"),
-			Ok("plans"),
-		])
+		== Ok([Ok("a"), Ok("plans")])
 # Markdown: CRLF to LF, a lone CR and LF kept.
 expect wire("a\r\nb\r\n".to_utf8()).markdown() == Ok("a\nb\n")
 expect wire("a\nb".to_utf8()).markdown() == Ok("a\nb")

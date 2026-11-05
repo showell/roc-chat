@@ -87,11 +87,7 @@ FileSystem :: [].{
 	## when there is none yet; unless the host's read failed.
 	read_transcript! : ConversationKey => Try(
 		[NoFile, File(Transcript.Utf8Transcript)],
-		[
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[NotUtf8, PathRefused, Failed],
 	)
 	read_transcript! = |key| {
 		read = Host.read_utf8_bytes_from_file!(transcript_path(key))
@@ -111,12 +107,7 @@ FileSystem :: [].{
 	append_message! : ConversationKey,
 	Transcript.Utf8TranscriptMessage => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	append_message! = |key, record| {
 		make_folder!(folder_path(key))?
@@ -135,12 +126,7 @@ FileSystem :: [].{
 	store_uploaded_image! : ConversationKey,
 	{ image : UploadedImage, bytes : List(U8) } => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, PathRefused, Failed],
 	)
 	store_uploaded_image! = |key, { image, bytes }| {
 		make_folder!(uploads_folder_path(key))?
@@ -161,11 +147,7 @@ FileSystem :: [].{
 	read_uploaded_image! : ConversationKey,
 	UploadedImage => Try(
 		List(U8),
-		[
-			Missing,
-			PathRefused,
-			Failed,
-		],
+		[Missing, PathRefused, Failed],
 	)
 	read_uploaded_image! = |key, image| {
 		read = Host.read_binary_bytes_from_file!(uploaded_image_path(key, image))
@@ -179,15 +161,7 @@ FileSystem :: [].{
 
 	## A user's upload total, as their folder keeps it, read by
 	## `UploadTotal.from_file`; unless the host's read failed.
-	read_upload_total! : UserFolder => Try(
-		UploadTotal,
-		[
-			NotANumber,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
-	)
+	read_upload_total! : UserFolder => Try(UploadTotal, [NotANumber, NotUtf8, PathRefused, Failed])
 	read_upload_total! = |folder| {
 		read = Host.read_utf8_bytes_from_file!(upload_total_path(folder))
 		match read.status {
@@ -205,11 +179,7 @@ FileSystem :: [].{
 	replace_upload_total! : UserFolder,
 	UploadTotal => Try(
 		{},
-		[
-			MissingDirectory,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, PathRefused, Failed],
 	)
 	replace_upload_total! = |folder, total| {
 		make_folder!(user_folder_path(folder))?
@@ -235,12 +205,7 @@ FileSystem :: [].{
 	## so its id is never given again.
 	read_directory_files! : {} => Try(
 		FileSystem.DirectoryFiles,
-		[
-			Missing,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[Missing, NotUtf8, PathRefused, Failed],
 	)
 	read_directory_files! = |{}| {
 		counter = read_fact!(user_counter_path)?
@@ -268,11 +233,7 @@ FileSystem :: [].{
 			members = read_needed_fact!(channel_members_path(name))?
 			$channels = $channels.append({ name, members })
 		}
-		Ok({
-			counter,
-			accounts: $accounts,
-			channels: $channels,
-		})
+		Ok({ counter, accounts: $accounts, channels: $channels })
 	}
 
 	## A new user's account folder, made once: an agent's `owner`, then the
@@ -281,13 +242,7 @@ FileSystem :: [].{
 	## never given twice.
 	create_account! : Users.User => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_account! = |user| {
 		files = Users.account_files(user)
@@ -306,24 +261,12 @@ FileSystem :: [].{
 	## first, as for any account.
 	create_invited_account! : { human : Users.User, inviter : UserId } => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_invited_account! = |{ human, inviter }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(
-			folder,
-			[
-				("inviter", inviter.to_str().to_utf8()),
-				("name", files.name),
-			],
-		)
+		create_facts!(folder, [("inviter", inviter.to_str().to_utf8()), ("name", files.name)])
 	}
 
 	## A new human's account folder, made once as they sign up with GitHub:
@@ -332,37 +275,17 @@ FileSystem :: [].{
 	## The counter of ids is the caller's to advance first, as for any account.
 	create_github_account! : { human : Users.User, github : GitHubId } => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_github_account! = |{ human, github }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(
-			folder,
-			[
-				("github-id", github.to_str().to_utf8()),
-				("name", files.name),
-			],
-		)
+		create_facts!(folder, [("github-id", github.to_str().to_utf8()), ("name", files.name)])
 	}
 
 	## The user's `name` file written whole over the one before, atomically:
 	## the name an invited human chose as they joined.
-	replace_account_name! : Users.User => Try(
-		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
-	)
+	replace_account_name! : Users.User => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_account_name! = |user|
 		replace_fact!(
 			"${account_folder_path(AccountFolder.of(user.id()))}/name",
@@ -380,12 +303,7 @@ FileSystem :: [].{
 	replace_password_hash! : UserId,
 	List(U8) => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_password_hash! = |id, hash| replace_fact!(password_path(id), hash)
 
@@ -426,13 +344,7 @@ FileSystem :: [].{
 	create_human_invite! : UserId,
 	HumanInvite => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_human_invite! = |human, invite| {
 		files = invite.to_files()
@@ -453,12 +365,7 @@ FileSystem :: [].{
 	replace_human_invite_state! : UserId,
 	HumanInvite => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_human_invite_state! = |human, invite| replace_fact!(
 		"${human_invite_folder_path(human, invite.id())}/state",
@@ -512,13 +419,7 @@ FileSystem :: [].{
 	create_github_session_secret! : UserId,
 	List(U8) => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_github_session_secret! = |id, bytes| create_fact!(github_session_secret_path(id), bytes)
 
@@ -527,12 +428,7 @@ FileSystem :: [].{
 	replace_github_session_secret! : UserId,
 	List(U8) => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_github_session_secret! = |id, bytes|
 		replace_fact!(github_session_secret_path(id), bytes)
@@ -542,16 +438,13 @@ FileSystem :: [].{
 	create_github_id! : UserId,
 	GitHubId => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_github_id! = |id, github|
-		create_fact!("${account_folder_path(AccountFolder.of(id))}/github-id", github.to_str().to_utf8())
+		create_fact!(
+			"${account_folder_path(AccountFolder.of(id))}/github-id",
+			github.to_str().to_utf8(),
+		)
 
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
@@ -563,12 +456,7 @@ FileSystem :: [].{
 	## A channel's members file, written whole as `channel` holds them.
 	replace_channel_members! : Channels.Channel => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_channel_members! = |channel| {
 		make_folder!(channels_folder_path)?
@@ -628,13 +516,7 @@ FileSystem :: [].{
 	create_agent_key! : UserId,
 	AgentKey => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_agent_key! = |agent, key| create_facts!(
 		key_folder_path(agent, key.id()),
@@ -645,12 +527,7 @@ FileSystem :: [].{
 	replace_agent_key_state! : UserId,
 	AgentKey => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_agent_key_state! = |agent, key| replace_fact!(
 		"${key_folder_path(agent, key.id())}/state",
@@ -685,13 +562,7 @@ FileSystem :: [].{
 	create_agent_invite! : UserId,
 	AgentInvite => Try(
 		{},
-		[
-			AlreadyExists,
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_agent_invite! = |agent, invite| create_facts!(
 		invite_folder_path(agent, invite.id()),
@@ -702,12 +573,7 @@ FileSystem :: [].{
 	replace_agent_invite_state! : UserId,
 	AgentInvite => Try(
 		{},
-		[
-			MissingDirectory,
-			NotUtf8,
-			PathRefused,
-			Failed,
-		],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_agent_invite_state! = |agent, invite| replace_fact!(
 		"${invite_folder_path(agent, invite.id())}/state",
@@ -844,13 +710,7 @@ read_human_invite_facts! = |folder| {
 	expires = read_needed_fact!("${folder}/expires")?
 	state = read_needed_fact!("${folder}/state")?
 	by = read_needed_fact!("${folder}/by")?
-	Ok({
-		created,
-		expires,
-		state,
-		by,
-		hash,
-	})
+	Ok({ created, expires, state, by, hash })
 }
 
 ## The folder of the channels: what holds each channel's folder and its

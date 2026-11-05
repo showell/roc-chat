@@ -50,12 +50,7 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	from_name : Str -> Try(UploadedImage, [NotAnUploadName])
 	from_name = |text|
 		match text.to_utf8().split_first('.') {
-			Ok(
-				{
-					before,
-					after,
-				},
-			) if before.len()
+			Ok({ before, after }) if before.len()
 				== UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
 				kind = kind_of_extension(after)?
 				digits =
@@ -159,28 +154,13 @@ expect UploadedImage.most_bytes == 10485760
 # Its size: at the most and one byte under it, and one byte over, an image
 # whatever follows its opening; one too large and no image is no image.
 expect UploadedImage.checked_bytes(
-	png_signature.concat(
-		List.repeat(
-			0,
-			UploadedImage.most_bytes - 8,
-		),
-	),
+	png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 8)),
 ) == Ok(Png)
 expect UploadedImage.checked_bytes(
-	png_signature.concat(
-		List.repeat(
-			0,
-			UploadedImage.most_bytes - 9,
-		),
-	),
+	png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 9)),
 ) == Ok(Png)
 expect UploadedImage.checked_bytes(
-	png_signature.concat(
-		List.repeat(
-			0,
-			UploadedImage.most_bytes - 7,
-		),
-	),
+	png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 7)),
 ) == Err(TooLarge)
 expect UploadedImage.checked_bytes(List.repeat(0, UploadedImage.most_bytes + 1)) == Err(NotAnImage)
 # A fresh name: the random bytes in lowercase hex, and its kind's extension.

@@ -8,10 +8,7 @@ import Message
 import MsgAnchor
 import Topic
 
-Conversation :: {
-	topic : Topic,
-	messages : List(Message),
-}.{
+Conversation :: { topic : Topic, messages : List(Message) }.{
 
 	## A conversation with no messages yet.
 	empty : Topic -> Conversation

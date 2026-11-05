@@ -59,11 +59,7 @@ value_of = |c|
 encode_group : List(U8) -> List(U8)
 encode_group = |group|
 	match group {
-		[
-			a,
-			b,
-			c,
-		] => [
+		[a, b, c] => [
 			a // 4,
 			(a % 4) * 16 + b // 16,
 			(b % 16) * 4 + c // 64,
@@ -83,12 +79,7 @@ encode_group = |group|
 decode_group : List(U8) -> Try(List(U8), [NotBase64Url])
 decode_group = |group|
 	match group {
-		[
-			a,
-			b,
-			c,
-			d,
-		] => Ok([
+		[a, b, c, d] => Ok([
 			a * 4 + b // 16,
 			(b % 16) * 16 + c // 4,
 			(c % 4) * 64 + d,
@@ -115,10 +106,7 @@ expect
 		("foobar", "Zm9vYmFy"),
 	].all(
 		|
-			(
-				plain,
-				encoded,
-			),
+			(plain, encoded),
 		| Base64Url.encode(plain.to_utf8())
 			== encoded and Base64Url.decode(encoded) == Ok(plain.to_utf8()),
 	)

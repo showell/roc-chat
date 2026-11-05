@@ -45,10 +45,7 @@ Browse :: [].{
 				.sort_with(|a, b| a.id().compare(b.id()))
 				.map(|other| dm_listed({ reader, other }))
 		channels = directory.channels().to_list().map(
-			|channel| {
-				label: "#${channel.name().to_str()}",
-				place: Place.channel(channel),
-			},
+			|channel| { label: "#${channel.name().to_str()}", place: Place.channel(channel) },
 		)
 		Ok(
 			dms.concat(channels).keep_if(
@@ -70,13 +67,7 @@ Browse :: [].{
 		places : List(Browse.PlaceWithTopics),
 		problem : [NoProblem, Problem(Str)],
 	} -> TrustedHtml
-	page = |
-		{
-			viewer,
-			places,
-			problem,
-		},
-	| {
+	page = |{ viewer, places, problem }| {
 		said =
 			match problem {
 				NoProblem => []
@@ -104,13 +95,7 @@ dm_listed = |{ reader, other }| {
 ## One place on the page: its name, its topics as links, and the form that
 ## starts a topic. A place with no topics yet says so and suggests its first.
 place_section : Browse.PlaceWithTopics -> TrustedHtml
-place_section = |
-	{
-		label,
-		place,
-		topics,
-	},
-| {
+place_section = |{ label, place, topics }| {
 	action = ConversationKey.place_url_path(place)
 	listed =
 		if (topics.is_empty())

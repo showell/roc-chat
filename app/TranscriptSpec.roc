@@ -23,13 +23,7 @@ Lines : {
 ## One message as the transcript writes it, its lines as given.
 write_message : Lines -> Str
 write_message = |
-	{
-		head,
-		from,
-		date,
-		gap,
-		body,
-	},
+	{ head, from, date, gap, body },
 | "-------------\n${head}\n${from}\n${date}\n${gap}${body}\n\n"
 
 ## Message 1's lines, written well.
@@ -138,10 +132,7 @@ expect one_with({ ..first, body: "a\n-------------" }) == Err(BadBody(Sample.fir
 expect one_with({ ..first, body: "a\n\n-------------\nb" }) == Err(BadHead(Sample.second))
 expect is_round_trip(write_message({ ..first, body: "a\n\n\\-------------\nb" }))
 expect again(
-	write_message({
-		..first,
-		body: "a\n\\-------------",
-	}),
+	write_message({ ..first, body: "a\n\\-------------" }),
 ) == Ok(write_message({ ..first, body: "a\n\\-------------" }))
 # The same at message 2, after a good message 1.
 expect
@@ -229,22 +220,12 @@ expect Transcript.read(Sample.plans, Transcript.write(near)) == Ok(near)
 # Markdown that is empty, or ends in one or two newlines, comes back
 # exactly; the empty one's record is written byte for byte.
 edges : List(Str)
-edges = [
-	"",
-	"\n",
-	"\n\n",
-	"a\n",
-	"a\n\n",
-]
+edges = ["", "\n", "\n\n", "a\n", "a\n\n"]
 
 ## Steve's message saying `markdown`.
 steve_message : Str -> Message.Unnumbered(Author)
 steve_message = |markdown|
-	Sample.unnumbered_message({
-		author: "Steve",
-		time: "2026-11-02T19:11:32Z",
-		markdown,
-	})
+	Sample.unnumbered_message({ author: "Steve", time: "2026-11-02T19:11:32Z", markdown })
 
 edged : Conversation
 edged = Sample.conversation(Sample.plans, edges.map(steve_message))

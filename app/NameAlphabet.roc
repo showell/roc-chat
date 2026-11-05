@@ -296,12 +296,7 @@ expect folded_text("ſ") == "s"
 expect folded_text("ZOË Ann") == "zoë ann"
 # Small letters, the letters with no simple fold, and spaces stay.
 expect
-	[
-		"azàöøþÿ",
-		"āįĳķĺľłňŋŷźž",
-		"ßİ",
-		" ",
-	].all(|text| folded_text(text) == text)
+	["azàöøþÿ", "āįĳķĺľłňŋŷźž", "ßİ", " "].all(|text| folded_text(text) == text)
 # Every letter of every row is spelled as its row says.
 expect
 	spellings.all(

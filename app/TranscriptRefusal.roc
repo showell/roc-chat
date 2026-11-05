@@ -15,14 +15,7 @@ TranscriptRefusal :: [].{
 	Why : [
 		PathNotUtf8,
 		TranscriptNotUtf8,
-		Path(
-			[
-				NotAConversationPath,
-				BadName,
-				NoSuchChannel,
-				NoSuchHuman,
-			],
-		),
+		Path([NotAConversationPath, BadName, NoSuchChannel, NoSuchHuman]),
 		Transcript(
 			[
 				NotPrefixedProperly,
@@ -106,12 +99,7 @@ expect
 		== "message 2 does not open with its reference, `from:`, `date:` and an empty line"
 expect TranscriptRefusal.words(Transcript(Author(second_id, Empty))) == "message 2 has no author"
 expect TranscriptRefusal.words(
-	Transcript(
-		Author(
-			second_id,
-			TooLong,
-		),
-	),
+	Transcript(Author(second_id, TooLong)),
 ) == "message 2's author is longer than 60 characters"
 expect
 	TranscriptRefusal.words(Transcript(Author(second_id, ForbiddenCharacter)))
@@ -120,12 +108,7 @@ expect
 	TranscriptRefusal.words(Transcript(Author(second_id, BadSpacing)))
 		== "message 2's author has a space at either end, or two together"
 expect TranscriptRefusal.words(
-	Transcript(
-		DateTime(
-			second_id,
-			WrongShape,
-		),
-	),
+	Transcript(DateTime(second_id, WrongShape)),
 ) == "message 2's date is not YYYY-MM-DDTHH:MM:SSZ"
 expect
 	TranscriptRefusal.words(Transcript(DateTime(second_id, OutOfRange)))

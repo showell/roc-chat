@@ -85,14 +85,7 @@ GitHubRoute :: [].{
 		origin : Str,
 		now : I64,
 	} => Http.Response
-	serve_start! = |
-		{
-			viewer,
-			query,
-			origin,
-			now,
-		},
-	| {
+	serve_start! = |{ viewer, query, origin, now }| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
 			match (settings.status, SignInRoute.check_not_by_api_key(viewer)) {
@@ -122,13 +115,7 @@ GitHubRoute :: [].{
 		origin : Str,
 		now : I64,
 	} => Http.Response
-	serve_link_start! = |
-		{
-			viewer,
-			origin,
-			now,
-		},
-	| {
+	serve_link_start! = |{ viewer, origin, now }| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
 			match settings.status {
@@ -161,15 +148,7 @@ GitHubRoute :: [].{
 		headers : List(Http.Header),
 		now : I64,
 	} => Http.Response
-	serve_return! = |
-		{
-			viewer,
-			directory,
-			query,
-			headers,
-			now,
-		},
-	| {
+	serve_return! = |{ viewer, directory, query, headers, now }| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
 			match (settings.status, SignInRoute.check_not_by_api_key(viewer)) {
@@ -187,11 +166,7 @@ GitHubRoute :: [].{
 						match resolved {
 							Ok(Known(admission)) =>
 								SignInRoute.start_session_by_github!(admission, now)
-							Ok(Unknown(new_human)) => ask_for_name!({
-								new_human,
-								directory,
-								now,
-							})
+							Ok(Unknown(new_human)) => ask_for_name!({ new_human, directory, now })
 							Ok(Linking(linked)) =>
 								SignInRoute.start_session_by_github_link!(linked, now)
 							Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
@@ -343,14 +318,7 @@ authorize_url : {
 	origin : Str,
 	state_token : Str,
 } -> Str
-authorize_url = |
-	{
-		authorize_base,
-		client_id,
-		origin,
-		state_token,
-	},
-| {
+authorize_url = |{ authorize_base, client_id, origin, state_token }| {
 	base = Str.from_utf8(authorize_base) ?? crash "GitHubRoute.authorize_url: the host's base URL is ASCII"
 	id = percent_encoded(client_id)
 	back = percent_encoded("${origin}/login/github".to_utf8())
@@ -391,15 +359,7 @@ resolve! : {
 	],
 	[Refused(GitHubSignIn.Refusal), FileSystem(FileSystem.Fault)],
 )
-resolve! = |
-	{
-		users,
-		viewer,
-		query,
-		headers,
-		now,
-	},
-| {
+resolve! = |{ users, viewer, query, headers, now }| {
 	came =
 		GitHubSignIn.CameBack.came_back({
 			state: load_signed_state!(query),
@@ -409,11 +369,7 @@ resolve! = |
 	heard = Host.github_identity_for_code!(checked.code_bytes())
 	known = checked.identify(heard) ? |why| Refused(why)
 	files = FileSystem.read_github_id_files!({}) ? |fault| FileSystem(fault)
-	known.resolve({
-		files,
-		users,
-		viewer,
-	}).map_err(|why| Refused(why))
+	known.resolve({ files, users, viewer }).map_err(|why| Refused(why))
 }
 
 ## The form that asks `new_human` for a name, offering what `directory` leaves
@@ -423,13 +379,7 @@ ask_for_name! : {
 	directory : Directory,
 	now : I64,
 } => Http.Response
-ask_for_name! = |
-	{
-		new_human,
-		directory,
-		now,
-	},
-| {
+ask_for_name! = |{ new_human, directory, now }| {
 	sign_up = new_human.sign_up(now)
 	mac = Host.hmac_sha256_with_server_secret!(sign_up.signed_bytes())
 	suggested =
@@ -454,15 +404,7 @@ sign_up! : {
 	headers : List(Http.Header),
 	now : I64,
 } => Try(GitHubSignIn.Admission, _)
-sign_up! = |
-	{
-		viewer,
-		directory,
-		body,
-		headers,
-		now,
-	},
-| {
+sign_up! = |{ viewer, directory, body, headers, now }| {
 	resumed = GitHubSignIn.SignUpResumed.resume({
 		sign_up: load_signed_sign_up!(headers),
 		viewer,
@@ -470,11 +412,7 @@ sign_up! = |
 	}) ? |why| Refused(why)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
 	files = FileSystem.read_github_id_files!({}) ? |fault| FileSystem(fault)
-	made = resumed.create_account({
-		name,
-		files,
-		directory,
-	}) ? |why| account_refusal({ name, why })
+	made = resumed.create_account({ name, files, directory }) ? |why| account_refusal({ name, why })
 	human = made.admission.human()
 	welcome = Welcome.make({
 		directory: made.directory,
@@ -483,11 +421,7 @@ sign_up! = |
 	}) ? |ClockOutOfRange| Refused(ClockOutOfRange)
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	FileSystem.append_message!(welcome.key(), welcome.first_record()) ? |fault| FileSystem(fault)
-	landing = FirstPage.load!({
-		directory: made.directory,
-		human,
-		wanted: made.admission.next(),
-	})?
+	landing = FirstPage.load!({ directory: made.directory, human, wanted: made.admission.next() })?
 	FileSystem.create_github_account!({
 		human: made.human,
 		github: made.github,
@@ -500,13 +434,7 @@ sign_up! = |
 ## again.
 account_refusal : {
 	name : Name,
-	why : [
-		AccountExists,
-		DuplicateAccount,
-		NameTaken,
-		Full,
-		NoDefaultChannel,
-	],
+	why : [AccountExists, DuplicateAccount, NameTaken, Full, NoDefaultChannel],
 } -> [
 	Refused(GitHubSignIn.Refusal),
 	NameRefused({ name : Page.NameField, why : HumanInvites.Refusal }),
@@ -616,10 +544,7 @@ refusal_answer = |{ viewer, why }| {
 name_refusal_answer : { name : Page.NameField, why : HumanInvites.Refusal } -> Http.Response
 name_refusal_answer = |{ name, why }| {
 	notice = HumanInvites.refusal_notice(why)
-	HttpAnswer.page(
-		notice.status,
-		Page.github_sign_up({ name, problem: Problem(notice.said) }),
-	)
+	HttpAnswer.page(notice.status, Page.github_sign_up({ name, problem: Problem(notice.said) }))
 }
 
 ## A refusal's status and its words. Nothing here says more than the human
@@ -637,13 +562,25 @@ refusal_said = |why|
 		BadIdentity => { status: 502, words: "GitHub's answer made no sense. Please try again." }
 		DuplicateAccount =>
 			{ status: 403, words: "That GitHub account is tied to more than one account here." }
-		SignUpForged => { status: 403, words: "That sign-up did not start in this browser. Please try again." }
+		SignUpForged => {
+			status: 403,
+			words: "That sign-up did not start in this browser. Please try again.",
+		}
 		SignUpExpired => { status: 403, words: "That sign-up took too long. Please try again." }
-		AccountExists => { status: 403, words: "That GitHub account has an account here. Sign in with GitHub." }
+		AccountExists => {
+			status: 403,
+			words: "That GitHub account has an account here. Sign in with GitHub.",
+		}
 		NoDefaultChannel => { status: 500, words: no_default_channel_words }
-		LinkNotYours => { status: 403, words: "That link did not start from this account. Please try again." }
+		LinkNotYours => {
+			status: 403,
+			words: "That link did not start from this account. Please try again.",
+		}
 		AlreadyLinked => { status: 409, words: already_linked_words }
-		GitHubIdTaken => { status: 409, words: "That GitHub account is linked to someone here already." }
+		GitHubIdTaken => {
+			status: 409,
+			words: "That GitHub account is linked to someone here already.",
+		}
 		SignedInAlready => {
 			status: 409,
 			words: "You are signed in, so that made no new account. Sign in with GitHub again to link it to this one.",
@@ -674,11 +611,7 @@ expect
 # The query's answer: a code, none, or one GitHub wouldn't send.
 expect answer_of("state=x".to_utf8()) == NoCode
 expect
-	[
-		"code=a%20b",
-		"code=a&code=b",
-		"code=",
-	].all(|query| answer_of(query.to_utf8()) == BadCode)
+	["code=a%20b", "code=a&code=b", "code="].all(|query| answer_of(query.to_utf8()) == BadCode)
 expect
 	match answer_of("code=abc&state=x".to_utf8()) {
 		Code(code) => code.bytes_to_exchange() == "abc".to_utf8()

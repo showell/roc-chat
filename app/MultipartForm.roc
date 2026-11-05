@@ -276,20 +276,14 @@ expect {
 # `name` is read past the one inside `filename`, and at the headers' very
 # start; a `name` only inside `filename` is no name.
 expect file_of(
-	form({
-		headers: "Content-Disposition: form-data; filename=\"x\"; name=\"file\"",
-		file: png,
-	}),
+	form({ headers: "Content-Disposition: form-data; filename=\"x\"; name=\"file\"", file: png }),
 ) == Ok({ filename: "x".to_utf8(), bytes: png })
 expect file_of(form({ headers: "name=\"file\"", file: png })) == Ok({
 	filename: "image".to_utf8(),
 	bytes: png,
 })
 expect file_of(
-	form({
-		headers: "Content-Disposition: form-data; filename=\"file\"",
-		file: png,
-	}),
+	form({ headers: "Content-Disposition: form-data; filename=\"file\"", file: png }),
 ) == Err(NoFile)
 # An empty file is a file, of no bytes.
 expect file_of(form({ headers: file_part_headers, file: [] })) == Ok({
@@ -299,10 +293,7 @@ expect file_of(form({ headers: file_part_headers, file: [] })) == Ok({
 # Another field, another boundary, no closing delimiter, no empty line
 # after the headers, no CR LF after the opening delimiter, nothing: no file.
 expect file_of(
-	form({
-		headers: "Content-Disposition: form-data; name=\"other\"",
-		file: png,
-	}),
+	form({ headers: "Content-Disposition: form-data; name=\"other\"", file: png }),
 ) == Err(NoFile)
 expect MultipartForm.file_part(
 	form({ headers: file_part_headers, file: png }),

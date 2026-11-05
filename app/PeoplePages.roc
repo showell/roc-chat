@@ -46,20 +46,10 @@ PeoplePages :: [].{
 		channel : Channels.Channel,
 		users : List(Users.User),
 	} -> TrustedHtml
-	channel_members = |
-		{
-			viewer,
-			channel,
-			users,
-		},
-	| {
+	channel_members = |{ viewer, channel, users }| {
 		folder = "/channels/${channel.name().to_str()}/members"
 		row = |user, act|
-			member_button({
-				folder,
-				user,
-				act,
-			})
+			member_button({ folder, user, act })
 		members = users.keep_if(|user| channel.has_member(user))
 		others = users.drop_if(|user| channel.has_member(user))
 		Page.signed_in_page({
@@ -147,13 +137,7 @@ member_button : {
 	user : Users.User,
 	act : [Add, Remove],
 } -> TrustedHtml
-member_button = |
-	{
-		folder,
-		user,
-		act,
-	},
-| {
+member_button = |{ folder, user, act }| {
 	(word, label) =
 		match act {
 			Add => ("add", "Add")

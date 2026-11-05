@@ -62,14 +62,7 @@ ChannelMembers :: [].{
 	## The acting user as the admin, signed in by their own session; unless
 	## they came with an API key (`ByApiKey`), are an agent (`Agent`), or are
 	## a human who is not the admin (`NotAdmin`).
-	admin_of : SignedIn -> Try(
-		Admin,
-		[
-			ByApiKey,
-			Agent(UserId),
-			NotAdmin,
-		],
-	)
+	admin_of : SignedIn -> Try(Admin, [ByApiKey, Agent(UserId), NotAdmin])
 	admin_of = |acting| {
 		_ = acting.human_in_session()?
 		Admin.of(acting)
@@ -92,10 +85,7 @@ ChannelMembers :: [].{
 	create = |directory, { acting, body }| {
 		admin = ChannelMembers.admin_of(acting)?
 		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
-			UrlEncodedForm.fault_words({
-				fault,
-				name: "name",
-			}),
+			UrlEncodedForm.fault_words({ fault, name: "name" }),
 		)
 		name = unchecked.channel_name() ? |_| BadName
 		directory.create_channel({ by: admin, name })
@@ -119,21 +109,10 @@ ChannelMembers :: [].{
 			AlreadyMember,
 		],
 	)
-	add = |
-		directory,
-		{
-			acting,
-			channel,
-			member,
-		},
-	| {
+	add = |directory, { acting, channel, member }| {
 		admin = ChannelMembers.admin_of(acting)?
 		user = directory.users().user(member)?
-		changed = directory.add_member({
-			by: admin,
-			channel,
-			member: user,
-		})?
+		changed = directory.add_member({ by: admin, channel, member: user })?
 		Ok(change_of(changed, channel))
 	}
 
@@ -155,21 +134,10 @@ ChannelMembers :: [].{
 			NotMember,
 		],
 	)
-	remove = |
-		directory,
-		{
-			acting,
-			channel,
-			member,
-		},
-	| {
+	remove = |directory, { acting, channel, member }| {
 		admin = ChannelMembers.admin_of(acting)?
 		user = directory.users().user(member)?
-		changed = directory.remove_member({
-			by: admin,
-			channel,
-			member: user,
-		})?
+		changed = directory.remove_member({ by: admin, channel, member: user })?
 		Ok(change_of(changed, channel))
 	}
 
@@ -182,12 +150,7 @@ ChannelMembers :: [].{
 	members_page_of : Directory,
 	{ acting : SignedIn, channel : ChannelName } -> Try(
 		{ channel : Channels.Channel, users : List(Users.User) },
-		[
-			ByApiKey,
-			Agent(UserId),
-			NotAdmin,
-			NoSuchChannel,
-		],
+		[ByApiKey, Agent(UserId), NotAdmin, NoSuchChannel],
 	)
 	members_page_of = |directory, { acting, channel }| {
 		_ = ChannelMembers.admin_of(acting)?

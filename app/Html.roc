@@ -78,15 +78,7 @@ Html :: [].{
 	SitePath :: Str.{
 
 		## The path `text` spells, or why it is refused.
-		from_str : Str -> Try(
-			Html.SitePath,
-			[
-				NoLeadingSlash,
-				EmptyPart,
-				HiddenPart,
-				ForbiddenByte,
-			],
-		)
+		from_str : Str -> Try(Html.SitePath, [NoLeadingSlash, EmptyPart, HiddenPart, ForbiddenByte])
 		from_str = |text|
 			if (text.starts_with("/"))
 				text.drop_prefix("/")
@@ -138,13 +130,7 @@ Html :: [].{
 		attrs : List(Html.Attribute),
 		inner : TrustedHtml,
 	} -> TrustedHtml
-	element = |
-		{
-			name,
-			attrs,
-			inner,
-		},
-	| {
+	element = |{ name, attrs, inner }| {
 		tag_name = name_of(name)
 		attributes_text = Str.join_with(attrs.map(attribute), "")
 		TrustedHtml.join([
@@ -266,19 +252,11 @@ expect attribute(Href(token("msg-2"))) == " href=\"#msg-2\""
 # A `data-` attribute: its name after `data-`, and a token or a site path.
 expect attribute(Data(token("after"), Token(token("6")))) == " data-after=\"6\""
 expect attribute(
-	Data(
-		token("image-byte-limit"),
-		Token(token("10485760")),
-	),
+	Data(token("image-byte-limit"), Token(token("10485760"))),
 ) == " data-image-byte-limit=\"10485760\""
 expect
 	Html.SitePath.from_str("/chat/dm/1_1/plans/stream").map_ok(
-		|path| attribute(
-			Data(
-				token("stream"),
-				Path(path),
-			),
-		),
+		|path| attribute(Data(token("stream"), Path(path))),
 	)
 		== Ok(" data-stream=\"/chat/dm/1_1/plans/stream\"")
 expect
@@ -320,11 +298,7 @@ expect
 		"/a/",
 	].all(|text| Html.SitePath.from_str(text) == Err(EmptyPart))
 expect
-	[
-		"/a/../b",
-		"/.hidden",
-		"/a/.js",
-	].all(|text| Html.SitePath.from_str(text) == Err(HiddenPart))
+	["/a/../b", "/.hidden", "/a/.js"].all(|text| Html.SitePath.from_str(text) == Err(HiddenPart))
 expect
 	[
 		"/a:b",
@@ -385,9 +359,5 @@ expect
 	}).to_utf8()
 		== "<a class=\"ref\" href=\"#msg-1\">&lt;i&gt;</a>".to_utf8()
 expect
-	Html.element({
-		name: P,
-		attrs: [],
-		inner: TrustedHtml.join([]),
-	}).to_utf8()
+	Html.element({ name: P, attrs: [], inner: TrustedHtml.join([]) }).to_utf8()
 		== "<p></p>".to_utf8()

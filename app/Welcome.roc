@@ -15,10 +15,7 @@ import Topic
 import Transcript
 import Users
 
-Welcome :: {
-	key : ConversationKey,
-	record : Transcript.Utf8TranscriptMessage,
-}.{
+Welcome :: { key : ConversationKey, record : Transcript.Utf8TranscriptMessage }.{
 
 	## The topic of the conversation that welcomes a human.
 	topic : Topic
@@ -44,13 +41,7 @@ Welcome :: {
 		human : Users.Human,
 		now : I64,
 	} -> Try(Welcome, [ClockOutOfRange])
-	make = |
-		{
-			directory,
-			human,
-			now,
-		},
-	| {
+	make = |{ directory, human, now }| {
 		time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
 		owner = directory.chat_owner()
 		started = Dm.start({
@@ -70,14 +61,7 @@ Welcome :: {
 				message,
 				file: NoFile,
 			}) ?? crash "Welcome.make: one short message fits an empty transcript"
-		Ok(
-			Welcome.(
-				{
-					key: Welcome.conversation_key({ directory, human }),
-					record,
-				},
-			),
-		)
+		Ok(Welcome.({ key: Welcome.conversation_key({ directory, human }), record }))
 	}
 
 	## The conversation it starts.

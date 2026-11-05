@@ -50,14 +50,7 @@ plans_page : {
 	count : Str,
 	messages : Str,
 } -> Str
-plans_page = |
-	{
-		viewer,
-		viewer_id,
-		count,
-		messages,
-	},
-|
+plans_page = |{ viewer, viewer_id, count, messages }|
 	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.

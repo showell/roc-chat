@@ -71,13 +71,7 @@ Transcript :: [].{
 		message : Message,
 		file : [NoFile, File(Transcript.Utf8Transcript)],
 	} -> Try(Transcript.Utf8TranscriptMessage, [FileFull])
-	message_record = |
-		{
-			conversation,
-			message,
-			file,
-		},
-	| {
+	message_record = |{ conversation, message, file }| {
 		record = write_message(conversation, message).to_utf8()
 		held =
 			match file {
@@ -162,10 +156,7 @@ read_message = |c, written| {
 			author = Author.from_str(name).map_err(|why| Author(id, why))?
 			time = DateTime.from_str(date).map_err(|why| DateTime(id, why))?
 			markdown = Separator.unescape(
-				Str.join_with(
-					body,
-					"\n",
-				),
+				Str.join_with(body, "\n"),
 			).map_err(|BareSeparator| BadBody(id))?
 			grown = c.append({ payload: { author, markdown }, time }).map_err(
 				|why|

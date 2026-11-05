@@ -118,14 +118,7 @@ Page :: [].{
 		viewer : SignedIn,
 		users : Users,
 	} -> TrustedHtml
-	conversation = |
-		{
-			conversation: c,
-			key,
-			viewer,
-			users,
-		},
-	| {
+	conversation = |{ conversation: c, key, viewer, users }| {
 		topic = c.topic()
 		messages =
 			if (c.messages().is_empty())
@@ -243,11 +236,7 @@ Page :: [].{
 			name: Article,
 			attrs: [Page.class(Message), Id(anchor(message_reference))].concat(author_attrs),
 			inner: TrustedHtml.join([
-				Html.element({
-					name: Header,
-					attrs: [],
-					inner: header,
-				}),
+				Html.element({ name: Header, attrs: [], inner: header }),
 				newline,
 				Html.element({
 					name: Div,
@@ -281,14 +270,7 @@ Page :: [].{
 		shown : [NoCode, Code({ agent : Users.User, code : SecretToken })],
 		github_link : Page.GitHubLinkOffer,
 	} -> TrustedHtml
-	agents = |
-		{
-			viewer,
-			agents: summaries,
-			shown,
-			github_link,
-		},
-	| {
+	agents = |{ viewer, agents: summaries, shown, github_link }| {
 		code =
 			match shown {
 				NoCode => TrustedHtml.join([])
@@ -330,7 +312,10 @@ Page :: [].{
 				newline,
 				TrustedHtml.join(summaries.map(agent_section)),
 				match github_link {
-					LinkOffered => post_button({ action: "/login/github/link", label: "Link GitHub" })
+					LinkOffered => post_button({
+						action: "/login/github/link",
+						label: "Link GitHub",
+					})
 					LinkNotOffered => TrustedHtml.join([])
 				},
 			]),
@@ -345,13 +330,7 @@ Page :: [].{
 		viewer : SignedIn,
 		parts : List(TrustedHtml),
 	} -> TrustedHtml
-	signed_in_page = |
-		{
-			title,
-			viewer,
-			parts,
-		},
-	|
+	signed_in_page = |{ title, viewer, parts }|
 		document({
 			title,
 			body: TrustedHtml.join([
@@ -402,13 +381,7 @@ Page :: [].{
 		fields : List({ label : Str, name : Str }),
 		label : Str,
 	} -> TrustedHtml
-	text_form = |
-		{
-			action,
-			fields,
-			label,
-		},
-	|
+	text_form = |{ action, fields, label }|
 		Html.element({
 			name: Form,
 			attrs: [MethodPost, Action(site_path(action))],
@@ -435,10 +408,7 @@ Page :: [].{
 
 	## The form that starts a topic, posting the field
 	## `UrlEncodedForm.topic_name` to `action`, filled in with `suggestion`.
-	topic_form : {
-		action : Str,
-		suggestion : [Suggested(Topic), NoSuggestion],
-	} -> TrustedHtml
+	topic_form : { action : Str, suggestion : [Suggested(Topic), NoSuggestion] } -> TrustedHtml
 	topic_form = |{ action, suggestion }| {
 		filled =
 			match suggestion {
@@ -536,14 +506,7 @@ Page :: [].{
 		problem : [NoProblem, Problem(Str)],
 		github : Page.GitHubOffer,
 	} -> TrustedHtml
-	login = |
-		{
-			viewer,
-			next,
-			problem,
-			github,
-		},
-	| {
+	login = |{ viewer, next, problem, github }| {
 		said =
 			match problem {
 				NoProblem => TrustedHtml.join([])
@@ -595,10 +558,7 @@ Page :: [].{
 							inner: Html.element({
 								name: A,
 								attrs: [
-									LinkWithNext({
-										path: site_path("/login/github/start"),
-										next,
-									}),
+									LinkWithNext({ path: site_path("/login/github/start"), next }),
 								],
 								inner: Escape.text("Sign in with GitHub"),
 							}),
@@ -639,10 +599,7 @@ Page :: [].{
 	## with `name`. The server carries who they are in a cookie
 	## (`GitHubSignUp`), so the form holds nothing else. Above it, `problem`
 	## when there is one.
-	github_sign_up : {
-		name : Page.NameField,
-		problem : [NoProblem, Problem(Str)],
-	} -> TrustedHtml
+	github_sign_up : { name : Page.NameField, problem : [NoProblem, Problem(Str)] } -> TrustedHtml
 	github_sign_up = |{ name, problem }| {
 		said =
 			match problem {
@@ -807,13 +764,7 @@ compose_box = |key|
 ## One agent's part of the agents page: its name and id, the button that
 ## invites it, then its keys and its invites.
 agent_section : Page.AgentSummary -> TrustedHtml
-agent_section = |
-	{
-		agent,
-		keys,
-		invites,
-	},
-| {
+agent_section = |{ agent, keys, invites }| {
 	folder = "/agents/${agent.id().to_str()}"
 	TrustedHtml.join([
 		Html.element({
@@ -1043,11 +994,7 @@ space = Escape.text(" ")
 ## An element `attrs` alone opens, as a test reads it.
 empty_paragraph : List(Html.Attribute) -> List(U8)
 empty_paragraph = |attrs|
-	Html.element({
-		name: P,
-		attrs,
-		inner: TrustedHtml.join([]),
-	}).to_utf8()
+	Html.element({ name: P, attrs, inner: TrustedHtml.join([]) }).to_utf8()
 
 # Every class, each its one spelling.
 expect
@@ -1069,10 +1016,7 @@ expect
 		(Viewer, "viewer"),
 	].all(
 		|
-			(
-				chosen,
-				spelled,
-			),
+			(chosen, spelled),
 		| empty_paragraph([Page.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8(),
 	)
 # Every `data-` attribute, each its one spelling, a path or a token.
@@ -1104,70 +1048,32 @@ is_read_by = |bytes, name| has_quoted(bytes, name)
 has_quoted : List(U8), Str -> Bool
 has_quoted = |bytes, text| {
 	script_text = Str.from_utf8_lossy(bytes)
-	[
-		"'",
-		"\"",
-		"`",
-	].any(|quote| script_text.contains("${quote}${text}${quote}"))
+	["'", "\"", "`"].any(|quote| script_text.contains("${quote}${text}${quote}"))
 }
 
 # A literal is found in each of the three quotes, and only whole.
-expect [
-	"'.x'",
-	"\".x\"",
-	"`.x`",
-].all(|held| has_quoted(held.to_utf8(), ".x"))
-expect [
-	"'.xy'",
-	"\".x'",
-	".x",
-	"'.x\"",
-].all(|held| !has_quoted(held.to_utf8(), ".x"))
+expect ["'.x'", "\".x\"", "`.x`"].all(|held| has_quoted(held.to_utf8(), ".x"))
+expect ["'.xy'", "\".x'", ".x", "'.x\""].all(|held| !has_quoted(held.to_utf8(), ".x"))
 
 # Each script finds the elements it works on by the classes this module
 # writes, and reads the attributes `Html` writes for it; a class or an
 # attribute it leaves to another script is not in it.
 expect [TopBar, TopUser].all(|chosen| is_found_by(Script.Chrome.bytes(), chosen))
 expect
-	[
-		Layout,
-		Messages,
-		Compose,
-		Help,
-	].all(|chosen| is_found_by(Script.Compose.bytes(), chosen))
+	[Layout, Messages, Compose, Help].all(|chosen| is_found_by(Script.Compose.bytes(), chosen))
 expect
-	[
-		Messages,
-		Compose,
-		Message,
-		Empty,
-	].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
+	[Messages, Compose, Message, Empty].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
 expect [Panel, InviteCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
 expect !is_found_by(Script.Panel.bytes(), Messages) and !is_found_by(Script.Feed.bytes(), Panel)
 expect !is_found_by(Script.Compose.bytes(), Message) and !is_found_by(Script.Compose.bytes(), Empty)
 expect !is_found_by(Script.Feed.bytes(), Help) and !is_found_by(Script.Chrome.bytes(), Messages)
 expect
-	[
-		"data-stream",
-		"data-after",
-		"data-viewer",
-		"data-author",
-	].all(
-		|name| is_read_by(Script.Feed.bytes(), name) and !is_read_by(
-			Script.Compose.bytes(),
-			name,
-		),
+	["data-stream", "data-after", "data-viewer", "data-author"].all(
+		|name| is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
 	)
 expect
-	[
-		"data-send",
-		"data-upload",
-		"data-image-byte-limit",
-	].all(
-		|name| is_read_by(
-			Script.Compose.bytes(),
-			name,
-		) and !is_read_by(Script.Feed.bytes(), name),
+	["data-send", "data-upload", "data-image-byte-limit"].all(
+		|name| is_read_by(Script.Compose.bytes(), name) and !is_read_by(Script.Feed.bytes(), name),
 	)
 # The classes only styled are styled by the script that owns them.
 expect [
@@ -1191,8 +1097,5 @@ expect
 	doctype.to_utf8()
 		== "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
 # A notice: its title and its words, each escaped, under the colour script.
-expect Page.notice({
-	title: "a<b",
-	text: "x & y",
-}).to_utf8()
+expect Page.notice({ title: "a<b", text: "x & y" }).to_utf8()
 	== "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()

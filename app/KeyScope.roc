@@ -68,15 +68,9 @@ expect KeyScope.of({ read: Off, post: Everywhere }).read() == Off
 expect KeyScope.of({ read: Everywhere, post: Off }).post() == Off
 # Each reach as its file keeps it, and read back.
 expect
-	[
-		(Everywhere, "everywhere"),
-		(Off, "off"),
-	].all(
+	[(Everywhere, "everywhere"), (Off, "off")].all(
 		|
-			(
-				reach,
-				word,
-			),
+			(reach, word),
 		| KeyScope.reach_to_file(reach)
 			== word.to_utf8() and KeyScope.reach_from_file("${word}\n".to_utf8()) == Ok(reach),
 	)

@@ -59,10 +59,7 @@ SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
 	## The agent a key admitted, signed in by that key, with its scope.
 	by_api_key : AgentKey.Admitted -> SignedIn
 	by_api_key = |admitted| SignedIn.(
-		{
-			user: admitted.user(),
-			credential: ApiKey(admitted.scope()),
-		},
+		{ user: admitted.user(), credential: ApiKey(admitted.scope()) },
 	)
 
 	## The user who is acting.

@@ -61,13 +61,7 @@ HumanInvitesRoute :: [].{
 		directory : Directory,
 		now : I64,
 	} => Http.Response
-	show! = |
-		{
-			acting,
-			directory,
-			now,
-		},
-	|
+	show! = |{ acting, directory, now }|
 		match load_invites_page!({
 			acting,
 			directory,
@@ -143,12 +137,7 @@ HumanInvitesRoute :: [].{
 		answer =
 			match load_join_name!(request) {
 				Ok(name) => HttpAnswer.json(
-					JsonOut.json_object([
-						(
-							"name",
-							JsonOut.string(name.to_str()),
-						),
-					]),
+					JsonOut.json_object([("name", JsonOut.string(name.to_str()))]),
 				)
 				Err(why) => {
 					notice = failure_notice(why)
@@ -213,14 +202,7 @@ answer_refused_invite! : {
 	now : I64,
 	why : Failure,
 } => Http.Response
-answer_refused_invite! = |
-	{
-		acting,
-		directory,
-		now,
-		why,
-	},
-|
+answer_refused_invite! = |{ acting, directory, now, why }|
 	match why {
 		Refused(refusal) => {
 			notice = HumanInvites.refusal_notice(refusal)
@@ -248,15 +230,7 @@ load_invites_page! : {
 	problem : [NoProblem, Problem(Str)],
 	now : I64,
 } => Try(TrustedHtml, _)
-load_invites_page! = |
-	{
-		acting,
-		directory,
-		shown,
-		problem,
-		now,
-	},
-| {
+load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	_ = acting.human_in_session() ? |why| Refused(why)
 	var $invited = []
 	for user in humans_of(directory) {
@@ -285,30 +259,11 @@ invite_human! : {
 	origin : Str,
 	now : I64,
 } => Try(TrustedHtml, _)
-invite_human! = |
-	{
-		acting,
-		directory,
-		body,
-		origin,
-		now,
-	},
-| {
+invite_human! = |{ acting, directory, body, origin, now }| {
 	open = count_open_invites!(directory, { by: acting.user().id(), now })?
-	made = HumanInvites.invite(
-		directory,
-		{
-			acting,
-			body,
-			open,
-		},
-	) ? |why| Refused(why)
+	made = HumanInvites.invite(directory, { acting, body, open }) ? |why| Refused(why)
 	human = made.human.as_human() ?? crash "HumanInvitesRoute.invite_human!: an invite makes a human"
-	welcome = Welcome.make({
-		directory: made.directory,
-		human,
-		now,
-	})?
+	welcome = Welcome.make({ directory: made.directory, human, now })?
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	FileSystem.append_message!(welcome.key(), welcome.first_record()) ? |fault| FileSystem(fault)
 	FileSystem.create_invited_account!({
@@ -316,11 +271,7 @@ invite_human! = |
 		inviter: made.inviter.id(),
 	}) ? |fault| FileSystem(fault)
 	FileSystem.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
-	code = issue_invite!({
-		human: made.human.id(),
-		by: made.inviter.id(),
-		now,
-	})?
+	code = issue_invite!({ human: made.human.id(), by: made.inviter.id(), now })?
 	load_invites_page!({
 		acting,
 		directory: made.directory,
@@ -337,31 +288,11 @@ invite_human_again! : {
 	origin : Str,
 	now : I64,
 } => Try(TrustedHtml, _)
-invite_human_again! = |
-	{
-		acting,
-		directory,
-		human,
-		origin,
-		now,
-	},
-| {
+invite_human_again! = |{ acting, directory, human, origin, now }| {
 	inviter = load_inviter!(human)?
 	open = count_open_invites!(directory, { by: acting.user().id(), now })?
-	again = HumanInvites.reinvite(
-		directory,
-		{
-			acting,
-			human,
-			inviter,
-			open,
-		},
-	) ? |why| Refused(why)
-	code = issue_invite!({
-		human,
-		by: again.by.id(),
-		now,
-	})?
+	again = HumanInvites.reinvite(directory, { acting, human, inviter, open }) ? |why| Refused(why)
+	code = issue_invite!({ human, by: again.by.id(), now })?
 	load_invites_page!({
 		acting,
 		directory,
@@ -378,13 +309,7 @@ issue_invite! : {
 	by : UserId,
 	now : I64,
 } => Try(SecretToken, _)
-issue_invite! = |
-	{
-		human,
-		by,
-		now,
-	},
-| {
+issue_invite! = |{ human, by, now }| {
 	id = FileSystem.find_next_human_invite_id!(human) ? |why| full_or_fault(why)
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = HumanInvite.make({
@@ -410,14 +335,7 @@ load_join_code! : {
 	body : List(U8),
 	now : I64,
 } => Try(HumanInvites.JoinCode, _)
-load_join_code! = |
-	{
-		actor,
-		directory,
-		body,
-		now,
-	},
-| {
+load_join_code! = |{ actor, directory, body, now }| {
 	HumanInvites.admit_joiner(actor) ? |why| Refused(why)
 	token = HumanInvites.code_from_form(body) ? |why| Refused(why)
 	invites =
@@ -485,11 +403,7 @@ join_by_invite! = |request| {
 	FileSystem.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
 	hash = Host.bcrypt_hash_of_password!(password.bytes_to_check())
 	FileSystem.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
-	Ok({
-		admission: joined.admission,
-		password_hash: hash,
-		next,
-	})
+	Ok({ admission: joined.admission, password_hash: hash, next })
 }
 
 ## Every human of `directory`.

@@ -48,12 +48,7 @@ listed_for : Str -> Try(List((Str, Str)), [ByApiKey, Agent(UserId)])
 listed_for = |text|
 	Browse.places_for({ acting: signed_in(text), directory }).map_ok(
 		|places|
-			places.map(
-				|listed| (
-					listed.label,
-					ConversationKey.place_url_path(listed.place),
-				),
-			),
+			places.map(|listed| (listed.label, ConversationKey.place_url_path(listed.place))),
 	)
 
 # Every human as a DM with the reader, their own included, then the channels
@@ -115,13 +110,7 @@ page_of = |topics, problem|
 	Str.from_utf8_lossy(
 		Browse.page({
 			viewer: signed_in("Steve"),
-			places: [
-				{
-					label: "Apoorva",
-					place: steve_and_apoorva,
-					topics,
-				},
-			],
+			places: [{ label: "Apoorva", place: steve_and_apoorva, topics }],
 			problem,
 		}).to_utf8(),
 	)

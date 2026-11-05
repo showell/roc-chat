@@ -54,10 +54,7 @@ expect [
 expect places.all(|place| places.keep_if(|other| other == place).len() == 1)
 expect Place.channel(channel("plans")) == Place.channel(channel("plans"))
 expect Place.dm(
-	Dm.between({
-		a: Sample.human("Apoorva"),
-		b: Sample.human("Steve"),
-	}),
+	Dm.between({ a: Sample.human("Apoorva"), b: Sample.human("Steve") }),
 ) == Place.dm(dm_with("Apoorva"))
 # A place and a topic key a map: the same topic in two places is two
 # keys, and the same pair is one.

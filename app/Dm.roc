@@ -24,13 +24,7 @@ Dm :: UserPair.{
 	## The DM between the first message's writer and `to`, and its
 	## conversation under `topic`, holding that message.
 	start : Dm.Start -> { dm : Dm, conversation : Conversation }
-	start = |
-		{
-			to,
-			topic,
-			first_message,
-		},
-	| {
+	start = |{ to, topic, first_message }| {
 		from = first_message.payload.author
 		first = {
 			payload: { author: from.author(), markdown: first_message.payload.markdown },

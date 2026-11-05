@@ -95,14 +95,7 @@ AgentStream :: [].{
 			|{ key, conversation }, place|
 				conversation
 					.messages()
-					.map_with_index(
-						|message, at| {
-							key,
-							message,
-							place,
-							at,
-						},
-					)
+					.map_with_index(|message, at| { key, message, place, at })
 					.keep_if(|m| m.message.time().compare(since) != Before)
 					.take_last(AgentStream.backlog_most_per_conversation),
 		).join()
@@ -133,13 +126,7 @@ AgentStream :: [].{
 		message : Message,
 		agents : List(UserId),
 	} => {}
-	publish! = |
-		{
-			key,
-			message,
-			agents,
-		},
-	| {
+	publish! = |{ key, message, agents }| {
 		event = AgentStream.frame({ key, message })
 		for agent in agents {
 			Host.publish_bytes_to_streams_on_key!(bus_key(agent), event)
@@ -188,12 +175,7 @@ key_of = |topic| {
 	directory =
 		Directory.with_founder(Name.from_str("Steve") ?? crash "AgentStream's tests: a name")
 	place = directory.place(
-		Dm(
-			UserPair.of({
-				a: UserId.chat_owner,
-				b: UserId.chat_owner,
-			}),
-		),
+		Dm(UserPair.of({ a: UserId.chat_owner, b: UserId.chat_owner })),
 	) ?? crash "AgentStream's tests: Steve's own DM"
 	ConversationKey.of({
 		place,
@@ -242,9 +224,7 @@ expect
 		"after=3",
 		"since=2026-11-02T19:11:32Z&x=1",
 		"Since=2026-11-02T19:11:32Z",
-	].all(
-		|query| AgentStream.start(query.to_utf8()) == Err(BadSince),
-	)
+	].all(|query| AgentStream.start(query.to_utf8()) == Err(BadSince))
 expect AgentStream.start([0x73, 0x69, 0x6e, 0x63, 0x65, 0x3d, 0xff]) == Err(BadSince)
 # One message, one event: one line of JSON, its markdown's line ends and
 # quotes escaped, then a blank line.
@@ -297,23 +277,14 @@ conversation_of_count = |topic, count| conversation_of(
 ## time of their messages.
 backlog_markdown : List({ key : ConversationKey, conversation : Conversation }) -> List(Str)
 backlog_markdown = |conversations| events_of(
-	AgentStream.backlog({
-		conversations,
-		since: time_of("2026-11-02T19:00:00Z"),
-	}),
+	AgentStream.backlog({ conversations, since: time_of("2026-11-02T19:00:00Z") }),
 ).map(markdown_in)
 
 expect backlog_markdown([
-	conversation_of_count(
-		"plans",
-		101,
-	),
+	conversation_of_count("plans", 101),
 ]) == List.from_iter(U64.to(2, 101)).map(U64.to_str)
 expect backlog_markdown([
-	conversation_of_count(
-		"plans",
-		100,
-	),
+	conversation_of_count("plans", 100),
 ]) == List.from_iter(U64.to(1, 100)).map(U64.to_str)
 expect backlog_markdown([conversation_of_count("plans", 99)]).len() == 99
 expect backlog_markdown([

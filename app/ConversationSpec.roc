@@ -84,11 +84,7 @@ expect {
 ## Steve's hello at `time`.
 hello_at : Str -> Message.Unnumbered(Author)
 hello_at = |time|
-	Sample.unnumbered_message({
-		author: "Steve",
-		time,
-		markdown: "Hello",
-	})
+	Sample.unnumbered_message({ author: "Steve", time, markdown: "Hello" })
 
 ## The id `unnumbered_message` takes, appended alone after `c`'s messages,
 ## or why it is refused.

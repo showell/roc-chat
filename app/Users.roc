@@ -95,15 +95,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	with_founder = |name|
 		Users.(
 			{
-				everyone: [
-					Users.User.(
-						{
-							id: UserId.chat_owner,
-							name,
-							role: Human,
-						},
-					),
-				],
+				everyone: [Users.User.({ id: UserId.chat_owner, name, role: Human })],
 				next: next_after(UserId.chat_owner),
 			},
 		)
@@ -154,10 +146,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	## founder, a human with id 1 (`NoFounder`); when an id is at or past
 	## the counter (`CounterBehind`); or when an agent's owner is no human
 	## among them (`BadOwner`).
-	from_files : {
-		counter : List(U8),
-		accounts : List(Users.StoredAccount),
-	} -> Try(
+	from_files : { counter : List(U8), accounts : List(Users.StoredAccount) } -> Try(
 		Users,
 		[
 			BadCounter,
@@ -219,13 +208,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	)
 	rename_human = |users, { human, name }|
 		if users.user(human.id()) == Ok(human.user()) {
-			renamed = Users.User.(
-				{
-					id: human.id(),
-					name,
-					role: Human,
-				},
-			)
+			renamed = Users.User.({ id: human.id(), name, role: Human })
 			Users.(held) = users
 			everyone = held.everyone.map(|user| if (user.id() == human.id()) renamed else user)
 			Ok({ users: Users.({ ..held, everyone }), human: Users.Human.(renamed) })
@@ -293,15 +276,7 @@ user_from_files = |{ id, files }| {
 	written = Str.from_utf8(FactFile.word_from_file(files.name)) ? |_| BadName(id)
 	name = Name.from_str(written) ? |_| BadName(id)
 	role = role_from_file(files.owner) ? |NotAnOwner| BadOwner(id)
-	Ok(
-		Users.User.(
-			{
-				id,
-				name,
-				role,
-			},
-		),
-	)
+	Ok(Users.User.({ id, name, role }))
 }
 
 ## The role an `owner` file gives: none, a human; an id's digits, an agent
@@ -335,13 +310,7 @@ has_human_owner = |all, user|
 add_user : Users, { name : Name, role : Users.Role } -> Try(Users.Addition, [Full])
 add_user = |users, { name, role }| {
 	id = users.next_id()?
-	user = Users.User.(
-		{
-			id,
-			name,
-			role,
-		},
-	)
+	user = Users.User.({ id, name, role })
 	Users.(held) = users
 	Ok({ users: Users.({ everyone: held.everyone.append(user), next: next_after(id) }), user })
 }

@@ -112,13 +112,7 @@ expect
 	].all(|text| checked_name(text) == Err(ForbiddenCharacter))
 # Two spaces together, a space at either end, or spaces alone.
 expect
-	[
-		"Steve  Howell",
-		" Zoë",
-		"Zoë ",
-		" ",
-		"  ",
-	].all(|text| checked_name(text) == Err(BadSpacing))
+	["Steve  Howell", " Zoë", "Zoë ", " ", "  "].all(|text| checked_name(text) == Err(BadSpacing))
 # The length at, under and over the longest, in ASCII letters and in
 # accented ones, which count one apiece though each is two bytes.
 expect Name.longest == 60

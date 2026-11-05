@@ -74,14 +74,7 @@ AgentInvite :: {
 		now : I64,
 		scope : KeyScope,
 	} -> AgentInvite
-	make = |
-		{
-			id,
-			hash,
-			now,
-			scope,
-		},
-	|
+	make = |{ id, hash, now, scope }|
 		AgentInvite.(
 			{
 				id,
@@ -103,13 +96,7 @@ AgentInvite :: {
 		hash : SecretHash,
 		now : I64,
 	} -> Try(AgentInvite, [NoSuchInvite, Spent, Revoked, Expired])
-	redeem = |
-		{
-			invites,
-			hash,
-			now,
-		},
-	|
+	redeem = |{ invites, hash, now }|
 		match invites.find_first(|AgentInvite.(invite)| invite.hash == hash) {
 			Err(NotFound) => Err(NoSuchInvite)
 			Ok(AgentInvite.(invite)) =>

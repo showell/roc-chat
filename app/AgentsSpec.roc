@@ -144,16 +144,10 @@ expect
 # sent; anything else refused, naming the field.
 expect Agents.scope_from_form([]) == Ok(KeyScope.everywhere)
 expect Agents.scope_from_form("read=off".to_utf8()) == Ok(
-	KeyScope.of({
-		read: Off,
-		post: Everywhere,
-	}),
+	KeyScope.of({ read: Off, post: Everywhere }),
 )
 expect Agents.scope_from_form("post=off&read=everywhere".to_utf8()) == Ok(
-	KeyScope.of({
-		read: Everywhere,
-		post: Off,
-	}),
+	KeyScope.of({ read: Everywhere, post: Off }),
 )
 expect
 	Agents.scope_from_form("read=on".to_utf8())
@@ -239,12 +233,7 @@ channel_place = |text| {
 ## The DM of `with_lc` between the humans named.
 dm_place : Str, Str -> Place
 dm_place = |a, b| with_lc.place(
-	Dm(
-		UserPair.of({
-			a: user_named(a).id(),
-			b: user_named(b).id(),
-		}),
-	),
+	Dm(UserPair.of({ a: user_named(a).id(), b: user_named(b).id() })),
 ) ?? crash "AgentsSpec: a DM of humans"
 
 ## CC signed in by a key of `scope`.
@@ -271,18 +260,7 @@ access : {
 	place : Place,
 	act : Access.Act,
 } -> Try({}, _)
-access = |
-	{
-		acting,
-		place,
-		act,
-	},
-| Access.check({
-	acting,
-	place,
-	directory: with_lc,
-	act,
-})
+access = |{ acting, place, act }| Access.check({ acting, place, directory: with_lc, act })
 
 # A channel's members read and post, humans by session and agents by key;
 # anyone else, the admin included, neither.

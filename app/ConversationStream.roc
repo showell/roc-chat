@@ -70,15 +70,7 @@ ConversationStream :: [].{
 		conversation : Conversation,
 		seen_count : U16,
 	} -> Http.Response
-	response = |
-		{
-			key,
-			acting,
-			users,
-			conversation,
-			seen_count,
-		},
-	| {
+	response = |{ key, acting, users, conversation, seen_count }| {
 		held = conversation.messages().len()
 		if (seen_count.to_u64() > held)
 			HttpAnswer.page(
@@ -96,12 +88,7 @@ ConversationStream :: [].{
 					|m|
 						ConversationStream.frame({
 							id: m.id(),
-							html: Page.message({
-								conversation,
-								key,
-								users,
-								message: m,
-							}),
+							html: Page.message({ conversation, key, users, message: m }),
 						}),
 				),
 			})
@@ -114,13 +101,7 @@ ConversationStream :: [].{
 		id : Message.Id,
 		html : TrustedHtml,
 	} => {}
-	publish! = |
-		{
-			key,
-			id,
-			html,
-		},
-	|
+	publish! = |{ key, id, html }|
 		Host.publish_bytes_to_streams_on_key!(bus_key(key), ConversationStream.frame({ id, html }))
 
 	## Who holds a conversation's stream that `user` opened, as the host
@@ -289,10 +270,7 @@ is_plans_stream_with = |response, backlog|
 ## the one paragraph `paragraph`, as frozen.
 frozen_frame : { id : Str, paragraph : Str } -> Str
 frozen_frame = |
-	{
-		id,
-		paragraph,
-	},
+	{ id, paragraph },
 | "id: ${id}\ndata: <article class=\"message\" id=\"msg-${id}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${id}\">MSG_plans_${id}</a></header>\ndata: <div class=\"body\"><p>${paragraph}</p>\ndata: </div></article>\ndata: \n\n"
 
 ## The frame of `message` of `conversation`, in `plans_key`, its HTML as
@@ -301,12 +279,7 @@ message_frame : Conversation, Message -> List(U8)
 message_frame = |conversation, message|
 	ConversationStream.frame({
 		id: message.id(),
-		html: Page.message({
-			conversation,
-			key: plans_key,
-			users,
-			message,
-		}),
+		html: Page.message({ conversation, key: plans_key, users, message }),
 	})
 
 # A frame's data lines, joined by LF as a browser joins them, are exactly

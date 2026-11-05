@@ -41,14 +41,7 @@ BrowseRoute :: [].{
 		place : Place,
 		body : List(U8),
 	} => Http.Response
-	start_topic! = |
-		{
-			acting,
-			directory,
-			place,
-			body,
-		},
-	|
+	start_topic! = |{ acting, directory, place, body }|
 		match acting.human_in_session() {
 			Err(ByApiKey) => key_refusal
 			Err(Agent(_)) => key_refusal
@@ -76,28 +69,14 @@ answer_page! : {
 	status : U16,
 	problem : [NoProblem, Problem(Str)],
 } => Http.Response
-answer_page! = |
-	{
-		acting,
-		directory,
-		status,
-		problem,
-	},
-|
+answer_page! = |{ acting, directory, status, problem }|
 	match Browse.places_for({ acting, directory }) {
 		Err(ByApiKey) => key_refusal
 		Err(Agent(_)) => key_refusal
 		Ok(listed) =>
 			match load_topics!(listed) {
 				Ok(places) =>
-					HttpAnswer.page(
-						status,
-						Browse.page({
-							viewer: acting,
-							places,
-							problem,
-						}),
-					)
+					HttpAnswer.page(status, Browse.page({ viewer: acting, places, problem }))
 				Err(fault) => HttpAnswer.page(
 					500,
 					Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
@@ -114,11 +93,7 @@ load_topics! = |listed| {
 	var $places = []
 	for { label, place } in listed {
 		topics = FileSystem.list_place_topics!(place)?
-		$places = $places.append({
-			label,
-			place,
-			topics,
-		})
+		$places = $places.append({ label, place, topics })
 	}
 	Ok($places)
 }

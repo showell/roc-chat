@@ -138,24 +138,14 @@ Route :: [].{
 		path : List(U8),
 		directory : Directory,
 	} -> Route.Choice
-	choose = |
-		{
-			method,
-			path,
-			directory,
-		},
-	| {
+	choose = |{ method, path, directory }| {
 		asked = method_of(method)
 		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
 			Ok(script) => asset_choice(ServeScript(script), asked)
 			Err(NotFound) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
-					Ok(unchecked) => path_choice({
-						path: unchecked,
-						method: asked,
-						directory,
-					})
+					Ok(unchecked) => path_choice({ path: unchecked, method: asked, directory })
 					Err(NotUtf8) => NotFound
 				}
 		}
@@ -179,41 +169,22 @@ invites_or_conversation_choice : {
 	method : [Get, Post, Other],
 	directory : Directory,
 } -> Route.Choice
-invites_or_conversation_choice = |
-	{
-		path,
-		method,
-		directory,
-	},
-|
+invites_or_conversation_choice = |{ path, method, directory }|
 	match invites_resource(path) {
 		Ok(resource) => invites_choice({ resource, method })
 		Err(NotInvites) =>
-			conversation_path_choice({
-				path,
-				method,
-				directory,
-			})
+			conversation_path_choice({ path, method, directory })
 	}
 
 ## What a path under `/invites` names.
-InvitesResource : [
-	Invites,
-	Again(UserId),
-]
+InvitesResource : [Invites, Again(UserId)]
 
 ## What `path` names under `/invites`, or `NotInvites`.
 invites_resource : UnvalidatedString -> Try(InvitesResource, [NotInvites])
 invites_resource = |path|
 	match path.url_path_parts() {
 		Ok([invites]) if invites.is_exactly("invites") => Ok(Invites)
-		Ok(
-			[
-				invites,
-				id,
-				again,
-			],
-		) if invites.is_exactly("invites") and again.is_exactly("again") =>
+		Ok([invites, id, again]) if invites.is_exactly("invites") and again.is_exactly("again") =>
 			id.user_id().map_ok(|human| Again(human)).map_err(|_| NotInvites)
 		_ => Err(NotInvites)
 	}
@@ -237,24 +208,10 @@ conversation_path_choice : {
 	method : [Get, Post, Other],
 	directory : Directory,
 } -> Route.Choice
-conversation_path_choice = |
-	{
-		path,
-		method,
-		directory,
-	},
-|
+conversation_path_choice = |{ path, method, directory }|
 	match ConversationKey.from_url_path({ path, directory }) {
-		Ok(found) => conversation_choice({
-			key: found.key,
-			resource: found.resource,
-			method,
-		})
-		Err(NotAConversationPath) => browse_path_choice({
-			path,
-			method,
-			directory,
-		})
+		Ok(found) => conversation_choice({ key: found.key, resource: found.resource, method })
+		Err(NotAConversationPath) => browse_path_choice({ path, method, directory })
 		Err(BadName) => NotFound
 		Err(NoSuchChannel) => NotFound
 		Err(NoSuchHuman) => NotFound
@@ -267,13 +224,7 @@ browse_path_choice : {
 	method : [Get, Post, Other],
 	directory : Directory,
 } -> Route.Choice
-browse_path_choice = |
-	{
-		path,
-		method,
-		directory,
-	},
-|
+browse_path_choice = |{ path, method, directory }|
 	if (path.is_exactly("/"))
 		match method {
 			Get => Open(GoToBrowse)
@@ -310,13 +261,7 @@ path_choice : {
 	method : [Get, Post, Other],
 	directory : Directory,
 } -> Route.Choice
-path_choice = |
-	{
-		path,
-		method,
-		directory,
-	},
-|
+path_choice = |{ path, method, directory }|
 	match sign_in_resource(path) {
 		Ok(resource) => sign_in_choice({ resource, method })
 		Err(NotSignIn) =>
@@ -351,13 +296,7 @@ conversation_choice : {
 	resource : ConversationKey.Resource,
 	method : [Get, Post, Other],
 } -> Route.Choice
-conversation_choice = |
-	{
-		key,
-		resource,
-		method,
-	},
-|
+conversation_choice = |{ key, resource, method }|
 	match (resource, method) {
 		(Page, Get) => SignedInOnly(ShowConversation(key))
 		(Page, Post) => SignedInOnly(AppendToConversation(key))
@@ -402,27 +341,15 @@ sign_in_resource = |path|
 		Ok([login, github]) if login.is_exactly("login") and github.is_exactly("github") =>
 			Ok(GitHubReturn)
 		Ok(
-			[
-				login,
-				github,
-				start,
-			],
+			[login, github, start],
 		) if login.is_exactly("login") and github.is_exactly("github") and start.is_exactly("start") =>
 			Ok(GitHubStart)
 		Ok(
-			[
-				login,
-				github,
-				name,
-			],
+			[login, github, name],
 		) if login.is_exactly("login") and github.is_exactly("github") and name.is_exactly("name") =>
 			Ok(GitHubName)
 		Ok(
-			[
-				login,
-				github,
-				link,
-			],
+			[login, github, link],
 		) if login.is_exactly("login") and github.is_exactly("github") and link.is_exactly("link") =>
 			Ok(GitHubLink)
 		_ => Err(NotSignIn)
@@ -474,41 +401,22 @@ agents_resource = |path|
 	match path.url_path_parts() {
 		Ok([agents]) if agents.is_exactly("agents") => Ok(Agents)
 		Ok(
-			[
-				agents,
-				last,
-			],
+			[agents, last],
 		) if agents.is_exactly("agents") and last.is_exactly("redeem") => Ok(Redeem)
 		Ok(
-			[
-				agents,
-				last,
-			],
+			[agents, last],
 		) if agents.is_exactly("agents") and last.is_exactly("stream") => Ok(AgentStream)
 		Ok(
-			[
-				agents,
-				id,
-				invites,
-			],
+			[agents, id, invites],
 		) if agents.is_exactly("agents") and invites.is_exactly("invites") =>
 			id.user_id().map_ok(|agent| Invites(agent)).map_err(|_| NotAgents)
 		Ok(
-			[
-				agents,
-				id,
-				kind,
-				number,
-				revoke,
-			],
+			[agents, id, kind, number, revoke],
 		) if agents.is_exactly("agents") and revoke.is_exactly("revoke") => {
 			agent = id.user_id() ? |_| NotAgents
 			if (kind.is_exactly("invites"))
 				number.invite_id().map_ok(
-					|invite| InviteRevoke({
-						agent,
-						invite,
-					}),
+					|invite| InviteRevoke({ agent, invite }),
 				).map_err(|_| NotAgents)
 			else if (kind.is_exactly("keys"))
 				number.key_id().map_ok(|key| KeyRevoke({ agent, key })).map_err(|_| NotAgents)
@@ -558,13 +466,7 @@ channels_resource = |path|
 		Ok([channels, name]) if channels.is_exactly("channels") =>
 			name.channel_name().map_ok(|channel| Members(channel)).map_err(|_| NotChannels)
 		Ok(
-			[
-				channels,
-				name,
-				members,
-				id,
-				act,
-			],
+			[channels, name, members, id, act],
 		) if channels.is_exactly("channels") and members.is_exactly("members") => {
 			channel = name.channel_name() ? |_| NotChannels
 			member = id.user_id() ? |_| NotChannels

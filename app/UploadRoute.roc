@@ -45,20 +45,8 @@ UploadRoute :: [].{
 		headers : List(Http.Header),
 		body : List(U8),
 	} => Http.Response
-	post_upload! = |
-		{
-			key,
-			acting,
-			headers,
-			body,
-		},
-	|
-		match keep_upload!({
-			key,
-			acting,
-			headers,
-			body,
-		}) {
+	post_upload! = |{ key, acting, headers, body }|
+		match keep_upload!({ key, acting, headers, body }) {
 			Ok(answer_json) => HttpAnswer.json(answer_json)
 			Err(why) => upload_refusal_response(why)
 		}
@@ -88,11 +76,7 @@ image_upload_from_form : { headers : List(Http.Header), body : List(U8) } -> Try
 		filename : List(U8),
 		bytes : List(U8),
 	},
-	[
-		NoFile,
-		NotAnImage,
-		TooLarge,
-	],
+	[NoFile, NotAnImage, TooLarge],
 )
 image_upload_from_form = |{ headers, body }| {
 	content_type =
@@ -103,11 +87,7 @@ image_upload_from_form = |{ headers, body }| {
 	boundary = MultipartForm.boundary_from_content_type(content_type)?
 	file = MultipartForm.file_part(body, boundary)?
 	kind = UploadedImage.checked_bytes(file.bytes)?
-	Ok({
-		kind,
-		filename: file.filename,
-		bytes: file.bytes,
-	})
+	Ok({ kind, filename: file.filename, bytes: file.bytes })
 }
 
 ## The image in a POST's form, counted against the allowance of the user
@@ -129,14 +109,7 @@ keep_upload! : {
 		FileSystem(FileSystem.Fault),
 	],
 )
-keep_upload! = |
-	{
-		key,
-		acting,
-		headers,
-		body,
-	},
-| {
+keep_upload! = |{ key, acting, headers, body }| {
 	upload = image_upload_from_form({ headers, body })?
 	folder = UserFolder.of(acting.user().id())
 	before = reserve_upload_bytes!(folder, upload.bytes.len())?
@@ -168,11 +141,7 @@ keep_upload! = |
 reserve_upload_bytes! : UserFolder,
 U64 => Try(
 	UploadTotal,
-	[
-		LimitReached,
-		NotANumber,
-		FileSystem(FileSystem.Fault),
-	],
+	[LimitReached, NotANumber, FileSystem(FileSystem.Fault)],
 )
 reserve_upload_bytes! = |folder, adding| {
 	before =
@@ -233,10 +202,7 @@ png = [0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 0]
 form_of : { filename : Str, file : List(U8) } -> { headers : List(Http.Header), body : List(U8) }
 form_of = |{ filename, file }| {
 	headers: [
-		{
-			name: "Content-Type".to_utf8(),
-			value: "multipart/form-data; boundary=XyZ".to_utf8(),
-		},
+		{ name: "Content-Type".to_utf8(), value: "multipart/form-data; boundary=XyZ".to_utf8() },
 	],
 	body: "--XyZ\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${filename}\"\r\nContent-Type: image/png\r\n\r\n"
 		.to_utf8()
@@ -253,17 +219,11 @@ expect
 			bytes: png,
 		})
 expect image_upload_from_form(
-	form_of({
-		filename: "cat.txt",
-		file: png,
-	}),
+	form_of({ filename: "cat.txt", file: png }),
 ).map_ok(|u| u.kind) == Ok(Png)
 # Refused: not an image, no form, no file in it.
 expect image_upload_from_form(
-	form_of({
-		filename: "cat.png",
-		file: "hello, not an image".to_utf8(),
-	}),
+	form_of({ filename: "cat.png", file: "hello, not an image".to_utf8() }),
 ) == Err(NotAnImage)
 expect image_upload_from_form({
 	headers: [],
@@ -292,63 +252,23 @@ expect image_upload_from_form({
 # fault of the file system among them.
 expect
 	[
-		(
-			NoFile,
-			400,
-			"no file",
-		),
-		(
-			NotAnImage,
-			415,
-			"unsupported file type (images: png, jpeg, gif, webp)",
-		),
-		(
-			TooLarge,
-			413,
-			"image too large — the limit is 10 MB.",
-		),
-		(
-			LimitReached,
-			403,
-			"Upload limit reached — you've used your 1 GB upload allowance.",
-		),
-		(
-			NotANumber,
-			500,
-			"Upload failed: your upload total is not a number.",
-		),
-		(
-			FileSystem(AlreadyExists),
-			500,
-			"Upload failed. The file system answered AlreadyExists.",
-		),
+		(NoFile, 400, "no file"),
+		(NotAnImage, 415, "unsupported file type (images: png, jpeg, gif, webp)"),
+		(TooLarge, 413, "image too large — the limit is 10 MB."),
+		(LimitReached, 403, "Upload limit reached — you've used your 1 GB upload allowance."),
+		(NotANumber, 500, "Upload failed: your upload total is not a number."),
+		(FileSystem(AlreadyExists), 500, "Upload failed. The file system answered AlreadyExists."),
 		(
 			FileSystem(MissingDirectory),
 			500,
 			"Upload failed. The file system answered MissingDirectory.",
 		),
-		(
-			FileSystem(NotUtf8),
-			500,
-			"Upload failed. The file system answered NotUtf8.",
-		),
-		(
-			FileSystem(PathRefused),
-			500,
-			"Upload failed. The file system answered PathRefused.",
-		),
-		(
-			FileSystem(Failed),
-			500,
-			"Upload failed. The file system answered Failed.",
-		),
+		(FileSystem(NotUtf8), 500, "Upload failed. The file system answered NotUtf8."),
+		(FileSystem(PathRefused), 500, "Upload failed. The file system answered PathRefused."),
+		(FileSystem(Failed), 500, "Upload failed. The file system answered Failed."),
 	].all(
 		|
-			(
-				why,
-				status,
-				words,
-			),
+			(why, status, words),
 		| {
 			response = upload_refusal_response(why)
 			response.status == status and response.body == "${words}\n".to_utf8()

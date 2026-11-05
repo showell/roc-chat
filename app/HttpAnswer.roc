@@ -19,11 +19,7 @@ HttpAnswer :: [].{
 	## `page`, with `status`, as UTF-8 HTML.
 	page : U16, TrustedHtml -> Http.Response
 	page = |status, html|
-		whole_response({
-			status,
-			headers: page_headers,
-			body: html.to_utf8(),
-		})
+		whole_response({ status, headers: page_headers, body: html.to_utf8() })
 
 	## A 303 See Other, to `url_path`: after a POST, the browser GETs the
 	## page, so a reload never posts again.
@@ -145,13 +141,7 @@ HttpAnswer :: [].{
 		holder : List(U8),
 		backlog : List(U8),
 	} -> Http.Response
-	stream = |
-		{
-			key,
-			holder,
-			backlog,
-		},
-	| {
+	stream = |{ key, holder, backlog }| {
 		status: 200,
 		headers: [nosniff],
 		body: backlog,
@@ -181,13 +171,7 @@ whole_response : {
 	headers : List(Http.Header),
 	body : List(U8),
 } -> Http.Response
-whole_response = |
-	{
-		status,
-		headers,
-		body,
-	},
-| {
+whole_response = |{ status, headers, body }| {
 	status,
 	headers,
 	body,
@@ -241,10 +225,7 @@ nosniff = { name: "x-content-type-options".to_utf8(), value: "nosniff".to_utf8()
 ## An answer's headers, as a test reads them.
 header_pairs : Http.Response -> List((Str, Str))
 header_pairs = |response| response.headers.map(
-	|h| (
-		Str.from_utf8_lossy(h.name),
-		Str.from_utf8_lossy(h.value),
-	),
+	|h| (Str.from_utf8_lossy(h.name), Str.from_utf8_lossy(h.value)),
 )
 
 # A page has the status it is given and its HTML as the body, and carries

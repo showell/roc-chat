@@ -73,25 +73,14 @@ SignInRoute :: [].{
 			FileSystem(FileSystem.Fault),
 		],
 	)
-	sign_in_by_session! = |
-		{
-			cookie,
-			users,
-			now,
-		},
-	| {
+	sign_in_by_session! = |{ cookie, users, now }| {
 		claim = Session.claim_from_cookie_header(cookie)?
 		material = load_material!(claim.id())?
 		verdict = Host.hmac_sha256_with_server_secret_matches!(
 			claim.signed_bytes(material),
 			claim.mac(),
 		)
-		admitted = Session.admit({
-			claim,
-			verdict,
-			now,
-			users,
-		})?
+		admitted = Session.admit({ claim, verdict, now, users })?
 		Ok(SignedIn.by_session(admitted))
 	}
 
@@ -103,22 +92,11 @@ SignInRoute :: [].{
 		query : List(U8),
 		github : Page.GitHubOffer,
 	} -> Http.Response
-	show_login = |
-		{
-			viewer,
-			query,
-			github,
-		},
-	|
+	show_login = |{ viewer, query, github }|
 		match SignInRoute.next_from_query(query) {
 			Ok(next) => HttpAnswer.page(
 				200,
-				Page.login({
-					viewer,
-					next,
-					problem: NoProblem,
-					github,
-				}),
+				Page.login({ viewer, next, problem: NoProblem, github }),
 			)
 			Err(BadNext) => SignInRoute.bad_next_answer
 		}
@@ -135,32 +113,16 @@ SignInRoute :: [].{
 		now : I64,
 		github : Page.GitHubOffer,
 	} => Http.Response
-	sign_in! = |
-		{
-			viewer,
-			users,
-			body,
-			now,
-			github,
-		},
-	| {
+	sign_in! = |{ viewer, users, body, now, github }| {
 		answer =
 			match next_from_form(body) {
 				Err(BadNext) => SignInRoute.bad_next_answer
 				Ok(next) =>
-					match find_human_by_password!({
-						viewer,
-						users,
-						body,
-					}) {
+					match find_human_by_password!({ viewer, users, body }) {
 						Ok({ human, material }) =>
 							HttpAnswer.with_header(
 								HttpAnswer.see_other(next.to_str()),
-								sign_session_cookie!({
-									human,
-									material,
-									now,
-								}),
+								sign_session_cookie!({ human, material, now }),
 							)
 						Err(NoMatch) => HttpAnswer.page(
 							401,
@@ -194,22 +156,11 @@ SignInRoute :: [].{
 		next : Html.SitePath,
 	},
 	I64 => Http.Response
-	start_session_by_invite! = |
-		{
-			admission,
-			password_hash,
-			next,
-		},
-		now,
-	|
+	start_session_by_invite! = |{ admission, password_hash, next }, now|
 		match load_material_with_password!({ id: admission.human().id(), password_hash }) {
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 			Ok(material) => {
-				cookie = sign_session_cookie!({
-					human: admission.human(),
-					material,
-					now,
-				})
+				cookie = sign_session_cookie!({ human: admission.human(), material, now })
 				onward = HttpAnswer.see_other(next.to_str())
 				HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
 			}
@@ -238,11 +189,7 @@ SignInRoute :: [].{
 				Ok(material) =>
 					HttpAnswer.with_header(
 						HttpAnswer.see_other(admission.next().to_str()),
-						sign_session_cookie!({
-							human,
-							material,
-							now,
-						}),
+						sign_session_cookie!({ human, material, now }),
 					)
 			}
 		HttpAnswer.never_stored(answer)
@@ -334,10 +281,7 @@ SignInRoute :: [].{
 ## What the sessions of the user `id` are signed over now, from their sign-in
 ## files; unless they hold nothing to sign over (`NoMaterial`), or a file
 ## can't be read.
-load_material! : UserId => Try(
-	Session.Material,
-	[NoMaterial, FileSystem(FileSystem.Fault)],
-)
+load_material! : UserId => Try(Session.Material, [NoMaterial, FileSystem(FileSystem.Fault)])
 load_material! = |id| {
 	github = load_github_word!(id)?
 	match (FileSystem.read_password_hash!(id), github) {
@@ -368,10 +312,7 @@ load_material_with_password! = |{ id, password_hash }| {
 ## The word in the user `id`'s `github-session-secret`, read only while their
 ## `github-id` ties them to GitHub, so removing that file ends their sessions
 ## too. An empty file holds no word.
-load_github_word! : UserId => Try(
-	[NoGitHub, GitHub(List(U8))],
-	[FileSystem(FileSystem.Fault)],
-)
+load_github_word! : UserId => Try([NoGitHub, GitHub(List(U8))], [FileSystem(FileSystem.Fault)])
 load_github_word! = |id|
 	match FileSystem.read_github_id_file!(id) {
 		Err(fault) => Err(FileSystem(fault))
@@ -424,25 +365,11 @@ sign_session_cookie! : {
 	material : Session.Material,
 	now : I64,
 } => Http.Header
-sign_session_cookie! = |
-	{
-		human,
-		material,
-		now,
-	},
-| {
+sign_session_cookie! = |{ human, material, now }| {
 	mac = Host.hmac_sha256_with_server_secret!(
-		Session.signed_bytes({
-			id: human.id(),
-			signed_at: now,
-			material,
-		}),
+		Session.signed_bytes({ id: human.id(), signed_at: now, material }),
 	)
-	cookie = Session.cookie_value({
-		id: human.id(),
-		signed_at: now,
-		mac,
-	})
+	cookie = Session.cookie_value({ id: human.id(), signed_at: now, mac })
 	set_cookie_header(Session.set_cookie_text(cookie))
 }
 
@@ -496,20 +423,9 @@ find_human_by_password! : {
 	body : List(U8),
 } => Try(
 	{ human : Users.Human, material : Session.Material },
-	[
-		NoMatch,
-		ByApiKey,
-		TooManyChecks,
-		FileSystem(FileSystem.Fault),
-	],
+	[NoMatch, ByApiKey, TooManyChecks, FileSystem(FileSystem.Fault)],
 )
-find_human_by_password! = |
-	{
-		viewer,
-		users,
-		body,
-	},
-| {
+find_human_by_password! = |{ viewer, users, body }| {
 	SignInRoute.check_not_by_api_key(viewer)?
 	name_text = UrlEncodedForm.field({ body, name: "name" }) ? |_| NoMatch
 	name = name_text.name() ? |_| NoMatch
@@ -531,11 +447,7 @@ find_human_by_password! = |
 ## refuses the check (`TooManyChecks`), or a sign-in file can't be read.
 check_password_of! : { human : Users.Human, password : Password } => Try(
 	{ human : Users.Human, material : Session.Material },
-	[
-		NoMatch,
-		TooManyChecks,
-		FileSystem(FileSystem.Fault),
-	],
+	[NoMatch, TooManyChecks, FileSystem(FileSystem.Fault)],
 )
 check_password_of! = |{ human, password }|
 	match FileSystem.read_password_hash!(human.id()) {
@@ -620,11 +532,7 @@ expect
 			]
 # The page, both sides of its query: 200 with a good one, 400 with a bad one.
 expect
-	SignInRoute.show_login({
-		viewer: Anonymous,
-		query: [],
-		github: NotOffered,
-	}).status == 200
+	SignInRoute.show_login({ viewer: Anonymous, query: [], github: NotOffered }).status == 200
 expect
 	SignInRoute.show_login({
 		viewer: Anonymous,

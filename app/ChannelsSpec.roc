@@ -48,11 +48,7 @@ expect with_plans.add_new_human(Sample.human("Apoorva")).map_ok(|_| {}) == Err(N
 apply_change : Channels,
 [Add(Users.User), Remove(Users.User)] -> Try(
 	Channels,
-	[
-		NoSuchChannel,
-		AlreadyMember,
-		NotMember,
-	],
+	[NoSuchChannel, AlreadyMember, NotMember],
 )
 apply_change = |channels, change|
 	match change {
@@ -153,15 +149,7 @@ expect
 		== Err(NoSuchChannel)
 # A member removed can be added again, and removed again.
 expect
-	members_of(
-		all_changed(
-			everyone,
-			[
-				Remove(Sample.user("Apoorva")),
-				Add(Sample.user("Apoorva")),
-			],
-		),
-	)
+	members_of(all_changed(everyone, [Remove(Sample.user("Apoorva")), Add(Sample.user("Apoorva"))]))
 		== Ok(["1", "2", "3"])
 expect
 	members_of(

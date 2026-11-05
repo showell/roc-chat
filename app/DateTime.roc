@@ -55,12 +55,7 @@ DateTime :: Str.{
 				s1,
 				s2,
 			].all(Ascii.is_digit) => {
-				year = number([
-					y1,
-					y2,
-					y3,
-					y4,
-				])
+				year = number([y1, y2, y3, y4])
 				month = number([m1, m2])
 				day = number([d1, d2])
 				in_calendar = month >= 1 and month <= 12 and day >= 1 and day <= days_in({
@@ -143,11 +138,7 @@ civil_from_days = |days| {
 	day = day_of_year - (153 * month_from_march + 2) // 5 + 1
 	month = if (month_from_march < 10) month_from_march + 3 else month_from_march - 9
 	year = year_of_era + era * 400 + (if (month <= 2) 1 else 0)
-	{
-		year,
-		month,
-		day,
-	}
+	{ year, month, day }
 }
 
 ## `n`, zero or more, in at least `width` digits, zeros before.

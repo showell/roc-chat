@@ -75,11 +75,7 @@ ConversationKey :: { place : Place, topic : Topic }.{
 		match found.which() {
 			Channel(name) => ConversationKey.channel_folder_parts(name)
 			Dm(pair) =>
-				[
-					"chat",
-					"dm",
-					pair.to_str(),
-				]
+				["chat", "dm", pair.to_str()]
 		}
 
 	## The parts its URL and its folder both spell: its place's, then the
@@ -111,23 +107,12 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	## `NoSuchHuman`, as `Directory.place` answers).
 	from_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
 		{ key : ConversationKey, resource : ConversationKey.Resource },
-		[
-			NotAConversationPath,
-			BadName,
-			NoSuchChannel,
-			NoSuchHuman,
-		],
+		[NotAConversationPath, BadName, NoSuchChannel, NoSuchHuman],
 	)
 	from_url_path = |{ path, directory }| {
 		path_parts = path.url_path_parts() ? |NotAPath| NotAConversationPath
 		match path_parts {
-			[
-				chat,
-				kind,
-				name,
-				topic_part,
-				..,
-			] if chat.is_exactly("chat") => {
+			[chat, kind, name, topic_part, ..] if chat.is_exactly("chat") => {
 				resource = resource_of_suffix(path_parts.drop_first(4))?
 				named_place = place_named({ kind, name })?
 				found_place = directory.place(named_place)?
@@ -142,22 +127,11 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	## `from_url_path` says it.
 	place_from_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
 		Place,
-		[
-			NotAConversationPath,
-			BadName,
-			NoSuchChannel,
-			NoSuchHuman,
-		],
+		[NotAConversationPath, BadName, NoSuchChannel, NoSuchHuman],
 	)
 	place_from_url_path = |{ path, directory }|
 		match path.url_path_parts() {
-			Ok(
-				[
-					chat,
-					kind,
-					name,
-				],
-			) if chat.is_exactly("chat") => {
+			Ok([chat, kind, name]) if chat.is_exactly("chat") => {
 				named_place = place_named({ kind, name })?
 				directory.place(named_place)
 			}

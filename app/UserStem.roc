@@ -15,10 +15,7 @@ UserStem :: [].{
 	## The stem of the user `id`, named `name`.
 	of : { name : Name, id : UserId } -> Str
 	of = |
-		{
-			name,
-			id,
-		},
+		{ name, id },
 	| "${NameAlphabet.ascii_spelling(name.written_text()).replace_each(" ", "-")}-${id.to_str()}"
 }
 

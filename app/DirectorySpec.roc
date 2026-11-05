@@ -44,10 +44,7 @@ zed =
 human_added : Directory, Str -> Try((Str, Str), [Full, NameTaken])
 human_added = |directory, text|
 	directory.add_human(Sample.name(text)).map_ok(
-		|grown| (
-			grown.user.id().to_str(),
-			grown.user.name().to_str(),
-		),
+		|grown| (grown.user.id().to_str(), grown.user.name().to_str()),
 	)
 
 # A new human's account: the next id, in the default channel, as the
@@ -74,18 +71,11 @@ expect Sample.directory.add_new_human(Sample.name("Zoe")).map_ok(|_| {}) == Err(
 agent_added : Directory,
 { name : Str, owner : Users.Human } -> Try(
 	(Str, Str),
-	[
-		NoSuchOwner,
-		Full,
-		NameTaken,
-	],
+	[NoSuchOwner, Full, NameTaken],
 )
 agent_added = |directory, { name, owner }|
 	directory.add_agent({ name: Sample.name(name), owner }).map_ok(
-		|grown| (
-			grown.user.id().to_str(),
-			grown.user.name().to_str(),
-		),
+		|grown| (grown.user.id().to_str(), grown.user.name().to_str()),
 	)
 
 ## The name of the channel `text` would be, created in `directory`, or why
@@ -231,12 +221,7 @@ expect place_named(Channel(channel_name("other"))) == Err(NoSuchChannel)
 expect place_named(Dm(pair("1_2"))) == Ok("1_2")
 expect place_named(Dm(pair("2_2"))) == Ok("2_2")
 expect
-	[
-		"1_3",
-		"3_3",
-		"1_4",
-		"4_4",
-	].all(|text| place_named(Dm(pair(text))) == Err(NoSuchHuman))
+	["1_3", "3_3", "1_4", "4_4"].all(|text| place_named(Dm(pair(text))) == Err(NoSuchHuman))
 
 ## Apoorva renamed `text` in `directory`: her id and her name after, and
 ## then whether her old name, `Apoorva`, is free to a new human; or why not.
@@ -248,11 +233,7 @@ apoorva_renamed = |directory, text| {
 			Ok(_) => "Apoorva free"
 			Err(_) => "Apoorva taken"
 		}
-	Ok((
-		done.human.id().to_str(),
-		done.human.user().name().to_str(),
-		freed,
-	))
+	Ok((done.human.id().to_str(), done.human.user().name().to_str(), freed))
 }
 
 # A human renamed keeps their id, and the name they leave is free again; a

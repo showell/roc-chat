@@ -63,11 +63,7 @@ is_backslashed_separator = |l|
 
 # ── tests
 expect
-	[
-		"-------------",
-		"\\-------------",
-		"\\\\-------------",
-	].all(is_backslashed_separator)
+	["-------------", "\\-------------", "\\\\-------------"].all(is_backslashed_separator)
 expect
 	[
 		"a-------------",

@@ -36,19 +36,13 @@ with_team = {
 ## The users' account files, as `FileSystem` reads them.
 accounts_of : Users -> List(Users.StoredAccount)
 accounts_of = |users| users.to_list().map(
-	|user| {
-		id: user.id(),
-		files: Users.account_files(user),
-	},
+	|user| { id: user.id(), files: Users.account_files(user) },
 )
 
 ## The channels' members files, as `FileSystem` reads them.
 channels_of : Channels -> List(Channels.StoredChannel)
 channels_of = |channels| channels.to_list().map(
-	|channel| {
-		name: channel.name(),
-		members: channel.members_file(),
-	},
+	|channel| { name: channel.name(), members: channel.members_file() },
 )
 
 ## The users the files hold, from `with_team`'s, with `counter`.
@@ -61,13 +55,7 @@ account : {
 	name : Str,
 	owner : [NoFile, File(Str)],
 } -> Users.StoredAccount
-account = |
-	{
-		id,
-		name,
-		owner,
-	},
-| {
+account = |{ id, name, owner }| {
 	id: UserId.from_str(id) ?? crash "StoredDirectorySpec: an id",
 	files: {
 		name: name.to_utf8(),
@@ -242,20 +230,14 @@ expect {
 expect {
 	stray = ChannelName.from_str("team") ?? crash "a name"
 	channels = Channels.from_files([
-		{
-			name: stray,
-			members: "1\n9\n".to_utf8(),
-		},
+		{ name: stray, members: "1\n9\n".to_utf8() },
 	]) ?? crash "StoredDirectorySpec: the file is ids"
 	Directory.from_files({ users: Sample.directory.users(), channels }) == Err(UnknownMember(stray))
 }
 expect {
 	clash = ChannelName.from_str("cc") ?? crash "a name"
 	channels = Channels.from_files([
-		{
-			name: clash,
-			members: "1\n".to_utf8(),
-		},
+		{ name: clash, members: "1\n".to_utf8() },
 	]) ?? crash "StoredDirectorySpec: the file is ids"
 	Directory.from_files({ users: Sample.directory.users(), channels }) == Err(NameTaken)
 }

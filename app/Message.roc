@@ -20,19 +20,13 @@ Message :: {
 	## written. The message, with its id and time, is
 	## made from it as early as possible. A conversation takes it from an `Author`; a DM's start
 	## (`Dm.start`) from a human, so its writer's kind is in its type.
-	Payload(writer) : {
-		author : writer,
-		markdown : Str,
-	}
+	Payload(writer) : { author : writer, markdown : Str }
 
 	## An unnumbered message is a payload and its time, every part checked,
 	## waiting only for the id its conversation gives it
 	## (`Conversation.append`). This is the shape's one home, written
 	## `Message.Unnumbered`.
-	Unnumbered(writer) : {
-		payload : Message.Payload(writer),
-		time : DateTime,
-	}
+	Unnumbered(writer) : { payload : Message.Payload(writer), time : DateTime }
 
 	## A message's id is its number in its conversation, counting from 1,
 	## so a conversation's order is its ids' order. At most U16's highest,

@@ -105,19 +105,11 @@ Agents :: [].{
 	make : Directory,
 	{ owner : Users.Human, body : List(U8) } -> Try(
 		Directory.Addition,
-		[
-			BadForm(Str),
-			BadName,
-			NameTaken,
-			Full,
-		],
+		[BadForm(Str), BadName, NameTaken, Full],
 	)
 	make = |directory, { owner, body }| {
 		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
-			UrlEncodedForm.fault_words({
-				fault,
-				name: "name",
-			}),
+			UrlEncodedForm.fault_words({ fault, name: "name" }),
 		)
 		name = unchecked.name() ? |_| BadName
 		match directory.add_agent({ name, owner }) {
@@ -144,10 +136,7 @@ Agents :: [].{
 	code_from_form : List(U8) -> Try(SecretToken, [BadForm(Str), CodeRefused])
 	code_from_form = |body| {
 		unchecked = UrlEncodedForm.field({ body, name: "code" }) ? |fault| BadForm(
-			UrlEncodedForm.fault_words({
-				fault,
-				name: "code",
-			}),
+			UrlEncodedForm.fault_words({ fault, name: "code" }),
 		)
 		unchecked.secret_token().map_err(|NotAToken| CodeRefused)
 	}
@@ -164,11 +153,7 @@ Agents :: [].{
 	revoked_invite : List(AgentInvite),
 	AgentInvite.Id -> Try(
 		AgentInvite,
-		[
-			NoSuchInvite,
-			Spent,
-			AlreadyRevoked,
-		],
+		[NoSuchInvite, Spent, AlreadyRevoked],
 	)
 	revoked_invite = |invites, invite|
 		match invites.find_first(|held| held.id() == invite) {

@@ -23,10 +23,7 @@ import Users
 Channels :: List(Channels.Channel).{
 
 	## A channel: its name and its members' ids.
-	Channel :: {
-		name : ChannelName,
-		members : Set(UserId),
-	}.{
+	Channel :: { name : ChannelName, members : Set(UserId) }.{
 
 		name : Channels.Channel -> ChannelName
 		name = |Channels.Channel.(c)| c.name

@@ -77,14 +77,7 @@ AgentKey :: {
 		now : I64,
 		scope : KeyScope,
 	} -> AgentKey
-	mint = |
-		{
-			id,
-			hash,
-			now,
-			scope,
-		},
-	|
+	mint = |{ id, hash, now, scope }|
 		AgentKey.(
 			{
 				id,
@@ -115,14 +108,7 @@ AgentKey :: {
 		hash : SecretHash,
 		now : I64,
 	} -> Try(AgentKey.Admitted, [NotAnAgent, NoSuchKey, Revoked, Expired])
-	admit = |
-		{
-			user,
-			keys,
-			hash,
-			now,
-		},
-	|
+	admit = |{ user, keys, hash, now }|
 		match user.role() {
 			Human => Err(NotAnAgent)
 			Agent(_) =>

@@ -165,14 +165,7 @@ HumanInvites :: [].{
 			NoDefaultChannel,
 		],
 	)
-	invite = |
-		directory,
-		{
-			acting,
-			body,
-			open,
-		},
-	| {
+	invite = |directory, { acting, body, open }| {
 		inviter = acting.human_in_session()?
 		if open >= HumanInvites.open_most {
 			Err(Capped)
@@ -219,15 +212,7 @@ HumanInvites :: [].{
 			Capped,
 		],
 	)
-	reinvite = |
-		directory,
-		{
-			acting,
-			human,
-			inviter,
-			open,
-		},
-	| {
+	reinvite = |directory, { acting, human, inviter, open }| {
 		by = acting.human_in_session()?
 		invited =
 			match directory.users().user(human) {
@@ -251,10 +236,7 @@ HumanInvites :: [].{
 	name_from_form : List(U8) -> Try(Name, [BadForm(Str), BadName])
 	name_from_form = |body| {
 		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
-			UrlEncodedForm.fault_words({
-				fault,
-				name: "name",
-			}),
+			UrlEncodedForm.fault_words({ fault, name: "name" }),
 		)
 		unchecked.name().map_err(|_| BadName)
 	}
@@ -264,10 +246,7 @@ HumanInvites :: [].{
 	password_from_form : List(U8) -> Try(Password, [BadForm(Str), BadPassword])
 	password_from_form = |body| {
 		unchecked = UrlEncodedForm.field({ body, name: "password" }) ? |fault| BadForm(
-			UrlEncodedForm.fault_words({
-				fault,
-				name: "password",
-			}),
+			UrlEncodedForm.fault_words({ fault, name: "password" }),
 		)
 		unchecked.password().map_err(|NotAPassword| BadPassword)
 	}
@@ -310,15 +289,7 @@ HumanInvites :: [].{
 		{ human : Users.Human, redeemable : HumanInvite.Redeemable },
 		[CodeRefused],
 	)
-	find_invitee = |
-		directory,
-		{
-			token,
-			invites,
-			hash,
-			now,
-		},
-	| {
+	find_invitee = |directory, { token, invites, hash, now }| {
 		user = directory.users().user(token.user()) ? |NoSuchUser| CodeRefused
 		human = user.as_human() ? |Agent(_)| CodeRefused
 		redeemable = HumanInvite.find_redeemable(invites, { hash, now }) ? |_| CodeRefused
@@ -338,11 +309,7 @@ HumanInvites :: [].{
 			admission : HumanInvite.Admission,
 			name : [Kept, Changed],
 		},
-		[
-			CodeRefused,
-			NameChosen,
-			NameTaken,
-		],
+		[CodeRefused, NameChosen, NameTaken],
 	)
 	join = |directory, { code, name }| {
 		found = HumanInvites.find_invitee(directory, code)?

@@ -14,12 +14,7 @@ UrlEncodedForm :: [].{
 	## form's `body`; or why there is none (see `field`).
 	markdown_field : List(U8) -> Try(
 		UnvalidatedString,
-		[
-			MissingField,
-			RepeatedField,
-			BadEscape,
-			NotUtf8,
-		],
+		[MissingField, RepeatedField, BadEscape, NotUtf8],
 	)
 	markdown_field = |body| UrlEncodedForm.field({ body, name: UrlEncodedForm.markdown_name })
 
@@ -34,12 +29,7 @@ UrlEncodedForm :: [].{
 	## (`BadEscape`), or its decoded value is not UTF-8 (`NotUtf8`).
 	field : { body : List(U8), name : Str } -> Try(
 		UnvalidatedString,
-		[
-			MissingField,
-			RepeatedField,
-			BadEscape,
-			NotUtf8,
-		],
+		[MissingField, RepeatedField, BadEscape, NotUtf8],
 	)
 	field = |{ body, name }| {
 		wanted = name.to_utf8()
@@ -99,12 +89,7 @@ decode_value_onto : { out : List(U8), rest : List(U8) } -> Try(List(U8), [BadEsc
 decode_value_onto = |{ out, rest }|
 	match rest {
 		[] => Ok(out)
-		[
-			'%',
-			high,
-			low,
-			.. as after,
-		] =>
+		['%', high, low, .. as after] =>
 			match (Hex.digit_value(high), Hex.digit_value(low)) {
 				(Ok(h), Ok(l)) => decode_value_onto({ out: out.append(h * 16 + l), rest: after })
 				_ => Err(BadEscape)

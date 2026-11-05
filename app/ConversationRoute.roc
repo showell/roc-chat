@@ -48,23 +48,12 @@ ConversationRoute :: [].{
 		acting : SignedIn,
 		users : Users,
 	} => Http.Response
-	show! = |
-		{
-			key,
-			acting,
-			users,
-		},
-	|
+	show! = |{ key, acting, users }|
 		match load_conversation!(key) {
 			Ok({ conversation, file: _ }) =>
 				HttpAnswer.page(
 					200,
-					Page.conversation({
-						conversation,
-						key,
-						viewer: acting,
-						users,
-					}),
+					Page.conversation({ conversation, key, viewer: acting, users }),
 				)
 			Err(why) => refusal_page(why)
 		}
@@ -91,15 +80,7 @@ ConversationRoute :: [].{
 		query : List(U8),
 		headers : List(Http.Header),
 	} => Http.Response
-	open_stream! = |
-		{
-			key,
-			acting,
-			users,
-			query,
-			headers,
-		},
-	|
+	open_stream! = |{ key, acting, users, query, headers }|
 		match ConversationStream.request_seen_count({ query, headers }) {
 			Err(why) => refusal_page(why)
 			Ok(seen_count) =>
@@ -198,11 +179,7 @@ append_posted_message! = |post| {
 		users: post.users,
 		message: grown.message,
 	})
-	ConversationStream.publish!({
-		key: post.key,
-		id: grown.message.id(),
-		html,
-	})
+	ConversationStream.publish!({ key: post.key, id: grown.message.id(), html })
 	AgentStream.publish!({
 		key: post.key,
 		message: grown.message,
@@ -306,13 +283,7 @@ unnumbered_message_from_post : {
 		ClockOutOfRange,
 	],
 )
-unnumbered_message_from_post = |
-	{
-		acting,
-		now,
-		body,
-	},
-| {
+unnumbered_message_from_post = |{ acting, now, body }| {
 	markdown_text = UrlEncodedForm.markdown_field(body)?
 	markdown = markdown_text.markdown()?
 	time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
@@ -338,11 +309,7 @@ UnnumberedMessageText : {
 ## The unnumbered message posted as `body` at `now`, as a test reads it.
 unnumbered_message_at : I64, Str -> Try(UnnumberedMessageText, _)
 unnumbered_message_at = |now, body|
-	unnumbered_message_from_post({
-		acting: steve,
-		now,
-		body: body.to_utf8(),
-	}).map_ok(
+	unnumbered_message_from_post({ acting: steve, now, body: body.to_utf8() }).map_ok(
 		|a| {
 			author: a.payload.author.to_str(),
 			time: a.time.to_str(),
@@ -409,10 +376,7 @@ expect
 			"The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0.",
 		),
 	].all(
-		|(why, text)| refusal_notice(why) == {
-			status: 400,
-			words: { title: "Bad stream", text },
-		},
+		|(why, text)| refusal_notice(why) == { status: 400, words: { title: "Bad stream", text } },
 	)
 expect refusal_notice(NoSuchConversation(plans_key)) == {
 	status: 404,

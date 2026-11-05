@@ -109,10 +109,7 @@ expect human_added(sample, "Damian") == Ok({
 })
 # An agent's owner: any human of these users, Steve or another.
 expect
-	[
-		(Sample.human("Steve"), "agent of 1"),
-		(Sample.human("Apoorva"), "agent of 2"),
-	].all(
+	[(Sample.human("Steve"), "agent of 1"), (Sample.human("Apoorva"), "agent of 2")].all(
 		|(owner, role)|
 			agent_added(sample, { name: "Bot", owner }).map_ok(|user| user.role) == Ok(role),
 	)

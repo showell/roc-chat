@@ -28,11 +28,7 @@ image_name = "${"0a".repeat(16)}.png"
 ## what it does, and `(open)` after a route anyone may use.
 chosen_route : Str, List(U8) -> Str
 chosen_route = |method, path|
-	match Route.choose({
-		method: method.to_utf8(),
-		path,
-		directory: with_room,
-	}) {
+	match Route.choose({ method: method.to_utf8(), path, directory: with_room }) {
 		SignedInOnly(ShowBrowse) => "browse"
 		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
@@ -47,12 +43,7 @@ chosen_route = |method, path|
 		SignedInOnly(MakeAgent) => "make an agent"
 		SignedInOnly(InviteAgent(agent)) => "invite ${agent.to_str()}"
 		SignedInOnly(
-			RevokeInvite(
-				{
-					agent,
-					invite,
-				},
-			),
+			RevokeInvite({ agent, invite }),
 		) => "revoke invite ${invite.to_str()} of ${agent.to_str()}"
 		SignedInOnly(RevokeKey({ agent, key })) => "revoke key ${key.to_str()} of ${agent.to_str()}"
 		SignedInOnly(OpenAgentStream) => "the agents' stream"
@@ -60,20 +51,10 @@ chosen_route = |method, path|
 		SignedInOnly(CreateChannel) => "create a channel"
 		SignedInOnly(ShowChannelMembers(channel)) => "members of ${channel.to_str()}"
 		SignedInOnly(
-			AddChannelMember(
-				{
-					channel,
-					member,
-				},
-			),
+			AddChannelMember({ channel, member }),
 		) => "add ${member.to_str()} to ${channel.to_str()}"
 		SignedInOnly(
-			RemoveChannelMember(
-				{
-					channel,
-					member,
-				},
-			),
+			RemoveChannelMember({ channel, member }),
 		) => "remove ${member.to_str()} from ${channel.to_str()}"
 		SignedInOnly(ShowInvites) => "invites"
 		SignedInOnly(InviteHuman) => "invite a human"
@@ -120,7 +101,10 @@ expect
 	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
 # A new topic: POST alone, to a place that exists.
 expect chosen_route("POST", "/chat/dm/1_2".to_utf8()) == "start a topic in /chat/dm/1_2"
-expect chosen_route("POST", "/chat/channel/plans-room".to_utf8()) == "start a topic in /chat/channel/plans-room"
+expect chosen_route(
+	"POST",
+	"/chat/channel/plans-room".to_utf8(),
+) == "start a topic in /chat/channel/plans-room"
 expect chosen_route("GET", "/chat/dm/1_2".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/chat/channel/plans-room".to_utf8()) == "not allowed: POST"
 expect
@@ -178,13 +162,7 @@ expect chosen_route("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8())
 expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
 # Each script's path: GET alone, and exactly its path.
 expect
-	[
-		"palette.js",
-		"chrome.js",
-		"compose.js",
-		"feed.js",
-		"panel.js",
-	].all(
+	["palette.js", "chrome.js", "compose.js", "feed.js", "panel.js"].all(
 		|name| {
 			path = "/chat/assets/${name}".to_utf8()
 			chosen_route("GET", path) == "the script at /chat/assets/${name} (open)"
@@ -254,7 +232,12 @@ expect
 		("PUT", "/login/github/start"),
 		("POST", "/login/github"),
 		("PUT", "/login/github"),
-	].all(|(method, path)| chosen_route(method, path.to_utf8()) == "the wrong method to GitHub (open)")
+	].all(
+		|(method, path)| chosen_route(
+			method,
+			path.to_utf8(),
+		) == "the wrong method to GitHub (open)",
+	)
 # A new human's name: a POST, and every other method a refusal the route gives.
 expect chosen_route("POST", "/login/github/name".to_utf8()) == "a new human's name (open)"
 expect chosen_route("POST", "/login/github/link".to_utf8()) == "off to GitHub to link it (open)"
@@ -264,7 +247,12 @@ expect
 		("PUT", "/login/github/name"),
 		("GET", "/login/github/link"),
 		("PUT", "/login/github/link"),
-	].all(|(method, path)| chosen_route(method, path.to_utf8()) == "the wrong method for a name (open)")
+	].all(
+		|(method, path)| chosen_route(
+			method,
+			path.to_utf8(),
+		) == "the wrong method for a name (open)",
+	)
 expect chosen_route("POST", "/logout".to_utf8()) == "sign out (open)"
 expect chosen_route("GET", "/logout".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/logout".to_utf8()) == "not allowed: POST"

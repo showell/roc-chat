@@ -58,23 +58,9 @@ GitHubState :: {
 		next : Html.SitePath,
 		errand : GitHubState.Errand,
 	} -> GitHubState
-	issue = |
-		{
-			nonce,
-			now,
-			next,
-			errand,
-		},
-	|
+	issue = |{ nonce, now, next, errand }|
 		if (nonce.len() == GitHubState.nonce_bytes)
-			GitHubState.(
-				{
-					nonce,
-					issued_at: now,
-					next,
-					errand,
-				},
-			)
+			GitHubState.({ nonce, issued_at: now, next, errand })
 		else
 			crash "GitHubState.issue: a nonce is ${GitHubState.nonce_bytes.to_str()} bytes, not ${nonce.len().to_str()}"
 
@@ -102,24 +88,13 @@ GitHubState :: {
 		from_str : Str -> Try(GitHubState.Claim, [NotAClaim])
 		from_str = |text|
 			match text.split_on(".") {
-				[
-					nonce_part,
-					second_part,
-					next_part,
-					errand_part,
-					mac_part,
-				] =>
+				[nonce_part, second_part, next_part, errand_part, mac_part] =>
 					match Base64Url.decode(mac_part) {
 						Ok(mac) => Ok(
 							GitHubState.Claim.(
 								{
 									payload: Str.join_with(
-										[
-											nonce_part,
-											second_part,
-											next_part,
-											errand_part,
-										],
+										[nonce_part, second_part, next_part, errand_part],
 										".",
 									),
 									mac,
@@ -160,11 +135,7 @@ GitHubState :: {
 	}
 
 	## What `check` says of a state.
-	Verdict : [
-		Valid,
-		Expired,
-		Mismatched,
-	]
+	Verdict : [Valid, Expired, Mismatched]
 
 	## Whether this state is good, from this browser, at `now`: `Mismatched`
 	## when the browser's cookie is missing or holds another nonce, said
@@ -271,28 +242,14 @@ errand_from_text = |text|
 state_from_payload : Str -> Try(GitHubState, [BadPayload])
 state_from_payload = |payload|
 	match payload.split_on(".") {
-		[
-			nonce_part,
-			second_part,
-			next_part,
-			errand_part,
-		] => {
+		[nonce_part, second_part, next_part, errand_part] => {
 			nonce = Base64Url.decode(nonce_part) ? |_| BadPayload
 			issued_at = FactFile.seconds_from_file(second_part.to_utf8()) ? |_| BadPayload
 			path_bytes = Base64Url.decode(next_part) ? |_| BadPayload
 			path_text = Str.from_utf8(path_bytes) ? |_| BadPayload
 			next = Html.SitePath.from_str(path_text) ? |_| BadPayload
 			errand = errand_from_text(errand_part)?
-			Ok(
-				GitHubState.(
-					{
-						nonce,
-						issued_at,
-						next,
-						errand,
-					},
-				),
-			)
+			Ok(GitHubState.({ nonce, issued_at, next, errand }))
 		}
 		_ => Err(BadPayload)
 	}
@@ -328,18 +285,10 @@ back = |asked| issued.check(asked)
 
 # Valid at the window's two ends and inside it.
 expect
-	[
-		1000,
-		1300,
-		1599,
-	].all(|now| back({ cookie: Sent(nonce_held), now }) == Valid)
+	[1000, 1300, 1599].all(|now| back({ cookie: Sent(nonce_held), now }) == Valid)
 # Expired at the lifetime, past it, and before it was issued.
 expect
-	[
-		1600,
-		99999,
-		999,
-	].all(|now| back({ cookie: Sent(nonce_held), now }) == Expired)
+	[1600, 99999, 999].all(|now| back({ cookie: Sent(nonce_held), now }) == Expired)
 # Mismatched: no cookie, or another nonce, one byte short or over included;
 # and that is said before the time.
 expect

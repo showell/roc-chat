@@ -59,24 +59,13 @@ AgentsRoute :: [].{
 		directory : Directory,
 		now : I64,
 	} => Try(SignedIn, [KeyRefused, FileSystem(FileSystem.Fault)])
-	sign_in_by_key! = |
-		{
-			token,
-			directory,
-			now,
-		},
-	|
+	sign_in_by_key! = |{ token, directory, now }|
 		match directory.users().user(token.user()) {
 			Err(NoSuchUser) => Err(KeyRefused)
 			Ok(user) => {
 				keys = FileSystem.read_agent_keys!(user.id()) ? |fault| FileSystem(fault)
 				hash = AgentsRoute.hash_secret!(token.secret())
-				match AgentKey.admit({
-					user,
-					keys,
-					hash,
-					now,
-				}) {
+				match AgentKey.admit({ user, keys, hash, now }) {
 					Ok(admitted) => Ok(SignedIn.by_api_key(admitted))
 					Err(_) => Err(KeyRefused)
 				}
@@ -87,11 +76,7 @@ AgentsRoute :: [].{
 	## invites.
 	show! : { acting : SignedIn, directory : Directory } => Http.Response
 	show! = |{ acting, directory }|
-		match load_agents_page!({
-			acting,
-			directory,
-			shown: NoCode,
-		}) {
+		match load_agents_page!({ acting, directory, shown: NoCode }) {
 			Ok(html) => HttpAnswer.page(200, html)
 			Err(why) => refusal_page(why)
 		}
@@ -103,18 +88,8 @@ AgentsRoute :: [].{
 		directory : Directory,
 		body : List(U8),
 	} => Http.Response
-	make! = |
-		{
-			acting,
-			directory,
-			body,
-		},
-	|
-		match make_agent!({
-			acting,
-			directory,
-			body,
-		}) {
+	make! = |{ acting, directory, body }|
+		match make_agent!({ acting, directory, body }) {
 			Ok({}) => HttpAnswer.see_other("/agents")
 			Err(why) => refusal_page(why)
 		}
@@ -236,24 +211,14 @@ load_agents_page! : {
 	directory : Directory,
 	shown : [NoCode, Code({ agent : Users.User, code : SecretToken })],
 } => Try(TrustedHtml, _)
-load_agents_page! = |
-	{
-		acting,
-		directory,
-		shown,
-	},
-| {
+load_agents_page! = |{ acting, directory, shown }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	github_link = GitHubRoute.load_link_offer!(owner.id()) ? |fault| FileSystem(fault)
 	var $summaries = []
 	for agent in Agents.agents_of(directory, owner) {
 		keys = FileSystem.read_agent_keys!(agent.id()) ? |fault| FileSystem(fault)
 		invites = FileSystem.read_agent_invites!(agent.id()) ? |fault| FileSystem(fault)
-		$summaries = $summaries.append({
-			agent,
-			keys,
-			invites,
-		})
+		$summaries = $summaries.append({ agent, keys, invites })
 	}
 	Ok(
 		Page.agents({
@@ -270,13 +235,7 @@ make_agent! : {
 	directory : Directory,
 	body : List(U8),
 } => Try({}, _)
-make_agent! = |
-	{
-		acting,
-		directory,
-		body,
-	},
-| {
+make_agent! = |{ acting, directory, body }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	addition = Agents.make(directory, { owner, body }) ? |why| Refused(why)
 	FileSystem.replace_user_counter!(addition.directory.users()) ? |fault| FileSystem(fault)
@@ -291,15 +250,7 @@ invite_agent! : {
 	body : List(U8),
 	now : I64,
 } => Try(TrustedHtml, _)
-invite_agent! = |
-	{
-		acting,
-		directory,
-		agent,
-		body,
-		now,
-	},
-| {
+invite_agent! = |{ acting, directory, agent, body, now }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	invited = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	scope = Agents.scope_from_form(body) ? |why| Refused(why)
@@ -325,14 +276,7 @@ revoke_agent_key! : {
 	agent : UserId,
 	key : AgentKey.Id,
 } => Try({}, _)
-revoke_agent_key! = |
-	{
-		acting,
-		directory,
-		agent,
-		key,
-	},
-| {
+revoke_agent_key! = |{ acting, directory, agent, key }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	_ = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	keys = FileSystem.read_agent_keys!(agent) ? |fault| FileSystem(fault)
@@ -349,14 +293,7 @@ revoke_agent_invite! : {
 	agent : UserId,
 	invite : AgentInvite.Id,
 } => Try({}, _)
-revoke_agent_invite! = |
-	{
-		acting,
-		directory,
-		agent,
-		invite,
-	},
-| {
+revoke_agent_invite! = |{ acting, directory, agent, invite }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	_ = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
@@ -373,14 +310,7 @@ redeem_invite! : {
 	body : List(U8),
 	now : I64,
 } => Try(SecretToken, _)
-redeem_invite! = |
-	{
-		actor,
-		directory,
-		body,
-		now,
-	},
-| {
+redeem_invite! = |{ actor, directory, body, now }| {
 	_ =
 		match actor {
 			Anonymous => Ok({})
@@ -426,13 +356,7 @@ begin_agent_stream! : {
 	directory : Directory,
 	query : List(U8),
 } => Try(Http.Response, _)
-begin_agent_stream! = |
-	{
-		acting,
-		directory,
-		query,
-	},
-| {
+begin_agent_stream! = |{ acting, directory, query }| {
 	scope =
 		match acting.credential() {
 			ApiKey(held) => Ok(held)
@@ -461,10 +385,7 @@ begin_agent_stream! = |
 ## only itself.
 load_readable_conversations! : Directory,
 Users.User => List(
-	{
-		key : ConversationKey,
-		conversation : Conversation,
-	},
+	{ key : ConversationKey, conversation : Conversation },
 )
 load_readable_conversations! = |directory, agent| {
 	var $read = []

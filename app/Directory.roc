@@ -82,11 +82,7 @@ Directory :: {
 	add_agent : Directory,
 	{ name : Name, owner : Users.Human } -> Try(
 		Directory.Addition,
-		[
-			NoSuchOwner,
-			Full,
-			NameTaken,
-		],
+		[NoSuchOwner, Full, NameTaken],
 	)
 	add_agent = |directory, { name, owner }| {
 		grown = directory.users().add_agent({ name, owner })?
@@ -106,16 +102,7 @@ Directory :: {
 	rename_human = |Directory.(d), { human, name }| {
 		renamed = d.users.rename_human({ human, name })?
 		keys = claim_key(d.keys.remove(human.user().name().key()), name.key())?
-		Ok({
-			directory: Directory.(
-				{
-					..d,
-					users: renamed.users,
-					keys,
-				},
-			),
-			human: renamed.human,
-		})
+		Ok({ directory: Directory.({ ..d, users: renamed.users, keys }), human: renamed.human })
 	}
 
 	## The directory with an empty channel named `name`, created by an
@@ -129,13 +116,7 @@ Directory :: {
 		keys = claim_key(d.keys, name.key())?
 		grown = d.channels.create({ by, name })
 		Ok({
-			directory: Directory.(
-				{
-					..d,
-					channels: grown.channels,
-					keys,
-				},
-			),
+			directory: Directory.({ ..d, channels: grown.channels, keys }),
 			channel: grown.channel,
 		})
 	}
@@ -204,23 +185,10 @@ Directory :: {
 			Err(NameTaken)
 		else
 			match channels.to_list().find_first(
-				|channel| !channel.members().all(
-					|id| is_user(
-						users,
-						id,
-					),
-				),
+				|channel| !channel.members().all(|id| is_user(users, id)),
 			) {
 				Ok(stray) => Err(UnknownMember(stray.name()))
-				Err(NotFound) => Ok(
-					Directory.(
-						{
-							users,
-							channels,
-							keys,
-						},
-					),
-				)
+				Err(NotFound) => Ok(Directory.({ users, channels, keys }))
 			}
 	}
 
@@ -248,16 +216,7 @@ Directory :: {
 admit_new_user : Directory, Users.Addition -> Try(Directory.Addition, [NameTaken])
 admit_new_user = |Directory.(d), grown| {
 	keys = claim_key(d.keys, grown.user.name().key())?
-	Ok({
-		directory: Directory.(
-			{
-				..d,
-				users: grown.users,
-				keys,
-			},
-		),
-		user: grown.user,
-	})
+	Ok({ directory: Directory.({ ..d, users: grown.users, keys }), user: grown.user })
 }
 
 ## Whether `users` holds the user `id`.

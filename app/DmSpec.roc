@@ -86,22 +86,8 @@ expect {
 		to: Sample.human("Steve"),
 	}).conversation
 	conversation.topic() == Sample.plans
-		and conversation.messages().map(
-			|m| (
-				m.id(),
-				m.author().to_str(),
-				m.time(),
-				m.markdown(),
-			),
-		)
-			== [
-				(
-					Message.Id.first,
-					"Apoorva",
-					noon,
-					"hello",
-				),
-			]
+		and conversation.messages().map(|m| (m.id(), m.author().to_str(), m.time(), m.markdown()))
+			== [(Message.Id.first, "Apoorva", noon, "hello")]
 }
 # No DM's name is a channel's: each is refused as one, by its first byte.
 expect

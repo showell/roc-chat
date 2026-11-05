@@ -9,12 +9,7 @@ RequestHeader :: [].{
 	## `Repeated` when it was sent more than once. A header's name is matched
 	## without case, so `name` is written in lowercase, or this crashes: a
 	## name with a capital letter would never match.
-	header_value : List(Http.Header),
-	Str -> [
-		Sent(List(U8)),
-		Unsent,
-		Repeated,
-	]
+	header_value : List(Http.Header), Str -> [Sent(List(U8)), Unsent, Repeated]
 	header_value = |headers, name|
 		if (name != name.with_ascii_lowercased())
 			crash "RequestHeader.header_value: the name ${name} is not written in lowercase"
@@ -36,12 +31,7 @@ RequestHeader :: [].{
 
 # ── tests
 ## The header `name` of `headers` (name, value), as a test reads it.
-looked_up : List((Str, Str)),
-Str -> [
-	Sent(Str),
-	Unsent,
-	Repeated,
-]
+looked_up : List((Str, Str)), Str -> [Sent(Str), Unsent, Repeated]
 looked_up = |headers, name|
 	match RequestHeader.header_value(
 		headers.map(|(n, v)| { name: n.to_utf8(), value: v.to_utf8() }),

@@ -57,14 +57,7 @@ RequestOrigin :: [].{
 		port : U16,
 		public_origin : List(U8),
 	} -> Try({}, [MissingHost, ForeignHost, ForeignOrigin, CrossSiteFetch])
-	check = |
-		{
-			method,
-			headers,
-			port,
-			public_origin,
-		},
-	| {
+	check = |{ method, headers, port, public_origin }| {
 		own = own_origins({ port, public_origin })
 		match RequestHeader.header_value(headers, "host") {
 			Unsent => Err(MissingHost)
@@ -92,22 +85,13 @@ RequestOrigin :: [].{
 		port : U16,
 		public_origin : List(U8),
 	} -> Try(Str, [MissingHost, ForeignHost])
-	origin_of_host = |
-		{
-			headers,
-			port,
-			public_origin,
-		},
-	|
+	origin_of_host = |{ headers, port, public_origin }|
 		match RequestHeader.header_value(headers, "host") {
 			Unsent => Err(MissingHost)
 			Repeated => Err(ForeignHost)
 			Sent(host) => {
 				pairs = own_origins({ port, public_origin }).join_map(
-					|kind| kind.hosts.map2(
-						kind.origins,
-						|named, origin| (named, origin),
-					),
+					|kind| kind.hosts.map2(kind.origins, |named, origin| (named, origin)),
 				)
 				match pairs.find_first(|(named, _)| named == host) {
 					Ok((_, origin)) => Str.from_utf8(origin).map_err(|_| ForeignHost)
@@ -118,12 +102,7 @@ RequestOrigin :: [].{
 
 	## Every refusal `check` answers, as `words` takes it. `check` lists its
 	## own errors in place; this union is only the handler's input.
-	Refusal : [
-		MissingHost,
-		ForeignHost,
-		ForeignOrigin,
-		CrossSiteFetch,
-	]
+	Refusal : [MissingHost, ForeignHost, ForeignOrigin, CrossSiteFetch]
 
 	## Why a request is refused, in words for the 403's page.
 	words : RequestOrigin.Refusal -> Str
@@ -143,10 +122,7 @@ RequestOrigin :: [].{
 ## exactly. The host takes only `https://` and a name for a public origin
 ## (host/main.zig), so any other is the host's bug.
 own_origins : { port : U16, public_origin : List(U8) } -> List(
-	{
-		hosts : List(List(U8)),
-		origins : List(List(U8)),
-	},
+	{ hosts : List(List(U8)), origins : List(List(U8)) },
 )
 own_origins = |{ port, public_origin }| {
 	local_hosts = ["127.0.0.1:${port.to_str()}".to_utf8(), "localhost:${port.to_str()}".to_utf8()]
@@ -208,11 +184,7 @@ is_another_site = |site| site == "cross-site".to_utf8() or site == "same-site".t
 ## The verdict on a request by `method`, with `headers` (name, value), at
 ## port 9611, with no public origin.
 verdict : Str, List((Str, Str)) -> Try({}, _)
-verdict = |method, headers| public_verdict({
-	method,
-	headers,
-	public_origin: "",
-})
+verdict = |method, headers| public_verdict({ method, headers, public_origin: "" })
 
 ## The verdict on a request by `method`, with `headers` (name, value), at
 ## port 9611, the server's public origin `public_origin`.
@@ -221,13 +193,7 @@ public_verdict : {
 	headers : List((Str, Str)),
 	public_origin : Str,
 } -> Try({}, _)
-public_verdict = |
-	{
-		method,
-		headers,
-		public_origin,
-	},
-|
+public_verdict = |{ method, headers, public_origin }|
 	RequestOrigin.check({
 		method: method.to_utf8(),
 		headers: headers.map(|(name, value)| { name: name.to_utf8(), value: value.to_utf8() }),
@@ -354,13 +320,7 @@ public_name_verdict : {
 	more : List((Str, Str)),
 	public_origin : Str,
 } -> Try({}, _)
-public_name_verdict = |
-	{
-		method,
-		more,
-		public_origin,
-	},
-|
+public_name_verdict = |{ method, more, public_origin }|
 	public_verdict({
 		method,
 		headers: [("Host", "chat.example.com")].concat(more),
@@ -406,23 +366,14 @@ expect public_name_verdict({
 	more: [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "cors")],
 	public_origin: "https://chat.example.com",
 }) == Err(CrossSiteFetch)
-expect public_name_verdict({
-	method: "GET",
-	more: [],
-	public_origin: "",
-}) == Err(ForeignHost)
+expect public_name_verdict({ method: "GET", more: [], public_origin: "" }) == Err(ForeignHost)
 expect public_name_verdict({
 	method: "POST",
 	more: [("Origin", "https://chat.example.com")],
 	public_origin: "",
 }) == Err(ForeignHost)
 expect
-	[
-		"Chat.example.com",
-		"chat.example.com:443",
-		"chat.example.com.",
-		"evil.example",
-	].all(
+	["Chat.example.com", "chat.example.com:443", "chat.example.com.", "evil.example"].all(
 		|host|
 			public_verdict({
 				method: "GET",
@@ -492,9 +443,5 @@ expect origin_at({
 expect origin_at({ host: "chat.example.com", public_origin: "" }) == Err(ForeignHost)
 expect origin_at({ host: "localhost:9612", public_origin: "" }) == Err(ForeignHost)
 expect
-	RequestOrigin.origin_of_host({
-		headers: [],
-		port: 9611,
-		public_origin: [],
-	})
+	RequestOrigin.origin_of_host({ headers: [], port: 9611, public_origin: [] })
 		== Err(MissingHost)

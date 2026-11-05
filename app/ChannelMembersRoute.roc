@@ -33,10 +33,7 @@ ChannelMembersRoute :: [].{
 		match ChannelMembers.admin_of(acting) {
 			Ok(_) => HttpAnswer.page(
 				200,
-				PeoplePages.channels({
-					viewer: acting,
-					channels: directory.channels().to_list(),
-				}),
+				PeoplePages.channels({ viewer: acting, channels: directory.channels().to_list() }),
 			)
 			Err(why) => refusal_page(Refused(why))
 		}
@@ -48,18 +45,8 @@ ChannelMembersRoute :: [].{
 		directory : Directory,
 		body : List(U8),
 	} => Http.Response
-	create! = |
-		{
-			acting,
-			directory,
-			body,
-		},
-	|
-		match create_channel!({
-			acting,
-			directory,
-			body,
-		}) {
+	create! = |{ acting, directory, body }|
+		match create_channel!({ acting, directory, body }) {
 			Ok(name) => HttpAnswer.see_other(channel_path(name))
 			Err(why) => refusal_page(why)
 		}
@@ -72,13 +59,7 @@ ChannelMembersRoute :: [].{
 		directory : Directory,
 		channel : ChannelName,
 	} -> Http.Response
-	show_members = |
-		{
-			acting,
-			directory,
-			channel,
-		},
-	|
+	show_members = |{ acting, directory, channel }|
 		match ChannelMembers.members_page_of(directory, { acting, channel }) {
 			Ok(found) => HttpAnswer.page(
 				200,
@@ -99,22 +80,8 @@ ChannelMembersRoute :: [].{
 		channel : ChannelName,
 		member : UserId,
 	} => Http.Response
-	add! = |
-		{
-			acting,
-			directory,
-			channel,
-			member,
-		},
-	|
-		match ChannelMembers.add(
-			directory,
-			{
-				acting,
-				channel,
-				member,
-			},
-		) {
+	add! = |{ acting, directory, channel, member }|
+		match ChannelMembers.add(directory, { acting, channel, member }) {
 			Err(why) => refusal_page(Refused(why))
 			Ok(change) =>
 				match FileSystem.replace_channel_members!(change.channel) {
@@ -131,22 +98,8 @@ ChannelMembersRoute :: [].{
 		channel : ChannelName,
 		member : UserId,
 	} => Http.Response
-	remove! = |
-		{
-			acting,
-			directory,
-			channel,
-			member,
-		},
-	|
-		match ChannelMembers.remove(
-			directory,
-			{
-				acting,
-				channel,
-				member,
-			},
-		) {
+	remove! = |{ acting, directory, channel, member }|
+		match ChannelMembers.remove(directory, { acting, channel, member }) {
 			Err(why) => refusal_page(Refused(why))
 			Ok(change) =>
 				match FileSystem.replace_channel_members!(change.channel) {
@@ -162,10 +115,7 @@ ChannelMembersRoute :: [].{
 
 ## Why a route here refused: one of `ChannelMembers`' refusals, or the file
 ## system's fault.
-Failure : [
-	Refused(ChannelMembers.Refusal),
-	FileSystem(FileSystem.Fault),
-]
+Failure : [Refused(ChannelMembers.Refusal), FileSystem(FileSystem.Fault)]
 
 ## A failure as a page, with its status.
 refusal_page : Failure -> Http.Response
@@ -185,13 +135,7 @@ create_channel! : {
 	directory : Directory,
 	body : List(U8),
 } => Try(ChannelName, _)
-create_channel! = |
-	{
-		acting,
-		directory,
-		body,
-	},
-| {
+create_channel! = |{ acting, directory, body }| {
 	created = ChannelMembers.create(directory, { acting, body }) ? |why| Refused(why)
 	FileSystem.replace_channel_members!(created.channel) ? |fault| FileSystem(fault)
 	Ok(created.channel.name())

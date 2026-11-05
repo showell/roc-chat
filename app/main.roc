@@ -40,13 +40,7 @@
 ## makes Steve before anyone can sign in, and the demo's page take him as
 ## signed in with nothing checked (`SignedIn.dangerously_assume`); no request
 ## does.
-app [
-	check_request_head!,
-	handle_http_request!,
-	page,
-	password_verdict,
-	start!,
-] {
+app [check_request_head!, handle_http_request!, page, password_verdict, start!] {
 	md: "../../roc-markdown/package/main.roc",
 	pf: platform "../platform/main.roc",
 }
@@ -285,11 +279,7 @@ check_request_head! = |head|
 				Ok(directory) =>
 					match load_actor!({ headers: head.headers, directory }) {
 						Err(why) => Refuse(for_this_origin_alone(identity_refusal(why)))
-						Ok(actor) => admission_in({
-							head,
-							directory,
-							actor,
-						})
+						Ok(actor) => admission_in({ head, directory, actor })
 					}
 			}
 	}
@@ -316,28 +306,12 @@ admission_in : {
 	directory : Directory,
 	actor : SignedIn.Actor,
 } -> Http.Admission
-admission_in = |
-	{
-		head,
-		directory,
-		actor,
-	},
-|
+admission_in = |{ head, directory, actor }|
 	match RequestOrigin.check(origin_of_head(head)) {
 		Err(why) => Refuse(for_this_origin_alone(origin_refusal(why)))
 		Ok({}) => {
-			choice = Route.choose({
-				method: head.method,
-				path: head.path,
-				directory,
-			})
-			Admit(
-				body_allowance({
-					choice,
-					directory,
-					actor,
-				}),
-			)
+			choice = Route.choose({ method: head.method, path: head.path, directory })
+			Admit(body_allowance({ choice, directory, actor }))
 		}
 	}
 
@@ -350,13 +324,7 @@ body_allowance : {
 	directory : Directory,
 	actor : SignedIn.Actor,
 } -> { body_most : U64, body_grace_ms : U32 }
-body_allowance = |
-	{
-		choice,
-		directory,
-		actor,
-	},
-|
+body_allowance = |{ choice, directory, actor }|
 	match (upload_asked(choice), actor) {
 		(UploadTo(key), SignedIn(acting)) =>
 			match Access.check({
@@ -456,11 +424,7 @@ handle_http_request! = |request| {
 					Ok(directory) =>
 						match load_actor!({ headers: request.headers, directory }) {
 							Err(why) => identity_refusal(why)
-							Ok(actor) => serve_route!({
-								request,
-								directory,
-								actor,
-							})
+							Ok(actor) => serve_route!({ request, directory, actor })
 						}
 				}
 		}
@@ -474,29 +438,17 @@ handle_http_request! = |request| {
 ## cookie admits (`load_session_actor!`), or no one.
 load_actor! : { headers : List(Http.Header), directory : Directory } => Try(
 	SignedIn.Actor,
-	[
-		BadBearer,
-		KeyRefused,
-		FileSystem(FileSystem.Fault),
-	],
+	[BadBearer, KeyRefused, FileSystem(FileSystem.Fault)],
 )
 load_actor! = |{ headers, directory }| {
 	now = Host.current_utc_seconds_since_epoch!({})
 	match RequestHeader.header_value(headers, "authorization") {
-		Unsent => load_session_actor!({
-			headers,
-			directory,
-			now,
-		})
+		Unsent => load_session_actor!({ headers, directory, now })
 		Repeated => Err(BadBearer)
 		Sent(value) => {
 			bearer_text = UnvalidatedString.from_utf8(value) ? |NotUtf8| BadBearer
 			token = bearer_text.bearer_token() ? |NotABearer| BadBearer
-			signed_in_by_key = AgentsRoute.sign_in_by_key!({
-				token,
-				directory,
-				now,
-			})?
+			signed_in_by_key = AgentsRoute.sign_in_by_key!({ token, directory, now })?
 			Ok(SignedIn(signed_in_by_key))
 		}
 	}
@@ -511,22 +463,12 @@ load_session_actor! : {
 	directory : Directory,
 	now : I64,
 } => Try(SignedIn.Actor, [FileSystem(FileSystem.Fault)])
-load_session_actor! = |
-	{
-		headers,
-		directory,
-		now,
-	},
-|
+load_session_actor! = |{ headers, directory, now }|
 	match RequestHeader.header_value(headers, "cookie") {
 		Unsent => Ok(Anonymous)
 		Repeated => Ok(Anonymous)
 		Sent(cookie) =>
-			match SignInRoute.sign_in_by_session!({
-				cookie,
-				users: directory.users(),
-				now,
-			}) {
+			match SignInRoute.sign_in_by_session!({ cookie, users: directory.users(), now }) {
 				Ok(signed_in_by_session) => Ok(SignedIn(signed_in_by_session))
 				Err(NoSession) => Ok(Anonymous)
 				Err(BadSession) => Ok(Anonymous)
@@ -538,11 +480,7 @@ load_session_actor! = |
 
 ## A request whose credential is refused: one 401 that says no more, or a
 ## 500 when the keys can't be read.
-identity_refusal : [
-	BadBearer,
-	KeyRefused,
-	FileSystem(FileSystem.Fault),
-] -> Http.Response
+identity_refusal : [BadBearer, KeyRefused, FileSystem(FileSystem.Fault)] -> Http.Response
 identity_refusal = |why|
 	match why {
 		BadBearer => HttpAnswer.text(401, key_refusal_words)
@@ -674,33 +612,13 @@ serve_route! : {
 	directory : Directory,
 	actor : SignedIn.Actor,
 } => Http.Response
-serve_route! = |
-	{
-		request,
-		directory,
-		actor,
-	},
-|
-	match Route.choose({
-		method: request.method,
-		path: request.path,
-		directory,
-	}) {
-		Open(open) => answer_open_route!({
-			open,
-			request,
-			directory,
-			actor,
-		})
+serve_route! = |{ request, directory, actor }|
+	match Route.choose({ method: request.method, path: request.path, directory }) {
+		Open(open) => answer_open_route!({ open, request, directory, actor })
 		SignedInOnly(asked) =>
 			match actor {
 				Anonymous => anonymous_refusal(asked)
-				SignedIn(acting) => serve_signed_in_route!({
-					asked,
-					request,
-					directory,
-					acting,
-				})
+				SignedIn(acting) => serve_signed_in_route!({ asked, request, directory, acting })
 			}
 		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
 		NotFound => HttpAnswer.page(
@@ -721,14 +639,7 @@ answer_open_route! : {
 	directory : Directory,
 	actor : SignedIn.Actor,
 } => Http.Response
-answer_open_route! = |
-	{
-		open,
-		request,
-		directory,
-		actor,
-	},
-|
+answer_open_route! = |{ open, request, directory, actor }|
 	match open {
 		GoToBrowse => browse_redirect
 		ServeScript(script) => HttpAnswer.script(script.bytes())
@@ -809,33 +720,16 @@ serve_signed_in_route! : {
 	directory : Directory,
 	acting : SignedIn,
 } => Http.Response
-serve_signed_in_route! = |
-	{
-		asked,
-		request,
-		directory,
-		acting,
-	},
-| {
+serve_signed_in_route! = |{ asked, request, directory, acting }| {
 	admitted =
 		match access_asked(asked) {
 			AsksNoConversation => Ok({})
 			Asks({ place, act }) =>
-				Access.check({
-					acting,
-					place,
-					directory,
-					act,
-				})
+				Access.check({ acting, place, directory, act })
 		}
 	match admitted {
 		Err(why) => access_refusal(why)
-		Ok({}) => answer_route!({
-			asked,
-			request,
-			directory,
-			acting,
-		})
+		Ok({}) => answer_route!({ asked, request, directory, acting })
 	}
 }
 
@@ -846,29 +740,13 @@ answer_route! : {
 	directory : Directory,
 	acting : SignedIn,
 } => Http.Response
-answer_route! = |
-	{
-		asked,
-		request,
-		directory,
-		acting,
-	},
-|
+answer_route! = |{ asked, request, directory, acting }|
 	match asked {
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
 		StartTopic(place) =>
-			BrowseRoute.start_topic!({
-				acting,
-				directory,
-				place,
-				body: request.body,
-			})
+			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>
-			ConversationRoute.show!({
-				key,
-				acting,
-				users: directory.users(),
-			})
+			ConversationRoute.show!({ key, acting, users: directory.users() })
 		OpenConversationStream(key) =>
 			ConversationRoute.open_stream!({
 				key,
@@ -880,21 +758,11 @@ answer_route! = |
 		ServeRawTranscript(key) => ConversationRoute.serve_raw!(key)
 		AppendToConversation(key) =>
 			ConversationRoute.post_sent_message!(
-				make_message_post!({
-					key,
-					request,
-					directory,
-					acting,
-				}),
+				make_message_post!({ key, request, directory, acting }),
 			)
 		SendToConversation(key) =>
 			ConversationRoute.post_message_without_reload!(
-				make_message_post!({
-					key,
-					request,
-					directory,
-					acting,
-				}),
+				make_message_post!({ key, request, directory, acting }),
 			)
 		UploadToConversation(key) =>
 			UploadRoute.post_upload!({
@@ -905,11 +773,7 @@ answer_route! = |
 			})
 		ServeUploadedImage(found) => UploadRoute.serve_uploaded_image!(found)
 		ShowAgents => AgentsRoute.show!({ acting, directory })
-		MakeAgent => AgentsRoute.make!({
-			acting,
-			directory,
-			body: request.body,
-		})
+		MakeAgent => AgentsRoute.make!({ acting, directory, body: request.body })
 		InviteAgent(agent) =>
 			AgentsRoute.invite!({
 				acting,
@@ -919,49 +783,21 @@ answer_route! = |
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
 		RevokeInvite({ agent, invite }) =>
-			AgentsRoute.revoke_invite!({
-				acting,
-				directory,
-				agent,
-				invite,
-			})
+			AgentsRoute.revoke_invite!({ acting, directory, agent, invite })
 		RevokeKey({ agent, key }) =>
-			AgentsRoute.revoke_key!({
-				acting,
-				directory,
-				agent,
-				key,
-			})
-		OpenAgentStream => AgentsRoute.open_stream!({
-			acting,
-			directory,
-			query: request.query,
-		})
+			AgentsRoute.revoke_key!({ acting, directory, agent, key })
+		OpenAgentStream => AgentsRoute.open_stream!({ acting, directory, query: request.query })
 		ShowChannels => ChannelMembersRoute.show_channels({ acting, directory })
-		CreateChannel => ChannelMembersRoute.create!({
-			acting,
-			directory,
-			body: request.body,
-		})
+		CreateChannel => ChannelMembersRoute.create!({ acting, directory, body: request.body })
 		ShowChannelMembers(channel) => ChannelMembersRoute.show_members({
 			acting,
 			directory,
 			channel,
 		})
 		AddChannelMember({ channel, member }) =>
-			ChannelMembersRoute.add!({
-				acting,
-				directory,
-				channel,
-				member,
-			})
+			ChannelMembersRoute.add!({ acting, directory, channel, member })
 		RemoveChannelMember({ channel, member }) =>
-			ChannelMembersRoute.remove!({
-				acting,
-				directory,
-				channel,
-				member,
-			})
+			ChannelMembersRoute.remove!({ acting, directory, channel, member })
 		ShowInvites =>
 			HumanInvitesRoute.show!({
 				acting,
@@ -1008,14 +844,7 @@ make_message_post! : {
 	directory : Directory,
 	acting : SignedIn,
 } => ConversationRoute.Post
-make_message_post! = |
-	{
-		key,
-		request,
-		directory,
-		acting,
-	},
-| {
+make_message_post! = |{ key, request, directory, acting }| {
 	key,
 	acting,
 	users: directory.users(),
@@ -1031,12 +860,7 @@ plans = Topic.from_str("plans") ?? crash "main's tests: a topic's name"
 ## What the door finds at `path` with `transcript`, as a test reads it:
 ## the conversation, and its key's URL path.
 found_at : { path : List(U8), transcript : List(U8) } -> Try((Conversation, Str), _)
-found_at = |held| conversation(held).map_ok(
-	|found| (
-		found.conversation,
-		found.key.url_path(Page),
-	),
-)
+found_at = |held| conversation(held).map_ok(|found| (found.conversation, found.key.url_path(Page)))
 
 expect found_at({ path: "/chat/channel/general/plans".to_utf8(), transcript: [] }) == Ok((
 	Conversation.empty(plans),
@@ -1090,10 +914,7 @@ expect {
 		}).to_utf8()
 }
 expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
-expect page(
-	"<b>".to_utf8(),
-	[0xff],
-)
+expect page("<b>".to_utf8(), [0xff])
 	== Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>")
 		.to_utf8()
 
@@ -1117,10 +938,7 @@ page_for_get = |path|
 expect demo_viewer.user().name() == founder_name and demo_viewer.user().id() == UserId.chat_owner
 expect first_directory.users().to_list().map(|user| user.role()) == [Human]
 expect first_directory.channels().to_list().map(
-	|channel| (
-		channel.name().to_str(),
-		channel.members().map(UserId.to_str),
-	),
+	|channel| (channel.name().to_str(), channel.members().map(UserId.to_str)),
 ) == [("general", ["1"])]
 expect first_directory.users().counter_file() == "2\n".to_utf8()
 expect page_for_get("/chat/channel/general/plans") == "/chat/channel/general/plans"
@@ -1142,10 +960,7 @@ first_files = {
 		counter: File(first_directory.users().counter_file()),
 		accounts: [{ id: founder.id(), files: Users.account_files(founder) }],
 		channels: first_directory.channels().to_list().map(
-			|channel| {
-				name: channel.name(),
-				members: channel.members_file(),
-			},
+			|channel| { name: channel.name(), members: channel.members_file() },
 		),
 	}
 }
@@ -1228,10 +1043,7 @@ head_of = |line, more| {
 		method: method.to_utf8(),
 		path: path.to_utf8(),
 		headers: [("Host", "localhost:9611")].concat(more).map(
-			|(name, value)| {
-				name: name.to_utf8(),
-				value: value.to_utf8(),
-			},
+			|(name, value)| { name: name.to_utf8(), value: value.to_utf8() },
 		),
 		port: 9611,
 		public_origin: [],
@@ -1343,25 +1155,14 @@ expect {
 	agents = anonymous_refusal(ShowAgents)
 	browse = anonymous_refusal(ShowBrowse)
 	browse.status == 303
-		and browse.headers == [
-			{
-				name: "location".to_utf8(),
-				value: "/login?next=/chat".to_utf8(),
-			},
-		]
+		and browse.headers == [{ name: "location".to_utf8(), value: "/login?next=/chat".to_utf8() }]
 		and shown.status == 303
 		and shown.headers == [
-			{
-				name: "location".to_utf8(),
-				value: "/login?next=/chat/dm/1_1/plans".to_utf8(),
-			},
+			{ name: "location".to_utf8(), value: "/login?next=/chat/dm/1_1/plans".to_utf8() },
 		]
 		and agents.status == 303
 		and agents.headers == [
-			{
-				name: "location".to_utf8(),
-				value: "/login?next=/agents".to_utf8(),
-			},
+			{ name: "location".to_utf8(), value: "/login?next=/agents".to_utf8() },
 		]
 		and [
 			StartTopic(key.place()),

@@ -29,14 +29,7 @@ Access :: [].{
 		directory : Directory,
 		act : Access.Act,
 	} -> Try({}, [NotAMember, ScopeOff])
-	check = |
-		{
-			acting,
-			place,
-			directory,
-			act,
-		},
-	|
+	check = |{ acting, place, directory, act }|
 		if !Access.members({ place, directory }).contains(acting.user().id()) {
 			Err(NotAMember)
 		} else {

@@ -113,11 +113,7 @@ Session :: [].{
 		material : Session.Material,
 	} -> List(U8)
 	signed_bytes = |
-		{
-			id,
-			signed_at,
-			material,
-		},
+		{ id, signed_at, material },
 	| "${id.to_str()}\n${signed_at.to_str()}\n".to_utf8().concat(material.bytes_to_sign())
 
 	## The claim of the request's `Cookie` header, `header`; unless it holds
@@ -154,14 +150,7 @@ Session :: [].{
 		now : I64,
 		users : Users,
 	} -> Try(Session.Admitted, [SessionRefused])
-	admit = |
-		{
-			claim,
-			verdict,
-			now,
-			users,
-		},
-	|
+	admit = |{ claim, verdict, now, users }|
 		match verdict {
 			DoesNotMatch => Err(SessionRefused)
 			Matches =>
@@ -187,11 +176,7 @@ Session :: [].{
 		mac : List(U8),
 	} -> Str
 	cookie_value = |
-		{
-			id,
-			signed_at,
-			mac,
-		},
+		{ id, signed_at, mac },
 	| "${Base64Url.encode(id.to_str().to_utf8())}.${signed_at.to_str()}.${Base64Url.encode(mac)}"
 
 	## The `Set-Cookie` header's value that sets the session's cookie to
@@ -227,25 +212,13 @@ is_outside_window = |{ now, signed_at }|
 claim_from_value : List(U8) -> Try(Session.Claim, [BadSession])
 claim_from_value = |value|
 	match value.split_on('.') {
-		[
-			id_part,
-			second_part,
-			mac_part,
-		] => {
+		[id_part, second_part, mac_part] => {
 			id_bytes = Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession
 			id_text = Str.from_utf8(id_bytes) ? |_| BadSession
 			id = UserId.from_str(id_text) ? |_| BadSession
 			signed_at = second_from_digits(second_part) ? |_| BadSession
 			mac = Base64Url.decode(Str.from_utf8(mac_part) ? |_| BadSession) ? |_| BadSession
-			if (mac.len() == 32) Ok(
-				Session.Claim.(
-					{
-						id,
-						signed_at,
-						mac,
-					},
-				),
-			) else Err(BadSession)
+			if (mac.len() == 32) Ok(Session.Claim.({ id, signed_at, mac })) else Err(BadSession)
 		}
 		_ => Err(BadSession)
 	}
@@ -297,13 +270,7 @@ cookie_for : {
 	signed_at : I64,
 	b : U8,
 } -> List(U8)
-cookie_for = |
-	{
-		id,
-		signed_at,
-		b,
-	},
-| {
+cookie_for = |{ id, signed_at, b }| {
 	cookie_value = Session.cookie_value({
 		id: id_of(id),
 		signed_at,
@@ -321,10 +288,7 @@ password_material = |text|
 ## over, its human's password file keeping `h`, and the signature.
 claim_text : List(U8) -> Try((Str, List(U8)), [NoSession, BadSession])
 claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
-	|claim| (
-		Str.from_utf8_lossy(claim.signed_bytes(password_material("h"))),
-		claim.mac(),
-	),
+	|claim| (Str.from_utf8_lossy(claim.signed_bytes(password_material("h"))), claim.mac()),
 )
 
 # The value: the id, the second and the signature, each in its spelling.
@@ -341,10 +305,7 @@ expect Session.signed_bytes({
 # Another hash, or none, is other bytes: a password rewritten ends its
 # sessions.
 expect
-	[
-		"$2b$10$y",
-		"",
-	].all(
+	["$2b$10$y", ""].all(
 		|password_hash| Session.signed_bytes({
 			id: UserId.chat_owner,
 			signed_at: 1700000000,
@@ -424,10 +385,7 @@ expect {
 }
 expect
 	claim_text("${cookie_prefix_text}MQ.9223372036854775807.${Base64Url.encode(mac_of(7))}".to_utf8())
-		== Ok((
-			"1\n9223372036854775807\nh",
-			mac_of(7),
-		))
+		== Ok(("1\n9223372036854775807\nh", mac_of(7)))
 
 ## Whom the session for `id` at `signed_at` admits at `now`, with the
 ## host's `verdict`, as a test reads it.
@@ -437,27 +395,9 @@ admitted_at : {
 	now : I64,
 	verdict : [DoesNotMatch, Matches],
 } -> Try(Str, [SessionRefused, BadSession, NoSession])
-admitted_at = |
-	{
-		id,
-		signed_at,
-		now,
-		verdict,
-	},
-| {
-	claim = Session.claim_from_cookie_header(
-		cookie_for({
-			id,
-			signed_at,
-			b: 7,
-		}),
-	)?
-	admitted = Session.admit({
-		claim,
-		verdict,
-		now,
-		users: tests_users,
-	})?
+admitted_at = |{ id, signed_at, now, verdict }| {
+	claim = Session.claim_from_cookie_header(cookie_for({ id, signed_at, b: 7 }))?
+	admitted = Session.admit({ claim, verdict, now, users: tests_users })?
 	Ok(admitted.human().user().name().to_str())
 }
 

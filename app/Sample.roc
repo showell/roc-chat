@@ -31,13 +31,7 @@ Sample :: [].{
 		time : Str,
 		markdown : Str,
 	} -> Message.Unnumbered(Author)
-	unnumbered_message = |
-		{
-			author,
-			time,
-			markdown,
-		},
-	|
+	unnumbered_message = |{ author, time, markdown }|
 		{
 			payload: {
 				author: Author.from_str(author)

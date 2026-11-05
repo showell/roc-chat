@@ -46,12 +46,7 @@ SecretHash :: List(U8).{
 ## The hash whose every byte is `b`, as a test builds one from its file.
 hash_of : U8 -> SecretHash
 hash_of = |b| SecretHash.from_file(
-	Hex.to_hex(
-		List.repeat(
-			b,
-			32,
-		),
-	).to_utf8(),
+	Hex.to_hex(List.repeat(b, 32)).to_utf8(),
 ) ?? crash "SecretHash's tests: 32 bytes are a hash"
 
 expect hash_of(0x5a).to_file() == "5a".repeat(32).to_utf8()

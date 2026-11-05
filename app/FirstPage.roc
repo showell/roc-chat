@@ -30,18 +30,8 @@ FirstPage :: [].{
 		human : Users.Human,
 		wanted : Html.SitePath,
 	} => Try(Html.SitePath, [FileSystem(FileSystem.Fault)])
-	load! = |
-		{
-			directory,
-			human,
-			wanted,
-		},
-	|
-		match readable_conversation({
-			directory,
-			human,
-			path: wanted,
-		}) {
+	load! = |{ directory, human, wanted }|
+		match readable_conversation({ directory, human, path: wanted }) {
 			NotReadable => load_welcome_page!({ directory, human })
 			Readable(key) =>
 				match load_conversation_state!(key)? {
@@ -58,22 +48,12 @@ readable_conversation : {
 	human : Users.Human,
 	path : Html.SitePath,
 } -> [Readable(ConversationKey), NotReadable]
-readable_conversation = |
-	{
-		directory,
-		human,
-		path,
-	},
-| {
+readable_conversation = |{ directory, human, path }| {
 	unchecked =
 		UnvalidatedString.from_utf8(path.to_str().to_utf8())
 			?? crash "FirstPage.readable_conversation: a site path is text"
 	match ConversationKey.from_url_path({ path: unchecked, directory }) {
-		Ok({ key, resource: Page }) if is_member({
-			directory,
-			human,
-			place: key.place(),
-		}) =>
+		Ok({ key, resource: Page }) if is_member({ directory, human, place: key.place() }) =>
 			Readable(key)
 		_ => NotReadable
 	}
@@ -85,13 +65,7 @@ is_member : {
 	human : Users.Human,
 	place : Place,
 } -> Bool
-is_member = |
-	{
-		directory,
-		human,
-		place,
-	},
-| Access.members({ place, directory }).contains(human.id())
+is_member = |{ directory, human, place }| Access.members({ place, directory }).contains(human.id())
 
 ## The page of `human`'s DM with the chat's owner, or `SignInRoute.default_next`
 ## when it has not begun.
@@ -187,7 +161,9 @@ expect
 # The page a new human's welcome starts is a page they may read, as a
 # conversation of theirs, and the owner may too.
 expect {
-	page = page_of(Welcome.conversation_key({ directory: tests_directory, human: human_named("Zoe") }))
+	page = page_of(
+		Welcome.conversation_key({ directory: tests_directory, human: human_named("Zoe") }),
+	)
 	reading("Zoe", page.to_str()) == Ok("/chat/dm/1_2/ChitChat")
 		and reading("Steve", page.to_str()) == Ok("/chat/dm/1_2/ChitChat")
 		and reading("Bob", page.to_str()) == Err(NotReadable)

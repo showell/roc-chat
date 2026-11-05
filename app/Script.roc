@@ -81,7 +81,10 @@ expect
 		compose_source,
 		feed_source,
 	].all(|text| text.starts_with("// This script runs on a conversation page"))
-expect [chrome_source, panel_source].all(|text| text.starts_with("// This script runs on a signed-in"))
+expect [
+	chrome_source,
+	panel_source,
+].all(|text| text.starts_with("// This script runs on a signed-in"))
 expect join_source.starts_with("// This script runs on the join page")
 expect
 	[

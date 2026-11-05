@@ -55,13 +55,7 @@ admitted_by : {
 	hash : SecretHash,
 	now : I64,
 } -> Try((Str, KeyScope), _)
-admitted_by = |
-	{
-		keys,
-		hash,
-		now,
-	},
-|
+admitted_by = |{ keys, hash, now }|
 	AgentKey.admit({
 		user: Sample.user("CC"),
 		keys,
@@ -224,31 +218,10 @@ redeemed_by : {
 	invites : List(AgentInvite),
 	hash : SecretHash,
 	now : I64,
-} -> Try(
-	(
-		Str,
-		AgentInvite.State,
-		KeyScope,
-	),
-	_,
-)
-redeemed_by = |
-	{
-		invites,
-		hash,
-		now,
-	},
-|
-	AgentInvite.redeem({
-		invites,
-		hash,
-		now,
-	}).map_ok(
-		|spent| (
-			spent.id().to_str(),
-			spent.state(),
-			spent.scope(),
-		),
+} -> Try((Str, AgentInvite.State, KeyScope), _)
+redeemed_by = |{ invites, hash, now }|
+	AgentInvite.redeem({ invites, hash, now }).map_ok(
+		|spent| (spent.id().to_str(), spent.state(), spent.scope()),
 	)
 
 # A live invite redeems, by its hash among several, spent, with its scope.
@@ -265,11 +238,7 @@ expect redeemed_by({
 	invites: [invite_one, invite_two],
 	hash: hash_of(0x8d),
 	now: made_at,
-}) == Ok((
-	"2",
-	Spent,
-	KeyScope.everywhere,
-))
+}) == Ok(("2", Spent, KeyScope.everywhere))
 # A wrong code redeems nothing.
 expect redeemed_by({
 	invites: [invite_one, invite_two],

@@ -101,7 +101,5 @@ expect
 expect JsonOut.json_object([]).bytes() == "{}".to_utf8()
 # A field's name is escaped too, and an object nests.
 expect
-	JsonOut.json_object([
-		("a\"b", JsonOut.json_object([("c", JsonOut.zero)])),
-	]).bytes()
+	JsonOut.json_object([("a\"b", JsonOut.json_object([("c", JsonOut.zero)]))]).bytes()
 		== "{\"a\\\"b\":{\"c\":0}}".to_utf8()

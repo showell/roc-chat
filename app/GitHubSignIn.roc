@@ -122,11 +122,7 @@ GitHubSignIn :: [].{
 
 	## What GitHub sent the browser back with: a code, none, as when its
 	## human says no, or one it wouldn't send.
-	Answer : [
-		Code(GitHubCode),
-		NoCode,
-		BadCode,
-	]
+	Answer : [Code(GitHubCode), NoCode, BadCode]
 
 	## GitHub sent the browser back.
 	CameBack :: { state : GitHubState, code : GitHubCode }.{
@@ -139,11 +135,7 @@ GitHubSignIn :: [].{
 			answer : GitHubSignIn.Answer,
 		} -> Try(
 			GitHubSignIn.CameBack,
-			[
-				StateForged,
-				GitHubDenied,
-				NotACode,
-			],
+			[StateForged, GitHubDenied, NotACode],
 		)
 		came_back = |{ state, answer }|
 			match (state, answer) {
@@ -196,20 +188,9 @@ GitHubSignIn :: [].{
 			login : List(U8),
 		} -> Try(
 			GitHubSignIn.IdentityKnown,
-			[
-				CodeRefused,
-				GitHubUnreachable,
-				BadIdentity,
-			],
+			[CodeRefused, GitHubUnreachable, BadIdentity],
 		)
-		identify = |
-			GitHubSignIn.StateChecked.(checked),
-			{
-				status,
-				id,
-				login,
-			},
-		|
+		identify = |GitHubSignIn.StateChecked.(checked), { status, id, login }|
 			match status {
 				Denied => Err(CodeRefused)
 				Failed => Err(GitHubUnreachable)
@@ -261,21 +242,9 @@ GitHubSignIn :: [].{
 				Unknown(GitHubSignIn.NewHuman),
 				Linking(GitHubSignIn.Linked),
 			],
-			[
-				DuplicateAccount,
-				LinkNotYours,
-				AlreadyLinked,
-				GitHubIdTaken,
-			],
+			[DuplicateAccount, LinkNotYours, AlreadyLinked, GitHubIdTaken],
 		)
-		resolve = |
-			GitHubSignIn.IdentityKnown.(known),
-			{
-				files,
-				users,
-				viewer,
-			},
-		|
+		resolve = |GitHubSignIn.IdentityKnown.(known), { files, users, viewer }|
 			match (known.errand, GitHubSignIn.human_to_link(viewer)) {
 				(Link(id), _) =>
 					linked_to({
@@ -295,11 +264,7 @@ GitHubSignIn :: [].{
 						viewer,
 					})
 				(SignIn, Err(NotSignedIn)) =>
-					match humans_holding({
-						github: known.github,
-						files,
-						users,
-					}) {
+					match humans_holding({ github: known.github, files, users }) {
 						[] => Ok(
 							Unknown(
 								GitHubSignIn.NewHuman.(
@@ -342,14 +307,7 @@ GitHubSignIn :: [].{
 	## The human `viewer` starts linking GitHub for: a human, by their own
 	## session; unless no one is signed in (`NotSignedIn`), or the request came
 	## with an API key (`ByApiKey`), or from an agent (`Agent`).
-	human_to_link : SignedIn.Actor -> Try(
-		Users.Human,
-		[
-			NotSignedIn,
-			ByApiKey,
-			Agent(UserId),
-		],
-	)
+	human_to_link : SignedIn.Actor -> Try(Users.Human, [NotSignedIn, ByApiKey, Agent(UserId)])
 	human_to_link = |viewer|
 		match viewer {
 			Anonymous => Err(NotSignedIn)
@@ -366,11 +324,7 @@ GitHubSignIn :: [].{
 		## What carries this human to the name they choose, issued at `now`.
 		sign_up : GitHubSignIn.NewHuman, I64 -> GitHubSignUp
 		sign_up = |GitHubSignIn.NewHuman.(new_human), now|
-			GitHubSignUp.issue({
-				github: new_human.github,
-				now,
-				next: new_human.next,
-			})
+			GitHubSignUp.issue({ github: new_human.github, now, next: new_human.next })
 
 		## The name to offer this human: their login, when it is a name and
 		## free in `directory`; else `NoSuggestion`.
@@ -400,19 +354,9 @@ GitHubSignIn :: [].{
 			now : I64,
 		} -> Try(
 			GitHubSignIn.SignUpResumed,
-			[
-				SignUpForged,
-				SignUpExpired,
-				SignedInAlready,
-			],
+			[SignUpForged, SignUpExpired, SignedInAlready],
 		)
-		resume = |
-			{
-				sign_up,
-				viewer,
-				now,
-			},
-		|
+		resume = |{ sign_up, viewer, now }|
 			match (sign_up, viewer) {
 				(Unsigned, _) => Err(SignUpForged)
 				(Signed(_), SignedIn(_)) => Err(SignedInAlready)
@@ -421,10 +365,7 @@ GitHubSignIn :: [].{
 						Expired => Err(SignUpExpired)
 						Valid => Ok(
 							GitHubSignIn.SignUpResumed.(
-								{
-									github: signed.github(),
-									next: signed.next(),
-								},
+								{ github: signed.github(), next: signed.next() },
 							),
 						)
 					}
@@ -450,27 +391,10 @@ GitHubSignIn :: [].{
 				github : GitHubId,
 				admission : GitHubSignIn.Admission,
 			},
-			[
-				AccountExists,
-				DuplicateAccount,
-				NameTaken,
-				Full,
-				NoDefaultChannel,
-			],
+			[AccountExists, DuplicateAccount, NameTaken, Full, NoDefaultChannel],
 		)
-		create_account = |
-			GitHubSignIn.SignUpResumed.(resumed),
-			{
-				name,
-				files,
-				directory,
-			},
-		|
-			match humans_holding({
-				github: resumed.github,
-				files,
-				users: directory.users(),
-			}) {
+		create_account = |GitHubSignIn.SignUpResumed.(resumed), { name, files, directory }|
+			match humans_holding({ github: resumed.github, files, users: directory.users() }) {
 				[_] => Err(AccountExists)
 				[_, _, ..] => Err(DuplicateAccount)
 				[] => {
@@ -523,12 +447,7 @@ signed_in_return : {
 		Unknown(GitHubSignIn.NewHuman),
 		Linking(GitHubSignIn.Linked),
 	],
-	[
-		DuplicateAccount,
-		LinkNotYours,
-		AlreadyLinked,
-		GitHubIdTaken,
-	],
+	[DuplicateAccount, LinkNotYours, AlreadyLinked, GitHubIdTaken],
 )
 signed_in_return = |
 	{
@@ -540,11 +459,7 @@ signed_in_return = |
 		viewer,
 	},
 |
-	match humans_holding({
-		github,
-		files,
-		users,
-	}) {
+	match humans_holding({ github, files, users }) {
 		[holder] if holder.id() == human.id() => Ok(Known(GitHubSignIn.Admission.({ human, next })))
 		[_, _, ..] => Err(DuplicateAccount)
 		_ =>
@@ -569,21 +484,9 @@ linked_to : {
 	viewer : SignedIn.Actor,
 } -> Try(
 	GitHubSignIn.Linked,
-	[
-		LinkNotYours,
-		AlreadyLinked,
-		GitHubIdTaken,
-	],
+	[LinkNotYours, AlreadyLinked, GitHubIdTaken],
 )
-linked_to = |
-	{
-		id,
-		github,
-		next,
-		files,
-		viewer,
-	},
-|
+linked_to = |{ id, github, next, files, viewer }|
 	match GitHubSignIn.human_to_link(viewer) {
 		Ok(human) if human.id() == id =>
 			if (files.any(|held| held.user == id))
@@ -591,15 +494,7 @@ linked_to = |
 			else if (files.any(|held| GitHubId.from_file(held.file) == Ok(github)))
 				Err(GitHubIdTaken)
 			else
-				Ok(
-					GitHubSignIn.Linked.(
-						{
-							human,
-							github,
-							next,
-						},
-					),
-				)
+				Ok(GitHubSignIn.Linked.({ human, github, next }))
 		_ => Err(LinkNotYours)
 	}
 
@@ -609,13 +504,7 @@ humans_holding : {
 	files : List({ user : UserId, file : List(U8) }),
 	users : Users,
 } -> List(Users.Human)
-humans_holding = |
-	{
-		github,
-		files,
-		users,
-	},
-|
+humans_holding = |{ github, files, users }|
 	files
 		.keep_if(|held| GitHubId.from_file(held.file) == Ok(github))
 		.keep_oks(|held| users.user(held.user))
@@ -718,11 +607,7 @@ round_trip = |
 	came = GitHubSignIn.CameBack.came_back({ state, answer })?
 	checked = came.check({ cookie, now })?
 	known = checked.identify(heard)?
-	match known.resolve({
-		files,
-		users: tests_users,
-		viewer,
-	})? {
+	match known.resolve({ files, users: tests_users, viewer })? {
 		Known(admission) =>
 			Ok(Admitted(admission.human().user().name().to_str(), admission.next().to_str()))
 		Unknown(GitHubSignIn.NewHuman.(new_human)) => Ok(NewHumanNamed(new_human.login.to_str()))
@@ -740,11 +625,7 @@ Str -> {
 	id : U64,
 	login : List(U8),
 }
-github_answer = |id, login| {
-	status: Identified,
-	id,
-	login: login.to_utf8(),
-}
+github_answer = |id, login| { status: Identified, id, login: login.to_utf8() }
 
 ## A return that goes well all the way.
 good_return = {
@@ -799,17 +680,9 @@ expect
 	}) == Err(DuplicateAccount)
 # A state not signed by this server is refused, whatever GitHub answered.
 expect
-	[
-		Code(good_code),
-		NoCode,
-		BadCode,
-	].all(
+	[Code(good_code), NoCode, BadCode].all(
 		|answer|
-			round_trip({
-				..good_return,
-				state: Unsigned,
-				answer,
-			}) == Err(StateForged),
+			round_trip({ ..good_return, state: Unsigned, answer }) == Err(StateForged),
 	)
 # A good state with no code, or a code GitHub wouldn't send.
 expect round_trip({ ..good_return, answer: NoCode }) == Err(GitHubDenied)
@@ -863,11 +736,7 @@ expect
 	].all(|viewer| round_trip({ ..good_link, viewer }) == Err(LinkNotYours))
 # A human with a `github-id` already, whatever it holds, the same id included.
 expect
-	[
-		"100",
-		"300",
-		"damaged",
-	].all(
+	["100", "300", "damaged"].all(
 		|held|
 			round_trip({ ..good_link, files: [{ user: id_of("2"), file: held.to_utf8() }] })
 				== Err(AlreadyLinked),
@@ -942,13 +811,7 @@ new_human_called : Str -> GitHubSignIn.NewHuman
 new_human_called = |login| {
 	github = GitHubId.from_u64(300) ?? crash "GitHubSignIn's tests: an id"
 	known = GitHubLogin.from_utf8(login.to_utf8()) ?? crash "GitHubSignIn's tests: a login"
-	GitHubSignIn.NewHuman.(
-		{
-			github,
-			login: known,
-			next: agents_path,
-		},
-	)
+	GitHubSignIn.NewHuman.({ github, login: known, next: agents_path })
 }
 
 # The login is offered when it is a name and free, as GitHub spells it.
@@ -969,9 +832,7 @@ expect new_human_called("Zoe").suggested_name(full_directory) == NoSuggestion
 ## The tests' directory, its every id spent, as the counter says.
 full_directory : Directory
 full_directory = {
-	accounts = tests_users.to_list().map(
-		|user| { id: user.id(), files: Users.account_files(user) },
-	)
+	accounts = tests_users.to_list().map(|user| { id: user.id(), files: Users.account_files(user) })
 	users =
 		Users.from_files({ counter: "65536\n".to_utf8(), accounts })
 			?? crash "GitHubSignIn's tests: the users' files read back"
@@ -1054,18 +915,8 @@ account_made : {
 	},
 	_,
 )
-account_made = |
-	{
-		name,
-		files,
-		directory,
-	},
-| {
-	made = resumed_up.create_account({
-		name: tests_name(name),
-		files,
-		directory,
-	})?
+account_made = |{ name, files, directory }| {
+	made = resumed_up.create_account({ name: tests_name(name), files, directory })?
 	Ok({
 		id: made.admission.human().id().to_str(),
 		name: made.human.name().to_str(),
@@ -1079,11 +930,7 @@ account_made = |
 ## A sign-up under `name` in the tests' directory, the id 300 free.
 account_named : Str -> Try(_, _)
 account_named = |name|
-	account_made({
-		name,
-		files: bound_files,
-		directory: tests_directory,
-	})
+	account_made({ name, files: bound_files, directory: tests_directory })
 
 # A free name makes the next human, admitted, with the id bound, the counter
 # past them and the default channel holding them. Their name need not be their
@@ -1109,12 +956,7 @@ expect
 # A name another has, in any case, an agent's included, is refused and makes
 # nothing, and the same sign-up then takes a free one.
 expect
-	[
-		"Steve",
-		"sTeVe",
-		"Apoorva",
-		"cc",
-	].all(|name| account_named(name) == Err(NameTaken))
+	["Steve", "sTeVe", "Apoorva", "cc"].all(|name| account_named(name) == Err(NameTaken))
 # A chat with no id left.
 expect
 	account_made({
@@ -1126,10 +968,7 @@ expect
 # An id a human holds now, whichever name is asked for: a second submit of
 # one sign-up, or a sign-up from a second tab.
 expect
-	[
-		"Zoe",
-		"Steve",
-	].all(
+	["Zoe", "Steve"].all(
 		|name|
 			account_made({
 				name,

@@ -67,14 +67,7 @@ with_default_channel = Sample.with_default_channel(Sample.directory)
 ## gives: the new human's name and id and their inviter's id, or why not.
 invite_of : SignedIn, { body : Str, open : U64 } -> Try(Str, _)
 invite_of = |acting, { body, open }|
-	HumanInvites.invite(
-		with_default_channel,
-		{
-			acting,
-			body: body.to_utf8(),
-			open,
-		},
-	)
+	HumanInvites.invite(with_default_channel, { acting, body: body.to_utf8(), open })
 		.map_ok(
 			|made| {
 				human = made.human
@@ -84,20 +77,8 @@ invite_of = |acting, { body, open }|
 
 # Any human invites, by their own session, a name a new account holds at
 # once; never a key, never an agent.
-expect invite_of(
-	steve,
-	{
-		body: "name=Zoe",
-		open: 0,
-	},
-) == Ok("Zoe 4 by 1")
-expect invite_of(
-	apoorva,
-	{
-		body: "name=Zoe+Smith",
-		open: 0,
-	},
-) == Ok("Zoe Smith 4 by 2")
+expect invite_of(steve, { body: "name=Zoe", open: 0 }) == Ok("Zoe 4 by 1")
+expect invite_of(apoorva, { body: "name=Zoe+Smith", open: 0 }) == Ok("Zoe Smith 4 by 2")
 expect
 	HumanInvites.invite(
 		with_default_channel,
@@ -126,62 +107,18 @@ expect
 	).map_ok(|_| {})
 		== Err(NoDefaultChannel)
 expect HumanInvites.refusal_notice(NoDefaultChannel).status == 500
-expect invite_of(
-	cc_by_key,
-	{
-		body: "name=Zoe",
-		open: 0,
-	},
-) == Err(ByApiKey)
-expect invite_of(
-	cc_by_session,
-	{
-		body: "name=Zoe",
-		open: 0,
-	},
-) == Err(Agent(id("3")))
+expect invite_of(cc_by_key, { body: "name=Zoe", open: 0 }) == Err(ByApiKey)
+expect invite_of(cc_by_session, { body: "name=Zoe", open: 0 }) == Err(Agent(id("3")))
 # The cap: nine open, a tenth made; ten or more open, none.
-expect invite_of(
-	steve,
-	{
-		body: "name=Zoe",
-		open: 9,
-	},
-) == Ok("Zoe 4 by 1")
+expect invite_of(steve, { body: "name=Zoe", open: 9 }) == Ok("Zoe 4 by 1")
 expect [10, 11].all(|open| invite_of(steve, { body: "name=Zoe", open }) == Err(Capped))
 # A form at fault, a name that is no name, one taken in any case, a full chat.
-expect invite_of(
-	steve,
-	{
-		body: "",
-		open: 0,
-	},
-) == Err(BadForm("The form has no field `name`."))
-expect [
-	"name=R2D2",
-	"name=",
-	"name=+Zoe",
-].all(
-	|body| invite_of(
-		steve,
-		{
-			body,
-			open: 0,
-		},
-	) == Err(BadName),
+expect invite_of(steve, { body: "", open: 0 }) == Err(BadForm("The form has no field `name`."))
+expect ["name=R2D2", "name=", "name=+Zoe"].all(
+	|body| invite_of(steve, { body, open: 0 }) == Err(BadName),
 )
-expect [
-	"name=cc",
-	"name=STEVE",
-	"name=apoorva",
-].all(
-	|body| invite_of(
-		steve,
-		{
-			body,
-			open: 0,
-		},
-	) == Err(NameTaken),
+expect ["name=cc", "name=STEVE", "name=apoorva"].all(
+	|body| invite_of(steve, { body, open: 0 }) == Err(NameTaken),
 )
 expect
 	HumanInvites.invite(
@@ -217,14 +154,7 @@ reinvite_of : SignedIn,
 	inviter : HumanInvites.Inviter,
 	open : U64,
 } -> Try(Str, _)
-reinvite_of = |
-	acting,
-	{
-		human,
-		inviter,
-		open,
-	},
-|
+reinvite_of = |acting, { human, inviter, open }|
 	HumanInvites.reinvite(
 		with_zoe_and_bob,
 		{
@@ -363,13 +293,7 @@ zoes_redemption : {
 	code : U8,
 	now : I64,
 } -> Try(Str, _)
-zoes_redemption = |
-	{
-		invites,
-		code,
-		now,
-	},
-|
+zoes_redemption = |{ invites, code, now }|
 	HumanInvite.find_redeemable(invites, { hash: hash(code), now }).map_ok(
 		|redeemable| {
 			redeemed = HumanInvite.redeem(redeemable, zoe)
@@ -412,14 +336,7 @@ invites_page : {
 	problem : [NoProblem, Problem(Str)],
 	now : I64,
 } -> Str
-invites_page = |
-	{
-		invites,
-		shown,
-		problem,
-		now,
-	},
-|
+invites_page = |{ invites, shown, problem, now }|
 	Str.from_utf8_lossy(
 		PeoplePages.invites({
 			viewer: steve,
@@ -537,13 +454,7 @@ join_code : {
 	invites : List(HumanInvite),
 	code : U8,
 } -> HumanInvites.JoinCode
-join_code = |
-	{
-		user,
-		invites,
-		code,
-	},
-| {
+join_code = |{ user, invites, code }| {
 	token: SecretToken.of({ user: id(user), secret: secret(1) }),
 	invites,
 	hash: hash(code),
@@ -599,24 +510,10 @@ join_as : {
 	code : U8,
 	name : Str,
 } -> Try(Str, _)
-join_as = |
-	{
-		user,
-		invites,
-		code,
-		name,
-	},
-|
+join_as = |{ user, invites, code, name }|
 	HumanInvites.join(
 		with_zoe_and_bob,
-		{
-			code: join_code({
-				user,
-				invites,
-				code,
-			}),
-			name: Sample.name(name),
-		},
+		{ code: join_code({ user, invites, code }), name: Sample.name(name) },
 	).map_ok(
 		|joined| {
 			changed =
@@ -655,12 +552,7 @@ expect join_as({
 	code: 1,
 	name: "ZOE",
 }) == Ok("spent, admits 4 as ZOE, changed")
-expect [
-	"Bob",
-	"bob",
-	"Steve",
-	"CC",
-].all(
+expect ["Bob", "bob", "Steve", "CC"].all(
 	|name| join_as({
 		user: "4",
 		invites: first_invite,
@@ -670,11 +562,7 @@ expect [
 )
 # The code is judged before the name: a bad code is the one refusal, whatever
 # the name.
-expect [
-	"Zoe",
-	"Zoey",
-	"Bob",
-].all(
+expect ["Zoe", "Zoey", "Bob"].all(
 	|name| join_as({
 		user: "4",
 		invites: first_invite,

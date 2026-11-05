@@ -35,20 +35,8 @@ GitHubSignUp :: {
 		now : I64,
 		next : Html.SitePath,
 	} -> GitHubSignUp
-	issue = |
-		{
-			github,
-			now,
-			next,
-		},
-	|
-		GitHubSignUp.(
-			{
-				github,
-				issued_at: now,
-				next,
-			},
-		)
+	issue = |{ github, now, next }|
+		GitHubSignUp.({ github, issued_at: now, next })
 
 	## The bytes the host signs for this sign-up.
 	signed_bytes : GitHubSignUp -> List(U8)
@@ -159,19 +147,11 @@ payload_of = |GitHubSignUp.(sign_up)| {
 claim_from_token : Str -> Try(GitHubSignUp.Claim, [NotAClaim])
 claim_from_token = |text|
 	match text.split_on(".") {
-		[
-			github_part,
-			second_part,
-			next_part,
-			mac_part,
-		] =>
+		[github_part, second_part, next_part, mac_part] =>
 			match Base64Url.decode(mac_part) {
 				Ok(mac) => Ok(
 					GitHubSignUp.Claim.(
-						{
-							payload: "${github_part}.${second_part}.${next_part}",
-							mac,
-						},
+						{ payload: "${github_part}.${second_part}.${next_part}", mac },
 					),
 				)
 				Err(NotBase64Url) => Err(NotAClaim)
@@ -183,25 +163,13 @@ claim_from_token = |text|
 sign_up_from_payload : Str -> Try(GitHubSignUp, [BadPayload])
 sign_up_from_payload = |payload|
 	match payload.split_on(".") {
-		[
-			github_part,
-			second_part,
-			next_part,
-		] => {
+		[github_part, second_part, next_part] => {
 			github = GitHubId.from_file(github_part.to_utf8()) ? |_| BadPayload
 			issued_at = FactFile.seconds_from_file(second_part.to_utf8()) ? |_| BadPayload
 			path_bytes = Base64Url.decode(next_part) ? |_| BadPayload
 			path_text = Str.from_utf8(path_bytes) ? |_| BadPayload
 			next = Html.SitePath.from_str(path_text) ? |_| BadPayload
-			Ok(
-				GitHubSignUp.(
-					{
-						github,
-						issued_at,
-						next,
-					},
-				),
-			)
+			Ok(GitHubSignUp.({ github, issued_at, next }))
 		}
 		_ => Err(BadPayload)
 	}
@@ -236,18 +204,10 @@ sent_cookie = {
 expect issued.github() == github_id and issued.next() == agents_path
 # Valid at the window's two ends and inside it.
 expect
-	[
-		1000,
-		1300,
-		1599,
-	].all(|now| issued.check(now) == Valid)
+	[1000, 1300, 1599].all(|now| issued.check(now) == Valid)
 # Expired at the lifetime, past it, and before it was issued.
 expect
-	[
-		1600,
-		99999,
-		999,
-	].all(|now| issued.check(now) == Expired)
+	[1600, 99999, 999].all(|now| issued.check(now) == Expired)
 # The cookie, set for ten minutes and read back among others: the signature,
 # the bytes signed, the sign-up.
 expect

@@ -6,10 +6,7 @@
 ## It is an app, on the test-only platform/specs.roc, so that shale's typed
 ## lints can read the specs: Roc's checker reads an app, and a type module
 ## only through one.
-app [main] {
-	md: "../../roc-markdown/package/main.roc",
-	pf: platform "../platform/specs.roc",
-}
+app [main] { md: "../../roc-markdown/package/main.roc", pf: platform "../platform/specs.roc" }
 
 import AdminSpec
 import AgentKeySpec

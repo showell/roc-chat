@@ -84,14 +84,7 @@ HumanInvite :: {
 		now : I64,
 		by : UserId,
 	} -> HumanInvite
-	make = |
-		{
-			id,
-			hash,
-			now,
-			by,
-		},
-	|
+	make = |{ id, hash, now, by }|
 		HumanInvite.(
 			{
 				id,
@@ -119,11 +112,7 @@ HumanInvite :: {
 	find_redeemable : List(HumanInvite),
 	{ hash : SecretHash, now : I64 } -> Try(
 		HumanInvite.Redeemable,
-		[
-			NoSuchInvite,
-			Spent,
-			Expired,
-		],
+		[NoSuchInvite, Spent, Expired],
 	)
 	find_redeemable = |invites, { hash, now }|
 		match invites.find_first(|HumanInvite.(invite)| invite.hash == hash) {
