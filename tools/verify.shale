@@ -15,16 +15,17 @@
 --    expect that stops running fails here. Every `app/*Spec.roc` is
 --    imported by app/Specs.roc, the only run that reaches it.
 -- 3. The style hunts (shale's cookbook/roc), each held to zero on what it
---    judges: names, errors, nesting, boundaries, stacking, and `methods`
+--    judges: names, errors, nesting, boundaries, stacking, long lines, and
+--    `methods`
 --    (no `Module.fn(x, ...)` call that would check as `x.fn(...)`, judged
 --    by Roc's own types from both apps, app/main.roc and app/Specs.roc; its
 --    trials are written in place and put back, so it runs under
 --    `--undo-on-stop`, and a call it can rewrite fails the gate). Their other
---    counts are questions for a reader, so they print but don't gate:
---    stack's long lines (a frozen answer or a long string has nothing to
---    stack), boundaries' `single`, `entry`, `constant` and `bool_param`,
---    and name_hunt's
---    `stacked_preposition`, which are rules of thumb.
+--    counts print but don't gate: stack's `wide string`, a line over 100
+--    columns only because of a string, which Roc has no short way to split;
+--    and boundaries' `single`, `entry`, `constant` and `bool_param` and
+--    name_hunt's `stacked_preposition`, which are rules of thumb and
+--    questions for a reader.
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/gopher-roc.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -124,7 +125,7 @@ const hunts = {
   {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)"}},
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
-  {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
+  {recipe = "stack", args = {}, counts = {"([0-9]+) to stack", "([0-9]+) long"}},
   {recipe = "methods", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}},
 }
 for h in hunts do
