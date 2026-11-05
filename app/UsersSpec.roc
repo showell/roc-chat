@@ -29,7 +29,7 @@ role_in_words = |u|
 ## The id `count` places after Steve's.
 after_steve : U64 -> UserId
 after_steve = |count| List.repeat({}, count).fold(
-	UserId.steve,
+	UserId.chat_owner,
 	|at, {}| at.next() ?? crash "UsersSpec: a test's id fits",
 )
 
@@ -43,7 +43,7 @@ sample = Sample.directory.users()
 ## Zed is id 1 of other users, so no human of the sample's.
 zed : Users.Human
 zed =
-	(Users.with_founder(Sample.name("Zed")).user(UserId.steve) ?? crash "UsersSpec: Zed is id 1")
+	(Users.with_founder(Sample.name("Zed")).user(UserId.chat_owner) ?? crash "UsersSpec: Zed is id 1")
 		.as_human()
 		?? crash "UsersSpec: Zed is a human"
 
@@ -159,7 +159,7 @@ expect {
 		and agent_added(full, { name: "Bot", owner: zed }) == Err(NoSuchOwner)
 }
 # A user found by id, or none.
-expect sample.user(UserId.steve).map_ok(|u| u.name().to_str()) == Ok("Steve")
+expect sample.user(UserId.chat_owner).map_ok(|u| u.name().to_str()) == Ok("Steve")
 expect sample.user(after_steve(2)).map_ok(|u| u.name().to_str()) == Ok("CC")
 expect sample.user(stranger) == Err(NoSuchUser)
 # A user found by name, a human's or an agent's, or none; the case counts.
@@ -172,13 +172,13 @@ expect
 		"Steve Howell",
 	].all(|text| sample.user_by_name(Sample.name(text)) == Err(NoSuchUser))
 # An id and a name together: theirs exactly, or refused, case included.
-expect sample.check({ id: UserId.steve, name: Sample.name("Steve") }) == Ok(Sample.steve)
+expect sample.check({ id: UserId.chat_owner, name: Sample.name("Steve") }) == Ok(Sample.steve)
 expect
 	[
 		Sample.name("steve"),
 		Sample.name("Apoorva"),
 		Sample.name("Steve Howell"),
-	].all(|name| sample.check({ id: UserId.steve, name }) == Err(NameMismatch))
+	].all(|name| sample.check({ id: UserId.chat_owner, name }) == Err(NameMismatch))
 expect sample.check({ id: stranger, name: Sample.name("Steve") }) == Err(NoSuchUser)
 # A user as an author, and their files' stem.
 expect sample.to_list().map(|u| (u.author().to_str(), u.stem())) == [

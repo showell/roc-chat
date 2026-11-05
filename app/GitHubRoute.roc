@@ -7,14 +7,17 @@
 ## - `GET /login/github` is GitHub's way back: the state checked, the code
 ##   exchanged by the host, the human found, and a session started
 ##   (`SignInRoute.start_session_by_github!`). An id no human holds is asked
-##   for a name instead, with a signed sign-up in its browser's cookie. A
-##   refusal is the sign-in page again, saying why in plain words.
+##   for a name instead, with a signed sign-up in its browser's cookie; a human
+##   signed in already links it instead. A refusal is the sign-in page again,
+##   saying why in plain words.
 ## - `POST /login/github/name` is that name: the sign-up checked, the account
 ##   made, and a session started. The counter of ids is written first, then
-##   `github-id`, then `name`, then the default channel's members, all in one
-##   turn, so two submits can't both see the id free. They land where
-##   `FirstPage` says. A name refused is the form again, the sign-up still
-##   good.
+##   the new human's `Welcome`, then `github-id`, then `name`, then the default
+##   channel's members, all in one turn, so two submits can't both see the id
+##   free. The welcome goes before the account, so no account lacks one: a
+##   failure there spends an id and binds nothing, and the same sign-up tries
+##   again. They land where `FirstPage` says. A name refused is the form again,
+##   the sign-up still good.
 ## - `POST /login/github/link` is a signed-in human asking to link GitHub to
 ##   their account: a trip to GitHub like a sign-in's, whose state names them.
 ##   It comes back to `GET /login/github`, which binds the id to them and
@@ -49,6 +52,7 @@ import SignedIn
 import UrlEncodedForm
 import UserId
 import Users
+import Welcome
 
 GitHubRoute :: [].{
 
@@ -218,6 +222,7 @@ GitHubRoute :: [].{
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
 				(Configured, Ok({})) =>
 					match sign_up!({
+						viewer: request.viewer,
 						directory: request.directory,
 						body: request.body,
 						headers: request.headers,
@@ -403,7 +408,7 @@ resolve! = |
 	checked = came.check({ cookie: cookie_of(headers), now }) ? |why| Refused(why)
 	heard = Host.github_identity_for_code!(checked.code_bytes())
 	known = checked.identify(heard) ? |why| Refused(why)
-	files = FileSystem.read_github_id_files!(users) ? |fault| FileSystem(fault)
+	files = FileSystem.read_github_id_files!({}) ? |fault| FileSystem(fault)
 	known.resolve({
 		files,
 		users,
@@ -443,6 +448,7 @@ ask_for_name! = |
 ## never given twice. The caller's `directory` and these files were read in
 ## this turn, which holds to the last write.
 sign_up! : {
+	viewer : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
 	headers : List(Http.Header),
@@ -450,6 +456,7 @@ sign_up! : {
 } => Try(GitHubSignIn.Admission, _)
 sign_up! = |
 	{
+		viewer,
 		directory,
 		body,
 		headers,
@@ -458,21 +465,29 @@ sign_up! = |
 | {
 	resumed = GitHubSignIn.SignUpResumed.resume({
 		sign_up: load_signed_sign_up!(headers),
+		viewer,
 		now,
 	}) ? |why| Refused(why)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
-	files = FileSystem.read_github_id_files!(directory.users()) ? |fault| FileSystem(fault)
+	files = FileSystem.read_github_id_files!({}) ? |fault| FileSystem(fault)
 	made = resumed.create_account({
 		name,
 		files,
 		directory,
 	}) ? |why| account_refusal({ name, why })
+	human = made.admission.human()
+	welcome = Welcome.make({
+		directory: made.directory,
+		human,
+		now,
+	}) ? |ClockOutOfRange| Refused(ClockOutOfRange)
+	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
+	FileSystem.append_message!(welcome.key(), welcome.record()) ? |fault| FileSystem(fault)
 	landing = FirstPage.load!({
 		directory: made.directory,
-		human: made.admission.human(),
+		human,
 		wanted: made.admission.next(),
 	})?
-	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	FileSystem.create_github_account!({
 		human: made.human,
 		github: made.github,
@@ -629,6 +644,11 @@ refusal_said = |why|
 		LinkNotYours => { status: 403, words: "That link did not start from this account. Please try again." }
 		AlreadyLinked => { status: 409, words: already_linked_words }
 		GitHubIdTaken => { status: 409, words: "That GitHub account is linked to someone here already." }
+		SignedInAlready => {
+			status: 409,
+			words: "You are signed in, so that made no new account. Sign in with GitHub again to link it to this one.",
+		}
+		ClockOutOfRange => { status: 500, words: "The server's clock is out of range." }
 	}
 
 no_default_channel_words : Str
@@ -690,10 +710,10 @@ expect
 		LinkNotYours,
 	].all(|why| refusal_said(why).status == 403)
 expect [GitHubUnreachable, BadIdentity].all(|why| refusal_said(why).status == 502)
-expect [AlreadyLinked, GitHubIdTaken].all(|why| refusal_said(why).status == 409)
-expect refusal_said(NoDefaultChannel).status == 500
+expect [AlreadyLinked, GitHubIdTaken, SignedInAlready].all(|why| refusal_said(why).status == 409)
+expect [NoDefaultChannel, ClockOutOfRange].all(|why| refusal_said(why).status == 500)
 # A link refused before the trip, each way.
 expect link_refusal_answer(NotSignedIn).status == 401
-expect [ByApiKey, Agent(UserId.steve)].all(|why| link_refusal_answer(why).status == 403)
+expect [ByApiKey, Agent(UserId.chat_owner)].all(|why| link_refusal_answer(why).status == 403)
 expect link_refusal_answer(AlreadyLinked).status == 409
 expect link_refusal_answer(FileSystem(Failed)).status == 500

@@ -190,8 +190,8 @@ key_of = |topic| {
 	place = directory.place(
 		Dm(
 			UserPair.of({
-				a: UserId.steve,
-				b: UserId.steve,
+				a: UserId.chat_owner,
+				b: UserId.chat_owner,
 			}),
 		),
 	) ?? crash "AgentStream's tests: Steve's own DM"
@@ -320,7 +320,7 @@ expect backlog_markdown([
 	conversation_of_count("plans", 101),
 	conversation_of_count("other", 3),
 ]).len() == 103
-expect AgentStream.holder(UserId.steve) == "agent-1".to_utf8()
+expect AgentStream.holder(UserId.chat_owner) == "agent-1".to_utf8()
 # A date past every message, none; before every message, all.
 expect AgentStream.backlog({
 	conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],
@@ -334,7 +334,7 @@ expect events_of(
 ).len() == 1
 # The stream: on the agent's own key, held by the agent, its backlog first.
 expect {
-	answered = AgentStream.response({ agent: UserId.steve, backlog: "data: x\n\n".to_utf8() })
+	answered = AgentStream.response({ agent: UserId.chat_owner, backlog: "data: x\n\n".to_utf8() })
 	answered.kind == Stream
 		and answered.stream_key == "/agents/1/stream".to_utf8()
 		and answered.stream_holder == "agent-1".to_utf8()

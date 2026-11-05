@@ -224,11 +224,15 @@ Directory :: {
 			}
 	}
 
-	## The founder: Steve, id 1, the first human.
-	founder : Directory -> Users.User
-	founder = |Directory.(d)|
-		d.users.user(UserId.steve)
-			?? crash "Directory.founder: every directory holds its founder, id 1"
+	## The chat's owner: the first human, id 1, and its admin. This is the one
+	## way to find them, so their name is read, never written in.
+	chat_owner : Directory -> Users.Human
+	chat_owner = |Directory.(d)| {
+		found =
+			d.users.user(UserId.chat_owner)
+				?? crash "Directory.chat_owner: every directory holds its owner, id 1"
+		found.as_human() ?? crash "Directory.chat_owner: id 1 is a human"
+	}
 
 	users : Directory -> Users
 	users = |Directory.(d)| d.users

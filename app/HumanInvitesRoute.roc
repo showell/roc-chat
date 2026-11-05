@@ -4,11 +4,12 @@
 ## `HumanInvites`' to decide; this module reads, writes and answers.
 ##
 ## Inviting someone writes, in order: the counter of ids, the new human's
-## account (`inviter`, then `name`), the default channel's members, then the
-## invite (its `hash` last). A
-## failure part way leaves an account holding the name with no code, which
-## its inviter invites again, never a code for a half-made account. The
-## page shows the link that joins by the code, `<origin>/join#<code>`,
+## `Welcome`, their account (`inviter`, then `name`), the default channel's
+## members, then the invite (its `hash` last). The welcome goes before the
+## account, so no account lacks one: a failure there spends an id and holds no
+## name, and the inviter tries again. A failure after it leaves an account
+## holding the name with no code, which its inviter invites again, never a
+## code for a half-made account. The page shows the link that joins by the code, `<origin>/join#<code>`,
 ## where the origin is the one the inviter's request came to; it is never
 ## stored by a browser or a proxy. No browser sends what follows a `#`, so
 ## the code reaches no log.
@@ -47,6 +48,7 @@ import SignedIn
 import TrustedHtml
 import UserId
 import Users
+import Welcome
 
 HumanInvitesRoute :: [].{
 
@@ -144,10 +146,12 @@ HumanInvitesRoute :: [].{
 }
 
 ## Why a route here refused: one of `HumanInvites`' refusals, a stored
-## `inviter` that names no one, or the file system's fault.
+## `inviter` that names no one, a clock that can't date a welcome, or the file
+## system's fault.
 Failure : [
 	Refused(HumanInvites.Refusal),
 	BadInviter(UserId),
+	ClockOutOfRange,
 	FileSystem(FileSystem.Fault),
 ]
 
@@ -160,6 +164,7 @@ failure_notice = |why|
 			status: 500,
 			said: "The inviter file of user ${id.to_str()} names no user.",
 		}
+		ClockOutOfRange => { status: 500, said: "The server's clock is out of range." }
 		FileSystem(fault) => { status: 500, said: FileSystem.fault_words(fault) }
 	}
 
@@ -227,7 +232,14 @@ invite_human! = |
 			open,
 		},
 	) ? |why| Refused(why)
+	human = made.human.as_human() ?? crash "HumanInvitesRoute.invite_human!: an invite makes a human"
+	welcome = Welcome.make({
+		directory: made.directory,
+		human,
+		now,
+	})?
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
+	FileSystem.append_message!(welcome.key(), welcome.record()) ? |fault| FileSystem(fault)
 	FileSystem.create_invited_account!({
 		human: made.human,
 		inviter: made.inviter.id(),

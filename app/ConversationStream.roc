@@ -223,7 +223,7 @@ expect
 expect
 	ConversationStream.count_refusal_words(BadCount)
 		== "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
-expect ConversationStream.holder(UserId.steve) == "1".to_utf8()
+expect ConversationStream.holder(UserId.chat_owner) == "1".to_utf8()
 
 ## The users of the tests' directory: Steve alone, id 1.
 users : Users

@@ -87,7 +87,7 @@ expect Agents.owned_agent(
 ) == Err(NotTheOwner)
 expect Agents.owned_agent(
 	with_lc,
-	{ owner: Sample.human("Steve"), agent: UserId.steve },
+	{ owner: Sample.human("Steve"), agent: UserId.chat_owner },
 ) == Err(NoSuchAgent)
 expect Agents.owned_agent(
 	with_lc,
@@ -214,7 +214,7 @@ expect Agents.revoked_invite(
 expect
 	[
 		(ByApiKey, 403),
-		(Agent(UserId.steve), 403),
+		(Agent(UserId.chat_owner), 403),
 		(NotTheOwner, 403),
 		(NoSuchAgent, 404),
 		(NoSuchKey, 404),
@@ -377,7 +377,7 @@ expect Access.agent_members({ place: dm_place("Steve", "Apoorva"), directory: wi
 expect Access.members({
 	place: channel_place("team"),
 	directory: with_lc,
-}) == [UserId.steve, user_named("CC").id()]
+}) == [UserId.chat_owner, user_named("CC").id()]
 
 # The agents page: each agent's invite button, each active key's and live
 # invite's revoke button and no other, and an invite's code only when one

@@ -471,19 +471,22 @@ FileSystem :: [].{
 	read_password_hash! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
 	read_password_hash! = |id| read_fact!(password_path(id))
 
-	## The `github-id` file of each user who has one, as it is
-	## (docs/design.md, "Storage").
-	read_github_id_files! : Users => Try(
+	## The `github-id` file of each account folder that has one, as it is
+	## (docs/design.md, "Storage"). It lists the folders rather than taking a
+	## `Users`, as a human can sign up while the host waits on GitHub, and a
+	## `Users` read before that wait doesn't hold them.
+	read_github_id_files! : {} => Try(
 		List({ user : UserId, file : List(U8) }),
 		[NotUtf8, PathRefused, Failed],
 	)
-	read_github_id_files! = |users| {
+	read_github_id_files! = |{}| {
+		ids = list_names_in!(AccountFolder.auth_root)?.keep_oks(UserId.from_str)
 		var $files = []
-		for user in users.to_list() {
-			match FileSystem.read_github_id_file!(user.id())? {
+		for id in ids {
+			match FileSystem.read_github_id_file!(id)? {
 				NoFile => {}
 				File(file) => {
-					$files = $files.append({ user: user.id(), file })
+					$files = $files.append({ user: id, file })
 				}
 			}
 		}
@@ -972,9 +975,9 @@ key_at = |path| ConversationKey.from_url_path({
 	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "FileSystem's tests: a name"),
 }).map_ok(|found| found.key) ?? crash "FileSystem's tests: a conversation's path"
 
-expect account_folder_path(AccountFolder.of(UserId.steve)) == "auth/1"
-expect password_path(UserId.steve) == "auth/1/password"
-expect github_session_secret_path(UserId.steve) == "auth/1/github-session-secret"
+expect account_folder_path(AccountFolder.of(UserId.chat_owner)) == "auth/1"
+expect password_path(UserId.chat_owner) == "auth/1/password"
+expect github_session_secret_path(UserId.chat_owner) == "auth/1/github-session-secret"
 expect user_counter_path == "auth/next-id.txt"
 expect {
 	agent = UserId.from_str("12") ?? crash "FileSystem's tests: an id"
@@ -1000,8 +1003,8 @@ expect {
 		== "chat/channel/general" and channel_members_path(general)
 		== "chat/channel/general.channel"
 }
-expect user_folder_path(UserFolder.of(UserId.steve)) == "users/1"
-expect upload_total_path(UserFolder.of(UserId.steve)) == "users/1/upload-bytes".to_utf8()
+expect user_folder_path(UserFolder.of(UserId.chat_owner)) == "users/1"
+expect upload_total_path(UserFolder.of(UserId.chat_owner)) == "users/1/upload-bytes".to_utf8()
 expect {
 	key = key_at("/chat/dm/1_1/plans")
 	image =

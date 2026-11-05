@@ -262,4 +262,4 @@ expect {
 expect Directory.from_files({
 	users: Sample.directory.users(),
 	channels: Channels.empty,
-}).map_ok(|directory| directory.founder()) == Ok(Sample.steve)
+}).map_ok(|directory| directory.chat_owner().user()) == Ok(Sample.steve)

@@ -112,7 +112,7 @@ Sample :: [].{
 		with_apoorva =
 			(founded.add_human(Sample.name("Apoorva")) ?? crash "Sample.directory: Apoorva's name is free")
 				.directory
-		founder = with_apoorva.users().user(UserId.steve) ?? crash "Sample.directory: Steve is id 1"
+		founder = with_apoorva.users().user(UserId.chat_owner) ?? crash "Sample.directory: Steve is id 1"
 		owner = founder.as_human() ?? crash "Sample.directory: Steve is a human"
 		with_cc = with_apoorva.add_agent({
 			name: Sample.name("CC"),

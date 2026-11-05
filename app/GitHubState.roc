@@ -319,7 +319,7 @@ issued_to_link = GitHubState.issue({
 	nonce: nonce_held,
 	now: 1000,
 	next: agents_path,
-	errand: Link(UserId.steve),
+	errand: Link(UserId.chat_owner),
 })
 
 ## What `check` says of `issued`, back with `cookie` at `now`.
@@ -369,7 +369,7 @@ expect {
 		GitHubState.from_claim({ claim, verdict: Matches })
 	}
 	read_back(issued_to_link) == Signed(issued_to_link)
-		and issued_to_link.errand() == Link(UserId.steve)
+		and issued_to_link.errand() == Link(UserId.chat_owner)
 		and read_back(issued) == Signed(issued)
 		and issued.errand() == SignIn
 		and issued_to_link.signed_bytes() != issued.signed_bytes()

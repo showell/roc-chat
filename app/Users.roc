@@ -98,13 +98,13 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 				everyone: [
 					Users.User.(
 						{
-							id: UserId.steve,
+							id: UserId.chat_owner,
 							name,
 							role: Human,
 						},
 					),
 				],
-				next: next_after(UserId.steve),
+				next: next_after(UserId.chat_owner),
 			},
 		)
 
@@ -172,7 +172,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 		all = accounts.sort_with(|a, b| a.id.compare(b.id)).map_try(user_from_files)?
 		founder_is_human =
 			match all.first() {
-				Ok(first) => first.id() == UserId.steve and first.role() == Human
+				Ok(first) => first.id() == UserId.chat_owner and first.role() == Human
 				Err(ListWasEmpty) => Bool.False
 			}
 		if !founder_is_human {
@@ -282,7 +282,7 @@ next_from_file = |bytes| {
 		Ok(Full)
 	else
 		match UserId.from_str(number.to_str()) {
-			Ok(id) if id != UserId.steve => Ok(Next(id))
+			Ok(id) if id != UserId.chat_owner => Ok(Next(id))
 			_ => Err(BadCounter)
 		}
 }

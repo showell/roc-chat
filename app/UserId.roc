@@ -1,6 +1,6 @@
 ## This module is a user's id: the number of a person or an agent. An id is
 ## unique and permanent, and short enough for a URL and a file's name
-## (`UserStem`). Steve's id is 1.
+## (`UserStem`). The chat owner's id is 1.
 ##
 ## People and agents are numbered in one count, as their names share one
 ## namespace, so an id alone says who a user is.
@@ -13,9 +13,10 @@ import Ascii
 
 UserId :: U16.{
 
-	## Steve's id: the first user's, and the admin's (`Admin`).
-	steve : UserId
-	steve = UserId.(1)
+	## The chat owner's id: the first user's, and the admin's (`Admin`). The
+	## owner's name is on disk like anyone's: `Directory.chat_owner` finds it.
+	chat_owner : UserId
+	chat_owner = UserId.(1)
 
 	## The number after the highest id, which the counter of ids holds when
 	## every id is taken.
@@ -65,9 +66,9 @@ UserId :: U16.{
 }
 
 # ── tests
-expect UserId.steve.to_str() == "1"
+expect UserId.chat_owner.to_str() == "1"
 # The next id, from the first, and at, under and over the highest.
-expect UserId.steve.next().map_ok(UserId.to_str) == Ok("2")
+expect UserId.chat_owner.next().map_ok(UserId.to_str) == Ok("2")
 expect UserId.(65534).next().map_ok(UserId.to_str) == Ok("65535")
 expect UserId.(65535).next() == Err(Full)
 expect UserId.past_highest == 65536
@@ -113,7 +114,7 @@ expect
 	].all(|text| UserId.from_str(text) == Err(NotAUserId))
 # The order, both ways round, the same id, and by number rather than by
 # text.
-expect UserId.steve.compare(UserId.(2)) == Before
-expect UserId.(2).compare(UserId.steve) == After
+expect UserId.chat_owner.compare(UserId.(2)) == Before
+expect UserId.(2).compare(UserId.chat_owner) == After
 expect UserId.(2).compare(UserId.(2)) == Same
 expect UserId.(9).compare(UserId.(10)) == Before

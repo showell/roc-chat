@@ -28,6 +28,12 @@
 ## session that comes back must be that human's, they must have no `github-id`
 ## yet, and nobody may hold the id.
 ##
+## A human signed in already who comes back from any GitHub trip links too, so
+## `IdentityKnown.resolve` makes no second account for them, and a human holding
+## an id never holds another. The name form is for no one signed in
+## (`SignUpResumed.resume`). So one GitHub id reaches one account, and one
+## account holds one id.
+##
 ## Between the two requests the id travels as a `GitHubSignUp`, signed by the
 ## server. It isn't spent: making the account binds the id, so
 ## `create_account` refuses a sign-up whose id has an account now, and a
@@ -105,6 +111,13 @@ GitHubSignIn :: [].{
 
 		## Someone holds the id the human tried to link.
 		GitHubIdTaken,
+
+		## A sign-up came back from a browser signed in by then, whose human
+		## links GitHub rather than making an account.
+		SignedInAlready,
+
+		## The server's clock can't date a new human's welcome.
+		ClockOutOfRange,
 	]
 
 	## What GitHub sent the browser back with: a code, none, as when its
@@ -229,12 +242,14 @@ GitHubSignIn :: [].{
 		## came back with it. `files` is every user's `github-id` file as it
 		## was read.
 		##
-		## For a sign-in: `Known`, the admission of the human whose file holds
-		## this id, or `Unknown`, a new human, when none does. A file that
-		## holds no id, or an agent's, admits no one and fails only itself.
+		## For a sign-in by no one signed in: `Known`, the admission of the human
+		## whose file holds this id, or `Unknown`, a new human, when none does.
+		## A file that holds no id, or an agent's, admits no one and fails only
+		## itself.
 		##
 		## For a link: `Linking`, the human it binds the id to, or why not
-		## (`linked_to`).
+		## (`linked_to`). A sign-in by a human signed in is one too, unless the
+		## id is theirs already (`signed_in_return`).
 		resolve : GitHubSignIn.IdentityKnown,
 		{
 			files : List({ user : UserId, file : List(U8) }),
@@ -261,8 +276,8 @@ GitHubSignIn :: [].{
 				viewer,
 			},
 		|
-			match known.errand {
-				Link(id) =>
+			match (known.errand, GitHubSignIn.human_to_link(viewer)) {
+				(Link(id), _) =>
 					linked_to({
 						id,
 						github: known.github,
@@ -270,7 +285,16 @@ GitHubSignIn :: [].{
 						files,
 						viewer,
 					}).map_ok(|linked| Linking(linked))
-				SignIn =>
+				(SignIn, Ok(human)) =>
+					signed_in_return({
+						human,
+						github: known.github,
+						next: known.next,
+						files,
+						users,
+						viewer,
+					})
+				(SignIn, Err(NotSignedIn)) =>
 					match humans_holding({
 						github: known.github,
 						files,
@@ -290,6 +314,7 @@ GitHubSignIn :: [].{
 						[human] => Ok(Known(GitHubSignIn.Admission.({ human, next: known.next })))
 						_ => Err(DuplicateAccount)
 					}
+				(SignIn, Err(_)) => Err(LinkNotYours)
 			}
 	}
 
@@ -366,18 +391,32 @@ GitHubSignIn :: [].{
 	SignUpResumed :: { github : GitHubId, next : Html.SitePath }.{
 
 		## From the facts of the request: the sign-up, if its signature held,
-		## and the time.
+		## who sent it, and the time. A browser that has signed in since the
+		## form was shown is refused (`SignedInAlready`), as its human links
+		## GitHub to the account they have.
 		resume : {
 			sign_up : [Signed(GitHubSignUp), Unsigned],
+			viewer : SignedIn.Actor,
 			now : I64,
 		} -> Try(
 			GitHubSignIn.SignUpResumed,
-			[SignUpForged, SignUpExpired],
+			[
+				SignUpForged,
+				SignUpExpired,
+				SignedInAlready,
+			],
 		)
-		resume = |{ sign_up, now }|
-			match sign_up {
-				Unsigned => Err(SignUpForged)
-				Signed(signed) =>
+		resume = |
+			{
+				sign_up,
+				viewer,
+				now,
+			},
+		|
+			match (sign_up, viewer) {
+				(Unsigned, _) => Err(SignUpForged)
+				(Signed(_), SignedIn(_)) => Err(SignedInAlready)
+				(Signed(signed), Anonymous) =>
 					match signed.check(now) {
 						Expired => Err(SignUpExpired)
 						Valid => Ok(
@@ -467,6 +506,56 @@ GitHubSignIn :: [].{
 			GitHubSignIn.Admission.({ ..admission, next: landing })
 	}
 }
+
+## What GitHub's answer means for `human`, signed in as `viewer`, who came back
+## from a sign-in: the admission of the human they are when the id is theirs,
+## else the link of the id to them (`linked_to`).
+signed_in_return : {
+	human : Users.Human,
+	github : GitHubId,
+	next : Html.SitePath,
+	files : List({ user : UserId, file : List(U8) }),
+	users : Users,
+	viewer : SignedIn.Actor,
+} -> Try(
+	[
+		Known(GitHubSignIn.Admission),
+		Unknown(GitHubSignIn.NewHuman),
+		Linking(GitHubSignIn.Linked),
+	],
+	[
+		DuplicateAccount,
+		LinkNotYours,
+		AlreadyLinked,
+		GitHubIdTaken,
+	],
+)
+signed_in_return = |
+	{
+		human,
+		github,
+		next,
+		files,
+		users,
+		viewer,
+	},
+|
+	match humans_holding({
+		github,
+		files,
+		users,
+	}) {
+		[holder] if holder.id() == human.id() => Ok(Known(GitHubSignIn.Admission.({ human, next })))
+		[_, _, ..] => Err(DuplicateAccount)
+		_ =>
+			linked_to({
+				id: human.id(),
+				github,
+				next,
+				files,
+				viewer,
+			}).map_ok(|linked| Linking(linked))
+	}
 
 ## The link of `github` to the human `id`: `viewer` must be that human, by
 ## their own session (`LinkNotYours`), with no `github-id` file of their own
@@ -558,7 +647,7 @@ tests_name = |text| Name.from_str(text) ?? crash "GitHubSignIn's tests: a name"
 tests_directory_of_no_channel : Directory
 tests_directory_of_no_channel = {
 	founded = Directory.with_founder(tests_name("Steve"))
-	steve = founded.founder().as_human() ?? crash "GitHubSignIn's tests: Steve is a human"
+	steve = founded.chat_owner()
 	with_apoorva = (founded.add_human(tests_name("Apoorva")) ?? crash "GitHubSignIn's tests: room").directory
 	(
 		with_apoorva.add_agent({
@@ -588,7 +677,7 @@ id_of = |text| UserId.from_str(text) ?? crash "GitHubSignIn's tests: an id"
 ## The `github-id` files of the tests: Steve is 100, Apoorva 200.
 bound_files : List({ user : UserId, file : List(U8) })
 bound_files = [
-	{ user: UserId.steve, file: "100\n".to_utf8() },
+	{ user: UserId.chat_owner, file: "100\n".to_utf8() },
 	{ user: id_of("2"), file: "200".to_utf8() },
 ]
 
@@ -689,7 +778,7 @@ expect
 # A damaged file, an agent's, and a file of a user no one is admit no one.
 expect
 	[
-		{ user: UserId.steve, file: "x".to_utf8() },
+		{ user: UserId.chat_owner, file: "x".to_utf8() },
 		{ user: id_of("3"), file: "100".to_utf8() },
 		{ user: id_of("9"), file: "100".to_utf8() },
 	].all(|file| round_trip({ ..good_return, files: [file] }) == Ok(NewHumanNamed("showell")))
@@ -704,7 +793,7 @@ expect
 	round_trip({
 		..good_return,
 		files: [
-			{ user: UserId.steve, file: "100".to_utf8() },
+			{ user: UserId.chat_owner, file: "100".to_utf8() },
 			{ user: id_of("2"), file: "100".to_utf8() },
 		],
 	}) == Err(DuplicateAccount)
@@ -759,7 +848,7 @@ good_link = {
 		}),
 	),
 	heard: github_answer(300, "apoorva-gh"),
-	files: [{ user: UserId.steve, file: "100".to_utf8() }],
+	files: [{ user: UserId.chat_owner, file: "100".to_utf8() }],
 	viewer: viewer_of("2"),
 }
 
@@ -789,16 +878,47 @@ expect
 	round_trip({ ..good_link, files: [{ user: id_of("3"), file: "300".to_utf8() }] })
 		== Err(GitHubIdTaken)
 expect
-	round_trip({ ..good_link, files: [{ user: UserId.steve, file: "x".to_utf8() }] })
+	round_trip({ ..good_link, files: [{ user: UserId.chat_owner, file: "x".to_utf8() }] })
 		== Ok(LinkedTo("Apoorva", "300"))
-# The same answer without the link's errand is a sign-in: the state decides.
+# A human signed in who comes back from a sign-in links: a free id binds to
+# them, and goes where the sign-in was going. No account is made.
 expect
 	round_trip({
 		..good_return,
 		heard: github_answer(300, "stranger"),
+		files: [{ user: UserId.chat_owner, file: "100".to_utf8() }],
 		viewer: viewer_of("2"),
 	})
-		== Ok(NewHumanNamed("stranger"))
+		== Ok(LinkedTo("Apoorva", "300"))
+# Their own id signs them in again, and links nothing.
+expect round_trip({ ..good_return, viewer: viewer_of("1") }) == Ok(Admitted("Steve", "/agents"))
+# An id someone else holds, and a second id for a human who holds one.
+expect round_trip({ ..good_return, viewer: viewer_of("2") }) == Err(AlreadyLinked)
+expect
+	round_trip({
+		..good_return,
+		files: [{ user: UserId.chat_owner, file: "100".to_utf8() }],
+		viewer: viewer_of("2"),
+	})
+		== Err(GitHubIdTaken)
+expect
+	round_trip({ ..good_return, heard: github_answer(300, "stranger"), viewer: viewer_of("1") })
+		== Err(AlreadyLinked)
+# Two humans holding the id, the viewer among them.
+expect
+	round_trip({
+		..good_return,
+		files: [
+			{ user: UserId.chat_owner, file: "100".to_utf8() },
+			{ user: id_of("2"), file: "100".to_utf8() },
+		],
+		viewer: viewer_of("2"),
+	})
+		== Err(DuplicateAccount)
+# An agent is no one to link, and never reaches a new account.
+expect
+	round_trip({ ..good_return, heard: github_answer(300, "stranger"), viewer: viewer_of("3") })
+		== Err(LinkNotYours)
 # A link never skips the state's own checks.
 expect round_trip({ ..good_link, state: Unsigned }) == Err(StateForged)
 expect round_trip({ ..good_link, cookie: Unsent }) == Err(StateMismatched)
@@ -858,8 +978,16 @@ signed_up = new_human_called("Zoe").sign_up(1000)
 ## The sign-up resumed at 1300.
 resumed_up : GitHubSignIn.SignUpResumed
 resumed_up =
-	GitHubSignIn.SignUpResumed.resume({ sign_up: Signed(signed_up), now: 1300 })
-		?? crash "GitHubSignIn's tests: a sign-up in time"
+	resumed_at(1300) ?? crash "GitHubSignIn's tests: a sign-up in time"
+
+## The sign-up resumed at `now` by a browser signed in as no one.
+resumed_at : I64 -> Try(GitHubSignIn.SignUpResumed, _)
+resumed_at = |now|
+	GitHubSignIn.SignUpResumed.resume({
+		sign_up: Signed(signed_up),
+		viewer: Anonymous,
+		now,
+	})
 
 ## The id and the path a resumed sign-up holds, as a test reads it.
 resumed_text : GitHubSignIn.SignUpResumed -> (Str, Str)
@@ -872,20 +1000,33 @@ resumed_text = |GitHubSignIn.SignUpResumed.(resumed)| (
 expect resumed_text(resumed_up) == ("300", "/agents")
 # A forged sign-up, and one out of its window at either end; in time at both.
 expect
-	GitHubSignIn.SignUpResumed.resume({ sign_up: Unsigned, now: 1300 }).map_ok(|_| {})
+	GitHubSignIn.SignUpResumed.resume({
+		sign_up: Unsigned,
+		viewer: Anonymous,
+		now: 1300,
+	}).map_ok(|_| {})
 		== Err(SignUpForged)
+expect [999, 1600].all(|now| resumed_at(now).map_ok(|_| {}) == Err(SignUpExpired))
+expect [1000, 1599].all(|now| resumed_at(now).map_ok(|_| {}) == Ok({}))
+# A browser signed in by then makes no account, whoever it is; a forged
+# sign-up says so first.
 expect
-	[999, 1600].all(
-		|now|
-			GitHubSignIn.SignUpResumed.resume({ sign_up: Signed(signed_up), now }).map_ok(|_| {})
-				== Err(SignUpExpired),
+	["1", "2"].all(
+		|id|
+			GitHubSignIn.SignUpResumed.resume({
+				sign_up: Signed(signed_up),
+				viewer: viewer_of(id),
+				now: 1300,
+			}).map_ok(|_| {})
+				== Err(SignedInAlready),
 	)
 expect
-	[1000, 1599].all(
-		|now|
-			GitHubSignIn.SignUpResumed.resume({ sign_up: Signed(signed_up), now }).map_ok(|_| {})
-				== Ok({}),
-	)
+	GitHubSignIn.SignUpResumed.resume({
+		sign_up: Unsigned,
+		viewer: viewer_of("2"),
+		now: 1300,
+	}).map_ok(|_| {})
+		== Err(SignUpForged)
 
 ## What `create_account` makes of `name` with these `files` in `directory`, as
 ## a test reads it: the new human's id and name, where they go, the bound id,
@@ -994,7 +1135,7 @@ expect
 	account_made({
 		name: "Zoe",
 		files: [
-			{ user: UserId.steve, file: "300".to_utf8() },
+			{ user: UserId.chat_owner, file: "300".to_utf8() },
 			{ user: id_of("2"), file: "300".to_utf8() },
 		],
 		directory: tests_directory,
@@ -1003,7 +1144,7 @@ expect
 # A damaged file, an agent's, and a file of a user no one is hold nothing.
 expect
 	[
-		{ user: UserId.steve, file: "x".to_utf8() },
+		{ user: UserId.chat_owner, file: "x".to_utf8() },
 		{ user: id_of("3"), file: "300".to_utf8() },
 		{ user: id_of("9"), file: "300".to_utf8() },
 	].all(

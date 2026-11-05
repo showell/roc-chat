@@ -160,7 +160,7 @@ expect {
 }
 expect
 	SignedIn.dangerously_assume(Sample.steve).human_in_session().map_ok(Users.Human.id)
-		== Ok(UserId.steve)
+		== Ok(UserId.chat_owner)
 
 # A key's files, exactly, and read back as the same key.
 expect

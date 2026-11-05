@@ -272,7 +272,7 @@ tests_users : Users
 tests_users = {
 	founded = Users.with_founder(Name.from_str("Steve") ?? crash "Session's tests: Steve is a name")
 	owner =
-		(founded.user(UserId.steve) ?? crash "Session's tests: Steve is id 1").as_human()
+		(founded.user(UserId.chat_owner) ?? crash "Session's tests: Steve is id 1").as_human()
 			?? crash "Session's tests: Steve is a human"
 	(
 		founded.add_agent({
@@ -329,12 +329,12 @@ claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
 
 # The value: the id, the second and the signature, each in its spelling.
 expect Session.cookie_value({
-	id: UserId.steve,
+	id: UserId.chat_owner,
 	signed_at: 1700000000,
 	mac: mac_of(0),
 }) == "MQ.1700000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 expect Session.signed_bytes({
-	id: UserId.steve,
+	id: UserId.chat_owner,
 	signed_at: 1700000000,
 	material: password_material("$2b$10$x"),
 }) == "1\n1700000000\n$2b$10$x".to_utf8()
@@ -346,7 +346,7 @@ expect
 		"",
 	].all(
 		|password_hash| Session.signed_bytes({
-			id: UserId.steve,
+			id: UserId.chat_owner,
 			signed_at: 1700000000,
 			material: password_material(password_hash),
 		})

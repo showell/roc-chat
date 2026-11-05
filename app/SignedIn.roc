@@ -93,7 +93,7 @@ tests_users = {
 	founded =
 		Users.with_founder(Name.from_str("Steve") ?? crash "SignedIn's tests: Steve is a name")
 	owner =
-		(founded.user(UserId.steve) ?? crash "SignedIn's tests: Steve is id 1").as_human()
+		(founded.user(UserId.chat_owner) ?? crash "SignedIn's tests: Steve is id 1").as_human()
 			?? crash "SignedIn's tests: Steve is a human"
 	(
 		founded.add_agent({

@@ -35,7 +35,7 @@ with_plans = (
 ## Zed is id 1 of another directory, so no human of the sample's.
 zed : Users.Human
 zed =
-	(Directory.with_founder(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1")
+	(Directory.with_founder(Sample.name("Zed")).users().user(UserId.chat_owner) ?? crash "DirectorySpec: Zed is id 1")
 		.as_human()
 		?? crash "DirectorySpec: Zed is a human"
 

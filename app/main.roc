@@ -137,7 +137,7 @@ password_verdict = |bytes|
 
 ## The demo's viewer: the founder, as the first start makes him.
 demo_viewer : SignedIn
-demo_viewer = SignedIn.dangerously_assume(first_directory.founder())
+demo_viewer = SignedIn.dangerously_assume(first_directory.chat_owner().user())
 
 ## Whether the server may start on its data folder: `Ready` when the folder
 ## holds a whole chat, or held none and now holds the first
@@ -166,7 +166,7 @@ start! = |{}|
 ## then the counter of ids, which says the chat exists, last.
 write_first_directory! : {} => Try({}, _)
 write_first_directory! = |{}| {
-	FileSystem.create_account!(first_directory.founder())?
+	FileSystem.create_account!(first_directory.chat_owner().user())?
 	for channel in first_directory.channels().to_list() {
 		FileSystem.replace_channel_members!(channel)?
 	}
@@ -181,7 +181,7 @@ write_first_directory! = |{}| {
 first_directory : Directory
 first_directory = {
 	founded = Directory.with_founder(founder_name)
-	founder = founded.founder()
+	founder = founded.chat_owner().user()
 	admin =
 		Admin.of(SignedIn.dangerously_assume(founder))
 			?? crash "main.first_directory: Steve, id 1, is an admin"
@@ -1081,7 +1081,7 @@ page_for_get = |path|
 
 # The first start: Steve, id 1, a human, the demo's viewer; `general`, its
 # one member Steve; the counter at 2.
-expect demo_viewer.user().name() == founder_name and demo_viewer.user().id() == UserId.steve
+expect demo_viewer.user().name() == founder_name and demo_viewer.user().id() == UserId.chat_owner
 expect first_directory.users().to_list().map(|user| user.role()) == [Human]
 expect first_directory.channels().to_list().map(
 	|channel| (
@@ -1104,7 +1104,7 @@ expect page_for_get("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not 
 ## The directory files of the first start, as the disk holds them.
 first_files : FileSystem.DirectoryFiles
 first_files = {
-	founder = first_directory.founder()
+	founder = first_directory.chat_owner().user()
 	{
 		counter: File(first_directory.users().counter_file()),
 		accounts: [{ id: founder.id(), files: Users.account_files(founder) }],
@@ -1176,7 +1176,7 @@ expect {
 			ShowAgents,
 			MakeAgent,
 			OpenAgentStream,
-			InviteAgent(UserId.steve),
+			InviteAgent(UserId.chat_owner),
 		].all(|choice| access_asked(choice) == AsksNoConversation)
 }
 
@@ -1324,7 +1324,7 @@ expect {
 			UploadToConversation(key),
 			ServeUploadedImage({ key, image }),
 			MakeAgent,
-			InviteAgent(UserId.steve),
+			InviteAgent(UserId.chat_owner),
 			OpenAgentStream,
 		].all(|asked| anonymous_refusal(asked) == no_one_refusal)
 		and no_one_refusal.status == 401

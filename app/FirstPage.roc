@@ -1,13 +1,13 @@
 ## This module chooses the page a human lands on as they join, by a GitHub
 ## sign-up or an invite. A channel has no page of its own for its members, so
-## a page they can read is one of its conversations, and a conversation is
-## there only once it has a message.
+## a page they can read is a conversation, and a conversation is there only
+## once it has a message.
 ##
 ## A human goes where they were heading when that is a conversation they may
-## read and it exists, as a link someone shared to it. Anywhere else, the page
-## of the first topic of the default channel (`Channels.default_name`). A
-## default channel with no conversation yet, or one they are no member of,
-## leaves `SignInRoute.default_next`, a page every human may read.
+## read and it exists, as a link someone shared to it. Anywhere else, their DM
+## with the chat's owner (`Welcome`), which is written before their account. A
+## human whose account is older than their welcome has no such DM, and lands on
+## `SignInRoute.default_next`, a page every human may read.
 import Access
 import ChannelName
 import Channels
@@ -20,6 +20,7 @@ import Place
 import SignInRoute
 import UnvalidatedString
 import Users
+import Welcome
 
 FirstPage :: [].{
 
@@ -41,11 +42,11 @@ FirstPage :: [].{
 			human,
 			path: wanted,
 		}) {
-			NotReadable => load_default_page!({ directory, human })
+			NotReadable => load_welcome_page!({ directory, human })
 			Readable(key) =>
 				match load_conversation_state!(key)? {
 					Begun => Ok(wanted)
-					NotBegun => load_default_page!({ directory, human })
+					NotBegun => load_welcome_page!({ directory, human })
 				}
 		}
 }
@@ -78,19 +79,6 @@ readable_conversation = |
 	}
 }
 
-## The default channel's place, when `human` is one of its members.
-default_place : { directory : Directory, human : Users.Human } -> [Member(Place), NotAMember]
-default_place = |{ directory, human }|
-	match directory.place(Channel(Channels.default_name)) {
-		Ok(place) if is_member({
-			directory,
-			human,
-			place,
-		}) =>
-			Member(place)
-		_ => NotAMember
-	}
-
 ## Whether `human` may read and post at `place`.
 is_member : {
 	directory : Directory,
@@ -105,28 +93,19 @@ is_member = |
 	},
 | Access.members({ place, directory }).contains(human.id())
 
-## The page of the default channel's first conversation, in its topics' order,
-## or `SignInRoute.default_next`.
-load_default_page! : { directory : Directory, human : Users.Human } => Try(
+## The page of `human`'s DM with the chat's owner, or `SignInRoute.default_next`
+## when it has not begun.
+load_welcome_page! : { directory : Directory, human : Users.Human } => Try(
 	Html.SitePath,
 	[FileSystem(FileSystem.Fault)],
 )
-load_default_page! = |request|
-	match default_place(request) {
-		NotAMember => Ok(SignInRoute.default_next)
-		Member(place) => {
-			topics =
-				FileSystem.list_channel_topics!(Channels.default_name) ? |fault| FileSystem(fault)
-			for topic in topics {
-				key = ConversationKey.of({ place, topic })
-				match load_conversation_state!(key)? {
-					Begun => return Ok(page_of(key))
-					NotBegun => {}
-				}
-			}
-			Ok(SignInRoute.default_next)
-		}
+load_welcome_page! = |request| {
+	key = Welcome.conversation_key(request)
+	match load_conversation_state!(key)? {
+		Begun => Ok(page_of(key))
+		NotBegun => Ok(SignInRoute.default_next)
 	}
+}
 
 ## Whether the conversation `key` has begun, by its transcript.
 load_conversation_state! : ConversationKey => Try([Begun, NotBegun], [FileSystem(FileSystem.Fault)])
@@ -205,16 +184,11 @@ expect
 		"/chat/channel/general/hello/raw",
 		"/chat/channel/general/hello/stream",
 	].all(|path| reading("Steve", path) == Err(NotReadable))
-# The default channel, for its member, for anyone else, and when it is gone.
-expect
-	match default_place({ directory: tests_directory, human: human_named("Steve") }) {
-		Member(place) => place.which() == Channel(Channels.default_name)
-		NotAMember => Bool.False
-	}
-expect default_place({ directory: tests_directory, human: human_named("Bob") }) == NotAMember
+# The page a new human's welcome starts is a page they may read, as a
+# conversation of theirs, and the owner may too.
 expect {
-	bare =
-		Directory.from_files({ users: tests_directory.users(), channels: Channels.empty })
-			?? crash "FirstPage's tests: a directory of no channels"
-	default_place({ directory: bare, human: human_named("Steve") }) == NotAMember
+	page = page_of(Welcome.conversation_key({ directory: tests_directory, human: human_named("Zoe") }))
+	reading("Zoe", page.to_str()) == Ok("/chat/dm/1_2/ChitChat")
+		and reading("Steve", page.to_str()) == Ok("/chat/dm/1_2/ChitChat")
+		and reading("Bob", page.to_str()) == Err(NotReadable)
 }
