@@ -383,7 +383,8 @@ expect round_trip({ ..good_return, now: 1599 }) == Ok(("Steve", "/agents"))
 expect round_trip({ ..good_return, now: 1600 }) == Err(StateExpired)
 # What the host heard of GitHub, each way it can go wrong.
 expect
-	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Denied } }) == Err(CodeRefused)
+	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Denied } })
+		== Err(CodeRefused)
 expect
 	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Failed } })
 		== Err(GitHubUnreachable)
