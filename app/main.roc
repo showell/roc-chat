@@ -20,8 +20,9 @@
 ##   The directory is read from disk (`load_directory!`), who is acting is
 ##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
-##   `ConversationRoute`, `UploadRoute`, `AgentsRoute`, `ChannelMembersRoute`,
-##   `HumanInvitesRoute`, `SignInRoute` or `GitHubRoute` gives the answer.
+##   `ConversationRoute`, `UploadRoute`, `BrowseRoute`, `AgentsRoute`,
+##   `ChannelMembersRoute`, `HumanInvitesRoute`, `SignInRoute` or
+##   `GitHubRoute` gives the answer.
 ## - `password_verdict` (`gopher-roc hash-password`, host/main.zig): a line
 ##   in, and whether it is a password the sign-in form takes, so the
 ##   command hashes none that could never sign in.
@@ -55,6 +56,7 @@ import pf.Http
 import Access
 import Admin
 import AgentsRoute
+import BrowseRoute
 import ChannelMembersRoute
 import ChannelName
 import Channels
@@ -69,6 +71,7 @@ import Html
 import HttpAnswer
 import Name
 import Page
+import Place
 import RequestHeader
 import RequestOrigin
 import Route
@@ -374,6 +377,8 @@ upload_asked : Route.Choice -> [UploadTo(ConversationKey), NoUpload]
 upload_asked = |choice|
 	match choice {
 		SignedInOnly(UploadToConversation(key)) => UploadTo(key)
+		SignedInOnly(ShowBrowse) => NoUpload
+		SignedInOnly(StartTopic(_)) => NoUpload
 		SignedInOnly(ShowConversation(_)) => NoUpload
 		SignedInOnly(AppendToConversation(_)) => NoUpload
 		SignedInOnly(SendToConversation(_)) => NoUpload
@@ -564,21 +569,23 @@ for_this_origin_alone = |answer| {
 	}),
 }
 
-## What a route asks of `Access` before it is answered: to read or post in
-## a conversation, or nothing.
+## What a route asks of `Access` before it is answered: to read or post at
+## a place, or nothing.
 access_asked : Route.SignedInChoice -> [
-	Asks({ key : ConversationKey, act : Access.Act }),
+	Asks({ place : Place, act : Access.Act }),
 	AsksNoConversation,
 ]
 access_asked = |asked|
 	match asked {
-		ShowConversation(key) => Asks({ key, act: Read })
-		OpenConversationStream(key) => Asks({ key, act: Read })
-		ServeRawTranscript(key) => Asks({ key, act: Read })
-		ServeUploadedImage(found) => Asks({ key: found.key, act: Read })
-		AppendToConversation(key) => Asks({ key, act: Post })
-		SendToConversation(key) => Asks({ key, act: Post })
-		UploadToConversation(key) => Asks({ key, act: Post })
+		ShowConversation(key) => Asks({ place: key.place(), act: Read })
+		OpenConversationStream(key) => Asks({ place: key.place(), act: Read })
+		ServeRawTranscript(key) => Asks({ place: key.place(), act: Read })
+		ServeUploadedImage(found) => Asks({ place: found.key.place(), act: Read })
+		AppendToConversation(key) => Asks({ place: key.place(), act: Post })
+		SendToConversation(key) => Asks({ place: key.place(), act: Post })
+		UploadToConversation(key) => Asks({ place: key.place(), act: Post })
+		StartTopic(place) => Asks({ place, act: Post })
+		ShowBrowse => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
 		InviteAgent(_) => AsksNoConversation
@@ -613,6 +620,8 @@ access_refusal = |why| {
 anonymous_refusal : Route.SignedInChoice -> Http.Response
 anonymous_refusal = |asked|
 	match asked {
+		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
+		StartTopic(_) => no_one_refusal
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
 		ShowChannels => SignInRoute.login_redirect(site_path_of("/channels"))
@@ -800,10 +809,10 @@ serve_signed_in_route! = |
 	admitted =
 		match access_asked(asked) {
 			AsksNoConversation => Ok({})
-			Asks({ key, act }) =>
+			Asks({ place, act }) =>
 				Access.check({
 					acting,
-					place: key.place(),
+					place,
 					directory,
 					act,
 				})
@@ -835,6 +844,14 @@ answer_route! = |
 	},
 |
 	match asked {
+		ShowBrowse => BrowseRoute.show!({ acting, directory })
+		StartTopic(place) =>
+			BrowseRoute.start_topic!({
+				acting,
+				directory,
+				place,
+				body: request.body,
+			})
 		ShowConversation(key) =>
 			ConversationRoute.show!({
 				key,
@@ -1166,13 +1183,15 @@ expect {
 		OpenConversationStream(key),
 		ServeRawTranscript(key),
 		ServeUploadedImage({ key, image }),
-	].all(|choice| access_asked(choice) == Asks({ key, act: Read }))
+	].all(|choice| access_asked(choice) == Asks({ place: key.place(), act: Read }))
 		and [
 			AppendToConversation(key),
 			SendToConversation(key),
 			UploadToConversation(key),
-		].all(|choice| access_asked(choice) == Asks({ key, act: Post }))
+			StartTopic(key.place()),
+		].all(|choice| access_asked(choice) == Asks({ place: key.place(), act: Post }))
 		and [
+			ShowBrowse,
 			ShowAgents,
 			MakeAgent,
 			OpenAgentStream,
@@ -1302,7 +1321,15 @@ expect {
 		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
 	shown = anonymous_refusal(ShowConversation(key))
 	agents = anonymous_refusal(ShowAgents)
-	shown.status == 303
+	browse = anonymous_refusal(ShowBrowse)
+	browse.status == 303
+		and browse.headers == [
+			{
+				name: "location".to_utf8(),
+				value: "/login?next=/chat".to_utf8(),
+			},
+		]
+		and shown.status == 303
 		and shown.headers == [
 			{
 				name: "location".to_utf8(),
@@ -1317,6 +1344,7 @@ expect {
 			},
 		]
 		and [
+			StartTopic(key.place()),
 			AppendToConversation(key),
 			SendToConversation(key),
 			OpenConversationStream(key),

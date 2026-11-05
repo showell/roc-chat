@@ -1,6 +1,7 @@
 ## These are the tests of `Route`: the route each method and path choose,
 ## in the sample directory with one channel added.
 import ChannelName
+import ConversationKey
 import Directory
 import Route
 import Sample
@@ -32,6 +33,8 @@ chosen_route = |method, path|
 		path,
 		directory: with_room,
 	}) {
+		SignedInOnly(ShowBrowse) => "browse"
+		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
 		SignedInOnly(AppendToConversation(key)) => "append ${key.url_path(Page)}"
 		SignedInOnly(SendToConversation(key)) => "send ${key.url_path(Page)}"
@@ -96,6 +99,33 @@ chosen_route = |method, path|
 		MethodNotAllowed(PostOnly) => "not allowed: POST"
 	}
 
+# Browse: GET alone, and exactly its path.
+expect chosen_route("GET", "/chat".to_utf8()) == "browse"
+expect chosen_route("POST", "/chat".to_utf8()) == "not allowed: GET"
+expect chosen_route("PUT", "/chat".to_utf8()) == "not allowed: GET"
+expect
+	[
+		"/chat/",
+		"/Chat",
+		"/chats",
+		"/chat/dm",
+		"/chat/channel",
+	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
+# A new topic: POST alone, to a place that exists.
+expect chosen_route("POST", "/chat/dm/1_2".to_utf8()) == "start a topic in /chat/dm/1_2"
+expect chosen_route("POST", "/chat/channel/plans-room".to_utf8()) == "start a topic in /chat/channel/plans-room"
+expect chosen_route("GET", "/chat/dm/1_2".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/chat/channel/plans-room".to_utf8()) == "not allowed: POST"
+expect
+	[
+		"/chat/dm/1_3",
+		"/chat/dm/2_1",
+		"/chat/dm/x",
+		"/chat/channel/no-such-room",
+		"/chat/channel/1_2",
+		"/chat/other/plans-room",
+		"/chat/dm/1_2/",
+	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
 # A conversation's page: GET and POST, under a place that exists.
 expect chosen_route("GET", "/chat/dm/1_2/plans".to_utf8()) == "show /chat/dm/1_2/plans"
 expect chosen_route("POST", "/chat/dm/1_2/plans".to_utf8()) == "append /chat/dm/1_2/plans"

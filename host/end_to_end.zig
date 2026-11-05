@@ -44,8 +44,10 @@
 //!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
 //!      same-origin, a navigation's other headers): a 303 to the page, and
 //!      exactly one record more on disk, its newline LF;
-//!   5. GET a DM's conversation with no transcript, and its stream: the
-//!      404 page each, since only a message's POST starts a conversation;
+//!   5. GET a DM's conversation with no transcript: its page, saying it has no
+//!      messages, with a compose box; its stream: a 200 event stream; its
+//!      `/raw`: 404; nothing on disk, since only a message's POST starts a
+//!      conversation;
 //!   6. POST to it as a browser's own page would (its `Origin` and
 //!      `Sec-Fetch-Site`): its transcript made, holding exactly the one
 //!      record;
@@ -259,7 +261,9 @@
 //! 48zn. with general's members file gone: a sign-up and an invite, a 500
 //!      each, nothing made;
 //! 48zo. with one id left, a new human takes 65535, whose session reads their
-//!      page; the next is refused as the chat being full, nothing made.
+//!      page; the next is refused as the chat being full, nothing made;
+//! 48zv. the sign-in page of someone signed in: no form and no GitHub;
+//! 48zw. a key at Browse, and starting a topic: 403 each.
 //!
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
@@ -270,7 +274,16 @@
 //!  50. no link to GitHub on the sign-in page or /agents; each GitHub route a
 //!      404 by any method, from no one and from Steve;
 //!  51. an invited human joins: #general holds them, and with no conversation
-//!      to land on they land on /agents, a 200.
+//!      to land on they land on /agents, a 200;
+//!  52. Browse for a stranger: the sign-in page, and back after; a new topic: 401;
+//!  53. Browse lists a human's DMs and channels, and no other's;
+//!  54. every signed-in page has the Browse link, and none a sign-up, join or
+//!      sign-in link or form;
+//!  55. a topic where the human can't post, its page and its stream: 403 each;
+//!      no such human: 404; a GET: 405; a cross-site post: 403;
+//!  56. a name that is no topic: Browse again, a 400, nothing made;
+//!  57. the acceptance path: Browse, a person, a topic, an empty chat, compose,
+//!      Send, and see it, live and on the page, and on Browse for its humans.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, the
 //! session's cookie, no `Origin`, no `Sec-Fetch-Site`.
@@ -310,6 +323,9 @@ const RunResult = @typeInfo(@TypeOf(http.Server.run)).@"fn".return_type.?;
 
 /// Steve's password, which the run writes the hash of.
 const steve_password = "correct horse battery staple";
+
+/// The link to Browse, which every signed-in page has.
+const browse_link = "<a href=\"/chat\">Browse</a>";
 
 /// The session cookie's header line that signs Steve in, once he has
 /// signed in (step 0c): every request of his carries it.
@@ -414,11 +430,15 @@ pub fn main(init: std.process.Init) !void {
         recordFits(a, box_disk, on_disk, "gopher-roc_7", "Sent from the compose box\na second line · & more", before_box, after_box));
 
     // 5.
-    const missing = try get(a, io, port, dm_url);
-    const missing_stream = try get(a, io, port, dm_url ++ "/stream?after=0");
-    try t.check("GET a DM's conversation with no transcript, and its stream: 404 each, saying so", missing.status == 404 and
-        has(missing.body, "No such conversation: " ++ dm_url) and missing_stream.status == 404 and
-        has(missing_stream.body, "No such conversation: " ++ dm_url));
+    const empty = try get(a, io, port, dm_url);
+    var empty_stream = try Stream.open(a, io, port, dm_url ++ "/stream?after=0");
+    const empty_streams = empty_stream.isEventStream();
+    empty_stream.close();
+    const empty_raw = try get(a, io, port, dm_url ++ "/raw");
+    try t.check("GET a DM's conversation with no transcript: its page, no messages, a compose box; its stream: 200; its /raw: 404; nothing on disk", empty.status == 200 and
+        has(empty.body, "No messages yet.") and has(empty.body, "<form method=\"post\" action=\"" ++ dm_url ++ "\"") and
+        empty_streams and empty_raw.status == 404 and has(empty_raw.body, "No such conversation: " ++ dm_url) and
+        !(try exists(io, data, "chat/dm/1_1")));
 
     // 6.
     const before_dm = files.current_utc_seconds_since_epoch(io);
@@ -670,6 +690,19 @@ pub fn main(init: std.process.Init) !void {
     try linkSteps(a, io, port, data, t, .{ .fake = fake, .cc_bearer = cc_bearer });
     try firstPageSteps(a, io, port, data, t, fake);
 
+    // 48zv.
+    const own_login = try get(a, io, port, "/login");
+    try t.check("the sign-in page of someone signed in, on a server with GitHub: who they are, the Browse link and signing out; no form and no GitHub", own_login.status == 200 and
+        has(own_login.body, "You are signed in as Steve.") and has(own_login.body, browse_link) and has(own_login.body, "action=\"/logout\"") and
+        !has(own_login.body, "action=\"/login\"") and !has(own_login.body, "/login/github"));
+
+    // 48zw.
+    const back_in = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "" });
+    const key_browse = try getAs(a, io, port, cc_bearer, "/chat");
+    const key_topic = try postAs(a, io, port, cc_bearer, "/chat/channel/crew", "topic=plans");
+    try t.check("a key at Browse, and starting a topic in its own channel: 403 each", back_in.status == 303 and key_browse.status == 403 and key_topic.status == 403 and
+        has(key_browse.body, "by their own session") and has(key_topic.body, "by their own session"));
+
     // 49.
     const signed_out = try post(a, io, port, .{ .path = "/logout", .form = "" });
     try t.check("sign out: a 303 to the sign-in page, the cookie cleared, never stored", signed_out.status == 303 and
@@ -732,6 +765,85 @@ fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps,
         std.mem.eql(u8, joined.header("location") orelse "", "/chat/dm/1_2/ChitChat") and first_page.status == 200 and
         has(first_page.body, "If Steve is not here") and
         std.mem.eql(u8, try readFile(a, io, data, "chat/channel/general.channel"), "1\n2\n"));
+
+    steve_session = steve;
+    try browseSteps(a, io, port, data, t, try cookieLine(a, joined));
+}
+
+/// Steps 52 to 57, as Steve (1), Tam (2) and Uma (3), who are all in #general;
+/// Steve alone is in #crew.
+fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, tam: []const u8) !void {
+    // 52.
+    const stranger = try anonymousGet(a, io, port, "/chat");
+    const sign_in = try anonymousGet(a, io, port, stranger.header("location") orelse "");
+    const stranger_topic = try anonymousPost(a, io, port, "/chat/dm/1_2", "topic=plans");
+    try t.check("Browse for a stranger: a 303 to the sign-in page, which comes back to it and shows no link to it; a new topic: 401", stranger.status == 303 and
+        std.mem.eql(u8, stranger.header("location") orelse "", "/login?next=/chat") and sign_in.status == 200 and
+        has(sign_in.body, "name=\"next\" value=\"/chat\"") and !has(sign_in.body, browse_link) and stranger_topic.status == 401);
+
+    // 53.
+    const created = try postAs(a, io, port, steve_session, "/channels", "name=crew");
+    const joined_crew = try postAs(a, io, port, steve_session, "/channels/crew/members/1/add", "");
+    const uma = try joinedHuman(a, io, port, steve_session, "Uma");
+    const steves = try getAs(a, io, port, steve_session, "/chat");
+    const tams = try getAs(a, io, port, tam, "/chat");
+    try t.check("Steve's Browse: every human, himself too, each DM's topics, and both his channels, each with its form", created.status == 303 and joined_crew.status == 303 and steves.status == 200 and
+        has(steves.body, "<h1>Steve</h1>") and has(steves.body, "<h1>Tam</h1>") and has(steves.body, "<h1>Uma</h1>") and has(steves.body, "<h1>#general</h1>") and has(steves.body, "<h1>#crew</h1>") and
+        has(steves.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(steves.body, "href=\"/chat/dm/1_3/ChitChat\"") and
+        has(steves.body, "action=\"/chat/dm/1_1\"") and has(steves.body, "action=\"/chat/channel/crew\"") and has(steves.body, "action=\"/chat/channel/general\""));
+    try t.check("Tam's Browse: her DMs and #general; not #crew, which she is not in, and not Steve's DM with Uma", tams.status == 200 and
+        has(tams.body, "<h1>#general</h1>") and has(tams.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(tams.body, "action=\"/chat/dm/2_3\"") and has(tams.body, "action=\"/chat/dm/2_2\"") and
+        !has(tams.body, "crew") and !has(tams.body, "/chat/dm/1_3"));
+
+    // 54.
+    var every_page_links = true;
+    var no_page_signs_up = true;
+    for ([_][]const u8{ "/chat", "/agents", "/invites", "/login", "/channels", "/channels/crew", "/chat/dm/1_2/ChitChat", "/chat/channel/general/empty-topic" }) |path| {
+        const page = try getAs(a, io, port, steve_session, path);
+        every_page_links = every_page_links and page.status == 200 and has(page.body, browse_link);
+        no_page_signs_up = no_page_signs_up and !has(page.body, "href=\"/join") and !has(page.body, "action=\"/join") and !has(page.body, "action=\"/login");
+    }
+    try t.check("every signed-in page has the Browse link", every_page_links);
+    try t.check("no signed-in page has a sign-up, join or sign-in link or form", no_page_signs_up);
+
+    // 55.
+    const not_her_channel = try postAs(a, io, port, tam, "/chat/channel/crew", "topic=plans");
+    const not_her_dm = try postAs(a, io, port, tam, "/chat/dm/1_3", "topic=plans");
+    const not_her_page = try getAs(a, io, port, tam, "/chat/channel/crew/plans");
+    const not_her_stream = try getAs(a, io, port, tam, "/chat/dm/1_3/plans/stream?after=0");
+    const no_such_human = try postAs(a, io, port, tam, "/chat/dm/2_9", "topic=plans");
+    const by_get = try getAs(a, io, port, tam, "/chat/dm/2_3");
+    const cross_site = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{tam}), "/chat/dm/2_3", "topic=plans");
+    try t.check("a topic in a channel or DM she isn't in, and the page and stream of one: 403 each; no such human: 404; a GET: 405; a cross-site post: 403", not_her_channel.status == 403 and
+        not_her_dm.status == 403 and not_her_page.status == 403 and not_her_stream.status == 403 and no_such_human.status == 404 and
+        by_get.status == 405 and std.mem.eql(u8, by_get.header("allow") orelse "", "POST") and cross_site.status == 403);
+
+    // 56.
+    const bad_name = try postAs(a, io, port, tam, "/chat/dm/2_3", "topic=two+words");
+    const no_name = try postAs(a, io, port, tam, "/chat/dm/2_3", "");
+    try t.check("a name that is no topic, and no name: Browse again, a 400 each, saying why, nothing made", bad_name.status == 400 and no_name.status == 400 and
+        has(bad_name.body, "A topic&#39;s name starts with a letter") and has(bad_name.body, "<h1>#general</h1>") and has(no_name.body, "no field") and
+        !(try exists(io, data, "chat/dm/2_3")));
+
+    // 57.
+    const url = "/chat/dm/1_2/plans";
+    const steves_again = try getAs(a, io, port, steve_session, "/chat");
+    const started = try postAs(a, io, port, steve_session, "/chat/dm/1_2", "topic=plans");
+    const empty = try getAs(a, io, port, steve_session, started.header("location") orelse "");
+    try t.check("the acceptance path: from Browse, Tam's form, a topic: a 303 to its page, empty, ready to write in, nothing on disk", has(steves_again.body, "action=\"/chat/dm/1_2\"") and started.status == 303 and
+        std.mem.eql(u8, started.header("location") orelse "", url) and empty.status == 200 and has(empty.body, "No messages yet.") and
+        has(empty.body, "data-send=\"" ++ url ++ "/send\"") and !(try exists(io, data, "chat/dm/1_2/plans")));
+    var stream = try Stream.open(a, io, port, url ++ "/stream?after=0");
+    defer stream.close();
+    const sent = try postAs(a, io, port, steve_session, url ++ "/send", "markdown=The+first+word");
+    const page = try getAs(a, io, port, steve_session, url);
+    try t.check("compose and send: 201; the open page's stream brings it; the page shows it, and no longer says it is empty", sent.status == 201 and stream.isEventStream() and
+        std.mem.eql(u8, try stream.event(), try frameOf(a, page.body, "1")) and has(page.body, "The first word") and !has(page.body, "No messages yet."));
+    const steves_now = try getAs(a, io, port, steve_session, "/chat");
+    const tams_now = try getAs(a, io, port, tam, "/chat");
+    const umas_now = try getAs(a, io, port, uma, "/chat");
+    try t.check("the topic on Browse: linked for both its humans, and not for Uma", has(steves_now.body, "href=\"" ++ url ++ "\"") and
+        has(tams_now.body, "href=\"" ++ url ++ "\"") and !has(umas_now.body, url));
 }
 
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and

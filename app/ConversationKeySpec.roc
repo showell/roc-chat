@@ -58,6 +58,32 @@ parts_at = |path| {
 	Ok(Str.join_with(found.key.parts(), " "))
 }
 
+## The URL path of the place `path` names in `with_room`.
+place_read_back : Str -> Try(Str, _)
+place_read_back = |path| {
+	unvalidated_path =
+		UnvalidatedString.from_utf8(path.to_utf8())
+			?? crash "ConversationKeySpec: a test's path is UTF-8"
+	place = ConversationKey.place_from_url_path({ path: unvalidated_path, directory: with_room })?
+	Ok(ConversationKey.place_url_path(place))
+}
+
+# A place's path read back to the same path; each refusal, as a conversation's.
+expect place_read_back("/chat/channel/plans-room") == Ok("/chat/channel/plans-room")
+expect place_read_back("/chat/dm/1_2") == Ok("/chat/dm/1_2")
+expect place_read_back("/chat/dm/1_1") == Ok("/chat/dm/1_1")
+expect place_read_back("/chat/channel/nowhere") == Err(NoSuchChannel)
+expect place_read_back("/chat/dm/1_3") == Err(NoSuchHuman)
+expect place_read_back("/chat/dm/2_1") == Err(BadName)
+expect place_read_back("/chat/channel/1_2") == Err(BadName)
+expect
+	[
+		"/chat",
+		"/chat/dm",
+		"/chat/other/plans-room",
+		"/chat/dm/1_2/plans",
+		"/other/dm/1_2",
+	].all(|path| place_read_back(path) == Err(NotAConversationPath))
 # A channel's and a DM's conversation: its page's path read back to the
 # same path, and its parts, which its folder spells too.
 expect read_back("/chat/channel/plans-room/plans") == Ok("page /chat/channel/plans-room/plans")

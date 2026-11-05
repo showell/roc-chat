@@ -10,6 +10,10 @@
 ##     /chat/channel/<channel>/<topic>     chat/channel/<channel>/<topic>/
 ##     /chat/dm/<pair>/<topic>             chat/dm/<pair>/<topic>/
 ##
+## A place's own URL and folder are those without the topic (`place_parts`):
+## its folder holds its conversations' folders, and a new topic's form posts
+## to its URL. `browse_path` is the page that lists the places.
+##
 ## A channel's folder holds its conversations' folders
 ## (`channel_folder_parts`), and its members file sits beside it
 ## (`Channels`).
@@ -64,20 +68,33 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	channels_folder_parts : List(Str)
 	channels_folder_parts = ["chat", "channel"]
 
-	## The parts its URL and its folder both spell: `chat`, the kind of
-	## place, the place's name, and the topic.
-	parts : ConversationKey -> List(Str)
-	parts = |ConversationKey.(key)|
-		match key.place.which() {
-			Channel(name) => ConversationKey.channel_folder_parts(name).append(key.topic.to_str())
+	## The parts a place's URL and its folder both spell: `chat`, the kind of
+	## place, and the place's name.
+	place_parts : Place -> List(Str)
+	place_parts = |found|
+		match found.which() {
+			Channel(name) => ConversationKey.channel_folder_parts(name)
 			Dm(pair) =>
 				[
 					"chat",
 					"dm",
 					pair.to_str(),
-					key.topic.to_str(),
 				]
 		}
+
+	## The parts its URL and its folder both spell: its place's, then the
+	## topic.
+	parts : ConversationKey -> List(Str)
+	parts = |ConversationKey.(key)|
+		ConversationKey.place_parts(key.place).append(key.topic.to_str())
+
+	## The URL path of a place.
+	place_url_path : Place -> Str
+	place_url_path = |found| "/${Str.join_with(ConversationKey.place_parts(found), "/")}"
+
+	## The URL path of Browse.
+	browse_path : Str
+	browse_path = "/chat"
 
 	## The URL path of the conversation's `resource`: `/`, its parts, then
 	## the resource's own.
@@ -120,6 +137,32 @@ ConversationKey :: { place : Place, topic : Topic }.{
 			_ => Err(NotAConversationPath)
 		}
 	}
+
+	## The place a URL's path names, found in `directory`; or why not, as
+	## `from_url_path` says it.
+	place_from_url_path : { path : UnvalidatedString, directory : Directory } -> Try(
+		Place,
+		[
+			NotAConversationPath,
+			BadName,
+			NoSuchChannel,
+			NoSuchHuman,
+		],
+	)
+	place_from_url_path = |{ path, directory }|
+		match path.url_path_parts() {
+			Ok(
+				[
+					chat,
+					kind,
+					name,
+				],
+			) if chat.is_exactly("chat") => {
+				named_place = place_named({ kind, name })?
+				directory.place(named_place)
+			}
+			_ => Err(NotAConversationPath)
+		}
 
 	is_eq : _
 	to_hash : _

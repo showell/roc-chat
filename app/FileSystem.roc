@@ -48,6 +48,7 @@ import Directory
 import GitHubId
 import HumanInvite
 import Name
+import Place
 import Topic
 import Transcript
 import UploadTotal
@@ -574,12 +575,12 @@ FileSystem :: [].{
 		replace_fact!(channel_members_path(channel.name()), channel.members_file())
 	}
 
-	## The topics of the channel `name`'s conversations, by its folders; a
-	## folder whose name is no topic is left out. A channel with no
+	## The topics of `place`'s conversations, by its folders, in byte order;
+	## a folder whose name is no topic is left out. A place with no
 	## conversation yet has none.
-	list_channel_topics! : ChannelName => Try(List(Topic), [NotUtf8, PathRefused, Failed])
-	list_channel_topics! = |name| {
-		names = list_names_in!(channel_folder_path(name))?
+	list_place_topics! : Place => Try(List(Topic), [NotUtf8, PathRefused, Failed])
+	list_place_topics! = |place| {
+		names = list_names_in!(Str.join_with(ConversationKey.place_parts(place), "/"))?
 		Ok(names.keep_oks(Topic.from_str))
 	}
 

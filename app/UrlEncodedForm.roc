@@ -54,6 +54,11 @@ UrlEncodedForm :: [].{
 		}
 	}
 
+	## The name of the field that holds a new topic's name. Browse's form
+	## takes this name (`Page.topic_form`).
+	topic_name : Str
+	topic_name = "topic"
+
 	## Why the field `name` could not be read (`field`'s refusals), in words
 	## for a 400.
 	fault_words : { fault : [MissingField, RepeatedField, BadEscape, NotUtf8], name : Str } -> Str

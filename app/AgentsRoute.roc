@@ -469,7 +469,7 @@ Users.User => List(
 load_readable_conversations! = |directory, agent| {
 	var $read = []
 	for channel in directory.channels().to_list().keep_if(|held| held.has_member(agent)) {
-		topics = FileSystem.list_channel_topics!(channel.name()) ?? []
+		topics = FileSystem.list_place_topics!(Place.channel(channel)) ?? []
 		for topic in topics {
 			key = ConversationKey.of({ place: Place.channel(channel), topic })
 			match FileSystem.read_transcript!(key) {

@@ -14,8 +14,8 @@
 ##   only a name holds a space; a flag (`MethodPost`, `Required`) holds no
 ##   value.
 ##
-## An `<input>` has no end tag and holds nothing (`input`). Its value, the
-## one an input field may carry, is a site path, a form's hidden `next`.
+## An `<input>` has no end tag and holds nothing (`input`). Its value is a
+## site path (a form's hidden `next`), a token (a suggested topic) or a name.
 ##
 ## No link leaves the site. `Href` always writes `#` and a token, a
 ## fragment of this page, and a token can't spell a scheme or a path. A
@@ -124,6 +124,7 @@ Html :: [].{
 		Required,
 		InputType([Hidden, Password, Text]),
 		Value(Html.SitePath),
+		TokenValue(Html.Token),
 		NameValue(UserName),
 		Autocomplete([Username, CurrentPassword, NewPassword]),
 		Src(Html.SitePath),
@@ -210,6 +211,7 @@ attribute = |attr|
 		InputType(Password) => " type=\"password\""
 		InputType(Text) => " type=\"text\""
 		Value(path) => " value=\"${path.to_str()}\""
+		TokenValue(chosen) => " value=\"${chosen.to_str()}\""
 		NameValue(name) => " value=\"${name.to_str()}\""
 		Autocomplete(Username) => " autocomplete=\"username\""
 		Autocomplete(CurrentPassword) => " autocomplete=\"current-password\""
@@ -353,6 +355,7 @@ expect {
 		(InputType(Password), " type=\"password\""),
 		(InputType(Text), " type=\"text\""),
 		(Value(path), " value=\"/agents\""),
+		(TokenValue(token("general")), " value=\"general\""),
 		(NameValue(name), " value=\"Zoë Ann\""),
 		(Autocomplete(Username), " autocomplete=\"username\""),
 		(Autocomplete(CurrentPassword), " autocomplete=\"current-password\""),

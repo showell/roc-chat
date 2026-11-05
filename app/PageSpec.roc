@@ -4,6 +4,7 @@ import ConversationKey
 import Html
 import Name
 import Page
+import PeoplePages
 import Sample
 import SignedIn
 import UnvalidatedString
@@ -57,7 +58,7 @@ plans_page = |
 		messages,
 	},
 |
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> <div class=\"top-user\"><span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str
@@ -141,12 +142,13 @@ login_for = |viewer, problem|
 	)
 
 # The sign-in page: for no one, the form alone; with a problem, it first;
-# for someone signed in, who and the button that signs them out.
+# for someone signed in, under the top bar, who and the button that signs
+# them out, and no form.
 expect login_for(Anonymous, NoProblem) == login_page("")
 expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;match&gt;.</p>\n")
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
-		== login_page("<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n")
+		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n"
 # With GitHub's settings, a link below the form, going on to `next`.
 expect
 	Str.from_utf8_lossy(
@@ -177,6 +179,36 @@ expect {
 expect
 	Page.github_sign_up({ name: NoName, problem: Problem("The <name> is taken.") }).to_utf8()
 		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<button>Join</button></form>\n".to_utf8()
+# Every page of someone signed in has the link to Browse, and no page of no
+# one's does.
+expect {
+	steve = SignedIn.dangerously_assume(Sample.user("Steve"))
+	link = "<a href=\"/chat\">Browse</a>"
+	[
+		Page.agents({
+			viewer: steve,
+			agents: [],
+			shown: NoCode,
+			github_link: LinkOffered,
+		}),
+		PeoplePages.channels({ viewer: steve, channels: [] }),
+		PeoplePages.invites({
+			viewer: steve,
+			invited: [],
+			shown: NoLink,
+		}),
+	].all(
+		|page| {
+			text = Str.from_utf8_lossy(page.to_utf8())
+			text.contains(link) and !text.contains("/join") and !text.contains("Sign in")
+		},
+	)
+		and [
+			Page.join,
+			Page.notice({ title: "t", text: "x" }),
+			Page.github_sign_up({ name: NoName, problem: NoProblem }),
+		].all(|page| !Str.from_utf8_lossy(page.to_utf8()).contains(link))
+}
 # A refusal's words are text on its page.
 expect
 	Page.refusal("it <is> not UTF-8").to_utf8()

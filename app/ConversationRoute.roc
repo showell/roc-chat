@@ -12,9 +12,10 @@
 ## plain words, so the page stays put. A GET of the conversation's stream
 ## answers with the stream.
 ##
-## Only a message's POST starts a conversation. A GET of the page or of the
-## stream of a conversation with no transcript is a 404, as in the Zig
-## chat. Every route words its refusals through `refusal_notice`.
+## Only a message's POST starts a conversation. A conversation with no
+## transcript has a page and a stream, both empty, so a reader can write its
+## first message there, and its `/raw` is a 404. Every route words its
+## refusals through `refusal_notice`.
 import pf.Http
 import AgentStream
 import Author
@@ -40,7 +41,8 @@ import Users
 ConversationRoute :: [].{
 
 	## A GET of the conversation `key`: its page for `acting`, each
-	## message's author found among `users`.
+	## message's author found among `users`. A conversation with no
+	## transcript shows no messages.
 	show! : {
 		key : ConversationKey,
 		acting : SignedIn,
@@ -53,8 +55,8 @@ ConversationRoute :: [].{
 			users,
 		},
 	|
-		match load_existing_conversation!(key) {
-			Ok(conversation) =>
+		match load_conversation!(key) {
+			Ok({ conversation, file: _ }) =>
 				HttpAnswer.page(
 					200,
 					Page.conversation({
@@ -101,8 +103,8 @@ ConversationRoute :: [].{
 		match ConversationStream.request_seen_count({ query, headers }) {
 			Err(why) => refusal_page(why)
 			Ok(seen_count) =>
-				match load_existing_conversation!(key) {
-					Ok(conversation) =>
+				match load_conversation!(key) {
+					Ok({ conversation, file: _ }) =>
 						ConversationStream.response({
 							key,
 							acting,
@@ -170,25 +172,6 @@ load_conversation! = |key| {
 			NoFile => Conversation.empty(key.topic())
 		}
 	Ok({ conversation, file })
-}
-
-## The conversation `key` names, for a reader: a conversation with no
-## transcript is `NoSuchConversation`, since only a message's POST starts
-## one.
-load_existing_conversation! : ConversationKey => Try(
-	Conversation,
-	[
-		NoSuchConversation(ConversationKey),
-		Unreadable(TranscriptRefusal.Why),
-		FileSystem(_),
-	],
-)
-load_existing_conversation! = |key| {
-	loaded = load_conversation!(key)?
-	match loaded.file {
-		File(_) => Ok(loaded.conversation)
-		NoFile => Err(NoSuchConversation(key))
-	}
 }
 
 ## The message in `post`'s form, added to its conversation and to the

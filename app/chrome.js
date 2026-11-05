@@ -2,8 +2,8 @@
 // app/Script.roc serves. It styles the page's frame, which the server
 // sends as structure and class names only, and adds the theme toggle.
 //
-// The frame is a top bar with the conversation's title on the left and the viewer's name on the
-// right, then the page's layout filling the rest of the window. Only the
+// The frame is a top bar with the conversation's title on the left and the Browse link and the
+// viewer's name on the right, then the page's layout filling the rest of the window. Only the
 // messages scroll; feed.js styles them, and compose.js the compose box and
 // how the two panes sit side by side.
 //

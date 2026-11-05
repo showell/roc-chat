@@ -7,8 +7,10 @@
 ## its three scripts, which style what they find and add behaviour. The
 ## page reads top to bottom without them, and its form still posts.
 ##
-## A conversation's page has a top bar, with the topic and the viewer's
-## name, and below it two panes. The first holds the messages, and the
+## Every page of someone signed in opens with the top bar (`top_bar`): its
+## title, then the link to Browse and the viewer's name.
+##
+## A conversation's page has that bar, and below it two panes. The first holds the messages, and the
 ## second is the compose box: a form that posts the field `markdown` back
 ## to the conversation's own URL, and a line of help. The script sends the
 ## same form to the conversation's `/send` instead, so the page stays put.
@@ -351,6 +353,18 @@ Page :: [].{
 			body: TrustedHtml.join([top_bar({ title, viewer }), newline].concat(parts)),
 		})
 
+	## A heading of `said`, for another module's page.
+	heading : Str -> TrustedHtml
+	heading = |said|
+		TrustedHtml.join([
+			Html.element({
+				name: H1,
+				attrs: [],
+				inner: Escape.text(said),
+			}),
+			newline,
+		])
+
 	## A paragraph of `said`, for another module's page.
 	text_paragraph : Str -> TrustedHtml
 	text_paragraph = |said| paragraph(said)
@@ -397,6 +411,42 @@ Page :: [].{
 				),
 			),
 		})
+
+	## The form that starts a topic, posting the field
+	## `UrlEncodedForm.topic_name` to `action`, filled in with `suggestion`.
+	topic_form : {
+		action : Str,
+		suggestion : [Suggested(Topic), NoSuggestion],
+	} -> TrustedHtml
+	topic_form = |{ action, suggestion }| {
+		filled =
+			match suggestion {
+				NoSuggestion => []
+				Suggested(topic) => [TokenValue(token(topic.to_str()))]
+			}
+		TrustedHtml.join([
+			Html.element({
+				name: Form,
+				attrs: [MethodPost, Action(site_path(action))],
+				inner: TrustedHtml.join([
+					labelled_input({
+						label: "New topic",
+						attrs: [
+							InputType(Text),
+							FieldName(token(UrlEncodedForm.topic_name)),
+							Required,
+						].concat(filled),
+					}),
+					Html.element({
+						name: Button,
+						attrs: [],
+						inner: Escape.text("Add topic"),
+					}),
+				]),
+			}),
+			newline,
+		])
+	}
 
 	## A paragraph holding a link to `path`, a page of this site, of `text`,
 	## for another module's page.
@@ -448,11 +498,12 @@ Page :: [].{
 	## GitHub's settings.
 	GitHubOffer : [Offered, NotOffered]
 
-	## The sign-in page, for `viewer`: a form posting a name and a password
-	## to `/login`, and `next`, where to go once signed in, as a hidden
-	## field. Above it, `problem` when there is one, and for a human signed
-	## in, who they are and a button that signs them out. Below it, when
+	## The sign-in page, for `viewer`. For no one: a form posting a name and
+	## a password to `/login`, and `next`, where to go once signed in, as a
+	## hidden field; above it, `problem` when there is one; below it, when
 	## `github` offers one, a link to sign in with GitHub, going to `next`.
+	## For someone signed in, who has no use for a second account: `problem`,
+	## who they are and a button that signs them out, under the top bar.
 	login : {
 		viewer : SignedIn.Actor,
 		next : Html.SitePath,
@@ -471,15 +522,6 @@ Page :: [].{
 			match problem {
 				NoProblem => TrustedHtml.join([])
 				Problem(text) => paragraph(text)
-			}
-		signed_in =
-			match viewer {
-				Anonymous => TrustedHtml.join([])
-				SignedIn(acting) =>
-					TrustedHtml.join([
-						paragraph("You are signed in as ${acting.user().name().to_str()}."),
-						post_button({ action: "/logout", label: "Sign out" }),
-					])
 			}
 		form = Html.element({
 			name: Form,
@@ -538,22 +580,29 @@ Page :: [].{
 						newline,
 					])
 			}
-		document({
-			title: "Sign in",
-			body: TrustedHtml.join([
-				Html.element({
-					name: H1,
-					attrs: [],
-					inner: Escape.text("Sign in"),
-				}),
-				newline,
-				said,
-				signed_in,
-				form,
-				newline,
-				github_link,
-			]),
-		})
+		match viewer {
+			SignedIn(acting) =>
+				Page.signed_in_page({
+					title: "Signed in",
+					viewer: acting,
+					parts: [
+						said,
+						paragraph("You are signed in as ${acting.user().name().to_str()}."),
+						post_button({ action: "/logout", label: "Sign out" }),
+					],
+				})
+			Anonymous =>
+				document({
+					title: "Sign in",
+					body: TrustedHtml.join([
+						Page.heading("Sign in"),
+						said,
+						form,
+						newline,
+						github_link,
+					]),
+				})
+		}
 	}
 
 	## What a name field shows: a name, or nothing.
@@ -841,8 +890,8 @@ time_text = |seconds|
 		Err(OutOfRange) => "at ${seconds.to_str()} seconds"
 	}
 
-## The top bar: `title` on the left, and the name of `viewer`, the user
-## viewing the page, on the right.
+## The top bar: `title` on the left, and on the right the link to Browse and
+## the name of `viewer`, the user viewing the page.
 top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
 top_bar = |{ title, viewer }|
 	Html.element({
@@ -858,11 +907,19 @@ top_bar = |{ title, viewer }|
 			Html.element({
 				name: Div,
 				attrs: [Page.class(TopUser)],
-				inner: Html.element({
-					name: Span,
-					attrs: [Page.class(Viewer)],
-					inner: Escape.text(viewer.user().name().to_str()),
-				}),
+				inner: TrustedHtml.join([
+					Html.element({
+						name: A,
+						attrs: [Link(site_path(ConversationKey.browse_path))],
+						inner: Escape.text("Browse"),
+					}),
+					Escape.text(" · "),
+					Html.element({
+						name: Span,
+						attrs: [Page.class(Viewer)],
+						inner: Escape.text(viewer.user().name().to_str()),
+					}),
+				]),
 			}),
 		]),
 	})

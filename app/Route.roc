@@ -2,6 +2,9 @@
 ## It is a pure decision, so its tests (`RouteSpec`) reach every route, and
 ## the host routes nothing.
 ##
+##     GET  /chat                              Browse, every place you may open
+##     POST /chat/channel/<channel>            a new topic: `topic=`
+##     POST /chat/dm/<pair>
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
 ##     GET  /chat/dm/<pair>/<topic>
 ##     POST the same paths, a form field `markdown`: a message appended
@@ -60,6 +63,7 @@ import AgentKey
 import ChannelName
 import ConversationKey
 import Directory
+import Place
 import Script
 import UnvalidatedString
 import UploadedImage
@@ -95,6 +99,8 @@ Route :: [].{
 
 	## The routes only someone signed in may use.
 	SignedInChoice : [
+		ShowBrowse,
+		StartTopic(Place),
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
 		SendToConversation(ConversationKey),
@@ -231,10 +237,52 @@ conversation_path_choice = |
 			resource: found.resource,
 			method,
 		})
-		Err(NotAConversationPath) => NotFound
+		Err(NotAConversationPath) => browse_path_choice({
+			path,
+			method,
+			directory,
+		})
 		Err(BadName) => NotFound
 		Err(NoSuchChannel) => NotFound
 		Err(NoSuchHuman) => NotFound
+	}
+
+## The route for `method` and a path that is Browse's, a place's, or nothing
+## here.
+browse_path_choice : {
+	path : UnvalidatedString,
+	method : [Get, Post, Other],
+	directory : Directory,
+} -> Route.Choice
+browse_path_choice = |
+	{
+		path,
+		method,
+		directory,
+	},
+|
+	if (path.is_exactly(ConversationKey.browse_path))
+		match method {
+			Get => SignedInOnly(ShowBrowse)
+			Post => MethodNotAllowed(GetOnly)
+			Other => MethodNotAllowed(GetOnly)
+		}
+	else
+		match ConversationKey.place_from_url_path({ path, directory }) {
+			Ok(place) => place_choice({ place, method })
+			Err(NotAConversationPath) => NotFound
+			Err(BadName) => NotFound
+			Err(NoSuchChannel) => NotFound
+			Err(NoSuchHuman) => NotFound
+		}
+
+## The route for `method` and a place's own path.
+place_choice : { place : Place, method : [Get, Post, Other] } -> Route.Choice
+place_choice = |{ place, method }|
+	match method {
+		Get => MethodNotAllowed(PostOnly)
+		Post => SignedInOnly(StartTopic(place))
+		Other => MethodNotAllowed(PostOnly)
 	}
 
 ## The route for `method` and a path that is no script's, as text.
