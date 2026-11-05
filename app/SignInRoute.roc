@@ -393,7 +393,7 @@ no_match_words = "The name and the password don't match a human's."
 too_many_words : Str
 too_many_words = "Too many sign-ins are being tried. Wait a few seconds, then try again."
 
-## A bcrypt hash at the cost `gopher-roc hash-password` writes, of a password
+## A bcrypt hash at the cost `roc-chat hash-password` writes, of a password
 ## nobody knows, checked where there is no hash to check, so that a sign-in
 ## takes as long for a name that is no human's as for a wrong password.
 dummy_hash : List(U8)

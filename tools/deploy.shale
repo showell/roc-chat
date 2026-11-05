@@ -1,6 +1,6 @@
--- This script deploys gopher-roc, built on this box, to the prod droplet behind
+-- This script deploys roc-chat, built on this box, to the prod droplet behind
 -- its Caddy at https://chat.lynrummy.com. It takes no arguments and runs from
--- gopher-roc's root, on `main`. docs/deploy.md is the runbook: the cutover from
+-- roc-chat's root, on `main`. docs/deploy.md is the runbook: the cutover from
 -- roc-chat is three runs of this script, each stopping where the runbook says.
 --
 --   shale tools/deploy.shale
@@ -11,8 +11,8 @@
 --    clean and on `main`, and prod's Caddyfile imports /etc/caddy/sites/*.caddy
 --    and defines the `access_log` snippet. That Caddyfile is angry-gopher's
 --    deploy/Caddyfile, and this script never edits it.
--- 2. It makes, once, the `gopherroc` system user, /opt/gopher-roc (root's) and
---    /var/lib/gopher-roc with data/ (gopherroc's, mode 700).
+-- 2. It makes, once, the `rocchat` system user, /opt/roc-chat (root's) and
+--    /var/lib/roc-chat with data/ (rocchat's, mode 700).
 -- 3. It refuses when .github-client-id or .github-client-secret is not in the
 --    data root. The server reads them only at its start, and sign-up is by
 --    GitHub, so it never starts without them.
@@ -31,7 +31,7 @@
 --    log made Caddy's first. Caddy validates the whole config before the reload,
 --    and the old block goes back if the new one fails.
 -- 10. Over HTTPS it checks the doors: `/` goes to Browse, `/chat` and `/agents`
---    go to sign in, `/login` is gopher-roc's page and offers GitHub, and
+--    go to sign in, `/login` is roc-chat's page and offers GitHub, and
 --    `/login/github/start` goes to GitHub. Then it says whether the owner has
 --    linked GitHub yet.
 --
@@ -42,15 +42,15 @@ const IP = "162.243.1.123"
 const NAME = "chat.lynrummy.com"
 const ORIGIN = "https://chat.lynrummy.com"
 const PORT = "9611"
-const HOME = "/var/lib/gopher-roc"
-const DATA = "/var/lib/gopher-roc/data"
-const BIN = "/opt/gopher-roc/gopher-roc"
-const UNIT = "gopher-roc.service"
+const HOME = "/var/lib/roc-chat"
+const DATA = "/var/lib/roc-chat/data"
+const BIN = "/opt/roc-chat/roc-chat"
+const UNIT = "roc-chat.service"
 const BLOCK = "chat.lynrummy.com.caddy"
 const LOG = "/var/log/caddy/chat-access.log"
 const OUT = ".zig-cache/deploy"
 
-if not exists("deploy/" .. BLOCK) or not exists("deploy/" .. UNIT) then fail("deploy: run it from gopher-roc's root") end
+if not exists("deploy/" .. BLOCK) or not exists("deploy/" .. UNIT) then fail("deploy: run it from roc-chat's root") end
 
 -- A command on prod that must succeed.
 function on_prod(script)
@@ -101,9 +101,9 @@ end
 
 -- 2. The user and the folders, once.
 on_prod("set -e\n"
-  .. "id gopherroc >/dev/null 2>&1 || sudo useradd --system --home-dir " .. HOME .. " --no-create-home --shell /usr/sbin/nologin gopherroc\n"
-  .. "sudo install -d -o root -g root -m 755 /opt/gopher-roc\n"
-  .. "sudo install -d -o gopherroc -g gopherroc -m 700 " .. HOME .. " " .. DATA)
+  .. "id rocchat >/dev/null 2>&1 || sudo useradd --system --home-dir " .. HOME .. " --no-create-home --shell /usr/sbin/nologin rocchat\n"
+  .. "sudo install -d -o root -g root -m 755 /opt/roc-chat\n"
+  .. "sudo install -d -o rocchat -g rocchat -m 700 " .. HOME .. " " .. DATA)
 
 -- 3. The OAuth app's id and secret, which the owner copies on prod.
 for name in {".github-client-id", ".github-client-secret"} do
@@ -114,7 +114,7 @@ end
 
 -- 4. The binary.
 must(run({"zig", "build", "-Dtarget=x86_64-linux-musl", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20}))
-local built = OUT .. "/bin/gopher-roc"
+local built = OUT .. "/bin/roc-chat"
 local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
 print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
 
@@ -131,33 +131,33 @@ else
   must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
 end
 local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
-print("deploying gopher-roc " .. commit .. " to " .. HOST)
+print("deploying roc-chat " .. commit .. " to " .. HOST)
 
 -- Everything copied to prod is staged in a folder of its own, made fresh under
 -- steve's home with mode 700 and a name no one can guess, so no other local
 -- user can plant a file there first.
-const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" gopher-roc-deploy.XXXXXXXX").out)
-if find(STAGE, "/gopher-roc-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
+const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" roc-chat-deploy.XXXXXXXX").out)
+if find(STAGE, "/roc-chat-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
 
 -- 7. The binary, the unit and the restart.
-copy_to_prod(built, STAGE .. "/gopher-roc.new")
-local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/gopher-roc.new").out), " ")[1]
+copy_to_prod(built, STAGE .. "/roc-chat.new")
+local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/roc-chat.new").out), " ")[1]
 if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
-on_prod("set -e\nsudo install -o root -g root -m 755 " .. STAGE .. "/gopher-roc.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f " .. STAGE .. "/gopher-roc.new")
+on_prod("set -e\nsudo install -o root -g root -m 755 " .. STAGE .. "/roc-chat.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f " .. STAGE .. "/roc-chat.new")
 copy_to_prod("deploy/" .. UNIT, STAGE .. "/" .. UNIT)
 -- cmp exits 2 on a file that is not there, so a first deploy's unit counts as changed.
 if asks_prod("[ -f /etc/systemd/system/" .. UNIT .. " ] && cmp -s " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT) then
   print("the unit is unchanged")
 else
-  on_prod("set -e\nsudo install -o root -g root -m 644 " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT .. "\nsudo systemctl daemon-reload\nsudo systemctl enable gopher-roc")
+  on_prod("set -e\nsudo install -o root -g root -m 644 " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT .. "\nsudo systemctl daemon-reload\nsudo systemctl enable roc-chat")
   print("installed the unit")
 end
 on_prod("rm -f " .. STAGE .. "/" .. UNIT)
-on_prod("set -e\nsudo systemctl restart gopher-roc\n"
+on_prod("set -e\nsudo systemctl restart roc-chat\n"
   .. "for _ in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/login 2>/dev/null && break; sleep 0.1; done\n"
-  .. "systemctl is-active gopher-roc\n"
+  .. "systemctl is-active roc-chat\n"
   .. "curl -fsS -o /dev/null http://127.0.0.1:" .. PORT .. "/login")
-print("gopher-roc " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
+print("roc-chat " .. commit .. " answers on prod's 127.0.0.1:" .. PORT)
 
 -- 8. What the first start seeds, before any sign-up can arrive.
 for name in {"auth/1/name", "auth/next-id.txt", "chat/channel/general.channel", ".session-secret"} do
@@ -206,7 +206,7 @@ local login = http("GET", ORIGIN .. "/login")
 local corp = ""
 if has_key(login.headers, "cross-origin-resource-policy") then corp = login.headers["cross-origin-resource-policy"] end
 if login.status ~= 200 or corp ~= "same-origin" then
-  fail("deploy: " .. ORIGIN .. "/login answers " .. login.status .. " with Cross-Origin-Resource-Policy '" .. corp .. "': not gopher-roc's sign-in page")
+  fail("deploy: " .. ORIGIN .. "/login answers " .. login.status .. " with Cross-Origin-Resource-Policy '" .. corp .. "': not roc-chat's sign-in page")
 end
 if find(login.body, "/login/github/start") == nil then fail("deploy: " .. ORIGIN .. "/login offers no GitHub sign-in: the server did not take its GitHub files") end
 must_send("/", "/chat")
@@ -215,7 +215,7 @@ must_send("/agents", "/login?next=/agents")
 if not starts_with(location_of("/login/github/start"), "https://github.com/login/oauth/authorize?") then
   fail("deploy: " .. ORIGIN .. "/login/github/start does not send the browser to GitHub's authorize page")
 end
-print("deployed: " .. ORIGIN .. "/ (gopher-roc " .. commit .. "); the doors answer as they should")
+print("deployed: " .. ORIGIN .. "/ (roc-chat " .. commit .. "); the doors answer as they should")
 if asks_prod("sudo test -s " .. DATA .. "/auth/1/github-id") then
   print("the owner has linked GitHub")
 else

@@ -1,7 +1,7 @@
 -- **THE DEMO, ON THE ESSAY SURFACE**: the sample transcript's page as the
 -- demo renders it, then every line of the demo's code, as one note,
--- `notes/gopher-roc-demo.md` in ../essay-repl-server. Run it from
--- gopher-roc's root; committing and pushing the note is the caller's.
+-- `notes/roc-chat-demo.md` in ../essay-repl-server. Run it from
+-- roc-chat's root; committing and pushing the note is the caller's.
 --
 --   shale tools/note.shale
 
@@ -10,11 +10,11 @@ const SOURCES = {}
 for f in lines(trim(must(run({"ls", "app"}, {timeout_ms = 5000, whole = 100000, want = "list: the modules"})).out)) do
   if ends_with(f, ".roc") then push(SOURCES, "app/" .. f) end
 end
-for f in {"platform/main.roc", "host/main.zig", "build.zig", "demo/data/chat/channel/general/gopher-roc/transcript"} do push(SOURCES, f) end
+for f in {"platform/main.roc", "host/main.zig", "build.zig", "demo/data/chat/channel/general/roc-chat/transcript"} do push(SOURCES, f) end
 
-if not exists("roc-version") then fail("note: run it from gopher-roc's root") end
+if not exists("roc-version") then fail("note: run it from roc-chat's root") end
 
-local page = must(run({"zig", "build", "demo", "--", "/chat/channel/general/gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000, want = "build: the demo's page"})).out
+local page = must(run({"zig", "build", "demo", "--", "/chat/channel/general/roc-chat", "demo/data/chat/channel/general/roc-chat/transcript"}, {timeout_ms = 300000, whole = 1000000, want = "build: the demo's page"})).out
 
 -- The page's body alone: the note has its own head.
 local body = ""
@@ -24,14 +24,14 @@ for line in lines(page) do
   end
 end
 
-local note = "# gopher-roc: the first demo\n\n"
-  .. "The pure core rendering the sample transcript below. What follows is the demo's page, produced by `zig build demo -- /chat/channel/general/gopher-roc demo/data/chat/channel/general/gopher-roc/transcript`, and then every line of its code.\n\n"
-  .. "<div class=gopher-roc-demo>\n\n" .. body .. "\n</div>\n\n## The code\n\n"
+local note = "# roc-chat: the first demo\n\n"
+  .. "The pure core rendering the sample transcript below. What follows is the demo's page, produced by `zig build demo -- /chat/channel/general/roc-chat demo/data/chat/channel/general/roc-chat/transcript`, and then every line of its code.\n\n"
+  .. "<div class=roc-chat-demo>\n\n" .. body .. "\n</div>\n\n## The code\n\n"
 for path in SOURCES do
   local fence = "```"
   if contains(read(path), "```") then fence = "~~~~" end
   note = note .. "### `" .. path .. "`\n\n" .. fence .. "\n" .. read(path) .. fence .. "\n\n"
 end
 
-must(run({"tee", "../essay-repl-server/notes/gopher-roc-demo.md"}, {stdin = note, timeout_ms = 5000, whole = 10000000, want = "write: the note"}))
-print("wrote ../essay-repl-server/notes/gopher-roc-demo.md")
+must(run({"tee", "../essay-repl-server/notes/roc-chat-demo.md"}, {stdin = note, timeout_ms = 5000, whole = 10000000, want = "write: the note"}))
+print("wrote ../essay-repl-server/notes/roc-chat-demo.md")

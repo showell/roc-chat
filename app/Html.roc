@@ -282,7 +282,7 @@ expect name_of(Title) == "title"
 # sides of each refusal.
 expect
 	[
-		"/chat/channel/general/gopher-roc",
+		"/chat/channel/general/roc-chat",
 		"/chat/dm/1_1/plans",
 		"/chat/assets/compose.js",
 		"/a",

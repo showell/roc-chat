@@ -1,29 +1,29 @@
-# This unit runs gopher-roc on the prod droplet, behind Caddy
+# This unit runs roc-chat on the prod droplet, behind Caddy
 # (deploy/chat.lynrummy.com.caddy). tools/deploy.shale installs it as
-# /etc/systemd/system/gopher-roc.service.
+# /etc/systemd/system/roc-chat.service.
 #
-# Caddy holds the site's certificates on this machine, so gopher-roc runs as
+# Caddy holds the site's certificates on this machine, so roc-chat runs as
 # its own system user. It listens on 127.0.0.1 alone, as the host has no other
-# bind, and it can write only /var/lib/gopher-roc, which holds data/, the
-# chat's whole store and its secrets. The binary, /opt/gopher-roc/gopher-roc,
+# bind, and it can write only /var/lib/roc-chat, which holds data/, the
+# chat's whole store and its secrets. The binary, /opt/roc-chat/roc-chat,
 # is root's and read-only to it. GitHub sign-in needs its outbound HTTPS, and
 # reads the system's certificates, which ProtectSystem leaves readable.
 [Unit]
-Description=gopher-roc, the Roc chat (chat.lynrummy.com)
+Description=roc-chat, the Roc chat (chat.lynrummy.com)
 After=network.target
 
 [Service]
-User=gopherroc
-Group=gopherroc
-WorkingDirectory=/var/lib/gopher-roc
-ExecStart=/opt/gopher-roc/gopher-roc /var/lib/gopher-roc/data --port 9611 --public-origin https://chat.lynrummy.com
+User=rocchat
+Group=rocchat
+WorkingDirectory=/var/lib/roc-chat
+ExecStart=/opt/roc-chat/roc-chat /var/lib/roc-chat/data --port 9611 --public-origin https://chat.lynrummy.com
 Restart=on-failure
 RestartSec=2
 
 # The confinement.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/gopher-roc
+ReadWritePaths=/var/lib/roc-chat
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

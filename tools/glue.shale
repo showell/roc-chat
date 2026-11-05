@@ -1,5 +1,5 @@
 -- **ROC GLUE'S SNAPSHOT OF THE SEAM, REGENERATED**: what
--- host/seam_test.zig holds host/seam.zig to. Run from gopher-roc's root
+-- host/seam_test.zig holds host/seam.zig to. Run from roc-chat's root
 -- after any change to platform/ (Host.roc's primitives, Http.roc's
 -- records):
 --   shale tools/glue.shale
@@ -13,7 +13,7 @@ const out_dir = ".zig-cache/roc-glue"
 const snapshot = "host/glue/platform_abi.zig"
 
 if not exists("platform/main.roc") then
-  fail("glue: run it from gopher-roc's root (no platform/main.roc here)")
+  fail("glue: run it from roc-chat's root (no platform/main.roc here)")
 end
 
 -- Glue from another Roc lays out another Roc's records.

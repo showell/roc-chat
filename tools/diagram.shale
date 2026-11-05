@@ -6,7 +6,7 @@
 -- - `types`: each module's types, a module a cluster, and an arrow from a
 --   type to each type its definition names.
 --
--- Both go into one note, ../essay-repl-server/notes/gopher-roc-pictures.md,
+-- Both go into one note, ../essay-repl-server/notes/roc-chat-pictures.md,
 -- as ```dot blocks, which the essay surface draws in the browser.
 -- Committing and pushing the note is the caller's.
 --
@@ -14,7 +14,7 @@
 
 const OUT = "../essay-repl-server/notes/"
 
-if not exists("roc-version") then fail("diagram: run it from gopher-roc's root") end
+if not exists("roc-version") then fail("diagram: run it from roc-chat's root") end
 
 -- The modules: app/*.roc but the app's entry.
 const files = must(run({"ls", "app"}, {timeout_ms = 5000, whole = 100000, want = "list: the modules"})).out
@@ -98,9 +98,9 @@ for m in modules do
 end
 tys = tys .. "}\n"
 
-const note = "# gopher-roc: the design in pictures\n\n"
+const note = "# roc-chat: the design in pictures\n\n"
   .. "Drawn from the code by `tools/diagram.shale`; never edited by hand.\n\n"
   .. "## Modules and what they import\n\n```dot\n" .. mods .. "```\n\n"
   .. "## Types, by module\n\nA bold box is opaque (`::`); a plain one nominal (`:=`). An arrow: the type's definition names the other.\n\n```dot\n" .. tys .. "```\n"
-must(run({"tee", OUT .. "gopher-roc-pictures.md"}, {stdin = note, timeout_ms = 5000, whole = 100000, want = "write: the note"}))
-print("wrote " .. OUT .. "gopher-roc-pictures.md")
+must(run({"tee", OUT .. "roc-chat-pictures.md"}, {stdin = note, timeout_ms = 5000, whole = 100000, want = "write: the note"}))
+print("wrote " .. OUT .. "roc-chat-pictures.md")

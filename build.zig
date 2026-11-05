@@ -1,6 +1,6 @@
 const std = @import("std");
 
-/// gopher-roc's build: app/main.roc built to one archive by the pinned Roc
+/// roc-chat's build: app/main.roc built to one archive by the pinned Roc
 /// (roc-version), linked into each of the host's programs. The Roc's tests
 /// are the gate's (tools/verify.shale); the host's are `test` here.
 ///
@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
     demo.stdio = .inherit;
     b.step("demo", "A transcript's page: -- <conversation's URL path> <transcript file>").dependOn(&demo.step);
 
-    const server_exe = withApp(b, "gopher-roc", "host/main.zig", app, target, optimize);
+    const server_exe = withApp(b, "roc-chat", "host/main.zig", app, target, optimize);
     b.installArtifact(server_exe);
     const serve = b.addRunArtifact(server_exe);
     serve.addPassthruArgs();

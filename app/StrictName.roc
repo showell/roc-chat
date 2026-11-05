@@ -52,7 +52,7 @@ strict = |text| StrictName.from_str(text).map_ok(StrictName.to_str)
 
 # Kept as given, case and all.
 expect
-	["p", "Z", "plans", "aAzZ09-", "gopher-roc-2"].all(|text| strict(text) == Ok(text))
+	["p", "Z", "plans", "aAzZ09-", "roc-chat-2"].all(|text| strict(text) == Ok(text))
 expect strict("") == Err(Empty)
 # A first byte that is no letter: a space, a control byte, a digit, `-`,
 # `_`, and the bytes just outside the letters' ranges.

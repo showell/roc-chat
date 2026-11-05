@@ -5,7 +5,7 @@
 //!     `roc_crashed`, `roc_dbg` and `roc_expect_failed`;
 //!   - the app's five entries: `roc_page` (the demo), `roc_start`,
 //!     `roc_admission` and `roc_handle_http_request` (the server), and
-//!     `roc_password_verdict` (`gopher-roc hash-password`), and the records
+//!     `roc_password_verdict` (`roc-chat hash-password`), and the records
 //!     the server's take and answer (platform/Http.roc);
 //!   - the hosted functions (platform/Host.roc), each exported under its
 //!     Roc name and answered by host/file_primitives.zig; for a stream's

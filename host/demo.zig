@@ -1,6 +1,6 @@
 //! **THE DEMO**: `demo <url path> <transcript>` reads the transcript
 //! file, hands it and the conversation's URL path (the one the server
-//! shows it at, `/chat/channel/general/gopher-roc`) to the Roc
+//! shows it at, `/chat/channel/general/roc-chat`) to the Roc
 //! (app/main.roc's `page`, through `roc_page`), and writes the page to
 //! stdout. The seam and the runtime are host/seam.zig's;
 //! the demo's one call asks for no file and no clock.

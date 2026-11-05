@@ -23,7 +23,7 @@
 ##   `ConversationRoute`, `UploadRoute`, `BrowseRoute`, `AgentsRoute`,
 ##   `ChannelMembersRoute`, `HumanInvitesRoute`, `SignInRoute` or
 ##   `GitHubRoute` gives the answer.
-## - `password_verdict` (`gopher-roc hash-password`, host/main.zig): a line
+## - `password_verdict` (`roc-chat hash-password`, host/main.zig): a line
 ##   in, and whether it is a password the sign-in form takes, so the
 ##   command hashes none that could never sign in.
 ##

@@ -1,4 +1,4 @@
-# This is gopher-roc's site block on the prod droplet, for
+# This is roc-chat's site block on the prod droplet, for
 # https://chat.lynrummy.com. tools/deploy.shale installs it as
 # /etc/caddy/sites/chat.lynrummy.com.caddy, in roc-chat's block's place. The
 # droplet's Caddyfile (angry-gopher's deploy/Caddyfile) imports that folder and

@@ -38,14 +38,14 @@ expect ChannelName.from_str("plans_2") == Err(ForbiddenByte)
 # Kept as given, case and all, at both ends of the length.
 expect
 	[
-		"gopher-roc",
-		"Gopher-Roc",
+		"roc-chat",
+		"Roc-Chat",
 		"p",
 		"a".repeat(60),
 	].all(|text| ChannelName.from_str(text).map_ok(ChannelName.to_str) == Ok(text))
 # Its key is its strict name's: the same in any case, and apart otherwise.
 expect
-	channel("Gopher-Roc").key()
-		== Name.Key.of_strict(StrictName.from_str("Gopher-Roc") ?? crash "ChannelName's tests: a strict name")
-expect channel("Gopher-Roc").key() == channel("gopher-roc").key()
-expect channel("gopher-roc").key() != channel("gopher-roc-2").key()
+	channel("Roc-Chat").key()
+		== Name.Key.of_strict(StrictName.from_str("Roc-Chat") ?? crash "ChannelName's tests: a strict name")
+expect channel("Roc-Chat").key() == channel("roc-chat").key()
+expect channel("roc-chat").key() != channel("roc-chat-2").key()

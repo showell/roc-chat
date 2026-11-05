@@ -282,7 +282,7 @@
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for
   // this reason in the last minute; then it shows a notice and stops trying.
-  var RELOAD_KEY = 'gopher-roc stream reloaded at';
+  var RELOAD_KEY = 'roc-chat stream reloaded at';
   var RELOAD_WINDOW_MS = 60000;
   function reloadedRecently() {
     try {

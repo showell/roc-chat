@@ -1,5 +1,5 @@
 -- This is the gate: every check, cheapest first, the slow end last. Run
--- it from gopher-roc's root; it fails, naming each check that did.
+-- it from roc-chat's root; it fails, naming each check that did.
 --
 --   shale tools/verify.shale
 --
@@ -31,7 +31,7 @@
 --    name_hunt's `stacked_preposition`, which are rules of thumb and
 --    questions for a reader.
 -- 4. The demo built through the host, its page exactly the frozen
---    demo/gopher-roc.html.
+--    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
 --    seam held to roc glue's layout, the HTTP layer. Every run runs them
 --    all (build.zig's `testRun`), so the summary's count is exactly
@@ -176,8 +176,8 @@ for h in hunts do
 end
 
 -- 4. The demo, through the host: the sample's page, exactly as frozen.
-local demo = run({"zig", "build", "demo", "--", "/chat/channel/general/gopher-roc", "demo/data/chat/channel/general/gopher-roc/transcript"}, {timeout_ms = 300000, whole = 1000000})
-say(demo.code == 0 and demo.out == read("demo/gopher-roc.html"), "the demo's page: exactly demo/gopher-roc.html")
+local demo = run({"zig", "build", "demo", "--", "/chat/channel/general/roc-chat", "demo/data/chat/channel/general/roc-chat/transcript"}, {timeout_ms = 300000, whole = 1000000})
+say(demo.code == 0 and demo.out == read("demo/roc-chat.html"), "the demo's page: exactly demo/roc-chat.html")
 if demo.code ~= 0 then print(demo.out) end
 
 -- 5. The host's tests.

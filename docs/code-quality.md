@@ -1,6 +1,6 @@
-# Code quality in gopher-roc
+# Code quality in roc-chat
 
-This is the standard the Roc code is held to. The general Roc rules are in roc-apps' `CLAUDE.md` and `docs/roc-style.md`. Read both, cover to cover, before judging any Roc. They are living documents: when work here shows a general lesson they lack, or a rule that is wrong, the guide changes too. This page adds what gopher-roc asks for on top of them. The shale hunts in `tools/verify.shale` catch some of it automatically; the rest is judgement.
+This is the standard the Roc code is held to. The general Roc rules are in roc-apps' `CLAUDE.md` and `docs/roc-style.md`. Read both, cover to cover, before judging any Roc. They are living documents: when work here shows a general lesson they lack, or a rule that is wrong, the guide changes too. This page adds what roc-chat asks for on top of them. The shale hunts in `tools/verify.shale` catch some of it automatically; the rest is judgement.
 
 ## The model
 

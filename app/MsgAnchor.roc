@@ -47,11 +47,11 @@ second = Message.Id.first.next() ?? crash "MsgAnchor's tests: the first id has a
 # under two topics.
 expect anchor_of({ topic: "plans", id: Message.Id.first }).to_str() == "MSG_plans_1"
 expect anchor_of({ topic: "plans", id: second }).to_str() == "MSG_plans_2"
-expect anchor_of({ topic: "gopher-roc", id: second }).to_str() == "MSG_gopher-roc_2"
+expect anchor_of({ topic: "roc-chat", id: second }).to_str() == "MSG_roc-chat_2"
 # The page anchor names the id alone.
 expect anchor_of({ topic: "plans", id: Message.Id.first }).page_anchor() == "msg-1"
 expect anchor_of({ topic: "plans", id: second }).page_anchor() == "msg-2"
-expect anchor_of({ topic: "gopher-roc", id: second }).page_anchor() == "msg-2"
+expect anchor_of({ topic: "roc-chat", id: second }).page_anchor() == "msg-2"
 # Two messages are the same message when both the topic and the id match.
 expect anchor_of({ topic: "plans", id: second }) == anchor_of({ topic: "plans", id: second })
 expect anchor_of({ topic: "plans", id: second }) != anchor_of({ topic: "other", id: second })

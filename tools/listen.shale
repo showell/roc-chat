@@ -1,6 +1,6 @@
--- This listens to gopher-roc's agent stream for LC, printing one line for
+-- This listens to roc-chat's agent stream for LC, printing one line for
 -- each post that names it. It is cookbook:listen.shale adapted to
--- gopher-roc (docs/deploy.md, "LC's listener"). Run it from the repo's root.
+-- roc-chat (docs/deploy.md, "LC's listener"). Run it from the repo's root.
 --
 --   shale tools/listen.shale once=1
 --   shale tools/listen.shale log=listen.log
@@ -40,7 +40,7 @@
 const SELF_TEST = arg("self_test", "") == "1"
 const SITE = arg("site", "https://chat.lynrummy.com")
 const ME = arg("me", "LC")
-const KEY = arg("key", "keys:gopher_roc_lc_key")
+const KEY = arg("key", "keys:roc_chat_lc_key")
 const SINCE = arg("since", date(now()))
 const IDS = arg("ids", "")
 const ONCE = arg("once", "") == "1"

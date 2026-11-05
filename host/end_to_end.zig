@@ -312,9 +312,9 @@ const files = @import("file_primitives.zig");
 const fake_github = @import("fake_github.zig");
 const github = @import("github_client.zig");
 
-const seed_path = "demo/data/chat/channel/general/gopher-roc/transcript";
-const frozen_page = "demo/gopher-roc.html";
-const channel_url = "/chat/channel/general/gopher-roc";
+const seed_path = "demo/data/chat/channel/general/roc-chat/transcript";
+const frozen_page = "demo/roc-chat.html";
+const channel_url = "/chat/channel/general/roc-chat";
 /// The origin the server is told a proxy serves it under.
 const public_origin = "https://chat.example.test";
 const script_url = "/chat/assets/compose.js";
@@ -323,7 +323,7 @@ const script_file = "app/compose.js";
 const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js", "panel.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
-const channel_uploads = "chat/channel/general/gopher-roc/uploads";
+const channel_uploads = "chat/channel/general/roc-chat/uploads";
 /// Where the DM's uploads folder would be; step 28a puts a plain file there.
 const dm_uploads = "chat/dm/1_1/plans/uploads";
 /// Steve's upload total, the bytes he has uploaded, in his own folder.
@@ -405,12 +405,12 @@ pub fn main(init: std.process.Init) !void {
     // 3.
     const again = try get(a, io, port, channel_url);
     try t.check("GET it again: 200, the message rendered, as message 6", again.status == 200 and
-        has(again.body, "<strong>end to end</strong>!") and has(again.body, "id=\"msg-6\"") and has(again.body, ">MSG_gopher-roc_6</a>"));
+        has(again.body, "<strong>end to end</strong>!") and has(again.body, "id=\"msg-6\"") and has(again.body, ">MSG_roc-chat_6</a>"));
 
     // 4.
     const body = "Hello from the **end to end**!\n\n\\-------------";
     const on_disk = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
-    try t.check("the file on disk: the seed and exactly one record, dated by the host's clock", recordFits(a, on_disk, seed, "gopher-roc_6", body, before, after));
+    try t.check("the file on disk: the seed and exactly one record, dated by the host's clock", recordFits(a, on_disk, seed, "roc-chat_6", body, before, after));
 
     // 4a.
     const script = try get(a, io, port, script_url);
@@ -465,7 +465,7 @@ pub fn main(init: std.process.Init) !void {
     const box_disk = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
     try t.check("POST as the browser submits the compose box: 303 to the page, exactly one record more", boxed.status == 303 and
         std.mem.eql(u8, boxed.header("location") orelse "", channel_url) and
-        recordFits(a, box_disk, on_disk, "gopher-roc_7", "Sent from the compose box\na second line · & more", before_box, after_box));
+        recordFits(a, box_disk, on_disk, "roc-chat_7", "Sent from the compose box\na second line · & more", before_box, after_box));
 
     // 5.
     const empty = try get(a, io, port, dm_url);
@@ -663,7 +663,7 @@ pub fn main(init: std.process.Init) !void {
     try t.check("send as the compose box's script does: 201, HTML, exactly the message's HTML as the page writes it, one record more", sent.status == 201 and
         std.mem.eql(u8, sent.header("content-type") orelse "", "text/html; charset=utf-8") and
         std.mem.eql(u8, sent.body, try articleOf(page_of_eleven.body, "11")) and
-        recordFits(a, after_send, before_send, "gopher-roc_11", "Sent **without** a reload\ntwo lines", sent_before, sent_after));
+        recordFits(a, after_send, before_send, "roc-chat_11", "Sent **without** a reload\ntwo lines", sent_before, sent_after));
     try t.check("the open stream's next event: exactly that message's frame", std.mem.eql(u8, try send_stream.event(), try frameOf(a, page_of_eleven.body, "11")));
 
     // 30.
@@ -1012,7 +1012,7 @@ fn signInSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
         has(page.body, "<input type=\"password\" name=\"password\""));
 
     // 0b.
-    const next_field = "next=%2Fchat%2Fchannel%2Fgeneral%2Fgopher-roc";
+    const next_field = "next=%2Fchat%2Fchannel%2Fgeneral%2Froc-chat";
     const wrong = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+stapler&" ++ next_field);
     const nobody = try anonymousPost(a, io, port, "/login", "name=Nobody&password=correct+horse+battery+staple&" ++ next_field);
     try t.check("sign in with a wrong password, and as no such user: 401 each, the page again, no cookie, never stored", wrong.status == 401 and nobody.status == 401 and
@@ -1220,7 +1220,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     const added = after_cc[@min(before_cc.len, after_cc.len)..];
     const cc_event = try listening.event();
     try t.check("POST as CC with its key: 303; the record on disk is CC's", cc_posted.status == 303 and
-        std.mem.startsWith(u8, added, "-------------\nMSG_gopher-roc_13\nfrom: CC\ndate: ") and std.mem.endsWith(u8, added, "\n\nHello from CC\n\n"));
+        std.mem.startsWith(u8, added, "-------------\nMSG_roc-chat_13\nfrom: CC\ndate: ") and std.mem.endsWith(u8, added, "\n\nHello from CC\n\n"));
     try t.check("CC's stream: that message, one line of JSON", std.mem.startsWith(u8, cc_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":13,\"from\":\"CC\",\"date\":\"") and
         std.mem.endsWith(u8, cc_event, "\",\"markdown\":\"Hello from CC\"}\n\n"));
 

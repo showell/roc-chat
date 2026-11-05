@@ -121,7 +121,7 @@ key_refusal = HttpAnswer.page(
 
 # ── tests
 expect topic_from_form("topic=plans".to_utf8()).map_ok(Topic.to_str) == Ok("plans")
-expect topic_from_form("x=1&topic=gopher-roc-2".to_utf8()).map_ok(Topic.to_str) == Ok("gopher-roc-2")
+expect topic_from_form("x=1&topic=roc-chat-2".to_utf8()).map_ok(Topic.to_str) == Ok("roc-chat-2")
 # A name at the longest a topic may be, and just past it.
 expect topic_from_form("topic=${"a".repeat(60)}".to_utf8()).is_ok()
 expect topic_from_form("topic=${"a".repeat(61)}".to_utf8()) == Err(NotATopic(topic_rule_words))

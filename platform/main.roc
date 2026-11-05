@@ -1,4 +1,4 @@
-## This is gopher-roc's platform. It gives the host five entries into the
+## This is roc-chat's platform. It gives the host five entries into the
 ## app, and gives the app the host's primitives as effects (Host.roc).
 ##
 ## - `roc_page` (the demo, host/demo.zig): a topic's name and its transcript
@@ -11,7 +11,7 @@
 ##   write instead.
 ## - `roc_handle_http_request` (the server): a request in (Http.roc), the
 ##   response out. The host routes nothing: the app does.
-## - `roc_password_verdict` (`gopher-roc hash-password`): a line's bytes in,
+## - `roc_password_verdict` (`roc-chat hash-password`): a line's bytes in,
 ##   and out whether they are a password the sign-in form takes, so the
 ##   rule has one home, the app's.
 ##

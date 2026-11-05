@@ -66,7 +66,7 @@ pub const Settings = struct {
     oauth_base: Setting,
     api_base: Setting,
     /// GitHub refuses a request with none.
-    user_agent: []const u8 = "gopher-roc",
+    user_agent: []const u8 = "roc-chat",
     /// By when a request must have connected: the DNS lookup, the TCP
     /// connect, the CA bundle load and the TLS handshake.
     connect_timeout_ms: u32 = 5_000,

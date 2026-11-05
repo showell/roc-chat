@@ -1,4 +1,4 @@
-# gopher-roc: the design from first principles
+# roc-chat: the design from first principles
 
 The answers from our listening session on 2026-11-02, gathered in one place for you to correct. Where you gave words, these are your words. Anything marked **open** we haven't settled yet.
 
@@ -113,16 +113,16 @@ apoorvavpendse@gmail.com would be better
   | `auth/next-id.txt` | the next user id's decimal digits and a line end, `3\n`; `65536\n` once every id is taken | the Zig chat's counter |
   | `auth/<id>/name` | the user's name, exactly as given, UTF-8; rewritten whole, atomically, when an invited human joins under another name, and never after; a human who signs up with GitHub chooses it once | the Zig chat |
   | `auth/<id>/owner` | an agent's owner's id, its digits; a human has no `owner` file | roc-chat's fact |
-  | `auth/<id>/password` | a human's password's bcrypt hash, 60 bytes, `$2b$10$` and 53 more (a `$2a$` or `$2y$` hash reads the same, and a cost from 10 to 14; any other scheme or cost is no hash), with a line end or none; never the password. The server's owner writes Steve's on the server's machine, `gopher-roc hash-password > auth/<id>/password`, readable by them alone; the server writes an invited human's, atomically, when they redeem an invite and choose their password (the host's bcrypt at cost 10), and again at each later redemption. A human with none can't sign in, and rewriting or removing it ends every session of theirs (so does each redemption, all but the one it starts); an agent has none | the Zig chat's `password` |
+  | `auth/<id>/password` | a human's password's bcrypt hash, 60 bytes, `$2b$10$` and 53 more (a `$2a$` or `$2y$` hash reads the same, and a cost from 10 to 14; any other scheme or cost is no hash), with a line end or none; never the password. The server's owner writes Steve's on the server's machine, `roc-chat hash-password > auth/<id>/password`, readable by them alone; the server writes an invited human's, atomically, when they redeem an invite and choose their password (the host's bcrypt at cost 10), and again at each later redemption. A human with none can't sign in, and rewriting or removing it ends every session of theirs (so does each redemption, all but the one it starts); an agent has none | the Zig chat's `password` |
   | `auth/<human>/github-id` | the numeric id of the GitHub account that may sign in as this human, its digits. The server writes it when a human signs up with GitHub, or when a human who has an account already, such as the owner, links GitHub to it, from `/agents` or by going through GitHub signed in. One GitHub id reaches one account, and one account holds one id: signing in with GitHub makes a new account only for a browser signed in as no one. The id, not the login, because GitHub lets a login be renamed and a freed one be taken (`https://api.github.com/users/<login>` says an account's id). Removing it ends every session of theirs that was signed over `github-session-secret` | roc-chat's binding of an account to a GitHub id |
-  | `auth/<human>/github-session-secret` | 32 random bytes as 64 hex digits, which the server writes at the human's first GitHub sign-in, and anew when they link GitHub. Their sessions are signed over it, under `.session-secret`, so it proves nothing to whoever reads it; it is what ends their sessions, as a GitHub human may have no password file to rewrite. Rewriting or removing it ends every session of theirs, the next GitHub sign-in making a new one if it is gone | gopher-roc's |
+  | `auth/<human>/github-session-secret` | 32 random bytes as 64 hex digits, which the server writes at the human's first GitHub sign-in, and anew when they link GitHub. Their sessions are signed over it, under `.session-secret`, so it proves nothing to whoever reads it; it is what ends their sessions, as a GitHub human may have no password file to rewrite. Rewriting or removing it ends every session of theirs, the next GitHub sign-in making a new one if it is gone | roc-chat's |
   | `auth/<agent>/keys/<n>/created`, `expires` | when the key was made, and when it stops admitting, in seconds since 1970, digits | roc-chat's facts |
   | `auth/<agent>/keys/<n>/state` | `active` or `revoked` | roc-chat's words |
   | `auth/<agent>/keys/<n>/read`, `post` | the key's scope: `everywhere` or `off` each | roc-chat's words |
   | `auth/<agent>/keys/<n>/hash` | the SHA-256 of the key's 32 secret bytes, 64 lowercase hex digits; never the secret | roc-chat's fact |
   | `auth/<agent>/invites/<n>/created`, `expires`, `read`, `post`, `hash` | as a key's: the invite's own expiry, the scope of the key it redeems to, the hash of its one-time code's 32 bytes | roc-chat's facts |
   | `auth/<agent>/invites/<n>/state` | `live`, `spent` or `revoked` | roc-chat's words |
-  | `auth/<human>/inviter` | an invited human's inviter's id, its digits; the founder, a human who signed up with GitHub, and a human the server's owner made by hand, have none, and no one invites them again. Written before `name` | gopher-roc's (roc-chat kept it in its account record) |
+  | `auth/<human>/inviter` | an invited human's inviter's id, its digits; the founder, a human who signed up with GitHub, and a human the server's owner made by hand, have none, and no one invites them again. Written before `name` | roc-chat's (roc-chat kept it in its account record) |
   | `auth/<human>/human-invites/<n>/created`, `expires` | when the invite was made, and when it stops redeeming, seven days later, in seconds since 1970, digits | roc-chat's facts |
   | `auth/<human>/human-invites/<n>/state` | `live` or `spent` (there is no revoking a human invite yet) | roc-chat's words |
   | `auth/<human>/human-invites/<n>/by` | the id of the human who made it, its digits: the inviter, or the admin inviting them again. A human's open invites, those they made that are live and unexpired, are at most 10 | roc-chat's fact |
@@ -163,12 +163,12 @@ apoorvavpendse@gmail.com would be better
 ## Scope
 
 - **The Zig chat is a superset of what we need.** Dropped: pinning topics, back/forward navigation, Docs, image search and code search.
-- **The Zig chat keeps serving human-to-human chat**, so gopher-roc's first job is agents.
+- **The Zig chat keeps serving human-to-human chat**, so roc-chat's first job is agents.
 - **First milestone:** the three-way conversation roc-chat had, between Steve, LC and CC. The agents join through properly secure invites, and Steve explicitly creates a channel that explicitly includes them.
 
 ## How it gets built
 
-- **A new repository, `gopher-roc`** (a code name to rename later). Crib from roc-chat as needed, but truly build up from nothing, **gates included**.
+- **A new repository, `roc-chat`** (a code name to rename later). Crib from roc-chat as needed, but truly build up from nothing, **gates included**.
 - **Roc on a Zig host**, with as much Roc as possible. Zig's HTTP server should be the main Zig piece.
 - **The pure core comes first**, with no DM or channel meaning, and gets rendered early to dogfood it. For example, a Conversation module with fake content, served from a Python web server or the essay surface.
 
