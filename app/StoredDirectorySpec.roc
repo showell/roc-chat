@@ -101,7 +101,10 @@ expect users_with({
 expect {
 	users = Sample.directory_with_ids_left(0).users()
 	users.next_id() == Err(Full)
-		and Users.from_files({ counter: users.counter_file(), accounts: accounts_of(users) }) == Ok(users)
+		and Users.from_files({
+			counter: users.counter_file(),
+			accounts: accounts_of(users),
+		}) == Ok(users)
 }
 expect {
 	channels =

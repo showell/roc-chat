@@ -113,7 +113,15 @@ GitHubState :: {
 						Ok(mac) => Ok(
 							GitHubState.Claim.(
 								{
-									payload: "${nonce_part}.${second_part}.${next_part}.${errand_part}",
+									payload: Str.join_with(
+										[
+											nonce_part,
+											second_part,
+											next_part,
+											errand_part,
+										],
+										".",
+									),
 									mac,
 								},
 							),

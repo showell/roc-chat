@@ -43,10 +43,10 @@ FirstPage :: [].{
 		}) {
 			NotReadable => load_default_page!({ directory, human })
 			Readable(key) =>
-				if (has_transcript!(key)?)
-					Ok(wanted)
-				else
-					load_default_page!({ directory, human })
+				match load_conversation_state!(key)? {
+					Begun => Ok(wanted)
+					NotBegun => load_default_page!({ directory, human })
+				}
 		}
 }
 
@@ -119,20 +119,21 @@ load_default_page! = |request|
 				FileSystem.list_channel_topics!(Channels.default_name) ? |fault| FileSystem(fault)
 			for topic in topics {
 				key = ConversationKey.of({ place, topic })
-				if has_transcript!(key)? {
-					return Ok(page_of(key))
+				match load_conversation_state!(key)? {
+					Begun => return Ok(page_of(key))
+					NotBegun => {}
 				}
 			}
 			Ok(SignInRoute.default_next)
 		}
 	}
 
-## Whether the conversation `key` has begun.
-has_transcript! : ConversationKey => Try(Bool, [FileSystem(FileSystem.Fault)])
-has_transcript! = |key|
+## Whether the conversation `key` has begun, by its transcript.
+load_conversation_state! : ConversationKey => Try([Begun, NotBegun], [FileSystem(FileSystem.Fault)])
+load_conversation_state! = |key|
 	match FileSystem.read_transcript!(key) {
-		Ok(File(_)) => Ok(Bool.True)
-		Ok(NoFile) => Ok(Bool.False)
+		Ok(File(_)) => Ok(Begun)
+		Ok(NoFile) => Ok(NotBegun)
 		Err(fault) => Err(FileSystem(fault))
 	}
 

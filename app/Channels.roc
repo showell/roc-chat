@@ -102,7 +102,8 @@ Channels :: List(Channels.Channel).{
 	## (`NoDefaultChannel`), as its members file was removed by hand.
 	add_new_human : Channels, Users.Human -> Try(Channels.Created, [NoDefaultChannel])
 	add_new_human = |channels, human| {
-		Channels.Channel.(c) = channels.channel(Channels.default_name) ? |NoSuchChannel| NoDefaultChannel
+		default = channels.channel(Channels.default_name) ? |NoSuchChannel| NoDefaultChannel
+		Channels.Channel.(c) = default
 		joined = Channels.Channel.({ ..c, members: c.members.insert(human.id()) })
 		Ok({ channels: with_channel(channels, joined), channel: joined })
 	}

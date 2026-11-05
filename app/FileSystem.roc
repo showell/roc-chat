@@ -530,7 +530,8 @@ FileSystem :: [].{
 			Failed,
 		],
 	)
-	replace_github_session_secret! = |id, bytes| replace_fact!(github_session_secret_path(id), bytes)
+	replace_github_session_secret! = |id, bytes|
+		replace_fact!(github_session_secret_path(id), bytes)
 
 	## The human `id`'s `github-id` file made holding `github`, once;
 	## `AlreadyExists`, nothing changed, when it is there.
