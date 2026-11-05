@@ -69,12 +69,12 @@ third = {
 	body: "hi",
 }
 
-## The transcript holding messages 1 and 2, written well, then message 3
-## as `lines` write it.
-three_with = |lines| Transcript.read(
-	Sample.plans,
-	"${write_message(first)}${write_message(second)}${write_message(lines)}",
-)
+## The text of messages 1 and 2, written well, then message 3 as `lines`
+## write it.
+three_text = |lines| "${write_message(first)}${write_message(second)}${write_message(lines)}"
+
+## That text, read as a transcript.
+three_with = |lines| Transcript.read(Sample.plans, three_text(lines))
 
 ## Read, then written again: the text itself, when it is accepted.
 again = |text| Transcript.read(Sample.plans, text).map_ok(Transcript.write)
@@ -179,9 +179,9 @@ expect
 	is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:33Z" })}")
 expect two_with({ ..second, date: "date: 2026-11-02T19:11:31Z" }) == Err(Backdated(Sample.second))
 expect
-	is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:28Z" })}")
+	is_round_trip(three_text({ ..third, date: "date: 2026-11-02T19:12:28Z" }))
 expect
-	is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
+	is_round_trip(three_text({ ..third, date: "date: 2026-11-02T19:12:29Z" }))
 expect three_with({ ..third, date: "date: 2026-11-02T19:12:27Z" }) == Err(Backdated(Sample.third))
 # Another topic's transcript is refused by its references.
 expect Transcript.read(

@@ -243,7 +243,12 @@ expect
 		"multipart/form-data; boundary=x",
 		"Multipart/Form-Data; boundary=x",
 		" multipart/form-data ;boundary=x",
-	].all(|header| MultipartForm.boundary_from_content_type(header.to_utf8()).map_ok(|MultipartForm.Boundary.(bytes)| bytes) == Ok("x".to_utf8()))
+	].all(
+		|header| {
+			found = MultipartForm.boundary_from_content_type(header.to_utf8())
+			found.map_ok(|MultipartForm.Boundary.(bytes)| bytes) == Ok("x".to_utf8())
+		},
+	)
 # The file: its name and its bytes exactly, a CR LF and a near delimiter
 # inside them kept.
 expect {

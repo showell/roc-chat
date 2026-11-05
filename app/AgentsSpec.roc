@@ -99,12 +99,13 @@ expect Agents.owned_agent(
 new_agent_from : { owner : Str, body : Str } -> Try(Str, _)
 new_agent_from = |{ owner, body }|
 	Agents.make(with_lc, { owner: Sample.human(owner), body: body.to_utf8() }).map_ok(
-		|addition|
-			match addition.user.role() {
-				Agent(role) =>
-					"${addition.user.name().to_str()} ${addition.user.id().to_str()} of ${role.owner.to_str()}"
+		|addition| {
+			user = addition.user
+			match user.role() {
+				Agent(role) => "${user.name().to_str()} ${user.id().to_str()} of ${role.owner.to_str()}"
 				Human => "a human"
-			},
+			}
+		},
 	)
 
 # An agent new_agent_from: the next id, owned by whoever new_agent_from it.

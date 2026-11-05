@@ -222,13 +222,16 @@ expect team_read("1\n3\n") == Ok(["1", "3"])
 expect team_read("# the team\n\n 3 \r\n1") == Ok(["1", "3"])
 expect team_read("") == Ok([])
 # A line that is no id, or an id twice: the file is refused.
-expect [
-	"1\n1\n",
-	"x\n",
-	"01\n",
-	"1 # Steve\n",
-	"0\n",
-].all(|text| team_read(text).map_ok(|_| {}) == Err(BadMembers(ChannelName.from_str("team") ?? crash "a name")))
+expect {
+	team = ChannelName.from_str("team") ?? crash "a name"
+	[
+		"1\n1\n",
+		"x\n",
+		"01\n",
+		"1 # Steve\n",
+		"0\n",
+	].all(|text| team_read(text).map_ok(|_| {}) == Err(BadMembers(team)))
+}
 # The directory: names one namespace across users and channels, and every
 # member a user.
 expect {

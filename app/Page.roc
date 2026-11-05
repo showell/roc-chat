@@ -654,8 +654,11 @@ agent_section = |
 							Active => "active"
 							Revoked => "revoked"
 						}
+					expiry = time_text(key.expires())
+					read_word = KeyScope.reach_word(key.scope().read())
+					post_word = KeyScope.reach_word(key.scope().post())
 					said =
-						"Key ${key.id().to_str()}: ${state_word}, expires ${time_text(key.expires())}, read ${KeyScope.reach_word(key.scope().read())}, post ${KeyScope.reach_word(key.scope().post())}."
+						"Key ${key.id().to_str()}: ${state_word}, expires ${expiry}, read ${read_word}, post ${post_word}."
 					revoke =
 						match key.state() {
 							Active => post_button({
@@ -671,8 +674,9 @@ agent_section = |
 		TrustedHtml.join(
 			invites.map(
 				|invite| {
-					said =
-						"Invite ${invite.id().to_str()}: ${invite_state_word(invite.state())}, expires ${time_text(invite.expires())}."
+					state_word = invite_state_word(invite.state())
+					expiry = time_text(invite.expires())
+					said = "Invite ${invite.id().to_str()}: ${state_word}, expires ${expiry}."
 					revoke =
 						match invite.state() {
 							Live => post_button({

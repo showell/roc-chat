@@ -69,7 +69,12 @@ invite_of = |acting, { body, open }|
 			open,
 		},
 	)
-		.map_ok(|made| "${made.human.name().to_str()} ${made.human.id().to_str()} by ${made.inviter.id().to_str()}")
+		.map_ok(
+			|made| {
+				human = made.human
+				"${human.name().to_str()} ${human.id().to_str()} by ${made.inviter.id().to_str()}"
+			},
+		)
 
 # Any human invites, by their own session, a name a new account holds at
 # once; never a key, never an agent.
@@ -530,7 +535,8 @@ join_as = |
 					Changed => "changed"
 				}
 			human = joined.admission.human()
-			"${state_word(joined.spent)}, admits ${human.id().to_str()} as ${human.user().name().to_str()}, ${changed}"
+			human_name = human.user().name().to_str()
+			"${state_word(joined.spent)}, admits ${human.id().to_str()} as ${human_name}, ${changed}"
 		},
 	)
 

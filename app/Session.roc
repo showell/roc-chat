@@ -132,7 +132,7 @@ Session :: [].{
 		match verdict {
 			DoesNotMatch => Err(SessionRefused)
 			Matches =>
-				if now - claim.signed_at() > Session.longest_seconds or claim.signed_at() - now > Session.clock_skew_seconds {
+				if is_outside_window({ now, signed_at: claim.signed_at() }) {
 					Err(SessionRefused)
 				} else {
 					match users.user(claim.id()) {
@@ -182,6 +182,12 @@ cookie_prefix = cookie_prefix_text.to_utf8()
 cookie_attributes : Str
 cookie_attributes = "HttpOnly; Secure; SameSite=Lax"
 
+## Whether a claim's `signed_at` is older than a session lasts, or further
+## ahead of `now` than the clock's skew allows.
+is_outside_window : { now : I64, signed_at : I64 } -> Bool
+is_outside_window = |{ now, signed_at }|
+	now - signed_at > Session.longest_seconds or signed_at - now > Session.clock_skew_seconds
+
 ## The claim a cookie's value spells; unless it is not three parts, an id
 ## that is no user's id, a second that is not its digits, or a signature
 ## that is not 32 bytes (`BadSession`).
@@ -193,8 +199,8 @@ claim_from_value = |value|
 			second_part,
 			mac_part,
 		] => {
-			id_text =
-				Str.from_utf8(Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession) ? |_| BadSession
+			id_bytes = Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession
+			id_text = Str.from_utf8(id_bytes) ? |_| BadSession
 			id = UserId.from_str(id_text) ? |_| BadSession
 			signed_at = second_from_digits(second_part) ? |_| BadSession
 			mac = Base64Url.decode(Str.from_utf8(mac_part) ? |_| BadSession) ? |_| BadSession
@@ -264,7 +270,14 @@ cookie_for = |
 		signed_at,
 		b,
 	},
-| "${cookie_prefix_text}${Session.cookie_value({ id: id_of(id), signed_at, mac: mac_of(b) })}".to_utf8()
+| {
+	cookie_value = Session.cookie_value({
+		id: id_of(id),
+		signed_at,
+		mac: mac_of(b),
+	})
+	"${cookie_prefix_text}${cookie_value}".to_utf8()
+}
 
 ## What `header` claims, as a test reads it: the bytes its signature is
 ## over, its human's password file keeping `h`, and the signature.

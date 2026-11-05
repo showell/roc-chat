@@ -50,8 +50,8 @@ AgentStream :: [].{
 		if (query.is_empty())
 			Ok(Live)
 		else if query.starts_with(since_prefix) {
-			unchecked =
-				UnvalidatedString.from_utf8(query.drop_first(since_prefix.len())) ? |NotUtf8| BadSince
+			since_bytes = query.drop_first(since_prefix.len())
+			unchecked = UnvalidatedString.from_utf8(since_bytes) ? |NotUtf8| BadSince
 			date = unchecked.date_time() ? |_| BadSince
 			Ok(Since(date))
 		} else

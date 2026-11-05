@@ -88,9 +88,13 @@ DateTime :: Str.{
 			days = seconds // 86400
 			of_day = seconds % 86400
 			date = civil_from_days(days)
-			text =
-				"${padded_digits(date.year, 4)}-${padded_digits(date.month, 2)}-${padded_digits(date.day, 2)}T${padded_digits(of_day // 3600, 2)}:${padded_digits((of_day % 3600) // 60, 2)}:${padded_digits(of_day % 60, 2)}Z"
-			Ok(DateTime.(text))
+			year = padded_digits(date.year, 4)
+			month = padded_digits(date.month, 2)
+			day = padded_digits(date.day, 2)
+			hour = padded_digits(of_day // 3600, 2)
+			minute = padded_digits((of_day % 3600) // 60, 2)
+			second = padded_digits(of_day % 60, 2)
+			Ok(DateTime.("${year}-${month}-${day}T${hour}:${minute}:${second}Z"))
 		}
 
 	## The time as written.

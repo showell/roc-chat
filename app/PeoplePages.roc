@@ -158,7 +158,9 @@ invited_section = |{ human, invites }| {
 						Live => "live"
 						Spent => "redeemed"
 					}
-				Page.text_paragraph("Invite ${invite.id().to_str()}: ${state_word}, expires ${Page.time_words(invite.expires())}, made by id ${invite.by().to_str()}.")
+				invite_id = invite.id().to_str()
+				expiry = Page.time_words(invite.expires())
+				Page.text_paragraph("Invite ${invite_id}: ${state_word}, expires ${expiry}, made by id ${invite.by().to_str()}.")
 			},
 		)
 	again = Page.button_form({

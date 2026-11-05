@@ -351,7 +351,10 @@ expect
 		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
 		HttpAnswer.json(JsonOut.json_object([])),
 		HttpAnswer.text(400, "x"),
-	].all(|response| response.kind == Whole and response.stream_key == [] and response.stream_holder == [])
+	].all(
+		|response|
+			response.kind == Whole and response.stream_key == [] and response.stream_holder == [],
+	)
 expect {
 	response = HttpAnswer.stream({
 		key: "k".to_utf8(),
