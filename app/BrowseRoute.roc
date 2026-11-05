@@ -54,7 +54,10 @@ BrowseRoute :: [].{
 			Err(Agent(_)) => key_refusal
 			Ok(_) =>
 				match topic_from_form(body) {
-					Ok(topic) => HttpAnswer.see_other(ConversationKey.of({ place, topic }).url_path(Page))
+					Ok(topic) => {
+						key = ConversationKey.of({ place, topic })
+						HttpAnswer.see_other(key.url_path(Page))
+					}
 					Err(NotATopic(words)) =>
 						answer_page!({
 							acting,
@@ -124,7 +127,9 @@ load_topics! = |listed| {
 topic_from_form : List(U8) -> Try(Topic, [NotATopic(Str)])
 topic_from_form = |body| {
 	name = UrlEncodedForm.topic_name
-	unchecked = UrlEncodedForm.field({ body, name }) ? |fault| NotATopic(UrlEncodedForm.fault_words({ fault, name }))
+	unchecked = UrlEncodedForm.field({ body, name }) ? |fault| {
+		NotATopic(UrlEncodedForm.fault_words({ fault, name }))
+	}
 	unchecked.topic().map_err(|_| NotATopic(topic_rule_words))
 }
 

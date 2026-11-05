@@ -137,8 +137,8 @@ test "the Roc routes: no such path is its 404, another method its 405, and each 
     const put = try exchange(a, port, try ours(a, port, "PUT /chat/dm/1_1/plans HTTP/1.1", "content-length: 0\r\n\r\n"));
     try testing.expectEqual(405, try status(put));
     try testing.expect(has(put, "allow: GET, POST"));
-    // A conversation with no transcript yet: the Roc's 404, through the host.
-    const missing = try exchange(a, port, try ours(a, port, "GET /chat/dm/1_1/plans?x=1 HTTP/1.1", "\r\n"));
+    // The transcript of a conversation with none yet: the Roc's 404, through the host.
+    const missing = try exchange(a, port, try ours(a, port, "GET /chat/dm/1_1/plans/raw?x=1 HTTP/1.1", "\r\n"));
     // Another Host: the Roc's 403, through the host.
     const foreign = try exchange(a, port, "GET /chat/dm/1_1/plans HTTP/1.1\r\nhost: x\r\n\r\n");
     try testing.expectEqual(403, try status(foreign));
@@ -381,8 +381,8 @@ test "a header with a CR, an LF or a NUL is never written" {
 }
 
 /// A stream of the conversation `/chat/dm/1_1/plans` after its `after`
-/// messages, held open, its head read. The conversation needs its
-/// transcript: a stream of one with none is a 404.
+/// messages, held open, its head read. The conversation must hold them: a
+/// stream after more than it holds is a 400.
 const HeldStream = struct {
     connection: Io.net.Stream,
     reader: Io.net.Stream.Reader,
