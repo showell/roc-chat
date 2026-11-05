@@ -13,7 +13,12 @@ ConversationKeySpec :: [].{}
 with_room : Directory
 with_room = {
 	name = ChannelName.from_str("plans-room") ?? crash "ConversationKeySpec: a channel's name"
-	(Sample.directory.create_channel({ by: Sample.admin, name }) ?? crash "ConversationKeySpec: the name is free").directory
+	(
+		Sample.directory.create_channel({
+			by: Sample.admin,
+			name,
+		}) ?? crash "ConversationKeySpec: the name is free"
+	).directory
 }
 
 ## A name of an uploaded image's shape.
@@ -158,7 +163,10 @@ expect
 # its page, and another place or another topic gives another key.
 expect {
 	key = |path|
-		ConversationKey.from_url_path({ path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: UTF-8", directory: with_room })
+		ConversationKey.from_url_path({
+			path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: UTF-8",
+			directory: with_room,
+		})
 			.map_ok(|found| found.key)
 	page = key("/chat/dm/1_2/plans")
 	page.is_ok()

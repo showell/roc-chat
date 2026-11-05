@@ -873,7 +873,10 @@ expect {
 expect {
 	human = UserId.from_str("7") ?? crash "FileSystem's tests: an id"
 	invite = HumanInvite.Id.from_str("2") ?? crash "FileSystem's tests: an invite's number"
-	human_invites_folder_path(human) == "auth/7/human-invites" and human_invite_folder_path(human, invite) == "auth/7/human-invites/2"
+	human_invites_folder_path(human) == "auth/7/human-invites" and human_invite_folder_path(
+		human,
+		invite,
+	) == "auth/7/human-invites/2"
 }
 expect channels_folder_path == "chat/channel"
 expect {

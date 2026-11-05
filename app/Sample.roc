@@ -67,7 +67,10 @@ Sample :: [].{
 	conversation = |topic, unnumbered_messages|
 		unnumbered_messages.fold(
 			Conversation.empty(topic),
-			|c, a| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated").conversation,
+			|
+				c,
+				a,
+			| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated").conversation,
 		)
 
 	## `plans`'s hello and reply.
@@ -118,7 +121,10 @@ Sample :: [].{
 	crowded_directory = |count|
 		List.from_iter(U64.until(0, count)).fold(
 			Sample.directory,
-			|so_far, at| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded_directory: a filler's name is free").directory,
+			|
+				so_far,
+				at,
+			| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded_directory: a filler's name is free").directory,
 		)
 
 	## Steve, signed in as an admin. This is the specs' one way to an admin,

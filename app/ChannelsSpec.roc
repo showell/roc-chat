@@ -50,7 +50,10 @@ all_changed : Channels, List([Add(Users.User), Remove(Users.User)]) -> Channels
 all_changed = |channels, changes|
 	changes.fold(
 		channels,
-		|so_far, change| apply_change(so_far, change) ?? crash "ChannelsSpec: a test's change is made",
+		|
+			so_far,
+			change,
+		| apply_change(so_far, change) ?? crash "ChannelsSpec: a test's change is made",
 	)
 
 ## `plans` with all three of the sample's users.
@@ -104,7 +107,10 @@ expect
 	}).map_ok(members_of)
 		== Err(NoSuchChannel)
 # Removing: a member goes, once; the rest stay.
-expect apply_change(everyone, Remove(Sample.user("Apoorva"))).map_ok(members_of) == Ok(Ok(["1", "3"]))
+expect apply_change(
+	everyone,
+	Remove(Sample.user("Apoorva")),
+).map_ok(members_of) == Ok(Ok(["1", "3"]))
 expect apply_change(with_plans, Remove(Sample.steve)).map_ok(members_of) == Err(NotMember)
 expect
 	everyone.remove_member({
@@ -146,7 +152,10 @@ expect
 		== Ok(["1", "3"])
 # A change to one channel leaves the others as they were.
 expect {
-	both = Channels.empty.create({ by: admin, name: channel_name("plans") }).channels.create({ by: admin, name: channel_name("general") }).channels
+	both = Channels.empty.create({ by: admin, name: channel_name("plans") }).channels.create({
+		by: admin,
+		name: channel_name("general"),
+	}).channels
 	grown = apply_change(both, Add(Sample.steve)) ?? crash "ChannelsSpec: Steve joins plans"
 	members_of(grown) == Ok(["1"])
 		and grown.channel(channel_name("general")).map_ok(|c| c.members()) == Ok([])

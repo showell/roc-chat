@@ -28,7 +28,10 @@ Ascii :: [].{
 	## `bytes` with the spaces (`is_space`) off both ends.
 	trim_spaces : List(U8) -> List(U8)
 	trim_spaces = |bytes|
-		match (bytes.find_first_index(|b| !Ascii.is_space(b)), bytes.find_last_index(|b| !Ascii.is_space(b))) {
+		match (
+			bytes.find_first_index(|b| !Ascii.is_space(b)),
+			bytes.find_last_index(|b| !Ascii.is_space(b)),
+		) {
 			(Ok(first), Ok(last)) => bytes.sublist({ start: first, len: last - first + 1 })
 			_ => []
 		}

@@ -23,7 +23,10 @@ Markdown :: [].{
 	## conversation's own uploads.
 	render : Str, ConversationKey -> TrustedHtml
 	render = |markdown, key| {
-		rendered = Md.render(markdown.to_utf8(), { uploads: |source| SecureImageTag.is_conversation_upload(key, source) })
+		rendered = Md.render(
+			markdown.to_utf8(),
+			{ uploads: |source| SecureImageTag.is_conversation_upload(key, source) },
+		)
 		TrustedHtml.dangerously_trust(Str.from_utf8(rendered) ?? crash "Markdown.render: roc-markdown returned bytes that are not UTF-8, from UTF-8 input")
 	}
 }

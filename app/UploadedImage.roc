@@ -50,7 +50,12 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	from_name : Str -> Try(UploadedImage, [NotAnUploadName])
 	from_name = |text|
 		match text.to_utf8().split_first('.') {
-			Ok({ before, after }) if before.len() == UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
+			Ok(
+				{
+					before,
+					after,
+				},
+			) if before.len() == UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
 				kind = kind_of_extension(after)?
 				digits = Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
 				Ok(UploadedImage.({ kind, digits }))
@@ -89,7 +94,12 @@ kind_of_bytes = |bytes|
 		Ok(Jpeg)
 	else if (bytes.starts_with("GIF87a".to_utf8()) or bytes.starts_with("GIF89a".to_utf8()))
 		Ok(Gif)
-	else if (bytes.starts_with("RIFF".to_utf8()) and bytes.sublist({ start: 8, len: 4 }) == "WEBP".to_utf8())
+	else if (
+		bytes.starts_with("RIFF".to_utf8()) and bytes.sublist({
+			start: 8,
+			len: 4,
+		}) == "WEBP".to_utf8()
+	)
 		Ok(Webp)
 	else
 		Err(NotAnImage)
@@ -146,16 +156,40 @@ expect UploadedImage.checked_bytes([0xFF, 0xD8]) == Err(NotAnImage)
 expect UploadedImage.most_bytes == 10485760
 # Its size: at the most and one byte under it, and one byte over, an image
 # whatever follows its opening; one too large and no image is no image.
-expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 8))) == Ok(Png)
-expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 9))) == Ok(Png)
-expect UploadedImage.checked_bytes(png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 7))) == Err(TooLarge)
+expect UploadedImage.checked_bytes(
+	png_signature.concat(
+		List.repeat(
+			0,
+			UploadedImage.most_bytes - 8,
+		),
+	),
+) == Ok(Png)
+expect UploadedImage.checked_bytes(
+	png_signature.concat(
+		List.repeat(
+			0,
+			UploadedImage.most_bytes - 9,
+		),
+	),
+) == Ok(Png)
+expect UploadedImage.checked_bytes(
+	png_signature.concat(
+		List.repeat(
+			0,
+			UploadedImage.most_bytes - 7,
+		),
+	),
+) == Err(TooLarge)
 expect UploadedImage.checked_bytes(List.repeat(0, UploadedImage.most_bytes + 1)) == Err(NotAnImage)
 # A fresh name: the random bytes in lowercase hex, and its kind's extension.
 expect
 	UploadedImage.with_random_name({ random_bytes: List.repeat(0xAB, 16), kind: Webp }).name()
 		== "${"ab".repeat(16)}.webp"
 expect
-	UploadedImage.with_random_name({ random_bytes: List.from_iter(U8.until(0, 16)), kind: Png }).name()
+	UploadedImage.with_random_name({
+		random_bytes: List.from_iter(U8.until(0, 16)),
+		kind: Png,
+	}).name()
 		== "000102030405060708090a0b0c0d0e0f.png"
 
 ## An image of `kind` with a random name, as a test reads it: its name,
@@ -170,7 +204,10 @@ expect name_and_type(Png) == "${"f0".repeat(16)}.png image/png"
 expect name_and_type(Jpeg) == "${"f0".repeat(16)}.jpg image/jpeg"
 expect name_and_type(Gif) == "${"f0".repeat(16)}.gif image/gif"
 expect name_and_type(Webp) == "${"f0".repeat(16)}.webp image/webp"
-expect UploadedImage.with_random_name({ random_bytes: List.repeat(0, 16), kind: Jpeg }).kind() == Jpeg
+expect UploadedImage.with_random_name({
+	random_bytes: List.repeat(0, 16),
+	kind: Jpeg,
+}).kind() == Jpeg
 # A name read back: exactly a fresh name's shape, its kind by its extension.
 expect {
 	image = UploadedImage.with_random_name({ random_bytes: List.repeat(0x5C, 16), kind: Gif })

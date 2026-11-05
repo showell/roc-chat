@@ -42,8 +42,14 @@ expect places.map(kind_and_name) == ["channel plans", "channel general", "DM 1_2
 expect places.map(Place.to_str) == ["plans", "general", "1_2", "1_1"]
 # No channel's name is a pair, and no pair is a channel's name, so the two
 # kinds never share a name.
-expect ["1_2", "1_1"].all(|text| ChannelName.from_str(text).is_err() and UserPair.from_str(text).is_ok())
-expect ["plans", "general"].all(|text| ChannelName.from_str(text).is_ok() and UserPair.from_str(text).is_err())
+expect [
+	"1_2",
+	"1_1",
+].all(|text| ChannelName.from_str(text).is_err() and UserPair.from_str(text).is_ok())
+expect [
+	"plans",
+	"general",
+].all(|text| ChannelName.from_str(text).is_ok() and UserPair.from_str(text).is_err())
 # Each place equals itself, made again, and no other.
 expect places.all(|place| places.keep_if(|other| other == place).len() == 1)
 expect Place.channel(channel("plans")) == Place.channel(channel("plans"))

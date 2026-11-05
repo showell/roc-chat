@@ -79,7 +79,10 @@ SignInRoute :: [].{
 				Ok(NoFile) => Err(NoPassword)
 				Err(fault) => Err(FileSystem(fault))
 			}?
-		verdict = Host.hmac_sha256_with_server_secret_matches!(claim.signed_bytes(password_hash), claim.mac())
+		verdict = Host.hmac_sha256_with_server_secret_matches!(
+			claim.signed_bytes(password_hash),
+			claim.mac(),
+		)
 		admitted = Session.admit({
 			claim,
 			verdict,
@@ -173,7 +176,11 @@ SignInRoute :: [].{
 	## redemption wrote to their password file, and a 303 to `default_next`
 	## with its cookie. Every session signed over the hash the file held
 	## before stops admitting them (`sign_in_by_session!`). Never stored.
-	start_session_by_invite! : { admission : HumanInvite.Admission, password_hash : List(U8) }, I64 => Http.Response
+	start_session_by_invite! : {
+		admission : HumanInvite.Admission,
+		password_hash : List(U8),
+	},
+	I64 => Http.Response
 	start_session_by_invite! = |{ admission, password_hash }, now| {
 		cookie = sign_session_cookie!({
 			human: admission.human(),

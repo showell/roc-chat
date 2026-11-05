@@ -126,4 +126,9 @@ expect
 # Every byte: the lowercase digits are the sixteen `to_hex` writes, and
 # `digit_value` takes those and their six uppercase letters.
 expect List.from_iter(U8.to(0, 255)).keep_if(Hex.is_lower_digit) == "0123456789abcdef".to_utf8()
-expect List.from_iter(U8.to(0, 255)).keep_if(|b| Hex.digit_value(b).is_ok()) == "0123456789ABCDEFabcdef".to_utf8()
+expect List.from_iter(
+	U8.to(
+		0,
+		255,
+	),
+).keep_if(|b| Hex.digit_value(b).is_ok()) == "0123456789ABCDEFabcdef".to_utf8()

@@ -55,8 +55,22 @@ chosen_route = |method, path|
 		SignedInOnly(ShowChannels) => "channels"
 		SignedInOnly(CreateChannel) => "create a channel"
 		SignedInOnly(ShowChannelMembers(channel)) => "members of ${channel.to_str()}"
-		SignedInOnly(AddChannelMember({ channel, member })) => "add ${member.to_str()} to ${channel.to_str()}"
-		SignedInOnly(RemoveChannelMember({ channel, member })) => "remove ${member.to_str()} from ${channel.to_str()}"
+		SignedInOnly(
+			AddChannelMember(
+				{
+					channel,
+					member,
+				},
+			),
+		) => "add ${member.to_str()} to ${channel.to_str()}"
+		SignedInOnly(
+			RemoveChannelMember(
+				{
+					channel,
+					member,
+				},
+			),
+		) => "remove ${member.to_str()} from ${channel.to_str()}"
 		SignedInOnly(ShowInvites) => "invites"
 		SignedInOnly(InviteHuman) => "invite a human"
 		SignedInOnly(InviteHumanAgain(human)) => "invite ${human.to_str()} again"

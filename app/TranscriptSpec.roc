@@ -71,7 +71,10 @@ third = {
 
 ## The transcript holding messages 1 and 2, written well, then message 3
 ## as `lines` write it.
-three_with = |lines| Transcript.read(Sample.plans, "${write_message(first)}${write_message(second)}${write_message(lines)}")
+three_with = |lines| Transcript.read(
+	Sample.plans,
+	"${write_message(first)}${write_message(second)}${write_message(lines)}",
+)
 
 ## Read, then written again: the text itself, when it is accepted.
 again = |text| Transcript.read(Sample.plans, text).map_ok(Transcript.write)
@@ -82,7 +85,10 @@ is_round_trip = |text| again(text) == Ok(text)
 
 # Written exactly, both ways.
 expect Transcript.write(Sample.hello_and_reply) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
-expect Transcript.read(Sample.plans, Transcript.write(Sample.hello_and_reply)) == Ok(Sample.hello_and_reply)
+expect Transcript.read(
+	Sample.plans,
+	Transcript.write(Sample.hello_and_reply),
+) == Ok(Sample.hello_and_reply)
 # No messages: an empty file, both ways.
 expect Transcript.write(Conversation.empty(Sample.plans)) == ""
 expect Transcript.read(Sample.plans, "") == Ok(Conversation.empty(Sample.plans))
@@ -129,7 +135,12 @@ expect one_with({ ..first, body: "a\n-------------" }) == Err(BadBody(Sample.fir
 # message is refused as `BadHead`. Escaped, it is the body's own line.
 expect one_with({ ..first, body: "a\n\n-------------\nb" }) == Err(BadHead(Sample.second))
 expect is_round_trip(write_message({ ..first, body: "a\n\n\\-------------\nb" }))
-expect again(write_message({ ..first, body: "a\n\\-------------" })) == Ok(write_message({ ..first, body: "a\n\\-------------" }))
+expect again(
+	write_message({
+		..first,
+		body: "a\n\\-------------",
+	}),
+) == Ok(write_message({ ..first, body: "a\n\\-------------" }))
 # The same at message 2, after a good message 1.
 expect again("${write_message(first)}${write_message(second)}") == Ok("${write_message(first)}${write_message(second)}")
 expect two_with({ ..second, head: "MSG_plans_1" }) == Err(BadHead(Sample.second))
@@ -138,7 +149,10 @@ expect two_with({ ..second, from: "frm: CC" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, date: "dt: 2026-11-02T19:12:28Z" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, gap: "" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, from: "from: " }) == Err(Author(Sample.second, Empty))
-expect two_with({ ..second, from: "from: C\u(0)C" }) == Err(Author(Sample.second, ForbiddenCharacter))
+expect two_with({
+	..second,
+	from: "from: C\u(0)C",
+}) == Err(Author(Sample.second, ForbiddenCharacter))
 expect two_with({ ..second, from: "from: CC " }) == Err(Author(Sample.second, BadSpacing))
 expect two_with({
 	..second,
@@ -162,7 +176,10 @@ expect is_round_trip("${write_message(first)}${write_message(second)}${write_mes
 expect is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
 expect three_with({ ..third, date: "date: 2026-11-02T19:12:27Z" }) == Err(Backdated(Sample.third))
 # Another topic's transcript is refused by its references.
-expect Transcript.read(Sample.other, Transcript.write(Sample.hello_and_reply)) == Err(BadHead(Sample.first))
+expect Transcript.read(
+	Sample.other,
+	Transcript.write(Sample.hello_and_reply),
+) == Err(BadHead(Sample.first))
 # A body that holds the separator, or a backslash before it, is written
 # with one backslash more, and comes back whole.
 forged : Conversation
@@ -239,7 +256,11 @@ expect {
 # and it decodes back to that conversation.
 ## The file of `before`, with the record of `unnumbered_message` added at
 ## its end, and the conversation grown by it.
-grown_on_disk : Conversation, Message.Unnumbered(Author) -> { bytes : List(U8), grown : Conversation }
+grown_on_disk : Conversation,
+Message.Unnumbered(Author) -> {
+	bytes : List(U8),
+	grown : Conversation,
+}
 grown_on_disk = |before, unnumbered_message| {
 	grown = before.append(unnumbered_message) ?? crash "TranscriptSpec: a sample's message fits"
 	file = Transcript.write(before).to_utf8()
@@ -256,7 +277,10 @@ expect
 		|before| {
 			on_disk = grown_on_disk(before, Sample.reply)
 			on_disk.bytes == Transcript.write(on_disk.grown).to_utf8()
-				and Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(on_disk.bytes)) == Ok(on_disk.grown)
+				and Transcript.decode(
+					Sample.plans,
+					Transcript.Utf8Transcript.unchecked_from_file(on_disk.bytes),
+				) == Ok(on_disk.grown)
 		},
 	)
 
@@ -275,7 +299,10 @@ file_of = |n| File(Transcript.Utf8Transcript.unchecked_from_file(List.repeat('a'
 
 ## The file of `bytes`, decoded as `plans`' transcript.
 decoded_conversation : List(U8) -> Try(Conversation, _)
-decoded_conversation = |bytes| Transcript.decode(Sample.plans, Transcript.Utf8Transcript.unchecked_from_file(bytes))
+decoded_conversation = |bytes| Transcript.decode(
+	Sample.plans,
+	Transcript.Utf8Transcript.unchecked_from_file(bytes),
+)
 
 expect hello_record(NoFile) == Ok("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8())
 # A record that would grow the file past the most is refused: at the most,

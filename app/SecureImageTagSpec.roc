@@ -18,7 +18,12 @@ SecureImageTagSpec :: [].{}
 with_room : Directory
 with_room = {
 	name = ChannelName.from_str("plans-room") ?? crash "SecureImageTagSpec: a channel's name"
-	(Sample.directory.create_channel({ by: Sample.admin, name }) ?? crash "SecureImageTagSpec: the name is free").directory
+	(
+		Sample.directory.create_channel({
+			by: Sample.admin,
+			name,
+		}) ?? crash "SecureImageTagSpec: the name is free"
+	).directory
 }
 
 ## The conversation at the URL path `path` in `with_room`.
@@ -39,7 +44,12 @@ image_name = "${"0a".repeat(16)}.png"
 
 ## `markdown` rendered as a message of `plans`, as a test reads it.
 message_html : Str -> Str
-message_html = |markdown| Str.from_utf8(Markdown.render(markdown, plans).to_utf8()) ?? crash "SecureImageTagSpec: a render is UTF-8"
+message_html = |markdown| Str.from_utf8(
+	Markdown.render(
+		markdown,
+		plans,
+	).to_utf8(),
+) ?? crash "SecureImageTagSpec: a render is UTF-8"
 
 # The rule: exactly the conversation's own uploaded image's path, each kind.
 expect
@@ -49,7 +59,10 @@ expect
 		"/chat/dm/1_1/plans/uploads/${"9".repeat(32)}.gif",
 		"/chat/dm/1_1/plans/uploads/${"1".repeat(32)}.webp",
 	].all(|source| SecureImageTag.is_conversation_upload(plans, source.to_utf8()))
-expect SecureImageTag.is_conversation_upload(key_at("/chat/channel/plans-room/talk"), "/chat/channel/plans-room/talk/uploads/${image_name}".to_utf8())
+expect SecureImageTag.is_conversation_upload(
+	key_at("/chat/channel/plans-room/talk"),
+	"/chat/channel/plans-room/talk/uploads/${image_name}".to_utf8(),
+)
 # Every other source: another conversation's uploads, in another topic,
 # place or kind of place; a name of another shape; another path of this
 # conversation; and the sources no conversation ever has.
@@ -80,7 +93,10 @@ expect
 		image_name,
 		"",
 	].all(|source| !SecureImageTag.is_conversation_upload(plans, source.to_utf8()))
-expect !SecureImageTag.is_conversation_upload(plans, "/chat/dm/1_1/plans/uploads/".to_utf8().concat([0xFF]))
+expect !SecureImageTag.is_conversation_upload(
+	plans,
+	"/chat/dm/1_1/plans/uploads/".to_utf8().concat([0xFF]),
+)
 
 # Through the renderer: the conversation's own image is an image, by
 # markdown or by an `<img>` tag, as the compose box inserts one.
@@ -109,5 +125,8 @@ expect message_html("a & <b>") == "<p>a &amp; &lt;b&gt;</p>\n"
 expect message_html("[x](javascript:alert(1))") == "<p>[x](javascript:alert(1))</p>\n"
 # Rendered markup is trusted as it is: joined, its entities stay single.
 expect
-	TrustedHtml.join([TrustedHtml.dangerously_trust("&amp;"), Markdown.render("a & <b>", plans)]).to_utf8()
+	TrustedHtml.join([
+		TrustedHtml.dangerously_trust("&amp;"),
+		Markdown.render("a & <b>", plans),
+	]).to_utf8()
 		== "&amp;<p>a &amp; &lt;b&gt;</p>\n".to_utf8()

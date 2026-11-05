@@ -231,7 +231,10 @@ expect
 ## A channel created from the form `body` by `acting`: its name, or why not.
 channel_by_form : SignedIn, Str -> Try(Str, _)
 channel_by_form = |acting, body|
-	ChannelMembers.create(with_team, { acting, body: body.to_utf8() }).map_ok(|c| c.channel.name().to_str())
+	ChannelMembers.create(
+		with_team,
+		{ acting, body: body.to_utf8() },
+	).map_ok(|c| c.channel.name().to_str())
 
 # Creating: the admin's, a channel's name free in the one namespace.
 expect channel_by_form(steve, "name=crew") == Ok("crew")
@@ -248,9 +251,15 @@ expect [
 
 # A channel's page: the admin's alone, of a channel there is.
 expect
-	ChannelMembers.members_page_of(with_cc_and_apoorva, { acting: steve, channel: team }).map_ok(|found| found.users.len())
+	ChannelMembers.members_page_of(
+		with_cc_and_apoorva,
+		{ acting: steve, channel: team },
+	).map_ok(|found| found.users.len())
 		== Ok(3)
-expect ChannelMembers.members_page_of(with_team, { acting: apoorva, channel: team }).map_ok(|_| {}) == Err(NotAdmin)
+expect ChannelMembers.members_page_of(
+	with_team,
+	{ acting: apoorva, channel: team },
+).map_ok(|_| {}) == Err(NotAdmin)
 expect
 	ChannelMembers.members_page_of(
 		with_team,
@@ -292,10 +301,16 @@ expect route_of("PUT", "/channels") == MethodNotAllowed(GetAndPost)
 expect route_of("GET", "/channels/team") == SignedInOnly(ShowChannelMembers(team))
 expect route_of("POST", "/channels/team") == MethodNotAllowed(GetOnly)
 expect route_of("PUT", "/channels/team") == MethodNotAllowed(GetOnly)
-expect route_of("POST", "/channels/team/members/3/add") == SignedInOnly(AddChannelMember({ channel: team, member: id_of("CC") }))
+expect route_of(
+	"POST",
+	"/channels/team/members/3/add",
+) == SignedInOnly(AddChannelMember({ channel: team, member: id_of("CC") }))
 expect route_of("GET", "/channels/team/members/3/add") == MethodNotAllowed(PostOnly)
 expect route_of("PUT", "/channels/team/members/3/add") == MethodNotAllowed(PostOnly)
-expect route_of("POST", "/channels/team/members/3/remove") == SignedInOnly(RemoveChannelMember({ channel: team, member: id_of("CC") }))
+expect route_of(
+	"POST",
+	"/channels/team/members/3/remove",
+) == SignedInOnly(RemoveChannelMember({ channel: team, member: id_of("CC") }))
 expect route_of("GET", "/channels/team/members/3/remove") == MethodNotAllowed(PostOnly)
 expect route_of("PUT", "/channels/team/members/3/remove") == MethodNotAllowed(PostOnly)
 expect

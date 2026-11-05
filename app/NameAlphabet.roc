@@ -107,7 +107,10 @@ point_spelling = |point|
 ## The row of `spellings` that holds the two-byte letter `point`.
 row_of : U32 -> Try((Str, Str), [NotFound])
 row_of = |point| {
-	letter = decode_utf8(utf8_bytes(point), "NameAlphabet.row_of: a code point below U+0800 is UTF-8")
+	letter = decode_utf8(
+		utf8_bytes(point),
+		"NameAlphabet.row_of: a code point below U+0800 is UTF-8",
+	)
 	spellings.find_first(|(row, _)| row.contains(letter))
 }
 
@@ -142,7 +145,10 @@ code_points_onto : { out : List(U32), bytes : List(U8) } -> List(U32)
 code_points_onto = |{ out, bytes }|
 	match bytes {
 		[] => out
-		[b, .. as rest] if b < 0x80 => code_points_onto({ out: out.append(b.to_u32()), bytes: rest })
+		[b, .. as rest] if b < 0x80 => code_points_onto({
+			out: out.append(b.to_u32()),
+			bytes: rest,
+		})
 		[lead, b, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
 			code_points_onto({ out: out.append(two_byte_code_point(lead, b)), bytes: rest })
 		_ => crash "NameAlphabet.code_points_onto: written text holds only one- and two-byte characters"

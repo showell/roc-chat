@@ -47,7 +47,12 @@ Separator :: [].{
 		if (lines.any(|l| l == Separator.line))
 			Err(BareSeparator)
 		else
-			Ok(Str.join_with(lines.map(|l| if (is_backslashed_separator(l)) l.drop_prefix("\\") else l), "\n"))
+			Ok(
+				Str.join_with(
+					lines.map(|l| if (is_backslashed_separator(l)) l.drop_prefix("\\") else l),
+					"\n",
+				),
+			)
 	}
 }
 

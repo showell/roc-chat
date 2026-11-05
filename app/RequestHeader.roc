@@ -43,7 +43,10 @@ Str -> [
 	Repeated,
 ]
 looked_up = |headers, name|
-	match RequestHeader.header_value(headers.map(|(n, v)| { name: n.to_utf8(), value: v.to_utf8() }), name) {
+	match RequestHeader.header_value(
+		headers.map(|(n, v)| { name: n.to_utf8(), value: v.to_utf8() }),
+		name,
+	) {
 		Sent(value) => Sent(Str.from_utf8_lossy(value))
 		Unsent => Unsent
 		Repeated => Repeated
@@ -52,7 +55,10 @@ looked_up = |headers, name|
 # Sent once, in any case, its value exactly as sent.
 expect looked_up([("Last-Event-ID", "6")], "last-event-id") == Sent("6")
 expect looked_up([("last-event-id", "")], "last-event-id") == Sent("")
-expect looked_up([("Host", "x"), ("Content-Type", "Text/HTML")], "content-type") == Sent("Text/HTML")
+expect looked_up(
+	[("Host", "x"), ("Content-Type", "Text/HTML")],
+	"content-type",
+) == Sent("Text/HTML")
 # Not sent: no headers, another header, or a name that is not UTF-8.
 expect looked_up([("Host", "x")], "last-event-id") == Unsent
 expect looked_up([], "last-event-id") == Unsent

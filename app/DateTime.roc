@@ -147,7 +147,10 @@ padded_digits = |n, width| {
 byte_order : List(U8), List(U8) -> [Before, Same, After]
 byte_order = |bytes, others|
 	match (bytes, others) {
-		([byte, .. as rest], [other, .. as rest_of_others]) if byte == other => byte_order(rest, rest_of_others)
+		(
+			[byte, .. as rest],
+			[other, .. as rest_of_others],
+		) if byte == other => byte_order(rest, rest_of_others)
 		([byte, ..], [other, ..]) => if (byte < other) Before else After
 		_ => Same
 	}

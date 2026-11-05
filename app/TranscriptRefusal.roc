@@ -94,14 +94,28 @@ expect
 	TranscriptRefusal.words(Transcript(BadHead(second_id)))
 		== "message 2 does not open with its reference, `from:`, `date:` and an empty line"
 expect TranscriptRefusal.words(Transcript(Author(second_id, Empty))) == "message 2 has no author"
-expect TranscriptRefusal.words(Transcript(Author(second_id, TooLong))) == "message 2's author is longer than 60 characters"
+expect TranscriptRefusal.words(
+	Transcript(
+		Author(
+			second_id,
+			TooLong,
+		),
+	),
+) == "message 2's author is longer than 60 characters"
 expect
 	TranscriptRefusal.words(Transcript(Author(second_id, ForbiddenCharacter)))
 		== "message 2's author holds a character that is no letter or space"
 expect
 	TranscriptRefusal.words(Transcript(Author(second_id, BadSpacing)))
 		== "message 2's author has a space at either end, or two together"
-expect TranscriptRefusal.words(Transcript(DateTime(second_id, WrongShape))) == "message 2's date is not YYYY-MM-DDTHH:MM:SSZ"
+expect TranscriptRefusal.words(
+	Transcript(
+		DateTime(
+			second_id,
+			WrongShape,
+		),
+	),
+) == "message 2's date is not YYYY-MM-DDTHH:MM:SSZ"
 expect
 	TranscriptRefusal.words(Transcript(DateTime(second_id, OutOfRange)))
 		== "message 2's date is no time a calendar and clock show"

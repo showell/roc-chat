@@ -55,4 +55,7 @@ expect anchor_of({ topic: "gopher-roc", id: second }).page_anchor() == "msg-2"
 # Two messages are the same message when both the topic and the id match.
 expect anchor_of({ topic: "plans", id: second }) == anchor_of({ topic: "plans", id: second })
 expect anchor_of({ topic: "plans", id: second }) != anchor_of({ topic: "other", id: second })
-expect anchor_of({ topic: "plans", id: second }) != anchor_of({ topic: "plans", id: Message.Id.first })
+expect anchor_of({ topic: "plans", id: second }) != anchor_of({
+	topic: "plans",
+	id: Message.Id.first,
+})

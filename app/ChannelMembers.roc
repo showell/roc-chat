@@ -38,9 +38,15 @@ ChannelMembers :: [].{
 	refusal_notice : ChannelMembers.Refusal -> { status : U16, said : Str }
 	refusal_notice = |why|
 		match why {
-			ByApiKey => { status: 403, said: "An API key can't change channels: only the admin, signed in, does." }
+			ByApiKey => {
+				status: 403,
+				said: "An API key can't change channels: only the admin, signed in, does.",
+			}
 			Agent(_) => { status: 403, said: "An agent can't change channels." }
-			NotAdmin => { status: 403, said: "Only the admin creates a channel or changes who is in one." }
+			NotAdmin => {
+				status: 403,
+				said: "Only the admin creates a channel or changes who is in one.",
+			}
 			NoSuchChannel => { status: 404, said: "No such channel." }
 			NoSuchUser => { status: 404, said: "No such user." }
 			AlreadyMember => { status: 409, said: "They are in the channel already." }
@@ -85,7 +91,12 @@ ChannelMembers :: [].{
 	)
 	create = |directory, { acting, body }| {
 		admin = ChannelMembers.admin_of(acting)?
-		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(UrlEncodedForm.fault_words({ fault, name: "name" }))
+		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
+			UrlEncodedForm.fault_words({
+				fault,
+				name: "name",
+			}),
+		)
 		name = unchecked.channel_name() ? |_| BadName
 		directory.create_channel({ by: admin, name })
 	}

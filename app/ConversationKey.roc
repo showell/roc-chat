@@ -82,7 +82,10 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	## The URL path of the conversation's `resource`: `/`, its parts, then
 	## the resource's own.
 	url_path : ConversationKey, ConversationKey.Resource -> Str
-	url_path = |key, resource| "/${Str.join_with(key.parts().concat(resource_parts(resource)), "/")}"
+	url_path = |
+		key,
+		resource,
+	| "/${Str.join_with(key.parts().concat(resource_parts(resource)), "/")}"
 
 	## The conversation a URL's path names, its place found in `directory`,
 	## and which of its resources the path names. Unless the path is no
@@ -136,7 +139,10 @@ resource_parts = |resource|
 
 ## The resource whose parts are `suffix`, the parts of a URL's path after
 ## its conversation's, as `resource_parts` writes them.
-resource_of_suffix : List(UnvalidatedString) -> Try(ConversationKey.Resource, [NotAConversationPath])
+resource_of_suffix : List(UnvalidatedString) -> Try(
+	ConversationKey.Resource,
+	[NotAConversationPath],
+)
 resource_of_suffix = |suffix|
 	match suffix {
 		[] => Ok(Page)
