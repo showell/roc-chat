@@ -32,10 +32,11 @@
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
 ## `Route` says are open (the scripts, signing in and out, redeeming an
-## agent's invite, and joining by a human's); any other page sends it to sign in, and any other request is a
-## 401. Only the first start, which makes Steve before anyone can sign in,
-## and the demo's page take him as signed in with nothing checked
-## (`SignedIn.dangerously_assume`); no request does.
+## agent's invite, and joining by a human's); any other page sends it to
+## sign in, and any other request is a 401. Only the first start, which
+## makes Steve before anyone can sign in, and the demo's page take him as
+## signed in with nothing checked (`SignedIn.dangerously_assume`); no request
+## does.
 app [
 	check_request_head!,
 	handle_http_request!,

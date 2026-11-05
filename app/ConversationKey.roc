@@ -18,8 +18,8 @@
 ## a suffix: its stream at `/stream`, the send of its page's script at
 ## `/send`, an image's upload at `/upload`, an uploaded image at
 ## `/uploads/<name>`, and its transcript as plain text at `/raw`.
-## `url_path` writes each, and `from_url_path` reads each back. `FileSystem` keeps an uploaded image in the conversation's
-## folder, as `uploads/<name>`.
+## `url_path` writes each, and `from_url_path` reads each back. `FileSystem`
+## keeps an uploaded image in the conversation's folder, as `uploads/<name>`.
 import ChannelName
 import Directory
 import Place

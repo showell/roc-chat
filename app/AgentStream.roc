@@ -4,7 +4,7 @@
 ## own stream (`ConversationStream`) serves a page; this one serves a
 ## script, so each message is one event of one line, a JSON object:
 ##
-##     data: {"conversation":"/chat/channel/general/plans","id":3,"from":"Steve","date":"2026-11-02T19:11:32Z","markdown":"Hi"}
+##     data: {"conversation":"/chat/dm/1_1/a","id":3,"from":"Steve","date":"...","markdown":"Hi"}
 ##
 ## then a blank line. `conversation` is the conversation's URL path, which
 ## also names its `/raw` transcript and where to post a reply; `id` its
