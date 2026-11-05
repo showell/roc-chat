@@ -156,7 +156,7 @@ print("  prod is as expected")
 local stamp = trim(on_prod("date -u +%Y%m%dT%H%M%SZ").out)
 const backup = "/home/steve/gopher-roc-data-" .. stamp .. ".tgz"
 step("b. backing up " .. OLD_DATA, "set -eu\n"
-  .. "! sudo test -e " .. backup .. "\n"
+  .. "if sudo test -e " .. backup .. "; then echo 'a backup of that name is already there'; exit 1; fi\n"
   .. "sudo sh -c 'umask 077 && exec tar czf " .. backup .. " -C /var/lib gopher-roc'\n"
   .. "[ \"$(sudo stat -c '%U %a' " .. backup .. ")\" = 'root 600' ]\n"
   .. "sudo tar tzf " .. backup .. " >/dev/null\n"
