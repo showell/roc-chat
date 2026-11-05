@@ -77,7 +77,8 @@ expect
 				reach,
 				word,
 			),
-		| KeyScope.reach_to_file(reach) == word.to_utf8() and KeyScope.reach_from_file("${word}\n".to_utf8()) == Ok(reach),
+		| KeyScope.reach_to_file(reach)
+			== word.to_utf8() and KeyScope.reach_from_file("${word}\n".to_utf8()) == Ok(reach),
 	)
 expect
 	[

@@ -55,7 +55,8 @@ from_hex_onto = |{ out, rest }|
 
 ## The value of one lowercase hex digit.
 lower_digit_value : U8 -> Try(U8, [NotAHexDigit])
-lower_digit_value = |digit| if (Hex.is_lower_digit(digit)) Hex.digit_value(digit) else Err(NotAHexDigit)
+lower_digit_value = |digit|
+	if (Hex.is_lower_digit(digit)) Hex.digit_value(digit) else Err(NotAHexDigit)
 
 ## The lowercase digit for `n`, which is below 16.
 digit_of : U8 -> U8

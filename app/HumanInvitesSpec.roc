@@ -68,7 +68,8 @@ invite_of = |acting, { body, open }|
 			body: body.to_utf8(),
 			open,
 		},
-	).map_ok(|made| "${made.human.name().to_str()} ${made.human.id().to_str()} by ${made.inviter.id().to_str()}")
+	)
+		.map_ok(|made| "${made.human.name().to_str()} ${made.human.id().to_str()} by ${made.inviter.id().to_str()}")
 
 # Any human invites, by their own session, a name a new account holds at
 # once; never a key, never an agent.
@@ -173,13 +174,17 @@ expect
 ## The sample directory with Zoe (4), invited by Apoorva, and Bob (5).
 with_zoe_and_bob : Directory
 with_zoe_and_bob = {
-	with_zoe = (Sample.directory.add_human(Sample.name("Zoe")) ?? crash "HumanInvitesSpec: Zoe's name is free").directory
-	(with_zoe.add_human(Sample.name("Bob")) ?? crash "HumanInvitesSpec: Bob's name is free").directory
+	with_zoe =
+		(Sample.directory.add_human(Sample.name("Zoe")) ?? crash "HumanInvitesSpec: Zoe's name is free")
+			.directory
+	(with_zoe.add_human(Sample.name("Bob")) ?? crash "HumanInvitesSpec: Bob's name is free")
+		.directory
 }
 
 ## Bob, by his session.
 bob : SignedIn
-bob = SignedIn.dangerously_assume(with_zoe_and_bob.users().user(id("5")) ?? crash "HumanInvitesSpec: Bob is 5")
+bob =
+	SignedIn.dangerously_assume(with_zoe_and_bob.users().user(id("5")) ?? crash "HumanInvitesSpec: Bob is 5")
 
 ## Zoe invited again by `acting` with `open` open invites, her inviter
 ## `inviter`: the human the invite is for and who makes it, or why not.
@@ -324,7 +329,9 @@ invite_made = |{ n, by }|
 	})
 
 zoe : Users.Human
-zoe = (with_zoe_and_bob.users().user(id("4")) ?? crash "HumanInvitesSpec: Zoe is 4").as_human() ?? crash "HumanInvitesSpec: Zoe is a human"
+zoe =
+	(with_zoe_and_bob.users().user(id("4")) ?? crash "HumanInvitesSpec: Zoe is 4").as_human()
+		?? crash "HumanInvitesSpec: Zoe is a human"
 
 ## Zoe's invite 1 found by the hash `hash(code)` at `now`, and spent for
 ## her: its state after, and whom it admits; or why not.
@@ -617,10 +624,15 @@ expect [
 
 # A join's name: a name; none, or one that is no name, refused; a form at
 # fault said.
-expect HumanInvites.name_from_form("code=x&name=Zoey&password=y".to_utf8()).map_ok(|name| name.to_str()) == Ok("Zoey")
+expect
+	HumanInvites.name_from_form("code=x&name=Zoey&password=y".to_utf8())
+		.map_ok(|name| name.to_str())
+		== Ok("Zoey")
 expect HumanInvites.name_from_form("name=".to_utf8()).map_ok(|_| {}) == Err(BadName)
 expect HumanInvites.name_from_form("name=Zoe%21".to_utf8()).map_ok(|_| {}) == Err(BadName)
-expect HumanInvites.name_from_form("code=x".to_utf8()).map_ok(|_| {}) == Err(BadForm("The form has no field `name`."))
+expect
+	HumanInvites.name_from_form("code=x".to_utf8()).map_ok(|_| {})
+		== Err(BadForm("The form has no field `name`."))
 
 # Its facts to their files and back; each fact that holds no such fact
 # refused, naming its file.
@@ -646,10 +658,17 @@ expect {
 
 # A redemption's password: 1 to 72 bytes; none, or more, refused; a form at
 # fault said.
-expect HumanInvites.password_from_form("code=x&password=hunter2".to_utf8()).map_ok(Password.bytes_to_check) == Ok("hunter2".to_utf8())
+expect
+	HumanInvites.password_from_form("code=x&password=hunter2".to_utf8())
+		.map_ok(Password.bytes_to_check)
+		== Ok("hunter2".to_utf8())
 expect HumanInvites.password_from_form("password=".to_utf8()).map_ok(|_| {}) == Err(BadPassword)
-expect HumanInvites.password_from_form("password=${"x".repeat(73)}".to_utf8()).map_ok(|_| {}) == Err(BadPassword)
-expect HumanInvites.password_from_form("code=x".to_utf8()).map_ok(|_| {}) == Err(BadForm("The form has no field `password`."))
+expect
+	HumanInvites.password_from_form("password=${"x".repeat(73)}".to_utf8()).map_ok(|_| {})
+		== Err(BadPassword)
+expect
+	HumanInvites.password_from_form("code=x".to_utf8()).map_ok(|_| {})
+		== Err(BadForm("The form has no field `password`."))
 
 # Each refusal's status.
 expect

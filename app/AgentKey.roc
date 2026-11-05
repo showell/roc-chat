@@ -36,11 +36,15 @@ AgentKey :: {
 
 		## The number `text` spells, as a folder's name and a URL carry it.
 		from_str : Str -> Try(AgentKey.Id, [NotAKeyId])
-		from_str = |text| SerialNumber.from_str(text).map_ok(|n| AgentKey.Id.(n)).map_err(|NotASerialNumber| NotAKeyId)
+		from_str = |text|
+			SerialNumber.from_str(text)
+				.map_ok(|n| AgentKey.Id.(n))
+				.map_err(|NotASerialNumber| NotAKeyId)
 
 		## The number after the highest of `given`, 1 for none.
 		next_after : List(AgentKey.Id) -> Try(AgentKey.Id, [Full])
-		next_after = |given| SerialNumber.next_after(given.map(|AgentKey.Id.(n)| n)).map_ok(|n| AgentKey.Id.(n))
+		next_after = |given|
+			SerialNumber.next_after(given.map(|AgentKey.Id.(n)| n)).map_ok(|n| AgentKey.Id.(n))
 
 		to_str : AgentKey.Id -> Str
 		to_str = |AgentKey.Id.(n)| n.to_str()

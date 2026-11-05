@@ -37,7 +37,9 @@ expect
 		("\"", "&quot;"),
 		("'", "&#39;"),
 	].all(|(text, expected)| escaped_bytes(text) == expected.to_utf8())
-expect escaped_bytes("Bea <i>x</i> & \"co\" 'q'") == "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;".to_utf8()
+expect
+	escaped_bytes("Bea <i>x</i> & \"co\" 'q'")
+		== "Bea &lt;i&gt;x&lt;/i&gt; &amp; &quot;co&quot; &#39;q&#39;".to_utf8()
 # Anything else is kept as it is.
 expect escaped_bytes("café 🎉 =/;#") == "café 🎉 =/;#".to_utf8()
 expect escaped_bytes("") == []

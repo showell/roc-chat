@@ -77,7 +77,9 @@ commas = |parts| parts.map_with_index(|part, i| if (i == 0) part else part.prepe
 # ── tests
 # A quote, a backslash, a line feed, a carriage return, DEL and a
 # multi-byte character: each as roc-chat's wire spells it.
-expect JsonOut.string("a\"b\\c\nd\re\u(7f)é").bytes() == "\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"".to_utf8()
+expect
+	JsonOut.string("a\"b\\c\nd\re\u(7f)é").bytes()
+		== "\"a\\\"b\\\\c\\nd\\u000de\\u007fé\"".to_utf8()
 expect JsonOut.string("").bytes() == "\"\"".to_utf8()
 # Each edge of the escaped bytes: 0x1F escaped and 0x20, a space, kept;
 # 0x7E kept and 0x7F, DEL, escaped.

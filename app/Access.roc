@@ -80,7 +80,8 @@ channel_members : Directory, ChannelName -> List(UserId)
 channel_members = |directory, name|
 	match directory.channels().channel(name) {
 		Ok(channel) => channel.members()
-		Err(NoSuchChannel) => crash "Access.channel_members: a place names only a channel its directory holds"
+		Err(NoSuchChannel) =>
+			crash "Access.channel_members: a place names only a channel its directory holds"
 	}
 
 ## A key's reach, as an answer.

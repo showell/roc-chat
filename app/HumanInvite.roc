@@ -41,11 +41,16 @@ HumanInvite :: {
 
 		## The number `text` spells, as a folder's name carries it.
 		from_str : Str -> Try(HumanInvite.Id, [NotAnInviteId])
-		from_str = |text| SerialNumber.from_str(text).map_ok(|n| HumanInvite.Id.(n)).map_err(|NotASerialNumber| NotAnInviteId)
+		from_str = |text|
+			SerialNumber.from_str(text)
+				.map_ok(|n| HumanInvite.Id.(n))
+				.map_err(|NotASerialNumber| NotAnInviteId)
 
 		## The number after the highest of `given`, 1 for none.
 		next_after : List(HumanInvite.Id) -> Try(HumanInvite.Id, [Full])
-		next_after = |given| SerialNumber.next_after(given.map(|HumanInvite.Id.(n)| n)).map_ok(|n| HumanInvite.Id.(n))
+		next_after = |given|
+			SerialNumber.next_after(given.map(|HumanInvite.Id.(n)| n))
+				.map_ok(|n| HumanInvite.Id.(n))
 
 		to_str : HumanInvite.Id -> Str
 		to_str = |HumanInvite.Id.(n)| n.to_str()

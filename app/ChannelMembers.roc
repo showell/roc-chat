@@ -201,5 +201,6 @@ change_of : Directory, ChannelName -> ChannelMembers.Change
 change_of = |directory, name|
 	match directory.channels().channel(name) {
 		Ok(channel) => { directory, channel }
-		Err(NoSuchChannel) => crash "ChannelMembers.change_of: a channel whose members changed is in the directory"
+		Err(NoSuchChannel) =>
+			crash "ChannelMembers.change_of: a channel whose members changed is in the directory"
 	}

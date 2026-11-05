@@ -136,7 +136,10 @@ Channels :: List(Channels.Channel).{
 ## The members a members file names, one id a line, each once.
 members_from_file : List(U8) -> Try(List(UserId), [NotAMembersFile])
 members_from_file = |bytes| {
-	lines = bytes.split_on('\n').map(Ascii.trim_spaces).drop_if(|line| line.is_empty() or line.starts_with(['#']))
+	lines =
+		bytes.split_on('\n')
+			.map(Ascii.trim_spaces)
+			.drop_if(|line| line.is_empty() or line.starts_with(['#']))
 	ids = lines.map_try(
 		|line|
 			match Str.from_utf8(line) {

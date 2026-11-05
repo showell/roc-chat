@@ -33,7 +33,11 @@ UserId :: U8.{
 			_ if bytes.len() > 3 or !bytes.all(Ascii.is_digit) => Err(NotAUserId)
 			_ => {
 				number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
-				if (number > U8.highest.to_u64()) Err(NotAUserId) else Ok(UserId.(number.to_u8_wrap()))
+				if number > U8.highest.to_u64() {
+					Err(NotAUserId)
+				} else {
+					Ok(UserId.(number.to_u8_wrap()))
+				}
 			}
 		}
 	}

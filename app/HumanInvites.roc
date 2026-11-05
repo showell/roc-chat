@@ -122,7 +122,10 @@ HumanInvites :: [].{
 			NoFile => Ok(NoInviter)
 			File(bytes) =>
 				match Str.from_utf8(FactFile.word_from_file(bytes)) {
-					Ok(digits) => UserId.from_str(digits).map_ok(|id| InvitedBy(id)).map_err(|NotAUserId| NotAnInviter)
+					Ok(digits) =>
+						UserId.from_str(digits)
+							.map_ok(|id| InvitedBy(id))
+							.map_err(|NotAUserId| NotAnInviter)
 					Err(_) => Err(NotAnInviter)
 				}
 		}
@@ -345,7 +348,8 @@ HumanInvites :: [].{
 				match directory.rename_human({ human: found.human, name }) {
 					Ok(done) => Ok(done.human)
 					Err(NameTaken) => Err(NameTaken)
-					Err(NoSuchHuman) => crash "HumanInvites.join: the invitee is a human of the directory, found in it by id"
+					Err(NoSuchHuman) =>
+						crash "HumanInvites.join: the invitee is a human of the directory, found in it by id"
 				}?
 			redeemed = HumanInvite.redeem(found.redeemable, renamed)
 			Ok({

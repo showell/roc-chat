@@ -64,7 +64,9 @@ with_lc = {
 
 ## The user of `with_lc` named `text`.
 user_named : Str -> Users.User
-user_named = |text| with_lc.users().to_list().find_first(|u| u.name().to_str() == text) ?? crash "AgentsSpec: ${text} is a user"
+user_named = |text|
+	with_lc.users().to_list().find_first(|u| u.name().to_str() == text)
+		?? crash "AgentsSpec: ${text} is a user"
 
 # Each human's agents: Steve owns CC, Apoorva LC, and neither owns the other's.
 expect Agents.agents_of(with_lc, Sample.human("Steve")).map(|u| u.name().to_str()) == ["CC"]
@@ -99,7 +101,8 @@ new_agent_from = |{ owner, body }|
 	Agents.make(with_lc, { owner: Sample.human(owner), body: body.to_utf8() }).map_ok(
 		|addition|
 			match addition.user.role() {
-				Agent(role) => "${addition.user.name().to_str()} ${addition.user.id().to_str()} of ${role.owner.to_str()}"
+				Agent(role) =>
+					"${addition.user.name().to_str()} ${addition.user.id().to_str()} of ${role.owner.to_str()}"
 				Human => "a human"
 			},
 	)
@@ -151,19 +154,29 @@ expect Agents.scope_from_form("post=off&read=everywhere".to_utf8()) == Ok(
 		post: Off,
 	}),
 )
-expect Agents.scope_from_form("read=on".to_utf8()) == Err(BadForm("The form's `read` is `everywhere` or `off`."))
-expect Agents.scope_from_form("post=Off".to_utf8()) == Err(BadForm("The form's `post` is `everywhere` or `off`."))
-expect Agents.scope_from_form("read=off&read=off".to_utf8()) == Err(BadForm("The form has the field `read` more than once."))
+expect
+	Agents.scope_from_form("read=on".to_utf8())
+		== Err(BadForm("The form's `read` is `everywhere` or `off`."))
+expect
+	Agents.scope_from_form("post=Off".to_utf8())
+		== Err(BadForm("The form's `post` is `everywhere` or `off`."))
+expect
+	Agents.scope_from_form("read=off&read=off".to_utf8())
+		== Err(BadForm("The form has the field `read` more than once."))
 
 # A redemption's code: a token, or one refusal for anything else; a form
 # with no code at fault.
-expect Agents.code_from_form("code=3-${"0a".repeat(32)}".to_utf8()).map_ok(|token| token.to_str()) == Ok("3-${"0a".repeat(32)}")
+expect
+	Agents.code_from_form("code=3-${"0a".repeat(32)}".to_utf8()).map_ok(|token| token.to_str())
+		== Ok("3-${"0a".repeat(32)}")
 expect [
 	"code=3-${"0a".repeat(31)}",
 	"code=x",
 	"code=",
 ].all(|body| Agents.code_from_form(body.to_utf8()).map_ok(|_| {}) == Err(CodeRefused))
-expect Agents.code_from_form("token=1".to_utf8()).map_ok(|_| {}) == Err(BadForm("The form has no field `code`."))
+expect
+	Agents.code_from_form("token=1".to_utf8()).map_ok(|_| {})
+		== Err(BadForm("The form has no field `code`."))
 
 ## A key and an invite of the tests', each numbered 1.
 key_one : AgentKey

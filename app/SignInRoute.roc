@@ -243,7 +243,8 @@ set_cookie_header = |text| { name: "set-cookie".to_utf8(), value: text.to_utf8()
 
 ## Where to go once signed in when nothing says.
 default_next : Html.SitePath
-default_next = Html.SitePath.from_str("/agents") ?? crash "SignInRoute.default_next: /agents is a site path"
+default_next =
+	Html.SitePath.from_str("/agents") ?? crash "SignInRoute.default_next: /agents is a site path"
 
 ## The sign-in's words when a name and a password don't match.
 no_match_words : Str
@@ -277,7 +278,8 @@ next_from_query = |query|
 	if (query.is_empty())
 		Ok(default_next)
 	else if query.starts_with(next_prefix) {
-		unchecked = UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
+		unchecked =
+			UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
 		unchecked.site_path().map_err(|NotASitePath| BadNext)
 	} else
 		Err(BadNext)
@@ -379,7 +381,8 @@ check_against_dummy_hash! = |password|
 	match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), dummy_hash) {
 		Matches => NoMatch
 		DoesNotMatch => NoMatch
-		NotABcryptHash => crash "SignInRoute.check_against_dummy_hash!: dummy_hash is a bcrypt hash at cost 10, which the host checks"
+		NotABcryptHash =>
+			crash "SignInRoute.check_against_dummy_hash!: dummy_hash is a bcrypt hash at cost 10, which the host checks"
 		TooManyChecks => TooManyChecks
 	}
 
@@ -406,7 +409,9 @@ expect next_from_query("next=/".to_utf8().concat([0xff])) == Err(BadNext)
 # A form's `next`: none is /agents; a path on this site, decoded, is itself;
 # any other, or two, refused.
 expect next_text(next_from_form("name=Steve".to_utf8())) == Ok("/agents")
-expect next_text(next_from_form("next=%2Fchat%2Fdm%2F1_1%2Fplans&name=Steve".to_utf8())) == Ok("/chat/dm/1_1/plans")
+expect
+	next_text(next_from_form("next=%2Fchat%2Fdm%2F1_1%2Fplans&name=Steve".to_utf8()))
+		== Ok("/chat/dm/1_1/plans")
 expect
 	[
 		"next=%2F%2Fevil.example",
@@ -417,7 +422,8 @@ expect
 # The redirect to sign in carries where to go after; signing out forgets the
 # cookie and is never stored.
 expect
-	SignInRoute.login_redirect(Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "SignInRoute's tests: a site path").headers
+	SignInRoute.login_redirect(Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "SignInRoute's tests: a site path")
+		.headers
 		== [{ name: "location".to_utf8(), value: "/login?next=/chat/dm/1_1/plans".to_utf8() }]
 expect
 	SignInRoute.sign_out.status == 303

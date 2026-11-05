@@ -56,7 +56,8 @@ MultipartForm :: [].{
 			) ? |NotFound| NoFile
 			headers = body.sublist({ start: headers_at, len: headers_end - headers_at })
 			closing = "\r\n".to_utf8().concat(delimiter).concat("--".to_utf8())
-			file_and_closing = body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
+			file_and_closing =
+				body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
 			if (
 				quoted_attribute(
 					headers,
@@ -83,7 +84,8 @@ MultipartForm :: [].{
 		match Str.from_utf8(raw) {
 			Ok(text) => text
 			Err(_) =>
-				Str.from_utf8(raw.join_map(|b| if (b < 0x80) [b] else "\u(FFFD)".to_utf8())) ?? crash "MultipartForm.display_name: ASCII and U+FFFD are UTF-8"
+				Str.from_utf8(raw.join_map(|b| if (b < 0x80) [b] else "\u(FFFD)".to_utf8()))
+					?? crash "MultipartForm.display_name: ASCII and U+FFFD are UTF-8"
 		}
 }
 
@@ -104,7 +106,11 @@ boundary_after_media_type = |header| {
 				}
 			_ => Ascii.trim_spaces(before_first_semicolon(value))
 		}
-	if (candidate.is_empty() or candidate.len() > 70) Err(NoFile) else Ok(MultipartForm.Boundary.(candidate))
+	if candidate.is_empty() or candidate.len() > 70 {
+		Err(NoFile)
+	} else {
+		Ok(MultipartForm.Boundary.(candidate))
+	}
 }
 
 ## Where `needle` first starts in `bytes`, at `from` or after.
@@ -172,7 +178,8 @@ is_inside_another_name = |headers, at|
 	else
 		match headers.get(at - 1) {
 			Ok(before) => Ascii.is_letter(before)
-			Err(OutOfBounds) => crash "MultipartForm.is_inside_another_name: a match is inside the headers"
+			Err(OutOfBounds) =>
+				crash "MultipartForm.is_inside_another_name: a match is inside the headers"
 		}
 
 # ── tests
@@ -194,7 +201,9 @@ boundary_after = |given|
 
 ## The boundary `text`, from a Content-Type, as a form's would be.
 boundary : Str -> MultipartForm.Boundary
-boundary = |text| MultipartForm.boundary_from_content_type("multipart/form-data; boundary=${text}".to_utf8()) ?? crash "MultipartForm's tests: a test's boundary is one"
+boundary = |text|
+	MultipartForm.boundary_from_content_type("multipart/form-data; boundary=${text}".to_utf8())
+		?? crash "MultipartForm's tests: a test's boundary is one"
 
 ## The file in the form `body`, whose boundary is `XyZ`.
 file_of : List(U8) -> Try({ filename : List(U8), bytes : List(U8) }, [NoFile])
@@ -249,7 +258,10 @@ expect {
 }
 # No line break after the closing delimiter, or two: the same file.
 expect {
-	body = "--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())
+	body =
+		"--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8()
+			.concat(png)
+			.concat("\r\n--XyZ--".to_utf8())
 	file_of(body) == Ok({ filename: "image".to_utf8(), bytes: png })
 		and file_of(body.concat("\r\n\r\n".to_utf8())) == Ok({
 			filename: "image".to_utf8(),
@@ -293,7 +305,9 @@ expect MultipartForm.file_part(
 ) == Err(NoFile)
 expect file_of("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png)) == Err(NoFile)
 expect file_of("--XyZ\r\n${file_part_headers}\r\n".to_utf8().concat(png)) == Err(NoFile)
-expect file_of("--XyZ${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8())) == Err(NoFile)
+expect
+	file_of("--XyZ${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8()))
+		== Err(NoFile)
 expect file_of([]) == Err(NoFile)
 # The browser's name: UTF-8 as it is; else ASCII kept and the rest U+FFFD.
 expect MultipartForm.display_name("café.png".to_utf8()) == "café.png"

@@ -42,21 +42,27 @@ TranscriptRefusal :: [].{
 		match why {
 			PathNotUtf8 => "its conversation's path is not UTF-8"
 			TranscriptNotUtf8 => "it is not UTF-8"
-			Path(NotAConversationPath) => "its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>"
+			Path(NotAConversationPath) =>
+				"its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>"
 			Path(BadName) => "its path holds a channel, a pair or a topic that is no name"
 			Path(NoSuchChannel) => "its path names no channel the directory holds"
 			Path(NoSuchHuman) => "its path names a DM whose member is no human the directory holds"
-			Transcript(NotPrefixedProperly) => "a transcript starts with the separator and ends with an empty line"
+			Transcript(NotPrefixedProperly) =>
+				"a transcript starts with the separator and ends with an empty line"
 			Transcript(Full) => "it holds more messages than a conversation can"
-			Transcript(BadHead(id)) => "message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
-			Transcript(BadBody(id)) => "message ${id.to_str()} holds the separator, unescaped, on a line of its own"
-			Transcript(Backdated(id)) => "message ${id.to_str()} is dated before the message above it"
+			Transcript(BadHead(id)) =>
+				"message ${id.to_str()} does not open with its reference, `from:`, `date:` and an empty line"
+			Transcript(BadBody(id)) =>
+				"message ${id.to_str()} holds the separator, unescaped, on a line of its own"
+			Transcript(Backdated(id)) =>
+				"message ${id.to_str()} is dated before the message above it"
 			Transcript(Author(id, fault)) => {
 				said =
 					match fault {
 						Empty => " has no author"
 						TooLong => "'s author is longer than ${Name.longest.to_str()} characters"
-						ForbiddenCharacter => "'s author holds a character that is no letter or space"
+						ForbiddenCharacter =>
+							"'s author holds a character that is no letter or space"
 						BadSpacing => "'s author has a space at either end, or two together"
 					}
 				"message ${id.to_str()}${said}"
@@ -84,9 +90,14 @@ expect TranscriptRefusal.words(TranscriptNotUtf8) == "it is not UTF-8"
 expect
 	TranscriptRefusal.words(Path(NotAConversationPath))
 		== "its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>"
-expect TranscriptRefusal.words(Path(BadName)) == "its path holds a channel, a pair or a topic that is no name"
-expect TranscriptRefusal.words(Path(NoSuchChannel)) == "its path names no channel the directory holds"
-expect TranscriptRefusal.words(Path(NoSuchHuman)) == "its path names a DM whose member is no human the directory holds"
+expect
+	TranscriptRefusal.words(Path(BadName))
+		== "its path holds a channel, a pair or a topic that is no name"
+expect
+	TranscriptRefusal.words(Path(NoSuchChannel)) == "its path names no channel the directory holds"
+expect
+	TranscriptRefusal.words(Path(NoSuchHuman))
+		== "its path names a DM whose member is no human the directory holds"
 expect
 	TranscriptRefusal.words(Transcript(NotPrefixedProperly))
 		== "a transcript starts with the separator and ends with an empty line"
@@ -122,5 +133,7 @@ expect
 expect
 	TranscriptRefusal.words(Transcript(BadBody(second_id)))
 		== "message 2 holds the separator, unescaped, on a line of its own"
-expect TranscriptRefusal.words(Transcript(Backdated(second_id))) == "message 2 is dated before the message above it"
+expect
+	TranscriptRefusal.words(Transcript(Backdated(second_id)))
+		== "message 2 is dated before the message above it"
 expect TranscriptRefusal.words(Transcript(Full)) == "it holds more messages than a conversation can"

@@ -37,7 +37,8 @@ chosen_route = |method, path|
 		SignedInOnly(SendToConversation(key)) => "send ${key.url_path(Page)}"
 		SignedInOnly(OpenConversationStream(key)) => "stream ${key.url_path(Page)}"
 		SignedInOnly(UploadToConversation(key)) => "upload ${key.url_path(Page)}"
-		SignedInOnly(ServeUploadedImage(found)) => "image ${found.image.name()} of ${found.key.url_path(Page)}"
+		SignedInOnly(ServeUploadedImage(found)) =>
+			"image ${found.image.name()} of ${found.key.url_path(Page)}"
 		SignedInOnly(ServeRawTranscript(key)) => "raw ${key.url_path(Page)}"
 		SignedInOnly(ShowAgents) => "agents"
 		SignedInOnly(MakeAgent) => "make an agent"

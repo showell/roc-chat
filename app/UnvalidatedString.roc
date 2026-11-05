@@ -143,7 +143,9 @@ UnvalidatedString :: Str.{
 # ── tests
 ## The text `bytes` hold, from the wire, which a test's always are.
 wire : List(U8) -> UnvalidatedString
-wire = |bytes| UnvalidatedString.from_utf8(bytes) ?? crash "UnvalidatedString's tests: a test's bytes are UTF-8"
+wire = |bytes|
+	UnvalidatedString.from_utf8(bytes)
+		?? crash "UnvalidatedString's tests: a test's bytes are UTF-8"
 
 # Only UTF-8 comes in: a stray byte, and a character cut short, refused.
 ## Whether `bytes` come in, or why not.
@@ -165,13 +167,20 @@ expect wire("255".to_utf8()).user_id().map_ok(UserId.to_str) == Ok("255")
 expect wire("256".to_utf8()).user_id() == Err(NotAUserId)
 expect wire("9_10".to_utf8()).user_pair().map_ok(UserPair.to_str) == Ok("9_10")
 expect wire("10_9".to_utf8()).user_pair() == Err(NotAUserPair)
-expect wire("2026-11-02T19:11:32Z".to_utf8()).date_time().map_ok(DateTime.to_str) == Ok("2026-11-02T19:11:32Z")
+expect
+	wire("2026-11-02T19:11:32Z".to_utf8()).date_time().map_ok(DateTime.to_str)
+		== Ok("2026-11-02T19:11:32Z")
 expect wire("2026-11-02".to_utf8()).date_time() == Err(WrongShape)
-expect wire("${"0a".repeat(16)}.png".to_utf8()).uploaded_image().map_ok(UploadedImage.name) == Ok("${"0a".repeat(16)}.png")
+expect
+	wire("${"0a".repeat(16)}.png".to_utf8()).uploaded_image().map_ok(UploadedImage.name)
+		== Ok("${"0a".repeat(16)}.png")
 expect wire("cat.png".to_utf8()).uploaded_image() == Err(NotAnUploadName)
-expect wire("hunter2".to_utf8()).password().map_ok(Password.bytes_to_check) == Ok("hunter2".to_utf8())
+expect
+	wire("hunter2".to_utf8()).password().map_ok(Password.bytes_to_check) == Ok("hunter2".to_utf8())
 expect wire("".to_utf8()).password().map_ok(|_| {}) == Err(NotAPassword)
-expect wire("/chat/dm/1_1/plans".to_utf8()).site_path().map_ok(Html.SitePath.to_str) == Ok("/chat/dm/1_1/plans")
+expect
+	wire("/chat/dm/1_1/plans".to_utf8()).site_path().map_ok(Html.SitePath.to_str)
+		== Ok("/chat/dm/1_1/plans")
 expect [
 	"//evil.example",
 	"https://evil.example",
@@ -193,10 +202,14 @@ expect chat_parts("/chat/") == Ok("chat other")
 expect chat_parts("chat/x") == Err(NotAPath)
 expect chat_parts("") == Err(NotAPath)
 expect chat_parts("/Chat") == Ok("other")
-expect wire("/a/plans".to_utf8()).url_path_parts().map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str))) == Ok([
-	Ok("a"),
-	Ok("plans"),
-])
+expect
+	wire("/a/plans".to_utf8())
+		.url_path_parts()
+		.map_ok(|parts| parts.map(|p| p.topic().map_ok(Topic.to_str)))
+		== Ok([
+			Ok("a"),
+			Ok("plans"),
+		])
 # Markdown: CRLF to LF, a lone CR and LF kept.
 expect wire("a\r\nb\r\n".to_utf8()).markdown() == Ok("a\nb\n")
 expect wire("a\nb".to_utf8()).markdown() == Ok("a\nb")

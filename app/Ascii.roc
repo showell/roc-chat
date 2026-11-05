@@ -44,7 +44,9 @@ all_bytes = List.from_iter(U8.to(0, 255))
 # Each check, over all 256 bytes, keeps exactly the members written out.
 expect all_bytes.len() == 256
 expect all_bytes.keep_if(Ascii.is_digit) == "0123456789".to_utf8()
-expect all_bytes.keep_if(Ascii.is_letter) == "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".to_utf8()
+expect
+	all_bytes.keep_if(Ascii.is_letter)
+		== "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".to_utf8()
 expect all_bytes.keep_if(Ascii.is_space) == "\t\n\r ".to_utf8()
 # The bytes on each side of every range.
 expect
@@ -66,7 +68,9 @@ expect
 		('{', Bool.False),
 	].all(|(byte, expected)| Ascii.is_letter(byte) == expected)
 # A byte of a multi-byte character is none of them: `é` is 0xC3 0xA9.
-expect "é".to_utf8().all(|byte| !Ascii.is_digit(byte) and !Ascii.is_letter(byte) and !Ascii.is_space(byte))
+expect
+	"é".to_utf8()
+		.all(|byte| !Ascii.is_digit(byte) and !Ascii.is_letter(byte) and !Ascii.is_space(byte))
 # A trim takes every space off each end, keeps those inside, and leaves a
 # no-break space, which is no ASCII space; spaces alone trim to nothing.
 expect

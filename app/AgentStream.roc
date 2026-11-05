@@ -50,7 +50,8 @@ AgentStream :: [].{
 		if (query.is_empty())
 			Ok(Live)
 		else if query.starts_with(since_prefix) {
-			unchecked = UnvalidatedString.from_utf8(query.drop_first(since_prefix.len())) ? |NotUtf8| BadSince
+			unchecked =
+				UnvalidatedString.from_utf8(query.drop_first(since_prefix.len())) ? |NotUtf8| BadSince
 			date = unchecked.date_time() ? |_| BadSince
 			Ok(Since(date))
 		} else
@@ -58,12 +59,15 @@ AgentStream :: [].{
 
 	## Why a stream's start is refused, in words.
 	words : [BadSince] -> Str
-	words = |BadSince| "The stream's start is not one: none, or `?since=<date>`, a date as 2026-11-02T19:11:32Z."
+	words = |BadSince|
+		"The stream's start is not one: none, or `?since=<date>`, a date as 2026-11-02T19:11:32Z."
 
 	## One message of the conversation `key` as one event.
 	frame : { key : ConversationKey, message : Message } -> List(U8)
 	frame = |{ key, message }| {
-		id = U64.from_str(message.id().to_str()) ?? crash "AgentStream.frame: a message's id is its digits"
+		id =
+			U64.from_str(message.id().to_str())
+				?? crash "AgentStream.frame: a message's id is its digits"
 		fields = JsonOut.json_object([
 			("conversation", JsonOut.string(key.url_path(Page))),
 			("id", JsonOut.number(id)),
@@ -181,7 +185,8 @@ time_of = |text| DateTime.from_str(text) ?? crash "AgentStream's tests: a time"
 ## The key of `topic` in Steve's own DM.
 key_of : Str -> ConversationKey
 key_of = |topic| {
-	directory = Directory.with_founder(Name.from_str("Steve") ?? crash "AgentStream's tests: a name")
+	directory =
+		Directory.with_founder(Name.from_str("Steve") ?? crash "AgentStream's tests: a name")
 	place = directory.place(
 		Dm(
 			UserPair.of({
@@ -227,7 +232,9 @@ events_of = |bytes| Str.from_utf8_lossy(bytes).split_on("\n\n").drop_if(Str.is_e
 
 # A start: live with no query; since a date; anything else refused.
 expect AgentStream.start([]) == Ok(Live)
-expect AgentStream.start("since=2026-11-02T19:11:32Z".to_utf8()) == Ok(Since(time_of("2026-11-02T19:11:32Z")))
+expect
+	AgentStream.start("since=2026-11-02T19:11:32Z".to_utf8())
+		== Ok(Since(time_of("2026-11-02T19:11:32Z")))
 expect
 	[
 		"since=",
@@ -333,4 +340,6 @@ expect {
 		and answered.stream_holder == "agent-1".to_utf8()
 		and answered.body == "data: x\n\n".to_utf8()
 }
-expect AgentStream.words(BadSince) == "The stream's start is not one: none, or `?since=<date>`, a date as 2026-11-02T19:11:32Z."
+expect
+	AgentStream.words(BadSince)
+		== "The stream's start is not one: none, or `?since=<date>`, a date as 2026-11-02T19:11:32Z."

@@ -21,7 +21,11 @@ SerialNumber :: [].{
 			_ if bytes.len() > 10 or !bytes.all(Ascii.is_digit) => Err(NotASerialNumber)
 			_ => {
 				number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
-				if (number > U32.highest.to_u64()) Err(NotASerialNumber) else Ok(number.to_u32_wrap())
+				if number > U32.highest.to_u64() {
+					Err(NotASerialNumber)
+				} else {
+					Ok(number.to_u32_wrap())
+				}
 			}
 		}
 	}

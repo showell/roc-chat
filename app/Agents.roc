@@ -124,7 +124,8 @@ Agents :: [].{
 			Ok(addition) => Ok(addition)
 			Err(NameTaken) => Err(NameTaken)
 			Err(Full) => Err(Full)
-			Err(NoSuchOwner) => crash "Agents.make: the owner is a human of the directory, signed in"
+			Err(NoSuchOwner) =>
+				crash "Agents.make: the owner is a human of the directory, signed in"
 		}
 	}
 
@@ -183,5 +184,7 @@ reach_field = |{ body, name }|
 	match UrlEncodedForm.field({ body, name }) {
 		Err(MissingField) => Ok(Everywhere)
 		Err(fault) => Err(BadForm(UrlEncodedForm.fault_words({ fault, name })))
-		Ok(unchecked) => unchecked.reach().map_err(|NotAReach| BadForm("The form's `${name}` is `everywhere` or `off`."))
+		Ok(unchecked) =>
+			unchecked.reach()
+				.map_err(|NotAReach| BadForm("The form's `${name}` is `everywhere` or `off`."))
 	}

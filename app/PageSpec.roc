@@ -12,7 +12,8 @@ PageSpec :: [].{}
 ## `plans` in Steve's own DM, in the sample directory.
 plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
-	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "PageSpec: a path is UTF-8",
+	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
+		?? crash "PageSpec: a path is UTF-8",
 	directory: Sample.directory,
 }).map_ok(|found| found.key) ?? crash "PageSpec: Steve's own DM is a place"
 
@@ -34,7 +35,8 @@ page_for = |viewer, conversation|
 ## of the layout, and the scripts. A frozen answer, so a change to the box
 ## shows here as a deliberate re-freeze.
 foot : Str -> Str
-foot = |url| "<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n"
+foot = |url|
+	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n"
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
@@ -75,7 +77,8 @@ head = |title|
 ## The sample's hello and reply, as a page shows them: Steve's names his
 ## id, 1, and CC's, an agent's, names CC's, 3.
 hello_and_reply : Str
-hello_and_reply = "<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p>Hello</p>\n</div></article>\n<article class=\"message\" id=\"msg-2\" data-author=\"3\"><header><span class=\"author\">CC</span> <time datetime=\"2026-11-02T19:12:28Z\">2026-11-02T19:12:28Z</time> <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Hi!</p>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</div></article>\n"
+hello_and_reply =
+	"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p>Hello</p>\n</div></article>\n<article class=\"message\" id=\"msg-2\" data-author=\"3\"><header><span class=\"author\">CC</span> <time datetime=\"2026-11-02T19:12:28Z\">2026-11-02T19:12:28Z</time> <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Hi!</p>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</div></article>\n"
 
 # No messages: the page says so, and only then.
 expect page_for("Steve", Conversation.empty(Sample.plans)) == steves_page({
@@ -121,7 +124,8 @@ expect
 ## The sign-in page as a test expects it, going on to `/agents`, with
 ## `above`, what comes between its heading and its form.
 login_page : Str -> Str
-login_page = |above| "${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n"
+login_page = |above|
+	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n"
 
 ## The sign-in page for `viewer`, with `problem`, as a test reads it.
 login_for : SignedIn.Actor, [NoProblem, Problem(Str)] -> Str
@@ -147,4 +151,6 @@ expect
 	Page.join.to_utf8()
 		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
-expect Page.refusal("it <is> not UTF-8").to_utf8() == "${head("Not a transcript")}<p>Not a transcript: it &lt;is&gt; not UTF-8.</p>".to_utf8()
+expect
+	Page.refusal("it <is> not UTF-8").to_utf8()
+		== "${head("Not a transcript")}<p>Not a transcript: it &lt;is&gt; not UTF-8.</p>".to_utf8()

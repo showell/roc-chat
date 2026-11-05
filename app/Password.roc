@@ -15,7 +15,11 @@ Password :: List(U8).{
 	from_str : Str -> Try(Password, [NotAPassword])
 	from_str = |text| {
 		bytes = text.to_utf8()
-		if (bytes.is_empty() or bytes.len() > Password.most_bytes) Err(NotAPassword) else Ok(Password.(bytes))
+		if bytes.is_empty() or bytes.len() > Password.most_bytes {
+			Err(NotAPassword)
+		} else {
+			Ok(Password.(bytes))
+		}
 	}
 
 	## The password's bytes, for the host to check and for nothing else.
@@ -27,7 +31,9 @@ Password :: List(U8).{
 # One byte to 72 is a password, its bytes as typed; none, or 73, is not.
 expect Password.from_str("hunter2").map_ok(Password.bytes_to_check) == Ok("hunter2".to_utf8())
 expect Password.from_str("x").map_ok(Password.bytes_to_check) == Ok("x".to_utf8())
-expect Password.from_str("x".repeat(72)).map_ok(Password.bytes_to_check) == Ok("x".repeat(72).to_utf8())
+expect
+	Password.from_str("x".repeat(72)).map_ok(Password.bytes_to_check)
+		== Ok("x".repeat(72).to_utf8())
 expect [
 	"",
 	"x".repeat(73),

@@ -39,7 +39,9 @@ name_and_members = |pair| {
 nine_and_ten : { nine : Users.Human, ten : Users.Human }
 nine_and_ten = {
 	users = Sample.crowded_directory(7).users()
-	human = |at| ((users.user(at) ?? crash "DmSpec: the crowded sample has ten users").as_human()) ?? crash "DmSpec: a filler is a human"
+	human = |at|
+		((users.user(at) ?? crash "DmSpec: the crowded sample has ten users").as_human())
+			?? crash "DmSpec: a filler is a human"
 	nine = UserId.from_str("9") ?? crash "DmSpec: 9 is an id"
 	ten = UserId.from_str("10") ?? crash "DmSpec: 10 is an id"
 	{ nine: human(nine), ten: human(ten) }

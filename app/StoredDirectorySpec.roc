@@ -102,7 +102,9 @@ expect {
 	Users.from_files({ counter: users.counter_file(), accounts: accounts_of(users) }) == Ok(users)
 }
 expect {
-	channels = Channels.from_files(channels_of(with_team.channels())) ?? crash "StoredDirectorySpec: the channels read back"
+	channels =
+		Channels.from_files(channels_of(with_team.channels()))
+			?? crash "StoredDirectorySpec: the channels read back"
 	Directory.from_files({ users: with_team.users(), channels }) == Ok(with_team)
 }
 # The counter may run ahead of the users, never behind or at them.
@@ -212,7 +214,10 @@ team_read = |text| {
 
 # A members file: one id a line, lowest first; read with spaces off each
 # line, blank lines and `#` lines skipped.
-expect (with_team.channels().channel(ChannelName.from_str("team") ?? crash "a name") ?? crash "team").members_file() == "1\n3\n".to_utf8()
+expect
+	(with_team.channels().channel(ChannelName.from_str("team") ?? crash "a name") ?? crash "team")
+		.members_file()
+		== "1\n3\n".to_utf8()
 expect team_read("1\n3\n") == Ok(["1", "3"])
 expect team_read("# the team\n\n 3 \r\n1") == Ok(["1", "3"])
 expect team_read("") == Ok([])

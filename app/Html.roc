@@ -86,7 +86,10 @@ Html :: [].{
 		)
 		from_str = |text|
 			if (text.starts_with("/"))
-				text.drop_prefix("/").split_on("/").map_try(site_path_part).map_ok(|_| Html.SitePath.(text))
+				text.drop_prefix("/")
+					.split_on("/")
+					.map_try(site_path_part)
+					.map_ok(|_| Html.SitePath.(text))
 			else
 				Err(NoLeadingSlash)
 
@@ -147,7 +150,8 @@ Html :: [].{
 
 	## An input: `<input a="v">`, which has no end tag and holds nothing.
 	input : List(Html.Attribute) -> TrustedHtml
-	input = |attrs| TrustedHtml.dangerously_trust("<input${Str.join_with(attrs.map(attribute), "")}>")
+	input = |attrs|
+		TrustedHtml.dangerously_trust("<input${Str.join_with(attrs.map(attribute), "")}>")
 }
 
 is_token_byte : U8 -> Bool

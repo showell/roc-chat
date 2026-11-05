@@ -326,7 +326,8 @@ has_human_owner : List(Users.User), Users.User -> Bool
 has_human_owner = |all, user|
 	match user.role() {
 		Human => Bool.True
-		Agent({ owner }) => all.any(|candidate| candidate.id() == owner and candidate.role() == Human)
+		Agent({ owner }) =>
+			all.any(|candidate| candidate.id() == owner and candidate.role() == Human)
 	}
 
 ## The users with a user named `name` added in the role `role`, at the next

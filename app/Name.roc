@@ -162,7 +162,8 @@ expect key_of("Zoë") != key_of("Zoe")
 
 ## The key of the strict name `text`, which a test's text always is.
 strict_key_of : Str -> Name.Key
-strict_key_of = |text| Name.Key.of_strict(StrictName.from_str(text) ?? crash "Name's tests: a test's strict name is one")
+strict_key_of = |text|
+	Name.Key.of_strict(StrictName.from_str(text) ?? crash "Name's tests: a test's strict name is one")
 
 # A strict name has a name's key when its letters match in any case, and
 # no name's key while it holds a digit or `-`; its own digits and `-` stay

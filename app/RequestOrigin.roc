@@ -130,7 +130,8 @@ RequestOrigin :: [].{
 	words = |why|
 		match why {
 			MissingHost => "The request names no Host."
-			ForeignHost => "The request's Host is not this server's (127.0.0.1 or localhost, at its port, or its public name)."
+			ForeignHost =>
+				"The request's Host is not this server's (127.0.0.1 or localhost, at its port, or its public name)."
 			ForeignOrigin => "The request comes from a page of another origin."
 			CrossSiteFetch => "The browser says the request comes from another site's page."
 		}

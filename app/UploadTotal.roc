@@ -48,7 +48,8 @@ UploadTotal :: U64.{
 # ── tests
 ## A file of `text`, read as a total and written back, as a test reads it.
 read_back : Str -> Try(Str, [NotANumber])
-read_back = |text| UploadTotal.from_file(File(text.to_utf8())).map_ok(|total| Str.from_utf8_lossy(total.to_file()))
+read_back = |text|
+	UploadTotal.from_file(File(text.to_utf8())).map_ok(|total| Str.from_utf8_lossy(total.to_file()))
 
 expect UploadTotal.most_bytes == 1073741824
 # No file is none uploaded.
@@ -85,9 +86,12 @@ expect
 	].all(|text| read_back(text) == Err(NotANumber))
 # An upload that lands exactly on the most, and one byte past it, from
 # nothing and from a total near it.
-expect UploadTotal.(0).with_upload(UploadTotal.most_bytes) == Ok(UploadTotal.(UploadTotal.most_bytes))
+expect
+	UploadTotal.(0).with_upload(UploadTotal.most_bytes) == Ok(UploadTotal.(UploadTotal.most_bytes))
 expect UploadTotal.(0).with_upload(UploadTotal.most_bytes + 1) == Err(LimitReached)
-expect UploadTotal.(UploadTotal.most_bytes - 10).with_upload(10) == Ok(UploadTotal.(UploadTotal.most_bytes))
+expect
+	UploadTotal.(UploadTotal.most_bytes - 10).with_upload(10)
+		== Ok(UploadTotal.(UploadTotal.most_bytes))
 expect UploadTotal.(UploadTotal.most_bytes - 10).with_upload(11) == Err(LimitReached)
 expect UploadTotal.(5).with_upload(7) == Ok(UploadTotal.(12))
 # A total already past the most refuses any upload, with no overflow at

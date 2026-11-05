@@ -88,8 +88,11 @@ SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
 ## The tests' users: Steve, and his agent CC.
 tests_users : Users
 tests_users = {
-	founded = Users.with_founder(Name.from_str("Steve") ?? crash "SignedIn's tests: Steve is a name")
-	owner = (founded.user(UserId.steve) ?? crash "SignedIn's tests: Steve is id 1").as_human() ?? crash "SignedIn's tests: Steve is a human"
+	founded =
+		Users.with_founder(Name.from_str("Steve") ?? crash "SignedIn's tests: Steve is a name")
+	owner =
+		(founded.user(UserId.steve) ?? crash "SignedIn's tests: Steve is id 1").as_human()
+			?? crash "SignedIn's tests: Steve is a human"
 	(
 		founded.add_agent({
 			name: Name.from_str("CC") ?? crash "SignedIn's tests: CC is a name",

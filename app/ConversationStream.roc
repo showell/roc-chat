@@ -53,8 +53,10 @@ ConversationStream :: [].{
 	count_refusal_words : [NoCount, BadCount] -> Str
 	count_refusal_words = |why|
 		match why {
-			NoCount => "The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."
-			BadCount => "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
+			NoCount =>
+				"The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."
+			BadCount =>
+				"The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
 		}
 
 	## The stream of `key`'s conversation for `acting`, `conversation` as it
@@ -215,22 +217,30 @@ expect seen_by("after=6", [("Last-Event-ID", "9")]) == Ok(9)
 expect seen_by("", [("last-event-id", "9")]) == Ok(9)
 expect seen_by("after=6", [("Last-Event-ID", "x")]) == Err(BadCount)
 expect seen_by("after=6", [("Last-Event-ID", "9"), ("Last-Event-ID", "9")]) == Err(BadCount)
-expect ConversationStream.count_refusal_words(NoCount) == "The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."
-expect ConversationStream.count_refusal_words(BadCount) == "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
+expect
+	ConversationStream.count_refusal_words(NoCount)
+		== "The stream names no count of the messages seen: `?after=<count>`, or a Last-Event-ID."
+expect
+	ConversationStream.count_refusal_words(BadCount)
+		== "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
 expect ConversationStream.holder(UserId.steve) == "1".to_utf8()
 
 ## The users of the tests' directory: Steve alone, id 1.
 users : Users
-users = Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name").users()
+users =
+	Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name")
+		.users()
 
 ## Steve, the founder of the tests' directory, signed in as a test assumes him.
 steve : SignedIn
-steve = SignedIn.dangerously_assume(users.to_list().first() ?? crash "ConversationStream's tests: Steve is the first user")
+steve =
+	SignedIn.dangerously_assume(users.to_list().first() ?? crash "ConversationStream's tests: Steve is the first user")
 
 ## `plans` in Steve's own DM.
 plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
-	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "ConversationStream's tests: a path is UTF-8",
+	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
+		?? crash "ConversationStream's tests: a path is UTF-8",
 	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationStream's tests: a name"),
 }).map_ok(|found| found.key) ?? crash "ConversationStream's tests: Steve's own DM is a place"
 
@@ -333,8 +343,10 @@ expect {
 			),
 		)
 	}
-	framed_by(stranger).starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\"><header><span class=\"author\">LC</span>")
-		and framed_by(steve.user().author()).starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span>")
+	framed_by(stranger)
+		.starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\"><header><span class=\"author\">LC</span>")
+		and framed_by(steve.user().author())
+			.starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span>")
 }
 # The backlog after each count: every frame, the one after, none; past the
 # conversation, a 400.
@@ -350,5 +362,6 @@ expect {
 	response.status == 400
 		and response.kind == Whole
 		and response.stream_key == []
-		and Str.from_utf8_lossy(response.body).contains("The stream asks for the messages after 3, and the conversation holds 2.")
+		and Str.from_utf8_lossy(response.body)
+			.contains("The stream asks for the messages after 3, and the conversation holds 2.")
 }

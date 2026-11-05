@@ -16,7 +16,8 @@ DirectorySpec :: [].{}
 
 ## The channel named `text`, which a test's always is.
 channel_name : Str -> ChannelName
-channel_name = |text| ChannelName.from_str(text) ?? crash "DirectorySpec: a test's channel name is one"
+channel_name = |text|
+	ChannelName.from_str(text) ?? crash "DirectorySpec: a test's channel name is one"
 
 admin : Admin
 admin = Sample.admin
@@ -32,7 +33,10 @@ with_plans = (
 
 ## Zed is id 1 of another directory, so no human of the sample's.
 zed : Users.Human
-zed = (Directory.with_founder(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1").as_human() ?? crash "DirectorySpec: Zed is a human"
+zed =
+	(Directory.with_founder(Sample.name("Zed")).users().user(UserId.steve) ?? crash "DirectorySpec: Zed is id 1")
+		.as_human()
+		?? crash "DirectorySpec: Zed is a human"
 
 ## The id and name of who `text` would be, added as a human to
 ## `directory`, or why not.
@@ -126,7 +130,9 @@ expect agent_added(Sample.directory, { name: "Bot", owner: zed }) == Err(NoSuchO
 # `Full`, then the name. A name that is taken is not reached.
 expect {
 	almost = Sample.crowded_directory(251)
-	full = (almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits").directory
+	full =
+		(almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits")
+			.directory
 	steve = Sample.human("Steve")
 	[
 		(human_added(almost, "Last"), Ok(("255", "Last"))),
@@ -150,7 +156,8 @@ expect {
 		channel: channel_name("plans"),
 		member: Sample.user("CC"),
 	}) ?? crash "DirectorySpec: CC leaves plans"
-	plans_members = |d| d.channels().channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
+	plans_members = |d|
+		d.channels().channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
 	plans_members(admitted) == Ok(["3"]) and plans_members(removed) == Ok([])
 }
 expect
@@ -246,8 +253,10 @@ expect {
 		name: Sample.name("Debbie"),
 	}) ?? crash "DirectorySpec: Debbie is free"
 	human_added(done.directory, "debbie") == Err(NameTaken)
-		and done.directory.users().user_by_name(Sample.name("Debbie")).map_ok(|u| u.id().to_str()) == Ok("2")
-		and done.directory.users().user_by_name(Sample.name("Apoorva")).map_ok(|_| {}) == Err(NoSuchUser)
+		and done.directory.users().user_by_name(Sample.name("Debbie")).map_ok(|u| u.id().to_str())
+			== Ok("2")
+		and done.directory.users().user_by_name(Sample.name("Apoorva")).map_ok(|_| {})
+			== Err(NoSuchUser)
 }
 # A human of another directory is none of this one's.
 expect Sample.directory.rename_human({

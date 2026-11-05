@@ -29,7 +29,9 @@ image_name = "${"0a".repeat(16)}.png"
 ## the URL path the key writes for it.
 read_back : Str -> Try(Str, _)
 read_back = |path| {
-	unvalidated_path = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
+	unvalidated_path =
+		UnvalidatedString.from_utf8(path.to_utf8())
+			?? crash "ConversationKeySpec: a test's path is UTF-8"
 	found = ConversationKey.from_url_path({ path: unvalidated_path, directory: with_room })?
 	Ok("${resource_name(found.resource)} ${found.key.url_path(found.resource)}")
 }
@@ -49,7 +51,9 @@ resource_name = |resource|
 ## The parts of the key `path` names in `with_room`, between spaces.
 parts_at : Str -> Try(Str, _)
 parts_at = |path| {
-	unvalidated_path = UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "ConversationKeySpec: a test's path is UTF-8"
+	unvalidated_path =
+		UnvalidatedString.from_utf8(path.to_utf8())
+			?? crash "ConversationKeySpec: a test's path is UTF-8"
 	found = ConversationKey.from_url_path({ path: unvalidated_path, directory: with_room })?
 	Ok(Str.join_with(found.key.parts(), " "))
 }
@@ -92,19 +96,28 @@ expect
 # Each resource after a conversation's page: its path read back to the same
 # resource and path. A topic may be a resource's own word, and is then a
 # page's.
-expect read_back("/chat/channel/plans-room/plans/stream") == Ok("stream /chat/channel/plans-room/plans/stream")
+expect
+	read_back("/chat/channel/plans-room/plans/stream")
+		== Ok("stream /chat/channel/plans-room/plans/stream")
 expect read_back("/chat/dm/1_2/stream/stream") == Ok("stream /chat/dm/1_2/stream/stream")
 expect read_back("/chat/dm/1_2/stream") == Ok("page /chat/dm/1_2/stream")
-expect read_back("/chat/channel/plans-room/plans/send") == Ok("send /chat/channel/plans-room/plans/send")
+expect
+	read_back("/chat/channel/plans-room/plans/send")
+		== Ok("send /chat/channel/plans-room/plans/send")
 expect read_back("/chat/dm/1_2/send/send") == Ok("send /chat/dm/1_2/send/send")
 expect read_back("/chat/dm/1_2/send") == Ok("page /chat/dm/1_2/send")
-expect read_back("/chat/channel/plans-room/plans/upload") == Ok("upload /chat/channel/plans-room/plans/upload")
+expect
+	read_back("/chat/channel/plans-room/plans/upload")
+		== Ok("upload /chat/channel/plans-room/plans/upload")
 expect read_back("/chat/dm/1_2/upload/upload") == Ok("upload /chat/dm/1_2/upload/upload")
 expect read_back("/chat/dm/1_2/upload") == Ok("page /chat/dm/1_2/upload")
-expect read_back("/chat/channel/plans-room/plans/raw") == Ok("raw /chat/channel/plans-room/plans/raw")
+expect
+	read_back("/chat/channel/plans-room/plans/raw") == Ok("raw /chat/channel/plans-room/plans/raw")
 expect read_back("/chat/dm/1_2/raw/raw") == Ok("raw /chat/dm/1_2/raw/raw")
 expect read_back("/chat/dm/1_2/raw") == Ok("page /chat/dm/1_2/raw")
-expect read_back("/chat/dm/1_2/plans/uploads/${image_name}") == Ok("image ${image_name} /chat/dm/1_2/plans/uploads/${image_name}")
+expect
+	read_back("/chat/dm/1_2/plans/uploads/${image_name}")
+		== Ok("image ${image_name} /chat/dm/1_2/plans/uploads/${image_name}")
 expect
 	read_back("/chat/channel/plans-room/plans/uploads/${image_name}")
 		== Ok("image ${image_name} /chat/channel/plans-room/plans/uploads/${image_name}")

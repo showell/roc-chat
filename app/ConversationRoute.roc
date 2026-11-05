@@ -287,7 +287,8 @@ refusal_notice = |why|
 		}
 		Backdated => conversation_refusal("The message is dated before the conversation's latest.")
 		Full => conversation_refusal("The conversation holds as many messages as it can.")
-		FileFull => conversation_refusal("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
+		FileFull =>
+			conversation_refusal("The conversation's transcript holds as much as it can: ${(Transcript.most_bytes // 1024 // 1024).to_str()} MiB.")
 	}
 
 ## A refusal as a page, with its status.
@@ -339,7 +340,8 @@ unnumbered_message_from_post = |
 ## Steve, signed in, as a test assumes him.
 steve : SignedIn
 steve = {
-	founded = Users.with_founder(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name")
+	founded =
+		Users.with_founder(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name")
 	SignedIn.dangerously_assume(founded.to_list().first() ?? crash "ConversationRoute's tests: Steve is the first user")
 }
 
@@ -372,7 +374,8 @@ unnumbered_message_at_the_sample_time = |body| unnumbered_message_at(1793646692,
 ## `plans` in Steve's own DM.
 plans_key : ConversationKey
 plans_key = ConversationKey.from_url_path({
-	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "ConversationRoute's tests: a path is UTF-8",
+	path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
+		?? crash "ConversationRoute's tests: a path is UTF-8",
 	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "ConversationRoute's tests: a name"),
 }).map_ok(|found| found.key) ?? crash "ConversationRoute's tests: Steve's own DM is a place"
 
@@ -467,7 +470,8 @@ expect
 		|why| {
 			refusal_response = refusal_page(why)
 			notice = refusal_notice(why)
-			refusal_response.status == notice.status and refusal_response.body == Page.notice(notice.words).to_utf8()
+			refusal_response.status
+				== notice.status and refusal_response.body == Page.notice(notice.words).to_utf8()
 		},
 	)
 expect refusal_page(NoSuchConversation(plans_key)).status == 404

@@ -39,10 +39,12 @@ Sample :: [].{
 	|
 		{
 			payload: {
-				author: Author.from_str(author) ?? crash "Sample.unnumbered_message: a test's author is a name",
+				author: Author.from_str(author)
+					?? crash "Sample.unnumbered_message: a test's author is a name",
 				markdown,
 			},
-			time: DateTime.from_str(time) ?? crash "Sample.unnumbered_message: a test's time is a time",
+			time: DateTime.from_str(time)
+				?? crash "Sample.unnumbered_message: a test's time is a time",
 		}
 
 	## Steve's hello.
@@ -70,7 +72,8 @@ Sample :: [].{
 			|
 				c,
 				a,
-			| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated").conversation,
+			| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated")
+				.conversation,
 		)
 
 	## `plans`'s hello and reply.
@@ -105,7 +108,9 @@ Sample :: [].{
 	directory : Directory
 	directory = {
 		founded = Directory.with_founder(Sample.name("Steve"))
-		with_apoorva = (founded.add_human(Sample.name("Apoorva")) ?? crash "Sample.directory: Apoorva's name is free").directory
+		with_apoorva =
+			(founded.add_human(Sample.name("Apoorva")) ?? crash "Sample.directory: Apoorva's name is free")
+				.directory
 		founder = with_apoorva.users().user(UserId.steve) ?? crash "Sample.directory: Steve is id 1"
 		owner = founder.as_human() ?? crash "Sample.directory: Steve is a human"
 		with_cc = with_apoorva.add_agent({
@@ -124,13 +129,16 @@ Sample :: [].{
 			|
 				so_far,
 				at,
-			| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded_directory: a filler's name is free").directory,
+			| (so_far.add_human(Sample.name("Filler ${place_in_letters(at)}")) ?? crash "Sample.crowded_directory: a filler's name is free")
+				.directory,
 		)
 
 	## Steve, signed in as an admin. This is the specs' one way to an admin,
 	## through the door that stands in for a session (`SignedIn`).
 	admin : Admin
-	admin = Admin.of(SignedIn.dangerously_assume(Sample.steve)) ?? crash "Sample.admin: Steve is an admin"
+	admin =
+		Admin.of(SignedIn.dangerously_assume(Sample.steve))
+			?? crash "Sample.admin: Steve is an admin"
 
 	## Steve, in the sample directory.
 	steve : Users.User
@@ -139,7 +147,8 @@ Sample :: [].{
 	## The sample directory's user named `text`, which it holds.
 	user : Str -> Users.User
 	user = |text|
-		Sample.directory.users().to_list().find_first(|u| u.name().to_str() == text) ?? crash "Sample.user: the sample directory holds ${text}"
+		Sample.directory.users().to_list().find_first(|u| u.name().to_str() == text)
+			?? crash "Sample.user: the sample directory holds ${text}"
 
 	## The sample directory's human named `text`, which it holds.
 	human : Str -> Users.Human
@@ -161,6 +170,7 @@ append_hellos = |{ so_far, count }|
 		so_far
 	else
 		append_hellos({
-			so_far: (so_far.append(Sample.hello) ?? crash "Sample.append_hellos: the conversation has room").conversation,
+			so_far: (so_far.append(Sample.hello) ?? crash "Sample.append_hellos: the conversation has room")
+				.conversation,
 			count: count - 1,
 		})

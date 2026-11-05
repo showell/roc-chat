@@ -33,7 +33,8 @@ expect Conversation.empty(Sample.other).reference(Sample.second).to_str() == "MS
 expect Sample.hello_and_reply.reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
 # The messages past a count, at none, one, all and past all.
-expect summary(Sample.hello_and_reply.messages_after(0)) == summary(Sample.hello_and_reply.messages())
+expect
+	summary(Sample.hello_and_reply.messages_after(0)) == summary(Sample.hello_and_reply.messages())
 expect summary(Sample.hello_and_reply.messages_after(1)).map(|m| m.id) == ["2"]
 expect Sample.hello_and_reply.messages_after(2) == []
 expect Sample.hello_and_reply.messages_after(3) == []
@@ -65,7 +66,9 @@ expect
 			message: Message.numbered_message({ id: Sample.first, unnumbered: Sample.hello }),
 		})
 expect {
-	grown = Sample.hello_and_reply.append(Sample.reply) ?? crash "ConversationSpec: a third message fits"
+	grown =
+		Sample.hello_and_reply.append(Sample.reply)
+			?? crash "ConversationSpec: a third message fits"
 	summary([grown.message]) == [
 		{
 			id: "3",

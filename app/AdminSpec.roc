@@ -15,7 +15,9 @@ expect as_admin("Apoorva") == Err(NotAdmin)
 expect as_admin("CC") == Err(NotAdmin)
 # The last id's user is no admin either.
 expect {
-	last = Sample.crowded_directory(252).users().to_list().last() ?? crash "AdminSpec: the crowded sample has users"
+	last =
+		Sample.crowded_directory(252).users().to_list().last()
+			?? crash "AdminSpec: the crowded sample has users"
 	last.id().to_str() == "255"
 		and Admin.of(SignedIn.dangerously_assume(last)).map_ok(|_| {}) == Err(NotAdmin)
 }

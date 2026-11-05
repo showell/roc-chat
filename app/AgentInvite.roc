@@ -31,11 +31,16 @@ AgentInvite :: {
 
 		## The number `text` spells, as a folder's name and a URL carry it.
 		from_str : Str -> Try(AgentInvite.Id, [NotAnInviteId])
-		from_str = |text| SerialNumber.from_str(text).map_ok(|n| AgentInvite.Id.(n)).map_err(|NotASerialNumber| NotAnInviteId)
+		from_str = |text|
+			SerialNumber.from_str(text)
+				.map_ok(|n| AgentInvite.Id.(n))
+				.map_err(|NotASerialNumber| NotAnInviteId)
 
 		## The number after the highest of `given`, 1 for none.
 		next_after : List(AgentInvite.Id) -> Try(AgentInvite.Id, [Full])
-		next_after = |given| SerialNumber.next_after(given.map(|AgentInvite.Id.(n)| n)).map_ok(|n| AgentInvite.Id.(n))
+		next_after = |given|
+			SerialNumber.next_after(given.map(|AgentInvite.Id.(n)| n))
+				.map_ok(|n| AgentInvite.Id.(n))
 
 		to_str : AgentInvite.Id -> Str
 		to_str = |AgentInvite.Id.(n)| n.to_str()

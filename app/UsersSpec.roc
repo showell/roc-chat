@@ -42,7 +42,10 @@ sample = Sample.directory.users()
 
 ## Zed is id 1 of other users, so no human of the sample's.
 zed : Users.Human
-zed = (Users.with_founder(Sample.name("Zed")).user(UserId.steve) ?? crash "UsersSpec: Zed is id 1").as_human() ?? crash "UsersSpec: Zed is a human"
+zed =
+	(Users.with_founder(Sample.name("Zed")).user(UserId.steve) ?? crash "UsersSpec: Zed is id 1")
+		.as_human()
+		?? crash "UsersSpec: Zed is a human"
 
 ## Who a human named `name` would be, added to `users`, or why not.
 human_added : Users,
@@ -117,7 +120,9 @@ expect
 # one whose id is a user's of another name.
 expect
 	[
-		(Sample.crowded_directory(1).users().user(stranger) ?? crash "UsersSpec: the crowded sample has id 4").as_human() ?? crash "UsersSpec: a filler is a human",
+		(Sample.crowded_directory(1).users().user(stranger) ?? crash "UsersSpec: the crowded sample has id 4")
+			.as_human()
+			?? crash "UsersSpec: a filler is a human",
 		zed,
 	].all(|owner| agent_added(sample, { name: "Bot", owner }) == Err(NoSuchOwner))
 # The users alone take a name twice: `Directory` keeps names unique.
@@ -125,7 +130,8 @@ expect human_added(sample, "Apoorva").map_ok(|user| user.id) == Ok("4")
 # A human, or an agent refused as one, by id.
 expect
 	["Steve", "Apoorva"].all(
-		|text| Sample.user(text).as_human().map_ok(|human| human.user().name().to_str()) == Ok(text),
+		|text| Sample.user(text).as_human().map_ok(|human| human.user().name().to_str())
+			== Ok(text),
 	)
 expect Sample.user("CC").as_human() == Err(Agent(after_steve(2)))
 expect Sample.human("Apoorva").id() == after_steve(1)

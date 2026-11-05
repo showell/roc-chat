@@ -854,7 +854,8 @@ fault_name = |fault|
 ## directory.
 key_at : Str -> ConversationKey
 key_at = |path| ConversationKey.from_url_path({
-	path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "FileSystem's tests: a path is UTF-8",
+	path: UnvalidatedString.from_utf8(path.to_utf8())
+		?? crash "FileSystem's tests: a path is UTF-8",
 	directory: Directory.with_founder(Name.from_str("Steve") ?? crash "FileSystem's tests: a name"),
 }).map_ok(|found| found.key) ?? crash "FileSystem's tests: a conversation's path"
 
@@ -881,13 +882,17 @@ expect {
 expect channels_folder_path == "chat/channel"
 expect {
 	general = ChannelName.from_str("general") ?? crash "FileSystem's tests: a channel's name"
-	channel_folder_path(general) == "chat/channel/general" and channel_members_path(general) == "chat/channel/general.channel"
+	channel_folder_path(general)
+		== "chat/channel/general" and channel_members_path(general)
+		== "chat/channel/general.channel"
 }
 expect user_folder_path(UserFolder.of(UserId.steve)) == "users/1"
 expect upload_total_path(UserFolder.of(UserId.steve)) == "users/1/upload-bytes".to_utf8()
 expect {
 	key = key_at("/chat/dm/1_1/plans")
-	image = UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "FileSystem's tests: an image's name"
+	image =
+		UploadedImage.from_name("${"0a".repeat(16)}.png")
+			?? crash "FileSystem's tests: an image's name"
 	folder_path(key) == "chat/dm/1_1/plans"
 		and transcript_path(key) == "chat/dm/1_1/plans/transcript".to_utf8()
 		and uploads_folder_path(key) == "chat/dm/1_1/plans/uploads"

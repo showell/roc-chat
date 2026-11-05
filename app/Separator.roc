@@ -58,7 +58,8 @@ Separator :: [].{
 
 ## Is `l` the separator after zero or more backslashes?
 is_backslashed_separator : Str -> Bool
-is_backslashed_separator = |l| l.ends_with(Separator.line) and l.drop_suffix(Separator.line).to_utf8().all(|b| b == '\\')
+is_backslashed_separator = |l|
+	l.ends_with(Separator.line) and l.drop_suffix(Separator.line).to_utf8().all(|b| b == '\\')
 
 # ── tests
 expect
@@ -77,9 +78,13 @@ expect
 		"--------------",
 		"\\a-------------",
 	].all(|l| !is_backslashed_separator(l))
-expect Separator.escape("a\n-------------\n\\-------------\nb") == "a\n\\-------------\n\\\\-------------\nb"
+expect
+	Separator.escape("a\n-------------\n\\-------------\nb")
+		== "a\n\\-------------\n\\\\-------------\nb"
 expect Separator.escape("------------\n\\x") == "------------\n\\x"
-expect Separator.unescape("a\n\\-------------\n\\\\-------------\nb") == Ok("a\n-------------\n\\-------------\nb")
+expect
+	Separator.unescape("a\n\\-------------\n\\\\-------------\nb")
+		== Ok("a\n-------------\n\\-------------\nb")
 # A lone backslash, or one before a near miss, is no escape.
 expect Separator.unescape("\\\n\\------------") == Ok("\\\n\\------------")
 # The bare separator is refused alone, last or first; escaped, or one dash
@@ -107,10 +112,14 @@ expect Separator.records("\n") == Err(NotPrefixedProperly)
 # where it splits nothing.
 expect Separator.records("-------------\r\na\n\n") == Err(NotPrefixedProperly)
 expect Separator.records("-------------\na\r\n\r\n") == Err(NotPrefixedProperly)
-expect Separator.records("-------------\na\r\n\r\n-------------\nb\n\n") == Ok(["a\r\n\r\n-------------\nb"])
+expect
+	Separator.records("-------------\na\r\n\r\n-------------\nb\n\n")
+		== Ok(["a\r\n\r\n-------------\nb"])
 # An escaped separator after an empty line is a record's own line; so is a
 # bare one with no empty line before it, for `unescape` to refuse.
-expect Separator.records("-------------\na\n\n\\-------------\nb\n\n") == Ok(["a\n\n\\-------------\nb"])
+expect
+	Separator.records("-------------\na\n\n\\-------------\nb\n\n")
+		== Ok(["a\n\n\\-------------\nb"])
 expect Separator.records("-------------\na\n-------------\nb\n\n") == Ok(["a\n-------------\nb"])
 # Escaping, then unescaping, gives the markdown back, separators and all.
 expect
@@ -122,4 +131,5 @@ expect
 		"a\n-------------\nMSG_x_2\nfrom: Steve",
 	].all(|md| Separator.unescape(Separator.escape(md)) == Ok(md))
 # No escaped line is the separator.
-expect !Separator.escape("-------------\nx\n-------------").split_on("\n").any(|l| l == Separator.line)
+expect
+	!Separator.escape("-------------\nx\n-------------").split_on("\n").any(|l| l == Separator.line)

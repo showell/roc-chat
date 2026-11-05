@@ -92,7 +92,10 @@ Session :: [].{
 	## one (`BadSession`).
 	claim_from_cookie_header : List(U8) -> Try(Session.Claim, [NoSession, BadSession])
 	claim_from_cookie_header = |header| {
-		named = header.split_on(';').map(Ascii.trim_spaces).keep_if(|pair| pair.starts_with(cookie_prefix))
+		named =
+			header.split_on(';')
+				.map(Ascii.trim_spaces)
+				.keep_if(|pair| pair.starts_with(cookie_prefix))
 		match named {
 			[] => Err(NoSession)
 			[only] => claim_from_value(only.drop_first(cookie_prefix.len()))
@@ -161,7 +164,8 @@ Session :: [].{
 	## The `Set-Cookie` header's value that sets the session's cookie to
 	## `value`, for a year.
 	set_cookie_text : Str -> Str
-	set_cookie_text = |value| "${cookie_prefix_text}${value}; Path=/; Max-Age=${Session.longest_seconds.to_str()}; ${cookie_attributes}"
+	set_cookie_text = |value|
+		"${cookie_prefix_text}${value}; Path=/; Max-Age=${Session.longest_seconds.to_str()}; ${cookie_attributes}"
 
 	## The `Set-Cookie` header's value that has a browser forget the
 	## session's cookie.
@@ -189,7 +193,8 @@ claim_from_value = |value|
 			second_part,
 			mac_part,
 		] => {
-			id_text = Str.from_utf8(Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession) ? |_| BadSession
+			id_text =
+				Str.from_utf8(Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession) ? |_| BadSession
 			id = UserId.from_str(id_text) ? |_| BadSession
 			signed_at = second_from_digits(second_part) ? |_| BadSession
 			mac = Base64Url.decode(Str.from_utf8(mac_part) ? |_| BadSession) ? |_| BadSession
@@ -227,7 +232,9 @@ second_from_digits = |digits|
 tests_users : Users
 tests_users = {
 	founded = Users.with_founder(Name.from_str("Steve") ?? crash "Session's tests: Steve is a name")
-	owner = (founded.user(UserId.steve) ?? crash "Session's tests: Steve is id 1").as_human() ?? crash "Session's tests: Steve is a human"
+	owner =
+		(founded.user(UserId.steve) ?? crash "Session's tests: Steve is id 1").as_human()
+			?? crash "Session's tests: Steve is a human"
 	(
 		founded.add_agent({
 			name: Name.from_str("CC") ?? crash "Session's tests: CC is a name",
@@ -344,10 +351,12 @@ expect {
 		"${cookie_prefix_text}MQ.1700000000.${signature}=",
 	].all(|header| claim_text(header.to_utf8()) == Err(BadSession))
 }
-expect claim_text("${cookie_prefix_text}MQ.9223372036854775807.${Base64Url.encode(mac_of(7))}".to_utf8()) == Ok((
-	"1\n9223372036854775807\nh",
-	mac_of(7),
-))
+expect
+	claim_text("${cookie_prefix_text}MQ.9223372036854775807.${Base64Url.encode(mac_of(7))}".to_utf8())
+		== Ok((
+			"1\n9223372036854775807\nh",
+			mac_of(7),
+		))
 
 ## Whom the session for `id` at `signed_at` admits at `now`, with the
 ## host's `verdict`, as a test reads it.
@@ -445,5 +454,9 @@ expect admitted_at({
 	verdict: Matches,
 }) == Err(SessionRefused)
 # The cookie set for a year, and cleared, each with its defences.
-expect Session.set_cookie_text("v") == "__Host-gopher_auth=v; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax"
-expect Session.clear_cookie_text == "__Host-gopher_auth=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
+expect
+	Session.set_cookie_text("v")
+		== "__Host-gopher_auth=v; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax"
+expect
+	Session.clear_cookie_text
+		== "__Host-gopher_auth=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"

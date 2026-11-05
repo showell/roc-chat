@@ -84,7 +84,9 @@ is_round_trip : Str -> Bool
 is_round_trip = |text| again(text) == Ok(text)
 
 # Written exactly, both ways.
-expect Transcript.write(Sample.hello_and_reply) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
+expect
+	Transcript.write(Sample.hello_and_reply)
+		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n- one\n- two\n\n"
 expect Transcript.read(
 	Sample.plans,
 	Transcript.write(Sample.hello_and_reply),
@@ -142,7 +144,9 @@ expect again(
 	}),
 ) == Ok(write_message({ ..first, body: "a\n\\-------------" }))
 # The same at message 2, after a good message 1.
-expect again("${write_message(first)}${write_message(second)}") == Ok("${write_message(first)}${write_message(second)}")
+expect
+	again("${write_message(first)}${write_message(second)}")
+		== Ok("${write_message(first)}${write_message(second)}")
 expect two_with({ ..second, head: "MSG_plans_1" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, head: "MSG_plans_3" }) == Err(BadHead(Sample.second))
 expect two_with({ ..second, from: "frm: CC" }) == Err(BadHead(Sample.second))
@@ -169,11 +173,15 @@ expect
 		== Ok("${write_message(first)}${write_message({ ..second, body: "a\n\\-------------" })}")
 # Times never go backwards: message 2 and message 3 at the time above
 # them, or a second later, read; a second earlier is refused by its id.
-expect is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:32Z" })}")
-expect is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:33Z" })}")
+expect
+	is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:32Z" })}")
+expect
+	is_round_trip("${write_message(first)}${write_message({ ..second, date: "date: 2026-11-02T19:11:33Z" })}")
 expect two_with({ ..second, date: "date: 2026-11-02T19:11:31Z" }) == Err(Backdated(Sample.second))
-expect is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:28Z" })}")
-expect is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
+expect
+	is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:28Z" })}")
+expect
+	is_round_trip("${write_message(first)}${write_message(second)}${write_message({ ..third, date: "date: 2026-11-02T19:12:29Z" })}")
 expect three_with({ ..third, date: "date: 2026-11-02T19:12:27Z" }) == Err(Backdated(Sample.third))
 # Another topic's transcript is refused by its references.
 expect Transcript.read(
@@ -198,7 +206,9 @@ forged = Sample.conversation(
 		}),
 	],
 )
-expect Transcript.write(forged) == "-------------\nMSG_plans_1\nfrom: Mallory\ndate: 2026-11-02T19:11:32Z\n\na\n\\-------------\nMSG_plans_2\nfrom: Steve\n\n-------------\nMSG_plans_2\nfrom: Mallory\ndate: 2026-11-02T19:12:28Z\n\n\\\\-------------\n\\\\\\-------------\n\n"
+expect
+	Transcript.write(forged)
+		== "-------------\nMSG_plans_1\nfrom: Mallory\ndate: 2026-11-02T19:11:32Z\n\na\n\\-------------\nMSG_plans_2\nfrom: Steve\n\n-------------\nMSG_plans_2\nfrom: Mallory\ndate: 2026-11-02T19:12:28Z\n\n\\\\-------------\n\\\\\\-------------\n\n"
 expect Transcript.read(Sample.plans, Transcript.write(forged)) == Ok(forged)
 # Near the separator but not it: written as is, read back unchanged.
 near : Conversation
@@ -212,7 +222,9 @@ near = Sample.conversation(
 		}),
 	],
 )
-expect Transcript.write(near) == "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\na-------------\n-------------x\n\\x\n------------\n\n"
+expect
+	Transcript.write(near)
+		== "-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\na-------------\n-------------x\n\\x\n------------\n\n"
 expect Transcript.read(Sample.plans, Transcript.write(near)) == Ok(near)
 # Markdown that is empty, or ends in one or two newlines, comes back
 # exactly; the empty one's record is written byte for byte.
@@ -246,8 +258,11 @@ expect
 # transcript and one record more is refused as `Full`, which the reader
 # reaches only at the 65,536th record, after reading the 65,535 before it.
 expect {
-	full = Sample.almost_full.append(Sample.reply).map_ok(|grown| grown.conversation) ?? crash "TranscriptSpec: the 65,535th message fits"
-	over = "${Transcript.write(full)}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
+	full =
+		Sample.almost_full.append(Sample.reply).map_ok(|grown| grown.conversation)
+			?? crash "TranscriptSpec: the 65,535th message fits"
+	over =
+		"${Transcript.write(full)}-------------\nMSG_plans_65536\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi!\n\n"
 	Transcript.read(Sample.plans, over) == Err(Full)
 }
 # **A RECORD APPENDED IS THE TRANSCRIPT GROWN**: the file of a conversation,
@@ -289,7 +304,8 @@ hello_record : [NoFile, File(Transcript.Utf8Transcript)] -> Try(List(U8), [FileF
 hello_record = |file|
 	Transcript.message_record({
 		conversation: Sample.hello_and_reply,
-		message: Sample.hello_and_reply.messages().first() ?? crash "TranscriptSpec: hello is first",
+		message: Sample.hello_and_reply.messages().first()
+			?? crash "TranscriptSpec: hello is first",
 		file,
 	}).map_ok(|record| record.to_utf8_bytes())
 
@@ -304,12 +320,15 @@ decoded_conversation = |bytes| Transcript.decode(
 	Transcript.Utf8Transcript.unchecked_from_file(bytes),
 )
 
-expect hello_record(NoFile) == Ok("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8())
+expect
+	hello_record(NoFile)
+		== Ok("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n".to_utf8())
 # A record that would grow the file past the most is refused: at the most,
 # one byte under and one byte over.
 expect hello_record(file_of(Transcript.most_bytes - 73)).map_ok(|bytes| bytes.len()) == Ok(73)
 expect hello_record(file_of(Transcript.most_bytes - 74)).map_ok(|bytes| bytes.len()) == Ok(73)
-expect hello_record(file_of(Transcript.most_bytes - 72)).map_ok(|bytes| bytes.len()) == Err(FileFull)
+expect
+	hello_record(file_of(Transcript.most_bytes - 72)).map_ok(|bytes| bytes.len()) == Err(FileFull)
 # Decoding the file's bytes: not UTF-8, empty, and a refusal of the text.
 expect decoded_conversation([0xff]) == Err(TranscriptNotUtf8)
 expect decoded_conversation([]) == Ok(Conversation.empty(Sample.plans))

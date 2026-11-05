@@ -55,9 +55,11 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 					before,
 					after,
 				},
-			) if before.len() == UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
+			) if before.len()
+				== UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
 				kind = kind_of_extension(after)?
-				digits = Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
+				digits =
+					Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
 				Ok(UploadedImage.({ kind, digits }))
 			}
 			_ => Err(NotAnUploadName)
@@ -215,7 +217,8 @@ expect {
 }
 expect
 	["png", "jpg", "gif", "webp"].all(
-		|ext| UploadedImage.from_name("${"0".repeat(32)}.${ext}").map_ok(UploadedImage.name) == Ok("${"0".repeat(32)}.${ext}"),
+		|ext| UploadedImage.from_name("${"0".repeat(32)}.${ext}").map_ok(UploadedImage.name)
+			== Ok("${"0".repeat(32)}.${ext}"),
 	)
 expect UploadedImage.from_name("${"0".repeat(32)}.jpg").map_ok(UploadedImage.kind) == Ok(Jpeg)
 expect UploadedImage.from_name("${"9".repeat(32)}.webp").map_ok(UploadedImage.kind) == Ok(Webp)

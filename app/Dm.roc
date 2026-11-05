@@ -36,7 +36,9 @@ Dm :: UserPair.{
 			payload: { author: from.author(), markdown: first_message.payload.markdown },
 			time: first_message.time,
 		}
-		grown = Conversation.empty(topic).append(first) ?? crash "Dm.start: an empty conversation takes its first message"
+		grown =
+			Conversation.empty(topic).append(first)
+				?? crash "Dm.start: an empty conversation takes its first message"
 		{ dm: Dm.between({ a: from, b: to }), conversation: grown.conversation }
 	}
 

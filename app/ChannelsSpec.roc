@@ -12,7 +12,8 @@ ChannelsSpec :: [].{}
 
 ## The channel named `text`, which a test's always is.
 channel_name : Str -> ChannelName
-channel_name = |text| ChannelName.from_str(text) ?? crash "ChannelsSpec: a test's channel name is one"
+channel_name = |text|
+	ChannelName.from_str(text) ?? crash "ChannelsSpec: a test's channel name is one"
 
 admin : Admin
 admin = Sample.admin
@@ -69,7 +70,8 @@ everyone = all_changed(
 
 ## The ids of `plans`'s members.
 members_of : Channels -> Try(List(Str), [NoSuchChannel])
-members_of = |channels| channels.channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
+members_of = |channels|
+	channels.channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
 
 # A channel starts empty, and is found by its exact name.
 expect {
@@ -87,7 +89,8 @@ expect members_of(all_changed(with_plans, [Add(Sample.user("CC"))])) == Ok(["3"]
 expect
 	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve)) == Ok(Bool.True)
 expect
-	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.user("CC"))) == Ok(Bool.True)
+	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.user("CC")))
+		== Ok(Bool.True)
 expect
 	with_plans.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve))
 		== Ok(Bool.False)
@@ -164,7 +167,9 @@ expect {
 # The members are in the ids' numeric order, not their text's: 9 before 10.
 expect {
 	users = Sample.crowded_directory(7).users()
-	user_at = |text| users.user(UserId.from_str(text) ?? crash "ChannelsSpec: a test's id is an id") ?? crash "ChannelsSpec: the crowded sample has ten users"
+	user_at = |text|
+		users.user(UserId.from_str(text) ?? crash "ChannelsSpec: a test's id is an id")
+			?? crash "ChannelsSpec: the crowded sample has ten users"
 	members_of(
 		all_changed(
 			with_plans,

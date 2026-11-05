@@ -178,8 +178,11 @@ first_directory : Directory
 first_directory = {
 	founded = Directory.with_founder(founder_name)
 	founder = founded.founder()
-	admin = Admin.of(SignedIn.dangerously_assume(founder)) ?? crash "main.first_directory: Steve, id 1, is an admin"
-	general = ChannelName.from_str("general") ?? crash "main.first_directory: general is a channel's name"
+	admin =
+		Admin.of(SignedIn.dangerously_assume(founder))
+			?? crash "main.first_directory: Steve, id 1, is an admin"
+	general =
+		ChannelName.from_str("general") ?? crash "main.first_directory: general is a channel's name"
 	created = (
 		founded.create_channel({
 			by: admin,
@@ -215,7 +218,8 @@ directory_from_files = |files| {
 		counter,
 		accounts: files.accounts,
 	}) ? |why| StoredDirectory(users_words(why))
-	channels = Channels.from_files(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
+	channels =
+		Channels.from_files(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
 	directory = Directory.from_files({
 		users,
 		channels,
@@ -531,7 +535,8 @@ identity_refusal = |why|
 	}
 
 key_refusal_words : Str
-key_refusal_words = "The API key is not accepted: send Authorization: Bearer <id>-<secret>, a live key."
+key_refusal_words =
+	"The API key is not accepted: send Authorization: Bearer <id>-<secret>, a live key."
 
 ## The 403 for a request from elsewhere, saying why.
 origin_refusal : RequestOrigin.Refusal -> Http.Response
@@ -588,7 +593,8 @@ access_refusal : [NotAMember, ScopeOff] -> Http.Response
 access_refusal = |why| {
 	said =
 		match why {
-			NotAMember => "Only the members of this conversation's channel or DM may read or post in it."
+			NotAMember =>
+				"Only the members of this conversation's channel or DM may read or post in it."
 			ScopeOff => "This API key's scope doesn't reach that."
 		}
 	HttpAnswer.page(403, Page.notice({ title: "Forbidden", text: said }))
@@ -603,7 +609,8 @@ anonymous_refusal = |asked|
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
 		ShowChannels => SignInRoute.login_redirect(site_path_of("/channels"))
-		ShowChannelMembers(channel) => SignInRoute.login_redirect(site_path_of("/channels/${channel.to_str()}"))
+		ShowChannelMembers(channel) =>
+			SignInRoute.login_redirect(site_path_of("/channels/${channel.to_str()}"))
 		CreateChannel => no_one_refusal
 		AddChannelMember(_) => no_one_refusal
 		RemoveChannelMember(_) => no_one_refusal
@@ -629,12 +636,15 @@ no_one_refusal : Http.Response
 no_one_refusal = HttpAnswer.text(401, no_one_words)
 
 no_one_words : Str
-no_one_words = "No one is signed in: sign in at /login, or send Authorization: Bearer <id>-<secret>, a live key."
+no_one_words =
+	"No one is signed in: sign in at /login, or send Authorization: Bearer <id>-<secret>, a live key."
 
 ## The site path `text` spells, a path this server answers: one that isn't
 ## is a bug in its writer.
 site_path_of : Str -> Html.SitePath
-site_path_of = |text| Html.SitePath.from_str(text) ?? crash "main.site_path_of: \"${text}\" is a path this server answers, and not a site path"
+site_path_of = |text|
+	Html.SitePath.from_str(text)
+		?? crash "main.site_path_of: \"${text}\" is a path this server answers, and not a site path"
 
 ## The answer the route of `request` gives `actor`: an open route's to
 ## anyone; any other's to someone signed in alone, once `Access` admits
@@ -910,7 +920,8 @@ own_origin_of = |request|
 		public_origin: request.public_origin,
 	}) {
 		Ok(origin) => origin
-		Err(_) => crash "main.own_origin_of: the request's Host passed RequestOrigin.check, so it names one of this server's origins"
+		Err(_) =>
+			crash "main.own_origin_of: the request's Host passed RequestOrigin.check, so it names one of this server's origins"
 	}
 
 ## A message's POST to the conversation `key`, by `acting`, at the host's
@@ -990,7 +1001,8 @@ expect found_at({
 # path, or the refusal's.
 expect {
 	key = ConversationKey.from_url_path({
-		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
+		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
+			?? crash "main's tests: a path is UTF-8",
 		directory: first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	page("/chat/dm/1_1/plans".to_utf8(), [])
@@ -1005,7 +1017,9 @@ expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not U
 expect page(
 	"<b>".to_utf8(),
 	[0xff],
-) == Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>").to_utf8()
+)
+	== Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>")
+		.to_utf8()
 
 ## The page a GET of `path` shows, as a test reads it.
 page_for_get : Str -> Str
@@ -1017,7 +1031,8 @@ page_for_get = |path|
 	}) {
 		SignedInOnly(ShowConversation(key)) => key.url_path(Page)
 		SignedInOnly(OpenConversationStream(key)) => "the stream of ${key.url_path(Page)}"
-		SignedInOnly(ServeUploadedImage(found)) => "the image ${found.image.name()} of ${found.key.url_path(Page)}"
+		SignedInOnly(ServeUploadedImage(found)) =>
+			"the image ${found.image.name()} of ${found.key.url_path(Page)}"
 		_ => "not found"
 	}
 
@@ -1038,7 +1053,9 @@ expect page_for_get("/chat/channel/other/plans") == "not found"
 expect page_for_get("/chat/dm/1_2/plans") == "not found"
 expect page_for_get("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
 expect page_for_get("/chat/dm/1_2/plans/stream") == "not found"
-expect page_for_get("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png") == "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
+expect
+	page_for_get("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png")
+		== "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
 expect page_for_get("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
 
 ## The directory files of the first start, as the disk holds them.
@@ -1095,10 +1112,12 @@ expect
 # every write posts, and nothing else asks.
 expect {
 	key = ConversationKey.from_url_path({
-		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
+		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
+			?? crash "main's tests: a path is UTF-8",
 		directory: first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
-	image = UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
+	image =
+		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
 	[
 		ShowConversation(key),
 		OpenConversationStream(key),
@@ -1232,10 +1251,12 @@ expect {
 # route only someone signed in may use is a 401 to no one.
 expect {
 	key = ConversationKey.from_url_path({
-		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8()) ?? crash "main's tests: a path is UTF-8",
+		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
+			?? crash "main's tests: a path is UTF-8",
 		directory: first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
-	image = UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
+	image =
+		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
 	shown = anonymous_refusal(ShowConversation(key))
 	agents = anonymous_refusal(ShowAgents)
 	shown.status == 303

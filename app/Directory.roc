@@ -170,7 +170,10 @@ Directory :: {
 		[NameTaken, UnknownMember(ChannelName)],
 	)
 	from_files = |{ users, channels }| {
-		all_keys = users.to_list().map(|user| user.name().key()).concat(channels.to_list().map(|channel| channel.name().key()))
+		all_keys =
+			users.to_list()
+				.map(|user| user.name().key())
+				.concat(channels.to_list().map(|channel| channel.name().key()))
 		keys = Set.from_list(all_keys)
 		if (keys.len() != all_keys.len())
 			Err(NameTaken)
@@ -198,7 +201,9 @@ Directory :: {
 
 	## The founder: Steve, id 1, the first human.
 	founder : Directory -> Users.User
-	founder = |Directory.(d)| d.users.user(UserId.steve) ?? crash "Directory.founder: every directory holds its founder, id 1"
+	founder = |Directory.(d)|
+		d.users.user(UserId.steve)
+			?? crash "Directory.founder: every directory holds its founder, id 1"
 
 	users : Directory -> Users
 	users = |Directory.(d)| d.users

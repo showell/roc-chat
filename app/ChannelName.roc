@@ -27,7 +27,8 @@ ChannelName :: StrictName.{
 # ── tests
 ## The channel named `text`, which a test's text always names.
 channel : Str -> ChannelName
-channel = |text| ChannelName.from_str(text) ?? crash "ChannelName's tests: a test's text is a channel's name"
+channel = |text|
+	ChannelName.from_str(text) ?? crash "ChannelName's tests: a test's text is a channel's name"
 
 # Refused as a strict name is, by each of its refusals.
 expect ChannelName.from_str("") == Err(Empty)

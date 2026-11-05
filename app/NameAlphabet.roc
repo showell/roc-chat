@@ -101,7 +101,8 @@ point_spelling = |point|
 	else
 		match row_of(point) {
 			Ok((_, ascii)) => ascii.to_utf8()
-			Err(NotFound) => crash "NameAlphabet.point_spelling: written text holds only letters whose fold has a row"
+			Err(NotFound) =>
+				crash "NameAlphabet.point_spelling: written text holds only letters whose fold has a row"
 		}
 
 ## The row of `spellings` that holds the two-byte letter `point`.
@@ -151,7 +152,8 @@ code_points_onto = |{ out, bytes }|
 		})
 		[lead, b, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
 			code_points_onto({ out: out.append(two_byte_code_point(lead, b)), bytes: rest })
-		_ => crash "NameAlphabet.code_points_onto: written text holds only one- and two-byte characters"
+		_ =>
+			crash "NameAlphabet.code_points_onto: written text holds only one- and two-byte characters"
 	}
 
 ## The code point of the two-byte character whose bytes are `lead`, `b`.
@@ -213,7 +215,9 @@ is_written = |text| NameAlphabet.written_text(text).is_ok()
 
 ## `text` as written text, which a test's text always is.
 in_alphabet : Str -> NameAlphabet.Written
-in_alphabet = |text| NameAlphabet.written_text(text) ?? crash "NameAlphabet's tests: a test's text is written in the alphabet"
+in_alphabet = |text|
+	NameAlphabet.written_text(text)
+		?? crash "NameAlphabet's tests: a test's text is written in the alphabet"
 
 # Each end of every range is kept, and the character just past it is
 # refused: ASCII's letters, Latin-1's (around `×` and `÷`) and Latin

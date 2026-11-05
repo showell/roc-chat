@@ -654,7 +654,8 @@ agent_section = |
 							Active => "active"
 							Revoked => "revoked"
 						}
-					said = "Key ${key.id().to_str()}: ${state_word}, expires ${time_text(key.expires())}, read ${KeyScope.reach_word(key.scope().read())}, post ${KeyScope.reach_word(key.scope().post())}."
+					said =
+						"Key ${key.id().to_str()}: ${state_word}, expires ${time_text(key.expires())}, read ${KeyScope.reach_word(key.scope().read())}, post ${KeyScope.reach_word(key.scope().post())}."
 					revoke =
 						match key.state() {
 							Active => post_button({
@@ -670,7 +671,8 @@ agent_section = |
 		TrustedHtml.join(
 			invites.map(
 				|invite| {
-					said = "Invite ${invite.id().to_str()}: ${invite_state_word(invite.state())}, expires ${time_text(invite.expires())}."
+					said =
+						"Invite ${invite.id().to_str()}: ${invite_state_word(invite.state())}, expires ${time_text(invite.expires())}."
 					revoke =
 						match invite.state() {
 							Live => post_button({
@@ -830,12 +832,16 @@ anchor = |message_reference| token(message_reference.page_anchor())
 ## The token `text` spells, for a name this module writes: one that isn't
 ## is this module's bug.
 token : Str -> Html.Token
-token = |text| Html.Token.from_str(text) ?? crash "Page.token: \"${text}\" is a name this module writes, and not a token"
+token = |text|
+	Html.Token.from_str(text)
+		?? crash "Page.token: \"${text}\" is a name this module writes, and not a token"
 
 ## The site path `text` spells, for a path this server answers (a
 ## conversation's, its script's): one that isn't is a bug in its writer.
 site_path : Str -> Html.SitePath
-site_path = |text| Html.SitePath.from_str(text) ?? crash "Page.site_path: \"${text}\" is a path this server answers, and not a site path"
+site_path = |text|
+	Html.SitePath.from_str(text)
+		?? crash "Page.site_path: \"${text}\" is a path this server answers, and not a site path"
 
 newline : TrustedHtml
 newline = Escape.text("\n")
@@ -988,9 +994,12 @@ expect {
 		(Href(anchor(second_named)), "<p href=\"#msg-2\"></p>"),
 	].all(|(attr, expected)| empty_paragraph([attr]) == expected.to_utf8())
 }
-expect doctype.to_utf8() == "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
+expect
+	doctype.to_utf8()
+		== "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
 # A notice: its title and its words, each escaped, under the colour script.
 expect Page.notice({
 	title: "a<b",
 	text: "x & y",
-}).to_utf8() == "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()
+}).to_utf8()
+	== "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()

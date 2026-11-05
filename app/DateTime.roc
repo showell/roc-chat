@@ -88,7 +88,8 @@ DateTime :: Str.{
 			days = seconds // 86400
 			of_day = seconds % 86400
 			date = civil_from_days(days)
-			text = "${padded_digits(date.year, 4)}-${padded_digits(date.month, 2)}-${padded_digits(date.day, 2)}T${padded_digits(of_day // 3600, 2)}:${padded_digits((of_day % 3600) // 60, 2)}:${padded_digits(of_day % 60, 2)}Z"
+			text =
+				"${padded_digits(date.year, 4)}-${padded_digits(date.month, 2)}-${padded_digits(date.day, 2)}T${padded_digits(of_day // 3600, 2)}:${padded_digits((of_day % 3600) // 60, 2)}:${padded_digits(of_day % 60, 2)}Z"
 			Ok(DateTime.(text))
 		}
 
@@ -123,7 +124,8 @@ civil_from_days = |days| {
 	from_era_start = days + 719468
 	era = from_era_start // 146097
 	day_of_era = from_era_start - era * 146097
-	year_of_era = (day_of_era - day_of_era // 1460 + day_of_era // 36524 - day_of_era // 146096) // 365
+	year_of_era =
+		(day_of_era - day_of_era // 1460 + day_of_era // 36524 - day_of_era // 146096) // 365
 	day_of_year = day_of_era - (365 * year_of_era + year_of_era // 4 - year_of_era // 100)
 	month_from_march = (5 * day_of_year + 2) // 153
 	day = day_of_year - (153 * month_from_march + 2) // 5 + 1

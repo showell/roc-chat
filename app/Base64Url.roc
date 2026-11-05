@@ -36,7 +36,8 @@ alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".to
 
 ## The character for a value below 64.
 character_of : U8 -> U8
-character_of = |value| alphabet.get(value.to_u64()) ?? crash "Base64Url.character_of: a value is below 64"
+character_of = |value|
+	alphabet.get(value.to_u64()) ?? crash "Base64Url.character_of: a value is below 64"
 
 ## The value of one character of the alphabet.
 value_of : U8 -> Try(U8, [NotBase64Url])
@@ -118,7 +119,8 @@ expect
 				plain,
 				encoded,
 			),
-		| Base64Url.encode(plain.to_utf8()) == encoded and Base64Url.decode(encoded) == Ok(plain.to_utf8()),
+		| Base64Url.encode(plain.to_utf8())
+			== encoded and Base64Url.decode(encoded) == Ok(plain.to_utf8()),
 	)
 # The two characters that differ from base64's: 62 is `-`, 63 is `_`.
 expect Base64Url.encode([0xfb, 0xff]) == "-_8"

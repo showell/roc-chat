@@ -140,7 +140,9 @@ expect AgentKey.admit({
 # A key revokes once.
 expect key_one.state() == Active
 expect key_one.revoke().map_ok(AgentKey.state) == Ok(Revoked)
-expect (key_one.revoke() ?? crash "AgentKeySpec: an active key revokes").revoke() == Err(AlreadyRevoked)
+expect
+	(key_one.revoke() ?? crash "AgentKeySpec: an active key revokes").revoke()
+		== Err(AlreadyRevoked)
 
 # A key admitted signs its agent in by key, with its scope, and never as a
 # human in session; the door that stands in for sessions does.
@@ -156,7 +158,9 @@ expect {
 		and acting.credential() == ApiKey(KeyScope.of({ read: Everywhere, post: Off }))
 		and acting.human_in_session() == Err(ByApiKey)
 }
-expect SignedIn.dangerously_assume(Sample.steve).human_in_session().map_ok(Users.Human.id) == Ok(UserId.steve)
+expect
+	SignedIn.dangerously_assume(Sample.steve).human_in_session().map_ok(Users.Human.id)
+		== Ok(UserId.steve)
 
 # A key's files, exactly, and read back as the same key.
 expect

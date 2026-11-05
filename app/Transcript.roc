@@ -153,7 +153,10 @@ read_message = |c, written| {
 			date_line,
 			"",
 			.. as body,
-		] if head == reference and from_line.starts_with("from: ") and date_line.starts_with("date: ") => {
+		] if head
+			== reference
+			and from_line.starts_with("from: ")
+			and date_line.starts_with("date: ") => {
 			name = from_line.drop_prefix("from: ")
 			date = date_line.drop_prefix("date: ")
 			author = Author.from_str(name).map_err(|why| Author(id, why))?

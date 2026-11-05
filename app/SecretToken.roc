@@ -88,12 +88,14 @@ expect
 		"",
 	].all(|text| SecretToken.from_str(text).map_ok(|_| {}) == Err(NotAToken))
 # A bearer: exactly `Bearer ` and a token; any other scheme or spelling refused.
-expect SecretToken.from_bearer("Bearer ${token_text({ id: "7", b: 1 })}").map_ok(SecretToken.to_str) == Ok(
-	token_text({
-		id: "7",
-		b: 1,
-	}),
-)
+expect
+	SecretToken.from_bearer("Bearer ${token_text({ id: "7", b: 1 })}").map_ok(SecretToken.to_str)
+		== Ok(
+			token_text({
+				id: "7",
+				b: 1,
+			}),
+		)
 expect
 	[
 		"bearer ${token_text({ id: "7", b: 1 })}",
