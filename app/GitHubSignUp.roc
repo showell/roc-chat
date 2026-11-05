@@ -276,8 +276,10 @@ expect
 		"${cookie_prefix_text}a.b.c.d.e",
 		"${cookie_prefix_text}a.b.c.!",
 	].all(
-		|header|
-			GitHubSignUp.Claim.from_cookie_header(header.to_utf8()).map_ok(|_| {}) == Err(NotAClaim),
+		|header| {
+			claimed = GitHubSignUp.Claim.from_cookie_header(header.to_utf8())
+			claimed.map_ok(|_| {}) == Err(NotAClaim)
+		},
 	)
 # A payload that doesn't read is unsigned even under a good signature.
 expect {
