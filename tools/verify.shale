@@ -3,8 +3,8 @@
 --
 --   shale tools/verify.shale
 --
--- 1. `roc fmt --check`: the code is laid out as the formatter lays it;
---    and every `app/*.js` (the page's script, which a Roc module imports
+-- 1. `roc fmt --check` and `zig fmt --check`: the code is laid out as the
+--    formatters lay it; and every `app/*.js` (the page's script, which a Roc module imports
 --    whole) parses, by shale's cookbook:syntax.shale.
 -- 2. `roc test`, twice: from the app (every production module's expects)
 --    and from app/Specs.roc (every `*Spec.roc`), none failing. Each
@@ -57,6 +57,10 @@ end
 -- 1. The layout.
 local fmt = run({ROC, "fmt", "--check", "app", "platform"}, {timeout_ms = 60000, tail = 10})
 say(fmt.code == 0, "roc fmt --check app platform")
+
+local zig_fmt = run({"zig", "fmt", "--check", "host", "build.zig"}, {timeout_ms = 60000, tail = 10, want = "any"})
+say(zig_fmt.code == 0, "zig fmt --check host build.zig")
+if zig_fmt.code ~= 0 then print(zig_fmt.out) end
 
 local scripts = glob("app/*.js")
 local parsed = run({"shale", real("cookbook:syntax.shale"), "files=" .. join(scripts, ",")}, {cwd = ".", timeout_ms = 60000, whole = 100000})

@@ -178,7 +178,7 @@ fn restore_terminal_on_signals() void {
 fn end_on_signal(sig: std.posix.SIG) callconv(.c) void {
     restore_terminal();
     _ = std.os.linux.write(2, "\n", 1);
-    std.os.linux.exit_group(128 + @as(i32, @intCast(@intFromEnum(sig))));
+    std.os.linux.exit_group(128 + @as(i32, @intCast(@backingInt(sig))));
 }
 
 /// A line from the terminal on stdin, its echo off while it is typed,
