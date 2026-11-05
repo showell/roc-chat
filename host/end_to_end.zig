@@ -1474,12 +1474,12 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     // 48zb.
     const key_starts = try getAs(a, io, port, held.cc_bearer, "/login/github/start");
     const key_returns = try getAs(a, io, port, held.cc_bearer, "/login/github?code=user-id-7&state=x");
-    const key_names = try postAs(a, io, port, held.cc_bearer, "/login/github/name", "name=Zoe");
-    const name_by_get = try anonymousGet(a, io, port, "/login/github/name");
     const unbound_line = try signUpLine(a, unbound);
+    const key_names = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ held.cc_bearer, unbound_line }), "/login/github/name", "name=Mallory");
+    const name_by_get = try anonymousGet(a, io, port, "/login/github/name");
     const cross_site = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{unbound_line}), "/login/github/name", "name=Mallory");
     try t.check("CC's key at any route: 403; a GET of the name: 405; a cross-site post of a name: 403, nothing made", key_starts.status == 403 and key_returns.status == 403 and
-        key_names.status == 403 and name_by_get.status == 405 and cross_site.status == 403 and !has(cross_site.head, "__Host-gopher_auth=") and
+        key_names.status == 403 and has(key_names.body, "An API key never signs in") and name_by_get.status == 405 and cross_site.status == 403 and !has(cross_site.head, "__Host-gopher_auth=") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "6\n"));
 
     // 48zc.
