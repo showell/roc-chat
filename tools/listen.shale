@@ -1,0 +1,476 @@
+-- This listens to gopher-roc's agent stream for LC, printing one line for
+-- each post that names it. It is cookbook:listen.shale adapted to
+-- gopher-roc (docs/deploy.md, "LC's listener"). Run it from the repo's root.
+--
+--   shale tools/listen.shale once=1
+--   shale tools/listen.shale log=listen.log
+--
+-- A line reads `#<id> in <conversation> by <name>: <its first line>`. A post
+-- is for LC when someone else wrote it and its own words say `@LC`, which
+-- `says_at` decides from the markdown, skipping quoted and fenced text.
+--
+-- `site=`, `me=` and `key=` default to chat.lynrummy.com, LC and its key. The
+-- key stays in the secrets mount: `run` gives it to curl alone, by curl's
+-- environment. `since=` is the date to start from, by default the run's
+-- start. `ids=` is the last id read in each conversation, so that a run going
+-- on from `since=` hears nothing twice. `once=1` ends at the first post, and
+-- says the `since=` and `ids=` to go on with. Without it each line is
+-- appended to `log=`, which is then needed.
+--
+-- A run's output shows only when it ends, and a run starts at most 64
+-- programs. So the stream is held in windows of `window=` seconds, one curl
+-- each, all asking `?since=` for the date of the last event read. The server
+-- then sends that second's messages again, which `consume` drops by
+-- conversation and id. The windows run in batches, each a child run of this
+-- script (`batch=1`) with its own 63 curls, and `curls=` makes a batch
+-- shorter for a test. A run listens through 63 batches, about 22 hours of
+-- quiet at 20 s windows, then stops, naming how to go on.
+--
+-- It reconnects by itself, waiting longer each time, after anything that a
+-- wait may mend: the stream ended, no connection, or a status not refused
+-- below. A 401, 403, 404 or 400, a jump in a conversation's ids, and a message
+-- that lacks a field each stop it nonzero, named. A conversation it has read
+-- nothing of yet has no ids to jump from, so a catch-up cut at 100 messages
+-- shows no gap in it.
+--
+-- `self_test=1` runs the pure parts on frames written here; verify runs it.
+--
+-- budget: steps=200000000 arena_bytes=400000000
+
+const SELF_TEST = arg("self_test", "") == "1"
+const SITE = arg("site", "https://chat.lynrummy.com")
+const ME = arg("me", "LC")
+const KEY = arg("key", "keys:gopher_roc_lc_key")
+const SINCE = arg("since", date(now()))
+const IDS = arg("ids", "")
+const ONCE = arg("once", "") == "1"
+const LOG = arg("log", "")
+const WINDOW_S = tonumber(arg("window", "20"))
+const BATCH = arg("batch", "") == "1"
+const WINDOWS_MOST = tonumber(arg("curls", "63"))
+const BATCHES_MOST = 63
+const SELF_PATH = "tools/listen.shale"
+-- The line a batch ends with when its curls are spent. A post's line starts
+-- with `#`, so it is never one.
+const SPENT = "listen batch spent: "
+const LINE_MOST = 200
+-- MdChat.max_fence_run in roc-markdown: a longer run of ` or ~ is plain text.
+const FENCE_RUN_MOST = 10
+
+-- ── who a post names ─────────────────────────────────────────────────────
+
+-- How many times `char` repeats in `line` from the byte `from` on.
+function run_length(line, char, from)
+  local n = 0
+  while sub(line, from + n, from + n) == char do n = n + 1 end
+  return n
+end
+
+-- The fence a line opens, `{char, count}`, or nil: roc-markdown's MdFence.open.
+function fence_opened(line)
+  local indent = run_length(line, " ", 1)
+  if indent > 3 then return nil end
+  local char = sub(line, indent + 1, indent + 1)
+  if char ~= "`" and char ~= "~" then return nil end
+  local count = run_length(line, char, indent + 1)
+  if count < 3 or count > FENCE_RUN_MOST then return nil end
+  if char == "`" and contains(sub(line, indent + count + 1), "`") then return nil end
+  return {char = char, count = count}
+end
+
+-- Whether a line closes `fence`: roc-markdown's MdFence.is_close.
+function fence_closed(line, fence)
+  local indent = run_length(line, " ", 1)
+  if indent > 3 then return false end
+  local count = run_length(line, fence.char, indent + 1)
+  return count >= fence.count and trim(sub(line, indent + count + 1)) == ""
+end
+
+function quote_opened(line)
+  local indent = run_length(line, " ", 1)
+  return indent <= 3 and sub(line, indent + 1, indent + 1) == ">"
+end
+
+-- The post's own lines: its markdown without fenced blocks and blockquotes.
+-- A quote runs on through its lazy lines to a blank one. This is the rule of
+-- roc-chat's app/Mentions.roc.
+function spoken(markdown)
+  local kept = {}
+  local fence = nil
+  local quoted = false
+  for line in split(markdown, "\n") do
+    if fence ~= nil then
+      if fence_closed(line, fence) then fence = nil end
+    elseif quoted and trim(line) == "" then
+      quoted = false
+      push(kept, line)
+    else
+      fence = fence_opened(line)
+      if fence ~= nil then
+        quoted = false
+      elseif quote_opened(line) then
+        quoted = true
+      elseif not quoted then
+        push(kept, line)
+      end
+    end
+  end
+  return join(kept, "\n")
+end
+
+function is_word_byte(char)
+  return re_find(char, "^[A-Za-z0-9_]$") ~= nil
+end
+
+-- Whether `text` holds `@<name>` as a word, so neither `@LCX` nor `a@LC`.
+function at_name(text, name)
+  local tag = "@" .. name
+  for at in find_all(text, tag) do
+    local before = ""
+    if at > 1 then before = sub(text, at - 1, at - 1) end
+    local after = sub(text, at + #tag, at + #tag)
+    if not is_word_byte(before) and not is_word_byte(after) then return true end
+  end
+  return false
+end
+
+function says_at(markdown, name)
+  return at_name(spoken(markdown), name)
+end
+
+-- The post's first line with text, trimmed and cut.
+function first_line(markdown)
+  for l in lines(markdown) do
+    local t = trim(l)
+    if t ~= "" then
+      if #t > LINE_MOST then return sub(t, 1, LINE_MOST) .. "..." end
+      return t
+    end
+  end
+  return ""
+end
+
+-- ── reconnecting ─────────────────────────────────────────────────────────
+
+-- What a window's answer means, `{act, reason}`: `go` when it ran its length
+-- (curl's `--max-time`, code 28), `stop` for a refusal no wait mends, and
+-- `reconnect` for anything else. `status` is curl's `%{http_code}`, "000"
+-- when nothing answered.
+function after_window(status, code)
+  if status == "401" or status == "403" then
+    return {act = "stop", reason = "the stream answered " .. status .. ": the key refused (revoked or wrong)"}
+  end
+  if status == "404" then
+    return {act = "stop", reason = "the stream answered 404: no /agents/stream at this site"}
+  end
+  if status == "400" then
+    return {act = "stop", reason = "the stream answered 400: since= is no date"}
+  end
+  if status == "200" then
+    if code == 28 then return {act = "go", reason = ""} end
+    if code == 0 then return {act = "reconnect", reason = "the server ended the stream"} end
+    return {act = "reconnect", reason = "curl exited " .. code .. " mid-stream"}
+  end
+  if status == "000" or status == "" then
+    return {act = "reconnect", reason = "no connection (curl exited " .. code .. ")"}
+  end
+  return {act = "reconnect", reason = "the stream answered " .. status}
+end
+
+-- Seconds to wait before the `n`th reconnect in a row.
+function backoff_s(n)
+  if n <= 1 then return 2 end
+  if n == 2 then return 5 end
+  if n == 3 then return 15 end
+  if n == 4 then return 30 end
+  return 60
+end
+
+-- ── the stream's state ───────────────────────────────────────────────────
+
+-- `ids` is `ids=`'s text, `<conversation>:<id>` with commas between.
+function new_state(me, since, ids)
+  local last = {}
+  for pair in split(ids, ",") do
+    local m = re_find(pair, "^([^:]+):([0-9]+)$")
+    if m ~= nil then
+      last[m.groups[1]] = tonumber(m.groups[2])
+    elseif pair ~= "" then
+      fail("listen: ids= is <conversation>:<id> with commas between: " .. pair)
+    end
+  end
+  return {me = me, since = since, last = last}
+end
+
+-- The `since=` and `ids=` that go on from `state`, as two words.
+function going_on(state)
+  local pairs = {}
+  for conversation in keys(state.last) do push(pairs, conversation .. ":" .. state.last[conversation]) end
+  return "since=" .. state.since .. " ids=" .. join(pairs, ",")
+end
+
+-- The data of each whole frame in a stretch of the stream. A frame ends at a
+-- blank line, so the last piece, cut by the window or empty, is left for the
+-- next window. A `: ping` is a comment, and has no data.
+function frames(text)
+  local got = {}
+  local pieces = split(text, "\n\n")
+  for k = 1, #pieces - 1 do
+    for l in lines(pieces[k]) do
+      if starts_with(l, "data: ") then push(got, sub(l, 7)) end
+    end
+  end
+  return got
+end
+
+-- A stretch of the stream into `state`: `{lines, err}`, each line a post for
+-- the agent, and `err` why the run must stop, or empty.
+function consume(state, text)
+  local out = {}
+  for data in frames(text) do
+    local msg = json_read(data)
+    for field in {"conversation", "id", "from", "date", "markdown"} do
+      if not has_key(msg, field) then
+        return {lines = out, err = "an event has no `" .. field .. "`: " .. data}
+      end
+    end
+    local before = get(state.last, msg.conversation, 0)
+    if msg.id > before then
+      if before > 0 and msg.id > before + 1 then
+        return {lines = out, err = "a gap in " .. msg.conversation .. ": #" .. msg.id .. " came after #" .. before .. "; read the rest at " .. msg.conversation .. "/raw and start again with since=" .. msg.date}
+      end
+      state.last[msg.conversation] = msg.id
+      state.since = msg.date
+      if msg.from ~= state.me and says_at(msg.markdown, state.me) then
+        push(out, "#" .. msg.id .. " in " .. msg.conversation .. " by " .. msg.from .. ": " .. first_line(msg.markdown))
+      end
+    end
+  end
+  return {lines = out, err = ""}
+end
+
+-- ── the batches ──────────────────────────────────────────────────────────
+
+-- What a batch's end means, `{act, lines, after, reason}`, from `run`'s answer.
+-- `lines` are the batch's own, to pass through. `act` is `done` (a post heard
+-- with `once`), `next` (its curls spent, going on with the words `after`) or
+-- `stop` (its own stop, or any end that is none of these).
+function after_batch(r, once)
+  local out = {}
+  local after = ""
+  local stopped = ""
+  local post = false
+  -- Shale's footers end a run and can run over lines; only `── budgets`
+  -- comes first.
+  local footer = false
+  for l in lines(r.out) do
+    if starts_with(l, "──") and not starts_with(l, "── budgets") then
+      footer = true
+      local at = find(l, ": fail: ")
+      if starts_with(l, "── stopped at ") then
+        if at ~= nil then stopped = sub(l, at + 8) else stopped = l end
+      end
+    elseif footer or starts_with(l, "──") then
+      -- not the batch's
+    elseif starts_with(l, SPENT) then
+      after = sub(l, #SPENT + 1)
+    elseif l ~= "" then
+      push(out, l)
+      if starts_with(l, "#") then post = true end
+    end
+  end
+  if stopped ~= "" then
+    local m = re_find(stopped, " \\([0-9]+ steps\\)$")
+    if m ~= nil then stopped = sub(stopped, 1, m.at - 1) end
+  end
+  if r.ended ~= "exit" then
+    return {act = "stop", lines = out, after = "", reason = "listen: a batch ended by " .. r.ended .. ", not by itself"}
+  end
+  if r.code ~= 0 then
+    if stopped == "" then stopped = "listen: a batch exited " .. r.code .. " naming no stop" end
+    return {act = "stop", lines = out, after = "", reason = stopped}
+  end
+  if once and post then return {act = "done", lines = out, after = "", reason = ""} end
+  if re_find(after, "^since=[^ ]+ ids=[^ ]*$") ~= nil then return {act = "next", lines = out, after = after, reason = ""} end
+  return {act = "stop", lines = out, after = "", reason = "listen: a batch exited 0 with no post and no `" .. SPENT .. "` line"}
+end
+
+-- ── the self-test ────────────────────────────────────────────────────────
+
+function expect(tally, cond, what)
+  if not cond then
+    print("FAIL " .. what)
+    tally.bad = tally.bad + 1
+  end
+  return nil
+end
+
+function event(conversation, id, from, date_text, markdown)
+  return "data: " .. json_write({conversation = conversation, id = id, from = from, date = date_text, markdown = markdown}) .. "\n\n"
+end
+
+function expect_names(tally, markdown, wanted)
+  expect(tally, says_at(markdown, "LC") == wanted, "says_at should be " .. tostring(wanted) .. " for: " .. markdown)
+  return nil
+end
+
+function self_test()
+  local tally = {bad = 0}
+  expect_names(tally, "@LC hi", true)
+  expect_names(tally, "hi @LC", true)
+  expect_names(tally, "(@LC)", true)
+  expect_names(tally, "one\n\ntwo @LC, three", true)
+  expect_names(tally, "LC, hi", false)
+  expect_names(tally, "@LCX", false)
+  expect_names(tally, "@LC_2", false)
+  expect_names(tally, "a@LC", false)
+  expect_names(tally, "@lc", false)
+  expect_names(tally, "> @LC quoted", false)
+  expect_names(tally, "   > @LC quoted", false)
+  expect_names(tally, "    > @LC indented past a quote", true)
+  expect_names(tally, "> quoted\n@LC a lazy line", false)
+  expect_names(tally, "> quoted\n\n@LC after the blank", true)
+  expect_names(tally, "```\n@LC\n```", false)
+  expect_names(tally, "~~~ quote\n@LC\n~~~", false)
+  expect_names(tally, "```\n@LC", false)
+  expect_names(tally, "```\n@LC\n```\n@LC after", true)
+  expect_names(tally, "````\n```\n@LC\n````", false)
+  expect_names(tally, "```\n~~~\n@LC\n```", false)
+  expect_names(tally, "``` has ` a tick\n@LC", true)
+  expect_names(tally, "``\n@LC", true)
+  expect_names(tally, "```````````\n@LC", true)
+  expect_names(tally, "    ```\n@LC", true)
+  expect_names(tally, "`@LC` inline", true)
+
+  local general = "/chat/channel/general/a"
+  local dm = "/chat/dm/1_3/b"
+  local state = new_state("LC", "2026-11-05T10:00:00Z", "")
+  local first = consume(state, event(general, 3, "Steve", "2026-11-05T10:00:01Z", "@LC one") .. ": ping\n\n" .. event(general, 4, "LC", "2026-11-05T10:00:02Z", "@LC mine") .. event(dm, 7, "Apoorva", "2026-11-05T10:00:02Z", "not named") .. event(general, 5, "Steve", "2026-11-05T10:00:03Z", "@LC cut"))
+  expect(tally, join(first.lines, " | ") == "#3 in " .. general .. " by Steve: @LC one | #5 in " .. general .. " by Steve: @LC cut", "others' posts naming LC are heard, its own and the rest not: " .. join(first.lines, " | "))
+  expect(tally, state.since == "2026-11-05T10:00:03Z", "since is the last event's date: " .. state.since)
+  local repeat_window = consume(state, event(general, 5, "Steve", "2026-11-05T10:00:03Z", "@LC cut") .. event(dm, 7, "Apoorva", "2026-11-05T10:00:02Z", "not named") .. event(general, 6, "Steve", "2026-11-05T10:00:03Z", "@LC six"))
+  expect(tally, join(repeat_window.lines, " | ") == "#6 in " .. general .. " by Steve: @LC six", "a repeat is dropped by conversation and id: " .. join(repeat_window.lines, " | "))
+  local other_id = consume(state, event(dm, 8, "Apoorva", "2026-11-05T10:00:03Z", "@LC five too"))
+  expect(tally, #other_id.lines == 1, "the next id of another conversation is heard")
+  local cut = consume(state, "data: {\"conversation\":\"/chat/channel/general/a\",\"id\":7")
+  expect(tally, #cut.lines == 0 and cut.err == "" and state.last[general] == 6, "a frame the window cut is left for the next")
+  local gap = consume(state, event(general, 9, "Steve", "2026-11-05T10:00:05Z", "@LC late"))
+  expect(tally, contains(gap.err, "a gap in " .. general .. ": #9 came after #6") and contains(gap.err, general .. "/raw") and contains(gap.err, "since=2026-11-05T10:00:05Z") and #gap.lines == 0, "a jump in ids stops, named: " .. gap.err)
+  local next_id = consume(state, event(general, 7, "Steve", "2026-11-05T10:00:05Z", "no jump"))
+  expect(tally, next_id.err == "", "the next id is no jump")
+  local lacking = consume(new_state("LC", "2026-11-05T10:00:00Z", ""), "data: {\"id\":1}\n\n")
+  expect(tally, contains(lacking.err, "no `conversation`"), "an event lacking a field stops, named: " .. lacking.err)
+
+  local again = new_state("LC", "2026-11-05T10:00:03Z", "/chat/dm/1_3/b:8,/chat/channel/general/a:7")
+  expect(tally, again.last[dm] == 8 and again.last[general] == 7 and #consume(again, event(dm, 8, "Apoorva", "2026-11-05T10:00:03Z", "@LC once")).lines == 0, "ids= carries what was read into the next run")
+  local round = new_state("LC", "2026-11-05T10:00:03Z", "/chat/dm/1_3/b:8")
+  expect(tally, going_on(round) == "since=2026-11-05T10:00:03Z ids=/chat/dm/1_3/b:8", "going_on is since= and ids=: " .. going_on(round))
+  expect(tally, going_on(new_state("LC", "2026-11-05T10:00:03Z", "")) == "since=2026-11-05T10:00:03Z ids=", "with nothing read, ids= is empty")
+
+  for s in {"401", "403", "404", "400"} do
+    expect(tally, after_window(s, 0).act == "stop", "a " .. s .. " stops")
+  end
+  expect(tally, after_window("200", 28).act == "go", "a window that ran its length listens on")
+  expect(tally, after_window("200", 0).reason == "the server ended the stream", "an ended stream reconnects")
+  expect(tally, after_window("200", 56).act == "reconnect", "curl failing mid-stream reconnects")
+  expect(tally, after_window("000", 7).act == "reconnect", "no connection reconnects")
+  expect(tally, after_window("000", 28).act == "reconnect", "nothing answering in the window reconnects, never goes on")
+  for s in {"429", "500", "502", "503"} do
+    expect(tally, after_window(s, 0).act == "reconnect", "a " .. s .. " reconnects")
+  end
+  local waits = {}
+  for n = 1, 6 do push(waits, tostring(backoff_s(n))) end
+  expect(tally, join(waits, " ") == "2 5 15 30 60 60", "the waits back off: " .. join(waits, " "))
+
+  local place = "since=2026-11-05T10:00:03Z ids=/chat/dm/1_3/b:8"
+  local heard_once = after_batch({code = 0, ended = "exit", out = "#9 in /chat/dm/1_3/b by Steve: @LC hi\ngo on with x\n── time: 4 s\n"}, true)
+  expect(tally, heard_once.act == "done" and #heard_once.lines == 2, "a batch that heard a post with once=1 is done, its lines passed through, its footer not")
+  local refused = after_batch({code = 1, ended = "exit", out = "── stopped at tools/listen.shale:470:43: fail: listen: the stream answered 401; nothing to retry (812 steps)\n"}, true)
+  expect(tally, refused.act == "stop" and refused.reason == "listen: the stream answered 401; nothing to retry", "a batch's stop stops the caller with its own line: " .. refused.reason)
+  local spent = after_batch({code = 0, ended = "exit", out = "#9 in /chat/dm/1_3/b by Steve: @LC hi\n" .. SPENT .. place .. "\n"}, false)
+  expect(tally, spent.act == "next" and spent.after == place and #spent.lines == 1, "a batch with its curls spent starts the next where it stopped")
+  expect(tally, after_batch({code = 0, ended = "exit", out = ""}, false).act == "stop", "a batch that says nothing stops")
+  expect(tally, after_batch({code = 0, ended = "exit", out = SPENT .. "nonsense\n"}, false).act == "stop", "a spent line that says no place stops")
+  expect(tally, after_batch({code = 2, ended = "exit", out = "shale: not found\n"}, true).act == "stop", "a batch that dies naming no stop stops")
+  expect(tally, after_batch({code = 0, ended = "timeout", out = SPENT .. place .. "\n"}, true).act == "stop", "a batch ended by its timeout stops")
+
+  if tally.bad > 0 then fail("listen: self-test: " .. tally.bad .. " failed") end
+  print("listen self_test: PASS")
+end
+
+-- ── the live path ────────────────────────────────────────────────────────
+
+function heard(l)
+  print(l)
+  if LOG ~= "" then append(LOG, l .. "\n") end
+  return nil
+end
+
+function needed()
+  if not ONCE and LOG == "" then fail("listen: without once=1, log= is needed: a run's output shows only when it ends, and the lines are appended there as they are heard") end
+  return nil
+end
+
+-- One batch: its windows, until a post with `once`, a stop, or its curls
+-- spent, which it ends with the `SPENT` line.
+function listen()
+  local state = new_state(ME, SINCE, IDS)
+  -- Reconnects in a row, since the last window that ran its length.
+  local tries = 0
+  for w = 1, WINDOWS_MOST do
+    local argv = {"curl", "-sN", "--max-time", tostring(WINDOW_S), "-w", "\\n%{http_code}",
+      "--variable", "%LISTEN_KEY", "--expand-header", "Authorization: Bearer {{LISTEN_KEY:trim}}",
+      SITE .. "/agents/stream?since=" .. state.since}
+    local r = run(argv, {timeout_ms = (WINDOW_S + 30) * 1000, whole = 16777216, secrets = {LISTEN_KEY = KEY}})
+    local cut = #r.out
+    while cut > 0 and sub(r.out, cut, cut) ~= "\n" do cut = cut - 1 end
+    local status = sub(r.out, cut + 1)
+    local next = after_window(status, r.code)
+    if next.act == "stop" then fail("listen: " .. next.reason .. "; nothing to retry") end
+    if status == "200" then
+      local got = consume(state, sub(r.out, 1, cut - 1))
+      for l in got.lines do heard(l) end
+      if got.err ~= "" then fail("listen: " .. got.err) end
+      if ONCE and #got.lines > 0 then
+        print("go on with " .. going_on(state))
+        return nil
+      end
+    end
+    if next.act == "go" then
+      tries = 0
+    elseif w < WINDOWS_MOST then
+      tries = tries + 1
+      heard("reconnecting after " .. next.reason .. ", from since=" .. state.since .. ", in " .. backoff_s(tries) .. " s")
+      sleep(backoff_s(tries) * 1000)
+    end
+  end
+  print(SPENT .. going_on(state))
+  return nil
+end
+
+-- The listener a caller starts: batches, each a child run of this script
+-- with its own 64 programs, one of the parent's each.
+function listen_batches()
+  needed()
+  if WINDOWS_MOST < 1 or WINDOWS_MOST > 63 then fail("listen: curls= is 1 to 63, a batch's programs") end
+  local after = going_on(new_state(ME, SINCE, IDS))
+  for b = 1, BATCHES_MOST do
+    local argv = {"shale", "--root", ".", SELF_PATH, "batch=1", "site=" .. SITE, "me=" .. ME,
+      "key=" .. KEY, "window=" .. WINDOW_S, "curls=" .. WINDOWS_MOST}
+    for word in words(after) do push(argv, word) end
+    if ONCE then push(argv, "once=1") end
+    if LOG ~= "" then push(argv, "log=" .. LOG) end
+    -- The longest a batch can take: each curl its window and slack, and the
+    -- longest wait after it.
+    local r = run(argv, {timeout_ms = WINDOWS_MOST * (WINDOW_S + 90) * 1000 + 60000, tail = 2000, width = 4096})
+    local d = after_batch(r, ONCE)
+    -- The batch wrote its lines to `log=` as it heard them.
+    for l in d.lines do print(l) end
+    if d.act == "done" then return nil end
+    if d.act == "stop" then fail(d.reason) end
+    after = d.after
+  end
+  fail("listen: " .. BATCHES_MOST .. " batches of " .. WINDOWS_MOST .. " curls, a run's programs spent; start it again with " .. after)
+end
+
+if SELF_TEST then self_test() elseif BATCH then listen() else listen_batches() end

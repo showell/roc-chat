@@ -32,7 +32,8 @@
 --    seam held to roc glue's layout, the HTTP layer. Every run runs them
 --    all (build.zig's `testRun`), so the summary's count is exactly
 --    ZIG_TESTS, each passing.
--- 6. Last, the end to end (`zig build end-to-end`): the real server on a
+-- 6. tools/listen.shale's own self-test, LC's listener's decisions.
+-- 7. Last, the end to end (`zig build end-to-end`): the real server on a
 --    free port of 127.0.0.1, against a temporary data root, driven over
 --    HTTP; it stops the server and removes the root, pass or fail.
 --
@@ -167,7 +168,12 @@ local counted = summary ~= nil and ends_with(summary.text, exact_count)
 say(zig_tests.code == 0 and counted, "zig build test: " .. (summary and summary.text or "no summary") .. ", held at " .. ZIG_TESTS)
 if zig_tests.code ~= 0 then print(zig_tests.out) end
 
--- 6. The end to end, last.
+-- 6. LC's listener's decisions.
+local listener = run({"shale", "tools/listen.shale", "self_test=1"}, {cwd = ".", timeout_ms = 60000, whole = 100000})
+say(listener.code == 0 and find(listener.out, "listen self_test: PASS") ~= nil, "tools/listen.shale self_test=1")
+if listener.code ~= 0 then print(listener.out) end
+
+-- 7. The end to end, last.
 local e2e = run({"zig", "build", "end-to-end"}, {timeout_ms = 300000, whole = 1000000})
 for l in re_lines(e2e.out, "^(PASS|FAIL) ") do print("  " .. l.text) end
 local passed_all = re_find(e2e.out, "end-to-end: every step passed, in [0-9]+ ms")

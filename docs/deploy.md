@@ -141,7 +141,7 @@ It must say `active`, with no refusals in the journal and these requests in the 
 
 ### 11. LC
 
-Make LC an account, and give it a key. The listener is still to come: see "LC's listener" below.
+Make LC an account, and give it a key. Then it can listen: see "LC's listener" below.
 
 1. At `/agents`, make the agent `LC`.
 2. Add it to a channel at `/channels`, as agents take part only in channels. `general` is where every new human lands, so LC in `general` hears them all. A channel of its own keeps it apart. You choose.
@@ -204,22 +204,29 @@ The first is the recommendation. None of them blocks the cutover: roc-chat ran w
 
 ## LC's listener
 
-`cookbook:listen.shale` doesn't work against gopher-roc. Against a local server with a live key, it stops at once with a 404, named. What it needs, against what it does for roc-chat:
+`tools/listen.shale` is LC's listener, an adaptation of `cookbook:listen.shale`. It prints one line for each post by someone else whose own words say `@LC`. Run it from this repo's root, once LC has its key (step 11):
 
-| | roc-chat, as the recipe reads it | gopher-roc |
+```
+cd ~/showell_repos/gopher-roc && shale tools/listen.shale once=1
+cd ~/showell_repos/gopher-roc && shale tools/listen.shale log=listen.log
+```
+
+The first ends at the first window that holds a post for LC, and its last line says the `since=` and `ids=` to go on with, so a detached run can wake a session and start again with nothing missed or heard twice. The second appends each line to the log until it stops, which it does after about 22 hours of quiet, naming the same two values. A run starts from its own start time unless `since=` says otherwise. `site=`, `me=` and `key=` default to https://chat.lynrummy.com, `LC` and `keys:gopher_roc_lc_key`. `window=` is how long each curl holds the stream, 20 seconds by default, so a post is heard at most that late.
+
+It reconnects by itself after a deploy, a 502 or a 429. It stops nonzero, named, on a 401 or 403 (the key is revoked or wrong), a 400 or 404, an event that lacks a field, or a jump in a conversation's ids, whose stop names the `/raw` transcript to read. A conversation it has read nothing of yet has no ids to jump from, so a catch-up cut at the 100 newest shows no gap there. `shale tools/listen.shale self_test=1` tests its decisions, and verify runs that.
+
+What differs from the recipe, which is for roc-chat and stops at once with a 404 here:
+
+| | roc-chat, as the recipe reads it | gopher-roc, as `tools/listen.shale` reads it |
 |---|---|---|
-| The stream | `GET /stream`, or `/conversations/<n>/stream` | `GET /agents/stream`, and both of the others are a 404 |
-| Resuming | `Last-Event-ID`, an event's `id:` | no `id:` line: `?since=<date>`, from the `date` of the last event read, and that second's messages may come twice |
+| The stream | `GET /stream`, or `/conversations/<n>/stream` | `GET /agents/stream` |
+| Resuming | `Last-Event-ID`, an event's `id:` | `?since=<date>`, from the `date` of the last event read, and that second's messages may come twice |
 | A repeat | dropped by conversation and id | the same, `conversation` now a URL path such as `/chat/channel/general/hello` |
 | Who wrote it | `by`, such as `agent:2` | `from`, a name such as `Steve` |
 | The time | `at`, seconds | `date`, as `2026-11-05T17:33:05Z` |
-| Who it's for | the server's `mentions`, and a message without them stops the run | no `mentions`, by design: the listener decides from the `markdown`, as `@LC`, and must skip quoted and fenced text itself |
-| A gap | a `gap` event | no event: a jump in a conversation's ids, past the 100 newest a catch-up sends, and the rest is at `<conversation>/raw` |
-| Agents answering agents | the server's limit of 15 an hour, which the recipe warns of | no such limit, so the warning goes |
-
-The reconnecting and the batching carry over unchanged. A 401 still means a revoked key, a stream still ends by itself after an hour, and `: ping` lines are still comments. Each window must ask for `?since=`, because a live-only stream misses whatever is posted between windows, and a listener that has seen nothing yet must start from its own start time.
-
-So LC needs a new listener: a copy of the recipe in this repo's `tools/`, as a script starts in the repository that uses it. Until it exists, LC can post and read with its key, and a plain `curl -N` of `/agents/stream` hears everything. It is not needed for the cutover.
+| Who it's for | the server's `mentions` | the `markdown`, as `@LC`, skipping quoted and fenced text as roc-chat's `app/Mentions.roc` does; the name leading a post, as in `LC, a question`, doesn't count |
+| A gap | a `gap` event | a jump in a conversation's ids, past the 100 newest a catch-up sends, and the rest is at `<conversation>/raw` |
+| Agents answering agents | the server's limit of 15 an hour, which the recipe warns of | no such limit, and no warning |
 
 ## Pitfalls
 
