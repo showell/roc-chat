@@ -563,38 +563,38 @@ anonymous_refusal : Route.SignedInChoice -> Http.Response
 anonymous_refusal = |asked|
 	match asked {
 		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
-		StartTopic(_) => no_one_refusal
+		StartTopic(_) => unauthorized_refusal
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
 		ShowChannels => SignInRoute.login_redirect(site_path_of("/channels"))
 		ShowChannelMembers(channel) =>
 			SignInRoute.login_redirect(site_path_of("/channels/${channel.to_str()}"))
-		CreateChannel => no_one_refusal
-		AddChannelMember(_) => no_one_refusal
-		RemoveChannelMember(_) => no_one_refusal
+		CreateChannel => unauthorized_refusal
+		AddChannelMember(_) => unauthorized_refusal
+		RemoveChannelMember(_) => unauthorized_refusal
 		ShowInvites => SignInRoute.login_redirect(site_path_of(PeoplePages.invites_path))
-		InviteHuman => no_one_refusal
-		InviteHumanAgain(_) => no_one_refusal
-		AppendToConversation(_) => no_one_refusal
-		SendToConversation(_) => no_one_refusal
-		OpenConversationStream(_) => no_one_refusal
-		ServeRawTranscript(_) => no_one_refusal
-		UploadToConversation(_) => no_one_refusal
-		ServeUploadedImage(_) => no_one_refusal
-		MakeAgent => no_one_refusal
-		InviteAgent(_) => no_one_refusal
-		RevokeInvite(_) => no_one_refusal
-		RevokeKey(_) => no_one_refusal
-		OpenAgentStream => no_one_refusal
+		InviteHuman => unauthorized_refusal
+		InviteHumanAgain(_) => unauthorized_refusal
+		AppendToConversation(_) => unauthorized_refusal
+		SendToConversation(_) => unauthorized_refusal
+		OpenConversationStream(_) => unauthorized_refusal
+		ServeRawTranscript(_) => unauthorized_refusal
+		UploadToConversation(_) => unauthorized_refusal
+		ServeUploadedImage(_) => unauthorized_refusal
+		MakeAgent => unauthorized_refusal
+		InviteAgent(_) => unauthorized_refusal
+		RevokeInvite(_) => unauthorized_refusal
+		RevokeKey(_) => unauthorized_refusal
+		OpenAgentStream => unauthorized_refusal
 	}
 
 ## The 401 for a request that proves no one, at a route only someone
 ## signed in may use.
-no_one_refusal : Http.Response
-no_one_refusal = HttpAnswer.text(401, no_one_words)
+unauthorized_refusal : Http.Response
+unauthorized_refusal = HttpAnswer.text(401, unauthorized_words)
 
-no_one_words : Str
-no_one_words =
+unauthorized_words : Str
+unauthorized_words =
 	"No one is signed in: sign in at /login, or send Authorization: Bearer <id>-<secret>, a live key."
 
 ## The site path `text` spells, a path this server answers: one that isn't
@@ -1175,9 +1175,9 @@ expect {
 			MakeAgent,
 			InviteAgent(UserId.chat_owner),
 			OpenAgentStream,
-		].all(|asked| anonymous_refusal(asked) == no_one_refusal)
-		and no_one_refusal.status == 401
-		and no_one_refusal.body == "${no_one_words}\n".to_utf8()
+		].all(|asked| anonymous_refusal(asked) == unauthorized_refusal)
+		and unauthorized_refusal.status == 401
+		and unauthorized_refusal.body == "${unauthorized_words}\n".to_utf8()
 }
 
 # The allowances: a form's 64 KiB in the request's own time; an upload's
