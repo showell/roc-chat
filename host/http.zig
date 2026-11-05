@@ -22,6 +22,12 @@
 //! to `Limits.body_bytes_in_flight_most`; a request whose body would pass
 //! it gets a 503, its body unread.
 //!
+//! The proxy names each client in `X-Forwarded-For`. A client's requests in
+//! flight, streams among them, are held to `Limits.requests_per_client_most`
+//! from when its head is read until its connection's task ends; one past it
+//! gets a 429 before the app is asked. A request with no such header did not
+//! come through the proxy, so it came from this machine and is not counted.
+//!
 //! When the app marks an answer as a `Stream`, the connection stays open
 //! and sends the frames the app publishes to the stream's key
 //! (host/bus.zig). host/sse.zig limits how many streams are open at once,
@@ -61,6 +67,10 @@ pub const Limits = struct {
     /// A request is charged its stated length, or its allowance when its
     /// body is chunked, from before its body is read until it is answered.
     body_bytes_in_flight_most: usize = 64 * 1024 * 1024,
+    /// The most requests one client has in flight at once: a holder's
+    /// `streams_per_holder` streams, with room for the pages and scripts of
+    /// a few tabs, or for a few people behind one address.
+    requests_per_client_most: u32 = 32,
     /// After a refusal, the most time spent draining what the client still
     /// sends (`linger`), inside the write deadline.
     linger_ms: u32 = 1_000,
@@ -119,6 +129,7 @@ pub const Server = struct {
     github: ?github.Settings,
     /// The body bytes charged to requests not yet answered.
     body_bytes_in_flight: std.atomic.Value(usize) = .init(0),
+    client_requests: ClientRequests = .{},
 
     /// Starts the app on `setup.root` (`start_app`), reads the secret
     /// there (made first when there is none) and GitHub's settings, then
@@ -170,6 +181,7 @@ pub const Server = struct {
     /// Serves each connection on a task of its own until `stop`. When it
     /// returns, every connection's task has ended.
     pub fn run(s: *Server) !void {
+        defer s.client_requests.deinit(s.gpa);
         defer s.hub.deinit();
         defer s.listener.deinit(s.io);
         var connections: Io.Group = .init;
@@ -229,6 +241,21 @@ pub const Server = struct {
             .refused => |r| return s.refuse(connection, &http, r),
             .gone => return,
         };
+        // Let go before the close above, so a client that reads a whole
+        // answer to its end has its count back. A stream frees the arena, so
+        // this key isn't in it.
+        var counted: ?[]const u8 = null;
+        defer if (counted) |key| s.client_requests.let_go(s.io, s.gpa, key);
+        if (client_of(received.parsed.headers)) |client| {
+            const key = s.client_requests.hold(s.io, s.gpa, client, s.limits.requests_per_client_most) catch {
+                log.warn("no memory to count {f}'s requests: answered 503", .{files.loggable(client)});
+                return s.refuse(connection, &http, .{ .req = received.req, .answer = in_flight_full });
+            };
+            counted = key orelse {
+                log.warn("{f} has {d} requests in flight: answered 429", .{ files.loggable(client), s.limits.requests_per_client_most });
+                return s.refuse(connection, &http, .{ .req = received.req, .answer = client_too_busy });
+            };
+        }
         const allowance = switch (s.admit_in_turn(arena, received.parsed)) {
             .admit => |a| a,
             .refuse => |refusal| return s.refuse(connection, &http, .{ .req = received.req, .answer = refusal }),
@@ -460,6 +487,59 @@ const Refusal = struct { req: ?std.http.Server.Request, answer: Written };
 
 /// The answer when the bytes in flight are full.
 const in_flight_full: Written = .{ .status = .service_unavailable, .headers = &.{}, .body = "the server is busy; try again\n" };
+
+/// The answer to a client past `Limits.requests_per_client_most`.
+const client_too_busy: Written = .{ .status = .too_many_requests, .headers = &.{}, .body = "too many requests at once; try again\n" };
+
+/// The client the proxy names in `headers`, or null for a request that did
+/// not come through the proxy. Caddy sets the header itself, dropping any
+/// copy of the client's own, so a client can't choose its name.
+fn client_of(headers: []const std.http.Header) ?[]const u8 {
+    for (headers) |h| {
+        if (std.ascii.eqlIgnoreCase(h.name, "x-forwarded-for")) return h.value;
+    }
+    return null;
+}
+
+/// Each client's requests in flight. A client with none has no entry, so
+/// this holds as many keys as there are clients being answered.
+const ClientRequests = struct {
+    mutex: Io.Mutex = .init,
+    in_flight: std.StringHashMapUnmanaged(u32) = .empty,
+
+    /// One more request counted for `client`, unless it has `most` already:
+    /// the key to let go of it by, or null. The key lives as long as the
+    /// count does.
+    fn hold(c: *ClientRequests, io: Io, gpa: std.mem.Allocator, client: []const u8, most: u32) error{OutOfMemory}!?[]const u8 {
+        c.mutex.lockUncancelable(io);
+        defer c.mutex.unlock(io);
+        if (c.in_flight.getEntry(client)) |entry| {
+            if (entry.value_ptr.* >= most) return null;
+            entry.value_ptr.* += 1;
+            return entry.key_ptr.*;
+        }
+        const key = try gpa.dupe(u8, client);
+        errdefer gpa.free(key);
+        try c.in_flight.put(gpa, key, 1);
+        return key;
+    }
+
+    /// One request of the client `key` from `hold` counted no more.
+    fn let_go(c: *ClientRequests, io: Io, gpa: std.mem.Allocator, key: []const u8) void {
+        c.mutex.lockUncancelable(io);
+        defer c.mutex.unlock(io);
+        const count = c.in_flight.getPtr(key).?;
+        count.* -= 1;
+        if (count.* == 0) {
+            _ = c.in_flight.remove(key);
+            gpa.free(key);
+        }
+    }
+
+    fn deinit(c: *ClientRequests, gpa: std.mem.Allocator) void {
+        c.in_flight.deinit(gpa);
+    }
+};
 
 /// The body bytes a request may bring into memory, charged before it is
 /// read: none when it has no body, or states a length past `most` (it is

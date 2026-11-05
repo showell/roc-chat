@@ -43,7 +43,7 @@ const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
 
 -- What `zig build test` counts: a test once for each root that reaches it,
 -- so the tests seam_test and http_test import count three times.
-const ZIG_TESTS = 126
+const ZIG_TESTS = 128
 
 const board = {failed = 0}
 

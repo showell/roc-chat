@@ -263,7 +263,13 @@
 //! 48zo. with one id left, a new human takes 65535, whose session reads their
 //!      page; the next is refused as the chat being full, nothing made;
 //! 48zv. the sign-in page of someone signed in: no form and no GitHub;
-//! 48zw. a key at Browse, and starting a topic: 403 each.
+//! 48zw. a key at Browse, and starting a topic: 403 each;
+//! 48zx. one `X-Forwarded-For` client at `requests_per_client_most`, 8 streams
+//!      and the rest requests with their bodies held back: each admitted; one
+//!      request more: a 429; another client and a request with no such
+//!      header: 200; a held request answered: its count back, the client
+//!      served, then at the limit again and refused; a stream ended for a
+//!      newer one: its count back too.
 //!
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
@@ -705,6 +711,8 @@ pub fn main(init: std.process.Init) !void {
         key_way_in.status == 303 and std.mem.eql(u8, key_way_in.header("location") orelse "", "/chat") and
         has(key_browse.body, "by their own session") and has(key_topic.body, "by their own session"));
 
+    try clientCapSteps(a, io, port, t);
+
     // 49.
     const signed_out = try post(a, io, port, .{ .path = "/logout", .form = "" });
     try t.check("sign out: a 303 to the sign-in page, the cookie cleared, never stored", signed_out.status == 303 and
@@ -715,6 +723,78 @@ pub fn main(init: std.process.Init) !void {
     try noGitHubSteps(a, io, gpa, t, data_name);
 
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
+}
+
+/// A POST with its head sent and its body held back. The `100 Continue` says
+/// the server has read the head, so the request is counted when `open`
+/// returns.
+const HeldPost = struct {
+    connection: Io.net.Stream,
+    io: Io,
+
+    fn open(a: std.mem.Allocator, io: Io, port: u16, more: []const u8) !HeldPost {
+        const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+        const connection = try addr.connect(io, .{ .mode = .stream });
+        errdefer connection.close(io);
+        var w = connection.writer(io, &.{});
+        try w.interface.writeAll(try std.fmt.allocPrint(a, "POST " ++ channel_url ++ " HTTP/1.1\r\nhost: localhost:{d}\r\n{s}{s}content-type: application/x-www-form-urlencoded\r\nexpect: 100-continue\r\ncontent-length: 10\r\n\r\n", .{ port, steve_session, more }));
+        var buf: [256]u8 = undefined;
+        var r = connection.reader(io, &buf);
+        const line = try r.interface.takeDelimiterInclusive('\n');
+        if (!std.mem.startsWith(u8, line, "HTTP/1.1 100 ")) return error.NotContinued;
+        return .{ .connection = connection, .io = io };
+    }
+
+    /// The body sent and the answer read to the close, whose status is
+    /// whether it was a 303.
+    fn finish(h: HeldPost, a: std.mem.Allocator) !bool {
+        defer h.connection.close(h.io);
+        var w = h.connection.writer(h.io, &.{});
+        try w.interface.writeAll("markdown=x");
+        var buf: [4096]u8 = undefined;
+        var r = h.connection.reader(h.io, &buf);
+        return has(try r.interface.allocRemaining(a, .limited(64 * 1024)), "HTTP/1.1 303 ");
+    }
+};
+
+/// Step 48zx, at the server's own limit: a stream holder's 8 streams and
+/// enough held requests to fill it.
+fn clientCapSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps) !void {
+    const client = "x-forwarded-for: 203.0.113.7\r\n";
+    const stream_path = channel_url ++ "/stream?after=0";
+    var streams: [8]*Stream = undefined;
+    for (&streams) |*s| s.* = try Stream.openWith(a, io, port, stream_path, client);
+    defer for (streams[1..]) |s| s.close();
+    var held: [(http.Limits{}).requests_per_client_most - streams.len]HeldPost = undefined;
+    for (&held) |*h| h.* = try HeldPost.open(a, io, port, client);
+    defer for (held[2..]) |h| h.connection.close(io);
+    var all_streams = true;
+    for (streams) |s| all_streams = all_streams and s.isEventStream();
+    const past = try getWith(a, io, port, channel_url, client);
+    const other = try getWith(a, io, port, channel_url, "x-forwarded-for: 203.0.113.8\r\n");
+    const uncounted = try getWith(a, io, port, channel_url, "");
+    try t.check("a client at its limit, its streams and held requests each admitted; one more: 429, saying so; another client and no such header: 200", all_streams and
+        past.status == 429 and std.mem.eql(u8, past.body, "too many requests at once; try again\n") and other.status == 200 and uncounted.status == 200);
+
+    const answered = try held[0].finish(a);
+    const served = try getWith(a, io, port, channel_url, client);
+    const refilled = try HeldPost.open(a, io, port, client);
+    defer refilled.connection.close(io);
+    const past_again = try getWith(a, io, port, channel_url, client);
+    try t.check("a held request answered gives its count back: the client served, then at its limit again, and one more a 429", answered and served.status == 200 and past_again.status == 429);
+
+    const room = try held[1].finish(a);
+    const newest = try Stream.openWith(a, io, port, stream_path, client);
+    defer newest.close();
+    // The oldest stream's task ends after this one is answered.
+    var got: u16 = 429;
+    for (0..200) |_| {
+        got = (try getWith(a, io, port, channel_url, client)).status;
+        if (got != 429) break;
+        try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(10) }, io);
+    }
+    streams[0].close();
+    try t.check("a stream ended for a newer one of its holder gives its count back: the client at one under its limit is served", room and newest.isEventStream() and got == 200);
 }
 
 /// Steps 50 and 51, on a server of their own, beside the first, whose data

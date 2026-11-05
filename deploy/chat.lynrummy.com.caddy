@@ -12,9 +12,9 @@
 # included, so nothing here may set, rewrite or strip one, and no path prefix
 # is added: the app answers a rewritten Host or Origin with a 403.
 #
-# This block holds no per-client cap on connections, because the stock Caddy
-# prod runs has no directive for one. docs/deploy.md, "The per-client cap", says
-# what bounds a client today and what the choices are.
+# The host caps each client's requests in flight by the X-Forwarded-For that
+# reverse_proxy sets, so trusted_proxies must not let a client's own copy in.
+# docs/deploy.md, "The per-client cap", says what bounds a client.
 chat.lynrummy.com {
 	import access_log chat
 	# Gzip buffers what it compresses, which would hold back an event stream.

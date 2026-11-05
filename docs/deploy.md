@@ -51,7 +51,7 @@ This proves that `main`, which is what deploys, passes. It ends `verify: every c
 ssh steve@162.243.1.123 'caddy version; caddy list-modules | grep -iE "rate|limit"; ss -ltn | grep -E ":(9490|9611) "; sudo ls -l /var/lib/roc-chat/data/secrets; df -h /var/lib; free -m'
 ```
 
-This proves four things. No module line means prod's Caddy is the stock build, as "The per-client cap" assumes. Port 9490 is listening and 9611 isn't. `github-client-id` and `github-client-secret` are in the listing, which shows names and sizes and no contents. There is room on the disk.
+This proves four things. No module line means prod's Caddy is the stock build. Port 9490 is listening and 9611 isn't. `github-client-id` and `github-client-secret` are in the listing, which shows names and sizes and no contents. There is room on the disk.
 
 ### 2. Back up roc-chat's data
 
@@ -181,6 +181,7 @@ The last line must say `active`, and https://chat.lynrummy.com/login then sends 
 
 - terminate HTTPS, as the session cookie is `__Host-` and `Secure`;
 - keep `Host`, and pass `Origin`, `Cookie`, `Authorization`, `Sec-Fetch-Site` and `Sec-Fetch-Mode` unchanged. The app judges every request from them (`app/RequestOrigin.roc`) and answers a rewritten `Host` or `Origin` with a 403. A bare `reverse_proxy` does all of this, and the block sets no header on the way in;
+- set `X-Forwarded-For` itself, as a bare `reverse_proxy` does with no `trusted_proxies` in the global options. The host counts each client by that header ("The per-client cap"), so a `trusted_proxies` that let a client's own copy through would let it choose its name;
 - not buffer `text/event-stream`: `flush_interval -1`, and `encode` lists only other types;
 - let a stream run an hour, as the app ends it itself (`Limits.stream_most_ms`) and the block sets no timeout;
 - admit a body of 10,551,296 bytes, an upload's 10 MiB image and 64 KiB of form;
@@ -190,17 +191,13 @@ The routes behind it are `/`, `/chat...`, `/login...`, `/logout`, `/join...`, `/
 
 ## The per-client cap
 
-docs/platform.md asks the proxy to cap the connections a client may hold and the rate it opens them. **This is not done, and the block can't do it.** Stock Caddy has no directive for it, and prod's Caddy is the stock package (angry-gopher's deploy/README.md). A directive it doesn't know would fail `caddy validate`, and the block would never install. `max_conns_per_host` under `reverse_proxy` counts every client together, so one client could use it up for all the others.
+The host holds each client to `Limits.requests_per_client_most` requests in flight, 32, and answers one past it with a 429 before the app is asked. A client here is one `X-Forwarded-For` value, which Caddy sets itself, so the count is per client for HTTP/1, 2 and 3 alike, and touches no other site. A stream counts until its task ends, so a client's 8 streams leave it 24 for pages and their scripts. A stream whose client has gone counts until its next write fails, within the 25 seconds of a keepalive, or a newer stream of its holder ends it.
 
-Today the app bounds these per client or in all: 8 streams a holder and 64 in all, 5 password checks and one more a second for everyone together, 64 MiB of bodies in flight, and 10 seconds for a request to arrive and 10 for its answer. It doesn't bound how many plain connections a client holds open within those 10 seconds. A flood can cost memory and fill the 1,024 file descriptors a service gets by default. The server logs a failed accept and goes on, and it doesn't stop.
+A request with no `X-Forwarded-For` is not counted. Only a request through Caddy can come from elsewhere, as the server listens on 127.0.0.1, so one without the header comes from this machine: a tunnel, a test, the owner.
 
-There are three ways to add a cap, and each is the owner's to decide:
+The app also bounds these, per client or in all: 8 streams a holder and 64 in all, 5 password checks and one more a second for everyone together, 64 MiB of bodies in flight, and 10 seconds for a request to arrive and 10 for its answer.
 
-1. **The host counts requests in flight per `X-Forwarded-For`.** Caddy sets that header itself and ignores a client's own copy unless `trusted_proxies` says otherwise, so the count is per client for HTTP/1, 2 and 3 alike, and touches no other site. It is new code in `host/http.zig`, with tests.
-2. **A Caddy built with `mholt/caddy-ratelimit`,** keyed on `{remote_host}`. That is a rate and not a count of what is open, and it replaces the binary that serves every site on the droplet.
-3. **A kernel `connlimit` rule on TCP 443.** That is a true count of connections, but it covers every site, doesn't see HTTP/2's many requests on one connection, and doesn't see HTTP/3, which is UDP.
-
-The first is the recommendation. None of them blocks the cutover: roc-chat ran with no cap either.
+The cap is a count, not a rate. A client may open and finish requests as fast as it likes, a refused connection holds its file descriptor for up to a second's linger, and many addresses are many clients, which an IPv6 client's own /64 gives it. A flood from those can still cost memory and fill the 1,024 file descriptors a service gets by default. The server logs a failed accept and goes on, and it doesn't stop. A rate needs a Caddy built with `mholt/caddy-ratelimit`, which replaces the binary that serves every site on the droplet, and stock Caddy has no directive for one.
 
 ## LC's listener
 

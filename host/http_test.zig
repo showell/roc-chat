@@ -324,6 +324,118 @@ test "a refused client that never closes holds its own connection, not the serve
     try testing.expect(waited < 500);
 }
 
+const a_client = "x-forwarded-for: 203.0.113.7\r\n";
+const page_of = "GET /chat/dm/1_1/plans HTTP/1.1";
+const message_of = "POST /chat/dm/1_1/plans HTTP/1.1";
+
+/// A message's request with its head sent and its body held back. The
+/// `100 Continue` says the server has read the head, so the request is
+/// counted when `open` returns.
+const HeldRequest = struct {
+    connection: Io.net.Stream,
+
+    fn open(a: std.mem.Allocator, port: u16, comptime more: []const u8) !HeldRequest {
+        const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+        const connection = try addr.connect(io, .{ .mode = .stream });
+        errdefer connection.close(io);
+        var w = connection.writer(io, &.{});
+        try w.interface.writeAll(try ours(a, port, message_of, more ++ "expect: 100-continue\r\ncontent-length: 10\r\n\r\n"));
+        var buf: [256]u8 = undefined;
+        var r = connection.reader(io, &buf);
+        const line = try r.interface.takeDelimiterInclusive('\n');
+        try testing.expectEqualStrings("HTTP/1.1 100 Continue\r\n", line);
+        return .{ .connection = connection };
+    }
+
+    /// The body sent, and the answer's status, the connection closed.
+    fn finish(h: HeldRequest, a: std.mem.Allocator) !u16 {
+        defer h.connection.close(io);
+        var w = h.connection.writer(io, &.{});
+        try w.interface.writeAll("markdown=x");
+        var buf: [4096]u8 = undefined;
+        var r = h.connection.reader(io, &buf);
+        // What is left of the `100 Continue`, its blank line, comes first.
+        const bytes = try r.interface.allocRemaining(a, .limited(64 * 1024));
+        return status(bytes[std.mem.indexOf(u8, bytes, "HTTP/1.1 ") orelse return error.NotAResponse ..]);
+    }
+};
+
+/// The status of a page's GET as `a_client`, once it stops being `refused`,
+/// waiting at most 2 s: for a count let go by another task.
+fn page_status_once_not(a: std.mem.Allocator, port: u16, refused: u16) !u16 {
+    for (0..200) |_| {
+        const got = try status(try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n")));
+        if (got != refused) return got;
+        try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(10) }, io);
+    }
+    return refused;
+}
+
+test "a client at its cap is served, one past it is a 429 before the app is asked, and another client, or a request with no X-Forwarded-For, is served meanwhile" {
+    const r = try Running.start(.{ .requests_per_client_most = 2 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const first = try HeldRequest.open(a, port, a_client);
+    // The header's name in another case is the same client.
+    const second = try HeldRequest.open(a, port, "X-Forwarded-For: 203.0.113.7\r\n");
+    const past = try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"));
+    try testing.expectEqual(429, try status(past));
+    try testing.expect(has(past, "too many requests at once"));
+    // Refused from its head: a stranger's Host would be the app's 403.
+    try testing.expectEqual(429, try status(try exchange(a, port, try std.fmt.allocPrint(a, page_of ++ "\r\nhost: evil.example\r\n" ++ a_client ++ "\r\n", .{}))));
+    try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, "x-forwarded-for: 203.0.113.8\r\n\r\n"))));
+    try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, "\r\n"))));
+    // A request with no such header takes none of a client's room.
+    var uncounted: [3]HeldRequest = undefined;
+    for (&uncounted) |*h| h.* = try HeldRequest.open(a, port, "");
+    defer for (uncounted) |h| h.connection.close(io);
+    try testing.expectEqual(303, try first.finish(a));
+    try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"))));
+    try testing.expectEqual(303, try second.finish(a));
+    try testing.expectEqual(0, r.server.client_requests.in_flight.count());
+}
+
+test "a client's count is given back on every way out: answered, refused by the app, too large, too slow, no room for its body, gone, and its stream ended" {
+    const r = try Running.start(.{ .requests_per_client_most = 1, .read_ms = 200, .stream_most_ms = 300, .body_bytes_in_flight_most = 20 });
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    // A whole answer's close comes after its count is back, so the next
+    // request is served at once.
+    try testing.expectEqual(303, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 10\r\n\r\nmarkdown=x"))));
+    try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"))));
+    try testing.expectEqual(404, try status(try exchange(a, port, try ours(a, port, "GET /no/such/path HTTP/1.1", a_client ++ "\r\n"))));
+    // A refusal's count is back when its linger ends, just after the client
+    // has read it.
+    try testing.expectEqual(403, try status(try exchange(a, port, try std.fmt.allocPrint(a, page_of ++ "\r\nhost: evil.example\r\n" ++ a_client ++ "\r\n", .{}))));
+    try testing.expectEqual(200, try page_status_once_not(a, port, 429));
+    try testing.expectEqual(413, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 100000\r\n\r\n"))));
+    try testing.expectEqual(200, try page_status_once_not(a, port, 429));
+    try testing.expectEqual(503, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 21\r\n\r\n"))));
+    try testing.expectEqual(200, try page_status_once_not(a, port, 429));
+    try testing.expectEqual(408, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 10\r\n\r\nmark"))));
+    try testing.expectEqual(200, try page_status_once_not(a, port, 429));
+
+    const gone = try HeldRequest.open(a, port, a_client);
+    gone.connection.close(io);
+    try testing.expectEqual(200, try page_status_once_not(a, port, 429));
+
+    var stream: HeldStream = undefined;
+    try stream.open_with(a, port, "1", a_client);
+    defer stream.connection.close(io);
+    var watchdog = try io.concurrent(shut_after, .{ stream.connection, 3_000 });
+    defer watchdog.cancel(io);
+    try testing.expectEqual(429, try status(try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"))));
+    while (try stream.line()) |_| {}
+    try testing.expectEqual(200, try page_status_once_not(a, port, 429));
+    try testing.expectEqual(0, r.server.client_requests.in_flight.count());
+}
+
 test "a stream held its longest is ended, so its client reconnects and is asked again who it is; one younger is held" {
     const r = try Running.start(.{ .stream_most_ms = 300 });
     defer r.stop();
@@ -389,10 +501,15 @@ const HeldStream = struct {
     buf: [16 * 1024]u8,
 
     fn open(s: *HeldStream, a: std.mem.Allocator, port: u16, comptime after: []const u8) !void {
+        return s.open_with(a, port, after, "");
+    }
+
+    /// A stream opened with `more` headers, each ending CRLF.
+    fn open_with(s: *HeldStream, a: std.mem.Allocator, port: u16, comptime after: []const u8, comptime more: []const u8) !void {
         const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
         s.connection = try addr.connect(io, .{ .mode = .stream });
         var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=" ++ after ++ " HTTP/1.1", "\r\n"));
+        try w.interface.writeAll(try ours(a, port, "GET /chat/dm/1_1/plans/stream?after=" ++ after ++ " HTTP/1.1", more ++ "\r\n"));
         s.reader = s.connection.reader(io, &s.buf);
         var last: [4]u8 = @splat(0);
         while (!std.mem.eql(u8, &last, "\r\n\r\n")) {
