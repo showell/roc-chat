@@ -18,7 +18,8 @@
 ## once the caller has settled their name. It ends in an `Admission`, which
 ## only `redeem` makes, and
 ## which `SignInRoute.start_session_by_invite!` takes to sign the human in:
-## no other route mints a session without a password checked. This module
+## no other route mints a session without a password checked or GitHub's word
+## (`GitHubSignIn`). This module
 ## is a trust boundary with `SignedIn`, `AgentKey` and `AgentInvite`: an
 ## invite's code is a credential for exactly one human's password.
 import FactFile

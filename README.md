@@ -20,7 +20,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
 - **Text from outside.** It arrives only as an `UnvalidatedString`, which has no way out except its checking doors.
 - **Who is acting.** That is a `SignedIn`, by a session or by an agent's API key, or no one (`SignedIn.Actor`'s `Anonymous`), found by `load_actor!` in `app/main.roc`. The session door takes only what `Session.admit` makes, after the host said the cookie's HMAC matches and its second is within a year (`SignInRoute` checks the password and signs the session; the host holds the secret). The key door takes only what `AgentKey.admit` makes, after the hash of the secret an agent sent matched a live key of its own. The third door, `dangerously_assume`, is for the first start, which makes Steve, and for tests. `Route` says which routes no one may use (`Open`); `Access` decides who reads and posts where: a channel's members, a DM's humans, and a key only as far as its scope reaches.
 - **Agents.** `Agents` decides what `/agents` may do (`AgentsRoute` answers): only a human by their own session makes, invites and manages their agents; a key comes only from an invite (`AgentInvite`), redeemed once within ten minutes; a key (`AgentKey`) is 32 random bytes from the host, shown once (`Secret`, `SecretToken`) and kept only as its SHA-256 (`SecretHash`). `AgentStream` is an agent's one stream of every message of its channels, a line of JSON each.
-- **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` (with `AgentKey` and `AgentInvite` behind it) or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
+- **For a security reader:** start at `UnvalidatedString`, `TrustedHtml`, `SecureImageTag`, `SignedIn` (with `AgentKey`, `AgentInvite`, `HumanInvite` and `GitHubSignIn` behind it) or `RequestOrigin`, and at the host's path rule (`host/file_primitives.zig`).
 - **The directory.** `Directory`, `Users`, `Channels`, `Name`, `Dm` and `Place` are pure. The directory is read from disk on every request, in the Zig chat's layout (docs/design.md, "Storage"): `auth/<id>/` for who each user is, `chat/channel/<name>.channel` for a channel's members.
 - **The server's parts.**
   - `RequestOrigin` holds every request to this server's own origins first: its `Host` must be `127.0.0.1:<port>`, `localhost:<port>` or the public origin's name, its `Origin`, when sent, the one its `Host` names, and a POST from another origin's page is refused (403).
@@ -30,7 +30,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `Page.message` writes for the page.
   - `UploadRoute` answers an upload and an uploaded image. An image is what its opening bytes say, PNG, JPEG, GIF or WebP, at most 10 MiB, named by 16 random bytes in hex (`UploadedImage`); it is read out of the compose box's form (`MultipartForm`), counted against the uploader's lifetime allowance of 1 GiB (`UploadTotal`, kept in `users/<id>/upload-bytes`, `UserFolder`), kept in its conversation's folder as `uploads/<name>`, and served at the conversation's URL and `/uploads/<name>`. A message shows an image only from its own conversation's uploads (`SecureImageTag`).
   - `FileSystem` is the only module that touches files.
-  - `SignInRoute` answers `/login` and `/logout`, and checks a request's session.
+  - `SignInRoute` answers `/login` and `/logout`, and checks a request's session. `GitHubRoute` answers `/login/github/start` and `/login/github`, and `GitHubSignIn` decides each step of that sign-in.
   - `app/main.roc` is the edge: the first start's directory (Steve, plus the channel `general` with him in it), the directory read on each request, who is acting, and the upload's room, given only to someone signed in who may post where they upload.
 
 ## Commands
@@ -59,6 +59,8 @@ The first start makes Steve (`auth/1/`) and the channel `general`, with him in i
     (umask 077 && zig-out/bin/gopher-roc hash-password > /tmp/gopher-data/auth/1/password)
 
 Then open `http://127.0.0.1:9611/chat/channel/general/gopher-roc`, which sends you to sign in as Steve and back. Steve's own DM, `1_1`, is the other place. A topic is created by its first message. A channel's members are its `.channel` file, one id a line, which Steve, the admin, changes at `/channels` (or by hand). Removing a password's file ends every session of its user; removing `.session-secret` and starting the server again ends everyone's.
+
+To offer GitHub sign-in, make an OAuth app whose callback URL is `<public origin>/login/github`, write its id and secret to `.github-client-id` and `.github-client-secret` in the data folder, `chmod 600` both, and start the server. A human signs in this way once the server's owner writes their GitHub account's numeric id to their `auth/<id>/github-id` (docs/design.md, "Storage"). With neither file the server offers no GitHub.
 
 From your laptop, tunnel the port and browse as if the server were local:
 

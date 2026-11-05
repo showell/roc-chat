@@ -8,7 +8,8 @@
 //! it is stopped. `--public-origin` names the origin a proxy on this machine
 //! serves it under, `https://` and a host name (and a port, if not 443):
 //! requests with that `Host`, and pages of that origin, are then this
-//! server's own as well as the local ones (app/RequestOrigin.roc).
+//! server's own as well as the local ones (app/RequestOrigin.roc). GitHub's
+//! settings are files in the data folder (host/github_client.zig).
 //!
 //! The second reads a password and writes its bcrypt hash, one line, to
 //! stdout, as the app keeps a user's password. From a terminal it asks
