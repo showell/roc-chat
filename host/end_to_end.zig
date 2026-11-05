@@ -805,6 +805,8 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     }
     try t.check("every signed-in page has the Browse link", every_page_links);
     try t.check("no signed-in page has a sign-up, join or sign-in link or form", no_page_signs_up);
+    const join_while_signed_in = try getAs(a, io, port, steve_session, "/join");
+    try t.check("a signed-in browser going to /join is sent to Browse", join_while_signed_in.status == 303 and std.mem.eql(u8, join_while_signed_in.header("location") orelse "", "/chat"));
 
     // 55.
     const not_her_channel = try postAs(a, io, port, tam, "/chat/channel/crew", "topic=plans");
@@ -1838,8 +1840,8 @@ fn linkSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, he
     const linked_line = try cookieLine(a, linked);
     const old_session = try getAs(a, io, port, debbie, "/invites");
     const new_session = try getAs(a, io, port, linked_line, "/agents");
-    try t.check("Debbie links GitHub: the state names her, a 303 to /agents, a session, the state forgotten, never stored; github-id and a 64-digit github-session-secret written, no account made; her old session ends, the new one reads her page, with no offer", has(begun.state, ".link-3.") and
-        linked.status == 303 and std.mem.eql(u8, linked.header("location") orelse "", "/agents") and
+    try t.check("Debbie links GitHub: the state names her, a 303 to Browse, a session, the state forgotten, never stored; github-id and a 64-digit github-session-secret written, no account made; her old session ends, the new one reads her page, with no offer", has(begun.state, ".link-3.") and
+        linked.status == 303 and std.mem.eql(u8, linked.header("location") orelse "", "/chat") and
         std.mem.startsWith(u8, linked.header("set-cookie") orelse "", "__Host-gopher_auth=") and
         has(linked.head, "set-cookie: __Host-gopher_github_state=; Path=/; Max-Age=0") and
         std.mem.eql(u8, linked.header("cache-control") orelse "", "no-store") and
@@ -2010,8 +2012,8 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     try data.deleteFile(io, try welcomeFile(a, bea_id));
     const bea_joined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Bea&password=their+own", .{bea_link[bea_hash + 1 ..]}));
     const bea_page = try getAs(a, io, port, try cookieLine(a, bea_joined), bea_joined.header("location") orelse "");
-    try t.check("a human with no welcome on disk joins all the same, landing on /agents, a 200", bea_joined.status == 303 and
-        std.mem.eql(u8, bea_joined.header("location") orelse "", "/agents") and bea_page.status == 200);
+    try t.check("a human with no welcome on disk joins all the same, landing on Browse, a 200", bea_joined.status == 303 and
+        std.mem.eql(u8, bea_joined.header("location") orelse "", "/chat") and bea_page.status == 200);
 
     // 48zq.
     const kit_id = try nextId(a, io, data);

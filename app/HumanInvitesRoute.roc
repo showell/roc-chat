@@ -97,9 +97,14 @@ HumanInvitesRoute :: [].{
 			Err(why) => refusal_page(why)
 		}
 
-	## A GET of `/join`: the join page, the same for every invite.
-	join_page : Http.Response
-	join_page = HttpAnswer.page(200, Page.join)
+	## A GET of `/join`: the join page, the same for every invite. A human who
+	## is signed in has no use for it, and goes to Browse.
+	join_page : SignedIn.Actor -> Http.Response
+	join_page = |actor|
+		match HumanInvites.admit_joiner(actor) {
+			Err(SignedInAlready) => HttpAnswer.see_other(SignInRoute.default_next.to_str())
+			Ok({}) | Err(ByApiKey) => HttpAnswer.page(200, Page.join)
+		}
 
 	## A POST of `/join/name`, by `actor`, who may join: the name the human
 	## the form's `code` names holds, while the invite is open at `now`, as

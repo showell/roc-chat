@@ -774,7 +774,7 @@ answer_open_route! = |
 				body: request.body,
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
-		ShowJoin => HumanInvitesRoute.join_page
+		ShowJoin => HumanInvitesRoute.join_page(actor)
 		LookUpJoinName =>
 			HumanInvitesRoute.serve_join_name!({
 				actor,
