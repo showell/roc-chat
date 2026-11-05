@@ -144,6 +144,21 @@ Sample :: [].{
 				.directory,
 		)
 
+	## The sample directory's users, with every id spent but the last `left`.
+	## Ids are spent by the counter alone, so this needs no crowd of users.
+	directory_with_ids_left : U64 -> Directory
+	directory_with_ids_left = |left| {
+		accounts = Sample.directory.users().to_list().map(
+			|user| { id: user.id(), files: Users.account_files(user) },
+		)
+		counter = "${(UserId.past_highest - left).to_str()}\n".to_utf8()
+		users =
+			Users.from_files({ counter, accounts })
+				?? crash "Sample.directory_with_ids_left: the sample's files read back"
+		Directory.from_files({ users, channels: Channels.empty })
+			?? crash "Sample.directory_with_ids_left: the sample's names are free"
+	}
+
 	## Steve, signed in as an admin. This is the specs' one way to an admin,
 	## through the door that stands in for a session (`SignedIn`).
 	admin : Admin

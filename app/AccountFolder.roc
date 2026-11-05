@@ -32,8 +32,8 @@ AccountFolder :: UserId.{
 # ── tests
 expect AccountFolder.of(UserId.steve).parts() == ["auth", "1"]
 expect
-	AccountFolder.of(UserId.from_str("255") ?? crash "AccountFolder's tests: 255 is an id").parts()
+	AccountFolder.of(UserId.from_str("65535") ?? crash "AccountFolder's tests: 65535 is an id").parts()
 		== [
 			"auth",
-			"255",
+			"65535",
 		]

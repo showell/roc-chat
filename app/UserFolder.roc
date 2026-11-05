@@ -24,7 +24,7 @@ UserFolder :: UserId.{
 # ── tests
 expect UserFolder.of(UserId.steve).parts() == ["users", "1"]
 expect
-	UserFolder.of(UserId.from_str("255") ?? crash "UserFolder's tests: 255 is an id").parts() == [
+	UserFolder.of(UserId.from_str("65535") ?? crash "UserFolder's tests: 65535 is an id").parts() == [
 		"users",
-		"255",
+		"65535",
 	]

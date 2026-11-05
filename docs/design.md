@@ -108,7 +108,7 @@ apoorvavpendse@gmail.com would be better
 
   | File | Holds | From |
   |---|---|---|
-  | `auth/next-id.txt` | the next user id's decimal digits and a line end, `3\n`; `256\n` once every id is taken | the Zig chat's counter |
+  | `auth/next-id.txt` | the next user id's decimal digits and a line end, `3\n`; `65536\n` once every id is taken | the Zig chat's counter |
   | `auth/<id>/name` | the user's name, exactly as given, UTF-8; rewritten whole, atomically, when an invited human joins under another name, and never after; a human who signs up with GitHub chooses it once | the Zig chat |
   | `auth/<id>/owner` | an agent's owner's id, its digits; a human has no `owner` file | roc-chat's fact |
   | `auth/<id>/password` | a human's password's bcrypt hash, 60 bytes, `$2b$10$` and 53 more (a `$2a$` or `$2y$` hash reads the same, and a cost from 10 to 14; any other scheme or cost is no hash), with a line end or none; never the password. The server's owner writes Steve's on the server's machine, `gopher-roc hash-password > auth/<id>/password`, readable by them alone; the server writes an invited human's, atomically, when they redeem an invite and choose their password (the host's bcrypt at cost 10), and again at each later redemption. A human with none can't sign in, and rewriting or removing it ends every session of theirs (so does each redemption, all but the one it starts); an agent has none | the Zig chat's `password` |

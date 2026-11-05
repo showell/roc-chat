@@ -5,24 +5,29 @@
 ## People and agents are numbered in one count, as their names share one
 ## namespace, so an id alone says who a user is.
 ##
-## An id is a `U8`: the chat is for a small group of people and their
-## agents, and 255 is many times that. Every id that is kept is written as
-## its decimal digits, in a file's name, a URL or a DM's pair, so a wider
-## type later changes no byte on disk.
+## An id is a `U16`: every sign-up spends an id for good, and sign-up is open,
+## so the chat wants room, and 65,535 is many times its people and agents.
+## Every id that is kept is written as its decimal digits, in a file's name, a
+## URL or a DM's pair, so a wider type later changes no byte on disk.
 import Ascii
 
-UserId :: U8.{
+UserId :: U16.{
 
 	## Steve's id: the first user's, and the admin's (`Admin`).
 	steve : UserId
 	steve = UserId.(1)
 
+	## The number after the highest id, which the counter of ids holds when
+	## every id is taken.
+	past_highest : U64
+	past_highest = U16.highest.to_u64() + 1
+
 	## The id after this one, or `Full` if this is the highest.
 	next : UserId -> Try(UserId, [Full])
-	next = |UserId.(n)| if (n == U8.highest) Err(Full) else Ok(UserId.(n + 1))
+	next = |UserId.(n)| if (n == U16.highest) Err(Full) else Ok(UserId.(n + 1))
 
 	## The id `text` spells, or `NotAUserId`. Only the spellings `to_str`
-	## writes are read, the digits of 1 to 255 with no leading `0`, so each
+	## writes are read, the digits of 1 to 65,535 with no leading `0`, so each
 	## id has exactly one spelling.
 	from_str : Str -> Try(UserId, [NotAUserId])
 	from_str = |text| {
@@ -30,13 +35,13 @@ UserId :: U8.{
 		match bytes {
 			[] => Err(NotAUserId)
 			['0', ..] => Err(NotAUserId)
-			_ if bytes.len() > 3 or !bytes.all(Ascii.is_digit) => Err(NotAUserId)
+			_ if bytes.len() > 5 or !bytes.all(Ascii.is_digit) => Err(NotAUserId)
 			_ => {
 				number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
-				if number > U8.highest.to_u64() {
+				if number >= UserId.past_highest {
 					Err(NotAUserId)
 				} else {
-					Ok(UserId.(number.to_u8_wrap()))
+					Ok(UserId.(number.to_u16_wrap()))
 				}
 			}
 		}
@@ -63,8 +68,9 @@ UserId :: U8.{
 expect UserId.steve.to_str() == "1"
 # The next id, from the first, and at, under and over the highest.
 expect UserId.steve.next().map_ok(UserId.to_str) == Ok("2")
-expect UserId.(254).next().map_ok(UserId.to_str) == Ok("255")
-expect UserId.(255).next() == Err(Full)
+expect UserId.(65534).next().map_ok(UserId.to_str) == Ok("65535")
+expect UserId.(65535).next() == Err(Full)
+expect UserId.past_highest == 65536
 # Read back as `to_str` writes it, at the ends of the range and at each
 # count of digits.
 expect
@@ -74,8 +80,12 @@ expect
 		"10",
 		"99",
 		"100",
-		"254",
 		"255",
+		"256",
+		"9999",
+		"10000",
+		"65534",
+		"65535",
 	].all(|text| UserId.from_str(text).map_ok(UserId.to_str) == Ok(text))
 # Every other spelling refused: none, zero, a leading `0`, past the
 # highest, a sign, a space, a letter, Roc's other number forms, and a
@@ -87,9 +97,10 @@ expect
 		"00",
 		"01",
 		"007",
-		"256",
-		"999",
-		"1000",
+		"65536",
+		"65537",
+		"99999",
+		"100000",
 		"+1",
 		"-1",
 		" 1",

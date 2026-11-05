@@ -135,7 +135,7 @@ expect [
 # A full chat makes no agent.
 expect
 	Agents.make(
-		Sample.crowded_directory(252),
+		Sample.directory_with_ids_left(0),
 		{ owner: Sample.human("Steve"), body: "name=Bot".to_utf8() },
 	).map_ok(|_| {})
 		== Err(Full)

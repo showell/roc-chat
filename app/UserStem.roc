@@ -43,4 +43,4 @@ expect stem({ name: "Zoë Ő Ann", id: "6" }) == "zoe-o-ann-6"
 expect stem({ name: "Æsir Þór Straße", id: "7" }) == "aesir-thor-strasse-7"
 # A name of accented letters alone, at the lowest id and the highest.
 expect stem({ name: "Éé", id: "1" }) == "ee-1"
-expect stem({ name: "Ő Ű", id: "255" }) == "o-u-255"
+expect stem({ name: "Ő Ű", id: "65535" }) == "o-u-65535"

@@ -14,7 +14,7 @@
 ##
 ## The users are kept on disk (`FileSystem`) as small files under the auth
 ## root: the counter of the next id, `auth/next-id.txt`, its digits and a
-## line end (`256` when every id is taken); and a folder per user, `auth/<id>/`, holding the
+## line end (`65536` when every id is taken); and a folder per user, `auth/<id>/`, holding the
 ## user's name, exactly as given, in `name`, and an agent's owner's id, its
 ## digits, in `owner`. A human has no `owner` file. `from_files` reads them
 ## back, and `account_files` and `counter_file` write them.
@@ -135,14 +135,14 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 		},
 	}
 
-	## The counter file: the next id's digits and a line end, `256` when
-	## every id is taken.
+	## The counter file: the next id's digits and a line end,
+	## `UserId.past_highest`'s when every id is taken.
 	counter_file : Users -> List(U8)
 	counter_file = |Users.(users)| {
 		digits =
 			match users.next {
 				Next(id) => id.to_str()
-				Full => (U8.highest.to_u64() + 1).to_str()
+				Full => UserId.past_highest.to_str()
 			}
 		"${digits}\n".to_utf8()
 	}
@@ -273,12 +273,12 @@ next_after = |id|
 		Err(Full) => Full
 	}
 
-## The next id a counter file holds: the digits of 2 to 255, or 256 when
-## every id is taken.
+## The next id a counter file holds: the digits of an id after the first, or
+## `UserId.past_highest`'s when every id is taken.
 next_from_file : List(U8) -> Try([Next(UserId), Full], [BadCounter])
 next_from_file = |bytes| {
 	number = FactFile.number_from_file(bytes) ? |NotANumber| BadCounter
-	if (number == U8.highest.to_u64() + 1)
+	if (number == UserId.past_highest)
 		Ok(Full)
 	else
 		match UserId.from_str(number.to_str()) {

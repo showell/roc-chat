@@ -257,7 +257,9 @@
 //!      exists, else general's first topic, whether they were heading for
 //!      another channel's, /channels, /agents or a topic with no messages;
 //! 48zn. with general's members file gone: a sign-up and an invite, a 500
-//!      each, nothing made.
+//!      each, nothing made;
+//! 48zo. with one id left, a new human takes 65535, whose session reads their
+//!      page; the next is refused as the chat being full, nothing made.
 //!
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
@@ -1782,6 +1784,16 @@ fn firstPageSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Step
     try t.check("with #general's members file gone, a sign-up and an invite: 500 each, saying so, no session, nothing made", signed_up.status == 500 and
         has(signed_up.body, "no general channel") and !has(signed_up.head, "__Host-gopher_auth=") and invited.status == 500 and has(invited.body, "no general channel") and
         std.mem.eql(u8, counter_after, counter));
+
+    // 48zo.
+    try data.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "65535\n" });
+    const last = try signUpHeadingTo(a, io, port, fake, channel_url, "user-id-46", "Omar");
+    const last_page = try getAs(a, io, port, try cookieLine(a, last), "/invites");
+    const past_the_last = try signUpHeadingTo(a, io, port, fake, channel_url, "user-id-47", "Pia");
+    try t.check("one id left: a new human takes 65535, in #general, their session reading their page; the counter 65536; the next sign-up, a 409 saying the chat is full, nothing made", try landsAt(a, io, port, last, channel_url) and
+        last_page.status == 200 and has(last_page.body, "Omar") and std.mem.eql(u8, try readFile(a, io, data, "auth/65535/name"), "Omar") and
+        has(try readFile(a, io, data, members_path), "\n65535\n") and std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "65536\n") and
+        past_the_last.status == 409 and has(past_the_last.body, "holds as many as it can") and !(try exists(io, data, "auth/65536")));
 }
 
 /// The session cookie a sign-in's answer sets, as a request's `Cookie`

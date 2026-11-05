@@ -183,7 +183,7 @@ expect [
 )
 expect
 	HumanInvites.invite(
-		Sample.crowded_directory(252),
+		Sample.directory_with_ids_left(0),
 		{
 			acting: steve,
 			body: "name=Zoe".to_utf8(),
@@ -327,7 +327,7 @@ expect
 		"x",
 		"",
 		"02",
-		"256",
+		"65536",
 	].all(|text| HumanInvites.inviter_from_file(File(text.to_utf8())) == Err(NotAnInviter))
 
 ## The secret whose every byte is `b`.

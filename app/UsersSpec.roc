@@ -137,25 +137,22 @@ expect Sample.user("CC").as_human() == Err(Agent(after_steve(2)))
 expect Sample.human("Apoorva").id() == after_steve(1)
 expect Sample.human("Apoorva").author().to_str() == "Apoorva"
 expect Sample.human("Apoorva").user() == Sample.user("Apoorva")
-# The next id at, under and over the highest: 254 users take one more,
-# the 255th, and then none, human or agent. The owner is asked before
-# `Full`.
+# The next id at, under and over the highest: users with one id left take one
+# more, and then none, human or agent. The owner is asked before `Full`.
 expect {
-	almost = Sample.crowded_directory(251).users()
-	full = (almost.add_human(Sample.name("Last")) ?? crash "UsersSpec: the 255th user fits").users
-	almost.to_list().len() == 254
-		and almost.next_id().map_ok(UserId.to_str) == Ok("255")
+	almost = Sample.directory_with_ids_left(1).users()
+	full = (almost.add_human(Sample.name("Last")) ?? crash "UsersSpec: the last id is free").users
+	almost.next_id().map_ok(UserId.to_str) == Ok("65535")
 		and human_added(almost, "Last") == Ok({
-			id: "255",
+			id: "65535",
 			name: "Last",
 			role: "human",
 		})
 		and agent_added(almost, { name: "Bot", owner: Sample.human("Steve") }) == Ok({
-			id: "255",
+			id: "65535",
 			name: "Bot",
 			role: "agent of 1",
 		})
-		and full.to_list().len() == 255
 		and full.next_id() == Err(Full)
 		and human_added(full, "Zoë") == Err(Full)
 		and agent_added(full, { name: "Bot", owner: Sample.human("Steve") }) == Err(Full)

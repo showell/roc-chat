@@ -149,13 +149,13 @@ expect agent_added(Sample.directory, { name: "Bot", owner: zed }) == Err(NoSuchO
 # The order of refusals, on a directory with no id left: the owner, then
 # `Full`, then the name. A name that is taken is not reached.
 expect {
-	almost = Sample.crowded_directory(251)
+	almost = Sample.directory_with_ids_left(1)
 	full =
-		(almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the 255th user fits")
+		(almost.add_human(Sample.name("Last")) ?? crash "DirectorySpec: the last id is free")
 			.directory
 	steve = Sample.human("Steve")
 	[
-		(human_added(almost, "Last"), Ok(("255", "Last"))),
+		(human_added(almost, "Last"), Ok(("65535", "Last"))),
 		(human_added(full, "Zoë"), Err(Full)),
 		(human_added(full, "Steve"), Err(Full)),
 		(agent_added(full, { name: "Bot", owner: steve }), Err(Full)),

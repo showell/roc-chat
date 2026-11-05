@@ -86,7 +86,8 @@ expect Users.account_files(Sample.user("CC")) == {
 	owner: File("1".to_utf8()),
 }
 expect Sample.directory.users().counter_file() == "4\n".to_utf8()
-expect Sample.crowded_directory(252).users().counter_file() == "256\n".to_utf8()
+expect Sample.directory_with_ids_left(1).users().counter_file() == "65535\n".to_utf8()
+expect Sample.directory_with_ids_left(0).users().counter_file() == "65536\n".to_utf8()
 # Written out and read back, in any order, the same users, the next id
 # included; and the same directory.
 expect users_with({
@@ -98,8 +99,9 @@ expect users_with({
 	accounts: accounts_of(Sample.directory.users()).sort_with(|a, b| b.id.compare(a.id)),
 }) == Ok(Sample.directory.users())
 expect {
-	users = Sample.crowded_directory(252).users()
-	Users.from_files({ counter: users.counter_file(), accounts: accounts_of(users) }) == Ok(users)
+	users = Sample.directory_with_ids_left(0).users()
+	users.next_id() == Err(Full)
+		and Users.from_files({ counter: users.counter_file(), accounts: accounts_of(users) }) == Ok(users)
 }
 expect {
 	channels =
@@ -118,7 +120,7 @@ expect [
 	"0",
 	"",
 	"x",
-	"257",
+	"65537",
 	"-4",
 ].all(
 	|counter| users_with({

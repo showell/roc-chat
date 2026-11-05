@@ -838,21 +838,17 @@ expect
 	].all(|login| new_human_called(login).suggested_name(tests_directory) == NoSuggestion)
 expect new_human_called("Zoe").suggested_name(full_directory) == NoSuggestion
 
-## Users until every id is taken, each named by the letters of its number.
+## The tests' directory, its every id spent, as the counter says.
 full_directory : Directory
-full_directory =
-	List.from_iter(U64.until(0, 252)).fold(
-		tests_directory,
-		|directory, at|
-			(directory.add_human(tests_name("Filler ${letters_of(at)}"))
-				?? crash "GitHubSignIn's tests: room").directory,
+full_directory = {
+	accounts = tests_users.to_list().map(
+		|user| { id: user.id(), files: Users.account_files(user) },
 	)
-
-## `number` in the letters a name may hold: its decimal digits, each a letter.
-letters_of : U64 -> Str
-letters_of = |number| {
-	spelled = number.to_str().to_utf8().map(|digit| digit - '0' + 'a')
-	Str.from_utf8(spelled) ?? crash "GitHubSignIn's tests: letters are UTF-8"
+	users =
+		Users.from_files({ counter: "65536\n".to_utf8(), accounts })
+			?? crash "GitHubSignIn's tests: the users' files read back"
+	Directory.from_files({ users, channels: tests_directory.channels() })
+		?? crash "GitHubSignIn's tests: the names are free"
 }
 
 ## A sign-up of the id 300, as `new_human_called` issues one at 1000.
