@@ -11,10 +11,11 @@
 --    tree is clean on `main`, gopher-roc is active, roc-chat is neither active
 --    nor enabled, and everything steps d to f will touch is what it should be.
 --    These checks all run here, before the outage, so a surprise costs nothing.
--- b. It backs up /var/lib/gopher-roc to a root-owned mode-600 tar in steve's home
---    on prod, proves the tar reads with `tar tzf`, and prints its path.
--- c. It stops and disables gopher-roc. The site answers 502 from here until
+-- b. It stops and disables gopher-roc. The site answers 502 from here until
 --    tools/deploy.shale ends.
+-- c. It backs up /var/lib/gopher-roc to a root-owned mode-600 tar in steve's home
+--    on prod, proves the tar reads with `tar tzf`, and prints its path. The server
+--    is stopped, so the tar holds everything.
 -- d. It removes the old program: its unit, /opt/roc-chat, /var/lib/roc-chat and
 --    ~/roc-chat-rollback, each by its exact path and checked again first.
 -- e. It moves /var/lib/gopher-roc to /var/lib/roc-chat and gives it to `rocchat`,
@@ -23,14 +24,13 @@
 --    reloads systemd.
 -- g. It prints that tools/deploy.shale comes next. Caddy keeps port 9611.
 --
--- The way back depends on where it stopped. BACKUP is the path step b printed.
--- Every command here runs on prod. The tar was made before the stop, so it lacks
--- whatever was posted between b and c. Use the live folder when it is whole.
+-- The way back depends on where it stopped. BACKUP is the path step c printed.
+-- Every command here runs on prod.
 --
--- A refusal, or a stop at a or b: nothing has changed, and gopher-roc still serves.
+-- A refusal, or a stop at a: nothing has changed, and gopher-roc still serves.
 --
--- A stop at c or d: the data has not moved, and gopher-roc's binary, unit and user
--- are all there.
+-- A stop at b, c or d: the data has not moved, and gopher-roc's binary, unit and
+-- user are all there.
 --
 --   sudo systemctl enable --now gopher-roc
 --
@@ -57,7 +57,7 @@
 --   sudo tar xzpf BACKUP -C /var/lib --transform 's,^gopher-roc,roc-chat,'
 --   sudo chown -R rocchat:rocchat /var/lib/roc-chat
 --
--- A rerun after any stop past b refuses, as gopher-roc is no longer active.
+-- A rerun after any stop past a refuses, as gopher-roc is no longer active.
 --
 -- Nothing here prints the data folder's contents. The secrets are only tarred and
 -- moved, and what is printed of them is their names, owners and modes.
@@ -151,11 +151,17 @@ for item in OLD_PROGRAM do refuse_unless(item.path .. " is not what it should be
 for item in GOPHER_ROC do refuse_unless(item.path .. " is not what it should be", item.is) end
 print("  prod is as expected")
 
--- b. The backup. tar writes under umask 077, so the file is never open to anyone.
+-- b. The stop.
+step("b. stopping gopher-roc; the site answers 502 until tools/deploy.shale ends", "set -eu\n"
+  .. "sudo systemctl disable --now gopher-roc\n"
+  .. "if systemctl is-active --quiet gopher-roc; then echo 'gopher-roc is still active'; exit 1; fi\n"
+  .. "if pgrep -u gopherroc >/dev/null; then echo '`gopherroc` still has a process'; exit 1; fi")
+
+-- c. The backup. tar writes under umask 077, so the file is never open to anyone.
 -- The listing stays on prod: only its count is printed.
 local stamp = trim(on_prod("date -u +%Y%m%dT%H%M%SZ").out)
 const backup = "/home/steve/gopher-roc-data-" .. stamp .. ".tgz"
-step("b. backing up " .. OLD_DATA, "set -eu\n"
+step("c. backing up " .. OLD_DATA, "set -eu\n"
   .. "if sudo test -e " .. backup .. "; then echo 'a backup of that name is already there'; exit 1; fi\n"
   .. "sudo sh -c 'umask 077 && exec tar czf " .. backup .. " -C /var/lib gopher-roc'\n"
   .. "[ \"$(sudo stat -c '%U %a' " .. backup .. ")\" = 'root 600' ]\n"
@@ -164,12 +170,6 @@ step("b. backing up " .. OLD_DATA, "set -eu\n"
   .. "sudo tar tzf " .. backup .. " | grep -qxF gopher-roc/data/.session-secret\n"
   .. "echo \"  $(sudo tar tzf " .. backup .. " | wc -l) entries read back; $(sudo find " .. OLD_DATA .. " | wc -l) in the folder\"")
 print("  the backup, root's and mode 600: " .. backup)
-
--- c. The stop.
-step("c. stopping gopher-roc; the site answers 502 until tools/deploy.shale ends", "set -eu\n"
-  .. "sudo systemctl disable --now gopher-roc\n"
-  .. "if systemctl is-active --quiet gopher-roc; then echo 'gopher-roc is still active'; exit 1; fi\n"
-  .. "if pgrep -u gopherroc >/dev/null; then echo '`gopherroc` still has a process'; exit 1; fi")
 
 -- d. The old program.
 print("d. removing the old program")
