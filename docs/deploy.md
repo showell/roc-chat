@@ -1,6 +1,6 @@
 # Deploying gopher-roc
 
-This is the owner's runbook for https://chat.lynrummy.com. The cutover from roc-chat ran on 2026-11-05, and its steps stay here as the record and for going through it again. For a new deploy, go to "Every later deploy". A command marked **[PROD WRITE]** changes the prod droplet, and only the owner runs those.
+This is the owner's runbook for https://chat.lynrummy.com. The cutover from roc-chat ran on 2026-11-05, and its steps stay here as the record and for going through it again. For a new deploy, go to "Every later deploy". A command marked **[PROD WRITE]** changes the prod droplet. Claude runs `tools/deploy.shale` itself, on a `main` that has passed verify; anything else marked so is the owner's.
 
 gopher-roc runs on the prod droplet (162.243.1.123), beside Caddy, on 127.0.0.1:9611. Caddy holds the certificate, logs every request and is the only way in. roc-chat runs the same way on 127.0.0.1:9490, so the cutover changes which service the site block points at, and nothing else on the droplet.
 
