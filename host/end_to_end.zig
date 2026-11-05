@@ -315,7 +315,7 @@ const public_origin = "https://chat.example.test";
 const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
 /// The page's other scripts, each served as compose.js is.
-const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js" };
+const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js", "panel.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 const channel_uploads = "chat/channel/general/gopher-roc/uploads";
@@ -924,6 +924,8 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(steves.body, "<h1>Steve</h1>") and has(steves.body, "<h1>Tam</h1>") and has(steves.body, "<h1>Uma</h1>") and has(steves.body, "<h1>#general</h1>") and has(steves.body, "<h1>#crew</h1>") and
         has(steves.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(steves.body, "href=\"/chat/dm/1_3/ChitChat\"") and
         has(steves.body, "action=\"/chat/dm/1_1\"") and has(steves.body, "action=\"/chat/channel/crew\"") and has(steves.body, "action=\"/chat/channel/general\""));
+    try t.check("Browse in its panel, ending with the scripts that style it, the frame's first", has(steves.body, "<div class=\"layout\"><div class=\"panel\">") and
+        has(steves.body, "</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"));
     try t.check("Tam's Browse: her DMs and #general; not #crew, which she is not in, and not Steve's DM with Uma", tams.status == 200 and
         has(tams.body, "<h1>#general</h1>") and has(tams.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(tams.body, "action=\"/chat/dm/2_3\"") and has(tams.body, "action=\"/chat/dm/2_2\"") and
         !has(tams.body, "crew") and !has(tams.body, "/chat/dm/1_3"));

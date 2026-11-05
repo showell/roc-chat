@@ -8,7 +8,10 @@
 ## page reads top to bottom without them, and its form still posts.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
-## title, then the link to Browse and the viewer's name.
+## title, then the link to Browse and the viewer's name. Under it, a page that
+## another module builds (`signed_in_page`) holds its parts in a panel, and
+## ends with app/chrome.js, which styles the top bar, and app/panel.js, which
+## draws the panel as a card.
 ##
 ## A conversation's page has that bar, and below it two panes. The first holds the messages, and the
 ## second is the compose box: a form that posts the field `markdown` back
@@ -69,6 +72,7 @@ Page :: [].{
 		Layout,
 		Message,
 		Messages,
+		Panel,
 		Ref,
 		TopBar,
 		TopTitle,
@@ -334,8 +338,8 @@ Page :: [].{
 	}
 
 	## A page of a signed-in human's, for another module that builds one
-	## (`PeoplePages`): the document, its top bar of `title` and `viewer`,
-	## then `parts`.
+	## (`Browse`, `PeoplePages`): the document, its top bar of `title` and
+	## `viewer`, then `parts` in a panel, then the scripts that style them.
 	signed_in_page : {
 		title : Str,
 		viewer : SignedIn,
@@ -350,7 +354,24 @@ Page :: [].{
 	|
 		document({
 			title,
-			body: TrustedHtml.join([top_bar({ title, viewer }), newline].concat(parts)),
+			body: TrustedHtml.join([
+				top_bar({ title, viewer }),
+				newline,
+				Html.element({
+					name: Div,
+					attrs: [Page.class(Layout)],
+					inner: Html.element({
+						name: Div,
+						attrs: [Page.class(Panel)],
+						inner: TrustedHtml.join([newline].concat(parts)),
+					}),
+				}),
+				newline,
+				script(Script.Chrome),
+				newline,
+				script(Script.Panel),
+				newline,
+			]),
 		})
 
 	## A heading of `said`, for another module's page.
@@ -980,6 +1001,7 @@ class_name = |chosen|
 		Layout => "layout"
 		Message => "message"
 		Messages => "messages"
+		Panel => "panel"
 		Ref => "ref"
 		TopBar => "top-bar"
 		TopTitle => "top-title"
@@ -1034,6 +1056,7 @@ expect
 		(Layout, "layout"),
 		(Message, "message"),
 		(Messages, "messages"),
+		(Panel, "panel"),
 		(Ref, "ref"),
 		(TopBar, "top-bar"),
 		(TopTitle, "top-title"),
@@ -1114,6 +1137,8 @@ expect
 		Message,
 		Empty,
 	].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
+expect [Panel, InviteCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
+expect !is_found_by(Script.Panel.bytes(), Messages) and !is_found_by(Script.Feed.bytes(), Panel)
 expect !is_found_by(Script.Compose.bytes(), Message) and !is_found_by(Script.Compose.bytes(), Empty)
 expect !is_found_by(Script.Feed.bytes(), Help) and !is_found_by(Script.Chrome.bytes(), Messages)
 expect

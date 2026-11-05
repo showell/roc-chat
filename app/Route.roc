@@ -18,6 +18,7 @@
 ##     GET  /chat/assets/chrome.js
 ##     GET  /chat/assets/compose.js
 ##     GET  /chat/assets/feed.js
+##     GET  /chat/assets/panel.js
 ##     GET  /chat/assets/join.js
 ##     GET  /favicon.ico                       the site's icon
 ##     GET  /login                             the sign-in page

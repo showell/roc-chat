@@ -183,6 +183,7 @@ expect
 		"chrome.js",
 		"compose.js",
 		"feed.js",
+		"panel.js",
 	].all(
 		|name| {
 			path = "/chat/assets/${name}".to_utf8()

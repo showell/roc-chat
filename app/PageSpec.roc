@@ -148,7 +148,7 @@ expect login_for(Anonymous, NoProblem) == login_page("")
 expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;match&gt;.</p>\n")
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
-		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n"
+		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 # With GitHub's settings, a link below the form, going on to `next`.
 expect
 	Str.from_utf8_lossy(
