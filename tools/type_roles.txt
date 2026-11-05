@@ -1,0 +1,8 @@
+-- Type names each module declares for itself, read with their module as a
+-- two-part name, as docs/code-quality.md reads `Message.Id`. The other twins
+-- are questions for a reader: families holds them at a count.
+Id
+State
+Files
+Refusal
+Failure

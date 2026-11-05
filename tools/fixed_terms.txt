@@ -1,0 +1,2 @@
+-- HTTP's `Set-Cookie` header, which opens names as a noun.
+set_cookie

@@ -1,0 +1,3 @@
+# The words gopher-roc has decided on, for shale's vocabulary recipe. A line is
+# `kept: retired, retired`. docs/code-quality.md retires `Arrival`.
+unnumbered: arrival, arrivals

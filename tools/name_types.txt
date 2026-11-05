@@ -1,0 +1,8 @@
+# Words and the types their names hold, for shale's name_types recipe.
+scope: KeyScope
+errand: Errand
+choice: Choice
+
+# GitHub's numeric id reaches the app as Host's bare `id : U64`, and
+# GitHubSignIn.identify makes it a GitHubId. It is no UserId left half retyped.
+id: any
