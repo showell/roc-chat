@@ -12,6 +12,10 @@ import Users
 
 PeoplePages :: [].{
 
+	## Where the invites page is.
+	invites_path : Str
+	invites_path = "/invites"
+
 	## The channels page, for `viewer`, the admin: each of `channels`,
 	## linked to its page, then a form that creates one.
 	channels : { viewer : SignedIn, channels : List(Channels.Channel) } -> TrustedHtml
@@ -96,7 +100,7 @@ PeoplePages :: [].{
 				]
 			}
 		form = Page.text_form({
-			action: "/invites",
+			action: PeoplePages.invites_path,
 			fields: [{ label: "Name", name: "name" }],
 			label: "Invite someone",
 		})

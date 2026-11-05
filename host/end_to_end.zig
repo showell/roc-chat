@@ -286,6 +286,9 @@
 //!      to land on they land on /agents, a 200;
 //!  52. Browse for a stranger: the sign-in page, and back after; a new topic: 401;
 //!  53. Browse lists a human's DMs and channels, and no other's;
+//! 53a. Browse links to /invites for the owner and any other human, the link
+//!      leading to the form; the sign-in page and a conversation's don't, and
+//!      a key reaches neither Browse nor /invites;
 //!  54. every signed-in page has the Browse link, and none a sign-up, join or
 //!      sign-in link or form;
 //!  55. a topic where the human can't post, its page and its stream: 403 each;
@@ -930,6 +933,16 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(tams.body, "<h1>#general</h1>") and has(tams.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(tams.body, "action=\"/chat/dm/2_3\"") and has(tams.body, "action=\"/chat/dm/2_2\"") and
         !has(tams.body, "crew") and !has(tams.body, "/chat/dm/1_3"));
 
+    // 53a.
+    const invite_link = "<a href=\"/invites\">Invite someone</a>";
+    const invites_from_link = try getAs(a, io, port, steve_session, between(steves.body, "<p><a href=\"", "\">Invite someone</a>") orelse "");
+    const tams_invites = try getAs(a, io, port, tam, between(tams.body, "<p><a href=\"", "\">Invite someone</a>") orelse "");
+    try t.check("the link to /invites on Browse, for the owner and any other human, reaches the form that invites someone", has(steves.body, invite_link) and has(tams.body, invite_link) and
+        invites_from_link.status == 200 and has(invites_from_link.body, "action=\"/invites\"") and tams_invites.status == 200 and has(tams_invites.body, "action=\"/invites\""));
+    const conversation_page = try getAs(a, io, port, steve_session, "/chat/dm/1_2/ChitChat");
+    try t.check("no link to /invites for a stranger, at sign-in, or on a conversation's page", sign_in.status == 200 and !has(sign_in.body, "/invites") and
+        conversation_page.status == 200 and !has(conversation_page.body, "/invites"));
+
     // 54.
     var every_page_links = true;
     var no_page_signs_up = true;
@@ -959,7 +972,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const bad_name = try postAs(a, io, port, tam, "/chat/dm/2_3", "topic=two+words");
     const no_name = try postAs(a, io, port, tam, "/chat/dm/2_3", "");
     try t.check("a name that is no topic, and no name: Browse again, a 400 each, saying why, nothing made", bad_name.status == 400 and no_name.status == 400 and
-        has(bad_name.body, "A topic&#39;s name starts with a letter") and has(bad_name.body, "<h1>#general</h1>") and has(no_name.body, "no field") and
+        has(bad_name.body, "A topic&#39;s name starts with a letter") and has(bad_name.body, "<h1>#general</h1>") and has(bad_name.body, invite_link) and has(no_name.body, "no field") and
         !(try exists(io, data, "chat/dm/2_3")));
 
     // 57.

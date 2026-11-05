@@ -1,7 +1,8 @@
 ## This module decides what Browse shows a human and writes its page. Browse
 ## is the way into the chat: every human as a DM, the reader too (their own
 ## DM), then each channel the reader is a member of, each with its topics and
-## a form that starts a new one. `Access` decides what is listed, so a place
+## a form that starts a new one. Above them is the link to the invites page,
+## as every human who browses may invite. `Access` decides what is listed, so a place
 ## the reader couldn't open is never shown. `BrowseRoute` reads the topics and
 ## answers.
 import Access
@@ -9,6 +10,7 @@ import ConversationKey
 import Directory
 import Dm
 import Page
+import PeoplePages
 import Place
 import SignedIn
 import Topic
@@ -61,8 +63,8 @@ Browse :: [].{
 		)
 	}
 
-	## The Browse page for `viewer`: `problem`, when there is one, then each
-	## of `places`.
+	## The Browse page for `viewer`: `problem`, when there is one, the link
+	## to the invites page, then each of `places`.
 	page : {
 		viewer : SignedIn,
 		places : List(Browse.PlaceWithTopics),
@@ -83,10 +85,14 @@ Browse :: [].{
 		Page.signed_in_page({
 			title: "Browse",
 			viewer,
-			parts: said.concat(places.map(place_section)),
+			parts: said.append(invite_link).concat(places.map(place_section)),
 		})
 	}
 }
+
+## The link to the invites page.
+invite_link : TrustedHtml
+invite_link = Page.link_paragraph({ path: PeoplePages.invites_path, text: "Invite someone" })
 
 ## The DM between `reader` and `other`, shown by `other`'s name.
 dm_listed : { reader : Users.Human, other : Users.Human } -> Browse.ListedPlace

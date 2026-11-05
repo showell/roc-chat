@@ -100,6 +100,10 @@ page_head : Str
 page_head =
 	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>Browse</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<header class=\"top-bar\"><span class=\"top-title\">Browse</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n"
 
+## The link to the invites page, which every Browse page holds.
+invite_link : Str
+invite_link = "<p><a href=\"/invites\">Invite someone</a></p>\n"
+
 ## What the page ends with, after its panel's parts: the panel's end and the
 ## scripts that style the page.
 page_foot : Str
@@ -125,15 +129,24 @@ page_of = |topics, problem|
 # A place with no topics says so, and suggests its first.
 expect
 	page_of([], NoProblem)
-		== "${page_head}<h1>Apoorva</h1>\n<p>No sessions yet</p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required value=\"general\"></p>\n<button>Add topic</button></form>\n${page_foot}"
+		== "${page_head}${invite_link}<h1>Apoorva</h1>\n<p>No sessions yet</p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required value=\"general\"></p>\n<button>Add topic</button></form>\n${page_foot}"
 # A place with topics links each to its page, and suggests no name.
 expect
 	page_of([Sample.other, Sample.plans], NoProblem)
-		== "${page_head}<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/other\">other</a></p>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
-# A problem comes first, as text.
+		== "${page_head}${invite_link}<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/other\">other</a></p>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
+# A problem comes first, as text, before the link.
 expect
 	page_of([Sample.plans], Problem("No <topic>."))
-		== "${page_head}<p>No &lt;topic&gt;.</p>\n<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
+		== "${page_head}<p>No &lt;topic&gt;.</p>\n${invite_link}<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
+# Any human's page has the link, whether they own the chat or not.
+expect
+	Str.from_utf8_lossy(
+		Browse.page({
+			viewer: signed_in("Zoe"),
+			places: [],
+			problem: NoProblem,
+		}).to_utf8(),
+	).contains(invite_link)
 # The page has no sign-up or join link.
 expect {
 	page = page_of([], NoProblem)
