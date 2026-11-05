@@ -58,20 +58,20 @@ bearer_prefix : Str
 bearer_prefix = "Bearer "
 
 # ── tests
-## The token for user `id`, its secret's every byte `b`, as `to_str`
+## The token for user `id`, its secret's every byte `byte`, as `to_str`
 ## writes it.
-token_text : { id : Str, b : U8 } -> Str
-token_text = |{ id, b }|
+token_text : { id : Str, byte : U8 } -> Str
+token_text = |{ id, byte }|
 	SecretToken.of({
 		user: UserId.from_str(id) ?? crash "SecretToken's tests: an id",
-		secret: Secret.from_random_bytes(List.repeat(b, 32)),
+		secret: Secret.from_random_bytes(List.repeat(byte, 32)),
 	}).to_str()
 
-expect token_text({ id: "7", b: 0x0a }) == "7-${"0a".repeat(32)}"
+expect token_text({ id: "7", byte: 0x0a }) == "7-${"0a".repeat(32)}"
 expect SecretToken.from_str(
-	token_text({ id: "65535", b: 0xff }),
-).map_ok(SecretToken.to_str) == Ok(token_text({ id: "65535", b: 0xff }))
-expect SecretToken.from_str(token_text({ id: "7", b: 1 })).map_ok(|t| t.user().to_str()) == Ok("7")
+	token_text({ id: "65535", byte: 0xff }),
+).map_ok(SecretToken.to_str) == Ok(token_text({ id: "65535", byte: 0xff }))
+expect SecretToken.from_str(token_text({ id: "7", byte: 1 })).map_ok(|t| t.user().to_str()) == Ok("7")
 # No `-`, a bad id, a bad secret, a second `-`, or a space: refused.
 expect
 	[
@@ -87,14 +87,14 @@ expect
 	].all(|text| SecretToken.from_str(text).map_ok(|_| {}) == Err(NotAToken))
 # A bearer: exactly `Bearer ` and a token; any other scheme or spelling refused.
 expect
-	SecretToken.from_bearer("Bearer ${token_text({ id: "7", b: 1 })}").map_ok(SecretToken.to_str)
-		== Ok(token_text({ id: "7", b: 1 }))
+	SecretToken.from_bearer("Bearer ${token_text({ id: "7", byte: 1 })}").map_ok(SecretToken.to_str)
+		== Ok(token_text({ id: "7", byte: 1 }))
 expect
 	[
-		"bearer ${token_text({ id: "7", b: 1 })}",
-		"Bearer  ${token_text({ id: "7", b: 1 })}",
-		"Basic ${token_text({ id: "7", b: 1 })}",
-		token_text({ id: "7", b: 1 }),
+		"bearer ${token_text({ id: "7", byte: 1 })}",
+		"Bearer  ${token_text({ id: "7", byte: 1 })}",
+		"Basic ${token_text({ id: "7", byte: 1 })}",
+		token_text({ id: "7", byte: 1 }),
 		"Bearer ",
 		"Bearer 7-xyz",
 	].all(|value| SecretToken.from_bearer(value).map_ok(|_| {}) == Err(NotABearer))

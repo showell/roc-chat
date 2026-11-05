@@ -267,22 +267,22 @@ tests_users = {
 id_of : Str -> UserId
 id_of = |text| UserId.from_str(text) ?? crash "Session's tests: an id"
 
-## A signature of 32 bytes, each `b`.
+## A signature of 32 bytes, each `byte`.
 mac_of : U8 -> List(U8)
-mac_of = |b| List.repeat(b, 32)
+mac_of = |byte| List.repeat(byte, 32)
 
 ## The cookie header holding the session for `id` at `signed_at`, its
-## signature every byte `b`.
+## signature every byte `byte`.
 cookie_for : {
 	id : Str,
 	signed_at : I64,
-	b : U8,
+	byte : U8,
 } -> List(U8)
-cookie_for = |{ id, signed_at, b }| {
+cookie_for = |{ id, signed_at, byte }| {
 	cookie_value = Session.cookie_value({
 		id: id_of(id),
 		signed_at,
-		mac: mac_of(b),
+		mac: mac_of(byte),
 	})
 	"${cookie_prefix_text}${cookie_value}".to_utf8()
 }
@@ -347,11 +347,11 @@ expect claim_text(
 	cookie_for({
 		id: "1",
 		signed_at: 1700000000,
-		b: 7,
+		byte: 7,
 	}),
 ) == Ok(("1\n1700000000\nh", mac_of(7)))
 expect
-	claim_text("theme=dark; ${Str.from_utf8_lossy(cookie_for({ id: "42", signed_at: 0, b: 1 }))} ;x=y".to_utf8())
+	claim_text("theme=dark; ${Str.from_utf8_lossy(cookie_for({ id: "42", signed_at: 0, byte: 1 }))} ;x=y".to_utf8())
 		== Ok(("42\n0\nh", mac_of(1)))
 # No session cookie: none, another, or one whose name only starts the same.
 expect
@@ -368,7 +368,7 @@ expect {
 		cookie_for({
 			id: "1",
 			signed_at: 1700000000,
-			b: 7,
+			byte: 7,
 		}),
 	)
 	signature = Base64Url.encode(mac_of(7))
@@ -404,7 +404,7 @@ admitted_at : {
 	verdict : [DoesNotMatch, Matches],
 } -> Try(Str, [SessionRefused, BadSession, NoSession])
 admitted_at = |{ id, signed_at, now, verdict }| {
-	claim = Session.claim_from_cookie_header(cookie_for({ id, signed_at, b: 7 }))?
+	claim = Session.claim_from_cookie_header(cookie_for({ id, signed_at, byte: 7 }))?
 	admitted = Session.admit({ claim, verdict, now, users: tests_users })?
 	Ok(admitted.human().user().name().to_str())
 }
