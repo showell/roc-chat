@@ -3,7 +3,7 @@
 ## two tags it writes around `inner`, which is already trusted. Each part of
 ## a tag is safe by its type, so nothing is escaped and nothing needs to be:
 ##
-## - a name is from a closed set (`Name`), so a tag's name is never data;
+## - a name is from a closed set (`ElementName`), so a tag's name is never data;
 ## - an attribute's name is its tag (`Attribute`), so a name and its value
 ##   can't be swapped; a `data-` attribute's name is a `Token`;
 ## - every value is a `Token` (ASCII letters, digits and `-`, checked by
@@ -28,13 +28,13 @@
 ## to say (`Page.Class`, `Page.DataAttribute`).
 import Ascii
 import DateTime
-import Name as UserName
+import Name
 import TrustedHtml
 
 Html :: [].{
 
 	## An element a page uses: a closed set, so a tag's name is never data.
-	Name : [
+	ElementName : [
 		A,
 		Article,
 		Button,
@@ -119,7 +119,7 @@ Html :: [].{
 		InputType([Hidden, Password, Text]),
 		Value(Html.SitePath),
 		TokenValue(Html.Token),
-		NameValue(UserName),
+		NameValue(Name),
 		Autocomplete([Username, CurrentPassword, NewPassword]),
 		Src(Html.SitePath),
 		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
@@ -128,7 +128,7 @@ Html :: [].{
 	## An element: `<name a="v">inner</name>`, `inner` as it is, already
 	## trusted.
 	element : {
-		name : Html.Name,
+		name : Html.ElementName,
 		attrs : List(Html.Attribute),
 		inner : TrustedHtml,
 	} -> TrustedHtml
@@ -164,7 +164,7 @@ site_path_part = |part|
 		Err(ForbiddenByte)
 	}
 
-name_of : Html.Name -> Str
+name_of : Html.ElementName -> Str
 name_of = |name|
 	match name {
 		A => "a"
@@ -326,7 +326,7 @@ expect {
 # An input's attributes, each as an open tag writes it.
 expect {
 	path = Html.SitePath.from_str("/agents") ?? crash "Html's tests: a site path"
-	name = UserName.from_str("Zoë Ann") ?? crash "Html's tests: a name"
+	name = Name.from_str("Zoë Ann") ?? crash "Html's tests: a name"
 	[
 		(InputType(Hidden), " type=\"hidden\""),
 		(InputType(Password), " type=\"password\""),
