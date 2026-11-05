@@ -962,7 +962,12 @@ answer_route! = |
 				channel,
 				member,
 			})
-		ShowInvites => HumanInvitesRoute.show!({ acting, directory })
+		ShowInvites =>
+			HumanInvitesRoute.show!({
+				acting,
+				directory,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
 		InviteHuman =>
 			HumanInvitesRoute.invite!({
 				acting,

@@ -4,13 +4,15 @@
 ## an invite redeems once, within its seven days, for the human it names;
 ## joining keeps the name the inviter chose or takes another free one, and
 ## a name chosen once stays; only someone signed in by no one joins; and
-## an invite's facts go to their files and come back.
+## an invite's facts go to their files and come back. The invites page says
+## how each invite stands.
 import AgentKey
 import Directory
 import HumanInvite
 import HumanInvites
 import KeyScope
 import Password
+import PeoplePages
 import Route
 import Sample
 import Secret
@@ -401,6 +403,78 @@ spent_invite =
 		Ok(redeemable) => HumanInvite.redeem(redeemable, zoe).spent
 		Err(_) => crash "HumanInvitesSpec: Zoe's invite 1 is redeemable at 1000"
 	}
+
+## The invites page for Steve at `now`, of Zoe and `invites`, with `shown` and
+## `problem`, as a test reads it.
+invites_page : {
+	invites : List(HumanInvite),
+	shown : [NoLink, Link({ human : Users.User, link : Str })],
+	problem : [NoProblem, Problem(Str)],
+	now : I64,
+} -> Str
+invites_page = |
+	{
+		invites,
+		shown,
+		problem,
+		now,
+	},
+|
+	Str.from_utf8_lossy(
+		PeoplePages.invites({
+			viewer: steve,
+			users: with_zoe_and_bob.users(),
+			invited: [{ human: zoe.user(), invites }],
+			shown,
+			problem,
+			now,
+		}).to_utf8(),
+	)
+
+## The invites page at `now` of Zoe and `invite` alone, as a test reads it.
+page_of_invite : HumanInvite, I64 -> Str
+page_of_invite = |invite, now|
+	invites_page({
+		invites: [invite],
+		shown: NoLink,
+		problem: NoProblem,
+		now,
+	})
+
+# An invite on the page: open to its last second, expired from the next, used
+# once spent, each naming who made it.
+expect
+	page_of_invite(invite_made({ n: 1, by: "2" }), 1000 + HumanInvite.lifetime_seconds - 1)
+		.contains("<p>Open until 1970-01-08, made by Apoorva.</p>")
+expect
+	page_of_invite(invite_made({ n: 1, by: "2" }), 1000 + HumanInvite.lifetime_seconds)
+		.contains("<p>Expired on 1970-01-08, made by Apoorva.</p>")
+expect page_of_invite(spent_invite, 1000).contains("<p>Used, made by Apoorva.</p>")
+# A maker the chat doesn't hold is named by their id.
+expect
+	page_of_invite(invite_made({ n: 1, by: "9" }), 1000)
+		.contains("<p>Open until 1970-01-08, made by user 9.</p>")
+# The human's section: their name, and the button that invites them again.
+expect {
+	page = page_of_invite(spent_invite, 1000)
+	page.contains("<h1>Zoe</h1>")
+		and page.contains("<form method=\"post\" action=\"/invites/4/again\"><button>Invite Zoe again</button></form>")
+}
+# A link is shown and a problem said only when there is one, each before the form.
+expect {
+	page = invites_page({
+		invites: [],
+		shown: Link({ human: zoe.user(), link: "http://x/join#4-a" }),
+		problem: Problem("The <name> is taken."),
+		now: 1000,
+	})
+	page.contains("<p>The &lt;name&gt; is taken.</p>\n<p>Send this link to Zoe.")
+		and page.contains("<p class=\"invite-code\">http://x/join#4-a</p>\n<p>Invite someone by name.")
+}
+expect {
+	page = page_of_invite(spent_invite, 1000)
+	!page.contains("invite-code") and !page.contains("Send this link")
+}
 
 # A redemption: spent, admitting its human; at its making, and just before
 # its expiry; refused at its expiry, before its making, and by any other

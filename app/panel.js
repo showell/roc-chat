@@ -27,7 +27,7 @@
   styleAll('form', { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', margin: '8px 0' });
   styleAll('form p', { margin: '0', fontSize: '13px', color: 'var(--cc-body-muted-fg)' });
   styleAll('input', {
-    boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '14px', padding: '3px 8px', maxWidth: '100%',
+    boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '14px', padding: '3px 8px', width: '150px',
     background: 'var(--cc-bg)', color: 'var(--cc-fg)', border: '1px solid var(--cc-input-border)', borderRadius: '4px',
   });
   styleAll('button', {

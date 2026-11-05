@@ -75,39 +75,55 @@ PeoplePages :: [].{
 	## One human the viewer may invite again, with their invites.
 	InvitedHuman : { human : Users.User, invites : List(HumanInvite) }
 
-	## The invites page, for `viewer`: a form that invites someone by a
-	## name; when an invite was just made, the link that joins by it, the
-	## one time it is shown (`shown`); then each of `invited`, with their
-	## invites and a button that invites them again.
+	## The invites page, for `viewer`: `problem`, when there is one; when an
+	## invite was just made, the link that joins by it, the one time it is
+	## shown (`shown`); a form that invites someone by a name; then each of
+	## `invited`, with their invites as they stand at `now`, each maker found
+	## among `users`, and a button that invites them again.
 	invites : {
 		viewer : SignedIn,
+		users : Users,
 		invited : List(PeoplePages.InvitedHuman),
 		shown : [NoLink, Link({ human : Users.User, link : Str })],
+		problem : [NoProblem, Problem(Str)],
+		now : I64,
 	} -> TrustedHtml
 	invites = |
 		{
 			viewer,
+			users,
 			invited,
 			shown,
+			problem,
+			now,
 		},
 	| {
+		said =
+			match problem {
+				NoProblem => []
+				Problem(text) => [Page.text_paragraph(text)]
+			}
 		code =
 			match shown {
 				NoLink => []
 				Link({ human, link }) => [
-					Page.text_paragraph("The link that lets ${human.name().to_str()} join, shown this once. Send it to them: it works once, for seven days. They keep the name you chose, or choose another, and choose their password."),
+					Page.text_paragraph("Send this link to ${human.name().to_str()}. It is shown only this once, and it works once, for seven days. They keep the name you chose or choose another, and they choose their password."),
 					Page.shown_code(link),
 				]
 			}
+		intro = Page.text_paragraph("Invite someone by name. You get a link to send them, and with it they join the chat.")
 		form = Page.text_form({
 			action: PeoplePages.invites_path,
-			fields: [{ label: "Name", name: "name" }],
+			fields: [{ label: "Their name", name: "name" }],
 			label: "Invite someone",
 		})
 		Page.signed_in_page({
 			title: "Invites",
 			viewer,
-			parts: code.append(form).concat(invited.map(invited_section)),
+			parts: said
+				.concat(code)
+				.concat([intro, form])
+				.concat(invited.map(|human| invited_section(human, { users, now }))),
 		})
 	}
 }
@@ -149,27 +165,32 @@ member_button = |
 	})
 }
 
-## One human's part of the invites page: their name and id, their invites,
-## and the button that invites them again.
-invited_section : PeoplePages.InvitedHuman -> TrustedHtml
-invited_section = |{ human, invites }| {
-	who = "${human.name().to_str()} (id ${human.id().to_str()})"
-	said =
-		invites.map(
-			|invite| {
-				state_word =
-					match invite.state() {
-						Live => "live"
-						Spent => "redeemed"
-					}
-				invite_id = invite.id().to_str()
-				expiry = Page.time_words(invite.expires())
-				Page.text_paragraph("Invite ${invite_id}: ${state_word}, expires ${expiry}, made by id ${invite.by().to_str()}.")
-			},
-		)
+## One human's part of the invites page: their name, their invites as they
+## stand at `now`, and the button that invites them again.
+invited_section : PeoplePages.InvitedHuman, { users : Users, now : I64 } -> TrustedHtml
+invited_section = |{ human, invites }, context| {
+	said = invites.map(|invite| Page.text_paragraph(invite_words(invite, context)))
 	again = Page.button_form({
-		action: "/invites/${human.id().to_str()}/again",
+		action: "${PeoplePages.invites_path}/${human.id().to_str()}/again",
 		label: "Invite ${human.name().to_str()} again",
 	})
-	TrustedHtml.join([Page.text_paragraph(who)].concat(said).append(again))
+	TrustedHtml.join([Page.heading(human.name().to_str())].concat(said).append(again))
+}
+
+## One invite in words: used, open, or past its date at `now`, and who made it.
+invite_words : HumanInvite, { users : Users, now : I64 } -> Str
+invite_words = |invite, { users, now }| {
+	date = Page.date_words(invite.expires())
+	standing =
+		match invite.state() {
+			Spent => "Used"
+			Live if invite.is_open(now) => "Open until ${date}"
+			Live => "Expired on ${date}"
+		}
+	maker =
+		match users.user(invite.by()) {
+			Ok(user) => user.name().to_str()
+			Err(NoSuchUser) => "user ${invite.by().to_str()}"
+		}
+	"${standing}, made by ${maker}."
 }

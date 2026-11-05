@@ -175,11 +175,12 @@
 //!
 //! Then the human invites (`inviteSteps`):
 //!
-//! 48h. GET /invites: a form inviting someone by name;
+//! 48h. GET /invites: the page's card and a form inviting someone by name;
 //! 48i. invite Deb: the link `http://localhost:<port>/join#<code>` shown
 //!      once, never stored; her account holding the name at once,
 //!      `inviter` Steve, no password; the invite live, by Steve, for seven
-//!      days; her name again: 409; signing in as her before she joins: 401;
+//!      days, and said to be open; her name again: 409, the invites page
+//!      again, saying why; signing in as her before she joins: 401;
 //! 48j. GET /join: the form and its script; POST /join/name: her name as
 //!      JSON; joining under a taken name, a name that is no name, or no
 //!      password: 409, 400, 400, nothing spent; joining as Debbie: a 303 to
@@ -190,7 +191,8 @@
 //! 48k. Debbie signs in with her password; adding a member or listing the
 //!      channels, 403 each; Steve adds her to #crew, and she posts there;
 //! 48l. Deb, the name she left, is free: Steve invites a new Deb; her
-//!      invite past its expiry: 401; its secret under another id: 401;
+//!      invite past its expiry: 401, and said to be expired; its secret under
+//!      another id: 401; Debbie's spent invite is said to be used;
 //! 48m. Steve invites Debbie again: a new link, the same account; from a
 //!      browser signed in, joining or asking the name: 409; joining under
 //!      another name than the one she chose: 409; joining as Debbie with a
@@ -1408,8 +1410,8 @@ fn memberSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
 fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, cc_bearer: []const u8) !void {
     // 48h.
     const page = try get(a, io, port, "/invites");
-    try t.check("GET /invites: Steve's page, a form inviting someone by name", page.status == 200 and
-        has(page.body, "<form method=\"post\" action=\"/invites\"><p>Name <input type=\"text\" name=\"name\" required></p>"));
+    try t.check("GET /invites: Steve's page, a form inviting someone by name, in the card", page.status == 200 and has(page.body, "<div class=\"panel\">") and
+        has(page.body, "<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>"));
 
     // 48i.
     const invited = try post(a, io, port, .{ .path = "/invites", .form = "name=Deb" });
@@ -1430,7 +1432,13 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     try t.check("her account starts in #general", std.mem.eql(u8, try readFile(a, io, data, "chat/channel/general.channel"), "1\n2\n3\n"));
     const taken = try post(a, io, port, .{ .path = "/invites", .form = "name=DEB" });
     const unready = try anonymousPost(a, io, port, "/login", "name=Deb&password=anything");
-    try t.check("her name again in any case: 409; signing in as her before she joins: 401", taken.status == 409 and unready.status == 401);
+    try t.check("her name again in any case: 409, the invites page again, saying why, with no link; signing in as her before she joins: 401", taken.status == 409 and
+        has(taken.body, "<p>The name is taken.</p>") and has(taken.body, "action=\"/invites\"") and has(taken.body, browse_link) and !has(taken.body, "invite-code") and
+        unready.status == 401);
+    const open_page = try get(a, io, port, "/invites");
+    try t.check("her invite on the page: open, by Steve, and a button to invite her again; no link", has(open_page.body, "<h1>Deb</h1>") and
+        has(open_page.body, "<p>Open until ") and has(open_page.body, ", made by Steve.</p>") and has(open_page.body, "action=\"/invites/3/again\"") and
+        !has(open_page.body, "invite-code"));
 
     // 48j.
     const join_page = try anonymousGet(a, io, port, "/join");
@@ -1503,6 +1511,9 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     try t.check("an invite past its expiry (its file set back), to join or for its name: 401 each, still live, no password made; its secret under another id: 401", late.status == 401 and
         late_name.status == 401 and wrong_user.status == 401 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/4/human-invites/1/state"), "live") and !(try exists(io, data, "auth/4/password")));
+    const standing_page = try get(a, io, port, "/invites");
+    try t.check("on the page, Deb's invite past its expiry: expired, not open; Debbie's spent one: used", has(standing_page.body, "<p>Expired on 1970-01-01, made by Steve.</p>") and
+        !has(standing_page.body, "Open until") and has(standing_page.body, "<p>Used, made by Steve.</p>"));
 
     // 48m.
     const reinvited = try post(a, io, port, .{ .path = "/invites/3/again", .form = "" });

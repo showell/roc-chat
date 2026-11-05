@@ -498,9 +498,14 @@ Page :: [].{
 			newline,
 		])
 
-	## A time in seconds since the epoch, as a page writes it.
-	time_words : I64 -> Str
-	time_words = |seconds| time_text(seconds)
+	## The date of a time in seconds since the epoch, or its seconds when it
+	## is out of a date's range.
+	date_words : I64 -> Str
+	date_words = |seconds|
+		match DateTime.from_seconds_since_epoch(seconds) {
+			Ok(time) => time.date_to_str()
+			Err(OutOfRange) => "at ${seconds.to_str()} seconds"
+		}
 
 	## A page that says one thing: `title`, and `text` beneath it (no such
 	## conversation, a refused message, a failure).

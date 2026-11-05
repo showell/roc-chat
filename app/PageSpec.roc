@@ -194,8 +194,11 @@ expect {
 		PeoplePages.channels({ viewer: steve, channels: [] }),
 		PeoplePages.invites({
 			viewer: steve,
+			users: Sample.directory.users(),
 			invited: [],
 			shown: NoLink,
+			problem: NoProblem,
+			now: 0,
 		}),
 	].all(
 		|page| {
@@ -209,6 +212,18 @@ expect {
 			Page.github_sign_up({ name: NoName, problem: NoProblem }),
 		].all(|page| !Str.from_utf8_lossy(page.to_utf8()).contains(link))
 }
+# The invites page of someone with no one to invite again: the words and the
+# form alone.
+expect
+	PeoplePages.invites({
+		viewer: SignedIn.dangerously_assume(Sample.user("Steve")),
+		users: Sample.directory.users(),
+		invited: [],
+		shown: NoLink,
+		problem: NoProblem,
+		now: 0,
+	}).to_utf8()
+		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>Invite someone by name. You get a link to send them, and with it they join the chat.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form></div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
 	Page.refusal("it <is> not UTF-8").to_utf8()

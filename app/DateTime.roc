@@ -101,6 +101,14 @@ DateTime :: Str.{
 	to_str : DateTime -> Str
 	to_str = |DateTime.(text)| text
 
+	## The time's date alone, as `2026-11-02`.
+	date_to_str : DateTime -> Str
+	date_to_str = |DateTime.(text)|
+		match text.split_on("T") {
+			[date, ..] => date
+			[] => crash "DateTime.date_to_str: splitting text gives at least one part"
+		}
+
 	## Whether `time` is before, at or after `other`. Every time is
 	## written in the one form, its fields from the year down to the
 	## second, each a fixed width of digits, so the first byte that differs
@@ -184,6 +192,7 @@ ok : Str -> Try(Str, [WrongShape, OutOfRange])
 ok = |text| DateTime.from_str(text).map_ok(DateTime.to_str)
 
 expect ok("2026-11-02T19:11:32Z") == Ok("2026-11-02T19:11:32Z")
+expect DateTime.from_str("2026-11-02T19:11:32Z").map_ok(DateTime.date_to_str) == Ok("2026-11-02")
 expect DateTime.from_str("") == Err(WrongShape)
 expect DateTime.from_str("2026-11-02T19:11:32") == Err(WrongShape)
 expect DateTime.from_str("2026-11-02T19:11:32z") == Err(WrongShape)

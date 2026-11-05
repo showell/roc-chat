@@ -1,7 +1,8 @@
 ## This module answers the human invites' routes (`Route` lists them),
 ## moving data between the web interface and the file system, as
 ## `AgentsRoute` does for agents. What each route may do is
-## `HumanInvites`' to decide; this module reads, writes and answers.
+## `HumanInvites`' to decide; this module reads, writes and answers. An invite
+## refused by one of those rules is the invites page again, saying why.
 ##
 ## Inviting someone writes, in order: the counter of ids, the new human's
 ## `Welcome`, their account (`inviter`, then `name`), the default channel's
@@ -53,13 +54,26 @@ import Welcome
 HumanInvitesRoute :: [].{
 
 	## A GET of `/invites`: a form that invites someone, and each human the
-	## acting human may invite again, with their invites.
-	show! : { acting : SignedIn, directory : Directory } => Http.Response
-	show! = |{ acting, directory }|
+	## acting human may invite again, with their invites as they stand at
+	## `now`.
+	show! : {
+		acting : SignedIn,
+		directory : Directory,
+		now : I64,
+	} => Http.Response
+	show! = |
+		{
+			acting,
+			directory,
+			now,
+		},
+	|
 		match load_invites_page!({
 			acting,
 			directory,
 			shown: NoLink,
+			problem: NoProblem,
+			now,
 		}) {
 			Ok(html) => HttpAnswer.page(200, html)
 			Err(why) => refusal_page(why)
@@ -78,7 +92,12 @@ HumanInvitesRoute :: [].{
 	invite! = |request|
 		match invite_human!(request) {
 			Ok(html) => HttpAnswer.never_stored(HttpAnswer.page(200, html))
-			Err(why) => refusal_page(why)
+			Err(why) => answer_refused_invite!({
+				acting: request.acting,
+				directory: request.directory,
+				now: request.now,
+				why,
+			})
 		}
 
 	## A POST of `/invites/<id>/again`: a new invite for the human `human`,
@@ -94,7 +113,12 @@ HumanInvitesRoute :: [].{
 	invite_again! = |request|
 		match invite_human_again!(request) {
 			Ok(html) => HttpAnswer.never_stored(HttpAnswer.page(200, html))
-			Err(why) => refusal_page(why)
+			Err(why) => answer_refused_invite!({
+				acting: request.acting,
+				directory: request.directory,
+				now: request.now,
+				why,
+			})
 		}
 
 	## A GET of `/join`: the join page, the same for every invite. A human who
@@ -180,18 +204,57 @@ refusal_page = |why| {
 	HttpAnswer.page(notice.status, Page.notice({ title: "Refused", text: notice.said }))
 }
 
-## The invites page for `acting`, with `shown`'s link if an invite was just
-## made: every human `acting` may invite again, each with their invites.
+## The answer to an invite that failed for `why`: the invites page again,
+## saying why, with the refusal's status; or the refusal alone, for a failure
+## no rule decided, or for an asker that page isn't for.
+answer_refused_invite! : {
+	acting : SignedIn,
+	directory : Directory,
+	now : I64,
+	why : Failure,
+} => Http.Response
+answer_refused_invite! = |
+	{
+		acting,
+		directory,
+		now,
+		why,
+	},
+|
+	match why {
+		Refused(refusal) => {
+			notice = HumanInvites.refusal_notice(refusal)
+			match load_invites_page!({
+				acting,
+				directory,
+				shown: NoLink,
+				problem: Problem(notice.said),
+				now,
+			}) {
+				Ok(html) => HttpAnswer.page(notice.status, html)
+				Err(_) => refusal_page(why)
+			}
+		}
+		BadInviter(_) | ClockOutOfRange | FileSystem(_) => refusal_page(why)
+	}
+
+## The invites page for `acting` at `now`, saying `problem`, with `shown`'s link
+## if an invite was just made: every human `acting` may invite again, each with
+## their invites.
 load_invites_page! : {
 	acting : SignedIn,
 	directory : Directory,
 	shown : [NoLink, Link({ human : Users.User, link : Str })],
+	problem : [NoProblem, Problem(Str)],
+	now : I64,
 } => Try(TrustedHtml, _)
 load_invites_page! = |
 	{
 		acting,
 		directory,
 		shown,
+		problem,
+		now,
 	},
 | {
 	_ = acting.human_in_session() ? |why| Refused(why)
@@ -206,8 +269,11 @@ load_invites_page! = |
 	Ok(
 		PeoplePages.invites({
 			viewer: acting,
+			users: directory.users(),
 			invited: $invited,
 			shown,
+			problem,
+			now,
 		}),
 	)
 }
@@ -259,6 +325,8 @@ invite_human! = |
 		acting,
 		directory: made.directory,
 		shown: Link({ human: made.human, link: join_link({ origin, code }) }),
+		problem: NoProblem,
+		now,
 	})
 }
 
@@ -298,6 +366,8 @@ invite_human_again! = |
 		acting,
 		directory,
 		shown: Link({ human: again.human.user(), link: join_link({ origin, code }) }),
+		problem: NoProblem,
+		now,
 	})
 }
 
