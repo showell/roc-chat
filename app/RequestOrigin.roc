@@ -267,19 +267,19 @@ expect
 # A GET's Origin, both sides: this server's passes, another's or two are
 # refused, an EventSource's from another page included.
 ## A GET of localhost:9611 with `more` headers.
-get_verdict : List((Str, Str)) -> Try({}, _)
-get_verdict = |more| verdict("GET", [("Host", "localhost:9611")].concat(more))
+verdict_of_get : List((Str, Str)) -> Try({}, _)
+verdict_of_get = |more| verdict("GET", [("Host", "localhost:9611")].concat(more))
 
-expect get_verdict([]) == Ok({})
-expect get_verdict([("Origin", "http://localhost:9611")]) == Ok({})
-expect get_verdict([("Origin", "http://127.0.0.1:9611"), ("Sec-Fetch-Mode", "cors")]) == Ok({})
-expect get_verdict([("Origin", "http://evil.example")]) == Err(ForeignOrigin)
-expect get_verdict([("Origin", "http://localhost:3000")]) == Err(ForeignOrigin)
+expect verdict_of_get([]) == Ok({})
+expect verdict_of_get([("Origin", "http://localhost:9611")]) == Ok({})
+expect verdict_of_get([("Origin", "http://127.0.0.1:9611"), ("Sec-Fetch-Mode", "cors")]) == Ok({})
+expect verdict_of_get([("Origin", "http://evil.example")]) == Err(ForeignOrigin)
+expect verdict_of_get([("Origin", "http://localhost:3000")]) == Err(ForeignOrigin)
 expect
-	get_verdict([("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")])
+	verdict_of_get([("Origin", "http://localhost:9611"), ("Origin", "http://localhost:9611")])
 		== Err(ForeignOrigin)
 expect
-	get_verdict([
+	verdict_of_get([
 		("Origin", "http://evil.example"),
 		("Sec-Fetch-Site", "cross-site"),
 		("Sec-Fetch-Mode", "cors"),
@@ -302,7 +302,7 @@ expect
 			("Sec-Fetch-Mode", "navigate"),
 		],
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")],
-	].all(|more| get_verdict(more) == Err(CrossSiteFetch))
+	].all(|more| verdict_of_get(more) == Err(CrossSiteFetch))
 expect
 	[
 		[("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")],
@@ -311,7 +311,7 @@ expect
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Mode", "no-cors")],
 		[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Mode", "navigate")],
 		[("Sec-Fetch-Mode", "cors")],
-	].all(|more| get_verdict(more) == Ok({}))
+	].all(|more| verdict_of_get(more) == Ok({}))
 # The public origin, both sides: configured, its name is a Host of this
 # server's, its origin the one Origin for it, and the local ones still
 # serve the tunnel; not configured, its name is a stranger's.
