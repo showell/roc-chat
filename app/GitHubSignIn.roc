@@ -8,7 +8,8 @@
 ##                          `StateChecked`    this browser's, and in time
 ##     (the host asks)      `IdentityKnown`   GitHub's id and login
 ##                          `Admission`       the human that id belongs to, or
-##                          `NewHuman`        an id no human holds
+##                          `NewHuman`        an id no human holds, or
+##                          `Linked`          the human who is linking it
 ##     POST /login/github/name
 ##                          `SignUpResumed`   that id, back from its browser
 ##                          `Admission`       the account made for it
@@ -20,6 +21,12 @@
 ## two humans hold is refused, as no one can say whose sign-in it is. The
 ## login is only what GitHub calls the account now, so a rename signs in as
 ## before, and a login someone else took signs in no one.
+##
+## A human signed in by their own session may link GitHub to their account
+## once. The trip is the same, but its state names them (`GitHubState.Errand`),
+## so `IdentityKnown.resolve` answers `Linking` and makes no account. The
+## session that comes back must be that human's, they must have no `github-id`
+## yet, and nobody may hold the id.
 ##
 ## Between the two requests the id travels as a `GitHubSignUp`, signed by the
 ## server. It isn't spent: making the account binds the id, so
@@ -40,6 +47,7 @@ import GitHubSignUp
 import GitHubState
 import Html
 import Name
+import SignedIn
 import UserId
 import Users
 
@@ -84,6 +92,15 @@ GitHubSignIn :: [].{
 
 		## The sign-up's id has an account now, which signs in with GitHub.
 		AccountExists,
+
+		## The session that came back is not the human the link's state names.
+		LinkNotYours,
+
+		## The human linking has a `github-id` already.
+		AlreadyLinked,
+
+		## Someone holds the id the human tried to link.
+		GitHubIdTaken,
 	]
 
 	## What GitHub sent the browser back with: a code, none, as when its
@@ -131,15 +148,24 @@ GitHubSignIn :: [].{
 			match came.state.check(asked) {
 				Mismatched => Err(StateMismatched)
 				Expired => Err(StateExpired)
-				Valid => {
-					next = came.state.next()
-					Ok(GitHubSignIn.StateChecked.({ code: came.code, next }))
-				}
+				Valid => Ok(
+					GitHubSignIn.StateChecked.(
+						{
+							code: came.code,
+							next: came.state.next(),
+							errand: came.state.errand(),
+						},
+					),
+				)
 			}
 	}
 
 	## The state is good, and the code may be exchanged now.
-	StateChecked :: { code : GitHubCode, next : Html.SitePath }.{
+	StateChecked :: {
+		code : GitHubCode,
+		next : Html.SitePath,
+		errand : GitHubState.Errand,
+	}.{
 
 		## The code's bytes, for the host to exchange at GitHub.
 		code_bytes : GitHubSignIn.StateChecked -> List(U8)
@@ -178,6 +204,7 @@ GitHubSignIn :: [].{
 									github,
 									login: known,
 									next: checked.next,
+									errand: checked.errand,
 								},
 							),
 						)
@@ -191,42 +218,114 @@ GitHubSignIn :: [].{
 		github : GitHubId,
 		login : GitHubLogin,
 		next : Html.SitePath,
+		errand : GitHubState.Errand,
 	}.{
 
-		## Whose sign-in this is, among `users`: `Known`, the admission of the
-		## human whose `github-id` file holds this id, or `Unknown`, a new
-		## human, when none does. `files` is each human's file as it was read.
-		## A file that holds no id, or an agent's, admits no one and fails
-		## only itself.
+		## What this answer of GitHub's means, among `users`, for `viewer`, who
+		## came back with it. `files` is every user's `github-id` file as it
+		## was read.
+		##
+		## For a sign-in: `Known`, the admission of the human whose file holds
+		## this id, or `Unknown`, a new human, when none does. A file that
+		## holds no id, or an agent's, admits no one and fails only itself.
+		##
+		## For a link: `Linking`, the human it binds the id to, or why not
+		## (`linked_to`).
 		resolve : GitHubSignIn.IdentityKnown,
 		{
 			files : List({ user : UserId, file : List(U8) }),
 			users : Users,
+			viewer : SignedIn.Actor,
 		} -> Try(
-			[Known(GitHubSignIn.Admission), Unknown(GitHubSignIn.NewHuman)],
-			[DuplicateAccount],
+			[
+				Known(GitHubSignIn.Admission),
+				Unknown(GitHubSignIn.NewHuman),
+				Linking(GitHubSignIn.Linked),
+			],
+			[
+				DuplicateAccount,
+				LinkNotYours,
+				AlreadyLinked,
+				GitHubIdTaken,
+			],
 		)
-		resolve = |GitHubSignIn.IdentityKnown.(known), { files, users }|
-			match humans_holding({
-				github: known.github,
+		resolve = |
+			GitHubSignIn.IdentityKnown.(known),
+			{
 				files,
 				users,
-			}) {
-				[] => Ok(
-					Unknown(
-						GitHubSignIn.NewHuman.(
-							{
-								github: known.github,
-								login: known.login,
-								next: known.next,
-							},
-						),
-					),
-				)
-				[human] => Ok(Known(GitHubSignIn.Admission.({ human, next: known.next })))
-				_ => Err(DuplicateAccount)
+				viewer,
+			},
+		|
+			match known.errand {
+				Link(id) =>
+					linked_to({
+						id,
+						github: known.github,
+						next: known.next,
+						files,
+						viewer,
+					}).map_ok(|linked| Linking(linked))
+				SignIn =>
+					match humans_holding({
+						github: known.github,
+						files,
+						users,
+					}) {
+						[] => Ok(
+							Unknown(
+								GitHubSignIn.NewHuman.(
+									{
+										github: known.github,
+										login: known.login,
+										next: known.next,
+									},
+								),
+							),
+						)
+						[human] => Ok(Known(GitHubSignIn.Admission.({ human, next: known.next })))
+						_ => Err(DuplicateAccount)
+					}
 			}
 	}
+
+	## GitHub has said who this is, and that id goes to `human`.
+	Linked :: {
+		human : Users.Human,
+		github : GitHubId,
+		next : Html.SitePath,
+	}.{
+
+		## The human it binds the id to.
+		human : GitHubSignIn.Linked -> Users.Human
+		human = |GitHubSignIn.Linked.(linked)| linked.human
+
+		## The GitHub account it binds.
+		github : GitHubSignIn.Linked -> GitHubId
+		github = |GitHubSignIn.Linked.(linked)| linked.github
+
+		## The admission that starts their session once the id is written.
+		admission : GitHubSignIn.Linked -> GitHubSignIn.Admission
+		admission = |GitHubSignIn.Linked.(linked)|
+			GitHubSignIn.Admission.({ human: linked.human, next: linked.next })
+	}
+
+	## The human `viewer` starts linking GitHub for: a human, by their own
+	## session; unless no one is signed in (`NotSignedIn`), or the request came
+	## with an API key (`ByApiKey`), or from an agent (`Agent`).
+	human_to_link : SignedIn.Actor -> Try(
+		Users.Human,
+		[
+			NotSignedIn,
+			ByApiKey,
+			Agent(UserId),
+		],
+	)
+	human_to_link = |viewer|
+		match viewer {
+			Anonymous => Err(NotSignedIn)
+			SignedIn(acting) => acting.human_in_session()
+		}
 
 	## GitHub has said who this is, and no human holds the id.
 	NewHuman :: {
@@ -355,6 +454,52 @@ GitHubSignIn :: [].{
 	}
 }
 
+## The link of `github` to the human `id`: `viewer` must be that human, by
+## their own session (`LinkNotYours`), with no `github-id` file of their own
+## (`AlreadyLinked`), and no user's file may hold the id (`GitHubIdTaken`),
+## an agent's included, as nothing about a stray file says who it is for.
+linked_to : {
+	id : UserId,
+	github : GitHubId,
+	next : Html.SitePath,
+	files : List({ user : UserId, file : List(U8) }),
+	viewer : SignedIn.Actor,
+} -> Try(
+	GitHubSignIn.Linked,
+	[
+		LinkNotYours,
+		AlreadyLinked,
+		GitHubIdTaken,
+	],
+)
+linked_to = |
+	{
+		id,
+		github,
+		next,
+		files,
+		viewer,
+	},
+|
+	match GitHubSignIn.human_to_link(viewer) {
+		Ok(human) if human.id() == id =>
+			if (files.any(|held| held.user == id))
+				Err(AlreadyLinked)
+			else if (files.any(|held| GitHubId.from_file(held.file) == Ok(github)))
+				Err(GitHubIdTaken)
+			else
+				Ok(
+					GitHubSignIn.Linked.(
+						{
+							human,
+							github,
+							next,
+						},
+					),
+				)
+		_ => Err(LinkNotYours)
+	}
+
 ## The humans among `users` whose file in `files` holds the id `github`.
 humans_holding : {
 	github : GitHubId,
@@ -386,6 +531,7 @@ issued = GitHubState.issue({
 	nonce: nonce_held,
 	now: 1000,
 	next: agents_path,
+	errand: SignIn,
 })
 
 good_code : GitHubCode
@@ -423,8 +569,12 @@ bound_files = [
 ]
 
 ## What a return comes to, as a test reads it: the human admitted and where
-## they go, or the login of a new human.
-Landing : [Admitted(Str, Str), NewHumanNamed(Str)]
+## they go, the login of a new human, or the human linked and the id.
+Landing : [
+	Admitted(Str, Str),
+	NewHumanNamed(Str),
+	LinkedTo(Str, Str),
+]
 
 ## Every step from a return, at `now`, with this `cookie`, GitHub's `heard`
 ## and these files, as a test reads it: where it lands, or the refusal.
@@ -439,6 +589,7 @@ round_trip : {
 		login : List(U8),
 	},
 	files : List({ user : UserId, file : List(U8) }),
+	viewer : SignedIn.Actor,
 } -> Try(Landing, _)
 round_trip = |
 	{
@@ -448,15 +599,24 @@ round_trip = |
 		now,
 		heard,
 		files,
+		viewer,
 	},
 | {
 	came = GitHubSignIn.CameBack.came_back({ state, answer })?
 	checked = came.check({ cookie, now })?
 	known = checked.identify(heard)?
-	match known.resolve({ files, users: tests_users })? {
+	match known.resolve({
+		files,
+		users: tests_users,
+		viewer,
+	})? {
 		Known(admission) =>
 			Ok(Admitted(admission.human().user().name().to_str(), admission.next().to_str()))
 		Unknown(GitHubSignIn.NewHuman.(new_human)) => Ok(NewHumanNamed(new_human.login.to_str()))
+		Linking(linked) => {
+			name = linked.admission().human().user().name().to_str()
+			Ok(LinkedTo(name, linked.github().to_str()))
+		}
 	}
 }
 
@@ -481,6 +641,7 @@ good_return = {
 	now: 1300,
 	heard: github_answer(100, "showell"),
 	files: bound_files,
+	viewer: Anonymous,
 }
 
 # A good round trip admits the human holding the id, and goes to `next`,
@@ -554,6 +715,75 @@ expect
 		== Err(GitHubUnreachable)
 expect round_trip({ ..good_return, heard: github_answer(0, "showell") }) == Err(BadIdentity)
 expect round_trip({ ..good_return, heard: github_answer(100, "not a login") }) == Err(BadIdentity)
+
+## The user `text` names, signed in by a session.
+viewer_of : Str -> SignedIn.Actor
+viewer_of = |text| {
+	user = tests_users.user(id_of(text)) ?? crash "GitHubSignIn's tests: a user"
+	SignedIn(SignedIn.dangerously_assume(user))
+}
+
+## A return that links the id 300 to Apoorva, who holds none, signed in.
+good_link = {
+	..good_return,
+	state: Signed(
+		GitHubState.issue({
+			nonce: nonce_held,
+			now: 1000,
+			next: agents_path,
+			errand: Link(id_of("2")),
+		}),
+	),
+	heard: github_answer(300, "apoorva-gh"),
+	files: [{ user: UserId.steve, file: "100".to_utf8() }],
+	viewer: viewer_of("2"),
+}
+
+# A link binds the id to the human the state names, and makes no account.
+expect round_trip(good_link) == Ok(LinkedTo("Apoorva", "300"))
+# Only that human's session may finish it.
+expect
+	[
+		Anonymous,
+		viewer_of("1"),
+		viewer_of("3"),
+	].all(|viewer| round_trip({ ..good_link, viewer }) == Err(LinkNotYours))
+# A human with a `github-id` already, whatever it holds, the same id included.
+expect
+	[
+		"100",
+		"300",
+		"damaged",
+	].all(
+		|held|
+			round_trip({ ..good_link, files: [{ user: id_of("2"), file: held.to_utf8() }] })
+				== Err(AlreadyLinked),
+	)
+# An id anyone else holds, an agent included; a damaged file holds no id.
+expect round_trip({ ..good_link, heard: github_answer(100, "someone") }) == Err(GitHubIdTaken)
+expect
+	round_trip({ ..good_link, files: [{ user: id_of("3"), file: "300".to_utf8() }] })
+		== Err(GitHubIdTaken)
+expect
+	round_trip({ ..good_link, files: [{ user: UserId.steve, file: "x".to_utf8() }] })
+		== Ok(LinkedTo("Apoorva", "300"))
+# The same answer without the link's errand is a sign-in: the state decides.
+expect
+	round_trip({
+		..good_return,
+		heard: github_answer(300, "stranger"),
+		viewer: viewer_of("2"),
+	})
+		== Ok(NewHumanNamed("stranger"))
+# A link never skips the state's own checks.
+expect round_trip({ ..good_link, state: Unsigned }) == Err(StateForged)
+expect round_trip({ ..good_link, cookie: Unsent }) == Err(StateMismatched)
+expect round_trip({ ..good_link, now: 1600 }) == Err(StateExpired)
+
+# Who may start a link: a human by session; no one else.
+expect GitHubSignIn.human_to_link(Anonymous).map_ok(|_| {}) == Err(NotSignedIn)
+expect GitHubSignIn.human_to_link(viewer_of("2")).map_ok(|human| human.id()) == Ok(id_of("2"))
+expect GitHubSignIn.human_to_link(viewer_of("3")).map_ok(|_| {}) == Err(Agent(id_of("3")))
 
 ## The new human GitHub calls `login`, of the id 300.
 new_human_called : Str -> GitHubSignIn.NewHuman

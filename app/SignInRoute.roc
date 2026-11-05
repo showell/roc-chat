@@ -23,7 +23,8 @@
 ##   (`start_session_by_invite!`, which takes only what
 ##   `HumanInvite.redeem` makes).
 ## - A GitHub sign-in (`GitHubRoute`) does too (`start_session_by_github!`,
-##   which takes only what `GitHubSignIn` admits).
+##   which takes only what `GitHubSignIn` admits), and so does linking GitHub
+##   to an account (`start_session_by_github_link!`).
 ##
 ## `sign_in_by_session!` is the check a request with a session cookie, and
 ## no `Authorization` header, passes before any route (main's
@@ -183,7 +184,7 @@ SignInRoute :: [].{
 
 	## The answer to a human invite redeemed at `now`: a session for the
 	## human its admission admits, signed over `password_hash`, the hash the
-	## redemption wrote to their password file, and a 303 to `default_next`
+	## redemption wrote to their password file, and a 303 to `default_next`,
 	## with its cookie. Every session signed over the hash the file held
 	## before stops admitting them (`sign_in_by_session!`). A 500 when their
 	## GitHub files can't be read. Never stored.
@@ -201,7 +202,7 @@ SignInRoute :: [].{
 					material,
 					now,
 				})
-				onward = HttpAnswer.see_other(default_next.to_str())
+				onward = HttpAnswer.see_other(SignInRoute.default_next.to_str())
 				HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
 			}
 		}
@@ -239,6 +240,21 @@ SignInRoute :: [].{
 		HttpAnswer.never_stored(answer)
 	}
 
+	## The answer to a GitHub account linked at `now`: the id bound to the
+	## human, and a 303 to where they go, with a new session's cookie. A
+	## session is signed over `github-session-secret` once `github-id` is
+	## there, so these two files end every session of this human, the one that
+	## asked to link included, and only the new one here admits them. The
+	## secret is made anew even if an old one lies there, so a session from an
+	## earlier binding can't come back. A 500 when a file can't be written.
+	## Never stored.
+	start_session_by_github_link! : GitHubSignIn.Linked, I64 => Http.Response
+	start_session_by_github_link! = |linked, now|
+		match write_github_link!(linked) {
+			Ok({}) => SignInRoute.start_session_by_github!(linked.admission(), now)
+			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
+		}
+
 	## A POST of `/logout`: the browser forgets the session's cookie, and goes
 	## to the sign-in page. Never stored.
 	sign_out : Http.Response
@@ -248,6 +264,11 @@ SignInRoute :: [].{
 			set_cookie_header(Session.clear_cookie_text),
 		),
 	)
+
+	## Where to go once signed in when nothing says.
+	default_next : Html.SitePath
+	default_next =
+		Html.SitePath.from_str("/agents") ?? crash "SignInRoute.default_next: /agents is a site path"
 
 	## A 303 to the sign-in page, which goes on to `next` once signed in: a
 	## page asked for by no one signed in.
@@ -259,7 +280,7 @@ SignInRoute :: [].{
 	next_from_query : List(U8) -> Try(Html.SitePath, [BadNext])
 	next_from_query = |query|
 		if (query.is_empty())
-			Ok(default_next)
+			Ok(SignInRoute.default_next)
 		else if query.starts_with(next_prefix) {
 			unchecked =
 				UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
@@ -376,6 +397,18 @@ make_github_session_secret! = |id|
 		}
 	}
 
+## The files that tie `linked`'s human to GitHub: a new `github-session-secret`,
+## which says nothing until `github-id` is there, and then the `github-id`, so
+## a link cut short between the two binds no one.
+write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileSystem.Fault)])
+write_github_link! = |linked| {
+	id = linked.human().id()
+	word = Hex.to_hex(Host.fill_with_random_bytes!(Secret.length)).to_utf8()
+	FileSystem.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
+	FileSystem.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
+	Ok({})
+}
+
 ## The `Set-Cookie` header of a session for `human`, signed at `now` by the
 ## host's HMAC under the server's secret, over `material`.
 sign_session_cookie! : {
@@ -409,11 +442,6 @@ sign_session_cookie! = |
 set_cookie_header : Str -> Http.Header
 set_cookie_header = |text| { name: "set-cookie".to_utf8(), value: text.to_utf8() }
 
-## Where to go once signed in when nothing says.
-default_next : Html.SitePath
-default_next =
-	Html.SitePath.from_str("/agents") ?? crash "SignInRoute.default_next: /agents is a site path"
-
 ## The sign-in's words when a name and a password don't match.
 no_match_words : Str
 no_match_words = "The name and the password don't match a human's."
@@ -438,12 +466,12 @@ no_material_words = "This account has nothing to sign a session over: its github
 next_prefix : List(U8)
 next_prefix = "next=".to_utf8()
 
-## The `next` a sign-in form `body` holds: none, `default_next`; or a path
-## on this site; else `BadNext`.
+## The `next` a sign-in form `body` holds: none, `SignInRoute.default_next`;
+## or a path on this site; else `BadNext`.
 next_from_form : List(U8) -> Try(Html.SitePath, [BadNext])
 next_from_form = |body|
 	match UrlEncodedForm.field({ body, name: "next" }) {
-		Err(MissingField) => Ok(default_next)
+		Err(MissingField) => Ok(SignInRoute.default_next)
 		Err(_) => Err(BadNext)
 		Ok(unchecked) => unchecked.site_path().map_err(|NotASitePath| BadNext)
 	}

@@ -406,6 +406,7 @@ upload_asked = |choice|
 		Open(StartGitHubSignIn) => NoUpload
 		Open(FinishGitHubSignIn) => NoUpload
 		Open(FinishGitHubSignUp) => NoUpload
+		Open(StartGitHubLink) => NoUpload
 		Open(WrongMethodToGitHub(_)) => NoUpload
 		Open(RedeemInvite) => NoUpload
 		NotFound => NoUpload
@@ -750,6 +751,12 @@ answer_open_route! = |
 				directory,
 				body: request.body,
 				headers: request.headers,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		StartGitHubLink =>
+			GitHubRoute.serve_link_start!({
+				viewer: actor,
+				origin: own_origin_of(request),
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
 		WrongMethodToGitHub(allowed) => GitHubRoute.refuse_method!(allowed)

@@ -518,6 +518,36 @@ FileSystem :: [].{
 	)
 	create_github_session_secret! = |id, bytes| create_fact!(github_session_secret_path(id), bytes)
 
+	## The user `id`'s `github-session-secret` file written whole over any
+	## before it, atomically.
+	replace_github_session_secret! : UserId,
+	List(U8) => Try(
+		{},
+		[
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	replace_github_session_secret! = |id, bytes| replace_fact!(github_session_secret_path(id), bytes)
+
+	## The human `id`'s `github-id` file made holding `github`, once;
+	## `AlreadyExists`, nothing changed, when it is there.
+	create_github_id! : UserId,
+	GitHubId => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_github_id! = |id, github|
+		create_fact!("${account_folder_path(AccountFolder.of(id))}/github-id", github.to_str().to_utf8())
+
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_user_counter! = |users| {

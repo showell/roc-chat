@@ -241,7 +241,17 @@
 //! 48zg. the same submit twice, and a second tab's sign-up: one account, and
 //!      no session from the second;
 //! 48zh. no chat file holds the client secret or a token, and no refusal says
-//!      them.
+//!      them;
+//! 48zi. a human with a password links GitHub from /agents: their page offers
+//!      it, the trip binds `github-id` and `github-session-secret`, no account
+//!      is made, their old session ends and the answer's own admits them, the
+//!      offer is gone, and that GitHub then signs in to the same account;
+//! 48zj. linking an id someone holds: 409, nothing bound, the session unbroken;
+//!      linking twice, at the start or from a second tab: 409, the first
+//!      binding kept;
+//! 48zk. a forged state, a state naming another human, and a session that has
+//!      gone: 403 each, nothing bound; a stale session secret is replaced;
+//! 48zl. a key: 403; no one: 401; a GET: 405; a cross-site post: 403.
 //!
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
@@ -641,6 +651,7 @@ pub fn main(init: std.process.Init) !void {
     const cc_bearer = try memberSteps(a, io, port, data, t);
     try inviteSteps(a, io, port, data, t, cc_bearer);
     try gitHubSteps(a, io, port, data, t, .{ .fake = fake, .cc_bearer = cc_bearer });
+    try linkSteps(a, io, port, data, t, .{ .fake = fake, .cc_bearer = cc_bearer });
 
     // 49.
     const signed_out = try post(a, io, port, .{ .path = "/logout", .form = "" });
@@ -1285,15 +1296,23 @@ fn wayBack(a: std.mem.Allocator, state: []const u8) ![]const u8 {
     return std.fmt.allocPrint(a, "/login/github?code=user-id-7&state={s}", .{state});
 }
 
-/// The state with the nonce and the path of `state`, issued at `second`,
-/// signed with `secret`, as app/GitHubState.roc spells one: a second opinion
-/// on it, from std's HMAC and base64url.
+/// The state with the nonce, the path and the errand of `state`, issued at
+/// `second`, signed with `secret`.
 fn stateSignedAt(a: std.mem.Allocator, secret: []const u8, state: []const u8, second: i64) ![]const u8 {
+    return stateSigned(a, secret, state, .{ .second = second });
+}
+
+/// The state with the nonce and the path of `state`, signed with `secret`, as
+/// app/GitHubState.roc spells one: a second opinion on it, from std's HMAC and
+/// base64url. Issued at `second` when given, and for `errand` when given.
+fn stateSigned(a: std.mem.Allocator, secret: []const u8, state: []const u8, change: struct { second: ?i64 = null, errand: ?[]const u8 = null }) ![]const u8 {
     var parts = std.mem.splitScalar(u8, state, '.');
     const nonce = parts.next() orelse return error.NotAState;
-    _ = parts.next();
+    const issued = parts.next() orelse return error.NotAState;
     const next = parts.next() orelse return error.NotAState;
-    const payload = try std.fmt.allocPrint(a, "{s}.{d}.{s}", .{ nonce, second, next });
+    const errand = parts.next() orelse return error.NotAState;
+    const second = if (change.second) |at| try std.fmt.allocPrint(a, "{d}", .{at}) else issued;
+    const payload = try std.fmt.allocPrint(a, "{s}.{s}.{s}.{s}", .{ nonce, second, next, change.errand orelse errand });
     var mac: [32]u8 = undefined;
     std.crypto.auth.hmac.sha2.HmacSha256.create(&mac, try std.fmt.allocPrint(a, "github-state\n{s}", .{payload}), secret);
     const b64 = std.base64.url_safe_no_pad.Encoder;
@@ -1564,6 +1583,141 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     }
     try t.check("no chat file holds the client secret or a token, and no refusal says them", files_read > 0 and secrets_on_disk == 0 and
         !has(unknown.body, fake_github.client_secret) and !has(malformed.body, "tok-id-") and !has(refused.head, fake_github.client_secret));
+}
+
+/// A link begun by the browser with the `Cookie` line `session`: the state's
+/// `Cookie` line it holds now, GitHub's page on the fake, and the state.
+fn startLink(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, session: []const u8) !GitHubStart {
+    const started = try postAs(a, io, port, session, "/login/github/link", "");
+    const location = started.header("location") orelse return error.NoLocation;
+    if (!std.mem.startsWith(u8, location, fake.base())) return error.NotTheFake;
+    const at = std.mem.indexOf(u8, location, "&state=") orelse return error.NoState;
+    return .{ .cookie = try cookieLine(a, started), .authorize = location[fake.base().len..], .state = location[at + "&state=".len ..] };
+}
+
+/// The `Cookie` line of a browser holding both `session` and `state`.
+fn bothCookies(a: std.mem.Allocator, session: []const u8, state: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(a, "{s}; {s}", .{ std.mem.trimEnd(u8, session, "\r\n"), state["cookie: ".len..] });
+}
+
+/// A link's way back through the fake, GitHub's code `code`, for a browser
+/// holding `session` and the state of `begun`.
+fn finishLink(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, session: []const u8, begun: GitHubStart, code: []const u8) !Response {
+    const back = try atGitHub(a, io, port, fake, .{ .authorize = begun.authorize, .code = code });
+    return backFromGitHub(a, io, port, try bothCookies(a, session, begun.cookie), back);
+}
+
+/// A whole link through the fake, for the browser with the `Cookie` line
+/// `session`.
+fn linkByGitHub(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, session: []const u8, code: []const u8) !Response {
+    return finishLink(a, io, port, fake, session, try startLink(a, io, port, fake, session), code);
+}
+
+/// The session of a human `inviter` invites as `name`, who joins with a
+/// password.
+fn joinedHuman(a: std.mem.Allocator, io: Io, port: u16, inviter: []const u8, name: []const u8) ![]const u8 {
+    const invited = try postAs(a, io, port, inviter, "/invites", try std.fmt.allocPrint(a, "name={s}", .{name}));
+    const link = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const hash = std.mem.indexOfScalar(u8, link, '#') orelse return error.NoCode;
+    const joined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name={s}&password=their+own", .{ link[hash + 1 ..], name }));
+    return cookieLine(a, joined);
+}
+
+/// Whether `answer` is a link refused with `status`, saying `words`: no
+/// session, the state forgotten.
+fn linkRefused(answer: Response, status: u16, words: []const u8) bool {
+    return answer.status == status and has(answer.body, words) and isRefusedAtTheDoor(answer);
+}
+
+/// Steps 48zi to 48zl.
+fn linkSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, held: struct { fake: *fake_github.Fake, cc_bearer: []const u8 }) !void {
+    const fake = held.fake;
+    const offer = "<form method=\"post\" action=\"/login/github/link\"><button>Link GitHub</button></form>";
+
+    // 48zi.
+    const by_password = try anonymousPost(a, io, port, "/login", "name=Debbie&password=a+new+one");
+    const debbie = try cookieLine(a, by_password);
+    const her_page = try getAs(a, io, port, debbie, "/agents");
+    const steve_page = try get(a, io, port, "/agents");
+    try t.check("/agents offers a human with no github-id to link GitHub, and not Steve, who has one", her_page.status == 200 and
+        has(her_page.body, offer) and steve_page.status == 200 and !has(steve_page.body, offer));
+    const counter = try readFile(a, io, data, "auth/next-id.txt");
+    const begun = try startLink(a, io, port, fake, debbie);
+    const linked = try finishLink(a, io, port, fake, debbie, begun, "user-id-30");
+    const linked_line = try cookieLine(a, linked);
+    const old_session = try getAs(a, io, port, debbie, "/invites");
+    const new_session = try getAs(a, io, port, linked_line, "/agents");
+    try t.check("Debbie links GitHub: the state names her, a 303 to /agents, a session, the state forgotten, never stored; github-id and a 64-digit github-session-secret written, no account made; her old session ends, the new one reads her page, with no offer", has(begun.state, ".link-3.") and
+        linked.status == 303 and std.mem.eql(u8, linked.header("location") orelse "", "/agents") and
+        std.mem.startsWith(u8, linked.header("set-cookie") orelse "", "__Host-gopher_auth=") and
+        has(linked.head, "set-cookie: __Host-gopher_github_state=; Path=/; Max-Age=0") and
+        std.mem.eql(u8, linked.header("cache-control") orelse "", "no-store") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/3/github-id"), "30") and
+        (try readFile(a, io, data, "auth/3/github-session-secret")).len == 64 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), counter) and
+        old_session.status == 303 and new_session.status == 200 and has(new_session.body, "Debbie") and !has(new_session.body, offer));
+    const by_github = try signInByGitHub(a, io, port, fake, "user-id-30");
+    const github_page = try getAs(a, io, port, try cookieLine(a, by_github), "/invites");
+    const password_again = try anonymousPost(a, io, port, "/login", "name=Debbie&password=a+new+one");
+    const password_page = try getAs(a, io, port, try cookieLine(a, password_again), "/invites");
+    try t.check("that GitHub then signs in to the same account, no form, no new id; her password still signs her in", by_github.status == 303 and
+        github_page.status == 200 and has(github_page.body, "Debbie") and password_again.status == 303 and password_page.status == 200 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), counter));
+
+    // 48zj.
+    const hal = try joinedHuman(a, io, port, linked_line, "Hal");
+    const held_by_her = try linkByGitHub(a, io, port, fake, hal, "user-id-30");
+    const held_by_steve = try linkByGitHub(a, io, port, fake, hal, "user-id-7");
+    const hal_page = try getAs(a, io, port, hal, "/invites");
+    try t.check("Hal links an id Debbie holds, then Steve's: 409 each, plainly said, nothing bound, his session unbroken", linkRefused(held_by_her, 409, "linked to someone here") and
+        linkRefused(held_by_steve, 409, "linked to someone here") and !(try exists(io, data, "auth/10/github-id")) and
+        !(try exists(io, data, "auth/10/github-session-secret")) and hal_page.status == 200);
+    const first_tab = try startLink(a, io, port, fake, hal);
+    const second_tab = try startLink(a, io, port, fake, hal);
+    const hal_linked = try finishLink(a, io, port, fake, hal, first_tab, "user-id-31");
+    const hal_line = try cookieLine(a, hal_linked);
+    const hal_word = try readFile(a, io, data, "auth/10/github-session-secret");
+    const exchanges = fake.exchanges.load(.acquire);
+    const at_the_start = try postAs(a, io, port, hal_line, "/login/github/link", "");
+    const asked_nothing = fake.exchanges.load(.acquire) == exchanges;
+    const from_second_tab = try finishLink(a, io, port, fake, hal_line, second_tab, "user-id-32");
+    const hal_after = try getAs(a, io, port, hal_line, "/invites");
+    try t.check("Hal links a free id: 303; again at the start: 409, no trip to GitHub; again from a second tab: 409; the first binding and his session kept", hal_linked.status == 303 and
+        at_the_start.status == 409 and has(at_the_start.body, "linked GitHub already") and at_the_start.header("location") == null and asked_nothing and
+        linkRefused(from_second_tab, 409, "linked GitHub already") and std.mem.eql(u8, try readFile(a, io, data, "auth/10/github-id"), "31") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/10/github-session-secret"), hal_word) and hal_after.status == 200);
+
+    // 48zk.
+    const ivy = try joinedHuman(a, io, port, linked_line, "Ivy");
+    const secret = try data.readFileAlloc(io, ".session-secret", a, .limited(256));
+    const ivy_begun = try startLink(a, io, port, fake, ivy);
+    const both = try bothCookies(a, ivy, ivy_begun.cookie);
+    var forged_state = try a.dupe(u8, ivy_begun.state);
+    const flipped = forged_state.len - 5;
+    forged_state[flipped] = if (forged_state[flipped] == 'A') 'B' else 'A';
+    const before_forged = fake.exchanges.load(.acquire);
+    const forged = try backFromGitHub(a, io, port, both, try std.fmt.allocPrint(a, "/login/github?code=user-id-33&state={s}", .{forged_state}));
+    const no_exchange = fake.exchanges.load(.acquire) == before_forged;
+    const for_another = try stateSigned(a, secret, ivy_begun.state, .{ .errand = "link-4" });
+    const another = try backFromGitHub(a, io, port, both, try std.fmt.allocPrint(a, "/login/github?code=user-id-33&state={s}", .{for_another}));
+    const no_session = try backFromGitHub(a, io, port, ivy_begun.cookie, try std.fmt.allocPrint(a, "/login/github?code=user-id-33&state={s}", .{ivy_begun.state}));
+    const ivy_page = try getAs(a, io, port, ivy, "/invites");
+    try t.check("a link's forged state: 403, GitHub asked nothing; a state naming another human, and a browser whose session has gone: 403 each; nothing bound, her session unbroken", linkRefused(forged, 403, "did not start in this browser") and
+        no_exchange and linkRefused(another, 403, "did not start from this account") and linkRefused(no_session, 403, "did not start from this account") and
+        !(try exists(io, data, "auth/4/github-id")) and !(try exists(io, data, "auth/11/github-id")) and ivy_page.status == 200);
+    try data.writeFile(io, .{ .sub_path = "auth/11/github-session-secret", .data = "an old word" });
+    const ivy_linked = try linkByGitHub(a, io, port, fake, ivy, "user-id-33");
+    const ivy_after = try getAs(a, io, port, try cookieLine(a, ivy_linked), "/invites");
+    try t.check("a github-session-secret left from an earlier binding is replaced as she links", ivy_linked.status == 303 and ivy_after.status == 200 and
+        (try readFile(a, io, data, "auth/11/github-session-secret")).len == 64);
+
+    // 48zl.
+    const by_key = try post(a, io, port, .{ .path = "/login/github/link", .form = "", .more = held.cc_bearer });
+    const by_no_one = try anonymousPost(a, io, port, "/login/github/link", "");
+    const by_get = try getAs(a, io, port, hal_line, "/login/github/link");
+    const cross_site = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{hal_line}), "/login/github/link", "");
+    try t.check("a link by CC's key: 403; by no one: 401; by GET: 405; a cross-site post: 403", by_key.status == 403 and
+        has(by_key.body, "An API key never signs in") and by_no_one.status == 401 and by_get.status == 405 and cross_site.status == 403);
 }
 
 /// The session cookie a sign-in's answer sets, as a request's `Cookie`

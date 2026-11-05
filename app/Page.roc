@@ -260,20 +260,27 @@ Page :: [].{
 		invites : List(AgentInvite),
 	}
 
+	## Whether the agents page offers to link GitHub: `LinkOffered` to a human
+	## with no GitHub account yet, on a server with GitHub's settings.
+	GitHubLinkOffer : [LinkOffered, LinkNotOffered]
+
 	## The agents page, for `viewer`: a form that makes an agent, then each
 	## of `agents` with a button that invites it, and its keys and invites,
 	## each live one with a button that revokes it. When an invite was just
-	## made, its code comes first (`shown`), the one time it is shown.
+	## made, its code comes first (`shown`), the one time it is shown. Last,
+	## when `github_link` offers it, a button that links GitHub.
 	agents : {
 		viewer : SignedIn,
 		agents : List(Page.AgentSummary),
 		shown : [NoCode, Code({ agent : Users.User, code : SecretToken })],
+		github_link : Page.GitHubLinkOffer,
 	} -> TrustedHtml
 	agents = |
 		{
 			viewer,
 			agents: summaries,
 			shown,
+			github_link,
 		},
 	| {
 		code =
@@ -316,6 +323,10 @@ Page :: [].{
 				make_form,
 				newline,
 				TrustedHtml.join(summaries.map(agent_section)),
+				match github_link {
+					LinkOffered => post_button({ action: "/login/github/link", label: "Link GitHub" })
+					LinkNotOffered => TrustedHtml.join([])
+				},
 			]),
 		})
 	}

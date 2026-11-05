@@ -19,6 +19,7 @@
 ##     GET  /login/github/start                off to GitHub: `?next=<path>`
 ##     GET  /login/github                      GitHub's way back
 ##     POST /login/github/name                 a new human's name: `name=`
+##     POST /login/github/link                 off to GitHub, to link it
 ##     POST /logout                            sign out
 ##     GET  /agents                            your agents, keys, invites
 ##     POST /agents                            make an agent: `name=`
@@ -84,6 +85,7 @@ Route :: [].{
 		StartGitHubSignIn,
 		FinishGitHubSignIn,
 		FinishGitHubSignUp,
+		StartGitHubLink,
 		WrongMethodToGitHub([GetAndPost, GetOnly, PostOnly]),
 		RedeemInvite,
 		ShowJoin,
@@ -319,6 +321,7 @@ SignInResource : [
 	GitHubStart,
 	GitHubReturn,
 	GitHubName,
+	GitHubLink,
 ]
 
 ## What `path` names among the sign-in routes, or `NotSignIn`.
@@ -347,6 +350,14 @@ sign_in_resource = |path|
 			],
 		) if login.is_exactly("login") and github.is_exactly("github") and name.is_exactly("name") =>
 			Ok(GitHubName)
+		Ok(
+			[
+				login,
+				github,
+				link,
+			],
+		) if login.is_exactly("login") and github.is_exactly("github") and link.is_exactly("link") =>
+			Ok(GitHubLink)
 		_ => Err(NotSignIn)
 	}
 
@@ -375,6 +386,9 @@ sign_in_choice = |{ resource, method }|
 		(GitHubName, Get) => Open(WrongMethodToGitHub(PostOnly))
 		(GitHubName, Post) => Open(FinishGitHubSignUp)
 		(GitHubName, Other) => Open(WrongMethodToGitHub(PostOnly))
+		(GitHubLink, Get) => Open(WrongMethodToGitHub(PostOnly))
+		(GitHubLink, Post) => Open(StartGitHubLink)
+		(GitHubLink, Other) => Open(WrongMethodToGitHub(PostOnly))
 	}
 
 ## What a path under `/agents` names.

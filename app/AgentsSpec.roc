@@ -433,6 +433,7 @@ expect {
 			viewer: SignedIn.dangerously_assume(steve),
 			agents: [summary],
 			shown: NoCode,
+			github_link: LinkNotOffered,
 		}).to_utf8(),
 	)
 	code = SecretToken.of({
@@ -444,9 +445,12 @@ expect {
 			viewer: SignedIn.dangerously_assume(steve),
 			agents: [summary],
 			shown: Code({ agent: cc, code }),
+			github_link: LinkOffered,
 		}).to_utf8(),
 	)
-	plain.contains("<form method=\"post\" action=\"/agents\"><textarea name=\"name\" required></textarea>")
+	!plain.contains("/login/github/link")
+		and showing.contains("<form method=\"post\" action=\"/login/github/link\"><button>Link GitHub</button></form>")
+		and plain.contains("<form method=\"post\" action=\"/agents\"><textarea name=\"name\" required></textarea>")
 		and plain.contains("<form method=\"post\" action=\"/agents/2/invites\"><button>Invite CC</button></form>")
 		and plain.contains("action=\"/agents/2/keys/1/revoke\"")
 		and !plain.contains("action=\"/agents/2/keys/2/revoke\"")

@@ -12,18 +12,28 @@
 ## signed starts `github-state`, and a session's signed bytes start with a
 ## user's digits, so neither signature can stand for the other.
 ##
+## A state also says what the trip to GitHub is for (`Errand`), so GitHub's
+## answer can't serve as anything else: a sign-in, or a signed-in human
+## linking GitHub to their account, which names that human.
+##
 ## This module is the pure part. The host makes the nonce and the signature
 ## (`GitHubRoute` asks it), and `GitHubSignIn` calls `check`.
 import Ascii
 import Base64Url
 import FactFile
 import Html
+import UserId
 
 GitHubState :: {
 	nonce : List(U8),
 	issued_at : I64,
 	next : Html.SitePath,
+	errand : GitHubState.Errand,
 }.{
+
+	## What a trip to GitHub is for: to sign in, or to link GitHub to the
+	## human with this id.
+	Errand : [SignIn, Link(UserId)]
 
 	## How long a state lasts: time to sign in at GitHub, and short enough
 	## that a leaked one goes stale.
@@ -39,19 +49,21 @@ GitHubState :: {
 	cookie_attributes : Str
 	cookie_attributes = "HttpOnly; Secure; SameSite=Lax"
 
-	## A new state, issued at `now`, going to `next` once signed in. A nonce
-	## of any other length than `nonce_bytes` is the caller's bug, and
+	## A new state for `errand`, issued at `now`, going to `next` after. A
+	## nonce of any other length than `nonce_bytes` is the caller's bug, and
 	## crashes.
 	issue : {
 		nonce : List(U8),
 		now : I64,
 		next : Html.SitePath,
+		errand : GitHubState.Errand,
 	} -> GitHubState
 	issue = |
 		{
 			nonce,
 			now,
 			next,
+			errand,
 		},
 	|
 		if (nonce.len() == GitHubState.nonce_bytes)
@@ -60,6 +72,7 @@ GitHubState :: {
 					nonce,
 					issued_at: now,
 					next,
+					errand,
 				},
 			)
 		else
@@ -77,6 +90,10 @@ GitHubState :: {
 	next : GitHubState -> Html.SitePath
 	next = |GitHubState.(state)| state.next
 
+	## What the trip to GitHub is for.
+	errand : GitHubState -> GitHubState.Errand
+	errand = |GitHubState.(state)| state.errand
+
 	## What a token claims before its signature is checked.
 	Claim :: { payload : Str, mac : List(U8) }.{
 
@@ -89,13 +106,14 @@ GitHubState :: {
 					nonce_part,
 					second_part,
 					next_part,
+					errand_part,
 					mac_part,
 				] =>
 					match Base64Url.decode(mac_part) {
 						Ok(mac) => Ok(
 							GitHubState.Claim.(
 								{
-									payload: "${nonce_part}.${second_part}.${next_part}",
+									payload: "${nonce_part}.${second_part}.${next_part}.${errand_part}",
 									mac,
 								},
 							),
@@ -209,12 +227,37 @@ cookie_prefix = cookie_prefix_text.to_utf8()
 bytes_signed_of : Str -> List(U8)
 bytes_signed_of = |payload| "github-state\n${payload}".to_utf8()
 
-## The nonce, the second and the path, as a token holds them.
+## The nonce, the second, the path and the errand, as a token holds them.
 payload_of : GitHubState -> Str
 payload_of = |GitHubState.(state)| {
 	path = Base64Url.encode(state.next.to_str().to_utf8())
-	"${Base64Url.encode(state.nonce)}.${state.issued_at.to_str()}.${path}"
+	nonce = Base64Url.encode(state.nonce)
+	"${nonce}.${state.issued_at.to_str()}.${path}.${errand_text(state.errand)}"
 }
+
+## An errand as a token spells it.
+errand_text : GitHubState.Errand -> Str
+errand_text = |errand|
+	match errand {
+		SignIn => "sign-in"
+		Link(human) => "${link_prefix}${human.to_str()}"
+	}
+
+link_prefix : Str
+link_prefix = "link-"
+
+## The errand a token's part spells; unless it spells none (`BadPayload`).
+errand_from_text : Str -> Try(GitHubState.Errand, [BadPayload])
+errand_from_text = |text|
+	if (text == "sign-in")
+		Ok(SignIn)
+	else if (text.starts_with(link_prefix))
+		match UserId.from_str(text.drop_prefix(link_prefix)) {
+			Ok(human) => Ok(Link(human))
+			Err(NotAUserId) => Err(BadPayload)
+		}
+	else
+		Err(BadPayload)
 
 ## The state a payload holds; unless any part doesn't read (`BadPayload`).
 state_from_payload : Str -> Try(GitHubState, [BadPayload])
@@ -224,18 +267,21 @@ state_from_payload = |payload|
 			nonce_part,
 			second_part,
 			next_part,
+			errand_part,
 		] => {
 			nonce = Base64Url.decode(nonce_part) ? |_| BadPayload
 			issued_at = FactFile.seconds_from_file(second_part.to_utf8()) ? |_| BadPayload
 			path_bytes = Base64Url.decode(next_part) ? |_| BadPayload
 			path_text = Str.from_utf8(path_bytes) ? |_| BadPayload
 			next = Html.SitePath.from_str(path_text) ? |_| BadPayload
+			errand = errand_from_text(errand_part)?
 			Ok(
 				GitHubState.(
 					{
 						nonce,
 						issued_at,
 						next,
+						errand,
 					},
 				),
 			)
@@ -256,6 +302,16 @@ issued = GitHubState.issue({
 	nonce: nonce_held,
 	now: 1000,
 	next: agents_path,
+	errand: SignIn,
+})
+
+## The same state, sent to link GitHub to Steve.
+issued_to_link : GitHubState
+issued_to_link = GitHubState.issue({
+	nonce: nonce_held,
+	now: 1000,
+	next: agents_path,
+	errand: Link(UserId.steve),
 })
 
 ## What `check` says of `issued`, back with `cookie` at `now`.
@@ -297,15 +353,28 @@ expect {
 		and GitHubState.from_claim({ claim: claimed, verdict: Matches }) == Signed(issued)
 		and GitHubState.from_claim({ claim: claimed, verdict: DoesNotMatch }) == Unsigned
 }
+# Each errand reads back, and two errands are signed apart.
+expect {
+	mac = List.repeat(7, 32)
+	read_back = |state| {
+		claim = GitHubState.Claim.from_str(state.token(mac)) ?? crash "GitHubState's tests: a token"
+		GitHubState.from_claim({ claim, verdict: Matches })
+	}
+	read_back(issued_to_link) == Signed(issued_to_link)
+		and issued_to_link.errand() == Link(UserId.steve)
+		and read_back(issued) == Signed(issued)
+		and issued.errand() == SignIn
+		and issued_to_link.signed_bytes() != issued.signed_bytes()
+}
 # What is signed starts with a word no session's bytes start with.
 expect issued.signed_bytes().starts_with("github-state\n".to_utf8())
 # No token: too few parts, too many, or a signature that is no base64url.
 expect
 	[
 		"",
-		"a.b.c",
-		"a.b.c.d.e",
-		"a.b.c.!",
+		"a.b.c.d",
+		"a.b.c.d.e.f",
+		"a.b.c.d.!",
 	].all(|text| GitHubState.Claim.from_str(text).map_ok(|_| {}) == Err(NotAClaim))
 # A payload that doesn't read is unsigned even under a good signature.
 expect {
@@ -316,9 +385,13 @@ expect {
 	path = Base64Url.encode("/agents".to_utf8())
 	bad_path = Base64Url.encode("//evil.example".to_utf8())
 	[
-		"bm9uY2U.x.${path}.AAAA",
-		"bm9uY2U.1000.${bad_path}.AAAA",
-		"!.1000.${path}.AAAA",
+		"bm9uY2U.x.${path}.sign-in.AAAA",
+		"bm9uY2U.1000.${bad_path}.sign-in.AAAA",
+		"!.1000.${path}.sign-in.AAAA",
+		"bm9uY2U.1000.${path}.sign-out.AAAA",
+		"bm9uY2U.1000.${path}.link-.AAAA",
+		"bm9uY2U.1000.${path}.link-0.AAAA",
+		"bm9uY2U.1000.${path}.link-x.AAAA",
 	].all(|text| unread(text) == Unsigned)
 }
 # The cookie, set and read back, among others; none for two, or a bad value.

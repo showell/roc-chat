@@ -192,7 +192,7 @@ expect
 expect wire("".to_utf8()).password().map_ok(|_| {}) == Err(NotAPassword)
 expect wire("abc-1".to_utf8()).github_code().map_ok(|_| {}) == Ok({})
 expect wire("a b".to_utf8()).github_code() == Err(NotACode)
-expect wire("a.b.c.AAAA".to_utf8()).github_state_claim().map_ok(|_| {}) == Ok({})
+expect wire("a.b.c.d.AAAA".to_utf8()).github_state_claim().map_ok(|_| {}) == Ok({})
 expect wire("a.b".to_utf8()).github_state_claim().map_ok(|_| {}) == Err(NotAClaim)
 expect
 	wire("/chat/dm/1_1/plans".to_utf8()).site_path().map_ok(Html.SitePath.to_str)

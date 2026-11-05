@@ -29,6 +29,7 @@ import ConversationKey
 import ConversationStream
 import Directory
 import FileSystem
+import GitHubRoute
 import HttpAnswer
 import KeyScope
 import Page
@@ -243,6 +244,7 @@ load_agents_page! = |
 	},
 | {
 	owner = acting.human_in_session() ? |why| Refused(why)
+	github_link = GitHubRoute.load_link_offer!(owner.id()) ? |fault| FileSystem(fault)
 	var $summaries = []
 	for agent in Agents.agents_of(directory, owner) {
 		keys = FileSystem.read_agent_keys!(agent.id()) ? |fault| FileSystem(fault)
@@ -258,6 +260,7 @@ load_agents_page! = |
 			viewer: acting,
 			agents: $summaries,
 			shown,
+			github_link,
 		}),
 	)
 }

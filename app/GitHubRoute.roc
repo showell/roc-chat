@@ -14,6 +14,11 @@
 ##   `github-id`, then `name`, all in one turn, so two submits can't both
 ##   see the id free. A name refused is the form again, the sign-up still
 ##   good.
+## - `POST /login/github/link` is a signed-in human asking to link GitHub to
+##   their account: a trip to GitHub like a sign-in's, whose state names them.
+##   It comes back to `GET /login/github`, which binds the id to them and
+##   starts their session afresh (`SignInRoute.start_session_by_github_link!`).
+##   It is a POST so that no other site's page can send a browser on it.
 ##
 ## A server with no GitHub settings answers them with the 404 any other path
 ## gets, so running without GitHub takes nothing. The client secret and
@@ -39,6 +44,7 @@ import RequestHeader
 import SignInRoute
 import SignedIn
 import UrlEncodedForm
+import UserId
 import Users
 
 GitHubRoute :: [].{
@@ -49,6 +55,19 @@ GitHubRoute :: [].{
 		match Host.github_sign_in_settings!({}).status {
 			Configured => Offered
 			NotConfigured => NotOffered
+		}
+
+	## Whether the `/agents` page of the human `human` offers to link GitHub:
+	## on a server with GitHub's settings, to a human with no `github-id` file.
+	load_link_offer! : UserId => Try(Page.GitHubLinkOffer, [NotUtf8, PathRefused, Failed])
+	load_link_offer! = |human|
+		match Host.github_sign_in_settings!({}).status {
+			NotConfigured => Ok(LinkNotOffered)
+			Configured =>
+				match FileSystem.read_github_id_file!(human)? {
+					NoFile => Ok(LinkOffered)
+					File(_) => Ok(LinkNotOffered)
+				}
 		}
 
 	## A GET of `/login/github/start`: the browser sent to GitHub to authorize
@@ -75,24 +94,49 @@ GitHubRoute :: [].{
 				(Configured, Ok({})) =>
 					match SignInRoute.next_from_query(query) {
 						Err(BadNext) => SignInRoute.bad_next_answer
-						Ok(next) => {
-							state = GitHubState.issue({
-								nonce: Host.fill_with_random_bytes!(GitHubState.nonce_bytes),
-								now,
-								next,
-							})
-							mac = Host.hmac_sha256_with_server_secret!(state.signed_bytes())
-							location = authorize_url({
-								authorize_base: settings.authorize_base,
-								client_id: settings.client_id,
-								origin,
-								state_token: state.token(mac),
-							})
-							HttpAnswer.with_header(
-								HttpAnswer.see_other(location),
-								set_cookie_header(state.set_cookie_text()),
-							)
-						}
+						Ok(next) => send_to_github!({
+							authorize_base: settings.authorize_base,
+							client_id: settings.client_id,
+							origin,
+							now,
+							next,
+							errand: SignIn,
+						})
+					}
+			}
+		HttpAnswer.never_stored(answer)
+	}
+
+	## A POST of `/login/github/link`, by `viewer`: the browser sent to GitHub
+	## to link it to the human signed in, back to `origin`, going to their
+	## `/agents` after; or why not, before the trip.
+	serve_link_start! : {
+		viewer : SignedIn.Actor,
+		origin : Str,
+		now : I64,
+	} => Http.Response
+	serve_link_start! = |
+		{
+			viewer,
+			origin,
+			now,
+		},
+	| {
+		settings = Host.github_sign_in_settings!({})
+		answer =
+			match settings.status {
+				NotConfigured => not_found
+				Configured =>
+					match load_human_to_link!(viewer) {
+						Err(why) => link_refusal_answer(why)
+						Ok(human) => send_to_github!({
+							authorize_base: settings.authorize_base,
+							client_id: settings.client_id,
+							origin,
+							now,
+							next: SignInRoute.default_next,
+							errand: Link(human.id()),
+						})
 					}
 			}
 		HttpAnswer.never_stored(answer)
@@ -100,8 +144,9 @@ GitHubRoute :: [].{
 
 	## A GET of `/login/github`, GitHub's way back: a session for the human
 	## GitHub vouched for, and a 303 to where the sign-in began; for an id no
-	## human holds, the form that asks a name; or the sign-in page saying why
-	## not. It forgets the state's cookie every way.
+	## human holds, the form that asks a name; for a link, the id bound and a
+	## new session; or the sign-in page saying why not. It forgets the state's
+	## cookie every way.
 	serve_return! : {
 		viewer : SignedIn.Actor,
 		directory : Directory,
@@ -126,6 +171,7 @@ GitHubRoute :: [].{
 				(Configured, Ok({})) => {
 					resolved = resolve!({
 						users: directory.users(),
+						viewer,
 						query,
 						headers,
 						now,
@@ -139,6 +185,8 @@ GitHubRoute :: [].{
 								directory,
 								now,
 							})
+							Ok(Linking(linked)) =>
+								SignInRoute.start_session_by_github_link!(linked, now)
 							Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 							Err(Refused(why)) => refusal_answer({ viewer, why })
 						},
@@ -199,6 +247,89 @@ GitHubRoute :: [].{
 not_found : Http.Response
 not_found = HttpAnswer.page(404, Page.notice({ title: "Not found", text: "Nothing is here." }))
 
+## The 303 that sends a browser to GitHub for `errand`, with a state issued at
+## `now` and its nonce in this browser's cookie.
+send_to_github! : {
+	authorize_base : List(U8),
+	client_id : List(U8),
+	origin : Str,
+	now : I64,
+	next : Html.SitePath,
+	errand : GitHubState.Errand,
+} => Http.Response
+send_to_github! = |
+	{
+		authorize_base,
+		client_id,
+		origin,
+		now,
+		next,
+		errand,
+	},
+| {
+	state = GitHubState.issue({
+		nonce: Host.fill_with_random_bytes!(GitHubState.nonce_bytes),
+		now,
+		next,
+		errand,
+	})
+	mac = Host.hmac_sha256_with_server_secret!(state.signed_bytes())
+	location = authorize_url({
+		authorize_base,
+		client_id,
+		origin,
+		state_token: state.token(mac),
+	})
+	HttpAnswer.with_header(
+		HttpAnswer.see_other(location),
+		set_cookie_header(state.set_cookie_text()),
+	)
+}
+
+## The human `viewer`, who may link GitHub now; or why not. The way back asks
+## again, as the human may have linked in another tab meanwhile.
+load_human_to_link! : SignedIn.Actor => Try(
+	Users.Human,
+	[
+		NotSignedIn,
+		ByApiKey,
+		Agent(UserId),
+		AlreadyLinked,
+		FileSystem(FileSystem.Fault),
+	],
+)
+load_human_to_link! = |viewer| {
+	human = GitHubSignIn.human_to_link(viewer)?
+	match FileSystem.read_github_id_file!(human.id()) {
+		Ok(NoFile) => Ok(human)
+		Ok(File(_)) => Err(AlreadyLinked)
+		Err(NotUtf8) => Err(FileSystem(NotUtf8))
+		Err(PathRefused) => Err(FileSystem(PathRefused))
+		Err(Failed) => Err(FileSystem(Failed))
+	}
+}
+
+## The answer to a link refused before the trip to GitHub.
+link_refusal_answer : [
+	NotSignedIn,
+	ByApiKey,
+	Agent(UserId),
+	AlreadyLinked,
+	FileSystem(FileSystem.Fault),
+] -> Http.Response
+link_refusal_answer = |why|
+	match why {
+		NotSignedIn => link_refusal_page(401, "Sign in first, then link GitHub.")
+		ByApiKey => SignInRoute.by_api_key_answer
+		Agent(_) => link_refusal_page(403, "An agent can't link GitHub.")
+		AlreadyLinked => link_refusal_page(409, already_linked_words)
+		FileSystem(fault) => SignInRoute.fault_answer(fault)
+	}
+
+## A page saying why a link was refused.
+link_refusal_page : U16, Str -> Http.Response
+link_refusal_page = |status, text| HttpAnswer.page(status, Page.notice({ title: "Refused", text }))
+
 ## GitHub's page that asks its human to authorize this server.
 authorize_url : {
 	authorize_base : List(U8),
@@ -242,16 +373,22 @@ is_unreserved = |byte|
 ## fact; or why not.
 resolve! : {
 	users : Users,
+	viewer : SignedIn.Actor,
 	query : List(U8),
 	headers : List(Http.Header),
 	now : I64,
 } => Try(
-	[Known(GitHubSignIn.Admission), Unknown(GitHubSignIn.NewHuman)],
+	[
+		Known(GitHubSignIn.Admission),
+		Unknown(GitHubSignIn.NewHuman),
+		Linking(GitHubSignIn.Linked),
+	],
 	[Refused(GitHubSignIn.Refusal), FileSystem(FileSystem.Fault)],
 )
 resolve! = |
 	{
 		users,
+		viewer,
 		query,
 		headers,
 		now,
@@ -266,7 +403,11 @@ resolve! = |
 	heard = Host.github_identity_for_code!(checked.code_bytes())
 	known = checked.identify(heard) ? |why| Refused(why)
 	files = FileSystem.read_github_id_files!(users) ? |fault| FileSystem(fault)
-	known.resolve({ files, users }).map_err(|why| Refused(why))
+	known.resolve({
+		files,
+		users,
+		viewer,
+	}).map_err(|why| Refused(why))
 }
 
 ## The form that asks `new_human` for a name, offering what `directory` leaves
@@ -440,7 +581,7 @@ refusal_answer = |{ viewer, why }| {
 		said.status,
 		Page.login({
 			viewer,
-			next: start_again_next,
+			next: SignInRoute.default_next,
 			problem: Problem(said.words),
 			github: Offered,
 		}),
@@ -456,11 +597,6 @@ name_refusal_answer = |{ name, why }| {
 		Page.github_sign_up({ name, problem: Problem(notice.said) }),
 	)
 }
-
-## Where a sign-in started over goes when nothing says.
-start_again_next : Html.SitePath
-start_again_next =
-	Html.SitePath.from_str("/agents") ?? crash "GitHubRoute.start_again_next: /agents is a site path"
 
 ## A refusal's status and its words. Nothing here says more than the human
 ## needs: what went wrong, and what to do.
@@ -480,7 +616,13 @@ refusal_said = |why|
 		SignUpForged => { status: 403, words: "That sign-up did not start in this browser. Please try again." }
 		SignUpExpired => { status: 403, words: "That sign-up took too long. Please try again." }
 		AccountExists => { status: 403, words: "That GitHub account has an account here. Sign in with GitHub." }
+		LinkNotYours => { status: 403, words: "That link did not start from this account. Please try again." }
+		AlreadyLinked => { status: 409, words: already_linked_words }
+		GitHubIdTaken => { status: 409, words: "That GitHub account is linked to someone here already." }
 	}
+
+already_linked_words : Str
+already_linked_words = "You have linked GitHub already."
 
 start_again_words : Str
 start_again_words = "That sign-in did not start in this browser. Please try again."
@@ -532,5 +674,12 @@ expect
 		SignUpForged,
 		SignUpExpired,
 		AccountExists,
+		LinkNotYours,
 	].all(|why| refusal_said(why).status == 403)
 expect [GitHubUnreachable, BadIdentity].all(|why| refusal_said(why).status == 502)
+expect [AlreadyLinked, GitHubIdTaken].all(|why| refusal_said(why).status == 409)
+# A link refused before the trip, each way.
+expect link_refusal_answer(NotSignedIn).status == 401
+expect [ByApiKey, Agent(UserId.steve)].all(|why| link_refusal_answer(why).status == 403)
+expect link_refusal_answer(AlreadyLinked).status == 409
+expect link_refusal_answer(FileSystem(Failed)).status == 500
