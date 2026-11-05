@@ -24,6 +24,7 @@ const http = @import("http.zig");
 const files = @import("file_primitives.zig");
 const sign_in = @import("sign_in_primitives.zig");
 const seam = @import("seam.zig");
+const github = @import("github_client.zig");
 
 const usage =
     \\usage: gopher-roc <data folder> [--port <n>] [--public-origin https://<name>]
@@ -62,6 +63,10 @@ pub fn main(init: std.process.Init) !void {
             "{s}/{s} may be read or written by others than its owner, so it signs no session: `chmod 600` it, or remove it and start again to make a new one (every session then ends)",
             .{ folder, sign_in.secret_name },
         ),
+        error.GitHubSettingsPartial => std.process.fatal("{s} holds some of GitHub's settings but not both of {s} and {s}", .{ folder, github.client_id_name, github.client_secret_name }),
+        error.GitHubSettingOpenToOthers => std.process.fatal("one of the `.github-` files in {s} may be read or written by others than its owner: `chmod 600` it", .{folder}),
+        error.GitHubSettingUnusable => std.process.fatal("one of the `.github-` files in {s} is empty, too long, or holds a space or a byte that isn't ASCII", .{folder}),
+        error.GitHubBaseRefused => std.process.fatal("{s} or {s} in {s} is no `https://` URL, or `http://` to a loopback address", .{ github.oauth_base_name, github.api_base_name, folder }),
         else => return e,
     };
     std.debug.print("gopher-roc: http://127.0.0.1:{d}/, its data in {s}{s}{s}\n", .{ server.port(), folder, if (public_origin.len > 0) ", public as " else "", public_origin });

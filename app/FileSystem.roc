@@ -31,7 +31,9 @@
 ## with an agent's keys under `keys/<number>/` (`AgentKey`) and its invites
 ## under `invites/<number>/` (`AgentInvite`); an invited human's inviter in
 ## `inviter`, their invites under `human-invites/<number>/` (`HumanInvite`),
-## and their password's bcrypt hash in `password`; one file per fact. A record
+## their password's bcrypt hash in `password`, the GitHub account that may sign
+## in as them in `github-id`, and what their sessions are signed over beside
+## it in `github-session-secret`; one file per fact. A record
 ## of several files is written one file at a time, each made once, the
 ## file that makes it count written last. A channel's members are its file
 ## beside its folder of topics (`Channels`).
@@ -442,6 +444,53 @@ FileSystem :: [].{
 	read_password_hash! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
 	read_password_hash! = |id| read_fact!(password_path(id))
 
+	## The `github-id` file of each user who has one, as it is. The server's
+	## owner writes these by hand (docs/design.md, "Storage").
+	read_github_id_files! : Users => Try(
+		List({ user : UserId, file : List(U8) }),
+		[NotUtf8, PathRefused, Failed],
+	)
+	read_github_id_files! = |users| {
+		var $files = []
+		for user in users.to_list() {
+			match FileSystem.read_github_id_file!(user.id())? {
+				NoFile => {}
+				File(file) => {
+					$files = $files.append({ user: user.id(), file })
+				}
+			}
+		}
+		Ok($files)
+	}
+
+	## The user `id`'s `github-id` file, as it is, or `NoFile`; unless the
+	## host's read failed.
+	read_github_id_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
+	read_github_id_file! = |id| read_fact!("${account_folder_path(AccountFolder.of(id))}/github-id")
+
+	## The user `id`'s `github-session-secret` file, as it is, or `NoFile`;
+	## unless the host's read failed.
+	read_github_session_secret! : UserId => Try(
+		[NoFile, File(List(U8))],
+		[NotUtf8, PathRefused, Failed],
+	)
+	read_github_session_secret! = |id| read_fact!(github_session_secret_path(id))
+
+	## The user `id`'s `github-session-secret` file made holding `bytes`, once;
+	## `AlreadyExists`, nothing changed, when it is there.
+	create_github_session_secret! : UserId,
+	List(U8) => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_github_session_secret! = |id, bytes| create_fact!(github_session_secret_path(id), bytes)
+
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_user_counter! = |users| {
@@ -690,6 +739,12 @@ account_folder_path = |folder| Str.join_with(folder.parts(), "/")
 password_path : UserId -> Str
 password_path = |id| "${account_folder_path(AccountFolder.of(id))}/password"
 
+## The path of what the user `id`'s sessions are signed over beside their
+## password's hash, once they have signed in with GitHub.
+github_session_secret_path : UserId -> Str
+github_session_secret_path = |id|
+	"${account_folder_path(AccountFolder.of(id))}/github-session-secret"
+
 ## The path of the counter of user ids.
 user_counter_path : Str
 user_counter_path = "${AccountFolder.auth_root}/next-id.txt"
@@ -861,6 +916,7 @@ key_at = |path| ConversationKey.from_url_path({
 
 expect account_folder_path(AccountFolder.of(UserId.steve)) == "auth/1"
 expect password_path(UserId.steve) == "auth/1/password"
+expect github_session_secret_path(UserId.steve) == "auth/1/github-session-secret"
 expect user_counter_path == "auth/next-id.txt"
 expect {
 	agent = UserId.from_str("12") ?? crash "FileSystem's tests: an id"

@@ -21,7 +21,7 @@
 ##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
 ##   `ConversationRoute`, `UploadRoute`, `AgentsRoute`, `ChannelMembersRoute`,
-##   `HumanInvitesRoute` or `SignInRoute` gives the answer.
+##   `HumanInvitesRoute`, `SignInRoute` or `GitHubRoute` gives the answer.
 ## - `password_verdict` (`gopher-roc hash-password`, host/main.zig): a line
 ##   in, and whether it is a password the sign-in form takes, so the
 ##   command hashes none that could never sign in.
@@ -31,8 +31,9 @@
 ## key admits, or a 401; any other by its session cookie, as the human the
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
-## `Route` says are open (the scripts, signing in and out, redeeming an
-## agent's invite, and joining by a human's); any other page sends it to
+## `Route` says are open (the scripts, signing in and out, by a password or
+## GitHub, redeeming an agent's invite, and joining by a human's); any other
+## page sends it to
 ## sign in, and any other request is a 401. Only the first start, which
 ## makes Steve before anyone can sign in, and the demo's page take him as
 ## signed in with nothing checked (`SignedIn.dangerously_assume`); no request
@@ -61,6 +62,7 @@ import ConversationKey
 import ConversationRoute
 import Directory
 import FileSystem
+import GitHubRoute
 import HumanInvitesRoute
 import Html
 import HttpAnswer
@@ -400,6 +402,9 @@ upload_asked = |choice|
 		Open(ShowLogin) => NoUpload
 		Open(SignIn) => NoUpload
 		Open(SignOut) => NoUpload
+		Open(StartGitHubSignIn) => NoUpload
+		Open(FinishGitHubSignIn) => NoUpload
+		Open(WrongMethodToGitHub) => NoUpload
 		Open(RedeemInvite) => NoUpload
 		NotFound => NoUpload
 		MethodNotAllowed(_) => NoUpload
@@ -489,8 +494,8 @@ load_actor! = |{ headers, directory }| {
 
 ## Who a request with no `Authorization` header is: the human its session
 ## cookie admits at `now`, or no one (`Anonymous`) when it carries none, or
-## one that admits no one. Only a password's file that can't be read fails
-## the request.
+## one that admits no one. Only a sign-in file that can't be read fails the
+## request.
 load_session_actor! : {
 	headers : List(Http.Header),
 	directory : Directory,
@@ -516,7 +521,7 @@ load_session_actor! = |
 				Err(NoSession) => Ok(Anonymous)
 				Err(BadSession) => Ok(Anonymous)
 				Err(SessionRefused) => Ok(Anonymous)
-				Err(NoPassword) => Ok(Anonymous)
+				Err(NoMaterial) => Ok(Anonymous)
 				Err(FileSystem(fault)) => Err(FileSystem(fault))
 			}
 	}
@@ -707,15 +712,37 @@ answer_open_route! = |
 |
 	match open {
 		ServeScript(script) => HttpAnswer.script(script.bytes())
-		ShowLogin => SignInRoute.show_login({ viewer: actor, query: request.query })
+		ShowLogin =>
+			SignInRoute.show_login({
+				viewer: actor,
+				query: request.query,
+				github: GitHubRoute.offer!({}),
+			})
 		SignIn =>
 			SignInRoute.sign_in!({
 				viewer: actor,
 				users: directory.users(),
 				body: request.body,
 				now: Host.current_utc_seconds_since_epoch!({}),
+				github: GitHubRoute.offer!({}),
 			})
 		SignOut => SignInRoute.sign_out
+		StartGitHubSignIn =>
+			GitHubRoute.start!({
+				viewer: actor,
+				query: request.query,
+				origin: own_origin_of(request),
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		FinishGitHubSignIn =>
+			GitHubRoute.finish!({
+				viewer: actor,
+				users: directory.users(),
+				query: request.query,
+				headers: request.headers,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		WrongMethodToGitHub => GitHubRoute.refuse_method!({})
 		RedeemInvite =>
 			AgentsRoute.redeem!({
 				actor,

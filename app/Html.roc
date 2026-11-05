@@ -113,6 +113,7 @@ Html :: [].{
 		Id(Html.Token),
 		Href(Html.Token),
 		Link(Html.SitePath),
+		LinkWithNext({ path : Html.SitePath, next : Html.SitePath }),
 		DateTime(DateTime),
 		FieldName(Html.Token),
 		MethodPost,
@@ -195,6 +196,7 @@ attribute = |attr|
 		Id(token) => " id=\"${token.to_str()}\""
 		Href(token) => " href=\"#${token.to_str()}\""
 		Link(path) => " href=\"${path.to_str()}\""
+		LinkWithNext({ path, next }) => " href=\"${path.to_str()}?next=${next.to_str()}\""
 		DateTime(time) => " datetime=\"${time.to_str()}\""
 		FieldName(token) => " name=\"${token.to_str()}\""
 		MethodPost => " method=\"post\""

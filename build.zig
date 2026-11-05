@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
     // primitives and the command line alone; the seam held to roc glue's
     // layout; the HTTP layer with the app linked.
     const tests = b.step("test", "The host's tests: the file primitives, the bus, the sign-in primitives, the seam against roc glue, the HTTP layer, the command line");
-    for ([_][]const u8{ "host/file_primitives.zig", "host/bus.zig", "host/sign_in_primitives.zig", "host/main.zig" }) |root| {
+    for ([_][]const u8{ "host/file_primitives.zig", "host/bus.zig", "host/sign_in_primitives.zig", "host/github_client.zig", "host/main.zig" }) |root| {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
         tests.dependOn(&testRun(b, m).step);
     }

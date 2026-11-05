@@ -432,20 +432,27 @@ Page :: [].{
 			}),
 		})
 
+	## Whether the sign-in page offers GitHub: `Offered` on a server with
+	## GitHub's settings.
+	GitHubOffer : [Offered, NotOffered]
+
 	## The sign-in page, for `viewer`: a form posting a name and a password
 	## to `/login`, and `next`, where to go once signed in, as a hidden
 	## field. Above it, `problem` when there is one, and for a human signed
-	## in, who they are and a button that signs them out.
+	## in, who they are and a button that signs them out. Below it, when
+	## `github` offers one, a link to sign in with GitHub, going to `next`.
 	login : {
 		viewer : SignedIn.Actor,
 		next : Html.SitePath,
 		problem : [NoProblem, Problem(Str)],
+		github : Page.GitHubOffer,
 	} -> TrustedHtml
 	login = |
 		{
 			viewer,
 			next,
 			problem,
+			github,
 		},
 	| {
 		said =
@@ -497,6 +504,28 @@ Page :: [].{
 				}),
 			]),
 		})
+		github_link =
+			match github {
+				NotOffered => TrustedHtml.join([])
+				Offered =>
+					TrustedHtml.join([
+						Html.element({
+							name: P,
+							attrs: [],
+							inner: Html.element({
+								name: A,
+								attrs: [
+									LinkWithNext({
+										path: site_path("/login/github/start"),
+										next,
+									}),
+								],
+								inner: Escape.text("Sign in with GitHub"),
+							}),
+						}),
+						newline,
+					])
+			}
 		document({
 			title: "Sign in",
 			body: TrustedHtml.join([
@@ -510,6 +539,7 @@ Page :: [].{
 				signed_in,
 				form,
 				newline,
+				github_link,
 			]),
 		})
 	}

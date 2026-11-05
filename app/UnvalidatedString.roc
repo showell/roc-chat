@@ -17,6 +17,8 @@ import AgentInvite
 import AgentKey
 import ChannelName
 import DateTime
+import GitHubCode
+import GitHubState
 import Html
 import KeyScope
 import Name
@@ -108,6 +110,16 @@ UnvalidatedString :: Str.{
 	site_path : UnvalidatedString -> Try(Html.SitePath, [NotASitePath])
 	site_path = |UnvalidatedString.(text)| Html.SitePath.from_str(text).map_err(|_| NotASitePath)
 
+	## GitHub's code it holds, as GitHub's way back carries it, checked by
+	## `GitHubCode.from_str`.
+	github_code : UnvalidatedString -> Try(GitHubCode, [NotACode])
+	github_code = |UnvalidatedString.(text)| GitHubCode.from_str(text)
+
+	## The claim of the state it holds, as GitHub hands it back, read by
+	## `GitHubState.Claim.from_str`.
+	github_state_claim : UnvalidatedString -> Try(GitHubState.Claim, [NotAClaim])
+	github_state_claim = |UnvalidatedString.(text)| GitHubState.Claim.from_str(text)
+
 	## The time it writes, checked by `DateTime.from_str`.
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])
 	date_time = |UnvalidatedString.(text)| DateTime.from_str(text)
@@ -178,6 +190,10 @@ expect wire("cat.png".to_utf8()).uploaded_image() == Err(NotAnUploadName)
 expect
 	wire("hunter2".to_utf8()).password().map_ok(Password.bytes_to_check) == Ok("hunter2".to_utf8())
 expect wire("".to_utf8()).password().map_ok(|_| {}) == Err(NotAPassword)
+expect wire("abc-1".to_utf8()).github_code().map_ok(|_| {}) == Ok({})
+expect wire("a b".to_utf8()).github_code() == Err(NotACode)
+expect wire("a.b.c.AAAA".to_utf8()).github_state_claim().map_ok(|_| {}) == Ok({})
+expect wire("a.b".to_utf8()).github_state_claim().map_ok(|_| {}) == Err(NotAClaim)
 expect
 	wire("/chat/dm/1_1/plans".to_utf8()).site_path().map_ok(Html.SitePath.to_str)
 		== Ok("/chat/dm/1_1/plans")

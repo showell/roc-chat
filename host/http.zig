@@ -33,7 +33,8 @@
 //! signed session, or an agent's key) and refuses requests that other web
 //! sites make through a browser (app/RequestOrigin.roc). The server's
 //! secret, which signs sessions, is the host's alone
-//! (host/sign_in_primitives.zig).
+//! (host/sign_in_primitives.zig), and so is GitHub's client secret
+//! (host/github_client.zig).
 
 const std = @import("std");
 const Io = std.Io;
@@ -43,6 +44,7 @@ const files = @import("file_primitives.zig");
 const bus = @import("bus.zig");
 const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
+const github = @import("github_client.zig");
 
 const log = std.log.scoped(.http);
 
@@ -113,15 +115,19 @@ pub const Server = struct {
     password_checks: sign_in.PasswordChecks,
     /// `https://` and the name a proxy serves this server under, or empty.
     public_origin: []const u8,
+    /// GitHub's settings, read from the data root, or null for none.
+    github: ?github.Settings,
     /// The body bytes charged to requests not yet answered.
     body_bytes_in_flight: std.atomic.Value(usize) = .init(0),
 
     /// Starts the app on `setup.root` (`start_app`), reads the secret
-    /// there (made first when there is none), then listens on 127.0.0.1 at
-    /// `setup.port`. Tests pass 0 to get any free port.
+    /// there (made first when there is none) and GitHub's settings, then
+    /// listens on 127.0.0.1 at `setup.port`. Tests pass 0 to get any free
+    /// port.
     pub fn listen(io: Io, gpa: std.mem.Allocator, setup: Setup) !Server {
         try start_app(io, gpa, setup.root);
         const secret = try sign_in.ServerSecret.load_or_create(io, setup.root.dir);
+        const github_settings = try github.Settings.load(io, setup.root.dir);
         const addr: net.IpAddress = try .parse("127.0.0.1", setup.port);
         return .{
             .io = io,
@@ -136,6 +142,7 @@ pub const Server = struct {
                 .refill_ms = setup.limits.password_check_refill_ms,
             }, Io.Clock.now(.awake, io).toMilliseconds()),
             .public_origin = setup.public_origin,
+            .github = github_settings,
         };
     }
 
@@ -150,6 +157,8 @@ pub const Server = struct {
             .password_checks = &s.password_checks,
             .turn = &s.turn,
             .public_origin = s.public_origin,
+            .github = if (s.github) |*settings| settings else null,
+            .gpa = s.gpa,
         };
     }
 
@@ -553,6 +562,8 @@ pub const Answering = struct {
     password_checks: *sign_in.PasswordChecks,
     turn: *Io.Mutex,
     public_origin: []const u8,
+    github: ?*const github.Settings,
+    gpa: std.mem.Allocator,
 };
 
 const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .body = "failed\n" };
@@ -585,6 +596,8 @@ fn call_of(arena: std.mem.Allocator, answering: Answering) seam.Call {
         .secret = answering.secret,
         .password_checks = answering.password_checks,
         .turn = answering.turn,
+        .github = answering.github,
+        .gpa = answering.gpa,
     };
 }
 

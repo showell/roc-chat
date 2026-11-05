@@ -103,6 +103,26 @@ fn has(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
+test "a server with no GitHub settings has no link on its sign-in page, and answers GitHub's routes with a 404, by any method" {
+    const r = try Running.start(.{});
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    const login = try exchange(a, port, try ours(a, port, "GET /login HTTP/1.1", "\r\n"));
+    try testing.expectEqual(200, try status(login));
+    try testing.expect(!has(login, "github"));
+    const requests = [_][]const u8{
+        try ours(a, port, "GET /login/github/start HTTP/1.1", "\r\n"),
+        try ours(a, port, "GET /login/github?code=good&state=x HTTP/1.1", "\r\n"),
+        try ours(a, port, "POST /login/github/start HTTP/1.1", "content-length: 0\r\n\r\n"),
+        try ours(a, port, "POST /login/github HTTP/1.1", "content-length: 0\r\n\r\n"),
+        try ours(a, port, "PUT /login/github HTTP/1.1", "content-length: 0\r\n\r\n"),
+    };
+    for (requests) |request| try testing.expectEqual(404, try status(try exchange(a, port, request)));
+}
+
 test "the Roc routes: no such path is its 404, another method its 405, and each answer closes" {
     const r = try Running.start(.{});
     defer r.stop();

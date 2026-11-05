@@ -3,7 +3,8 @@
 ##
 ## - `GET /login` is the sign-in page: a name and a password, and `next`,
 ##   where to go after, from the query (`?next=<path>`), `/agents` when
-##   there is none.
+##   there is none; and a link to sign in with GitHub, when the server has
+##   GitHub's settings (`GitHubRoute`).
 ## - `POST /login` checks the password: the user named must be a human,
 ##   their password file must hold a bcrypt hash, and the host must say the
 ##   password matches it (`Host.password_matches_bcrypt_hash!`). Then the
@@ -21,26 +22,32 @@
 ##   same way, once it has set the invited human's password
 ##   (`start_session_by_invite!`, which takes only what
 ##   `HumanInvite.redeem` makes).
+## - A GitHub sign-in (`GitHubRoute`) does too (`start_session_by_github!`,
+##   which takes only what `GitHubSignIn` admits).
 ##
 ## `sign_in_by_session!` is the check a request with a session cookie, and
 ## no `Authorization` header, passes before any route (main's
-## `load_actor!`): the host checks the signature over the hash the human's
-## password file keeps now, and `Session.admit` decides. So rewriting or
-## removing a password file ends every session of its human.
-## `SignedIn.by_session` is its one door.
+## `load_actor!`): the host checks the signature over what the human's
+## sign-in files hold now (`Session.Material`), and `Session.admit` decides.
+## So rewriting or removing any of those files ends every session of its
+## human. `SignedIn.by_session` is its one door.
 import pf.Host
 import pf.Http
 import FactFile
 import FileSystem
+import GitHubSignIn
+import Hex
 import Html
 import HttpAnswer
 import HumanInvite
 import Page
 import Password
+import Secret
 import Session
 import SignedIn
 import UnvalidatedString
 import UrlEncodedForm
+import UserId
 import Users
 
 SignInRoute :: [].{
@@ -49,8 +56,8 @@ SignInRoute :: [].{
 	## `users`, at `now`; unless it holds no session (`NoSession`), one that
 	## is no session's spelling (`BadSession`), or one that admits no one
 	## (`SessionRefused`: its signature, its date or its user), or its human
-	## has no password (`NoPassword`), or the password's file could not be
-	## read (`FileSystem`).
+	## has nothing a session is signed over (`NoMaterial`), or a sign-in file
+	## could not be read (`FileSystem`).
 	sign_in_by_session! : {
 		cookie : List(U8),
 		users : Users,
@@ -61,7 +68,7 @@ SignInRoute :: [].{
 			NoSession,
 			BadSession,
 			SessionRefused,
-			NoPassword,
+			NoMaterial,
 			FileSystem(FileSystem.Fault),
 		],
 	)
@@ -73,14 +80,9 @@ SignInRoute :: [].{
 		},
 	| {
 		claim = Session.claim_from_cookie_header(cookie)?
-		password_hash =
-			match FileSystem.read_password_hash!(claim.id()) {
-				Ok(File(bytes)) => Ok(FactFile.word_from_file(bytes))
-				Ok(NoFile) => Err(NoPassword)
-				Err(fault) => Err(FileSystem(fault))
-			}?
+		material = load_material!(claim.id())?
 		verdict = Host.hmac_sha256_with_server_secret_matches!(
-			claim.signed_bytes(password_hash),
+			claim.signed_bytes(material),
 			claim.mac(),
 		)
 		admitted = Session.admit({
@@ -93,20 +95,31 @@ SignInRoute :: [].{
 	}
 
 	## A GET of `/login`: the sign-in page for `viewer`, going to the
-	## query's `next` once signed in; a 400 when the query is anything but
-	## none or `next=<path>`.
-	show_login : { viewer : SignedIn.Actor, query : List(U8) } -> Http.Response
-	show_login = |{ viewer, query }|
-		match next_from_query(query) {
+	## query's `next` once signed in, offering GitHub as `github` says; a 400
+	## when the query is anything but none or `next=<path>`.
+	show_login : {
+		viewer : SignedIn.Actor,
+		query : List(U8),
+		github : Page.GitHubOffer,
+	} -> Http.Response
+	show_login = |
+		{
+			viewer,
+			query,
+			github,
+		},
+	|
+		match SignInRoute.next_from_query(query) {
 			Ok(next) => HttpAnswer.page(
 				200,
 				Page.login({
 					viewer,
 					next,
 					problem: NoProblem,
+					github,
 				}),
 			)
-			Err(BadNext) => bad_next_answer
+			Err(BadNext) => SignInRoute.bad_next_answer
 		}
 
 	## A POST of `/login`, from `viewer`, of the form `body`, at `now`: a
@@ -119,6 +132,7 @@ SignInRoute :: [].{
 		users : Users,
 		body : List(U8),
 		now : I64,
+		github : Page.GitHubOffer,
 	} => Http.Response
 	sign_in! = |
 		{
@@ -126,23 +140,24 @@ SignInRoute :: [].{
 			users,
 			body,
 			now,
+			github,
 		},
 	| {
 		answer =
 			match next_from_form(body) {
-				Err(BadNext) => bad_next_answer
+				Err(BadNext) => SignInRoute.bad_next_answer
 				Ok(next) =>
 					match find_human_by_password!({
 						viewer,
 						users,
 						body,
 					}) {
-						Ok({ human, password_hash }) =>
+						Ok({ human, material }) =>
 							HttpAnswer.with_header(
 								HttpAnswer.see_other(next.to_str()),
 								sign_session_cookie!({
 									human,
-									password_hash,
+									material,
 									now,
 								}),
 							)
@@ -152,20 +167,15 @@ SignInRoute :: [].{
 								viewer,
 								next,
 								problem: Problem(no_match_words),
+								github,
 							}),
 						)
-						Err(ByApiKey) => HttpAnswer.page(
-							403,
-							Page.notice({ title: "Refused", text: "An API key never signs in." }),
-						)
+						Err(ByApiKey) => SignInRoute.by_api_key_answer
 						Err(TooManyChecks) => HttpAnswer.page(
 							429,
 							Page.notice({ title: "Too many sign-ins", text: too_many_words }),
 						)
-						Err(FileSystem(fault)) => HttpAnswer.page(
-							500,
-							Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
-						)
+						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 					}
 			}
 		HttpAnswer.never_stored(answer)
@@ -175,20 +185,58 @@ SignInRoute :: [].{
 	## human its admission admits, signed over `password_hash`, the hash the
 	## redemption wrote to their password file, and a 303 to `default_next`
 	## with its cookie. Every session signed over the hash the file held
-	## before stops admitting them (`sign_in_by_session!`). Never stored.
+	## before stops admitting them (`sign_in_by_session!`). A 500 when their
+	## GitHub files can't be read. Never stored.
 	start_session_by_invite! : {
 		admission : HumanInvite.Admission,
 		password_hash : List(U8),
 	},
 	I64 => Http.Response
-	start_session_by_invite! = |{ admission, password_hash }, now| {
-		cookie = sign_session_cookie!({
-			human: admission.human(),
-			password_hash,
-			now,
-		})
-		onward = HttpAnswer.see_other(default_next.to_str())
-		HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
+	start_session_by_invite! = |{ admission, password_hash }, now|
+		match material_with_password!({ id: admission.human().id(), password_hash }) {
+			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
+			Ok(material) => {
+				cookie = sign_session_cookie!({
+					human: admission.human(),
+					material,
+					now,
+				})
+				onward = HttpAnswer.see_other(default_next.to_str())
+				HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
+			}
+		}
+
+	## The answer to a GitHub sign-in admitted at `now`: a session for the
+	## human its admission admits, and a 303 to where it goes, with its
+	## cookie. The human's first GitHub sign-in writes their
+	## `github-session-secret`. A 500 when their files can't be read or
+	## written. Never stored.
+	start_session_by_github! : GitHubSignIn.Admission, I64 => Http.Response
+	start_session_by_github! = |admission, now| {
+		human = admission.human()
+		started =
+			match hold_github_session_secret!(human.id()) {
+				Err(FileSystem(fault)) => Err(FileSystem(fault))
+				Ok({}) => load_material!(human.id())
+			}
+		answer =
+			match started {
+				Err(NoMaterial) => HttpAnswer.page(
+					500,
+					Page.notice({ title: "Failed", text: no_material_words }),
+				)
+				Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+				Ok(material) =>
+					HttpAnswer.with_header(
+						HttpAnswer.see_other(admission.next().to_str()),
+						sign_session_cookie!({
+							human,
+							material,
+							now,
+						}),
+					)
+			}
+		HttpAnswer.never_stored(answer)
 	}
 
 	## A POST of `/logout`: the browser forgets the session's cookie, and goes
@@ -205,20 +253,140 @@ SignInRoute :: [].{
 	## page asked for by no one signed in.
 	login_redirect : Html.SitePath -> Http.Response
 	login_redirect = |next| HttpAnswer.see_other("/login?next=${next.to_str()}")
+
+	## The `next` a sign-in page's `query` names: none, `/agents`; or `next=`
+	## and a path on this site; else `BadNext`.
+	next_from_query : List(U8) -> Try(Html.SitePath, [BadNext])
+	next_from_query = |query|
+		if (query.is_empty())
+			Ok(default_next)
+		else if query.starts_with(next_prefix) {
+			unchecked =
+				UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
+			unchecked.site_path().map_err(|NotASitePath| BadNext)
+		} else
+			Err(BadNext)
+
+	## The 400 for a `next` that is no path on this site.
+	bad_next_answer : Http.Response
+	bad_next_answer = HttpAnswer.page(
+		400,
+		Page.notice({
+			title: "Refused",
+			text: "Where to go after signing in is no path on this site.",
+		}),
+	)
+
+	## `Ok` unless `viewer` holds an API key (`ByApiKey`), which never signs in.
+	check_not_by_api_key : SignedIn.Actor -> Try({}, [ByApiKey])
+	check_not_by_api_key = |viewer|
+		match viewer {
+			SignedIn(acting) =>
+				match acting.credential() {
+					ApiKey(_) => Err(ByApiKey)
+					Session => Ok({})
+				}
+			Anonymous => Ok({})
+		}
+
+	## The 403 for a sign-in by a request with an API key.
+	by_api_key_answer : Http.Response
+	by_api_key_answer = HttpAnswer.page(
+		403,
+		Page.notice({ title: "Refused", text: "An API key never signs in." }),
+	)
+
+	## The 500 for a file system's `fault`.
+	fault_answer : FileSystem.Fault -> Http.Response
+	fault_answer = |fault|
+		HttpAnswer.page(500, Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }))
 }
 
+## What the sessions of the user `id` are signed over now, from their sign-in
+## files; unless they hold nothing to sign over (`NoMaterial`), or a file
+## can't be read.
+load_material! : UserId => Try(
+	Session.Material,
+	[NoMaterial, FileSystem(FileSystem.Fault)],
+)
+load_material! = |id| {
+	github = load_github_word!(id)?
+	match (FileSystem.read_password_hash!(id), github) {
+		(Err(fault), _) => Err(FileSystem(fault))
+		(Ok(File(bytes)), _) => Ok(
+			Session.Material.from_password({
+				password_hash: FactFile.word_from_file(bytes),
+				github,
+			}),
+		)
+		(Ok(NoFile), GitHub(word)) => Ok(Session.Material.from_github_alone(word))
+		(Ok(NoFile), NoGitHub) => Err(NoMaterial)
+	}
+}
+
+## What a session of the user `id` is signed over when it starts from
+## `password_hash`, just checked or just written, not what the file holds by
+## now: a password rewritten meanwhile leaves a session that admits no one.
+material_with_password! : { id : UserId, password_hash : List(U8) } => Try(
+	Session.Material,
+	[FileSystem(FileSystem.Fault)],
+)
+material_with_password! = |{ id, password_hash }| {
+	github = load_github_word!(id)?
+	Ok(Session.Material.from_password({ password_hash, github }))
+}
+
+## The word in the user `id`'s `github-session-secret`, read only while their
+## `github-id` ties them to GitHub, so removing that file ends their sessions
+## too. An empty file holds no word.
+load_github_word! : UserId => Try(
+	[NoGitHub, GitHub(List(U8))],
+	[FileSystem(FileSystem.Fault)],
+)
+load_github_word! = |id|
+	match FileSystem.read_github_id_file!(id) {
+		Err(fault) => Err(FileSystem(fault))
+		Ok(NoFile) => Ok(NoGitHub)
+		Ok(File(_)) =>
+			match FileSystem.read_github_session_secret!(id) {
+				Err(fault) => Err(FileSystem(fault))
+				Ok(NoFile) => Ok(NoGitHub)
+				Ok(File(bytes)) => {
+					word = FactFile.word_from_file(bytes)
+					Ok(if (word.is_empty()) NoGitHub else GitHub(word))
+				}
+			}
+	}
+
+## The user `id`'s `github-session-secret`, made first when there is none: 32
+## random bytes as 64 hex digits. Sessions are signed over it under the
+## server's secret, so whoever reads the file can't forge one; it needs only
+## to change when its owner rewrites it.
+hold_github_session_secret! : UserId => Try({}, [FileSystem(FileSystem.Fault)])
+hold_github_session_secret! = |id|
+	match FileSystem.read_github_session_secret!(id) {
+		Err(fault) => Err(FileSystem(fault))
+		Ok(File(_)) => Ok({})
+		Ok(NoFile) => {
+			bytes = Host.fill_with_random_bytes!(Secret.length)
+			match FileSystem.create_github_session_secret!(id, Hex.to_hex(bytes).to_utf8()) {
+				Ok({}) => Ok({})
+				Err(fault) => Err(FileSystem(fault))
+			}
+		}
+	}
+
 ## The `Set-Cookie` header of a session for `human`, signed at `now` by the
-## host's HMAC under the server's secret, over `password_hash`, the hash
-## their password file keeps.
+## host's HMAC under the server's secret, over `material`.
 sign_session_cookie! : {
 	human : Users.Human,
-	password_hash : List(U8),
+	material : Session.Material,
 	now : I64,
 } => Http.Header
 sign_session_cookie! = |
 	{
 		human,
-		password_hash,
+		material,
 		now,
 	},
 | {
@@ -226,7 +394,7 @@ sign_session_cookie! = |
 		Session.signed_bytes({
 			id: human.id(),
 			signed_at: now,
-			password_hash,
+			material,
 		}),
 	)
 	cookie = Session.cookie_value({
@@ -261,28 +429,11 @@ too_many_words = "Too many sign-ins are being tried. Wait a few seconds, then tr
 dummy_hash : List(U8)
 dummy_hash = "$2b$10$v5yDSgBNCAzrmaBwxRL5GuCqhQGND3Nw3mq3QGBC1d2MZltsLFCJ6".to_utf8()
 
-## The 400 for a `next` that is no path on this site.
-bad_next_answer : Http.Response
-bad_next_answer = HttpAnswer.page(
-	400,
-	Page.notice({
-		title: "Refused",
-		text: "Where to go after signing in is no path on this site.",
-	}),
-)
-
-## The `next` a sign-in page's `query` names: none, `default_next`; or
-## `next=` and a path on this site; else `BadNext`.
-next_from_query : List(U8) -> Try(Html.SitePath, [BadNext])
-next_from_query = |query|
-	if (query.is_empty())
-		Ok(default_next)
-	else if query.starts_with(next_prefix) {
-		unchecked =
-			UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
-		unchecked.site_path().map_err(|NotASitePath| BadNext)
-	} else
-		Err(BadNext)
+## The sign-in's words when a human GitHub vouched for has nothing to sign a
+## session over: a `github-session-secret` file emptied by hand, and no
+## password.
+no_material_words : Str
+no_material_words = "This account has nothing to sign a session over: its github-session-secret file is empty."
 
 next_prefix : List(U8)
 next_prefix = "next=".to_utf8()
@@ -298,17 +449,17 @@ next_from_form = |body|
 	}
 
 ## The human whose name and password the form `body` holds, among `users`,
-## and the hash the password was checked against, which their session is
-## signed over; unless they don't match a human's (`NoMatch`: no such name,
+## and what their session is signed over, which holds the hash the password
+## was checked against; unless they don't match a human's (`NoMatch`: no such name,
 ## an agent's, no password, a password file holding no hash, or another
 ## password), `viewer` holds an API key (`ByApiKey`), the host refuses the
-## check (`TooManyChecks`), or the password's file can't be read.
+## check (`TooManyChecks`), or a sign-in file can't be read.
 find_human_by_password! : {
 	viewer : SignedIn.Actor,
 	users : Users,
 	body : List(U8),
 } => Try(
-	{ human : Users.Human, password_hash : List(U8) },
+	{ human : Users.Human, material : Session.Material },
 	[
 		NoMatch,
 		ByApiKey,
@@ -323,15 +474,7 @@ find_human_by_password! = |
 		body,
 	},
 | {
-	_ =
-		match viewer {
-			SignedIn(acting) =>
-				match acting.credential() {
-					ApiKey(_) => Err(ByApiKey)
-					Session => Ok({})
-				}
-			Anonymous => Ok({})
-		}?
+	SignInRoute.check_not_by_api_key(viewer)?
 	name_text = UrlEncodedForm.field({ body, name: "name" }) ? |_| NoMatch
 	name = name_text.name() ? |_| NoMatch
 	password_text = UrlEncodedForm.field({ body, name: "password" }) ? |_| NoMatch
@@ -346,12 +489,12 @@ find_human_by_password! = |
 	}
 }
 
-## `human` and the hash their password file keeps, when `password` is the
-## one the hash was made from; unless it isn't, they have no file or one
-## holding no hash the host checks (`NoMatch`), the host refuses the check
-## (`TooManyChecks`), or the file can't be read.
+## `human` and what their session is signed over, when `password` is the one
+## the hash their password file keeps was made from; unless it isn't, they
+## have no file or one holding no hash the host checks (`NoMatch`), the host
+## refuses the check (`TooManyChecks`), or a sign-in file can't be read.
 check_password_of! : { human : Users.Human, password : Password } => Try(
-	{ human : Users.Human, password_hash : List(U8) },
+	{ human : Users.Human, material : Session.Material },
 	[
 		NoMatch,
 		TooManyChecks,
@@ -365,7 +508,11 @@ check_password_of! = |{ human, password }|
 		Ok(File(bytes)) => {
 			password_hash = FactFile.word_from_file(bytes)
 			match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), password_hash) {
-				Matches => Ok({ human, password_hash })
+				Matches =>
+					match material_with_password!({ id: human.id(), password_hash }) {
+						Ok(material) => Ok({ human, material })
+						Err(FileSystem(fault)) => Err(FileSystem(fault))
+					}
 				DoesNotMatch => Err(NoMatch)
 				NotABcryptHash => Err(check_against_dummy_hash!(password))
 				TooManyChecks => Err(TooManyChecks)
@@ -393,8 +540,10 @@ next_text = |next| next.map_ok(Html.SitePath.to_str)
 
 # A query's `next`: none is /agents; a path on this site is itself; any
 # other path, another field, or bytes that are no text, refused.
-expect next_text(next_from_query([])) == Ok("/agents")
-expect next_text(next_from_query("next=/chat/dm/1_1/plans".to_utf8())) == Ok("/chat/dm/1_1/plans")
+expect next_text(SignInRoute.next_from_query([])) == Ok("/agents")
+expect
+	next_text(SignInRoute.next_from_query("next=/chat/dm/1_1/plans".to_utf8()))
+		== Ok("/chat/dm/1_1/plans")
 expect
 	[
 		"next=",
@@ -404,8 +553,8 @@ expect
 		"next=/a/../b",
 		"to=/agents",
 		"next=/agents&x=1",
-	].all(|query| next_from_query(query.to_utf8()) == Err(BadNext))
-expect next_from_query("next=/".to_utf8().concat([0xff])) == Err(BadNext)
+	].all(|query| SignInRoute.next_from_query(query.to_utf8()) == Err(BadNext))
+expect SignInRoute.next_from_query("next=/".to_utf8().concat([0xff])) == Err(BadNext)
 # A form's `next`: none is /agents; a path on this site, decoded, is itself;
 # any other, or two, refused.
 expect next_text(next_from_form("name=Steve".to_utf8())) == Ok("/agents")
@@ -434,5 +583,15 @@ expect
 				{ name: "cache-control".to_utf8(), value: "no-store".to_utf8() },
 			]
 # The page, both sides of its query: 200 with a good one, 400 with a bad one.
-expect SignInRoute.show_login({ viewer: Anonymous, query: [] }).status == 200
-expect SignInRoute.show_login({ viewer: Anonymous, query: "next=x".to_utf8() }).status == 400
+expect
+	SignInRoute.show_login({
+		viewer: Anonymous,
+		query: [],
+		github: NotOffered,
+	}).status == 200
+expect
+	SignInRoute.show_login({
+		viewer: Anonymous,
+		query: "next=x".to_utf8(),
+		github: NotOffered,
+	}).status == 400

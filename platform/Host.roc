@@ -151,6 +151,29 @@ Host := [].{
 		TooManyChecks,
 	]
 
+	## The public half of the server's GitHub settings (docs/platform.md,
+	## "GitHub's settings"): `Configured`, with GitHub's site and the OAuth
+	## app's client id; or `NotConfigured`, the two lists empty, when the
+	## server has none. The client secret stays in the host.
+	github_sign_in_settings! : {} => {
+		authorize_base : List(U8),
+		client_id : List(U8),
+		status : [Configured, NotConfigured],
+	}
+
+	## What GitHub says of `code`: the host exchanges it for a token, asks
+	## GitHub who the token belongs to, and forgets the token. `Identified`,
+	## with GitHub's numeric id and its login as GitHub spelled it; `Denied`
+	## when GitHub answered no; `Failed` when it didn't answer in time or
+	## made no sense. In both of those `id` is 0 and `login` empty. The host
+	## lets other requests be answered while it waits, so what the app read
+	## before this call may have changed by its answer.
+	github_identity_for_code! : List(U8) => {
+		id : U64,
+		login : List(U8),
+		status : [Denied, Failed, Identified],
+	}
+
 	## The HMAC-SHA256 of `bytes` under the server's secret: 32 bytes. The
 	## secret is the host's alone, kept in a file no file primitive reaches,
 	## so the app signs with it and never holds it.

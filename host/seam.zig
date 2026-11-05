@@ -11,7 +11,8 @@
 //!     Roc name and answered by host/file_primitives.zig; for a stream's
 //!     frames, host/bus.zig, and for ending a holder's streams,
 //!     host/sse.zig; for a password or a signature,
-//!     host/sign_in_primitives.zig.
+//!     host/sign_in_primitives.zig; and for GitHub's word on a code,
+//!     host/github_client.zig.
 //!
 //! **EVERY RECORD IS LAID OUT AS ROC LAYS IT**: fields by alignment, then
 //! by name; a tag union with no payloads is one byte, its tags numbered
@@ -22,8 +23,9 @@
 //! **ONE CALL AT A TIME, ITS MEMORY ONE ARENA**: the server makes one Roc
 //! call at a time (the turn, host/http.zig), so the call's arena, data
 //! root and hub are held here, set as the call begins (`begin`). A
-//! password's check alone lets the turn go while bcrypt runs, setting its
-//! call aside and taking it back with the turn. Everything Roc
+//! password's check lets the turn go while bcrypt runs, and a GitHub code's
+//! exchange while GitHub answers, each setting its call aside and taking it
+//! back with the turn. Everything Roc
 //! allocates is in that arena, freed whole when the request ends, so
 //! `roc_dealloc` frees nothing and nothing is refcounted by hand.
 //!
@@ -36,6 +38,7 @@ const files = @import("file_primitives.zig");
 const bus = @import("bus.zig");
 const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
+const github = @import("github_client.zig");
 
 const log = std.log.scoped(.seam);
 
@@ -183,13 +186,25 @@ comptime {
     }
 }
 
+/// Host.roc's `github_sign_in_settings!` status, alphabetical.
+pub const GitHubSettingsStatus = enum(u8) { configured, not_configured };
+/// Host.roc's `github_sign_in_settings!` answer: the lists by name, then the
+/// tag.
+pub const GitHubSettingsRec = extern struct { authorize_base: RocBytes, client_id: RocBytes, status: GitHubSettingsStatus };
+/// Host.roc's `github_identity_for_code!` status, alphabetical.
+pub const GitHubIdentityStatus = enum(u8) { denied, failed, identified };
+/// Host.roc's `github_identity_for_code!` answer: the U64, the list, then the
+/// tag.
+pub const GitHubIdentityRec = extern struct { id: u64, login: RocBytes, status: GitHubIdentityStatus };
+
 // ── the call ────────────────────────────────────────────────────────────────
 
 /// What a call to the Roc may use, set for its length: its arena, and,
 /// for the server's, the data root and the Io the primitives answer with,
 /// the hub its frames are published on, the slots of its held streams, the
 /// secret it signs with, the bucket its password checks are taken from,
-/// and the turn it holds, which a password's check lets go of.
+/// the turn it holds, which a password's check lets go of, GitHub's
+/// settings if it has them, and the allocator GitHub's client uses.
 pub const Call = struct {
     arena: std.mem.Allocator,
     root: ?*const files.DataRoot = null,
@@ -199,6 +214,8 @@ pub const Call = struct {
     secret: ?*const sign_in.ServerSecret = null,
     password_checks: ?*sign_in.PasswordChecks = null,
     turn: ?*Io.Mutex = null,
+    github: ?*const github.Settings = null,
+    gpa: ?std.mem.Allocator = null,
 };
 
 var current: ?Call = null;
@@ -364,6 +381,42 @@ pub export fn password_matches_bcrypt_hash(password: RocBytes, hash: RocBytes) c
     current = this_call;
     if (verdict == .not_a_bcrypt_hash) log.warn(what ++ ": a stored hash is no bcrypt hash this server checks (`$2a$`, `$2b$` or `$2y$` at a cost of {d} to {d}), answered as a wrong password", .{ sign_in.bcrypt_cost_lowest, sign_in.bcrypt_cost_highest });
     return verdict;
+}
+
+/// The client id and GitHub's site, which the browser sees anyway. The client
+/// secret never crosses.
+pub export fn github_sign_in_settings() callconv(.c) GitHubSettingsRec {
+    const settings = call("github_sign_in_settings").github orelse
+        return .{ .authorize_base = .from(""), .client_id = .from(""), .status = .not_configured };
+    return .{ .authorize_base = .from(settings.oauth_base.slice()), .client_id = .from(settings.client_id.slice()), .status = .configured };
+}
+
+/// GitHub's exchange, with the turn let go, so no request waits on GitHub:
+/// the call is set aside (`current` is null) until the turn is held again,
+/// as for a password's check. The code lives in this call's arena. A failure
+/// is logged here by its name alone, and neither the code nor the token
+/// reaches the log; the token never leaves the client. A task canceled as
+/// the server stops answers `failed`.
+pub export fn github_identity_for_code(code: RocBytes) callconv(.c) GitHubIdentityRec {
+    const what = "github_identity_for_code";
+    const this_call = call(what);
+    const io = io_of(what);
+    const settings = this_call.github orelse @panic(what ++ ": this call has no GitHub settings (the app asks only when it has them)");
+    const gpa = this_call.gpa orelse @panic(what ++ ": this call has no allocator (only the server's asks GitHub)");
+    const turn = this_call.turn orelse @panic(what ++ ": this call holds no turn (only the server's asks GitHub)");
+    current = null;
+    turn.unlock(io);
+    const identity = github.identify_code(gpa, io, settings, code.slice());
+    turn.lockUncancelable(io);
+    current = this_call;
+    const who = identity catch |e| switch (e) {
+        error.Denied => return .{ .id = 0, .login = .from(""), .status = .denied },
+        error.Timeout, error.Refused, error.BadResponse, error.Canceled => {
+            log.warn(what ++ ": {t}", .{e});
+            return .{ .id = 0, .login = .from(""), .status = .failed };
+        },
+    };
+    return .{ .id = who.id, .login = .from(who.login()), .status = .identified };
 }
 
 pub export fn hmac_sha256_with_server_secret(bytes: RocBytes) callconv(.c) RocBytes {

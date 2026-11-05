@@ -1,16 +1,21 @@
 ## A session keeps a human signed in: a cookie the server signs when they
-## give their password (`SignInRoute`), and checks on every request after.
+## give their password or GitHub vouches for them (`SignInRoute`), and checks
+## on every request after.
 ##
 ## The cookie is `__Host-gopher_auth`, and its value is three parts joined by
 ## `.`: the user's id in base64url (`Base64Url`), the second it was signed
 ## at, in decimal, and the HMAC-SHA256 of the id, a line feed, that second,
-## a line feed and the bcrypt hash of the human's password as their file
-## keeps it, in base64url. The host signs and checks the HMAC with the
-## server's secret (`Host.hmac_sha256_with_server_secret!`), which the app
-## never holds. A session admits its human for a year from its second, and
-## one signed more than five minutes ahead of the clock admits no one.
-## Because the hash is signed and not sent, rewriting a human's password
-## file ends every session of theirs, and keeping it costs nothing.
+## a line feed and the human's `Material`, in base64url. The host signs and
+## checks the HMAC with the server's secret
+## (`Host.hmac_sha256_with_server_secret!`), which the app never holds. A
+## session admits its human for a year from its second, and one signed more
+## than five minutes ahead of the clock admits no one.
+##
+## The `Material` is what the human's sign-in files hold: the bcrypt hash of
+## their password, and for a human tied to GitHub, the random word in
+## `github-session-secret`. A human with no password has only the word.
+## Because the material is signed and not sent, rewriting or removing any of
+## those files ends every session of theirs, and keeping it costs nothing.
 ##
 ## The cookie is `HttpOnly`, so no script reads it; `Secure`, so a browser
 ## sends it only over HTTPS or to this machine; `SameSite=Lax`, so another
@@ -49,14 +54,14 @@ Session :: [].{
 		mac : List(U8),
 	}.{
 
-		## The bytes its signature is over, when its human's password file
-		## keeps `password_hash`: the id's digits, a line feed, the second's
-		## digits, a line feed, the hash.
-		signed_bytes : Session.Claim, List(U8) -> List(U8)
-		signed_bytes = |Session.Claim.(claim), password_hash| Session.signed_bytes({
+		## The bytes its signature is over, when its human's sign-in files
+		## hold `material`: the id's digits, a line feed, the second's
+		## digits, a line feed, the material.
+		signed_bytes : Session.Claim, Session.Material -> List(U8)
+		signed_bytes = |Session.Claim.(claim), material| Session.signed_bytes({
 			id: claim.id,
 			signed_at: claim.signed_at,
-			password_hash,
+			material,
 		})
 
 		## The signature it carries, for the host to check.
@@ -72,20 +77,45 @@ Session :: [].{
 		signed_at = |Session.Claim.(claim)| claim.signed_at
 	}
 
+	## What a human's sessions are signed over: the password hash as it is;
+	## the hash, a line feed and the GitHub word; or a line feed and the word
+	## for a human with no password. A hash and a word hold no line feed, so
+	## no two of these are the same bytes.
+	Material :: List(U8).{
+
+		## The material of a human with a password, whose file keeps
+		## `password_hash`.
+		from_password : { password_hash : List(U8), github : [NoGitHub, GitHub(List(U8))] } -> Session.Material
+		from_password = |{ password_hash, github }|
+			match github {
+				NoGitHub => Session.Material.(password_hash)
+				GitHub(word) => Session.Material.(password_hash.append('\n').concat(word))
+			}
+
+		## The material of a human with no password, whose
+		## `github-session-secret` file keeps `word`.
+		from_github_alone : List(U8) -> Session.Material
+		from_github_alone = |word| Session.Material.(['\n'].concat(word))
+
+		## The material's bytes, to sign.
+		bytes_to_sign : Session.Material -> List(U8)
+		bytes_to_sign = |Session.Material.(bytes)| bytes
+	}
+
 	## The bytes a session for `id`, signed at `signed_at`, is signed over,
-	## its human's password file keeping `password_hash`.
+	## its human's sign-in files holding `material`.
 	signed_bytes : {
 		id : UserId,
 		signed_at : I64,
-		password_hash : List(U8),
+		material : Session.Material,
 	} -> List(U8)
 	signed_bytes = |
 		{
 			id,
 			signed_at,
-			password_hash,
+			material,
 		},
-	| "${id.to_str()}\n${signed_at.to_str()}\n".to_utf8().concat(password_hash)
+	| "${id.to_str()}\n${signed_at.to_str()}\n".to_utf8().concat(material.bytes_to_sign())
 
 	## The claim of the request's `Cookie` header, `header`; unless it holds
 	## no session cookie (`NoSession`), or one that is no claim, or more than
@@ -279,12 +309,17 @@ cookie_for = |
 	"${cookie_prefix_text}${cookie_value}".to_utf8()
 }
 
+## The material of a human whose password file keeps `text`.
+password_material : Str -> Session.Material
+password_material = |text|
+	Session.Material.from_password({ password_hash: text.to_utf8(), github: NoGitHub })
+
 ## What `header` claims, as a test reads it: the bytes its signature is
 ## over, its human's password file keeping `h`, and the signature.
 claim_text : List(U8) -> Try((Str, List(U8)), [NoSession, BadSession])
 claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
 	|claim| (
-		Str.from_utf8_lossy(claim.signed_bytes("h".to_utf8())),
+		Str.from_utf8_lossy(claim.signed_bytes(password_material("h"))),
 		claim.mac(),
 	),
 )
@@ -298,7 +333,7 @@ expect Session.cookie_value({
 expect Session.signed_bytes({
 	id: UserId.steve,
 	signed_at: 1700000000,
-	password_hash: "$2b$10$x".to_utf8(),
+	material: password_material("$2b$10$x"),
 }) == "1\n1700000000\n$2b$10$x".to_utf8()
 # Another hash, or none, is other bytes: a password rewritten ends its
 # sessions.
@@ -310,10 +345,30 @@ expect
 		|password_hash| Session.signed_bytes({
 			id: UserId.steve,
 			signed_at: 1700000000,
-			password_hash: password_hash.to_utf8(),
+			material: password_material(password_hash),
 		})
 			!= "1\n1700000000\n$2b$10$x".to_utf8(),
 	)
+# The material of each kind of human, in its bytes.
+expect password_material("h").bytes_to_sign() == "h".to_utf8()
+expect
+	Session.Material.from_password({ password_hash: "h".to_utf8(), github: GitHub("w".to_utf8()) })
+		.bytes_to_sign()
+		== "h\nw".to_utf8()
+expect Session.Material.from_github_alone("w".to_utf8()).bytes_to_sign() == "\nw".to_utf8()
+# A word rewritten, or a word with no password beside it, is other bytes,
+# so rewriting either file ends the session.
+expect {
+	both = |word| Session.Material.from_password({
+		password_hash: "h".to_utf8(),
+		github: GitHub(word.to_utf8()),
+	}).bytes_to_sign()
+	both("w") != both("v")
+		and both("w") != password_material("h").bytes_to_sign()
+		and both("w") != Session.Material.from_github_alone("w".to_utf8()).bytes_to_sign()
+		and Session.Material.from_github_alone("w".to_utf8()).bytes_to_sign()
+			!= Session.Material.from_github_alone("v".to_utf8()).bytes_to_sign()
+}
 # A claim read back from its cookie, among others or alone; its signed bytes
 # and its signature as written.
 expect claim_text(

@@ -135,6 +135,7 @@ login_for = |viewer, problem|
 			viewer,
 			next: Html.SitePath.from_str("/agents") ?? crash "PageSpec: a site path",
 			problem,
+			github: NotOffered,
 		}).to_utf8(),
 	)
 
@@ -145,6 +146,16 @@ expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;mat
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
 		== login_page("<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n")
+# With GitHub's settings, a link below the form, going on to `next`.
+expect
+	Str.from_utf8_lossy(
+		Page.login({
+			viewer: Anonymous,
+			next: Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "PageSpec: a site path",
+			problem: NoProblem,
+			github: Offered,
+		}).to_utf8(),
+	).contains("</form>\n<p><a href=\"/login/github/start?next=/chat/dm/1_1/plans\">Sign in with GitHub</a></p>\n")
 # The join page: a hidden field for the code, the name and a new password,
 # then the script that reads the code from the link.
 expect

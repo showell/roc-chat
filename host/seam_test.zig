@@ -178,9 +178,9 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
-test "roc glue declares every function seam.zig has, and no other: seventeen primitives and five entries" {
+test "roc glue declares every function seam.zig has, and no other: nineteen primitives and five entries" {
     try std.testing.expectEqual(seam_names.len, glue_names.len);
-    try std.testing.expectEqual(22, seam_names.len);
+    try std.testing.expectEqual(24, seam_names.len);
 }
 
 test "the password rule `hash-password` asks is the app's: 1 to 72 bytes of UTF-8" {
