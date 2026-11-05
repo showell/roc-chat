@@ -128,13 +128,20 @@ GitHubState :: {
 		}
 	}
 
+	## What `check` says of a state.
+	Verdict : [
+		Valid,
+		Expired,
+		Mismatched,
+	]
+
 	## Whether this state is good, from this browser, at `now`: `Mismatched`
 	## when the browser's cookie is missing or holds another nonce, said
 	## first, as a state from another browser is a forgery however old it is;
 	## `Expired` at `lifetime_seconds` old or more, or issued after `now`;
 	## else `Valid`. The sums are in `I128`, so no second a token carries
 	## overflows them.
-	check : GitHubState, { cookie : GitHubState.Cookie, now : I64 } -> [Valid, Expired, Mismatched]
+	check : GitHubState, { cookie : GitHubState.Cookie, now : I64 } -> GitHubState.Verdict
 	check = |GitHubState.(state), { cookie, now }| {
 		age = now.to_i128() - state.issued_at.to_i128()
 		match cookie {
@@ -174,8 +181,11 @@ GitHubState :: {
 	## lifetime. `SameSite=Lax` lets GitHub's redirect back carry it, as a
 	## top-level navigation.
 	set_cookie_text : GitHubState -> Str
-	set_cookie_text = |GitHubState.(state)|
-		"${cookie_prefix_text}${Base64Url.encode(state.nonce)}; Path=/; Max-Age=${GitHubState.lifetime_seconds.to_str()}; ${cookie_attributes}"
+	set_cookie_text = |GitHubState.(state)| {
+		value = Base64Url.encode(state.nonce)
+		age = GitHubState.lifetime_seconds.to_str()
+		"${cookie_prefix_text}${value}; Path=/; Max-Age=${age}; ${cookie_attributes}"
+	}
 
 	## The `Set-Cookie` header's value that has a browser forget the state's
 	## cookie, so a state is used once from a browser.
@@ -248,7 +258,7 @@ issued = GitHubState.issue({
 })
 
 ## What `check` says of `issued`, back with `cookie` at `now`.
-back : { cookie : GitHubState.Cookie, now : I64 } -> [Valid, Expired, Mismatched]
+back : { cookie : GitHubState.Cookie, now : I64 } -> GitHubState.Verdict
 back = |asked| issued.check(asked)
 
 # Valid at the window's two ends and inside it.

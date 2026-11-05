@@ -67,6 +67,14 @@ GitHubSignIn :: [].{
 		DuplicateAccount,
 	]
 
+	## What GitHub sent the browser back with: a code, none, as when its
+	## human says no, or one it wouldn't send.
+	Answer : [
+		Code(GitHubCode),
+		NoCode,
+		BadCode,
+	]
+
 	## GitHub sent the browser back.
 	CameBack :: { state : GitHubState, code : GitHubCode }.{
 
@@ -75,7 +83,7 @@ GitHubSignIn :: [].{
 		## first, whatever GitHub answered.
 		came_back : {
 			state : [Signed(GitHubState), Unsigned],
-			answer : [Code(GitHubCode), NoCode, BadCode],
+			answer : GitHubSignIn.Answer,
 		} -> Try(
 			GitHubSignIn.CameBack,
 			[
@@ -89,7 +97,8 @@ GitHubSignIn :: [].{
 				(Unsigned, _) => Err(StateForged)
 				(Signed(_), NoCode) => Err(GitHubDenied)
 				(Signed(_), BadCode) => Err(NotACode)
-				(Signed(signed), Code(code)) => Ok(GitHubSignIn.CameBack.({ state: signed, code }))
+				(Signed(signed), Code(code)) =>
+					Ok(GitHubSignIn.CameBack.({ state: signed, code }))
 			}
 
 		## The state held to this browser's `cookie` at `now`
@@ -103,7 +112,10 @@ GitHubSignIn :: [].{
 			match came.state.check(asked) {
 				Mismatched => Err(StateMismatched)
 				Expired => Err(StateExpired)
-				Valid => Ok(GitHubSignIn.StateChecked.({ code: came.code, next: came.state.next() }))
+				Valid => {
+					next = came.state.next()
+					Ok(GitHubSignIn.StateChecked.({ code: came.code, next }))
+				}
 			}
 	}
 
@@ -253,7 +265,7 @@ bound_files = [
 ## where they go, or the refusal.
 round_trip : {
 	state : [Signed(GitHubState), Unsigned],
-	answer : [Code(GitHubCode), NoCode, BadCode],
+	answer : GitHubSignIn.Answer,
 	cookie : GitHubState.Cookie,
 	now : I64,
 	heard : {
@@ -281,13 +293,13 @@ round_trip = |
 }
 
 ## GitHub's answer naming the account `id`, `login`.
-identified : U64,
+github_answer : U64,
 Str -> {
 	status : [Denied, Failed, Identified],
 	id : U64,
 	login : List(U8),
 }
-identified = |id, login| {
+github_answer = |id, login| {
 	status: Identified,
 	id,
 	login: login.to_utf8(),
@@ -299,25 +311,27 @@ good_return = {
 	answer: Code(good_code),
 	cookie: Sent(nonce_held),
 	now: 1300,
-	heard: identified(100, "showell"),
+	heard: github_answer(100, "showell"),
 	files: bound_files,
 }
 
 # A good round trip admits the human holding the id, and goes to `next`,
 # whatever login GitHub calls them now.
 expect round_trip(good_return) == Ok(("Steve", "/agents"))
-expect round_trip({ ..good_return, heard: identified(100, "renamed") }) == Ok(("Steve", "/agents"))
-expect round_trip({ ..good_return, heard: identified(200, "apoorva") }) == Ok(("Apoorva", "/agents"))
+expect round_trip({ ..good_return, heard: github_answer(100, "renamed") }) == Ok(("Steve", "/agents"))
+expect
+	round_trip({ ..good_return, heard: github_answer(200, "apoorva") })
+		== Ok(("Apoorva", "/agents"))
 # An account no human holds is refused, naming it; no file means no account.
 expect
-	round_trip({ ..good_return, heard: identified(300, "stranger") })
+	round_trip({ ..good_return, heard: github_answer(300, "stranger") })
 		== Err(UnknownAccount(GitHubLogin.from_utf8("stranger".to_utf8()) ?? crash "a login"))
 expect
 	round_trip({ ..good_return, files: [] })
 		== Err(UnknownAccount(GitHubLogin.from_utf8("showell".to_utf8()) ?? crash "a login"))
 # The login names no account: a stranger who took `showell` is still a stranger.
 expect
-	round_trip({ ..good_return, heard: identified(300, "showell") })
+	round_trip({ ..good_return, heard: github_answer(300, "showell") })
 		== Err(UnknownAccount(GitHubLogin.from_utf8("showell".to_utf8()) ?? crash "a login"))
 # A damaged file, an agent's, and a file of a user no one is admit no one.
 expect
@@ -369,9 +383,9 @@ expect round_trip({ ..good_return, now: 1599 }) == Ok(("Steve", "/agents"))
 expect round_trip({ ..good_return, now: 1600 }) == Err(StateExpired)
 # What the host heard of GitHub, each way it can go wrong.
 expect
-	round_trip({ ..good_return, heard: { ..identified(0, ""), status: Denied } }) == Err(CodeRefused)
+	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Denied } }) == Err(CodeRefused)
 expect
-	round_trip({ ..good_return, heard: { ..identified(0, ""), status: Failed } })
+	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Failed } })
 		== Err(GitHubUnreachable)
-expect round_trip({ ..good_return, heard: identified(0, "showell") }) == Err(BadIdentity)
-expect round_trip({ ..good_return, heard: identified(100, "not a login") }) == Err(BadIdentity)
+expect round_trip({ ..good_return, heard: github_answer(0, "showell") }) == Err(BadIdentity)
+expect round_trip({ ..good_return, heard: github_answer(100, "not a login") }) == Err(BadIdentity)

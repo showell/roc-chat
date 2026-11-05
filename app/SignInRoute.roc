@@ -193,7 +193,7 @@ SignInRoute :: [].{
 	},
 	I64 => Http.Response
 	start_session_by_invite! = |{ admission, password_hash }, now|
-		match material_with_password!({ id: admission.human().id(), password_hash }) {
+		match load_material_with_password!({ id: admission.human().id(), password_hash }) {
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 			Ok(material) => {
 				cookie = sign_session_cookie!({
@@ -215,7 +215,7 @@ SignInRoute :: [].{
 	start_session_by_github! = |admission, now| {
 		human = admission.human()
 		started =
-			match hold_github_session_secret!(human.id()) {
+			match make_github_session_secret!(human.id()) {
 				Err(FileSystem(fault)) => Err(FileSystem(fault))
 				Ok({}) => load_material!(human.id())
 			}
@@ -327,11 +327,11 @@ load_material! = |id| {
 ## What a session of the user `id` is signed over when it starts from
 ## `password_hash`, just checked or just written, not what the file holds by
 ## now: a password rewritten meanwhile leaves a session that admits no one.
-material_with_password! : { id : UserId, password_hash : List(U8) } => Try(
+load_material_with_password! : { id : UserId, password_hash : List(U8) } => Try(
 	Session.Material,
 	[FileSystem(FileSystem.Fault)],
 )
-material_with_password! = |{ id, password_hash }| {
+load_material_with_password! = |{ id, password_hash }| {
 	github = load_github_word!(id)?
 	Ok(Session.Material.from_password({ password_hash, github }))
 }
@@ -362,8 +362,8 @@ load_github_word! = |id|
 ## random bytes as 64 hex digits. Sessions are signed over it under the
 ## server's secret, so whoever reads the file can't forge one; it needs only
 ## to change when its owner rewrites it.
-hold_github_session_secret! : UserId => Try({}, [FileSystem(FileSystem.Fault)])
-hold_github_session_secret! = |id|
+make_github_session_secret! : UserId => Try({}, [FileSystem(FileSystem.Fault)])
+make_github_session_secret! = |id|
 	match FileSystem.read_github_session_secret!(id) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(File(_)) => Ok({})
@@ -509,7 +509,7 @@ check_password_of! = |{ human, password }|
 			password_hash = FactFile.word_from_file(bytes)
 			match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), password_hash) {
 				Matches =>
-					match material_with_password!({ id: human.id(), password_hash }) {
+					match load_material_with_password!({ id: human.id(), password_hash }) {
 						Ok(material) => Ok({ human, material })
 						Err(FileSystem(fault)) => Err(FileSystem(fault))
 					}

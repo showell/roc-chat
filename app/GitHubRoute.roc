@@ -35,8 +35,8 @@ import Users
 GitHubRoute :: [].{
 
 	## Whether this server offers GitHub on its sign-in page.
-	offer! : {} => Page.GitHubOffer
-	offer! = |{}|
+	load_offer! : {} => Page.GitHubOffer
+	load_offer! = |{}|
 		match Host.github_sign_in_settings!({}).status {
 			Configured => Offered
 			NotConfigured => NotOffered
@@ -44,13 +44,13 @@ GitHubRoute :: [].{
 
 	## A GET of `/login/github/start`: the browser sent to GitHub to authorize
 	## this server, back to `origin`, going to the query's `next` after.
-	start! : {
+	serve_start! : {
 		viewer : SignedIn.Actor,
 		query : List(U8),
 		origin : Str,
 		now : I64,
 	} => Http.Response
-	start! = |
+	serve_start! = |
 		{
 			viewer,
 			query,
@@ -60,28 +60,31 @@ GitHubRoute :: [].{
 	| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
-			match (settings.status, SignInRoute.check_not_by_api_key(viewer), SignInRoute.next_from_query(query)) {
-				(NotConfigured, _, _) => not_found
-				(Configured, Err(ByApiKey), _) => SignInRoute.by_api_key_answer
-				(Configured, Ok({}), Err(BadNext)) => SignInRoute.bad_next_answer
-				(Configured, Ok({}), Ok(next)) => {
-					state = GitHubState.issue({
-						nonce: Host.fill_with_random_bytes!(GitHubState.nonce_bytes),
-						now,
-						next,
-					})
-					mac = Host.hmac_sha256_with_server_secret!(state.signed_bytes())
-					location = authorize_url({
-						authorize_base: settings.authorize_base,
-						client_id: settings.client_id,
-						origin,
-						state_token: state.token(mac),
-					})
-					HttpAnswer.with_header(
-						HttpAnswer.see_other(location),
-						set_cookie_header(state.set_cookie_text()),
-					)
-				}
+			match (settings.status, SignInRoute.check_not_by_api_key(viewer)) {
+				(NotConfigured, _) => not_found
+				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
+				(Configured, Ok({})) =>
+					match SignInRoute.next_from_query(query) {
+						Err(BadNext) => SignInRoute.bad_next_answer
+						Ok(next) => {
+							state = GitHubState.issue({
+								nonce: Host.fill_with_random_bytes!(GitHubState.nonce_bytes),
+								now,
+								next,
+							})
+							mac = Host.hmac_sha256_with_server_secret!(state.signed_bytes())
+							location = authorize_url({
+								authorize_base: settings.authorize_base,
+								client_id: settings.client_id,
+								origin,
+								state_token: state.token(mac),
+							})
+							HttpAnswer.with_header(
+								HttpAnswer.see_other(location),
+								set_cookie_header(state.set_cookie_text()),
+							)
+						}
+					}
 			}
 		HttpAnswer.never_stored(answer)
 	}
@@ -89,14 +92,14 @@ GitHubRoute :: [].{
 	## A GET of `/login/github`, GitHub's way back: a session for the human
 	## GitHub vouched for, and a 303 to where the sign-in began; or the
 	## sign-in page saying why not. It forgets the state's cookie either way.
-	finish! : {
+	serve_return! : {
 		viewer : SignedIn.Actor,
 		users : Users,
 		query : List(U8),
 		headers : List(Http.Header),
 		now : I64,
 	} => Http.Response
-	finish! = |
+	serve_return! = |
 		{
 			viewer,
 			users,
@@ -105,8 +108,9 @@ GitHubRoute :: [].{
 			now,
 		},
 	| {
+		settings = Host.github_sign_in_settings!({})
 		answer =
-			match (Host.github_sign_in_settings!({}).status, SignInRoute.check_not_by_api_key(viewer)) {
+			match (settings.status, SignInRoute.check_not_by_api_key(viewer)) {
 				(NotConfigured, _) => not_found
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
 				(Configured, Ok({})) => {
@@ -233,7 +237,7 @@ load_signed_state! = |query|
 	}
 
 ## What GitHub answered in the query: a code, none, or one it wouldn't send.
-answer_of : List(U8) -> [Code(GitHubCode), NoCode, BadCode]
+answer_of : List(U8) -> GitHubSignIn.Answer
 answer_of = |query|
 	match UrlEncodedForm.field({ body: query, name: "code" }) {
 		Err(MissingField) => NoCode

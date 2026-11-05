@@ -9,8 +9,8 @@
 ## There are three ways in. `by_session` takes a `Session.Admitted`, which
 ## only `Session.admit` makes, after the host said the session cookie's
 ## signature matches and its second is in date (`SignInRoute` checks the
-## password, or `GitHubSignIn` the GitHub account, that signs one). `by_api_key` takes an `AgentKey.Admitted`,
-## which only `AgentKey.admit` makes, after the hash of the secret an agent
+## password, or `GitHubSignIn` the GitHub account, that signs one).
+## `by_api_key` takes an `AgentKey.Admitted`, which only `AgentKey.admit` makes, after the hash of the secret an agent
 ## sent matched a live key of its own (`AgentInvite` is how a key is got).
 ## The third, `dangerously_assume`, checks nothing. Only main's first start,
 ## which makes the founder before anyone can sign in, and tests call it,

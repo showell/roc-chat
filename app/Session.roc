@@ -85,7 +85,10 @@ Session :: [].{
 
 		## The material of a human with a password, whose file keeps
 		## `password_hash`.
-		from_password : { password_hash : List(U8), github : [NoGitHub, GitHub(List(U8))] } -> Session.Material
+		from_password : {
+			password_hash : List(U8),
+			github : [NoGitHub, GitHub(List(U8))],
+		} -> Session.Material
 		from_password = |{ password_hash, github }|
 			match github {
 				NoGitHub => Session.Material.(password_hash)

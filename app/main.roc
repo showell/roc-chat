@@ -716,7 +716,7 @@ answer_open_route! = |
 			SignInRoute.show_login({
 				viewer: actor,
 				query: request.query,
-				github: GitHubRoute.offer!({}),
+				github: GitHubRoute.load_offer!({}),
 			})
 		SignIn =>
 			SignInRoute.sign_in!({
@@ -724,18 +724,18 @@ answer_open_route! = |
 				users: directory.users(),
 				body: request.body,
 				now: Host.current_utc_seconds_since_epoch!({}),
-				github: GitHubRoute.offer!({}),
+				github: GitHubRoute.load_offer!({}),
 			})
 		SignOut => SignInRoute.sign_out
 		StartGitHubSignIn =>
-			GitHubRoute.start!({
+			GitHubRoute.serve_start!({
 				viewer: actor,
 				query: request.query,
 				origin: own_origin_of(request),
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
 		FinishGitHubSignIn =>
-			GitHubRoute.finish!({
+			GitHubRoute.serve_return!({
 				viewer: actor,
 				users: directory.users(),
 				query: request.query,

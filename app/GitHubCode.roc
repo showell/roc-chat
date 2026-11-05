@@ -39,7 +39,9 @@ expect
 		"user-id-7",
 		"under_score",
 		"x".repeat(64),
-	].all(|text| GitHubCode.from_str(text).map_ok(GitHubCode.bytes_to_exchange) == Ok(text.to_utf8()))
+	].all(
+		|text| GitHubCode.from_str(text).map_ok(GitHubCode.bytes_to_exchange) == Ok(text.to_utf8()),
+	)
 expect
 	[
 		"",
