@@ -40,12 +40,12 @@ pub fn build(b: *std.Build) void {
     const tests = b.step("test", "The host's tests: the file primitives, the bus, the sign-in primitives, the seam against roc glue, the HTTP layer, the command line");
     for ([_][]const u8{ "host/file_primitives.zig", "host/bus.zig", "host/sign_in_primitives.zig", "host/main.zig" }) |root| {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
-        tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
+        tests.dependOn(&testRun(b, m).step);
     }
     for ([_][]const u8{ "host/seam_test.zig", "host/http_test.zig" }) |root| {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
         m.addObjectFile(app);
-        tests.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
+        tests.dependOn(&testRun(b, m).step);
     }
 
     // **THE END TO END** (host/end_to_end.zig): the real server, in its own
@@ -54,6 +54,15 @@ pub fn build(b: *std.Build) void {
     e2e.setCwd(b.path("."));
     e2e.has_side_effects = true;
     b.step("end-to-end", "The server against a temporary data root: GET, POST, GET, the file on disk").dependOn(&e2e.step);
+}
+
+/// One root's tests, run on every `zig build test`. Zig otherwise replays a
+/// run whose inputs are unchanged and leaves its tests out of the summary, so
+/// the gate could not hold the count.
+fn testRun(b: *std.Build, module: *std.Build.Module) *std.Build.Step.Run {
+    const run = b.addRunArtifact(b.addTest(.{ .root_module = module }));
+    run.has_side_effects = true;
+    return run;
 }
 
 /// The program `name`, from `root`, with the app's archive linked.

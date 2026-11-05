@@ -29,7 +29,9 @@
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/gopher-roc.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
---    seam held to roc glue's layout, the HTTP layer.
+--    seam held to roc glue's layout, the HTTP layer. Every run runs them
+--    all (build.zig's `testRun`), so the summary's count is exactly
+--    ZIG_TESTS, each passing.
 -- 6. Last, the end to end (`zig build end-to-end`): the real server on a
 --    free port of 127.0.0.1, against a temporary data root, driven over
 --    HTTP; it stops the server and removes the root, pass or fail.
@@ -37,6 +39,10 @@
 -- budget: steps=200000000
 
 const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
+
+-- What `zig build test` counts: a test once for each root that reaches it,
+-- so the tests seam_test and http_test import count three times.
+const ZIG_TESTS = 98
 
 const board = {failed = 0}
 
@@ -152,7 +158,9 @@ if demo.code ~= 0 then print(demo.out) end
 -- 5. The host's tests.
 local zig_tests = run({"zig", "build", "test", "--summary", "all"}, {timeout_ms = 300000, whole = 1000000})
 local summary = re_find(zig_tests.out, "Build Summary: [^\n]*")
-say(zig_tests.code == 0, "zig build test: " .. (summary and summary.text or "no summary"))
+local exact_count = "; " .. ZIG_TESTS .. "/" .. ZIG_TESTS .. " tests passed"
+local counted = summary ~= nil and ends_with(summary.text, exact_count)
+say(zig_tests.code == 0 and counted, "zig build test: " .. (summary and summary.text or "no summary") .. ", held at " .. ZIG_TESTS)
 if zig_tests.code ~= 0 then print(zig_tests.out) end
 
 -- 6. The end to end, last.
