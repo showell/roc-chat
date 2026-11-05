@@ -132,7 +132,8 @@ GitHubRoute :: [].{
 					})
 					with_state_forgotten(
 						match resolved {
-							Ok(Known(admission)) => SignInRoute.start_session_by_github!(admission, now)
+							Ok(Known(admission)) =>
+								SignInRoute.start_session_by_github!(admission, now)
 							Ok(Unknown(new_human)) => ask_for_name!({
 								new_human,
 								directory,
@@ -325,7 +326,10 @@ sign_up! = |
 		directory,
 	}) ? |why| account_refusal({ name, why })
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.create_github_account!({ human: made.human, github: made.github }) ? |fault| FileSystem(fault)
+	FileSystem.create_github_account!({
+		human: made.human,
+		github: made.github,
+	}) ? |fault| FileSystem(fault)
 	Ok(made.admission)
 }
 

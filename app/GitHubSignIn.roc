@@ -613,7 +613,10 @@ resumed_up =
 
 ## The id and the path a resumed sign-up holds, as a test reads it.
 resumed_text : GitHubSignIn.SignUpResumed -> (Str, Str)
-resumed_text = |GitHubSignIn.SignUpResumed.(resumed)| (resumed.github.to_str(), resumed.next.to_str())
+resumed_text = |GitHubSignIn.SignUpResumed.(resumed)| (
+	resumed.github.to_str(),
+	resumed.next.to_str(),
+)
 
 # A sign-up keeps the id and where to go.
 expect resumed_text(resumed_up) == ("300", "/agents")

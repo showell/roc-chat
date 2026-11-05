@@ -30,7 +30,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `Page.message` writes for the page.
   - `UploadRoute` answers an upload and an uploaded image. An image is what its opening bytes say, PNG, JPEG, GIF or WebP, at most 10 MiB, named by 16 random bytes in hex (`UploadedImage`); it is read out of the compose box's form (`MultipartForm`), counted against the uploader's lifetime allowance of 1 GiB (`UploadTotal`, kept in `users/<id>/upload-bytes`, `UserFolder`), kept in its conversation's folder as `uploads/<name>`, and served at the conversation's URL and `/uploads/<name>`. A message shows an image only from its own conversation's uploads (`SecureImageTag`).
   - `FileSystem` is the only module that touches files.
-  - `SignInRoute` answers `/login` and `/logout`, and checks a request's session. `GitHubRoute` answers `/login/github/start` and `/login/github`, and `GitHubSignIn` decides each step of that sign-in.
+  - `SignInRoute` answers `/login` and `/logout`, and checks a request's session. `GitHubRoute` answers `/login/github/start`, `/login/github` and `/login/github/name`; `GitHubSignIn` decides each step of that sign-in, and `GitHubSignUp` is the signed value a new human's id travels in.
   - `app/main.roc` is the edge: the first start's directory (Steve, plus the channel `general` with him in it), the directory read on each request, who is acting, and the upload's room, given only to someone signed in who may post where they upload.
 
 ## Commands
@@ -60,7 +60,7 @@ The first start makes Steve (`auth/1/`) and the channel `general`, with him in i
 
 Then open `http://127.0.0.1:9611/chat/channel/general/gopher-roc`, which sends you to sign in as Steve and back. Steve's own DM, `1_1`, is the other place. A topic is created by its first message. A channel's members are its `.channel` file, one id a line, which Steve, the admin, changes at `/channels` (or by hand). Removing a password's file ends every session of its user; removing `.session-secret` and starting the server again ends everyone's.
 
-To offer GitHub sign-in, make an OAuth app whose callback URL is `<public origin>/login/github`, write its id and secret to `.github-client-id` and `.github-client-secret` in the data folder, `chmod 600` both, and start the server. A human signs in this way once the server's owner writes their GitHub account's numeric id to their `auth/<id>/github-id` (docs/design.md, "Storage"). With neither file the server offers no GitHub.
+To offer GitHub sign-in, make an OAuth app whose callback URL is `<public origin>/login/github`, write its id and secret to `.github-client-id` and `.github-client-secret` in the data folder, `chmod 600` both, and start the server. Sign-up is then open: any GitHub account chooses a name and has an account. A human who has an account already, such as the owner, is tied to GitHub by hand, before their first GitHub sign-in: write their GitHub account's numeric id to their `auth/<id>/github-id` (`https://api.github.com/users/<login>` says it), or that sign-in makes them a new account (docs/design.md, "Storage"). With neither file the server offers no GitHub.
 
 From your laptop, tunnel the port and browse as if the server were local:
 
