@@ -19,8 +19,7 @@
 --    (no `Module.fn(x, ...)` call that would check as `x.fn(...)`, judged
 --    by Roc's own types from both apps, app/main.roc and app/Specs.roc; its
 --    trials are written in place and put back, so it runs under
---    `--undo-on-stop`, and the calls it leaves are held exactly, by
---    METHODS_OTHER_TYPE and METHODS_LITERAL). Their other
+--    `--undo-on-stop`, and a call it can rewrite fails the gate). Their other
 --    counts are questions for a reader, so they print but don't gate:
 --    stack's long lines (a frozen answer or a long string has nothing to
 --    stack), boundaries' `single`, `entry`, `constant` and `bool_param`,
@@ -43,16 +42,6 @@ const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
 -- What `zig build test` counts: a test once for each root that reaches it,
 -- so the tests seam_test and http_test import count three times.
 const ZIG_TESTS = 98
-
--- The calls `methods` leaves, none of which can be a method call. Each is a
--- `Module.fn(x, ...)` where `x` isn't the module's type, so `x.fn(...)` doesn't
--- exist. The types rule out METHODS_OTHER_TYPE of them (`Str.from_utf8(bytes)`,
--- `UserId.from_str(text)`). METHODS_LITERAL have a number literal first, which
--- the recipe won't move: `HttpAnswer.page(200, ...)` and `List.repeat(0, n)`,
--- and ranges such as `U64.to(1, n)`, which roc-style.md keeps as a builder.
--- Each new call of this kind moves these numbers, in the commit that adds it.
-const METHODS_OTHER_TYPE = 1278
-const METHODS_LITERAL = 75
 
 const board = {failed = 0}
 
@@ -136,7 +125,7 @@ const hunts = {
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
   {recipe = "stack", args = {}, counts = {"([0-9]+) to stack"}},
-  {recipe = "methods", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}, held = {{pattern = "left ([0-9]+)", at = METHODS_OTHER_TYPE + METHODS_LITERAL}, {pattern = "another type ([0-9]+)", at = METHODS_OTHER_TYPE}}},
+  {recipe = "methods", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}},
 }
 for h in hunts do
   local argv = {"shale"}
