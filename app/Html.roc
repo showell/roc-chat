@@ -57,12 +57,13 @@ Html :: [].{
 		## The token `text` spells, or why it is refused.
 		from_str : Str -> Try(Html.Token, [Empty, ForbiddenByte])
 		from_str = |text|
-			if (text.is_empty())
+			if text.is_empty() {
 				Err(Empty)
-			else if (text.to_utf8().all(is_token_byte))
+			} else if text.to_utf8().all(is_token_byte) {
 				Ok(Html.Token.(text))
-			else
+			} else {
 				Err(ForbiddenByte)
+			}
 
 		## The token as written.
 		to_str : Html.Token -> Str
@@ -80,13 +81,14 @@ Html :: [].{
 		## The path `text` spells, or why it is refused.
 		from_str : Str -> Try(Html.SitePath, [NoLeadingSlash, EmptyPart, HiddenPart, ForbiddenByte])
 		from_str = |text|
-			if (text.starts_with("/"))
+			if text.starts_with("/") {
 				text.drop_prefix("/")
 					.split_on("/")
 					.map_try(site_path_part)
 					.map_ok(|_| Html.SitePath.(text))
-			else
+			} else {
 				Err(NoLeadingSlash)
+			}
 
 		## The path as written.
 		to_str : Html.SitePath -> Str
@@ -152,14 +154,15 @@ is_token_byte = |b| Ascii.is_letter(b) or Ascii.is_digit(b) or b == '-'
 ## Whether `part`, between a site path's `/`s, is one, or why not.
 site_path_part : Str -> Try({}, [EmptyPart, HiddenPart, ForbiddenByte])
 site_path_part = |part|
-	if (part.is_empty())
+	if part.is_empty() {
 		Err(EmptyPart)
-	else if (part.starts_with("."))
+	} else if part.starts_with(".") {
 		Err(HiddenPart)
-	else if (part.to_utf8().all(|b| is_token_byte(b) or b == '_' or b == '.'))
+	} else if part.to_utf8().all(|b| is_token_byte(b) or b == '_' or b == '.') {
 		Ok({})
-	else
+	} else {
 		Err(ForbiddenByte)
+	}
 
 name_of : Html.Name -> Str
 name_of = |name|

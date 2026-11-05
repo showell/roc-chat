@@ -218,7 +218,11 @@ claim_from_value = |value|
 			id = UserId.from_str(id_text) ? |_| BadSession
 			signed_at = second_from_digits(second_part) ? |_| BadSession
 			mac = Base64Url.decode(Str.from_utf8(mac_part) ? |_| BadSession) ? |_| BadSession
-			if (mac.len() == 32) Ok(Session.Claim.({ id, signed_at, mac })) else Err(BadSession)
+			if mac.len() == 32 {
+				Ok(Session.Claim.({ id, signed_at, mac }))
+			} else {
+				Err(BadSession)
+			}
 		}
 		_ => Err(BadSession)
 	}
@@ -235,7 +239,11 @@ second_from_digits = |digits|
 		_ if digits.len() > 19 or !digits.all(Ascii.is_digit) => Err(NotASecond)
 		_ => {
 			number = U64.from_int_digits(digits.map(|b| b - '0')) ? |_| NotASecond
-			if (number > I64.highest.to_u64_wrap()) Err(NotASecond) else Ok(number.to_i64_wrap())
+			if number > I64.highest.to_u64_wrap() {
+				Err(NotASecond)
+			} else {
+				Ok(number.to_i64_wrap())
+			}
 		}
 	}
 

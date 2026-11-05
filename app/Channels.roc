@@ -112,15 +112,16 @@ Channels :: List(Channels.Channel).{
 	add_member = |channels, change| {
 		Channels.Channel.(c) = channels.channel(change.channel)?
 		member = change.member.id()
-		if (c.members.contains(member))
+		if c.members.contains(member) {
 			Err(AlreadyMember)
-		else
+		} else {
 			Ok(
 				with_channel(
 					channels,
 					Channels.Channel.({ ..c, members: c.members.insert(member) }),
 				),
 			)
+		}
 	}
 
 	## The channels with the change's member removed from its channel. The
@@ -130,15 +131,16 @@ Channels :: List(Channels.Channel).{
 	remove_member = |channels, change| {
 		Channels.Channel.(c) = channels.channel(change.channel)?
 		member = change.member.id()
-		if (c.members.contains(member))
+		if c.members.contains(member) {
 			Ok(
 				with_channel(
 					channels,
 					Channels.Channel.({ ..c, members: c.members.remove(member) }),
 				),
 			)
-		else
+		} else {
 			Err(NotMember)
+		}
 	}
 
 	## Every channel, in the order they were created.
@@ -162,12 +164,24 @@ members_from_file = |bytes| {
 				Err(_) => Err(NotAMembersFile)
 			},
 	)?
-	if (Set.from_list(ids).len() == ids.len()) Ok(ids) else Err(NotAMembersFile)
+	if Set.from_list(ids).len() == ids.len() {
+		Ok(ids)
+	} else {
+		Err(NotAMembersFile)
+	}
 }
 
 ## The channels with `changed` in place of the channel of the same name.
 with_channel : Channels, Channels.Channel -> Channels
 with_channel = |Channels.(all), changed| {
 	name = changed.name()
-	Channels.(all.map(|c| if (c.name() == name) changed else c))
+	Channels.(
+		all.map(
+			|c| if c.name() == name {
+				changed
+			} else {
+				c
+			},
+		),
+	)
 }

@@ -42,18 +42,19 @@ character_of = |value|
 ## The value of one character of the alphabet.
 value_of : U8 -> Try(U8, [NotBase64Url])
 value_of = |c|
-	if (c >= 'A' and c <= 'Z')
+	if c >= 'A' and c <= 'Z' {
 		Ok(c - 'A')
-	else if (c >= 'a' and c <= 'z')
+	} else if c >= 'a' and c <= 'z' {
 		Ok(c - 'a' + 26)
-	else if (c >= '0' and c <= '9')
+	} else if c >= '0' and c <= '9' {
 		Ok(c - '0' + 52)
-	else if (c == '-')
+	} else if c == '-' {
 		Ok(62)
-	else if (c == '_')
+	} else if c == '_' {
 		Ok(63)
-	else
+	} else {
 		Err(NotBase64Url)
+	}
 
 ## One to three bytes as two to four characters.
 encode_group : List(U8) -> List(U8)
@@ -88,8 +89,16 @@ decode_group = |group|
 			a,
 			b,
 			c,
-		] => if (c % 4 == 0) Ok([a * 4 + b // 16, (b % 16) * 16 + c // 4]) else Err(NotBase64Url)
-		[a, b] => if (b % 16 == 0) Ok([a * 4 + b // 16]) else Err(NotBase64Url)
+		] => if c % 4 == 0 {
+			Ok([a * 4 + b // 16, (b % 16) * 16 + c // 4])
+		} else {
+			Err(NotBase64Url)
+		}
+		[a, b] => if b % 16 == 0 {
+			Ok([a * 4 + b // 16])
+		} else {
+			Err(NotBase64Url)
+		}
 		_ => crash "Base64Url.decode_group: a group is two to four values"
 	}
 

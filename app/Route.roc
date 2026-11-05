@@ -225,19 +225,19 @@ browse_path_choice : {
 	directory : Directory,
 } -> Route.Choice
 browse_path_choice = |{ path, method, directory }|
-	if (path.is_exactly("/"))
+	if path.is_exactly("/") {
 		match method {
 			Get => Open(GoToBrowse)
 			Post => MethodNotAllowed(GetOnly)
 			Other => MethodNotAllowed(GetOnly)
 		}
-	else if (path.is_exactly(ConversationKey.browse_path))
+	} else if path.is_exactly(ConversationKey.browse_path) {
 		match method {
 			Get => SignedInOnly(ShowBrowse)
 			Post => MethodNotAllowed(GetOnly)
 			Other => MethodNotAllowed(GetOnly)
 		}
-	else
+	} else {
 		match ConversationKey.place_from_url_path({ path, directory }) {
 			Ok(place) => place_choice({ place, method })
 			Err(NotAConversationPath) => NotFound
@@ -245,6 +245,7 @@ browse_path_choice = |{ path, method, directory }|
 			Err(NoSuchChannel) => NotFound
 			Err(NoSuchHuman) => NotFound
 		}
+	}
 
 ## The route for `method` and a place's own path.
 place_choice : { place : Place, method : [Get, Post, Other] } -> Route.Choice
@@ -283,12 +284,13 @@ path_choice = |{ path, method, directory }|
 ## (a method is case-sensitive, so `get` is another).
 method_of : List(U8) -> [Get, Post, Other]
 method_of = |method|
-	if (method == "GET".to_utf8())
+	if method == "GET".to_utf8() {
 		Get
-	else if (method == "POST".to_utf8())
+	} else if method == "POST".to_utf8() {
 		Post
-	else
+	} else {
 		Other
+	}
 
 ## The route for `method` and the conversation `key`'s `resource`.
 conversation_choice : {
@@ -414,14 +416,15 @@ agents_resource = |path|
 			[agents, id, kind, number, revoke],
 		) if agents.is_exactly("agents") and revoke.is_exactly("revoke") => {
 			agent = id.user_id() ? |_| NotAgents
-			if (kind.is_exactly("invites"))
+			if kind.is_exactly("invites") {
 				number.invite_id().map_ok(
 					|invite| InviteRevoke({ agent, invite }),
 				).map_err(|_| NotAgents)
-			else if (kind.is_exactly("keys"))
+			} else if kind.is_exactly("keys") {
 				number.key_id().map_ok(|key| KeyRevoke({ agent, key })).map_err(|_| NotAgents)
-			else
+			} else {
 				Err(NotAgents)
+			}
 		}
 		_ => Err(NotAgents)
 	}
@@ -470,12 +473,13 @@ channels_resource = |path|
 		) if channels.is_exactly("channels") and members.is_exactly("members") => {
 			channel = name.channel_name() ? |_| NotChannels
 			member = id.user_id() ? |_| NotChannels
-			if (act.is_exactly("add"))
+			if act.is_exactly("add") {
 				Ok(MemberAdd({ channel, member }))
-			else if (act.is_exactly("remove"))
+			} else if act.is_exactly("remove") {
 				Ok(MemberRemove({ channel, member }))
-			else
+			} else {
 				Err(NotChannels)
+			}
 		}
 		_ => Err(NotChannels)
 	}

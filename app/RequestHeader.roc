@@ -11,9 +11,9 @@ RequestHeader :: [].{
 	## name with a capital letter would never match.
 	header_value : List(Http.Header), Str -> [Sent(List(U8)), Unsent, Repeated]
 	header_value = |headers, name|
-		if (name != name.with_ascii_lowercased())
+		if name != name.with_ascii_lowercased() {
 			crash "RequestHeader.header_value: the name ${name} is not written in lowercase"
-		else {
+		} else {
 			matching = headers.keep_if(
 				|header|
 					match Str.from_utf8(header.name) {

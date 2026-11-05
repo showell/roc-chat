@@ -223,10 +223,11 @@ FileSystem :: [].{
 		}
 		channel_names = list_names_in!(channels_folder_path)?.keep_oks(
 			|file_name|
-				if (file_name.ends_with(channel_members_suffix))
+				if file_name.ends_with(channel_members_suffix) {
 					ChannelName.from_str(file_name.drop_suffix(channel_members_suffix))
-				else
-					Err(NotAMembersFile),
+				} else {
+					Err(NotAMembersFile)
+				},
 		)
 		var $channels = []
 		for name in channel_names {

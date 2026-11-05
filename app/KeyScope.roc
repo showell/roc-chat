@@ -32,12 +32,13 @@ KeyScope :: { read : KeyScope.Reach, post : KeyScope.Reach }.{
 	## else (`NotAReach`), another case included.
 	reach_from_word : Str -> Try(KeyScope.Reach, [NotAReach])
 	reach_from_word = |word|
-		if (word == "everywhere")
+		if word == "everywhere" {
 			Ok(Everywhere)
-		else if (word == "off")
+		} else if word == "off" {
 			Ok(Off)
-		else
+		} else {
 			Err(NotAReach)
+		}
 
 	## The word for `reach`, as a file and a form spell it.
 	reach_word : KeyScope.Reach -> Str

@@ -234,14 +234,15 @@ SignInRoute :: [].{
 	## and a path on this site; else `BadNext`.
 	next_from_query : List(U8) -> Try(Html.SitePath, [BadNext])
 	next_from_query = |query|
-		if (query.is_empty())
+		if query.is_empty() {
 			Ok(SignInRoute.default_next)
-		else if query.starts_with(next_prefix) {
+		} else if query.starts_with(next_prefix) {
 			unchecked =
 				UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
 			unchecked.site_path().map_err(|NotASitePath| BadNext)
-		} else
+		} else {
 			Err(BadNext)
+		}
 
 	## The 400 for a `next` that is no path on this site.
 	bad_next_answer : Http.Response
@@ -323,7 +324,13 @@ load_github_word! = |id|
 				Ok(NoFile) => Ok(NoGitHub)
 				Ok(File(bytes)) => {
 					word = FactFile.word_from_file(bytes)
-					Ok(if (word.is_empty()) NoGitHub else GitHub(word))
+					Ok(
+						if word.is_empty() {
+							NoGitHub
+						} else {
+							GitHub(word)
+						},
+					)
 				}
 			}
 	}

@@ -98,9 +98,9 @@ place_section : Browse.PlaceWithTopics -> TrustedHtml
 place_section = |{ label, place, topics }| {
 	action = ConversationKey.place_url_path(place)
 	listed =
-		if (topics.is_empty())
+		if topics.is_empty() {
 			[Page.text_paragraph("No sessions yet")]
-		else
+		} else {
 			topics.map(
 				|topic|
 					Page.link_paragraph({
@@ -108,7 +108,12 @@ place_section = |{ label, place, topics }| {
 						text: topic.to_str(),
 					}),
 			)
-	suggestion = if (topics.is_empty()) Suggested(first_topic) else NoSuggestion
+		}
+	suggestion = if topics.is_empty() {
+		Suggested(first_topic)
+	} else {
+		NoSuggestion
+	}
 	TrustedHtml.join(
 		[Page.heading(label)]
 			.concat(listed)

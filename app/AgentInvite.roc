@@ -179,12 +179,13 @@ state_to_file = |state|
 state_from_file : List(U8) -> Try(AgentInvite.State, [NotAState])
 state_from_file = |bytes| {
 	word = FactFile.word_from_file(bytes)
-	if (word == "live".to_utf8())
+	if word == "live".to_utf8() {
 		Ok(Live)
-	else if (word == "spent".to_utf8())
+	} else if word == "spent".to_utf8() {
 		Ok(Spent)
-	else if (word == "revoked".to_utf8())
+	} else if word == "revoked".to_utf8() {
 		Ok(Revoked)
-	else
+	} else {
 		Err(NotAState)
+	}
 }

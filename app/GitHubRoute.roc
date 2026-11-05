@@ -331,10 +331,11 @@ percent_encoded : List(U8) -> Str
 percent_encoded = |bytes| {
 	spelled = bytes.map(
 		|byte|
-			if (is_unreserved(byte))
+			if is_unreserved(byte) {
 				Str.from_utf8([byte]) ?? crash "GitHubRoute.percent_encoded: ASCII is UTF-8"
-			else
-				"%${Hex.to_hex([byte])}",
+			} else {
+				"%${Hex.to_hex([byte])}"
+			},
 	)
 	Str.join_with(spelled, "")
 }

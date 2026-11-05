@@ -35,10 +35,11 @@ NameAlphabet :: [].{
 	## of it is neither a letter of the alphabet nor a space.
 	written_text : Str -> Try(NameAlphabet.Written, [ForbiddenCharacter])
 	written_text = |text|
-		if (is_all_letters_or_spaces(text.to_utf8()))
+		if is_all_letters_or_spaces(text.to_utf8()) {
 			Ok(NameAlphabet.Written.(text))
-		else
+		} else {
 			Err(ForbiddenCharacter)
+		}
 
 	## `text` with each letter case-folded by Unicode's simple case
 	## folding, so `ZOË` and `Zoë` fold to the same text. `ſ` folds to `s`;
@@ -96,14 +97,15 @@ spellings = [
 ## is ASCII, else its row's spelling.
 point_spelling : U32 -> List(U8)
 point_spelling = |point|
-	if (point < 0x80)
+	if point < 0x80 {
 		[point.to_u8_wrap()]
-	else
+	} else {
 		match row_of(point) {
 			Ok((_, ascii)) => ascii.to_utf8()
 			Err(NotFound) =>
 				crash "NameAlphabet.point_spelling: written text holds only letters whose fold has a row"
 		}
+	}
 
 ## The row of `spellings` that holds the two-byte letter `point`.
 row_of : U32 -> Try((Str, Str), [NotFound])
@@ -119,10 +121,11 @@ row_of = |point| {
 is_letter : U32 -> Bool
 is_letter = |point| {
 	folded = fold(point)
-	if (folded < 0x80)
+	if folded < 0x80 {
 		Ascii.is_letter(folded.to_u8_wrap())
-	else
+	} else {
 		row_of(folded).is_ok()
+	}
 }
 
 ## Is every character of `bytes` a letter of the alphabet or a space?
@@ -173,18 +176,19 @@ decode_utf8 = |bytes, why|
 ## small letter if it is a capital, else itself.
 fold : U32 -> U32
 fold = |point|
-	if (point >= 'A' and point <= 'Z')
+	if point >= 'A' and point <= 'Z' {
 		point + 32
-	else if (point >= 0xC0 and point <= 0xDE and point != 0xD7)
+	} else if point >= 0xC0 and point <= 0xDE and point != 0xD7 {
 		point + 0x20
-	else if (point == 0x178)
+	} else if point == 0x178 {
 		0xFF
-	else if (point == 0x17F)
+	} else if point == 0x17F {
 		's'
-	else if (is_capital_of_pair(point))
+	} else if is_capital_of_pair(point) {
 		point + 1
-	else
+	} else {
 		point
+	}
 
 ## Is `point` a capital in Latin Extended-A whose small letter follows it?
 ## The pairs start on an even code point in three runs and an odd one in
@@ -203,10 +207,11 @@ is_capital_of_pair = |point| {
 ## two.
 utf8_bytes : U32 -> List(U8)
 utf8_bytes = |point|
-	if (point < 0x80)
+	if point < 0x80 {
 		[point.to_u8_wrap()]
-	else
+	} else {
 		[(0xC0 + point // 64).to_u8_wrap(), (0x80 + point % 64).to_u8_wrap()]
+	}
 
 # ── tests
 ## Is `text` written in the alphabet?

@@ -15,10 +15,11 @@ SecretHash :: List(U8).{
 	## length but 32 bytes is the host's bug, and crashes.
 	of_digest : List(U8) -> SecretHash
 	of_digest = |digest|
-		if (digest.len() == 32)
+		if digest.len() == 32 {
 			SecretHash.(digest)
-		else
+		} else {
 			crash "SecretHash.of_digest: a SHA-256 digest is 32 bytes, not ${digest.len().to_str()}"
+		}
 
 	## The hash a file holds: 64 lowercase hex digits, with any spaces, tabs
 	## and line ends around them taken off (`FactFile`); unless it holds

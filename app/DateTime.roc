@@ -66,7 +66,11 @@ DateTime :: Str.{
 				minute = number([n1, n2])
 				second = number([s1, s2])
 				on_clock = hour <= 23 and minute <= 59 and second <= 59
-				if (in_calendar and on_clock) Ok(DateTime.(text)) else Err(OutOfRange)
+				if in_calendar and on_clock {
+					Ok(DateTime.(text))
+				} else {
+					Err(OutOfRange)
+				}
 			}
 			_ => Err(WrongShape)
 		}
@@ -77,9 +81,9 @@ DateTime :: Str.{
 	## the Gregorian calendar by Howard Hinnant's `civil_from_days`.
 	from_seconds_since_epoch : I64 -> Try(DateTime, [OutOfRange])
 	from_seconds_since_epoch = |seconds|
-		if (seconds < 0 or seconds > last_second)
+		if seconds < 0 or seconds > last_second {
 			Err(OutOfRange)
-		else {
+		} else {
 			days = seconds // 86400
 			of_day = seconds % 86400
 			date = civil_from_days(days)
@@ -136,8 +140,18 @@ civil_from_days = |days| {
 	day_of_year = day_of_era - (365 * year_of_era + year_of_era // 4 - year_of_era // 100)
 	month_from_march = (5 * day_of_year + 2) // 153
 	day = day_of_year - (153 * month_from_march + 2) // 5 + 1
-	month = if (month_from_march < 10) month_from_march + 3 else month_from_march - 9
-	year = year_of_era + era * 400 + (if (month <= 2) 1 else 0)
+	month = if month_from_march < 10 {
+		month_from_march + 3
+	} else {
+		month_from_march - 9
+	}
+	year = year_of_era + era * 400 + (
+		if month <= 2 {
+			1
+		} else {
+			0
+		}
+	)
 	{ year, month, day }
 }
 
@@ -156,7 +170,11 @@ byte_order = |bytes, others|
 			[byte, .. as rest],
 			[other, .. as rest_of_others],
 		) if byte == other => byte_order(rest, rest_of_others)
-		([byte, ..], [other, ..]) => if (byte < other) Before else After
+		([byte, ..], [other, ..]) => if byte < other {
+			Before
+		} else {
+			After
+		}
 		_ => Same
 	}
 
@@ -168,7 +186,11 @@ number = |digits| digits.fold(0, |n, d| n * 10 + (d - '0').to_u64())
 days_in : { year : U64, month : U64 } -> U64
 days_in = |{ year, month }|
 	match month {
-		2 => if (is_leap(year)) 29 else 28
+		2 => if is_leap(year) {
+			29
+		} else {
+			28
+		}
 		4 | 6 | 9 | 11 => 30
 		_ => 31
 	}

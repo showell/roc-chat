@@ -47,15 +47,16 @@ AgentStream :: [].{
 	## date; unless the query is neither (`BadSince`).
 	start : List(U8) -> Try([Live, Since(DateTime)], [BadSince])
 	start = |query|
-		if (query.is_empty())
+		if query.is_empty() {
 			Ok(Live)
-		else if query.starts_with(since_prefix) {
+		} else if query.starts_with(since_prefix) {
 			since_bytes = query.drop_first(since_prefix.len())
 			unchecked = UnvalidatedString.from_utf8(since_bytes) ? |NotUtf8| BadSince
 			date = unchecked.date_time() ? |_| BadSince
 			Ok(Since(date))
-		} else
+		} else {
 			Err(BadSince)
+		}
 
 	## Why a stream's start is refused, in words.
 	words : [BadSince] -> Str
@@ -157,12 +158,22 @@ by_time_then_place = |a, b|
 	match a.message.time().compare(b.message.time()) {
 		Before => Before
 		After => After
-		Same => if (a.place != b.place) order_of(a.place, b.place) else order_of(a.at, b.at)
+		Same => if a.place != b.place {
+			order_of(a.place, b.place)
+		} else {
+			order_of(a.at, b.at)
+		}
 	}
 
 ## Which of two places comes first.
 order_of : U64, U64 -> [Before, Same, After]
-order_of = |a, b| if (a < b) Before else if (a == b) Same else After
+order_of = |a, b| if a < b {
+	Before
+} else if a == b {
+	Same
+} else {
+	After
+}
 
 # ── tests
 ## The time `text` writes.

@@ -489,12 +489,13 @@ linked_to : {
 linked_to = |{ id, github, next, files, viewer }|
 	match GitHubSignIn.human_to_link(viewer) {
 		Ok(human) if human.id() == id =>
-			if (files.any(|held| held.user == id))
+			if files.any(|held| held.user == id) {
 				Err(AlreadyLinked)
-			else if (files.any(|held| GitHubId.from_file(held.file) == Ok(github)))
+			} else if files.any(|held| GitHubId.from_file(held.file) == Ok(github)) {
 				Err(GitHubIdTaken)
-			else
+			} else {
 				Ok(GitHubSignIn.Linked.({ human, github, next }))
+			}
 		_ => Err(LinkNotYours)
 	}
 

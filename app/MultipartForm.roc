@@ -47,9 +47,9 @@ MultipartForm :: [].{
 		delimiter = "--".to_utf8().concat(boundary)
 		opening = index_of(body, { needle: delimiter, from: 0 }) ? |NotFound| NoFile
 		headers_at = opening + delimiter.len() + 2
-		if (body.sublist({ start: opening + delimiter.len(), len: 2 }) != "\r\n".to_utf8())
+		if body.sublist({ start: opening + delimiter.len(), len: 2 }) != "\r\n".to_utf8() {
 			Err(NoFile)
-		else {
+		} else {
 			headers_end = index_of(
 				body,
 				{ needle: "\r\n\r\n".to_utf8(), from: headers_at },
@@ -58,14 +58,12 @@ MultipartForm :: [].{
 			closing = "\r\n".to_utf8().concat(delimiter).concat("--".to_utf8())
 			file_and_closing =
 				body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
-			if (
-				quoted_attribute(
-					headers,
-					"name",
-				) != Ok("file".to_utf8()) or !file_and_closing.ends_with(closing)
-			)
+			if quoted_attribute(
+				headers,
+				"name",
+			) != Ok("file".to_utf8()) or !file_and_closing.ends_with(closing) {
 				Err(NoFile)
-			else {
+			} else {
 				filename =
 					match quoted_attribute(headers, "filename") {
 						Ok(given) => given
@@ -84,7 +82,15 @@ MultipartForm :: [].{
 		match Str.from_utf8(raw) {
 			Ok(text) => text
 			Err(_) =>
-				Str.from_utf8(raw.join_map(|b| if (b < 0x80) [b] else "\u(FFFD)".to_utf8()))
+				Str.from_utf8(
+					raw.join_map(
+						|b| if b < 0x80 {
+							[b]
+						} else {
+							"\u(FFFD)".to_utf8()
+						},
+					),
+				)
 					?? crash "MultipartForm.display_name: ASCII and U+FFFD are UTF-8"
 		}
 }
@@ -116,12 +122,13 @@ boundary_after_media_type = |header| {
 ## Where `needle` first starts in `bytes`, at `from` or after.
 index_of : List(U8), { needle : List(U8), from : U64 } -> Try(U64, [NotFound])
 index_of = |bytes, { needle, from }|
-	if (from + needle.len() > bytes.len())
+	if from + needle.len() > bytes.len() {
 		Err(NotFound)
-	else if (bytes.sublist({ start: from, len: needle.len() }) == needle)
+	} else if bytes.sublist({ start: from, len: needle.len() }) == needle {
 		Ok(from)
-	else
+	} else {
 		index_of(bytes, { needle, from: from + 1 })
+	}
 
 ## The bytes before the first `;`, or all of them: a Content-Type's
 ## parameters are split by it.
@@ -158,9 +165,9 @@ quoted_attribute_from = |headers, { needle, from }|
 	match index_of(headers, { needle, from }) {
 		Err(NotFound) => Err(Missing)
 		Ok(i) => {
-			if (is_inside_another_name(headers, i))
+			if is_inside_another_name(headers, i) {
 				quoted_attribute_from(headers, { needle, from: i + 1 })
-			else {
+			} else {
 				value = headers.drop_first(i + needle.len())
 				match value.find_first_index(|b| b == '"') {
 					Ok(end) => Ok(value.take_first(end))
@@ -173,14 +180,15 @@ quoted_attribute_from = |headers, { needle, from }|
 ## Does a letter come just before `at` in `headers`?
 is_inside_another_name : List(U8), U64 -> Bool
 is_inside_another_name = |headers, at|
-	if (at == 0)
+	if at == 0 {
 		Bool.False
-	else
+	} else {
 		match headers.get(at - 1) {
 			Ok(before) => Ascii.is_letter(before)
 			Err(OutOfBounds) =>
 				crash "MultipartForm.is_inside_another_name: a match is inside the headers"
 		}
+	}
 
 # ── tests
 png : List(U8)

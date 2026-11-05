@@ -130,12 +130,13 @@ own_origins = |{ port, public_origin }| {
 		hosts: local_hosts,
 		origins: local_hosts.map(|host| "http://".to_utf8().concat(host)),
 	}
-	if (public_origin.is_empty())
+	if public_origin.is_empty() {
 		[local]
-	else if (public_origin.starts_with(https_prefix))
+	} else if public_origin.starts_with(https_prefix) {
 		[local, { hosts: [public_origin.drop_first(https_prefix.len())], origins: [public_origin] }]
-	else
+	} else {
 		crash "RequestOrigin.own_origins: a public origin is `https://` and a name"
+	}
 }
 
 https_prefix : List(U8)
@@ -145,10 +146,11 @@ https_prefix = "https://".to_utf8()
 ## `method`: a GET's by `read_verdict`, any other's by `write_verdict`.
 fetch_verdict : { method : List(U8), headers : List(Http.Header) } -> Try({}, [CrossSiteFetch])
 fetch_verdict = |{ method, headers }|
-	if (method == "GET".to_utf8())
+	if method == "GET".to_utf8() {
 		read_verdict(headers)
-	else
+	} else {
 		write_verdict(headers)
+	}
 
 ## The verdict on a request that writes, by its `headers`: refused when its
 ## `Sec-Fetch-Site` is not `same-origin`, or is sent twice.

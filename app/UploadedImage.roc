@@ -29,7 +29,11 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	checked_bytes : List(U8) -> Try(UploadedImage.Kind, [NotAnImage, TooLarge])
 	checked_bytes = |bytes| {
 		kind = kind_of_bytes(bytes)?
-		if (bytes.len() > UploadedImage.most_bytes) Err(TooLarge) else Ok(kind)
+		if bytes.len() > UploadedImage.most_bytes {
+			Err(TooLarge)
+		} else {
+			Ok(kind)
+		}
 	}
 
 	## How many random bytes an image's name is made from.
@@ -42,8 +46,9 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	with_random_name = |{ random_bytes, kind }|
 		if random_bytes.len() == UploadedImage.random_bytes_per_name {
 			UploadedImage.({ kind, digits: Hex.to_hex(random_bytes) })
-		} else
+		} else {
 			crash "UploadedImage.with_random_name: a name takes ${UploadedImage.random_bytes_per_name.to_str()} random bytes"
+		}
 
 	## The image a name read back from a URL names: 32 lowercase hex digits,
 	## `.`, and one kind's extension; anything else is `NotAnUploadName`.
@@ -85,21 +90,20 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 ## none of the four (`NotAnImage`).
 kind_of_bytes : List(U8) -> Try(UploadedImage.Kind, [NotAnImage])
 kind_of_bytes = |bytes|
-	if (bytes.starts_with(png_signature))
+	if bytes.starts_with(png_signature) {
 		Ok(Png)
-	else if (bytes.starts_with([0xFF, 0xD8, 0xFF]))
+	} else if bytes.starts_with([0xFF, 0xD8, 0xFF]) {
 		Ok(Jpeg)
-	else if (bytes.starts_with("GIF87a".to_utf8()) or bytes.starts_with("GIF89a".to_utf8()))
+	} else if bytes.starts_with("GIF87a".to_utf8()) or bytes.starts_with("GIF89a".to_utf8()) {
 		Ok(Gif)
-	else if (
-		bytes.starts_with("RIFF".to_utf8()) and bytes.sublist({
-			start: 8,
-			len: 4,
-		}) == "WEBP".to_utf8()
-	)
+	} else if bytes.starts_with("RIFF".to_utf8()) and bytes.sublist({
+		start: 8,
+		len: 4,
+	}) == "WEBP".to_utf8() {
 		Ok(Webp)
-	else
+	} else {
 		Err(NotAnImage)
+	}
 
 ## The eight bytes every PNG file opens with.
 png_signature : List(U8)

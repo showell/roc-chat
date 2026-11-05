@@ -41,12 +41,13 @@ ConversationStream :: [].{
 			Sent(id) => count_of(id)
 			Repeated => Err(BadCount)
 			Unsent =>
-				if (query.is_empty())
+				if query.is_empty() {
 					Err(NoCount)
-				else if (query.starts_with(after_prefix))
+				} else if query.starts_with(after_prefix) {
 					count_of(query.drop_first(after_prefix.len()))
-				else
+				} else {
 					Err(BadCount)
+				}
 		}
 
 	## Why a stream names no count, in words.
@@ -72,7 +73,7 @@ ConversationStream :: [].{
 	} -> Http.Response
 	response = |{ key, acting, users, conversation, seen_count }| {
 		held = conversation.messages().len()
-		if (seen_count.to_u64() > held)
+		if seen_count.to_u64() > held {
 			HttpAnswer.page(
 				400,
 				Page.notice({
@@ -80,7 +81,7 @@ ConversationStream :: [].{
 					text: "The stream asks for the messages after ${seen_count.to_str()}, and the conversation holds ${held.to_str()}.",
 				}),
 			)
-		else
+		} else {
 			HttpAnswer.stream({
 				key: bus_key(key),
 				holder: ConversationStream.holder(acting.user().id()),
@@ -92,6 +93,7 @@ ConversationStream :: [].{
 						}),
 				),
 			})
+		}
 	}
 
 	## Sends a message just added to the conversation `key` to every page on
@@ -139,7 +141,11 @@ count_of = |bytes|
 		_ if bytes.len() > 5 or !bytes.all(Ascii.is_digit) => Err(BadCount)
 		_ => {
 			number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
-			if (number > U16.highest.to_u64()) Err(BadCount) else Ok(number.to_u16_wrap())
+			if number > U16.highest.to_u64() {
+				Err(BadCount)
+			} else {
+				Ok(number.to_u16_wrap())
+			}
 		}
 	}
 
@@ -150,12 +156,13 @@ line_feeds_only = |bytes|
 	bytes.fold(
 		{ written: [], previous: 0 },
 		|so_far, byte|
-			if (byte == '\r')
+			if byte == '\r' {
 				{ written: so_far.written.append('\n'), previous: byte }
-			else if (byte == '\n' and so_far.previous == '\r')
+			} else if byte == '\n' and so_far.previous == '\r' {
 				{ ..so_far, previous: byte }
-			else
-				{ written: so_far.written.append(byte), previous: byte },
+			} else {
+				{ written: so_far.written.append(byte), previous: byte }
+			},
 	).written
 
 # ── tests

@@ -113,7 +113,11 @@ Transcript :: [].{
 ## Whether `adding` bytes fit after the `held` bytes a file holds, at most
 ## `most_bytes` in all.
 room : { held : U64, adding : U64 } -> [Fits, Overflows]
-room = |{ held, adding }| if (held + adding <= Transcript.most_bytes) Fits else Overflows
+room = |{ held, adding }| if held + adding <= Transcript.most_bytes {
+	Fits
+} else {
+	Overflows
+}
 
 ## One message as the transcript writes it.
 write_message : Conversation, Message -> Str

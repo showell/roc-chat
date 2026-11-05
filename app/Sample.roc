@@ -186,11 +186,12 @@ place_in_letters = |at|
 ## `so_far` with `count` more of Steve's hello.
 append_hellos : { so_far : Conversation, count : U64 } -> Conversation
 append_hellos = |{ so_far, count }|
-	if (count == 0)
+	if count == 0 {
 		so_far
-	else
+	} else {
 		append_hellos({
 			so_far: (so_far.append(Sample.hello) ?? crash "Sample.append_hellos: the conversation has room")
 				.conversation,
 			count: count - 1,
 		})
+	}

@@ -106,7 +106,11 @@ GitHubSignUp :: {
 	check : GitHubSignUp, I64 -> [Valid, Expired]
 	check = |GitHubSignUp.(sign_up), now| {
 		age = now.to_i128() - sign_up.issued_at.to_i128()
-		if (age < 0 or age >= GitHubState.lifetime_seconds.to_i128()) Expired else Valid
+		if age < 0 or age >= GitHubState.lifetime_seconds.to_i128() {
+			Expired
+		} else {
+			Valid
+		}
 	}
 
 	## The `Set-Cookie` header's value that sets this sign-up's cookie, its

@@ -47,10 +47,11 @@ SecretToken :: { user : UserId, secret : Secret }.{
 	## (`NotABearer`), another scheme included.
 	from_bearer : Str -> Try(SecretToken, [NotABearer])
 	from_bearer = |value|
-		if (value.starts_with(bearer_prefix))
+		if value.starts_with(bearer_prefix) {
 			SecretToken.from_str(value.drop_prefix(bearer_prefix)).map_err(|NotAToken| NotABearer)
-		else
+		} else {
 			Err(NotABearer)
+		}
 }
 
 bearer_prefix : Str

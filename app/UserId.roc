@@ -25,7 +25,11 @@ UserId :: U16.{
 
 	## The id after this one, or `Full` if this is the highest.
 	next : UserId -> Try(UserId, [Full])
-	next = |UserId.(n)| if (n == U16.highest) Err(Full) else Ok(UserId.(n + 1))
+	next = |UserId.(n)| if n == U16.highest {
+		Err(Full)
+	} else {
+		Ok(UserId.(n + 1))
+	}
 
 	## The id `text` spells, or `NotAUserId`. Only the spellings `to_str`
 	## writes are read, the digits of 1 to 65,535 with no leading `0`, so each
@@ -59,7 +63,13 @@ UserId :: U16.{
 	compare = |
 		UserId.(n),
 		UserId.(other),
-	| if (n < other) Before else if (n == other) Same else After
+	| if n < other {
+		Before
+	} else if n == other {
+		Same
+	} else {
+		After
+	}
 
 	is_eq : _
 	to_hash : _

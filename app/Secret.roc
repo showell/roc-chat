@@ -18,10 +18,11 @@ Secret :: List(U8).{
 	## the caller's bug, and crashes.
 	from_random_bytes : List(U8) -> Secret
 	from_random_bytes = |bytes|
-		if (bytes.len() == Secret.length)
+		if bytes.len() == Secret.length {
 			Secret.(bytes)
-		else
+		} else {
 			crash "Secret.from_random_bytes: a secret is ${Secret.length.to_str()} bytes, not ${bytes.len().to_str()}"
+		}
 
 	## The secret `text` spells as `to_hex` writes it: exactly 64 lowercase
 	## hex digits; unless it is anything else (`NotASecret`).

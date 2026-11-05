@@ -26,14 +26,15 @@ Hex :: [].{
 	## The value of one hex digit, `0` to `9`, `a` to `f` or `A` to `F`.
 	digit_value : U8 -> Try(U8, [NotAHexDigit])
 	digit_value = |digit|
-		if (Ascii.is_digit(digit))
+		if Ascii.is_digit(digit) {
 			Ok(digit - '0')
-		else if (digit >= 'a' and digit <= 'f')
+		} else if digit >= 'a' and digit <= 'f' {
 			Ok(digit - 'a' + 10)
-		else if (digit >= 'A' and digit <= 'F')
+		} else if digit >= 'A' and digit <= 'F' {
 			Ok(digit - 'A' + 10)
-		else
+		} else {
 			Err(NotAHexDigit)
+		}
 
 	## Is `digit` one of `0` to `9` or `a` to `f`, the digits `to_hex` writes?
 	is_lower_digit : U8 -> Bool
@@ -56,11 +57,19 @@ from_hex_onto = |{ out, rest }|
 ## The value of one lowercase hex digit.
 lower_digit_value : U8 -> Try(U8, [NotAHexDigit])
 lower_digit_value = |digit|
-	if (Hex.is_lower_digit(digit)) Hex.digit_value(digit) else Err(NotAHexDigit)
+	if Hex.is_lower_digit(digit) {
+		Hex.digit_value(digit)
+	} else {
+		Err(NotAHexDigit)
+	}
 
 ## The lowercase digit for `n`, which is below 16.
 digit_of : U8 -> U8
-digit_of = |n| if (n < 10) '0' + n else 'a' + n - 10
+digit_of = |n| if n < 10 {
+	'0' + n
+} else {
+	'a' + n - 10
+}
 
 # ── tests
 # Each byte's two digits, at both ends of each half.

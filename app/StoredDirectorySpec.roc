@@ -117,7 +117,13 @@ expect [
 	|counter| users_with({
 		counter,
 		accounts: accounts_of(Sample.directory.users()),
-	}).map_ok(|_| {}) == Err(if (counter == "3") CounterBehind else BadCounter),
+	}).map_ok(|_| {}) == Err(
+		if counter == "3" {
+			CounterBehind
+		} else {
+			BadCounter
+		},
+	),
 )
 # A name that is no name, and an owner that is no id, or no human here.
 expect

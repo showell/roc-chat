@@ -22,16 +22,17 @@ Name :: NameAlphabet.Written.{
 	## characters, so a long text costs no more than a count.
 	from_str : Str -> Try(Name, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	from_str = |name|
-		if (name.is_empty())
+		if name.is_empty() {
 			Err(Empty)
-		else if (character_count(name) > Name.longest)
+		} else if character_count(name) > Name.longest {
 			Err(TooLong)
-		else {
+		} else {
 			written = NameAlphabet.written_text(name)?
-			if (name.starts_with(" ") or name.ends_with(" ") or name.contains("  "))
+			if name.starts_with(" ") or name.ends_with(" ") or name.contains("  ") {
 				Err(BadSpacing)
-			else
+			} else {
 				Ok(Name.(written))
+			}
 		}
 
 	## The most characters a name holds. An accented letter is one

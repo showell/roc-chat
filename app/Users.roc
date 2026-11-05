@@ -193,10 +193,11 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 		[NoSuchOwner, Full],
 	)
 	add_agent = |users, { name, owner }|
-		if (users.user(owner.id()) == Ok(owner.user()))
+		if users.user(owner.id()) == Ok(owner.user()) {
 			add_user(users, { name, role: Agent({ owner: owner.id() }) })
-		else
+		} else {
 			Err(NoSuchOwner)
+		}
 
 	## The users with the human `human` named `name` instead, and that human
 	## as renamed; unless `human` is not one of these users, by the same id
@@ -210,7 +211,13 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 		if users.user(human.id()) == Ok(human.user()) {
 			renamed = Users.User.({ id: human.id(), name, role: Human })
 			Users.(held) = users
-			everyone = held.everyone.map(|user| if (user.id() == human.id()) renamed else user)
+			everyone = held.everyone.map(
+				|user| if user.id() == human.id() {
+					renamed
+				} else {
+					user
+				},
+			)
 			Ok({ users: Users.({ ..held, everyone }), human: Users.Human.(renamed) })
 		} else {
 			Err(NoSuchHuman)
@@ -238,7 +245,11 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	check : Users, Users.Identity -> Try(Users.User, [NoSuchUser, NameMismatch])
 	check = |users, { id, name }| {
 		found = users.user(id)?
-		if (found.name() == name) Ok(found) else Err(NameMismatch)
+		if found.name() == name {
+			Ok(found)
+		} else {
+			Err(NameMismatch)
+		}
 	}
 
 	## Every user, in id order.
@@ -261,13 +272,14 @@ next_after = |id|
 next_from_file : List(U8) -> Try([Next(UserId), Full], [BadCounter])
 next_from_file = |bytes| {
 	number = FactFile.number_from_file(bytes) ? |NotANumber| BadCounter
-	if (number == UserId.past_highest)
+	if number == UserId.past_highest {
 		Ok(Full)
-	else
+	} else {
 		match UserId.from_str(number.to_str()) {
 			Ok(id) if id != UserId.chat_owner => Ok(Next(id))
 			_ => Err(BadCounter)
 		}
+	}
 }
 
 ## The user an account folder's files make.

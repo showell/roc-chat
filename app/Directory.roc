@@ -181,15 +181,16 @@ Directory :: {
 				.map(|user| user.name().key())
 				.concat(channels.to_list().map(|channel| channel.name().key()))
 		keys = Set.from_list(all_keys)
-		if (keys.len() != all_keys.len())
+		if keys.len() != all_keys.len() {
 			Err(NameTaken)
-		else
+		} else {
 			match channels.to_list().find_first(
 				|channel| !channel.members().all(|id| is_user(users, id)),
 			) {
 				Ok(stray) => Err(UnknownMember(stray.name()))
 				Err(NotFound) => Ok(Directory.({ users, channels, keys }))
 			}
+		}
 	}
 
 	## The chat's owner: the first human, id 1, and its admin. This is the one
@@ -229,4 +230,8 @@ is_user = |users, id|
 
 ## The taken names' keys with `key` added; unless it is already there.
 claim_key : Set(Name.Key), Name.Key -> Try(Set(Name.Key), [NameTaken])
-claim_key = |keys, key| if (keys.contains(key)) Err(NameTaken) else Ok(keys.insert(key))
+claim_key = |keys, key| if keys.contains(key) {
+	Err(NameTaken)
+} else {
+	Ok(keys.insert(key))
+}

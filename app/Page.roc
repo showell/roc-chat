@@ -121,7 +121,7 @@ Page :: [].{
 	conversation = |{ conversation: c, key, viewer, users }| {
 		topic = c.topic()
 		messages =
-			if (c.messages().is_empty())
+			if c.messages().is_empty() {
 				TrustedHtml.join([
 					Html.element({
 						name: P,
@@ -130,7 +130,7 @@ Page :: [].{
 					}),
 					newline,
 				])
-			else
+			} else {
 				TrustedHtml.join(
 					c.messages().map(
 						|m|
@@ -142,6 +142,7 @@ Page :: [].{
 							}),
 					),
 				)
+			}
 		document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([

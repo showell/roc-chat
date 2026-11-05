@@ -182,9 +182,10 @@ place_named : { kind : UnvalidatedString, name : UnvalidatedString } -> Try(
 	[NotAConversationPath, BadName],
 )
 place_named = |{ kind, name }|
-	if (kind.is_exactly("channel"))
+	if kind.is_exactly("channel") {
 		name.channel_name().map_ok(|channel| Channel(channel)).map_err(|_| BadName)
-	else if (kind.is_exactly("dm"))
+	} else if kind.is_exactly("dm") {
 		name.user_pair().map_ok(|pair| Dm(pair)).map_err(|_| BadName)
-	else
+	} else {
 		Err(NotAConversationPath)
+	}

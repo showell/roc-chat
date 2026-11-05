@@ -59,10 +59,11 @@ GitHubState :: {
 		errand : GitHubState.Errand,
 	} -> GitHubState
 	issue = |{ nonce, now, next, errand }|
-		if (nonce.len() == GitHubState.nonce_bytes)
+		if nonce.len() == GitHubState.nonce_bytes {
 			GitHubState.({ nonce, issued_at: now, next, errand })
-		else
+		} else {
 			crash "GitHubState.issue: a nonce is ${GitHubState.nonce_bytes.to_str()} bytes, not ${nonce.len().to_str()}"
+		}
 
 	## The bytes the host signs for this state.
 	signed_bytes : GitHubState -> List(U8)
@@ -228,15 +229,16 @@ link_prefix = "link-"
 ## The errand a token's part spells; unless it spells none (`BadPayload`).
 errand_from_text : Str -> Try(GitHubState.Errand, [BadPayload])
 errand_from_text = |text|
-	if (text == "sign-in")
+	if text == "sign-in" {
 		Ok(SignIn)
-	else if (text.starts_with(link_prefix))
+	} else if text.starts_with(link_prefix) {
 		match UserId.from_str(text.drop_prefix(link_prefix)) {
 			Ok(human) => Ok(Link(human))
 			Err(NotAUserId) => Err(BadPayload)
 		}
-	else
+	} else {
 		Err(BadPayload)
+	}
 
 ## The state a payload holds; unless any part doesn't read (`BadPayload`).
 state_from_payload : Str -> Try(GitHubState, [BadPayload])

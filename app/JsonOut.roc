@@ -72,7 +72,13 @@ JsonOut :: List(U8).{
 
 ## Each part, a comma between each two.
 commas : List(List(U8)) -> List(U8)
-commas = |parts| parts.map_with_index(|part, i| if (i == 0) part else part.prepend(',')).join()
+commas = |parts| parts.map_with_index(
+	|part, i| if i == 0 {
+		part
+	} else {
+		part.prepend(',')
+	},
+).join()
 
 # ── tests
 # A quote, a backslash, a line feed, a carriage return, DEL and a

@@ -125,10 +125,11 @@ UnvalidatedString :: Str.{
 	## a route takes is a strict name, which holds no `%`.
 	url_path_parts : UnvalidatedString -> Try(List(UnvalidatedString), [NotAPath])
 	url_path_parts = |UnvalidatedString.(text)|
-		if (text.starts_with("/"))
+		if text.starts_with("/") {
 			Ok(text.drop_prefix("/").split_on("/").map(|part| UnvalidatedString.(part)))
-		else
+		} else {
 			Err(NotAPath)
+		}
 
 	## Is it exactly `word`, a fixed word the code wrote (a URL's `chat`),
 	## byte for byte and case and all?
@@ -143,7 +144,11 @@ UnvalidatedString :: Str.{
 	markdown : UnvalidatedString -> Try(Str, [Blank])
 	markdown = |UnvalidatedString.(text)| {
 		lf = Str.join_with(text.split_on("\r\n"), "\n")
-		if (lf.to_utf8().all(Ascii.is_space)) Err(Blank) else Ok(lf)
+		if lf.to_utf8().all(Ascii.is_space) {
+			Err(Blank)
+		} else {
+			Ok(lf)
+		}
 	}
 }
 
@@ -204,7 +209,18 @@ expect [
 chat_parts : Str -> Try(Str, [NotAPath])
 chat_parts = |path| {
 	parts = wire(path.to_utf8()).url_path_parts()?
-	Ok(Str.join_with(parts.map(|p| if (p.is_exactly("chat")) "chat" else "other"), " "))
+	Ok(
+		Str.join_with(
+			parts.map(
+				|p| if p.is_exactly("chat") {
+					"chat"
+				} else {
+					"other"
+				},
+			),
+			" ",
+		),
+	)
 }
 
 expect chat_parts("/chat/dm/1_1") == Ok("chat other other")

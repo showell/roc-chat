@@ -22,19 +22,26 @@ Separator :: [].{
 	records : Str -> Try(List(Str), [NotPrefixedProperly])
 	records = |text| {
 		opening = "${Separator.line}\n"
-		if (text.is_empty())
+		if text.is_empty() {
 			Ok([])
-		else if (!text.starts_with(opening) or !text.ends_with("\n\n"))
+		} else if !text.starts_with(opening) or !text.ends_with("\n\n") {
 			Err(NotPrefixedProperly)
-		else
+		} else {
 			Ok(text.drop_prefix(opening).drop_suffix("\n\n").split_on("\n\n${opening}"))
+		}
 	}
 
 	## `markdown` as a transcript holds it, with each separator-like line
 	## given one backslash more.
 	escape : Str -> Str
 	escape = |markdown| Str.join_with(
-		markdown.split_on("\n").map(|l| if (is_backslashed_separator(l)) "\\${l}" else l),
+		markdown.split_on("\n").map(
+			|l| if is_backslashed_separator(l) {
+				"\\${l}"
+			} else {
+				l
+			},
+		),
 		"\n",
 	)
 
@@ -44,15 +51,22 @@ Separator :: [].{
 	unescape : Str -> Try(Str, [BareSeparator])
 	unescape = |written| {
 		lines = written.split_on("\n")
-		if (lines.any(|l| l == Separator.line))
+		if lines.any(|l| l == Separator.line) {
 			Err(BareSeparator)
-		else
+		} else {
 			Ok(
 				Str.join_with(
-					lines.map(|l| if (is_backslashed_separator(l)) l.drop_prefix("\\") else l),
+					lines.map(
+						|l| if is_backslashed_separator(l) {
+							l.drop_prefix("\\")
+						} else {
+							l
+						},
+					),
 					"\n",
 				),
 			)
+		}
 	}
 }
 

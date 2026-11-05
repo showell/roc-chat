@@ -37,10 +37,11 @@ UploadTotal :: U64.{
 	## past `most_bytes` (`LimitReached`).
 	with_upload : UploadTotal, U64 -> Try(UploadTotal, [LimitReached])
 	with_upload = |UploadTotal.(total), adding|
-		if (total > UploadTotal.most_bytes or adding > UploadTotal.most_bytes - total)
+		if total > UploadTotal.most_bytes or adding > UploadTotal.most_bytes - total {
 			Err(LimitReached)
-		else
+		} else {
 			Ok(UploadTotal.(total + adding))
+		}
 
 	is_eq : _
 }

@@ -193,10 +193,11 @@ state_to_file = |state|
 state_from_file : List(U8) -> Try(AgentKey.State, [NotAState])
 state_from_file = |bytes| {
 	word = FactFile.word_from_file(bytes)
-	if (word == "active".to_utf8())
+	if word == "active".to_utf8() {
 		Ok(Active)
-	else if (word == "revoked".to_utf8())
+	} else if word == "revoked".to_utf8() {
 		Ok(Revoked)
-	else
+	} else {
 		Err(NotAState)
+	}
 }
