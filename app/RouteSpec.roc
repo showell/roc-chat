@@ -78,6 +78,7 @@ chosen_route = |method, path|
 		SignedInOnly(ShowInvites) => "invites"
 		SignedInOnly(InviteHuman) => "invite a human"
 		SignedInOnly(InviteHumanAgain(human)) => "invite ${human.to_str()} again"
+		Open(GoToBrowse) => "the way in (open)"
 		Open(ShowJoin) => "the join page (open)"
 		Open(LookUpJoinName) => "the name to join under (open)"
 		Open(Join) => "join (open)"
@@ -99,6 +100,11 @@ chosen_route = |method, path|
 		MethodNotAllowed(PostOnly) => "not allowed: POST"
 	}
 
+# The way in: GET alone, open, and exactly its path.
+expect chosen_route("GET", "/".to_utf8()) == "the way in (open)"
+expect chosen_route("POST", "/".to_utf8()) == "not allowed: GET"
+expect chosen_route("PUT", "/".to_utf8()) == "not allowed: GET"
+expect ["", "//", "/ "].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
 # Browse: GET alone, and exactly its path.
 expect chosen_route("GET", "/chat".to_utf8()) == "browse"
 expect chosen_route("POST", "/chat".to_utf8()) == "not allowed: GET"

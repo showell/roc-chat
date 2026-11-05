@@ -699,8 +699,10 @@ pub fn main(init: std.process.Init) !void {
     // 48zw.
     const back_in = try post(a, io, port, .{ .path = "/channels/crew/members/2/add", .form = "" });
     const key_browse = try getAs(a, io, port, cc_bearer, "/chat");
+    const key_way_in = try getAs(a, io, port, cc_bearer, "/");
     const key_topic = try postAs(a, io, port, cc_bearer, "/chat/channel/crew", "topic=plans");
-    try t.check("a key at Browse, and starting a topic in its own channel: 403 each", back_in.status == 303 and key_browse.status == 403 and key_topic.status == 403 and
+    try t.check("a key at Browse, and starting a topic in its own channel: 403 each, and / points a key at that same 403", back_in.status == 303 and key_browse.status == 403 and key_topic.status == 403 and
+        key_way_in.status == 303 and std.mem.eql(u8, key_way_in.header("location") orelse "", "/chat") and
         has(key_browse.body, "by their own session") and has(key_topic.body, "by their own session"));
 
     // 49.
@@ -780,6 +782,30 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     try t.check("Browse for a stranger: a 303 to the sign-in page, which comes back to it and shows no link to it; a new topic: 401", stranger.status == 303 and
         std.mem.eql(u8, stranger.header("location") orelse "", "/login?next=/chat") and sign_in.status == 200 and
         has(sign_in.body, "name=\"next\" value=\"/chat\"") and !has(sign_in.body, browse_link) and stranger_topic.status == 401);
+
+    // 52a.
+    const way_in = try anonymousGet(a, io, port, "/");
+    const way_in_query = try anonymousGet(a, io, port, "/?from=a-link");
+    const way_in_on = try anonymousGet(a, io, port, way_in.header("location") orelse "");
+    try t.check("/ for a stranger: a 303 to Browse, which sends them to sign in; a query changes nothing", way_in.status == 303 and way_in_query.status == 303 and
+        std.mem.eql(u8, way_in.header("location") orelse "", "/chat") and std.mem.eql(u8, way_in_query.header("location") orelse "", "/chat") and
+        way_in_on.status == 303 and std.mem.eql(u8, way_in_on.header("location") orelse "", "/login?next=/chat"));
+    const stale = "cookie: __Host-gopher_auth=MQ.1.bad\r\n";
+    const stale_way_in = try getAs(a, io, port, stale, "/");
+    const stale_on = try getAs(a, io, port, stale, stale_way_in.header("location") orelse "");
+    try t.check("/ for a cookie that admits no one: the same way to sign in", stale_way_in.status == 303 and
+        std.mem.eql(u8, stale_way_in.header("location") orelse "", "/chat") and stale_on.status == 303 and
+        std.mem.eql(u8, stale_on.header("location") orelse "", "/login?next=/chat"));
+    const steves_way_in = try getAs(a, io, port, steve_session, "/");
+    const steves_way_on = try getAs(a, io, port, steve_session, steves_way_in.header("location") orelse "");
+    try t.check("/ for someone signed in: a 303 to Browse, which shows them it, with no sign-in form", steves_way_in.status == 303 and
+        std.mem.eql(u8, steves_way_in.header("location") orelse "", "/chat") and steves_way_on.status == 200 and
+        has(steves_way_on.body, "<h1>Steve</h1>") and !has(steves_way_on.body, "action=\"/login\""));
+    const post_way_in = try anonymousPost(a, io, port, "/", "");
+    const steves_post_way_in = try postAs(a, io, port, steve_session, "/", "");
+    const put_way_in = try exchange(a, io, port, try std.fmt.allocPrint(a, "PUT / HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-length: 0\r\n\r\n", .{port}));
+    try t.check("/ takes GET alone: a POST, signed in or not, and a PUT are a 405", post_way_in.status == 405 and steves_post_way_in.status == 405 and put_way_in.status == 405 and
+        std.mem.eql(u8, post_way_in.header("allow") orelse "", "GET"));
 
     // 53.
     const created = try postAs(a, io, port, steve_session, "/channels", "name=crew");

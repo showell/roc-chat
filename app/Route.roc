@@ -2,6 +2,7 @@
 ## It is a pure decision, so its tests (`RouteSpec`) reach every route, and
 ## the host routes nothing.
 ##
+##     GET  /                                  the way in: a 303 to Browse
 ##     GET  /chat                              Browse, every place you may open
 ##     POST /chat/channel/<channel>            a new topic: `topic=`
 ##     POST /chat/dm/<pair>
@@ -44,8 +45,8 @@
 ##     POST /join                              join: `code=`, `name=`, `password=`
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
-## included: the scripts, the sign-in routes, an agent's redemption, and
-## the join routes.
+## included: the way in, the scripts, the sign-in routes, an agent's
+## redemption, and the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and main answers each `SignedInOnly`
 ## route to no one but someone signed in.
@@ -82,6 +83,7 @@ Route :: [].{
 
 	## The routes anyone may use, a request that proves no one included.
 	OpenChoice : [
+		GoToBrowse,
 		ServeScript(Script),
 		ShowLogin,
 		SignIn,
@@ -247,8 +249,8 @@ conversation_path_choice = |
 		Err(NoSuchHuman) => NotFound
 	}
 
-## The route for `method` and a path that is Browse's, a place's, or nothing
-## here.
+## The route for `method` and a path that is the way in, Browse's, a place's,
+## or nothing here.
 browse_path_choice : {
 	path : UnvalidatedString,
 	method : [Get, Post, Other],
@@ -261,7 +263,13 @@ browse_path_choice = |
 		directory,
 	},
 |
-	if (path.is_exactly(ConversationKey.browse_path))
+	if (path.is_exactly("/"))
+		match method {
+			Get => Open(GoToBrowse)
+			Post => MethodNotAllowed(GetOnly)
+			Other => MethodNotAllowed(GetOnly)
+		}
+	else if (path.is_exactly(ConversationKey.browse_path))
 		match method {
 			Get => SignedInOnly(ShowBrowse)
 			Post => MethodNotAllowed(GetOnly)

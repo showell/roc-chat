@@ -32,9 +32,9 @@
 ## key admits, or a 401; any other by its session cookie, as the human the
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
-## `Route` says are open (the scripts, signing in and out, by a password or
-## GitHub, signing up by GitHub, redeeming an agent's invite, and joining by
-## a human's); any other
+## `Route` says are open (the way in at `/`, the scripts, signing in and out,
+## by a password or GitHub, signing up by GitHub, redeeming an agent's invite,
+## and joining by a human's); any other
 ## page sends it to
 ## sign in, and any other request is a 401. Only the first start, which
 ## makes Steve before anyone can sign in, and the demo's page take him as
@@ -399,6 +399,7 @@ upload_asked = |choice|
 		SignedInOnly(ShowInvites) => NoUpload
 		SignedInOnly(InviteHuman) => NoUpload
 		SignedInOnly(InviteHumanAgain(_)) => NoUpload
+		Open(GoToBrowse) => NoUpload
 		Open(ShowJoin) => NoUpload
 		Open(LookUpJoinName) => NoUpload
 		Open(Join) => NoUpload
@@ -705,6 +706,11 @@ serve_route! = |
 		)
 	}
 
+## The answer to `/`: a 303 to Browse, which shows someone signed in their
+## page and sends anyone else to sign in.
+browse_redirect : Http.Response
+browse_redirect = HttpAnswer.see_other(ConversationKey.browse_path)
+
 ## The answer to an open route, for `actor`, whoever it is.
 answer_open_route! : {
 	open : Route.OpenChoice,
@@ -721,6 +727,7 @@ answer_open_route! = |
 	},
 |
 	match open {
+		GoToBrowse => browse_redirect
 		ServeScript(script) => HttpAnswer.script(script.bytes())
 		ShowLogin =>
 			SignInRoute.show_login({
@@ -1309,6 +1316,10 @@ expect {
 	}) == Admitted(upload_body_allowance)
 		and admission_verdict(public_head) == Refused(403, forbidden_headers)
 }
+# The way in names Browse, whoever asks.
+expect
+	browse_redirect.status == 303
+		and browse_redirect.headers == [{ name: "location".to_utf8(), value: "/chat".to_utf8() }]
 # No one asking for a page is sent to sign in, and back after; any other
 # route only someone signed in may use is a 401 to no one.
 expect {
