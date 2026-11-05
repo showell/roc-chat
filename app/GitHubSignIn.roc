@@ -902,7 +902,11 @@ expect
 	})
 		== Err(GitHubIdTaken)
 expect
-	round_trip({ ..good_return, heard: github_answer(300, "stranger"), viewer: viewer_of("1") })
+	round_trip({
+		..good_return,
+		heard: github_answer(300, "stranger"),
+		viewer: viewer_of("1"),
+	})
 		== Err(AlreadyLinked)
 # Two humans holding the id, the viewer among them.
 expect
@@ -917,7 +921,11 @@ expect
 		== Err(DuplicateAccount)
 # An agent is no one to link, and never reaches a new account.
 expect
-	round_trip({ ..good_return, heard: github_answer(300, "stranger"), viewer: viewer_of("3") })
+	round_trip({
+		..good_return,
+		heard: github_answer(300, "stranger"),
+		viewer: viewer_of("3"),
+	})
 		== Err(LinkNotYours)
 # A link never skips the state's own checks.
 expect round_trip({ ..good_link, state: Unsigned }) == Err(StateForged)

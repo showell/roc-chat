@@ -482,7 +482,7 @@ sign_up! = |
 		now,
 	}) ? |ClockOutOfRange| Refused(ClockOutOfRange)
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.append_message!(welcome.key(), welcome.record()) ? |fault| FileSystem(fault)
+	FileSystem.append_message!(welcome.key(), welcome.first_record()) ? |fault| FileSystem(fault)
 	landing = FirstPage.load!({
 		directory: made.directory,
 		human,

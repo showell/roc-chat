@@ -9,10 +9,10 @@
 ## account, so no account lacks one: a failure there spends an id and holds no
 ## name, and the inviter tries again. A failure after it leaves an account
 ## holding the name with no code, which its inviter invites again, never a
-## code for a half-made account. The page shows the link that joins by the code, `<origin>/join#<code>`,
-## where the origin is the one the inviter's request came to; it is never
-## stored by a browser or a proxy. No browser sends what follows a `#`, so
-## the code reaches no log.
+## code for a half-made account. The page shows the link that joins by the
+## code, `<origin>/join#<code>`, where the origin is the one the inviter's
+## request came to; it is never stored by a browser or a proxy. No browser
+## sends what follows a `#`, so the code reaches no log.
 ##
 ## The join routes answer a request that proves no one (`SignedIn.Actor`'s
 ## `Anonymous`), as `/agents/redeem` does: the invite's code is their
@@ -239,7 +239,7 @@ invite_human! = |
 		now,
 	})?
 	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.append_message!(welcome.key(), welcome.record()) ? |fault| FileSystem(fault)
+	FileSystem.append_message!(welcome.key(), welcome.first_record()) ? |fault| FileSystem(fault)
 	FileSystem.create_invited_account!({
 		human: made.human,
 		inviter: made.inviter.id(),

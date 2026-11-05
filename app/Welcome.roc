@@ -85,8 +85,8 @@ Welcome :: {
 	key = |Welcome.(welcome)| welcome.key
 
 	## Its record, the first of the conversation's transcript.
-	record : Welcome -> Transcript.Utf8TranscriptMessage
-	record = |Welcome.(welcome)| welcome.record
+	first_record : Welcome -> Transcript.Utf8TranscriptMessage
+	first_record = |Welcome.(welcome)| welcome.record
 }
 
 # ── tests
@@ -115,7 +115,7 @@ record_text = |owner| {
 			human: chat.human,
 			now: 1793646692,
 		}) ?? crash "Welcome's tests: the clock is in range"
-	Str.from_utf8(made.record().to_utf8_bytes()) ?? crash "Welcome's tests: a record is UTF-8"
+	Str.from_utf8(made.first_record().to_utf8_bytes()) ?? crash "Welcome's tests: a record is UTF-8"
 }
 
 # The record is the transcript's own format, its author and its words the
@@ -160,5 +160,6 @@ expect {
 	renamed =
 		chat.directory.rename_human({ human: chat.human, name: tests_name("Zed") })
 			?? crash "Welcome's tests: Zed is free"
-	Welcome.conversation_key({ directory: renamed.directory, human: renamed.human }) == Welcome.conversation_key(chat)
+	after = Welcome.conversation_key({ directory: renamed.directory, human: renamed.human })
+	after == Welcome.conversation_key(chat)
 }
