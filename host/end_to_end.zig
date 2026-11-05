@@ -40,6 +40,9 @@
 //!   4a. GET the page's script: 200, JavaScript, `nosniff`, exactly
 //!      app/compose.js; palette.js, chrome.js and feed.js the same; a POST
 //!      to compose.js is a 405 allowing GET;
+//!   4aa. GET /favicon.ico: exactly app/favicon.ico, with every header a script
+//!       has, to no one, to a cookie that admits no one, to Steve, and to a
+//!       page's own request; another site's page: 403; a POST: 405;
 //!   4b. POST exactly as a browser submits the compose box (form-encoded,
 //!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
 //!      same-origin, a navigation's other headers): a 303 to the page, and
@@ -421,6 +424,30 @@ pub fn main(init: std.process.Init) !void {
     const script_post = try post(a, io, port, .{ .path = script_url, .form = "markdown=x" });
     try t.check("POST to the script: 405, allowing GET alone", script_post.status == 405 and
         std.mem.eql(u8, script_post.header("allow") orelse "", "GET"));
+
+    // 4aa.
+    const icon_file = try cwd.readFileAlloc(io, "app/favicon.ico", a, .limited(1024 * 1024));
+    const icon_page_asks = "sec-fetch-site: same-origin\r\nsec-fetch-mode: no-cors\r\nsec-fetch-dest: image\r\n";
+    const icon_answers = [_]Response{
+        try anonymousGet(a, io, port, "/favicon.ico"),
+        try getAs(a, io, port, "cookie: __Host-gopher_auth=MQ.1.bad\r\n", "/favicon.ico"),
+        try get(a, io, port, "/favicon.ico"),
+        try getAs(a, io, port, icon_page_asks, "/favicon.ico"),
+    };
+    var icon_served = true;
+    for (icon_answers) |icon| {
+        icon_served = icon_served and icon.status == 200 and
+            std.mem.eql(u8, icon.header("content-type") orelse "", "image/x-icon") and std.mem.eql(u8, icon.body, icon_file);
+        inline for (.{ "cache-control", "x-content-type-options", "cross-origin-resource-policy" }) |name| {
+            icon_served = icon_served and icon.header(name) != null and
+                std.mem.eql(u8, icon.header(name).?, script.header(name) orelse "");
+        }
+    }
+    try t.check("GET /favicon.ico, by no one, a cookie that admits no one, Steve and a page: 200, exactly app/favicon.ico, an icon, a script's other headers", icon_served);
+    const icon_elsewhere = try getAs(a, io, port, "sec-fetch-site: cross-site\r\nsec-fetch-mode: no-cors\r\nsec-fetch-dest: image\r\n", "/favicon.ico");
+    const icon_post = try anonymousPost(a, io, port, "/favicon.ico", "");
+    try t.check("the icon asked for by another site's page: 403; a POST: 405, allowing GET alone", icon_elsewhere.status == 403 and
+        icon_post.status == 405 and std.mem.eql(u8, icon_post.header("allow") orelse "", "GET"));
 
     // 4b.
     const before_box = files.current_utc_seconds_since_epoch(io);

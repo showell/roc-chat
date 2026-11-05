@@ -32,7 +32,7 @@
 ## key admits, or a 401; any other by its session cookie, as the human the
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
-## `Route` says are open (the way in at `/`, the scripts, signing in and out,
+## `Route` says are open (the way in at `/`, the scripts, the icon, signing in and out,
 ## by a password or GitHub, signing up by GitHub, redeeming an agent's invite,
 ## and joining by a human's); any other
 ## page sends it to
@@ -64,6 +64,7 @@ import Conversation
 import ConversationKey
 import ConversationRoute
 import Directory
+import Favicon
 import FileSystem
 import GitHubRoute
 import HumanInvitesRoute
@@ -404,6 +405,7 @@ upload_asked = |choice|
 		Open(LookUpJoinName) => NoUpload
 		Open(Join) => NoUpload
 		Open(ServeScript(_)) => NoUpload
+		Open(ServeFavicon) => NoUpload
 		Open(ShowLogin) => NoUpload
 		Open(SignIn) => NoUpload
 		Open(SignOut) => NoUpload
@@ -729,6 +731,7 @@ answer_open_route! = |
 	match open {
 		GoToBrowse => browse_redirect
 		ServeScript(script) => HttpAnswer.script(script.bytes())
+		ServeFavicon => HttpAnswer.favicon(Favicon.bytes)
 		ShowLogin =>
 			SignInRoute.show_login({
 				viewer: actor,

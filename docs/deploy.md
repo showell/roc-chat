@@ -187,7 +187,7 @@ The last line must say `active`, and https://chat.lynrummy.com/login then sends 
 - admit a body of 10,551,296 bytes, an upload's 10 MiB image and 64 KiB of form;
 - add no path prefix, as every route is at the root.
 
-The routes behind it are `/`, `/chat...`, `/login...`, `/logout`, `/join...`, `/agents...`, `/channels...` and `/invites...` (`app/Route.roc` has them all), and the block passes them all alike. GitHub's way back is `/login/github`, whose `code` and `state` appear in the access log. A code is good once, and the server spends it at once.
+The routes behind it are `/`, `/chat...`, `/login...`, `/logout`, `/join...`, `/agents...`, `/channels...`, `/invites...` and `/favicon.ico` (`app/Route.roc` has them all), and the block passes them all alike. GitHub's way back is `/login/github`, whose `code` and `state` appear in the access log. A code is good once, and the server spends it at once.
 
 ## The per-client cap
 

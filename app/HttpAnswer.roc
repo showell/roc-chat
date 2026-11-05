@@ -1,6 +1,6 @@
 ## This module builds the responses the chat gives, each in one place: a
-## page with its status, a script, a redirect after a POST, the refusal of
-## a method, and an event stream; an uploaded image, and the JSON that
+## page with its status, a script, the site's icon, a redirect after a POST,
+## the refusal of a method, and an event stream; an uploaded image, and the JSON that
 ## answers an upload; and a refusal in plain words, of an upload or a send,
 ## which the compose box shows as it is. It knows nothing of what a page
 ## says: the routes build their pages with `Page` and hand them here.
@@ -36,23 +36,13 @@ HttpAnswer :: [].{
 		})
 
 	## A script, `bytes` (the app's own: `Script`), as UTF-8
-	## JavaScript, which `nosniff` requires of a script a page runs. A
-	## browser asks again before using its copy (`no-cache`), so a changed
-	## script is never stale.
+	## JavaScript, which `nosniff` requires of a script a page runs.
 	script : List(U8) -> Http.Response
-	script = |bytes|
-		whole_response({
-			status: 200,
-			headers: [
-				{
-					name: "content-type".to_utf8(),
-					value: "text/javascript; charset=utf-8".to_utf8(),
-				},
-				{ name: "cache-control".to_utf8(), value: "no-cache".to_utf8() },
-				nosniff,
-			],
-			body: bytes,
-		})
+	script = |bytes| asset({ content_type: "text/javascript; charset=utf-8", bytes })
+
+	## The site's icon, `bytes` (the app's own: `Favicon`).
+	favicon : List(U8) -> Http.Response
+	favicon = |bytes| asset({ content_type: "image/x-icon", bytes })
 
 	## An uploaded image, `bytes`, served as `content_type`, which
 	## `nosniff` holds the browser to. The browser keeps it for good, since a
@@ -170,6 +160,20 @@ HttpAnswer :: [].{
 		stream_holder: holder,
 	}
 }
+
+## A file the app compiles in, `bytes`, as `content_type`. A browser asks again
+## before using its copy (`no-cache`), so a changed file is never stale.
+asset : { content_type : Str, bytes : List(U8) } -> Http.Response
+asset = |{ content_type, bytes }|
+	whole_response({
+		status: 200,
+		headers: [
+			{ name: "content-type".to_utf8(), value: content_type.to_utf8() },
+			{ name: "cache-control".to_utf8(), value: "no-cache".to_utf8() },
+			nosniff,
+		],
+		body: bytes,
+	})
 
 ## An answer that is its body, naming no stream.
 whole_response : {
@@ -347,6 +351,7 @@ expect
 		HttpAnswer.page(404, TrustedHtml.join([])),
 		HttpAnswer.see_other("/a"),
 		HttpAnswer.script([]),
+		HttpAnswer.favicon([]),
 		HttpAnswer.method_not_allowed(GetOnly),
 		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
 		HttpAnswer.json(JsonOut.json_object([])),
@@ -399,6 +404,18 @@ expect {
 				("x-content-type-options", "nosniff"),
 			]
 		and response.body == "x();\n".to_utf8()
+}
+# The icon: as a script is but for its type, its bytes as given.
+expect {
+	response = HttpAnswer.favicon([0, 0, 1, 0])
+	response.status == 200
+		and header_pairs(response)
+			== [
+				("content-type", "image/x-icon"),
+				("cache-control", "no-cache"),
+				("x-content-type-options", "nosniff"),
+			]
+		and response.body == [0, 0, 1, 0]
 }
 # A transcript's plain text: a 200, UTF-8 text, not sniffed, its bytes as
 # kept, a final line end and all.

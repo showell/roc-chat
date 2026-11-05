@@ -83,6 +83,7 @@ chosen_route = |method, path|
 		Open(LookUpJoinName) => "the name to join under (open)"
 		Open(Join) => "join (open)"
 		Open(ServeScript(script)) => "the script at ${script.url_path()} (open)"
+		Open(ServeFavicon) => "the icon (open)"
 		Open(ShowLogin) => "the sign-in page (open)"
 		Open(SignIn) => "sign in (open)"
 		Open(SignOut) => "sign out (open)"
@@ -194,6 +195,18 @@ expect chosen_route("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/assets/other.js".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/assets".to_utf8()) == "not found"
+# The icon's path: GET alone, by anyone, and exactly its path.
+expect chosen_route("GET", "/favicon.ico".to_utf8()) == "the icon (open)"
+expect chosen_route("POST", "/favicon.ico".to_utf8()) == "not allowed: GET"
+expect chosen_route("HEAD", "/favicon.ico".to_utf8()) == "not allowed: GET"
+expect
+	[
+		"/favicon.ico/",
+		"/Favicon.ico",
+		"/favicon.png",
+		"/chat/favicon.ico",
+		"/chat/assets/favicon.ico",
+	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
 # A conversation's transcript as plain text: GET alone, under a place that
 # exists.
 expect chosen_route("GET", "/chat/dm/1_2/plans/raw".to_utf8()) == "raw /chat/dm/1_2/plans"

@@ -18,6 +18,8 @@
 ##     GET  /chat/assets/chrome.js
 ##     GET  /chat/assets/compose.js
 ##     GET  /chat/assets/feed.js
+##     GET  /chat/assets/join.js
+##     GET  /favicon.ico                       the site's icon
 ##     GET  /login                             the sign-in page
 ##     POST /login                             sign in: `name=`, `password=`
 ##     GET  /login/github/start                off to GitHub: `?next=<path>`
@@ -45,7 +47,7 @@
 ##     POST /join                              join: `code=`, `name=`, `password=`
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
-## included: the way in, the scripts, the sign-in routes, an agent's
+## included: the way in, the scripts, the icon, the sign-in routes, an agent's
 ## redemption, and the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and main answers each `SignedInOnly`
@@ -64,6 +66,7 @@ import AgentKey
 import ChannelName
 import ConversationKey
 import Directory
+import Favicon
 import Place
 import Script
 import UnvalidatedString
@@ -85,6 +88,7 @@ Route :: [].{
 	OpenChoice : [
 		GoToBrowse,
 		ServeScript(Script),
+		ServeFavicon,
 		ShowLogin,
 		SignIn,
 		SignOut,
@@ -142,12 +146,8 @@ Route :: [].{
 	| {
 		asked = method_of(method)
 		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
-			Ok(script) =>
-				match asked {
-					Get => Open(ServeScript(script))
-					Post => MethodNotAllowed(GetOnly)
-					Other => MethodNotAllowed(GetOnly)
-				}
+			Ok(script) => asset_choice(ServeScript(script), asked)
+			Err(NotFound) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) => path_choice({
@@ -160,6 +160,16 @@ Route :: [].{
 		}
 	}
 }
+
+## The route for `method` and the path of a file the app compiles in: `served`
+## by GET alone.
+asset_choice : Route.OpenChoice, [Get, Post, Other] -> Route.Choice
+asset_choice = |served, method|
+	match method {
+		Get => Open(served)
+		Post => MethodNotAllowed(GetOnly)
+		Other => MethodNotAllowed(GetOnly)
+	}
 
 ## The route for `method` and a path under `/invites`, a conversation's, or
 ## nothing here.
