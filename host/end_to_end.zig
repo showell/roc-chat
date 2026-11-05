@@ -264,6 +264,14 @@
 //!  49. sign out: a 303 to the sign-in page, the cookie cleared, never
 //!      stored.
 //!
+//! Then a second server, on a chat of its own with no GitHub settings and no
+//! conversation yet:
+//!
+//!  50. no link to GitHub on the sign-in page or /agents; each GitHub route a
+//!      404 by any method, from no one and from Steve;
+//!  51. an invited human joins: #general holds them, and with no conversation
+//!      to land on they land on /agents, a 200.
+//!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, the
 //! session's cookie, no `Origin`, no `Sec-Fetch-Site`.
 //!
@@ -669,7 +677,60 @@ pub fn main(init: std.process.Init) !void {
         std.mem.eql(u8, signed_out.header("set-cookie") orelse "", "__Host-gopher_auth=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax") and
         std.mem.eql(u8, signed_out.header("cache-control") orelse "", "no-store"));
 
+    try noGitHubSteps(a, io, gpa, t, data_name);
+
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
+}
+
+/// Steps 50 and 51, on a server of their own, beside the first, whose data
+/// root is `data_name` and `-plain`.
+fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps, data_name: []const u8) !void {
+    const cwd = Io.Dir.cwd();
+    const plain_name = try std.fmt.allocPrint(a, "{s}-plain", .{data_name});
+    try cwd.createDirPath(io, plain_name);
+    defer cwd.deleteTree(io, plain_name) catch |e| std.debug.print("end-to-end: {s} not removed ({t})\n", .{ plain_name, e });
+    const data = try cwd.openDir(io, plain_name, .{});
+    defer data.close(io);
+    const root: files.DataRoot = .{ .io = io, .dir = data };
+    var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root, .public_origin = public_origin });
+    var running = try io.concurrent(http.Server.run, .{&server});
+    defer {
+        server.stop();
+        running.await(io) catch |e| std.debug.print("end-to-end: the second server's run: {t}\n", .{e});
+    }
+    const port = server.port();
+    _ = try writePassword(a, io, data);
+    const steve = try cookieLine(a, try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple"));
+
+    // 50.
+    const login_page = try anonymousGet(a, io, port, "/login");
+    const agents_page = try getAs(a, io, port, steve, "/agents");
+    try t.check("no GitHub settings: the sign-in page and Steve's /agents, 200 each, name no GitHub route", login_page.status == 200 and
+        agents_page.status == 200 and !has(login_page.body, "/login/github") and !has(agents_page.body, "/login/github"));
+    for ([_][]const u8{ "", steve }) |browser| {
+        const start = try getAs(a, io, port, browser, "/login/github/start");
+        const way_back = try getAs(a, io, port, browser, "/login/github?code=user-id-7&state=x");
+        const name = try postAs(a, io, port, browser, "/login/github/name", "name=Mallory");
+        const link = try postAs(a, io, port, browser, "/login/github/link", "");
+        const wrong_start = try postAs(a, io, port, browser, "/login/github/start", "");
+        const wrong_back = try postAs(a, io, port, browser, "/login/github", "");
+        const wrong_name = try getAs(a, io, port, browser, "/login/github/name");
+        const wrong_link = try getAs(a, io, port, browser, "/login/github/link");
+        try t.check("no GitHub settings: the start, the way back, the name and the link, and each by the wrong method, a 404", start.status == 404 and
+            way_back.status == 404 and name.status == 404 and link.status == 404 and wrong_start.status == 404 and wrong_back.status == 404 and
+            wrong_name.status == 404 and wrong_link.status == 404 and has(name.body, "Nothing is here") and
+            !(try exists(io, data, "auth/2")));
+    }
+
+    // 51.
+    const invited = try postAs(a, io, port, steve, "/invites", "name=Tam");
+    const link = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const hash = std.mem.indexOfScalar(u8, link, '#') orelse return error.NoCode;
+    const joined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Tam&password=their+own", .{link[hash + 1 ..]}));
+    const first_page = try getAs(a, io, port, try cookieLine(a, joined), joined.header("location") orelse "");
+    try t.check("no conversation yet: an invited human joins #general, and lands on /agents, a 200", joined.status == 303 and
+        std.mem.eql(u8, joined.header("location") orelse "", "/agents") and first_page.status == 200 and
+        std.mem.eql(u8, try readFile(a, io, data, "chat/channel/general.channel"), "1\n2\n"));
 }
 
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and
