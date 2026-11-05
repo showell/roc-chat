@@ -32,7 +32,8 @@
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
 ## (`Anonymous`). A request that proves no one may use only the routes
 ## `Route` says are open (the scripts, signing in and out, by a password or
-## GitHub, redeeming an agent's invite, and joining by a human's); any other
+## GitHub, signing up by GitHub, redeeming an agent's invite, and joining by
+## a human's); any other
 ## page sends it to
 ## sign in, and any other request is a 401. Only the first start, which
 ## makes Steve before anyone can sign in, and the demo's page take him as
@@ -404,7 +405,8 @@ upload_asked = |choice|
 		Open(SignOut) => NoUpload
 		Open(StartGitHubSignIn) => NoUpload
 		Open(FinishGitHubSignIn) => NoUpload
-		Open(WrongMethodToGitHub) => NoUpload
+		Open(FinishGitHubSignUp) => NoUpload
+		Open(WrongMethodToGitHub(_)) => NoUpload
 		Open(RedeemInvite) => NoUpload
 		NotFound => NoUpload
 		MethodNotAllowed(_) => NoUpload
@@ -737,12 +739,20 @@ answer_open_route! = |
 		FinishGitHubSignIn =>
 			GitHubRoute.serve_return!({
 				viewer: actor,
-				users: directory.users(),
+				directory,
 				query: request.query,
 				headers: request.headers,
 				now: Host.current_utc_seconds_since_epoch!({}),
 			})
-		WrongMethodToGitHub => GitHubRoute.refuse_method!({})
+		FinishGitHubSignUp =>
+			GitHubRoute.serve_sign_up!({
+				viewer: actor,
+				directory,
+				body: request.body,
+				headers: request.headers,
+				now: Host.current_utc_seconds_since_epoch!({}),
+			})
+		WrongMethodToGitHub(allowed) => GitHubRoute.refuse_method!(allowed)
 		RedeemInvite =>
 			AgentsRoute.redeem!({
 				actor,

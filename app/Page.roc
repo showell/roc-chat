@@ -44,6 +44,7 @@ import Markdown
 import Message
 import MsgAnchor
 import KeyScope
+import Name
 import Script
 import SecretToken
 import SignedIn
@@ -540,6 +541,66 @@ Page :: [].{
 				form,
 				newline,
 				github_link,
+			]),
+		})
+	}
+
+	## What a name field shows: a name, or nothing.
+	NameField : [Named(Name), NoName]
+
+	## The page that asks a human GitHub vouched for, who has no account, to
+	## choose a name: a form posting it to `/login/github/name`, filled in
+	## with `name`. The server carries who they are in a cookie
+	## (`GitHubSignUp`), so the form holds nothing else. Above it, `problem`
+	## when there is one.
+	github_sign_up : {
+		name : Page.NameField,
+		problem : [NoProblem, Problem(Str)],
+	} -> TrustedHtml
+	github_sign_up = |{ name, problem }| {
+		said =
+			match problem {
+				NoProblem => TrustedHtml.join([])
+				Problem(text) => paragraph(text)
+			}
+		filled =
+			match name {
+				NoName => []
+				Named(chosen) => [NameValue(chosen)]
+			}
+		form = Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(site_path("/login/github/name"))],
+			inner: TrustedHtml.join([
+				labelled_input({
+					label: "Your name",
+					attrs: [
+						InputType(Text),
+						FieldName(token("name")),
+						Autocomplete(Username),
+						Required,
+					].concat(filled),
+				}),
+				Html.element({
+					name: Button,
+					attrs: [],
+					inner: Escape.text("Join"),
+				}),
+			]),
+		})
+		document({
+			title: "Choose your name",
+			body: TrustedHtml.join([
+				Html.element({
+					name: H1,
+					attrs: [],
+					inner: Escape.text("Choose your name"),
+				}),
+				newline,
+				said,
+				paragraph("GitHub says who you are, and you have no account here yet. Choose a name that no one has: letters and single spaces. Once you join, it is yours, and you sign in with GitHub."),
+				form,
+				newline,
 			]),
 		})
 	}

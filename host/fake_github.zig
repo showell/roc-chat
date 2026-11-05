@@ -17,8 +17,10 @@
 //! | `slow`        | no answer for `slow_ms`                                 |
 //! | anything else | `{"error": "bad_verification_code"}`, a 200, as GitHub's |
 //!
-//! `GET /user` answers `tok-id-N` with `{"login": "personN", "id": N}`, and
-//! any other token with a 401. As GitHub does, it refuses a request with no
+//! `GET /user` answers `tok-id-N` with `{"login": "personN", "id": N}`, or
+//! the login `Zoe` for N 20 and `sTeVe` for N 21, so a test has a login that
+//! is a name and one that is taken; and any other token with a 401. As
+//! GitHub does, it refuses a request with no
 //! User-Agent (a 403) and answers `incorrect_client_credentials` to a wrong
 //! client id or secret.
 
@@ -169,7 +171,12 @@ fn user(req: *std.http.Server.Request, arena: std.mem.Allocator, authorization: 
     if (std.mem.startsWith(u8, authorization, prefix)) {
         const id = std.fmt.parseInt(u64, authorization[prefix.len..], 10) catch 0;
         if (id > 0) {
-            const body = try std.fmt.allocPrint(arena, "{{\"login\":\"person{d}\",\"id\":{d},\"type\":\"User\",\"site_admin\":false}}", .{ id, id });
+            const login = switch (id) {
+                20 => "Zoe",
+                21 => "sTeVe",
+                else => try std.fmt.allocPrint(arena, "person{d}", .{id}),
+            };
+            const body = try std.fmt.allocPrint(arena, "{{\"login\":\"{s}\",\"id\":{d},\"type\":\"User\",\"site_admin\":false}}", .{ login, id });
             return req.respond(body, .{ .keep_alive = false, .extra_headers = &json });
         }
     }

@@ -8,9 +8,11 @@
 ##   can't be swapped; a `data-` attribute's name is a `Token`;
 ## - every value is a `Token` (ASCII letters, digits and `-`, checked by
 ##   `Token.from_str`), a `SitePath` (`/` and parts of letters, digits,
-##   `-`, `_` and `.`, checked by `SitePath.from_str`) or a `DateTime` (its
-##   one form, digits and `-:TZ`), so no value holds a quote, `&`, `<`, a
-##   space or a `:`; a flag (`MethodPost`, `Required`) holds no value.
+##   `-`, `_` and `.`, checked by `SitePath.from_str`), a `DateTime` (its
+##   one form, digits and `-:TZ`) or a `Name` (letters and single spaces,
+##   checked by `Name.from_str`), so no value holds a quote, `&` or `<`, and
+##   only a name holds a space; a flag (`MethodPost`, `Required`) holds no
+##   value.
 ##
 ## An `<input>` has no end tag and holds nothing (`input`). Its value, the
 ## one an input field may carry, is a site path, a form's hidden `next`.
@@ -26,6 +28,7 @@
 ## to say (`Page.Class`, `Page.DataAttribute`).
 import Ascii
 import DateTime
+import Name as UserName
 import TrustedHtml
 
 Html :: [].{
@@ -121,6 +124,7 @@ Html :: [].{
 		Required,
 		InputType([Hidden, Password, Text]),
 		Value(Html.SitePath),
+		NameValue(UserName),
 		Autocomplete([Username, CurrentPassword, NewPassword]),
 		Src(Html.SitePath),
 		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
@@ -206,6 +210,7 @@ attribute = |attr|
 		InputType(Password) => " type=\"password\""
 		InputType(Text) => " type=\"text\""
 		Value(path) => " value=\"${path.to_str()}\""
+		NameValue(name) => " value=\"${name.to_str()}\""
 		Autocomplete(Username) => " autocomplete=\"username\""
 		Autocomplete(CurrentPassword) => " autocomplete=\"current-password\""
 		Autocomplete(NewPassword) => " autocomplete=\"new-password\""
@@ -342,11 +347,13 @@ expect {
 # An input's attributes, each as an open tag writes it.
 expect {
 	path = Html.SitePath.from_str("/agents") ?? crash "Html's tests: a site path"
+	name = UserName.from_str("Zoë Ann") ?? crash "Html's tests: a name"
 	[
 		(InputType(Hidden), " type=\"hidden\""),
 		(InputType(Password), " type=\"password\""),
 		(InputType(Text), " type=\"text\""),
 		(Value(path), " value=\"/agents\""),
+		(NameValue(name), " value=\"Zoë Ann\""),
 		(Autocomplete(Username), " autocomplete=\"username\""),
 		(Autocomplete(CurrentPassword), " autocomplete=\"current-password\""),
 		(Autocomplete(NewPassword), " autocomplete=\"new-password\""),

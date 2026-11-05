@@ -45,6 +45,7 @@ import ChannelName
 import Channels
 import ConversationKey
 import Directory
+import GitHubId
 import HumanInvite
 import Name
 import Topic
@@ -324,6 +325,32 @@ FileSystem :: [].{
 		)
 	}
 
+	## A new human's account folder, made once as they sign up with GitHub:
+	## the GitHub account that signs them in, `github-id`, then the `name`,
+	## whose file makes the folder an account, so one cut short binds no one.
+	## The counter of ids is the caller's to advance first, as for any account.
+	create_github_account! : { human : Users.User, github : GitHubId } => Try(
+		{},
+		[
+			AlreadyExists,
+			MissingDirectory,
+			NotUtf8,
+			PathRefused,
+			Failed,
+		],
+	)
+	create_github_account! = |{ human, github }| {
+		files = Users.account_files(human)
+		folder = account_folder_path(AccountFolder.of(human.id()))
+		create_facts!(
+			folder,
+			[
+				("github-id", github.to_str().to_utf8()),
+				("name", files.name),
+			],
+		)
+	}
+
 	## The user's `name` file written whole over the one before, atomically:
 	## the name an invited human chose as they joined.
 	replace_account_name! : Users.User => Try(
@@ -444,8 +471,8 @@ FileSystem :: [].{
 	read_password_hash! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
 	read_password_hash! = |id| read_fact!(password_path(id))
 
-	## The `github-id` file of each user who has one, as it is. The server's
-	## owner writes these by hand (docs/design.md, "Storage").
+	## The `github-id` file of each user who has one, as it is
+	## (docs/design.md, "Storage").
 	read_github_id_files! : Users => Try(
 		List({ user : UserId, file : List(U8) }),
 		[NotUtf8, PathRefused, Failed],

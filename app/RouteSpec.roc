@@ -84,7 +84,10 @@ chosen_route = |method, path|
 		Open(SignOut) => "sign out (open)"
 		Open(StartGitHubSignIn) => "off to GitHub (open)"
 		Open(FinishGitHubSignIn) => "back from GitHub (open)"
-		Open(WrongMethodToGitHub) => "the wrong method to GitHub (open)"
+		Open(FinishGitHubSignUp) => "a new human's name (open)"
+		Open(WrongMethodToGitHub(GetOnly)) => "the wrong method to GitHub (open)"
+		Open(WrongMethodToGitHub(PostOnly)) => "the wrong method for a name (open)"
+		Open(WrongMethodToGitHub(GetAndPost)) => "no route takes this"
 		Open(RedeemInvite) => "redeem (open)"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
@@ -190,7 +193,7 @@ expect chosen_route("PUT", "/agents/stream".to_utf8()) == "not allowed: GET"
 expect chosen_route("GET", "/login".to_utf8()) == "the sign-in page (open)"
 expect chosen_route("POST", "/login".to_utf8()) == "sign in (open)"
 expect chosen_route("PUT", "/login".to_utf8()) == "not allowed: GET, POST"
-# GitHub's two: a GET each, and every other method a refusal the route gives,
+# GitHub's two GETs, and every other method there a refusal the route gives,
 # as a server with no GitHub settings answers those with a 404.
 expect chosen_route("GET", "/login/github/start".to_utf8()) == "off to GitHub (open)"
 expect chosen_route("GET", "/login/github".to_utf8()) == "back from GitHub (open)"
@@ -201,6 +204,13 @@ expect
 		("POST", "/login/github"),
 		("PUT", "/login/github"),
 	].all(|(method, path)| chosen_route(method, path.to_utf8()) == "the wrong method to GitHub (open)")
+# A new human's name: a POST, and every other method a refusal the route gives.
+expect chosen_route("POST", "/login/github/name".to_utf8()) == "a new human's name (open)"
+expect
+	[
+		("GET", "/login/github/name"),
+		("PUT", "/login/github/name"),
+	].all(|(method, path)| chosen_route(method, path.to_utf8()) == "the wrong method for a name (open)")
 expect chosen_route("POST", "/logout".to_utf8()) == "sign out (open)"
 expect chosen_route("GET", "/logout".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/logout".to_utf8()) == "not allowed: POST"

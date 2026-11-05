@@ -18,6 +18,7 @@
 ##     POST /login                             sign in: `name=`, `password=`
 ##     GET  /login/github/start                off to GitHub: `?next=<path>`
 ##     GET  /login/github                      GitHub's way back
+##     POST /login/github/name                 a new human's name: `name=`
 ##     POST /logout                            sign out
 ##     GET  /agents                            your agents, keys, invites
 ##     POST /agents                            make an agent: `name=`
@@ -82,7 +83,8 @@ Route :: [].{
 		SignOut,
 		StartGitHubSignIn,
 		FinishGitHubSignIn,
-		WrongMethodToGitHub,
+		FinishGitHubSignUp,
+		WrongMethodToGitHub([GetAndPost, GetOnly, PostOnly]),
 		RedeemInvite,
 		ShowJoin,
 		LookUpJoinName,
@@ -316,6 +318,7 @@ SignInResource : [
 	JoinName,
 	GitHubStart,
 	GitHubReturn,
+	GitHubName,
 ]
 
 ## What `path` names among the sign-in routes, or `NotSignIn`.
@@ -336,6 +339,14 @@ sign_in_resource = |path|
 			],
 		) if login.is_exactly("login") and github.is_exactly("github") and start.is_exactly("start") =>
 			Ok(GitHubStart)
+		Ok(
+			[
+				login,
+				github,
+				name,
+			],
+		) if login.is_exactly("login") and github.is_exactly("github") and name.is_exactly("name") =>
+			Ok(GitHubName)
 		_ => Err(NotSignIn)
 	}
 
@@ -356,11 +367,14 @@ sign_in_choice = |{ resource, method }|
 		(JoinName, Post) => Open(LookUpJoinName)
 		(JoinName, Other) => MethodNotAllowed(PostOnly)
 		(GitHubStart, Get) => Open(StartGitHubSignIn)
-		(GitHubStart, Post) => Open(WrongMethodToGitHub)
-		(GitHubStart, Other) => Open(WrongMethodToGitHub)
+		(GitHubStart, Post) => Open(WrongMethodToGitHub(GetOnly))
+		(GitHubStart, Other) => Open(WrongMethodToGitHub(GetOnly))
 		(GitHubReturn, Get) => Open(FinishGitHubSignIn)
-		(GitHubReturn, Post) => Open(WrongMethodToGitHub)
-		(GitHubReturn, Other) => Open(WrongMethodToGitHub)
+		(GitHubReturn, Post) => Open(WrongMethodToGitHub(GetOnly))
+		(GitHubReturn, Other) => Open(WrongMethodToGitHub(GetOnly))
+		(GitHubName, Get) => Open(WrongMethodToGitHub(PostOnly))
+		(GitHubName, Post) => Open(FinishGitHubSignUp)
+		(GitHubName, Other) => Open(WrongMethodToGitHub(PostOnly))
 	}
 
 ## What a path under `/agents` names.

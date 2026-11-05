@@ -34,6 +34,11 @@ GitHubState :: {
 	nonce_bytes : U64
 	nonce_bytes = 32
 
+	## What a GitHub sign-in's cookies say beside their value. `SameSite=Lax`
+	## lets GitHub's redirect back carry one, as a top-level navigation.
+	cookie_attributes : Str
+	cookie_attributes = "HttpOnly; Secure; SameSite=Lax"
+
 	## A new state, issued at `now`, going to `next` once signed in. A nonce
 	## of any other length than `nonce_bytes` is the caller's bug, and
 	## crashes.
@@ -178,19 +183,18 @@ GitHubState :: {
 	}
 
 	## The `Set-Cookie` header's value that sets this state's cookie for its
-	## lifetime. `SameSite=Lax` lets GitHub's redirect back carry it, as a
-	## top-level navigation.
+	## lifetime.
 	set_cookie_text : GitHubState -> Str
 	set_cookie_text = |GitHubState.(state)| {
 		value = Base64Url.encode(state.nonce)
 		age = GitHubState.lifetime_seconds.to_str()
-		"${cookie_prefix_text}${value}; Path=/; Max-Age=${age}; ${cookie_attributes}"
+		"${cookie_prefix_text}${value}; Path=/; Max-Age=${age}; ${GitHubState.cookie_attributes}"
 	}
 
 	## The `Set-Cookie` header's value that has a browser forget the state's
 	## cookie, so a state is used once from a browser.
 	clear_cookie_text : Str
-	clear_cookie_text = "${cookie_prefix_text}; Path=/; Max-Age=0; ${cookie_attributes}"
+	clear_cookie_text = "${cookie_prefix_text}; Path=/; Max-Age=0; ${GitHubState.cookie_attributes}"
 
 	is_eq : _
 }
@@ -200,9 +204,6 @@ cookie_prefix_text = "__Host-gopher_github_state="
 
 cookie_prefix : List(U8)
 cookie_prefix = cookie_prefix_text.to_utf8()
-
-cookie_attributes : Str
-cookie_attributes = "HttpOnly; Secure; SameSite=Lax"
 
 ## What is signed: a word no session's bytes start with, then the payload.
 bytes_signed_of : Str -> List(U8)

@@ -1,7 +1,7 @@
 ## A GitHub login is the name a GitHub account goes by, such as `octocat`.
-## The chat says it back to someone refused, and keys nothing by it: GitHub
-## lets an account rename its login and another take the freed one, so an
-## account is found by its number (`GitHubId`). The rule is what GitHub's
+## The chat offers it to a new human as their name, and keys nothing by it:
+## GitHub lets an account rename its login and another take the freed one, so
+## an account is found by its number (`GitHubId`). The rule is what GitHub's
 ## `/user` may answer and a page may show whole: 1 to 39 bytes, each an ASCII
 ## letter, a digit or `-`. GitHub's finer rules are GitHub's to keep.
 import Ascii

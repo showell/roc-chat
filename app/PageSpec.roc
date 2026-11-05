@@ -2,6 +2,7 @@
 import Conversation
 import ConversationKey
 import Html
+import Name
 import Page
 import Sample
 import SignedIn
@@ -161,6 +162,21 @@ expect
 expect
 	Page.join.to_utf8()
 		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
+
+## The words above the form that asks a new human for a name.
+sign_up_words : Str
+sign_up_words = "GitHub says who you are, and you have no account here yet. Choose a name that no one has: letters and single spaces. Once you join, it is yours, and you sign in with GitHub."
+
+# The page asking a new human for a name: filled in or empty, and a problem
+# above the words when there is one.
+expect {
+	zoe = Name.from_str("Zoë Ann") ?? crash "PageSpec: a name"
+	Page.github_sign_up({ name: Named(zoe), problem: NoProblem }).to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n".to_utf8()
+}
+expect
+	Page.github_sign_up({ name: NoName, problem: Problem("The <name> is taken.") }).to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<button>Join</button></form>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
 	Page.refusal("it <is> not UTF-8").to_utf8()
