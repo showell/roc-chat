@@ -195,7 +195,7 @@ pub const GitHubSettingsRec = extern struct { authorize_base: RocBytes, client_i
 pub const GitHubIdentityStatus = enum(u8) { denied, failed, identified };
 /// Host.roc's `github_identity_for_code!` answer: the U64, the list, then the
 /// tag.
-pub const GitHubIdentityRec = extern struct { id: u64, login: RocBytes, status: GitHubIdentityStatus };
+pub const GitHubIdentityRec = extern struct { github_id: u64, login: RocBytes, status: GitHubIdentityStatus };
 
 // ── the call ────────────────────────────────────────────────────────────────
 
@@ -410,13 +410,13 @@ pub export fn github_identity_for_code(code: RocBytes) callconv(.c) GitHubIdenti
     turn.lockUncancelable(io);
     current = this_call;
     const who = identity catch |e| switch (e) {
-        error.Denied => return .{ .id = 0, .login = .from(""), .status = .denied },
+        error.Denied => return .{ .github_id = 0, .login = .from(""), .status = .denied },
         error.Timeout, error.Refused, error.BadResponse, error.Canceled => {
             log.warn(what ++ ": {t}", .{e});
-            return .{ .id = 0, .login = .from(""), .status = .failed };
+            return .{ .github_id = 0, .login = .from(""), .status = .failed };
         },
     };
-    return .{ .id = who.id, .login = .from(who.login()), .status = .identified };
+    return .{ .github_id = who.github_id, .login = .from(who.login()), .status = .identified };
 }
 
 pub export fn hmac_sha256_with_server_secret(bytes: RocBytes) callconv(.c) RocBytes {

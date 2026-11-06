@@ -165,11 +165,11 @@ Host := [].{
 	## GitHub who the token belongs to, and forgets the token. `Identified`,
 	## with GitHub's numeric id and its login as GitHub spelled it; `Denied`
 	## when GitHub answered no; `Failed` when it didn't answer in time or
-	## made no sense. In both of those `id` is 0 and `login` empty. The host
+	## made no sense. In both of those `github_id` is 0 and `login` empty. The host
 	## lets other requests be answered while it waits, so what the app read
 	## before this call may have changed by its answer.
 	github_identity_for_code! : List(U8) => {
-		id : U64,
+		github_id : U64,
 		login : List(U8),
 		status : [Denied, Failed, Identified],
 	}

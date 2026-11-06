@@ -172,7 +172,7 @@ const Token = struct {
 
 /// Who GitHub says a token belongs to.
 pub const Identity = struct {
-    id: u64,
+    github_id: u64,
     login_buf: [max_login_bytes]u8,
     login_len: u8,
 
@@ -327,7 +327,7 @@ const Session = struct {
         const id = user.id orelse return error.BadResponse;
         const login = user.login orelse return error.BadResponse;
         if (login.len > max_login_bytes) return error.BadResponse;
-        var identity: Identity = .{ .id = id, .login_buf = @splat(0), .login_len = @intCast(login.len) };
+        var identity: Identity = .{ .github_id = id, .login_buf = @splat(0), .login_len = @intCast(login.len) };
         @memcpy(identity.login_buf[0..login.len], login);
         return identity;
     }
@@ -590,7 +590,7 @@ test "the exchange against the fake: a good code is who GitHub says; every other
     defer fake.stop();
     const settings = fake_settings(fake, fake_github.client_secret);
     const who = try identify_code(testing.allocator, testing.io, &settings, "user-id-7");
-    try testing.expectEqual(7, who.id);
+    try testing.expectEqual(7, who.github_id);
     try testing.expectEqualStrings("person7", who.login());
     try testing.expectError(error.Denied, identify_code(testing.allocator, testing.io, &settings, "bad"));
     try testing.expectError(error.Denied, identify_code(testing.allocator, testing.io, &settings, ""));

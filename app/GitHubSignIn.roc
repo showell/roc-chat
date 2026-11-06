@@ -185,18 +185,18 @@ GitHubSignIn :: [].{
 		identify : GitHubSignIn.StateChecked,
 		{
 			status : [Denied, Failed, Identified],
-			id : U64,
+			github_id : U64,
 			login : List(U8),
 		} -> Try(
 			GitHubSignIn.IdentityKnown,
 			[CodeRefused, GitHubUnreachable, BadIdentity],
 		)
-		identify = |GitHubSignIn.StateChecked.(checked), { status, id, login }|
+		identify = |GitHubSignIn.StateChecked.(checked), { status, github_id, login }|
 			match status {
 				Denied => Err(CodeRefused)
 				Failed => Err(GitHubUnreachable)
 				Identified =>
-					match (GitHubId.from_u64(id), GitHubLogin.from_utf8(login)) {
+					match (GitHubId.from_u64(github_id), GitHubLogin.from_utf8(login)) {
 						(Ok(github), Ok(known)) => Ok(
 							GitHubSignIn.IdentityKnown.(
 								{
@@ -589,7 +589,7 @@ round_trip : {
 	now : Timestamp,
 	heard : {
 		status : [Denied, Failed, Identified],
-		id : U64,
+		github_id : U64,
 		login : List(U8),
 	},
 	files : List({ user : UserId, file : List(U8) }),
@@ -624,10 +624,10 @@ round_trip = |
 github_answer : U64,
 Str -> {
 	status : [Denied, Failed, Identified],
-	id : U64,
+	github_id : U64,
 	login : List(U8),
 }
-github_answer = |id, login| { status: Identified, id, login: login.to_utf8() }
+github_answer = |github_id, login| { status: Identified, github_id, login: login.to_utf8() }
 
 ## A return that goes well all the way.
 good_return = {
