@@ -176,7 +176,7 @@
 //! Then the human invites (`inviteSteps`):
 //!
 //! 48h. GET /invites: the page's card and a form inviting someone by name,
-//!      saying nothing is open, and no word of GitHub on this server;
+//!      saying nothing is open, and that GitHub signs people up here too;
 //! 48i. invite Deb: the link `http://localhost:<port>/join#<code>` shown
 //!      once, never stored; her account holding the name at once,
 //!      `inviter` Steve, no password; the invite live, by Steve, for seven
@@ -1416,9 +1416,9 @@ fn memberSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
 fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, cc_bearer: []const u8) !void {
     // 48h.
     const page = try get(a, io, port, "/invites");
-    try t.check("GET /invites: Steve's page, a form inviting someone by name, in the card; nothing open, nothing past, and no word of GitHub on a server without it", page.status == 200 and has(page.body, "<div class=\"panel\">") and
+    try t.check("GET /invites: Steve's page, a form inviting someone by name, in the card; nothing open, nothing past, and that GitHub signs people up too", page.status == 200 and has(page.body, "<div class=\"panel\">") and
         has(page.body, "<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>") and
-        has(page.body, "<p>No open invites.</p>") and !has(page.body, "Past invites") and !has(page.body, "GitHub"));
+        has(page.body, "<p>No open invites.</p>") and !has(page.body, "Past invites") and has(page.body, "Anyone with GitHub can sign up on their own"));
 
     // 48i.
     const invited = try post(a, io, port, .{ .path = "/invites", .form = "name=Deb" });
@@ -1872,7 +1872,7 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(zoe_form.body, "value=\"Zoe\"") and zoe_in.status == 303 and std.mem.eql(u8, zoe_in.header("location") orelse "", channel_url) and
         std.mem.startsWith(u8, zoe_in.header("set-cookie") orelse "", "__Host-gopher_auth=") and
         has(zoe_in.head, "set-cookie: __Host-gopher_github_sign_up=; Path=/; Max-Age=0") and std.mem.eql(u8, zoe_in.header("cache-control") orelse "", "no-store") and
-        zoe_page.status == 200 and has(zoe_page.body, "Zoe") and has(zoe_page.body, "Anyone with GitHub can sign up on their own") and zoe_by_form.status == 401 and zoe_secret.len == 64 and
+        zoe_page.status == 200 and has(zoe_page.body, "Zoe") and zoe_by_form.status == 401 and zoe_secret.len == 64 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/6/name"), "Zoe") and std.mem.eql(u8, try readFile(a, io, data, "auth/6/github-id"), "20") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "7\n") and
         !try exists(io, data, "auth/6/password") and !try exists(io, data, "auth/6/inviter"));

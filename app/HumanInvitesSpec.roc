@@ -448,7 +448,11 @@ expect {
 expect {
 	made_at = Timestamp.at_second(1000)
 	bobs_invite = invite_made({ n: 1, by: "1" })
-	zoes = [spent_invite, invite_made({ n: 2, by: "2" }), invite_made({ n: 3, by: "1" })]
+	zoes = [
+		spent_invite,
+		invite_made({ n: 2, by: "2" }),
+		invite_made({ n: 3, by: "1" }),
+	]
 	page = page_of_humans(
 		[{ human: zoe.user(), invites: zoes }, { human: bob_user, invites: [bobs_invite] }],
 		made_at.plus(Seconds.of(1)),

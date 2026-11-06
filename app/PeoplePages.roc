@@ -62,6 +62,10 @@ PeoplePages :: [].{
 	## One human the viewer may invite again, with their invites.
 	InvitedHuman : { human : Users.User, invites : List(HumanInvite) }
 
+	## What the invites page's lines are written from: who is in the chat, and
+	## the moment that says which invites are open.
+	InvitesContext : { users : Users, now : Timestamp }
+
 	## The invites page, for `viewer`: `problem`, when there is one; when an
 	## invite was just made, the link that joins by it, the one time it is
 	## shown (`shown`); what an invite is for, which depends on whether
@@ -107,14 +111,18 @@ PeoplePages :: [].{
 			fields: [{ label: "Their name", name: "name" }],
 			label: "Invite someone",
 		})
-		(waiting, past) = split_by_open_invite(invited, now)
+		{ waiting, past } = split_by_open_invite(invited, now)
 		context = { users, now }
 		Page.signed_in_page({
 			title: "Invites",
 			viewer,
 			parts: said
 				.concat(code)
-				.concat([Page.text_paragraph(invite_purpose(github)), Page.text_paragraph(invite_steps), form])
+				.concat([
+					Page.text_paragraph(invite_purpose(github)),
+					Page.text_paragraph(invite_steps),
+					form,
+				])
 				.concat(open_section(waiting, context))
 				.concat(past_section(past, context)),
 		})
@@ -136,13 +144,17 @@ invite_steps = "Write the name you know them by, and you get a link to send them
 
 ## `invited` split in two at `now`: first the humans with an open invite, each
 ## with only their open invites, then everyone else, with all of theirs.
-split_by_open_invite : List(PeoplePages.InvitedHuman), Timestamp -> (List(PeoplePages.InvitedHuman), List(PeoplePages.InvitedHuman))
+split_by_open_invite : List(PeoplePages.InvitedHuman),
+Timestamp -> {
+	waiting : List(PeoplePages.InvitedHuman),
+	past : List(PeoplePages.InvitedHuman),
+}
 split_by_open_invite = |invited, now| {
 	has_open = |listed| listed.invites.any(|invite| invite.is_open(now))
 	waiting = invited.keep_if(has_open).map(
 		|{ human, invites }| { human, invites: invites.keep_if(|invite| invite.is_open(now)) },
 	)
-	(waiting, invited.drop_if(has_open))
+	{ waiting, past: invited.drop_if(has_open) }
 }
 
 ## A user as a channel's page names them: their name, whether a human or an
@@ -177,7 +189,7 @@ member_button = |{ folder, user, act }| {
 }
 
 ## The invites page's list of open invites, which says so when it has none.
-open_section : List(PeoplePages.InvitedHuman), { users : Users, now : Timestamp } -> List(TrustedHtml)
+open_section : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
 open_section = |waiting, context| {
 	heading = Page.heading("Open invites")
 	if waiting.is_empty() {
@@ -193,7 +205,7 @@ open_section = |waiting, context| {
 ## The invites page's list of everyone else, shown only when there is someone.
 ## It says what inviting a human again does, as for someone who has joined
 ## that is how a lost password is replaced.
-past_section : List(PeoplePages.InvitedHuman), { users : Users, now : Timestamp } -> List(TrustedHtml)
+past_section : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
 past_section = |past, context|
 	if past.is_empty() {
 		[]
@@ -207,7 +219,7 @@ past_section = |past, context|
 ## One human's rows on the invites page: a line for each of their invites, or
 ## a line saying they have none, and the button that invites them again. A
 ## human has none when writing their invite failed after their account.
-invited_rows : PeoplePages.InvitedHuman, { users : Users, now : Timestamp } -> TrustedHtml
+invited_rows : PeoplePages.InvitedHuman, PeoplePages.InvitesContext -> TrustedHtml
 invited_rows = |{ human, invites }, context| {
 	name = human.name().to_str()
 	said =
@@ -224,7 +236,7 @@ invited_rows = |{ human, invites }, context| {
 }
 
 ## One invite in words: used, open, or past its date at `now`, and who made it.
-invite_words : HumanInvite, { users : Users, now : Timestamp } -> Str
+invite_words : HumanInvite, PeoplePages.InvitesContext -> Str
 invite_words = |invite, { users, now }| {
 	date = Page.date_words(invite.expires())
 	standing =
