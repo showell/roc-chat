@@ -22,11 +22,11 @@
 --    (no `Module.fn(x, ...)` call that would check as `x.fn(...)`, judged
 --    by Roc's own types from both apps, app/main.roc and app/Specs.roc; its
 --    trials are written in place and put back, so it runs under
---    `--undo-on-stop`, and a call it can rewrite fails the gate). One count
---    is held above zero, `twin_name`, at TWIN_NAMES: type names beside
---    tools/type_roles.txt's that want a reader's decision. Lower it when one
---    goes. Their other counts print but don't gate: stack's `wide string`, a line over 100
---    columns only because of a string, which Roc has no short way to split;
+--    `--undo-on-stop`, and a call it can rewrite fails the gate). A type
+--    name two modules share is held at zero beside tools/type_roles.txt,
+--    which gives each one's reason. Their other counts print but don't
+--    gate: stack's `wide string`, a line over 100 columns only because of a
+--    string, which Roc has no short way to split;
 --    and boundaries' `single`, `entry`, `constant` and `bool_param` and
 --    name_hunt's `stacked_preposition`, which are rules of thumb and
 --    questions for a reader.
@@ -48,10 +48,6 @@ const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
 -- What `zig build test` counts: a test once for each root that reaches it,
 -- so the tests seam_test and http_test import count three times.
 const ZIG_TESTS = 128
-
--- The type names shared by two or more modules that aren't roles: Addition,
--- Admission, Admitted, Claim, Created and NewHuman.
-const TWIN_NAMES = 6
 
 const board = {failed = 0}
 
@@ -143,7 +139,7 @@ const hunts = {
   {recipe = "vocabulary", args = {"words=tools/vocabulary.txt"}, counts = {"retired_name ([0-9]+)", "retired_comment ([0-9]+)"}},
   {recipe = "name_types", args = {"table=tools/name_types.txt"}, counts = {"name_type ([0-9]+)", "bare_beside_unit ([0-9]+)", "no_value ([0-9]+)"}},
   {recipe = "plain_names", args = {"terms=tools/fixed_terms.txt"}, counts = {"pure_mutator ([0-9]+)", "abbreviation ([0-9]+)", "module_doc ([0-9]+)"}},
-  {recipe = "families", args = {"roles=tools/type_roles.txt"}, exits_nonzero = true, counts = {"family ([0-9]+)"}, held = {{pattern = "twin_name ([0-9]+)", at = TWIN_NAMES}}},
+  {recipe = "families", args = {"roles=tools/type_roles.txt"}, counts = {"family ([0-9]+)", "twin_name ([0-9]+)"}},
   {recipe = "methods", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}},
 }
 for h in hunts do
@@ -160,16 +156,9 @@ for h in hunts do
     if not starts_with(l, "──") and trim(l) ~= "" then last = l end
   end
   local clean = r.code == 0
-  -- A recipe that can gate exits nonzero on any finding, so a count held above
-  -- zero reads its count alone; a refused file prints `refused:` and fails.
-  if get(h, "exits_nonzero", false) then clean = find(r.out, "refused: ") == nil end
   for c in h.counts do
     local got = re_find(last, c)
     if got == nil or tonumber(got.groups[1]) ~= 0 then clean = false end
-  end
-  for held in get(h, "held", {}) do
-    local got = re_find(r.out, held.pattern)
-    if got == nil or tonumber(got.groups[1]) ~= held.at then clean = false end
   end
   say(clean, "hunt " .. h.recipe .. ": " .. last)
   if not clean then print(r.out) end

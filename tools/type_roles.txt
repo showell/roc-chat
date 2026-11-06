@@ -1,8 +1,39 @@
 -- Type names each module declares for itself, read with their module as a
--- two-part name, as docs/code-quality.md reads `Message.Id`. The other twins
--- are questions for a reader: families holds them at a count.
+-- two-part name, as docs/code-quality.md reads `Message.Id`. A name below the
+-- first five was a question for a reader, and each has its answer above it.
+-- Any new type name two modules share fails the gate until someone reads it.
 Id
 State
 Files
 Refusal
 Failure
+
+-- `Users.Addition` holds the grown `Users`, and `Directory.Addition` the grown
+-- `Directory`: each is what its own `add_human` gives.
+Addition
+
+-- `Channels.Created` holds the grown `Channels`, and `Directory.Created` the
+-- grown `Directory`: each is what its own create gives.
+Created
+
+-- `HumanInvite.Admission` only starts a session over the password just set.
+-- `GitHubSignIn.Admission` only starts one over the GitHub word, and says where
+-- to go. Each is opaque so that only its own module can make it, and one shared
+-- type would let either reach the other's door.
+Admission
+
+-- `Session.Admitted` is a human a signed cookie admits, and `AgentKey.Admitted`
+-- is an agent a key admits, with that key's scope. `SignedIn` has a door for
+-- each, and neither may stand for the other.
+Admitted
+
+-- `GitHubState.Claim` and `GitHubSignUp.Claim` hold the same two fields, but the
+-- type says which word starts the bytes signed, so one can't be checked as the
+-- other. A shared type would carry that word as a value, and a sign-up's claim
+-- would compile at `GitHubState.from_claim`. `Session.Claim` is already read
+-- into its parts: a user's id, a second and a signature.
+Claim
+
+-- `Directory.NewHuman` is what making an account gives. `GitHubSignIn.NewHuman`
+-- is someone GitHub named who has no account yet.
+NewHuman
