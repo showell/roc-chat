@@ -9,11 +9,12 @@ GitHubId :: U64.{
 
 	## The id GitHub's `/user` answered; unless it is 0 (`NotAGitHubId`).
 	from_u64 : U64 -> Try(GitHubId, [NotAGitHubId])
-	from_u64 = |number| if number == 0 {
-		Err(NotAGitHubId)
-	} else {
-		Ok(GitHubId.(number))
-	}
+	from_u64 = |number|
+		if number == 0 {
+			Err(NotAGitHubId)
+		} else {
+			Ok(GitHubId.(number))
+		}
 
 	## The id a `github-id` file holds; unless it holds anything but an id's
 	## digits (`NotAGitHubId`).

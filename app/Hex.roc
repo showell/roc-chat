@@ -65,11 +65,12 @@ lower_digit_value = |digit|
 
 ## The lowercase digit for `n`, which is below 16.
 digit_of : U8 -> U8
-digit_of = |n| if n < 10 {
-	'0' + n
-} else {
-	'a' + n - 10
-}
+digit_of = |n|
+	if n < 10 {
+		'0' + n
+	} else {
+		'a' + n - 10
+	}
 
 # ── tests
 # Each byte's two digits, at both ends of each half.

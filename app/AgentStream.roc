@@ -167,13 +167,14 @@ by_time_then_place = |a, b|
 
 ## Which of two places comes first.
 order_of : U64, U64 -> [Before, Same, After]
-order_of = |a, b| if a < b {
-	Before
-} else if a == b {
-	Same
-} else {
-	After
-}
+order_of = |a, b|
+	if a < b {
+		Before
+	} else if a == b {
+		Same
+	} else {
+		After
+	}
 
 # ── tests
 ## The time `text` writes.

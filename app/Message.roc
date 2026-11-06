@@ -40,11 +40,12 @@ Message :: {
 		## The id after this one, unless this is the last a conversation
 		## holds.
 		next : Message.Id -> Try(Message.Id, [Full])
-		next = |Message.Id.(n)| if n == U16.highest {
-			Err(Full)
-		} else {
-			Ok(Message.Id.(n + 1))
-		}
+		next = |Message.Id.(n)|
+			if n == U16.highest {
+				Err(Full)
+			} else {
+				Ok(Message.Id.(n + 1))
+			}
 
 		## The number, as a page's anchors and a refusal write it.
 		to_str : Message.Id -> Str

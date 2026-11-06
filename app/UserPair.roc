@@ -41,11 +41,12 @@ UserPair :: { low : UserId, high : UserId }.{
 	## The pair's users' ids, lowest first: two, or one for a user's DM with
 	## themself.
 	members : UserPair -> List(UserId)
-	members = |UserPair.({ low, high })| if low == high {
-		[low]
-	} else {
-		[low, high]
-	}
+	members = |UserPair.({ low, high })|
+		if low == high {
+			[low]
+		} else {
+			[low, high]
+		}
 
 	is_eq : _
 	to_hash : _

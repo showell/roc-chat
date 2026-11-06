@@ -177,11 +177,12 @@ with_channel = |Channels.(all), changed| {
 	name = changed.name()
 	Channels.(
 		all.map(
-			|c| if c.name() == name {
-				changed
-			} else {
-				c
-			},
+			|c|
+				if c.name() == name {
+					changed
+				} else {
+					c
+				},
 		),
 	)
 }

@@ -84,11 +84,12 @@ MultipartForm :: [].{
 			Err(_) =>
 				Str.from_utf8(
 					raw.join_map(
-						|b| if b < 0x80 {
-							[b]
-						} else {
-							"\u(FFFD)".to_utf8()
-						},
+						|b|
+							if b < 0x80 {
+								[b]
+							} else {
+								"\u(FFFD)".to_utf8()
+							},
 					),
 				)
 					?? crash "MultipartForm.display_name: ASCII and U+FFFD are UTF-8"

@@ -36,11 +36,12 @@ Separator :: [].{
 	escape : Str -> Str
 	escape = |markdown| Str.join_with(
 		markdown.split_on("\n").map(
-			|l| if is_backslashed_separator(l) {
-				"\\${l}"
-			} else {
-				l
-			},
+			|l|
+				if is_backslashed_separator(l) {
+					"\\${l}"
+				} else {
+					l
+				},
 		),
 		"\n",
 	)
@@ -57,11 +58,12 @@ Separator :: [].{
 			Ok(
 				Str.join_with(
 					lines.map(
-						|l| if is_backslashed_separator(l) {
-							l.drop_prefix("\\")
-						} else {
-							l
-						},
+						|l|
+							if is_backslashed_separator(l) {
+								l.drop_prefix("\\")
+							} else {
+								l
+							},
 					),
 					"\n",
 				),

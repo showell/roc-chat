@@ -230,8 +230,9 @@ is_user = |users, id|
 
 ## The taken names' keys with `key` added; unless it is already there.
 claim_key : Set(Name.Key), Name.Key -> Try(Set(Name.Key), [NameTaken])
-claim_key = |keys, key| if keys.contains(key) {
-	Err(NameTaken)
-} else {
-	Ok(keys.insert(key))
-}
+claim_key = |keys, key|
+	if keys.contains(key) {
+		Err(NameTaken)
+	} else {
+		Ok(keys.insert(key))
+	}

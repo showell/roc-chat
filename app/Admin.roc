@@ -12,11 +12,12 @@ Admin :: SignedIn.{
 
 	## The acting user as an admin, unless they are not one.
 	of : SignedIn -> Try(Admin, [NotAdmin])
-	of = |acting| if acting.user().id() == UserId.chat_owner {
-		Ok(Admin.(acting))
-	} else {
-		Err(NotAdmin)
-	}
+	of = |acting|
+		if acting.user().id() == UserId.chat_owner {
+			Ok(Admin.(acting))
+		} else {
+			Err(NotAdmin)
+		}
 
 	is_eq : _
 }

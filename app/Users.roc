@@ -212,11 +212,12 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 			renamed = Users.User.({ id: human.id(), name, role: Human })
 			Users.(held) = users
 			everyone = held.everyone.map(
-				|user| if user.id() == human.id() {
-					renamed
-				} else {
-					user
-				},
+				|user|
+					if user.id() == human.id() {
+						renamed
+					} else {
+						user
+					},
 			)
 			Ok({ users: Users.({ ..held, everyone }), human: Users.Human.(renamed) })
 		} else {
