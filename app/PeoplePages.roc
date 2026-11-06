@@ -7,6 +7,7 @@ import Channels
 import HumanInvite
 import Page
 import SignedIn
+import Timestamp
 import TrustedHtml
 import Users
 
@@ -76,7 +77,7 @@ PeoplePages :: [].{
 		invited : List(PeoplePages.InvitedHuman),
 		shown : [NoLink, Link({ human : Users.User, link : Str })],
 		problem : [NoProblem, Problem(Str)],
-		now : I64,
+		now : Timestamp,
 	} -> TrustedHtml
 	invites = |
 		{
@@ -151,7 +152,7 @@ member_button = |{ folder, user, act }| {
 
 ## One human's part of the invites page: their name, their invites as they
 ## stand at `now`, and the button that invites them again.
-invited_section : PeoplePages.InvitedHuman, { users : Users, now : I64 } -> TrustedHtml
+invited_section : PeoplePages.InvitedHuman, { users : Users, now : Timestamp } -> TrustedHtml
 invited_section = |{ human, invites }, context| {
 	said = invites.map(|invite| Page.text_paragraph(invite_words(invite, context)))
 	again = Page.button_form({
@@ -162,7 +163,7 @@ invited_section = |{ human, invites }, context| {
 }
 
 ## One invite in words: used, open, or past its date at `now`, and who made it.
-invite_words : HumanInvite, { users : Users, now : I64 } -> Str
+invite_words : HumanInvite, { users : Users, now : Timestamp } -> Str
 invite_words = |invite, { users, now }| {
 	date = Page.date_words(invite.expires())
 	standing =

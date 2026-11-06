@@ -55,6 +55,7 @@ import GitHubState
 import Html
 import Name
 import SignedIn
+import Timestamp
 import UserId
 import Users
 
@@ -149,7 +150,7 @@ GitHubSignIn :: [].{
 		## The state held to this browser's `cookie` at `now`
 		## (`GitHubState.check`).
 		check : GitHubSignIn.CameBack,
-		{ cookie : GitHubState.Cookie, now : I64 } -> Try(
+		{ cookie : GitHubState.Cookie, now : Timestamp } -> Try(
 			GitHubSignIn.StateChecked,
 			[StateMismatched, StateExpired],
 		)
@@ -322,7 +323,7 @@ GitHubSignIn :: [].{
 	}.{
 
 		## What carries this human to the name they choose, issued at `now`.
-		sign_up : GitHubSignIn.NewHuman, I64 -> GitHubSignUp
+		sign_up : GitHubSignIn.NewHuman, Timestamp -> GitHubSignUp
 		sign_up = |GitHubSignIn.NewHuman.(new_human), now|
 			GitHubSignUp.issue({ github: new_human.github, now, next: new_human.next })
 
@@ -351,7 +352,7 @@ GitHubSignIn :: [].{
 		resume : {
 			sign_up : [Signed(GitHubSignUp), Unsigned],
 			viewer : SignedIn.Actor,
-			now : I64,
+			now : Timestamp,
 		} -> Try(
 			GitHubSignIn.SignUpResumed,
 			[SignUpForged, SignUpExpired, SignedInAlready],
@@ -522,7 +523,7 @@ nonce_held = List.repeat('n', 32)
 issued : GitHubState
 issued = GitHubState.issue({
 	nonce: nonce_held,
-	now: 1000,
+	now: Timestamp.at_second(1000),
 	next: agents_path,
 	errand: SignIn,
 })
@@ -585,7 +586,7 @@ round_trip : {
 	state : [Signed(GitHubState), Unsigned],
 	answer : GitHubSignIn.Answer,
 	cookie : GitHubState.Cookie,
-	now : I64,
+	now : Timestamp,
 	heard : {
 		status : [Denied, Failed, Identified],
 		id : U64,
@@ -633,7 +634,7 @@ good_return = {
 	state: Signed(issued),
 	answer: Code(good_code),
 	cookie: Sent(nonce_held),
-	now: 1300,
+	now: Timestamp.at_second(1300),
 	heard: github_answer(100, "showell"),
 	files: bound_files,
 	viewer: Anonymous,
@@ -691,8 +692,11 @@ expect round_trip({ ..good_return, answer: BadCode }) == Err(NotACode)
 # Another browser's state, and one out of its window.
 expect round_trip({ ..good_return, cookie: Unsent }) == Err(StateMismatched)
 expect round_trip({ ..good_return, cookie: Sent(List.repeat('m', 32)) }) == Err(StateMismatched)
-expect round_trip({ ..good_return, now: 1599 }) == Ok(Admitted("Steve", "/agents"))
-expect round_trip({ ..good_return, now: 1600 }) == Err(StateExpired)
+expect round_trip({
+	..good_return,
+	now: Timestamp.at_second(1599),
+}) == Ok(Admitted("Steve", "/agents"))
+expect round_trip({ ..good_return, now: Timestamp.at_second(1600) }) == Err(StateExpired)
 # What the host heard of GitHub, each way it can go wrong.
 expect
 	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Denied } })
@@ -716,7 +720,7 @@ good_link = {
 	state: Signed(
 		GitHubState.issue({
 			nonce: nonce_held,
-			now: 1000,
+			now: Timestamp.at_second(1000),
 			next: agents_path,
 			errand: Link(id_of("2")),
 		}),
@@ -800,7 +804,7 @@ expect
 # A link never skips the state's own checks.
 expect round_trip({ ..good_link, state: Unsigned }) == Err(StateForged)
 expect round_trip({ ..good_link, cookie: Unsent }) == Err(StateMismatched)
-expect round_trip({ ..good_link, now: 1600 }) == Err(StateExpired)
+expect round_trip({ ..good_link, now: Timestamp.at_second(1600) }) == Err(StateExpired)
 
 # Who may start a link: a human by session; no one else.
 expect GitHubSignIn.human_to_link(Anonymous).map_ok(|_| {}) == Err(NotSignedIn)
@@ -843,15 +847,15 @@ full_directory = {
 
 ## A sign-up of the id 300, as `new_human_called` issues one at 1000.
 signed_up : GitHubSignUp
-signed_up = new_human_called("Zoe").sign_up(1000)
+signed_up = new_human_called("Zoe").sign_up(Timestamp.at_second(1000))
 
 ## The sign-up resumed at 1300.
 resumed_up : GitHubSignIn.SignUpResumed
 resumed_up =
-	resumed_at(1300) ?? crash "GitHubSignIn's tests: a sign-up in time"
+	resumed_at(Timestamp.at_second(1300)) ?? crash "GitHubSignIn's tests: a sign-up in time"
 
 ## The sign-up resumed at `now` by a browser signed in as no one.
-resumed_at : I64 -> Try(GitHubSignIn.SignUpResumed, _)
+resumed_at : Timestamp -> Try(GitHubSignIn.SignUpResumed, _)
 resumed_at = |now|
 	GitHubSignIn.SignUpResumed.resume({
 		sign_up: Signed(signed_up),
@@ -873,11 +877,14 @@ expect
 	GitHubSignIn.SignUpResumed.resume({
 		sign_up: Unsigned,
 		viewer: Anonymous,
-		now: 1300,
+		now: Timestamp.at_second(1300),
 	}).map_ok(|_| {})
 		== Err(SignUpForged)
-expect [999, 1600].all(|now| resumed_at(now).map_ok(|_| {}) == Err(SignUpExpired))
-expect [1000, 1599].all(|now| resumed_at(now).map_ok(|_| {}) == Ok({}))
+expect [
+	999,
+	1600,
+].map(Timestamp.at_second).all(|now| resumed_at(now).map_ok(|_| {}) == Err(SignUpExpired))
+expect [1000, 1599].map(Timestamp.at_second).all(|now| resumed_at(now).map_ok(|_| {}) == Ok({}))
 # A browser signed in by then makes no account, whoever it is; a forged
 # sign-up says so first.
 expect
@@ -886,7 +893,7 @@ expect
 			GitHubSignIn.SignUpResumed.resume({
 				sign_up: Signed(signed_up),
 				viewer: viewer_of(id),
-				now: 1300,
+				now: Timestamp.at_second(1300),
 			}).map_ok(|_| {})
 				== Err(SignedInAlready),
 	)
@@ -894,7 +901,7 @@ expect
 	GitHubSignIn.SignUpResumed.resume({
 		sign_up: Unsigned,
 		viewer: viewer_of("2"),
-		now: 1300,
+		now: Timestamp.at_second(1300),
 	}).map_ok(|_| {})
 		== Err(SignUpForged)
 

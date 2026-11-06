@@ -28,6 +28,7 @@
 ## password's bcrypt hash, made by the host at its standard cost, replaces
 ## any before it, and a session starts
 ## (`SignInRoute.start_session_by_invite!`), landing where `FirstPage` says.
+import Timestamp
 import pf.Host
 import pf.Http
 import AgentsRoute
@@ -59,7 +60,7 @@ HumanInvitesRoute :: [].{
 	show! : {
 		acting : SignedIn,
 		directory : Directory,
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	show! = |{ acting, directory, now }|
 		match load_invites_page!({
@@ -81,7 +82,7 @@ HumanInvitesRoute :: [].{
 		directory : Directory,
 		body : List(U8),
 		origin : Str,
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	invite! = |request|
 		match invite_human!(request) {
@@ -102,7 +103,7 @@ HumanInvitesRoute :: [].{
 		directory : Directory,
 		human : UserId,
 		origin : Str,
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	invite_again! = |request|
 		match invite_human_again!(request) {
@@ -131,7 +132,7 @@ HumanInvitesRoute :: [].{
 		actor : SignedIn.Actor,
 		directory : Directory,
 		body : List(U8),
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	serve_join_name! = |request| {
 		answer =
@@ -154,7 +155,7 @@ HumanInvitesRoute :: [].{
 		actor : SignedIn.Actor,
 		directory : Directory,
 		body : List(U8),
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	join! = |request|
 		match join_by_invite!(request) {
@@ -199,7 +200,7 @@ refusal_page = |why| {
 answer_refused_invite! : {
 	acting : SignedIn,
 	directory : Directory,
-	now : I64,
+	now : Timestamp,
 	why : Failure,
 } => Http.Response
 answer_refused_invite! = |{ acting, directory, now, why }|
@@ -228,7 +229,7 @@ load_invites_page! : {
 	directory : Directory,
 	shown : [NoLink, Link({ human : Users.User, link : Str })],
 	problem : [NoProblem, Problem(Str)],
-	now : I64,
+	now : Timestamp,
 } => Try(TrustedHtml, _)
 load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	_ = acting.human_in_session() ? |why| Refused(why)
@@ -257,7 +258,7 @@ invite_human! : {
 	directory : Directory,
 	body : List(U8),
 	origin : Str,
-	now : I64,
+	now : Timestamp,
 } => Try(TrustedHtml, _)
 invite_human! = |{ acting, directory, body, origin, now }| {
 	open = count_open_invites!(directory, { by: acting.user().id(), now })?
@@ -286,7 +287,7 @@ invite_human_again! : {
 	directory : Directory,
 	human : UserId,
 	origin : Str,
-	now : I64,
+	now : Timestamp,
 } => Try(TrustedHtml, _)
 invite_human_again! = |{ acting, directory, human, origin, now }| {
 	inviter = load_inviter!(human)?
@@ -307,7 +308,7 @@ invite_human_again! = |{ acting, directory, human, origin, now }| {
 issue_invite! : {
 	human : UserId,
 	by : UserId,
-	now : I64,
+	now : Timestamp,
 } => Try(SecretToken, _)
 issue_invite! = |{ human, by, now }| {
 	id = FileSystem.find_next_human_invite_id!(human) ? |why| full_or_fault(why)
@@ -333,7 +334,7 @@ load_join_code! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
-	now : I64,
+	now : Timestamp,
 } => Try(HumanInvites.JoinCode, _)
 load_join_code! = |{ actor, directory, body, now }| {
 	HumanInvites.admit_joiner(actor) ? |why| Refused(why)
@@ -360,7 +361,7 @@ load_join_name! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
-	now : I64,
+	now : Timestamp,
 } => Try(Name, _)
 load_join_name! = |request| {
 	code = load_join_code!(request)?
@@ -375,7 +376,7 @@ join_by_invite! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
-	now : I64,
+	now : Timestamp,
 } => Try(
 	{
 		admission : HumanInvite.Admission,
@@ -425,7 +426,7 @@ load_inviter! = |id| {
 }
 
 ## How many invites `by` made that are open at `now`, among every human's.
-count_open_invites! : Directory, { by : UserId, now : I64 } => Try(U64, _)
+count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)
 count_open_invites! = |directory, { by, now }| {
 	var $open = 0
 	for user in humans_of(directory) {

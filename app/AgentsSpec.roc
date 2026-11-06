@@ -18,6 +18,7 @@ import Secret
 import SecretHash
 import SecretToken
 import SignedIn
+import Timestamp
 import UserId
 import UserPair
 import Users
@@ -178,7 +179,7 @@ key_one : AgentKey
 key_one = AgentKey.mint({
 	id: AgentKey.Id.from_str("1") ?? crash "AgentsSpec: a number",
 	hash: SecretHash.of_digest(List.repeat(1, 32)),
-	now: 0,
+	now: Timestamp.at_second(0),
 	scope: KeyScope.everywhere,
 })
 
@@ -186,7 +187,7 @@ invite_one : AgentInvite
 invite_one = AgentInvite.make({
 	id: AgentInvite.Id.from_str("1") ?? crash "AgentsSpec: a number",
 	hash: SecretHash.of_digest(List.repeat(2, 32)),
-	now: 0,
+	now: Timestamp.at_second(0),
 	scope: KeyScope.everywhere,
 })
 
@@ -242,14 +243,14 @@ cc_by_key = |scope| {
 	key = AgentKey.mint({
 		id: key_one.id(),
 		hash: SecretHash.of_digest(List.repeat(3, 32)),
-		now: 0,
+		now: Timestamp.at_second(0),
 		scope,
 	})
 	admitted = AgentKey.admit({
 		user: user_named("CC"),
 		keys: [key],
 		hash: SecretHash.of_digest(List.repeat(3, 32)),
-		now: 0,
+		now: Timestamp.at_second(0),
 	}) ?? crash "AgentsSpec: CC's key admits"
 	SignedIn.by_api_key(admitted)
 }
@@ -374,19 +375,19 @@ expect {
 	active = AgentKey.mint({
 		id: AgentKey.Id.from_str("1") ?? crash "AgentsSpec: a number",
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 		scope: KeyScope.everywhere,
 	})
 	revoked = AgentKey.mint({
 		id: AgentKey.Id.from_str("2") ?? crash "AgentsSpec: a number",
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 		scope: KeyScope.everywhere,
 	}).revoke() ?? crash "AgentsSpec: a key revokes"
 	live = AgentInvite.make({
 		id: AgentInvite.Id.from_str("1") ?? crash "AgentsSpec: a number",
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 		scope: KeyScope.everywhere,
 	})
 	spent = AgentInvite.redeem({
@@ -394,12 +395,12 @@ expect {
 			AgentInvite.make({
 				id: AgentInvite.Id.from_str("2") ?? crash "AgentsSpec: a number",
 				hash,
-				now: 0,
+				now: Timestamp.at_second(0),
 				scope: KeyScope.everywhere,
 			}),
 		],
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 	}) ?? crash "AgentsSpec: an invite redeems"
 	summary = {
 		agent: cc,

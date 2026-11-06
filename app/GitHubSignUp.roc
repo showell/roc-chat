@@ -17,14 +17,14 @@
 ## id has an account, `GitHubSignIn` refuses it, so it makes one account.
 import Ascii
 import Base64Url
-import FactFile
 import GitHubId
 import GitHubState
 import Html
+import Timestamp
 
 GitHubSignUp :: {
 	github : GitHubId,
-	issued_at : I64,
+	issued_at : Timestamp,
 	next : Html.SitePath,
 }.{
 
@@ -32,7 +32,7 @@ GitHubSignUp :: {
 	## `next` once its human has a name.
 	issue : {
 		github : GitHubId,
-		now : I64,
+		now : Timestamp,
 		next : Html.SitePath,
 	} -> GitHubSignUp
 	issue = |{ github, now, next }|
@@ -101,17 +101,14 @@ GitHubSignUp :: {
 	}
 
 	## Whether this sign-up is in time at `now`: `Expired` at a state's
-	## lifetime old or more, or issued after `now`; else `Valid`. The sum is in
-	## `I128`, so no second a token carries overflows it.
-	check : GitHubSignUp, I64 -> [Valid, Expired]
-	check = |GitHubSignUp.(sign_up), now| {
-		age = now.to_i128() - sign_up.issued_at.to_i128()
-		if age < 0 or age >= GitHubState.lifetime_seconds.to_i128() {
+	## lifetime old or more, or issued after `now`; else `Valid`.
+	check : GitHubSignUp, Timestamp -> [Valid, Expired]
+	check = |GitHubSignUp.(sign_up), now|
+		if GitHubState.is_stale({ issued_at: sign_up.issued_at, now }) {
 			Expired
 		} else {
 			Valid
 		}
-	}
 
 	## The `Set-Cookie` header's value that sets this sign-up's cookie, its
 	## signature `mac`, for its lifetime.
@@ -169,7 +166,7 @@ sign_up_from_payload = |payload|
 	match payload.split_on(".") {
 		[github_part, second_part, next_part] => {
 			github = GitHubId.from_file(github_part.to_utf8()) ? |_| BadPayload
-			issued_at = FactFile.seconds_from_file(second_part.to_utf8()) ? |_| BadPayload
+			issued_at = Timestamp.from_file(second_part.to_utf8()) ? |_| BadPayload
 			path_bytes = Base64Url.decode(next_part) ? |_| BadPayload
 			path_text = Str.from_utf8(path_bytes) ? |_| BadPayload
 			next = Html.SitePath.from_str(path_text) ? |_| BadPayload
@@ -189,7 +186,7 @@ github_id = GitHubId.from_u64(583231) ?? crash "GitHubSignUp's tests: an id"
 issued : GitHubSignUp
 issued = GitHubSignUp.issue({
 	github: github_id,
-	now: 1000,
+	now: Timestamp.at_second(1000),
 	next: agents_path,
 })
 
@@ -208,10 +205,10 @@ sent_cookie = {
 expect issued.github() == github_id and issued.next() == agents_path
 # Valid at the window's two ends and inside it.
 expect
-	[1000, 1300, 1599].all(|now| issued.check(now) == Valid)
+	[1000, 1300, 1599].map(Timestamp.at_second).all(|now| issued.check(now) == Valid)
 # Expired at the lifetime, past it, and before it was issued.
 expect
-	[1600, 99999, 999].all(|now| issued.check(now) == Expired)
+	[1600, 99999, 999].map(Timestamp.at_second).all(|now| issued.check(now) == Expired)
 # The cookie, set for ten minutes and read back among others: the signature,
 # the bytes signed, the sign-up.
 expect

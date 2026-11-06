@@ -11,6 +11,7 @@ import Directory
 import Dm
 import Name
 import Place
+import Timestamp
 import Topic
 import Transcript
 import Users
@@ -39,10 +40,10 @@ Welcome :: { key : ConversationKey, record : Transcript.Utf8TranscriptMessage }.
 	make : {
 		directory : Directory,
 		human : Users.Human,
-		now : I64,
+		now : Timestamp,
 	} -> Try(Welcome, [ClockOutOfRange])
 	make = |{ directory, human, now }| {
-		time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
+		time = DateTime.from_timestamp(now) ? |OutOfRange| ClockOutOfRange
 		owner = directory.chat_owner()
 		started = Dm.start({
 			to: human,
@@ -97,7 +98,7 @@ record_text = |owner| {
 		Welcome.make({
 			directory: chat.directory,
 			human: chat.human,
-			now: 1793646692,
+			now: Timestamp.at_second(1793646692),
 		}) ?? crash "Welcome's tests: the clock is in range"
 	Str.from_utf8(made.first_record().to_utf8_bytes()) ?? crash "Welcome's tests: a record is UTF-8"
 }
@@ -124,7 +125,7 @@ expect {
 		Welcome.make({
 			directory: chat.directory,
 			human: chat.human,
-			now: 0,
+			now: Timestamp.at_second(0),
 		}) ?? crash "Welcome's tests: the clock's first second"
 	made.key() == Welcome.conversation_key(chat) and made.key().url_path(Page) == "/chat/dm/1_2/ChitChat"
 }
@@ -134,7 +135,7 @@ expect {
 	made = Welcome.make({
 		directory: chat.directory,
 		human: chat.human,
-		now: -1,
+		now: Timestamp.at_second(-1),
 	})
 	made.map_ok(|_| {}) == Err(ClockOutOfRange)
 }

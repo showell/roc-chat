@@ -2,6 +2,7 @@
 scope: KeyScope
 errand: Errand
 choice: Choice
+now: Timestamp
 
 # GitHub's numeric id reaches the app as Host's bare `id : U64`, and
 # GitHubSignIn.identify makes it a GitHubId. It is no UserId left half retyped.

@@ -1,7 +1,7 @@
 ## A date and time says when a message was written, as ISO 8601 in UTC, in
 ## exactly one form, `YYYY-MM-DDTHH:MM:SSZ`, so two times compare as text
 ## (`compare`) and a transcript reads the same everywhere. The type is
-## opaque, so `from_str` and `from_seconds_since_epoch` are the only ways
+## opaque, so `from_str` and `from_timestamp` are the only ways
 ## in, and every value names a second that a calendar and a clock can show.
 ##
 ## The chat has its own date type because the pinned Roc's builtins have
@@ -9,6 +9,7 @@
 ## written and the calendar's check, and should give way to the builtins'
 ## type once they have one.
 import Ascii
+import Timestamp
 
 DateTime :: Str.{
 
@@ -75,12 +76,13 @@ DateTime :: Str.{
 			_ => Err(WrongShape)
 		}
 
-	## The time `seconds` after 1970-01-01T00:00:00Z, as the host's clock
-	## gives it. A time before then, or after the last second the form can
-	## write, 9999-12-31T23:59:59Z, is `OutOfRange`. Days become a date in
-	## the Gregorian calendar by Howard Hinnant's `civil_from_days`.
-	from_seconds_since_epoch : I64 -> Try(DateTime, [OutOfRange])
-	from_seconds_since_epoch = |seconds|
+	## The time `moment` names. A moment before 1970-01-01T00:00:00Z, or after
+	## the last second the form can write, 9999-12-31T23:59:59Z, is
+	## `OutOfRange`. Days become a date in the Gregorian calendar by Howard
+	## Hinnant's `civil_from_days`.
+	from_timestamp : Timestamp -> Try(DateTime, [OutOfRange])
+	from_timestamp = |moment| {
+		seconds = moment.to_seconds_since_epoch()
 		if seconds < 0 or seconds > last_second {
 			Err(OutOfRange)
 		} else {
@@ -95,6 +97,7 @@ DateTime :: Str.{
 			second = padded_digits(of_day % 60, 2)
 			Ok(DateTime.("${year}-${month}-${day}T${hour}:${minute}:${second}Z"))
 		}
+	}
 
 	## The time as written.
 	to_str : DateTime -> Str
@@ -281,7 +284,7 @@ expect !is_leap(2026) and !is_leap(1900) and !is_leap(2100)
 # end of the range.
 ## The time `seconds` names, as written.
 from_clock : I64 -> Try(Str, [OutOfRange])
-from_clock = |seconds| DateTime.from_seconds_since_epoch(seconds).map_ok(DateTime.to_str)
+from_clock = |seconds| DateTime.from_timestamp(Timestamp.at_second(seconds)).map_ok(DateTime.to_str)
 
 expect from_clock(0) == Ok("1970-01-01T00:00:00Z")
 expect from_clock(59) == Ok("1970-01-01T00:00:59Z")
@@ -302,7 +305,7 @@ expect from_clock(253402300800) == Err(OutOfRange)
 expect
 	[0, 951782400, 1793560292, 253402300799].all(
 		|seconds|
-			match DateTime.from_seconds_since_epoch(seconds) {
+			match DateTime.from_timestamp(Timestamp.at_second(seconds)) {
 				Ok(time) => DateTime.from_str(time.to_str()) == Ok(time)
 				Err(_) => Bool.False
 			},

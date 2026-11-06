@@ -20,13 +20,14 @@
 ## (`GitHubRoute` asks it), and `GitHubSignIn` calls `check`.
 import Ascii
 import Base64Url
-import FactFile
 import Html
+import Seconds
+import Timestamp
 import UserId
 
 GitHubState :: {
 	nonce : List(U8),
-	issued_at : I64,
+	issued_at : Timestamp,
 	next : Html.SitePath,
 	errand : GitHubState.Errand,
 }.{
@@ -37,8 +38,8 @@ GitHubState :: {
 
 	## How long a state lasts: time to sign in at GitHub, and short enough
 	## that a leaked one goes stale.
-	lifetime_seconds : I64
-	lifetime_seconds = 10 * 60
+	lifetime_seconds : Seconds
+	lifetime_seconds = Seconds.of(10 * 60)
 
 	## How many random bytes a nonce holds.
 	nonce_bytes : U64
@@ -54,7 +55,7 @@ GitHubState :: {
 	## crashes.
 	issue : {
 		nonce : List(U8),
-		now : I64,
+		now : Timestamp,
 		next : Html.SitePath,
 		errand : GitHubState.Errand,
 	} -> GitHubState
@@ -142,17 +143,22 @@ GitHubState :: {
 	## when the browser's cookie is missing or holds another nonce, said
 	## first, as a state from another browser is a forgery however old it is;
 	## `Expired` at `lifetime_seconds` old or more, or issued after `now`;
-	## else `Valid`. The sums are in `I128`, so no second a token carries
-	## overflows them.
-	check : GitHubState, { cookie : GitHubState.Cookie, now : I64 } -> GitHubState.Verdict
-	check = |GitHubState.(state), { cookie, now }| {
-		age = now.to_i128() - state.issued_at.to_i128()
+	## else `Valid`.
+	check : GitHubState, { cookie : GitHubState.Cookie, now : Timestamp } -> GitHubState.Verdict
+	check = |GitHubState.(state), { cookie, now }|
 		match cookie {
 			Unsent => Mismatched
 			Sent(nonce) if nonce != state.nonce => Mismatched
-			Sent(_) if age < 0 or age >= GitHubState.lifetime_seconds.to_i128() => Expired
+			Sent(_) if GitHubState.is_stale({ issued_at: state.issued_at, now }) => Expired
 			Sent(_) => Valid
 		}
+
+	## Whether a token issued at `issued_at` is out of time at `now`: at
+	## `lifetime_seconds` old or more, or issued after `now`.
+	is_stale : { issued_at : Timestamp, now : Timestamp } -> Bool
+	is_stale = |{ issued_at, now }| {
+		age = now.seconds_since(issued_at)
+		age.is_negative() or age.is_at_least(GitHubState.lifetime_seconds)
 	}
 
 	## The state cookie as a browser sent it: its nonce, or none.
@@ -246,7 +252,7 @@ state_from_payload = |payload|
 	match payload.split_on(".") {
 		[nonce_part, second_part, next_part, errand_part] => {
 			nonce = Base64Url.decode(nonce_part) ? |_| BadPayload
-			issued_at = FactFile.seconds_from_file(second_part.to_utf8()) ? |_| BadPayload
+			issued_at = Timestamp.from_file(second_part.to_utf8()) ? |_| BadPayload
 			path_bytes = Base64Url.decode(next_part) ? |_| BadPayload
 			path_text = Str.from_utf8(path_bytes) ? |_| BadPayload
 			next = Html.SitePath.from_str(path_text) ? |_| BadPayload
@@ -267,7 +273,7 @@ nonce_held = List.repeat('n', 32)
 issued : GitHubState
 issued = GitHubState.issue({
 	nonce: nonce_held,
-	now: 1000,
+	now: Timestamp.at_second(1000),
 	next: agents_path,
 	errand: SignIn,
 })
@@ -276,21 +282,25 @@ issued = GitHubState.issue({
 issued_to_link : GitHubState
 issued_to_link = GitHubState.issue({
 	nonce: nonce_held,
-	now: 1000,
+	now: Timestamp.at_second(1000),
 	next: agents_path,
 	errand: Link(UserId.chat_owner),
 })
 
 ## What `check` says of `issued`, back with `cookie` at `now`.
-back : { cookie : GitHubState.Cookie, now : I64 } -> GitHubState.Verdict
+back : { cookie : GitHubState.Cookie, now : Timestamp } -> GitHubState.Verdict
 back = |asked| issued.check(asked)
 
 # Valid at the window's two ends and inside it.
 expect
-	[1000, 1300, 1599].all(|now| back({ cookie: Sent(nonce_held), now }) == Valid)
+	[1000, 1300, 1599].map(Timestamp.at_second).all(
+		|now| back({ cookie: Sent(nonce_held), now }) == Valid,
+	)
 # Expired at the lifetime, past it, and before it was issued.
 expect
-	[1600, 99999, 999].all(|now| back({ cookie: Sent(nonce_held), now }) == Expired)
+	[1600, 99999, 999].map(Timestamp.at_second).all(
+		|now| back({ cookie: Sent(nonce_held), now }) == Expired,
+	)
 # Mismatched: no cookie, or another nonce, one byte short or over included;
 # and that is said before the time.
 expect
@@ -300,9 +310,9 @@ expect
 		Sent(List.repeat('m', 32)),
 		Sent(List.repeat('n', 31)),
 		Sent(List.repeat('n', 33)),
-	].all(|cookie| back({ cookie, now: 1300 }) == Mismatched)
-expect back({ cookie: Unsent, now: 99999 }) == Mismatched
-expect back({ cookie: Sent([]), now: 999 }) == Mismatched
+	].all(|cookie| back({ cookie, now: Timestamp.at_second(1300) }) == Mismatched)
+expect back({ cookie: Unsent, now: Timestamp.at_second(99999) }) == Mismatched
+expect back({ cookie: Sent([]), now: Timestamp.at_second(999) }) == Mismatched
 # A token read back: the signature, the bytes signed, the state.
 expect {
 	mac = List.repeat(7, 32)

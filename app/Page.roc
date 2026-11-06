@@ -53,6 +53,7 @@ import Name
 import Script
 import SecretToken
 import SignedIn
+import Timestamp
 import Topic
 import TrustedHtml
 import UploadedImage
@@ -469,13 +470,12 @@ Page :: [].{
 			newline,
 		])
 
-	## The date of a time in seconds since the epoch, or its seconds when it
-	## is out of a date's range.
-	date_words : I64 -> Str
-	date_words = |seconds|
-		match DateTime.from_seconds_since_epoch(seconds) {
+	## The date of `moment`, or its seconds when it is out of a date's range.
+	date_words : Timestamp -> Str
+	date_words = |moment|
+		match DateTime.from_timestamp(moment) {
 			Ok(time) => time.date_to_str()
-			Err(OutOfRange) => "at ${seconds.to_str()} seconds"
+			Err(OutOfRange) => "at ${moment.to_str()} seconds"
 		}
 
 	## A page that says one thing: `title`, and `text` beneath it (no such
@@ -859,13 +859,13 @@ invite_state_word = |state|
 		Revoked => "revoked"
 	}
 
-## A time in seconds since the epoch as a transcript writes one, or its
-## seconds when it is out of a date's range.
-time_text : I64 -> Str
-time_text = |seconds|
-	match DateTime.from_seconds_since_epoch(seconds) {
+## `moment` as a transcript writes one, or its seconds when it is out of a
+## date's range.
+time_text : Timestamp -> Str
+time_text = |moment|
+	match DateTime.from_timestamp(moment) {
 		Ok(time) => time.to_str()
-		Err(OutOfRange) => "at ${seconds.to_str()} seconds"
+		Err(OutOfRange) => "at ${moment.to_str()} seconds"
 	}
 
 ## The top bar: `title` on the left, and on the right the link to Browse and

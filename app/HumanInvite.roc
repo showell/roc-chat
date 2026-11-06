@@ -23,16 +23,18 @@
 ## is a trust boundary with `SignedIn`, `AgentKey` and `AgentInvite`: an
 ## invite's code is a credential for exactly one human's password.
 import FactFile
+import Seconds
 import SecretHash
 import SerialNumber
+import Timestamp
 import UserId
 import Users
 
 HumanInvite :: {
 	id : HumanInvite.Id,
 	hash : SecretHash,
-	created : I64,
-	expires : I64,
+	created : Timestamp,
+	expires : Timestamp,
 	state : HumanInvite.State,
 	by : UserId,
 }.{
@@ -73,15 +75,15 @@ HumanInvite :: {
 	}
 
 	## How long an invite lives: seven days.
-	lifetime_seconds : I64
-	lifetime_seconds = 7 * 24 * 60 * 60
+	lifetime_seconds : Seconds
+	lifetime_seconds = Seconds.of(7 * 24 * 60 * 60)
 
 	## A new invite, made by `by`, live from `now` for `lifetime_seconds`,
 	## its code's hash `hash`.
 	make : {
 		id : HumanInvite.Id,
 		hash : SecretHash,
-		now : I64,
+		now : Timestamp,
 		by : UserId,
 	} -> HumanInvite
 	make = |{ id, hash, now, by }|
@@ -90,7 +92,7 @@ HumanInvite :: {
 				id,
 				hash,
 				created: now,
-				expires: now + HumanInvite.lifetime_seconds,
+				expires: now.plus(HumanInvite.lifetime_seconds),
 				state: Live,
 				by,
 			},
@@ -98,10 +100,10 @@ HumanInvite :: {
 
 	## Whether the invite may be redeemed at `now`: live, made by then, and
 	## not yet expired.
-	is_open : HumanInvite, I64 -> Bool
+	is_open : HumanInvite, Timestamp -> Bool
 	is_open = |HumanInvite.(invite), now|
 		match invite.state {
-			Live => now >= invite.created and now < invite.expires
+			Live => now.is_during({ from: invite.created, until: invite.expires })
 			Spent => Bool.False
 		}
 
@@ -110,19 +112,21 @@ HumanInvite :: {
 	## when it is spent (`Spent`), or when `now` is at or past its expiry, or
 	## before its making (`Expired`).
 	find_redeemable : List(HumanInvite),
-	{ hash : SecretHash, now : I64 } -> Try(
+	{ hash : SecretHash, now : Timestamp } -> Try(
 		HumanInvite.Redeemable,
 		[NoSuchInvite, Spent, Expired],
 	)
 	find_redeemable = |invites, { hash, now }|
 		match invites.find_first(|HumanInvite.(invite)| invite.hash == hash) {
 			Err(NotFound) => Err(NoSuchInvite)
-			Ok(HumanInvite.(invite)) =>
+			Ok(HumanInvite.(invite)) => {
+				lifetime = { from: invite.created, until: invite.expires }
 				match invite.state {
 					Spent => Err(Spent)
-					Live if now < invite.created or now >= invite.expires => Err(Expired)
+					Live if !now.is_during(lifetime) => Err(Expired)
 					Live => Ok(HumanInvite.Redeemable.(HumanInvite.(invite)))
 				}
+			}
 		}
 
 	## An invite `find_redeemable` found open. Only it makes one.
@@ -154,7 +158,7 @@ HumanInvite :: {
 	state : HumanInvite -> HumanInvite.State
 	state = |HumanInvite.(invite)| invite.state
 
-	expires : HumanInvite -> I64
+	expires : HumanInvite -> Timestamp
 	expires = |HumanInvite.(invite)| invite.expires
 
 	## Who made the invite.
@@ -164,8 +168,8 @@ HumanInvite :: {
 	## The invite's facts as their files keep them.
 	to_files : HumanInvite -> HumanInvite.Files
 	to_files = |HumanInvite.(invite)| {
-		created: FactFile.seconds_to_file(invite.created),
-		expires: FactFile.seconds_to_file(invite.expires),
+		created: invite.created.to_file(),
+		expires: invite.expires.to_file(),
 		state: state_to_file(invite.state),
 		by: invite.by.to_str().to_utf8(),
 		hash: invite.hash.to_file(),
@@ -175,8 +179,8 @@ HumanInvite :: {
 	## holds no such fact (`BadFact`, naming the file).
 	from_files : HumanInvite.Id, HumanInvite.Files -> Try(HumanInvite, [BadFact(Str)])
 	from_files = |number, files| {
-		made_at = FactFile.seconds_from_file(files.created) ? |_| BadFact("created")
-		ends_at = FactFile.seconds_from_file(files.expires) ? |_| BadFact("expires")
+		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
+		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
 		held_state = state_from_file(files.state) ? |_| BadFact("state")
 		maker = user_id_from_file(files.by) ? |_| BadFact("by")
 		hash = SecretHash.from_file(files.hash) ? |_| BadFact("hash")

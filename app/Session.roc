@@ -28,6 +28,8 @@
 import Ascii
 import Base64Url
 import Name
+import Seconds
+import Timestamp
 import UserId
 import Users
 
@@ -38,19 +40,19 @@ Session :: [].{
 	cookie_name = "__Host-gopher_auth"
 
 	## How long a session admits its human, in seconds: a year.
-	longest_seconds : I64
-	longest_seconds = 365 * 24 * 60 * 60
+	longest_seconds : Seconds
+	longest_seconds = Seconds.of(365 * 24 * 60 * 60)
 
 	## How far ahead of the clock a session's second may be: a clock a
 	## little behind the one that signed it.
-	clock_skew_seconds : I64
-	clock_skew_seconds = 5 * 60
+	clock_skew_seconds : Seconds
+	clock_skew_seconds = Seconds.of(5 * 60)
 
 	## What a cookie claims before its signature is checked: whose it is,
 	## the second it says it was signed at, and its signature.
 	Claim :: {
 		id : UserId,
-		signed_at : I64,
+		signed_at : Timestamp,
 		mac : List(U8),
 	}.{
 
@@ -73,7 +75,7 @@ Session :: [].{
 		id = |Session.Claim.(claim)| claim.id
 
 		## The second it says it was signed at.
-		signed_at : Session.Claim -> I64
+		signed_at : Session.Claim -> Timestamp
 		signed_at = |Session.Claim.(claim)| claim.signed_at
 	}
 
@@ -109,7 +111,7 @@ Session :: [].{
 	## its human's sign-in files holding `material`.
 	signed_bytes : {
 		id : UserId,
-		signed_at : I64,
+		signed_at : Timestamp,
 		material : Session.Material,
 	} -> List(U8)
 	signed_bytes = |
@@ -147,7 +149,7 @@ Session :: [].{
 	admit : {
 		claim : Session.Claim,
 		verdict : [DoesNotMatch, Matches],
-		now : I64,
+		now : Timestamp,
 		users : Users,
 	} -> Try(Session.Admitted, [SessionRefused])
 	admit = |{ claim, verdict, now, users }|
@@ -172,7 +174,7 @@ Session :: [].{
 	## `mac`, the host's HMAC of `signed_bytes`.
 	cookie_value : {
 		id : UserId,
-		signed_at : I64,
+		signed_at : Timestamp,
 		mac : List(U8),
 	} -> Str
 	cookie_value = |
@@ -202,9 +204,10 @@ cookie_attributes = "HttpOnly; Secure; SameSite=Lax"
 
 ## Whether a claim's `signed_at` is older than a session lasts, or further
 ## ahead of `now` than the clock's skew allows.
-is_outside_window : { now : I64, signed_at : I64 } -> Bool
+is_outside_window : { now : Timestamp, signed_at : Timestamp } -> Bool
 is_outside_window = |{ now, signed_at }|
-	now - signed_at > Session.longest_seconds or signed_at - now > Session.clock_skew_seconds
+	now.seconds_since(signed_at).is_more_than(Session.longest_seconds)
+		or signed_at.seconds_since(now).is_more_than(Session.clock_skew_seconds)
 
 ## The claim a cookie's value spells; unless it is not three parts, an id
 ## that is no user's id, a second that is not its digits, or a signature
@@ -230,11 +233,11 @@ claim_from_value = |value|
 ## The second `digits` spell: decimal digits with no leading `0`, at most
 ## the largest `I64`; so each second has one spelling, the one `to_str`
 ## writes and the signature is over.
-second_from_digits : List(U8) -> Try(I64, [NotASecond])
+second_from_digits : List(U8) -> Try(Timestamp, [NotASecond])
 second_from_digits = |digits|
 	match digits {
 		[] => Err(NotASecond)
-		['0'] => Ok(0)
+		['0'] => Ok(Timestamp.at_second(0))
 		['0', ..] => Err(NotASecond)
 		_ if digits.len() > 19 or !digits.all(Ascii.is_digit) => Err(NotASecond)
 		_ => {
@@ -242,7 +245,7 @@ second_from_digits = |digits|
 			if number > I64.highest.to_u64_wrap() {
 				Err(NotASecond)
 			} else {
-				Ok(number.to_i64_wrap())
+				Ok(Timestamp.at_second(number.to_i64_wrap()))
 			}
 		}
 	}
@@ -275,7 +278,7 @@ mac_of = |byte| List.repeat(byte, 32)
 ## signature every byte `byte`.
 cookie_for : {
 	id : Str,
-	signed_at : I64,
+	signed_at : Timestamp,
 	byte : U8,
 } -> List(U8)
 cookie_for = |{ id, signed_at, byte }| {
@@ -302,12 +305,12 @@ claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
 # The value: the id, the second and the signature, each in its spelling.
 expect Session.cookie_value({
 	id: UserId.chat_owner,
-	signed_at: 1700000000,
+	signed_at: Timestamp.at_second(1700000000),
 	mac: mac_of(0),
 }) == "MQ.1700000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 expect Session.signed_bytes({
 	id: UserId.chat_owner,
-	signed_at: 1700000000,
+	signed_at: Timestamp.at_second(1700000000),
 	material: password_material("$2b$10$x"),
 }) == "1\n1700000000\n$2b$10$x".to_utf8()
 # Another hash, or none, is other bytes: a password rewritten ends its
@@ -316,7 +319,7 @@ expect
 	["$2b$10$y", ""].all(
 		|password_hash| Session.signed_bytes({
 			id: UserId.chat_owner,
-			signed_at: 1700000000,
+			signed_at: Timestamp.at_second(1700000000),
 			material: password_material(password_hash),
 		})
 			!= "1\n1700000000\n$2b$10$x".to_utf8(),
@@ -346,13 +349,19 @@ expect {
 expect claim_text(
 	cookie_for({
 		id: "1",
-		signed_at: 1700000000,
+		signed_at: Timestamp.at_second(1700000000),
 		byte: 7,
 	}),
 ) == Ok(("1\n1700000000\nh", mac_of(7)))
-expect
-	claim_text("theme=dark; ${Str.from_utf8_lossy(cookie_for({ id: "42", signed_at: 0, byte: 1 }))} ;x=y".to_utf8())
+expect {
+	cookie = cookie_for({
+		id: "42",
+		signed_at: Timestamp.at_second(0),
+		byte: 1,
+	})
+	claim_text("theme=dark; ${Str.from_utf8_lossy(cookie)} ;x=y".to_utf8())
 		== Ok(("42\n0\nh", mac_of(1)))
+}
 # No session cookie: none, another, or one whose name only starts the same.
 expect
 	[
@@ -367,7 +376,7 @@ expect {
 	one = Str.from_utf8_lossy(
 		cookie_for({
 			id: "1",
-			signed_at: 1700000000,
+			signed_at: Timestamp.at_second(1700000000),
 			byte: 7,
 		}),
 	)
@@ -399,8 +408,8 @@ expect
 ## host's `verdict`, as a test reads it.
 admitted_at : {
 	id : Str,
-	signed_at : I64,
-	now : I64,
+	signed_at : Timestamp,
+	now : Timestamp,
 	verdict : [DoesNotMatch, Matches],
 } -> Try(Str, [SessionRefused, BadSession, NoSession])
 admitted_at = |{ id, signed_at, now, verdict }| {
@@ -414,62 +423,62 @@ admitted_at = |{ id, signed_at, now, verdict }| {
 # agent, or no such user, admits no one.
 expect admitted_at({
 	id: "1",
-	signed_at: 1700000000,
-	now: 1700000000,
+	signed_at: Timestamp.at_second(1700000000),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Ok("Steve")
 expect admitted_at({
 	id: "1",
-	signed_at: 1700000000,
-	now: 1700000000 + Session.longest_seconds,
+	signed_at: Timestamp.at_second(1700000000),
+	now: Timestamp.at_second(1700000000).plus(Session.longest_seconds),
 	verdict: Matches,
 }) == Ok("Steve")
 expect admitted_at({
 	id: "1",
-	signed_at: 1700000000,
-	now: 1700000000 + Session.longest_seconds + 1,
+	signed_at: Timestamp.at_second(1700000000),
+	now: Timestamp.at_second(1700000000).plus(Session.longest_seconds).plus(Seconds.of(1)),
 	verdict: Matches,
 }) == Err(SessionRefused)
 expect admitted_at({
 	id: "1",
-	signed_at: 1700000000,
-	now: 1700000000 - Session.clock_skew_seconds,
+	signed_at: Timestamp.at_second(1700000000).plus(Session.clock_skew_seconds),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Ok("Steve")
 expect admitted_at({
 	id: "1",
-	signed_at: 1700000000,
-	now: 1700000000 - Session.clock_skew_seconds - 1,
+	signed_at: Timestamp.at_second(1700000000).plus(Session.clock_skew_seconds).plus(Seconds.of(1)),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Err(SessionRefused)
 expect admitted_at({
 	id: "1",
-	signed_at: 1700000000,
-	now: 1700000000,
+	signed_at: Timestamp.at_second(1700000000),
+	now: Timestamp.at_second(1700000000),
 	verdict: DoesNotMatch,
 }) == Err(SessionRefused)
 expect admitted_at({
 	id: "2",
-	signed_at: 1700000000,
-	now: 1700000000,
+	signed_at: Timestamp.at_second(1700000000),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Err(SessionRefused)
 expect admitted_at({
 	id: "3",
-	signed_at: 1700000000,
-	now: 1700000000,
+	signed_at: Timestamp.at_second(1700000000),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Err(SessionRefused)
 expect admitted_at({
 	id: "1",
-	signed_at: 9223372036854775807,
-	now: 1700000000,
+	signed_at: Timestamp.at_second(9223372036854775807),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Err(SessionRefused)
 expect admitted_at({
 	id: "1",
-	signed_at: 0,
-	now: 1700000000,
+	signed_at: Timestamp.at_second(0),
+	now: Timestamp.at_second(1700000000),
 	verdict: Matches,
 }) == Err(SessionRefused)
 # The cookie set for a year, and cleared, each with its defences.

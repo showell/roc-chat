@@ -6,9 +6,11 @@
 import AgentInvite
 import AgentKey
 import KeyScope
+import Seconds
 import SecretHash
 import SignedIn
 import Sample
+import Timestamp
 import UserId
 import Users
 
@@ -27,8 +29,8 @@ invite_id : Str -> AgentInvite.Id
 invite_id = |n| AgentInvite.Id.from_str(n) ?? crash "AgentKeySpec: an invite's number"
 
 ## When the tests' keys and invites are made.
-made_at : I64
-made_at = 1_761_600_000
+made_at : Timestamp
+made_at = Timestamp.at_second(1_761_600_000)
 
 ## Key 1, its hash every byte 0x5a, made at `made_at` for every reach.
 key_one : AgentKey
@@ -53,7 +55,7 @@ key_two = AgentKey.mint({
 admitted_by : {
 	keys : List(AgentKey),
 	hash : SecretHash,
-	now : I64,
+	now : Timestamp,
 } -> Try((Str, KeyScope), _)
 admitted_by = |{ keys, hash, now }|
 	AgentKey.admit({
@@ -102,10 +104,10 @@ expect {
 }
 # A key's life: from its making, to a second before its expiry; refused at
 # its expiry, past it, and before its making.
-expect AgentKey.lifetime_seconds == 31_536_000
-expect key_one.expires() == made_at + 31_536_000
+expect AgentKey.lifetime_seconds == Seconds.of(31_536_000)
+expect key_one.expires() == made_at.plus(Seconds.of(31_536_000))
 expect
-	[made_at, made_at + 31_535_999].all(
+	[made_at, made_at.plus(Seconds.of(31_535_999))].all(
 		|now| admitted_by({
 			keys: [key_one],
 			hash: hash_of(0x5a),
@@ -114,9 +116,9 @@ expect
 	)
 expect
 	[
-		made_at + 31_536_000,
-		made_at + 31_536_001,
-		made_at - 1,
+		made_at.plus(Seconds.of(31_536_000)),
+		made_at.plus(Seconds.of(31_536_001)),
+		made_at.plus(Seconds.of(-1)),
 	].all(
 		|now| admitted_by({
 			keys: [key_one],
@@ -217,7 +219,7 @@ invite_two = AgentInvite.make({
 redeemed_by : {
 	invites : List(AgentInvite),
 	hash : SecretHash,
-	now : I64,
+	now : Timestamp,
 } -> Try((Str, AgentInvite.State, KeyScope), _)
 redeemed_by = |{ invites, hash, now }|
 	AgentInvite.redeem({ invites, hash, now }).map_ok(
@@ -260,9 +262,9 @@ expect {
 }
 # Its life: ten minutes from its making, a second short of its expiry
 # included; refused at its expiry, past it, and before its making.
-expect AgentInvite.lifetime_seconds == 600
-expect invite_one.expires() == made_at + 600
-expect [made_at, made_at + 599].all(
+expect AgentInvite.lifetime_seconds == Seconds.of(600)
+expect invite_one.expires() == made_at.plus(Seconds.of(600))
+expect [made_at, made_at.plus(Seconds.of(599))].all(
 	|now| redeemed_by({
 		invites: [invite_one],
 		hash: hash_of(0x7c),
@@ -270,9 +272,9 @@ expect [made_at, made_at + 599].all(
 	}).is_ok(),
 )
 expect [
-	made_at + 600,
-	made_at + 601,
-	made_at - 1,
+	made_at.plus(Seconds.of(600)),
+	made_at.plus(Seconds.of(601)),
+	made_at.plus(Seconds.of(-1)),
 ].all(
 	|now| redeemed_by({
 		invites: [invite_one],

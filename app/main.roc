@@ -45,6 +45,7 @@ app [check_request_head!, handle_http_request!, page, password_verdict, start!] 
 	pf: platform "../platform/main.roc",
 }
 
+import Timestamp
 import pf.Host
 import pf.Http
 import Access
@@ -199,6 +200,10 @@ first_directory = {
 
 founder_name : Name
 founder_name = Name.from_str("Steve") ?? crash "main.founder_name: Steve is a name"
+
+## The moment the host's clock says it is.
+read_clock! : {} => Timestamp
+read_clock! = |{}| Timestamp.at_second(Host.current_utc_seconds_since_epoch!({}))
 
 ## The directory as the data folder holds it now; or why not.
 load_directory! : {} => Try(Directory, [FileSystem(FileSystem.Fault), StoredDirectory(Str)])
@@ -441,7 +446,7 @@ load_actor! : { headers : List(Http.Header), directory : Directory } => Try(
 	[BadBearer, KeyRefused, FileSystem(FileSystem.Fault)],
 )
 load_actor! = |{ headers, directory }| {
-	now = Host.current_utc_seconds_since_epoch!({})
+	now = read_clock!({})
 	match RequestHeader.header_value(headers, "authorization") {
 		Unsent => load_session_actor!({ headers, directory, now })
 		Repeated => Err(BadBearer)
@@ -461,7 +466,7 @@ load_actor! = |{ headers, directory }| {
 load_session_actor! : {
 	headers : List(Http.Header),
 	directory : Directory,
-	now : I64,
+	now : Timestamp,
 } => Try(SignedIn.Actor, [FileSystem(FileSystem.Fault)])
 load_session_actor! = |{ headers, directory, now }|
 	match RequestHeader.header_value(headers, "cookie") {
@@ -655,7 +660,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				viewer: actor,
 				users: directory.users(),
 				body: request.body,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 				github: GitHubRoute.load_offer!({}),
 			})
 		SignOut => SignInRoute.sign_out
@@ -664,7 +669,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				viewer: actor,
 				query: request.query,
 				origin: own_origin_of(request),
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		FinishGitHubSignIn =>
 			GitHubRoute.serve_return!({
@@ -672,7 +677,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				directory,
 				query: request.query,
 				headers: request.headers,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		FinishGitHubSignUp =>
 			GitHubRoute.serve_sign_up!({
@@ -680,13 +685,13 @@ answer_open_route! = |{ open, request, directory, actor }|
 				directory,
 				body: request.body,
 				headers: request.headers,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		StartGitHubLink =>
 			GitHubRoute.serve_link_start!({
 				viewer: actor,
 				origin: own_origin_of(request),
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		WrongMethodToGitHub(allowed) => GitHubRoute.refuse_method!(allowed)
 		RedeemInvite =>
@@ -694,7 +699,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				actor,
 				directory,
 				body: request.body,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		ShowJoin => HumanInvitesRoute.join_page(actor)
 		LookUpJoinName =>
@@ -702,14 +707,14 @@ answer_open_route! = |{ open, request, directory, actor }|
 				actor,
 				directory,
 				body: request.body,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		Join =>
 			HumanInvitesRoute.join!({
 				actor,
 				directory,
 				body: request.body,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 	}
 
@@ -780,7 +785,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				directory,
 				agent,
 				body: request.body,
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		RevokeInvite({ agent, invite }) =>
 			AgentsRoute.revoke_invite!({ acting, directory, agent, invite })
@@ -799,18 +804,14 @@ answer_route! = |{ asked, request, directory, acting }|
 		RemoveChannelMember({ channel, member }) =>
 			ChannelMembersRoute.remove!({ acting, directory, channel, member })
 		ShowInvites =>
-			HumanInvitesRoute.show!({
-				acting,
-				directory,
-				now: Host.current_utc_seconds_since_epoch!({}),
-			})
+			HumanInvitesRoute.show!({ acting, directory, now: read_clock!({}) })
 		InviteHuman =>
 			HumanInvitesRoute.invite!({
 				acting,
 				directory,
 				body: request.body,
 				origin: own_origin_of(request),
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 		InviteHumanAgain(human) =>
 			HumanInvitesRoute.invite_again!({
@@ -818,7 +819,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				directory,
 				human,
 				origin: own_origin_of(request),
-				now: Host.current_utc_seconds_since_epoch!({}),
+				now: read_clock!({}),
 			})
 	}
 
@@ -848,7 +849,7 @@ make_message_post! = |{ key, request, directory, acting }| {
 	key,
 	acting,
 	users: directory.users(),
-	now: Host.current_utc_seconds_since_epoch!({}),
+	now: read_clock!({}),
 	body: request.body,
 	agents: Access.agent_members({ place: key.place(), directory }),
 }

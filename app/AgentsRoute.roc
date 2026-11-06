@@ -18,6 +18,7 @@
 ## `sign_in_by_key!` is the check an agent's `Authorization: Bearer`
 ## request passes before any route (main's `load_acting_user!`): `AgentKey.admit`
 ## decides, and `SignedIn.by_api_key` is its one door.
+import Timestamp
 import pf.Host
 import pf.Http
 import AgentInvite
@@ -57,7 +58,7 @@ AgentsRoute :: [].{
 	sign_in_by_key! : {
 		token : SecretToken,
 		directory : Directory,
-		now : I64,
+		now : Timestamp,
 	} => Try(SignedIn, [KeyRefused, FileSystem(FileSystem.Fault)])
 	sign_in_by_key! = |{ token, directory, now }|
 		match directory.users().user(token.user()) {
@@ -102,7 +103,7 @@ AgentsRoute :: [].{
 		directory : Directory,
 		agent : UserId,
 		body : List(U8),
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	invite! = |request|
 		match invite_agent!(request) {
@@ -146,7 +147,7 @@ AgentsRoute :: [].{
 		actor : SignedIn.Actor,
 		directory : Directory,
 		body : List(U8),
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	redeem! = |request|
 		match redeem_invite!(request) {
@@ -248,7 +249,7 @@ invite_agent! : {
 	directory : Directory,
 	agent : UserId,
 	body : List(U8),
-	now : I64,
+	now : Timestamp,
 } => Try(TrustedHtml, _)
 invite_agent! = |{ acting, directory, agent, body, now }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
@@ -308,7 +309,7 @@ redeem_invite! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
 	body : List(U8),
-	now : I64,
+	now : Timestamp,
 } => Try(SecretToken, _)
 redeem_invite! = |{ actor, directory, body, now }| {
 	_ =

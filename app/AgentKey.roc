@@ -18,15 +18,17 @@
 ## last, so a key cut short by a crash never admits anyone.
 import FactFile
 import KeyScope
+import Seconds
 import SecretHash
 import SerialNumber
+import Timestamp
 import Users
 
 AgentKey :: {
 	id : AgentKey.Id,
 	hash : SecretHash,
-	created : I64,
-	expires : I64,
+	created : Timestamp,
+	expires : Timestamp,
 	state : AgentKey.State,
 	scope : KeyScope,
 }.{
@@ -66,15 +68,15 @@ AgentKey :: {
 	}
 
 	## How long a key lives: a year.
-	lifetime_seconds : I64
-	lifetime_seconds = 365 * 24 * 60 * 60
+	lifetime_seconds : Seconds
+	lifetime_seconds = Seconds.of(365 * 24 * 60 * 60)
 
 	## A new key, active from `now` for `lifetime_seconds`, its secret's
 	## hash `hash`.
 	mint : {
 		id : AgentKey.Id,
 		hash : SecretHash,
-		now : I64,
+		now : Timestamp,
 		scope : KeyScope,
 	} -> AgentKey
 	mint = |{ id, hash, now, scope }|
@@ -83,7 +85,7 @@ AgentKey :: {
 				id,
 				hash,
 				created: now,
-				expires: now + AgentKey.lifetime_seconds,
+				expires: now.plus(AgentKey.lifetime_seconds),
 				state: Active,
 				scope,
 			},
@@ -106,7 +108,7 @@ AgentKey :: {
 		user : Users.User,
 		keys : List(AgentKey),
 		hash : SecretHash,
-		now : I64,
+		now : Timestamp,
 	} -> Try(AgentKey.Admitted, [NotAnAgent, NoSuchKey, Revoked, Expired])
 	admit = |{ user, keys, hash, now }|
 		match user.role() {
@@ -114,12 +116,14 @@ AgentKey :: {
 			Agent(_) =>
 				match keys.find_first(|AgentKey.(key)| key.hash == hash) {
 					Err(NotFound) => Err(NoSuchKey)
-					Ok(AgentKey.(key)) =>
+					Ok(AgentKey.(key)) => {
+						lifetime = { from: key.created, until: key.expires }
 						match key.state {
 							Revoked => Err(Revoked)
-							Active if now < key.created or now >= key.expires => Err(Expired)
+							Active if !now.is_during(lifetime) => Err(Expired)
 							Active => Ok(AgentKey.Admitted.({ user, scope: key.scope }))
 						}
+					}
 				}
 		}
 
@@ -139,7 +143,7 @@ AgentKey :: {
 	state : AgentKey -> AgentKey.State
 	state = |AgentKey.(key)| key.state
 
-	expires : AgentKey -> I64
+	expires : AgentKey -> Timestamp
 	expires = |AgentKey.(key)| key.expires
 
 	scope : AgentKey -> KeyScope
@@ -148,8 +152,8 @@ AgentKey :: {
 	## The key's facts as their files keep them.
 	to_files : AgentKey -> AgentKey.Files
 	to_files = |AgentKey.(key)| {
-		created: FactFile.seconds_to_file(key.created),
-		expires: FactFile.seconds_to_file(key.expires),
+		created: key.created.to_file(),
+		expires: key.expires.to_file(),
 		state: state_to_file(key.state),
 		read: KeyScope.reach_to_file(key.scope.read()),
 		post: KeyScope.reach_to_file(key.scope.post()),
@@ -160,8 +164,8 @@ AgentKey :: {
 	## holds no such fact (`BadFact`, naming the file).
 	from_files : AgentKey.Id, AgentKey.Files -> Try(AgentKey, [BadFact(Str)])
 	from_files = |number, files| {
-		made_at = FactFile.seconds_from_file(files.created) ? |_| BadFact("created")
-		ends_at = FactFile.seconds_from_file(files.expires) ? |_| BadFact("expires")
+		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
+		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
 		held_state = state_from_file(files.state) ? |_| BadFact("state")
 		read = KeyScope.reach_from_file(files.read) ? |_| BadFact("read")
 		post = KeyScope.reach_from_file(files.post) ? |_| BadFact("post")

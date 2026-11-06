@@ -14,14 +14,16 @@
 ## invite's code is a credential for exactly one key.
 import FactFile
 import KeyScope
+import Seconds
 import SecretHash
 import SerialNumber
+import Timestamp
 
 AgentInvite :: {
 	id : AgentInvite.Id,
 	hash : SecretHash,
-	created : I64,
-	expires : I64,
+	created : Timestamp,
+	expires : Timestamp,
 	state : AgentInvite.State,
 	scope : KeyScope,
 }.{
@@ -63,15 +65,15 @@ AgentInvite :: {
 	}
 
 	## How long an invite lives: ten minutes.
-	lifetime_seconds : I64
-	lifetime_seconds = 10 * 60
+	lifetime_seconds : Seconds
+	lifetime_seconds = Seconds.of(10 * 60)
 
 	## A new invite, live from `now` for `lifetime_seconds`, its code's hash
 	## `hash`, for a key of `scope`.
 	make : {
 		id : AgentInvite.Id,
 		hash : SecretHash,
-		now : I64,
+		now : Timestamp,
 		scope : KeyScope,
 	} -> AgentInvite
 	make = |{ id, hash, now, scope }|
@@ -80,7 +82,7 @@ AgentInvite :: {
 				id,
 				hash,
 				created: now,
-				expires: now + AgentInvite.lifetime_seconds,
+				expires: now.plus(AgentInvite.lifetime_seconds),
 				state: Live,
 				scope,
 			},
@@ -94,18 +96,20 @@ AgentInvite :: {
 	redeem : {
 		invites : List(AgentInvite),
 		hash : SecretHash,
-		now : I64,
+		now : Timestamp,
 	} -> Try(AgentInvite, [NoSuchInvite, Spent, Revoked, Expired])
 	redeem = |{ invites, hash, now }|
 		match invites.find_first(|AgentInvite.(invite)| invite.hash == hash) {
 			Err(NotFound) => Err(NoSuchInvite)
-			Ok(AgentInvite.(invite)) =>
+			Ok(AgentInvite.(invite)) => {
+				lifetime = { from: invite.created, until: invite.expires }
 				match invite.state {
 					Spent => Err(Spent)
 					Revoked => Err(Revoked)
-					Live if now < invite.created or now >= invite.expires => Err(Expired)
+					Live if !now.is_during(lifetime) => Err(Expired)
 					Live => Ok(AgentInvite.({ ..invite, state: Spent }))
 				}
+			}
 		}
 
 	## The invite revoked, while it is live; a spent one is `Spent`, and one
@@ -124,7 +128,7 @@ AgentInvite :: {
 	state : AgentInvite -> AgentInvite.State
 	state = |AgentInvite.(invite)| invite.state
 
-	expires : AgentInvite -> I64
+	expires : AgentInvite -> Timestamp
 	expires = |AgentInvite.(invite)| invite.expires
 
 	scope : AgentInvite -> KeyScope
@@ -133,8 +137,8 @@ AgentInvite :: {
 	## The invite's facts as their files keep them.
 	to_files : AgentInvite -> AgentInvite.Files
 	to_files = |AgentInvite.(invite)| {
-		created: FactFile.seconds_to_file(invite.created),
-		expires: FactFile.seconds_to_file(invite.expires),
+		created: invite.created.to_file(),
+		expires: invite.expires.to_file(),
 		state: state_to_file(invite.state),
 		read: KeyScope.reach_to_file(invite.scope.read()),
 		post: KeyScope.reach_to_file(invite.scope.post()),
@@ -145,8 +149,8 @@ AgentInvite :: {
 	## holds no such fact (`BadFact`, naming the file).
 	from_files : AgentInvite.Id, AgentInvite.Files -> Try(AgentInvite, [BadFact(Str)])
 	from_files = |number, files| {
-		made_at = FactFile.seconds_from_file(files.created) ? |_| BadFact("created")
-		ends_at = FactFile.seconds_from_file(files.expires) ? |_| BadFact("expires")
+		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
+		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
 		held_state = state_from_file(files.state) ? |_| BadFact("state")
 		read = KeyScope.reach_from_file(files.read) ? |_| BadFact("read")
 		post = KeyScope.reach_from_file(files.post) ? |_| BadFact("post")

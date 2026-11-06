@@ -15,10 +15,12 @@ import Password
 import PeoplePages
 import Route
 import Sample
+import Seconds
 import Secret
 import SecretHash
 import SecretToken
 import SignedIn
+import Timestamp
 import UserId
 import Users
 
@@ -39,14 +41,14 @@ cc_by_key = {
 	key = AgentKey.mint({
 		id: AgentKey.Id.from_str("1") ?? crash "HumanInvitesSpec: a key's number",
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 		scope: KeyScope.of({ read: Everywhere, post: Everywhere }),
 	})
 	admitted = AgentKey.admit({
 		user: Sample.user("CC"),
 		keys: [key],
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 	}) ?? crash "HumanInvitesSpec: CC's key admits"
 	SignedIn.by_api_key(admitted)
 }
@@ -277,7 +279,7 @@ invite_made = |{ n, by }|
 	HumanInvite.make({
 		id: HumanInvite.Id.from_str(n.to_str()) ?? crash "HumanInvitesSpec: an invite's number",
 		hash: hash(n.to_u8_wrap()),
-		now: 1000,
+		now: Timestamp.at_second(1000),
 		by: id(by),
 	})
 
@@ -291,7 +293,7 @@ zoe =
 zoes_redemption : {
 	invites : List(HumanInvite),
 	code : U8,
-	now : I64,
+	now : Timestamp,
 } -> Try(Str, _)
 zoes_redemption = |{ invites, code, now }|
 	HumanInvite.find_redeemable(invites, { hash: hash(code), now }).map_ok(
@@ -309,8 +311,16 @@ state_word = |invite|
 		Spent => "spent"
 	}
 
+## When an invite made at 1000 expires.
+invite_expiry : Timestamp
+invite_expiry = Timestamp.at_second(1000).plus(HumanInvite.lifetime_seconds)
+
+## The last second an invite made at 1000 is open.
+last_open_second : Timestamp
+last_open_second = invite_expiry.plus(Seconds.of(-1))
+
 ## Zoe's invite 1, made at 1000, found and spent at `now` by its own code.
-redemption_at : I64 -> Try(Str, _)
+redemption_at : Timestamp -> Try(Str, _)
 redemption_at = |now| zoes_redemption({
 	invites: [invite_made({ n: 1, by: "2" })],
 	code: 1,
@@ -322,7 +332,7 @@ spent_invite : HumanInvite
 spent_invite =
 	match HumanInvite.find_redeemable(
 		[invite_made({ n: 1, by: "2" })],
-		{ hash: hash(1), now: 1000 },
+		{ hash: hash(1), now: Timestamp.at_second(1000) },
 	) {
 		Ok(redeemable) => HumanInvite.redeem(redeemable, zoe).spent
 		Err(_) => crash "HumanInvitesSpec: Zoe's invite 1 is redeemable at 1000"
@@ -334,7 +344,7 @@ invites_page : {
 	invites : List(HumanInvite),
 	shown : [NoLink, Link({ human : Users.User, link : Str })],
 	problem : [NoProblem, Problem(Str)],
-	now : I64,
+	now : Timestamp,
 } -> Str
 invites_page = |{ invites, shown, problem, now }|
 	Str.from_utf8_lossy(
@@ -349,7 +359,7 @@ invites_page = |{ invites, shown, problem, now }|
 	)
 
 ## The invites page at `now` of Zoe and `invite` alone, as a test reads it.
-page_of_invite : HumanInvite, I64 -> Str
+page_of_invite : HumanInvite, Timestamp -> Str
 page_of_invite = |invite, now|
 	invites_page({
 		invites: [invite],
@@ -361,19 +371,22 @@ page_of_invite = |invite, now|
 # An invite on the page: open to its last second, expired from the next, used
 # once spent, each naming who made it.
 expect
-	page_of_invite(invite_made({ n: 1, by: "2" }), 1000 + HumanInvite.lifetime_seconds - 1)
+	page_of_invite(invite_made({ n: 1, by: "2" }), last_open_second)
 		.contains("<p>Open until 1970-01-08, made by Apoorva.</p>")
 expect
-	page_of_invite(invite_made({ n: 1, by: "2" }), 1000 + HumanInvite.lifetime_seconds)
+	page_of_invite(invite_made({ n: 1, by: "2" }), invite_expiry)
 		.contains("<p>Expired on 1970-01-08, made by Apoorva.</p>")
-expect page_of_invite(spent_invite, 1000).contains("<p>Used, made by Apoorva.</p>")
+expect page_of_invite(
+	spent_invite,
+	Timestamp.at_second(1000),
+).contains("<p>Used, made by Apoorva.</p>")
 # A maker the chat doesn't hold is named by their id.
 expect
-	page_of_invite(invite_made({ n: 1, by: "9" }), 1000)
+	page_of_invite(invite_made({ n: 1, by: "9" }), Timestamp.at_second(1000))
 		.contains("<p>Open until 1970-01-08, made by user 9.</p>")
 # The human's section: their name, and the button that invites them again.
 expect {
-	page = page_of_invite(spent_invite, 1000)
+	page = page_of_invite(spent_invite, Timestamp.at_second(1000))
 	page.contains("<h1>Zoe</h1>")
 		and page.contains("<form method=\"post\" action=\"/invites/4/again\"><button>Invite Zoe again</button></form>")
 }
@@ -383,28 +396,28 @@ expect {
 		invites: [],
 		shown: Link({ human: zoe.user(), link: "http://x/join#4-a" }),
 		problem: Problem("The <name> is taken."),
-		now: 1000,
+		now: Timestamp.at_second(1000),
 	})
 	page.contains("<p>The &lt;name&gt; is taken.</p>\n<p>Send this link to Zoe.")
 		and page.contains("<p class=\"invite-code\">http://x/join#4-a</p>\n<p>Invite someone by name.")
 }
 expect {
-	page = page_of_invite(spent_invite, 1000)
+	page = page_of_invite(spent_invite, Timestamp.at_second(1000))
 	!page.contains("invite-code") and !page.contains("Send this link")
 }
 
 # A redemption: spent, admitting its human; at its making, and just before
 # its expiry; refused at its expiry, before its making, and by any other
 # hash.
-expect redemption_at(1000) == Ok("spent, admits 4")
-expect redemption_at(1000 + HumanInvite.lifetime_seconds - 1) == Ok("spent, admits 4")
-expect redemption_at(1000 + HumanInvite.lifetime_seconds) == Err(Expired)
-expect redemption_at(999) == Err(Expired)
-expect HumanInvite.lifetime_seconds == 604800
+expect redemption_at(Timestamp.at_second(1000)) == Ok("spent, admits 4")
+expect redemption_at(last_open_second) == Ok("spent, admits 4")
+expect redemption_at(invite_expiry) == Err(Expired)
+expect redemption_at(Timestamp.at_second(999)) == Err(Expired)
+expect HumanInvite.lifetime_seconds == Seconds.of(604800)
 expect zoes_redemption({
 	invites: [invite_made({ n: 1, by: "2" })],
 	code: 2,
-	now: 1000,
+	now: Timestamp.at_second(1000),
 }) == Err(NoSuchInvite)
 # Redeemed once: the spent invite redeems no more, and another of hers still
 # does.
@@ -412,21 +425,21 @@ expect state_word(spent_invite) == "spent"
 expect zoes_redemption({
 	invites: [spent_invite],
 	code: 1,
-	now: 1000,
+	now: Timestamp.at_second(1000),
 }) == Err(Spent)
 expect
 	zoes_redemption({
 		invites: [spent_invite, invite_made({ n: 2, by: "2" })],
 		code: 2,
-		now: 1000,
+		now: Timestamp.at_second(1000),
 	})
 		== Ok("spent, admits 4")
 # Open: live, from its making to just before its expiry.
-expect invite_made({ n: 1, by: "2" }).is_open(1000)
-expect invite_made({ n: 1, by: "2" }).is_open(1000 + HumanInvite.lifetime_seconds - 1)
-expect !invite_made({ n: 1, by: "2" }).is_open(1000 + HumanInvite.lifetime_seconds)
-expect !invite_made({ n: 1, by: "2" }).is_open(999)
-expect !spent_invite.is_open(1000)
+expect invite_made({ n: 1, by: "2" }).is_open(Timestamp.at_second(1000))
+expect invite_made({ n: 1, by: "2" }).is_open(last_open_second)
+expect !invite_made({ n: 1, by: "2" }).is_open(invite_expiry)
+expect !invite_made({ n: 1, by: "2" }).is_open(Timestamp.at_second(999))
+expect !spent_invite.is_open(Timestamp.at_second(1000))
 
 # The open invites a human made: theirs, live and unexpired, among every
 # human's.
@@ -436,15 +449,15 @@ expect HumanInvites.open_count(
 		invite_made({ n: 2, by: "2" }),
 		invite_made({ n: 3, by: "1" }),
 	],
-	{ by: id("2"), now: 1000 },
+	{ by: id("2"), now: Timestamp.at_second(1000) },
 ) == 2
 expect HumanInvites.open_count(
 	[invite_made({ n: 1, by: "2" })],
-	{ by: id("2"), now: 1000 + HumanInvite.lifetime_seconds },
+	{ by: id("2"), now: invite_expiry },
 ) == 0
 expect HumanInvites.open_count(
 	[spent_invite, invite_made({ n: 2, by: "2" })],
-	{ by: id("2"), now: 1000 },
+	{ by: id("2"), now: Timestamp.at_second(1000) },
 ) == 1
 
 ## A code for the user `user`, carrying the secret of every byte 1, among
@@ -458,7 +471,7 @@ join_code = |{ user, invites, code }| {
 	token: SecretToken.of({ user: id(user), secret: secret(1) }),
 	invites,
 	hash: hash(code),
-	now: 1000,
+	now: Timestamp.at_second(1000),
 }
 
 ## The invitee a code for the user `user` finds among Zoe's one invite, by

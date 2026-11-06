@@ -71,7 +71,9 @@ expect token_text({ id: "7", byte: 0x0a }) == "7-${"0a".repeat(32)}"
 expect SecretToken.from_str(
 	token_text({ id: "65535", byte: 0xff }),
 ).map_ok(SecretToken.to_str) == Ok(token_text({ id: "65535", byte: 0xff }))
-expect SecretToken.from_str(token_text({ id: "7", byte: 1 })).map_ok(|t| t.user().to_str()) == Ok("7")
+expect SecretToken.from_str(
+	token_text({ id: "7", byte: 1 }),
+).map_ok(|t| t.user().to_str()) == Ok("7")
 # No `-`, a bad id, a bad secret, a second `-`, or a space: refused.
 expect
 	[

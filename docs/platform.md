@@ -66,7 +66,7 @@ The folder's names, sorted bytewise, never one starting with `.`. A name that is
 ## The clock and randomness
 
 **`current_utc_seconds_since_epoch! : {} => I64`**
-Whole seconds since 1970-01-01T00:00:00Z, from the real-time clock. `DateTime.from_seconds_since_epoch` turns this into a message's time. *Why:* the server, not the client, dates every message.
+Whole seconds since 1970-01-01T00:00:00Z, from the real-time clock. `Timestamp.at_second` makes this a moment, and `DateTime.from_timestamp` turns that into a message's time. *Why:* the server, not the client, dates every message.
 
 **`fill_with_random_bytes! : U64 => List(U8)`**
 That many bytes from the OS's secure source, at most 1,024. Asking for more, or the source failing, stops the server: the first is a bug in the app, and in the second case nothing safe can be handed back. *Why:* an agent's key and an invite's code are 32 of them, and an uploaded image's name 16.

@@ -16,6 +16,7 @@
 ## transcript has a page and a stream, both empty, so a reader can write its
 ## first message there, and its `/raw` is a 404. Every route words its
 ## refusals through `refusal_notice`.
+import Timestamp
 import pf.Http
 import AgentStream
 import Author
@@ -132,7 +133,7 @@ ConversationRoute :: [].{
 		key : ConversationKey,
 		acting : SignedIn,
 		users : Users,
-		now : I64,
+		now : Timestamp,
 		body : List(U8),
 		agents : List(UserId),
 	}
@@ -270,7 +271,7 @@ conversation_refusal = |text| { status: 409, words: { title: "Message refused", 
 ## `markdown`, by the acting user, at `now`; or why it is refused.
 unnumbered_message_from_post : {
 	acting : SignedIn,
-	now : I64,
+	now : Timestamp,
 	body : List(U8),
 } -> Try(
 	Message.Unnumbered(Author),
@@ -286,7 +287,7 @@ unnumbered_message_from_post : {
 unnumbered_message_from_post = |{ acting, now, body }| {
 	markdown_text = UrlEncodedForm.markdown_field(body)?
 	markdown = markdown_text.markdown()?
-	time = DateTime.from_seconds_since_epoch(now) ? |OutOfRange| ClockOutOfRange
+	time = DateTime.from_timestamp(now) ? |OutOfRange| ClockOutOfRange
 	Ok({ payload: { author: acting.user().author(), markdown }, time })
 }
 
@@ -307,7 +308,7 @@ UnnumberedMessageText : {
 }
 
 ## The unnumbered message posted as `body` at `now`, as a test reads it.
-unnumbered_message_at : I64, Str -> Try(UnnumberedMessageText, _)
+unnumbered_message_at : Timestamp, Str -> Try(UnnumberedMessageText, _)
 unnumbered_message_at = |now, body|
 	unnumbered_message_from_post({ acting: steve, now, body: body.to_utf8() }).map_ok(
 		|a| {
@@ -319,7 +320,10 @@ unnumbered_message_at = |now, body|
 
 ## The unnumbered message posted as `body` at 2026-11-02T19:11:32Z.
 unnumbered_message_at_the_sample_time : Str -> Try(UnnumberedMessageText, _)
-unnumbered_message_at_the_sample_time = |body| unnumbered_message_at(1793646692, body)
+unnumbered_message_at_the_sample_time = |body| unnumbered_message_at(
+	Timestamp.at_second(1793646692),
+	body,
+)
 
 ## `plans` in Steve's own DM.
 plans_key : ConversationKey
@@ -341,10 +345,13 @@ expect unnumbered_message_at_the_sample_time("markdown=a&markdown=b") == Err(Rep
 expect unnumbered_message_at_the_sample_time("markdown=%G0") == Err(BadEscape)
 expect unnumbered_message_at_the_sample_time("markdown=%FF") == Err(NotUtf8)
 expect unnumbered_message_at_the_sample_time("markdown=+") == Err(Blank)
-expect unnumbered_message_at(-1, "markdown=x").map_ok(|_| {}) == Err(ClockOutOfRange)
+expect unnumbered_message_at(
+	Timestamp.at_second(-1),
+	"markdown=x",
+).map_ok(|_| {}) == Err(ClockOutOfRange)
 # The clock at its first second, the edge of its range: a message then.
 expect
-	unnumbered_message_at(0, "markdown=x")
+	unnumbered_message_at(Timestamp.at_second(0), "markdown=x")
 		== Ok({
 			author: "Steve",
 			time: "1970-01-01T00:00:00Z",

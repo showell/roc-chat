@@ -32,6 +32,7 @@
 ## sign-in files hold now (`Session.Material`), and `Session.admit` decides.
 ## So rewriting or removing any of those files ends every session of its
 ## human. `SignedIn.by_session` is its one door.
+import Timestamp
 import pf.Host
 import pf.Http
 import FactFile
@@ -62,7 +63,7 @@ SignInRoute :: [].{
 	sign_in_by_session! : {
 		cookie : List(U8),
 		users : Users,
-		now : I64,
+		now : Timestamp,
 	} => Try(
 		SignedIn,
 		[
@@ -110,7 +111,7 @@ SignInRoute :: [].{
 		viewer : SignedIn.Actor,
 		users : Users,
 		body : List(U8),
-		now : I64,
+		now : Timestamp,
 		github : Page.GitHubOffer,
 	} => Http.Response
 	sign_in! = |{ viewer, users, body, now, github }| {
@@ -155,7 +156,7 @@ SignInRoute :: [].{
 		password_hash : List(U8),
 		next : Html.SitePath,
 	},
-	I64 => Http.Response
+	Timestamp => Http.Response
 	start_session_by_invite! = |{ admission, password_hash, next }, now|
 		match load_material_with_password!({ id: admission.human().id(), password_hash }) {
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
@@ -171,7 +172,7 @@ SignInRoute :: [].{
 	## cookie. The human's first GitHub sign-in writes their
 	## `github-session-secret`. A 500 when their files can't be read or
 	## written. Never stored.
-	start_session_by_github! : GitHubSignIn.Admission, I64 => Http.Response
+	start_session_by_github! : GitHubSignIn.Admission, Timestamp => Http.Response
 	start_session_by_github! = |admission, now| {
 		human = admission.human()
 		started =
@@ -203,7 +204,7 @@ SignInRoute :: [].{
 	## secret is made anew even if an old one lies there, so a session from an
 	## earlier binding can't come back. A 500 when a file can't be written.
 	## Never stored.
-	start_session_by_github_link! : GitHubSignIn.Linked, I64 => Http.Response
+	start_session_by_github_link! : GitHubSignIn.Linked, Timestamp => Http.Response
 	start_session_by_github_link! = |linked, now|
 		match write_github_link!(linked) {
 			Ok({}) => SignInRoute.start_session_by_github!(linked.admission(), now)
@@ -370,7 +371,7 @@ write_github_link! = |linked| {
 sign_session_cookie! : {
 	human : Users.Human,
 	material : Session.Material,
-	now : I64,
+	now : Timestamp,
 } => Http.Header
 sign_session_cookie! = |{ human, material, now }| {
 	mac = Host.hmac_sha256_with_server_secret!(

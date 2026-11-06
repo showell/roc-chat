@@ -29,6 +29,7 @@
 ## GitHub's token never reach this module: the host keeps them, and answers
 ## only GitHub's id and login (`Host.github_identity_for_code!`). No answer
 ## here may be kept by a browser or a proxy.
+import Timestamp
 import pf.Host
 import pf.Http
 import Ascii
@@ -83,7 +84,7 @@ GitHubRoute :: [].{
 		viewer : SignedIn.Actor,
 		query : List(U8),
 		origin : Str,
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	serve_start! = |{ viewer, query, origin, now }| {
 		settings = Host.github_sign_in_settings!({})
@@ -113,7 +114,7 @@ GitHubRoute :: [].{
 	serve_link_start! : {
 		viewer : SignedIn.Actor,
 		origin : Str,
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	serve_link_start! = |{ viewer, origin, now }| {
 		settings = Host.github_sign_in_settings!({})
@@ -146,7 +147,7 @@ GitHubRoute :: [].{
 		directory : Directory,
 		query : List(U8),
 		headers : List(Http.Header),
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	serve_return! = |{ viewer, directory, query, headers, now }| {
 		settings = Host.github_sign_in_settings!({})
@@ -187,7 +188,7 @@ GitHubRoute :: [].{
 		directory : Directory,
 		body : List(U8),
 		headers : List(Http.Header),
-		now : I64,
+		now : Timestamp,
 	} => Http.Response
 	serve_sign_up! = |request| {
 		settings = Host.github_sign_in_settings!({})
@@ -236,7 +237,7 @@ send_to_github! : {
 	authorize_base : List(U8),
 	client_id : List(U8),
 	origin : Str,
-	now : I64,
+	now : Timestamp,
 	next : Html.SitePath,
 	errand : GitHubState.Errand,
 } => Http.Response
@@ -351,7 +352,7 @@ resolve! : {
 	viewer : SignedIn.Actor,
 	query : List(U8),
 	headers : List(Http.Header),
-	now : I64,
+	now : Timestamp,
 } => Try(
 	[
 		Known(GitHubSignIn.Admission),
@@ -378,7 +379,7 @@ resolve! = |{ users, viewer, query, headers, now }| {
 ask_for_name! : {
 	new_human : GitHubSignIn.NewHuman,
 	directory : Directory,
-	now : I64,
+	now : Timestamp,
 } => Http.Response
 ask_for_name! = |{ new_human, directory, now }| {
 	sign_up = new_human.sign_up(now)
@@ -403,7 +404,7 @@ sign_up! : {
 	directory : Directory,
 	body : List(U8),
 	headers : List(Http.Header),
-	now : I64,
+	now : Timestamp,
 } => Try(GitHubSignIn.Admission, _)
 sign_up! = |{ viewer, directory, body, headers, now }| {
 	resumed = GitHubSignIn.SignUpResumed.resume({

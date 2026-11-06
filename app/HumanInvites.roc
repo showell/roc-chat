@@ -34,6 +34,7 @@ import Password
 import SecretHash
 import SecretToken
 import SignedIn
+import Timestamp
 import UrlEncodedForm
 import UserId
 import Users
@@ -112,7 +113,7 @@ HumanInvites :: [].{
 	open_most = 10
 
 	## How many of `invites` the human `by` made that are open at `now`.
-	open_count : List(HumanInvite), { by : UserId, now : I64 } -> U64
+	open_count : List(HumanInvite), { by : UserId, now : Timestamp } -> U64
 	open_count = |
 		invites,
 		{ by, now },
@@ -278,7 +279,7 @@ HumanInvites :: [].{
 		token : SecretToken,
 		invites : List(HumanInvite),
 		hash : SecretHash,
-		now : I64,
+		now : Timestamp,
 	}
 
 	## The human the code `token` names, whose secret's hash is `hash`, and

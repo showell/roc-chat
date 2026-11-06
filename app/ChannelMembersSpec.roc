@@ -13,6 +13,7 @@ import Route
 import Sample
 import SecretHash
 import SignedIn
+import Timestamp
 import UserId
 
 ChannelMembersSpec :: [].{}
@@ -45,14 +46,14 @@ cc_by_key = {
 	key = AgentKey.mint({
 		id: AgentKey.Id.from_str("1") ?? crash "ChannelMembersSpec: a key's number",
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 		scope: KeyScope.of({ read: Everywhere, post: Everywhere }),
 	})
 	admitted = AgentKey.admit({
 		user: Sample.user("CC"),
 		keys: [key],
 		hash,
-		now: 0,
+		now: Timestamp.at_second(0),
 	}) ?? crash "ChannelMembersSpec: CC's key admits"
 	SignedIn.by_api_key(admitted)
 }
