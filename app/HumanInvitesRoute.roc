@@ -35,6 +35,7 @@ import AgentsRoute
 import Directory
 import FileSystem
 import FirstPage
+import GitHubRoute
 import Html
 import HttpAnswer
 import HumanInvite
@@ -246,6 +247,7 @@ load_invites_page! = |{ acting, directory, shown, problem, now }| {
 			viewer: acting,
 			users: directory.users(),
 			invited: $invited,
+			github: GitHubRoute.load_offer!({}),
 			shown,
 			problem,
 			now,

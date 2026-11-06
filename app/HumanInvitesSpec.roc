@@ -11,6 +11,7 @@ import Directory
 import HumanInvite
 import HumanInvites
 import KeyScope
+import Page
 import Password
 import PeoplePages
 import Route
@@ -143,10 +144,12 @@ with_zoe_and_bob = {
 		.directory
 }
 
+bob_user : Users.User
+bob_user = with_zoe_and_bob.users().user(id("5")) ?? crash "HumanInvitesSpec: Bob is 5"
+
 ## Bob, by his session.
 bob : SignedIn
-bob =
-	SignedIn.dangerously_assume(with_zoe_and_bob.users().user(id("5")) ?? crash "HumanInvitesSpec: Bob is 5")
+bob = SignedIn.dangerously_assume(bob_user)
 
 ## Zoe invited again by `acting` with `open` open invites, her inviter
 ## `inviter`: the human the invite is for and who makes it, or why not.
@@ -338,68 +341,178 @@ spent_invite =
 		Err(_) => crash "HumanInvitesSpec: Zoe's invite 1 is redeemable at 1000"
 	}
 
-## The invites page for Steve at `now`, of Zoe and `invites`, with `shown` and
-## `problem`, as a test reads it.
+## The invites page for Steve at `now`, of `invited`, on a server that doesn't
+## offer GitHub, with `shown` and `problem`, as a test reads it.
 invites_page : {
-	invites : List(HumanInvite),
+	invited : List(PeoplePages.InvitedHuman),
 	shown : [NoLink, Link({ human : Users.User, link : Str })],
 	problem : [NoProblem, Problem(Str)],
 	now : Timestamp,
 } -> Str
-invites_page = |{ invites, shown, problem, now }|
+invites_page = |{ invited, shown, problem, now }|
 	Str.from_utf8_lossy(
 		PeoplePages.invites({
 			viewer: steve,
 			users: with_zoe_and_bob.users(),
-			invited: [{ human: zoe.user(), invites }],
+			invited,
+			github: NotOffered,
 			shown,
 			problem,
 			now,
 		}).to_utf8(),
 	)
 
-## The invites page at `now` of Zoe and `invite` alone, as a test reads it.
-page_of_invite : HumanInvite, Timestamp -> Str
-page_of_invite = |invite, now|
+## The invites page at `now` of `invited` alone, as a test reads it.
+page_of_humans : List(PeoplePages.InvitedHuman), Timestamp -> Str
+page_of_humans = |invited, now|
 	invites_page({
-		invites: [invite],
+		invited,
 		shown: NoLink,
 		problem: NoProblem,
 		now,
 	})
 
+## The invites page at `now` of Zoe and `invite` alone, as a test reads it.
+page_of_invite : HumanInvite, Timestamp -> Str
+page_of_invite = |invite, now| page_of_humans([{ human: zoe.user(), invites: [invite] }], now)
+
+## The part of `page` after `heading`, empty when the page has no such heading.
+after_heading : Str, Str -> Str
+after_heading = |page, heading|
+	match page.split_on("<h1>${heading}</h1>") {
+		[_, after] => after
+		_ => ""
+	}
+
+## The list of open invites on `page`, up to the past invites if there are any.
+open_part : Str -> Str
+open_part = |page| {
+	open_and_past = after_heading(page, "Open invites")
+	match open_and_past.split_on("<h1>Past invites</h1>") {
+		[open_alone, _] => open_alone
+		_ => open_and_past
+	}
+}
+
+## The list of past invites on `page`.
+past_part : Str -> Str
+past_part = |page| after_heading(page, "Past invites")
+
+## Zoe's button that invites her again, as the page writes it.
+zoe_again_button : Str
+zoe_again_button = "<form method=\"post\" action=\"/invites/4/again\"><button>Invite Zoe again</button></form>"
+
 # An invite on the page: open to its last second, expired from the next, used
 # once spent, each naming who made it.
 expect
-	page_of_invite(invite_made({ n: 1, by: "2" }), last_open_second)
-		.contains("<p>Open until 1970-01-08, made by Apoorva.</p>")
+	open_part(page_of_invite(invite_made({ n: 1, by: "2" }), last_open_second))
+		.contains("<p>Zoe: open until 1970-01-08, made by Apoorva.</p>")
 expect
-	page_of_invite(invite_made({ n: 1, by: "2" }), invite_expiry)
-		.contains("<p>Expired on 1970-01-08, made by Apoorva.</p>")
-expect page_of_invite(
-	spent_invite,
-	Timestamp.at_second(1000),
-).contains("<p>Used, made by Apoorva.</p>")
+	past_part(page_of_invite(invite_made({ n: 1, by: "2" }), invite_expiry))
+		.contains("<p>Zoe: expired on 1970-01-08, made by Apoorva.</p>")
+expect
+	past_part(page_of_invite(spent_invite, Timestamp.at_second(1000)))
+		.contains("<p>Zoe: used, made by Apoorva.</p>")
 # A maker the chat doesn't hold is named by their id.
 expect
 	page_of_invite(invite_made({ n: 1, by: "9" }), Timestamp.at_second(1000))
-		.contains("<p>Open until 1970-01-08, made by user 9.</p>")
-# The human's section: their name, and the button that invites them again.
+		.contains("<p>Zoe: open until 1970-01-08, made by user 9.</p>")
+# No one invited: the page says nothing is open, and has no past invites.
+expect {
+	page = page_of_humans([], Timestamp.at_second(1000))
+	open_part(page).contains("<p>No open invites.</p>")
+		and !page.contains("Past invites")
+		and !page.contains("A link is shown only once")
+}
+# An invite open: no word that nothing is open, what a lost link needs, and
+# no past invites.
+expect {
+	page = page_of_invite(invite_made({ n: 1, by: "2" }), Timestamp.at_second(1000))
+	open_part(page).contains("<p>A link is shown only once.")
+		and open_part(page).contains(zoe_again_button)
+		and !page.contains("No open invites.")
+		and !page.contains("Past invites")
+}
+# Only past invites: nothing is open, and the button and what it does are
+# under the past invites.
 expect {
 	page = page_of_invite(spent_invite, Timestamp.at_second(1000))
-	page.contains("<h1>Zoe</h1>")
-		and page.contains("<form method=\"post\" action=\"/invites/4/again\"><button>Invite Zoe again</button></form>")
+	open_part(page).contains("<p>No open invites.</p>")
+		and !open_part(page).contains(zoe_again_button)
+		and past_part(page).contains("the link sets a new password.</p>")
+		and past_part(page).contains(zoe_again_button)
 }
+# Several humans, with one button each, first with invites open and then once
+# they expire. Zoe's two open invites are a line each, and her spent one isn't
+# shown while she has an open one.
+expect {
+	made_at = Timestamp.at_second(1000)
+	bobs_invite = invite_made({ n: 1, by: "1" })
+	zoes = [spent_invite, invite_made({ n: 2, by: "2" }), invite_made({ n: 3, by: "1" })]
+	page = page_of_humans(
+		[{ human: zoe.user(), invites: zoes }, { human: bob_user, invites: [bobs_invite] }],
+		made_at.plus(Seconds.of(1)),
+	)
+	later = page_of_humans(
+		[{ human: zoe.user(), invites: zoes }, { human: bob_user, invites: [bobs_invite] }],
+		invite_expiry,
+	)
+	open_part(page).contains("<p>Zoe: open until 1970-01-08, made by Apoorva.</p>\n<p>Zoe: open until 1970-01-08, made by Steve.</p>\n${zoe_again_button}")
+		and !page.contains("Zoe: used")
+		and open_part(page).contains("<p>Bob: open until 1970-01-08, made by Steve.</p>")
+		and !page.contains("Past invites")
+		and open_part(later).contains("<p>No open invites.</p>")
+		and past_part(later).contains("<p>Zoe: used, made by Apoorva.</p>\n<p>Zoe: expired on 1970-01-08, made by Apoorva.</p>\n<p>Zoe: expired on 1970-01-08, made by Steve.</p>\n${zoe_again_button}")
+		and past_part(later).contains("<p>Bob: expired on 1970-01-08, made by Steve.</p>")
+}
+# One human open and another past: each in their own list.
+expect {
+	page = page_of_humans(
+		[
+			{ human: zoe.user(), invites: [spent_invite] },
+			{ human: bob_user, invites: [invite_made({ n: 1, by: "1" })] },
+		],
+		Timestamp.at_second(1000),
+	)
+	open_part(page).contains("Bob: open")
+		and !open_part(page).contains("Zoe:")
+		and past_part(page).contains("Zoe: used")
+		and !past_part(page).contains("Bob:")
+}
+# A human whose invite was never written is past, and says so.
+expect
+	past_part(page_of_humans([{ human: zoe.user(), invites: [] }], Timestamp.at_second(1000)))
+		.contains("<p>Zoe: no invite yet.</p>\n${zoe_again_button}")
+
+## The invites page at 1000 of no one, on a server whose offer is `github`.
+page_offering : Page.GitHubOffer -> Str
+page_offering = |github|
+	Str.from_utf8_lossy(
+		PeoplePages.invites({
+			viewer: steve,
+			users: with_zoe_and_bob.users(),
+			invited: [],
+			github,
+			shown: NoLink,
+			problem: NoProblem,
+			now: Timestamp.at_second(1000),
+		}).to_utf8(),
+	)
+
+# What an invite is for mentions GitHub only where GitHub signs people up.
+expect page_offering(Offered).contains("<p>An invite brings in someone who doesn&#39;t use GitHub.")
+expect page_offering(Offered).contains("Anyone with GitHub can sign up on their own, with no invite.</p>")
+expect !page_offering(NotOffered).contains("GitHub")
 # A link is shown and a problem said only when there is one, each before the form.
 expect {
 	page = invites_page({
-		invites: [],
+		invited: [],
 		shown: Link({ human: zoe.user(), link: "http://x/join#4-a" }),
 		problem: Problem("The <name> is taken."),
 		now: Timestamp.at_second(1000),
 	})
 	page.contains("<p>The &lt;name&gt; is taken.</p>\n<p>Send this link to Zoe.")
-		and page.contains("<p class=\"invite-code\">http://x/join#4-a</p>\n<p>Invite someone by name.")
+		and page.contains("<p class=\"invite-code\">http://x/join#4-a</p>\n<p>An invite brings someone")
 }
 expect {
 	page = page_of_invite(spent_invite, Timestamp.at_second(1000))

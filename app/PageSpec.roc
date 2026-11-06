@@ -41,6 +41,10 @@ foot : Str -> Str
 foot = |url|
 	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n"
 
+## How the top bar's right side opens: the links to Browse and the invites page.
+top_links : Str
+top_links = "<div class=\"top-user\"><a href=\"/chat\">Browse</a> · <a href=\"/invites\">Invites</a> · "
+
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
 ## pane, naming its stream, the `count` of messages it shows and the
@@ -52,7 +56,7 @@ plans_page : {
 	messages : Str,
 } -> Str
 plans_page = |{ viewer, viewer_id, count, messages }|
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str
@@ -142,7 +146,7 @@ expect login_for(Anonymous, NoProblem) == login_page("")
 expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;match&gt;.</p>\n")
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
-		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 # With GitHub's settings, a link below the form, going on to `next`.
 expect
 	Str.from_utf8_lossy(
@@ -173,12 +177,17 @@ expect {
 expect
 	Page.github_sign_up({ name: NoName, problem: Problem("The <name> is taken.") }).to_utf8()
 		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<button>Join</button></form>\n".to_utf8()
-# Every page of someone signed in has the link to Browse, and no page of no
-# one's does.
+# Every page of someone signed in has the links to Browse and the invites
+# page, and no page of no one's has either.
 expect {
 	steve = SignedIn.dangerously_assume(Sample.user("Steve"))
-	link = "<a href=\"/chat\">Browse</a>"
 	[
+		Page.conversation({
+			conversation: Conversation.empty(Sample.plans),
+			key: plans_key,
+			viewer: steve,
+			users: Sample.directory.users(),
+		}),
 		Page.agents({
 			viewer: steve,
 			agents: [],
@@ -190,6 +199,7 @@ expect {
 			viewer: steve,
 			users: Sample.directory.users(),
 			invited: [],
+			github: NotOffered,
 			shown: NoLink,
 			problem: NoProblem,
 			now: Timestamp.at_second(0),
@@ -197,27 +207,39 @@ expect {
 	].all(
 		|page| {
 			text = Str.from_utf8_lossy(page.to_utf8())
-			text.contains(link) and !text.contains("/join") and !text.contains("Sign in")
+			text.contains(top_links) and !text.contains("/join") and !text.contains("Sign in")
 		},
 	)
 		and [
 			Page.join,
 			Page.notice({ title: "t", text: "x" }),
 			Page.github_sign_up({ name: NoName, problem: NoProblem }),
-		].all(|page| !Str.from_utf8_lossy(page.to_utf8()).contains(link))
+			Page.login({
+				viewer: Anonymous,
+				next: Html.SitePath.from_str("/chat") ?? crash "PageSpec: a site path",
+				problem: NoProblem,
+				github: Offered,
+			}),
+		].all(
+			|page| {
+				text = Str.from_utf8_lossy(page.to_utf8())
+				!text.contains("<a href=\"/chat\">Browse</a>") and !text.contains("/invites")
+			},
+		)
 }
-# The invites page of someone with no one to invite again: the words and the
-# form alone.
+# The invites page of someone with no one to invite again: what an invite is
+# for, the form, and that nothing is open.
 expect
 	PeoplePages.invites({
 		viewer: SignedIn.dangerously_assume(Sample.user("Steve")),
 		users: Sample.directory.users(),
 		invited: [],
+		github: NotOffered,
 		shown: NoLink,
 		problem: NoProblem,
 		now: Timestamp.at_second(0),
 	}).to_utf8()
-		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>Invite someone by name. You get a link to send them, and with it they join the chat.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form></div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
+		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>An invite brings someone into the chat. They choose a password, and sign in with their name and that password.</p>\n<p>Write the name you know them by, and you get a link to send them. The link works once, for seven days. They can keep the name or choose another.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
 	Page.refusal("it <is> not UTF-8").to_utf8()

@@ -3,8 +3,8 @@
 // page's frame, which the server sends as structure and class names only, and
 // adds the theme toggle.
 //
-// The frame is a top bar with the page's title on the left and the Browse link and the
-// viewer's name on the right, then the page's layout filling the rest of the window. Only what
+// The frame is a top bar with the page's title on the left and the Browse and Invites links and
+// the viewer's name on the right, then the page's layout filling the rest of the window. Only what
 // the layout holds scrolls. On a conversation, feed.js styles the messages, and compose.js the
 // compose box and how the two panes sit side by side; on any other page, panel.js styles the panel.
 //

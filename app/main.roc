@@ -67,7 +67,6 @@ import Html
 import HttpAnswer
 import Name
 import Page
-import PeoplePages
 import Place
 import RequestHeader
 import RequestOrigin
@@ -577,7 +576,7 @@ anonymous_refusal = |asked|
 		CreateChannel => unauthorized_refusal
 		AddChannelMember(_) => unauthorized_refusal
 		RemoveChannelMember(_) => unauthorized_refusal
-		ShowInvites => SignInRoute.login_redirect(site_path_of(PeoplePages.invites_path))
+		ShowInvites => SignInRoute.login_redirect(site_path_of(Page.invites_path))
 		InviteHuman => unauthorized_refusal
 		InviteHumanAgain(_) => unauthorized_refusal
 		AppendToConversation(_) => unauthorized_refusal

@@ -93,7 +93,7 @@ steve_and_apoorva = {
 ## parts.
 page_head : Str
 page_head =
-	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>Browse</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<header class=\"top-bar\"><span class=\"top-title\">Browse</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n"
+	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>Browse</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<header class=\"top-bar\"><span class=\"top-title\">Browse</span> <div class=\"top-user\"><a href=\"/chat\">Browse</a> · <a href=\"/invites\">Invites</a> · <span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n"
 
 ## The link to the invites page, which every Browse page holds.
 invite_link : Str

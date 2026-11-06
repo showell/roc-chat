@@ -8,7 +8,8 @@
 ## page reads top to bottom without them, and its form still posts.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
-## title, then the link to Browse and the viewer's name. Under it, a page that
+## title, then the links to Browse and the invites page, and the viewer's name.
+## Under it, a page that
 ## another module builds (`signed_in_page`) holds its parts in a panel, and
 ## ends with app/chrome.js, which styles the top bar, and app/panel.js, which
 ## draws the panel as a card.
@@ -80,6 +81,10 @@ Page :: [].{
 		TopUser,
 		Viewer,
 	]
+
+	## Where the invites page is, which the top bar links to.
+	invites_path : Str
+	invites_path = "/invites"
 
 	## The class attribute for `class`, its one spelling.
 	class : Page.Class -> Html.Attribute
@@ -868,8 +873,10 @@ time_text = |moment|
 		Err(OutOfRange) => "at ${moment.to_str()} seconds"
 	}
 
-## The top bar: `title` on the left, and on the right the link to Browse and
-## the name of `viewer`, the user viewing the page.
+## The top bar: `title` on the left, and on the right the links to Browse and
+## the invites page, and the name of `viewer`, the user viewing the page. The
+## invites link is here so that a human in a conversation reaches invites in
+## one step.
 top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
 top_bar = |{ title, viewer }|
 	Html.element({
@@ -890,6 +897,12 @@ top_bar = |{ title, viewer }|
 						name: A,
 						attrs: [Link(site_path(ConversationKey.browse_path))],
 						inner: Escape.text("Browse"),
+					}),
+					Escape.text(" · "),
+					Html.element({
+						name: A,
+						attrs: [Link(site_path(Page.invites_path))],
+						inner: Escape.text("Invites"),
 					}),
 					Escape.text(" · "),
 					Html.element({

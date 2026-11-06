@@ -10,7 +10,6 @@ import ConversationKey
 import Directory
 import Dm
 import Page
-import PeoplePages
 import Place
 import SignedIn
 import Topic
@@ -83,7 +82,7 @@ Browse :: [].{
 
 ## The link to the invites page.
 invite_link : TrustedHtml
-invite_link = Page.link_paragraph({ path: PeoplePages.invites_path, text: "Invite someone" })
+invite_link = Page.link_paragraph({ path: Page.invites_path, text: "Invite someone" })
 
 ## The DM between `reader` and `other`, shown by `other`'s name.
 dm_listed : { reader : Users.Human, other : Users.Human } -> Browse.ListedPlace

@@ -175,7 +175,8 @@
 //!
 //! Then the human invites (`inviteSteps`):
 //!
-//! 48h. GET /invites: the page's card and a form inviting someone by name;
+//! 48h. GET /invites: the page's card and a form inviting someone by name,
+//!      saying nothing is open, and no word of GitHub on this server;
 //! 48i. invite Deb: the link `http://localhost:<port>/join#<code>` shown
 //!      once, never stored; her account holding the name at once,
 //!      `inviter` Steve, no password; the invite live, by Steve, for seven
@@ -289,9 +290,10 @@
 //!  52. Browse for a stranger: the sign-in page, and back after; a new topic: 401;
 //!  53. Browse lists a human's DMs and channels, and no other's;
 //! 53a. Browse links to /invites for the owner and any other human, the link
-//!      leading to the form; the sign-in page and a conversation's don't, and
-//!      a key reaches neither Browse nor /invites;
-//!  54. every signed-in page has the Browse link, and none a sign-up, join or
+//!      leading to the form; a conversation's top bar links there too, for
+//!      each of them; the sign-in page doesn't, and a key reaches neither
+//!      Browse nor /invites;
+//!  54. every signed-in page has the Browse and Invites links, and none a sign-up, join or
 //!      sign-in link or form;
 //!  55. a topic where the human can't post, its page and its stream: 403 each;
 //!      no such human: 404; a GET: 405; a cross-site post: 403;
@@ -941,19 +943,23 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const tams_invites = try getAs(a, io, port, tam, between(tams.body, "<p><a href=\"", "\">Invite someone</a>") orelse "");
     try t.check("the link to /invites on Browse, for the owner and any other human, reaches the form that invites someone", has(steves.body, invite_link) and has(tams.body, invite_link) and
         invites_from_link.status == 200 and has(invites_from_link.body, "action=\"/invites\"") and tams_invites.status == 200 and has(tams_invites.body, "action=\"/invites\""));
+    const top_bar_link = "<a href=\"/invites\">Invites</a>";
     const conversation_page = try getAs(a, io, port, steve_session, "/chat/dm/1_2/ChitChat");
-    try t.check("no link to /invites for a stranger, at sign-in, or on a conversation's page", sign_in.status == 200 and !has(sign_in.body, "/invites") and
-        conversation_page.status == 200 and !has(conversation_page.body, "/invites"));
+    const tams_conversation = try getAs(a, io, port, tam, "/chat/dm/1_2/ChitChat");
+    const invites_from_top_bar = try getAs(a, io, port, tam, between(tams_conversation.body, "Browse</a> · <a href=\"", "\">Invites</a>") orelse "");
+    try t.check("a conversation's top bar links to /invites, for the owner and any other human, and reaches the form", conversation_page.status == 200 and has(conversation_page.body, top_bar_link) and
+        tams_conversation.status == 200 and has(tams_conversation.body, top_bar_link) and invites_from_top_bar.status == 200 and has(invites_from_top_bar.body, "action=\"/invites\""));
+    try t.check("no link to /invites for a stranger, at sign-in", sign_in.status == 200 and !has(sign_in.body, "/invites"));
 
     // 54.
     var every_page_links = true;
     var no_page_signs_up = true;
     for ([_][]const u8{ "/chat", "/agents", "/invites", "/login", "/channels", "/channels/crew", "/chat/dm/1_2/ChitChat", "/chat/channel/general/empty-topic" }) |path| {
         const page = try getAs(a, io, port, steve_session, path);
-        every_page_links = every_page_links and page.status == 200 and has(page.body, browse_link);
+        every_page_links = every_page_links and page.status == 200 and has(page.body, browse_link) and has(page.body, top_bar_link);
         no_page_signs_up = no_page_signs_up and !has(page.body, "href=\"/join") and !has(page.body, "action=\"/join") and !has(page.body, "action=\"/login");
     }
-    try t.check("every signed-in page has the Browse link", every_page_links);
+    try t.check("every signed-in page has the Browse and Invites links", every_page_links);
     try t.check("no signed-in page has a sign-up, join or sign-in link or form", no_page_signs_up);
     const join_while_signed_in = try getAs(a, io, port, steve_session, "/join");
     try t.check("a signed-in browser going to /join is sent to Browse", join_while_signed_in.status == 303 and std.mem.eql(u8, join_while_signed_in.header("location") orelse "", "/chat"));
@@ -1410,8 +1416,9 @@ fn memberSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
 fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, cc_bearer: []const u8) !void {
     // 48h.
     const page = try get(a, io, port, "/invites");
-    try t.check("GET /invites: Steve's page, a form inviting someone by name, in the card", page.status == 200 and has(page.body, "<div class=\"panel\">") and
-        has(page.body, "<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>"));
+    try t.check("GET /invites: Steve's page, a form inviting someone by name, in the card; nothing open, nothing past, and no word of GitHub on a server without it", page.status == 200 and has(page.body, "<div class=\"panel\">") and
+        has(page.body, "<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>") and
+        has(page.body, "<p>No open invites.</p>") and !has(page.body, "Past invites") and !has(page.body, "GitHub"));
 
     // 48i.
     const invited = try post(a, io, port, .{ .path = "/invites", .form = "name=Deb" });
@@ -1436,9 +1443,9 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(taken.body, "<p>The name is taken.</p>") and has(taken.body, "action=\"/invites\"") and has(taken.body, browse_link) and !has(taken.body, "invite-code") and
         unready.status == 401);
     const open_page = try get(a, io, port, "/invites");
-    try t.check("her invite on the page: open, by Steve, and a button to invite her again; no link", has(open_page.body, "<h1>Deb</h1>") and
-        has(open_page.body, "<p>Open until ") and has(open_page.body, ", made by Steve.</p>") and has(open_page.body, "action=\"/invites/3/again\"") and
-        !has(open_page.body, "invite-code"));
+    try t.check("her invite on the page: open, by Steve, and a button to invite her again; no link", has(open_page.body, "<h1>Open invites</h1>") and
+        has(open_page.body, "<p>Deb: open until ") and has(open_page.body, ", made by Steve.</p>") and has(open_page.body, "action=\"/invites/3/again\"") and
+        !has(open_page.body, "invite-code") and !has(open_page.body, "No open invites."));
 
     // 48j.
     const join_page = try anonymousGet(a, io, port, "/join");
@@ -1512,8 +1519,9 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         late_name.status == 401 and wrong_user.status == 401 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/4/human-invites/1/state"), "live") and !(try exists(io, data, "auth/4/password")));
     const standing_page = try get(a, io, port, "/invites");
-    try t.check("on the page, Deb's invite past its expiry: expired, not open; Debbie's spent one: used", has(standing_page.body, "<p>Expired on 1970-01-01, made by Steve.</p>") and
-        !has(standing_page.body, "Open until") and has(standing_page.body, "<p>Used, made by Steve.</p>"));
+    try t.check("on the page, Deb's invite past its expiry: expired, not open; Debbie's spent one: used; both past", has(standing_page.body, "<h1>Past invites</h1>") and
+        has(standing_page.body, "<p>Deb: expired on 1970-01-01, made by Steve.</p>") and has(standing_page.body, "<p>No open invites.</p>") and
+        !has(standing_page.body, "open until") and has(standing_page.body, "<p>Debbie: used, made by Steve.</p>"));
 
     // 48m.
     const reinvited = try post(a, io, port, .{ .path = "/invites/3/again", .form = "" });
@@ -1864,7 +1872,7 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(zoe_form.body, "value=\"Zoe\"") and zoe_in.status == 303 and std.mem.eql(u8, zoe_in.header("location") orelse "", channel_url) and
         std.mem.startsWith(u8, zoe_in.header("set-cookie") orelse "", "__Host-gopher_auth=") and
         has(zoe_in.head, "set-cookie: __Host-gopher_github_sign_up=; Path=/; Max-Age=0") and std.mem.eql(u8, zoe_in.header("cache-control") orelse "", "no-store") and
-        zoe_page.status == 200 and has(zoe_page.body, "Zoe") and zoe_by_form.status == 401 and zoe_secret.len == 64 and
+        zoe_page.status == 200 and has(zoe_page.body, "Zoe") and has(zoe_page.body, "Anyone with GitHub can sign up on their own") and zoe_by_form.status == 401 and zoe_secret.len == 64 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/6/name"), "Zoe") and std.mem.eql(u8, try readFile(a, io, data, "auth/6/github-id"), "20") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "7\n") and
         !try exists(io, data, "auth/6/password") and !try exists(io, data, "auth/6/inviter"));
