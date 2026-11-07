@@ -30,13 +30,11 @@
 --    string, which Roc has no short way to split;
 --    and boundaries' `single`, `entry`, `constant` and `bool_param`, which
 --    are rules of thumb and questions for a reader.
---    name_hunt also reads platform/, and three of its counts are held at
+--    name_hunt also reads platform/, and two of its counts are held at
 --    exactly a number rather than zero. In platform/, noun_effect holds 9:
 --    Host.roc's effects are named with the Zig host, so a rename is a change
 --    to the seam. container holds 1: `Http.Header`'s `value` is that
---    header's own word and crosses the seam too. In app/, phrase_name holds
---    7: `from_*` constructors and conversions the recipe's type test can't
---    see, such as `Hex.from_hex`, the mirror of `to_hex`.
+--    header's own word and crosses the seam too.
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -141,7 +139,7 @@ say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 const name_counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "stacked_preposition ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)", "phrase_name ([0-9]+)", "singular_list ([0-9]+)", "world_verb ([0-9]+)", "where_name ([0-9]+)"}
 
 const hunts = {
-  {recipe = "name_hunt", args = {}, counts = name_counts, held = {{count = "phrase_name ([0-9]+)", findings = 7}}},
+  {recipe = "name_hunt", args = {}, counts = name_counts},
   {recipe = "name_hunt", glob = "platform/**/*.roc", args = {}, counts = name_counts, held = {{count = "noun_effect ([0-9]+)", findings = 9}, {count = "container ([0-9]+)", findings = 1}}},
   {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)"}},
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
