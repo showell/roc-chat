@@ -28,9 +28,15 @@
 --    which gives each one's reason. Their other counts print but don't
 --    gate: stack's `wide string`, a line over 100 columns only because of a
 --    string, which Roc has no short way to split;
---    and boundaries' `single`, `entry`, `constant` and `bool_param` and
---    name_hunt's `stacked_preposition`, which are rules of thumb and
---    questions for a reader.
+--    and boundaries' `single`, `entry`, `constant` and `bool_param`, which
+--    are rules of thumb and questions for a reader.
+--    name_hunt also reads platform/, and three of its counts are held at
+--    exactly a number rather than zero. In platform/, noun_effect holds 9:
+--    Host.roc's effects are named with the Zig host, so a rename is a change
+--    to the seam. container holds 1: `Http.Header`'s `value` is that
+--    header's own word and crosses the seam too. In app/, phrase_name holds
+--    7: `from_*` constructors and conversions the recipe's type test can't
+--    see, such as `Hex.from_hex`, the mirror of `to_hex`.
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -129,9 +135,14 @@ for path in glob("app/*Spec.roc") do
 end
 say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 
--- 3. The hunts, each count read from its summary line.
+-- 3. The hunts, each count read from its summary line. A count is held at
+-- zero unless `held` names the exact number it holds, and why is in this
+-- file's header.
+const name_counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "stacked_preposition ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)", "phrase_name ([0-9]+)", "singular_list ([0-9]+)", "world_verb ([0-9]+)", "where_name ([0-9]+)"}
+
 const hunts = {
-  {recipe = "name_hunt", args = {}, counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)"}},
+  {recipe = "name_hunt", args = {}, counts = name_counts, held = {{count = "phrase_name ([0-9]+)", findings = 7}}},
+  {recipe = "name_hunt", glob = "platform/**/*.roc", args = {}, counts = name_counts, held = {{count = "noun_effect ([0-9]+)", findings = 9}, {count = "container ([0-9]+)", findings = 1}}},
   {recipe = "errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)"}},
   {recipe = "nest_depth", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
@@ -143,11 +154,18 @@ const hunts = {
   {recipe = "families", args = {"roles=tools/type_roles.txt"}, counts = {"family ([0-9]+)", "twin_name ([0-9]+)"}},
   {recipe = "methods", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}},
 }
+function findings_allowed(hunt, count)
+  for held in get(hunt, "held", {}) do
+    if held.count == count then return held.findings end
+  end
+  return 0
+end
+
 for h in hunts do
   local argv = {"shale"}
   for f in get(h, "flags", {}) do push(argv, f) end
   push(argv, real("cookbook:roc/" .. h.recipe .. ".shale"))
-  push(argv, "glob=app/**/*.roc")
+  push(argv, "glob=" .. get(h, "glob", "app/**/*.roc"))
   for a in h.args do push(argv, a) end
   -- `whole`, not `tail`: `tail` cuts a long line, and name_hunt's summary
   -- runs past the cut to its last count, `bare_participle`.
@@ -159,7 +177,7 @@ for h in hunts do
   local clean = r.code == 0
   for c in h.counts do
     local got = re_find(last, c)
-    if got == nil or tonumber(got.groups[1]) ~= 0 then clean = false end
+    if got == nil or tonumber(got.groups[1]) ~= findings_allowed(h, c) then clean = false end
   end
   say(clean, "hunt " .. h.recipe .. ": " .. last)
   if not clean then print(r.out) end
