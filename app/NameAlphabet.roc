@@ -219,8 +219,8 @@ is_written : Str -> Bool
 is_written = |text| NameAlphabet.written_text(text).is_ok()
 
 ## `text` as written text, which a test's text always is.
-in_alphabet : Str -> NameAlphabet.Written
-in_alphabet = |text|
+text_in_alphabet : Str -> NameAlphabet.Written
+text_in_alphabet = |text|
 	NameAlphabet.written_text(text)
 		?? crash "NameAlphabet's tests: a test's text is written in the alphabet"
 
@@ -284,7 +284,7 @@ expect NameAlphabet.written_text("Zoë Ann").map_ok(NameAlphabet.Written.to_str)
 
 ## The fold of `text`.
 folded_text : Str -> Str
-folded_text = |text| NameAlphabet.case_fold(in_alphabet(text))
+folded_text = |text| NameAlphabet.case_fold(text_in_alphabet(text))
 
 # Each run's capitals fold to their small letters, at each run's ends.
 expect folded_text("AZ") == "az"
@@ -306,14 +306,14 @@ expect
 expect
 	spellings.all(
 		|(row, ascii)| {
-			count = code_points(in_alphabet(row)).len()
-			NameAlphabet.ascii_spelling(in_alphabet(row)) == ascii.repeat(count)
+			count = code_points(text_in_alphabet(row)).len()
+			NameAlphabet.ascii_spelling(text_in_alphabet(row)) == ascii.repeat(count)
 		},
 	)
 
 ## The ASCII spelling of `text`.
 ascii_text : Str -> Str
-ascii_text = |text| NameAlphabet.ascii_spelling(in_alphabet(text))
+ascii_text = |text| NameAlphabet.ascii_spelling(text_in_alphabet(text))
 
 # The ends of each range, capitals and small letters, folded and spelled.
 expect ascii_text("AZaz") == "azaz"

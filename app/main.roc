@@ -276,13 +276,13 @@ directory_refusal = |why| {
 check_request_head! : Http.RequestHead => Http.Admission
 check_request_head! = |head|
 	match RequestOrigin.check(origin_of_head(head)) {
-		Err(why) => Refuse(for_this_origin_alone(origin_refusal(why)))
+		Err(why) => Refuse(with_same_origin_resource_policy(origin_refusal(why)))
 		Ok({}) =>
 			match load_directory!({}) {
-				Err(why) => Refuse(for_this_origin_alone(directory_refusal(why)))
+				Err(why) => Refuse(with_same_origin_resource_policy(directory_refusal(why)))
 				Ok(directory) =>
 					match load_actor!({ headers: head.headers, directory }) {
-						Err(why) => Refuse(for_this_origin_alone(identity_refusal(why)))
+						Err(why) => Refuse(with_same_origin_resource_policy(identity_refusal(why)))
 						Ok(actor) => admission_in({ head, directory, actor })
 					}
 			}
@@ -312,7 +312,7 @@ admission_in : {
 } -> Http.Admission
 admission_in = |{ head, directory, actor }|
 	match RequestOrigin.check(origin_of_head(head)) {
-		Err(why) => Refuse(for_this_origin_alone(origin_refusal(why)))
+		Err(why) => Refuse(with_same_origin_resource_policy(origin_refusal(why)))
 		Ok({}) => {
 			choice = Route.choose({ method: head.method, path: head.path, directory })
 			Admit(body_allowance({ choice, directory, actor }))
@@ -432,7 +432,7 @@ handle_http_request! = |request| {
 						}
 				}
 		}
-	for_this_origin_alone(answer)
+	with_same_origin_resource_policy(answer)
 }
 
 ## Who is acting. With `Authorization: Bearer <id>-<secret>`, the agent its
@@ -506,8 +506,8 @@ origin_refusal = |why| HttpAnswer.page(
 ## `answer`, which no other site's page may load: a browser refuses to hand
 ## a page elsewhere any answer of this server's (`Cross-Origin-Resource-Policy`),
 ## an image, a script or a stream included.
-for_this_origin_alone : Http.Response -> Http.Response
-for_this_origin_alone = |answer| {
+with_same_origin_resource_policy : Http.Response -> Http.Response
+with_same_origin_resource_policy = |answer| {
 	..answer,
 	headers: answer.headers.append({
 		name: "cross-origin-resource-policy".to_utf8(),
@@ -1245,7 +1245,7 @@ expect
 	].all(|head| admission_verdict(head) == Refused(403, forbidden_headers))
 # Every answer ends with its resource policy, after its own headers.
 expect
-	for_this_origin_alone(HttpAnswer.see_other("/a")).headers
+	with_same_origin_resource_policy(HttpAnswer.see_other("/a")).headers
 		== [
 			{ name: "location".to_utf8(), value: "/a".to_utf8() },
 			{ name: "cross-origin-resource-policy".to_utf8(), value: "same-origin".to_utf8() },

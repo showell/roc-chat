@@ -117,7 +117,7 @@ HumanInvites :: [].{
 	open_count = |
 		invites,
 		{ by, now },
-	| invites.count_if(|invite| invite.by() == by and invite.is_open(now))
+	| invites.count_if(|invite| invite.invite_maker() == by and invite.is_open(now))
 
 	## Who invited a human: the human `InvitedBy` names, or no one
 	## (`NoInviter`: the founder, or a human the server's owner made by hand).

@@ -377,8 +377,8 @@ page_of_invite : HumanInvite, Timestamp -> Str
 page_of_invite = |invite, now| page_of_humans([{ human: zoe.user(), invites: [invite] }], now)
 
 ## The part of `page` after `heading`, empty when the page has no such heading.
-after_heading : Str, Str -> Str
-after_heading = |page, heading|
+text_after_heading : Str, Str -> Str
+text_after_heading = |page, heading|
 	match page.split_on("<h1>${heading}</h1>") {
 		[_, after] => after
 		_ => ""
@@ -387,7 +387,7 @@ after_heading = |page, heading|
 ## The list of open invites on `page`, up to the past invites if there are any.
 open_part : Str -> Str
 open_part = |page| {
-	open_and_past = after_heading(page, "Open invites")
+	open_and_past = text_after_heading(page, "Open invites")
 	match open_and_past.split_on("<h1>Past invites</h1>") {
 		[open_alone, _] => open_alone
 		_ => open_and_past
@@ -396,7 +396,7 @@ open_part = |page| {
 
 ## The list of past invites on `page`.
 past_part : Str -> Str
-past_part = |page| after_heading(page, "Past invites")
+past_part = |page| text_after_heading(page, "Past invites")
 
 ## Zoe's button that invites her again, as the page writes it.
 zoe_again_button : Str

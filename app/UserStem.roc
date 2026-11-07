@@ -13,8 +13,8 @@ import UserId
 UserStem :: [].{
 
 	## The stem of the user `id`, named `name`.
-	of : { name : Name, id : UserId } -> Str
-	of = |
+	user_stem : { name : Name, id : UserId } -> Str
+	user_stem = |
 		{ name, id },
 	| "${NameAlphabet.ascii_spelling(name.written_text()).replace_each(" ", "-")}-${id.to_str()}"
 }
@@ -23,7 +23,7 @@ UserStem :: [].{
 ## The stem of the user whose name is `name` and whose id `id` spells.
 stem : { name : Str, id : Str } -> Str
 stem = |{ name, id }|
-	UserStem.of({
+	UserStem.user_stem({
 		name: Name.from_str(name) ?? crash "UserStem's tests: a test's name is a name",
 		id: UserId.from_str(id) ?? crash "UserStem's tests: a test's id is an id",
 	})

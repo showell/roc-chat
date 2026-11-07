@@ -26,7 +26,7 @@ MultipartForm :: [].{
 	## module reads (`NoFile`).
 	boundary_from_content_type : List(U8) -> Try(MultipartForm.Boundary, [NoFile])
 	boundary_from_content_type = |header| {
-		media_type = Ascii.trim_spaces(before_first_semicolon(header))
+		media_type = Ascii.trim_spaces(bytes_before_first_semicolon(header))
 		if Str.from_utf8_lossy(media_type).with_ascii_lowercased() != "multipart/form-data" {
 			Err(NoFile)
 		} else {
@@ -111,7 +111,7 @@ boundary_after_media_type = |header| {
 					Ok(end) => rest.take_first(end)
 					Err(NotFound) => []
 				}
-			_ => Ascii.trim_spaces(before_first_semicolon(value))
+			_ => Ascii.trim_spaces(bytes_before_first_semicolon(value))
 		}
 	if candidate.is_empty() or candidate.len() > 70 {
 		Err(NoFile)
@@ -133,8 +133,8 @@ index_of = |bytes, { needle, from }|
 
 ## The bytes before the first `;`, or all of them: a Content-Type's
 ## parameters are split by it.
-before_first_semicolon : List(U8) -> List(U8)
-before_first_semicolon = |bytes|
+bytes_before_first_semicolon : List(U8) -> List(U8)
+bytes_before_first_semicolon = |bytes|
 	match bytes.find_first_index(|b| b == ';') {
 		Ok(i) => bytes.take_first(i)
 		Err(NotFound) => bytes

@@ -27,15 +27,15 @@ role_in_words = |u|
 	}
 
 ## The id `count` places after Steve's.
-after_steve : U64 -> UserId
-after_steve = |count| List.repeat({}, count).fold(
+id_after_steve : U64 -> UserId
+id_after_steve = |count| List.repeat({}, count).fold(
 	UserId.chat_owner,
 	|at, {}| at.next() ?? crash "UsersSpec: a test's id fits",
 )
 
 ## The sample's first id that belongs to no user.
 stranger : UserId
-stranger = after_steve(3)
+stranger = id_after_steve(3)
 
 sample : Users
 sample = Sample.directory.users()
@@ -130,8 +130,8 @@ expect
 		|text| Sample.user(text).as_human().map_ok(|human| human.user().name().to_str())
 			== Ok(text),
 	)
-expect Sample.user("CC").as_human() == Err(Agent(after_steve(2)))
-expect Sample.human("Apoorva").id() == after_steve(1)
+expect Sample.user("CC").as_human() == Err(Agent(id_after_steve(2)))
+expect Sample.human("Apoorva").id() == id_after_steve(1)
 expect Sample.human("Apoorva").author().to_str() == "Apoorva"
 expect Sample.human("Apoorva").user() == Sample.user("Apoorva")
 # The next id at, under and over the highest: users with one id left take one
@@ -157,7 +157,7 @@ expect {
 }
 # A user found by id, or none.
 expect sample.user(UserId.chat_owner).map_ok(|u| u.name().to_str()) == Ok("Steve")
-expect sample.user(after_steve(2)).map_ok(|u| u.name().to_str()) == Ok("CC")
+expect sample.user(id_after_steve(2)).map_ok(|u| u.name().to_str()) == Ok("CC")
 expect sample.user(stranger) == Err(NoSuchUser)
 # A user found by name, a human's or an agent's, or none; the case counts.
 expect sample.user_by_name(Sample.name("Steve")) == Ok(Sample.steve)

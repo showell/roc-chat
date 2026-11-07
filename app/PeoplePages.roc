@@ -246,9 +246,9 @@ invite_words = |invite, { users, now }| {
 			Live => "expired on ${date}"
 		}
 	maker =
-		match users.user(invite.by()) {
+		match users.user(invite.invite_maker()) {
 			Ok(user) => user.name().to_str()
-			Err(NoSuchUser) => "user ${invite.by().to_str()}"
+			Err(NoSuchUser) => "user ${invite.invite_maker().to_str()}"
 		}
 	"${standing}, made by ${maker}."
 }

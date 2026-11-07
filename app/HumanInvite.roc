@@ -162,8 +162,8 @@ HumanInvite :: {
 	expires = |HumanInvite.(invite)| invite.expires
 
 	## Who made the invite.
-	by : HumanInvite -> UserId
-	by = |HumanInvite.(invite)| invite.by
+	invite_maker : HumanInvite -> UserId
+	invite_maker = |HumanInvite.(invite)| invite.by
 
 	## The invite's facts as their files keep them.
 	to_files : HumanInvite -> HumanInvite.Files

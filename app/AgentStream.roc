@@ -101,7 +101,7 @@ AgentStream :: [].{
 					.take_last(AgentStream.backlog_most_per_conversation),
 		).join()
 		dated
-			.sort_with(by_time_then_place)
+			.sort_with(order_by_time_then_place)
 			.join_map(|m| AgentStream.frame({ key: m.key, message: m.message }))
 	}
 
@@ -153,8 +153,8 @@ Dated : {
 
 ## The order of a backlog: by time, then by the conversation's place in the
 ## list, then by the message's.
-by_time_then_place : Dated, Dated -> [Before, Same, After]
-by_time_then_place = |a, b|
+order_by_time_then_place : Dated, Dated -> [Before, Same, After]
+order_by_time_then_place = |a, b|
 	match a.message.time().compare(b.message.time()) {
 		Before => Before
 		After => After
