@@ -7,7 +7,7 @@
 ## out, and its callers are what a security reader audits. Each vouches
 ## only for markup it built or escaped itself, and each is small:
 ## `Escape.text` (text, escaped), `Html.element` (an element's tags, from
-## closed sets and strict tokens), `Markdown.render` (roc-markdown's output,
+## closed sets and strict tokens), `Markdown.message_html` (roc-markdown's output,
 ## whose images `SecureImageTag` rules), and `Page`'s fixed doctype and
 ## style sheet. `join` builds only from markup already vouched for, so it
 ## vouches for nothing new.

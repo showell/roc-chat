@@ -1,7 +1,7 @@
 ## This module decides which images a message may show, and is the one
 ## home of that rule. A message's markdown may hold an image (`![alt](src)`
 ## or an `<img>`, and a `<video>` too, which roc-markdown rules the same way);
-## `Markdown.render` hands roc-markdown `is_conversation_upload`, for the
+## `Markdown.message_html` hands roc-markdown `is_conversation_upload`, for the
 ## message's own conversation, as its uploads rule, and roc-markdown shows
 ## as media only a source that passes it, after judging the source safe as
 ## a same-origin URL itself. A source that fails is left as text: an image

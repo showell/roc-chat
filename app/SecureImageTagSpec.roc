@@ -46,7 +46,7 @@ image_name = "${"0a".repeat(16)}.png"
 ## `markdown` rendered as a message of `plans`, as a test reads it.
 message_html : Str -> Str
 message_html = |markdown| Str.from_utf8(
-	Markdown.render(markdown, plans).to_utf8(),
+	Markdown.message_html(markdown, plans).to_utf8(),
 ) ?? crash "SecureImageTagSpec: a render is UTF-8"
 
 # The rule: exactly the conversation's own uploaded image's path, each kind.
@@ -143,6 +143,6 @@ expect message_html("[x](javascript:alert(1))") == "<p>[x](javascript:alert(1))<
 expect
 	TrustedHtml.join([
 		TrustedHtml.dangerously_trust("&amp;"),
-		Markdown.render("a & <b>", plans),
+		Markdown.message_html("a & <b>", plans),
 	]).to_utf8()
 		== "&amp;<p>a &amp; &lt;b&gt;</p>\n".to_utf8()

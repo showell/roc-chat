@@ -36,7 +36,7 @@
 ## (`data-image-byte-limit`).
 ##
 ## Every `Str` a page shows goes in through `Escape.text`, a message's
-## markdown through `Markdown.render`, and every element through
+## markdown through `Markdown.message_html`, and every element through
 ## `Html.element`. This module vouches (`TrustedHtml.dangerously_trust`)
 ## for one constant: the doctype and the head's two `<meta>` elements.
 import AgentInvite
@@ -248,7 +248,7 @@ Page :: [].{
 				Html.element({
 					name: Div,
 					attrs: [Page.class(Body)],
-					inner: Markdown.render(m.markdown(), key),
+					inner: Markdown.message_html(m.markdown(), key),
 				}),
 			]),
 		})
