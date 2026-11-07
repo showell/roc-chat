@@ -154,14 +154,14 @@ resource_parts = |resource|
 		Raw => ["raw"]
 	}
 
-## The resource whose parts are `suffix`, the parts of a URL's path after
+## The resource whose parts are `suffix_parts`, the parts of a URL's path after
 ## its conversation's, as `resource_parts` writes them.
 resource_of_suffix : List(UnvalidatedString) -> Try(
 	ConversationKey.Resource,
 	[NotAConversationPath],
 )
-resource_of_suffix = |suffix|
-	match suffix {
+resource_of_suffix = |suffix_parts|
+	match suffix_parts {
 		[] => Ok(Page)
 		[last] if last.is_exactly("stream") => Ok(Stream)
 		[last] if last.is_exactly("send") => Ok(Send)

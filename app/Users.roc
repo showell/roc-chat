@@ -24,7 +24,7 @@ import Name
 import UserId
 import UserStem
 
-Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
+Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 
 	## A human or an agent, with the id and name these users gave them.
 	User :: {
@@ -95,7 +95,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	with_founder = |name|
 		Users.(
 			{
-				everyone: [Users.User.({ id: UserId.chat_owner, name, role: Human })],
+				all_users: [Users.User.({ id: UserId.chat_owner, name, role: Human })],
 				next: next_after(UserId.chat_owner),
 			},
 		)
@@ -172,7 +172,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 				_ =>
 					match all.find_first(|user| !has_human_owner(all, user)) {
 						Ok(stray) => Err(BadOwner(stray.id()))
-						Err(NotFound) => Ok(Users.({ everyone: all, next }))
+						Err(NotFound) => Ok(Users.({ all_users: all, next }))
 					}
 			}
 		}
@@ -211,7 +211,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 		if users.user(human.id()) == Ok(human.user()) {
 			renamed = Users.User.({ id: human.id(), name, role: Human })
 			Users.(held) = users
-			everyone = held.everyone.map(
+			all_users = held.all_users.map(
 				|user|
 					if user.id() == human.id() {
 						renamed
@@ -219,7 +219,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 						user
 					},
 			)
-			Ok({ users: Users.({ ..held, everyone }), human: Users.Human.(renamed) })
+			Ok({ users: Users.({ ..held, all_users }), human: Users.Human.(renamed) })
 		} else {
 			Err(NoSuchHuman)
 		}
@@ -227,7 +227,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	## The user with the id `id`, if there is one.
 	user : Users, UserId -> Try(Users.User, [NoSuchUser])
 	user = |Users.(users), id|
-		match users.everyone.find_first(|candidate| candidate.id() == id) {
+		match users.all_users.find_first(|candidate| candidate.id() == id) {
 			Ok(found) => Ok(found)
 			Err(NotFound) => Err(NoSuchUser)
 		}
@@ -236,7 +236,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 	## `steve` is not `Steve`.
 	user_by_name : Users, Name -> Try(Users.User, [NoSuchUser])
 	user_by_name = |Users.(users), name|
-		match users.everyone.find_first(|candidate| candidate.name() == name) {
+		match users.all_users.find_first(|candidate| candidate.name() == name) {
 			Ok(found) => Ok(found)
 			Err(NotFound) => Err(NoSuchUser)
 		}
@@ -255,7 +255,7 @@ Users :: { everyone : List(Users.User), next : [Next(UserId), Full] }.{
 
 	## Every user, in id order.
 	to_list : Users -> List(Users.User)
-	to_list = |Users.(users)| users.everyone
+	to_list = |Users.(users)| users.all_users
 
 	is_eq : _
 }
@@ -309,13 +309,13 @@ role_from_file = |owner_file|
 			}
 	}
 
-## Whether `user` is a human, or an agent whose owner is a human of `all`.
+## Whether `user` is a human, or an agent whose owner is a human of `all_users`.
 has_human_owner : List(Users.User), Users.User -> Bool
-has_human_owner = |all, user|
+has_human_owner = |all_users, user|
 	match user.role() {
 		Human => Bool.True
 		Agent({ owner }) =>
-			all.any(|candidate| candidate.id() == owner and candidate.role() == Human)
+			all_users.any(|candidate| candidate.id() == owner and candidate.role() == Human)
 	}
 
 ## The users with a user named `name` added in the role `role`, at the next
@@ -325,5 +325,5 @@ add_user = |users, { name, role }| {
 	id = users.next_id()?
 	user = Users.User.({ id, name, role })
 	Users.(held) = users
-	Ok({ users: Users.({ everyone: held.everyone.append(user), next: next_after(id) }), user })
+	Ok({ users: Users.({ all_users: held.all_users.append(user), next: next_after(id) }), user })
 }

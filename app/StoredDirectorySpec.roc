@@ -204,8 +204,8 @@ expect users_with({
 }).map_ok(|_| {}) == Err(NoFounder)
 
 ## The channel `team` whose members file is `text`, read.
-team_read : Str -> Try(List(Str), _)
-team_read = |text| {
+member_ids_of_members_file : Str -> Try(List(Str), _)
+member_ids_of_members_file = |text| {
 	team = ChannelName.from_str("team") ?? crash "StoredDirectorySpec: a channel's name"
 	channels = Channels.from_files([{ name: team, members: text.to_utf8() }])?
 	Ok(channels.to_list().join_map(|channel| channel.members().map(UserId.to_str)))
@@ -217,9 +217,9 @@ expect
 	(with_team.channels().channel(ChannelName.from_str("team") ?? crash "a name") ?? crash "team")
 		.members_file()
 		== "1\n3\n".to_utf8()
-expect team_read("1\n3\n") == Ok(["1", "3"])
-expect team_read("# the team\n\n 3 \r\n1") == Ok(["1", "3"])
-expect team_read("") == Ok([])
+expect member_ids_of_members_file("1\n3\n") == Ok(["1", "3"])
+expect member_ids_of_members_file("# the team\n\n 3 \r\n1") == Ok(["1", "3"])
+expect member_ids_of_members_file("") == Ok([])
 # A line that is no id, or an id twice: the file is refused.
 expect {
 	team = ChannelName.from_str("team") ?? crash "a name"
@@ -229,7 +229,7 @@ expect {
 		"01\n",
 		"1 # Steve\n",
 		"0\n",
-	].all(|text| team_read(text).map_ok(|_| {}) == Err(BadMembers(team)))
+	].all(|text| member_ids_of_members_file(text).map_ok(|_| {}) == Err(BadMembers(team)))
 }
 # The directory: names one namespace across users and channels, and every
 # member a user.

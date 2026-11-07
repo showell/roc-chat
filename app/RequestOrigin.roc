@@ -215,9 +215,9 @@ expect verdict("GET", [("Host", "LOCALHOST:9611")]) == Err(ForeignHost)
 expect verdict("GET", [("Host", "127.0.0.1:9611"), ("Host", "127.0.0.1:9611")]) == Err(ForeignHost)
 expect verdict("GET", [("X-Host", "localhost:9611")]) == Err(MissingHost)
 # A write's Origin and Sec-Fetch-Site, both sides; neither sent (curl) passes.
-## A POST to localhost:9611 with `more` headers.
+## A POST to localhost:9611 with `more_headers`.
 post_verdict : List((Str, Str)) -> Try({}, _)
-post_verdict = |more| verdict("POST", [("Host", "localhost:9611")].concat(more))
+post_verdict = |more_headers| verdict("POST", [("Host", "localhost:9611")].concat(more_headers))
 
 expect post_verdict([]) == Ok({})
 expect post_verdict([("Origin", "http://localhost:9611")]) == Ok({})
@@ -266,9 +266,9 @@ expect
 		== Err(CrossSiteFetch)
 # A GET's Origin, both sides: this server's passes, another's or two are
 # refused, an EventSource's from another page included.
-## A GET of localhost:9611 with `more` headers.
+## A GET of localhost:9611 with `more_headers`.
 verdict_of_get : List((Str, Str)) -> Try({}, _)
-verdict_of_get = |more| verdict("GET", [("Host", "localhost:9611")].concat(more))
+verdict_of_get = |more_headers| verdict("GET", [("Host", "localhost:9611")].concat(more_headers))
 
 expect verdict_of_get([]) == Ok({})
 expect verdict_of_get([("Origin", "http://localhost:9611")]) == Ok({})
@@ -302,7 +302,7 @@ expect
 			("Sec-Fetch-Mode", "navigate"),
 		],
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")],
-	].all(|more| verdict_of_get(more) == Err(CrossSiteFetch))
+	].all(|more_headers| verdict_of_get(more_headers) == Err(CrossSiteFetch))
 expect
 	[
 		[("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")],
@@ -311,21 +311,21 @@ expect
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Mode", "no-cors")],
 		[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Mode", "navigate")],
 		[("Sec-Fetch-Mode", "cors")],
-	].all(|more| verdict_of_get(more) == Ok({}))
+	].all(|more_headers| verdict_of_get(more_headers) == Ok({}))
 # The public origin, both sides: configured, its name is a Host of this
 # server's, its origin the one Origin for it, and the local ones still
 # serve the tunnel; not configured, its name is a stranger's.
 ## A request by `method` to the public name `chat.example.com`, with
-## `more` headers, when the server has `public_origin`.
+## `more_headers`, when the server has `public_origin`.
 public_name_verdict : {
 	method : Str,
-	more : List((Str, Str)),
+	more_headers : List((Str, Str)),
 	public_origin : Str,
 } -> Try({}, _)
-public_name_verdict = |{ method, more, public_origin }|
+public_name_verdict = |{ method, more_headers, public_origin }|
 	public_verdict({
 		method,
-		headers: [("Host", "chat.example.com")].concat(more),
+		headers: [("Host", "chat.example.com")].concat(more_headers),
 		public_origin,
 	})
 
@@ -337,9 +337,9 @@ expect
 		("POST", []),
 		("GET", [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "navigate")]),
 	].all(
-		|(method, more)| public_name_verdict({
+		|(method, more_headers)| public_name_verdict({
 			method,
-			more,
+			more_headers,
 			public_origin: "https://chat.example.com",
 		}) == Ok({}),
 	)
@@ -352,26 +352,26 @@ expect
 		[("Origin", "http://localhost:9611")],
 		[("Origin", "https://chat.example.com"), ("Origin", "https://chat.example.com")],
 	].all(
-		|more| public_name_verdict({
+		|more_headers| public_name_verdict({
 			method: "POST",
-			more,
+			more_headers,
 			public_origin: "https://chat.example.com",
 		}) == Err(ForeignOrigin),
 	)
 expect public_name_verdict({
 	method: "POST",
-	more: [("Sec-Fetch-Site", "cross-site")],
+	more_headers: [("Sec-Fetch-Site", "cross-site")],
 	public_origin: "https://chat.example.com",
 }) == Err(CrossSiteFetch)
 expect public_name_verdict({
 	method: "GET",
-	more: [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "cors")],
+	more_headers: [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "cors")],
 	public_origin: "https://chat.example.com",
 }) == Err(CrossSiteFetch)
-expect public_name_verdict({ method: "GET", more: [], public_origin: "" }) == Err(ForeignHost)
+expect public_name_verdict({ method: "GET", more_headers: [], public_origin: "" }) == Err(ForeignHost)
 expect public_name_verdict({
 	method: "POST",
-	more: [("Origin", "https://chat.example.com")],
+	more_headers: [("Origin", "https://chat.example.com")],
 	public_origin: "",
 }) == Err(ForeignHost)
 expect

@@ -76,8 +76,8 @@ team_members = |directory|
 
 ## `with_team` with `name` added to `team` by `acting`: its members, or why
 ## not.
-membership_after_add : SignedIn, Str -> Try(List(Str), _)
-membership_after_add = |acting, name|
+member_ids_after_add : SignedIn, Str -> Try(List(Str), _)
+member_ids_after_add = |acting, name|
 	ChannelMembers.add(
 		with_team,
 		{
@@ -107,8 +107,8 @@ with_cc_and_apoorva =
 
 ## `with_cc_and_apoorva` with `name` removed from `team` by `acting`: its
 ## members, or why not.
-membership_after_remove : SignedIn, Str -> Try(List(Str), _)
-membership_after_remove = |acting, name|
+member_ids_after_remove : SignedIn, Str -> Try(List(Str), _)
+member_ids_after_remove = |acting, name|
 	ChannelMembers.remove(
 		with_cc_and_apoorva,
 		{
@@ -127,9 +127,9 @@ expect ChannelMembers.admin_of(cc_by_session).map_ok(|_| {}) == Err(Agent(id_of(
 
 # Adding: the admin adds a human or an agent; the change's channel is the
 # one written.
-expect membership_after_add(steve, "CC") == Ok(["3"])
-expect membership_after_add(steve, "Apoorva") == Ok(["2"])
-expect membership_after_add(steve, "Steve") == Ok(["1"])
+expect member_ids_after_add(steve, "CC") == Ok(["3"])
+expect member_ids_after_add(steve, "Apoorva") == Ok(["2"])
+expect member_ids_after_add(steve, "Steve") == Ok(["1"])
 expect
 	match ChannelMembers.add(
 		with_team,
@@ -144,9 +144,9 @@ expect
 	}
 # Adding refused: anyone but the admin, a member twice, no such channel or
 # user.
-expect membership_after_add(apoorva, "CC") == Err(NotAdmin)
-expect membership_after_add(cc_by_key, "CC") == Err(ByApiKey)
-expect membership_after_add(cc_by_session, "CC") == Err(Agent(id_of("CC")))
+expect member_ids_after_add(apoorva, "CC") == Err(NotAdmin)
+expect member_ids_after_add(cc_by_key, "CC") == Err(ByApiKey)
+expect member_ids_after_add(cc_by_session, "CC") == Err(Agent(id_of("CC")))
 expect
 	ChannelMembers.add(
 		with_cc_and_apoorva,
@@ -181,11 +181,11 @@ expect
 # Removing: the admin removes a member; refused to anyone else, and for
 # one who is not in.
 expect team_members(with_cc_and_apoorva) == ["2", "3"]
-expect membership_after_remove(steve, "CC") == Ok(["2"])
-expect membership_after_remove(steve, "Apoorva") == Ok(["3"])
-expect membership_after_remove(steve, "Steve") == Err(NotMember)
-expect membership_after_remove(apoorva, "CC") == Err(NotAdmin)
-expect membership_after_remove(cc_by_key, "CC") == Err(ByApiKey)
+expect member_ids_after_remove(steve, "CC") == Ok(["2"])
+expect member_ids_after_remove(steve, "Apoorva") == Ok(["3"])
+expect member_ids_after_remove(steve, "Steve") == Err(NotMember)
+expect member_ids_after_remove(apoorva, "CC") == Err(NotAdmin)
+expect member_ids_after_remove(cc_by_key, "CC") == Err(ByApiKey)
 expect
 	ChannelMembers.remove(
 		with_team,

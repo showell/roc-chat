@@ -657,35 +657,35 @@ join_as = |{ user, invites, code, name }|
 		},
 	)
 
-## Zoe's first invite, which she has never redeemed.
-first_invite : List(HumanInvite)
-first_invite = [invite_made({ n: 1, by: "2" })]
+## Zoe's invites: her first, which she has never redeemed.
+zoe_invites : List(HumanInvite)
+zoe_invites = [invite_made({ n: 1, by: "2" })]
 
 # Zoe joins under the name her inviter chose, or under any other free name,
 # her own in another case included; a name another user or a channel has,
 # in any case, is refused, and nothing is spent.
 expect join_as({
 	user: "4",
-	invites: first_invite,
+	invites: zoe_invites,
 	code: 1,
 	name: "Zoe",
 }) == Ok("spent, admits 4 as Zoe, kept")
 expect join_as({
 	user: "4",
-	invites: first_invite,
+	invites: zoe_invites,
 	code: 1,
 	name: "Zoey",
 }) == Ok("spent, admits 4 as Zoey, changed")
 expect join_as({
 	user: "4",
-	invites: first_invite,
+	invites: zoe_invites,
 	code: 1,
 	name: "ZOE",
 }) == Ok("spent, admits 4 as ZOE, changed")
 expect ["Bob", "bob", "Steve", "CC"].all(
 	|name| join_as({
 		user: "4",
-		invites: first_invite,
+		invites: zoe_invites,
 		code: 1,
 		name,
 	}) == Err(NameTaken),
@@ -695,7 +695,7 @@ expect ["Bob", "bob", "Steve", "CC"].all(
 expect ["Zoe", "Zoey", "Bob"].all(
 	|name| join_as({
 		user: "4",
-		invites: first_invite,
+		invites: zoe_invites,
 		code: 2,
 		name,
 	}) == Err(CodeRefused),

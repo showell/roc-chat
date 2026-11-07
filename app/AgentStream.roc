@@ -287,19 +287,19 @@ conversation_of_count = |topic, count| conversation_of(
 
 ## The markdown of each event of the backlog of `conversations` since the
 ## time of their messages.
-backlog_markdown : List({ key : ConversationKey, conversation : Conversation }) -> List(Str)
-backlog_markdown = |conversations| events_of(
+backlog_markdown_texts : List({ key : ConversationKey, conversation : Conversation }) -> List(Str)
+backlog_markdown_texts = |conversations| events_of(
 	AgentStream.backlog({ conversations, since: time_of("2026-11-02T19:00:00Z") }),
 ).map(markdown_in)
 
-expect backlog_markdown([
+expect backlog_markdown_texts([
 	conversation_of_count("plans", 101),
 ]) == List.from_iter(U64.to(2, 101)).map(U64.to_str)
-expect backlog_markdown([
+expect backlog_markdown_texts([
 	conversation_of_count("plans", 100),
 ]) == List.from_iter(U64.to(1, 100)).map(U64.to_str)
-expect backlog_markdown([conversation_of_count("plans", 99)]).len() == 99
-expect backlog_markdown([
+expect backlog_markdown_texts([conversation_of_count("plans", 99)]).len() == 99
+expect backlog_markdown_texts([
 	conversation_of_count("plans", 101),
 	conversation_of_count("other", 3),
 ]).len() == 103

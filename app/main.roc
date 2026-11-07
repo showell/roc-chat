@@ -1031,9 +1031,9 @@ expect {
 }
 
 ## The head of a request whose request line is `line` (`POST /a`), its Host
-## this server's at port 9611, with `more` headers (name, value).
+## this server's at port 9611, with `more_headers` (name, value).
 head_of : Str, List((Str, Str)) -> Http.RequestHead
-head_of = |line, more| {
+head_of = |line, more_headers| {
 	(method, path) =
 		match line.split_on(" ") {
 			[m, p] => (m, p)
@@ -1042,7 +1042,7 @@ head_of = |line, more| {
 	{
 		method: method.to_utf8(),
 		path: path.to_utf8(),
-		headers: [("Host", "localhost:9611")].concat(more).map(
+		headers: [("Host", "localhost:9611")].concat(more_headers).map(
 			|(name, value)| { name: name.to_utf8(), value: value.to_utf8() },
 		),
 		port: 9611,
@@ -1224,8 +1224,8 @@ forbidden_headers = [
 ]
 
 ## An EventSource's headers, from another site's page.
-event_source_elsewhere : List((Str, Str))
-event_source_elsewhere = [
+elsewhere_event_source_headers : List((Str, Str))
+elsewhere_event_source_headers = [
 	("Origin", "http://evil.example"),
 	("Sec-Fetch-Site", "cross-site"),
 	("Sec-Fetch-Mode", "cors"),
@@ -1235,7 +1235,7 @@ expect
 	[
 		head_of("POST /chat/dm/1_1/plans/upload", [("Origin", "http://evil.example")]),
 		head_of("POST /chat/dm/1_1/plans/upload", [("Sec-Fetch-Site", "cross-site")]),
-		head_of("GET /chat/dm/1_1/plans/stream", event_source_elsewhere),
+		head_of("GET /chat/dm/1_1/plans/stream", elsewhere_event_source_headers),
 		head_of(
 			"GET /chat/dm/1_1/plans/stream",
 			[("Sec-Fetch-Site", "same-site"), ("Sec-Fetch-Mode", "no-cors")],

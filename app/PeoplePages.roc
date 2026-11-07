@@ -111,7 +111,7 @@ PeoplePages :: [].{
 			fields: [{ label: "Their name", name: "name" }],
 			label: "Invite someone",
 		})
-		{ waiting, past } = split_by_open_invite(invited, now)
+		{ waiting_humans, past_humans } = split_by_open_invite(invited, now)
 		context = { users, now }
 		Page.signed_in_page({
 			title: "Invites",
@@ -123,8 +123,8 @@ PeoplePages :: [].{
 					Page.text_paragraph(invite_steps),
 					form,
 				])
-				.concat(open_section(waiting, context))
-				.concat(past_section(past, context)),
+				.concat(open_section_parts(waiting_humans, context))
+				.concat(past_section_parts(past_humans, context)),
 		})
 	}
 }
@@ -146,15 +146,15 @@ invite_steps = "Write the name you know them by, and you get a link to send them
 ## with only their open invites, then everyone else, with all of theirs.
 split_by_open_invite : List(PeoplePages.InvitedHuman),
 Timestamp -> {
-	waiting : List(PeoplePages.InvitedHuman),
-	past : List(PeoplePages.InvitedHuman),
+	waiting_humans : List(PeoplePages.InvitedHuman),
+	past_humans : List(PeoplePages.InvitedHuman),
 }
 split_by_open_invite = |invited, now| {
 	has_open = |listed| listed.invites.any(|invite| invite.is_open(now))
-	waiting = invited.keep_if(has_open).map(
+	waiting_humans = invited.keep_if(has_open).map(
 		|{ human, invites }| { human, invites: invites.keep_if(|invite| invite.is_open(now)) },
 	)
-	{ waiting, past: invited.drop_if(has_open) }
+	{ waiting_humans, past_humans: invited.drop_if(has_open) }
 }
 
 ## A user as a channel's page names them: their name, whether a human or an
@@ -189,31 +189,31 @@ member_button = |{ folder, user, act }| {
 }
 
 ## The invites page's list of open invites, which says so when it has none.
-open_section : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
-open_section = |waiting, context| {
+open_section_parts : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
+open_section_parts = |waiting_humans, context| {
 	heading = Page.heading("Open invites")
-	if waiting.is_empty() {
+	if waiting_humans.is_empty() {
 		[heading, Page.text_paragraph("No open invites.")]
 	} else {
 		[
 			heading,
 			Page.text_paragraph("A link is shown only once. If one is lost, invite them again for a new link."),
-		].concat(waiting.map(|human| invited_rows(human, context)))
+		].concat(waiting_humans.map(|human| invited_rows(human, context)))
 	}
 }
 
 ## The invites page's list of everyone else, shown only when there is someone.
 ## It says what inviting a human again does, as for someone who has joined
 ## that is how a lost password is replaced.
-past_section : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
-past_section = |past, context|
-	if past.is_empty() {
+past_section_parts : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
+past_section_parts = |past_humans, context|
+	if past_humans.is_empty() {
 		[]
 	} else {
 		[
 			Page.heading("Past invites"),
 			Page.text_paragraph("Inviting someone again makes a new link. If they have joined, they keep their name, and the link sets a new password."),
-		].concat(past.map(|human| invited_rows(human, context)))
+		].concat(past_humans.map(|human| invited_rows(human, context)))
 	}
 
 ## One human's rows on the invites page: a line for each of their invites, or
