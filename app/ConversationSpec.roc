@@ -34,7 +34,8 @@ expect Sample.hello_and_reply.reference(Sample.second).to_str() == "MSG_plans_2"
 expect Conversation.empty(Sample.plans).next_id() == Ok(Sample.first)
 # The messages past a count, at none, one, all and past all.
 expect
-	message_summaries(Sample.hello_and_reply.messages_after(0)) == message_summaries(Sample.hello_and_reply.messages())
+	message_summaries(Sample.hello_and_reply.messages_after(0))
+		== message_summaries(Sample.hello_and_reply.messages())
 expect message_summaries(Sample.hello_and_reply.messages_after(1)).map(|m| m.id) == ["2"]
 expect Sample.hello_and_reply.messages_after(2) == []
 expect Sample.hello_and_reply.messages_after(3) == []
