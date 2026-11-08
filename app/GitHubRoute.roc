@@ -67,14 +67,14 @@ GitHubRoute :: [].{
 
 	## Whether the `/agents` page of the human `human` offers to link GitHub:
 	## on a server with GitHub's settings, to a human with no `github-id` file.
-	load_link_offer! : UserId => Try(Page.GitHubLinkOffer, [NotUtf8, PathRefused, Failed])
+	load_link_offer! : UserId => Try(Page.GitHubLinkOffer, [Damaged, NotUtf8, PathRefused, Failed])
 	load_link_offer! = |human|
 		match Host.github_sign_in_settings!({}).status {
 			NotConfigured => Ok(LinkNotOffered)
 			Configured =>
-				match FileSystem.read_github_id_file!(human)? {
-					NoFile => Ok(LinkOffered)
-					File(_) => Ok(LinkNotOffered)
+				match FileSystem.read_github_link!(human)? {
+					NotLinked => Ok(LinkOffered)
+					Linked(_) => Ok(LinkNotOffered)
 				}
 		}
 
@@ -284,9 +284,9 @@ load_human_to_link! : SignedIn.Actor => Try(
 )
 load_human_to_link! = |viewer| {
 	human = GitHubSignIn.human_to_link(viewer)?
-	match FileSystem.read_github_id_file!(human.id()) {
-		Ok(NoFile) => Ok(human)
-		Ok(File(_)) => Err(AlreadyLinked)
+	match FileSystem.read_github_link!(human.id()) {
+		Ok(NotLinked) => Ok(human)
+		Ok(Linked(_)) => Err(AlreadyLinked)
 		Err(fault) => Err(FileSystem(fault))
 	}
 }
@@ -370,8 +370,8 @@ resolve! = |{ users, viewer, query, headers, now }| {
 	checked = came.check({ cookie: cookie_of(headers), now }) ? |why| Refused(why)
 	heard = Host.github_identity_for_code!(checked.code_bytes())
 	known = checked.identify(heard) ? |why| Refused(why)
-	files = FileSystem.read_github_id_files!({}) ? |fault| FileSystem(fault)
-	known.resolve({ files, users, viewer }).map_err(|why| Refused(why))
+	links = FileSystem.read_github_links!({}) ? |fault| FileSystem(fault)
+	known.resolve({ links, users, viewer }).map_err(|why| Refused(why))
 }
 
 ## The form that asks `new_human` for a name, offering what `directory` leaves
@@ -413,8 +413,8 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 		now,
 	}) ? |why| Refused(why)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
-	files = FileSystem.read_github_id_files!({}) ? |fault| FileSystem(fault)
-	made = resumed.create_account({ name, files, directory }) ? |why| account_refusal({ name, why })
+	links = FileSystem.read_github_links!({}) ? |fault| FileSystem(fault)
+	made = resumed.create_account({ name, links, directory }) ? |why| account_refusal({ name, why })
 	human = made.admission.human()
 	welcome = Welcome.make({
 		directory: made.directory,
@@ -651,4 +651,4 @@ expect [NoDefaultChannel, ClockOutOfRange].all(|why| refusal_said(why).status ==
 expect link_refusal_answer(NotSignedIn).status == 401
 expect [ByApiKey, Agent(UserId.chat_owner)].all(|why| link_refusal_answer(why).status == 403)
 expect link_refusal_answer(AlreadyLinked).status == 409
-expect link_refusal_answer(FileSystem(Failed)).status == 500
+expect [Failed, Damaged].all(|fault| link_refusal_answer(FileSystem(fault)).status == 500)

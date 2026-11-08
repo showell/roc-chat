@@ -316,10 +316,10 @@ load_material_with_password! = |{ id, password_hash }| {
 ## too. An empty file holds no word.
 load_github_word! : UserId => Try([NoGitHub, GitHub(List(U8))], [FileSystem(FileSystem.Fault)])
 load_github_word! = |id|
-	match FileSystem.read_github_id_file!(id) {
+	match FileSystem.read_github_link!(id) {
 		Err(fault) => Err(FileSystem(fault))
-		Ok(NoFile) => Ok(NoGitHub)
-		Ok(File(_)) =>
+		Ok(NotLinked) => Ok(NoGitHub)
+		Ok(Linked(_)) =>
 			match FileSystem.read_github_session_secret!(id) {
 				Err(fault) => Err(FileSystem(fault))
 				Ok(NoFile) => Ok(NoGitHub)

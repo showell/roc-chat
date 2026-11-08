@@ -14,7 +14,8 @@
 ##
 ## A file that may not exist yet is read as `NoFile` or `File(...)`. Every
 ## failure is named (`Fault`): `Missing` (no such file, for a read that
-## needs one), `AlreadyExists` (a name taken), and the host's own, passed
+## needs one), `Damaged` (a file that holds no fact of its kind),
+## `AlreadyExists` (a name taken), and the host's own, passed
 ## on as it said them (`NotUtf8`, `PathRefused`, `MissingDirectory`,
 ## `Failed`). Each function answers only the ones it can meet. Every one but `Missing` is a
 ## bug or a broken disk, and the caller answers it loudly, in `fault_words`.
@@ -71,6 +72,7 @@ FileSystem :: [].{
 	## Every failure a function here answers, as `fault_words` takes it.
 	Fault : [
 		Missing,
+		Damaged,
 		AlreadyExists,
 		NotUtf8,
 		PathRefused,
@@ -281,7 +283,7 @@ FileSystem :: [].{
 	create_github_account! = |{ human, github }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(folder, [("github-id", github.to_str().to_utf8()), ("name", files.name)])
+		create_facts!(folder, [(github_id_fact, github.to_str().to_utf8()), ("name", files.name)])
 	}
 
 	## The user's `name` file written whole over the one before, atomically:
@@ -380,32 +382,39 @@ FileSystem :: [].{
 	read_password_hash! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
 	read_password_hash! = |id| read_fact!(password_path(id))
 
-	## The `github-id` file of each account folder that has one, as it is
-	## (docs/design.md, "Storage"). It lists the folders rather than taking a
-	## `Users`, as a human can sign up while the host waits on GitHub, and a
-	## `Users` read before that wait doesn't hold them.
-	read_github_id_files! : {} => Try(
-		List({ user : UserId, file : List(U8) }),
-		[NotUtf8, PathRefused, Failed],
+	## The GitHub account of each account folder whose `github-id` file
+	## names one (docs/design.md, "Storage"). It lists the folders rather than
+	## taking a `Users`, as a human can sign up while the host waits on GitHub,
+	## and a `Users` read before that wait doesn't hold them. One damaged file
+	## fails the whole read rather than being left out: left out, its human
+	## would be no one to a GitHub sign-in, which would make them a second
+	## account, while their own pages say they are linked.
+	read_github_links! : {} => Try(
+		List({ user : UserId, github : GitHubId }),
+		[Damaged, NotUtf8, PathRefused, Failed],
 	)
-	read_github_id_files! = |{}| {
+	read_github_links! = |{}| {
 		ids = list_names_in!(AccountFolder.auth_root)?.keep_oks(UserId.from_str)
-		var $files = []
+		var $links = []
 		for id in ids {
-			match FileSystem.read_github_id_file!(id)? {
-				NoFile => {}
-				File(file) => {
-					$files = $files.append({ user: id, file })
+			match FileSystem.read_github_link!(id)? {
+				NotLinked => {}
+				Linked(github) => {
+					$links = $links.append({ user: id, github })
 				}
 			}
 		}
-		Ok($files)
+		Ok($links)
 	}
 
-	## The user `id`'s `github-id` file, as it is, or `NoFile`; unless the
-	## host's read failed.
-	read_github_id_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
-	read_github_id_file! = |id| read_fact!("${account_folder_path(AccountFolder.of(id))}/github-id")
+	## The GitHub account that signs in as the user `id`: `NotLinked` when
+	## they have no `github-id` file; unless the file holds no id (`Damaged`),
+	## or the host's read failed.
+	read_github_link! : UserId => Try(
+		[NotLinked, Linked(GitHubId)],
+		[Damaged, NotUtf8, PathRefused, Failed],
+	)
+	read_github_link! = |id| github_link(read_fact!(github_id_path(id))?)
 
 	## The user `id`'s `github-session-secret` file, as it is, or `NoFile`;
 	## unless the host's read failed.
@@ -441,11 +450,7 @@ FileSystem :: [].{
 		{},
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_github_id! = |id, github|
-		create_fact!(
-			"${account_folder_path(AccountFolder.of(id))}/github-id",
-			github.to_str().to_utf8(),
-		)
+	create_github_id! = |id, github| create_fact!(github_id_path(id), github.to_str().to_utf8())
 
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
@@ -668,6 +673,26 @@ account_folder_path = |folder| Str.join_with(folder.parts(), "/")
 password_path : UserId -> Str
 password_path = |id| "${account_folder_path(AccountFolder.of(id))}/password"
 
+github_id_fact : Str
+github_id_fact = "github-id"
+
+## The path of the GitHub account that signs in as the user `id`.
+github_id_path : UserId -> Str
+github_id_path = |id| "${account_folder_path(AccountFolder.of(id))}/${github_id_fact}"
+
+## What a `github-id` fact file says: none, `NotLinked`; an id, `Linked`;
+## anything else, `Damaged`.
+github_link : [NoFile, File(List(U8))] -> Try([NotLinked, Linked(GitHubId)], [Damaged])
+github_link = |fact|
+	match fact {
+		NoFile => Ok(NotLinked)
+		File(bytes) =>
+			match GitHubId.from_file(bytes) {
+				Ok(github) => Ok(Linked(github))
+				Err(NotAGitHubId) => Err(Damaged)
+			}
+	}
+
 ## The path of what the user `id`'s sessions are signed over beside their
 ## password's hash, once they have signed in with GitHub.
 github_session_secret_path : UserId -> Str
@@ -818,6 +843,7 @@ fault_name : FileSystem.Fault -> Str
 fault_name = |fault|
 	match fault {
 		Missing => "Missing"
+		Damaged => "Damaged"
 		AlreadyExists => "AlreadyExists"
 		NotUtf8 => "NotUtf8"
 		PathRefused => "PathRefused"
@@ -880,10 +906,18 @@ expect {
 			image,
 		) == "chat/dm/1_1/plans/uploads/${"0a".repeat(16)}.png".to_utf8()
 }
+expect github_id_path(UserId.chat_owner) == "auth/1/github-id"
+# A `github-id` fact: none links no one, an id links it, anything else is
+# damaged, never read as either.
+expect github_link(NoFile) == Ok(NotLinked)
+expect github_link(File("583231\n".to_utf8())) == GitHubId.from_u64(583231).map_ok(|github| Linked(github))
+expect
+	["", "0", "x", "-1", "583231x"].all(|text| github_link(File(text.to_utf8())) == Err(Damaged))
 # Every fault, in words.
 expect
 	[
 		(Missing, "Missing"),
+		(Damaged, "Damaged"),
 		(AlreadyExists, "AlreadyExists"),
 		(NotUtf8, "NotUtf8"),
 		(PathRefused, "PathRefused"),

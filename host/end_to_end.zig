@@ -231,7 +231,9 @@
 //! 48z. her `github-session-secret` rewritten, then removed: her session ends
 //!      each time, and she signs in again; her `github-id` removed: her
 //!      session ends, and GitHub's sign-in asks for a name, as for anyone new;
-//! 48za. two humans holding one id: 403, neither signed in;
+//! 48za. two humans holding one id: 403, neither signed in; Steve's
+//!      `github-id` damaged: his page and anyone's GitHub sign-in a 500, no
+//!      account made, and his page again once it is mended;
 //! 48zb. a key at any of the routes: 403; the wrong method to the name: 405;
 //!      a cross-site form post of a name: 403, nothing made;
 //! 48zc. a new human whose login is a free name: the form holds it; choosing
@@ -1849,6 +1851,15 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const shared = try signInByGitHub(a, io, port, fake, "user-id-7");
     try data.deleteFile(io, "auth/5/github-id");
     try t.check("two humans holding one GitHub id: 403, neither signed in", shared.status == 403 and has(shared.body, "more than one") and isRefusedAtTheDoor(shared));
+    try data.writeFile(io, .{ .sub_path = "auth/1/github-id", .data = "x" });
+    const counter_at_damage = try readFile(a, io, data, "auth/next-id.txt");
+    const damaged_page = try get(a, io, port, "/agents");
+    const damaged_sign_in = try signInByGitHub(a, io, port, fake, "user-id-8");
+    try data.writeFile(io, .{ .sub_path = "auth/1/github-id", .data = "7\n" });
+    const mended_page = try get(a, io, port, "/agents");
+    try t.check("Steve's github-id damaged: his session's page and anyone's GitHub sign-in a 500, saying so, no account made; mended, his page again", damaged_page.status == 500 and
+        has(damaged_page.body, "Damaged") and damaged_sign_in.status == 500 and has(damaged_sign_in.body, "Damaged") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), counter_at_damage) and mended_page.status == 200);
 
     // 48zb.
     const key_starts = try getAs(a, io, port, held.cc_bearer, "/login/github/start");
