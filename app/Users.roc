@@ -22,7 +22,6 @@ import Author
 import FactFile
 import Name
 import UserId
-import UserStem
 
 Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 
@@ -45,10 +44,6 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 		## The user as the author of a message.
 		author : Users.User -> Author
 		author = |Users.User.(u)| Author.of(u.name)
-
-		## The stem of the user's file names, such as `apoorva-2`.
-		stem : Users.User -> Str
-		stem = |Users.User.(u)| UserStem.user_stem({ name: u.name, id: u.id })
 
 		## The user as a human; an agent is refused, by its id.
 		as_human : Users.User -> Try(Users.Human, [Agent(UserId)])

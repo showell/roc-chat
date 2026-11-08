@@ -44,11 +44,6 @@ Name :: NameAlphabet.Written.{
 	to_str : Name -> Str
 	to_str = |Name.(text)| text.to_str()
 
-	## The name as text written in the alphabet, for `NameAlphabet`'s
-	## functions to read.
-	written_text : Name -> NameAlphabet.Written
-	written_text = |Name.(text)| text
-
 	## A name's place in the namespace: two names are the same name exactly
 	## when their keys are equal. Only a name or a strict name makes a key,
 	## and a key is never shown.

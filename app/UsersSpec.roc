@@ -177,9 +177,5 @@ expect
 		Sample.name("Steve Howell"),
 	].all(|name| sample.check({ id: UserId.chat_owner, name }) == Err(NameMismatch))
 expect sample.check({ id: stranger, name: Sample.name("Steve") }) == Err(NoSuchUser)
-# A user as an author, and their files' stem.
-expect sample.to_list().map(|u| (u.author().to_str(), u.stem())) == [
-	("Steve", "steve-1"),
-	("Apoorva", "apoorva-2"),
-	("CC", "cc-3"),
-]
+# A user as an author.
+expect sample.to_list().map(|u| u.author().to_str()) == ["Steve", "Apoorva", "CC"]

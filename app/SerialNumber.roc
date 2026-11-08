@@ -1,8 +1,9 @@
-## This module numbers what an agent holds in its folder, its keys and its
-## invites: 1, 2, 3, each kind counted on its own, the next one after the
-## highest given. Nothing is ever removed from an agent's folder, so a
-## number is never given twice. `AgentKey.Id` and `AgentInvite.Id` are each
-## a number from here, typed apart so one can't stand for the other.
+## This module numbers what a user holds in their folder: an agent's keys and
+## invites, and a human's invites: 1, 2, 3, each kind counted on its own, the
+## next one after the highest given. Nothing is ever removed from those
+## folders, so a number is never given twice. `AgentKey.Id`, `AgentInvite.Id`
+## and `HumanInvite.Id` are each a number from here, typed apart so one can't
+## stand for another.
 ##
 ## A number is written as its decimal digits, as a folder's name and a URL
 ## carry it, with no leading `0`, so each number has one spelling.

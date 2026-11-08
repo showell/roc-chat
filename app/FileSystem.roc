@@ -215,7 +215,7 @@ FileSystem :: [].{
 		var $accounts = []
 		for id in account_ids {
 			folder = account_folder_path(AccountFolder.of(id))
-			match read_fact!("${folder}/name")? {
+			match read_fact!("${folder}/${name_fact}")? {
 				NoFile => {}
 				File(name) => {
 					owner = read_fact!("${folder}/owner")?
@@ -255,7 +255,7 @@ FileSystem :: [].{
 				File(bytes) => [("owner", bytes)]
 			}
 		folder = account_folder_path(AccountFolder.of(user.id()))
-		create_facts!(folder, owner_fact.append(("name", files.name)))
+		create_facts!(folder, owner_fact.append((name_fact, files.name)))
 	}
 
 	## A new invited human's account folder, made once: the id of the human
@@ -269,7 +269,7 @@ FileSystem :: [].{
 	create_invited_account! = |{ human, inviter }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(folder, [("inviter", inviter.to_file()), ("name", files.name)])
+		create_facts!(folder, [("inviter", inviter.to_file()), (name_fact, files.name)])
 	}
 
 	## A new human's account folder, made once as they sign up with GitHub:
@@ -283,7 +283,7 @@ FileSystem :: [].{
 	create_github_account! = |{ human, github }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(folder, [(github_id_fact, github.to_file()), ("name", files.name)])
+		create_facts!(folder, [(github_id_fact, github.to_file()), (name_fact, files.name)])
 	}
 
 	## The user's `name` file written whole over the one before, atomically:
@@ -291,7 +291,7 @@ FileSystem :: [].{
 	replace_account_name! : Users.User => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_account_name! = |user|
 		replace_fact!(
-			"${account_folder_path(AccountFolder.of(user.id()))}/name",
+			"${account_folder_path(AccountFolder.of(user.id()))}/${name_fact}",
 			Users.account_files(user).name,
 		)
 
@@ -357,7 +357,7 @@ FileSystem :: [].{
 				("created", files.created),
 				("expires", files.expires),
 				("by", files.by),
-				("state", files.state),
+				(state_fact, files.state),
 				("hash", files.hash),
 			],
 		)
@@ -371,7 +371,7 @@ FileSystem :: [].{
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_human_invite_state! = |human, invite| replace_fact!(
-		"${human_invite_folder_path(human, invite.id())}/state",
+		"${human_invite_folder_path(human, invite.id())}/${state_fact}",
 		invite.to_files().state,
 	)
 
@@ -536,7 +536,7 @@ FileSystem :: [].{
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_agent_key_state! = |agent, key| replace_fact!(
-		"${key_folder_path(agent, key.id())}/state",
+		"${key_folder_path(agent, key.id())}/${state_fact}",
 		key.to_files().state,
 	)
 
@@ -582,7 +582,7 @@ FileSystem :: [].{
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	replace_agent_invite_state! = |agent, invite| replace_fact!(
-		"${invite_folder_path(agent, invite.id())}/state",
+		"${invite_folder_path(agent, invite.id())}/${state_fact}",
 		invite.to_files().state,
 	)
 }
@@ -673,8 +673,18 @@ account_folder_path = |folder| Str.join_with(folder.parts(), "/")
 password_path : UserId -> Str
 password_path = |id| "${account_folder_path(AccountFolder.of(id))}/password"
 
+## The fact file of a user's name, whose making makes their folder an
+## account.
+name_fact : Str
+name_fact = "name"
+
+## The fact file of the GitHub account that signs in as a user.
 github_id_fact : Str
 github_id_fact = "github-id"
+
+## The fact file of a key's or an invite's state.
+state_fact : Str
+state_fact = "state"
 
 ## The path of the GitHub account that signs in as the user `id`.
 github_id_path : UserId -> Str
@@ -734,7 +744,7 @@ read_human_invite_facts! = |folder| {
 	hash = read_needed_fact!("${folder}/hash")?
 	created = read_needed_fact!("${folder}/created")?
 	expires = read_needed_fact!("${folder}/expires")?
-	state = read_needed_fact!("${folder}/state")?
+	state = read_needed_fact!("${folder}/${state_fact}")?
 	by = read_needed_fact!("${folder}/by")?
 	Ok({ created, expires, state, by, hash })
 }
@@ -756,42 +766,26 @@ channel_members_suffix : Str
 channel_members_suffix = ".channel"
 
 ## The fact files of a key or an invite, in the order they are written: the
-## hash last, so a record cut short is never whole.
-record_facts : {
-	created : List(U8),
-	expires : List(U8),
-	state : List(U8),
-	read : List(U8),
-	post : List(U8),
-	hash : List(U8),
-} -> List((Str, List(U8)))
+## hash last, so a record cut short is never whole. An agent's invite has the
+## same files as its keys (`AgentInvite.Files` is this record too).
+record_facts : AgentKey.Files -> List((Str, List(U8)))
 record_facts = |files| [
 	("created", files.created),
 	("expires", files.expires),
 	("read", files.read),
 	("post", files.post),
-	("state", files.state),
+	(state_fact, files.state),
 	("hash", files.hash),
 ]
 
-## The fact files of the record in `folder`; unless one is missing or the
-## host's read failed.
-read_record_facts! : Str => Try(
-	{
-		created : List(U8),
-		expires : List(U8),
-		state : List(U8),
-		read : List(U8),
-		post : List(U8),
-		hash : List(U8),
-	},
-	_,
-)
+## The fact files of the key or invite in `folder`; unless one is missing or
+## the host's read failed.
+read_record_facts! : Str => Try(AgentKey.Files, _)
 read_record_facts! = |folder| {
 	hash = read_needed_fact!("${folder}/hash")?
 	created = read_needed_fact!("${folder}/created")?
 	expires = read_needed_fact!("${folder}/expires")?
-	state = read_needed_fact!("${folder}/state")?
+	state = read_needed_fact!("${folder}/${state_fact}")?
 	read = read_needed_fact!("${folder}/read")?
 	post = read_needed_fact!("${folder}/post")?
 	Ok({

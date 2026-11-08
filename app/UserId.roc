@@ -1,6 +1,6 @@
 ## This module is a user's id: the number of a person or an agent. An id is
-## unique and permanent, and short enough for a URL and a file's name
-## (`UserStem`). The chat owner's id is 1.
+## unique and permanent, and short enough for a URL and a file's name. The
+## chat owner's id is 1.
 ##
 ## People and agents are numbered in one count, as their names share one
 ## namespace, so an id alone says who a user is.
