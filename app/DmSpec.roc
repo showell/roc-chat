@@ -20,7 +20,7 @@ noon = DateTime.from_str("2026-11-02T12:00:00Z") ?? crash "DmSpec: a time"
 Ends : { from : Users.Human, to : Users.Human }
 
 ## A DM started from `from` to `to`, in `plans`, saying hello at noon.
-start_dm : Ends -> { dm : Dm, conversation : _ }
+start_dm : Ends -> { dm : Dm, grown : _ }
 start_dm = |{ from, to }|
 	Dm.start({
 		to,
@@ -84,7 +84,7 @@ expect {
 	conversation = start_dm({
 		from: Sample.human("Apoorva"),
 		to: Sample.human("Steve"),
-	}).conversation
+	}).grown.conversation
 	conversation.topic() == Sample.plans
 		and conversation.messages().map(|m| (m.id(), m.author().to_str(), m.time(), m.markdown()))
 			== [(Message.Id.first, "Apoorva", noon, "hello")]

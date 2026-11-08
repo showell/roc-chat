@@ -61,18 +61,18 @@ Transcript :: [].{
 	most_bytes : U64
 	most_bytes = 16 * 1024 * 1024
 
-	## The record of `message`, the latest message of `conversation`, as
-	## the transcript file writes it. Added at the end of `file`, which holds
-	## the conversation before `message` (`NoFile` when there is no file
-	## yet), it makes the file hold `write(conversation)`. It is refused
-	## (`FileFull`) when the file would then hold more than `most_bytes`.
+	## The record of the message a conversation was just grown by, as
+	## `Conversation.append` answers them, written as the transcript file
+	## writes it. Added at the end of `file`, which holds the conversation
+	## before that message (`NoFile` when there is no file yet), it makes the
+	## file hold `write(grown.conversation)`. It is refused (`FileFull`) when
+	## the file would then hold more than `most_bytes`.
 	message_record : {
-		conversation : Conversation,
-		message : Message,
+		grown : { conversation : Conversation, message : Message },
 		file : [NoFile, File(Transcript.Utf8Transcript)],
 	} -> Try(Transcript.Utf8TranscriptMessage, [FileFull])
-	message_record = |{ conversation, message, file }| {
-		record = write_message(conversation, message).to_utf8()
+	message_record = |{ grown, file }| {
+		record = write_message(grown.conversation, grown.message).to_utf8()
 		held =
 			match file {
 				NoFile => 0

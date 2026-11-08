@@ -261,8 +261,7 @@ grown_on_disk = |before, unnumbered_message| {
 	grown = before.append(unnumbered_message) ?? crash "TranscriptSpec: a sample's message fits"
 	file = Transcript.write(before).to_utf8()
 	record = Transcript.message_record({
-		conversation: grown.conversation,
-		message: grown.message,
+		grown,
 		file: File(Transcript.Utf8Transcript.unchecked_from_file(file)),
 	}) ?? crash "TranscriptSpec: a sample's record fits"
 	{ bytes: file.concat(record.to_utf8_bytes()), grown: grown.conversation }
@@ -284,9 +283,8 @@ expect
 hello_record : [NoFile, File(Transcript.Utf8Transcript)] -> Try(List(U8), [FileFull])
 hello_record = |file|
 	Transcript.message_record({
-		conversation: Sample.hello_and_reply,
-		message: Sample.hello_and_reply.messages().first()
-			?? crash "TranscriptSpec: hello is first",
+		grown: Conversation.empty(Sample.plans).append(Sample.hello)
+			?? crash "TranscriptSpec: hello starts a conversation",
 		file,
 	}).map_ok(|record| record.to_utf8_bytes())
 

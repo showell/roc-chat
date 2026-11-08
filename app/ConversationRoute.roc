@@ -168,11 +168,7 @@ append_posted_message! = |post| {
 	})?
 	loaded = load_conversation!(post.key)?
 	grown = loaded.conversation.append(unnumbered_message)?
-	record = Transcript.message_record({
-		conversation: grown.conversation,
-		message: grown.message,
-		file: loaded.file,
-	})?
+	record = Transcript.message_record({ grown, file: loaded.file })?
 	FileSystem.append_message!(post.key, record) ? |fault| FileSystem(fault)
 	html = Page.message({
 		conversation: grown.conversation,

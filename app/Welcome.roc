@@ -53,15 +53,9 @@ Welcome :: { key : ConversationKey, record : Transcript.Utf8TranscriptMessage }.
 				time,
 			},
 		})
-		message =
-			started.conversation.messages().first()
-				?? crash "Welcome.make: a DM starts with its first message"
 		record =
-			Transcript.message_record({
-				conversation: started.conversation,
-				message,
-				file: NoFile,
-			}) ?? crash "Welcome.make: one short message fits an empty transcript"
+			Transcript.message_record({ grown: started.grown, file: NoFile })
+				?? crash "Welcome.make: one short message fits an empty transcript"
 		Ok(Welcome.({ key: Welcome.conversation_key({ directory, human }), record }))
 	}
 

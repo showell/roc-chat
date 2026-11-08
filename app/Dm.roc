@@ -22,8 +22,9 @@ Dm :: UserPair.{
 	}
 
 	## The DM between the first message's writer and `to`, and its
-	## conversation under `topic`, holding that message.
-	start : Dm.Start -> { dm : Dm, conversation : Conversation }
+	## conversation under `topic` grown by that message, as
+	## `Conversation.append` answers it.
+	start : Dm.Start -> { dm : Dm, grown : { conversation : Conversation, message : Message } }
 	start = |{ to, topic, first_message }| {
 		from = first_message.payload.author
 		first = {
@@ -33,7 +34,7 @@ Dm :: UserPair.{
 		grown =
 			Conversation.empty(topic).append(first)
 				?? crash "Dm.start: an empty conversation takes its first message"
-		{ dm: Dm.between({ a: from, b: to }), conversation: grown.conversation }
+		{ dm: Dm.between({ a: from, b: to }), grown }
 	}
 
 	## The DM between `a` and `b`, given in either order.
