@@ -36,22 +36,11 @@ UserId :: U16.{
 	## writes are read, the digits of 1 to 65,535 with no leading `0`, so each
 	## id has exactly one spelling.
 	from_str : Str -> Try(UserId, [NotAUserId])
-	from_str = |text| {
-		bytes = text.to_utf8()
-		match bytes {
-			[] => Err(NotAUserId)
-			['0', ..] => Err(NotAUserId)
-			_ if bytes.len() > 5 or !bytes.all(Ascii.is_digit) => Err(NotAUserId)
-			_ => {
-				number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
-				if number >= UserId.past_highest {
-					Err(NotAUserId)
-				} else {
-					Ok(UserId.(number.to_u16_wrap()))
-				}
-			}
+	from_str = |text|
+		match Ascii.canonical_number(text.to_utf8(), { most_digits: 5 }) {
+			Ok(number) if number < UserId.past_highest => Ok(UserId.(number.to_u16_wrap()))
+			_ => Err(NotAUserId)
 		}
-	}
 
 	## The id's decimal digits, as a URL, a file's name and a DM's pair
 	## write it.

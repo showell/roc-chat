@@ -13,22 +13,11 @@ SerialNumber :: [].{
 	## The number `text` spells: the digits of 1 to 4294967295, with no
 	## leading `0`; unless it is anything else (`NotASerialNumber`).
 	from_str : Str -> Try(U32, [NotASerialNumber])
-	from_str = |text| {
-		bytes = text.to_utf8()
-		match bytes {
-			[] => Err(NotASerialNumber)
-			['0', ..] => Err(NotASerialNumber)
-			_ if bytes.len() > 10 or !bytes.all(Ascii.is_digit) => Err(NotASerialNumber)
-			_ => {
-				number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
-				if number > U32.highest.to_u64() {
-					Err(NotASerialNumber)
-				} else {
-					Ok(number.to_u32_wrap())
-				}
-			}
+	from_str = |text|
+		match Ascii.canonical_number(text.to_utf8(), { most_digits: 10 }) {
+			Ok(number) if number <= U32.highest.to_u64() => Ok(number.to_u32_wrap())
+			_ => Err(NotASerialNumber)
 		}
-	}
 
 	## The number after the highest of `given`, or 1 when none is given;
 	## unless the highest is the last (`Full`).

@@ -2,7 +2,10 @@
 ## is it a letter, is it a space. Strict names, user ids and timestamps are
 ## checked a byte at a time with these, so no other module writes out a
 ## byte range. It also trims ASCII spaces off the ends of bytes, for the
-## formats whose spaces are ASCII alone.
+## formats whose spaces are ASCII alone, and reads a number spelled the one
+## way each number is written: decimal digits with no leading `0`
+## (`canonical_number`), the rule a user id, a serial number and a session's
+## second share.
 ##
 ## The checks are safe on UTF-8 text: every byte of a multi-byte character
 ## is 128 or more, and no check answers `Bool.True` for such a byte. So a
@@ -31,6 +34,23 @@ Ascii :: [].{
 		) {
 			(Ok(first), Ok(last)) => bytes.sublist({ start: first, len: last - first + 1 })
 			_ => []
+		}
+
+	## The number `bytes` spell: one to `most_digits` decimal digits, the
+	## first not `0`, so each number has one spelling and 0 has none; unless
+	## they are anything else (`NotCanonical`). A caller checks its own range.
+	## `most_digits` is at most 19, so every number read fits a `U64`.
+	canonical_number : List(U8), { most_digits : U64 } -> Try(U64, [NotCanonical])
+	canonical_number = |bytes, { most_digits }|
+		if most_digits > 19 {
+			crash "Ascii.canonical_number: 20 digits can pass a U64's highest"
+		} else {
+			match bytes {
+				[] => Err(NotCanonical)
+				['0', ..] => Err(NotCanonical)
+				_ if bytes.len() > most_digits or !bytes.all(Ascii.is_digit) => Err(NotCanonical)
+				_ => Ok(bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64()))
+			}
 		}
 }
 
@@ -68,6 +88,36 @@ expect
 expect
 	"é".to_utf8()
 		.all(|byte| !Ascii.is_digit(byte) and !Ascii.is_letter(byte) and !Ascii.is_space(byte))
+# A canonical number, at one digit, at the most digits allowed, and at the
+# largest 19 digits spell.
+expect
+	[
+		("1", 1),
+		("9", 9),
+		("10", 10),
+		("99999", 99999),
+	].all(|(text, number)| Ascii.canonical_number(text.to_utf8(), { most_digits: 5 }) == Ok(number))
+expect
+	Ascii.canonical_number("9999999999999999999".to_utf8(), { most_digits: 19 })
+		== Ok(9999999999999999999)
+# None, zero, a leading `0`, one digit too many, a sign, a space, a letter,
+# Roc's other number forms, and a digit that isn't ASCII's.
+expect
+	[
+		"",
+		"0",
+		"00",
+		"01",
+		"100000",
+		"+1",
+		"-1",
+		" 1",
+		"1 ",
+		"1a",
+		"1_000",
+		"0x10",
+		"\u(661)",
+	].all(|text| Ascii.canonical_number(text.to_utf8(), { most_digits: 5 }) == Err(NotCanonical))
 # A trim takes every space off each end, keeps those inside, and leaves a
 # no-break space, which is no ASCII space; spaces alone trim to nothing.
 expect

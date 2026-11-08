@@ -230,24 +230,19 @@ claim_from_value = |value|
 		_ => Err(BadSession)
 	}
 
-## The second `digits` spell: decimal digits with no leading `0`, at most
-## the largest `I64`; so each second has one spelling, the one `to_str`
-## writes and the signature is over.
+## The second `digits` spell: `0`, or a canonical number
+## (`Ascii.canonical_number`) at most the largest `I64`; so each second has
+## one spelling, the one `to_str` writes and the signature is over.
 second_from_digits : List(U8) -> Try(Timestamp, [NotASecond])
 second_from_digits = |digits|
 	match digits {
-		[] => Err(NotASecond)
 		['0'] => Ok(Timestamp.at_second(0))
-		['0', ..] => Err(NotASecond)
-		_ if digits.len() > 19 or !digits.all(Ascii.is_digit) => Err(NotASecond)
-		_ => {
-			number = U64.from_int_digits(digits.map(|b| b - '0')) ? |_| NotASecond
-			if number > I64.highest.to_u64_wrap() {
-				Err(NotASecond)
-			} else {
-				Ok(Timestamp.at_second(number.to_i64_wrap()))
+		_ =>
+			match Ascii.canonical_number(digits, { most_digits: 19 }) {
+				Ok(number) if number <= I64.highest.to_u64_wrap() =>
+					Ok(Timestamp.at_second(number.to_i64_wrap()))
+				_ => Err(NotASecond)
 			}
-		}
 	}
 
 # ── tests
