@@ -171,7 +171,7 @@ HumanInvite :: {
 		created: invite.created.to_file(),
 		expires: invite.expires.to_file(),
 		state: state_to_file(invite.state),
-		by: invite.by.to_str().to_utf8(),
+		by: invite.by.to_file(),
 		hash: invite.hash.to_file(),
 	}
 
@@ -182,7 +182,7 @@ HumanInvite :: {
 		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
 		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
 		held_state = state_from_file(files.state) ? |_| BadFact("state")
-		maker = user_id_from_file(files.by) ? |_| BadFact("by")
+		maker = UserId.from_file(files.by) ? |_| BadFact("by")
 		hash = SecretHash.from_file(files.hash) ? |_| BadFact("hash")
 		Ok(
 			HumanInvite.(
@@ -219,11 +219,3 @@ state_from_file = |bytes| {
 		Err(NotAState)
 	}
 }
-
-## The user's id a fact file holds, its digits.
-user_id_from_file : List(U8) -> Try(UserId, [NotAUserId])
-user_id_from_file = |bytes|
-	match Str.from_utf8(FactFile.word_from_file(bytes)) {
-		Ok(digits) => UserId.from_str(digits)
-		Err(_) => Err(NotAUserId)
-	}

@@ -269,7 +269,7 @@ FileSystem :: [].{
 	create_invited_account! = |{ human, inviter }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(folder, [("inviter", inviter.to_str().to_utf8()), ("name", files.name)])
+		create_facts!(folder, [("inviter", inviter.to_file()), ("name", files.name)])
 	}
 
 	## A new human's account folder, made once as they sign up with GitHub:
@@ -283,7 +283,7 @@ FileSystem :: [].{
 	create_github_account! = |{ human, github }| {
 		files = Users.account_files(human)
 		folder = account_folder_path(AccountFolder.of(human.id()))
-		create_facts!(folder, [(github_id_fact, github.to_str().to_utf8()), ("name", files.name)])
+		create_facts!(folder, [(github_id_fact, github.to_file()), ("name", files.name)])
 	}
 
 	## The user's `name` file written whole over the one before, atomically:
@@ -450,7 +450,7 @@ FileSystem :: [].{
 		{},
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_github_id! = |id, github| create_fact!(github_id_path(id), github.to_str().to_utf8())
+	create_github_id! = |id, github| create_fact!(github_id_path(id), github.to_file())
 
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])

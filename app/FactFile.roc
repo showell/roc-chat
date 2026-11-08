@@ -1,9 +1,11 @@
 ## This module is the one home of how the chat spells a fact file: a small
 ## file holding one decimal number or one word, written bare, with no line
-## end. A reader takes the spaces, tabs and line ends at either end off
-## first, so a file edited by hand still reads. What each number or word means is
-## its own module's to say: an upload total (`UploadTotal`), a user's owner
-## (`Users`), a moment (`Timestamp`).
+## end. The one exception is the counter of user ids, `auth/next-id.txt`,
+## which `Users.counter_file` writes with a line end after its digits. A
+## reader takes the spaces, tabs and line ends at either end off first, so a
+## file edited by hand, or the counter, still reads. What each number or word
+## means is its own module's to say: an upload total (`UploadTotal`), a user's
+## id (`UserId`), a GitHub id (`GitHubId`), a moment (`Timestamp`).
 import Ascii
 
 FactFile :: [].{

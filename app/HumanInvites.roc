@@ -130,13 +130,9 @@ HumanInvites :: [].{
 		match file {
 			NoFile => Ok(NoInviter)
 			File(bytes) =>
-				match Str.from_utf8(FactFile.word_from_file(bytes)) {
-					Ok(digits) =>
-						UserId.from_str(digits)
-							.map_ok(|id| InvitedBy(id))
-							.map_err(|NotAUserId| NotAnInviter)
-					Err(_) => Err(NotAnInviter)
-				}
+				UserId.from_file(bytes)
+					.map_ok(|id| InvitedBy(id))
+					.map_err(|NotAUserId| NotAnInviter)
 		}
 
 	## `directory` with a human named by the form `body`'s field `name`,

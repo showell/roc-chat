@@ -29,6 +29,10 @@ GitHubId :: U64.{
 	to_str : GitHubId -> Str
 	to_str = |GitHubId.(number)| number.to_str()
 
+	## The id as a `github-id` file keeps it (`FactFile`): its digits, bare.
+	to_file : GitHubId -> List(U8)
+	to_file = |GitHubId.(number)| FactFile.number_to_file(number)
+
 	is_eq : _
 }
 
@@ -38,6 +42,7 @@ expect GitHubId.from_u64(1) == GitHubId.from_file("1\n".to_utf8())
 expect GitHubId.from_u64(583231) == GitHubId.from_file(" 583231".to_utf8())
 expect GitHubId.from_u64(1) != GitHubId.from_u64(2)
 expect GitHubId.from_u64(583231).map_ok(GitHubId.to_str) == Ok("583231")
+expect GitHubId.from_u64(583231).map_ok(GitHubId.to_file) == Ok("583231".to_utf8())
 expect
 	[
 		"",

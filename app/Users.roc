@@ -123,7 +123,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 		name: user.name().to_str().to_utf8(),
 		owner: match user.role() {
 			Human => NoFile
-			Agent({ owner }) => File(owner.to_str().to_utf8())
+			Agent({ owner }) => File(owner.to_file())
 		},
 	}
 
@@ -299,13 +299,9 @@ role_from_file = |owner_file|
 	match owner_file {
 		NoFile => Ok(Human)
 		File(bytes) =>
-			match Str.from_utf8(FactFile.word_from_file(bytes)) {
-				Ok(digits) =>
-					match UserId.from_str(digits) {
-						Ok(owner) => Ok(Agent({ owner: owner }))
-						Err(NotAUserId) => Err(NotAnOwner)
-					}
-				Err(_) => Err(NotAnOwner)
+			match UserId.from_file(bytes) {
+				Ok(owner) => Ok(Agent({ owner: owner }))
+				Err(NotAUserId) => Err(NotAnOwner)
 			}
 	}
 

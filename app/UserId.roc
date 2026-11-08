@@ -10,6 +10,7 @@
 ## Every id that is kept is written as its decimal digits, in a file's name, a
 ## URL or a DM's pair, so a wider type later changes no byte on disk.
 import Ascii
+import FactFile
 
 UserId :: U16.{
 
@@ -36,16 +37,21 @@ UserId :: U16.{
 	## writes are read, the digits of 1 to 65,535 with no leading `0`, so each
 	## id has exactly one spelling.
 	from_str : Str -> Try(UserId, [NotAUserId])
-	from_str = |text|
-		match Ascii.canonical_number(text.to_utf8(), { most_digits: 5 }) {
-			Ok(number) if number < UserId.past_highest => Ok(UserId.(number.to_u16_wrap()))
-			_ => Err(NotAUserId)
-		}
+	from_str = |text| id_from_digits(text.to_utf8())
+
+	## The id a fact file holds (`FactFile`), as `to_file` writes it; unless
+	## it holds anything else (`NotAUserId`).
+	from_file : List(U8) -> Try(UserId, [NotAUserId])
+	from_file = |bytes| id_from_digits(FactFile.word_from_file(bytes))
 
 	## The id's decimal digits, as a URL, a file's name and a DM's pair
 	## write it.
 	to_str : UserId -> Str
 	to_str = |UserId.(n)| n.to_str()
+
+	## The id as a fact file keeps it (`FactFile`): its decimal digits, bare.
+	to_file : UserId -> List(U8)
+	to_file = |UserId.(n)| FactFile.number_to_file(n.to_u64())
 
 	## Which of two ids comes first, by number. A DM's pair and a channel's
 	## members are written in this order.
@@ -62,6 +68,14 @@ UserId :: U16.{
 	is_eq : _
 	to_hash : _
 }
+
+## The id `digits` spell, a canonical number in range; else `NotAUserId`.
+id_from_digits : List(U8) -> Try(UserId, [NotAUserId])
+id_from_digits = |digits|
+	match Ascii.canonical_number(digits, { most_digits: 5 }) {
+		Ok(number) if number < UserId.past_highest => Ok(UserId.(number.to_u16_wrap()))
+		_ => Err(NotAUserId)
+	}
 
 # ── tests
 expect UserId.chat_owner.to_str() == "1"
@@ -110,6 +124,26 @@ expect
 		"0x10",
 		"\u(661)",
 	].all(|text| UserId.from_str(text) == Err(NotAUserId))
+# A fact file: the digits written bare, read back with spaces and a line
+# end at either end, and anything but an id's one spelling refused.
+expect UserId.(65535).to_file() == "65535".to_utf8()
+expect
+	[
+		("7", 7),
+		("7\n", 7),
+		(" \t65535\r\n", 65535),
+	].all(|(text, number)| UserId.from_file(text.to_utf8()) == Ok(UserId.(number)))
+expect
+	[
+		"",
+		"\n",
+		"0",
+		"07",
+		"65536",
+		"7 7",
+		"x",
+		"\u(a0)7",
+	].all(|text| UserId.from_file(text.to_utf8()) == Err(NotAUserId))
 # The order, both ways round, the same id, and by number rather than by
 # text.
 expect UserId.chat_owner.compare(UserId.(2)) == Before
