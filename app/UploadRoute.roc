@@ -10,7 +10,8 @@
 ## folder under a fresh name (`FileSystem.store_uploaded_image!`), and the
 ## answer is JSON giving its URL and the browser's name for it, which the
 ## compose box puts in the message as an `<img>`. An image that can't be
-## stored gives its bytes back to the allowance.
+## stored gives its bytes back to the allowance, and its 500 says when they
+## could not be given back.
 ##
 ## A refusal is a line of plain text saying why, which the compose
 ## box shows as it is: no file is a 400, not an image a 415, too large a
@@ -107,6 +108,7 @@ keep_upload! : {
 		LimitReached,
 		NotANumber,
 		FileSystem(FileSystem.Fault),
+		Unrefunded(FileSystem.Fault),
 	],
 )
 keep_upload! = |{ key, acting, headers, body }| {
@@ -125,13 +127,13 @@ keep_upload! = |{ key, acting, headers, body }| {
 					name: MultipartForm.display_name(upload.filename),
 				}),
 			)
-		Err(fault) => {
-			# The image's bytes go back to the allowance. The answer is the
-			# image's 500 either way, and the host logs a failed write of the
-			# total.
-			_ = FileSystem.replace_upload_total!(folder, before)
-			Err(FileSystem(fault))
-		}
+		Err(fault) =>
+		# The image's bytes go back to the allowance. The answer is the
+		# image's 500 either way; it says so when the total stays spent.
+			match FileSystem.replace_upload_total!(folder, before) {
+				Ok({}) => Err(FileSystem(fault))
+				Err(_) => Err(Unrefunded(fault))
+			}
 	}
 }
 
@@ -159,7 +161,8 @@ reserve_upload_bytes! = |folder, adding| {
 
 ## An upload refused, as a line of plain text saying why; or
 ## one that couldn't be counted or kept, a 500 saying that the user's
-## upload total is no number, or what the file system answered.
+## upload total is no number, or what the file system answered, and whether
+## the image's bytes could not be given back to the total (`Unrefunded`).
 upload_refusal_response : [
 	NoFile,
 	NotAnImage,
@@ -167,6 +170,7 @@ upload_refusal_response : [
 	LimitReached,
 	NotANumber,
 	FileSystem(FileSystem.Fault),
+	Unrefunded(FileSystem.Fault),
 ] -> Http.Response
 upload_refusal_response = |why|
 	match why {
@@ -179,6 +183,10 @@ upload_refusal_response = |why|
 		)
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
 		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileSystem.fault_words(fault)}")
+		Unrefunded(fault) => HttpAnswer.text(
+			500,
+			"Upload failed, and your upload total could not be restored. ${FileSystem.fault_words(fault)}",
+		)
 	}
 
 ## The answer to an upload: the image's URL, the
@@ -266,6 +274,11 @@ expect
 		(FileSystem(NotUtf8), 500, "Upload failed. The file system answered NotUtf8."),
 		(FileSystem(PathRefused), 500, "Upload failed. The file system answered PathRefused."),
 		(FileSystem(Failed), 500, "Upload failed. The file system answered Failed."),
+		(
+			Unrefunded(Failed),
+			500,
+			"Upload failed, and your upload total could not be restored. The file system answered Failed.",
+		),
 	].all(
 		|
 			(why, status, words),
