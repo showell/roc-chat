@@ -1,10 +1,10 @@
 ## This module is the alphabet a person's, an agent's or a channel's name is
-## written in (`Name`). It decides which letters a name may hold, how each
-## letter's case folds, and how each letter is spelled in ASCII.
+## written in (`Name`). It decides which letters a name may hold, and how
+## each letter's case folds.
 ##
 ## The alphabet is an allowlist. Its letters are ASCII's `A` to `Z` and `a`
 ## to `z`, and the accented Latin letters of Latin-1 (U+00C0 to U+00FF) and
-## Latin Extended-A (U+0100 to U+017F) that have a row in `spellings`.
+## Latin Extended-A (U+0100 to U+017F) whose fold is in `accented_letters`.
 ## Anything else is refused because it isn't listed: a digit, punctuation,
 ## `×`, `÷`, an emoji, a control character, or an invisible character such
 ## as U+202E or U+200B.
@@ -20,8 +20,8 @@ import Ascii
 NameAlphabet :: [].{
 
 	## Text written in the alphabet: every character is a letter of it or a
-	## space. Only `written_text` makes one, so `case_fold` and `ascii_spelling`
-	## never meet a character they have no rule for.
+	## space. Only `written_text` makes one, so `case_fold` never meets a
+	## character it has no rule for.
 	Written :: Str.{
 
 		## The text, exactly as given.
@@ -50,72 +50,38 @@ NameAlphabet :: [].{
 			.map(|point| utf8_bytes(fold(point)))
 			.join()
 			|> decode_utf8("NameAlphabet.case_fold: a letter folds to a letter, and letters are UTF-8")
-
-	## `text` folded, then each letter spelled in ASCII by `spellings`:
-	## `Élodie` is `elodie`, and `Æsir` is `aesir`. Spaces stay as they are.
-	ascii_spelling : NameAlphabet.Written -> Str
-	ascii_spelling = |text|
-		code_points(text)
-			.map(|point| point_spelling(fold(point)))
-			.join()
-			|> decode_utf8("NameAlphabet.ascii_spelling: an ASCII spelling is UTF-8")
 }
 
-## Each accented letter's ASCII spelling. A row holds folded letters and
-## the ASCII text each one is spelled as. A two-byte letter is in the
-## alphabet exactly when its fold is in a row. `İ` folds to itself, so it
-## sits among the small letters.
-spellings : List((Str, Str))
-spellings = [
-	("àáâãäåāăą", "a"),
-	("æ", "ae"),
-	("çćĉċč", "c"),
-	("ðďđ", "d"),
-	("èéêëēĕėęě", "e"),
-	("ĝğġģ", "g"),
-	("ĥħ", "h"),
-	("ìíîïĩīĭįİ", "i"),
-	("ĳ", "ij"),
-	("ĵ", "j"),
-	("ķ", "k"),
-	("ĺļľł", "l"),
-	("ñńņňŋ", "n"),
-	("òóôõöøōŏő", "o"),
-	("œ", "oe"),
-	("ŕŗř", "r"),
-	("śŝşš", "s"),
-	("ß", "ss"),
-	("ţťŧ", "t"),
-	("þ", "th"),
-	("ùúûüũūŭůűų", "u"),
-	("ŵ", "w"),
-	("ýÿŷ", "y"),
-	("źżž", "z"),
+## The alphabet's accented letters, folded, a row for each ASCII letter they
+## are written on. A two-byte letter is in the alphabet exactly when its fold
+## is here. `İ` folds to itself, so it sits among the small letters.
+accented_letters : List(Str)
+accented_letters = [
+	"àáâãäåāăą",
+	"æ",
+	"çćĉċč",
+	"ðďđ",
+	"èéêëēĕėęě",
+	"ĝğġģ",
+	"ĥħ",
+	"ìíîïĩīĭįİ",
+	"ĳ",
+	"ĵ",
+	"ķ",
+	"ĺļľł",
+	"ñńņňŋ",
+	"òóôõöøōŏő",
+	"œ",
+	"ŕŗř",
+	"śŝşš",
+	"ß",
+	"ţťŧ",
+	"þ",
+	"ùúûüũūŭůűų",
+	"ŵ",
+	"ýÿŷ",
+	"źżž",
 ]
-
-## The ASCII spelling of the folded letter or space `point`: itself if it
-## is ASCII, else its row's spelling.
-point_spelling : U32 -> List(U8)
-point_spelling = |point|
-	if point < 0x80 {
-		[point.to_u8_wrap()]
-	} else {
-		match row_of(point) {
-			Ok((_, ascii)) => ascii.to_utf8()
-			Err(NotFound) =>
-				crash "NameAlphabet.point_spelling: written text holds only letters whose fold has a row"
-		}
-	}
-
-## The row of `spellings` that holds the two-byte letter `point`.
-row_of : U32 -> Try((Str, Str), [NotFound])
-row_of = |point| {
-	letter = decode_utf8(
-		utf8_bytes(point),
-		"NameAlphabet.row_of: a code point below U+0800 is UTF-8",
-	)
-	spellings.find_first(|(row, _)| row.contains(letter))
-}
 
 ## Is `point`, once folded, a letter of the alphabet?
 is_letter : U32 -> Bool
@@ -124,7 +90,11 @@ is_letter = |point| {
 	if folded < 0x80 {
 		Ascii.is_letter(folded.to_u8_wrap())
 	} else {
-		row_of(folded).is_ok()
+		letter = decode_utf8(
+			utf8_bytes(folded),
+			"NameAlphabet.is_letter: a code point below U+0800 is UTF-8",
+		)
+		accented_letters.any(|row| row.contains(letter))
 	}
 }
 
@@ -302,41 +272,12 @@ expect folded_text("ZOË Ann") == "zoë ann"
 # Small letters, the letters with no simple fold, and spaces stay.
 expect
 	["azàöøþÿ", "āįĳķĺľłňŋŷźž", "ßİ", " "].all(|text| folded_text(text) == text)
-# Every letter of every row is spelled as its row says.
+# Every letter of every row is in the alphabet, and so are the capitals that
+# fold to them, at the ends of each range.
+expect accented_letters.all(is_written)
 expect
-	spellings.all(
-		|(row, ascii)| {
-			count = code_points(text_in_alphabet(row)).len()
-			NameAlphabet.ascii_spelling(text_in_alphabet(row)) == ascii.repeat(count)
-		},
-	)
-
-## The ASCII spelling of `text`.
-ascii_text : Str -> Str
-ascii_text = |text| NameAlphabet.ascii_spelling(text_in_alphabet(text))
-
-# The ends of each range, capitals and small letters, folded and spelled.
-expect ascii_text("AZaz") == "azaz"
-expect ascii_text("ÀÅàå") == "aaaa"
-expect ascii_text("ÇçÈËèëÌÏìï") == "cceeeeiiii"
-expect ascii_text("ÐðÑñÒÖòöØø") == "ddnnoooooo"
-expect ascii_text("ÙÜùüÝýÿŸ") == "uuuuyyyy"
-expect ascii_text("ĀąĆčĎđĒěĜģĤħĨİ") == "aaccddeegghhii"
-expect ascii_text("ĴĵĶķĹľŁłŃňŊŋ") == "jjkkllllnnnn"
-expect ascii_text("ŌőŔřŚšŢŧŨųŴŵŶŷŹž") == "oorrssttuuwwyyzz"
-expect ascii_text("ſ") == "s"
-# Every letter spelled with more than one, capital and small.
-expect ascii_text("ß") == "ss"
-expect ascii_text("Æ") == "ae"
-expect ascii_text("æ") == "ae"
-expect ascii_text("Ĳ") == "ij"
-expect ascii_text("ĳ") == "ij"
-expect ascii_text("Œ") == "oe"
-expect ascii_text("œ") == "oe"
-expect ascii_text("Þ") == "th"
-expect ascii_text("þ") == "th"
-# Whole names, with their spaces.
-expect ascii_text("Élodie") == "elodie"
-expect ascii_text("Zoë Ann") == "zoe ann"
-expect ascii_text("Æsir Þór") == "aesir thor"
-expect ascii_text("Łukasz Ő") == "lukasz o"
+	[
+		"ÀÅÇÈËÌÏÐÑÒÖØÙÜÝŸ",
+		"ĀĆĎĒĜĤĨĴĶĹŁŃŊŌŔŚŢŨŴŶŹ",
+		"ÆĲŒÞ",
+	].all(is_written)
