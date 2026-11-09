@@ -16,7 +16,7 @@
 ## listener that held one reconnects and is asked for a live key.
 ##
 ## `sign_in_by_key!` is the check an agent's `Authorization: Bearer`
-## request passes before any route (main's `load_acting_user!`): `AgentKey.admit`
+## request passes before any route (main's `load_actor!`): `AgentKey.admit`
 ## decides, and `SignedIn.by_api_key` is its one door.
 import Timestamp
 import pf.Host

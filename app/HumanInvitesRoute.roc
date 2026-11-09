@@ -17,9 +17,10 @@
 ##
 ## The join routes answer a request that proves no one (`SignedIn.Actor`'s
 ## `Anonymous`), as `/agents/redeem` does: the invite's code is their
-## credential. A request with an API key, or from a browser signed in
-## already, is refused, and any refusal of the code is one 401 that says
-## no more. `GET /join` is the join page (`Page.join`); its script asks
+## credential. Their two posts refuse a request with an API key, or from a
+## browser signed in already, and any refusal of the code is one 401 that
+## says no more. `GET /join` is the join page (`Page.join`), the same for
+## anyone but a human signed in already, who goes to Browse; its script asks
 ## `POST /join/name` for the name the invite holds, a line of JSON. `POST
 ## /join` redeems: the code is judged, then the name; a name refused
 ## spends nothing. Then the name is written, if it changed, so the name it

@@ -2,8 +2,8 @@
 ## a request's session before any route.
 ##
 ## - `GET /login` is the sign-in page: a name and a password, and `next`,
-##   where to go after, from the query (`?next=<path>`), `/agents` when
-##   there is none; and a link to sign in with GitHub, when the server has
+##   where to go after, from the query (`?next=<path>`), `default_next`
+##   (Browse, `/chat`) when there is none; and a link to sign in with GitHub, when the server has
 ##   GitHub's settings (`GitHubRoute`).
 ## - `POST /login` checks the password: the user named must be a human,
 ##   their password file must hold a bcrypt hash, and the host must say the
@@ -230,7 +230,7 @@ SignInRoute :: [].{
 	login_redirect : Html.SitePath -> Http.Response
 	login_redirect = |next| HttpAnswer.see_other("/login?next=${next.to_str()}")
 
-	## The `next` a sign-in page's `query` names: none, `/agents`; or `next=`
+	## The `next` a sign-in page's `query` names: none, `default_next`; or `next=`
 	## and a path on this site; else `BadNext`.
 	next_from_query : List(U8) -> Try(Html.SitePath, [BadNext])
 	next_from_query = |query|
@@ -493,7 +493,7 @@ check_against_dummy_hash! = |password|
 next_text : Try(Html.SitePath, [BadNext]) -> Try(Str, [BadNext])
 next_text = |next| next.map_ok(Html.SitePath.to_str)
 
-# A query's `next`: none is /agents; a path on this site is itself; any
+# A query's `next`: none is /chat; a path on this site is itself; any
 # other path, another field, or bytes that are no text, refused.
 expect next_text(SignInRoute.next_from_query([])) == Ok("/chat")
 expect
@@ -510,7 +510,7 @@ expect
 		"next=/agents&x=1",
 	].all(|query| SignInRoute.next_from_query(query.to_utf8()) == Err(BadNext))
 expect SignInRoute.next_from_query("next=/".to_utf8().concat([0xff])) == Err(BadNext)
-# A form's `next`: none is /agents; a path on this site, decoded, is itself;
+# A form's `next`: none is /chat; a path on this site, decoded, is itself;
 # any other, or two, refused.
 expect next_text(next_from_form("name=Steve".to_utf8())) == Ok("/chat")
 expect

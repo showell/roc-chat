@@ -109,8 +109,8 @@ GitHubRoute :: [].{
 	}
 
 	## A POST of `/login/github/link`, by `viewer`: the browser sent to GitHub
-	## to link it to the human signed in, back to `origin`, going to their
-	## `/agents` after; or why not, before the trip.
+	## to link it to the human signed in, back to `origin`, going to
+	## `SignInRoute.default_next` (Browse) after; or why not, before the trip.
 	serve_link_start! : {
 		viewer : SignedIn.Actor,
 		origin : Str,
