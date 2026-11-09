@@ -22,7 +22,8 @@
 ##   their account: a trip to GitHub like a sign-in's, whose state names them.
 ##   It comes back to `GET /login/github`, which binds the id to them and
 ##   starts their session afresh (`SignInRoute.start_session_by_github_link!`).
-##   It is a POST so that no other site's page can send a browser on it.
+##   It is a POST so that no other site's page can send a browser on it, and
+##   a signed-in route (`Route`), so main answers no one with its 401.
 ##
 ## A server with no GitHub settings answers them with the 404 any other path
 ## gets, so running without GitHub takes nothing. The client secret and
@@ -108,21 +109,22 @@ GitHubRoute :: [].{
 		HttpAnswer.never_stored(answer)
 	}
 
-	## A POST of `/login/github/link`, by `viewer`: the browser sent to GitHub
-	## to link it to the human signed in, back to `origin`, going to
-	## `SignInRoute.default_next` (Browse) after; or why not, before the trip.
+	## A POST of `/login/github/link`, by `acting`, someone signed in (main
+	## refuses anyone else): the browser sent to GitHub to link it to the
+	## human signed in, back to `origin`, going to `SignInRoute.default_next`
+	## (Browse) after; or why not, before the trip.
 	serve_link_start! : {
-		viewer : SignedIn.Actor,
+		acting : SignedIn,
 		origin : Str,
 		now : Timestamp,
 	} => Http.Response
-	serve_link_start! = |{ viewer, origin, now }| {
+	serve_link_start! = |{ acting, origin, now }| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
 			match settings.status {
 				NotConfigured => not_found
 				Configured =>
-					match load_human_to_link!(viewer) {
+					match load_human_to_link!(acting) {
 						Err(why) => link_refusal_answer(why)
 						Ok(human) => send_to_github!({
 							authorize_base: settings.authorize_base,
@@ -272,18 +274,17 @@ send_to_github! = |
 
 ## The human `viewer`, who may link GitHub now; or why not. The way back asks
 ## again, as the human may have linked in another tab meanwhile.
-load_human_to_link! : SignedIn.Actor => Try(
+load_human_to_link! : SignedIn => Try(
 	Users.Human,
 	[
-		NotSignedIn,
 		ByApiKey,
 		Agent(UserId),
 		AlreadyLinked,
 		FileSystem(FileSystem.Fault),
 	],
 )
-load_human_to_link! = |viewer| {
-	human = GitHubSignIn.human_to_link(viewer)?
+load_human_to_link! = |acting| {
+	human = acting.human_in_session()?
 	match FileSystem.read_github_link!(human.id()) {
 		Ok(NotLinked) => Ok(human)
 		Ok(Linked(_)) => Err(AlreadyLinked)
@@ -293,7 +294,6 @@ load_human_to_link! = |viewer| {
 
 ## The answer to a link refused before the trip to GitHub.
 link_refusal_answer : [
-	NotSignedIn,
 	ByApiKey,
 	Agent(UserId),
 	AlreadyLinked,
@@ -301,7 +301,6 @@ link_refusal_answer : [
 ] -> Http.Response
 link_refusal_answer = |why|
 	match why {
-		NotSignedIn => link_refusal_page(401, "Sign in first, then link GitHub.")
 		ByApiKey => SignInRoute.by_api_key_answer
 		Agent(_) => link_refusal_page(403, "An agent can't link GitHub.")
 		AlreadyLinked => link_refusal_page(409, already_linked_words)
@@ -648,7 +647,6 @@ expect [GitHubUnreachable, BadIdentity].all(|why| refusal_said(why).status == 50
 expect [AlreadyLinked, GitHubIdTaken, SignedInAlready].all(|why| refusal_said(why).status == 409)
 expect [NoDefaultChannel, ClockOutOfRange].all(|why| refusal_said(why).status == 500)
 # A link refused before the trip, each way.
-expect link_refusal_answer(NotSignedIn).status == 401
 expect [ByApiKey, Agent(UserId.chat_owner)].all(|why| link_refusal_answer(why).status == 403)
 expect link_refusal_answer(AlreadyLinked).status == 409
 expect [Failed, Damaged].all(|fault| link_refusal_answer(FileSystem(fault)).status == 500)

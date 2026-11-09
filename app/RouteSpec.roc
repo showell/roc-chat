@@ -29,6 +29,7 @@ image_name = "${"0a".repeat(16)}.png"
 chosen_route : Str, List(U8) -> Str
 chosen_route = |method, path|
 	match Route.choose({ method: method.to_utf8(), path, directory: with_room }) {
+		SignedInOnly(StartGitHubLink) => "off to GitHub to link it"
 		SignedInOnly(ShowBrowse) => "browse"
 		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
@@ -71,7 +72,6 @@ chosen_route = |method, path|
 		Open(StartGitHubSignIn) => "off to GitHub (open)"
 		Open(FinishGitHubSignIn) => "back from GitHub (open)"
 		Open(FinishGitHubSignUp) => "a new human's name (open)"
-		Open(StartGitHubLink) => "off to GitHub to link it (open)"
 		Open(WrongMethodToGitHub(GetOnly)) => "the wrong method to GitHub (open)"
 		Open(WrongMethodToGitHub(PostOnly)) => "the wrong method for a name (open)"
 		Open(WrongMethodToGitHub(GetAndPost)) => "no route takes this"
@@ -240,7 +240,7 @@ expect
 	)
 # A new human's name: a POST, and every other method a refusal the route gives.
 expect chosen_route("POST", "/login/github/name".to_utf8()) == "a new human's name (open)"
-expect chosen_route("POST", "/login/github/link".to_utf8()) == "off to GitHub to link it (open)"
+expect chosen_route("POST", "/login/github/link".to_utf8()) == "off to GitHub to link it"
 expect
 	[
 		("GET", "/login/github/name"),

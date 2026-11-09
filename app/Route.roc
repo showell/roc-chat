@@ -48,8 +48,8 @@
 ##     POST /join                              join: `code=`, `name=`, `password=`
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
-## included: the way in, the scripts, the icon, the sign-in routes, an agent's
-## redemption, and the join routes.
+## included: the way in, the scripts, the icon, the sign-in routes but the
+## link to GitHub, an agent's redemption, and the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and main answers each `SignedInOnly`
 ## route to no one but someone signed in.
@@ -96,7 +96,6 @@ Route :: [].{
 		StartGitHubSignIn,
 		FinishGitHubSignIn,
 		FinishGitHubSignUp,
-		StartGitHubLink,
 		WrongMethodToGitHub([GetAndPost, GetOnly, PostOnly]),
 		RedeemInvite,
 		ShowJoin,
@@ -106,6 +105,7 @@ Route :: [].{
 
 	## The routes only someone signed in may use.
 	SignedInChoice : [
+		StartGitHubLink,
 		ShowBrowse,
 		StartTopic(Place),
 		ShowConversation(ConversationKey),
@@ -383,7 +383,7 @@ sign_in_choice = |{ resource, method }|
 		(GitHubName, Post) => Open(FinishGitHubSignUp)
 		(GitHubName, Other) => Open(WrongMethodToGitHub(PostOnly))
 		(GitHubLink, Get) => Open(WrongMethodToGitHub(PostOnly))
-		(GitHubLink, Post) => Open(StartGitHubLink)
+		(GitHubLink, Post) => SignedInOnly(StartGitHubLink)
 		(GitHubLink, Other) => Open(WrongMethodToGitHub(PostOnly))
 	}
 

@@ -351,6 +351,7 @@ upload_asked : Route.Choice -> [UploadTo(ConversationKey), NoUpload]
 upload_asked = |choice|
 	match choice {
 		SignedInOnly(UploadToConversation(key)) => UploadTo(key)
+		SignedInOnly(StartGitHubLink) => NoUpload
 		SignedInOnly(ShowBrowse) => NoUpload
 		SignedInOnly(StartTopic(_)) => NoUpload
 		SignedInOnly(ShowConversation(_)) => NoUpload
@@ -385,7 +386,6 @@ upload_asked = |choice|
 		Open(StartGitHubSignIn) => NoUpload
 		Open(FinishGitHubSignIn) => NoUpload
 		Open(FinishGitHubSignUp) => NoUpload
-		Open(StartGitHubLink) => NoUpload
 		Open(WrongMethodToGitHub(_)) => NoUpload
 		Open(RedeemInvite) => NoUpload
 		NotFound => NoUpload
@@ -531,6 +531,7 @@ access_asked = |asked|
 		SendToConversation(key) => Asks({ place: key.place(), act: Post })
 		UploadToConversation(key) => Asks({ place: key.place(), act: Post })
 		StartTopic(place) => Asks({ place, act: Post })
+		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
@@ -566,6 +567,7 @@ access_refusal = |why| {
 anonymous_refusal : Route.SignedInChoice -> Http.Response
 anonymous_refusal = |asked|
 	match asked {
+		StartGitHubLink => unauthorized_refusal
 		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
 		StartTopic(_) => unauthorized_refusal
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
@@ -683,12 +685,6 @@ answer_open_route! = |{ open, request, directory, actor }|
 				headers: request.headers,
 				now: read_clock!({}),
 			})
-		StartGitHubLink =>
-			GitHubRoute.serve_link_start!({
-				viewer: actor,
-				origin: own_origin_of(request),
-				now: read_clock!({}),
-			})
 		WrongMethodToGitHub(allowed) => GitHubRoute.refuse_method!(allowed)
 		RedeemInvite =>
 			AgentsRoute.redeem!({
@@ -743,6 +739,12 @@ answer_route! : {
 } => Http.Response
 answer_route! = |{ asked, request, directory, acting }|
 	match asked {
+		StartGitHubLink =>
+			GitHubRoute.serve_link_start!({
+				acting,
+				origin: own_origin_of(request),
+				now: read_clock!({}),
+			})
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
@@ -1172,6 +1174,7 @@ expect {
 			MakeAgent,
 			InviteAgent(UserId.chat_owner),
 			OpenAgentStream,
+			StartGitHubLink,
 		].all(|asked| anonymous_refusal(asked) == unauthorized_refusal)
 		and unauthorized_refusal.status == 401
 		and unauthorized_refusal.body == "${unauthorized_words}\n".to_utf8()

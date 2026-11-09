@@ -867,8 +867,10 @@ fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps,
         const wrong_back = try postAs(a, io, port, browser, "/login/github", "");
         const wrong_name = try getAs(a, io, port, browser, "/login/github/name");
         const wrong_link = try getAs(a, io, port, browser, "/login/github/link");
-        try t.check("no GitHub settings: the start, the way back, the name and the link, and each by the wrong method, a 404", start.status == 404 and
-            way_back.status == 404 and name.status == 404 and link.status == 404 and wrong_start.status == 404 and wrong_back.status == 404 and
+        // The link is a signed-in route, so no one asking for it is a 401.
+        const link_status: u16 = if (browser.len == 0) 401 else 404;
+        try t.check("no GitHub settings: the start, the way back, the name and the link (by no one, a 401), and each by the wrong method, a 404", start.status == 404 and
+            way_back.status == 404 and name.status == 404 and link.status == link_status and wrong_start.status == 404 and wrong_back.status == 404 and
             wrong_name.status == 404 and wrong_link.status == 404 and has(name.body, "Nothing is here") and
             !(try exists(io, data, "auth/2")));
     }
