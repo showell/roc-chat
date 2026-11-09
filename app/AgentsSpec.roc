@@ -337,6 +337,21 @@ expect access({
 	place: channel_place("team"),
 	act: Read,
 }) == Ok({})
+# The scope alone, as the agents' stream asks it before any channel: a
+# session reaches every act, and a key only the acts its scope reaches.
+expect
+	[Read, Post].all(
+		|act| Access.check_scope({ acting: SignedIn.dangerously_assume(Sample.steve), act }) == Ok({}),
+	)
+expect
+	[
+		(KeyScope.everywhere, Read, Ok({})),
+		(KeyScope.everywhere, Post, Ok({})),
+		(KeyScope.of({ read: Off, post: Everywhere }), Read, Err(ScopeOff)),
+		(KeyScope.of({ read: Off, post: Everywhere }), Post, Ok({})),
+		(KeyScope.of({ read: Everywhere, post: Off }), Read, Ok({})),
+		(KeyScope.of({ read: Everywhere, post: Off }), Post, Err(ScopeOff)),
+	].all(|(scope, act, answer)| Access.check_scope({ acting: cc_by_key(scope), act }) == answer)
 expect access({
 	acting: cc_by_key(KeyScope.of({ read: Off, post: Off })),
 	place: channel_place("other"),

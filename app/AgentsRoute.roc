@@ -21,6 +21,7 @@
 import Timestamp
 import pf.Host
 import pf.Http
+import Access
 import AgentInvite
 import AgentKey
 import AgentStream
@@ -171,13 +172,13 @@ AgentsRoute :: [].{
 }
 
 ## Why a route here refused: one of `Agents`' refusals, a stream's start
-## that is none, a stream asked for by no key or one that may not read, or
-## the file system's fault.
+## that is none, a stream asked for by no key, or by one whose scope `Access`
+## says may not read, or the file system's fault.
 Failure : [
 	Refused(Agents.Refusal),
 	BadStart,
 	StreamNeedsKey,
-	StreamReadOff,
+	Access([ScopeOff]),
 	FileSystem(FileSystem.Fault),
 ]
 
@@ -188,7 +189,7 @@ failure_notice = |why|
 		Refused(refusal) => Agents.refusal_notice(refusal)
 		BadStart => { status: 400, said: AgentStream.words(BadSince) }
 		StreamNeedsKey => { status: 403, said: "The agents' stream is an agent's, by its API key." }
-		StreamReadOff => { status: 403, said: "This key may not read." }
+		Access(ScopeOff) => { status: 403, said: "This key may not read." }
 		FileSystem(fault) => { status: 500, said: FileSystem.fault_words(fault) }
 	}
 
@@ -351,49 +352,49 @@ redeem_invite! = |{ actor, directory, body, now }| {
 	}
 }
 
-## The agent's stream, for `acting`, an agent by its key whose scope reads.
+## The agent's stream, for `acting`, an agent by its key whose scope reads
+## (`Access`).
 begin_agent_stream! : {
 	acting : SignedIn,
 	directory : Directory,
 	query : List(U8),
 } => Try(Http.Response, _)
 begin_agent_stream! = |{ acting, directory, query }| {
-	scope =
+	_ =
 		match acting.credential() {
-			ApiKey(held) => Ok(held)
+			ApiKey(_) => Ok({})
 			Session => Err(StreamNeedsKey)
 		}?
-	_ =
-		match scope.read() {
-			Everywhere => Ok({})
-			Off => Err(StreamReadOff)
-		}?
+	Access.check_scope({ acting, act: Read }) ? |ScopeOff| Access(ScopeOff)
 	start = AgentStream.start(query) ? |BadSince| BadStart
-	agent = acting.user()
 	backlog =
 		match start {
 			Live => []
 			Since(since) => {
-				conversations = load_readable_conversations!(directory, agent)
+				conversations = load_readable_conversations!(directory, acting)
 				AgentStream.backlog({ conversations, since })
 			}
 		}
-	Ok(AgentStream.response({ agent: agent.id(), backlog }))
+	Ok(AgentStream.response({ agent: acting.user().id(), backlog }))
 }
 
-## Every conversation of every channel `agent` is a member of, each read
-## and decoded. One that can't be read or decoded is left out: it fails
+## Every conversation of every channel `acting` may read (`Access`), each
+## read and decoded. One that can't be read or decoded is left out: it fails
 ## only itself.
 load_readable_conversations! : Directory,
-Users.User => List(
+SignedIn => List(
 	{ key : ConversationKey, conversation : Conversation },
 )
-load_readable_conversations! = |directory, agent| {
+load_readable_conversations! = |directory, acting| {
 	var $read = []
-	for channel in directory.channels().to_list().keep_if(|held| held.has_member(agent)) {
-		topics = FileSystem.list_place_topics!(Place.channel(channel)) ?? []
+	readable_places =
+		directory.channels().to_list().map(Place.channel).keep_if(
+			|place| Access.check({ acting, place, directory, act: Read }) == Ok({}),
+		)
+	for place in readable_places {
+		topics = FileSystem.list_place_topics!(place) ?? []
 		for topic in topics {
-			key = ConversationKey.of({ place: Place.channel(channel), topic })
+			key = ConversationKey.of({ place, topic })
 			match FileSystem.read_transcript!(key) {
 				Ok(File(utf8)) =>
 					match Transcript.decode(key.topic(), utf8) {

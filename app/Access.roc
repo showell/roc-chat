@@ -33,12 +33,19 @@ Access :: [].{
 		if !Access.members({ place, directory }).contains(acting.user().id()) {
 			Err(NotAMember)
 		} else {
-			match (acting.credential(), act) {
-				(Session, Read) => Ok({})
-				(Session, Post) => Ok({})
-				(ApiKey(scope), Read) => reach_answer(scope.read())
-				(ApiKey(scope), Post) => reach_answer(scope.post())
-			}
+			Access.check_scope({ acting, act })
+		}
+
+	## Whether `acting`'s credential lets it `act` anywhere: `Ok` for a
+	## session, and for a key whose scope reaches the act; else `ScopeOff`.
+	## The agents' stream asks this before it asks `check` of each channel.
+	check_scope : { acting : SignedIn, act : Access.Act } -> Try({}, [ScopeOff])
+	check_scope = |{ acting, act }|
+		match (acting.credential(), act) {
+			(Session, Read) => Ok({})
+			(Session, Post) => Ok({})
+			(ApiKey(scope), Read) => reach_answer(scope.read())
+			(ApiKey(scope), Post) => reach_answer(scope.post())
 		}
 
 	## The ids of everyone who may read and post at `place`: a channel's
