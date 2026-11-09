@@ -51,6 +51,10 @@ Message :: {
 		to_str : Message.Id -> Str
 		to_str = |Message.Id.(n)| n.to_str()
 
+		## The number, as JSON writes it.
+		to_u64 : Message.Id -> U64
+		to_u64 = |Message.Id.(n)| n.to_u64()
+
 		is_eq : _
 	}
 
@@ -125,6 +129,8 @@ expect Message.Id.first.next().map_ok(Message.Id.to_str) == Ok("2")
 # The last id at, under and over the highest.
 expect Message.Id.(65534).next().map_ok(Message.Id.to_str) == Ok("65535")
 expect Message.Id.(65535).next() == Err(Full)
+expect Message.Id.first.to_u64() == 1
+expect Message.Id.(65535).to_u64() == 65535
 # A message numbered with the id it is given, each other part the
 # unnumbered message's.
 expect parts(Message.numbered_message({ id: Message.Id.first, unnumbered: hello })) == {

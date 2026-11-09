@@ -319,31 +319,27 @@ redeem_invite! = |{ actor, directory, body, now }| {
 		}?
 	code = Agents.code_from_form(body) ? |why| Refused(why)
 	agent = code.user()
-	is_agent =
-		match directory.users().user(agent) {
-			Ok(user) => user.role() != Human
-			Err(NoSuchUser) => Bool.False
+	match directory.users().user(agent).map_ok(|user| user.role()) {
+		Err(NoSuchUser) | Ok(Human) => Err(Refused(CodeRefused))
+		Ok(Agent(_)) => {
+			invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
+			spent = AgentInvite.redeem({
+				invites,
+				hash: SecretHashing.hash_secret!(code.secret()),
+				now,
+			}) ? |_| Refused(CodeRefused)
+			FileSystem.replace_agent_invite_state!(agent, spent) ? |fault| FileSystem(fault)
+			id = FileSystem.find_next_agent_key_id!(agent) ? |why| FileSystem.refusal_when_full(why)
+			secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
+			key = AgentKey.mint({
+				id,
+				hash: SecretHashing.hash_secret!(secret),
+				now,
+				scope: spent.scope(),
+			})
+			FileSystem.create_agent_key!(agent, key) ? |fault| FileSystem(fault)
+			Ok(SecretToken.of({ user: agent, secret }))
 		}
-	if !is_agent {
-		Err(Refused(CodeRefused))
-	} else {
-		invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
-		spent = AgentInvite.redeem({
-			invites,
-			hash: SecretHashing.hash_secret!(code.secret()),
-			now,
-		}) ? |_| Refused(CodeRefused)
-		FileSystem.replace_agent_invite_state!(agent, spent) ? |fault| FileSystem(fault)
-		id = FileSystem.find_next_agent_key_id!(agent) ? |why| FileSystem.refusal_when_full(why)
-		secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
-		key = AgentKey.mint({
-			id,
-			hash: SecretHashing.hash_secret!(secret),
-			now,
-			scope: spent.scope(),
-		})
-		FileSystem.create_agent_key!(agent, key) ? |fault| FileSystem(fault)
-		Ok(SecretToken.of({ user: agent, secret }))
 	}
 }
 
