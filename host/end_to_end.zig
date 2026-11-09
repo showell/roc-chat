@@ -1830,7 +1830,7 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         her_in.status == 303 and her_page.status == 200 and has(her_page.body, "Apoorva"));
 
     // 48z.
-    try data.writeFile(io, .{ .sub_path = "auth/5/github-session-secret", .data = "another word" });
+    try data.writeFile(io, .{ .sub_path = "auth/5/github-session-secret", .data = "abababababababababababababababababababababababababababababababab" });
     const after_rewrite = try getAs(a, io, port, her, "/invites");
     const her_again = try signInByGitHub(a, io, port, fake, "user-id-8");
     const her_second = try cookieLine(a, her_again);

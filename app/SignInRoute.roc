@@ -35,16 +35,15 @@
 import Timestamp
 import pf.Host
 import pf.Http
-import FactFile
 import FileSystem
+import GitHubSessionWord
 import GitHubSignIn
-import Hex
 import Html
 import HttpAnswer
 import HumanInvite
 import Page
 import Password
-import Secret
+import PasswordHash
 import Session
 import SignedIn
 import UnvalidatedString
@@ -153,7 +152,7 @@ SignInRoute :: [].{
 	## GitHub files can't be read. Never stored.
 	start_session_by_invite! : {
 		admission : HumanInvite.Admission,
-		password_hash : List(U8),
+		password_hash : PasswordHash,
 		next : Html.SitePath,
 	},
 	Timestamp => Http.Response
@@ -288,12 +287,8 @@ load_material! = |id| {
 	github = load_github_word!(id)?
 	match (FileSystem.read_password_hash!(id), github) {
 		(Err(fault), _) => Err(FileSystem(fault))
-		(Ok(File(bytes)), _) => Ok(
-			Session.Material.from_password({
-				password_hash: FactFile.word_from_file(bytes),
-				github,
-			}),
-		)
+		(Ok(File(password_hash)), _) =>
+			Ok(Session.Material.from_password({ password_hash, github }))
 		(Ok(NoFile), GitHub(word)) => Ok(Session.Material.from_github_alone(word))
 		(Ok(NoFile), NoGitHub) => Err(NoMaterial)
 	}
@@ -302,7 +297,7 @@ load_material! = |id| {
 ## What a session of the user `id` is signed over when it starts from
 ## `password_hash`, just checked or just written, not what the file holds by
 ## now: a password rewritten meanwhile leaves a session that admits no one.
-load_material_with_password! : { id : UserId, password_hash : List(U8) } => Try(
+load_material_with_password! : { id : UserId, password_hash : PasswordHash } => Try(
 	Session.Material,
 	[FileSystem(FileSystem.Fault)],
 )
@@ -314,7 +309,10 @@ load_material_with_password! = |{ id, password_hash }| {
 ## The word in the user `id`'s `github-session-secret`, read only while their
 ## `github-id` ties them to GitHub, so removing that file ends their sessions
 ## too. An empty file holds no word.
-load_github_word! : UserId => Try([NoGitHub, GitHub(List(U8))], [FileSystem(FileSystem.Fault)])
+load_github_word! : UserId => Try(
+	[NoGitHub, GitHub(GitHubSessionWord)],
+	[FileSystem(FileSystem.Fault)],
+)
 load_github_word! = |id|
 	match FileSystem.read_github_link!(id) {
 		Err(fault) => Err(FileSystem(fault))
@@ -322,32 +320,23 @@ load_github_word! = |id|
 		Ok(Linked(_)) =>
 			match FileSystem.read_github_session_secret!(id) {
 				Err(fault) => Err(FileSystem(fault))
-				Ok(NoFile) => Ok(NoGitHub)
-				Ok(File(bytes)) => {
-					word = FactFile.word_from_file(bytes)
-					Ok(
-						if word.is_empty() {
-							NoGitHub
-						} else {
-							GitHub(word)
-						},
-					)
-				}
+				Ok(NoFile) | Ok(File(Empty)) => Ok(NoGitHub)
+				Ok(File(Word(word))) => Ok(GitHub(word))
 			}
 	}
 
-## The user `id`'s `github-session-secret`, made first when there is none: 32
-## random bytes as 64 hex digits. Sessions are signed over it under the
-## server's secret, so whoever reads the file can't forge one; it needs only
-## to change when its owner rewrites it.
+## The user `id`'s `github-session-secret`, made first when there is none
+## (`GitHubSessionWord`). Sessions are signed over it under the server's
+## secret, so whoever reads the file can't forge one; it needs only to change
+## when its owner rewrites it.
 make_github_session_secret! : UserId => Try({}, [FileSystem(FileSystem.Fault)])
 make_github_session_secret! = |id|
 	match FileSystem.read_github_session_secret!(id) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(File(_)) => Ok({})
 		Ok(NoFile) => {
-			bytes = Host.fill_with_random_bytes!(Secret.length)
-			match FileSystem.create_github_session_secret!(id, Hex.to_hex(bytes).to_utf8()) {
+			word = generate_github_session_word!({})
+			match FileSystem.create_github_session_secret!(id, word) {
 				Ok({}) => Ok({})
 				Err(fault) => Err(FileSystem(fault))
 			}
@@ -360,10 +349,17 @@ make_github_session_secret! = |id|
 write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileSystem.Fault)])
 write_github_link! = |linked| {
 	id = linked.human().id()
-	word = Hex.to_hex(Host.fill_with_random_bytes!(Secret.length)).to_utf8()
+	word = generate_github_session_word!({})
 	FileSystem.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
 	FileSystem.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
 	Ok({})
+}
+
+## A new GitHub word, of the host's random bytes.
+generate_github_session_word! : {} => GitHubSessionWord
+generate_github_session_word! = |{}| {
+	random_bytes = Host.fill_with_random_bytes!(GitHubSessionWord.random_byte_count)
+	GitHubSessionWord.of_random_bytes(random_bytes)
 }
 
 ## The `Set-Cookie` header of a session for `human`, signed at `now` by the
@@ -461,9 +457,12 @@ check_password_of! = |{ human, password }|
 	match FileSystem.read_password_hash!(human.id()) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(NoFile) => Err(check_against_dummy_hash!(password))
-		Ok(File(bytes)) => {
-			password_hash = FactFile.word_from_file(bytes)
-			match Host.password_matches_bcrypt_hash!(password.bytes_to_check(), password_hash) {
+		Ok(File(password_hash)) => {
+			verdict = Host.password_matches_bcrypt_hash!(
+				password.bytes_to_check(),
+				password_hash.bytes(),
+			)
+			match verdict {
 				Matches =>
 					match load_material_with_password!({ id: human.id(), password_hash }) {
 						Ok(material) => Ok({ human, material })

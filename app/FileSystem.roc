@@ -47,8 +47,10 @@ import Channels
 import ConversationKey
 import Directory
 import GitHubId
+import GitHubSessionWord
 import HumanInvite
 import Name
+import PasswordHash
 import Place
 import Topic
 import Transcript
@@ -289,11 +291,10 @@ FileSystem :: [].{
 	## The user's `name` file written whole over the one before, atomically:
 	## the name an invited human chose as they joined.
 	replace_account_name! : Users.User => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
-	replace_account_name! = |user|
-		replace_fact!(
-			"${account_folder_path(AccountFolder.of(user.id()))}/${name_fact}",
-			Users.account_files(user).name,
-		)
+	replace_account_name! = |user| {
+		folder = account_folder_path(AccountFolder.of(user.id()))
+		replace_fact!("${folder}/${name_fact}", Users.account_files(user).name)
+	}
 
 	## The `inviter` file of the human `id`, as it is, or `NoFile` when they
 	## have none; unless the host's read failed.
@@ -304,11 +305,11 @@ FileSystem :: [].{
 	## before, atomically: a redeemed invite's choice. The hash is the
 	## host's (`Host.bcrypt_hash_of_password!`); the password is never kept.
 	replace_password_hash! : UserId,
-	List(U8) => Try(
+	PasswordHash => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_password_hash! = |id, hash| replace_fact!(password_path(id), hash)
+	replace_password_hash! = |id, hash| replace_fact!(password_path(id), hash.bytes())
 
 	## The invites in the human `human`'s account folder, each whole; one cut
 	## short or damaged is left out, as an agent's is.
@@ -379,8 +380,15 @@ FileSystem :: [].{
 	## or `NoFile` when they have none; unless the host's read failed. Only
 	## the hash is ever kept, and the server's owner writes it
 	## (docs/design.md, "Storage").
-	read_password_hash! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
-	read_password_hash! = |id| read_fact!(password_path(id))
+	read_password_hash! : UserId => Try(
+		[NoFile, File(PasswordHash)],
+		[NotUtf8, PathRefused, Failed],
+	)
+	read_password_hash! = |id|
+		match read_fact!(password_path(id))? {
+			NoFile => Ok(NoFile)
+			File(bytes) => Ok(File(PasswordHash.from_file(bytes)))
+		}
 
 	## The GitHub account of each account folder whose `github-id` file
 	## names one (docs/design.md, "Storage"). It lists the folders rather than
@@ -416,32 +424,42 @@ FileSystem :: [].{
 	)
 	read_github_link! = |id| github_link(read_fact!(github_id_path(id))?)
 
-	## The user `id`'s `github-session-secret` file, as it is, or `NoFile`;
-	## unless the host's read failed.
+	## The word the user `id`'s `github-session-secret` file holds, or
+	## `Empty`, or `NoFile`; unless the file holds no word (`Damaged`), or
+	## the host's read failed.
 	read_github_session_secret! : UserId => Try(
-		[NoFile, File(List(U8))],
-		[NotUtf8, PathRefused, Failed],
+		[NoFile, File([Empty, Word(GitHubSessionWord)])],
+		[Damaged, NotUtf8, PathRefused, Failed],
 	)
-	read_github_session_secret! = |id| read_fact!(github_session_secret_path(id))
+	read_github_session_secret! = |id|
+		match read_fact!(github_session_secret_path(id))? {
+			NoFile => Ok(NoFile)
+			File(bytes) =>
+				match GitHubSessionWord.from_file(bytes) {
+					Ok(held) => Ok(File(held))
+					Err(NotAWord) => Err(Damaged)
+				}
+		}
 
-	## The user `id`'s `github-session-secret` file made holding `bytes`, once;
+	## The user `id`'s `github-session-secret` file made holding `word`, once;
 	## `AlreadyExists`, nothing changed, when it is there.
 	create_github_session_secret! : UserId,
-	List(U8) => Try(
+	GitHubSessionWord => Try(
 		{},
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_github_session_secret! = |id, bytes| create_fact!(github_session_secret_path(id), bytes)
+	create_github_session_secret! = |id, word|
+		create_fact!(github_session_secret_path(id), word.bytes())
 
 	## The user `id`'s `github-session-secret` file written whole over any
 	## before it, atomically.
 	replace_github_session_secret! : UserId,
-	List(U8) => Try(
+	GitHubSessionWord => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_github_session_secret! = |id, bytes|
-		replace_fact!(github_session_secret_path(id), bytes)
+	replace_github_session_secret! = |id, word|
+		replace_fact!(github_session_secret_path(id), word.bytes())
 
 	## The human `id`'s `github-id` file made holding `github`, once;
 	## `AlreadyExists`, nothing changed, when it is there.

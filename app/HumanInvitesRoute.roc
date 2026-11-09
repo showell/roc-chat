@@ -44,6 +44,7 @@ import JsonOut
 import Name
 import PeoplePages
 import Page
+import PasswordHash
 import Secret
 import SecretToken
 import SignInRoute
@@ -382,7 +383,7 @@ join_by_invite! : {
 } => Try(
 	{
 		admission : HumanInvite.Admission,
-		password_hash : List(U8),
+		password_hash : PasswordHash,
 		next : Html.SitePath,
 	},
 	_,
@@ -404,7 +405,7 @@ join_by_invite! = |request| {
 			Changed => FileSystem.replace_account_name!(human.user())
 		} ? |fault| FileSystem(fault)
 	FileSystem.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
-	hash = Host.bcrypt_hash_of_password!(password.bytes_to_check())
+	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
 	FileSystem.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
