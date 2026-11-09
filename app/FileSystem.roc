@@ -165,15 +165,15 @@ FileSystem :: [].{
 
 	## A user's upload total, as their folder keeps it, read by
 	## `UploadTotal.from_file`; unless the host's read failed.
-	read_upload_total! : UserFolder => Try(UploadTotal, [NotANumber, NotUtf8, PathRefused, Failed])
+	read_upload_total! : UserFolder => Try(UploadTotal, [NotANumber, FileSystem(FileSystem.Fault)])
 	read_upload_total! = |folder| {
 		read = Host.read_utf8_bytes_from_file!(upload_total_path(folder))
 		match read.status {
 			Found => UploadTotal.from_file(File(read.bytes))
 			Missing => UploadTotal.from_file(NoFile)
-			NotUtf8 => Err(NotUtf8)
-			PathRefused => Err(PathRefused)
-			Failed => Err(Failed)
+			NotUtf8 => Err(FileSystem(NotUtf8))
+			PathRefused => Err(FileSystem(PathRefused))
+			Failed => Err(FileSystem(Failed))
 		}
 	}
 
@@ -337,10 +337,10 @@ FileSystem :: [].{
 
 	## The number the next invite of the human `human` will have: after every
 	## invite folder's, one cut short included, so no number is given twice.
-	find_next_human_invite_id! : UserId => Try(HumanInvite.Id, [Full, NotUtf8, PathRefused, Failed])
+	find_next_human_invite_id! : UserId => Try(HumanInvite.Id, [Full, FileSystem(FileSystem.Fault)])
 	find_next_human_invite_id! = |human| {
-		ids = list_names_in!(human_invites_folder_path(human))?.keep_oks(HumanInvite.Id.from_str)
-		HumanInvite.Id.next_after(ids)
+		names = list_names_in!(human_invites_folder_path(human)) ? |fault| FileSystem(fault)
+		HumanInvite.Id.next_after(names.keep_oks(HumanInvite.Id.from_str))
 	}
 
 	## A new invite in the human `human`'s account folder, made once, its
@@ -523,18 +523,30 @@ FileSystem :: [].{
 
 	## The number the next key of `agent`'s will have: after every key
 	## folder's, a key cut short included, so no number is given twice.
-	find_next_agent_key_id! : UserId => Try(AgentKey.Id, [Full, NotUtf8, PathRefused, Failed])
+	find_next_agent_key_id! : UserId => Try(AgentKey.Id, [Full, FileSystem(FileSystem.Fault)])
 	find_next_agent_key_id! = |agent| {
-		ids = list_names_in!(keys_folder_path(agent))?.keep_oks(AgentKey.Id.from_str)
-		AgentKey.Id.next_after(ids)
+		names = list_names_in!(keys_folder_path(agent)) ? |fault| FileSystem(fault)
+		AgentKey.Id.next_after(names.keep_oks(AgentKey.Id.from_str))
 	}
 
 	## The number the next invite of `agent`'s will have, as a key's is.
-	find_next_agent_invite_id! : UserId => Try(AgentInvite.Id, [Full, NotUtf8, PathRefused, Failed])
+	find_next_agent_invite_id! : UserId => Try(AgentInvite.Id, [Full, FileSystem(FileSystem.Fault)])
 	find_next_agent_invite_id! = |agent| {
-		ids = list_names_in!(invites_folder_path(agent))?.keep_oks(AgentInvite.Id.from_str)
-		AgentInvite.Id.next_after(ids)
+		names = list_names_in!(invites_folder_path(agent)) ? |fault| FileSystem(fault)
+		AgentInvite.Id.next_after(names.keep_oks(AgentInvite.Id.from_str))
 	}
+
+	## A next number's failure, for a route whose refusals hold `Full`: that
+	## refusal, or the file system's fault as it is.
+	refusal_when_full : [Full, FileSystem(FileSystem.Fault)] -> [
+		Refused([Full]),
+		FileSystem(FileSystem.Fault),
+	]
+	refusal_when_full = |why|
+		match why {
+			Full => Refused(Full)
+			FileSystem(fault) => FileSystem(fault)
+		}
 
 	## A new key in `agent`'s account folder, made once, its hash last.
 	create_agent_key! : UserId,
@@ -936,3 +948,6 @@ expect
 		(MissingDirectory, "MissingDirectory"),
 		(Failed, "Failed"),
 	].all(|(fault, name)| FileSystem.fault_words(fault) == "The file system answered ${name}.")
+# A folder full of numbers is a route's refusal; a fault stays the fault.
+expect FileSystem.refusal_when_full(Full) == Refused(Full)
+expect FileSystem.refusal_when_full(FileSystem(Failed)) == FileSystem(Failed)

@@ -31,7 +31,6 @@
 import Timestamp
 import pf.Host
 import pf.Http
-import AgentsRoute
 import Directory
 import FileSystem
 import FirstPage
@@ -46,6 +45,7 @@ import PeoplePages
 import Page
 import PasswordHash
 import Secret
+import SecretHashing
 import SecretToken
 import SignInRoute
 import SignedIn
@@ -314,11 +314,11 @@ issue_invite! : {
 	now : Timestamp,
 } => Try(SecretToken, _)
 issue_invite! = |{ human, by, now }| {
-	id = FileSystem.find_next_human_invite_id!(human) ? |why| full_or_fault(why)
+	id = FileSystem.find_next_human_invite_id!(human) ? |why| FileSystem.refusal_when_full(why)
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = HumanInvite.make({
 		id,
-		hash: AgentsRoute.hash_secret!(secret),
+		hash: SecretHashing.hash_secret!(secret),
 		now,
 		by,
 	})
@@ -354,7 +354,7 @@ load_join_code! = |{ actor, directory, body, now }| {
 	Ok({
 		token,
 		invites,
-		hash: AgentsRoute.hash_secret!(token.secret()),
+		hash: SecretHashing.hash_secret!(token.secret()),
 		now,
 	})
 }
@@ -438,14 +438,3 @@ count_open_invites! = |directory, { by, now }| {
 	}
 	Ok($open)
 }
-
-## A next number refused: the human's folder is full, or the file system's
-## fault.
-full_or_fault : [Full, NotUtf8, PathRefused, Failed] -> Failure
-full_or_fault = |why|
-	match why {
-		Full => Refused(Full)
-		NotUtf8 => FileSystem(NotUtf8)
-		PathRefused => FileSystem(PathRefused)
-		Failed => FileSystem(Failed)
-	}

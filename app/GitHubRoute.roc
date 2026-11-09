@@ -227,9 +227,9 @@ GitHubRoute :: [].{
 		}
 }
 
-## The 404 a path gets when nothing is here.
+## The 404 any path gets when nothing is here.
 not_found : Http.Response
-not_found = HttpAnswer.page(404, Page.notice({ title: "Not found", text: "Nothing is here." }))
+not_found = HttpAnswer.page(404, Page.not_found)
 
 ## The 303 that sends a browser to GitHub for `errand`, with a state issued at
 ## `now` and its nonce in this browser's cookie.

@@ -37,7 +37,7 @@ import KeyScope
 import Page
 import Place
 import Secret
-import SecretHash
+import SecretHashing
 import SecretToken
 import SignedIn
 import Transcript
@@ -46,11 +46,6 @@ import UserId
 import Users
 
 AgentsRoute :: [].{
-
-	## The hash of `secret`, as the host computes it: the one way a key's,
-	## or an invite's code's, secret is hashed, an agent's or a human's.
-	hash_secret! : Secret => SecretHash
-	hash_secret! = |secret| SecretHash.of_digest(Host.sha256_of_bytes!(secret.bytes_to_hash()))
 
 	## The agent the bearer `token` names, signed in by its key at `now`;
 	## unless the key admits no one (`KeyRefused`: no such agent, no key
@@ -66,7 +61,7 @@ AgentsRoute :: [].{
 			Err(NoSuchUser) => Err(KeyRefused)
 			Ok(user) => {
 				keys = FileSystem.read_agent_keys!(user.id()) ? |fault| FileSystem(fault)
-				hash = AgentsRoute.hash_secret!(token.secret())
+				hash = SecretHashing.hash_secret!(token.secret())
 				match AgentKey.admit({ user, keys, hash, now }) {
 					Ok(admitted) => Ok(SignedIn.by_api_key(admitted))
 					Err(_) => Err(KeyRefused)
@@ -256,11 +251,11 @@ invite_agent! = |{ acting, directory, agent, body, now }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	invited = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	scope = Agents.scope_from_form(body) ? |why| Refused(why)
-	id = FileSystem.find_next_agent_invite_id!(agent) ? |why| full_or_fault(why)
+	id = FileSystem.find_next_agent_invite_id!(agent) ? |why| FileSystem.refusal_when_full(why)
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = AgentInvite.make({
 		id,
-		hash: AgentsRoute.hash_secret!(secret),
+		hash: SecretHashing.hash_secret!(secret),
 		now,
 		scope,
 	})
@@ -335,15 +330,15 @@ redeem_invite! = |{ actor, directory, body, now }| {
 		invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
 		spent = AgentInvite.redeem({
 			invites,
-			hash: AgentsRoute.hash_secret!(code.secret()),
+			hash: SecretHashing.hash_secret!(code.secret()),
 			now,
 		}) ? |_| Refused(CodeRefused)
 		FileSystem.replace_agent_invite_state!(agent, spent) ? |fault| FileSystem(fault)
-		id = FileSystem.find_next_agent_key_id!(agent) ? |why| full_or_fault(why)
+		id = FileSystem.find_next_agent_key_id!(agent) ? |why| FileSystem.refusal_when_full(why)
 		secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 		key = AgentKey.mint({
 			id,
-			hash: AgentsRoute.hash_secret!(secret),
+			hash: SecretHashing.hash_secret!(secret),
 			now,
 			scope: spent.scope(),
 		})
@@ -365,7 +360,7 @@ begin_agent_stream! = |{ acting, directory, query }| {
 			ApiKey(_) => Ok({})
 			Session => Err(StreamNeedsKey)
 		}?
-	Access.check_scope({ acting, act: Read }) ? |ScopeOff| Access(ScopeOff)
+	Access.check_credential({ acting, act: Read }) ? |ScopeOff| Access(ScopeOff)
 	start = AgentStream.start(query) ? |BadSince| BadStart
 	backlog =
 		match start {
@@ -410,14 +405,3 @@ load_readable_conversations! = |directory, acting| {
 	}
 	$read
 }
-
-## A next number refused: the agent's folder is full, or the file system's
-## fault.
-full_or_fault : [Full, NotUtf8, PathRefused, Failed] -> Failure
-full_or_fault = |why|
-	match why {
-		Full => Refused(Full)
-		NotUtf8 => FileSystem(NotUtf8)
-		PathRefused => FileSystem(PathRefused)
-		Failed => FileSystem(Failed)
-	}

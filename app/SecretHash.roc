@@ -1,5 +1,5 @@
 ## A secret's hash: the SHA-256 digest of a `Secret`'s bytes, which the host
-## computes (`Host.sha256_of_bytes!`, asked by `AgentsRoute.hash_secret!`).
+## computes (`Host.sha256_of_bytes!`, asked by `SecretHashing.hash_secret!`).
 ## The chat keeps this in place of every secret it hands out, so a file on
 ## disk proves nothing to whoever reads it: an agent's key and an invite's
 ## code are checked by hashing what the client sent and comparing hashes.

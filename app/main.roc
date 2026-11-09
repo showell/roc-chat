@@ -625,10 +625,7 @@ serve_route! = |{ request, directory, actor }|
 				SignedIn(acting) => serve_signed_in_route!({ asked, request, directory, acting })
 			}
 		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
-		NotFound => HttpAnswer.page(
-			404,
-			Page.notice({ title: "Not found", text: "Nothing is here." }),
-		)
+		NotFound => HttpAnswer.page(404, Page.not_found)
 	}
 
 ## The answer to `/`: a 303 to Browse, which shows someone signed in their

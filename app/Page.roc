@@ -496,6 +496,11 @@ Page :: [].{
 			}),
 		})
 
+	## The page of a path this server answers nothing at, with a 404: a path
+	## no route has, or GitHub's on a server without GitHub's settings.
+	not_found : TrustedHtml
+	not_found = Page.notice({ title: "Not found", text: "Nothing is here." })
+
 	## Whether the sign-in page offers GitHub: `Offered` on a server with
 	## GitHub's settings.
 	GitHubOffer : [Offered, NotOffered]

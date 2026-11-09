@@ -146,14 +146,7 @@ U64 => Try(
 	[LimitReached, NotANumber, FileSystem(FileSystem.Fault)],
 )
 reserve_upload_bytes! = |folder, adding| {
-	before =
-		match FileSystem.read_upload_total!(folder) {
-			Ok(total) => Ok(total)
-			Err(NotANumber) => Err(NotANumber)
-			Err(NotUtf8) => Err(FileSystem(NotUtf8))
-			Err(PathRefused) => Err(FileSystem(PathRefused))
-			Err(Failed) => Err(FileSystem(Failed))
-		}?
+	before = FileSystem.read_upload_total!(folder)?
 	after = before.with_upload(adding)?
 	FileSystem.replace_upload_total!(folder, after) ? |fault| FileSystem(fault)
 	Ok(before)

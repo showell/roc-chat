@@ -33,14 +33,14 @@ Access :: [].{
 		if !Access.members({ place, directory }).contains(acting.user().id()) {
 			Err(NotAMember)
 		} else {
-			Access.check_scope({ acting, act })
+			Access.check_credential({ acting, act })
 		}
 
 	## Whether `acting`'s credential lets it `act` anywhere: `Ok` for a
 	## session, and for a key whose scope reaches the act; else `ScopeOff`.
 	## The agents' stream asks this before it asks `check` of each channel.
-	check_scope : { acting : SignedIn, act : Access.Act } -> Try({}, [ScopeOff])
-	check_scope = |{ acting, act }|
+	check_credential : { acting : SignedIn, act : Access.Act } -> Try({}, [ScopeOff])
+	check_credential = |{ acting, act }|
 		match (acting.credential(), act) {
 			(Session, Read) => Ok({})
 			(Session, Post) => Ok({})

@@ -38,7 +38,7 @@ Secret :: List(U8).{
 	to_hex : Secret -> Str
 	to_hex = |Secret.(bytes)| Hex.to_hex(bytes)
 
-	## The secret's bytes, for the host to hash (`AgentsRoute`) and for
+	## The secret's bytes, for the host to hash (`SecretHashing`) and for
 	## nothing else.
 	bytes_to_hash : Secret -> List(U8)
 	bytes_to_hash = |Secret.(bytes)| bytes
