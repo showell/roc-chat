@@ -19,9 +19,13 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	## The kinds of image an upload may be.
 	Kind : [Png, Jpeg, Gif, Webp]
 
+	## The most one image may be, in MiB.
+	most_mib : U64
+	most_mib = 10
+
 	## The most bytes one image may be.
 	most_bytes : U64
-	most_bytes = 10 * 1024 * 1024
+	most_bytes = UploadedImage.most_mib * 1024 * 1024
 
 	## The kind of image an upload's `bytes` are, by how they open; unless
 	## they open as none of the four (`NotAnImage`), or are more than

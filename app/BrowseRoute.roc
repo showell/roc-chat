@@ -18,6 +18,7 @@ import HttpAnswer
 import Page
 import Place
 import SignedIn
+import StrictName
 import Topic
 import UrlEncodedForm
 
@@ -110,7 +111,7 @@ topic_from_form = |body| {
 
 topic_rule_words : Str
 topic_rule_words =
-	"A topic's name starts with a letter and holds letters, digits and hyphens, at most 60 of them."
+	"A topic's name starts with a letter and holds letters, digits and hyphens, at most ${StrictName.longest.to_str()} of them."
 
 ## The 403 for a request with an API key.
 key_refusal : Http.Response
@@ -125,6 +126,9 @@ expect topic_from_form("x=1&topic=roc-chat-2".to_utf8()).map_ok(Topic.to_str) ==
 # A name at the longest a topic may be, and just past it.
 expect topic_from_form("topic=${"a".repeat(60)}".to_utf8()).is_ok()
 expect topic_from_form("topic=${"a".repeat(61)}".to_utf8()) == Err(NotATopic(topic_rule_words))
+expect
+	topic_rule_words
+		== "A topic's name starts with a letter and holds letters, digits and hyphens, at most 60 of them."
 # Each name that is no topic, and each form that holds none.
 expect
 	[

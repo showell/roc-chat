@@ -595,7 +595,7 @@ pub fn main(init: std.process.Init) !void {
     const over = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "big.png", big), .more = own_page });
     try t.check("upload an image of exactly 10 MiB: 200; of one byte more: 413, saying so", at_most.status == 200 and
         std.mem.startsWith(u8, at_most_url, image_prefix) and isFreshName(at_most_url[image_prefix.len..], ".png") and
-        over.status == 413 and std.mem.eql(u8, over.body, "image too large — the limit is 10 MB.\n"));
+        over.status == 413 and std.mem.eql(u8, over.body, "image too large — the limit is 10 MiB.\n"));
 
     // 23.
     const foreign = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = "origin: http://evil.example\r\n" });
@@ -626,7 +626,7 @@ pub fn main(init: std.process.Init) !void {
     try data.writeFile(io, .{ .sub_path = total_path, .data = one_over });
     const spent = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
     try t.check("upload a PNG one byte past Steve's 1 GiB allowance: 403, saying the limit is reached; nothing stored or counted", spent.status == 403 and
-        std.mem.eql(u8, spent.body, "Upload limit reached — you've used your 1 GB upload allowance.\n") and
+        std.mem.eql(u8, spent.body, "Upload limit reached — you've used your 1 GiB upload allowance.\n") and
         (try namesIn(a, io, data, channel_uploads)).len == 2 and std.mem.eql(u8, try uploadTotal(a, io, data), one_over));
 
     // 27.

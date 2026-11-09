@@ -176,10 +176,13 @@ upload_refusal_response = |why|
 	match why {
 		NoFile => HttpAnswer.text(400, "no file")
 		NotAnImage => HttpAnswer.text(415, "unsupported file type (images: png, jpeg, gif, webp)")
-		TooLarge => HttpAnswer.text(413, "image too large — the limit is 10 MB.")
+		TooLarge => HttpAnswer.text(
+			413,
+			"image too large — the limit is ${UploadedImage.most_mib.to_str()} MiB.",
+		)
 		LimitReached => HttpAnswer.text(
 			403,
-			"Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GB upload allowance.",
+			"Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GiB upload allowance.",
 		)
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
 		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileSystem.fault_words(fault)}")
@@ -262,8 +265,8 @@ expect
 	[
 		(NoFile, 400, "no file"),
 		(NotAnImage, 415, "unsupported file type (images: png, jpeg, gif, webp)"),
-		(TooLarge, 413, "image too large — the limit is 10 MB."),
-		(LimitReached, 403, "Upload limit reached — you've used your 1 GB upload allowance."),
+		(TooLarge, 413, "image too large — the limit is 10 MiB."),
+		(LimitReached, 403, "Upload limit reached — you've used your 1 GiB upload allowance."),
 		(NotANumber, 500, "Upload failed: your upload total is not a number."),
 		(FileSystem(AlreadyExists), 500, "Upload failed. The file system answered AlreadyExists."),
 		(
