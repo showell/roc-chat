@@ -447,8 +447,8 @@ function listen()
   return nil
 end
 
--- The listener a caller starts: batches, each a child run of this script
--- with its own 64 programs, one of the parent's each.
+-- The listener a caller starts: batches, each a child run of this script,
+-- one of the parent's programs each.
 function listen_batches()
   needed()
   if WINDOWS_MOST < 1 or WINDOWS_MOST > 63 then fail("listen: curls= is 1 to 63, a batch's programs") end
