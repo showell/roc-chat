@@ -1,6 +1,6 @@
 -- **THE DEMO, ON THE ESSAY SURFACE**: the sample transcript's page as the
 -- demo renders it, then every line of the demo's code, as one note,
--- /home/steve/essay-dogfood/notes/roc-chat-demo.md on the essay surface. Run it
+-- /home/steve/essays/notes/roc-chat-demo.md on the essay surface. Run it
 -- from roc-chat's root. The note is transient and never committed.
 --
 --   shale tools/note.shale
@@ -33,5 +33,5 @@ for path in SOURCES do
   note = note .. "### `" .. path .. "`\n\n" .. fence .. "\n" .. read(path) .. fence .. "\n\n"
 end
 
-must(run({"tee", "/home/steve/essay-dogfood/notes/roc-chat-demo.md"}, {stdin = note, timeout_ms = 5000, whole = 10000000, want = "write: the note"}))
-print("wrote /home/steve/essay-dogfood/notes/roc-chat-demo.md")
+must(run({"tee", "/home/steve/essays/notes/roc-chat-demo.md"}, {stdin = note, timeout_ms = 5000, whole = 10000000, want = "write: the note"}))
+print("wrote /home/steve/essays/notes/roc-chat-demo.md")

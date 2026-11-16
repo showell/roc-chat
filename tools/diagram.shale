@@ -7,14 +7,14 @@
 --   type to each type its definition names.
 --
 -- Both go into one note on the essay surface,
--- /home/steve/essay-dogfood/notes/roc-chat-pictures.md, as ```dot blocks,
+-- /home/steve/essays/notes/roc-chat-pictures.md, as ```dot blocks,
 -- which the surface draws in the browser. The note is transient: the
 -- surface keeps only its newest notes, and none is ever committed.
 --
 --   shale tools/diagram.shale
 -- budget: steps=30000000
 
-const OUT = "/home/steve/essay-dogfood/notes/"
+const OUT = "/home/steve/essays/notes/"
 
 if not exists("roc-version") then fail("diagram: run it from roc-chat's root") end
 
