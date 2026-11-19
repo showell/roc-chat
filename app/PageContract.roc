@@ -74,6 +74,7 @@ PageContract :: [].{
 		SidebarToggle,
 		SidebarTopics,
 		TopBar,
+		TopLinks,
 		TopTitle,
 		TopUser,
 		Viewer,
@@ -171,6 +172,7 @@ class_name = |chosen|
 		SidebarToggle => "sidebar-toggle"
 		SidebarTopics => "sidebar-topics"
 		TopBar => "top-bar"
+		TopLinks => "top-links"
 		TopTitle => "top-title"
 		TopUser => "top-user"
 		Viewer => "viewer"
@@ -229,6 +231,7 @@ expect
 		(SidebarToggle, "sidebar-toggle"),
 		(SidebarTopics, "sidebar-topics"),
 		(TopBar, "top-bar"),
+		(TopLinks, "top-links"),
 		(TopTitle, "top-title"),
 		(TopUser, "top-user"),
 		(Viewer, "viewer"),
@@ -336,6 +339,7 @@ expect
 # The classes only styled are styled by the script that owns them.
 expect [
 	TopTitle,
+	TopLinks,
 	Viewer,
 ].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))
 # app/actions.js finds each message's reactions by their classes, styles

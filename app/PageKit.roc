@@ -12,8 +12,9 @@
 ## first paint.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
-## title, then the Home link (`HomeLink`), the links to Browse, Recent and
-## the invites page, and the viewer's name. Under it, a page another module
+## title, the links to Browse, Recent and the invites page beside it, as
+## Gopher Chat's section links were, then the Home link (`HomeLink`) and the
+## viewer's name. Under it, a page another module
 ## builds (`signed_in_page`) holds its parts in a panel, and ends with
 ## app/chrome.js, which styles the top bar and adds its theme toggle, and
 ## app/panel.js, which draws the panel as a card.
@@ -213,10 +214,12 @@ PageKit :: [].{
 			body,
 		])
 
-	## The top bar: `title` on the left, and on the right the Home link, the
-	## links to Browse, Recent and the invites page, and the name of `viewer`, the
-	## user viewing the page. The invites link is here so that a human in a
-	## conversation reaches invites in one step.
+	## The top bar: `title` on the left, the links to Browse, Recent and the
+	## invites page beside it, and on the right the Home link and the name of
+	## `viewer`, the user viewing the page. The section links sit by the title
+	## as Gopher Chat's did, so Recent is one click from every page; the
+	## invites link is here so that a human in a conversation reaches invites
+	## in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
 	top_bar = |{ title, viewer }| top_bar_titled({ title: Escape.text(title), viewer })
 
@@ -313,10 +316,9 @@ top_bar_titled = |{ title, viewer }|
 			}),
 			PageKit.space,
 			Html.element({
-				name: Div,
-				attributes: [PageContract.class(TopUser)],
+				name: Span,
+				attributes: [PageContract.class(TopLinks)],
 				inner: TrustedHtml.join([
-					home_link,
 					Html.element({
 						name: A,
 						attributes: [Link(PageKit.site_path(ConversationKey.browse_path))],
@@ -334,7 +336,14 @@ top_bar_titled = |{ title, viewer }|
 						attributes: [Link(PageKit.site_path(PageKit.invites_path))],
 						inner: Escape.text("Invites"),
 					}),
-					Escape.text(" · "),
+				]),
+			}),
+			PageKit.space,
+			Html.element({
+				name: Div,
+				attributes: [PageContract.class(TopUser)],
+				inner: TrustedHtml.join([
+					home_link,
 					Html.element({
 						name: Span,
 						attributes: [PageContract.class(Viewer)],

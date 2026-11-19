@@ -3,8 +3,10 @@
 // page's frame, which the server sends as structure and class names only, and
 // adds the theme toggle.
 //
-// The frame is a top bar with the page's title on the left and the Home, Browse and Invites links
-// and the viewer's name on the right, then the page's layout filling the rest of the window. Only what
+// The frame is a top bar with the page's title on the left, the Browse, Recent and Invites links
+// beside it as Gopher Chat's section links were (zig-server's chat_chrome.zig and top_bar.zig), and
+// the Home link and the viewer's name on the right, then the page's layout filling the rest of the
+// window. In a narrow window the section links take a row of their own under the title. Only what
 // the layout holds scrolls. On a conversation, feed.js styles the messages, and compose.js the
 // compose box and how the two panes sit side by side; on any other page, panel.js styles the panel.
 //
@@ -58,13 +60,18 @@ window.Viewport = (function () {
       ' padding: 8px 24px; display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }',
     '.top-title { font-weight: bold; color: var(--cc-accent); min-width: 0; overflow-wrap: anywhere; }',
     '.top-title a { color: inherit; text-decoration: none; }',
-    '.top-user { font-size: 13px; color: var(--cc-body-muted-fg); white-space: nowrap; }',
+    '.top-links { font-size: 13px; }',
+    '.top-links a { text-decoration: none; }',
+    '.top-links a:hover { text-decoration: underline; }',
+    '.top-user { font-size: 13px; color: var(--cc-body-muted-fg); white-space: nowrap; margin-left: auto; }',
     '.top-user .viewer { font-weight: bold; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
     'html.layout-narrow body { height: 100dvh; }',
     'html.layout-narrow .top-bar { padding: 8px 12px; gap: 8px; align-items: center; }',
+    'html.layout-narrow .top-bar { flex-wrap: wrap; }',
     'html.layout-narrow .top-title { flex: 1; }',
+    'html.layout-narrow .top-links { order: 1; flex-basis: 100%; }',
     'html.layout-narrow .layout { padding: 8px; }',
     'html.layout-narrow input, html.layout-narrow textarea { font-size: 16px !important; }',
   ].join('\n');

@@ -59,7 +59,7 @@ foot = |url|
 ## How the top bar's right side opens: the Home link (`HomeLink`), and the
 ## links to Browse, Recent and the invites page.
 top_links : Str
-top_links = "<div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · <a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · "
+top_links = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
