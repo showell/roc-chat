@@ -56,7 +56,8 @@
 ## `SignedInOnly` route to no one but someone signed in.
 ##
 ## A conversation's path is `ConversationKey`'s to read, which says which
-## of its resources the path names, and each script's is `Script`'s. A
+## of its resources the path names, each script's is `Script`'s, and the
+## sign-in, agents, channels and invites paths are `PeoplePaths`'. A
 ## path that names no conversation the directory holds is not found. Who
 ## may use each route is decided later: a conversation's by `Access`, an
 ## agent's by `Agents`, a channel's by `ChannelMembers`.
@@ -69,6 +70,7 @@ import ChannelName
 import ConversationKey
 import Directory
 import Favicon
+import PeoplePaths
 import Place
 import Script
 import UnvalidatedString
@@ -171,27 +173,17 @@ invites_or_conversation_choice : {
 	directory : Directory,
 } -> Route.Choice
 invites_or_conversation_choice = |{ path, method, directory }|
-	match invites_resource(path) {
+	match PeoplePaths.invites_resource(path) {
 		Ok(resource) => invites_choice({ resource, method })
 		Err(NotInvites) =>
 			conversation_path_choice({ path, method, directory })
 	}
 
-## What a path under `/invites` names.
-InvitesResource : [Invites, Again(UserId)]
-
-## What `path` names under `/invites`, or `NotInvites`.
-invites_resource : UnvalidatedString -> Try(InvitesResource, [NotInvites])
-invites_resource = |path|
-	match path.url_path_parts() {
-		Ok([invites]) if invites.is_exactly("invites") => Ok(Invites)
-		Ok([invites, id, again]) if invites.is_exactly("invites") and again.is_exactly("again") =>
-			id.user_id().map_ok(|human| Again(human)).map_err(|_| NotInvites)
-		_ => Err(NotInvites)
-	}
-
 ## The route for `method` and an `/invites` path's `resource`.
-invites_choice : { resource : InvitesResource, method : [Get, Post, Other] } -> Route.Choice
+invites_choice : {
+	resource : PeoplePaths.InvitesResource,
+	method : [Get, Post, Other],
+} -> Route.Choice
 invites_choice = |{ resource, method }|
 	match (resource, method) {
 		(Invites, Get) => SignedInOnly(ShowInvites)
@@ -257,13 +249,13 @@ path_choice : {
 	directory : Directory,
 } -> Route.Choice
 path_choice = |{ path, method, directory }|
-	match sign_in_resource(path) {
+	match PeoplePaths.sign_in_resource(path) {
 		Ok(resource) => sign_in_choice({ resource, method })
 		Err(NotSignIn) =>
-			match agents_resource(path) {
+			match PeoplePaths.agents_resource(path) {
 				Ok(resource) => agents_choice({ resource, method })
 				Err(NotAgents) =>
-					match channels_resource(path) {
+					match PeoplePaths.channels_resource(path) {
 						Ok(resource) => channels_choice({ resource, method })
 						Err(NotChannels) => invites_or_conversation_choice({
 							path,
@@ -317,45 +309,11 @@ conversation_choice = |{ key, resource, method }|
 		(UploadedImage(_), Other) => MethodNotAllowed(GetOnly)
 	}
 
-## What a sign-in path names: signing in or out, or joining.
-SignInResource : [
-	Login,
-	Logout,
-	JoinPage,
-	JoinName,
-	GitHubStart,
-	GitHubReturn,
-	GitHubName,
-	GitHubLink,
-]
-
-## What `path` names among the sign-in routes, or `NotSignIn`.
-sign_in_resource : UnvalidatedString -> Try(SignInResource, [NotSignIn])
-sign_in_resource = |path|
-	match path.url_path_parts() {
-		Ok([only]) if only.is_exactly("login") => Ok(Login)
-		Ok([only]) if only.is_exactly("logout") => Ok(Logout)
-		Ok([only]) if only.is_exactly("join") => Ok(JoinPage)
-		Ok([join, name]) if join.is_exactly("join") and name.is_exactly("name") => Ok(JoinName)
-		Ok([login, github]) if login.is_exactly("login") and github.is_exactly("github") =>
-			Ok(GitHubReturn)
-		Ok(
-			[login, github, start],
-		) if login.is_exactly("login") and github.is_exactly("github") and start.is_exactly("start") =>
-			Ok(GitHubStart)
-		Ok(
-			[login, github, name],
-		) if login.is_exactly("login") and github.is_exactly("github") and name.is_exactly("name") =>
-			Ok(GitHubName)
-		Ok(
-			[login, github, link],
-		) if login.is_exactly("login") and github.is_exactly("github") and link.is_exactly("link") =>
-			Ok(GitHubLink)
-		_ => Err(NotSignIn)
-	}
-
 ## The route for `method` and a sign-in path's `resource`.
-sign_in_choice : { resource : SignInResource, method : [Get, Post, Other] } -> Route.Choice
+sign_in_choice : {
+	resource : PeoplePaths.SignInResource,
+	method : [Get, Post, Other],
+} -> Route.Choice
 sign_in_choice = |{ resource, method }|
 	match (resource, method) {
 		(Login, Get) => Open(ShowLogin)
@@ -384,50 +342,11 @@ sign_in_choice = |{ resource, method }|
 		(GitHubLink, Other) => Open(WrongMethodToGitHub(PostOnly))
 	}
 
-## What a path under `/agents` names.
-AgentsResource : [
-	Agents,
-	Invites(UserId),
-	InviteRevoke({ agent : UserId, invite : AgentInvite.Id }),
-	KeyRevoke({ agent : UserId, key : AgentKey.Id }),
-	Redeem,
-	AgentStream,
-]
-
-## What `path` names under `/agents`, or `NotAgents`.
-agents_resource : UnvalidatedString -> Try(AgentsResource, [NotAgents])
-agents_resource = |path|
-	match path.url_path_parts() {
-		Ok([agents]) if agents.is_exactly("agents") => Ok(Agents)
-		Ok(
-			[agents, last],
-		) if agents.is_exactly("agents") and last.is_exactly("redeem") => Ok(Redeem)
-		Ok(
-			[agents, last],
-		) if agents.is_exactly("agents") and last.is_exactly("stream") => Ok(AgentStream)
-		Ok(
-			[agents, id, invites],
-		) if agents.is_exactly("agents") and invites.is_exactly("invites") =>
-			id.user_id().map_ok(|agent| Invites(agent)).map_err(|_| NotAgents)
-		Ok(
-			[agents, id, kind, number, revoke],
-		) if agents.is_exactly("agents") and revoke.is_exactly("revoke") => {
-			agent = id.user_id() ? |_| NotAgents
-			if kind.is_exactly("invites") {
-				number.invite_id().map_ok(
-					|invite| InviteRevoke({ agent, invite }),
-				).map_err(|_| NotAgents)
-			} else if kind.is_exactly("keys") {
-				number.key_id().map_ok(|key| KeyRevoke({ agent, key })).map_err(|_| NotAgents)
-			} else {
-				Err(NotAgents)
-			}
-		}
-		_ => Err(NotAgents)
-	}
-
 ## The route for `method` and an `/agents` path's `resource`.
-agents_choice : { resource : AgentsResource, method : [Get, Post, Other] } -> Route.Choice
+agents_choice : {
+	resource : PeoplePaths.AgentsResource,
+	method : [Get, Post, Other],
+} -> Route.Choice
 agents_choice = |{ resource, method }|
 	match (resource, method) {
 		(Agents, Get) => SignedInOnly(ShowAgents)
@@ -450,39 +369,11 @@ agents_choice = |{ resource, method }|
 		(AgentStream, Other) => MethodNotAllowed(GetOnly)
 	}
 
-## What a path under `/channels` names.
-ChannelsResource : [
-	Channels,
-	Members(ChannelName),
-	MemberAdd({ channel : ChannelName, member : UserId }),
-	MemberRemove({ channel : ChannelName, member : UserId }),
-]
-
-## What `path` names under `/channels`, or `NotChannels`.
-channels_resource : UnvalidatedString -> Try(ChannelsResource, [NotChannels])
-channels_resource = |path|
-	match path.url_path_parts() {
-		Ok([channels]) if channels.is_exactly("channels") => Ok(Channels)
-		Ok([channels, name]) if channels.is_exactly("channels") =>
-			name.channel_name().map_ok(|channel| Members(channel)).map_err(|_| NotChannels)
-		Ok(
-			[channels, name, members, id, act],
-		) if channels.is_exactly("channels") and members.is_exactly("members") => {
-			channel = name.channel_name() ? |_| NotChannels
-			member = id.user_id() ? |_| NotChannels
-			if act.is_exactly("add") {
-				Ok(MemberAdd({ channel, member }))
-			} else if act.is_exactly("remove") {
-				Ok(MemberRemove({ channel, member }))
-			} else {
-				Err(NotChannels)
-			}
-		}
-		_ => Err(NotChannels)
-	}
-
 ## The route for `method` and a `/channels` path's `resource`.
-channels_choice : { resource : ChannelsResource, method : [Get, Post, Other] } -> Route.Choice
+channels_choice : {
+	resource : PeoplePaths.ChannelsResource,
+	method : [Get, Post, Other],
+} -> Route.Choice
 channels_choice = |{ resource, method }|
 	match (resource, method) {
 		(Channels, Get) => SignedInOnly(ShowChannels)
