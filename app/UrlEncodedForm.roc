@@ -19,7 +19,7 @@ UrlEncodedForm :: [].{
 	markdown_field = |body| UrlEncodedForm.field({ body, name: UrlEncodedForm.markdown_name })
 
 	## The name of the field that holds a message's markdown. The compose
-	## box's textarea takes this name (`Page`).
+	## box's textarea takes this name (`ConversationPage`).
 	markdown_name : Str
 	markdown_name = "markdown"
 
@@ -45,7 +45,7 @@ UrlEncodedForm :: [].{
 	}
 
 	## The name of the field that holds a new topic's name. Browse's form
-	## takes this name (`Page.topic_form`).
+	## takes this name (`ConversationPage.topic_form`).
 	topic_name : Str
 	topic_name = "topic"
 

@@ -1,5 +1,5 @@
 // This script runs on a signed-in page, a conversation or any page with a
-// .panel, which app/Page.roc builds and app/Script.roc serves. It styles the
+// .panel, which app/PageKit.roc builds and app/Script.roc serves. It styles the
 // page's frame, which the server sends as structure and class names only, and
 // adds the theme toggle.
 //

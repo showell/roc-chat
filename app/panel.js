@@ -1,5 +1,5 @@
 // This script runs on a signed-in human's page that is no conversation, such
-// as Browse or the invites page, which app/Page.roc builds and app/Script.roc
+// as Browse or the invites page, which app/PageKit.roc builds and app/Script.roc
 // serves. The page works without it: its parts read top to bottom.
 //
 // The page's parts sit in a .panel, drawn as feed.js draws the messages pane: a

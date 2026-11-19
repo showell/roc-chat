@@ -6,7 +6,7 @@
 ## app/feed.js (its messages). Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in). The join page
 ## ends with app/join.js, which reads the invite's code from the link. `Route` serves each at its
-## `url_path`, and `Page` links to them.
+## `url_path`, and `PageKit.script` links to them.
 import "palette.js" as palette_source : Str
 import "chrome.js" as chrome_source : Str
 import "compose.js" as compose_source : Str

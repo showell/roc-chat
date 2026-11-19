@@ -7,11 +7,13 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
 ## What the code holds
 
 - **A pure core.** `Conversation` grows only by `append`, so its ids are always 1, 2, 3... Alongside it are `Message`, `MsgAnchor` (`MSG_<topic>_<n>` and `msg-<n>`), and `Transcript`, the file in the Zig chat's format. `Transcript` also builds the two kinds of bytes the file system deals in: `Utf8Transcript` (a whole file, untrusted until `decode`) and `Utf8TranscriptMessage` (one message's record, appended).
-- **Pages.** `Page` builds them only from markup vouched for at `TrustedHtml`'s one door, `dangerously_trust`. Its few callers are the audit trail:
+- **Pages.** The page modules build them only from markup vouched for at `TrustedHtml`'s one door, `dangerously_trust`. Its few callers are the audit trail:
   - `Escape` (text, escaped exactly once);
   - `Html` (elements from closed sets and strict tokens);
   - `Markdown` (roc-markdown's output, its images ruled by `SecureImageTag`);
-  - `Page`'s fixed head.
+  - `PageKit`'s fixed head.
+
+  `PageKit` is what every page stands on; each page lives beside the route that serves it (`ConversationPage`, `AgentsPage`, `SignInPage`, `JoinPage`, `PeoplePages`); `PageContract` holds the class names and `data-` attributes the scripts find things by.
 - **The pages' scripts.** The server sends no CSS; five small scripts style what they find, as chat-client's do. Each is imported whole at compile time by `Script`, the set's one home, so the file is its bytes' one home, and served at `/chat/assets/<name>.js`; the page's policy runs scripts from this origin only (`script-src 'self'`, `HttpAnswer`). The page works without them: the messages read top to bottom, and the box is a plain form.
   - `app/palette.js`, in every page's head: chat-client's colours, light and dark, dark unless the viewer chose light; the theme is set before the first paint.
   - `app/chrome.js`: the frame of every signed-in page but `/agents`, a top bar (the title; the 🌙/☀️ theme toggle, the links to Browse and the invites page, and the viewer's name) over the page, filling the window.
@@ -29,7 +31,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `ConversationKey` is a place plus a topic, and the one home of the layout: a URL `/chat/channel/<channel>/<topic>` names the folder `chat/channel/<channel>/<topic>/`, and `/chat/dm/<pair>/<topic>` names `chat/dm/<pair>/<topic>/`.
   - `ConversationRoute` answers GET and POST (a 303 back to the page), the compose box's script's POST to `/send` (a 201 with the message's HTML, or the refusal in plain words), and opens a conversation's stream.
   - `Browse` decides what a human is shown, by `Access`, and writes its page; `BrowseRoute` reads each place's topics and answers.
-  - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `Page.message` writes for the page.
+  - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `ConversationPage.message` writes for the page.
   - `UploadRoute` answers an upload and an uploaded image. An image is what its opening bytes say, PNG, JPEG, GIF or WebP, at most 10 MiB, named by 16 random bytes in hex (`UploadedImage`); it is read out of the compose box's form (`MultipartForm`), counted against the uploader's lifetime allowance of 1 GiB (`UploadTotal`, kept in `users/<id>/upload-bytes`, `UserFolder`), kept in its conversation's folder as `uploads/<name>`, and served at the conversation's URL and `/uploads/<name>`. A message shows an image only from its own conversation's uploads (`SecureImageTag`).
   - `FileSystem` is the only module that touches files.
   - `SignInRoute` answers `/login` and `/logout`, and checks a request's session. `GitHubRoute` answers `/login/github/start`, `/login/github` and `/login/github/name`; `GitHubSignIn` decides each step of that sign-in, and `GitHubSignUp` is the signed value a new human's id travels in.

@@ -25,7 +25,7 @@
 ##
 ## No class is free text. A class is a token, never a sentence or a list.
 ## Which classes a page uses, and which `data-` attributes, is the page's
-## to say (`Page.Class`, `Page.DataAttribute`).
+## to say (`PageContract.Class`, `PageContract.DataAttribute`).
 import Ascii
 import DateTime
 import Name

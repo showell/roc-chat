@@ -1,4 +1,4 @@
-// This script runs in the head of every page, which app/Page.roc builds and
+// This script runs in the head of every page, which app/PageKit.roc builds and
 // app/Script.roc serves. It sets the colours before the first paint,
 // so a page never flashes the other theme.
 //

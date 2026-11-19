@@ -3,7 +3,8 @@
 ## the refusal of a method, and an event stream; an uploaded image, and the JSON that
 ## answers an upload; and a refusal in plain words, of an upload or a send,
 ## which the compose box shows as it is. It knows nothing of what a page
-## says: the routes build their pages with `Page` and hand them here.
+## says: the routes build their pages with the page modules (`PageKit`,
+## `ConversationPage` and the rest) and hand them here.
 ##
 ## Every page carries its defences (`page_headers`, their one home): a
 ## Content-Security-Policy that lets the page load nothing but the styles
