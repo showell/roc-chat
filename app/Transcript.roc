@@ -55,7 +55,7 @@ Transcript :: [].{
 	## The most bytes a transcript file holds, 16 MiB; this is the limit's
 	## one home. `message_record` refuses a record that would grow the file
 	## past it, so every transcript the chat writes stays one the host will
-	## read. The host's own read cap (`read_most`, host/file_primitives.zig)
+	## read. The host's own read cap, host/file_primitives.zig's `read_most`,
 	## sits strictly above this, a safety net and never the rule.
 	most_bytes : U64
 	most_bytes = 16 * 1024 * 1024
