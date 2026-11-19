@@ -15,7 +15,7 @@ The answers from our listening session on 2026-11-02, and Steve's calls since, g
 - **A message is Author + DateTime + MarkdownContent, plus the id its conversation gives it.**
 - A **MessagePayload** is Author + MarkdownContent, as the writer sent it. With its DateTime it is an unnumbered message (`Message.Unnumbered`): every part checked, waiting only for the Id its conversation gives it. The full Message, with its Id and DateTime, is made as early as possible.
 - **Content is markdown text, and may include images.** The flavour is whatever our markdown implementation accepts. Images are opaque to a message: a message with an image tag is valid even when the image can't be reached.
-- **Messages are immutable.** An edit is a new message that edits an earlier one. When rendered, a RenderedMessage can be `IsEdited`, or `EditsPriorMessage(MessageId)`.
+- **Messages are immutable.** An edit is a new message that edits an earlier one: its markdown starts `Edit of MSG_<topic>_<n>`, as Gopher Chat's did, and only the message's author may post it (`app/Edit.roc`). When rendered, the original says "Edited in" the edit, its own markdown folded away; the stream sends it again, drawn so, to every open page.
 - **A message doesn't care about eligibility.** "Steve said hello on Tuesday" is a message. Whether Steve may say that in a given place is up to the conversation, not the message.
 
 ### Author and User
@@ -105,7 +105,7 @@ apoorvavpendse@gmail.com would be better
 ```
 
 - **Markdown is stored exactly as written.** A body line that is exactly the separator `-------------` is stored as `\-------------` and turned back on reading. This escaping happens at the chat's edge, outside the markdown processor. When a message looks hostile, refuse it.
-- **Reactions:** one file per conversation, beside its messages, in the Zig chat's JSONL format.
+- **Reactions:** one file per conversation, `reactions` beside its `transcript`, one JSON line per reaction, as the Zig chat's sidecar was, but holding only the current set, in the order the reactions were made (`{"msg":3,"uid":1,"emoji":"👍"}`), and rewritten whole, atomically, at each change (`app/Reactions.roc`). The transcript's format is unchanged: an edit is an ordinary message whose markdown starts `Edit of MSG_<topic>_<n>`.
 - **Users:** a folder per user, named by the user's numeric id, holding one small human-readable file per fact, as the Zig chat keeps them. High-stakes facts, who a user is and how they prove it, live under the auth root, `auth/`; lower-stakes ones (the upload total, later preferences) under `users/`, as the Zig chat keeps its account store under one root and each user's other state under another. Every file below holds one fact, written bare with no line end unless it says so; a reader takes ASCII spaces, tabs and line ends off both ends (`FactFile`), so a file edited by hand still reads.
 
   | File | Holds | From |
