@@ -24,6 +24,7 @@
 ##     GET  /chat/assets/panel.js
 ##     GET  /chat/assets/join.js
 ##     GET  /chat/assets/recent.js
+##     GET  /chat/assets/alert-icon.svg        the tab's icon when a notice comes
 ##     GET  /favicon.ico                       the site's icon
 ##     GET  /login                             the sign-in page
 ##     POST /login                             sign in: `name=`, `password=`
@@ -52,7 +53,7 @@
 ##     POST /join                              join: `code=`, `name=`, `password=`
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
-## included: the way in, the scripts, the icon, the sign-in routes but the
+## included: the way in, the scripts, the icons, the sign-in routes but the
 ## link to GitHub, an agent's redemption, and the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and `Dispatch` answers each
@@ -97,6 +98,7 @@ Route :: [].{
 		ResumeOrBrowse,
 		ServeScript(Script),
 		ServeFavicon,
+		ServeAlertIcon,
 		ShowLogin,
 		SignIn,
 		SignOut,
@@ -153,6 +155,7 @@ Route :: [].{
 		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
 			Ok(script) => asset_choice(ServeScript(script), asked)
 			Err(NotFound) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
+			Err(NotFound) if path == Favicon.alert_url_path.to_utf8() => asset_choice(ServeAlertIcon, asked)
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) => path_choice({ path: unchecked, method: asked, directory })

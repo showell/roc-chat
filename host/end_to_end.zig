@@ -43,6 +43,8 @@
 //!   4aa. GET /favicon.ico: exactly app/favicon.ico, with every header a script
 //!       has, to no one, to a cookie that admits no one, to Steve, and to a
 //!       page's own request; another site's page: 403; a POST: 405;
+//!   4ab. GET /chat/assets/alert-icon.svg: exactly app/alert-icon.svg, an
+//!       SVG, with a script's headers, to anyone; a POST: 405;
 //!   4b. POST exactly as a browser submits the compose box (form-encoded,
 //!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
 //!      same-origin, a navigation's other headers): a 303 to the page, and
@@ -490,6 +492,27 @@ pub fn main(init: std.process.Init) !void {
     const icon_post = try anonymousPost(a, io, port, "/favicon.ico", "");
     try t.check("the icon asked for by another site's page: 403; a POST: 405, allowing GET alone", icon_elsewhere.status == 403 and
         icon_post.status == 405 and std.mem.eql(u8, icon_post.header("allow") orelse "", "GET"));
+
+    // 4ab.
+    const alert_path = "/chat/assets/alert-icon.svg";
+    const alert_file = try cwd.readFileAlloc(io, "app/alert-icon.svg", a, .limited(1024 * 1024));
+    const alert_answers = [_]Response{
+        try anonymousGet(a, io, port, alert_path),
+        try get(a, io, port, alert_path),
+        try getAs(a, io, port, icon_page_asks, alert_path),
+    };
+    var alert_served = true;
+    for (alert_answers) |icon| {
+        alert_served = alert_served and icon.status == 200 and
+            std.mem.eql(u8, icon.header("content-type") orelse "", "image/svg+xml") and std.mem.eql(u8, icon.body, alert_file);
+        inline for (.{ "cache-control", "x-content-type-options", "cross-origin-resource-policy" }) |name| {
+            alert_served = alert_served and icon.header(name) != null and
+                std.mem.eql(u8, icon.header(name).?, script.header(name) orelse "");
+        }
+    }
+    const alert_post = try anonymousPost(a, io, port, alert_path, "");
+    try t.check("GET the alert icon, by no one, Steve and a page: 200, exactly app/alert-icon.svg, an SVG, a script's other headers; a POST: 405", alert_served and
+        alert_post.status == 405 and std.mem.eql(u8, alert_post.header("allow") orelse "", "GET"));
 
     // 4b.
     const before_box = files.current_utc_seconds_since_epoch(io);

@@ -192,6 +192,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 		ResumeOrBrowse => ResumeRoute.answer_way_in!({ actor, directory })
 		ServeScript(script) => HttpAnswer.script(script.bytes())
 		ServeFavicon => HttpAnswer.favicon(Favicon.bytes)
+		ServeAlertIcon => HttpAnswer.svg_icon(Favicon.alert_bytes)
 		ShowLogin =>
 			SignInRoute.show_login({
 				viewer: actor,

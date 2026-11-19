@@ -12,7 +12,8 @@
 // events from the viewer's own key: `online`, a human's id, fills their dot
 // (Sidebar.markOnline); `notice`, a link, is shown in the line above the
 // page (.notice-strip, chat-client's #chat-notify), replacing the last one
-// (Sidebar.showNotice). A dot never empties while
+// (Sidebar.showNotice) and paints the tab's icon violet until its link is
+// followed, as chat-client's js/notify.js did. A dot never empties while
 // the page is open: as in chat-client, the next page drawn says who is still
 // online.
 //
@@ -267,12 +268,35 @@ window.Sidebar = (function () {
       textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', minHeight: '1em',
     });
   }
+  // The tab's icon, chat-client's js/notify.js: violet when a notice comes,
+  // whether or not the tab is in view, and kept so until the notice's link
+  // is followed, with no timer. notify.js drew the violet as a data: URL,
+  // which this site's policy refuses, so it is a file the server serves
+  // (app/Favicon.roc); and where notify.js cleared the tab to a blank icon,
+  // the site's own icon comes back. The <link> is made anew each time, as
+  // notify.js's was, since some browsers repaint only a new element.
+  function paintTab(href) {
+    var old = document.getElementById('favicon');
+    if (old) old.remove();
+    var link = document.createElement('link');
+    link.id = 'favicon';
+    link.rel = 'icon';
+    link.href = href;
+    document.head.appendChild(link);
+  }
+  function alertTab() { paintTab('/chat/assets/alert-icon.svg'); }
+  function clearTab() { paintTab('/favicon.ico'); }
+
   // A notice, the server's HTML (a link), shown in the strip in place of
-  // the last one.
+  // the last one, and the tab painted.
   function showNotice(html) {
     if (!strip) return;
     strip.innerHTML = html;
-    strip.querySelectorAll('a').forEach(function (link) { link.style.color = 'inherit'; });
+    strip.querySelectorAll('a').forEach(function (link) {
+      link.style.color = 'inherit';
+      link.addEventListener('click', clearTab);
+    });
+    alertTab();
   }
 
   // A `topic-added` event's data: the place's path, the topic and its page.

@@ -141,6 +141,7 @@ upload_asked = |choice|
 		Open(Join) => NoUpload
 		Open(ServeScript(_)) => NoUpload
 		Open(ServeFavicon) => NoUpload
+		Open(ServeAlertIcon) => NoUpload
 		Open(ShowLogin) => NoUpload
 		Open(SignIn) => NoUpload
 		Open(SignOut) => NoUpload

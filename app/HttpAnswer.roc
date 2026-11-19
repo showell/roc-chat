@@ -41,6 +41,10 @@ HttpAnswer :: [].{
 	favicon : List(U8) -> Http.Response
 	favicon = |bytes| asset({ content_type: "image/x-icon", bytes })
 
+	## An icon drawn in SVG, `bytes` (the app's own: `Favicon`).
+	svg_icon : List(U8) -> Http.Response
+	svg_icon = |bytes| asset({ content_type: "image/svg+xml", bytes })
+
 	## An uploaded image, `bytes`, served as `content_type`, which
 	## `nosniff` holds the browser to. The browser keeps it for good, since a
 	## name is never given twice.
@@ -334,6 +338,7 @@ expect
 		HttpAnswer.see_other("/a"),
 		HttpAnswer.script([]),
 		HttpAnswer.favicon([]),
+		HttpAnswer.svg_icon([]),
 		HttpAnswer.method_not_allowed(GetOnly),
 		HttpAnswer.image({ content_type: "image/png", bytes: [] }),
 		HttpAnswer.json(JsonOut.json_object([])),
@@ -398,6 +403,18 @@ expect {
 				("x-content-type-options", "nosniff"),
 			]
 		and response.body == [0, 0, 1, 0]
+}
+# An SVG icon: the same, an SVG's type.
+expect {
+	response = HttpAnswer.svg_icon("<svg/>".to_utf8())
+	response.status == 200
+		and header_pairs(response)
+			== [
+				("content-type", "image/svg+xml"),
+				("cache-control", "no-cache"),
+				("x-content-type-options", "nosniff"),
+			]
+		and response.body == "<svg/>".to_utf8()
 }
 # A transcript's plain text: a 200, UTF-8 text, not sniffed, its bytes as
 # kept, a final line end and all.

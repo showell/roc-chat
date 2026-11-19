@@ -69,6 +69,7 @@ chosen_route = |method, path|
 		Open(Join) => "join (open)"
 		Open(ServeScript(script)) => "the script at ${script.url_path()} (open)"
 		Open(ServeFavicon) => "the icon (open)"
+		Open(ServeAlertIcon) => "the alert icon (open)"
 		Open(ShowLogin) => "the sign-in page (open)"
 		Open(SignIn) => "sign in (open)"
 		Open(SignOut) => "sign out (open)"
@@ -204,6 +205,19 @@ expect
 		"/favicon.png",
 		"/chat/favicon.ico",
 		"/chat/assets/favicon.ico",
+	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
+# The alert icon's path, beside the scripts: GET alone, by anyone, and
+# exactly its path.
+expect chosen_route("GET", "/chat/assets/alert-icon.svg".to_utf8()) == "the alert icon (open)"
+expect chosen_route("POST", "/chat/assets/alert-icon.svg".to_utf8()) == "not allowed: GET"
+expect chosen_route("HEAD", "/chat/assets/alert-icon.svg".to_utf8()) == "not allowed: GET"
+expect
+	[
+		"/chat/assets/alert-icon.svg/",
+		"/chat/assets/Alert-icon.svg",
+		"/chat/assets/alert-icon.png",
+		"/alert-icon.svg",
+		"/chat/alert-icon.svg",
 	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
 # A conversation's transcript as plain text: GET alone, under a place that
 # exists.
