@@ -328,6 +328,9 @@
 //!  56. a name that is no topic: Browse again, a 400, nothing made;
 //!  57. the acceptance path: Browse, a person, a topic, an empty chat, compose,
 //!      Send, and see it, live and on the page, and on Browse for its humans.
+//! 57a. a topic's first message tells its humans' open pages, the author's
+//!      too, `topic-added`; Tam adds a topic, and Steve's open stream hears
+//!      it; her next message there tells no one.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, the
 //! session's cookie, no `Origin`, no `Sec-Fetch-Site`.
@@ -842,8 +845,9 @@ fn editAndReactSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: S
     const first = try post(a, io, port, .{ .path = edits_url ++ "/send", .form = "markdown=Helo+there", .more = fetch_headers });
     const raw_first = try get(a, io, port, edits_url ++ "/raw?message=1");
     const raw_missing = try get(a, io, port, edits_url ++ "/raw?message=9");
-    try t.check("post a message to a new topic: 201, its frame on the stream, and its markdown alone at /raw?message=1; a message not there, 404", first.status == 201 and
+    try t.check("post a message to a new topic: 201, its frame on the stream, then the topic told to Steve's sidebar, and its markdown alone at /raw?message=1; a message not there, 404", first.status == 201 and
         std.mem.startsWith(u8, try stream.event(), "id: 1\ndata: <article class=\"message\" id=\"msg-1\"") and
+        std.mem.eql(u8, try stream.event(), "event: topic-added\ndata: /chat/channel/general\ndata: edits\ndata: " ++ edits_url ++ "\n\n") and
         raw_first.status == 200 and std.mem.eql(u8, raw_first.body, "Helo there") and raw_missing.status == 404);
 
     // 35c.
@@ -1167,6 +1171,18 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const umas_now = try getAs(a, io, port, uma, "/chat");
     try t.check("the topic on Browse: linked for both its humans, and not for Uma", has(steves_now.body, "href=\"" ++ url ++ "\"") and
         has(tams_now.body, "href=\"" ++ url ++ "\"") and !has(umas_now.body, url));
+
+    // 57a.
+    try t.check("a topic's first message tells its humans' sidebars, its author too: Steve's open stream, after his message, says topic-added, the place, the topic and its page", std.mem.eql(u8, try stream.event(), "event: topic-added\ndata: /chat/dm/1_2\ndata: plans\ndata: " ++ url ++ "\n\n"));
+    const lunch = "/chat/dm/1_2/lunch";
+    const tams_first = try postAs(a, io, port, tam, lunch ++ "/send", "markdown=Lunch%3F");
+    const told = try stream.event();
+    const tams_second = try postAs(a, io, port, tam, lunch ++ "/send", "markdown=At+noon");
+    const tams_reply = try postAs(a, io, port, tam, url ++ "/send", "markdown=Seen");
+    const next = try stream.event();
+    try t.check("Tam adds a topic to their DM: Steve's open page hears topic-added for it; her second message there tells no one again, so his next event is her reply on his page", tams_first.status == 201 and tams_second.status == 201 and tams_reply.status == 201 and
+        std.mem.eql(u8, told, "event: topic-added\ndata: /chat/dm/1_2\ndata: lunch\ndata: " ++ lunch ++ "\n\n") and
+        std.mem.startsWith(u8, next, "id: 2\ndata: <article"));
     try recentSteps(a, io, port, t, .{ .tam = tam, .uma = uma });
 }
 

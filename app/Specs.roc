@@ -32,6 +32,7 @@ import SecureImageTagSpec
 import SessionSpec
 import SignInRequestSpec
 import SidebarSpec
+import TopicAddedSpec
 import StoredDirectorySpec
 import TranscriptSpec
 import UsersSpec

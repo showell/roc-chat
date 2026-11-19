@@ -31,8 +31,12 @@
 // larger, for a finger.
 //
 // Sidebar.addTopic(section, label, url) adds a topic to the place whose
-// data-section is `section`, built as the server's rows are; the stream that
-// tells a page of a new topic will call it.
+// data-section is `section`, built as the server's rows are. The stream's
+// `topic-added` event, sent to each human of a place on a topic's first
+// message (app/TopicAdded.roc), calls it through Sidebar.topicAdded: its data
+// is Gopher's three fields, a line each, the place's path, the topic and its
+// page. As chat-client's upsertSession, a topic already listed is left, and a
+// place this sidebar doesn't list is ignored.
 //
 // It finds every part by app/PageContract.roc's classes, and styles each on
 // the DOM itself; its colours are palette.js's.
@@ -271,5 +275,12 @@ window.Sidebar = (function () {
     strip.querySelectorAll('a').forEach(function (link) { link.style.color = 'inherit'; });
   }
 
-  return { addTopic: addTopic, markOnline: markOnline, showNotice: showNotice };
+  // A `topic-added` event's data: the place's path, the topic and its page.
+  function topicAdded(data) {
+    var fields = data.split('\n');
+    if (fields.length !== 3) throw new Error('sidebar.js: a topic-added event is three lines, the place, the topic and its page');
+    addTopic(fields[0], fields[1], fields[2]);
+  }
+
+  return { addTopic: addTopic, topicAdded: topicAdded, markOnline: markOnline, showNotice: showNotice };
 })();

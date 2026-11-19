@@ -27,6 +27,7 @@
 ## message's markdown, which the page's script edits from. Every route
 ## words its refusals through `ConversationRefusal`.
 import pf.Http
+import pf.Host
 import AgentStream
 import Author
 import Browse
@@ -55,6 +56,7 @@ import Timestamp
 import Transcript
 import TranscriptFiles
 import TranscriptRefusal
+import TopicAdded
 import TrustedHtml
 import UnvalidatedString
 import UrlEncodedForm
@@ -229,7 +231,8 @@ load_page! = |{ key, acting, directory }| {
 }
 
 ## The message in `post`'s form, added to its conversation and to the
-## transcript, then sent to the conversation's stream: the message's HTML,
+## transcript, then sent to the conversation's stream, and a new topic's
+## first told to everyone who may read it: the message's HTML,
 ## as the page and the stream write it, made once for both; or why not. An
 ## edit sends the message it edits again, drawn as edited.
 append_posted_message! : ConversationRoute.Post => Try(TrustedHtml, _)
@@ -261,6 +264,15 @@ append_posted_message! = |post| {
 		notes: MessageNotes.fresh,
 	})
 	ConversationStream.publish!({ key: post.key, id: grown.message.id(), html })
+	match loaded.file {
+		NoFile => {
+			event = TopicAdded.frame(post.key)
+			for reader in post.readers {
+				Host.publish_bytes_to_streams_on_key!(Presence.viewer_stream_key(reader), event)
+			}
+		}
+		File(_) => {}
+	}
 	match edit {
 		EditOf(id) =>
 			ConversationStream.publish_again!({
