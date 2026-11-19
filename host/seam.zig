@@ -199,7 +199,7 @@ pub const GitHubSettingsStatus = enum(u8) { configured, not_configured };
 /// tag.
 pub const GitHubSettingsRec = extern struct { authorize_base: RocBytes, client_id: RocBytes, status: GitHubSettingsStatus };
 /// Host.roc's `github_identity_for_code!` status, alphabetical.
-pub const GitHubIdentityStatus = enum(u8) { denied, failed, identified };
+pub const GitHubIdentityStatus = enum(u8) { busy, denied, failed, identified };
 /// Host.roc's `github_identity_for_code!` answer: the U64, the list, then the
 /// tag.
 pub const GitHubIdentityRec = extern struct { github_id: u64, login: RocBytes, status: GitHubIdentityStatus };
@@ -227,6 +227,9 @@ pub const Call = struct {
 };
 
 var current: ?Call = null;
+
+/// The server's exchanges with GitHub in flight (`github_identity_for_code`).
+var exchanges: github.ExchangeGate = .{};
 
 /// **A CALL BEGINS**: its arena holds everything it allocates; its root,
 /// Io and hub answer the hosted functions (none for the demo, which asks
@@ -427,7 +430,9 @@ pub export fn github_sign_in_settings() callconv(.c) GitHubSettingsRec {
 /// as for a password's check. The code lives in this call's arena. A failure
 /// is logged here by its name alone, and neither the code nor the token
 /// reaches the log; the token never leaves the client. A task canceled as
-/// the server stops answers `failed`.
+/// the server stops answers `failed`. Past `github.exchanges_most` at once,
+/// it answers `busy` and asks GitHub nothing; the gate is counted while the
+/// turn is held.
 pub export fn github_identity_for_code(code: RocBytes) callconv(.c) GitHubIdentityRec {
     const what = "github_identity_for_code";
     const this_call = call(what);
@@ -435,11 +440,16 @@ pub export fn github_identity_for_code(code: RocBytes) callconv(.c) GitHubIdenti
     const settings = this_call.github orelse @panic(what ++ ": this call has no GitHub settings (the app asks only when it has them)");
     const gpa = this_call.gpa orelse @panic(what ++ ": this call has no allocator (only the server's asks GitHub)");
     const turn = this_call.turn orelse @panic(what ++ ": this call holds no turn (only the server's asks GitHub)");
+    if (!exchanges.enter()) {
+        log.warn(what ++ ": {d} exchanges with GitHub at once already: answered busy", .{github.exchanges_most});
+        return .{ .github_id = 0, .login = .from(""), .status = .busy };
+    }
     current = null;
     turn.unlock(io);
     const identity = github.identify_code(gpa, io, settings, code.slice());
     turn.lockUncancelable(io);
     current = this_call;
+    exchanges.leave();
     const who = identity catch |e| switch (e) {
         error.Denied => return .{ .github_id = 0, .login = .from(""), .status = .denied },
         error.Timeout, error.Refused, error.BadResponse, error.Canceled => {

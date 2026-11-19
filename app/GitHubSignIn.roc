@@ -128,15 +128,16 @@ GitHubSignIn :: [].{
 		## From what the host heard of GitHub: who this is, or why not.
 		identify : GitHubSignIn.StateChecked,
 		{
-			status : [Denied, Failed, Identified],
+			status : [Busy, Denied, Failed, Identified],
 			github_id : U64,
 			login : List(U8),
 		} -> Try(
 			GitHubSignIn.IdentityKnown,
-			[CodeRefused, GitHubUnreachable, BadIdentity],
+			[GitHubBusy, CodeRefused, GitHubUnreachable, BadIdentity],
 		)
 		identify = |GitHubSignIn.StateChecked.(checked), { status, github_id, login }|
 			match status {
+				Busy => Err(GitHubBusy)
 				Denied => Err(CodeRefused)
 				Failed => Err(GitHubUnreachable)
 				Identified =>

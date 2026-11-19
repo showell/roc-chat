@@ -188,13 +188,15 @@ Host := [].{
 	## GitHub who the token belongs to, and forgets the token. `Identified`,
 	## with GitHub's numeric id and its login as GitHub spelled it; `Denied`
 	## when GitHub answered no; `Failed` when it didn't answer in time or
-	## made no sense. In both of those `github_id` is 0 and `login` empty. The host
-	## lets other requests be answered while it waits, so what the app read
-	## before this call may have changed by its answer.
+	## made no sense; `Busy`, GitHub not asked, when the host already has
+	## its most exchanges with GitHub at once (`exchanges_most` in
+	## host/github_client.zig). In all but `Identified`, `github_id` is 0 and
+	## `login` empty. The host lets other requests be answered while it waits,
+	## so what the app read before this call may have changed by its answer.
 	github_identity_for_code! : List(U8) => {
 		github_id : U64,
 		login : List(U8),
-		status : [Denied, Failed, Identified],
+		status : [Busy, Denied, Failed, Identified],
 	}
 
 	## The HMAC-SHA256 of `bytes` under the server's secret: 32 bytes. The

@@ -97,7 +97,7 @@ round_trip : {
 	cookie : GitHubState.Cookie,
 	now : Timestamp,
 	heard : {
-		status : [Denied, Failed, Identified],
+		status : [Busy, Denied, Failed, Identified],
 		github_id : U64,
 		login : List(U8),
 	},
@@ -132,7 +132,7 @@ round_trip = |
 ## GitHub's answer naming the account `id`, `login`.
 github_answer : U64,
 Str -> {
-	status : [Denied, Failed, Identified],
+	status : [Busy, Denied, Failed, Identified],
 	github_id : U64,
 	login : List(U8),
 }
@@ -200,6 +200,7 @@ expect
 expect
 	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Failed } })
 		== Err(GitHubUnreachable)
+expect round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Busy } }) == Err(GitHubBusy)
 expect round_trip({ ..good_return, heard: github_answer(0, "showell") }) == Err(BadIdentity)
 expect round_trip({ ..good_return, heard: github_answer(100, "not a login") }) == Err(BadIdentity)
 

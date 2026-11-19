@@ -935,11 +935,11 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct_f3d95275ff09cbb2
-pub const __AnonStruct_f3d95275ff09cbb2 = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_c21c6671fc9a3d71
+pub const __AnonStruct_c21c6671fc9a3d71 = if (@sizeOf(usize) == 4) extern struct {
     github_id: u64,
     login: RocListWith(u8, false),
-    status: DeniedOrFailedOrIdentified,
+    status: BusyOrDeniedOrFailedOrIdentified,
     /// Recursively decrement Roc-owned fields.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
         const value = self;
@@ -956,7 +956,7 @@ pub const __AnonStruct_f3d95275ff09cbb2 = if (@sizeOf(usize) == 4) extern struct
 } else extern struct {
     github_id: u64,
     login: RocListWith(u8, false),
-    status: DeniedOrFailedOrIdentified,
+    status: BusyOrDeniedOrFailedOrIdentified,
     /// Recursively decrement Roc-owned fields.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
         const value = self;
@@ -974,12 +974,12 @@ pub const __AnonStruct_f3d95275ff09cbb2 = if (@sizeOf(usize) == 4) extern struct
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct_f3d95275ff09cbb2) != 40) @compileError("__AnonStruct_f3d95275ff09cbb2 size mismatch");
-        if (@alignOf(__AnonStruct_f3d95275ff09cbb2) != 8) @compileError("__AnonStruct_f3d95275ff09cbb2 alignment mismatch");
+        if (@sizeOf(__AnonStruct_c21c6671fc9a3d71) != 40) @compileError("__AnonStruct_c21c6671fc9a3d71 size mismatch");
+        if (@alignOf(__AnonStruct_c21c6671fc9a3d71) != 8) @compileError("__AnonStruct_c21c6671fc9a3d71 alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct_f3d95275ff09cbb2) != 24) @compileError("__AnonStruct_f3d95275ff09cbb2 size mismatch");
-        if (@alignOf(__AnonStruct_f3d95275ff09cbb2) != 8) @compileError("__AnonStruct_f3d95275ff09cbb2 alignment mismatch");
+        if (@sizeOf(__AnonStruct_c21c6671fc9a3d71) != 24) @compileError("__AnonStruct_c21c6671fc9a3d71 size mismatch");
+        if (@alignOf(__AnonStruct_c21c6671fc9a3d71) != 8) @compileError("__AnonStruct_c21c6671fc9a3d71 alignment mismatch");
     }
 }
 
@@ -1578,11 +1578,12 @@ comptime {
     }
 }
 
-/// Tag union: DeniedOrFailedOrIdentified
-pub const DeniedOrFailedOrIdentified = enum(u8) {
-    denied = 0,
-    failed = 1,
-    identified = 2,
+/// Tag union: BusyOrDeniedOrFailedOrIdentified
+pub const BusyOrDeniedOrFailedOrIdentified = enum(u8) {
+    busy = 0,
+    denied = 1,
+    failed = 2,
+    identified = 3,
     /// Recursively decrement Roc-owned payloads.
     pub fn decref(self: @This(), roc_host: *RocHost) void {
         _ = self;
@@ -1598,12 +1599,12 @@ pub const DeniedOrFailedOrIdentified = enum(u8) {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(DeniedOrFailedOrIdentified) != 1) @compileError("DeniedOrFailedOrIdentified size mismatch");
-        if (@alignOf(DeniedOrFailedOrIdentified) != 1) @compileError("DeniedOrFailedOrIdentified alignment mismatch");
+        if (@sizeOf(BusyOrDeniedOrFailedOrIdentified) != 1) @compileError("BusyOrDeniedOrFailedOrIdentified size mismatch");
+        if (@alignOf(BusyOrDeniedOrFailedOrIdentified) != 1) @compileError("BusyOrDeniedOrFailedOrIdentified alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(DeniedOrFailedOrIdentified) != 1) @compileError("DeniedOrFailedOrIdentified size mismatch");
-        if (@alignOf(DeniedOrFailedOrIdentified) != 1) @compileError("DeniedOrFailedOrIdentified alignment mismatch");
+        if (@sizeOf(BusyOrDeniedOrFailedOrIdentified) != 1) @compileError("BusyOrDeniedOrFailedOrIdentified size mismatch");
+        if (@alignOf(BusyOrDeniedOrFailedOrIdentified) != 1) @compileError("BusyOrDeniedOrFailedOrIdentified alignment mismatch");
     }
 }
 
@@ -1752,11 +1753,11 @@ comptime {
 pub const HostGithub_identity_for_codeRetRecord = if (@sizeOf(usize) == 4) extern struct {
     github_id: u64,
     login: RocListWith(u8, false),
-    status: DeniedOrFailedOrIdentified,
+    status: BusyOrDeniedOrFailedOrIdentified,
 } else extern struct {
     github_id: u64,
     login: RocListWith(u8, false),
-    status: DeniedOrFailedOrIdentified,
+    status: BusyOrDeniedOrFailedOrIdentified,
 };
 
 comptime {
@@ -1944,7 +1945,7 @@ pub const HostFill_with_random_bytesArgs = extern struct {
 };
 
 /// Arguments for Host.github_identity_for_code!
-/// Roc signature: List(U8) => { github_id : U64, login : List(U8), status : [Denied, Failed, Identified] }
+/// Roc signature: List(U8) => { github_id : U64, login : List(U8), status : [Busy, Denied, Failed, Identified] }
 /// Refcounted fields are owned by the hosted function.
 pub const HostGithub_identity_for_codeArgs = extern struct {
     arg0: RocListWith(u8, false),
@@ -2048,7 +2049,7 @@ pub const HostWrite_line_to_server_logArgs = extern struct {
 
 // Platform Type Aliases
 
-pub const HostGithub_identity_for_code = __AnonStruct_f3d95275ff09cbb2;
+pub const HostGithub_identity_for_code = __AnonStruct_c21c6671fc9a3d71;
 pub const HostGithub_sign_in_settings = __AnonStruct_50209078edfd2434;
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
 pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
@@ -2097,8 +2098,8 @@ pub const __AnonStruct_50209078edfd2434Release = struct {
     }
 };
 
-pub const __AnonStruct_f3d95275ff09cbb2Release = struct {
-    pub fn release(value: __AnonStruct_f3d95275ff09cbb2, roc_host: *RocHost) void {
+pub const __AnonStruct_c21c6671fc9a3d71Release = struct {
+    pub fn release(value: __AnonStruct_c21c6671fc9a3d71, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -2165,7 +2166,7 @@ fn rocReleasePolicy(comptime T: type) type {
     if (T == __AnonStruct_e6f4ccf1b682ebd2) return __AnonStruct_e6f4ccf1b682ebd2Release;
     if (T == RocList(RocListWith(u8, false))) return RocListRelease(RocList(RocListWith(u8, false)), RocListSpineRelease(RocListWith(u8, false)));
     if (T == __AnonStruct_50209078edfd2434) return __AnonStruct_50209078edfd2434Release;
-    if (T == __AnonStruct_f3d95275ff09cbb2) return __AnonStruct_f3d95275ff09cbb2Release;
+    if (T == __AnonStruct_c21c6671fc9a3d71) return __AnonStruct_c21c6671fc9a3d71Release;
     if (T == __AnonStruct_c6984c61d9a28262) return __AnonStruct_c6984c61d9a28262Release;
     if (T == __AnonStruct_acc3c8bd07c1fb22) return __AnonStruct_acc3c8bd07c1fb22Release;
     if (T == RocList(__AnonStruct_288155b7e13051cb)) return RocListRelease(RocList(__AnonStruct_288155b7e13051cb), __AnonStruct_288155b7e13051cbRelease);
@@ -2246,12 +2247,12 @@ pub extern fn end_every_stream_of_holder(arg0: RocListWith(u8, false)) callconv(
 pub extern fn fill_with_random_bytes(arg0: u64) callconv(.c) RocListWith(u8, false);
 
 /// Hosted symbol for Host.github_identity_for_code!
-/// Roc signature: List(U8) => { github_id : U64, login : List(U8), status : [Denied, Failed, Identified] }
+/// Roc signature: List(U8) => { github_id : U64, login : List(U8), status : [Busy, Denied, Failed, Identified] }
 /// Owned arguments. Release each exactly once before returning, unless it is
 /// moved into storage or into the result:
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
-pub extern fn github_identity_for_code(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_f3d95275ff09cbb2;
+pub extern fn github_identity_for_code(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_c21c6671fc9a3d71;
 
 /// Hosted symbol for Host.github_sign_in_settings!
 /// Roc signature: {} => { authorize_base : List(U8), client_id : List(U8), status : [Configured, NotConfigured] }

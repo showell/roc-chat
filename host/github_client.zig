@@ -40,6 +40,30 @@ pub const api_base_name = ".github-api-base";
 const github_oauth_base = "https://github.com";
 const github_api_base = "https://api.github.com";
 
+/// The most code exchanges with GitHub at once, server-wide. Each holds a
+/// task and a TLS connection for up to its whole deadline, so a flood of
+/// sign-ins can't hold many; past it a sign-in is told to try again (a 429).
+pub const exchanges_most = 4;
+
+/// The exchanges with GitHub in flight, counted under the server's turn, so
+/// it takes no lock of its own.
+pub const ExchangeGate = struct {
+    in_flight: usize = 0,
+
+    /// Whether another exchange may start; if so, it is counted.
+    pub fn enter(g: *ExchangeGate) bool {
+        if (g.in_flight >= exchanges_most) return false;
+        g.in_flight += 1;
+        return true;
+    }
+
+    /// An exchange `enter` admitted has ended.
+    pub fn leave(g: *ExchangeGate) void {
+        std.debug.assert(g.in_flight > 0);
+        g.in_flight -= 1;
+    }
+};
+
 /// The most bytes a settings file may hold.
 const setting_most = 200;
 
@@ -513,6 +537,16 @@ test "a base URL: https anywhere, http only to a loopback literal" {
         "https://github.com\r\nX-Evil: 1",
         "https://github.com?x=1",
     }) |bad| try testing.expect(!base_allowed(bad));
+}
+
+test "the exchange gate: four at once admitted, the fifth refused, and one ended frees a place" {
+    var g: ExchangeGate = .{};
+    for (0..exchanges_most) |_| try testing.expect(g.enter());
+    try testing.expect(!g.enter());
+    try testing.expectEqual(exchanges_most, g.in_flight);
+    g.leave();
+    try testing.expect(g.enter());
+    try testing.expect(!g.enter());
 }
 
 test "form encoding" {

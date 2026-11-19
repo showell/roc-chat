@@ -33,6 +33,10 @@ GitHubRefusal :: [].{
 		## GitHub didn't answer, or its answer made no sense.
 		GitHubUnreachable,
 
+		## The server already has its most exchanges with GitHub at once, so
+		## this one was not asked.
+		GitHubBusy,
+
 		## GitHub's answer is no identity: an id of 0, or a login that isn't.
 		BadIdentity,
 
@@ -83,6 +87,10 @@ GitHubRefusal :: [].{
 			NotACode => { status: 403, words: start_again_words }
 			CodeRefused => { status: 403, words: "GitHub refused that sign-in. Please try again." }
 			GitHubUnreachable => { status: 502, words: "GitHub did not answer. Please try again." }
+			GitHubBusy => {
+				status: 429,
+				words: "Too many sign-ins with GitHub at once. Please try again in a moment.",
+			}
 			BadIdentity => {
 				status: 502,
 				words: "GitHub's answer made no sense. Please try again.",
@@ -140,6 +148,7 @@ expect
 		LinkNotYours,
 	].all(|why| GitHubRefusal.refusal_said(why).status == 403)
 expect [GitHubUnreachable, BadIdentity].all(|why| GitHubRefusal.refusal_said(why).status == 502)
+expect GitHubRefusal.refusal_said(GitHubBusy).status == 429
 expect
 	[
 		AlreadyLinked,
