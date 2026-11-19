@@ -28,8 +28,9 @@ ResumeRoute :: [].{
 				match acting.human_in_session() {
 					Err(ByApiKey) => browse_redirect
 					Err(Agent(_)) => browse_redirect
-					Ok(human) =>
-						match TranscriptFiles.read_last_conversation!(UserFolder.of(human.user().id())) {
+					Ok(human) => {
+						folder = UserFolder.of(human.user().id())
+						match TranscriptFiles.read_last_conversation!(folder) {
 							Ok(file) => HttpAnswer.see_other(
 								LastConversation.way_in({ file, acting, directory }),
 							)
@@ -42,6 +43,7 @@ ResumeRoute :: [].{
 									}),
 								)
 						}
+					}
 				}
 		}
 
@@ -64,7 +66,8 @@ ResumeRoute :: [].{
 				if held == File(last.to_file()) {
 					Ok({})
 				} else {
-					TranscriptFiles.replace_last_conversation!(folder, last) ? |fault| FileSystem(fault)
+					TranscriptFiles.replace_last_conversation!(folder, last)
+						? |fault| FileSystem(fault)
 					Ok({})
 				}
 			}
