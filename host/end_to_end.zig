@@ -124,6 +124,28 @@
 //!      to the DM from a page of it, a 303; one whose `Origin` is the local
 //!      one, or another site's, 403 each.
 //!
+//! Then editing and reacting (`editAndReactSteps`), in a topic of their own,
+//! `general/edits`, its stream open, as the page's scripts send:
+//!
+//! 35b. a first message: 201, its frame, and its markdown alone at
+//!      `/raw?message=1`; a message not there, 404;
+//! 35c. Steve's edit of it ("Edit of MSG_edits_1", a blank line, the new
+//!      text): 201; the edit's frame, then the original again as an
+//!      `event: replace` with no id, drawn as edited, exactly as the page
+//!      now draws it; both records on disk;
+//! 35d. an edit of a message not there, or of LC's in roc-chat: 409 each, in
+//!      words, nothing stored;
+//! 35e. a reaction (`/react`, `msg=2`, 👍, `on=1`): 200; the reactions file
+//!      its one line; the message again, with its reaction's button, exactly
+//!      as the page draws it;
+//! 35f. the same reaction again is still one; `on=0` empties the file and
+//!      the message comes again with no reactions;
+//! 35g. a reaction to no message, of no emoji, or with no `on`: 409, 400,
+//!      400; a GET 405; another origin's 403; no one's 401; the file
+//!      untouched;
+//! 35h. a stream reopened after both messages: each message with an edit or
+//!      a reaction sent again first, as it is now.
+//!
 //! Then the agents (`agentSteps`), on the users the server's first start
 //! made:
 //!
@@ -725,6 +747,7 @@ pub fn main(init: std.process.Init) !void {
         has(public_page.body, "id=\"msg-12\"") and public_post.status == 303 and local_origin.status == 403 and evil_origin.status == 403 and
         std.mem.count(u8, dm_after_public.body, "Through the proxy") == 1);
 
+    try editAndReactSteps(a, io, port, data, t, script_fetch);
     try agentSteps(a, io, port, data, t);
     const cc_bearer = try memberSteps(a, io, port, data, t);
     try inviteSteps(a, io, port, data, t, cc_bearer);
@@ -795,6 +818,96 @@ const HeldPost = struct {
 
 /// Step 48zx, at the server's own limit: a stream holder's 8 streams and
 /// enough held requests to fill it.
+/// Posting, editing and reacting, in a topic of their own, `edits_url`, as
+/// the page's scripts do (`fetch` carries `fetch_headers`): each edit and
+/// reaction kept on disk, drawn on the page, and sent live on the
+/// conversation's stream as the message drawn again (`event: replace`).
+fn editAndReactSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, fetch_headers: []const u8) !void {
+    const edits_url = "/chat/channel/general/edits";
+    const transcript = "chat/channel/general/edits/transcript";
+    const reactions = "chat/channel/general/edits/reactions";
+    const thumbs = "%F0%9F%91%8D";
+    var stream = try Stream.open(a, io, port, edits_url ++ "/stream?after=0");
+    defer stream.close();
+
+    // 35b.
+    const first = try post(a, io, port, .{ .path = edits_url ++ "/send", .form = "markdown=Helo+there", .more = fetch_headers });
+    const raw_first = try get(a, io, port, edits_url ++ "/raw?message=1");
+    const raw_missing = try get(a, io, port, edits_url ++ "/raw?message=9");
+    try t.check("post a message to a new topic: 201, its frame on the stream, and its markdown alone at /raw?message=1; a message not there, 404", first.status == 201 and
+        std.mem.startsWith(u8, try stream.event(), "id: 1\ndata: <article class=\"message\" id=\"msg-1\"") and
+        raw_first.status == 200 and std.mem.eql(u8, raw_first.body, "Helo there") and raw_missing.status == 404);
+
+    // 35c.
+    const edited = try post(a, io, port, .{ .path = edits_url ++ "/send", .form = "markdown=Edit+of+MSG_edits_1%0A%0AHello+there", .more = fetch_headers });
+    const edit_frame = try stream.event();
+    const again = try stream.event();
+    const edited_page = try get(a, io, port, edits_url);
+    const kept = try data.readFileAlloc(io, transcript, a, .limited(1024 * 1024));
+    try t.check("edit one's own message: 201; the edit's frame, then the original sent again as edited, with no id; the page shows it edited, its markdown kept; both records on disk", edited.status == 201 and
+        std.mem.startsWith(u8, edit_frame, "id: 2\n") and
+        std.mem.startsWith(u8, again, "event: replace\ndata: <article class=\"message\" id=\"msg-1\"") and !has(again, "\nid: ") and
+        has(again, "Edited in <a class=\"ref\" href=\"#msg-2\">MSG_edits_2</a>") and
+        std.mem.eql(u8, again["event: replace\n".len..], (try frameOf(a, edited_page.body, "1"))["id: 1\n".len..]) and
+        has(edited_page.body, "<div class=\"edited-markdown\">Helo there</div>") and
+        has(kept, "\n\nHelo there\n\n") and has(kept, "\n\nEdit of MSG_edits_1\n\nHello there\n\n"));
+
+    // 35d.
+    const not_there = try post(a, io, port, .{ .path = edits_url ++ "/send", .form = "markdown=Edit+of+MSG_edits_9%0A%0Ax", .more = fetch_headers });
+    const before_theirs = try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024));
+    const theirs = try post(a, io, port, .{ .path = channel_url ++ "/send", .form = "markdown=Edit+of+MSG_roc-chat_2%0A%0Ahijacked", .more = fetch_headers });
+    try t.check("edit a message not there, or another author's: 409 each, in words, nothing stored", not_there.status == 409 and
+        std.mem.eql(u8, not_there.body, "The edit names a message this conversation doesn't hold.\n") and
+        theirs.status == 409 and std.mem.eql(u8, theirs.body, "Only a message's author may edit it.\n") and
+        std.mem.eql(u8, try data.readFileAlloc(io, transcript, a, .limited(1024 * 1024)), kept) and
+        std.mem.eql(u8, try data.readFileAlloc(io, seed_path["demo/data/".len..], a, .limited(1024 * 1024)), before_theirs));
+
+    // 35e.
+    const reacted = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=" ++ thumbs ++ "&on=1", .more = fetch_headers });
+    const reacted_event = try stream.event();
+    const reacted_page = try get(a, io, port, edits_url);
+    try t.check("react: 200; the reaction its file's one line; the message sent again with its reaction, as the page now draws it", reacted.status == 200 and
+        std.mem.eql(u8, try data.readFileAlloc(io, reactions, a, .limited(1024)), "{\"msg\":2,\"uid\":1,\"emoji\":\"👍\"}\n") and
+        std.mem.startsWith(u8, reacted_event, "event: replace\ndata: <article class=\"message\" id=\"msg-2\"") and
+        has(reacted_event, "<button class=\"reaction-chip\" data-reactors=\"1\"><span class=\"reaction-emoji\">👍</span> 1</button>") and
+        std.mem.eql(u8, reacted_event["event: replace\n".len..], (try frameOf(a, reacted_page.body, "2"))["id: 2\n".len..]));
+
+    // 35f.
+    const twice = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=" ++ thumbs ++ "&on=1", .more = fetch_headers });
+    _ = try stream.event();
+    const twice_file = try data.readFileAlloc(io, reactions, a, .limited(1024));
+    const off = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=" ++ thumbs ++ "&on=0", .more = fetch_headers });
+    const off_event = try stream.event();
+    try t.check("the same reaction again is still one; taking it back empties the file, and the message is sent again with no reactions", twice.status == 200 and
+        std.mem.eql(u8, twice_file, "{\"msg\":2,\"uid\":1,\"emoji\":\"👍\"}\n") and off.status == 200 and
+        std.mem.eql(u8, try data.readFileAlloc(io, reactions, a, .limited(1024)), "") and
+        std.mem.startsWith(u8, off_event, "event: replace\ndata: <article class=\"message\" id=\"msg-2\"") and !has(off_event, "reaction-chip"));
+
+    // 35g.
+    const no_message = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=9&emoji=" ++ thumbs ++ "&on=1", .more = fetch_headers });
+    const no_emoji = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=%2B1&on=1", .more = fetch_headers });
+    const no_on = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=" ++ thumbs, .more = fetch_headers });
+    const got = try get(a, io, port, edits_url ++ "/react");
+    const foreign = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=" ++ thumbs ++ "&on=1", .more = "origin: http://evil.example\r\n" });
+    const anonymous = try anonymousPost(a, io, port, edits_url ++ "/react", "msg=2&emoji=" ++ thumbs ++ "&on=1");
+    try t.check("a reaction to no message, of no emoji, or with no `on`: 409, 400, 400, in words; a GET, 405; from another origin, 403; from no one, 401; the file untouched", no_message.status == 409 and
+        std.mem.eql(u8, no_message.body, "The conversation holds no such message.\n") and
+        no_emoji.status == 400 and std.mem.eql(u8, no_emoji.body, "The form's `emoji` is no emoji.\n") and
+        no_on.status == 400 and std.mem.eql(u8, no_on.body, "The form has no field `on`.\n") and
+        got.status == 405 and foreign.status == 403 and anonymous.status == 401 and
+        std.mem.eql(u8, try data.readFileAlloc(io, reactions, a, .limited(1024)), ""));
+
+    // 35h.
+    const back_on = try post(a, io, port, .{ .path = edits_url ++ "/react", .form = "msg=2&emoji=" ++ thumbs ++ "&on=1", .more = fetch_headers });
+    var reconnected = try Stream.open(a, io, port, edits_url ++ "/stream?after=2");
+    defer reconnected.close();
+    const first_again = try reconnected.event();
+    const second_again = try reconnected.event();
+    try t.check("a reader who reconnects having seen both: each message with an edit or a reaction sent again, as it is now, before anything new", back_on.status == 200 and
+        std.mem.startsWith(u8, first_again, "event: replace\ndata: <article class=\"message\" id=\"msg-1\"") and has(first_again, "edited-note") and
+        std.mem.startsWith(u8, second_again, "event: replace\ndata: <article class=\"message\" id=\"msg-2\"") and has(second_again, "reaction-chip"));
+}
+
 fn clientCapSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps) !void {
     const client = "x-forwarded-for: 203.0.113.7\r\n";
     const stream_path = channel_url ++ "/stream?after=0";
