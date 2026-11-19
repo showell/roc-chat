@@ -3,7 +3,8 @@
 ## here are the facts asked of the host, and the answers made.
 ##
 ## - `GET /login/github/start` makes a state, has the host sign it, sets its
-##   nonce in this browser's cookie, and sends the browser to GitHub.
+##   nonce in this browser's cookie, and sends the browser to GitHub; a
+##   browser signed in already goes to `/agents`, to link by its button.
 ## - `GET /login/github` is GitHub's way back: the state checked, the code
 ##   exchanged by the host, the human found, and a session started
 ##   (`SignInRoute.start_session_by_github!`). An id no human holds is asked
@@ -75,7 +76,9 @@ GitHubRoute :: [].{
 		}
 
 	## A GET of `/login/github/start`: the browser sent to GitHub to authorize
-	## this server, back to `origin`, going to the query's `next` after.
+	## this server, back to `origin`, going to the query's `next` after. A
+	## browser signed in already is sent to `/agents` instead, whose button
+	## links GitHub by a POST, so no other site's link can start a link.
 	serve_start! : {
 		viewer : SignedIn.Actor,
 		query : List(U8),
@@ -88,6 +91,7 @@ GitHubRoute :: [].{
 			match (settings.status, SignInRequest.check_not_by_api_key(viewer)) {
 				(NotConfigured, _) => not_found
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
+				(Configured, Ok({})) if viewer != Anonymous => HttpAnswer.see_other("/agents")
 				(Configured, Ok({})) =>
 					match SignInRequest.next_from_query(query) {
 						Err(BadNext) => SignInRoute.bad_next_answer

@@ -295,7 +295,8 @@
 //!      each, nothing made;
 //! 48zo. with one id left, a new human takes 65535, whose session reads their
 //!      page; the next is refused as the chat being full, nothing made;
-//! 48zv. the sign-in page of someone signed in: no form and no GitHub;
+//! 48zv. the sign-in page of someone signed in: no form and no GitHub, and
+//!      its GitHub start, even from another site, a 303 to /agents (48zq);
 //!  54. on a third server: twenty GitHub sign-ups in a day, then a 503 saying
 //!      sign-ups are paused, at the way back and at the name, nothing made;
 //!      an invite still makes its account;
@@ -2429,10 +2430,12 @@ fn landsInWelcome(a: std.mem.Allocator, io: Io, port: u16, made: Response, id: u
         has(page.body, try welcomeWords(a, "Steve"));
 }
 
-/// A sign-in begun by the browser with the `Cookie` line `session`, a human
-/// signed in already, at the sign-in page's link, going to `/invites` after.
-fn startSignInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, session: []const u8) !GitHubStart {
-    const started = try getAs(a, io, port, session, "/login/github/start?next=/invites");
+/// A sign-in begun at the sign-in page's link by a browser signed in as no
+/// one, going to `/invites` after; `signInAs` comes back signed in, as a
+/// human who signs in meanwhile does. (A browser signed in already is sent
+/// to /agents at the start: 48zq.)
+fn startSignInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake) !GitHubStart {
+    const started = try anonymousGet(a, io, port, "/login/github/start?next=/invites");
     const location = started.header("location") orelse return error.NoLocation;
     if (!std.mem.startsWith(u8, location, fake.base())) return error.NotTheFake;
     const at = std.mem.indexOf(u8, location, "&state=") orelse return error.NoState;
@@ -2441,7 +2444,7 @@ fn startSignInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fak
 
 /// A whole sign-in through the fake by a human signed in already.
 fn signInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, session: []const u8, code: []const u8) !Response {
-    return finishLink(a, io, port, fake, session, try startSignInAs(a, io, port, fake, session), code);
+    return finishLink(a, io, port, fake, session, try startSignInAs(a, io, port, fake), code);
 }
 
 /// Steps 48zo to 48zt: the welcome, and one account per GitHub account.
@@ -2498,6 +2501,12 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     const kit = try joinedHuman(a, io, port, debbie, "Kit");
     const kit_github_id = try std.fmt.allocPrint(a, "auth/{d}/github-id", .{kit_id});
     const counter = try nextId(a, io, data);
+    const cross_site_start = try getAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\nsec-fetch-mode: navigate\r\n", .{kit}), "/login/github/start?next=/invites");
+    const own_start = try getAs(a, io, port, kit, "/login/github/start?next=/invites");
+    try t.check("Kit, signed in, at /login/github/start, from another site or his own: a 303 to /agents, whose button links by a POST; no state, no trip to GitHub, nothing bound", cross_site_start.status == 303 and
+        std.mem.eql(u8, cross_site_start.header("location") orelse "", "/agents") and !has(cross_site_start.head, "__Host-gopher_github_state=") and
+        own_start.status == 303 and std.mem.eql(u8, own_start.header("location") orelse "", "/agents") and
+        !(try exists(io, data, kit_github_id)));
     const linked = try signInAs(a, io, port, fake, kit, "user-id-51");
     const kit_line = try cookieLine(a, linked);
     const kit_page = try getAs(a, io, port, kit_line, "/invites");
