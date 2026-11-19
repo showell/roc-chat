@@ -238,7 +238,10 @@ expect {
 	channels = Channels.from_stored([
 		{ name: stray, members: "1\n9\n".to_utf8() },
 	]) ?? crash "StoredDirectorySpec: the file is ids"
-	Directory.from_stored({ users: Sample.directory.users(), channels }) == Err(UnknownMember(stray))
+	Directory.from_stored({
+		users: Sample.directory.users(),
+		channels,
+	}) == Err(UnknownMember(stray))
 }
 expect {
 	clash = ChannelName.from_str("cc") ?? crash "a name"

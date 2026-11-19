@@ -50,7 +50,12 @@ Dispatch :: [].{
 			SignedInOnly(asked) =>
 				match actor {
 					Anonymous => anonymous_refusal(asked)
-					SignedIn(acting) => serve_signed_in_route!({ asked, request, directory, acting })
+					SignedIn(acting) => serve_signed_in_route!({
+						asked,
+						request,
+						directory,
+						acting,
+					})
 				}
 			MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
 			NotFound => HttpAnswer.page(404, Page.not_found)
