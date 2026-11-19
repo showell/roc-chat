@@ -4,7 +4,26 @@
 <title>roc-chat</title>
 <script src="/chat/assets/palette.js"></script>
 <header class="top-bar"><span class="top-title">roc-chat</span> <div class="top-user"><a href="/chat">Browse</a> · <a href="/invites">Invites</a> · <span class="viewer">Steve</span></div></header>
-<div class="layout"><div class="messages" data-stream="/chat/channel/general/roc-chat/stream" data-after="5" data-viewer="1">
+<button class="sidebar-toggle">Conversations</button>
+<div class="layout"><nav class="sidebar">
+<p class="sidebar-heading">DMs</p>
+<div class="sidebar-place" data-section="/chat/dm/1_1"><p class="sidebar-place-name">Steve</p>
+<ul class="sidebar-topics">
+<li class="sidebar-empty">No sessions yet</li>
+</ul>
+<form method="post" action="/chat/dm/1_1"><p>New topic <input type="text" name="topic" required value="general"></p>
+<button>Add topic</button></form>
+</div>
+<p class="sidebar-heading">Channels</p>
+<div class="sidebar-place" data-section="/chat/channel/general"><p class="sidebar-place-name">#general</p>
+<ul class="sidebar-topics">
+<li><a class="current" href="/chat/channel/general/roc-chat">roc-chat</a></li>
+</ul>
+<form method="post" action="/chat/channel/general"><p>New topic <input type="text" name="topic" required></p>
+<button>Add topic</button></form>
+</div>
+</nav>
+<div class="messages" data-stream="/chat/channel/general/roc-chat/stream" data-after="5" data-viewer="1">
 <article class="message" id="msg-1" data-author="1"><header><span class="author">Steve</span> <time datetime="2026-11-02T18:02:11Z">2026-11-02T18:02:11Z</time> <a class="ref" href="#msg-1">MSG_roc-chat_1</a></header>
 <div class="body"><p>We&#39;re starting fresh. The design is in <code>docs/design.md</code>. <strong>Pure core first</strong>: a conversation, its messages, and a page for it.</p>
 </div></article>
@@ -38,5 +57,6 @@
 <p class="help">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>
 </div>
 <script src="/chat/assets/chrome.js"></script>
+<script src="/chat/assets/sidebar.js"></script>
 <script src="/chat/assets/compose.js"></script>
 <script src="/chat/assets/feed.js"></script>

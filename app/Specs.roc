@@ -21,11 +21,13 @@ import DmSpec
 import FirstStartSpec
 import GitHubSignInSpec
 import HumanInvitesSpec
+import LastConversationSpec
 import PageSpec
 import PlaceSpec
 import RouteSpec
 import SecureImageTagSpec
 import SessionSpec
+import SidebarSpec
 import StoredDirectorySpec
 import TranscriptSpec
 import UsersSpec

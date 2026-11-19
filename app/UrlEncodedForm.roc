@@ -45,7 +45,7 @@ UrlEncodedForm :: [].{
 	}
 
 	## The name of the field that holds a new topic's name. Browse's form
-	## takes this name (`ConversationPage.topic_form`).
+	## takes this name (`TopicForm.form`).
 	topic_name : Str
 	topic_name = "topic"
 

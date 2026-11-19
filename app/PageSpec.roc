@@ -27,7 +27,8 @@ plans_key = ConversationKey.from_url_path({
 }).map_ok(|found| found.key) ?? crash "PageSpec: Steve's own DM is a place"
 
 ## The page of `conversation` in `plans_key`, for the sample's user named
-## `viewer`, its authors found among the sample's users.
+## `viewer`, its authors found among the sample's users, with no sidebar, as
+## a key's page has none (`SidebarSpec` holds the sidebar's).
 page_for : Str, Conversation -> Str
 page_for = |viewer, conversation|
 	Str.from_utf8_lossy(
@@ -36,6 +37,7 @@ page_for = |viewer, conversation|
 			key: plans_key,
 			viewer: SignedIn.dangerously_assume(Sample.user(viewer)),
 			users: Sample.directory.users(),
+			sidebar: NoSidebar,
 		}).to_utf8(),
 	)
 
@@ -193,6 +195,7 @@ expect {
 			key: plans_key,
 			viewer: steve,
 			users: Sample.directory.users(),
+			sidebar: Sidebar([]),
 		}),
 		AgentsPage.agents({
 			viewer: steve,

@@ -7,7 +7,9 @@
 ##   unchecked text (`UnvalidatedString`), then a `ConversationKey` found in
 ##   the directory; the transcript's an unchecked file
 ##   (`Transcript.Utf8Transcript`), then a Conversation; or a refusal's tags
-##   (`TranscriptRefusal` puts them in words).
+##   (`TranscriptRefusal` puts them in words). Its sidebar lists the
+##   founder's places with no topic but the one shown (`demo_sidebar`), as
+##   the sample's data folder holds them.
 ## - `start!` (the server, host/http.zig, once, before it listens): when the
 ##   data folder holds no chat yet, the founder, Steve, id 1, is made, with
 ##   the channel `general`, of which he is the one member
@@ -49,6 +51,7 @@ app [check_request_head!, handle_http_request!, page, password_verdict, start!] 
 import pf.Http
 import Actor
 import Admission
+import Browse
 import Conversation
 import ConversationKey
 import ConversationPage
@@ -76,6 +79,7 @@ page = |path, transcript| {
 					key: found.key,
 					viewer: demo_viewer,
 					users: FirstStart.first_directory.users(),
+					sidebar: demo_sidebar,
 				})
 			Err(why) => PageKit.refusal(TranscriptRefusal.words(why))
 		}
@@ -119,6 +123,16 @@ password_verdict = |bytes|
 ## The demo's viewer: the founder, as the first start makes him.
 demo_viewer : SignedIn
 demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().user())
+
+## The demo's sidebar: the founder's places at the first start, each with
+## no topics of its own, so the page's own topic is its place's one.
+demo_sidebar : [NoSidebar, Sidebar(List(Browse.PlaceWithTopics))]
+demo_sidebar = {
+	listed =
+		Browse.places_for({ acting: demo_viewer, directory: FirstStart.first_directory })
+			?? crash "main.demo_sidebar: the founder browses by a session"
+	Sidebar(listed.map(|{ label, place }| { label, place, topics: [] }))
+}
 
 ## Whether the server may start on its data folder: `Ready` when the folder
 ## holds a whole chat, or held none and now holds the first
@@ -234,6 +248,7 @@ expect {
 			key,
 			viewer: demo_viewer,
 			users: FirstStart.first_directory.users(),
+			sidebar: demo_sidebar,
 		}).to_utf8()
 }
 expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == PageKit.refusal("it is not UTF-8").to_utf8()

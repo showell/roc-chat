@@ -5,7 +5,7 @@
 ## someone signed in may see is sent to sign in, and any other such request
 ## is a 401. Each route's answer is a route module's: `ConversationRoute`,
 ## `UploadRoute`, `BrowseRoute`, `AgentsRoute`, `ChannelMembersRoute`,
-## `HumanInvitesRoute`, `SignInRoute` or `GitHubRoute`. Its two `match`es,
+## `HumanInvitesRoute`, `ResumeRoute`, `SignInRoute` or `GitHubRoute`. Its two `match`es,
 ## one for the open routes and one for the signed-in ones, show the whole
 ## server's surface in one place.
 import pf.Http
@@ -26,6 +26,7 @@ import Html
 import PageKit
 import Place
 import RequestOrigin
+import ResumeRoute
 import Route
 import SignInRoute
 import SignedIn
@@ -157,11 +158,6 @@ site_path_of = |text|
 	Html.SitePath.from_str(text)
 		?? crash "Dispatch.site_path_of: \"${text}\" is a path this server answers, and not a site path"
 
-## The answer to `/`: a 303 to Browse, which shows someone signed in their
-## page and sends anyone else to sign in.
-browse_redirect : Http.Response
-browse_redirect = HttpAnswer.see_other(ConversationKey.browse_path)
-
 ## The answer to an open route, for `actor`, whoever it is.
 answer_open_route! : {
 	open : Route.OpenChoice,
@@ -171,7 +167,7 @@ answer_open_route! : {
 } => Http.Response
 answer_open_route! = |{ open, request, directory, actor }|
 	match open {
-		GoToBrowse => browse_redirect
+		ResumeOrBrowse => ResumeRoute.answer_way_in!({ actor, directory })
 		ServeScript(script) => HttpAnswer.script(script.bytes())
 		ServeFavicon => HttpAnswer.favicon(Favicon.bytes)
 		ShowLogin =>
@@ -276,7 +272,7 @@ answer_route! = |{ asked, request, directory, acting }|
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>
-			ConversationRoute.show!({ key, acting, users: directory.users() })
+			ConversationRoute.show!({ key, acting, directory })
 		OpenConversationStream(key) =>
 			ConversationRoute.open_stream!({
 				key,
@@ -411,10 +407,6 @@ expect {
 		].all(|choice| access_asked(choice) == AsksNoConversation)
 }
 
-# The way in names Browse, whoever asks.
-expect
-	browse_redirect.status == 303
-		and browse_redirect.headers == [{ name: "location".to_utf8(), value: "/chat".to_utf8() }]
 # No one asking for a page is sent to sign in, and back after; any other
 # route only someone signed in may use is a 401 to no one.
 expect {

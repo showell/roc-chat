@@ -1,6 +1,6 @@
 ## This module is the one contract between the pages, which the Roc writes,
-## and the scripts that run on them (app/chrome.js, app/compose.js,
-## app/feed.js and app/panel.js, which `Script` serves). The server sends
+## and the scripts that run on them (app/chrome.js, app/sidebar.js,
+## app/compose.js, app/feed.js and app/panel.js, which `Script` serves). The server sends
 ## structure and class names only, and each script finds what it needs by
 ## the classes in `Class` and by the `data-` attributes in `DataAttribute`.
 ## Someone replacing the scripts reads this module, and its tests say which
@@ -12,7 +12,9 @@
 ## author is a user of the chat. The compose box's form names where the
 ## script sends a message (`data-send`), where to upload an image
 ## (`data-upload`) and the most bytes an image may be
-## (`data-image-byte-limit`), all read by app/compose.js.
+## (`data-image-byte-limit`), all read by app/compose.js. Each place in the
+## sidebar names its own path (`data-section`), which app/sidebar.js keeps
+## its collapsed state by, and where a topic added to it belongs.
 import Html
 import Script
 import TrustedHtml
@@ -24,6 +26,7 @@ PageContract :: [].{
 		Author,
 		Body,
 		Compose,
+		Current,
 		Empty,
 		Help,
 		InviteCode,
@@ -32,6 +35,13 @@ PageContract :: [].{
 		Messages,
 		Panel,
 		Ref,
+		Sidebar,
+		SidebarEmpty,
+		SidebarHeading,
+		SidebarPlace,
+		SidebarPlaceName,
+		SidebarToggle,
+		SidebarTopics,
 		TopBar,
 		TopTitle,
 		TopUser,
@@ -52,6 +62,7 @@ PageContract :: [].{
 		Send(Html.SitePath),
 		Upload(Html.SitePath),
 		ImageByteLimit(Html.Token),
+		Section(Html.SitePath),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -65,6 +76,7 @@ PageContract :: [].{
 			Send(path) => Data(token("send"), Path(path))
 			Upload(path) => Data(token("upload"), Path(path))
 			ImageByteLimit(count) => Data(token("image-byte-limit"), Token(count))
+			Section(path) => Data(token("section"), Path(path))
 		}
 
 	## An element `attrs` alone opens, as a test reads it.
@@ -79,6 +91,7 @@ class_name = |chosen|
 		Author => "author"
 		Body => "body"
 		Compose => "compose"
+		Current => "current"
 		Empty => "empty"
 		Help => "help"
 		InviteCode => "invite-code"
@@ -87,6 +100,13 @@ class_name = |chosen|
 		Messages => "messages"
 		Panel => "panel"
 		Ref => "ref"
+		Sidebar => "sidebar"
+		SidebarEmpty => "sidebar-empty"
+		SidebarHeading => "sidebar-heading"
+		SidebarPlace => "sidebar-place"
+		SidebarPlaceName => "sidebar-place-name"
+		SidebarToggle => "sidebar-toggle"
+		SidebarTopics => "sidebar-topics"
 		TopBar => "top-bar"
 		TopTitle => "top-title"
 		TopUser => "top-user"
@@ -108,6 +128,7 @@ expect
 		(Author, "author"),
 		(Body, "body"),
 		(Compose, "compose"),
+		(Current, "current"),
 		(Empty, "empty"),
 		(Help, "help"),
 		(InviteCode, "invite-code"),
@@ -116,6 +137,13 @@ expect
 		(Messages, "messages"),
 		(Panel, "panel"),
 		(Ref, "ref"),
+		(Sidebar, "sidebar"),
+		(SidebarEmpty, "sidebar-empty"),
+		(SidebarHeading, "sidebar-heading"),
+		(SidebarPlace, "sidebar-place"),
+		(SidebarPlaceName, "sidebar-place-name"),
+		(SidebarToggle, "sidebar-toggle"),
+		(SidebarTopics, "sidebar-topics"),
 		(TopBar, "top-bar"),
 		(TopTitle, "top-title"),
 		(TopUser, "top-user"),
@@ -136,6 +164,7 @@ expect {
 		(Send(path), "<p data-send=\"/chat/dm/1_1/plans\"></p>"),
 		(Upload(path), "<p data-upload=\"/chat/dm/1_1/plans\"></p>"),
 		(ImageByteLimit(token("10485760")), "<p data-image-byte-limit=\"10485760\"></p>"),
+		(Section(path), "<p data-section=\"/chat/dm/1_1/plans\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
@@ -174,6 +203,26 @@ expect
 expect
 	[Messages, Compose, Message, Empty].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
 expect [Panel, InviteCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
+expect
+	[
+		Sidebar,
+		SidebarToggle,
+		SidebarHeading,
+		SidebarPlace,
+		SidebarPlaceName,
+		SidebarTopics,
+		SidebarEmpty,
+		Current,
+	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))
+expect
+	[Messages, Compose, Message, Panel].all(|chosen| !is_found_by(Script.Sidebar.bytes(), chosen))
+expect
+	[Sidebar, SidebarPlace, Current].all(
+		|chosen| !is_found_by(
+			Script.Compose.bytes(),
+			chosen,
+		) and !is_found_by(Script.Feed.bytes(), chosen),
+	)
 expect !is_found_by(Script.Panel.bytes(), Messages) and !is_found_by(Script.Feed.bytes(), Panel)
 expect !is_found_by(Script.Compose.bytes(), Message) and !is_found_by(Script.Compose.bytes(), Empty)
 expect !is_found_by(Script.Feed.bytes(), Help) and !is_found_by(Script.Chrome.bytes(), Messages)
@@ -185,6 +234,10 @@ expect
 	["data-send", "data-upload", "data-image-byte-limit"].all(
 		|name| is_read_by(Script.Compose.bytes(), name) and !is_read_by(Script.Feed.bytes(), name),
 	)
+expect
+	is_read_by(Script.Sidebar.bytes(), "data-section")
+		and !is_read_by(Script.Compose.bytes(), "data-section")
+		and !is_read_by(Script.Feed.bytes(), "data-section")
 # The classes only styled are styled by the script that owns them.
 expect [
 	TopTitle,

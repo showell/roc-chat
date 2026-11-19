@@ -1,15 +1,15 @@
 ## This module builds a conversation's page, which `ConversationRoute`
 ## serves, and each message on it, which `ConversationStream` sends as the
-## page writes it, so the page and its stream can't disagree. It builds
-## Browse's form that starts a topic too (`topic_form`).
+## page writes it, so the page and its stream can't disagree.
 ##
 ## A conversation's page has the top bar (`PageKit.top_bar`), and below it
-## two panes. The first holds the messages, and the second is the compose
-## box: a form that posts the field `markdown` back to the conversation's
-## own URL, and a line of help. The script sends the same form to the
-## conversation's `/send` instead, so the page stays put. The page ends
-## with its three scripts. app/chrome.js styles the top bar and adds its
-## theme toggle. app/compose.js lays the panes out, gives the compose box
+## the sidebar of a human's page (`Sidebar`), then two panes. The first
+## holds the messages, and the second is the compose box: a form that posts
+## the field `markdown` to the conversation's own URL, and a line of help.
+## The script sends the same form to the conversation's `/send` instead, so
+## the page stays put. The page ends with its scripts. app/chrome.js styles
+## the top bar and adds its theme toggle. app/sidebar.js styles the sidebar
+## and collapses its places. app/compose.js lays the panes out, gives the compose box
 ## its keys and its Upload button, and sends a message without a reload.
 ## app/feed.js styles the messages, marks the viewer's own, writes each
 ## time in the viewer's time zone, appends each message the conversation's
@@ -19,6 +19,7 @@
 ##
 ## A message's markdown goes in through `Markdown.message_html`, and
 ## everything else through `Escape.text` and `Html.element`.
+import Browse
 import Conversation
 import ConversationKey
 import Escape
@@ -29,6 +30,7 @@ import MsgAnchor
 import PageContract
 import PageKit
 import Script
+import Sidebar
 import SignedIn
 import Topic
 import TrustedHtml
@@ -40,14 +42,24 @@ ConversationPage :: [].{
 
 	## The page of `conversation`, the conversation `key`, for `viewer`. Each
 	## message of it is found among `users` by its author's name, to name its
-	## author's id.
+	## author's id. A human's page has the sidebar of the places Browse lists
+	## for them (`Sidebar`); a key's has none.
 	conversation : {
 		conversation : Conversation,
 		key : ConversationKey,
 		viewer : SignedIn,
 		users : Users,
+		sidebar : [NoSidebar, Sidebar(List(Browse.PlaceWithTopics))],
 	} -> TrustedHtml
-	conversation = |{ conversation: thread, key, viewer, users }| {
+	conversation = |
+		{
+			conversation: thread,
+			key,
+			viewer,
+			users,
+			sidebar,
+		},
+	| {
 		topic = thread.topic()
 		messages =
 			if thread.messages().is_empty() {
@@ -74,15 +86,26 @@ ConversationPage :: [].{
 			}
 		stream_path = PageKit.site_path(key.url_path(Stream))
 		shown_count = PageKit.token(thread.messages().len().to_str())
+		{ toggle, nav, scripts } =
+			match sidebar {
+				NoSidebar => { toggle: [], nav: [], scripts: [] }
+				Sidebar(places) => {
+					toggle: [Sidebar.toggle],
+					nav: [Sidebar.nav({ places, current: key })],
+					scripts: [Script.Sidebar],
+				}
+			}
 		PageKit.document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
 				PageKit.top_bar({ title: topic.to_str(), viewer }),
 				PageKit.newline,
+				TrustedHtml.join(toggle),
 				Html.element({
 					name: Div,
 					attrs: [PageContract.class(Layout)],
 					inner: TrustedHtml.join([
+						TrustedHtml.join(nav),
 						Html.element({
 							name: Div,
 							attrs: [
@@ -100,11 +123,10 @@ ConversationPage :: [].{
 				}),
 				PageKit.newline,
 				TrustedHtml.join(
-					[
-						Script.Chrome,
-						Script.Compose,
-						Script.Feed,
-					].map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
+					List.concat(
+						List.concat([Script.Chrome], scripts),
+						[Script.Compose, Script.Feed],
+					).map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
 				),
 			]),
 		})
@@ -171,41 +193,6 @@ ConversationPage :: [].{
 		TrustedHtml.join([article, PageKit.newline])
 	}
 
-	## The form that starts a topic, posting the field
-	## `UrlEncodedForm.topic_name` to `action`, filled in with `suggestion`.
-	topic_form : { action : Str, suggestion : [Suggested(Topic), NoSuggestion] } -> TrustedHtml
-	topic_form = |{ action, suggestion }| {
-		filled =
-			match suggestion {
-				NoSuggestion => []
-				Suggested(topic) => [TokenValue(PageKit.token(topic.to_str()))]
-			}
-		TrustedHtml.join([
-			Html.element({
-				name: Form,
-				attrs: [MethodPost, Action(PageKit.site_path(action))],
-				inner: TrustedHtml.join([
-					PageKit.labelled_input({
-						label: "New topic",
-						attrs: List.concat(
-							[
-								InputType(Text),
-								FieldName(PageKit.token(UrlEncodedForm.topic_name)),
-								Required,
-							],
-							filled,
-						),
-					}),
-					Html.element({
-						name: Button,
-						attrs: [],
-						inner: Escape.text("Add topic"),
-					}),
-				]),
-			}),
-			PageKit.newline,
-		])
-	}
 }
 
 ## The compose box: a form posting its one field, a message's markdown

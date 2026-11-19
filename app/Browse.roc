@@ -7,13 +7,13 @@
 ## answers.
 import Access
 import ConversationKey
-import ConversationPage
 import Directory
 import Dm
 import PageKit
 import Place
 import SignedIn
 import Topic
+import TopicForm
 import TrustedHtml
 import UserId
 import Users
@@ -96,7 +96,6 @@ dm_listed = |{ reader, other }| {
 ## starts a topic. A place with no topics yet says so and suggests its first.
 place_section : Browse.PlaceWithTopics -> TrustedHtml
 place_section = |{ label, place, topics }| {
-	action = ConversationKey.place_url_path(place)
 	listed =
 		if topics.is_empty() {
 			[PageKit.paragraph("No sessions yet")]
@@ -109,17 +108,8 @@ place_section = |{ label, place, topics }| {
 					}),
 			)
 		}
-	suggestion = if topics.is_empty() {
-		Suggested(first_topic)
-	} else {
-		NoSuggestion
-	}
 	TrustedHtml.join(
 		List.concat([PageKit.heading(label)], listed)
-			.append(ConversationPage.topic_form({ action, suggestion })),
+			.append(TopicForm.form({ place, topics })),
 	)
 }
-
-## The topic a place's form suggests until it has one.
-first_topic : Topic
-first_topic = Topic.from_str("general") ?? crash "Browse.first_topic: general is a topic"

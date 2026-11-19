@@ -2,7 +2,7 @@
 ## It is a pure decision, so its tests (`RouteSpec`) reach every route, and
 ## the host routes nothing.
 ##
-##     GET  /                                  the way in: a 303 to Browse
+##     GET  /                                  the way in: a 303 to the last conversation, or Browse
 ##     GET  /chat                              Browse, every place you may open
 ##     POST /chat/channel/<channel>            a new topic: `topic=`
 ##     POST /chat/dm/<pair>
@@ -87,7 +87,7 @@ Route :: [].{
 
 	## The routes anyone may use, a request that proves no one included.
 	OpenChoice : [
-		GoToBrowse,
+		ResumeOrBrowse,
 		ServeScript(Script),
 		ServeFavicon,
 		ShowLogin,
@@ -224,7 +224,7 @@ browse_path_choice : {
 browse_path_choice = |{ path, method, directory }|
 	if path.is_exactly("/") {
 		match method {
-			Get => Open(GoToBrowse)
+			Get => Open(ResumeOrBrowse)
 			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else if path.is_exactly(ConversationKey.browse_path) {

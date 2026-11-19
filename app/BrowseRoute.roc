@@ -35,6 +35,21 @@ BrowseRoute :: [].{
 			problem: NoProblem,
 		})
 
+	## Each listed place with its topics; unless the host's listing failed.
+	## A conversation's sidebar lists them too (`ConversationRoute`).
+	load_place_topics! : List(Browse.ListedPlace) => Try(
+		List(Browse.PlaceWithTopics),
+		[NotUtf8, PathRefused, Failed],
+	)
+	load_place_topics! = |listed| {
+		var $places = []
+		for { label, place } in listed {
+			topics = DirectoryFiles.list_place_topics!(place)?
+			$places = $places.append({ label, place, topics })
+		}
+		Ok($places)
+	}
+
 	## A POST of a new topic's form, `body`, to `place`: a 303 to its page; or
 	## Browse again, a 400, saying what is wrong with the name.
 	start_topic! : {
@@ -76,7 +91,7 @@ answer_page! = |{ acting, directory, status, problem }|
 		Err(ByApiKey) => key_refusal
 		Err(Agent(_)) => key_refusal
 		Ok(listed) =>
-			match load_topics!(listed) {
+			match BrowseRoute.load_place_topics!(listed) {
 				Ok(places) =>
 					HttpAnswer.page(status, Browse.page({ viewer: acting, places, problem }))
 				Err(fault) => HttpAnswer.page(
@@ -85,20 +100,6 @@ answer_page! = |{ acting, directory, status, problem }|
 				)
 			}
 	}
-
-## Each listed place with its topics; unless the host's listing failed.
-load_topics! : List(Browse.ListedPlace) => Try(
-	List(Browse.PlaceWithTopics),
-	[NotUtf8, PathRefused, Failed],
-)
-load_topics! = |listed| {
-	var $places = []
-	for { label, place } in listed {
-		topics = DirectoryFiles.list_place_topics!(place)?
-		$places = $places.append({ label, place, topics })
-	}
-	Ok($places)
-}
 
 ## The topic a form's `body` names; or why not, in words for its reader.
 topic_from_form : List(U8) -> Try(Topic, [NotATopic(Str)])

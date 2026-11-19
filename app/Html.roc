@@ -42,12 +42,15 @@ Html :: [].{
 		Form,
 		H1,
 		Header,
+		Li,
+		Nav,
 		P,
 		Script,
 		Span,
 		Textarea,
 		Time,
 		Title,
+		Ul,
 	]
 
 	## A strict token: one or more ASCII letters, digits and `-`, so it
@@ -174,12 +177,15 @@ name_of = |name|
 		Form => "form"
 		H1 => "h1"
 		Header => "header"
+		Li => "li"
+		Nav => "nav"
 		P => "p"
 		Script => "script"
 		Span => "span"
 		Textarea => "textarea"
 		Time => "time"
 		Title => "title"
+		Ul => "ul"
 	}
 
 ## One attribute as an element's open tag writes it, space first.
@@ -272,12 +278,15 @@ expect name_of(Div) == "div"
 expect name_of(Form) == "form"
 expect name_of(H1) == "h1"
 expect name_of(Header) == "header"
+expect name_of(Li) == "li"
+expect name_of(Nav) == "nav"
 expect name_of(P) == "p"
 expect name_of(Script) == "script"
 expect name_of(Span) == "span"
 expect name_of(Textarea) == "textarea"
 expect name_of(Time) == "time"
 expect name_of(Title) == "title"
+expect name_of(Ul) == "ul"
 # A site path: `/` and parts of letters, digits, `-`, `_` and `.`, both
 # sides of each refusal.
 expect

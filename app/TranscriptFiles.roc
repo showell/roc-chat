@@ -1,5 +1,6 @@
 ## This module keeps the chat's conversations on disk: each conversation's
-## transcript, the images uploaded to it, and each user's upload total. It
+## transcript, the images uploaded to it, and each user's upload total and
+## last conversation. It
 ## reads and writes them through `FileFacts`, and builds every path from a
 ## typed key, so no caller names a file.
 ##
@@ -14,10 +15,12 @@
 ## `uploads/`, each by its own name (`UploadedImage`), as bytes.
 ##
 ## A user's own facts are kept in their folder (`UserFolder`), one small
-## file per fact: their upload total (`UploadTotal`) is `upload-bytes`.
+## file per fact: their upload total (`UploadTotal`) is `upload-bytes`, and
+## the conversation they last opened (`LastConversation`) is `last-conv`.
 import ConversationKey
 import Directory
 import FileFacts
+import LastConversation
 import Name
 import Transcript
 import UploadTotal
@@ -102,6 +105,26 @@ TranscriptFiles :: [].{
 			Err(Failed) => Err(Failed)
 		}
 	}
+
+	## The file of the conversation a user last opened, unchecked, or
+	## `NoFile` when there is none yet; unless the host's read failed.
+	read_last_conversation! : UserFolder => Try(
+		[NoFile, File(List(U8))],
+		[NotUtf8, PathRefused, Failed],
+	)
+	read_last_conversation! = |folder| FileFacts.read_fact!(last_conversation_path(folder))
+
+	## The conversation a user last opened, written whole over the one
+	## before, their folder made as needed; unless the host refused.
+	replace_last_conversation! : UserFolder,
+	LastConversation => Try(
+		{},
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
+	)
+	replace_last_conversation! = |folder, last| {
+		FileFacts.make_folder!(user_folder_path(folder))?
+		FileFacts.replace_fact!(last_conversation_path(folder), last.to_file())
+	}
 }
 
 ## A user's folder: its parts.
@@ -111,6 +134,10 @@ user_folder_path = |folder| Str.join_with(folder.parts(), "/")
 ## The path of a user's upload total.
 upload_total_path : UserFolder -> Str
 upload_total_path = |folder| "${user_folder_path(folder)}/upload-bytes"
+
+## The path of the conversation a user last opened.
+last_conversation_path : UserFolder -> Str
+last_conversation_path = |folder| "${user_folder_path(folder)}/last-conv"
 
 ## The folder a conversation's uploaded images are kept in.
 uploads_folder_path : ConversationKey -> Str
@@ -143,6 +170,7 @@ key_at = |path| ConversationKey.from_url_path({
 
 expect user_folder_path(UserFolder.of(UserId.chat_owner)) == "users/1"
 expect upload_total_path(UserFolder.of(UserId.chat_owner)) == "users/1/upload-bytes"
+expect last_conversation_path(UserFolder.of(UserId.chat_owner)) == "users/1/last-conv"
 expect {
 	key = key_at("/chat/dm/1_1/plans")
 	image =

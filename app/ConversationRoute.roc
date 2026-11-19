@@ -3,7 +3,10 @@
 ## boundary: `TranscriptFiles` reads and writes the transcript, `Transcript`
 ## decodes and encodes it, and `Conversation` decides what may be added.
 ##
-## A GET answers with a conversation's page. A POST takes a form whose
+## A GET answers with a conversation's page, which for a human holds the
+## sidebar of the places Browse lists for them, each with its topics
+## (`BrowseRoute.load_place_topics!`), and records the conversation as the
+## last they opened (`ResumeRoute`). A POST takes a form whose
 ## field `markdown` holds a new message, adds the message to the
 ## conversation, sends it to the conversation's open pages
 ## (`ConversationStream`), and sends the browser back to the page (a 303).
@@ -19,6 +22,8 @@
 import pf.Http
 import AgentStream
 import Author
+import Browse
+import BrowseRoute
 import Conversation
 import ConversationKey
 import ConversationPage
@@ -30,6 +35,7 @@ import HttpAnswer
 import Message
 import Name
 import PageKit
+import ResumeRoute
 import SignedIn
 import Timestamp
 import Transcript
@@ -44,20 +50,17 @@ import Users
 ConversationRoute :: [].{
 
 	## A GET of the conversation `key`: its page for `acting`, each
-	## message's author found among `users`. A conversation with no
-	## transcript shows no messages.
+	## message's author found among `directory`'s users, recorded as the
+	## last conversation `acting` opened. A conversation with no transcript
+	## shows no messages.
 	show! : {
 		key : ConversationKey,
 		acting : SignedIn,
-		users : Users,
+		directory : Directory,
 	} => Http.Response
-	show! = |{ key, acting, users }|
-		match load_conversation!(key) {
-			Ok({ conversation, file: _ }) =>
-				HttpAnswer.page(
-					200,
-					ConversationPage.conversation({ conversation, key, viewer: acting, users }),
-				)
+	show! = |{ key, acting, directory }|
+		match load_page!({ key, acting, directory }) {
+			Ok(page) => HttpAnswer.page(200, page)
 			Err(why) => refusal_page(why)
 		}
 
@@ -156,6 +159,36 @@ load_conversation! = |key| {
 			NoFile => Conversation.empty(key.topic())
 		}
 	Ok({ conversation, file })
+}
+
+## The page of the conversation `key` for `acting`, with a human's sidebar,
+## once the conversation is recorded as the last they opened.
+load_page! : {
+	key : ConversationKey,
+	acting : SignedIn,
+	directory : Directory,
+} => Try(TrustedHtml, [Unreadable(TranscriptRefusal.Why), FileSystem(_)])
+load_page! = |{ key, acting, directory }| {
+	loaded = load_conversation!(key)?
+	sidebar =
+		match Browse.places_for({ acting, directory }) {
+			Err(ByApiKey) => NoSidebar
+			Err(Agent(_)) => NoSidebar
+			Ok(listed) => {
+				places = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
+				Sidebar(places)
+			}
+		}
+	ResumeRoute.record_opened!({ key, acting })?
+	Ok(
+		ConversationPage.conversation({
+			conversation: loaded.conversation,
+			key,
+			viewer: acting,
+			users: directory.users(),
+			sidebar,
+		}),
+	)
 }
 
 ## The message in `post`'s form, added to its conversation and to the
