@@ -18,7 +18,7 @@
 ##   conversation gets an upload's room there (`body_allowance`).
 ## - `handle_http_request!` (the server): a request in, its response out.
 ##   The directory is read from disk (`DirectoryStore`), who is acting is
-##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
+##   found (`Actor`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
 ##   `ConversationRoute`, `UploadRoute`, `BrowseRoute`, `AgentsRoute`,
 ##   `ChannelMembersRoute`, `HumanInvitesRoute`, `SignInRoute` or
@@ -27,7 +27,7 @@
 ##   in, and whether it is a password the sign-in form takes, so the
 ##   command hashes none that could never sign in.
 ##
-## Who is acting is found from the request alone (`load_actor!`): a request
+## Who is acting is found from the request alone (`Actor`): a request
 ## with an `Authorization` header by that header alone, as the agent its
 ## key admits, or a 401; any other by its session cookie, as the human the
 ## session admits (`SignInRoute.sign_in_by_session!`), or else as no one
@@ -45,21 +45,20 @@ app [check_request_head!, handle_http_request!, page, password_verdict, start!] 
 	pf: platform "../platform/main.roc",
 }
 
-import Timestamp
-import pf.Host
 import pf.Http
 import Access
+import Actor
 import Admission
 import AgentsRoute
 import BrowseRoute
 import ChannelMembersRoute
+import Clock
 import Conversation
 import ConversationKey
 import ConversationRoute
 import Directory
 import DirectoryStore
 import Favicon
-import FileSystem
 import FirstStart
 import GitHubRoute
 import HumanInvitesRoute
@@ -67,7 +66,6 @@ import Html
 import HttpAnswer
 import Page
 import Place
-import RequestHeader
 import RequestOrigin
 import Route
 import SignInRoute
@@ -142,15 +140,11 @@ demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner(
 start! : {} => [Failed, Ready]
 start! = |{}| DirectoryStore.prepare_directory!({})
 
-## The moment the host's clock says it is.
-read_clock! : {} => Timestamp
-read_clock! = |{}| Timestamp.at_second(Host.current_utc_seconds_since_epoch!({}))
-
 ## What the host may do with a request, judged from its head alone. A
 ## request from elsewhere (`RequestOrigin`, a trust boundary) is refused
 ## with a 403 before anything is read, so the host never reads its body.
 ## Then the directory is read and who is acting is found, as for the whole
-## request (`load_actor!`): a credential refused is its 401 here, and a
+## request (`Actor`): a credential refused is its 401 here, and a
 ## directory that can't be read its 500. Any other is judged by
 ## `Admission.admission_in`.
 check_request_head! : Http.RequestHead => Http.Admission
@@ -161,8 +155,8 @@ check_request_head! = |head|
 			match DirectoryStore.load_directory!({}) {
 				Err(why) => Refuse(Admission.with_same_origin_resource_policy(DirectoryStore.directory_refusal(why)))
 				Ok(directory) =>
-					match load_actor!({ headers: head.headers, directory }) {
-						Err(why) => Refuse(Admission.with_same_origin_resource_policy(identity_refusal(why)))
+					match Actor.load_actor!({ headers: head.headers, directory }) {
+						Err(why) => Refuse(Admission.with_same_origin_resource_policy(Actor.identity_refusal(why)))
 						Ok(actor) => Admission.admission_in({ head, directory, actor })
 					}
 			}
@@ -187,75 +181,14 @@ handle_http_request! = |request| {
 				match DirectoryStore.load_directory!({}) {
 					Err(why) => DirectoryStore.directory_refusal(why)
 					Ok(directory) =>
-						match load_actor!({ headers: request.headers, directory }) {
-							Err(why) => identity_refusal(why)
+						match Actor.load_actor!({ headers: request.headers, directory }) {
+							Err(why) => Actor.identity_refusal(why)
 							Ok(actor) => serve_route!({ request, directory, actor })
 						}
 				}
 		}
 	Admission.with_same_origin_resource_policy(answer)
 }
-
-## Who is acting. With `Authorization: Bearer <id>-<secret>`, the agent its
-## key admits (`AgentsRoute.sign_in_by_key!`); any other `Authorization` is
-## refused, and a request with one is never judged by its cookie, so a key
-## refused never falls back to a session. With none, the human the session
-## cookie admits (`load_session_actor!`), or no one.
-load_actor! : { headers : List(Http.Header), directory : Directory } => Try(
-	SignedIn.Actor,
-	[BadBearer, KeyRefused, FileSystem(FileSystem.Fault)],
-)
-load_actor! = |{ headers, directory }| {
-	now = read_clock!({})
-	match RequestHeader.header_value(headers, "authorization") {
-		Unsent => load_session_actor!({ headers, directory, now })
-		Repeated => Err(BadBearer)
-		Sent(value) => {
-			bearer_text = UnvalidatedString.from_utf8(value) ? |NotUtf8| BadBearer
-			token = bearer_text.bearer_token() ? |NotABearer| BadBearer
-			signed_in_by_key = AgentsRoute.sign_in_by_key!({ token, directory, now })?
-			Ok(SignedIn(signed_in_by_key))
-		}
-	}
-}
-
-## Who a request with no `Authorization` header is: the human its session
-## cookie admits at `now`, or no one (`Anonymous`) when it carries none, or
-## one that admits no one. Only a sign-in file that can't be read fails the
-## request.
-load_session_actor! : {
-	headers : List(Http.Header),
-	directory : Directory,
-	now : Timestamp,
-} => Try(SignedIn.Actor, [FileSystem(FileSystem.Fault)])
-load_session_actor! = |{ headers, directory, now }|
-	match RequestHeader.header_value(headers, "cookie") {
-		Unsent => Ok(Anonymous)
-		Repeated => Ok(Anonymous)
-		Sent(cookie) =>
-			match SignInRoute.sign_in_by_session!({ cookie, users: directory.users(), now }) {
-				Ok(signed_in_by_session) => Ok(SignedIn(signed_in_by_session))
-				Err(NoSession) => Ok(Anonymous)
-				Err(BadSession) => Ok(Anonymous)
-				Err(SessionRefused) => Ok(Anonymous)
-				Err(NoMaterial) => Ok(Anonymous)
-				Err(FileSystem(fault)) => Err(FileSystem(fault))
-			}
-	}
-
-## A request whose credential is refused: one 401 that says no more, or a
-## 500 when the keys can't be read.
-identity_refusal : [BadBearer, KeyRefused, FileSystem(FileSystem.Fault)] -> Http.Response
-identity_refusal = |why|
-	match why {
-		BadBearer => HttpAnswer.text(401, key_refusal_words)
-		KeyRefused => HttpAnswer.text(401, key_refusal_words)
-		FileSystem(fault) => HttpAnswer.text(500, FileSystem.fault_words(fault))
-	}
-
-key_refusal_words : Str
-key_refusal_words =
-	"The API key is not accepted: send Authorization: Bearer <id>-<secret>, a live key."
 
 ## What a route asks of `Access` before it is answered: to read or post at
 ## a place, or nothing.
@@ -400,7 +333,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				viewer: actor,
 				users: directory.users(),
 				body: request.body,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 				github: GitHubRoute.load_offer!({}),
 			})
 		SignOut => SignInRoute.sign_out
@@ -409,7 +342,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				viewer: actor,
 				query: request.query,
 				origin: own_origin_of(request),
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		FinishGitHubSignIn =>
 			GitHubRoute.serve_return!({
@@ -417,7 +350,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				directory,
 				query: request.query,
 				headers: request.headers,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		FinishGitHubSignUp =>
 			GitHubRoute.serve_sign_up!({
@@ -425,7 +358,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				directory,
 				body: request.body,
 				headers: request.headers,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		WrongMethodToGitHub(allowed) => GitHubRoute.refuse_method!(allowed)
 		RedeemInvite =>
@@ -433,7 +366,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				actor,
 				directory,
 				body: request.body,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		ShowJoin => HumanInvitesRoute.join_page(actor)
 		LookUpJoinName =>
@@ -441,14 +374,14 @@ answer_open_route! = |{ open, request, directory, actor }|
 				actor,
 				directory,
 				body: request.body,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		Join =>
 			HumanInvitesRoute.join!({
 				actor,
 				directory,
 				body: request.body,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 	}
 
@@ -485,7 +418,7 @@ answer_route! = |{ asked, request, directory, acting }|
 			GitHubRoute.serve_link_start!({
 				acting,
 				origin: own_origin_of(request),
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
 		StartTopic(place) =>
@@ -525,7 +458,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				directory,
 				agent,
 				body: request.body,
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		RevokeInvite({ agent, invite }) =>
 			AgentsRoute.revoke_invite!({ acting, directory, agent, invite })
@@ -544,14 +477,14 @@ answer_route! = |{ asked, request, directory, acting }|
 		RemoveChannelMember({ channel, member }) =>
 			ChannelMembersRoute.remove!({ acting, directory, channel, member })
 		ShowInvites =>
-			HumanInvitesRoute.show!({ acting, directory, now: read_clock!({}) })
+			HumanInvitesRoute.show!({ acting, directory, now: Clock.read_clock!({}) })
 		InviteHuman =>
 			HumanInvitesRoute.invite!({
 				acting,
 				directory,
 				body: request.body,
 				origin: own_origin_of(request),
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 		InviteHumanAgain(human) =>
 			HumanInvitesRoute.invite_again!({
@@ -559,7 +492,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				directory,
 				human,
 				origin: own_origin_of(request),
-				now: read_clock!({}),
+				now: Clock.read_clock!({}),
 			})
 	}
 
@@ -589,7 +522,7 @@ make_message_post! = |{ key, request, directory, acting }| {
 	key,
 	acting,
 	users: directory.users(),
-	now: read_clock!({}),
+	now: Clock.read_clock!({}),
 	body: request.body,
 	agents: Access.agent_members({ place: key.place(), directory }),
 }
@@ -739,14 +672,6 @@ expect {
 		and unauthorized_refusal.body == "${unauthorized_words}\n".to_utf8()
 }
 
-# A credential refused is one 401 in plain text, whatever was wrong with it.
-expect
-	[BadBearer, KeyRefused].all(
-		|why| {
-			answered = identity_refusal(why)
-			answered.status == 401 and answered.body == "${key_refusal_words}\n".to_utf8()
-		},
-	)
 # Each access refusal: a 403 saying which.
 expect access_refusal(NotAMember).status == 403 and access_refusal(ScopeOff).status == 403
 expect access_refusal(NotAMember).body != access_refusal(ScopeOff).body
