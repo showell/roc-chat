@@ -27,6 +27,7 @@ import PlaceSpec
 import RouteSpec
 import SecureImageTagSpec
 import SessionSpec
+import SignInRequestSpec
 import SidebarSpec
 import StoredDirectorySpec
 import TranscriptSpec

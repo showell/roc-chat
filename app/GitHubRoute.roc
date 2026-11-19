@@ -51,6 +51,7 @@ import Name
 import PageKit
 import RequestHeader
 import SignInPage
+import SignInRequest
 import SignInRoute
 import SignedIn
 import Timestamp
@@ -97,11 +98,11 @@ GitHubRoute :: [].{
 	serve_start! = |{ viewer, query, origin, now }| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
-			match (settings.status, SignInRoute.check_not_by_api_key(viewer)) {
+			match (settings.status, SignInRequest.check_not_by_api_key(viewer)) {
 				(NotConfigured, _) => not_found
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
 				(Configured, Ok({})) =>
-					match SignInRoute.next_from_query(query) {
+					match SignInRequest.next_from_query(query) {
 						Err(BadNext) => SignInRoute.bad_next_answer
 						Ok(next) => send_to_github!({
 							authorize_base: settings.authorize_base,
@@ -118,7 +119,7 @@ GitHubRoute :: [].{
 
 	## A POST of `/login/github/link`, by `acting`, someone signed in (`Dispatch`
 	## refuses anyone else): the browser sent to GitHub to link it to the
-	## human signed in, back to `origin`, going to `SignInRoute.default_next`
+	## human signed in, back to `origin`, going to `SignInRequest.default_next`
 	## (Browse) after; or why not, before the trip.
 	serve_link_start! : {
 		acting : SignedIn,
@@ -138,7 +139,7 @@ GitHubRoute :: [].{
 							client_id: settings.client_id,
 							origin,
 							now,
-							next: SignInRoute.default_next,
+							next: SignInRequest.default_next,
 							errand: Link(human.id()),
 						})
 					}
@@ -161,7 +162,7 @@ GitHubRoute :: [].{
 	serve_return! = |{ viewer, directory, query, headers, now }| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
-			match (settings.status, SignInRoute.check_not_by_api_key(viewer)) {
+			match (settings.status, SignInRequest.check_not_by_api_key(viewer)) {
 				(NotConfigured, _) => not_found
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
 				(Configured, Ok({})) => {
@@ -202,7 +203,7 @@ GitHubRoute :: [].{
 	serve_sign_up! = |request| {
 		settings = Host.github_sign_in_settings!({})
 		answer =
-			match (settings.status, SignInRoute.check_not_by_api_key(request.viewer)) {
+			match (settings.status, SignInRequest.check_not_by_api_key(request.viewer)) {
 				(NotConfigured, _) => not_found
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
 				(Configured, Ok({})) =>
@@ -547,7 +548,7 @@ refusal_answer = |{ viewer, why }| {
 		said.status,
 		SignInPage.login({
 			viewer,
-			next: SignInRoute.default_next,
+			next: SignInRequest.default_next,
 			problem: Problem(said.words),
 			github: Offered,
 		}),

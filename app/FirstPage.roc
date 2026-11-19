@@ -7,7 +7,7 @@
 ## read and it exists, as a link someone shared to it. Anywhere else, their DM
 ## with the chat's owner (`Welcome`), which is written before their account. A
 ## human whose account is older than their welcome has no such DM, and lands on
-## `SignInRoute.default_next`, a page every human may read.
+## `SignInRequest.default_next`, a page every human may read.
 import Access
 import ChannelName
 import Channels
@@ -17,7 +17,7 @@ import FileFacts
 import Html
 import Name
 import Place
-import SignInRoute
+import SignInRequest
 import TranscriptFiles
 import UnvalidatedString
 import Users
@@ -68,7 +68,7 @@ is_member : {
 } -> Bool
 is_member = |{ directory, human, place }| Access.members({ place, directory }).contains(human.id())
 
-## The page of `human`'s DM with the chat's owner, or `SignInRoute.default_next`
+## The page of `human`'s DM with the chat's owner, or `SignInRequest.default_next`
 ## when it has not begun.
 load_welcome_page! : { directory : Directory, human : Users.Human } => Try(
 	Html.SitePath,
@@ -78,7 +78,7 @@ load_welcome_page! = |request| {
 	key = Welcome.conversation_key(request)
 	match load_conversation_state!(key)? {
 		Begun => Ok(page_of(key))
-		NotBegun => Ok(SignInRoute.default_next)
+		NotBegun => Ok(SignInRequest.default_next)
 	}
 }
 

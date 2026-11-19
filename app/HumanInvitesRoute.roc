@@ -51,6 +51,7 @@ import PeoplePages
 import Secret
 import SecretHashing
 import SecretToken
+import SignInRequest
 import SignInRoute
 import SignedIn
 import Timestamp
@@ -129,7 +130,7 @@ HumanInvitesRoute :: [].{
 	join_page : SignedIn.Actor -> Http.Response
 	join_page = |actor|
 		match HumanInvites.admit_joiner(actor) {
-			Err(SignedInAlready) => HttpAnswer.see_other(SignInRoute.default_next.to_str())
+			Err(SignedInAlready) => HttpAnswer.see_other(SignInRequest.default_next.to_str())
 			Ok({}) | Err(ByApiKey) => HttpAnswer.page(200, JoinPage.join)
 		}
 
@@ -406,7 +407,7 @@ join_by_invite! = |request| {
 	next = FirstPage.load!({
 		directory: request.directory,
 		human,
-		wanted: SignInRoute.default_next,
+		wanted: SignInRequest.default_next,
 	})?
 	_ =
 		match joined.name {

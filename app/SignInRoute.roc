@@ -2,9 +2,9 @@
 ## a request's session before any route.
 ##
 ## - `GET /login` is the sign-in page: a name and a password, and `next`,
-##   where to go after, from the query (`?next=<path>`), `default_next`
-##   (Browse, `/chat`) when there is none; and a link to sign in with GitHub, when the server has
-##   GitHub's settings (`GitHubRoute`).
+##   where to go after, from the query (`?next=<path>`), or Browse (`/chat`)
+##   when there is none (`SignInRequest` reads it); and a link to sign in
+##   with GitHub, when the server has GitHub's settings (`GitHubRoute`).
 ## - `POST /login` checks the password: the user named must be a human,
 ##   their password file must hold a bcrypt hash, and the host must say the
 ##   password matches it (`Host.password_matches_bcrypt_hash!`). Then the
@@ -46,10 +46,9 @@ import Password
 import PasswordHash
 import Session
 import SignInPage
+import SignInRequest
 import SignedIn
 import Timestamp
-import UnvalidatedString
-import UrlEncodedForm
 import UserId
 import Users
 
@@ -95,7 +94,7 @@ SignInRoute :: [].{
 		github : SignInPage.GitHubOffer,
 	} -> Http.Response
 	show_login = |{ viewer, query, github }|
-		match SignInRoute.next_from_query(query) {
+		match SignInRequest.next_from_query(query) {
 			Ok(next) => HttpAnswer.page(
 				200,
 				SignInPage.login({ viewer, next, problem: NoProblem, github }),
@@ -117,7 +116,7 @@ SignInRoute :: [].{
 	} => Http.Response
 	sign_in! = |{ viewer, users, body, now, github }| {
 		answer =
-			match next_from_form(body) {
+			match SignInRequest.next_from_form(body) {
 				Err(BadNext) => SignInRoute.bad_next_answer
 				Ok(next) =>
 					match find_human_by_password!({ viewer, users, body }) {
@@ -222,29 +221,10 @@ SignInRoute :: [].{
 		),
 	)
 
-	## Where to go once signed in when nothing says.
-	default_next : Html.SitePath
-	default_next =
-		Html.SitePath.from_str("/chat") ?? crash "SignInRoute.default_next: /chat is a site path"
-
 	## A 303 to the sign-in page, which goes on to `next` once signed in: a
 	## page asked for by no one signed in.
 	login_redirect : Html.SitePath -> Http.Response
 	login_redirect = |next| HttpAnswer.see_other("/login?next=${next.to_str()}")
-
-	## The `next` a sign-in page's `query` names: none, `default_next`; or `next=`
-	## and a path on this site; else `BadNext`.
-	next_from_query : List(U8) -> Try(Html.SitePath, [BadNext])
-	next_from_query = |query|
-		if query.is_empty() {
-			Ok(SignInRoute.default_next)
-		} else if query.starts_with(next_prefix) {
-			unchecked =
-				UnvalidatedString.from_utf8(query.drop_first(next_prefix.len())) ? |NotUtf8| BadNext
-			unchecked.site_path().map_err(|NotASitePath| BadNext)
-		} else {
-			Err(BadNext)
-		}
 
 	## The 400 for a `next` that is no path on this site.
 	bad_next_answer : Http.Response
@@ -255,18 +235,6 @@ SignInRoute :: [].{
 			text: "Where to go after signing in is no path on this site.",
 		}),
 	)
-
-	## `Ok` unless `viewer` holds an API key (`ByApiKey`), which never signs in.
-	check_not_by_api_key : SignedIn.Actor -> Try({}, [ByApiKey])
-	check_not_by_api_key = |viewer|
-		match viewer {
-			SignedIn(acting) =>
-				match acting.credential() {
-					ApiKey(_) => Err(ByApiKey)
-					Session => Ok({})
-				}
-			Anonymous => Ok({})
-		}
 
 	## The 403 for a sign-in by a request with an API key.
 	by_api_key_answer : Http.Response
@@ -407,19 +375,6 @@ dummy_hash = "$2b$10$v5yDSgBNCAzrmaBwxRL5GuCqhQGND3Nw3mq3QGBC1d2MZltsLFCJ6".to_u
 no_material_words : Str
 no_material_words = "This account has nothing to sign a session over: its github-session-secret file is empty."
 
-next_prefix : List(U8)
-next_prefix = "next=".to_utf8()
-
-## The `next` a sign-in form `body` holds: none, `SignInRoute.default_next`;
-## or a path on this site; else `BadNext`.
-next_from_form : List(U8) -> Try(Html.SitePath, [BadNext])
-next_from_form = |body|
-	match UrlEncodedForm.field({ body, name: "next" }) {
-		Err(MissingField) => Ok(SignInRoute.default_next)
-		Err(_) => Err(BadNext)
-		Ok(unchecked) => unchecked.site_path().map_err(|NotASitePath| BadNext)
-	}
-
 ## The human whose name and password the form `body` holds, among `users`,
 ## and what their session is signed over, which holds the hash the password
 ## was checked against; unless they don't match a human's (`NoMatch`: no such name,
@@ -434,19 +389,11 @@ find_human_by_password! : {
 	{ human : Users.Human, material : Session.Material },
 	[NoMatch, ByApiKey, TooManyChecks, FileSystem(FileFacts.Fault)],
 )
-find_human_by_password! = |{ viewer, users, body }| {
-	SignInRoute.check_not_by_api_key(viewer)?
-	name_text = UrlEncodedForm.field({ body, name: "name" }) ? |_| NoMatch
-	name = name_text.name() ? |_| NoMatch
-	password_text = UrlEncodedForm.field({ body, name: "password" }) ? |_| NoMatch
-	password = password_text.password() ? |NotAPassword| NoMatch
-	match users.user_by_name(name) {
-		Err(NoSuchUser) => Err(check_against_dummy_hash!(password))
-		Ok(user) =>
-			match user.as_human() {
-				Err(Agent(_)) => Err(check_against_dummy_hash!(password))
-				Ok(human) => check_password_of!({ human, password })
-			}
+find_human_by_password! = |request| {
+	claim = SignInRequest.password_claim(request)?
+	match claim.claimant {
+		NoHuman => Err(check_against_dummy_hash!(claim.password))
+		Human(human) => check_password_of!({ human, password: claim.password })
 	}
 }
 
@@ -494,40 +441,6 @@ check_against_dummy_hash! = |password|
 	}
 
 # ── tests
-## The `next` a query or a form names, as a test reads it.
-next_text : Try(Html.SitePath, [BadNext]) -> Try(Str, [BadNext])
-next_text = |next| next.map_ok(Html.SitePath.to_str)
-
-# A query's `next`: none is /chat; a path on this site is itself; any
-# other path, another field, or bytes that are no text, refused.
-expect next_text(SignInRoute.next_from_query([])) == Ok("/chat")
-expect
-	next_text(SignInRoute.next_from_query("next=/chat/dm/1_1/plans".to_utf8()))
-		== Ok("/chat/dm/1_1/plans")
-expect
-	[
-		"next=",
-		"next=//evil.example",
-		"next=https://evil.example",
-		"next=/a?b",
-		"next=/a/../b",
-		"to=/agents",
-		"next=/agents&x=1",
-	].all(|query| SignInRoute.next_from_query(query.to_utf8()) == Err(BadNext))
-expect SignInRoute.next_from_query(List.concat("next=/".to_utf8(), [0xff])) == Err(BadNext)
-# A form's `next`: none is /chat; a path on this site, decoded, is itself;
-# any other, or two, refused.
-expect next_text(next_from_form("name=Steve".to_utf8())) == Ok("/chat")
-expect
-	next_text(next_from_form("next=%2Fchat%2Fdm%2F1_1%2Fplans&name=Steve".to_utf8()))
-		== Ok("/chat/dm/1_1/plans")
-expect
-	[
-		"next=%2F%2Fevil.example",
-		"next=",
-		"next=/a&next=/b",
-		"next=%G0",
-	].all(|body| next_from_form(body.to_utf8()) == Err(BadNext))
 # The redirect to sign in carries where to go after; signing out forgets the
 # cookie and is never stored.
 expect
