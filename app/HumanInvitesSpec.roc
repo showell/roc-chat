@@ -276,12 +276,13 @@ secret = |b| Secret.from_random_bytes(List.repeat(b, 32))
 hash : U8 -> SecretHash
 hash = |b| SecretHash.of_digest(List.repeat(b, 32))
 
-## Zoe's invite numbered `n`, made by `by` at 1000, its code's hash `hash(n)`.
-invite_made : { n : U32, by : Str } -> HumanInvite
-invite_made = |{ n, by }|
+## Zoe's invite numbered `number`, made by `by` at 1000, its code's hash
+## `hash(number)`.
+invite_made : { number : U32, by : Str } -> HumanInvite
+invite_made = |{ number, by }|
 	HumanInvite.make({
-		id: HumanInvite.Id.from_str(n.to_str()) ?? crash "HumanInvitesSpec: an invite's number",
-		hash: hash(n.to_u8_wrap()),
+		id: HumanInvite.Id.from_str(number.to_str()) ?? crash "HumanInvitesSpec: an invite's number",
+		hash: hash(number.to_u8_wrap()),
 		now: Timestamp.at_second(1000),
 		by: id(by),
 	})
@@ -325,7 +326,7 @@ last_open_second = invite_expiry.plus(Seconds.of(-1))
 ## Zoe's invite 1, made at 1000, found and spent at `now` by its own code.
 redemption_at : Timestamp -> Try(Str, _)
 redemption_at = |now| zoes_redemption({
-	invites: [invite_made({ n: 1, by: "2" })],
+	invites: [invite_made({ number: 1, by: "2" })],
 	code: 1,
 	now,
 })
@@ -334,7 +335,7 @@ redemption_at = |now| zoes_redemption({
 spent_invite : HumanInvite
 spent_invite =
 	match HumanInvite.find_redeemable(
-		[invite_made({ n: 1, by: "2" })],
+		[invite_made({ number: 1, by: "2" })],
 		{ hash: hash(1), now: Timestamp.at_second(1000) },
 	) {
 		Ok(redeemable) => HumanInvite.redeem(redeemable, zoe).spent
@@ -405,17 +406,17 @@ zoe_again_button = "<form method=\"post\" action=\"/invites/4/again\"><button>In
 # An invite on the page: open to its last second, expired from the next, used
 # once spent, each naming who made it.
 expect
-	open_part(page_of_invite(invite_made({ n: 1, by: "2" }), last_open_second))
+	open_part(page_of_invite(invite_made({ number: 1, by: "2" }), last_open_second))
 		.contains("<p>Zoe: open until 1970-01-08, made by Apoorva.</p>")
 expect
-	past_part(page_of_invite(invite_made({ n: 1, by: "2" }), invite_expiry))
+	past_part(page_of_invite(invite_made({ number: 1, by: "2" }), invite_expiry))
 		.contains("<p>Zoe: expired on 1970-01-08, made by Apoorva.</p>")
 expect
 	past_part(page_of_invite(spent_invite, Timestamp.at_second(1000)))
 		.contains("<p>Zoe: used, made by Apoorva.</p>")
 # A maker the chat doesn't hold is named by their id.
 expect
-	page_of_invite(invite_made({ n: 1, by: "9" }), Timestamp.at_second(1000))
+	page_of_invite(invite_made({ number: 1, by: "9" }), Timestamp.at_second(1000))
 		.contains("<p>Zoe: open until 1970-01-08, made by user 9.</p>")
 # No one invited: the page says nothing is open, and has no past invites.
 expect {
@@ -427,7 +428,7 @@ expect {
 # An invite open: no word that nothing is open, what a lost link needs, and
 # no past invites.
 expect {
-	page = page_of_invite(invite_made({ n: 1, by: "2" }), Timestamp.at_second(1000))
+	page = page_of_invite(invite_made({ number: 1, by: "2" }), Timestamp.at_second(1000))
 	open_part(page).contains("<p>A link is shown only once.")
 		and open_part(page).contains(zoe_again_button)
 		and !page.contains("No open invites.")
@@ -447,11 +448,11 @@ expect {
 # shown while she has an open one.
 expect {
 	made_at = Timestamp.at_second(1000)
-	bobs_invite = invite_made({ n: 1, by: "1" })
+	bobs_invite = invite_made({ number: 1, by: "1" })
 	zoes = [
 		spent_invite,
-		invite_made({ n: 2, by: "2" }),
-		invite_made({ n: 3, by: "1" }),
+		invite_made({ number: 2, by: "2" }),
+		invite_made({ number: 3, by: "1" }),
 	]
 	page = page_of_humans(
 		[{ human: zoe.user(), invites: zoes }, { human: bob_user, invites: [bobs_invite] }],
@@ -474,7 +475,7 @@ expect {
 	page = page_of_humans(
 		[
 			{ human: zoe.user(), invites: [spent_invite] },
-			{ human: bob_user, invites: [invite_made({ n: 1, by: "1" })] },
+			{ human: bob_user, invites: [invite_made({ number: 1, by: "1" })] },
 		],
 		Timestamp.at_second(1000),
 	)
@@ -532,7 +533,7 @@ expect redemption_at(invite_expiry) == Err(Expired)
 expect redemption_at(Timestamp.at_second(999)) == Err(Expired)
 expect HumanInvite.lifetime_seconds == Seconds.of(604800)
 expect zoes_redemption({
-	invites: [invite_made({ n: 1, by: "2" })],
+	invites: [invite_made({ number: 1, by: "2" })],
 	code: 2,
 	now: Timestamp.at_second(1000),
 }) == Err(NoSuchInvite)
@@ -546,34 +547,34 @@ expect zoes_redemption({
 }) == Err(Spent)
 expect
 	zoes_redemption({
-		invites: [spent_invite, invite_made({ n: 2, by: "2" })],
+		invites: [spent_invite, invite_made({ number: 2, by: "2" })],
 		code: 2,
 		now: Timestamp.at_second(1000),
 	})
 		== Ok("spent, admits 4")
 # Open: live, from its making to just before its expiry.
-expect invite_made({ n: 1, by: "2" }).is_open(Timestamp.at_second(1000))
-expect invite_made({ n: 1, by: "2" }).is_open(last_open_second)
-expect !invite_made({ n: 1, by: "2" }).is_open(invite_expiry)
-expect !invite_made({ n: 1, by: "2" }).is_open(Timestamp.at_second(999))
+expect invite_made({ number: 1, by: "2" }).is_open(Timestamp.at_second(1000))
+expect invite_made({ number: 1, by: "2" }).is_open(last_open_second)
+expect !invite_made({ number: 1, by: "2" }).is_open(invite_expiry)
+expect !invite_made({ number: 1, by: "2" }).is_open(Timestamp.at_second(999))
 expect !spent_invite.is_open(Timestamp.at_second(1000))
 
 # The open invites a human made: theirs, live and unexpired, among every
 # human's.
 expect HumanInvites.open_count(
 	[
-		invite_made({ n: 1, by: "2" }),
-		invite_made({ n: 2, by: "2" }),
-		invite_made({ n: 3, by: "1" }),
+		invite_made({ number: 1, by: "2" }),
+		invite_made({ number: 2, by: "2" }),
+		invite_made({ number: 3, by: "1" }),
 	],
 	{ by: id("2"), now: Timestamp.at_second(1000) },
 ) == 2
 expect HumanInvites.open_count(
-	[invite_made({ n: 1, by: "2" })],
+	[invite_made({ number: 1, by: "2" })],
 	{ by: id("2"), now: invite_expiry },
 ) == 0
 expect HumanInvites.open_count(
-	[spent_invite, invite_made({ n: 2, by: "2" })],
+	[spent_invite, invite_made({ number: 2, by: "2" })],
 	{ by: id("2"), now: Timestamp.at_second(1000) },
 ) == 1
 
@@ -599,7 +600,7 @@ invitee_of = |user|
 		with_zoe_and_bob,
 		join_code({
 			user,
-			invites: [invite_made({ n: 1, by: "2" })],
+			invites: [invite_made({ number: 1, by: "2" })],
 			code: 1,
 		}),
 	).map_ok(|found| "${found.human.id().to_str()} ${found.human.user().name().to_str()}")
@@ -615,7 +616,7 @@ expect
 		with_zoe_and_bob,
 		join_code({
 			user: "4",
-			invites: [invite_made({ n: 1, by: "2" })],
+			invites: [invite_made({ number: 1, by: "2" })],
 			code: 2,
 		}),
 	).map_ok(|_| {})
@@ -659,7 +660,7 @@ join_as = |{ user, invites, code, name }|
 
 ## Zoe's invites: her first, which she has never redeemed.
 zoe_invites : List(HumanInvite)
-zoe_invites = [invite_made({ n: 1, by: "2" })]
+zoe_invites = [invite_made({ number: 1, by: "2" })]
 
 # Zoe joins under the name her inviter chose, or under any other free name,
 # her own in another case included; a name another user or a channel has,
@@ -712,7 +713,7 @@ expect join_as({
 expect
 	join_as({
 		user: "4",
-		invites: [spent_invite, invite_made({ n: 2, by: "1" })],
+		invites: [spent_invite, invite_made({ number: 2, by: "1" })],
 		code: 2,
 		name: "Zoe",
 	})
@@ -721,7 +722,7 @@ expect
 	["Zoey", "ZOE", "Bob"].all(
 		|name| join_as({
 			user: "4",
-			invites: [spent_invite, invite_made({ n: 2, by: "1" })],
+			invites: [spent_invite, invite_made({ number: 2, by: "1" })],
 			code: 2,
 			name,
 		}) == Err(NameChosen),
@@ -751,7 +752,7 @@ expect
 # Its facts to their files and back; each fact that holds no such fact
 # refused, naming its file.
 expect {
-	made = invite_made({ n: 3, by: "2" })
+	made = invite_made({ number: 3, by: "2" })
 	files = made.to_files()
 	files.by == "2".to_utf8()
 		and files.state == "live".to_utf8()
@@ -759,7 +760,7 @@ expect {
 		and HumanInvite.from_files(made.id(), files) == Ok(made)
 }
 expect {
-	made = invite_made({ n: 3, by: "2" })
+	made = invite_made({ number: 3, by: "2" })
 	files = made.to_files()
 	[
 		({ ..files, created: "x".to_utf8() }, "created"),
