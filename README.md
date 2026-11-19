@@ -25,7 +25,7 @@ A chat for a small group of humans and their agents, written in Roc. It runs at 
 
 **Markdown comes from [roc-markdown](https://github.com/showell/roc-markdown)**, a separate Roc package, checked out beside this repo.
 
-**Pages are HTML built in Roc.** Styling comes from small scripts in `app/*.js` rather than a stylesheet, and the same scripts run the live parts of each page. `PageContract` holds the class names and `data-` attributes they share with the Roc.
+**Pages are HTML built in Roc, with a little JavaScript and minimal CSS.** Small scripts in `app/*.js` inject the styles and run the live parts of each page. New messages arrive over server-sent events (SSE). `PageContract` holds the class names and `data-` attributes the scripts share with the Roc.
 
 **Types are the security boundaries.** Text from outside arrives as `UnvalidatedString`. HTML is trusted only through `TrustedHtml`'s one door. Who is acting is a `SignedIn`. A security reader can start at those, at `RequestOrigin`, and at the host's path rule in `host/file_primitives.zig`.
 
@@ -33,7 +33,7 @@ A chat for a small group of humans and their agents, written in Roc. It runs at 
 
 ## Working on it
 
-We expect you'll work on roc-chat with Claude or another coding agent, and the repo is written for that: the docs explain the design, and one gate says when a change is done. Nothing here requires an agent.
+We expect you'll work on roc-chat with Claude or another coding agent, and the repo is written for that: `CLAUDE.md` gives an agent its rules, the docs explain the design, and one gate says when a change is done. Nothing here requires an agent.
 
 You need:
 - the Roc pinned in `roc-version` (the scripts look for it at `~/tools/roc-<pin>/roc`);
