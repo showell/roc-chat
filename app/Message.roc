@@ -6,6 +6,7 @@
 ## of its own: `numbered_message` takes whatever id it is given. The order is
 ## kept by `Conversation`, which is opaque too, and whose `append` is the
 ## only way a message joins one, numbered by `Conversation.next_id`.
+import Ascii
 import Author
 import DateTime
 
@@ -45,6 +46,17 @@ Message :: {
 				Err(Full)
 			} else {
 				Ok(Message.Id.(n + 1))
+			}
+
+		## The id `digits` spell, as `to_str` writes it: 1 to 65,535 with no
+		## leading `0`; unless they spell anything else (`NotAMessageId`).
+		## A reaction's form and file, and an edit's reference, name a message
+		## this way.
+		from_digits : List(U8) -> Try(Message.Id, [NotAMessageId])
+		from_digits = |digits|
+			match Ascii.canonical_number(digits, { most_digits: 5 }) {
+				Ok(number) if number <= U16.highest.to_u64() => Ok(Message.Id.(number.to_u16_wrap()))
+				_ => Err(NotAMessageId)
 			}
 
 		## The number, as a page's anchors and a refusal write it.
@@ -129,6 +141,16 @@ expect Message.Id.first.next().map_ok(Message.Id.to_str) == Ok("2")
 # The last id at, under and over the highest.
 expect Message.Id.(65534).next().map_ok(Message.Id.to_str) == Ok("65535")
 expect Message.Id.(65535).next() == Err(Full)
+# An id from its digits, at each end of the range, and every other
+# spelling refused.
+expect
+	["1", "9", "10", "65535"].all(
+		|text| Message.Id.from_digits(text.to_utf8()).map_ok(Message.Id.to_str) == Ok(text),
+	)
+expect
+	["", "0", "01", "65536", "100000", "-1", "1 ", "x"].all(
+		|text| Message.Id.from_digits(text.to_utf8()) == Err(NotAMessageId),
+	)
 expect Message.Id.first.to_u64() == 1
 expect Message.Id.(65535).to_u64() == 65535
 # A message numbered with the id it is given, each other part the

@@ -11,6 +11,9 @@
 ## an append takes one message's `Utf8TranscriptMessage`, which only
 ## `Transcript` makes.
 ##
+## A conversation's reactions are the file `reactions` beside its
+## transcript, in `Reactions`' format, rewritten whole at each change.
+##
 ## A conversation's uploaded images are kept in its folder, under
 ## `uploads/`, each by its own name (`UploadedImage`), as bytes.
 ##
@@ -22,6 +25,7 @@ import Directory
 import FileFacts
 import LastConversation
 import Name
+import Reactions
 import Transcript
 import UploadTotal
 import UnvalidatedString
@@ -55,6 +59,29 @@ TranscriptFiles :: [].{
 	append_message! = |key, record| {
 		FileFacts.make_folder!(folder_path(key))?
 		FileFacts.append_to_file!(transcript_path(key), record.to_utf8_bytes())
+	}
+
+	## A conversation's reactions, as its file holds them, or none when there
+	## is no file yet; unless the file holds no reactions (`Damaged`), or the
+	## host's read failed.
+	read_reactions! : ConversationKey => Try(Reactions, [Damaged, NotUtf8, PathRefused, Failed])
+	read_reactions! = |key|
+		match FileFacts.read_fact!(reactions_path(key))? {
+			File(bytes) => Reactions.from_file(bytes).map_err(|_| Damaged)
+			NoFile => Ok(Reactions.empty)
+		}
+
+	## A conversation's reactions, written whole over the file before,
+	## atomically, its folder made as needed; unless the host refused, and
+	## then the file is as it was.
+	replace_reactions! : ConversationKey,
+	Reactions => Try(
+		{},
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
+	)
+	replace_reactions! = |key, reactions| {
+		FileFacts.make_folder!(folder_path(key))?
+		FileFacts.replace_fact!(reactions_path(key), reactions.to_file())
 	}
 
 	## An uploaded image's bytes, kept in its conversation's uploads folder
@@ -156,6 +183,10 @@ folder_path = |key| Str.join_with(key.parts(), "/")
 transcript_path : ConversationKey -> Str
 transcript_path = |key| "${folder_path(key)}/transcript"
 
+## The path of the conversation's reactions, beside its transcript.
+reactions_path : ConversationKey -> Str
+reactions_path = |key| "${folder_path(key)}/reactions"
+
 # ── tests
 # The paths each builder makes, under the users' folders and a
 # conversation's folder.
@@ -178,6 +209,7 @@ expect {
 			?? crash "TranscriptFiles' tests: an image's name"
 	folder_path(key) == "chat/dm/1_1/plans"
 		and transcript_path(key) == "chat/dm/1_1/plans/transcript"
+		and reactions_path(key) == "chat/dm/1_1/plans/reactions"
 		and uploads_folder_path(key) == "chat/dm/1_1/plans/uploads"
 		and uploaded_image_path(key, image) == "chat/dm/1_1/plans/uploads/${"0a".repeat(16)}.png"
 }
