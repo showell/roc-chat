@@ -9,8 +9,13 @@
 // included, so this script only styles what it finds and sends what the
 // reader asks for. A reaction's button names its reactors' ids
 // (data-reactors); the viewer's own are highlighted, and a click takes the
-// viewer's reaction back, or adds it. The "react" button, or the `:` key
-// on the selected message, opens a small picker of emojis. Each reaction is
+// viewer's reaction back, or adds it. The `+` key toggles 👍 on the
+// selected message, as chat-client's did, with no picker. The "react"
+// button, or the `:` key on the selected message, opens a small picker of
+// emojis. The picker works by keys too: its first emoji has the focus, the
+// arrows move it through the grid, Tab and Shift+Tab within the picker,
+// Enter or Space picks, and Escape closes it and gives the focus back to
+// where it was. A tap picks, as a click does. Each reaction is
 // a POST to the messages pane's data-react (`msg`, `emoji`, `on`), and is
 // never shown before the server has it: the stream sends the message again,
 // drawn with its reactions as they are now, and feed.js puts it in place.
@@ -62,6 +67,8 @@
       ' box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }',
     '.reaction-picker button { font-size: 18px; background: none; border: none; padding: 2px 4px; cursor: pointer; border-radius: 4px; }',
     '.reaction-picker button:hover { background: var(--cc-accent-soft-bg); }',
+    '.reaction-picker button:focus-visible { background: var(--cc-accent-soft-bg); outline: 2px solid var(--cc-accent);' +
+      ' outline-offset: -2px; }',
     'html.layout-narrow .message .actions button { font-size: 13px; padding: 6px 8px; }',
     'html.layout-narrow .reaction-chip { font-size: 14px; padding: 5px 10px; border-radius: 14px; }',
     'html.layout-narrow .reaction-picker { max-width: none; gap: 4px; }',
@@ -116,14 +123,48 @@
   }
 
   var picker = null;
+  // What had the focus before the picker opened, given it back on Escape.
+  var focusBefore = null;
   function closePicker() {
     if (picker) picker.remove();
     picker = null;
   }
+  // The picker's emoji `delta` away from the focused one: ±1 along a row,
+  // and a row's width up or down, the width read from where they wrapped.
+  function moveFocus(delta) {
+    var buttons = Array.prototype.slice.call(picker.querySelectorAll('button'));
+    var at = buttons.indexOf(document.activeElement);
+    var perRow = buttons.filter(function (b) { return b.offsetTop === buttons[0].offsetTop; }).length;
+    var step = delta === 'down' ? perRow : delta === 'up' ? -perRow : delta;
+    var next = at < 0 ? 0 : at + step;
+    if (Math.abs(step) === 1) next = (next + buttons.length) % buttons.length;
+    if (next >= 0 && next < buttons.length) buttons[next].focus();
+  }
+  var PICKER_MOVES = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 'up', ArrowDown: 'down' };
+  function pickerKey(e) {
+    if (e.key === 'Escape') {
+      closePicker();
+      if (focusBefore && document.contains(focusBefore)) focusBefore.focus();
+    } else if (PICKER_MOVES[e.key] !== undefined) {
+      moveFocus(PICKER_MOVES[e.key]);
+    } else if (e.key === 'Tab') {
+      moveFocus(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (picker.contains(document.activeElement)) document.activeElement.click();
+    } else {
+      return;
+    }
+    // Handled here: the page's keys (Keys, feed.js's arrows) never see it.
+    e.preventDefault();
+    e.stopPropagation();
+  }
   function openPicker(article) {
     closePicker();
+    focusBefore = document.activeElement;
     picker = document.createElement('div');
     picker.className = 'reaction-picker';
+    picker.setAttribute('role', 'menu');
+    picker.addEventListener('keydown', pickerKey);
     EMOJIS.forEach(function (emoji) {
       var b = document.createElement('button');
       b.type = 'button';
@@ -144,6 +185,7 @@
     document.body.appendChild(picker);
     var height = picker.getBoundingClientRect().height;
     picker.style.top = Math.max(8, Math.min(box.top + 20, window.innerHeight - height - 8)) + 'px';
+    picker.querySelector('button').focus();
   }
   document.addEventListener('click', function (e) {
     if (picker && !picker.contains(e.target) && !(e.target.closest && e.target.closest('.react-open'))) closePicker();
@@ -211,6 +253,10 @@
   Keys.register({ key: ':', label: 'react to the selected message', run: function () {
     var article = selectedMessage();
     if (article) openPicker(article);
+  } });
+  Keys.register({ key: '+', label: 'thumbs-up the selected message', run: function () {
+    var article = selectedMessage();
+    if (article) toggle(article, '👍');
   } });
   Keys.register({ key: 'e', label: 'edit the selected message, if yours', run: function () {
     var article = selectedMessage();
