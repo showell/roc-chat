@@ -106,11 +106,11 @@ tests_directory = {
 	with_bob = (with_zoe.add_human(tests_name("Bob")) ?? crash "FirstPage's tests: room").directory
 	plans = ChannelName.from_str("plans") ?? crash "FirstPage's tests: a channel's name"
 	channels =
-		Channels.from_files([
+		Channels.from_stored([
 			{ name: Channels.default_name, members: "1\n".to_utf8() },
 			{ name: plans, members: "2\n".to_utf8() },
 		]) ?? crash "FirstPage's tests: the members files read"
-	Directory.from_files({ users: with_bob.users(), channels })
+	Directory.from_stored({ users: with_bob.users(), channels })
 		?? crash "FirstPage's tests: the channels' members are users"
 }
 

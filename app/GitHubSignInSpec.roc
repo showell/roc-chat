@@ -56,9 +56,9 @@ tests_directory_of_no_channel = {
 tests_directory : Directory
 tests_directory = {
 	channels =
-		Channels.from_files([{ name: Channels.default_name, members: "1\n".to_utf8() }])
+		Channels.from_stored([{ name: Channels.default_name, members: "1\n".to_utf8() }])
 			?? crash "GitHubSignInSpec: a members file"
-	Directory.from_files({ users: tests_directory_of_no_channel.users(), channels })
+	Directory.from_stored({ users: tests_directory_of_no_channel.users(), channels })
 		?? crash "GitHubSignInSpec: Steve is a user"
 }
 
@@ -336,9 +336,9 @@ full_directory : Directory
 full_directory = {
 	accounts = tests_users.to_list().map(|user| { id: user.id(), files: Users.account_files(user) })
 	users =
-		Users.from_files({ counter: "65536\n".to_utf8(), accounts })
+		Users.from_stored({ counter: "65536\n".to_utf8(), accounts })
 			?? crash "GitHubSignInSpec: the users' files read back"
-	Directory.from_files({ users, channels: tests_directory.channels() })
+	Directory.from_stored({ users, channels: tests_directory.channels() })
 		?? crash "GitHubSignInSpec: the names are free"
 }
 

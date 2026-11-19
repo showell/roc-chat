@@ -16,7 +16,7 @@
 ## root: the counter of the next id, `auth/next-id.txt`, its digits and a
 ## line end (`65536` when every id is taken); and a folder per user, `auth/<id>/`, holding the
 ## user's name, exactly as given, in `name`, and an agent's owner's id, its
-## digits, in `owner`. A human has no `owner` file. `from_files` reads them
+## digits, in `owner`. A human has no `owner` file. `from_stored` reads them
 ## back, and `account_files` and `counter_file` write them.
 import Author
 import FactFile
@@ -112,7 +112,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	## by.
 	StoredAccount : { id : UserId, files : Users.AccountFiles }
 
-	## The user's files, as `from_files` reads them back.
+	## The user's files, as `from_stored` reads them back.
 	account_files : Users.User -> Users.AccountFiles
 	account_files = |user| {
 		name: user.name().to_str().to_utf8(),
@@ -141,7 +141,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	## founder, a human with id 1 (`NoFounder`); when an id is at or past
 	## the counter (`CounterBehind`); or when an agent's owner is no human
 	## among them (`BadOwner`).
-	from_files : { counter : List(U8), accounts : List(Users.StoredAccount) } -> Try(
+	from_stored : { counter : List(U8), accounts : List(Users.StoredAccount) } -> Try(
 		Users,
 		[
 			BadCounter,
@@ -151,9 +151,9 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 			CounterBehind,
 		],
 	)
-	from_files = |{ counter, accounts }| {
+	from_stored = |{ counter, accounts }| {
 		next = next_from_file(counter)?
-		all = accounts.sort_with(|a, b| UserId.compare(a.id, b.id)).map_try(user_from_files)?
+		all = accounts.sort_with(|a, b| UserId.compare(a.id, b.id)).map_try(user_from_stored)?
 		founder_is_human =
 			match all.first() {
 				Ok(first) => first.id() == UserId.chat_owner and first.role() == Human
@@ -282,8 +282,8 @@ next_from_file = |bytes| {
 }
 
 ## The user an account folder's files make.
-user_from_files : Users.StoredAccount -> Try(Users.User, [BadName(UserId), BadOwner(UserId)])
-user_from_files = |{ id, files }| {
+user_from_stored : Users.StoredAccount -> Try(Users.User, [BadName(UserId), BadOwner(UserId)])
+user_from_stored = |{ id, files }| {
 	written = Str.from_utf8(FactFile.word_from_file(files.name)) ? |_| BadName(id)
 	name = Name.from_str(written) ? |_| BadName(id)
 	role = role_from_file(files.owner) ? |NotAnOwner| BadOwner(id)

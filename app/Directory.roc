@@ -171,11 +171,11 @@ Directory :: {
 	## The directory of `users` and `channels`, as their files hold them;
 	## unless two of their names are the same name (`NameTaken`), or a
 	## channel has a member no user is (`UnknownMember`, naming it).
-	from_files : { users : Users, channels : Channels } -> Try(
+	from_stored : { users : Users, channels : Channels } -> Try(
 		Directory,
 		[NameTaken, UnknownMember(ChannelName)],
 	)
-	from_files = |{ users, channels }| {
+	from_stored = |{ users, channels }| {
 		all_keys =
 			List.concat(
 				users.to_list()

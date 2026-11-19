@@ -199,8 +199,8 @@ FileSystem :: [].{
 		}
 	}
 
-	## The files the directory is kept in, unchecked, for `Users.from_files`
-	## and `Channels.from_files` to read: the counter of user ids (`NoFile`
+	## The files the directory is kept in, unchecked, for `Users.from_stored`
+	## and `Channels.from_stored` to read: the counter of user ids (`NoFile`
 	## before the first start), each account folder's facts (a folder whose
 	## name is no id is not an account), and each
 	## channel's members file. No auth root, or no folder of channels, holds

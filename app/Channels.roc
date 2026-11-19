@@ -11,7 +11,7 @@
 ## `chat/channel/<name>.channel`, beside the channel's folder of topics,
 ## holding one member's id a line. The admin changes the
 ## members on a channel's page (`ChannelMembersRoute`), or by editing the
-## file. `members_file` writes it, and `from_files` reads
+## file. `members_file` writes it, and `from_stored` reads
 ## it back: each line's spaces off, a blank line or one
 ## starting `#` skipped, and any other line exactly an id, once.
 import Admin
@@ -50,8 +50,8 @@ Channels :: List(Channels.Channel).{
 	## The channels the members files hold, in the order given. Refused
 	## when a line is no id, or an id twice (`BadMembers`, naming the
 	## channel).
-	from_files : List(Channels.StoredChannel) -> Try(Channels, [BadMembers(ChannelName)])
-	from_files = |stored|
+	from_stored : List(Channels.StoredChannel) -> Try(Channels, [BadMembers(ChannelName)])
+	from_stored = |stored|
 		stored.map_try(
 			|{ name, members }| {
 				ids = members_from_file(members) ? |_| BadMembers(name)

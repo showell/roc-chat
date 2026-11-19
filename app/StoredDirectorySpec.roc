@@ -47,7 +47,7 @@ channels_of = |channels| channels.to_list().map(
 
 ## The users the files hold, from `with_team`'s, with `counter`.
 users_with : { counter : Str, accounts : List(Users.StoredAccount) } -> Try(Users, _)
-users_with = |{ counter, accounts }| Users.from_files({ counter: counter.to_utf8(), accounts })
+users_with = |{ counter, accounts }| Users.from_stored({ counter: counter.to_utf8(), accounts })
 
 ## An account's files, as a test writes them.
 account : {
@@ -89,16 +89,16 @@ expect users_with({
 expect {
 	users = Sample.directory_with_ids_left(0).users()
 	users.next_id() == Err(Full)
-		and Users.from_files({
+		and Users.from_stored({
 			counter: users.counter_file(),
 			accounts: accounts_of(users),
 		}) == Ok(users)
 }
 expect {
 	channels =
-		Channels.from_files(channels_of(with_team.channels()))
+		Channels.from_stored(channels_of(with_team.channels()))
 			?? crash "StoredDirectorySpec: the channels read back"
-	Directory.from_files({ users: with_team.users(), channels }) == Ok(with_team)
+	Directory.from_stored({ users: with_team.users(), channels }) == Ok(with_team)
 }
 # The counter may run ahead of the users, never behind or at them.
 expect users_with({
@@ -207,7 +207,7 @@ expect users_with({
 member_ids_of_members_file : Str -> Try(List(Str), _)
 member_ids_of_members_file = |text| {
 	team = ChannelName.from_str("team") ?? crash "StoredDirectorySpec: a channel's name"
-	channels = Channels.from_files([{ name: team, members: text.to_utf8() }])?
+	channels = Channels.from_stored([{ name: team, members: text.to_utf8() }])?
 	Ok(channels.to_list().join_map(|channel| channel.members().map(UserId.to_str)))
 }
 
@@ -235,19 +235,19 @@ expect {
 # member a user.
 expect {
 	stray = ChannelName.from_str("team") ?? crash "a name"
-	channels = Channels.from_files([
+	channels = Channels.from_stored([
 		{ name: stray, members: "1\n9\n".to_utf8() },
 	]) ?? crash "StoredDirectorySpec: the file is ids"
-	Directory.from_files({ users: Sample.directory.users(), channels }) == Err(UnknownMember(stray))
+	Directory.from_stored({ users: Sample.directory.users(), channels }) == Err(UnknownMember(stray))
 }
 expect {
 	clash = ChannelName.from_str("cc") ?? crash "a name"
-	channels = Channels.from_files([
+	channels = Channels.from_stored([
 		{ name: clash, members: "1\n".to_utf8() },
 	]) ?? crash "StoredDirectorySpec: the file is ids"
-	Directory.from_files({ users: Sample.directory.users(), channels }) == Err(NameTaken)
+	Directory.from_stored({ users: Sample.directory.users(), channels }) == Err(NameTaken)
 }
-expect Directory.from_files({
+expect Directory.from_stored({
 	users: Sample.directory.users(),
 	channels: Channels.empty,
 }).map_ok(|directory| directory.chat_owner().user()) == Ok(Sample.steve)

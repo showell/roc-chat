@@ -119,9 +119,9 @@ Sample :: [].{
 	with_default_channel : Directory -> Directory
 	with_default_channel = |users_of| {
 		channels =
-			Channels.from_files([{ name: Channels.default_name, members: "1\n".to_utf8() }])
+			Channels.from_stored([{ name: Channels.default_name, members: "1\n".to_utf8() }])
 				?? crash "Sample.with_default_channel: a members file"
-		Directory.from_files({ users: users_of.users(), channels })
+		Directory.from_stored({ users: users_of.users(), channels })
 			?? crash "Sample.with_default_channel: Steve is a user"
 	}
 
@@ -147,9 +147,9 @@ Sample :: [].{
 		)
 		counter = "${(UserId.past_highest - left).to_str()}\n".to_utf8()
 		users =
-			Users.from_files({ counter, accounts })
+			Users.from_stored({ counter, accounts })
 				?? crash "Sample.directory_with_ids_left: the sample's files read back"
-		Directory.from_files({ users, channels: Channels.empty })
+		Directory.from_stored({ users, channels: Channels.empty })
 			?? crash "Sample.directory_with_ids_left: the sample's names are free"
 	}
 

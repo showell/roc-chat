@@ -25,7 +25,7 @@ with_plans = Channels.empty.create({ by: admin, name: channel_name("plans") }).c
 ## The default channel, holding Steve, and `plans`.
 with_default : Channels
 with_default =
-	Channels.from_files([
+	Channels.from_stored([
 		{ name: Channels.default_name, members: "1\n".to_utf8() },
 		{ name: channel_name("plans"), members: "1\n".to_utf8() },
 	]) ?? crash "ChannelsSpec: the members files read"

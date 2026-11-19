@@ -79,13 +79,13 @@ directory_from_files = |files| {
 			File(bytes) => Ok(bytes)
 			NoFile => Err(StoredDirectory("there is no counter of user ids"))
 		}?
-	users = Users.from_files({
+	users = Users.from_stored({
 		counter,
 		accounts: files.accounts,
 	}) ? |why| StoredDirectory(users_words(why))
 	channels =
-		Channels.from_files(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
-	directory = Directory.from_files({
+		Channels.from_stored(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
+	directory = Directory.from_stored({
 		users,
 		channels,
 	}) ? |why| StoredDirectory(directory_words(why))

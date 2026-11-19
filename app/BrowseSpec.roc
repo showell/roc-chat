@@ -24,11 +24,11 @@ directory = {
 	with_zoe =
 		(Sample.directory.add_human(Sample.name("Zoe")) ?? crash "BrowseSpec: Zoe's name is free").directory
 	channels =
-		Channels.from_files([
+		Channels.from_stored([
 			{ name: channel_name("crew"), members: "1\n3\n".to_utf8() },
 			{ name: channel_name("general"), members: "2\n".to_utf8() },
 		]) ?? crash "BrowseSpec: the members files read"
-	Directory.from_files({ users: with_zoe.users(), channels })
+	Directory.from_stored({ users: with_zoe.users(), channels })
 		?? crash "BrowseSpec: the channels' members are users"
 }
 
