@@ -57,6 +57,7 @@ expect {
 	].all(Presence.counts_as_activity)
 		and !Presence.counts_as_activity(OpenConversationStream(key))
 		and !Presence.counts_as_activity(OpenAgentStream)
+		and !Presence.counts_as_activity(OpenRecentStream)
 }
 
 # The keys: the one the host remembers a human under, and the one a viewer's

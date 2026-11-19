@@ -5,6 +5,7 @@
 ##     GET  /                                  the way in: a 303 to the last conversation, or Browse
 ##     GET  /chat                              Browse, every place you may open
 ##     GET  /chat/recent                       Recent, each conversation's last message
+##     GET  /chat/recent/stream                Recent's live stream
 ##     POST /chat/channel/<channel>            a new topic: `topic=`
 ##     POST /chat/dm/<pair>
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
@@ -114,6 +115,7 @@ Route :: [].{
 		StartGitHubLink,
 		ShowBrowse,
 		ShowRecent,
+		OpenRecentStream,
 		StartTopic(Place),
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
@@ -233,6 +235,11 @@ browse_path_choice = |{ path, method, directory }|
 	} else if path.is_exactly(PageKit.recent_path) {
 		match method {
 			Get => SignedInOnly(ShowRecent)
+			Post | Other => MethodNotAllowed(GetOnly)
+		}
+	} else if path.is_exactly("${PageKit.recent_path}/stream") {
+		match method {
+			Get => SignedInOnly(OpenRecentStream)
 			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else {

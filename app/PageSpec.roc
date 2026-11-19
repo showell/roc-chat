@@ -350,8 +350,11 @@ recent_page : Str -> Str
 recent_page = |parts|
 	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 
-# Recent with no conversation that has a message says so.
-expect steves_recent([]) == recent_page("<p>Nothing yet.</p>\n")
+# Recent with no conversation that has a message says so, above its list,
+# empty, which names its stream.
+expect
+	steves_recent([])
+		== recent_page("<p class=\"empty\">Nothing yet.</p>\n<div class=\"recent-list\" data-stream=\"/chat/recent/stream\"></div>")
 # A channel's tile names the channel and the topic, a DM's the topic and
 # its other human's initial; each says who sent the last message, by their
 # first name ("You" for the viewer), and its excerpt, escaped; a message
@@ -375,6 +378,6 @@ expect {
 		},
 	])
 		== recent_page(
-			"<div class=\"recent-list\"><a class=\"recent-tile\" href=\"/chat/channel/general/plans\"><span class=\"recent-lead\"><span class=\"recent-bar\"></span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-context\">#general<span class=\"recent-dot\">  ·  </span><span class=\"recent-topic\">plans</span></span><time class=\"recent-ago\" datetime=\"2026-11-03T10:00:00Z\">2026-11-03T10:00:00Z</time></span><span class=\"recent-preview\"><span class=\"recent-who\">You: </span>a &lt; b</span></span></a>\n<a class=\"recent-tile\" href=\"/chat/dm/1_2/books\"><span class=\"recent-lead\"><span class=\"recent-avatar\">A</span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-title\">books</span><time class=\"recent-ago\" datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time></span></span></a>\n</div>",
+			"<div class=\"recent-list\" data-stream=\"/chat/recent/stream\"><a class=\"recent-tile\" href=\"/chat/channel/general/plans\"><span class=\"recent-lead\"><span class=\"recent-bar\"></span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-context\">#general<span class=\"recent-dot\">  ·  </span><span class=\"recent-topic\">plans</span></span><time class=\"recent-ago\" datetime=\"2026-11-03T10:00:00Z\">2026-11-03T10:00:00Z</time></span><span class=\"recent-preview\"><span class=\"recent-who\">You: </span>a &lt; b</span></span></a>\n<a class=\"recent-tile\" href=\"/chat/dm/1_2/books\"><span class=\"recent-lead\"><span class=\"recent-avatar\">A</span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-title\">books</span><time class=\"recent-ago\" datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time></span></span></a>\n</div>",
 		)
 }

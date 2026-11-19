@@ -90,26 +90,49 @@ RecentFeed :: [].{
 				},
 		)
 
-	## The Recent page for `viewer`: each of `tiles`, as given, or a line
-	## saying there is nothing yet.
+	## Where a Recent page's live stream is (`RecentStream`).
+	stream_path : Str
+	stream_path = "${PageKit.recent_path}/stream"
+
+	## The Recent page for `viewer`: a line saying there is nothing yet when
+	## `tiles` is empty, then the list of `tiles`, as given, which names its
+	## live stream.
 	page : { viewer : SignedIn, tiles : List(RecentFeed.Tile) } -> TrustedHtml
 	page = |{ viewer, tiles }| {
-		listed =
+		nothing_yet =
 			if tiles.is_empty() {
-				PageKit.paragraph("Nothing yet.")
+				[
+					Html.element({
+						name: P,
+						attributes: [PageContract.class(Empty)],
+						inner: Escape.text("Nothing yet."),
+					}),
+					PageKit.newline,
+				]
 			} else {
-				Html.element({
-					name: Div,
-					attributes: [PageContract.class(RecentList)],
-					inner: TrustedHtml.join(tiles.map(tile_html)),
-				})
+				[]
 			}
+		listed = Html.element({
+			name: Div,
+			attributes: [
+				PageContract.class(RecentList),
+				PageContract.data_attribute(Stream(PageKit.site_path(RecentFeed.stream_path))),
+			],
+			inner: TrustedHtml.join(tiles.map(tile_element)),
+		})
 		PageKit.signed_in_page({
 			title: "Recent",
 			viewer,
-			parts: [listed, PageKit.newline, PageKit.script(Script.Recent), PageKit.newline],
+			parts: List.concat(
+				nothing_yet,
+				[listed, PageKit.newline, PageKit.script(Script.Recent), PageKit.newline],
+			),
 		})
 	}
+
+	## One tile, as the page writes it and its stream sends it.
+	tile_html : RecentFeed.Tile -> TrustedHtml
+	tile_html = |given| tile_element(given)
 }
 
 ## Two paths in byte order.
@@ -161,8 +184,8 @@ span = |class, inner| Html.element({
 })
 
 ## One tile: a link to its conversation's page.
-tile_html : RecentFeed.Tile -> TrustedHtml
-tile_html = |{ key, label, time, who, excerpt }| {
+tile_element : RecentFeed.Tile -> TrustedHtml
+tile_element = |{ key, label, time, who, excerpt }| {
 	topic = key.topic().to_str()
 	(lead, context) =
 		match key.place().which() {

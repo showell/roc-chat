@@ -372,7 +372,12 @@ expect
 		|name| !is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
 	)
 # app/recent.js finds Recent's list, its tiles, their bars and their times
-# by their classes; no conversation script does.
+# by their classes, and reads the list's stream; no conversation script
+# finds them.
+expect is_read_by(
+	Script.Recent.bytes(),
+	"data-stream",
+) and is_found_by(Script.Recent.bytes(), Empty)
 expect
 	[RecentList, RecentTile, RecentBar, RecentAgo].all(
 		|chosen| is_found_by(

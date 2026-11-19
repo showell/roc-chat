@@ -4,7 +4,10 @@
 ## (`Transcript.latest_message`, which reads the last record alone), and
 ## answers. A conversation with no messages yet has no tile.
 ##
-## The route is a human's, by their own session: a key is refused, as
+## A Recent page holds a live stream (`RecentStream`), which this module
+## opens too.
+##
+## Both routes are a human's, by their own session: a key is refused, as
 ## Browse refuses one.
 import pf.Http
 import Browse
@@ -16,6 +19,7 @@ import HttpAnswer
 import Name
 import PageKit
 import RecentFeed
+import RecentStream
 import SignedIn
 import Transcript
 import TranscriptFiles
@@ -51,6 +55,15 @@ RecentRoute :: [].{
 				}
 			}
 			_ => key_refusal
+		}
+
+	## A GET of Recent's stream, for `acting`: live only, since the page is
+	## the backlog; each tile `RecentStream.publish!` sends them after.
+	open_stream : SignedIn -> Http.Response
+	open_stream = |acting|
+		match acting.human_in_session() {
+			Ok(reader) => RecentStream.response(reader.user().id())
+			Err(_) => key_refusal
 		}
 }
 

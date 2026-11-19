@@ -112,6 +112,7 @@ upload_asked = |choice|
 		SignedInOnly(StartGitHubLink) => NoUpload
 		SignedInOnly(ShowBrowse) => NoUpload
 		SignedInOnly(ShowRecent) => NoUpload
+		SignedInOnly(OpenRecentStream) => NoUpload
 		SignedInOnly(StartTopic(_)) => NoUpload
 		SignedInOnly(ShowConversation(_)) => NoUpload
 		SignedInOnly(AppendToConversation(_)) => NoUpload

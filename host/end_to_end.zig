@@ -1174,6 +1174,8 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
 /// #general's roc-chat, then Steve's in his DM with Tam.
 fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { tam: []const u8, uma: []const u8 }) !void {
     const dm_plans = "/chat/dm/1_2/plans";
+    var live = try Stream.open(a, io, port, "/chat/recent/stream");
+    defer live.close();
     const in_channel = try postAs(a, io, port, who.tam, channel_url ++ "/send", "markdown=Tam+in+the+channel");
     try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(1100) }, io);
     const in_dm = try postAs(a, io, port, steve_session, dm_plans ++ "/send", "markdown=Steve+in+the+DM");
@@ -1188,6 +1190,14 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         umas.status == 200 and has(umas.body, "href=\"" ++ channel_url ++ "\"") and !has(umas.body, dm_plans) and
         steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and !has(steves.body, dm_url ++ "\"") and
         has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>"));
+    const first = try live.event();
+    const second = try live.event();
+    try t.check("Recent's stream: Steve's open Recent page is sent each message's tile, as he sees it, Tam's first, then his own", live.isEventStream() and
+        has(steves.body, "data-stream=\"/chat/recent/stream\"") and
+        std.mem.startsWith(u8, first, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ channel_url ++ "\">") and
+        has(first, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and
+        std.mem.startsWith(u8, second, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ dm_plans ++ "\">") and
+        has(second, "<span class=\"recent-who\">You: </span>Steve in the DM"));
 }
 
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and

@@ -48,6 +48,7 @@ import PageKit
 import Presence
 import PresenceNotices
 import Reactions
+import RecentStream
 import ResumeRoute
 import SignedIn
 import Timestamp
@@ -160,7 +161,8 @@ ConversationRoute :: [].{
 	## A message's POST: the conversation `key`, the user `acting`, the
 	## users each message's author is found among, the host's clock `now`
 	## (seconds since the epoch), the form in `body`, and the agents who
-	## hear each message on their own streams (`AgentStream`).
+	## hear each message on their own streams (`AgentStream`), and everyone
+	## who may read it, whose Recent pages are sent its tile (`RecentStream`).
 	Post : {
 		key : ConversationKey,
 		acting : SignedIn,
@@ -168,6 +170,7 @@ ConversationRoute :: [].{
 		now : Timestamp,
 		body : List(U8),
 		agents : List(UserId),
+		readers : List(UserId),
 	}
 }
 
@@ -273,6 +276,16 @@ append_posted_message! = |post| {
 		key: post.key,
 		message: grown.message,
 		agents: post.agents,
+	})
+	RecentStream.publish!({
+		key: post.key,
+		readers: post.readers,
+		users: post.users,
+		latest: {
+			author: grown.message.author(),
+			time: grown.message.time(),
+			markdown: grown.message.markdown(),
+		},
 	})
 	Ok(html)
 }

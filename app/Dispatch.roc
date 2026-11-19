@@ -87,6 +87,7 @@ access_asked = |asked|
 		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
 		ShowRecent => AsksNoConversation
+		OpenRecentStream => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
 		InviteAgent(_) => AsksNoConversation
@@ -124,6 +125,7 @@ anonymous_refusal = |asked|
 		StartGitHubLink => unauthorized_refusal
 		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
 		ShowRecent => SignInRoute.login_redirect(site_path_of(PageKit.recent_path))
+		OpenRecentStream => unauthorized_refusal
 		StartTopic(_) => unauthorized_refusal
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
@@ -302,6 +304,7 @@ answer_route! = |{ asked, request, directory, acting }|
 			})
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
 		ShowRecent => RecentRoute.show!({ acting, directory })
+		OpenRecentStream => RecentRoute.open_stream(acting)
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>
@@ -413,6 +416,7 @@ make_message_post! = |{ key, request, directory, acting }| {
 	now: Clock.read_clock!({}),
 	body: request.body,
 	agents: Access.agent_members({ place: key.place(), directory }),
+	readers: Access.members({ place: key.place(), directory }),
 }
 
 # ── tests

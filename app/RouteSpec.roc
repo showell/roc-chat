@@ -32,6 +32,7 @@ chosen_route = |method, path|
 		SignedInOnly(StartGitHubLink) => "off to GitHub to link it"
 		SignedInOnly(ShowBrowse) => "browse"
 		SignedInOnly(ShowRecent) => "recent"
+		SignedInOnly(OpenRecentStream) => "recent's stream"
 		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
 		SignedInOnly(AppendToConversation(key)) => "append ${key.url_path(Page)}"
@@ -101,12 +102,14 @@ expect
 		"/chat/dm",
 		"/chat/channel",
 	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
-# Recent: GET alone, and exactly its path.
+# Recent and its stream: GET alone, and exactly their paths.
+expect chosen_route("GET", "/chat/recent/stream".to_utf8()) == "recent's stream"
+expect chosen_route("POST", "/chat/recent/stream".to_utf8()) == "not allowed: GET"
 expect chosen_route("GET", "/chat/recent".to_utf8()) == "recent"
 expect chosen_route("POST", "/chat/recent".to_utf8()) == "not allowed: GET"
 expect chosen_route("PUT", "/chat/recent".to_utf8()) == "not allowed: GET"
 expect
-	["/chat/recent/", "/chat/Recent", "/chat/recents", "/chat/recent/stream"].all(
+	["/chat/recent/", "/chat/Recent", "/chat/recents", "/chat/recent/stream/"].all(
 		|path| chosen_route("GET", path.to_utf8()) == "not found",
 	)
 # A new topic: POST alone, to a place that exists.

@@ -53,6 +53,7 @@ Presence :: [].{
 		match asked {
 			OpenConversationStream(_) => Bool.False
 			OpenAgentStream => Bool.False
+			OpenRecentStream => Bool.False
 			_ => Bool.True
 		}
 

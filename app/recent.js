@@ -8,6 +8,10 @@
 // excerpt" preview. The script styles them (chat-client's styles, its colours
 // palette.js's), colours each channel's bar by its name, and says each time
 // as how long ago it was, again every 20 seconds, from its <time datetime>.
+//
+// The list names its live stream (data-stream). Each `tile` event is a
+// conversation's tile after a new message: it takes the place of that
+// conversation's tile, at the top, as chat-client's upsert did.
 (function () {
   'use strict';
   var list = document.querySelector('.recent-list');
@@ -51,7 +55,7 @@
     + '.recent-who { font-weight:600; color:var(--cc-meta-fg); }';
   document.head.appendChild(s);
 
-  if (!list) return; // Nothing yet: the page says so, and has no tiles.
+  if (!list) throw new Error('recent.js: the page has no .recent-list');
 
   // A channel's name, from its tile's link: /chat/channel/<name>/<topic>.
   function channelOf(tile) {
@@ -59,14 +63,15 @@
     return parts[2] === 'channel' ? parts[3] : '';
   }
 
-  list.querySelectorAll('.recent-tile').forEach(function (tile) {
+  function colourBar(tile) {
     var bar = tile.querySelector('.recent-bar');
     if (!bar) return;
     var ch = channelOf(tile);
     var h = 0;
     for (var i = 0; i < ch.length; i++) h = ((h << 5) - h) + ch.charCodeAt(i);
     bar.style.background = CHANNEL_COLORS[Math.abs(h) % CHANNEL_COLORS.length];
-  });
+  }
+  list.querySelectorAll('.recent-tile').forEach(colourBar);
 
   function humanize(iso) {
     var d = Date.now() - new Date(iso).getTime();
@@ -85,4 +90,26 @@
   }
   paintAges();
   setInterval(paintAges, 20000);
+
+  // A new tile replaces its conversation's, matched by its link, and goes
+  // first: its message is the newest.
+  function upsert(html) {
+    var holder = document.createElement('template');
+    holder.innerHTML = html;
+    var tile = holder.content.querySelector('.recent-tile');
+    if (!tile) return;
+    var href = tile.getAttribute('href');
+    list.querySelectorAll('.recent-tile').forEach(function (old) {
+      if (old.getAttribute('href') === href) old.remove();
+    });
+    colourBar(tile);
+    var ago = tile.querySelector('.recent-ago');
+    if (ago) ago.textContent = humanize(ago.getAttribute('datetime'));
+    list.insertBefore(tile, list.firstChild);
+    var empty = document.querySelector('.empty');
+    if (empty) empty.remove();
+  }
+
+  var events = new EventSource(list.getAttribute('data-stream'));
+  events.addEventListener('tile', function (e) { upsert(e.data); });
 })();
