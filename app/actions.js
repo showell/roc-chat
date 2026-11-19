@@ -1,8 +1,8 @@
 // This script runs on a conversation page, which app/ConversationPage.roc
 // builds and app/Script.roc serves. It gives each message its actions:
-// reacting with an emoji, and editing the viewer's own, as chat-client's
-// messages did (js/message.js, js/chat_reactions.js and js/chat.js's
-// doEdit). It runs after compose.js and feed.js, and feed.js hands it each
+// reacting with an emoji, quoting it in a reply, and editing the viewer's
+// own, as chat-client's messages did (js/message.js, js/chat_reactions.js
+// and js/chat.js's doQuote and doEdit). It runs after compose.js and feed.js, and feed.js hands it each
 // message the stream brings, or brings again (Actions.dress).
 //
 // The server draws everything a message shows, its reactions and its edit
@@ -27,6 +27,14 @@
 // `?message=<n>`) and loads the box with that line, a blank line and the
 // markdown, the caret after the blank line. Sending it is the box's own
 // send. The server marks the original edited and the stream redraws it.
+//
+// A quote-reply is chat-client's (js/chat.js's doQuote). The "quote-reply"
+// button, on every message, or the `q` or `>` key on the selected one, reads
+// the message's markdown as written, as an edit does, opens the box and puts
+// at its caret "In <reference> I said:" ("you said:" for another's), the
+// markdown in a tilde fence whose language is `quote`, and a blank line, the
+// caret after it. roc-markdown draws that fence as a quoted message
+// (<pre class="chat-quote">) and the reference as a link to the message.
 //
 // In a narrow window (chrome.js's layout-narrow), a phone's, the buttons, the
 // reactions and the picker's emojis are larger, for a finger, and the
@@ -192,6 +200,34 @@
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePicker(); });
 
+  // The tilde fence a quote wraps `markdown` in: one longer than its longest
+  // line-opening run of tildes, at least three, so a quote of a quote stays
+  // whole (chat-client's pickQuoteFence).
+  function quoteFence(markdown) {
+    var runs = markdown.match(/^~{3,}/gm) || [];
+    var longest = runs.reduce(function (most, run) { return Math.max(most, run.length); }, 2);
+    return '~'.repeat(longest + 1);
+  }
+
+  // Puts a quote-reply of `article` at the box's caret, as chat-client's
+  // doQuote did: "In <reference> I said:" (or "you said:", another's), its
+  // markdown in a `quote` fence, a blank line, and the caret after it.
+  function quote(article) {
+    var ref = article.querySelector('header .message-reference');
+    if (!ref) return;
+    fetch(rawUrl + '?message=' + numberOf(article)).then(function (r) {
+      return r.text().then(function (text) {
+        if (!r.ok) {
+          showFailure('The message could not be read: ' + text.trim());
+          return;
+        }
+        var fence = quoteFence(text);
+        var said = isMine(article) ? 'I said' : 'you said';
+        Compose.insert('In ' + ref.textContent + ' ' + said + ':\n' + fence + ' quote\n' + text + '\n' + fence + '\n\n');
+      });
+    }).catch(function () { showFailure('The message could not be read: the server did not answer.'); });
+  }
+
   // Loads the box with an edit of `article`, the viewer's own.
   function edit(article) {
     if (!isMine(article)) return;
@@ -229,6 +265,12 @@
     react.textContent = 'react';
     react.title = 'React with an emoji (:)';
     actions.appendChild(react);
+    var quoteButton = document.createElement('button');
+    quoteButton.type = 'button';
+    quoteButton.className = 'quote-open';
+    quoteButton.textContent = 'quote-reply';
+    quoteButton.title = 'Quote this message in a reply (q)';
+    actions.appendChild(quoteButton);
     if (isMine(article)) {
       var editButton = document.createElement('button');
       editButton.type = 'button';
@@ -246,6 +288,7 @@
     var chip = e.target.closest('.reaction-chip');
     if (chip) { toggle(article, emojiOf(chip)); return; }
     if (e.target.closest('.react-open')) { openPicker(article); return; }
+    if (e.target.closest('.quote-open')) { quote(article); return; }
     if (e.target.closest('.edit-open')) edit(article);
   });
 
@@ -262,6 +305,12 @@
     var article = selectedMessage();
     if (article) edit(article);
   } });
+  function quoteSelected() {
+    var article = selectedMessage();
+    if (article) quote(article);
+  }
+  Keys.register({ key: 'q', label: 'quote-reply to the selected message', run: quoteSelected });
+  Keys.register({ key: '>', label: 'quote-reply, as q does', run: quoteSelected });
 
   var drawn = messages.querySelectorAll('.message');
   for (var j = 0; j < drawn.length; j++) dress(drawn[j]);

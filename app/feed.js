@@ -68,6 +68,11 @@
       ' background: var(--cc-accent-soft-bg); color: var(--cc-accent); padding: 0 4px; border-radius: 3px; text-decoration: none; }',
     '.message .body a.msg-ref:hover { background: var(--cc-accent-soft-hov); }',
     '.message .body pre { background: var(--cc-code-bg); padding: 8px; border-radius: 4px; overflow-x: auto; }',
+    // A quote-reply's quoted message, roc-markdown's pre.chat-quote, as
+    // chat-client's js/message.js drew it.
+    '.message .body pre.chat-quote { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere;' +
+      ' background: var(--cc-quote-bg); border-left: 3px solid var(--cc-quote-border); border-radius: 0 4px 4px 0;' +
+      ' margin: 6px 0; padding: 6px 10px; color: var(--cc-body-muted-fg); overflow-x: visible; }',
     '.message .body img { max-width: 100%; max-height: 320px; width: auto; height: auto; display: block; margin: 6px 0; border-radius: 6px; }',
     '.message .body video { max-width: 100%; max-height: 480px; display: block; margin: 6px 0; border-radius: 6px; }',
     '.message .body table { border-collapse: collapse; }',

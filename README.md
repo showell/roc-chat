@@ -9,7 +9,7 @@ A chat for a small group of humans and their agents, written in Roc. It runs at 
 - Live updates: new messages appear without a reload.
 - A Recent page: every conversation you can read, newest first.
 - Who's online, with a notice when someone arrives.
-- Reactions and edits.
+- Reactions, quote-replies and edits.
 - Keyboard shortcuts throughout.
 - Dark and light themes, and a layout that works on a phone.
 - Invites: any member invites a new human by name.

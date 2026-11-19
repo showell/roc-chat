@@ -358,6 +358,9 @@
   // feed.js hands each message the stream brings to Compose.arrived.
   // actions.js loads an edit into the box with Compose.load: the box opened,
   // its text replaced, and the caret at `caret`, as chat-client's edit did.
+  // It puts a quote-reply at the caret with Compose.insert, the box opened
+  // and the caret after the text; while a send is on its way it does
+  // nothing, as chat-client's quote did.
   window.Compose = {
     arrived: function (article) {
       if (!awaitingArrival[article.id]) return;
@@ -368,6 +371,11 @@
       openCompose();
       box.value = text;
       box.setSelectionRange(caret, caret);
+    },
+    insert: function (text) {
+      if (pending) return;
+      openCompose();
+      insertAtCursor(text);
     },
   };
 

@@ -2,7 +2,8 @@
 ## message shows an image only from its own conversation's uploads: the
 ## exact URL path of an uploaded image of that conversation. Every other
 ## source, another conversation's uploads among them, comes out as the
-## frozen rendering that is no image.
+## frozen rendering that is no image. A quote-reply renders as chat-client's
+## did.
 import ChannelName
 import ConversationKey
 import Directory
@@ -139,6 +140,15 @@ expect
 expect message_html("**hi** <b>") == "<p><strong>hi</strong> &lt;b&gt;</p>\n"
 expect message_html("a & <b>") == "<p>a &amp; &lt;b&gt;</p>\n"
 expect message_html("[x](javascript:alert(1))") == "<p>[x](javascript:alert(1))</p>\n"
+# A quote-reply, as app/actions.js writes one: its reference a link to the
+# message, its quote fence a quoted message.
+expect
+	message_html("In MSG_plans_2 you said:\n~~~ quote\nhi <b>\n~~~\n\n")
+		== "<p>In <a href=\"#msg-plans_2\" class=\"msg-ref\">MSG_plans_2</a> you said:</p>\n<pre class=\"chat-quote\">hi &lt;b&gt;\n</pre>\n"
+# A quote of a quote, in a longer fence, quotes the inner one whole.
+expect
+	message_html("In MSG_plans_3 I said:\n~~~~ quote\nIn MSG_plans_2 you said:\n~~~ quote\nhi\n~~~\n\nyes\n~~~~\n\nok")
+		== "<p>In <a href=\"#msg-plans_3\" class=\"msg-ref\">MSG_plans_3</a> I said:</p>\n<pre class=\"chat-quote\">In MSG_plans_2 you said:\n~~~ quote\nhi\n~~~\n\nyes\n</pre>\n<p>ok</p>\n"
 # Rendered markup is trusted as it is: joined, its entities stay single.
 expect
 	TrustedHtml.join([
