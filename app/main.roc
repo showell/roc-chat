@@ -135,13 +135,13 @@ start! = |{}| DirectoryStore.prepare_directory!({})
 check_request_head! : Http.RequestHead => Http.Admission
 check_request_head! = |head|
 	match RequestOrigin.check(Admission.origin_of_head(head)) {
-		Err(why) => Refuse(Admission.with_same_origin_resource_policy(Admission.origin_refusal(why)))
+		Err(why) => Admission.head_refusal(Admission.origin_refusal(why))
 		Ok({}) =>
 			match DirectoryStore.load_directory!({}) {
-				Err(why) => Refuse(Admission.with_same_origin_resource_policy(DirectoryStore.directory_refusal(why)))
+				Err(why) => Admission.head_refusal(DirectoryStore.directory_refusal(why))
 				Ok(directory) =>
 					match Actor.load_actor!({ headers: head.headers, directory }) {
-						Err(why) => Refuse(Admission.with_same_origin_resource_policy(Actor.identity_refusal(why)))
+						Err(why) => Admission.head_refusal(Actor.identity_refusal(why))
 						Ok(actor) => Admission.admission_in({ head, directory, actor })
 					}
 			}

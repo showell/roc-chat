@@ -45,13 +45,17 @@ Admission :: [].{
 	} -> Http.Admission
 	admission_in = |{ head, directory, actor }|
 		match RequestOrigin.check(Admission.origin_of_head(head)) {
-			Err(why) =>
-				Refuse(Admission.with_same_origin_resource_policy(Admission.origin_refusal(why)))
+			Err(why) => Admission.head_refusal(Admission.origin_refusal(why))
 			Ok({}) => {
 				choice = Route.choose({ method: head.method, path: head.path, directory })
 				Admit(body_allowance({ choice, directory, actor }))
 			}
 		}
+
+	## The refusal of a request from its head, with `answer`, which no other
+	## site's page may load.
+	head_refusal : Http.Response -> Http.Admission
+	head_refusal = |answer| Refuse(Admission.with_same_origin_resource_policy(answer))
 
 	## The 403 for a request from elsewhere, saying why.
 	origin_refusal : RequestOrigin.Refusal -> Http.Response

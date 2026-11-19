@@ -84,7 +84,11 @@ directory_from_files = |files| {
 		accounts: files.accounts,
 	}) ? |why| StoredDirectory(users_words(why))
 	channels =
-		Channels.from_stored(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
+		match Channels.from_stored(files.channels) {
+			Ok(stored) => Ok(stored)
+			Err(BadMembers(name)) =>
+				Err(StoredDirectory("the members of #${name.to_str()} are not one id a line"))
+		}?
 	directory = Directory.from_stored({
 		users,
 		channels,
