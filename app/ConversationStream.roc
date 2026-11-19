@@ -116,9 +116,13 @@ ConversationStream :: [].{
 	frame : { id : Message.Id, html : TrustedHtml } -> List(U8)
 	frame = |{ id, html }| {
 		lines = line_feeds_only(html.to_utf8())
-		"id: ${id.to_str()}\n"
-			.to_utf8()
-			.concat(lines.split_on('\n').join_map(|line| "data: ".to_utf8().concat(line).append('\n')))
+		List.concat(
+			"id: ${id.to_str()}\n"
+				.to_utf8(),
+			lines.split_on('\n').join_map(
+				|line| List.concat("data: ".to_utf8(), line).append('\n'),
+			),
+		)
 			.append('\n')
 	}
 }

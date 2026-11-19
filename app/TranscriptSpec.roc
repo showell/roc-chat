@@ -264,7 +264,7 @@ grown_on_disk = |before, unnumbered_message| {
 		grown,
 		file: File(Transcript.Utf8Transcript.unchecked_from_file(file)),
 	}) ?? crash "TranscriptSpec: a sample's record fits"
-	{ bytes: file.concat(record.to_utf8_bytes()), grown: grown.conversation }
+	{ bytes: List.concat(file, record.to_utf8_bytes()), grown: grown.conversation }
 }
 
 expect

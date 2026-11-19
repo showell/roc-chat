@@ -208,10 +208,14 @@ form_of = |{ filename, file }| {
 	headers: [
 		{ name: "Content-Type".to_utf8(), value: "multipart/form-data; boundary=XyZ".to_utf8() },
 	],
-	body: "--XyZ\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${filename}\"\r\nContent-Type: image/png\r\n\r\n"
-		.to_utf8()
-		.concat(file)
-		.concat("\r\n--XyZ--\r\n".to_utf8()),
+	body: List.concat(
+		List.concat(
+			"--XyZ\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${filename}\"\r\nContent-Type: image/png\r\n\r\n"
+				.to_utf8(),
+			file,
+		),
+		"\r\n--XyZ--\r\n".to_utf8(),
+	),
 }
 
 # An image, by its bytes whatever its name.

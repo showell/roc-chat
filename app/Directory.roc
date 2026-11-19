@@ -177,9 +177,11 @@ Directory :: {
 	)
 	from_files = |{ users, channels }| {
 		all_keys =
-			users.to_list()
-				.map(|user| user.name().key())
-				.concat(channels.to_list().map(|channel| channel.name().key()))
+			List.concat(
+				users.to_list()
+					.map(|user| user.name().key()),
+				channels.to_list().map(|channel| channel.name().key()),
+			)
 		keys = Set.from_list(all_keys)
 		if keys.len() != all_keys.len() {
 			Err(NameTaken)

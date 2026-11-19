@@ -98,14 +98,14 @@ Session :: [].{
 				NoGitHub => Session.Material.(password_hash.bytes())
 				GitHub(word) => {
 					with_line_feed = password_hash.bytes().append('\n')
-					Session.Material.(with_line_feed.concat(word.bytes()))
+					Session.Material.(List.concat(with_line_feed, word.bytes()))
 				}
 			}
 
 		## The material of a human with no password, whose
 		## `github-session-secret` file keeps `word`.
 		from_github_alone : GitHubSessionWord -> Session.Material
-		from_github_alone = |word| Session.Material.(['\n'].concat(word.bytes()))
+		from_github_alone = |word| Session.Material.(List.concat(['\n'], word.bytes()))
 
 		## The material's bytes, to sign.
 		bytes_to_sign : Session.Material -> List(U8)
@@ -121,7 +121,7 @@ Session :: [].{
 	} -> List(U8)
 	signed_bytes = |
 		{ id, signed_at, material },
-	| "${id.to_str()}\n${signed_at.to_str()}\n".to_utf8().concat(material.bytes_to_sign())
+	| List.concat("${id.to_str()}\n${signed_at.to_str()}\n".to_utf8(), material.bytes_to_sign())
 
 	## The claim of the request's `Cookie` header, `header`; unless it holds
 	## no session cookie (`NoSession`), or one that is no claim, or more than

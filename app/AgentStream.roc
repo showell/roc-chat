@@ -73,7 +73,7 @@ AgentStream :: [].{
 			("date", JsonOut.string(message.time().to_str())),
 			("markdown", JsonOut.string(message.markdown())),
 		])
-		"data: ".to_utf8().concat(fields.bytes()).concat("\n\n".to_utf8())
+		List.concat(List.concat("data: ".to_utf8(), fields.bytes()), "\n\n".to_utf8())
 	}
 
 	## The most messages of one conversation a backlog sends: its newest.
@@ -94,7 +94,7 @@ AgentStream :: [].{
 				conversation
 					.messages()
 					.map_with_index(|message, at| { key, message, place, at })
-					.keep_if(|m| m.message.time().compare(since) != Before)
+					.keep_if(|m| DateTime.compare(m.message.time(), since) != Before)
 					.take_last(AgentStream.backlog_most_per_conversation),
 		).join()
 		dated
@@ -152,7 +152,7 @@ Dated : {
 ## list, then by the message's.
 order_by_time_then_place : Dated, Dated -> [Before, Same, After]
 order_by_time_then_place = |a, b|
-	match a.message.time().compare(b.message.time()) {
+	match DateTime.compare(a.message.time(), b.message.time()) {
 		Before => Before
 		After => After
 		Same => if a.place != b.place {

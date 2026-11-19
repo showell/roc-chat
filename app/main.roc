@@ -1041,7 +1041,7 @@ head_of = |line, more_headers| {
 	{
 		method: method.to_utf8(),
 		path: path.to_utf8(),
-		headers: [("Host", "localhost:9611")].concat(more_headers).map(
+		headers: List.concat([("Host", "localhost:9611")], more_headers).map(
 			|(name, value)| { name: name.to_utf8(), value: value.to_utf8() },
 		),
 		port: 9611,

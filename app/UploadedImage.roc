@@ -135,7 +135,7 @@ kind_of_extension = |bytes|
 
 # ── tests
 # An image is what its bytes say: each kind at its opening bytes.
-expect UploadedImage.checked_bytes(png_signature.concat([0, 0])) == Ok(Png)
+expect UploadedImage.checked_bytes(List.concat(png_signature, [0, 0])) == Ok(Png)
 expect UploadedImage.checked_bytes(png_signature) == Ok(Png)
 expect UploadedImage.checked_bytes([0xFF, 0xD8, 0xFF, 0xE0]) == Ok(Jpeg)
 expect UploadedImage.checked_bytes([0xFF, 0xD8, 0xFF]) == Ok(Jpeg)
@@ -162,13 +162,13 @@ expect UploadedImage.most_bytes == 10485760
 # Its size: at the most and one byte under it, and one byte over, an image
 # whatever follows its opening; one too large and no image is no image.
 expect UploadedImage.checked_bytes(
-	png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 8)),
+	List.concat(png_signature, List.repeat(0, UploadedImage.most_bytes - 8)),
 ) == Ok(Png)
 expect UploadedImage.checked_bytes(
-	png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 9)),
+	List.concat(png_signature, List.repeat(0, UploadedImage.most_bytes - 9)),
 ) == Ok(Png)
 expect UploadedImage.checked_bytes(
-	png_signature.concat(List.repeat(0, UploadedImage.most_bytes - 7)),
+	List.concat(png_signature, List.repeat(0, UploadedImage.most_bytes - 7)),
 ) == Err(TooLarge)
 expect UploadedImage.checked_bytes(List.repeat(0, UploadedImage.most_bytes + 1)) == Err(NotAnImage)
 # A fresh name: the random bytes in lowercase hex, and its kind's extension.

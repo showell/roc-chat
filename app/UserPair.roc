@@ -11,7 +11,7 @@ UserPair :: { low : UserId, high : UserId }.{
 	## The pair of `a` and `b`, given in either order.
 	of : { a : UserId, b : UserId } -> UserPair
 	of = |{ a, b }|
-		match a.compare(b) {
+		match UserId.compare(a, b) {
 			After => UserPair.({ low: b, high: a })
 			_ => UserPair.({ low: a, high: b })
 		}
@@ -27,7 +27,7 @@ UserPair :: { low : UserId, high : UserId }.{
 					(
 						Ok(low),
 						Ok(high),
-					) if low.compare(high) != After => Ok(UserPair.({ low, high }))
+					) if UserId.compare(low, high) != After => Ok(UserPair.({ low, high }))
 					_ => Err(NotAUserPair)
 				}
 			_ => Err(NotAUserPair)

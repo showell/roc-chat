@@ -146,7 +146,7 @@ expect
 	].all(|text| UserId.from_file(text.to_utf8()) == Err(NotAUserId))
 # The order, both ways round, the same id, and by number rather than by
 # text.
-expect UserId.chat_owner.compare(UserId.(2)) == Before
-expect UserId.(2).compare(UserId.chat_owner) == After
-expect UserId.(2).compare(UserId.(2)) == Same
-expect UserId.(9).compare(UserId.(10)) == Before
+expect UserId.compare(UserId.chat_owner, UserId.(2)) == Before
+expect UserId.compare(UserId.(2), UserId.chat_owner) == After
+expect UserId.compare(UserId.(2), UserId.(2)) == Same
+expect UserId.compare(UserId.(9), UserId.(10)) == Before

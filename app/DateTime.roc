@@ -162,7 +162,7 @@ civil_from_days = |days| {
 padded_digits : I64, U64 -> Str
 padded_digits = |n, width| {
 	written = n.to_str()
-	"0".repeat(width - written.count_utf8_bytes()).concat(written)
+	Str.concat("0".repeat(width - written.count_utf8_bytes()), written)
 }
 
 ## The order of two forms' bytes, by the first that differs.
@@ -264,7 +264,7 @@ order : (Str, Str) -> ([Before, Same, After], [Before, Same, After])
 order = |(earlier, later)| {
 	first = DateTime.from_str(earlier) ?? crash "DateTime's tests: a time"
 	second = DateTime.from_str(later) ?? crash "DateTime's tests: a time"
-	(first.compare(second), second.compare(first))
+	(DateTime.compare(first, second), DateTime.compare(second, first))
 }
 
 expect order(("2026-11-02T19:11:32Z", "2026-11-02T19:11:32Z")) == (Same, Same)

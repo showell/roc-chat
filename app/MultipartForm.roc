@@ -44,7 +44,7 @@ MultipartForm :: [].{
 		[NoFile],
 	)
 	file_part = |body, MultipartForm.Boundary.(boundary)| {
-		delimiter = "--".to_utf8().concat(boundary)
+		delimiter = List.concat("--".to_utf8(), boundary)
 		opening = index_of(body, { needle: delimiter, from: 0 }) ? |NotFound| NoFile
 		headers_at = opening + delimiter.len() + 2
 		if body.sublist({ start: opening + delimiter.len(), len: 2 }) != "\r\n".to_utf8() {
@@ -55,7 +55,7 @@ MultipartForm :: [].{
 				{ needle: "\r\n\r\n".to_utf8(), from: headers_at },
 			) ? |NotFound| NoFile
 			headers = body.sublist({ start: headers_at, len: headers_end - headers_at })
-			closing = "\r\n".to_utf8().concat(delimiter).concat("--".to_utf8())
+			closing = List.concat(List.concat("\r\n".to_utf8(), delimiter), "--".to_utf8())
 			file_and_closing =
 				body.drop_first(headers_end + 4).drop_last(trailing_line_breaks(body))
 			if quoted_attribute(
@@ -158,7 +158,7 @@ count_from_end = |bytes, passes|
 quoted_attribute : List(U8), Str -> Try(List(U8), [Missing])
 quoted_attribute = |headers, name| quoted_attribute_from(
 	headers,
-	{ needle: name.to_utf8().concat("=\"".to_utf8()), from: 0 },
+	{ needle: List.concat(name.to_utf8(), "=\"".to_utf8()), from: 0 },
 )
 
 quoted_attribute_from : List(U8), { needle : List(U8), from : U64 } -> Try(List(U8), [Missing])
@@ -199,7 +199,10 @@ png = [0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 0]
 ## headers, the bytes, the closing delimiter and a line break.
 form : { headers : Str, file : List(U8) } -> List(U8)
 form = |{ headers, file }|
-	"--XyZ\r\n${headers}\r\n\r\n".to_utf8().concat(file).concat("\r\n--XyZ--\r\n".to_utf8())
+	List.concat(
+		List.concat("--XyZ\r\n${headers}\r\n\r\n".to_utf8(), file),
+		"\r\n--XyZ--\r\n".to_utf8(),
+	)
 
 ## The boundary a form's Content-Type names after `boundary=`, as a test
 ## reads it, or why there is none.
@@ -261,7 +264,7 @@ expect
 # The file: its name and its bytes exactly, a CR LF and a near delimiter
 # inside them kept.
 expect {
-	data = png.concat("\r\n--Xy".to_utf8())
+	data = List.concat(png, "\r\n--Xy".to_utf8())
 	got = file_of(
 		form({
 			headers: "${file_part_headers}; filename=\"cat.png\"\r\nContent-Type: image/png",
@@ -273,11 +276,12 @@ expect {
 # No line break after the closing delimiter, or two: the same file.
 expect {
 	body =
-		"--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8()
-			.concat(png)
-			.concat("\r\n--XyZ--".to_utf8())
+		List.concat(
+			List.concat("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8(), png),
+			"\r\n--XyZ--".to_utf8(),
+		)
 	file_of(body) == Ok({ filename: "image".to_utf8(), bytes: png })
-		and file_of(body.concat("\r\n\r\n".to_utf8())) == Ok({
+		and file_of(List.concat(body, "\r\n\r\n".to_utf8())) == Ok({
 			filename: "image".to_utf8(),
 			bytes: png,
 		})
@@ -308,10 +312,15 @@ expect MultipartForm.file_part(
 	form({ headers: file_part_headers, file: png }),
 	boundary("Abc"),
 ) == Err(NoFile)
-expect file_of("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8().concat(png)) == Err(NoFile)
-expect file_of("--XyZ\r\n${file_part_headers}\r\n".to_utf8().concat(png)) == Err(NoFile)
+expect file_of(List.concat("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8(), png)) == Err(NoFile)
+expect file_of(List.concat("--XyZ\r\n${file_part_headers}\r\n".to_utf8(), png)) == Err(NoFile)
 expect
-	file_of("--XyZ${file_part_headers}\r\n\r\n".to_utf8().concat(png).concat("\r\n--XyZ--".to_utf8()))
+	file_of(
+		List.concat(
+			List.concat("--XyZ${file_part_headers}\r\n\r\n".to_utf8(), png),
+			"\r\n--XyZ--".to_utf8(),
+		),
+	)
 		== Err(NoFile)
 expect file_of([]) == Err(NoFile)
 # The browser's name: UTF-8 as it is; else ASCII kept and the rest U+FFFD.

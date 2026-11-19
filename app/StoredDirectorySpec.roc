@@ -84,7 +84,7 @@ expect users_with({
 }) == Ok(Sample.directory.users())
 expect users_with({
 	counter: "4\n",
-	accounts: accounts_of(Sample.directory.users()).sort_with(|a, b| b.id.compare(a.id)),
+	accounts: accounts_of(Sample.directory.users()).sort_with(|a, b| UserId.compare(b.id, a.id)),
 }) == Ok(Sample.directory.users())
 expect {
 	users = Sample.directory_with_ids_left(0).users()

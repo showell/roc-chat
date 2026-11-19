@@ -509,7 +509,7 @@ expect
 		"to=/agents",
 		"next=/agents&x=1",
 	].all(|query| SignInRoute.next_from_query(query.to_utf8()) == Err(BadNext))
-expect SignInRoute.next_from_query("next=/".to_utf8().concat([0xff])) == Err(BadNext)
+expect SignInRoute.next_from_query(List.concat("next=/".to_utf8(), [0xff])) == Err(BadNext)
 # A form's `next`: none is /chat; a path on this site, decoded, is itself;
 # any other, or two, refused.
 expect next_text(next_from_form("name=Steve".to_utf8())) == Ok("/chat")

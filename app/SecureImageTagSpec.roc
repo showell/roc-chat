@@ -93,7 +93,7 @@ expect
 	].all(|source| !SecureImageTag.is_conversation_upload(plans, source.to_utf8()))
 expect !SecureImageTag.is_conversation_upload(
 	plans,
-	"/chat/dm/1_1/plans/uploads/".to_utf8().concat([0xFF]),
+	List.concat("/chat/dm/1_1/plans/uploads/".to_utf8(), [0xFF]),
 )
 
 # Through the renderer: the conversation's own image is an image, by

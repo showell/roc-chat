@@ -241,7 +241,7 @@ Page :: [].{
 		])
 		article = Html.element({
 			name: Article,
-			attrs: [Page.class(Message), Id(anchor(message_reference))].concat(author_attrs),
+			attrs: List.concat([Page.class(Message), Id(anchor(message_reference))], author_attrs),
 			inner: TrustedHtml.join([
 				Html.element({ name: Header, attrs: [], inner: header }),
 				newline,
@@ -349,7 +349,7 @@ Page :: [].{
 					inner: Html.element({
 						name: Div,
 						attrs: [Page.class(Panel)],
-						inner: TrustedHtml.join([newline].concat(parts)),
+						inner: TrustedHtml.join(List.concat([newline], parts)),
 					}),
 				}),
 				newline,
@@ -429,11 +429,14 @@ Page :: [].{
 				inner: TrustedHtml.join([
 					labelled_input({
 						label: "New topic",
-						attrs: [
-							InputType(Text),
-							FieldName(token(UrlEncodedForm.topic_name)),
-							Required,
-						].concat(filled),
+						attrs: List.concat(
+							[
+								InputType(Text),
+								FieldName(token(UrlEncodedForm.topic_name)),
+								Required,
+							],
+							filled,
+						),
 					}),
 					Html.element({
 						name: Button,
@@ -628,12 +631,15 @@ Page :: [].{
 			inner: TrustedHtml.join([
 				labelled_input({
 					label: "Your name",
-					attrs: [
-						InputType(Text),
-						FieldName(token("name")),
-						Autocomplete(Username),
-						Required,
-					].concat(filled),
+					attrs: List.concat(
+						[
+							InputType(Text),
+							FieldName(token("name")),
+							Autocomplete(Username),
+							Required,
+						],
+						filled,
+					),
 				}),
 				Html.element({
 					name: Button,

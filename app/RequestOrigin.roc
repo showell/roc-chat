@@ -91,7 +91,11 @@ RequestOrigin :: [].{
 			Repeated => Err(ForeignHost)
 			Sent(host) => {
 				pairs = own_origins({ port, public_origin }).join_map(
-					|kind| kind.hosts.map2(kind.origins, |named, origin| (named, origin)),
+					|kind| List.map2(
+						kind.hosts,
+						kind.origins,
+						|named, origin| (named, origin),
+					),
 				)
 				match pairs.find_first(|(named, _)| named == host) {
 					Ok((_, origin)) => Str.from_utf8(origin).map_err(|_| ForeignHost)
@@ -128,7 +132,7 @@ own_origins = |{ port, public_origin }| {
 	local_hosts = ["127.0.0.1:${port.to_str()}".to_utf8(), "localhost:${port.to_str()}".to_utf8()]
 	local = {
 		hosts: local_hosts,
-		origins: local_hosts.map(|host| "http://".to_utf8().concat(host)),
+		origins: local_hosts.map(|host| List.concat("http://".to_utf8(), host)),
 	}
 	if public_origin.is_empty() {
 		[local]
@@ -217,7 +221,10 @@ expect verdict("GET", [("X-Host", "localhost:9611")]) == Err(MissingHost)
 # A write's Origin and Sec-Fetch-Site, both sides; neither sent (curl) passes.
 ## A POST to localhost:9611 with `more_headers`.
 post_verdict : List((Str, Str)) -> Try({}, _)
-post_verdict = |more_headers| verdict("POST", [("Host", "localhost:9611")].concat(more_headers))
+post_verdict = |more_headers| verdict(
+	"POST",
+	List.concat([("Host", "localhost:9611")], more_headers),
+)
 
 expect post_verdict([]) == Ok({})
 expect post_verdict([("Origin", "http://localhost:9611")]) == Ok({})
@@ -268,7 +275,10 @@ expect
 # refused, an EventSource's from another page included.
 ## A GET of localhost:9611 with `more_headers`.
 verdict_of_get : List((Str, Str)) -> Try({}, _)
-verdict_of_get = |more_headers| verdict("GET", [("Host", "localhost:9611")].concat(more_headers))
+verdict_of_get = |more_headers| verdict(
+	"GET",
+	List.concat([("Host", "localhost:9611")], more_headers),
+)
 
 expect verdict_of_get([]) == Ok({})
 expect verdict_of_get([("Origin", "http://localhost:9611")]) == Ok({})
@@ -325,7 +335,7 @@ public_name_verdict : {
 public_name_verdict = |{ method, more_headers, public_origin }|
 	public_verdict({
 		method,
-		headers: [("Host", "chat.example.com")].concat(more_headers),
+		headers: List.concat([("Host", "chat.example.com")], more_headers),
 		public_origin,
 	})
 
@@ -368,7 +378,11 @@ expect public_name_verdict({
 	more_headers: [("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "cors")],
 	public_origin: "https://chat.example.com",
 }) == Err(CrossSiteFetch)
-expect public_name_verdict({ method: "GET", more_headers: [], public_origin: "" }) == Err(ForeignHost)
+expect public_name_verdict({
+	method: "GET",
+	more_headers: [],
+	public_origin: "",
+}) == Err(ForeignHost)
 expect public_name_verdict({
 	method: "POST",
 	more_headers: [("Origin", "https://chat.example.com")],

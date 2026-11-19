@@ -52,10 +52,14 @@ PeoplePages :: [].{
 		Page.signed_in_page({
 			title: "#${channel.name().to_str()}",
 			viewer,
-			parts: [Page.text_paragraph("Members: ${members.len().to_str()}.")]
-				.concat(members.map(|user| row(user, Remove)))
-				.append(Page.text_paragraph("Everyone else:"))
-				.concat(others.map(|user| row(user, Add))),
+			parts: List.concat(
+				List.concat(
+					[Page.text_paragraph("Members: ${members.len().to_str()}.")],
+					members.map(|user| row(user, Remove)),
+				)
+					.append(Page.text_paragraph("Everyone else:")),
+				others.map(|user| row(user, Add)),
+			),
 		})
 	}
 
@@ -116,15 +120,20 @@ PeoplePages :: [].{
 		Page.signed_in_page({
 			title: "Invites",
 			viewer,
-			parts: said
-				.concat(code)
-				.concat([
-					Page.text_paragraph(invite_purpose(github)),
-					Page.text_paragraph(invite_steps),
-					form,
-				])
-				.concat(open_section_parts(waiting_humans, context))
-				.concat(past_section_parts(past_humans, context)),
+			parts: List.concat(
+				List.concat(
+					List.concat(
+						List.concat(said, code),
+						[
+							Page.text_paragraph(invite_purpose(github)),
+							Page.text_paragraph(invite_steps),
+							form,
+						],
+					),
+					open_section_parts(waiting_humans, context),
+				),
+				past_section_parts(past_humans, context),
+			),
 		})
 	}
 }
@@ -195,10 +204,13 @@ open_section_parts = |waiting_humans, context| {
 	if waiting_humans.is_empty() {
 		[heading, Page.text_paragraph("No open invites.")]
 	} else {
-		[
-			heading,
-			Page.text_paragraph("A link is shown only once. If one is lost, invite them again for a new link."),
-		].concat(waiting_humans.map(|human| invited_rows(human, context)))
+		List.concat(
+			[
+				heading,
+				Page.text_paragraph("A link is shown only once. If one is lost, invite them again for a new link."),
+			],
+			waiting_humans.map(|human| invited_rows(human, context)),
+		)
 	}
 }
 
@@ -210,10 +222,13 @@ past_section_parts = |past_humans, context|
 	if past_humans.is_empty() {
 		[]
 	} else {
-		[
-			Page.heading("Past invites"),
-			Page.text_paragraph("Inviting someone again makes a new link. If they have joined, they keep their name, and the link sets a new password."),
-		].concat(past_humans.map(|human| invited_rows(human, context)))
+		List.concat(
+			[
+				Page.heading("Past invites"),
+				Page.text_paragraph("Inviting someone again makes a new link. If they have joined, they keep their name, and the link sets a new password."),
+			],
+			past_humans.map(|human| invited_rows(human, context)),
+		)
 	}
 
 ## One human's rows on the invites page: a line for each of their invites, or

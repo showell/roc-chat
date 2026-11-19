@@ -98,7 +98,7 @@ ConversationKey :: { place : Place, topic : Topic }.{
 	url_path = |
 		key,
 		resource,
-	| "/${Str.join_with(key.parts().concat(resource_parts(resource)), "/")}"
+	| "/${Str.join_with(List.concat(key.parts(), resource_parts(resource)), "/")}"
 
 	## The conversation a URL's path names, its place found in `directory`,
 	## and which of its resources the path names. Unless the path is no

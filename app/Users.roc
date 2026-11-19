@@ -153,7 +153,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	)
 	from_files = |{ counter, accounts }| {
 		next = next_from_file(counter)?
-		all = accounts.sort_with(|a, b| a.id.compare(b.id)).map_try(user_from_files)?
+		all = accounts.sort_with(|a, b| UserId.compare(a.id, b.id)).map_try(user_from_files)?
 		founder_is_human =
 			match all.first() {
 				Ok(first) => first.id() == UserId.chat_owner and first.role() == Human
@@ -163,7 +163,10 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 			Err(NoFounder)
 		} else {
 			match (next, all.last()) {
-				(Next(id), Ok(latest)) if latest.id().compare(id) != Before => Err(CounterBehind)
+				(
+					Next(id),
+					Ok(latest),
+				) if UserId.compare(latest.id(), id) != Before => Err(CounterBehind)
 				_ =>
 					match all.find_first(|user| !has_human_owner(all, user)) {
 						Ok(stray) => Err(BadOwner(stray.id()))

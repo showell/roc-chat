@@ -41,13 +41,13 @@ Browse :: [].{
 		dms =
 			directory.users().to_list()
 				.keep_oks(|user| user.as_human())
-				.sort_with(|a, b| a.id().compare(b.id()))
+				.sort_with(|a, b| UserId.compare(a.id(), b.id()))
 				.map(|other| dm_listed({ reader, other }))
 		channels = directory.channels().to_list().map(
 			|channel| { label: "#${channel.name().to_str()}", place: Place.channel(channel) },
 		)
 		Ok(
-			dms.concat(channels).keep_if(
+			List.concat(dms, channels).keep_if(
 				|listed|
 					Access.check({
 						acting,
@@ -75,7 +75,7 @@ Browse :: [].{
 		Page.signed_in_page({
 			title: "Browse",
 			viewer,
-			parts: said.append(invite_link).concat(places.map(place_section)),
+			parts: List.concat(said.append(invite_link), places.map(place_section)),
 		})
 	}
 }
@@ -114,8 +114,7 @@ place_section = |{ label, place, topics }| {
 		NoSuggestion
 	}
 	TrustedHtml.join(
-		[Page.heading(label)]
-			.concat(listed)
+		List.concat([Page.heading(label)], listed)
 			.append(Page.topic_form({ action, suggestion })),
 	)
 }
