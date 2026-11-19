@@ -17,7 +17,7 @@
 ##   and how long to wait for it. Only someone signed in who may post in a
 ##   conversation gets an upload's room there (`body_allowance`).
 ## - `handle_http_request!` (the server): a request in, its response out.
-##   The directory is read from disk (`load_directory!`), who is acting is
+##   The directory is read from disk (`DirectoryStore`), who is acting is
 ##   found (`load_actor!`), `Route` chooses the answer, `Access` decides
 ##   whether the actor may read or post in a conversation, and
 ##   `ConversationRoute`, `UploadRoute`, `BrowseRoute`, `AgentsRoute`,
@@ -52,12 +52,11 @@ import Access
 import AgentsRoute
 import BrowseRoute
 import ChannelMembersRoute
-import ChannelName
-import Channels
 import Conversation
 import ConversationKey
 import ConversationRoute
 import Directory
+import DirectoryStore
 import Favicon
 import FileSystem
 import FirstStart
@@ -80,7 +79,6 @@ import UnvalidatedString
 import UploadRoute
 import UploadedImage
 import UserId
-import Users
 
 ## The page of the conversation at the URL path `path`, from its
 ## transcript, or a page saying what is wrong with either.
@@ -140,104 +138,13 @@ demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner(
 
 ## Whether the server may start on its data folder: `Ready` when the folder
 ## holds a whole chat, or held none and now holds the first
-## (`FirstStart`); else `Failed`, and the host stops.
+## (`DirectoryStore`, `FirstStart`); else `Failed`, and the host stops.
 start! : {} => [Failed, Ready]
-start! = |{}|
-	match FileSystem.read_directory_files!({}) {
-		Err(_) => Failed
-		Ok(files) =>
-			match files.counter {
-				File(_) =>
-					match directory_from_files(files) {
-						Ok(_) => Ready
-						Err(_) => Failed
-					}
-				NoFile if files.accounts.is_empty() and files.channels.is_empty() =>
-					match write_first_directory!({}) {
-						Ok({}) => Ready
-						Err(_) => Failed
-					}
-				NoFile => Failed
-			}
-	}
-
-## The first directory written: the founder's account, `general`'s members,
-## then the counter of ids, which says the chat exists, last.
-write_first_directory! : {} => Try({}, _)
-write_first_directory! = |{}| {
-	FileSystem.create_account!(FirstStart.first_directory.chat_owner().user())?
-	for channel in FirstStart.first_directory.channels().to_list() {
-		FileSystem.replace_channel_members!(channel)?
-	}
-	FileSystem.replace_user_counter!(FirstStart.first_directory.users())?
-	Ok({})
-}
+start! = |{}| DirectoryStore.prepare_directory!({})
 
 ## The moment the host's clock says it is.
 read_clock! : {} => Timestamp
 read_clock! = |{}| Timestamp.at_second(Host.current_utc_seconds_since_epoch!({}))
-
-## The directory as the data folder holds it now; or why not.
-load_directory! : {} => Try(Directory, [FileSystem(FileSystem.Fault), StoredDirectory(Str)])
-load_directory! = |{}| {
-	files = FileSystem.read_directory_files!({}) ? |fault| FileSystem(fault)
-	directory_from_files(files)
-}
-
-## The directory the files hold; or why not, in words.
-directory_from_files : FileSystem.DirectoryFiles -> Try(Directory, [StoredDirectory(Str)])
-directory_from_files = |files| {
-	counter =
-		match files.counter {
-			File(bytes) => Ok(bytes)
-			NoFile => Err(StoredDirectory("there is no counter of user ids"))
-		}?
-	users = Users.from_files({
-		counter,
-		accounts: files.accounts,
-	}) ? |why| StoredDirectory(users_words(why))
-	channels =
-		Channels.from_files(files.channels) ? |BadMembers(name)| StoredDirectory("the members of #${name.to_str()} are not one id a line")
-	directory = Directory.from_files({
-		users,
-		channels,
-	}) ? |why| StoredDirectory(directory_words(why))
-	Ok(directory)
-}
-
-users_words : [
-	BadCounter,
-	BadName(UserId),
-	BadOwner(UserId),
-	NoFounder,
-	CounterBehind,
-] -> Str
-users_words = |why|
-	match why {
-		BadCounter => "the counter of user ids is not one"
-		BadName(id) => "user ${id.to_str()}'s name is not a name"
-		BadOwner(id) => "user ${id.to_str()}'s owner is no human"
-		NoFounder => "there is no founder, a human of id 1"
-		CounterBehind => "the counter of user ids is behind a user's id"
-	}
-
-directory_words : [NameTaken, UnknownMember(ChannelName)] -> Str
-directory_words = |why|
-	match why {
-		NameTaken => "two names are the same name"
-		UnknownMember(name) => "#${name.to_str()} has a member who is no user"
-	}
-
-## The 500 for a directory that can't be read.
-directory_refusal : [FileSystem(FileSystem.Fault), StoredDirectory(Str)] -> Http.Response
-directory_refusal = |why| {
-	said =
-		match why {
-			FileSystem(fault) => FileSystem.fault_words(fault)
-			StoredDirectory(words) => "The chat's directory on disk is not whole: ${words}."
-		}
-	HttpAnswer.page(500, Page.notice({ title: "Failed", text: said }))
-}
 
 ## What the host may do with a request, judged from its head alone. A
 ## request from elsewhere (`RequestOrigin`, a trust boundary) is refused
@@ -251,8 +158,8 @@ check_request_head! = |head|
 	match RequestOrigin.check(origin_of_head(head)) {
 		Err(why) => Refuse(with_same_origin_resource_policy(origin_refusal(why)))
 		Ok({}) =>
-			match load_directory!({}) {
-				Err(why) => Refuse(with_same_origin_resource_policy(directory_refusal(why)))
+			match DirectoryStore.load_directory!({}) {
+				Err(why) => Refuse(with_same_origin_resource_policy(DirectoryStore.directory_refusal(why)))
 				Ok(directory) =>
 					match load_actor!({ headers: head.headers, directory }) {
 						Err(why) => Refuse(with_same_origin_resource_policy(identity_refusal(why)))
@@ -396,8 +303,8 @@ handle_http_request! = |request| {
 		}) {
 			Err(why) => origin_refusal(why)
 			Ok({}) =>
-				match load_directory!({}) {
-					Err(why) => directory_refusal(why)
+				match DirectoryStore.load_directory!({}) {
+					Err(why) => DirectoryStore.directory_refusal(why)
 					Ok(directory) =>
 						match load_actor!({ headers: request.headers, directory }) {
 							Err(why) => identity_refusal(why)
@@ -894,53 +801,6 @@ expect page("<b>".to_utf8(), [0xff])
 expect
 	demo_viewer.user().name() == FirstStart.founder_name
 		and demo_viewer.user().id() == UserId.chat_owner
-
-## The directory files of the first start, as the disk holds them.
-first_files : FileSystem.DirectoryFiles
-first_files = {
-	founder = FirstStart.first_directory.chat_owner().user()
-	{
-		counter: File(FirstStart.first_directory.users().counter_file()),
-		accounts: [{ id: founder.id(), files: Users.account_files(founder) }],
-		channels: FirstStart.first_directory.channels().to_list().map(
-			|channel| { name: channel.name(), members: channel.members_file() },
-		),
-	}
-}
-
-# The first start's files read back are the first directory; with no
-# counter, or a counter that is no number, the files are no chat's.
-expect directory_from_files(first_files) == Ok(FirstStart.first_directory)
-expect directory_from_files({
-	..first_files,
-	counter: NoFile,
-}) == Err(StoredDirectory("there is no counter of user ids"))
-expect directory_from_files({
-	..first_files,
-	counter: File("x".to_utf8()),
-}) == Err(StoredDirectory("the counter of user ids is not one"))
-expect
-	directory_from_files({
-		..first_files,
-		channels: [
-			{
-				name: ChannelName.from_str("general") ?? crash "main's tests: a name",
-				members: "1\n2\n".to_utf8(),
-			},
-		],
-	})
-		== Err(StoredDirectory("#general has a member who is no user"))
-expect
-	directory_from_files({
-		..first_files,
-		channels: [
-			{
-				name: ChannelName.from_str("steve") ?? crash "main's tests: a name",
-				members: "1\n".to_utf8(),
-			},
-		],
-	})
-		== Err(StoredDirectory("two names are the same name"))
 
 # Each route asks what it does of `Access`: every conversation's GET reads,
 # every write posts, and nothing else asks.

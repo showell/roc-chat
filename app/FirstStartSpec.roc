@@ -4,7 +4,6 @@
 ## its stream and its uploaded images in a place it holds, and nothing in
 ## one it doesn't.
 import FirstStart
-import Page
 import Route
 import UserId
 
