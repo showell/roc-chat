@@ -295,6 +295,7 @@ append_posted_message! = |post| {
 		key: post.key,
 		message: grown.message,
 		agents: post.agents,
+		users: post.users,
 	})
 	RecentStream.publish!({
 		key: post.key,

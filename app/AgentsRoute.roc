@@ -373,7 +373,7 @@ begin_agent_stream! = |{ acting, directory, query }| {
 			Live => []
 			Since(since) => {
 				conversations = load_readable_conversations!(directory, acting)
-				AgentStream.backlog({ conversations, since })
+				AgentStream.backlog({ conversations, since, users: directory.users() })
 			}
 		}
 	Ok(AgentStream.response({ agent: acting.user().id(), backlog }))

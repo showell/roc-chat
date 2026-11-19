@@ -1522,7 +1522,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     const cc_event = try listening.event();
     try t.check("POST as CC with its key: 303; the record on disk is CC's", cc_posted.status == 303 and
         std.mem.startsWith(u8, added, "-------------\nMSG_roc-chat_13\nfrom: CC\ndate: ") and std.mem.endsWith(u8, added, "\n\nHello from CC\n\n"));
-    try t.check("CC's stream: that message, one line of JSON", std.mem.startsWith(u8, cc_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":13,\"from\":\"CC\",\"date\":\"") and
+    try t.check("CC's stream: that message, one line of JSON, its author's id beside the name", std.mem.startsWith(u8, cc_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":13,\"from\":\"CC\",\"from_id\":2,\"date\":\"") and
         std.mem.endsWith(u8, cc_event, "\",\"markdown\":\"Hello from CC\"}\n\n"));
 
     // 43.
@@ -1532,7 +1532,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     const cc_private = try post(a, io, port, .{ .path = "/chat/channel/private/secrets", .form = "markdown=Let+me+in", .more = bearer });
     const cc_private_read = try getWith(a, io, port, "/chat/channel/private/secrets/raw", bearer);
     try t.check("Steve posts in #private, then #general: CC's next event is #general's, none of #private's", in_private.status == 303 and in_general.status == 303 and
-        std.mem.startsWith(u8, next_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":14,\"from\":\"Steve\",") and
+        std.mem.startsWith(u8, next_event, "data: {\"conversation\":\"" ++ channel_url ++ "\",\"id\":14,\"from\":\"Steve\",\"from_id\":1,") and
         has(next_event, "\"markdown\":\"For CC too\"") and !has(next_event, "Not for CC"));
     try t.check("CC's key posting to, or reading, #private, which CC is not in: 403 each", cc_private.status == 403 and cc_private_read.status == 403);
 

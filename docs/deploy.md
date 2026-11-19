@@ -112,12 +112,12 @@ The cap is a count, not a rate. A client may open and finish requests as fast as
 
 ## LC's listener
 
-`tools/listen.shale` is LC's listener, an adaptation of `cookbook:listen.shale`. It prints one line for each post by someone else whose own words say `@LC`.
+`tools/listen.shale` is LC's listener, an adaptation of `cookbook:listen.shale`. It prints one line for each post by its owner (or another user `allow=` lists) whose own words say `@LC`.
 
 LC needs an account and a key first:
 
 1. At `/agents`, make the agent `LC`.
-2. Add it to a channel at `/channels`, as agents take part only in channels. `general` is where every new human lands, so LC in `general` hears them all. A channel of its own keeps it apart. You choose.
+2. Add it to a channel at `/channels`, as agents take part only in channels. Keep agents in channels only the owner and the agent share, never in `general`: sign-up is open, every new human lands in `general`, and whatever an agent reads there is a stranger's words in its context.
 3. At `/agents`, press "Invite LC". The page shows a one-time code, which lives ten minutes.
 4. Redeem it on this box, with the code in place of `<code>`. The key goes from curl straight to the secrets mount, and no script or terminal sees it. `--fail` matters: without it, a refused code's words would be stored as the key.
 
@@ -139,9 +139,9 @@ cd ~/showell_repos/roc-chat && shale tools/listen.shale log=listen.log
 
 The first ends at the first window that holds a post for LC, and its last line says the `since=` and `ids=` to go on with, so a detached run can wake a session and start again with nothing missed or heard twice. The second appends each line to the log until it stops, which it does after about 22 hours of quiet, naming the same two values. A run starts from its own start time unless `since=` says otherwise. `site=`, `me=` and `key=` default to https://chat.lynrummy.com, `LC` and `keys:roc_chat_lc_key`. `window=` is how long each curl holds the stream, 20 seconds by default, so a post is heard at most that late.
 
-It reads `GET /agents/stream` and resumes with `?since=<date>`, from the `date` of the last event read. That second's messages may come twice, and it drops a repeat by conversation and id. A post is for LC when its `markdown` says `@LC` outside quoted and fenced text; the name leading a post, as in `LC, a question`, doesn't count. Nothing limits agents answering agents.
+It reads `GET /agents/stream` and resumes with `?since=<date>`, from the `date` of the last event read. That second's messages may come twice, and it drops a repeat by conversation and id. A post is for LC when its author's id, the event's `from_id`, is on the allow-list (`allow=`, ids with commas between, by default `1`, the owner), and its `markdown` says `@LC` outside quoted and fenced text; a post with no `from_id`, whose author's name is no user's now, wakes nothing; the name leading a post, as in `LC, a question`, doesn't count. Nothing limits agents answering agents.
 
-It reconnects by itself after a deploy, a 502 or a 429. It stops nonzero, named, on a 401 or 403 (the key is revoked or wrong), a 400 or 404, an event that lacks a field, or a jump in a conversation's ids, whose stop names the `/raw` transcript to read. A conversation it has read nothing of yet has no ids to jump from, so a catch-up cut at the 100 newest shows no gap there. `shale tools/listen.shale self_test=1` tests its decisions, and verify runs that.
+It reconnects by itself after a deploy, a 502 or a 429. It stops nonzero, named, on a 401 or 403 (the key is revoked or wrong), a 400 or 404, an event that lacks a field (`from_id` aside), or a jump in a conversation's ids, whose stop names the `/raw` transcript to read. A conversation it has read nothing of yet has no ids to jump from, so a catch-up cut at the 100 newest shows no gap there. `shale tools/listen.shale self_test=1` tests its decisions, and verify runs that.
 
 ## Pitfalls
 

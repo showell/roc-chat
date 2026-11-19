@@ -4,11 +4,13 @@
 ## own stream (`ConversationStream`) serves a page; this one serves a
 ## script, so each message is one event of one line, a JSON object:
 ##
-##     data: {"conversation":"/chat/dm/1_1/a","id":3,"from":"Steve","date":"...","markdown":"Hi"}
+##     data: {"conversation":"/chat/dm/1_1/a","id":3,"from":"Steve","from_id":1,"date":"...","markdown":"Hi"}
 ##
 ## then a blank line. `conversation` is the conversation's URL path, which
 ## also names its `/raw` transcript and where to post a reply; `id` its
-## number there; `date` its time as the transcript writes it; `markdown`
+## number there; `from` its author's name and `from_id` their user id, so
+## an agent can act on its owner's posts alone (a name no user holds now has
+## no `from_id`); `date` its time as the transcript writes it; `markdown`
 ## exactly as written.
 ##
 ## Without a query the stream is live only. With `?since=<date>`, a date
@@ -40,6 +42,7 @@ import Topic
 import UnvalidatedString
 import UserId
 import UserPair
+import Users
 
 AgentStream :: [].{
 
@@ -63,16 +66,28 @@ AgentStream :: [].{
 	words = |BadSince|
 		"The stream's start is not one: none, or `?since=<date>`, a date as 2026-11-02T19:11:32Z."
 
-	## One message of the conversation `key` as one event.
-	frame : { key : ConversationKey, message : Message } -> List(U8)
-	frame = |{ key, message }| {
-		fields = JsonOut.json_object([
-			("conversation", JsonOut.string(key.url_path(Page))),
-			("id", JsonOut.number(message.id().to_u64())),
-			("from", JsonOut.string(message.author().to_str())),
-			("date", JsonOut.string(message.time().to_str())),
-			("markdown", JsonOut.string(message.markdown())),
-		])
+	## One message of the conversation `key` as one event, its author's id
+	## found among `users` by name.
+	frame : { key : ConversationKey, message : Message, users : Users } -> List(U8)
+	frame = |{ key, message, users }| {
+		author = message.author().to_str()
+		author_id =
+			match users.to_list().find_first(|user| user.name().to_str() == author) {
+				Ok(user) => [("from_id", JsonOut.number(user.id().to_u64()))]
+				Err(NotFound) => []
+			}
+		fields = JsonOut.json_object(
+			[
+				("conversation", JsonOut.string(key.url_path(Page))),
+				("id", JsonOut.number(message.id().to_u64())),
+				("from", JsonOut.string(author)),
+			]
+				.concat(author_id)
+				.concat([
+					("date", JsonOut.string(message.time().to_str())),
+					("markdown", JsonOut.string(message.markdown())),
+				]),
+		)
 		List.concat(List.concat("data: ".to_utf8(), fields.bytes()), "\n\n".to_utf8())
 	}
 
@@ -87,8 +102,9 @@ AgentStream :: [].{
 	backlog : {
 		conversations : List({ key : ConversationKey, conversation : Conversation }),
 		since : DateTime,
+		users : Users,
 	} -> List(U8)
-	backlog = |{ conversations, since }| {
+	backlog = |{ conversations, since, users }| {
 		dated = conversations.map_with_index(
 			|{ key, conversation }, place|
 				conversation
@@ -99,7 +115,7 @@ AgentStream :: [].{
 		).join()
 		dated
 			.sort_with(order_by_time_then_place)
-			.join_map(|m| AgentStream.frame({ key: m.key, message: m.message }))
+			.join_map(|m| AgentStream.frame({ key: m.key, message: m.message, users }))
 	}
 
 	## Who holds the agent `agent`'s stream, as the host counts streams:
@@ -123,9 +139,10 @@ AgentStream :: [].{
 		key : ConversationKey,
 		message : Message,
 		agents : List(UserId),
+		users : Users,
 	} => {}
-	publish! = |{ key, message, agents }| {
-		event = AgentStream.frame({ key, message })
+	publish! = |{ key, message, agents, users }| {
+		event = AgentStream.frame({ key, message, users })
 		for agent in agents {
 			Host.publish_bytes_to_streams_on_key!(bus_key(agent), event)
 		}
@@ -192,6 +209,10 @@ key_of = |topic| {
 	})
 }
 
+## The users of a chat whose one user is Steve, id 1.
+steve_users : Users
+steve_users = Directory.with_founder(Name.from_str("Steve") ?? crash "AgentStream's tests: a name").users()
+
 ## `topic`'s conversation of Steve's messages, each a time and its markdown.
 conversation_of : Str, List((Str, Str)) -> { key : ConversationKey, conversation : Conversation }
 conversation_of = |topic, messages| {
@@ -240,8 +261,8 @@ expect AgentStream.start([0x73, 0x69, 0x6e, 0x63, 0x65, 0x3d, 0xff]) == Err(BadS
 expect {
 	held = conversation_of("plans", [("2026-11-02T19:11:32Z", "Hi \"all\"\nsecond line")])
 	message = held.conversation.messages().first() ?? crash "AgentStream's tests: one message"
-	AgentStream.frame({ key: held.key, message })
-		== "data: {\"conversation\":\"/chat/dm/1_1/plans\",\"id\":1,\"from\":\"Steve\",\"date\":\"2026-11-02T19:11:32Z\",\"markdown\":\"Hi \\\"all\\\"\\nsecond line\"}\n\n".to_utf8()
+	AgentStream.frame({ key: held.key, message, users: steve_users })
+		== "data: {\"conversation\":\"/chat/dm/1_1/plans\",\"id\":1,\"from\":\"Steve\",\"from_id\":1,\"date\":\"2026-11-02T19:11:32Z\",\"markdown\":\"Hi \\\"all\\\"\\nsecond line\"}\n\n".to_utf8()
 }
 # A backlog: every message at or after its date, oldest first across the
 # conversations; one second's messages in the conversations' order, then
@@ -267,6 +288,7 @@ expect {
 		AgentStream.backlog({
 			conversations: [plans, other],
 			since: time_of("2026-11-02T19:00:01Z"),
+			users: steve_users,
 		}),
 	)
 	events.map(markdown_in) == ["o1", "p2", "o2", "o3", "p3"]
@@ -286,7 +308,7 @@ conversation_of_count = |topic, count| conversation_of(
 ## time of their messages.
 backlog_markdown_texts : List({ key : ConversationKey, conversation : Conversation }) -> List(Str)
 backlog_markdown_texts = |conversations| events_of(
-	AgentStream.backlog({ conversations, since: time_of("2026-11-02T19:00:00Z") }),
+	AgentStream.backlog({ conversations, since: time_of("2026-11-02T19:00:00Z"), users: steve_users }),
 ).map(markdown_in)
 
 expect backlog_markdown_texts([
@@ -305,13 +327,22 @@ expect AgentStream.holder(UserId.chat_owner) == "agent-1".to_utf8()
 expect AgentStream.backlog({
 	conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],
 	since: time_of("2026-11-02T19:00:01Z"),
+	users: steve_users,
 }) == []
 expect events_of(
 	AgentStream.backlog({
 		conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],
 		since: time_of("2026-11-02T19:00:00Z"),
+		users: steve_users,
 	}),
 ).len() == 1
+# A message whose author no user is named now carries no `from_id`.
+expect {
+	held = conversation_of("plans", [("2026-11-02T19:11:32Z", "Hi")])
+	message = held.conversation.messages().first() ?? crash "AgentStream's tests: one message"
+	nobody = Directory.with_founder(Name.from_str("Zed") ?? crash "AgentStream's tests: a name").users()
+	!Str.from_utf8_lossy(AgentStream.frame({ key: held.key, message, users: nobody })).contains("from_id")
+}
 # The stream: on the agent's own key, held by the agent, its backlog first.
 expect {
 	answered = AgentStream.response({ agent: UserId.chat_owner, backlog: "data: x\n\n".to_utf8() })

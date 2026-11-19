@@ -49,6 +49,10 @@ UserId :: U16.{
 	to_str : UserId -> Str
 	to_str = |UserId.(number)| number.to_str()
 
+	## The id as a number, as the agents' stream writes it in JSON.
+	to_u64 : UserId -> U64
+	to_u64 = |UserId.(number)| number.to_u64()
+
 	## The id as a fact file keeps it (`FactFile`): its decimal digits, bare.
 	to_file : UserId -> List(U8)
 	to_file = |UserId.(number)| FactFile.number_to_file(number.to_u64())
@@ -79,6 +83,7 @@ id_from_digits = |digits|
 
 # ── tests
 expect UserId.chat_owner.to_str() == "1"
+expect UserId.chat_owner.to_u64() == 1
 # The next id, from the first, and at, under and over the highest.
 expect UserId.chat_owner.next().map_ok(UserId.to_str) == Ok("2")
 expect UserId.(65534).next().map_ok(UserId.to_str) == Ok("65535")

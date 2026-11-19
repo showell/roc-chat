@@ -6,8 +6,12 @@
 --   shale tools/listen.shale log=listen.log
 --
 -- A line reads `#<id> in <conversation> by <name>: <its first line>`. A post
--- is for LC when someone else wrote it and its own words say `@LC`, which
+-- is for LC when someone else wrote it, its author's id (the stream's
+-- `from_id`) is one `allow=` lists, and its own words say `@LC`, which
 -- `says_at` decides from the markdown, skipping quoted and fenced text.
+-- `allow=` is ids with commas between, by default `1`, the owner's: LC acts
+-- on its owner's word alone, so no one else in its channels can steer it.
+-- A post with no `from_id` (its author's name no user's now) wakes nothing.
 --
 -- `site=`, `me=` and `key=` default to chat.lynrummy.com, LC and its key. The
 -- key stays in the secrets mount: `run` gives it to curl alone, by curl's
@@ -43,6 +47,7 @@ const ME = arg("me", "LC")
 const KEY = arg("key", "keys:roc_chat_lc_key")
 const SINCE = arg("since", date(now()))
 const IDS = arg("ids", "")
+const ALLOW = arg("allow", "1")
 const ONCE = arg("once", "") == "1"
 const LOG = arg("log", "")
 const WINDOW_S = tonumber(arg("window", "20"))
@@ -198,7 +203,17 @@ function new_state(me, since, ids)
       fail("listen: ids= is <conversation>:<id> with commas between: " .. pair)
     end
   end
-  return {me = me, since = since, last = last}
+  local allow = {}
+  for id in split(ALLOW, ",") do
+    if re_find(id, "^[0-9]+$") == nil then fail("listen: allow= is user ids with commas between: " .. ALLOW) end
+    push(allow, id)
+  end
+  return {me = me, since = since, last = last, allow = set_of(allow)}
+end
+
+-- Whether the author of `msg` is one `state` acts for: its `from_id` listed.
+function is_allowed(state, msg)
+  return has_key(msg, "from_id") and has_key(state.allow, tostring(msg.from_id))
 end
 
 -- The `since=` and `ids=` that go on from `state`, as two words.
@@ -240,7 +255,7 @@ function consume(state, text)
       end
       state.last[msg.conversation] = msg.id
       state.since = msg.date
-      if msg.from ~= state.me and says_at(msg.markdown, state.me) then
+      if msg.from ~= state.me and is_allowed(state, msg) and says_at(msg.markdown, state.me) then
         push(out, "#" .. msg.id .. " in " .. msg.conversation .. " by " .. msg.from .. ": " .. first_line(msg.markdown))
       end
     end
@@ -304,8 +319,11 @@ function expect(tally, cond, what)
   return nil
 end
 
+-- The tests' users' ids, as the stream's `from_id` gives them.
+const TEST_IDS = {Steve = 1, Apoorva = 2, LC = 4}
+
 function event(conversation, id, from, date_text, markdown)
-  return "data: " .. json_write({conversation = conversation, id = id, from = from, date = date_text, markdown = markdown}) .. "\n\n"
+  return "data: " .. json_write({conversation = conversation, id = id, from = from, from_id = TEST_IDS[from], date = date_text, markdown = markdown}) .. "\n\n"
 end
 
 function expect_names(tally, markdown, wanted)
@@ -343,7 +361,12 @@ function self_test()
 
   local general = "/chat/channel/general/a"
   local dm = "/chat/dm/1_3/b"
+  local owners = new_state("LC", "2026-11-05T10:00:00Z", "")
+  local only_owner = consume(owners, event(general, 1, "Apoorva", "2026-11-05T10:00:00Z", "@LC do this") .. event(general, 2, "Steve", "2026-11-05T10:00:00Z", "@LC do that") .. "data: " .. json_write({conversation = dm, id = 1, from = "Gone", date = "2026-11-05T10:00:00Z", markdown = "@LC no id"}) .. "\n\n")
+  expect(tally, join(only_owner.lines, " | ") == "#2 in " .. general .. " by Steve: @LC do that" and only_owner.err == "", "by default only the owner's posts (id 1) wake LC, and one with no from_id wakes nothing: " .. join(only_owner.lines, " | "))
+  expect(tally, has_key(owners.allow, "1") and not has_key(owners.allow, "2"), "allow= is 1 unless given")
   local state = new_state("LC", "2026-11-05T10:00:00Z", "")
+  state.allow = set_of({"1", "2"})
   local first = consume(state, event(general, 3, "Steve", "2026-11-05T10:00:01Z", "@LC one") .. ": ping\n\n" .. event(general, 4, "LC", "2026-11-05T10:00:02Z", "@LC mine") .. event(dm, 7, "Apoorva", "2026-11-05T10:00:02Z", "not named") .. event(general, 5, "Steve", "2026-11-05T10:00:03Z", "@LC cut"))
   expect(tally, join(first.lines, " | ") == "#3 in " .. general .. " by Steve: @LC one | #5 in " .. general .. " by Steve: @LC cut", "others' posts naming LC are heard, its own and the rest not: " .. join(first.lines, " | "))
   expect(tally, state.since == "2026-11-05T10:00:03Z", "since is the last event's date: " .. state.since)
@@ -455,7 +478,7 @@ function listen_batches()
   local after = going_on(new_state(ME, SINCE, IDS))
   for b = 1, BATCHES_MOST do
     local argv = {"shale", "--root", ".", SELF_PATH, "batch=1", "site=" .. SITE, "me=" .. ME,
-      "key=" .. KEY, "window=" .. WINDOW_S, "curls=" .. WINDOWS_MOST}
+      "key=" .. KEY, "window=" .. WINDOW_S, "curls=" .. WINDOWS_MOST, "allow=" .. ALLOW}
     for word in words(after) do push(argv, word) end
     if ONCE then push(argv, "once=1") end
     if LOG ~= "" then push(argv, "log=" .. LOG) end
