@@ -33,7 +33,6 @@ import Directory
 import FileSystem
 import GitHubRoute
 import HttpAnswer
-import KeyScope
 import Page
 import Place
 import Secret

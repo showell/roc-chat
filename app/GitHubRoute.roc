@@ -38,7 +38,6 @@ import Channels
 import Directory
 import FileSystem
 import FirstPage
-import GitHubCode
 import GitHubSignIn
 import GitHubSignUp
 import GitHubState

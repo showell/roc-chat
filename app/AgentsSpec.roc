@@ -7,7 +7,6 @@ import AgentInvite
 import AgentKey
 import Agents
 import ChannelName
-import Channels
 import Directory
 import KeyScope
 import Name

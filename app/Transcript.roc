@@ -19,7 +19,6 @@ import Message
 import Separator
 import DateTime
 import Topic
-import TranscriptRefusal
 
 Transcript :: [].{
 
