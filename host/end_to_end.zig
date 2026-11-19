@@ -324,7 +324,7 @@ const public_origin = "https://chat.example.test";
 const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
 /// The page's other scripts, each served as compose.js is.
-const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "feed.js", "panel.js" };
+const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "sidebar.js", "feed.js", "panel.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 const channel_uploads = "chat/channel/general/roc-chat/uploads";
@@ -914,11 +914,23 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     try t.check("/ for a cookie that admits no one: the same way to sign in", stale_way_in.status == 303 and
         std.mem.eql(u8, stale_way_in.header("location") orelse "", "/chat") and stale_on.status == 303 and
         std.mem.eql(u8, stale_on.header("location") orelse "", "/login?next=/chat"));
+    const steves_page = try getAs(a, io, port, steve_session, channel_url);
+    const steves_last = try readFile(a, io, data, "users/1/last-conv");
     const steves_way_in = try getAs(a, io, port, steve_session, "/");
-    const steves_way_on = try getAs(a, io, port, steve_session, steves_way_in.header("location") orelse "");
-    try t.check("/ for someone signed in: a 303 to Browse, which shows them it, with no sign-in form", steves_way_in.status == 303 and
-        std.mem.eql(u8, steves_way_in.header("location") orelse "", "/chat") and steves_way_on.status == 200 and
-        has(steves_way_on.body, "<h1>Steve</h1>") and !has(steves_way_on.body, "action=\"/login\""));
+    try t.check("a conversation's page for someone signed in: its sidebar, the page's topic marked; the page recorded, bare, as their last; and / a 303 back to it", steves_page.status == 200 and
+        has(steves_page.body, "<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\"><nav class=\"sidebar\">") and
+        has(steves_page.body, "<li><a class=\"current\" href=\"" ++ channel_url ++ "\">roc-chat</a></li>") and
+        has(steves_page.body, "<script src=\"/chat/assets/sidebar.js\"></script>") and std.mem.eql(u8, steves_last, channel_url) and
+        steves_way_in.status == 303 and std.mem.eql(u8, steves_way_in.header("location") orelse "", channel_url));
+    try data.writeFile(io, .{ .sub_path = "users/1/last-conv", .data = "/chat/channel/gone/plans" });
+    const unreadable_way_in = try getAs(a, io, port, steve_session, "/");
+    const steves_way_on = try getAs(a, io, port, steve_session, unreadable_way_in.header("location") orelse "");
+    try data.deleteFile(io, "users/1/last-conv");
+    const no_last_way_in = try getAs(a, io, port, steve_session, "/");
+    try t.check("/ for someone signed in whose last conversation they can't read, or who has none: a 303 to Browse, which shows them it, with no sign-in form", unreadable_way_in.status == 303 and
+        std.mem.eql(u8, unreadable_way_in.header("location") orelse "", "/chat") and steves_way_on.status == 200 and
+        has(steves_way_on.body, "<h1>Steve</h1>") and !has(steves_way_on.body, "action=\"/login\"") and
+        no_last_way_in.status == 303 and std.mem.eql(u8, no_last_way_in.header("location") orelse "", "/chat"));
     const post_way_in = try anonymousPost(a, io, port, "/", "");
     const steves_post_way_in = try postAs(a, io, port, steve_session, "/", "");
     const put_way_in = try exchange(a, io, port, try std.fmt.allocPrint(a, "PUT / HTTP/1.1\r\nhost: localhost:{d}\r\ncontent-length: 0\r\n\r\n", .{port}));
