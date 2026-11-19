@@ -1,0 +1,6 @@
+-- roc-chat's own short terms, which find_unclear_names' `abbreviation`
+-- passes in roc-chat's files (`accepted=`, which tools/verify.shale
+-- passes), added to the cookbook's words/accepted_terms.txt. A term a
+-- line, with its reason after `--`.
+lc      -- the agent LC's name
+zoe     -- a test persona's name (`zoes` its possessive)

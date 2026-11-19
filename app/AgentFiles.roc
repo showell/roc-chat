@@ -301,7 +301,7 @@ invite_state_from_word = |bytes| {
 }
 
 # ── tests
-# The paths each builder makes, under the auth root.
+# The paths each builder makes, under the accounts root.
 expect {
 	agent = UserId.from_str("12") ?? crash "AgentFiles' tests: an id"
 	key = AgentKey.Id.from_str("3") ?? crash "AgentFiles' tests: a key's number"

@@ -18,7 +18,8 @@
 --    judges: names, errors, nesting, boundaries, stacking both ways, long
 --    lines, parentheses, braceless `if`s and an `if` hanging off a lambda,
 --    decided words (tools/vocabulary.txt), names and their types
---    (tools/name_types.txt), plain names (tools/fixed_terms.txt), families,
+--    (tools/name_types.txt), plain names (tools/fixed_terms.txt) and accepted short terms
+--    (tools/accepted_terms.txt), families,
 --    unused imports, bare floats, and `methods`
 --    (no `Module.fn(x, ...)` call that would check as `x.fn(...)`, judged
 --    by Roc's own types from both apps, app/main.roc and app/Specs.roc; its
@@ -152,7 +153,7 @@ const hunts = {
   {recipe = "find_extra_parens", args = {}, counts = {"paren_if ([0-9]+)", "wrapped_body ([0-9]+)", "else_block ([0-9]+)", "lambda_if ([0-9]+)"}},
   {recipe = "check_vocabulary", args = {"words=tools/vocabulary.txt"}, counts = {"retired_name ([0-9]+)", "retired_comment ([0-9]+)"}},
   {recipe = "check_name_types", args = {"table=tools/name_types.txt"}, counts = {"name_type ([0-9]+)", "bare_beside_unit ([0-9]+)", "no_value ([0-9]+)"}},
-  {recipe = "find_unclear_names", args = {"terms=tools/fixed_terms.txt"}, counts = {"pure_mutator ([0-9]+)", "abbreviation ([0-9]+)", "module_doc ([0-9]+)"}},
+  {recipe = "find_unclear_names", args = {"terms=tools/fixed_terms.txt", "accepted=tools/accepted_terms.txt"}, counts = {"pure_mutator ([0-9]+)", "abbreviation ([0-9]+)", "module_doc ([0-9]+)"}},
   {recipe = "check_families", args = {"roles=tools/type_roles.txt"}, counts = {"family ([0-9]+)", "twin_name ([0-9]+)"}},
   {recipe = "find_unused_imports", args = {}, counts = {"unused_import ([0-9]+)"}, fails_on_findings = true, held = {{count = "unused_import ([0-9]+)", findings = #glob("app/*Spec.roc")}}, exception = "^app/Specs\\.roc:[0-9]+: unused_import: `[A-Za-z]+Spec` is imported and never used"},
   {recipe = "find_bare_floats", args = {}, counts = {"bare_float ([0-9]+)", "unused_exception ([0-9]+)"}},

@@ -4,7 +4,7 @@
 ## writes them through `FileFacts`, and builds every path from a typed key,
 ## so no caller names a file.
 ##
-## They are kept apart from the users' own folders, under the auth root
+## They are kept apart from the users' own folders, under the accounts root
 ## (`AccountFolder`): the counter of user ids, `auth/next-id.txt`, and each
 ## user's `auth/<id>/` (`Users`), one file per fact. An agent's `owner` and
 ## an invited human's `inviter` hold a user's id; `name` holds the user's
@@ -34,13 +34,14 @@ AccountFiles :: [].{
 	read_user_counter! = |{}| FileFacts.read_fact!(user_counter_path)
 
 	## Each account folder's facts, unchecked, for `Users.from_stored` to
-	## read: a folder whose name is no id is not an account, and no auth root
+	## read: a folder whose name is no id is not an account, and no accounts root
 	## holds none. An account folder with no `name` is no account: it is one
 	## cut short as it was made, and the counter of ids was advanced before
 	## it, so its id is never given again.
 	read_accounts! : {} => Try(List(Users.AccountFacts), [NotUtf8, PathRefused, Failed])
 	read_accounts! = |{}| {
-		account_ids = FileFacts.list_names_in!(AccountFolder.auth_root)?.keep_oks(UserId.from_str)
+		account_ids =
+			FileFacts.list_names_in!(AccountFolder.accounts_root)?.keep_oks(UserId.from_str)
 		var $accounts = []
 		for id in account_ids {
 			folder = AccountFiles.account_folder_path(AccountFolder.of(id))
@@ -159,7 +160,7 @@ AccountFiles :: [].{
 		[Damaged, NotUtf8, PathRefused, Failed],
 	)
 	read_github_links! = |{}| {
-		ids = FileFacts.list_names_in!(AccountFolder.auth_root)?.keep_oks(UserId.from_str)
+		ids = FileFacts.list_names_in!(AccountFolder.accounts_root)?.keep_oks(UserId.from_str)
 		var $links = []
 		for id in ids {
 			match AccountFiles.read_github_link!(id)? {
@@ -230,7 +231,7 @@ AccountFiles :: [].{
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_user_counter! = |users| {
-		FileFacts.make_folder!(AccountFolder.auth_root)?
+		FileFacts.make_folder!(AccountFolder.accounts_root)?
 		FileFacts.replace_fact!(user_counter_path, users.counter_bytes())
 	}
 }
@@ -273,10 +274,10 @@ github_session_secret_path = |id|
 
 ## The path of the counter of user ids.
 user_counter_path : Str
-user_counter_path = "${AccountFolder.auth_root}/next-id.txt"
+user_counter_path = "${AccountFolder.accounts_root}/next-id.txt"
 
 # ── tests
-# The paths each builder makes, under the auth root.
+# The paths each builder makes, under the accounts root.
 expect AccountFiles.account_folder_path(AccountFolder.of(UserId.chat_owner)) == "auth/1"
 expect password_path(UserId.chat_owner) == "auth/1/password"
 expect github_session_secret_path(UserId.chat_owner) == "auth/1/github-session-secret"

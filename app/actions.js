@@ -195,7 +195,7 @@
   // Loads the box with an edit of `article`, the viewer's own.
   function edit(article) {
     if (!isMine(article)) return;
-    var ref = article.querySelector('header .ref');
+    var ref = article.querySelector('header .message-reference');
     if (!ref) return;
     fetch(rawUrl + '?message=' + numberOf(article)).then(function (r) {
       return r.text().then(function (text) {

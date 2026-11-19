@@ -91,7 +91,7 @@ head = |title|
 ## id, 1, and CC's, an agent's, names CC's, 3.
 hello_and_reply : Str
 hello_and_reply =
-	"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p>Hello</p>\n</div></article>\n<article class=\"message\" id=\"msg-2\" data-author=\"3\"><header><span class=\"author\">CC</span> <time datetime=\"2026-11-02T19:12:28Z\">2026-11-02T19:12:28Z</time> <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Hi!</p>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</div></article>\n"
+	"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"message-reference\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p>Hello</p>\n</div></article>\n<article class=\"message\" id=\"msg-2\" data-author=\"3\"><header><span class=\"author\">CC</span> <time datetime=\"2026-11-02T19:12:28Z\">2026-11-02T19:12:28Z</time> <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Hi!</p>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</div></article>\n"
 
 # No messages: the page says so, and only then.
 expect page_for("Steve", Conversation.empty(Sample.plans)) == steves_page({
@@ -131,7 +131,7 @@ expect
 	)
 		== steves_page({
 			count: "1",
-			messages: "<article class=\"message\" id=\"msg-1\"><header><span class=\"author\">Eve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p><strong>hi</strong> &lt;b&gt;</p>\n</div></article>\n",
+			messages: "<article class=\"message\" id=\"msg-1\"><header><span class=\"author\">Eve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"message-reference\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p><strong>hi</strong> &lt;b&gt;</p>\n</div></article>\n",
 		})
 
 ## The sign-in page as a test expects it, going on to `/agents`, with
@@ -321,8 +321,8 @@ expect {
 	)
 	drawn
 		== [
-			"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p class=\"edited-note\">Edited in <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></p><details class=\"edited-original\"><summary>original</summary><div class=\"edited-markdown\">Helo &lt;b&gt;</div></details></div></article>\n",
-			"<article class=\"message\" id=\"msg-2\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:12:00Z\">2026-11-02T19:12:00Z</time> <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Edit of <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a></p>\n<p>Hello</p>\n</div><div class=\"reaction-strip\"><button class=\"reaction-chip\" data-reactors=\"1-3\"><span class=\"reaction-emoji\">👍</span> 2</button><button class=\"reaction-chip\" data-reactors=\"3\"><span class=\"reaction-emoji\">🎉</span> 1</button></div></article>\n",
+			"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"message-reference\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p class=\"edited-note\">Edited in <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></p><details class=\"edited-original\"><summary>original</summary><div class=\"edited-markdown\">Helo &lt;b&gt;</div></details></div></article>\n",
+			"<article class=\"message\" id=\"msg-2\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:12:00Z\">2026-11-02T19:12:00Z</time> <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Edit of <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a></p>\n<p>Hello</p>\n</div><div class=\"reaction-strip\"><button class=\"reaction-chip\" data-reactors=\"1-3\"><span class=\"reaction-emoji\">👍</span> 2</button><button class=\"reaction-chip\" data-reactors=\"3\"><span class=\"reaction-emoji\">🎉</span> 1</button></div></article>\n",
 		]
 		and plain.contains("<div class=\"body\"><p>Helo &lt;b&gt;</p>\n</div></article>")
 }

@@ -173,7 +173,7 @@ state_from_word = |bytes| {
 }
 
 # ── tests
-# The paths each builder makes, under the auth root.
+# The paths each builder makes, under the accounts root.
 expect {
 	human = UserId.from_str("7") ?? crash "InviteFiles' tests: an id"
 	invite = HumanInvite.Id.from_str("2") ?? crash "InviteFiles' tests: an invite's number"

@@ -369,7 +369,7 @@ is_plans_stream_with = |response, backlog|
 frozen_frame : { id : Str, paragraph : Str } -> Str
 frozen_frame = |
 	{ id, paragraph },
-| "id: ${id}\ndata: <article class=\"message\" id=\"msg-${id}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-${id}\">MSG_plans_${id}</a></header>\ndata: <div class=\"body\"><p>${paragraph}</p>\ndata: </div></article>\ndata: \n\n"
+| "id: ${id}\ndata: <article class=\"message\" id=\"msg-${id}\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"message-reference\" href=\"#msg-${id}\">MSG_plans_${id}</a></header>\ndata: <div class=\"body\"><p>${paragraph}</p>\ndata: </div></article>\ndata: \n\n"
 
 ## The frame of `message` of `conversation`, in `plans_key`, its HTML as
 ## the page writes it.

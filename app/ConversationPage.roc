@@ -193,7 +193,7 @@ ConversationPage :: [].{
 			PageKit.space,
 			Html.element({
 				name: A,
-				attributes: [PageContract.class(Ref), Href(anchor(message_reference))],
+				attributes: [PageContract.class(MessageReference), Href(anchor(message_reference))],
 				inner: Escape.text(message_reference.to_str()),
 			}),
 		])
@@ -240,7 +240,10 @@ edited_body = |{ edit_reference, markdown }|
 				Escape.text("Edited in "),
 				Html.element({
 					name: A,
-					attributes: [PageContract.class(Ref), Href(anchor(edit_reference))],
+					attributes: [
+						PageContract.class(MessageReference),
+						Href(anchor(edit_reference)),
+					],
 					inner: Escape.text(edit_reference.to_str()),
 				}),
 			]),

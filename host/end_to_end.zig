@@ -847,7 +847,7 @@ fn editAndReactSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: S
     try t.check("edit one's own message: 201; the edit's frame, then the original sent again as edited, with no id; the page shows it edited, its markdown kept; both records on disk", edited.status == 201 and
         std.mem.startsWith(u8, edit_frame, "id: 2\n") and
         std.mem.startsWith(u8, again, "event: replace\ndata: <article class=\"message\" id=\"msg-1\"") and !has(again, "\nid: ") and
-        has(again, "Edited in <a class=\"ref\" href=\"#msg-2\">MSG_edits_2</a>") and
+        has(again, "Edited in <a class=\"message-reference\" href=\"#msg-2\">MSG_edits_2</a>") and
         std.mem.eql(u8, again["event: replace\n".len..], (try frameOf(a, edited_page.body, "1"))["id: 1\n".len..]) and
         has(edited_page.body, "<div class=\"edited-markdown\">Helo there</div>") and
         has(kept, "\n\nHelo there\n\n") and has(kept, "\n\nEdit of MSG_edits_1\n\nHello there\n\n"));

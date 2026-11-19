@@ -39,12 +39,12 @@ PageContract :: [].{
 		InviteCode,
 		Layout,
 		Message,
+		MessageReference,
 		Messages,
 		Panel,
 		ReactionChip,
 		ReactionEmoji,
 		ReactionStrip,
-		Ref,
 		Sidebar,
 		SidebarEmpty,
 		SidebarHeading,
@@ -116,12 +116,12 @@ class_name = |chosen|
 		InviteCode => "invite-code"
 		Layout => "layout"
 		Message => "message"
+		MessageReference => "message-reference"
 		Messages => "messages"
 		Panel => "panel"
 		ReactionChip => "reaction-chip"
 		ReactionEmoji => "reaction-emoji"
 		ReactionStrip => "reaction-strip"
-		Ref => "ref"
 		Sidebar => "sidebar"
 		SidebarEmpty => "sidebar-empty"
 		SidebarHeading => "sidebar-heading"
@@ -159,12 +159,12 @@ expect
 		(InviteCode, "invite-code"),
 		(Layout, "layout"),
 		(Message, "message"),
+		(MessageReference, "message-reference"),
 		(Messages, "messages"),
 		(Panel, "panel"),
 		(ReactionChip, "reaction-chip"),
 		(ReactionEmoji, "reaction-emoji"),
 		(ReactionStrip, "reaction-strip"),
-		(Ref, "ref"),
 		(Sidebar, "sidebar"),
 		(SidebarEmpty, "sidebar-empty"),
 		(SidebarHeading, "sidebar-heading"),

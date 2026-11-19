@@ -1,4 +1,4 @@
-## This module names a user's account folder, `auth/<id>`, under the auth
+## This module names a user's account folder, `auth/<id>`, under the accounts
 ## root, where the chat keeps who a user is and how they prove it: the
 ## user's name and an agent's owner
 ## (`Users`), and an agent's keys and invites (`AgentKey`, `AgentInvite`),
@@ -17,14 +17,14 @@ AccountFolder :: UserId.{
 	of : UserId -> AccountFolder
 	of = |id| AccountFolder.(id)
 
-	## Its parts, as its path spells them: the auth root, then the id's
+	## Its parts, as its path spells them: the accounts root, then the id's
 	## digits.
 	parts : AccountFolder -> List(Str)
-	parts = |AccountFolder.(id)| [AccountFolder.auth_root, id.to_str()]
+	parts = |AccountFolder.(id)| [AccountFolder.accounts_root, id.to_str()]
 
-	## The auth root's name, which also holds the counter of user ids.
-	auth_root : Str
-	auth_root = "auth"
+	## The accounts root's name, which also holds the counter of user ids.
+	accounts_root : Str
+	accounts_root = "auth"
 
 	is_eq : _
 }
