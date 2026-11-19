@@ -127,10 +127,10 @@ first_files : DirectoryFiles.Contents
 first_files = {
 	founder = FirstStart.first_directory.chat_owner().user()
 	{
-		counter: File(FirstStart.first_directory.users().counter_file()),
-		accounts: [{ id: founder.id(), files: Users.account_files(founder) }],
+		counter: File(FirstStart.first_directory.users().counter_bytes()),
+		accounts: [Users.account_facts(founder)],
 		channels: FirstStart.first_directory.channels().to_list().map(
-			|channel| { name: channel.name(), members: channel.members_file() },
+			|channel| { name: channel.name(), members: channel.members_bytes() },
 		),
 	}
 }

@@ -38,7 +38,7 @@ AccountFiles :: [].{
 	## holds none. An account folder with no `name` is no account: it is one
 	## cut short as it was made, and the counter of ids was advanced before
 	## it, so its id is never given again.
-	read_accounts! : {} => Try(List(Users.StoredAccount), [NotUtf8, PathRefused, Failed])
+	read_accounts! : {} => Try(List(Users.AccountFacts), [NotUtf8, PathRefused, Failed])
 	read_accounts! = |{}| {
 		account_ids = FileFacts.list_names_in!(AccountFolder.auth_root)?.keep_oks(UserId.from_str)
 		var $accounts = []
@@ -47,8 +47,12 @@ AccountFiles :: [].{
 			match FileFacts.read_fact!("${folder}/${name_fact}")? {
 				NoFile => {}
 				File(name) => {
-					owner = FileFacts.read_fact!("${folder}/owner")?
-					$accounts = $accounts.append({ id, files: { name, owner } })
+					owner =
+						match FileFacts.read_fact!("${folder}/owner")? {
+							NoFile => NoOwner
+							File(bytes) => Owner(bytes)
+						}
+					$accounts = $accounts.append({ id, name, owner })
 				}
 			}
 		}
@@ -64,14 +68,14 @@ AccountFiles :: [].{
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_account! = |user| {
-		files = Users.account_files(user)
+		facts = Users.account_facts(user)
 		owner_fact =
-			match files.owner {
-				NoFile => []
-				File(bytes) => [("owner", bytes)]
+			match facts.owner {
+				NoOwner => []
+				Owner(bytes) => [("owner", bytes)]
 			}
 		folder = AccountFiles.account_folder_path(AccountFolder.of(user.id()))
-		FileFacts.create_facts!(folder, owner_fact.append((name_fact, files.name)))
+		FileFacts.create_facts!(folder, owner_fact.append((name_fact, facts.name)))
 	}
 
 	## A new invited human's account folder, made once: the id of the human
@@ -83,9 +87,9 @@ AccountFiles :: [].{
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_invited_account! = |{ human, inviter }| {
-		files = Users.account_files(human)
+		facts = Users.account_facts(human)
 		folder = AccountFiles.account_folder_path(AccountFolder.of(human.id()))
-		FileFacts.create_facts!(folder, [("inviter", inviter.to_file()), (name_fact, files.name)])
+		FileFacts.create_facts!(folder, [("inviter", inviter.to_file()), (name_fact, facts.name)])
 	}
 
 	## A new human's account folder, made once as they sign up with GitHub:
@@ -97,11 +101,11 @@ AccountFiles :: [].{
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
 	create_github_account! = |{ human, github }| {
-		files = Users.account_files(human)
+		facts = Users.account_facts(human)
 		folder = AccountFiles.account_folder_path(AccountFolder.of(human.id()))
 		FileFacts.create_facts!(
 			folder,
-			[(github_id_fact, github.to_file()), (name_fact, files.name)],
+			[(github_id_fact, github.to_file()), (name_fact, facts.name)],
 		)
 	}
 
@@ -110,7 +114,7 @@ AccountFiles :: [].{
 	replace_account_name! : Users.User => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_account_name! = |user| {
 		folder = AccountFiles.account_folder_path(AccountFolder.of(user.id()))
-		FileFacts.replace_fact!("${folder}/${name_fact}", Users.account_files(user).name)
+		FileFacts.replace_fact!("${folder}/${name_fact}", Users.account_facts(user).name)
 	}
 
 	## The `inviter` file of the human `id`, as it is, or `NoFile` when they
@@ -227,7 +231,7 @@ AccountFiles :: [].{
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_user_counter! = |users| {
 		FileFacts.make_folder!(AccountFolder.auth_root)?
-		FileFacts.replace_fact!(user_counter_path, users.counter_file())
+		FileFacts.replace_fact!(user_counter_path, users.counter_bytes())
 	}
 }
 

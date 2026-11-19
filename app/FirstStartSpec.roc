@@ -30,7 +30,7 @@ expect FirstStart.first_directory.users().to_list().map(|user| user.role()) == [
 expect FirstStart.first_directory.channels().to_list().map(
 	|channel| (channel.name().to_str(), channel.members().map(UserId.to_str)),
 ) == [("general", ["1"])]
-expect FirstStart.first_directory.users().counter_file() == "2\n".to_utf8()
+expect FirstStart.first_directory.users().counter_bytes() == "2\n".to_utf8()
 expect page_for_get("/chat/channel/general/plans") == "/chat/channel/general/plans"
 expect page_for_get("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
 expect page_for_get("/chat/channel/other/plans") == "not found"

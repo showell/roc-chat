@@ -12,7 +12,6 @@
 ##
 ## This module and `AgentKey` are one trust boundary with `SignedIn`: an
 ## invite's code is a credential for exactly one key.
-import FactFile
 import KeyScope
 import Seconds
 import SecretHash
@@ -54,14 +53,14 @@ AgentInvite :: {
 	## (`Spent`) or revoked (`Revoked`).
 	State : [Live, Spent, Revoked]
 
-	## An invite's facts as their files hold them, one file each.
-	Files : {
-		created : List(U8),
-		expires : List(U8),
-		state : List(U8),
-		read : List(U8),
-		post : List(U8),
-		hash : List(U8),
+	## An invite's facts, all but its number, as plain values: what a store
+	## keeps of it.
+	Facts : {
+		created : Timestamp,
+		expires : Timestamp,
+		state : AgentInvite.State,
+		scope : KeyScope,
+		hash : SecretHash,
 	}
 
 	## How long an invite lives: ten minutes.
@@ -134,62 +133,29 @@ AgentInvite :: {
 	scope : AgentInvite -> KeyScope
 	scope = |AgentInvite.(invite)| invite.scope
 
-	## The invite's facts as their files keep them.
-	to_files : AgentInvite -> AgentInvite.Files
-	to_files = |AgentInvite.(invite)| {
-		created: invite.created.to_file(),
-		expires: invite.expires.to_file(),
-		state: state_to_file(invite.state),
-		read: KeyScope.reach_to_file(invite.scope.read()),
-		post: KeyScope.reach_to_file(invite.scope.post()),
-		hash: invite.hash.to_file(),
+	## The invite's facts, all but its number.
+	to_facts : AgentInvite -> AgentInvite.Facts
+	to_facts = |AgentInvite.(invite)| {
+		created: invite.created,
+		expires: invite.expires,
+		state: invite.state,
+		scope: invite.scope,
+		hash: invite.hash,
 	}
 
-	## The invite numbered `id` whose facts `files` hold; unless one of them
-	## holds no such fact (`BadFact`, naming the file).
-	from_files : AgentInvite.Id, AgentInvite.Files -> Try(AgentInvite, [BadFact(Str)])
-	from_files = |number, files| {
-		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
-		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
-		held_state = state_from_file(files.state) ? |_| BadFact("state")
-		read = KeyScope.reach_from_file(files.read) ? |_| BadFact("read")
-		post = KeyScope.reach_from_file(files.post) ? |_| BadFact("post")
-		hash = SecretHash.from_file(files.hash) ? |_| BadFact("hash")
-		Ok(
-			AgentInvite.(
-				{
-					id: number,
-					hash,
-					created: made_at,
-					expires: ends_at,
-					state: held_state,
-					scope: KeyScope.of({ read, post }),
-				},
-			),
+	## The invite numbered `id` whose facts are `facts`.
+	from_facts : AgentInvite.Id, AgentInvite.Facts -> AgentInvite
+	from_facts = |number, facts|
+		AgentInvite.(
+			{
+				id: number,
+				hash: facts.hash,
+				created: facts.created,
+				expires: facts.expires,
+				state: facts.state,
+				scope: facts.scope,
+			},
 		)
-	}
 
 	is_eq : _
-}
-
-state_to_file : AgentInvite.State -> List(U8)
-state_to_file = |state|
-	match state {
-		Live => "live".to_utf8()
-		Spent => "spent".to_utf8()
-		Revoked => "revoked".to_utf8()
-	}
-
-state_from_file : List(U8) -> Try(AgentInvite.State, [NotAState])
-state_from_file = |bytes| {
-	word = FactFile.word_from_file(bytes)
-	if word == "live".to_utf8() {
-		Ok(Live)
-	} else if word == "spent".to_utf8() {
-		Ok(Spent)
-	} else if word == "revoked".to_utf8() {
-		Ok(Revoked)
-	} else {
-		Err(NotAState)
-	}
 }

@@ -16,7 +16,6 @@
 ## `FactFile`'s digits), `state` (`active` or `revoked`), `read` and `post`
 ## (`KeyScope`'s words), and `hash` (`SecretHash`'s 64 hex digits), written
 ## last, so a key cut short by a crash never admits anyone.
-import FactFile
 import KeyScope
 import Seconds
 import SecretHash
@@ -57,14 +56,14 @@ AgentKey :: {
 	## Whether a key still admits its agent.
 	State : [Active, Revoked]
 
-	## A key's facts as their files hold them, one file each.
-	Files : {
-		created : List(U8),
-		expires : List(U8),
-		state : List(U8),
-		read : List(U8),
-		post : List(U8),
-		hash : List(U8),
+	## A key's facts, all but its number, as plain values: what a store
+	## keeps of it.
+	Facts : {
+		created : Timestamp,
+		expires : Timestamp,
+		state : AgentKey.State,
+		scope : KeyScope,
+		hash : SecretHash,
 	}
 
 	## How long a key lives: a year.
@@ -149,59 +148,29 @@ AgentKey :: {
 	scope : AgentKey -> KeyScope
 	scope = |AgentKey.(key)| key.scope
 
-	## The key's facts as their files keep them.
-	to_files : AgentKey -> AgentKey.Files
-	to_files = |AgentKey.(key)| {
-		created: key.created.to_file(),
-		expires: key.expires.to_file(),
-		state: state_to_file(key.state),
-		read: KeyScope.reach_to_file(key.scope.read()),
-		post: KeyScope.reach_to_file(key.scope.post()),
-		hash: key.hash.to_file(),
+	## The key's facts, all but its number.
+	to_facts : AgentKey -> AgentKey.Facts
+	to_facts = |AgentKey.(key)| {
+		created: key.created,
+		expires: key.expires,
+		state: key.state,
+		scope: key.scope,
+		hash: key.hash,
 	}
 
-	## The key numbered `id` whose facts `files` hold; unless one of them
-	## holds no such fact (`BadFact`, naming the file).
-	from_files : AgentKey.Id, AgentKey.Files -> Try(AgentKey, [BadFact(Str)])
-	from_files = |number, files| {
-		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
-		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
-		held_state = state_from_file(files.state) ? |_| BadFact("state")
-		read = KeyScope.reach_from_file(files.read) ? |_| BadFact("read")
-		post = KeyScope.reach_from_file(files.post) ? |_| BadFact("post")
-		hash = SecretHash.from_file(files.hash) ? |_| BadFact("hash")
-		Ok(
-			AgentKey.(
-				{
-					id: number,
-					hash,
-					created: made_at,
-					expires: ends_at,
-					state: held_state,
-					scope: KeyScope.of({ read, post }),
-				},
-			),
+	## The key numbered `id` whose facts are `facts`.
+	from_facts : AgentKey.Id, AgentKey.Facts -> AgentKey
+	from_facts = |number, facts|
+		AgentKey.(
+			{
+				id: number,
+				hash: facts.hash,
+				created: facts.created,
+				expires: facts.expires,
+				state: facts.state,
+				scope: facts.scope,
+			},
 		)
-	}
 
 	is_eq : _
-}
-
-state_to_file : AgentKey.State -> List(U8)
-state_to_file = |state|
-	match state {
-		Active => "active".to_utf8()
-		Revoked => "revoked".to_utf8()
-	}
-
-state_from_file : List(U8) -> Try(AgentKey.State, [NotAState])
-state_from_file = |bytes| {
-	word = FactFile.word_from_file(bytes)
-	if word == "active".to_utf8() {
-		Ok(Active)
-	} else if word == "revoked".to_utf8() {
-		Ok(Revoked)
-	} else {
-		Err(NotAState)
-	}
 }

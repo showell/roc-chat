@@ -11,7 +11,7 @@
 ## `chat/channel/<name>.channel`, beside the channel's folder of topics,
 ## holding one member's id a line. The admin changes the
 ## members on a channel's page (`ChannelMembersRoute`), or by editing the
-## file. `members_file` writes it, and `from_stored` reads
+## file. `members_bytes` gives what it holds, and `from_stored` reads
 ## it back: each line's spaces off, a blank line or one
 ## starting `#` skipped, and any other line exactly an id, once.
 import Admin
@@ -35,26 +35,26 @@ Channels :: List(Channels.Channel).{
 		has_member : Channels.Channel, Users.User -> Bool
 		has_member = |Channels.Channel.(c), user| c.members.contains(user.id())
 
-		## The channel's members file: each member's id and a line end,
+		## The channel's members as its file holds them: each member's id and a line end,
 		## lowest first.
-		members_file : Channels.Channel -> List(U8)
-		members_file = |channel| channel.members().join_map(|id| "${id.to_str()}\n".to_utf8())
+		members_bytes : Channels.Channel -> List(U8)
+		members_bytes = |channel| channel.members().join_map(|id| "${id.to_str()}\n".to_utf8())
 
 		is_eq : _
 	}
 
-	## A channel's members file as it was read, with the name its file is
-	## named by.
-	StoredChannel : { name : ChannelName, members : List(U8) }
+	## A channel's facts as a store keeps them: its name, and its members
+	## as `members_bytes` gives them.
+	ChannelFacts : { name : ChannelName, members : List(U8) }
 
 	## The channels the members files hold, in the order given. Refused
 	## when a line is no id, or an id twice (`BadMembers`, naming the
 	## channel).
-	from_stored : List(Channels.StoredChannel) -> Try(Channels, [BadMembers(ChannelName)])
+	from_stored : List(Channels.ChannelFacts) -> Try(Channels, [BadMembers(ChannelName)])
 	from_stored = |stored|
 		stored.map_try(
 			|{ name, members }| {
-				ids = members_from_file(members) ? |_| BadMembers(name)
+				ids = members_from_bytes(members) ? |_| BadMembers(name)
 				Ok(Channels.Channel.({ name, members: Set.from_list(ids) }))
 			},
 		).map_ok(|all| Channels.(all))
@@ -151,8 +151,8 @@ Channels :: List(Channels.Channel).{
 }
 
 ## The members a members file names, one id a line, each once.
-members_from_file : List(U8) -> Try(List(UserId), [NotAMembersFile])
-members_from_file = |bytes| {
+members_from_bytes : List(U8) -> Try(List(UserId), [NotAMembersFile])
+members_from_bytes = |bytes| {
 	lines =
 		bytes.split_on('\n')
 			.map(Ascii.trim_spaces)

@@ -1,8 +1,8 @@
 ## These are the tests of `AgentKey` and `AgentInvite`: a key admits only
 ## its own agent, by the hash of its secret, while active and before its
 ## expiry; an invite redeems once, while live and before its expiry; each
-## is revoked once; and each is kept as its files and read back. A key's
-## door into `SignedIn` is tested here too.
+## is revoked once. A key's door into `SignedIn` is tested here too;
+## `AgentFiles` tests how each is kept as its files and read back.
 import AgentInvite
 import AgentKey
 import KeyScope
@@ -158,37 +158,6 @@ expect
 	SignedIn.dangerously_assume(Sample.steve).human_in_session().map_ok(Users.Human.id)
 		== Ok(UserId.chat_owner)
 
-# A key's files, exactly, and read back as the same key.
-expect
-	key_two.to_files()
-		== {
-			created: "1761600000".to_utf8(),
-			expires: "1793136000".to_utf8(),
-			state: "active".to_utf8(),
-			read: "everywhere".to_utf8(),
-			post: "off".to_utf8(),
-			hash: "6b".repeat(32).to_utf8(),
-		}
-expect AgentKey.from_files(key_id("2"), key_two.to_files()) == Ok(key_two)
-expect {
-	revoked = key_one.revoke() ?? crash "AgentKeySpec: an active key revokes"
-	revoked.to_files().state == "revoked".to_utf8() and AgentKey.from_files(
-		key_id("1"),
-		revoked.to_files(),
-	) == Ok(revoked)
-}
-# Each fact that is no fact, refused by its file's name.
-expect {
-	files = key_one.to_files()
-	[
-		({ ..files, created: "-1".to_utf8() }, "created"),
-		({ ..files, expires: "soon".to_utf8() }, "expires"),
-		({ ..files, state: "Active".to_utf8() }, "state"),
-		({ ..files, read: "on".to_utf8() }, "read"),
-		({ ..files, post: "".to_utf8() }, "post"),
-		({ ..files, hash: "5a".repeat(31).to_utf8() }, "hash"),
-	].all(|(bad, name)| AgentKey.from_files(key_id("1"), bad) == Err(BadFact(name)))
-}
 # A key's number: one spelling, the next after the highest.
 expect key_id("7").to_str() == "7"
 expect AgentKey.Id.from_str("07") == Err(NotAKeyId)
@@ -301,41 +270,6 @@ expect {
 		now: made_at,
 	}) ?? crash "AgentKeySpec: invite 1 redeems"
 	spent.revoke().map_ok(|_| {}) == Err(Spent)
-}
-# An invite's files, exactly, and read back; each state's word.
-expect
-	invite_one.to_files()
-		== {
-			created: "1761600000".to_utf8(),
-			expires: "1761600600".to_utf8(),
-			state: "live".to_utf8(),
-			read: "everywhere".to_utf8(),
-			post: "off".to_utf8(),
-			hash: "7c".repeat(32).to_utf8(),
-		}
-expect AgentInvite.from_files(invite_id("1"), invite_one.to_files()) == Ok(invite_one)
-expect {
-	spent = AgentInvite.redeem({
-		invites: [invite_one],
-		hash: hash_of(0x7c),
-		now: made_at,
-	}) ?? crash "AgentKeySpec: invite 1 redeems"
-	revoked = invite_two.revoke() ?? crash "AgentKeySpec: a live invite revokes"
-	spent.to_files().state == "spent".to_utf8()
-		and revoked.to_files().state == "revoked".to_utf8()
-		and AgentInvite.from_files(invite_id("1"), spent.to_files()) == Ok(spent)
-		and AgentInvite.from_files(invite_id("2"), revoked.to_files()) == Ok(revoked)
-}
-expect {
-	files = invite_one.to_files()
-	[
-		({ ..files, created: "x".to_utf8() }, "created"),
-		({ ..files, expires: "".to_utf8() }, "expires"),
-		({ ..files, state: "used".to_utf8() }, "state"),
-		({ ..files, read: "off off".to_utf8() }, "read"),
-		({ ..files, post: "On".to_utf8() }, "post"),
-		({ ..files, hash: "zz".repeat(32).to_utf8() }, "hash"),
-	].all(|(bad, name)| AgentInvite.from_files(invite_id("1"), bad) == Err(BadFact(name)))
 }
 expect AgentInvite.Id.from_str("0") == Err(NotAnInviteId)
 expect AgentInvite.Id.next_after([invite_id("2")]) == Ok(invite_id("3"))

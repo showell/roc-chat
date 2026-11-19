@@ -142,9 +142,7 @@ Sample :: [].{
 	## Ids are spent by the counter alone, so this needs no crowd of users.
 	directory_with_ids_left : U64 -> Directory
 	directory_with_ids_left = |left| {
-		accounts = Sample.directory.users().to_list().map(
-			|user| { id: user.id(), files: Users.account_files(user) },
-		)
+		accounts = Sample.directory.users().to_list().map(Users.account_facts)
 		counter = "${(UserId.past_highest - left).to_str()}\n".to_utf8()
 		users =
 			Users.from_stored({ counter, accounts })

@@ -22,7 +22,6 @@
 ## (`GitHubSignIn`). This module
 ## is a trust boundary with `SignedIn`, `AgentKey` and `AgentInvite`: an
 ## invite's code is a credential for exactly one human's password.
-import FactFile
 import Seconds
 import SecretHash
 import SerialNumber
@@ -65,13 +64,14 @@ HumanInvite :: {
 	## (`Spent`).
 	State : [Live, Spent]
 
-	## An invite's facts as their files hold them, one file each.
-	Files : {
-		created : List(U8),
-		expires : List(U8),
-		state : List(U8),
-		by : List(U8),
-		hash : List(U8),
+	## An invite's facts, all but its number, as plain values: what a store
+	## keeps of it.
+	Facts : {
+		created : Timestamp,
+		expires : Timestamp,
+		state : HumanInvite.State,
+		by : UserId,
+		hash : SecretHash,
 	}
 
 	## How long an invite lives: seven days.
@@ -165,57 +165,29 @@ HumanInvite :: {
 	invite_maker : HumanInvite -> UserId
 	invite_maker = |HumanInvite.(invite)| invite.by
 
-	## The invite's facts as their files keep them.
-	to_files : HumanInvite -> HumanInvite.Files
-	to_files = |HumanInvite.(invite)| {
-		created: invite.created.to_file(),
-		expires: invite.expires.to_file(),
-		state: state_to_file(invite.state),
-		by: invite.by.to_file(),
-		hash: invite.hash.to_file(),
+	## The invite's facts, all but its number.
+	to_facts : HumanInvite -> HumanInvite.Facts
+	to_facts = |HumanInvite.(invite)| {
+		created: invite.created,
+		expires: invite.expires,
+		state: invite.state,
+		by: invite.by,
+		hash: invite.hash,
 	}
 
-	## The invite numbered `id` whose facts `files` hold; unless one of them
-	## holds no such fact (`BadFact`, naming the file).
-	from_files : HumanInvite.Id, HumanInvite.Files -> Try(HumanInvite, [BadFact(Str)])
-	from_files = |number, files| {
-		made_at = Timestamp.from_file(files.created) ? |_| BadFact("created")
-		ends_at = Timestamp.from_file(files.expires) ? |_| BadFact("expires")
-		held_state = state_from_file(files.state) ? |_| BadFact("state")
-		maker = UserId.from_file(files.by) ? |_| BadFact("by")
-		hash = SecretHash.from_file(files.hash) ? |_| BadFact("hash")
-		Ok(
-			HumanInvite.(
-				{
-					id: number,
-					hash,
-					created: made_at,
-					expires: ends_at,
-					state: held_state,
-					by: maker,
-				},
-			),
+	## The invite numbered `id` whose facts are `facts`.
+	from_facts : HumanInvite.Id, HumanInvite.Facts -> HumanInvite
+	from_facts = |number, facts|
+		HumanInvite.(
+			{
+				id: number,
+				hash: facts.hash,
+				created: facts.created,
+				expires: facts.expires,
+				state: facts.state,
+				by: facts.by,
+			},
 		)
-	}
 
 	is_eq : _
-}
-
-state_to_file : HumanInvite.State -> List(U8)
-state_to_file = |state|
-	match state {
-		Live => "live".to_utf8()
-		Spent => "spent".to_utf8()
-	}
-
-state_from_file : List(U8) -> Try(HumanInvite.State, [NotAState])
-state_from_file = |bytes| {
-	word = FactFile.word_from_file(bytes)
-	if word == "live".to_utf8() {
-		Ok(Live)
-	} else if word == "spent".to_utf8() {
-		Ok(Spent)
-	} else {
-		Err(NotAState)
-	}
 }

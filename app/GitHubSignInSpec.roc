@@ -334,7 +334,7 @@ expect new_human_called("Zoe").suggested_name(full_directory) == NoSuggestion
 ## The tests' directory, its every id spent, as the counter says.
 full_directory : Directory
 full_directory = {
-	accounts = tests_users.to_list().map(|user| { id: user.id(), files: Users.account_files(user) })
+	accounts = tests_users.to_list().map(Users.account_facts)
 	users =
 		Users.from_stored({ counter: "65536\n".to_utf8(), accounts })
 			?? crash "GitHubSignInSpec: the users' files read back"
@@ -418,8 +418,8 @@ account_made = |{ name, links, directory }| {
 		name: made.human.name().to_str(),
 		next: made.admission.next().to_str(),
 		github: made.github.to_str(),
-		counter: made.directory.users().counter_file(),
-		members: made.channel.members_file(),
+		counter: made.directory.users().counter_bytes(),
+		members: made.channel.members_bytes(),
 	})
 }
 

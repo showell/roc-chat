@@ -24,8 +24,8 @@ DirectoryFiles :: [].{
 	## every account folder's, and every channel's members file.
 	Contents : {
 		counter : [NoFile, File(List(U8))],
-		accounts : List(Users.StoredAccount),
-		channels : List(Channels.StoredChannel),
+		accounts : List(Users.AccountFacts),
+		channels : List(Channels.ChannelFacts),
 	}
 
 	## The files the directory is kept in, unchecked, for `Users.from_stored`
@@ -63,7 +63,7 @@ DirectoryFiles :: [].{
 	)
 	replace_channel_members! = |channel| {
 		FileFacts.make_folder!(channels_folder_path)?
-		FileFacts.replace_fact!(channel_members_path(channel.name()), channel.members_file())
+		FileFacts.replace_fact!(channel_members_path(channel.name()), channel.members_bytes())
 	}
 
 	## The topics of `place`'s conversations, by its folders, in byte order;

@@ -38,8 +38,8 @@ expect {
 		with_default.add_new_human(Sample.human("Apoorva")) ?? crash "ChannelsSpec: it is there"
 	plans = joined.channels.channel(channel_name("plans")) ?? crash "ChannelsSpec: plans is there"
 	joined.channel.name() == Channels.default_name
-		and joined.channel.members_file() == "1\n2\n".to_utf8()
-		and plans.members_file() == "1\n".to_utf8()
+		and joined.channel.members_bytes() == "1\n2\n".to_utf8()
+		and plans.members_bytes() == "1\n".to_utf8()
 }
 # With no default channel there is nowhere to join.
 expect with_plans.add_new_human(Sample.human("Apoorva")).map_ok(|_| {}) == Err(NoDefaultChannel)

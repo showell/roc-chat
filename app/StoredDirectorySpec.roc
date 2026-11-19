@@ -33,49 +33,50 @@ with_team = {
 	}) ?? crash "StoredDirectorySpec: CC joins"
 }
 
-## The users' account files, as `AccountFiles` reads them.
-accounts_of : Users -> List(Users.StoredAccount)
-accounts_of = |users| users.to_list().map(
-	|user| { id: user.id(), files: Users.account_files(user) },
-)
+## The users' account facts, as `AccountFiles` reads them.
+accounts_of : Users -> List(Users.AccountFacts)
+accounts_of = |users| users.to_list().map(Users.account_facts)
 
-## The channels' members files, as `DirectoryFiles` reads them.
-channels_of : Channels -> List(Channels.StoredChannel)
+## The channels' members facts, as `DirectoryFiles` reads them.
+channels_of : Channels -> List(Channels.ChannelFacts)
 channels_of = |channels| channels.to_list().map(
-	|channel| { name: channel.name(), members: channel.members_file() },
+	|channel| { name: channel.name(), members: channel.members_bytes() },
 )
 
 ## The users the files hold, from `with_team`'s, with `counter`.
-users_with : { counter : Str, accounts : List(Users.StoredAccount) } -> Try(Users, _)
+users_with : { counter : Str, accounts : List(Users.AccountFacts) } -> Try(Users, _)
 users_with = |{ counter, accounts }| Users.from_stored({ counter: counter.to_utf8(), accounts })
 
 ## An account's files, as a test writes them.
 account : {
 	id : Str,
 	name : Str,
-	owner : [NoFile, File(Str)],
-} -> Users.StoredAccount
+	owner : [NoOwner, Owner(Str)],
+} -> Users.AccountFacts
 account = |{ id, name, owner }| {
 	id: UserId.from_str(id) ?? crash "StoredDirectorySpec: an id",
-	files: {
-		name: name.to_utf8(),
-		owner: match owner {
-			NoFile => NoFile
-			File(text) => File(text.to_utf8())
-		},
+	name: name.to_utf8(),
+	owner: match owner {
+		NoOwner => NoOwner
+		Owner(text) => Owner(text.to_utf8())
 	},
 }
 
 # Each user's files: a human's name and no owner; an agent's name and its
 # owner's digits. The counter: the next id's digits and a line end.
-expect Users.account_files(Sample.steve) == { name: "Steve".to_utf8(), owner: NoFile }
-expect Users.account_files(Sample.user("CC")) == {
-	name: "CC".to_utf8(),
-	owner: File("1".to_utf8()),
+expect Users.account_facts(Sample.steve) == {
+	id: UserId.chat_owner,
+	name: "Steve".to_utf8(),
+	owner: NoOwner,
 }
-expect Sample.directory.users().counter_file() == "4\n".to_utf8()
-expect Sample.directory_with_ids_left(1).users().counter_file() == "65535\n".to_utf8()
-expect Sample.directory_with_ids_left(0).users().counter_file() == "65536\n".to_utf8()
+expect Users.account_facts(Sample.user("CC")) == {
+	id: Sample.user("CC").id(),
+	name: "CC".to_utf8(),
+	owner: Owner("1".to_utf8()),
+}
+expect Sample.directory.users().counter_bytes() == "4\n".to_utf8()
+expect Sample.directory_with_ids_left(1).users().counter_bytes() == "65535\n".to_utf8()
+expect Sample.directory_with_ids_left(0).users().counter_bytes() == "65536\n".to_utf8()
 # Written out and read back, in any order, the same users, the next id
 # included; and the same directory.
 expect users_with({
@@ -90,7 +91,7 @@ expect {
 	users = Sample.directory_with_ids_left(0).users()
 	users.next_id() == Err(Full)
 		and Users.from_stored({
-			counter: users.counter_file(),
+			counter: users.counter_bytes(),
 			accounts: accounts_of(users),
 		}) == Ok(users)
 }
@@ -133,12 +134,12 @@ expect
 			account({
 				id: "1",
 				name: "Steve",
-				owner: NoFile,
+				owner: NoOwner,
 			}),
 			account({
 				id: "2",
 				name: "R2D2",
-				owner: NoFile,
+				owner: NoOwner,
 			}),
 		],
 	}).map_ok(|_| {})
@@ -152,12 +153,12 @@ expect
 					account({
 						id: "1",
 						name: "Steve",
-						owner: NoFile,
+						owner: NoOwner,
 					}),
 					account({
 						id: "2",
 						name: "CC",
-						owner: File(owner),
+						owner: Owner(owner),
 					}),
 				],
 			}).map_ok(|_| {})
@@ -170,12 +171,12 @@ expect
 			account({
 				id: "1",
 				name: "Steve",
-				owner: NoFile,
+				owner: NoOwner,
 			}),
 			account({
 				id: "2",
 				name: "CC",
-				owner: File("1\n"),
+				owner: Owner("1\n"),
 			}),
 		],
 	}).map_ok(|users| users.to_list().len())
@@ -188,7 +189,7 @@ expect users_with({
 		account({
 			id: "1",
 			name: "Bot",
-			owner: File("1"),
+			owner: Owner("1"),
 		}),
 	],
 }).map_ok(|_| {}) == Err(NoFounder)
@@ -198,7 +199,7 @@ expect users_with({
 		account({
 			id: "2",
 			name: "Steve",
-			owner: NoFile,
+			owner: NoOwner,
 		}),
 	],
 }).map_ok(|_| {}) == Err(NoFounder)
@@ -215,7 +216,7 @@ member_ids_of_members_file = |text| {
 # line, blank lines and `#` lines skipped.
 expect
 	(with_team.channels().channel(ChannelName.from_str("team") ?? crash "a name") ?? crash "team")
-		.members_file()
+		.members_bytes()
 		== "1\n3\n".to_utf8()
 expect member_ids_of_members_file("1\n3\n") == Ok(["1", "3"])
 expect member_ids_of_members_file("# the team\n\n 3 \r\n1") == Ok(["1", "3"])

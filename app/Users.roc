@@ -16,8 +16,9 @@
 ## root: the counter of the next id, `auth/next-id.txt`, its digits and a
 ## line end (`65536` when every id is taken); and a folder per user, `auth/<id>/`, holding the
 ## user's name, exactly as given, in `name`, and an agent's owner's id, its
-## digits, in `owner`. A human has no `owner` file. `from_stored` reads them
-## back, and `account_files` and `counter_file` write them.
+## digits, in `owner`. A human has no `owner` file. `account_facts` and
+## `counter_bytes` give what those files hold, and `from_stored` reads it
+## back.
 import Author
 import FactFile
 import Name
@@ -104,28 +105,29 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 			Full => Err(Full)
 		}
 
-	## One user's files as `auth/<id>/` holds them: the name's bytes, and an
-	## agent's owner's id, its digits (`NoFile` for a human).
-	AccountFiles : { name : List(U8), owner : [NoFile, File(List(U8))] }
+	## One user's facts as a store keeps them: their id, their name's bytes,
+	## and an agent's owner's id, its digits (`NoOwner` for a human).
+	AccountFacts : {
+		id : UserId,
+		name : List(U8),
+		owner : [NoOwner, Owner(List(U8))],
+	}
 
-	## A user's files as they were read, with the id their folder is named
-	## by.
-	StoredAccount : { id : UserId, files : Users.AccountFiles }
-
-	## The user's files, as `from_stored` reads them back.
-	account_files : Users.User -> Users.AccountFiles
-	account_files = |user| {
+	## The user's facts, as `from_stored` reads them back.
+	account_facts : Users.User -> Users.AccountFacts
+	account_facts = |user| {
+		id: user.id(),
 		name: user.name().to_str().to_utf8(),
 		owner: match user.role() {
-			Human => NoFile
-			Agent({ owner }) => File(owner.to_file())
+			Human => NoOwner
+			Agent({ owner }) => Owner(owner.to_file())
 		},
 	}
 
 	## The counter file: the next id's digits and a line end,
 	## `UserId.past_highest`'s when every id is taken.
-	counter_file : Users -> List(U8)
-	counter_file = |Users.(users)| {
+	counter_bytes : Users -> List(U8)
+	counter_bytes = |Users.(users)| {
 		digits =
 			match users.next {
 				Next(id) => id.to_str()
@@ -141,7 +143,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	## founder, a human with id 1 (`NoFounder`); when an id is at or past
 	## the counter (`CounterBehind`); or when an agent's owner is no human
 	## among them (`BadOwner`).
-	from_stored : { counter : List(U8), accounts : List(Users.StoredAccount) } -> Try(
+	from_stored : { counter : List(U8), accounts : List(Users.AccountFacts) } -> Try(
 		Users,
 		[
 			BadCounter,
@@ -152,7 +154,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 		],
 	)
 	from_stored = |{ counter, accounts }| {
-		next = next_from_file(counter)?
+		next = next_from_counter(counter)?
 		all = accounts.sort_with(|a, b| UserId.compare(a.id, b.id)).map_try(user_from_stored)?
 		founder_is_human =
 			match all.first() {
@@ -268,8 +270,8 @@ next_after = |id|
 
 ## The next id a counter file holds: the digits of an id after the first, or
 ## `UserId.past_highest`'s when every id is taken.
-next_from_file : List(U8) -> Try([Next(UserId), Full], [BadCounter])
-next_from_file = |bytes| {
+next_from_counter : List(U8) -> Try([Next(UserId), Full], [BadCounter])
+next_from_counter = |bytes| {
 	number = FactFile.number_from_file(bytes) ? |NotANumber| BadCounter
 	if number == UserId.past_highest {
 		Ok(Full)
@@ -281,22 +283,23 @@ next_from_file = |bytes| {
 	}
 }
 
-## The user an account folder's files make.
-user_from_stored : Users.StoredAccount -> Try(Users.User, [BadName(UserId), BadOwner(UserId)])
-user_from_stored = |{ id, files }| {
-	written = Str.from_utf8(FactFile.word_from_file(files.name)) ? |_| BadName(id)
+## The user an account's facts make.
+user_from_stored : Users.AccountFacts -> Try(Users.User, [BadName(UserId), BadOwner(UserId)])
+user_from_stored = |facts| {
+	id = facts.id
+	written = Str.from_utf8(FactFile.word_from_file(facts.name)) ? |_| BadName(id)
 	name = Name.from_str(written) ? |_| BadName(id)
-	role = role_from_file(files.owner) ? |NotAnOwner| BadOwner(id)
+	role = role_from_owner(facts.owner) ? |NotAnOwner| BadOwner(id)
 	Ok(Users.User.({ id, name, role }))
 }
 
-## The role an `owner` file gives: none, a human; an id's digits, an agent
-## of that owner.
-role_from_file : [NoFile, File(List(U8))] -> Try(Users.Role, [NotAnOwner])
-role_from_file = |owner_file|
-	match owner_file {
-		NoFile => Ok(Human)
-		File(bytes) =>
+## The role an account's owner gives: none, a human; an id's digits, an
+## agent of that owner.
+role_from_owner : [NoOwner, Owner(List(U8))] -> Try(Users.Role, [NotAnOwner])
+role_from_owner = |given|
+	match given {
+		NoOwner => Ok(Human)
+		Owner(bytes) =>
 			match UserId.from_file(bytes) {
 				Ok(owner) => Ok(Agent({ owner: owner }))
 				Err(NotAUserId) => Err(NotAnOwner)

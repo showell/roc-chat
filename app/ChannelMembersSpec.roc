@@ -139,7 +139,7 @@ expect
 			member: id_of("CC"),
 		},
 	) {
-		Ok(change) => change.channel.members_file() == "3\n".to_utf8()
+		Ok(change) => change.channel.members_bytes() == "3\n".to_utf8()
 		Err(_) => Bool.False
 	}
 # Adding refused: anyone but the admin, a member twice, no such channel or

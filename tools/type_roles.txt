@@ -4,7 +4,7 @@
 -- Any new type name two modules share fails the gate until someone reads it.
 Id
 State
-Files
+Facts
 Refusal
 Failure
 

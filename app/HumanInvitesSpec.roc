@@ -3,9 +3,9 @@
 ## invites; the human who invited them, or the admin, invites them again;
 ## an invite redeems once, within its seven days, for the human it names;
 ## joining keeps the name the inviter chose or takes another free one, and
-## a name chosen once stays; only someone signed in by no one joins; and
-## an invite's facts go to their files and come back. The invites page says
-## how each invite stands.
+## a name chosen once stays; and only someone signed in by no one joins.
+## The invites page says how each invite stands. `InviteFiles` tests how an
+## invite's facts go to their files and come back.
 import AgentKey
 import Directory
 import HumanInvite
@@ -93,7 +93,7 @@ expect
 	).map_ok(
 		|made|
 			match made.directory.users().user(id("4")) {
-				Ok(user) => user.role() == Human and made.channel.members_file() == "1\n4\n".to_utf8()
+				Ok(user) => user.role() == Human and made.channel.members_bytes() == "1\n4\n".to_utf8()
 				Err(NoSuchUser) => Bool.False
 			},
 	)
@@ -748,28 +748,6 @@ expect HumanInvites.name_from_form("name=Zoe%21".to_utf8()).map_ok(|_| {}) == Er
 expect
 	HumanInvites.name_from_form("code=x".to_utf8()).map_ok(|_| {})
 		== Err(BadForm("The form has no field `name`."))
-
-# Its facts to their files and back; each fact that holds no such fact
-# refused, naming its file.
-expect {
-	made = invite_made({ number: 3, by: "2" })
-	files = made.to_files()
-	files.by == "2".to_utf8()
-		and files.state == "live".to_utf8()
-		and files.created == "1000".to_utf8()
-		and HumanInvite.from_files(made.id(), files) == Ok(made)
-}
-expect {
-	made = invite_made({ number: 3, by: "2" })
-	files = made.to_files()
-	[
-		({ ..files, created: "x".to_utf8() }, "created"),
-		({ ..files, expires: "".to_utf8() }, "expires"),
-		({ ..files, state: "revoked".to_utf8() }, "state"),
-		({ ..files, by: "0".to_utf8() }, "by"),
-		({ ..files, hash: "00".to_utf8() }, "hash"),
-	].all(|(bad, fact)| HumanInvite.from_files(made.id(), bad).map_ok(|_| {}) == Err(BadFact(fact)))
-}
 
 # A redemption's password: 1 to 72 bytes; none, or more, refused; a form at
 # fault said.

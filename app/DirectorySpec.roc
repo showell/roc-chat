@@ -58,7 +58,7 @@ expect {
 			?? crash "DirectorySpec: the default channel is there"
 	made.user.id().to_str() == "4"
 		and made.channel == stored
-		and made.channel.members_file() == "1\n4\n".to_utf8()
+		and made.channel.members_bytes() == "1\n4\n".to_utf8()
 }
 # Refused as a human is, and when there is no default channel.
 expect
