@@ -158,8 +158,7 @@ asset_choice : Route.OpenChoice, [Get, Post, Other] -> Route.Choice
 asset_choice = |served, method|
 	match method {
 		Get => Open(served)
-		Post => MethodNotAllowed(GetOnly)
-		Other => MethodNotAllowed(GetOnly)
+		Post | Other => MethodNotAllowed(GetOnly)
 	}
 
 ## The route for `method` and a path under `/invites`, a conversation's, or
@@ -212,9 +211,7 @@ conversation_path_choice = |{ path, method, directory }|
 	match ConversationKey.from_url_path({ path, directory }) {
 		Ok(found) => conversation_choice({ key: found.key, resource: found.resource, method })
 		Err(NotAConversationPath) => browse_path_choice({ path, method, directory })
-		Err(BadName) => NotFound
-		Err(NoSuchChannel) => NotFound
-		Err(NoSuchHuman) => NotFound
+		Err(BadName) | Err(NoSuchChannel) | Err(NoSuchHuman) => NotFound
 	}
 
 ## The route for `method` and a path that is the way in, Browse's, a place's,
@@ -228,22 +225,18 @@ browse_path_choice = |{ path, method, directory }|
 	if path.is_exactly("/") {
 		match method {
 			Get => Open(GoToBrowse)
-			Post => MethodNotAllowed(GetOnly)
-			Other => MethodNotAllowed(GetOnly)
+			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else if path.is_exactly(ConversationKey.browse_path) {
 		match method {
 			Get => SignedInOnly(ShowBrowse)
-			Post => MethodNotAllowed(GetOnly)
-			Other => MethodNotAllowed(GetOnly)
+			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else {
 		match ConversationKey.place_from_url_path({ path, directory }) {
 			Ok(place) => place_choice({ place, method })
 			Err(NotAConversationPath) => NotFound
-			Err(BadName) => NotFound
-			Err(NoSuchChannel) => NotFound
-			Err(NoSuchHuman) => NotFound
+			Err(BadName) | Err(NoSuchChannel) | Err(NoSuchHuman) => NotFound
 		}
 	}
 
@@ -251,9 +244,8 @@ browse_path_choice = |{ path, method, directory }|
 place_choice : { place : Place, method : [Get, Post, Other] } -> Route.Choice
 place_choice = |{ place, method }|
 	match method {
-		Get => MethodNotAllowed(PostOnly)
 		Post => SignedInOnly(StartTopic(place))
-		Other => MethodNotAllowed(PostOnly)
+		Get | Other => MethodNotAllowed(PostOnly)
 	}
 
 ## The route for `method` and a path that is no script's, as text.
