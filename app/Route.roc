@@ -155,7 +155,8 @@ Route :: [].{
 		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
 			Ok(script) => asset_choice(ServeScript(script), asked)
 			Err(NotFound) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
-			Err(NotFound) if path == Favicon.alert_url_path.to_utf8() => asset_choice(ServeAlertIcon, asked)
+			Err(NotFound) if path == Favicon.alert_url_path.to_utf8() =>
+				asset_choice(ServeAlertIcon, asked)
 			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) => path_choice({ path: unchecked, method: asked, directory })
