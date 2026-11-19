@@ -312,6 +312,10 @@
 //!  51. an invited human joins: #general holds them, and with no conversation
 //!      to land on they land on /agents, a 200;
 //!  52. Browse for a stranger: the sign-in page, and back after; a new topic: 401;
+//! 53a. presence: Uma, just joined, is away in Steve's sidebar; her first
+//!      page sends Steve's open stream her dot and "Uma has come online.",
+//!      linked to their DM; her next page tells no one, and Steve's page
+//!      then draws her online;
 //!  53. Browse lists a human's DMs and channels, and no other's;
 //! 53a. Browse links to /invites for the owner and any other human, the link
 //!      leading to the form; a conversation's top bar links there too, for
@@ -1007,6 +1011,33 @@ fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps,
     try browseSteps(a, io, port, data, t, try cookieLine(a, joined));
 }
 
+/// Step 53a, presence, as Gopher Chat's: Uma (3), just joined, has made no
+/// request that counts; Steve holds his DM with her open, its stream on.
+fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const u8) !void {
+    const dm = "/chat/dm/1_3/ChitChat";
+    const before = try getAs(a, io, port, steve_session, dm);
+    var stream = try Stream.openWith(a, io, port, dm ++ "/stream?after=1", "");
+    defer stream.close();
+    const away = "data-section=\"/chat/dm/1_3\" data-person=\"3\" data-presence=\"offline\">";
+    const here = "data-section=\"/chat/dm/1_3\" data-person=\"3\" data-presence=\"online\">";
+    try t.check("presence: Uma, joined but never seen, is away in Steve's sidebar, and his own DM names no one", before.status == 200 and has(before.body, away) and
+        has(before.body, "data-section=\"/chat/dm/1_1\">") and stream.isEventStream());
+    // Her first request that counts: Browse.
+    const browsed = try getAs(a, io, port, uma, "/chat");
+    const online = try stream.event();
+    const notice = try stream.event();
+    try t.check("presence: Uma's first page brings her online: Steve's open stream says so, her dot, then \"Uma has come online.\" linked to their DM", browsed.status == 200 and
+        std.mem.eql(u8, online, "event: online\ndata: 3\n\n") and
+        std.mem.eql(u8, notice, "event: notice\ndata: <a href=\"" ++ dm ++ "\">Uma has come online.</a>\n\n"));
+    // Within five minutes, her pages tell no one again.
+    const again = try getAs(a, io, port, uma, dm);
+    const said = try postAs(a, io, port, steve_session, dm ++ "/send", "markdown=Hi+Uma");
+    const next = try stream.event();
+    const after = try getAs(a, io, port, steve_session, dm);
+    try t.check("presence: her next page tells no one: Steve's next event is his own message; his page now draws her online", again.status == 200 and said.status == 201 and
+        std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and !has(again.body, "data-person=\"3\""));
+}
+
 /// Steps 52 to 57, as Steve (1), Tam (2) and Uma (3), who are all in #general;
 /// Steve alone is in #crew.
 fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, tam: []const u8) !void {
@@ -1035,7 +1066,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const steves_last = try readFile(a, io, data, "users/1/last-conv");
     const steves_way_in = try getAs(a, io, port, steve_session, "/");
     try t.check("a conversation's page for someone signed in: its sidebar, the page's topic marked; the page recorded, bare, as their last; and / a 303 back to it", steves_page.status == 200 and
-        has(steves_page.body, "<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\"><nav class=\"sidebar\">") and
+        has(steves_page.body, "<button class=\"sidebar-toggle\">Conversations</button>\n<p class=\"notice-strip\"></p>\n<div class=\"layout\"><nav class=\"sidebar\">") and
         has(steves_page.body, "<li><a class=\"current\" href=\"" ++ channel_url ++ "\">roc-chat</a></li>") and
         has(steves_page.body, "<script src=\"/chat/assets/sidebar.js\"></script>") and std.mem.eql(u8, steves_last, channel_url) and
         steves_way_in.status == 303 and std.mem.eql(u8, steves_way_in.header("location") orelse "", channel_url));
@@ -1058,6 +1089,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const created = try postAs(a, io, port, steve_session, "/channels", "name=crew");
     const joined_crew = try postAs(a, io, port, steve_session, "/channels/crew/members/1/add", "");
     const uma = try joinedHuman(a, io, port, steve_session, "Uma");
+    try presenceSteps(a, io, port, t, uma);
     const steves = try getAs(a, io, port, steve_session, "/chat");
     const tams = try getAs(a, io, port, tam, "/chat");
     try t.check("Steve's Browse: every human, himself too, each DM's topics, and both his channels, each with its form", created.status == 303 and joined_crew.status == 303 and steves.status == 200 and
