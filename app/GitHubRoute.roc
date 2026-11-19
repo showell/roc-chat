@@ -30,6 +30,9 @@
 ## GitHub's token never reach this module: the host keeps them, and answers
 ## only GitHub's id and login (`Host.github_identity_for_code!`). No answer
 ## here may be kept by a browser or a proxy.
+import AgentsPage
+import PageKit
+import SignInPage
 import Timestamp
 import pf.Host
 import pf.Http
@@ -46,7 +49,6 @@ import Html
 import HttpAnswer
 import HumanInvites
 import Name
-import Page
 import RequestHeader
 import SignInRoute
 import SignedIn
@@ -58,7 +60,7 @@ import Welcome
 GitHubRoute :: [].{
 
 	## Whether this server offers GitHub on its sign-in page.
-	load_offer! : {} => Page.GitHubOffer
+	load_offer! : {} => SignInPage.GitHubOffer
 	load_offer! = |{}|
 		match Host.github_sign_in_settings!({}).status {
 			Configured => Offered
@@ -67,7 +69,10 @@ GitHubRoute :: [].{
 
 	## Whether the `/agents` page of the human `human` offers to link GitHub:
 	## on a server with GitHub's settings, to a human with no `github-id` file.
-	load_link_offer! : UserId => Try(Page.GitHubLinkOffer, [Damaged, NotUtf8, PathRefused, Failed])
+	load_link_offer! : UserId => Try(
+		AgentsPage.GitHubLinkOffer,
+		[Damaged, NotUtf8, PathRefused, Failed],
+	)
 	load_link_offer! = |human|
 		match Host.github_sign_in_settings!({}).status {
 			NotConfigured => Ok(LinkNotOffered)
@@ -230,7 +235,7 @@ GitHubRoute :: [].{
 
 ## The 404 any path gets when nothing is here.
 not_found : Http.Response
-not_found = HttpAnswer.page(404, Page.not_found)
+not_found = HttpAnswer.page(404, PageKit.not_found)
 
 ## The 303 that sends a browser to GitHub for `errand`, with a state issued at
 ## `now` and its nonce in this browser's cookie.
@@ -308,7 +313,7 @@ link_refusal_answer = |why|
 
 ## A page saying why a link was refused.
 link_refusal_page : U16, Str -> Http.Response
-link_refusal_page = |status, text| HttpAnswer.page(status, Page.notice({ title: "Refused", text }))
+link_refusal_page = |status, text| HttpAnswer.page(status, PageKit.notice({ title: "Refused", text }))
 
 ## GitHub's page that asks its human to authorize this server.
 authorize_url : {
@@ -388,7 +393,7 @@ ask_for_name! = |{ new_human, directory, now }| {
 			NoSuggestion => NoName
 		}
 	HttpAnswer.with_header(
-		HttpAnswer.page(200, Page.github_sign_up({ name: suggested, problem: NoProblem })),
+		HttpAnswer.page(200, SignInPage.github_sign_up({ name: suggested, problem: NoProblem })),
 		set_cookie_header(sign_up.set_cookie_text(mac)),
 	)
 }
@@ -437,7 +442,7 @@ account_refusal : {
 	why : [AccountExists, DuplicateAccount, NameTaken, Full, NoDefaultChannel],
 } -> [
 	Refused(GitHubSignIn.Refusal),
-	NameRefused({ name : Page.NameField, why : HumanInvites.Refusal }),
+	NameRefused({ name : SignInPage.NameField, why : HumanInvites.Refusal }),
 ]
 account_refusal = |{ name, why }|
 	match why {
@@ -531,7 +536,7 @@ refusal_answer = |{ viewer, why }| {
 	said = refusal_said(why)
 	HttpAnswer.page(
 		said.status,
-		Page.login({
+		SignInPage.login({
 			viewer,
 			next: SignInRoute.default_next,
 			problem: Problem(said.words),
@@ -541,10 +546,13 @@ refusal_answer = |{ viewer, why }| {
 }
 
 ## The form again, saying why the name `name` was refused, under its status.
-name_refusal_answer : { name : Page.NameField, why : HumanInvites.Refusal } -> Http.Response
+name_refusal_answer : { name : SignInPage.NameField, why : HumanInvites.Refusal } -> Http.Response
 name_refusal_answer = |{ name, why }| {
 	notice = HumanInvites.refusal_notice(why)
-	HttpAnswer.page(notice.status, Page.github_sign_up({ name, problem: Problem(notice.said) }))
+	HttpAnswer.page(
+		notice.status,
+		SignInPage.github_sign_up({ name, problem: Problem(notice.said) }),
+	)
 }
 
 ## A refusal's status and its words. Nothing here says more than the human

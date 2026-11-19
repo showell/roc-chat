@@ -11,7 +11,6 @@ import Directory
 import HumanInvite
 import HumanInvites
 import KeyScope
-import Page
 import Password
 import PeoplePages
 import Route
@@ -20,6 +19,7 @@ import Seconds
 import Secret
 import SecretHash
 import SecretToken
+import SignInPage
 import SignedIn
 import Timestamp
 import UserId
@@ -490,7 +490,7 @@ expect
 		.contains("<p>Zoe: no invite yet.</p>\n${zoe_again_button}")
 
 ## The invites page at 1000 of no one, on a server whose offer is `github`.
-page_offering : Page.GitHubOffer -> Str
+page_offering : SignInPage.GitHubOffer -> Str
 page_offering = |github|
 	Str.from_utf8_lossy(
 		PeoplePages.invites({

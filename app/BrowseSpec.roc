@@ -6,9 +6,9 @@ import Channels
 import ConversationKey
 import Directory
 import Html
-import Page
 import Place
 import Sample
+import SignInPage
 import SignedIn
 import Topic
 import UserId
@@ -147,7 +147,7 @@ expect {
 	next = Html.SitePath.from_str("/chat") ?? crash "BrowseSpec: a site path"
 	page = |viewer|
 		Str.from_utf8_lossy(
-			Page.login({
+			SignInPage.login({
 				viewer,
 				next,
 				problem: NoProblem,

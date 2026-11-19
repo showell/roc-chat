@@ -1,11 +1,17 @@
-## These are the tests of `Page`: each page, byte for byte.
+## These are the tests of the pages (`ConversationPage`, `SignInPage`,
+## `JoinPage`, `AgentsPage`, `PeoplePages` and `PageKit`'s notices): each
+## page, byte for byte.
+import AgentsPage
 import Conversation
 import ConversationKey
+import ConversationPage
 import Html
+import JoinPage
 import Name
-import Page
+import PageKit
 import PeoplePages
 import Sample
+import SignInPage
 import SignedIn
 import Timestamp
 import UnvalidatedString
@@ -25,7 +31,7 @@ plans_key = ConversationKey.from_url_path({
 page_for : Str, Conversation -> Str
 page_for = |viewer, conversation|
 	Str.from_utf8_lossy(
-		Page.conversation({
+		ConversationPage.conversation({
 			conversation,
 			key: plans_key,
 			viewer: SignedIn.dangerously_assume(Sample.user(viewer)),
@@ -131,7 +137,7 @@ login_page = |above|
 login_for : SignedIn.Actor, [NoProblem, Problem(Str)] -> Str
 login_for = |viewer, problem|
 	Str.from_utf8_lossy(
-		Page.login({
+		SignInPage.login({
 			viewer,
 			next: Html.SitePath.from_str("/agents") ?? crash "PageSpec: a site path",
 			problem,
@@ -150,7 +156,7 @@ expect
 # With GitHub's settings, a link below the form, going on to `next`.
 expect
 	Str.from_utf8_lossy(
-		Page.login({
+		SignInPage.login({
 			viewer: Anonymous,
 			next: Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "PageSpec: a site path",
 			problem: NoProblem,
@@ -160,7 +166,7 @@ expect
 # The join page: a hidden field for the code, the name and a new password,
 # then the script that reads the code from the link.
 expect
-	Page.join.to_utf8()
+	JoinPage.join.to_utf8()
 		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
 
 ## The words above the form that asks a new human for a name.
@@ -171,24 +177,24 @@ sign_up_words = "GitHub says who you are, and you have no account here yet. Choo
 # above the words when there is one.
 expect {
 	zoe = Name.from_str("Zoë Ann") ?? crash "PageSpec: a name"
-	Page.github_sign_up({ name: Named(zoe), problem: NoProblem }).to_utf8()
+	SignInPage.github_sign_up({ name: Named(zoe), problem: NoProblem }).to_utf8()
 		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n".to_utf8()
 }
 expect
-	Page.github_sign_up({ name: NoName, problem: Problem("The <name> is taken.") }).to_utf8()
+	SignInPage.github_sign_up({ name: NoName, problem: Problem("The <name> is taken.") }).to_utf8()
 		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<button>Join</button></form>\n".to_utf8()
 # Every page of someone signed in has the links to Browse and the invites
 # page, and no page of no one's has either.
 expect {
 	steve = SignedIn.dangerously_assume(Sample.user("Steve"))
 	[
-		Page.conversation({
+		ConversationPage.conversation({
 			conversation: Conversation.empty(Sample.plans),
 			key: plans_key,
 			viewer: steve,
 			users: Sample.directory.users(),
 		}),
-		Page.agents({
+		AgentsPage.agents({
 			viewer: steve,
 			agents: [],
 			shown: NoCode,
@@ -211,10 +217,10 @@ expect {
 		},
 	)
 		and [
-			Page.join,
-			Page.notice({ title: "t", text: "x" }),
-			Page.github_sign_up({ name: NoName, problem: NoProblem }),
-			Page.login({
+			JoinPage.join,
+			PageKit.notice({ title: "t", text: "x" }),
+			SignInPage.github_sign_up({ name: NoName, problem: NoProblem }),
+			SignInPage.login({
 				viewer: Anonymous,
 				next: Html.SitePath.from_str("/chat") ?? crash "PageSpec: a site path",
 				problem: NoProblem,
@@ -242,5 +248,5 @@ expect
 		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>An invite brings someone into the chat. They choose a password, and sign in with their name and that password.</p>\n<p>Write the name you know them by, and you get a link to send them. The link works once, for seven days. They can keep the name or choose another.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
-	Page.refusal("it <is> not UTF-8").to_utf8()
+	PageKit.refusal("it <is> not UTF-8").to_utf8()
 		== "${head("Not a transcript")}<p>Not a transcript: it &lt;is&gt; not UTF-8.</p>".to_utf8()

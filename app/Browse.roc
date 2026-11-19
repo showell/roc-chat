@@ -7,9 +7,10 @@
 ## answers.
 import Access
 import ConversationKey
+import ConversationPage
 import Directory
 import Dm
-import Page
+import PageKit
 import Place
 import SignedIn
 import Topic
@@ -70,9 +71,9 @@ Browse :: [].{
 		said =
 			match problem {
 				NoProblem => []
-				Problem(text) => [Page.text_paragraph(text)]
+				Problem(text) => [PageKit.paragraph(text)]
 			}
-		Page.signed_in_page({
+		PageKit.signed_in_page({
 			title: "Browse",
 			viewer,
 			parts: List.concat(said.append(invite_link), places.map(place_section)),
@@ -82,7 +83,7 @@ Browse :: [].{
 
 ## The link to the invites page.
 invite_link : TrustedHtml
-invite_link = Page.link_paragraph({ path: Page.invites_path, text: "Invite someone" })
+invite_link = PageKit.link_paragraph({ path: PageKit.invites_path, text: "Invite someone" })
 
 ## The DM between `reader` and `other`, shown by `other`'s name.
 dm_listed : { reader : Users.Human, other : Users.Human } -> Browse.ListedPlace
@@ -98,11 +99,11 @@ place_section = |{ label, place, topics }| {
 	action = ConversationKey.place_url_path(place)
 	listed =
 		if topics.is_empty() {
-			[Page.text_paragraph("No sessions yet")]
+			[PageKit.paragraph("No sessions yet")]
 		} else {
 			topics.map(
 				|topic|
-					Page.link_paragraph({
+					PageKit.link_paragraph({
 						path: ConversationKey.of({ place, topic }).url_path(Page),
 						text: topic.to_str(),
 					}),
@@ -114,8 +115,8 @@ place_section = |{ label, place, topics }| {
 		NoSuggestion
 	}
 	TrustedHtml.join(
-		List.concat([Page.heading(label)], listed)
-			.append(Page.topic_form({ action, suggestion })),
+		List.concat([PageKit.heading(label)], listed)
+			.append(ConversationPage.topic_form({ action, suggestion })),
 	)
 }
 

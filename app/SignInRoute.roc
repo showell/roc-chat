@@ -32,6 +32,8 @@
 ## sign-in files hold now (`Session.Material`), and `Session.admit` decides.
 ## So rewriting or removing any of those files ends every session of its
 ## human. `SignedIn.by_session` is its one door.
+import PageKit
+import SignInPage
 import Timestamp
 import pf.Host
 import pf.Http
@@ -41,7 +43,6 @@ import GitHubSignIn
 import Html
 import HttpAnswer
 import HumanInvite
-import Page
 import Password
 import PasswordHash
 import Session
@@ -90,13 +91,13 @@ SignInRoute :: [].{
 	show_login : {
 		viewer : SignedIn.Actor,
 		query : List(U8),
-		github : Page.GitHubOffer,
+		github : SignInPage.GitHubOffer,
 	} -> Http.Response
 	show_login = |{ viewer, query, github }|
 		match SignInRoute.next_from_query(query) {
 			Ok(next) => HttpAnswer.page(
 				200,
-				Page.login({ viewer, next, problem: NoProblem, github }),
+				SignInPage.login({ viewer, next, problem: NoProblem, github }),
 			)
 			Err(BadNext) => SignInRoute.bad_next_answer
 		}
@@ -111,7 +112,7 @@ SignInRoute :: [].{
 		users : Users,
 		body : List(U8),
 		now : Timestamp,
-		github : Page.GitHubOffer,
+		github : SignInPage.GitHubOffer,
 	} => Http.Response
 	sign_in! = |{ viewer, users, body, now, github }| {
 		answer =
@@ -126,7 +127,7 @@ SignInRoute :: [].{
 							)
 						Err(NoMatch) => HttpAnswer.page(
 							401,
-							Page.login({
+							SignInPage.login({
 								viewer,
 								next,
 								problem: Problem(no_match_words),
@@ -136,7 +137,7 @@ SignInRoute :: [].{
 						Err(ByApiKey) => SignInRoute.by_api_key_answer
 						Err(TooManyChecks) => HttpAnswer.page(
 							429,
-							Page.notice({ title: "Too many sign-ins", text: too_many_words }),
+							PageKit.notice({ title: "Too many sign-ins", text: too_many_words }),
 						)
 						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 					}
@@ -183,7 +184,7 @@ SignInRoute :: [].{
 			match started {
 				Err(NoMaterial) => HttpAnswer.page(
 					500,
-					Page.notice({ title: "Failed", text: no_material_words }),
+					PageKit.notice({ title: "Failed", text: no_material_words }),
 				)
 				Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 				Ok(material) =>
@@ -248,7 +249,7 @@ SignInRoute :: [].{
 	bad_next_answer : Http.Response
 	bad_next_answer = HttpAnswer.page(
 		400,
-		Page.notice({
+		PageKit.notice({
 			title: "Refused",
 			text: "Where to go after signing in is no path on this site.",
 		}),
@@ -270,13 +271,13 @@ SignInRoute :: [].{
 	by_api_key_answer : Http.Response
 	by_api_key_answer = HttpAnswer.page(
 		403,
-		Page.notice({ title: "Refused", text: "An API key never signs in." }),
+		PageKit.notice({ title: "Refused", text: "An API key never signs in." }),
 	)
 
 	## The 500 for a file system's `fault`.
 	fault_answer : FileSystem.Fault -> Http.Response
 	fault_answer = |fault|
-		HttpAnswer.page(500, Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }))
+		HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: FileSystem.fault_words(fault) }))
 }
 
 ## What the sessions of the user `id` are signed over now, from their sign-in

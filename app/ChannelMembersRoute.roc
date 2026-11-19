@@ -19,7 +19,7 @@ import ConversationStream
 import Directory
 import FileSystem
 import HttpAnswer
-import Page
+import PageKit
 import PeoplePages
 import SignedIn
 import UserId
@@ -125,7 +125,7 @@ refusal_page = |why| {
 			Refused(refusal) => ChannelMembers.refusal_notice(refusal)
 			FileSystem(fault) => { status: 500, said: FileSystem.fault_words(fault) }
 		}
-	HttpAnswer.page(notice.status, Page.notice({ title: "Refused", text: notice.said }))
+	HttpAnswer.page(notice.status, PageKit.notice({ title: "Refused", text: notice.said }))
 }
 
 ## The channel created, its members file written empty; its name, or why

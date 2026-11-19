@@ -6,11 +6,11 @@ import Access
 import AgentInvite
 import AgentKey
 import Agents
+import AgentsPage
 import ChannelName
 import Directory
 import KeyScope
 import Name
-import Page
 import Place
 import Sample
 import Secret
@@ -427,7 +427,7 @@ expect {
 		invites: [live, spent],
 	}
 	plain = Str.from_utf8_lossy(
-		Page.agents({
+		AgentsPage.agents({
 			viewer: SignedIn.dangerously_assume(steve),
 			agents: [summary],
 			shown: NoCode,
@@ -439,7 +439,7 @@ expect {
 		secret: Secret.from_random_bytes(List.repeat(0xab, 32)),
 	})
 	showing = Str.from_utf8_lossy(
-		Page.agents({
+		AgentsPage.agents({
 			viewer: SignedIn.dangerously_assume(steve),
 			agents: [summary],
 			shown: Code({ agent: cc, code }),

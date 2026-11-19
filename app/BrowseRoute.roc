@@ -15,7 +15,7 @@ import ConversationKey
 import Directory
 import FileSystem
 import HttpAnswer
-import Page
+import PageKit
 import Place
 import SignedIn
 import StrictName
@@ -80,7 +80,7 @@ answer_page! = |{ acting, directory, status, problem }|
 					HttpAnswer.page(status, Browse.page({ viewer: acting, places, problem }))
 				Err(fault) => HttpAnswer.page(
 					500,
-					Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
+					PageKit.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
 				)
 			}
 	}
@@ -117,7 +117,7 @@ topic_rule_words =
 key_refusal : Http.Response
 key_refusal = HttpAnswer.page(
 	403,
-	Page.notice({ title: "Forbidden", text: "Browse is a human's, by their own session." }),
+	PageKit.notice({ title: "Forbidden", text: "Browse is a human's, by their own session." }),
 )
 
 # ── tests

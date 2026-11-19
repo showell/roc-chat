@@ -1,0 +1,334 @@
+## This module is what every page of the chat stands on: the markup kit the
+## page modules build with (`paragraph`, `labelled_input`, `post_button`,
+## `token`, `site_path`), the whole document each page is (`document`), the
+## frame of a signed-in page (`top_bar`, `signed_in_page`), and the small
+## pages that say one thing (`notice`, `not_found`, `refusal`). Each page
+## lives beside the route that serves it: `ConversationPage`, `AgentsPage`,
+## `SignInPage`, `JoinPage` and `PeoplePages`; `Browse` builds its own.
+##
+## The server sends structure and class names only, the classes and
+## `data-` attributes of `PageContract`. Every page loads app/palette.js in
+## its head (`Script`), which sets the colours and the theme before the
+## first paint. The page reads top to bottom without its scripts, and its
+## forms still post.
+##
+## Every page of someone signed in opens with the top bar (`top_bar`): its
+## title, then the links to Browse and the invites page, and the viewer's
+## name. Under it, a page another module builds (`signed_in_page`) holds its
+## parts in a panel, and ends with app/chrome.js, which styles the top bar
+## and adds its theme toggle, and app/panel.js, which draws the panel as a
+## card.
+##
+## Every `Str` a page shows goes in through `Escape.text`, and every
+## element through `Html.element`. This module vouches
+## (`TrustedHtml.dangerously_trust`) for one constant: the doctype and the
+## head's two `<meta>` elements.
+import ConversationKey
+import DateTime
+import Escape
+import Html
+import PageContract
+import Script
+import SignedIn
+import Timestamp
+import TrustedHtml
+
+PageKit :: [].{
+
+	## Where the invites page is, which the top bar links to.
+	invites_path : Str
+	invites_path = "/invites"
+
+	## The token `text` spells, for a name a page writes: one that isn't is
+	## its writer's bug.
+	token : Str -> Html.Token
+	token = |text|
+		Html.Token.from_str(text)
+			?? crash "PageKit.token: \"${text}\" is a name a page writes, and not a token"
+
+	## The site path `text` spells, for a path this server answers (a
+	## conversation's, its script's): one that isn't is a bug in its writer.
+	site_path : Str -> Html.SitePath
+	site_path = |text|
+		Html.SitePath.from_str(text)
+			?? crash "PageKit.site_path: \"${text}\" is a path this server answers, and not a site path"
+
+	## A line end, between a page's elements.
+	newline : TrustedHtml
+	newline = Escape.text("\n")
+
+	## One space, between the parts of a line.
+	space : TrustedHtml
+	space = Escape.text(" ")
+
+	## A paragraph of `said`, and a line end.
+	paragraph : Str -> TrustedHtml
+	paragraph = |said|
+		TrustedHtml.join([
+			Html.element({
+				name: P,
+				attrs: [],
+				inner: Escape.text(said),
+			}),
+			PageKit.newline,
+		])
+
+	## A paragraph of `label` and an input of `attrs`, and a line end.
+	labelled_input : { label : Str, attrs : List(Html.Attribute) } -> TrustedHtml
+	labelled_input = |{ label, attrs }|
+		TrustedHtml.join([
+			Html.element({
+				name: P,
+				attrs: [],
+				inner: TrustedHtml.join([Escape.text("${label} "), Html.input(attrs)]),
+			}),
+			PageKit.newline,
+		])
+
+	## A form of one button, posting nothing to `action`, a path this server
+	## answers.
+	post_button : { action : Str, label : Str } -> TrustedHtml
+	post_button = |{ action, label }|
+		TrustedHtml.join([
+			Html.element({
+				name: Form,
+				attrs: [MethodPost, Action(PageKit.site_path(action))],
+				inner: Html.element({
+					name: Button,
+					attrs: [],
+					inner: Escape.text(label),
+				}),
+			}),
+			PageKit.newline,
+		])
+
+	## A form posting to `action` its text fields, each a label and its
+	## field's name, and a button of `label`.
+	text_form : {
+		action : Str,
+		fields : List({ label : Str, name : Str }),
+		label : Str,
+	} -> TrustedHtml
+	text_form = |{ action, fields, label }|
+		Html.element({
+			name: Form,
+			attrs: [MethodPost, Action(PageKit.site_path(action))],
+			inner: TrustedHtml.join(
+				fields.map(
+					|field|
+						PageKit.labelled_input({
+							label: field.label,
+							attrs: [
+								InputType(Text),
+								FieldName(PageKit.token(field.name)),
+								Required,
+							],
+						}),
+				).append(
+					Html.element({
+						name: Button,
+						attrs: [],
+						inner: Escape.text(label),
+					}),
+				),
+			),
+		})
+
+	## A heading of `said`.
+	heading : Str -> TrustedHtml
+	heading = |said|
+		TrustedHtml.join([
+			Html.element({
+				name: H1,
+				attrs: [],
+				inner: Escape.text(said),
+			}),
+			PageKit.newline,
+		])
+
+	## A paragraph holding a link to `path`, a page of this site, of `text`.
+	link_paragraph : { path : Str, text : Str } -> TrustedHtml
+	link_paragraph = |{ path, text }|
+		TrustedHtml.join([
+			Html.element({
+				name: P,
+				attrs: [],
+				inner: Html.element({
+					name: A,
+					attrs: [Link(PageKit.site_path(path))],
+					inner: Escape.text(text),
+				}),
+			}),
+			PageKit.newline,
+		])
+
+	## A one-time code shown on a page, in the class a reader finds it by.
+	shown_code : Str -> TrustedHtml
+	shown_code = |code|
+		TrustedHtml.join([
+			Html.element({
+				name: P,
+				attrs: [PageContract.class(InviteCode)],
+				inner: Escape.text(code),
+			}),
+			PageKit.newline,
+		])
+
+	## The date of `moment`, or its seconds when it is out of a date's range.
+	date_words : Timestamp -> Str
+	date_words = |moment|
+		match DateTime.from_timestamp(moment) {
+			Ok(time) => time.date_to_str()
+			Err(OutOfRange) => "at ${moment.to_str()} seconds"
+		}
+
+	## The element that loads `chosen`, one of this server's scripts.
+	script : Script -> TrustedHtml
+	script = |chosen|
+		Html.element({
+			name: Script,
+			attrs: [Src(PageKit.site_path(chosen.url_path()))],
+			inner: TrustedHtml.join([]),
+		})
+
+	## A page's whole document, the same for every page: the doctype and the
+	## head's `<meta>` elements, `title` as its title, the colour script, then
+	## `body`.
+	document : { title : Str, body : TrustedHtml } -> TrustedHtml
+	document = |{ title, body }|
+		TrustedHtml.join([
+			doctype,
+			Html.element({
+				name: Title,
+				attrs: [],
+				inner: Escape.text(title),
+			}),
+			PageKit.newline,
+			PageKit.script(Script.Palette),
+			PageKit.newline,
+			body,
+		])
+
+	## The top bar: `title` on the left, and on the right the links to Browse
+	## and the invites page, and the name of `viewer`, the user viewing the
+	## page. The invites link is here so that a human in a conversation
+	## reaches invites in one step.
+	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
+	top_bar = |{ title, viewer }|
+		Html.element({
+			name: Header,
+			attrs: [PageContract.class(TopBar)],
+			inner: TrustedHtml.join([
+				Html.element({
+					name: Span,
+					attrs: [PageContract.class(TopTitle)],
+					inner: Escape.text(title),
+				}),
+				PageKit.space,
+				Html.element({
+					name: Div,
+					attrs: [PageContract.class(TopUser)],
+					inner: TrustedHtml.join([
+						Html.element({
+							name: A,
+							attrs: [Link(PageKit.site_path(ConversationKey.browse_path))],
+							inner: Escape.text("Browse"),
+						}),
+						Escape.text(" · "),
+						Html.element({
+							name: A,
+							attrs: [Link(PageKit.site_path(PageKit.invites_path))],
+							inner: Escape.text("Invites"),
+						}),
+						Escape.text(" · "),
+						Html.element({
+							name: Span,
+							attrs: [PageContract.class(Viewer)],
+							inner: Escape.text(viewer.user().name().to_str()),
+						}),
+					]),
+				}),
+			]),
+		})
+
+	## A page of a signed-in human's: the document, its top bar of `title`
+	## and `viewer`, then `parts` in a panel, then the scripts that style
+	## them.
+	signed_in_page : {
+		title : Str,
+		viewer : SignedIn,
+		parts : List(TrustedHtml),
+	} -> TrustedHtml
+	signed_in_page = |{ title, viewer, parts }|
+		PageKit.document({
+			title,
+			body: TrustedHtml.join([
+				PageKit.top_bar({ title, viewer }),
+				PageKit.newline,
+				Html.element({
+					name: Div,
+					attrs: [PageContract.class(Layout)],
+					inner: Html.element({
+						name: Div,
+						attrs: [PageContract.class(Panel)],
+						inner: TrustedHtml.join(List.concat([PageKit.newline], parts)),
+					}),
+				}),
+				PageKit.newline,
+				PageKit.script(Script.Chrome),
+				PageKit.newline,
+				PageKit.script(Script.Panel),
+				PageKit.newline,
+			]),
+		})
+
+	## A page that says one thing: `title`, and `text` beneath it (no such
+	## conversation, a refused message, a failure).
+	notice : { title : Str, text : Str } -> TrustedHtml
+	notice = |{ title, text }|
+		PageKit.document({
+			title,
+			body: Html.element({
+				name: P,
+				attrs: [],
+				inner: Escape.text(text),
+			}),
+		})
+
+	## The page of a path this server answers nothing at, with a 404: a path
+	## no route has, or GitHub's on a server without GitHub's settings.
+	not_found : TrustedHtml
+	not_found = PageKit.notice({ title: "Not found", text: "Nothing is here." })
+
+	## The page for a refused transcript, saying why in `why`'s words.
+	refusal : Str -> TrustedHtml
+	refusal = |why|
+		PageKit.document({
+			title: "Not a transcript",
+			body: Html.element({
+				name: P,
+				attrs: [],
+				inner: Escape.text("Not a transcript: ${why}."),
+			}),
+		})
+}
+
+## The doctype, the charset, and the viewport a phone lays the page out
+## in, which every page opens with: a constant, vouched for here.
+doctype : TrustedHtml
+doctype = TrustedHtml.dangerously_trust(doctype_text)
+
+doctype_text : Str
+doctype_text =
+	\\<!doctype html>
+	\\<meta charset=utf-8>
+	\\<meta name=viewport content="width=device-width, initial-scale=1">
+	\\
+
+# ── tests
+expect
+	doctype.to_utf8()
+		== "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
+# A notice: its title and its words, each escaped, under the colour script.
+expect PageKit.notice({ title: "a<b", text: "x & y" }).to_utf8()
+	== "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()

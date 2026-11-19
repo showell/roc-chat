@@ -18,6 +18,8 @@
 ## `sign_in_by_key!` is the check an agent's `Authorization: Bearer`
 ## request passes before any route (main's `load_actor!`): `AgentKey.admit`
 ## decides, and `SignedIn.by_api_key` is its one door.
+import AgentsPage
+import PageKit
 import Timestamp
 import pf.Host
 import pf.Http
@@ -33,7 +35,6 @@ import Directory
 import FileSystem
 import GitHubRoute
 import HttpAnswer
-import Page
 import Place
 import Secret
 import SecretHashing
@@ -191,7 +192,7 @@ failure_notice = |why|
 refusal_page : Failure -> Http.Response
 refusal_page = |why| {
 	notice = failure_notice(why)
-	HttpAnswer.page(notice.status, Page.notice({ title: "Refused", text: notice.said }))
+	HttpAnswer.page(notice.status, PageKit.notice({ title: "Refused", text: notice.said }))
 }
 
 ## A failure as a line of plain text, for a script.
@@ -217,7 +218,7 @@ load_agents_page! = |{ acting, directory, shown }| {
 		$summaries = $summaries.append({ agent, keys, invites })
 	}
 	Ok(
-		Page.agents({
+		AgentsPage.agents({
 			viewer: acting,
 			agents: $summaries,
 			shown,

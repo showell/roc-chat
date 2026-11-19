@@ -16,6 +16,8 @@
 ## transcript has a page and a stream, both empty, so a reader can write its
 ## first message there, and its `/raw` is a 404. Every route words its
 ## refusals through `refusal_notice`.
+import ConversationPage
+import PageKit
 import Timestamp
 import pf.Http
 import AgentStream
@@ -29,7 +31,6 @@ import FileSystem
 import HttpAnswer
 import Message
 import Name
-import Page
 import SignedIn
 import Transcript
 import TranscriptRefusal
@@ -54,7 +55,7 @@ ConversationRoute :: [].{
 			Ok({ conversation, file: _ }) =>
 				HttpAnswer.page(
 					200,
-					Page.conversation({ conversation, key, viewer: acting, users }),
+					ConversationPage.conversation({ conversation, key, viewer: acting, users }),
 				)
 			Err(why) => refusal_page(why)
 		}
@@ -170,7 +171,7 @@ append_posted_message! = |post| {
 	grown = loaded.conversation.append(unnumbered_message)?
 	record = Transcript.message_record({ grown, file: loaded.file })?
 	FileSystem.append_message!(post.key, record) ? |fault| FileSystem(fault)
-	html = Page.message({
+	html = ConversationPage.message({
 		conversation: grown.conversation,
 		key: post.key,
 		users: post.users,
@@ -252,7 +253,7 @@ refusal_notice = |why|
 refusal_page : Refusal -> Http.Response
 refusal_page = |why| {
 	notice = refusal_notice(why)
-	HttpAnswer.page(notice.status, Page.notice(notice.words))
+	HttpAnswer.page(notice.status, PageKit.notice(notice.words))
 }
 
 ## A fault in the posted form, saying what: a 400.
@@ -421,14 +422,14 @@ expect
 			refusal_response = refusal_page(why)
 			notice = refusal_notice(why)
 			refusal_response.status
-				== notice.status and refusal_response.body == Page.notice(notice.words).to_utf8()
+				== notice.status and refusal_response.body == PageKit.notice(notice.words).to_utf8()
 		},
 	)
 expect refusal_page(NoSuchConversation(plans_key)).status == 404
 expect refusal_page(Blank).status == 400
 expect refusal_page(Backdated).status == 409
 expect refusal_page(FileSystem(Failed)).status == 500
-expect refusal_page(NoSuchConversation(plans_key)).body == Page.notice({
+expect refusal_page(NoSuchConversation(plans_key)).body == PageKit.notice({
 	title: "Not found",
 	text: "No such conversation: /chat/dm/1_1/plans",
 }).to_utf8()

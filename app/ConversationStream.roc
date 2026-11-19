@@ -1,6 +1,6 @@
 ## A conversation's stream: each message added after a page was drawn,
-## written as that page writes it (`Page.message`), so the page and the
-## stream can't disagree. The host holds the stream open on its bus key,
+## written as that page writes it (`ConversationPage.message`), so the page
+## and the stream can't disagree. The host holds the stream open on its bus key,
 ## the conversation's URL path, and knows nothing of conversations.
 ##
 ## A frame is one event, its id the message's number and its data the
@@ -13,12 +13,13 @@ import Ascii
 import Author
 import Conversation
 import ConversationKey
+import ConversationPage
 import DateTime
 import Directory
 import HttpAnswer
 import Message
 import Name
-import Page
+import PageKit
 import RequestHeader
 import SignedIn
 import Topic
@@ -76,7 +77,7 @@ ConversationStream :: [].{
 		if seen_count.to_u64() > held {
 			HttpAnswer.page(
 				400,
-				Page.notice({
+				PageKit.notice({
 					title: "Bad stream",
 					text: "The stream asks for the messages after ${seen_count.to_str()}, and the conversation holds ${held.to_str()}.",
 				}),
@@ -86,10 +87,10 @@ ConversationStream :: [].{
 				key: bus_key(key),
 				holder: ConversationStream.holder(acting.user().id()),
 				backlog: conversation.messages_after(seen_count).join_map(
-					|m|
+					|message|
 						ConversationStream.frame({
-							id: m.id(),
-							html: Page.message({ conversation, key, users, message: m }),
+							id: message.id(),
+							html: ConversationPage.message({ conversation, key, users, message }),
 						}),
 				),
 			})
@@ -97,7 +98,8 @@ ConversationStream :: [].{
 	}
 
 	## Sends a message just added to the conversation `key` to every page on
-	## its stream: its id, and its `html` as `Page.message` writes it.
+	## its stream: its id, and its `html` as `ConversationPage.message` writes
+	## it.
 	publish! : {
 		key : ConversationKey,
 		id : Message.Id,
@@ -290,7 +292,7 @@ message_frame : Conversation, Message -> List(U8)
 message_frame = |conversation, message|
 	ConversationStream.frame({
 		id: message.id(),
-		html: Page.message({ conversation, key: plans_key, users, message }),
+		html: ConversationPage.message({ conversation, key: plans_key, users, message }),
 	})
 
 # A frame's data lines, joined by LF as a browser joins them, are exactly
@@ -306,7 +308,7 @@ expect {
 					.keep_if(|line| line.starts_with("data: "))
 					.map(|line| line.drop_prefix("data: "))
 			Str.join_with(data, "\n").to_utf8()
-				== Page.message({
+				== ConversationPage.message({
 					conversation,
 					key: plans_key,
 					users,

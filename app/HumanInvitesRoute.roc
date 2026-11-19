@@ -19,7 +19,7 @@
 ## `Anonymous`), as `/agents/redeem` does: the invite's code is their
 ## credential. Their two posts refuse a request with an API key, or from a
 ## browser signed in already, and any refusal of the code is one 401 that
-## says no more. `GET /join` is the join page (`Page.join`), the same for
+## says no more. `GET /join` is the join page (`JoinPage.join`), the same for
 ## anyone but a human signed in already, who goes to Browse; its script asks
 ## `POST /join/name` for the name the invite holds, a line of JSON. `POST
 ## /join` redeems: the code is judged, then the name; a name refused
@@ -29,6 +29,8 @@
 ## password's bcrypt hash, made by the host at its standard cost, replaces
 ## any before it, and a session starts
 ## (`SignInRoute.start_session_by_invite!`), landing where `FirstPage` says.
+import JoinPage
+import PageKit
 import Timestamp
 import pf.Host
 import pf.Http
@@ -43,7 +45,6 @@ import HumanInvites
 import JsonOut
 import Name
 import PeoplePages
-import Page
 import PasswordHash
 import Secret
 import SecretHashing
@@ -125,7 +126,7 @@ HumanInvitesRoute :: [].{
 	join_page = |actor|
 		match HumanInvites.admit_joiner(actor) {
 			Err(SignedInAlready) => HttpAnswer.see_other(SignInRoute.default_next.to_str())
-			Ok({}) | Err(ByApiKey) => HttpAnswer.page(200, Page.join)
+			Ok({}) | Err(ByApiKey) => HttpAnswer.page(200, JoinPage.join)
 		}
 
 	## A POST of `/join/name`, by `actor`, who may join: the name the human
@@ -194,7 +195,7 @@ failure_notice = |why|
 refusal_page : Failure -> Http.Response
 refusal_page = |why| {
 	notice = failure_notice(why)
-	HttpAnswer.page(notice.status, Page.notice({ title: "Refused", text: notice.said }))
+	HttpAnswer.page(notice.status, PageKit.notice({ title: "Refused", text: notice.said }))
 }
 
 ## The answer to an invite that failed for `why`: the invites page again,

@@ -28,7 +28,7 @@ import FileSystem
 import HttpAnswer
 import JsonOut
 import MultipartForm
-import Page
+import PageKit
 import RequestHeader
 import SignedIn
 import UploadTotal
@@ -60,11 +60,11 @@ UploadRoute :: [].{
 			Ok(bytes) => HttpAnswer.image({ content_type: image.content_type(), bytes })
 			Err(Missing) => HttpAnswer.page(
 				404,
-				Page.notice({ title: "Not found", text: "No such image." }),
+				PageKit.notice({ title: "Not found", text: "No such image." }),
 			)
 			Err(fault) => HttpAnswer.page(
 				500,
-				Page.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
+				PageKit.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
 			)
 		}
 }
