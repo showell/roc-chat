@@ -120,20 +120,17 @@ PeoplePages :: [].{
 		Page.signed_in_page({
 			title: "Invites",
 			viewer,
-			parts: List.concat(
-				List.concat(
-					List.concat(
-						List.concat(said, code),
-						[
-							Page.text_paragraph(invite_purpose(github)),
-							Page.text_paragraph(invite_steps),
-							form,
-						],
-					),
-					open_section_parts(waiting_humans, context),
-				),
+			parts: [
+				said,
+				code,
+				[
+					Page.text_paragraph(invite_purpose(github)),
+					Page.text_paragraph(invite_steps),
+					form,
+				],
+				open_section_parts(waiting_humans, context),
 				past_section_parts(past_humans, context),
-			),
+			].join(),
 		})
 	}
 }

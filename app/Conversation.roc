@@ -4,6 +4,7 @@
 ## message, so every conversation has ids 1, 2, 3 and so on, and times that
 ## don't go backwards.
 import Author
+import DateTime
 import Message
 import MsgAnchor
 import Topic
@@ -26,7 +27,10 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 		id = Conversation.next_id(conversation)?
 		Conversation.(c) = conversation
 		match c.messages.last() {
-			Ok(latest) if unnumbered_message.time.compare(latest.time()) == Before => Err(Backdated)
+			Ok(latest) if DateTime.compare(
+				unnumbered_message.time,
+				latest.time(),
+			) == Before => Err(Backdated)
 			_ => {
 				message = Message.numbered_message({ id, unnumbered: unnumbered_message })
 				Ok({

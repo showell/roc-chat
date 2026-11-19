@@ -106,6 +106,8 @@ expect
 	].all(|text| UserPair.from_str(text) == Err(NotAUserPair))
 # Equal pairs are one key of a set.
 expect {
-	pairs = Set.empty().insert(pair_of({ one: "2", other: "1" })).insert(pair_of({ one: "1", other: "2" }))
+	pairs = Set.empty().insert(
+		pair_of({ one: "2", other: "1" }),
+	).insert(pair_of({ one: "1", other: "2" }))
 	pairs.len() == 1
 }

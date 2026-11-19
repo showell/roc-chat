@@ -315,12 +315,7 @@ expect MultipartForm.file_part(
 expect file_of(List.concat("--XyZ\r\n${file_part_headers}\r\n\r\n".to_utf8(), png)) == Err(NoFile)
 expect file_of(List.concat("--XyZ\r\n${file_part_headers}\r\n".to_utf8(), png)) == Err(NoFile)
 expect
-	file_of(
-		List.concat(
-			List.concat("--XyZ${file_part_headers}\r\n\r\n".to_utf8(), png),
-			"\r\n--XyZ--".to_utf8(),
-		),
-	)
+	file_of(["--XyZ${file_part_headers}\r\n\r\n".to_utf8(), png, "\r\n--XyZ--".to_utf8()].join())
 		== Err(NoFile)
 expect file_of([]) == Err(NoFile)
 # The browser's name: UTF-8 as it is; else ASCII kept and the rest U+FFFD.
