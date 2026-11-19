@@ -71,13 +71,13 @@ expect name_and_members({
 # is a different DM.
 expect
 	[
-		Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") }),
-		Dm.between({ a: Sample.human("Apoorva"), b: Sample.human("Steve") }),
+		Dm.between({ one: Sample.human("Steve"), other: Sample.human("Apoorva") }),
+		Dm.between({ one: Sample.human("Apoorva"), other: Sample.human("Steve") }),
 	].all(|dm| dm == start_dm({ from: Sample.human("Steve"), to: Sample.human("Apoorva") }).dm)
 expect
-	Dm.between({ a: Sample.human("Steve"), b: Sample.human("Steve") })
-		!= Dm.between({ a: Sample.human("Steve"), b: Sample.human("Apoorva") })
-expect Dm.between({ a: nine_and_ten.ten, b: nine_and_ten.nine }).pair().to_str() == "9_10"
+	Dm.between({ one: Sample.human("Steve"), other: Sample.human("Steve") })
+		!= Dm.between({ one: Sample.human("Steve"), other: Sample.human("Apoorva") })
+expect Dm.between({ one: nine_and_ten.ten, other: nine_and_ten.nine }).pair().to_str() == "9_10"
 # The DM begins with its first message: the writer's, numbered 1, under
 # the topic, at its time, as its author.
 expect {

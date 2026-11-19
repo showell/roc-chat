@@ -161,8 +161,8 @@ Directory :: {
 						},
 				)?
 				match humans {
-					[alone] => Ok(Place.dm(Dm.between({ a: alone, b: alone })))
-					[a, b] => Ok(Place.dm(Dm.between({ a, b })))
+					[alone] => Ok(Place.dm(Dm.between({ one: alone, other: alone })))
+					[a, b] => Ok(Place.dm(Dm.between({ one: a, other: b })))
 					_ => crash "Directory.place: a pair has one member or two"
 				}
 			}

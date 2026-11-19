@@ -31,7 +31,7 @@ Welcome :: { key : ConversationKey, record : Transcript.Utf8TranscriptMessage }.
 	conversation_key : { directory : Directory, human : Users.Human } -> ConversationKey
 	conversation_key = |{ directory, human }|
 		ConversationKey.of({
-			place: Place.dm(Dm.between({ a: directory.chat_owner(), b: human })),
+			place: Place.dm(Dm.between({ one: directory.chat_owner(), other: human })),
 			topic: Welcome.topic,
 		})
 

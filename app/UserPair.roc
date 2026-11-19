@@ -8,12 +8,12 @@ import UserId
 
 UserPair :: { low : UserId, high : UserId }.{
 
-	## The pair of `a` and `b`, given in either order.
-	of : { a : UserId, b : UserId } -> UserPair
-	of = |{ a, b }|
-		match UserId.compare(a, b) {
-			After => UserPair.({ low: b, high: a })
-			_ => UserPair.({ low: a, high: b })
+	## The pair of `one` and `other`, given in either order.
+	of : { one : UserId, other : UserId } -> UserPair
+	of = |{ one, other }|
+		match UserId.compare(one, other) {
+			After => UserPair.({ low: other, high: one })
+			_ => UserPair.({ low: one, high: other })
 		}
 
 	## The pair `text` spells, or `NotAUserPair`. A pair is spelled as
@@ -57,21 +57,21 @@ UserPair :: { low : UserId, high : UserId }.{
 id_of : Str -> UserId
 id_of = |text| UserId.from_str(text) ?? crash "UserPair's tests: a test's id is an id"
 
-## The pair of the ids `a` and `b` spell.
-pair_of : { a : Str, b : Str } -> UserPair
-pair_of = |{ a, b }| UserPair.of({ a: id_of(a), b: id_of(b) })
+## The pair of the ids `one` and `other` spell.
+pair_of : { one : Str, other : Str } -> UserPair
+pair_of = |{ one, other }| UserPair.of({ one: id_of(one), other: id_of(other) })
 
 # Either order makes one pair, lowest first, by number rather than by text.
-expect pair_of({ a: "1", b: "2" }).to_str() == "1_2"
-expect pair_of({ a: "2", b: "1" }).to_str() == "1_2"
-expect pair_of({ a: "9", b: "10" }).to_str() == "9_10"
-expect pair_of({ a: "10", b: "9" }).to_str() == "9_10"
-expect pair_of({ a: "10", b: "9" }) == pair_of({ a: "9", b: "10" })
-expect pair_of({ a: "1", b: "2" }) != pair_of({ a: "1", b: "3" })
+expect pair_of({ one: "1", other: "2" }).to_str() == "1_2"
+expect pair_of({ one: "2", other: "1" }).to_str() == "1_2"
+expect pair_of({ one: "9", other: "10" }).to_str() == "9_10"
+expect pair_of({ one: "10", other: "9" }).to_str() == "9_10"
+expect pair_of({ one: "10", other: "9" }) == pair_of({ one: "9", other: "10" })
+expect pair_of({ one: "1", other: "2" }) != pair_of({ one: "1", other: "3" })
 # A user's DM with themself: one id, written twice, one member.
-expect pair_of({ a: "5", b: "5" }).to_str() == "5_5"
-expect pair_of({ a: "5", b: "5" }).members() == [id_of("5")]
-expect pair_of({ a: "11", b: "7" }).members() == [id_of("7"), id_of("11")]
+expect pair_of({ one: "5", other: "5" }).to_str() == "5_5"
+expect pair_of({ one: "5", other: "5" }).members() == [id_of("5")]
+expect pair_of({ one: "11", other: "7" }).members() == [id_of("7"), id_of("11")]
 # Read back from its spelling, at the ends of the ids' range.
 expect
 	[
@@ -106,6 +106,6 @@ expect
 	].all(|text| UserPair.from_str(text) == Err(NotAUserPair))
 # Equal pairs are one key of a set.
 expect {
-	pairs = Set.empty().insert(pair_of({ a: "2", b: "1" })).insert(pair_of({ a: "1", b: "2" }))
+	pairs = Set.empty().insert(pair_of({ one: "2", other: "1" })).insert(pair_of({ one: "1", other: "2" }))
 	pairs.len() == 1
 }

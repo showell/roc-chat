@@ -88,7 +88,7 @@ invite_link = Page.link_paragraph({ path: Page.invites_path, text: "Invite someo
 dm_listed : { reader : Users.Human, other : Users.Human } -> Browse.ListedPlace
 dm_listed = |{ reader, other }| {
 	label: other.user().name().to_str(),
-	place: Place.dm(Dm.between({ a: reader, b: other })),
+	place: Place.dm(Dm.between({ one: reader, other })),
 }
 
 ## One place on the page: its name, its topics as links, and the form that

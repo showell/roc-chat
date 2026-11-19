@@ -184,7 +184,7 @@ key_of = |topic| {
 	directory =
 		Directory.with_founder(Name.from_str("Steve") ?? crash "AgentStream's tests: a name")
 	place = directory.place(
-		Dm(UserPair.of({ a: UserId.chat_owner, b: UserId.chat_owner })),
+		Dm(UserPair.of({ one: UserId.chat_owner, other: UserId.chat_owner })),
 	) ?? crash "AgentStream's tests: Steve's own DM"
 	ConversationKey.of({
 		place,

@@ -34,12 +34,12 @@ Dm :: UserPair.{
 		grown =
 			Conversation.empty(topic).append(first)
 				?? crash "Dm.start: an empty conversation takes its first message"
-		{ dm: Dm.between({ a: from, b: to }), grown }
+		{ dm: Dm.between({ one: from, other: to }), grown }
 	}
 
-	## The DM between `a` and `b`, given in either order.
-	between : { a : Users.Human, b : Users.Human } -> Dm
-	between = |{ a, b }| Dm.(UserPair.of({ a: a.id(), b: b.id() }))
+	## The DM between `one` and `other`, given in either order.
+	between : { one : Users.Human, other : Users.Human } -> Dm
+	between = |{ one, other }| Dm.(UserPair.of({ one: one.id(), other: other.id() }))
 
 	pair : Dm -> UserPair
 	pair = |Dm.(ids)| ids
