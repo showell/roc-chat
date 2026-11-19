@@ -11,7 +11,7 @@
 ## by key (`SignedIn.by_api_key`). The two modules together are the trust
 ## boundary that says which agent is acting.
 ##
-## `FileSystem` keeps each fact in a file of its own, in the agent's folder
+## `AgentFiles` keeps each fact in a file of its own, in the agent's folder
 ## under `keys/<number>/`: `created` and `expires` (seconds since the epoch,
 ## `FactFile`'s digits), `state` (`active` or `revoked`), `read` and `post`
 ## (`KeyScope`'s words), and `hash` (`SecretHash`'s 64 hex digits), written

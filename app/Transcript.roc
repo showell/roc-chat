@@ -23,12 +23,12 @@ import Topic
 Transcript :: [].{
 
 	## A whole transcript file's bytes, as the disk holds them, which is what
-	## `FileSystem.read_transcript!` answers. They are untrusted: any bytes
+	## `TranscriptFiles.read_transcript!` answers. They are untrusted: any bytes
 	## at all, until `decode` reads them into a conversation or refuses
 	## them. The type is opaque, and only `decode` opens one.
 	Utf8Transcript :: List(U8).{
 
-		## The bytes just read from a transcript file (`FileSystem`'s read,
+		## The bytes just read from a transcript file (`TranscriptFiles`' read,
 		## the demo's), unchecked. Nothing is checked here: `decode` checks
 		## everything.
 		unchecked_from_file : List(U8) -> Transcript.Utf8Transcript
@@ -42,7 +42,7 @@ Transcript :: [].{
 	}
 
 	## One message's record, as a transcript file takes it, which is what
-	## `FileSystem.append_message!` adds at a transcript's end. The type is
+	## `TranscriptFiles.append_message!` adds at a transcript's end. The type is
 	## opaque, and only `message_record` makes one, so its bytes are always
 	## one record this module wrote.
 	Utf8TranscriptMessage :: List(U8).{

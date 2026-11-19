@@ -1,6 +1,6 @@
 ## This module moves data between the web interface and the file system.
 ## It doesn't do any heavy lifting itself. It mostly provides a clean
-## boundary: `FileSystem` reads and writes the transcript, `Transcript`
+## boundary: `TranscriptFiles` reads and writes the transcript, `Transcript`
 ## decodes and encodes it, and `Conversation` decides what may be added.
 ##
 ## A GET answers with a conversation's page. A POST takes a form whose
@@ -16,23 +16,24 @@
 ## transcript has a page and a stream, both empty, so a reader can write its
 ## first message there, and its `/raw` is a 404. Every route words its
 ## refusals through `refusal_notice`.
-import ConversationPage
-import PageKit
-import Timestamp
 import pf.Http
 import AgentStream
 import Author
 import Conversation
 import ConversationKey
+import ConversationPage
 import ConversationStream
 import DateTime
 import Directory
-import FileSystem
+import FileFacts
 import HttpAnswer
 import Message
 import Name
+import PageKit
 import SignedIn
+import Timestamp
 import Transcript
+import TranscriptFiles
 import TranscriptRefusal
 import TrustedHtml
 import UnvalidatedString
@@ -65,7 +66,7 @@ ConversationRoute :: [].{
 	## transcript is a 404.
 	serve_raw! : ConversationKey => Http.Response
 	serve_raw! = |key|
-		match FileSystem.read_transcript!(key) {
+		match TranscriptFiles.read_transcript!(key) {
 			Ok(File(utf8)) => HttpAnswer.plain_text_file(utf8.to_plain_text())
 			Ok(NoFile) => refusal_page(NoSuchConversation(key))
 			Err(fault) => refusal_page(FileSystem(fault))
@@ -148,7 +149,7 @@ load_conversation! : ConversationKey => Try(
 	[Unreadable(TranscriptRefusal.Why), FileSystem(_)],
 )
 load_conversation! = |key| {
-	file = FileSystem.read_transcript!(key) ? |fault| FileSystem(fault)
+	file = TranscriptFiles.read_transcript!(key) ? |fault| FileSystem(fault)
 	conversation =
 		match file {
 			File(utf8) => Transcript.decode(key.topic(), utf8) ? |why| Unreadable(why)
@@ -170,7 +171,7 @@ append_posted_message! = |post| {
 	loaded = load_conversation!(post.key)?
 	grown = loaded.conversation.append(unnumbered_message)?
 	record = Transcript.message_record({ grown, file: loaded.file })?
-	FileSystem.append_message!(post.key, record) ? |fault| FileSystem(fault)
+	TranscriptFiles.append_message!(post.key, record) ? |fault| FileSystem(fault)
 	html = ConversationPage.message({
 		conversation: grown.conversation,
 		key: post.key,
@@ -198,7 +199,7 @@ Refusal : [
 	BadCount,
 	NoSuchConversation(ConversationKey),
 	Unreadable(TranscriptRefusal.Why),
-	FileSystem(FileSystem.Fault),
+	FileSystem(FileFacts.Fault),
 	Backdated,
 	Full,
 	FileFull,
@@ -241,7 +242,7 @@ refusal_notice = |why|
 		}
 		FileSystem(fault) => {
 			status: 500,
-			words: { title: "Failed", text: FileSystem.fault_words(fault) },
+			words: { title: "Failed", text: FileFacts.fault_words(fault) },
 		}
 		Backdated => conversation_refusal("The message is dated before the conversation's latest.")
 		Full => conversation_refusal("The conversation holds as many messages as it can.")

@@ -3,7 +3,7 @@
 ## 1 GiB in all (`most_bytes`). That is a backstop
 ## against abuse, not a tight quota.
 ##
-## `FileSystem` keeps the total as a file of decimal digits in the user's
+## `TranscriptFiles` keeps the total as a file of decimal digits in the user's
 ## folder (`UserFolder`). A user with no file has uploaded nothing. A file
 ## that doesn't hold a number refuses every upload, because reading it as 0
 ## would give the user their whole allowance again.

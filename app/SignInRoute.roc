@@ -32,21 +32,22 @@
 ## sign-in files hold now (`Session.Material`), and `Session.admit` decides.
 ## So rewriting or removing any of those files ends every session of its
 ## human. `SignedIn.by_session` is its one door.
-import PageKit
-import SignInPage
-import Timestamp
 import pf.Host
 import pf.Http
-import FileSystem
+import AccountFiles
+import FileFacts
 import GitHubSessionWord
 import GitHubSignIn
 import Html
 import HttpAnswer
 import HumanInvite
+import PageKit
 import Password
 import PasswordHash
 import Session
+import SignInPage
 import SignedIn
+import Timestamp
 import UnvalidatedString
 import UrlEncodedForm
 import UserId
@@ -59,7 +60,7 @@ SignInRoute :: [].{
 	## is no session's spelling (`BadSession`), or one that admits no one
 	## (`SessionRefused`: its signature, its date or its user), or its human
 	## has nothing a session is signed over (`NoMaterial`), or a sign-in file
-	## could not be read (`FileSystem`).
+	## could not be read (`AccountFiles`).
 	sign_in_by_session! : {
 		cookie : List(U8),
 		users : Users,
@@ -71,7 +72,7 @@ SignInRoute :: [].{
 			BadSession,
 			SessionRefused,
 			NoMaterial,
-			FileSystem(FileSystem.Fault),
+			FileSystem(FileFacts.Fault),
 		],
 	)
 	sign_in_by_session! = |{ cookie, users, now }| {
@@ -275,18 +276,21 @@ SignInRoute :: [].{
 	)
 
 	## The 500 for a file system's `fault`.
-	fault_answer : FileSystem.Fault -> Http.Response
+	fault_answer : FileFacts.Fault -> Http.Response
 	fault_answer = |fault|
-		HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: FileSystem.fault_words(fault) }))
+		HttpAnswer.page(
+			500,
+			PageKit.notice({ title: "Failed", text: FileFacts.fault_words(fault) }),
+		)
 }
 
 ## What the sessions of the user `id` are signed over now, from their sign-in
 ## files; unless they hold nothing to sign over (`NoMaterial`), or a file
 ## can't be read.
-load_material! : UserId => Try(Session.Material, [NoMaterial, FileSystem(FileSystem.Fault)])
+load_material! : UserId => Try(Session.Material, [NoMaterial, FileSystem(FileFacts.Fault)])
 load_material! = |id| {
 	github = load_github_word!(id)?
-	match (FileSystem.read_password_hash!(id), github) {
+	match (AccountFiles.read_password_hash!(id), github) {
 		(Err(fault), _) => Err(FileSystem(fault))
 		(Ok(File(password_hash)), _) =>
 			Ok(Session.Material.from_password({ password_hash, github }))
@@ -300,7 +304,7 @@ load_material! = |id| {
 ## now: a password rewritten meanwhile leaves a session that admits no one.
 load_material_with_password! : { id : UserId, password_hash : PasswordHash } => Try(
 	Session.Material,
-	[FileSystem(FileSystem.Fault)],
+	[FileSystem(FileFacts.Fault)],
 )
 load_material_with_password! = |{ id, password_hash }| {
 	github = load_github_word!(id)?
@@ -312,14 +316,14 @@ load_material_with_password! = |{ id, password_hash }| {
 ## too. An empty file holds no word.
 load_github_word! : UserId => Try(
 	[NoGitHub, GitHub(GitHubSessionWord)],
-	[FileSystem(FileSystem.Fault)],
+	[FileSystem(FileFacts.Fault)],
 )
 load_github_word! = |id|
-	match FileSystem.read_github_link!(id) {
+	match AccountFiles.read_github_link!(id) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(NotLinked) => Ok(NoGitHub)
 		Ok(Linked(_)) =>
-			match FileSystem.read_github_session_secret!(id) {
+			match AccountFiles.read_github_session_secret!(id) {
 				Err(fault) => Err(FileSystem(fault))
 				Ok(NoFile) | Ok(File(Empty)) => Ok(NoGitHub)
 				Ok(File(Word(word))) => Ok(GitHub(word))
@@ -330,14 +334,14 @@ load_github_word! = |id|
 ## (`GitHubSessionWord`). Sessions are signed over it under the server's
 ## secret, so whoever reads the file can't forge one; it needs only to change
 ## when its owner rewrites it.
-make_github_session_secret! : UserId => Try({}, [FileSystem(FileSystem.Fault)])
+make_github_session_secret! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 make_github_session_secret! = |id|
-	match FileSystem.read_github_session_secret!(id) {
+	match AccountFiles.read_github_session_secret!(id) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(File(_)) => Ok({})
 		Ok(NoFile) => {
 			word = generate_github_session_word!({})
-			match FileSystem.create_github_session_secret!(id, word) {
+			match AccountFiles.create_github_session_secret!(id, word) {
 				Ok({}) => Ok({})
 				Err(fault) => Err(FileSystem(fault))
 			}
@@ -347,12 +351,12 @@ make_github_session_secret! = |id|
 ## The files that tie `linked`'s human to GitHub: a new `github-session-secret`,
 ## which says nothing until `github-id` is there, and then the `github-id`, so
 ## a link cut short between the two binds no one.
-write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileSystem.Fault)])
+write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileFacts.Fault)])
 write_github_link! = |linked| {
 	id = linked.human().id()
 	word = generate_github_session_word!({})
-	FileSystem.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
-	FileSystem.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
+	AccountFiles.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
+	AccountFiles.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
 	Ok({})
 }
 
@@ -428,7 +432,7 @@ find_human_by_password! : {
 	body : List(U8),
 } => Try(
 	{ human : Users.Human, material : Session.Material },
-	[NoMatch, ByApiKey, TooManyChecks, FileSystem(FileSystem.Fault)],
+	[NoMatch, ByApiKey, TooManyChecks, FileSystem(FileFacts.Fault)],
 )
 find_human_by_password! = |{ viewer, users, body }| {
 	SignInRoute.check_not_by_api_key(viewer)?
@@ -452,10 +456,10 @@ find_human_by_password! = |{ viewer, users, body }| {
 ## refuses the check (`TooManyChecks`), or a sign-in file can't be read.
 check_password_of! : { human : Users.Human, password : Password } => Try(
 	{ human : Users.Human, material : Session.Material },
-	[NoMatch, TooManyChecks, FileSystem(FileSystem.Fault)],
+	[NoMatch, TooManyChecks, FileSystem(FileFacts.Fault)],
 )
 check_password_of! = |{ human, password }|
-	match FileSystem.read_password_hash!(human.id()) {
+	match AccountFiles.read_password_hash!(human.id()) {
 		Err(fault) => Err(FileSystem(fault))
 		Ok(NoFile) => Err(check_against_dummy_hash!(password))
 		Ok(File(password_hash)) => {

@@ -14,7 +14,7 @@ Use Roc's types to make bad values impossible, rather than checking for them in 
 
 Pure modules are small and easy to combine. Effects happen at the edges. A large module needs a reason not to be split; it's easier to combine modules than to split them. A tiny module is worth having when it keeps something opaque or decoupled: one module for each outside dependency (`Markdown` for roc-markdown) and one for each trust boundary (`TrustedHtml`, `SecureImageTag`).
 
-The best edge module moves data across a boundary and changes its type on the way. `FileSystem` takes a `ConversationKey` and gives back a `Utf8Transcript`; `Transcript` turns that into a `Conversation`. Each module does one such step, rather than flipping state flags on one type.
+The best edge module moves data across a boundary and changes its type on the way. `TranscriptFiles` takes a `ConversationKey` and gives back a `Utf8Transcript`; `Transcript` turns that into a `Conversation`. Each module does one such step, rather than flipping state flags on one type.
 
 ## Trust boundaries are easy to find
 

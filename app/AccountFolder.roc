@@ -7,8 +7,8 @@
 ## mistake in the one can't touch the other.
 ##
 ## It is the one home of the account folder's place in the data root:
-## `FileSystem` builds every path in it from `parts`, and no caller names a
-## path.
+## `AccountFiles`, `InviteFiles` and `AgentFiles` build every path in it
+## from `parts`, and no caller names a path.
 import UserId
 
 AccountFolder :: UserId.{

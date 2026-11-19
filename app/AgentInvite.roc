@@ -5,7 +5,7 @@
 ## code. An invite lives ten minutes (`lifetime_seconds`), redeems once, and
 ## can be revoked while it is live.
 ##
-## `FileSystem` keeps each fact in a file of its own, in the agent's folder
+## `AgentFiles` keeps each fact in a file of its own, in the agent's folder
 ## under `invites/<number>/`: `created` and `expires` (seconds since the
 ## epoch), `state` (`live`, `spent` or `revoked`), `read` and `post`
 ## (`KeyScope`'s words), and `hash` (the code's hash), written last.

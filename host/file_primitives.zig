@@ -1,6 +1,7 @@
 //! **THE FILE PRIMITIVES**: general reads and writes of UTF-8 text under one
-//! data root, knowing nothing of what the text means. The Roc's `FileSystem`
-//! module is their only caller, and it alone knows which file holds what.
+//! data root, knowing nothing of what the text means. The Roc's `FileFacts`
+//! module is their only caller, and the feature modules above it alone know
+//! which file holds what.
 //! docs/platform.md describes each one; this file is where they are kept.
 //!
 //! **A TRUST BOUNDARY: EVERY PATH IS CONFINED TO THE DATA ROOT**

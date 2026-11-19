@@ -4,7 +4,7 @@
 ## user's id alone.
 ##
 ## It is the one home of that folder's place in the data root, as
-## `ConversationKey` is for a conversation's: `FileSystem` builds every path
+## `ConversationKey` is for a conversation's: `TranscriptFiles` builds every path
 ## in it from `parts`, and no caller names a path.
 import UserId
 

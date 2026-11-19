@@ -7,7 +7,7 @@
 ## redeems once. Inviting someone again is a new invite for the same
 ## account (`HumanInvites.reinvite`), and redeeming it sets a new password.
 ##
-## `FileSystem` keeps each fact in a file of its own, in the invited
+## `InviteFiles` keeps each fact in a file of its own, in the invited
 ## human's folder under `human-invites/<number>/`: `created` and `expires`
 ## (seconds since the epoch), `state` (`live` or `spent`), `by` (the id of
 ## the human who made it, the inviter or the admin inviting them again), and

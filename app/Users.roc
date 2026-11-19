@@ -12,7 +12,7 @@
 ## Names are not checked for clashes here. `Directory` holds the users with
 ## the channels, and keeps every name unique across both.
 ##
-## The users are kept on disk (`FileSystem`) as small files under the auth
+## The users are kept on disk (`AccountFiles`) as small files under the auth
 ## root: the counter of the next id, `auth/next-id.txt`, its digits and a
 ## line end (`65536` when every id is taken); and a folder per user, `auth/<id>/`, holding the
 ## user's name, exactly as given, in `name`, and an agent's owner's id, its

@@ -9,7 +9,7 @@ import pf.Http
 import AgentsRoute
 import Clock
 import Directory
-import FileSystem
+import FileFacts
 import HttpAnswer
 import RequestHeader
 import SignInRoute
@@ -26,7 +26,7 @@ Actor :: [].{
 	## cookie admits (`load_session_actor!`), or no one.
 	load_actor! : { headers : List(Http.Header), directory : Directory } => Try(
 		SignedIn.Actor,
-		[BadBearer, KeyRefused, FileSystem(FileSystem.Fault)],
+		[BadBearer, KeyRefused, FileSystem(FileFacts.Fault)],
 	)
 	load_actor! = |{ headers, directory }| {
 		now = Clock.read_clock!({})
@@ -44,12 +44,12 @@ Actor :: [].{
 
 	## A request whose credential is refused: one 401 that says no more, or a
 	## 500 when the keys can't be read.
-	identity_refusal : [BadBearer, KeyRefused, FileSystem(FileSystem.Fault)] -> Http.Response
+	identity_refusal : [BadBearer, KeyRefused, FileSystem(FileFacts.Fault)] -> Http.Response
 	identity_refusal = |why|
 		match why {
 			BadBearer => HttpAnswer.text(401, key_refusal_words)
 			KeyRefused => HttpAnswer.text(401, key_refusal_words)
-			FileSystem(fault) => HttpAnswer.text(500, FileSystem.fault_words(fault))
+			FileSystem(fault) => HttpAnswer.text(500, FileFacts.fault_words(fault))
 		}
 }
 
@@ -61,7 +61,7 @@ load_session_actor! : {
 	headers : List(Http.Header),
 	directory : Directory,
 	now : Timestamp,
-} => Try(SignedIn.Actor, [FileSystem(FileSystem.Fault)])
+} => Try(SignedIn.Actor, [FileSystem(FileFacts.Fault)])
 load_session_actor! = |{ headers, directory, now }|
 	match RequestHeader.header_value(headers, "cookie") {
 		Unsent => Ok(Anonymous)

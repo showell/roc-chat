@@ -18,29 +18,33 @@
 ## `sign_in_by_key!` is the check an agent's `Authorization: Bearer`
 ## request passes before any route (`Actor.load_actor!`): `AgentKey.admit`
 ## decides, and `SignedIn.by_api_key` is its one door.
-import AgentsPage
-import PageKit
-import Timestamp
 import pf.Host
 import pf.Http
 import Access
+import AccountFiles
+import AgentFiles
 import AgentInvite
 import AgentKey
 import AgentStream
 import Agents
+import AgentsPage
 import Conversation
 import ConversationKey
 import ConversationStream
 import Directory
-import FileSystem
+import DirectoryFiles
+import FileFacts
 import GitHubRoute
 import HttpAnswer
+import PageKit
 import Place
 import Secret
 import SecretHashing
 import SecretToken
 import SignedIn
+import Timestamp
 import Transcript
+import TranscriptFiles
 import TrustedHtml
 import UserId
 import Users
@@ -50,17 +54,17 @@ AgentsRoute :: [].{
 	## The agent the bearer `token` names, signed in by its key at `now`;
 	## unless the key admits no one (`KeyRefused`: no such agent, no key
 	## with the secret's hash, or a revoked or expired one), or the files
-	## could not be read (`FileSystem`).
+	## could not be read (`AgentFiles`).
 	sign_in_by_key! : {
 		token : SecretToken,
 		directory : Directory,
 		now : Timestamp,
-	} => Try(SignedIn, [KeyRefused, FileSystem(FileSystem.Fault)])
+	} => Try(SignedIn, [KeyRefused, FileSystem(FileFacts.Fault)])
 	sign_in_by_key! = |{ token, directory, now }|
 		match directory.users().user(token.user()) {
 			Err(NoSuchUser) => Err(KeyRefused)
 			Ok(user) => {
-				keys = FileSystem.read_agent_keys!(user.id()) ? |fault| FileSystem(fault)
+				keys = AgentFiles.read_agent_keys!(user.id()) ? |fault| FileSystem(fault)
 				hash = SecretHashing.hash_secret!(token.secret())
 				match AgentKey.admit({ user, keys, hash, now }) {
 					Ok(admitted) => Ok(SignedIn.by_api_key(admitted))
@@ -174,7 +178,7 @@ Failure : [
 	BadStart,
 	StreamNeedsKey,
 	Access([ScopeOff]),
-	FileSystem(FileSystem.Fault),
+	FileSystem(FileFacts.Fault),
 ]
 
 ## A failure in words, with its status.
@@ -185,7 +189,7 @@ failure_notice = |why|
 		BadStart => { status: 400, said: AgentStream.words(BadSince) }
 		StreamNeedsKey => { status: 403, said: "The agents' stream is an agent's, by its API key." }
 		Access(ScopeOff) => { status: 403, said: "This key may not read." }
-		FileSystem(fault) => { status: 500, said: FileSystem.fault_words(fault) }
+		FileSystem(fault) => { status: 500, said: FileFacts.fault_words(fault) }
 	}
 
 ## A failure as a page.
@@ -213,8 +217,8 @@ load_agents_page! = |{ acting, directory, shown }| {
 	github_link = GitHubRoute.load_link_offer!(owner.id()) ? |fault| FileSystem(fault)
 	var $summaries = []
 	for agent in Agents.agents_of(directory, owner) {
-		keys = FileSystem.read_agent_keys!(agent.id()) ? |fault| FileSystem(fault)
-		invites = FileSystem.read_agent_invites!(agent.id()) ? |fault| FileSystem(fault)
+		keys = AgentFiles.read_agent_keys!(agent.id()) ? |fault| FileSystem(fault)
+		invites = AgentFiles.read_agent_invites!(agent.id()) ? |fault| FileSystem(fault)
 		$summaries = $summaries.append({ agent, keys, invites })
 	}
 	Ok(
@@ -235,8 +239,8 @@ make_agent! : {
 make_agent! = |{ acting, directory, body }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	addition = Agents.make(directory, { owner, body }) ? |why| Refused(why)
-	FileSystem.replace_user_counter!(addition.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.create_account!(addition.user) ? |fault| FileSystem(fault)
+	AccountFiles.replace_user_counter!(addition.directory.users()) ? |fault| FileSystem(fault)
+	AccountFiles.create_account!(addition.user) ? |fault| FileSystem(fault)
 	Ok({})
 }
 
@@ -251,7 +255,7 @@ invite_agent! = |{ acting, directory, agent, body, now }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	invited = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	scope = Agents.scope_from_form(body) ? |why| Refused(why)
-	id = FileSystem.find_next_agent_invite_id!(agent) ? |why| FileSystem.refusal_when_full(why)
+	id = AgentFiles.find_next_agent_invite_id!(agent) ? |why| FileFacts.refusal_when_full(why)
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = AgentInvite.make({
 		id,
@@ -259,7 +263,7 @@ invite_agent! = |{ acting, directory, agent, body, now }| {
 		now,
 		scope,
 	})
-	FileSystem.create_agent_invite!(agent, invite) ? |fault| FileSystem(fault)
+	AgentFiles.create_agent_invite!(agent, invite) ? |fault| FileSystem(fault)
 	load_agents_page!({
 		acting,
 		directory,
@@ -276,9 +280,9 @@ revoke_agent_key! : {
 revoke_agent_key! = |{ acting, directory, agent, key }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	_ = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
-	keys = FileSystem.read_agent_keys!(agent) ? |fault| FileSystem(fault)
+	keys = AgentFiles.read_agent_keys!(agent) ? |fault| FileSystem(fault)
 	revoked = Agents.revoked_key(keys, key) ? |why| Refused(why)
-	FileSystem.replace_agent_key_state!(agent, revoked) ? |fault| FileSystem(fault)
+	AgentFiles.replace_agent_key_state!(agent, revoked) ? |fault| FileSystem(fault)
 	Host.end_every_stream_of_holder!(AgentStream.holder(agent))
 	Host.end_every_stream_of_holder!(ConversationStream.holder(agent))
 	Ok({})
@@ -293,9 +297,9 @@ revoke_agent_invite! : {
 revoke_agent_invite! = |{ acting, directory, agent, invite }| {
 	owner = acting.human_in_session() ? |why| Refused(why)
 	_ = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
-	invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
+	invites = AgentFiles.read_agent_invites!(agent) ? |fault| FileSystem(fault)
 	revoked = Agents.revoked_invite(invites, invite) ? |why| Refused(why)
-	FileSystem.replace_agent_invite_state!(agent, revoked) ? |fault| FileSystem(fault)
+	AgentFiles.replace_agent_invite_state!(agent, revoked) ? |fault| FileSystem(fault)
 	Ok({})
 }
 
@@ -322,14 +326,14 @@ redeem_invite! = |{ actor, directory, body, now }| {
 	match directory.users().user(agent).map_ok(|user| user.role()) {
 		Err(NoSuchUser) | Ok(Human) => Err(Refused(CodeRefused))
 		Ok(Agent(_)) => {
-			invites = FileSystem.read_agent_invites!(agent) ? |fault| FileSystem(fault)
+			invites = AgentFiles.read_agent_invites!(agent) ? |fault| FileSystem(fault)
 			spent = AgentInvite.redeem({
 				invites,
 				hash: SecretHashing.hash_secret!(code.secret()),
 				now,
 			}) ? |_| Refused(CodeRefused)
-			FileSystem.replace_agent_invite_state!(agent, spent) ? |fault| FileSystem(fault)
-			id = FileSystem.find_next_agent_key_id!(agent) ? |why| FileSystem.refusal_when_full(why)
+			AgentFiles.replace_agent_invite_state!(agent, spent) ? |fault| FileSystem(fault)
+			id = AgentFiles.find_next_agent_key_id!(agent) ? |why| FileFacts.refusal_when_full(why)
 			secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 			key = AgentKey.mint({
 				id,
@@ -337,7 +341,7 @@ redeem_invite! = |{ actor, directory, body, now }| {
 				now,
 				scope: spent.scope(),
 			})
-			FileSystem.create_agent_key!(agent, key) ? |fault| FileSystem(fault)
+			AgentFiles.create_agent_key!(agent, key) ? |fault| FileSystem(fault)
 			Ok(SecretToken.of({ user: agent, secret }))
 		}
 	}
@@ -383,10 +387,10 @@ load_readable_conversations! = |directory, acting| {
 			|place| Access.check({ acting, place, directory, act: Read }) == Ok({}),
 		)
 	for place in readable_places {
-		topics = FileSystem.list_place_topics!(place) ?? []
+		topics = DirectoryFiles.list_place_topics!(place) ?? []
 		for topic in topics {
 			key = ConversationKey.of({ place, topic })
-			match FileSystem.read_transcript!(key) {
+			match TranscriptFiles.read_transcript!(key) {
 				Ok(File(utf8)) =>
 					match Transcript.decode(key.topic(), utf8) {
 						Ok(conversation) => {

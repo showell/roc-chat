@@ -4,7 +4,7 @@ The host is small on purpose. It serves HTTP with no routing, and it offers a fe
 
 - Roc's declarations: `platform/Host.roc` (the primitives) and `platform/Http.roc` (the request and the response).
 - Zig: `host/file_primitives.zig` (the primitives and their tests), `host/sign_in_primitives.zig` (bcrypt, the HMAC and the server's secret), `host/github_client.zig` (GitHub's settings and its code exchange; `host/fake_github.zig` stands in for GitHub in tests), `host/http.zig` (the server), `host/main.zig` (its command line, and `hash-password`), `host/bus.zig` (where a stream's frames are published), `host/sse.zig` (a stream's headers, keepalive and cap), `host/seam.zig` (the C seam). `host/seam_test.zig` holds every record and tag to `roc glue`'s layout.
-- The only caller of the file primitives is `app/FileSystem.roc`.
+- The only caller of the file primitives is `app/FileFacts.roc`, and the feature modules above it (`app/*Files.roc`) alone know which file holds what.
 
 ## The data root and confinement
 

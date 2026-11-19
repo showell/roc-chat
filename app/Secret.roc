@@ -1,7 +1,7 @@
 ## A secret is 32 random bytes from the host's secure source: the part of
 ## an agent's API key, or of an invite's one-time code, that proves who holds
 ## it. It is shown once, as 64 lowercase hex digits, and never kept: the chat
-## keeps only its hash (`SecretHash`), and `FileSystem` takes no `Secret`.
+## keeps only its hash (`SecretHash`), and no module of the chat's files takes a `Secret`.
 ##
 ## The type is opaque. Its ways in are `from_random_bytes`, for a secret just
 ## made, and `from_hex`, for one a client sent back, which reads only the

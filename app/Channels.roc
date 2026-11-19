@@ -7,7 +7,7 @@
 ## Channel names are not checked for clashes here. `Directory` holds the
 ## channels with the users, and keeps every name unique across both.
 ##
-## A channel's members are kept (`FileSystem`) in a file per channel,
+## A channel's members are kept (`DirectoryFiles`) in a file per channel,
 ## `chat/channel/<name>.channel`, beside the channel's folder of topics,
 ## holding one member's id a line. The admin changes the
 ## members on a channel's page (`ChannelMembersRoute`), or by editing the

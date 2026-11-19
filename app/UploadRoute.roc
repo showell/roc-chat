@@ -7,7 +7,7 @@
 ## (`UploadTotal`): the total is read, the image's size added, and the new
 ## total written, all before the image is stored, so no image is kept
 ## uncounted. The image is kept in its conversation's
-## folder under a fresh name (`FileSystem.store_uploaded_image!`), and the
+## folder under a fresh name (`TranscriptFiles.store_uploaded_image!`), and the
 ## answer is JSON giving its URL and the browser's name for it, which the
 ## compose box puts in the message as an `<img>`. An image that can't be
 ## stored gives its bytes back to the allowance, and its 500 says when they
@@ -24,13 +24,14 @@
 import pf.Host
 import pf.Http
 import ConversationKey
-import FileSystem
+import FileFacts
 import HttpAnswer
 import JsonOut
 import MultipartForm
 import PageKit
 import RequestHeader
 import SignedIn
+import TranscriptFiles
 import UploadTotal
 import UploadedImage
 import UserFolder
@@ -56,7 +57,7 @@ UploadRoute :: [].{
 	## the conversation has none of its name.
 	serve_uploaded_image! : { key : ConversationKey, image : UploadedImage } => Http.Response
 	serve_uploaded_image! = |{ key, image }|
-		match FileSystem.read_uploaded_image!(key, image) {
+		match TranscriptFiles.read_uploaded_image!(key, image) {
 			Ok(bytes) => HttpAnswer.image({ content_type: image.content_type(), bytes })
 			Err(Missing) => HttpAnswer.page(
 				404,
@@ -64,7 +65,7 @@ UploadRoute :: [].{
 			)
 			Err(fault) => HttpAnswer.page(
 				500,
-				PageKit.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
+				PageKit.notice({ title: "Failed", text: FileFacts.fault_words(fault) }),
 			)
 		}
 }
@@ -107,8 +108,8 @@ keep_upload! : {
 		TooLarge,
 		LimitReached,
 		NotANumber,
-		FileSystem(FileSystem.Fault),
-		Unrefunded(FileSystem.Fault),
+		FileSystem(FileFacts.Fault),
+		Unrefunded(FileFacts.Fault),
 	],
 )
 keep_upload! = |{ key, acting, headers, body }| {
@@ -119,7 +120,7 @@ keep_upload! = |{ key, acting, headers, body }| {
 		random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name),
 		kind: upload.kind,
 	})
-	match FileSystem.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
+	match TranscriptFiles.store_uploaded_image!(key, { image, bytes: upload.bytes }) {
 		Ok({}) =>
 			Ok(
 				upload_answer_json({
@@ -130,7 +131,7 @@ keep_upload! = |{ key, acting, headers, body }| {
 		Err(fault) =>
 		# The image's bytes go back to the allowance. The answer is the
 		# image's 500 either way; it says so when the total stays spent.
-			match FileSystem.replace_upload_total!(folder, before) {
+			match TranscriptFiles.replace_upload_total!(folder, before) {
 				Ok({}) => Err(FileSystem(fault))
 				Err(_) => Err(Unrefunded(fault))
 			}
@@ -143,12 +144,12 @@ keep_upload! = |{ key, acting, headers, body }| {
 reserve_upload_bytes! : UserFolder,
 U64 => Try(
 	UploadTotal,
-	[LimitReached, NotANumber, FileSystem(FileSystem.Fault)],
+	[LimitReached, NotANumber, FileSystem(FileFacts.Fault)],
 )
 reserve_upload_bytes! = |folder, adding| {
-	before = FileSystem.read_upload_total!(folder)?
+	before = TranscriptFiles.read_upload_total!(folder)?
 	after = before.with_upload(adding)?
-	FileSystem.replace_upload_total!(folder, after) ? |fault| FileSystem(fault)
+	TranscriptFiles.replace_upload_total!(folder, after) ? |fault| FileSystem(fault)
 	Ok(before)
 }
 
@@ -162,8 +163,8 @@ upload_refusal_response : [
 	TooLarge,
 	LimitReached,
 	NotANumber,
-	FileSystem(FileSystem.Fault),
-	Unrefunded(FileSystem.Fault),
+	FileSystem(FileFacts.Fault),
+	Unrefunded(FileFacts.Fault),
 ] -> Http.Response
 upload_refusal_response = |why|
 	match why {
@@ -178,10 +179,10 @@ upload_refusal_response = |why|
 			"Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GiB upload allowance.",
 		)
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
-		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileSystem.fault_words(fault)}")
+		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileFacts.fault_words(fault)}")
 		Unrefunded(fault) => HttpAnswer.text(
 			500,
-			"Upload failed, and your upload total could not be restored. ${FileSystem.fault_words(fault)}",
+			"Upload failed, and your upload total could not be restored. ${FileFacts.fault_words(fault)}",
 		)
 	}
 

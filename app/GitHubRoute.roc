@@ -30,16 +30,15 @@
 ## GitHub's token never reach this module: the host keeps them, and answers
 ## only GitHub's id and login (`Host.github_identity_for_code!`). No answer
 ## here may be kept by a browser or a proxy.
-import AgentsPage
-import PageKit
-import SignInPage
-import Timestamp
 import pf.Host
 import pf.Http
+import AccountFiles
+import AgentsPage
 import Ascii
 import Channels
 import Directory
-import FileSystem
+import DirectoryFiles
+import FileFacts
 import FirstPage
 import GitHubSignIn
 import GitHubSignUp
@@ -49,9 +48,13 @@ import Html
 import HttpAnswer
 import HumanInvites
 import Name
+import PageKit
 import RequestHeader
+import SignInPage
 import SignInRoute
 import SignedIn
+import Timestamp
+import TranscriptFiles
 import UrlEncodedForm
 import UserId
 import Users
@@ -77,7 +80,7 @@ GitHubRoute :: [].{
 		match Host.github_sign_in_settings!({}).status {
 			NotConfigured => Ok(LinkNotOffered)
 			Configured =>
-				match FileSystem.read_github_link!(human)? {
+				match AccountFiles.read_github_link!(human)? {
 					NotLinked => Ok(LinkOffered)
 					Linked(_) => Ok(LinkNotOffered)
 				}
@@ -284,12 +287,12 @@ load_human_to_link! : SignedIn => Try(
 		ByApiKey,
 		Agent(UserId),
 		AlreadyLinked,
-		FileSystem(FileSystem.Fault),
+		FileSystem(FileFacts.Fault),
 	],
 )
 load_human_to_link! = |acting| {
 	human = acting.human_in_session()?
-	match FileSystem.read_github_link!(human.id()) {
+	match AccountFiles.read_github_link!(human.id()) {
 		Ok(NotLinked) => Ok(human)
 		Ok(Linked(_)) => Err(AlreadyLinked)
 		Err(fault) => Err(FileSystem(fault))
@@ -301,7 +304,7 @@ link_refusal_answer : [
 	ByApiKey,
 	Agent(UserId),
 	AlreadyLinked,
-	FileSystem(FileSystem.Fault),
+	FileSystem(FileFacts.Fault),
 ] -> Http.Response
 link_refusal_answer = |why|
 	match why {
@@ -313,7 +316,10 @@ link_refusal_answer = |why|
 
 ## A page saying why a link was refused.
 link_refusal_page : U16, Str -> Http.Response
-link_refusal_page = |status, text| HttpAnswer.page(status, PageKit.notice({ title: "Refused", text }))
+link_refusal_page = |status, text| HttpAnswer.page(
+	status,
+	PageKit.notice({ title: "Refused", text }),
+)
 
 ## GitHub's page that asks its human to authorize this server.
 authorize_url : {
@@ -362,7 +368,7 @@ resolve! : {
 		Unknown(GitHubSignIn.NewHuman),
 		Linking(GitHubSignIn.Linked),
 	],
-	[Refused(GitHubSignIn.Refusal), FileSystem(FileSystem.Fault)],
+	[Refused(GitHubSignIn.Refusal), FileSystem(FileFacts.Fault)],
 )
 resolve! = |{ users, viewer, query, headers, now }| {
 	came =
@@ -373,7 +379,7 @@ resolve! = |{ users, viewer, query, headers, now }| {
 	checked = came.check({ cookie: cookie_of(headers), now }) ? |why| Refused(why)
 	heard = Host.github_identity_for_code!(checked.code_bytes())
 	known = checked.identify(heard) ? |why| Refused(why)
-	links = FileSystem.read_github_links!({}) ? |fault| FileSystem(fault)
+	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
 	known.resolve({ links, users, viewer }).map_err(|why| Refused(why))
 }
 
@@ -416,7 +422,7 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 		now,
 	}) ? |why| Refused(why)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
-	links = FileSystem.read_github_links!({}) ? |fault| FileSystem(fault)
+	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
 	made = resumed.create_account({ name, links, directory }) ? |why| account_refusal({ name, why })
 	human = made.admission.human()
 	welcome = Welcome.make({
@@ -424,14 +430,17 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 		human,
 		now,
 	}) ? |ClockOutOfRange| Refused(ClockOutOfRange)
-	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.append_message!(welcome.key(), welcome.first_record()) ? |fault| FileSystem(fault)
+	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
+	TranscriptFiles.append_message!(
+		welcome.key(),
+		welcome.first_record(),
+	) ? |fault| FileSystem(fault)
 	landing = FirstPage.load!({ directory: made.directory, human, wanted: made.admission.next() })?
-	FileSystem.create_github_account!({
+	AccountFiles.create_github_account!({
 		human: made.human,
 		github: made.github,
 	}) ? |fault| FileSystem(fault)
-	FileSystem.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
+	DirectoryFiles.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
 	Ok(made.admission.going_to(landing))
 }
 

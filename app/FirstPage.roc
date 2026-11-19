@@ -13,11 +13,12 @@ import ChannelName
 import Channels
 import ConversationKey
 import Directory
-import FileSystem
+import FileFacts
 import Html
 import Name
 import Place
 import SignInRoute
+import TranscriptFiles
 import UnvalidatedString
 import Users
 import Welcome
@@ -29,7 +30,7 @@ FirstPage :: [].{
 		directory : Directory,
 		human : Users.Human,
 		wanted : Html.SitePath,
-	} => Try(Html.SitePath, [FileSystem(FileSystem.Fault)])
+	} => Try(Html.SitePath, [FileSystem(FileFacts.Fault)])
 	load! = |{ directory, human, wanted }|
 		match readable_conversation({ directory, human, path: wanted }) {
 			NotReadable => load_welcome_page!({ directory, human })
@@ -71,7 +72,7 @@ is_member = |{ directory, human, place }| Access.members({ place, directory }).c
 ## when it has not begun.
 load_welcome_page! : { directory : Directory, human : Users.Human } => Try(
 	Html.SitePath,
-	[FileSystem(FileSystem.Fault)],
+	[FileSystem(FileFacts.Fault)],
 )
 load_welcome_page! = |request| {
 	key = Welcome.conversation_key(request)
@@ -82,9 +83,9 @@ load_welcome_page! = |request| {
 }
 
 ## Whether the conversation `key` has begun, by its transcript.
-load_conversation_state! : ConversationKey => Try([Begun, NotBegun], [FileSystem(FileSystem.Fault)])
+load_conversation_state! : ConversationKey => Try([Begun, NotBegun], [FileSystem(FileFacts.Fault)])
 load_conversation_state! = |key|
-	match FileSystem.read_transcript!(key) {
+	match TranscriptFiles.read_transcript!(key) {
 		Ok(File(_)) => Ok(Begun)
 		Ok(NoFile) => Ok(NotBegun)
 		Err(fault) => Err(FileSystem(fault))

@@ -29,28 +29,32 @@
 ## password's bcrypt hash, made by the host at its standard cost, replaces
 ## any before it, and a session starts
 ## (`SignInRoute.start_session_by_invite!`), landing where `FirstPage` says.
-import JoinPage
-import PageKit
-import Timestamp
 import pf.Host
 import pf.Http
+import AccountFiles
 import Directory
-import FileSystem
+import DirectoryFiles
+import FileFacts
 import FirstPage
 import GitHubRoute
 import Html
 import HttpAnswer
 import HumanInvite
 import HumanInvites
+import InviteFiles
+import JoinPage
 import JsonOut
 import Name
-import PeoplePages
+import PageKit
 import PasswordHash
+import PeoplePages
 import Secret
 import SecretHashing
 import SecretToken
 import SignInRoute
 import SignedIn
+import Timestamp
+import TranscriptFiles
 import TrustedHtml
 import UserId
 import Users
@@ -175,7 +179,7 @@ Failure : [
 	Refused(HumanInvites.Refusal),
 	BadInviter(UserId),
 	ClockOutOfRange,
-	FileSystem(FileSystem.Fault),
+	FileSystem(FileFacts.Fault),
 ]
 
 ## A failure in words, with its status.
@@ -188,7 +192,7 @@ failure_notice = |why|
 			said: "The inviter file of user ${id.to_str()} names no user.",
 		}
 		ClockOutOfRange => { status: 500, said: "The server's clock is out of range." }
-		FileSystem(fault) => { status: 500, said: FileSystem.fault_words(fault) }
+		FileSystem(fault) => { status: 500, said: FileFacts.fault_words(fault) }
 	}
 
 ## A failure as a page, with its status.
@@ -241,7 +245,7 @@ load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	for user in humans_of(directory) {
 		inviter = load_inviter!(user.id())?
 		if HumanInvites.is_theirs_to_invite_again(acting, inviter) {
-			invites = FileSystem.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
+			invites = InviteFiles.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
 			$invited = $invited.append({ human: user, invites })
 		}
 	}
@@ -270,13 +274,16 @@ invite_human! = |{ acting, directory, body, origin, now }| {
 	made = HumanInvites.invite(directory, { acting, body, open }) ? |why| Refused(why)
 	human = made.human.as_human() ?? crash "HumanInvitesRoute.invite_human!: an invite makes a human"
 	welcome = Welcome.make({ directory: made.directory, human, now })?
-	FileSystem.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	FileSystem.append_message!(welcome.key(), welcome.first_record()) ? |fault| FileSystem(fault)
-	FileSystem.create_invited_account!({
+	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
+	TranscriptFiles.append_message!(
+		welcome.key(),
+		welcome.first_record(),
+	) ? |fault| FileSystem(fault)
+	AccountFiles.create_invited_account!({
 		human: made.human,
 		inviter: made.inviter.id(),
 	}) ? |fault| FileSystem(fault)
-	FileSystem.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
+	DirectoryFiles.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
 	code = issue_invite!({ human: made.human.id(), by: made.inviter.id(), now })?
 	load_invites_page!({
 		acting,
@@ -316,7 +323,7 @@ issue_invite! : {
 	now : Timestamp,
 } => Try(SecretToken, _)
 issue_invite! = |{ human, by, now }| {
-	id = FileSystem.find_next_human_invite_id!(human) ? |why| FileSystem.refusal_when_full(why)
+	id = InviteFiles.find_next_human_invite_id!(human) ? |why| FileFacts.refusal_when_full(why)
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = HumanInvite.make({
 		id,
@@ -324,7 +331,7 @@ issue_invite! = |{ human, by, now }| {
 		now,
 		by,
 	})
-	FileSystem.create_human_invite!(human, invite) ? |fault| FileSystem(fault)
+	InviteFiles.create_human_invite!(human, invite) ? |fault| FileSystem(fault)
 	Ok(SecretToken.of({ user: human, secret }))
 }
 
@@ -348,7 +355,7 @@ load_join_code! = |{ actor, directory, body, now }| {
 		match directory.users().user(token.user()) {
 			Ok(user) =>
 				match user.role() {
-					Human => FileSystem.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
+					Human => InviteFiles.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
 					Agent(_) => []
 				}
 			Err(NoSuchUser) => []
@@ -404,11 +411,11 @@ join_by_invite! = |request| {
 	_ =
 		match joined.name {
 			Kept => Ok({})
-			Changed => FileSystem.replace_account_name!(human.user())
+			Changed => AccountFiles.replace_account_name!(human.user())
 		} ? |fault| FileSystem(fault)
-	FileSystem.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
+	InviteFiles.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
-	FileSystem.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
+	AccountFiles.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
 
@@ -426,7 +433,7 @@ humans_of = |directory|
 ## Who invited the human `id`, as their `inviter` file says.
 load_inviter! : UserId => Try(HumanInvites.Inviter, _)
 load_inviter! = |id| {
-	file = FileSystem.read_inviter_file!(id) ? |fault| FileSystem(fault)
+	file = AccountFiles.read_inviter_file!(id) ? |fault| FileSystem(fault)
 	HumanInvites.inviter_from_file(file).map_err(|NotAnInviter| BadInviter(id))
 }
 
@@ -435,7 +442,7 @@ count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)
 count_open_invites! = |directory, { by, now }| {
 	var $open = 0
 	for user in humans_of(directory) {
-		invites = FileSystem.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
+		invites = InviteFiles.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
 		$open = $open + HumanInvites.open_count(invites, { by, now })
 	}
 	Ok($open)

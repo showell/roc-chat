@@ -33,13 +33,13 @@ with_team = {
 	}) ?? crash "StoredDirectorySpec: CC joins"
 }
 
-## The users' account files, as `FileSystem` reads them.
+## The users' account files, as `AccountFiles` reads them.
 accounts_of : Users -> List(Users.StoredAccount)
 accounts_of = |users| users.to_list().map(
 	|user| { id: user.id(), files: Users.account_files(user) },
 )
 
-## The channels' members files, as `FileSystem` reads them.
+## The channels' members files, as `DirectoryFiles` reads them.
 channels_of : Channels -> List(Channels.StoredChannel)
 channels_of = |channels| channels.to_list().map(
 	|channel| { name: channel.name(), members: channel.members_file() },

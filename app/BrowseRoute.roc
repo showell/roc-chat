@@ -13,7 +13,8 @@ import pf.Http
 import Browse
 import ConversationKey
 import Directory
-import FileSystem
+import DirectoryFiles
+import FileFacts
 import HttpAnswer
 import PageKit
 import Place
@@ -80,7 +81,7 @@ answer_page! = |{ acting, directory, status, problem }|
 					HttpAnswer.page(status, Browse.page({ viewer: acting, places, problem }))
 				Err(fault) => HttpAnswer.page(
 					500,
-					PageKit.notice({ title: "Failed", text: FileSystem.fault_words(fault) }),
+					PageKit.notice({ title: "Failed", text: FileFacts.fault_words(fault) }),
 				)
 			}
 	}
@@ -93,7 +94,7 @@ load_topics! : List(Browse.ListedPlace) => Try(
 load_topics! = |listed| {
 	var $places = []
 	for { label, place } in listed {
-		topics = FileSystem.list_place_topics!(place)?
+		topics = DirectoryFiles.list_place_topics!(place)?
 		$places = $places.append({ label, place, topics })
 	}
 	Ok($places)

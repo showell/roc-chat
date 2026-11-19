@@ -1,14 +1,16 @@
 ## This module keeps the chat's directory, its users and channels, in the
-## data folder, through `FileSystem`. It prepares the folder when the server
+## data folder, through `DirectoryFiles` and `AccountFiles`. It prepares the folder when the server
 ## starts, writing the first start's directory (`FirstStart`) into an empty
 ## one, and reads the directory back on each request, refusing a folder
 ## that holds only part of one. It is the module to swap, with
-## `FileSystem`, for a chat kept somewhere other than files.
+## those two, for a chat kept somewhere other than files.
 import pf.Http
+import AccountFiles
 import ChannelName
 import Channels
 import Directory
-import FileSystem
+import DirectoryFiles
+import FileFacts
 import FirstStart
 import HttpAnswer
 import PageKit
@@ -22,7 +24,7 @@ DirectoryStore :: [].{
 	## (`FirstStart`); else `Failed`.
 	prepare_directory! : {} => [Failed, Ready]
 	prepare_directory! = |{}|
-		match FileSystem.read_directory_files!({}) {
+		match DirectoryFiles.read_directory_files!({}) {
 			Err(_) => Failed
 			Ok(files) =>
 				match files.counter {
@@ -41,18 +43,18 @@ DirectoryStore :: [].{
 		}
 
 	## The directory as the data folder holds it now; or why not.
-	load_directory! : {} => Try(Directory, [FileSystem(FileSystem.Fault), StoredDirectory(Str)])
+	load_directory! : {} => Try(Directory, [FileSystem(FileFacts.Fault), StoredDirectory(Str)])
 	load_directory! = |{}| {
-		files = FileSystem.read_directory_files!({}) ? |fault| FileSystem(fault)
+		files = DirectoryFiles.read_directory_files!({}) ? |fault| FileSystem(fault)
 		directory_from_files(files)
 	}
 
 	## The 500 for a directory that can't be read.
-	directory_refusal : [FileSystem(FileSystem.Fault), StoredDirectory(Str)] -> Http.Response
+	directory_refusal : [FileSystem(FileFacts.Fault), StoredDirectory(Str)] -> Http.Response
 	directory_refusal = |why| {
 		said =
 			match why {
-				FileSystem(fault) => FileSystem.fault_words(fault)
+				FileSystem(fault) => FileFacts.fault_words(fault)
 				StoredDirectory(words) => "The chat's directory on disk is not whole: ${words}."
 			}
 		HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: said }))
@@ -63,16 +65,16 @@ DirectoryStore :: [].{
 ## then the counter of ids, which says the chat exists, last.
 write_first_directory! : {} => Try({}, _)
 write_first_directory! = |{}| {
-	FileSystem.create_account!(FirstStart.first_directory.chat_owner().user())?
+	AccountFiles.create_account!(FirstStart.first_directory.chat_owner().user())?
 	for channel in FirstStart.first_directory.channels().to_list() {
-		FileSystem.replace_channel_members!(channel)?
+		DirectoryFiles.replace_channel_members!(channel)?
 	}
-	FileSystem.replace_user_counter!(FirstStart.first_directory.users())?
+	AccountFiles.replace_user_counter!(FirstStart.first_directory.users())?
 	Ok({})
 }
 
 ## The directory the files hold; or why not, in words.
-directory_from_files : FileSystem.DirectoryFiles -> Try(Directory, [StoredDirectory(Str)])
+directory_from_files : DirectoryFiles.Contents -> Try(Directory, [StoredDirectory(Str)])
 directory_from_files = |files| {
 	counter =
 		match files.counter {
@@ -121,7 +123,7 @@ directory_words = |why|
 
 # ── tests
 ## The directory files of the first start, as the disk holds them.
-first_files : FileSystem.DirectoryFiles
+first_files : DirectoryFiles.Contents
 first_files = {
 	founder = FirstStart.first_directory.chat_owner().user()
 	{

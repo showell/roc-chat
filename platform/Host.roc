@@ -1,7 +1,8 @@
 ## **THE HOST'S PRIMITIVES, AS EFFECTS** (docs/platform.md describes each
 ## one; host/file_primitives.zig keeps them). They are general: they know
-## nothing of chats. The app's `FileSystem` module is the only caller of the
-## file primitives, and it alone knows which file holds what.
+## nothing of chats. The app's `FileFacts` module is the only caller of the
+## file primitives, and the feature modules above it alone know which file
+## holds what.
 ##
 ## **EVERY PATH IS RELATIVE TO THE DATA ROOT, AND CONFINED TO IT**: a path
 ## that is empty, absolute, holds an empty part or a part starting with `.`,
