@@ -18,8 +18,9 @@
 //! | anything else | `{"error": "bad_verification_code"}`, a 200, as GitHub's |
 //!
 //! `GET /user` answers `tok-id-N` with `{"login": "personN", "id": N}`, or
-//! the login `Zoe` for N 20 and `sTeVe` for N 21, so a test has a login that
-//! is a name and one that is taken; and any other token with a 401. As
+//! the login `Zoe` for N 20, `sTeVe` for N 21 and `octo_cat` for N 60, so a
+//! test has a login that is a name, one that is taken, and one that is no
+//! login the chat shows; and any other token with a 401. As
 //! GitHub does, it refuses a request with no
 //! User-Agent (a 403) and answers `incorrect_client_credentials` to a wrong
 //! client id or secret.
@@ -174,6 +175,7 @@ fn user(req: *std.http.Server.Request, arena: std.mem.Allocator, authorization: 
             const login = switch (id) {
                 20 => "Zoe",
                 21 => "sTeVe",
+                60 => "octo_cat",
                 else => try std.fmt.allocPrint(arena, "person{d}", .{id}),
             };
             const body = try std.fmt.allocPrint(arena, "{{\"login\":\"{s}\",\"id\":{d},\"type\":\"User\",\"site_admin\":false}}", .{ login, id });

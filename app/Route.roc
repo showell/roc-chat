@@ -30,6 +30,7 @@
 ##     POST /login                             sign in: `name=`, `password=`
 ##     GET  /login/github/start                off to GitHub: `?next=<path>`
 ##     GET  /login/github                      GitHub's way back
+##     GET  /login/github/name                 the form asking a new human's name
 ##     POST /login/github/name                 a new human's name: `name=`
 ##     POST /login/github/link                 off to GitHub, to link it
 ##     POST /logout                            sign out
@@ -104,7 +105,7 @@ Route :: [].{
 		SignOut,
 		StartGitHubSignIn,
 		FinishGitHubSignIn,
-		FinishGitHubSignUp,
+		GitHubSignUpStep([ShowForm, SubmitName]),
 		WrongMethodToGitHub([GetAndPost, GetOnly, PostOnly]),
 		RedeemInvite,
 		ShowJoin,
@@ -354,9 +355,9 @@ sign_in_choice = |{ resource, method }|
 		(GitHubReturn, Get) => Open(FinishGitHubSignIn)
 		(GitHubReturn, Post) => Open(WrongMethodToGitHub(GetOnly))
 		(GitHubReturn, Other) => Open(WrongMethodToGitHub(GetOnly))
-		(GitHubName, Get) => Open(WrongMethodToGitHub(PostOnly))
-		(GitHubName, Post) => Open(FinishGitHubSignUp)
-		(GitHubName, Other) => Open(WrongMethodToGitHub(PostOnly))
+		(GitHubName, Get) => Open(GitHubSignUpStep(ShowForm))
+		(GitHubName, Post) => Open(GitHubSignUpStep(SubmitName))
+		(GitHubName, Other) => Open(WrongMethodToGitHub(GetAndPost))
 		(GitHubLink, Get) => Open(WrongMethodToGitHub(PostOnly))
 		(GitHubLink, Post) => SignedInOnly(StartGitHubLink)
 		(GitHubLink, Other) => Open(WrongMethodToGitHub(PostOnly))

@@ -1,14 +1,14 @@
 ## A GitHub sign-up carries a new human from GitHub's answer to the name they
 ## choose. GitHub has said who they are, no account holds that yet, and the
 ## name comes in a later request. So the server hands their browser a token
-## holding the GitHub id, the second it was issued and where to go after,
-## signed by the host with the server's secret, in a cookie that lasts ten
+## holding the GitHub id, the second it was issued, where to go after and
+## the GitHub login, if GitHub's was one (`GitHubLogin`), signed by the host with the server's secret, in a cookie that lasts ten
 ## minutes. A browser that rewrites the id breaks the signature, and another
 ## site can't set a `__Host-` cookie, so no one can plant their own sign-up on
 ## someone else's browser.
 ##
-## The token is the id and the second in decimal, and the path in base64url,
-## joined by `.`, and then a `.` and the signature. What is signed starts
+## The token is the id and the second in decimal, the path in base64url, and
+## the login or nothing, joined by `.`, and then a `.` and the signature. What is signed starts
 ## `github-sign-up`, so a state's or a session's signature can't stand for
 ## one.
 ##
@@ -18,6 +18,7 @@
 import Ascii
 import Base64Url
 import GitHubId
+import GitHubLogin
 import GitHubState
 import Html
 import Timestamp
@@ -26,17 +27,19 @@ GitHubSignUp :: {
 	github : GitHubId,
 	issued_at : Timestamp,
 	next : Html.SitePath,
+	login : [Login(GitHubLogin), NoLogin],
 }.{
 
-	## A new sign-up for the GitHub account `github`, issued at `now`, going to
-	## `next` once its human has a name.
+	## A new sign-up for the GitHub account `github`, called `login` there,
+	## issued at `now`, going to `next` once its human has a name.
 	issue : {
 		github : GitHubId,
+		login : [Login(GitHubLogin), NoLogin],
 		now : Timestamp,
 		next : Html.SitePath,
 	} -> GitHubSignUp
-	issue = |{ github, now, next }|
-		GitHubSignUp.({ github, issued_at: now, next })
+	issue = |{ github, login, now, next }|
+		GitHubSignUp.({ github, issued_at: now, next, login })
 
 	## The bytes the host signs for this sign-up.
 	signed_bytes : GitHubSignUp -> List(U8)
@@ -49,6 +52,10 @@ GitHubSignUp :: {
 	## Where to go once signed in.
 	next : GitHubSignUp -> Html.SitePath
 	next = |GitHubSignUp.(sign_up)| sign_up.next
+
+	## What GitHub called the account, when it was a login.
+	login : GitHubSignUp -> [Login(GitHubLogin), NoLogin]
+	login = |GitHubSignUp.(sign_up)| sign_up.login
 
 	## What a cookie claims before its signature is checked.
 	Claim :: { payload : Str, mac : List(U8) }.{
@@ -137,22 +144,28 @@ cookie_prefix = cookie_prefix_text.to_utf8()
 bytes_signed_of : Str -> List(U8)
 bytes_signed_of = |payload| "github-sign-up\n${payload}".to_utf8()
 
-## The id, the second and the path, as a token holds them.
+## The id, the second, the path and the login, as a token holds them. A
+## login is letters, digits and `-`, so it holds no `.`.
 payload_of : GitHubSignUp -> Str
 payload_of = |GitHubSignUp.(sign_up)| {
 	path = Base64Url.encode(sign_up.next.to_str().to_utf8())
-	"${sign_up.github.to_str()}.${sign_up.issued_at.to_str()}.${path}"
+	login =
+		match sign_up.login {
+			Login(known) => known.to_str()
+			NoLogin => ""
+		}
+	"${sign_up.github.to_str()}.${sign_up.issued_at.to_str()}.${path}.${login}"
 }
 
 ## The claim `text` spells; unless it is no token's shape (`NotAClaim`).
 claim_from_token : Str -> Try(GitHubSignUp.Claim, [NotAClaim])
 claim_from_token = |text|
 	match text.split_on(".") {
-		[github_part, second_part, next_part, mac_part] =>
+		[github_part, second_part, next_part, login_part, mac_part] =>
 			match Base64Url.decode(mac_part) {
 				Ok(mac) => Ok(
 					GitHubSignUp.Claim.(
-						{ payload: "${github_part}.${second_part}.${next_part}", mac },
+						{ payload: "${github_part}.${second_part}.${next_part}.${login_part}", mac },
 					),
 				)
 				Err(NotBase64Url) => Err(NotAClaim)
@@ -164,13 +177,19 @@ claim_from_token = |text|
 sign_up_from_payload : Str -> Try(GitHubSignUp, [BadPayload])
 sign_up_from_payload = |payload|
 	match payload.split_on(".") {
-		[github_part, second_part, next_part] => {
+		[github_part, second_part, next_part, login_part] => {
 			github = GitHubId.from_file(github_part.to_utf8()) ? |_| BadPayload
 			issued_at = Timestamp.from_file(second_part.to_utf8()) ? |_| BadPayload
 			path_bytes = Base64Url.decode(next_part) ? |_| BadPayload
 			path_text = Str.from_utf8(path_bytes) ? |_| BadPayload
 			next = Html.SitePath.from_str(path_text) ? |_| BadPayload
-			Ok(GitHubSignUp.({ github, issued_at, next }))
+			login =
+				if login_part.is_empty() {
+					NoLogin
+				} else {
+					Login(GitHubLogin.from_utf8(login_part.to_utf8()) ? |_| BadPayload)
+				}
+			Ok(GitHubSignUp.({ github, issued_at, next, login }))
 		}
 		_ => Err(BadPayload)
 	}
@@ -186,6 +205,7 @@ github_id = GitHubId.from_u64(583231) ?? crash "GitHubSignUp's tests: an id"
 issued : GitHubSignUp
 issued = GitHubSignUp.issue({
 	github: github_id,
+	login: Login(GitHubLogin.from_utf8("octocat".to_utf8()) ?? crash "GitHubSignUp's tests: a login"),
 	now: Timestamp.at_second(1000),
 	next: agents_path,
 })
@@ -213,7 +233,7 @@ expect
 # the bytes signed, the sign-up.
 expect
 	issued.set_cookie_text(tests_mac)
-		== "${cookie_prefix_text}583231.1000.${Base64Url.encode("/agents".to_utf8())}.${Base64Url.encode(tests_mac)}; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax"
+		== "${cookie_prefix_text}583231.1000.${Base64Url.encode("/agents".to_utf8())}.octocat.${Base64Url.encode(tests_mac)}; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax"
 expect {
 	claimed =
 		GitHubSignUp.Claim.from_cookie_header("a=b; ${sent_cookie}; c=d".to_utf8())
@@ -233,9 +253,9 @@ expect
 		"a=b",
 		"__Host-gopher_auth=x",
 		"${sent_cookie}; ${sent_cookie}",
-		"${cookie_prefix_text}a.b.c",
-		"${cookie_prefix_text}a.b.c.d.e",
-		"${cookie_prefix_text}a.b.c.!",
+		"${cookie_prefix_text}a.b.c.d",
+		"${cookie_prefix_text}a.b.c.d.e.f",
+		"${cookie_prefix_text}a.b.c.d.!",
 	].all(
 		|header| {
 			claimed = GitHubSignUp.Claim.from_cookie_header(header.to_utf8())
@@ -253,12 +273,24 @@ expect {
 	path = Base64Url.encode("/agents".to_utf8())
 	bad_path = Base64Url.encode("//evil.example".to_utf8())
 	[
-		"x.1000.${path}.AAAA",
-		"0.1000.${path}.AAAA",
-		"7.x.${path}.AAAA",
-		"7.1000.${bad_path}.AAAA",
-		"7.1000.!.AAAA",
+		"x.1000.${path}..AAAA",
+		"0.1000.${path}..AAAA",
+		"7.x.${path}..AAAA",
+		"7.1000.${bad_path}..AAAA",
+		"7.1000.!..AAAA",
+		"7.1000.${path}.octo_cat.AAAA",
 	].all(|text| unread(text) == Unsigned)
+}
+# A sign-up with no login keeps none, and one with a login keeps it.
+expect {
+	read_back = |sign_up| {
+		claim =
+			GitHubSignUp.Claim.from_cookie_header((sign_up.set_cookie_text(tests_mac).split_on(";").first() ?? crash "GitHubSignUp's tests: a cookie has a value").to_utf8())
+				?? crash "GitHubSignUp's tests: a cookie"
+		GitHubSignUp.from_claim({ claim, verdict: Matches })
+	}
+	no_login = GitHubSignUp.issue({ github: github_id, login: NoLogin, now: Timestamp.at_second(1000), next: agents_path })
+	read_back(no_login) == Signed(no_login) and read_back(issued) == Signed(issued) and no_login.login() == NoLogin
 }
 expect
 	GitHubSignUp.clear_cookie_text

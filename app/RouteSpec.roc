@@ -75,7 +75,8 @@ chosen_route = |method, path|
 		Open(SignOut) => "sign out (open)"
 		Open(StartGitHubSignIn) => "off to GitHub (open)"
 		Open(FinishGitHubSignIn) => "back from GitHub (open)"
-		Open(FinishGitHubSignUp) => "a new human's name (open)"
+		Open(GitHubSignUpStep(SubmitName)) => "a new human's name (open)"
+		Open(GitHubSignUpStep(ShowForm)) => "the form asking a new human's name (open)"
 		Open(WrongMethodToGitHub(GetOnly)) => "the wrong method to GitHub (open)"
 		Open(WrongMethodToGitHub(PostOnly)) => "the wrong method for a name (open)"
 		Open(WrongMethodToGitHub(GetAndPost)) => "no route takes this"
@@ -271,13 +272,14 @@ expect
 			path.to_utf8(),
 		) == "the wrong method to GitHub (open)",
 	)
-# A new human's name: a POST, and every other method a refusal the route gives.
+# A new human's name: the form a GET, the name a POST, and every other method
+# a refusal the route gives.
 expect chosen_route("POST", "/login/github/name".to_utf8()) == "a new human's name (open)"
+expect chosen_route("GET", "/login/github/name".to_utf8()) == "the form asking a new human's name (open)"
+expect chosen_route("PUT", "/login/github/name".to_utf8()) == "no route takes this"
 expect chosen_route("POST", "/login/github/link".to_utf8()) == "off to GitHub to link it"
 expect
 	[
-		("GET", "/login/github/name"),
-		("PUT", "/login/github/name"),
 		("GET", "/login/github/link"),
 		("PUT", "/login/github/link"),
 	].all(

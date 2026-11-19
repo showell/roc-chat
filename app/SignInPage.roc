@@ -16,10 +16,11 @@ SignInPage :: [].{
 	## GitHub's settings.
 	GitHubOffer : [Offered, NotOffered]
 
-	## The sign-in page, for `viewer`. For no one: a form posting a name and
-	## a password to `/login`, and `next`, where to go once signed in, as a
-	## hidden field; above it, `problem` when there is one; below it, when
-	## `github` offers one, a link to sign in with GitHub, going to `next`.
+	## The sign-in page, for `viewer`. For no one: `problem` when there is
+	## one; when `github` offers one, a link to sign in or sign up with
+	## GitHub, going to `next`, and a line for those with a password; then a
+	## form posting a name and a password to `/login`, and `next`, where to go
+	## once signed in, as a hidden field.
 	## For someone signed in, who has no use for a second account: `problem`,
 	## who they are and a button that signs them out, under the top bar.
 	login : {
@@ -82,10 +83,11 @@ SignInPage :: [].{
 								attributes: [
 									LinkWithNext({ path: PageKit.site_path("/login/github/start"), next }),
 								],
-								inner: Escape.text("Sign in with GitHub"),
+								inner: Escape.text("Sign in or sign up with GitHub"),
 							}),
 						}),
 						PageKit.newline,
+						PageKit.paragraph("Already have an account? Sign in with your password, then link GitHub."),
 					])
 			}
 		match viewer {
@@ -105,9 +107,9 @@ SignInPage :: [].{
 					body: TrustedHtml.join([
 						PageKit.heading("Sign in"),
 						said,
+						github_link,
 						form,
 						PageKit.newline,
-						github_link,
 					]),
 				})
 		}
@@ -116,20 +118,32 @@ SignInPage :: [].{
 	## What a name field shows: a name, or nothing.
 	NameField : [Named(Name), NoName]
 
+	## Why the name form offers no name of GitHub's: GitHub's login is none
+	## this chat shows (`NoLogin`), is no name here (`LoginNotAName`), or is
+	## taken (`LoginTaken`), or the chat is full (`ChatFull`).
+	NoOffer : [NoLogin, LoginNotAName, LoginTaken, ChatFull]
+
 	## The page that asks a human GitHub vouched for, who has no account, to
 	## choose a name: a form posting it to `/login/github/name`, filled in
-	## with `name`. The server carries who they are in a cookie
-	## (`GitHubSignUp`), so the form holds nothing else. Above it, `problem`
-	## when there is one.
+	## with `name`, at most `Name.longest` characters. The server carries who
+	## they are in a cookie (`GitHubSignUp`), so the form holds nothing else.
+	## Above it, `problem` when there is one, then what the name is for, and
+	## `login_note`: why GitHub's login was not offered, when it was not.
 	github_sign_up : {
 		name : SignInPage.NameField,
 		problem : [NoProblem, Problem(Str)],
+		login_note : [NoNote, NotOffered(SignInPage.NoOffer)],
 	} -> TrustedHtml
-	github_sign_up = |{ name, problem }| {
+	github_sign_up = |{ name, problem, login_note }| {
 		said =
 			match problem {
 				NoProblem => TrustedHtml.join([])
 				Problem(text) => PageKit.paragraph(text)
+			}
+		noted =
+			match login_note {
+				NoNote => TrustedHtml.join([])
+				NotOffered(why) => PageKit.paragraph(no_offer_words(why))
 			}
 		filled =
 			match name {
@@ -148,6 +162,7 @@ SignInPage :: [].{
 							FieldName(PageKit.token("name")),
 							Autocomplete(Username),
 							Required,
+							MaxLength(Name.longest),
 						],
 						filled,
 					),
@@ -170,9 +185,25 @@ SignInPage :: [].{
 				PageKit.newline,
 				said,
 				PageKit.paragraph("GitHub says who you are, and you have no account here yet. Choose a name that no one has: letters and single spaces. Once you join, it is yours, and you sign in with GitHub."),
+				PageKit.paragraph(choose_words),
+				noted,
 				form,
 				PageKit.newline,
 			]),
 		})
 	}
 }
+
+## What the name form says of the name, before it.
+choose_words : Str
+choose_words = "Everyone here sees this name, and it cannot be changed after you join. This page lasts 10 minutes; after that, sign in with GitHub again."
+
+## Why GitHub's login was not offered as a name, in words.
+no_offer_words : SignInPage.NoOffer -> Str
+no_offer_words = |why|
+	match why {
+		NoLogin => "GitHub sent no login this chat can show, so no name is filled in."
+		LoginNotAName => "Your GitHub login is not offered: a name here is letters and single spaces, at most ${Name.longest.to_str()}."
+		LoginTaken => "Your GitHub login is not offered: someone here has that name."
+		ChatFull => "Your GitHub login is not offered: the chat holds as many as it can."
+	}

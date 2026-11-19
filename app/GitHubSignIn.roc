@@ -141,26 +141,39 @@ GitHubSignIn :: [].{
 				Denied => Err(CodeRefused)
 				Failed => Err(GitHubUnreachable)
 				Identified =>
-					match (GitHubId.from_u64(github_id), GitHubLogin.from_utf8(login)) {
-						(Ok(github), Ok(known)) => Ok(
+					match GitHubId.from_u64(github_id) {
+						Ok(github) => Ok(
 							GitHubSignIn.IdentityKnown.(
 								{
 									github,
-									login: known,
+									login: GitHubSignIn.login_heard(login),
 									next: checked.next,
 									errand: checked.errand,
 								},
 							),
 						)
-						_ => Err(BadIdentity)
+						Err(_) => Err(BadIdentity)
 					}
 			}
 	}
 
+	## What GitHub calls an account, when that is a login this chat can show
+	## and offer as a name (`GitHubLogin`); else `NoLogin`, which signs in
+	## all the same.
+	LoginHeard : [Login(GitHubLogin), NoLogin]
+
+	## The login of the bytes GitHub answered.
+	login_heard : List(U8) -> GitHubSignIn.LoginHeard
+	login_heard = |bytes|
+		match GitHubLogin.from_utf8(bytes) {
+			Ok(login) => Login(login)
+			Err(NotALogin) => NoLogin
+		}
+
 	## GitHub has said who this is.
 	IdentityKnown :: {
 		github : GitHubId,
-		login : GitHubLogin,
+		login : GitHubSignIn.LoginHeard,
 		next : Html.SitePath,
 		errand : GitHubState.Errand,
 	}.{
@@ -262,36 +275,31 @@ GitHubSignIn :: [].{
 	## GitHub has said who this is, and no human holds the id.
 	NewHuman :: {
 		github : GitHubId,
-		login : GitHubLogin,
+		login : GitHubSignIn.LoginHeard,
 		next : Html.SitePath,
 	}.{
 
 		## What GitHub calls this human's account now.
-		login : GitHubSignIn.NewHuman -> GitHubLogin
+		login : GitHubSignIn.NewHuman -> GitHubSignIn.LoginHeard
 		login = |GitHubSignIn.NewHuman.(new_human)| new_human.login
 
 		## What carries this human to the name they choose, issued at `now`.
 		sign_up : GitHubSignIn.NewHuman, Timestamp -> GitHubSignUp
 		sign_up = |GitHubSignIn.NewHuman.(new_human), now|
-			GitHubSignUp.issue({ github: new_human.github, now, next: new_human.next })
-
-		## The name to offer this human: their login, when it is a name and
-		## free in `directory`; else `NoSuggestion`.
-		suggested_name : GitHubSignIn.NewHuman, Directory -> [Suggested(Name), NoSuggestion]
-		suggested_name = |GitHubSignIn.NewHuman.(new_human), directory|
-			match Name.from_str(new_human.login.to_str()) {
-				Err(_) => NoSuggestion
-				Ok(name) =>
-					match directory.add_human(name) {
-						Ok(_) => Suggested(name)
-						Err(NameTaken) => NoSuggestion
-						Err(Full) => NoSuggestion
-					}
-			}
+			GitHubSignUp.issue({
+				github: new_human.github,
+				login: new_human.login,
+				now,
+				next: new_human.next,
+			})
 	}
 
 	## A sign-up back from its browser, signed and in time.
-	SignUpResumed :: { github : GitHubId, next : Html.SitePath }.{
+	SignUpResumed :: { github : GitHubId, login : GitHubSignIn.LoginHeard, next : Html.SitePath }.{
+
+		## What GitHub called the account, when it was a login.
+		login : GitHubSignIn.SignUpResumed -> GitHubSignIn.LoginHeard
+		login = |GitHubSignIn.SignUpResumed.(resumed)| resumed.login
 
 		## From the facts of the request: the sign-up, if its signature held,
 		## who sent it, and the time. A browser that has signed in since the
@@ -314,7 +322,7 @@ GitHubSignIn :: [].{
 						Expired => Err(SignUpExpired)
 						Valid => Ok(
 							GitHubSignIn.SignUpResumed.(
-								{ github: signed.github(), next: signed.next() },
+								{ github: signed.github(), login: signed.login(), next: signed.next() },
 							),
 						)
 					}
@@ -470,7 +478,7 @@ resumed_up = {
 	github = GitHubId.from_u64(300) ?? crash "GitHubSignIn's tests: a GitHub id"
 	next = Html.SitePath.from_str("/agents") ?? crash "GitHubSignIn's tests: a site path"
 	GitHubSignIn.SignUpResumed.resume({
-		sign_up: Signed(GitHubSignUp.issue({ github, now: Timestamp.at_second(1000), next })),
+		sign_up: Signed(GitHubSignUp.issue({ github, login: NoLogin, now: Timestamp.at_second(1000), next })),
 		viewer: Anonymous,
 		now: Timestamp.at_second(1300),
 	}) ?? crash "GitHubSignIn's tests: a sign-up in time"

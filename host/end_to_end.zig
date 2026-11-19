@@ -1989,13 +1989,27 @@ fn signUpLine(a: std.mem.Allocator, asked: Response) ![]const u8 {
     return line;
 }
 
+/// Whether `answer`, GitHub's way back, sends the browser on to the form
+/// that asks a name, with a sign-up and no session, never stored.
+fn sentToNameForm(answer: Response) bool {
+    return answer.status == 303 and std.mem.eql(u8, answer.header("location") orelse "", "/login/github/name") and
+        has(answer.head, "set-cookie: __Host-gopher_github_sign_up=") and !has(answer.head, "__Host-gopher_auth=") and
+        std.mem.eql(u8, answer.header("cache-control") orelse "", "no-store");
+}
+
+/// The form GitHub's way back `answer` sends its browser on to, the
+/// browser holding the sign-up it set.
+fn nameFormAfter(a: std.mem.Allocator, io: Io, port: u16, answer: Response) !Response {
+    return getAs(a, io, port, try signUpLine(a, answer), "/login/github/name");
+}
+
 /// Whether `answer` is the form that asks a name, and starts no session.
 fn asksForName(answer: Response, status: u16) bool {
     return answer.status == status and has(answer.body, "action=\"/login/github/name\"") and !has(answer.head, "__Host-gopher_auth=") and
         std.mem.eql(u8, answer.header("cache-control") orelse "", "no-store");
 }
 
-/// The sign-up with the id and the path of the `Cookie` line `line`, issued
+/// The sign-up with the id, the path and the login of the `Cookie` line `line`, issued
 /// at `second`, signed with `secret`, as app/GitHubSignUp.roc spells one: a
 /// second opinion on it, from std's HMAC and base64url. A `Cookie` line too.
 fn signUpSignedAt(a: std.mem.Allocator, secret: []const u8, line: []const u8, second: i64) ![]const u8 {
@@ -2004,7 +2018,8 @@ fn signUpSignedAt(a: std.mem.Allocator, secret: []const u8, line: []const u8, se
     const github_id = parts.next() orelse return error.NotASignUp;
     _ = parts.next();
     const next = parts.next() orelse return error.NotASignUp;
-    const payload = try std.fmt.allocPrint(a, "{s}.{d}.{s}", .{ github_id, second, next });
+    const login = parts.next() orelse return error.NotASignUp;
+    const payload = try std.fmt.allocPrint(a, "{s}.{d}.{s}.{s}", .{ github_id, second, next, login });
     var mac: [32]u8 = undefined;
     std.crypto.auth.hmac.sha2.HmacSha256.create(&mac, try std.fmt.allocPrint(a, "github-sign-up\n{s}", .{payload}), secret);
     const b64 = std.base64.url_safe_no_pad.Encoder;
@@ -2030,8 +2045,8 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
 
     // 48r.
     const login_page = try anonymousGet(a, io, port, "/login?next=" ++ channel_url);
-    try t.check("the sign-in page: a link to GitHub, going to next", login_page.status == 200 and
-        has(login_page.body, "<a href=\"/login/github/start?next=" ++ channel_url ++ "\">Sign in with GitHub</a>"));
+    try t.check("the sign-in page: first a link to sign in or sign up with GitHub, going to next, and a line for those with a password; then the password form", login_page.status == 200 and
+        has(login_page.body, "<h1>Sign in</h1>\n<p><a href=\"/login/github/start?next=" ++ channel_url ++ "\">Sign in or sign up with GitHub</a></p>\n<p>Already have an account? Sign in with your password, then link GitHub.</p>\n<form method=\"post\" action=\"/login\">"));
 
     // 48s.
     const started = try anonymousGet(a, io, port, "/login/github/start?next=" ++ channel_url);
@@ -2048,8 +2063,15 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const counter_before = try readFile(a, io, data, "auth/next-id.txt");
     const unknown = try signInByGitHub(a, io, port, fake, "user-id-9");
     const sign_up_cookie = unknown.header("set-cookie") orelse "";
-    try t.check("an account no human holds, through the fake: the form asking a name, empty as person9 is no name; the sign-up's cookie for ten minutes, the state forgotten, no session, no account", asksForName(unknown, 200) and
-        !has(unknown.body, "value=") and std.mem.startsWith(u8, sign_up_cookie, "__Host-gopher_github_sign_up=9.") and
+    const unknown_form = try nameFormAfter(a, io, port, unknown);
+    const reloaded = try nameFormAfter(a, io, port, unknown);
+    const no_login = try signInByGitHub(a, io, port, fake, "user-id-60");
+    const no_login_form = try nameFormAfter(a, io, port, no_login);
+    try t.check("an account no human holds, through the fake: a 303 to the form asking a name, which is empty as person9 is no name, says so, says the name is seen by everyone, is permanent, and lasts 10 minutes, and asks again on a reload; the sign-up's cookie for ten minutes, the state forgotten, no session, no account", sentToNameForm(unknown) and
+        asksForName(unknown_form, 200) and has(unknown_form.body, "is not offered: a name here is letters") and has(unknown_form.body, "Everyone here sees this name") and
+        has(unknown_form.body, "cannot be changed") and has(unknown_form.body, "10 minutes") and has(unknown_form.body, "maxlength=\"60\"") and asksForName(reloaded, 200) and
+        sentToNameForm(no_login) and asksForName(no_login_form, 200) and has(no_login_form.body, "GitHub sent no login this chat can show") and
+        !has(unknown_form.body, "value=") and std.mem.startsWith(u8, sign_up_cookie, "__Host-gopher_github_sign_up=9.") and
         std.mem.endsWith(u8, sign_up_cookie, "; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax") and isRefusedAtTheDoor(unknown) and
         std.mem.eql(u8, counter_before, try readFile(a, io, data, "auth/next-id.txt")));
 
@@ -2081,7 +2103,7 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const denied = try signInByGitHub(a, io, port, fake, null);
     const refused = try signInByGitHub(a, io, port, fake, "bad");
     const malformed = try signInByGitHub(a, io, port, fake, "malformed");
-    try t.check("a state nine minutes old is good, and reaches GitHub; its human saying no: 403; a code GitHub refuses: 403; an answer that makes no sense: 502; no session from any", asksForName(near_miss, 200) and
+    try t.check("a state nine minutes old is good, and reaches GitHub; its human saying no: 403; a code GitHub refuses: 403; an answer that makes no sense: 502; no session from any", sentToNameForm(near_miss) and
         reached and denied.status == 403 and has(denied.body, "did not sign you in") and refused.status == 403 and
         has(refused.body, "GitHub refused") and malformed.status == 502 and isRefusedAtTheDoor(near_miss) and isRefusedAtTheDoor(denied) and
         isRefusedAtTheDoor(refused) and isRefusedAtTheDoor(malformed));
@@ -2137,7 +2159,7 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const unbound = try signInByGitHub(a, io, port, fake, "user-id-8");
     try t.check("her github-session-secret rewritten, then removed: her session ends each time, and she signs in again; her github-id removed: her session ends, and GitHub's sign-in asks a name, as for anyone new", after_rewrite.status == 303 and
         her_again.status == 303 and second_page.status == 200 and after_removal.status == 303 and third_page.status == 200 and after_unbinding.status == 303 and
-        asksForName(unbound, 200) and isRefusedAtTheDoor(unbound));
+        sentToNameForm(unbound) and isRefusedAtTheDoor(unbound));
 
     // 48za.
     try data.writeFile(io, .{ .sub_path = "auth/5/github-id", .data = "7" });
@@ -2160,14 +2182,16 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const unbound_line = try signUpLine(a, unbound);
     const key_names = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ held.cc_bearer, unbound_line }), "/login/github/name", "name=Mallory");
     const name_by_get = try anonymousGet(a, io, port, "/login/github/name");
+
     const cross_site = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{unbound_line}), "/login/github/name", "name=Mallory");
-    try t.check("CC's key at any route: 403; a GET of the name: 405; a cross-site post of a name: 403, nothing made", key_starts.status == 403 and key_returns.status == 403 and
-        key_names.status == 403 and has(key_names.body, "An API key never signs in") and name_by_get.status == 405 and cross_site.status == 403 and !has(cross_site.head, "__Host-gopher_auth=") and
+    try t.check("CC's key at any route: 403; a GET of the name form with no sign-up: 403; a cross-site post of a name: 403, nothing made", key_starts.status == 403 and key_returns.status == 403 and
+        key_names.status == 403 and has(key_names.body, "An API key never signs in") and name_by_get.status == 403 and has(name_by_get.body, "did not start in this browser") and cross_site.status == 403 and !has(cross_site.head, "__Host-gopher_auth=") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "6\n"));
 
     // 48zc.
-    const zoe_form = try signInByGitHub(a, io, port, fake, "user-id-20");
-    const zoe_in = try chooseName(a, io, port, try signUpLine(a, zoe_form), "Zoe");
+    const zoe_back = try signInByGitHub(a, io, port, fake, "user-id-20");
+    const zoe_form = try nameFormAfter(a, io, port, zoe_back);
+    const zoe_in = try chooseName(a, io, port, try signUpLine(a, zoe_back), "Zoe");
     const zoe = try cookieLine(a, zoe_in);
     const zoe_page = try getAs(a, io, port, zoe, "/invites");
     const zoe_by_form = try anonymousPost(a, io, port, "/login", "name=Zoe&password=anything");
@@ -2189,8 +2213,9 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "7\n"));
 
     // 48ze.
-    const taken_login = try signInByGitHub(a, io, port, fake, "user-id-21");
-    const ravi_line = try signUpLine(a, taken_login);
+    const taken_back = try signInByGitHub(a, io, port, fake, "user-id-21");
+    const taken_login = try nameFormAfter(a, io, port, taken_back);
+    const ravi_line = try signUpLine(a, taken_back);
     const taken = try chooseName(a, io, port, ravi_line, "STEVE");
     const channels_name = try chooseName(a, io, port, ravi_line, "General");
     const no_name = try chooseName(a, io, port, ravi_line, "R2D2");
@@ -2198,7 +2223,7 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const unspent = std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "7\n");
     const ravi_in = try chooseName(a, io, port, ravi_line, "Ravi");
     try t.check("a login that is taken offers nothing; a taken name: 409, kept in the form; a channel's: 409; no name: 400, the form empty; no field: 400; nothing spent; a free name then makes user 7", asksForName(taken_login, 200) and
-        !has(taken_login.body, "value=") and asksForName(taken, 409) and has(taken.body, "The name is taken.") and has(taken.body, "value=\"STEVE\"") and
+        !has(taken_login.body, "value=") and has(taken_login.body, "someone here has that name") and asksForName(taken, 409) and has(taken.body, "The name is taken.") and has(taken.body, "value=\"STEVE\"") and
         asksForName(channels_name, 409) and asksForName(no_name, 400) and !has(no_name.body, "value=") and has(no_name.body, "The name is not a name") and asksForName(no_field, 400) and unspent and
         !has(taken.head, "__Host-gopher_github_sign_up=") and ravi_in.status == 303 and std.mem.eql(u8, try readFile(a, io, data, "auth/7/name"), "Ravi") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/7/github-id"), "21"));

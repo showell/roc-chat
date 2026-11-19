@@ -104,6 +104,24 @@ GitHubTrip :: [].{
 		Ok({ made, welcome })
 	}
 
+	## The name to offer the human `resumed` signs up: their GitHub login,
+	## when it is a name and free in `directory`; else why not.
+	name_offer : GitHubSignIn.SignUpResumed, Directory -> [Suggested(Name), NotSuggested(SignInPage.NoOffer)]
+	name_offer = |resumed, directory|
+		match resumed.login() {
+			NoLogin => NotSuggested(NoLogin)
+			Login(login) =>
+				match Name.from_str(login.to_str()) {
+					Err(_) => NotSuggested(LoginNotAName)
+					Ok(name) =>
+						match directory.add_human(name) {
+							Ok(_) => Suggested(name)
+							Err(NameTaken) => NotSuggested(LoginTaken)
+							Err(Full) => NotSuggested(ChatFull)
+						}
+				}
+		}
+
 	## The sign-in page for `viewer`, saying why GitHub's sign-in was refused,
 	## under its status.
 	refusal_page : { viewer : SignedIn.Actor, why : GitHubSignIn.Refusal } -> {
@@ -133,7 +151,7 @@ GitHubTrip :: [].{
 		notice = HumanInvites.refusal_notice(why)
 		{
 			status: notice.status,
-			page: SignInPage.github_sign_up({ name, problem: Problem(notice.said) }),
+			page: SignInPage.github_sign_up({ name, problem: Problem(notice.said), login_note: NoNote }),
 		}
 	}
 }

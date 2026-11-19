@@ -3,9 +3,12 @@
 ## `SignUpLimits`'; here are the facts asked of the host, and the answers
 ## made. `GitHubRoute` answers the trip there and back.
 ##
-## - The way back from GitHub, for an id no human holds, asks for a name
-##   (`ask_for_name!`), with a signed sign-up in its browser's cookie,
-##   unless a limit on new accounts is reached (`SignUpLimits`).
+## - The way back from GitHub, for an id no human holds, sets a signed
+##   sign-up in its browser's cookie and sends it on to `GET
+##   /login/github/name` (`ask_for_name!`), unless a limit on new accounts
+##   is reached (`SignUpLimits`).
+## - `GET /login/github/name` is the form that asks the name, from that
+##   cookie, so a reload asks again rather than saying the state is spent.
 ## - `POST /login/github/name` is that name: the sign-up checked, the limits
 ##   checked again, the account made, and a session started. The counter of
 ##   ids is written first, then the new human's `Welcome`, then `github-id`,
@@ -42,10 +45,10 @@ import TrustedHtml
 
 GitHubSignUpRoute :: [].{
 
-	## The form that asks `new_human` for a name, offering what `directory`
-	## leaves free, with their signed sign-up in this browser's cookie; or,
-	## when a limit on new accounts is reached, the sign-in page saying
-	## sign-ups are paused.
+	## The way back from GitHub for `new_human`: their signed sign-up in this
+	## browser's cookie, and a 303 to the form that asks their name, so a
+	## reload of that form asks again; or, when a limit on new accounts is
+	## reached, the sign-in page saying sign-ups are paused.
 	ask_for_name! : {
 		viewer : SignedIn.Actor,
 		new_human : GitHubSignIn.NewHuman,
@@ -58,60 +61,108 @@ GitHubSignUpRoute :: [].{
 			Ok(_) => {
 				sign_up = new_human.sign_up(now)
 				mac = Host.hmac_sha256_with_server_secret!(sign_up.signed_bytes())
-				suggested =
-					match new_human.suggested_name(directory) {
-						Suggested(name) => Named(name)
-						NoSuggestion => NoName
-					}
 				HttpAnswer.with_header(
-					HttpAnswer.page(200, SignInPage.github_sign_up({ name: suggested, problem: NoProblem })),
+					HttpAnswer.see_other("/login/github/name"),
 					set_cookie_header(sign_up.set_cookie_text(mac)),
 				)
 			}
 		}
 
-	## A POST of `/login/github/name`: the account the browser's sign-up makes
-	## under the form's `name`, a session for its human, and a 303 to where the
-	## sign-in began; for a name refused, the form again, the sign-up still
-	## good; or the sign-in page saying why not, the sign-up forgotten.
-	serve_sign_up! : {
+	## A request at `/login/github/name`: its GET's form (`ShowForm`), or its
+	## POST's name (`SubmitName`).
+	serve! : {
+		step : [ShowForm, SubmitName],
 		viewer : SignedIn.Actor,
 		directory : Directory,
 		body : List(U8),
 		headers : List(Http.Header),
 		now : Timestamp,
 	} => Http.Response
-	serve_sign_up! = |request| {
-		settings = Host.github_sign_in_settings!({})
-		answer =
-			match (settings.status, SignInRequest.check_not_by_api_key(request.viewer)) {
-				(NotConfigured, _) => not_found
-				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
-				(Configured, Ok({})) =>
-					match sign_up!(request) {
-						Ok(admission) =>
-							with_sign_up_forgotten(
-								SignInRoute.start_session_by_github!(admission, request.now),
-							)
-						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-						Err(Paused(limit)) => with_sign_up_forgotten(paused_answer!(request.viewer, limit))
-						Err(Refused(why)) =>
-							with_sign_up_forgotten(
-								page_answer(
-									GitHubTrip.refusal_page({ viewer: request.viewer, why }),
-								),
-							)
-						Err(NameRefused(refusal)) =>
-							page_answer(GitHubTrip.name_refusal_page(refusal))
-					}
-			}
-		HttpAnswer.never_stored(answer)
-	}
+	serve! = |{ step, viewer, directory, body, headers, now }|
+		match step {
+			ShowForm => serve_name_form!({ viewer, directory, headers, now })
+			SubmitName => serve_sign_up!({ viewer, directory, body, headers, now })
+		}
+}
+
+## A GET of `/login/github/name`: the form that asks the name of the human
+## the browser's sign-up holds, offering their GitHub login when it is a
+## name `directory` leaves free, else saying why not; or the sign-in page
+## saying why not, the sign-up forgotten.
+serve_name_form! : {
+	viewer : SignedIn.Actor,
+	directory : Directory,
+	headers : List(Http.Header),
+	now : Timestamp,
+} => Http.Response
+serve_name_form! = |{ viewer, directory, headers, now }| {
+	settings = Host.github_sign_in_settings!({})
+	answer =
+		match (settings.status, SignInRequest.check_not_by_api_key(viewer)) {
+			(NotConfigured, _) => not_found
+			(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
+			(Configured, Ok({})) =>
+				match GitHubSignIn.SignUpResumed.resume({ sign_up: load_signed_sign_up!(headers), viewer, now }) {
+					Err(why) => with_sign_up_forgotten(page_answer(GitHubTrip.refusal_page({ viewer, why })))
+					Ok(resumed) =>
+						match check_limits!(directory, now) {
+							Err(limit) => with_sign_up_forgotten(paused_answer!(viewer, limit))
+							Ok(_) => HttpAnswer.page(200, name_form(resumed, directory))
+						}
+				}
+		}
+	HttpAnswer.never_stored(answer)
+}
+
+## A POST of `/login/github/name`: the account the browser's sign-up makes
+## under the form's `name`, a session for its human, and a 303 to where the
+## sign-in began; for a name refused, the form again, the sign-up still
+## good; or the sign-in page saying why not, the sign-up forgotten.
+serve_sign_up! : {
+	viewer : SignedIn.Actor,
+	directory : Directory,
+	body : List(U8),
+	headers : List(Http.Header),
+	now : Timestamp,
+} => Http.Response
+serve_sign_up! = |request| {
+	settings = Host.github_sign_in_settings!({})
+	answer =
+		match (settings.status, SignInRequest.check_not_by_api_key(request.viewer)) {
+			(NotConfigured, _) => not_found
+			(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
+			(Configured, Ok({})) =>
+				match sign_up!(request) {
+					Ok(admission) =>
+						with_sign_up_forgotten(
+							SignInRoute.start_session_by_github!(admission, request.now),
+						)
+					Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+					Err(Paused(limit)) => with_sign_up_forgotten(paused_answer!(request.viewer, limit))
+					Err(Refused(why)) =>
+						with_sign_up_forgotten(
+							page_answer(
+								GitHubTrip.refusal_page({ viewer: request.viewer, why }),
+							),
+						)
+					Err(NameRefused(refusal)) =>
+						page_answer(GitHubTrip.name_refusal_page(refusal))
+				}
+		}
+	HttpAnswer.never_stored(answer)
 }
 
 ## The 404 any path gets when nothing is here.
 not_found : Http.Response
 not_found = HttpAnswer.page(404, PageKit.not_found)
+
+## The form that asks the name of the human `resumed` signs up.
+name_form : GitHubSignIn.SignUpResumed, Directory -> TrustedHtml
+name_form = |resumed, directory|
+	match GitHubTrip.name_offer(resumed, directory) {
+		Suggested(name) => SignInPage.github_sign_up({ name: Named(name), problem: NoProblem, login_note: NoNote })
+		NotSuggested(why) => SignInPage.github_sign_up({ name: NoName, problem: NoProblem, login_note: NotOffered(why) })
+	}
 
 ## The admission of the human the browser's sign-up and the form `body` make,
 ## their account written; or why not. The counter goes first, so an id is

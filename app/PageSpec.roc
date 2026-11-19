@@ -218,7 +218,8 @@ expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;mat
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
 		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
-# With GitHub's settings, a link below the form, going on to `next`.
+# With GitHub's settings, a link above the form, going on to `next`, and a
+# line for those with a password.
 expect
 	Str.from_utf8_lossy(
 		SignInPage.login({
@@ -227,7 +228,7 @@ expect
 			problem: NoProblem,
 			github: Offered,
 		}).to_utf8(),
-	).contains("</form>\n<p><a href=\"/login/github/start?next=/chat/dm/1_1/plans\">Sign in with GitHub</a></p>\n")
+	).contains("<h1>Sign in</h1>\n<p><a href=\"/login/github/start?next=/chat/dm/1_1/plans\">Sign in or sign up with GitHub</a></p>\n<p>Already have an account? Sign in with your password, then link GitHub.</p>\n<form method=\"post\" action=\"/login\">")
 # The join page: a hidden field for the code, the name and a new password,
 # then the script that reads the code from the link.
 expect
@@ -236,18 +237,30 @@ expect
 
 ## The words above the form that asks a new human for a name.
 sign_up_words : Str
-sign_up_words = "GitHub says who you are, and you have no account here yet. Choose a name that no one has: letters and single spaces. Once you join, it is yours, and you sign in with GitHub."
+sign_up_words = "GitHub says who you are, and you have no account here yet. Choose a name that no one has: letters and single spaces. Once you join, it is yours, and you sign in with GitHub.</p>\n<p>Everyone here sees this name, and it cannot be changed after you join. This page lasts 10 minutes; after that, sign in with GitHub again."
 
 # The page asking a new human for a name: filled in or empty, and a problem
 # above the words when there is one.
 expect {
 	zoe = Name.from_str("Zoë Ann") ?? crash "PageSpec: a name"
-	SignInPage.github_sign_up({ name: Named(zoe), problem: NoProblem }).to_utf8()
-		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n".to_utf8()
+	SignInPage.github_sign_up({ name: Named(zoe), problem: NoProblem, login_note: NoNote }).to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\" value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n".to_utf8()
 }
 expect
-	SignInPage.github_sign_up({ name: NoName, problem: Problem("The <name> is taken.") }).to_utf8()
-		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<button>Join</button></form>\n".to_utf8()
+	SignInPage.github_sign_up({ name: NoName, problem: Problem("The <name> is taken."), login_note: NoNote }).to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\"></p>\n<button>Join</button></form>\n".to_utf8()
+# A login not offered says why, above the form.
+expect
+	[
+		(NoLogin, "<p>GitHub sent no login this chat can show, so no name is filled in.</p>\n<form"),
+		(LoginNotAName, "<p>Your GitHub login is not offered: a name here is letters and single spaces, at most 60.</p>\n<form"),
+		(LoginTaken, "<p>Your GitHub login is not offered: someone here has that name.</p>\n<form"),
+		(ChatFull, "<p>Your GitHub login is not offered: the chat holds as many as it can.</p>\n<form"),
+	].all(
+		|(why, said)|
+			Str.from_utf8_lossy(SignInPage.github_sign_up({ name: NoName, problem: NoProblem, login_note: NotOffered(why) }).to_utf8())
+				.contains(said),
+	)
 # Every page of someone signed in has the links to Browse and the invites
 # page, and no page of no one's has either.
 expect {
@@ -286,7 +299,7 @@ expect {
 		and [
 			JoinPage.join,
 			PageKit.notice({ title: "t", text: "x" }),
-			SignInPage.github_sign_up({ name: NoName, problem: NoProblem }),
+			SignInPage.github_sign_up({ name: NoName, problem: NoProblem, login_note: NoNote }),
 			SignInPage.login({
 				viewer: Anonymous,
 				next: Html.SitePath.from_str("/chat") ?? crash "PageSpec: a site path",

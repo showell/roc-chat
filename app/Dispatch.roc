@@ -221,8 +221,9 @@ answer_open_route! = |{ open, request, directory, actor }|
 				headers: request.headers,
 				now: Clock.read_clock!({}),
 			})
-		FinishGitHubSignUp =>
-			GitHubSignUpRoute.serve_sign_up!({
+		GitHubSignUpStep(step) =>
+			GitHubSignUpRoute.serve!({
+				step,
 				viewer: actor,
 				directory,
 				body: request.body,

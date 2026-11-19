@@ -143,7 +143,8 @@ Html :: [].{
 	## An attribute, its name by its tag: a class, an id and a link to an id
 	## on this page, each a token; a link to another page of this site, a
 	## site path; a link off the site, an `HttpsUrl`; a time; a form's field name, its method
-	## (always POST) and where it posts; whether a field is required; an
+	## (always POST) and where it posts; whether a field is required, and
+	## its most characters, a number; an
 	## input's type, its value (a site path) and what a browser may fill it
 	## with; a script's source; and a `data-` attribute for a page's
 	## scripts: its name after `data-`, a token, then its value, a token or
@@ -160,6 +161,7 @@ Html :: [].{
 		MethodPost,
 		Action(Html.SitePath),
 		Required,
+		MaxLength(U64),
 		InputType([Hidden, Password, Text]),
 		Value(Html.SitePath),
 		TokenValue(Html.Token),
@@ -252,6 +254,7 @@ attribute = |given|
 		MethodPost => " method=\"post\""
 		Action(path) => " action=\"${path.to_str()}\""
 		Required => " required"
+		MaxLength(most) => " maxlength=\"${most.to_str()}\""
 		InputType(Hidden) => " type=\"hidden\""
 		InputType(Password) => " type=\"password\""
 		InputType(Text) => " type=\"text\""
@@ -381,6 +384,7 @@ expect {
 		(MethodPost, " method=\"post\""),
 		(Action(path("/chat/dm/1_1/plans")), " action=\"/chat/dm/1_1/plans\""),
 		(Required, " required"),
+		(MaxLength(60), " maxlength=\"60\""),
 		(Src(path("/chat/assets/compose.js")), " src=\"/chat/assets/compose.js\""),
 	].all(|(given, expected)| attribute(given) == expected)
 }

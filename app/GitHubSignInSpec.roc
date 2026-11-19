@@ -121,7 +121,11 @@ round_trip = |
 	match known.resolve({ links, users: tests_users, viewer })? {
 		Known(admission) =>
 			Ok(Admitted(admission.human().user().name().to_str(), admission.next().to_str()))
-		Unknown(new_human) => Ok(NewHumanNamed(new_human.login().to_str()))
+		Unknown(new_human) =>
+			match new_human.login() {
+				Login(login) => Ok(NewHumanNamed(login.to_str()))
+				NoLogin => Ok(NewHumanNamed(""))
+			}
 		Linking(linked) => {
 			name = linked.admission().human().user().name().to_str()
 			Ok(LinkedTo(name, linked.github().to_str()))
@@ -202,7 +206,10 @@ expect
 		== Err(GitHubUnreachable)
 expect round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Busy } }) == Err(GitHubBusy)
 expect round_trip({ ..good_return, heard: github_answer(0, "showell") }) == Err(BadIdentity)
-expect round_trip({ ..good_return, heard: github_answer(100, "not a login") }) == Err(BadIdentity)
+# A login that is no login (`GitHubLogin`) still signs in, and a new human
+# with one is offered no name.
+expect round_trip({ ..good_return, heard: github_answer(100, "not a login") }) == Ok(Admitted("Steve", "/agents"))
+expect round_trip({ ..good_return, heard: github_answer(300, "x".repeat(40)) }) == Ok(NewHumanNamed(""))
 
 ## The user `text` names, signed in by a session.
 viewer_of : Str -> SignedIn.Actor
@@ -316,21 +323,6 @@ new_human_of = |login| {
 		Linking(_) => Err(NotNew)
 	}
 }
-
-# The login is offered when it is a name and free, as GitHub spells it.
-expect
-	new_human_called("Zoe").suggested_name(tests_directory) == Suggested(tests_name("Zoe"))
-# A login that is no name, one taken in any case, and a chat that is full,
-# offer nothing.
-expect
-	[
-		"person9",
-		"mona-lisa",
-		"Steve",
-		"sTeVe",
-		"cc",
-	].all(|login| new_human_called(login).suggested_name(tests_directory) == NoSuggestion)
-expect new_human_called("Zoe").suggested_name(full_directory) == NoSuggestion
 
 ## The tests' directory, its every id spent, as the counter says.
 full_directory : Directory
