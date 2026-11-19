@@ -24,6 +24,7 @@ import PageSpec
 import PlaceSpec
 import RouteSpec
 import SecureImageTagSpec
+import SessionSpec
 import StoredDirectorySpec
 import TranscriptSpec
 import UsersSpec
