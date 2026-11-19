@@ -23,7 +23,7 @@ import GitHubRoute
 import HttpAnswer
 import HumanInvitesRoute
 import Html
-import Page
+import PageKit
 import Place
 import RequestOrigin
 import Route
@@ -58,7 +58,7 @@ Dispatch :: [].{
 					})
 				}
 			MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
-			NotFound => HttpAnswer.page(404, Page.not_found)
+			NotFound => HttpAnswer.page(404, PageKit.not_found)
 		}
 }
 
@@ -105,7 +105,7 @@ access_refusal = |why| {
 				"Only the members of this conversation's channel or DM may read or post in it."
 			ScopeOff => "This API key's scope doesn't reach that."
 		}
-	HttpAnswer.page(403, Page.notice({ title: "Forbidden", text: said }))
+	HttpAnswer.page(403, PageKit.notice({ title: "Forbidden", text: said }))
 }
 
 ## The answer to a route only someone signed in may use, asked for by no
@@ -125,7 +125,7 @@ anonymous_refusal = |asked|
 		CreateChannel => unauthorized_refusal
 		AddChannelMember(_) => unauthorized_refusal
 		RemoveChannelMember(_) => unauthorized_refusal
-		ShowInvites => SignInRoute.login_redirect(site_path_of(Page.invites_path))
+		ShowInvites => SignInRoute.login_redirect(site_path_of(PageKit.invites_path))
 		InviteHuman => unauthorized_refusal
 		InviteHumanAgain(_) => unauthorized_refusal
 		AppendToConversation(_) => unauthorized_refusal

@@ -13,7 +13,7 @@ import Directory
 import FirstStart
 import HttpAnswer
 import Name
-import Page
+import PageKit
 import RequestOrigin
 import Route
 import SignedIn
@@ -61,7 +61,7 @@ Admission :: [].{
 	origin_refusal : RequestOrigin.Refusal -> Http.Response
 	origin_refusal = |why| HttpAnswer.page(
 		403,
-		Page.notice({ title: "Forbidden", text: RequestOrigin.words(why) }),
+		PageKit.notice({ title: "Forbidden", text: RequestOrigin.words(why) }),
 	)
 
 	## `answer`, which no other site's page may load: a browser refuses to hand

@@ -11,7 +11,7 @@ import Directory
 import FileSystem
 import FirstStart
 import HttpAnswer
-import Page
+import PageKit
 import UserId
 import Users
 
@@ -55,7 +55,7 @@ DirectoryStore :: [].{
 				FileSystem(fault) => FileSystem.fault_words(fault)
 				StoredDirectory(words) => "The chat's directory on disk is not whole: ${words}."
 			}
-		HttpAnswer.page(500, Page.notice({ title: "Failed", text: said }))
+		HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: said }))
 	}
 }
 

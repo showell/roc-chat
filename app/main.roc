@@ -51,10 +51,11 @@ import Actor
 import Admission
 import Conversation
 import ConversationKey
+import ConversationPage
 import DirectoryStore
 import Dispatch
 import FirstStart
-import Page
+import PageKit
 import RequestOrigin
 import SignedIn
 import Topic
@@ -70,13 +71,13 @@ page = |path, transcript| {
 	answer =
 		match conversation({ path, transcript }) {
 			Ok(found) =>
-				Page.conversation({
+				ConversationPage.conversation({
 					conversation: found.conversation,
 					key: found.key,
 					viewer: demo_viewer,
 					users: FirstStart.first_directory.users(),
 				})
-			Err(why) => Page.refusal(TranscriptRefusal.words(why))
+			Err(why) => PageKit.refusal(TranscriptRefusal.words(why))
 		}
 	answer.to_utf8()
 }
@@ -228,16 +229,16 @@ expect {
 		directory: FirstStart.first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	page("/chat/dm/1_1/plans".to_utf8(), [])
-		== Page.conversation({
+		== ConversationPage.conversation({
 			conversation: Conversation.empty(plans),
 			key,
 			viewer: demo_viewer,
 			users: FirstStart.first_directory.users(),
 		}).to_utf8()
 }
-expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
+expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == PageKit.refusal("it is not UTF-8").to_utf8()
 expect page("<b>".to_utf8(), [0xff])
-	== Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>")
+	== PageKit.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>")
 		.to_utf8()
 
 # The demo's viewer is the first start's Steve, id 1.
