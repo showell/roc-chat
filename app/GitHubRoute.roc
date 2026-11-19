@@ -1,6 +1,6 @@
 ## This module answers the routes of a GitHub sign-in (`Route` lists them).
-## Every decision is `GitHubSignIn`'s or `GitHubState`'s; here are the facts
-## asked of the host, and the answers made.
+## Every decision is `GitHubSignIn`'s, `GitHubState`'s or `GitHubTrip`'s;
+## here are the facts asked of the host, and the answers made.
 ##
 ## - `GET /login/github/start` makes a state, has the host sign it, sets its
 ##   nonce in this browser's cookie, and sends the browser to GitHub.
@@ -34,20 +34,18 @@ import pf.Host
 import pf.Http
 import AccountFiles
 import AgentsPage
-import Ascii
-import Channels
 import Directory
 import DirectoryFiles
 import FileFacts
 import FirstPage
+import GitHubRefusal
 import GitHubSignIn
 import GitHubSignUp
 import GitHubState
-import Hex
+import GitHubTrip
 import Html
 import HttpAnswer
 import HumanInvites
-import Name
 import PageKit
 import RequestHeader
 import SignInPage
@@ -56,10 +54,9 @@ import SignInRoute
 import SignedIn
 import Timestamp
 import TranscriptFiles
-import UrlEncodedForm
+import TrustedHtml
 import UserId
 import Users
-import Welcome
 
 GitHubRoute :: [].{
 
@@ -181,7 +178,9 @@ GitHubRoute :: [].{
 							Ok(Linking(linked)) =>
 								SignInRoute.start_session_by_github_link!(linked, now)
 							Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-							Err(Refused(why)) => refusal_answer({ viewer, why })
+							Err(Refused(why)) => page_answer(
+								GitHubTrip.refusal_page({ viewer, why }),
+							)
 						},
 					)
 				}
@@ -220,8 +219,13 @@ GitHubRoute :: [].{
 							)
 						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 						Err(Refused(why)) =>
-							with_sign_up_forgotten(refusal_answer({ viewer: request.viewer, why }))
-						Err(NameRefused({ name, why })) => name_refusal_answer({ name, why })
+							with_sign_up_forgotten(
+								page_answer(
+									GitHubTrip.refusal_page({ viewer: request.viewer, why }),
+								),
+							)
+						Err(NameRefused(refusal)) =>
+							page_answer(GitHubTrip.name_refusal_page(refusal))
 					}
 			}
 		HttpAnswer.never_stored(answer)
@@ -268,7 +272,7 @@ send_to_github! = |
 		errand,
 	})
 	mac = Host.hmac_sha256_with_server_secret!(state.signed_bytes())
-	location = authorize_url({
+	location = GitHubTrip.authorize_url({
 		authorize_base,
 		client_id,
 		origin,
@@ -311,7 +315,10 @@ link_refusal_answer = |why|
 	match why {
 		ByApiKey => SignInRoute.by_api_key_answer
 		Agent(_) => link_refusal_page(403, "An agent can't link GitHub.")
-		AlreadyLinked => link_refusal_page(409, already_linked_words)
+		AlreadyLinked => {
+			said = GitHubRefusal.refusal_said(AlreadyLinked)
+			link_refusal_page(said.status, said.words)
+		}
 		FileSystem(fault) => SignInRoute.fault_answer(fault)
 	}
 
@@ -321,39 +328,6 @@ link_refusal_page = |status, text| HttpAnswer.page(
 	status,
 	PageKit.notice({ title: "Refused", text }),
 )
-
-## GitHub's page that asks its human to authorize this server.
-authorize_url : {
-	authorize_base : List(U8),
-	client_id : List(U8),
-	origin : Str,
-	state_token : Str,
-} -> Str
-authorize_url = |{ authorize_base, client_id, origin, state_token }| {
-	base = Str.from_utf8(authorize_base) ?? crash "GitHubRoute.authorize_url: the host's base URL is ASCII"
-	id = percent_encoded(client_id)
-	back = percent_encoded("${origin}/login/github".to_utf8())
-	"${base}/login/oauth/authorize?client_id=${id}&redirect_uri=${back}&state=${state_token}"
-}
-
-## `bytes` as a URL's query value: letters, digits and `-_.~` as they are,
-## any other byte `%` and its hex digits.
-percent_encoded : List(U8) -> Str
-percent_encoded = |bytes| {
-	spelled = bytes.map(
-		|byte|
-			if is_unreserved(byte) {
-				Str.from_utf8([byte]) ?? crash "GitHubRoute.percent_encoded: ASCII is UTF-8"
-			} else {
-				"%${Hex.to_hex([byte])}"
-			},
-	)
-	Str.join_with(spelled, "")
-}
-
-is_unreserved : U8 -> Bool
-is_unreserved = |byte|
-	Ascii.is_letter(byte) or Ascii.is_digit(byte) or "-_.~".to_utf8().contains(byte)
 
 ## Whose sign-in the query and the cookie prove, each step from the host's
 ## fact; or why not.
@@ -375,7 +349,7 @@ resolve! = |{ users, viewer, query, headers, now }| {
 	came =
 		GitHubSignIn.CameBack.came_back({
 			state: load_signed_state!(query),
-			answer: answer_of(query),
+			answer: GitHubTrip.answer_in_query(query),
 		}) ? |why| Refused(why)
 	checked = came.check({ cookie: cookie_of(headers), now }) ? |why| Refused(why)
 	heard = Host.github_identity_for_code!(checked.code_bytes())
@@ -424,13 +398,8 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 	}) ? |why| Refused(why)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
 	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
-	made = resumed.create_account({ name, links, directory }) ? |why| account_refusal({ name, why })
+	{ made, welcome } = GitHubTrip.new_account({ resumed, name, links, directory, now })?
 	human = made.admission.human()
-	welcome = Welcome.make({
-		directory: made.directory,
-		human,
-		now,
-	}) ? |ClockOutOfRange| Refused(ClockOutOfRange)
 	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	TranscriptFiles.append_message!(
 		welcome.key(),
@@ -444,24 +413,6 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 	DirectoryFiles.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
 	Ok(made.admission.going_to(landing))
 }
-
-## Why `name` made no account: a sign-up that ends here, or a name to try
-## again.
-account_refusal : {
-	name : Name,
-	why : [AccountExists, DuplicateAccount, NameTaken, Full, NoDefaultChannel],
-} -> [
-	Refused(GitHubSignIn.Refusal),
-	NameRefused({ name : SignInPage.NameField, why : HumanInvites.Refusal }),
-]
-account_refusal = |{ name, why }|
-	match why {
-		AccountExists => Refused(AccountExists)
-		DuplicateAccount => Refused(DuplicateAccount)
-		NameTaken => NameRefused({ name: Named(name), why: NameTaken })
-		Full => NameRefused({ name: Named(name), why: Full })
-		NoDefaultChannel => Refused(NoDefaultChannel)
-	}
 
 ## The sign-up the request's cookie holds: `Signed` when the host says its
 ## signature matches, else `Unsigned`, none at all included.
@@ -488,33 +439,16 @@ load_signed_sign_up! = |headers|
 ## matches, else `Unsigned`, none at all included.
 load_signed_state! : List(U8) => [Signed(GitHubState), Unsigned]
 load_signed_state! = |query|
-	match UrlEncodedForm.field({ body: query, name: "state" }) {
-		Err(_) => Unsigned
-		Ok(text) =>
-			match text.github_state_claim() {
-				Err(NotAClaim) => Unsigned
-				Ok(claim) =>
-					GitHubState.from_claim({
-						claim,
-						verdict: Host.hmac_sha256_with_server_secret_matches!(
-							claim.signed_bytes(),
-							claim.mac(),
-						),
-					})
-			}
-	}
-
-## What GitHub answered in the query: a code, none, or one it wouldn't send.
-answer_of : List(U8) -> GitHubSignIn.Answer
-answer_of = |query|
-	match UrlEncodedForm.field({ body: query, name: "code" }) {
-		Err(MissingField) => NoCode
-		Err(_) => BadCode
-		Ok(text) =>
-			match text.github_code() {
-				Ok(code) => Code(code)
-				Err(NotACode) => BadCode
-			}
+	match GitHubTrip.state_claim_in_query(query) {
+		Err(NoClaim) => Unsigned
+		Ok(claim) =>
+			GitHubState.from_claim({
+				claim,
+				verdict: Host.hmac_sha256_with_server_secret_matches!(
+					claim.signed_bytes(),
+					claim.mac(),
+				),
+			})
 	}
 
 ## The state's cookie among `headers`.
@@ -540,101 +474,11 @@ with_sign_up_forgotten = |answer|
 set_cookie_header : Str -> Http.Header
 set_cookie_header = |text| { name: "set-cookie".to_utf8(), value: text.to_utf8() }
 
-## The sign-in page saying why GitHub's sign-in was refused, under its status.
-refusal_answer : { viewer : SignedIn.Actor, why : GitHubSignIn.Refusal } -> Http.Response
-refusal_answer = |{ viewer, why }| {
-	said = refusal_said(why)
-	HttpAnswer.page(
-		said.status,
-		SignInPage.login({
-			viewer,
-			next: SignInRequest.default_next,
-			problem: Problem(said.words),
-			github: Offered,
-		}),
-	)
-}
-
-## The form again, saying why the name `name` was refused, under its status.
-name_refusal_answer : { name : SignInPage.NameField, why : HumanInvites.Refusal } -> Http.Response
-name_refusal_answer = |{ name, why }| {
-	notice = HumanInvites.refusal_notice(why)
-	HttpAnswer.page(
-		notice.status,
-		SignInPage.github_sign_up({ name, problem: Problem(notice.said) }),
-	)
-}
-
-## A refusal's status and its words. Nothing here says more than the human
-## needs: what went wrong, and what to do.
-refusal_said : GitHubSignIn.Refusal -> { status : U16, words : Str }
-refusal_said = |why|
-	match why {
-		StateForged => { status: 403, words: start_again_words }
-		StateMismatched => { status: 403, words: start_again_words }
-		StateExpired => { status: 403, words: "That sign-in took too long. Please try again." }
-		GitHubDenied => { status: 403, words: "GitHub did not sign you in." }
-		NotACode => { status: 403, words: start_again_words }
-		CodeRefused => { status: 403, words: "GitHub refused that sign-in. Please try again." }
-		GitHubUnreachable => { status: 502, words: "GitHub did not answer. Please try again." }
-		BadIdentity => { status: 502, words: "GitHub's answer made no sense. Please try again." }
-		DuplicateAccount =>
-			{ status: 403, words: "That GitHub account is tied to more than one account here." }
-		SignUpForged => {
-			status: 403,
-			words: "That sign-up did not start in this browser. Please try again.",
-		}
-		SignUpExpired => { status: 403, words: "That sign-up took too long. Please try again." }
-		AccountExists => {
-			status: 403,
-			words: "That GitHub account has an account here. Sign in with GitHub.",
-		}
-		NoDefaultChannel => { status: 500, words: no_default_channel_words }
-		LinkNotYours => {
-			status: 403,
-			words: "That link did not start from this account. Please try again.",
-		}
-		AlreadyLinked => { status: 409, words: already_linked_words }
-		GitHubIdTaken => {
-			status: 409,
-			words: "That GitHub account is linked to someone here already.",
-		}
-		SignedInAlready => {
-			status: 409,
-			words: "You are signed in, so that made no new account. Sign in with GitHub again to link it to this one.",
-		}
-		ClockOutOfRange => { status: 500, words: "The server's clock is out of range." }
-	}
-
-no_default_channel_words : Str
-no_default_channel_words = "This chat has no ${Channels.default_name.to_str()} channel for a new human to start in."
-
-already_linked_words : Str
-already_linked_words = "You have linked GitHub already."
-
-start_again_words : Str
-start_again_words = "That sign-in did not start in this browser. Please try again."
+## `page` under `status`, as an answer.
+page_answer : { status : U16, page : TrustedHtml } -> Http.Response
+page_answer = |{ status, page }| HttpAnswer.page(status, page)
 
 # ── tests
-expect percent_encoded("aZ09-_.~".to_utf8()) == "aZ09-_.~"
-expect percent_encoded("a b&c=/".to_utf8()) == "a%20b%26c%3d%2f"
-expect
-	authorize_url({
-		authorize_base: "https://github.com".to_utf8(),
-		client_id: "Iv1 x".to_utf8(),
-		origin: "https://chat.example.com",
-		state_token: "a.1.b.c",
-	})
-		== "https://github.com/login/oauth/authorize?client_id=Iv1%20x&redirect_uri=https%3a%2f%2fchat.example.com%2flogin%2fgithub&state=a.1.b.c"
-# The query's answer: a code, none, or one GitHub wouldn't send.
-expect answer_of("state=x".to_utf8()) == NoCode
-expect
-	["code=a%20b", "code=a&code=b", "code="].all(|query| answer_of(query.to_utf8()) == BadCode)
-expect
-	match answer_of("code=abc&state=x".to_utf8()) {
-		Code(code) => code.bytes_to_exchange() == "abc".to_utf8()
-		_ => Bool.False
-	}
 # The cookie: this one, none, or two headers.
 expect
 	cookie_of([{ name: "Cookie".to_utf8(), value: "__Host-gopher_github_state=AA".to_utf8() }])
@@ -645,24 +489,6 @@ expect
 		{ name: "cookie".to_utf8(), value: "__Host-gopher_github_state=AA".to_utf8() },
 		{ name: "cookie".to_utf8(), value: "__Host-gopher_github_state=AA".to_utf8() },
 	]) == Unsent
-# Every refusal has words, and a 5xx only when GitHub is at fault.
-expect
-	[
-		StateForged,
-		StateMismatched,
-		StateExpired,
-		GitHubDenied,
-		NotACode,
-		CodeRefused,
-		DuplicateAccount,
-		SignUpForged,
-		SignUpExpired,
-		AccountExists,
-		LinkNotYours,
-	].all(|why| refusal_said(why).status == 403)
-expect [GitHubUnreachable, BadIdentity].all(|why| refusal_said(why).status == 502)
-expect [AlreadyLinked, GitHubIdTaken, SignedInAlready].all(|why| refusal_said(why).status == 409)
-expect [NoDefaultChannel, ClockOutOfRange].all(|why| refusal_said(why).status == 500)
 # A link refused before the trip, each way.
 expect [ByApiKey, Agent(UserId.chat_owner)].all(|why| link_refusal_answer(why).status == 403)
 expect link_refusal_answer(AlreadyLinked).status == 409

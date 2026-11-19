@@ -20,6 +20,7 @@ import DirectorySpec
 import DmSpec
 import FirstStartSpec
 import GitHubSignInSpec
+import GitHubTripSpec
 import HumanInvitesSpec
 import LastConversationSpec
 import PageSpec

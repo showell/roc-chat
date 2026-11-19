@@ -1,7 +1,10 @@
-## This module lists every way a sign-in with GitHub can be refused. The steps
-## of `GitHubSignIn` refuse with these tags themselves, `Welcome` with
-## `ClockOutOfRange`, and `GitHubRoute` puts each one into words. It reads the
-## union as `GitHubSignIn.Refusal`.
+## This module lists every way a sign-in with GitHub can be refused, and puts
+## each one into words under its status (`refusal_said`), which `GitHubRoute`
+## shows on the sign-in page. The steps of `GitHubSignIn` refuse with these
+## tags themselves, `Welcome` with `ClockOutOfRange`. It reads the union as
+## `GitHubSignIn.Refusal`.
+import Channels
+
 GitHubRefusal :: [].{
 
 	## Every refusal, as `GitHubRoute` takes it.
@@ -63,4 +66,79 @@ GitHubRefusal :: [].{
 		## The server's clock can't date a new human's welcome.
 		ClockOutOfRange,
 	]
+
+	## A refusal's status and its words. Nothing here says more than the human
+	## needs: what went wrong, and what to do.
+	refusal_said : GitHubRefusal.Reason -> { status : U16, words : Str }
+	refusal_said = |why|
+		match why {
+			StateForged => { status: 403, words: start_again_words }
+			StateMismatched => { status: 403, words: start_again_words }
+			StateExpired => { status: 403, words: "That sign-in took too long. Please try again." }
+			GitHubDenied => { status: 403, words: "GitHub did not sign you in." }
+			NotACode => { status: 403, words: start_again_words }
+			CodeRefused => { status: 403, words: "GitHub refused that sign-in. Please try again." }
+			GitHubUnreachable => { status: 502, words: "GitHub did not answer. Please try again." }
+			BadIdentity => {
+				status: 502,
+				words: "GitHub's answer made no sense. Please try again.",
+			}
+			DuplicateAccount =>
+				{ status: 403, words: "That GitHub account is tied to more than one account here." }
+			SignUpForged => {
+				status: 403,
+				words: "That sign-up did not start in this browser. Please try again.",
+			}
+			SignUpExpired => { status: 403, words: "That sign-up took too long. Please try again." }
+			AccountExists => {
+				status: 403,
+				words: "That GitHub account has an account here. Sign in with GitHub.",
+			}
+			NoDefaultChannel => { status: 500, words: no_default_channel_words }
+			LinkNotYours => {
+				status: 403,
+				words: "That link did not start from this account. Please try again.",
+			}
+			AlreadyLinked => { status: 409, words: "You have linked GitHub already." }
+			GitHubIdTaken => {
+				status: 409,
+				words: "That GitHub account is linked to someone here already.",
+			}
+			SignedInAlready => {
+				status: 409,
+				words: "You are signed in, so that made no new account. Sign in with GitHub again to link it to this one.",
+			}
+			ClockOutOfRange => { status: 500, words: "The server's clock is out of range." }
+		}
 }
+
+no_default_channel_words : Str
+no_default_channel_words = "This chat has no ${Channels.default_name.to_str()} channel for a new human to start in."
+
+start_again_words : Str
+start_again_words = "That sign-in did not start in this browser. Please try again."
+
+# ── tests
+# Every refusal has words, and a 5xx only when GitHub is at fault.
+expect
+	[
+		StateForged,
+		StateMismatched,
+		StateExpired,
+		GitHubDenied,
+		NotACode,
+		CodeRefused,
+		DuplicateAccount,
+		SignUpForged,
+		SignUpExpired,
+		AccountExists,
+		LinkNotYours,
+	].all(|why| GitHubRefusal.refusal_said(why).status == 403)
+expect [GitHubUnreachable, BadIdentity].all(|why| GitHubRefusal.refusal_said(why).status == 502)
+expect
+	[
+		AlreadyLinked,
+		GitHubIdTaken,
+		SignedInAlready,
+	].all(|why| GitHubRefusal.refusal_said(why).status == 409)
+expect [NoDefaultChannel, ClockOutOfRange].all(|why| GitHubRefusal.refusal_said(why).status == 500)
