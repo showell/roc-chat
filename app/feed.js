@@ -297,6 +297,10 @@
     shown.replaceWith(fresh);
     if (window.Actions) Actions.dress(fresh);
   });
+  // What the stream carries from the viewer's own key, for the sidebar: a
+  // human come online, and the notice that says so (sidebar.js).
+  events.addEventListener('online', function (e) { if (window.Sidebar) Sidebar.markOnline(e.data); });
+  events.addEventListener('notice', function (e) { if (window.Sidebar) Sidebar.showNotice(e.data); });
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for
   // this reason in the last minute; then it shows a notice and stops trying.

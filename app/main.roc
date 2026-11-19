@@ -128,12 +128,12 @@ demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner(
 
 ## The demo's sidebar: the founder's places at the first start, each with
 ## no topics of its own, so the page's own topic is its place's one.
-demo_sidebar : [NoSidebar, Sidebar(List(Browse.PlaceWithTopics))]
+demo_sidebar : ConversationPage.SidebarShown
 demo_sidebar = {
 	listed =
 		Browse.places_for({ acting: demo_viewer, directory: FirstStart.first_directory })
 			?? crash "main.demo_sidebar: the founder browses by a session"
-	Sidebar(listed.map(|{ label, place }| { label, place, topics: [] }))
+	Sidebar({ places: listed.map(|{ label, place }| { label, place, topics: [] }), online: [] })
 }
 
 ## Whether the server may start on its data folder: `Ready` when the folder

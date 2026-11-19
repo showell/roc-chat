@@ -48,7 +48,7 @@ places_with = |topics_of| {
 sidebar_at : { current : Str, topics_of : Str -> List(Topic) } -> Str
 sidebar_at = |{ current, topics_of }|
 	Str.from_utf8_lossy(
-		Sidebar.nav({ places: places_with(topics_of), current: key_at(current) }).to_utf8(),
+		Sidebar.nav({ places: places_with(topics_of), current: key_at(current), viewer: steve.user().id(), online: [] }).to_utf8(),
 	)
 
 ## The form that starts a topic at `path`, suggesting `general` when
@@ -63,15 +63,23 @@ form_at = |path, suggests| {
 	"<form method=\"post\" action=\"${path}\"><p>New topic <input type=\"text\" name=\"topic\" required${value}></p>\n<button>Add topic</button></form>\n"
 }
 
-## One place: `name`, at `path`, holding `rows`, then its form.
+## One place: `name`, at `path`, holding `rows`, then its form. Steve's DM
+## with Apoorva names her, offline, as the tests draw it.
 place_html : {
 	name : Str,
 	path : Str,
 	rows : Str,
 	suggests : [Suggests, NoSuggestion],
 } -> Str
-place_html = |{ name, path, rows, suggests }|
-	"<div class=\"sidebar-place\" data-section=\"${path}\"><p class=\"sidebar-place-name\">${name}</p>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
+place_html = |{ name, path, rows, suggests }| {
+	person =
+		if path == "/chat/dm/1_2" {
+			" data-person=\"2\" data-presence=\"offline\""
+		} else {
+			""
+		}
+	"<div class=\"sidebar-place\" data-section=\"${path}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
+}
 
 ## A place's row for a place with no topics.
 empty_row : Str
@@ -125,17 +133,35 @@ expect {
 		|listed| ConversationKey.place_url_path(listed.place) != "/chat/channel/general",
 	)
 	shown = Str.from_utf8_lossy(
-		Sidebar.nav({ places: dms_only, current: key_at("/chat/dm/1_1/plans") }).to_utf8(),
+		Sidebar.nav({ places: dms_only, current: key_at("/chat/dm/1_1/plans"), viewer: steve.user().id(), online: [] }).to_utf8(),
 	)
 	shown.contains("<p class=\"sidebar-heading\">DMs</p>")
 		and !shown.contains("Channels")
 		and !shown.contains("/chat/channel")
 }
+# A DM with another human names them and says whether they are online; the
+# viewer's own DM and a channel name no one.
+expect {
+	drawn = |online|
+		Str.from_utf8_lossy(
+			Sidebar.nav({
+				places: places_with(|_| []),
+				current: key_at("/chat/dm/1_1/plans"),
+				viewer: steve.user().id(),
+				online,
+			}).to_utf8(),
+		)
+	apoorva = Sample.user("Apoorva").id()
+	drawn([apoorva]).contains("data-section=\"/chat/dm/1_2\" data-person=\"2\" data-presence=\"online\">")
+		and drawn([]).contains("data-section=\"/chat/dm/1_2\" data-person=\"2\" data-presence=\"offline\">")
+		and drawn([steve.user().id(), apoorva]).contains("data-section=\"/chat/dm/1_1\">")
+		and drawn([apoorva]).contains("data-section=\"/chat/channel/general\">")
+}
 # The drawer's button.
 expect Sidebar.toggle.to_utf8() == "<button class=\"sidebar-toggle\">Conversations</button>\n".to_utf8()
 
 ## A conversation's page for Steve, with `sidebar`.
-page_with : [NoSidebar, Sidebar(List(Browse.PlaceWithTopics))] -> Str
+page_with : ConversationPage.SidebarShown -> Str
 page_with = |sidebar|
 	Str.from_utf8_lossy(
 		ConversationPage.conversation({
@@ -153,11 +179,11 @@ page_with = |sidebar|
 expect {
 	places = places_with(|_| [])
 	nav = Str.from_utf8_lossy(
-		Sidebar.nav({ places, current: key_at("/chat/dm/1_1/plans") }).to_utf8(),
+		Sidebar.nav({ places, current: key_at("/chat/dm/1_1/plans"), viewer: steve.user().id(), online: [] }).to_utf8(),
 	)
-	with_sidebar = page_with(Sidebar(places))
+	with_sidebar = page_with(Sidebar({ places, online: [] }))
 	without = page_with(NoSidebar)
-	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\">${nav}<div class=\"messages\"")
+	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<p class=\"notice-strip\"></p>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")
 		and without.contains("</header>\n<div class=\"layout\"><div class=\"messages\"")
 		and !without.contains("sidebar")

@@ -39,6 +39,7 @@ const bus = @import("bus.zig");
 const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
 const github = @import("github_client.zig");
+const remembered = @import("remembered_seconds.zig");
 
 const log = std.log.scoped(.seam);
 
@@ -128,7 +129,7 @@ pub const Response = extern struct {
     body: RocBytes,
     headers: HeaderList,
     stream_holder: RocBytes,
-    stream_key: RocBytes,
+    stream_keys: RocBytesList,
     status: u16,
     kind: AnswerKind,
 };
@@ -186,6 +187,12 @@ comptime {
     }
 }
 
+/// Host.roc's `remember_second_under_key!` and
+/// `second_remembered_under_key!` status, alphabetical.
+pub const RememberedStatus = enum(u8) { found, missing };
+/// Their answer: the I64, then the tag. `second` is 0 when `Missing`.
+pub const RememberedRec = extern struct { second: i64, status: RememberedStatus };
+
 /// Host.roc's `github_sign_in_settings!` status, alphabetical.
 pub const GitHubSettingsStatus = enum(u8) { configured, not_configured };
 /// Host.roc's `github_sign_in_settings!` answer: the lists by name, then the
@@ -216,6 +223,7 @@ pub const Call = struct {
     turn: ?*Io.Mutex = null,
     github: ?*const github.Settings = null,
     gpa: ?std.mem.Allocator = null,
+    seconds: ?*remembered.RememberedSeconds = null,
 };
 
 var current: ?Call = null;
@@ -352,6 +360,22 @@ pub export fn publish_bytes_to_streams_on_key(key: RocBytes, bytes: RocBytes) ca
 pub export fn end_every_stream_of_holder(holder: RocBytes) callconv(.c) void {
     const what = "end_every_stream_of_holder";
     slots_of(what).end_holder(io_of(what), holder.slice());
+}
+
+fn seconds_of(comptime what: []const u8) *remembered.RememberedSeconds {
+    return call(what).seconds orelse @panic(what ++ ": this call has no remembered seconds (only the server's keeps any)");
+}
+
+fn remembered_rec(second: ?i64) RememberedRec {
+    return if (second) |s| .{ .second = s, .status = .found } else .{ .second = 0, .status = .missing };
+}
+
+pub export fn remember_second_under_key(key: RocBytes, second: i64) callconv(.c) RememberedRec {
+    return remembered_rec(seconds_of("remember_second_under_key").remember(key.slice(), second));
+}
+
+pub export fn second_remembered_under_key(key: RocBytes) callconv(.c) RememberedRec {
+    return remembered_rec(seconds_of("second_remembered_under_key").recall(key.slice()));
 }
 
 pub export fn bcrypt_hash_of_password(password: RocBytes) callconv(.c) RocBytes {

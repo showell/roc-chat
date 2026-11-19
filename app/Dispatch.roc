@@ -25,6 +25,7 @@ import HumanInvitesRoute
 import Html
 import PageKit
 import Place
+import PresenceNotices
 import ReactionRoute
 import RequestOrigin
 import ResumeRoute
@@ -236,7 +237,8 @@ answer_open_route! = |{ open, request, directory, actor }|
 			})
 	}
 
-## The answer the route `asked` gives `acting`, once `Access` admits them.
+## The answer the route `asked` gives `acting`, once `Access` admits them
+## and the request is noted for presence (`PresenceNotices`).
 serve_signed_in_route! : {
 	asked : Route.SignedInChoice,
 	request : Http.Request,
@@ -252,7 +254,12 @@ serve_signed_in_route! = |{ asked, request, directory, acting }| {
 		}
 	match admitted {
 		Err(why) => access_refusal(why)
-		Ok({}) => answer_route!({ asked, request, directory, acting })
+		Ok({}) =>
+			match PresenceNotices.note_request!({ asked, acting, directory, now: Clock.read_clock!({}).to_seconds_since_epoch() }) {
+				Ok({}) => answer_route!({ asked, request, directory, acting })
+				Err(_) =>
+					HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: "A DM's topics could not be listed, to tell others you are online." }))
+			}
 	}
 }
 

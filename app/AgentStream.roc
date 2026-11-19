@@ -112,7 +112,7 @@ AgentStream :: [].{
 	response : { agent : UserId, backlog : List(U8) } -> Http.Response
 	response = |{ agent, backlog: events }|
 		HttpAnswer.stream({
-			key: bus_key(agent),
+			keys: [bus_key(agent)],
 			holder: AgentStream.holder(agent),
 			backlog: events,
 		})
@@ -316,7 +316,7 @@ expect events_of(
 expect {
 	answered = AgentStream.response({ agent: UserId.chat_owner, backlog: "data: x\n\n".to_utf8() })
 	answered.kind == Stream
-		and answered.stream_key == "/agents/1/stream".to_utf8()
+		and answered.stream_keys == ["/agents/1/stream".to_utf8()]
 		and answered.stream_holder == "agent-1".to_utf8()
 		and answered.body == "data: x\n\n".to_utf8()
 }

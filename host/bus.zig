@@ -139,16 +139,21 @@ pub const Hub = struct {
         h.entries.deinit(h.gpa);
     }
 
-    /// A new subscriber on `key`, which is copied. The caller closes it.
-    pub fn open(h: *Hub, key: []const u8) !*Subscriber {
+    /// A new subscriber on each of `keys`, which are copied: a frame
+    /// published on any of them reaches its one mailbox. The caller closes
+    /// it.
+    pub fn open(h: *Hub, keys: []const []const u8) !*Subscriber {
         const sub = try h.gpa.create(Subscriber);
         errdefer h.gpa.destroy(sub);
         sub.* = .{ .io = h.io, .gpa = h.gpa };
-        const key_copy = try h.gpa.dupe(u8, key);
-        errdefer h.gpa.free(key_copy);
         h.mutex.lockUncancelable(h.io);
         defer h.mutex.unlock(h.io);
-        try h.entries.append(h.gpa, .{ .key = key_copy, .sub = sub });
+        errdefer h.remove_entries(sub);
+        for (keys) |key| {
+            const key_copy = try h.gpa.dupe(u8, key);
+            errdefer h.gpa.free(key_copy);
+            try h.entries.append(h.gpa, .{ .key = key_copy, .sub = sub });
+        }
         return sub;
     }
 
@@ -157,14 +162,22 @@ pub const Hub = struct {
         {
             h.mutex.lockUncancelable(h.io);
             defer h.mutex.unlock(h.io);
-            for (h.entries.items, 0..) |e, i| if (e.sub == sub) {
-                h.gpa.free(e.key);
-                _ = h.entries.swapRemove(i);
-                break;
-            };
+            h.remove_entries(sub);
         }
         sub.drain_and_free();
         h.gpa.destroy(sub);
+    }
+
+    /// Every entry of `sub` gone, its keys freed; the hub's lock held.
+    fn remove_entries(h: *Hub, sub: *Subscriber) void {
+        var i: usize = 0;
+        while (i < h.entries.items.len) {
+            const e = h.entries.items[i];
+            if (e.sub == sub) {
+                h.gpa.free(e.key);
+                _ = h.entries.swapRemove(i);
+            } else i += 1;
+        }
     }
 
     /// `frame` to every subscriber on `key`, each its own copy; the
@@ -175,10 +188,18 @@ pub const Hub = struct {
         for (h.entries.items) |e| if (std.mem.eql(u8, e.key, key)) e.sub.push(frame);
     }
 
+    /// The subscribers in the hub, each once however many keys it holds.
     pub fn count(h: *Hub) usize {
         h.mutex.lockUncancelable(h.io);
         defer h.mutex.unlock(h.io);
-        return h.entries.items.len;
+        var n: usize = 0;
+        for (h.entries.items, 0..) |e, i| {
+            const seen = for (h.entries.items[0..i]) |earlier| {
+                if (earlier.sub == e.sub) break true;
+            } else false;
+            if (!seen) n += 1;
+        }
+        return n;
     }
 };
 
@@ -199,9 +220,9 @@ fn expect_frame(sub: *Subscriber, want: []const u8) !void {
 test "a frame reaches every subscriber on its key, each its own copy, and no other key" {
     var hub = Hub.init(testing.io, testing.allocator);
     defer hub.deinit();
-    const a1 = try hub.open("room");
-    const a2 = try hub.open("room");
-    const other = try hub.open("elsewhere");
+    const a1 = try hub.open(&.{"room"});
+    const a2 = try hub.open(&.{"room"});
+    const other = try hub.open(&.{"elsewhere"});
     var frame = "hi".*;
     hub.publish("room", &frame);
     frame = "xx".*;
@@ -217,10 +238,30 @@ test "a frame reaches every subscriber on its key, each its own copy, and no oth
     try testing.expectEqual(0, hub.count());
 }
 
+test "a subscriber on two keys gets each key's frames in one mailbox, in order, and closing it leaves no entry" {
+    var hub = Hub.init(testing.io, testing.allocator);
+    defer hub.deinit();
+    const both = try hub.open(&.{ "room", "/viewers/1" });
+    const room_only = try hub.open(&.{"room"});
+    hub.publish("room", "a message");
+    hub.publish("/viewers/1", "a notice");
+    hub.publish("/viewers/2", "not ours");
+    try expect_frame(both, "a message");
+    try expect_frame(both, "a notice");
+    try testing.expect(both.take() == null);
+    try expect_frame(room_only, "a message");
+    try testing.expect(room_only.take() == null);
+    try testing.expectEqual(2, hub.count());
+    hub.close(both);
+    try testing.expectEqual(1, hub.count());
+    hub.close(room_only);
+    try testing.expectEqual(0, hub.count());
+}
+
 test "a full mailbox keeps its oldest 16 in order and marks the 17th missed" {
     var hub = Hub.init(testing.io, testing.allocator);
     defer hub.deinit();
-    const sub = try hub.open("k");
+    const sub = try hub.open(&.{"k"});
     defer hub.close(sub);
     var buf: [8]u8 = undefined;
     for (0..Subscriber.cap) |n| hub.publish("k", try std.fmt.bufPrint(&buf, "{d}", .{n}));
@@ -233,7 +274,7 @@ test "a full mailbox keeps its oldest 16 in order and marks the 17th missed" {
 test "an empty mailbox answers idle when its wait is over, not before" {
     var hub = Hub.init(testing.io, testing.allocator);
     defer hub.deinit();
-    const sub = try hub.open("k");
+    const sub = try hub.open(&.{"k"});
     defer hub.close(sub);
     const t0 = Io.Clock.now(.awake, testing.io);
     try testing.expect(sub.next(30) == .idle);
@@ -247,7 +288,7 @@ fn wait_for_next(sub: *Subscriber) Subscriber.Next {
 test "ending a subscriber wakes its waiting task at once, and every later wait answers ended" {
     var hub = Hub.init(testing.io, testing.allocator);
     defer hub.deinit();
-    const sub = try hub.open("k");
+    const sub = try hub.open(&.{"k"});
     defer hub.close(sub);
     const t0 = Io.Clock.now(.awake, testing.io);
     var waiting = try testing.io.concurrent(wait_for_next, .{sub});

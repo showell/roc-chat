@@ -31,6 +31,7 @@ import Name
 import PageKit
 import Reactions
 import RequestHeader
+import ServerSentEvent
 import SignedIn
 import Topic
 import TrustedHtml
@@ -76,9 +77,11 @@ ConversationStream :: [].{
 	## whose notes are not fresh, again, then the messages after the
 	## reader's `seen_count`, then each one added; a 400 when `seen_count`
 	## is more than it holds. Each message's author is found among `users`,
-	## as the page finds them.
+	## as the page finds them. The stream also carries each frame sent on
+	## `viewer_key`, the reader's own (`Presence`).
 	response : {
 		key : ConversationKey,
+		viewer_key : List(U8),
 		acting : SignedIn,
 		users : Users,
 		conversation : Conversation,
@@ -88,6 +91,7 @@ ConversationStream :: [].{
 	response = |
 		{
 			key,
+			viewer_key,
 			acting,
 			users,
 			conversation,
@@ -123,7 +127,7 @@ ConversationStream :: [].{
 				)
 			seen = drawn.take_first(seen_count.to_u64())
 			HttpAnswer.stream({
-				key: bus_key(key),
+				keys: [bus_key(key), viewer_key],
 				holder: ConversationStream.holder(acting.user().id()),
 				backlog: List.concat(
 					seen.keep_if(|one| !one.notes.is_fresh()).join_map(
@@ -173,8 +177,7 @@ ConversationStream :: [].{
 	## One message as one event: `id:` its number, then its `html`, a
 	## `data:` line a line, then the blank line that ends it.
 	frame : { id : Message.Id, html : TrustedHtml } -> List(U8)
-	frame = |{ id, html }|
-		List.concat("id: ${id.to_str()}\n".to_utf8(), data_lines(html)).append('\n')
+	frame = |{ id, html }| ServerSentEvent.with_id({ id: id.to_str(), html })
 }
 
 after_prefix : List(U8)
@@ -206,15 +209,7 @@ message_drawn_again = |{ key, conversation, reactions, users, id }| {
 ## count of messages seen stays as it was, then its `html`, a `data:` line a
 ## line, and the blank line that ends it.
 replacement_frame : TrustedHtml -> List(U8)
-replacement_frame = |html|
-	List.concat("event: replace\n".to_utf8(), data_lines(html)).append('\n')
-
-## The `html` as an event's data: a `data:` line a line.
-data_lines : TrustedHtml -> List(U8)
-data_lines = |html|
-	line_feeds_only(html.to_utf8()).split_on('\n').join_map(
-		|line| List.concat("data: ".to_utf8(), line).append('\n'),
-	)
+replacement_frame = |html| ServerSentEvent.named({ name: "replace", html })
 
 ## The stream's bus key: the conversation's URL path.
 bus_key : ConversationKey -> List(U8)
@@ -239,22 +234,6 @@ count_of = |bytes|
 		}
 	}
 
-## The bytes with each CR LF and each lone CR made an LF: an event's data
-## can't hold a CR, and an HTML parser reads both as an LF, so the page shows the same.
-line_feeds_only : List(U8) -> List(U8)
-line_feeds_only = |bytes|
-	bytes.fold(
-		{ written: [], previous: 0 },
-		|so_far, byte|
-			if byte == '\r' {
-				{ written: so_far.written.append('\n'), previous: byte }
-			} else if byte == '\n' and so_far.previous == '\r' {
-				{ ..so_far, previous: byte }
-			} else {
-				{ written: so_far.written.append(byte), previous: byte }
-			},
-	).written
-
 # ── tests
 # A count: one spelling each, at and past each edge.
 expect count_of("0".to_utf8()) == Ok(0)
@@ -271,10 +250,6 @@ expect
 		"6 ",
 		"x",
 	].all(|text| count_of(text.to_utf8()) == Err(BadCount))
-# A CR LF and a lone CR each one LF; an LF alone kept.
-expect line_feeds_only("a\r\nb\rc\nd\r\r\n".to_utf8()) == "a\nb\nc\nd\n\n".to_utf8()
-expect line_feeds_only("a\n\nb".to_utf8()) == "a\n\nb".to_utf8()
-expect line_feeds_only([]) == []
 
 ## The count a request with `query` and `headers` (name, value) has seen.
 seen_by : Str, List((Str, Str)) -> Try(U16, _)
@@ -348,6 +323,7 @@ streamed_after : U16 -> Http.Response
 streamed_after = |seen_count|
 	ConversationStream.response({
 		key: plans_key,
+		viewer_key: "/viewers/1".to_utf8(),
 		acting: steve,
 		users,
 		conversation: plans_holding(["Hello", "Hi!"]),
@@ -360,7 +336,7 @@ is_plans_stream_with : Http.Response, Str -> Bool
 is_plans_stream_with = |response, backlog|
 	response.status == 200
 		and response.kind == Stream
-		and response.stream_key == "/chat/dm/1_1/plans".to_utf8()
+		and response.stream_keys == ["/chat/dm/1_1/plans".to_utf8(), "/viewers/1".to_utf8()]
 		and response.stream_holder == "1".to_utf8()
 		and response.body == backlog.to_utf8()
 
@@ -439,7 +415,7 @@ expect {
 	response = streamed_after(3)
 	response.status == 400
 		and response.kind == Whole
-		and response.stream_key == []
+		and response.stream_keys == []
 		and Str.from_utf8_lossy(response.body)
 			.contains("The stream asks for the messages after 3, and the conversation holds 2.")
 }
@@ -452,6 +428,7 @@ expect {
 		Str.from_utf8_lossy(
 			ConversationStream.response({
 				key: plans_key,
+				viewer_key: "/viewers/1".to_utf8(),
 				acting: steve,
 				users,
 				conversation,

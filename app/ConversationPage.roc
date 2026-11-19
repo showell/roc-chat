@@ -50,6 +50,10 @@ import Users
 
 ConversationPage :: [].{
 
+	## A human's page has the sidebar of the places Browse lists for them,
+	## with who of the humans is online; a key's has none.
+	SidebarShown : [NoSidebar, Sidebar({ places : List(Browse.PlaceWithTopics), online : List(UserId) })]
+
 	## The page of `conversation`, the conversation `key`, for `viewer`, each
 	## message drawn with its notes, its `reactions` among them. Each
 	## message of it is found among `users` by its author's name, to name its
@@ -61,7 +65,7 @@ ConversationPage :: [].{
 		key : ConversationKey,
 		viewer : SignedIn,
 		users : Users,
-		sidebar : [NoSidebar, Sidebar(List(Browse.PlaceWithTopics))],
+		sidebar : ConversationPage.SidebarShown,
 	} -> TrustedHtml
 	conversation = |
 		{
@@ -107,9 +111,9 @@ ConversationPage :: [].{
 		{ toggle, nav, scripts } =
 			match sidebar {
 				NoSidebar => { toggle: [], nav: [], scripts: [] }
-				Sidebar(places) => {
-					toggle: [Sidebar.toggle],
-					nav: [Sidebar.nav({ places, current: key })],
+				Sidebar({ places, online }) => {
+					toggle: [Sidebar.toggle, notice_strip],
+					nav: [Sidebar.nav({ places, current: key, viewer: viewer.user().id(), online })],
 					scripts: [Script.Sidebar],
 				}
 			}
@@ -352,6 +356,14 @@ compose_box = |key| {
 		]),
 	})
 }
+
+## The line above the layout where app/sidebar.js says that someone has
+## come online, empty as the page is drawn.
+notice_strip : TrustedHtml
+notice_strip = TrustedHtml.join([
+	Html.element({ name: P, attributes: [PageContract.class(NoticeStrip)], inner: TrustedHtml.join([]) }),
+	PageKit.newline,
+])
 
 ## A user's id, which the scripts compare: a message's author's with the
 ## viewer's.

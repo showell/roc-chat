@@ -18,7 +18,12 @@
 ## message's markdown is read (`data-raw`), and each reaction's button names
 ## its reactors' ids (`data-reactors`), all read by app/actions.js. Each place in the
 ## sidebar names its own path (`data-section`), which app/sidebar.js keeps
-## its collapsed state by, and where a topic added to it belongs.
+## its collapsed state by, and where a topic added to it belongs; a DM with
+## another human names them (`data-person`) and says whether they are
+## online (`data-presence`, by `Presence`), which app/sidebar.js draws as a
+## dot. The line
+## above the page (`notice-strip`) is where app/sidebar.js shows that
+## someone has come online.
 import Html
 import Script
 import TrustedHtml
@@ -41,6 +46,7 @@ PageContract :: [].{
 		Message,
 		MessageReference,
 		Messages,
+		NoticeStrip,
 		Panel,
 		ReactionChip,
 		ReactionEmoji,
@@ -76,6 +82,8 @@ PageContract :: [].{
 		React(Html.SitePath),
 		Raw(Html.SitePath),
 		Reactors(Html.Token),
+		Person(Html.Token),
+		Presence([Online, Offline]),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -93,6 +101,9 @@ PageContract :: [].{
 			React(path) => Data(token("react"), Path(path))
 			Raw(path) => Data(token("raw"), Path(path))
 			Reactors(ids) => Data(token("reactors"), Token(ids))
+			Person(id) => Data(token("person"), Token(id))
+			Presence(Online) => Data(token("presence"), Token(token("online")))
+			Presence(Offline) => Data(token("presence"), Token(token("offline")))
 		}
 
 	## An element `attributes` alone opens, as a test reads it.
@@ -118,6 +129,7 @@ class_name = |chosen|
 		Message => "message"
 		MessageReference => "message-reference"
 		Messages => "messages"
+		NoticeStrip => "notice-strip"
 		Panel => "panel"
 		ReactionChip => "reaction-chip"
 		ReactionEmoji => "reaction-emoji"
@@ -161,6 +173,7 @@ expect
 		(Message, "message"),
 		(MessageReference, "message-reference"),
 		(Messages, "messages"),
+		(NoticeStrip, "notice-strip"),
 		(Panel, "panel"),
 		(ReactionChip, "reaction-chip"),
 		(ReactionEmoji, "reaction-emoji"),
@@ -196,6 +209,9 @@ expect {
 		(React(path), "<p data-react=\"/chat/dm/1_1/plans\"></p>"),
 		(Raw(path), "<p data-raw=\"/chat/dm/1_1/plans\"></p>"),
 		(Reactors(token("1-3")), "<p data-reactors=\"1-3\"></p>"),
+		(Person(token("2")), "<p data-person=\"2\"></p>"),
+		(Presence(Online), "<p data-presence=\"online\"></p>"),
+		(Presence(Offline), "<p data-presence=\"offline\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
@@ -245,6 +261,7 @@ expect
 		SidebarEmpty,
 		Current,
 		TopBar,
+		NoticeStrip,
 	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))
 expect
 	[Messages, Compose, Message, Panel].all(|chosen| !is_found_by(Script.Sidebar.bytes(), chosen))
@@ -268,6 +285,9 @@ expect
 	)
 expect
 	is_read_by(Script.Sidebar.bytes(), "data-section")
+		and is_read_by(Script.Sidebar.bytes(), "data-person")
+		and is_read_by(Script.Sidebar.bytes(), "data-presence")
+		and !is_read_by(Script.Feed.bytes(), "data-person")
 		and !is_read_by(Script.Compose.bytes(), "data-section")
 		and !is_read_by(Script.Feed.bytes(), "data-section")
 # The classes only styled are styled by the script that owns them.

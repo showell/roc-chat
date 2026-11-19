@@ -51,6 +51,7 @@ const bus = @import("bus.zig");
 const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
 const github = @import("github_client.zig");
+const remembered = @import("remembered_seconds.zig");
 
 const log = std.log.scoped(.http);
 
@@ -119,6 +120,8 @@ pub const Server = struct {
     /// Every held stream, by its key.
     hub: bus.Hub,
     slots: sse.Slots = .{},
+    /// The seconds the app keeps between requests, under the turn.
+    seconds: remembered.RememberedSeconds,
     /// The secret sessions are signed with, read from the data root.
     secret: sign_in.ServerSecret,
     /// The bucket every password check is taken from.
@@ -147,6 +150,7 @@ pub const Server = struct {
             .listener = try addr.listen(io, .{ .reuse_address = true }),
             .root = setup.root,
             .hub = .init(io, gpa),
+            .seconds = .init(gpa),
             .secret = secret,
             .password_checks = .init(.{
                 .burst = setup.limits.password_check_burst,
@@ -164,6 +168,7 @@ pub const Server = struct {
             .io = s.io,
             .hub = &s.hub,
             .slots = &s.slots,
+            .seconds = &s.seconds,
             .secret = &s.secret,
             .password_checks = &s.password_checks,
             .turn = &s.turn,
@@ -182,6 +187,7 @@ pub const Server = struct {
     /// returns, every connection's task has ended.
     pub fn run(s: *Server) !void {
         defer s.client_requests.deinit(s.gpa);
+        defer s.seconds.deinit();
         defer s.hub.deinit();
         defer s.listener.deinit(s.io);
         var connections: Io.Group = .init;
@@ -344,7 +350,7 @@ pub const Server = struct {
             .whole => |w| .{ .whole = w },
             .stream => |st| .{ .stream = .{
                 .answer = st,
-                .sub = s.hub.open(st.key) catch |e| {
+                .sub = s.hub.open(st.keys) catch |e| {
                     log.warn("no subscriber for the stream {f} ({t}): answered 500", .{ files.loggable(parsed.path), e });
                     return .{ .whole = failed };
                 },
@@ -623,11 +629,12 @@ fn copy_head(arena: std.mem.Allocator, req: *const std.http.Server.Request, port
 pub const Answered = union(enum) { whole: Written, stream: Streamed };
 
 /// A stream as the app answered it: its headers, written after the host's
-/// (`sse.headers`), its first bytes, its key on the bus and its holder.
+/// (`sse.headers`), its first bytes, its keys on the bus (1 to
+/// `sse.keys_most`, a frame on any of them reaching it) and its holder.
 pub const Streamed = struct {
     headers: []const std.http.Header,
     body: []const u8,
-    key: []const u8,
+    keys: []const []const u8,
     holder: []const u8,
 };
 
@@ -638,6 +645,7 @@ pub const Answering = struct {
     io: Io,
     hub: *bus.Hub,
     slots: *sse.Slots,
+    seconds: *remembered.RememberedSeconds,
     secret: *const sign_in.ServerSecret,
     password_checks: *sign_in.PasswordChecks,
     turn: *Io.Mutex,
@@ -673,6 +681,7 @@ fn call_of(arena: std.mem.Allocator, answering: Answering) seam.Call {
         .io = answering.io,
         .hub = answering.hub,
         .slots = answering.slots,
+        .seconds = answering.seconds,
         .secret = answering.secret,
         .password_checks = answering.password_checks,
         .turn = answering.turn,
@@ -732,22 +741,28 @@ fn checked(arena: std.mem.Allocator, parsed: Parsed, r: seam.Response) Answered 
             return .{ .whole = failed };
         }
     }
-    const key = r.stream_key.slice();
+    const key_recs = r.stream_keys.slice();
     const holder = r.stream_holder.slice();
     switch (r.kind) {
         .whole => {
-            if (key.len != 0 or holder.len != 0) {
+            if (key_recs.len != 0 or holder.len != 0) {
                 log.warn("the app answered {f} whole, naming a stream's key or holder", .{files.loggable(parsed.path)});
                 return .{ .whole = failed };
             }
             return .{ .whole = .{ .status = status, .headers = headers, .body = r.body.slice() } };
         },
         .stream => {
-            if (status != .ok or key.len == 0 or holder.len == 0 or holder.len > sse.holder_most) {
-                log.warn("the app answered {f} with a stream of status {d}, a key of {d} bytes and a holder of {d} (200, some and 1 to {d})", .{ files.loggable(parsed.path), r.status, key.len, holder.len, sse.holder_most });
+            const keys = arena.alloc([]const u8, key_recs.len) catch return .{ .whole = failed };
+            var empty_keys: usize = 0;
+            for (key_recs, keys) |rec, *key| {
+                key.* = rec.slice();
+                if (key.len == 0) empty_keys += 1;
+            }
+            if (status != .ok or keys.len == 0 or keys.len > sse.keys_most or empty_keys != 0 or holder.len == 0 or holder.len > sse.holder_most) {
+                log.warn("the app answered {f} with a stream of status {d}, {d} keys ({d} empty) and a holder of {d} bytes (200, 1 to {d} keys of some bytes, and 1 to {d})", .{ files.loggable(parsed.path), r.status, keys.len, empty_keys, holder.len, sse.keys_most, sse.holder_most });
                 return .{ .whole = failed };
             }
-            return .{ .stream = .{ .headers = headers, .body = r.body.slice(), .key = key, .holder = holder } };
+            return .{ .stream = .{ .headers = headers, .body = r.body.slice(), .keys = keys, .holder = holder } };
         },
     }
 }

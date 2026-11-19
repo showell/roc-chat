@@ -11,6 +11,10 @@
 ## moves the toggle into the top bar and makes the sidebar a drawer over
 ## the page. It finds each part by `PageContract`'s classes, and a place by
 ## its path (`data-section`).
+##
+## A DM with another human names them (`data-person`) and says whether they
+## are online (`data-presence`, by `Presence`), so app/sidebar.js draws its
+## dot, and fills it when the page's stream says they have come online.
 import Browse
 import ConversationKey
 import Escape
@@ -20,6 +24,7 @@ import PageKit
 import Place
 import TopicForm
 import TrustedHtml
+import UserId
 
 Sidebar :: [].{
 
@@ -34,14 +39,21 @@ Sidebar :: [].{
 		PageKit.newline,
 	])
 
-	## The sidebar of `places`, on the page of the conversation `current`.
-	nav : { places : List(Browse.PlaceWithTopics), current : ConversationKey } -> TrustedHtml
-	nav = |{ places, current }| {
+	## The sidebar of `places`, on `viewer`'s page of the conversation
+	## `current`, the humans in `online` said to be online.
+	nav : {
+		places : List(Browse.PlaceWithTopics),
+		current : ConversationKey,
+		viewer : UserId,
+		online : List(UserId),
+	} -> TrustedHtml
+	nav = |{ places, current, viewer, online }| {
 		dms = places.keep_if(|listed| is_dm(listed.place))
 		channels = places.keep_if(|listed| !is_dm(listed.place))
+		people = { viewer, online }
 		groups = List.concat(
-			group_elements({ heading: "DMs", places: dms, current }),
-			group_elements({ heading: "Channels", places: channels, current }),
+			group_elements({ heading: "DMs", places: dms, current, people }),
+			group_elements({ heading: "Channels", places: channels, current, people }),
 		)
 		TrustedHtml.join([
 			Html.element({
@@ -68,8 +80,9 @@ group_elements : {
 	heading : Str,
 	places : List(Browse.PlaceWithTopics),
 	current : ConversationKey,
+	people : People,
 } -> List(TrustedHtml)
-group_elements = |{ heading, places, current }|
+group_elements = |{ heading, places, current, people }|
 	if places.is_empty() {
 		[]
 	} else {
@@ -82,14 +95,46 @@ group_elements = |{ heading, places, current }|
 				}),
 				PageKit.newline,
 			],
-			places.map(|listed| place_section({ listed, current })),
+			places.map(|listed| place_section({ listed, current, people })),
 		)
+	}
+
+## Who the page is for, and who is online.
+People : { viewer : UserId, online : List(UserId) }
+
+## The attributes that say who the DM `place` is with, when it is another
+## human than the viewer, and whether they are online; none for a channel or
+## the viewer's own DM.
+person_attributes : { place : Place, people : People } -> List(Html.Attribute)
+person_attributes = |{ place, people }|
+	match place.which() {
+		Channel(_) => []
+		Dm(pair) =>
+			match pair.members().drop_if(|id| id == people.viewer) {
+				[other] => [
+					PageContract.data_attribute(Person(PageKit.token(other.to_str()))),
+					PageContract.data_attribute(
+						Presence(
+							if people.online.contains(other) {
+								Online
+							} else {
+								Offline
+							},
+						),
+					),
+				]
+				_ => []
+			}
 	}
 
 ## One place: its name, its topics, `current`'s marked, and the form that
 ## starts a topic there.
-place_section : { listed : Browse.PlaceWithTopics, current : ConversationKey } -> TrustedHtml
-place_section = |{ listed, current }| {
+place_section : {
+	listed : Browse.PlaceWithTopics,
+	current : ConversationKey,
+	people : People,
+} -> TrustedHtml
+place_section = |{ listed, current, people }| {
 	topics =
 		if listed.place == current.place() and !listed.topics.contains(current.topic()) {
 			listed.topics.append(current.topic())
@@ -117,10 +162,13 @@ place_section = |{ listed, current }| {
 	TrustedHtml.join([
 		Html.element({
 			name: Div,
-			attributes: [
-				PageContract.class(SidebarPlace),
-				PageContract.data_attribute(Section(section)),
-			],
+			attributes: List.concat(
+				[
+					PageContract.class(SidebarPlace),
+					PageContract.data_attribute(Section(section)),
+				],
+				person_attributes({ place: listed.place, people }),
+			),
 			inner: TrustedHtml.join([
 				Html.element({
 					name: P,

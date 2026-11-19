@@ -3,8 +3,18 @@
 // sidebar whole: the viewer's DMs, then their channels, each place's topics
 // under it as links, the current topic marked, and the form that starts a
 // topic at the end of each place. This script gives it chat-client's look and
-// behaviour (js/chat_left_sidebar.js), without that rail's pinning, dragging
-// or presence.
+// behaviour (js/chat_left_sidebar.js), without that rail's pinning or
+// dragging.
+//
+// Presence, chat-client's: a DM with another human (data-person) has a dot
+// before its name, a hollow ring while they are away and solid green while
+// they are online (data-presence). The page's stream (feed.js) passes on two
+// events from the viewer's own key: `online`, a human's id, fills their dot
+// (Sidebar.markOnline); `notice`, a link, is shown in the line above the
+// page (.notice-strip, chat-client's #chat-notify), replacing the last one
+// (Sidebar.showNotice). A dot never empties while
+// the page is open: as in chat-client, the next page drawn says who is still
+// online.
 //
 // In a window wider than 768 pixels the sidebar is a rail 180 pixels wide on
 // the left of the layout. Clicking a place's name, or Enter or Space on it,
@@ -96,6 +106,17 @@ window.Sidebar = (function () {
     } catch (e) { /* Private browsing: the choice lasts this page. */ }
   }
 
+  // A DM's dot: chat-client's hollow ring, filled while the person is online.
+  var dots = {};
+  function paintDot(dot, online) {
+    Object.assign(dot.style, {
+      display: 'inline-block', width: '9px', height: '9px', borderRadius: '50%', boxSizing: 'border-box',
+      flex: 'none', border: '1.5px solid ' + (online ? 'var(--cc-presence-online)' : 'var(--cc-presence-idle)'),
+      background: online ? 'var(--cc-presence-online)' : 'transparent',
+    });
+    dot.title = online ? 'online' : 'away';
+  }
+
   var places = {};
   sidebar.querySelectorAll('.sidebar-place').forEach(function (place) {
     var section = place.getAttribute('data-section');
@@ -110,6 +131,13 @@ window.Sidebar = (function () {
     var caret = document.createElement('span');
     caret.textContent = '▾';
     Object.assign(caret.style, { display: 'inline-block', fontSize: '9px', transition: 'transform 0.15s ease' });
+    var person = place.getAttribute('data-person');
+    if (person) {
+      var dot = document.createElement('span');
+      paintDot(dot, place.getAttribute('data-presence') === 'online');
+      dots[person] = { dot: dot, place: place };
+      name.insertBefore(dot, name.firstChild);
+    }
     name.insertBefore(caret, name.firstChild);
     name.setAttribute('role', 'button');
     name.setAttribute('tabindex', '0');
@@ -219,5 +247,29 @@ window.Sidebar = (function () {
     list.insertBefore(row, after || null);
   }
 
-  return { addTopic: addTopic };
+  // A human come online: their DM's dot filled.
+  function markOnline(person) {
+    var shown = dots[person];
+    if (!shown) return;
+    shown.place.setAttribute('data-presence', 'online');
+    paintDot(shown.dot, true);
+  }
+
+  // The line above the page, chat-client's status strip.
+  var strip = document.querySelector('.notice-strip');
+  if (strip) {
+    Object.assign(strip.style, {
+      margin: '0 0 8px', fontSize: '13px', color: 'var(--cc-notify-fg)', overflow: 'hidden',
+      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', minHeight: '1em',
+    });
+  }
+  // A notice, the server's HTML (a link), shown in the strip in place of
+  // the last one.
+  function showNotice(html) {
+    if (!strip) return;
+    strip.innerHTML = html;
+    strip.querySelectorAll('a').forEach(function (link) { link.style.color = 'inherit'; });
+  }
+
+  return { addTopic: addTopic, markOnline: markOnline, showNotice: showNotice };
 })();

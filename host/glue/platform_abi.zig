@@ -841,6 +841,48 @@ comptime {
     }
 }
 
+/// Element type for __AnonStruct_2cb02b6a756bd33f
+pub const __AnonStruct_2cb02b6a756bd33f = if (@sizeOf(usize) == 4) extern struct {
+    second: i64,
+    status: FoundOrMissing,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.status.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.status.incref(amount);
+    }
+} else extern struct {
+    second: i64,
+    status: FoundOrMissing,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.status.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.status.incref(amount);
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct_2cb02b6a756bd33f) != 16) @compileError("__AnonStruct_2cb02b6a756bd33f size mismatch");
+        if (@alignOf(__AnonStruct_2cb02b6a756bd33f) != 8) @compileError("__AnonStruct_2cb02b6a756bd33f alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(__AnonStruct_2cb02b6a756bd33f) != 16) @compileError("__AnonStruct_2cb02b6a756bd33f size mismatch");
+        if (@alignOf(__AnonStruct_2cb02b6a756bd33f) != 8) @compileError("__AnonStruct_2cb02b6a756bd33f alignment mismatch");
+    }
+}
+
 /// Element type for __AnonStruct_50209078edfd2434
 pub const __AnonStruct_50209078edfd2434 = if (@sizeOf(usize) == 4) extern struct {
     authorize_base: RocListWith(u8, false),
@@ -941,10 +983,10 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct_3358763e51fbcf53
-pub const __AnonStruct_3358763e51fbcf53 = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_c6984c61d9a28262
+pub const __AnonStruct_c6984c61d9a28262 = if (@sizeOf(usize) == 4) extern struct {
     body_most: u64,
-    refusal: __AnonStruct_2caab9c0de63c7b6,
+    refusal: __AnonStruct_acc3c8bd07c1fb22,
     body_grace_ms: u32,
     verdict: AdmitOrRefuse,
     /// Recursively decrement Roc-owned fields.
@@ -962,7 +1004,7 @@ pub const __AnonStruct_3358763e51fbcf53 = if (@sizeOf(usize) == 4) extern struct
     }
 } else extern struct {
     body_most: u64,
-    refusal: __AnonStruct_2caab9c0de63c7b6,
+    refusal: __AnonStruct_acc3c8bd07c1fb22,
     body_grace_ms: u32,
     verdict: AdmitOrRefuse,
     /// Recursively decrement Roc-owned fields.
@@ -982,21 +1024,21 @@ pub const __AnonStruct_3358763e51fbcf53 = if (@sizeOf(usize) == 4) extern struct
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct_3358763e51fbcf53) != 120) @compileError("__AnonStruct_3358763e51fbcf53 size mismatch");
-        if (@alignOf(__AnonStruct_3358763e51fbcf53) != 8) @compileError("__AnonStruct_3358763e51fbcf53 alignment mismatch");
+        if (@sizeOf(__AnonStruct_c6984c61d9a28262) != 120) @compileError("__AnonStruct_c6984c61d9a28262 size mismatch");
+        if (@alignOf(__AnonStruct_c6984c61d9a28262) != 8) @compileError("__AnonStruct_c6984c61d9a28262 alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct_3358763e51fbcf53) != 72) @compileError("__AnonStruct_3358763e51fbcf53 size mismatch");
-        if (@alignOf(__AnonStruct_3358763e51fbcf53) != 8) @compileError("__AnonStruct_3358763e51fbcf53 alignment mismatch");
+        if (@sizeOf(__AnonStruct_c6984c61d9a28262) != 72) @compileError("__AnonStruct_c6984c61d9a28262 size mismatch");
+        if (@alignOf(__AnonStruct_c6984c61d9a28262) != 8) @compileError("__AnonStruct_c6984c61d9a28262 alignment mismatch");
     }
 }
 
-/// Element type for __AnonStruct_2caab9c0de63c7b6
-pub const __AnonStruct_2caab9c0de63c7b6 = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_acc3c8bd07c1fb22
+pub const __AnonStruct_acc3c8bd07c1fb22 = if (@sizeOf(usize) == 4) extern struct {
     body: RocListWith(u8, false),
     headers: RocList(__AnonStruct_288155b7e13051cb),
     stream_holder: RocListWith(u8, false),
-    stream_key: RocListWith(u8, false),
+    stream_keys: RocList(RocListWith(u8, false)),
     status: u16,
     kind: StreamOrWhole,
     /// Recursively decrement Roc-owned fields.
@@ -1005,7 +1047,7 @@ pub const __AnonStruct_2caab9c0de63c7b6 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        value.stream_key.decref(roc_host);
+        decrefListOfListOfType29(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1015,14 +1057,14 @@ pub const __AnonStruct_2caab9c0de63c7b6 = if (@sizeOf(usize) == 4) extern struct
         value.body.incref(amount);
         value.headers.incref(amount);
         value.stream_holder.incref(amount);
-        value.stream_key.incref(amount);
+        value.stream_keys.incref(amount);
         value.kind.incref(amount);
     }
 } else extern struct {
     body: RocListWith(u8, false),
     headers: RocList(__AnonStruct_288155b7e13051cb),
     stream_holder: RocListWith(u8, false),
-    stream_key: RocListWith(u8, false),
+    stream_keys: RocList(RocListWith(u8, false)),
     status: u16,
     kind: StreamOrWhole,
     /// Recursively decrement Roc-owned fields.
@@ -1031,7 +1073,7 @@ pub const __AnonStruct_2caab9c0de63c7b6 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        value.stream_key.decref(roc_host);
+        decrefListOfListOfType29(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1041,19 +1083,19 @@ pub const __AnonStruct_2caab9c0de63c7b6 = if (@sizeOf(usize) == 4) extern struct
         value.body.incref(amount);
         value.headers.incref(amount);
         value.stream_holder.incref(amount);
-        value.stream_key.incref(amount);
+        value.stream_keys.incref(amount);
         value.kind.incref(amount);
     }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct_2caab9c0de63c7b6) != 104) @compileError("__AnonStruct_2caab9c0de63c7b6 size mismatch");
-        if (@alignOf(__AnonStruct_2caab9c0de63c7b6) != 8) @compileError("__AnonStruct_2caab9c0de63c7b6 alignment mismatch");
+        if (@sizeOf(__AnonStruct_acc3c8bd07c1fb22) != 104) @compileError("__AnonStruct_acc3c8bd07c1fb22 size mismatch");
+        if (@alignOf(__AnonStruct_acc3c8bd07c1fb22) != 8) @compileError("__AnonStruct_acc3c8bd07c1fb22 alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct_2caab9c0de63c7b6) != 52) @compileError("__AnonStruct_2caab9c0de63c7b6 size mismatch");
-        if (@alignOf(__AnonStruct_2caab9c0de63c7b6) != 4) @compileError("__AnonStruct_2caab9c0de63c7b6 alignment mismatch");
+        if (@sizeOf(__AnonStruct_acc3c8bd07c1fb22) != 52) @compileError("__AnonStruct_acc3c8bd07c1fb22 size mismatch");
+        if (@alignOf(__AnonStruct_acc3c8bd07c1fb22) != 4) @compileError("__AnonStruct_acc3c8bd07c1fb22 alignment mismatch");
     }
 }
 
@@ -1450,6 +1492,34 @@ comptime {
     }
 }
 
+/// Tag union: FoundOrMissing
+pub const FoundOrMissing = enum(u8) {
+    found = 0,
+    missing = 1,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(FoundOrMissing) != 1) @compileError("FoundOrMissing size mismatch");
+        if (@alignOf(FoundOrMissing) != 1) @compileError("FoundOrMissing alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(FoundOrMissing) != 1) @compileError("FoundOrMissing size mismatch");
+        if (@alignOf(FoundOrMissing) != 1) @compileError("FoundOrMissing alignment mismatch");
+    }
+}
+
 /// Tag union: DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks
 pub const DoesNotMatchOrMatchesOrNotABcryptHashOrTooManyChecks = enum(u8) {
     does_not_match = 0,
@@ -1786,6 +1856,48 @@ comptime {
     }
 }
 
+/// Return type record for Host.remember_second_under_key!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostRemember_second_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    second: i64,
+    status: FoundOrMissing,
+} else extern struct {
+    second: i64,
+    status: FoundOrMissing,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostRemember_second_under_keyRetRecord) != 16) @compileError("HostRemember_second_under_keyRetRecord size mismatch");
+        if (@alignOf(HostRemember_second_under_keyRetRecord) != 8) @compileError("HostRemember_second_under_keyRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostRemember_second_under_keyRetRecord) != 16) @compileError("HostRemember_second_under_keyRetRecord size mismatch");
+        if (@alignOf(HostRemember_second_under_keyRetRecord) != 8) @compileError("HostRemember_second_under_keyRetRecord alignment mismatch");
+    }
+}
+
+/// Return type record for Host.second_remembered_under_key!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostSecond_remembered_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    second: i64,
+    status: FoundOrMissing,
+} else extern struct {
+    second: i64,
+    status: FoundOrMissing,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostSecond_remembered_under_keyRetRecord) != 16) @compileError("HostSecond_remembered_under_keyRetRecord size mismatch");
+        if (@alignOf(HostSecond_remembered_under_keyRetRecord) != 8) @compileError("HostSecond_remembered_under_keyRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostSecond_remembered_under_keyRetRecord) != 16) @compileError("HostSecond_remembered_under_keyRetRecord size mismatch");
+        if (@alignOf(HostSecond_remembered_under_keyRetRecord) != 8) @compileError("HostSecond_remembered_under_keyRetRecord alignment mismatch");
+    }
+}
+
 /// Arguments for Host.append_utf8_bytes_to_file!
 /// Roc signature: List(U8), List(U8) => [Appended, Failed, MissingDirectory, NotUtf8, PathRefused]
 /// Refcounted fields are owned by the hosted function.
@@ -1897,12 +2009,27 @@ pub const HostRead_utf8_bytes_from_fileArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.remember_second_under_key!
+/// Roc signature: List(U8), I64 => { second : I64, status : [Found, Missing] }
+/// Refcounted fields are owned by the hosted function.
+pub const HostRemember_second_under_keyArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: i64,
+};
+
 /// Arguments for Host.replace_file_with_utf8_bytes_atomically!
 /// Roc signature: List(U8), List(U8) => [Failed, MissingDirectory, NotUtf8, PathRefused, Replaced]
 /// Refcounted fields are owned by the hosted function.
 pub const HostReplace_file_with_utf8_bytes_atomicallyArgs = extern struct {
     arg0: RocListWith(u8, false),
     arg1: RocListWith(u8, false),
+};
+
+/// Arguments for Host.second_remembered_under_key!
+/// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
+/// Refcounted fields are owned by the hosted function.
+pub const HostSecond_remembered_under_keyArgs = extern struct {
+    arg0: RocListWith(u8, false),
 };
 
 /// Arguments for Host.sha256_of_bytes!
@@ -1919,14 +2046,16 @@ pub const HostGithub_sign_in_settings = __AnonStruct_50209078edfd2434;
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
 pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
+pub const HostRemember_second_under_key = __AnonStruct_2cb02b6a756bd33f;
+pub const HostSecond_remembered_under_key = __AnonStruct_2cb02b6a756bd33f;
 pub const Admission_for_hostArg0 = __AnonStruct_8ba57119b983c03c;
 pub const Admission_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
-pub const Admission_for_host = __AnonStruct_3358763e51fbcf53;
-pub const Admission_for_hostRefusal = __AnonStruct_2caab9c0de63c7b6;
+pub const Admission_for_host = __AnonStruct_c6984c61d9a28262;
+pub const Admission_for_hostRefusal = __AnonStruct_acc3c8bd07c1fb22;
 pub const Admission_for_hostRefusalHeaders = __AnonStruct_288155b7e13051cb;
 pub const Handle_for_hostArg0 = __AnonStruct_4ab266d2399976c2;
 pub const Handle_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
-pub const Handle_for_host = __AnonStruct_2caab9c0de63c7b6;
+pub const Handle_for_host = __AnonStruct_acc3c8bd07c1fb22;
 pub const Handle_for_hostHeaders = __AnonStruct_288155b7e13051cb;
 
 // Generated Refcount Helpers
@@ -1949,6 +2078,12 @@ pub const __AnonStruct_e6f4ccf1b682ebd2Release = struct {
     }
 };
 
+pub const __AnonStruct_2cb02b6a756bd33fRelease = struct {
+    pub fn release(value: __AnonStruct_2cb02b6a756bd33f, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
+
 pub const __AnonStruct_50209078edfd2434Release = struct {
     pub fn release(value: __AnonStruct_50209078edfd2434, roc_host: *RocHost) void {
         value.decref(roc_host);
@@ -1961,14 +2096,14 @@ pub const __AnonStruct_f3d95275ff09cbb2Release = struct {
     }
 };
 
-pub const __AnonStruct_3358763e51fbcf53Release = struct {
-    pub fn release(value: __AnonStruct_3358763e51fbcf53, roc_host: *RocHost) void {
+pub const __AnonStruct_c6984c61d9a28262Release = struct {
+    pub fn release(value: __AnonStruct_c6984c61d9a28262, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
 
-pub const __AnonStruct_2caab9c0de63c7b6Release = struct {
-    pub fn release(value: __AnonStruct_2caab9c0de63c7b6, roc_host: *RocHost) void {
+pub const __AnonStruct_acc3c8bd07c1fb22Release = struct {
+    pub fn release(value: __AnonStruct_acc3c8bd07c1fb22, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -2007,6 +2142,14 @@ pub fn decrefListOf__AnonStruct_288155b7e13051cb(value: RocList(__AnonStruct_288
     value.deinitWith(__AnonStruct_288155b7e13051cbRelease, roc_host);
 }
 
+/// Release one owned reference to a `RocList(RocListWith(u8, false))`.
+///
+/// The allocation's final reference is claimed atomically before any element
+/// is read, so concurrent owners cannot skip or duplicate element teardown.
+pub fn decrefListOfListOfType29(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
+    value.deinitWith(RocListSpineRelease(RocListWith(u8, false)), roc_host);
+}
+
 fn rocReleasePolicy(comptime T: type) type {
     if (T == RocStr) return RocStrRelease;
     if (T == __AnonStruct_c2b10c7c13915346) return __AnonStruct_c2b10c7c13915346Release;
@@ -2016,8 +2159,8 @@ fn rocReleasePolicy(comptime T: type) type {
     if (T == RocList(RocListWith(u8, false))) return RocListRelease(RocList(RocListWith(u8, false)), RocListSpineRelease(RocListWith(u8, false)));
     if (T == __AnonStruct_50209078edfd2434) return __AnonStruct_50209078edfd2434Release;
     if (T == __AnonStruct_f3d95275ff09cbb2) return __AnonStruct_f3d95275ff09cbb2Release;
-    if (T == __AnonStruct_3358763e51fbcf53) return __AnonStruct_3358763e51fbcf53Release;
-    if (T == __AnonStruct_2caab9c0de63c7b6) return __AnonStruct_2caab9c0de63c7b6Release;
+    if (T == __AnonStruct_c6984c61d9a28262) return __AnonStruct_c6984c61d9a28262Release;
+    if (T == __AnonStruct_acc3c8bd07c1fb22) return __AnonStruct_acc3c8bd07c1fb22Release;
     if (T == RocList(__AnonStruct_288155b7e13051cb)) return RocListRelease(RocList(__AnonStruct_288155b7e13051cb), __AnonStruct_288155b7e13051cbRelease);
     if (T == __AnonStruct_288155b7e13051cb) return __AnonStruct_288155b7e13051cbRelease;
     if (T == __AnonStruct_8ba57119b983c03c) return __AnonStruct_8ba57119b983c03cRelease;
@@ -2171,6 +2314,13 @@ pub extern fn read_binary_bytes_from_file(arg0: RocListWith(u8, false)) callconv
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn read_utf8_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_c2b10c7c13915346;
 
+/// Hosted symbol for Host.remember_second_under_key!
+/// Roc signature: List(U8), I64 => { second : I64, status : [Found, Missing] }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn remember_second_under_key(arg0: RocListWith(u8, false), arg1: i64) callconv(.c) __AnonStruct_2cb02b6a756bd33f;
+
 /// Hosted symbol for Host.replace_file_with_utf8_bytes_atomically!
 /// Roc signature: List(U8), List(U8) => [Failed, MissingDirectory, NotUtf8, PathRefused, Replaced]
 /// Owned arguments. Release each exactly once before returning, unless it is
@@ -2178,6 +2328,13 @@ pub extern fn read_utf8_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
 pub extern fn replace_file_with_utf8_bytes_atomically(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) FailedOrMissingDirectoryOrNotUtf8OrPathRefusedOrReplaced;
+
+/// Hosted symbol for Host.second_remembered_under_key!
+/// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn second_remembered_under_key(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_2cb02b6a756bd33f;
 
 /// Hosted symbol for Host.sha256_of_bytes!
 /// Roc signature: List(U8) => List(U8)
@@ -2327,10 +2484,10 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
 // Roc exports these symbols from the app with their natural C ABI signatures.
 
 /// Entrypoint: admission_for_host!
-pub extern fn roc_admission(arg0: __AnonStruct_8ba57119b983c03c) callconv(.c) __AnonStruct_3358763e51fbcf53;
+pub extern fn roc_admission(arg0: __AnonStruct_8ba57119b983c03c) callconv(.c) __AnonStruct_c6984c61d9a28262;
 
 /// Entrypoint: handle_for_host!
-pub extern fn roc_handle_http_request(arg0: __AnonStruct_4ab266d2399976c2) callconv(.c) __AnonStruct_2caab9c0de63c7b6;
+pub extern fn roc_handle_http_request(arg0: __AnonStruct_4ab266d2399976c2) callconv(.c) __AnonStruct_acc3c8bd07c1fb22;
 
 /// Entrypoint: page_for_host
 pub extern fn roc_page(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);

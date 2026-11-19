@@ -31,6 +31,7 @@ import AgentStream
 import Author
 import Browse
 import BrowseRoute
+import Clock
 import Conversation
 import ConversationKey
 import ConversationPage
@@ -44,6 +45,8 @@ import Message
 import MessageNotes
 import Name
 import PageKit
+import Presence
+import PresenceNotices
 import Reactions
 import ResumeRoute
 import SignedIn
@@ -115,6 +118,7 @@ ConversationRoute :: [].{
 					(Ok({ conversation, file: _ }), Ok(reactions)) =>
 						ConversationStream.response({
 							key,
+							viewer_key: Presence.viewer_stream_key(acting.user().id()),
 							acting,
 							users,
 							conversation,
@@ -200,7 +204,11 @@ load_page! = |{ key, acting, directory }| {
 			Err(Agent(_)) => NoSidebar
 			Ok(listed) => {
 				places = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
-				Sidebar(places)
+				online = PresenceNotices.online_of!({
+					ids: directory.users().to_list().map(|user| user.id()),
+					now: Clock.read_clock!({}).to_seconds_since_epoch(),
+				})
+				Sidebar({ places, online })
 			}
 		}
 	ResumeRoute.record_opened!({ key, acting })?

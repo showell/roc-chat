@@ -25,6 +25,7 @@ import HumanInvitesSpec
 import LastConversationSpec
 import PageSpec
 import PlaceSpec
+import PresenceSpec
 import RouteSpec
 import SecureImageTagSpec
 import SessionSpec

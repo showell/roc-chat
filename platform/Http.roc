@@ -57,11 +57,12 @@ Http := [].{
 	## by the host as given. A header name or value holding a CR, an LF or
 	## a NUL is the app's bug: the host answers a 500 instead.
 	##
-	## A `Whole` answer is its body, and its `stream_key` and
+	## A `Whole` answer is its body, and its `stream_keys` and
 	## `stream_holder` are empty. A `Stream` is an event stream the host
 	## holds open: its status 200, the host's stream headers and then the
-	## app's, the body first, then every frame published to `stream_key`
-	## (`Host.publish_bytes_to_streams_on_key!`) while it is open.
+	## app's, the body first, then every frame published to any of its
+	## `stream_keys`, 1 to 4 keys of some bytes each
+	## (`Host.publish_bytes_to_streams_on_key!`), while it is open.
 	## `stream_holder` names who holds it, at most 64 bytes: the host keeps
 	## a few streams a holder, ending that holder's oldest for a new one.
 	## Anything else is the app's bug, a 500.
@@ -70,7 +71,7 @@ Http := [].{
 		headers : List(Http.Header),
 		body : List(U8),
 		kind : [Whole, Stream],
-		stream_key : List(U8),
+		stream_keys : List(List(U8)),
 		stream_holder : List(U8),
 	}
 }

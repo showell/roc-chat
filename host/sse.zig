@@ -24,6 +24,10 @@ pub const ping = ": ping\n\n";
 /// The most bytes a holder's name may be.
 pub const holder_most = 64;
 
+/// The most keys one stream is held open on: a conversation's, say, and
+/// its viewer's own.
+pub const keys_most = 4;
+
 /// The streams held at once, and by whom. A stream takes a slot named for
 /// its holder, the bytes the app gives. A holder at its own cap ends its
 /// own oldest stream, never another's, so one user opening streams ends

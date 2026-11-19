@@ -178,9 +178,9 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
-test "roc glue declares every function seam.zig has, and no other: nineteen primitives and five entries" {
+test "roc glue declares every function seam.zig has, and no other: twenty-one primitives and five entries" {
     try std.testing.expectEqual(seam_names.len, glue_names.len);
-    try std.testing.expectEqual(24, seam_names.len);
+    try std.testing.expectEqual(26, seam_names.len);
 }
 
 test "the password rule `hash-password` asks is the app's: 1 to 72 bytes of UTF-8" {
@@ -199,7 +199,7 @@ test "the password rule `hash-password` asks is the app's: 1 to 72 bytes of UTF-
 
 test "a swap fails the check, naming the function, the field and the offsets" {
     // The response's first two lists exchanged, the size the same.
-    const Swapped = extern struct { headers: seam.HeaderList, body: seam.RocBytes, stream_holder: seam.RocBytes, stream_key: seam.RocBytes, status: u16, kind: seam.AnswerKind };
+    const Swapped = extern struct { headers: seam.HeaderList, body: seam.RocBytes, stream_holder: seam.RocBytes, stream_keys: seam.RocBytesList, status: u16, kind: seam.AnswerKind };
     const m = comptime mismatch(Swapped, answerOf(glue.roc_handle_http_request), "answer").?;
     try std.testing.expect(contains(m, "answer.body: at byte 24 of "));
     try std.testing.expect(contains(m, "at byte 0 in roc glue"));

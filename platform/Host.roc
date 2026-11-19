@@ -128,6 +128,24 @@ Host := [].{
 	## (`Http.Response`'s `Stream`); none there, and nothing is sent.
 	publish_bytes_to_streams_on_key! : List(U8), List(U8) => {}
 
+	## `second` kept in the server's memory under `key`, 1 to 64 bytes,
+	## and the second the key held before (`Found`), or `Missing`, `second`
+	## 0, when it held none. The memory lasts until the server stops and
+	## holds at most 65,536 keys: a key outside those bounds stops the
+	## server, as the app's bug.
+	remember_second_under_key! : List(U8),
+	I64 => {
+		second : I64,
+		status : [Found, Missing],
+	}
+
+	## The second kept under `key` (`Found`), or `Missing`, `second` 0, when
+	## none is.
+	second_remembered_under_key! : List(U8) => {
+		second : I64,
+		status : [Found, Missing],
+	}
+
 	## Every stream held by `holder` (`Http.Response`'s `stream_holder`)
 	## ended now, its connection closed; none held, and nothing happens.
 	end_every_stream_of_holder! : List(U8) => {}

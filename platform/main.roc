@@ -54,7 +54,9 @@ platform ""
 		"publish_bytes_to_streams_on_key": Host.publish_bytes_to_streams_on_key!,
 		"read_binary_bytes_from_file": Host.read_binary_bytes_from_file!,
 		"read_utf8_bytes_from_file": Host.read_utf8_bytes_from_file!,
+		"remember_second_under_key": Host.remember_second_under_key!,
 		"replace_file_with_utf8_bytes_atomically": Host.replace_file_with_utf8_bytes_atomically!,
+		"second_remembered_under_key": Host.second_remembered_under_key!,
 		"sha256_of_bytes": Host.sha256_of_bytes!,
 	}
 	targets: {
@@ -100,7 +102,7 @@ admission_for_host! = |head|
 				headers: [],
 				body: [],
 				kind: Whole,
-				stream_key: [],
+				stream_keys: [],
 				stream_holder: [],
 			},
 		}

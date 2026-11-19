@@ -134,20 +134,20 @@ HttpAnswer :: [].{
 			{ name: "cache-control".to_utf8(), value: "no-store".to_utf8() },
 		)
 
-	## An event stream the host holds open on the bus key `key`, for
-	## `holder`: `backlog` first, then every frame published to `key`. The
-	## host writes the stream's type; it is not sniffed.
+	## An event stream the host holds open on the bus keys `keys`, 1 to 4,
+	## for `holder`: `backlog` first, then every frame published to any of
+	## `keys`. The host writes the stream's type; it is not sniffed.
 	stream : {
-		key : List(U8),
+		keys : List(List(U8)),
 		holder : List(U8),
 		backlog : List(U8),
 	} -> Http.Response
-	stream = |{ key, holder, backlog }| {
+	stream = |{ keys, holder, backlog }| {
 		status: 200,
 		headers: [nosniff],
 		body: backlog,
 		kind: Stream,
-		stream_key: key,
+		stream_keys: keys,
 		stream_holder: holder,
 	}
 }
@@ -177,7 +177,7 @@ whole_response = |{ status, headers, body }| {
 	headers,
 	body,
 	kind: Whole,
-	stream_key: [],
+	stream_keys: [],
 	stream_holder: [],
 }
 
@@ -340,17 +340,17 @@ expect
 		HttpAnswer.text(400, "x"),
 	].all(
 		|response|
-			response.kind == Whole and response.stream_key == [] and response.stream_holder == [],
+			response.kind == Whole and response.stream_keys == [] and response.stream_holder == [],
 	)
 expect {
 	response = HttpAnswer.stream({
-		key: "k".to_utf8(),
+		keys: ["k".to_utf8()],
 		holder: "1".to_utf8(),
 		backlog: "id: 1\n".to_utf8(),
 	})
 	response.kind == Stream
 		and response.status == 200
-		and response.stream_key == "k".to_utf8()
+		and response.stream_keys == ["k".to_utf8()]
 		and response.stream_holder == "1".to_utf8()
 		and response.body == "id: 1\n".to_utf8()
 		and header_pairs(response) == [("x-content-type-options", "nosniff")]
