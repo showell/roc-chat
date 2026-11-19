@@ -1,6 +1,7 @@
 ## This module is the one contract between the pages, which the Roc writes,
 ## and the scripts that run on them (app/chrome.js, app/sidebar.js,
-## app/compose.js, app/feed.js, app/actions.js and app/panel.js, which
+## app/compose.js, app/feed.js, app/actions.js, app/panel.js and
+## app/recent.js, which
 ## `Script` serves). The server sends
 ## structure and class names only, and each script finds what it needs by
 ## the classes in `Class` and by the `data-` attributes in `DataAttribute`.
@@ -51,6 +52,20 @@ PageContract :: [].{
 		ReactionChip,
 		ReactionEmoji,
 		ReactionStrip,
+		RecentAgo,
+		RecentAvatar,
+		RecentBar,
+		RecentBody,
+		RecentContext,
+		RecentDot,
+		RecentLead,
+		RecentList,
+		RecentPreview,
+		RecentTile,
+		RecentTitle,
+		RecentTop,
+		RecentTopic,
+		RecentWho,
 		Sidebar,
 		SidebarEmpty,
 		SidebarHeading,
@@ -134,6 +149,20 @@ class_name = |chosen|
 		ReactionChip => "reaction-chip"
 		ReactionEmoji => "reaction-emoji"
 		ReactionStrip => "reaction-strip"
+		RecentAgo => "recent-ago"
+		RecentAvatar => "recent-avatar"
+		RecentBar => "recent-bar"
+		RecentBody => "recent-body"
+		RecentContext => "recent-context"
+		RecentDot => "recent-dot"
+		RecentLead => "recent-lead"
+		RecentList => "recent-list"
+		RecentPreview => "recent-preview"
+		RecentTile => "recent-tile"
+		RecentTitle => "recent-title"
+		RecentTop => "recent-top"
+		RecentTopic => "recent-topic"
+		RecentWho => "recent-who"
 		Sidebar => "sidebar"
 		SidebarEmpty => "sidebar-empty"
 		SidebarHeading => "sidebar-heading"
@@ -178,6 +207,20 @@ expect
 		(ReactionChip, "reaction-chip"),
 		(ReactionEmoji, "reaction-emoji"),
 		(ReactionStrip, "reaction-strip"),
+		(RecentAgo, "recent-ago"),
+		(RecentAvatar, "recent-avatar"),
+		(RecentBar, "recent-bar"),
+		(RecentBody, "recent-body"),
+		(RecentContext, "recent-context"),
+		(RecentDot, "recent-dot"),
+		(RecentLead, "recent-lead"),
+		(RecentList, "recent-list"),
+		(RecentPreview, "recent-preview"),
+		(RecentTile, "recent-tile"),
+		(RecentTitle, "recent-title"),
+		(RecentTop, "recent-top"),
+		(RecentTopic, "recent-topic"),
+		(RecentWho, "recent-who"),
 		(Sidebar, "sidebar"),
 		(SidebarEmpty, "sidebar-empty"),
 		(SidebarHeading, "sidebar-heading"),
@@ -327,4 +370,13 @@ expect
 expect
 	["data-react", "data-raw", "data-reactors"].all(
 		|name| !is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
+	)
+# app/recent.js finds Recent's list, its tiles, their bars and their times
+# by their classes; no conversation script does.
+expect
+	[RecentList, RecentTile, RecentBar, RecentAgo].all(
+		|chosen| is_found_by(
+			Script.Recent.bytes(),
+			chosen,
+		) and !is_found_by(Script.Feed.bytes(), chosen),
 	)

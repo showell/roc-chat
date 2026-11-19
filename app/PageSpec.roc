@@ -1,9 +1,10 @@
 ## These are the tests of the pages (`ConversationPage`, `SignInPage`,
-## `JoinPage`, `AgentsPage`, `PeoplePages` and `PageKit`'s notices): each
-## page, byte for byte.
+## `JoinPage`, `AgentsPage`, `PeoplePages`, `RecentFeed`'s and `PageKit`'s
+## notices): each page, byte for byte.
 import AgentsPage
 import Conversation
 import ConversationKey
+import DateTime
 import ConversationPage
 import Html
 import JoinPage
@@ -13,6 +14,7 @@ import Name
 import PageKit
 import PeoplePages
 import Reactions
+import RecentFeed
 import Sample
 import SignInPage
 import SignedIn
@@ -55,9 +57,9 @@ foot = |url|
 	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n<script src=\"/chat/assets/actions.js\"></script>\n"
 
 ## How the top bar's right side opens: the Home link (`HomeLink`), and the
-## links to Browse and the invites page.
+## links to Browse, Recent and the invites page.
 top_links : Str
-top_links = "<div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · <a href=\"/chat\">Browse</a> · <a href=\"/invites\">Invites</a> · "
+top_links = "<div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · <a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · "
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
@@ -326,4 +328,53 @@ expect {
 			"<article class=\"message\" id=\"msg-2\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:12:00Z\">2026-11-02T19:12:00Z</time> <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Edit of <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a></p>\n<p>Hello</p>\n</div><div class=\"reaction-strip\"><button class=\"reaction-chip\" data-reactors=\"1-3\"><span class=\"reaction-emoji\">👍</span> 2</button><button class=\"reaction-chip\" data-reactors=\"3\"><span class=\"reaction-emoji\">🎉</span> 1</button></div></article>\n",
 		]
 		and plain.contains("<div class=\"body\"><p>Helo &lt;b&gt;</p>\n</div></article>")
+}
+
+## The conversation at `path` in the sample directory with its default
+## channel, `general`.
+recent_key : Str -> ConversationKey
+recent_key = |path| ConversationKey.from_url_path({
+	path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "PageSpec: a path is UTF-8",
+	directory: Sample.with_default_channel(Sample.directory),
+}).map_ok(|found| found.key) ?? crash "PageSpec: a conversation's path"
+
+## Steve's Recent page of `tiles`.
+steves_recent : List(RecentFeed.Tile) -> Str
+steves_recent = |tiles|
+	Str.from_utf8_lossy(
+		RecentFeed.page({ viewer: SignedIn.dangerously_assume(Sample.steve), tiles }).to_utf8(),
+	)
+
+## Steve's Recent page as a test expects it, holding `parts`.
+recent_page : Str -> Str
+recent_page = |parts|
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+
+# Recent with no conversation that has a message says so.
+expect steves_recent([]) == recent_page("<p>Nothing yet.</p>\n")
+# A channel's tile names the channel and the topic, a DM's the topic and
+# its other human's initial; each says who sent the last message, by their
+# first name ("You" for the viewer), and its excerpt, escaped; a message
+# with no excerpt has no preview.
+expect {
+	time = |text| DateTime.from_str(text) ?? crash "PageSpec: a time"
+	steves_recent([
+		{
+			key: recent_key("/chat/channel/general/plans"),
+			label: "#general",
+			time: time("2026-11-03T10:00:00Z"),
+			who: "You",
+			excerpt: "a < b",
+		},
+		{
+			key: recent_key("/chat/dm/1_2/books"),
+			label: "Apoorva",
+			time: time("2026-11-02T19:11:32Z"),
+			who: "Apoorva",
+			excerpt: "",
+		},
+	])
+		== recent_page(
+			"<div class=\"recent-list\"><a class=\"recent-tile\" href=\"/chat/channel/general/plans\"><span class=\"recent-lead\"><span class=\"recent-bar\"></span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-context\">#general<span class=\"recent-dot\">  ·  </span><span class=\"recent-topic\">plans</span></span><time class=\"recent-ago\" datetime=\"2026-11-03T10:00:00Z\">2026-11-03T10:00:00Z</time></span><span class=\"recent-preview\"><span class=\"recent-who\">You: </span>a &lt; b</span></span></a>\n<a class=\"recent-tile\" href=\"/chat/dm/1_2/books\"><span class=\"recent-lead\"><span class=\"recent-avatar\">A</span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-title\">books</span><time class=\"recent-ago\" datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time></span></span></a>\n</div>",
+		)
 }

@@ -107,7 +107,83 @@ Transcript :: [].{
 	## them in words).
 	read : Topic, Str -> Try(Conversation, _)
 	read = |topic, text| read_onto(Conversation.empty(topic), Separator.records(text)?)
+
+	## The last message of a transcript file, read from its last record
+	## alone, so its cost is that message's and not the file's: its author,
+	## its time and its markdown; `NoMessages` for an empty file; or
+	## `Unreadable` when the last record is not one this module writes.
+	## Only the last record is checked, so a file `decode` would refuse
+	## earlier in it still answers here.
+	latest_message : Transcript.Utf8Transcript -> Try(
+		[NoMessages, Latest(Transcript.LatestMessage)],
+		[Unreadable],
+	)
+	latest_message = |Transcript.Utf8Transcript.(bytes)|
+		if bytes.is_empty() {
+			Ok(NoMessages)
+		} else {
+			opening = "${Separator.line}\n".to_utf8()
+			start =
+				match last_record_start({ bytes, at: bytes.len() }) {
+					Found(at) => at
+					NoneFound if bytes.starts_with(opening) => opening.len()
+					NoneFound => bytes.len()
+				}
+			record = bytes.sublist({ start, len: bytes.len() - start })
+			match Str.from_utf8(record) {
+				Ok(text) if text.ends_with("\n\n") =>
+					latest_from_record(text.drop_suffix("\n\n")).map_ok(|latest| Latest(latest))
+				_ => Err(Unreadable)
+			}
+		}
+
+	## A transcript's last message, as `latest_message` reads it.
+	LatestMessage : {
+		author : Author,
+		time : DateTime,
+		markdown : Str,
+	}
 }
+
+## Where the last record of `bytes` before `at` starts: just after the
+## last separator line that follows a line end, or `NoneFound`.
+last_record_start : { bytes : List(U8), at : U64 } -> [Found(U64), NoneFound]
+last_record_start = |{ bytes, at }| {
+	marker = "\n${Separator.line}\n".to_utf8()
+	if at < marker.len() {
+		NoneFound
+	} else {
+		from = at - marker.len()
+		if bytes.get(from) == Ok('\n') and bytes.sublist({
+			start: from,
+			len: marker.len(),
+		}) == marker {
+			Found(at)
+		} else {
+			last_record_start({ bytes, at: at - 1 })
+		}
+	}
+}
+
+## One record's message, as `read_message` reads its head and body, with
+## no conversation to number it.
+latest_from_record : Str -> Try(Transcript.LatestMessage, [Unreadable])
+latest_from_record = |written|
+	match written.split_on("\n") {
+		[
+			head,
+			from_line,
+			date_line,
+			"",
+			.. as body,
+		] if head.starts_with("MSG_") and from_line.starts_with("from: ") and date_line.starts_with("date: ") => {
+			author = Author.from_str(from_line.drop_prefix("from: ")) ? |_| Unreadable
+			time = DateTime.from_str(date_line.drop_prefix("date: ")) ? |_| Unreadable
+			markdown = Separator.unescape(Str.join_with(body, "\n")) ? |_| Unreadable
+			Ok({ author, time, markdown })
+		}
+		_ => Err(Unreadable)
+	}
 
 ## Whether `adding` bytes fit after the `held` bytes a file holds, at most
 ## `most_bytes` in all.

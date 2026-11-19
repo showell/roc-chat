@@ -20,7 +20,9 @@ PeoplePaths :: [].{
 	invites_resource = |path|
 		match path.url_path_parts() {
 			Ok([invites]) if invites.is_exactly("invites") => Ok(Invites)
-			Ok([invites, id, again]) if invites.is_exactly("invites") and again.is_exactly("again") =>
+			Ok(
+				[invites, id, again],
+			) if invites.is_exactly("invites") and again.is_exactly("again") =>
 				id.user_id().map_ok(|human| Again(human)).map_err(|_| NotInvites)
 			_ => Err(NotInvites)
 		}

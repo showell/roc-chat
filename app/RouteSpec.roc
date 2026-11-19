@@ -31,6 +31,7 @@ chosen_route = |method, path|
 	match Route.choose({ method: method.to_utf8(), path, directory: with_room }) {
 		SignedInOnly(StartGitHubLink) => "off to GitHub to link it"
 		SignedInOnly(ShowBrowse) => "browse"
+		SignedInOnly(ShowRecent) => "recent"
 		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
 		SignedInOnly(AppendToConversation(key)) => "append ${key.url_path(Page)}"
@@ -100,6 +101,14 @@ expect
 		"/chat/dm",
 		"/chat/channel",
 	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
+# Recent: GET alone, and exactly its path.
+expect chosen_route("GET", "/chat/recent".to_utf8()) == "recent"
+expect chosen_route("POST", "/chat/recent".to_utf8()) == "not allowed: GET"
+expect chosen_route("PUT", "/chat/recent".to_utf8()) == "not allowed: GET"
+expect
+	["/chat/recent/", "/chat/Recent", "/chat/recents", "/chat/recent/stream"].all(
+		|path| chosen_route("GET", path.to_utf8()) == "not found",
+	)
 # A new topic: POST alone, to a place that exists.
 expect chosen_route("POST", "/chat/dm/1_2".to_utf8()) == "start a topic in /chat/dm/1_2"
 expect chosen_route(

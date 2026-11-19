@@ -1038,7 +1038,7 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
         std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and !has(again.body, "data-person=\"3\""));
 }
 
-/// Steps 52 to 57, as Steve (1), Tam (2) and Uma (3), who are all in #general;
+/// Steps 52 to 58, as Steve (1), Tam (2) and Uma (3), who are all in #general;
 /// Steve alone is in #crew.
 fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, tam: []const u8) !void {
     // 52.
@@ -1111,7 +1111,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const top_bar_link = "<a href=\"/invites\">Invites</a>";
     const conversation_page = try getAs(a, io, port, steve_session, "/chat/dm/1_2/ChitChat");
     const tams_conversation = try getAs(a, io, port, tam, "/chat/dm/1_2/ChitChat");
-    const invites_from_top_bar = try getAs(a, io, port, tam, between(tams_conversation.body, "Browse</a> · <a href=\"", "\">Invites</a>") orelse "");
+    const invites_from_top_bar = try getAs(a, io, port, tam, between(tams_conversation.body, "Recent</a> · <a href=\"", "\">Invites</a>") orelse "");
     try t.check("a conversation's top bar links to /invites, for the owner and any other human, and reaches the form", conversation_page.status == 200 and has(conversation_page.body, top_bar_link) and
         tams_conversation.status == 200 and has(tams_conversation.body, top_bar_link) and invites_from_top_bar.status == 200 and has(invites_from_top_bar.body, "action=\"/invites\""));
     try t.check("no link to /invites for a stranger, at sign-in", sign_in.status == 200 and !has(sign_in.body, "/invites"));
@@ -1167,6 +1167,27 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const umas_now = try getAs(a, io, port, uma, "/chat");
     try t.check("the topic on Browse: linked for both its humans, and not for Uma", has(steves_now.body, "href=\"" ++ url ++ "\"") and
         has(tams_now.body, "href=\"" ++ url ++ "\"") and !has(umas_now.body, url));
+    try recentSteps(a, io, port, t, .{ .tam = tam, .uma = uma });
+}
+
+/// Step 58: Recent, after a post in two topics a second apart: Tam's in
+/// #general's roc-chat, then Steve's in his DM with Tam.
+fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { tam: []const u8, uma: []const u8 }) !void {
+    const dm_plans = "/chat/dm/1_2/plans";
+    const in_channel = try postAs(a, io, port, who.tam, channel_url ++ "/send", "markdown=Tam+in+the+channel");
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(1100) }, io);
+    const in_dm = try postAs(a, io, port, steve_session, dm_plans ++ "/send", "markdown=Steve+in+the+DM");
+    const tams = try getAs(a, io, port, who.tam, "/chat/recent");
+    const umas = try getAs(a, io, port, who.uma, "/chat/recent");
+    const steves = try getAs(a, io, port, steve_session, "/chat/recent");
+    const newest = std.mem.indexOf(u8, tams.body, "href=\"" ++ dm_plans ++ "\"") orelse tams.body.len;
+    const older = std.mem.indexOf(u8, tams.body, "href=\"" ++ channel_url ++ "\"") orelse 0;
+    try t.check("Recent: both topics, the newest message's first, each with its last author and words; a DM only for its humans, and no one's own DM", in_channel.status == 201 and in_dm.status == 201 and
+        tams.status == 200 and newest < older and older < tams.body.len and
+        has(tams.body, "<span class=\"recent-who\">Steve: </span>Steve in the DM") and has(tams.body, "<span class=\"recent-who\">You: </span>Tam in the channel") and
+        umas.status == 200 and has(umas.body, "href=\"" ++ channel_url ++ "\"") and !has(umas.body, dm_plans) and
+        steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and !has(steves.body, dm_url ++ "\"") and
+        has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>"));
 }
 
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and

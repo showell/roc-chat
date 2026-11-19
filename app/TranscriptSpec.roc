@@ -312,3 +312,52 @@ expect
 expect decoded_conversation([0xff]) == Err(TranscriptNotUtf8)
 expect decoded_conversation([]) == Ok(Conversation.empty(Sample.plans))
 expect decoded_conversation("\n".to_utf8()) == Err(Transcript(NotPrefixedProperly))
+
+## The last message of `text`, a transcript file's, as a test reads it: its
+## author, time and markdown, or `none`.
+latest_of : Str -> Try(Str, [Unreadable])
+latest_of = |text| {
+	file = Transcript.Utf8Transcript.unchecked_from_file(text.to_utf8())
+	Transcript.latest_message(file).map_ok(
+		|found|
+			match found {
+				Latest(latest) =>
+					Str.join_with(
+						[latest.author.to_str(), latest.time.to_str(), latest.markdown],
+						" ",
+					)
+				NoMessages => "none"
+			},
+	)
+}
+
+# The last message, from the last record alone: of two, one, or none.
+expect latest_of(Transcript.write(Sample.hello_and_reply)) == Ok("CC 2026-11-02T19:12:28Z Hi!\n\n- one\n- two")
+expect latest_of("-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n") == Ok("Steve 2026-11-02T19:11:32Z Hello")
+expect latest_of("") == Ok("none")
+# A separator the markdown holds is read back as written, and never taken
+# for a record's start.
+expect
+	latest_of(
+		Transcript.write(
+			Sample.conversation(
+				Sample.plans,
+				[steve_message("x"), steve_message("a\n-------------\n\\-------------\nb")],
+			),
+		),
+	)
+		== Ok("Steve 2026-11-02T19:11:32Z a\n-------------\n\\-------------\nb")
+# Markdown ending in empty lines comes back exactly.
+expect latest_of(Transcript.write(edged)) == Ok("Steve 2026-11-02T19:11:32Z a\n\n")
+# Only the last record is read: a file whose earlier record is broken still
+# answers, and one whose last record is broken is unreadable.
+expect latest_of("-------------\nbroken\n\n-------------\nMSG_plans_2\nfrom: CC\ndate: 2026-11-02T19:12:28Z\n\nHi\n\n") == Ok("CC 2026-11-02T19:12:28Z Hi")
+expect
+	[
+		"-------------\nMSG_plans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n",
+		"-------------\nMSG_plans_1\nfrom: Steve\n\nHello\n\n",
+		"-------------\nMSG_plans_1\nfrom: Steve\ndate: yesterday\n\nHello\n\n",
+		"-------------\nplans_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n",
+		"-------------\nMSG_plans_1\nfrom: \ndate: 2026-11-02T19:11:32Z\n\nHello\n\n",
+		"Hello\n\n",
+	].all(|text| latest_of(text) == Err(Unreadable))

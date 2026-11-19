@@ -4,6 +4,7 @@
 ##
 ##     GET  /                                  the way in: a 303 to the last conversation, or Browse
 ##     GET  /chat                              Browse, every place you may open
+##     GET  /chat/recent                       Recent, each conversation's last message
 ##     POST /chat/channel/<channel>            a new topic: `topic=`
 ##     POST /chat/dm/<pair>
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
@@ -21,6 +22,7 @@
 ##     GET  /chat/assets/feed.js
 ##     GET  /chat/assets/panel.js
 ##     GET  /chat/assets/join.js
+##     GET  /chat/assets/recent.js
 ##     GET  /favicon.ico                       the site's icon
 ##     GET  /login                             the sign-in page
 ##     POST /login                             sign in: `name=`, `password=`
@@ -70,6 +72,7 @@ import ChannelName
 import ConversationKey
 import Directory
 import Favicon
+import PageKit
 import PeoplePaths
 import Place
 import Script
@@ -110,6 +113,7 @@ Route :: [].{
 	SignedInChoice : [
 		StartGitHubLink,
 		ShowBrowse,
+		ShowRecent,
 		StartTopic(Place),
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
@@ -208,8 +212,8 @@ conversation_path_choice = |{ path, method, directory }|
 		Err(BadName) | Err(NoSuchChannel) | Err(NoSuchHuman) => NotFound
 	}
 
-## The route for `method` and a path that is the way in, Browse's, a place's,
-## or nothing here.
+## The route for `method` and a path that is the way in, Browse's, Recent's,
+## a place's, or nothing here.
 browse_path_choice : {
 	path : UnvalidatedString,
 	method : [Get, Post, Other],
@@ -224,6 +228,11 @@ browse_path_choice = |{ path, method, directory }|
 	} else if path.is_exactly(ConversationKey.browse_path) {
 		match method {
 			Get => SignedInOnly(ShowBrowse)
+			Post | Other => MethodNotAllowed(GetOnly)
+		}
+	} else if path.is_exactly(PageKit.recent_path) {
+		match method {
+			Get => SignedInOnly(ShowRecent)
 			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else {

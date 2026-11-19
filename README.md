@@ -33,6 +33,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
   - `ConversationKey` is a place plus a topic, and the one home of the layout: a URL `/chat/channel/<channel>/<topic>` names the folder `chat/channel/<channel>/<topic>/`, and `/chat/dm/<pair>/<topic>` names `chat/dm/<pair>/<topic>/`.
   - `ConversationRoute` answers GET and POST (a 303 back to the page), the compose box's script's POST to `/send` (a 201 with the message's HTML, or the refusal in plain words), and opens a conversation's stream.
   - `Browse` decides what a human is shown, by `Access`, and writes its page; `BrowseRoute` reads each place's topics and answers. A conversation's sidebar (`Sidebar`) lists the same places and topics.
+  - `RecentRoute` answers `/chat/recent`, Recent: a tile for each conversation the viewer may read, newest first by its last message (`RecentFeed` decides and writes the page, `RecentExcerpt` its excerpts, app/recent.js styles it).
   - `ResumeRoute` answers `/`: the conversation a human last opened, kept as `users/<id>/last-conv` (`LastConversation`) and written when they open one, while they may still read it; else Browse.
   - `Presence` decides who is online, as Gopher Chat did: five minutes after any request but a stream; `PresenceNotices` keeps when each human was last seen in the host's memory and, when one comes online, sends every other human their dot and "<name> has come online." on their own stream key, which each conversation page's stream also carries. `ServerSentEvent` writes the events of a stream.
   - `ConversationStream` is the stream's one home: its bus key, how many messages a reader has seen (`?after=` or `Last-Event-ID`), and each message's frame, the HTML `ConversationPage.message` writes for the page.
@@ -52,6 +53,7 @@ A chat for a small group of humans and their agents, written in Roc on a Zig hos
     zig build end-to-end                        the server against a temporary data root: GET, POST, GET, the file on disk
     shale tools/glue.shale                      after a change to platform/: roc glue's snapshot, which `zig build test` holds the seam to
     shale tools/note.shale                      the page and all the code, as an essay note
+    shale tools/bench_recent.shale topics=250   Recent's page timed on a data root of that many conversations
     shale tools/deploy.shale                    the prod deploy to https://chat.lynrummy.com (docs/deploy.md: the runbook, and what Caddy must do)
 
 You need the Roc pinned in `roc-version` at `~/tools/roc-<pin>/roc`, and roc-markdown checked out beside this repo, because its package renders the markdown.

@@ -1,0 +1,95 @@
+-- Times Recent's page on a data root of many conversations: the server
+-- built as the deploy builds it (ReleaseSafe; the Roc at --opt=dev), a
+-- data root written from nothing, Steve signed in, and `GET /chat/recent`
+-- asked `times=` times, each timed by curl. Run it from roc-chat's root:
+--
+--   shale tools/bench_recent.shale topics=250 messages=60
+--
+-- `topics` are spread over 4 channels and 2 DMs, each topic's transcript
+-- `messages` messages of about 150 bytes. The data root is
+-- .zig-cache/bench-recent/data (removed first, and kept after, to look
+-- at), the server listens on `port`, its log beside the data, and it is
+-- stopped at the end.
+-- budget: steps=400000000 arena_bytes=1000000000
+
+const OUT = ".zig-cache/bench-recent/out"
+
+local topics = arg("topics", 250)
+local messages = arg("messages", 60)
+local times = arg("times", 5)
+local port = arg("port", 9655)
+local data = ".zig-cache/bench-recent/data"
+
+must(run({"zig", "build", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20, nice = 10}))
+local server = OUT .. "/bin/roc-chat"
+
+if exists(data) then remove_tree(data) end
+mkdir(data .. "/auth/1")
+mkdir(data .. "/auth/2")
+mkdir(data .. "/auth/3")
+create(data .. "/auth/next-id.txt", "4\n")
+create(data .. "/auth/1/name", "Steve")
+create(data .. "/auth/2/name", "Apoorva")
+create(data .. "/auth/3/name", "Bob")
+const channels = {"general", "projects", "books", "games"}
+mkdir(data .. "/chat/channel")
+for c in channels do create(data .. "/chat/channel/" .. c .. ".channel", "1\n2\n3\n") end
+const places = {"chat/channel/general", "chat/channel/projects", "chat/channel/books", "chat/channel/games", "chat/dm/1_2", "chat/dm/1_3"}
+const authors = {"Steve", "Apoorva", "Bob"}
+
+function two(n)
+  if n < 10 then return "0" .. n end
+  return "" .. n
+end
+
+-- A topic's transcript: `count` messages, the last at minute `last`.
+function transcript(topic, count, last)
+  local parts = {}
+  for n = 1, count do
+    local minute = last - (count - n)
+    local stamp = "2026-11-" .. two(1 + minute // 1440) .. "T" .. two((minute // 60) % 24) .. ":" .. two(minute % 60) .. ":00Z"
+    push(parts, "-------------\nMSG_" .. topic .. "_" .. n .. "\nfrom: " .. authors[1 + n % 3] .. "\ndate: " .. stamp .. "\n\nMessage " .. n .. " of " .. topic .. ", with **some** words to make it about the size of a real one, and a [link](https://example.com).\n\n")
+  end
+  return join(parts, "")
+end
+
+local bytes = 0
+for t = 1, topics do
+  local folder = data .. "/" .. places[1 + t % #places] .. "/topic-" .. t
+  mkdir(folder)
+  local text = transcript("topic-" .. t, messages, 2000 + (t * 7919) % 20000)
+  bytes = bytes + #text
+  create(folder .. "/transcript", text)
+  yield()
+end
+print(topics .. " topics, " .. messages .. " messages each, " .. bytes .. " bytes of transcript")
+
+local hashed = must(run({server, "hash-password"}, {stdin = "bench-password\n", timeout_ms = 30000, whole = 1000, want = "bench: the server just built"}))
+create(data .. "/auth/1/password", trim(hashed.out) .. "\n")
+
+local job = job_start({server, real(data), "--port", "" .. port}, {log = ".zig-cache/bench-recent/server.log", want = "bench: the server just built"})
+local base = "http://127.0.0.1:" .. port
+local up = false
+for try = 1, 50 do
+  local r = run({"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", base .. "/login"}, {timeout_ms = 5000, whole = 100})
+  if r.out == "200" then
+    up = true
+    break
+  end
+  job_wait(job, {timeout_ms = 200, contains = "listening"})
+end
+if not up then fail("bench: the server did not answer; see .zig-cache/bench-recent/server.log") end
+
+local signed = http("POST", base .. "/login", {body = "name=Steve&password=bench-password", headers = {"Content-Type: application/x-www-form-urlencoded"}})
+local cookie = re_find(signed.headers["set-cookie"], "^[^;]+").text
+local timings = {}
+local size = ""
+for n = 1, times do
+  local r = must(run({"curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{size_download} %{time_total}", "-H", "Cookie: " .. cookie, base .. "/chat/recent"}, {timeout_ms = 60000, whole = 200}))
+  local parts = words(r.out)
+  if parts[1] ~= "200" then fail("bench: GET /chat/recent answered " .. r.out) end
+  size = parts[2]
+  push(timings, parts[3])
+end
+print("GET /chat/recent: " .. size .. " bytes; seconds: " .. join(timings, " "))
+job_stop(job)

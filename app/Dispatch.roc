@@ -5,7 +5,8 @@
 ## someone signed in may see is sent to sign in, and any other such request
 ## is a 401. Each route's answer is a route module's: `ConversationRoute`,
 ## `UploadRoute`, `ReactionRoute`, `BrowseRoute`, `AgentsRoute`, `ChannelMembersRoute`,
-## `HumanInvitesRoute`, `ResumeRoute`, `SignInRoute` or `GitHubRoute`. Its two `match`es,
+## `HumanInvitesRoute`, `RecentRoute`, `ResumeRoute`, `SignInRoute` or `GitHubRoute`.
+## Its two `match`es,
 ## one for the open routes and one for the signed-in ones, show the whole
 ## server's surface in one place.
 import pf.Http
@@ -27,6 +28,7 @@ import PageKit
 import Place
 import PresenceNotices
 import ReactionRoute
+import RecentRoute
 import RequestOrigin
 import ResumeRoute
 import Route
@@ -84,6 +86,7 @@ access_asked = |asked|
 		StartTopic(place) => Asks({ place, act: Post })
 		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
+		ShowRecent => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
 		InviteAgent(_) => AsksNoConversation
@@ -120,6 +123,7 @@ anonymous_refusal = |asked|
 	match asked {
 		StartGitHubLink => unauthorized_refusal
 		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
+		ShowRecent => SignInRoute.login_redirect(site_path_of(PageKit.recent_path))
 		StartTopic(_) => unauthorized_refusal
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
@@ -297,6 +301,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				now: Clock.read_clock!({}),
 			})
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
+		ShowRecent => RecentRoute.show!({ acting, directory })
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>

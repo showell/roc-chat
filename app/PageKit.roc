@@ -12,8 +12,8 @@
 ## first paint.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
-## title, then the Home link (`HomeLink`), the links to Browse and the
-## invites page, and the viewer's name. Under it, a page another module
+## title, then the Home link (`HomeLink`), the links to Browse, Recent and
+## the invites page, and the viewer's name. Under it, a page another module
 ## builds (`signed_in_page`) holds its parts in a panel, and ends with
 ## app/chrome.js, which styles the top bar and adds its theme toggle, and
 ## app/panel.js, which draws the panel as a card.
@@ -38,6 +38,10 @@ PageKit :: [].{
 	## Where the invites page is, which the top bar links to.
 	invites_path : Str
 	invites_path = "/invites"
+
+	## Where Recent is, which the top bar links to.
+	recent_path : Str
+	recent_path = "/chat/recent"
 
 	## The token `text` spells, for a name a page writes: one that isn't is
 	## its writer's bug.
@@ -210,7 +214,7 @@ PageKit :: [].{
 		])
 
 	## The top bar: `title` on the left, and on the right the Home link, the
-	## links to Browse and the invites page, and the name of `viewer`, the
+	## links to Browse, Recent and the invites page, and the name of `viewer`, the
 	## user viewing the page. The invites link is here so that a human in a
 	## conversation reaches invites in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
@@ -234,6 +238,12 @@ PageKit :: [].{
 							name: A,
 							attributes: [Link(PageKit.site_path(ConversationKey.browse_path))],
 							inner: Escape.text("Browse"),
+						}),
+						Escape.text(" · "),
+						Html.element({
+							name: A,
+							attributes: [Link(PageKit.site_path(PageKit.recent_path))],
+							inner: Escape.text("Recent"),
 						}),
 						Escape.text(" · "),
 						Html.element({

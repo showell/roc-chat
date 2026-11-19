@@ -111,6 +111,7 @@ upload_asked = |choice|
 		SignedInOnly(UploadToConversation(key)) => UploadTo(key)
 		SignedInOnly(StartGitHubLink) => NoUpload
 		SignedInOnly(ShowBrowse) => NoUpload
+		SignedInOnly(ShowRecent) => NoUpload
 		SignedInOnly(StartTopic(_)) => NoUpload
 		SignedInOnly(ShowConversation(_)) => NoUpload
 		SignedInOnly(AppendToConversation(_)) => NoUpload
