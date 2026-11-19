@@ -51,10 +51,18 @@ import Users
 ConversationPage :: [].{
 
 	## A human's page has the sidebar of the places Browse lists for them,
-	## with who of the humans is online; a key's has none.
+	## with who of the humans is online, and what the line above the page
+	## says as it is drawn (a DM's says where the other human is,
+	## `Presence.presence_words`); a key's has none.
 	SidebarShown : [
 		NoSidebar,
-		Sidebar({ places : List(Browse.PlaceWithTopics), online_humans : List(UserId) }),
+		Sidebar(
+			{
+				places : List(Browse.PlaceWithTopics),
+				online_humans : List(UserId),
+				notice : [NoNotice, Notice(Str)],
+			},
+		),
 	]
 
 	## The page of `conversation`, the conversation `key`, for `viewer`, each
@@ -114,8 +122,8 @@ ConversationPage :: [].{
 		{ toggle, nav, scripts } =
 			match sidebar {
 				NoSidebar => { toggle: [], nav: [], scripts: [] }
-				Sidebar({ places, online_humans }) => {
-					toggle: [Sidebar.toggle, notice_strip],
+				Sidebar({ places, online_humans, notice }) => {
+					toggle: [Sidebar.toggle, notice_strip(notice)],
 					nav: [
 						Sidebar.nav({
 							places,
@@ -130,7 +138,11 @@ ConversationPage :: [].{
 		PageKit.document({
 			title: topic.to_str(),
 			body: TrustedHtml.join([
-				PageKit.top_bar({ title: topic.to_str(), viewer }),
+				PageKit.linked_top_bar({
+					title: top_title({ key, viewer: viewer.user(), users }),
+					link: PageKit.site_path(key.url_path(Page)),
+					viewer,
+				}),
 				PageKit.newline,
 				TrustedHtml.join(toggle),
 				Html.element({
@@ -367,17 +379,48 @@ compose_box = |key| {
 	})
 }
 
-## The line above the layout where app/sidebar.js says that someone has
-## come online, empty as the page is drawn.
-notice_strip : TrustedHtml
-notice_strip = TrustedHtml.join([
-	Html.element({
-		name: P,
-		attributes: [PageContract.class(NoticeStrip)],
-		inner: TrustedHtml.join([]),
-	}),
-	PageKit.newline,
-])
+## The line above the layout, saying `notice` as the page is drawn, where
+## app/sidebar.js later says that someone has come online.
+notice_strip : [NoNotice, Notice(Str)] -> TrustedHtml
+notice_strip = |notice|
+	TrustedHtml.join([
+		Html.element({
+			name: P,
+			attributes: [PageContract.class(NoticeStrip)],
+			inner: match notice {
+				NoNotice => TrustedHtml.join([])
+				Notice(words) => Escape.text(words)
+			},
+		}),
+		PageKit.newline,
+	])
+
+## The top bar's title of the conversation `key`, on `viewer`'s page: a DM
+## names the other human, then "on" and the topic ("Apoorva on ChitChat",
+## where Gopher Chat said "Chat w/Apoorva: ChitChat"), and the viewer's own
+## DM names the viewer, as Gopher Chat did; a channel's is Gopher Chat's
+## "#general: roc-chat".
+top_title : {
+	key : ConversationKey,
+	viewer : Users.User,
+	users : Users,
+} -> Str
+top_title = |{ key, viewer, users }| {
+	topic = key.topic().to_str()
+	match key.place().which() {
+		Channel(name) => "#${name.to_str()}: ${topic}"
+		Dm(pair) => {
+			person =
+				match pair.members().drop_if(|id| id == viewer.id()) {
+					[other] =>
+						users.user(other)
+							?? crash "ConversationPage.top_title: a DM is between users the directory holds"
+					_ => viewer
+				}
+			"${person.name().to_str()} on ${topic}"
+		}
+	}
+}
 
 ## A user's id, which the scripts compare: a message's author's with the
 ## viewer's.

@@ -330,6 +330,9 @@
 //!  56. a name that is no topic: Browse again, a 400, nothing made;
 //!  57. the acceptance path: Browse, a person, a topic, an empty chat, compose,
 //!      Send, and see it, live and on the page, and on Browse for its humans.
+//! 57b. (in 53a) a DM's title is the other human "on" the topic, a link to
+//!      the page itself; the line above Steve's DM with Uma says she hasn't
+//!      been on since the server started, then that she is online;
 //! 57a. a topic's first message tells its humans' open pages, the author's
 //!      too, `topic-added`; Tam adds a topic, and Steve's open stream hears
 //!      it; her next message there tells no one.
@@ -1049,6 +1052,7 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
     const here = "data-section=\"/chat/dm/1_3\" data-person=\"3\" data-presence=\"online\">";
     try t.check("presence: Uma, joined but never seen, is away in Steve's sidebar, and his own DM names no one", before.status == 200 and has(before.body, away) and
         has(before.body, "data-section=\"/chat/dm/1_1\">") and stream.isEventStream());
+    try t.check("presence: the line above Steve's DM with Uma says, as it is drawn, that she hasn't been on since the server started", has(before.body, "<p class=\"notice-strip\">Uma hasn&#39;t been on since the server started.</p>"));
     // Her first request that counts: Browse.
     const browsed = try getAs(a, io, port, uma, "/chat");
     const online = try stream.event();
@@ -1063,6 +1067,7 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
     const after = try getAs(a, io, port, steve_session, dm);
     try t.check("presence: her next page tells no one: Steve's next event is his own message; his page now draws her online", again.status == 200 and said.status == 201 and
         std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and !has(again.body, "data-person=\"3\""));
+    try t.check("presence: the line above his DM with her now says, as it is drawn, \"Uma is online.\"", has(after.body, "<p class=\"notice-strip\">Uma is online.</p>"));
 }
 
 /// Steps 52 to 58, as Steve (1), Tam (2) and Uma (3), who are all in #general;
@@ -1139,6 +1144,10 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const conversation_page = try getAs(a, io, port, steve_session, "/chat/dm/1_2/ChitChat");
     const tams_conversation = try getAs(a, io, port, tam, "/chat/dm/1_2/ChitChat");
     const invites_from_top_bar = try getAs(a, io, port, tam, between(tams_conversation.body, "Recent</a> · <a href=\"", "\">Invites</a>") orelse "");
+    const tams_title = between(tams_conversation.body, "<span class=\"top-title\"><a href=\"", "\">Steve on ChitChat</a></span>") orelse "";
+    const title_reloads = try getAs(a, io, port, tam, tams_title);
+    try t.check("a DM's title names the other human on the topic, for each of them, and links to the page itself, which it reloads", has(conversation_page.body, "<span class=\"top-title\"><a href=\"/chat/dm/1_2/ChitChat\">Tam on ChitChat</a></span>") and
+        std.mem.eql(u8, tams_title, "/chat/dm/1_2/ChitChat") and title_reloads.status == 200 and has(title_reloads.body, "Steve on ChitChat</a></span>"));
     try t.check("a conversation's top bar links to /invites, for the owner and any other human, and reaches the form", conversation_page.status == 200 and has(conversation_page.body, top_bar_link) and
         tams_conversation.status == 200 and has(tams_conversation.body, top_bar_link) and invites_from_top_bar.status == 200 and has(invites_from_top_bar.body, "action=\"/invites\""));
     try t.check("no link to /invites for a stranger, at sign-in", sign_in.status == 200 and !has(sign_in.body, "/invites"));

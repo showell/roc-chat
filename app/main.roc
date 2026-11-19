@@ -136,6 +136,7 @@ demo_sidebar = {
 	Sidebar({
 		places: listed.map(|{ label, place }| { label, place, topics: [] }),
 		online_humans: [],
+		notice: NoNotice,
 	})
 }
 

@@ -218,48 +218,23 @@ PageKit :: [].{
 	## user viewing the page. The invites link is here so that a human in a
 	## conversation reaches invites in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
-	top_bar = |{ title, viewer }|
-		Html.element({
-			name: Header,
-			attributes: [PageContract.class(TopBar)],
-			inner: TrustedHtml.join([
-				Html.element({
-					name: Span,
-					attributes: [PageContract.class(TopTitle)],
-					inner: Escape.text(title),
-				}),
-				PageKit.space,
-				Html.element({
-					name: Div,
-					attributes: [PageContract.class(TopUser)],
-					inner: TrustedHtml.join([
-						home_link,
-						Html.element({
-							name: A,
-							attributes: [Link(PageKit.site_path(ConversationKey.browse_path))],
-							inner: Escape.text("Browse"),
-						}),
-						Escape.text(" · "),
-						Html.element({
-							name: A,
-							attributes: [Link(PageKit.site_path(PageKit.recent_path))],
-							inner: Escape.text("Recent"),
-						}),
-						Escape.text(" · "),
-						Html.element({
-							name: A,
-							attributes: [Link(PageKit.site_path(PageKit.invites_path))],
-							inner: Escape.text("Invites"),
-						}),
-						Escape.text(" · "),
-						Html.element({
-							name: Span,
-							attributes: [PageContract.class(Viewer)],
-							inner: Escape.text(viewer.user().name().to_str()),
-						}),
-					]),
-				}),
-			]),
+	top_bar = |{ title, viewer }| top_bar_titled({ title: Escape.text(title), viewer })
+
+	## The top bar, its `title` a link to `link`, the page's own path, so a
+	## click on it reloads the page.
+	linked_top_bar : {
+		title : Str,
+		link : Html.SitePath,
+		viewer : SignedIn,
+	} -> TrustedHtml
+	linked_top_bar = |{ title, link, viewer }|
+		top_bar_titled({
+			title: Html.element({
+				name: A,
+				attributes: [Link(link)],
+				inner: Escape.text(title),
+			}),
+			viewer,
 		})
 
 	## A page of a signed-in human's: the document, its top bar of `title`
@@ -323,6 +298,52 @@ PageKit :: [].{
 			}),
 		})
 }
+
+## The top bar, `title` on its left.
+top_bar_titled : { title : TrustedHtml, viewer : SignedIn } -> TrustedHtml
+top_bar_titled = |{ title, viewer }|
+	Html.element({
+		name: Header,
+		attributes: [PageContract.class(TopBar)],
+		inner: TrustedHtml.join([
+			Html.element({
+				name: Span,
+				attributes: [PageContract.class(TopTitle)],
+				inner: title,
+			}),
+			PageKit.space,
+			Html.element({
+				name: Div,
+				attributes: [PageContract.class(TopUser)],
+				inner: TrustedHtml.join([
+					home_link,
+					Html.element({
+						name: A,
+						attributes: [Link(PageKit.site_path(ConversationKey.browse_path))],
+						inner: Escape.text("Browse"),
+					}),
+					Escape.text(" · "),
+					Html.element({
+						name: A,
+						attributes: [Link(PageKit.site_path(PageKit.recent_path))],
+						inner: Escape.text("Recent"),
+					}),
+					Escape.text(" · "),
+					Html.element({
+						name: A,
+						attributes: [Link(PageKit.site_path(PageKit.invites_path))],
+						inner: Escape.text("Invites"),
+					}),
+					Escape.text(" · "),
+					Html.element({
+						name: Span,
+						attributes: [PageContract.class(Viewer)],
+						inner: Escape.text(viewer.user().name().to_str()),
+					}),
+				]),
+			}),
+		]),
+	})
 
 ## The top bar's Home link and the separator after it, or nothing for a
 ## fork with none (`HomeLink.NoHomeLink`).

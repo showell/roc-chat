@@ -92,6 +92,25 @@ Presence :: [].{
 			}),
 		})
 
+	## What the line above a DM's page says of the other human, named
+	## `name`, as the page is drawn at `now`: that they are online; else
+	## when they were last active, in whole minutes, hours or days; else,
+	## never seen since the host last started, that they haven't been on.
+	presence_words : {
+		name : Str,
+		last_seen : Presence.LastSeen,
+		now : Timestamp,
+	} -> Str
+	presence_words = |{ name, last_seen, now }|
+		if Presence.is_online({ last_seen, now }) {
+			"${name} is online."
+		} else {
+			match last_seen {
+				SeenAt(seen) => "${name} was last active ${time_ago(now.seconds_since(seen))} ago."
+				NeverSeen => "${name} hasn't been on since the server started."
+			}
+		}
+
 	## The topic of a DM a notice links to, of the DM's `topics` in byte
 	## order: the first, or `general` when it has none yet, as Browse
 	## suggests for a place's first.
@@ -108,4 +127,24 @@ Presence :: [].{
 	link_to = |key|
 		Html.SitePath.from_str(key.url_path(Page))
 			?? crash "Presence.link_to: a conversation's page is a site path"
+}
+
+## How long `quiet` is, in the largest whole unit of minutes, hours and days
+## it holds at least one of: "5 minutes", "1 hour", "3 days".
+time_ago : Seconds -> Str
+time_ago = |quiet| {
+	seconds = quiet.to_i128()
+	(count, unit) =
+		if seconds < 3600 {
+			(seconds // 60, "minute")
+		} else if seconds < 86_400 {
+			(seconds // 3600, "hour")
+		} else {
+			(seconds // 86_400, "day")
+		}
+	if count == 1 {
+		"1 ${unit}"
+	} else {
+		"${count.to_str()} ${unit}s"
+	}
 }

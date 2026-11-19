@@ -3,7 +3,8 @@
 ## and when the request brings them online it sends every other human, on
 ## their own stream, the dot for their sidebar and "<name> has come
 ## online.", linked to their DM with the human. It also tells a page which
-## humans are online, for the dots it is drawn with.
+## humans are online, for the dots it is drawn with, and what a DM's page
+## says of the other human as it is drawn.
 import pf.Host
 import ConversationKey
 import Directory
@@ -57,6 +58,40 @@ PresenceNotices :: [].{
 		}
 		$online_humans
 	}
+
+	## What the line above `viewer`'s page of the conversation `key` says
+	## as it is drawn at `now`: for a DM with another human of `directory`,
+	## where they are (`Presence.presence_words`); nothing for a channel or
+	## the viewer's own DM.
+	load_dm_notice! : {
+		key : ConversationKey,
+		viewer : UserId,
+		directory : Directory,
+		now : Timestamp,
+	} => [NoNotice, Notice(Str)]
+	load_dm_notice! = |{ key, viewer, directory, now }|
+		match key.place().which() {
+			Channel(_) => NoNotice
+			Dm(pair) =>
+				match pair.members().drop_if(|id| id == viewer) {
+					[other] =>
+						match directory.users().user(other) {
+							Ok(user) => {
+								kept_key = Presence.last_seen_key(other)
+								kept = Host.read_second_kept_under_key!(kept_key)
+								Notice(
+									Presence.presence_words({
+										name: user.name().to_str(),
+										last_seen: last_seen_of(kept),
+										now,
+									}),
+								)
+							}
+							Err(NoSuchUser) => NoNotice
+						}
+					_ => NoNotice
+				}
+		}
 }
 
 ## What the host answered of a kept second, as when a human was last seen.

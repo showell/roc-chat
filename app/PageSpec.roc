@@ -72,7 +72,7 @@ plans_page : {
 	messages : Str,
 } -> Str
 plans_page = |{ viewer, viewer_id, count, messages }|
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str
@@ -83,6 +83,61 @@ steves_page = |{ count, messages }|
 		count,
 		messages,
 	})
+
+## The page of the empty conversation at `path`, among the sample's users
+## and the channel `general`, for the sample's user named `viewer`, with a
+## sidebar of no places whose line above the page says `notice`.
+empty_page : { path : Str, viewer : Str }, [NoNotice, Notice(Str)] -> Str
+empty_page = |{ path, viewer }, notice| {
+	directory = Sample.with_default_channel(Sample.directory)
+	key = ConversationKey.from_url_path({
+		path: UnvalidatedString.from_utf8(path.to_utf8()) ?? crash "PageSpec.empty_page: a path is UTF-8",
+		directory,
+	}).map_ok(|found| found.key) ?? crash "PageSpec.empty_page: a conversation's path"
+	Str.from_utf8_lossy(
+		ConversationPage.conversation({
+			conversation: Conversation.empty(key.topic()),
+			reactions: Reactions.empty,
+			key,
+			viewer: SignedIn.dangerously_assume(Sample.user(viewer)),
+			users: directory.users(),
+			sidebar: Sidebar({ places: [], online_humans: [], notice }),
+		}).to_utf8(),
+	)
+}
+
+## The top bar's title as a page holds it: `words`, linked to the page's
+## own `path`.
+title_at : { path : Str, words : Str } -> Str
+title_at = |{ path, words }|
+	"<header class=\"top-bar\"><span class=\"top-title\"><a href=\"${path}\">${words}</a></span> "
+
+# The top bar's title, linked to the page itself, so a click reloads it: a
+# DM names the other human "on" the topic, for each of them; a channel's is
+# Gopher Chat's; the viewer's own DM names the viewer.
+expect
+	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, NoNotice)
+		.contains(title_at({ path: "/chat/dm/1_2/plans", words: "Apoorva on plans" }))
+expect
+	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Apoorva" }, NoNotice)
+		.contains(title_at({ path: "/chat/dm/1_2/plans", words: "Steve on plans" }))
+expect
+	empty_page({ path: "/chat/channel/general/plans", viewer: "Steve" }, NoNotice)
+		.contains(title_at({ path: "/chat/channel/general/plans", words: "#general: plans" }))
+expect
+	empty_page({ path: "/chat/dm/1_1/plans", viewer: "Steve" }, NoNotice)
+		.contains(title_at({ path: "/chat/dm/1_1/plans", words: "Steve on plans" }))
+
+# The line above the page says what it is drawn with, escaped, or nothing.
+expect
+	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, Notice("Apoorva is online."))
+		.contains("</button>\n<p class=\"notice-strip\">Apoorva is online.</p>\n<div class=\"layout\">")
+expect
+	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, Notice("<b> is online."))
+		.contains("<p class=\"notice-strip\">&lt;b&gt; is online.</p>")
+expect
+	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, NoNotice)
+		.contains("<p class=\"notice-strip\"></p>")
 
 ## What every page opens with, titled `title` (already escaped): the
 ## doctype, the charset, the viewport, the title, and the colour script.
@@ -204,7 +259,7 @@ expect {
 			key: plans_key,
 			viewer: steve,
 			users: Sample.directory.users(),
-			sidebar: Sidebar({ places: [], online_humans: [] }),
+			sidebar: Sidebar({ places: [], online_humans: [], notice: NoNotice }),
 		}),
 		AgentsPage.agents({
 			viewer: steve,

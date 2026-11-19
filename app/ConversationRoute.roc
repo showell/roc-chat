@@ -210,11 +210,18 @@ load_page! = |{ key, acting, directory }| {
 			Ok(listed) => {
 				places = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
 				humans = directory.users().to_list().keep_oks(|user| user.as_human())
+				now = Clock.read_clock!({})
 				online_humans = PresenceNotices.load_online_humans!({
 					humans: humans.map(|human| human.id()),
-					now: Clock.read_clock!({}),
+					now,
 				})
-				Sidebar({ places, online_humans })
+				notice = PresenceNotices.load_dm_notice!({
+					key,
+					viewer: acting.user().id(),
+					directory,
+					now,
+				})
+				Sidebar({ places, online_humans, notice })
 			}
 		}
 	ResumeRoute.record_opened!({ key, acting })?

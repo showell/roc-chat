@@ -57,6 +57,7 @@ window.Viewport = (function () {
     '.top-bar { flex: none; background: var(--cc-top-bar-bg); border-bottom: 1px solid var(--cc-top-bar-border);' +
       ' padding: 8px 24px; display: flex; justify-content: space-between; align-items: baseline; gap: 14px; }',
     '.top-title { font-weight: bold; color: var(--cc-accent); min-width: 0; overflow-wrap: anywhere; }',
+    '.top-title a { color: inherit; text-decoration: none; }',
     '.top-user { font-size: 13px; color: var(--cc-body-muted-fg); white-space: nowrap; }',
     '.top-user .viewer { font-weight: bold; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',

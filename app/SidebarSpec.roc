@@ -196,7 +196,7 @@ expect {
 			online_humans: [],
 		}).to_utf8(),
 	)
-	with_sidebar = page_with(Sidebar({ places, online_humans: [] }))
+	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice }))
 	without = page_with(NoSidebar)
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<p class=\"notice-strip\"></p>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")

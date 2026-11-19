@@ -77,6 +77,23 @@ expect
 	Str.from_utf8_lossy(Presence.notice_frame({ name: "<b>", link: Presence.link_to(key_at("/chat/dm/1_2/plans")) }))
 		.contains(">&lt;b&gt; has come online.</a>")
 
+# What a DM's page says of the other human as it is drawn: online; else how
+# long ago they were last active, in the largest whole unit; else that they
+# haven't been on since the server started.
+expect {
+	words = |last_seen| Presence.presence_words({ name: "Apoorva", last_seen, now })
+	words(seen_ago(0)) == "Apoorva is online."
+		and words(seen_ago(299)) == "Apoorva is online."
+		and words(seen_ago(300)) == "Apoorva was last active 5 minutes ago."
+		and words(seen_ago(3599)) == "Apoorva was last active 59 minutes ago."
+		and words(seen_ago(3600)) == "Apoorva was last active 1 hour ago."
+		and words(seen_ago(2 * 3600 + 59 * 60)) == "Apoorva was last active 2 hours ago."
+		and words(seen_ago(86_399)) == "Apoorva was last active 23 hours ago."
+		and words(seen_ago(86_400)) == "Apoorva was last active 1 day ago."
+		and words(seen_ago(10 * 86_400)) == "Apoorva was last active 10 days ago."
+		and words(NeverSeen) == "Apoorva hasn't been on since the server started."
+}
+
 # A notice links to the DM's first topic, or to `general` when it has none.
 expect {
 	topic = |text| Topic.from_str(text) ?? crash "PresenceSpec: a topic"
