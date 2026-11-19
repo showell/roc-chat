@@ -51,8 +51,8 @@
 ## included: the way in, the scripts, the icon, the sign-in routes but the
 ## link to GitHub, an agent's redemption, and the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
-## in is said here once, by the type, and main answers each `SignedInOnly`
-## route to no one but someone signed in.
+## in is said here once, by the type, and `Dispatch` answers each
+## `SignedInOnly` route to no one but someone signed in.
 ##
 ## A conversation's path is `ConversationKey`'s to read, which says which
 ## of its resources the path names, and each script's is `Script`'s. A

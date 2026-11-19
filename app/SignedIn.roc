@@ -13,9 +13,9 @@
 ## `by_api_key` takes an `AgentKey.Admitted`, which only `AgentKey.admit`
 ## makes, after the hash of the secret an agent sent matched a live key of its
 ## own (`AgentInvite` is how a key is got).
-## The third, `dangerously_assume`, checks nothing. Only main's first start,
-## which makes the founder before anyone can sign in, and tests call it,
-## and its callers are what a security reader audits.
+## The third, `dangerously_assume`, checks nothing. Only the first start
+## (`FirstStart`), which makes the founder before anyone can sign in, the
+## demo's page and tests call it, and its callers are what a security reader audits.
 ##
 ## A request that proves nothing is `Anonymous` (`Actor`), never someone
 ## signed in: only the routes that take an `Actor` answer it.
@@ -47,8 +47,9 @@ SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
 	Actor : [SignedIn(SignedIn), Anonymous]
 
 	## `user`, taken as signed in by a session with nothing checked. This is
-	## dangerous: a wrong call lets anyone act as anyone. Only main's first
-	## start, which makes the founder, and tests call it.
+	## dangerous: a wrong call lets anyone act as anyone. Only the first
+	## start (`FirstStart`), which makes the founder, the demo's page and tests
+	## call it.
 	dangerously_assume : Users.User -> SignedIn
 	dangerously_assume = |user| SignedIn.({ user, credential: Session })
 

@@ -5,8 +5,8 @@
 ## changes a channel's members to take part. A user signed in by an API key
 ## may besides do only what the key's scope reaches (`KeyScope`).
 ##
-## main asks this of every conversation's route before it answers, so no
-## route answers a reader or a writer the place doesn't admit.
+## `Dispatch` asks this of every conversation's route before it answers,
+## so no route answers a reader or a writer the place doesn't admit.
 import ChannelName
 import Directory
 import KeyScope

@@ -36,8 +36,8 @@
 ##
 ## A client that sends no `Origin` and no `Sec-Fetch-` headers (curl, as the
 ## README posts) passes. A header sent twice names no one value, and is
-## refused as a foreign one. Each refusal is a named tag, which main answers
-## with a 403.
+## refused as a foreign one. Each refusal is a named tag, which `Admission`
+## answers with a 403.
 ##
 ## This module is one of the program's five trust boundaries. The others
 ## are `UnvalidatedString`, the way text comes in; `TrustedHtml`, the way
