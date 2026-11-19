@@ -13,10 +13,10 @@
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
 ## title, then the Home link (`HomeLink`), the links to Browse and the
-## invites page, and the viewer's name. Under it, a page another module builds (`signed_in_page`) holds its
-## parts in a panel, and ends with app/chrome.js, which styles the top bar
-## and adds its theme toggle, and app/panel.js, which draws the panel as a
-## card.
+## invites page, and the viewer's name. Under it, a page another module
+## builds (`signed_in_page`) holds its parts in a panel, and ends with
+## app/chrome.js, which styles the top bar and adds its theme toggle, and
+## app/panel.js, which draws the panel as a card.
 ##
 ## Every `Str` a page shows goes in through `Escape.text`, and every
 ## element through `Html.element`. This module vouches

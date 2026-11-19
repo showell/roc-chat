@@ -198,7 +198,8 @@ is_token_byte = |byte| Ascii.is_letter(byte) or Ascii.is_digit(byte) or byte == 
 ## Whether `text` is a host: one or more parts joined by `.`, each of ASCII
 ## letters, digits and `-`.
 is_host : Str -> Bool
-is_host = |text| text.split_on(".").all(|part| !part.is_empty() and part.to_utf8().all(is_token_byte))
+is_host = |text|
+	text.split_on(".").all(|part| !part.is_empty() and part.to_utf8().all(is_token_byte))
 
 ## Whether `part`, between a site path's `/`s, is one, or why not.
 site_path_part : Str -> Try({}, [EmptyPart, HiddenPart, ForbiddenByte])
