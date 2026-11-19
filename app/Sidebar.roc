@@ -28,7 +28,7 @@ Sidebar :: [].{
 	toggle = TrustedHtml.join([
 		Html.element({
 			name: Button,
-			attrs: [PageContract.class(SidebarToggle)],
+			attributes: [PageContract.class(SidebarToggle)],
 			inner: Escape.text("Conversations"),
 		}),
 		PageKit.newline,
@@ -46,7 +46,7 @@ Sidebar :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: Nav,
-				attrs: [PageContract.class(Sidebar)],
+				attributes: [PageContract.class(Sidebar)],
 				inner: TrustedHtml.join(List.concat([PageKit.newline], groups)),
 			}),
 			PageKit.newline,
@@ -77,7 +77,7 @@ group_elements = |{ heading, places, current }|
 			[
 				Html.element({
 					name: P,
-					attrs: [PageContract.class(SidebarHeading)],
+					attributes: [PageContract.class(SidebarHeading)],
 					inner: Escape.text(heading),
 				}),
 				PageKit.newline,
@@ -101,7 +101,7 @@ place_section = |{ listed, current }| {
 			[
 				Html.element({
 					name: Li,
-					attrs: [PageContract.class(SidebarEmpty)],
+					attributes: [PageContract.class(SidebarEmpty)],
 					inner: Escape.text("No sessions yet"),
 				}),
 			]
@@ -117,20 +117,20 @@ place_section = |{ listed, current }| {
 	TrustedHtml.join([
 		Html.element({
 			name: Div,
-			attrs: [
+			attributes: [
 				PageContract.class(SidebarPlace),
 				PageContract.data_attribute(Section(section)),
 			],
 			inner: TrustedHtml.join([
 				Html.element({
 					name: P,
-					attrs: [PageContract.class(SidebarPlaceName)],
+					attributes: [PageContract.class(SidebarPlaceName)],
 					inner: Escape.text(listed.label),
 				}),
 				PageKit.newline,
 				Html.element({
 					name: Ul,
-					attrs: [PageContract.class(SidebarTopics)],
+					attributes: [PageContract.class(SidebarTopics)],
 					inner: TrustedHtml.join(
 						List.concat(
 							[PageKit.newline],
@@ -157,10 +157,10 @@ topic_row = |{ key, current }| {
 	}
 	Html.element({
 		name: Li,
-		attrs: [],
+		attributes: [],
 		inner: Html.element({
 			name: A,
-			attrs: marked.append(Link(PageKit.site_path(key.url_path(Page)))),
+			attributes: marked.append(Link(PageKit.site_path(key.url_path(Page)))),
 			inner: Escape.text(key.topic().to_str()),
 		}),
 	})

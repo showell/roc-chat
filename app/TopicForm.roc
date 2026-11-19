@@ -26,14 +26,14 @@ TopicForm :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: Form,
-				attrs: [
+				attributes: [
 					MethodPost,
 					Action(PageKit.site_path(ConversationKey.place_url_path(place))),
 				],
 				inner: TrustedHtml.join([
 					PageKit.labelled_input({
 						label: "New topic",
-						attrs: List.concat(
+						attributes: List.concat(
 							[
 								InputType(Text),
 								FieldName(PageKit.token(UrlEncodedForm.topic_name)),
@@ -44,7 +44,7 @@ TopicForm :: [].{
 					}),
 					Html.element({
 						name: Button,
-						attrs: [],
+						attributes: [],
 						inner: Escape.text("Add topic"),
 					}),
 				]),

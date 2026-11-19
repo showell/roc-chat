@@ -95,10 +95,10 @@ PageContract :: [].{
 			Reactors(ids) => Data(token("reactors"), Token(ids))
 		}
 
-	## An element `attrs` alone opens, as a test reads it.
+	## An element `attributes` alone opens, as a test reads it.
 	empty_paragraph : List(Html.Attribute) -> List(U8)
-	empty_paragraph = |attrs|
-		Html.element({ name: P, attrs, inner: TrustedHtml.join([]) }).to_utf8()
+	empty_paragraph = |attributes|
+		Html.element({ name: P, attributes, inner: TrustedHtml.join([]) }).to_utf8()
 }
 
 class_name : PageContract.Class -> Str

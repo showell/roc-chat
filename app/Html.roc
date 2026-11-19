@@ -134,12 +134,12 @@ Html :: [].{
 	## trusted.
 	element : {
 		name : Html.ElementName,
-		attrs : List(Html.Attribute),
+		attributes : List(Html.Attribute),
 		inner : TrustedHtml,
 	} -> TrustedHtml
-	element = |{ name, attrs, inner }| {
+	element = |{ name, attributes, inner }| {
 		tag_name = name_of(name)
-		attributes_text = Str.join_with(attrs.map(attribute), "")
+		attributes_text = Str.join_with(attributes.map(attribute), "")
 		TrustedHtml.join([
 			TrustedHtml.dangerously_trust("<${tag_name}${attributes_text}>"),
 			inner,
@@ -149,8 +149,8 @@ Html :: [].{
 
 	## An input: `<input a="v">`, which has no end tag and holds nothing.
 	input : List(Html.Attribute) -> TrustedHtml
-	input = |attrs|
-		TrustedHtml.dangerously_trust("<input${Str.join_with(attrs.map(attribute), "")}>")
+	input = |attributes|
+		TrustedHtml.dangerously_trust("<input${Str.join_with(attributes.map(attribute), "")}>")
 }
 
 is_token_byte : U8 -> Bool
@@ -194,8 +194,8 @@ name_of = |name|
 
 ## One attribute as an element's open tag writes it, space first.
 attribute : Html.Attribute -> Str
-attribute = |attr|
-	match attr {
+attribute = |given|
+	match given {
 		Class(token) => " class=\"${token.to_str()}\""
 		Id(token) => " id=\"${token.to_str()}\""
 		Href(token) => " href=\"#${token.to_str()}\""
@@ -336,7 +336,7 @@ expect {
 		(Action(path("/chat/dm/1_1/plans")), " action=\"/chat/dm/1_1/plans\""),
 		(Required, " required"),
 		(Src(path("/chat/assets/compose.js")), " src=\"/chat/assets/compose.js\""),
-	].all(|(attr, expected)| attribute(attr) == expected)
+	].all(|(given, expected)| attribute(given) == expected)
 }
 # An input's attributes, each as an open tag writes it.
 expect {
@@ -352,7 +352,7 @@ expect {
 		(Autocomplete(Username), " autocomplete=\"username\""),
 		(Autocomplete(CurrentPassword), " autocomplete=\"current-password\""),
 		(Autocomplete(NewPassword), " autocomplete=\"new-password\""),
-	].all(|(attr, expected)| attribute(attr) == expected)
+	].all(|(given, expected)| attribute(given) == expected)
 }
 # A link to another page of this site: its site path, as it is.
 expect
@@ -372,10 +372,10 @@ expect Html.input([]).to_utf8() == "<input>".to_utf8()
 expect
 	Html.element({
 		name: A,
-		attrs: [Class(token("ref")), Href(token("msg-1"))],
+		attributes: [Class(token("ref")), Href(token("msg-1"))],
 		inner: TrustedHtml.dangerously_trust("&lt;i&gt;"),
 	}).to_utf8()
 		== "<a class=\"ref\" href=\"#msg-1\">&lt;i&gt;</a>".to_utf8()
 expect
-	Html.element({ name: P, attrs: [], inner: TrustedHtml.join([]) }).to_utf8()
+	Html.element({ name: P, attributes: [], inner: TrustedHtml.join([]) }).to_utf8()
 		== "<p></p>".to_utf8()

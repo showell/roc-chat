@@ -66,20 +66,20 @@ PageKit :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: P,
-				attrs: [],
+				attributes: [],
 				inner: Escape.text(said),
 			}),
 			PageKit.newline,
 		])
 
-	## A paragraph of `label` and an input of `attrs`, and a line end.
-	labelled_input : { label : Str, attrs : List(Html.Attribute) } -> TrustedHtml
-	labelled_input = |{ label, attrs }|
+	## A paragraph of `label` and an input of `attributes`, and a line end.
+	labelled_input : { label : Str, attributes : List(Html.Attribute) } -> TrustedHtml
+	labelled_input = |{ label, attributes }|
 		TrustedHtml.join([
 			Html.element({
 				name: P,
-				attrs: [],
-				inner: TrustedHtml.join([Escape.text("${label} "), Html.input(attrs)]),
+				attributes: [],
+				inner: TrustedHtml.join([Escape.text("${label} "), Html.input(attributes)]),
 			}),
 			PageKit.newline,
 		])
@@ -91,10 +91,10 @@ PageKit :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: Form,
-				attrs: [MethodPost, Action(PageKit.site_path(action))],
+				attributes: [MethodPost, Action(PageKit.site_path(action))],
 				inner: Html.element({
 					name: Button,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text(label),
 				}),
 			}),
@@ -111,13 +111,13 @@ PageKit :: [].{
 	text_form = |{ action, fields, label }|
 		Html.element({
 			name: Form,
-			attrs: [MethodPost, Action(PageKit.site_path(action))],
+			attributes: [MethodPost, Action(PageKit.site_path(action))],
 			inner: TrustedHtml.join(
 				fields.map(
 					|field|
 						PageKit.labelled_input({
 							label: field.label,
-							attrs: [
+							attributes: [
 								InputType(Text),
 								FieldName(PageKit.token(field.name)),
 								Required,
@@ -126,7 +126,7 @@ PageKit :: [].{
 				).append(
 					Html.element({
 						name: Button,
-						attrs: [],
+						attributes: [],
 						inner: Escape.text(label),
 					}),
 				),
@@ -139,7 +139,7 @@ PageKit :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: H1,
-				attrs: [],
+				attributes: [],
 				inner: Escape.text(said),
 			}),
 			PageKit.newline,
@@ -151,10 +151,10 @@ PageKit :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: P,
-				attrs: [],
+				attributes: [],
 				inner: Html.element({
 					name: A,
-					attrs: [Link(PageKit.site_path(path))],
+					attributes: [Link(PageKit.site_path(path))],
 					inner: Escape.text(text),
 				}),
 			}),
@@ -167,7 +167,7 @@ PageKit :: [].{
 		TrustedHtml.join([
 			Html.element({
 				name: P,
-				attrs: [PageContract.class(InviteCode)],
+				attributes: [PageContract.class(InviteCode)],
 				inner: Escape.text(code),
 			}),
 			PageKit.newline,
@@ -186,7 +186,7 @@ PageKit :: [].{
 	script = |chosen|
 		Html.element({
 			name: Script,
-			attrs: [Src(PageKit.site_path(chosen.url_path()))],
+			attributes: [Src(PageKit.site_path(chosen.url_path()))],
 			inner: TrustedHtml.join([]),
 		})
 
@@ -199,7 +199,7 @@ PageKit :: [].{
 			doctype,
 			Html.element({
 				name: Title,
-				attrs: [],
+				attributes: [],
 				inner: Escape.text(title),
 			}),
 			PageKit.newline,
@@ -216,33 +216,33 @@ PageKit :: [].{
 	top_bar = |{ title, viewer }|
 		Html.element({
 			name: Header,
-			attrs: [PageContract.class(TopBar)],
+			attributes: [PageContract.class(TopBar)],
 			inner: TrustedHtml.join([
 				Html.element({
 					name: Span,
-					attrs: [PageContract.class(TopTitle)],
+					attributes: [PageContract.class(TopTitle)],
 					inner: Escape.text(title),
 				}),
 				PageKit.space,
 				Html.element({
 					name: Div,
-					attrs: [PageContract.class(TopUser)],
+					attributes: [PageContract.class(TopUser)],
 					inner: TrustedHtml.join([
 						Html.element({
 							name: A,
-							attrs: [Link(PageKit.site_path(ConversationKey.browse_path))],
+							attributes: [Link(PageKit.site_path(ConversationKey.browse_path))],
 							inner: Escape.text("Browse"),
 						}),
 						Escape.text(" · "),
 						Html.element({
 							name: A,
-							attrs: [Link(PageKit.site_path(PageKit.invites_path))],
+							attributes: [Link(PageKit.site_path(PageKit.invites_path))],
 							inner: Escape.text("Invites"),
 						}),
 						Escape.text(" · "),
 						Html.element({
 							name: Span,
-							attrs: [PageContract.class(Viewer)],
+							attributes: [PageContract.class(Viewer)],
 							inner: Escape.text(viewer.user().name().to_str()),
 						}),
 					]),
@@ -266,10 +266,10 @@ PageKit :: [].{
 				PageKit.newline,
 				Html.element({
 					name: Div,
-					attrs: [PageContract.class(Layout)],
+					attributes: [PageContract.class(Layout)],
 					inner: Html.element({
 						name: Div,
-						attrs: [PageContract.class(Panel)],
+						attributes: [PageContract.class(Panel)],
 						inner: TrustedHtml.join(List.concat([PageKit.newline], parts)),
 					}),
 				}),
@@ -289,7 +289,7 @@ PageKit :: [].{
 			title,
 			body: Html.element({
 				name: P,
-				attrs: [],
+				attributes: [],
 				inner: Escape.text(text),
 			}),
 		})
@@ -306,7 +306,7 @@ PageKit :: [].{
 			title: "Not a transcript",
 			body: Html.element({
 				name: P,
-				attrs: [],
+				attributes: [],
 				inner: Escape.text("Not a transcript: ${why}."),
 			}),
 		})

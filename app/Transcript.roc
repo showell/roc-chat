@@ -9,7 +9,7 @@
 ##     The markdown, exactly as written.
 ##
 ## Each message opens with the separator, then its reference
-## (`MsgAnchor`), its author, its time, an empty line, its markdown
+## (`MessageAnchor`), its author, its time, an empty line, its markdown
 ## and an empty line. A conversation with no messages is an empty file. No
 ## message's markdown can forge the start of another, and a body holding
 ## the bare separator, which no writer makes, is refused (Separator).

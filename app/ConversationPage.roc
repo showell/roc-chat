@@ -33,8 +33,8 @@ import Escape
 import Html
 import Markdown
 import Message
+import MessageAnchor
 import MessageNotes
-import MsgAnchor
 import PageContract
 import PageKit
 import Reactions
@@ -79,7 +79,7 @@ ConversationPage :: [].{
 				TrustedHtml.join([
 					Html.element({
 						name: P,
-						attrs: [PageContract.class(Empty)],
+						attributes: [PageContract.class(Empty)],
 						inner: Escape.text("No messages yet."),
 					}),
 					PageKit.newline,
@@ -121,12 +121,12 @@ ConversationPage :: [].{
 				TrustedHtml.join(toggle),
 				Html.element({
 					name: Div,
-					attrs: [PageContract.class(Layout)],
+					attributes: [PageContract.class(Layout)],
 					inner: TrustedHtml.join([
 						TrustedHtml.join(nav),
 						Html.element({
 							name: Div,
-							attrs: [
+							attributes: [
 								PageContract.class(Messages),
 								PageContract.data_attribute(Stream(stream_path)),
 								PageContract.data_attribute(After(shown_count)),
@@ -173,7 +173,7 @@ ConversationPage :: [].{
 		},
 	| {
 		message_reference = thread.reference(one_message.id())
-		author_attrs =
+		author_attributes =
 			match users.user_by_name(one_message.author().name()) {
 				Ok(user) => [PageContract.data_attribute(Author(user_id(user)))]
 				Err(NoSuchUser) => []
@@ -181,19 +181,19 @@ ConversationPage :: [].{
 		header = TrustedHtml.join([
 			Html.element({
 				name: Span,
-				attrs: [PageContract.class(Author)],
+				attributes: [PageContract.class(Author)],
 				inner: Escape.text(one_message.author().to_str()),
 			}),
 			PageKit.space,
 			Html.element({
 				name: Time,
-				attrs: [DateTime(one_message.time())],
+				attributes: [DateTime(one_message.time())],
 				inner: Escape.text(one_message.time().to_str()),
 			}),
 			PageKit.space,
 			Html.element({
 				name: A,
-				attrs: [PageContract.class(Ref), Href(anchor(message_reference))],
+				attributes: [PageContract.class(Ref), Href(anchor(message_reference))],
 				inner: Escape.text(message_reference.to_str()),
 			}),
 		])
@@ -208,16 +208,16 @@ ConversationPage :: [].{
 			}
 		article = Html.element({
 			name: Article,
-			attrs: List.concat(
+			attributes: List.concat(
 				[PageContract.class(Message), Id(anchor(message_reference))],
-				author_attrs,
+				author_attributes,
 			),
 			inner: TrustedHtml.join([
-				Html.element({ name: Header, attrs: [], inner: header }),
+				Html.element({ name: Header, attributes: [], inner: header }),
 				PageKit.newline,
 				Html.element({
 					name: Div,
-					attrs: [PageContract.class(Body)],
+					attributes: [PageContract.class(Body)],
 					inner: body,
 				}),
 				reaction_strip(notes.chips()),
@@ -230,33 +230,33 @@ ConversationPage :: [].{
 
 ## An edited message's body: a line naming the edit, `edit_reference`,
 ## linked, then its `markdown`, as written, folded away.
-edited_body : { edit_reference : MsgAnchor, markdown : Str } -> TrustedHtml
+edited_body : { edit_reference : MessageAnchor, markdown : Str } -> TrustedHtml
 edited_body = |{ edit_reference, markdown }|
 	TrustedHtml.join([
 		Html.element({
 			name: P,
-			attrs: [PageContract.class(EditedNote)],
+			attributes: [PageContract.class(EditedNote)],
 			inner: TrustedHtml.join([
 				Escape.text("Edited in "),
 				Html.element({
 					name: A,
-					attrs: [PageContract.class(Ref), Href(anchor(edit_reference))],
+					attributes: [PageContract.class(Ref), Href(anchor(edit_reference))],
 					inner: Escape.text(edit_reference.to_str()),
 				}),
 			]),
 		}),
 		Html.element({
 			name: Details,
-			attrs: [PageContract.class(EditedOriginal)],
+			attributes: [PageContract.class(EditedOriginal)],
 			inner: TrustedHtml.join([
 				Html.element({
 					name: Summary,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("original"),
 				}),
 				Html.element({
 					name: Div,
-					attrs: [PageContract.class(EditedMarkdown)],
+					attributes: [PageContract.class(EditedMarkdown)],
 					inner: Escape.text(markdown),
 				}),
 			]),
@@ -272,20 +272,20 @@ reaction_strip = |chips|
 	} else {
 		Html.element({
 			name: Div,
-			attrs: [PageContract.class(ReactionStrip)],
+			attributes: [PageContract.class(ReactionStrip)],
 			inner: TrustedHtml.join(
 				chips.map(
 					|chip|
 						Html.element({
 							name: Button,
-							attrs: [
+							attributes: [
 								PageContract.class(ReactionChip),
 								PageContract.data_attribute(Reactors(reactors_token(chip))),
 							],
 							inner: TrustedHtml.join([
 								Html.element({
 									name: Span,
-									attrs: [PageContract.class(ReactionEmoji)],
+									attributes: [PageContract.class(ReactionEmoji)],
 									inner: Escape.text(chip.emoji.to_str()),
 								}),
 								PageKit.space,
@@ -312,11 +312,11 @@ compose_box = |key| {
 	byte_limit = PageKit.token(UploadedImage.most_bytes.to_str())
 	Html.element({
 		name: Div,
-		attrs: [PageContract.class(Compose)],
+		attributes: [PageContract.class(Compose)],
 		inner: TrustedHtml.join([
 			Html.element({
 				name: Form,
-				attrs: [
+				attributes: [
 					MethodPost,
 					Action(PageKit.site_path(key.url_path(Page))),
 					PageContract.data_attribute(Send(PageKit.site_path(key.url_path(Send)))),
@@ -326,13 +326,16 @@ compose_box = |key| {
 				inner: TrustedHtml.join([
 					Html.element({
 						name: Textarea,
-						attrs: [FieldName(PageKit.token(UrlEncodedForm.markdown_name)), Required],
+						attributes: [
+							FieldName(PageKit.token(UrlEncodedForm.markdown_name)),
+							Required,
+						],
 						inner: TrustedHtml.join([]),
 					}),
 					PageKit.newline,
 					Html.element({
 						name: Button,
-						attrs: [],
+						attributes: [],
 						inner: Escape.text("Send"),
 					}),
 				]),
@@ -340,7 +343,7 @@ compose_box = |key| {
 			PageKit.newline,
 			Html.element({
 				name: P,
-				attrs: [PageContract.class(Help)],
+				attributes: [PageContract.class(Help)],
 				inner: Escape.text("Markdown supported · attach an image · Ctrl/⌘-Enter to send"),
 			}),
 		]),
@@ -352,9 +355,9 @@ compose_box = |key| {
 user_id : Users.User -> Html.Token
 user_id = |user| PageKit.token(user.id().to_str())
 
-## A message's anchor, as a token: `MsgAnchor.page_anchor`'s spelling,
+## A message's anchor, as a token: `MessageAnchor.page_anchor`'s spelling,
 ## which an element's id and a link's `#` both write.
-anchor : MsgAnchor -> Html.Token
+anchor : MessageAnchor -> Html.Token
 anchor = |message_reference| PageKit.token(message_reference.page_anchor())
 
 # ── tests
@@ -362,12 +365,12 @@ anchor = |message_reference| PageKit.token(message_reference.page_anchor())
 expect {
 	second = Message.Id.first.next() ?? crash "ConversationPage's tests: the first id has a next"
 	plans = Topic.from_str("plans") ?? crash "ConversationPage's tests: a topic"
-	first_named = MsgAnchor.of({ topic: plans, id: Message.Id.first })
-	second_named = MsgAnchor.of({ topic: plans, id: second })
+	first_named = MessageAnchor.of({ topic: plans, id: Message.Id.first })
+	second_named = MessageAnchor.of({ topic: plans, id: second })
 	[
 		(Id(anchor(first_named)), "<p id=\"msg-1\"></p>"),
 		(Href(anchor(first_named)), "<p href=\"#msg-1\"></p>"),
 		(Id(anchor(second_named)), "<p id=\"msg-2\"></p>"),
 		(Href(anchor(second_named)), "<p href=\"#msg-2\"></p>"),
-	].all(|(attr, expected)| PageContract.empty_paragraph([attr]) == expected.to_utf8())
+	].all(|(attribute, expected)| PageContract.empty_paragraph([attribute]) == expected.to_utf8())
 }

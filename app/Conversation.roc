@@ -6,7 +6,7 @@
 import Author
 import DateTime
 import Message
-import MsgAnchor
+import MessageAnchor
 import Topic
 
 Conversation :: { topic : Topic, messages : List(Message) }.{
@@ -52,8 +52,11 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 
 	## The reference for message `id`, `MSG_<topic>_<n>`. It's unique only
 	## within the conversation's channel or DM, as the topic is.
-	reference : Conversation, Message.Id -> MsgAnchor
-	reference = |Conversation.(conversation), id| MsgAnchor.of({ topic: conversation.topic, id })
+	reference : Conversation, Message.Id -> MessageAnchor
+	reference = |
+		Conversation.(conversation),
+		id,
+	| MessageAnchor.of({ topic: conversation.topic, id })
 
 	topic : Conversation -> Topic
 	topic = |Conversation.(conversation)| conversation.topic

@@ -52,17 +52,17 @@ AgentsPage :: [].{
 			}
 		make_form = Html.element({
 			name: Form,
-			attrs: [MethodPost, Action(PageKit.site_path("/agents"))],
+			attributes: [MethodPost, Action(PageKit.site_path("/agents"))],
 			inner: TrustedHtml.join([
 				Html.element({
 					name: Textarea,
-					attrs: [FieldName(PageKit.token("name")), Required],
+					attributes: [FieldName(PageKit.token("name")), Required],
 					inner: TrustedHtml.join([]),
 				}),
 				PageKit.newline,
 				Html.element({
 					name: Button,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("Make an agent"),
 				}),
 			]),
@@ -96,7 +96,7 @@ agent_section = |{ agent, keys, invites }| {
 	TrustedHtml.join([
 		Html.element({
 			name: H1,
-			attrs: [],
+			attributes: [],
 			inner: Escape.text("${agent.name().to_str()} (id ${agent.id().to_str()})"),
 		}),
 		PageKit.newline,

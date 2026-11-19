@@ -18,13 +18,13 @@ JoinPage :: [].{
 	join = {
 		form = Html.element({
 			name: Form,
-			attrs: [MethodPost, Action(PageKit.site_path("/join"))],
+			attributes: [MethodPost, Action(PageKit.site_path("/join"))],
 			inner: TrustedHtml.join([
 				Html.input([InputType(Hidden), FieldName(PageKit.token("code"))]),
 				PageKit.newline,
 				PageKit.labelled_input({
 					label: "Your name",
-					attrs: [
+					attributes: [
 						InputType(Text),
 						FieldName(PageKit.token("name")),
 						Autocomplete(Username),
@@ -33,7 +33,7 @@ JoinPage :: [].{
 				}),
 				PageKit.labelled_input({
 					label: "Your password",
-					attrs: [
+					attributes: [
 						InputType(Password),
 						FieldName(PageKit.token("password")),
 						Autocomplete(NewPassword),
@@ -42,7 +42,7 @@ JoinPage :: [].{
 				}),
 				Html.element({
 					name: Button,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("Join"),
 				}),
 			]),
@@ -52,7 +52,7 @@ JoinPage :: [].{
 			body: TrustedHtml.join([
 				Html.element({
 					name: H1,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("Join the chat"),
 				}),
 				PageKit.newline,

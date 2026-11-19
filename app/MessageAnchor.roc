@@ -11,20 +11,20 @@
 import Message
 import Topic
 
-MsgAnchor :: { topic : Topic, id : Message.Id }.{
+MessageAnchor :: { topic : Topic, id : Message.Id }.{
 
 	## The message `id` of `topic`'s conversation.
-	of : { topic : Topic, id : Message.Id } -> MsgAnchor
-	of = |named| MsgAnchor.(named)
+	of : { topic : Topic, id : Message.Id } -> MessageAnchor
+	of = |named| MessageAnchor.(named)
 
 	## The message's reference, `MSG_<topic>_<id>`.
-	to_str : MsgAnchor -> Str
-	to_str = |MsgAnchor.({ topic, id })| "MSG_${topic.to_str()}_${id.to_str()}"
+	to_str : MessageAnchor -> Str
+	to_str = |MessageAnchor.({ topic, id })| "MSG_${topic.to_str()}_${id.to_str()}"
 
 	## The message's page anchor, `msg-<id>`, for an element's id and a
 	## link's `#`.
-	page_anchor : MsgAnchor -> Str
-	page_anchor = |MsgAnchor.({ topic: _, id })| "msg-${id.to_str()}"
+	page_anchor : MessageAnchor -> Str
+	page_anchor = |MessageAnchor.({ topic: _, id })| "msg-${id.to_str()}"
 
 	is_eq : _
 }
@@ -32,16 +32,16 @@ MsgAnchor :: { topic : Topic, id : Message.Id }.{
 # ── tests
 ## The message `id` under the topic `topic` spells, which a test's topic
 ## always does.
-anchor_of : { topic : Str, id : Message.Id } -> MsgAnchor
+anchor_of : { topic : Str, id : Message.Id } -> MessageAnchor
 anchor_of = |{ topic, id }|
-	MsgAnchor.of({
-		topic: Topic.from_str(topic) ?? crash "MsgAnchor's tests: a test's topic is one",
+	MessageAnchor.of({
+		topic: Topic.from_str(topic) ?? crash "MessageAnchor's tests: a test's topic is one",
 		id,
 	})
 
 ## The second message's id.
 second : Message.Id
-second = Message.Id.first.next() ?? crash "MsgAnchor's tests: the first id has a next"
+second = Message.Id.first.next() ?? crash "MessageAnchor's tests: the first id has a next"
 
 # The reference names the topic and the id, at the first id and the next,
 # under two topics.

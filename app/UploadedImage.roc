@@ -205,8 +205,8 @@ expect {
 }
 expect
 	["png", "jpg", "gif", "webp"].all(
-		|ext| UploadedImage.from_name("${"0".repeat(32)}.${ext}").map_ok(UploadedImage.name)
-			== Ok("${"0".repeat(32)}.${ext}"),
+		|suffix| UploadedImage.from_name("${"0".repeat(32)}.${suffix}").map_ok(UploadedImage.name)
+			== Ok("${"0".repeat(32)}.${suffix}"),
 	)
 expect UploadedImage.from_name("${"0".repeat(32)}.jpg").map_ok(UploadedImage.kind) == Ok(Jpeg)
 expect UploadedImage.from_name("${"9".repeat(32)}.webp").map_ok(UploadedImage.kind) == Ok(Webp)

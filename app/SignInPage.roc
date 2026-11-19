@@ -36,7 +36,7 @@ SignInPage :: [].{
 			}
 		form = Html.element({
 			name: Form,
-			attrs: [MethodPost, Action(PageKit.site_path("/login"))],
+			attributes: [MethodPost, Action(PageKit.site_path("/login"))],
 			inner: TrustedHtml.join([
 				Html.input([
 					InputType(Hidden),
@@ -46,7 +46,7 @@ SignInPage :: [].{
 				PageKit.newline,
 				PageKit.labelled_input({
 					label: "Name",
-					attrs: [
+					attributes: [
 						InputType(Text),
 						FieldName(PageKit.token("name")),
 						Autocomplete(Username),
@@ -55,7 +55,7 @@ SignInPage :: [].{
 				}),
 				PageKit.labelled_input({
 					label: "Password",
-					attrs: [
+					attributes: [
 						InputType(Password),
 						FieldName(PageKit.token("password")),
 						Autocomplete(CurrentPassword),
@@ -64,7 +64,7 @@ SignInPage :: [].{
 				}),
 				Html.element({
 					name: Button,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("Sign in"),
 				}),
 			]),
@@ -76,10 +76,10 @@ SignInPage :: [].{
 					TrustedHtml.join([
 						Html.element({
 							name: P,
-							attrs: [],
+							attributes: [],
 							inner: Html.element({
 								name: A,
-								attrs: [
+								attributes: [
 									LinkWithNext({ path: PageKit.site_path("/login/github/start"), next }),
 								],
 								inner: Escape.text("Sign in with GitHub"),
@@ -138,11 +138,11 @@ SignInPage :: [].{
 			}
 		form = Html.element({
 			name: Form,
-			attrs: [MethodPost, Action(PageKit.site_path("/login/github/name"))],
+			attributes: [MethodPost, Action(PageKit.site_path("/login/github/name"))],
 			inner: TrustedHtml.join([
 				PageKit.labelled_input({
 					label: "Your name",
-					attrs: List.concat(
+					attributes: List.concat(
 						[
 							InputType(Text),
 							FieldName(PageKit.token("name")),
@@ -154,7 +154,7 @@ SignInPage :: [].{
 				}),
 				Html.element({
 					name: Button,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("Join"),
 				}),
 			]),
@@ -164,7 +164,7 @@ SignInPage :: [].{
 			body: TrustedHtml.join([
 				Html.element({
 					name: H1,
-					attrs: [],
+					attributes: [],
 					inner: Escape.text("Choose your name"),
 				}),
 				PageKit.newline,
