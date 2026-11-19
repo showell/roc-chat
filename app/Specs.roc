@@ -18,6 +18,7 @@ import ConversationKeySpec
 import ConversationSpec
 import DirectorySpec
 import DmSpec
+import GitHubSignInSpec
 import HumanInvitesSpec
 import PageSpec
 import PlaceSpec
