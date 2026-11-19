@@ -94,11 +94,14 @@ expect Agents.owned_agent(
 	{ owner: Sample.human("Steve"), agent: UserId.from_str("9") ?? crash "AgentsSpec: an id" },
 ) == Err(NoSuchAgent)
 
-## What making an agent from the form `body` by `owner` gives: the new
-## agent's name, id and owner, or why not.
+## What making an agent from the form `body` by `owner`, signed in by their
+## session, gives: the new agent's name, id and owner, or why not.
 new_agent_from : { owner : Str, body : Str } -> Try(Str, _)
 new_agent_from = |{ owner, body }|
-	Agents.make(with_lc, { owner: Sample.human(owner), body: body.to_utf8() }).map_ok(
+	Agents.make(
+		with_lc,
+		{ acting: SignedIn.dangerously_assume(user_named(owner)), body: body.to_utf8() },
+	).map_ok(
 		|addition| {
 			user = addition.user
 			match user.role() {
@@ -108,9 +111,21 @@ new_agent_from = |{ owner, body }|
 		},
 	)
 
-# An agent new_agent_from: the next id, owned by whoever new_agent_from it.
+# An agent the admin makes: the next id, owned by the admin. Any other human,
+# and an agent, makes none, even with a good form.
 expect new_agent_from({ owner: "Steve", body: "name=Helper+Bot" }) == Ok("Helper Bot 5 of 1")
-expect new_agent_from({ owner: "Apoorva", body: "name=Helper" }) == Ok("Helper 5 of 2")
+expect new_agent_from({ owner: "Apoorva", body: "name=Helper" }) == Err(NotAdmin)
+expect new_agent_from({ owner: "CC", body: "name=Helper" }) == Err(Agent(user_named("CC").id()))
+# Only the admin, by their session, works with agents: not another human, an
+# agent by its session, or an agent by its key.
+expect
+	Agents.agent_keeper(SignedIn.dangerously_assume(Sample.steve)).map_ok(Users.Human.id)
+		== Ok(UserId.chat_owner)
+expect Agents.agent_keeper(SignedIn.dangerously_assume(user_named("Apoorva"))) == Err(NotAdmin)
+expect
+	Agents.agent_keeper(SignedIn.dangerously_assume(user_named("CC")))
+		== Err(Agent(user_named("CC").id()))
+expect Agents.agent_keeper(cc_by_key(KeyScope.everywhere)) == Err(ByApiKey)
 # A form at fault, a name that is no name, and one taken in any case, by a
 # human, an agent or a channel.
 expect new_agent_from({ owner: "Steve", body: "" }) == Err(BadForm("The form has no field `name`."))
@@ -136,7 +151,7 @@ expect [
 expect
 	Agents.make(
 		Sample.directory_with_ids_left(0),
-		{ owner: Sample.human("Steve"), body: "name=Bot".to_utf8() },
+		{ acting: SignedIn.dangerously_assume(Sample.steve), body: "name=Bot".to_utf8() },
 	).map_ok(|_| {})
 		== Err(Full)
 
@@ -209,6 +224,7 @@ expect
 	[
 		(ByApiKey, 403),
 		(Agent(UserId.chat_owner), 403),
+		(NotAdmin, 403),
 		(NotTheOwner, 403),
 		(NoSuchAgent, 404),
 		(NoSuchKey, 404),
@@ -429,7 +445,7 @@ expect {
 	plain = Str.from_utf8_lossy(
 		AgentsPage.agents({
 			viewer: SignedIn.dangerously_assume(steve),
-			agents: [summary],
+			agents: Kept([summary]),
 			shown: NoCode,
 			github_link: LinkNotOffered,
 		}).to_utf8(),
@@ -441,8 +457,16 @@ expect {
 	showing = Str.from_utf8_lossy(
 		AgentsPage.agents({
 			viewer: SignedIn.dangerously_assume(steve),
-			agents: [summary],
+			agents: Kept([summary]),
 			shown: Code({ agent: cc, code }),
+			github_link: LinkOffered,
+		}).to_utf8(),
+	)
+	not_kept = Str.from_utf8_lossy(
+		AgentsPage.agents({
+			viewer: SignedIn.dangerously_assume(steve),
+			agents: NotTheKeeper,
+			shown: NoCode,
 			github_link: LinkOffered,
 		}).to_utf8(),
 	)
@@ -458,4 +482,7 @@ expect {
 		and plain.contains("<p>Invite 2: redeemed, expires 1970-01-01T00:10:00Z.</p>")
 		and !plain.contains("invite-code")
 		and showing.contains("<p class=\"invite-code\">2-${"ab".repeat(32)}</p>")
+		and not_kept.contains("action=\"/login/github/link\"")
+		and not_kept.contains("<p>Only the admin makes and manages agents.</p>")
+		and !not_kept.contains("action=\"/agents\"")
 }

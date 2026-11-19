@@ -1,8 +1,9 @@
 ## This module builds the agents page, which `AgentsRoute` serves at
-## `/agents`: a human's agents, each with its keys and its invites, and the
-## buttons that make, invite and revoke them. A human with no GitHub account
-## yet may be offered a button that links one (`GitHubLinkOffer`, which
-## `GitHubRoute` decides).
+## `/agents`: the admin's agents, each with its keys and its invites, and the
+## buttons that make, invite and revoke them. Any other human sees a line
+## saying agents are the admin's. A human with no GitHub account yet may be
+## offered a button that links one (`GitHubLinkOffer`, which `GitHubRoute`
+## decides).
 import AgentInvite
 import AgentKey
 import DateTime
@@ -29,18 +30,20 @@ AgentsPage :: [].{
 	## with no GitHub account yet, on a server with GitHub's settings.
 	GitHubLinkOffer : [LinkOffered, LinkNotOffered]
 
-	## The agents page, for `viewer`: a form that makes an agent, then each
-	## of `agents` with a button that invites it, and its keys and invites,
-	## each live one with a button that revokes it. When an invite was just
-	## made, its code comes first (`shown`), the one time it is shown. Last,
-	## when `github_link` offers it, a button that links GitHub.
+	## The agents page, for `viewer`: when they keep agents (`Kept`, the
+	## admin), a form that makes an agent, then each agent with a button that
+	## invites it, and its keys and invites, each live one with a button that
+	## revokes it; else (`NotTheKeeper`) a line saying agents are the admin's.
+	## When an invite was just made, its code comes first (`shown`), the one
+	## time it is shown. Last, when `github_link` offers it, a button that
+	## links GitHub.
 	agents : {
 		viewer : SignedIn,
-		agents : List(AgentsPage.AgentSummary),
+		agents : [Kept(List(AgentsPage.AgentSummary)), NotTheKeeper],
 		shown : [NoCode, Code({ agent : Users.User, code : SecretToken })],
 		github_link : AgentsPage.GitHubLinkOffer,
 	} -> TrustedHtml
-	agents = |{ viewer, agents: summaries, shown, github_link }| {
+	agents = |{ viewer, agents: kept, shown, github_link }| {
 		code =
 			match shown {
 				NoCode => TrustedHtml.join([])
@@ -73,9 +76,15 @@ AgentsPage :: [].{
 				PageKit.top_bar({ title: "Agents", viewer }),
 				PageKit.newline,
 				code,
-				make_form,
-				PageKit.newline,
-				TrustedHtml.join(summaries.map(agent_section)),
+				match kept {
+					Kept(summaries) =>
+						TrustedHtml.join([
+							make_form,
+							PageKit.newline,
+							TrustedHtml.join(summaries.map(agent_section)),
+						])
+					NotTheKeeper => PageKit.paragraph("Only the admin makes and manages agents.")
+				},
 				match github_link {
 					LinkOffered => PageKit.post_button({
 						action: "/login/github/link",

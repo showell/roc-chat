@@ -263,7 +263,7 @@ expect {
 		}),
 		AgentsPage.agents({
 			viewer: steve,
-			agents: [],
+			agents: Kept([]),
 			shown: NoCode,
 			github_link: LinkOffered,
 		}),

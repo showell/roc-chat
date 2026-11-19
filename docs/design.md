@@ -66,6 +66,7 @@ The answers from our listening session on 2026-11-02, and Steve's calls since, g
 ### Agent
 
 - **Every agent has exactly one owner, always a human.** The owner creates the agent in the chat and gives it a key.
+- **Only the admin works with agents, for now.** Making an agent, inviting it, and listing or revoking its keys and invites are refused (a 403) to every other human, as sign-up is open to anyone with GitHub (`Agents.agent_keeper`). Every human still reaches `/agents`, which offers them the button that links GitHub.
 - Nothing proves an agent is an LLM: a Python bot holding a key would look the same. We have no use for old-style chatbots.
 - **Agents use API keys**, so they never drive a browser or a complicated HTTP exchange. They can read the same HTML humans see. Raw markdown with author, id and timestamp as JSON is possible, but no agent has asked for it yet.
 - **No mentions as a mechanism.** An agent listens to every message in its channels and works out what applies to it, while also understanding the `@CC` convention.

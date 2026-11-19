@@ -277,7 +277,8 @@
 //! 48zh. no chat file holds the client secret or a token, and no refusal says
 //!      them;
 //! 48zi. a human with a password links GitHub from /agents: their page offers
-//!      it, the trip binds `github-id` and `github-session-secret`, no account
+//!      it, and no agent work, which is the admin's (a make, an invite and a
+//!      revoke of theirs 403 each), the trip binds `github-id` and `github-session-secret`, no account
 //!      is made, their old session ends and the answer's own admits them, the
 //!      offer is gone, and that GitHub then signs in to the same account;
 //! 48zj. linking an id someone holds: 409, nothing bound, the session unbroken;
@@ -2254,6 +2255,14 @@ fn linkSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, he
     const steve_page = try get(a, io, port, "/agents");
     try t.check("/agents offers a human with no github-id to link GitHub, and not Steve, who has one", her_page.status == 200 and
         has(her_page.body, offer) and steve_page.status == 200 and !has(steve_page.body, offer));
+    const ids_before = try readFile(a, io, data, "auth/next-id.txt");
+    const her_make = try postAs(a, io, port, debbie, "/agents", "name=Rogue");
+    const her_invite = try postAs(a, io, port, debbie, "/agents/2/invites", "");
+    const her_revoke = try postAs(a, io, port, debbie, "/agents/2/keys/1/revoke", "");
+    try t.check("agents are the admin's: Debbie's /agents has no form that makes one, and her make, invite and revoke are 403 each, nothing made", !has(her_page.body, "action=\"/agents\"") and
+        has(her_page.body, "Only the admin makes and manages agents.") and
+        her_make.status == 403 and her_invite.status == 403 and her_revoke.status == 403 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), ids_before));
     const counter = try readFile(a, io, data, "auth/next-id.txt");
     const begun = try startLink(a, io, port, fake, debbie);
     const linked = try finishLink(a, io, port, fake, debbie, begun, "user-id-30");

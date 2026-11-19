@@ -2,21 +2,24 @@
 ## so its tests reach every rule; `AgentsRoute` reads and writes the files
 ## and answers. The rules are:
 ##
-## - A human signed in by their own session makes an agent, which they
-##   then own, and invites it. A request with an API key may do neither,
-##   whoever the key names: a key never makes an agent, invites, or lists
-##   or revokes keys (`SignedIn.human_in_session`).
+## - The admin, signed in by their own session, makes an agent, which they
+##   then own, and invites it (`agent_keeper`). Any other human may do
+##   neither, and nor may a request with an API key, whoever the key names:
+##   a key never makes an agent, invites, or lists or revokes keys
+##   (`SignedIn.human_in_session`).
 ## - An agent's key comes only from redeeming an invite, so humans never
 ##   pass a durable secret around (`AgentInvite`, `AgentKey`). A redemption
 ##   needs no other credential, and a request with an API key may not
 ##   redeem: a key never mints a key.
 ## - A human manages only the agents they own: their keys and invites are
 ##   listed, and revoked, by their owner alone.
+import Admin
 import AgentInvite
 import AgentKey
 import Directory
 import KeyScope
 import SecretToken
+import SignedIn
 import UrlEncodedForm
 import UserId
 import Users
@@ -27,6 +30,7 @@ Agents :: [].{
 	Refusal : [
 		ByApiKey,
 		Agent(UserId),
+		NotAdmin,
 		NoSuchAgent,
 		NotTheOwner,
 		BadForm(Str),
@@ -40,8 +44,8 @@ Agents :: [].{
 		CodeRefused,
 	]
 
-	## A refusal in words, with its status: a request with a key, or a
-	## human who doesn't own the agent, a 403; no such agent, key or
+	## A refusal in words, with its status: a request with a key, a human
+	## who is not the admin, or one who doesn't own the agent, a 403; no such agent, key or
 	## invite, a 404; a form at fault, a 400; a name taken, the chat full,
 	## or a key or invite already ended, a 409; and any refusal of an
 	## invite's code one 401 that says no more.
@@ -53,6 +57,7 @@ Agents :: [].{
 				said: "An API key can't do this: only a human, signed in, makes, invites and manages agents, and a key never mints a key.",
 			}
 			Agent(_) => { status: 403, said: "An agent can't make, invite or manage agents." }
+			NotAdmin => { status: 403, said: "Only the chat's admin makes, invites and manages agents." }
 			NoSuchAgent => { status: 404, said: "No such agent." }
 			NotTheOwner => { status: 403, said: "Only the agent's owner manages it." }
 			BadForm(said) => { status: 400, said }
@@ -68,6 +73,15 @@ Agents :: [].{
 			Spent => { status: 409, said: "The invite is already redeemed." }
 			CodeRefused => { status: 401, said: "The invite code is not live." }
 		}
+
+	## The human `acting` is, when they may work with agents: the admin alone,
+	## by their own session.
+	agent_keeper : SignedIn -> Try(Users.Human, [ByApiKey, Agent(UserId), NotAdmin])
+	agent_keeper = |acting| {
+		human = acting.human_in_session()?
+		_ = Admin.of(acting)?
+		Ok(human)
+	}
 
 	## The agents `owner` owns, in id order.
 	agents_of : Directory, Users.Human -> List(Users.User)
@@ -99,13 +113,15 @@ Agents :: [].{
 		}
 
 	## `directory` with an agent named by the form `body`'s field `name`,
-	## owned by `owner`, and that agent; or why not.
+	## owned by `acting`, who must be the admin (`agent_keeper`), and that
+	## agent; or why not.
 	make : Directory,
-	{ owner : Users.Human, body : List(U8) } -> Try(
+	{ acting : SignedIn, body : List(U8) } -> Try(
 		Directory.Addition,
-		[BadForm(Str), BadName, NameTaken, Full],
+		[ByApiKey, Agent(UserId), NotAdmin, BadForm(Str), BadName, NameTaken, Full],
 	)
-	make = |directory, { owner, body }| {
+	make = |directory, { acting, body }| {
+		owner = Agents.agent_keeper(acting)?
 		unchecked = UrlEncodedForm.field({ body, name: "name" }) ? |fault| BadForm(
 			UrlEncodedForm.fault_words({ fault, name: "name" }),
 		)

@@ -73,8 +73,8 @@ AgentsRoute :: [].{
 			}
 		}
 
-	## A GET of `/agents`: the acting human's agents, their keys and their
-	## invites.
+	## A GET of `/agents`: the admin's agents, their keys and their
+	## invites; for any human, the button that links GitHub when it is offered.
 	show! : { acting : SignedIn, directory : Directory } => Http.Response
 	show! = |{ acting, directory }|
 		match load_agents_page!({ acting, directory, shown: NoCode }) {
@@ -213,18 +213,25 @@ load_agents_page! : {
 	shown : [NoCode, Code({ agent : Users.User, code : SecretToken })],
 } => Try(TrustedHtml, _)
 load_agents_page! = |{ acting, directory, shown }| {
-	owner = acting.human_in_session() ? |why| Refused(why)
-	github_link = GitHubRoute.load_link_offer!(owner.id()) ? |fault| FileSystem(fault)
-	var $summaries = []
-	for agent in Agents.agents_of(directory, owner) {
-		keys = AgentFiles.read_agent_keys!(agent.id()) ? |fault| FileSystem(fault)
-		invites = AgentFiles.read_agent_invites!(agent.id()) ? |fault| FileSystem(fault)
-		$summaries = $summaries.append({ agent, keys, invites })
-	}
+	human = acting.human_in_session() ? |why| Refused(why)
+	github_link = GitHubRoute.load_link_offer!(human.id()) ? |fault| FileSystem(fault)
+	agents =
+		match Agents.agent_keeper(acting) {
+			Err(_) => NotTheKeeper
+			Ok(owner) => {
+				var $summaries = []
+				for agent in Agents.agents_of(directory, owner) {
+					keys = AgentFiles.read_agent_keys!(agent.id()) ? |fault| FileSystem(fault)
+					invites = AgentFiles.read_agent_invites!(agent.id()) ? |fault| FileSystem(fault)
+					$summaries = $summaries.append({ agent, keys, invites })
+				}
+				Kept($summaries)
+			}
+		}
 	Ok(
 		AgentsPage.agents({
 			viewer: acting,
-			agents: $summaries,
+			agents,
 			shown,
 			github_link,
 		}),
@@ -237,8 +244,7 @@ make_agent! : {
 	body : List(U8),
 } => Try({}, _)
 make_agent! = |{ acting, directory, body }| {
-	owner = acting.human_in_session() ? |why| Refused(why)
-	addition = Agents.make(directory, { owner, body }) ? |why| Refused(why)
+	addition = Agents.make(directory, { acting, body }) ? |why| Refused(why)
 	AccountFiles.replace_user_counter!(addition.directory.users()) ? |fault| FileSystem(fault)
 	AccountFiles.create_account!(addition.user) ? |fault| FileSystem(fault)
 	Ok({})
@@ -252,7 +258,7 @@ invite_agent! : {
 	now : Timestamp,
 } => Try(TrustedHtml, _)
 invite_agent! = |{ acting, directory, agent, body, now }| {
-	owner = acting.human_in_session() ? |why| Refused(why)
+	owner = Agents.agent_keeper(acting) ? |why| Refused(why)
 	invited = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	scope = Agents.scope_from_form(body) ? |why| Refused(why)
 	id = AgentFiles.find_next_agent_invite_id!(agent) ? |why| FileFacts.refusal_when_full(why)
@@ -278,7 +284,7 @@ revoke_agent_key! : {
 	key : AgentKey.Id,
 } => Try({}, _)
 revoke_agent_key! = |{ acting, directory, agent, key }| {
-	owner = acting.human_in_session() ? |why| Refused(why)
+	owner = Agents.agent_keeper(acting) ? |why| Refused(why)
 	_ = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	keys = AgentFiles.read_agent_keys!(agent) ? |fault| FileSystem(fault)
 	revoked = Agents.revoked_key(keys, key) ? |why| Refused(why)
@@ -295,7 +301,7 @@ revoke_agent_invite! : {
 	invite : AgentInvite.Id,
 } => Try({}, _)
 revoke_agent_invite! = |{ acting, directory, agent, invite }| {
-	owner = acting.human_in_session() ? |why| Refused(why)
+	owner = Agents.agent_keeper(acting) ? |why| Refused(why)
 	_ = Agents.owned_agent(directory, { owner, agent }) ? |why| Refused(why)
 	invites = AgentFiles.read_agent_invites!(agent) ? |fault| FileSystem(fault)
 	revoked = Agents.revoked_invite(invites, invite) ? |why| Refused(why)
