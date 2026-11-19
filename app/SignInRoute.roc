@@ -27,8 +27,8 @@
 ##   to an account (`start_session_by_github_link!`).
 ##
 ## `sign_in_by_session!` is the check a request with a session cookie, and
-## no `Authorization` header, passes before any route (main's
-## `load_actor!`): the host checks the signature over what the human's
+## no `Authorization` header, passes before any route
+## (`Actor.load_actor!`): the host checks the signature over what the human's
 ## sign-in files hold now (`Session.Material`), and `Session.admit` decides.
 ## So rewriting or removing any of those files ends every session of its
 ## human. `SignedIn.by_session` is its one door.

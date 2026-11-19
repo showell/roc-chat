@@ -7,8 +7,8 @@
 ## with no message leaves no trace. A name that is no topic is Browse again,
 ## saying why.
 ##
-## Both routes are a human's, by their own session: a key is refused. main has
-## asked `Access` that the human may post at the place.
+## Both routes are a human's, by their own session: a key is refused.
+## `Dispatch` has asked `Access` that the human may post at the place.
 import pf.Http
 import Browse
 import ConversationKey

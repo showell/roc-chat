@@ -23,7 +23,7 @@
 ##   It comes back to `GET /login/github`, which binds the id to them and
 ##   starts their session afresh (`SignInRoute.start_session_by_github_link!`).
 ##   It is a POST so that no other site's page can send a browser on it, and
-##   a signed-in route (`Route`), so main answers no one with its 401.
+##   a signed-in route (`Route`), so `Dispatch` answers no one with its 401.
 ##
 ## A server with no GitHub settings answers them with the 404 any other path
 ## gets, so running without GitHub takes nothing. The client secret and
@@ -113,7 +113,7 @@ GitHubRoute :: [].{
 		HttpAnswer.never_stored(answer)
 	}
 
-	## A POST of `/login/github/link`, by `acting`, someone signed in (main
+	## A POST of `/login/github/link`, by `acting`, someone signed in (`Dispatch`
 	## refuses anyone else): the browser sent to GitHub to link it to the
 	## human signed in, back to `origin`, going to `SignInRoute.default_next`
 	## (Browse) after; or why not, before the trip.
