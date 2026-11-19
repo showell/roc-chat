@@ -35,15 +35,10 @@
 --    Host.roc's effects are named with the Zig host, so a rename is a change
 --    to the seam. container holds 1: `Http.Header`'s `value` is that
 --    header's own word and crosses the seam too.
---    Three more counts are held at a number. In app/, hunt_names'
---    short_name holds 6: the `{ a, b }` of `UserPair.of`, `Dm.between` and
---    UserPair's test helper `pair_of`, the two members of an unordered
---    pair, given in either order, where no name says more. find_unused_imports holds one
---    import for each `app/*Spec.roc`: app/Specs.roc imports every Spec only
---    to bring its expects into its run, which no name in the file uses.
---    rewrite_method_calls' peer_receiver holds 69: method calls of a
---    symmetric function on two peers (`a.concat(b)`), each a question for a
---    reader, which `peers=undo` would turn back.
+--    One more is a named exception: find_unused_imports holds exactly one
+--    finding for each `app/*Spec.roc`, and each must be app/Specs.roc's
+--    `import <Name>Spec`. app/Specs.roc imports every Spec only to bring
+--    its expects into its run, which no name in the file uses.
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -148,7 +143,7 @@ say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 const name_counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "stacked_preposition ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)", "phrase_name ([0-9]+)", "singular_list ([0-9]+)", "world_verb ([0-9]+)", "where_name ([0-9]+)", "short_name ([0-9]+)", "stale_doc_name ([0-9]+)"}
 
 const hunts = {
-  {recipe = "hunt_names", args = {}, counts = name_counts, held = {{count = "short_name ([0-9]+)", findings = 6}}},
+  {recipe = "hunt_names", args = {}, counts = name_counts},
   {recipe = "hunt_names", glob = "platform/**/*.roc", args = {}, counts = name_counts, held = {{count = "noun_effect ([0-9]+)", findings = 9}, {count = "container ([0-9]+)", findings = 1}}},
   {recipe = "check_errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)", "number_fallback ([0-9]+)"}},
   {recipe = "find_deep_calls", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
@@ -159,9 +154,9 @@ const hunts = {
   {recipe = "check_name_types", args = {"table=tools/name_types.txt"}, counts = {"name_type ([0-9]+)", "bare_beside_unit ([0-9]+)", "no_value ([0-9]+)"}},
   {recipe = "find_unclear_names", args = {"terms=tools/fixed_terms.txt"}, counts = {"pure_mutator ([0-9]+)", "abbreviation ([0-9]+)", "module_doc ([0-9]+)"}},
   {recipe = "check_families", args = {"roles=tools/type_roles.txt"}, counts = {"family ([0-9]+)", "twin_name ([0-9]+)"}},
-  {recipe = "find_unused_imports", args = {}, counts = {"unused_import ([0-9]+)"}, fails_on_findings = true, held = {{count = "unused_import ([0-9]+)", findings = #glob("app/*Spec.roc")}}},
+  {recipe = "find_unused_imports", args = {}, counts = {"unused_import ([0-9]+)"}, fails_on_findings = true, held = {{count = "unused_import ([0-9]+)", findings = #glob("app/*Spec.roc")}}, exception = "^app/Specs\\.roc:[0-9]+: unused_import: `[A-Za-z]+Spec` is imported and never used"},
   {recipe = "find_bare_floats", args = {}, counts = {"bare_float ([0-9]+)", "unused_exception ([0-9]+)"}},
-  {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)", "peer_receiver ([0-9]+)"}, held = {{count = "peer_receiver ([0-9]+)", findings = 69}}},
+  {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)", "peer_receiver ([0-9]+)"}},
 }
 function findings_allowed(hunt, count)
   for held in get(hunt, "held", {}) do
@@ -189,6 +184,15 @@ for h in hunts do
   for c in h.counts do
     local got = re_find(last, c)
     if got == nil or tonumber(got.groups[1]) ~= findings_allowed(h, c) then clean = false end
+  end
+  -- A recipe with an exception: each of its findings must be that one.
+  if has_key(h, "exception") then
+    for l in re_lines(r.out, "^[^ ]+\\.roc:[0-9]+: ") do
+      if re_find(l.text, h.exception) == nil then
+        clean = false
+        print("  not the named exception: " .. l.text)
+      end
+    end
   end
   say(clean, "hunt " .. h.recipe .. ": " .. last)
   if not clean then print(r.out) end
