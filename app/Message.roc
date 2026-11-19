@@ -55,7 +55,8 @@ Message :: {
 		from_digits : List(U8) -> Try(Message.Id, [NotAMessageId])
 		from_digits = |digits|
 			match Ascii.canonical_number(digits, { most_digits: 5 }) {
-				Ok(number) if number <= U16.highest.to_u64() => Ok(Message.Id.(number.to_u16_wrap()))
+				Ok(number) if number <= U16.highest.to_u64() =>
+					Ok(Message.Id.(number.to_u16_wrap()))
 				_ => Err(NotAMessageId)
 			}
 

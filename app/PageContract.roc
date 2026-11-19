@@ -1,6 +1,7 @@
 ## This module is the one contract between the pages, which the Roc writes,
 ## and the scripts that run on them (app/chrome.js, app/sidebar.js,
-## app/compose.js, app/feed.js and app/panel.js, which `Script` serves). The server sends
+## app/compose.js, app/feed.js, app/actions.js and app/panel.js, which
+## `Script` serves). The server sends
 ## structure and class names only, and each script finds what it needs by
 ## the classes in `Class` and by the `data-` attributes in `DataAttribute`.
 ## Someone replacing the scripts reads this module, and its tests say which
@@ -12,7 +13,10 @@
 ## author is a user of the chat. The compose box's form names where the
 ## script sends a message (`data-send`), where to upload an image
 ## (`data-upload`) and the most bytes an image may be
-## (`data-image-byte-limit`), all read by app/compose.js. Each place in the
+## (`data-image-byte-limit`), all read by app/compose.js. The messages pane
+## also names where a reaction is posted (`data-react`) and where a
+## message's markdown is read (`data-raw`), and each reaction's button names
+## its reactors' ids (`data-reactors`), all read by app/actions.js. Each place in the
 ## sidebar names its own path (`data-section`), which app/sidebar.js keeps
 ## its collapsed state by, and where a topic added to it belongs.
 import Html
@@ -27,6 +31,9 @@ PageContract :: [].{
 		Body,
 		Compose,
 		Current,
+		EditedMarkdown,
+		EditedNote,
+		EditedOriginal,
 		Empty,
 		Help,
 		InviteCode,
@@ -34,6 +41,9 @@ PageContract :: [].{
 		Message,
 		Messages,
 		Panel,
+		ReactionChip,
+		ReactionEmoji,
+		ReactionStrip,
 		Ref,
 		Sidebar,
 		SidebarEmpty,
@@ -63,6 +73,9 @@ PageContract :: [].{
 		Upload(Html.SitePath),
 		ImageByteLimit(Html.Token),
 		Section(Html.SitePath),
+		React(Html.SitePath),
+		Raw(Html.SitePath),
+		Reactors(Html.Token),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -77,6 +90,9 @@ PageContract :: [].{
 			Upload(path) => Data(token("upload"), Path(path))
 			ImageByteLimit(count) => Data(token("image-byte-limit"), Token(count))
 			Section(path) => Data(token("section"), Path(path))
+			React(path) => Data(token("react"), Path(path))
+			Raw(path) => Data(token("raw"), Path(path))
+			Reactors(ids) => Data(token("reactors"), Token(ids))
 		}
 
 	## An element `attrs` alone opens, as a test reads it.
@@ -92,6 +108,9 @@ class_name = |chosen|
 		Body => "body"
 		Compose => "compose"
 		Current => "current"
+		EditedMarkdown => "edited-markdown"
+		EditedNote => "edited-note"
+		EditedOriginal => "edited-original"
 		Empty => "empty"
 		Help => "help"
 		InviteCode => "invite-code"
@@ -99,6 +118,9 @@ class_name = |chosen|
 		Message => "message"
 		Messages => "messages"
 		Panel => "panel"
+		ReactionChip => "reaction-chip"
+		ReactionEmoji => "reaction-emoji"
+		ReactionStrip => "reaction-strip"
 		Ref => "ref"
 		Sidebar => "sidebar"
 		SidebarEmpty => "sidebar-empty"
@@ -129,6 +151,9 @@ expect
 		(Body, "body"),
 		(Compose, "compose"),
 		(Current, "current"),
+		(EditedMarkdown, "edited-markdown"),
+		(EditedNote, "edited-note"),
+		(EditedOriginal, "edited-original"),
 		(Empty, "empty"),
 		(Help, "help"),
 		(InviteCode, "invite-code"),
@@ -136,6 +161,9 @@ expect
 		(Message, "message"),
 		(Messages, "messages"),
 		(Panel, "panel"),
+		(ReactionChip, "reaction-chip"),
+		(ReactionEmoji, "reaction-emoji"),
+		(ReactionStrip, "reaction-strip"),
 		(Ref, "ref"),
 		(Sidebar, "sidebar"),
 		(SidebarEmpty, "sidebar-empty"),
@@ -165,6 +193,9 @@ expect {
 		(Upload(path), "<p data-upload=\"/chat/dm/1_1/plans\"></p>"),
 		(ImageByteLimit(token("10485760")), "<p data-image-byte-limit=\"10485760\"></p>"),
 		(Section(path), "<p data-section=\"/chat/dm/1_1/plans\"></p>"),
+		(React(path), "<p data-react=\"/chat/dm/1_1/plans\"></p>"),
+		(Raw(path), "<p data-raw=\"/chat/dm/1_1/plans\"></p>"),
+		(Reactors(token("1-3")), "<p data-reactors=\"1-3\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
@@ -243,3 +274,36 @@ expect [
 	TopTitle,
 	Viewer,
 ].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))
+# app/actions.js finds each message's reactions by their classes, styles
+# its reactions' strip and an edited message's parts, and reads where to
+# react, where to read a message's markdown, and who reacted; no other
+# conversation script does.
+expect
+	[
+		Messages,
+		Message,
+		ReactionChip,
+		ReactionEmoji,
+	].all(|chosen| is_found_by(Script.Actions.bytes(), chosen))
+expect
+	[ReactionStrip, EditedNote, EditedOriginal, EditedMarkdown].all(
+		|chosen| Str.from_utf8_lossy(Script.Actions.bytes()).contains("'.${class_name(chosen)} "),
+	)
+expect
+	[ReactionStrip, ReactionChip, ReactionEmoji, EditedNote, EditedOriginal, EditedMarkdown].all(
+		|chosen| !is_found_by(Script.Feed.bytes(), chosen) and !is_found_by(
+			Script.Compose.bytes(),
+			chosen,
+		),
+	)
+expect
+	[
+		"data-react",
+		"data-raw",
+		"data-reactors",
+		"data-viewer",
+	].all(|name| is_read_by(Script.Actions.bytes(), name))
+expect
+	["data-react", "data-raw", "data-reactors"].all(
+		|name| !is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
+	)

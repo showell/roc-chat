@@ -64,6 +64,7 @@ readable_key = |{ file, acting, directory }| {
 		Stream => return Err(NotAConversation)
 		Send => return Err(NotAConversation)
 		Upload => return Err(NotAConversation)
+		React => return Err(NotAConversation)
 		UploadedImage(_) => return Err(NotAConversation)
 		Raw => return Err(NotAConversation)
 	}

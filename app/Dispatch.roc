@@ -4,7 +4,7 @@
 ## them to read or post where the route asks. No one asking for a page only
 ## someone signed in may see is sent to sign in, and any other such request
 ## is a 401. Each route's answer is a route module's: `ConversationRoute`,
-## `UploadRoute`, `BrowseRoute`, `AgentsRoute`, `ChannelMembersRoute`,
+## `UploadRoute`, `ReactionRoute`, `BrowseRoute`, `AgentsRoute`, `ChannelMembersRoute`,
 ## `HumanInvitesRoute`, `ResumeRoute`, `SignInRoute` or `GitHubRoute`. Its two `match`es,
 ## one for the open routes and one for the signed-in ones, show the whole
 ## server's surface in one place.
@@ -25,6 +25,7 @@ import HumanInvitesRoute
 import Html
 import PageKit
 import Place
+import ReactionRoute
 import RequestOrigin
 import ResumeRoute
 import Route
@@ -78,6 +79,7 @@ access_asked = |asked|
 		AppendToConversation(key) => Asks({ place: key.place(), act: Post })
 		SendToConversation(key) => Asks({ place: key.place(), act: Post })
 		UploadToConversation(key) => Asks({ place: key.place(), act: Post })
+		ReactInConversation(key) => Asks({ place: key.place(), act: Post })
 		StartTopic(place) => Asks({ place, act: Post })
 		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
@@ -134,6 +136,7 @@ anonymous_refusal = |asked|
 		OpenConversationStream(_) => unauthorized_refusal
 		ServeRawTranscript(_) => unauthorized_refusal
 		UploadToConversation(_) => unauthorized_refusal
+		ReactInConversation(_) => unauthorized_refusal
 		ServeUploadedImage(_) => unauthorized_refusal
 		MakeAgent => unauthorized_refusal
 		InviteAgent(_) => unauthorized_refusal
@@ -281,7 +284,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				query: request.query,
 				headers: request.headers,
 			})
-		ServeRawTranscript(key) => ConversationRoute.serve_raw!(key)
+		ServeRawTranscript(key) => ConversationRoute.serve_raw!({ key, query: request.query })
 		AppendToConversation(key) =>
 			ConversationRoute.post_sent_message!(
 				make_message_post!({ key, request, directory, acting }),
@@ -298,6 +301,13 @@ answer_route! = |{ asked, request, directory, acting }|
 				body: request.body,
 			})
 		ServeUploadedImage(found) => UploadRoute.serve_uploaded_image!(found)
+		ReactInConversation(key) =>
+			ReactionRoute.post_reaction!({
+				key,
+				acting,
+				users: directory.users(),
+				body: request.body,
+			})
 		ShowAgents => AgentsRoute.show!({ acting, directory })
 		MakeAgent => AgentsRoute.make!({ acting, directory, body: request.body })
 		InviteAgent(agent) =>
@@ -396,6 +406,7 @@ expect {
 			AppendToConversation(key),
 			SendToConversation(key),
 			UploadToConversation(key),
+			ReactInConversation(key),
 			StartTopic(key.place()),
 		].all(|choice| access_asked(choice) == Asks({ place: key.place(), act: Post }))
 		and [
@@ -437,6 +448,7 @@ expect {
 			OpenConversationStream(key),
 			ServeRawTranscript(key),
 			UploadToConversation(key),
+			ReactInConversation(key),
 			ServeUploadedImage({ key, image }),
 			MakeAgent,
 			InviteAgent(UserId.chat_owner),

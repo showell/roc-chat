@@ -5,6 +5,7 @@ import Conversation
 import ConversationKey
 import ConversationPage
 import Directory
+import Reactions
 import Sample
 import Sidebar
 import SignedIn
@@ -139,6 +140,7 @@ page_with = |sidebar|
 	Str.from_utf8_lossy(
 		ConversationPage.conversation({
 			conversation: Conversation.empty(Sample.plans),
+			reactions: Reactions.empty,
 			key: key_at("/chat/dm/1_1/plans"),
 			viewer: steve,
 			users: directory.users(),

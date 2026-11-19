@@ -59,6 +59,7 @@ import DirectoryStore
 import Dispatch
 import FirstStart
 import PageKit
+import Reactions
 import RequestOrigin
 import SignedIn
 import Topic
@@ -76,6 +77,7 @@ page = |path, transcript| {
 			Ok(found) =>
 				ConversationPage.conversation({
 					conversation: found.conversation,
+					reactions: Reactions.empty,
 					key: found.key,
 					viewer: demo_viewer,
 					users: FirstStart.first_directory.users(),
@@ -245,6 +247,7 @@ expect {
 	page("/chat/dm/1_1/plans".to_utf8(), [])
 		== ConversationPage.conversation({
 			conversation: Conversation.empty(plans),
+			reactions: Reactions.empty,
 			key,
 			viewer: demo_viewer,
 			users: FirstStart.first_directory.users(),

@@ -20,7 +20,7 @@
 ##
 ## Each thing a conversation serves (`Resource`) is at its page's URL and
 ## a suffix: its stream at `/stream`, the send of its page's script at
-## `/send`, an image's upload at `/upload`, an uploaded image at
+## `/send`, an image's upload at `/upload`, a reaction at `/react`, an uploaded image at
 ## `/uploads/<name>`, and its transcript as plain text at `/raw`.
 ## `url_path` writes each, and `from_url_path` reads each back. `TranscriptFiles`
 ## keeps an uploaded image in the conversation's folder, as `uploads/<name>`.
@@ -42,6 +42,7 @@ ConversationKey :: { place : Place, topic : Topic }.{
 		Stream,
 		Send,
 		Upload,
+		React,
 		UploadedImage(UploadedImage),
 		Raw,
 	]
@@ -150,6 +151,7 @@ resource_parts = |resource|
 		Stream => ["stream"]
 		Send => ["send"]
 		Upload => ["upload"]
+		React => ["react"]
 		UploadedImage(image) => ["uploads", image.name()]
 		Raw => ["raw"]
 	}
@@ -166,6 +168,7 @@ resource_of_suffix = |suffix_parts|
 		[last] if last.is_exactly("stream") => Ok(Stream)
 		[last] if last.is_exactly("send") => Ok(Send)
 		[last] if last.is_exactly("upload") => Ok(Upload)
+		[last] if last.is_exactly("react") => Ok(React)
 		[last] if last.is_exactly("raw") => Ok(Raw)
 		[uploads, image_name] if uploads.is_exactly("uploads") =>
 			match image_name.uploaded_image() {

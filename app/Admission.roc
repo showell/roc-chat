@@ -118,6 +118,7 @@ upload_asked = |choice|
 		SignedInOnly(OpenConversationStream(_)) => NoUpload
 		SignedInOnly(ServeRawTranscript(_)) => NoUpload
 		SignedInOnly(ServeUploadedImage(_)) => NoUpload
+		SignedInOnly(ReactInConversation(_)) => NoUpload
 		SignedInOnly(ShowAgents) => NoUpload
 		SignedInOnly(MakeAgent) => NoUpload
 		SignedInOnly(InviteAgent(_)) => NoUpload

@@ -45,7 +45,11 @@ Reactions :: List(Reactions.Reaction).{
 	}
 
 	## One reaction: a user's emoji on a message.
-	Reaction : { message : Message.Id, user : UserId, emoji : Reactions.Emoji }
+	Reaction : {
+		message : Message.Id,
+		user : UserId,
+		emoji : Reactions.Emoji,
+	}
 
 	## One emoji's reactions to one message, as a page shows them: the emoji
 	## and who reacted with it, in the order they did.
@@ -85,9 +89,15 @@ Reactions :: List(Reactions.Reaction).{
 			|so_far, reaction|
 				match so_far.find_first_index(|chip| chip.emoji == reaction.emoji) {
 					Ok(at) =>
-						so_far.update(at, |chip| { ..chip, reactors: chip.reactors.append(reaction.user) })
+						so_far.update(
+							at,
+							|chip| { ..chip, reactors: chip.reactors.append(reaction.user) },
+						)
 							?? crash "Reactions.chips: the index was just found"
-					Err(NotFound) => so_far.append({ emoji: reaction.emoji, reactors: [reaction.user] })
+					Err(NotFound) => so_far.append({
+						emoji: reaction.emoji,
+						reactors: [reaction.user],
+					})
 				},
 		)
 
@@ -106,7 +116,11 @@ Reactions :: List(Reactions.Reaction).{
 				if text.is_empty() {
 					Ok(Reactions.empty)
 				} else if text.ends_with("\n") {
-					read_lines({ held: [], lines: text.drop_suffix("\n").split_on("\n"), number: 1 })
+					read_lines({
+						held: [],
+						lines: text.drop_suffix("\n").split_on("\n"),
+						number: 1,
+					})
 				} else {
 					Err(BadLine(text.split_on("\n").len()))
 				}
@@ -139,7 +153,11 @@ read_lines = |{ held, lines, number }|
 			if held.contains(reaction) {
 				Err(RepeatedLine(number))
 			} else {
-				read_lines({ held: held.append(reaction), lines: rest, number: number + 1 })
+				read_lines({
+					held: held.append(reaction),
+					lines: rest,
+					number: number + 1,
+				})
 			}
 		}
 	}
@@ -180,7 +198,11 @@ user_of : Str -> UserId
 user_of = |number| UserId.from_str(number) ?? crash "Reactions' tests: a user's id"
 
 ## The reaction of user `user` to message `message` with `emoji`.
-reaction_of : { message : Str, user : Str, emoji : Str } -> Reactions.Reaction
+reaction_of : {
+	message : Str,
+	user : Str,
+	emoji : Str,
+} -> Reactions.Reaction
 reaction_of = |{ message, user, emoji }| {
 	message: message_of(message),
 	user: user_of(user),
@@ -188,8 +210,8 @@ reaction_of = |{ message, user, emoji }| {
 }
 
 ## `reactions` with each of `changes` made in turn, which a test knows fit.
-after_changes : Reactions, List((Reactions.Reaction, [On, Off])) -> Reactions
-after_changes = |reactions, changes|
+changed_reactions : Reactions, List((Reactions.Reaction, [On, Off])) -> Reactions
+changed_reactions = |reactions, changes|
 	changes.fold(
 		reactions,
 		|so_far, (reaction, wanted)|
@@ -197,68 +219,141 @@ after_changes = |reactions, changes|
 	)
 
 thumbs : Reactions.Reaction
-thumbs = reaction_of({ message: "3", user: "1", emoji: "👍" })
+thumbs = reaction_of({
+	message: "3",
+	user: "1",
+	emoji: "👍",
+})
 
 ## The chips of `message`, as a test reads them: each emoji and its reactors' ids.
-chip_text : Reactions, Str -> List((Str, List(Str)))
-chip_text = |reactions, message|
+chip_texts : Reactions, Str -> List((Str, List(Str)))
+chip_texts = |reactions, message|
 	reactions.chips(message_of(message)).map(
 		|chip| (chip.emoji.to_str(), chip.reactors.map(UserId.to_str)),
 	)
 
 # An emoji: one, a joined one and one with its selector; and everything
 # holding ASCII, nothing, or past 16 bytes refused.
-expect ["👍", "🎉", "❤️", "👩‍💻", "é"].all(|text| Reactions.Emoji.from_str(text).map_ok(Reactions.Emoji.to_str) == Ok(text))
+expect [
+	"👍",
+	"🎉",
+	"❤️",
+	"👩‍💻",
+	"é",
+].all(|text| Reactions.Emoji.from_str(text).map_ok(Reactions.Emoji.to_str) == Ok(text))
 expect
-	["", "+1", "👍 ", "a", "\"", "👍\n", "👍👍👍👍👍"].all(
-		|text| Reactions.Emoji.from_str(text) == Err(NotAnEmoji),
-	)
+	[
+		"",
+		"+1",
+		"👍 ",
+		"a",
+		"\"",
+		"👍\n",
+		"👍👍👍👍👍",
+	].all(|text| Reactions.Emoji.from_str(text) == Err(NotAnEmoji))
 # 16 bytes is an emoji, 17 is not.
 expect Reactions.Emoji.from_str("👍👍👍👍").map_ok(Reactions.Emoji.to_str) == Ok("👍👍👍👍")
 expect Reactions.Emoji.from_str("👍👍👍👍é") == Err(NotAnEmoji)
 # A reaction on, then on again, is one reaction; off takes it out, and off
 # again changes nothing.
-expect after_changes(Reactions.empty, [(thumbs, On)]).chips(message_of("3")).len() == 1
-expect after_changes(Reactions.empty, [(thumbs, On), (thumbs, On)]) == after_changes(Reactions.empty, [(thumbs, On)])
-expect after_changes(Reactions.empty, [(thumbs, On), (thumbs, Off)]) == Reactions.empty
-expect after_changes(Reactions.empty, [(thumbs, Off)]) == Reactions.empty
+expect changed_reactions(Reactions.empty, [(thumbs, On)]).chips(message_of("3")).len() == 1
+expect changed_reactions(
+	Reactions.empty,
+	[(thumbs, On), (thumbs, On)],
+) == changed_reactions(Reactions.empty, [(thumbs, On)])
+expect changed_reactions(Reactions.empty, [(thumbs, On), (thumbs, Off)]) == Reactions.empty
+expect changed_reactions(Reactions.empty, [(thumbs, Off)]) == Reactions.empty
 # Two users with one emoji share a chip, in the order they reacted; one
 # user's two emojis are two chips; another message's are its own.
 expect {
-	reactions = after_changes(
+	reactions = changed_reactions(
 		Reactions.empty,
 		[
-			(reaction_of({ message: "3", user: "2", emoji: "🎉" }), On),
+			(
+				reaction_of({
+					message: "3",
+					user: "2",
+					emoji: "🎉",
+				}),
+				On,
+			),
 			(thumbs, On),
-			(reaction_of({ message: "3", user: "2", emoji: "👍" }), On),
-			(reaction_of({ message: "4", user: "1", emoji: "👍" }), On),
+			(
+				reaction_of({
+					message: "3",
+					user: "2",
+					emoji: "👍",
+				}),
+				On,
+			),
+			(
+				reaction_of({
+					message: "4",
+					user: "1",
+					emoji: "👍",
+				}),
+				On,
+			),
 		],
 	)
-	chip_text(reactions, "3") == [("🎉", ["2"]), ("👍", ["1", "2"])]
-		and chip_text(reactions, "4") == [("👍", ["1"])]
-		and chip_text(reactions, "5") == []
+	chip_texts(reactions, "3") == [("🎉", ["2"]), ("👍", ["1", "2"])]
+		and chip_texts(reactions, "4") == [("👍", ["1"])]
+		and chip_texts(reactions, "5") == []
 }
 # At the most a conversation holds, a new reaction is refused, and one
 # already there, or one taken out, is not.
 expect {
 	full = Reactions.(
 		List.from_iter(U64.to(1, Reactions.most_reactions)).map(
-			|number| reaction_of({ message: "1", user: number.to_str(), emoji: "👍" }),
+			|number| reaction_of({
+				message: "1",
+				user: number.to_str(),
+				emoji: "👍",
+			}),
 		),
 	)
-	one_less = full.set({ reaction: reaction_of({ message: "1", user: "1", emoji: "👍" }), wanted: Off })
+	one_less = full.set({
+		reaction: reaction_of({
+			message: "1",
+			user: "1",
+			emoji: "👍",
+		}),
+		wanted: Off,
+	})
 	full.set({ reaction: thumbs, wanted: On }) == Err(TooManyReactions)
-		and full.set({ reaction: reaction_of({ message: "1", user: "1", emoji: "👍" }), wanted: On }) == Ok(full)
-		and one_less.map_ok(|fewer| fewer.set({ reaction: thumbs, wanted: On }).is_ok()) == Ok(Bool.True)
+		and full.set({
+			reaction: reaction_of({
+				message: "1",
+				user: "1",
+				emoji: "👍",
+			}),
+			wanted: On,
+		}) == Ok(full)
+		and one_less.map_ok(
+			|fewer| fewer.set({ reaction: thumbs, wanted: On }).is_ok(),
+		) == Ok(Bool.True)
 }
 # The file: each reaction a line, read back as written; none is an empty file.
 expect {
-	reactions = after_changes(
+	reactions = changed_reactions(
 		Reactions.empty,
-		[(thumbs, On), (reaction_of({ message: "65535", user: "65535", emoji: "👩‍💻" }), On)],
+		[
+			(thumbs, On),
+			(
+				reaction_of({
+					message: "65535",
+					user: "65535",
+					emoji: "👩‍💻",
+				}),
+				On,
+			),
+		],
 	)
 	written = "{\"msg\":3,\"uid\":1,\"emoji\":\"👍\"}\n{\"msg\":65535,\"uid\":65535,\"emoji\":\"👩‍💻\"}\n"
-	reactions.to_file() == written.to_utf8() and Reactions.from_file(written.to_utf8()) == Ok(reactions)
+	reactions.to_file()
+		== written.to_utf8()
+		and Reactions.from_file(written.to_utf8())
+			== Ok(reactions)
 }
 expect Reactions.empty.to_file() == [] and Reactions.from_file([]) == Ok(Reactions.empty)
 # Every other line refused, by its number.

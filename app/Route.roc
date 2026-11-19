@@ -13,6 +13,7 @@
 ##     GET  the same paths and `/stream`       the conversation's stream
 ##     GET  the same paths and `/raw`          its transcript, plain text
 ##     POST the same paths and `/upload`       an image uploaded to it
+##     POST the same paths and `/react`        a reaction: `msg=`, `emoji=`, `on=`
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
 ##     GET  /chat/assets/palette.js            the pages' scripts
 ##     GET  /chat/assets/chrome.js
@@ -114,6 +115,7 @@ Route :: [].{
 		OpenConversationStream(ConversationKey),
 		ServeRawTranscript(ConversationKey),
 		UploadToConversation(ConversationKey),
+		ReactInConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
 		ShowAgents,
 		MakeAgent,
@@ -307,6 +309,9 @@ conversation_choice = |{ key, resource, method }|
 		(Upload, Get) => MethodNotAllowed(PostOnly)
 		(Upload, Post) => SignedInOnly(UploadToConversation(key))
 		(Upload, Other) => MethodNotAllowed(PostOnly)
+		(React, Get) => MethodNotAllowed(PostOnly)
+		(React, Post) => SignedInOnly(ReactInConversation(key))
+		(React, Other) => MethodNotAllowed(PostOnly)
 		(UploadedImage(image), Get) => SignedInOnly(ServeUploadedImage({ key, image }))
 		(UploadedImage(_), Post) => MethodNotAllowed(GetOnly)
 		(UploadedImage(_), Other) => MethodNotAllowed(GetOnly)

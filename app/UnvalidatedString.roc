@@ -21,8 +21,10 @@ import GitHubCode
 import GitHubState
 import Html
 import KeyScope
+import Message
 import Name
 import Password
+import Reactions
 import SecretToken
 import Topic
 import UploadedImage
@@ -64,6 +66,16 @@ UnvalidatedString :: Str.{
 	## checked by `UserPair.from_str`.
 	user_pair : UnvalidatedString -> Try(UserPair, [NotAUserPair])
 	user_pair = |UnvalidatedString.(text)| UserPair.from_str(text)
+
+	## The message's number it spells, as a reaction's form carries it,
+	## checked by `Message.Id.from_digits`.
+	message_id : UnvalidatedString -> Try(Message.Id, [NotAMessageId])
+	message_id = |UnvalidatedString.(text)| Message.Id.from_digits(text.to_utf8())
+
+	## The emoji it is, as a reaction's form carries it, checked by
+	## `Reactions.Emoji.from_str`.
+	emoji : UnvalidatedString -> Try(Reactions.Emoji, [NotAnEmoji])
+	emoji = |UnvalidatedString.(text)| Reactions.Emoji.from_str(text)
 
 	## The uploaded image it names, as a URL carries its name, checked by
 	## `UploadedImage.from_name`.

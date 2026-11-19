@@ -7,6 +7,14 @@
 ## message's HTML. A page asks for the messages after the count it shows
 ## (`?after=<count>`), and a browser that reconnects says the last id it
 ## saw (`Last-Event-ID`), which wins.
+##
+## A message whose notes change (`MessageNotes`: an edit of it, a reaction
+## to it) is sent again, as a `replace` event with no id, so the count a
+## reader has seen stays the count of messages: its data is the message's
+## HTML drawn anew, which the page puts in place of the one it shows. A
+## stream's backlog sends, before the messages after the reader's count,
+## each message up to the count whose notes are not a fresh message's, as
+## they are now, so a reader that reconnects misses no edit or reaction.
 import pf.Host
 import pf.Http
 import Ascii
@@ -18,8 +26,10 @@ import DateTime
 import Directory
 import HttpAnswer
 import Message
+import MessageNotes
 import Name
 import PageKit
+import Reactions
 import RequestHeader
 import SignedIn
 import Topic
@@ -61,18 +71,30 @@ ConversationStream :: [].{
 				"The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
 		}
 
-	## The stream of `key`'s conversation for `acting`, `conversation` as it
-	## is now: the messages after the reader's `seen_count` first, then
-	## each one added; a 400 when `seen_count` is more than it holds. Each
-	## message's author is found among `users`, as the page finds them.
+	## The stream of `key`'s conversation for `acting`, `conversation` and
+	## its `reactions` as they are now: each message the reader has seen
+	## whose notes are not fresh, again, then the messages after the
+	## reader's `seen_count`, then each one added; a 400 when `seen_count`
+	## is more than it holds. Each message's author is found among `users`,
+	## as the page finds them.
 	response : {
 		key : ConversationKey,
 		acting : SignedIn,
 		users : Users,
 		conversation : Conversation,
+		reactions : Reactions,
 		seen_count : U16,
 	} -> Http.Response
-	response = |{ key, acting, users, conversation, seen_count }| {
+	response = |
+		{
+			key,
+			acting,
+			users,
+			conversation,
+			reactions,
+			seen_count,
+		},
+	| {
 		held = conversation.messages().len()
 		if seen_count.to_u64() > held {
 			HttpAnswer.page(
@@ -83,15 +105,33 @@ ConversationStream :: [].{
 				}),
 			)
 		} else {
+			drawn =
+				List.map2(
+					conversation.messages(),
+					MessageNotes.notes_of_messages({ conversation, reactions }),
+					|message, notes| {
+						message,
+						html: ConversationPage.message({
+							conversation,
+							key,
+							users,
+							message,
+							notes,
+						}),
+						notes,
+					},
+				)
+			seen = drawn.take_first(seen_count.to_u64())
 			HttpAnswer.stream({
 				key: bus_key(key),
 				holder: ConversationStream.holder(acting.user().id()),
-				backlog: conversation.messages_after(seen_count).join_map(
-					|message|
-						ConversationStream.frame({
-							id: message.id(),
-							html: ConversationPage.message({ conversation, key, users, message }),
-						}),
+				backlog: List.concat(
+					seen.keep_if(|one| !one.notes.is_fresh()).join_map(
+						|one| replacement_frame(one.html),
+					),
+					drawn.drop_first(seen_count.to_u64()).join_map(
+						|one| ConversationStream.frame({ id: one.message.id(), html: one.html }),
+					),
 				),
 			})
 		}
@@ -108,6 +148,23 @@ ConversationStream :: [].{
 	publish! = |{ key, id, html }|
 		Host.publish_bytes_to_streams_on_key!(bus_key(key), ConversationStream.frame({ id, html }))
 
+	## Sends the message `id` of `conversation` again to every page on its
+	## stream, drawn with its notes as they are now, `reactions` among them,
+	## as a `replace` event: after an edit of it, or a reaction to it.
+	publish_again! : {
+		key : ConversationKey,
+		conversation : Conversation,
+		reactions : Reactions,
+		users : Users,
+		id : Message.Id,
+	} => {}
+	publish_again! = |{ key, conversation, reactions, users, id }|
+		match message_drawn_again({ key, conversation, reactions, users, id }) {
+			Ok(html) => Host.publish_bytes_to_streams_on_key!(bus_key(key), replacement_frame(html))
+			Err(NoSuchMessage) =>
+				crash "ConversationStream.publish_again!: the caller names a message the conversation holds"
+		}
+
 	## Who holds a conversation's stream that `user` opened, as the host
 	## counts streams: the user's id.
 	holder : UserId -> List(U8)
@@ -116,21 +173,48 @@ ConversationStream :: [].{
 	## One message as one event: `id:` its number, then its `html`, a
 	## `data:` line a line, then the blank line that ends it.
 	frame : { id : Message.Id, html : TrustedHtml } -> List(U8)
-	frame = |{ id, html }| {
-		lines = line_feeds_only(html.to_utf8())
-		List.concat(
-			"id: ${id.to_str()}\n"
-				.to_utf8(),
-			lines.split_on('\n').join_map(
-				|line| List.concat("data: ".to_utf8(), line).append('\n'),
-			),
-		)
-			.append('\n')
-	}
+	frame = |{ id, html }|
+		List.concat("id: ${id.to_str()}\n".to_utf8(), data_lines(html)).append('\n')
 }
 
 after_prefix : List(U8)
 after_prefix = "after=".to_utf8()
+
+## The message `id` of `conversation` drawn with its notes as they are now,
+## or `NoSuchMessage`.
+message_drawn_again : {
+	key : ConversationKey,
+	conversation : Conversation,
+	reactions : Reactions,
+	users : Users,
+	id : Message.Id,
+} -> Try(TrustedHtml, [NoSuchMessage])
+message_drawn_again = |{ key, conversation, reactions, users, id }| {
+	at = id.to_u64() - 1
+	match (
+		conversation.messages().get(at),
+		MessageNotes.notes_of_messages({ conversation, reactions }).get(at),
+	) {
+		(Ok(message), Ok(notes)) => Ok(
+			ConversationPage.message({ conversation, key, users, message, notes }),
+		)
+		_ => Err(NoSuchMessage)
+	}
+}
+
+## A message drawn anew, as one `replace` event: no id, so a reader's
+## count of messages seen stays as it was, then its `html`, a `data:` line a
+## line, and the blank line that ends it.
+replacement_frame : TrustedHtml -> List(U8)
+replacement_frame = |html|
+	List.concat("event: replace\n".to_utf8(), data_lines(html)).append('\n')
+
+## The `html` as an event's data: a `data:` line a line.
+data_lines : TrustedHtml -> List(U8)
+data_lines = |html|
+	line_feeds_only(html.to_utf8()).split_on('\n').join_map(
+		|line| List.concat("data: ".to_utf8(), line).append('\n'),
+	)
 
 ## The stream's bus key: the conversation's URL path.
 bus_key : ConversationKey -> List(U8)
@@ -267,6 +351,7 @@ streamed_after = |seen_count|
 		acting: steve,
 		users,
 		conversation: plans_holding(["Hello", "Hi!"]),
+		reactions: Reactions.empty,
 		seen_count,
 	})
 
@@ -292,7 +377,13 @@ message_frame : Conversation, Message -> List(U8)
 message_frame = |conversation, message|
 	ConversationStream.frame({
 		id: message.id(),
-		html: ConversationPage.message({ conversation, key: plans_key, users, message }),
+		html: ConversationPage.message({
+			conversation,
+			key: plans_key,
+			users,
+			message,
+			notes: MessageNotes.fresh,
+		}),
 	})
 
 # A frame's data lines, joined by LF as a browser joins them, are exactly
@@ -313,6 +404,7 @@ expect {
 					key: plans_key,
 					users,
 					message: m,
+					notes: MessageNotes.fresh,
 				}).to_utf8()
 		},
 	)
@@ -350,4 +442,56 @@ expect {
 		and response.stream_key == []
 		and Str.from_utf8_lossy(response.body)
 			.contains("The stream asks for the messages after 3, and the conversation holds 2.")
+}
+# A message whose notes are not fresh is sent again, before the messages
+# after the count, when the reader has seen it; a reader who hasn't gets it
+# among the messages, drawn with its notes, and nothing again.
+expect {
+	conversation = plans_holding(["Hello", "Edit of MSG_plans_1\n\nHello!"])
+	streamed = |seen_count|
+		Str.from_utf8_lossy(
+			ConversationStream.response({
+				key: plans_key,
+				acting: steve,
+				users,
+				conversation,
+				reactions: Reactions.empty,
+				seen_count,
+			}).body,
+		)
+	after_one = streamed(1)
+	after_none = streamed(0)
+	after_one.starts_with("event: replace\ndata: <article class=\"message\" id=\"msg-1\"")
+		and after_one.contains("\n\nid: 2\ndata: <article")
+		and !after_one.contains("id: 1\n")
+		and after_none.starts_with("id: 1\ndata: <article class=\"message\" id=\"msg-1\"")
+		and !after_none.contains("event: replace")
+		and streamed(2).starts_with("event: replace\n")
+		and !streamed(2).contains("id: ")
+}
+# Sent again: the message as edited, with no id; a message not held is none.
+expect {
+	conversation = plans_holding(["Hello", "Edit of MSG_plans_1\n\nHello!"])
+	first = Message.Id.first
+	missing = Message.Id.from_digits("3".to_utf8()) ?? crash "ConversationStream's tests: an id"
+	drawn = message_drawn_again({
+		key: plans_key,
+		conversation,
+		reactions: Reactions.empty,
+		users,
+		id: first,
+	})
+	match drawn {
+		Ok(html) =>
+			Str.from_utf8_lossy(replacement_frame(html)).starts_with("event: replace\ndata: <article")
+				and Str.from_utf8_lossy(html.to_utf8()).contains("Edited in")
+				and message_drawn_again({
+					key: plans_key,
+					conversation,
+					reactions: Reactions.empty,
+					users,
+					id: missing,
+				}).is_err()
+		Err(NoSuchMessage) => Bool.False
+	}
 }

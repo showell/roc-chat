@@ -44,6 +44,7 @@ resource_name = |resource|
 		Stream => "stream"
 		Send => "send"
 		Upload => "upload"
+		React => "react"
 		UploadedImage(image) => "image ${image.name()}"
 		Raw => "raw"
 	}
@@ -136,6 +137,7 @@ expect
 	read_back("/chat/channel/plans-room/plans/upload")
 		== Ok("upload /chat/channel/plans-room/plans/upload")
 expect read_back("/chat/dm/1_2/upload/upload") == Ok("upload /chat/dm/1_2/upload/upload")
+expect read_back("/chat/dm/1_2/plans/react") == Ok("react /chat/dm/1_2/plans/react")
 expect read_back("/chat/dm/1_2/upload") == Ok("page /chat/dm/1_2/upload")
 expect
 	read_back("/chat/channel/plans-room/plans/raw") == Ok("raw /chat/channel/plans-room/plans/raw")

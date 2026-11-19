@@ -37,6 +37,7 @@ chosen_route = |method, path|
 		SignedInOnly(SendToConversation(key)) => "send ${key.url_path(Page)}"
 		SignedInOnly(OpenConversationStream(key)) => "stream ${key.url_path(Page)}"
 		SignedInOnly(UploadToConversation(key)) => "upload ${key.url_path(Page)}"
+		SignedInOnly(ReactInConversation(key)) => "react in ${key.url_path(Page)}"
 		SignedInOnly(ServeUploadedImage(found)) =>
 			"image ${found.image.name()} of ${found.key.url_path(Page)}"
 		SignedInOnly(ServeRawTranscript(key)) => "raw ${key.url_path(Page)}"
@@ -146,6 +147,12 @@ expect chosen_route("POST", "/chat/dm/1_2/plans/upload".to_utf8()) == "upload /c
 expect chosen_route("GET", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
 expect chosen_route("PUT", "/chat/dm/1_2/plans/upload".to_utf8()) == "not allowed: POST"
 expect chosen_route("POST", "/chat/dm/1_3/plans/upload".to_utf8()) == "not found"
+# A reaction: a POST to the conversation's `/react`, and nothing else.
+expect chosen_route("POST", "/chat/dm/1_2/plans/react".to_utf8()) == "react in /chat/dm/1_2/plans"
+expect chosen_route("GET", "/chat/dm/1_2/plans/react".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/chat/dm/1_2/plans/react".to_utf8()) == "not allowed: POST"
+expect chosen_route("POST", "/chat/dm/1_3/plans/react".to_utf8()) == "not found"
+expect chosen_route("POST", "/chat/dm/1_2/plans/reacts".to_utf8()) == "not found"
 expect chosen_route(
 	"GET",
 	"/chat/dm/1_2/plans/uploads/${image_name}".to_utf8(),

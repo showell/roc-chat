@@ -38,6 +38,7 @@ Html :: [].{
 		A,
 		Article,
 		Button,
+		Details,
 		Div,
 		Form,
 		H1,
@@ -47,6 +48,7 @@ Html :: [].{
 		P,
 		Script,
 		Span,
+		Summary,
 		Textarea,
 		Time,
 		Title,
@@ -173,6 +175,7 @@ name_of = |name|
 		A => "a"
 		Article => "article"
 		Button => "button"
+		Details => "details"
 		Div => "div"
 		Form => "form"
 		H1 => "h1"
@@ -182,6 +185,7 @@ name_of = |name|
 		P => "p"
 		Script => "script"
 		Span => "span"
+		Summary => "summary"
 		Textarea => "textarea"
 		Time => "time"
 		Title => "title"
@@ -274,6 +278,7 @@ expect
 expect name_of(A) == "a"
 expect name_of(Article) == "article"
 expect name_of(Button) == "button"
+expect name_of(Details) == "details"
 expect name_of(Div) == "div"
 expect name_of(Form) == "form"
 expect name_of(H1) == "h1"
@@ -283,6 +288,7 @@ expect name_of(Nav) == "nav"
 expect name_of(P) == "p"
 expect name_of(Script) == "script"
 expect name_of(Span) == "span"
+expect name_of(Summary) == "summary"
 expect name_of(Textarea) == "textarea"
 expect name_of(Time) == "time"
 expect name_of(Title) == "title"

@@ -7,14 +7,18 @@ import ConversationKey
 import ConversationPage
 import Html
 import JoinPage
+import Message
+import MessageNotes
 import Name
 import PageKit
 import PeoplePages
+import Reactions
 import Sample
 import SignInPage
 import SignedIn
 import Timestamp
 import UnvalidatedString
+import UserId
 
 PageSpec :: [].{}
 
@@ -34,6 +38,7 @@ page_for = |viewer, conversation|
 	Str.from_utf8_lossy(
 		ConversationPage.conversation({
 			conversation,
+			reactions: Reactions.empty,
 			key: plans_key,
 			viewer: SignedIn.dangerously_assume(Sample.user(viewer)),
 			users: Sample.directory.users(),
@@ -47,7 +52,7 @@ page_for = |viewer, conversation|
 ## shows here as a deliberate re-freeze.
 foot : Str -> Str
 foot = |url|
-	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n"
+	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n<script src=\"/chat/assets/actions.js\"></script>\n"
 
 ## How the top bar's right side opens: the links to Browse and the invites page.
 top_links : Str
@@ -64,7 +69,7 @@ plans_page : {
 	messages : Str,
 } -> Str
 plans_page = |{ viewer, viewer_id, count, messages }|
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\">plans</span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str
@@ -192,6 +197,7 @@ expect {
 	[
 		ConversationPage.conversation({
 			conversation: Conversation.empty(Sample.plans),
+			reactions: Reactions.empty,
 			key: plans_key,
 			viewer: steve,
 			users: Sample.directory.users(),
@@ -253,3 +259,70 @@ expect
 expect
 	PageKit.refusal("it <is> not UTF-8").to_utf8()
 		== "${head("Not a transcript")}<p>Not a transcript: it &lt;is&gt; not UTF-8.</p>".to_utf8()
+
+# An edited message names its edit, linked, and keeps its markdown, as
+# written and escaped, folded away; a message with reactions ends with an
+# emoji a button, each naming its reactors' ids and their count; a message
+# with neither is drawn as before.
+expect {
+	conversation = Sample.conversation(
+		Sample.plans,
+		[
+			Sample.unnumbered_message({
+				author: "Steve",
+				time: "2026-11-02T19:11:32Z",
+				markdown: "Helo <b>",
+			}),
+			Sample.unnumbered_message({
+				author: "Steve",
+				time: "2026-11-02T19:12:00Z",
+				markdown: "Edit of MSG_plans_1\n\nHello",
+			}),
+		],
+	)
+	reaction = |user, emoji| {
+		message: Message.Id.from_digits("2".to_utf8()) ?? crash "PageSpec: an id",
+		user: UserId.from_str(user) ?? crash "PageSpec: a user's id",
+		emoji: Reactions.Emoji.from_str(emoji) ?? crash "PageSpec: an emoji",
+	}
+	reactions = [
+		reaction("1", "👍"),
+		reaction("3", "👍"),
+		reaction("3", "🎉"),
+	].fold(
+		Reactions.empty,
+		|so_far, one| so_far.set({
+			reaction: one,
+			wanted: On,
+		}) ?? crash "PageSpec: a reaction fits",
+	)
+	drawn = List.map2(
+		conversation.messages(),
+		MessageNotes.notes_of_messages({ conversation, reactions }),
+		|message, notes|
+			Str.from_utf8_lossy(
+				ConversationPage.message({
+					conversation,
+					key: plans_key,
+					users: Sample.directory.users(),
+					message,
+					notes,
+				}).to_utf8(),
+			),
+	)
+	plain = Str.from_utf8_lossy(
+		ConversationPage.message({
+			conversation,
+			key: plans_key,
+			users: Sample.directory.users(),
+			message: conversation.messages().first() ?? crash "PageSpec: a message",
+			notes: MessageNotes.fresh,
+		}).to_utf8(),
+	)
+	drawn
+		== [
+			"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"ref\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p class=\"edited-note\">Edited in <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></p><details class=\"edited-original\"><summary>original</summary><div class=\"edited-markdown\">Helo &lt;b&gt;</div></details></div></article>\n",
+			"<article class=\"message\" id=\"msg-2\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:12:00Z\">2026-11-02T19:12:00Z</time> <a class=\"ref\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Edit of <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a></p>\n<p>Hello</p>\n</div><div class=\"reaction-strip\"><button class=\"reaction-chip\" data-reactors=\"1-3\"><span class=\"reaction-emoji\">👍</span> 2</button><button class=\"reaction-chip\" data-reactors=\"3\"><span class=\"reaction-emoji\">🎉</span> 1</button></div></article>\n",
+		]
+		and plain.contains("<div class=\"body\"><p>Helo &lt;b&gt;</p>\n</div></article>")
+}

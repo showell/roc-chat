@@ -13,9 +13,16 @@
 ## its keys and its Upload button, and sends a message without a reload.
 ## app/feed.js styles the messages, marks the viewer's own, writes each
 ## time in the viewer's time zone, appends each message the conversation's
-## stream brings, and lets the reader select a message and move between
-## them from the keyboard. They find what they need by `PageContract`'s
-## names.
+## stream brings, puts a message the stream sends again in place of the one
+## shown, and lets the reader select a message and move between them from
+## the keyboard. app/actions.js gives each message its actions: reacting,
+## and editing the viewer's own. They find what they need by
+## `PageContract`'s names.
+##
+## Each message is drawn with its notes (`MessageNotes`). An edited message
+## says which message edited it, and keeps its markdown, as written, folded
+## away under "original". A message with reactions ends with a strip of
+## them, an emoji a button, each naming its reactors' ids for the script.
 ##
 ## A message's markdown goes in through `Markdown.message_html`, and
 ## everything else through `Escape.text` and `Html.element`.
@@ -26,9 +33,11 @@ import Escape
 import Html
 import Markdown
 import Message
+import MessageNotes
 import MsgAnchor
 import PageContract
 import PageKit
+import Reactions
 import Script
 import Sidebar
 import SignedIn
@@ -36,16 +45,19 @@ import Topic
 import TrustedHtml
 import UploadedImage
 import UrlEncodedForm
+import UserId
 import Users
 
 ConversationPage :: [].{
 
-	## The page of `conversation`, the conversation `key`, for `viewer`. Each
+	## The page of `conversation`, the conversation `key`, for `viewer`, each
+	## message drawn with its notes, its `reactions` among them. Each
 	## message of it is found among `users` by its author's name, to name its
 	## author's id. A human's page has the sidebar of the places Browse lists
 	## for them (`Sidebar`); a key's has none.
 	conversation : {
 		conversation : Conversation,
+		reactions : Reactions,
 		key : ConversationKey,
 		viewer : SignedIn,
 		users : Users,
@@ -54,6 +66,7 @@ ConversationPage :: [].{
 	conversation = |
 		{
 			conversation: thread,
+			reactions,
 			key,
 			viewer,
 			users,
@@ -73,18 +86,23 @@ ConversationPage :: [].{
 				])
 			} else {
 				TrustedHtml.join(
-					thread.messages().map(
-						|one_message|
+					List.map2(
+						thread.messages(),
+						MessageNotes.notes_of_messages({ conversation: thread, reactions }),
+						|one_message, notes|
 							ConversationPage.message({
 								conversation: thread,
 								key,
 								users,
 								message: one_message,
+								notes,
 							}),
 					),
 				)
 			}
 		stream_path = PageKit.site_path(key.url_path(Stream))
+		react_path = PageKit.site_path(key.url_path(React))
+		raw_path = PageKit.site_path(key.url_path(Raw))
 		shown_count = PageKit.token(thread.messages().len().to_str())
 		{ toggle, nav, scripts } =
 			match sidebar {
@@ -113,6 +131,8 @@ ConversationPage :: [].{
 								PageContract.data_attribute(Stream(stream_path)),
 								PageContract.data_attribute(After(shown_count)),
 								PageContract.data_attribute(Viewer(user_id(viewer.user()))),
+								PageContract.data_attribute(React(react_path)),
+								PageContract.data_attribute(Raw(raw_path)),
 							],
 							inner: TrustedHtml.join([PageKit.newline, messages]),
 						}),
@@ -125,7 +145,7 @@ ConversationPage :: [].{
 				TrustedHtml.join(
 					List.concat(
 						List.concat([Script.Chrome], scripts),
-						[Script.Compose, Script.Feed],
+						[Script.Compose, Script.Feed, Script.Actions],
 					).map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
 				),
 			]),
@@ -133,13 +153,15 @@ ConversationPage :: [].{
 	}
 
 	## One message of `conversation`, the conversation `key`, as its page
-	## and its stream write it: its header, then its markdown rendered. Its
+	## and its stream write it, with its `notes`: its header, then its
+	## markdown rendered, or what edited it, then its reactions. Its
 	## author's id is named when `users` holds a user of its author's name.
 	message : {
 		conversation : Conversation,
 		key : ConversationKey,
 		users : Users,
 		message : Message,
+		notes : MessageNotes,
 	} -> TrustedHtml
 	message = |
 		{
@@ -147,6 +169,7 @@ ConversationPage :: [].{
 			key,
 			users,
 			message: one_message,
+			notes,
 		},
 	| {
 		message_reference = thread.reference(one_message.id())
@@ -174,6 +197,15 @@ ConversationPage :: [].{
 				inner: Escape.text(message_reference.to_str()),
 			}),
 		])
+		body =
+			match notes.edit_state() {
+				NotEdited => Markdown.message_html(one_message.markdown(), key)
+				EditedIn(edit_id) =>
+					edited_body({
+						edit_reference: thread.reference(edit_id),
+						markdown: one_message.markdown(),
+					})
+			}
 		article = Html.element({
 			name: Article,
 			attrs: List.concat(
@@ -186,14 +218,88 @@ ConversationPage :: [].{
 				Html.element({
 					name: Div,
 					attrs: [PageContract.class(Body)],
-					inner: Markdown.message_html(one_message.markdown(), key),
+					inner: body,
 				}),
+				reaction_strip(notes.chips()),
 			]),
 		})
 		TrustedHtml.join([article, PageKit.newline])
 	}
 
 }
+
+## An edited message's body: a line naming the edit, `edit_reference`,
+## linked, then its `markdown`, as written, folded away.
+edited_body : { edit_reference : MsgAnchor, markdown : Str } -> TrustedHtml
+edited_body = |{ edit_reference, markdown }|
+	TrustedHtml.join([
+		Html.element({
+			name: P,
+			attrs: [PageContract.class(EditedNote)],
+			inner: TrustedHtml.join([
+				Escape.text("Edited in "),
+				Html.element({
+					name: A,
+					attrs: [PageContract.class(Ref), Href(anchor(edit_reference))],
+					inner: Escape.text(edit_reference.to_str()),
+				}),
+			]),
+		}),
+		Html.element({
+			name: Details,
+			attrs: [PageContract.class(EditedOriginal)],
+			inner: TrustedHtml.join([
+				Html.element({
+					name: Summary,
+					attrs: [],
+					inner: Escape.text("original"),
+				}),
+				Html.element({
+					name: Div,
+					attrs: [PageContract.class(EditedMarkdown)],
+					inner: Escape.text(markdown),
+				}),
+			]),
+		}),
+	])
+
+## A message's reactions, an emoji a button, each naming its reactors'
+## ids, joined by `-`, and how many they are; nothing when there are none.
+reaction_strip : List(Reactions.Chip) -> TrustedHtml
+reaction_strip = |chips|
+	if chips.is_empty() {
+		TrustedHtml.join([])
+	} else {
+		Html.element({
+			name: Div,
+			attrs: [PageContract.class(ReactionStrip)],
+			inner: TrustedHtml.join(
+				chips.map(
+					|chip|
+						Html.element({
+							name: Button,
+							attrs: [
+								PageContract.class(ReactionChip),
+								PageContract.data_attribute(Reactors(reactors_token(chip))),
+							],
+							inner: TrustedHtml.join([
+								Html.element({
+									name: Span,
+									attrs: [PageContract.class(ReactionEmoji)],
+									inner: Escape.text(chip.emoji.to_str()),
+								}),
+								PageKit.space,
+								Escape.text(chip.reactors.len().to_str()),
+							]),
+						}),
+				),
+			),
+		})
+	}
+
+## A chip's reactors' ids, joined by `-`, as a token.
+reactors_token : Reactions.Chip -> Html.Token
+reactors_token = |chip| PageKit.token(Str.join_with(chip.reactors.map(UserId.to_str), "-"))
 
 ## The compose box: a form posting its one field, a message's markdown
 ## (`UrlEncodedForm.markdown_name`), to `key`'s page, as
