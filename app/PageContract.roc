@@ -244,6 +244,7 @@ expect
 		SidebarTopics,
 		SidebarEmpty,
 		Current,
+		TopBar,
 	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))
 expect
 	[Messages, Compose, Message, Panel].all(|chosen| !is_found_by(Script.Sidebar.bytes(), chosen))

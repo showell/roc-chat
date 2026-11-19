@@ -7,10 +7,13 @@
 // or closed, showing an "Open compose box" button and the keyboard help. It
 // starts closed, and opens with the button or the c key. Escape closes it
 // when the textarea is empty, so a draft stays where it is. In a narrower
-// window, the compose box is always open, below the messages.
+// window, a phone's, the compose box is a bar below the messages, as
+// chat-client's was (js/chat_responsive.js): it starts open, its ▾ button
+// closes it to the "Open compose box" button, and the keyboard help and the
+// help line, which a phone has no keys for, are left out.
 //
 // Ctrl+Enter (⌘+Enter on a Mac) sends, as chat-client does; plain Enter is
-// a new line.
+// a new line. The Send button sends too, which is how a phone sends.
 //
 // A send stays on the page, as chat-client's did (js/chat_compose.js). The
 // script posts the form to the conversation's `/send` (the form's
@@ -60,8 +63,7 @@
     throw new Error('compose.js: the page has no .layout, no .messages, or no .compose with a form, its textarea, its button and .help');
   }
 
-  // The breakpoint, chat-client's: a window at most this wide is narrow.
-  var narrowQuery = window.matchMedia('(max-width:768px)');
+  if (!window.Viewport) throw new Error('compose.js: chrome.js runs first, and gives Viewport');
 
   // The colours are palette.js's, by chat-client's names.
   var styleSheet = document.createElement('style');
@@ -74,11 +76,19 @@
 
     // A narrow window: the messages, then the compose box below them.
     'html.layout-narrow .layout{flex-direction:column;gap:8px}',
-    'html.layout-narrow .compose{flex:none}',
-    'html.layout-narrow .compose-closed{display:none}',
+    'html.layout-narrow .compose{flex:none;max-height:45vh;border-top:1px solid var(--cc-border);padding-top:4px}',
+    'html.layout-narrow .compose-body{display:none}',
+    'html.layout-narrow .compose.open .compose-body{display:block}',
+    'html.layout-narrow .compose.open .compose-closed{display:none}',
     'html.layout-narrow .compose form{display:flex;gap:.5rem;align-items:flex-end}',
-    'html.layout-narrow .compose textarea{flex:1 1 auto;resize:vertical}',
-    'html.layout-narrow .compose .help{margin:.25rem 0 0}',
+    'html.layout-narrow .compose textarea{flex:1 1 auto;min-height:80px;max-height:25vh;resize:none}',
+    'html.layout-narrow .compose-actions{flex-direction:column}',
+    'html.layout-narrow .compose-actions button{padding:8px 12px}',
+    'html.layout-narrow .compose .help, html.layout-narrow .keyhelp{display:none}',
+    '.compose-collapse{display:none}',
+    'html.layout-narrow .compose-collapse{display:flex;justify-content:flex-end}',
+    '.compose-collapse button{background:none;border:none;color:var(--cc-muted-fg);font-size:18px;' +
+      'cursor:pointer;padding:2px 8px;line-height:1}',
 
     // A wide window: the messages on the left, the compose rail on the right.
     'html.layout-wide .layout{flex-direction:row;align-items:stretch}',
@@ -133,6 +143,15 @@
   var status = document.createElement('div');
   status.className = 'compose-status';
   compose.insertBefore(composeBody, form);
+  var collapse = document.createElement('div');
+  collapse.className = 'compose-collapse';
+  var collapseButton = document.createElement('button');
+  collapseButton.type = 'button';
+  collapseButton.textContent = '▾';
+  collapseButton.setAttribute('aria-label', 'Close the compose box');
+  collapseButton.addEventListener('click', function () { closeCompose(); });
+  collapse.appendChild(collapseButton);
+  composeBody.appendChild(collapse);
   composeBody.appendChild(form);
   composeBody.appendChild(picker);
   composeBody.appendChild(status);
@@ -142,7 +161,7 @@
 
   messages.tabIndex = -1;
 
-  function isNarrow() { return narrowQuery.matches; }
+  function isNarrow() { return Viewport.isNarrow(); }
 
   function openCompose() {
     compose.classList.add('open');
@@ -208,14 +227,6 @@
     return { register: register };
   })();
   Keys.register({ key: 'c', label: 'compose', run: openCompose });
-
-  function applyLayout() {
-    var root = document.documentElement;
-    root.classList.toggle('layout-narrow', isNarrow());
-    root.classList.toggle('layout-wide', !isNarrow());
-  }
-  applyLayout();
-  narrowQuery.addEventListener('change', applyLayout);
 
   if (isNarrow()) {
     openCompose();

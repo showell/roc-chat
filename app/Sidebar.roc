@@ -7,9 +7,10 @@
 ##
 ## Before the page's layout comes the sidebar's toggle, the button a narrow
 ## window's drawer opens the sidebar by. app/sidebar.js styles the sidebar,
-## lets each place's topics collapse, and hides the sidebar and the toggle
-## in a narrow window until the drawer is built. It finds each part by
-## `PageContract`'s classes, and a place by its path (`data-section`).
+## lets each place's topics collapse, and in a narrow window, a phone's,
+## moves the toggle into the top bar and makes the sidebar a drawer over
+## the page. It finds each part by `PageContract`'s classes, and a place by
+## its path (`data-section`).
 import Browse
 import ConversationKey
 import Escape

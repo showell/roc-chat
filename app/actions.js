@@ -22,6 +22,10 @@
 // `?message=<n>`) and loads the box with that line, a blank line and the
 // markdown, the caret after the blank line. Sending it is the box's own
 // send. The server marks the original edited and the stream redraws it.
+//
+// In a narrow window (chrome.js's layout-narrow), a phone's, the buttons, the
+// reactions and the picker's emojis are larger, for a finger, and the
+// picker opens across the window's width under the message.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
@@ -58,6 +62,10 @@
       ' box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); }',
     '.reaction-picker button { font-size: 18px; background: none; border: none; padding: 2px 4px; cursor: pointer; border-radius: 4px; }',
     '.reaction-picker button:hover { background: var(--cc-accent-soft-bg); }',
+    'html.layout-narrow .message .actions button { font-size: 13px; padding: 6px 8px; }',
+    'html.layout-narrow .reaction-chip { font-size: 14px; padding: 5px 10px; border-radius: 14px; }',
+    'html.layout-narrow .reaction-picker { max-width: none; gap: 4px; }',
+    'html.layout-narrow .reaction-picker button { font-size: 24px; padding: 6px 8px; }',
     '.action-failed { position: fixed; z-index: 11; bottom: 16px; left: 50%; transform: translateX(-50%);' +
       ' padding: .5rem .75rem; border-radius: 6px; background: var(--cc-lost-bg); color: var(--cc-lost-fg); }',
   ].join('\n');
@@ -127,9 +135,15 @@
       picker.appendChild(b);
     });
     var box = article.getBoundingClientRect();
-    picker.style.top = Math.max(8, Math.min(box.top + 20, window.innerHeight - 120)) + 'px';
-    picker.style.left = Math.max(8, Math.min(box.left, window.innerWidth - 240)) + 'px';
+    if (document.documentElement.classList.contains('layout-narrow')) {
+      picker.style.left = '8px';
+      picker.style.right = '8px';
+    } else {
+      picker.style.left = Math.max(8, Math.min(box.left, window.innerWidth - 240)) + 'px';
+    }
     document.body.appendChild(picker);
+    var height = picker.getBoundingClientRect().height;
+    picker.style.top = Math.max(8, Math.min(box.top + 20, window.innerHeight - height - 8)) + 'px';
   }
   document.addEventListener('click', function (e) {
     if (picker && !picker.contains(e.target) && !(e.target.closest && e.target.closest('.react-open'))) closePicker();

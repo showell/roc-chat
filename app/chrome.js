@@ -13,6 +13,35 @@
 // palette.js holds the colours and keeps the choice. The script makes the
 // button itself, so a page without scripts shows no button that does
 // nothing.
+//
+// The page's one breakpoint is here, as chat-client's js/viewport.js held
+// it: a window at most 768 pixels wide, a phone's, is narrow. The root
+// element has the class layout-narrow or layout-wide, so a script's style
+// sheet says `html.layout-narrow .x` and never its own media query, and
+// Viewport.onChange(f) calls f(narrow) now and at every crossing, for what a
+// style sheet can't do (sidebar.js's drawer). A narrow page has less padding
+// round its frame, and its fields' text is 16 pixels, so a phone doesn't zoom
+// in on one it focuses.
+window.Viewport = (function () {
+  'use strict';
+  var narrowQuery = window.matchMedia('(max-width:768px)');
+  var callbacks = [];
+  function reflect() {
+    var root = document.documentElement;
+    root.classList.toggle('layout-narrow', narrowQuery.matches);
+    root.classList.toggle('layout-wide', !narrowQuery.matches);
+  }
+  reflect();
+  narrowQuery.addEventListener('change', function () {
+    reflect();
+    callbacks.forEach(function (callback) { callback(narrowQuery.matches); });
+  });
+  return {
+    isNarrow: function () { return narrowQuery.matches; },
+    onChange: function (callback) { callbacks.push(callback); callback(narrowQuery.matches); },
+  };
+})();
+
 (function () {
   'use strict';
   var top = document.querySelector('.top-bar');
@@ -32,6 +61,11 @@
     '.top-user .viewer { font-weight: bold; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
+    'html.layout-narrow body { height: 100dvh; }',
+    'html.layout-narrow .top-bar { padding: 8px 12px; gap: 8px; align-items: center; }',
+    'html.layout-narrow .top-title { flex: 1; }',
+    'html.layout-narrow .layout { padding: 8px; }',
+    'html.layout-narrow input, html.layout-narrow textarea { font-size: 16px !important; }',
   ].join('\n');
   document.head.appendChild(s);
 
