@@ -48,7 +48,12 @@ places_with = |topics_of| {
 sidebar_at : { current : Str, topics_of : Str -> List(Topic) } -> Str
 sidebar_at = |{ current, topics_of }|
 	Str.from_utf8_lossy(
-		Sidebar.nav({ places: places_with(topics_of), current: key_at(current), viewer: steve.user().id(), online: [] }).to_utf8(),
+		Sidebar.nav({
+			places: places_with(topics_of),
+			current: key_at(current),
+			viewer: steve.user().id(),
+			online_humans: [],
+		}).to_utf8(),
 	)
 
 ## The form that starts a topic at `path`, suggesting `general` when
@@ -133,7 +138,12 @@ expect {
 		|listed| ConversationKey.place_url_path(listed.place) != "/chat/channel/general",
 	)
 	shown = Str.from_utf8_lossy(
-		Sidebar.nav({ places: dms_only, current: key_at("/chat/dm/1_1/plans"), viewer: steve.user().id(), online: [] }).to_utf8(),
+		Sidebar.nav({
+			places: dms_only,
+			current: key_at("/chat/dm/1_1/plans"),
+			viewer: steve.user().id(),
+			online_humans: [],
+		}).to_utf8(),
 	)
 	shown.contains("<p class=\"sidebar-heading\">DMs</p>")
 		and !shown.contains("Channels")
@@ -142,13 +152,13 @@ expect {
 # A DM with another human names them and says whether they are online; the
 # viewer's own DM and a channel name no one.
 expect {
-	drawn = |online|
+	drawn = |online_humans|
 		Str.from_utf8_lossy(
 			Sidebar.nav({
 				places: places_with(|_| []),
 				current: key_at("/chat/dm/1_1/plans"),
 				viewer: steve.user().id(),
-				online,
+				online_humans,
 			}).to_utf8(),
 		)
 	apoorva = Sample.user("Apoorva").id()
@@ -179,9 +189,14 @@ page_with = |sidebar|
 expect {
 	places = places_with(|_| [])
 	nav = Str.from_utf8_lossy(
-		Sidebar.nav({ places, current: key_at("/chat/dm/1_1/plans"), viewer: steve.user().id(), online: [] }).to_utf8(),
+		Sidebar.nav({
+			places,
+			current: key_at("/chat/dm/1_1/plans"),
+			viewer: steve.user().id(),
+			online_humans: [],
+		}).to_utf8(),
 	)
-	with_sidebar = page_with(Sidebar({ places, online: [] }))
+	with_sidebar = page_with(Sidebar({ places, online_humans: [] }))
 	without = page_with(NoSidebar)
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<p class=\"notice-strip\"></p>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")

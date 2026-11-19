@@ -146,6 +146,18 @@ anonymous_refusal = |asked|
 		OpenAgentStream => unauthorized_refusal
 	}
 
+## The 500 for a request whose coming online could not be told: a DM's
+## topics could not be listed.
+presence_failure : Http.Response
+presence_failure =
+	HttpAnswer.page(
+		500,
+		PageKit.notice({
+			title: "Failed",
+			text: "Your DMs' topics could not be read, to tell the others you are online.",
+		}),
+	)
+
 ## The 401 for a request that proves no one, at a route only someone
 ## signed in may use.
 unauthorized_refusal : Http.Response
@@ -254,12 +266,18 @@ serve_signed_in_route! = |{ asked, request, directory, acting }| {
 		}
 	match admitted {
 		Err(why) => access_refusal(why)
-		Ok({}) =>
-			match PresenceNotices.note_request!({ asked, acting, directory, now: Clock.read_clock!({}).to_seconds_since_epoch() }) {
+		Ok({}) => {
+			noted = PresenceNotices.note_request!({
+				asked,
+				acting,
+				directory,
+				now: Clock.read_clock!({}),
+			})
+			match noted {
 				Ok({}) => answer_route!({ asked, request, directory, acting })
-				Err(_) =>
-					HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: "A DM's topics could not be listed, to tell others you are online." }))
+				Err(_) => presence_failure
 			}
+		}
 	}
 }
 

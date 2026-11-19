@@ -1835,6 +1835,27 @@ comptime {
     }
 }
 
+/// Return type record for Host.read_second_kept_under_key!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostRead_second_kept_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    second: i64,
+    status: FoundOrMissing,
+} else extern struct {
+    second: i64,
+    status: FoundOrMissing,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostRead_second_kept_under_keyRetRecord) != 16) @compileError("HostRead_second_kept_under_keyRetRecord size mismatch");
+        if (@alignOf(HostRead_second_kept_under_keyRetRecord) != 8) @compileError("HostRead_second_kept_under_keyRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostRead_second_kept_under_keyRetRecord) != 16) @compileError("HostRead_second_kept_under_keyRetRecord size mismatch");
+        if (@alignOf(HostRead_second_kept_under_keyRetRecord) != 8) @compileError("HostRead_second_kept_under_keyRetRecord alignment mismatch");
+    }
+}
+
 /// Return type record for Host.read_utf8_bytes_from_file!
 /// Fields ordered by compiler-emitted ABI offsets.
 pub const HostRead_utf8_bytes_from_fileRetRecord = if (@sizeOf(usize) == 4) extern struct {
@@ -1856,9 +1877,9 @@ comptime {
     }
 }
 
-/// Return type record for Host.remember_second_under_key!
+/// Return type record for Host.replace_second_kept_under_key!
 /// Fields ordered by compiler-emitted ABI offsets.
-pub const HostRemember_second_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
+pub const HostReplace_second_kept_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
     second: i64,
     status: FoundOrMissing,
 } else extern struct {
@@ -1868,33 +1889,12 @@ pub const HostRemember_second_under_keyRetRecord = if (@sizeOf(usize) == 4) exte
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(HostRemember_second_under_keyRetRecord) != 16) @compileError("HostRemember_second_under_keyRetRecord size mismatch");
-        if (@alignOf(HostRemember_second_under_keyRetRecord) != 8) @compileError("HostRemember_second_under_keyRetRecord alignment mismatch");
+        if (@sizeOf(HostReplace_second_kept_under_keyRetRecord) != 16) @compileError("HostReplace_second_kept_under_keyRetRecord size mismatch");
+        if (@alignOf(HostReplace_second_kept_under_keyRetRecord) != 8) @compileError("HostReplace_second_kept_under_keyRetRecord alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(HostRemember_second_under_keyRetRecord) != 16) @compileError("HostRemember_second_under_keyRetRecord size mismatch");
-        if (@alignOf(HostRemember_second_under_keyRetRecord) != 8) @compileError("HostRemember_second_under_keyRetRecord alignment mismatch");
-    }
-}
-
-/// Return type record for Host.second_remembered_under_key!
-/// Fields ordered by compiler-emitted ABI offsets.
-pub const HostSecond_remembered_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
-    second: i64,
-    status: FoundOrMissing,
-} else extern struct {
-    second: i64,
-    status: FoundOrMissing,
-};
-
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(HostSecond_remembered_under_keyRetRecord) != 16) @compileError("HostSecond_remembered_under_keyRetRecord size mismatch");
-        if (@alignOf(HostSecond_remembered_under_keyRetRecord) != 8) @compileError("HostSecond_remembered_under_keyRetRecord alignment mismatch");
-    }
-    if (@sizeOf(usize) == 4) {
-        if (@sizeOf(HostSecond_remembered_under_keyRetRecord) != 16) @compileError("HostSecond_remembered_under_keyRetRecord size mismatch");
-        if (@alignOf(HostSecond_remembered_under_keyRetRecord) != 8) @compileError("HostSecond_remembered_under_keyRetRecord alignment mismatch");
+        if (@sizeOf(HostReplace_second_kept_under_keyRetRecord) != 16) @compileError("HostReplace_second_kept_under_keyRetRecord size mismatch");
+        if (@alignOf(HostReplace_second_kept_under_keyRetRecord) != 8) @compileError("HostReplace_second_kept_under_keyRetRecord alignment mismatch");
     }
 }
 
@@ -2002,19 +2002,18 @@ pub const HostRead_binary_bytes_from_fileArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.read_second_kept_under_key!
+/// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
+/// Refcounted fields are owned by the hosted function.
+pub const HostRead_second_kept_under_keyArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 /// Arguments for Host.read_utf8_bytes_from_file!
 /// Roc signature: List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, NotUtf8, PathRefused] }
 /// Refcounted fields are owned by the hosted function.
 pub const HostRead_utf8_bytes_from_fileArgs = extern struct {
     arg0: RocListWith(u8, false),
-};
-
-/// Arguments for Host.remember_second_under_key!
-/// Roc signature: List(U8), I64 => { second : I64, status : [Found, Missing] }
-/// Refcounted fields are owned by the hosted function.
-pub const HostRemember_second_under_keyArgs = extern struct {
-    arg0: RocListWith(u8, false),
-    arg1: i64,
 };
 
 /// Arguments for Host.replace_file_with_utf8_bytes_atomically!
@@ -2025,11 +2024,12 @@ pub const HostReplace_file_with_utf8_bytes_atomicallyArgs = extern struct {
     arg1: RocListWith(u8, false),
 };
 
-/// Arguments for Host.second_remembered_under_key!
-/// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
+/// Arguments for Host.replace_second_kept_under_key!
+/// Roc signature: List(U8), I64 => { second : I64, status : [Found, Missing] }
 /// Refcounted fields are owned by the hosted function.
-pub const HostSecond_remembered_under_keyArgs = extern struct {
+pub const HostReplace_second_kept_under_keyArgs = extern struct {
     arg0: RocListWith(u8, false),
+    arg1: i64,
 };
 
 /// Arguments for Host.sha256_of_bytes!
@@ -2045,9 +2045,9 @@ pub const HostGithub_identity_for_code = __AnonStruct_f3d95275ff09cbb2;
 pub const HostGithub_sign_in_settings = __AnonStruct_50209078edfd2434;
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
 pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
+pub const HostRead_second_kept_under_key = __AnonStruct_2cb02b6a756bd33f;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
-pub const HostRemember_second_under_key = __AnonStruct_2cb02b6a756bd33f;
-pub const HostSecond_remembered_under_key = __AnonStruct_2cb02b6a756bd33f;
+pub const HostReplace_second_kept_under_key = __AnonStruct_2cb02b6a756bd33f;
 pub const Admission_for_hostArg0 = __AnonStruct_8ba57119b983c03c;
 pub const Admission_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
 pub const Admission_for_host = __AnonStruct_c6984c61d9a28262;
@@ -2306,6 +2306,13 @@ pub extern fn publish_bytes_to_streams_on_key(arg0: RocListWith(u8, false), arg1
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn read_binary_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_b5c92d79cb1e25e2;
 
+/// Hosted symbol for Host.read_second_kept_under_key!
+/// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn read_second_kept_under_key(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_2cb02b6a756bd33f;
+
 /// Hosted symbol for Host.read_utf8_bytes_from_file!
 /// Roc signature: List(U8) => { bytes : List(U8), status : [Failed, Found, Missing, NotUtf8, PathRefused] }
 /// Owned arguments. Release each exactly once before returning, unless it is
@@ -2313,13 +2320,6 @@ pub extern fn read_binary_bytes_from_file(arg0: RocListWith(u8, false)) callconv
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn read_utf8_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_c2b10c7c13915346;
-
-/// Hosted symbol for Host.remember_second_under_key!
-/// Roc signature: List(U8), I64 => { second : I64, status : [Found, Missing] }
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     arg0.decref(roc_host);
-pub extern fn remember_second_under_key(arg0: RocListWith(u8, false), arg1: i64) callconv(.c) __AnonStruct_2cb02b6a756bd33f;
 
 /// Hosted symbol for Host.replace_file_with_utf8_bytes_atomically!
 /// Roc signature: List(U8), List(U8) => [Failed, MissingDirectory, NotUtf8, PathRefused, Replaced]
@@ -2329,12 +2329,12 @@ pub extern fn remember_second_under_key(arg0: RocListWith(u8, false), arg1: i64)
 ///     arg1.decref(roc_host);
 pub extern fn replace_file_with_utf8_bytes_atomically(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) FailedOrMissingDirectoryOrNotUtf8OrPathRefusedOrReplaced;
 
-/// Hosted symbol for Host.second_remembered_under_key!
-/// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
+/// Hosted symbol for Host.replace_second_kept_under_key!
+/// Roc signature: List(U8), I64 => { second : I64, status : [Found, Missing] }
 /// Owned arguments. Release each exactly once before returning, unless it is
 /// moved into storage or into the result:
 ///     arg0.decref(roc_host);
-pub extern fn second_remembered_under_key(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_2cb02b6a756bd33f;
+pub extern fn replace_second_kept_under_key(arg0: RocListWith(u8, false), arg1: i64) callconv(.c) __AnonStruct_2cb02b6a756bd33f;
 
 /// Hosted symbol for Host.sha256_of_bytes!
 /// Roc signature: List(U8) => List(U8)

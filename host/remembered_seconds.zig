@@ -41,15 +41,15 @@ pub const RememberedSeconds = struct {
     /// past `keys_most`, or no memory for one, is the app's bug or a
     /// server that can't go on: the server stops.
     pub fn remember(r: *RememberedSeconds, key: []const u8, second: i64) ?i64 {
-        if (key.len == 0 or key.len > key_most) std.debug.panic("remember_second_under_key: a key of {d} bytes (1 to {d})", .{ key.len, key_most });
+        if (key.len == 0 or key.len > key_most) std.debug.panic("replace_second_kept_under_key: a key of {d} bytes (1 to {d})", .{ key.len, key_most });
         if (r.seconds.getPtr(key)) |held| {
             const before = held.*;
             held.* = second;
             return before;
         }
-        if (r.seconds.count() >= keys_most) std.debug.panic("remember_second_under_key: {d} keys already, the most", .{keys_most});
-        const copy = r.gpa.dupe(u8, key) catch std.debug.panic("remember_second_under_key: no memory for a key", .{});
-        r.seconds.put(r.gpa, copy, second) catch std.debug.panic("remember_second_under_key: no memory for a key", .{});
+        if (r.seconds.count() >= keys_most) std.debug.panic("replace_second_kept_under_key: {d} keys already, the most", .{keys_most});
+        const copy = r.gpa.dupe(u8, key) catch std.debug.panic("replace_second_kept_under_key: no memory for a key", .{});
+        r.seconds.put(r.gpa, copy, second) catch std.debug.panic("replace_second_kept_under_key: no memory for a key", .{});
         return null;
     }
 };

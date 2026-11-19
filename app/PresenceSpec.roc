@@ -3,23 +3,25 @@
 import ConversationKey
 import Presence
 import Sample
+import Seconds
+import Timestamp
 import Topic
 import UnvalidatedString
 import UserId
 
 PresenceSpec :: [].{}
 
-## The second the tests call now.
-now : I64
-now = 1_800_000_000
+## The moment the tests call now.
+now : Timestamp
+now = Timestamp.at_second(1_800_000_000)
 
 ## Seen `ago` seconds before now.
 seen_ago : I64 -> Presence.LastSeen
-seen_ago = |ago| SeenAt(now - ago)
+seen_ago = |ago| SeenAt(Timestamp.at_second(1_800_000_000 - ago))
 
 # Online for five minutes after a request, and not at five minutes or after;
 # never seen, never online.
-expect Presence.online_window_seconds == 300
+expect Presence.online_window == Seconds.of(300)
 expect Presence.is_online({ last_seen: seen_ago(0), now })
 expect Presence.is_online({ last_seen: seen_ago(299), now })
 expect !Presence.is_online({ last_seen: seen_ago(300), now })
@@ -45,7 +47,14 @@ key_at = |path| ConversationKey.from_url_path({
 # Every request but a stream is activity, a page and a post alike.
 expect {
 	key = key_at("/chat/dm/1_2/plans")
-	[ShowConversation(key), AppendToConversation(key), SendToConversation(key), ReactInConversation(key), ShowBrowse, ShowAgents].all(Presence.counts_as_activity)
+	[
+		ShowConversation(key),
+		AppendToConversation(key),
+		SendToConversation(key),
+		ReactInConversation(key),
+		ShowBrowse,
+		ShowAgents,
+	].all(Presence.counts_as_activity)
 		and !Presence.counts_as_activity(OpenConversationStream(key))
 		and !Presence.counts_as_activity(OpenAgentStream)
 }

@@ -202,7 +202,7 @@ expect {
 			key: plans_key,
 			viewer: steve,
 			users: Sample.directory.users(),
-			sidebar: Sidebar({ places: [], online: [] }),
+			sidebar: Sidebar({ places: [], online_humans: [] }),
 		}),
 		AgentsPage.agents({
 			viewer: steve,

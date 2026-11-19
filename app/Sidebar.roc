@@ -40,20 +40,30 @@ Sidebar :: [].{
 	])
 
 	## The sidebar of `places`, on `viewer`'s page of the conversation
-	## `current`, the humans in `online` said to be online.
+	## `current`, the humans in `online_humans` said to be online.
 	nav : {
 		places : List(Browse.PlaceWithTopics),
 		current : ConversationKey,
 		viewer : UserId,
-		online : List(UserId),
+		online_humans : List(UserId),
 	} -> TrustedHtml
-	nav = |{ places, current, viewer, online }| {
+	nav = |{ places, current, viewer, online_humans }| {
 		dms = places.keep_if(|listed| is_dm(listed.place))
 		channels = places.keep_if(|listed| !is_dm(listed.place))
-		people = { viewer, online }
+		people = { viewer, online_humans }
 		groups = List.concat(
-			group_elements({ heading: "DMs", places: dms, current, people }),
-			group_elements({ heading: "Channels", places: channels, current, people }),
+			group_elements({
+				heading: "DMs",
+				places: dms,
+				current,
+				people,
+			}),
+			group_elements({
+				heading: "Channels",
+				places: channels,
+				current,
+				people,
+			}),
 		)
 		TrustedHtml.join([
 			Html.element({
@@ -100,7 +110,7 @@ group_elements = |{ heading, places, current, people }|
 	}
 
 ## Who the page is for, and who is online.
-People : { viewer : UserId, online : List(UserId) }
+People : { viewer : UserId, online_humans : List(UserId) }
 
 ## The attributes that say who the DM `place` is with, when it is another
 ## human than the viewer, and whether they are online; none for a channel or
@@ -115,7 +125,7 @@ person_attributes = |{ place, people }|
 					PageContract.data_attribute(Person(PageKit.token(other.to_str()))),
 					PageContract.data_attribute(
 						Presence(
-							if people.online.contains(other) {
+							if people.online_humans.contains(other) {
 								Online
 							} else {
 								Offline
@@ -163,10 +173,7 @@ place_section = |{ listed, current, people }| {
 		Html.element({
 			name: Div,
 			attributes: List.concat(
-				[
-					PageContract.class(SidebarPlace),
-					PageContract.data_attribute(Section(section)),
-				],
+				[PageContract.class(SidebarPlace), PageContract.data_attribute(Section(section))],
 				person_attributes({ place: listed.place, people }),
 			),
 			inner: TrustedHtml.join([

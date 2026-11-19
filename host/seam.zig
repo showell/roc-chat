@@ -187,8 +187,8 @@ comptime {
     }
 }
 
-/// Host.roc's `remember_second_under_key!` and
-/// `second_remembered_under_key!` status, alphabetical.
+/// Host.roc's `replace_second_kept_under_key!` and
+/// `read_second_kept_under_key!` status, alphabetical.
 pub const RememberedStatus = enum(u8) { found, missing };
 /// Their answer: the I64, then the tag. `second` is 0 when `Missing`.
 pub const RememberedRec = extern struct { second: i64, status: RememberedStatus };
@@ -370,12 +370,12 @@ fn remembered_rec(second: ?i64) RememberedRec {
     return if (second) |s| .{ .second = s, .status = .found } else .{ .second = 0, .status = .missing };
 }
 
-pub export fn remember_second_under_key(key: RocBytes, second: i64) callconv(.c) RememberedRec {
-    return remembered_rec(seconds_of("remember_second_under_key").remember(key.slice(), second));
+pub export fn replace_second_kept_under_key(key: RocBytes, second: i64) callconv(.c) RememberedRec {
+    return remembered_rec(seconds_of("replace_second_kept_under_key").remember(key.slice(), second));
 }
 
-pub export fn second_remembered_under_key(key: RocBytes) callconv(.c) RememberedRec {
-    return remembered_rec(seconds_of("second_remembered_under_key").recall(key.slice()));
+pub export fn read_second_kept_under_key(key: RocBytes) callconv(.c) RememberedRec {
+    return remembered_rec(seconds_of("read_second_kept_under_key").recall(key.slice()));
 }
 
 pub export fn bcrypt_hash_of_password(password: RocBytes) callconv(.c) RocBytes {

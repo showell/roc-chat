@@ -177,7 +177,7 @@ ConversationStream :: [].{
 	## One message as one event: `id:` its number, then its `html`, a
 	## `data:` line a line, then the blank line that ends it.
 	frame : { id : Message.Id, html : TrustedHtml } -> List(U8)
-	frame = |{ id, html }| ServerSentEvent.with_id({ id: id.to_str(), html })
+	frame = |{ id, html }| ServerSentEvent.numbered_event({ id: id.to_str(), html })
 }
 
 after_prefix : List(U8)
@@ -209,7 +209,7 @@ message_drawn_again = |{ key, conversation, reactions, users, id }| {
 ## count of messages seen stays as it was, then its `html`, a `data:` line a
 ## line, and the blank line that ends it.
 replacement_frame : TrustedHtml -> List(U8)
-replacement_frame = |html| ServerSentEvent.named({ name: "replace", html })
+replacement_frame = |html| ServerSentEvent.named_event({ name: "replace", html })
 
 ## The stream's bus key: the conversation's URL path.
 bus_key : ConversationKey -> List(U8)

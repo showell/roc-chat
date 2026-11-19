@@ -11,37 +11,39 @@
 ## next page drawn. An agent is never online: no sidebar lists one.
 ##
 ## When a human was last seen is kept in the host's memory
-## (`Host.remember_second_under_key!`), so a restart forgets it;
+## (`Host.replace_second_kept_under_key!`), so a restart forgets it;
 ## `PresenceNotices` reads and writes it, and sends what this module writes.
 import ConversationKey
 import Escape
 import Html
 import Route
+import Seconds
 import ServerSentEvent
+import Timestamp
 import Topic
 import UserId
 
 Presence :: [].{
 
 	## When a human was last seen, as the host remembers it.
-	LastSeen : [NeverSeen, SeenAt(I64)]
+	LastSeen : [NeverSeen, SeenAt(Timestamp)]
 
 	## How long a human stays online after a request: five minutes, as
 	## Gopher Chat's `PresenceWindow`.
-	online_window_seconds : I64
-	online_window_seconds = 5 * 60
+	online_window : Seconds
+	online_window = Seconds.of(5 * 60)
 
 	## Whether a human last seen at `last_seen` is online at `now`.
-	is_online : { last_seen : Presence.LastSeen, now : I64 } -> Bool
+	is_online : { last_seen : Presence.LastSeen, now : Timestamp } -> Bool
 	is_online = |{ last_seen, now }|
 		match last_seen {
 			NeverSeen => Bool.False
-			SeenAt(second) => now - second < Presence.online_window_seconds
+			SeenAt(seen) => !now.seconds_since(seen).is_at_least(Presence.online_window)
 		}
 
 	## Whether a request at `now`, by a human last seen at `last_seen`, brings
 	## them online: they were not online the moment before.
-	comes_online : { last_seen : Presence.LastSeen, now : I64 } -> Bool
+	comes_online : { last_seen : Presence.LastSeen, now : Timestamp } -> Bool
 	comes_online = |seen| !Presence.is_online(seen)
 
 	## Whether the route `asked` counts as a human's activity: everything but
@@ -66,7 +68,10 @@ Presence :: [].{
 	## The event that marks `human` online in a sidebar: `online`, its data
 	## their id.
 	online_frame : UserId -> List(U8)
-	online_frame = |human| ServerSentEvent.named({ name: "online", html: Escape.text(human.to_str()) })
+	online_frame = |human| {
+		id = Escape.text(human.to_str())
+		ServerSentEvent.named_event({ name: "online", html: id })
+	}
 
 	## What is shown when a human named `name` comes online, as Gopher
 	## Chat worded it.
@@ -77,7 +82,7 @@ Presence :: [].{
 	## its data a link to `link`, the recipient's DM with them.
 	notice_frame : { name : Str, link : Html.SitePath } -> List(U8)
 	notice_frame = |{ name, link }|
-		ServerSentEvent.named({
+		ServerSentEvent.named_event({
 			name: "notice",
 			html: Html.element({
 				name: A,
@@ -93,7 +98,8 @@ Presence :: [].{
 	notice_topic = |topics|
 		match topics.first() {
 			Ok(topic) => topic
-			Err(ListWasEmpty) => Topic.from_str("general") ?? crash "Presence.notice_topic: general is a topic"
+			Err(ListWasEmpty) =>
+				Topic.from_str("general") ?? crash "Presence.notice_topic: general is a topic"
 		}
 
 	## The site path of the conversation `key`, for a notice's link.

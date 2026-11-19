@@ -204,11 +204,12 @@ load_page! = |{ key, acting, directory }| {
 			Err(Agent(_)) => NoSidebar
 			Ok(listed) => {
 				places = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
-				online = PresenceNotices.online_of!({
-					ids: directory.users().to_list().map(|user| user.id()),
-					now: Clock.read_clock!({}).to_seconds_since_epoch(),
+				humans = directory.users().to_list().keep_oks(|user| user.as_human())
+				online_humans = PresenceNotices.load_online_humans!({
+					humans: humans.map(|human| human.id()),
+					now: Clock.read_clock!({}),
 				})
-				Sidebar({ places, online })
+				Sidebar({ places, online_humans })
 			}
 		}
 	ResumeRoute.record_opened!({ key, acting })?

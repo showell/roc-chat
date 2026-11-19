@@ -133,7 +133,10 @@ demo_sidebar = {
 	listed =
 		Browse.places_for({ acting: demo_viewer, directory: FirstStart.first_directory })
 			?? crash "main.demo_sidebar: the founder browses by a session"
-	Sidebar({ places: listed.map(|{ label, place }| { label, place, topics: [] }), online: [] })
+	Sidebar({
+		places: listed.map(|{ label, place }| { label, place, topics: [] }),
+		online_humans: [],
+	})
 }
 
 ## Whether the server may start on its data folder: `Ready` when the folder

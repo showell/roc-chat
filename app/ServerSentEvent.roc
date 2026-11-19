@@ -10,14 +10,14 @@ ServerSentEvent :: [].{
 
 	## An event with the id `id` and the data `html`: the browser keeps the
 	## id as the last it saw, and says it when it reconnects.
-	with_id : { id : Str, html : TrustedHtml } -> List(U8)
-	with_id = |{ id, html }|
+	numbered_event : { id : Str, html : TrustedHtml } -> List(U8)
+	numbered_event = |{ id, html }|
 		List.concat("id: ${id}\n".to_utf8(), data_lines(html)).append('\n')
 
 	## An event named `name`, with no id, so the last id a browser saw stays
 	## as it was, and the data `html`; a page listens for it by its name.
-	named : { name : Str, html : TrustedHtml } -> List(U8)
-	named = |{ name, html }|
+	named_event : { name : Str, html : TrustedHtml } -> List(U8)
+	named_event = |{ name, html }|
 		List.concat("event: ${name}\n".to_utf8(), data_lines(html)).append('\n')
 }
 
@@ -53,8 +53,8 @@ expect line_feeds_only([]) == []
 # An event with an id, and a named one: each line of the data its own
 # `data:` line, and the blank line that ends it.
 expect
-	ServerSentEvent.with_id({ id: "3", html: Escape.text("a & b\r\nc") })
+	ServerSentEvent.numbered_event({ id: "3", html: Escape.text("a & b\r\nc") })
 		== "id: 3\ndata: a &amp; b\ndata: c\n\n".to_utf8()
 expect
-	ServerSentEvent.named({ name: "online", html: Escape.text("2") })
+	ServerSentEvent.named_event({ name: "online", html: Escape.text("2") })
 		== "event: online\ndata: 2\n\n".to_utf8()

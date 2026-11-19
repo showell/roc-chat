@@ -52,7 +52,10 @@ ConversationPage :: [].{
 
 	## A human's page has the sidebar of the places Browse lists for them,
 	## with who of the humans is online; a key's has none.
-	SidebarShown : [NoSidebar, Sidebar({ places : List(Browse.PlaceWithTopics), online : List(UserId) })]
+	SidebarShown : [
+		NoSidebar,
+		Sidebar({ places : List(Browse.PlaceWithTopics), online_humans : List(UserId) }),
+	]
 
 	## The page of `conversation`, the conversation `key`, for `viewer`, each
 	## message drawn with its notes, its `reactions` among them. Each
@@ -111,9 +114,16 @@ ConversationPage :: [].{
 		{ toggle, nav, scripts } =
 			match sidebar {
 				NoSidebar => { toggle: [], nav: [], scripts: [] }
-				Sidebar({ places, online }) => {
+				Sidebar({ places, online_humans }) => {
 					toggle: [Sidebar.toggle, notice_strip],
-					nav: [Sidebar.nav({ places, current: key, viewer: viewer.user().id(), online })],
+					nav: [
+						Sidebar.nav({
+							places,
+							current: key,
+							viewer: viewer.user().id(),
+							online_humans,
+						}),
+					],
 					scripts: [Script.Sidebar],
 				}
 			}
@@ -361,7 +371,11 @@ compose_box = |key| {
 ## come online, empty as the page is drawn.
 notice_strip : TrustedHtml
 notice_strip = TrustedHtml.join([
-	Html.element({ name: P, attributes: [PageContract.class(NoticeStrip)], inner: TrustedHtml.join([]) }),
+	Html.element({
+		name: P,
+		attributes: [PageContract.class(NoticeStrip)],
+		inner: TrustedHtml.join([]),
+	}),
 	PageKit.newline,
 ])
 
