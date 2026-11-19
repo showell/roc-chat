@@ -54,9 +54,10 @@ foot : Str -> Str
 foot = |url|
 	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\" required></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · attach an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n<script src=\"/chat/assets/actions.js\"></script>\n"
 
-## How the top bar's right side opens: the links to Browse and the invites page.
+## How the top bar's right side opens: the Home link (`HomeLink`), and the
+## links to Browse and the invites page.
 top_links : Str
-top_links = "<div class=\"top-user\"><a href=\"/chat\">Browse</a> · <a href=\"/invites\">Invites</a> · "
+top_links = "<div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · <a href=\"/chat\">Browse</a> · <a href=\"/invites\">Invites</a> · "
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
@@ -238,7 +239,7 @@ expect {
 		].all(
 			|page| {
 				text = Str.from_utf8_lossy(page.to_utf8())
-				!text.contains("<a href=\"/chat\">Browse</a>") and !text.contains("/invites")
+				!text.contains("<a href=\"/chat\">Browse</a>") and !text.contains("/invites") and !text.contains("lynrummy.com")
 			},
 		)
 }

@@ -12,8 +12,8 @@
 ## first paint.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
-## title, then the links to Browse and the invites page, and the viewer's
-## name. Under it, a page another module builds (`signed_in_page`) holds its
+## title, then the Home link (`HomeLink`), the links to Browse and the
+## invites page, and the viewer's name. Under it, a page another module builds (`signed_in_page`) holds its
 ## parts in a panel, and ends with app/chrome.js, which styles the top bar
 ## and adds its theme toggle, and app/panel.js, which draws the panel as a
 ## card.
@@ -25,6 +25,7 @@
 import ConversationKey
 import DateTime
 import Escape
+import HomeLink
 import Html
 import PageContract
 import Script
@@ -208,10 +209,10 @@ PageKit :: [].{
 			body,
 		])
 
-	## The top bar: `title` on the left, and on the right the links to Browse
-	## and the invites page, and the name of `viewer`, the user viewing the
-	## page. The invites link is here so that a human in a conversation
-	## reaches invites in one step.
+	## The top bar: `title` on the left, and on the right the Home link, the
+	## links to Browse and the invites page, and the name of `viewer`, the
+	## user viewing the page. The invites link is here so that a human in a
+	## conversation reaches invites in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
 	top_bar = |{ title, viewer }|
 		Html.element({
@@ -228,6 +229,7 @@ PageKit :: [].{
 					name: Div,
 					attributes: [PageContract.class(TopUser)],
 					inner: TrustedHtml.join([
+						home_link,
 						Html.element({
 							name: A,
 							attributes: [Link(PageKit.site_path(ConversationKey.browse_path))],
@@ -311,6 +313,28 @@ PageKit :: [].{
 			}),
 		})
 }
+
+## The top bar's Home link and the separator after it, or nothing for a
+## fork with none (`HomeLink.NoHomeLink`).
+home_link : TrustedHtml
+home_link =
+	match HomeLink.home {
+		Link({ url, label }) =>
+			TrustedHtml.join([
+				Html.element({
+					name: A,
+					attributes: [
+						OffSiteLink(
+							Html.HttpsUrl.from_str(url)
+								?? crash "PageKit.home_link: HomeLink's \"${url}\" is not an https address",
+						),
+					],
+					inner: Escape.text(label),
+				}),
+				Escape.text(" · "),
+			])
+		NoHomeLink => TrustedHtml.join([])
+	}
 
 ## The doctype, the charset, and the viewport a phone lays the page out
 ## in, which every page opens with: a constant, vouched for here.

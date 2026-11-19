@@ -17,11 +17,12 @@
 ## An `<input>` has no end tag and holds nothing (`input`). Its value is a
 ## site path (a form's hidden `next`), a token (a suggested topic) or a name.
 ##
-## No link leaves the site. `Href` always writes `#` and a token, a
-## fragment of this page, and a token can't spell a scheme or a path. A
-## `Link` to another page, a form's `Action` and a script's `Src` are a
-## `SitePath`, which starts with one `/` and can't spell a scheme or another
-## host.
+## One link leaves the site, the top bar's Home link (`HomeLink`): an
+## `OffSiteLink` is an `HttpsUrl`, `https://`, a host and a site path. Every
+## other link stays on it. `Href` always writes `#` and a token, a fragment
+## of this page, and a token can't spell a scheme or a path. A `Link` to
+## another page, a form's `Action` and a script's `Src` are a `SitePath`,
+## which starts with one `/` and can't spell a scheme or another host.
 ##
 ## No class is free text. A class is a token, never a sentence or a list.
 ## Which classes a page uses, and which `data-` attributes, is the page's
@@ -102,9 +103,46 @@ Html :: [].{
 		is_eq : _
 	}
 
+	## An address on another site: `https://`, a host of dot-separated parts
+	## of ASCII letters, digits and `-`, then nothing, `/` or a site path's
+	## parts. So it can stand in an attribute's quotes as it is, and can't
+	## hold a query, a fragment, a port or a password.
+	HttpsUrl :: Str.{
+
+		## The address `text` spells, or why it is refused.
+		from_str : Str -> Try(Html.HttpsUrl, [NotHttps, BadHost, BadPath])
+		from_str = |text| {
+			after_scheme = text.drop_prefix("https://")
+			parts = after_scheme.split_on("/")
+			if !text.starts_with("https://") {
+				Err(NotHttps)
+			} else {
+				match parts.first() {
+					Err(ListWasEmpty) => Err(BadHost)
+					Ok(host) =>
+						if !is_host(host) {
+							Err(BadHost)
+						} else if parts.len() == 1 or after_scheme == "${host}/" {
+							Ok(Html.HttpsUrl.(text))
+						} else {
+							Html.SitePath.from_str(after_scheme.drop_prefix(host))
+								.map_ok(|_| Html.HttpsUrl.(text))
+								.map_err(|_| BadPath)
+						}
+				}
+			}
+		}
+
+		## The address as written.
+		to_str : Html.HttpsUrl -> Str
+		to_str = |Html.HttpsUrl.(text)| text
+
+		is_eq : _
+	}
+
 	## An attribute, its name by its tag: a class, an id and a link to an id
 	## on this page, each a token; a link to another page of this site, a
-	## site path; a time; a form's field name, its method
+	## site path; a link off the site, an `HttpsUrl`; a time; a form's field name, its method
 	## (always POST) and where it posts; whether a field is required; an
 	## input's type, its value (a site path) and what a browser may fill it
 	## with; a script's source; and a `data-` attribute for a page's
@@ -116,6 +154,7 @@ Html :: [].{
 		Href(Html.Token),
 		Link(Html.SitePath),
 		LinkWithNext({ path : Html.SitePath, next : Html.SitePath }),
+		OffSiteLink(Html.HttpsUrl),
 		DateTime(DateTime),
 		FieldName(Html.Token),
 		MethodPost,
@@ -155,6 +194,11 @@ Html :: [].{
 
 is_token_byte : U8 -> Bool
 is_token_byte = |byte| Ascii.is_letter(byte) or Ascii.is_digit(byte) or byte == '-'
+
+## Whether `text` is a host: one or more parts joined by `.`, each of ASCII
+## letters, digits and `-`.
+is_host : Str -> Bool
+is_host = |text| text.split_on(".").all(|part| !part.is_empty() and part.to_utf8().all(is_token_byte))
 
 ## Whether `part`, between a site path's `/`s, is one, or why not.
 site_path_part : Str -> Try({}, [EmptyPart, HiddenPart, ForbiddenByte])
@@ -201,6 +245,7 @@ attribute = |given|
 		Href(token) => " href=\"#${token.to_str()}\""
 		Link(path) => " href=\"${path.to_str()}\""
 		LinkWithNext({ path, next }) => " href=\"${path.to_str()}?next=${next.to_str()}\""
+		OffSiteLink(url) => " href=\"${url.to_str()}\""
 		DateTime(time) => " datetime=\"${time.to_str()}\""
 		FieldName(token) => " name=\"${token.to_str()}\""
 		MethodPost => " method=\"post\""
@@ -358,6 +403,47 @@ expect {
 expect
 	Html.SitePath.from_str("/channels/general").map_ok(|path| attribute(Link(path)))
 		== Ok(" href=\"/channels/general\"")
+# An address on another site: `https://`, a host, then nothing, `/` or a
+# site path; both sides of each refusal.
+expect
+	[
+		"https://lynrummy.com/",
+		"https://lynrummy.com",
+		"https://example.org/games/lyn-rummy",
+		"https://a-b.c1.example",
+	].all(|text| Html.HttpsUrl.from_str(text).map_ok(Html.HttpsUrl.to_str) == Ok(text))
+expect
+	[
+		"http://lynrummy.com/",
+		"javascript:alert(1)",
+		"//lynrummy.com/",
+		"/chat",
+		"",
+	].all(|text| Html.HttpsUrl.from_str(text) == Err(NotHttps))
+expect
+	[
+		"https://",
+		"https:///chat",
+		"https://.lynrummy.com/",
+		"https://lynrummy..com/",
+		"https://lynrummy.com:8080/",
+		"https://user@lynrummy.com/",
+		"https://lynrummy.com?x",
+		"https://lynrummy.com\"/",
+	].all(|text| Html.HttpsUrl.from_str(text) == Err(BadHost))
+expect
+	[
+		"https://lynrummy.com//x",
+		"https://lynrummy.com/x/",
+		"https://lynrummy.com/x?y",
+		"https://lynrummy.com/x#y",
+		"https://lynrummy.com/../x",
+		"https://lynrummy.com/x\"",
+	].all(|text| Html.HttpsUrl.from_str(text) == Err(BadPath))
+# A link off the site: its address, as it is.
+expect
+	Html.HttpsUrl.from_str("https://lynrummy.com/").map_ok(|url| attribute(OffSiteLink(url)))
+		== Ok(" href=\"https://lynrummy.com/\"")
 # An input: its attributes in order, no end tag.
 expect
 	Html.input([

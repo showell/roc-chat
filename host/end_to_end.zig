@@ -367,6 +367,10 @@ const steve_password = "correct horse battery staple";
 /// The link to Browse, which every signed-in page has.
 const browse_link = "<a href=\"/chat\">Browse</a>";
 
+/// The Home link, app/HomeLink.roc's, which every signed-in page's top bar
+/// opens its links with.
+const home_link = "<a href=\"https://lynrummy.com/\">Home</a> · ";
+
 /// The session cookie's header line that signs Steve in, once he has
 /// signed in (step 0c): every request of his carries it.
 var steve_session: []const u8 = "";
@@ -1085,10 +1089,10 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     var no_page_signs_up = true;
     for ([_][]const u8{ "/chat", "/agents", "/invites", "/login", "/channels", "/channels/crew", "/chat/dm/1_2/ChitChat", "/chat/channel/general/empty-topic" }) |path| {
         const page = try getAs(a, io, port, steve_session, path);
-        every_page_links = every_page_links and page.status == 200 and has(page.body, browse_link) and has(page.body, top_bar_link);
+        every_page_links = every_page_links and page.status == 200 and has(page.body, home_link) and has(page.body, browse_link) and has(page.body, top_bar_link);
         no_page_signs_up = no_page_signs_up and !has(page.body, "href=\"/join") and !has(page.body, "action=\"/join") and !has(page.body, "action=\"/login");
     }
-    try t.check("every signed-in page has the Browse and Invites links", every_page_links);
+    try t.check("every signed-in page has the Home, Browse and Invites links", every_page_links);
     try t.check("no signed-in page has a sign-up, join or sign-in link or form", no_page_signs_up);
     const join_while_signed_in = try getAs(a, io, port, steve_session, "/join");
     try t.check("a signed-in browser going to /join is sent to Browse", join_while_signed_in.status == 303 and std.mem.eql(u8, join_while_signed_in.header("location") orelse "", "/chat"));
