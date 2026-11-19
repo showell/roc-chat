@@ -19,7 +19,7 @@
 --    lines, parentheses, braceless `if`s and an `if` hanging off a lambda,
 --    decided words (tools/vocabulary.txt), names and their types
 --    (tools/name_types.txt), plain names (tools/fixed_terms.txt), families,
---    and `methods`
+--    unused imports, bare floats, and `methods`
 --    (no `Module.fn(x, ...)` call that would check as `x.fn(...)`, judged
 --    by Roc's own types from both apps, app/main.roc and app/Specs.roc; its
 --    trials are written in place and put back, so it runs under
@@ -35,6 +35,15 @@
 --    Host.roc's effects are named with the Zig host, so a rename is a change
 --    to the seam. container holds 1: `Http.Header`'s `value` is that
 --    header's own word and crosses the seam too.
+--    Three more counts are held at a number. In app/, hunt_names'
+--    short_name holds 6: the `{ a, b }` of `UserPair.of`, `Dm.between` and
+--    UserPair's test helper `pair_of`, the two members of an unordered
+--    pair, given in either order, where no name says more. find_unused_imports holds one
+--    import for each `app/*Spec.roc`: app/Specs.roc imports every Spec only
+--    to bring its expects into its run, which no name in the file uses.
+--    rewrite_method_calls' peer_receiver holds 69: method calls of a
+--    symmetric function on two peers (`a.concat(b)`), each a question for a
+--    reader, which `peers=undo` would turn back.
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -136,21 +145,23 @@ say(unimported == 0, "every app/*Spec.roc imported by app/Specs.roc")
 -- 3. The hunts, each count read from its summary line. A count is held at
 -- zero unless `held` names the exact number it holds, and why is in this
 -- file's header.
-const name_counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "stacked_preposition ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)", "phrase_name ([0-9]+)", "singular_list ([0-9]+)", "world_verb ([0-9]+)", "where_name ([0-9]+)"}
+const name_counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]+)", "name_type ([0-9]+)", "negative ([0-9]+)", "noun_effect ([0-9]+)", "command_tense ([0-9]+)", "mixed_tense ([0-9]+)", "container ([0-9]+)", "preposition_split ([0-9]+)", "short_name ([0-9]+)", "worker_name ([0-9]+)", "stacked_preposition ([0-9]+)", "taken_word ([0-9]+)", "bare_participle ([0-9]+)", "phrase_name ([0-9]+)", "singular_list ([0-9]+)", "world_verb ([0-9]+)", "where_name ([0-9]+)", "short_name ([0-9]+)", "stale_doc_name ([0-9]+)"}
 
 const hunts = {
-  {recipe = "hunt_names", args = {}, counts = name_counts},
+  {recipe = "hunt_names", args = {}, counts = name_counts, held = {{count = "short_name ([0-9]+)", findings = 6}}},
   {recipe = "hunt_names", glob = "platform/**/*.roc", args = {}, counts = name_counts, held = {{count = "noun_effect ([0-9]+)", findings = 9}, {count = "container ([0-9]+)", findings = 1}}},
-  {recipe = "check_errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)"}},
+  {recipe = "check_errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)", "number_fallback ([0-9]+)"}},
   {recipe = "find_deep_calls", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
-  {recipe = "check_boundaries", args = {}, counts = {"fixed ([0-9]+)"}},
+  {recipe = "check_boundaries", args = {}, counts = {"fixed ([0-9]+)", "dead ([0-9]+)", "unused_api ([0-9]+)", "same_branches ([0-9]+)"}},
   {recipe = "check_stacking", args = {}, counts = {"([0-9]+) to stack", "([0-9]+) to unstack", "([0-9]+) long"}},
   {recipe = "find_extra_parens", args = {}, counts = {"paren_if ([0-9]+)", "wrapped_body ([0-9]+)", "else_block ([0-9]+)", "lambda_if ([0-9]+)"}},
   {recipe = "check_vocabulary", args = {"words=tools/vocabulary.txt"}, counts = {"retired_name ([0-9]+)", "retired_comment ([0-9]+)"}},
   {recipe = "check_name_types", args = {"table=tools/name_types.txt"}, counts = {"name_type ([0-9]+)", "bare_beside_unit ([0-9]+)", "no_value ([0-9]+)"}},
   {recipe = "find_unclear_names", args = {"terms=tools/fixed_terms.txt"}, counts = {"pure_mutator ([0-9]+)", "abbreviation ([0-9]+)", "module_doc ([0-9]+)"}},
   {recipe = "check_families", args = {"roles=tools/type_roles.txt"}, counts = {"family ([0-9]+)", "twin_name ([0-9]+)"}},
-  {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)"}},
+  {recipe = "find_unused_imports", args = {}, counts = {"unused_import ([0-9]+)"}, fails_on_findings = true, held = {{count = "unused_import ([0-9]+)", findings = #glob("app/*Spec.roc")}}},
+  {recipe = "find_bare_floats", args = {}, counts = {"bare_float ([0-9]+)", "unused_exception ([0-9]+)"}},
+  {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)", "peer_receiver ([0-9]+)"}, held = {{count = "peer_receiver ([0-9]+)", findings = 69}}},
 }
 function findings_allowed(hunt, count)
   for held in get(hunt, "held", {}) do
@@ -172,7 +183,9 @@ for h in hunts do
   for l in lines(trim(r.out)) do
     if not starts_with(l, "──") and trim(l) ~= "" then last = l end
   end
-  local clean = r.code == 0
+  -- A recipe that fails on any finding exits nonzero at a held count, so
+  -- its counts alone judge it then.
+  local clean = r.code == 0 or (get(h, "fails_on_findings", false) and #h.counts > 0)
   for c in h.counts do
     local got = re_find(last, c)
     if got == nil or tonumber(got.groups[1]) ~= findings_allowed(h, c) then clean = false end
