@@ -345,11 +345,18 @@
   }
 
   // feed.js hands each message the stream brings to Compose.arrived.
+  // actions.js loads an edit into the box with Compose.load: the box opened,
+  // its text replaced, and the caret at `caret`, as chat-client's edit did.
   window.Compose = {
     arrived: function (article) {
       if (!awaitingArrival[article.id]) return;
       delete awaitingArrival[article.id];
       sentNotice(article);
+    },
+    load: function (text, caret) {
+      openCompose();
+      box.value = text;
+      box.setSelectionRange(caret, caret);
     },
   };
 

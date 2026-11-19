@@ -3,7 +3,8 @@
 ## holds. Every page loads app/palette.js in its head, which sets the
 ## colours before the first paint. A conversation's page ends with
 ## app/chrome.js (its top bar), app/sidebar.js (its sidebar, when it has
-## one), app/compose.js (its compose box) and app/feed.js (its messages).
+## one), app/compose.js (its compose box), app/feed.js (its messages) and
+## app/actions.js (each message's reactions and edit).
 ## Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in). The join page
 ## ends with app/join.js, which reads the invite's code from the link. `Route` serves each at its
@@ -13,10 +14,11 @@ import "chrome.js" as chrome_source : Str
 import "sidebar.js" as sidebar_source : Str
 import "compose.js" as compose_source : Str
 import "feed.js" as feed_source : Str
+import "actions.js" as actions_source : Str
 import "panel.js" as panel_source : Str
 import "join.js" as join_source : Str
 
-Script := [Palette, Chrome, Sidebar, Compose, Feed, Panel, Join].{
+Script := [Palette, Chrome, Sidebar, Compose, Feed, Actions, Panel, Join].{
 
 	## Every script the pages load.
 	all_scripts : List(Script)
@@ -26,6 +28,7 @@ Script := [Palette, Chrome, Sidebar, Compose, Feed, Panel, Join].{
 		Script.Sidebar,
 		Script.Compose,
 		Script.Feed,
+		Script.Actions,
 		Script.Panel,
 		Script.Join,
 	]
@@ -50,6 +53,7 @@ file_name = |script|
 		Sidebar => "sidebar.js"
 		Compose => "compose.js"
 		Feed => "feed.js"
+		Actions => "actions.js"
 		Panel => "panel.js"
 		Join => "join.js"
 	}
@@ -63,6 +67,7 @@ source = |script|
 		Sidebar => sidebar_source
 		Compose => compose_source
 		Feed => feed_source
+		Actions => actions_source
 		Panel => panel_source
 		Join => join_source
 	}
@@ -78,6 +83,7 @@ expect
 			"/chat/assets/sidebar.js",
 			"/chat/assets/compose.js",
 			"/chat/assets/feed.js",
+			"/chat/assets/actions.js",
 			"/chat/assets/panel.js",
 			"/chat/assets/join.js",
 		]
@@ -87,6 +93,7 @@ expect
 		sidebar_source,
 		compose_source,
 		feed_source,
+		actions_source,
 	].all(|text| text.starts_with("// This script runs on a conversation page"))
 expect [
 	chrome_source,
@@ -100,6 +107,7 @@ expect
 		sidebar_source,
 		compose_source,
 		feed_source,
+		actions_source,
 		panel_source,
 		join_source,
 	].all(|text| text.ends_with("\n})();\n"))
@@ -110,6 +118,7 @@ expect
 		(Script.Sidebar, sidebar_source),
 		(Script.Compose, compose_source),
 		(Script.Feed, feed_source),
+		(Script.Actions, actions_source),
 		(Script.Panel, panel_source),
 		(Script.Join, join_source),
 	].all(|(script, text)| script.bytes() == text.to_utf8())

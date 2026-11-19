@@ -20,7 +20,9 @@
 // message it saw, so the server sends only what was missed. If the stream
 // dies for good, the page reloads itself; if it dies again soon after, the
 // page says so instead. Each message the stream brings is handed to
-// compose.js (Compose.arrived), which says when one this page sent arrives.
+// compose.js (Compose.arrived), which says when one this page sent arrives,
+// and to actions.js (Actions.dress), which adds its buttons. A message the
+// stream sends again (a `replace` event) takes the place of the one shown.
 //
 // One message is selected, ringed, as chat-client's message view did
 // (js/message_view.js). The page starts with the newest selected. The arrow
@@ -275,7 +277,26 @@
       if (arrived.length) select(arrived[arrived.length - 1], false);
     }
     for (var k = 0; k < arrived.length; k++) Compose.arrived(arrived[k]);
+    if (window.Actions) for (var n = 0; n < arrived.length; n++) Actions.dress(arrived[n]);
   };
+  // A message the stream sends again, after an edit of it or a reaction to
+  // it, takes the place of the one shown, dressed the same and still
+  // selected if it was. It has no event id, so the count of messages the
+  // browser has seen stays as it was. actions.js styles what it holds.
+  events.addEventListener('replace', function (e) {
+    var parsed = document.createElement('template');
+    parsed.innerHTML = e.data;
+    var fresh = parsed.content.querySelector('.message');
+    var shown = fresh && document.getElementById(fresh.id);
+    if (!shown) return;
+    dress(fresh);
+    if (shown === selected) {
+      fresh.classList.add('selected');
+      selected = fresh;
+    }
+    shown.replaceWith(fresh);
+    if (window.Actions) Actions.dress(fresh);
+  });
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for
   // this reason in the last minute; then it shows a notice and stops trying.
