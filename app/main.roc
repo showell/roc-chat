@@ -2,7 +2,7 @@
 ##
 ## - `page` (the demo, host/demo.zig): a conversation's URL path and its
 ##   transcript in, its page out, as the server would show it to the
-##   founder at the first start (`first_directory`). The path's bytes become
+##   founder at the first start (`FirstStart`). The path's bytes become
 ##   unchecked text (`UnvalidatedString`), then a `ConversationKey` found in
 ##   the directory; the transcript's an unchecked file
 ##   (`Transcript.Utf8Transcript`), then a Conversation; or a refusal's tags
@@ -10,7 +10,7 @@
 ## - `start!` (the server, host/http.zig, once, before it listens): when the
 ##   data folder holds no chat yet, the founder, Steve, id 1, is made, with
 ##   the channel `general`, of which he is the one member
-##   (`first_directory`). A folder that holds a chat is read, and one that
+##   (`FirstStart`). A folder that holds a chat is read, and one that
 ##   holds part of one is refused, so the server never starts on it.
 ## - `check_request_head!` (the server): a request's head in, before the
 ##   host reads any body; out comes a refusal, or how large a body to read
@@ -49,7 +49,6 @@ import Timestamp
 import pf.Host
 import pf.Http
 import Access
-import Admin
 import AgentsRoute
 import BrowseRoute
 import ChannelMembersRoute
@@ -61,6 +60,7 @@ import ConversationRoute
 import Directory
 import Favicon
 import FileSystem
+import FirstStart
 import GitHubRoute
 import HumanInvitesRoute
 import Html
@@ -93,7 +93,7 @@ page = |path, transcript| {
 					conversation: found.conversation,
 					key: found.key,
 					viewer: demo_viewer,
-					users: first_directory.users(),
+					users: FirstStart.first_directory.users(),
 				})
 			Err(why) => Page.refusal(TranscriptRefusal.words(why))
 		}
@@ -101,7 +101,7 @@ page = |path, transcript| {
 }
 
 ## The conversation the host's bytes hold, decoded at the door: the URL
-## path read as a conversation's key in `first_directory`, then the
+## path read as a conversation's key in `FirstStart.first_directory`, then the
 ## transcript file's bytes, by `Transcript.decode` under the key's topic.
 conversation : { path : List(U8), transcript : List(U8) } -> Try(
 	{ conversation : Conversation, key : ConversationKey },
@@ -111,7 +111,7 @@ conversation = |{ path, transcript }| {
 	unchecked = UnvalidatedString.from_utf8(path) ? |NotUtf8| PathNotUtf8
 	found = ConversationKey.from_url_path({
 		path: unchecked,
-		directory: first_directory,
+		directory: FirstStart.first_directory,
 	}) ? |why| Path(why)
 	decoded = Transcript.decode(
 		found.key.topic(),
@@ -136,11 +136,11 @@ password_verdict = |bytes|
 
 ## The demo's viewer: the founder, as the first start makes him.
 demo_viewer : SignedIn
-demo_viewer = SignedIn.dangerously_assume(first_directory.chat_owner().user())
+demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().user())
 
 ## Whether the server may start on its data folder: `Ready` when the folder
 ## holds a whole chat, or held none and now holds the first
-## (`first_directory`); else `Failed`, and the host stops.
+## (`FirstStart`); else `Failed`, and the host stops.
 start! : {} => [Failed, Ready]
 start! = |{}|
 	match FileSystem.read_directory_files!({}) {
@@ -165,40 +165,13 @@ start! = |{}|
 ## then the counter of ids, which says the chat exists, last.
 write_first_directory! : {} => Try({}, _)
 write_first_directory! = |{}| {
-	FileSystem.create_account!(first_directory.chat_owner().user())?
-	for channel in first_directory.channels().to_list() {
+	FileSystem.create_account!(FirstStart.first_directory.chat_owner().user())?
+	for channel in FirstStart.first_directory.channels().to_list() {
 		FileSystem.replace_channel_members!(channel)?
 	}
-	FileSystem.replace_user_counter!(first_directory.users())?
+	FileSystem.replace_user_counter!(FirstStart.first_directory.users())?
 	Ok({})
 }
-
-## The directory at the first start: Steve (id 1), a human, and one
-## channel, the default one, which he creates as the chat's first admin and
-## is the one member of. Steve acts here with nothing checked (`SignedIn`),
-## as no one has signed in before the chat exists.
-first_directory : Directory
-first_directory = {
-	founded = Directory.with_founder(founder_name)
-	founder = founded.chat_owner().user()
-	admin =
-		Admin.of(SignedIn.dangerously_assume(founder))
-			?? crash "main.first_directory: Steve, id 1, is an admin"
-	created = (
-		founded.create_channel({
-			by: admin,
-			name: Channels.default_name,
-		}) ?? crash "main.first_directory: the default channel's name is free"
-	).directory
-	created.add_member({
-		by: admin,
-		channel: Channels.default_name,
-		member: founder,
-	}) ?? crash "main.first_directory: Steve joins the default channel"
-}
-
-founder_name : Name
-founder_name = Name.from_str("Steve") ?? crash "main.founder_name: Steve is a name"
 
 ## The moment the host's clock says it is.
 read_clock! : {} => Timestamp
@@ -902,14 +875,14 @@ expect {
 	key = ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
 			?? crash "main's tests: a path is UTF-8",
-		directory: first_directory,
+		directory: FirstStart.first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	page("/chat/dm/1_1/plans".to_utf8(), [])
 		== Page.conversation({
 			conversation: Conversation.empty(plans),
 			key,
 			viewer: demo_viewer,
-			users: first_directory.users(),
+			users: FirstStart.first_directory.users(),
 		}).to_utf8()
 }
 expect page("/chat/dm/1_1/plans".to_utf8(), [0xff]) == Page.refusal("it is not UTF-8").to_utf8()
@@ -917,48 +890,19 @@ expect page("<b>".to_utf8(), [0xff])
 	== Page.refusal("its path is not a conversation's, /chat/channel/<channel>/<topic> or /chat/dm/<pair>/<topic>")
 		.to_utf8()
 
-## The page a GET of `path` shows, as a test reads it.
-page_for_get : Str -> Str
-page_for_get = |path|
-	match Route.choose({
-		method: "GET".to_utf8(),
-		path: path.to_utf8(),
-		directory: first_directory,
-	}) {
-		SignedInOnly(ShowConversation(key)) => key.url_path(Page)
-		SignedInOnly(OpenConversationStream(key)) => "the stream of ${key.url_path(Page)}"
-		SignedInOnly(ServeUploadedImage(found)) =>
-			"the image ${found.image.name()} of ${found.key.url_path(Page)}"
-		_ => "not found"
-	}
-
-# The first start: Steve, id 1, a human, the demo's viewer; `general`, its
-# one member Steve; the counter at 2.
-expect demo_viewer.user().name() == founder_name and demo_viewer.user().id() == UserId.chat_owner
-expect first_directory.users().to_list().map(|user| user.role()) == [Human]
-expect first_directory.channels().to_list().map(
-	|channel| (channel.name().to_str(), channel.members().map(UserId.to_str)),
-) == [("general", ["1"])]
-expect first_directory.users().counter_file() == "2\n".to_utf8()
-expect page_for_get("/chat/channel/general/plans") == "/chat/channel/general/plans"
-expect page_for_get("/chat/dm/1_1/plans") == "/chat/dm/1_1/plans"
-expect page_for_get("/chat/channel/other/plans") == "not found"
-expect page_for_get("/chat/dm/1_2/plans") == "not found"
-expect page_for_get("/chat/dm/1_1/plans/stream") == "the stream of /chat/dm/1_1/plans"
-expect page_for_get("/chat/dm/1_2/plans/stream") == "not found"
+# The demo's viewer is the first start's Steve, id 1.
 expect
-	page_for_get("/chat/channel/general/plans/uploads/${"0".repeat(32)}.png")
-		== "the image ${"0".repeat(32)}.png of /chat/channel/general/plans"
-expect page_for_get("/chat/dm/1_2/plans/uploads/${"0".repeat(32)}.png") == "not found"
+	demo_viewer.user().name() == FirstStart.founder_name
+		and demo_viewer.user().id() == UserId.chat_owner
 
 ## The directory files of the first start, as the disk holds them.
 first_files : FileSystem.DirectoryFiles
 first_files = {
-	founder = first_directory.chat_owner().user()
+	founder = FirstStart.first_directory.chat_owner().user()
 	{
-		counter: File(first_directory.users().counter_file()),
+		counter: File(FirstStart.first_directory.users().counter_file()),
 		accounts: [{ id: founder.id(), files: Users.account_files(founder) }],
-		channels: first_directory.channels().to_list().map(
+		channels: FirstStart.first_directory.channels().to_list().map(
 			|channel| { name: channel.name(), members: channel.members_file() },
 		),
 	}
@@ -966,7 +910,7 @@ first_files = {
 
 # The first start's files read back are the first directory; with no
 # counter, or a counter that is no number, the files are no chat's.
-expect directory_from_files(first_files) == Ok(first_directory)
+expect directory_from_files(first_files) == Ok(FirstStart.first_directory)
 expect directory_from_files({
 	..first_files,
 	counter: NoFile,
@@ -1004,7 +948,7 @@ expect {
 	key = ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
 			?? crash "main's tests: a path is UTF-8",
-		directory: first_directory,
+		directory: FirstStart.first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	image =
 		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
@@ -1078,7 +1022,7 @@ admission_verdict : Http.RequestHead -> [
 admission_verdict = |head|
 	admission_verdict_for({
 		head,
-		directory: first_directory,
+		directory: FirstStart.first_directory,
 		actor: SignedIn(demo_viewer),
 	})
 
@@ -1087,7 +1031,7 @@ admission_verdict = |head|
 with_apoorva : Directory
 with_apoorva = {
 	apoorva = Name.from_str("Apoorva") ?? crash "main's tests: a name"
-	(first_directory.add_human(apoorva) ?? crash "main's tests: Apoorva joins").directory
+	(FirstStart.first_directory.add_human(apoorva) ?? crash "main's tests: Apoorva joins").directory
 }
 
 # An upload's room goes to someone signed in who may post there, and to no
@@ -1115,7 +1059,7 @@ expect
 		|line|
 			admission_verdict_for({
 				head: head_of(line, []),
-				directory: first_directory,
+				directory: FirstStart.first_directory,
 				actor: Anonymous,
 			})
 				== Admitted(form_body_allowance),
@@ -1146,7 +1090,7 @@ expect {
 	key = ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
 			?? crash "main's tests: a path is UTF-8",
-		directory: first_directory,
+		directory: FirstStart.first_directory,
 	}).map_ok(|found| found.key) ?? crash "main's tests: Steve's own DM is a place"
 	image =
 		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "main's tests: an image's name"
