@@ -1,6 +1,6 @@
 # roc-chat: the design from first principles
 
-The answers from our listening session on 2026-11-02, gathered in one place for you to correct. Where you gave words, these are your words. Anything marked **open** we haven't settled yet.
+The answers from our listening session on 2026-11-02, and Steve's calls since, gathered in one place for you to correct. Where you gave words, these are your words. A rule marked with a name and a date is that person's call; a rule with none is ours, written without you, for your review. Anything marked **open** we haven't settled yet.
 
 ## Who it is for
 
@@ -129,6 +129,7 @@ apoorvavpendse@gmail.com would be better
   | `auth/<human>/human-invites/<n>/hash` | the SHA-256 of the one-time code's 32 secret bytes, 64 lowercase hex digits; never the code | |
   | `chat/channel/<name>.channel` | the channel's members, one id a line, each with a line end; a blank line or one starting `#` is skipped | the Zig chat's `<name>.channel`, beside the channel's folder of topics |
   | `users/<id>/upload-bytes` | the user's lifetime upload total, digits | the Zig chat |
+  | `users/<id>/last-conv` | the conversation a human last opened, its page's URL path, `/chat/channel/general/roc-chat`; written when they open a conversation's page, and only when it names another | the Zig chat's `last-conv` |
   | `.github-client-id`, `.github-client-secret` | the OAuth app's id and secret, which the server's owner writes, readable by them alone, as `.session-secret` must be. Neither there, and the chat offers no GitHub sign-in; one without the other stops the start. No file primitive reaches them, and the secret never reaches the Roc (docs/platform.md, "GitHub") | |
   | `.github-oauth-base`, `.github-api-base` | optional: where GitHub's pages and its API are, `https://github.com` and `https://api.github.com` when absent. The end to end names its fake GitHub here | |
   | `.session-secret` | the server's secret, which signs and checks every session: 32 random bytes as 64 lowercase hex digits (any 32 to 256 bytes are read), readable by its owner alone: the server refuses to start when its group or anyone else may read or write it. The host makes it once, at the server's first start on the folder, and holds it; its name starts with `.`, so no file primitive, and so no Roc, can read or write it. Removing it and starting the server again makes a new one and ends every session | the Zig chat's `_session_secret` |
@@ -143,9 +144,13 @@ apoorvavpendse@gmail.com would be better
 
 ## Pages
 
-- **The server renders HTML.** JavaScript adds live updates, the compose box's behaviour, and all the styling: the server sends no CSS, and the HTML carries enough for the scripts to style it well. Without JavaScript the page is plain HTML, still readable, and the form still posts.
-- **The layout is the Zig chat's: three panes.** A left sidebar, the messages, and the compose box with keyboard help. Mobile comes last.
-- **Browse is the way in (Steve, 2026-11-05).** Every signed-in page's top bar links to it and to `/invites`, as the Zig chat's top bar held its section links, and it is at `/chat`. `/` is a 303 to it, for anyone, so a human signed in sees Browse and anyone else is sent on to sign in. It opens with a link to `/invites`, as every human who browses may invite. It lists every human as a DM, the reader too (their own DM), by id, then the channels the reader is a member of; `Access` decides, so nothing is listed that the reader couldn't open. Each place shows its topics as links, or "No sessions yet", and a form that starts a topic, suggesting `general` for a place's first (`POST` of `topic=` to the place's own path). It is a human's page, by their own session: a key is a 403.
+- **The server renders HTML, because Roc's tests hold it** (Steve, 2026-11-19). The page specs and the frozen demo hold each page's HTML byte for byte, which HTML a script builds in the browser would escape. JavaScript adds live updates, the compose box's behaviour, the sidebar's collapsing, and all the styling.
+- **Styling lives in the JS** (Steve, 2026-11-01: "Keep the CSS as it was in JS... directly modify styles on the DOM"). The server sends no CSS; it sends structure and class names (`PageContract`), and each script styles what it finds.
+- **The layout is the Zig chat's: three panes.** A left sidebar, the messages, and the compose box with keyboard help.
+- **The sidebar** (Steve, 2026-11-19) lists the viewer's DMs, then their channels, each place's topics under it, the current topic marked, and the Add Topic form at the end of each place's topics. Roc renders it (`Sidebar`); app/sidebar.js, adapted from chat-client's, collapses each place and styles it. No pinning (Steve: "No pinned topics until he begs for them") and no presence yet. A new topic or DM shows on the next page opened; live upserts come later, through `Sidebar.addTopic` in the script.
+- **Mobile is designed now and built next** (Steve, 2026-11-19): the page already holds the drawer's toggle button and classes; in a narrow window the script hides the sidebar until the drawer's script is built.
+- **Resume where you left off (Steve, 2026-11-19).** Opening a conversation's page records it as the viewer's last (`users/<id>/last-conv`), and `/` is a 303 to that page while they may still read it. A human with none, or one they may no longer read, and anyone else, go to Browse, so anyone not signed in is sent on to sign in.
+- **Browse lists every place (Steve, 2026-11-05), one click away.** Every signed-in page's top bar links to it and to `/invites`, as the Zig chat's top bar held its section links, and it is at `/chat`. It opens with a link to `/invites`, as every human who browses may invite. It lists every human as a DM, the reader too (their own DM), by id, then the channels the reader is a member of; `Access` decides, so nothing is listed that the reader couldn't open. Each place shows its topics as links, or "No sessions yet", and a form that starts a topic, suggesting `general` for a place's first (`POST` of `topic=` to the place's own path). It is a human's page, by their own session: a key is a 403.
 - **The invites page says what an invite is for,** mentioning GitHub only on a server that signs people up by it, and how to make one, above its form; a link just made comes first, as it is shown once. Below the form are the open invites, or a line saying there are none, and then each other human the reader may invite again, with what inviting them again does. A human with an open invite shows only their open ones.
 - **A new topic is an empty page, not a file.** The form sends the browser to the topic's page, and nothing is written: the page and its stream of a conversation with no transcript are served empty to whoever may read it, and its first message starts it. So a topic left with no message isn't kept, and Browse lists a topic only once it has a folder on disk.
 - **A signed-in human sees nothing that signs up** (Steve, 2026-11-05: "There's really no use case for humans having two accounts"). `/login` shows them who they are and a button that signs them out, with no form and no GitHub link. They link GitHub from `/agents`.
@@ -163,8 +168,8 @@ apoorvavpendse@gmail.com would be better
 
 ## Scope
 
-- **The Zig chat is a superset of what we need.** Dropped: pinning topics, back/forward navigation, Docs, image search and code search.
-- **The Zig chat keeps serving human-to-human chat**, so roc-chat's first job is agents.
+- **The Zig chat is a superset of what we need.** Dropped: pinning topics (Steve, 2026-11-19), back/forward navigation, Docs, image search and code search (whose call these four were is not recorded).
+- **roc-chat replaces the Zig chat for Steve and Apoorva, starting over** (Steve, 2026-11-19): no history is carried across, and the address stays `chat.lynrummy.com`. It cuts over once these must-haves are in: the sidebar, resume where you left off, mobile, image uploads (done), reactions and edits. The sidebar and resume are built; mobile, reactions and edits are next.
 - **First milestone:** a three-way conversation between Steve, LC and CC. The agents join through properly secure invites, and Steve explicitly creates a channel that explicitly includes them.
 
 ## How it gets built

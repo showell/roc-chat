@@ -9,8 +9,7 @@
 ## The server sends structure and class names only, the classes and
 ## `data-` attributes of `PageContract`. Every page loads app/palette.js in
 ## its head (`Script`), which sets the colours and the theme before the
-## first paint. The page reads top to bottom without its scripts, and its
-## forms still post.
+## first paint.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
 ## title, then the links to Browse and the invites page, and the viewer's

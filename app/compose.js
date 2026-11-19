@@ -1,6 +1,5 @@
 // This script runs on a conversation page, which app/ConversationPage.roc
-// builds and app/Script.roc serves. The page works without it: the form posts,
-// and the messages read top to bottom.
+// builds and app/Script.roc serves.
 //
 // The layout follows chat-client's. In a window wider than 768 pixels, the
 // messages are on the left and the compose box is a rail 320 pixels wide on

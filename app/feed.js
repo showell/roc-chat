@@ -1,7 +1,5 @@
 // This script runs on a conversation page, which app/ConversationPage.roc
-// builds and app/Script.roc serves. It looks after the messages pane. The page
-// works without it: the messages read top to bottom, each with its time in
-// UTC.
+// builds and app/Script.roc serves. It looks after the messages pane.
 //
 // Each message is a bubble, as chat-client drew them (js/message.js). The
 // viewer's own messages sit on the right in one colour, everyone else's on the

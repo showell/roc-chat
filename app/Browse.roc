@@ -1,7 +1,8 @@
 ## This module decides what Browse shows a human and writes its page. Browse
-## is the way into the chat: every human as a DM, the reader too (their own
-## DM), then each channel the reader is a member of, each with its topics and
-## a form that starts a new one. Above them is the link to the invites page,
+## lists every place a human may open: every human as a DM, the reader too
+## (their own DM), then each channel the reader is a member of, each with its
+## topics and a form that starts a new one. A conversation's sidebar
+## (`Sidebar`) lists the same places. Above them is the link to the invites page,
 ## as every human who browses may invite. `Access` decides what is listed, so a place
 ## the reader couldn't open is never shown. `BrowseRoute` reads the topics and
 ## answers.
