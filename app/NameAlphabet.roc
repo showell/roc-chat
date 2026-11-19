@@ -103,9 +103,9 @@ is_all_letters_or_spaces : List(U8) -> Bool
 is_all_letters_or_spaces = |bytes|
 	match bytes {
 		[] => Bool.True
-		[b, .. as rest] if b == ' ' or Ascii.is_letter(b) => is_all_letters_or_spaces(rest)
-		[lead, b, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
-			is_letter(two_byte_code_point(lead, b)) and is_all_letters_or_spaces(rest)
+		[byte, .. as rest] if byte == ' ' or Ascii.is_letter(byte) => is_all_letters_or_spaces(rest)
+		[lead, trail, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
+			is_letter(two_byte_code_point(lead, trail)) and is_all_letters_or_spaces(rest)
 		_ => Bool.False
 	}
 
@@ -119,19 +119,19 @@ code_points_onto : { out : List(U32), bytes : List(U8) } -> List(U32)
 code_points_onto = |{ out, bytes }|
 	match bytes {
 		[] => out
-		[b, .. as rest] if b < 0x80 => code_points_onto({
-			out: out.append(b.to_u32()),
+		[byte, .. as rest] if byte < 0x80 => code_points_onto({
+			out: out.append(byte.to_u32()),
 			bytes: rest,
 		})
-		[lead, b, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
-			code_points_onto({ out: out.append(two_byte_code_point(lead, b)), bytes: rest })
+		[lead, trail, .. as rest] if lead >= 0xC0 and lead < 0xE0 =>
+			code_points_onto({ out: out.append(two_byte_code_point(lead, trail)), bytes: rest })
 		_ =>
 			crash "NameAlphabet.code_points_onto: written text holds only one- and two-byte characters"
 	}
 
-## The code point of the two-byte character whose bytes are `lead`, `b`.
+## The code point of the two-byte character whose bytes are `lead`, `trail`.
 two_byte_code_point : U8, U8 -> U32
-two_byte_code_point = |lead, b| (lead - 0xC0).to_u32() * 64 + (b - 0x80).to_u32()
+two_byte_code_point = |lead, trail| (lead - 0xC0).to_u32() * 64 + (trail - 0x80).to_u32()
 
 ## `bytes` decoded as UTF-8, which they always are; a crash saying `why`
 ## if they aren't.

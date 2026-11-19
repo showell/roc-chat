@@ -48,7 +48,10 @@ from_hex_onto = |{ out, rest }|
 		[] => Ok(out)
 		[high, low, .. as after] =>
 			match (lower_digit_value(high), lower_digit_value(low)) {
-				(Ok(h), Ok(l)) => from_hex_onto({ out: out.append(h * 16 + l), rest: after })
+				(Ok(high_value), Ok(low_value)) => from_hex_onto({
+					out: out.append(high_value * 16 + low_value),
+					rest: after,
+				})
 				_ => Err(NotHex)
 			}
 		[_] => Err(NotHex)
@@ -63,13 +66,13 @@ lower_digit_value = |digit|
 		Err(NotAHexDigit)
 	}
 
-## The lowercase digit for `n`, which is below 16.
+## The lowercase digit for `value`, which is below 16.
 digit_of : U8 -> U8
-digit_of = |n|
-	if n < 10 {
-		'0' + n
+digit_of = |value|
+	if value < 10 {
+		'0' + value
 	} else {
-		'a' + n - 10
+		'a' + value - 10
 	}
 
 # ── tests

@@ -9,14 +9,14 @@ Escape :: [].{
 
 	## `text`, escaped, as markup a page can hold.
 	text : Str -> TrustedHtml
-	text = |s| TrustedHtml.dangerously_trust(escaped_text(s))
+	text = |unescaped| TrustedHtml.dangerously_trust(escaped_text(unescaped))
 }
 
-## `s` with `&`, `<`, `>`, `"` and `'` written as entities. `&` is escaped
+## `unescaped` with `&`, `<`, `>`, `"` and `'` written as entities. `&` is escaped
 ## first, so no entity written here is escaped again.
 escaped_text : Str -> Str
-escaped_text = |s|
-	s
+escaped_text = |unescaped|
+	unescaped
 		.replace_each("&", "&amp;")
 		.replace_each("<", "&lt;")
 		.replace_each(">", "&gt;")

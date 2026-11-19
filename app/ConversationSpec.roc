@@ -16,10 +16,10 @@ message_summaries : List(Message) -> List(
 	},
 )
 message_summaries = |messages| messages.map(
-	|m| {
-		id: m.id().to_str(),
-		author: m.author().to_str(),
-		markdown: m.markdown(),
+	|message| {
+		id: message.id().to_str(),
+		author: message.author().to_str(),
+		markdown: message.markdown(),
 	},
 )
 
@@ -87,11 +87,11 @@ hello_at : Str -> Message.Unnumbered(Author)
 hello_at = |time|
 	Sample.unnumbered_message({ author: "Steve", time, markdown: "Hello" })
 
-## The id `unnumbered_message` takes, appended alone after `c`'s messages,
+## The id `unnumbered_message` takes, appended alone after `conversation`'s messages,
 ## or why it is refused.
 appended_alone : Conversation, Message.Unnumbered(Author) -> Try(Str, [Full, Backdated])
-appended_alone = |c, unnumbered_message|
-	c.append(unnumbered_message).map_ok(|grown| grown.message.id().to_str())
+appended_alone = |conversation, unnumbered_message|
+	conversation.append(unnumbered_message).map_ok(|grown| grown.message.id().to_str())
 
 ## The conversation of Steve's hello alone.
 hello_alone : Conversation

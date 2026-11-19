@@ -166,8 +166,9 @@ expect {
 		channel: channel_name("plans"),
 		member: Sample.user("CC"),
 	}) ?? crash "DirectorySpec: CC leaves plans"
-	plans_members = |d|
-		d.channels().channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
+	plans_members = |directory|
+		directory.channels().channel(channel_name("plans"))
+			.map_ok(|channel| channel.members().map(UserId.to_str))
 	plans_members(admitted) == Ok(["3"]) and plans_members(removed) == Ok([])
 }
 expect
@@ -254,7 +255,7 @@ expect {
 		name: Sample.name("Debbie"),
 	}) ?? crash "DirectorySpec: Debbie is free"
 	human_added(done.directory, "debbie") == Err(NameTaken)
-		and done.directory.users().user_by_name(Sample.name("Debbie")).map_ok(|u| u.id().to_str())
+		and done.directory.users().user_by_name(Sample.name("Debbie")).map_ok(|user| user.id().to_str())
 			== Ok("2")
 		and done.directory.users().user_by_name(Sample.name("Apoorva")).map_ok(|_| {})
 			== Err(NoSuchUser)

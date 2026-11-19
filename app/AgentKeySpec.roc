@@ -18,15 +18,15 @@ AgentKeySpec :: [].{}
 
 ## The hash whose every byte is `b`.
 hash_of : U8 -> SecretHash
-hash_of = |b| SecretHash.of_digest(List.repeat(b, 32))
+hash_of = |byte| SecretHash.of_digest(List.repeat(byte, 32))
 
 ## A key's number, `n`.
 key_id : Str -> AgentKey.Id
-key_id = |n| AgentKey.Id.from_str(n) ?? crash "AgentKeySpec: a key's number"
+key_id = |text| AgentKey.Id.from_str(text) ?? crash "AgentKeySpec: a key's number"
 
 ## An invite's number, `n`.
 invite_id : Str -> AgentInvite.Id
-invite_id = |n| AgentInvite.Id.from_str(n) ?? crash "AgentKeySpec: an invite's number"
+invite_id = |text| AgentInvite.Id.from_str(text) ?? crash "AgentKeySpec: an invite's number"
 
 ## When the tests' keys and invites are made.
 made_at : Timestamp

@@ -224,8 +224,8 @@ chat_parts = |path| {
 	Ok(
 		Str.join_with(
 			parts.map(
-				|p|
-					if p.is_exactly("chat") {
+				|part|
+					if part.is_exactly("chat") {
 						"chat"
 					} else {
 						"other"

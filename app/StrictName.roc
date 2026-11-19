@@ -43,7 +43,7 @@ StrictName :: Str.{
 
 ## Is `b` a letter, a digit or `-`?
 is_strict_byte : U8 -> Bool
-is_strict_byte = |b| Ascii.is_letter(b) or Ascii.is_digit(b) or b == '-'
+is_strict_byte = |byte| Ascii.is_letter(byte) or Ascii.is_digit(byte) or byte == '-'
 
 # ── tests
 ## The strict name `text`, as given, or why it is refused.

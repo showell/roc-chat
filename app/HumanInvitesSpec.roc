@@ -269,12 +269,12 @@ expect
 
 ## The secret whose every byte is `b`.
 secret : U8 -> Secret
-secret = |b| Secret.from_random_bytes(List.repeat(b, 32))
+secret = |byte| Secret.from_random_bytes(List.repeat(byte, 32))
 
 ## The hash of the secret whose every byte is `b`, as a test stands in for
 ## the host's.
 hash : U8 -> SecretHash
-hash = |b| SecretHash.of_digest(List.repeat(b, 32))
+hash = |byte| SecretHash.of_digest(List.repeat(byte, 32))
 
 ## Zoe's invite numbered `number`, made by `by` at 1000, its code's hash
 ## `hash(number)`.

@@ -17,17 +17,17 @@ JsonOut :: List(U8).{
 			[
 				['"'],
 				text.to_utf8().join_map(
-					|b|
-						if b == '"' {
+					|byte|
+						if byte == '"' {
 							['\\', '"']
-						} else if b == '\\' {
+						} else if byte == '\\' {
 							['\\', '\\']
-						} else if b == '\n' {
+						} else if byte == '\n' {
 							['\\', 'n']
-						} else if b < 0x20 or b == 0x7F {
-							"\\u00${Hex.to_hex([b])}".to_utf8()
+						} else if byte < 0x20 or byte == 0x7F {
+							"\\u00${Hex.to_hex([byte])}".to_utf8()
 						} else {
-							[b]
+							[byte]
 						},
 				),
 				['"'],
@@ -40,7 +40,7 @@ JsonOut :: List(U8).{
 
 	## A number, its decimal digits: a message's id in an agent's stream.
 	number : U64 -> JsonOut
-	number = |n| JsonOut.(n.to_str().to_utf8())
+	number = |value| JsonOut.(value.to_str().to_utf8())
 
 	## The fields in order, each a name and a value: `{"name":value,...}`.
 	## A name is escaped as a string is.
@@ -64,14 +64,14 @@ JsonOut :: List(U8).{
 
 	## The value's bytes.
 	bytes : JsonOut -> List(U8)
-	bytes = |JsonOut.(b)| b
+	bytes = |JsonOut.(written)| written
 }
 
 ## Each part, a comma between each two.
 commas : List(List(U8)) -> List(U8)
 commas = |parts| parts.map_with_index(
-	|part, i|
-		if i == 0 {
+	|part, index|
+		if index == 0 {
 			part
 		} else {
 			part.prepend(',')

@@ -34,17 +34,17 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	}.{
 
 		id : Users.User -> UserId
-		id = |Users.User.(u)| u.id
+		id = |Users.User.(user)| user.id
 
 		name : Users.User -> Name
-		name = |Users.User.(u)| u.name
+		name = |Users.User.(user)| user.name
 
 		role : Users.User -> Users.Role
-		role = |Users.User.(u)| u.role
+		role = |Users.User.(user)| user.role
 
 		## The user as the author of a message.
 		author : Users.User -> Author
-		author = |Users.User.(u)| Author.of(u.name)
+		author = |Users.User.(user)| Author.of(user.name)
 
 		## The user as a human; an agent is refused, by its id.
 		as_human : Users.User -> Try(Users.Human, [Agent(UserId)])

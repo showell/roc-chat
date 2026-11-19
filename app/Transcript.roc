@@ -139,11 +139,11 @@ read_onto = |so_far, records|
 		[first, .. as rest] => read_onto(read_message(so_far, first)?, rest)
 	}
 
-## `c` with the message `written` appended, or why it can't be.
+## `conversation` with the message `written` appended, or why it can't be.
 read_message : Conversation, Str -> Try(Conversation, _)
-read_message = |c, written| {
-	id = c.next_id()?
-	reference = c.reference(id).to_str()
+read_message = |conversation, written| {
+	id = conversation.next_id()?
+	reference = conversation.reference(id).to_str()
 	match written.split_on("\n") {
 		[
 			head,
@@ -162,7 +162,7 @@ read_message = |c, written| {
 			markdown = Separator.unescape(
 				Str.join_with(body, "\n"),
 			).map_err(|BareSeparator| BadBody(id))?
-			grown = c.append({ payload: { author, markdown }, time }).map_err(
+			grown = conversation.append({ payload: { author, markdown }, time }).map_err(
 				|why|
 					match why {
 						Full => Full

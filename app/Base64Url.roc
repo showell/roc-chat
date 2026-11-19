@@ -41,16 +41,16 @@ character_of = |value|
 
 ## The value of one character of the alphabet.
 value_of : U8 -> Try(U8, [NotBase64Url])
-value_of = |c|
-	if c >= 'A' and c <= 'Z' {
-		Ok(c - 'A')
-	} else if c >= 'a' and c <= 'z' {
-		Ok(c - 'a' + 26)
-	} else if c >= '0' and c <= '9' {
-		Ok(c - '0' + 52)
-	} else if c == '-' {
+value_of = |character|
+	if character >= 'A' and character <= 'Z' {
+		Ok(character - 'A')
+	} else if character >= 'a' and character <= 'z' {
+		Ok(character - 'a' + 26)
+	} else if character >= '0' and character <= '9' {
+		Ok(character - '0' + 52)
+	} else if character == '-' {
 		Ok(62)
-	} else if c == '_' {
+	} else if character == '_' {
 		Ok(63)
 	} else {
 		Err(NotBase64Url)
@@ -60,18 +60,18 @@ value_of = |c|
 encode_group : List(U8) -> List(U8)
 encode_group = |group|
 	match group {
-		[a, b, c] => [
-			a // 4,
-			(a % 4) * 16 + b // 16,
-			(b % 16) * 4 + c // 64,
-			c % 64,
+		[first, second, third] => [
+			first // 4,
+			(first % 4) * 16 + second // 16,
+			(second % 16) * 4 + third // 64,
+			third % 64,
 		].map(character_of)
-		[a, b] => [
-			a // 4,
-			(a % 4) * 16 + b // 16,
-			(b % 16) * 4,
+		[first, second] => [
+			first // 4,
+			(first % 4) * 16 + second // 16,
+			(second % 16) * 4,
 		].map(character_of)
-		[a] => [a // 4, (a % 4) * 16].map(character_of)
+		[first] => [first // 4, (first % 4) * 16].map(character_of)
 		_ => crash "Base64Url.encode_group: a group is one to three bytes"
 	}
 
@@ -80,18 +80,18 @@ encode_group = |group|
 decode_group : List(U8) -> Try(List(U8), [NotBase64Url])
 decode_group = |group|
 	match group {
-		[a, b, c, d] => Ok([
-			a * 4 + b // 16,
-			(b % 16) * 16 + c // 4,
-			(c % 4) * 64 + d,
+		[first, second, third, fourth] => Ok([
+			first * 4 + second // 16,
+			(second % 16) * 16 + third // 4,
+			(third % 4) * 64 + fourth,
 		])
-		[a, b, c] => if c % 4 == 0 {
-			Ok([a * 4 + b // 16, (b % 16) * 16 + c // 4])
+		[first, second, third] => if third % 4 == 0 {
+			Ok([first * 4 + second // 16, (second % 16) * 16 + third // 4])
 		} else {
 			Err(NotBase64Url)
 		}
-		[a, b] => if b % 16 == 0 {
-			Ok([a * 4 + b // 16])
+		[first, second] => if second % 16 == 0 {
+			Ok([first * 4 + second // 16])
 		} else {
 			Err(NotBase64Url)
 		}

@@ -26,14 +26,14 @@ Channels :: List(Channels.Channel).{
 	Channel :: { name : ChannelName, members : Set(UserId) }.{
 
 		name : Channels.Channel -> ChannelName
-		name = |Channels.Channel.(c)| c.name
+		name = |Channels.Channel.(channel)| channel.name
 
 		## The members' ids, lowest first.
 		members : Channels.Channel -> List(UserId)
-		members = |Channels.Channel.(c)| c.members.to_list().sort_with(UserId.compare)
+		members = |Channels.Channel.(channel)| channel.members.to_list().sort_with(UserId.compare)
 
 		has_member : Channels.Channel, Users.User -> Bool
-		has_member = |Channels.Channel.(c), user| c.members.contains(user.id())
+		has_member = |Channels.Channel.(channel), user| channel.members.contains(user.id())
 
 		## The channel's members as its file holds them: each member's id and a line end,
 		## lowest first.
@@ -100,8 +100,8 @@ Channels :: List(Channels.Channel).{
 	add_new_human : Channels, Users.Human -> Try(Channels.Created, [NoDefaultChannel])
 	add_new_human = |channels, human| {
 		default = channels.channel(Channels.default_name) ? |NoSuchChannel| NoDefaultChannel
-		Channels.Channel.(c) = default
-		joined = Channels.Channel.({ ..c, members: c.members.insert(human.id()) })
+		Channels.Channel.(old) = default
+		joined = Channels.Channel.({ ..old, members: old.members.insert(human.id()) })
 		Ok({ channels: with_channel(channels, joined), channel: joined })
 	}
 
@@ -110,15 +110,15 @@ Channels :: List(Channels.Channel).{
 	## a member already (`AlreadyMember`).
 	add_member : Channels, Channels.MemberChange -> Try(Channels, [NoSuchChannel, AlreadyMember])
 	add_member = |channels, change| {
-		Channels.Channel.(c) = channels.channel(change.channel)?
+		Channels.Channel.(target) = channels.channel(change.channel)?
 		member = change.member.id()
-		if c.members.contains(member) {
+		if target.members.contains(member) {
 			Err(AlreadyMember)
 		} else {
 			Ok(
 				with_channel(
 					channels,
-					Channels.Channel.({ ..c, members: c.members.insert(member) }),
+					Channels.Channel.({ ..target, members: target.members.insert(member) }),
 				),
 			)
 		}
@@ -129,13 +129,13 @@ Channels :: List(Channels.Channel).{
 	## member (`NotMember`).
 	remove_member : Channels, Channels.MemberChange -> Try(Channels, [NoSuchChannel, NotMember])
 	remove_member = |channels, change| {
-		Channels.Channel.(c) = channels.channel(change.channel)?
+		Channels.Channel.(target) = channels.channel(change.channel)?
 		member = change.member.id()
-		if c.members.contains(member) {
+		if target.members.contains(member) {
 			Ok(
 				with_channel(
 					channels,
-					Channels.Channel.({ ..c, members: c.members.remove(member) }),
+					Channels.Channel.({ ..target, members: target.members.remove(member) }),
 				),
 			)
 		} else {
@@ -177,11 +177,11 @@ with_channel = |Channels.(all), changed| {
 	name = changed.name()
 	Channels.(
 		all.map(
-			|c|
-				if c.name() == name {
+			|channel|
+				if channel.name() == name {
 					changed
 				} else {
-					c
+					channel
 				},
 		),
 	)

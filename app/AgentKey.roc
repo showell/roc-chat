@@ -39,16 +39,17 @@ AgentKey :: {
 		from_str : Str -> Try(AgentKey.Id, [NotAKeyId])
 		from_str = |text|
 			SerialNumber.from_str(text)
-				.map_ok(|n| AgentKey.Id.(n))
+				.map_ok(|serial_number| AgentKey.Id.(serial_number))
 				.map_err(|NotASerialNumber| NotAKeyId)
 
 		## The number after the highest of `given`, 1 for none.
 		next_after : List(AgentKey.Id) -> Try(AgentKey.Id, [Full])
 		next_after = |given|
-			SerialNumber.next_after(given.map(|AgentKey.Id.(n)| n)).map_ok(|n| AgentKey.Id.(n))
+			SerialNumber.next_after(given.map(|AgentKey.Id.(n)| n))
+				.map_ok(|serial_number| AgentKey.Id.(serial_number))
 
 		to_str : AgentKey.Id -> Str
-		to_str = |AgentKey.Id.(n)| n.to_str()
+		to_str = |AgentKey.Id.(serial_number)| serial_number.to_str()
 
 		is_eq : _
 	}

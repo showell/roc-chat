@@ -158,10 +158,10 @@ civil_from_days = |days| {
 	{ year, month, day }
 }
 
-## `n`, zero or more, in at least `width` digits, zeros before.
+## `value`, zero or more, in at least `width` digits, zeros before.
 padded_digits : I64, U64 -> Str
-padded_digits = |n, width| {
-	written = n.to_str()
+padded_digits = |value, width| {
+	written = value.to_str()
 	Str.concat("0".repeat(width - written.count_utf8_bytes()), written)
 }
 
@@ -183,7 +183,7 @@ byte_order = |bytes, others|
 
 ## The number the digits write, most significant first.
 number : List(U8) -> U64
-number = |digits| digits.fold(0, |n, d| n * 10 + (d - '0').to_u64())
+number = |digits| digits.fold(0, |so_far, digit| so_far * 10 + (digit - '0').to_u64())
 
 ## How many days `month` (1 to 12) has in `year`, by the Gregorian rule.
 days_in : { year : U64, month : U64 } -> U64

@@ -229,7 +229,7 @@ expect
 		})
 expect image_upload_from_form(
 	form_of({ filename: "cat.txt", file: png }),
-).map_ok(|u| u.kind) == Ok(Png)
+).map_ok(|upload| upload.kind) == Ok(Png)
 # Refused: not an image, no form, no file in it.
 expect image_upload_from_form(
 	form_of({ filename: "cat.png", file: "hello, not an image".to_utf8() }),

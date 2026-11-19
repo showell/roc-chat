@@ -25,8 +25,8 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 	)
 	append = |conversation, unnumbered_message| {
 		id = Conversation.next_id(conversation)?
-		Conversation.(c) = conversation
-		match c.messages.last() {
+		Conversation.(old) = conversation
+		match old.messages.last() {
 			Ok(latest) if DateTime.compare(
 				unnumbered_message.time,
 				latest.time(),
@@ -34,7 +34,7 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 			_ => {
 				message = Message.numbered_message({ id, unnumbered: unnumbered_message })
 				Ok({
-					conversation: Conversation.({ ..c, messages: c.messages.append(message) }),
+					conversation: Conversation.({ ..old, messages: old.messages.append(message) }),
 					message,
 				})
 			}
@@ -44,8 +44,8 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 	## The id the next message will get. `Transcript` also uses it, to name
 	## the message it is reading when it refuses a file.
 	next_id : Conversation -> Try(Message.Id, [Full])
-	next_id = |Conversation.(c)|
-		match c.messages.last() {
+	next_id = |Conversation.(conversation)|
+		match conversation.messages.last() {
 			Ok(latest) => latest.id().next()
 			Err(ListWasEmpty) => Ok(Message.Id.first)
 		}
@@ -53,19 +53,22 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 	## The reference for message `id`, `MSG_<topic>_<n>`. It's unique only
 	## within the conversation's channel or DM, as the topic is.
 	reference : Conversation, Message.Id -> MsgAnchor
-	reference = |Conversation.(c), id| MsgAnchor.of({ topic: c.topic, id })
+	reference = |Conversation.(conversation), id| MsgAnchor.of({ topic: conversation.topic, id })
 
 	topic : Conversation -> Topic
-	topic = |Conversation.(c)| c.topic
+	topic = |Conversation.(conversation)| conversation.topic
 
 	## Oldest first.
 	messages : Conversation -> List(Message)
-	messages = |Conversation.(c)| c.messages
+	messages = |Conversation.(conversation)| conversation.messages
 
 	## The messages after the first `count`: what a reader who has seen
 	## `count` messages hasn't seen yet. Oldest first.
 	messages_after : Conversation, U16 -> List(Message)
-	messages_after = |Conversation.(c), count| c.messages.drop_first(count.to_u64())
+	messages_after = |
+		Conversation.(conversation),
+		count,
+	| conversation.messages.drop_first(count.to_u64())
 
 	is_eq : _
 }

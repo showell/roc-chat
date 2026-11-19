@@ -14,16 +14,16 @@ Ascii :: [].{
 
 	## Is `c` one of `0` to `9`?
 	is_digit : U8 -> Bool
-	is_digit = |c| c >= '0' and c <= '9'
+	is_digit = |byte| byte >= '0' and byte <= '9'
 
 	## Is `c` one of `A` to `Z` or `a` to `z`?
 	is_letter : U8 -> Bool
-	is_letter = |c| (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')
+	is_letter = |byte| (byte >= 'A' and byte <= 'Z') or (byte >= 'a' and byte <= 'z')
 
 	## Is `c` a space, a tab, a CR or an LF? These are the four the Zig
 	## chat's formats trim, not `Str.trim`'s Unicode spaces.
 	is_space : U8 -> Bool
-	is_space = |c| c == ' ' or c == '\t' or c == '\r' or c == '\n'
+	is_space = |byte| byte == ' ' or byte == '\t' or byte == '\r' or byte == '\n'
 
 	## `bytes` with the spaces (`is_space`) off both ends.
 	trim_spaces : List(U8) -> List(U8)
@@ -49,7 +49,7 @@ Ascii :: [].{
 				[] => Err(NotCanonical)
 				['0', ..] => Err(NotCanonical)
 				_ if bytes.len() > most_digits or !bytes.all(Ascii.is_digit) => Err(NotCanonical)
-				_ => Ok(bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64()))
+				_ => Ok(bytes.fold(0, |so_far, digit| so_far * 10 + (digit - '0').to_u64()))
 			}
 		}
 }

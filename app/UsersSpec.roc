@@ -13,15 +13,15 @@ summary : Users.User -> {
 	name : Str,
 	role : Str,
 }
-summary = |u| {
-	id: u.id().to_str(),
-	name: u.name().to_str(),
-	role: role_in_words(u),
+summary = |user| {
+	id: user.id().to_str(),
+	name: user.name().to_str(),
+	role: role_in_words(user),
 }
 
 role_in_words : Users.User -> Str
-role_in_words = |u|
-	match u.role() {
+role_in_words = |user|
+	match user.role() {
 		Human => "human"
 		Agent({ owner }) => "agent of ${owner.to_str()}"
 	}
@@ -156,12 +156,12 @@ expect {
 		and agent_added(full, { name: "Bot", owner: zed }) == Err(NoSuchOwner)
 }
 # A user found by id, or none.
-expect sample.user(UserId.chat_owner).map_ok(|u| u.name().to_str()) == Ok("Steve")
-expect sample.user(id_after_steve(2)).map_ok(|u| u.name().to_str()) == Ok("CC")
+expect sample.user(UserId.chat_owner).map_ok(|user| user.name().to_str()) == Ok("Steve")
+expect sample.user(id_after_steve(2)).map_ok(|user| user.name().to_str()) == Ok("CC")
 expect sample.user(stranger) == Err(NoSuchUser)
 # A user found by name, a human's or an agent's, or none; the case counts.
 expect sample.user_by_name(Sample.name("Steve")) == Ok(Sample.steve)
-expect sample.user_by_name(Sample.name("CC")).map_ok(|u| u.id().to_str()) == Ok("3")
+expect sample.user_by_name(Sample.name("CC")).map_ok(|user| user.id().to_str()) == Ok("3")
 expect
 	[
 		"steve",

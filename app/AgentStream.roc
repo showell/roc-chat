@@ -151,23 +151,23 @@ Dated : {
 ## The order of a backlog: by time, then by the conversation's place in the
 ## list, then by the message's.
 order_by_time_then_place : Dated, Dated -> [Before, Same, After]
-order_by_time_then_place = |a, b|
-	match DateTime.compare(a.message.time(), b.message.time()) {
+order_by_time_then_place = |one, other|
+	match DateTime.compare(one.message.time(), other.message.time()) {
 		Before => Before
 		After => After
-		Same => if a.place != b.place {
-			order_of(a.place, b.place)
+		Same => if one.place != other.place {
+			order_of(one.place, other.place)
 		} else {
-			order_of(a.at, b.at)
+			order_of(one.at, other.at)
 		}
 	}
 
 ## Which of two places comes first.
 order_of : U64, U64 -> [Before, Same, After]
-order_of = |a, b|
-	if a < b {
+order_of = |one, other|
+	if one < other {
 		Before
-	} else if a == b {
+	} else if one == other {
 		Same
 	} else {
 		After

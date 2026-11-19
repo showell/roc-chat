@@ -290,7 +290,7 @@ hello_record = |file|
 
 ## A file of `n` bytes, which only its length matters to.
 file_of : U64 -> [NoFile, File(Transcript.Utf8Transcript)]
-file_of = |n| File(Transcript.Utf8Transcript.unchecked_from_file(List.repeat('a', n)))
+file_of = |size| File(Transcript.Utf8Transcript.unchecked_from_file(List.repeat('a', size)))
 
 ## The file of `bytes`, decoded as `plans`' transcript.
 decoded_conversation : List(U8) -> Try(Conversation, _)

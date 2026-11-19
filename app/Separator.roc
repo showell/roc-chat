@@ -36,11 +36,11 @@ Separator :: [].{
 	escape : Str -> Str
 	escape = |markdown| Str.join_with(
 		markdown.split_on("\n").map(
-			|l|
-				if is_backslashed_separator(l) {
-					"\\${l}"
+			|text|
+				if is_backslashed_separator(text) {
+					"\\${text}"
 				} else {
-					l
+					text
 				},
 		),
 		"\n",
@@ -58,11 +58,11 @@ Separator :: [].{
 			Ok(
 				Str.join_with(
 					lines.map(
-						|l|
-							if is_backslashed_separator(l) {
-								l.drop_prefix("\\")
+						|text|
+							if is_backslashed_separator(text) {
+								text.drop_prefix("\\")
 							} else {
-								l
+								text
 							},
 					),
 					"\n",
@@ -72,10 +72,10 @@ Separator :: [].{
 	}
 }
 
-## Is `l` the separator after zero or more backslashes?
+## Is `text` the separator after zero or more backslashes?
 is_backslashed_separator : Str -> Bool
-is_backslashed_separator = |l|
-	l.ends_with(Separator.line) and l.drop_suffix(Separator.line).to_utf8().all(|b| b == '\\')
+is_backslashed_separator = |text|
+	text.ends_with(Separator.line) and text.drop_suffix(Separator.line).to_utf8().all(|b| b == '\\')
 
 # ── tests
 expect

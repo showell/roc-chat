@@ -230,7 +230,7 @@ count_of = |bytes|
 		['0', ..] => Err(BadCount)
 		_ if bytes.len() > 5 or !bytes.all(Ascii.is_digit) => Err(BadCount)
 		_ => {
-			number = bytes.fold(0, |so_far, b| so_far * 10 + (b - '0').to_u64())
+			number = bytes.fold(0, |so_far, digit| so_far * 10 + (digit - '0').to_u64())
 			if number > U16.highest.to_u64() {
 				Err(BadCount)
 			} else {
@@ -391,8 +391,8 @@ message_frame = |conversation, message|
 expect {
 	conversation = plans_holding(["Hello", "- one\n- two"])
 	conversation.messages().all(
-		|m| {
-			framed = message_frame(conversation, m)
+		|message| {
+			framed = message_frame(conversation, message)
 			data =
 				Str.from_utf8_lossy(framed)
 					.split_on("\n")
@@ -403,7 +403,7 @@ expect {
 					conversation,
 					key: plans_key,
 					users,
-					message: m,
+					message: message,
 					notes: MessageNotes.fresh,
 				}).to_utf8()
 		},

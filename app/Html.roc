@@ -154,7 +154,7 @@ Html :: [].{
 }
 
 is_token_byte : U8 -> Bool
-is_token_byte = |b| Ascii.is_letter(b) or Ascii.is_digit(b) or b == '-'
+is_token_byte = |byte| Ascii.is_letter(byte) or Ascii.is_digit(byte) or byte == '-'
 
 ## Whether `part`, between a site path's `/`s, is one, or why not.
 site_path_part : Str -> Try({}, [EmptyPart, HiddenPart, ForbiddenByte])

@@ -47,7 +47,7 @@ Secret :: List(U8).{
 # ── tests
 ## The secret whose every byte is `b`.
 secret_of : U8 -> Secret
-secret_of = |b| Secret.from_random_bytes(List.repeat(b, 32))
+secret_of = |byte| Secret.from_random_bytes(List.repeat(byte, 32))
 
 expect secret_of(0xab).to_hex() == "ab".repeat(32)
 expect Secret.from_hex("ab".repeat(32)).map_ok(Secret.to_hex) == Ok("ab".repeat(32))

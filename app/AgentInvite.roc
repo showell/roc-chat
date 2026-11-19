@@ -34,17 +34,17 @@ AgentInvite :: {
 		from_str : Str -> Try(AgentInvite.Id, [NotAnInviteId])
 		from_str = |text|
 			SerialNumber.from_str(text)
-				.map_ok(|n| AgentInvite.Id.(n))
+				.map_ok(|serial_number| AgentInvite.Id.(serial_number))
 				.map_err(|NotASerialNumber| NotAnInviteId)
 
 		## The number after the highest of `given`, 1 for none.
 		next_after : List(AgentInvite.Id) -> Try(AgentInvite.Id, [Full])
 		next_after = |given|
 			SerialNumber.next_after(given.map(|AgentInvite.Id.(n)| n))
-				.map_ok(|n| AgentInvite.Id.(n))
+				.map_ok(|serial_number| AgentInvite.Id.(serial_number))
 
 		to_str : AgentInvite.Id -> Str
-		to_str = |AgentInvite.Id.(n)| n.to_str()
+		to_str = |AgentInvite.Id.(serial_number)| serial_number.to_str()
 
 		is_eq : _
 	}

@@ -232,8 +232,8 @@ channel_place = |text| {
 
 ## The DM of `with_lc` between the humans named.
 dm_place : Str, Str -> Place
-dm_place = |a, b| with_lc.place(
-	Dm(UserPair.of({ one: user_named(a).id(), other: user_named(b).id() })),
+dm_place = |one_name, other_name| with_lc.place(
+	Dm(UserPair.of({ one: user_named(one_name).id(), other: user_named(other_name).id() })),
 ) ?? crash "AgentsSpec: a DM of humans"
 
 ## CC signed in by a key of `scope`.

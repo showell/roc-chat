@@ -41,11 +41,11 @@ Message :: {
 		## The id after this one, unless this is the last a conversation
 		## holds.
 		next : Message.Id -> Try(Message.Id, [Full])
-		next = |Message.Id.(n)|
-			if n == U16.highest {
+		next = |Message.Id.(number)|
+			if number == U16.highest {
 				Err(Full)
 			} else {
-				Ok(Message.Id.(n + 1))
+				Ok(Message.Id.(number + 1))
 			}
 
 		## The id `digits` spell, as `to_str` writes it: 1 to 65,535 with no
@@ -62,11 +62,11 @@ Message :: {
 
 		## The number, as a page's anchors and a refusal write it.
 		to_str : Message.Id -> Str
-		to_str = |Message.Id.(n)| n.to_str()
+		to_str = |Message.Id.(number)| number.to_str()
 
 		## The number, as JSON writes it.
 		to_u64 : Message.Id -> U64
-		to_u64 = |Message.Id.(n)| n.to_u64()
+		to_u64 = |Message.Id.(number)| number.to_u64()
 
 		is_eq : _
 	}
@@ -85,19 +85,19 @@ Message :: {
 
 	## Its id.
 	id : Message -> Message.Id
-	id = |Message.(m)| m.id
+	id = |Message.(message)| message.id
 
 	## Who wrote it.
 	author : Message -> Author
-	author = |Message.(m)| m.author
+	author = |Message.(message)| message.author
 
 	## When.
 	time : Message -> DateTime
-	time = |Message.(m)| m.time
+	time = |Message.(message)| message.time
 
 	## Its markdown, exactly as written.
 	markdown : Message -> Str
-	markdown = |Message.(m)| m.markdown
+	markdown = |Message.(message)| message.markdown
 
 	is_eq : _
 }
@@ -130,11 +130,11 @@ parts : Message -> {
 	time : DateTime,
 	markdown : Str,
 }
-parts = |m| {
-	id: m.id().to_str(),
-	author: m.author(),
-	time: m.time(),
-	markdown: m.markdown(),
+parts = |message| {
+	id: message.id().to_str(),
+	author: message.author(),
+	time: message.time(),
+	markdown: message.markdown(),
 }
 
 expect Message.Id.first.to_str() == "1"

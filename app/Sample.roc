@@ -65,9 +65,9 @@ Sample :: [].{
 		unnumbered_messages.fold(
 			Conversation.empty(topic),
 			|
-				c,
-				a,
-			| (c.append(a) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated")
+				so_far,
+				unnumbered,
+			| (so_far.append(unnumbered) ?? crash "Sample.conversation: a test's conversation is neither full nor backdated")
 				.conversation,
 		)
 

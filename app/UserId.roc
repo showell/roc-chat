@@ -26,11 +26,11 @@ UserId :: U16.{
 
 	## The id after this one, or `Full` if this is the highest.
 	next : UserId -> Try(UserId, [Full])
-	next = |UserId.(n)|
-		if n == U16.highest {
+	next = |UserId.(number)|
+		if number == U16.highest {
 			Err(Full)
 		} else {
-			Ok(UserId.(n + 1))
+			Ok(UserId.(number + 1))
 		}
 
 	## The id `text` spells, or `NotAUserId`. Only the spellings `to_str`
@@ -47,19 +47,19 @@ UserId :: U16.{
 	## The id's decimal digits, as a URL, a file's name and a DM's pair
 	## write it.
 	to_str : UserId -> Str
-	to_str = |UserId.(n)| n.to_str()
+	to_str = |UserId.(number)| number.to_str()
 
 	## The id as a fact file keeps it (`FactFile`): its decimal digits, bare.
 	to_file : UserId -> List(U8)
-	to_file = |UserId.(n)| FactFile.number_to_file(n.to_u64())
+	to_file = |UserId.(number)| FactFile.number_to_file(number.to_u64())
 
 	## Which of two ids comes first, by number. A DM's pair and a channel's
 	## members are written in this order.
 	compare : UserId, UserId -> [Before, Same, After]
-	compare = |UserId.(n), UserId.(other)|
-		if n < other {
+	compare = |UserId.(number), UserId.(other)|
+		if number < other {
 			Before
-		} else if n == other {
+		} else if number == other {
 			Same
 		} else {
 			After

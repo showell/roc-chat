@@ -91,7 +91,10 @@ decode_value_onto = |{ out, rest }|
 		[] => Ok(out)
 		['%', high, low, .. as after] =>
 			match (Hex.digit_value(high), Hex.digit_value(low)) {
-				(Ok(h), Ok(l)) => decode_value_onto({ out: out.append(h * 16 + l), rest: after })
+				(Ok(high_value), Ok(low_value)) => decode_value_onto({
+					out: out.append(high_value * 16 + low_value),
+					rest: after,
+				})
 				_ => Err(BadEscape)
 			}
 		['%', ..] => Err(BadEscape)

@@ -177,7 +177,7 @@ head_of : Str, List((Str, Str)) -> Http.RequestHead
 head_of = |line, more_headers| {
 	(method, path) =
 		match line.split_on(" ") {
-			[m, p] => (m, p)
+			[method_text, path_text] => (method_text, path_text)
 			_ => crash "Admission's tests: a request line is a method and a path"
 		}
 	{

@@ -84,9 +84,9 @@ MultipartForm :: [].{
 			Err(_) =>
 				Str.from_utf8(
 					raw.join_map(
-						|b|
-							if b < 0x80 {
-								[b]
+						|byte|
+							if byte < 0x80 {
+								[byte]
 							} else {
 								"\u(FFFD)".to_utf8()
 							},
@@ -136,20 +136,20 @@ index_of = |bytes, { needle, from }|
 bytes_before_first_semicolon : List(U8) -> List(U8)
 bytes_before_first_semicolon = |bytes|
 	match bytes.find_first_index(|b| b == ';') {
-		Ok(i) => bytes.take_first(i)
+		Ok(index) => bytes.take_first(index)
 		Err(NotFound) => bytes
 	}
 
 ## How many CRs and LFs end `body`: a client may end the form with a line
 ## break after its closing delimiter.
 trailing_line_breaks : List(U8) -> U64
-trailing_line_breaks = |body| count_from_end(body, |b| b == '\r' or b == '\n')
+trailing_line_breaks = |body| count_from_end(body, |byte| byte == '\r' or byte == '\n')
 
 ## How many bytes from the end pass `passes`.
 count_from_end : List(U8), (U8 -> Bool) -> U64
 count_from_end = |bytes, passes|
 	match bytes.find_last_index(|b| !passes(b)) {
-		Ok(i) => bytes.len() - 1 - i
+		Ok(index) => bytes.len() - 1 - index
 		Err(NotFound) => bytes.len()
 	}
 
@@ -165,11 +165,11 @@ quoted_attribute_from : List(U8), { needle : List(U8), from : U64 } -> Try(List(
 quoted_attribute_from = |headers, { needle, from }|
 	match index_of(headers, { needle, from }) {
 		Err(NotFound) => Err(Missing)
-		Ok(i) => {
-			if is_inside_another_name(headers, i) {
-				quoted_attribute_from(headers, { needle, from: i + 1 })
+		Ok(start) => {
+			if is_inside_another_name(headers, start) {
+				quoted_attribute_from(headers, { needle, from: start + 1 })
 			} else {
-				value = headers.drop_first(i + needle.len())
+				value = headers.drop_first(start + needle.len())
 				match value.find_first_index(|b| b == '"') {
 					Ok(end) => Ok(value.take_first(end))
 					Err(NotFound) => Err(Missing)

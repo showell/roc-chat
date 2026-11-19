@@ -328,10 +328,10 @@ UnnumberedMessageText : {
 unnumbered_message_at : Timestamp, Str -> Try(UnnumberedMessageText, _)
 unnumbered_message_at = |now, body|
 	unnumbered_message_from_post({ acting: steve, now, body: body.to_utf8() }).map_ok(
-		|a| {
-			author: a.payload.author.to_str(),
-			time: a.time.to_str(),
-			markdown: a.payload.markdown,
+		|unnumbered| {
+			author: unnumbered.payload.author.to_str(),
+			time: unnumbered.time.to_str(),
+			markdown: unnumbered.payload.markdown,
 		},
 	)
 

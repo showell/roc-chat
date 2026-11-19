@@ -67,10 +67,10 @@ Directory :: {
 		addition = directory.add_human(name)?
 		human =
 			addition.user.as_human() ?? crash "Directory.add_new_human: add_human makes a human"
-		Directory.(d) = addition.directory
-		joined = d.channels.add_new_human(human)?
+		Directory.(with_human) = addition.directory
+		joined = with_human.channels.add_new_human(human)?
 		Ok({
-			directory: Directory.({ ..d, channels: joined.channels }),
+			directory: Directory.({ ..with_human, channels: joined.channels }),
 			user: addition.user,
 			channel: joined.channel,
 		})
@@ -99,10 +99,13 @@ Directory :: {
 		{ directory : Directory, human : Users.Human },
 		[NameTaken, NoSuchHuman],
 	)
-	rename_human = |Directory.(d), { human, name }| {
-		renamed = d.users.rename_human({ human, name })?
-		keys = claim_key(d.keys.remove(human.user().name().key()), name.key())?
-		Ok({ directory: Directory.({ ..d, users: renamed.users, keys }), human: renamed.human })
+	rename_human = |Directory.(directory), { human, name }| {
+		renamed = directory.users.rename_human({ human, name })?
+		keys = claim_key(directory.keys.remove(human.user().name().key()), name.key())?
+		Ok({
+			directory: Directory.({ ..directory, users: renamed.users, keys }),
+			human: renamed.human,
+		})
 	}
 
 	## The directory with an empty channel named `name`, created by an
@@ -112,11 +115,11 @@ Directory :: {
 		by : Admin,
 		name : ChannelName,
 	} -> Try(Directory.Created, [NameTaken])
-	create_channel = |Directory.(d), { by, name }| {
-		keys = claim_key(d.keys, name.key())?
-		grown = d.channels.create({ by, name })
+	create_channel = |Directory.(directory), { by, name }| {
+		keys = claim_key(directory.keys, name.key())?
+		grown = directory.channels.create({ by, name })
 		Ok({
-			directory: Directory.({ ..d, channels: grown.channels, keys }),
+			directory: Directory.({ ..directory, channels: grown.channels, keys }),
 			channel: grown.channel,
 		})
 	}
@@ -124,17 +127,17 @@ Directory :: {
 	## The directory with a member added to a channel, as
 	## `Channels.add_member` adds them.
 	add_member : Directory, Channels.MemberChange -> Try(Directory, [NoSuchChannel, AlreadyMember])
-	add_member = |Directory.(d), change| {
-		channels = d.channels.add_member(change)?
-		Ok(Directory.({ ..d, channels }))
+	add_member = |Directory.(directory), change| {
+		channels = directory.channels.add_member(change)?
+		Ok(Directory.({ ..directory, channels }))
 	}
 
 	## The directory with a member removed from a channel, as
 	## `Channels.remove_member` removes them.
 	remove_member : Directory, Channels.MemberChange -> Try(Directory, [NoSuchChannel, NotMember])
-	remove_member = |Directory.(d), change| {
-		channels = d.channels.remove_member(change)?
-		Ok(Directory.({ ..d, channels }))
+	remove_member = |Directory.(directory), change| {
+		channels = directory.channels.remove_member(change)?
+		Ok(Directory.({ ..directory, channels }))
 	}
 
 	## The place a channel's name or a DM's pair names, if the directory
@@ -146,23 +149,23 @@ Directory :: {
 		Place,
 		[NoSuchChannel, NoSuchHuman],
 	)
-	place = |Directory.(d), named|
+	place = |Directory.(directory), named|
 		match named {
 			Channel(name) => {
-				channel = d.channels.channel(name)?
+				channel = directory.channels.channel(name)?
 				Ok(Place.channel(channel))
 			}
 			Dm(pair) => {
 				humans = pair.members().map_try(
 					|id|
-						match d.users.user(id) {
+						match directory.users.user(id) {
 							Ok(user) => user.as_human().map_err(|_| NoSuchHuman)
 							Err(NoSuchUser) => Err(NoSuchHuman)
 						},
 				)?
 				match humans {
 					[alone] => Ok(Place.dm(Dm.between({ one: alone, other: alone })))
-					[a, b] => Ok(Place.dm(Dm.between({ one: a, other: b })))
+					[first, second] => Ok(Place.dm(Dm.between({ one: first, other: second })))
 					_ => crash "Directory.place: a pair has one member or two"
 				}
 			}
@@ -198,18 +201,18 @@ Directory :: {
 	## The chat's owner: the first human, id 1, and its admin. This is the one
 	## way to find them, so their name is read, never written in.
 	chat_owner : Directory -> Users.Human
-	chat_owner = |Directory.(d)| {
+	chat_owner = |Directory.(directory)| {
 		found =
-			d.users.user(UserId.chat_owner)
+			directory.users.user(UserId.chat_owner)
 				?? crash "Directory.chat_owner: every directory holds its owner, id 1"
 		found.as_human() ?? crash "Directory.chat_owner: id 1 is a human"
 	}
 
 	users : Directory -> Users
-	users = |Directory.(d)| d.users
+	users = |Directory.(directory)| directory.users
 
 	channels : Directory -> Channels
-	channels = |Directory.(d)| d.channels
+	channels = |Directory.(directory)| directory.channels
 
 	is_eq : _
 }
@@ -217,9 +220,9 @@ Directory :: {
 ## The directory holding `grown`'s users, and the user who joined them;
 ## unless that user's name is already taken.
 admit_new_user : Directory, Users.Addition -> Try(Directory.Addition, [NameTaken])
-admit_new_user = |Directory.(d), grown| {
-	keys = claim_key(d.keys, grown.user.name().key())?
-	Ok({ directory: Directory.({ ..d, users: grown.users, keys }), user: grown.user })
+admit_new_user = |Directory.(directory), grown| {
+	keys = claim_key(directory.keys, grown.user.name().key())?
+	Ok({ directory: Directory.({ ..directory, users: grown.users, keys }), user: grown.user })
 }
 
 ## Whether `users` holds the user `id`.

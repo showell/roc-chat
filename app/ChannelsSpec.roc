@@ -89,14 +89,14 @@ everyone = all_changed(
 ## The ids of `plans`'s members.
 members_of : Channels -> Try(List(Str), [NoSuchChannel])
 members_of = |channels|
-	channels.channel(channel_name("plans")).map_ok(|c| c.members().map(UserId.to_str))
+	channels.channel(channel_name("plans")).map_ok(|channel| channel.members().map(UserId.to_str))
 
 # A channel starts empty, and is found by its exact name.
 expect {
 	channel = Channels.empty.create({ by: admin, name: channel_name("plans") }).channel
 	channel.name().to_str() == "plans" and channel.members() == []
 }
-expect with_plans.channel(channel_name("plans")).map_ok(|c| c.name().to_str()) == Ok("plans")
+expect with_plans.channel(channel_name("plans")).map_ok(|channel| channel.name().to_str()) == Ok("plans")
 expect with_plans.channel(channel_name("Plans")) == Err(NoSuchChannel)
 expect Channels.empty.channel(channel_name("plans")) == Err(NoSuchChannel)
 expect Channels.empty.to_list() == []
@@ -105,12 +105,13 @@ expect with_plans.to_list().map(|c| c.name().to_str()) == ["plans"]
 expect members_of(everyone) == Ok(["1", "2", "3"])
 expect members_of(all_changed(with_plans, [Add(Sample.user("CC"))])) == Ok(["3"])
 expect
-	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve)) == Ok(Bool.True)
-expect
-	everyone.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.user("CC")))
+	everyone.channel(channel_name("plans")).map_ok(|channel| channel.has_member(Sample.steve))
 		== Ok(Bool.True)
 expect
-	with_plans.channel(channel_name("plans")).map_ok(|c| c.has_member(Sample.steve))
+	everyone.channel(channel_name("plans")).map_ok(|channel| channel.has_member(Sample.user("CC")))
+		== Ok(Bool.True)
+expect
+	with_plans.channel(channel_name("plans")).map_ok(|channel| channel.has_member(Sample.steve))
 		== Ok(Bool.False)
 expect apply_change(everyone, Add(Sample.steve)).map_ok(members_of) == Err(AlreadyMember)
 expect
@@ -171,7 +172,7 @@ expect {
 	}).channels
 	grown = apply_change(both, Add(Sample.steve)) ?? crash "ChannelsSpec: Steve joins plans"
 	members_of(grown) == Ok(["1"])
-		and grown.channel(channel_name("general")).map_ok(|c| c.members()) == Ok([])
+		and grown.channel(channel_name("general")).map_ok(|channel| channel.members()) == Ok([])
 		and grown.to_list().map(|c| c.name().to_str()) == ["plans", "general"]
 }
 # The members are in the ids' numeric order, not their text's: 9 before 10.

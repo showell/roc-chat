@@ -235,7 +235,7 @@ channel_by_form = |acting, body|
 	ChannelMembers.create(
 		with_team,
 		{ acting, body: body.to_utf8() },
-	).map_ok(|c| c.channel.name().to_str())
+	).map_ok(|created| created.channel.name().to_str())
 
 # Creating: the admin's, a channel's name free in the one namespace.
 expect channel_by_form(steve, "name=crew") == Ok("crew")
