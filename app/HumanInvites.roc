@@ -32,6 +32,7 @@ import Name
 import Password
 import SecretHash
 import SecretToken
+import SignUpLimits
 import SignedIn
 import Timestamp
 import UrlEncodedForm
@@ -50,6 +51,7 @@ HumanInvites :: [].{
 		BadName,
 		NameTaken,
 		Full,
+		SignUpsPaused,
 		NoDefaultChannel,
 		NoSuchHuman,
 		NotInvited,
@@ -65,7 +67,7 @@ HumanInvites :: [].{
 	## 403; no such human, a 404; a form at fault, a name that is no name or
 	## a password that is none, a 400; a name taken or chosen already, the
 	## chat full, or a browser signed in already, a 409; no default channel,
-	## a 500; and any refusal of an invite's code one 401 that says no more.
+	## a 500; sign-ups paused (`SignUpLimits`), a 503; and any refusal of an invite's code one 401 that says no more.
 	refusal_notice : HumanInvites.Refusal -> { status : U16, said : Str }
 	refusal_notice = |why|
 		match why {
@@ -85,6 +87,7 @@ HumanInvites :: [].{
 			}
 			NameTaken => { status: 409, said: "The name is taken." }
 			Full => { status: 409, said: "The chat holds as many as it can." }
+			SignUpsPaused => { status: 503, said: SignUpLimits.paused_words }
 			NoDefaultChannel => {
 				status: 500,
 				said: "This chat has no ${Channels.default_name.to_str()} channel for a new human to start in.",
@@ -158,6 +161,7 @@ HumanInvites :: [].{
 			BadName,
 			NameTaken,
 			Full,
+			SignUpsPaused,
 			NoDefaultChannel,
 		],
 	)

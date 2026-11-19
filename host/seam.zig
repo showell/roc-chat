@@ -357,6 +357,13 @@ pub export fn publish_bytes_to_streams_on_key(key: RocBytes, bytes: RocBytes) ca
     hub_of("publish_bytes_to_streams_on_key").publish(key.slice(), bytes.slice());
 }
 
+/// A line the app logs: a refusal a server's owner wants to hear of, such
+/// as sign-ups paused.
+pub export fn write_line_to_server_log(line: RocBytes) callconv(.c) void {
+    _ = call("write_line_to_server_log");
+    log.warn("app: {f}", .{files.loggable(line.slice())});
+}
+
 pub export fn end_every_stream_of_holder(holder: RocBytes) callconv(.c) void {
     const what = "end_every_stream_of_holder";
     slots_of(what).end_holder(io_of(what), holder.slice());

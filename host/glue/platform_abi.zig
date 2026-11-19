@@ -2039,6 +2039,13 @@ pub const HostSha256_of_bytesArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.write_line_to_server_log!
+/// Roc signature: List(U8) => {}
+/// Refcounted fields are owned by the hosted function.
+pub const HostWrite_line_to_server_logArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 // Platform Type Aliases
 
 pub const HostGithub_identity_for_code = __AnonStruct_f3d95275ff09cbb2;
@@ -2343,6 +2350,13 @@ pub extern fn replace_second_kept_under_key(arg0: RocListWith(u8, false), arg1: 
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn sha256_of_bytes(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Hosted symbol for Host.write_line_to_server_log!
+/// Roc signature: List(U8) => {}
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn write_line_to_server_log(arg0: RocListWith(u8, false)) callconv(.c) void;
 
 /// Default memory management functions for Roc platforms.
 ///

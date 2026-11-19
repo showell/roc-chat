@@ -14,6 +14,7 @@ import Channels
 import Dm
 import Name
 import Place
+import SignUpLimits
 import UserId
 import UserPair
 import Users
@@ -61,9 +62,12 @@ Directory :: {
 
 	## The directory with a new human's account, named `name`: `add_human`, and
 	## them in the default channel (`Channels.add_new_human`), so the chat has
-	## a page for them. This is how a sign-up or an invite makes a human.
-	add_new_human : Directory, Name -> Try(Directory.NewHuman, [Full, NameTaken, NoDefaultChannel])
+	## a page for them. This is how a sign-up or an invite makes a human, so
+	## a chat at its most accounts (`SignUpLimits.check_room`) refuses first,
+	## with `SignUpsPaused`.
+	add_new_human : Directory, Name -> Try(Directory.NewHuman, [SignUpsPaused, Full, NameTaken, NoDefaultChannel])
 	add_new_human = |directory, name| {
+		_ = SignUpLimits.check_room(directory.users()) ? |ChatFull| SignUpsPaused
 		addition = directory.add_human(name)?
 		human =
 			addition.user.as_human() ?? crash "Directory.add_new_human: add_human makes a human"

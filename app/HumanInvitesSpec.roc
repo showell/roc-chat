@@ -773,6 +773,7 @@ expect
 		(BadName, 400),
 		(NameTaken, 409),
 		(Full, 409),
+		(SignUpsPaused, 503),
 		(NoSuchHuman, 404),
 		(NotInvited, 403),
 		(NotYours, 403),

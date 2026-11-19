@@ -296,6 +296,9 @@
 //! 48zo. with one id left, a new human takes 65535, whose session reads their
 //!      page; the next is refused as the chat being full, nothing made;
 //! 48zv. the sign-in page of someone signed in: no form and no GitHub;
+//!  54. on a third server: twenty GitHub sign-ups in a day, then a 503 saying
+//!      sign-ups are paused, at the way back and at the name, nothing made;
+//!      an invite still makes its account;
 //! 48zw. a key at Browse, and starting a topic: 403 each;
 //! 48zx. one `X-Forwarded-For` client at `requests_per_client_most`, 8 streams
 //!      and the rest requests with their bodies held back: each admitted; one
@@ -818,6 +821,7 @@ pub fn main(init: std.process.Init) !void {
         std.mem.eql(u8, signed_out.header("cache-control") orelse "", "no-store"));
 
     try noGitHubSteps(a, io, gpa, t, data_name);
+    try signUpCapSteps(a, io, gpa, t, .{ .data_name = data_name, .fake = fake });
 
     std.debug.print("end-to-end: every step passed, in {d} ms\n", .{began.untilNow(io, .awake).toMilliseconds()});
 }
@@ -1040,6 +1044,51 @@ fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps,
 
     steve_session = steve;
     try browseSteps(a, io, port, data, t, try cookieLine(a, joined));
+}
+
+/// Step 54, the day's cap on GitHub sign-ups (app/SignUpLimits.roc), on a
+/// third server of its own, whose memory holds no sign-up yet: its data root
+/// is `data_name` and `-capped`.
+fn signUpCapSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps, held: struct { data_name: []const u8, fake: *fake_github.Fake }) !void {
+    const cwd = Io.Dir.cwd();
+    const capped_name = try std.fmt.allocPrint(a, "{s}-capped", .{held.data_name});
+    try cwd.createDirPath(io, capped_name);
+    defer cwd.deleteTree(io, capped_name) catch |e| std.debug.print("end-to-end: {s} not removed ({t})\n", .{ capped_name, e });
+    const data = try cwd.openDir(io, capped_name, .{});
+    defer data.close(io);
+    try writeGitHubSettings(io, data, held.fake);
+    const root: files.DataRoot = .{ .io = io, .dir = data };
+    var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root, .public_origin = public_origin });
+    var running = try io.concurrent(http.Server.run, .{&server});
+    defer {
+        server.stop();
+        running.await(io) catch |e| std.debug.print("end-to-end: the third server's run: {t}\n", .{e});
+    }
+    const port = server.port();
+    _ = try writePassword(a, io, data);
+    const steve = try cookieLine(a, try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple"));
+
+    // 54.
+    const letters = "ABCDEFGHIJKLMNOPQRST";
+    var made: usize = 0;
+    var waiting: []const u8 = "";
+    for (letters, 0..) |letter, i| {
+        if (i == 19) waiting = try signUpLine(a, try signInByGitHub(a, io, port, held.fake, "user-id-120"));
+        const code = try std.fmt.allocPrint(a, "user-id-{d}", .{100 + i});
+        const signed_up = try signUpHeadingTo(a, io, port, held.fake, channel_url, code, try std.fmt.allocPrint(a, "Cap+{c}", .{letter}));
+        if (signed_up.status == 303 and has(signed_up.head, "__Host-gopher_auth=")) made += 1;
+    }
+    const counter = try readFile(a, io, data, "auth/next-id.txt");
+    const one_more = try signInByGitHub(a, io, port, held.fake, "user-id-121");
+    const late_name = try chooseName(a, io, port, waiting, "Late");
+    const invited = try postAs(a, io, port, steve, "/invites", "name=Una");
+    const paused = "Sign-ups are paused for now; please try again later.";
+    try t.check("twenty GitHub sign-ups in a day make twenty accounts; the next is the sign-in page, a 503 saying sign-ups are paused, no form and no sign-up; a name for a sign-up begun before the twentieth, the same, nothing made; an invite still makes its account", made == 20 and
+        std.mem.eql(u8, counter, "22\n") and
+        one_more.status == 503 and has(one_more.body, paused) and !has(one_more.body, "action=\"/login/github/name\"") and !has(one_more.head, "__Host-gopher_github_sign_up=") and
+        late_name.status == 503 and has(late_name.body, paused) and !has(late_name.head, "__Host-gopher_auth=") and
+        invited.status == 200 and has(invited.body, "invite-code") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "23\n"));
 }
 
 /// Step 53a, presence, as Gopher Chat's: Uma (3), just joined, has made no

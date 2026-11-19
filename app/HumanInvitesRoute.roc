@@ -53,6 +53,7 @@ import SecretHashing
 import SecretToken
 import SignInRequest
 import SignInRoute
+import SignUpLimits
 import SignedIn
 import Timestamp
 import TranscriptFiles
@@ -272,7 +273,15 @@ invite_human! : {
 } => Try(TrustedHtml, _)
 invite_human! = |{ acting, directory, body, origin, now }| {
 	open = count_open_invites!(directory, { by: acting.user().id(), now })?
-	made = HumanInvites.invite(directory, { acting, body, open }) ? |why| Refused(why)
+	made =
+		match HumanInvites.invite(directory, { acting, body, open }) {
+			Ok(invited) => invited
+			Err(SignUpsPaused) => {
+				Host.write_line_to_server_log!(SignUpLimits.paused_log_line(ChatFull))
+				return Err(Refused(SignUpsPaused))
+			}
+			Err(why) => return Err(Refused(why))
+		}
 	human = made.human.as_human() ?? crash "HumanInvitesRoute.invite_human!: an invite makes a human"
 	welcome = Welcome.make({ directory: made.directory, human, now })?
 	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)

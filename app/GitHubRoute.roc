@@ -10,14 +10,8 @@
 ##   for a name instead, with a signed sign-up in its browser's cookie; a human
 ##   signed in already links it instead. A refusal is the sign-in page again,
 ##   saying why in plain words.
-## - `POST /login/github/name` is that name: the sign-up checked, the account
-##   made, and a session started. The counter of ids is written first, then
-##   the new human's `Welcome`, then `github-id`, then `name`, then the default
-##   channel's members, all in one turn, so two submits can't both see the id
-##   free. The welcome goes before the account, so no account lacks one: a
-##   failure there spends an id and binds nothing, and the same sign-up tries
-##   again. They land where `FirstPage` says. A name refused is the form again,
-##   the sign-up still good.
+## - `POST /login/github/name` is that name, which `GitHubSignUpRoute`
+##   answers.
 ## - `POST /login/github/link` is a signed-in human asking to link GitHub to
 ##   their account: a trip to GitHub like a sign-in's, whose state names them.
 ##   It comes back to `GET /login/github`, which binds the id to them and
@@ -35,17 +29,14 @@ import pf.Http
 import AccountFiles
 import AgentsPage
 import Directory
-import DirectoryFiles
 import FileFacts
-import FirstPage
 import GitHubRefusal
 import GitHubSignIn
-import GitHubSignUp
+import GitHubSignUpRoute
 import GitHubState
 import GitHubTrip
 import Html
 import HttpAnswer
-import HumanInvites
 import PageKit
 import RequestHeader
 import SignInPage
@@ -53,7 +44,6 @@ import SignInRequest
 import SignInRoute
 import SignedIn
 import Timestamp
-import TranscriptFiles
 import TrustedHtml
 import UserId
 import Users
@@ -174,7 +164,8 @@ GitHubRoute :: [].{
 						match resolved {
 							Ok(Known(admission)) =>
 								SignInRoute.start_session_by_github!(admission, now)
-							Ok(Unknown(new_human)) => ask_for_name!({ new_human, directory, now })
+							Ok(Unknown(new_human)) =>
+								GitHubSignUpRoute.ask_for_name!({ viewer, new_human, directory, now })
 							Ok(Linking(linked)) =>
 								SignInRoute.start_session_by_github_link!(linked, now)
 							Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
@@ -184,49 +175,6 @@ GitHubRoute :: [].{
 						},
 					)
 				}
-			}
-		HttpAnswer.never_stored(answer)
-	}
-
-	## A POST of `/login/github/name`: the account the browser's sign-up makes
-	## under the form's `name`, a session for its human, and a 303 to where the
-	## sign-in began; for a name refused, the form again, the sign-up still
-	## good; or the sign-in page saying why not, the sign-up forgotten.
-	serve_sign_up! : {
-		viewer : SignedIn.Actor,
-		directory : Directory,
-		body : List(U8),
-		headers : List(Http.Header),
-		now : Timestamp,
-	} => Http.Response
-	serve_sign_up! = |request| {
-		settings = Host.github_sign_in_settings!({})
-		answer =
-			match (settings.status, SignInRequest.check_not_by_api_key(request.viewer)) {
-				(NotConfigured, _) => not_found
-				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
-				(Configured, Ok({})) =>
-					match sign_up!({
-						viewer: request.viewer,
-						directory: request.directory,
-						body: request.body,
-						headers: request.headers,
-						now: request.now,
-					}) {
-						Ok(admission) =>
-							with_sign_up_forgotten(
-								SignInRoute.start_session_by_github!(admission, request.now),
-							)
-						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-						Err(Refused(why)) =>
-							with_sign_up_forgotten(
-								page_answer(
-									GitHubTrip.refusal_page({ viewer: request.viewer, why }),
-								),
-							)
-						Err(NameRefused(refusal)) =>
-							page_answer(GitHubTrip.name_refusal_page(refusal))
-					}
 			}
 		HttpAnswer.never_stored(answer)
 	}
@@ -358,83 +306,6 @@ resolve! = |{ users, viewer, query, headers, now }| {
 	known.resolve({ links, users, viewer }).map_err(|why| Refused(why))
 }
 
-## The form that asks `new_human` for a name, offering what `directory` leaves
-## free, with their signed sign-up in this browser's cookie.
-ask_for_name! : {
-	new_human : GitHubSignIn.NewHuman,
-	directory : Directory,
-	now : Timestamp,
-} => Http.Response
-ask_for_name! = |{ new_human, directory, now }| {
-	sign_up = new_human.sign_up(now)
-	mac = Host.hmac_sha256_with_server_secret!(sign_up.signed_bytes())
-	suggested =
-		match new_human.suggested_name(directory) {
-			Suggested(name) => Named(name)
-			NoSuggestion => NoName
-		}
-	HttpAnswer.with_header(
-		HttpAnswer.page(200, SignInPage.github_sign_up({ name: suggested, problem: NoProblem })),
-		set_cookie_header(sign_up.set_cookie_text(mac)),
-	)
-}
-
-## The admission of the human the browser's sign-up and the form `body` make,
-## their account written; or why not. The counter goes first, so an id is
-## never given twice. The caller's `directory` and these files were read in
-## this turn, which holds to the last write.
-sign_up! : {
-	viewer : SignedIn.Actor,
-	directory : Directory,
-	body : List(U8),
-	headers : List(Http.Header),
-	now : Timestamp,
-} => Try(GitHubSignIn.Admission, _)
-sign_up! = |{ viewer, directory, body, headers, now }| {
-	resumed = GitHubSignIn.SignUpResumed.resume({
-		sign_up: load_signed_sign_up!(headers),
-		viewer,
-		now,
-	}) ? |why| Refused(why)
-	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
-	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
-	{ made, welcome } = GitHubTrip.new_account({ resumed, name, links, directory, now })?
-	human = made.admission.human()
-	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
-	TranscriptFiles.append_message!(
-		welcome.key(),
-		welcome.first_record(),
-	) ? |fault| FileSystem(fault)
-	landing = FirstPage.load!({ directory: made.directory, human, wanted: made.admission.next() })?
-	AccountFiles.create_github_account!({
-		human: made.human,
-		github: made.github,
-	}) ? |fault| FileSystem(fault)
-	DirectoryFiles.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
-	Ok(made.admission.going_to(landing))
-}
-
-## The sign-up the request's cookie holds: `Signed` when the host says its
-## signature matches, else `Unsigned`, none at all included.
-load_signed_sign_up! : List(Http.Header) => [Signed(GitHubSignUp), Unsigned]
-load_signed_sign_up! = |headers|
-	match RequestHeader.header_value(headers, "cookie") {
-		Unsent => Unsigned
-		Repeated => Unsigned
-		Sent(header) =>
-			match GitHubSignUp.Claim.from_cookie_header(header) {
-				Err(NotAClaim) => Unsigned
-				Ok(claim) =>
-					GitHubSignUp.from_claim({
-						claim,
-						verdict: Host.hmac_sha256_with_server_secret_matches!(
-							claim.signed_bytes(),
-							claim.mac(),
-						),
-					})
-			}
-	}
-
 ## The state the query holds: `Signed` when the host says its signature
 ## matches, else `Unsigned`, none at all included.
 load_signed_state! : List(U8) => [Signed(GitHubState), Unsigned]
@@ -464,11 +335,6 @@ cookie_of = |headers|
 with_state_forgotten : Http.Response -> Http.Response
 with_state_forgotten = |answer|
 	HttpAnswer.with_header(answer, set_cookie_header(GitHubState.clear_cookie_text))
-
-## `answer`, which has the browser forget the sign-up's cookie.
-with_sign_up_forgotten : Http.Response -> Http.Response
-with_sign_up_forgotten = |answer|
-	HttpAnswer.with_header(answer, set_cookie_header(GitHubSignUp.clear_cookie_text))
 
 ## A `Set-Cookie` header of `text`.
 set_cookie_header : Str -> Http.Header

@@ -4,6 +4,7 @@
 ## tags themselves, `Welcome` with `ClockOutOfRange`. It reads the union as
 ## `GitHubSignIn.Refusal`.
 import Channels
+import SignUpLimits
 
 GitHubRefusal :: [].{
 
@@ -65,6 +66,9 @@ GitHubRefusal :: [].{
 
 		## The server's clock can't date a new human's welcome.
 		ClockOutOfRange,
+
+		## A limit on new accounts is reached (`SignUpLimits`).
+		SignUpsPaused,
 	]
 
 	## A refusal's status and its words. Nothing here says more than the human
@@ -109,6 +113,7 @@ GitHubRefusal :: [].{
 				words: "You are signed in, so that made no new account. Sign in with GitHub again to link it to this one.",
 			}
 			ClockOutOfRange => { status: 500, words: "The server's clock is out of range." }
+			SignUpsPaused => { status: 503, words: SignUpLimits.paused_words }
 		}
 }
 
@@ -142,3 +147,6 @@ expect
 		SignedInAlready,
 	].all(|why| GitHubRefusal.refusal_said(why).status == 409)
 expect [NoDefaultChannel, ClockOutOfRange].all(|why| GitHubRefusal.refusal_said(why).status == 500)
+expect
+	GitHubRefusal.refusal_said(SignUpsPaused)
+		== { status: 503, words: "Sign-ups are paused for now; please try again later." }

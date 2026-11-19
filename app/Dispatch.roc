@@ -3,12 +3,9 @@
 ## anyone, and any other only for someone signed in, once `Access` admits
 ## them to read or post where the route asks. No one asking for a page only
 ## someone signed in may see is sent to sign in, and any other such request
-## is a 401. Each route's answer is a route module's: `ConversationRoute`,
-## `UploadRoute`, `ReactionRoute`, `BrowseRoute`, `AgentsRoute`, `ChannelMembersRoute`,
-## `HumanInvitesRoute`, `RecentRoute`, `ResumeRoute`, `SignInRoute` or `GitHubRoute`.
-## Its two `match`es,
-## one for the open routes and one for the signed-in ones, show the whole
-## server's surface in one place.
+## is a 401. Each route's answer is a route module's (each `*Route`
+## imported below). Its two `match`es, one for the open routes and one for
+## the signed-in ones, show the whole server's surface in one place.
 import pf.Http
 import Access
 import AgentsRoute
@@ -21,6 +18,7 @@ import Directory
 import Favicon
 import FirstStart
 import GitHubRoute
+import GitHubSignUpRoute
 import HttpAnswer
 import HumanInvitesRoute
 import Html
@@ -224,7 +222,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				now: Clock.read_clock!({}),
 			})
 		FinishGitHubSignUp =>
-			GitHubRoute.serve_sign_up!({
+			GitHubSignUpRoute.serve_sign_up!({
 				viewer: actor,
 				directory,
 				body: request.body,

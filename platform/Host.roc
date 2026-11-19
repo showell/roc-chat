@@ -146,6 +146,10 @@ Host := [].{
 		status : [Found, Missing],
 	}
 
+	## `line` written to the server's log as a warning, each byte that is not
+	## printable ASCII escaped, so no line can forge another.
+	write_line_to_server_log! : List(U8) => {}
+
 	## Every stream held by `holder` (`Http.Response`'s `stream_holder`)
 	## ended now, its connection closed; none held, and nothing happens.
 	end_every_stream_of_holder! : List(U8) => {}

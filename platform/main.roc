@@ -58,6 +58,7 @@ platform ""
 		"replace_file_with_utf8_bytes_atomically": Host.replace_file_with_utf8_bytes_atomically!,
 		"replace_second_kept_under_key": Host.replace_second_kept_under_key!,
 		"sha256_of_bytes": Host.sha256_of_bytes!,
+		"write_line_to_server_log": Host.write_line_to_server_log!,
 	}
 	targets: {
 		x64musl: {

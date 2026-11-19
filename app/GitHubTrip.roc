@@ -161,7 +161,7 @@ is_unreserved = |byte|
 ## again.
 account_refusal : {
 	name : Name,
-	why : [AccountExists, DuplicateAccount, NameTaken, Full, NoDefaultChannel],
+	why : [AccountExists, DuplicateAccount, SignUpsPaused, NameTaken, Full, NoDefaultChannel],
 } -> [
 	Refused(GitHubSignIn.Refusal),
 	NameRefused({ name : SignInPage.NameField, why : HumanInvites.Refusal }),
@@ -170,6 +170,7 @@ account_refusal = |{ name, why }|
 	match why {
 		AccountExists => Refused(AccountExists)
 		DuplicateAccount => Refused(DuplicateAccount)
+		SignUpsPaused => Refused(SignUpsPaused)
 		NameTaken => NameRefused({ name: Named(name), why: NameTaken })
 		Full => NameRefused({ name: Named(name), why: Full })
 		NoDefaultChannel => Refused(NoDefaultChannel)
