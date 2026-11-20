@@ -33,6 +33,10 @@ UploadTotal :: U64.{
 	to_file : UploadTotal -> List(U8)
 	to_file = |UploadTotal.(total)| FactFile.number_to_file(total)
 
+	## The total's bytes.
+	bytes : UploadTotal -> U64
+	bytes = |UploadTotal.(total)| total
+
 	## The total after an upload of `adding` bytes, unless that would take it
 	## past `most_bytes` (`LimitReached`).
 	with_upload : UploadTotal, U64 -> Try(UploadTotal, [LimitReached])

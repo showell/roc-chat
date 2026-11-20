@@ -47,6 +47,7 @@ import HttpAnswer
 import Message
 import MessageNotes
 import MessageNotice
+import MessageRate
 import Name
 import PageKit
 import Presence
@@ -303,6 +304,7 @@ append_posted_message! = |post| {
 		}
 	grown = loaded.conversation.append(unnumbered_message)?
 	record = Transcript.message_record({ grown, file: loaded.file })?
+	MessageRate.take!(post.acting.user().id(), post.now)?
 	TranscriptFiles.append_message!(post.key, record) ? |fault| FileSystem(fault)
 	html = ConversationPage.message({
 		conversation: grown.conversation,

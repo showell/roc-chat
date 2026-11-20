@@ -143,6 +143,28 @@ pub const DataRoot = struct {
     /// The data root, open for the server's life.
     dir: Io.Dir,
     fault_for_test: Fault = .none,
+    /// **A TEST'S FREE SPACE**: when set, what `free_bytes_on_data_disk`
+    /// answers instead of asking the kernel, so a test reaches the app's
+    /// floor without filling a disk. The server's own root (host/main.zig)
+    /// never sets it.
+    free_bytes_for_test: ?*const std.atomic.Value(u64) = null,
+
+    /// **THE DATA ROOT'S FREE SPACE**: the bytes its file system has free
+    /// for an unprivileged writer, `f_bavail` blocks of `f_frsize` bytes
+    /// (`f_bsize` where the kernel gives no fragment size), as `df` counts
+    /// them. A failed `fstatfs` is logged and answered as 0, so a disk the
+    /// host can't ask is never taken for a roomy one.
+    pub fn free_bytes_on_data_disk(root: *const DataRoot) u64 {
+        if (root.free_bytes_for_test) |fake| return fake.load(.acquire);
+        var st: Statfs = undefined;
+        const rc = linux.syscall2(.fstatfs, @as(usize, @bitCast(@as(isize, root.dir.handle))), @intFromPtr(&st));
+        if (linux.errno(rc) != .SUCCESS) {
+            log.warn("free_bytes_on_data_disk: fstatfs: {t}", .{linux.errno(rc)});
+            return 0;
+        }
+        const block: u64 = if (st.frsize > 0) @intCast(st.frsize) else @intCast(st.bsize);
+        return std.math.mul(u64, st.bavail, block) catch std.math.maxInt(u64);
+    }
 
     /// **THE FILE'S TEXT**: `found`, its bytes in `arena`; `missing` when
     /// it, or a folder on its path, is not there.
@@ -433,6 +455,28 @@ pub const DataRoot = struct {
         try root.fsync_fd(readable.handle);
     }
 };
+
+/// The kernel's `struct statfs` on a 64-bit Linux (`fstatfs(2)`), which
+/// Zig's std does not declare: every word a `long` but the counts, `u64`.
+const Statfs = extern struct {
+    type: isize,
+    bsize: isize,
+    blocks: u64,
+    bfree: u64,
+    bavail: u64,
+    files: u64,
+    ffree: u64,
+    fsid: [2]i32,
+    namelen: isize,
+    frsize: isize,
+    flags: isize,
+    spare: [4]isize,
+};
+
+comptime {
+    if (@sizeOf(usize) != 8) @compileError("Statfs is laid out for a 64-bit Linux");
+    std.debug.assert(@sizeOf(Statfs) == 120);
+}
 
 fn bytewise_before(_: void, a: []const u8, b: []const u8) bool {
     return std.mem.order(u8, a, b) == .lt;
@@ -809,6 +853,18 @@ test "missing and failed differ: a folder of mode 000 is a failure" {
     try testing.expectEqual(BinaryCreateAnswer.failed, root.create_file_with_binary_bytes_unless_it_exists("locked/new", "lost"));
     try testing.expectEqual(ListAnswer.failed, root.list_names_in_directory(a, "locked"));
     try testing.expectEqual(AppendAnswer.failed, root.append_utf8_bytes_to_file("locked/x", "lost"));
+}
+
+test "the free space: the kernel's for the data root, and a test's when set" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var root = test_root(&tmp);
+    try testing.expect(root.free_bytes_on_data_disk() > 0);
+    var fake: std.atomic.Value(u64) = .init(12345);
+    root.free_bytes_for_test = &fake;
+    try testing.expectEqual(12345, root.free_bytes_on_data_disk());
+    fake.store(0, .release);
+    try testing.expectEqual(0, root.free_bytes_on_data_disk());
 }
 
 test "the clock and the random bytes" {

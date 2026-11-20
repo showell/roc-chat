@@ -48,6 +48,7 @@ platform ""
 		"fill_with_random_bytes": Host.fill_with_random_bytes!,
 		"find_texts_in_search_index": Host.find_texts_in_search_index!,
 		"find_words_in_search_index": Host.find_words_in_search_index!,
+		"free_bytes_on_data_disk": Host.free_bytes_on_data_disk!,
 		"github_identity_for_code": Host.github_identity_for_code!,
 		"github_sign_in_settings": Host.github_sign_in_settings!,
 		"hmac_sha256_with_server_secret": Host.hmac_sha256_with_server_secret!,

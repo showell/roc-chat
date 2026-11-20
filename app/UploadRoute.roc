@@ -6,7 +6,8 @@
 ## bytes are then counted against the uploader's lifetime allowance
 ## (`UploadTotal`): the total is read, the image's size added, and the new
 ## total written, all before the image is stored, so no image is kept
-## uncounted. The image is kept in its conversation's
+## uncounted. A new account's total is held to its own, smaller limit too
+## (`NewAccountUploads`). The image is kept in its conversation's
 ## folder under a fresh name (`TranscriptFiles.store_uploaded_image!`), and the
 ## answer is JSON giving its URL and the browser's name for it, which the
 ## compose box puts in the message as an `<img>`. An image that can't be
@@ -15,19 +16,22 @@
 ##
 ## A refusal is a line of plain text saying why, which the compose
 ## box shows as it is: no file is a 400, not an image a 415, too large a
-## 413, and an allowance used up a 403. A total that can't be read, or isn't
-## a number, is a 500, and nothing is stored.
+## 413, and an allowance used up a 403, a new account's included. A total
+## that can't be read, or isn't a number, and a welcome that can't be read
+## (which dates the account), are a 500, and nothing is stored.
 ##
 ## A GET answers an image of the conversation its URL names, by its name,
 ## with its type and `nosniff`. An image is only ever found under its own
 ## conversation, so a name under another conversation is a 404.
 import pf.Host
 import pf.Http
+import Clock
 import ConversationKey
 import FileFacts
 import HttpAnswer
 import JsonOut
 import MultipartForm
+import NewAccountUploads
 import PageKit
 import RequestHeader
 import SignedIn
@@ -107,6 +111,8 @@ keep_upload! : {
 		NotAnImage,
 		TooLarge,
 		LimitReached,
+		NewAccountLimitReached,
+		WelcomeUnreadable(Str),
 		NotANumber,
 		FileSystem(FileFacts.Fault),
 		Unrefunded(FileFacts.Fault),
@@ -114,8 +120,10 @@ keep_upload! : {
 )
 keep_upload! = |{ key, acting, headers, body }| {
 	upload = image_upload_from_form({ headers, body })?
-	folder = UserFolder.of(acting.user().id())
-	before = reserve_upload_bytes!(folder, upload.bytes.len())?
+	uploader = acting.user().id()
+	standing = NewAccountUploads.load_standing!(uploader, Clock.read_clock!({}))?
+	folder = UserFolder.of(uploader)
+	before = reserve_upload_bytes!(folder, { adding: upload.bytes.len(), standing })?
 	image = UploadedImage.with_random_name({
 		random_bytes: Host.fill_with_random_bytes!(UploadedImage.random_bytes_per_name),
 		kind: upload.kind,
@@ -140,15 +148,18 @@ keep_upload! = |{ key, acting, headers, body }| {
 
 ## The user's upload total before an upload of `adding` bytes, once the
 ## total with them is written to their folder; unless that would pass the
-## allowance (`LimitReached`), or the total can't be read or written.
+## allowance (`LimitReached`), or a new account's limit, by the account's
+## `standing` (`NewAccountLimitReached`), or the total can't be read or
+## written.
 reserve_upload_bytes! : UserFolder,
-U64 => Try(
+{ adding : U64, standing : [New, Established] } => Try(
 	UploadTotal,
-	[LimitReached, NotANumber, FileSystem(FileFacts.Fault)],
+	[LimitReached, NewAccountLimitReached, NotANumber, FileSystem(FileFacts.Fault)],
 )
-reserve_upload_bytes! = |folder, adding| {
+reserve_upload_bytes! = |folder, { adding, standing }| {
 	before = TranscriptFiles.read_upload_total!(folder)?
 	after = before.with_upload(adding)?
+	NewAccountUploads.check(standing, after)?
 	TranscriptFiles.replace_upload_total!(folder, after) ? |fault| FileSystem(fault)
 	Ok(before)
 }
@@ -162,6 +173,8 @@ upload_refusal_response : [
 	NotAnImage,
 	TooLarge,
 	LimitReached,
+	NewAccountLimitReached,
+	WelcomeUnreadable(Str),
 	NotANumber,
 	FileSystem(FileFacts.Fault),
 	Unrefunded(FileFacts.Fault),
@@ -178,6 +191,8 @@ upload_refusal_response = |why|
 			403,
 			"Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GiB upload allowance.",
 		)
+		NewAccountLimitReached => HttpAnswer.text(403, NewAccountUploads.limit_words)
+		WelcomeUnreadable(words) => HttpAnswer.text(500, "Upload failed: your account's age could not be read: ${words}")
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
 		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileFacts.fault_words(fault)}")
 		Unrefunded(fault) => HttpAnswer.text(
@@ -265,6 +280,16 @@ expect
 		(NotAnImage, 415, "unsupported file type (images: png, jpeg, gif, webp)"),
 		(TooLarge, 413, "image too large — the limit is 10 MiB."),
 		(LimitReached, 403, "Upload limit reached — you've used your 1 GiB upload allowance."),
+		(
+			NewAccountLimitReached,
+			403,
+			"Upload limit reached — a new account may upload 100 MiB in its first 7 days.",
+		),
+		(
+			WelcomeUnreadable("no such user"),
+			500,
+			"Upload failed: your account's age could not be read: no such user",
+		),
 		(NotANumber, 500, "Upload failed: your upload total is not a number."),
 		(FileSystem(AlreadyExists), 500, "Upload failed. The file system answered AlreadyExists."),
 		(

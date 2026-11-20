@@ -377,6 +377,10 @@ pub export fn current_utc_seconds_since_epoch() callconv(.c) i64 {
     return files.current_utc_seconds_since_epoch(io_of("current_utc_seconds_since_epoch"));
 }
 
+pub export fn free_bytes_on_data_disk() callconv(.c) u64 {
+    return root_of("free_bytes_on_data_disk").free_bytes_on_data_disk();
+}
+
 /// **MORE THAN `random_most`, OR NO RANDOMNESS, STOPS THE SERVER**: the
 /// first is the app's bug, and the second leaves nothing safe to hand back.
 pub export fn fill_with_random_bytes(count: u64) callconv(.c) RocBytes {
