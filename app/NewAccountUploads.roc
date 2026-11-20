@@ -64,7 +64,7 @@ NewAccountUploads :: [].{
 		match welcomed {
 			NotWelcomed => Established
 			WelcomedAt(time) =>
-				match DateTime.from_timestamp(now.plus(Seconds.of(0 - NewAccountUploads.first_period_seconds))) {
+				match DateTime.from_timestamp(now.plus(first_period_back)) {
 					# A clock this early can't be, and the tighter limit holds.
 					Err(OutOfRange) => New
 					Ok(cutoff) =>
@@ -88,11 +88,7 @@ NewAccountUploads :: [].{
 	## Whether the user `uploader` is new at `now`: read from their welcome's
 	## first message, in the directory as the disk holds it; unless the
 	## directory or the welcome can't be read.
-	load_standing! : UserId,
-	Timestamp => Try(
-		[New, Established],
-		[WelcomeUnreadable(Str)],
-	)
+	load_standing! : UserId, Timestamp => Try([New, Established], [WelcomeUnreadable(Str)])
 	load_standing! = |uploader, now| {
 		directory = DirectoryStore.load_directory!({}) ? |_| WelcomeUnreadable("the chat's accounts could not be read")
 		user = directory.users().user(uploader) ? |NoSuchUser| WelcomeUnreadable("no such user")
@@ -106,6 +102,10 @@ NewAccountUploads :: [].{
 		}
 	}
 }
+
+## The span from a moment back to the start of its first period.
+first_period_back : Seconds
+first_period_back = Seconds.of(0 - NewAccountUploads.first_period_seconds)
 
 ## The date of `human`'s welcome, the first message of their DM with the
 ## owner under `Welcome.topic`, or `NotWelcomed` when it has no transcript;
@@ -138,8 +138,8 @@ welcome_key = |directory, human| Welcome.conversation_key({ directory, human })
 
 # ── tests
 ## The time `text` names, as a test writes it.
-at : Str -> DateTime
-at = |text| DateTime.from_str(text) ?? crash "NewAccountUploads' tests: a time"
+time_of : Str -> DateTime
+time_of = |text| DateTime.from_str(text) ?? crash "NewAccountUploads' tests: a time"
 
 ## 2026-11-20T12:00:00Z.
 noon : Timestamp
@@ -150,17 +150,17 @@ total_of : U64 -> UploadTotal
 total_of = |bytes| UploadTotal.from_file(File(bytes.to_str().to_utf8())) ?? crash "NewAccountUploads' tests: a total"
 
 expect NewAccountUploads.most_bytes == 104_857_600
-expect DateTime.from_timestamp(noon) == Ok(at("2025-11-20T12:00:00Z"))
+expect DateTime.from_timestamp(noon) == Ok(time_of("2025-11-20T12:00:00Z"))
 # No welcome: established, whatever the clock.
 expect NewAccountUploads.standing_at(NotWelcomed, noon) == Established
 # Welcomed less than seven days ago: new, a second short of them too; seven
 # days ago exactly, or before: established.
-expect NewAccountUploads.standing_at(WelcomedAt(at("2025-11-20T11:59:59Z")), noon) == New
-expect NewAccountUploads.standing_at(WelcomedAt(at("2025-11-13T12:00:01Z")), noon) == New
-expect NewAccountUploads.standing_at(WelcomedAt(at("2025-11-13T12:00:00Z")), noon) == Established
-expect NewAccountUploads.standing_at(WelcomedAt(at("2025-01-01T00:00:00Z")), noon) == Established
+expect NewAccountUploads.standing_at(WelcomedAt(time_of("2025-11-20T11:59:59Z")), noon) == New
+expect NewAccountUploads.standing_at(WelcomedAt(time_of("2025-11-13T12:00:01Z")), noon) == New
+expect NewAccountUploads.standing_at(WelcomedAt(time_of("2025-11-13T12:00:00Z")), noon) == Established
+expect NewAccountUploads.standing_at(WelcomedAt(time_of("2025-01-01T00:00:00Z")), noon) == Established
 # A welcome dated ahead of the clock is new.
-expect NewAccountUploads.standing_at(WelcomedAt(at("2025-11-21T00:00:00Z")), noon) == New
+expect NewAccountUploads.standing_at(WelcomedAt(time_of("2025-11-21T00:00:00Z")), noon) == New
 # A new account: a total landing exactly on 100 MiB passes, a byte more is
 # refused; an established one may pass it.
 expect NewAccountUploads.check(New, total_of(104_857_600)) == Ok({})

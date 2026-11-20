@@ -39,85 +39,83 @@ DiskFloor :: [].{
 	refusal : Http.Response
 	refusal = HttpAnswer.text(507, DiskFloor.low_words)
 
-	## Whether a request routed to `choice` may go on with `free_bytes`
-	## free: always when it adds no data; else only at the floor or above.
-	check : Route.Choice, U64 -> Try({}, [LowOnDisk])
-	check = |choice, free_bytes|
-		if adds_data(choice) and free_bytes < DiskFloor.floor_bytes {
+	## Whether a disk with `free_bytes` free takes data: only at the floor
+	## or above.
+	room_for : U64 -> Try({}, [LowOnDisk])
+	room_for = |free_bytes|
+		if free_bytes < DiskFloor.floor_bytes {
 			Err(LowOnDisk)
 		} else {
 			Ok({})
 		}
 
-	## Whether a request routed to `choice` may go on, the host asked for
-	## the free space only when it adds data.
-	check! : Route.Choice => Try({}, [LowOnDisk])
-	check! = |choice|
-		if adds_data(choice) {
-			DiskFloor.check(choice, Host.free_bytes_on_data_disk!({}))
-		} else {
-			Ok({})
+	## Whether the data root's disk takes data now, the host asked.
+	check_room! : {} => Try({}, [LowOnDisk])
+	check_room! = |{}| DiskFloor.room_for(Host.free_bytes_on_data_disk!({}))
+
+	## Whether a request routed to `choice` adds data to the disk, so the
+	## floor holds it (`check_room!`); the head check asks the host only
+	## then, so a read costs no system call.
+	adds_data : Route.Choice -> Bool
+	adds_data = |choice|
+		match choice {
+			SignedInOnly(AppendToConversation(_)) => Bool.True
+			SignedInOnly(SendToConversation(_)) => Bool.True
+			SignedInOnly(UploadToConversation(_)) => Bool.True
+			SignedInOnly(ReactInConversation(_)) => Bool.True
+			SignedInOnly(MakeAgent) => Bool.True
+			SignedInOnly(InviteAgent(_)) => Bool.True
+			SignedInOnly(CreateChannel) => Bool.True
+			SignedInOnly(AddChannelMember(_)) => Bool.True
+			SignedInOnly(InviteHuman) => Bool.True
+			SignedInOnly(InviteHumanAgain(_)) => Bool.True
+			SignedInOnly(MakeDeviceCode) => Bool.True
+			Open(GitHubSignUpStep(SubmitName)) => Bool.True
+			Open(Join) => Bool.True
+			Open(RedeemInvite) => Bool.True
+			SignedInOnly(StartGitHubLink) => Bool.False
+			SignedInOnly(ShowBrowse) => Bool.False
+			SignedInOnly(ShowRecent) => Bool.False
+			SignedInOnly(OpenRecentStream) => Bool.False
+			SignedInOnly(SearchEveryTopic(_)) => Bool.False
+			SignedInOnly(FollowTopicLink(_)) => Bool.False
+			SignedInOnly(FollowConversationLink(_)) => Bool.False
+			SignedInOnly(StartTopic(_)) => Bool.False
+			SignedInOnly(ShowConversation(_)) => Bool.False
+			SignedInOnly(OpenConversationStream(_)) => Bool.False
+			SignedInOnly(ServeRawTranscript(_)) => Bool.False
+			SignedInOnly(ServeDownload(_)) => Bool.False
+			SignedInOnly(ServeUploadedImage(_)) => Bool.False
+			SignedInOnly(ShowAgents) => Bool.False
+			SignedInOnly(RevokeInvite(_)) => Bool.False
+			SignedInOnly(RevokeKey(_)) => Bool.False
+			SignedInOnly(OpenAgentStream) => Bool.False
+			SignedInOnly(ShowChannels) => Bool.False
+			SignedInOnly(ShowChannelMembers(_)) => Bool.False
+			SignedInOnly(RemoveChannelMember(_)) => Bool.False
+			SignedInOnly(ShowInvites) => Bool.False
+			SignedInOnly(ShowDeviceCode) => Bool.False
+			SignedInOnly(CancelDeviceCode) => Bool.False
+			SignedInOnly(OpenDevicesStream) => Bool.False
+			SignedInOnly(SignOutOtherDevices) => Bool.False
+			Open(GitHubSignUpStep(ShowForm)) => Bool.False
+			Open(RedeemDeviceCode) => Bool.False
+			Open(ResumeOrBrowse) => Bool.False
+			Open(ShowJoin) => Bool.False
+			Open(LookUpJoinName) => Bool.False
+			Open(ServeScript(_)) => Bool.False
+			Open(ServeFavicon) => Bool.False
+			Open(ServeAlertIcon) => Bool.False
+			Open(ShowLogin) => Bool.False
+			Open(SignIn) => Bool.False
+			Open(SignOut) => Bool.False
+			Open(StartGitHubSignIn) => Bool.False
+			Open(FinishGitHubSignIn) => Bool.False
+			Open(WrongMethodToGitHub(_)) => Bool.False
+			NotFound => Bool.False
+			MethodNotAllowed(_) => Bool.False
 		}
 }
-
-## Whether a request routed to `choice` adds data to the disk.
-adds_data : Route.Choice -> Bool
-adds_data = |choice|
-	match choice {
-		SignedInOnly(AppendToConversation(_)) => Bool.True
-		SignedInOnly(SendToConversation(_)) => Bool.True
-		SignedInOnly(UploadToConversation(_)) => Bool.True
-		SignedInOnly(ReactInConversation(_)) => Bool.True
-		SignedInOnly(MakeAgent) => Bool.True
-		SignedInOnly(InviteAgent(_)) => Bool.True
-		SignedInOnly(CreateChannel) => Bool.True
-		SignedInOnly(AddChannelMember(_)) => Bool.True
-		SignedInOnly(InviteHuman) => Bool.True
-		SignedInOnly(InviteHumanAgain(_)) => Bool.True
-		SignedInOnly(MakeDeviceCode) => Bool.True
-		Open(GitHubSignUpStep(SubmitName)) => Bool.True
-		Open(Join) => Bool.True
-		Open(RedeemInvite) => Bool.True
-		SignedInOnly(StartGitHubLink) => Bool.False
-		SignedInOnly(ShowBrowse) => Bool.False
-		SignedInOnly(ShowRecent) => Bool.False
-		SignedInOnly(OpenRecentStream) => Bool.False
-		SignedInOnly(SearchEveryTopic(_)) => Bool.False
-		SignedInOnly(StartTopic(_)) => Bool.False
-		SignedInOnly(ShowConversation(_)) => Bool.False
-		SignedInOnly(OpenConversationStream(_)) => Bool.False
-		SignedInOnly(ServeRawTranscript(_)) => Bool.False
-		SignedInOnly(ServeDownload(_)) => Bool.False
-		SignedInOnly(ServeUploadedImage(_)) => Bool.False
-		SignedInOnly(ShowAgents) => Bool.False
-		SignedInOnly(RevokeInvite(_)) => Bool.False
-		SignedInOnly(RevokeKey(_)) => Bool.False
-		SignedInOnly(OpenAgentStream) => Bool.False
-		SignedInOnly(ShowChannels) => Bool.False
-		SignedInOnly(ShowChannelMembers(_)) => Bool.False
-		SignedInOnly(RemoveChannelMember(_)) => Bool.False
-		SignedInOnly(ShowInvites) => Bool.False
-		SignedInOnly(ShowDeviceCode) => Bool.False
-		SignedInOnly(CancelDeviceCode) => Bool.False
-		SignedInOnly(OpenDevicesStream) => Bool.False
-		SignedInOnly(SignOutOtherDevices) => Bool.False
-		Open(GitHubSignUpStep(ShowForm)) => Bool.False
-		Open(RedeemDeviceCode) => Bool.False
-		Open(ResumeOrBrowse) => Bool.False
-		Open(ShowJoin) => Bool.False
-		Open(LookUpJoinName) => Bool.False
-		Open(ServeScript(_)) => Bool.False
-		Open(ServeFavicon) => Bool.False
-		Open(ServeAlertIcon) => Bool.False
-		Open(ShowLogin) => Bool.False
-		Open(SignIn) => Bool.False
-		Open(SignOut) => Bool.False
-		Open(StartGitHubSignIn) => Bool.False
-		Open(FinishGitHubSignIn) => Bool.False
-		Open(WrongMethodToGitHub(_)) => Bool.False
-		NotFound => Bool.False
-		MethodNotAllowed(_) => Bool.False
-	}
 
 # ── tests
 ## The route `line` (`POST /a`) asks for in the first start's directory.
@@ -169,14 +167,13 @@ not_writes = [
 ]
 
 expect DiskFloor.floor_bytes == 2_147_483_648
-# A write: refused a byte under the floor and with nothing free; at the floor
-# exactly, and above it, it goes on.
-expect writes.all(|line| DiskFloor.check(route_of(line), 2_147_483_647) == Err(LowOnDisk))
-expect writes.all(|line| DiskFloor.check(route_of(line), 0) == Err(LowOnDisk))
-expect writes.all(|line| DiskFloor.check(route_of(line), 2_147_483_648) == Ok({}))
-expect writes.all(|line| DiskFloor.check(route_of(line), U64.highest) == Ok({}))
-# Anything else goes on with nothing free.
-expect not_writes.all(|line| DiskFloor.check(route_of(line), 0) == Ok({}))
+# Each write adds data, and nothing else does.
+expect writes.all(|line| DiskFloor.adds_data(route_of(line)))
+expect not_writes.all(|line| !DiskFloor.adds_data(route_of(line)))
+# Refused a byte under the floor and with nothing free; at the floor
+# exactly, and above it, there is room.
+expect [2_147_483_647, 0].all(|free| DiskFloor.room_for(free) == Err(LowOnDisk))
+expect DiskFloor.room_for(2_147_483_648) == Ok({}) and DiskFloor.room_for(U64.highest) == Ok({})
 expect {
 	answer = DiskFloor.refusal
 	answer.status == 507 and answer.body == "${DiskFloor.low_words}\n".to_utf8()

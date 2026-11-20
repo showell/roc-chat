@@ -169,11 +169,23 @@ check_request_head! = |head|
 				Ok(directory) =>
 					match Actor.load_actor!({ headers: head.headers, directory }) {
 						Err(why) => Admission.head_refusal(Actor.identity_refusal(why))
-						Ok(actor) =>
-							match DiskFloor.check!(Route.choose({ method: head.method, path: head.path, directory })) {
+						Ok(actor) => {
+							choice = Route.choose({
+								method: head.method,
+								path: head.path,
+								directory,
+							})
+							room =
+								if DiskFloor.adds_data(choice) {
+									DiskFloor.check_room!({})
+								} else {
+									Ok({})
+								}
+							match room {
 								Err(LowOnDisk) => Admission.head_refusal(DiskFloor.refusal)
 								Ok({}) => Admission.admission_in({ head, directory, actor })
 							}
+						}
 					}
 			}
 	}
