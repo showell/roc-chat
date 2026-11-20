@@ -46,6 +46,7 @@
 app [check_request_head!, handle_http_request!, page, password_verdict, start!] {
 	md: "../../roc-markdown/package/main.roc",
 	pf: platform "../platform/main.roc",
+	sc: "../../roc-syntax-color/package/main.roc",
 }
 
 import pf.Http

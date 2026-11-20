@@ -2,7 +2,8 @@
 // app/Script.roc serves. It sets the colours before the first paint,
 // so a page never flashes the other theme.
 //
-// The colours are chat-client's (js/colors.js): one palette of CSS custom
+// The colours are chat-client's (js/colors.js), but for a code block's
+// (syn...), which are GitHub's: one palette of CSS custom
 // properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is the one saved in
 // localStorage under 'chat-theme', and dark when none is saved. Every other
 // script styles its widgets with var(--cc-...). Palette.toggle() flips the
@@ -21,6 +22,7 @@ window.Palette = (function () {
     error: '#b00020', savedFg: '#1a7a3a', backdrop: 'rgba(0,0,0,0.4)', notifyFg: '#1a5fb4',
     topBarBg: '#f0ede4', topBarBorder: '#c9bfa7', presenceIdle: '#3b82f6', presenceOnline: '#22c55e',
     lostBg: '#fdd', lostFg: '#600', selectRing: '#ffcf3a',
+    synComment: '#6e7781', synLiteral: '#0a3069', synKeyword: '#cf222e', synType: '#953800',
   };
   // GitHub's dark colours, the bubbles a desaturated blue (the viewer's own)
   // and a desaturated warm grey (everyone else's).
@@ -34,6 +36,7 @@ window.Palette = (function () {
     error: '#ff7b72', savedFg: '#56d364', backdrop: 'rgba(0,0,0,0.6)', notifyFg: '#79b8ff',
     topBarBg: '#161b22', topBarBorder: '#30363d', presenceIdle: '#58a6ff', presenceOnline: '#3fb950',
     lostBg: '#3d1418', lostFg: '#ffb3ad', selectRing: '#ffcf3a',
+    synComment: '#8b949e', synLiteral: '#a5d6ff', synKeyword: '#ff7b72', synType: '#ffa657',
   };
 
   function varName(camel) {

@@ -25,7 +25,7 @@ The code here was written by AI coding agents (Claude), with human supervision.
 
 **The file system is the database.** There's no database server. Users, channels, transcripts, reactions and uploads are plain files in one data folder, readable with `cat`. The app reads what it needs on each request. One module (`FileFacts`) touches files. Above it, each feature has a module that owns its corner of the layout. `docs/design.md` ("Storage") gives the layout and the reasons for it.
 
-**Markdown comes from [roc-markdown](https://github.com/showell/roc-markdown)**, a separate Roc package, checked out beside this repo.
+**Markdown comes from [roc-markdown](https://github.com/showell/roc-markdown)**, a separate Roc package, checked out beside this repo. A code block in Roc, JavaScript, Shale or Zig is colored on the server by [roc-syntax-color](https://github.com/showell/roc-syntax-color), another, checked out beside it too.
 
 **Pages are HTML built in Roc, with a little JavaScript and minimal CSS.** Small scripts in `app/*.js` inject the styles and run the live parts of each page. New messages arrive over server-sent events (SSE). `PageContract` holds the class names and `data-` attributes the scripts share with the Roc.
 
@@ -41,6 +41,7 @@ You need:
 - the Roc pinned in `roc-version` (the scripts look for it at `~/tools/roc-<pin>/roc`);
 - Zig 0.17 (the repo is built with a 0.17 development build, so an older release won't do);
 - roc-markdown checked out beside this repo;
+- [roc-syntax-color](https://github.com/showell/roc-syntax-color) checked out beside this repo, which colors code blocks;
 - [Shale](https://github.com/showell/shale), with its cookbook mounted, for the scripts in `tools/`.
 
 The main commands:

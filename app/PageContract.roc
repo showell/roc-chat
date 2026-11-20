@@ -85,6 +85,26 @@ PageContract :: [].{
 	class : PageContract.Class -> Html.Attribute
 	class = |chosen| Class(token(class_name(chosen)))
 
+	## A class of a colored code block's spans: what roc-syntax-color writes
+	## (`Markdown`'s code hook), not the Roc, and what app/feed.js colors.
+	SyntaxClass : [Comment, String, Number, Keyword, Name, Type]
+
+	## Every `SyntaxClass`, in the order roc-syntax-color names them.
+	syntax_classes : List(PageContract.SyntaxClass)
+	syntax_classes = [Comment, String, Number, Keyword, Name, Type]
+
+	## The class roc-syntax-color spells for `chosen`.
+	syntax_class_name : PageContract.SyntaxClass -> Str
+	syntax_class_name = |chosen|
+		match chosen {
+			Comment => "syn-comment"
+			String => "syn-string"
+			Number => "syn-number"
+			Keyword => "syn-keyword"
+			Name => "syn-name"
+			Type => "syn-type"
+		}
+
 	## A `data-` attribute a page writes for its scripts, with its value:
 	## a closed set, so `data_attribute` is the one spelling of each name.
 	DataAttribute : [
@@ -344,6 +364,18 @@ expect
 		and !is_read_by(Script.Feed.bytes(), "data-person")
 		and !is_read_by(Script.Compose.bytes(), "data-section")
 		and !is_read_by(Script.Feed.bytes(), "data-section")
+# A colored code block's classes are styled by app/feed.js, a rule each,
+# and by no other script.
+expect {
+	feed = Str.from_utf8_lossy(Script.Feed.bytes())
+	compose = Str.from_utf8_lossy(Script.Compose.bytes())
+	PageContract.syntax_classes.all(
+		|chosen| {
+			name = PageContract.syntax_class_name(chosen)
+			feed.contains(".${name} {") and !compose.contains(name)
+		},
+	)
+}
 # The classes only styled are styled by the script that owns them.
 expect [
 	TopTitle,

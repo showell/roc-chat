@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
 
     const archive = b.addSystemCommand(&.{ roc, "build", "app/main.roc", "--target=x64musl", "--opt=dev" });
     archive.setCwd(b.path("."));
-    for ([_][]const u8{ "app", "platform", markdown_package }) |folder| rocInputs(b, archive, folder);
+    for ([_][]const u8{ "app", "platform", markdown_package, syntax_color_package }) |folder| rocInputs(b, archive, folder);
     archive.addFileInput(.{ .cwd_relative = roc });
     const app = archive.addPrefixedOutputFileArg("--output=", "app-x64musl.a");
 
@@ -75,6 +75,10 @@ fn withApp(b: *std.Build, name: []const u8, root: []const u8, app: std.Build.Laz
 /// **THE MARKDOWN PACKAGE app/main.roc IMPORTS** (`md`), roc-markdown
 /// checked out beside this repo, from the build's root.
 const markdown_package = "../roc-markdown/package";
+
+/// **THE SYNTAX-COLOR PACKAGE app/main.roc IMPORTS** (`sc`), roc-syntax-color
+/// checked out beside this repo, from the build's root.
+const syntax_color_package = "../roc-syntax-color/package";
 
 /// **EVERY FILE OF THE ROC IS AN INPUT, FOUND, NEVER LISTED**: each file
 /// in `folder`, so a change to any module, ours or the markdown package's,

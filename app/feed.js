@@ -92,6 +92,13 @@
     '.message .body video { max-width: 100%; max-height: 480px; display: block; margin: 6px 0; border-radius: 6px; }',
     '.message .body table { border-collapse: collapse; }',
     '.message .body td, .message .body th { border: 1px solid var(--cc-border); padding: 0 .4rem; }',
+    // A colored code block's spans, roc-syntax-color's (PageContract.SyntaxClass).
+    '.message .body .syn-comment { color: var(--cc-syn-comment); }',
+    '.message .body .syn-string { color: var(--cc-syn-literal); }',
+    '.message .body .syn-number { color: var(--cc-syn-literal); }',
+    '.message .body .syn-keyword { color: var(--cc-syn-keyword); }',
+    '.message .body .syn-name { font-weight: 600; }',
+    '.message .body .syn-type { color: var(--cc-syn-type); }',
     // The popups' backdrops, the one rule their element styles can't hold.
     'dialog.image-popup::backdrop { background: var(--cc-backdrop); }',
     'dialog.code-popup::backdrop { background: var(--cc-backdrop); }',
