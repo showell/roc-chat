@@ -35,6 +35,13 @@
 // address that arrived with its own #msg-<n> keeps it until the reader
 // moves. The keys are registered in compose.js's table (Keys), so the
 // keyboard help lists them.
+//
+// A click on an image in a message opens it in a popup, chat-client's
+// (js/chat_image_popup.js, opened from js/message.js's handleClick): a
+// modal dialog over a dimmed page, a slider that zooms from 1x to 8x, a
+// Close button, and a fixed frame of 70% of the window each way that the
+// image first fits and then scrolls in once zoomed. Escape closes it, as it
+// closes any modal dialog; a click outside it doesn't. A video has no popup.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
@@ -73,10 +80,12 @@
     '.message .body pre.chat-quote { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere;' +
       ' background: var(--cc-quote-bg); border-left: 3px solid var(--cc-quote-border); border-radius: 0 4px 4px 0;' +
       ' margin: 6px 0; padding: 6px 10px; color: var(--cc-body-muted-fg); overflow-x: visible; }',
-    '.message .body img { max-width: 100%; max-height: 320px; width: auto; height: auto; display: block; margin: 6px 0; border-radius: 6px; }',
+    '.message .body img { max-width: 100%; max-height: 320px; width: auto; height: auto; display: block; margin: 6px 0; border-radius: 6px; cursor: zoom-in; }',
     '.message .body video { max-width: 100%; max-height: 480px; display: block; margin: 6px 0; border-radius: 6px; }',
     '.message .body table { border-collapse: collapse; }',
     '.message .body td, .message .body th { border: 1px solid var(--cc-border); padding: 0 .4rem; }',
+    // The image popup's backdrop, the one rule its element styles can't hold.
+    'dialog.image-popup::backdrop { background: var(--cc-backdrop); }',
   ].join('\n');
   document.head.appendChild(s);
 
@@ -242,6 +251,69 @@
     });
     select(article, true);
   }
+
+  // The image popup, chat-client's js/chat_image_popup.js as it was. Each
+  // call builds a fresh dialog, which removes itself once closed. The
+  // slider multiplies the largest size that fits the frame, worked out once
+  // the image and the frame have their sizes.
+  function showImage(src) {
+    var dlg = document.createElement('dialog');
+    dlg.className = 'image-popup';
+    Object.assign(dlg.style, {
+      border: '1px solid var(--cc-accent)', borderRadius: '10px', padding: '10px',
+      background: 'var(--cc-bg)', color: 'var(--cc-fg)',
+      display: 'flex', flexDirection: 'column', gap: '8px',
+    });
+
+    var controls = document.createElement('div');
+    Object.assign(controls.style, {
+      display: 'flex', alignItems: 'center', gap: '10px',
+    });
+    var range = document.createElement('input');
+    range.type = 'range'; range.min = '1'; range.max = '8'; range.step = '0.05'; range.value = '1';
+    range.style.flex = '1';
+    var close = document.createElement('button');
+    close.type = 'button'; close.textContent = 'Close';
+    close.addEventListener('click', function () { dlg.close(); });
+    controls.appendChild(range); controls.appendChild(close);
+
+    // A fixed frame, so the slider stays put; the image is sized in pixels
+    // inside it and scrolls once it is larger.
+    var frame = document.createElement('div');
+    Object.assign(frame.style, {
+      width: '70vw', height: '70vh', overflow: 'auto',
+      background: 'var(--cc-code-strap-bg)', borderRadius: '6px',
+    });
+    var img = document.createElement('img'); img.alt = '';
+    img.style.display = 'block';
+    frame.appendChild(img);
+    dlg.appendChild(controls); dlg.appendChild(frame);
+    dlg.addEventListener('close', function () { dlg.remove(); });
+    document.body.appendChild(dlg);
+
+    var fitW = 0, fitH = 0;
+    function applyZoom() {
+      if (!fitW) return;
+      var z = parseFloat(range.value);
+      img.style.width = (fitW * z) + 'px';
+      img.style.height = (fitH * z) + 'px';
+    }
+    function fit() {
+      var cw = frame.clientWidth, ch = frame.clientHeight, nw = img.naturalWidth, nh = img.naturalHeight;
+      if (!cw || !ch || !nw || !nh) return;
+      var scale = Math.min(cw / nw, ch / nh);
+      fitW = nw * scale; fitH = nh * scale; applyZoom();
+    }
+    range.addEventListener('input', applyZoom);
+    dlg.showModal();
+    img.addEventListener('load', fit);
+    img.src = src;
+    if (img.complete) fit();
+  }
+  messages.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.tagName === 'IMG' && t.closest('.message .body')) showImage(t.src);
+  });
 
   Keys.register({ key: 'ArrowDown', cap: '↓', label: 'next message', run: function () { moveSelection(1); } });
   Keys.register({ key: 'ArrowUp', cap: '↑', label: 'previous message', run: function () { moveSelection(-1); } });
