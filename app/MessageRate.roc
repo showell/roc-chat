@@ -76,7 +76,10 @@ MessageRate :: [].{
 
 	## The tally after one more message; unless `tally` already holds the
 	## most (`TooManyMessages`).
-	tally_with_message : MessageRate.MessageTally -> Try(MessageRate.MessageTally, [TooManyMessages])
+	tally_with_message : MessageRate.MessageTally -> Try(
+		MessageRate.MessageTally,
+		[TooManyMessages],
+	)
 	tally_with_message = |tally|
 		if tally.count >= MessageRate.per_window_most {
 			Err(TooManyMessages)
