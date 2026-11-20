@@ -81,9 +81,16 @@ expect
 # asks posts it when its own top bar's "Sign out" is pressed, and a link to
 # it is a 405) sends Cancel to Browse: no sign-out is refused for it.
 expect
-	["", "next=", "next=chat", "next=//evil.example", "next=/a/../b", "next=https://x", "next=/logout", "next=%2Flogout"].all(
-		|body| choice_of(on_phone, body) == "ask, cancel to /chat",
-	)
+	[
+		"",
+		"next=",
+		"next=chat",
+		"next=//evil.example",
+		"next=/a/../b",
+		"next=https://x",
+		"next=/logout",
+		"next=%2Flogout",
+	].all(|body| choice_of(on_phone, body) == "ask, cancel to /chat")
 # The page that asks: what signing out does, in Steve's words; "Sign out",
 # posting `confirmed=yes` and `next` to `/logout`; and Cancel, a link to
 # `next`.
