@@ -170,7 +170,7 @@ Host := [].{
 	## At most `most` words of the texts of `keys` that begin with `prefix`
 	## (folded), each with how many texts hold it, the most held first,
 	## then in byte order; and how many of `keys` are unsearchable.
-	words_in_search_index! : List(List(U8)),
+	find_words_in_search_index! : List(List(U8)),
 	List(U8),
 	U64 => {
 		unsearchable : U64,
@@ -181,7 +181,7 @@ Host := [].{
 	## in `keys`' order, each key's in order: at most `most` listed, each
 	## with its key's place and its own, from 0, and its label; how many
 	## hold it in all; and how many of `keys` are unsearchable.
-	texts_in_search_index! : List(List(U8)),
+	find_texts_in_search_index! : List(List(U8)),
 	List(U8),
 	U64 => {
 		hits : List({ key_at : U64, label : List(U8), text : List(U8), text_at : U64 }),

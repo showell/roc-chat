@@ -152,28 +152,29 @@ Search :: [].{
 						At(_) => {
 							$matched = $matched + 1
 							if $first.len() < Search.most_messages {
-								$first = $first.append({ found_in: { key: topic.key, place_label: topic.place_label }, message })
+								found_in = { key: topic.key, place_label: topic.place_label }
+								$first = $first.append({ found_in, message })
 							}
 						}
 						NotHeld => {}
 					}
 				}
 			}
-			{ hits: Search.listed_hits({ found: $first, word }), matched: $matched }
+			{ hits: Search.listed_hits({ candidates: $first, word }), matched: $matched }
 		}
 
 	## The first `most_messages` messages that hold `word`, in order, each
 	## with its excerpt, while their excerpts come to no more than
 	## `most_answer_bytes` (the first always listed).
 	listed_hits : {
-		found : List({ found_in : Search.Where, message : Message }),
+		candidates : List({ found_in : Search.Where, message : Message }),
 		word : SearchWords.SearchKey,
 	} -> List(Search.Hit)
-	listed_hits = |{ found, word }| {
+	listed_hits = |{ candidates, word }| {
 		var $hits = []
 		var $bytes = 0
 		var $full = Bool.False
-		for { found_in, message } in found.take_first(Search.most_messages) {
+		for { found_in, message } in candidates.take_first(Search.most_messages) {
 			if !$full {
 				excerpt = Search.excerpt_of({ markdown: message.markdown(), key: word })
 				cost = excerpt_cost(excerpt)

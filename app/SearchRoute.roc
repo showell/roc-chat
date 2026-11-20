@@ -87,42 +87,67 @@ answer_search! = |{ asked_of, acting, directory, query }| {
 		}
 	key = typed_key(query, field) ? |words| BadQuery(words)
 	take_search_slot!(human.user().id(), Clock.read_clock!({}))?
-	{ topics, unread } = fill_index!(places) ? |fault| FileSystem(fault)
-	keys = topics.map(|topic| topic.key)
+	{ topics, unread } = load_index!(places) ? |fault| FileSystem(fault)
 	match asked_of {
-		Words =>
-			if key.bytes().is_empty() {
-				Ok(Search.words_answer({ prefix: key, words: [], unreadable: unread + SearchIndex.unsearchable!(keys) }))
-			} else {
-				got = SearchIndex.words!(keys, key, Search.most_words)
-				Ok(Search.words_answer({ prefix: key, words: got.words, unreadable: unread + got.unsearchable }))
-			}
-		Messages =>
-			if !key.is_word_long() {
-				Ok(
-					Search.messages_answer({
-						word: key,
-						found: { hits: [], matched: 0 },
-						unreadable: unread + SearchIndex.unsearchable!(keys),
-					}),
-				)
-			} else {
-				got = SearchIndex.messages!(keys, key, Search.most_messages)
-				found = got.found.map(
-					|{ topic_at, message }| {
-						found_in: topics.get(topic_at) ?? crash "SearchRoute: a hit's topic is one asked about",
-						message,
-					},
-				)
-				Ok(
-					Search.messages_answer({
-						word: key,
-						found: { hits: Search.listed_hits({ found, word: key }), matched: got.matched },
-						unreadable: unread + got.unsearchable,
-					}),
-				)
-			}
+		Words => Ok(answer_words!({ topics, unread, prefix: key }))
+		Messages => Ok(answer_messages!({ topics, unread, word: key }))
 	}
+}
+
+## The words' answer for `prefix` in `topics`, from the index, with the
+## `unread` topics counted among those it could not read. An empty prefix
+## suggests nothing.
+answer_words! : {
+	topics : List(Search.Where),
+	unread : U64,
+	prefix : SearchWords.SearchKey,
+} => JsonOut
+answer_words! = |{ topics, unread, prefix }| {
+	keys = topics.map(|topic| topic.key)
+	got =
+		if prefix.bytes().is_empty() {
+			{ words: [], unsearchable: SearchIndex.count_unsearchable!(keys) }
+		} else {
+			SearchIndex.find_words!({ keys, prefix, most: Search.most_words })
+		}
+	Search.words_answer({
+		prefix,
+		words: got.words,
+		unreadable: unread + got.unsearchable,
+	})
+}
+
+## The messages' answer for `word` in `topics`, from the index, with the
+## `unread` topics counted among those it could not read. A key shorter
+## than a word finds nothing.
+answer_messages! : {
+	topics : List(Search.Where),
+	unread : U64,
+	word : SearchWords.SearchKey,
+} => JsonOut
+answer_messages! = |{ topics, unread, word }| {
+	keys = topics.map(|topic| topic.key)
+	got =
+		if word.is_word_long() {
+			SearchIndex.find_messages!({ keys, word, most: Search.most_messages })
+		} else {
+			{
+				found_messages: [],
+				matched: 0,
+				unsearchable: SearchIndex.count_unsearchable!(keys),
+			}
+		}
+	found = got.found_messages.map(
+		|{ topic_at, message }| {
+			found_in: topics.get(topic_at) ?? crash "SearchRoute: a hit's topic is one asked about",
+			message,
+		},
+	)
+	Search.messages_answer({
+		word,
+		found: { hits: Search.listed_hits({ candidates: found, word }), matched: got.matched },
+		unreadable: unread + got.unsearchable,
+	})
 }
 
 ## The key the query's `field` holds, none when it is missing; unless the
@@ -169,11 +194,8 @@ take_search_slot! = |human, now| {
 ## topics past those bytes were left unread. A transcript that is not one
 ## the chat writes is handed to the index as unreadable, which counts it.
 ## Unless the host's listing or a read failed.
-fill_index! : List(Browse.ListedPlace) => Try(
-	{ topics : List(Search.Where), unread : U64 },
-	_,
-)
-fill_index! = |places| {
+load_index! : List(Browse.ListedPlace) => Try({ topics : List(Search.Where), unread : U64 }, _)
+load_index! = |places| {
 	with_topics = BrowseRoute.load_place_topics!(places)?
 	var $wheres = []
 	for { label: _, place, topics } in with_topics {
@@ -183,26 +205,28 @@ fill_index! = |places| {
 				Dm(_) => "a direct message"
 			}
 		for topic in topics {
-			$wheres = $wheres.append({ key: ConversationKey.of({ place, topic }), place_label })
+			key = ConversationKey.of({ place, topic })
+			$wheres = $wheres.append({ key, place_label })
 		}
 	}
 	var $unread = 0
 	var $read = 0
-	for at in SearchIndex.keys_not_held!($wheres.map(|topic| topic.key)) {
-		key = ($wheres.get(at) ?? crash "SearchRoute.fill_index!: a place the index named").key
+	for at in SearchIndex.find_keys_not_held!($wheres.map(|topic| topic.key)) {
+		listed = $wheres.get(at) ?? crash "SearchRoute.load_index!: a place the index named"
+		key = listed.key
 		if $read >= SearchRoute.most_bytes_read {
 			$unread = $unread + 1
 		} else {
 			match TranscriptFiles.read_transcript!(key)? {
-				NoFile => SearchIndex.fill!(key, Messages([]))
+				NoFile => SearchIndex.load_topic!(key, Messages([]))
 				File(utf8) => {
 					$read = $read + utf8.to_plain_text().len()
 					if $read > SearchRoute.most_bytes_read {
 						$unread = $unread + 1
 					} else {
 						match Transcript.decode(key.topic(), utf8) {
-							Ok(conversation) => SearchIndex.fill!(key, Messages(conversation.messages()))
-							Err(_) => SearchIndex.fill!(key, Unreadable)
+							Ok(read) => SearchIndex.load_topic!(key, Messages(read.messages()))
+							Err(_) => SearchIndex.load_topic!(key, Unreadable)
 						}
 					}
 				}

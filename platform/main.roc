@@ -46,6 +46,8 @@ platform ""
 		"current_utc_seconds_since_epoch": Host.current_utc_seconds_since_epoch!,
 		"end_every_stream_of_holder": Host.end_every_stream_of_holder!,
 		"fill_with_random_bytes": Host.fill_with_random_bytes!,
+		"find_texts_in_search_index": Host.find_texts_in_search_index!,
+		"find_words_in_search_index": Host.find_words_in_search_index!,
 		"github_identity_for_code": Host.github_identity_for_code!,
 		"github_sign_in_settings": Host.github_sign_in_settings!,
 		"hmac_sha256_with_server_secret": Host.hmac_sha256_with_server_secret!,
@@ -62,8 +64,6 @@ platform ""
 		"replace_second_kept_under_key": Host.replace_second_kept_under_key!,
 		"search_index_keys_not_held": Host.search_index_keys_not_held!,
 		"sha256_of_bytes": Host.sha256_of_bytes!,
-		"texts_in_search_index": Host.texts_in_search_index!,
-		"words_in_search_index": Host.words_in_search_index!,
 		"write_line_to_server_log": Host.write_line_to_server_log!,
 	}
 	targets: {
