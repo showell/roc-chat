@@ -77,6 +77,9 @@
     '.message > header { font-size: 11px; color: var(--cc-muted-fg); margin-bottom: 3px; }',
     '.message > header .message-reference { color: inherit; text-decoration: none; }',
     '.message > header .message-reference:hover { text-decoration: underline; }',
+    // A phone's header is the author and the time alone, so it stays one
+    // line; the reference is kept on a desktop, where there is room.
+    'html.layout-narrow .message > header .message-reference { display: none; }',
     '.message .body { overflow-wrap: anywhere; }',
     '.message .body p:first-child { margin-top: 0; }',
     '.message .body p:last-child { margin-bottom: 0; }',
