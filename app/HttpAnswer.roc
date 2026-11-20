@@ -118,7 +118,11 @@ HttpAnswer :: [].{
 	## a strict name and `.tar.gz`, so it needs no quoting.
 	## It has `write_grace_ms` more to be written, the app's time for its
 	## size on a slow link (`DownloadRoute.write_grace_ms`).
-	gzip_download : { filename : Str, bytes : List(U8), write_grace_ms : U32 } -> Http.Response
+	gzip_download : {
+		filename : Str,
+		bytes : List(U8),
+		write_grace_ms : U32,
+	} -> Http.Response
 	gzip_download = |{ filename, bytes, write_grace_ms }| {
 		..whole_response({
 			status: 200,
@@ -381,7 +385,10 @@ expect
 		HttpAnswer.text(400, "x"),
 	].all(
 		|response|
-			response.kind == Whole and response.stream_keys == [] and response.stream_holder == [] and response.write_grace_ms == 0,
+			response.kind == Whole
+				and response.stream_keys == []
+				and response.stream_holder == []
+				and response.write_grace_ms == 0,
 	)
 expect {
 	response = HttpAnswer.stream({
