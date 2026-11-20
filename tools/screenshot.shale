@@ -79,6 +79,8 @@
 --   cite-followed     the DM's first message cited, the citation pasted in
 --                     its ChitChat, and its link followed: that message
 --                     selected on its page
+--   citation-pasted   that citation in ChitChat, its link under the quote
+--                     (at both sizes)
 --   dm-quote-reply    `q`: the selected message quoted in the open box
 -- and once, last, in the last theme (it brings Cy online for good, so
 -- every picture before it shows his hollow dot):
@@ -299,6 +301,9 @@ const STATES = {
     "goto /chat/dm/1_2/ChitChat", "wait .message:last-of-type .body p.citation-link a[href=\"/chat/dm/1_2/plans#msg-1\"]",
     "click .message:last-of-type .body p.citation-link a",
     "wait .top-title a[href=\"/chat/dm/1_2/plans\"]", "wait #msg-1.selected"}},
+  -- That pasted citation as its topic shows it: the quote, then its link.
+  {name = "citation-pasted", path = "/chat/dm/1_2/ChitChat", steps = {"wait .message .body p.citation-link a"}},
+  {name = "citation-pasted", size = "phone", path = "/chat/dm/1_2/ChitChat", steps = {"wait .message .body p.citation-link a"}},
   -- `q` still quotes the selected message into the compose box.
   {name = "dm-quote-reply", path = "/chat/dm/1_2/plans", steps = {
     "key q", "wait .compose.open textarea:not(:placeholder-shown)"}},

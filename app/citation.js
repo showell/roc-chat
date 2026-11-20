@@ -23,7 +23,9 @@
 // Where a citation is pasted, roc-markdown draws its quote as a blockquote
 // and its link as a paragraph after it. A paragraph right after a quote that
 // holds nothing but a link to a chat page is marked citation-link and
-// styled small and quiet. Following the link opens the message in its
+// drawn as the citation's point, not as quiet metadata: the body's size,
+// the accent colour, underlined, after a "→", close under its quote
+// (Steve, 2026-11-20: 11px and muted "looked like filler"). Following the link opens the message in its
 // topic, selected (feed.js); one to this page's own topic brings it into
 // view in place (actions.js).
 (function () {
@@ -41,8 +43,9 @@
   s.textContent = [
     '.message .body blockquote { margin: 6px 0; padding: 2px 10px; border-left: 3px solid var(--cc-quote-border);' +
       ' background: var(--cc-quote-bg); border-radius: 0 4px 4px 0; color: var(--cc-body-muted-fg); }',
-    '.message .body p.citation-link { font-size: 11px; margin-top: 2px; }',
-    '.message .body p.citation-link a { color: var(--cc-muted-fg); }',
+    '.message .body p.citation-link { margin-top: 4px; }',
+    '.message .body p.citation-link::before { content: "→ "; color: var(--cc-accent); }',
+    '.message .body p.citation-link a { color: var(--cc-accent); text-decoration: underline; }',
     '.cite-notice { position: fixed; z-index: 11; bottom: 16px; left: 50%; transform: translateX(-50%);' +
       ' padding: .5rem .75rem; border-radius: 6px; background: var(--cc-card-bg); color: var(--cc-notify-fg);' +
       ' border: 1px solid var(--cc-border); }',
