@@ -136,6 +136,7 @@ SignInPage :: [].{
 						PageKit.paragraph("You are signed in as ${acting.user().name().to_str()}."),
 						PageKit.post_button({ action: "/logout", label: "Sign out" }),
 					],
+					panel: PlainPanel,
 				})
 			Anonymous =>
 				PageKit.document({

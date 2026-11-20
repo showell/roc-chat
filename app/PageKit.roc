@@ -17,7 +17,7 @@
 ## link (`HomeLink`), the viewer's name and "Sign out". Under it, a page another module
 ## builds (`signed_in_page`) holds its parts in a panel, and ends with
 ## app/chrome.js, which styles the top bar and adds its theme toggle, and
-## app/panel.js, which draws the panel as a card.
+## app/panel.js, which draws the panel as a card (`Script.panel_scripts`).
 ##
 ## Every `Str` a page shows goes in through `Escape.text`, and every
 ## element through `Html.element`. This module vouches
@@ -200,6 +200,12 @@ PageKit :: [].{
 			inner: TrustedHtml.join([]),
 		})
 
+	## The `<script>` element of each of `chosen`, in order, each on a line
+	## of its own.
+	scripts : List(Script) -> TrustedHtml
+	scripts = |chosen|
+		TrustedHtml.join(chosen.map(|one| [PageKit.script(one), PageKit.newline]).join())
+
 	## A page's whole document, the same for every page: the doctype and the
 	## head's `<meta>` elements, `title` as its title, the colour script, then
 	## `body`.
@@ -213,7 +219,7 @@ PageKit :: [].{
 				inner: Escape.text(title),
 			}),
 			PageKit.newline,
-			PageKit.script(Script.Palette),
+			PageKit.script(Script.head_script),
 			PageKit.newline,
 			body,
 		])
@@ -259,18 +265,20 @@ PageKit :: [].{
 		})
 
 	## A page of a signed-in human's: the document, its top bar of `title`
-	## and `viewer`, then `parts` in a panel, then the scripts that style
-	## them.
+	## and `viewer`, then `parts` in a panel, then the scripts of `panel`
+	## (`Script.panel_scripts`), which style them.
 	signed_in_page : {
 		title : Str,
 		viewer : SignedIn,
 		parts : List(TrustedHtml),
+		panel : [PlainPanel, RecentPanel, DeviceCodePanel],
 	} -> TrustedHtml
-	signed_in_page = |{ title, viewer, parts }|
+	signed_in_page = |{ title, viewer, parts, panel }|
 		panel_page({
 			title,
 			top: PageKit.top_bar({ title, viewer }),
 			parts,
+			panel,
 		})
 
 	## A page of a signed-in human's as `signed_in_page`, its top bar holding
@@ -280,8 +288,9 @@ PageKit :: [].{
 		title : Str,
 		viewer : SignedIn,
 		parts : List(TrustedHtml),
+		panel : [PlainPanel, RecentPanel, DeviceCodePanel],
 	} -> TrustedHtml
-	noticed_page = |{ title, viewer, parts }|
+	noticed_page = |{ title, viewer, parts, panel }|
 		panel_page({
 			title,
 			top: top_bar_titled({
@@ -290,6 +299,7 @@ PageKit :: [].{
 				notices: Notices(NoNotice),
 			}),
 			parts,
+			panel,
 		})
 
 	## A page that says one thing: `title`, and `text` beneath it (no such
@@ -336,13 +346,14 @@ marked_paragraph = |chosen, inner|
 	])
 
 ## A page of `title`: the top bar `top`, then `parts` in a panel, then the
-## scripts that style them.
+## scripts of `panel`, which style them.
 panel_page : {
 	title : Str,
 	top : TrustedHtml,
 	parts : List(TrustedHtml),
+	panel : [PlainPanel, RecentPanel, DeviceCodePanel],
 } -> TrustedHtml
-panel_page = |{ title, top, parts }|
+panel_page = |{ title, top, parts, panel }|
 	PageKit.document({
 		title,
 		body: TrustedHtml.join([
@@ -358,10 +369,7 @@ panel_page = |{ title, top, parts }|
 				}),
 			}),
 			PageKit.newline,
-			PageKit.script(Script.Chrome),
-			PageKit.newline,
-			PageKit.script(Script.Panel),
-			PageKit.newline,
+			PageKit.scripts(Script.panel_scripts(panel)),
 		]),
 	})
 

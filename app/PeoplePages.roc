@@ -39,6 +39,7 @@ PeoplePages :: [].{
 					label: "Create a channel",
 				}),
 			),
+			panel: PlainPanel,
 		})
 
 	## A channel's page, for `viewer`, the admin: its members, each with a
@@ -66,6 +67,7 @@ PeoplePages :: [].{
 					.append(PageKit.paragraph("Everyone else:")),
 				others.map(|user| row(user, Add)),
 			),
+			panel: PlainPanel,
 		})
 	}
 
@@ -138,6 +140,7 @@ PeoplePages :: [].{
 				open_section_parts(waiting_humans, context),
 				past_section_parts(past_humans, context),
 			].join(),
+			panel: PlainPanel,
 		})
 	}
 }

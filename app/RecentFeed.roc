@@ -25,7 +25,6 @@ import Name
 import PageContract
 import PageKit
 import RecentExcerpt
-import Script
 import SignedIn
 import Transcript
 import TrustedHtml
@@ -163,17 +162,8 @@ RecentFeed :: [].{
 		PageKit.noticed_page({
 			title: "Recent",
 			viewer,
-			parts: List.concat(
-				nothing_yet,
-				[
-					listed,
-					PageKit.newline,
-					PageKit.script(Script.Recent),
-					PageKit.newline,
-					PageKit.script(Script.Search),
-					PageKit.newline,
-				],
-			),
+			parts: List.concat(nothing_yet, [listed, PageKit.newline]),
+			panel: RecentPanel,
 		})
 	}
 

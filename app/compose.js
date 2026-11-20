@@ -478,6 +478,7 @@
     var reference = ref ? ref.textContent : article.id;
     var place = placeName();
     link.textContent = '✓ your message was sent to ' + (place ? place + ' as ' : '') + reference;
+    // script-calls: runtime-only: a click on the sent notice, once feed.js has run
     link.addEventListener('click', function (e) {
       e.preventDefault();
       Feed.reveal(article);

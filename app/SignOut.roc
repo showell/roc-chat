@@ -89,6 +89,7 @@ SignOut :: [].{
 				form,
 				PageKit.newline,
 			],
+			panel: PlainPanel,
 		})
 	}
 }

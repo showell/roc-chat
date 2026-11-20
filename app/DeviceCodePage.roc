@@ -20,7 +20,6 @@ import Escape
 import Html
 import PageContract
 import PageKit
-import Script
 import ServerSentEvent
 import SignedIn
 import Timestamp
@@ -135,8 +134,8 @@ DeviceCodePage :: [].{
 						sign_out_others_button,
 					]),
 				),
-				PageKit.script(Script.Devices),
 			],
+			panel: DeviceCodePanel,
 		})
 	}
 

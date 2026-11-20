@@ -1,0 +1,445 @@
+-- This hunt holds each page script, app/*.js, to what the other scripts
+-- give. A script gives a global as `window.X = { name: ..., ... }` or as
+-- `window.X = (function () { ... return { name: ..., ... }; })();`, and the
+-- object's keys are the names X gives. A page loads its scripts in an order,
+-- and a script that uses X as it loads needs the script that gives X to have
+-- run already. Run it from roc-chat's root; tools/verify.shale runs it among
+-- its hunts.
+--
+--   shale tools/check_script_calls.shale
+--
+-- The pages and their orders are app/Script.roc's, read from its source:
+-- every page loads `head_script` first, then the list of one of its
+-- `*_scripts` (but `all_scripts`, every script once, which is no page's). A list is a page; a `match`'s arm is a page too, named
+-- `conversation_scripts(Alone)`.
+--
+-- Each finding is a line `path:line: script-calls: why`:
+--   - `X.name` (or `window.X.name`) where X is a global a script gives and
+--     `name` is not among the names it gives;
+--   - a use of X (`X.name`, a bare `X`, or `!window.X`) in a script, on a
+--     page that loads the script, where the script that gives X isn't on the
+--     page, or loads after it;
+--   - an app/*.js that no page loads;
+--   - a page module that links a script itself (`PageKit.script(Script.Chrome)`)
+--     rather than through Script.roc's lists.
+--
+-- Three things the code states take a use out of the order's check:
+--   - `window.X` on the use's line, after no `!` (`if (window.Sidebar)
+--     Sidebar.markOnline(...)`): the line uses X only where X is;
+--   - a comment line `// script-calls: runtime-only: <why>` before a
+--     statement: the statement's uses run only after every script of the
+--     page has (in a DOMContentLoaded or a click's handler), so the script
+--     that gives X need only be on the page;
+--   - a comment line `// script-calls: only on <pages>: <why>` before a
+--     statement: its uses run only on those pages, each a `*_scripts` name
+--     (every page it gives) or one page's (`conversation_scripts(Alone)`).
+--
+-- The scripts are read by a tokenizer of their own (strings, comments,
+-- regular expressions, names and single characters), a line at a time, so a
+-- string or a comment that runs past its line stops the run. So does a
+-- global given in any other shape, naming its file and line: change the
+-- script to one of the two shapes above.
+-- budget: steps=200000000 arena_bytes=500000000
+use("cookbook:findings.shale")
+
+const TOKEN = [=[//.*|/\*(?:[^*]|\*+[^*/])*\*+/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[A-Za-z_$][A-Za-z0-9_$]*|[0-9][0-9A-Za-z_.]*|\S]=]
+const REGEX = [=[/(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\[])+/[a-z]*]=]
+-- After one of these, a `/` begins a regular expression; after anything
+-- else (a name, a number, `)` or `]`), it divides.
+const BEFORE_REGEX = {"(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^", "return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw"}
+const OPENERS = {"(", "[", "{"}
+const CLOSERS = {")", "]", "}"}
+const MARKER = "// script-calls:"
+
+-- A marker comment, `// script-calls: runtime-only: why` or
+-- `// script-calls: only on a, b: why`.
+function read_marker(path, n, text)
+  local rest = trim(sub(text, #MARKER + 1))
+  local runtime = re_find(rest, "^runtime-only: (.+)$")
+  if runtime ~= nil then return {line = n, kind = "runtime-only", pages = {}, why = runtime.group} end
+  local only = re_find(rest, "^only on ([a-z_]+(?:\\([A-Za-z]+\\))?(?:, [a-z_]+(?:\\([A-Za-z]+\\))?)*): (.+)$")
+  if only ~= nil then return {line = n, kind = "only-on", pages = split(only.groups[1], ", "), why = only.groups[2]} end
+  fail(path .. ":" .. n .. ": check_script_calls: a script-calls comment is `runtime-only: <why>` or `only on <pages>: <why>`")
+end
+
+-- The tokens of `path`, as three lists side by side (`text`, `line`,
+-- `kind`: name, string, number, regex, punct), and its marker comments,
+-- each `{line, kind, pages, why}`.
+function tokenize(path)
+  local out = {text = {}, line = {}, kind = {}, markers = {}}
+  local prev = ""
+  local n = 0
+  for line in lines(read(path)) do
+    n = n + 1
+    local pos = 1
+    local first = true
+    while true do
+      local m = re_find(line, TOKEN, {from = pos})
+      if m == nil then break end
+      local t = m.text
+      local kind = "punct"
+      local c = sub(t, 1, 1)
+      if starts_with(t, "//") or starts_with(t, "/*") then
+        kind = "comment"
+      elseif t == "/" and has_item(BEFORE_REGEX, prev) then
+        local r = re_find(line, REGEX, {from = m.at})
+        if r == nil or r.at ~= m.at then fail(path .. ":" .. n .. ": check_script_calls: a regular expression this hunt can't read") end
+        t = r.text
+        kind = "regex"
+      elseif t == "/" and sub(line, m.at + 1, m.at + 1) == "*" then
+        fail(path .. ":" .. n .. ": check_script_calls: a /* comment that runs past its line")
+      elseif t == "'" or t == "\"" or t == "`" then
+        fail(path .. ":" .. n .. ": check_script_calls: a string that runs past its line")
+      elseif c == "'" or c == "\"" or c == "`" then
+        kind = "string"
+      elseif re_find(c, "[A-Za-z_$]") ~= nil then
+        kind = "name"
+      elseif re_find(c, "[0-9]") ~= nil then
+        kind = "number"
+      end
+      if kind == "comment" then
+        if starts_with(t, MARKER) then
+          if not first then fail(path .. ":" .. n .. ": check_script_calls: a script-calls comment goes on a line of its own, before the statement it is about") end
+          push(out.markers, read_marker(path, n, t))
+        end
+      else
+        push(out.text, t)
+        push(out.line, n)
+        push(out.kind, kind)
+        prev = t
+        first = false
+      end
+      pos = m.at + #t
+    end
+  end
+  return out
+end
+
+-- The text of `list`'s item `i`, or "" past either end.
+function item(list, i)
+  if i < 1 or i > #list then return "" end
+  return list[i]
+end
+
+-- The index of the token that closes the one at `open`.
+function closing(tok, open)
+  local depth = 0
+  local i = open
+  while i <= #tok.text do
+    local t = tok.text[i]
+    if tok.kind[i] == "punct" and has_item(OPENERS, t) then depth = depth + 1 end
+    if tok.kind[i] == "punct" and has_item(CLOSERS, t) then
+      depth = depth - 1
+      if depth == 0 then return i end
+    end
+    i = i + 1
+  end
+  return 0
+end
+
+-- The keys of the object literal whose `{` is at `open`, or nil when one
+-- of its entries isn't `name: value`.
+function object_keys(tok, open)
+  local close = closing(tok, open)
+  if close == 0 then return nil end
+  local names = {}
+  local depth = 0
+  local want_key = true
+  local i = open + 1
+  while i < close do
+    local t = tok.text[i]
+    local punct = tok.kind[i] == "punct"
+    if punct and has_item(OPENERS, t) then
+      depth = depth + 1
+    elseif punct and has_item(CLOSERS, t) then
+      depth = depth - 1
+    elseif depth == 0 and punct and t == "," then
+      want_key = true
+    elseif depth == 0 and want_key then
+      if tok.kind[i] ~= "name" or tok.text[i + 1] ~= ":" then return nil end
+      push(names, t)
+      want_key = false
+      i = i + 1
+    end
+    i = i + 1
+  end
+  return names
+end
+
+-- Whether the token at `i` is the X of `window.X`, not `a.window.X`.
+function is_windowed(tok, i)
+  if i < 3 or tok.text[i - 1] ~= "." or tok.text[i - 2] ~= "window" then return false end
+  return i == 3 or tok.text[i - 3] ~= "."
+end
+
+-- Whether the token at `i`, a name, is assigned to: `= value`, not `==`.
+function is_assigned(tok, i)
+  return item(tok.text, i + 1) == "=" and item(tok.text, i + 2) ~= "="
+end
+
+-- The keys of the object the function body at `open` returns, called at
+-- once (`})();`): its one `return { ... }` at the body's own level, or nil.
+function returned_keys(tok, open)
+  local close = closing(tok, open)
+  if close == 0 or join(slice(tok.text, close + 1, close + 3), " ") ~= ") ( )" then return nil end
+  local returns = {}
+  local depth = 0
+  local i = open + 1
+  while i < close do
+    local t = tok.text[i]
+    local punct = tok.kind[i] == "punct"
+    if punct and has_item(OPENERS, t) then depth = depth + 1 end
+    if punct and has_item(CLOSERS, t) then depth = depth - 1 end
+    if depth == 0 and tok.kind[i] == "name" and t == "return" then push(returns, i) end
+    i = i + 1
+  end
+  if #returns ~= 1 or tok.text[returns[1] + 1] ~= "{" then return nil end
+  return object_keys(tok, returns[1] + 1)
+end
+
+-- The globals `path` gives: each `{name, line, names}`. A global given in
+-- a shape this hunt can't read stops the run.
+function givens(path, tok)
+  local found = {}
+  local i = 1
+  while i <= #tok.text do
+    local t = tok.text[i]
+    if tok.kind[i] == "name" and re_find(t, "^[A-Z]") ~= nil and is_windowed(tok, i) and is_assigned(tok, i) then
+      local at = i + 2
+      local names = nil
+      if tok.text[at] == "{" then
+        names = object_keys(tok, at)
+      elseif join(slice(tok.text, at, at + 4), " ") == "( function ( ) {" then
+        names = returned_keys(tok, at + 4)
+      end
+      if names == nil then
+        fail(path .. ":" .. tok.line[i] .. ": check_script_calls: window." .. t .. " is given in a shape this hunt can't read: write `window." .. t .. " = { name: ..., ... }` or `window." .. t .. " = (function () { ... return { name: ..., ... }; })();`")
+      end
+      push(found, {name = t, line = tok.line[i], names = names})
+    end
+    i = i + 1
+  end
+  return found
+end
+
+-- Each marker's statement: the tokens from the first after its line to the
+-- `;` or block's `}` that ends the statement there, as `{first, last}`.
+function marked_spans(path, tok)
+  local spans = {}
+  for m in tok.markers do
+    local first = 0
+    local i = 1
+    while i <= #tok.text and first == 0 do
+      if tok.line[i] > m.line then first = i end
+      i = i + 1
+    end
+    if first == 0 then fail(path .. ":" .. m.line .. ": check_script_calls: a script-calls comment with no statement after it") end
+    local depth = 0
+    local last = #tok.text
+    i = first
+    while i <= #tok.text do
+      local t = tok.text[i]
+      local punct = tok.kind[i] == "punct"
+      if punct and has_item(CLOSERS, t) then
+        depth = depth - 1
+        if depth < 0 then
+          last = i - 1
+          break
+        end
+        if depth == 0 and t == "}" and not has_item({"else", "catch", "finally"}, item(tok.text, i + 1)) then
+          last = i
+          break
+        end
+      elseif punct and has_item(OPENERS, t) then
+        depth = depth + 1
+      elseif punct and depth == 0 and t == ";" then
+        last = i
+        break
+      end
+      i = i + 1
+    end
+    push(spans, {first = first, last = last, marker = m})
+  end
+  return spans
+end
+
+-- The uses in `tok` of the globals in `givers` (a map from a global's name
+-- to its giver): each `{name, member, line, at}`. Each line's guards,
+-- `window.X` after no `!`, go in `guards` as `line:X`.
+function uses(tok, givers, guards)
+  local found = {}
+  local i = 1
+  while i <= #tok.text do
+    local t = tok.text[i]
+    if tok.kind[i] == "name" and has_key(givers, t) then
+      local windowed = is_windowed(tok, i)
+      local member = ""
+      if item(tok.text, i + 1) == "." and item(tok.kind, i + 2) == "name" then member = tok.text[i + 2] end
+      local counted = true
+      if i > 1 and tok.text[i - 1] == "." and not windowed then counted = false end
+      if windowed and is_assigned(tok, i) then counted = false end
+      if not windowed and item(tok.text, i + 1) == ":" then counted = false end
+      if counted and windowed and member == "" and item(tok.text, i - 3) ~= "!" then
+        guards[tok.line[i] .. ":" .. t] = true
+        counted = false
+      end
+      if counted then push(found, {name = t, member = member, line = tok.line[i], at = i}) end
+    end
+    i = i + 1
+  end
+  return found
+end
+
+-- The pages of app/Script.roc, each `{name, family, scripts}`: `scripts`
+-- the file names in the order the page loads them, `head_script` first.
+function pages_of(script_roc)
+  local text = read(script_roc)
+  local files = {}
+  for m in re_lines(text, "^\\s+[A-Z][A-Za-z]* => \"[a-z-]+\\.js\"$") do
+    local r = re_find(m.text, "([A-Z][A-Za-z]*) => \"([a-z-]+\\.js)\"")
+    files[r.groups[1]] = r.groups[2]
+  end
+  local head = re_find(text, "\\bhead_script = Script\\.([A-Z][A-Za-z]*)")
+  if head == nil or not has_key(files, head.group) then fail(script_roc .. ": check_script_calls: no `head_script = Script.<Tag>` naming a script's file") end
+  local pages = {}
+  local all = split(text, "\n")
+  local n = 0
+  while n < #all do
+    n = n + 1
+    local def = re_find(all[n], "^\t([a-z_]+_scripts) = (.*)$")
+    if def ~= nil and def.groups[1] ~= "all_scripts" then
+      local family = def.groups[1]
+      local body = def.groups[2]
+      while n < #all and trim(all[n + 1]) ~= "" do
+        n = n + 1
+        body = body .. "\n" .. all[n]
+      end
+      local arms = re_find_all(body, "\\b([A-Z][A-Za-z]*) =>")
+      local parts = {}
+      if #arms == 0 then
+        push(parts, {name = family, text = body})
+      else
+        local k = 1
+        while k <= #arms do
+          local stop = #body
+          if k < #arms then stop = arms[k + 1].at - 1 end
+          push(parts, {name = family .. "(" .. arms[k].group .. ")", text = sub(body, arms[k].at + #arms[k].text, stop)})
+          k = k + 1
+        end
+      end
+      for part in parts do
+        local scripts = {files[head.group]}
+        for s in re_find_all(part.text, "\\bScript\\.([A-Z][A-Za-z]*)") do
+          if not has_key(files, s.group) then fail(script_roc .. ": check_script_calls: " .. part.name .. " names Script." .. s.group .. ", which has no file") end
+          push(scripts, files[s.group])
+        end
+        if #scripts < 2 then fail(script_roc .. ": check_script_calls: " .. part.name .. " names no script") end
+        push(pages, {name = part.name, family = family, scripts = scripts})
+      end
+    end
+  end
+  if #pages == 0 then fail(script_roc .. ": check_script_calls: no `<name>_scripts = ...` lists of pages") end
+  return pages
+end
+
+-- Where `file` is in `list`, or 0.
+function index_of(list, file)
+  local i = 1
+  while i <= #list do
+    if list[i] == file then return i end
+    i = i + 1
+  end
+  return 0
+end
+
+-- The pages a marker names, as page names, or a stop naming one that is
+-- no page's or family's.
+function named_pages(path, m, pages)
+  local names = {}
+  for want in m.pages do
+    local hit = false
+    for p in pages do
+      if p.name == want or p.family == want then
+        push(names, p.name)
+        hit = true
+      end
+    end
+    if not hit then fail(path .. ":" .. m.line .. ": check_script_calls: `" .. want .. "` is no page of app/Script.roc's") end
+  end
+  return names
+end
+
+const page_list = pages_of("app/Script.roc")
+const script_paths = glob("app/*.js")
+const report = {}
+
+-- The globals and their givers.
+const given = {}
+const names_given = {}
+for path in script_paths do
+  for g in givens(path, tokenize(path)) do
+    if has_key(given, g.name) then fail(path .. ":" .. g.line .. ": check_script_calls: window." .. g.name .. " is given twice, here and in " .. given[g.name]) end
+    given[g.name] = basename(path)
+    names_given[g.name] = g.names
+  end
+end
+
+for path in script_paths do
+  local file = basename(path)
+  local loaded_by = {}
+  for p in page_list do
+    if index_of(p.scripts, file) > 0 then push(loaded_by, p) end
+  end
+  if #loaded_by == 0 then push(report, path .. ":1: script-calls: no page of app/Script.roc loads " .. file) end
+  local tok = tokenize(path)
+  local spans = marked_spans(path, tok)
+  local guards = {}
+  local said = {}
+  for u in uses(tok, given, guards) do
+    local why = {}
+    local giver = given[u.name]
+    if u.member ~= "" and not has_item(names_given[u.name], u.member) then
+      push(why, u.name .. " (" .. giver .. ") gives no `" .. u.member .. "`; it gives " .. join(names_given[u.name], ", "))
+    end
+    if giver ~= file and not has_key(guards, u.line .. ":" .. u.name) then
+      local runtime = false
+      local only = nil
+      for s in spans do
+        if u.at >= s.first and u.at <= s.last then
+          if s.marker.kind == "runtime-only" then runtime = true end
+          if s.marker.kind == "only-on" then only = named_pages(path, s.marker, page_list) end
+        end
+      end
+      for p in loaded_by do
+        if only == nil or has_item(only, p.name) then
+          local at_giver = index_of(p.scripts, giver)
+          if at_giver == 0 then
+            push(why, u.name .. " is " .. giver .. "'s, which " .. p.name .. " doesn't load")
+          elseif not runtime and at_giver > index_of(p.scripts, file) then
+            push(why, u.name .. " is " .. giver .. "'s, which " .. p.name .. " loads after " .. file)
+          end
+        end
+      end
+    end
+    for w in why do
+      local line = path .. ":" .. u.line .. ": script-calls: " .. w
+      if not has_key(said, line) then
+        said[line] = true
+        push(report, line)
+      end
+    end
+  end
+end
+
+-- No page module links a script but through Script.roc's lists.
+for path in glob("app/*.roc") do
+  if path ~= "app/Script.roc" then
+    for m in re_lines(read(path), "PageKit\\.script\\(Script\\.[A-Z]") do
+      push(report, path .. ":" .. m.line .. ": script-calls: a script linked by hand; name it in one of app/Script.roc's `*_scripts` lists")
+    end
+  end
+end
+
+const summary = "check_script_calls (JS): " .. #script_paths .. " scripts, " .. #keys(given) .. " globals, " .. #page_list .. " pages; script-calls " .. #report
+print_findings(summary, report)
+if #report > 0 then fail(summary) end

@@ -128,7 +128,12 @@ ConversationPage :: [].{
 		shown_count = PageKit.token(thread.messages().len().to_str())
 		{ toggle, notices, nav, scripts } =
 			match sidebar {
-				NoSidebar => { toggle: [], notices: NoNotices, nav: [], scripts: [] }
+				NoSidebar => {
+					toggle: [],
+					notices: NoNotices,
+					nav: [],
+					scripts: Script.conversation_scripts(Alone),
+				}
 				Sidebar({ places, online_humans, notice, rosters }) => {
 					toggle: [Sidebar.toggle],
 					notices: Notices(notice),
@@ -141,7 +146,7 @@ ConversationPage :: [].{
 							rosters,
 						}),
 					],
-					scripts: [Script.SidebarPopups, Script.Sidebar],
+					scripts: Script.conversation_scripts(WithSidebar),
 				}
 			}
 		PageKit.document({
@@ -179,19 +184,7 @@ ConversationPage :: [].{
 					]),
 				}),
 				PageKit.newline,
-				TrustedHtml.join(
-					List.concat(
-						List.concat([Script.Chrome], scripts),
-						[
-							Script.Compose,
-							Script.Emoji,
-							Script.Feed,
-							Script.Citation,
-							Script.Actions,
-							Script.Search,
-						],
-					).map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
-				),
+				PageKit.scripts(scripts),
 			]),
 		})
 	}

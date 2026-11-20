@@ -450,6 +450,7 @@ window.Sidebar = (function () {
   // its "+" does. Keys is compose.js's, which runs after this script, so
   // the key is registered once every script of the page has run.
   if (!newTopicHere) throw new Error('sidebar.js: no .sidebar-place is the page\'s own (data-opening="always")');
+  // script-calls: runtime-only: DOMContentLoaded comes once every script has run
   document.addEventListener('DOMContentLoaded', function () {
     if (!window.Keys) throw new Error('sidebar.js: compose.js gives Keys');
     Keys.register({ key: 'n', label: 'new topic here', run: newTopicHere });

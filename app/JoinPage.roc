@@ -59,8 +59,7 @@ JoinPage :: [].{
 				PageKit.paragraph("Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it."),
 				form,
 				PageKit.newline,
-				PageKit.script(Script.Join),
-				PageKit.newline,
+				PageKit.scripts(Script.join_scripts),
 			]),
 		})
 	}

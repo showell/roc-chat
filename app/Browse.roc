@@ -118,6 +118,7 @@ Browse :: [].{
 					PageKit.newline,
 				],
 			),
+			panel: PlainPanel,
 		})
 	}
 

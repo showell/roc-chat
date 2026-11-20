@@ -28,6 +28,7 @@
   'use strict';
   // A conversation's page is the one with a messages pane.
   var onConversation = !!document.querySelector('.messages');
+  // script-calls: only on conversation_scripts: Recent has no Keys and no Feed
   if (onConversation && (!window.Keys || !window.Feed)) {
     throw new Error('search.js: on a conversation, compose.js and feed.js run first, and give Keys and Feed');
   }
@@ -184,6 +185,7 @@
     close();
     var anchor = 'msg-' + item.id;
     var here = onConversation && isHere(item.page) && document.getElementById(anchor);
+    // script-calls: only on conversation_scripts: `here` is a message on this page
     if (here) {
       Feed.reveal(here);
       window.history.replaceState(null, '', '#' + anchor);
@@ -246,6 +248,7 @@
   button.addEventListener('click', show);
   user.parentNode.insertBefore(button, user);
 
+  // script-calls: only on conversation_scripts: Recent listens for the key itself
   if (onConversation) {
     Keys.register({ key: '/', label: 'search every topic', run: show });
   } else {

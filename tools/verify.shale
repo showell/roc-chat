@@ -40,6 +40,11 @@
 --    finding for each `app/*Spec.roc`, and each must be app/Specs.roc's
 --    `import <Name>Spec`. app/Specs.roc imports every Spec only to bring
 --    its expects into its run, which no name in the file uses.
+--    Beside them, roc-chat's own tools/check_script_calls.shale holds the
+--    page scripts (app/*.js) at zero: every `X.name` one script calls is
+--    among the names the script that gives X gives, and every page loads
+--    that script first, in app/Script.roc's order (its header has the
+--    rules).
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -161,6 +166,7 @@ const hunts = {
   {recipe = "find_unused_imports", args = {}, counts = {"unused_import ([0-9]+)"}, fails_on_findings = true, held = {{count = "unused_import ([0-9]+)", findings = #glob("app/*Spec.roc")}}, exception = "^app/Specs\\.roc:[0-9]+: unused_import: `[A-Za-z]+Spec` is imported and never used"},
   {recipe = "find_bare_floats", args = {}, counts = {"bare_float ([0-9]+)", "unused_exception ([0-9]+)"}},
   {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)", "peer_receiver ([0-9]+)"}},
+  {recipe = "check_script_calls", script = "tools/check_script_calls.shale", args = {}, counts = {"script-calls ([0-9]+)"}, fails_on_findings = true},
 }
 function findings_allowed(hunt, count)
   for held in get(hunt, "held", {}) do
@@ -172,8 +178,13 @@ end
 for h in hunts do
   local argv = {"shale"}
   for f in get(h, "flags", {}) do push(argv, f) end
-  push(argv, real("cookbook:roc/" .. h.recipe .. ".shale"))
-  push(argv, "glob=" .. get(h, "glob", "app/**/*.roc"))
+  -- A hunt of roc-chat's own is a script of its own, with no `glob`.
+  if has_key(h, "script") then
+    push(argv, h.script)
+  else
+    push(argv, real("cookbook:roc/" .. h.recipe .. ".shale"))
+    push(argv, "glob=" .. get(h, "glob", "app/**/*.roc"))
+  end
   for a in h.args do push(argv, a) end
   -- `whole`, not `tail`: `tail` cuts a long line, and hunt_names's summary
   -- runs past the cut to its last count, `bare_participle`.
