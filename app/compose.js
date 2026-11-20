@@ -204,7 +204,6 @@
   composeBody.appendChild(status);
   composeBody.appendChild(help);
   box.rows = 3;
-  box.placeholder = 'Write a message…  Longer posts are welcome.';
   // The help line names both platforms' send keys, as the server can't tell
   // which one reads it; the script keeps only this one's.
   var BOTH_KEYS = 'Ctrl/⌘-Enter';
@@ -465,8 +464,7 @@
     var link = document.createElement('a');
     link.href = '#' + article.id;
     var reference = ref ? ref.textContent : article.id;
-    var here = document.querySelector('.sidebar-place[data-opening="always"] .sidebar-place-name');
-    var place = here && here.lastChild ? here.lastChild.textContent.trim() : '';
+    var place = placeName();
     link.textContent = '✓ your message was sent to ' + (place ? place + ' as ' : '') + reference;
     link.addEventListener('click', function (e) {
       e.preventDefault();
@@ -477,6 +475,24 @@
     status.appendChild(link);
     sentLink = link;
   }
+  // The page's own place as the sidebar names it: the other human of a DM,
+  // or `#channel`; '' when the page has no sidebar.
+  function placeName() {
+    var here = document.querySelector('.sidebar-place[data-opening="always"] .sidebar-place-name');
+    return here && here.lastChild ? here.lastChild.textContent.trim() : '';
+  }
+  // The placeholder names where a message goes, as the sent notice does:
+  // "Message Apoorva" in a DM, "Message #general › roc-chat" in a channel's
+  // topic, the topic being the last part of its page's path.
+  (function () {
+    var place = placeName();
+    var parts = draftPath.split('/');
+    var topic = decodeURIComponent(parts[parts.length - 1] || '');
+    if (!place) box.placeholder = 'Write a message…';
+    else if (place.charAt(0) === '#' && topic) box.placeholder = 'Message ' + place + ' › ' + topic;
+    else box.placeholder = 'Message ' + place;
+  })();
+
   function expectArrival(id) {
     var here = document.getElementById(id);
     if (here) sentNotice(here);
