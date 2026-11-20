@@ -76,8 +76,8 @@ MessageRate :: [].{
 
 	## The tally after one more message; unless `tally` already holds the
 	## most (`TooManyMessages`).
-	after_message : MessageRate.Tally -> Try(MessageRate.Tally, [TooManyMessages])
-	after_message = |tally|
+	tally_with_message : MessageRate.Tally -> Try(MessageRate.Tally, [TooManyMessages])
+	tally_with_message = |tally|
 		if tally.count >= MessageRate.per_window_most {
 			Err(TooManyMessages)
 		} else {
@@ -93,9 +93,10 @@ MessageRate :: [].{
 			since: Host.read_second_kept_under_key!(MessageRate.since_key(user)),
 			now,
 		})
-		counted = MessageRate.after_message(tally)?
+		counted = MessageRate.tally_with_message(tally)?
 		_ = Host.replace_second_kept_under_key!(MessageRate.count_key(user), counted.count)
-		_ = Host.replace_second_kept_under_key!(MessageRate.since_key(user), counted.since.to_seconds_since_epoch())
+		started = counted.since.to_seconds_since_epoch()
+		_ = Host.replace_second_kept_under_key!(MessageRate.since_key(user), started)
 		Ok({})
 	}
 }
@@ -105,37 +106,50 @@ noon : Timestamp
 noon = Timestamp.at_second(1_000_000)
 
 ## What the host keeps under a key: `Found` with `second`.
-kept : I64 -> { second : I64, status : [Found, Missing] }
-kept = |second| { second, status: Found }
+kept_second : I64 -> { second : I64, status : [Found, Missing] }
+kept_second = |second| { second, status: Found }
 
 ## Nothing kept under a key.
 none_kept : { second : I64, status : [Found, Missing] }
 none_kept = { second: 0, status: Missing }
 
+## A fresh tally at noon, of no messages.
+fresh_at_noon : MessageRate.Tally
+fresh_at_noon = { count: 0, since: noon }
+
 ## The tally at noon of `count` messages in a window that started
 ## `ago` seconds before.
 tally_at_noon : { count : I64, ago : I64 } -> MessageRate.Tally
 tally_at_noon = |{ count, ago }|
-	MessageRate.tally_of({ count: kept(count), since: kept(1_000_000 - ago), now: noon })
+	MessageRate.tally_of({
+		count: kept_second(count),
+		since: kept_second(1_000_000 - ago),
+		now: noon,
+	})
 
 expect MessageRate.per_window_most == 30
 expect MessageRate.count_key(UserId.chat_owner) == "message-rate/count/1".to_utf8()
 expect MessageRate.since_key(UserId.chat_owner) == "message-rate/since/1".to_utf8()
 # Nothing kept, or half of it: a fresh window from now.
-expect MessageRate.tally_of({ count: none_kept, since: none_kept, now: noon }) == { count: 0, since: noon }
-expect MessageRate.tally_of({ count: kept(7), since: none_kept, now: noon }) == { count: 0, since: noon }
-expect MessageRate.tally_of({ count: none_kept, since: kept(999_990), now: noon }) == { count: 0, since: noon }
+expect
+	[
+		(none_kept, none_kept),
+		(kept_second(7), none_kept),
+		(none_kept, kept_second(999_990)),
+	].all(|(count, since)| MessageRate.tally_of({ count, since, now: noon }) == fresh_at_noon)
 # Inside the window its count holds, at its last second too; a whole window
 # on, it is fresh.
 expect tally_at_noon({ count: 12, ago: 0 }) == { count: 12, since: noon }
 expect tally_at_noon({ count: 12, ago: 59 }) == { count: 12, since: Timestamp.at_second(999_941) }
 expect tally_at_noon({ count: 30, ago: 60 }) == { count: 0, since: noon }
 # The thirtieth message in a window passes; the thirty-first is refused.
-expect MessageRate.after_message({ count: 29, since: noon }) == Ok({ count: 30, since: noon })
-expect MessageRate.after_message({ count: 30, since: noon }) == Err(TooManyMessages)
-expect MessageRate.after_message({ count: 0, since: noon }) == Ok({ count: 1, since: noon })
+expect MessageRate.tally_with_message({ count: 29, since: noon }) == Ok({ count: 30, since: noon })
+expect MessageRate.tally_with_message({ count: 30, since: noon }) == Err(TooManyMessages)
+expect MessageRate.tally_with_message({ count: 0, since: noon }) == Ok({ count: 1, since: noon })
 # Thirty in a window that is ending: the next refused at its last second, and
 # taken a second later, in a fresh window.
-expect MessageRate.after_message(tally_at_noon({ count: 30, ago: 59 })) == Err(TooManyMessages)
-expect MessageRate.after_message(tally_at_noon({ count: 30, ago: 60 })) == Ok({ count: 1, since: noon })
+expect MessageRate.tally_with_message(tally_at_noon({ count: 30, ago: 59 })) == Err(TooManyMessages)
+expect
+	MessageRate.tally_with_message(tally_at_noon({ count: 30, ago: 60 }))
+		== Ok({ count: 1, since: noon })
 expect MessageRate.too_many_words == "Too many messages: at most 30 a minute. Wait a moment, then send it again."
