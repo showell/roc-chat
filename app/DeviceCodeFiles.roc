@@ -68,6 +68,15 @@ DeviceCodeFiles :: [].{
 			Err(Failed) => Err(FileSystem(Failed))
 		}
 	}
+
+	## The human `id`'s code cancelled, when it is live.
+	cancel_live_device_code! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
+	cancel_live_device_code! = |id|
+		match DeviceCodeFiles.read_device_code!(id)? {
+			Record(record) if record.is_live() =>
+				DeviceCodeFiles.replace_device_code!(id, record.cancel())
+			Record(_) | NoRecord => Ok({})
+		}
 }
 
 ## The path of the human `id`'s sign-ins by code.

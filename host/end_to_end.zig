@@ -1018,9 +1018,9 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const first_code = first.code;
     const record = try readFile(a, io, data, "users/1/device-code");
     const flash = first.made.header("set-cookie") orelse "";
-    try t.check("a code made: a 303 to the page, with a cookie for this host alone, for the code's five minutes, sent to no script and on no other site's request", first.made.status == 303 and
+    try t.check("a code made: a 303 to the page, with a cookie for this host alone, for the browser's session, sent to no script and on no other site's request", first.made.status == 303 and
         std.mem.eql(u8, first.made.header("location") orelse "", "/devices") and std.mem.startsWith(u8, flash, "__Host-device_code=") and
-        std.mem.endsWith(u8, flash, "; Path=/; Max-Age=300; HttpOnly; Secure; SameSite=Strict") and
+        std.mem.endsWith(u8, flash, "; Path=/; HttpOnly; Secure; SameSite=Strict") and
         std.mem.eql(u8, first.made.header("cache-control") orelse "", "no-store"));
     try t.check("the page then shows it once, two groups of four of the alphabet, with its expiry, the warning and a button that cancels it; never stored; the cookie forgotten; its record holds its HMAC, not the code", first.page.status == 200 and
         isDeviceCode(first_code) and has(first.page.body, "Type this only into your own device. Nobody will ever ask you for it.") and
@@ -1034,6 +1034,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const reloaded = try getAt(a, io, port, "/devices");
     try t.check("a reload of the page shows no code and makes none: it says one is waiting, with the button that cancels it", reloaded.status == 200 and
         !has(reloaded.body, "sign-in-code") and has(reloaded.body, "A code is waiting to be used, until ") and
+        has(reloaded.body, "It is shown only once; make a new code to see one.") and
         has(reloaded.body, "action=\"/devices/cancel\"") and std.mem.eql(u8, try readFile(a, io, data, "users/1/device-code"), record));
 
     const second = try makeCode(a, io, port, steve_session);
@@ -1097,6 +1098,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const fourth = try makeCode(a, io, port, steve_session);
     const fourth_code = fourth.code;
     const phone_out = try postAs(a, io, port, phone_session, "/logout", "");
+    try t.check("signing out forgets the cookie that shows a code, beside the session's", has(phone_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; "));
     const after_sign_out = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{fourth_code}));
     try t.check("a code Steve makes, then his phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth_code) and
         phone_out.status == 303 and std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
@@ -1189,6 +1191,10 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const start = try getAs(a, io, port, tablet_session, "/login/github/start?next=/chat");
     const invite_agent = try postAs(a, io, port, tablet_session, "/agents/2/invites", "read=everywhere&post=everywhere");
     const agents_page = try getAs(a, io, port, tablet_session, "/agents");
+    const tablet_devices = try getAs(a, io, port, tablet_session, "/devices");
+    try t.check("its /agents and /devices pages show no button it couldn't use, and a line saying why", !has(agents_page.body, "<button>Make an agent</button>") and
+        has(agents_page.body, "so it can&#39;t manage agents or link GitHub") and !has(tablet_devices.body, "action=\"/devices\"") and
+        !has(tablet_devices.body, "action=\"/devices/sign-out-others\"") and has(tablet_devices.body, "so it can&#39;t make codes or sign other devices out"));
     const invite_human = try postAs(a, io, port, tablet_session, "/invites", "name=Tablet+Friend");
     const invite_again = try postAs(a, io, port, tablet_session, "/invites/3/again", "");
     const tablet_code = try postAs(a, io, port, tablet_session, "/devices", "");
@@ -1212,7 +1218,11 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const second = try makeCode(a, io, port, steve_session);
     const phone = try redeemFrom(a, io, port, "x-forwarded-for: 192.0.2.41\r\n", try std.fmt.allocPrint(a, "code={s}", .{second.code}));
     const phone_session = try cookieLine(a, phone);
+    const waiting = try makeCode(a, io, port, steve_session);
     const signed_out = try post(a, io, port, .{ .path = "/devices/sign-out-others", .form = "" });
+    try t.check("signing other devices out cancels the live code first, and forgets the cookie that shows one", isDeviceCode(waiting.code) and
+        std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
+        has(signed_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; "));
     const steve_again = try cookieLine(a, signed_out);
     const old_steve = try getAs(a, io, port, steve_session, "/chat");
     const old_phone = try getAs(a, io, port, phone_session, "/chat");

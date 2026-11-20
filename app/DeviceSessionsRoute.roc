@@ -4,14 +4,15 @@
 ## - `POST /devices/sign-out-others`, for a human signed in by a session:
 ##   their session generation raised (`SignInFiles`), so every session of
 ##   theirs signed before admits no one, then this device's session signed
-##   again, as it was started, and a 303 back to the page. A live device code
-##   ends with it, as its material has changed.
+##   again, as it was started, and a 303 back to the page, the cookie that
+##   shows a code forgotten. A live device code is cancelled first.
 ## - The page's list of their last sign-ins by code (`DeviceSignIns`): read,
 ##   and a file that is damaged or can't be read logged and taken as none;
 ##   and each redemption noted in it, a failure to note one logged, as the
 ##   sign-in it tells of has happened.
 import pf.Host
 import pf.Http
+import DeviceCode
 import DeviceCodeFiles
 import DeviceCodePage
 import DeviceSignIns
@@ -36,15 +37,16 @@ DeviceSessionsRoute :: [].{
 			match acting.human_in_session() {
 				Err(_) => session_only_answer
 				Ok(human) =>
-					match SignInFiles.advance_session_generation!(human.id()) {
+					match sign_out_others!(human.id()) {
 						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 						Ok({}) => {
 							origin = acting.session_origin()
 							match SignInRoute.sign_session_again!({ human, origin, now }) {
-								Ok(cookie) => HttpAnswer.with_header(
-									HttpAnswer.see_other(DeviceCodePage.path),
-									cookie,
-								)
+								Ok(cookie) => {
+									onward = HttpAnswer.with_header(HttpAnswer.see_other(DeviceCodePage.path), cookie)
+									forgotten = DeviceCode.clear_flash_cookie_text
+									HttpAnswer.with_header(onward, { name: "set-cookie".to_utf8(), value: forgotten.to_utf8() })
+								}
 								Err(NoMaterial) => material_missing_answer
 								Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
 								Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
@@ -88,6 +90,15 @@ DeviceSessionsRoute :: [].{
 			Err(FileSystem(fault)) => log_fault!({ id, fault, what: "sign-in by code not noted" })
 		}
 	}
+}
+
+## The human `id`'s other devices signed out: their live code cancelled, so
+## the page never shows a dead one as waiting, then their session
+## generation advanced.
+sign_out_others! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
+sign_out_others! = |id| {
+	DeviceCodeFiles.cancel_live_device_code!(id)?
+	SignInFiles.advance_session_generation!(id)
 }
 
 ## The log's line for the human `id`'s sign-ins file and `fault`, saying

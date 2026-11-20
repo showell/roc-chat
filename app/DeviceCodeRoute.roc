@@ -8,16 +8,17 @@
 ## - `POST /login/code`, for anyone but a request with an API key: the code
 ##   the form holds, redeemed. A code that a live record's HMAC matches, in
 ##   its life, spends the record, tells its human on their own stream that a
-##   new device signed in, and starts an ordinary session
+##   new device signed in, and starts a session marked as a code's
 ##   (`SignInRoute.start_session_by_device_code!`). An entry of no code's
 ##   shape is a 400 saying what a code looks like, counted as no guess.
 ##   Every other well-formed code is the same 401, after the same work: the
 ##   typed code's HMAC compared by the host, in constant time, with every
 ##   human's record, or a stand-in where a human has none. Each such failure
-##   is counted (`DeviceCodeTallies`), and a client or everyone past their
-##   most finds the form locked, a 429, with no code compared.
-## - Signing out (`sign_out!`) and setting a password (`revoke_device_code!`)
-##   cancel a live code.
+##   is counted (`DeviceCodeTallies`), and a client past its most finds the
+##   form locked, a 429, with no code compared.
+## - Signing out (`sign_out!`), setting a password (`revoke_device_code!`)
+##   and signing other devices out (`DeviceSessionsRoute`) cancel a live
+##   code, and signing out forgets the cookie that shows one.
 ##
 ## No answer may be kept by a browser or a proxy, and no answer, log or
 ## refusal holds a code but the page that shows a new one.
@@ -195,7 +196,7 @@ DeviceCodeRoute :: [].{
 	}
 
 	## A POST of `/logout` by `actor`: a live code of theirs cancelled, then
-	## `SignInRoute.sign_out`. A 500 when the code can't be cancelled, so it
+	## `SignInRoute.sign_out`, the cookie that shows a code forgotten too. A 500 when the code can't be cancelled, so it
 	## is never left live by a sign-out that seemed to work.
 	sign_out! : SignedIn.Actor => Http.Response
 	sign_out! = |actor| {
@@ -204,11 +205,12 @@ DeviceCodeRoute :: [].{
 				SignedIn(acting) => acting.human_in_session().map_err(|_| NoHuman)
 				Anonymous => Err(NoHuman)
 			}
+		forgotten = cookie_header_of(DeviceCode.clear_flash_cookie_text)
 		match signed_in_human {
-			Err(NoHuman) => SignInRoute.sign_out
+			Err(NoHuman) => HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
 			Ok(human) =>
 				match DeviceCodeRoute.revoke_device_code!(human.id()) {
-					Ok({}) => SignInRoute.sign_out
+					Ok({}) => HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
 					Err(FileSystem(fault)) =>
 						HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 				}
@@ -217,12 +219,7 @@ DeviceCodeRoute :: [].{
 
 	## The human `id`'s code cancelled, when it is live.
 	revoke_device_code! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
-	revoke_device_code! = |id|
-		match DeviceCodeFiles.read_device_code!(id)? {
-			Record(record) if record.is_live() =>
-				DeviceCodeFiles.replace_device_code!(id, record.cancel())
-			Record(_) | NoRecord => Ok({})
-		}
+	revoke_device_code! = |id| DeviceCodeFiles.cancel_live_device_code!(id)
 }
 
 ## A new code, of the host's random bytes.
