@@ -104,13 +104,9 @@ place_section : {
 } -> TrustedHtml
 place_section = |{ ordered, current, people }| {
 	topics = ordered.topics
-	rows = topics.map(
-		|topic| topic_row({
-			key: ConversationKey.of({ place: ordered.place, topic }),
-			current,
-		}),
-	)
-	section = PageKit.site_path(ConversationKey.place_url_path(ordered.place))
+	place = ordered.place
+	rows = topics.map(|topic| topic_row({ key: ConversationKey.of({ place, topic }), current }))
+	section = PageKit.site_path(ConversationKey.place_url_path(place))
 	TrustedHtml.join([
 		Html.element({
 			name: Div,
@@ -120,7 +116,7 @@ place_section = |{ ordered, current, people }| {
 					PageContract.data_attribute(Section(section)),
 					PageContract.data_attribute(Opening(ordered.opening)),
 				],
-				person_attributes({ place: ordered.place, people }),
+				person_attributes({ place, people }),
 			),
 			inner: TrustedHtml.join([
 				Html.element({
@@ -146,7 +142,7 @@ place_section = |{ ordered, current, people }| {
 					),
 				}),
 				PageKit.newline,
-				TopicForm.form({ place: ordered.place, topics }),
+				TopicForm.form({ place, topics }),
 			]),
 		}),
 		PageKit.newline,
