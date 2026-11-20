@@ -1099,10 +1099,10 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
     const before = try getAs(a, io, port, steve_session, dm);
     var stream = try Stream.openWith(a, io, port, dm ++ "/stream?after=1", "");
     defer stream.close();
-    const away = "data-section=\"/chat/dm/1_3\" data-person=\"3\" data-presence=\"offline\">";
-    const here = "data-section=\"/chat/dm/1_3\" data-person=\"3\" data-presence=\"online\">";
+    const away = "data-section=\"/chat/dm/1_3\" data-opening=\"always\" data-person=\"3\" data-presence=\"offline\">";
+    const here = "data-section=\"/chat/dm/1_3\" data-opening=\"always\" data-person=\"3\" data-presence=\"online\">";
     try t.check("presence: Uma, joined but never seen, is away in Steve's sidebar, and his own DM names no one", before.status == 200 and has(before.body, away) and
-        has(before.body, "data-section=\"/chat/dm/1_1\">") and stream.isEventStream());
+        has(before.body, "data-section=\"/chat/dm/1_1\" data-opening=\"collapsed\">") and stream.isEventStream());
     try t.check("presence: the line above Steve's DM with Uma says, as it is drawn, that she hasn't been on since the server started", has(before.body, "<p class=\"notice-strip\">Uma hasn&#39;t been on since the server started.</p>"));
     // Her first request that counts: Browse.
     const browsed = try getAs(a, io, port, uma, "/chat");
