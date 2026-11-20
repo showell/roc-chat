@@ -44,6 +44,7 @@ import Script
 import Sidebar
 import SidebarOrder
 import SignedIn
+import Timestamp
 import Topic
 import TrustedHtml
 import UploadedImage
@@ -54,9 +55,10 @@ import Users
 ConversationPage :: [].{
 
 	## A human's page has the sidebar of the places Browse lists for them,
-	## with who of the humans is online, and what the top bar's notices'
-	## line says as it is drawn (a DM's says where the other human is,
-	## `Presence.presence_words`); a key's has none.
+	## with who of the humans is online, what the top bar's notices' line
+	## says as it is drawn (a DM's says where the other human is,
+	## `Presence.presence_words`), and the time it is drawn, which decides
+	## the DMs it shows (`DmShortlist`); a key's has none.
 	SidebarShown : [
 		NoSidebar,
 		Sidebar(
@@ -64,6 +66,7 @@ ConversationPage :: [].{
 				places : List(SidebarOrder.TimedPlace),
 				online_humans : List(UserId),
 				notice : [NoNotice, Notice(Str)],
+				now : Timestamp,
 			},
 		),
 	]
@@ -126,7 +129,7 @@ ConversationPage :: [].{
 		{ toggle, notices, nav, scripts } =
 			match sidebar {
 				NoSidebar => { toggle: [], notices: NoNotices, nav: [], scripts: [] }
-				Sidebar({ places, online_humans, notice }) => {
+				Sidebar({ places, online_humans, notice, now }) => {
 					toggle: [Sidebar.toggle],
 					notices: Notices(notice),
 					nav: [
@@ -135,6 +138,7 @@ ConversationPage :: [].{
 							current: key,
 							viewer: viewer.user().id(),
 							online_humans,
+							now,
 						}),
 					],
 					scripts: [Script.SidebarPopups, Script.Sidebar],

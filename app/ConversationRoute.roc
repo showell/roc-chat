@@ -235,7 +235,7 @@ load_page! = |{ key, acting, directory }| {
 					directory,
 					now,
 				})
-				Sidebar({ places, online_humans, notice })
+				Sidebar({ places, online_humans, notice, now })
 			}
 		}
 	ResumeRoute.record_opened!({ key, acting })?

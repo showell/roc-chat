@@ -10,6 +10,7 @@ import Sample
 import Sidebar
 import SidebarOrder
 import SignedIn
+import Timestamp
 import Topic
 import UnvalidatedString
 
@@ -22,6 +23,11 @@ directory = Sample.with_default_channel(Sample.directory)
 ## Steve, signed in by a session.
 steve : SignedIn
 steve = SignedIn.dangerously_assume(Sample.user("Steve"))
+
+## When the tests draw the sidebar: 2026-11-02T19:11:32Z, the sample's
+## time.
+now : Timestamp
+now = Timestamp.at_second(1793646692)
 
 ## The conversation at `path`, in `directory`.
 key_at : Str -> ConversationKey
@@ -56,6 +62,7 @@ sidebar_at = |{ current, topics_of }|
 			current: key_at(current),
 			viewer: steve.user().id(),
 			online_humans: [],
+			now,
 		}).to_utf8(),
 	)
 
@@ -91,6 +98,11 @@ place_html = |{ name, path, opening, rows, suggests }| {
 	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<button class=\"sidebar-new-topic\">New topic in ${name}</button>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
 }
 
+## The places that wait behind a group's "more" row, under its `words`.
+more_html : { words : Str, places : Str } -> Str
+more_html = |{ words, places }|
+	"<div class=\"sidebar-more\">\n<p class=\"sidebar-more-name\">${words}</p>\n${places}</div>\n"
+
 ## The group `group` headed `heading`, holding `places`.
 group_html : {
 	group : Str,
@@ -100,10 +112,11 @@ group_html : {
 group_html = |{ group, heading, places }|
 	"<div class=\"sidebar-section\" data-group=\"${group}\"><p class=\"sidebar-section-name\">${heading}</p>\n${places}</div>\n"
 
-# The channels under their heading, then the DMs under theirs, each group in
+# The DMs under their heading, then the channels under theirs, each group in
 # `SidebarOrder`'s order: the page's own place first, always open, then the
-# others (with no messages yet, in Browse's order), collapsed. Each place's
-# topics are under it, only the page's own topic
+# others (with no messages yet, in Browse's order), collapsed. Apoorva's DM,
+# with no message, waits behind the DMs' "more" row (`DmShortlist`). Each
+# place's topics are under it, only the page's own topic
 # marked: `plans` in Steve's own DM, and not `plans` in `general`, a topic
 # of the same name in another place. A place with no topics lists none and
 # suggests its first.
@@ -129,12 +142,15 @@ expect
 						rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n",
 						suggests: NoSuggestion,
 					}),
-					place_html({
-						name: "Apoorva",
-						path: "/chat/dm/1_2",
-						opening: "collapsed",
-						rows: "",
-						suggests: Suggests,
+					more_html({
+						words: "1 more person…",
+						places: place_html({
+							name: "Apoorva",
+							path: "/chat/dm/1_2",
+							opening: "collapsed",
+							rows: "",
+							suggests: Suggests,
+						}),
 					}),
 				),
 			})
@@ -152,7 +168,7 @@ expect
 			})
 		}</nav>\n"
 # On a DM's page, the partner's place comes first, and Steve's own DM next,
-# collapsed. The page's own topic, before its first message gives it a
+# collapsed, waiting behind the "more" row, as it has no message. The page's own topic, before its first message gives it a
 # folder, is listed in its place after the others, marked, and its place's
 # form then suggests nothing.
 expect
@@ -176,12 +192,15 @@ expect
 						rows: "<li><a class=\"current\" href=\"/chat/dm/1_2/plans\">plans</a></li>\n",
 						suggests: NoSuggestion,
 					}),
-					place_html({
-						name: "Steve",
-						path: "/chat/dm/1_1",
-						opening: "collapsed",
-						rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n",
-						suggests: NoSuggestion,
+					more_html({
+						words: "1 more person…",
+						places: place_html({
+							name: "Steve",
+							path: "/chat/dm/1_1",
+							opening: "collapsed",
+							rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n",
+							suggests: NoSuggestion,
+						}),
 					}),
 				),
 			})
@@ -201,7 +220,8 @@ expect
 # On a channel's page, the Channels group comes first, its place open, and
 # the DMs follow; on a DM's page (above) the DMs come first. Each group's
 # markup is the same either way, so a group's kept state holds across the
-# swap.
+# swap. With no message in any DM, none shows: both wait behind the "more"
+# row, which the group still holds.
 expect
 	sidebar_at({ current: "/chat/channel/general/plans", topics_of: |_| [] })
 		== "<nav class=\"sidebar\">\n${
@@ -220,22 +240,25 @@ expect
 			group_html({
 				group: "dms",
 				heading: "DMs",
-				places: Str.concat(
-					place_html({
-						name: "Steve",
-						path: "/chat/dm/1_1",
-						opening: "collapsed",
-						rows: "",
-						suggests: Suggests,
-					}),
-					place_html({
-						name: "Apoorva",
-						path: "/chat/dm/1_2",
-						opening: "collapsed",
-						rows: "",
-						suggests: Suggests,
-					}),
-				),
+				places: more_html({
+					words: "2 more people…",
+					places: Str.concat(
+						place_html({
+							name: "Steve",
+							path: "/chat/dm/1_1",
+							opening: "collapsed",
+							rows: "",
+							suggests: Suggests,
+						}),
+						place_html({
+							name: "Apoorva",
+							path: "/chat/dm/1_2",
+							opening: "collapsed",
+							rows: "",
+							suggests: Suggests,
+						}),
+					),
+				}),
 			})
 		}</nav>\n"
 # A place with a message starts open: here `general`, while Apoorva's DM,
@@ -255,6 +278,7 @@ expect {
 			current: key_at("/chat/dm/1_1/plans"),
 			viewer: steve.user().id(),
 			online_humans: [],
+			now,
 		}).to_utf8(),
 	)
 	general = "data-section=\"/chat/channel/general\" data-opening=\"open\">"
@@ -274,6 +298,7 @@ expect {
 				current: key_at("/chat/dm/1_1/plans"),
 				viewer: steve.user().id(),
 				online_humans,
+				now,
 			}).to_utf8(),
 		)
 	apoorva = Sample.user("Apoorva").id()
@@ -293,6 +318,7 @@ expect {
 			current: key_at("/chat/dm/1_1/plans"),
 			viewer: steve.user().id(),
 			online_humans: [],
+			now,
 		}).to_utf8(),
 	)
 	!shown.contains("Channels") and shown.starts_with("<nav class=\"sidebar\">\n<div class=\"sidebar-section\" data-group=\"dms\"><p class=\"sidebar-section-name\">DMs</p>\n")
@@ -324,9 +350,10 @@ expect {
 			current: key_at("/chat/dm/1_1/plans"),
 			viewer: steve.user().id(),
 			online_humans: [],
+			now,
 		}).to_utf8(),
 	)
-	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice }))
+	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice, now }))
 	without = page_with(NoSidebar)
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\">")

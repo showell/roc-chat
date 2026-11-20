@@ -27,10 +27,11 @@
 ## dot; each place says how it starts (`data-opening`, by `SidebarOrder`),
 ## which app/sidebar.js opens or collapses it by. The places come in two
 ## groups, each naming itself (`data-group`), which app/sidebar.js keeps a
-## group's collapsed state by; app/sidebar-popups.js says when a DM's
-## person joined (`data-joined`, not drawn yet). The top
-## bar's notice line (`notice-strip`), on a conversation with a sidebar and on
-## Recent, is where app/chrome.js shows that someone has come online, or
+## group's collapsed state by, and the DMs group ends with the DMs that wait
+## behind its "more" row (`sidebar-more`, by `DmShortlist`);
+## app/sidebar-popups.js says when a DM's person joined (`data-joined`, not
+## drawn yet). The top bar's notice line (`notice-strip`), on a
+## conversation with a sidebar and on Recent, is where app/chrome.js shows that someone has come online, or
 ## has written in one of the viewer's places. An invite's link or code
 ## (`invite-code`) is its shown text alone: app/panel.js gives each one the
 ## button that copies it.
@@ -80,6 +81,8 @@ PageContract :: [].{
 		RecentTopic,
 		RecentWho,
 		Sidebar,
+		SidebarMore,
+		SidebarMoreName,
 		SidebarNewTopic,
 		SidebarPlace,
 		SidebarPlaceName,
@@ -215,6 +218,8 @@ class_name = |chosen|
 		RecentTopic => "recent-topic"
 		RecentWho => "recent-who"
 		Sidebar => "sidebar"
+		SidebarMore => "sidebar-more"
+		SidebarMoreName => "sidebar-more-name"
 		SidebarNewTopic => "sidebar-new-topic"
 		SidebarPlace => "sidebar-place"
 		SidebarPlaceName => "sidebar-place-name"
@@ -279,6 +284,8 @@ expect
 		(RecentTopic, "recent-topic"),
 		(RecentWho, "recent-who"),
 		(Sidebar, "sidebar"),
+		(SidebarMore, "sidebar-more"),
+		(SidebarMoreName, "sidebar-more-name"),
 		(SidebarNewTopic, "sidebar-new-topic"),
 		(SidebarPlace, "sidebar-place"),
 		(SidebarPlaceName, "sidebar-place-name"),
@@ -372,6 +379,8 @@ expect
 		SidebarNewTopic,
 		SidebarSection,
 		SidebarSectionName,
+		SidebarMore,
+		SidebarMoreName,
 		Current,
 		TopBar,
 	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))

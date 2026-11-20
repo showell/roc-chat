@@ -65,6 +65,7 @@ import Reactions
 import RequestOrigin
 import Route
 import SignedIn
+import Timestamp
 import Topic
 import Transcript
 import TranscriptRefusal
@@ -132,7 +133,8 @@ demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner(
 ## The demo's sidebar: the founder's places at the first start, each with
 ## no topics of its own, so the page's own topic is its place's one, and
 ## none with a message, so `SidebarOrder` puts the page's place first and
-## the rest in Browse's order, collapsed.
+## the rest in Browse's order, collapsed, every DM but the page's own
+## waiting behind the "more" row (`DmShortlist`).
 demo_sidebar : ConversationPage.SidebarShown
 demo_sidebar = {
 	listed =
@@ -142,8 +144,14 @@ demo_sidebar = {
 		places: listed.map(|{ label, place }| { label, place, topics: [] }),
 		online_humans: [],
 		notice: NoNotice,
+		now: demo_time,
 	})
 }
+
+## When the demo's sidebar is drawn: 2026-11-02T19:11:32Z, the sample's
+## time.
+demo_time : Timestamp
+demo_time = Timestamp.at_second(1793646692)
 
 ## Whether the server may start on its data folder: `Ready` when the folder
 ## holds a whole chat, or held none and now holds the first

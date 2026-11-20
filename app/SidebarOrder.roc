@@ -41,12 +41,14 @@ SidebarOrder :: [].{
 	## `Collapsed` hold until the person chooses.
 	Opening : [AlwaysOpen, Open, Collapsed]
 
-	## A place in the sidebar's order, its topics in theirs.
+	## A place in the sidebar's order, its topics in theirs, and when any
+	## of them last had a message.
 	OrderedPlace : {
 		label : Str,
 		place : Place,
 		topics : List(Topic),
 		opening : SidebarOrder.Opening,
+		latest : SidebarOrder.Latest,
 	}
 
 	## How many places after the page's own start open, at most.
@@ -198,5 +200,6 @@ ordered_place = |{ listed, opening, shown }| {
 		place: listed.place,
 		topics,
 		opening,
+		latest: place_latest(listed.topics),
 	}
 }

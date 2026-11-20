@@ -23,13 +23,17 @@
 // 2026-11-20). Enter adds the topic, as in the "+" popup, and a refusal
 // shows under the form; Escape closes the card.
 //
+// The people popup lists the DMs the sidebar keeps out of sight, behind
+// the DMs group's "more" row, with a filter field; choosing one shows their
+// card in the same popup.
+//
 // SidebarPopups.paintDot is the presence dot, chat-client's: a hollow ring
 // while the person is away, solid green while they are online. Its colours
 // are palette.js's.
 window.SidebarPopups = (function () {
   'use strict';
   var backdropRule = document.createElement('style');
-  backdropRule.textContent = 'dialog.topic-popup::backdrop, dialog.person-popup::backdrop { background: var(--cc-backdrop); }';
+  backdropRule.textContent = 'dialog.topic-popup::backdrop, dialog.person-popup::backdrop, dialog.people-popup::backdrop { background: var(--cc-backdrop); }';
   document.head.appendChild(backdropRule);
 
   // How many popups are open: sidebar.js leaves Escape to an open one.
@@ -151,10 +155,16 @@ window.SidebarPopups = (function () {
   // card itself, under its topics (`topic`, the place's topicPopup, puts it
   // there): a popup is roomy, so its action is right in it, never behind a
   // second popup (Steve, 2026-11-20). Enter adds the topic; Escape closes
-  // the card.
+  // the card. `fill` writes the card into another popup's body, the people
+  // popup's.
   function personPopup(place, who, list, name, topic) {
     function open() {
       var popup = frame('person-popup', '', 'min(380px, 92vw)', '16px 18px 18px', name);
+      fill(popup.body);
+      popup.show();
+    }
+    function fill(body) {
+      var popup = { body: body };
       var title = document.createElement('p');
       title.textContent = who;
       Object.assign(title.style, { margin: '0 0 8px', fontSize: '17px', fontWeight: 'bold', overflowWrap: 'anywhere' });
@@ -202,10 +212,101 @@ window.SidebarPopups = (function () {
       start.style.marginTop = '16px';
       topic.mount(start);
       popup.body.appendChild(start);
+    }
+    return { open: open, fill: fill };
+  }
+
+  // The people popup, opened by the DMs group's "more" row (`opener`): the
+  // DMs the sidebar keeps out of sight (app/DmShortlist.roc), `people`, each
+  // `{ label, place, card }`, in the sidebar's order. A filter field at its
+  // top, focused, keeps those whose name holds what is typed, in any case;
+  // Enter with one left opens it. Choosing a person shows their card in this
+  // same popup, with a way back to the list, since no popup opens another.
+  // It is a popup and not a list in the sidebar because every human of the
+  // chat is a DM, so the list grows with the chat, and a field in the
+  // sidebar itself is clutter.
+  function peoplePopup(people, opener) {
+    function open() {
+      var popup = frame('people-popup', 'People', 'min(380px, 92vw)', '12px 14px 14px', opener);
+      var filter = document.createElement('input');
+      filter.type = 'search';
+      filter.placeholder = 'Filter by name';
+      filter.setAttribute('aria-label', 'Filter people by name');
+      Object.assign(filter.style, {
+        boxSizing: 'border-box', width: '100%', fontFamily: 'inherit', fontSize: '14px', padding: '6px 8px',
+        background: 'var(--cc-bg)', color: 'var(--cc-fg)', border: '1px solid var(--cc-input-border)', borderRadius: '6px',
+      });
+      var rows = document.createElement('div');
+      Object.assign(rows.style, { margin: '8px 0 0', maxHeight: '50vh', overflowY: 'auto' });
+      function matching() {
+        var typed = filter.value.trim().toLowerCase();
+        return people.filter(function (person) { return person.label.toLowerCase().indexOf(typed) !== -1; });
+      }
+      function showCard(person) {
+        popup.body.textContent = '';
+        var back = document.createElement('button');
+        back.type = 'button';
+        back.textContent = '← All people';
+        Object.assign(back.style, {
+          background: 'none', border: 'none', padding: '0', margin: '0 0 10px', cursor: 'pointer',
+          fontFamily: 'inherit', fontSize: '13px', color: 'var(--cc-accent)',
+        });
+        back.addEventListener('click', showList);
+        popup.body.appendChild(back);
+        person.card.fill(popup.body);
+        back.focus();
+      }
+      function listRows() {
+        rows.textContent = '';
+        var shown = matching();
+        if (shown.length === 0) {
+          var none = cardLine('No one matches.');
+          none.style.color = 'var(--cc-muted-fg)';
+          rows.appendChild(none);
+        }
+        shown.forEach(function (person) {
+          var row = document.createElement('div');
+          row.setAttribute('role', 'button');
+          row.setAttribute('tabindex', '0');
+          Object.assign(row.style, {
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '6px',
+            fontSize: '14px', cursor: 'pointer', overflowWrap: 'anywhere',
+          });
+          var presence = person.place.getAttribute('data-presence');
+          if (presence) {
+            var dot = document.createElement('span');
+            paintDot(dot, presence === 'online');
+            row.appendChild(dot);
+          }
+          row.appendChild(document.createTextNode(person.label));
+          row.addEventListener('mouseenter', function () { row.style.background = 'var(--cc-accent-soft-bg)'; });
+          row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
+          row.addEventListener('click', function () { showCard(person); });
+          row.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showCard(person); }
+          });
+          rows.appendChild(row);
+        });
+      }
+      function showList() {
+        popup.body.textContent = '';
+        popup.body.appendChild(filter);
+        popup.body.appendChild(rows);
+        listRows();
+        filter.focus();
+      }
+      filter.addEventListener('input', listRows);
+      filter.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var shown = matching();
+        if (shown.length === 1) showCard(shown[0]);
+      });
       popup.show();
+      showList();
     }
     return { open: open };
   }
 
-  return { isOpen: isOpen, paintDot: paintDot, topicPopup: topicPopup, personPopup: personPopup };
+  return { isOpen: isOpen, paintDot: paintDot, topicPopup: topicPopup, personPopup: personPopup, peoplePopup: peoplePopup };
 })();

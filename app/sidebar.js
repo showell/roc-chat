@@ -38,6 +38,11 @@
 // `collapsed`. A group's heading is a row whose name takes the room left, so
 // a small menu button can be added at its right end later.
 //
+// The DMs group shows only the people the reader is talking to
+// (app/DmShortlist.roc); the server writes the rest last in the group,
+// under one row, "N more people…" (.sidebar-more), and this script hides
+// them and makes the row open the people popup (sidebar-popups.js).
+//
 // Presence, chat-client's: a DM with another human (data-person) has a dot
 // before its name, a hollow ring while they are away and solid green while
 // they are online (data-presence). The page's stream (feed.js) passes on
@@ -238,7 +243,7 @@ window.Sidebar = (function () {
     var heading = group.querySelector('.sidebar-section-name');
     if ((name !== 'channels' && name !== 'dms') || !heading) throw new Error('sidebar.js: a .sidebar-section has no data-group of channels or dms, or no .sidebar-section-name');
     var body = document.createElement('div');
-    group.querySelectorAll('.sidebar-place').forEach(function (place) { body.appendChild(place); });
+    Array.prototype.slice.call(group.children).forEach(function (child) { if (child !== heading) body.appendChild(child); });
     group.appendChild(body);
     var key = 'chat-sidebar-group-collapsed:' + name;
     var shut = disclosure(heading.textContent, body, key, kept(key) === '1');
@@ -249,6 +254,8 @@ window.Sidebar = (function () {
   var dots = {};
   var forms = [];
   var places = {};
+  // Each DM's card, by its data-section, for the people popup.
+  var cards = {};
   sidebar.querySelectorAll('.sidebar-place').forEach(function (place) {
     var section = place.getAttribute('data-section');
     var name = place.querySelector('.sidebar-place-name');
@@ -288,10 +295,37 @@ window.Sidebar = (function () {
     if (group.getAttribute('data-group') === 'dms') {
       name.title = 'About ' + label;
       hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
-      onPress(name, SidebarPopups.personPopup(place, label, list, name, popup).open);
+      var card = SidebarPopups.personPopup(place, label, list, name, popup);
+      cards[section] = card;
+      onPress(name, card.open);
     } else {
       onPress(name, shut.flip);
     }
+  });
+
+  // The DMs that wait (app/DmShortlist.roc): kept out of sight, and the
+  // row before them, "N more people…", a place's name's indent in from the
+  // group, muted, opens the people popup that lists them. It has no
+  // triangle, since it never opens in place, and it collapses with its
+  // group.
+  sidebar.querySelectorAll('.sidebar-more').forEach(function (more) {
+    var row = more.querySelector('.sidebar-more-name');
+    if (!row) throw new Error('sidebar.js: a .sidebar-more has no .sidebar-more-name');
+    var people = [];
+    more.querySelectorAll('.sidebar-place').forEach(function (place) {
+      var section = place.getAttribute('data-section');
+      people.push({ label: place.querySelector('.sidebar-place-name').textContent, place: place, card: cards[section] });
+      place.style.display = 'none';
+    });
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    Object.assign(row.style, {
+      margin: '0', minHeight: '26px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none',
+      padding: '0 ' + RIGHT + 'px 0 ' + (INSET + STEP + TRIANGLE + GAP) + 'px',
+      color: 'var(--cc-muted-fg)', fontSize: '12px',
+    });
+    hoverColour(row, 'var(--cc-muted-fg)', 'var(--cc-accent)');
+    onPress(row, SidebarPopups.peoplePopup(people, row).open);
   });
 
   // The drawer, chat-client's: the sidebar fixed at the window's left edge,
@@ -346,6 +380,7 @@ window.Sidebar = (function () {
     sidebar.querySelectorAll('.sidebar-topics a').forEach(padTopic);
     styleAll('.sidebar-place-name', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-section-name', { padding: narrow ? '6px 0' : '0' });
+    styleAll('.sidebar-more-name', { minHeight: narrow ? '38px' : '26px' });
     styleAll('[aria-expanded]', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-new-topic', { padding: narrow ? '8px 12px' : '2px 6px' });
     forms.forEach(function (form) {

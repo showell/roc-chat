@@ -13,7 +13,10 @@
 ## form only in a popup the button opens. Each place says how it
 ## starts (`data-opening`), open or collapsed, as `SidebarOrder` decides.
 ## The topic the page shows is marked current, and it is listed in its
-## place even before its first message gives it a folder.
+## place even before its first message gives it a folder. The DMs group
+## shows only the DMs `DmShortlist` picks; the rest come last in it, under
+## a "more" row (`sidebar-more`), which app/sidebar.js hides behind the
+## row's popup.
 ##
 ## Before the page's layout comes the sidebar's toggle, the button a narrow
 ## window's drawer opens the sidebar by. app/sidebar.js styles the sidebar,
@@ -31,12 +34,14 @@
 ## once accounts keep it, `person_attributes` adds `data-joined` (its seconds
 ## since 1970, `PageContract`'s `Joined`), and the card says it.
 import ConversationKey
+import DmShortlist
 import Escape
 import Html
 import PageContract
 import PageKit
 import Place
 import SidebarOrder
+import Timestamp
 import TopicForm
 import TrustedHtml
 import UserId
@@ -55,22 +60,28 @@ Sidebar :: [].{
 	])
 
 	## The sidebar of `places` on `viewer`'s page of the conversation
-	## `current`, in `SidebarOrder`'s order, `current`'s group first, the
-	## humans in `online_humans` said to be online.
+	## `current` at `now`, in `SidebarOrder`'s order, `current`'s group
+	## first, the DMs `DmShortlist` shows and the rest behind its "more" row,
+	## the humans in `online_humans` said to be online.
 	nav : {
 		places : List(SidebarOrder.TimedPlace),
 		current : ConversationKey,
 		viewer : UserId,
 		online_humans : List(UserId),
+		now : Timestamp,
 	} -> TrustedHtml
-	nav = |{ places, current, viewer, online_humans }| {
+	nav = |{ places, current, viewer, online_humans, now }| {
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
 		drawn = |ordered| place_section({ ordered, current, people })
 		channel_places = in_order.keep_if(is_channel).map(drawn)
-		dm_places = in_order.drop_if(is_channel).map(drawn)
-		channels = group_section({ group: Channels, places: channel_places })
-		dms = group_section({ group: Dms, places: dm_places })
+		dm_split = DmShortlist.split({ dms: in_order.drop_if(is_channel), current: current.place(), now })
+		channels = group_section({ group: Channels, places: channel_places, waiting: [] })
+		dms = group_section({
+			group: Dms,
+			places: dm_split.shown.map(drawn),
+			waiting: dm_split.waiting.map(drawn),
+		})
 		groups =
 			match current.place().which() {
 				Channel(_) => [channels, dms]
@@ -97,11 +108,16 @@ is_channel = |ordered|
 	}
 
 ## One of the sidebar's two groups: its heading, which app/sidebar.js lets
-## collapse the whole group, and its `places`, in `SidebarOrder`'s order.
-## A group with no places is left out, as nothing.
-group_section : { group : [Channels, Dms], places : List(TrustedHtml) } -> TrustedHtml
-group_section = |{ group, places }|
-	if places.is_empty() {
+## collapse the whole group, its `places`, in `SidebarOrder`'s order, and
+## the places `waiting` behind its "more" row (`more_section`), when there
+## are any. A group with no places shown or waiting is left out, as nothing.
+group_section : {
+	group : [Channels, Dms],
+	places : List(TrustedHtml),
+	waiting : List(TrustedHtml),
+} -> TrustedHtml
+group_section = |{ group, places, waiting }|
+	if places.is_empty() and waiting.is_empty() {
 		TrustedHtml.join([])
 	} else {
 		heading =
@@ -126,12 +142,50 @@ group_section = |{ group, places }|
 							}),
 							PageKit.newline,
 						],
-						places,
+						List.concat(places, more_section(waiting)),
 					),
 				),
 			}),
 			PageKit.newline,
 		])
+	}
+
+## The places `waiting` behind a group's "more" row, under the row's words,
+## "N more people…", which app/sidebar.js makes the row that opens them in a
+## popup; nothing when none wait.
+more_section : List(TrustedHtml) -> List(TrustedHtml)
+more_section = |waiting|
+	if waiting.is_empty() {
+		[]
+	} else {
+		count = waiting.len()
+		words =
+			if count == 1 {
+				"1 more person…"
+			} else {
+				"${count.to_str()} more people…"
+			}
+		[
+			Html.element({
+				name: Div,
+				attributes: [PageContract.class(SidebarMore)],
+				inner: TrustedHtml.join(
+					List.concat(
+						[
+							PageKit.newline,
+							Html.element({
+								name: P,
+								attributes: [PageContract.class(SidebarMoreName)],
+								inner: Escape.text(words),
+							}),
+							PageKit.newline,
+						],
+						waiting,
+					),
+				),
+			}),
+			PageKit.newline,
+		]
 	}
 
 ## Who the page is for, and who is online.
