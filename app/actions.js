@@ -30,7 +30,7 @@
 // send. The server marks the original edited and the stream redraws it.
 //
 // A quote-reply is chat-client's (js/chat.js's doQuote). The "quote-reply"
-// button, on every message, or the `q` or `>` key on the selected one, reads
+// button, on every message, or the `q`, `r` or `>` key on the selected one, reads
 // the message's markdown as written, as an edit does, opens the box and puts
 // at its caret "In <reference> I said:" ("you said:" for another's), the
 // markdown in a tilde fence whose language is `quote`, and a blank line, the
@@ -312,6 +312,7 @@
     if (article) quote(article);
   }
   Keys.register({ key: 'q', label: 'quote-reply to the selected message', run: quoteSelected });
+  Keys.register({ key: 'r', label: 'quote-reply, as q does', run: quoteSelected });
   Keys.register({ key: '>', label: 'quote-reply, as q does', run: quoteSelected });
   Keys.register({ key: 't', label: 'open the raw transcript in a new tab', run: function () {
     window.open(rawUrl, '_blank');
