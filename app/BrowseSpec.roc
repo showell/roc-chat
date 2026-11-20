@@ -118,7 +118,7 @@ page_of = |topics, problem|
 # A place with no topics says so, and suggests its first.
 expect
 	page_of([], NoProblem)
-		== "${page_head}${invite_link}<h1>Apoorva</h1>\n<p>No sessions yet</p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required value=\"general\"></p>\n<button>Add topic</button></form>\n${page_foot}"
+		== "${page_head}${invite_link}<h1>Apoorva</h1>\n<p>No topics yet</p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required value=\"general\"></p>\n<button>Add topic</button></form>\n${page_foot}"
 # A place with topics links each to its page, and suggests no name.
 expect
 	page_of([Sample.other, Sample.plans], NoProblem)

@@ -116,7 +116,7 @@ place_section : Browse.PlaceWithTopics -> TrustedHtml
 place_section = |{ label, place, topics }| {
 	listed =
 		if topics.is_empty() {
-			[PageKit.paragraph("No sessions yet")]
+			[PageKit.paragraph("No topics yet")]
 		} else {
 			topics.map(
 				|topic|
