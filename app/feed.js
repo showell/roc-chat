@@ -375,12 +375,12 @@
     if (pre) showCode(pre.textContent);
   });
 
-  Keys.register({ key: 'ArrowDown', cap: '↓', label: 'next message', run: function () { moveSelection(1); } });
-  Keys.register({ key: 'ArrowUp', cap: '↑', label: 'previous message', run: function () { moveSelection(-1); } });
-  Keys.register({ key: 'Home', label: 'first message', run: function () { selectEnd('first'); } });
-  Keys.register({ key: 'End', label: 'last message', run: function () { selectEnd('last'); } });
-  Keys.register({ key: 'PageUp', cap: 'PgUp', label: 'a page up', run: function () { page('up'); } });
-  Keys.register({ key: 'PageDown', cap: 'PgDn', label: 'a page down', run: function () { page('down'); } });
+  Keys.register({ key: 'ArrowDown', group: 'navigation', cap: '↓', label: 'next message', run: function () { moveSelection(1); } });
+  Keys.register({ key: 'ArrowUp', group: 'navigation', cap: '↑', label: 'previous message', run: function () { moveSelection(-1); } });
+  Keys.register({ key: 'Home', group: 'navigation', label: 'first message', run: function () { selectEnd('first'); } });
+  Keys.register({ key: 'End', group: 'navigation', label: 'last message', run: function () { selectEnd('last'); } });
+  Keys.register({ key: 'PageUp', group: 'navigation', cap: 'PgUp', label: 'a page up', run: function () { page('up'); } });
+  Keys.register({ key: 'PageDown', group: 'navigation', cap: 'PgDn', label: 'a page down', run: function () { page('down'); } });
   window.Feed = { reveal: centre, formatLocalTime: formatLocalTime };
 
   // The page opens at the message its address names (a citation's link, a

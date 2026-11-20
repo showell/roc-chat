@@ -110,6 +110,10 @@
     '.keyhelp{margin-top:18px;font-size:13px;color:var(--cc-body-muted-fg)}',
     '.keyhelp-title{font-weight:bold;color:var(--cc-meta-fg);margin-bottom:7px}',
     '.keyhelp-row{margin:5px 0}',
+    '.keyhelp-nav{margin-top:14px}',
+    // The help is longer than a short window: the closed rail scrolls, so
+    // its last rows are never cut off.
+    'html.layout-wide .compose-closed{flex:1 1 auto;min-height:0;overflow-y:auto}',
     '.keyhelp-key{display:inline-block;min-width:1.1em;text-align:center;padding:1px 6px;' +
       'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--cc-meta-fg);background:var(--cc-bg);' +
       'border:1px solid var(--cc-border);border-bottom-width:2px;border-radius:4px;margin-right:7px;cursor:pointer}',
@@ -188,14 +192,27 @@
   keyhelpTitle.className = 'keyhelp-title';
   keyhelpTitle.textContent = 'Keyboard';
   keyhelp.appendChild(keyhelpTitle);
+  var keyhelpRows = document.createElement('div');
+  keyhelp.appendChild(keyhelpRows);
+  // The navigation keys (arrows, Home, End, PgUp, PgDn) are the most
+  // guessable, so they come last, under their own heading.
+  var keyhelpNav = document.createElement('div');
+  keyhelpNav.className = 'keyhelp-nav';
+  keyhelpNav.hidden = true;
+  var keyhelpNavTitle = document.createElement('div');
+  keyhelpNavTitle.className = 'keyhelp-title';
+  keyhelpNavTitle.textContent = 'Navigation';
+  keyhelpNav.appendChild(keyhelpNavTitle);
+  keyhelp.appendChild(keyhelpNav);
   closedPanel.appendChild(keyhelp);
   compose.appendChild(closedPanel);
 
-  // The page's one key table. Keys.register({ key, cap, label, run, aliases })
+  // The page's one key table. Keys.register({ key, cap, label, run, aliases, group })
   // takes the key's name (KeyboardEvent.key), what its button in the help
   // shows (the name, when no cap is given), what it does, the function that
   // does it, and any other keys that do the same, and adds one row to the
-  // help, the aliases named after the label in parentheses. A key registered twice is an
+  // help, the aliases named after the label in parentheses; `group:
+  // 'navigation'` puts the row under the Navigation heading at the end. A key registered twice is an
   // error, so two features never both think they own one. A key works when
   // no text field has the focus and no modifier is held, as in chat-client.
   window.Keys = (function () {
@@ -220,7 +237,14 @@
       row.appendChild(keyButton);
       var aliases = entry.aliases && entry.aliases.length ? ' (also ' + entry.aliases.join(' or ') + ')' : '';
       row.appendChild(document.createTextNode(' ' + entry.label + aliases));
-      keyhelp.appendChild(row);
+      if (entry.group === 'navigation') {
+        keyhelpNav.appendChild(row);
+        keyhelpNav.hidden = false;
+      } else if (entry.group) {
+        throw new Error('Keys.register: "' + entry.group + '" is no group');
+      } else {
+        keyhelpRows.appendChild(row);
+      }
     }
     document.addEventListener('keydown', function (e) {
       var focused = document.activeElement;
