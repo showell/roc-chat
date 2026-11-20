@@ -355,6 +355,12 @@ pub export fn sha256_of_bytes(bytes: RocBytes) callconv(.c) RocBytes {
     return .from(&digest);
 }
 
+/// CRC-32, from Zig's standard library: a download's gzip trailer.
+pub export fn crc32_of_bytes(bytes: RocBytes) callconv(.c) u32 {
+    _ = call("crc32_of_bytes");
+    return std.hash.Crc32.hash(bytes.slice());
+}
+
 /// The hub copies the bytes, so they outlive the call's arena.
 pub export fn publish_bytes_to_streams_on_key(key: RocBytes, bytes: RocBytes) callconv(.c) void {
     hub_of("publish_bytes_to_streams_on_key").publish(key.slice(), bytes.slice());

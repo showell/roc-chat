@@ -148,6 +148,18 @@
 //! 35h. a stream reopened after both messages: each message with an edit or
 //!      a reaction sent again first, as it is now.
 //!
+//! Then a conversation's download (`downloadSteps`), the `d` key's
+//! `.tar.gz`, read back by Zig's own gzip and tar readers:
+//!
+//! 35i. `general/edits`: 200, `application/gzip`, saved as
+//!      `edits.tar.gz`; exactly `edits/edits.md`, the transcript's bytes,
+//!      and `edits/edits.reactions.jsonl`, the reactions file's;
+//! 35j. the seeded channel's: its transcript, then each image in its uploads
+//!      folder, byte for byte, under `roc-chat/uploads/`;
+//! 35k. a topic of 30 MiB of uploads: 200, whole; one image more, past the
+//!      32 MiB a download holds: 409, saying so;
+//! 35l. a topic with no transcript: 404; a POST: 405; no one: 401.
+//!
 //! Then the agents (`agentSteps`), on the users the server's first start
 //! made:
 //!
@@ -330,7 +342,8 @@
 //!      Browse nor /invites;
 //!  54. every signed-in page has the Browse and Invites links, and none a sign-up, join or
 //!      sign-in link or form;
-//!  55. a topic where the human can't post, its page and its stream: 403 each;
+//!  55. a topic where the human can't post, its page, its stream and its
+//!      download: 403 each;
 //!      no such human: 404; a GET: 405; a cross-site post: 403;
 //!  56. a name that is no topic: Browse again, a 400, nothing made;
 //!  57. the acceptance path: Browse, a person, a topic, an empty chat, compose,
@@ -790,6 +803,7 @@ pub fn main(init: std.process.Init) !void {
         std.mem.count(u8, dm_after_public.body, "Through the proxy") == 1);
 
     try editAndReactSteps(a, io, port, data, t, script_fetch);
+    try downloadSteps(a, io, port, data, t);
     try agentSteps(a, io, port, data, t);
     const cc_bearer = try memberSteps(a, io, port, data, t);
     try inviteSteps(a, io, port, data, t, cc_bearer);
@@ -1221,11 +1235,14 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const not_her_dm = try postAs(a, io, port, tam, "/chat/dm/1_3", "topic=plans");
     const not_her_page = try getAs(a, io, port, tam, "/chat/channel/crew/plans");
     const not_her_stream = try getAs(a, io, port, tam, "/chat/dm/1_3/plans/stream?after=0");
+    const not_her_download = try getAs(a, io, port, tam, "/chat/channel/crew/plans/download");
+    const not_her_dm_download = try getAs(a, io, port, tam, "/chat/dm/1_3/plans/download");
     const no_such_human = try postAs(a, io, port, tam, "/chat/dm/2_9", "topic=plans");
     const by_get = try getAs(a, io, port, tam, "/chat/dm/2_3");
     const cross_site = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{tam}), "/chat/dm/2_3", "topic=plans");
-    try t.check("a topic in a channel or DM she isn't in, and the page and stream of one: 403 each; no such human: 404; a GET: 405; a cross-site post: 403", not_her_channel.status == 403 and
+    try t.check("a topic in a channel or DM she isn't in, and the page, stream and download of one: 403 each; no such human: 404; a GET: 405; a cross-site post: 403", not_her_channel.status == 403 and
         not_her_dm.status == 403 and not_her_page.status == 403 and not_her_stream.status == 403 and no_such_human.status == 404 and
+        not_her_download.status == 403 and not_her_dm_download.status == 403 and
         by_get.status == 405 and std.mem.eql(u8, by_get.header("allow") orelse "", "POST") and cross_site.status == 403);
 
     // 56.
@@ -1267,6 +1284,86 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, told, "event: topic-added\ndata: /chat/dm/1_2\ndata: lunch\ndata: " ++ lunch ++ "\n\n") and
         std.mem.startsWith(u8, next, "id: 2\ndata: <article"));
     try recentSteps(a, io, port, t, .{ .tam = tam, .uma = uma });
+}
+
+/// Steps 35i to 35l: a conversation's download, each archive read back
+/// by Zig's own gzip and tar readers (`unpacked`), against the files on
+/// disk.
+fn downloadSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !void {
+    // 35i.
+    const edits = try get(a, io, port, "/chat/channel/general/edits/download");
+    const edits_files = try unpacked(a, edits.body);
+    try t.check("the edits topic's download: 200, a gzip saved as edits.tar.gz; exactly its transcript, then its reactions, byte for byte", edits.status == 200 and
+        std.mem.eql(u8, edits.header("content-type") orelse "", "application/gzip") and
+        std.mem.eql(u8, edits.header("content-disposition") orelse "", "attachment; filename=\"edits.tar.gz\"") and
+        std.mem.eql(u8, edits.header("x-content-type-options") orelse "", "nosniff") and
+        edits_files.len == 2 and std.mem.eql(u8, edits_files[0].name, "edits/edits.md") and
+        std.mem.eql(u8, edits_files[0].bytes, try readFile(a, io, data, "chat/channel/general/edits/transcript")) and
+        std.mem.eql(u8, edits_files[1].name, "edits/edits.reactions.jsonl") and
+        std.mem.eql(u8, edits_files[1].bytes, try readFile(a, io, data, "chat/channel/general/edits/reactions")));
+
+    // 35j.
+    const channel = try get(a, io, port, channel_url ++ "/download");
+    const channel_files = try unpacked(a, channel.body);
+    const uploads = try namesIn(a, io, data, channel_uploads);
+    var images_whole = channel_files.len == 1 + uploads.len;
+    for (channel_files[1..]) |file| {
+        const name = file.name["roc-chat/uploads/".len..];
+        images_whole = images_whole and std.mem.startsWith(u8, file.name, "roc-chat/uploads/") and
+            std.mem.eql(u8, file.bytes, try readFile(a, io, data, try std.fmt.allocPrint(a, "{s}/{s}", .{ channel_uploads, name })));
+    }
+    try t.check("the seeded channel's download: its transcript, then each of its uploads, byte for byte", channel.status == 200 and
+        uploads.len >= 2 and std.mem.eql(u8, channel_files[0].name, "roc-chat/roc-chat.md") and
+        std.mem.eql(u8, channel_files[0].bytes, try readFile(a, io, data, seed_path["demo/data/".len..])) and images_whole);
+
+    // 35k.
+    const big_url = "/chat/channel/general/big";
+    const big_uploads = "chat/channel/general/big/uploads";
+    const started = try post(a, io, port, .{ .path = big_url, .form = "markdown=Big" });
+    const image = try a.alloc(u8, 10 * 1024 * 1024);
+    @memset(image, 7);
+    try data.createDirPath(io, big_uploads);
+    for ([_][]const u8{ "11111111111111111111111111111111", "22222222222222222222222222222222", "33333333333333333333333333333333" }) |digits| {
+        try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, big_uploads ++ "/{s}.png", .{digits}), .data = image });
+    }
+    const at_most = try get(a, io, port, big_url ++ "/download");
+    const at_most_files = try unpacked(a, at_most.body);
+    try data.writeFile(io, .{ .sub_path = big_uploads ++ "/44444444444444444444444444444444.png", .data = image });
+    const past = try get(a, io, port, big_url ++ "/download");
+    try t.check("a topic of 30 MiB of uploads: its download whole; one more image, past 32 MiB: 409, saying so", started.status == 303 and
+        at_most.status == 200 and at_most_files.len == 4 and std.mem.eql(u8, at_most_files[3].bytes, image) and
+        past.status == 409 and has(past.body, "more than 32 MiB of files"));
+
+    // 35l.
+    const no_transcript = try get(a, io, port, "/chat/channel/general/never-written/download");
+    const by_post = try post(a, io, port, .{ .path = "/chat/channel/general/edits/download", .form = "" });
+    const by_no_one = try anonymousGet(a, io, port, "/chat/channel/general/edits/download");
+    try t.check("a topic with no transcript: 404; a POST: 405, allowing GET; no one: 401", no_transcript.status == 404 and
+        by_post.status == 405 and std.mem.eql(u8, by_post.header("allow") orelse "", "GET") and by_no_one.status == 401);
+}
+
+/// A file of an archive `unpacked` read: its name and its bytes.
+const Unpacked = struct { name: []const u8, bytes: []const u8 };
+
+/// The files of the `.tar.gz` `gz`, in order, read by Zig's own gzip reader
+/// (which checks the CRC-32 and the size) and tar reader (which checks each
+/// header's sum).
+fn unpacked(a: std.mem.Allocator, gz: []const u8) ![]const Unpacked {
+    var input: Io.Reader = .fixed(gz);
+    const window = try a.alloc(u8, std.compress.flate.max_window_len);
+    var gzip: std.compress.flate.Decompress = .init(&input, .gzip, window);
+    const tar = try gzip.reader.allocRemaining(a, .unlimited);
+    var reader: Io.Reader = .fixed(tar);
+    var name_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var it: std.tar.Iterator = .init(&reader, .{ .file_name_buffer = &name_buf, .link_name_buffer = &link_buf });
+    var read_back: std.ArrayList(Unpacked) = .empty;
+    while (try it.next()) |file| {
+        var bytes: Io.Writer.Allocating = .init(a);
+        try it.streamRemaining(file, &bytes.writer);
+        try read_back.append(a, .{ .name = try a.dupe(u8, file.name), .bytes = bytes.written() });
+    }
+    return read_back.items;
 }
 
 /// Step 58: Recent, after a post in two topics a second apart: Tam's in
@@ -2661,7 +2758,7 @@ fn postAs(a: std.mem.Allocator, io: Io, port: u16, cookie: []const u8, path: []c
 
 /// The file `path` of `dir`, whole.
 fn readFile(a: std.mem.Allocator, io: Io, dir: Io.Dir, path: []const u8) ![]const u8 {
-    return dir.readFileAlloc(io, path, a, .limited(1024 * 1024)) catch |e| switch (e) {
+    return dir.readFileAlloc(io, path, a, .limited(32 * 1024 * 1024)) catch |e| switch (e) {
         error.FileNotFound => "(none)",
         else => e,
     };
@@ -2972,7 +3069,7 @@ fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !Respo
     try w.interface.writeAll(request);
     var buf: [4096]u8 = undefined;
     var r = connection.reader(io, &buf);
-    const bytes = try r.interface.allocRemaining(a, .limited(4 * 1024 * 1024));
+    const bytes = try r.interface.allocRemaining(a, .limited(64 * 1024 * 1024));
     if (!std.mem.startsWith(u8, bytes, "HTTP/1.1 ") or bytes.len < 12) return error.NotAResponse;
     const end = std.mem.indexOf(u8, bytes, "\r\n\r\n") orelse return error.NoHeadEnd;
     return .{ .status = try std.fmt.parseInt(u16, bytes[9..12], 10), .head = bytes[0 .. end + 2], .body = bytes[end + 4 ..] };

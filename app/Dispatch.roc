@@ -14,6 +14,7 @@ import ChannelMembersRoute
 import Clock
 import ConversationKey
 import ConversationRoute
+import DownloadRoute
 import Directory
 import Favicon
 import FirstStart
@@ -76,6 +77,7 @@ access_asked = |asked|
 		ShowConversation(key) => Asks({ place: key.place(), act: Read })
 		OpenConversationStream(key) => Asks({ place: key.place(), act: Read })
 		ServeRawTranscript(key) => Asks({ place: key.place(), act: Read })
+		ServeDownload(key) => Asks({ place: key.place(), act: Read })
 		ServeUploadedImage(found) => Asks({ place: found.key.place(), act: Read })
 		AppendToConversation(key) => Asks({ place: key.place(), act: Post })
 		SendToConversation(key) => Asks({ place: key.place(), act: Post })
@@ -140,6 +142,7 @@ anonymous_refusal = |asked|
 		SendToConversation(_) => unauthorized_refusal
 		OpenConversationStream(_) => unauthorized_refusal
 		ServeRawTranscript(_) => unauthorized_refusal
+		ServeDownload(_) => unauthorized_refusal
 		UploadToConversation(_) => unauthorized_refusal
 		ReactInConversation(_) => unauthorized_refusal
 		ServeUploadedImage(_) => unauthorized_refusal
@@ -149,18 +152,6 @@ anonymous_refusal = |asked|
 		RevokeKey(_) => unauthorized_refusal
 		OpenAgentStream => unauthorized_refusal
 	}
-
-## The 500 for a request whose coming online could not be told: a DM's
-## topics could not be listed.
-presence_failure : Http.Response
-presence_failure =
-	HttpAnswer.page(
-		500,
-		PageKit.notice({
-			title: "Failed",
-			text: "Your DMs' topics could not be read, to tell the others you are online.",
-		}),
-	)
 
 ## The 401 for a request that proves no one, at a route only someone
 ## signed in may use.
@@ -281,7 +272,7 @@ serve_signed_in_route! = |{ asked, request, directory, acting }| {
 			})
 			match noted {
 				Ok({}) => answer_route!({ asked, request, directory, acting })
-				Err(_) => presence_failure
+				Err(_) => PresenceNotices.presence_failure
 			}
 		}
 	}
@@ -318,6 +309,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				headers: request.headers,
 			})
 		ServeRawTranscript(key) => ConversationRoute.serve_raw!({ key, query: request.query })
+		ServeDownload(key) => DownloadRoute.serve_download!({ key, now: Clock.read_clock!({}) })
 		AppendToConversation(key) =>
 			ConversationRoute.post_sent_message!(
 				make_message_post!({ key, request, directory, acting }),
@@ -434,6 +426,7 @@ expect {
 		ShowConversation(key),
 		OpenConversationStream(key),
 		ServeRawTranscript(key),
+		ServeDownload(key),
 		ServeUploadedImage({ key, image }),
 	].all(|choice| access_asked(choice) == Asks({ place: key.place(), act: Read }))
 		and [
@@ -481,6 +474,7 @@ expect {
 			SendToConversation(key),
 			OpenConversationStream(key),
 			ServeRawTranscript(key),
+			ServeDownload(key),
 			UploadToConversation(key),
 			ReactInConversation(key),
 			ServeUploadedImage({ key, image }),

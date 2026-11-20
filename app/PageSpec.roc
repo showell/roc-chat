@@ -72,7 +72,7 @@ plans_page : {
 	messages : Str,
 } -> Str
 plans_page = |{ viewer, viewer_id, count, messages }|
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\" data-download=\"/chat/dm/1_1/plans/download\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str

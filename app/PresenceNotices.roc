@@ -6,10 +6,13 @@
 ## humans are online, for the dots it is drawn with, and what a DM's page
 ## says of the other human as it is drawn.
 import pf.Host
+import pf.Http
 import ConversationKey
 import Directory
 import DirectoryFiles
 import Dm
+import HttpAnswer
+import PageKit
 import Place
 import Presence
 import Route
@@ -45,6 +48,18 @@ PresenceNotices :: [].{
 			}
 			_ => Ok({})
 		}
+
+	## The 500 for a request whose coming online could not be told, as
+	## `note_request!` failed: a DM's topics could not be listed.
+	presence_failure : Http.Response
+	presence_failure =
+		HttpAnswer.page(
+			500,
+			PageKit.notice({
+				title: "Failed",
+				text: "Your DMs' topics could not be read, to tell the others you are online.",
+			}),
+		)
 
 	## The humans of `humans` who are online at `now`.
 	load_online_humans! : { humans : List(UserId), now : Timestamp } => List(UserId)

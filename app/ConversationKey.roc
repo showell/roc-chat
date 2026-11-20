@@ -21,7 +21,8 @@
 ## Each thing a conversation serves (`Resource`) is at its page's URL and
 ## a suffix: its stream at `/stream`, the send of its page's script at
 ## `/send`, an image's upload at `/upload`, a reaction at `/react`, an uploaded image at
-## `/uploads/<name>`, and its transcript as plain text at `/raw`.
+## `/uploads/<name>`, its transcript as plain text at `/raw`, and its
+## download, a `.tar.gz`, at `/download`.
 ## `url_path` writes each, and `from_url_path` reads each back. `TranscriptFiles`
 ## keeps an uploaded image in the conversation's folder, as `uploads/<name>`.
 import ChannelName
@@ -45,6 +46,7 @@ ConversationKey :: { place : Place, topic : Topic }.{
 		React,
 		UploadedImage(UploadedImage),
 		Raw,
+		Download,
 	]
 
 	## The conversation under `topic` in `place`.
@@ -154,6 +156,7 @@ resource_parts = |resource|
 		React => ["react"]
 		UploadedImage(image) => ["uploads", image.name()]
 		Raw => ["raw"]
+		Download => ["download"]
 	}
 
 ## The resource whose parts are `suffix_parts`, the parts of a URL's path after
@@ -170,6 +173,7 @@ resource_of_suffix = |suffix_parts|
 		[last] if last.is_exactly("upload") => Ok(Upload)
 		[last] if last.is_exactly("react") => Ok(React)
 		[last] if last.is_exactly("raw") => Ok(Raw)
+		[last] if last.is_exactly("download") => Ok(Download)
 		[uploads, image_name] if uploads.is_exactly("uploads") =>
 			match image_name.uploaded_image() {
 				Ok(image) => Ok(UploadedImage(image))

@@ -73,6 +73,8 @@ That many bytes from the OS's secure source, at most 1,024. Asking for more, or 
 
 **`sha256_of_bytes! : List(U8) => List(U8)`**
 The SHA-256 digest of the bytes, 32 bytes, from Zig's standard library. *Why:* the chat keeps a key's or an invite's secret only as its hash (`app/SecretHash.roc`), and the Roc holds no crypto of its own.
+**`crc32_of_bytes! : List(U8) => U32`**
+The CRC-32 of the bytes, gzip's (`std.hash.Crc32`, the reflected polynomial 0xEDB88320). *Why:* a conversation's download is a `.tar.gz` the Roc builds (`app/Tar.roc`, `app/Gzip.roc`), whose trailer holds its tar's CRC-32. The Roc runs at `--opt=dev`, where a loop over each byte costs about 0.2 s a MiB, in the turn; the host's costs milliseconds.
 
 ## Passwords and the server's secret
 

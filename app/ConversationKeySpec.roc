@@ -47,6 +47,7 @@ resource_name = |resource|
 		React => "react"
 		UploadedImage(image) => "image ${image.name()}"
 		Raw => "raw"
+		Download => "download"
 	}
 
 ## The parts of the key `path` names in `with_room`, between spaces.
@@ -143,6 +144,8 @@ expect
 	read_back("/chat/channel/plans-room/plans/raw") == Ok("raw /chat/channel/plans-room/plans/raw")
 expect read_back("/chat/dm/1_2/raw/raw") == Ok("raw /chat/dm/1_2/raw/raw")
 expect read_back("/chat/dm/1_2/raw") == Ok("page /chat/dm/1_2/raw")
+expect read_back("/chat/dm/1_2/plans/download") == Ok("download /chat/dm/1_2/plans/download")
+expect read_back("/chat/dm/1_2/download") == Ok("page /chat/dm/1_2/download")
 expect
 	read_back("/chat/dm/1_2/plans/uploads/${image_name}")
 		== Ok("image ${image_name} /chat/dm/1_2/plans/uploads/${image_name}")
@@ -164,6 +167,8 @@ expect
 		"/chat/dm/1_2/plans/raw/",
 		"/chat/dm/1_2/plans/Raw",
 		"/chat/dm/1_2/plans/raw/x",
+		"/chat/dm/1_2/plans/Download",
+		"/chat/dm/1_2/plans/download/",
 		"/chat/dm/1_2/plans/Upload",
 		"/chat/dm/1_2/plans/uploads",
 		"/chat/dm/1_2/plans/uploads/cat.png",

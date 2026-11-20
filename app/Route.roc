@@ -14,6 +14,7 @@
 ##     POST the same paths and `/send`, the same: the script's send
 ##     GET  the same paths and `/stream`       the conversation's stream
 ##     GET  the same paths and `/raw`          its transcript, plain text
+##     GET  the same paths and `/download`     its transcript and images, a .tar.gz
 ##     POST the same paths and `/upload`       an image uploaded to it
 ##     POST the same paths and `/react`        a reaction: `msg=`, `emoji=`, `on=`
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
@@ -126,6 +127,7 @@ Route :: [].{
 		SendToConversation(ConversationKey),
 		OpenConversationStream(ConversationKey),
 		ServeRawTranscript(ConversationKey),
+		ServeDownload(ConversationKey),
 		UploadToConversation(ConversationKey),
 		ReactInConversation(ConversationKey),
 		ServeUploadedImage({ key : ConversationKey, image : UploadedImage }),
@@ -317,6 +319,9 @@ conversation_choice = |{ key, resource, method }|
 		(Raw, Get) => SignedInOnly(ServeRawTranscript(key))
 		(Raw, Post) => MethodNotAllowed(GetOnly)
 		(Raw, Other) => MethodNotAllowed(GetOnly)
+		(Download, Get) => SignedInOnly(ServeDownload(key))
+		(Download, Post) => MethodNotAllowed(GetOnly)
+		(Download, Other) => MethodNotAllowed(GetOnly)
 		(Send, Get) => MethodNotAllowed(PostOnly)
 		(Send, Post) => SignedInOnly(SendToConversation(key))
 		(Send, Other) => MethodNotAllowed(PostOnly)
