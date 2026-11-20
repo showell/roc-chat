@@ -113,9 +113,11 @@ expect
 		},
 	)
 
-# Such a session may not link GitHub, by its button or through GitHub, nor
-# make an agent or invite one; it reads, posts, invites humans and makes
-# codes as any session does. An ordinary session may do all of it, and no
+# Such a session may not hand out a credential or take one from the human's
+# other devices: link GitHub, by its button or through GitHub; make, invite
+# or revoke for an agent; invite a human or invite one again; make or cancel
+# a code; sign the other devices out. It reads and posts as any session
+# does. An ordinary session may do all of it, and no
 # one is left to the routes' own refusals.
 ## The routes a session started by a code may not use.
 full_session_routes : List((Str, Str))
@@ -125,6 +127,13 @@ full_session_routes = [
 	("GET", "/login/github"),
 	("POST", "/agents"),
 	("POST", "/agents/2/invites"),
+	("POST", "/agents/2/invites/1/revoke"),
+	("POST", "/agents/2/keys/1/revoke"),
+	("POST", "/invites"),
+	("POST", "/invites/2/again"),
+	("POST", "/devices"),
+	("POST", "/devices/cancel"),
+	("POST", "/devices/sign-out-others"),
 ]
 
 ## Routes every session may use.
@@ -133,10 +142,10 @@ any_session_routes = [
 	("GET", "/chat"),
 	("GET", "/chat/dm/1_1/plans"),
 	("POST", "/chat/dm/1_1/plans"),
-	("POST", "/invites"),
+	("POST", "/chat/dm/1_1/plans/react"),
+	("GET", "/invites"),
 	("GET", "/agents"),
-	("POST", "/devices"),
-	("POST", "/devices/sign-out-others"),
+	("GET", "/devices"),
 	("POST", "/logout"),
 	("GET", "/login"),
 ]

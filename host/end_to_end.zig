@@ -1094,11 +1094,11 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     try t.check("an expired code: the same refusal, and Steve's page says it expired unused", isDeviceCode(third_code) and
         std.mem.eql(u8, expired.body, replaced.body) and isCodeRefusal(expired) and has(expired_page.body, "Your last code expired unused."));
 
-    const fourth = try makeCode(a, io, port, phone_session);
+    const fourth = try makeCode(a, io, port, steve_session);
     const fourth_code = fourth.code;
     const phone_out = try postAs(a, io, port, phone_session, "/logout", "");
     const after_sign_out = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{fourth_code}));
-    try t.check("a code made on the phone, then the phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth_code) and
+    try t.check("a code Steve makes, then his phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth_code) and
         phone_out.status == 303 and std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
         std.mem.eql(u8, after_sign_out.body, replaced.body) and isCodeRefusal(after_sign_out));
 
@@ -1183,12 +1183,21 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
         has(devices.body, ": Safari on iOS</li>") and !has(devices.body, "Mobile/15E148") and
         has(try readFile(a, io, data, "users/1/device-sign-ins"), " safari ios\n"));
 
-    const refusal = "This device signed in with a code from another device. To link GitHub, or to make agents or their invites, sign out here, then sign in with your password or GitHub.";
+    const refusal = "This device signed in with a code from another device. To invite people, manage agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub.";
     const make_agent = try postAs(a, io, port, tablet_session, "/agents", "name=Tablet");
     const link = try postAs(a, io, port, tablet_session, "/login/github/link", "");
     const start = try getAs(a, io, port, tablet_session, "/login/github/start?next=/chat");
     const invite_agent = try postAs(a, io, port, tablet_session, "/agents/2/invites", "read=everywhere&post=everywhere");
     const agents_page = try getAs(a, io, port, tablet_session, "/agents");
+    const invite_human = try postAs(a, io, port, tablet_session, "/invites", "name=Tablet+Friend");
+    const invite_again = try postAs(a, io, port, tablet_session, "/invites/3/again", "");
+    const tablet_code = try postAs(a, io, port, tablet_session, "/devices", "");
+    const tablet_cancel = try postAs(a, io, port, tablet_session, "/devices/cancel", "");
+    const tablet_sign_out_others = try postAs(a, io, port, tablet_session, "/devices/sign-out-others", "");
+    try t.check("nor invite a human, nor invite one again (which sets their password), nor make or cancel a code, nor sign the other devices out: a 403 each, nothing written", invite_human.status == 403 and
+        invite_again.status == 403 and tablet_code.status == 403 and tablet_cancel.status == 403 and tablet_sign_out_others.status == 403 and
+        has(invite_again.body, "To invite people, manage agents") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "(none)"));
     try t.check("that session may not make an agent, invite one or link GitHub, by its button or through GitHub: a 403 each, saying to sign in with a password or GitHub; it reads /agents", make_agent.status == 403 and
         has(make_agent.body, "sign out here, then sign in with your password or GitHub.") and link.status == 403 and start.status == 403 and
         invite_agent.status == 403 and has(link.body, refusal[0..40]) and agents_page.status == 200);
