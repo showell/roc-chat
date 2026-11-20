@@ -377,6 +377,16 @@
 //!      to its topic, even the page's own (the page drops that one), and his
 //!      open Recent page's stream hears it for her channel post; his own
 //!      messages tell him nothing.
+//! 57d. on the second server, a human just joined (Rita), so new: her
+//!      upload total seeded 100 MiB less a PNG, its upload a 200, the total
+//!      exactly 100 MiB; one more: a 403 saying a new account's limit,
+//!      nothing stored or counted;
+//! 57e. Rita sends 30 messages to a topic: 201 each; the 31st a 429, saying
+//!      so, and the transcript exactly the 30;
+//! 57f. the disk's free space (the data root's `free_bytes_for_test`) a byte
+//!      under 2 GiB: a message, an upload and an invite each a 507 saying
+//!      the server is low on disk, nothing written; the page still 200; at
+//!      2 GiB exactly, a message a 303.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, the
 //! session's cookie, no `Origin`, no `Sec-Fetch-Site`.
@@ -1032,6 +1042,73 @@ fn clientCapSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps) !void {
     try t.check("a stream ended for a newer one of its holder gives its count back: the client at one under its limit is served", room and newest.isEventStream() and got == 200);
 }
 
+/// Steps 57d to 57f: the abuse limits, a new account's uploads
+/// (app/NewAccountUploads.roc), the message rate (app/MessageRate.roc) and
+/// the disk floor (app/DiskFloor.roc), whose free space the run sets through
+/// `free_bytes`, the data root's `free_bytes_for_test`.
+fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, free_bytes: *std.atomic.Value(u64)) !void {
+    const own_page = try std.fmt.allocPrint(a, "origin: http://localhost:{d}\r\nsec-fetch-site: same-origin\r\n", .{port});
+    const png = try onePixelPng(a);
+
+    // 48zza.
+    const rita_id = try nextId(a, io, data);
+    const rita = try joinedHuman(a, io, port, steve_session, "Rita");
+    const rita_total = try std.fmt.allocPrint(a, "users/{d}/upload-bytes", .{rita_id});
+    const new_most = 100 * 1024 * 1024;
+    try data.createDirPath(io, std.fs.path.dirname(rita_total).?);
+    try data.writeFile(io, .{ .sub_path = rita_total, .data = try std.fmt.allocPrint(a, "{d}", .{new_most - png.len}) });
+    const at_most = try uploadAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ rita, own_page }), png);
+    const at_most_total = try readFile(a, io, data, rita_total);
+    const uploads_before = (try namesIn(a, io, data, channel_uploads)).len;
+    const past = try uploadAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ rita, own_page }), png);
+    try t.check("a new account, Rita, just joined: an upload landing on 100 MiB, 200; one more, 403, saying a new account's limit, nothing stored or counted", rita.len > 0 and
+        at_most.status == 200 and std.mem.eql(u8, at_most_total, try std.fmt.allocPrint(a, "{d}", .{new_most})) and
+        past.status == 403 and std.mem.eql(u8, past.body, "Upload limit reached — a new account may upload 100 MiB in its first 7 days.\n") and
+        std.mem.eql(u8, try readFile(a, io, data, rita_total), at_most_total) and uploads_before == 1 and (try namesIn(a, io, data, channel_uploads)).len == 1);
+
+    // 48zzb.
+    const rate_send = "/chat/channel/general/rate/send";
+    const rate_transcript = "chat/channel/general/rate/transcript";
+    var sent_all = true;
+    for (0..30) |n| {
+        const sent = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ rita, own_page }), rate_send, try std.fmt.allocPrint(a, "markdown=number+{d}", .{n + 1}));
+        sent_all = sent_all and sent.status == 201;
+    }
+    const thirty_first = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ rita, own_page }), rate_send, "markdown=one+too+many");
+    const rate_file = try readFile(a, io, data, rate_transcript);
+    try t.check("Rita sends 30 messages in a minute: 201 each; the 31st a 429, saying so; the transcript exactly the 30", sent_all and
+        thirty_first.status == 429 and std.mem.eql(u8, thirty_first.body, "Too many messages: at most 30 a minute. Wait a moment, then send it again.\n") and
+        std.mem.count(u8, rate_file, "\nMSG_rate_") == 30 and has(rate_file, "number 30") and !has(rate_file, "one too many"));
+
+    // 48zzc.
+    const floor = 2 * 1024 * 1024 * 1024;
+    free_bytes.store(floor - 1, .release);
+    const channel_file = channel_url["/".len..] ++ "/transcript";
+    const before = try readFile(a, io, data, channel_file);
+    const ids_before = try nextId(a, io, data);
+    const low_post = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Is+there+room%3F" });
+    const low_upload = try post(a, io, port, .{ .path = channel_url ++ "/upload", .content_type = upload_type, .form = try uploadForm(a, "cat.png", png), .more = own_page });
+    const low_invite = try post(a, io, port, .{ .path = "/invites", .form = "name=Lowell" });
+    const low_page = try get(a, io, port, channel_url);
+    const low_words = "The server is low on disk space, so nothing new can be saved for now. Reading still works; please try again later.\n";
+    const nothing_written = std.mem.eql(u8, try readFile(a, io, data, channel_file), before) and
+        (try namesIn(a, io, data, channel_uploads)).len == 1 and (try nextId(a, io, data)) == ids_before;
+    free_bytes.store(floor, .release);
+    const at_floor = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Room+at+the+floor" });
+    free_bytes.store(std.math.maxInt(u64), .release);
+    try t.check("a byte under 2 GiB free: a message, an upload and an invite, 507 each, saying the server is low on disk, nothing written; the page still 200; at 2 GiB exactly, a message, 303", low_post.status == 507 and
+        std.mem.eql(u8, low_post.body, low_words) and low_upload.status == 507 and low_invite.status == 507 and
+        low_page.status == 200 and nothing_written and at_floor.status == 303 and
+        has(try readFile(a, io, data, channel_file), "Room at the floor"));
+}
+
+/// The compose box's upload of `png` to the seeded channel, with the
+/// `Cookie` and page lines `headers`.
+fn uploadAs(a: std.mem.Allocator, io: Io, port: u16, headers: []const u8, png: []const u8) !Response {
+    const form = try uploadForm(a, "cat.png", png);
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "POST " ++ channel_url ++ "/upload HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: " ++ upload_type ++ "\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, headers, form.len, form }));
+}
+
 /// Steps 48zy and 48zz: a device code made by Steve and redeemed by his
 /// phone, and each way one is refused.
 fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, cc_bearer: []const u8) !void {
@@ -1341,7 +1418,10 @@ fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps,
     defer cwd.deleteTree(io, plain_name) catch |e| std.debug.print("end-to-end: {s} not removed ({t})\n", .{ plain_name, e });
     const data = try cwd.openDir(io, plain_name, .{});
     defer data.close(io);
-    const root: files.DataRoot = .{ .io = io, .dir = data };
+    // The free space the server is told its disk has (`limitSteps`): all a
+    // u64 holds, so the floor never bites, until a step lowers it.
+    var free_bytes: std.atomic.Value(u64) = .init(std.math.maxInt(u64));
+    const root: files.DataRoot = .{ .io = io, .dir = data, .free_bytes_for_test = &free_bytes };
     var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root, .public_origin = public_origin });
     var running = try io.concurrent(http.Server.run, .{&server});
     defer {
@@ -1387,6 +1467,7 @@ fn noGitHubSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, t: Steps,
 
     steve_session = steve;
     try browseSteps(a, io, port, data, t, try cookieLine(a, joined));
+    try limitSteps(a, io, port, data, t, &free_bytes);
 }
 
 /// Step 54, the day's cap on GitHub sign-ups (app/SignUpLimits.roc), on a

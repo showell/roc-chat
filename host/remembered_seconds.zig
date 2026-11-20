@@ -3,8 +3,9 @@
 //! from files and streams. A second is remembered until the server stops,
 //! and never written to disk, so a restart forgets them all. The host knows
 //! nothing of what a key or a second means; the app uses them for when each
-//! human was last active (app/Presence.roc), and for the tallies of failed
-//! device codes (app/DeviceCodeLimit.roc).
+//! human was last active (app/Presence.roc), for the tallies of failed
+//! device codes (app/DeviceCodeLimit.roc), and for each user's message rate
+//! (app/MessageRate.roc, two keys a user).
 //!
 //! Only the app's calls reach it, and the app makes one call at a time (the
 //! turn, host/http.zig), so it takes no lock of its own.
