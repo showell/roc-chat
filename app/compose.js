@@ -25,9 +25,15 @@
 // back on. The message itself appears through the stream, as everyone else
 // sees it, and when it arrives there the status line says it was sent,
 // linking to it. A refusal shows the server's own words and keeps the
-// draft. With no answer in 3 seconds, a dialog says the host may be down,
-// and the draft is kept; an answer that comes later still says "sent" when
-// the message arrives, so it is not sent twice.
+// draft. With no answer in 3 seconds, the status line says "Still sending…"
+// and the draft stays locked, since the first post may yet be stored: a
+// retry then could post the message twice. The box comes back on only with
+// an answer: a 201, however late, empties it as usual; a refusal (any answer
+// that is not a 2xx) keeps the draft and shows the server's words; and a
+// connection that fails outright keeps the draft and shows chat-client's
+// dialog, that the host may be down. (chat-client gave up waiting at 3
+// seconds and asked for a retry while the first post was still on its way;
+// this departs from it, on purpose.)
 //
 // The page's keys are one table, Keys, here: each key a feature registers
 // is listed in the closed rail's keyboard help, as a button that does what
@@ -268,10 +274,11 @@
   var sendUrl = form.getAttribute('data-send');
   if (!sendUrl) throw new Error('compose.js: the form has no data-send');
   var MUTED = 'var(--cc-muted-fg)';
-  var HOST_DOWN_MS = 3000;
+  var STILL_SENDING_MS = 3000;
 
-  // The one send on its way, if any: its timer. A second send waits for it,
-  // so one Ctrl+Enter pressed twice never posts the message twice.
+  // The one send on its way, if any: its timer. A second send waits for its
+  // answer, so one Ctrl+Enter pressed twice, or a retry while the network is
+  // slow, never posts the message twice.
   var pending = null;
   // The ids of the messages this page sent whose arrival on the stream is
   // still to be noticed.
@@ -305,10 +312,17 @@
     document.body.appendChild(dialog);
     dialog.showModal();
   }
+  // No answer yet: the send may still be stored, so the draft stays locked.
+  function stillSending(mine) {
+    if (pending !== mine) return;
+    status.textContent = 'Still sending…';
+  }
+  // The connection failed, so the server never answered: the draft is
+  // given back to retry.
   function hostDown(mine) {
     if (pending !== mine) return;
     settle();
-    showAlert('The host may be down. Please retry your send.');
+    showAlert('The host may be down, and your message was not sent. Your draft is kept: please retry your send.');
   }
 
   // The server's words for a refusal: its plain text, or the words of the
@@ -368,28 +382,35 @@
     setEnabled(false);
     status.style.color = MUTED;
     status.textContent = 'Sending…';
-    mine.timer = setTimeout(function () { hostDown(mine); }, HOST_DOWN_MS);
+    mine.timer = setTimeout(function () { stillSending(mine); }, STILL_SENDING_MS);
     fetch(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: box.name + '=' + encodeURIComponent(markdown),
     }).then(function (r) {
-      return r.text().then(function (answer) {
-        if (r.status === 201) {
-          if (pending === mine) {
-            settle();
-            box.value = '';
-            box.focus();
-          }
+      if (pending !== mine) return;
+      if (r.ok) {
+        // Stored: the box empties now, even if the answer's body is lost on
+        // the way, so a lost body never gives back a draft to send twice.
+        settle();
+        box.value = '';
+        box.focus();
+        r.text().then(function (answer) {
           var id = sentId(answer);
           if (id) expectArrival(id);
-        } else if (pending === mine) {
-          settle();
-          status.textContent = refusalWords(answer, r.status);
-          box.focus();
-        }
+        }, function () {});
+        return;
+      }
+      return r.text().then(function (answer) {
+        settle();
+        status.textContent = refusalWords(answer, r.status);
+        box.focus();
+      }, function () {
+        settle();
+        status.textContent = refusalWords('', r.status);
+        box.focus();
       });
-    }).catch(function () { hostDown(mine); });
+    }, function () { hostDown(mine); });
   }
 
   // feed.js hands each message the stream brings to Compose.arrived.
