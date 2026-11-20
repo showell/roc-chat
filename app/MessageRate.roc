@@ -48,7 +48,7 @@ MessageRate :: [].{
 	since_key = |user| "message-rate/since/${user.to_str()}".to_utf8()
 
 	## A tally: how many messages were posted since its window started.
-	Tally : { count : I64, since : Timestamp }
+	MessageTally : { count : I64, since : Timestamp }
 
 	## The tally at `now` from what the host keeps under the two keys: a
 	## fresh one, of no messages from `now`, when either is missing or the
@@ -57,7 +57,7 @@ MessageRate :: [].{
 		count : { second : I64, status : [Found, Missing] },
 		since : { second : I64, status : [Found, Missing] },
 		now : Timestamp,
-	} -> MessageRate.Tally
+	} -> MessageRate.MessageTally
 	tally_of = |{ count, since, now }| {
 		fresh = { count: 0, since: now }
 		match (count.status, since.status) {
@@ -76,7 +76,7 @@ MessageRate :: [].{
 
 	## The tally after one more message; unless `tally` already holds the
 	## most (`TooManyMessages`).
-	tally_with_message : MessageRate.Tally -> Try(MessageRate.Tally, [TooManyMessages])
+	tally_with_message : MessageRate.MessageTally -> Try(MessageRate.MessageTally, [TooManyMessages])
 	tally_with_message = |tally|
 		if tally.count >= MessageRate.per_window_most {
 			Err(TooManyMessages)
@@ -109,17 +109,17 @@ noon = Timestamp.at_second(1_000_000)
 kept_second : I64 -> { second : I64, status : [Found, Missing] }
 kept_second = |second| { second, status: Found }
 
-## Nothing kept under a key.
-none_kept : { second : I64, status : [Found, Missing] }
-none_kept = { second: 0, status: Missing }
+## A key the host keeps nothing under.
+missing_second : { second : I64, status : [Found, Missing] }
+missing_second = { second: 0, status: Missing }
 
 ## A fresh tally at noon, of no messages.
-fresh_at_noon : MessageRate.Tally
+fresh_at_noon : MessageRate.MessageTally
 fresh_at_noon = { count: 0, since: noon }
 
 ## The tally at noon of `count` messages in a window that started
 ## `ago` seconds before.
-tally_at_noon : { count : I64, ago : I64 } -> MessageRate.Tally
+tally_at_noon : { count : I64, ago : I64 } -> MessageRate.MessageTally
 tally_at_noon = |{ count, ago }|
 	MessageRate.tally_of({
 		count: kept_second(count),
@@ -133,9 +133,9 @@ expect MessageRate.since_key(UserId.chat_owner) == "message-rate/since/1".to_utf
 # Nothing kept, or half of it: a fresh window from now.
 expect
 	[
-		(none_kept, none_kept),
-		(kept_second(7), none_kept),
-		(none_kept, kept_second(999_990)),
+		(missing_second, missing_second),
+		(kept_second(7), missing_second),
+		(missing_second, kept_second(999_990)),
 	].all(|(count, since)| MessageRate.tally_of({ count, since, now: noon }) == fresh_at_noon)
 # Inside the window its count holds, at its last second too; a whole window
 # on, it is fresh.
