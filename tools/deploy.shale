@@ -1,9 +1,12 @@
 -- This script deploys roc-chat, built on this box, to the prod droplet behind
--- its Caddy at https://chat.lynrummy.com. It takes no arguments and runs from
--- roc-chat's root, on `main`, while the server runs. docs/deploy.md is the
--- runbook.
+-- its Caddy at https://chat.lynrummy.com. It runs from roc-chat's root, on
+-- `main`, while the server runs. docs/deploy.md is the runbook.
 --
---   shale tools/deploy.shale
+--   shale tools/deploy.shale host=<user>@<address>
+--
+-- `host=` is the one argument, and it is needed: the ssh destination of the
+-- machine that serves the chat, a user who may sudo there and the machine's
+-- IPv4 address. It is the operator's, so the repo names none.
 --
 -- Each step refuses, by name, what it cannot do:
 --
@@ -35,8 +38,11 @@
 --
 -- budget: steps=50000000
 
-const HOST = "steve@162.243.1.123"
-const IP = "162.243.1.123"
+const HOST = arg("host", "")
+if re_find(HOST, "^[a-z_][a-z0-9_-]*@[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$") == nil then
+  fail("deploy: host= is needed, the ssh destination of the machine that serves the chat, <user>@<its IPv4 address>; got '" .. HOST .. "'")
+end
+const IP = split(HOST, "@")[2]
 const NAME = "chat.lynrummy.com"
 const ORIGIN = "https://chat.lynrummy.com"
 const PORT = "9611"
@@ -126,7 +132,7 @@ local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_m
 print("deploying roc-chat " .. commit .. " to " .. HOST)
 
 -- Everything copied to prod is staged in a folder of its own, made fresh under
--- steve's home with mode 700 and a name no one can guess, so no other local
+-- the deploy user's home with mode 700 and a name no one can guess, so no other local
 -- user can plant a file there first.
 const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" roc-chat-deploy.XXXXXXXX").out)
 if find(STAGE, "/roc-chat-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end

@@ -2,7 +2,7 @@
 
 This is the owner's runbook for https://chat.lynrummy.com. A command marked **[PROD WRITE]** changes the prod droplet. Claude runs `tools/deploy.shale` itself, on a `main` that has passed verify; anything else marked so is the owner's.
 
-roc-chat runs on the prod droplet (162.243.1.123), beside Caddy, on 127.0.0.1:9611. Caddy holds the certificate, logs every request and is the only way in.
+roc-chat runs on the prod droplet, beside Caddy, on 127.0.0.1:9611. Caddy holds the certificate, logs every request and is the only way in. The droplet's address is the operator's, and the repo names none: below, `<host>` is its ssh destination, `<user>@<address>` (a user who may sudo there, and the droplet's IPv4 address), which the deploy takes as `host=` and checks against what chat.lynrummy.com resolves to.
 
 | What | Where on prod | From |
 |---|---|---|
@@ -18,11 +18,11 @@ roc-chat runs on the prod droplet (162.243.1.123), beside Caddy, on 127.0.0.1:96
 
 ## Deploying
 
-Run the gate, then the deploy **[PROD WRITE]**:
+From roc-chat's root, run the gate, then the deploy **[PROD WRITE]**:
 
 ```
-cd ~/showell_repos/roc-chat && shale tools/verify.shale
-cd ~/showell_repos/roc-chat && shale tools/deploy.shale
+shale tools/verify.shale
+shale tools/deploy.shale host=<host>
 ```
 
 The gate proves that `main`, which is what deploys, passes. It ends `verify: every check passed`.
@@ -32,7 +32,7 @@ The deploy runs on a clean `main`, while the server runs, and goes straight thro
 To look at the server's side (read-only):
 
 ```
-ssh steve@162.243.1.123 'systemctl is-active roc-chat; sudo journalctl -u roc-chat -n 20 --no-pager; sudo tail -n 3 /var/log/caddy/chat-access.log'
+ssh <host> 'systemctl is-active roc-chat; sudo journalctl -u roc-chat -n 20 --no-pager; sudo tail -n 3 /var/log/caddy/chat-access.log'
 ```
 
 It must say `active`, with no refusals in the journal and recent requests in the log.
@@ -55,7 +55,7 @@ The chat's OAuth app calls back to `https://chat.lynrummy.com/login/github`. Its
 The deploy refuses until both are there, so a first run on a new droplet makes the user and the folders, then stops, naming `.github-client-id`. To check them (read-only, showing names and sizes and no contents):
 
 ```
-ssh steve@162.243.1.123 'sudo stat -c "%U %a %s %n" /var/lib/roc-chat/data/.github-client-id /var/lib/roc-chat/data/.github-client-secret'
+ssh <host> 'sudo stat -c "%U %a %s %n" /var/lib/roc-chat/data/.github-client-id /var/lib/roc-chat/data/.github-client-secret'
 ```
 
 The output must show `rocchat 600`, a size above 0, and each name.
@@ -65,7 +65,7 @@ The output must show `rocchat 600`, a size above 0, and each name.
 A new data root's owner has no password. This writes the numeric id of the GitHub account `showell`, which is public, to the owner's `github-id`, so GitHub is how he signs in.
 
 ```
-ssh steve@162.243.1.123 "sudo -u rocchat sh -c 'cd / && umask 077 && printf 142908 > /var/lib/roc-chat/data/auth/1/github-id' && sudo stat -c '%U %a %s %n' /var/lib/roc-chat/data/auth/1/github-id"
+ssh <host> "sudo -u rocchat sh -c 'cd / && umask 077 && printf 142908 > /var/lib/roc-chat/data/auth/1/github-id' && sudo stat -c '%U %a %s %n' /var/lib/roc-chat/data/auth/1/github-id"
 ```
 
 The output must show `rocchat 600 6`. The server reads the file at each sign-in, so there is no restart.
@@ -119,10 +119,10 @@ LC needs an account and a key first:
 1. At `/agents`, make the agent `LC`.
 2. Add it to a channel at `/channels`, as agents take part only in channels. Keep agents in channels only the owner and the agent share, never in `general`: sign-up is open, every new human lands in `general`, and whatever an agent reads there is a stranger's words in its context.
 3. At `/agents`, press "Invite LC". The page shows a one-time code, which lives ten minutes.
-4. Redeem it on this box, with the code in place of `<code>`. The key goes from curl straight to the secrets mount, and no script or terminal sees it. `--fail` matters: without it, a refused code's words would be stored as the key.
+4. Redeem it from roc-chat's root, with the code in place of `<code>`. The key goes from curl straight to the secrets mount, and no script or terminal sees it. `--fail` matters: without it, a refused code's words would be stored as the key.
 
 ```
-cd ~/showell_repos/roc-chat && shale <<'SHALE'
+shale <<'SHALE'
 local r = run({"curl", "-sS", "--fail", "--data-urlencode", "code=<code>", "https://chat.lynrummy.com/agents/redeem"},
   {timeout_ms = 30000, stdout_secret = "keys:roc_chat_lc_key"})
 if not r.secret_written then fail("not stored: curl exited " .. r.code .. ", " .. r.out) end
@@ -130,14 +130,14 @@ print("stored")
 SHALE
 ```
 
-Run the listener from this repo's root:
+Run the listener from this repo's root, with this deployment's site, agent and key:
 
 ```
-cd ~/showell_repos/roc-chat && shale tools/listen.shale once=1
-cd ~/showell_repos/roc-chat && shale tools/listen.shale log=listen.log
+shale tools/listen.shale site=https://chat.lynrummy.com me=LC key=keys:roc_chat_lc_key once=1
+shale tools/listen.shale site=https://chat.lynrummy.com me=LC key=keys:roc_chat_lc_key log=listen.log
 ```
 
-The first ends at the first window that holds a post for LC, and its last line says the `since=` and `ids=` to go on with, so a detached run can wake a session and start again with nothing missed or heard twice. The second appends each line to the log until it stops, which it does after about 22 hours of quiet, naming the same two values. A run starts from its own start time unless `since=` says otherwise. `site=`, `me=` and `key=` default to https://chat.lynrummy.com, `LC` and `keys:roc_chat_lc_key`. `window=` is how long each curl holds the stream, 20 seconds by default, so a post is heard at most that late.
+The first ends at the first window that holds a post for LC, and its last line says the `since=` and `ids=` to go on with, so a detached run can wake a session and start again with nothing missed or heard twice. The second appends each line to the log until it stops, which it does after about 22 hours of quiet, naming the same two values. A run starts from its own start time unless `since=` says otherwise. `site=`, `me=` and `key=` are needed and have no default, as they are a deployment's; a fork passes its own. `window=` is how long each curl holds the stream, 20 seconds by default, so a post is heard at most that late.
 
 It reads `GET /agents/stream` and resumes with `?since=<date>`, from the `date` of the last event read. That second's messages may come twice, and it drops a repeat by conversation and id. A post is for LC when its author's id, the event's `from_id`, is on the allow-list (`allow=`, ids with commas between, by default `1`, the owner), and its `markdown` says `@LC` outside quoted and fenced text; a post with no `from_id`, whose author's name is no user's now, wakes nothing; the name leading a post, as in `LC, a question`, doesn't count. Nothing limits agents answering agents.
 

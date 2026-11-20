@@ -40,8 +40,8 @@ The code here was written by AI coding agents (Claude), with human supervision.
 We expect you'll work on roc-chat with Claude or another coding agent, and the repo is written for that: `CLAUDE.md` gives an agent its rules, the docs explain the design, and one gate says when a change is done. Nothing here requires an agent.
 
 You need:
-- the Roc pinned in `roc-version` (the scripts look for it at `~/tools/roc-<pin>/roc`);
-- Zig 0.17 (the repo is built with a 0.17 development build, so an older release won't do);
+- the Roc pinned in `roc-version`, at `~/tools/roc-<pin>/roc` (where build.zig looks; the Shale scripts find it through Shale's `tools` mount, which must name that same `~/tools`);
+- Zig 0.17.0 or newer (`minimum_zig_version` in build.zig.zon);
 - roc-markdown checked out beside this repo;
 - [roc-syntax-color](https://github.com/showell/roc-syntax-color) checked out beside this repo, which colors code blocks;
 - [Shale](https://github.com/showell/shale), with its cookbook mounted, for the scripts in `tools/`.

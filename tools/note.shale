@@ -1,9 +1,11 @@
 -- **THE DEMO, ON THE ESSAY SURFACE**: the sample transcript's page as the
 -- demo renders it, then every line of the demo's code, as one note,
--- /home/steve/essays/notes/roc-chat-demo.md on the essay surface. Run it
--- from roc-chat's root. The note is transient and never committed.
+-- roc-chat-demo.md in the essay surface's notes folder. Run it from
+-- roc-chat's root. The note is transient and never committed.
 --
---   shale tools/note.shale
+--   shale tools/note.shale notes=<the notes folder's absolute path>
+--
+-- `notes=` is needed: the folder is the operator's, so the repo names none.
 
 -- Every Roc module, then the platform, the host, the build and the sample.
 const SOURCES = {}
@@ -13,6 +15,9 @@ end
 for f in {"platform/main.roc", "host/main.zig", "build.zig", "demo/data/chat/channel/general/roc-chat/transcript"} do push(SOURCES, f) end
 
 if not exists("roc-version") then fail("note: run it from roc-chat's root") end
+const NOTES = arg("notes", "")
+if not starts_with(NOTES, "/") then fail("note: notes= is needed, the essay surface's notes folder, an absolute path") end
+const OUT = NOTES .. "/roc-chat-demo.md"
 
 local page = must(run({"zig", "build", "demo", "--", "/chat/channel/general/roc-chat", "demo/data/chat/channel/general/roc-chat/transcript"}, {timeout_ms = 300000, whole = 1000000, want = "build: the demo's page"})).out
 
@@ -33,5 +38,5 @@ for path in SOURCES do
   note = note .. "### `" .. path .. "`\n\n" .. fence .. "\n" .. read(path) .. fence .. "\n\n"
 end
 
-must(run({"tee", "/home/steve/essays/notes/roc-chat-demo.md"}, {stdin = note, timeout_ms = 5000, whole = 10000000, want = "write: the note"}))
-print("wrote /home/steve/essays/notes/roc-chat-demo.md")
+must(run({"tee", OUT}, {stdin = note, timeout_ms = 5000, whole = 10000000, want = "write: the note"}))
+print("wrote " .. OUT)

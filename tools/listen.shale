@@ -2,8 +2,8 @@
 -- each post that names it. It is cookbook:listen.shale adapted to this
 -- server (docs/deploy.md, "LC's listener"). Run it from the repo's root.
 --
---   shale tools/listen.shale once=1
---   shale tools/listen.shale log=listen.log
+--   shale tools/listen.shale site=https://<name> me=LC key=keys:<file> once=1
+--   shale tools/listen.shale site=https://<name> me=LC key=keys:<file> log=listen.log
 --
 -- A line reads `#<id> in <conversation> by <name>: <its first line>`. A post
 -- is for LC when someone else wrote it, its author's id (the stream's
@@ -13,9 +13,11 @@
 -- on its owner's word alone, so no one else in its channels can steer it.
 -- A post with no `from_id` (its author's name no user's now) wakes nothing.
 --
--- `site=`, `me=` and `key=` default to chat.lynrummy.com, LC and its key. The
--- key stays in the secrets mount: `run` gives it to curl alone, by curl's
--- environment. `since=` is the date to start from, by default the run's
+-- `site=` (the chat's origin, `https://<name>`), `me=` (the agent's name)
+-- and `key=` (its key's file in the secrets mount, `keys:<file>`) are
+-- needed, with no default: they are the deployment's, and the repo names
+-- none. docs/deploy.md, "LC's listener", has the owner's. The key stays in
+-- the secrets mount: `run` gives it to curl alone, by curl's environment. `since=` is the date to start from, by default the run's
 -- start. `ids=` is the last id read in each conversation, so that a run going
 -- on from `since=` hears nothing twice. `once=1` ends at the first post, and
 -- says the `since=` and `ids=` to go on with. Without it each line is
@@ -42,9 +44,9 @@
 -- budget: steps=200000000 arena_bytes=400000000
 
 const SELF_TEST = arg("self_test", "") == "1"
-const SITE = arg("site", "https://chat.lynrummy.com")
-const ME = arg("me", "LC")
-const KEY = arg("key", "keys:roc_chat_lc_key")
+const SITE = arg("site", "")
+const ME = arg("me", "")
+const KEY = arg("key", "")
 const SINCE = arg("since", date(now()))
 const IDS = arg("ids", "")
 const ALLOW = arg("allow", "1")
@@ -429,6 +431,7 @@ function heard(l)
 end
 
 function needed()
+  if SITE == "" or ME == "" or KEY == "" then fail("listen: site=, me= and key= are needed: the chat's origin (https://<name>), the agent's name and its key's file (keys:<file>)") end
   if not ONCE and LOG == "" then fail("listen: without once=1, log= is needed: a run's output shows only when it ends, and the lines are appended there as they are heard") end
   return nil
 end

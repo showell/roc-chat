@@ -53,7 +53,9 @@
 --
 -- budget: steps=200000000
 
-const ROC = "/home/steve/tools/roc-" .. trim(read("roc-version")) .. "/roc"
+-- The pinned Roc, under Shale's `tools` mount, where build.zig looks too
+-- (`~/tools`, README.md, "You need").
+const ROC = real("tools:roc-" .. trim(read("roc-version")) .. "/roc")
 
 -- What `zig build test` counts: a test once for each root that reaches it,
 -- so the tests seam_test and http_test import count three times.

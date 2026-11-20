@@ -2885,7 +2885,7 @@ fn signUpHeadingTo(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.F
 
 /// The owner's words of welcome, under the owner named `owner`.
 fn welcomeWords(a: std.mem.Allocator, owner: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(a, "Welcome! If {s} is not here, you can still send a message, and he will reply soon.", .{owner});
+    return std.fmt.allocPrint(a, "Welcome! If {s} is not here, you can still send a message, and they will reply soon.", .{owner});
 }
 
 /// The page of the DM that welcomes the human `id`.

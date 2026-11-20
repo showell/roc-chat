@@ -1,0 +1,16 @@
+.{
+    .name = .roc_chat,
+    .version = "0.0.0",
+    .fingerprint = 0x86537dd08e152511,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "roc-version",
+        "app",
+        "host",
+        "platform",
+        "LICENSE",
+        "README.md",
+    },
+}

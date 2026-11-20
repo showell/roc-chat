@@ -25,7 +25,7 @@ Welcome :: { key : ConversationKey, record : Transcript.Utf8TranscriptMessage }.
 	## The message, in the words of the owner named `owner`.
 	markdown : Name -> Str
 	markdown = |owner|
-		"Welcome! If ${owner.to_str()} is not here, you can still send a message, and he will reply soon."
+		"Welcome! If ${owner.to_str()} is not here, you can still send a message, and they will reply soon."
 
 	## The conversation that welcomes `human`, in `directory`.
 	conversation_key : { directory : Directory, human : Users.Human } -> ConversationKey
@@ -101,10 +101,10 @@ record_text = |owner| {
 # owner's name, whatever that is.
 expect
 	record_text("Steve")
-		== "-------------\nMSG_ChitChat_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nWelcome! If Steve is not here, you can still send a message, and he will reply soon.\n\n"
+		== "-------------\nMSG_ChitChat_1\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nWelcome! If Steve is not here, you can still send a message, and they will reply soon.\n\n"
 expect
 	record_text("Ada Lovelace")
-		== "-------------\nMSG_ChitChat_1\nfrom: Ada Lovelace\ndate: 2026-11-02T19:11:32Z\n\nWelcome! If Ada Lovelace is not here, you can still send a message, and he will reply soon.\n\n"
+		== "-------------\nMSG_ChitChat_1\nfrom: Ada Lovelace\ndate: 2026-11-02T19:11:32Z\n\nWelcome! If Ada Lovelace is not here, you can still send a message, and they will reply soon.\n\n"
 # The record reads back as one message by the owner.
 expect {
 	text = record_text("Ada")

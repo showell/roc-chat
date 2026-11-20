@@ -6,15 +6,19 @@
 -- - `types`: each module's types, a module a cluster, and an arrow from a
 --   type to each type its definition names.
 --
--- Both go into one note on the essay surface,
--- /home/steve/essays/notes/roc-chat-pictures.md, as ```dot blocks,
+-- Both go into one note on the essay surface, roc-chat-pictures.md in its
+-- notes folder, as ```dot blocks,
 -- which the surface draws in the browser. The note is transient: the
 -- surface keeps only its newest notes, and none is ever committed.
 --
---   shale tools/diagram.shale
+--   shale tools/diagram.shale notes=<the notes folder's absolute path>
+--
+-- `notes=` is needed: the folder is the operator's, so the repo names none.
 -- budget: steps=30000000
 
-const OUT = "/home/steve/essays/notes/"
+const NOTES = arg("notes", "")
+if not starts_with(NOTES, "/") then fail("diagram: notes= is needed, the essay surface's notes folder, an absolute path") end
+const OUT = NOTES .. "/"
 
 if not exists("roc-version") then fail("diagram: run it from roc-chat's root") end
 
