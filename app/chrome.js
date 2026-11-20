@@ -59,6 +59,21 @@ window.Viewport = (function () {
   };
 })();
 
+// LocalTime.format(iso) is a time as chat-client wrote one: the viewer's
+// zone, as "Nov 2 · 7:11 PM", or '' for a time that doesn't read. feed.js
+// dates its messages by it, and search.js its answers.
+window.LocalTime = (function () {
+  'use strict';
+  function format(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(d);
+    var time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+    return day + ' · ' + time;
+  }
+  return { format: format };
+})();
+
 window.Notices = (function () {
   'use strict';
   var strip = document.querySelector('.notice-strip');

@@ -1,11 +1,15 @@
 // This script runs on a conversation page, which app/ConversationPage.roc
-// builds and app/Script.roc serves. It is chat-client's search palette
+// builds, and on Recent (app/RecentFeed.roc), which a human watches for new
+// activity; app/Script.roc serves it. It is chat-client's search palette
 // (js/chat_search.js), across every topic the viewer may read, answered by
 // the server (app/SearchRoute.roc): the server reads the words, and this
 // script sends what was typed and shows what comes back.
 //
-// The / key, in compose.js's table (Keys), and the 🔍 button it puts in the
-// top bar open a dialog. Typing asks /chat/search/words?prefix= for the
+// The / key and the 🔍 button it puts in the top bar open a dialog. On a
+// conversation the key is in compose.js's table (Keys), which lists it in the
+// keyboard help; Recent has no compose box, so no table, and the script
+// listens for the key itself, by the table's rules: no text field focused,
+// no modifier held. Typing asks /chat/search/words?prefix= for the
 // words that begin so, each with how many messages hold it, once typing
 // pauses for 150 ms. Enter, or a click, asks /chat/search/messages?word= for
 // the messages holding the word chosen (or, with none chosen, what was
@@ -22,7 +26,11 @@
 // server sends no CSS for it. Its colours are palette.js's.
 (function () {
   'use strict';
-  if (!window.Keys || !window.Feed) throw new Error('search.js: compose.js and feed.js run first, and give Keys and Feed');
+  // A conversation's page is the one with a messages pane.
+  var onConversation = !!document.querySelector('.messages');
+  if (onConversation && (!window.Keys || !window.Feed)) {
+    throw new Error('search.js: on a conversation, compose.js and feed.js run first, and give Keys and Feed');
+  }
   var top = document.querySelector('.top-bar');
   var user = top && top.querySelector('.top-user');
   if (!user) throw new Error('search.js: the page has no .top-bar holding a .top-user');
@@ -157,7 +165,7 @@
       found.forEach(function (m, k) {
         var row = document.createElement('div'); row.className = 'search-row'; row.setAttribute('data-i', k);
         var head = document.createElement('div'); head.className = 'search-where';
-        head.textContent = whereLabel(m) + ' · ' + m.from + ' · ' + Feed.formatLocalTime(m.date);
+        head.textContent = whereLabel(m) + ' · ' + m.from + ' · ' + LocalTime.format(m.date);
         var excerpt = document.createElement('div'); excerpt.className = 'search-excerpt'; markedInto(excerpt, m.before, m.mark, m.after);
         row.appendChild(head); row.appendChild(excerpt);
         open.list.appendChild(row); open.items.push({ page: m.page, id: m.id });
@@ -175,7 +183,7 @@
     if (!item) return;
     close();
     var anchor = 'msg-' + item.id;
-    var here = isHere(item.page) && document.getElementById(anchor);
+    var here = onConversation && isHere(item.page) && document.getElementById(anchor);
     if (here) {
       Feed.reveal(here);
       window.history.replaceState(null, '', '#' + anchor);
@@ -238,5 +246,15 @@
   button.addEventListener('click', show);
   user.parentNode.insertBefore(button, user);
 
-  Keys.register({ key: '/', label: 'search every topic', run: show });
+  if (onConversation) {
+    Keys.register({ key: '/', label: 'search every topic', run: show });
+  } else {
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      var focused = document.activeElement;
+      if (focused && (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT' || focused.isContentEditable)) return;
+      e.preventDefault();
+      show();
+    });
+  }
 })();

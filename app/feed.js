@@ -121,14 +121,6 @@
   ].join('\n');
   document.head.appendChild(s);
 
-  // The time chat-client wrote: the viewer's zone, as "Nov 2 · 7:11 PM".
-  function formatLocalTime(iso) {
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    var day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(d);
-    var time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
-    return day + ' · ' + time;
-  }
 
   // What the script adds to a message the server drew: whose it is, and its
   // time in the viewer's zone. A time that doesn't read stays as the server
@@ -137,7 +129,7 @@
     var mine = message.getAttribute('data-author') === viewer;
     message.classList.add(mine ? 'mine' : 'theirs');
     var t = message.querySelector('header time');
-    var local = t && formatLocalTime(t.getAttribute('datetime'));
+    var local = t && LocalTime.format(t.getAttribute('datetime'));
     if (local) {
       t.title = t.textContent;
       t.textContent = local;
@@ -396,7 +388,7 @@
   Keys.register({ key: 'End', group: 'navigation', label: 'last message', run: function () { selectEnd('last'); } });
   Keys.register({ key: 'PageUp', group: 'navigation', cap: 'PgUp', label: 'a page up', run: function () { page('up'); } });
   Keys.register({ key: 'PageDown', group: 'navigation', cap: 'PgDn', label: 'a page down', run: function () { page('down'); } });
-  window.Feed = { reveal: centre, formatLocalTime: formatLocalTime };
+  window.Feed = { reveal: centre };
 
   // The page opens at the message its address names (a citation's link, a
   // reload), else at the newest, selected. Images lay out late; once they
