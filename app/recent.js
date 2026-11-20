@@ -12,7 +12,10 @@
 //
 // The list names its live stream (data-stream). Each `tile` event is a
 // conversation's tile after a new message: it takes the place of that
-// conversation's tile, at the top, as chat-client's upsert did.
+// conversation's tile, at the top, as chat-client's upsert did. The stream
+// carries the viewer's notices too, `notice` and `message-notice`, which
+// chrome.js's Notices shows above the page, painting the tab, as Gopher
+// Chat's Recent page did with notify.js.
 (function () {
   'use strict';
   var list = document.querySelector('.recent-list');
@@ -114,4 +117,6 @@
 
   var events = new EventSource(list.getAttribute('data-stream'));
   events.addEventListener('tile', function (e) { upsert(e.data); });
+  events.addEventListener('notice', function (e) { Notices.show(e.data); });
+  events.addEventListener('message-notice', function (e) { Notices.showUnlessHere(e.data); });
 })();

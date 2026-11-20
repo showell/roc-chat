@@ -10,7 +10,7 @@
 ## js/notify.js painted a 32-pixel square #8a2be2 when a notice came). A page's
 ## policy allows images from this site alone, so it is a file served here,
 ## under `/chat/assets/` beside the scripts, where notify.js drew a data: URL.
-## app/sidebar.js names it when a notice arrives, and names `url_path` again
+## app/chrome.js names it when a notice arrives, and names `url_path` again
 ## when the notice's link is followed.
 import "favicon.ico" as favicon_file : List(U8)
 import "alert-icon.svg" as alert_file : List(U8)
@@ -45,9 +45,9 @@ expect {
 		and text.contains("fill=\"#8a2be2\"")
 		and Favicon.alert_bytes.len() < 200
 }
-# app/sidebar.js names both icons by these paths.
+# app/chrome.js names both icons by these paths.
 expect {
-	sidebar = Str.from_utf8_lossy(Script.Sidebar.bytes())
-	sidebar.contains("paintTab('${Favicon.alert_url_path}')")
-		and sidebar.contains("paintTab('${Favicon.url_path}')")
+	chrome = Str.from_utf8_lossy(Script.Chrome.bytes())
+	chrome.contains("paintTab('${Favicon.alert_url_path}')")
+		and chrome.contains("paintTab('${Favicon.url_path}')")
 }

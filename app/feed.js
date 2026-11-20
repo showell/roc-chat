@@ -433,12 +433,15 @@
     shown.replaceWith(fresh);
     if (window.Actions) Actions.dress(fresh);
   });
-  // What the stream carries from the viewer's own key, for the sidebar: a
-  // human come online, the notice that says so, and a new topic in one of
-  // the viewer's places (sidebar.js).
+  // What the stream carries from the viewer's own key: for the sidebar, a
+  // human come online and a new topic in one of the viewer's places
+  // (sidebar.js); for the line above the page and the tab, the notice that
+  // a human has come online and the notice of a message in one of the
+  // viewer's places (chrome.js's Notices).
   events.addEventListener('online', function (e) { if (window.Sidebar) Sidebar.markOnline(e.data); });
   events.addEventListener('topic-added', function (e) { if (window.Sidebar) Sidebar.topicAdded(e.data); });
-  events.addEventListener('notice', function (e) { if (window.Sidebar) Sidebar.showNotice(e.data); });
+  events.addEventListener('notice', function (e) { Notices.show(e.data); });
+  events.addEventListener('message-notice', function (e) { Notices.showUnlessHere(e.data); });
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for
   // this reason in the last minute; then it shows a notice and stops trying.

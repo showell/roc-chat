@@ -15,6 +15,7 @@ import DateTime
 import Sample
 import UnvalidatedString
 import RecentFeed
+import Presence
 import ServerSentEvent
 import Transcript
 import UserId
@@ -33,11 +34,13 @@ RecentStream :: [].{
 	holder = |viewer| viewer.to_str().to_utf8()
 
 	## `viewer`'s Recent stream: live only, since the page is the backlog;
-	## each tile `publish!` sends them after.
+	## each tile `publish!` sends them after, and what is sent to the viewer
+	## alone (`Presence.viewer_stream_key`), the notices above the page among
+	## it, as Gopher Chat's Recent page heard its notify stream.
 	response : UserId -> Http.Response
 	response = |viewer|
 		HttpAnswer.stream({
-			keys: [RecentStream.bus_key(viewer)],
+			keys: [RecentStream.bus_key(viewer), Presence.viewer_stream_key(viewer)],
 			holder: RecentStream.holder(viewer),
 			backlog: [],
 		})
@@ -150,7 +153,7 @@ expect RecentStream.bus_key(UserId.chat_owner) == "/recent/1".to_utf8()
 expect RecentStream.holder(UserId.chat_owner) == "1".to_utf8()
 expect {
 	response = RecentStream.response(UserId.chat_owner)
-	response.kind == Stream and response.body == [] and response.stream_keys == ["/recent/1".to_utf8()]
+	response.kind == Stream and response.body == [] and response.stream_keys == ["/recent/1".to_utf8(), "/viewers/1".to_utf8()]
 }
 expect
 	Str.from_utf8_lossy(

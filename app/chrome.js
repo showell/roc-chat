@@ -24,6 +24,21 @@
 // style sheet can't do (sidebar.js's drawer). A narrow page has less padding
 // round its frame, and its fields' text is 16 pixels, so a phone doesn't zoom
 // in on one it focuses.
+//
+// The notices are chat-client's js/notify.js, on the pages that have its
+// strip as Gopher Chat's did (a conversation with a sidebar, and Recent): a
+// page's stream passes on two events from the viewer's own key (feed.js,
+// recent.js). `notice`, a link saying a human has come online, goes to
+// Notices.show; `message-notice`, a link to the topic of a message someone
+// else wrote in one of the viewer's places, to Notices.showUnlessHere, which
+// drops it on that topic's own page. Each is shown in the line above the page
+// (.notice-strip, chat-client's #chat-notify), in place of the last one, and
+// paints the tab's icon violet, whether or not the tab is in view, until the
+// notice's link is followed, with no timer. notify.js drew the violet as a
+// data: URL, which this site's policy refuses, so it is a file the server
+// serves (app/Favicon.roc); and where notify.js cleared the tab to a blank
+// icon, the site's own icon comes back. The <link> is made anew each time, as
+// notify.js's was, since some browsers repaint only a new element.
 window.Viewport = (function () {
   'use strict';
   var narrowQuery = window.matchMedia('(max-width:768px)');
@@ -42,6 +57,53 @@ window.Viewport = (function () {
     isNarrow: function () { return narrowQuery.matches; },
     onChange: function (callback) { callbacks.push(callback); callback(narrowQuery.matches); },
   };
+})();
+
+window.Notices = (function () {
+  'use strict';
+  var strip = document.querySelector('.notice-strip');
+  if (strip) {
+    Object.assign(strip.style, {
+      margin: '0 0 8px', fontSize: '13px', color: 'var(--cc-notify-fg)', overflow: 'hidden',
+      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', minHeight: '1em',
+    });
+  }
+  function paintTab(href) {
+    var old = document.getElementById('favicon');
+    if (old) old.remove();
+    var link = document.createElement('link');
+    link.id = 'favicon';
+    link.rel = 'icon';
+    link.href = href;
+    document.head.appendChild(link);
+  }
+  function alertTab() { paintTab('/chat/assets/alert-icon.svg'); }
+  function clearTab() { paintTab('/favicon.ico'); }
+
+  // A notice, the server's HTML (a link), shown in the strip in place of
+  // the last one, and the tab painted.
+  function show(html) {
+    if (!strip) return;
+    strip.innerHTML = html;
+    strip.querySelectorAll('a').forEach(function (link) {
+      link.style.color = 'inherit';
+      link.addEventListener('click', clearTab);
+    });
+    alertTab();
+  }
+
+  // A message's notice, unless its link is this page: no point saying "new
+  // message" about the topic being read. Both paths are read as the browser
+  // reads a URL, so an escape in one is the same as in the other.
+  function showUnlessHere(html) {
+    var holder = document.createElement('template');
+    holder.innerHTML = html;
+    var link = holder.content.querySelector('a');
+    if (link && new URL(link.getAttribute('href'), location.href).pathname === location.pathname) return;
+    show(html);
+  }
+
+  return { show: show, showUnlessHere: showUnlessHere };
 })();
 
 (function () {

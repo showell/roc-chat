@@ -10,14 +10,11 @@
 //
 // Presence, chat-client's: a DM with another human (data-person) has a dot
 // before its name, a hollow ring while they are away and solid green while
-// they are online (data-presence). The page's stream (feed.js) passes on two
-// events from the viewer's own key: `online`, a human's id, fills their dot
-// (Sidebar.markOnline); `notice`, a link, is shown in the line above the
-// page (.notice-strip, chat-client's #chat-notify), replacing the last one
-// (Sidebar.showNotice) and paints the tab's icon violet until its link is
-// followed, as chat-client's js/notify.js did. A dot never empties while
-// the page is open: as in chat-client, the next page drawn says who is still
-// online.
+// they are online (data-presence). The page's stream (feed.js) passes on
+// `online` from the viewer's own key, a human's id, which fills their dot
+// (Sidebar.markOnline). A dot never empties while the page is open: as in
+// chat-client, the next page drawn says who is still online. The notices
+// above the page, and the tab's violet icon, are chrome.js's (Notices).
 //
 // In a window wider than 768 pixels the sidebar is a rail 180 pixels wide on
 // the left of the layout. Clicking a place's name, or Enter or Space on it,
@@ -382,45 +379,6 @@ window.Sidebar = (function () {
     paintDot(shown.dot, true);
   }
 
-  // The line above the page, chat-client's status strip.
-  var strip = document.querySelector('.notice-strip');
-  if (strip) {
-    Object.assign(strip.style, {
-      margin: '0 0 8px', fontSize: '13px', color: 'var(--cc-notify-fg)', overflow: 'hidden',
-      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', minHeight: '1em',
-    });
-  }
-  // The tab's icon, chat-client's js/notify.js: violet when a notice comes,
-  // whether or not the tab is in view, and kept so until the notice's link
-  // is followed, with no timer. notify.js drew the violet as a data: URL,
-  // which this site's policy refuses, so it is a file the server serves
-  // (app/Favicon.roc); and where notify.js cleared the tab to a blank icon,
-  // the site's own icon comes back. The <link> is made anew each time, as
-  // notify.js's was, since some browsers repaint only a new element.
-  function paintTab(href) {
-    var old = document.getElementById('favicon');
-    if (old) old.remove();
-    var link = document.createElement('link');
-    link.id = 'favicon';
-    link.rel = 'icon';
-    link.href = href;
-    document.head.appendChild(link);
-  }
-  function alertTab() { paintTab('/chat/assets/alert-icon.svg'); }
-  function clearTab() { paintTab('/favicon.ico'); }
-
-  // A notice, the server's HTML (a link), shown in the strip in place of
-  // the last one, and the tab painted.
-  function showNotice(html) {
-    if (!strip) return;
-    strip.innerHTML = html;
-    strip.querySelectorAll('a').forEach(function (link) {
-      link.style.color = 'inherit';
-      link.addEventListener('click', clearTab);
-    });
-    alertTab();
-  }
-
   // A `topic-added` event's data: the place's path, the topic and its page.
   function topicAdded(data) {
     var fields = data.split('\n');
@@ -428,5 +386,5 @@ window.Sidebar = (function () {
     addTopic(fields[0], fields[1], fields[2]);
   }
 
-  return { addTopic: addTopic, topicAdded: topicAdded, markOnline: markOnline, showNotice: showNotice };
+  return { addTopic: addTopic, topicAdded: topicAdded, markOnline: markOnline };
 })();

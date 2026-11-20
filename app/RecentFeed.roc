@@ -94,9 +94,10 @@ RecentFeed :: [].{
 	stream_path : Str
 	stream_path = "${PageKit.recent_path}/stream"
 
-	## The Recent page for `viewer`: a line saying there is nothing yet when
-	## `tiles` is empty, then the list of `tiles`, as given, which names its
-	## live stream.
+	## The Recent page for `viewer`: the line above the page, empty until
+	## app/chrome.js says a notice there (Gopher Chat's Recent had its
+	## #chat-notify), a line saying there is nothing yet when `tiles` is
+	## empty, then the list of `tiles`, as given, which names its live stream.
 	page : { viewer : SignedIn, tiles : List(RecentFeed.Tile) } -> TrustedHtml
 	page = |{ viewer, tiles }| {
 		nothing_yet =
@@ -124,7 +125,13 @@ RecentFeed :: [].{
 			title: "Recent",
 			viewer,
 			parts: List.concat(
-				nothing_yet,
+				List.concat(
+					[
+						Html.element({ name: P, attributes: [PageContract.class(NoticeStrip)], inner: TrustedHtml.join([]) }),
+						PageKit.newline,
+					],
+					nothing_yet,
+				),
 				[listed, PageKit.newline, PageKit.script(Script.Recent), PageKit.newline],
 			),
 		})

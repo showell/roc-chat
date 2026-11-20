@@ -383,7 +383,7 @@ compose_box = |key| {
 }
 
 ## The line above the layout, saying `notice` as the page is drawn, where
-## app/sidebar.js later says that someone has come online.
+## app/chrome.js later shows the notices of the viewer's stream.
 notice_strip : [NoNotice, Notice(Str)] -> TrustedHtml
 notice_strip = |notice|
 	TrustedHtml.join([

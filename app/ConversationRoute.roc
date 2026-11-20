@@ -46,6 +46,7 @@ import FileFacts
 import HttpAnswer
 import Message
 import MessageNotes
+import MessageNotice
 import Name
 import PageKit
 import Presence
@@ -277,8 +278,9 @@ load_timed_places! = |places| {
 }
 
 ## The message in `post`'s form, added to its conversation and to the
-## transcript, then sent to the conversation's stream, and a new topic's
-## first told to everyone who may read it: the message's HTML,
+## transcript, then sent to the conversation's stream, told to everyone
+## else who may read it (`MessageNotice`), and a new topic's first told to
+## everyone who may read it: the message's HTML,
 ## as the page and the stream write it, made once for both; or why not. An
 ## edit sends the message it edits again, drawn as edited.
 append_posted_message! : ConversationRoute.Post => Try(TrustedHtml, _)
@@ -318,6 +320,10 @@ append_posted_message! = |post| {
 			}
 		}
 		File(_) => {}
+	}
+	notice = MessageNotice.frame({ author: post.acting.user().name().to_str(), key: post.key })
+	for reader in MessageNotice.told({ readers: post.readers, author: post.acting.user().id() }) {
+		Host.publish_bytes_to_streams_on_key!(Presence.viewer_stream_key(reader), notice)
 	}
 	match edit {
 		EditOf(id) =>
