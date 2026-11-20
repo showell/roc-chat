@@ -1273,7 +1273,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const phone_stream_ended = if (phone_stream.event()) |_| false else |e| e == error.EndOfStream;
     const ended_ms = signing_out.untilNow(io, .awake).toMilliseconds();
     try t.check("the phone's stream, open as it signs out, is ended at once, as an open stream checks no key again", phone_stream.isEventStream() and
-        phone_stream_ended and ended_ms < Stream.stream_ms / 2);
+        phone_stream_ended and ended_ms < Stream.wait_ms / 2);
     const after_out = try getAs(a, io, port, phone_session, "/chat");
     try t.check("confirmed: the key's state revoked, then a 303 to sign in, the session's cookie and the one that shows a code forgotten; the old cookie, sent again, is refused (a 303 to sign in)", phone_out.status == 303 and
         std.mem.eql(u8, phone_out.header("location") orelse "", "/login") and
