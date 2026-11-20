@@ -253,9 +253,9 @@ no_offer_words = |why|
 		ChatFull => "Your GitHub login is not offered: the chat holds as many as it can."
 	}
 
-## The device code's field, labelled, with `focus`'s attributes: letters
-## typed as capitals, no correction, room for a pasted code with its dash
-## and spaces.
+## The device code's field, labelled, with `focus`'s attributes: a phone's
+## number pad, digits with spaces or dashes allowed, no correction, room for
+## a pasted code with its gap.
 code_field : List(Html.Attribute) -> TrustedHtml
 code_field = |focus| {
 	attributes = List.concat(

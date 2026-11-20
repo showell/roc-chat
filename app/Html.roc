@@ -272,7 +272,7 @@ attribute = |given|
 		Autocomplete(NewPassword) => " autocomplete=\"new-password\""
 		Autocomplete(OneTimeCode) => " autocomplete=\"one-time-code\""
 		Autofocus => " autofocus"
-		CodeTyping => " autocapitalize=\"characters\" autocorrect=\"off\" spellcheck=\"false\""
+		CodeTyping => " inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\""
 		Src(path) => " src=\"${path.to_str()}\""
 		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
 		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
@@ -415,7 +415,7 @@ expect {
 		(Autocomplete(OneTimeCode), " autocomplete=\"one-time-code\""),
 		(Autofocus, " autofocus"),
 		(MaxLength(20), " maxlength=\"20\""),
-		(CodeTyping, " autocapitalize=\"characters\" autocorrect=\"off\" spellcheck=\"false\""),
+		(CodeTyping, " inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\""),
 	].all(|(given, expected)| attribute(given) == expected)
 }
 # A link to another page of this site: its site path, as it is, and to a

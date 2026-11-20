@@ -405,7 +405,7 @@ no_match_words = "That code didn't work. Check it and try again; a code lasts fi
 
 ## The refusal of an entry that is no code's shape, which counts no guess.
 malformed_words : Str
-malformed_words = "A code is 8 letters and digits, like ABCD-EFGH."
+malformed_words = "A code is 8 digits, like 1234 5678."
 
 ## What the locked form says.
 locked_words : Str

@@ -1,7 +1,7 @@
 ## This module keeps the device code form's tallies of failures in the
 ## host's memory, which `DeviceCodeLimit` decides on: it finds a request's
-## client, loads its tally and everyone's, says whether the client's locks
-## the form, and counts a failure in both, logging when everyone's reaches
+## client, loads its tally and everyone's, says whether either locks the
+## form, and counts a failure in both, logging when everyone's reaches
 ## the count that tells of a flood.
 import pf.Host
 import pf.Http
@@ -25,15 +25,15 @@ DeviceCodeTallies :: [].{
 		]
 	}
 
-	## Whether the client's tally among `tallies` has reached its most, so
-	## the form is locked for it; everyone's locks nothing.
+	## Whether a tally among `tallies` has reached its most, the client's or
+	## everyone's, so the form is locked.
 	is_locked : List(DeviceCodeTallies.CountedTally) -> Bool
 	is_locked = |tallies|
 		tallies.any(
 			|{ who, tally }|
 				match who {
 					Clients(_) => DeviceCodeLimit.is_locked(tally, DeviceCodeLimit.client_most)
-					Everyone => Bool.False
+					Everyone => DeviceCodeLimit.is_locked(tally, DeviceCodeLimit.everyone_most)
 				},
 		)
 
@@ -42,7 +42,7 @@ DeviceCodeTallies :: [].{
 	count_failure! = |tallies| {
 		for counted in tallies {
 			after = DeviceCodeLimit.tally_after_failure(counted.tally)
-			if counted.who == Everyone and after.failures == DeviceCodeLimit.everyone_noted_at {
+			if counted.who == Everyone and after.failures == DeviceCodeLimit.everyone_most {
 				Host.write_line_to_server_log!(flood_line.to_utf8())
 			}
 			_ = Host.replace_second_kept_under_key!(
@@ -81,4 +81,4 @@ load_tally! = |who, now|
 
 ## The log's line when everyone's failures reach their most.
 flood_line : Str
-flood_line = "device codes: ${DeviceCodeLimit.everyone_noted_at.to_str()} failed in a window from everyone, a flood of guesses; each client stays locked at its own limit"
+flood_line = "device codes: ${DeviceCodeLimit.everyone_most.to_str()} failed in a window from everyone, a flood of guesses; the form is locked for everyone until the window ends"

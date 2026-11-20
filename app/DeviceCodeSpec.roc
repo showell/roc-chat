@@ -110,22 +110,22 @@ repeated_code : U8, U64 -> Try(DeviceCode.Code, [NotACode])
 repeated_code = |character, count|
 	DeviceCode.Code.from_typed(Str.from_utf8_lossy(List.repeat(character, count)))
 
-# The alphabet: 31 characters, none of 0, O, 1, I or L.
-expect DeviceCode.alphabet.len() == 31
-expect "0O1IL".to_utf8().all(|byte| !DeviceCode.alphabet.contains(byte))
-# A code from random bytes: each byte below 248 is a character, its
-# remainder by 31 its place; bytes 248 and up are passed over.
+# The alphabet: the 10 digits.
+expect DeviceCode.alphabet == "0123456789".to_utf8()
+# A code from random bytes: each byte below 250 is a digit, its remainder by
+# 10; bytes 250 and up are passed over. It is shown as two groups of four
+# with a thin space between.
 expect
-	DeviceCode.Code.of_random_bytes([0, 1, 30, 31, 248, 255, 247, 62, 9, 100])
-		== Ok(code_of("23Z2Z2B9"))
-		and code_of("23Z2Z2B9").display_text() == "23Z2-Z2B9"
+	DeviceCode.Code.of_random_bytes([0, 1, 19, 250, 255, 249, 62, 9, 100, 37, 5])
+		== Ok(code_of("01992907"))
+		and code_of("01992907").display_text() == "0199\u(2009)2907"
 expect {
 	too_few = List.concat(List.repeat(250, 32), [1, 2, 3])
 	DeviceCode.Code.of_random_bytes(too_few) == Err(TooFewUsableBytes)
 }
-# Every character is drawn by exactly 8 of the 248 usable bytes.
+# Every digit is drawn by exactly 25 of the 250 usable bytes.
 expect {
-	usable = List.from_iter(U8.to(0, 247))
+	usable = List.from_iter(U8.to(0, 249))
 	DeviceCode.alphabet.all(
 		|character| {
 			drawing = usable.keep_if(
@@ -134,38 +134,39 @@ expect {
 					drawn == repeated_code(character, 8)
 				},
 			)
-			drawing.len() == 8
+			drawing.len() == 25
 		},
 	)
 }
-# Typed: either case, spaces and dashes left out, as it is shown or pasted.
+# Typed: the digits, with spaces, thin spaces and dashes left out, as it is
+# shown, typed or pasted.
 expect
 	[
-		"ABCD-EFGH",
-		"abcd-efgh",
-		"AbCd EfGh",
-		" abcdefgh ",
-		"ab-cd ef-gh",
-		"ABCDEFGH",
-	].all(|typed| DeviceCode.Code.from_typed(typed) == Ok(code_of("ABCDEFGH")))
-# Not a code: too short or long, an ambiguous character, or anything else.
+		"48210937",
+		"4821 0937",
+		"4821-0937",
+		"4821\u(2009)0937",
+		" 4821 0937 ",
+		"48-21 09-37",
+	].all(|typed| DeviceCode.Code.from_typed(typed) == Ok(code_of("48210937")))
+# Not a code: too short or long, a letter (the old codes' alphabet above
+# all, in either case), or anything else, refused cleanly as no code.
 expect
 	[
 		"",
-		"ABCD-EFG",
-		"ABCD-EFGHJ",
-		"ABCD-EFG0",
-		"ABCD-EFGO",
-		"ABCD-EFG1",
-		"ABCD-EFGI",
-		"ABCD-EFGL",
-		"abcd-efgl",
-		"ABCD_EFGH",
-		"ABCD.EFGH",
-		"ABCDÉFGH",
+		"4821 093",
+		"4821 09371",
+		"4821 093O",
+		"4821 093l",
+		"ABCD-EFGH",
+		"abcd-efgh",
+		"4821_0937",
+		"4821.0937",
+		"4821\t0937",
+		"٤٨٢١٠٩٣٧",
 	].all(|typed| DeviceCode.Code.from_typed(typed) == Err(NotACode))
 # The bytes the HMAC is over: kept apart from a session's.
-expect code_of("ABCD-EFGH").bytes_to_sign() == "device-code\nABCDEFGH".to_utf8()
+expect code_of("4821 0937").bytes_to_sign() == "device-code\n48210937".to_utf8()
 expect repeated_code('-', 8) == Err(NotACode)
 
 # Expiry: a record lives five minutes from its making, and redeems from its
@@ -229,9 +230,18 @@ expect
 	].all(|text| DeviceCode.from_file(text.to_utf8()) == Err(Damaged))
 
 # The limit: a client may fail 10 times in a window; the form locks for it
-# at that count, and not one before. Everyone's count locks nothing, and is
-# told of at 1,000.
-expect DeviceCodeLimit.client_most == 10 and DeviceCodeLimit.everyone_noted_at == 1_000
+# at that count, and not one before. Everyone together may fail 1,000 times
+# in a window, and the form then locks for everyone.
+expect DeviceCodeLimit.client_most == 10 and DeviceCodeLimit.everyone_most == 1_000
+expect {
+	everyone = DeviceCodeLimit.tally_of({
+		failures: { second: 999, status: Found },
+		since: { second: 4_900, status: Found },
+		now: Timestamp.at_second(5_000),
+	})
+	!DeviceCodeLimit.is_locked(everyone, DeviceCodeLimit.everyone_most)
+		and DeviceCodeLimit.is_locked(DeviceCodeLimit.tally_after_failure(everyone), DeviceCodeLimit.everyone_most)
+}
 expect {
 	tally = DeviceCodeLimit.tally_of({
 		failures: { second: 9, status: Found },
@@ -299,22 +309,23 @@ expect
 # alone, for the browser's session, sent to no script and on no other
 # site's request; read back among other cookies, and nothing else is a code.
 expect
-	code_of("ABCD-EFGH").flash_cookie_text()
-		== "__Host-device_code=ABCDEFGH; Path=/; HttpOnly; Secure; SameSite=Strict"
+	code_of("4821 0937").flash_cookie_text()
+		== "__Host-device_code=48210937; Path=/; HttpOnly; Secure; SameSite=Strict"
 expect
 	DeviceCode.clear_flash_cookie_text
 		== "__Host-device_code=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"
 expect
-	DeviceCode.Code.from_cookie_header("theme=dark; __Host-device_code=ABCDEFGH; x=y".to_utf8())
-		== Ok(code_of("ABCDEFGH"))
+	DeviceCode.Code.from_cookie_header("theme=dark; __Host-device_code=48210937; x=y".to_utf8())
+		== Ok(code_of("48210937"))
 expect
 	[
 		"",
 		"theme=dark",
 		"__Host-device_code=",
-		"__Host-device_code=ABCD0FGH",
-		"__Host-device_code=ABCDEFGH; __Host-device_code=ABCDEFGH",
-		"device_code=ABCDEFGH",
+		"__Host-device_code=4821O937",
+		"__Host-device_code=ABCDEFGH",
+		"__Host-device_code=48210937; __Host-device_code=48210937",
+		"device_code=48210937",
 	].all(|header| DeviceCode.Code.from_cookie_header(header.to_utf8()) == Err(NoCode))
 
 # The page, a code just made: the code, its expiry as a time the script
@@ -333,9 +344,9 @@ page_text = |shown|
 	)
 
 expect {
-	text = page_text(Made({ code: code_of("ABCDEFGH"), expires: Timestamp.at_second(1_000_300) }))
+	text = page_text(Made({ code: code_of("48210937"), expires: Timestamp.at_second(1_000_300) }))
 	[
-		"<p class=\"sign-in-code\">ABCD-EFGH</p>",
+		"<p class=\"sign-in-code\">4821\u(2009)0937</p>",
 		"<time class=\"code-expiry\" datetime=\"1970-01-12T13:51:40Z\">1970-01-12T13:51:40Z</time>",
 		"Type this only into your own device. Nobody will ever ask you for it.",
 		"<p class=\"code-status\" data-stream=\"/devices/stream\">",

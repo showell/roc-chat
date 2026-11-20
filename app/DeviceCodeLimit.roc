@@ -3,9 +3,13 @@
 ## failed redemption is counted twice, for its client and for everyone
 ## together, in a window of `window_seconds` that starts at the first
 ## failure; a client with `client_most` failures in its window finds the
-## form locked until that window ends. Everyone's count locks nothing, since
-## a guesser with many addresses could lock the form for all; at
-## `everyone_noted_at` failures in a window the route logs a line, once.
+## form locked until that window ends, and so does everyone once everyone's
+## count reaches `everyone_most`, when the route logs a line, once. A code
+## is 8 digits, so a guesser with many addresses, whom no client's limit
+## holds, would otherwise find a live code in about 10^8 guesses; with
+## everyone's lock they make at most 96,000 a day. The cost is that such a
+## guesser can lock the form for everyone, a window at a time, while a
+## password or GitHub still signs people in.
 ##
 ## A client is the `X-Forwarded-For` value the proxy sets (docs/deploy.md,
 ## "The per-client cap"), an IPv4 address whole and an IPv6 address by its
@@ -34,10 +38,11 @@ DeviceCodeLimit :: [].{
 	client_most : I64
 	client_most = 10
 
-	## How many failures everyone together have in a window when the route
-	## logs it, so the server's owner hears of a flood of guesses.
-	everyone_noted_at : I64
-	everyone_noted_at = 1_000
+	## How many failures everyone together may have in a window: at it the
+	## form is locked for everyone until the window ends, and the route logs
+	## it, so the server's owner hears of a flood of guesses.
+	everyone_most : I64
+	everyone_most = 1_000
 
 	## How many buckets clients are kept in: 4,096, two keys each in the
 	## host's memory.

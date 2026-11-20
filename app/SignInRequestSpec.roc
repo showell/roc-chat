@@ -39,10 +39,11 @@ expect
 		"next=/a&next=/b",
 		"next=%G0",
 	].all(|body| SignInRequest.next_from_form(body.to_utf8()) == Err(BadNext))
-# A code sign-in form's code: well formed in any case, with spaces or a
-# dash; anything else, no code at all included, is no guess at one.
+# A code sign-in form's code: 8 digits, with spaces, a thin space or a
+# dash; anything else, letters and no code at all included, is no guess at
+# one.
 expect
-	["code=abcd-efgh", "code=ABCD+EFGH", "code=ABCDEFGH&next=%2Fchat"].all(
+	["code=4821-0937", "code=4821+0937", "code=4821%E2%80%890937", "code=48210937&next=%2Fchat"].all(
 		|body| SignInRequest.device_code_from_form(body.to_utf8()).is_ok(),
 	)
 expect
@@ -51,7 +52,9 @@ expect
 		"next=%2Fchat",
 		"code=",
 		"code=ABC",
-		"code=ABCD-EFG0",
-		"code=ABCD-EFGHJ",
+		"code=4821-093",
+		"code=4821-09371",
+		"code=abcd-efgh",
+		"code=ABCDEFGH",
 		"code=a&code=b",
 	].all(|body| SignInRequest.device_code_from_form(body.to_utf8()) == Err(NotACode))

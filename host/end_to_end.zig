@@ -317,10 +317,10 @@
 //!      an invite still makes its account;
 //! 48zw. a key at Browse, and starting a topic: 403 each;
 //! 48zy. a device code: Steve's page says he has made none; a code made, shown
-//!      once as two groups of four of the alphabet without 0, O, 1, I and L,
+//!      once as two groups of four digits with a thin space between,
 //!      with the warning, never stored, and kept only as its HMAC; a second
 //!      cancels the first, whose redemption from a phone is refused; the
-//!      second, typed in lower case with a space, signs the phone in as Steve,
+//!      second, typed with a dash, signs the phone in as Steve,
 //!      an ordinary session, and Steve's open stream hears "A new device
 //!      signed in"; it works once, and his page then says it was used; an
 //!      expired code, and one cancelled by the phone signing out, refused;
@@ -1164,15 +1164,15 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
         std.mem.eql(u8, first.made.header("location") orelse "", "/devices") and std.mem.startsWith(u8, flash, "__Host-device_code=") and
         std.mem.endsWith(u8, flash, "; Path=/; HttpOnly; Secure; SameSite=Strict") and
         std.mem.eql(u8, first.made.header("cache-control") orelse "", "no-store"));
-    try t.check("the page then shows it once, two groups of four of the alphabet, with its expiry, the warning and a button that cancels it; never stored; the cookie forgotten; its record holds its HMAC, not the code", first.page.status == 200 and
-        isDeviceCode(first_code) and has(first.page.body, "Type this only into your own device. Nobody will ever ask you for it.") and
+    try t.check("the page then shows it once, two groups of four digits, with its expiry, the warning and a button that cancels it; never stored; the cookie forgotten; its record holds its HMAC, not the code", first.page.status == 200 and
+        isDeviceCode(first.shown) and has(first.page.body, "Type this only into your own device. Nobody will ever ask you for it.") and
         has(first.page.body, "<time class=\"code-expiry\" datetime=\"") and
         has(first.page.body, "<form method=\"post\" action=\"/devices/cancel\"><button>Cancel this code</button></form>") and
         has(first.page.body, "<p class=\"code-status\" data-stream=\"/devices/stream\">") and
         has(first.page.body, "<script src=\"/chat/assets/devices.js\"></script>") and
         std.mem.eql(u8, first.page.header("cache-control") orelse "", "no-store") and
         std.mem.eql(u8, first.page.header("set-cookie") orelse "", "__Host-device_code=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict") and
-        std.mem.startsWith(u8, record, "live ") and !has(record, first_code) and !has(record, first_code[0..4]) and !has(record, first_code[5..]));
+        std.mem.startsWith(u8, record, "live ") and !has(record, first_code) and !has(record, first_code[0..4]) and !has(record, first_code[4..]));
     const reloaded = try getAt(a, io, port, "/devices");
     try t.check("a reload of the page shows no code and makes none: it says one is waiting, with the button that cancels it", reloaded.status == 200 and
         !has(reloaded.body, "sign-in-code") and has(reloaded.body, "A code is waiting to be used, until ") and
@@ -1184,7 +1184,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const phone = "x-forwarded-for: 192.0.2.10\r\n";
     const replaced = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{first_code}));
     try t.check("a second code cancels the first: its redemption from a phone, a 401 saying only that it didn't work, no cookie, never stored", second.made.status == 303 and
-        isDeviceCode(second_code) and !std.mem.eql(u8, first_code, second_code) and isCodeRefusal(replaced));
+        isDeviceCode(second.shown) and !std.mem.eql(u8, first_code, second_code) and isCodeRefusal(replaced));
 
     try data.writeFile(io, .{ .sub_path = "users/3/device-code", .data = "not a record\n" });
     defer data.deleteFile(io, "users/3/device-code") catch {};
@@ -1192,10 +1192,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     defer steves_stream.close();
     var devices_stream = try Stream.openWith(a, io, port, "/devices/stream", "");
     defer devices_stream.close();
-    var typed: [9]u8 = undefined;
-    _ = std.ascii.lowerString(&typed, second_code);
-    typed[4] = '+';
-    const signed_in = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{&typed}));
+    const signed_in = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}-{s}", .{ second_code[0..4], second_code[4..] }));
     const phone_session = try cookieLine(a, signed_in);
     const phone_browse = try getAs(a, io, port, phone_session, "/chat");
     var heard = false;
@@ -1206,7 +1203,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
             break;
         }
     }
-    try t.check("the second code, in lower case with a space: a 303 to Browse with a session's cookie, marked as a code's, which reads Browse as Steve; his open stream hears that a new device signed in", signed_in.status == 303 and
+    try t.check("the second code, typed with a dash: a 303 to Browse with a session's cookie, marked as a code's, which reads Browse as Steve; his open stream hears that a new device signed in", signed_in.status == 303 and
         std.mem.eql(u8, signed_in.header("location") orelse "", "/chat") and
         std.mem.startsWith(u8, signed_in.header("set-cookie") orelse "", "__Host-gopher_auth=") and
         has(signed_in.header("set-cookie") orelse "", ".d; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
@@ -1234,7 +1231,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     try data.writeFile(io, .{ .sub_path = "users/1/device-code", .data = try std.fmt.allocPrint(a, "live 1000 1300 {s}", .{hmacs}) });
     const expired = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{third_code}));
     const expired_page = try getAt(a, io, port, "/devices");
-    try t.check("an expired code: the same refusal, and Steve's page says it expired unused", isDeviceCode(third_code) and
+    try t.check("an expired code: the same refusal, and Steve's page says it expired unused", isDeviceCode(third.shown) and
         std.mem.eql(u8, expired.body, replaced.body) and isCodeRefusal(expired) and has(expired_page.body, "Your last code expired unused."));
 
     const fourth = try makeCode(a, io, port, steve_session);
@@ -1245,7 +1242,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const phone_out = try postAs(a, io, port, phone_session, "/logout", "");
     try t.check("signing out forgets the cookie that shows a code, beside the session's", has(phone_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; "));
     const after_sign_out = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{fourth_code}));
-    try t.check("a code Steve makes, then his phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth_code) and
+    try t.check("a code Steve makes, then his phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth.shown) and
         phone_out.status == 303 and std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
         std.mem.eql(u8, after_sign_out.body, replaced.body) and isCodeRefusal(after_sign_out));
 
@@ -1259,7 +1256,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const other_material = try std.fmt.allocPrint(a, "{s}{s}\n", .{ kept[0 .. kept.len - 65], &zero_hmac });
     try data.writeFile(io, .{ .sub_path = "users/1/device-code", .data = other_material });
     const changed = try redeemFrom(a, io, port, "x-forwarded-for: 192.0.2.20\r\n", try std.fmt.allocPrint(a, "code={s}", .{sixth_code}));
-    try t.check("a code whose human's material changed since it was made: the same refusal, the record still live", isDeviceCode(sixth_code) and
+    try t.check("a code whose human's material changed since it was made: the same refusal, the record still live", isDeviceCode(sixth.shown) and
         isCodeRefusal(changed) and std.mem.eql(u8, changed.body, replaced.body) and
         std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "live "));
 
@@ -1295,7 +1292,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     var all_malformed = true;
     for ([_][]const u8{ "code=ABC", "code=ABCD-EFG0", "code=", "code=ABCD-EFGHJ", "next=%2Fchat", "code=ab%20cd%20ef%20gL" }) |form| {
         const answer = try redeemFrom(a, io, port, typist, form);
-        all_malformed = all_malformed and answer.status == 400 and has(answer.body, "A code is 8 letters and digits, like ABCD-EFGH.") and
+        all_malformed = all_malformed and answer.status == 400 and has(answer.body, "A code is 8 digits, like 1234 5678.") and
             answer.header("set-cookie") == null;
     }
     const after_typos = try redeemFrom(a, io, port, typist, "code=2222-2222");
@@ -1371,7 +1368,7 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const phone_session = try cookieLine(a, phone);
     const waiting = try makeCode(a, io, port, steve_session);
     const signed_out = try post(a, io, port, .{ .path = "/devices/sign-out-others", .form = "" });
-    try t.check("signing other devices out cancels the live code first, and forgets the cookie that shows one", isDeviceCode(waiting.code) and
+    try t.check("signing other devices out cancels the live code first, and forgets the cookie that shows one", isDeviceCode(waiting.shown) and
         std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
         has(signed_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; "));
     const steve_again = try cookieLine(a, signed_out);
@@ -1417,8 +1414,9 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
 }
 
 /// A device code made with the `Cookie` line `session`: the POST's answer,
-/// the page it leads to, carried there by its cookie, and the code shown.
-const Made = struct { made: Response, page: Response, code: []const u8 };
+/// the page it leads to, carried there by its cookie, the code as shown, and
+/// its 8 digits, as a phone types them.
+const Made = struct { made: Response, page: Response, shown: []const u8, code: []const u8 };
 
 fn makeCode(a: std.mem.Allocator, io: Io, port: u16, session: []const u8) !Made {
     const made = try postAs(a, io, port, session, "/devices", "");
@@ -1426,15 +1424,20 @@ fn makeCode(a: std.mem.Allocator, io: Io, port: u16, session: []const u8) !Made 
     const pair = set[0 .. std.mem.indexOfScalar(u8, set, ';') orelse set.len];
     const both = try std.fmt.allocPrint(a, "{s}; {s}\r\n", .{ std.mem.trimEnd(u8, session, "\r\n"), pair });
     const page = try getAs(a, io, port, both, "/devices");
-    return .{ .made = made, .page = page, .code = between(page.body, "<p class=\"sign-in-code\">", "</p>") orelse "" };
+    const shown = between(page.body, "<p class=\"sign-in-code\">", "</p>") orelse "";
+    const code = try std.mem.replaceOwned(u8, a, shown, thin_space, "");
+    return .{ .made = made, .page = page, .shown = shown, .code = code };
 }
 
-/// Whether `code` is as the page shows a device code: four characters of
-/// the alphabet, a dash, and four more.
-fn isDeviceCode(code: []const u8) bool {
-    const alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
-    if (code.len != 9 or code[4] != '-') return false;
-    for (code, 0..) |c, i| if (i != 4 and std.mem.indexOfScalar(u8, alphabet, c) == null) return false;
+/// The thin space, U+2009, between a shown device code's two groups.
+const thin_space = "\u{2009}";
+
+/// Whether `shown` is as the page shows a device code: four digits, a thin
+/// space, and four more.
+fn isDeviceCode(shown: []const u8) bool {
+    if (shown.len != 8 + thin_space.len or !std.mem.eql(u8, shown[4 .. 4 + thin_space.len], thin_space)) return false;
+    for (shown[0..4]) |c| if (!std.ascii.isDigit(c)) return false;
+    for (shown[4 + thin_space.len ..]) |c| if (!std.ascii.isDigit(c)) return false;
     return true;
 }
 

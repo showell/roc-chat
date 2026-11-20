@@ -5,10 +5,14 @@
 ## with a session marked as a code's (`Session.Origin`), which may not hand
 ## out credentials or take them back (`FullSessionRoutes`).
 ##
-## A code is 8 characters of `alphabet`, which leaves out 0, O, 1, I and L,
-## made from the host's random bytes (`Code.of_random_bytes`). It is shown as
-## two groups of four, and read back case-insensitively with spaces and
-## dashes ignored (`Code.from_typed`).
+## A code is 8 digits (Steve, 2026-11-20: "The device code is not
+## iphone-friendly... I would consider eight digits instead"), made from the
+## host's random bytes (`Code.of_random_bytes`). It is shown as two groups
+## of four, a thin space between them, and read back with spaces, thin
+## spaces and dashes ignored (`Code.from_typed`), so a phone types it on its
+## number pad. Ten to the eighth codes is few enough to guess at without
+## limits, so `DeviceCodeLimit` locks the form for everyone, as well as for
+## each client, past a count of failures.
 ##
 ## The chat keeps one record a human, never the code: the HMAC of the code's
 ## `bytes_to_sign` under the server's secret, which the host computes and
@@ -40,11 +44,11 @@ DeviceCode :: {
 	material : List(U8),
 }.{
 
-	## What a code is, as typed or shown: 8 bytes of `alphabet`.
+	## What a code is, as typed or shown: 8 digits, bytes of `alphabet`.
 	Code :: List(U8).{
 
-		## The code the host's random `bytes` make: each byte below 248 is
-		## one character, its remainder by 31 the place in `alphabet`, so
+		## The code the host's random `bytes` make: each byte below 250 is
+		## one digit, its remainder by 10 the place in `alphabet`, so
 		## every character is as likely; the rest are passed over. Fewer than
 		## 8 such bytes is `TooFewUsableBytes`, and the caller draws again.
 		of_random_bytes : List(U8) -> Try(DeviceCode.Code, [TooFewUsableBytes])
@@ -57,13 +61,13 @@ DeviceCode :: {
 			}
 		}
 
-		## The code a human typed: its letters in either case, with any
-		## spaces and dashes left out; unless what is left is not 8
-		## characters of `alphabet` (`NotACode`).
+		## The code a human typed: its digits, with any spaces, thin spaces
+		## (as the page shows it, pasted) and dashes left out; unless what is
+		## left is not 8 digits (`NotACode`), a letter above all.
 		from_typed : Str -> Try(DeviceCode.Code, [NotACode])
 		from_typed = |typed| {
 			kept =
-				typed.with_ascii_uppercased().to_utf8()
+				Str.join_with(typed.split_on(thin_space), "").to_utf8()
 					.drop_if(|byte| byte == ' ' or byte == '-')
 			if kept.len() == code_length and kept.all(|byte| alphabet.contains(byte)) {
 				Ok(DeviceCode.Code.(kept))
@@ -72,12 +76,13 @@ DeviceCode :: {
 			}
 		}
 
-		## The code as a page shows it: two groups of four, joined by a dash.
+		## The code as a page shows it: two groups of four, joined by a thin
+		## space, which reads as a gap and is never typed.
 		display_text : DeviceCode.Code -> Str
 		display_text = |DeviceCode.Code.(characters)| {
 			first = Str.from_utf8_lossy(characters.take_first(4))
 			last = Str.from_utf8_lossy(characters.drop_first(4))
-			"${first}-${last}"
+			"${first}${thin_space}${last}"
 		}
 
 		## The code the request's `Cookie` header `header` carries in the
@@ -116,10 +121,9 @@ DeviceCode :: {
 		is_eq : _
 	}
 
-	## The 8 characters a code is made of: 2 to 9, and A to Z without I, L
-	## and O.
+	## The characters a code is made of: the digits.
 	alphabet : List(U8)
-	alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ".to_utf8()
+	alphabet = "0123456789".to_utf8()
 
 	## How many random bytes a code is drawn from: enough that fewer than 8
 	## usable ones (`Code.of_random_bytes`) happens about never.
@@ -338,16 +342,20 @@ flash_attributes = "HttpOnly; Secure; SameSite=Strict"
 code_length : U64
 code_length = 8
 
-## The bytes below which a random byte is one character: 31 times 8, so each
-## of the 31 characters has 8 bytes.
+## The bytes below which a random byte is one character: 10 times 25, so
+## each of the 10 digits has 25 bytes.
 usable_below : U8
-usable_below = 248
+usable_below = 250
 
 ## The character a usable random byte stands for.
 character_of : U8 -> U8
 character_of = |byte|
-	DeviceCode.alphabet.get((byte % 31).to_u64())
-		?? crash "DeviceCode.character_of: a remainder by 31 is a place in the 31-character alphabet"
+	DeviceCode.alphabet.get((byte % 10).to_u64())
+		?? crash "DeviceCode.character_of: a remainder by 10 is a place in the 10-digit alphabet"
+
+## The thin space, U+2009, between a shown code's two groups.
+thin_space : Str
+thin_space = "\u(2009)"
 
 ## The 32 bytes a file's `word` spells in lowercase hex; unless it spells
 ## anything else.
