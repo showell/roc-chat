@@ -32,6 +32,7 @@ import GitHubSignUp
 import GitHubTrip
 import HttpAnswer
 import HumanInvites
+import JoinedFiles
 import PageKit
 import RequestHeader
 import SignInPage
@@ -226,6 +227,7 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 		github: made.github,
 	}) ? |fault| FileSystem(fault)
 	DirectoryFiles.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
+	JoinedFiles.record_joined!(made.human.id(), now) ? |fault| FileSystem(fault)
 	_ = Host.replace_second_kept_under_key!(slot, now.to_seconds_since_epoch())
 	Ok(made.admission.going_to(landing))
 }

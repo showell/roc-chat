@@ -377,7 +377,9 @@
 //!      to its topic, even the page's own (the page drops that one), and his
 //!      open Recent page's stream hears it for her channel post; his own
 //!      messages tell him nothing.
-//! 57d. on the second server, a human just joined (Rita), so new: her
+//! 57d. on the second server, a human just joined (Rita): her join writes
+//!      `auth/<id>/joined`, the second, which a join after an invite again
+//!      keeps; so she is new, her
 //!      upload total seeded 100 MiB less a PNG, its upload a 200, the total
 //!      exactly 100 MiB; one more: a 403 saying a new account's limit,
 //!      nothing stored or counted;
@@ -1052,7 +1054,21 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
 
     // 57d.
     const rita_id = try nextId(a, io, data);
-    const rita = try joinedHuman(a, io, port, steve_session, "Rita");
+    const joined_path = try std.fmt.allocPrint(a, "auth/{d}/joined", .{rita_id});
+    const joining = files.current_utc_seconds_since_epoch(io);
+    const first_session = try joinedHuman(a, io, port, steve_session, "Rita");
+    const joined_at = try std.fmt.parseInt(i64, try readFile(a, io, data, joined_path), 10);
+    const joined_by = files.current_utc_seconds_since_epoch(io);
+    // Invited again and joined again: the first join is kept.
+    const again = try postAs(a, io, port, steve_session, try std.fmt.allocPrint(a, "/invites/{d}/again", .{rita_id}), "");
+    const again_link = between(again.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const again_code = again_link[(std.mem.indexOfScalar(u8, again_link, '#') orelse return error.NoCode) + 1 ..];
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(1100) }, io);
+    const rejoined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Rita&password=their+new+own", .{again_code}));
+    try t.check("Rita's join writes `joined`, the second she joined, its digits; invited again and joined again, it is kept", joined_at >= joining and joined_at <= joined_by and
+        first_session.len > 0 and rejoined.status == 303 and std.mem.eql(u8, try readFile(a, io, data, joined_path), try std.fmt.allocPrint(a, "{d}", .{joined_at})));
+    // Her new password ended the first session; the join's own signs her in.
+    const rita = try cookieLine(a, rejoined);
     const rita_total = try std.fmt.allocPrint(a, "users/{d}/upload-bytes", .{rita_id});
     const new_most = 100 * 1024 * 1024;
     try data.createDirPath(io, std.fs.path.dirname(rita_total).?);
@@ -1063,7 +1079,7 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
     const past = try uploadAs(a, io, port, try std.fmt.allocPrint(a, "{s}{s}", .{ rita, own_page }), png);
     try t.check("a new account, Rita, just joined: an upload landing on 100 MiB, 200; one more, 403, saying a new account's limit, nothing stored or counted", rita.len > 0 and
         at_most.status == 200 and std.mem.eql(u8, at_most_total, try std.fmt.allocPrint(a, "{d}", .{new_most})) and
-        past.status == 403 and std.mem.eql(u8, past.body, "Upload limit reached — a new account may upload 100 MiB in its first 7 days.\n") and
+        past.status == 403 and std.mem.eql(u8, past.body, "Upload limit reached — a new account may upload 100 MiB in its first 2 days.\n") and
         std.mem.eql(u8, try readFile(a, io, data, rita_total), at_most_total) and uploads_before == 1 and (try namesIn(a, io, data, channel_uploads)).len == 1);
 
     // 57e.
