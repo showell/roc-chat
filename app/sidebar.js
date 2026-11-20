@@ -28,9 +28,11 @@
 //
 // Collapsing: a standard disclosure triangle before each group's heading
 // and each place's name, ▾ open and ▸ collapsed, collapses or opens it, by
-// a click or by Enter or Space on it. A group's heading, and a channel's
-// name, do the same; a DM's name opens instead the card about its person
-// (sidebar-popups.js). A group starts open, and a place as the server says
+// a click or by Enter or Space on it. A group's heading does the same. A
+// place's name opens its card instead (sidebar-popups.js), a DM's about its
+// person and a channel's about the channel, alike (Steve, 2026-11-20:
+// "channels UX features mostly match DM UX"); only the triangle collapses
+// a place. A group starts open, and a place as the server says
 // (data-opening): `open`, `collapsed`, or `always`, the page's own place,
 // which opens on every load. Once a person opens or collapses a group or a
 // place, their choice is kept across reloads (localStorage, by the group's
@@ -292,15 +294,11 @@ window.Sidebar = (function () {
 
     var shut = disclosure(label, list, 'chat-sidebar-collapsed:' + section, startsCollapsed(section, place.getAttribute('data-opening')));
     headingRow(name, [shut.triangle, name, plus], 1);
-    if (group.getAttribute('data-group') === 'dms') {
-      name.title = 'About ' + label;
-      hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
-      var card = SidebarPopups.personPopup(place, label, list, name, popup);
-      cards[section] = card;
-      onPress(name, card.open);
-    } else {
-      onPress(name, shut.flip);
-    }
+    name.title = 'About ' + label;
+    hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
+    var card = SidebarPopups.placePopup(place, label, list, name, popup);
+    cards[section] = card;
+    onPress(name, card.open);
   });
 
   // The DMs that wait (app/DmShortlist.roc): kept out of sight, and the

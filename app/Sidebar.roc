@@ -28,9 +28,9 @@
 ## A DM with another human names them (`data-person`) and says whether they
 ## are online (`data-presence`, by `Presence`), so app/sidebar.js draws its
 ## dot, and fills it when the page's stream says they have come online.
-## Clicking a DM's name opens app/sidebar-popups.js's card about the person:
-## their name (the place's label), whether they are online, the topics of
-## the DM as links, and a new topic. When each human joined is not drawn yet:
+## Clicking a place's name opens app/sidebar-popups.js's card about it, a
+## channel's and a DM's alike: its name (the place's label), for a DM whether
+## its person is online, its topics as links, and a new topic. When each human joined is not drawn yet:
 ## once accounts keep it, `person_attributes` adds `data-joined` (its seconds
 ## since 1970, `PageContract`'s `Joined`), and the card says it.
 import ConversationKey

@@ -13,11 +13,13 @@
 // Browse, whose problem paragraph (.problem) the popup shows, keeping what
 // was typed.
 //
-// The person popup is a DM's card about its person, opened by their name:
-// their full name, whether they are online now (the place's data-presence,
-// which sidebar.js keeps up to date), when they joined when the server says
-// (data-joined, seconds since 1970, shown as a date in the viewer's own
-// time), then the DM's topics as small links straight to each, and the
+// The place popup is a place's card, opened by its name in the sidebar: a
+// DM's is about its person, a channel's about the channel, one card for
+// both (Steve, 2026-11-20: "channels UX features mostly match DM UX"). It
+// says the place's name; for a DM's person whether they are online now
+// (the place's data-presence, which sidebar.js keeps up to date) and when
+// they joined when the server says (data-joined, seconds since 1970, shown
+// as a date in the viewer's own time); then the place's topics as small links straight to each, and the
 // place's new-topic form itself, its field and its button: a popup is
 // roomy, so its action is in it, and no popup opens another (Steve,
 // 2026-11-20). Enter adds the topic, as in the "+" popup, and a refusal
@@ -33,7 +35,7 @@
 window.SidebarPopups = (function () {
   'use strict';
   var backdropRule = document.createElement('style');
-  backdropRule.textContent = 'dialog.topic-popup::backdrop, dialog.person-popup::backdrop, dialog.people-popup::backdrop { background: var(--cc-backdrop); }';
+  backdropRule.textContent = 'dialog.topic-popup::backdrop, dialog.place-popup::backdrop, dialog.people-popup::backdrop { background: var(--cc-backdrop); }';
   document.head.appendChild(backdropRule);
 
   // How many popups are open: sidebar.js leaves Escape to an open one.
@@ -118,7 +120,7 @@ window.SidebarPopups = (function () {
         }, function () { say('The server did not answer; try again.'); });
     });
     // The form, and the line that says a refusal, put fresh into `into`:
-    // the "+" popup's body, or a person card's. One popup is open at a time,
+    // the "+" popup's body, or a place card's. One popup is open at a time,
     // so the one form moves to whichever holds it.
     function mount(into) {
       problem.textContent = '';
@@ -137,7 +139,7 @@ window.SidebarPopups = (function () {
     return { open: open, mount: mount };
   }
 
-  // A small muted line of the person card.
+  // A small muted line of a place card.
   function cardLine(text) {
     var line = document.createElement('p');
     line.textContent = text;
@@ -150,16 +152,16 @@ window.SidebarPopups = (function () {
     return 'Joined ' + day.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   }
 
-  // The person card of the DM `place`, named `who`, its topics `list`,
+  // The card of `place`, a DM or a channel, named `who`, its topics `list`,
   // giving the focus back to `name`. The place's new-topic form is in the
   // card itself, under its topics (`topic`, the place's topicPopup, puts it
   // there): a popup is roomy, so its action is right in it, never behind a
   // second popup (Steve, 2026-11-20). Enter adds the topic; Escape closes
   // the card. `fill` writes the card into another popup's body, the people
   // popup's.
-  function personPopup(place, who, list, name, topic) {
+  function placePopup(place, who, list, name, topic) {
     function open() {
-      var popup = frame('person-popup', '', 'min(380px, 92vw)', '16px 18px 18px', name);
+      var popup = frame('place-popup', '', 'min(380px, 92vw)', '16px 18px 18px', name);
       fill(popup.body);
       popup.show();
     }
@@ -308,5 +310,5 @@ window.SidebarPopups = (function () {
     return { open: open };
   }
 
-  return { isOpen: isOpen, paintDot: paintDot, topicPopup: topicPopup, personPopup: personPopup, peoplePopup: peoplePopup };
+  return { isOpen: isOpen, paintDot: paintDot, topicPopup: topicPopup, placePopup: placePopup, peoplePopup: peoplePopup };
 })();
