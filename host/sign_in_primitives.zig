@@ -124,7 +124,7 @@ pub fn is_acceptable_bcrypt_hash(hash: []const u8) bool {
 /// (`is_acceptable_bcrypt_hash`), so a torn file is never read as a wrong
 /// password. A hash written as `$2a$` or `$2y$` is read as `$2b$`: the
 /// three name one computation, and std checks the whole string.
-/// `too_many_checks` is the seam's alone (host/seam.zig): the bucket
+/// `too_many_checks` is the seam's alone (host/seam_sign_in.zig): the bucket
 /// refused the check, and nothing was compared.
 pub const PasswordVerdict = enum(u8) { does_not_match, matches, not_a_bcrypt_hash, too_many_checks };
 

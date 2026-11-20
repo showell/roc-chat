@@ -8,7 +8,7 @@ This file is for a coding agent working on roc-chat. Read `README.md` first for 
 
 ## Rules
 
-- **Logic belongs in Roc.** A new hosted function in `platform/` answers a fact, never a verdict, and secrets stay on the host's side.
+- **Logic belongs in Roc.** A new hosted function in `platform/` answers a fact, never a verdict, and secrets stay on the host's side. Its Zig goes in the seam's part for its concern (`docs/platform.md`, "Where a new primitive goes").
 - **Only `FileFacts` touches files,** through each feature's `*Files` module. Don't change the layout on disk (`docs/design.md`, "Storage") without asking.
 - **No stylesheet:** a page's styles live in its script in `app/*.js`. `PageContract` is the one home of the names the Roc and the JS share, so change both sides together.
 - **Don't add a new way around the security types** (`UnvalidatedString`, `TrustedHtml`, `SignedIn`). A change to sign-in, sessions, keys or access gets a spec test for every side: refused, allowed, and the edge between.

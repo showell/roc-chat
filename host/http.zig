@@ -119,7 +119,7 @@ pub const Server = struct {
     /// for the server's life.
     root: *const files.DataRoot,
     /// Held while a request's Roc call runs, and only then; a password's
-    /// check lets it go while bcrypt runs (host/seam.zig).
+    /// check lets it go while bcrypt runs (host/seam_sign_in.zig).
     turn: Io.Mutex = .init,
     /// Every held stream, by its key.
     hub: bus.Hub,

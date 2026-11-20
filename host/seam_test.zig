@@ -81,7 +81,7 @@ fn has(comptime names: []const []const u8, comptime name: []const u8) bool {
     return false;
 }
 
-/// Why seam.zig's `Want` is not laid out as roc glue's `Got`, at `at` (a
+/// Why the seam's `Want` is not laid out as roc glue's `Got`, at `at` (a
 /// path from the function: `.field`, `[]` for a list's element), or null
 /// when they agree.
 fn mismatch(comptime Want: type, comptime Got: type, comptime at: []const u8) ?[]const u8 {
@@ -92,11 +92,11 @@ fn mismatch(comptime Want: type, comptime Got: type, comptime at: []const u8) ?[
         else
             recordMismatch(Want, Got, at),
         .@"enum" => tagsMismatch(Want, Got, at),
-        else => if (Want == Got) null else at ++ ": " ++ @typeName(Want) ++ " in seam.zig, " ++ @typeName(Got) ++ " in roc glue",
+        else => if (Want == Got) null else at ++ ": " ++ @typeName(Want) ++ " in the seam, " ++ @typeName(Got) ++ " in roc glue",
     };
 }
 
-/// A Roc list as seam.zig lays one out: an extern struct of three words,
+/// A Roc list as the seam lays one out: an extern struct of three words,
 /// the elements' pointer, the length and the capacity.
 fn isList(comptime T: type) bool {
     const info = @typeInfo(T);
@@ -114,7 +114,7 @@ fn elementOf(comptime List: type) type {
 }
 
 fn listMismatch(comptime Want: type, comptime Got: type, comptime at: []const u8) ?[]const u8 {
-    if (!isList(Want)) return at ++ ": a List in roc glue, " ++ @typeName(Want) ++ " in seam.zig";
+    if (!isList(Want)) return at ++ ": a List in roc glue, " ++ @typeName(Want) ++ " in the seam";
     if (@sizeOf(Want) != @sizeOf(Got) or @offsetOf(Want, "length") != @offsetOf(Got, "length") or
         @offsetOf(Want, "capacity_or_alloc_ptr") != @offsetOf(Got, "capacity_or_alloc_ptr"))
         return at ++ ": " ++ @typeName(Want) ++ " is no list as roc glue lays one out";
@@ -124,7 +124,7 @@ fn listMismatch(comptime Want: type, comptime Got: type, comptime at: []const u8
 fn recordMismatch(comptime Want: type, comptime Got: type, comptime at: []const u8) ?[]const u8 {
     const info = @typeInfo(Want);
     if (info != .@"struct" or info.@"struct".layout != .@"extern")
-        return at ++ ": a record in roc glue, " ++ @typeName(Want) ++ " in seam.zig, no extern struct";
+        return at ++ ": a record in roc glue, " ++ @typeName(Want) ++ " in the seam, no extern struct";
     const got = @typeInfo(Got).@"struct";
     for (got.field_names, got.field_types) |name, G| {
         const here = at ++ "." ++ name;
@@ -164,7 +164,7 @@ fn bare(comptime name: []const u8) []const u8 {
 
 /// Tag by tag, by number.
 fn tagsMismatch(comptime Want: type, comptime Got: type, comptime at: []const u8) ?[]const u8 {
-    if (@typeInfo(Want) != .@"enum") return at ++ ": tags in roc glue, " ++ @typeName(Want) ++ " in seam.zig";
+    if (@typeInfo(Want) != .@"enum") return at ++ ": tags in roc glue, " ++ @typeName(Want) ++ " in the seam";
     if (@sizeOf(Want) != @sizeOf(Got)) return at ++ ": " ++ @typeName(Want) ++ " is not roc glue's size";
     const got = @typeInfo(Got).@"enum";
     for (got.field_names, got.field_values) |glue_name, value| {
@@ -186,7 +186,7 @@ fn fnMismatch(comptime name: []const u8) ?[]const u8 {
     const want = @typeInfo(@TypeOf(@field(part, name))).@"fn";
     const got = @typeInfo(@TypeOf(@field(glue, name))).@"fn";
     if (want.param_types.len != got.param_types.len) return std.fmt.comptimePrint(
-        "{s}: {d} arguments in seam.zig, {d} in roc glue",
+        "{s}: {d} arguments in the seam, {d} in roc glue",
         .{ name, want.param_types.len, got.param_types.len },
     );
     for (want.param_types, got.param_types, 0..) |W, G, i| {
@@ -198,10 +198,10 @@ fn fnMismatch(comptime name: []const u8) ?[]const u8 {
 comptime {
     @setEvalBranchQuota(1_000_000);
     for (seam_names) |n| {
-        if (!has(glue_names, n)) @compileError(n ++ ": seam.zig has it, the roc glue snapshot has not; regenerate it: shale tools/glue.shale");
+        if (!has(glue_names, n)) @compileError(n ++ ": a part of the seam has it, the roc glue snapshot has not; regenerate it: shale tools/glue.shale");
     }
     for (glue_names) |n| {
-        if (fnMismatch(n)) |m| @compileError("roc glue lays the seam out unlike seam.zig: " ++ m);
+        if (fnMismatch(n)) |m| @compileError("roc glue lays the seam out unlike its parts: " ++ m);
     }
 }
 

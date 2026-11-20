@@ -1,5 +1,5 @@
 ## **A REQUEST AS THE HOST HANDS IT, AND THE RESPONSE THE APP GIVES BACK**:
-## each crosses the seam as a C struct (host/seam.zig lays them out, and
+## each crosses the seam as a C struct (host/seam_entries.zig lays them out, and
 ## host/seam_test.zig holds them to `roc glue`'s layout). There is no
 ## routing here: the app reads the method and the path and decides.
 ##
