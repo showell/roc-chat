@@ -209,9 +209,18 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 	slot = check_limits!(directory, now) ? |limit| Paused(limit)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
 	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
-	freed = NameRelease.free_name!(directory, { name, leaving: NoOne, now }) ? |FileSystem(fault)| FileSystem(fault)
+	freed = NameRelease.free_name!(
+		directory,
+		{ name, leaving: NoOne, now },
+	) ? |FileSystem(fault)| FileSystem(fault)
 	{ made, welcome } =
-		match GitHubTrip.new_account({ resumed, name, links, directory: freed, now }) {
+		match GitHubTrip.new_account({
+			resumed,
+			name,
+			links,
+			directory: freed,
+			now,
+		}) {
 			Ok(account) => account
 			Err(Refused(SignUpsPaused)) => return Err(Paused(ChatFull))
 			Err(why) => return Err(why)

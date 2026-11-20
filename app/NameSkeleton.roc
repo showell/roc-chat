@@ -57,7 +57,8 @@ NameSkeleton :: Str.{
 
 	## Whether `skeleton` is a reserved word's skeleton.
 	is_reserved : NameSkeleton -> Bool
-	is_reserved = |skeleton| NameSkeleton.reserved_words.any(|word| NameSkeleton.of_word(word) == skeleton)
+	is_reserved = |skeleton|
+		NameSkeleton.reserved_words.any(|word| NameSkeleton.of_word(word) == skeleton)
 
 	## The skeleton's text, for the tests.
 	to_str : NameSkeleton -> Str
@@ -143,7 +144,27 @@ expect skeleton_of("Bob") != skeleton_of("Rob")
 expect skeleton_of("Mia") != skeleton_of("Ria")
 # Reserved: every word, in any case, with lookalikes and separators.
 expect
-	["Admin", "ADMINISTRATOR", "root", "System", "Support", "help", "Owner", "Moderator", "Mod", "Staff", "Security", "Roc Chat", "rocchat", "CC", "lc", "Adrnln", "Rnod", "Sec urity", "Ic"]
+	[
+		"Admin",
+		"ADMINISTRATOR",
+		"root",
+		"System",
+		"Support",
+		"help",
+		"Owner",
+		"Moderator",
+		"Mod",
+		"Staff",
+		"Security",
+		"Roc Chat",
+		"rocchat",
+		"CC",
+		"lc",
+		"Adrnln",
+		"Rnod",
+		"Sec urity",
+		"Ic",
+	]
 		.all(|text| NameSkeleton.of_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name").is_reserved())
 expect
 	["Admins", "Rooted", "Helper", "Modesto", "Steve", "Zoe", "C"]

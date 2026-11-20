@@ -5,7 +5,7 @@
 ## still invite them again.
 ##
 ## Freeing is done only when it lets the name through: every human whose name
-## looks like it (`Directory.humans_alike`) that is a lapsed invitee is
+## looks like it (`Directory.humans_alike_list`) that is a lapsed invitee is
 ## released, and only when the name then passes
 ## `Directory.check_new_human_name`. Releasing writes, in order, each channel
 ## that held one of them without them (so no channel names a member who is no
@@ -40,7 +40,7 @@ NameRelease :: [].{
 		now : Timestamp,
 	} => Try(Directory, [FileSystem(FileFacts.Fault)])
 	free_name! = |directory, { name, leaving, now }| {
-		alike = directory.humans_alike(name).drop_if(
+		alike = directory.humans_alike_list(name).drop_if(
 			|human|
 				match leaving {
 					NoOne => Bool.False
@@ -49,7 +49,7 @@ NameRelease :: [].{
 		)
 		var $lapsed = []
 		for human in alike {
-			if is_lapsed!(human, now)? {
+			if load_lapse!(human, now)? {
 				$lapsed = $lapsed.append(human)
 			}
 		}
@@ -85,8 +85,8 @@ NameRelease :: [].{
 ## Whether `human` is a lapsed invitee at `now`, as their files say. A file
 ## that doesn't read as its fact (an inviter or a GitHub link that is none)
 ## keeps them as they are: only a human known to be lapsed is released.
-is_lapsed! : Users.Human, Timestamp => Try(Bool, [FileSystem(FileFacts.Fault)])
-is_lapsed! = |human, now| {
+load_lapse! : Users.Human, Timestamp => Try(Bool, [FileSystem(FileFacts.Fault)])
+load_lapse! = |human, now| {
 	id = human.id()
 	inviter_file = AccountFiles.read_inviter_file!(id) ? |fault| FileSystem(fault)
 	match HumanInvites.inviter_from_file(inviter_file) {

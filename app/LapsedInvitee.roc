@@ -49,4 +49,7 @@ LapsedInvitee :: [].{
 
 ## Whether `invite` is past its expiry at `now`.
 has_expired : HumanInvite, Timestamp -> Bool
-has_expired = |invite, now| now.to_seconds_since_epoch() >= invite.expires().to_seconds_since_epoch()
+has_expired = |
+	invite,
+	now,
+| now.to_seconds_since_epoch() >= invite.expires().to_seconds_since_epoch()

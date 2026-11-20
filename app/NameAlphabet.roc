@@ -103,7 +103,10 @@ plain_bytes = |point|
 	if point < 0x80 {
 		[point.to_u8_wrap()]
 	} else {
-		letter = decode_utf8(utf8_bytes(point), "NameAlphabet.plain_bytes: a code point below U+0800 is UTF-8")
+		letter = decode_utf8(
+			utf8_bytes(point),
+			"NameAlphabet.plain_bytes: a code point below U+0800 is UTF-8",
+		)
 		match accented_letters.find_first(|row| row.letters.contains(letter)) {
 			Ok(row) => row.plain.to_utf8()
 			Err(NotFound) => crash "NameAlphabet.plain_bytes: every folded letter of the alphabet is in a row"

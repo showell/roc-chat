@@ -139,11 +139,11 @@ HumanInvites :: [].{
 	## How a human's account was made, as far as inviting goes: by GitHub
 	## sign-up (`GitHubSignUp`), or any other way (`OtherOrigin`: an invite,
 	## the first start, or by hand).
-	Origin : [GitHubSignUp, OtherOrigin]
+	AccountMaking : [GitHubSignUp, OtherOrigin]
 
 	## The origin a human's `sign-up` file says: none, `OtherOrigin`; the word
 	## `github`, `GitHubSignUp`; anything else is no origin.
-	origin_from_file : [NoFile, File(List(U8))] -> Try(HumanInvites.Origin, [NotAnOrigin])
+	origin_from_file : [NoFile, File(List(U8))] -> Try(HumanInvites.AccountMaking, [NotAnOrigin])
 	origin_from_file = |file|
 		match file {
 			NoFile => Ok(OtherOrigin)
@@ -161,7 +161,7 @@ HumanInvites :: [].{
 
 	## Whether a human whose account was made as `origin` may invite anyone,
 	## or invite anyone again: never one made by GitHub sign-up.
-	check_inviter_origin : HumanInvites.Origin -> Try({}, [SignedUpByGitHub])
+	check_inviter_origin : HumanInvites.AccountMaking -> Try({}, [SignedUpByGitHub])
 	check_inviter_origin = |origin|
 		match origin {
 			GitHubSignUp => Err(SignedUpByGitHub)

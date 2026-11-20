@@ -119,10 +119,14 @@ GitHubTrip :: [].{
 				match Name.from_str(login.to_str()) {
 					Err(_) => NotSuggested(LoginNotAName)
 					Ok(name) =>
-						match (directory.add_human(name), directory.check_new_human_name({ name, leaving: NoOne })) {
+						match (
+							directory.add_human(name),
+							directory.check_new_human_name({ name, leaving: NoOne }),
+						) {
 							(Err(Full), _) => NotSuggested(ChatFull)
 							(Err(NameTaken), _) | (_, Err(NameTaken)) => NotSuggested(LoginTaken)
-							(_, Err(NameReserved)) | (_, Err(NameTooClose)) => NotSuggested(LoginTooClose)
+							(_, Err(NameReserved))
+							| (_, Err(NameTooClose)) => NotSuggested(LoginTooClose)
 							(Ok(_), Ok({})) => Suggested(name)
 						}
 				}

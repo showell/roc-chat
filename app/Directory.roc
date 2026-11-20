@@ -145,7 +145,10 @@ Directory :: {
 		channels = directory.channels.to_list()
 		key = name.key()
 		skeleton = NameSkeleton.of_name(name)
-		if others.any(|user| user.name().key() == key) or channels.any(|channel| channel.name().key() == key) {
+		is_taken =
+			others.any(|user| user.name().key() == key)
+				or channels.any(|channel| channel.name().key() == key)
+		if is_taken {
 			Err(NameTaken)
 		} else if skeleton.is_reserved() {
 			Err(NameReserved)
@@ -161,8 +164,8 @@ Directory :: {
 
 	## The humans whose names look like `name`: their `NameSkeleton` is its
 	## skeleton, as it is whenever their name is `name` in any case.
-	humans_alike : Directory, Name -> List(Users.Human)
-	humans_alike = |Directory.(directory), name| {
+	humans_alike_list : Directory, Name -> List(Users.Human)
+	humans_alike_list = |Directory.(directory), name| {
 		skeleton = NameSkeleton.of_name(name)
 		directory.users.to_list()
 			.keep_if(|user| NameSkeleton.of_name(user.name()) == skeleton)
@@ -180,7 +183,7 @@ Directory :: {
 	}
 	release_humans = |Directory.(directory), released| {
 		ids = released.map(|human| human.id())
-		left = directory.channels.without_members(ids)
+		left = directory.channels.members_removed(ids)
 		keys = released.fold(directory.keys, |held, human| held.remove(human.user().name().key()))
 		{
 			directory: Directory.(

@@ -286,13 +286,24 @@ invite_human! : {
 	origin : Str,
 	now : Timestamp,
 } => Try(TrustedHtml, _)
-invite_human! = |{ acting, directory: as_read, body, origin, now }| {
+invite_human! = |
+	{
+		acting,
+		directory: as_read,
+		body,
+		origin,
+		now,
+	},
+| {
 	InviteRights.check_may_invite!(acting)?
 	open = count_open_invites!(as_read, { by: acting.user().id(), now })?
 	directory =
 		match HumanInvites.name_from_form(body) {
 			Ok(name) if open < HumanInvites.open_most =>
-				NameRelease.free_name!(as_read, { name, leaving: NoOne, now }) ? |FileSystem(fault)| FileSystem(fault)
+				NameRelease.free_name!(
+					as_read,
+					{ name, leaving: NoOne, now },
+				) ? |FileSystem(fault)| FileSystem(fault)
 			_ => as_read
 		}
 	made =
@@ -439,15 +450,15 @@ join_by_invite! = |request| {
 	invitee = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
 	directory = NameRelease.free_name!(
 		request.directory,
-		{ name, leaving: Leaving(invitee.human.id()), now: request.now },
+		{
+			name,
+			leaving: Leaving(invitee.human.id()),
+			now: request.now,
+		},
 	) ? |FileSystem(fault)| FileSystem(fault)
 	joined = HumanInvites.join(directory, { code, name }) ? |why| Refused(why)
 	human = joined.admission.human()
-	next = FirstPage.load!({
-		directory,
-		human,
-		wanted: SignInRequest.default_next,
-	})?
+	next = FirstPage.load!({ directory, human, wanted: SignInRequest.default_next })?
 	_ =
 		match joined.name {
 			Kept => Ok({})

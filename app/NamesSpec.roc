@@ -25,37 +25,96 @@ new_name : Str -> Try({}, [NameTaken, NameReserved, NameTooClose])
 new_name = |text| chat.check_new_human_name({ name: Sample.name(text), leaving: NoOne })
 
 # Free names pass.
-expect ["Zoe", "Bob", "Stephen", "Apoorva Smith", "Steven", "Admins"].all(|text| new_name(text) == Ok({}))
+expect [
+	"Zoe",
+	"Bob",
+	"Stephen",
+	"Apoorva Smith",
+	"Steven",
+	"Admins",
+].all(|text| new_name(text) == Ok({}))
 # A name another user or a channel has, in any case, is taken.
 expect ["steve", "APOORVA", "cc", "General"].all(|text| new_name(text) == Err(NameTaken))
 # Reserved words, in any case, spaced or looking alike, are reserved; and a
 # reserved word is said before a lookalike.
 expect
-	["Admin", "Administrator", "ROOT", "System", "Support", "Help", "Owner", "Moderator", "Mod", "Staff", "Security", "Roc Chat", "LC", "C C", "Adrnin", "Rnod", "Lc"]
+	[
+		"Admin",
+		"Administrator",
+		"ROOT",
+		"System",
+		"Support",
+		"Help",
+		"Owner",
+		"Moderator",
+		"Mod",
+		"Staff",
+		"Security",
+		"Roc Chat",
+		"LC",
+		"C C",
+		"Adrnin",
+		"Rnod",
+		"Lc",
+	]
 		.all(|text| new_name(text) == Err(NameReserved))
 # A name that looks like a user's or a channel's is too close: accents,
 # spaces, i for l, rn for m and vv for w.
-expect ["Stéve", "Stève", "Ste ve", "Apoórva", "Apo orva", "Generai", "Genera I"].all(|text| new_name(text) == Err(NameTooClose))
+expect [
+	"Stéve",
+	"Stève",
+	"Ste ve",
+	"Apoórva",
+	"Apo orva",
+	"Generai",
+	"Genera I",
+].all(|text| new_name(text) == Err(NameTooClose))
 expect {
-	with_mia = (chat.add_new_human(Sample.name("Mia Wall")) ?? crash "NamesSpec: Mia's name is free").directory
+	with_one_more = (chat.add_new_human(Sample.name("Mia Wall")) ?? crash "NamesSpec: Mia's name is free").directory
 	["Rnia Wall", "Mia Vvall", "Mla Wall", "Mia Waii"].all(
-		|text| with_mia.check_new_human_name({ name: Sample.name(text), leaving: NoOne }) == Err(NameTooClose),
+		|text| with_one_more.check_new_human_name({
+			name: Sample.name(text),
+			leaving: NoOne,
+		}) == Err(NameTooClose),
 	)
 }
 # The rules hold where a new human is made: an invite and a sign-up.
 expect chat.add_new_human(Sample.name("Stéve")).map_ok(|_| {}) == Err(NameTooClose)
 expect chat.add_new_human(Sample.name("Admin")).map_ok(|_| {}) == Err(NameReserved)
 expect
-	HumanInvites.invite(chat, { acting: SignedIn.dangerously_assume(Sample.steve), body: "name=St%C3%A9ve".to_utf8(), open: 0 }).map_ok(|_| {})
+	HumanInvites.invite(
+		chat,
+		{
+			acting: SignedIn.dangerously_assume(Sample.steve),
+			body: "name=St%C3%A9ve".to_utf8(),
+			open: 0,
+		},
+	).map_ok(|_| {})
 		== Err(NameTooClose)
 expect
-	HumanInvites.invite(chat, { acting: SignedIn.dangerously_assume(Sample.steve), body: "name=Support".to_utf8(), open: 0 }).map_ok(|_| {})
+	HumanInvites.invite(
+		chat,
+		{
+			acting: SignedIn.dangerously_assume(Sample.steve),
+			body: "name=Support".to_utf8(),
+			open: 0,
+		},
+	).map_ok(|_| {})
 		== Err(NameReserved)
 # A human renaming keeps clear of others, but their own name is theirs: a
 # lookalike of it passes.
-expect chat.rename_human({ human: Sample.human("Apoorva"), name: Sample.name("Apo orva") }).map_ok(|_| {}) == Ok({})
-expect chat.rename_human({ human: Sample.human("Apoorva"), name: Sample.name("Stéve") }).map_ok(|_| {}) == Err(NameTooClose)
-expect chat.rename_human({ human: Sample.human("Apoorva"), name: Sample.name("Root") }).map_ok(|_| {}) == Err(NameReserved)
+expect chat.rename_human({
+	human: Sample.human("Apoorva"),
+	name: Sample.name("Apo orva"),
+}).map_ok(|_| {}) == Ok({})
+expect chat.rename_human({
+	human: Sample.human("Apoorva"),
+	name: Sample.name("Stéve"),
+}).map_ok(|_| {}) == Err(NameTooClose)
+expect chat.rename_human({
+	human: Sample.human("Apoorva"),
+	name: Sample.name("Root"),
+}).map_ok(|_| {}) == Err(NameReserved)
 # Existing names are never judged: a stored directory holding lookalikes
 # reads, and the admin's agents and channels keep their own rules.
 expect {
@@ -77,8 +136,8 @@ invite_made = |number|
 	})
 
 ## `invite` spent.
-spent : HumanInvite -> HumanInvite
-spent = |invite| HumanInvite.from_facts(invite.id(), { ..invite.to_facts(), state: Spent })
+spend : HumanInvite -> HumanInvite
+spend = |invite| HumanInvite.from_facts(invite.id(), { ..invite.to_facts(), state: Spent })
 
 ## A human Steve invited, never joined, with invite 1, at `now`.
 lapsed_at : I64 -> LapsedInvitee.Facts
@@ -101,8 +160,11 @@ expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), inviter: NoInviter })
 expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), password: HasPassword })
 expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), github: Linked })
 expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), invites: [] })
-expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), invites: [spent(invite_made(1))] })
-expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), invites: [invite_made(1), spent(invite_made(2))] })
+expect !LapsedInvitee.is_lapsed({ ..lapsed_at(604800), invites: [spend(invite_made(1))] })
+expect !LapsedInvitee.is_lapsed({
+	..lapsed_at(604800),
+	invites: [invite_made(1), spend(invite_made(2))],
+})
 # An invite made again, still open, keeps them; once it expires too, lapsed.
 expect {
 	again =
@@ -113,7 +175,10 @@ expect {
 			by: UserId.chat_owner,
 		})
 	facts = { ..lapsed_at(604800), invites: [invite_made(1), again] }
-	!LapsedInvitee.is_lapsed(facts) and LapsedInvitee.is_lapsed({ ..facts, now: Timestamp.at_second(1209600) })
+	!LapsedInvitee.is_lapsed(facts) and LapsedInvitee.is_lapsed({
+		..facts,
+		now: Timestamp.at_second(1209600),
+	})
 }
 
 # Releasing Zoe frees her name, takes her out of the default channel, and
@@ -125,10 +190,13 @@ expect {
 	released = with_zoe.directory.release_humans([zoe])
 	before
 		== Err(NameTooClose)
-		and with_zoe.directory.humans_alike(Sample.name("ZOË")) == [zoe]
+		and with_zoe.directory.humans_alike_list(Sample.name("ZOË")) == [zoe]
 		and released.directory.users().user(zoe.id()) == Err(NoSuchUser)
 		and released.changed.map(|channel| channel.members_bytes()) == ["1\n".to_utf8()]
-		and released.directory.check_new_human_name({ name: Sample.name("Zoe"), leaving: NoOne }) == Ok({})
+		and released.directory.check_new_human_name({
+			name: Sample.name("Zoe"),
+			leaving: NoOne,
+		}) == Ok({})
 		and released.directory.users().next_id() == with_zoe.directory.users().next_id()
 		and released.directory.add_new_human(Sample.name("Zoe")).is_ok()
 }
@@ -139,13 +207,27 @@ expect {
 expect HumanInvites.origin_from_file(NoFile) == Ok(OtherOrigin)
 expect HumanInvites.origin_from_file(File("github".to_utf8())) == Ok(GitHubSignUp)
 expect HumanInvites.origin_from_file(File(" github\n".to_utf8())) == Ok(GitHubSignUp)
-expect ["", "GitHub", "invite", "githubx"].all(|text| HumanInvites.origin_from_file(File(text.to_utf8())) == Err(NotAnOrigin))
+expect [
+	"",
+	"GitHub",
+	"invite",
+	"githubx",
+].all(|text| HumanInvites.origin_from_file(File(text.to_utf8())) == Err(NotAnOrigin))
 expect HumanInvites.check_inviter_origin(GitHubSignUp) == Err(SignedUpByGitHub)
 expect HumanInvites.check_inviter_origin(OtherOrigin) == Ok({})
 # The refusals' statuses and words.
-expect HumanInvites.refusal_notice(SignedUpByGitHub) == { status: 403, said: HumanInvites.github_sign_up_words }
-expect HumanInvites.refusal_notice(NameReserved).status == 409 and HumanInvites.refusal_notice(NameReserved).said.contains("reserved")
-expect HumanInvites.refusal_notice(NameTooClose).status == 409 and HumanInvites.refusal_notice(NameTooClose).said.contains("too close")
+expect HumanInvites.refusal_notice(SignedUpByGitHub) == {
+	status: 403,
+	said: HumanInvites.github_sign_up_words,
+}
+expect {
+	reserved = HumanInvites.refusal_notice(NameReserved)
+	too_close = HumanInvites.refusal_notice(NameTooClose)
+	reserved.status == 409
+		and reserved.said.contains("reserved")
+		and too_close.status == 409
+		and too_close.said.contains("too close")
+}
 # The invites page of one who may not invite has no form, and says why.
 expect {
 	page = |may_invite|

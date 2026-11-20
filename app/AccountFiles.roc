@@ -52,7 +52,10 @@ AccountFiles :: [].{
 		var $accounts = []
 		for id in account_ids {
 			folder = AccountFiles.account_folder_path(AccountFolder.of(id))
-			match (FileFacts.read_fact!("${folder}/${name_fact}")?, FileFacts.read_fact!("${folder}/${name_released_fact}")?) {
+			match (
+				FileFacts.read_fact!("${folder}/${name_fact}")?,
+				FileFacts.read_fact!("${folder}/${name_released_fact}")?,
+			) {
 				(NoFile, _) | (_, File(_)) => {}
 				(File(name), NoFile) => {
 					owner =
@@ -141,8 +144,10 @@ AccountFiles :: [].{
 	## The `sign-up` file of the human `id`, as it is, or `NoFile` when they
 	## have none; unless the host's read failed.
 	read_sign_up_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
-	read_sign_up_file! = |id|
-		FileFacts.read_fact!("${AccountFiles.account_folder_path(AccountFolder.of(id))}/${sign_up_fact}")
+	read_sign_up_file! = |id| {
+		folder = AccountFiles.account_folder_path(AccountFolder.of(id))
+		FileFacts.read_fact!("${folder}/${sign_up_fact}")
+	}
 
 	## The user `id`'s `name-released` file made, once, holding `now`'s
 	## second: from then on their folder is no account, and their name is

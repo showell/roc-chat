@@ -257,7 +257,12 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	## is, so no id is given twice.
 	without : Users, List(UserId) -> Users
 	without = |Users.(users), ids|
-		Users.({ ..users, all_users: users.all_users.drop_if(|held_user| ids.contains(held_user.id())) })
+		Users.(
+			{
+				..users,
+				all_users: users.all_users.drop_if(|held_user| ids.contains(held_user.id())),
+			},
+		)
 
 	## Every user, in id order.
 	to_list : Users -> List(Users.User)

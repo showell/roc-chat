@@ -17,12 +17,13 @@ InviteRights :: [].{
 	check_may_invite! : SignedIn => Try({}, _)
 	check_may_invite! = |acting| {
 		_ = acting.human_in_session() ? |why| Refused(why)
-		HumanInvites.check_inviter_origin(InviteRights.load_origin!(acting.user().id())?) ? |why| Refused(why)
+		made = InviteRights.load_origin!(acting.user().id())?
+		HumanInvites.check_inviter_origin(made) ? |why| Refused(why)
 		Ok({})
 	}
 
 	## How the human `id`'s account was made, as their `sign-up` file says.
-	load_origin! : UserId => Try(HumanInvites.Origin, _)
+	load_origin! : UserId => Try(HumanInvites.AccountMaking, _)
 	load_origin! = |id| {
 		file = AccountFiles.read_sign_up_file!(id) ? |fault| FileSystem(fault)
 		HumanInvites.origin_from_file(file).map_err(|NotAnOrigin| BadSignUp(id))
