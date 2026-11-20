@@ -4,3 +4,5 @@
 -- line, with its reason after `--`.
 lc      -- the agent LC's name
 zoe     -- a test persona's name (`zoes` its possessive)
+gzip    -- the file format (RFC 1952), a download's `.tar.gz`
+crc32   -- gzip's checksum, CRC-32, which the host answers

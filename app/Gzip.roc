@@ -9,13 +9,13 @@ Gzip :: [].{
 
 	## `bytes` in gzip, stored in deflate's uncompressed blocks, its trailer
 	## holding `crc32`, the CRC-32 of `bytes`.
-	stored : { bytes : List(U8), crc32 : U32 } -> List(U8)
-	stored = |{ bytes, crc32 }| {
+	stored_file : { bytes : List(U8), crc32 : U32 } -> List(U8)
+	stored_file = |{ bytes, crc32 }| {
 		blocks = bytes.chunks_of(Gzip.most_block_bytes)
 		var $out = List.with_capacity(bytes.len() + 18 + 5 * (blocks.len() + 1))
-		$out = $out.concat(header)
+		$out = List.concat($out, header)
 		if blocks.is_empty() {
-			$out = $out.concat(block_head({ size: 0, last: Last }))
+			$out = List.concat($out, block_head({ size: 0, last: Last }))
 		} else {
 			var $left = blocks.len()
 			for block in blocks {
@@ -25,12 +25,12 @@ Gzip :: [].{
 				} else {
 					NotLast
 				}
-				$out = $out.concat(block_head({ size: block.len(), last })).concat(block)
+				$out = List.concat($out, block_head({ size: block.len(), last }))
+				$out = List.concat($out, block)
 			}
 		}
-		$out
-			.concat(little_endian(crc32))
-			.concat(little_endian(bytes.len().to_u32_wrap()))
+		$out = List.concat($out, little_endian(crc32))
+		List.concat($out, little_endian(bytes.len().to_u32_wrap()))
 	}
 
 	## The most bytes one stored block holds.
@@ -55,7 +55,13 @@ block_head = |{ size, last }| {
 		}
 	low = (size % 256).to_u8_wrap()
 	high = (size // 256).to_u8_wrap()
-	[final_bit, low, high, 255 - low, 255 - high]
+	[
+		final_bit,
+		low,
+		high,
+		255 - low,
+		255 - high,
+	]
 }
 
 ## A number's four bytes, the lowest first.
@@ -70,21 +76,21 @@ little_endian = |number| [
 # ── tests
 # A short input: the header, one final block, the CRC lowest byte first,
 # and the size. `hi`'s CRC-32 is 0xD8932AAC.
-expect
-	Gzip.stored({ bytes: "hi".to_utf8(), crc32: 0xD8932AAC })
-		== List.concat(
-			header,
-			[1, 2, 0, 253, 255, 'h', 'i', 0xAC, 0x2A, 0x93, 0xD8, 2, 0, 0, 0],
-		)
+expect {
+	trailer = [0xAC, 0x2A, 0x93, 0xD8, 2, 0, 0, 0]
+	block = [1, 2, 0, 253, 255, 'h', 'i']
+	made = Gzip.stored_file({ bytes: "hi".to_utf8(), crc32: 0xD8932AAC })
+	made == [header, block, trailer].join()
+}
 # None: one empty final block.
 expect
-	Gzip.stored({ bytes: [], crc32: 0 })
+	Gzip.stored_file({ bytes: [], crc32: 0 })
 		== List.concat(header, [1, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0])
 # At a block's size one block; one byte past it, two, the first not final.
 expect {
 	full = List.repeat(7, Gzip.most_block_bytes)
-	at = Gzip.stored({ bytes: full, crc32: 0 })
-	past = Gzip.stored({ bytes: full.append(7), crc32: 0 })
+	at = Gzip.stored_file({ bytes: full, crc32: 0 })
+	past = Gzip.stored_file({ bytes: full.append(7), crc32: 0 })
 	at.len() == 10 + 5 + 65535 + 8
 		and at.sublist({ start: 10, len: 5 }) == [1, 255, 255, 0, 0]
 		and past.len() == 10 + 5 + 65535 + 5 + 1 + 8
@@ -93,4 +99,5 @@ expect {
 		and past.sublist({ start: past.len() - 4, len: 4 }) == [0, 0, 1, 0]
 }
 # The trailer's numbers, lowest byte first, at each byte's edge.
-expect little_endian(0x01020304) == [4, 3, 2, 1] and little_endian(0xFFFFFFFF) == [255, 255, 255, 255]
+expect little_endian(0x01020304) == [4, 3, 2, 1]
+expect little_endian(0xFFFFFFFF) == [255, 255, 255, 255]

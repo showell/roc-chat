@@ -39,14 +39,16 @@ DownloadRoute :: [].{
 	## A GET of the conversation `key`'s download, its files dated `now`.
 	serve_download! : { key : ConversationKey, now : Timestamp } => Http.Response
 	serve_download! = |{ key, now }|
-		match load_entries!(key) {
-			Ok(entries) =>
-				match Tar.archive({ entries, mtime: now.to_seconds_since_epoch().to_u64_wrap() }) {
-					Ok(tar) =>
+		match load_files!(key) {
+			Ok(files) =>
+				match Tar.archive({ files, mtime: now.to_seconds_since_epoch().to_u64_wrap() }) {
+					Ok(tar) => {
+						crc32 = Host.crc32_of_bytes!(tar)
 						HttpAnswer.gzip_download({
 							filename: "${key.topic().to_str()}.tar.gz",
-							bytes: Gzip.stored({ bytes: tar, crc32: Host.crc32_of_bytes!(tar) }),
+							bytes: Gzip.stored_file({ bytes: tar, crc32 }),
 						})
+					}
 					Err(PathTooLong(path)) => download_refusal(PathTooLong(path))
 				}
 			Err(why) => download_refusal(why)
@@ -67,8 +69,8 @@ most_bytes : U64
 most_bytes = DownloadRoute.most_mib * 1024 * 1024
 
 ## The conversation `key`'s files, as its archive holds them; or why not.
-load_entries! : ConversationKey => Try(List(Tar.Entry), Refusal)
-load_entries! = |key| {
+load_files! : ConversationKey => Try(List(Tar.File), _)
+load_files! = |key| {
 	transcript =
 		match TranscriptFiles.read_transcript!(key) {
 			Ok(File(utf8)) => utf8.to_plain_text()
@@ -98,7 +100,14 @@ load_entries! = |key| {
 	if $total > most_bytes {
 		Err(TooLarge)
 	} else {
-		Ok(entries_of({ topic: key.topic().to_str(), transcript, reactions, images: $kept }))
+		Ok(
+			files_of({
+				topic: key.topic().to_str(),
+				transcript,
+				reactions,
+				images: $kept,
+			}),
+		)
 	}
 }
 
@@ -112,21 +121,24 @@ reactions_size = |reactions|
 
 ## A conversation's archive's files: its transcript, its reactions file
 ## when it has one, and its images, each under the folder `topic`.
-entries_of : {
+files_of : {
 	topic : Str,
 	transcript : List(U8),
 	reactions : [NoFile, File(List(U8))],
 	images : List((UploadedImage, List(U8))),
-} -> List(Tar.Entry)
-entries_of = |{ topic, transcript, reactions, images }| {
-	reactions_entries =
+} -> List(Tar.File)
+files_of = |{ topic, transcript, reactions, images }| {
+	reactions_files =
 		match reactions {
 			File(bytes) => [{ path: "${topic}/${topic}.reactions.jsonl", bytes }]
 			NoFile => []
 		}
-	[{ path: "${topic}/${topic}.md", bytes: transcript }]
-		.concat(reactions_entries)
-		.concat(images.map(|(image, bytes)| { path: "${topic}/uploads/${image.name()}", bytes }))
+	image_files = images.map(|(image, bytes)| { path: "${topic}/uploads/${image.name()}", bytes })
+	[
+		[{ path: "${topic}/${topic}.md", bytes: transcript }],
+		reactions_files,
+		image_files,
+	].join()
 }
 
 ## A refused download, as a page saying why.
@@ -165,13 +177,18 @@ download_failure = |text| HttpAnswer.page(500, PageKit.notice({ title: "Failed",
 expect {
 	image =
 		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "DownloadRoute's tests: an image's name"
-	with_all = entries_of({
+	with_all = files_of({
 		topic: "plans",
 		transcript: "t".to_utf8(),
 		reactions: File("r".to_utf8()),
 		images: [(image, "i".to_utf8())],
 	})
-	bare = entries_of({ topic: "plans", transcript: "t".to_utf8(), reactions: NoFile, images: [] })
+	bare = files_of({
+		topic: "plans",
+		transcript: "t".to_utf8(),
+		reactions: NoFile,
+		images: [],
+	})
 	with_all
 		== [
 			{ path: "plans/plans.md", bytes: "t".to_utf8() },
