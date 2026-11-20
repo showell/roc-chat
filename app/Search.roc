@@ -32,6 +32,10 @@ Search :: [].{
 		messages : List(Message),
 	}
 
+	## Where a message was found: its topic's key, and how a result names
+	## its place.
+	Where : { key : ConversationKey, place_label : Str }
+
 	## A word and how many messages hold it.
 	WordCount : { word : Str, count : U64 }
 
@@ -45,7 +49,7 @@ Search :: [].{
 
 	## A message that holds the word, in the topic searched.
 	Hit : {
-		searched : Search.Searched,
+		found_in : Search.Where,
 		message : Message,
 		excerpt : Search.Excerpt,
 	}
@@ -129,7 +133,9 @@ Search :: [].{
 	## The messages of `topics` that hold `word` as a word of their own,
 	## in order, each with its excerpt: at most `most_messages`, and no more
 	## than `most_answer_bytes` of excerpts (the first always listed), every
-	## one counted. A key shorter than a word finds nothing.
+	## one counted. A key shorter than a word finds nothing. **THE
+	## REFERENCE**: the route asks the host's index (`SearchIndex`), and
+	## app/SearchDriftSpec.roc holds the index to this.
 	messages_for : {
 		topics : List(Search.Searched),
 		word : SearchWords.SearchKey,
@@ -138,36 +144,49 @@ Search :: [].{
 		if !word.is_word_long() {
 			{ hits: [], matched: 0 }
 		} else {
-			var $hits = []
+			var $first = []
 			var $matched = 0
-			var $bytes = 0
-			var $full = Bool.False
 			for topic in topics {
 				for message in topic.messages {
 					match place_in_message(message, word) {
-						At(at) => {
+						At(_) => {
 							$matched = $matched + 1
-							if !$full and $hits.len() < Search.most_messages {
-								excerpt = excerpt_around({
-									markdown: message.markdown().to_utf8(),
-									at,
-									length: word.bytes().len(),
-								})
-								cost = excerpt_cost(excerpt)
-								if $hits.is_empty() or $bytes + cost <= Search.most_answer_bytes {
-									$bytes = $bytes + cost
-									$hits = $hits.append({ searched: topic, message, excerpt })
-								} else {
-									$full = Bool.True
-								}
+							if $first.len() < Search.most_messages {
+								$first = $first.append({ found_in: { key: topic.key, place_label: topic.place_label }, message })
 							}
 						}
 						NotHeld => {}
 					}
 				}
 			}
-			{ hits: $hits, matched: $matched }
+			{ hits: Search.listed_hits({ found: $first, word }), matched: $matched }
 		}
+
+	## The first `most_messages` messages that hold `word`, in order, each
+	## with its excerpt, while their excerpts come to no more than
+	## `most_answer_bytes` (the first always listed).
+	listed_hits : {
+		found : List({ found_in : Search.Where, message : Message }),
+		word : SearchWords.SearchKey,
+	} -> List(Search.Hit)
+	listed_hits = |{ found, word }| {
+		var $hits = []
+		var $bytes = 0
+		var $full = Bool.False
+		for { found_in, message } in found.take_first(Search.most_messages) {
+			if !$full {
+				excerpt = Search.excerpt_of({ markdown: message.markdown(), key: word })
+				cost = excerpt_cost(excerpt)
+				if $hits.is_empty() or $bytes + cost <= Search.most_answer_bytes {
+					$bytes = $bytes + cost
+					$hits = $hits.append({ found_in, message, excerpt })
+				} else {
+					$full = Bool.True
+				}
+			}
+		}
+		$hits
+	}
 
 	## The excerpt of `markdown` around the word `key`, where it first stands
 	## as a word: `excerpt_pad` bytes either side, cut where a character
@@ -242,11 +261,11 @@ Search :: [].{
 
 ## One listed message, as the messages' answer writes it.
 hit_json : Search.Hit -> JsonOut
-hit_json = |{ searched, message, excerpt }|
+hit_json = |{ found_in, message, excerpt }|
 	JsonOut.json_object([
-		("page", JsonOut.string(searched.key.url_path(Page))),
-		("place", JsonOut.string(searched.place_label)),
-		("topic", JsonOut.string(searched.key.topic().to_str())),
+		("page", JsonOut.string(found_in.key.url_path(Page))),
+		("place", JsonOut.string(found_in.place_label)),
+		("topic", JsonOut.string(found_in.key.topic().to_str())),
 		("id", JsonOut.number(message.id().to_u64())),
 		("from", JsonOut.string(message.author().to_str())),
 		("date", JsonOut.string(message.time().to_str())),

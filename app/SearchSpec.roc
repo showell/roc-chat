@@ -84,7 +84,7 @@ words_in = |topics, typed|
 hits_in : List(Search.Searched), Str -> List((Str, U64))
 hits_in = |topics, typed|
 	Search.messages_for({ topics, word: SearchWords.SearchKey.of_typed(typed) }).hits.map(
-		|hit| (hit.searched.key.url_path(Page), hit.message.id().to_u64()),
+		|hit| (hit.found_in.key.url_path(Page), hit.message.id().to_u64()),
 	)
 
 # The access rule: a human searches Recent's places, each they may read but

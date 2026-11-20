@@ -151,6 +151,44 @@ Host := [].{
 		status : [Found, Missing],
 	}
 
+	## **THE SEARCH INDEX** (host/search_index.zig, docs/platform.md): texts
+	## held in the server's memory under keys, each with a label, and their
+	## words read as app/SearchWords.roc reads them. A cache: a restart
+	## forgets it. `key` held with no texts (`Searchable`), or as one a
+	## search may miss (`Unsearchable`), in place of what it held. A key of
+	## 0 or more than 1,024 bytes stops the server, as the app's bug.
+	open_search_index_key! : List(U8), [Searchable, Unsearchable] => {}
+
+	## The text, the third argument, labelled by the second, at the end of
+	## `key`'s texts; nothing when the key is not held or is unsearchable.
+	## Past 64 MiB of labels and texts in all, the key becomes unsearchable.
+	append_text_to_search_index_key! : List(U8), List(U8), List(U8) => {}
+
+	## The places in `keys`, from 0, of those the index doesn't hold.
+	search_index_keys_not_held! : List(List(U8)) => List(U64)
+
+	## At most `most` words of the texts of `keys` that begin with `prefix`
+	## (folded), each with how many texts hold it, the most held first,
+	## then in byte order; and how many of `keys` are unsearchable.
+	words_in_search_index! : List(List(U8)),
+	List(U8),
+	U64 => {
+		unsearchable : U64,
+		words : List({ count : U64, word : List(U8) }),
+	}
+
+	## The texts of `keys` that hold `word` (folded) as a word of their own,
+	## in `keys`' order, each key's in order: at most `most` listed, each
+	## with its key's place and its own, from 0, and its label; how many
+	## hold it in all; and how many of `keys` are unsearchable.
+	texts_in_search_index! : List(List(U8)),
+	List(U8),
+	U64 => {
+		hits : List({ key_at : U64, label : List(U8), text : List(U8), text_at : U64 }),
+		matched : U64,
+		unsearchable : U64,
+	}
+
 	## `line` written to the server's log as a warning, each byte that is not
 	## printable ASCII escaped, so no line can forge another.
 	write_line_to_server_log! : List(U8) => {}

@@ -37,6 +37,7 @@ platform ""
 		"roc_start": start_for_host!,
 	}
 	hosted {
+		"append_text_to_search_index_key": Host.append_text_to_search_index_key!,
 		"append_utf8_bytes_to_file": Host.append_utf8_bytes_to_file!,
 		"bcrypt_hash_of_password": Host.bcrypt_hash_of_password!,
 		"crc32_of_bytes": Host.crc32_of_bytes!,
@@ -51,6 +52,7 @@ platform ""
 		"hmac_sha256_with_server_secret_matches": Host.hmac_sha256_with_server_secret_matches!,
 		"list_names_in_directory": Host.list_names_in_directory!,
 		"make_directory_and_its_parents": Host.make_directory_and_its_parents!,
+		"open_search_index_key": Host.open_search_index_key!,
 		"password_matches_bcrypt_hash": Host.password_matches_bcrypt_hash!,
 		"publish_bytes_to_streams_on_key": Host.publish_bytes_to_streams_on_key!,
 		"read_binary_bytes_from_file": Host.read_binary_bytes_from_file!,
@@ -58,7 +60,10 @@ platform ""
 		"read_utf8_bytes_from_file": Host.read_utf8_bytes_from_file!,
 		"replace_file_with_utf8_bytes_atomically": Host.replace_file_with_utf8_bytes_atomically!,
 		"replace_second_kept_under_key": Host.replace_second_kept_under_key!,
+		"search_index_keys_not_held": Host.search_index_keys_not_held!,
 		"sha256_of_bytes": Host.sha256_of_bytes!,
+		"texts_in_search_index": Host.texts_in_search_index!,
+		"words_in_search_index": Host.words_in_search_index!,
 		"write_line_to_server_log": Host.write_line_to_server_log!,
 	}
 	targets: {

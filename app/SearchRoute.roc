@@ -1,16 +1,20 @@
 ## This module answers search's two routes (`Route` lists them), as Gopher
 ## Chat's `/chat/search/words` and `/chat/search/messages` did, in JSON.
-## `Search` decides what is found; this module reads, for each place Recent
-## lists the human (`Search.places_searched`), each topic's transcript, and
-## answers. Both routes are a human's, by their own session: a key is
+## For each place Recent lists the human (`Search.places_searched`), it lists
+## the topics, and asks the host's search index (`SearchIndex`) which of
+## their messages match; `Search` shapes the answer. A topic the index
+## doesn't hold yet is read from its transcript and handed to it first, so
+## the first search to reach a topic reads it, and the ones after read no
+## disk. Both routes are a human's, by their own session: a key is
 ## refused, as Recent refuses one.
 ##
 ## A search's cost is bounded three ways. It reads at most
-## `most_bytes_read` of transcripts, Gopher's index's cap on what it held
-## (search_index.zig's `text_most_total`): each topic past it is counted
-## among those it could not read, unread. Its answer lists at most
-## `Search.most_messages` and `Search.most_answer_bytes`. And a human asks
-## at most `SearchLimit.per_second_most` searches a second.
+## `most_bytes_read` of transcripts into the index, Gopher's index's cap on
+## what it held (search_index.zig's `text_most_total`): each topic past it
+## is counted among those it could not read, unread, and left for a later
+## search to read. Its answer lists at most `Search.most_messages` and
+## `Search.most_answer_bytes`. And a human asks at most
+## `SearchLimit.per_second_most` searches a second.
 import pf.Host
 import pf.Http
 import Browse
@@ -22,6 +26,7 @@ import HttpAnswer
 import Directory
 import JsonOut
 import Search
+import SearchIndex
 import SearchLimit
 import SearchWords
 import SignedIn
@@ -82,24 +87,41 @@ answer_search! = |{ asked_of, acting, directory, query }| {
 		}
 	key = typed_key(query, field) ? |words| BadQuery(words)
 	take_search_slot!(human.user().id(), Clock.read_clock!({}))?
-	{ topics, unreadable } = load_searched!(places) ? |fault| FileSystem(fault)
+	{ topics, unread } = fill_index!(places) ? |fault| FileSystem(fault)
+	keys = topics.map(|topic| topic.key)
 	match asked_of {
 		Words =>
-			Ok(
-				Search.words_answer({
-					prefix: key,
-					words: Search.words_for({ topics, prefix: key }),
-					unreadable,
-				}),
-			)
+			if key.bytes().is_empty() {
+				Ok(Search.words_answer({ prefix: key, words: [], unreadable: unread + SearchIndex.unsearchable!(keys) }))
+			} else {
+				got = SearchIndex.words!(keys, key, Search.most_words)
+				Ok(Search.words_answer({ prefix: key, words: got.words, unreadable: unread + got.unsearchable }))
+			}
 		Messages =>
-			Ok(
-				Search.messages_answer({
-					word: key,
-					found: Search.messages_for({ topics, word: key }),
-					unreadable,
-				}),
-			)
+			if !key.is_word_long() {
+				Ok(
+					Search.messages_answer({
+						word: key,
+						found: { hits: [], matched: 0 },
+						unreadable: unread + SearchIndex.unsearchable!(keys),
+					}),
+				)
+			} else {
+				got = SearchIndex.messages!(keys, key, Search.most_messages)
+				found = got.found.map(
+					|{ topic_at, message }| {
+						found_in: topics.get(topic_at) ?? crash "SearchRoute: a hit's topic is one asked about",
+						message,
+					},
+				)
+				Ok(
+					Search.messages_answer({
+						word: key,
+						found: { hits: Search.listed_hits({ found, word: key }), matched: got.matched },
+						unreadable: unread + got.unsearchable,
+					}),
+				)
+			}
 	}
 }
 
@@ -141,19 +163,19 @@ take_search_slot! = |human, now| {
 	Ok({})
 }
 
-## Each topic of `places`, read and decoded, in order, while the bytes read
-## stay within `most_bytes_read`; and how many topics could not be read: a
-## transcript that is not one the chat writes, or one past the bytes.
+## Each topic of `places`, in order, with how a result names its place;
+## each the index doesn't hold read from its transcript, decoded and handed
+## to it, while the bytes read stay within `most_bytes_read`; and how many
+## topics past those bytes were left unread. A transcript that is not one
+## the chat writes is handed to the index as unreadable, which counts it.
 ## Unless the host's listing or a read failed.
-load_searched! : List(Browse.ListedPlace) => Try(
-	{ topics : List(Search.Searched), unreadable : U64 },
+fill_index! : List(Browse.ListedPlace) => Try(
+	{ topics : List(Search.Where), unread : U64 },
 	_,
 )
-load_searched! = |places| {
+fill_index! = |places| {
 	with_topics = BrowseRoute.load_place_topics!(places)?
-	var $searched = []
-	var $unreadable = 0
-	var $read = 0
+	var $wheres = []
 	for { label: _, place, topics } in with_topics {
 		place_label =
 			match place.which() {
@@ -161,32 +183,33 @@ load_searched! = |places| {
 				Dm(_) => "a direct message"
 			}
 		for topic in topics {
-			key = ConversationKey.of({ place, topic })
-			if $read >= SearchRoute.most_bytes_read {
-				$unreadable = $unreadable + 1
-			} else {
-				match TranscriptFiles.read_transcript!(key)? {
-					NoFile => {}
-					File(utf8) => {
-						$read = $read + utf8.to_plain_text().len()
-						match Transcript.decode(topic, utf8) {
-							Ok(conversation) if $read <= SearchRoute.most_bytes_read => {
-								$searched = $searched.append({
-									key,
-									place_label,
-									messages: conversation.messages(),
-								})
-							}
-							_ => {
-								$unreadable = $unreadable + 1
-							}
+			$wheres = $wheres.append({ key: ConversationKey.of({ place, topic }), place_label })
+		}
+	}
+	var $unread = 0
+	var $read = 0
+	for at in SearchIndex.keys_not_held!($wheres.map(|topic| topic.key)) {
+		key = ($wheres.get(at) ?? crash "SearchRoute.fill_index!: a place the index named").key
+		if $read >= SearchRoute.most_bytes_read {
+			$unread = $unread + 1
+		} else {
+			match TranscriptFiles.read_transcript!(key)? {
+				NoFile => SearchIndex.fill!(key, Messages([]))
+				File(utf8) => {
+					$read = $read + utf8.to_plain_text().len()
+					if $read > SearchRoute.most_bytes_read {
+						$unread = $unread + 1
+					} else {
+						match Transcript.decode(key.topic(), utf8) {
+							Ok(conversation) => SearchIndex.fill!(key, Messages(conversation.messages()))
+							Err(_) => SearchIndex.fill!(key, Unreadable)
 						}
 					}
 				}
 			}
 		}
 	}
-	Ok({ topics: $searched, unreadable: $unreadable })
+	Ok({ topics: $wheres, unread: $unread })
 }
 
 # ── tests
