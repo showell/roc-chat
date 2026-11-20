@@ -111,6 +111,7 @@ admission_for_host! = |head|
 				kind: Whole,
 				stream_keys: [],
 				stream_holder: [],
+				write_grace_ms: 0,
 			},
 		}
 		Refuse(refusal) => {

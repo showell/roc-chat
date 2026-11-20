@@ -66,6 +66,12 @@ Http := [].{
 	## `stream_holder` names who holds it, at most 64 bytes: the host keeps
 	## a few streams a holder, ending that holder's oldest for a new one.
 	## Anything else is the app's bug, a 500.
+	##
+	## A `Whole` answer is written within the host's write time and
+	## `write_grace_ms` more, or its connection is cut: a large answer, a
+	## download, has more time for a slow link. A stream's is 0, since each
+	## of its writes has the host's own time; any other is the app's bug, a
+	## 500.
 	Response : {
 		status : U16,
 		headers : List(Http.Header),
@@ -73,5 +79,6 @@ Http := [].{
 		kind : [Whole, Stream],
 		stream_keys : List(List(U8)),
 		stream_holder : List(U8),
+		write_grace_ms : U32,
 	}
 }

@@ -116,9 +116,11 @@ HttpAnswer :: [].{
 	## A gzip file, `bytes`, that the browser saves as `filename` rather
 	## than shows: a conversation's download. `filename` is the app's own,
 	## a strict name and `.tar.gz`, so it needs no quoting.
-	gzip_download : { filename : Str, bytes : List(U8) } -> Http.Response
-	gzip_download = |{ filename, bytes }|
-		whole_response({
+	## It has `write_grace_ms` more to be written, the app's time for its
+	## size on a slow link (`DownloadRoute.write_grace_ms`).
+	gzip_download : { filename : Str, bytes : List(U8), write_grace_ms : U32 } -> Http.Response
+	gzip_download = |{ filename, bytes, write_grace_ms }| {
+		..whole_response({
 			status: 200,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "application/gzip".to_utf8() },
@@ -129,7 +131,9 @@ HttpAnswer :: [].{
 				nosniff,
 			],
 			body: bytes,
-		})
+		}),
+		write_grace_ms,
+	}
 
 	## A 405: the path takes only the methods `allowed` names: a
 	## conversation's GET and POST, an upload's POST, or a script's, a
@@ -182,6 +186,7 @@ HttpAnswer :: [].{
 		kind: Stream,
 		stream_keys: keys,
 		stream_holder: holder,
+		write_grace_ms: 0,
 	}
 }
 
@@ -199,7 +204,8 @@ asset = |{ content_type, bytes }|
 		body: bytes,
 	})
 
-## An answer that is its body, naming no stream.
+## An answer that is its body, naming no stream, written in the host's own
+## time.
 whole_response : {
 	status : U16,
 	headers : List(Http.Header),
@@ -212,6 +218,7 @@ whole_response = |{ status, headers, body }| {
 	kind: Whole,
 	stream_keys: [],
 	stream_holder: [],
+	write_grace_ms: 0,
 }
 
 ## A page's headers: its type, and its defences.
@@ -374,7 +381,7 @@ expect
 		HttpAnswer.text(400, "x"),
 	].all(
 		|response|
-			response.kind == Whole and response.stream_keys == [] and response.stream_holder == [],
+			response.kind == Whole and response.stream_keys == [] and response.stream_holder == [] and response.write_grace_ms == 0,
 	)
 expect {
 	response = HttpAnswer.stream({
@@ -386,6 +393,7 @@ expect {
 		and response.status == 200
 		and response.stream_keys == ["k".to_utf8()]
 		and response.stream_holder == "1".to_utf8()
+		and response.write_grace_ms == 0
 		and response.body == "id: 1\n".to_utf8()
 		and header_pairs(response) == [("x-content-type-options", "nosniff")]
 }
