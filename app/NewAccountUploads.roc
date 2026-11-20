@@ -96,11 +96,18 @@ noon = Timestamp.at_second(1_763_640_000)
 
 ## The standing at noon of an account that joined `ago` seconds before.
 joined_ago : I64 -> [New, Established]
-joined_ago = |ago| NewAccountUploads.standing_at(JoinedAt(Timestamp.at_second(1_763_640_000 - ago)), noon)
+joined_ago = |ago| {
+	at = Timestamp.at_second(1_763_640_000 - ago)
+	NewAccountUploads.standing_at(JoinedAt(at), noon)
+}
 
 ## Two days, in seconds.
 two_days : I64
-two_days = 2 * 24 * 60 * 60
+two_days = 2 * day
+
+## A day, in seconds.
+day : I64
+day = 24 * 60 * 60
 
 ## A total of `bytes`, as its file would hold it.
 total_of : U64 -> UploadTotal
@@ -112,7 +119,7 @@ expect NewAccountUploads.standing_at(NotJoined, noon) == Established
 # Joined less than two days ago: new, a second short of them too; two days
 # ago exactly, or before: established.
 expect [0, 60, two_days - 1].all(|ago| joined_ago(ago) == New)
-expect [two_days, two_days + 1, 365 * 24 * 60 * 60].all(|ago| joined_ago(ago) == Established)
+expect [two_days, two_days + 1, 365 * day].all(|ago| joined_ago(ago) == Established)
 # Joined ahead of the clock is new.
 expect joined_ago(-3600) == New
 # A new account: a total landing exactly on 100 MiB passes, a byte more is
