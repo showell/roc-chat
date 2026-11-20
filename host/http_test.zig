@@ -881,3 +881,36 @@ test "a password's check lets the turn go: a page is answered while bcrypt runs"
     try testing.expect(check_ms >= head_start_ms + 30);
     try testing.expect(page_ms * 2 < check_ms - head_start_ms);
 }
+
+test "a port another server listens on is refused, never shared" {
+    var first = try http.listen_alone(0);
+    defer first.deinit(io);
+    const port = first.socket.address.getPort();
+    try testing.expectError(error.PortTaken, http.listen_alone(port));
+    // Nor does std's `.reuse_address`, SO_REUSEPORT and all, share it.
+    const address: Io.net.IpAddress = .{ .ip4 = .loopback(port) };
+    try testing.expectError(error.AddressInUse, address.listen(io, .{ .reuse_address = true }));
+    // A whole server, its app started, is refused it too.
+    var other = testing.tmpDir(.{});
+    defer other.cleanup();
+    const other_root: files.DataRoot = .{ .io = io, .dir = other.dir };
+    try testing.expectError(error.PortTaken, http.Server.listen(io, gpa, .{ .port = port, .root = &other_root }));
+}
+
+test "a restart binds its port at once, past the last run's connections in TIME_WAIT" {
+    var first = try http.listen_alone(0);
+    const port = first.socket.address.getPort();
+    const address: Io.net.IpAddress = .{ .ip4 = .loopback(port) };
+    const client = try address.connect(io, .{ .mode = .stream });
+    // The server closes first, as `connection: close` has it, so its side
+    // of the connection waits in TIME_WAIT on the port.
+    const served = try first.accept(io);
+    served.close(io);
+    var buf: [16]u8 = undefined;
+    var r = client.reader(io, &buf);
+    try testing.expectError(error.EndOfStream, r.interface.takeByte());
+    client.close(io);
+    first.deinit(io);
+    var again = try http.listen_alone(port);
+    again.deinit(io);
+}

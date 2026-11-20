@@ -107,6 +107,63 @@ pub const Setup = struct {
     public_origin: []const u8 = "",
 };
 
+/// What `listen_alone` fails with: a port another process listens on, or
+/// the system's own refusals.
+pub const ListenAloneError = error{
+    PortTaken,
+    ProcessFdQuotaExceeded,
+    SystemFdQuotaExceeded,
+    SystemResources,
+} || std.posix.UnexpectedError;
+
+/// Listens on 127.0.0.1 at `port` (0 for any free one), and on that port
+/// alone: when another process listens there, `error.PortTaken`.
+///
+/// *Why not std's `listen`:* its `.reuse_address` sets SO_REUSEPORT as well
+/// as SO_REUSEADDR, and with SO_REUSEPORT a second server binds the same
+/// port without a word and the kernel splits the connections between the
+/// two. So the socket is made here, with SO_REUSEADDR alone: a restart
+/// still binds at once past the last run's connections in TIME_WAIT, and a
+/// port in use is refused.
+pub fn listen_alone(port: u16) ListenAloneError!net.Server {
+    const posix = std.posix;
+    const made = posix.system.socket(posix.AF.INET, posix.SOCK.STREAM | posix.SOCK.CLOEXEC, posix.IPPROTO.TCP);
+    try socket_call(made);
+    const fd: posix.socket_t = @intCast(made);
+    errdefer _ = posix.system.close(fd);
+    const on: u32 = 1;
+    const on_bytes = std.mem.asBytes(&on);
+    try socket_call(posix.system.setsockopt(fd, posix.SOL.SOCKET, posix.SO.REUSEADDR, on_bytes.ptr, on_bytes.len));
+    var address: posix.sockaddr.in = .{
+        .port = std.mem.nativeToBig(u16, port),
+        .addr = @bitCast([4]u8{ 127, 0, 0, 1 }),
+    };
+    try socket_call(posix.system.bind(fd, @ptrCast(&address), @sizeOf(posix.sockaddr.in)));
+    try socket_call(posix.system.listen(fd, net.default_kernel_backlog));
+    var length: posix.socklen_t = @sizeOf(posix.sockaddr.in);
+    try socket_call(posix.system.getsockname(fd, @ptrCast(&address), &length));
+    return .{
+        .socket = .{
+            .handle = fd,
+            .address = .{ .ip4 = .{ .bytes = @bitCast(address.addr), .port = std.mem.bigToNative(u16, address.port) } },
+        },
+        .options = {},
+    };
+}
+
+/// One of `listen_alone`'s system calls, by what it returned.
+fn socket_call(returned: anytype) ListenAloneError!void {
+    const posix = std.posix;
+    switch (posix.errno(returned)) {
+        .SUCCESS => {},
+        .ADDRINUSE => return error.PortTaken,
+        .MFILE => return error.ProcessFdQuotaExceeded,
+        .NFILE => return error.SystemFdQuotaExceeded,
+        .NOBUFS, .NOMEM => return error.SystemResources,
+        else => |e| return posix.unexpectedErrno(e),
+    }
+}
+
 /// The most a request's head may be: past it, a 431.
 pub const head_most = 16 * 1024;
 
@@ -142,18 +199,18 @@ pub const Server = struct {
 
     /// Starts the app on `setup.root` (`start_app`), reads the secret
     /// there (made first when there is none) and GitHub's settings, then
-    /// listens on 127.0.0.1 at `setup.port`. Tests pass 0 to get any free
-    /// port.
+    /// listens on 127.0.0.1 at `setup.port` (`listen_alone`): a port
+    /// another process listens on is `error.PortTaken`. Tests pass 0 to get
+    /// any free port.
     pub fn listen(io: Io, gpa: std.mem.Allocator, setup: Setup) !Server {
         try start_app(io, gpa, setup.root);
         const secret = try sign_in.ServerSecret.load_or_create(io, setup.root.dir);
         const github_settings = try github.Settings.load(io, setup.root.dir);
-        const addr: net.IpAddress = try .parse("127.0.0.1", setup.port);
         return .{
             .io = io,
             .gpa = gpa,
             .limits = setup.limits,
-            .listener = try addr.listen(io, .{ .reuse_address = true }),
+            .listener = try listen_alone(setup.port),
             .root = setup.root,
             .hub = .init(io, gpa),
             .seconds = .init(gpa),

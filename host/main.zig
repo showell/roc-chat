@@ -60,6 +60,7 @@ pub fn main(init: std.process.Init) !void {
         std.process.fatal("the data folder {s} cannot be opened ({t})", .{ folder, e });
     const root: files.DataRoot = .{ .io = io, .dir = dir };
     var server = http.Server.listen(io, init.gpa, .{ .port = port, .root = &root, .public_origin = public_origin }) catch |e| switch (e) {
+        error.PortTaken => std.process.fatal("port {d} on 127.0.0.1 is taken: another process listens on it; stop that one, or start this one with another --port", .{port}),
         error.SecretOpenToOthers => std.process.fatal(
             "{s}/{s} may be read or written by others than its owner, so it signs no session: `chmod 600` it, or remove it and start again to make a new one (every session then ends)",
             .{ folder, sign_in.secret_name },
