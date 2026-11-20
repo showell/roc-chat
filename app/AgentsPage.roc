@@ -19,6 +19,11 @@ import Users
 
 AgentsPage :: [].{
 
+	## The line a viewer whose session a device code started sees in place
+	## of the page's buttons.
+	code_session_words : Str
+	code_session_words = "This device signed in with a code, so it can't manage agents or link GitHub. Sign out here, then sign in with your password or GitHub for that."
+
 	## One agent on the agents page, with its keys and its invites.
 	AgentSummary : {
 		agent : Users.User,
@@ -36,7 +41,9 @@ AgentsPage :: [].{
 	## revokes it; else (`NotTheKeeper`) a line saying agents are the admin's.
 	## When an invite was just made, its code comes first (`shown`), the one
 	## time it is shown. Last, when `github_link` offers it, a button that
-	## links GitHub.
+	## links GitHub. A viewer whose session a device code started sees no
+	## button, as none would work for them (`FullSessionRoutes`), and a line
+	## saying why.
 	agents : {
 		viewer : SignedIn,
 		agents : [Kept(List(AgentsPage.AgentSummary)), NotTheKeeper],
@@ -44,6 +51,11 @@ AgentsPage :: [].{
 		github_link : AgentsPage.GitHubLinkOffer,
 	} -> TrustedHtml
 	agents = |{ viewer, agents: kept, shown, github_link }| {
+		buttons =
+			match viewer.check_full_session() {
+				Ok({}) => WithButtons
+				Err(StartedByDeviceCode) => WithoutButtons
+			}
 		code =
 			match shown {
 				NoCode => TrustedHtml.join([])
@@ -76,21 +88,26 @@ AgentsPage :: [].{
 				PageKit.top_bar({ title: "Agents", viewer }),
 				PageKit.newline,
 				code,
-				match kept {
-					Kept(summaries) =>
+				match (kept, buttons) {
+					(Kept(summaries), WithButtons) =>
 						TrustedHtml.join([
 							make_form,
 							PageKit.newline,
-							TrustedHtml.join(summaries.map(agent_section)),
+							TrustedHtml.join(summaries.map(|summary| agent_section(summary, WithButtons))),
 						])
-					NotTheKeeper => PageKit.paragraph("Only the admin makes and manages agents.")
+					(Kept(summaries), WithoutButtons) =>
+						TrustedHtml.join([
+							PageKit.paragraph(AgentsPage.code_session_words),
+							TrustedHtml.join(summaries.map(|summary| agent_section(summary, WithoutButtons))),
+						])
+					(NotTheKeeper, _) => PageKit.paragraph("Only the admin makes and manages agents.")
 				},
-				match github_link {
-					LinkOffered => PageKit.post_button({
+				match (github_link, buttons) {
+					(LinkOffered, WithButtons) => PageKit.post_button({
 						action: "/login/github/link",
 						label: "Link GitHub",
 					})
-					LinkNotOffered => TrustedHtml.join([])
+					_ => TrustedHtml.join([])
 				},
 			]),
 		})
@@ -98,10 +115,16 @@ AgentsPage :: [].{
 }
 
 ## One agent's part of the agents page: its name and id, the button that
-## invites it, then its keys and its invites.
-agent_section : AgentsPage.AgentSummary -> TrustedHtml
-agent_section = |{ agent, keys, invites }| {
+## invites it, then its keys and its invites, each live one with a button
+## that revokes it; the buttons left out `WithoutButtons`.
+agent_section : AgentsPage.AgentSummary, [WithButtons, WithoutButtons] -> TrustedHtml
+agent_section = |{ agent, keys, invites }, buttons| {
 	folder = "/agents/${agent.id().to_str()}"
+	button = |made|
+		match buttons {
+			WithButtons => made
+			WithoutButtons => TrustedHtml.join([])
+		}
 	TrustedHtml.join([
 		Html.element({
 			name: H1,
@@ -109,10 +132,12 @@ agent_section = |{ agent, keys, invites }| {
 			inner: Escape.text("${agent.name().to_str()} (id ${agent.id().to_str()})"),
 		}),
 		PageKit.newline,
-		PageKit.post_button({
-			action: "${folder}/invites",
-			label: "Invite ${agent.name().to_str()}",
-		}),
+		button(
+			PageKit.post_button({
+				action: "${folder}/invites",
+				label: "Invite ${agent.name().to_str()}",
+			}),
+		),
 		TrustedHtml.join(
 			keys.map(
 				|key| {
@@ -134,7 +159,7 @@ agent_section = |{ agent, keys, invites }| {
 							})
 							Revoked => TrustedHtml.join([])
 						}
-					TrustedHtml.join([PageKit.paragraph(said), revoke])
+					TrustedHtml.join([PageKit.paragraph(said), button(revoke)])
 				},
 			),
 		),
@@ -153,7 +178,7 @@ agent_section = |{ agent, keys, invites }| {
 							Spent => TrustedHtml.join([])
 							Revoked => TrustedHtml.join([])
 						}
-					TrustedHtml.join([PageKit.paragraph(said), revoke])
+					TrustedHtml.join([PageKit.paragraph(said), button(revoke)])
 				},
 			),
 		),

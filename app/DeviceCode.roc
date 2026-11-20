@@ -2,7 +2,8 @@
 ## signed in on another, so the second device needs no password and no
 ## GitHub. The human makes the code on the device already signed in
 ## (`DeviceCodeRoute`), types it on the other, and the chat signs that one in
-## with an ordinary session.
+## with a session marked as a code's (`Session.Origin`), which may not hand
+## out credentials or take them back (`FullSessionRoutes`).
 ##
 ## A code is 8 characters of `alphabet`, which leaves out 0, O, 1, I and L,
 ## made from the host's random bytes (`Code.of_random_bytes`). It is shown as
@@ -97,10 +98,11 @@ DeviceCode :: {
 
 		## The `Set-Cookie` value that carries the code just made to the page
 		## that shows it, once: for this host alone, sent to no script and on
-		## no other site's request, and gone with the code's life.
+		## no other site's request, and gone when the browser closes, when the
+		## page shows it, or when the human signs out.
 		flash_cookie_text : DeviceCode.Code -> Str
 		flash_cookie_text = |DeviceCode.Code.(characters)|
-			"${flash_prefix_text}${Str.from_utf8_lossy(characters)}; Path=/; Max-Age=300; ${flash_attributes}"
+			"${flash_prefix_text}${Str.from_utf8_lossy(characters)}; Path=/; ${flash_attributes}"
 
 		## The bytes the host's HMAC is over: `device-code`, a line feed and
 		## the 8 characters. A session's signed bytes start with a digit, so

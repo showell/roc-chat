@@ -4,6 +4,7 @@
 ## the session generation that signs every other device out
 ## (`Session.Material`); and the list of sign-ins by code, each device named
 ## coarsely (`DeviceSignIns`, `DeviceCodePage`).
+import AgentsPage
 import DeviceCodePage
 import DeviceSignIns
 import FirstStart
@@ -279,3 +280,49 @@ expect
 	)
 expect
 	Str.from_utf8_lossy(DeviceCodePage.new_device_frame).contains("<a href=\"/devices#sign-out-others\">")
+
+# A device whose session a code started sees no button it couldn't use: on
+# its device code page none that makes or cancels a code or signs other
+# devices out, on its agents page none at all, and a line saying why in
+# each; a session started otherwise sees them all.
+## The device code page for `viewer`, with a code waiting, as a test reads it.
+devices_page_for : SignedIn -> Str
+devices_page_for = |viewer|
+	Str.from_utf8_lossy(
+		DeviceCodePage.page({ viewer, shown: Status(Waiting(signed_at)), sign_ins: [] }).to_utf8(),
+	)
+
+## The agents page for `viewer`, the admin's, as a test reads it.
+agents_page_for : SignedIn -> Str
+agents_page_for = |viewer|
+	Str.from_utf8_lossy(
+		AgentsPage.agents({ viewer, agents: Kept([]), shown: NoCode, github_link: LinkOffered }).to_utf8(),
+	)
+
+expect {
+	by_code = devices_page_for(steve_by(ByDeviceCode))
+	!by_code.contains("action=\"/devices\"")
+		and !by_code.contains("action=\"/devices/cancel\"")
+		and !by_code.contains("action=\"/devices/sign-out-others\"")
+		and by_code.contains("This device signed in with a code, so it can&#39;t make codes")
+}
+expect {
+	ordinary = devices_page_for(steve_by(Ordinary))
+	ordinary.contains("action=\"/devices\"")
+		and ordinary.contains("action=\"/devices/cancel\"")
+		and ordinary.contains("action=\"/devices/sign-out-others\"")
+		and !ordinary.contains("This device signed in with a code, so it can&#39;t make codes")
+}
+expect {
+	by_code = agents_page_for(steve_by(ByDeviceCode))
+	!by_code.contains("<button>") and by_code.contains("This device signed in with a code, so it can&#39;t manage agents")
+}
+expect {
+	ordinary = agents_page_for(steve_by(Ordinary))
+	ordinary.contains("<button>Make an agent</button>")
+		and ordinary.contains("action=\"/login/github/link\"")
+		and !ordinary.contains("This device signed in with a code, so it can&#39;t manage agents")
+}
+# After a reload, a waiting code is not shown again, and the page says how
+# to see one.
+expect devices_page_for(steve_by(Ordinary)).contains("It is shown only once; make a new code to see one.")

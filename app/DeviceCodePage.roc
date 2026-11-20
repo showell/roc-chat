@@ -49,6 +49,13 @@ DeviceCodePage :: [].{
 		sign_ins : List(DeviceSignIns.SignIn),
 	} -> TrustedHtml
 	page = |{ viewer, shown, sign_ins }| {
+		full_session = viewer.check_full_session().is_ok()
+		buttons_or = |made|
+			if full_session {
+				made
+			} else {
+				TrustedHtml.join([])
+			}
 		said =
 			match shown {
 				Made({ code, expires }) =>
@@ -62,7 +69,7 @@ DeviceCodePage :: [].{
 						]),
 						PageKit.paragraph(DeviceCodePage.warning_words),
 						status_line(Escape.text("Waiting for your other device.")),
-						cancel_button,
+						buttons_or(cancel_button),
 					])
 				Status(Waiting(expires)) =>
 					TrustedHtml.join([
@@ -70,10 +77,10 @@ DeviceCodePage :: [].{
 							TrustedHtml.join([
 								Escape.text("A code is waiting to be used, until "),
 								expiry_time(expires),
-								Escape.text("."),
+								Escape.text(". It is shown only once; make a new code to see one."),
 							]),
 						),
-						cancel_button,
+						buttons_or(cancel_button),
 					])
 				Status(status) => status_line(status_words(status))
 			}
@@ -83,17 +90,32 @@ DeviceCodePage :: [].{
 			parts: [
 				PageKit.paragraph("A code from here signs your phone, or any other device, in as you, with no password."),
 				said,
-				PageKit.post_button({ action: DeviceCodePage.path, label: "Make a code" }),
-				PageKit.paragraph("Making a code cancels the one before. Signing out cancels it too."),
+				if full_session {
+					TrustedHtml.join([
+						PageKit.post_button({ action: DeviceCodePage.path, label: "Make a code" }),
+						PageKit.paragraph("Making a code cancels the one before. Signing out cancels it too."),
+					])
+				} else {
+					PageKit.paragraph(DeviceCodePage.code_session_words)
+				},
 				PageKit.heading("Sign-ins by code"),
 				sign_ins_list(sign_ins),
 				PageKit.heading("Your other devices"),
-				PageKit.paragraph("If a device you don't know signed in, sign every other device out. This one stays signed in."),
-				sign_out_others_button,
+				buttons_or(
+					TrustedHtml.join([
+						PageKit.paragraph("If a device you don't know signed in, sign every other device out. This one stays signed in."),
+						sign_out_others_button,
+					]),
+				),
 				PageKit.script(Script.Devices),
 			],
 		})
 	}
+
+	## What a device whose session a code started sees in place of the
+	## page's buttons.
+	code_session_words : Str
+	code_session_words = "This device signed in with a code, so it can't make codes or sign other devices out. Sign out here, then sign in with your password or GitHub for that."
 
 	## What the page says beside every code it shows.
 	warning_words : Str

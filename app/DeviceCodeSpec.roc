@@ -296,11 +296,11 @@ expect
 		== "device-code-client\nv6 2001:0db8:0001:0002".to_utf8()
 
 # The cookie that carries a code just made to the page, once: for this host
-# alone, for the code's five minutes, sent to no script and on no other
+# alone, for the browser's session, sent to no script and on no other
 # site's request; read back among other cookies, and nothing else is a code.
 expect
 	code_of("ABCD-EFGH").flash_cookie_text()
-		== "__Host-device_code=ABCDEFGH; Path=/; Max-Age=300; HttpOnly; Secure; SameSite=Strict"
+		== "__Host-device_code=ABCDEFGH; Path=/; HttpOnly; Secure; SameSite=Strict"
 expect
 	DeviceCode.clear_flash_cookie_text
 		== "__Host-device_code=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict"

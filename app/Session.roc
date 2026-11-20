@@ -3,9 +3,9 @@
 ## on every request after.
 ##
 ## The cookie is `__Host-gopher_auth`, and its value is three parts joined by
-## `.`: the user's id in base64url (`Base64Url`), the second it was signed
-## at, in decimal, and the HMAC-SHA256 of the id, a line feed, that second,
-## a line feed and the human's `Material`, in base64url. The host signs and
+## `.`, and a fourth, `d`, for a session a device code started: the user's
+## id in base64url (`Base64Url`), the second it was signed at, in decimal,
+## and the HMAC-SHA256 of `signed_bytes`, in base64url. The host signs and
 ## checks the HMAC with the server's secret
 ## (`Host.hmac_sha256_with_server_secret!`), which the app never holds. A
 ## session admits its human for a year from its second, and one signed more
@@ -58,13 +58,14 @@ Session :: [].{
 	clock_skew_seconds : Seconds
 	clock_skew_seconds = Seconds.of(5 * 60)
 
-	## What a cookie claims before its signature is checked: whose it is,
-	## the second it says it was signed at, and its signature.
 	## How a session was started: by a password, GitHub or an invite
 	## (`Ordinary`), or by a device code from another device of the human's
 	## (`ByDeviceCode`).
 	Origin : [Ordinary, ByDeviceCode]
 
+	## What a cookie claims before its signature is checked: whose it is,
+	## the second it says it was signed at, how the session was started,
+	## and its signature.
 	Claim :: {
 		id : UserId,
 		signed_at : Timestamp,
