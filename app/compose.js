@@ -31,14 +31,25 @@
 // sees it, and when it arrives there the status line says it was sent,
 // linking to it. A refusal shows the server's own words and keeps the
 // draft. With no answer in 3 seconds, the status line says "Still sending…"
-// and the draft stays locked, since the first post may yet be stored: a
-// retry then could post the message twice. The box comes back on only with
-// an answer: a 201, however late, empties it as usual; a refusal (any answer
-// that is not a 2xx) keeps the draft and shows the server's words; and a
-// connection that fails outright keeps the draft and shows chat-client's
-// dialog, that the host may be down. (chat-client gave up waiting at 3
-// seconds and asked for a retry while the first post was still on its way;
-// this departs from it, on purpose.)
+// and Send stays off, since the first post may yet be stored: a retry then
+// could post the message twice. The box is read-only meanwhile, so its text
+// can still be selected and copied, and the draft is kept in the browser
+// (below), so a reload keeps it. With no answer in 15 seconds the script
+// asks whether the server answers at all, a GET of palette.js that is never
+// cached, given 5 seconds, and asks again every 15 seconds while the send
+// waits; the status line says plainly which it is: the server answers but
+// hasn't stored the message yet, or the server can't be reached. Send comes
+// back only with the send's own answer: a 201, however late, empties the
+// box as usual; a refusal (any answer that is not a 2xx) keeps the draft
+// and shows the server's words; and a connection that fails outright keeps
+// the draft and says, in chat-client's dialog, that the message may or may
+// not have been stored, to look for it before sending again: a connection
+// cut after the server read the post leaves no way to tell. (chat-client
+// gave up waiting at 3 seconds and asked for a retry while the first post
+// was still on its way, telling the writer afterwards, by its client id's
+// echo on the stream, that the message had arrived after all; this
+// departs from it, on purpose: nothing is offered to send again while the
+// first post may still be stored.)
 //
 // The page's keys are one table, Keys, here: each key a feature registers
 // is listed in the closed rail's keyboard help, as a button that does what
@@ -86,6 +97,7 @@
     '.compose-status{font-size:12px;color:var(--cc-muted-fg);min-height:16px;margin-top:6px}',
     '.compose textarea{box-sizing:border-box;font-family:inherit;font-size:14px;padding:8px;border-radius:8px;' +
       'background:var(--cc-card-bg);color:var(--cc-fg);border:1px solid var(--cc-input-border)}',
+    '.compose textarea:read-only{opacity:.6}',
     '.compose textarea:focus{outline:none;border-color:var(--cc-accent);box-shadow:0 0 0 1px var(--cc-accent)}',
     // A file dragged over the open box: a dashed accent outline and a
     // tinted textarea, until it is dropped or leaves.
@@ -336,6 +348,9 @@
   // line still shows it.
   var sentLink = null;
   var STILL_SENDING_MS = 3000;
+  var NO_ANSWER_MS = 15000;
+  var SERVER_CHECK_MS = 15000;
+  var SERVER_CHECK_PATIENCE_MS = 5000;
 
   // The one send on its way, if any: its timer. A second send waits for its
   // answer, so one Ctrl+Enter pressed twice, or a retry while the network is
@@ -405,12 +420,13 @@
   function refreshControls() {
     refreshOpenButton();
     saveDraft();
-    box.disabled = !!pending;
+    box.readOnly = !!pending;
     send.disabled = !!pending || uploading || box.value.trim() === '';
     uploadButton.disabled = !!pending || uploading;
   }
   function settle() {
     clearTimeout(pending.timer);
+    clearTimeout(pending.checkTimer);
     pending = null;
     status.textContent = '';
     status.style.color = '';
@@ -437,12 +453,39 @@
     if (pending !== mine) return;
     status.textContent = 'Still sending…';
   }
+  // Long with no answer: whether the server answers anything, said plainly,
+  // asked again until the send is answered.
+  var pingScript = document.querySelector('script[src$="/palette.js"]');
+  if (!pingScript) throw new Error('compose.js: the page loads no palette.js, which the server check asks for');
+  var pingUrl = pingScript.src;
+  function checkServer(mine) {
+    if (pending !== mine) return;
+    var waited = Math.round((Date.now() - mine.started) / 1000);
+    var kept = ' Your draft is kept in this browser, and Send stays off until the server answers, so the message is never posted twice.';
+    function say(words) {
+      if (pending !== mine) return;
+      status.style.color = ERROR;
+      status.textContent = words + kept;
+      mine.checkTimer = setTimeout(function () { checkServer(mine); }, SERVER_CHECK_MS);
+    }
+    var aborter = typeof AbortController === 'function' ? new AbortController() : null;
+    var giveUp = setTimeout(function () { if (aborter) aborter.abort(); }, SERVER_CHECK_PATIENCE_MS);
+    fetch(pingUrl, { cache: 'no-store', signal: aborter ? aborter.signal : undefined }).then(function (r) {
+      clearTimeout(giveUp);
+      say(r.ok
+        ? 'No answer to your send after ' + waited + ' seconds, though the server is up: it may still be storing it.'
+        : 'No answer to your send after ' + waited + ' seconds, and the server answers ' + r.status + ' to a check.');
+    }, function () {
+      clearTimeout(giveUp);
+      say('No answer to your send after ' + waited + ' seconds, and the server can\'t be reached: it, or your connection, may be down.');
+    });
+  }
   // The connection failed, so the server never answered: the draft is
   // given back to retry.
   function hostDown(mine) {
     if (pending !== mine) return;
     settle();
-    showAlert('The host may be down, and your message was not sent. Your draft is kept: please retry your send.');
+    showAlert('The connection to the server failed before it answered, so your message may or may not have been stored. Your draft is kept: look for the message above before you send it again.');
   }
 
   // The server's words for a refusal: its plain text, or the words of the
@@ -515,12 +558,13 @@
     if (pending || uploading) return;
     var markdown = box.value;
     if (!markdown.trim()) return;
-    var mine = { timer: null };
+    var mine = { timer: null, checkTimer: null, started: Date.now() };
     pending = mine;
     refreshControls();
     status.style.color = '';
     status.textContent = 'Sending…';
     mine.timer = setTimeout(function () { stillSending(mine); }, STILL_SENDING_MS);
+    mine.checkTimer = setTimeout(function () { checkServer(mine); }, NO_ANSWER_MS);
     fetch(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
