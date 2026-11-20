@@ -3,8 +3,9 @@
 ## or take one from the human's other devices. That is linking GitHub, by
 ## its button or by going through GitHub while signed in; making agents,
 ## inviting them, and revoking their invites and keys; inviting a human, or
-## inviting one again, which sets their password; and making or cancelling
-## a device code, or signing the human's other devices out. Such a device
+## inviting one again, which sets their password; the channels' admin
+## pages, creating a channel and adding or removing its members; and making
+## or cancelling a device code, or signing the human's other devices out. Such a device
 ## signs in with a password or GitHub first, after signing out, for those;
 ## everything else it does as any session does. `Dispatch` asks before answering any route, and
 ## answers a refusal with a 403 saying `refusal_words`.
@@ -32,7 +33,7 @@ FullSessionRoutes :: [].{
 
 	## What the refusal of a session a device code started says.
 	refusal_words : Str
-	refusal_words = "This device signed in with a code from another device. To invite people, manage agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub."
+	refusal_words = "This device signed in with a code from another device. To invite people, manage channels or agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub."
 }
 
 ## Whether `choice` asks for a session no device code started: every route
@@ -59,11 +60,11 @@ asks_full_session = |choice|
 		SignedInOnly(RevokeInvite(_)) => Bool.True
 		SignedInOnly(RevokeKey(_)) => Bool.True
 		SignedInOnly(OpenAgentStream) => Bool.False
-		SignedInOnly(ShowChannels) => Bool.False
-		SignedInOnly(CreateChannel) => Bool.False
-		SignedInOnly(ShowChannelMembers(_)) => Bool.False
-		SignedInOnly(AddChannelMember(_)) => Bool.False
-		SignedInOnly(RemoveChannelMember(_)) => Bool.False
+		SignedInOnly(ShowChannels) => Bool.True
+		SignedInOnly(CreateChannel) => Bool.True
+		SignedInOnly(ShowChannelMembers(_)) => Bool.True
+		SignedInOnly(AddChannelMember(_)) => Bool.True
+		SignedInOnly(RemoveChannelMember(_)) => Bool.True
 		SignedInOnly(ShowInvites) => Bool.False
 		SignedInOnly(InviteHuman) => Bool.True
 		SignedInOnly(InviteHumanAgain(_)) => Bool.True

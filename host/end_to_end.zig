@@ -1192,7 +1192,7 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
         has(devices.body, ": Safari on iOS</li>") and !has(devices.body, "Mobile/15E148") and
         has(try readFile(a, io, data, "users/1/device-sign-ins"), " safari ios\n"));
 
-    const refusal = "This device signed in with a code from another device. To invite people, manage agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub.";
+    const refusal = "This device signed in with a code from another device. To invite people, manage channels or agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub.";
     const make_agent = try postAs(a, io, port, tablet_session, "/agents", "name=Tablet");
     const link = try postAs(a, io, port, tablet_session, "/login/github/link", "");
     const start = try getAs(a, io, port, tablet_session, "/login/github/start?next=/chat");
@@ -1207,9 +1207,15 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const tablet_code = try postAs(a, io, port, tablet_session, "/devices", "");
     const tablet_cancel = try postAs(a, io, port, tablet_session, "/devices/cancel", "");
     const tablet_sign_out_others = try postAs(a, io, port, tablet_session, "/devices/sign-out-others", "");
+    const tablet_channels = try getAs(a, io, port, tablet_session, "/channels");
+    const tablet_create = try postAs(a, io, port, tablet_session, "/channels", "name=tablet-room");
+    const tablet_add = try postAs(a, io, port, tablet_session, "/channels/crew/members/2/add", "");
+    const tablet_remove = try postAs(a, io, port, tablet_session, "/channels/general/members/2/remove", "");
+    try t.check("nor use the channels' admin pages, create a channel, or add or remove a member: a 403 each", tablet_channels.status == 403 and
+        tablet_create.status == 403 and tablet_add.status == 403 and tablet_remove.status == 403 and has(tablet_create.body, "manage channels or agents"));
     try t.check("nor invite a human, nor invite one again (which sets their password), nor make or cancel a code, nor sign the other devices out: a 403 each, nothing written", invite_human.status == 403 and
         invite_again.status == 403 and tablet_code.status == 403 and tablet_cancel.status == 403 and tablet_sign_out_others.status == 403 and
-        has(invite_again.body, "To invite people, manage agents") and
+        has(invite_again.body, "To invite people, manage channels or agents") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "(none)"));
     try t.check("that session may not make an agent, invite one or link GitHub, by its button or through GitHub: a 403 each, saying to sign in with a password or GitHub; it reads /agents", make_agent.status == 403 and
         has(make_agent.body, "sign out here, then sign in with your password or GitHub.") and link.status == 403 and start.status == 403 and
