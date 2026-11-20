@@ -63,6 +63,11 @@ chosen_route = |method, path|
 		SignedInOnly(ShowInvites) => "invites"
 		SignedInOnly(InviteHuman) => "invite a human"
 		SignedInOnly(InviteHumanAgain(human)) => "invite ${human.to_str()} again"
+		SignedInOnly(ShowDeviceCode) => "the device code page"
+		SignedInOnly(MakeDeviceCode) => "make a device code"
+		SignedInOnly(CancelDeviceCode) => "cancel the device code"
+		SignedInOnly(OpenDevicesStream) => "the device code page's stream"
+		SignedInOnly(SignOutOtherDevices) => "sign out other devices"
 		Open(ResumeOrBrowse) => "the way in (open)"
 		Open(ShowJoin) => "the join page (open)"
 		Open(LookUpJoinName) => "the name to join under (open)"
@@ -81,6 +86,7 @@ chosen_route = |method, path|
 		Open(WrongMethodToGitHub(PostOnly)) => "the wrong method for a name (open)"
 		Open(WrongMethodToGitHub(GetAndPost)) => "no route takes this"
 		Open(RedeemInvite) => "redeem (open)"
+		Open(RedeemDeviceCode) => "sign in by a device code (open)"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
@@ -298,6 +304,31 @@ expect
 		"/login/x",
 		"/logouts",
 		"login",
+	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
+# A device code: its page by GET and a new one by POST to /devices, both
+# for someone signed in; signing in by one by POST alone to /login/code,
+# open; no other spelling.
+expect chosen_route("GET", "/devices".to_utf8()) == "the device code page"
+expect chosen_route("POST", "/devices".to_utf8()) == "make a device code"
+expect chosen_route("PUT", "/devices".to_utf8()) == "not allowed: GET, POST"
+expect chosen_route("POST", "/login/code".to_utf8()) == "sign in by a device code (open)"
+expect chosen_route("GET", "/login/code".to_utf8()) == "not allowed: POST"
+expect chosen_route("PUT", "/login/code".to_utf8()) == "not allowed: POST"
+expect chosen_route("POST", "/devices/cancel".to_utf8()) == "cancel the device code"
+expect chosen_route("GET", "/devices/cancel".to_utf8()) == "not allowed: POST"
+expect chosen_route("GET", "/devices/stream".to_utf8()) == "the device code page's stream"
+expect chosen_route("POST", "/devices/stream".to_utf8()) == "not allowed: GET"
+expect chosen_route("POST", "/devices/sign-out-others".to_utf8()) == "sign out other devices"
+expect chosen_route("GET", "/devices/sign-out-others".to_utf8()) == "not allowed: POST"
+expect
+	[
+		"/devices/",
+		"/Devices",
+		"/devices/x",
+		"/devices/cancel/x",
+		"/login/code/x",
+		"/login/codes",
+		"/code",
 	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
 # Joining: the page by GET and the join by POST to /join; the name to join
 # under by POST alone to /join/name; each open; no other spelling.

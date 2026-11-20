@@ -44,6 +44,7 @@ Html :: [].{
 		Form,
 		H1,
 		Header,
+		Label,
 		Li,
 		Nav,
 		P,
@@ -154,6 +155,7 @@ Html :: [].{
 		Id(Html.Token),
 		Href(Html.Token),
 		Link(Html.SitePath),
+		LinkToPart({ path : Html.SitePath, part : Html.Token }),
 		LinkWithNext({ path : Html.SitePath, next : Html.SitePath }),
 		OffSiteLink(Html.HttpsUrl),
 		DateTime(DateTime),
@@ -166,7 +168,9 @@ Html :: [].{
 		Value(Html.SitePath),
 		TokenValue(Html.Token),
 		NameValue(Name),
-		Autocomplete([Username, CurrentPassword, NewPassword]),
+		Autocomplete([Username, CurrentPassword, NewPassword, OneTimeCode]),
+		Autofocus,
+		CodeTyping,
 		Src(Html.SitePath),
 		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
 	]
@@ -227,6 +231,7 @@ name_of = |name|
 		Form => "form"
 		H1 => "h1"
 		Header => "header"
+		Label => "label"
 		Li => "li"
 		Nav => "nav"
 		P => "p"
@@ -247,6 +252,7 @@ attribute = |given|
 		Id(token) => " id=\"${token.to_str()}\""
 		Href(token) => " href=\"#${token.to_str()}\""
 		Link(path) => " href=\"${path.to_str()}\""
+		LinkToPart({ path, part }) => " href=\"${path.to_str()}#${part.to_str()}\""
 		LinkWithNext({ path, next }) => " href=\"${path.to_str()}?next=${next.to_str()}\""
 		OffSiteLink(url) => " href=\"${url.to_str()}\""
 		DateTime(time) => " datetime=\"${time.to_str()}\""
@@ -264,6 +270,9 @@ attribute = |given|
 		Autocomplete(Username) => " autocomplete=\"username\""
 		Autocomplete(CurrentPassword) => " autocomplete=\"current-password\""
 		Autocomplete(NewPassword) => " autocomplete=\"new-password\""
+		Autocomplete(OneTimeCode) => " autocomplete=\"one-time-code\""
+		Autofocus => " autofocus"
+		CodeTyping => " autocapitalize=\"characters\" autocorrect=\"off\" spellcheck=\"false\""
 		Src(path) => " src=\"${path.to_str()}\""
 		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
 		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
@@ -332,6 +341,7 @@ expect name_of(Div) == "div"
 expect name_of(Form) == "form"
 expect name_of(H1) == "h1"
 expect name_of(Header) == "header"
+expect name_of(Label) == "label"
 expect name_of(Li) == "li"
 expect name_of(Nav) == "nav"
 expect name_of(P) == "p"
@@ -402,12 +412,22 @@ expect {
 		(Autocomplete(Username), " autocomplete=\"username\""),
 		(Autocomplete(CurrentPassword), " autocomplete=\"current-password\""),
 		(Autocomplete(NewPassword), " autocomplete=\"new-password\""),
+		(Autocomplete(OneTimeCode), " autocomplete=\"one-time-code\""),
+		(Autofocus, " autofocus"),
+		(MaxLength(20), " maxlength=\"20\""),
+		(CodeTyping, " autocapitalize=\"characters\" autocorrect=\"off\" spellcheck=\"false\""),
 	].all(|(given, expected)| attribute(given) == expected)
 }
-# A link to another page of this site: its site path, as it is.
+# A link to another page of this site: its site path, as it is, and to a
+# part of one, its token after `#`.
 expect
 	Html.SitePath.from_str("/channels/general").map_ok(|path| attribute(Link(path)))
 		== Ok(" href=\"/channels/general\"")
+expect
+	Html.SitePath.from_str("/devices").map_ok(
+		|path| attribute(LinkToPart({ path, part: token("sign-out-others") })),
+	)
+		== Ok(" href=\"/devices#sign-out-others\"")
 # An address on another site: `https://`, a host, then nothing, `/` or a
 # site path; both sides of each refusal.
 expect

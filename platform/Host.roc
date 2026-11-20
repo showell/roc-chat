@@ -131,7 +131,7 @@ Host := [].{
 	## `second` kept in the server's memory under `key`, 1 to 64 bytes,
 	## and the second the key held before (`Found`), or `Missing`, `second`
 	## 0, when it held none. The memory lasts until the server stops and
-	## holds at most 65,536 keys: a key outside those bounds stops the
+	## holds at most 74,752 keys: a key outside those bounds stops the
 	## server, as the app's bug.
 	replace_second_kept_under_key! : List(U8),
 	I64 => {

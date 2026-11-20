@@ -4,3 +4,4 @@
 -- line, with its reason after `--`.
 lc      -- the agent LC's name
 zoe     -- a test persona's name (`zoes` its possessive)
+ipv6    -- the Internet Protocol's version 6, an address's family (`DeviceCodeLimit`)

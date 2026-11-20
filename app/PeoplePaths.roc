@@ -1,9 +1,9 @@
 ## This module reads the paths of the people's routes, which `Route`
-## chooses among: what a path names under `/login`, `/logout` and `/join`
-## (signing in or out, or joining), under `/agents`, under `/channels`, and
-## under `/invites`. Each reader answers the resource a path names, or that
-## the path is none of its routes, and `Route` pairs the resource with a
-## method.
+## chooses among: what a path names under `/login`, `/logout`, `/join`
+## and `/devices` (signing in or out, joining, or a device code), under
+## `/agents`, under `/channels`, and under `/invites`. Each reader answers
+## the resource a path names, or that the path is none of its routes, and
+## `Route` pairs the resource with a method.
 import AgentInvite
 import AgentKey
 import ChannelName
@@ -37,6 +37,11 @@ PeoplePaths :: [].{
 		GitHubReturn,
 		GitHubName,
 		GitHubLink,
+		LoginCode,
+		Devices,
+		DevicesCancel,
+		DevicesStream,
+		DevicesSignOutOthers,
 	]
 
 	## What `path` names among the sign-in routes, or `NotSignIn`.
@@ -46,6 +51,18 @@ PeoplePaths :: [].{
 			Ok([only]) if only.is_exactly("login") => Ok(Login)
 			Ok([only]) if only.is_exactly("logout") => Ok(Logout)
 			Ok([only]) if only.is_exactly("join") => Ok(JoinPage)
+			Ok([only]) if only.is_exactly("devices") => Ok(Devices)
+			Ok([devices, last]) if devices.is_exactly("devices") and last.is_exactly("cancel") =>
+				Ok(DevicesCancel)
+			Ok([devices, last]) if devices.is_exactly("devices") and last.is_exactly("stream") =>
+				Ok(DevicesStream)
+			Ok(
+				[devices, last],
+			) if devices.is_exactly("devices") and last.is_exactly("sign-out-others") =>
+				Ok(DevicesSignOutOthers)
+			Ok(
+				[login, code],
+			) if login.is_exactly("login") and code.is_exactly("code") => Ok(LoginCode)
 			Ok([join, name]) if join.is_exactly("join") and name.is_exactly("name") => Ok(JoinName)
 			Ok([login, github]) if login.is_exactly("login") and github.is_exactly("github") =>
 				Ok(GitHubReturn)

@@ -3,7 +3,8 @@
 //! from files and streams. A second is remembered until the server stops,
 //! and never written to disk, so a restart forgets them all. The host knows
 //! nothing of what a key or a second means; the app uses them for when each
-//! human was last active (app/Presence.roc).
+//! human was last active (app/Presence.roc), and for the tallies of failed
+//! device codes (app/DeviceCodeLimit.roc).
 //!
 //! Only the app's calls reach it, and the app makes one call at a time (the
 //! turn, host/http.zig), so it takes no lock of its own.
@@ -14,8 +15,10 @@ const std = @import("std");
 pub const key_most = 64;
 
 /// The most keys kept: one a user, and 65,536 user ids at most
-/// (app/UserId.roc).
-pub const keys_most = 65_536;
+/// (app/UserId.roc), and 9,216 more for the device codes' tallies, which
+/// use 8,198 (app/DeviceCodeLimit.roc: two keys for each of 4,096 buckets
+/// of clients, `local`, `repeated` and everyone).
+pub const keys_most = 65_536 + 9_216;
 
 pub const RememberedSeconds = struct {
     gpa: std.mem.Allocator,

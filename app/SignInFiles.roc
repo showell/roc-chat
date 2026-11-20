@@ -1,0 +1,114 @@
+## This module reads and writes what a human's sessions are signed over
+## (`Session.Material`): their password file's hash and, for a human tied
+## to GitHub, the word in their `github-session-secret`, and once they have
+## signed their other devices out, their `session-generation`. `SignInRoute` signs
+## and checks sessions over it, and `DeviceCodeRoute` holds a device code to
+## it. Rewriting any of these files ends every session of the human.
+import pf.Host
+import AccountFiles
+import FileFacts
+import GitHubSessionWord
+import GitHubSignIn
+import PasswordHash
+import Session
+import UserId
+
+SignInFiles :: [].{
+
+	## What the sessions of the user `id` are signed over now, from their sign-in
+	## files; unless they hold nothing to sign over (`NoMaterial`), or a file
+	## can't be read.
+	load_material! : UserId => Try(Session.Material, [NoMaterial, FileSystem(FileFacts.Fault)])
+	load_material! = |id| {
+		github = load_github_word!(id)?
+		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
+		material =
+			match (AccountFiles.read_password_hash!(id), github) {
+				(Err(fault), _) => Err(FileSystem(fault))
+				(Ok(File(password_hash)), _) =>
+					Ok(Session.Material.from_password({ password_hash, github }))
+				(Ok(NoFile), GitHub(word)) => Ok(Session.Material.from_github_alone(word))
+				(Ok(NoFile), NoGitHub) => Err(NoMaterial)
+			}
+		Ok(material?.with_generation(generation))
+	}
+
+	## What a session of the user `id` is signed over when it starts from
+	## `password_hash`, just checked or just written, not what the file holds by
+	## now: a password rewritten meanwhile leaves a session that admits no one.
+	load_material_with_password! : { id : UserId, password_hash : PasswordHash } => Try(
+		Session.Material,
+		[FileSystem(FileFacts.Fault)],
+	)
+	load_material_with_password! = |{ id, password_hash }| {
+		github = load_github_word!(id)?
+		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
+		Ok(Session.Material.from_password({ password_hash, github }).with_generation(generation))
+	}
+
+	## The human `id`'s other devices signed out: their session generation
+	## raised by one, so every session signed over the one before, this
+	## device's too until it is signed again, admits no one.
+	advance_session_generation! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
+	advance_session_generation! = |id| {
+		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
+		AccountFiles.replace_session_generation!(id, generation + 1) ? |fault| FileSystem(fault)
+		Ok({})
+	}
+
+	## The user `id`'s `github-session-secret`, made first when there is none
+	## (`GitHubSessionWord`). Sessions are signed over it under the server's
+	## secret, so whoever reads the file can't forge one; it needs only to change
+	## when its owner rewrites it.
+	make_github_session_secret! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
+	make_github_session_secret! = |id|
+		match AccountFiles.read_github_session_secret!(id) {
+			Err(fault) => Err(FileSystem(fault))
+			Ok(File(_)) => Ok({})
+			Ok(NoFile) => {
+				word = generate_github_session_word!({})
+				match AccountFiles.create_github_session_secret!(id, word) {
+					Ok({}) => Ok({})
+					Err(fault) => Err(FileSystem(fault))
+				}
+			}
+		}
+
+	## The files that tie `linked`'s human to GitHub: a new `github-session-secret`,
+	## which says nothing until `github-id` is there, and then the `github-id`, so
+	## a link cut short between the two binds no one.
+	write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileFacts.Fault)])
+	write_github_link! = |linked| {
+		id = linked.human().id()
+		word = generate_github_session_word!({})
+		AccountFiles.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
+		AccountFiles.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
+		Ok({})
+	}
+}
+
+## The word in the user `id`'s `github-session-secret`, read only while their
+## `github-id` ties them to GitHub, so removing that file ends their sessions
+## too. An empty file holds no word.
+load_github_word! : UserId => Try(
+	[NoGitHub, GitHub(GitHubSessionWord)],
+	[FileSystem(FileFacts.Fault)],
+)
+load_github_word! = |id|
+	match AccountFiles.read_github_link!(id) {
+		Err(fault) => Err(FileSystem(fault))
+		Ok(NotLinked) => Ok(NoGitHub)
+		Ok(Linked(_)) =>
+			match AccountFiles.read_github_session_secret!(id) {
+				Err(fault) => Err(FileSystem(fault))
+				Ok(NoFile) | Ok(File(Empty)) => Ok(NoGitHub)
+				Ok(File(Word(word))) => Ok(GitHub(word))
+			}
+	}
+
+## A new GitHub word, of the host's random bytes.
+generate_github_session_word! : {} => GitHubSessionWord
+generate_github_session_word! = |{}| {
+	random_bytes = Host.fill_with_random_bytes!(GitHubSessionWord.random_byte_count)
+	GitHubSessionWord.of_random_bytes(random_bytes)
+}

@@ -1,5 +1,5 @@
 ## These are the tests of `SignInRequest`: where a sign-in page's query and
-## its form send the browser once signed in.
+## its form send the browser once signed in, and a code sign-in form's code.
 import Html
 import SignInRequest
 
@@ -39,3 +39,19 @@ expect
 		"next=/a&next=/b",
 		"next=%G0",
 	].all(|body| SignInRequest.next_from_form(body.to_utf8()) == Err(BadNext))
+# A code sign-in form's code: well formed in any case, with spaces or a
+# dash; anything else, no code at all included, is no guess at one.
+expect
+	["code=abcd-efgh", "code=ABCD+EFGH", "code=ABCDEFGH&next=%2Fchat"].all(
+		|body| SignInRequest.device_code_from_form(body.to_utf8()).is_ok(),
+	)
+expect
+	[
+		"",
+		"next=%2Fchat",
+		"code=",
+		"code=ABC",
+		"code=ABCD-EFG0",
+		"code=ABCD-EFGHJ",
+		"code=a&code=b",
+	].all(|body| SignInRequest.device_code_from_form(body.to_utf8()) == Err(NotACode))

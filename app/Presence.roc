@@ -54,6 +54,7 @@ Presence :: [].{
 			OpenConversationStream(_) => Bool.False
 			OpenAgentStream => Bool.False
 			OpenRecentStream => Bool.False
+			OpenDevicesStream => Bool.False
 			_ => Bool.True
 		}
 

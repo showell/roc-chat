@@ -38,6 +38,12 @@
     fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: '13px', padding: '8px',
     background: 'var(--cc-code-bg)', borderRadius: '4px', userSelect: 'all',
   });
+  // A device code, typed on a phone: large, its characters apart, the whole
+  // of it selected by one tap.
+  styleAll('.sign-in-code', {
+    fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: '32px', letterSpacing: '4px',
+    padding: '8px 12px', background: 'var(--cc-code-bg)', borderRadius: '6px', userSelect: 'all',
+  });
 
   // The panel takes the focus, so the keyboard scrolls it from the start.
   panel.tabIndex = -1;

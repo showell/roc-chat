@@ -37,6 +37,8 @@ PageContract :: [].{
 	Class : [
 		Author,
 		Body,
+		CodeExpiry,
+		CodeStatus,
 		Compose,
 		Current,
 		EditedMarkdown,
@@ -74,6 +76,7 @@ PageContract :: [].{
 		SidebarPlaceName,
 		SidebarToggle,
 		SidebarTopics,
+		SignInCode,
 		TopBar,
 		TopLinks,
 		TopTitle,
@@ -158,6 +161,8 @@ class_name = |chosen|
 	match chosen {
 		Author => "author"
 		Body => "body"
+		CodeExpiry => "code-expiry"
+		CodeStatus => "code-status"
 		Compose => "compose"
 		Current => "current"
 		EditedMarkdown => "edited-markdown"
@@ -166,6 +171,7 @@ class_name = |chosen|
 		Empty => "empty"
 		Help => "help"
 		InviteCode => "invite-code"
+		SignInCode => "sign-in-code"
 		Layout => "layout"
 		Message => "message"
 		MessageReference => "message-reference"
@@ -216,6 +222,8 @@ expect
 	[
 		(Author, "author"),
 		(Body, "body"),
+		(CodeExpiry, "code-expiry"),
+		(CodeStatus, "code-status"),
 		(Compose, "compose"),
 		(Current, "current"),
 		(EditedMarkdown, "edited-markdown"),
@@ -224,6 +232,7 @@ expect
 		(Empty, "empty"),
 		(Help, "help"),
 		(InviteCode, "invite-code"),
+		(SignInCode, "sign-in-code"),
 		(Layout, "layout"),
 		(Message, "message"),
 		(MessageReference, "message-reference"),
@@ -322,7 +331,9 @@ expect
 expect
 	[Messages, Compose, Message, Empty].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
 expect is_found_by(Script.Emoji.bytes(), Compose) and !is_found_by(Script.Emoji.bytes(), Help)
-expect [Panel, InviteCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
+expect [Panel, InviteCode, SignInCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
+expect
+	[CodeExpiry, CodeStatus, SignInCode].all(|chosen| is_found_by(Script.Devices.bytes(), chosen))
 expect
 	[
 		Sidebar,

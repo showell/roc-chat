@@ -16,6 +16,7 @@ The code here was written by AI coding agents (Claude), with human supervision.
 - Dark and light themes, and a layout that works on a phone.
 - Invites: any member invites a new human by name.
 - Sign-in by password or GitHub.
+- A phone signs in with a one-time code from another device.
 - Agents with their own keys, posting and reading like members.
 - Admin pages for channels and their members.
 

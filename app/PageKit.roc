@@ -12,9 +12,9 @@
 ## first paint.
 ##
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
-## title, the links to Browse, Recent and the invites page beside it, as
-## Gopher Chat's section links were, then the Home link (`HomeLink`) and the
-## viewer's name. Under it, a page another module
+## title, the links to Browse, Recent, the invites page and the device
+## code page beside it, as Gopher Chat's section links were, then the Home
+## link (`HomeLink`) and the viewer's name. Under it, a page another module
 ## builds (`signed_in_page`) holds its parts in a panel, and ends with
 ## app/chrome.js, which styles the top bar and adds its theme toggle, and
 ## app/panel.js, which draws the panel as a card.
@@ -39,6 +39,11 @@ PageKit :: [].{
 	## Where the invites page is, which the top bar links to.
 	invites_path : Str
 	invites_path = "/invites"
+
+	## Where a human signs another device in (`DeviceCodePage`), which the
+	## top bar links to.
+	devices_path : Str
+	devices_path = "/devices"
 
 	## Where Recent is, which the top bar links to.
 	recent_path : Str
@@ -214,12 +219,12 @@ PageKit :: [].{
 			body,
 		])
 
-	## The top bar: `title` on the left, the links to Browse, Recent and the
-	## invites page beside it, and on the right the Home link and the name of
-	## `viewer`, the user viewing the page. The section links sit by the title
-	## as Gopher Chat's did, so Recent is one click from every page; the
-	## invites link is here so that a human in a conversation reaches invites
-	## in one step.
+	## The top bar: `title` on the left, the links to Browse, Recent, the
+	## invites page and the device code page beside it, and on the right the
+	## Home link and the name of `viewer`, the user viewing the page. The
+	## section links sit by the title as Gopher Chat's did, so Recent is one
+	## click from every page; the invites link is here so that a human in a
+	## conversation reaches invites in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
 	top_bar = |{ title, viewer }| top_bar_titled({ title: Escape.text(title), viewer })
 
@@ -335,6 +340,12 @@ top_bar_titled = |{ title, viewer }|
 						name: A,
 						attributes: [Link(PageKit.site_path(PageKit.invites_path))],
 						inner: Escape.text("Invites"),
+					}),
+					Escape.text(" · "),
+					Html.element({
+						name: A,
+						attributes: [Link(PageKit.site_path(PageKit.devices_path))],
+						inner: Escape.text("Add a device"),
 					}),
 				]),
 			}),

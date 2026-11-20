@@ -52,6 +52,7 @@ cookie_for = |{ id, signed_at, byte }| {
 	cookie_value = Session.cookie_value({
 		id: id_of(id),
 		signed_at,
+		origin: Ordinary,
 		mac: mac_of(byte),
 	})
 	"${cookie_prefix_text}${cookie_value}".to_utf8()
@@ -81,11 +82,13 @@ claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
 expect Session.cookie_value({
 	id: UserId.chat_owner,
 	signed_at: Timestamp.at_second(1700000000),
+	origin: Ordinary,
 	mac: mac_of(0),
 }) == "MQ.1700000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 expect Session.signed_bytes({
 	id: UserId.chat_owner,
 	signed_at: Timestamp.at_second(1700000000),
+	origin: Ordinary,
 	material: password_material("$2b$10$x"),
 }) == "1\n1700000000\n$2b$10$x".to_utf8()
 # Another hash, or none, is other bytes: a password rewritten ends its
@@ -95,6 +98,7 @@ expect
 		|password_hash| Session.signed_bytes({
 			id: UserId.chat_owner,
 			signed_at: Timestamp.at_second(1700000000),
+			origin: Ordinary,
 			material: password_material(password_hash),
 		})
 			!= "1\n1700000000\n$2b$10$x".to_utf8(),

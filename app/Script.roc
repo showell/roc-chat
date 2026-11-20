@@ -9,7 +9,8 @@
 ## Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in). The join page
 ## ends with app/join.js, which reads the invite's code from the link, and
-## Recent with app/recent.js, which styles its tiles and their times. `Route` serves each at its
+## Recent with app/recent.js, which styles its tiles and their times, and the
+## device code page with app/devices.js, which makes it live. `Route` serves each at its
 ## `url_path`, and `PageKit.script` links to them.
 import "palette.js" as palette_source : Str
 import "chrome.js" as chrome_source : Str
@@ -21,8 +22,9 @@ import "actions.js" as actions_source : Str
 import "panel.js" as panel_source : Str
 import "join.js" as join_source : Str
 import "recent.js" as recent_source : Str
+import "devices.js" as devices_source : Str
 
-Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Panel, Join, Recent].{
+Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Panel, Join, Recent, Devices].{
 
 	## Every script the pages load.
 	all_scripts : List(Script)
@@ -37,6 +39,7 @@ Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Panel, Join,
 		Script.Panel,
 		Script.Join,
 		Script.Recent,
+		Script.Devices,
 	]
 
 	## Where the script is served: `/chat/assets/` and its file's name.
@@ -64,6 +67,7 @@ file_name = |script|
 		Panel => "panel.js"
 		Join => "join.js"
 		Recent => "recent.js"
+		Devices => "devices.js"
 	}
 
 ## The script's file, as compiled in.
@@ -80,6 +84,7 @@ source = |script|
 		Panel => panel_source
 		Join => join_source
 		Recent => recent_source
+		Devices => devices_source
 	}
 
 # ── tests
@@ -98,6 +103,7 @@ expect
 			"/chat/assets/panel.js",
 			"/chat/assets/join.js",
 			"/chat/assets/recent.js",
+			"/chat/assets/devices.js",
 		]
 expect palette_source.starts_with("// This script runs in the head of every page")
 expect
@@ -114,6 +120,7 @@ expect [
 ].all(|text| text.starts_with("// This script runs on a signed-in"))
 expect join_source.starts_with("// This script runs on the join page")
 expect recent_source.starts_with("// This script runs on the Recent page")
+expect devices_source.starts_with("// This script runs on the device code page")
 expect
 	[
 		palette_source,
@@ -126,6 +133,7 @@ expect
 		panel_source,
 		join_source,
 		recent_source,
+		devices_source,
 	].all(|text| text.ends_with("\n})();\n"))
 expect
 	[
@@ -139,4 +147,5 @@ expect
 		(Script.Panel, panel_source),
 		(Script.Join, join_source),
 		(Script.Recent, recent_source),
+		(Script.Devices, devices_source),
 	].all(|(script, text)| script.bytes() == text.to_utf8())

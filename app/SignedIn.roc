@@ -9,7 +9,8 @@
 ## There are three ways in. `by_session` takes a `Session.Admitted`, which
 ## only `Session.admit` makes, after the host said the session cookie's
 ## signature matches and its second is in date (`SignInRoute` checks the
-## password, or `GitHubSignIn` the GitHub account, that signs one).
+## password, or `GitHubSignIn` the GitHub account, that signs one, or
+## `DeviceCode` the code), and keeps how that session was started.
 ## `by_api_key` takes an `AgentKey.Admitted`, which only `AgentKey.admit`
 ## makes, after the hash of the secret an agent sent matched a live key of its
 ## own (`AgentInvite` is how a key is got).
@@ -36,7 +37,11 @@ import Session
 import UserId
 import Users
 
-SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
+SignedIn :: {
+	user : Users.User,
+	credential : SignedIn.Credential,
+	origin : Session.Origin,
+}.{
 
 	## How the acting user proved who they are: by a session, or by an API
 	## key, with its scope.
@@ -51,16 +56,27 @@ SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
 	## start (`FirstStart`), which makes the founder, the demo's page and tests
 	## call it.
 	dangerously_assume : Users.User -> SignedIn
-	dangerously_assume = |user| SignedIn.({ user, credential: Session })
+	dangerously_assume = |user| SignedIn.({ user, credential: Session, origin: Ordinary })
 
 	## The human a session admitted, signed in by that session.
 	by_session : Session.Admitted -> SignedIn
-	by_session = |admitted| SignedIn.({ user: admitted.human().user(), credential: Session })
+	by_session = |admitted|
+		SignedIn.(
+			{
+				user: admitted.human().user(),
+				credential: Session,
+				origin: admitted.origin(),
+			},
+		)
 
 	## The agent a key admitted, signed in by that key, with its scope.
 	by_api_key : AgentKey.Admitted -> SignedIn
 	by_api_key = |admitted| SignedIn.(
-		{ user: admitted.user(), credential: ApiKey(admitted.scope()) },
+		{
+			user: admitted.user(),
+			credential: ApiKey(admitted.scope()),
+			origin: Ordinary,
+		},
 	)
 
 	## The user who is acting.
@@ -70,6 +86,21 @@ SignedIn :: { user : Users.User, credential : SignedIn.Credential }.{
 	## How they proved it.
 	credential : SignedIn -> SignedIn.Credential
 	credential = |SignedIn.(acting)| acting.credential
+
+	## How the acting user's session was started: `ByDeviceCode` for one a
+	## device code started, `Ordinary` for any other, and for an API key.
+	session_origin : SignedIn -> Session.Origin
+	session_origin = |SignedIn.(acting)| acting.origin
+
+	## `Ok` unless the acting user's session was started by a device code
+	## (`StartedByDeviceCode`): such a session may not link GitHub or make
+	## agents or their invites, which ask for a password or GitHub first.
+	check_full_session : SignedIn -> Try({}, [StartedByDeviceCode])
+	check_full_session = |SignedIn.(acting)|
+		match acting.origin {
+			Ordinary => Ok({})
+			ByDeviceCode => Err(StartedByDeviceCode)
+		}
 
 	## The acting human, signed in by their own session; refused when the
 	## request came with an API key (`ByApiKey`), whoever it names, or when

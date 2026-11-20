@@ -3,7 +3,8 @@
 ## act on what it says. It answers where the browser goes once signed in
 ## (`next`, from the sign-in page's query or its form), whether the request
 ## may sign in at all (never by an API key), and whom a sign-in form's name
-## and password claim to be.
+## and password claim to be, and the device code a code sign-in form holds.
+import DeviceCode
 import Html
 import Password
 import SignedIn
@@ -84,6 +85,17 @@ SignInRequest :: [].{
 			}
 		Ok({ password, claimant })
 	}
+
+	## The device code a code sign-in form `body` holds; unless it holds
+	## none, or one that is not 8 characters of the code's alphabet once
+	## spaces and dashes are left out (`NotACode`), which is no guess at a
+	## code.
+	device_code_from_form : List(U8) -> Try(DeviceCode.Code, [NotACode])
+	device_code_from_form = |body|
+		match UrlEncodedForm.field({ body, name: "code" }) {
+			Ok(unchecked) => unchecked.device_code()
+			Err(_) => Err(NotACode)
+		}
 }
 
 next_prefix : List(U8)
