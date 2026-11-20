@@ -21,6 +21,9 @@
 --   channel-compose   `c` pressed and a draft typed: the compose rail open,
 --                     where the keyboard help was
 --   channel-emoji     `:sm` typed in the compose box: emoji autocomplete
+-- and at 390x844 (a state's `size`):
+--   dm-actions        the selected message's "⋯" tapped: its row of
+--                     actions open under its header
 -- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
 -- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
 --
@@ -42,7 +45,7 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 12 s for the 28 pictures once the server and the driver
+-- Budgets: about 12 s for the 30 pictures once the server and the driver
 -- are built (2.5 s of CPU, held to 10 s); each about 0.4 s, its line
 -- printed as `shot <name> <ms>`. A `zig build` after the app changed adds
 -- about 25 s, the driver's first build about 10 s.
@@ -125,6 +128,8 @@ const STATES = {
     "type A draft, kept while the rail is open: **Thursday** works for me."}},
   {name = "channel-emoji", path = "/chat/channel/general/roc-chat", steps = {
     "key c", "wait .compose.open", "type Looks good :sm", "wait .chat-emoji-menu"}},
+  {name = "dm-actions", size = "phone", path = "/chat/dm/1_2/plans", steps = {
+    "click .message.selected .actions-more", "wait .message.actions-open"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
@@ -245,9 +250,10 @@ for t in themes do
     end
   end
   if with_states then
-    push(list, "size " .. SIZES.desktop)
     for st in STATES do
-      local name = t .. "-" .. re_replace(SIZES.desktop, " ", "x") .. "-" .. st.name
+      local size = SIZES[get(st, "size", "desktop")]
+      local name = t .. "-" .. re_replace(size, " ", "x") .. "-" .. st.name
+      push(list, "size " .. size)
       push(list, "goto " .. st.path)
       for step in st.steps do push(list, step) end
       push(list, "shot " .. name)
