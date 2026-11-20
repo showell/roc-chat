@@ -15,6 +15,13 @@
 ## (chat-client's js/notify.js dropped a ping for the open topic). An edit is
 ## a message appended, so it is told too. `ConversationRoute` sends it to
 ## each of `recipients`.
+##
+## A message in a human's own DM is the one their author is told of, as if
+## someone else had sent it, so a human can try the notices, the violet tab
+## and Recent's news on their own (Steve, 2026-11-20: "If I send a message
+## to myself, it should have the same incoming behavior and show me the
+## status line."). The page it was sent from drops it, as it drops any
+## notice of its own topic.
 import ConversationKey
 import Escape
 import Html
@@ -62,9 +69,19 @@ MessageNotice :: [].{
 		})
 	}
 
-	## Who of `readers` is told of a message by `author`: all but the author,
-	## as Gopher Chat never told anyone of their own message.
-	recipients : { readers : List(UserId), author : UserId } -> List(UserId)
-	recipients = |{ readers, author }| readers.drop_if(|reader| reader == author)
+	## Who of `readers` is told of a message by `author` in the conversation
+	## `key`: all but the author, as Gopher Chat never told anyone of their
+	## own message; except in the author's own DM, where the author alone is
+	## told, as a message to oneself is news to oneself.
+	recipients : {
+		readers : List(UserId),
+		author : UserId,
+		key : ConversationKey,
+	} -> List(UserId)
+	recipients = |{ readers, author, key }|
+		match key.place().which() {
+			Dm(dm) if dm.members() == [author] => [author]
+			_ => readers.drop_if(|reader| reader == author)
+		}
 
 }

@@ -69,7 +69,8 @@
 //!  14. POST to the DM: its stream's first event is exactly that message's
 //!      frame, so it got nothing of the channel's;
 //!  15. POST to the channel again: its stream's next event is exactly that
-//!      message's frame, so it got nothing of the DM's;
+//!      message's frame, so it got nothing of the DM's but its notice, as
+//!      the DM is Steve's own, whose messages are news to him (57f);
 //!  16. the stream under another `Host`: 403; with no count: 400.
 //!  17. upload a PNG to the channel as the compose box does (a multipart
 //!      form, `Origin` this server): 200, JSON naming its URL under the
@@ -382,6 +383,10 @@
 //!      own topic's (the page drops that one), and his
 //!      open Recent page's stream hears it for her channel post; his own
 //!      messages tell him nothing.
+//! 57f. but a message in his own DM is news to him, as if someone else had
+//!      sent it (Steve, 2026-11-20): his open stream on another page hears
+//!      its `message-notice`, linked to it; a message of his to Tam again
+//!      tells him nothing.
 //! 57d. on the second server, a human just joined (Rita): her join writes
 //!      `auth/<id>/joined`, the second, which a join after an invite again
 //!      keeps; so she is new, her
@@ -661,7 +666,11 @@ pub fn main(init: std.process.Init) !void {
     // 15.
     const again_live = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Live+again" });
     const page_of_nine = try get(a, io, port, channel_url);
-    try t.check("POST to the channel again: its stream's next event is exactly that message's frame, none of the DM's", again_live.status == 303 and
+    // Steve's stream carries his own key too, so his own DM's message comes
+    // to the channel's page as its notice, and only that.
+    const dm_notice = try channel_stream.event();
+    try t.check("POST to the channel again: its stream's next event is exactly that message's frame, none of the DM's but its notice, the DM being Steve's own", again_live.status == 303 and
+        std.mem.eql(u8, dm_notice, "event: message-notice\ndata: <a href=\"" ++ dm_url ++ "#msg-2\">Steve sent you a message on plans.</a>\n\n") and
         std.mem.eql(u8, try channel_stream.event(), try frameOf(a, page_of_nine.body, "9")));
 
     // 16.
@@ -1805,6 +1814,19 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     try t.check("each of Tam's messages tells Steve's open stream, as Gopher Chat's notify did: message-notice, linked to the message itself on its topic's page, after the message's own events; for the page's own topic too, which the page drops", std.mem.eql(u8, lunch_notice, lunch_link ++ "#msg-1" ++ lunch_said) and
         std.mem.eql(u8, second_notice, lunch_link ++ "#msg-2" ++ lunch_said) and
         std.mem.eql(u8, here_notice, "event: message-notice\ndata: <a href=\"" ++ url ++ "#msg-2\">Tam sent you a message on plans.</a>\n\n"));
+    // 57f.
+    const self_notes = "/chat/dm/1_1/self-notes";
+    const to_tam = try postAs(a, io, port, steve_session, lunch ++ "/send", "markdown=Noon+it+is");
+    const to_self = try postAs(a, io, port, steve_session, self_notes ++ "/send", "markdown=A+note+to+myself");
+    const self_told = try stream.event();
+    const self_notice = try stream.event();
+    const to_self_again = try postAs(a, io, port, steve_session, self_notes ++ "/send", "markdown=And+another");
+    const self_notice_again = try stream.event();
+    const self_said = "\">Steve sent you a message on self-notes.</a>\n\n";
+    try t.check("a message in Steve's own DM is news to him, as if someone else had sent it: his open stream on his DM with Tam hears the new topic, then message-notice linked to the message, and again for the next; his message to Tam on another topic just before told him nothing, the new topic being his stream's next event", to_tam.status == 201 and to_self.status == 201 and to_self_again.status == 201 and
+        std.mem.eql(u8, self_told, "event: topic-added\ndata: /chat/dm/1_1\ndata: self-notes\ndata: " ++ self_notes ++ "\n\n") and
+        std.mem.eql(u8, self_notice, "event: message-notice\ndata: <a href=\"" ++ self_notes ++ "#msg-1" ++ self_said) and
+        std.mem.eql(u8, self_notice_again, "event: message-notice\ndata: <a href=\"" ++ self_notes ++ "#msg-2" ++ self_said));
     try recentSteps(a, io, port, t, .{ .tam = tam, .uma = uma });
 }
 

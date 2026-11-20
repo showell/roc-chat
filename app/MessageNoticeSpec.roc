@@ -23,6 +23,10 @@ directory = {
 		?? crash "MessageNoticeSpec.directory: its members are users"
 }
 
+## Apoorva, the sample's second human.
+apoorva : UserId
+apoorva = UserId.from_str("2") ?? crash "MessageNoticeSpec: 2 is a user id"
+
 ## The conversation at `path`, in `directory`.
 key_at : Str -> ConversationKey
 key_at = |path| ConversationKey.from_url_path({
@@ -32,11 +36,14 @@ key_at = |path| ConversationKey.from_url_path({
 
 ## Who of the readers of `path` is told of a message by the user `author`.
 told_at : Str, UserId -> List(Str)
-told_at = |path, author|
+told_at = |path, author| {
+	key = key_at(path)
 	MessageNotice.recipients({
-		readers: Access.members({ place: key_at(path).place(), directory }),
+		readers: Access.members({ place: key.place(), directory }),
 		author,
+		key,
 	}).map(UserId.to_str)
+}
 
 # Gopher's words: a DM says the topic, a channel its name and the topic.
 expect
@@ -90,7 +97,11 @@ expect
 	}).contains(">A&lt;b&gt; sent you a message on plans.</a>")
 # Who is told: every reader but the author. A DM's other human; a channel's
 # other members, an agent among them, as topic-added tells them; the author
-# never; and nobody of a message in one's own DM.
+# never, in a DM with someone else or a channel.
 expect told_at("/chat/dm/1_2/plans", UserId.chat_owner) == ["2"]
+expect told_at("/chat/dm/1_2/plans", apoorva) == ["1"]
 expect told_at("/chat/channel/general/plans", UserId.chat_owner) == ["2", "3"]
-expect told_at("/chat/dm/1_1/plans", UserId.chat_owner) == []
+# A message in one's own DM tells its author alone, as if someone else had
+# sent it (Steve, 2026-11-20), Steve's and Apoorva's alike.
+expect told_at("/chat/dm/1_1/plans", UserId.chat_owner) == ["1"]
+expect told_at("/chat/dm/2_2/plans", apoorva) == ["2"]

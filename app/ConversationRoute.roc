@@ -274,7 +274,11 @@ append_posted_message! = |post| {
 		key: post.key,
 		id: grown.message.id(),
 	})
-	recipients = MessageNotice.recipients({ readers: post.readers, author: author.id() })
+	recipients = MessageNotice.recipients({
+		readers: post.readers,
+		author: author.id(),
+		key: post.key,
+	})
 	for reader in recipients {
 		Host.publish_bytes_to_streams_on_key!(Presence.viewer_stream_key(reader), notice)
 	}
