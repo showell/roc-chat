@@ -20,11 +20,15 @@ window.Palette = (function () {
     border: '#ddd', softBorder: '#e0e0e0', dialogBorder: '#bbb', inputBorder: '#e3e3ef',
     searchSelBg: '#eef0ff', searchTokFg: '#23235a', searchMarkBg: '#ffe680',
     error: '#b00020', savedFg: '#1a7a3a', backdrop: 'rgba(0,0,0,0.4)', notifyFg: '#1a5fb4',
+    goBg: '#1f883d', goHoverBg: '#1a7f37', goFg: '#fff',
     topBarBg: '#f0ede4', topBarBorder: '#c9bfa7', presenceIdle: '#3b82f6', presenceOnline: '#22c55e',
     lostBg: '#fdd', lostFg: '#600', selectRing: '#ffcf3a',
     synComment: '#6e7781', synLiteral: '#0a3069', synKeyword: '#cf222e', synType: '#953800',
   };
-  // GitHub's dark colours, the bubbles a desaturated blue (the viewer's own)
+  // The go colours (go...) are a call to action's, GitHub's green buttons in
+// each theme: savedFg is a green for text, too light in the dark theme to
+// carry white words.
+// GitHub's dark colours, the bubbles a desaturated blue (the viewer's own)
   // and a desaturated warm grey (everyone else's).
   var DARK = {
     fg: '#e6edf3', mutedFg: '#8b949e', softMutedFg: '#7d8590', bodyMutedFg: '#9aa4ae', metaFg: '#b8c0c8',
@@ -34,6 +38,7 @@ window.Palette = (function () {
     border: '#30363d', softBorder: '#272c33', dialogBorder: '#3a3f47', inputBorder: '#30363d',
     searchSelBg: '#1f2d4a', searchTokFg: '#a8b1c5', searchMarkBg: '#6b5210',
     error: '#ff7b72', savedFg: '#56d364', backdrop: 'rgba(0,0,0,0.6)', notifyFg: '#79b8ff',
+    goBg: '#238636', goHoverBg: '#2ea043', goFg: '#fff',
     topBarBg: '#161b22', topBarBorder: '#30363d', presenceIdle: '#58a6ff', presenceOnline: '#3fb950',
     lostBg: '#3d1418', lostFg: '#ffb3ad', selectRing: '#ffcf3a',
     synComment: '#8b949e', synLiteral: '#a5d6ff', synKeyword: '#ff7b72', synType: '#ffa657',

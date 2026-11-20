@@ -130,9 +130,12 @@
     'html.layout-wide .compose .help{margin:8px 0 0}',
 
     // The closed rail: its button and the keyboard help, as chat-client's.
-    '.open-compose{font-size:13px;padding:4px 12px;background:var(--cc-mine-bg);color:var(--cc-search-tok-fg);' +
-      'border:1px solid var(--cc-quote-border);border-radius:6px;cursor:pointer}',
-    '.open-compose:hover{background:var(--cc-accent-soft-hov)}',
+    // The button is a call to action (Steve, 2026-11-20: "green
+    // (call-to-action color), and 5% bigger"): 13.65px words and padding of
+    // 4.2px by 12.6px, 5% over Upload's 13px and 4px by 12px.
+    '.open-compose{font-family:inherit;font-size:13.65px;padding:4.2px 12.6px;background:var(--cc-go-bg);color:var(--cc-go-fg);' +
+      'border:1px solid var(--cc-go-bg);border-radius:6px;cursor:pointer}',
+    '.open-compose:hover{background:var(--cc-go-hover-bg);border-color:var(--cc-go-hover-bg)}',
     '.keyhelp{margin-top:18px;font-size:13px;color:var(--cc-body-muted-fg)}',
     '.keyhelp-title{font-weight:bold;color:var(--cc-meta-fg);margin-bottom:7px}',
     '.keyhelp-row{margin:5px 0}',
@@ -231,12 +234,18 @@
     messages.focus();
   }
 
+  // The closed rail's button names the c key where there are keys, and a
+  // draft when the box holds one.
+  function refreshOpenButton() {
+    var drafted = box.value.trim() !== '';
+    openButton.textContent = 'Open compose box' + (drafted ? ' (draft)' : '') + (isNarrow() ? '' : ' (c)');
+  }
+
   var closedPanel = document.createElement('div');
   closedPanel.className = 'compose-closed';
   var openButton = document.createElement('button');
   openButton.type = 'button';
   openButton.className = 'open-compose';
-  openButton.textContent = 'Open compose box';
   openButton.addEventListener('click', openCompose);
   closedPanel.appendChild(openButton);
   var keyhelp = document.createElement('div');
@@ -312,6 +321,7 @@
   })();
   Keys.register({ key: 'c', label: 'compose', run: openCompose });
 
+  Viewport.onChange(refreshOpenButton);
   if (isNarrow()) compose.classList.add('open');
   messages.focus();
 
@@ -337,6 +347,7 @@
   // message never goes without the image being put in it. Send is off too
   // while the box holds nothing but space, so there is nothing to refuse.
   function refreshControls() {
+    refreshOpenButton();
     box.disabled = !!pending;
     send.disabled = !!pending || uploading || box.value.trim() === '';
     uploadButton.disabled = !!pending || uploading;
