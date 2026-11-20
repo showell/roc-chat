@@ -1050,7 +1050,7 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
     const own_page = try std.fmt.allocPrint(a, "origin: http://localhost:{d}\r\nsec-fetch-site: same-origin\r\n", .{port});
     const png = try onePixelPng(a);
 
-    // 48zza.
+    // 57d.
     const rita_id = try nextId(a, io, data);
     const rita = try joinedHuman(a, io, port, steve_session, "Rita");
     const rita_total = try std.fmt.allocPrint(a, "users/{d}/upload-bytes", .{rita_id});
@@ -1066,7 +1066,7 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
         past.status == 403 and std.mem.eql(u8, past.body, "Upload limit reached — a new account may upload 100 MiB in its first 7 days.\n") and
         std.mem.eql(u8, try readFile(a, io, data, rita_total), at_most_total) and uploads_before == 1 and (try namesIn(a, io, data, channel_uploads)).len == 1);
 
-    // 48zzb.
+    // 57e.
     const rate_send = "/chat/channel/general/rate/send";
     const rate_transcript = "chat/channel/general/rate/transcript";
     var sent_all = true;
@@ -1080,7 +1080,7 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
         thirty_first.status == 429 and std.mem.eql(u8, thirty_first.body, "Too many messages: at most 30 a minute. Wait a moment, then send it again.\n") and
         std.mem.count(u8, rate_file, "\nMSG_rate_") == 30 and has(rate_file, "number 30") and !has(rate_file, "one too many"));
 
-    // 48zzc.
+    // 57f.
     const floor = 2 * 1024 * 1024 * 1024;
     free_bytes.store(floor - 1, .release);
     const channel_file = channel_url["/".len..] ++ "/transcript";

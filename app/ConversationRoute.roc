@@ -304,8 +304,9 @@ append_posted_message! = |post| {
 		}
 	grown = loaded.conversation.append(unnumbered_message)?
 	record = Transcript.message_record({ grown, file: loaded.file })?
-	MessageRate.take!(post.acting.user().id(), post.now)?
+	counted = MessageRate.check_rate!(post.acting.user().id(), post.now)?
 	TranscriptFiles.append_message!(post.key, record) ? |fault| FileSystem(fault)
+	MessageRate.record_message!(post.acting.user().id(), counted)
 	html = ConversationPage.message({
 		conversation: grown.conversation,
 		key: post.key,
