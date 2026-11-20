@@ -44,8 +44,10 @@ opening_of = |name| {
 ## The class attribute `chosen` is, as `PageContract` spells it on an
 ## element: `class="panel"`.
 class_attribute : PageContract.Class -> Str
-class_attribute = |chosen|
-	Str.from_utf8_lossy(PageContract.empty_paragraph([PageContract.class(chosen)]).drop_first(3).drop_last(5))
+class_attribute = |chosen| {
+	paragraph = PageContract.empty_paragraph([PageContract.class(chosen)])
+	Str.from_utf8_lossy(paragraph.drop_first(3).drop_last(5))
+}
 
 ## The classes of a page's working parts, which a refusal never shows.
 working_classes : List(PageContract.Class)
@@ -76,17 +78,42 @@ leaks_nothing = |words|
 	!words.is_empty()
 		and !words.contains("\n")
 		and !words.contains("<")
-		and ["4711", "auth/", "users/", "/home", "/tmp", "/var", "data/", ".json", "$2b$"].all(
-			|said| !words.contains(said),
-		)
+		and leak_marks.all(|said| !words.contains(said))
+
+## What words that leak would hold: the stranger's id, a path of the data
+## folder or the host, a file's kind, a password hash's start.
+leak_marks : List(Str)
+leak_marks = [
+	"4711",
+	"auth/",
+	"users/",
+	"/home",
+	"/tmp",
+	"/var",
+	"data/",
+	".json",
+	"$2b$",
+]
+
+## An element `name` holding nothing, with `attributes`.
+empty_element : Html.ElementName, List(Html.Attribute) -> TrustedHtml
+empty_element = |name, attributes| Html.element({ name, attributes, inner: TrustedHtml.join([]) })
+
+## Whether `notice` has `status`, and words that leak nothing on a page
+## that offers nothing.
+is_refused_as : { status : U16, said : Str }, U16 -> Bool
+is_refused_as = |notice, status|
+	notice.status == status
+		and leaks_nothing(notice.said)
+		and offers_nothing(refusal_page(notice.said))
 
 # The helpers find what they look for: a form, a button and a panel are
 # each seen, so a refusal that showed one would fail.
 expect opening_of(Form) == "<form" and class_attribute(Panel) == "class=\"panel\""
 expect
-	!offers_nothing(Html.element({ name: Form, attributes: [], inner: TrustedHtml.join([]) }))
-		and !offers_nothing(Html.element({ name: Button, attributes: [], inner: TrustedHtml.join([]) }))
-		and !offers_nothing(Html.element({ name: Div, attributes: [PageContract.class(Panel)], inner: TrustedHtml.join([]) }))
+	!offers_nothing(empty_element(Form, []))
+		and !offers_nothing(empty_element(Button, []))
+		and !offers_nothing(empty_element(Div, [PageContract.class(Panel)]))
 expect !leaks_nothing("user 4711") and !leaks_nothing("") and !leaks_nothing("a\nb")
 
 # Nothing at a path: the 404 page says so and offers nothing.
@@ -123,12 +150,7 @@ expect
 		(AlreadyRevoked, 409),
 		(Spent, 409),
 		(CodeRefused, 401),
-	].all(
-		|(why, status)| {
-			notice = Agents.refusal_notice(why)
-			notice.status == status and leaks_nothing(notice.said) and offers_nothing(refusal_page(notice.said))
-		},
-	)
+	].all(|(why, status)| is_refused_as(Agents.refusal_notice(why), status))
 # The channels' refusals, the same way.
 expect
 	[
@@ -142,12 +164,7 @@ expect
 		(AlreadyMember, 409),
 		(NotMember, 409),
 		(NameTaken, 409),
-	].all(
-		|(why, status)| {
-			notice = ChannelMembers.refusal_notice(why)
-			notice.status == status and leaks_nothing(notice.said) and offers_nothing(refusal_page(notice.said))
-		},
-	)
+	].all(|(why, status)| is_refused_as(ChannelMembers.refusal_notice(why), status))
 # GitHub's refusals: too many at once a 429; sign-ups paused by
 # `SignUpLimits` a 503 in its words; the rest a 403, a 409, a 500 or a 502,
 # each saying what went wrong and leaking nothing.

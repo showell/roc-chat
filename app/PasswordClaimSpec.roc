@@ -75,8 +75,8 @@ expect
 expect {
 	right = claim("name=Steve&password=right")
 	wrong = claim("name=Steve&password=wrong")
-	right.map_ok(|c| c.claimant) == Ok(Human("Steve"))
-		and wrong.map_ok(|c| c.claimant) == Ok(Human("Steve"))
+	right.map_ok(|read| read.claimant) == Ok(Human("Steve"))
+		and wrong.map_ok(|read| read.claimant) == Ok(Human("Steve"))
 }
 # A name signs in exactly as it is kept (`Users.user_by_name`): another case
 # of a human's name is no human, the same claim as a stranger's.
