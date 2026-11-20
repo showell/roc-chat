@@ -1,6 +1,7 @@
 -- Screenshots of roc-chat's pages, so an agent can see what it changed.
 -- It starts the chat on a throwaway data root seeded from the demo, signs
--- Steve in, invites Tam, writes a DM between them, and saves a PNG of each
+-- Steve in, invites Tam, writes a DM between them, invites Ada (who
+-- writes to Steve) and Cy, and saves a PNG of each
 -- page, in each theme, at a desktop's size and a phone's, and of what a
 -- click or a key opens. Run it from roc-chat's root, naming the folder the
 -- PNGs go to (made if missing):
@@ -233,6 +234,24 @@ for m in DM do
   if m.who == "tam" then who = tam end
   expect_status(post_form(base, who, "/chat/dm/1_2/plans", {"markdown=" .. m.text}), 303, "a DM message")
 end
+
+-- 2b. Two more humans, so the DMs group fills its three (app/DmShortlist.roc):
+-- each joins with a welcome from Steve (ChitChat), which counts as talking,
+-- and Ada writes to him too, so her DM comes first after Tam's. Steve's own
+-- DM, with no message, waits behind the "1 more person…" row.
+const MORE = {"Ada", "Cy"}
+local more_cookies = {}
+for name in MORE do
+  local inv = post_form(base, steve, "/invites", {"name=" .. name})
+  expect_status(inv, 200, "inviting " .. name)
+  local c = re_find(inv.text, "/join#([A-Za-z0-9_-]+)")
+  if c == nil then fail("screenshot: inviting " .. name .. " showed no /join# link") end
+  local j = post_form(base, "none=1", "/join", {"code=" .. c.group, "name=" .. name, "password=" .. PASSWORD})
+  expect_status(j, 303, name .. " joining")
+  more_cookies[name] = cookie_of(j, name .. "'s join")
+end
+expect_status(post_form(base, more_cookies["Ada"], "/chat/dm/1_3", {"topic=hello"}), 303, "Ada's DM's topic")
+expect_status(post_form(base, more_cookies["Ada"], "/chat/dm/1_3/hello", {"markdown=Hi Steve, is the sidebar quieter now?"}), 303, "Ada's message")
 
 -- 3. The shot list: Steve's cookie, then each theme's pages at each size,
 -- then its states.
