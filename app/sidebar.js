@@ -51,7 +51,7 @@
 // `online` from the viewer's own key, a human's id, which fills their dot
 // (Sidebar.markOnline). A dot never empties while the page is open: as in
 // chat-client, the next page drawn says who is still online. The notices
-// above the page, and the tab's violet icon, are chrome.js's (Notices).
+// in the top bar, and the tab's violet icon, are chrome.js's (Notices).
 //
 // In a window wider than 768 pixels the sidebar is a rail 224 pixels wide on
 // the left of the layout, which keeps only 12 pixels of room at its left
