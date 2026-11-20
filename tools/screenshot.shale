@@ -107,8 +107,8 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 70 s on a busy box for the 97 pictures once the server and the driver
--- are built (11.4 s of CPU for 87 on 2026-11-20, about 0.13 s a picture,
+-- Budgets: about 70 s on a busy box for the 105 pictures once the server and the driver
+-- are built (10 to 12.6 s of CPU on 2026-11-20, about 0.1 s a picture,
 -- held to 16 s with the citation states; it was 2.5 s for 56, and the
 -- states added since cost more each, popups and waits); each about 0.5 s, its line
 -- printed as `shot <name> <ms>`. A `zig build` after the app changed adds
@@ -299,7 +299,7 @@ const STATES = {
     "key Home", "wait #msg-1.selected", CAPTURE, "key l", "wait #cite-seen",
     "eval fetch('/chat/dm/1_2/ChitChat', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent(document.getElementById('cite-seen').textContent)})",
     "goto /chat/dm/1_2/ChitChat", "wait .message:last-of-type .body p.citation-link a[href=\"/chat/dm/1_2/plans#msg-1\"]",
-    "click .message:last-of-type .body p.citation-link a",
+    "wait .messages.placed", "click .message:last-of-type .body p.citation-link a",
     "wait .top-title a[href=\"/chat/dm/1_2/plans\"]", "wait #msg-1.selected"}},
   -- That pasted citation as its topic shows it: the quote, then its link.
   {name = "citation-pasted", path = "/chat/dm/1_2/ChitChat", steps = {"wait .message .body p.citation-link a"}},
