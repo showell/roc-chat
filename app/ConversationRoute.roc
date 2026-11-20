@@ -205,7 +205,11 @@ load_page! : {
 	directory : Directory,
 } => Try(
 	TrustedHtml,
-	[Unreadable(TranscriptRefusal.Why), UnreadableLatest(ConversationKey), FileSystem(_)],
+	[
+		Unreadable(TranscriptRefusal.Why),
+		UnreadableLatest(ConversationKey),
+		FileSystem(_),
+	],
 )
 load_page! = |{ key, acting, directory }| {
 	loaded = load_conversation!(key)?

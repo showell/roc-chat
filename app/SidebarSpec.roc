@@ -119,7 +119,15 @@ expect
 				rows: empty_row,
 				suggests: Suggests,
 			})
-		}${place_html({ name: "#general", path: "/chat/channel/general", opening: "collapsed", rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n", suggests: NoSuggestion })}</nav>\n"
+		}${
+			place_html({
+				name: "#general",
+				path: "/chat/channel/general",
+				opening: "collapsed",
+				rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n",
+				suggests: NoSuggestion,
+			})
+		}</nav>\n"
 # On a DM's page, the partner's place comes first, and Steve's own DM next,
 # collapsed. The page's own topic, before its first message gives it a
 # folder, is listed in its place after the others, marked, and its place's
@@ -141,7 +149,23 @@ expect
 				rows: "<li><a class=\"current\" href=\"/chat/dm/1_2/plans\">plans</a></li>\n",
 				suggests: NoSuggestion,
 			})
-		}${place_html({ name: "Steve", path: "/chat/dm/1_1", opening: "collapsed", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n", suggests: NoSuggestion })}${place_html({ name: "#general", path: "/chat/channel/general", opening: "collapsed", rows: empty_row, suggests: Suggests })}</nav>\n"
+		}${
+			place_html({
+				name: "Steve",
+				path: "/chat/dm/1_1",
+				opening: "collapsed",
+				rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n",
+				suggests: NoSuggestion,
+			})
+		}${
+			place_html({
+				name: "#general",
+				path: "/chat/channel/general",
+				opening: "collapsed",
+				rows: empty_row,
+				suggests: Suggests,
+			})
+		}</nav>\n"
 # A place with a message comes before those with none, and starts open:
 # here `general`, ahead of Apoorva's DM, which Browse lists first.
 expect {

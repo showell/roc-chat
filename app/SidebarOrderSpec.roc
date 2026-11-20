@@ -27,8 +27,8 @@ topic : Str -> Topic
 topic = |text| Topic.from_str(text) ?? crash "SidebarOrderSpec: a topic's name"
 
 ## The time `text` spells, on 2026-11-20.
-at : Str -> SidebarOrder.Latest
-at = |text| At(DateTime.from_str("2026-11-20T${text}Z") ?? crash "SidebarOrderSpec: a time")
+latest_at : Str -> SidebarOrder.Latest
+latest_at = |text| At(DateTime.from_str("2026-11-20T${text}Z") ?? crash "SidebarOrderSpec: a time")
 
 ## The conversation at `path`.
 key_at : Str -> ConversationKey
@@ -55,12 +55,16 @@ places_with = |topics_of| {
 }
 
 ## Steve's sidebar, a line a place: its path, how it starts, and its topics.
-order_on : {
+sidebar_lines : {
 	shown : [Conversation(ConversationKey), NoConversation],
 	topics_of : Str -> List((Str, SidebarOrder.Latest)),
 } -> List(Str)
-order_on = |{ shown, topics_of }|
-	SidebarOrder.order({ places: places_with(topics_of), shown, viewer: steve.user().id() }).map(
+sidebar_lines = |{ shown, topics_of }|
+	SidebarOrder.ordered_places({
+		places: places_with(topics_of),
+		shown,
+		viewer: steve.user().id(),
+	}).map(
 		|ordered| {
 			opening =
 				match ordered.opening {
@@ -78,10 +82,10 @@ order_on = |{ shown, topics_of }|
 some_topics : Str -> List((Str, SidebarOrder.Latest))
 some_topics = |path|
 	match path {
-		"/chat/dm/1_1" => [("notes", at("11:00:00"))]
-		"/chat/dm/1_2" => [("plans", at("08:00:00")), ("lunch", at("09:00:00"))]
-		"/chat/dm/1_5" => [("hello", at("10:00:00"))]
-		"/chat/channel/general" => [("roc", at("12:00:00"))]
+		"/chat/dm/1_1" => [("notes", latest_at("11:00:00"))]
+		"/chat/dm/1_2" => [("plans", latest_at("08:00:00")), ("lunch", latest_at("09:00:00"))]
+		"/chat/dm/1_5" => [("hello", latest_at("10:00:00"))]
+		"/chat/channel/general" => [("roc", latest_at("12:00:00"))]
 		_ => []
 	}
 
@@ -90,7 +94,7 @@ some_topics = |path|
 # newest with a message open, and those with none collapsed, in Browse's
 # order. The partner's topics are newest first.
 expect
-	order_on({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: some_topics })
+	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: some_topics })
 		== [
 			"/chat/dm/1_2 always lunch,plans",
 			"/chat/dm/1_1 collapsed notes",
@@ -102,7 +106,7 @@ expect
 # A channel's page: the channel first; Steve's own DM is not second but
 # takes its place by its time, and is collapsed though it is the newest.
 expect
-	order_on({ shown: Conversation(key_at("/chat/channel/general/roc")), topics_of: some_topics })
+	sidebar_lines({ shown: Conversation(key_at("/chat/channel/general/roc")), topics_of: some_topics })
 		== [
 			"/chat/channel/general always roc",
 			"/chat/dm/1_1 collapsed notes",
@@ -114,7 +118,7 @@ expect
 # Steve's own DM's page: it comes first and opens always, as any page's own
 # place does.
 expect
-	order_on({ shown: Conversation(key_at("/chat/dm/1_1/notes")), topics_of: some_topics })
+	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_1/notes")), topics_of: some_topics })
 		== [
 			"/chat/dm/1_1 always notes",
 			"/chat/channel/general open roc",
@@ -126,7 +130,7 @@ expect
 # A page of no conversation (Browse's, Recent's): no place opens always,
 # and Steve's own DM is collapsed wherever its time puts it.
 expect
-	order_on({ shown: NoConversation, topics_of: some_topics })
+	sidebar_lines({ shown: NoConversation, topics_of: some_topics })
 		== [
 			"/chat/channel/general open roc",
 			"/chat/dm/1_1 collapsed notes",
@@ -140,14 +144,14 @@ expect
 expect {
 	four = |path|
 		match path {
-			"/chat/dm/1_4" => [("a", at("09:00:00"))]
-			"/chat/dm/1_5" => [("b", at("10:00:00"))]
-			"/chat/dm/1_6" => [("c", at("11:00:00"))]
-			"/chat/channel/general" => [("d", at("12:00:00"))]
+			"/chat/dm/1_4" => [("a", latest_at("09:00:00"))]
+			"/chat/dm/1_5" => [("b", latest_at("10:00:00"))]
+			"/chat/dm/1_6" => [("c", latest_at("11:00:00"))]
+			"/chat/channel/general" => [("d", latest_at("12:00:00"))]
 			_ => []
 		}
 	SidebarOrder.open_recent_most == 3
-		and order_on({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: four })
+		and sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: four })
 			== [
 				"/chat/dm/1_2 always plans",
 				"/chat/dm/1_1 collapsed ",
@@ -163,11 +167,15 @@ expect {
 expect {
 	tied = |path|
 		match path {
-			"/chat/dm/1_4" => [("x", NoMessages), ("y", at("10:00:00")), ("w", at("10:00:00"))]
-			"/chat/dm/1_5" => [("z", at("10:00:00"))]
+			"/chat/dm/1_4" => [
+				("x", NoMessages),
+				("y", latest_at("10:00:00")),
+				("w", latest_at("10:00:00")),
+			]
+			"/chat/dm/1_5" => [("z", latest_at("10:00:00"))]
 			_ => []
 		}
-	order_on({ shown: NoConversation, topics_of: tied })
+	sidebar_lines({ shown: NoConversation, topics_of: tied })
 		== [
 			"/chat/dm/1_4 open y,w,x",
 			"/chat/dm/1_5 open z",
@@ -181,7 +189,7 @@ expect {
 # before its first message gives it a folder; every other place collapsed,
 # in Browse's order.
 expect
-	order_on({ shown: Conversation(key_at("/chat/channel/general/welcome")), topics_of: |_| [] })
+	sidebar_lines({ shown: Conversation(key_at("/chat/channel/general/welcome")), topics_of: |_| [] })
 		== [
 			"/chat/channel/general always welcome",
 			"/chat/dm/1_1 collapsed ",
@@ -194,19 +202,19 @@ expect
 # other topics; once it has a message it is ordered as they are, listed
 # once.
 expect
-	order_on({ shown: Conversation(key_at("/chat/dm/1_2/fresh")), topics_of: some_topics }).first()
+	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/fresh")), topics_of: some_topics }).first()
 		== Ok("/chat/dm/1_2 always lunch,plans,fresh")
-		and order_on({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: some_topics }).first()
+		and sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: some_topics }).first()
 			== Ok("/chat/dm/1_2 always lunch,plans")
 # The partner's place comes first even when it is the oldest.
 expect {
 	partner_oldest = |path|
 		match path {
-			"/chat/dm/1_2" => [("plans", at("01:00:00"))]
-			"/chat/channel/general" => [("roc", at("12:00:00"))]
+			"/chat/dm/1_2" => [("plans", latest_at("01:00:00"))]
+			"/chat/channel/general" => [("roc", latest_at("12:00:00"))]
 			_ => []
 		}
-	order_on({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: partner_oldest }).take_first(3)
+	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: partner_oldest }).take_first(3)
 		== [
 			"/chat/dm/1_2 always plans",
 			"/chat/dm/1_1 collapsed ",
@@ -215,4 +223,4 @@ expect {
 }
 # No places: nothing to order.
 expect
-	SidebarOrder.order({ places: [], shown: NoConversation, viewer: steve.user().id() }).is_empty()
+	SidebarOrder.ordered_places({ places: [], shown: NoConversation, viewer: steve.user().id() }).is_empty()

@@ -56,12 +56,12 @@ SidebarOrder :: [].{
 	## `places` in the order the sidebar shows them to `viewer` on a page of
 	## `shown`, each with how it starts. The page's own topic is listed in
 	## its place, after the others, even before its first message.
-	order : {
+	ordered_places : {
 		places : List(SidebarOrder.TimedPlace),
 		shown : [Conversation(ConversationKey), NoConversation],
 		viewer : UserId,
 	} -> List(SidebarOrder.OrderedPlace)
-	order = |{ places, shown, viewer }| {
+	ordered_places = |{ places, shown, viewer }| {
 		dated = places.map_with_index(
 			|listed, at| { listed, at, latest: place_latest(listed.topics) },
 		)
@@ -81,7 +81,12 @@ SidebarOrder :: [].{
 		rest =
 			dated
 				.drop_if(|d| is_here(d.listed) or is_second(d.listed))
-				.sort_with(|one, other| newest_first((one.latest, one.at), (other.latest, other.at)))
+				.sort_with(
+					|one, other| newest_first(
+						(one.latest, one.at),
+						(other.latest, other.at),
+					),
+				)
 		var $after = []
 		var $rank = 0
 		for d in rest {
@@ -123,7 +128,11 @@ is_dm_with_another = |place, viewer|
 ## How a place after the page's own starts: the viewer's own DM collapsed,
 ## and another open while it has a message and `rank` places other than the
 ## viewer's own DM come before it among the rest.
-rest_opening : { own : Bool, latest : SidebarOrder.Latest, rank : U64 } -> SidebarOrder.Opening
+rest_opening : {
+	own : Bool,
+	latest : SidebarOrder.Latest,
+	rank : U64,
+} -> SidebarOrder.Opening
 rest_opening = |{ own, latest, rank }|
 	match latest {
 		At(_) if !own and rank < SidebarOrder.open_recent_most => Open
@@ -138,7 +147,7 @@ place_latest = |topics| topics.fold(NoMessages, |so_far, timed| newer(so_far, ti
 newer : SidebarOrder.Latest, SidebarOrder.Latest -> SidebarOrder.Latest
 newer = |one, other|
 	match (one, other) {
-		(At(a), At(b)) if DateTime.compare(a, b) == Before => other
+		(At(one_time), At(other_time)) if DateTime.compare(one_time, other_time) == Before => other
 		(NoMessages, _) => other
 		_ => one
 	}
@@ -148,8 +157,8 @@ newer = |one, other|
 newest_first : (SidebarOrder.Latest, U64), (SidebarOrder.Latest, U64) -> [Before, Same, After]
 newest_first = |(one, one_at), (other, other_at)|
 	match (one, other) {
-		(At(a), At(b)) =>
-			match DateTime.compare(a, b) {
+		(At(one_time), At(other_time)) =>
+			match DateTime.compare(one_time, other_time) {
 				After => Before
 				Before => After
 				Same => given_order(one_at, other_at)
@@ -181,7 +190,12 @@ ordered_place = |{ listed, opening, shown }| {
 	sorted =
 		listed.topics
 			.map_with_index(|timed, at| { timed, at })
-			.sort_with(|one, other| newest_first((one.timed.latest, one.at), (other.timed.latest, other.at)))
+			.sort_with(
+				|one, other| newest_first(
+					(one.timed.latest, one.at),
+					(other.timed.latest, other.at),
+				),
+			)
 			.map(|d| d.timed.topic)
 	topics =
 		match shown {
@@ -189,5 +203,10 @@ ordered_place = |{ listed, opening, shown }| {
 				sorted.append(key.topic())
 			_ => sorted
 		}
-	{ label: listed.label, place: listed.place, topics, opening }
+	{
+		label: listed.label,
+		place: listed.place,
+		topics,
+		opening,
+	}
 }
