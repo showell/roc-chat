@@ -17,9 +17,11 @@
 ## them. Two keys a user, so the memory holds at most 2 × 2,000 of them
 ## (`SignUpLimits.accounts_most`).
 ##
-## `take!` is the one effect: the post route calls it once a message has
-## been judged and before its record is written, so a refused message
-## writes nothing and leaves the tally as it was.
+## The post route asks `check_rate!` once a message has been judged and
+## before its record is written, so a refused message writes nothing; and
+## it tells `record_message!` only once the record is appended, so a write
+## that fails leaves the tally as it was. Nothing runs between the two, as
+## the app makes one call at a time (the host's turn).
 import pf.Host
 import Seconds
 import Timestamp
@@ -87,20 +89,26 @@ MessageRate :: [].{
 			Ok({ ..tally, count: tally.count + 1 })
 		}
 
-	## One message by `user` at `now`, counted; unless their window already
-	## holds the most, when nothing is counted.
-	take! : UserId, Timestamp => Try({}, [TooManyMessages])
-	take! = |user, now| {
+	## The tally `user`'s message at `now` would leave, nothing kept yet;
+	## unless their window already holds the most.
+	check_rate! : UserId, Timestamp => Try(MessageRate.MessageTally, [TooManyMessages])
+	check_rate! = |user, now| {
 		tally = MessageRate.tally_of({
 			count: Host.read_second_kept_under_key!(MessageRate.count_key(user)),
 			since: Host.read_second_kept_under_key!(MessageRate.since_key(user)),
 			now,
 		})
-		counted = MessageRate.tally_with_message(tally)?
+		MessageRate.tally_with_message(tally)
+	}
+
+	## `user`'s tally kept as `counted`, the one `check_rate!` gave, once
+	## their message is written.
+	record_message! : UserId, MessageRate.MessageTally => {}
+	record_message! = |user, counted| {
 		_ = Host.replace_second_kept_under_key!(MessageRate.count_key(user), counted.count)
 		started = counted.since.to_seconds_since_epoch()
 		_ = Host.replace_second_kept_under_key!(MessageRate.since_key(user), started)
-		Ok({})
+		{}
 	}
 }
 

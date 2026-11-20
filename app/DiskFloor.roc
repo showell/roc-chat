@@ -12,8 +12,10 @@
 ## GitHub sign-up and its name), an agent and its invites and keys, a
 ## channel and its members, and a device code. Reads keep working, and so
 ## does what only rewrites a small file or ends something: signing in and
-## out, revoking, removing a member, cancelling a code and signing other
-## devices out, and GitHub's way back, which signs in.
+## out, redeeming a device code (`RedeemDeviceCode`, a sign-in, which
+## rewrites the human's short list of sign-ins), revoking, removing a
+## member, cancelling a code and signing other devices out, and GitHub's
+## way back, which signs in.
 ##
 ## The host is asked only for a request that adds data, so a read costs no
 ## system call.
@@ -35,9 +37,13 @@ DiskFloor :: [].{
 	low_words : Str
 	low_words = "The server is low on disk space, so nothing new can be saved for now. Reading still works; please try again later."
 
-	## The refusal: a 507, its words in plain text.
+	## The refusal: a 507, its words in plain text, asking the client to
+	## try again in five minutes (`Retry-After`).
 	refusal : Http.Response
-	refusal = HttpAnswer.text(507, DiskFloor.low_words)
+	refusal = HttpAnswer.with_header(
+		HttpAnswer.text(507, DiskFloor.low_words),
+		{ name: "retry-after".to_utf8(), value: "300".to_utf8() },
+	)
 
 	## Whether a disk with `free_bytes` free takes data: only at the floor
 	## or above.
@@ -176,5 +182,8 @@ expect [2_147_483_647, 0].all(|free| DiskFloor.room_for(free) == Err(LowOnDisk))
 expect DiskFloor.room_for(2_147_483_648) == Ok({}) and DiskFloor.room_for(U64.highest) == Ok({})
 expect {
 	answer = DiskFloor.refusal
-	answer.status == 507 and answer.body == "${DiskFloor.low_words}\n".to_utf8()
+	answer.status
+		== 507
+		and answer.body == "${DiskFloor.low_words}\n".to_utf8()
+		and answer.headers.contains({ name: "retry-after".to_utf8(), value: "300".to_utf8() })
 }

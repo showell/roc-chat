@@ -15,10 +15,15 @@ const std = @import("std");
 /// The most bytes a key may be.
 pub const key_most = 64;
 
-/// The most keys kept: one a user, and 65,536 user ids at most
-/// (app/UserId.roc), and 9,216 more for the device codes' tallies, which
-/// use 8,198 (app/DeviceCodeLimit.roc: two keys for each of 4,096 buckets
-/// of clients, `local`, `repeated` and everyone).
+/// The most keys kept, a bound the app stays far under. The app keeps at
+/// most eight keys a user, and there are at most 2,000 accounts
+/// (app/SignUpLimits.roc, `accounts_most`): one for when a human was last
+/// active (app/Presence.roc), five for their searches (app/SearchLimit.roc)
+/// and two for their message rate (app/MessageRate.roc), 16,000 in all;
+/// 8,198 for the device codes' tallies (app/DeviceCodeLimit.roc: two keys
+/// for each of 4,096 buckets of clients, `local`, `repeated` and everyone);
+/// and 20 for the day's GitHub sign-ups (app/SignUpLimits.roc). That is
+/// 24,218 at most, under a third of this.
 pub const keys_most = 65_536 + 9_216;
 
 pub const RememberedSeconds = struct {
