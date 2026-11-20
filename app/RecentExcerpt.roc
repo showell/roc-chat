@@ -117,7 +117,9 @@ collapse_quotes = |lines| {
 			InFence(opening) =>
 				if is_fence_closing(line, opening) {
 					$fence = NoFence
-				} else if opening.language != "quote" {
+				} else if opening.language == "quote" {
+					{}
+				} else {
 					$kept = $kept.append(line)
 				}
 		}
