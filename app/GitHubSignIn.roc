@@ -44,11 +44,13 @@
 ## (`SignInRoute.start_session_by_github!` takes nothing else), so no handler
 ## mints a session by calling a constructor. This module is a trust boundary
 ## with `SignedIn`, `AgentKey`, `AgentInvite` and `HumanInvite`. The client
-## secret and GitHub's token stay in the host (host/github_client.zig).
+## secret and GitHub's token stay in the host (host/github_client.zig). Who
+## holds an id and who may link one are `GitHubLinks`'s rules.
 import Channels
 import Directory
 import GitHubCode
 import GitHubId
+import GitHubLinks
 import GitHubLogin
 import GitHubRefusal
 import GitHubSignUp
@@ -187,8 +189,8 @@ GitHubSignIn :: [].{
 		## link, or one of a user no one is, admits no one.
 		##
 		## For a link: `Linking`, the human it binds the id to, or why not
-		## (`linked_to`). A sign-in by a human signed in is one too, unless the
-		## id is theirs already (`signed_in_return`).
+		## (`GitHubLinks.human_for_link`). A sign-in by a human signed in is
+		## one too, unless the id is theirs already (`signed_in_return`).
 		resolve : GitHubSignIn.IdentityKnown,
 		{
 			links : List({ user : UserId, github : GitHubId }),
@@ -203,7 +205,7 @@ GitHubSignIn :: [].{
 			[DuplicateAccount, LinkNotYours, AlreadyLinked, GitHubIdTaken],
 		)
 		resolve = |GitHubSignIn.IdentityKnown.(known), { links, users, viewer }|
-			match (known.errand, GitHubSignIn.human_to_link(viewer)) {
+			match (known.errand, GitHubLinks.human_to_link(viewer)) {
 				(Link(id), _) =>
 					linked_to({
 						id,
@@ -222,7 +224,7 @@ GitHubSignIn :: [].{
 						viewer,
 					})
 				(SignIn, Err(NotSignedIn)) =>
-					match humans_holding({ github: known.github, links, users }) {
+					match GitHubLinks.humans_holding({ github: known.github, links, users }) {
 						[] => Ok(
 							Unknown(
 								GitHubSignIn.NewHuman.(
@@ -261,16 +263,6 @@ GitHubSignIn :: [].{
 		admission = |GitHubSignIn.Linked.(linked)|
 			GitHubSignIn.Admission.({ human: linked.human, next: linked.next })
 	}
-
-	## The human `viewer` starts linking GitHub for: a human, by their own
-	## session; unless no one is signed in (`NotSignedIn`), or the request came
-	## with an API key (`ByApiKey`), or from an agent (`Agent`).
-	human_to_link : SignedIn.Actor -> Try(Users.Human, [NotSignedIn, ByApiKey, Agent(UserId)])
-	human_to_link = |viewer|
-		match viewer {
-			Anonymous => Err(NotSignedIn)
-			SignedIn(acting) => acting.human_in_session()
-		}
 
 	## GitHub has said who this is, and no human holds the id.
 	NewHuman :: {
@@ -359,7 +351,11 @@ GitHubSignIn :: [].{
 			[AccountExists, DuplicateAccount, SignUpsPaused, NameTaken, Full, NoDefaultChannel],
 		)
 		create_account = |GitHubSignIn.SignUpResumed.(resumed), { name, links, directory }|
-			match humans_holding({ github: resumed.github, links, users: directory.users() }) {
+			match GitHubLinks.humans_holding({
+				github: resumed.github,
+				links,
+				users: directory.users(),
+			}) {
 				[_] => Err(AccountExists)
 				[_, _, ..] => Err(DuplicateAccount)
 				[] => {
@@ -424,7 +420,7 @@ signed_in_return = |
 		viewer,
 	},
 |
-	match humans_holding({ github, links, users }) {
+	match GitHubLinks.humans_holding({ github, links, users }) {
 		[holder] if holder.id() == human.id() => Ok(Known(GitHubSignIn.Admission.({ human, next })))
 		[_, _, ..] => Err(DuplicateAccount)
 		_ =>
@@ -437,10 +433,8 @@ signed_in_return = |
 			}).map_ok(|linked| Linking(linked))
 	}
 
-## The link of `github` to the human `id`: `viewer` must be that human, by
-## their own session (`LinkNotYours`), with no GitHub account of their own
-## (`AlreadyLinked`), and no user may be linked to the id (`GitHubIdTaken`),
-## an agent included, as nothing about a stray file says who it is for.
+## The link of `github` to the human `id`, going to `next`, when
+## `GitHubLinks.human_for_link` allows it.
 linked_to : {
 	id : UserId,
 	github : GitHubId,
@@ -452,29 +446,8 @@ linked_to : {
 	[LinkNotYours, AlreadyLinked, GitHubIdTaken],
 )
 linked_to = |{ id, github, next, links, viewer }|
-	match GitHubSignIn.human_to_link(viewer) {
-		Ok(human) if human.id() == id =>
-			if links.any(|link| link.user == id) {
-				Err(AlreadyLinked)
-			} else if links.any(|link| link.github == github) {
-				Err(GitHubIdTaken)
-			} else {
-				Ok(GitHubSignIn.Linked.({ human, github, next }))
-			}
-		_ => Err(LinkNotYours)
-	}
-
-## The humans among `users` whom `links` links to the id `github`.
-humans_holding : {
-	github : GitHubId,
-	links : List({ user : UserId, github : GitHubId }),
-	users : Users,
-} -> List(Users.Human)
-humans_holding = |{ github, links, users }|
-	links
-		.keep_if(|link| link.github == github)
-		.keep_oks(|link| users.user(link.user))
-		.keep_oks(|user| user.as_human())
+	GitHubLinks.human_for_link({ id, github, links, viewer })
+		.map_ok(|human| GitHubSignIn.Linked.({ human, github, next }))
 
 # ── tests
 # The tests of every other step are in `GitHubSignInSpec`. This one reads

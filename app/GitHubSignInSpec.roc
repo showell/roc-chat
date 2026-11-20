@@ -1,10 +1,12 @@
 ## These are the tests of `GitHubSignIn`: every step of a return from GitHub,
-## a link of GitHub to a human signed in, who may start a link, the name a new
-## human is offered, a sign-up resumed, and the account it makes.
+## a link of GitHub to a human signed in, who may start a link (by
+## `GitHubLinks`), the name a new human is offered, a sign-up resumed, and the
+## account it makes.
 import Channels
 import Directory
 import GitHubCode
 import GitHubId
+import GitHubLinks
 import GitHubSignIn
 import GitHubSignUp
 import GitHubState
@@ -310,9 +312,9 @@ expect round_trip({ ..good_link, cookie: Unsent }) == Err(StateMismatched)
 expect round_trip({ ..good_link, now: Timestamp.at_second(1600) }) == Err(StateExpired)
 
 # Who may start a link: a human by session; no one else.
-expect GitHubSignIn.human_to_link(Anonymous).map_ok(|_| {}) == Err(NotSignedIn)
-expect GitHubSignIn.human_to_link(viewer_of("2")).map_ok(|human| human.id()) == Ok(id_of("2"))
-expect GitHubSignIn.human_to_link(viewer_of("3")).map_ok(|_| {}) == Err(Agent(id_of("3")))
+expect GitHubLinks.human_to_link(Anonymous).map_ok(|_| {}) == Err(NotSignedIn)
+expect GitHubLinks.human_to_link(viewer_of("2")).map_ok(|human| human.id()) == Ok(id_of("2"))
+expect GitHubLinks.human_to_link(viewer_of("3")).map_ok(|_| {}) == Err(Agent(id_of("3")))
 
 ## The new human GitHub calls `login`, of the id 300.
 new_human_called : Str -> GitHubSignIn.NewHuman
