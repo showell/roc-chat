@@ -82,7 +82,7 @@
   var styleSheet = document.createElement('style');
   styleSheet.textContent = [
     '.compose-actions{display:flex;gap:8px}',
-    '.compose-status{font-size:12px;color:var(--cc-error);min-height:16px;margin-top:6px}',
+    '.compose-status{font-size:12px;color:var(--cc-muted-fg);min-height:16px;margin-top:6px}',
     '.compose textarea{box-sizing:border-box;font-family:inherit;font-size:14px;padding:8px;border-radius:8px;' +
       'background:var(--cc-card-bg);color:var(--cc-fg);border:1px solid var(--cc-input-border)}',
     '.compose textarea:focus{outline:none;border-color:var(--cc-accent);box-shadow:0 0 0 1px var(--cc-accent)}',
@@ -313,7 +313,11 @@
 
   var sendUrl = form.getAttribute('data-send');
   if (!sendUrl) throw new Error('compose.js: the form has no data-send');
-  var MUTED = 'var(--cc-muted-fg)';
+  // The status line is muted, the neutral colour, but for an error's words.
+  var ERROR = 'var(--cc-error)';
+  // The last "✓ sent" notice's link, which typing clears while the status
+  // line still shows it.
+  var sentLink = null;
   var STILL_SENDING_MS = 3000;
 
   // The one send on its way, if any: its timer. A second send waits for its
@@ -402,6 +406,7 @@
     status.textContent = '';
     status.style.color = 'var(--cc-notify-fg)';
     status.appendChild(link);
+    sentLink = link;
   }
   function expectArrival(id) {
     var here = document.getElementById(id);
@@ -424,7 +429,7 @@
     var mine = { timer: null };
     pending = mine;
     refreshControls();
-    status.style.color = MUTED;
+    status.style.color = '';
     status.textContent = 'Sending…';
     mine.timer = setTimeout(function () { stillSending(mine); }, STILL_SENDING_MS);
     fetch(sendUrl, {
@@ -447,10 +452,12 @@
       }
       return r.text().then(function (answer) {
         settle();
+        status.style.color = ERROR;
         status.textContent = refusalWords(answer, r.status);
         box.focus();
       }, function () {
         settle();
+        status.style.color = ERROR;
         status.textContent = refusalWords('', r.status);
         box.focus();
       });
@@ -482,7 +489,7 @@
     isOpen: function () { return compose.classList.contains('open'); },
     notice: function (words, failed) {
       if (pending || !compose.classList.contains('open')) return false;
-      status.style.color = failed ? '' : 'var(--cc-notify-fg)';
+      status.style.color = failed ? ERROR : 'var(--cc-notify-fg)';
       status.textContent = words;
       return true;
     },
@@ -510,7 +517,14 @@
     },
   };
 
-  box.addEventListener('input', refreshControls);
+  box.addEventListener('input', function () {
+    refreshControls();
+    if (sentLink && sentLink.parentNode === status) {
+      sentLink = null;
+      status.textContent = '';
+      status.style.color = '';
+    }
+  });
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     sendMessage();
@@ -609,10 +623,11 @@
     } catch (err) { hand(file); }
   }
 
+  // An upload's end: `line` is empty when it worked, else what went wrong.
   function uploadDone(line) {
     uploading = false;
     refreshControls();
-    status.style.color = '';
+    status.style.color = line ? ERROR : '';
     status.textContent = line;
   }
 
@@ -620,7 +635,7 @@
     if (file.size > imageByteLimit) {
       return uploadDone('That image is ' + megabytes(file.size) + ' — too big to send (limit ' + (imageByteLimit / 1048576) + ' MB). Try compressing or resizing it.');
     }
-    status.style.color = MUTED;
+    status.style.color = '';
     status.textContent = 'Uploading image: 0% of ' + megabytes(file.size) + '…';
     var formData = new FormData();
     formData.append('file', file);
@@ -658,7 +673,7 @@
     }
     uploading = true;
     refreshControls();
-    status.style.color = MUTED;
+    status.style.color = '';
     status.textContent = 'Preparing image…';
     shrinkPicture(file, sendFile);
   }
