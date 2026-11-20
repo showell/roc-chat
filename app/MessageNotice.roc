@@ -40,8 +40,13 @@ MessageNotice :: [].{
 
 	## The event that tells of the message `id` by `author` in `key`:
 	## `message-notice`, its data a link to that message on the topic's page.
-	frame : { author : Str, key : ConversationKey, id : Message.Id } -> List(U8)
-	frame = |{ author, key, id }|
+	frame : {
+		author : Str,
+		key : ConversationKey,
+		id : Message.Id,
+	} -> List(U8)
+	frame = |{ author, key, id }| {
+		anchor = MessageAnchor.of({ topic: key.topic(), id })
 		ServerSentEvent.named_event({
 			name: "message-notice",
 			html: Html.element({
@@ -49,12 +54,13 @@ MessageNotice :: [].{
 				attributes: [
 					LinkToPart({
 						path: Presence.link_to(key),
-						part: PageKit.token(MessageAnchor.of({ topic: key.topic(), id }).page_anchor()),
+						part: PageKit.token(anchor.page_anchor()),
 					}),
 				],
 				inner: Escape.text(MessageNotice.words({ author, key })),
 			}),
 		})
+	}
 
 	## Who of `readers` is told of a message by `author`: all but the author,
 	## as Gopher Chat never told anyone of their own message.

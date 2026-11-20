@@ -46,6 +46,18 @@ expect
 	MessageNotice.words({ author: "Apoorva", key: key_at("/chat/channel/general/roc-chat-2") })
 		== "Apoorva posted to general > roc-chat-2."
 
+## The event that tells of the message `id` by `author` in the conversation
+## at `path`, as text.
+framed : Str, Str, Message.Id -> Str
+framed = |author, path, id|
+	Str.from_utf8_lossy(
+		MessageNotice.frame({
+			author,
+			key: key_at(path),
+			id,
+		}),
+	)
+
 ## The id of a topic's third message.
 third : Message.Id
 third = {
@@ -57,14 +69,13 @@ third = {
 # its topic's page, in a DM and in a channel; its words escaped; no event
 # id, so a browser's count of messages is untouched.
 expect
-	MessageNotice.frame({ author: "Steve", key: key_at("/chat/dm/1_2/plans"), id: third })
-		== "event: message-notice\ndata: <a href=\"/chat/dm/1_2/plans#msg-3\">Steve sent you a message on plans.</a>\n\n".to_utf8()
+	framed("Steve", "/chat/dm/1_2/plans", third)
+		== "event: message-notice\ndata: <a href=\"/chat/dm/1_2/plans#msg-3\">Steve sent you a message on plans.</a>\n\n"
 expect
-	MessageNotice.frame({ author: "Apoorva", key: key_at("/chat/channel/general/roc-chat-2"), id: Message.Id.first })
-		== "event: message-notice\ndata: <a href=\"/chat/channel/general/roc-chat-2#msg-1\">Apoorva posted to general &gt; roc-chat-2.</a>\n\n".to_utf8()
+	framed("Apoorva", "/chat/channel/general/roc-chat-2", Message.Id.first)
+		== "event: message-notice\ndata: <a href=\"/chat/channel/general/roc-chat-2#msg-1\">Apoorva posted to general &gt; roc-chat-2.</a>\n\n"
 expect
-	Str.from_utf8_lossy(MessageNotice.frame({ author: "A<b>", key: key_at("/chat/dm/1_2/plans"), id: third }))
-		.contains(">A&lt;b&gt; sent you a message on plans.</a>")
+	framed("A<b>", "/chat/dm/1_2/plans", third).contains(">A&lt;b&gt; sent you a message on plans.</a>")
 # Who is told: every reader but the author. A DM's other human; a channel's
 # other members, an agent among them, as topic-added tells them; the author
 # never; and nobody of a message in one's own DM.
