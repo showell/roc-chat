@@ -162,7 +162,7 @@ expect
 	message_html("> a\n>\n> b\n\n[A (x) in Steve › plans](/chat/dm/1_1/plans#msg-12)")
 		== "<blockquote>\n<p>a</p>\n<p>b</p>\n</blockquote>\n<p><a href=\"/chat/dm/1_1/plans#msg-12\">A (x) in Steve › plans</a></p>\n"
 # app/actions.js gives every message its cite button and the keyboard help
-# its `l` row, each Cite.copy; app/cite.js writes the link to the message on
+# its `l` row, each Citation.copy; app/citation.js writes the link to the message on
 # its topic's page, and marks the paragraph after a quote holding only a
 # link to a chat page.
 expect {
@@ -170,19 +170,19 @@ expect {
 	[
 		"citeButton.className = 'cite-open';",
 		"citeButton.textContent = 'cite';",
-		"if (e.target.closest('.cite-open')) { Cite.copy(article); return; }",
+		"if (e.target.closest('.cite-open')) { Citation.copy(article); return; }",
 		"Keys.register({ key: 'l', label: 'copy a citation of the selected message', run: function () {",
 	].all(|line| actions.contains(line))
 }
 expect {
-	cite = Str.from_utf8_lossy(Script.Cite.bytes())
+	citation = Str.from_utf8_lossy(Script.Citation.bytes())
 	[
 		"return '[' + label + '](' + location.pathname + '#' + article.id + ')';",
 		"'✓ citation copied. To answer it here, '",
 		"'✓ citation copied: paste it in any topic'",
 		"article.querySelectorAll('.body blockquote + p')",
 		"after[i].classList.add('citation-link')",
-	].all(|line| cite.contains(line))
+	].all(|line| citation.contains(line))
 }
 # Rendered markup is trusted as it is: joined, its entities stay single.
 expect

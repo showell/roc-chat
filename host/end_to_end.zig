@@ -399,7 +399,7 @@ const public_origin = "https://chat.example.test";
 const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
 /// The page's other scripts, each served as compose.js is.
-const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "sidebar.js", "feed.js", "cite.js", "panel.js" };
+const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "sidebar.js", "feed.js", "citation.js", "panel.js" };
 const dm_url = "/chat/dm/1_1/plans";
 const dm_transcript = "chat/dm/1_1/plans/transcript";
 const channel_uploads = "chat/channel/general/roc-chat/uploads";

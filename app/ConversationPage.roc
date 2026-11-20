@@ -16,7 +16,7 @@
 ## time in the viewer's time zone, appends each message the conversation's
 ## stream brings, puts a message the stream sends again in place of the one
 ## shown, and lets the reader select a message and move between them from
-## the keyboard. app/cite.js writes a citation of a message and marks one
+## the keyboard. app/citation.js writes a citation of a message and marks one
 ## in a message. app/actions.js gives each message its actions: reacting,
 ## quoting, citing, and editing the viewer's own. They find what they need by
 ## `PageContract`'s names.
@@ -175,7 +175,7 @@ ConversationPage :: [].{
 				TrustedHtml.join(
 					List.concat(
 						List.concat([Script.Chrome], scripts),
-						[Script.Compose, Script.Emoji, Script.Feed, Script.Cite, Script.Actions, Script.Search],
+						[Script.Compose, Script.Emoji, Script.Feed, Script.Citation, Script.Actions, Script.Search],
 					).map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
 				),
 			]),

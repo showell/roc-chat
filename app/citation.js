@@ -2,8 +2,8 @@
 // builds and app/Script.roc serves. It writes and reads citations: a way to
 // cite a message of one topic in another (Steve, 2026-11-20). It runs after
 // compose.js and feed.js and before actions.js, which gives each message
-// its "cite" button and registers the `l` key, both Cite.copy, and hands
-// it each message drawn (Cite.mark).
+// its "cite" button and registers the `l` key, both Citation.copy, and hands
+// it each message drawn (Citation.mark).
 //
 // A citation is plain markdown, so the transcript's format is unchanged:
 // the message's markdown as written, at most its first three lines or
@@ -28,10 +28,10 @@
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
-  if (!messages) throw new Error('cite.js: the page has no .messages');
-  if (!window.Compose || !window.Viewport) throw new Error('cite.js: chrome.js and compose.js run first, and give Viewport and Compose');
+  if (!messages) throw new Error('citation.js: the page has no .messages');
+  if (!window.Compose || !window.Viewport) throw new Error('citation.js: chrome.js and compose.js run first, and give Viewport and Compose');
   var rawUrl = messages.getAttribute('data-raw');
-  if (!rawUrl) throw new Error('cite.js: .messages has no data-raw');
+  if (!rawUrl) throw new Error('citation.js: .messages has no data-raw');
   var topicAt = /^\/chat\/(?:channel|dm)\/[^\/]+\/([^\/]+)$/.exec(location.pathname);
   var topic = topicAt ? decodeURIComponent(topicAt[1]) : null;
 
@@ -167,5 +167,5 @@
     }
   }
 
-  window.Cite = { copy: copy, mark: mark };
+  window.Citation = { copy: copy, mark: mark };
 })();
