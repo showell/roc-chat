@@ -20,10 +20,14 @@
 --    data root. The server reads them only at its start, and sign-up is by
 --    GitHub, so it never starts without them.
 -- 4. It builds the binary here: static (musl) and ReleaseSafe, so bcrypt runs
---    at release speed and the safety checks stay on.
+--    at release speed and the safety checks stay on. It builds C Shale here
+--    too, static, from the Shale checkout beside this repo (`repos:shale`),
+--    which must be clean: the admin scripts' runtime (docs/admin.md).
 -- 5. It pushes `main` when `main` has an upstream, and says so when it has none.
 -- 6. It copies the binary, proves the copy by its sha256, swaps it in whole by a
---    rename, installs the systemd unit when it changed, restarts, and waits for
+--    rename, and does the same for Shale (/opt/roc-chat/shale) and the admin
+--    scripts and their mounts files (/opt/roc-chat/admin/), all root's. Then it
+--    installs the systemd unit when it changed, restarts, and waits for
 --    127.0.0.1:9611 to answer.
 -- 7. It refuses to go on unless the first start seeded the chat: the owner's
 --    account, the channel `general`, the counter of ids and .session-secret.
@@ -49,6 +53,11 @@ const PORT = "9611"
 const HOME = "/var/lib/roc-chat"
 const DATA = "/var/lib/roc-chat/data"
 const BIN = "/opt/roc-chat/roc-chat"
+const SHALE_BIN = "/opt/roc-chat/shale"
+const ADMIN = "/opt/roc-chat/admin"
+-- What goes to ADMIN: the scripts tools/admin/ holds for prod, and the mounts
+-- files they run under. check_remove_user.shale is a local test, and stays.
+const ADMIN_FILES = {"tools/admin/chat_data.shale", "tools/admin/user_footprint.shale", "tools/admin/remove_user.shale", "deploy/admin/read.mounts", "deploy/admin/write.mounts"}
 const UNIT = "roc-chat.service"
 const BLOCK = "chat.lynrummy.com.caddy"
 const LOG = "/var/log/caddy/chat-access.log"
@@ -116,11 +125,23 @@ for name in {".github-client-id", ".github-client-secret"} do
   end
 end
 
--- 4. The binary.
+-- The sha256 of a file here, as 64 hex digits.
+function sha256_of(path)
+  return split(trim(must(run({"sha256sum", path}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
+end
+
+-- 4. The binaries: the server, then C Shale, static with glibc (it links
+-- only the C library, and has no name lookups for a static link to miss),
+-- built as c/build/binary.shale's release build is, plus `-static`.
 must(run({"zig", "build", "-Dtarget=x86_64-linux-musl", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20}))
 local built = OUT .. "/bin/roc-chat"
-local want_sum = split(trim(must(run({"sha256sum", built}, {timeout_ms = 30000, whole = 1000})).out), " ")[1]
-print("built " .. built .. " (sha256 " .. sub(want_sum, 1, 12) .. ")")
+print("built " .. built .. " (sha256 " .. sub(sha256_of(built), 1, 12) .. ")")
+if not git_is_clean("repos:shale") then fail("deploy: the Shale checkout, repos:shale, has changes; prod's Shale is built from a clean one") end
+must(run({"tcc", "-run", "c/gen_preludes.c"}, {cwd = "repos:shale", timeout_ms = 60000, tail = 5}))
+const SHALE_BUILT = OUT .. "/shale"
+must(run({"gcc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Ic/foundation", "-O2", "-Ic/out/gen", "-Ic", "c/shale.c", "-static", "-o", real(OUT) .. "/shale"},
+  {cwd = "repos:shale", timeout_ms = 300000, tail = 40, nice = 19}))
+print("built " .. SHALE_BUILT .. " from Shale " .. git_head("repos:shale") .. " (sha256 " .. sub(sha256_of(SHALE_BUILT), 1, 12) .. ")")
 
 -- 5. The push.
 if git_upstream("") == nil then
@@ -137,11 +158,24 @@ print("deploying roc-chat " .. commit .. " to " .. HOST)
 const STAGE = trim(on_prod("mktemp -d -p \"$HOME\" roc-chat-deploy.XXXXXXXX").out)
 if find(STAGE, "/roc-chat-deploy.") == nil then fail("deploy: no staging folder on prod (mktemp said `" .. STAGE .. "`)") end
 
--- 6. The binary, the unit and the restart.
-copy_to_prod(built, STAGE .. "/roc-chat.new")
-local got_sum = split(trim(on_prod("sha256sum " .. STAGE .. "/roc-chat.new").out), " ")[1]
-if got_sum ~= want_sum then fail("deploy: the copy on prod is not the build (sha256 " .. got_sum .. ", want " .. want_sum .. ")") end
-on_prod("set -e\nsudo install -o root -g root -m 755 " .. STAGE .. "/roc-chat.new " .. BIN .. ".new\nsudo mv -f " .. BIN .. ".new " .. BIN .. "\nrm -f " .. STAGE .. "/roc-chat.new")
+-- The file `local_path` put at `remote_path` on prod, root's with `mode`: copied
+-- to the staging folder, proved by its sha256, then swapped in whole by a
+-- rename.
+function install_on_prod(local_path, remote_path, mode)
+  local staged = STAGE .. "/" .. basename(remote_path) .. ".new"
+  local want = sha256_of(local_path)
+  copy_to_prod(real(local_path), staged)
+  local got = split(trim(on_prod("sha256sum " .. staged).out), " ")[1]
+  if got ~= want then fail("deploy: the copy of " .. local_path .. " on prod is not this one (sha256 " .. got .. ", want " .. want .. ")") end
+  on_prod("set -e\nsudo install -o root -g root -m " .. mode .. " " .. staged .. " " .. remote_path .. ".new\nsudo mv -f " .. remote_path .. ".new " .. remote_path .. "\nrm -f " .. staged)
+end
+
+-- 6. The binaries, the admin scripts, the unit and the restart.
+install_on_prod(built, BIN, "755")
+install_on_prod(SHALE_BUILT, SHALE_BIN, "755")
+on_prod("sudo install -d -o root -g root -m 755 " .. ADMIN)
+for f in ADMIN_FILES do install_on_prod(f, ADMIN .. "/" .. basename(f), "644") end
+print("installed " .. SHALE_BIN .. " and " .. #ADMIN_FILES .. " files in " .. ADMIN)
 copy_to_prod("deploy/" .. UNIT, STAGE .. "/" .. UNIT)
 -- cmp exits 2 on a file that is not there, so a first deploy's unit counts as changed.
 if asks_prod("[ -f /etc/systemd/system/" .. UNIT .. " ] && cmp -s " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT) then

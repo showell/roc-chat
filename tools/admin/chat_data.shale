@@ -307,6 +307,6 @@ function blockers_of(fp)
   if t.id == "1" then push(why, "user 1 is the chat's owner and admin (app/UserId.roc's chat_owner)") end
   if not is_user_id(fp.counter) or tonumber(fp.counter) <= tonumber(t.id) then push(why, "the counter of ids, auth/next-id.txt, holds '" .. fp.counter .. "', not an id past " .. t.id) end
   for a in fp.agents_owned do push(why, "they own the agent " .. a.name .. " (" .. a.id .. "): remove the agent first, as an agent whose owner is no human stops the chat") end
-  if #fp.authored > 0 then push(why, "they wrote " .. counted(#fp.authored, "message", "messages") .. " in topics that stay; what happens to those is Steve's decision, not made yet (docs/admin.md, \"Messages in topics that stay\")") end
+  if #fp.authored > 0 then push(why, "they wrote " .. counted(#fp.authored, "message", "messages") .. " in topics that stay; blanking them in place is the agreed way, not built yet, so this case is done by hand (docs/admin.md, \"Messages in topics that stay\")") end
   return why
 end
