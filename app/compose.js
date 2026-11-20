@@ -417,10 +417,23 @@
   // actions.js loads an edit into the box with Compose.load: the box opened,
   // its text replaced, and the caret at `caret`, as chat-client's edit did.
   // It puts a quote-reply at the caret with Compose.insert, the box opened
-  // and the caret after the text; while a send is on its way it does
-  // nothing, as chat-client's quote did. It says a citation was copied with
+  // and the caret after the text, so a quote joins a draft and never
+  // replaces it. Neither touches the box while a send or an upload is on its
+  // way (a send's answer would empty it; an upload's image would land in
+  // it), and an edit never replaces a draft: each opens the box and says
+  // why in the status line instead. (Refusing is lighter than asking to
+  // replace: send or clear the draft, then press e again.) It says a citation was copied with
   // Compose.notice, the status line's words, which answers whether they
   // were shown: only while the box is open and no send is on its way.
+  // Whether a send or an upload is on its way, saying so in the status line
+  // when one is: the box is not to change under it.
+  function refusedWhileBusy(doing) {
+    if (!pending && !uploading) return false;
+    status.style.color = '';
+    status.textContent = 'Wait for your ' + (pending ? 'send' : 'upload') + ' to finish, then ' + doing + '.';
+    return true;
+  }
+
   window.Compose = {
     isOpen: function () { return compose.classList.contains('open'); },
     notice: function (words, failed) {
@@ -436,12 +449,18 @@
     },
     load: function (text, caret) {
       openCompose();
+      if (refusedWhileBusy('edit a message')) return;
+      if (box.value.trim() !== '' && box.value !== text) {
+        status.style.color = '';
+        status.textContent = 'You have a draft: send it or clear it first, then edit.';
+        return;
+      }
       box.value = text;
       box.setSelectionRange(caret, caret);
     },
     insert: function (text) {
-      if (pending) return;
       openCompose();
+      if (refusedWhileBusy('quote')) return;
       insertAtCursor(text);
     },
   };
