@@ -37,6 +37,7 @@ import PlaceSpec
 import PresenceSpec
 import RecentFeedSpec
 import RouteSpec
+import SearchDriftSpec
 import SearchSpec
 import SecureImageTagSpec
 import SessionSpec
