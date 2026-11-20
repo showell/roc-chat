@@ -1748,6 +1748,15 @@ fn searchSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         has(tams_words.body, "{\"prefix\":\"st\",\"most\":20,\"unreadable\":0,\"words\":[") and has(tams_words.body, "{\"word\":\"steve\",\"count\":") and
         tams.status == 200 and has(tams.body, page) and has(tams.body, "\"mark\":\"Steve\",\"after\":\" in the DM\"") and
         umas.status == 200 and has(umas.body, "\"word\":\"steve\"") and !has(umas.body, page));
+    // The searches above filled the index with the DM's topic; a message
+    // that lands after is in it at once, its id its transcript's.
+    const later = try postAs(a, io, port, who.tam, try std.fmt.allocPrint(a, "{s}/send", .{who.dm_plans}), "markdown=Zanzibar%2C+after+the+search");
+    const later_words = try getAs(a, io, port, who.tam, "/chat/search/words?prefix=zan");
+    const later_hits = try getAs(a, io, port, who.tam, "/chat/search/messages?word=Zanzibar");
+    try t.check("search: a message posted after a search filled the index is found by the next, suggested and marked, under its own id", later.status == 201 and
+        has(later_words.body, "\"words\":[{\"word\":\"zanzibar\",\"count\":1}]") and
+        has(later_hits.body, "\"matched\":1,") and has(later_hits.body, "\"mark\":\"Zanzibar\",\"after\":\", after the search\"") and
+        has(later_hits.body, "\"id\":4,") and has(later_hits.body, "\"from\":\"Tam\""));
     const anonymous = try anonymousGet(a, io, port, "/chat/search/words?prefix=st");
     var refused: usize = 0;
     for (0..16) |_| {
