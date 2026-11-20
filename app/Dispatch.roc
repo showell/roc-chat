@@ -388,7 +388,12 @@ answer_route! = |{ asked, request, directory, acting }|
 				now: Clock.read_clock!({}),
 				origin: own_origin_of(request),
 			})
-		MakeDeviceCode => DeviceCodeRoute.make!({ acting, now: Clock.read_clock!({}) })
+		MakeDeviceCode =>
+			DeviceCodeRoute.make!({
+				acting,
+				users: directory.users(),
+				now: Clock.read_clock!({}),
+			})
 		CancelDeviceCode => DeviceCodeRoute.revoke!(acting)
 		OpenDevicesStream => DeviceCodeRoute.open_stream(acting)
 		SignOutOtherDevices =>

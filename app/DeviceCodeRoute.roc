@@ -96,13 +96,13 @@ DeviceCodeRoute :: [].{
 	## A POST of `/devices` by `acting` at `now`: a new code, its record
 	## replacing the one before, and a 303 to the page, which shows it once,
 	## from a cookie, so a reload of the page makes no new one.
-	make! : { acting : SignedIn, now : Timestamp } => Http.Response
-	make! = |{ acting, now }| {
+	make! : { acting : SignedIn, users : Users, now : Timestamp } => Http.Response
+	make! = |{ acting, users, now }| {
 		answer =
 			match acting.human_in_session() {
 				Err(_) => session_only_answer
 				Ok(human) =>
-					match make_record!(human.id(), now) {
+					match make_record!({ users, id: human.id(), now }) {
 						Err(NoMaterial) => material_missing_answer
 						Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
 						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
@@ -235,12 +235,42 @@ draw_code! = |{}| {
 	match DeviceCode.Code.of_random_bytes(random_bytes) {
 		Ok(code) => code
 		Err(TooFewUsableBytes) =>
-			crash "DeviceCodeRoute.draw_code!: fewer than 8 of 32 random bytes below 248, which happens about once in 10^31 draws"
+			crash "DeviceCodeRoute.draw_code!: fewer than 8 of 32 random bytes below 250, which happens about once in 10^34 draws"
 	}
 }
 
+## A new code whose HMAC no record in `held` keeps, and that HMAC: drawn
+## again until it is so.
+draw_unheld_code! : List(DeviceCode) => { code : DeviceCode.Code, mac : List(U8) }
+draw_unheld_code! = |held| {
+	code = draw_code!({})
+	mac = Host.hmac_sha256_with_server_secret!(code.bytes_to_sign())
+	if DeviceCode.is_mac_held(mac, held) {
+		draw_unheld_code!(held)
+	} else {
+		{ code, mac }
+	}
+}
+
+## Every other human's record but the human `id`'s, among `users`.
+other_records! : Users, UserId => List(DeviceCode)
+other_records! = |users, id| {
+	others = users.to_list().keep_oks(|user| user.as_human()).drop_if(|human| human.id() == id)
+	var $records = []
+	for human in others {
+		$records =
+			match load_record_or_stand_in!(human.id()) {
+				Record(record) => $records.append(record)
+				NoRecord => $records
+			}
+	}
+	$records
+}
+
 ## The redemption of `code`, a well-formed code, among every human's
-## record; else `NoMatch`, after the same work whatever the code.
+## record; else `NoMatch`, after the same work whatever the code: every
+## record's HMAC compared, then one material read and compared, a stand-in's
+## when no record matched.
 find_redemption! : {
 	users : Users,
 	code : DeviceCode.Code,
@@ -264,9 +294,34 @@ find_redemption! = |{ users, code, now }| {
 				NoRecord => $candidates
 			}
 	}
-	found = DeviceCode.matching_candidate($candidates)?
-	material_verdict = check_material!(found)?
-	DeviceCode.redeem({ found, material_verdict, now })
+	match DeviceCode.matching_candidate($candidates, now) {
+		Ok(found) => {
+			material_verdict = check_material!(found)?
+			DeviceCode.redeem({ found, material_verdict, now })
+		}
+		Err(NoMatch) => {
+			compare_stand_in_material!({})
+			Err(NoMatch)
+		}
+	}
+}
+
+## The work `check_material!` does, for a code no record matched: the chat
+## owner's material read and its HMAC compared with no record's, the verdict
+## and any fault let go, so a code that matches nothing takes as long as one
+## that matched a stale record.
+compare_stand_in_material! : {} => {}
+compare_stand_in_material! = |{}| {
+	_ =
+		match SignInFiles.load_material!(UserId.chat_owner) {
+			Ok(material) =>
+				Host.hmac_sha256_with_server_secret_matches!(
+					DeviceCode.material_bytes_to_sign(material),
+					no_record_mac,
+				)
+			Err(_) => DoesNotMatch
+		}
+	{}
 }
 
 ## The host's verdict on whether what `found`'s owner's sessions are signed
@@ -302,16 +357,18 @@ load_record_or_stand_in! = |id|
 ## A new code for the human `id` at `now`, and its record, written over the
 ## one before, holding the HMAC of what their sessions are signed over now;
 ## unless they have nothing to sign over (`NoMaterial`), or a file fails.
-make_record! : UserId,
-Timestamp => Try(
+## The code is drawn again while its HMAC is one another human's record
+## among `users` keeps, so no typed code matches two records. Every other
+## record is only read; the one file written is still the human's own.
+make_record! : { users : Users, id : UserId, now : Timestamp } => Try(
 	{ code : DeviceCode.Code, record : DeviceCode },
 	[NoMaterial, GenerationDamaged, FileSystem(FileFacts.Fault)],
 )
-make_record! = |id, now| {
+make_record! = |{ users, id, now }| {
 	material = SignInFiles.load_material!(id)?
-	code = draw_code!({})
+	{ code, mac } = draw_unheld_code!(other_records!(users, id))
 	record = DeviceCode.make({
-		mac: Host.hmac_sha256_with_server_secret!(code.bytes_to_sign()),
+		mac,
 		material: Host.hmac_sha256_with_server_secret!(DeviceCode.material_bytes_to_sign(material)),
 		now,
 	})

@@ -57,7 +57,7 @@ redeemed_at : {
 	second : I64,
 } -> Try(DeviceCode.Redemption, [NoMatch])
 redeemed_at = |{ held, verdict, material_verdict, second }| {
-	found = DeviceCode.matching_candidate([{ owner: steve, record: held, verdict }])?
+	found = DeviceCode.matching_candidate([{ owner: steve, record: held, verdict }], Timestamp.at_second(second))?
 	DeviceCode.redeem({ found, material_verdict, now: Timestamp.at_second(second) })
 }
 
@@ -195,7 +195,28 @@ expect record.cancel().cancel() == record.cancel()
 # The one refusal: no record matched, or none at all, is the same `NoMatch`
 # as an expired, spent or cancelled one.
 expect unmatched_at(record, 1_000_001) == Err(NoMatch)
-expect DeviceCode.matching_candidate([]) == Err(NoMatch)
+expect DeviceCode.matching_candidate([], made_at) == Err(NoMatch)
+# Only a record that may redeem now is a match: a spent, cancelled or
+# expired record whose HMAC matches the typed code never hides a live one
+# that matches too, and alone is no match.
+expect {
+	stale = [
+		{ owner: steve, record: spent_at(1_000_010), verdict: Matches },
+		{ owner: steve, record: record.cancel(), verdict: Matches },
+	]
+	live = { owner: steve, record: record_of(8), verdict: Matches }
+	at = Timestamp.at_second(1_000_020)
+	DeviceCode.matching_candidate(stale.append(live), at) == Ok(live)
+		and DeviceCode.matching_candidate(stale, at) == Err(NoMatch)
+		and DeviceCode.matching_candidate([live], Timestamp.at_second(1_000_300)) == Err(NoMatch)
+}
+expect record.is_redeemable_at(made_at) and !record.is_redeemable_at(Timestamp.at_second(1_000_300))
+# A new code's HMAC that another human's record keeps, in any state, is
+# held, so the code is drawn again; one no record keeps is not.
+expect
+	DeviceCode.is_mac_held(List.repeat(8, 32), [record, record_of(8).cancel()])
+		and !DeviceCode.is_mac_held(List.repeat(9, 32), [record, record_of(8)])
+		and !DeviceCode.is_mac_held(List.repeat(7, 32), [])
 # A code made under other material, a password or a GitHub link since, or
 # its files edited by hand: the same refusal, at any second of its life.
 expect [1_000_000, 1_000_150, 1_000_299].all(|second| changed_at(record, second) == Err(NoMatch))
@@ -230,12 +251,13 @@ expect
 	].all(|text| DeviceCode.from_file(text.to_utf8()) == Err(Damaged))
 
 # The limit: a client may fail 10 times in a window; the form locks for it
-# at that count, and not one before. Everyone together may fail 1,000 times
-# in a window, and the form then locks for everyone.
-expect DeviceCodeLimit.client_most == 10 and DeviceCodeLimit.everyone_most == 1_000
+# at that count, and not one before. Everyone together may fail 50 times
+# in a window, and the form then locks for everyone: 49 failures leave it
+# open, the 50th locks it.
+expect DeviceCodeLimit.client_most == 10 and DeviceCodeLimit.everyone_most == 50
 expect {
 	everyone = DeviceCodeLimit.tally_of({
-		failures: { second: 999, status: Found },
+		failures: { second: 49, status: Found },
 		since: { second: 4_900, status: Found },
 		now: Timestamp.at_second(5_000),
 	})

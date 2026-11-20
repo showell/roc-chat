@@ -182,6 +182,18 @@ DeviceCode :: {
 	is_live : DeviceCode -> Bool
 	is_live = |DeviceCode.(record)| record.state == Live
 
+	## Whether the record may redeem at `now`: live, and `now` within its
+	## life.
+	is_redeemable_at : DeviceCode, Timestamp -> Bool
+	is_redeemable_at = |DeviceCode.(record), now|
+		record.state == Live and now.is_during({ from: record.created, until: record.expires })
+
+	## Whether `mac`, a new code's HMAC, is one that any of `records` keeps,
+	## so a code drawn for one human never matches another's record: the
+	## caller draws again.
+	is_mac_held : List(U8), List(DeviceCode) -> Bool
+	is_mac_held = |mac, records| records.any(|DeviceCode.(record)| record.mac == mac)
+
 	## When the record's code expires.
 	expires : DeviceCode -> Timestamp
 	expires = |DeviceCode.(record)| record.expires
@@ -215,10 +227,14 @@ DeviceCode :: {
 	}
 
 	## The one record among `candidates` whose HMAC matched the typed
-	## code's; else `NoMatch`.
-	matching_candidate : List(DeviceCode.Found) -> Try(DeviceCode.Found, [NoMatch])
-	matching_candidate = |candidates|
-		candidates.find_first(|candidate| candidate.verdict == Matches).map_err(|NotFound| NoMatch)
+	## code's and that may redeem at `now` (`is_redeemable_at`), so a spent,
+	## cancelled or expired record that happens to match never hides a live
+	## one; else `NoMatch`.
+	matching_candidate : List(DeviceCode.Found), Timestamp -> Try(DeviceCode.Found, [NoMatch])
+	matching_candidate = |candidates, now|
+		candidates.find_first(
+			|candidate| candidate.verdict == Matches and candidate.record.is_redeemable_at(now),
+		).map_err(|NotFound| NoMatch)
 
 	## The redemption at `now` of `found`, the record whose HMAC matched,
 	## when it is live, `now` is within its life, and the host's verdict on
