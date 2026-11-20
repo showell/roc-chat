@@ -49,7 +49,8 @@ DeviceCodeRoute :: [].{
 	## A GET of `/devices` by `acting`, its `headers` holding the cookie of a
 	## code just made, at `now`: the page, showing that code when it is the
 	## one their live record holds, else what became of their last code. A
-	## cookie sent is forgotten, so a code is shown once.
+	## cookie sent is forgotten, so a code is shown once. A damaged record is
+	## logged and taken as none.
 	show! : {
 		acting : SignedIn,
 		headers : List(Http.Header),
@@ -66,16 +67,14 @@ DeviceCodeRoute :: [].{
 			match acting.human_in_session() {
 				Err(_) => session_only_answer
 				Ok(human) =>
-					match DeviceCodeFiles.read_device_code!(human.id()) {
-						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-						Ok(held) => {
-							shown = load_shown!({ held, flash, now })
-							sign_ins = DeviceSessionsRoute.load_sign_ins!(human.id())
-							HttpAnswer.page(
-								200,
-								DeviceCodePage.page({ viewer: acting, shown, sign_ins }),
-							)
-						}
+					{
+						held = load_record_or_stand_in!(human.id())
+						shown = load_shown!({ held, flash, now })
+						sign_ins = DeviceSessionsRoute.load_sign_ins!(human.id())
+						HttpAnswer.page(
+							200,
+							DeviceCodePage.page({ viewer: acting, shown, sign_ins }),
+						)
 					}
 			}
 		forgotten = cookie_header_of(DeviceCode.clear_flash_cookie_text)

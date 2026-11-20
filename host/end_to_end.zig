@@ -1246,6 +1246,19 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
         std.mem.startsWith(u8, refused_page.header("location") orelse "", "/login") and refused_sign_in.status == 500 and
         has(refused_sign_in.body, "Damaged") and refused_sign_in.header("set-cookie") == null and mended.status == 200);
 
+    // A damaged device code record never stops a sign-out: logged, and the
+    // session's cookie cleared all the same; signing other devices out
+    // still advances the generation and signs this one again.
+    try data.writeFile(io, .{ .sub_path = "users/1/device-code", .data = "not a record\n" });
+    const spare = try cookieLine(a, try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple"));
+    const out_damaged = try postAs(a, io, port, spare, "/logout", "");
+    const others_damaged = try post(a, io, port, .{ .path = "/devices/sign-out-others", .form = "" });
+    const steve_now = try cookieLine(a, others_damaged);
+    try t.check("a damaged device code record never stops a sign-out: the session's cookie cleared; signing other devices out still advances the generation", out_damaged.status == 303 and
+        has(out_damaged.head, "\r\nset-cookie: __Host-gopher_auth=; Path=/; Max-Age=0") and others_damaged.status == 303 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "2") and (try getAs(a, io, port, steve_now, "/chat")).status == 200);
+    steve_session = try std.fmt.allocPrint(a, "{s}", .{steve_now});
+
     try data.writeFile(io, .{ .sub_path = "users/1/device-sign-ins", .data = "not a list\n" });
     const damaged = try getAt(a, io, port, "/devices");
     try t.check("a damaged list of sign-ins by code is logged and taken as none: the page, 200", damaged.status == 200 and
