@@ -1,7 +1,8 @@
 // This script runs on a conversation page that has a sidebar, which
 // app/Sidebar.roc builds and app/Script.roc serves. The server writes the
-// sidebar whole, in two groups, Channels and then DMs (.sidebar-section,
-// data-group), each under its heading; in each, app/SidebarOrder.roc's
+// sidebar whole, in two groups, Channels and DMs (.sidebar-section,
+// data-group), each under its heading, the group of the page's own topic
+// first (DMs first on a DM's page); in each, app/SidebarOrder.roc's
 // order: the page's own place first, then the others newest first, each
 // place's topics under it as links, newest first, the current topic marked,
 // and the form that starts a topic at the end of each place. This script
@@ -10,12 +11,20 @@
 // server's, as the page was drawn.
 //
 // Its look is Steve's, not chat-client's: like a good referee, it should
-// feel invisible until you need it. The two groups are divided by a thin
-// line, each headed by its name, small and muted ("DMs" kept in its own
-// case, so no capitals). Only the page's own place
-// (data-opening `always`) is bold, the current topic is marked by a thin
-// line at its left, the rows sit close, and a link pointed at shows by its
-// text's colour, never a fill.
+// feel invisible until you need it. On the rail it is a box with a thin
+// border and rounded corners, as the message list is, the same height as
+// the message list and the compose box beside it. The two groups are
+// divided by a thin line, each headed by its name, small and muted ("DMs"
+// kept in its own case, so no capitals). The levels are a tree: a heading
+// starts INSET from the box's left edge, and each level below starts one
+// STEP further in, so a place's triangle sits under its group's name and a
+// topic under its place's name. Every row spans the box's width, its indent
+// its own left padding, so a row's tint reaches both edges. Topics are a
+// quiet grey, and a topic pointed at shows by its text's colour, never a
+// fill. The current topic alone is drawn otherwise: bold, in the page's
+// own text colour, on a tinted row with a slim accent bar at the box's left
+// edge. The rows have room to breathe; a group or place that runs long
+// collapses, so going below the fold is fine.
 //
 // Collapsing: a standard disclosure triangle before each group's heading
 // and each place's name, ▾ open and ▸ collapsed, collapses or opens it, by
@@ -37,8 +46,9 @@
 // chat-client, the next page drawn says who is still online. The notices
 // above the page, and the tab's violet icon, are chrome.js's (Notices).
 //
-// In a window wider than 768 pixels the sidebar is a rail 180 pixels wide on
-// the left of the layout. In a narrow window (chrome.js's Viewport) it is a
+// In a window wider than 768 pixels the sidebar is a rail 224 pixels wide on
+// the left of the layout, which keeps only 12 pixels of room at its left
+// for it. In a narrow window (chrome.js's Viewport) it is a
 // drawer, as chat-client's was (js/chrome_drawer.js and
 // js/chat_responsive.js): the server's toggle button moves to the start of
 // the top bar as a ☰, and a tap slides the sidebar in from the left over the
@@ -78,24 +88,38 @@ window.Sidebar = (function () {
     sidebar.querySelectorAll(selector).forEach(function (element) { Object.assign(element.style, style); });
   }
 
-  Object.assign(sidebar.style, { overflowY: 'auto', borderRight: '1px solid var(--cc-border)', boxSizing: 'border-box' });
-  styleAll('.sidebar-section', { margin: '0 0 8px' });
-  styleAll('.sidebar-section + .sidebar-section', { borderTop: '1px solid var(--cc-soft-border)', paddingTop: '8px' });
+  // The tree's measures, in pixels: a heading's indent from the box's left
+  // edge, the step of each level below it (a triangle's width and the gap
+  // after it), a triangle's width, and the room each row keeps at its right.
+  var INSET = 10;
+  var TRIANGLE = 20;
+  var GAP = 4;
+  var STEP = TRIANGLE + GAP;
+  var RIGHT = 8;
+  var TOPIC_INDENT = INSET + 2 * STEP;
+  // Whether the window is narrow, the sidebar a drawer: Viewport says, below.
+  var narrow = Viewport.isNarrow();
+
+  Object.assign(sidebar.style, { overflowY: 'auto', boxSizing: 'border-box', lineHeight: '1.35' });
+  styleAll('.sidebar-section', { margin: '0 0 14px' });
+  styleAll('.sidebar-section:last-child', { marginBottom: '0' });
+  styleAll('.sidebar-section + .sidebar-section', { borderTop: '1px solid var(--cc-soft-border)', paddingTop: '10px' });
   styleAll('.sidebar-section-name', {
     margin: '0', flex: '1', minWidth: '0', fontSize: '12px', fontWeight: '600', letterSpacing: '0.03em',
     color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none',
   });
   styleAll('.sidebar-place', { marginBottom: '6px' });
   styleAll('.sidebar-place-name', {
-    display: 'flex', alignItems: 'center', gap: '5px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'normal',
-    color: 'var(--cc-meta-fg)', cursor: 'pointer', userSelect: 'none',
+    display: 'flex', alignItems: 'center', gap: '6px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'normal',
+    color: 'var(--cc-meta-fg)', cursor: 'pointer', userSelect: 'none', overflowWrap: 'anywhere',
   });
-  // The page's own place, alone bold.
-  styleAll('.sidebar-place[data-opening="always"] .sidebar-place-name', { fontWeight: 'bold' });
+  // The page's own place in the page's text colour, not bold: the current
+  // topic under it is what stands out.
+  styleAll('.sidebar-place[data-opening="always"] .sidebar-place-name', { color: 'var(--cc-fg)' });
   // The "+": light until pointed at, and a finger's size in the drawer.
   styleAll('.sidebar-new-topic', {
     flex: 'none', background: 'none', border: 'none', borderRadius: '4px', cursor: 'pointer',
-    color: 'var(--cc-muted-fg)', fontSize: '15px', lineHeight: '1', fontFamily: 'inherit',
+    color: 'var(--cc-muted-fg)', fontSize: '16px', lineHeight: '1', fontFamily: 'inherit',
   });
   styleAll('form', { margin: '4px 0 0', display: 'flex', flexDirection: 'column', gap: '4px' });
   styleAll('form p', { margin: '0', fontSize: '12px', color: 'var(--cc-muted-fg)' });
@@ -108,11 +132,13 @@ window.Sidebar = (function () {
     color: 'var(--cc-search-tok-fg)', border: '1px solid var(--cc-quote-border)', borderRadius: '6px', cursor: 'pointer',
   });
 
-  // A list of topics, and each row in it: the current topic marked by a
-  // thin line at its left, which every row leaves room for so the names
-  // line up, and a topic pointed at shown by its text's colour.
+  // A list of topics, and each row in it, the box's width, its name two
+  // steps in: a topic quiet grey, shown by its text's colour when pointed
+  // at; the current topic bold in the page's text colour, on a tinted row
+  // with a 3-pixel accent bar at the box's left edge (an inset shadow, so
+  // no row's text moves for it).
   function styleTopics(list) {
-    Object.assign(list.style, { listStyle: 'none', padding: '0', margin: '0' });
+    Object.assign(list.style, { listStyle: 'none', padding: '0', margin: '2px 0 0' });
   }
   function styleRow(row) {
     row.style.margin = '0';
@@ -120,11 +146,18 @@ window.Sidebar = (function () {
     if (!link) return;
     var current = row.querySelector('.current') === link;
     Object.assign(link.style, {
-      display: 'block', padding: '2px 8px', textDecoration: 'none', overflowWrap: 'anywhere',
-      color: 'var(--cc-accent)', background: 'transparent', fontWeight: 'normal',
-      borderLeft: '2px solid ' + (current ? 'var(--cc-accent)' : 'transparent'),
+      display: 'block', textDecoration: 'none', overflowWrap: 'anywhere',
+      color: current ? 'var(--cc-fg)' : 'var(--cc-body-muted-fg)',
+      background: current ? 'var(--cc-accent-soft-bg)' : 'transparent',
+      boxShadow: current ? 'inset 3px 0 0 var(--cc-accent)' : 'none',
+      fontWeight: current ? '600' : 'normal',
     });
-    if (!current) hoverColour(link, 'var(--cc-accent)', 'var(--cc-fg)');
+    padTopic(link);
+    if (!current) hoverColour(link, 'var(--cc-body-muted-fg)', 'var(--cc-accent)');
+  }
+  // A topic's padding: two steps in, and taller for a finger in the drawer.
+  function padTopic(link) {
+    link.style.padding = (narrow ? '9px ' : '4px ') + RIGHT + 'px ' + (narrow ? '9px ' : '4px ') + TOPIC_INDENT + 'px';
   }
   function hoverColour(element, resting, pointed) {
     element.addEventListener('mouseenter', function () { element.style.color = pointed; });
@@ -157,9 +190,12 @@ window.Sidebar = (function () {
     triangle.setAttribute('role', 'button');
     triangle.setAttribute('tabindex', '0');
     triangle.setAttribute('aria-label', 'Collapse or open ' + what);
+    // Twice the old 11 pixels, in a box TRIANGLE wide and 24 high, centred
+    // on its row's text.
     Object.assign(triangle.style, {
-      flex: 'none', display: 'inline-block', width: '12px', textAlign: 'center', fontSize: '11px', lineHeight: '1',
-      color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none',
+      flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: TRIANGLE + 'px', height: '24px', fontSize: '20px', lineHeight: '1',
+      color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none', borderRadius: '4px',
     });
     function show() {
       triangle.textContent = collapsed ? '▸' : '▾';
@@ -182,10 +218,14 @@ window.Sidebar = (function () {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); }
     });
   }
-  // A heading's row: `parts` side by side, the last-but-one taking the room.
-  function headingRow(before, parts) {
+  // A heading's row, `level` steps in (a group's 0, a place's 1): `parts`
+  // side by side, the name taking the room.
+  function headingRow(before, parts, level) {
     var row = document.createElement('div');
-    Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px', margin: '0 0 2px' });
+    Object.assign(row.style, {
+      display: 'flex', alignItems: 'center', gap: GAP + 'px', minHeight: '26px', margin: '0',
+      padding: '0 ' + RIGHT + 'px 0 ' + (INSET + level * STEP) + 'px',
+    });
     before.parentNode.insertBefore(row, before);
     parts.forEach(function (part) { row.appendChild(part); });
     return row;
@@ -202,7 +242,7 @@ window.Sidebar = (function () {
     group.appendChild(body);
     var key = 'chat-sidebar-group-collapsed:' + name;
     var shut = disclosure(heading.textContent, body, key, kept(key) === '1');
-    headingRow(heading, [shut.triangle, heading]).style.margin = '0 0 4px';
+    headingRow(heading, [shut.triangle, heading], 0).style.marginBottom = '4px';
     heading.addEventListener('click', shut.flip);
   });
 
@@ -244,7 +284,7 @@ window.Sidebar = (function () {
     plus.addEventListener('click', popup.open);
 
     var shut = disclosure(label, list, 'chat-sidebar-collapsed:' + section, startsCollapsed(section, place.getAttribute('data-opening')));
-    headingRow(name, [shut.triangle, name, plus]);
+    headingRow(name, [shut.triangle, name, plus], 1);
     if (group.getAttribute('data-group') === 'dms') {
       name.title = 'About ' + label;
       hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
@@ -272,16 +312,24 @@ window.Sidebar = (function () {
   });
   document.body.appendChild(backdrop);
 
+  // The rail is a box as the message list is: a 1-pixel border in the
+  // palette's border colour, 8-pixel corners, its rows' own padding its
+  // indent. The drawer keeps a border at its right edge alone.
   var railStyle = {
-    position: '', top: '', left: '', bottom: '', zIndex: '', width: '180px', flex: 'none', padding: '0 14px 0 0',
+    position: '', top: '', left: '', bottom: '', zIndex: '', width: '224px', flex: 'none', padding: '10px 0',
+    border: '1px solid var(--cc-border)', borderRadius: '8px',
     background: '', transform: '', transition: '', visibility: '', fontSize: '13px',
   };
   var drawerStyle = {
-    position: 'fixed', top: '0', left: '0', bottom: '0', zIndex: '100', width: 'min(280px, 85vw)', padding: '14px',
+    position: 'fixed', top: '0', left: '0', bottom: '0', zIndex: '100', width: 'min(280px, 85vw)', padding: '14px 0',
+    border: 'none', borderRight: '1px solid var(--cc-border)', borderRadius: '0',
     background: 'var(--cc-bg)', transition: '', fontSize: '15px',
   };
+  // The layout's room at the left, 24 pixels for every page, is 12 beside
+  // the rail, so the rail sits near the window's edge; the drawer leaves
+  // the layout as chrome.js has it.
+  var layout = sidebar.parentNode;
   var slide = 'transform 0.25s ease, visibility 0.25s';
-  var narrow = false;
   var open = false;
   function show(opened) {
     open = opened && narrow;
@@ -295,10 +343,10 @@ window.Sidebar = (function () {
   sidebar.tabIndex = -1;
   // A finger's targets in the drawer, a mouse's on the rail.
   function sizeTargets() {
-    styleAll('.sidebar-topics a', { padding: narrow ? '9px 8px' : '2px 8px' });
+    sidebar.querySelectorAll('.sidebar-topics a').forEach(padTopic);
     styleAll('.sidebar-place-name', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-section-name', { padding: narrow ? '6px 0' : '0' });
-    styleAll('[aria-expanded]', { padding: narrow ? '6px 4px' : '0' });
+    styleAll('[aria-expanded]', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-new-topic', { padding: narrow ? '8px 12px' : '2px 6px' });
     forms.forEach(function (form) {
       form.querySelectorAll('button').forEach(function (button) { button.style.padding = narrow ? '6px 14px' : '2px 10px'; });
@@ -308,6 +356,7 @@ window.Sidebar = (function () {
     narrow = isNarrow;
     toggle.style.display = narrow ? 'inline-block' : 'none';
     Object.assign(sidebar.style, narrow ? drawerStyle : railStyle);
+    layout.style.paddingLeft = narrow ? '' : '12px';
     sizeTargets();
     show(false);
   });
@@ -338,7 +387,6 @@ window.Sidebar = (function () {
     link.textContent = label;
     row.appendChild(link);
     styleRow(row);
-    link.style.padding = narrow ? '9px 8px' : '2px 8px';
     list.insertBefore(row, list.firstChild);
   }
 

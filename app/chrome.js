@@ -62,9 +62,14 @@ window.Viewport = (function () {
 window.Notices = (function () {
   'use strict';
   var strip = document.querySelector('.notice-strip');
+  // The strip is economical with the page's height (Steve, 2026-11-20): one
+  // line of 13-pixel text, no margin, the layout's own 10 pixels of room
+  // below it and nothing more. Above a conversation's layout it lines up
+  // with the top bar's text (the style sheet below, `body > .notice-strip`);
+  // on Recent it is inside the panel, which pads it.
   if (strip) {
     Object.assign(strip.style, {
-      margin: '0 0 8px', fontSize: '13px', color: 'var(--cc-notify-fg)', overflow: 'hidden',
+      margin: '0', fontSize: '13px', lineHeight: '1.3', color: 'var(--cc-notify-fg)', overflow: 'hidden',
       textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', minHeight: '1em',
     });
   }
@@ -129,6 +134,8 @@ window.Notices = (function () {
     '.top-user .viewer { font-weight: bold; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
+    'body > .notice-strip { padding: 4px 24px 0; }',
+    'html.layout-narrow body > .notice-strip { padding: 4px 12px 0; }',
     'html.layout-narrow body { height: 100dvh; }',
     'html.layout-narrow .top-bar { padding: 8px 12px; gap: 8px; align-items: center; }',
     'html.layout-narrow .top-bar { flex-wrap: wrap; }',

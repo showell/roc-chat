@@ -1,7 +1,11 @@
 ## This module builds the sidebar of a conversation's page: the places
-## `Browse` lists for the viewer, in two groups, Channels and then DMs, each
+## `Browse` lists for the viewer, in two groups, Channels and DMs, each
 ## under its heading (`data-group`) and in the order `SidebarOrder` gives
-## them, a group with no places left out; each place's topics under it as
+## them, a group with no places left out. The group holding the page's own
+## topic comes first: DMs before Channels on a DM's page, Channels first
+## on a channel's. The order is the server's, so nothing moves once the
+## page loads, and each group keeps its own collapsed or open state, kept
+## by its name and not its place; each place's topics under it as
 ## links, and at the end of each place's
 ## topics the form that starts one (`TopicForm`). Under each place's name is
 ## its button that offers that form, "New topic in" and the place's name:
@@ -51,8 +55,8 @@ Sidebar :: [].{
 	])
 
 	## The sidebar of `places` on `viewer`'s page of the conversation
-	## `current`, in `SidebarOrder`'s order, the humans in `online_humans`
-	## said to be online.
+	## `current`, in `SidebarOrder`'s order, `current`'s group first, the
+	## humans in `online_humans` said to be online.
 	nav : {
 		places : List(SidebarOrder.TimedPlace),
 		current : ConversationKey,
@@ -63,17 +67,18 @@ Sidebar :: [].{
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
 		drawn = |ordered| place_section({ ordered, current, people })
-		channels = in_order.keep_if(is_channel).map(drawn)
-		dms = in_order.drop_if(is_channel).map(drawn)
+		channels = group_section({ group: Channels, places: in_order.keep_if(is_channel).map(drawn) })
+		dms = group_section({ group: Dms, places: in_order.drop_if(is_channel).map(drawn) })
+		groups =
+			match current.place().which() {
+				Channel(_) => [channels, dms]
+				Dm(_) => [dms, channels]
+			}
 		TrustedHtml.join([
 			Html.element({
 				name: Nav,
 				attributes: [PageContract.class(Sidebar)],
-				inner: TrustedHtml.join([
-					PageKit.newline,
-					group_section({ group: Channels, places: channels }),
-					group_section({ group: Dms, places: dms }),
-				]),
+				inner: TrustedHtml.join(List.concat([PageKit.newline], groups)),
 			}),
 			PageKit.newline,
 		])
@@ -91,7 +96,7 @@ is_channel = |ordered|
 
 ## One of the sidebar's two groups: its heading, which app/sidebar.js lets
 ## collapse the whole group, and its `places`, in `SidebarOrder`'s order.
-## A group with no places is left out.
+## A group with no places is left out, as nothing.
 group_section : { group : [Channels, Dms], places : List(TrustedHtml) } -> TrustedHtml
 group_section = |{ group, places }|
 	if places.is_empty() {

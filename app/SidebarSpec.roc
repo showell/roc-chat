@@ -119,18 +119,6 @@ expect
 	})
 		== "<nav class=\"sidebar\">\n${
 			group_html({
-				group: "channels",
-				heading: "Channels",
-				places: place_html({
-					name: "#general",
-					path: "/chat/channel/general",
-					opening: "collapsed",
-					rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n",
-					suggests: NoSuggestion,
-				}),
-			})
-		}${
-			group_html({
 				group: "dms",
 				heading: "DMs",
 				places: Str.concat(
@@ -150,6 +138,18 @@ expect
 					}),
 				),
 			})
+		}${
+			group_html({
+				group: "channels",
+				heading: "Channels",
+				places: place_html({
+					name: "#general",
+					path: "/chat/channel/general",
+					opening: "collapsed",
+					rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n",
+					suggests: NoSuggestion,
+				}),
+			})
 		}</nav>\n"
 # On a DM's page, the partner's place comes first, and Steve's own DM next,
 # collapsed. The page's own topic, before its first message gives it a
@@ -165,18 +165,6 @@ expect
 			},
 	})
 		== "<nav class=\"sidebar\">\n${
-			group_html({
-				group: "channels",
-				heading: "Channels",
-				places: place_html({
-					name: "#general",
-					path: "/chat/channel/general",
-					opening: "collapsed",
-					rows: "",
-					suggests: Suggests,
-				}),
-			})
-		}${
 			group_html({
 				group: "dms",
 				heading: "DMs",
@@ -197,9 +185,61 @@ expect
 					}),
 				),
 			})
+		}${
+			group_html({
+				group: "channels",
+				heading: "Channels",
+				places: place_html({
+					name: "#general",
+					path: "/chat/channel/general",
+					opening: "collapsed",
+					rows: "",
+					suggests: Suggests,
+				}),
+			})
 		}</nav>\n"
-# A place with a message starts open: here `general`, in the channels
-# ahead of Apoorva's DM, which has none and starts collapsed.
+# On a channel's page, the Channels group comes first, its place open, and
+# the DMs follow; on a DM's page (above) the DMs come first. Each group's
+# markup is the same either way, so a group's kept state holds across the
+# swap.
+expect
+	sidebar_at({ current: "/chat/channel/general/plans", topics_of: |_| [] })
+		== "<nav class=\"sidebar\">\n${
+			group_html({
+				group: "channels",
+				heading: "Channels",
+				places: place_html({
+					name: "#general",
+					path: "/chat/channel/general",
+					opening: "always",
+					rows: "<li><a class=\"current\" href=\"/chat/channel/general/plans\">plans</a></li>\n",
+					suggests: NoSuggestion,
+				}),
+			})
+		}${
+			group_html({
+				group: "dms",
+				heading: "DMs",
+				places: Str.concat(
+					place_html({
+						name: "Steve",
+						path: "/chat/dm/1_1",
+						opening: "collapsed",
+						rows: "",
+						suggests: Suggests,
+					}),
+					place_html({
+						name: "Apoorva",
+						path: "/chat/dm/1_2",
+						opening: "collapsed",
+						rows: "",
+						suggests: Suggests,
+					}),
+				),
+			})
+		}</nav>\n"
+# A place with a message starts open: here `general`, while Apoorva's DM,
+# which has none, starts collapsed. On this DM's page the DMs come first.
 expect {
 	dated = places_with(|_| []).map(
 		|listed|
@@ -220,7 +260,7 @@ expect {
 	general = "data-section=\"/chat/channel/general\" data-opening=\"open\">"
 	apoorva = "data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\""
 	match shown.split_on(general) {
-		[before, after] => !before.contains(apoorva) and after.contains(apoorva)
+		[before, after] => before.contains(apoorva) and !after.contains(apoorva)
 		_ => Bool.False
 	}
 }
