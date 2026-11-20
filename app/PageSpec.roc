@@ -55,16 +55,48 @@ page_for = |viewer, conversation|
 ## shows here as a deliberate re-freeze.
 foot : Str -> Str
 foot = |url|
-	"<div class=\"compose\"><form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\"></textarea>\n<button>Send</button></form>\n<p class=\"help\">Markdown supported · :emoji: autocompletes · paste or Upload an image · Ctrl/⌘-Enter to send</p></div>\n</div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n<script src=\"/chat/assets/emoji.js\"></script>\n<script src=\"/chat/assets/feed.js\"></script>\n<script src=\"/chat/assets/citation.js\"></script>\n<script src=\"/chat/assets/actions.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>\n"
+	Str.join_with(
+		[
+			"<div class=\"compose\">",
+			"<form method=\"post\" action=\"${url}\" data-send=\"${url}/send\" data-upload=\"${url}/upload\" data-image-byte-limit=\"10485760\">",
+			"<textarea name=\"markdown\"></textarea>\n",
+			"<button>Send</button></form>\n",
+			"<p class=\"help\">Markdown supported · :emoji: autocompletes · paste or Upload an image · Ctrl/⌘-Enter to send</p></div>\n",
+			"</div>\n",
+			"<script src=\"/chat/assets/chrome.js\"></script>\n",
+			"<script src=\"/chat/assets/compose.js\"></script>\n",
+			"<script src=\"/chat/assets/emoji.js\"></script>\n",
+			"<script src=\"/chat/assets/feed.js\"></script>\n",
+			"<script src=\"/chat/assets/citation.js\"></script>\n",
+			"<script src=\"/chat/assets/actions.js\"></script>\n",
+			"<script src=\"/chat/assets/search.js\"></script>\n",
+		],
+		"",
+	)
 
-## How the top bar's right side opens: the Home link (`HomeLink`), and the
-## links to Browse, Recent and the invites page.
+## The top bar's section links, one a line: Browse, Recent, the invites
+## page and Add a device.
+section_links : Str
+section_links = Str.join_with(
+	[
+		"<span class=\"top-links\">",
+		"<a href=\"/chat\">Browse</a>",
+		" · <a href=\"/chat/recent\">Recent</a>",
+		" · <a href=\"/invites\">Invites</a>",
+		" · <a href=\"/devices\">Add a device</a>",
+		"</span>",
+	],
+	"",
+)
+
+## How the top bar goes on after its title: the section links, then the
+## Home link (`HomeLink`).
 top_links : Str
-top_links = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
+top_links = "${section_links} <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
 
 ## `top_links` in a top bar that holds the notice line, empty.
 top_links_noticed : Str
-top_links_noticed = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
+top_links_noticed = "${section_links} <p class=\"notice-strip\"></p> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
