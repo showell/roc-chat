@@ -72,8 +72,8 @@ form_at = |path, suggests| {
 }
 
 ## One place: `name`, its button that offers a new topic, at `path`,
-## starting as `opening`, holding `rows`, then its form. Steve's DM with Apoorva names her, offline, as the tests
-## draw it.
+## starting as `opening`, holding `rows`, then its form. Steve's DM with
+## Apoorva names her, offline, as the tests draw it.
 place_html : {
 	name : Str,
 	path : Str,
