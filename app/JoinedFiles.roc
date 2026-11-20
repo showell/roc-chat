@@ -1,14 +1,23 @@
 ## This module keeps when each human became a member: the file `joined` in
-## their account folder (`AccountFiles.account_folder_path`), the second
-## they joined, in seconds since 1970, its digits and no line end
+## their account folder (`AccountFiles.joined_fact`), the second they
+## joined, in seconds since 1970, its digits and no line end
 ## (`Timestamp.to_file`), as a key's `created` is written.
 ##
-## It is written once, when the account becomes a person's: when an invited
-## human first joins (`HumanInvitesRoute`), not when the invite is made, and
-## when a GitHub sign-up gets its name (`GitHubSignUpRoute`). A later join,
-## by an invite again, keeps the first (`AlreadyExists` is no failure), so a
-## new password never makes an old account new. The first start's owner,
-## an agent, and every account made before this file have none.
+## It is written once, when the account becomes a person's:
+##
+## - by GitHub sign-up, inside the account's own making, between its
+##   `github-id` and its `name` (`AccountFiles.create_github_account!`), so
+##   no account made so lacks it;
+## - by an invite, at a join by a human with no `password` file yet, their
+##   first, before the password is written (`record_first_join!`), so a
+##   join cut short writes its `joined` again when it is tried again. A
+##   join by a human who has a password (an invite again, to set a new one)
+##   writes none, so it never makes an older account new: not one that
+##   joined before this file, which has none and stays established.
+##
+## Making an invite writes none. The first start's owner and agents have
+## none. A `joined` file left empty by a crash as it was made reads as
+## damaged; the next first join replaces it.
 import AccountFiles
 import AccountFolder
 import FileFacts
@@ -16,6 +25,9 @@ import Timestamp
 import UserId
 
 JoinedFiles :: [].{
+
+	## Why a `joined` file could not be written: the host's answer.
+	WriteFault : [MissingDirectory, NotUtf8, PathRefused, Failed]
 
 	## When the human `id` joined, or `NoFile` when their account has none;
 	## unless the file holds no time (`Damaged`), or the host's read failed.
@@ -33,23 +45,43 @@ JoinedFiles :: [].{
 				}
 		}
 
-	## The human `id`'s `joined` file made holding `now`, unless they have
-	## one already, which is kept.
-	record_joined! : UserId, Timestamp => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
-	record_joined! = |id, now|
-		match FileFacts.create_fact!(joined_path(id), now.to_file()) {
-			Ok({}) => Ok({})
-			Err(AlreadyExists) => Ok({})
-			Err(MissingDirectory) => Err(MissingDirectory)
-			Err(NotUtf8) => Err(NotUtf8)
-			Err(PathRefused) => Err(PathRefused)
-			Err(Failed) => Err(Failed)
+	## The human `id`'s first join by an invite, at `now`, recorded: their
+	## `joined` file made, when they have no `password` file yet; nothing
+	## when they have one, as this join only sets a new one.
+	record_first_join! : UserId, Timestamp => Try({}, JoinedFiles.WriteFault)
+	record_first_join! = |id, now|
+		match AccountFiles.read_password_hash!(id)? {
+			File(_) => Ok({})
+			NoFile => record_joined!(id, now)
 		}
 }
 
+## The human `id`'s `joined` file made holding `now`; one already there is
+## kept, unless it holds no time, which is replaced.
+record_joined! : UserId, Timestamp => Try({}, JoinedFiles.WriteFault)
+record_joined! = |id, now|
+	match FileFacts.create_fact!(joined_path(id), now.to_file()) {
+		Ok({}) => Ok({})
+		Err(AlreadyExists) =>
+			match JoinedFiles.read_joined!(id) {
+				Ok(_) => Ok({})
+				Err(Damaged) => FileFacts.replace_fact!(joined_path(id), now.to_file())
+				Err(NotUtf8) => Err(NotUtf8)
+				Err(PathRefused) => Err(PathRefused)
+				Err(Failed) => Err(Failed)
+			}
+		Err(MissingDirectory) => Err(MissingDirectory)
+		Err(NotUtf8) => Err(NotUtf8)
+		Err(PathRefused) => Err(PathRefused)
+		Err(Failed) => Err(Failed)
+	}
+
 ## The path of the human `id`'s `joined` file.
 joined_path : UserId -> Str
-joined_path = |id| "${AccountFiles.account_folder_path(AccountFolder.of(id))}/joined"
+joined_path = |id| {
+	folder = AccountFiles.account_folder_path(AccountFolder.of(id))
+	"${folder}/${AccountFiles.joined_fact}"
+}
 
 # ── tests
 expect joined_path(UserId.chat_owner) == "auth/1/joined"

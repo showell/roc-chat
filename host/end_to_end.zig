@@ -389,6 +389,9 @@
 //!      under 2 GiB: a message, an upload and an invite each a 507 saying
 //!      the server is low on disk, nothing written; the page still 200; at
 //!      2 GiB exactly, a message a 303.
+//! 57g. Tam, who has a password and no `joined`, invited again and joined
+//!      again: still no `joined`; Sam, whose `joined` a crash left empty,
+//!      joins: it holds the second.
 //!
 //! Step 2 posts as the README's `curl` does: `Host: localhost:<port>`, the
 //! session's cookie, no `Origin`, no `Sec-Fetch-Site`.
@@ -1116,6 +1119,26 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
         std.mem.eql(u8, low_post.body, low_words) and low_upload.status == 507 and low_invite.status == 507 and
         low_page.status == 200 and nothing_written and at_floor.status == 303 and
         has(try readFile(a, io, data, channel_file), "Room at the floor"));
+
+    // 57g.
+    // Tam, who has a password, with no `joined` as an account from before
+    // the file: invited again and joined again, she is given none.
+    try data.deleteFile(io, "auth/2/joined");
+    const tam_again = try postAs(a, io, port, steve_session, "/invites/2/again", "");
+    const tam_link = between(tam_again.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const tam_code = tam_link[(std.mem.indexOfScalar(u8, tam_link, '#') orelse return error.NoCode) + 1 ..];
+    const tam_rejoined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Tam&password=a+new+one", .{tam_code}));
+    // Sam's first join, after a crash left his `joined` empty: it is mended.
+    const sam_id = try nextId(a, io, data);
+    const sam_invited = try postAs(a, io, port, steve_session, "/invites", "name=Sam");
+    const sam_link = between(sam_invited.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const sam_code = sam_link[(std.mem.indexOfScalar(u8, sam_link, '#') orelse return error.NoCode) + 1 ..];
+    const sam_joined_path = try std.fmt.allocPrint(a, "auth/{d}/joined", .{sam_id});
+    try data.writeFile(io, .{ .sub_path = sam_joined_path, .data = "" });
+    const sam_joined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Sam&password=his+own", .{sam_code}));
+    try t.check("a join by a human with a password writes no `joined`; a first join mends an empty one", tam_rejoined.status == 303 and
+        !(try exists(io, data, "auth/2/joined")) and sam_joined.status == 303 and
+        (try std.fmt.parseInt(i64, try readFile(a, io, data, sam_joined_path), 10)) > 0);
 }
 
 /// The compose box's upload of `png` to the seeded channel, with the
@@ -2807,6 +2830,8 @@ fn gitHubSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, try readFile(a, io, data, "auth/6/name"), "Zoe") and std.mem.eql(u8, try readFile(a, io, data, "auth/6/github-id"), "20") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/next-id.txt"), "7\n") and
         !try exists(io, data, "auth/6/password") and !try exists(io, data, "auth/6/inviter"));
+
+    try t.check("Zoe's account was made holding `joined`, the second, its digits", (try std.fmt.parseInt(i64, try readFile(a, io, data, "auth/6/joined"), 10)) > 0);
 
     // 48zd.
     const zoe_again = try signInByGitHub(a, io, port, fake, "user-id-20");

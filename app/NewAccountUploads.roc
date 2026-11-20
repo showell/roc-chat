@@ -11,7 +11,7 @@
 ##
 ## **WHEN AN ACCOUNT IS NEW.** A human is new for `first_days` days from
 ## when they joined, as their `joined` file says (`JoinedFiles`), written
-## when an invited human first joins or a GitHub sign-up gets its name. A
+## at an invited human's first join and with a GitHub sign-up's account. A
 ## human with no `joined` file is established: every account made before
 ## the file was, the first start's owner, and one the server's owner made
 ## by hand; so is every agent (made by the admin alone,

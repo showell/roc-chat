@@ -20,6 +20,7 @@ import FileFacts
 import GitHubId
 import GitHubSessionWord
 import PasswordHash
+import Timestamp
 import UserId
 import Users
 
@@ -95,21 +96,34 @@ AccountFiles :: [].{
 	}
 
 	## A new human's account folder, made once as they sign up with GitHub:
-	## the GitHub account that signs them in, `github-id`, then the `name`,
-	## whose file makes the folder an account, so one cut short binds no one.
-	## The counter of ids is the caller's to advance first, as for any account.
-	create_github_account! : { human : Users.User, github : GitHubId } => Try(
+	## the GitHub account that signs them in, `github-id`, when they joined,
+	## `joined` (`JoinedFiles`), then the `name`, whose file makes the folder
+	## an account, so one cut short binds no one and no account lacks its
+	## `joined`. The counter of ids is the caller's to advance first.
+	create_github_account! : {
+		human : Users.User,
+		github : GitHubId,
+		joined : Timestamp,
+	} => Try(
 		{},
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_github_account! = |{ human, github }| {
+	create_github_account! = |{ human, github, joined }| {
 		facts = Users.account_facts(human)
 		folder = AccountFiles.account_folder_path(AccountFolder.of(human.id()))
 		FileFacts.create_facts!(
 			folder,
-			[(github_id_fact, github.to_file()), (name_fact, facts.name)],
+			[
+				(github_id_fact, github.to_file()),
+				(AccountFiles.joined_fact, joined.to_file()),
+				(name_fact, facts.name),
+			],
 		)
 	}
+
+	## The fact file of when a human joined (`JoinedFiles`).
+	joined_fact : Str
+	joined_fact = "joined"
 
 	## The user's `name` file written whole over the one before, atomically:
 	## the name an invited human chose as they joined.
