@@ -289,14 +289,23 @@ expect
 devices_page_for : SignedIn -> Str
 devices_page_for = |viewer|
 	Str.from_utf8_lossy(
-		DeviceCodePage.page({ viewer, shown: Status(Waiting(signed_at)), sign_ins: [] }).to_utf8(),
+		DeviceCodePage.page({
+			viewer,
+			shown: Status(Waiting(signed_at)),
+			sign_ins: [],
+		}).to_utf8(),
 	)
 
 ## The agents page for `viewer`, the admin's, as a test reads it.
 agents_page_for : SignedIn -> Str
 agents_page_for = |viewer|
 	Str.from_utf8_lossy(
-		AgentsPage.agents({ viewer, agents: Kept([]), shown: NoCode, github_link: LinkOffered }).to_utf8(),
+		AgentsPage.agents({
+			viewer,
+			agents: Kept([]),
+			shown: NoCode,
+			github_link: LinkOffered,
+		}).to_utf8(),
 	)
 
 expect {

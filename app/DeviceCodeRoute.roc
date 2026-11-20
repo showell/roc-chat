@@ -196,8 +196,9 @@ DeviceCodeRoute :: [].{
 	}
 
 	## A POST of `/logout` by `actor`: a live code of theirs cancelled, then
-	## `SignInRoute.sign_out`, the cookie that shows a code forgotten too. A 500 when the code can't be cancelled, so it
-	## is never left live by a sign-out that seemed to work.
+	## `SignInRoute.sign_out`, the cookie that shows a code forgotten too. A
+	## 500 when the code can't be cancelled, so it is never left live by a
+	## sign-out that seemed to work.
 	sign_out! : SignedIn.Actor => Http.Response
 	sign_out! = |actor| {
 		signed_in_human =
@@ -219,7 +220,7 @@ DeviceCodeRoute :: [].{
 
 	## The human `id`'s code cancelled, when it is live.
 	revoke_device_code! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
-	revoke_device_code! = |id| DeviceCodeFiles.cancel_live_device_code!(id)
+	revoke_device_code! = |id| DeviceCodeFiles.revoke_live_device_code!(id)
 }
 
 ## A new code, of the host's random bytes.
