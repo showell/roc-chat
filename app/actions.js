@@ -36,6 +36,10 @@
 // caret after it. roc-markdown draws that fence as a quoted message
 // (<pre class="chat-quote">) and the reference as a link to the message.
 //
+// The `t` key opens the conversation's raw transcript (the pane's data-raw)
+// in a new tab, as chat-client's did (js/chat.js's viewRaw), so a reader
+// sees every message's markdown as written.
+//
 // In a narrow window (chrome.js's layout-narrow), a phone's, the buttons, the
 // reactions and the picker's emojis are larger, for a finger, and the
 // picker opens across the window's width under the message.
@@ -311,6 +315,9 @@
   }
   Keys.register({ key: 'q', label: 'quote-reply to the selected message', run: quoteSelected });
   Keys.register({ key: '>', label: 'quote-reply, as q does', run: quoteSelected });
+  Keys.register({ key: 't', label: 'open the raw transcript in a new tab', run: function () {
+    window.open(rawUrl, '_blank');
+  } });
 
   var drawn = messages.querySelectorAll('.message');
   for (var j = 0; j < drawn.length; j++) dress(drawn[j]);
