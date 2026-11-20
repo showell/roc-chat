@@ -16,7 +16,10 @@
 // tiles are. The reader's own "(you)" (.you) is quiet. On the invites page,
 // a link just made (.invite-made) is a card, its link on one line with a
 // "Copy link" button in the accent; each human's row (.invite-row) has its
-// "New link" button at its right.
+// "New link" button at its right. That page answers a POST, so the script
+// puts /invites in its place in the history: a reload is a plain GET, which
+// makes no second invite and shows no link, and the link lives only in this
+// page's memory, never in a URL, a log or a cookie.
 (function () {
   'use strict';
   var panel = document.querySelector('.panel');
@@ -167,6 +170,7 @@
     });
   }
   panel.querySelectorAll('.invite-code').forEach(addCopyButton);
+  if (panel.querySelector('.invite-made')) history.replaceState(null, '', '/invites');
 
   // The panel takes the focus, so the keyboard scrolls it from the start.
   panel.tabIndex = -1;

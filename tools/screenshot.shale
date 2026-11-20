@@ -35,7 +35,8 @@
 --   browse-bad-topic  "two words" sent as a topic: the refusal beside its
 --                     place's form, which keeps what was typed
 --   invite-made       Tam's "New link" pressed: the link's card, the form
---                     behind "Invite someone else"
+--                     behind "Invite someone else", and the address
+--                     /invites, not the POST's, so a reload makes no invite
 --   invite-taken      "tam" sent as a new name: the refusal under the form,
 --                     which keeps the name
 -- and at 390x844 (a state's `size`):
@@ -196,7 +197,9 @@ const STATES = {
     MESSAGE_NOTICE, "wait .notice-strip.notice-message", "click .notice-strip .notice-dismiss"}},
   {name = "browse-bad-topic", path = "/chat", steps = {
     "click input[name=topic]", "type two words", "click .browse-panes form button", "wait p.problem"}},
-  {name = "invite-made", path = "/invites", steps = {"click .invite-row button", "wait .invite-made"}},
+  {name = "invite-made", path = "/invites", steps = {"click .invite-row button", "wait .invite-made",
+    "eval if (location.pathname === '/invites') document.body.setAttribute('data-at-invites', '')",
+    "wait body[data-at-invites]"}},
   {name = "invite-taken", path = "/invites", steps = {
     "click input[name=name]", "type tam", "click .panel form button", "wait p.problem"}},
   {name = "invite-made-phone", size = "phone", path = "/invites", steps = {
