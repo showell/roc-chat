@@ -382,12 +382,12 @@ expect {
 		Directory.from_stored({
 			users: Sample.directory.users(),
 			channels: Channels.from_stored([{ name: Channels.default_name, members: "1\n2\n3\n".to_utf8() }])
-			?? crash "SidebarSpec: a members file",
+				?? crash "SidebarSpec: a members file",
 		})
-		?? crash "SidebarSpec: the members are users"
+			?? crash "SidebarSpec: the members are users"
 	channel =
 		everyone_in_general.channels().channel(Channels.default_name)
-		?? crash "SidebarSpec: general is a channel"
+			?? crash "SidebarSpec: general is a channel"
 	roster = ChannelRoster.roster({
 		channel,
 		users: everyone_in_general.users(),

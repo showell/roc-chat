@@ -10,6 +10,17 @@
 // rail's pinning or dragging. It never moves a place: the order is the
 // server's, as the page was drawn.
 //
+// Every row does one thing, and each kind looks its own when pointed at
+// (Steve, 2026-11-20: "I like almost all things to be clickable, so that
+// the app feels alive... the UX should have good affordances that people
+// can learn"): a triangle collapses or opens, its glyph darkening; a
+// group's heading collapses its group as its triangle does, its text
+// darkening; a name, a person's or a channel's, opens its card in the
+// middle of the window, underlined; a topic opens its page, its whole row
+// tinted; the "+" opens the card on its form, in the accent colour; the
+// "N more people…" row opens the people popup, underlined as a name is.
+// Each has the pointer cursor.
+//
 // Its look is Steve's, not chat-client's: like a good referee, it should
 // feel invisible until you need it. On the rail it is a box with a thin
 // border and rounded corners, as the message list is, the same height as
@@ -167,15 +178,23 @@ window.Sidebar = (function () {
       fontWeight: current ? '600' : 'normal',
     });
     padTopic(link);
-    if (!current) hoverColour(link, 'var(--cc-body-muted-fg)', 'var(--cc-accent)');
+    if (!current) hoverStyle(link, { background: 'transparent' }, { background: 'var(--cc-accent-soft-hov)' });
   }
   // A topic's padding: two steps in, and taller for a finger in the drawer.
   function padTopic(link) {
     link.style.padding = (narrow ? '9px ' : '4px ') + RIGHT + 'px ' + (narrow ? '9px ' : '4px ') + TOPIC_INDENT + 'px';
   }
   function hoverColour(element, resting, pointed) {
-    element.addEventListener('mouseenter', function () { element.style.color = pointed; });
-    element.addEventListener('mouseleave', function () { element.style.color = resting; });
+    hoverStyle(element, { color: resting }, { color: pointed });
+  }
+  // `pointed`'s styles while the pointer is on `element`, `resting`'s after.
+  function hoverStyle(element, resting, pointed) {
+    element.addEventListener('mouseenter', function () { Object.assign(element.style, pointed); });
+    element.addEventListener('mouseleave', function () { Object.assign(element.style, resting); });
+  }
+  // A name's look when pointed at: underlined, as a link that opens a card.
+  function hoverUnderline(element) {
+    hoverStyle(element, { textDecoration: 'none' }, { textDecoration: 'underline' });
   }
 
   // A person's choice to collapse a group or a place, kept under `key`:
@@ -219,6 +238,7 @@ window.Sidebar = (function () {
       show();
     }
     show();
+    hoverColour(triangle, 'var(--cc-muted-fg)', 'var(--cc-fg)');
     onPress(triangle, flip);
     return { triangle: triangle, flip: flip };
   }
@@ -255,6 +275,7 @@ window.Sidebar = (function () {
     var shut = disclosure(heading.textContent, body, key, kept(key) === '1');
     headingRow(heading, [shut.triangle, heading], 0).style.marginBottom = '4px';
     heading.addEventListener('click', shut.flip);
+    hoverColour(heading, 'var(--cc-muted-fg)', 'var(--cc-fg)');
   });
 
   var dots = {};
@@ -308,7 +329,7 @@ window.Sidebar = (function () {
     var shut = disclosure(label, list, null, startsCollapsed(place.getAttribute('data-opening')));
     headingRow(name, [shut.triangle, name, plus], 1);
     name.title = 'About ' + label;
-    hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
+    hoverUnderline(name);
     onPress(name, function () { card.open('about', name); });
   });
 
@@ -333,7 +354,7 @@ window.Sidebar = (function () {
       padding: '0 ' + RIGHT + 'px 0 ' + (INSET + STEP + TRIANGLE + GAP) + 'px',
       color: 'var(--cc-muted-fg)', fontSize: '12px',
     });
-    hoverColour(row, 'var(--cc-muted-fg)', 'var(--cc-accent)');
+    hoverUnderline(row);
     onPress(row, SidebarPopups.peoplePopup(people, row).open);
   });
 

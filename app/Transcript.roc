@@ -155,7 +155,8 @@ Transcript :: [].{
 	## one of them is not a record this module writes. A channel's card reads
 	## its members' participation so (`ChannelRoster`): with a handful of
 	## members, a busy topic is a handful of records.
-	latest_posts : Transcript.Utf8Transcript, {
+	latest_posts : Transcript.Utf8Transcript,
+	{
 		authors : List(Author),
 		most : U64,
 		since : DateTime,

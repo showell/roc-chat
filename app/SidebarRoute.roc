@@ -151,4 +151,3 @@ load_timed_places! = |{ places, since, directory }| {
 	}
 	Ok({ timed: $timed, channel_posts: $channel_posts })
 }
-
