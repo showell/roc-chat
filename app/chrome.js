@@ -236,4 +236,15 @@ window.Notices = (function () {
   paint();
   user.insertBefore(document.createTextNode(' · '), user.firstChild);
   user.insertBefore(toggle, user.firstChild);
+
+  // "Sign out" carries this page's path as `next`, so a device signed in by a
+  // code, which is asked first, has Cancel come back here (app/SignOutRoute.roc).
+  var signOut = user.querySelector('.sign-out');
+  if (signOut) {
+    var next = document.createElement('input');
+    next.type = 'hidden';
+    next.name = 'next';
+    next.value = location.pathname;
+    signOut.appendChild(next);
+  }
 })();

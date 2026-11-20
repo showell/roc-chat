@@ -292,7 +292,7 @@ expect ["'.xy'", "\".x'", ".x", "'.x\""].all(|held| !has_quoted(held.to_utf8(), 
 # Each script finds the elements it works on by the classes this module
 # writes, and reads the attributes `Html` writes for it; a class or an
 # attribute it leaves to another script is not in it.
-expect [TopBar, TopUser].all(|chosen| is_found_by(Script.Chrome.bytes(), chosen))
+expect [TopBar, TopUser, SignOut].all(|chosen| is_found_by(Script.Chrome.bytes(), chosen))
 expect
 	[Layout, Messages, Compose, Help].all(|chosen| is_found_by(Script.Compose.bytes(), chosen))
 expect

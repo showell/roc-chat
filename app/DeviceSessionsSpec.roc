@@ -6,6 +6,7 @@
 ## coarsely (`DeviceSignIns`, `DeviceCodePage`).
 import AgentsPage
 import DeviceCodePage
+import DeviceKey
 import DeviceSignIns
 import FirstStart
 import FullSessionRoutes
@@ -34,6 +35,14 @@ material_of = |text|
 		password_hash: PasswordHash.from_file(text.to_utf8()),
 		github: NoGitHub,
 	})
+
+## Device key 1, which a code's redemption made.
+key_one : DeviceKey.Id
+key_one = DeviceKey.Id.from_str("1") ?? crash "DeviceSessionsSpec: a key's number"
+
+## How a session bound to device key 1 was started.
+code_origin : Session.Origin
+code_origin = ByDeviceCode(key_one)
 
 ## Steve signed in by a session started as `origin` says, as a request's
 ## session admits him once its signature matched.
@@ -71,30 +80,42 @@ is_refused_by_origin : SignedIn.Actor, (Str, Str) -> Bool
 is_refused_by_origin = |actor, (method, path)|
 	FullSessionRoutes.refusal_for({ choice: route_of(method, path), actor }) == StartedByDeviceCode
 
-# A session started by a device code: a fourth part, `d`, in its cookie, and
-# a mark in what it is signed over, so the two never share a signature; read
-# back as such, and any other fourth part is no session.
+# A session started by a device code: a fourth part, `d` and its device
+# key's number, in its cookie, and a mark with the number in what it is
+# signed over, so no two keys' sessions, nor an ordinary one, share a
+# signature; read back as such, and any other fourth part is no session,
+# a bare `d` (a session from before device keys) among them.
 expect
 	Session.cookie_value({
 		id: UserId.chat_owner,
 		signed_at,
-		origin: ByDeviceCode,
+		origin: code_origin,
 		mac: List.repeat(0, 32),
 	})
-		== "MQ.1700000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.d"
+		== "MQ.1700000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.d1"
 expect
 	Session.signed_bytes({
 		id: UserId.chat_owner,
 		signed_at,
-		origin: ByDeviceCode,
+		origin: code_origin,
 		material: material_of("$2b$10$x"),
 	})
-		== "1\n1700000000\nby-device-code\n$2b$10$x".to_utf8()
+		== "1\n1700000000\nby-device-code 1\n$2b$10$x".to_utf8()
+expect {
+	key_two = DeviceKey.Id.from_str("2") ?? crash "DeviceSessionsSpec: a key's number"
+	bytes_of = |origin| Session.signed_bytes({
+		id: UserId.chat_owner,
+		signed_at,
+		origin,
+		material: material_of("h"),
+	})
+	bytes_of(code_origin) != bytes_of(ByDeviceCode(key_two))
+}
 expect
 	Session.signed_bytes({
 		id: UserId.chat_owner,
 		signed_at,
-		origin: ByDeviceCode,
+		origin: code_origin,
 		material: material_of("h"),
 	})
 		!= Session.signed_bytes({
@@ -103,10 +124,10 @@ expect
 			origin: Ordinary,
 			material: material_of("h"),
 		})
-expect steve_by(ByDeviceCode).session_origin() == ByDeviceCode
+expect steve_by(code_origin).session_origin() == code_origin
 expect steve_by(Ordinary).session_origin() == Ordinary
 expect
-	["x", "dd", "D", ""].all(
+	["x", "dd", "D", "", "d", "d0", "d01", "dx", "D1", "d1x", "d4294967296"].all(
 		|fourth| {
 			value = "MQ.1700000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.${fourth}"
 			header = "${Session.cookie_name}=${value}".to_utf8()
@@ -160,10 +181,10 @@ any_session_routes = [
 ]
 
 expect full_session_routes.all(
-	|route| is_refused_by_origin(SignedIn(steve_by(ByDeviceCode)), route),
+	|route| is_refused_by_origin(SignedIn(steve_by(code_origin)), route),
 )
 expect any_session_routes.all(
-	|route| !is_refused_by_origin(SignedIn(steve_by(ByDeviceCode)), route),
+	|route| !is_refused_by_origin(SignedIn(steve_by(code_origin)), route),
 )
 expect
 	List.concat(full_session_routes, any_session_routes).all(
@@ -172,7 +193,7 @@ expect
 			route,
 		) and !is_refused_by_origin(Anonymous, route),
 	)
-expect steve_by(ByDeviceCode).check_full_session() == Err(StartedByDeviceCode)
+expect steve_by(code_origin).check_full_session() == Err(StartedByDeviceCode)
 expect steve_by(Ordinary).check_full_session() == Ok({})
 
 # The session generation: none, 0, is the material as it was, so no session
@@ -322,7 +343,7 @@ agents_page_for = |viewer|
 	)
 
 expect {
-	by_code = devices_page_for(steve_by(ByDeviceCode))
+	by_code = devices_page_for(steve_by(code_origin))
 	!by_code.contains("action=\"/devices\"")
 		and !by_code.contains("action=\"/devices/cancel\"")
 		and !by_code.contains("action=\"/devices/sign-out-others\"")
@@ -336,7 +357,7 @@ expect {
 		and !ordinary.contains("This device signed in with a code, so it can&#39;t make codes")
 }
 expect {
-	by_code = agents_page_for(steve_by(ByDeviceCode))
+	by_code = agents_page_for(steve_by(code_origin))
 	panel = by_code.split_on("</header>").drop_first(1)
 	signs_out = by_code.contains("<form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form>")
 	signs_out and !Str.join_with(panel, "").contains("<button>") and by_code.contains("This device signed in with a code, so it can&#39;t manage agents")

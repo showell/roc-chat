@@ -46,6 +46,7 @@ import SearchSpec
 import SecureImageTagSpec
 import SessionSpec
 import SignInRequestSpec
+import SignOutSpec
 import SidebarOrderSpec
 import SidebarSpec
 import TopicAddedSpec
