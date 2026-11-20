@@ -40,7 +40,10 @@ InviteRights :: [].{
 				NoFile => 0
 				Joined(since) => {
 					invites = load_every_humans_invites!(directory)?
-					NewcomerInvites.count_made(invites, { by, since: NewcomerInvites.counted_since(since, now) })
+					NewcomerInvites.count_made(
+						invites,
+						{ by, since: NewcomerInvites.counted_since(since, now) },
+					)
 				}
 			}
 		NewcomerInvites.check({

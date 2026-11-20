@@ -100,9 +100,18 @@ expect
 # it; and every invite counts, from the start.
 expect may_at(3, 500) == Err(FirstDayFull(Timestamp.at_second(87400)))
 expect may_at(2, 500) == Ok({})
-expect NewcomerInvites.counted_since(Timestamp.at_second(1000), Timestamp.at_second(500)) == Timestamp.at_second(0)
-expect NewcomerInvites.counted_since(Timestamp.at_second(1000), Timestamp.at_second(1000)) == Timestamp.at_second(1000)
-expect NewcomerInvites.counted_since(Timestamp.at_second(1000), Timestamp.at_second(5000)) == Timestamp.at_second(1000)
+expect NewcomerInvites.counted_since(
+	Timestamp.at_second(1000),
+	Timestamp.at_second(500),
+) == Timestamp.at_second(0)
+expect NewcomerInvites.counted_since(
+	Timestamp.at_second(1000),
+	Timestamp.at_second(1000),
+) == Timestamp.at_second(1000)
+expect NewcomerInvites.counted_since(
+	Timestamp.at_second(1000),
+	Timestamp.at_second(5000),
+) == Timestamp.at_second(1000)
 
 # Each human whose first invite user 7 made since joining counts once.
 expect
