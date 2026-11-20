@@ -171,7 +171,7 @@ expect {
 		"citeButton.className = 'cite-open';",
 		"citeButton.textContent = 'cite';",
 		"if (e.target.closest('.cite-open')) { Citation.copy(article); return; }",
-		"Keys.register({ key: 'l', label: 'copy a citation of the selected message', run: function () {",
+		"Keys.register({ key: 'l', label: 'link: copy a citation link to the selected message', run: function () {",
 	].all(|line| actions.contains(line))
 }
 expect {

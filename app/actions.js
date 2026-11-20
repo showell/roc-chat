@@ -435,14 +435,14 @@
     if (article) quote(article);
   }
   Keys.register({ key: 'q', label: 'quote-reply to the selected message', aliases: ['r', '>'], run: quoteSelected });
-  Keys.register({ key: 'l', label: 'copy a citation of the selected message', run: function () {
+  Keys.register({ key: 'l', label: 'link: copy a citation link to the selected message', run: function () {
     var article = selectedMessage();
     if (article) Citation.copy(article);
   } });
-  Keys.register({ key: 't', label: 'open the raw transcript in a new tab', run: function () {
+  Keys.register({ key: 't', label: 'transcript: open the raw transcript in a new tab', run: function () {
     window.open(rawUrl, '_blank');
   } });
-  Keys.register({ key: 'd', label: 'download transcript + images (.tar.gz)', run: function () {
+  Keys.register({ key: 'd', label: 'download the transcript + images (.tar.gz)', run: function () {
     var a = document.createElement('a');
     a.href = downloadUrl;
     document.body.appendChild(a);

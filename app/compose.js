@@ -289,7 +289,13 @@
   // shows (the name, when no cap is given), what it does, the function that
   // does it, and any other keys that do the same, and adds one row to the
   // help, the aliases named after the label in parentheses; `group:
-  // 'navigation'` puts the row under the Navigation heading at the end. A key registered twice is an
+  // 'navigation'` puts the row under the Navigation heading at the end, in
+  // the order its keys are registered, which is theirs. The other rows sort
+  // here, whenever a key is registered (Steve, 2026-11-20: "err on the side
+  // of alphabetizing things that have no clear order"): the letter keys
+  // alphabetically, then `/` (search, essential), then the other symbols
+  // (`+`, `:`: "not as essential as the other keys and pretty easy to
+  // guess"), by their key. A key registered twice is an
   // error, so two features never both think they own one. A key works when
   // no text field has the focus and no modifier is held, as in chat-client.
   window.Keys = (function () {
@@ -320,8 +326,18 @@
       } else if (entry.group) {
         throw new Error('Keys.register: "' + entry.group + '" is no group');
       } else {
-        keyhelpRows.appendChild(row);
+        row.helpOrder = helpOrder(entry.key);
+        var after = null;
+        for (var next = keyhelpRows.firstChild; next; next = next.nextSibling) {
+          if (next.helpOrder > row.helpOrder) { after = next; break; }
+        }
+        keyhelpRows.insertBefore(row, after);
       }
+    }
+    // A row's place in the help: a letter, then `/`, then any other key.
+    function helpOrder(key) {
+      var rank = /^[a-z]$/i.test(key) ? '0' : key === '/' ? '1' : '2';
+      return rank + key;
     }
     document.addEventListener('keydown', function (e) {
       var focused = document.activeElement;
@@ -334,7 +350,7 @@
     });
     return { register: register };
   })();
-  Keys.register({ key: 'c', label: 'compose', run: openCompose });
+  Keys.register({ key: 'c', label: 'compose a message', run: openCompose });
 
   Viewport.onChange(refreshOpenButton);
   if (isNarrow()) compose.classList.add('open');
