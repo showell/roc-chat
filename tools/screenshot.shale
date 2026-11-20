@@ -68,6 +68,18 @@
 --   sign-out-confirm  a phone signed in by a device code taps "Sign out":
 --                     the page that asks first (at both sizes; a state with
 --                     `as = "phone"` uses that device's session)
+--   dm-cite, channel-cite, own-dm-cite
+--                     Home, then `l`, on Tam's DM, #general and Steve's own
+--                     DM (its topic `notes`): the citation of the first
+--                     message the clipboard gets, its text shown over the
+--                     messages (the clipboard caught by the page's
+--                     console), each `wait`ing for the link's words and
+--                     path, the "copied" notice and the compose box's
+--                     placeholder, which names the place too
+--   cite-followed     the DM's first message cited, the citation pasted in
+--                     its ChitChat, and its link followed: that message
+--                     selected on its page
+--   dm-quote-reply    `q`: the selected message quoted in the open box
 -- and once, last, in the last theme (it brings Cy online for good, so
 -- every picture before it shows his hollow dot):
 --   dm-came-online    Cy's first page, while Steve's DM is open: his dot
@@ -93,10 +105,10 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 70 s on a busy box for the 87 pictures once the server and the driver
--- are built (11.4 s of CPU on 2026-11-20, about 0.13 s a picture, held to
--- 14 s; it was 2.5 s for 56, and the states added since cost more each,
--- popups and waits); each about 0.5 s, its line
+-- Budgets: about 70 s on a busy box for the 97 pictures once the server and the driver
+-- are built (11.4 s of CPU for 87 on 2026-11-20, about 0.13 s a picture,
+-- held to 16 s with the citation states; it was 2.5 s for 56, and the
+-- states added since cost more each, popups and waits); each about 0.5 s, its line
 -- printed as `shot <name> <ms>`. A `zig build` after the app changed adds
 -- about 25 s, the driver's first build about 10 s.
 -- The browser runs one renderer, its JavaScript heap capped at 128 MB,
@@ -167,6 +179,9 @@ end
 
 -- The notice of a message of Tam's in the channel, as the stream's
 -- `message-notice` brings it (app/MessageNotice.roc's words and link).
+-- The clipboard, as `l` writes a citation to it: the text shown on the
+-- page, and held in its data-text for a `wait` to read.
+const CAPTURE = [==[eval window.ClipboardItem = undefined; Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: function (t) { var p = document.createElement('pre'); p.id = 'cite-seen'; p.textContent = t; p.setAttribute('data-text', t); p.style.cssText = 'position:fixed;top:60px;left:280px;z-index:99;background:#fff;color:#000;padding:8px;white-space:pre-wrap;max-width:700px;font-size:14px'; document.body.appendChild(p); return Promise.resolve(); }}})]==]
 const MESSAGE_NOTICE = "eval Notices.showUnlessHere('<a href=\"/chat/channel/general/roc-chat#msg-5\">Tam posted to general &gt; roc-chat.</a>')"
 
 -- What a click or a key opens, at the desktop's size: each a page and the
@@ -264,6 +279,29 @@ const STATES = {
     "click .top-user .sign-out button", "wait input[name=confirmed]"}},
   {name = "sign-out-confirm", as = "phone", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     "click .top-user .sign-out button", "wait input[name=confirmed]"}},
+  -- `l`: the citation the clipboard gets on a DM, a channel and the
+  -- viewer's own DM, its link naming the place as the page does, and the
+  -- notice that says so; the compose box's placeholder names the place too.
+  {name = "dm-cite", path = "/chat/dm/1_2/plans", steps = {
+    "wait .compose textarea[placeholder=\"Message Tam\"]", "key Home", "wait #msg-1.selected", CAPTURE, "key l",
+    "wait #cite-seen[data-text$=\"\\A\\A[Steve in Tam › plans](/chat/dm/1_2/plans#msg-1)\\A\"]", "wait .cite-notice"}},
+  {name = "channel-cite", path = "/chat/channel/general/roc-chat", steps = {
+    "wait .compose textarea[placeholder=\"Message #general › roc-chat\"]", "key Home", "wait #msg-1.selected", CAPTURE, "key l",
+    "wait #cite-seen[data-text$=\" in #general › roc-chat](/chat/channel/general/roc-chat#msg-1)\\A\"]", "wait .cite-notice"}},
+  {name = "own-dm-cite", path = "/chat/dm/1_1/notes", steps = {
+    "wait .compose textarea[placeholder=\"Message Steve\"]", "key Home", "wait #msg-1.selected", CAPTURE, "key l",
+    "wait #cite-seen[data-text$=\"\\A\\A[Steve in Steve › notes](/chat/dm/1_1/notes#msg-1)\\A\"]", "wait .cite-notice"}},
+  -- An older message cited, the citation pasted in another topic, its link
+  -- drawn quiet, and followed: the message it cites selected.
+  {name = "cite-followed", path = "/chat/dm/1_2/plans", steps = {
+    "key Home", "wait #msg-1.selected", CAPTURE, "key l", "wait #cite-seen",
+    "eval fetch('/chat/dm/1_2/ChitChat', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent(document.getElementById('cite-seen').textContent)})",
+    "goto /chat/dm/1_2/ChitChat", "wait .message:last-of-type .body p.citation-link a[href=\"/chat/dm/1_2/plans#msg-1\"]",
+    "click .message:last-of-type .body p.citation-link a",
+    "wait .top-title a[href=\"/chat/dm/1_2/plans\"]", "wait #msg-1.selected"}},
+  -- `q` still quotes the selected message into the compose box.
+  {name = "dm-quote-reply", path = "/chat/dm/1_2/plans", steps = {
+    "key q", "wait .compose.open textarea:not(:placeholder-shown)"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
@@ -368,6 +406,10 @@ for m in DM do
   expect_status(post_form(base, who, "/chat/dm/1_2/plans", {"markdown=" .. m.text}), 303, "a DM message")
 end
 
+-- Steve's own DM, a topic with a note, for `l` there.
+expect_status(post_form(base, steve, "/chat/dm/1_1", {"topic=notes"}), 303, "Steve's own DM's topic")
+expect_status(post_form(base, steve, "/chat/dm/1_1/notes", {"markdown=A note to **myself**."}), 303, "a note to self")
+
 -- 2b. Two more humans, so the DMs group lists four: each joins with a
 -- welcome from Steve (ChitChat), and Ada writes to him too, so her DM comes
 -- after Steve's own, which is always second (app/SidebarOrder.roc).
@@ -450,7 +492,7 @@ create(work .. "/shots.txt", join(list, "\n") .. "\n")
 
 -- 4. The pictures, one browser for all of them.
 local shot = must(run({"zig", "build", "run", "--", real(CHROME), real(work .. "/profile"), real(work .. "/shots.txt"), real(out)},
-  {cwd = "tools/shot", timeout_ms = 110000, tail = 60, nice = 19, cpu_budget_ms = 14000, stage = "the pictures"}))
+  {cwd = "tools/shot", timeout_ms = 110000, tail = 60, nice = 19, cpu_budget_ms = 16000, stage = "the pictures"}))
 alone_on(port, server_pid)
 for name in names do
   if not exists(out .. "/" .. name .. ".png") then fail("screenshot: " .. name .. ".png was not written\n" .. shot.out) end
