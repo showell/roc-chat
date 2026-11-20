@@ -53,13 +53,25 @@ SignInFiles :: [].{
 
 	## The human `id`'s other devices signed out: their session generation
 	## raised by one, so every session signed over the one before, this
-	## device's too until it is signed again, admits no one.
+	## device's too until it is signed again, admits no one; a count at the
+	## largest a U64 holds, which only a hand edit makes, is `Damaged`.
 	advance_session_generation! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 	advance_session_generation! = |id| {
 		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
-		AccountFiles.replace_session_generation!(id, generation + 1) ? |fault| FileSystem(fault)
+		next = SignInFiles.next_generation(generation) ? |Damaged| FileSystem(Damaged)
+		AccountFiles.replace_session_generation!(id, next) ? |fault| FileSystem(fault)
 		Ok({})
 	}
+
+	## The generation after `generation`; unless it is the largest a U64
+	## holds (`Damaged`).
+	next_generation : U64 -> Try(U64, [Damaged])
+	next_generation = |generation|
+		if generation == U64.highest {
+			Err(Damaged)
+		} else {
+			Ok(generation + 1)
+		}
 
 	## The user `id`'s `github-session-secret`, made first when there is none
 	## (`GitHubSessionWord`). Sessions are signed over it under the server's

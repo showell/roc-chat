@@ -197,8 +197,9 @@ DeviceCodeRoute :: [].{
 
 	## A POST of `/logout` by `actor`: a live code of theirs cancelled, then
 	## `SignInRoute.sign_out`, the cookie that shows a code forgotten too. A
-	## 500 when the code can't be cancelled, so it is never left live by a
-	## sign-out that seemed to work.
+	## code that can't be cancelled is logged and the sign-out goes on, as a
+	## damaged record redeems nothing and a failed write leaves at most a
+	## code's five minutes.
 	sign_out! : SignedIn.Actor => Http.Response
 	sign_out! = |actor| {
 		signed_in_human =
@@ -209,12 +210,10 @@ DeviceCodeRoute :: [].{
 		forgotten = cookie_header_of(DeviceCode.clear_flash_cookie_text)
 		match signed_in_human {
 			Err(NoHuman) => HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
-			Ok(human) =>
-				match DeviceCodeRoute.revoke_device_code!(human.id()) {
-					Ok({}) => HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
-					Err(FileSystem(fault)) =>
-						HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
-				}
+			Ok(human) => {
+				DeviceCodeFiles.revoke_or_log!(human.id())
+				HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
+			}
 		}
 	}
 

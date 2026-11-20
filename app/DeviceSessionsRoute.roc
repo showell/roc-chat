@@ -102,11 +102,11 @@ DeviceSessionsRoute :: [].{
 }
 
 ## The human `id`'s other devices signed out: their live code cancelled, so
-## the page never shows a dead one as waiting, then their session
-## generation advanced.
+## the page never shows a dead one as waiting (a failure logged, and the
+## sign-out goes on), then their session generation advanced.
 sign_out_others! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 sign_out_others! = |id| {
-	DeviceCodeFiles.revoke_live_device_code!(id)?
+	DeviceCodeFiles.revoke_or_log!(id)
 	SignInFiles.advance_session_generation!(id)
 }
 
