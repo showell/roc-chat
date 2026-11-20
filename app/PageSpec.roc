@@ -514,7 +514,7 @@ steves_recent = |tiles|
 ## empty, where app/chrome.js shows the notices, then `parts`.
 recent_page : Str -> Str
 recent_page = |parts|
-	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 
 # Recent with no conversation that has a message says so, above its list,
 # empty, which names its stream.
@@ -522,15 +522,18 @@ expect
 	steves_recent([])
 		== recent_page("<p class=\"empty\">Nothing yet.</p>\n<div class=\"recent-list\" data-stream=\"/chat/recent/stream\"></div>")
 # A channel's tile names the channel and the topic, a DM's the topic and
-# its other human's initial; each says who sent the last message, by their
-# first name ("You" for the viewer), and its excerpt, escaped; a message
-# with no excerpt has no preview.
+# its other human's initial; each spells its place out too ("#general", "DM
+# with Apoorva"), and a DM's names its other human and whether they are
+# online; each says who sent the last message, by their first name ("You"
+# for the viewer), and its excerpt, escaped; a message with no excerpt has
+# no preview.
 expect {
 	time = |text| DateTime.from_str(text) ?? crash "PageSpec: a time"
 	steves_recent([
 		{
 			key: recent_key("/chat/channel/general/plans"),
 			label: "#general",
+			person: NoPerson,
 			time: time("2026-11-03T10:00:00Z"),
 			who: "You",
 			excerpt: "a < b",
@@ -538,12 +541,13 @@ expect {
 		{
 			key: recent_key("/chat/dm/1_2/books"),
 			label: "Apoorva",
+			person: Person(Sample.user("Apoorva").id(), Online),
 			time: time("2026-11-02T19:11:32Z"),
 			who: "Apoorva",
 			excerpt: "",
 		},
 	])
 		== recent_page(
-			"<div class=\"recent-list\" data-stream=\"/chat/recent/stream\"><a class=\"recent-tile\" href=\"/chat/channel/general/plans\"><span class=\"recent-lead\"><span class=\"recent-bar\"></span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-context\">#general<span class=\"recent-dot\">  ·  </span><span class=\"recent-topic\">plans</span></span><time class=\"recent-ago\" datetime=\"2026-11-03T10:00:00Z\">2026-11-03T10:00:00Z</time></span><span class=\"recent-preview\"><span class=\"recent-who\">You: </span>a &lt; b</span></span></a>\n<a class=\"recent-tile\" href=\"/chat/dm/1_2/books\"><span class=\"recent-lead\"><span class=\"recent-avatar\">A</span></span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-title\">books</span><time class=\"recent-ago\" datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time></span></span></a>\n</div>",
+			"<div class=\"recent-list\" data-stream=\"/chat/recent/stream\"><a class=\"recent-tile\" href=\"/chat/channel/general/plans\"><span class=\"recent-lead\"><span class=\"recent-bar\"></span></span><span class=\"recent-where\"><span class=\"recent-mark\"></span>#general</span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-context\"><span class=\"recent-place\">#general</span><span class=\"recent-dot\">  ·  </span><span class=\"recent-topic\">plans</span></span><time class=\"recent-ago\" datetime=\"2026-11-03T10:00:00Z\">2026-11-03T10:00:00Z</time></span><span class=\"recent-preview\"><span class=\"recent-who\">You: </span>a &lt; b</span></span></a>\n<a class=\"recent-tile\" href=\"/chat/dm/1_2/books\" data-person=\"2\" data-presence=\"online\"><span class=\"recent-lead\"><span class=\"recent-avatar\">A</span></span><span class=\"recent-where\"><span class=\"recent-mark\"></span>DM with Apoorva</span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-title\">books</span><time class=\"recent-ago\" datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time></span></span></a>\n</div>",
 		)
 }

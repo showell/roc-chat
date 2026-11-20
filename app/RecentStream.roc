@@ -9,6 +9,7 @@
 ## out.
 import pf.Host
 import pf.Http
+import Clock
 import HttpAnswer
 import ConversationKey
 import DateTime
@@ -16,6 +17,7 @@ import Sample
 import UnvalidatedString
 import RecentFeed
 import Presence
+import PresenceNotices
 import ServerSentEvent
 import Transcript
 import UserId
@@ -50,15 +52,16 @@ RecentStream :: [].{
 	frame = |tile| ServerSentEvent.named_event({ name: "tile", html: RecentFeed.tile_html(tile) })
 
 	## The tile `reader` sees for the conversation `key` whose last message is
-	## now `latest`, its users `users`; or `NoTile` for no human, or for the
-	## reader's own DM.
+	## now `latest`, its users `users`, the humans of `online_humans` online;
+	## or `NoTile` for no human, or for the reader's own DM.
 	reader_tile : {
 		key : ConversationKey,
 		reader : UserId,
 		users : Users,
 		latest : Transcript.LatestMessage,
+		online_humans : List(UserId),
 	} -> [Tile(RecentFeed.Tile), NoTile]
-	reader_tile = |{ key, reader, users, latest }|
+	reader_tile = |{ key, reader, users, latest, online_humans }|
 		match users.user(reader) {
 			Ok(user) => {
 				label =
@@ -79,7 +82,9 @@ RecentStream :: [].{
 							key,
 							label: text,
 							latest,
+							reader,
 							viewer: user.name(),
+							online_humans,
 						}),
 					)
 					_ => NoTile
@@ -89,16 +94,22 @@ RecentStream :: [].{
 		}
 
 	## The conversation `key`'s new last message, `latest`, sent as its tile to
-	## each of `readers`, everyone who may read it, found among `users`.
+	## each of `readers`, everyone who may read it, found among `users`. A
+	## DM's tile says whether its other human is online, as the page does.
 	publish! : {
 		key : ConversationKey,
 		readers : List(UserId),
 		users : Users,
 		latest : Transcript.LatestMessage,
 	} => {}
-	publish! = |{ key, readers, users, latest }|
+	publish! = |{ key, readers, users, latest }| {
+		online_humans =
+			match key.place().which() {
+				Dm(pair) => PresenceNotices.load_online_humans!({ humans: pair.members(), now: Clock.read_clock!({}) })
+				Channel(_) => []
+			}
 		for reader in readers {
-			match RecentStream.reader_tile({ key, reader, users, latest }) {
+			match RecentStream.reader_tile({ key, reader, users, latest, online_humans }) {
 				Tile(tile) => Host.publish_bytes_to_streams_on_key!(
 					RecentStream.bus_key(reader),
 					RecentStream.frame(tile),
@@ -106,6 +117,7 @@ RecentStream :: [].{
 				NoTile => {}
 			}
 		}
+	}
 }
 
 # ── tests
@@ -135,6 +147,7 @@ sent_to = |path, reader|
 		reader: Sample.user(reader).id(),
 		users: Sample.directory.users(),
 		latest: hello,
+		online_humans: [],
 	}) {
 		Tile(tile) => "${tile.label} ${tile.who}"
 		NoTile => "none"
@@ -162,6 +175,7 @@ expect
 		RecentStream.frame({
 			key: key_at("/chat/dm/1_2/plans"),
 			label: "Apoorva",
+			person: NoPerson,
 			time: hello.time,
 			who: "You",
 			excerpt: "",

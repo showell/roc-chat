@@ -75,11 +75,14 @@ PageContract :: [].{
 		RecentDot,
 		RecentLead,
 		RecentList,
+		RecentMark,
+		RecentPlace,
 		RecentPreview,
 		RecentTile,
 		RecentTitle,
 		RecentTop,
 		RecentTopic,
+		RecentWhere,
 		RecentWho,
 		Sidebar,
 		SidebarMore,
@@ -214,11 +217,14 @@ class_name = |chosen|
 		RecentDot => "recent-dot"
 		RecentLead => "recent-lead"
 		RecentList => "recent-list"
+		RecentMark => "recent-mark"
+		RecentPlace => "recent-place"
 		RecentPreview => "recent-preview"
 		RecentTile => "recent-tile"
 		RecentTitle => "recent-title"
 		RecentTop => "recent-top"
 		RecentTopic => "recent-topic"
+		RecentWhere => "recent-where"
 		RecentWho => "recent-who"
 		Sidebar => "sidebar"
 		SidebarMore => "sidebar-more"
@@ -281,11 +287,14 @@ expect
 		(RecentDot, "recent-dot"),
 		(RecentLead, "recent-lead"),
 		(RecentList, "recent-list"),
+		(RecentMark, "recent-mark"),
+		(RecentPlace, "recent-place"),
 		(RecentPreview, "recent-preview"),
 		(RecentTile, "recent-tile"),
 		(RecentTitle, "recent-title"),
 		(RecentTop, "recent-top"),
 		(RecentTopic, "recent-topic"),
+		(RecentWhere, "recent-where"),
 		(RecentWho, "recent-who"),
 		(Sidebar, "sidebar"),
 		(SidebarMore, "sidebar-more"),

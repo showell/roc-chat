@@ -2,9 +2,14 @@
 ## Gopher Chat's `/chat/recent` did: one tile per conversation they may
 ## read, newest first by each conversation's last message, every
 ## conversation listed. A tile names its place (a channel's `#name` and the
-## topic, or a DM's topic alone, its other human shown by their initial),
-## when its last message was sent, and who sent it ("You" for the viewer)
-## with an excerpt of it (`RecentExcerpt`). A tile links to the
+## topic, or a DM's topic, its other human shown by their initial), when its
+## last message was sent, and who sent it ("You" for the viewer) with an
+## excerpt of it (`RecentExcerpt`). It also spells its place out, "#general"
+## or "DM with Apoorva", which a wide window shows in a column of its own in
+## place of the initial (Steve, 2026-11-20: "There is no reason I should
+## have to read "A" to see that it's a DM from Apoorva"); a DM's tile names
+## its other human (`data-person`) and whether they are online
+## (`data-presence`), as the sidebar's DMs do. A tile links to the
 ## conversation's page.
 ##
 ## The places are Browse's (`Browse.places_for`), but for the viewer's own
@@ -29,11 +34,13 @@ import UserId
 RecentFeed :: [].{
 
 	## One conversation's tile: its key, its place's label (`#` and a
-	## channel's name, or a DM's other human's name), and its last message's
-	## time, author (`You` for the viewer) and excerpt.
+	## channel's name, or a DM's other human's name), the DM's other human
+	## and whether they are online (`NoPerson` for a channel), and its last
+	## message's time, author (`You` for the viewer) and excerpt.
 	Tile : {
 		key : ConversationKey,
 		label : Str,
+		person : [NoPerson, Person(UserId, [Online, Offline])],
 		time : DateTime,
 		who : Str,
 		excerpt : Str,
@@ -55,18 +62,39 @@ RecentFeed :: [].{
 		)
 
 	## The tile of the conversation `key`, listed as `label`, whose last
-	## message is `latest`, as the human named `viewer` sees it.
+	## message is `latest`, as the human `reader`, named `viewer`, sees it,
+	## the humans of `online_humans` online.
 	tile : {
 		key : ConversationKey,
 		label : Str,
 		latest : Transcript.LatestMessage,
+		reader : UserId,
 		viewer : Name,
+		online_humans : List(UserId),
 	} -> RecentFeed.Tile
-	tile = |{ key, label, latest, viewer }| {
+	tile = |{ key, label, latest, reader, viewer, online_humans }| {
 		author = latest.author.name()
+		person =
+			match key.place().which() {
+				Channel(_) => NoPerson
+				Dm(pair) =>
+					match pair.members().drop_if(|member| member == reader) {
+						[other] =>
+							Person(
+								other,
+								if online_humans.contains(other) {
+									Online
+								} else {
+									Offline
+								},
+							)
+						_ => NoPerson
+					}
+			}
 		{
 			key,
 			label,
+			person,
 			time: latest.time,
 			who: if author == viewer {
 				"You"
@@ -98,6 +126,8 @@ RecentFeed :: [].{
 	## empty until app/chrome.js says a notice there (Gopher Chat's Recent
 	## had its #chat-notify); then a line saying there is nothing yet when `tiles` is
 	## empty, then the list of `tiles`, as given, which names its live stream.
+	## Search runs here too (app/search.js), its 🔍 in the top bar and its
+	## `/` key, since Recent is where a human watches for new activity.
 	page : { viewer : SignedIn, tiles : List(RecentFeed.Tile) } -> TrustedHtml
 	page = |{ viewer, tiles }| {
 		nothing_yet =
@@ -126,7 +156,14 @@ RecentFeed :: [].{
 			viewer,
 			parts: List.concat(
 				nothing_yet,
-				[listed, PageKit.newline, PageKit.script(Script.Recent), PageKit.newline],
+				[
+					listed,
+					PageKit.newline,
+					PageKit.script(Script.Recent),
+					PageKit.newline,
+					PageKit.script(Script.Search),
+					PageKit.newline,
+				],
 			),
 		})
 	}
@@ -184,22 +221,26 @@ span = |class, inner| Html.element({
 	inner,
 })
 
-## One tile: a link to its conversation's page.
+## One tile: a link to its conversation's page. Its lead (a channel's bar,
+## a DM's initial) and its place spelled out (`recent-where`, its mark a
+## channel's colour or a DM's presence dot) are both written; app/recent.js
+## shows the one that fits the window.
 tile_element : RecentFeed.Tile -> TrustedHtml
-tile_element = |{ key, label, time, who, excerpt }| {
+tile_element = |{ key, label, person, time, who, excerpt }| {
 	topic = key.topic().to_str()
-	(lead, context) =
+	(lead, context, place_words) =
 		match key.place().which() {
 			Channel(_) => (
 				span(RecentBar, TrustedHtml.join([])),
 				span(
 					RecentContext,
 					TrustedHtml.join([
-						Escape.text(label),
+						span(RecentPlace, Escape.text(label)),
 						span(RecentDot, Escape.text("  ·  ")),
 						span(RecentTopic, Escape.text(topic)),
 					]),
 				),
+				label,
 			)
 			Dm(_) => {
 				partner = if who == "You" {
@@ -210,6 +251,7 @@ tile_element = |{ key, label, time, who, excerpt }| {
 				(
 					span(RecentAvatar, Escape.text(initial(partner))),
 					span(RecentTitle, Escape.text(topic)),
+					"DM with ${label}",
 				)
 			}
 		}
@@ -230,15 +272,31 @@ tile_element = |{ key, label, time, who, excerpt }| {
 				]),
 			)
 		}
+	place = span(
+		RecentWhere,
+		TrustedHtml.join([span(RecentMark, TrustedHtml.join([])), Escape.text(place_words)]),
+	)
+	person_attributes =
+		match person {
+			NoPerson => []
+			Person(other, presence) => [
+				PageContract.data_attribute(Person(PageKit.token(other.to_str()))),
+				PageContract.data_attribute(Presence(presence)),
+			]
+		}
 	TrustedHtml.join([
 		Html.element({
 			name: A,
-			attributes: [
-				PageContract.class(RecentTile),
-				Link(PageKit.site_path(key.url_path(Page))),
-			],
+			attributes: List.concat(
+				[
+					PageContract.class(RecentTile),
+					Link(PageKit.site_path(key.url_path(Page))),
+				],
+				person_attributes,
+			),
 			inner: TrustedHtml.join([
 				span(RecentLead, lead),
+				place,
 				span(
 					RecentBody,
 					TrustedHtml.join([span(RecentTop, TrustedHtml.join([context, ago])), preview]),

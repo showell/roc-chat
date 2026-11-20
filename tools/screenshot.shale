@@ -37,6 +37,10 @@
 --                     actions open under its header
 --   sign-out-focus    the top bar's "Sign out" focused, as Tab reaches it
 --                     (at both sizes)
+-- and at 1280x800 again:
+--   recent-search     Recent's 🔍 clicked and "thu" typed: the words found
+--   recent-arrival    a message sent while Recent is open: its tile arrived
+--                     live, glowing
 -- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
 -- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
 --
@@ -162,6 +166,15 @@ const STATES = {
     "eval document.querySelector('.top-user .sign-out button').focus()"}},
   {name = "sign-out-focus", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     "eval document.querySelector('.top-user .sign-out button').focus()"}},
+  -- Recent's search: its 🔍 clicked and a word typed.
+  {name = "recent-search", path = "/chat/recent", steps = {
+    "click .search-open", "wait dialog.search-dialog[open]", "type thu", "wait .search-row"}},
+  -- Recent live: once its stream is open, a message sent to the DM, whose
+  -- tile arrives and glows.
+  {name = "recent-arrival", path = "/chat/recent", steps = {
+    "eval new Promise(function (r) { setTimeout(r, 700); })",
+    "eval fetch('/chat/dm/1_2/plans', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('Arrived **live**, with `code` and a [link](https://x.y).')})",
+    "wait .recent-tile.recent-fresh"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end

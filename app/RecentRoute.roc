@@ -12,17 +12,20 @@
 import pf.Http
 import Browse
 import BrowseRoute
+import Clock
 import ConversationKey
 import Directory
 import FileFacts
 import HttpAnswer
 import Name
 import PageKit
+import PresenceNotices
 import RecentFeed
 import RecentStream
 import SignedIn
 import Transcript
 import TranscriptFiles
+import UserId
 
 RecentRoute :: [].{
 
@@ -31,8 +34,13 @@ RecentRoute :: [].{
 	show! = |{ acting, directory }|
 		match (acting.human_in_session(), Browse.places_for({ acting, directory })) {
 			(Ok(reader), Ok(listed)) => {
-				places = RecentFeed.places_without_own_dm({ listed, reader: reader.user().id() })
-				match load_tiles!({ places, viewer: reader.user().name() }) {
+				reader_id = reader.user().id()
+				places = RecentFeed.places_without_own_dm({ listed, reader: reader_id })
+				online_humans = PresenceNotices.load_online_humans!({
+					humans: directory.users().to_list().keep_oks(|user| user.as_human()).map(|human| human.id()),
+					now: Clock.read_clock!({}),
+				})
+				match load_tiles!({ places, reader: reader_id, viewer: reader.user().name(), online_humans }) {
 					Ok(tiles) =>
 						HttpAnswer.page(
 							200,
@@ -82,13 +90,16 @@ RecentRoute :: [].{
 }
 
 ## The tile of each conversation of `places` that has a message, as the
-## human named `viewer` sees it; unless a read failed, or a last message is
-## not one the chat writes.
+## human `reader`, named `viewer`, sees it, the humans of `online_humans`
+## online; unless a read failed, or a last message is not one the chat
+## writes.
 load_tiles! : {
 	places : List(Browse.ListedPlace),
+	reader : UserId,
 	viewer : Name,
+	online_humans : List(UserId),
 } => Try(List(RecentFeed.Tile), [Unreadable(ConversationKey), FileSystem(FileFacts.Fault)])
-load_tiles! = |{ places, viewer }| {
+load_tiles! = |{ places, reader, viewer, online_humans }| {
 	with_topics = BrowseRoute.load_place_topics!(places) ? |fault| FileSystem(fault)
 	var $tiles = []
 	for { label, place, topics } in with_topics {
@@ -96,7 +107,8 @@ load_tiles! = |{ places, viewer }| {
 			key = ConversationKey.of({ place, topic })
 			$tiles =
 				match RecentRoute.load_latest_message!(key)? {
-					Latest(latest) => $tiles.append(RecentFeed.tile({ key, label, latest, viewer }))
+					Latest(latest) =>
+						$tiles.append(RecentFeed.tile({ key, label, latest, reader, viewer, online_humans }))
 					NoMessages => $tiles
 				}
 		}

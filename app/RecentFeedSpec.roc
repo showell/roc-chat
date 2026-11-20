@@ -37,7 +37,7 @@ time_of : Str -> DateTime
 time_of = |text| DateTime.from_str(text) ?? crash "RecentFeedSpec: a time"
 
 ## The tile of `path`, listed as `label`, whose last message `author` sent
-## at `time`, saying `markdown`, as Steve sees it.
+## at `time`, saying `markdown`, as Steve sees it, Apoorva online.
 steves_tile : {
 	path : Str,
 	label : Str,
@@ -54,7 +54,9 @@ steves_tile = |{ path, label, author, time, markdown }|
 			time: time_of(time),
 			markdown,
 		},
+		reader: Sample.steve.id(),
 		viewer: Sample.name("Steve"),
+		online_humans: [Sample.user("Apoorva").id()],
 	})
 
 # Recent lists Browse's places but the reader's own DM: Steve's DM with
@@ -91,6 +93,34 @@ expect
 		markdown: "",
 	}).who
 		== "Apoorva"
+
+# A DM's tile names its other human and whether they are online; a
+# channel's names no one.
+expect {
+	at = |path, label| steves_tile({
+		path,
+		label,
+		author: "Steve",
+		time: "2026-11-02T19:11:32Z",
+		markdown: "",
+	}).person
+	at("/chat/dm/1_2/plans", "Apoorva") == Person(Sample.user("Apoorva").id(), Online)
+		and at("/chat/channel/crew/plans", "#crew") == NoPerson
+}
+expect
+	RecentFeed.tile({
+		key: key_at("/chat/dm/1_2/plans"),
+		label: "Apoorva",
+		latest: {
+			author: Author.from_str("Steve") ?? crash "RecentFeedSpec: an author",
+			time: time_of("2026-11-02T19:11:32Z"),
+			markdown: "",
+		},
+		reader: Sample.steve.id(),
+		viewer: Sample.name("Steve"),
+		online_humans: [],
+	}).person
+		== Person(Sample.user("Apoorva").id(), Offline)
 
 # Newest first; two in one second by their paths.
 expect {
