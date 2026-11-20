@@ -145,3 +145,11 @@ load_generation! = |id|
 		Err(PathRefused) => Err(FileSystem(PathRefused))
 		Err(Failed) => Err(FileSystem(Failed))
 	}
+
+# ── tests
+# The generation after a count, and none after the largest a U64 holds,
+# which only a hand edit makes.
+expect SignInFiles.next_generation(0) == Ok(1)
+expect SignInFiles.next_generation(41) == Ok(42)
+expect SignInFiles.next_generation(U64.highest - 1) == Ok(U64.highest)
+expect SignInFiles.next_generation(U64.highest) == Err(Damaged)
