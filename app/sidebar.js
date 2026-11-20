@@ -148,8 +148,9 @@ window.Sidebar = (function () {
     return opening === 'collapsed';
   }
 
-  // A disclosure triangle for `what`, showing `shown` while it is open and
-  // hiding it while collapsed, and the person's choice kept under `key`.
+  // A disclosure triangle for `what`, its glyph swapped and never rotated
+  // (the old 9-pixel caret, turned to point right, read as a bullet),
+  // showing `shown` while it is open and hiding it while collapsed, and the person's choice kept under `key`.
   // It gives `flip`, for a name that collapses too.
   function disclosure(what, shown, key, collapsed) {
     var triangle = document.createElement('span');
@@ -157,7 +158,7 @@ window.Sidebar = (function () {
     triangle.setAttribute('tabindex', '0');
     triangle.setAttribute('aria-label', 'Collapse or open ' + what);
     Object.assign(triangle.style, {
-      flex: 'none', display: 'inline-block', width: '12px', textAlign: 'center', fontSize: '10px', lineHeight: '1',
+      flex: 'none', display: 'inline-block', width: '12px', textAlign: 'center', fontSize: '11px', lineHeight: '1',
       color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none',
     });
     function show() {
