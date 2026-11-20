@@ -30,14 +30,24 @@
 // page's stream passes on two events from the viewer's own key (feed.js,
 // recent.js). `notice`, a link saying a human has come online (or that a
 // new device signed in), goes to Notices.show; `message-notice`, a link to a
-// message someone else wrote in one of the viewer's places, to
-// Notices.showUnlessHere, which drops it on that topic's own page. Each is
+// message someone else wrote in one of the viewer's places (or the viewer in
+// their own DM), to Notices.showUnlessHere. Each is
 // shown in the top bar's notice line (.notice-strip, chat-client's
 // #chat-notify), in place of the last one, and paints the tab's icon violet,
 // whether or not the tab is in view, until the notice's link is followed or
 // the notice dismissed, with no timer. A message's notice is the tab's violet
 // (palette.js's noticeFg), a dot before it, so news of a message stands out;
-// any other is the bar's muted text. notify.js drew the violet as a
+// any other is the bar's muted text.
+//
+// A message on the topic being read says nothing in the strip, as notify.js
+// said nothing (chat-client's js/notify.js:63 returned before both the strip
+// and the favicon). But it does turn the tab violet when the page is hidden
+// or not focused (Steve, 2026-11-20: "I need to know when Bob talks to me
+// when I'm already talking to Bob! ... I could see excluding the status line,
+// but we need the violet."), and that violet clears when the reader comes
+// back to the page, where the message is in view; a violet from another
+// topic's notice still clears only by its link or its ✕, as notify.js's did
+// by its link alone (notify.js:66). notify.js drew the violet as a
 // data: URL, which this site's policy refuses, so it is a file the server
 // serves (app/Favicon.roc); and where notify.js cleared the tab to a blank
 // icon, the site's own icon comes back. The <link> is made anew each time, as
@@ -98,8 +108,23 @@ window.Notices = (function () {
     link.href = href;
     document.head.appendChild(link);
   }
-  function alertTab() { paintTab('/chat/assets/alert-icon.svg'); }
-  function clearTab() { paintTab('/favicon.ico'); }
+  // What the violet is for: a notice in the strip not yet followed or
+  // dismissed (`strip`), a message on this page that came while the reader
+  // was away (`here`). The tab is violet while either holds.
+  var pending = { strip: false, here: false };
+  function repaint() { paintTab(pending.strip || pending.here ? '/chat/assets/alert-icon.svg' : '/favicon.ico'); }
+  function alertTab() { pending.strip = true; repaint(); }
+  function clearTab() { pending.strip = false; repaint(); }
+  // Whether the reader is away from the page: it is hidden, or another
+  // window or tab has the focus.
+  function away() { return document.hidden || !document.hasFocus(); }
+  function back() {
+    if (!pending.here || away()) return;
+    pending.here = false;
+    repaint();
+  }
+  window.addEventListener('focus', back);
+  document.addEventListener('visibilitychange', back);
 
   // The strip, saying `nodes`: a message's news (`message`) with its violet
   // dot, then the words, then the ✕ that empties the strip. Following a
@@ -146,13 +171,20 @@ window.Notices = (function () {
   }
 
   // A message's notice, unless its link is this page: no point saying "new
-  // message" about the topic being read. Both paths are read as the browser
-  // reads a URL, so an escape in one is the same as in the other.
+  // message" about the topic being read. Then the tab alone turns violet,
+  // if the reader is away. Both paths are read as the browser reads a URL,
+  // so an escape in one is the same as in the other.
   function showUnlessHere(html) {
     var holder = document.createElement('template');
     holder.innerHTML = html;
     var link = holder.content.querySelector('a');
-    if (link && new URL(link.getAttribute('href'), location.href).pathname === location.pathname) return;
+    if (link && new URL(link.getAttribute('href'), location.href).pathname === location.pathname) {
+      if (away()) {
+        pending.here = true;
+        repaint();
+      }
+      return;
+    }
     show(html, true);
   }
 

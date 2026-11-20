@@ -65,6 +65,13 @@
 --                     `message-notice` shows it (here handed to chrome.js's
 --                     Notices by the page's console), at both sizes
 --   dm-notice-dismissed  on a phone, that notice's ✕ tapped: the line gone
+--   channel-self-notice  Steve, on the channel's page, sends a message to his
+--                     own DM: its violet notice arrives live (at both sizes)
+--   dm-here-away      a message from Tam on the topic being read, the page
+--                     not focused: the strip says nothing, the tab turns
+--                     violet, and clears once the page has the focus again
+--                     (the state waits on each; the picture is the page)
+--   dm-here-focused   the same message, the page focused: no violet
 --   sign-out-confirm  a phone signed in by a device code taps "Sign out":
 --                     the page that asks first (at both sizes; a state with
 --                     `as = "phone"` uses that device's session)
@@ -179,11 +186,19 @@ function alone_on(at, pid)
   end
 end
 
--- The notice of a message of Tam's in the channel, as the stream's
--- `message-notice` brings it (app/MessageNotice.roc's words and link).
 -- The clipboard, as `l` writes a citation to it: the text shown on the
 -- page, and held in its data-text for a `wait` to read.
 const CAPTURE = [==[eval window.ClipboardItem = undefined; Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: function (t) { var p = document.createElement('pre'); p.id = 'cite-seen'; p.textContent = t; p.setAttribute('data-text', t); p.style.cssText = 'position:fixed;top:60px;left:280px;z-index:99;background:#fff;color:#000;padding:8px;white-space:pre-wrap;max-width:700px;font-size:14px'; document.body.appendChild(p); return Promise.resolve(); }}})]==]
+
+-- A message Steve sends to his own DM once the page's stream is open, which
+-- is news to him on any other page (app/MessageNotice.roc's `recipients`).
+const SELF_NOTICE = {
+  "eval new Promise(function (r) { setTimeout(r, 700); })",
+  "eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself.')})",
+  "wait .notice-strip.notice-message"}
+
+-- The notice of a message of Tam's in the channel, as the stream's
+-- `message-notice` brings it (app/MessageNotice.roc's words and link).
 const MESSAGE_NOTICE = "eval Notices.showUnlessHere('<a href=\"/chat/channel/general/roc-chat#msg-5\">Tam posted to general &gt; roc-chat.</a>')"
 
 -- What a click or a key opens, at the desktop's size: each a page and the
@@ -264,6 +279,21 @@ const STATES = {
   {name = "dm-message-notice", size = "phone", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
   {name = "dm-notice-dismissed", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     MESSAGE_NOTICE, "wait .notice-strip.notice-message", "click .notice-strip .notice-dismiss"}},
+  {name = "channel-self-notice", path = "/chat/channel/general/roc-chat", steps = SELF_NOTICE},
+  {name = "channel-self-notice", size = "phone", path = "/chat/channel/general/roc-chat", steps = SELF_NOTICE},
+  {name = "dm-here-away", path = "/chat/dm/1_2/plans", steps = {
+    "eval document.hasFocus = function () { return false; }",
+    "eval Notices.showUnlessHere('<a href=\"/chat/dm/1_2/plans#msg-9\">Tam sent you a message on plans.</a>')",
+    "eval if (/alert-icon/.test(document.getElementById('favicon').href) && !/sent you/.test(document.querySelector('.notice-strip').textContent)) document.body.setAttribute('data-here-violet', '')",
+    "wait body[data-here-violet]",
+    "eval document.hasFocus = function () { return true; }; window.dispatchEvent(new Event('focus'))",
+    "eval if (/favicon\\.ico/.test(document.getElementById('favicon').href)) document.body.setAttribute('data-here-cleared', '')",
+    "wait body[data-here-cleared]"}},
+  {name = "dm-here-focused", path = "/chat/dm/1_2/plans", steps = {
+    "eval document.hasFocus = function () { return true; }",
+    "eval Notices.showUnlessHere('<a href=\"/chat/dm/1_2/plans#msg-9\">Tam sent you a message on plans.</a>')",
+    "eval var f = document.getElementById('favicon'); if (!(f && /alert-icon/.test(f.href)) && !/sent you/.test(document.querySelector('.notice-strip').textContent)) document.body.setAttribute('data-here-quiet', '')",
+    "wait body[data-here-quiet]"}},
   {name = "browse-bad-topic", path = "/chat", steps = {
     "click input[name=topic]", "type two words", "click .browse-panes form button", "wait p.problem"}},
   {name = "invite-made", path = "/invites", steps = {"click .invite-row button", "wait .invite-made",
