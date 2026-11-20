@@ -40,7 +40,7 @@ SearchWords :: [].{
 
 	## `bytes` with each ASCII capital made small.
 	fold_ascii : List(U8) -> List(U8)
-	fold_ascii = |bytes| bytes.map(lowered)
+	fold_ascii = |bytes| bytes.map(lower_byte)
 
 	## The bytes of `span` in `bytes`.
 	span_bytes : List(U8), SearchWords.Span -> List(U8)
@@ -143,8 +143,8 @@ next_run = |bytes, at| {
 }
 
 ## `byte`, a capital made small.
-lowered : U8 -> U8
-lowered = |byte| {
+lower_byte : U8 -> U8
+lower_byte = |byte| {
 	if byte >= 'A' and byte <= 'Z' {
 		byte + 32
 	} else {
