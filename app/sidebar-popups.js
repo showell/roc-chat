@@ -6,24 +6,26 @@
 // Escape, Close, or a click outside it closes it. A dialog sits above the
 // phone's drawer, so each works there too.
 //
-// The new-topic popup holds a place's form, its field focused: Enter adds
-// the topic, and Escape or Close cancels. The form posts as it always has,
-// to the place's path, but by fetch: a topic the server takes answers with
-// its page, which the browser then opens; one it refuses answers with
-// Browse, whose problem paragraph (.problem) the popup shows, keeping what
-// was typed.
-//
-// The place popup is a place's card, opened by its name in the sidebar: a
-// DM's is about its person, a channel's about the channel, one card for
-// both (Steve, 2026-11-20: "channels UX features mostly match DM UX"). It
-// says the place's name; for a DM's person whether they are online now
+// A place has one popup, its card, opened two ways (Steve, 2026-11-20:
+// "popups can be roomy and convenient... if you click the + icon, the popup
+// should still show existing topics beneath the UX for adding the new
+// topic. This trains the user that they're allowed to explore the app").
+// The "+" (or the n key, for the page's own place) opens it with the
+// place's new-topic form on top and its topics under it; the place's name
+// opens it with the place first: a DM's person, whether they are online now
 // (the place's data-presence, which sidebar.js keeps up to date) and when
 // they joined when the server says (data-joined, seconds since 1970, shown
-// as a date in the viewer's own time); then the place's topics as small links straight to each, and the
-// place's new-topic form itself, its field and its button: a popup is
-// roomy, so its action is in it, and no popup opens another (Steve,
-// 2026-11-20). Enter adds the topic, as in the "+" popup, and a refusal
-// shows under the form; Escape closes the card.
+// as a date in the viewer's own time), or a channel's name; then its
+// topics, then the form. A DM's card and a channel's are one card (Steve,
+// 2026-11-20: "channels UX features mostly match DM UX"). Either way the
+// focus starts in the form's field: Enter adds the topic, ↓ and ↑ move
+// through the topics' links, Enter on one opens it, and Escape or Close
+// closes the card. The form posts as it always has, to the place's path,
+// but by fetch: a topic the server takes answers with its page, which the
+// browser then opens; one it refuses answers with Browse, whose problem
+// paragraph (.problem) the card shows under the form, keeping what was
+// typed. A popup is roomy, so its action is in it, and no popup opens
+// another.
 //
 // The people popup lists the DMs the sidebar keeps out of sight, behind
 // the DMs group's "more" row, with a filter field; choosing one shows their
@@ -34,9 +36,26 @@
 // are palette.js's.
 window.SidebarPopups = (function () {
   'use strict';
-  var backdropRule = document.createElement('style');
-  backdropRule.textContent = 'dialog.topic-popup::backdrop, dialog.place-popup::backdrop, dialog.people-popup::backdrop { background: var(--cc-backdrop); }';
-  document.head.appendChild(backdropRule);
+  // What can't be inlined: the backdrop, and the buttons' and links' hover
+  // and keyboard focus. The buttons are compose.js's family: the primary
+  // action in the accent, the rest quiet, 13 pixels, 6-pixel corners.
+  var rules = document.createElement('style');
+  rules.textContent = [
+    'dialog.sidebar-popup::backdrop{background:var(--cc-backdrop)}',
+    '.sidebar-popup button{font-family:inherit;font-size:13px;padding:5px 14px;border-radius:6px;cursor:pointer}',
+    '.sidebar-popup .popup-primary{align-self:flex-start;background:var(--cc-accent);color:var(--cc-bg);border:1px solid var(--cc-accent)}',
+    '.sidebar-popup .popup-primary:hover:not(:disabled){background:var(--cc-accent-hover);border-color:var(--cc-accent-hover)}',
+    '.sidebar-popup .popup-primary:disabled{opacity:.5;cursor:default}',
+    '.sidebar-popup .popup-secondary{background:none;color:var(--cc-fg);border:1px solid var(--cc-quote-border)}',
+    '.sidebar-popup .popup-secondary:hover{background:var(--cc-accent-soft-hov)}',
+    '.sidebar-popup button:focus-visible,.sidebar-popup a:focus-visible,.sidebar-popup [role=button]:focus-visible' +
+      '{outline:2px solid var(--cc-accent);outline-offset:2px}',
+    '.sidebar-popup .popup-topic{display:block;padding:5px 8px;border-radius:6px;font-size:14px;' +
+      'color:var(--cc-accent);text-decoration:none;overflow-wrap:anywhere}',
+    '.sidebar-popup .popup-topic:hover,.sidebar-popup .popup-topic:focus-visible{background:var(--cc-accent-soft-bg)}',
+    '.sidebar-popup .popup-topic[aria-current]{color:var(--cc-fg);font-weight:600}',
+  ].join('\n');
+  document.head.appendChild(rules);
 
   // How many popups are open: sidebar.js leaves Escape to an open one.
   var opened = 0;
@@ -51,20 +70,21 @@ window.SidebarPopups = (function () {
     dot.title = online ? 'online' : 'away';
   }
 
-  // A popup's frame: a dialog `width` wide, its strap headed `words`, and
-  // its body padded `padding`. `show` opens it; once closed it is removed
-  // and the focus goes back to `opener`.
-  function frame(className, words, width, padding, opener) {
+  // A popup's frame: a dialog 380 pixels wide (capped to a phone's
+  // window), its strap headed `words`, and its body roomy, padded 18 by 20.
+  // `show` opens it; once closed it is removed and the focus goes back to
+  // `opener`.
+  function frame(className, words, opener) {
     var dlg = document.createElement('dialog');
-    dlg.className = className;
+    dlg.className = className + ' sidebar-popup';
     Object.assign(dlg.style, {
-      width: width, padding: '0', border: '1px solid var(--cc-dialog-border)', borderRadius: '8px',
-      background: 'var(--cc-bg)', color: 'var(--cc-fg)',
+      width: 'min(380px, 92vw)', boxSizing: 'border-box', padding: '0', border: '1px solid var(--cc-dialog-border)',
+      borderRadius: '10px', background: 'var(--cc-bg)', color: 'var(--cc-fg)', lineHeight: '1.45',
     });
     var controls = document.createElement('div');
     Object.assign(controls.style, {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-      padding: '6px 8px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
+      padding: '8px 10px 8px 20px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
     });
     var heading = document.createElement('span');
     heading.textContent = words;
@@ -72,11 +92,12 @@ window.SidebarPopups = (function () {
     var close = document.createElement('button');
     close.type = 'button';
     close.textContent = 'Close';
+    close.className = 'popup-secondary';
     close.addEventListener('click', function () { dlg.close(); });
     controls.appendChild(heading);
     controls.appendChild(close);
     var body = document.createElement('div');
-    body.style.padding = padding;
+    body.style.padding = '18px 20px 20px';
     dlg.appendChild(controls);
     dlg.appendChild(body);
     dlg.addEventListener('close', function () {
@@ -93,12 +114,18 @@ window.SidebarPopups = (function () {
     return { heading: heading, body: body, show: show, close: function () { dlg.close(); } };
   }
 
-  // A place's new-topic popup, `form` headed `words`, giving the focus back
-  // to `plus`. The form is posted by fetch, so a refusal stays in the popup.
-  function topicPopup(form, words, plus) {
+  // A place's new-topic popup, `form` headed `words`, giving the focus back  // A place's new-topic form, moved into whichever popup shows it. It is
+  // posted by fetch, so a refusal stays in the popup. Its field and its
+  // button are restyled for a popup: the field roomy, the button the
+  // house's primary one (as compose.js's Send).
+  function topicForm(form) {
     var input = form.querySelector('input');
     var submit = form.querySelector('button');
     if (!input || !submit) throw new Error('sidebar-popups.js: a new-topic form has no input or button');
+    submit.removeAttribute('style');
+    submit.className = 'popup-primary';
+    Object.assign(input.style, { fontSize: '14px', padding: '6px 8px', borderRadius: '6px', marginTop: '4px' });
+    Object.assign(form.style, { gap: '8px' });
     var problem = document.createElement('p');
     Object.assign(problem.style, { margin: '8px 0 0', fontSize: '13px', color: 'var(--cc-notify-fg)' });
     function say(text) {
@@ -119,9 +146,9 @@ window.SidebarPopups = (function () {
           });
         }, function () { say('The server did not answer; try again.'); });
     });
-    // The form, and the line that says a refusal, put fresh into `into`:
-    // the "+" popup's body, or a place card's. One popup is open at a time,
-    // so the one form moves to whichever holds it.
+    // The form, and the line that says a refusal, put fresh into `into`.
+    // One popup is open at a time, so the one form moves to whichever
+    // holds it.
     function mount(into) {
       problem.textContent = '';
       submit.disabled = false;
@@ -129,14 +156,7 @@ window.SidebarPopups = (function () {
       into.appendChild(form);
       into.appendChild(problem);
     }
-    function open() {
-      var popup = frame('topic-popup', words, 'min(320px, 90vw)', '12px 14px', plus);
-      mount(popup.body);
-      popup.show();
-      input.focus();
-      input.select();
-    }
-    return { open: open, mount: mount };
+    return { mount: mount, input: input };
   }
 
   // A small muted line of a place card.
@@ -151,26 +171,63 @@ window.SidebarPopups = (function () {
     var day = new Date(Number(seconds) * 1000);
     return 'Joined ' + day.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   }
+  // A small capitalised heading of a card's part.
+  function cardHeading(text, top) {
+    var heading = cardLine(text);
+    Object.assign(heading.style, {
+      margin: top + ' 0 6px', fontSize: '11px', fontWeight: '600', letterSpacing: '0.06em',
+      textTransform: 'uppercase', color: 'var(--cc-muted-fg)',
+    });
+    return heading;
+  }
 
-  // The card of `place`, a DM or a channel, named `who`, its topics `list`,
-  // giving the focus back to `name`. The place's new-topic form is in the
-  // card itself, under its topics (`topic`, the place's topicPopup, puts it
-  // there): a popup is roomy, so its action is right in it, never behind a
-  // second popup (Steve, 2026-11-20). Enter adds the topic; Escape closes
-  // the card. `fill` writes the card into another popup's body, the people
-  // popup's.
-  function placePopup(place, who, list, name, topic) {
-    function open() {
-      var popup = frame('place-popup', '', 'min(380px, 92vw)', '16px 18px 18px', name);
-      fill(popup.body);
-      popup.show();
+  // The place's topics `list` (the sidebar's, newest first) as a column of
+  // links, one a row, each opening its topic; none says so.
+  function topicLinks(list) {
+    var links = list.querySelectorAll('li a');
+    if (links.length === 0) {
+      var none = cardLine('No topics yet.');
+      none.style.color = 'var(--cc-muted-fg)';
+      return none;
     }
-    function fill(body) {
-      var popup = { body: body };
+    var column = document.createElement('div');
+    Object.assign(column.style, { display: 'flex', flexDirection: 'column', maxHeight: '40vh', overflowY: 'auto', margin: '0 -8px' });
+    links.forEach(function (shown) {
+      var link = document.createElement('a');
+      link.href = shown.getAttribute('href');
+      link.textContent = shown.textContent;
+      link.className = 'popup-topic';
+      if (shown.classList.contains('current')) link.setAttribute('aria-current', 'page');
+      column.appendChild(link);
+    });
+    return column;
+  }
+
+  // The card of `place`, a DM or a channel, named `who`, its topics `list`
+  // and its new-topic form `topic` (a topicForm). One card, opened two ways,
+  // with the focus in the form's field either way, Enter adding the topic:
+  // `open('new', plus)`, by the "+", has the form on top and the place's
+  // topics under it, so the popup also shows where one can go next;
+  // `open('about', name)`, by the place's name, says the place's name and,
+  // for a DM, its person's presence and when they joined, then the topics,
+  // then the form. A popup is roomy, so its action is right in it, never
+  // behind a second popup (Steve, 2026-11-20). ↓ and ↑ move from the field
+  // through the topics' links, Enter opens one, and the focus goes back to
+  // what opened the card when it closes. `fill(body, mode)` writes the card
+  // into another popup's body, the people popup's.
+  function placePopup(place, who, list, topic) {
+    function open(mode, opener) {
+      var popup = frame('place-popup', mode === 'new' ? 'New topic in ' + who : '', opener);
+      fill(popup.body, mode);
+      popup.show();
+      topic.input.focus();
+      topic.input.select();
+    }
+    function about(body) {
       var title = document.createElement('p');
       title.textContent = who;
       Object.assign(title.style, { margin: '0 0 8px', fontSize: '17px', fontWeight: 'bold', overflowWrap: 'anywhere' });
-      popup.body.appendChild(title);
+      body.appendChild(title);
       var presence = place.getAttribute('data-presence');
       if (presence) {
         var online = presence === 'online';
@@ -179,41 +236,38 @@ window.SidebarPopups = (function () {
         var dot = document.createElement('span');
         paintDot(dot, online);
         line.insertBefore(dot, line.firstChild);
-        popup.body.appendChild(line);
+        body.appendChild(line);
       }
       var joined = place.getAttribute('data-joined');
-      if (joined) popup.body.appendChild(cardLine(joinedWords(joined)));
-
-      var topicsHeading = cardLine('Topics');
-      Object.assign(topicsHeading.style, {
-        margin: '14px 0 6px', fontSize: '11px', fontWeight: '600', letterSpacing: '0.06em',
-        textTransform: 'uppercase', color: 'var(--cc-muted-fg)',
-      });
-      popup.body.appendChild(topicsHeading);
-      var links = list.querySelectorAll('li a');
-      if (links.length === 0) {
-        var none = cardLine('No topics yet.');
-        none.style.color = 'var(--cc-muted-fg)';
-        popup.body.appendChild(none);
-      } else {
-        var topics = document.createElement('div');
-        Object.assign(topics.style, { display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: '12px' });
-        links.forEach(function (shown) {
-          var link = document.createElement('a');
-          link.href = shown.getAttribute('href');
-          link.textContent = shown.textContent;
-          Object.assign(link.style, { color: 'var(--cc-accent)', textDecoration: 'none', overflowWrap: 'anywhere' });
-          link.addEventListener('mouseenter', function () { link.style.textDecoration = 'underline'; });
-          link.addEventListener('mouseleave', function () { link.style.textDecoration = 'none'; });
-          topics.appendChild(link);
-        });
-        popup.body.appendChild(topics);
-      }
-
+      if (joined) body.appendChild(cardLine(joinedWords(joined)));
+    }
+    function fill(into, mode) {
+      var body = document.createElement('div');
+      into.appendChild(body);
       var start = document.createElement('div');
-      start.style.marginTop = '16px';
       topic.mount(start);
-      popup.body.appendChild(start);
+      var topics = topicLinks(list);
+      if (mode === 'new') {
+        body.appendChild(start);
+        body.appendChild(cardHeading('Topics', '18px'));
+        body.appendChild(topics);
+      } else {
+        about(body);
+        body.appendChild(cardHeading('Topics', '14px'));
+        body.appendChild(topics);
+        start.style.marginTop = '18px';
+        body.appendChild(start);
+      }
+      body.addEventListener('keydown', function (e) {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        var stops = [topic.input].concat(Array.prototype.slice.call(body.querySelectorAll('.popup-topic')));
+        var at = stops.indexOf(document.activeElement);
+        if (at === -1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var next = stops[Math.max(0, Math.min(stops.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
+        next.focus();
+      });
     }
     return { open: open, fill: fill };
   }
@@ -229,7 +283,7 @@ window.SidebarPopups = (function () {
   // sidebar itself is clutter.
   function peoplePopup(people, opener) {
     function open() {
-      var popup = frame('people-popup', 'People', 'min(380px, 92vw)', '12px 14px 14px', opener);
+      var popup = frame('people-popup', 'People', opener);
       var filter = document.createElement('input');
       filter.type = 'search';
       filter.placeholder = 'Filter by name';
@@ -249,13 +303,11 @@ window.SidebarPopups = (function () {
         var back = document.createElement('button');
         back.type = 'button';
         back.textContent = '← All people';
-        Object.assign(back.style, {
-          background: 'none', border: 'none', padding: '0', margin: '0 0 10px', cursor: 'pointer',
-          fontFamily: 'inherit', fontSize: '13px', color: 'var(--cc-accent)',
-        });
+        back.className = 'popup-secondary';
+        back.style.marginBottom = '14px';
         back.addEventListener('click', showList);
         popup.body.appendChild(back);
-        person.card.fill(popup.body);
+        person.card.fill(popup.body, 'about');
         back.focus();
       }
       function listRows() {
@@ -310,5 +362,5 @@ window.SidebarPopups = (function () {
     return { open: open };
   }
 
-  return { isOpen: isOpen, paintDot: paintDot, topicPopup: topicPopup, placePopup: placePopup, peoplePopup: peoplePopup };
+  return { isOpen: isOpen, paintDot: paintDot, topicForm: topicForm, placePopup: placePopup, peoplePopup: peoplePopup };
 })();

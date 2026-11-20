@@ -17,6 +17,8 @@ This is for anyone changing a page. `design.md` holds the owner's decisions; thi
 - Chrome is economical: status lines, bars and headers get thin padding. Space goes between groups, not inside thin bars.
 - Collapsing is the answer to "too much to show", not shrinking. Once a section can collapse, it's fine for it to run below the fold.
 - Inputs in the sidebar itself are clutter. A popup is roomy, so put the action (a field, a button) right in the popup. A popup never opens another popup.
+- A popup also shows where you can go next (e.g. the place's topics under the new-topic form). It trains people that they may explore; nothing has to be reached one way only.
+- A popup's buttons are one family with the compose box's: the primary action in the accent, the rest quiet, each with a hover and a visible keyboard focus. Opening a popup puts the focus where the most common task starts.
 
 ## Nudging
 

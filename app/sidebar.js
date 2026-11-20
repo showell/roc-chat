@@ -78,7 +78,8 @@
 // place's form after its topics, and before them a button, "New topic in"
 // and the place's name; this script takes the form out of the sidebar and
 // shows the button as a small "+" beside the place's name, its words kept as
-// its label. The "+" opens the place's new-topic popup (sidebar-popups.js).
+// its label. The "+" opens the place's card on its new-topic form
+// (sidebar-popups.js), and so does the n key, for the page's own place.
 //
 // It finds every part by app/PageContract.roc's classes, and styles each on
 // the DOM itself; its colours are palette.js's.
@@ -256,8 +257,10 @@ window.Sidebar = (function () {
   var dots = {};
   var forms = [];
   var places = {};
-  // Each DM's card, by its data-section, for the people popup.
+  // Each place's card, by its data-section, for the people popup.
   var cards = {};
+  // The page's own place's card, opened on its new-topic form: the n key's.
+  var newTopicHere = null;
   sidebar.querySelectorAll('.sidebar-place').forEach(function (place) {
     var section = place.getAttribute('data-section');
     var name = place.querySelector('.sidebar-place-name');
@@ -289,16 +292,16 @@ window.Sidebar = (function () {
     hoverColour(plus, 'var(--cc-muted-fg)', 'var(--cc-accent)');
     form.remove();
     forms.push(form);
-    var popup = SidebarPopups.topicPopup(form, words, plus);
-    plus.addEventListener('click', popup.open);
+    var card = SidebarPopups.placePopup(place, label, list, SidebarPopups.topicForm(form));
+    cards[section] = card;
+    plus.addEventListener('click', function () { card.open('new', plus); });
+    if (place.getAttribute('data-opening') === 'always') newTopicHere = function () { card.open('new', plus); };
 
     var shut = disclosure(label, list, 'chat-sidebar-collapsed:' + section, startsCollapsed(section, place.getAttribute('data-opening')));
     headingRow(name, [shut.triangle, name, plus], 1);
     name.title = 'About ' + label;
     hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
-    var card = SidebarPopups.placePopup(place, label, list, name, popup);
-    cards[section] = card;
-    onPress(name, card.open);
+    onPress(name, function () { card.open('about', name); });
   });
 
   // The DMs that wait (app/DmShortlist.roc): kept out of sight, and the
@@ -437,6 +440,15 @@ window.Sidebar = (function () {
     if (fields.length !== 3) throw new Error('sidebar.js: a topic-added event is three lines, the place, the topic and its page');
     addTopic(fields[0], fields[1], fields[2]);
   }
+
+  // The n key opens the page's own place's card on its new-topic form, as
+  // its "+" does. Keys is compose.js's, which runs after this script, so
+  // the key is registered once every script of the page has run.
+  if (!newTopicHere) throw new Error('sidebar.js: no .sidebar-place is the page\'s own (data-opening="always")');
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.Keys) throw new Error('sidebar.js: compose.js gives Keys');
+    Keys.register({ key: 'n', label: 'new topic here', run: newTopicHere });
+  });
 
   return { addTopic: addTopic, topicAdded: topicAdded, markOnline: markOnline };
 })();
