@@ -342,12 +342,66 @@
   // still to be noticed.
   var awaitingArrival = Object.create(null);
 
+  // One draft per topic, kept in this browser (Steve, 2026-11-20: "Zulip
+  // holds on to a zillion drafts when you almost only ever need one"): the
+  // box's text, under the topic's page path (the form's action), in one
+  // localStorage entry holding the newest DRAFTS_KEPT topics' drafts, older
+  // ones dropped. It is written at each change of the box, emptied by a
+  // send the server stored, and put back in the box when the topic's page
+  // opens again. A draft is marked `sending` while a send of it is on its
+  // way, so a page left mid-send says so when the draft comes back. Private
+  // browsing, or storage that is full, keeps no draft: the box works as
+  // before.
+  var DRAFTS_KEY = 'roc-chat drafts';
+  var DRAFTS_KEPT = 20;
+  var draftPath = form.getAttribute('action');
+  if (!draftPath) throw new Error('compose.js: the form has no action, the topic\'s page path');
+  function readDrafts() {
+    try {
+      var drafts = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}');
+      return drafts && typeof drafts === 'object' && !Array.isArray(drafts) ? drafts : {};
+    } catch (e) { return {}; } // No storage, or an entry that is no JSON: no drafts.
+  }
+  function isDraft(entry) {
+    return !!entry && typeof entry.text === 'string' && typeof entry.at === 'number';
+  }
+  // What this page last wrote, so a page that never held a draft never
+  // removes another tab's.
+  var savedText = '';
+  var savedSending = false;
+  function saveDraft() {
+    var text = box.value.trim() === '' ? '' : box.value;
+    var sending = !!pending && text !== '';
+    if (text === savedText && sending === savedSending) return;
+    savedText = text;
+    savedSending = sending;
+    var drafts = readDrafts();
+    if (text === '') delete drafts[draftPath];
+    else drafts[draftPath] = { text: text, at: Date.now(), sending: sending };
+    var paths = Object.keys(drafts).filter(function (p) { return isDraft(drafts[p]); });
+    paths.sort(function (a, b) { return drafts[b].at - drafts[a].at; });
+    var kept = {};
+    paths.slice(0, DRAFTS_KEPT).forEach(function (p) { kept[p] = drafts[p]; });
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(kept)); } catch (e) { /* No storage: the draft lasts this page. */ }
+  }
+  var restored = readDrafts()[draftPath];
+  if (isDraft(restored) && box.value === '') {
+    box.value = restored.text;
+    savedText = restored.text;
+    savedSending = restored.sending === true;
+    if (savedSending) {
+      status.style.color = ERROR;
+      status.textContent = 'This draft was still sending when the page was left: look for it above before you send it again.';
+    }
+  }
+
   // The box and its buttons, on or off by what is on its way: while a send
   // is, all of them are off; while an upload is, Send and Upload are, so a
   // message never goes without the image being put in it. Send is off too
   // while the box holds nothing but space, so there is nothing to refuse.
   function refreshControls() {
     refreshOpenButton();
+    saveDraft();
     box.disabled = !!pending;
     send.disabled = !!pending || uploading || box.value.trim() === '';
     uploadButton.disabled = !!pending || uploading;
