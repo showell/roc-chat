@@ -42,6 +42,14 @@
 // Close button, and a fixed frame of 70% of the window each way that the
 // image first fits and then scrolls in once zoomed. Escape closes it, as it
 // closes any modal dialog; a click outside it doesn't. A video has no popup.
+//
+// A click on a code block in a message, any <pre> (a quote-reply's quoted
+// message among them, as in chat-client), opens its text in a popup,
+// chat-client's too (js/chat_code_popup.js, from the same handleClick): a
+// modal dialog over a dimmed page, as wide and tall as the code but at most
+// 80% of the window each way, a strap with a Close button, and the code
+// unwrapped in a monospace font, scrolling when it is larger. Escape or a
+// click outside it closes it.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
@@ -74,7 +82,7 @@
     '.message .body a.msg-ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em;' +
       ' background: var(--cc-accent-soft-bg); color: var(--cc-accent); padding: 0 4px; border-radius: 3px; text-decoration: none; }',
     '.message .body a.msg-ref:hover { background: var(--cc-accent-soft-hov); }',
-    '.message .body pre { background: var(--cc-code-bg); padding: 8px; border-radius: 4px; overflow-x: auto; }',
+    '.message .body pre { background: var(--cc-code-bg); padding: 8px; border-radius: 4px; overflow-x: auto; cursor: pointer; }',
     // A quote-reply's quoted message, roc-markdown's pre.chat-quote, as
     // chat-client's js/message.js drew it.
     '.message .body pre.chat-quote { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere;' +
@@ -84,8 +92,9 @@
     '.message .body video { max-width: 100%; max-height: 480px; display: block; margin: 6px 0; border-radius: 6px; }',
     '.message .body table { border-collapse: collapse; }',
     '.message .body td, .message .body th { border: 1px solid var(--cc-border); padding: 0 .4rem; }',
-    // The image popup's backdrop, the one rule its element styles can't hold.
+    // The popups' backdrops, the one rule their element styles can't hold.
     'dialog.image-popup::backdrop { background: var(--cc-backdrop); }',
+    'dialog.code-popup::backdrop { background: var(--cc-backdrop); }',
   ].join('\n');
   document.head.appendChild(s);
 
@@ -310,9 +319,52 @@
     img.src = src;
     if (img.complete) fit();
   }
+  // The code popup, chat-client's js/chat_code_popup.js as it was. Each call
+  // builds a fresh dialog, which removes itself once closed; it is as big as
+  // the code, up to 80% of the window, and the code scrolls inside it.
+  function showCode(text) {
+    var dlg = document.createElement('dialog');
+    dlg.className = 'code-popup';
+    Object.assign(dlg.style, {
+      maxWidth: '80vw', maxHeight: '80vh', padding: '0',
+      border: '1px solid var(--cc-dialog-border)', borderRadius: '8px', background: 'var(--cc-bg)',
+      display: 'flex', flexDirection: 'column',
+    });
+
+    var controls = document.createElement('div');
+    Object.assign(controls.style, {
+      flex: 'none', display: 'flex', justifyContent: 'flex-end',
+      padding: '6px 8px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
+    });
+    var close = document.createElement('button');
+    close.type = 'button'; close.textContent = 'Close';
+    close.addEventListener('click', function () { dlg.close(); });
+    controls.appendChild(close);
+
+    var pre = document.createElement('pre');
+    pre.textContent = text;
+    Object.assign(pre.style, {
+      flex: '1', minHeight: '0', minWidth: '0', overflow: 'auto',
+      margin: '0', padding: '14px 16px',
+      fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+      fontSize: '14px', lineHeight: '1.45', whiteSpace: 'pre',
+      color: 'var(--cc-code-fg)', cursor: 'auto',
+    });
+
+    dlg.appendChild(controls); dlg.appendChild(pre);
+    dlg.addEventListener('close', function () { dlg.remove(); });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+  }
+  // As chat-client's handleClick: an image first, then any <pre> around
+  // what was clicked.
   messages.addEventListener('click', function (e) {
     var t = e.target;
-    if (t.tagName === 'IMG' && t.closest('.message .body')) showImage(t.src);
+    if (!t.closest('.message .body')) return;
+    if (t.tagName === 'IMG') { showImage(t.src); return; }
+    var pre = t.closest('pre');
+    if (pre) showCode(pre.textContent);
   });
 
   Keys.register({ key: 'ArrowDown', cap: '↓', label: 'next message', run: function () { moveSelection(1); } });
