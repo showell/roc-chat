@@ -253,7 +253,7 @@ load_invites_page! : {
 } => Try(TrustedHtml, _)
 load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	_ = acting.human_in_session() ? |why| Refused(why)
-	may_invite = MayInvite
+	may_invite = InviteRights.load_offer!(acting, directory, now)?
 	var $invited = []
 	for user in humans_of(directory) {
 		inviter = InviteRights.load_inviter!(user.id())?
@@ -292,6 +292,7 @@ invite_human! = |
 		now,
 	},
 | {
+	InviteRights.check_first_day!(acting, as_read, now)?
 	open = count_open_invites!(as_read, { by: acting.user().id(), now })?
 	planned =
 		match HumanInvites.name_from_form(body) {

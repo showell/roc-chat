@@ -5,7 +5,10 @@
 import HumanInvite
 import HumanInvites
 import NewcomerInvites
+import PeoplePages
+import Sample
 import SecretHash
+import SignedIn
 import Timestamp
 import UserId
 
@@ -86,3 +89,27 @@ expect
 		[invite({ number: 1, by: "1", second: 500 }), invite({ number: 2, by: "7", second: 2000 })],
 	])
 		== 0
+# Past the limit, the invites page has no form, and says when they may
+# invite again; within it, the form.
+expect {
+	page = |may_invite|
+		Str.from_utf8_lossy(
+			PeoplePages.invites({
+				viewer: SignedIn.dangerously_assume(Sample.user("Apoorva")),
+				users: Sample.directory.users(),
+				invited: [],
+				github: Offered,
+				may_invite,
+				shown: NoLink,
+				problem: NoProblem,
+				now: Timestamp.at_second(0),
+			}).to_utf8(),
+		)
+	words = NewcomerInvites.full_words(Timestamp.at_second(87400))
+	refused = page(MayNotInvite(words))
+	allowed = page(MayInvite)
+	!refused.contains("action=\"/invites\"")
+		and refused.contains("In your first day here")
+		and allowed.contains("action=\"/invites\"")
+		and !allowed.contains("In your first day here")
+}

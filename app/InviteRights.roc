@@ -1,9 +1,17 @@
 ## This module reads what a human's files say of their place among
 ## inviters, for `HumanInvitesRoute`: who invited them, which decides who may
-## invite them again. Its failures are the route's: a file that says no
-## fact, or the file system's fault.
+## invite them again, and, for a person in their first day, how many new
+## invites they made since they joined (`NewcomerInvites`). Its failures are
+## the route's: a refusal, a file that says no fact, or the file system's
+## fault.
 import AccountFiles
+import Directory
 import HumanInvites
+import InviteFiles
+import JoinedFiles
+import NewcomerInvites
+import SignedIn
+import Timestamp
 import UserId
 
 InviteRights :: [].{
@@ -14,4 +22,43 @@ InviteRights :: [].{
 		file = AccountFiles.read_inviter_file!(id) ? |fault| FileSystem(fault)
 		HumanInvites.inviter_from_file(file).map_err(|NotAnInviter| BadInviter(id))
 	}
+
+	## Whether `acting` may make a new invite at `now` by the first day's
+	## limit (`NewcomerInvites.check`): their `joined` file, and the new
+	## invites they made since, among every human's of `directory`. Past it,
+	## `FirstDayFull`, a 403 saying when they may again.
+	check_first_day! : SignedIn, Directory, Timestamp => Try({}, _)
+	check_first_day! = |acting, directory, now| {
+		by = acting.user().id()
+		joined = JoinedFiles.read_joined!(by) ? |fault| FileSystem(fault)
+		made =
+			match joined {
+				NoFile => 0
+				Joined(since) => {
+					var $invites = []
+					for user in directory.users().to_list() {
+						match user.as_human() {
+							Ok(human) => {
+								theirs = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
+								$invites = $invites.append(theirs)
+							}
+							Err(Agent(_)) => {}
+						}
+					}
+					NewcomerInvites.count_made($invites, { by, since })
+				}
+			}
+		NewcomerInvites.check({ by, joined, made, now }) ? |FirstDayFull(until)| Refused(FirstDayFull(until))
+		Ok({})
+	}
+
+	## What the invites page offers `acting` at `now`: the form, or, past the
+	## first day's limit, the line saying when they may invite again.
+	load_offer! : SignedIn, Directory, Timestamp => Try([MayInvite, MayNotInvite(Str)], _)
+	load_offer! = |acting, directory, now|
+		match InviteRights.check_first_day!(acting, directory, now) {
+			Ok({}) => Ok(MayInvite)
+			Err(Refused(FirstDayFull(until))) => Ok(MayNotInvite(NewcomerInvites.full_words(until)))
+			Err(FileSystem(fault)) => Err(FileSystem(fault))
+		}
 }

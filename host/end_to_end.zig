@@ -2401,6 +2401,9 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Debbie") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "spent") and
         std.mem.startsWith(u8, hash, "$2b$10$") and hash.len == 60 and !has(hash, debbie_password));
+    // Debbie invites many in the steps after; her first day is set back, so
+    // the first day's limit on invites (48zt6 tests it) doesn't stop them.
+    try data.writeFile(io, .{ .sub_path = "auth/3/joined", .data = "1000" });
     const joined_page = try getAs(a, io, port, try cookieLine(a, redeemed), "/invites");
     const first_page = try getAs(a, io, port, try cookieLine(a, redeemed), redeemed.header("location") orelse "");
     try t.check("the session joining started: her first page, 200, the owner's welcome; her own /invites, 200, signed in as Debbie", first_page.status == 200 and
@@ -3105,7 +3108,8 @@ fn signInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, se
 /// the names rules: a reserved or lookalike name is refused (48zt2), an expired invite frees its
 /// name (48zt3), a request refused after its name is judged frees nothing
 /// (48zt4), and a release from a channel besides #general leaves every page
-/// answering (48zt5).
+/// answering (48zt5), and a person makes at most 3 new invites in their
+/// first day (48zt6).
 fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, fake: *fake_github.Fake, debbie: []const u8) !void {
     // 48zo.
     const tess_id = try nextId(a, io, data);
@@ -3279,6 +3283,27 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     const debbies_browse = try getAs(a, io, port, debbie, "/chat");
     try t.check("Quin's name asked for again: released, out of #annex as well as #general, and the owner's pages and Debbie's each a 200", quin_anew.status == 200 and
         try exists(io, data, quin_released) and !has(annex_after, quin_line) and all_answer and debbies.status == 200 and debbies_browse.status == 200);
+
+    // 48zt6.
+    const rhea_id = try nextId(a, io, data);
+    const rhea = try cookieLine(a, try signUpHeadingTo(a, io, port, fake, "/invites", "user-id-56", "Rhea"));
+    var first_three = true;
+    for ([_][]const u8{ "Sela", "Tova", "Uli" }) |name| {
+        const made = try postAs(a, io, port, rhea, "/invites", try std.fmt.allocPrint(a, "name={s}", .{name}));
+        if (made.status != 200 or !has(made.body, "invite-code")) first_three = false;
+    }
+    const before_fourth = try nextId(a, io, data);
+    const fourth = try postAs(a, io, port, rhea, "/invites", "name=Vida");
+    const rhea_page = try getAs(a, io, port, rhea, "/invites");
+    const again = try postAs(a, io, port, rhea, try std.fmt.allocPrint(a, "/invites/{d}/again", .{rhea_id + 1}), "");
+    const limit_words = "In your first day here you can make at most 3 invites. You can invite again from ";
+    try t.check("a GitHub sign-up in their first day: three invites, 200 each; the fourth a 403 saying when they may again, nothing made; their invites page has no form, saying so; inviting one of the three again, 200", first_three and
+        fourth.status == 403 and has(fourth.body, limit_words) and try nextId(a, io, data) == before_fourth and
+        rhea_page.status == 200 and !has(rhea_page.body, "action=\"/invites\"") and has(rhea_page.body, limit_words) and
+        again.status == 200 and has(again.body, "invite-code"));
+    try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/joined", .{rhea_id}), .data = "1000" });
+    const after_a_day = try postAs(a, io, port, rhea, "/invites", "name=Vida");
+    try t.check("a day after joining, the fourth: 200", after_a_day.status == 200 and has(after_a_day.body, "invite-code"));
 }
 
 /// Whether the new human `made` lands in #general: at `expected`, a page of
