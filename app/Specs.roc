@@ -33,6 +33,7 @@ import LastConversationSpec
 import MessageLinkSpec
 import MessageNoticeSpec
 import NamesSpec
+import NewcomerInvitesSpec
 import PageSpec
 import PlaceSpec
 import PresenceSpec

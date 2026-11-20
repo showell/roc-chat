@@ -167,6 +167,9 @@ HumanInvite :: {
 	state : HumanInvite -> HumanInvite.State
 	state = |HumanInvite.(invite)| invite.state
 
+	created : HumanInvite -> Timestamp
+	created = |HumanInvite.(invite)| invite.created
+
 	expires : HumanInvite -> Timestamp
 	expires = |HumanInvite.(invite)| invite.expires
 

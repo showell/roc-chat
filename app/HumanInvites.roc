@@ -13,6 +13,8 @@
 ##   was never invited, is not.
 ## - A human has at most `open_most` open invites at once, counting every
 ##   invite they made that is live and unexpired.
+## - In a person's first day they make at most a few new invites
+##   (`NewcomerInvites`), a 403 past it.
 ## - A new human's name, the inviter's choice or the invitee's, is held to
 ##   `Directory.check_new_human_name`: free in any case, not reserved, and
 ##   not one that looks like a name the chat holds.
@@ -32,6 +34,7 @@ import Channels
 import Directory
 import HumanInvite
 import Name
+import NewcomerInvites
 import Password
 import SecretHash
 import SecretToken
@@ -50,6 +53,7 @@ HumanInvites :: [].{
 		ByApiKey,
 		Agent(UserId),
 		Capped,
+		FirstDayFull(Timestamp),
 		BadForm(Str),
 		BadName,
 		NameTaken,
@@ -68,8 +72,8 @@ HumanInvites :: [].{
 	]
 
 	## A refusal in words, with its status: a request with a key, an agent,
-	## a human at the cap, one who signed up by GitHub, or one who may not
-	## invite this human again, a 403; no such human, a 404; a form at
+	## a human at the cap, one past their first day's invites, or one who may
+	## not invite this human again, a 403; no such human, a 404; a form at
 	## fault, a name that is no name or a password that is none, a 400; a
 	## name taken, reserved, too close to another or chosen already, the
 	## chat full, or a browser signed in already, a 409; no default channel,
@@ -87,6 +91,7 @@ HumanInvites :: [].{
 				status: 403,
 				said: "You have as many open invites as one person may (${HumanInvites.open_most.to_str()}).",
 			}
+			FirstDayFull(until) => { status: 403, said: NewcomerInvites.full_words(until) }
 			BadForm(said) => { status: 400, said }
 			BadName => {
 				status: 400,
