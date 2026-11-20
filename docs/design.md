@@ -88,6 +88,7 @@ The answers from our listening session on 2026-11-02, and Steve's calls since, g
 
 ## Storage: the file system is the database
 
+- **The file that makes a thing exist is written last; anything read as proof of a state is written before it.** A write of several files is never a transaction, so a crash between two writes must leave a state the rules already plan for. `name` is what makes a folder an account, so an account's other files go before it. (Steve, 2026-11-20, from the day's cold audits, each of which found a write-order gap.)
 - **One folder per conversation, with its messages appended.** For our scale, the whole conversation is **one human-readable file**, readable with `cat`, author and timestamp included:
 
 ```
