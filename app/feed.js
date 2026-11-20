@@ -391,14 +391,17 @@
   window.Feed = { reveal: centre };
 
   // The page opens at the message its address names (a citation's link, a
-  // reload), else at the newest, selected. Images lay out late; once they
-  // have, it is brought back into view, unless the reader has moved.
+  // reload), else at the newest, selected, and only then is the pane shown
+  // (palette.js holds it unseen until it is `.placed`), so its first frame
+  // is where it opens, never its oldest messages. Images lay out late; once
+  // they have, it is brought back into view, unless the reader has moved.
   var named = /^#msg-[0-9]+$/.test(location.hash) && document.getElementById(location.hash.slice(1));
   var atAddress = named && messages.contains(named) ? named : null;
   var opening = atAddress || allMessages().pop();
   if (atAddress) centre(atAddress);
   else scrollToNewest();
   if (opening) select(opening, true);
+  messages.classList.add('placed');
   window.addEventListener('load', function () {
     if (!atAddress) scrollToNewest();
     else if (selected === atAddress) centre(atAddress);

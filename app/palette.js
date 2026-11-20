@@ -2,6 +2,13 @@
 // app/Script.roc serves. It sets the colours before the first paint,
 // so a page never flashes the other theme.
 //
+// It also holds a conversation's messages pane unseen until app/feed.js has
+// placed it (`.messages.placed`). The page's scripts run at the end of its
+// body, and a browser paints the messages it has parsed before they do: the
+// pane unstyled, its oldest messages at the top, for a frame or more before
+// feed.js scrolls it to the newest. Unseen is `opacity`, not `visibility`,
+// so compose.js can focus the pane before it is placed.
+//
 // The colours are chat-client's (js/colors.js), but for a code block's
 // (syn...), which are GitHub's: one palette of CSS custom
 // properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is the one saved in
@@ -65,7 +72,8 @@ window.Palette = (function () {
   document.documentElement.setAttribute('data-theme', saved || 'dark');
   var s = document.createElement('style');
   s.textContent = block(':root', LIGHT) + '\n' + block('html[data-theme="dark"]', DARK) + '\n'
-    + 'body { background: var(--cc-bg); color: var(--cc-fg); }\n';
+    + 'body { background: var(--cc-bg); color: var(--cc-fg); }\n'
+    + '.messages:not(.placed) { opacity: 0; }\n';
   document.head.appendChild(s);
 
   function current() { return document.documentElement.getAttribute('data-theme') || 'light'; }
