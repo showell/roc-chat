@@ -27,7 +27,9 @@
 ## which app/sidebar.js opens or collapses it by. The line
 ## above the page (`notice-strip`), on a conversation with a sidebar and on
 ## Recent, is where app/chrome.js shows that someone has come online, or
-## has written in one of the viewer's places.
+## has written in one of the viewer's places. An invite's link or code
+## (`invite-code`) is its shown text alone: app/panel.js gives each one the
+## button that copies it.
 import Html
 import Script
 import SidebarOrder
