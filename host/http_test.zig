@@ -689,18 +689,27 @@ test "the app's start: an empty data folder gets the first chat; one holding par
 }
 
 /// A sign-in by no one, the form `form`, on a connection of its own, with
-/// memory of its own, so several can run at once: its status, and how long
-/// its answer took.
-fn sign_in_by_form(port: u16, form: []const u8) !SignIn {
+/// memory of its own, so several can run at once: its status.
+fn sign_in_by_form(port: u16, form: []const u8) !u16 {
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
     const a = arena_state.allocator();
-    const began = Io.Clock.now(.awake, io);
     const bytes = try exchange(a, port, try std.fmt.allocPrint(a, "POST /login HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, form.len, form }));
-    return .{ .status = try status(bytes), .ms = began.untilNow(io, .awake).toMilliseconds() };
+    return try status(bytes);
 }
 
-const SignIn = struct { status: u16, ms: i64 };
+/// A sign-in with `form`, one at a time, answered `want` after running
+/// bcrypt exactly once, so its time is a check's whichever way it went;
+/// `path` names the way in a failure.
+fn expect_one_bcrypt_run(r: *Running, path: []const u8, form: []const u8, want: u16) !void {
+    const compared = &r.server.password_checks.compared;
+    const before = compared.load(.monotonic);
+    const got = try sign_in_by_form(r.server.port(), form);
+    const runs = compared.load(.monotonic) - before;
+    if (got == want and runs == 1) return;
+    std.debug.print("a sign-in by {s}: answered {d} after {d} bcrypt runs, not {d} after 1\n", .{ path, got, runs, want });
+    return error.TestUnexpectedResult;
+}
 
 const SignInAnswer = @typeInfo(@TypeOf(sign_in_by_form)).@"fn".return_type.?;
 
@@ -722,18 +731,18 @@ test "the checks' bucket: a burst at once is checked, the one past it a 429 with
     var refused: usize = 0;
     for (&burst) |*f| {
         const answer = try f.await(io);
-        if (answer.status == 401) checked += 1;
-        if (answer.status == 429) refused += 1;
+        if (answer == 401) checked += 1;
+        if (answer == 429) refused += 1;
     }
     try testing.expectEqual(5, checked);
     try testing.expectEqual(1, refused);
     try testing.expectEqual(5, r.server.password_checks.spent.load(.monotonic));
     // The right password for a human: still a 429, nothing checked.
-    try testing.expectEqual(429, (try sign_in_by_form(port, "name=Steve&password=right")).status);
+    try testing.expectEqual(429, try sign_in_by_form(port, "name=Steve&password=right"));
     try testing.expectEqual(5, r.server.password_checks.spent.load(.monotonic));
 }
 
-test "a sign-in runs a check on every path a name can take, each as slow as a wrong password's; a stored hash that is no hash answers as a wrong password" {
+test "a sign-in runs bcrypt once on every path a name can take, so its time never tells a stranger which names exist; a stored hash that is no hash answers as a wrong password" {
     const r = try Running.start(.{ .password_check_burst = 20 });
     defer r.stop();
     var arena_state = std.heap.ArenaAllocator.init(gpa);
@@ -743,29 +752,23 @@ test "a sign-in runs a check on every path a name can take, each as slow as a wr
     const made = try exchange(a, port, try ours(a, port, "POST /agents HTTP/1.1", "content-type: application/x-www-form-urlencoded\r\ncontent-length: 7\r\n\r\nname=CC"));
     try testing.expectEqual(303, try status(made));
     const spent = &r.server.password_checks.spent;
-    // Running's own password file, which holds no hash: the host refuses
-    // it unchecked, then the dummy hash is checked.
-    const no_hash = try sign_in_by_form(port, "name=Steve&password=guess");
-    try testing.expectEqual(401, no_hash.status);
+    // Running's own password file holds no hash: the host refuses it
+    // unread, a check spent, then the dummy hash is compared.
+    try expect_one_bcrypt_run(r, "a human whose password file holds no hash", "name=Steve&password=guess", 401);
     try testing.expectEqual(2, spent.load(.monotonic));
     try set_steve_password(r, "right");
-    const wrong = try sign_in_by_form(port, "name=Steve&password=guess");
-    try testing.expectEqual(401, wrong.status);
-    try testing.expectEqual(303, (try sign_in_by_form(port, "name=Steve&password=right")).status);
-    try testing.expectEqual(4, spent.load(.monotonic));
-    const nobody = try sign_in_by_form(port, "name=Nobody&password=guess");
-    const agent = try sign_in_by_form(port, "name=CC&password=guess");
+    try expect_one_bcrypt_run(r, "a human with a wrong password", "name=Steve&password=guess", 401);
+    try expect_one_bcrypt_run(r, "a human with the right password", "name=Steve&password=right", 303);
+    try expect_one_bcrypt_run(r, "a name no one has", "name=Nobody&password=guess", 401);
+    try expect_one_bcrypt_run(r, "an agent's name", "name=CC&password=guess", 401);
     try r.data.dir.deleteFile(io, "auth/1/password");
-    const no_file = try sign_in_by_form(port, "name=Steve&password=guess");
+    try expect_one_bcrypt_run(r, "a human with no password file", "name=Steve&password=guess", 401);
     try testing.expectEqual(7, spent.load(.monotonic));
-    for ([_]SignIn{ no_hash, nobody, agent, no_file }) |answer| {
-        try testing.expectEqual(401, answer.status);
-        try testing.expect(answer.ms * 2 >= wrong.ms);
-    }
     // A form that names no one at all is refused by its spelling, unchecked.
-    try testing.expectEqual(401, (try sign_in_by_form(port, "name=No%20one!&password=guess")).status);
-    try testing.expectEqual(401, (try sign_in_by_form(port, "name=Nobody&password=")).status);
+    try testing.expectEqual(401, try sign_in_by_form(port, "name=No%20one!&password=guess"));
+    try testing.expectEqual(401, try sign_in_by_form(port, "name=Nobody&password="));
     try testing.expectEqual(7, spent.load(.monotonic));
+    try testing.expectEqual(6, r.server.password_checks.compared.load(.monotonic));
 }
 
 test "a password's check lets the turn go: a page is answered while bcrypt runs" {
@@ -786,7 +789,7 @@ test "a password's check lets the turn go: a page is answered while bcrypt runs"
     const checked = try check.await(io);
     const check_ms = began.untilNow(io, .awake).toMilliseconds();
     try testing.expectEqual(200, try status(page));
-    try testing.expectEqual(401, checked.status);
+    try testing.expectEqual(401, checked);
     // bcrypt took long enough to matter, and the page took a fraction of it.
     try testing.expect(check_ms >= head_start_ms + 30);
     try testing.expect(page_ms * 2 < check_ms - head_start_ms);

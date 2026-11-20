@@ -156,6 +156,10 @@ pub const PasswordChecks = struct {
     /// How many checks the bucket has let run, which the tests read from
     /// outside the turn.
     spent: std.atomic.Value(u64) = .init(0),
+    /// How many of them ran bcrypt to a verdict, matching or not: a hash
+    /// refused unread is spent but not compared. The tests read it to see
+    /// that every way a sign-in can go runs bcrypt once.
+    compared: std.atomic.Value(u64) = .init(0),
 
     /// A full bucket at `now_ms`.
     pub fn init(limits: struct { burst: u32, refill_ms: u32 }, now_ms: i64) PasswordChecks {

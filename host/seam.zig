@@ -413,6 +413,7 @@ pub export fn password_matches_bcrypt_hash(password: RocBytes, hash: RocBytes) c
     const verdict = sign_in.password_matches_bcrypt_hash(password.slice(), hash.slice());
     turn.lockUncancelable(io);
     current = this_call;
+    if (verdict == .matches or verdict == .does_not_match) _ = checks.compared.fetchAdd(1, .monotonic);
     if (verdict == .not_a_bcrypt_hash) log.warn(what ++ ": a stored hash is no bcrypt hash this server checks (`$2a$`, `$2b$` or `$2y$` at a cost of {d} to {d}), answered as a wrong password", .{ sign_in.bcrypt_cost_lowest, sign_in.bcrypt_cost_highest });
     return verdict;
 }
