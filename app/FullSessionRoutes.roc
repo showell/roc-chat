@@ -35,21 +35,59 @@ FullSessionRoutes :: [].{
 	refusal_words = "This device signed in with a code from another device. To invite people, manage agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub."
 }
 
-## Whether `choice` asks for a session no device code started.
+## Whether `choice` asks for a session no device code started: every route
+## named, so a new one is a decision here.
 asks_full_session : Route.Choice -> Bool
 asks_full_session = |choice|
 	match choice {
+		SignedInOnly(UploadToConversation(_)) => Bool.False
 		SignedInOnly(StartGitHubLink) => Bool.True
+		SignedInOnly(ShowBrowse) => Bool.False
+		SignedInOnly(ShowRecent) => Bool.False
+		SignedInOnly(OpenRecentStream) => Bool.False
+		SignedInOnly(StartTopic(_)) => Bool.False
+		SignedInOnly(ShowConversation(_)) => Bool.False
+		SignedInOnly(AppendToConversation(_)) => Bool.False
+		SignedInOnly(SendToConversation(_)) => Bool.False
+		SignedInOnly(OpenConversationStream(_)) => Bool.False
+		SignedInOnly(ServeRawTranscript(_)) => Bool.False
+		SignedInOnly(ServeUploadedImage(_)) => Bool.False
+		SignedInOnly(ReactInConversation(_)) => Bool.False
+		SignedInOnly(ShowAgents) => Bool.False
 		SignedInOnly(MakeAgent) => Bool.True
 		SignedInOnly(InviteAgent(_)) => Bool.True
 		SignedInOnly(RevokeInvite(_)) => Bool.True
 		SignedInOnly(RevokeKey(_)) => Bool.True
+		SignedInOnly(OpenAgentStream) => Bool.False
+		SignedInOnly(ShowChannels) => Bool.False
+		SignedInOnly(CreateChannel) => Bool.False
+		SignedInOnly(ShowChannelMembers(_)) => Bool.False
+		SignedInOnly(AddChannelMember(_)) => Bool.False
+		SignedInOnly(RemoveChannelMember(_)) => Bool.False
+		SignedInOnly(ShowInvites) => Bool.False
 		SignedInOnly(InviteHuman) => Bool.True
 		SignedInOnly(InviteHumanAgain(_)) => Bool.True
+		SignedInOnly(ShowDeviceCode) => Bool.False
 		SignedInOnly(MakeDeviceCode) => Bool.True
 		SignedInOnly(CancelDeviceCode) => Bool.True
+		SignedInOnly(OpenDevicesStream) => Bool.False
 		SignedInOnly(SignOutOtherDevices) => Bool.True
+		Open(RedeemDeviceCode) => Bool.False
+		Open(ResumeOrBrowse) => Bool.False
+		Open(ShowJoin) => Bool.False
+		Open(LookUpJoinName) => Bool.False
+		Open(Join) => Bool.False
+		Open(ServeScript(_)) => Bool.False
+		Open(ServeFavicon) => Bool.False
+		Open(ServeAlertIcon) => Bool.False
+		Open(ShowLogin) => Bool.False
+		Open(SignIn) => Bool.False
+		Open(SignOut) => Bool.False
 		Open(StartGitHubSignIn) => Bool.True
 		Open(FinishGitHubSignIn) => Bool.True
-		_ => Bool.False
+		Open(GitHubSignUpStep(_)) => Bool.False
+		Open(WrongMethodToGitHub(_)) => Bool.False
+		Open(RedeemInvite) => Bool.False
+		NotFound => Bool.False
+		MethodNotAllowed(_) => Bool.False
 	}

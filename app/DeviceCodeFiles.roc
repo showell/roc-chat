@@ -2,6 +2,7 @@
 ## in their folder (`UserFolder`), `users/<id>/device-code`, written whole and
 ## atomically, so a new code's record replaces the one before; and their
 ## last sign-ins by code (`DeviceSignIns`), `users/<id>/device-sign-ins`.
+import pf.Host
 import DeviceCode
 import DeviceSignIns
 import FileFacts
@@ -77,6 +78,19 @@ DeviceCodeFiles :: [].{
 				DeviceCodeFiles.replace_device_code!(id, record.cancel())
 			Record(_) | NoRecord => Ok({})
 		}
+
+	## The human `id`'s live code cancelled; a failure logged, for an answer
+	## that must not fail for it, such as a sign-out.
+	revoke_or_log! : UserId => {}
+	revoke_or_log! = |id|
+		match DeviceCodeFiles.revoke_live_device_code!(id) {
+			Ok({}) => {}
+			Err(FileSystem(fault)) => {
+				said = "device codes: user ${id.to_str()}'s code not cancelled as they signed out: ${FileFacts.fault_words(fault)}"
+				Host.write_line_to_server_log!(said.to_utf8())
+			}
+		}
+
 }
 
 ## The path of the human `id`'s sign-ins by code.
