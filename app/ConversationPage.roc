@@ -367,10 +367,7 @@ compose_box = |key| {
 				inner: TrustedHtml.join([
 					Html.element({
 						name: Textarea,
-						attributes: [
-							FieldName(PageKit.token(UrlEncodedForm.markdown_name)),
-							Required,
-						],
+						attributes: [FieldName(PageKit.token(UrlEncodedForm.markdown_name))],
 						inner: TrustedHtml.join([]),
 					}),
 					PageKit.newline,

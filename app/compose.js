@@ -317,10 +317,11 @@
 
   // The box and its buttons, on or off by what is on its way: while a send
   // is, all of them are off; while an upload is, Send and Upload are, so a
-  // message never goes without the image being put in it.
+  // message never goes without the image being put in it. Send is off too
+  // while the box holds nothing but space, so there is nothing to refuse.
   function refreshControls() {
     box.disabled = !!pending;
-    send.disabled = !!pending || uploading;
+    send.disabled = !!pending || uploading || box.value.trim() === '';
     uploadButton.disabled = !!pending || uploading;
   }
   function settle() {
@@ -426,8 +427,8 @@
       if (r.ok) {
         // Stored: the box empties now, even if the answer's body is lost on
         // the way, so a lost body never gives back a draft to send twice.
-        settle();
         box.value = '';
+        settle();
         box.focus();
         r.text().then(function (answer) {
           var id = sentId(answer);
@@ -491,6 +492,7 @@
       }
       box.value = text;
       box.setSelectionRange(caret, caret);
+      refreshControls();
     },
     insert: function (text) {
       openCompose();
@@ -499,6 +501,7 @@
     },
   };
 
+  box.addEventListener('input', refreshControls);
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     sendMessage();
@@ -534,6 +537,7 @@
     var start = box.selectionStart, end = box.selectionEnd, value = box.value;
     box.value = value.slice(0, start) + text + value.slice(end);
     box.selectionStart = box.selectionEnd = start + text.length;
+    refreshControls();
     box.focus();
   }
 
@@ -650,6 +654,7 @@
     shrinkPicture(file, sendFile);
   }
 
+  refreshControls();
   uploadButton.addEventListener('click', function () { picker.click(); });
   picker.addEventListener('change', function () { uploadFile(picker.files[0]); picker.value = ''; });
   box.addEventListener('paste', function (e) {
