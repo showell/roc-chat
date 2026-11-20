@@ -20,11 +20,9 @@
 ## them, through its one escape, so the colored block is vouched for as
 ## roc-markdown's own escape is; any other block is roc-markdown's escape.
 ## Its classes are `PageContract.SyntaxClass`'s, and app/feed.js colors them.
-## The lexers are linear in the block (measured on the box at 100 KB and
-## 1 MB, on ordinary code and on each lexer's worst runs: at most about
-## 0.75 ms a 64 KiB block), and a block past `Markdown.most_colored_bytes`
-## is left plain whatever the lexers do, so coloring adds a bounded cost to
-## each render of a message.
+## A block past `Markdown.most_colored_bytes` is left plain, so coloring
+## adds a bounded cost to each render of a message: at most about 30 ms of
+## CPU a block on the box, at the worst text measured.
 import md.Md
 import sc.SyntaxColor
 import ConversationKey
@@ -48,11 +46,14 @@ Markdown :: [].{
 		TrustedHtml.dangerously_trust(Str.from_utf8(rendered) ?? crash "Markdown.message_html: roc-markdown returned bytes that are not UTF-8, from UTF-8 input")
 	}
 
-	## The longest code block that is colored, 16 KiB: a backstop on what a
-	## lexer may cost a render, should one turn out slower than linear on
-	## some text. A longer block is roc-markdown's plain escape.
+	## The longest code block that is colored, 4 KiB, and a longer block is
+	## roc-markdown's plain escape. roc-syntax-color's Roc lexer is
+	## quadratic in the open brackets across a block's lines: 4 KiB of
+	## `{` lines costs it about 29 ms on the box, and 8 KiB 97 ms. Its other
+	## lexers, and ordinary Roc, are linear, about 3 ms a 4 KiB block at
+	## their worst.
 	most_colored_bytes : U64
-	most_colored_bytes = 16 * 1024
+	most_colored_bytes = 4 * 1024
 }
 
 ## The code hook: a block in a language roc-syntax-color reads, colored and
