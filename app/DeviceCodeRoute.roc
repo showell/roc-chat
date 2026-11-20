@@ -16,7 +16,7 @@
 ##   human's record, or a stand-in where a human has none. Each such failure
 ##   is counted (`DeviceCodeTallies`), and a client past its most finds the
 ##   form locked, a 429, with no code compared.
-## - Signing out (`sign_out!`), setting a password (`revoke_device_code!`)
+## - Signing out (`SignOutRoute`), setting a password (`revoke_device_code!`)
 ##   and signing other devices out (`DeviceSessionsRoute`) cancel a live
 ##   code, and signing out forgets the cookie that shows one.
 ##
@@ -26,6 +26,7 @@ import pf.Host
 import pf.Http
 import DeviceCode
 import DeviceCodeFiles
+import DeviceKeyFiles
 import DeviceCodeTallies
 import DeviceSessionsRoute
 import DeviceCodePage
@@ -205,28 +206,6 @@ DeviceCodeRoute :: [].{
 		HttpAnswer.never_stored(answer)
 	}
 
-	## A POST of `/logout` by `actor`: a live code of theirs cancelled, then
-	## `SignInRoute.sign_out`, the cookie that shows a code forgotten too. A
-	## code that can't be cancelled is logged and the sign-out goes on, as a
-	## damaged record redeems nothing and a failed write leaves at most a
-	## code's five minutes.
-	sign_out! : SignedIn.Actor => Http.Response
-	sign_out! = |actor| {
-		signed_in_human =
-			match actor {
-				SignedIn(acting) => acting.human_in_session().map_err(|_| NoHuman)
-				Anonymous => Err(NoHuman)
-			}
-		forgotten = cookie_header_of(DeviceCode.clear_flash_cookie_text)
-		match signed_in_human {
-			Err(NoHuman) => HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
-			Ok(human) => {
-				DeviceCodeFiles.revoke_or_log!(human.id())
-				HttpAnswer.with_header(SignInRoute.sign_out, forgotten)
-			}
-		}
-	}
-
 	## The human `id`'s code cancelled, when it is live.
 	revoke_device_code! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 	revoke_device_code! = |id| DeviceCodeFiles.revoke_live_device_code!(id)
@@ -385,10 +364,12 @@ make_record! = |{ users, id, now }| {
 }
 
 ## The answer to `redemption` at `now`, from the device the request's
-## `headers` name: its record written spent, so the code never works again,
-## its human told, the sign-in noted in their list, and the session started,
-## marked as a code's; or a
-## 500 when the record can't be written, and no session.
+## `headers` name: its record written spent, so the code never works again;
+## then a new device key, active (`DeviceKeyFiles`, its `state` last); its
+## human told, the sign-in noted in their list, and the session started,
+## bound to that key. A 500 when the record or the key can't be written, and
+## no session: a code spent with no key made signs no one in, and the human
+## makes another.
 answer_redemption! : DeviceCode.Redemption,
 {
 	next : Html.SitePath,
@@ -399,13 +380,18 @@ answer_redemption! = |redemption, { next, headers, now }| {
 	owner = redemption.owner().id()
 	match DeviceCodeFiles.replace_device_code!(owner, redemption.spent_record()) {
 		Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-		Ok({}) => {
-			viewer_key = Presence.viewer_stream_key(owner)
-			Host.publish_bytes_to_streams_on_key!(viewer_key, DeviceCodePage.new_device_frame)
-			Host.publish_bytes_to_streams_on_key!(viewer_key, DeviceCodePage.used_frame(now))
-			DeviceSessionsRoute.note_sign_in!({ id: owner, headers, now })
-			SignInRoute.start_session_by_device_code!(redemption, { next, now })
-		}
+		Ok({}) =>
+			match DeviceKeyFiles.create_device_key!(owner, now) {
+				Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+				Err(Full) => keys_full_answer
+				Ok(key) => {
+					viewer_key = Presence.viewer_stream_key(owner)
+					Host.publish_bytes_to_streams_on_key!(viewer_key, DeviceCodePage.new_device_frame)
+					Host.publish_bytes_to_streams_on_key!(viewer_key, DeviceCodePage.used_frame(now))
+					DeviceSessionsRoute.note_sign_in!({ id: owner, headers, now })
+					SignInRoute.start_session_by_device_code!(redemption, { key, next, now })
+				}
+			}
 	}
 }
 
@@ -465,6 +451,13 @@ material_missing_answer : Http.Response
 material_missing_answer = HttpAnswer.page(
 	500,
 	PageKit.notice({ title: "Failed", text: "This account has nothing to sign a session over." }),
+)
+
+## The 500 for a human whose device keys have taken every number.
+keys_full_answer : Http.Response
+keys_full_answer = HttpAnswer.page(
+	500,
+	PageKit.notice({ title: "Failed", text: "This account has no device key number left." }),
 )
 
 ## What a stand-in for a record is compared with: no code's HMAC.

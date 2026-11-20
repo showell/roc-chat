@@ -23,9 +23,12 @@
 ## and no other site under the same domain can set one.
 ##
 ## A session started by a device code (`Origin`'s `ByDeviceCode`) says so in
-## its cookie, a fourth part `d`, and in what it is signed over, so the mark
-## can't be added or taken off; such a session may not link GitHub or make
-## agents or their invites (`SignedIn.check_full_session`).
+## its cookie, a fourth part `d` and its device key's number (`d3`), and in
+## what it is signed over, so the mark and the number can't be added, changed
+## or taken off; such a session may not link GitHub or make agents or their
+## invites (`SignedIn.check_full_session`), and admits its human only while
+## its key is active (`DeviceKey`, checked by `SignInRoute`). A fourth part
+## of `d` alone, as such sessions were before device keys, is no session.
 ##
 ## A human's `session-generation` file, a count their "Sign out other
 ## devices" raises, is part of the material once it is above 0, so raising
@@ -36,6 +39,7 @@
 ## one: that is the session's door into `SignedIn`.
 import Ascii
 import Base64Url
+import DeviceKey
 import GitHubSessionWord
 import PasswordHash
 import Seconds
@@ -60,8 +64,8 @@ Session :: [].{
 
 	## How a session was started: by a password, GitHub or an invite
 	## (`Ordinary`), or by a device code from another device of the human's
-	## (`ByDeviceCode`).
-	Origin : [Ordinary, ByDeviceCode]
+	## (`ByDeviceCode`, bound to the device key its redemption made).
+	Origin : [Ordinary, ByDeviceCode(DeviceKey.Id)]
 
 	## What a cookie claims before its signature is checked: whose it is,
 	## the second it says it was signed at, how the session was started,
@@ -147,8 +151,9 @@ Session :: [].{
 	## The bytes a session for `id`, signed at `signed_at`, started as
 	## `origin` says, is signed over, its human's sign-in files holding
 	## `material`: the id's digits, a line feed, the second's digits, a line
-	## feed, for a session started by a device code `by-device-code` and a
-	## line feed, then the material, which starts with `$` or a line feed.
+	## feed, for a session started by a device code `by-device-code`, a
+	## space, its key's number and a line feed, then the material, which
+	## starts with `$` or a line feed.
 	signed_bytes : {
 		id : UserId,
 		signed_at : Timestamp,
@@ -159,7 +164,7 @@ Session :: [].{
 		mark =
 			match origin {
 				Ordinary => ""
-				ByDeviceCode => "by-device-code\n"
+				ByDeviceCode(key) => "by-device-code ${key.to_str()}\n"
 			}
 		head = "${id.to_str()}\n${signed_at.to_str()}\n${mark}"
 		List.concat(head.to_utf8(), material.bytes_to_sign())
@@ -226,8 +231,8 @@ Session :: [].{
 
 	## The cookie's value for `id`, signed at `signed_at`, started as
 	## `origin` says, its signature `mac`, the host's HMAC of
-	## `signed_bytes`: three parts, and a fourth, `d`, for a session started
-	## by a device code.
+	## `signed_bytes`: three parts, and a fourth, `d` and its key's number,
+	## for a session started by a device code.
 	cookie_value : {
 		id : UserId,
 		signed_at : Timestamp,
@@ -239,7 +244,7 @@ Session :: [].{
 		parts = "${id_part}.${signed_at.to_str()}.${Base64Url.encode(mac)}"
 		match origin {
 			Ordinary => parts
-			ByDeviceCode => "${parts}.d"
+			ByDeviceCode(key) => "${parts}.d${key.to_str()}"
 		}
 	}
 
@@ -271,9 +276,10 @@ is_outside_window = |{ now, signed_at }|
 	now.seconds_since(signed_at).is_more_than(Session.longest_seconds)
 		or signed_at.seconds_since(now).is_more_than(Session.clock_skew_seconds)
 
-## The claim a cookie's value spells; unless it is not three parts, an id
-## that is no user's id, a second that is not its digits, or a signature
-## that is not 32 bytes (`BadSession`).
+## The claim a cookie's value spells; unless it is not three parts, or
+## four whose last is `d` and a device key's number, an id that is no
+## user's id, a second that is not its digits, or a signature that is not
+## 32 bytes (`BadSession`).
 claim_from_value : List(U8) -> Try(Session.Claim, [BadSession])
 claim_from_value = |value|
 	match value.split_on('.') {
@@ -283,8 +289,11 @@ claim_from_value = |value|
 			mac_part,
 			origin: Ordinary,
 		})
-		[id_part, second_part, mac_part, ['d']] =>
-			claim_from_parts({ id_part, second_part, mac_part, origin: ByDeviceCode })
+		[id_part, second_part, mac_part, ['d', .. as number]] => {
+			key_text = Str.from_utf8(number) ? |_| BadSession
+			key = DeviceKey.Id.from_str(key_text) ? |_| BadSession
+			claim_from_parts({ id_part, second_part, mac_part, origin: ByDeviceCode(key) })
+		}
 		_ => Err(BadSession)
 	}
 

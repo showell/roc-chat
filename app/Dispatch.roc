@@ -39,6 +39,7 @@ import ResumeRoute
 import Route
 import SearchRoute
 import SignInRoute
+import SignOutRoute
 import SignedIn
 import UnvalidatedString
 import UploadRoute
@@ -186,7 +187,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				now: Clock.read_clock!({}),
 				github: GitHubRoute.load_offer!({}),
 			})
-		SignOut => DeviceCodeRoute.sign_out!(actor)
+		SignOut => SignOutRoute.sign_out!({ actor, body: request.body })
 		RedeemDeviceCode =>
 			DeviceCodeRoute.redeem!({
 				viewer: actor,

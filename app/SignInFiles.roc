@@ -3,9 +3,12 @@
 ## to GitHub, the word in their `github-session-secret`, and once they have
 ## signed their other devices out, their `session-generation`. `SignInRoute` signs
 ## and checks sessions over it, and `DeviceCodeRoute` holds a device code to
-## it. Rewriting any of these files ends every session of the human.
+## it. Rewriting any of these files ends every session of the human. It also
+## checks the device key a session started by a code is bound to
+## (`check_session_key!`), which ends that one device's session alone.
 import pf.Host
 import AccountFiles
+import DeviceKeyFiles
 import FileFacts
 import GitHubSessionWord
 import GitHubSignIn
@@ -50,6 +53,29 @@ SignInFiles :: [].{
 		generation = load_generation!(id)?
 		Ok(Session.Material.from_password({ password_hash, github }).with_generation(generation))
 	}
+
+	## `Ok` when a session of the human `id`, started as `origin` says, may
+	## still admit them: always for an ordinary session, and for one a device
+	## code started only while its key is active; else `SessionRefused` (a key
+	## revoked, never made or cut short, or a `state` file that holds no
+	## state, logged); unless the host's read failed.
+	check_session_key! : UserId,
+	Session.Origin => Try({}, [SessionRefused, FileSystem(FileFacts.Fault)])
+	check_session_key! = |id, origin|
+		match origin {
+			Ordinary => Ok({})
+			ByDeviceCode(key) =>
+				match DeviceKeyFiles.read_device_key_state!(id, key) {
+					Ok(Key(Active)) => Ok({})
+					Ok(Key(Revoked)) | Ok(NoKey) => Err(SessionRefused)
+					Err(FileSystem(Damaged)) => {
+						said = "sessions: user ${id.to_str()}'s device key ${key.to_str()} holds no state; its device's session is refused"
+						Host.write_line_to_server_log!(said.to_utf8())
+						Err(SessionRefused)
+					}
+					Err(FileSystem(fault)) => Err(FileSystem(fault))
+				}
+		}
 
 	## The human `id`'s other devices signed out: their session generation
 	## raised by one, so every session signed over the one before, this

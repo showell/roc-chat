@@ -99,7 +99,7 @@ SignedIn :: {
 	check_full_session = |SignedIn.(acting)|
 		match acting.origin {
 			Ordinary => Ok({})
-			ByDeviceCode => Err(StartedByDeviceCode)
+			ByDeviceCode(_) => Err(StartedByDeviceCode)
 		}
 
 	## The acting human, signed in by their own session; refused when the

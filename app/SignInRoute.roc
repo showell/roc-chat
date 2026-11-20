@@ -36,6 +36,7 @@ import pf.Host
 import pf.Http
 import AccountFiles
 import DeviceCode
+import DeviceKey
 import FileFacts
 import GitHubSignIn
 import Html
@@ -57,8 +58,9 @@ SignInRoute :: [].{
 	## The human the session in the `Cookie` header `cookie` admits, among
 	## `users`, at `now`; unless it holds no session (`NoSession`), one that
 	## is no session's spelling (`BadSession`), or one that admits no one
-	## (`SessionRefused`: its signature, its date, its user, or a human whose
-	## `session-generation` file holds no count, logged), or its human has
+	## (`SessionRefused`: its signature, its date, its user, a human whose
+	## `session-generation` file holds no count, logged, or a device code's
+	## session whose device key is not active), or its human has
 	## nothing a session is signed over (`NoMaterial`), or a sign-in file
 	## could not be read (`AccountFiles`).
 	sign_in_by_session! : {
@@ -83,6 +85,7 @@ SignInRoute :: [].{
 			claim.mac(),
 		)
 		admitted = Session.admit({ claim, verdict, now, users })?
+		SignInFiles.check_session_key!(claim.id(), admitted.origin())?
 		Ok(SignedIn.by_session(admitted))
 	}
 
@@ -222,17 +225,18 @@ SignInRoute :: [].{
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 		}
 
-	## The answer to a device code redeemed at `now`: an ordinary session for
-	## the human it signs in, signed over what their sign-in files hold now,
-	## as a password's is, and a 303 to `next` with its cookie. A 500 when
-	## their files can't be read, or hold nothing to sign a session over.
-	## Never stored.
+	## The answer to a device code redeemed at `now`: a session for the human
+	## it signs in, bound to the device key `key` its redemption made, signed
+	## over what their sign-in files hold now, as a password's is, and a 303 to
+	## `next` with its cookie. A 500 when their files can't be read, or hold
+	## nothing to sign a session over. Never stored.
 	start_session_by_device_code! : DeviceCode.Redemption,
 	{
+		key : DeviceKey.Id,
 		next : Html.SitePath,
 		now : Timestamp,
 	} => Http.Response
-	start_session_by_device_code! = |redemption, { next, now }| {
+	start_session_by_device_code! = |redemption, { key, next, now }| {
 		human = redemption.owner()
 		answer =
 			match SignInFiles.load_material!(human.id()) {
@@ -248,7 +252,7 @@ SignInRoute :: [].{
 				Ok(material) =>
 					HttpAnswer.with_header(
 						HttpAnswer.see_other(next.to_str()),
-						sign_session_cookie!({ human, origin: ByDeviceCode, material, now }),
+						sign_session_cookie!({ human, origin: ByDeviceCode(key), material, now }),
 					)
 			}
 		HttpAnswer.never_stored(answer)
