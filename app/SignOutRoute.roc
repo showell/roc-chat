@@ -48,7 +48,8 @@ SignOutRoute :: [].{
 			RevokeKey({ human, key }) =>
 				match DeviceKeyFiles.revoke_device_key!(human.id(), key) {
 					Err(FileSystem(fault)) => {
-						said = "sign-out: user ${human.id().to_str()}'s device key ${key.to_str()} not revoked: ${FileFacts.fault_words(fault)}"
+						whose = "user ${human.id().to_str()}'s device key ${key.to_str()}"
+						said = "sign-out: ${whose} not revoked: ${FileFacts.fault_words(fault)}"
 						Host.write_line_to_server_log!(said.to_utf8())
 						HttpAnswer.never_stored(not_signed_out_answer)
 					}
@@ -65,10 +66,7 @@ SignOutRoute :: [].{
 signed_out : Http.Response
 signed_out = HttpAnswer.with_header(
 	SignInRoute.sign_out,
-	{
-		name: "set-cookie".to_utf8(),
-		value: DeviceCode.clear_flash_cookie_text.to_utf8(),
-	},
+	{ name: "set-cookie".to_utf8(), value: DeviceCode.clear_flash_cookie_text.to_utf8() },
 )
 
 ## The 500 when a device's key could not be revoked: nothing changed, so

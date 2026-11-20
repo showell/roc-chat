@@ -45,8 +45,8 @@ steve_by = |origin| {
 
 ## What signing out does for `actor` with the form `body`, as a test reads
 ## it: `at once`, `ask, cancel to <next>`, or `revoke key <n>`.
-chosen : SignedIn.Actor, Str -> Str
-chosen = |actor, body|
+choice_of : SignedIn.Actor, Str -> Str
+choice_of = |actor, body|
 	match SignOut.choose({ actor, body: body.to_utf8() }) {
 		SignOutAtOnce(_) => "at once"
 		Ask({ next, acting: _ }) => "ask, cancel to ${next.to_str()}"
@@ -63,22 +63,22 @@ expect steve_by(ByDeviceCode(key_three)).session_origin() == ByDeviceCode(key_th
 # once, whatever the form says: they can sign back in.
 expect
 	["", "confirmed=yes", "next=/chat"].all(
-		|body| chosen(Anonymous, body) == "at once" and chosen(SignedIn(steve_by(Ordinary)), body) == "at once",
+		|body| choice_of(Anonymous, body) == "at once" and choice_of(SignedIn(steve_by(Ordinary)), body) == "at once",
 	)
 # A device a code signed in is asked first, Cancel going back to the page it
 # was on; only `confirmed=yes` revokes its key, the one its cookie names.
-expect chosen(on_phone, "next=/chat/dm/1_2/plans") == "ask, cancel to /chat/dm/1_2/plans"
-expect chosen(on_phone, "confirmed=yes&next=/chat") == "revoke key 3"
-expect chosen(on_phone, "confirmed=yes") == "revoke key 3"
+expect choice_of(on_phone, "next=/chat/dm/1_2/plans") == "ask, cancel to /chat/dm/1_2/plans"
+expect choice_of(on_phone, "confirmed=yes&next=/chat") == "revoke key 3"
+expect choice_of(on_phone, "confirmed=yes") == "revoke key 3"
 expect
 	["confirmed=no", "confirmed=YES", "confirmed=", "confirmed=yes%20", "confirm=yes"].all(
-		|body| chosen(on_phone, body) == "ask, cancel to /chat",
+		|body| choice_of(on_phone, body) == "ask, cancel to /chat",
 	)
 # A `next` missing, or no path on this site, sends Cancel to Browse: no
 # sign-out is refused for it.
 expect
 	["", "next=", "next=chat", "next=//evil.example", "next=/a/../b", "next=https://x"].all(
-		|body| chosen(on_phone, body) == "ask, cancel to /chat",
+		|body| choice_of(on_phone, body) == "ask, cancel to /chat",
 	)
 # The page that asks: what signing out does, in Steve's words; "Sign out",
 # posting `confirmed=yes` and `next` to `/logout`; and Cancel, a link to

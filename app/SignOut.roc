@@ -64,8 +64,8 @@ SignOut :: [].{
 			name: Form,
 			attributes: [MethodPost, Action(PageKit.site_path(SignOut.path))],
 			inner: TrustedHtml.join([
-				hidden_field({ name: "next", value: Value(next) }),
-				hidden_field({ name: confirmed_field, value: confirmed }),
+				hidden_field("next", Value(next)),
+				hidden_field(confirmed_field, confirmed),
 				Html.element({
 					name: Button,
 					attributes: [],
@@ -120,7 +120,11 @@ next_from_form = |body|
 		Err(BadNext) => SignInRequest.default_next
 	}
 
-## A hidden field named `name`, holding `value`.
-hidden_field : { name : Str, value : Html.Attribute } -> TrustedHtml
-hidden_field = |{ name, value }|
-	Html.input([InputType(Hidden), FieldName(PageKit.token(name)), value])
+## A hidden field named `field_name`, its value's attribute `holding`.
+hidden_field : Str, Html.Attribute -> TrustedHtml
+hidden_field = |field_name, holding|
+	Html.input([
+		InputType(Hidden),
+		FieldName(PageKit.token(field_name)),
+		holding,
+	])

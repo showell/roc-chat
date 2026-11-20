@@ -252,7 +252,12 @@ SignInRoute :: [].{
 				Ok(material) =>
 					HttpAnswer.with_header(
 						HttpAnswer.see_other(next.to_str()),
-						sign_session_cookie!({ human, origin: ByDeviceCode(key), material, now }),
+						sign_session_cookie!({
+							human,
+							origin: ByDeviceCode(key),
+							material,
+							now,
+						}),
 					)
 			}
 		HttpAnswer.never_stored(answer)

@@ -289,10 +289,15 @@ claim_from_value = |value|
 			mac_part,
 			origin: Ordinary,
 		})
-		[id_part, second_part, mac_part, ['d', .. as number]] => {
-			key_text = Str.from_utf8(number) ? |_| BadSession
+		[id_part, second_part, mac_part, ['d', .. as key_digits]] => {
+			key_text = Str.from_utf8(key_digits) ? |_| BadSession
 			key = DeviceKey.Id.from_str(key_text) ? |_| BadSession
-			claim_from_parts({ id_part, second_part, mac_part, origin: ByDeviceCode(key) })
+			claim_from_parts({
+				id_part,
+				second_part,
+				mac_part,
+				origin: ByDeviceCode(key),
+			})
 		}
 		_ => Err(BadSession)
 	}

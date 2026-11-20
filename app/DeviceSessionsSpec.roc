@@ -180,12 +180,12 @@ any_session_routes = [
 	("GET", "/login"),
 ]
 
-expect full_session_routes.all(
-	|route| is_refused_by_origin(SignedIn(steve_by(code_origin)), route),
-)
-expect any_session_routes.all(
-	|route| !is_refused_by_origin(SignedIn(steve_by(code_origin)), route),
-)
+## Steve on a device a code signed in.
+on_phone : SignedIn.Actor
+on_phone = SignedIn(steve_by(code_origin))
+
+expect full_session_routes.all(|route| is_refused_by_origin(on_phone, route))
+expect any_session_routes.all(|route| !is_refused_by_origin(on_phone, route))
 expect
 	List.concat(full_session_routes, any_session_routes).all(
 		|route| !is_refused_by_origin(

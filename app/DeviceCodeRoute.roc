@@ -386,8 +386,9 @@ answer_redemption! = |redemption, { next, headers, now }| {
 				Err(Full) => keys_full_answer
 				Ok(key) => {
 					viewer_key = Presence.viewer_stream_key(owner)
-					Host.publish_bytes_to_streams_on_key!(viewer_key, DeviceCodePage.new_device_frame)
-					Host.publish_bytes_to_streams_on_key!(viewer_key, DeviceCodePage.used_frame(now))
+					publish! = Host.publish_bytes_to_streams_on_key!
+					publish!(viewer_key, DeviceCodePage.new_device_frame)
+					publish!(viewer_key, DeviceCodePage.used_frame(now))
 					DeviceSessionsRoute.note_sign_in!({ id: owner, headers, now })
 					SignInRoute.start_session_by_device_code!(redemption, { key, next, now })
 				}

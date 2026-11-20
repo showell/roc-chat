@@ -3,7 +3,7 @@
 ## human's keys (`SerialNumber`), and active until that device signs out,
 ## which revokes it for good. The session's cookie names the key's number
 ## and is signed over it (`Session`), and each request of the session reads
-## the key's state (`SignInFiles.check_device_key!`): only `Active` admits.
+## the key's state (`SignInFiles.check_session_key!`): only `Active` admits.
 ## So signing out of such a device ends every copy of its cookie, and to
 ## sign in on it again the human makes a new code.
 ##

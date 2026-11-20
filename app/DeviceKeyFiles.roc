@@ -23,8 +23,7 @@ DeviceKeyFiles :: [].{
 	## A new key for the human `id`, made at `now`, active: the next number,
 	## its `created`, then its `state` last; unless the folder holds the last
 	## number already (`Full`), or a file fails.
-	create_device_key! : UserId,
-	Timestamp => Try(DeviceKey.Id, [Full, FileSystem(FileFacts.Fault)])
+	create_device_key! : UserId, Timestamp => Try(DeviceKey.Id, [Full, FileSystem(FileFacts.Fault)])
 	create_device_key! = |id, now| {
 		names = FileFacts.list_names_in!(keys_folder_path(id)) ? |fault| FileSystem(fault)
 		key = DeviceKey.Id.next_after(names.keep_oks(DeviceKey.Id.from_str))?
@@ -36,8 +35,7 @@ DeviceKeyFiles :: [].{
 	## The state of the human `id`'s key `key`, or `NoKey` when it has no
 	## `state` file (never made, or cut short); unless the file holds no
 	## state (`Damaged`), or the host's read failed.
-	read_device_key_state! : UserId,
-	DeviceKey.Id => Try([NoKey, Key(DeviceKey.State)], [FileSystem(FileFacts.Fault)])
+	read_device_key_state! : UserId, DeviceKey.Id => Try([NoKey, Key(DeviceKey.State)], [FileSystem(FileFacts.Fault)])
 	read_device_key_state! = |id, key|
 		match FileFacts.read_fact!(state_path(id, key)) {
 			Ok(NoFile) => Ok(NoKey)
