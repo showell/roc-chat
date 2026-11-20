@@ -12,7 +12,7 @@
 ## - `POST /login/github/name` is that name: the sign-up checked, the limits
 ##   checked again, the account made, and a session started. The counter of
 ##   ids is written first, then the new human's `Welcome`, then `github-id`,
-##   then `name`, then the default channel's members, and last the sign-up's
+##   then `sign-up`, then `name`, then the default channel's members, and last the sign-up's
 ##   slot in the day's window, all in one turn, so two submits can't both see
 ##   the id free or the last slot open. The welcome goes before the account,
 ##   so no account lacks one: a failure there spends an id and binds nothing,
@@ -32,6 +32,7 @@ import GitHubSignUp
 import GitHubTrip
 import HttpAnswer
 import HumanInvites
+import NameRelease
 import PageKit
 import RequestHeader
 import SignInPage
@@ -208,8 +209,9 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 	slot = check_limits!(directory, now) ? |limit| Paused(limit)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
 	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
+	freed = NameRelease.free_name!(directory, { name, leaving: NoOne, now }) ? |FileSystem(fault)| FileSystem(fault)
 	{ made, welcome } =
-		match GitHubTrip.new_account({ resumed, name, links, directory, now }) {
+		match GitHubTrip.new_account({ resumed, name, links, directory: freed, now }) {
 			Ok(account) => account
 			Err(Refused(SignUpsPaused)) => return Err(Paused(ChatFull))
 			Err(why) => return Err(why)

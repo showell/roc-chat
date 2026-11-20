@@ -151,10 +151,10 @@ Directory :: {
 			Err(NameReserved)
 		} else if
 			others.any(|user| NameSkeleton.of_name(user.name()) == skeleton)
-			or channels.any(|channel| NameSkeleton.of_channel(channel.name()) == skeleton)
-		{
-			Err(NameTooClose)
-		} else {
+				or channels.any(|channel| NameSkeleton.of_channel(channel.name()) == skeleton)
+				{
+					Err(NameTooClose)
+				} else {
 			Ok({})
 		}
 	}

@@ -11,7 +11,11 @@
 ## name, and its file, written last, makes the folder an account. A human's
 ## password's bcrypt hash is in `password`, the GitHub account that may sign
 ## in as them in `github-id`, and what their sessions are signed over beside
-## it in `github-session-secret`. An agent's keys and invites
+## it in `github-session-secret`. A human made by GitHub sign-up has
+## `sign-up`, holding `github`, which says they may not invite. An invited
+## human who never joined, whose name was freed for another
+## (`LapsedInvitee`), has `name-released`, the second it was, and their
+## folder is no account from then on. An agent's keys and invites
 ## (`AgentFiles`) and a human's invites (`InviteFiles`) are folders inside
 ## the account folder, which `account_folder_path` names for them.
 import AccountFolder
@@ -19,6 +23,7 @@ import FactFile
 import FileFacts
 import GitHubId
 import GitHubSessionWord
+import HumanInvites
 import PasswordHash
 import Timestamp
 import UserId
@@ -47,9 +52,9 @@ AccountFiles :: [].{
 		var $accounts = []
 		for id in account_ids {
 			folder = AccountFiles.account_folder_path(AccountFolder.of(id))
-			match FileFacts.read_fact!("${folder}/${name_fact}")? {
-				NoFile => {}
-				File(name) => {
+			match (FileFacts.read_fact!("${folder}/${name_fact}")?, FileFacts.read_fact!("${folder}/${name_released_fact}")?) {
+				(NoFile, _) | (_, File(_)) => {}
+				(File(name), NoFile) => {
 					owner =
 						match FileFacts.read_fact!("${folder}/owner")? {
 							NoFile => NoOwner
@@ -132,6 +137,26 @@ AccountFiles :: [].{
 		folder = AccountFiles.account_folder_path(AccountFolder.of(user.id()))
 		FileFacts.replace_fact!("${folder}/${name_fact}", Users.account_facts(user).name)
 	}
+
+	## The `sign-up` file of the human `id`, as it is, or `NoFile` when they
+	## have none; unless the host's read failed.
+	read_sign_up_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
+	read_sign_up_file! = |id|
+		FileFacts.read_fact!("${AccountFiles.account_folder_path(AccountFolder.of(id))}/${sign_up_fact}")
+
+	## The user `id`'s `name-released` file made, once, holding `now`'s
+	## second: from then on their folder is no account, and their name is
+	## free. `AlreadyExists`, nothing changed, when it is there.
+	create_name_released! : UserId,
+	Timestamp => Try(
+		{},
+		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
+	)
+	create_name_released! = |id, now|
+		FileFacts.create_fact!(
+			"${AccountFiles.account_folder_path(AccountFolder.of(id))}/${name_released_fact}",
+			now.to_file(),
+		)
 
 	## The `inviter` file of the human `id`, as it is, or `NoFile` when they
 	## have none; unless the host's read failed.
@@ -280,6 +305,15 @@ password_path = |id| "${AccountFiles.account_folder_path(AccountFolder.of(id))}/
 ## account.
 name_fact : Str
 name_fact = "name"
+
+## The fact file that says how a human's account was made, when it was by
+## GitHub sign-up.
+sign_up_fact : Str
+sign_up_fact = "sign-up"
+
+## The fact file whose making makes a lapsed invitee's folder no account.
+name_released_fact : Str
+name_released_fact = "name-released"
 
 ## The fact file of the GitHub account that signs in as a user.
 github_id_fact : Str

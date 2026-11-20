@@ -32,6 +32,7 @@ import HumanInvitesSpec
 import LastConversationSpec
 import MessageLinkSpec
 import MessageNoticeSpec
+import NamesSpec
 import PageSpec
 import PlaceSpec
 import PresenceSpec

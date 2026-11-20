@@ -70,3 +70,8 @@ expect [
 ].all(|login| offer_for(login, Sample.directory) == NotSuggested(LoginTaken))
 expect ["octo_cat", ""].all(|login| offer_for(login, Sample.directory) == NotSuggested(NoLogin))
 expect offer_for("Zoe", Sample.directory_with_ids_left(0)) == NotSuggested(ChatFull)
+# A login that is reserved, or looks like a reserved word, is not offered
+# either, saying so.
+expect ["admin", "Support", "rnod", "LC", "Adrnin"].all(
+	|login| offer_for(login, Sample.directory) == NotSuggested(LoginTooClose),
+)

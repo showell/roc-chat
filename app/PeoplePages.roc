@@ -74,7 +74,8 @@ PeoplePages :: [].{
 	## The invites page, for `viewer`: `problem`, when there is one; when an
 	## invite was just made, the link that joins by it, the one time it is
 	## shown (`shown`); what an invite is for, which depends on whether
-	## `github` signs people up too; a form that invites someone by a name;
+	## `github` signs people up too; a form that invites someone by a name,
+	## or, when the viewer may not invite (`may_invite`), the line saying why;
 	## then those of `invited` who have an invite open at `now`, and last the
 	## rest. Each human has a button that invites them again, and each maker
 	## is found among `users`.
@@ -83,6 +84,7 @@ PeoplePages :: [].{
 		users : Users,
 		invited : List(PeoplePages.InvitedHuman),
 		github : SignInPage.GitHubOffer,
+		may_invite : [MayInvite, MayNotInvite(Str)],
 		shown : [NoLink, Link({ human : Users.User, link : Str })],
 		problem : [NoProblem, Problem(Str)],
 		now : Timestamp,
@@ -93,6 +95,7 @@ PeoplePages :: [].{
 			users,
 			invited,
 			github,
+			may_invite,
 			shown,
 			problem,
 			now,
@@ -111,11 +114,16 @@ PeoplePages :: [].{
 					PageKit.shown_code(link),
 				]
 			}
-		form = PageKit.text_form({
-			action: PageKit.invites_path,
-			fields: [{ label: "Their name", name: "name" }],
-			label: "Invite someone",
-		})
+		form =
+			match may_invite {
+				MayInvite =>
+					PageKit.text_form({
+						action: PageKit.invites_path,
+						fields: [{ label: "Their name", name: "name" }],
+						label: "Invite someone",
+					})
+				MayNotInvite(why) => PageKit.paragraph(why)
+			}
 		{ waiting_humans, past_humans } = split_by_open_invite(invited, now)
 		context = { users, now }
 		PageKit.signed_in_page({

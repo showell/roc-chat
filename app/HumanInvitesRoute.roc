@@ -43,10 +43,12 @@ import HttpAnswer
 import HumanInvite
 import HumanInvites
 import InviteFiles
+import InviteRights
 import JoinPage
 import JoinedFiles
 import JsonOut
 import Name
+import NameRelease
 import PageKit
 import PasswordHash
 import PeoplePages
@@ -182,6 +184,7 @@ HumanInvitesRoute :: [].{
 Failure : [
 	Refused(HumanInvites.Refusal),
 	BadInviter(UserId),
+	BadSignUp(UserId),
 	ClockOutOfRange,
 	FileSystem(FileFacts.Fault),
 ]
@@ -194,6 +197,10 @@ failure_notice = |why|
 		BadInviter(id) => {
 			status: 500,
 			said: "The inviter file of user ${id.to_str()} names no user.",
+		}
+		BadSignUp(id) => {
+			status: 500,
+			said: "The sign-up file of user ${id.to_str()} says no way of signing up.",
 		}
 		ClockOutOfRange => { status: 500, said: "The server's clock is out of range." }
 		FileSystem(fault) => { status: 500, said: FileFacts.fault_words(fault) }
@@ -230,7 +237,7 @@ answer_refused_invite! = |{ acting, directory, now, why }|
 				Err(_) => refusal_page(why)
 			}
 		}
-		BadInviter(_) | ClockOutOfRange | FileSystem(_) => refusal_page(why)
+		BadInviter(_) | BadSignUp(_) | ClockOutOfRange | FileSystem(_) => refusal_page(why)
 	}
 
 ## The invites page for `acting` at `now`, saying `problem`, with `shown`'s link
@@ -245,9 +252,14 @@ load_invites_page! : {
 } => Try(TrustedHtml, _)
 load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	_ = acting.human_in_session() ? |why| Refused(why)
+	may_invite =
+		match HumanInvites.check_inviter_origin(InviteRights.load_origin!(acting.user().id())?) {
+			Ok({}) => MayInvite
+			Err(SignedUpByGitHub) => MayNotInvite(HumanInvites.github_sign_up_words)
+		}
 	var $invited = []
 	for user in humans_of(directory) {
-		inviter = load_inviter!(user.id())?
+		inviter = InviteRights.load_inviter!(user.id())?
 		if HumanInvites.is_theirs_to_invite_again(acting, inviter) {
 			invites = InviteFiles.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
 			$invited = $invited.append({ human: user, invites })
@@ -259,6 +271,7 @@ load_invites_page! = |{ acting, directory, shown, problem, now }| {
 			users: directory.users(),
 			invited: $invited,
 			github: GitHubRoute.load_offer!({}),
+			may_invite,
 			shown,
 			problem,
 			now,
@@ -273,8 +286,15 @@ invite_human! : {
 	origin : Str,
 	now : Timestamp,
 } => Try(TrustedHtml, _)
-invite_human! = |{ acting, directory, body, origin, now }| {
-	open = count_open_invites!(directory, { by: acting.user().id(), now })?
+invite_human! = |{ acting, directory: as_read, body, origin, now }| {
+	InviteRights.check_may_invite!(acting)?
+	open = count_open_invites!(as_read, { by: acting.user().id(), now })?
+	directory =
+		match HumanInvites.name_from_form(body) {
+			Ok(name) if open < HumanInvites.open_most =>
+				NameRelease.free_name!(as_read, { name, leaving: NoOne, now }) ? |FileSystem(fault)| FileSystem(fault)
+			_ => as_read
+		}
 	made =
 		match HumanInvites.invite(directory, { acting, body, open }) {
 			Ok(invited) => invited
@@ -314,7 +334,8 @@ invite_human_again! : {
 	now : Timestamp,
 } => Try(TrustedHtml, _)
 invite_human_again! = |{ acting, directory, human, origin, now }| {
-	inviter = load_inviter!(human)?
+	InviteRights.check_may_invite!(acting)?
+	inviter = InviteRights.load_inviter!(human)?
 	open = count_open_invites!(directory, { by: acting.user().id(), now })?
 	again = HumanInvites.reinvite(directory, { acting, human, inviter, open }) ? |why| Refused(why)
 	code = issue_invite!({ human, by: again.by.id(), now })?
@@ -415,10 +436,15 @@ join_by_invite! = |request| {
 	code = load_join_code!(request)?
 	name = HumanInvites.name_from_form(request.body) ? |why| Refused(why)
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
-	joined = HumanInvites.join(request.directory, { code, name }) ? |why| Refused(why)
+	invitee = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
+	directory = NameRelease.free_name!(
+		request.directory,
+		{ name, leaving: Leaving(invitee.human.id()), now: request.now },
+	) ? |FileSystem(fault)| FileSystem(fault)
+	joined = HumanInvites.join(directory, { code, name }) ? |why| Refused(why)
 	human = joined.admission.human()
 	next = FirstPage.load!({
-		directory: request.directory,
+		directory,
 		human,
 		wanted: SignInRequest.default_next,
 	})?
@@ -445,13 +471,6 @@ humans_of = |directory|
 				Agent(_) => Bool.False
 			},
 	)
-
-## Who invited the human `id`, as their `inviter` file says.
-load_inviter! : UserId => Try(HumanInvites.Inviter, _)
-load_inviter! = |id| {
-	file = AccountFiles.read_inviter_file!(id) ? |fault| FileSystem(fault)
-	HumanInvites.inviter_from_file(file).map_err(|NotAnInviter| BadInviter(id))
-}
 
 ## How many invites `by` made that are open at `now`, among every human's.
 count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)
