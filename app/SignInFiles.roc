@@ -58,7 +58,7 @@ SignInFiles :: [].{
 	## still admit them: always for an ordinary session, and for one a device
 	## code started only while its key is active; else `SessionRefused` (a key
 	## revoked, never made or cut short, or a `state` file that holds no
-	## state, logged); unless the host's read failed.
+	## state or no UTF-8, logged); unless the host's read failed.
 	check_session_key! : UserId,
 	Session.Origin => Try(
 		{},
@@ -71,7 +71,7 @@ SignInFiles :: [].{
 				match DeviceKeyFiles.read_device_key_state!(id, key) {
 					Ok(Key(Active)) => Ok({})
 					Ok(Key(Revoked)) | Ok(NoKey) => Err(SessionRefused)
-					Err(FileSystem(Damaged)) => {
+					Err(FileSystem(Damaged)) | Err(FileSystem(NotUtf8)) => {
 						said = "sessions: user ${id.to_str()}'s device key ${key.to_str()} holds no state; its device's session is refused"
 						Host.write_line_to_server_log!(said.to_utf8())
 						Err(SessionRefused)

@@ -4,8 +4,9 @@
 ## which revokes it for good. The session's cookie names the key's number
 ## and is signed over it (`Session`), and each request of the session reads
 ## the key's state (`SignInFiles.check_session_key!`): only `Active` admits.
-## So signing out of such a device ends every copy of its cookie, and to
-## sign in on it again the human makes a new code.
+## So signing out of such a device refuses every copy of its cookie at its
+## next request, and its open streams are ended then too (`SignOutRoute`);
+## to sign in on it again the human makes a new code.
 ##
 ## `DeviceKeyFiles` keeps each key in the human's account folder, under
 ## `device-keys/<number>/`: `created`, the second it was made, then

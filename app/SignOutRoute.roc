@@ -11,15 +11,23 @@
 ## 1. its key's `state` rewritten `revoked`, atomically
 ##    (`DeviceKeyFiles.revoke_device_key!`); a failure is logged and a 500
 ##    saying the device is still signed in, and nothing else changes;
-## 2. the human's live device code cancelled;
-## 3. the answer that signs the browser out.
+## 2. every open stream of the human's ended
+##    (`Host.end_every_stream_of_holder!`), since a stream already open
+##    checks no key again: the signed-out device's pages, and also the
+##    human's other devices' streams, which share one holder and reconnect
+##    at once, admitted by their own sessions;
+## 3. the human's live device code cancelled;
+## 4. the answer that signs the browser out.
 ## A crash before 1 has told no one anything, and the key still works. A
 ## crash after it leaves the key refused at every request after, and the
 ## session with it, since each request of the session reads its key
-## (`SignInFiles.check_session_key!`): no session outlives its key, and no
-## key works once the device was told it is gone.
+## (`SignInFiles.check_session_key!`): no request outlives the key, and
+## no key works once the device was told it is gone. A crash between 1 and
+## 2 leaves a stream open until its hour (`Limits.stream_most_ms`), when it
+## reconnects and is refused.
 import pf.Host
 import pf.Http
+import ConversationStream
 import DeviceCode
 import DeviceCodeFiles
 import DeviceKeyFiles
@@ -54,6 +62,7 @@ SignOutRoute :: [].{
 						HttpAnswer.never_stored(not_signed_out_answer)
 					}
 					Ok({}) => {
+						Host.end_every_stream_of_holder!(ConversationStream.holder(human.id()))
 						DeviceCodeFiles.revoke_or_log!(human.id())
 						signed_out
 					}

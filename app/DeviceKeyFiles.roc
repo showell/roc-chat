@@ -53,6 +53,23 @@ DeviceKeyFiles :: [].{
 			Err(Failed) => Err(FileSystem(Failed))
 		}
 
+	## Every key of the human `id`'s whose `state` says `active` revoked, as
+	## "Sign out other devices" does, so no key on disk says it admits a
+	## device whose session that ended; one with no state or a damaged one,
+	## which admits no one already, is left as it is.
+	revoke_every_active_device_key! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
+	revoke_every_active_device_key! = |id| {
+		names = FileFacts.list_names_in!(keys_folder_path(id)) ? |fault| FileSystem(fault)
+		for key in names.keep_oks(DeviceKey.Id.from_str) {
+			match DeviceKeyFiles.read_device_key_state!(id, key) {
+				Ok(Key(Active)) => DeviceKeyFiles.revoke_device_key!(id, key)?
+				Ok(Key(Revoked)) | Ok(NoKey) | Err(FileSystem(Damaged)) => {}
+				Err(FileSystem(fault)) => return Err(FileSystem(fault))
+			}
+		}
+		Ok({})
+	}
+
 	## The human `id`'s key `key` revoked: its `state` rewritten whole,
 	## atomically, so it never admits again; unless the host refused, and
 	## then the file is as it was. A key with no folder is `Missing`.

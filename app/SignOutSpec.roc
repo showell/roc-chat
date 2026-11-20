@@ -77,10 +77,11 @@ expect
 	["confirmed=no", "confirmed=YES", "confirmed=", "confirmed=yes%20", "confirm=yes"].all(
 		|body| choice_of(on_phone, body) == "ask, cancel to /chat",
 	)
-# A `next` missing, or no path on this site, sends Cancel to Browse: no
-# sign-out is refused for it.
+# A `next` missing, no path on this site, or `/logout` itself (the page that
+# asks posts it when its own top bar's "Sign out" is pressed, and a link to
+# it is a 405) sends Cancel to Browse: no sign-out is refused for it.
 expect
-	["", "next=", "next=chat", "next=//evil.example", "next=/a/../b", "next=https://x"].all(
+	["", "next=", "next=chat", "next=//evil.example", "next=/a/../b", "next=https://x", "next=/logout", "next=%2Flogout"].all(
 		|body| choice_of(on_phone, body) == "ask, cancel to /chat",
 	)
 # The page that asks: what signing out does, in Steve's words; "Sign out",

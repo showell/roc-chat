@@ -11,8 +11,9 @@
 ##   to `next`, the page they were on.
 ##
 ## `next` is the path the form carries (app/chrome.js puts the page's own in
-## the top bar's form); one that is missing or no path on this site is
-## Browse (`SignInRequest.default_next`), so no sign-out is refused for it.
+## the top bar's form); one that is missing, no path on this site, or
+## `/logout` itself is Browse (`SignInRequest.default_next`), so no sign-out
+## is refused for it and Cancel never leads to a 405.
 import DeviceKey
 import Escape
 import Html
@@ -112,12 +113,14 @@ is_confirmed = |body|
 		Err(_) => Bool.False
 	}
 
-## Where Cancel goes: the form's `next`, a path on this site, else Browse.
+## Where Cancel goes: the form's `next`, a path on this site, else Browse;
+## Browse too for `/logout` itself, which the page that asks sends when its
+## own top bar's "Sign out" is pressed, and which a link can't open.
 next_from_form : List(U8) -> Html.SitePath
 next_from_form = |body|
 	match SignInRequest.next_from_form(body) {
-		Ok(next) => next
-		Err(BadNext) => SignInRequest.default_next
+		Ok(next) if next.to_str() != SignOut.path => next
+		Ok(_) | Err(BadNext) => SignInRequest.default_next
 	}
 
 ## A hidden field named `field_name`, its value's attribute `holding`.
