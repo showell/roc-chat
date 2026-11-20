@@ -42,6 +42,12 @@ pub fn build(b: *std.Build) void {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
         tests.dependOn(&testRun(b, m).step);
     }
+    // **THE DRIFT GATE'S HOST HALF** (host/search_drift_test.zig): the
+    // index held to the answers app/SearchDriftSpec.roc holds the Roc to.
+    const drift = b.createModule(.{ .root_source_file = b.path("host/search_drift_test.zig"), .target = target, .optimize = optimize });
+    drift.addAnonymousImport("search_drift_corpus", .{ .root_source_file = b.path("app/search_drift_corpus.txt") });
+    drift.addAnonymousImport("search_drift_answers", .{ .root_source_file = b.path("app/search_drift_answers.txt") });
+    tests.dependOn(&testRun(b, drift).step);
     for ([_][]const u8{ "host/seam_test.zig", "host/http_test.zig" }) |root| {
         const m = b.createModule(.{ .root_source_file = b.path(root), .target = target, .optimize = optimize });
         m.addObjectFile(app);
