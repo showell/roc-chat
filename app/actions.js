@@ -332,7 +332,7 @@
       showFailure(label + ' is not in this topic.');
       return;
     }
-    window.open(MESSAGE_LINK_PATH + encodeURIComponent(label.replace(/^MSG_/, '')), '_blank');
+    window.open(MESSAGE_LINK_PATH + encodeURIComponent(label.replace(/^MSG_/, '')), '_blank', 'noopener');
   }
 
   messages.addEventListener('click', function (e) {
