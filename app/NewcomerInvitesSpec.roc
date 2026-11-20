@@ -25,7 +25,12 @@ joined = Joined(Timestamp.at_second(1000))
 ## Whether user 7, joined at 1000, may make a new invite at `second`,
 ## having made `made`.
 may_at : U64, I64 -> Try({}, [FirstDayFull(Timestamp)])
-may_at = |made, second| NewcomerInvites.check({ by: id("7"), joined, made, now: Timestamp.at_second(second) })
+may_at = |made, second| NewcomerInvites.check({
+	by: id("7"),
+	joined,
+	made,
+	now: Timestamp.at_second(second),
+})
 
 # Under three, a new invite; at three, none, until a day after joining.
 expect [0, 1, 2].all(|made| may_at(made, 1000) == Ok({}))
@@ -37,8 +42,18 @@ expect may_at(3, 87400) == Ok({})
 expect may_at(10, 999999) == Ok({})
 expect may_at(3, 999) == Ok({})
 # No `joined` file, an account older than it, has no limit; nor the owner.
-expect NewcomerInvites.check({ by: id("7"), joined: NoFile, made: 50, now: Timestamp.at_second(1000) }) == Ok({})
-expect NewcomerInvites.check({ by: UserId.chat_owner, joined, made: 50, now: Timestamp.at_second(1000) }) == Ok({})
+expect NewcomerInvites.check({
+	by: id("7"),
+	joined: NoFile,
+	made: 50,
+	now: Timestamp.at_second(1000),
+}) == Ok({})
+expect NewcomerInvites.check({
+	by: UserId.chat_owner,
+	joined,
+	made: 50,
+	now: Timestamp.at_second(1000),
+}) == Ok({})
 # The refusal: a 403 saying the limit and when they may invite again.
 expect {
 	notice = HumanInvites.refusal_notice(FirstDayFull(Timestamp.at_second(87400)))
@@ -48,7 +63,11 @@ expect {
 }
 
 ## Invite `number` of a human, made by `by` at `second`.
-invite : { number : U64, by : Str, second : I64 } -> HumanInvite
+invite : {
+	number : U64,
+	by : Str,
+	second : I64,
+} -> HumanInvite
 invite = |{ number, by, second }|
 	HumanInvite.make({
 		id: HumanInvite.Id.from_str(number.to_str()) ?? crash "NewcomerInvitesSpec: a number",
@@ -59,23 +78,56 @@ invite = |{ number, by, second }|
 
 ## How many new invites user 7 made since 1000, among `invites`.
 made_by_seven : List(List(HumanInvite)) -> U64
-made_by_seven = |invites| NewcomerInvites.count_made(invites, { by: id("7"), since: Timestamp.at_second(1000) })
+made_by_seven = |invites| NewcomerInvites.count_made(
+	invites,
+	{ by: id("7"), since: Timestamp.at_second(1000) },
+)
 
 # Each human whose first invite user 7 made since joining counts once.
 expect
 	made_by_seven([
-		[invite({ number: 1, by: "7", second: 1000 })],
-		[invite({ number: 1, by: "7", second: 2000 })],
-		[invite({ number: 1, by: "7", second: 3000 })],
+		[
+			invite({
+				number: 1,
+				by: "7",
+				second: 1000,
+			}),
+		],
+		[
+			invite({
+				number: 1,
+				by: "7",
+				second: 2000,
+			}),
+		],
+		[
+			invite({
+				number: 1,
+				by: "7",
+				second: 3000,
+			}),
+		],
 	])
 		== 3
 # Inviting the same human again counts nothing more, whoever does it.
 expect
 	made_by_seven([
 		[
-			invite({ number: 1, by: "7", second: 1000 }),
-			invite({ number: 2, by: "7", second: 1500 }),
-			invite({ number: 3, by: "1", second: 1600 }),
+			invite({
+				number: 1,
+				by: "7",
+				second: 1000,
+			}),
+			invite({
+				number: 2,
+				by: "7",
+				second: 1500,
+			}),
+			invite({
+				number: 3,
+				by: "1",
+				second: 1600,
+			}),
 		],
 	])
 		== 1
@@ -83,10 +135,33 @@ expect
 # count nothing.
 expect
 	made_by_seven([
-		[invite({ number: 1, by: "1", second: 2000 })],
-		[invite({ number: 1, by: "7", second: 999 })],
+		[
+			invite({
+				number: 1,
+				by: "1",
+				second: 2000,
+			}),
+		],
+		[
+			invite({
+				number: 1,
+				by: "7",
+				second: 999,
+			}),
+		],
 		[],
-		[invite({ number: 1, by: "1", second: 500 }), invite({ number: 2, by: "7", second: 2000 })],
+		[
+			invite({
+				number: 1,
+				by: "1",
+				second: 500,
+			}),
+			invite({
+				number: 2,
+				by: "7",
+				second: 2000,
+			}),
+		],
 	])
 		== 0
 # Past the limit, the invites page has no form, and says when they may

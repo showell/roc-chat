@@ -27,8 +27,12 @@ InviteRights :: [].{
 	## limit (`NewcomerInvites.check`): their `joined` file, and the new
 	## invites they made since, among every human's of `directory`. Past it,
 	## `FirstDayFull`, a 403 saying when they may again.
-	check_first_day! : SignedIn, Directory, Timestamp => Try({}, _)
-	check_first_day! = |acting, directory, now| {
+	check_first_day! : {
+		acting : SignedIn,
+		directory : Directory,
+		now : Timestamp,
+	} => Try({}, _)
+	check_first_day! = |{ acting, directory, now }| {
 		by = acting.user().id()
 		joined = JoinedFiles.read_joined!(by) ? |fault| FileSystem(fault)
 		made =
@@ -39,7 +43,8 @@ InviteRights :: [].{
 					for user in directory.users().to_list() {
 						match user.as_human() {
 							Ok(human) => {
-								theirs = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
+								theirs =
+									InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
 								$invites = $invites.append(theirs)
 							}
 							Err(Agent(_)) => {}
@@ -48,15 +53,24 @@ InviteRights :: [].{
 					NewcomerInvites.count_made($invites, { by, since })
 				}
 			}
-		NewcomerInvites.check({ by, joined, made, now }) ? |FirstDayFull(until)| Refused(FirstDayFull(until))
+		NewcomerInvites.check({
+			by,
+			joined,
+			made,
+			now,
+		}) ? |FirstDayFull(until)| Refused(FirstDayFull(until))
 		Ok({})
 	}
 
 	## What the invites page offers `acting` at `now`: the form, or, past the
 	## first day's limit, the line saying when they may invite again.
-	load_offer! : SignedIn, Directory, Timestamp => Try([MayInvite, MayNotInvite(Str)], _)
-	load_offer! = |acting, directory, now|
-		match InviteRights.check_first_day!(acting, directory, now) {
+	load_offer! : {
+		acting : SignedIn,
+		directory : Directory,
+		now : Timestamp,
+	} => Try([MayInvite, MayNotInvite(Str)], _)
+	load_offer! = |request|
+		match InviteRights.check_first_day!(request) {
 			Ok({}) => Ok(MayInvite)
 			Err(Refused(FirstDayFull(until))) => Ok(MayNotInvite(NewcomerInvites.full_words(until)))
 			Err(FileSystem(fault)) => Err(FileSystem(fault))

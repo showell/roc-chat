@@ -82,7 +82,9 @@ NameRelease :: [].{
 				Ok({}) =>
 					Ok({
 						directory: released.directory,
-						pending: NameRelease.Pending.({ humans: $lapsed, changed: released.changed }),
+						pending: NameRelease.Pending.(
+							{ humans: $lapsed, changed: released.changed },
+						),
 					})
 			}
 		}
@@ -91,7 +93,10 @@ NameRelease :: [].{
 	## `directory` as it is, with nothing to release: for a request with no
 	## name to free.
 	plan_release_of_none : Directory -> { directory : Directory, pending : NameRelease.Pending }
-	plan_release_of_none = |directory| { directory, pending: NameRelease.Pending.({ humans: [], changed: [] }) }
+	plan_release_of_none = |directory| {
+		directory,
+		pending: NameRelease.Pending.({ humans: [], changed: [] }),
+	}
 
 	## The release `pending` written at `now`: each channel it changed, then
 	## each lapsed invitee's `name-released`. Nothing, for none.

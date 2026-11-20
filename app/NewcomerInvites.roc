@@ -69,7 +69,7 @@ NewcomerInvites :: [].{
 				match first_made(theirs) {
 					Ok(first) =>
 						first.invite_maker() == by
-							and first.created().seconds_since(since).to_i128() >= 0
+							and first.made_at().seconds_since(since).to_i128() >= 0
 					Err(ListWasEmpty) => Bool.False
 				},
 		)
@@ -95,7 +95,7 @@ first_made = |invites|
 			match found {
 				Err(ListWasEmpty) => Ok(invite)
 				Ok(earlier) =>
-					if invite.created().to_seconds_since_epoch() < earlier.created().to_seconds_since_epoch() {
+					if invite.made_at().seconds_since(earlier.made_at()).to_i128() < 0 {
 						Ok(invite)
 					} else {
 						found

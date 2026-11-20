@@ -6,7 +6,6 @@ import Directory
 import HumanInvite
 import HumanInvites
 import LapsedInvitee
-import PeoplePages
 import Sample
 import SecretHash
 import SignedIn
@@ -215,7 +214,10 @@ expect {
 	both = (with_zoe.directory.add_human(Sample.name("Zoé")) ?? crash "NamesSpec: a free key").directory
 	released = both.release_humans([lapsed])
 	both.humans_alike_list(Sample.name("Zoe")).len() == 2
-		and released.directory.check_new_human_name({ name: Sample.name("Zoe"), leaving: NoOne }) == Err(NameTooClose)
+		and released.directory.check_new_human_name({
+			name: Sample.name("Zoe"),
+			leaving: NoOne,
+		}) == Err(NameTooClose)
 }
 
 # The refusals' statuses and words.

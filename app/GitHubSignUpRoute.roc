@@ -131,7 +131,7 @@ serve_name_form! = |{ viewer, directory, headers, now }| {
 						match check_limits!(directory, now) {
 							Err(limit) => with_sign_up_forgotten(refuse_as_paused!(viewer, limit))
 							Ok(_) =>
-								match load_offer_directory!(resumed, directory, now) {
+								match load_offer_directory!({ resumed, directory, now }) {
 									Ok(offered) => HttpAnswer.page(200, name_form(resumed, offered))
 									Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 								}
@@ -186,8 +186,12 @@ not_found = HttpAnswer.page(404, PageKit.not_found)
 ## The directory the name form's offer of `resumed`'s GitHub login is judged
 ## against at `now`: with any lapsed invitee in its way released, as a submit
 ## of it would find it (`NameRelease.plan_release!`). Nothing is written.
-load_offer_directory! : GitHubSignIn.SignUpResumed, Directory, Timestamp => Try(Directory, [FileSystem(FileFacts.Fault)])
-load_offer_directory! = |resumed, directory, now|
+load_offer_directory! : {
+	resumed : GitHubSignIn.SignUpResumed,
+	directory : Directory,
+	now : Timestamp,
+} => Try(Directory, [FileSystem(FileFacts.Fault)])
+load_offer_directory! = |{ resumed, directory, now }|
 	match resumed.login() {
 		NoLogin => Ok(directory)
 		Login(login) =>

@@ -3261,7 +3261,7 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     const quin_id = try nextId(a, io, data);
     const quin_invited = try postAs(a, io, port, debbie, "/invites", "name=Quin");
     const annex = try postAs(a, io, port, steve_session, "/channels", "name=annex");
-    const quin_in_annex = try postAs(a, io, port, steve_session, try std.fmt.allocPrint(a, "/channels/annex/{d}/add", .{quin_id}), "");
+    const quin_in_annex = try postAs(a, io, port, steve_session, try std.fmt.allocPrint(a, "/channels/annex/members/{d}/add", .{quin_id}), "");
     try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/human-invites/1/expires", .{quin_id}), .data = "1000" });
     const quin_released = try std.fmt.allocPrint(a, "auth/{d}/name-released", .{quin_id});
     const quin_line = try std.fmt.allocPrint(a, "{d}\n", .{quin_id});
