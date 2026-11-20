@@ -288,7 +288,7 @@ window.Sidebar = (function () {
     if (group.getAttribute('data-group') === 'dms') {
       name.title = 'About ' + label;
       hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
-      onPress(name, SidebarPopups.personPopup(place, label, list, name, popup.open).open);
+      onPress(name, SidebarPopups.personPopup(place, label, list, name, popup).open);
     } else {
       onPress(name, shut.flip);
     }

@@ -17,8 +17,11 @@
 // their full name, whether they are online now (the place's data-presence,
 // which sidebar.js keeps up to date), when they joined when the server says
 // (data-joined, seconds since 1970, shown as a date in the viewer's own
-// time), then the DM's topics as small links straight to each, and "New
-// topic", which opens the place's new-topic popup.
+// time), then the DM's topics as small links straight to each, and the
+// place's new-topic form itself, its field and its button: a popup is
+// roomy, so its action is in it, and no popup opens another (Steve,
+// 2026-11-20). Enter adds the topic, as in the "+" popup, and a refusal
+// shows under the form; Escape closes the card.
 //
 // SidebarPopups.paintDot is the presence dot, chat-client's: a hollow ring
 // while the person is away, solid green while they are online. Its colours
@@ -110,18 +113,24 @@ window.SidebarPopups = (function () {
           });
         }, function () { say('The server did not answer; try again.'); });
     });
-    function open() {
-      var popup = frame('topic-popup', words, 'min(320px, 90vw)', '12px 14px', plus);
+    // The form, and the line that says a refusal, put fresh into `into`:
+    // the "+" popup's body, or a person card's. One popup is open at a time,
+    // so the one form moves to whichever holds it.
+    function mount(into) {
       problem.textContent = '';
       submit.disabled = false;
       form.style.margin = '0';
-      popup.body.appendChild(form);
-      popup.body.appendChild(problem);
+      into.appendChild(form);
+      into.appendChild(problem);
+    }
+    function open() {
+      var popup = frame('topic-popup', words, 'min(320px, 90vw)', '12px 14px', plus);
+      mount(popup.body);
       popup.show();
       input.focus();
       input.select();
     }
-    return { open: open };
+    return { open: open, mount: mount };
   }
 
   // A small muted line of the person card.
@@ -138,9 +147,12 @@ window.SidebarPopups = (function () {
   }
 
   // The person card of the DM `place`, named `who`, its topics `list`,
-  // giving the focus back to `name`; `newTopic` opens the place's new-topic
-  // popup.
-  function personPopup(place, who, list, name, newTopic) {
+  // giving the focus back to `name`. The place's new-topic form is in the
+  // card itself, under its topics (`topic`, the place's topicPopup, puts it
+  // there): a popup is roomy, so its action is right in it, never behind a
+  // second popup (Steve, 2026-11-20). Enter adds the topic; Escape closes
+  // the card.
+  function personPopup(place, who, list, name, topic) {
     function open() {
       var popup = frame('person-popup', '', 'min(380px, 92vw)', '16px 18px 18px', name);
       var title = document.createElement('p');
@@ -186,14 +198,9 @@ window.SidebarPopups = (function () {
         popup.body.appendChild(topics);
       }
 
-      var start = document.createElement('button');
-      start.type = 'button';
-      start.textContent = '+ New topic';
-      Object.assign(start.style, {
-        marginTop: '16px', fontSize: '12px', padding: '4px 12px', background: 'var(--cc-mine-bg)', fontFamily: 'inherit',
-        color: 'var(--cc-search-tok-fg)', border: '1px solid var(--cc-quote-border)', borderRadius: '6px', cursor: 'pointer',
-      });
-      start.addEventListener('click', function () { popup.close(); newTopic(); });
+      var start = document.createElement('div');
+      start.style.marginTop = '16px';
+      topic.mount(start);
       popup.body.appendChild(start);
       popup.show();
     }
