@@ -1,0 +1,10 @@
+# Tam's "New link" pressed: the link's card, the form behind "Invite
+# someone else", and the address /invites, not the POST's, so a reload
+# makes no invite.
+path = /invites
+sizes = desktop
+mutates = makes an invite link for Tam
+click .invite-row button
+wait .invite-made
+eval if (location.pathname === '/invites') document.body.setAttribute('data-at-invites', '')
+wait body[data-at-invites]

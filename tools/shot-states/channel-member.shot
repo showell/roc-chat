@@ -1,0 +1,8 @@
+# A member's name clicked in #general's card: their card in its place,
+# with the way back to #general.
+path = /chat/dm/1_2/plans
+sizes = desktop
+click [data-group=channels] .sidebar-place-name
+wait dialog.place-popup[open] .popup-member
+click dialog.place-popup .popup-member
+wait dialog.place-popup .popup-secondary

@@ -1,0 +1,8 @@
+# A message sent to Tam's DM once Recent's stream is open: its tile
+# arrived live, glowing.
+path = /chat/recent
+sizes = desktop
+mutates = posts a message to Tam's DM
+eval new Promise(function (r) { setTimeout(r, 700); })
+eval fetch('/chat/dm/1_2/plans', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('Arrived **live**, with `code` and a [link](https://x.y).')})
+wait .recent-tile.recent-fresh

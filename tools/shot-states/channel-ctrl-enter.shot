@@ -1,0 +1,9 @@
+# Text typed, then Ctrl+Enter: the status line's "sent" link once it arrives.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+mutates = sends a message to #general's roc-chat
+key c
+wait .compose.open
+type Sent with Ctrl+Enter.
+eval document.querySelector('.compose textarea').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', ctrlKey: true, bubbles: true}))
+wait .compose-status a

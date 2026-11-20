@@ -1,0 +1,6 @@
+# "Make a code" pressed: the code shown, large, in step 2.
+path = /devices
+sizes = desktop
+mutates = makes a device code
+click form[action="/devices"] button
+wait .sign-in-code

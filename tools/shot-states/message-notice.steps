@@ -1,0 +1,3 @@
+# The notice of a message of Tam's in the channel, as the stream's
+# `message-notice` brings it (app/MessageNotice.roc's words and link).
+eval Notices.showUnlessHere('<a href="/chat/channel/general/roc-chat#msg-5">Tam posted to general &gt; roc-chat.</a>')

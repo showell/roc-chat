@@ -1,0 +1,17 @@
+# The DM's first message cited, the citation pasted in its ChitChat, its
+# link drawn quiet, and followed: that message selected on its page.
+path = /chat/dm/1_2/plans
+sizes = desktop
+mutates = posts a citation to ChitChat in Tam's DM
+key Home
+wait #msg-1.selected
+use capture-clipboard
+key l
+wait #cite-seen
+eval fetch('/chat/dm/1_2/ChitChat', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent(document.getElementById('cite-seen').textContent)})
+goto /chat/dm/1_2/ChitChat
+wait .message:last-of-type .body p.citation-link a[href="/chat/dm/1_2/plans#msg-1"]
+wait .messages.placed
+click .message:last-of-type .body p.citation-link a
+wait .top-title a[href="/chat/dm/1_2/plans"]
+wait #msg-1.selected

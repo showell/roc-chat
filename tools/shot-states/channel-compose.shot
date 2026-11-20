@@ -1,0 +1,7 @@
+# `c` pressed and a message typed: the compose rail open, where the
+# keyboard help was.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+type A message typed in the open rail: **Thursday** works for me.

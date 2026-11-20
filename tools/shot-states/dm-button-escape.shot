@@ -1,0 +1,8 @@
+# The DM's box opened by its button, then Escape: the empty box closed
+# (the `wait` stops the run on a box left open).
+path = /chat/dm/1_2/plans
+sizes = desktop
+click .open-compose
+wait .compose.open
+key Escape
+wait .compose:not(.open)

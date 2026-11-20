@@ -1,0 +1,6 @@
+# #general's name clicked: the channel's card, its members by who posted
+# lately (Tam, Ada), then the rest (Cy, CC the agent, Steve).
+path = /chat/dm/1_2/plans
+sizes = desktop
+click [data-group=channels] .sidebar-place-name
+wait dialog.place-popup[open]

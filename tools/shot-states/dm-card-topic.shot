@@ -1,0 +1,10 @@
+# Tam's name clicked, `kickoff` typed and Enter, no mouse after the click:
+# the new topic's page.
+path = /chat/dm/1_2/plans
+sizes = desktop
+mutates = makes the topic kickoff in Tam's DM
+click .sidebar-place[data-section="/chat/dm/1_2"] .sidebar-place-name
+wait dialog.place-popup[open]
+type kickoff
+key Enter
+wait .sidebar-place[data-opening=always] a.current[href$="/kickoff"]

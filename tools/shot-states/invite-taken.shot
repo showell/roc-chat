@@ -1,0 +1,7 @@
+# "tam" sent as a new name: the refusal under the form, which keeps the name.
+path = /invites
+sizes = desktop
+click input[name=name]
+type tam
+click .panel form button
+wait p.problem

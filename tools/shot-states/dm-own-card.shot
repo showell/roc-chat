@@ -1,0 +1,5 @@
+# Steve's own name clicked: his card, "Online now", green.
+path = /chat/dm/1_2/plans
+sizes = desktop
+click .sidebar-place[data-section="/chat/dm/1_1"] .sidebar-place-name
+wait dialog.place-popup[open]

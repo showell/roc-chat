@@ -1,0 +1,7 @@
+# Recent's search clicked and "thu" typed: the words found.
+path = /chat/recent
+sizes = desktop
+click .search-open
+wait dialog.search-dialog[open]
+type thu
+wait .search-row

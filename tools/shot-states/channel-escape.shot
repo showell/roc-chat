@@ -1,0 +1,8 @@
+# A phone's open bar tapped, then Escape: closed to the green "Open
+# compose box" button.
+path = /chat/channel/general/roc-chat
+sizes = phone
+wait .compose.open
+click .compose textarea
+key Escape
+wait .compose:not(.open)

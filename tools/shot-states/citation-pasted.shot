@@ -1,0 +1,6 @@
+# The citation cite-followed pasted, as ChitChat shows it: the quote, then
+# its link.
+path = /chat/dm/1_2/ChitChat
+sizes = desktop,phone
+after = cite-followed
+wait .message .body p.citation-link a

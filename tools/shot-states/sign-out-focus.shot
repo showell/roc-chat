@@ -1,0 +1,4 @@
+# The top bar's "Sign out" focused, as Tab reaches it.
+path = /chat/dm/1_2/plans
+sizes = desktop,phone
+eval document.querySelector('.top-user .sign-out button').focus()

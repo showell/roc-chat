@@ -1,0 +1,10 @@
+# Text typed, the rail's close button, then `c`: the text back.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+type Thursday works.
+click .compose-hide button
+wait .compose:not(.open)
+key c
+wait .compose.open textarea:not(:placeholder-shown)

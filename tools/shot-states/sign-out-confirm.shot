@@ -1,0 +1,7 @@
+# A phone signed in by a device code taps "Sign out": the page that asks
+# first.
+path = /chat/dm/1_2/plans
+sizes = desktop,phone
+as = phone
+click .top-user .sign-out button
+wait input[name=confirmed]

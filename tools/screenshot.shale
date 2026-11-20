@@ -8,96 +8,33 @@
 --
 --   shale tools/screenshot.shale out=build:shots/my-change
 --
--- Each PNG is `<theme>-<width>x<height>-<page>.png`. The pages, at
--- 1280x800 and 390x844 (a phone):
---   channel  /chat/channel/general/roc-chat, the demo's topic, with the
---            keyboard help beside it at the desktop's size
---   dm       /chat/dm/1_2/plans, Steve and Tam
---   recent   /chat/recent
---   browse   /chat
---   invites  /invites
---   devices  /devices, the "Add a device" page's steps
--- and what takes a click or a key, at 1280x800 (STATES, below):
---   dm-person-card    Tam's name clicked in the sidebar: the person card
---   dm-own-card       Steve's own name clicked: his card, "Online now", green
---   dm-new-topic      the DM's "+" clicked: its card on the new-topic form,
---                     the topics under it
---   channel-card      #general's name clicked: the channel's card, its
---                     members by who posted lately (Tam, Ada), then the
---                     rest (Cy, CC the agent, Steve)
---   channel-member    a member's name clicked in it: their card in its
---                     place, with the way back to #general
---   dm-card-topic     Tam's name clicked, `kickoff` typed and Enter, no
---                     mouse after the click: the new topic's page
---   dm-selected       ↑ pressed twice: an older message selected
---   channel-compose   `c` pressed and a message typed: the compose rail
---                     open, where the keyboard help was
---   channel-emoji     `:sm` typed in the compose box: emoji autocomplete
---   channel-c-escape, dm-c-escape, channel-button-escape, dm-button-escape
---                     the box opened by `c` or its button, then Escape: the
---                     empty box closed (each `wait`s for it, so a box left
---                     open stops the run)
---   channel-text-escape  text typed, then Escape: the box open, the text kept
---   channel-close-reopen text typed, the rail's ✕, then `c`: the text back
---   channel-ctrl-enter   text typed, then Ctrl+Enter: the "✓ sent" notice
---   devices-code      "Make a code" pressed: the code shown, large, in step 2
---   browse-bad-topic  "two words" sent as a topic: the refusal beside its
---                     place's form, which keeps what was typed
---   invite-made       Tam's "New link" pressed: the link's card, the form
---                     behind "Invite someone else", and the address
---                     /invites, not the POST's, so a reload makes no invite
---   invite-taken      "tam" sent as a new name: the refusal under the form,
---                     which keeps the name
--- and at 390x844 (a state's `size`):
---   channel-escape    the open bar tapped, then Escape: closed to the
---                     green "Open compose box" button
---   dm-actions        the selected message's "⋯" tapped: its row of
---                     actions open under its header
---   sign-out-focus    the top bar's "Sign out" focused, as Tab reaches it
---                     (at both sizes)
---   invite-made-phone the invite-made card at a phone's width
---   dm-drawer         the ☰ tapped: the sidebar's drawer, its dots
--- and at 1280x800 again:
---   recent-search     Recent's 🔍 clicked and "thu" typed: the words found
---   recent-arrival    a message sent while Recent is open: its tile arrived
---                     live, glowing
---   recent-own-arrival  Steve, on Recent, sends a message to his own DM: its
---                     tile, "DM with Steve (you)", arrives live at the top,
---                     glowing (at both sizes)
---   dm-message-notice the notice of a message elsewhere, as the stream's
---                     `message-notice` shows it (here handed to chrome.js's
---                     Notices by the page's console), at both sizes
---   dm-notice-dismissed  on a phone, that notice's ✕ tapped: the line gone
---   channel-self-notice  Steve, on the channel's page, sends a message to his
---                     own DM: its violet notice arrives live (at both sizes)
---   dm-here-away      a message from Tam on the topic being read, the page
---                     not focused: the strip says nothing, the tab turns
---                     violet, and clears once the page has the focus again
---                     (the state waits on each; the picture is the page)
---   dm-here-focused   the same message, the page focused: no violet
---   sign-out-confirm  a phone signed in by a device code taps "Sign out":
---                     the page that asks first (at both sizes; a state with
---                     `as = "phone"` uses that device's session)
---   dm-cite, channel-cite, own-dm-cite
---                     Home, then `l`, on Tam's DM, #general and Steve's own
---                     DM (its topic `notes`): the citation of the first
---                     message the clipboard gets, its text shown over the
---                     messages (the clipboard caught by the page's
---                     console), each `wait`ing for the link's words and
---                     path, the "copied" notice and the compose box's
---                     placeholder, which names the place too
---   cite-followed     the DM's first message cited, the citation pasted in
---                     its ChitChat, and its link followed: that message
---                     selected on its page
---   citation-pasted   that citation in ChitChat, its link under the quote
---                     (at both sizes)
---   dm-quote-reply    `q`: the selected message quoted in the open box
--- and once, last, in the last theme (it brings Cy online for good, so
--- every picture before it shows his hollow dot):
---   dm-came-online    Cy's first page, while Steve's DM is open: his dot
---                     filled by the stream, and "Cy has come online."
--- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
--- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
+-- Each PNG is `<theme>-<width>x<height>-<name>.png`. The pages (PAGES,
+-- below) are shot at 1280x800 and 390x844 (a phone), in dark (the app's
+-- default) and light. What a click or a key opens is a state, one file
+-- each in tools/shot-states/: `<name>.shot`, read in name order. A state
+-- file starts with `#` lines that say what the picture shows, then its
+-- settings, one `key = value` a line, then its steps, one a line, as
+-- tools/shot/steps.zig reads them (`goto`, `click`, `key`, `type`, `wait`,
+-- `eval`; `#` lines and blank lines are nothing). Its settings:
+--   path = /chat/dm/1_2/plans  the page it starts on (required)
+--   sizes = desktop,phone      the sizes it is shot at (required)
+--   as = phone                 the session it is shot as, not Steve's
+--   mutates = what it changes  it changes the server's data, so it runs
+--                              after every picture that doesn't, each theme
+--                              in turn, and no page shows another theme's
+--                              data
+--   after = <state>            it reads what that state made, so it runs
+--                              right after it, with the states that mutate
+--   last = yes                 it runs once, after everything, in the last
+--                              theme: Cy, brought online, stays online
+-- Two steps are this script's: `use <name>` puts the steps of
+-- tools/shot-states/<name>.steps there, and `session <who>` sets the
+-- cookie to steve's, phone's (a device Steve signed in by a code) or cy's.
+--
+-- `list=1` prints every page and state, what each shows, and how many
+-- pictures a run takes, and starts nothing. `only=<name>[,<name>]` shoots
+-- just those pages and states; `themes=dark` or `sizes=phone` (or
+-- `desktop`) takes one alone; `states=0` leaves the states out.
 --
 -- Lanes run it at once, so each picks its own port: the first one free
 -- (nothing listening, by `ss`) of PORTS, starting at a place its folder's
@@ -117,12 +54,12 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 70 s on a busy box for the 117 pictures once the server and the driver
--- are built (10 to 12.6 s of CPU on 2026-11-20, about 0.1 s a picture,
--- held to 16 s with the citation states; it was 2.5 s for 56, and the
--- states added since cost more each, popups and waits); each about 0.5 s, its line
--- printed as `shot <name> <ms>`. A `zig build` after the app changed adds
--- about 25 s, the driver's first build about 10 s.
+-- Budgets: the pictures are held to CPU_MS_A_PICTURE of CPU each, and
+-- CPU_MS_TO_START for the browser (about 0.15 s a picture on a busy box,
+-- 2026-11-20), each picture's line printed as `shot <name> <ms>`; a full
+-- run takes about 70 s of wall time once the server and the driver are
+-- built. A `zig build` after the app changed adds about 25 s, the driver's
+-- first build about 10 s.
 -- The browser runs one renderer, its JavaScript heap capped at 128 MB,
 -- under `nice`. The data root, the profile, the list and the logs are
 -- under .zig-cache/screenshot.XXXXXX, removed at the end; a stop leaves
@@ -130,27 +67,168 @@
 
 const CHROME = "tools:chrome-headless-shell-158.0.8127.36/chrome-headless-shell-linux64/chrome-headless-shell"
 const PASSWORD = "correct horse battery staple"
+const STATES_DIR = "tools/shot-states"
+const CPU_MS_A_PICTURE = 160
+const CPU_MS_TO_START = 2000
+const WALL_MS_A_PICTURE = 1000
+const WALL_MS_TO_START = 20000
 
 local out = arg("out", "")
-if out == "" then fail("screenshot: name the folder the PNGs go to, out=build:shots/<name>") end
+local listing = arg("list", 0) == 1
+if out == "" and not listing then fail("screenshot: name the folder the PNGs go to, out=build:shots/<name>") end
 local port_arg = arg("port", 0)
 local themes_arg = arg("themes", "dark,light")
 local sizes_arg = arg("sizes", "desktop,phone")
 local with_states = arg("states", 1) == 1
+local only_arg = arg("only", "")
 
 const PAGES = {
-  {name = "channel", path = "/chat/channel/general/roc-chat"},
-  {name = "dm", path = "/chat/dm/1_2/plans"},
-  {name = "recent", path = "/chat/recent"},
-  {name = "browse", path = "/chat"},
-  {name = "invites", path = "/invites"},
-  {name = "devices", path = "/devices"},
+  {name = "channel", path = "/chat/channel/general/roc-chat", about = "the demo's topic, with the keyboard help beside it at the desktop's size"},
+  {name = "dm", path = "/chat/dm/1_2/plans", about = "Steve and Tam's DM"},
+  {name = "recent", path = "/chat/recent", about = "Recent"},
+  {name = "browse", path = "/chat", about = "Browse"},
+  {name = "invites", path = "/invites", about = "the invites page"},
+  {name = "devices", path = "/devices", about = "the \"Add a device\" page's steps"},
 }
 const SIZES = {desktop = "1280 800", phone = "390 844"}
+-- The sessions a state may be shot as or switch to (`as`, `session`).
+const SESSIONS = {"steve", "phone", "cy"}
+-- The driver's verbs a state's steps may use; `size`, `cookie`, `base` and
+-- `shot` are this script's to write.
+const STATE_VERBS = {"goto", "click", "key", "type", "wait", "eval"}
+const SETTINGS = {"path", "sizes", "as", "mutates", "after", "last"}
 
 -- Where a port is looked for: 100 of them.
 const PORTS_FROM = 9661
 const PORTS = 100
+
+-- A state's step, checked: a driver's verb or one of this script's.
+function checked_step(line, where)
+  local verb = words(line)[1]
+  if verb == "use" or verb == "session" then
+    if #words(line) ~= 2 then fail("screenshot: " .. where .. ": `" .. verb .. "` takes one word: " .. line) end
+    if verb == "session" and not has_item(SESSIONS, words(line)[2]) then
+      fail("screenshot: " .. where .. ": no session `" .. words(line)[2] .. "`; they are " .. join(SESSIONS, ", "))
+    end
+  elseif not has_item(STATE_VERBS, verb) then
+    fail("screenshot: " .. where .. ": a state's step starts with one of " .. join(STATE_VERBS, ", ") .. ", use or session, not: " .. line)
+  end
+  return line
+end
+
+-- The steps of tools/shot-states/<name>.steps, for a `use`.
+function used_steps(name, where)
+  local file = STATES_DIR .. "/" .. name .. ".steps"
+  if not exists(file) then fail("screenshot: " .. where .. ": no " .. file) end
+  local steps = {}
+  local n = 0
+  for l in lines(read(file)) do
+    n = n + 1
+    local t = trim(l)
+    if t ~= "" and not starts_with(t, "#") then
+      if words(t)[1] == "use" then fail("screenshot: " .. file .. ":" .. n .. ": a `use` inside a .steps file") end
+      push(steps, checked_step(t, file .. ":" .. n))
+    end
+  end
+  return steps
+end
+
+-- A state file read and checked: `{name, about, path, sizes, as, mutates,
+-- after, last, steps}`, `as` "steve" and `mutates` and `after` "" when unset.
+function read_state(file)
+  local base = basename(file)
+  local st = {name = sub(base, 1, #base - 5), about = "", path = "", sizes = {}, as = "steve",
+    mutates = "", after = "", last = false, steps = {}}
+  local about = {}
+  local at = "about"
+  local seen = {}
+  local n = 0
+  for l in lines(read(file)) do
+    n = n + 1
+    local where = file .. ":" .. n
+    local t = trim(l)
+    local setting = re_find(t, "^([a-z]+) = (.+)$")
+    if at == "about" and starts_with(t, "#") then
+      push(about, trim(sub(t, 2, #t)))
+    elseif n == 1 then
+      fail("screenshot: " .. where .. ": a state file starts with a `#` line that says what it shows")
+    elseif at ~= "steps" and setting ~= nil then
+      at = "settings"
+      local key = setting.groups[1]
+      local value = setting.groups[2]
+      if not has_item(SETTINGS, key) then fail("screenshot: " .. where .. ": no setting `" .. key .. "`; they are " .. join(SETTINGS, ", ")) end
+      if has_key(seen, key) then fail("screenshot: " .. where .. ": `" .. key .. "` set twice") end
+      seen[key] = true
+      if key == "sizes" then
+        for s in split(value, ",") do
+          if not has_key(SIZES, s) then fail("screenshot: " .. where .. ": sizes are desktop and phone, not " .. s) end
+          push(st.sizes, s)
+        end
+      elseif key == "last" then
+        if value ~= "yes" then fail("screenshot: " .. where .. ": `last` is yes or unset") end
+        st.last = true
+      elseif key == "as" then
+        if not has_item(SESSIONS, value) then fail("screenshot: " .. where .. ": no session `" .. value .. "`; they are " .. join(SESSIONS, ", ")) end
+        st.as = value
+      else
+        st[key] = value
+      end
+    elseif t ~= "" and not starts_with(t, "#") then
+      at = "steps"
+      if words(t)[1] == "use" then
+        for u in used_steps(words(t)[2], where) do push(st.steps, u) end
+      else
+        push(st.steps, checked_step(t, where))
+      end
+    end
+  end
+  if st.path == "" or not starts_with(st.path, "/") then fail("screenshot: " .. file .. ": `path = /...` names the page it starts on") end
+  if #st.sizes == 0 then fail("screenshot: " .. file .. ": `sizes = desktop`, `phone` or `desktop,phone`") end
+  st.about = join(about, " ")
+  return st
+end
+
+-- Whether a state runs after every picture that changes nothing.
+function late(st)
+  return st.mutates ~= "" or st.after ~= "" or st.last
+end
+
+-- `st`, then the states `after` it, and those after them, onto `order`.
+function push_with_followers(order, st, followers)
+  push(order, st)
+  if has_key(followers, st.name) then
+    for f in followers[st.name] do push_with_followers(order, f, followers) end
+  end
+end
+
+-- `states` in the order they run: those that change nothing by name, then
+-- those that mutate by name, each followed by the states `after` it, then
+-- the `last` ones.
+function in_running_order(states)
+  local early = {}
+  local mutating = {}
+  local lasts = {}
+  local followers = {}
+  local by_name = {}
+  for st in states do by_name[st.name] = st end
+  for st in states do
+    if st.after ~= "" then
+      if not has_key(by_name, st.after) then fail("screenshot: " .. st.name .. " is `after` " .. st.after .. ", which no state file names") end
+      push_at(followers, st.after, st)
+    elseif st.last then
+      push(lasts, st)
+    elseif st.mutates ~= "" then
+      push(mutating, st)
+    else
+      push(early, st)
+    end
+  end
+  local order = early
+  for st in mutating do push_with_followers(order, st, followers) end
+  for st in lasts do push_with_followers(order, st, followers) end
+  if #order ~= #states then fail("screenshot: a state is `after` one that is itself after it, or after a state that changes nothing") end
+  return order
+end
 
 -- The pids listening on TCP `at`, by `ss` (one line a socket).
 function listeners(at)
@@ -189,172 +267,6 @@ function alone_on(at, pid)
   end
 end
 
--- The clipboard, as `l` writes a citation to it: the text shown on the
--- page, and held in its data-text for a `wait` to read.
-const CAPTURE = [==[eval window.ClipboardItem = undefined; Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: function (t) { var p = document.createElement('pre'); p.id = 'cite-seen'; p.textContent = t; p.setAttribute('data-text', t); p.style.cssText = 'position:fixed;top:60px;left:280px;z-index:99;background:#fff;color:#000;padding:8px;white-space:pre-wrap;max-width:700px;font-size:14px'; document.body.appendChild(p); return Promise.resolve(); }}})]==]
-
--- A message Steve sends to his own DM once the page's stream is open, which
--- is news to him on any other page (app/MessageNotice.roc's `recipients`).
-const SELF_NOTICE = {
-  "eval new Promise(function (r) { setTimeout(r, 700); })",
-  "eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself.')})",
-  "wait .notice-strip.notice-message"}
-
--- A message Steve sends to his own DM once Recent's stream is open: its
--- tile arrives first, glowing, as any conversation's does.
-const OWN_ARRIVAL = {
-  "eval new Promise(function (r) { setTimeout(r, 700); })",
-  "eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself, live on Recent.')})",
-  "wait .recent-tile.recent-fresh[href=\"/chat/dm/1_1/notes\"]:first-child"}
-
--- The notice of a message of Tam's in the channel, as the stream's
--- `message-notice` brings it (app/MessageNotice.roc's words and link).
-const MESSAGE_NOTICE = "eval Notices.showUnlessHere('<a href=\"/chat/channel/general/roc-chat#msg-5\">Tam posted to general &gt; roc-chat.</a>')"
-
--- What a click or a key opens, at the desktop's size: each a page and the
--- steps after its load (tools/shot/steps.zig's), then its picture.
-const STATES = {
-  {name = "dm-person-card", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-place[data-section=\"/chat/dm/1_2\"] .sidebar-place-name",
-    "wait dialog.place-popup[open]"}},
-  {name = "dm-own-card", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-place[data-section=\"/chat/dm/1_1\"] .sidebar-place-name",
-    "wait dialog.place-popup[open]"}},
-  {name = "dm-new-topic", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-place[data-opening=always] .sidebar-new-topic",
-    "wait dialog.place-popup[open]"}},
-  {name = "channel-card", path = "/chat/dm/1_2/plans", steps = {
-    "click [data-group=channels] .sidebar-place-name",
-    "wait dialog.place-popup[open]"}},
-  {name = "channel-member", path = "/chat/dm/1_2/plans", steps = {
-    "click [data-group=channels] .sidebar-place-name",
-    "wait dialog.place-popup[open] .popup-member",
-    "click dialog.place-popup .popup-member",
-    "wait dialog.place-popup .popup-secondary"}},
-  {name = "dm-card-topic", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-place[data-section=\"/chat/dm/1_2\"] .sidebar-place-name",
-    "wait dialog.place-popup[open]",
-    "type kickoff", "key Enter",
-    "wait .sidebar-place[data-opening=always] a.current[href$=\"/kickoff\"]"}},
-  {name = "dm-selected", path = "/chat/dm/1_2/plans", steps = {
-    "key ArrowUp", "key ArrowUp", "wait .message.selected"}},
-  {name = "channel-compose", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open",
-    "type A message typed in the open rail: **Thursday** works for me."}},
-  {name = "channel-emoji", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "type Looks good :sm", "wait .chat-emoji-menu"}},
-  -- Escape in an empty box closes it, as Gopher's did, however it opened.
-  {name = "channel-c-escape", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
-  {name = "dm-c-escape", path = "/chat/dm/1_2/plans", steps = {
-    "key c", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
-  {name = "channel-button-escape", path = "/chat/channel/general/roc-chat", steps = {
-    "click .open-compose", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
-  {name = "dm-button-escape", path = "/chat/dm/1_2/plans", steps = {
-    "click .open-compose", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
-  -- Escape in a box holding text leaves it open, its text there.
-  {name = "channel-text-escape", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "type Thursday works.", "key Escape",
-    "wait .compose.open textarea:not(:placeholder-shown)"}},
-  -- The ✕ closes a box holding text; opened again, the text is there.
-  {name = "channel-close-reopen", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "type Thursday works.", "click .compose-hide button",
-    "wait .compose:not(.open)", "key c", "wait .compose.open textarea:not(:placeholder-shown)"}},
-  -- Ctrl+Enter sends: the status line's "✓ sent" link once it arrives.
-  {name = "channel-ctrl-enter", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "type Sent with Ctrl+Enter.",
-    "eval document.querySelector('.compose textarea').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', ctrlKey: true, bubbles: true}))",
-    "wait .compose-status a"}},
-  {name = "devices-code", path = "/devices", steps = {
-    "click form[action=\"/devices\"] button", "wait .sign-in-code"}},
-  -- A phone's open bar, tapped, then Escape: closed to the green button.
-  {name = "channel-escape", size = "phone", path = "/chat/channel/general/roc-chat", steps = {
-    "wait .compose.open", "click .compose textarea", "key Escape", "wait .compose:not(.open)"}},
-  {name = "dm-actions", size = "phone", path = "/chat/dm/1_2/plans", steps = {
-    "click .message.selected .actions-more", "wait .message.actions-open"}},
-  {name = "sign-out-focus", path = "/chat/dm/1_2/plans", steps = {
-    "eval document.querySelector('.top-user .sign-out button').focus()"}},
-  {name = "sign-out-focus", size = "phone", path = "/chat/dm/1_2/plans", steps = {
-    "eval document.querySelector('.top-user .sign-out button').focus()"}},
-  -- Recent's search: its 🔍 clicked and a word typed.
-  {name = "recent-search", path = "/chat/recent", steps = {
-    "click .search-open", "wait dialog.search-dialog[open]", "type thu", "wait .search-row"}},
-  -- Recent live: once its stream is open, a message sent to the DM, whose
-  -- tile arrives and glows.
-  {name = "recent-arrival", path = "/chat/recent", steps = {
-    "eval new Promise(function (r) { setTimeout(r, 700); })",
-    "eval fetch('/chat/dm/1_2/plans', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('Arrived **live**, with `code` and a [link](https://x.y).')})",
-    "wait .recent-tile.recent-fresh"}},
-  -- Recent live, a message to Steve's own DM: its tile arrives like any
-  -- other's, at the top, glowing.
-  {name = "recent-own-arrival", path = "/chat/recent", steps = OWN_ARRIVAL},
-  {name = "recent-own-arrival", size = "phone", path = "/chat/recent", steps = OWN_ARRIVAL},
-  {name = "dm-message-notice", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
-  {name = "dm-message-notice", size = "phone", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
-  {name = "dm-notice-dismissed", size = "phone", path = "/chat/dm/1_2/plans", steps = {
-    MESSAGE_NOTICE, "wait .notice-strip.notice-message", "click .notice-strip .notice-dismiss"}},
-  {name = "channel-self-notice", path = "/chat/channel/general/roc-chat", steps = SELF_NOTICE},
-  {name = "channel-self-notice", size = "phone", path = "/chat/channel/general/roc-chat", steps = SELF_NOTICE},
-  {name = "dm-here-away", path = "/chat/dm/1_2/plans", steps = {
-    "eval document.hasFocus = function () { return false; }",
-    "eval Notices.showUnlessHere('<a href=\"/chat/dm/1_2/plans#msg-9\">Tam sent you a message on plans.</a>')",
-    "eval if (/alert-icon/.test(document.getElementById('favicon').href) && !/sent you/.test(document.querySelector('.notice-strip').textContent)) document.body.setAttribute('data-here-violet', '')",
-    "wait body[data-here-violet]",
-    "eval document.hasFocus = function () { return true; }; window.dispatchEvent(new Event('focus'))",
-    "eval if (/favicon\\.ico/.test(document.getElementById('favicon').href)) document.body.setAttribute('data-here-cleared', '')",
-    "wait body[data-here-cleared]"}},
-  {name = "dm-here-focused", path = "/chat/dm/1_2/plans", steps = {
-    "eval document.hasFocus = function () { return true; }",
-    "eval Notices.showUnlessHere('<a href=\"/chat/dm/1_2/plans#msg-9\">Tam sent you a message on plans.</a>')",
-    "eval var f = document.getElementById('favicon'); if (!(f && /alert-icon/.test(f.href)) && !/sent you/.test(document.querySelector('.notice-strip').textContent)) document.body.setAttribute('data-here-quiet', '')",
-    "wait body[data-here-quiet]"}},
-  {name = "browse-bad-topic", path = "/chat", steps = {
-    "click input[name=topic]", "type two words", "click .browse-panes form button", "wait p.problem"}},
-  {name = "invite-made", path = "/invites", steps = {"click .invite-row button", "wait .invite-made",
-    "eval if (location.pathname === '/invites') document.body.setAttribute('data-at-invites', '')",
-    "wait body[data-at-invites]"}},
-  {name = "invite-taken", path = "/invites", steps = {
-    "click input[name=name]", "type tam", "click .panel form button", "wait p.problem"}},
-  {name = "invite-made-phone", size = "phone", path = "/invites", steps = {
-    "click .invite-row button", "wait .invite-made"}},
-  -- The drawer, slid in: once its 0.25 s slide has ended.
-  {name = "dm-drawer", size = "phone", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-toggle", "wait .sidebar-toggle[aria-expanded=true]",
-    "eval new Promise(function (r) { setTimeout(r, 400); })"}},
-  {name = "sign-out-confirm", as = "phone", path = "/chat/dm/1_2/plans", steps = {
-    "click .top-user .sign-out button", "wait input[name=confirmed]"}},
-  {name = "sign-out-confirm", as = "phone", size = "phone", path = "/chat/dm/1_2/plans", steps = {
-    "click .top-user .sign-out button", "wait input[name=confirmed]"}},
-  -- `l`: the citation the clipboard gets on a DM, a channel and the
-  -- viewer's own DM, its link naming the place as the page does, and the
-  -- notice that says so; the compose box's placeholder names the place too.
-  {name = "dm-cite", path = "/chat/dm/1_2/plans", steps = {
-    "wait .compose textarea[placeholder=\"Message Tam\"]", "key Home", "wait #msg-1.selected", CAPTURE, "key l",
-    "wait #cite-seen[data-text$=\"\\A\\A[Steve in Tam › plans](/chat/dm/1_2/plans#msg-1)\\A\"]", "wait .cite-notice"}},
-  {name = "channel-cite", path = "/chat/channel/general/roc-chat", steps = {
-    "wait .compose textarea[placeholder=\"Message #general › roc-chat\"]", "key Home", "wait #msg-1.selected", CAPTURE, "key l",
-    "wait #cite-seen[data-text$=\" in #general › roc-chat](/chat/channel/general/roc-chat#msg-1)\\A\"]", "wait .cite-notice"}},
-  {name = "own-dm-cite", path = "/chat/dm/1_1/notes", steps = {
-    "wait .compose textarea[placeholder=\"Message Steve\"]", "key Home", "wait #msg-1.selected", CAPTURE, "key l",
-    "wait #cite-seen[data-text$=\"\\A\\A[Steve in Steve › notes](/chat/dm/1_1/notes#msg-1)\\A\"]", "wait .cite-notice"}},
-  -- An older message cited, the citation pasted in another topic, its link
-  -- drawn quiet, and followed: the message it cites selected.
-  {name = "cite-followed", path = "/chat/dm/1_2/plans", steps = {
-    "key Home", "wait #msg-1.selected", CAPTURE, "key l", "wait #cite-seen",
-    "eval fetch('/chat/dm/1_2/ChitChat', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent(document.getElementById('cite-seen').textContent)})",
-    "goto /chat/dm/1_2/ChitChat", "wait .message:last-of-type .body p.citation-link a[href=\"/chat/dm/1_2/plans#msg-1\"]",
-    "wait .messages.placed", "click .message:last-of-type .body p.citation-link a",
-    "wait .top-title a[href=\"/chat/dm/1_2/plans\"]", "wait #msg-1.selected"}},
-  -- That pasted citation as its topic shows it: the quote, then its link.
-  {name = "citation-pasted", path = "/chat/dm/1_2/ChitChat", steps = {"wait .message .body p.citation-link a"}},
-  {name = "citation-pasted", size = "phone", path = "/chat/dm/1_2/ChitChat", steps = {"wait .message .body p.citation-link a"}},
-  -- `q` still quotes the selected message into the compose box.
-  {name = "dm-quote-reply", path = "/chat/dm/1_2/plans", steps = {
-    "key q", "wait .compose.open textarea:not(:placeholder-shown)"}},
-}
-
-if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
-
 -- A form POSTed as `cookie` (a `name=value`), each field's value
 -- URL-encoded by curl: the answer's status, headers and body.
 function post_form(base, cookie, path, fields)
@@ -392,14 +304,19 @@ function theme_steps(list, theme)
   end
 end
 
--- 0. The server and the driver, built niced, so the job below starts at once.
-must(run({"zig", "build"}, {timeout_ms = 600000, tail = 20, nice = 19}))
-must(run({"zig", "build", "install"}, {cwd = "tools/shot", timeout_ms = 300000, tail = 20, nice = 19}))
+-- A picture's PNG name.
+function picture_name(theme, size, name)
+  return theme .. "-" .. re_replace(SIZES[size], " ", "x") .. "-" .. name
+end
 
-local work = fresh_dir(".zig-cache", "screenshot")
-local data = work .. "/data"
-mkdir(work .. "/profile")
-mkdir(out)
+-- The sizes of `wanted` that `sizes` holds, in `wanted`'s order.
+function sizes_of(wanted, sizes)
+  local kept = {}
+  for s in wanted do
+    if has_item(sizes, s) then push(kept, s) end
+  end
+  return kept
+end
 
 const themes = split(themes_arg, ",")
 const sizes = split(sizes_arg, ",")
@@ -409,6 +326,92 @@ end
 for s in sizes do
   if not has_key(SIZES, s) then fail("screenshot: sizes= takes desktop and phone, not " .. s) end
 end
+
+-- The states, read and checked before anything starts.
+local all_states = {}
+for file in glob(STATES_DIR .. "/*.shot") do push(all_states, read_state(file)) end
+sort(all_states, "name")
+for st in all_states do
+  for p in PAGES do
+    if p.name == st.name then fail("screenshot: " .. st.name .. " is a page's name and a state's") end
+  end
+end
+all_states = in_running_order(all_states)
+
+-- What this run shoots: every page and state, or those `only=` names.
+local pages = PAGES
+local states = all_states
+if not with_states then states = {} end
+if only_arg ~= "" then
+  local only = split(only_arg, ",")
+  pages = {}
+  states = {}
+  local known = {}
+  for p in PAGES do
+    if has_item(only, p.name) then push(pages, p) end
+    push(known, p.name)
+  end
+  for st in all_states do
+    if has_item(only, st.name) then push(states, st) end
+    push(known, st.name)
+  end
+  for name in only do
+    if not has_item(known, name) then fail("screenshot: only= names " .. name .. ", which is no page or state (list=1 lists them)") end
+  end
+  for st in states do
+    if st.after ~= "" and not has_item(only, st.after) then fail("screenshot: " .. st.name .. " reads what " .. st.after .. " makes; name both in only=") end
+  end
+end
+
+-- The pictures in the order they are taken: `{theme, size, page}` or
+-- `{theme, size, state}`. Each theme's pages and the states that change
+-- nothing, then each state that mutates in every theme, then the last.
+local plan = {}
+for t in themes do
+  for s in sizes do
+    for p in pages do push(plan, {theme = t, size = s, page = p}) end
+  end
+  for st in states do
+    if not late(st) then
+      for s in sizes_of(st.sizes, sizes) do push(plan, {theme = t, size = s, state = st}) end
+    end
+  end
+end
+for st in states do
+  if late(st) then
+    local its_themes = themes
+    if st.last then its_themes = {themes[#themes]} end
+    for t in its_themes do
+      for s in sizes_of(st.sizes, sizes) do push(plan, {theme = t, size = s, state = st}) end
+    end
+  end
+end
+
+if listing then
+  local rows = {}
+  for p in PAGES do push(rows, {name = p.name, sizes = "desktop,phone", runs = "page", about = p.path .. ": " .. p.about}) end
+  for st in all_states do
+    local runs = "state"
+    if st.last then runs = "last" elseif st.after ~= "" then runs = "after " .. st.after elseif st.mutates ~= "" then runs = "mutates" end
+    local about = st.path .. ": " .. st.about
+    if st.mutates ~= "" then about = about .. " (" .. st.mutates .. ")" end
+    push(rows, {name = st.name, sizes = join(st.sizes, ","), runs = runs, about = about})
+  end
+  print(table(rows, {"name", "sizes", "runs", "about"}))
+  print("screenshot: " .. #plan .. " pictures in " .. join(themes, ",") .. " at " .. join(sizes, ","))
+  return
+end
+
+if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
+
+-- 0. The server and the driver, built niced, so the job below starts at once.
+must(run({"zig", "build"}, {timeout_ms = 600000, tail = 20, nice = 19}))
+must(run({"zig", "build", "install"}, {cwd = "tools/shot", timeout_ms = 300000, tail = 20, nice = 19}))
+
+local work = fresh_dir(".zig-cache", "screenshot")
+local data = work .. "/data"
+mkdir(work .. "/profile")
+mkdir(out)
 
 -- 1. The chat, on the demo's topic; its first start makes Steve.
 local port = port_arg
@@ -492,56 +495,52 @@ local device_code = re_find(made.text, "__Host-device_code=([0-9A-Z]+)")
 if device_code == nil then fail("screenshot: making a device code set no code's cookie") end
 local by_code = post_form(base, "none=1", "/login/code", {"code=" .. device_code.group})
 expect_status(by_code, 303, "the device code's sign-in")
-local sessions = {phone = cookie_of(by_code, "the device code's sign-in")}
+local sessions = {steve = steve, phone = cookie_of(by_code, "the device code's sign-in"), cy = more_cookies["Cy"]}
 
--- 3. The shot list: Steve's cookie, then each theme's pages at each size,
--- then its states.
+-- 3. The shot list: Steve's cookie, then the plan's pictures, each theme
+-- set as the plan comes to it, each state's steps with its `session`s'
+-- cookies.
 local list = {"base " .. base, "cookie " .. steve}
 local names = {}
-for t in themes do
-  theme_steps(list, t)
-  for s in sizes do
-    push(list, "size " .. SIZES[s])
-    for p in PAGES do
-      local name = t .. "-" .. re_replace(SIZES[s], " ", "x") .. "-" .. p.name
-      push(list, "goto " .. p.path)
-      push(list, "shot " .. name)
-      push(names, name)
+local theme_now = ""
+local size_now = ""
+for pic in plan do
+  if pic.theme ~= theme_now then
+    theme_steps(list, pic.theme)
+    theme_now = pic.theme
+    size_now = ""
+  end
+  if has_key(pic, "state") or pic.size ~= size_now then
+    push(list, "size " .. SIZES[pic.size])
+    size_now = pic.size
+  end
+  local name = ""
+  if has_key(pic, "page") then
+    name = picture_name(pic.theme, pic.size, pic.page.name)
+    push(list, "goto " .. pic.page.path)
+  else
+    local st = pic.state
+    name = picture_name(pic.theme, pic.size, st.name)
+    if st.as ~= "steve" then push(list, "cookie " .. sessions[st.as]) end
+    push(list, "goto " .. st.path)
+    for step in st.steps do
+      if words(step)[1] == "session" then
+        push(list, "cookie " .. sessions[words(step)[2]])
+      else
+        push(list, step)
+      end
     end
   end
-  if with_states then
-    for st in STATES do
-      local size = SIZES[get(st, "size", "desktop")]
-      local name = t .. "-" .. re_replace(size, " ", "x") .. "-" .. st.name
-      push(list, "size " .. size)
-      if has_key(st, "as") then push(list, "cookie " .. sessions[st.as]) end
-      push(list, "goto " .. st.path)
-      for step in st.steps do push(list, step) end
-      push(list, "shot " .. name)
-      if has_key(st, "as") then push(list, "cookie " .. steve) end
-      push(names, name)
-    end
-  end
-end
--- Cy, joined but never seen, is away until his first page, Browse, fetched
--- here by his session while Steve's DM holds its stream open; then Steve's
--- session again. Last, since he stays online.
-if with_states then
-  local size = SIZES[sizes[1]]
-  local name = themes[#themes] .. "-" .. re_replace(size, " ", "x") .. "-dm-came-online"
-  for step in {"size " .. size, "goto /chat/dm/1_2/plans",
-      "eval new Promise(function (r) { setTimeout(r, 700); })",
-      "cookie " .. more_cookies["Cy"], "eval fetch('/chat')", "cookie " .. steve,
-      "wait .notice-strip a", "shot " .. name} do
-    push(list, step)
-  end
+  push(list, "shot " .. name)
+  if has_key(pic, "state") and pic.state.as ~= "steve" then push(list, "cookie " .. steve) end
   push(names, name)
 end
 create(work .. "/shots.txt", join(list, "\n") .. "\n")
 
 -- 4. The pictures, one browser for all of them.
 local shot = must(run({"zig", "build", "run", "--", real(CHROME), real(work .. "/profile"), real(work .. "/shots.txt"), real(out)},
-  {cwd = "tools/shot", timeout_ms = 110000, tail = 60, nice = 19, cpu_budget_ms = 16000, stage = "the pictures"}))
+  {cwd = "tools/shot", timeout_ms = WALL_MS_TO_START + WALL_MS_A_PICTURE * #names, tail = 60 + #names, nice = 19,
+    cpu_budget_ms = CPU_MS_TO_START + CPU_MS_A_PICTURE * #names, stage = "the pictures"}))
 alone_on(port, server_pid)
 for name in names do
   if not exists(out .. "/" .. name .. ".png") then fail("screenshot: " .. name .. ".png was not written\n" .. shot.out) end

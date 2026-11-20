@@ -1,0 +1,6 @@
+# The notice of a message elsewhere, as the stream's `message-notice`
+# shows it (here handed to chrome.js's Notices by the page's console).
+path = /chat/dm/1_2/plans
+sizes = desktop,phone
+use message-notice
+wait .notice-strip.notice-message

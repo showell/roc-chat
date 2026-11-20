@@ -1,0 +1,5 @@
+# Tam's name clicked in the sidebar: the person card.
+path = /chat/dm/1_2/plans
+sizes = desktop
+click .sidebar-place[data-section="/chat/dm/1_2"] .sidebar-place-name
+wait dialog.place-popup[open]

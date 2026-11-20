@@ -1,0 +1,8 @@
+# The DM's box opened by `c`, then Escape: the empty box closed, as
+# Gopher's did (the `wait` stops the run on a box left open).
+path = /chat/dm/1_2/plans
+sizes = desktop
+key c
+wait .compose.open
+key Escape
+wait .compose:not(.open)

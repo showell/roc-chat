@@ -50,6 +50,6 @@ Everywhere else, match Gopher Chat first. The sidebar is the exception: it shoul
 
 ## How a UI change is checked
 
-- Screenshot the page at desktop and phone widths and look before handing back: `shale tools/screenshot.shale out=build:shots/<name>` writes PNGs of the main pages in both themes, and of what a click or a key opens (the person card, a selected message, the compose rail, emoji autocomplete). Its header lists them; a new state is a few steps (click, key, type, wait) in its STATES list. Claude's Read tool shows a PNG. A visual claim made without looking is a guess. Say so.
+- Screenshot the page at desktop and phone widths and look before handing back: `shale tools/screenshot.shale out=build:shots/<name>` writes PNGs of the main pages in both themes, and of what a click or a key opens (the person card, a selected message, the compose rail, emoji autocomplete). `list=1` lists them; a new state is a file of a few steps (click, key, type, wait) in `tools/shot-states/`, as the script's header says, and `only=<name>` shoots just it. Claude's Read tool shows a PNG. A visual claim made without looking is a guess. Say so.
 - Report sizes in px or em, so the owner can check the numbers against what he sees.
 - When a choice depends on how people will behave, ask the owner rather than guess.

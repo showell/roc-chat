@@ -1,0 +1,9 @@
+# Steve, on the channel's page, sends a message to his own DM once the
+# page's stream is open, which is news to him on any other page
+# (app/MessageNotice.roc's `recipients`): its violet notice arrives live.
+path = /chat/channel/general/roc-chat
+sizes = desktop,phone
+mutates = posts a message to Steve's own DM
+eval new Promise(function (r) { setTimeout(r, 700); })
+eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself.')})
+wait .notice-strip.notice-message

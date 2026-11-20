@@ -1,0 +1,7 @@
+# `:sm` typed in the compose box: emoji autocomplete.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+type Looks good :sm
+wait .chat-emoji-menu

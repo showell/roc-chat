@@ -1,0 +1,6 @@
+# Tam's "New link" pressed at a phone's width: the link's card.
+path = /invites
+sizes = phone
+mutates = makes an invite link for Tam
+click .invite-row button
+wait .invite-made

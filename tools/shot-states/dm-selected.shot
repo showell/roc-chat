@@ -1,0 +1,6 @@
+# Up pressed twice: an older message selected.
+path = /chat/dm/1_2/plans
+sizes = desktop
+key ArrowUp
+key ArrowUp
+wait .message.selected

@@ -1,0 +1,12 @@
+# Home, then `l`, on Tam's DM: the citation of the first message the
+# clipboard gets, its text shown over the messages, the "copied" notice,
+# and the compose box's placeholder, which names the place too.
+path = /chat/dm/1_2/plans
+sizes = desktop
+wait .compose textarea[placeholder="Message Tam"]
+key Home
+wait #msg-1.selected
+use capture-clipboard
+key l
+wait #cite-seen[data-text$="\A\A[Steve in Tam › plans](/chat/dm/1_2/plans#msg-1)\A"]
+wait .cite-notice

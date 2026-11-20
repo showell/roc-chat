@@ -1,0 +1,8 @@
+# Text typed, then Escape: the box open, the text kept.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+type Thursday works.
+key Escape
+wait .compose.open textarea:not(:placeholder-shown)

@@ -1,0 +1,12 @@
+# Cy's first page, Browse, fetched by his session while Steve's DM holds
+# its stream open: his dot filled by the stream, and "Cy has come online."
+# Every picture before it shows his hollow dot.
+path = /chat/dm/1_2/plans
+sizes = desktop
+mutates = brings Cy online for good
+last = yes
+eval new Promise(function (r) { setTimeout(r, 700); })
+session cy
+eval fetch('/chat')
+session steve
+wait .notice-strip a

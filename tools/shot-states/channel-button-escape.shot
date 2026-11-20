@@ -1,0 +1,8 @@
+# The channel's box opened by its button, then Escape: the empty box
+# closed (the `wait` stops the run on a box left open).
+path = /chat/channel/general/roc-chat
+sizes = desktop
+click .open-compose
+wait .compose.open
+key Escape
+wait .compose:not(.open)

@@ -1,0 +1,6 @@
+# The selected message's actions button tapped: its row of actions open
+# under its header.
+path = /chat/dm/1_2/plans
+sizes = phone
+click .message.selected .actions-more
+wait .message.actions-open

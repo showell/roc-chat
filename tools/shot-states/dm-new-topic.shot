@@ -1,0 +1,5 @@
+# The DM's "+" clicked: its card on the new-topic form, the topics under it.
+path = /chat/dm/1_2/plans
+sizes = desktop
+click .sidebar-place[data-opening=always] .sidebar-new-topic
+wait dialog.place-popup[open]

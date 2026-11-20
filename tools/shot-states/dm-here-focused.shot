@@ -1,0 +1,7 @@
+# The same message from Tam, the page focused: no violet.
+path = /chat/dm/1_2/plans
+sizes = desktop
+eval document.hasFocus = function () { return true; }
+eval Notices.showUnlessHere('<a href="/chat/dm/1_2/plans#msg-9">Tam sent you a message on plans.</a>')
+eval var f = document.getElementById('favicon'); if (!(f && /alert-icon/.test(f.href)) && !/sent you/.test(document.querySelector('.notice-strip').textContent)) document.body.setAttribute('data-here-quiet', '')
+wait body[data-here-quiet]

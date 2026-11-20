@@ -1,0 +1,6 @@
+# On a phone, the message notice's close button tapped: the line gone.
+path = /chat/dm/1_2/plans
+sizes = phone
+use message-notice
+wait .notice-strip.notice-message
+click .notice-strip .notice-dismiss

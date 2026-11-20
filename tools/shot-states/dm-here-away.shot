@@ -1,0 +1,12 @@
+# A message from Tam on the topic being read, the page not focused: the
+# strip says nothing, the tab turns violet, and clears once the page has
+# the focus again (the state waits on each; the picture is the page).
+path = /chat/dm/1_2/plans
+sizes = desktop
+eval document.hasFocus = function () { return false; }
+eval Notices.showUnlessHere('<a href="/chat/dm/1_2/plans#msg-9">Tam sent you a message on plans.</a>')
+eval if (/alert-icon/.test(document.getElementById('favicon').href) && !/sent you/.test(document.querySelector('.notice-strip').textContent)) document.body.setAttribute('data-here-violet', '')
+wait body[data-here-violet]
+eval document.hasFocus = function () { return true; }; window.dispatchEvent(new Event('focus'))
+eval if (/favicon\.ico/.test(document.getElementById('favicon').href)) document.body.setAttribute('data-here-cleared', '')
+wait body[data-here-cleared]

@@ -1,0 +1,7 @@
+# The menu button tapped: the sidebar's drawer, its dots, once its 0.25 s
+# slide has ended.
+path = /chat/dm/1_2/plans
+sizes = phone
+click .sidebar-toggle
+wait .sidebar-toggle[aria-expanded=true]
+eval new Promise(function (r) { setTimeout(r, 400); })

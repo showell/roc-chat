@@ -1,0 +1,9 @@
+# Steve, on Recent, sends a message to his own DM once its stream is open:
+# its tile, "DM with Steve (you)", arrives live at the top, glowing, as
+# any conversation's does.
+path = /chat/recent
+sizes = desktop,phone
+mutates = posts a message to Steve's own DM
+eval new Promise(function (r) { setTimeout(r, 700); })
+eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself, live on Recent.')})
+wait .recent-tile.recent-fresh[href="/chat/dm/1_1/notes"]:first-child

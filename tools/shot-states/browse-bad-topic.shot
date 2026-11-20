@@ -1,0 +1,8 @@
+# "two words" sent as a topic: the refusal beside its place's form, which
+# keeps what was typed.
+path = /chat
+sizes = desktop
+click input[name=topic]
+type two words
+click .browse-panes form button
+wait p.problem
