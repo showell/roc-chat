@@ -19,11 +19,18 @@ JoinedFiles :: [].{
 
 	## When the human `id` joined, or `NoFile` when their account has none;
 	## unless the file holds no time (`Damaged`), or the host's read failed.
-	read_joined! : UserId => Try([NoFile, Joined(Timestamp)], [Damaged, NotUtf8, PathRefused, Failed])
+	read_joined! : UserId => Try(
+		[NoFile, Joined(Timestamp)],
+		[Damaged, NotUtf8, PathRefused, Failed],
+	)
 	read_joined! = |id|
 		match FileFacts.read_fact!(joined_path(id))? {
 			NoFile => Ok(NoFile)
-			File(bytes) => Timestamp.from_file(bytes).map_ok(|at| Joined(at)).map_err(|NotATime| Damaged)
+			File(bytes) =>
+				match Timestamp.from_file(bytes) {
+					Ok(at) => Ok(Joined(at))
+					Err(NotATime) => Err(Damaged)
+				}
 		}
 
 	## The human `id`'s `joined` file made holding `now`, unless they have
