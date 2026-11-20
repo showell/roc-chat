@@ -18,6 +18,10 @@
 --   invites  /invites
 -- and what takes a click or a key, at 1280x800 (STATES, below):
 --   dm-person-card    Tam's name clicked in the sidebar: the person card
+--   dm-new-topic      the DM's "+" clicked: its card on the new-topic form,
+--                     the topics under it
+--   channel-card      #general's name clicked: the channel's card
+--   dm-people         "1 more person…" clicked: the people popup
 --   dm-selected       ↑ pressed twice: an older message selected
 --   channel-compose   `c` pressed and a draft typed: the compose rail open,
 --                     where the keyboard help was
@@ -116,12 +120,20 @@ function alone_on(at, pid)
 end
 
 -- What a click or a key opens, at the desktop's size: each a page and the
--- steps after its load (tools/shot/steps.zig's), then its picture. The
--- channel's card (a click on its name) is a lane's, not yet on main.
+-- steps after its load (tools/shot/steps.zig's), then its picture.
 const STATES = {
   {name = "dm-person-card", path = "/chat/dm/1_2/plans", steps = {
     "click .sidebar-place[data-person] .sidebar-place-name",
-    "wait dialog.person-popup[open]"}},
+    "wait dialog.place-popup[open]"}},
+  {name = "dm-new-topic", path = "/chat/dm/1_2/plans", steps = {
+    "click .sidebar-place[data-opening=always] .sidebar-new-topic",
+    "wait dialog.place-popup[open]"}},
+  {name = "channel-card", path = "/chat/dm/1_2/plans", steps = {
+    "click [data-group=channels] .sidebar-place-name",
+    "wait dialog.place-popup[open]"}},
+  {name = "dm-people", path = "/chat/dm/1_2/plans", steps = {
+    "click .sidebar-more-name",
+    "wait dialog.people-popup[open]"}},
   {name = "dm-selected", path = "/chat/dm/1_2/plans", steps = {
     "key ArrowUp", "key ArrowUp", "wait .message.selected"}},
   {name = "channel-compose", path = "/chat/channel/general/roc-chat", steps = {
