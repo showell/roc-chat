@@ -27,17 +27,18 @@
 //
 // The notices are chat-client's js/notify.js, on the pages that have its
 // strip as Gopher Chat's did (a conversation with a sidebar, and Recent): a
-// page's stream passes on two events from the viewer's own key (feed.js,
-// recent.js). `notice`, a link saying a human has come online (or that a
-// new device signed in), goes to Notices.show; `message-notice`, a link to a
-// message someone else wrote in one of the viewer's places, to
-// Notices.showUnlessHere, which drops it on that topic's own page. Each is
+// page's stream passes on three events from the viewer's own key (feed.js,
+// recent.js). `notice`, a link saying a human has come online, goes to
+// Notices.show; `device-notice`, a link saying a new device signed in as the
+// viewer, to Notices.showNews; `message-notice`, a link to a message someone
+// else wrote in one of the viewer's places, to Notices.showUnlessHere, which
+// drops it on that topic's own page. Each is
 // shown in the top bar's notice line (.notice-strip, chat-client's
 // #chat-notify), in place of the last one, and paints the tab's icon violet,
 // whether or not the tab is in view, until the notice's link is followed or
-// the notice dismissed, with no timer. A message's notice is the tab's violet
-// (palette.js's noticeFg), a dot before it, so news of a message stands out;
-// any other is the bar's muted text. notify.js drew the violet as a
+// the notice dismissed, with no timer. News, a message's notice or a new
+// device's, is the tab's violet (palette.js's noticeFg), a dot before it, so
+// it stands out; presence is the bar's muted text. notify.js drew the violet as a
 // data: URL, which this site's policy refuses, so it is a file the server
 // serves (app/Favicon.roc); and where notify.js cleared the tab to a blank
 // icon, the site's own icon comes back. The <link> is made anew each time, as
@@ -101,10 +102,10 @@ window.Notices = (function () {
   function alertTab() { paintTab('/chat/assets/alert-icon.svg'); }
   function clearTab() { paintTab('/favicon.ico'); }
 
-  // The strip, saying `nodes`: a message's news (`message`) with its violet
-  // dot, then the words, then the ✕ that empties the strip. Following a
-  // link or dismissing clears the tab.
-  function fill(nodes, message) {
+  // The strip, saying `nodes`: news (`news`, a message's or a new
+  // device's) with its violet dot, then the words, then the ✕ that empties
+  // the strip. Following a link or dismissing clears the tab.
+  function fill(nodes, news) {
     var words = document.createElement('span');
     words.className = 'notice-words';
     nodes.forEach(function (node) { words.appendChild(node); });
@@ -117,8 +118,8 @@ window.Notices = (function () {
     dismiss.setAttribute('aria-label', 'Dismiss this notice');
     dismiss.addEventListener('click', function () { strip.replaceChildren(); clearTab(); });
     strip.replaceChildren();
-    strip.classList.toggle('notice-message', message);
-    if (message) {
+    strip.classList.toggle('notice-news', news);
+    if (news) {
       var dot = document.createElement('span');
       dot.className = 'notice-dot';
       strip.appendChild(dot);
@@ -139,9 +140,9 @@ window.Notices = (function () {
 
   // A notice, the server's HTML (a link), shown in the strip in place of
   // the last one, and the tab painted.
-  function show(html, message) {
+  function show(html, news) {
     if (!strip) return;
-    fill(parsed(html), message === true);
+    fill(parsed(html), news === true);
     alertTab();
   }
 
@@ -156,7 +157,11 @@ window.Notices = (function () {
     show(html, true);
   }
 
-  return { show: function (html) { show(html, false); }, showUnlessHere: showUnlessHere };
+  return {
+    show: function (html) { show(html, false); },
+    showNews: function (html) { show(html, true); },
+    showUnlessHere: showUnlessHere,
+  };
 })();
 
 (function () {
@@ -188,11 +193,11 @@ window.Notices = (function () {
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
     // The notice line. In the bar's spare width on a wide window; a
-    // message's news violet, any other muted.
+    // notice of news violet, presence muted.
     '.notice-strip { margin: 0; font-size: 12px; line-height: 1.3; color: var(--cc-body-muted-fg); min-width: 0;' +
       ' flex: 1 1 0; display: flex; align-items: center; gap: 6px; }',
     '.notice-strip a { color: inherit; }',
-    '.notice-strip.notice-message { color: var(--cc-notice-fg); font-weight: 600; }',
+    '.notice-strip.notice-news { color: var(--cc-notice-fg); font-weight: 600; }',
     '.notice-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
     '.notice-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--cc-notice-fg); }',
     '.notice-dismiss { flex: none; margin-left: auto; background: none; border: none; cursor: pointer; padding: 0 2px 0 8px;' +

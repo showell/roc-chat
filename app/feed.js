@@ -452,11 +452,12 @@
   // What the stream carries from the viewer's own key: for the sidebar, a
   // human come online and a new topic in one of the viewer's places
   // (sidebar.js); for the top bar's notice line and the tab, the notice that
-  // a human has come online and the notice of a message in one of the
-  // viewer's places (chrome.js's Notices).
+  // a human has come online, that a new device signed in as the viewer, and
+  // of a message in one of the viewer's places (chrome.js's Notices).
   events.addEventListener('online', function (e) { if (window.Sidebar) Sidebar.markOnline(e.data); });
   events.addEventListener('topic-added', function (e) { if (window.Sidebar) Sidebar.topicAdded(e.data); });
   events.addEventListener('notice', function (e) { Notices.show(e.data); });
+  events.addEventListener('device-notice', function (e) { Notices.showNews(e.data); });
   events.addEventListener('message-notice', function (e) { Notices.showUnlessHere(e.data); });
   // A stream that has closed for good doesn't reconnect, and the page would
   // go on looking fine. So the page reloads, unless it already reloaded for

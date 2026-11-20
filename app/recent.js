@@ -30,7 +30,7 @@
 // where it stands; when the pointer rests on a tile, the panel scrolls by
 // what the new tile moved it, so the row under the pointer stays put. An
 // `online` event, a human's id, fills their DMs' dots. The stream carries the
-// viewer's notices too, `notice` and `message-notice`, which chrome.js's
+// viewer's notices too, `notice`, `device-notice` and `message-notice`, which chrome.js's
 // Notices shows in the top bar, painting the tab, as Gopher Chat's Recent
 // page did with notify.js.
 (function () {
@@ -199,5 +199,6 @@
   events.addEventListener('tile', function (e) { upsert(e.data); });
   events.addEventListener('online', function (e) { markOnline(e.data); });
   events.addEventListener('notice', function (e) { Notices.show(e.data); });
+  events.addEventListener('device-notice', function (e) { Notices.showNews(e.data); });
   events.addEventListener('message-notice', function (e) { Notices.showUnlessHere(e.data); });
 })();

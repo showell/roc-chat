@@ -291,7 +291,8 @@ expect
 		"<form id=\"sign-out-others\" method=\"post\" action=\"/devices/sign-out-others\"><button>Sign out other devices</button></form>",
 	)
 expect
-	Str.from_utf8_lossy(DeviceCodePage.new_device_frame).contains("<a href=\"/devices#sign-out-others\">")
+	Str.from_utf8_lossy(DeviceCodePage.new_device_frame)
+		== "event: device-notice\ndata: <a href=\"/devices#sign-out-others\">A new device signed in as you, with a code you made. Not you? Sign your other devices out.</a>\n\n"
 
 # A device whose session a code started sees no button it couldn't use: on
 # its device code page none that makes or cancels a code or signs other

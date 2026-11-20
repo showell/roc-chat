@@ -150,11 +150,13 @@ DeviceCodePage :: [].{
 	warning_words = "Type this only into your own device. Nobody will ever ask you for it."
 
 	## The event that tells a human, on their own stream, that a code of
-	## theirs signed a new device in: `notice`, its data a link to the page.
+	## theirs signed a new device in: `device-notice`, its data a link to the
+	## page. Its own name, apart from presence's `notice`, so app/chrome.js
+	## shows it as news, in the violet a message's notice is in.
 	new_device_frame : List(U8)
 	new_device_frame =
 		ServerSentEvent.named_event({
-			name: "notice",
+			name: "device-notice",
 			html: Html.element({
 				name: A,
 				attributes: [

@@ -1199,8 +1199,8 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     var heard = false;
     for (0..400) |_| {
         const event = try steves_stream.event();
-        if (std.mem.startsWith(u8, event, "event: notice\n")) {
-            heard = std.mem.eql(u8, event, "event: notice\ndata: <a href=\"/devices#sign-out-others\">A new device signed in as you, with a code you made. Not you? Sign your other devices out.</a>\n\n");
+        if (std.mem.startsWith(u8, event, "event: device-notice\n")) {
+            heard = std.mem.eql(u8, event, "event: device-notice\ndata: <a href=\"/devices#sign-out-others\">A new device signed in as you, with a code you made. Not you? Sign your other devices out.</a>\n\n");
             break;
         }
     }
@@ -1211,7 +1211,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
         std.mem.eql(u8, signed_in.header("cache-control") orelse "", "no-store") and
         phone_browse.status == 200 and has(phone_browse.body, "<span class=\"viewer\">Steve</span>") and heard);
     var used_event = try devices_stream.event();
-    if (std.mem.startsWith(u8, used_event, "event: notice\n")) used_event = try devices_stream.event();
+    if (std.mem.startsWith(u8, used_event, "event: device-notice\n")) used_event = try devices_stream.event();
     try t.check("the device code page's own stream hears that the code was used, and when", devices_stream.isEventStream() and
         std.mem.startsWith(u8, used_event, "event: device-used\ndata: 20") and std.mem.endsWith(u8, used_event, "Z\n\n"));
 
