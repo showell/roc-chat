@@ -191,10 +191,11 @@
   closedPanel.appendChild(keyhelp);
   compose.appendChild(closedPanel);
 
-  // The page's one key table. Keys.register({ key, cap, label, run }) takes
-  // the key's name (KeyboardEvent.key), what its button in the help shows
-  // (the name, when no cap is given), what it does, and the function that
-  // does it, and adds its row to the help. A key registered twice is an
+  // The page's one key table. Keys.register({ key, cap, label, run, aliases })
+  // takes the key's name (KeyboardEvent.key), what its button in the help
+  // shows (the name, when no cap is given), what it does, the function that
+  // does it, and any other keys that do the same, and adds one row to the
+  // help, the aliases named after the label in parentheses. A key registered twice is an
   // error, so two features never both think they own one. A key works when
   // no text field has the focus and no modifier is held, as in chat-client.
   window.Keys = (function () {
@@ -203,8 +204,11 @@
       if (!entry || !entry.key || !entry.label || typeof entry.run !== 'function') {
         throw new Error('Keys.register: a key, a label and a run');
       }
-      if (byKey[entry.key]) throw new Error('Keys.register: "' + entry.key + '" is registered twice');
-      byKey[entry.key] = entry;
+      var keys = [entry.key].concat(entry.aliases || []);
+      keys.forEach(function (key) {
+        if (byKey[key]) throw new Error('Keys.register: "' + key + '" is registered twice');
+        byKey[key] = entry;
+      });
       var row = document.createElement('div');
       row.className = 'keyhelp-row';
       var keyButton = document.createElement('button');
@@ -214,7 +218,8 @@
       keyButton.title = entry.label;
       keyButton.addEventListener('click', function () { entry.run(); });
       row.appendChild(keyButton);
-      row.appendChild(document.createTextNode(' ' + entry.label));
+      var aliases = entry.aliases && entry.aliases.length ? ' (also ' + entry.aliases.join(' or ') + ')' : '';
+      row.appendChild(document.createTextNode(' ' + entry.label + aliases));
       keyhelp.appendChild(row);
     }
     document.addEventListener('keydown', function (e) {

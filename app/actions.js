@@ -352,9 +352,7 @@
     var article = selectedMessage();
     if (article) quote(article);
   }
-  Keys.register({ key: 'q', label: 'quote-reply to the selected message', run: quoteSelected });
-  Keys.register({ key: 'r', label: 'quote-reply, as q does', run: quoteSelected });
-  Keys.register({ key: '>', label: 'quote-reply, as q does', run: quoteSelected });
+  Keys.register({ key: 'q', label: 'quote-reply to the selected message', aliases: ['r', '>'], run: quoteSelected });
   Keys.register({ key: 't', label: 'open the raw transcript in a new tab', run: function () {
     window.open(rawUrl, '_blank');
   } });
