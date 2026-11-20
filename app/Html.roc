@@ -173,7 +173,15 @@ Html :: [].{
 		Autofocus,
 		CodeTyping,
 		Src(Html.SitePath),
-		Data(Html.Token, [Token(Html.Token), HashToken(Html.Token), Path(Html.SitePath), Name(Name)]),
+		Data(
+			Html.Token,
+			[
+				Token(Html.Token),
+				HashToken(Html.Token),
+				Path(Html.SitePath),
+				Name(Name),
+			],
+		),
 	]
 
 	## An element: `<name a="v">inner</name>`, `inner` as it is, already
@@ -432,43 +440,6 @@ expect
 		|path| attribute(LinkToPart({ path, part: token("sign-out-others") })),
 	)
 		== Ok(" href=\"/devices#sign-out-others\"")
-# An address on another site: `https://`, a host, then nothing, `/` or a
-# site path; both sides of each refusal.
-expect
-	[
-		"https://lynrummy.com/",
-		"https://lynrummy.com",
-		"https://example.org/games/lyn-rummy",
-		"https://a-b.c1.example",
-	].all(|text| Html.HttpsUrl.from_str(text).map_ok(Html.HttpsUrl.to_str) == Ok(text))
-expect
-	[
-		"http://lynrummy.com/",
-		"javascript:alert(1)",
-		"//lynrummy.com/",
-		"/chat",
-		"",
-	].all(|text| Html.HttpsUrl.from_str(text) == Err(NotHttps))
-expect
-	[
-		"https://",
-		"https:///chat",
-		"https://.lynrummy.com/",
-		"https://lynrummy..com/",
-		"https://lynrummy.com:8080/",
-		"https://user@lynrummy.com/",
-		"https://lynrummy.com?x",
-		"https://lynrummy.com\"/",
-	].all(|text| Html.HttpsUrl.from_str(text) == Err(BadHost))
-expect
-	[
-		"https://lynrummy.com//x",
-		"https://lynrummy.com/x/",
-		"https://lynrummy.com/x?y",
-		"https://lynrummy.com/x#y",
-		"https://lynrummy.com/../x",
-		"https://lynrummy.com/x\"",
-	].all(|text| Html.HttpsUrl.from_str(text) == Err(BadPath))
 # A link off the site: its address, as it is.
 expect
 	Html.HttpsUrl.from_str("https://lynrummy.com/").map_ok(|url| attribute(OffSiteLink(url)))

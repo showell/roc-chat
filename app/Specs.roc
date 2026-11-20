@@ -29,6 +29,7 @@ import DmSpec
 import FirstStartSpec
 import GitHubSignInSpec
 import GitHubTripSpec
+import HtmlSpec
 import HumanInvitesSpec
 import LastConversationSpec
 import MessageLinkSpec
