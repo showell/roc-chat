@@ -83,7 +83,16 @@
     '.message .body a.msg-ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em;' +
       ' background: var(--cc-accent-soft-bg); color: var(--cc-accent); padding: 0 4px; border-radius: 3px; text-decoration: none; }',
     '.message .body a.msg-ref:hover { background: var(--cc-accent-soft-hov); }',
-    '.message .body pre { background: var(--cc-code-bg); padding: 8px; border-radius: 4px; overflow-x: auto; cursor: pointer; }',
+    // A code block scrolls sideways inside its box, never widening the page.
+    // A line longer than the box shows a soft shade at the box's right edge
+    // while there is more to the right: the shade is fixed to the box, and a
+    // cover of the block's own colour, fixed to the end of its text (`local`),
+    // hides it once the end is in view, or when nothing overflows. A phone
+    // shows no scrollbar, so without it a long line looks cut off.
+    '.message .body pre { padding: 8px; border-radius: 4px; overflow-x: auto; cursor: pointer;' +
+      ' background: linear-gradient(to left, var(--cc-code-bg) 50%, transparent) right / 24px 100% no-repeat local,' +
+      ' linear-gradient(to left, color-mix(in srgb, var(--cc-fg) 22%, transparent), transparent) right / 14px 100% no-repeat scroll,' +
+      ' var(--cc-code-bg); }',
     // A quote-reply's quoted message, roc-markdown's pre.chat-quote, as
     // chat-client's js/message.js drew it.
     '.message .body pre.chat-quote { font-family: inherit; white-space: pre-wrap; overflow-wrap: anywhere;' +
