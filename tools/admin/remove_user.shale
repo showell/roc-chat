@@ -1,0 +1,127 @@
+-- tools/admin/remove_user.shale: removes one user from roc-chat's data root,
+-- wholly, while the server is stopped. There is no trial run: read
+-- user_footprint.shale's report first, then run this, which acts at once.
+--
+--   shale remove_user.shale user=<id> confirm=<their name>
+--
+-- `confirm` is the user's name exactly (on stdin with --args-stdin when it
+-- holds a space); a folder with no name, cut short as it was made or by a
+-- removal that stopped, is confirmed by its id. The data root is the mount
+-- `data:`, which must be writable (docs/admin.md, "Running them").
+--
+-- It refuses, changing nothing, when: the user is 1, the owner; they own an
+-- agent; they wrote a message in a topic that stays (Steve's decision,
+-- docs/admin.md); the counter of ids is not past their id; or a roc-chat
+-- process serves this data root, as the server keeps its streams, presence
+-- and search index in memory.
+--
+-- Then, in this order, so a stop at any step leaves a state the chat
+-- already plans for (docs/design.md, "Storage"), and running it again
+-- finishes the job:
+-- 1. each channel's members file that names them, rewritten whole without
+--    their id (atomically): a human in no channel is a state the admin
+--    fixes, where a member who is no user stops the chat reading its
+--    directory;
+-- 2. auth/<id>/name removed: from here on the folder is no account;
+-- 3. their reactions' lines in the topics that stay, each reactions file
+--    rewritten whole (atomically);
+-- 4. each DM they are in, its folder removed whole: a DM naming an id no
+--    account has is one no one can reach;
+-- 5. other users' last-conv files that point into those DMs;
+-- 6. their account folder, auth/<id>/, and their user folder, users/<id>/.
+-- The counter of ids is left, so their id is never given again. Last, it
+-- reads the data root again and stops unless nothing of theirs is left.
+-- budget: steps=200000000 reads=200000 read_bytes=2000000000 changes=100000
+
+use("./chat_data.shale")
+
+const user = arg("user", "")
+const confirm = arg("confirm", "")
+if not is_user_id(user) then fail("remove_user: user=<id> is needed: the id user_footprint.shale names") end
+
+-- `text`'s lines but those whose words are `id`, its last line end kept.
+function without_member(text, id)
+  local kept = {}
+  for l in lines(text) do
+    if trim(l) ~= id then push(kept, l) end
+  end
+  local s = join(kept, "\n")
+  if #kept > 0 and ends_with(text, "\n") then s = s .. "\n" end
+  return s
+end
+
+-- A reactions file's text without the lines holding `needle`.
+function without_lines(text, needle)
+  local kept = {}
+  for l in lines(text) do
+    if not contains(l, needle) then push(kept, l .. "\n") end
+  end
+  return join(kept, "")
+end
+
+local t = target_of(user)
+local named = t.name
+if t.status == "cut short" then named = t.id end
+if confirm ~= named then fail("remove_user: confirm= must be '" .. named .. "' exactly, user " .. t.id .. "'s name (or its id, for a folder with no name); got '" .. confirm .. "'") end
+local fp = footprint_of(t)
+local why = blockers_of(fp)
+if #why > 0 then fail("remove_user: nothing changed, as:\n  " .. join(why, "\n  ")) end
+
+const ROOT_OS = dirname(real("data:auth"))
+for p in procs() do
+  if p.name == "roc-chat" and has_item(words(p.args), ROOT_OS) then
+    fail("remove_user: nothing changed: roc-chat (pid " .. p.pid .. ") serves " .. ROOT_OS .. "; stop it first, then start it after")
+  end
+end
+
+-- 1. The channels.
+for c in fp.channels do
+  replace(c.path, without_member(c.text, t.id))
+  print("rewrote " .. shown_path(c.path) .. " without " .. t.id)
+end
+
+-- 2. The account.
+if exists(data_path("auth/" .. t.id .. "/name")) then
+  remove(data_path("auth/" .. t.id .. "/name"))
+  print("removed auth/" .. t.id .. "/name: user " .. t.id .. " is no account")
+end
+
+-- 3. Their reactions.
+const NEEDLE = ",\"uid\":" .. t.id .. ",\"emoji\":\""
+local reacted = {}
+for r in fp.reactions do
+  if not has_item(reacted, r.path) then push(reacted, r.path) end
+end
+for p in reacted do
+  local before = read(p)
+  local after = without_lines(before, NEEDLE)
+  replace(p, after)
+  print("rewrote " .. shown_path(p) .. " without their " .. counted(#lines(before) - #lines(after), "reaction", "reactions"))
+end
+
+-- 4. Their DMs.
+for d in fp.dms do
+  remove_tree(d.path)
+  print("removed " .. shown_path(d.path) .. "/ (" .. counted(#d.files, "file", "files") .. ")")
+end
+
+-- 5. Others' last conversations inside them.
+for l in fp.last_convs do
+  remove(l.path)
+  print("removed " .. shown_path(l.path) .. " (" .. l.held .. ")")
+end
+
+-- 6. Their folders.
+for rel in {"auth/" .. t.id, "users/" .. t.id} do
+  if exists(data_path(rel)) then
+    local n = #files_below(data_path(rel))
+    remove_tree(data_path(rel))
+    print("removed " .. rel .. "/ (" .. counted(n, "file", "files") .. ")")
+  end
+end
+
+-- What is left of them: nothing, or the run stops.
+local left = footprint_of({id = t.id, name = t.name, status = "gone", owner = "", released = "", inviter = ""})
+local held = #left.own_files + #left.user_files + #left.channels + #left.dms + #left.reactions + #left.last_convs + #left.authored
+if held > 0 or exists(data_path("auth/" .. t.id)) then fail("remove_user: " .. held .. " things of user " .. t.id .. "'s are still in the data root; run user_footprint.shale user=" .. t.id) end
+print("removed user " .. t.id .. ", " .. t.name .. "; the counter of ids stays " .. fp.counter .. ". Start the server again.")

@@ -1,0 +1,3 @@
+# Shale's mounts for tools/admin/remove_user.shale on prod: the data root,
+# writable, while the server is stopped (docs/admin.md, "Running them").
+data = /var/lib/roc-chat/data

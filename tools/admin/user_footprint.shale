@@ -1,0 +1,109 @@
+-- tools/admin/user_footprint.shale: everything in roc-chat's data root that
+-- belongs to one user, or names them, grouped for a person to read before
+-- a removal. It reads and never writes; run it with the data root mounted
+-- read-only (docs/admin.md, "Running them").
+--
+--   shale user_footprint.shale user=<name or id>
+--
+-- The data root is the mount `data:`. A name is matched exactly (names are
+-- case-sensitive); a name two folders hold is refused, naming their ids.
+-- The last line says what, if anything, stops remove_user.shale from
+-- removing this user, and the line that would run it.
+-- budget: steps=200000000 reads=200000 read_bytes=2000000000
+
+use("./chat_data.shale")
+
+const user = arg("user", "")
+if user == "" then fail("user_footprint: user=<name or id> is needed") end
+
+-- One group's heading, `count` its things, and its lines, or "none".
+function group(title, count, rows)
+  print("")
+  print(title .. " (" .. count .. "):")
+  if #rows == 0 then print("  none") end
+  for r in rows do print("  " .. r) end
+end
+
+local t = target_of(user)
+local fp = footprint_of(t)
+local kind = "a human"
+if t.owner ~= "" then kind = "an agent, owned by user " .. t.owner end
+local status = "an account"
+if t.status == "released" then status = "no account: their name was released at " .. t.released .. " (app/NameRelease.roc)" end
+if t.status == "cut short" then status = "no account: the folder has no name, cut short as it was made" end
+print("user " .. t.id .. ", " .. t.name .. ": " .. kind .. ", " .. status)
+print("the counter of ids, auth/next-id.txt: " .. fp.counter .. " (a removal leaves it, so no id is given twice)")
+
+local rows = {}
+for f in fp.own_files do push(rows, file_line(f)) end
+group("their account folder, auth/" .. t.id .. "/, removed whole", #rows, rows)
+
+rows = {}
+for f in fp.user_files do push(rows, file_line(f)) end
+group("their user folder, users/" .. t.id .. "/, removed whole", #rows, rows)
+
+rows = {}
+for c in fp.channels do push(rows, shown_path(c.path) .. "  (#" .. c.name .. ", " .. counted(#member_ids(c.text), "member", "members") .. "; rewritten without " .. t.id .. ")") end
+group("channels whose members name them", #rows, rows)
+
+rows = {}
+for d in fp.dms do
+  local with = "with user " .. d.other
+  if d.other == t.id then with = "their own DM" end
+  push(rows, shown_path(d.path) .. "/  (" .. with .. "; " .. counted(#d.files, "file", "files") .. "; removed whole)")
+  for topic in d.topics do
+    local tr = d.path .. "/" .. topic .. "/transcript"
+    local n = 0
+    if exists(tr) then n = #transcript_records(tr) end
+    push(rows, "  topic " .. topic .. ": " .. counted(n, "message", "messages"))
+  end
+  for f in d.files do
+    if contains(f.path, "/uploads/") then push(rows, "  " .. shown_path(f.path) .. "  (" .. f.size .. " bytes)") end
+  end
+end
+group("their DMs, each removed whole with its topics, reactions and uploads", #fp.dms, rows)
+
+rows = {}
+for a in fp.authored do
+  local line = shown_path(a.path) .. ":" .. a.first .. "  " .. a.ref .. "  " .. a.date
+  for up in a.uploads do line = line .. "  image " .. shown_path(up) end
+  push(rows, line)
+end
+group("messages they wrote in topics that stay", #rows, rows)
+
+rows = {}
+for r in fp.reactions do push(rows, shown_path(r.path) .. ":" .. r.line .. "  " .. r.text) end
+group("their reactions in topics that stay (each line removed)", #rows, rows)
+
+rows = {}
+for a in fp.agents_owned do push(rows, "auth/" .. a.id .. "/owner  (the agent " .. a.name .. ")") end
+group("agents they own", #rows, rows)
+
+rows = {}
+for h in fp.invitees do push(rows, "auth/" .. h.id .. "/inviter  (" .. h.name .. "; left: an id no account has, so only the admin invites them again)") end
+group("humans they invited", #rows, rows)
+
+rows = {}
+for b in fp.invites_by do push(rows, shown_path(b.path) .. "  (an invite of " .. b.owner.name .. "'s they made; left, shown to the admin as \"user " .. t.id .. "\")") end
+group("invites they made for others", #rows, rows)
+
+rows = {}
+for l in fp.last_convs do push(rows, shown_path(l.path) .. "  " .. l.held .. "  (removed: / then goes to Browse)") end
+group("others' last conversations inside their DMs", #rows, rows)
+
+rows = {}
+for m in fp.mentions do push(rows, shown_path(m.path) .. ":" .. m.line .. "  (" .. m.ref .. ")  " .. trim(m.text)) end
+group("lines of others' messages that hold the name " .. t.name .. " (left as written)", #rows, rows)
+
+print("")
+print("not on disk: their sessions are signed cookies, signed over their account's files, so none admits them once those are gone; presence, the search index, rate limits and open streams are the server's memory, gone at its restart.")
+print("")
+local why = blockers_of(fp)
+if #why == 0 then
+  local named = t.name
+  if t.status == "cut short" then named = t.id end
+  print("remove_user.shale may remove them: user=" .. t.id .. " confirm=" .. named)
+else
+  print("remove_user.shale refuses them:")
+  for w in why do print("  " .. w) end
+end

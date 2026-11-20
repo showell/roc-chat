@@ -1,0 +1,312 @@
+-- tools/admin/chat_data.shale: what the admin scripts read of a roc-chat
+-- data root, and the one footprint both of them work from. A library: the
+-- scripts beside it load it with `use("./chat_data.shale")`.
+--
+-- The data root is always the mount `data:`, so the mounts file a run is
+-- given (SHALE_MOUNTS) decides which folder it is and whether it may be
+-- written: docs/admin.md, "Running them". The layout is docs/design.md's,
+-- "Storage"; nothing here writes.
+
+-- The line that opens each record of a transcript (app/Separator.roc).
+const SEPARATOR = "-------------"
+
+-- The fact files whose words are shown; any other file is shown by its size
+-- alone, so no hash or secret is ever printed.
+const SHOWN_FACTS = {"name", "owner", "inviter", "joined", "github-id", "name-released", "session-generation", "created", "expires", "state", "by", "read", "post", "upload-bytes", "last-conv"}
+
+-- `rel`, a path below the data root, as a Shale path.
+function data_path(rel)
+  return "data:" .. rel
+end
+
+-- `p`, a Shale path below the data root, as the data root names it.
+function shown_path(p)
+  if starts_with(p, "data:") then return sub(p, 6, #p) end
+  return p
+end
+
+-- `n` and `one` or `many`, as a count is said: "1 file", "2 files".
+function counted(n, one, many)
+  if n == 1 then return "1 " .. one end
+  return n .. " " .. many
+end
+
+-- Whether `s` spells a user id: digits, with no leading 0.
+function is_user_id(s)
+  return re_find(s, "^[1-9][0-9]*$") ~= nil
+end
+
+-- A fact file's words, spaces and line ends off both ends as the chat reads
+-- them (app/FactFile.roc), or "" when there is no such file. A folder where
+-- a file belongs is no fact, and stops the run.
+function fact_of(rel)
+  local p = data_path(rel)
+  if not exists(p) then return "" end
+  if is_dir(p) then fail("chat_data: " .. rel .. " is a folder, where the chat keeps a file") end
+  return trim(read(p))
+end
+
+-- Every folder of the accounts root named by an id, in id order: its `id`,
+-- its `name`, `released` (its `name-released`), `owner` and `inviter`, each
+-- "" when the file is not there, and `status`: `account`, `released` (an
+-- invitee's name given up, app/NameRelease.roc) or `cut short` (no `name`:
+-- made no further, as app/AccountFiles.roc's `read_accounts!` reads it).
+function account_folders()
+  local rows = {}
+  for n in ls(data_path("auth")) do
+    if is_user_id(n) then
+      if not is_dir(data_path("auth/" .. n)) then fail("chat_data: auth/" .. n .. " is a file, where the chat keeps an account folder") end
+      local f = "auth/" .. n .. "/"
+      local row = {id = n, number = tonumber(n), name = fact_of(f .. "name"), released = fact_of(f .. "name-released"), owner = fact_of(f .. "owner"), inviter = fact_of(f .. "inviter")}
+      row.status = "account"
+      if row.name == "" then
+        row.status = "cut short"
+      elseif row.released ~= "" then
+        row.status = "released"
+      end
+      push(rows, row)
+    end
+  end
+  sort(rows, "number")
+  return rows
+end
+
+-- The account folder `user` names, by its id or its exact name (names are
+-- case-sensitive). A name two folders hold, or none, stops the run, saying
+-- what there is.
+function target_of(user)
+  local folders = account_folders()
+  if is_user_id(user) then
+    for row in folders do
+      if row.id == user then return row end
+    end
+    fail("chat_data: no folder auth/" .. user .. "/ in the data root")
+  end
+  local found = {}
+  local near = {}
+  for row in folders do
+    if row.name == user then push(found, row) end
+    if row.name ~= user and lower(row.name) == lower(user) then push(near, row.name .. " (" .. row.id .. ")") end
+  end
+  if #found == 1 then return found[1] end
+  if #found > 1 then
+    local ids = {}
+    for row in found do push(ids, row.id .. " (" .. row.status .. ")") end
+    fail("chat_data: the name " .. user .. " is in " .. #found .. " folders: " .. join(ids, ", ") .. "; name the user by id")
+  end
+  local hint = ""
+  if #near > 0 then hint = "; names are case-sensitive, and these differ only in case: " .. join(near, ", ") end
+  fail("chat_data: no user is named " .. user .. hint)
+end
+
+-- The members file's ids: each line's words, a blank line or one starting
+-- `#` skipped (app/Channels.roc).
+function member_ids(text)
+  local ids = {}
+  for l in lines(text) do
+    local w = trim(l)
+    if w ~= "" and not starts_with(w, "#") then push(ids, w) end
+  end
+  return ids
+end
+
+-- Every channel's members file: `name`, `path` and `text`.
+function channel_files()
+  local rows = {}
+  if not exists(data_path("chat/channel")) then return rows end
+  for n in ls(data_path("chat/channel")) do
+    if ends_with(n, ".channel") then
+      local p = data_path("chat/channel/" .. n)
+      push(rows, {name = sub(n, 1, #n - 8), path = p, text = read(p)})
+    end
+  end
+  return rows
+end
+
+-- Every DM's folder: `pair`, `low`, `high` and `path`. A name under
+-- chat/dm that is no pair stops the run: the chat makes none.
+function dm_folders()
+  local rows = {}
+  if not exists(data_path("chat/dm")) then return rows end
+  for n in ls(data_path("chat/dm")) do
+    local m = re_find(n, "^([1-9][0-9]*)_([1-9][0-9]*)$")
+    if m == nil then fail("chat_data: chat/dm/" .. n .. " is no DM's folder (two ids joined by _)") end
+    push(rows, {pair = n, low = m.groups[1], high = m.groups[2], path = data_path("chat/dm/" .. n)})
+  end
+  return rows
+end
+
+-- The folders below `dir`, by name: a place's topics.
+function folder_names(dir)
+  local names = {}
+  for n in ls(dir) do
+    if is_dir(dir .. "/" .. n) then push(names, n) end
+  end
+  return names
+end
+
+-- A transcript's records, in order: `ref` (its MSG_ line), `from`, `date`,
+-- `first` and `last` (its lines, separator to last body line) and `body`
+-- (its markdown as stored). A line that is exactly the separator opens a
+-- record, as no body holds one (app/Separator.roc); one not followed by a
+-- record's head stops the run.
+function transcript_records(p)
+  local all = lines(read(p))
+  local records = {}
+  local i = 1
+  while i <= #all do
+    if all[i] == SEPARATOR then
+      if i + 3 > #all or not starts_with(all[i + 1], "MSG_") or not starts_with(all[i + 2], "from: ") or not starts_with(all[i + 3], "date: ") then
+        fail("chat_data: " .. shown_path(p) .. ":" .. i .. " opens no record (MSG_, from:, date:)")
+      end
+      push(records, {ref = all[i + 1], from = sub(all[i + 2], 7, #all[i + 2]), date = sub(all[i + 3], 7, #all[i + 3]), first = i, last = #all, body = ""})
+      if #records > 1 then records[#records - 1].last = i - 1 end
+      i = i + 4
+    else
+      if #records == 0 then fail("chat_data: " .. shown_path(p) .. ":" .. i .. " comes before the first record") end
+      i = i + 1
+    end
+  end
+  for r in records do
+    local body = {}
+    for j = r.first + 5, r.last do push(body, all[j]) end
+    r.body = join(body, "\n")
+  end
+  return records
+end
+
+-- Whether the Shale path `p` lies in one of `dms`' folders.
+function in_dms(p, dms)
+  for d in dms do
+    if starts_with(p, d.path .. "/") then return true end
+  end
+  return false
+end
+
+-- Every file below the Shale path `dir`, as `{path, size, kind}`, or none
+-- when it is not there. A link, or anything but a file or a folder, stops
+-- the run: the chat makes none.
+function files_below(dir)
+  local rows = {}
+  if not exists(dir) then return rows end
+  for e in walk_all(dir, {}) do
+    if e.kind == "other" then fail("chat_data: " .. shown_path(e.path) .. " is neither a file nor a folder (a link?)") end
+    if e.kind == "file" then push(rows, {path = e.path, size = e.size}) end
+  end
+  return rows
+end
+
+-- A file of `files_below` as one line: its path and its words when it is a
+-- fact shown, else its size.
+function file_line(f)
+  local name = basename(f.path)
+  if has_item(SHOWN_FACTS, name) and f.size <= 200 then return shown_path(f.path) .. "  " .. trim(read(f.path)) end
+  return shown_path(f.path) .. "  (" .. f.size .. " bytes, not shown)"
+end
+
+-- Everything in the data root that belongs to the user of `target`
+-- (`target_of`), or names them: a map of lists, each read here.
+function footprint_of(target)
+  local id = target.id
+  local name = target.name
+  local fp = {target = target, counter = fact_of("auth/next-id.txt")}
+  fp.own_files = files_below(data_path("auth/" .. id))
+  fp.user_files = files_below(data_path("users/" .. id))
+
+  fp.channels = {}
+  for c in channel_files() do
+    if has_item(member_ids(c.text), id) then push(fp.channels, c) end
+  end
+
+  fp.dms = {}
+  for d in dm_folders() do
+    if d.low == id or d.high == id then
+      d.other = d.high
+      if d.high == id then d.other = d.low end
+      d.topics = folder_names(d.path)
+      d.files = files_below(d.path)
+      push(fp.dms, d)
+    end
+  end
+
+  -- Their messages, and the lines that name them, in the topics that stay:
+  -- each transcript holding the name read whole, record by record.
+  fp.authored = {}
+  fp.mentions = {}
+  if name ~= "" and exists(data_path("chat")) then
+    local seen = {}
+    for h in grep_tree(data_path("chat"), name, {}).hits do
+      if basename(h.path) == "transcript" and not in_dms(h.path, fp.dms) and not has_key(seen, h.path) then
+        seen[h.path] = true
+        for r in transcript_records(h.path) do
+          if r.from == name then
+            local uploads = {}
+            for m in re_find_all(r.body, "uploads/([0-9a-f]{32}\\.[a-z]+)") do
+              local up = dirname(h.path) .. "/uploads/" .. m.group
+              if exists(up) and not has_item(uploads, up) then push(uploads, up) end
+            end
+            push(fp.authored, {path = h.path, ref = r.ref, date = r.date, first = r.first, uploads = uploads})
+          else
+            local at = r.first + 5
+            for l in lines(r.body) do
+              if contains(l, name) then push(fp.mentions, {path = h.path, line = at, ref = r.ref, text = l}) end
+              at = at + 1
+            end
+          end
+        end
+      end
+    end
+  end
+
+  -- Their reactions in the topics that stay, a line each (app/Reactions.roc).
+  fp.reactions = {}
+  if exists(data_path("chat")) then
+    for h in grep_tree(data_path("chat"), ",\"uid\":" .. id .. ",\"emoji\":\"", {}).hits do
+      if basename(h.path) ~= "reactions" then fail("chat_data: " .. shown_path(h.path) .. ":" .. h.line .. " holds a reaction's line, and is no reactions file") end
+      if not in_dms(h.path, fp.dms) then push(fp.reactions, {path = h.path, line = h.line, text = h.text}) end
+    end
+  end
+
+  -- Other folders' files that hold their id.
+  fp.agents_owned = {}
+  fp.invitees = {}
+  fp.invites_by = {}
+  for row in account_folders() do
+    if row.id ~= id then
+      if row.owner == id then push(fp.agents_owned, row) end
+      if row.inviter == id then push(fp.invitees, row) end
+      local invites = data_path("auth/" .. row.id .. "/human-invites")
+      if exists(invites) then
+        for n in ls(invites) do
+          if fact_of("auth/" .. row.id .. "/human-invites/" .. n .. "/by") == id then push(fp.invites_by, {path = invites .. "/" .. n .. "/by", owner = row}) end
+        end
+      end
+    end
+  end
+  fp.last_convs = {}
+  if exists(data_path("users")) then
+    for n in ls(data_path("users")) do
+      if is_user_id(n) and n ~= id then
+        local held = fact_of("users/" .. n .. "/last-conv")
+        for d in fp.dms do
+          if held == "/chat/dm/" .. d.pair or starts_with(held, "/chat/dm/" .. d.pair .. "/") then
+            push(fp.last_convs, {path = data_path("users/" .. n .. "/last-conv"), user = n, held = held})
+          end
+        end
+      end
+    end
+  end
+  return fp
+end
+
+-- Why `fp` is not one remove_user.shale removes, a line each; none when it
+-- is.
+function blockers_of(fp)
+  local why = {}
+  local t = fp.target
+  if t.id == "1" then push(why, "user 1 is the chat's owner and admin (app/UserId.roc's chat_owner)") end
+  if not is_user_id(fp.counter) or tonumber(fp.counter) <= tonumber(t.id) then push(why, "the counter of ids, auth/next-id.txt, holds '" .. fp.counter .. "', not an id past " .. t.id) end
+  for a in fp.agents_owned do push(why, "they own the agent " .. a.name .. " (" .. a.id .. "): remove the agent first, as an agent whose owner is no human stops the chat") end
+  if #fp.authored > 0 then push(why, "they wrote " .. counted(#fp.authored, "message", "messages") .. " in topics that stay; what happens to those is Steve's decision, not made yet (docs/admin.md, \"Messages in topics that stay\")") end
+  return why
+end

@@ -110,6 +110,10 @@ The app also bounds these, per client or in all: 8 streams a holder and 64 in al
 
 The cap is a count, not a rate. A client may open and finish requests as fast as it likes, a refused connection holds its file descriptor for up to a second's linger, and many addresses are many clients, which an IPv6 client's own /64 gives it. A flood from those can still cost memory and fill the 1,024 file descriptors a service gets by default. The server logs a failed accept and goes on, and it doesn't stop. A rate needs a Caddy built with `mholt/caddy-ratelimit`, which replaces the binary that serves every site on the droplet, and stock Caddy has no directive for one.
 
+## Admin commands
+
+Removing a user, and seeing first everything they have in the data root, is done by the Shale scripts in `tools/admin/`, run on the droplet as `rocchat` with the server stopped: docs/admin.md has the scripts, how they reach prod, and what confines them.
+
 ## LC's listener
 
 `tools/listen.shale` is LC's listener, an adaptation of `cookbook:listen.shale`. It prints one line for each post by its owner (or another user `allow=` lists) whose own words say `@LC`.

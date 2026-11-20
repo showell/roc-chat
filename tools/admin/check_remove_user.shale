@@ -1,0 +1,232 @@
+-- tools/admin/check_remove_user.shale: the admin scripts proved end to end
+-- on a throwaway chat. Run it from roc-chat's root:
+--
+--   shale tools/admin/check_remove_user.shale
+--
+-- It starts the server on a fresh data root seeded from the demo and, over
+-- HTTP, makes a chat with a footprint in every corner: Steve invites Tam,
+-- who joins, writes with Steve in a DM, invites Ada and reacts in general;
+-- Ada writes to Tam; Steve makes #team with Tam and Ada, names Tam in
+-- general and last opened his DM with Tam; Cy joins and writes in general.
+-- Then, with the server stopped, it runs the admin scripts as prod runs
+-- them: from tools/admin as their root, under a mounts file of their own
+-- (SHALE_MOUNTS) that names the data root `data`, read-only for the
+-- footprint, and no user prelude. It checks that
+-- - the footprint names each of Tam's files and lines, and refuses Cy, who
+--   wrote in a topic that stays;
+-- - a write through the read-only mount, and a path out of the mount, are
+--   refused;
+-- - remove_user.shale refuses Cy, and refuses Tam while a server serves the
+--   data root, changing nothing either time;
+-- - it removes Tam, and the footprint then finds no folder of Tam's;
+-- - the server starts on what is left, and every page the others had
+--   answers as it should: Browse, Recent, general, #team, the invites page,
+--   Ada's DM with Steve, a search; Tam's DMs are 404s, Tam's session is
+--   refused, and Steve's / goes to Browse.
+-- The data root is under .zig-cache/admin-proof.XXXXXX, removed at the end;
+-- a stop leaves it, and its jobs (the server) end with it.
+-- budget: steps=50000000
+
+const PASSWORD = "correct horse battery staple"
+const PORTS_FROM = 9761
+const PORTS = 100
+
+-- The pids listening on TCP `at`, by `ss`.
+function listeners(at)
+  local r = must(run({"ss", "-Hltnp", "sport = :" .. at}, {timeout_ms = 5000, tail = 20}))
+  local pids = {}
+  for l in re_lines(r.out, ".") do
+    local m = re_find(l.text, "pid=([0-9]+)")
+    if m == nil then fail("check_remove_user: a listener on port " .. at .. " with no pid shown: " .. l.text) end
+    push(pids, tonumber(m.group))
+  end
+  return pids
+end
+
+-- The first port of PORTS that nothing listens on.
+function free_port()
+  for i = 0, PORTS - 1 do
+    if #listeners(PORTS_FROM + i) == 0 then return PORTS_FROM + i end
+  end
+  fail("check_remove_user: no free port in " .. PORTS_FROM .. "-" .. (PORTS_FROM + PORTS - 1))
+end
+
+-- A request by curl, as `cookie`: its status and its text, headers first.
+-- `fields` makes it a POST, each field URL-encoded; nil, a GET.
+function ask(base, cookie, path, fields?)
+  local argv = {"curl", "-s", "-D", "-", "-H", "Cookie: " .. cookie}
+  if fields ~= nil then
+    if #fields == 0 then
+      push(argv, "-d")
+      push(argv, "")
+    end
+    for f in fields do
+      push(argv, "--data-urlencode")
+      push(argv, f)
+    end
+  end
+  push(argv, base .. path)
+  local r = must(run(argv, {timeout_ms = 10000, whole = 400000}))
+  local status = re_find(r.out, "^HTTP/1\\.1 ([0-9]+)")
+  if status == nil then fail("check_remove_user: " .. path .. " gave no status: " .. sub(r.out, 1, 200)) end
+  return {status = tonumber(status.group), text = r.out}
+end
+
+function expect_status(answer, want, what)
+  if answer.status ~= want then fail("check_remove_user: " .. what .. ": " .. answer.status .. ", not " .. want .. "\n" .. sub(answer.text, 1, 600)) end
+  print("PASS " .. what .. ": " .. want)
+end
+
+function cookie_of(answer, what)
+  local c = re_find(answer.text, "(?:^|\n)[Ss]et-[Cc]ookie: (__Host-gopher_auth=[^;\r\n]+)")
+  if c == nil then fail("check_remove_user: " .. what .. " set no session cookie (" .. answer.status .. ")") end
+  return c.group
+end
+
+-- A human invited by `by`'s cookie, joined: their cookie.
+function invite_and_join(base, by, name)
+  local inv = ask(base, by, "/invites", {"name=" .. name})
+  expect_status(inv, 200, "inviting " .. name)
+  local c = re_find(inv.text, "/join#([A-Za-z0-9_-]+)")
+  if c == nil then fail("check_remove_user: inviting " .. name .. " showed no /join# link") end
+  local j = ask(base, "none=1", "/join", {"code=" .. c.group, "name=" .. name, "password=" .. PASSWORD})
+  expect_status(j, 303, name .. " joining")
+  return cookie_of(j, name .. "'s join")
+end
+
+-- The server on `data` at `port`, up: its job.
+function start_server(work, data, port, log)
+  local server = job_start({"zig-out/bin/roc-chat", real(data), "--port", "" .. port}, {log = work .. "/" .. log, want = "roc-chat: the server this lane just built"})
+  local up = job_wait(server, {timeout_ms = 30000, contains = "roc-chat: http://"})
+  if up.ended ~= "found" then fail("check_remove_user: the server did not start (" .. up.ended .. "); see " .. work .. "/" .. log) end
+  return server
+end
+
+-- An admin script run as prod runs it: from tools/admin, under `mounts`,
+-- with no user prelude. `stdin` is a script for the child when given.
+function admin_run(work, mounts, args, stdin?)
+  local argv = {"shale"}
+  for a in args do push(argv, a) end
+  local o = {cwd = "tools/admin", timeout_ms = 60000, whole = 200000, env = {SHALE_MOUNTS = real(work .. "/" .. mounts), SHALE_PRELUDE = "", HOME = real(work .. "/home")}}
+  if stdin ~= nil then o.stdin = stdin end
+  return run(argv, o)
+end
+
+function expect_holds(text, part, what)
+  if find(text, part) == nil then fail("check_remove_user: " .. what .. ": no `" .. part .. "` in:\n" .. text) end
+end
+
+-- 0. The server, built niced.
+must(run({"zig", "build"}, {timeout_ms = 600000, tail = 20, nice = 19}))
+
+local work = fresh_dir(".zig-cache", "admin-proof")
+local data = work .. "/data"
+mkdir(data)
+mkdir(work .. "/home")
+copy("demo/data/chat", data .. "/chat")
+const port = free_port()
+const base = "http://localhost:" .. port
+
+-- 1. The chat, seeded over HTTP.
+local server = start_server(work, data, port, "seed.log")
+local hashed = must(run({"zig-out/bin/roc-chat", "hash-password"}, {stdin = PASSWORD .. "\n", timeout_ms = 30000, tail = 3, want = "roc-chat: the server this lane just built"}))
+create(data .. "/auth/1/password", trim(hashed.out) .. "\n")
+local steve = cookie_of(ask(base, "none=1", "/login", {"name=Steve", "password=" .. PASSWORD, "next=/chat"}), "Steve's sign-in")
+local tam = invite_and_join(base, steve, "Tam")
+expect_status(ask(base, steve, "/chat/dm/1_2", {"topic=plans"}), 303, "the DM's topic")
+expect_status(ask(base, steve, "/chat/dm/1_2/plans", {"markdown=Shall we meet Thursday?"}), 303, "Steve to Tam")
+expect_status(ask(base, tam, "/chat/dm/1_2/plans", {"markdown=Thursday works."}), 303, "Tam to Steve")
+local ada = invite_and_join(base, tam, "Ada")
+expect_status(ask(base, ada, "/chat/dm/2_3", {"topic=hi"}), 303, "Ada's DM with Tam")
+expect_status(ask(base, ada, "/chat/dm/2_3/hi", {"markdown=Hi Tam, thanks for the invite."}), 303, "Ada to Tam")
+expect_status(ask(base, ada, "/chat/dm/2_3/hi"), 200, "Ada opening her DM with Tam")
+expect_status(ask(base, steve, "/channels", {"name=team"}), 303, "the channel #team")
+expect_status(ask(base, steve, "/channels/team/members/2/add", {}), 303, "Tam in #team")
+expect_status(ask(base, steve, "/channels/team/members/3/add", {}), 303, "Ada in #team")
+expect_status(ask(base, tam, "/chat/channel/general/roc-chat/react", {"msg=1", "emoji=👍", "on=1"}), 200, "Tam's reaction in general")
+expect_status(ask(base, steve, "/chat/channel/general/roc-chat/react", {"msg=1", "emoji=👍", "on=1"}), 200, "Steve's reaction in general")
+expect_status(ask(base, steve, "/chat/channel/general/roc-chat", {"markdown=Thanks @Tam, the plan is in the DM."}), 303, "Steve naming Tam in general")
+local cy = invite_and_join(base, steve, "Cy")
+expect_status(ask(base, cy, "/chat/channel/general/roc-chat", {"markdown=Cy was here."}), 303, "Cy in general")
+expect_status(ask(base, steve, "/chat/dm/1_2/plans"), 200, "Steve opening his DM with Tam")
+job_stop(server)
+
+-- 2. The mounts files: the data root, read-only and writable.
+create(work .. "/read.mounts", "data = " .. real(data) .. " ro\n")
+create(work .. "/write.mounts", "data = " .. real(data) .. "\n")
+
+-- 3. The footprints.
+local tam_fp = admin_run(work, "read.mounts", {"user_footprint.shale", "user=Tam"})
+print(tam_fp.out)
+if tam_fp.code ~= 0 then fail("check_remove_user: Tam's footprint exited " .. tam_fp.code) end
+for part in {"user 2, Tam: a human, an account", "auth/2/inviter  1", "auth/2/password  (", "chat/channel/general.channel", "chat/channel/team.channel", "chat/dm/1_2/  (with user 1", "chat/dm/2_3/  (with user 3", "chat/channel/general/roc-chat/reactions:1  {\"msg\":1,\"uid\":2,", "auth/3/inviter  (Ada", "auth/3/human-invites/1/by", "users/1/last-conv  /chat/dm/1_2/plans", "users/3/last-conv  /chat/dm/2_3/hi", "Thanks @Tam", "remove_user.shale may remove them: user=2 confirm=Tam"} do
+  expect_holds(tam_fp.out, part, "Tam's footprint")
+end
+if find(tam_fp.out, "$2b$") ~= nil then fail("check_remove_user: the footprint printed a password's hash") end
+print("PASS Tam's footprint names every corner, and no hash")
+local cy_fp = admin_run(work, "read.mounts", {"user_footprint.shale", "user=Cy"})
+expect_holds(cy_fp.out, "chat/channel/general/roc-chat/transcript:", "Cy's footprint")
+expect_holds(cy_fp.out, "they wrote 1 message in topics that stay", "Cy's footprint")
+print("PASS Cy's footprint names the message and refuses him")
+
+-- 4. The mounts hold: a write through the read-only one, and a path out of
+-- the data root, are refused.
+local ro = admin_run(work, "read.mounts", {}, "replace(\"data:auth/next-id.txt\", \"9\\n\")\n")
+if ro.code == 0 or find(ro.out, "read-only") == nil then fail("check_remove_user: a write through the read-only mount was not refused:\n" .. ro.out) end
+print("PASS a write through the read-only mount is refused")
+local out_of = admin_run(work, "write.mounts", {}, "create(\"data:../escaped\", \"x\")\n")
+if out_of.code == 0 or exists(work .. "/escaped") then fail("check_remove_user: a path out of the data root was not refused:\n" .. out_of.out) end
+print("PASS a path out of the data root is refused")
+
+-- 5. The refusals, which change nothing.
+local cy_rm = admin_run(work, "write.mounts", {"remove_user.shale", "user=4", "confirm=Cy"})
+if cy_rm.code == 0 or not exists(data .. "/auth/4/name") then fail("check_remove_user: Cy's removal was not refused:\n" .. cy_rm.out) end
+expect_holds(cy_rm.out, "nothing changed", "Cy's removal")
+print("PASS Cy's removal is refused, nothing changed")
+local wrong = admin_run(work, "write.mounts", {"remove_user.shale", "user=2", "confirm=tam"})
+if wrong.code == 0 or not exists(data .. "/auth/2/name") then fail("check_remove_user: a wrong confirm= was not refused:\n" .. wrong.out) end
+print("PASS a confirm= that is not the name is refused")
+server = start_server(work, data, port, "serving.log")
+local busy = admin_run(work, "write.mounts", {"remove_user.shale", "user=2", "confirm=Tam"})
+if busy.code == 0 or not exists(data .. "/auth/2/name") then fail("check_remove_user: Tam's removal ran while the server served:\n" .. busy.out) end
+expect_holds(busy.out, "stop it first", "Tam's removal with the server up")
+print("PASS Tam's removal is refused while the server serves the data root")
+job_stop(server)
+
+-- 6. The removal.
+local rm = admin_run(work, "write.mounts", {"remove_user.shale", "user=2", "confirm=Tam"})
+print(rm.out)
+if rm.code ~= 0 then fail("check_remove_user: Tam's removal exited " .. rm.code) end
+local gone = admin_run(work, "read.mounts", {"user_footprint.shale", "user=2"})
+if gone.code == 0 then fail("check_remove_user: Tam's footprint still found a folder:\n" .. gone.out) end
+expect_holds(gone.out, "no folder auth/2/", "the footprint after")
+expect_holds(read(data .. "/auth/next-id.txt"), "5", "the counter after")
+print("PASS Tam is removed; the counter stays 5")
+
+-- 7. The chat on what is left.
+server = start_server(work, data, port, "after.log")
+-- Steve's / first: opening any conversation's page records it as his last.
+local resume = ask(base, steve, "/")
+expect_status(resume, 303, "Steve's /")
+expect_holds(resume.text, "ocation: /chat\r", "Steve's / goes to Browse")
+expect_status(ask(base, steve, "/chat"), 200, "Steve's Browse")
+local browse = ask(base, steve, "/chat")
+if find(browse.text, "/chat/dm/1_2") ~= nil then fail("check_remove_user: Steve's Browse still links his DM with Tam") end
+expect_status(ask(base, steve, "/chat/recent"), 200, "Steve's Recent")
+local general = ask(base, steve, "/chat/channel/general/roc-chat")
+expect_status(general, 200, "general, where Tam reacted")
+expect_status(ask(base, steve, "/channels/team"), 200, "#team's admin page")
+expect_status(ask(base, steve, "/channels"), 200, "the channels page")
+expect_status(ask(base, steve, "/invites"), 200, "Steve's invites page, Ada's inviter gone")
+expect_status(ask(base, steve, "/chat/search/words?prefix=pl"), 200, "a search")
+expect_status(ask(base, steve, "/chat/dm/1_2/plans"), 404, "Steve's DM with Tam")
+expect_status(ask(base, ada, "/chat/dm/1_3/ChitChat"), 200, "Ada's DM with Steve, its sidebar")
+expect_status(ask(base, ada, "/chat/dm/2_3/hi"), 404, "Ada's DM with Tam")
+expect_status(ask(base, ada, "/invites"), 200, "Ada's invites page")
+expect_status(ask(base, cy, "/chat"), 200, "Cy's Browse")
+local tam_after = ask(base, tam, "/chat")
+if tam_after.status == 200 then fail("check_remove_user: Tam's session still admits them") end
+print("PASS Tam's session is refused (" .. tam_after.status .. ")")
+job_stop(server)
+remove_tree(work)
+print("check_remove_user: every step passed (port " .. port .. ")")

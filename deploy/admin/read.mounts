@@ -1,0 +1,3 @@
+# Shale's mounts for tools/admin/user_footprint.shale on prod: the data
+# root, read-only (docs/admin.md, "Running them").
+data = /var/lib/roc-chat/data ro
