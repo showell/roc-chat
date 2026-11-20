@@ -76,6 +76,9 @@ The SHA-256 digest of the bytes, 32 bytes, from Zig's standard library. *Why:* t
 **`crc32_of_bytes! : List(U8) => U32`**
 The CRC-32 of the bytes, gzip's (`std.hash.Crc32`, the reflected polynomial 0xEDB88320). *Why:* a conversation's download is a `.tar.gz` the Roc builds (`app/Tar.roc`, `app/Gzip.roc`), whose trailer holds its tar's CRC-32. The Roc runs at `--opt=dev`, where a loop over each byte costs about 0.2 s a MiB, in the turn; the host's costs milliseconds.
 
+**`free_bytes_on_data_disk! : {} => U64`**
+The bytes the data root's file system has free for the server, as `df` counts them: `fstatfs(2)` on the root's descriptor, `f_bavail` blocks of `f_frsize` bytes (`f_bsize` where the kernel gives no fragment size), in `DataRoot.free_bytes_on_data_disk` (`host/file_primitives.zig`). A fact, not a verdict: the floor is the app's. A failed `fstatfs` is logged and answered as 0, so a disk the host can't ask is never taken for a roomy one. A test sets the root's `free_bytes_for_test` and is answered that instead, so the end to end reaches the floor without filling a disk; the server's own root never sets it. *Why:* every request that adds data is refused while under 2 GiB are free (`app/DiskFloor.roc`).
+
 ## Passwords and the server's secret
 
 The server's secret is the file `.session-secret` in the data root: 32 random bytes as 64 lowercase hex digits, readable by its owner alone, made once when the server starts on a folder that has none (`ServerSecret` in `host/sign_in_primitives.zig`), and read then; one shorter than 32 bytes or longer than 256 stops the start, and so does one whose mode gives its group or anyone else any right (`mode & 0o077`), with a message saying to `chmod 600` it. Its name starts with `.`, so the path rule keeps every file primitive from it: the Roc signs and checks bytes with it, and can never read it. Removing it and starting again makes a new one, and every signature made with the old one stops matching.
