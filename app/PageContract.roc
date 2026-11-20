@@ -21,9 +21,9 @@
 ## download is (`data-download`), and each reaction's button names
 ## its reactors' ids (`data-reactors`), all read by app/actions.js. Each place in the
 ## sidebar names its own path (`data-section`), which app/sidebar.js keeps
-## its collapsed state by, and where a topic added to it belongs; a DM with
-## another human names them (`data-person`) and says whether they are
-## online (`data-presence`, by `Presence`), which app/sidebar.js draws as a
+## its collapsed state by, and where a topic added to it belongs; a DM
+## names its person (`data-person`), the viewer in their own, and says
+## whether they are online (`data-presence`, by `Presence`), which app/sidebar.js draws as a
 ## dot; each place says how it starts (`data-opening`, by `SidebarOrder`),
 ## which app/sidebar.js opens or collapses it by. The places come in two
 ## groups, each naming itself (`data-group`), which app/sidebar.js keeps a

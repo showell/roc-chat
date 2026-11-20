@@ -33,8 +33,8 @@
 // 2026-11-20: "Showing membership is absolutely useful. Participation is
 // even better."), as the server orders them (app/ChannelRoster.roc): those
 // who posted in it lately first, latest first, each with when ("posted 2
-// hours ago"), then the rest by name. A human has the presence dot (but the
-// viewer, as their own DM has none) and an agent a quiet "agent". The topics come first, since opening one is what
+// hours ago"), then the rest by name. A human has the presence dot, the
+// viewer's own green, and an agent a quiet "agent". The topics come first, since opening one is what
 // the card is mostly for, and the members under them. A human's name is a
 // link that shows their card, the viewer's DM with them, in the same popup,
 // with a way back to the channel ("← #general"), since no popup opens
@@ -237,9 +237,11 @@ window.SidebarPopups = (function () {
       var row = document.createElement('div');
       Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '14px' });
       var dot = document.createElement('span');
-      // The viewer's own row has no data-presence, as their own DM has none.
+      // A human's dot, the viewer's too; an agent's place is kept empty, so
+      // the names line up.
       var presence = member.getAttribute('data-presence');
-      if (presence) {
+      if (kind === 'human') {
+        if (!presence) throw new Error('sidebar-popups.js: a human member has no data-presence');
         paintDot(dot, presence === 'online');
       } else {
         Object.assign(dot.style, { display: 'inline-block', width: '9px', flex: 'none' });

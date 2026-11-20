@@ -57,9 +57,11 @@
 // fine. We have infinite real estate in the left sidebar. We have
 // collapsing to help bring things above the fold.").
 //
-// Presence, chat-client's: a DM with another human (data-person) has a dot
-// before its name, a hollow ring while they are away and solid green while
-// they are online (data-presence). The page's stream (feed.js) passes on
+// Presence, chat-client's: a DM's person (data-person), the other human or,
+// in the viewer's own DM, the viewer, has a dot before its name, a hollow
+// ring while they are away and solid green while they are online
+// (data-presence). The viewer's own is always green: they are here (Steve,
+// 2026-11-20: "This is how we teach people how presence works!"). The page's stream (feed.js) passes on
 // `online` from the viewer's own key, a human's id, which fills their dot
 // (Sidebar.markOnline). A dot never empties while the page is open: as in
 // chat-client, the next page drawn says who is still online. The notices

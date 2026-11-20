@@ -1571,8 +1571,8 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
     defer stream.close();
     const away = "data-section=\"/chat/dm/1_3\" data-opening=\"always\" data-person=\"3\" data-presence=\"offline\">";
     const here = "data-section=\"/chat/dm/1_3\" data-opening=\"always\" data-person=\"3\" data-presence=\"online\">";
-    try t.check("presence: Uma, joined but never seen, is away in Steve's sidebar, and his own DM names no one", before.status == 200 and has(before.body, away) and
-        has(before.body, "data-section=\"/chat/dm/1_1\" data-opening=\"collapsed\">") and stream.isEventStream());
+    try t.check("presence: Uma, joined but never seen, is away in Steve's sidebar, and his own DM names him, online", before.status == 200 and has(before.body, away) and
+        has(before.body, "data-section=\"/chat/dm/1_1\" data-opening=\"collapsed\" data-person=\"1\" data-presence=\"online\">") and stream.isEventStream());
     try t.check("presence: the line above Steve's DM with Uma says, as it is drawn, that she hasn't been on since the server started", has(before.body, "<p class=\"notice-strip\">Uma hasn&#39;t been on since the server started.</p>"));
     // Her first request that counts: Browse.
     const browsed = try getAs(a, io, port, uma, "/chat");
@@ -1587,7 +1587,7 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
     const next = try stream.event();
     const after = try getAs(a, io, port, steve_session, dm);
     try t.check("presence: her next page tells no one: Steve's next event is his own message; his page now draws her online", again.status == 200 and said.status == 201 and
-        std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and has(again.body, "data-section=\"/chat/dm/3_3\" data-opening=\"collapsed\">"));
+        std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and has(again.body, "data-section=\"/chat/dm/3_3\" data-opening=\"collapsed\" data-person=\"3\" data-presence=\"online\">"));
     try t.check("presence: the line above his DM with her now says, as it is drawn, \"Uma is online.\"", has(after.body, "<p class=\"notice-strip\">Uma is online.</p>"));
 }
 

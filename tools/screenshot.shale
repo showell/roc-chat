@@ -19,6 +19,7 @@
 --   devices  /devices, the "Add a device" page's steps
 -- and what takes a click or a key, at 1280x800 (STATES, below):
 --   dm-person-card    Tam's name clicked in the sidebar: the person card
+--   dm-own-card       Steve's own name clicked: his card, "Online now", green
 --   dm-new-topic      the DM's "+" clicked: its card on the new-topic form,
 --                     the topics under it
 --   channel-card      #general's name clicked: the channel's card, its
@@ -55,6 +56,7 @@
 --   sign-out-focus    the top bar's "Sign out" focused, as Tab reaches it
 --                     (at both sizes)
 --   invite-made-phone the invite-made card at a phone's width
+--   dm-drawer         the ☰ tapped: the sidebar's drawer, its dots
 -- and at 1280x800 again:
 --   recent-search     Recent's 🔍 clicked and "thu" typed: the words found
 --   recent-arrival    a message sent while Recent is open: its tile arrived
@@ -63,6 +65,10 @@
 --                     `message-notice` shows it (here handed to chrome.js's
 --                     Notices by the page's console), at both sizes
 --   dm-notice-dismissed  on a phone, that notice's ✕ tapped: the line gone
+-- and once, last, in the last theme (it brings Cy online for good, so
+-- every picture before it shows his hollow dot):
+--   dm-came-online    Cy's first page, while Steve's DM is open: his dot
+--                     filled by the stream, and "Cy has come online."
 -- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
 -- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
 --
@@ -84,8 +90,10 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 20 s for the 56 pictures once the server and the driver
--- are built (2.5 s of CPU, held to 10 s); each about 0.4 s, its line
+-- Budgets: about 70 s on a busy box for the 87 pictures once the server and the driver
+-- are built (11.4 s of CPU on 2026-11-20, about 0.13 s a picture, held to
+-- 14 s; it was 2.5 s for 56, and the states added since cost more each,
+-- popups and waits); each about 0.5 s, its line
 -- printed as `shot <name> <ms>`. A `zig build` after the app changed adds
 -- about 25 s, the driver's first build about 10 s.
 -- The browser runs one renderer, its JavaScript heap capped at 128 MB,
@@ -162,7 +170,10 @@ const MESSAGE_NOTICE = "eval Notices.showUnlessHere('<a href=\"/chat/channel/gen
 -- steps after its load (tools/shot/steps.zig's), then its picture.
 const STATES = {
   {name = "dm-person-card", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-place[data-person] .sidebar-place-name",
+    "click .sidebar-place[data-section=\"/chat/dm/1_2\"] .sidebar-place-name",
+    "wait dialog.place-popup[open]"}},
+  {name = "dm-own-card", path = "/chat/dm/1_2/plans", steps = {
+    "click .sidebar-place[data-section=\"/chat/dm/1_1\"] .sidebar-place-name",
     "wait dialog.place-popup[open]"}},
   {name = "dm-new-topic", path = "/chat/dm/1_2/plans", steps = {
     "click .sidebar-place[data-opening=always] .sidebar-new-topic",
@@ -176,7 +187,7 @@ const STATES = {
     "click dialog.place-popup .popup-member",
     "wait dialog.place-popup .popup-secondary"}},
   {name = "dm-card-topic", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-place[data-person] .sidebar-place-name",
+    "click .sidebar-place[data-section=\"/chat/dm/1_2\"] .sidebar-place-name",
     "wait dialog.place-popup[open]",
     "type kickoff", "key Enter",
     "wait .sidebar-place[data-opening=always] a.current[href$=\"/kickoff\"]"}},
@@ -242,6 +253,10 @@ const STATES = {
     "click input[name=name]", "type tam", "click .panel form button", "wait p.problem"}},
   {name = "invite-made-phone", size = "phone", path = "/invites", steps = {
     "click .invite-row button", "wait .invite-made"}},
+  -- The drawer, slid in: once its 0.25 s slide has ended.
+  {name = "dm-drawer", size = "phone", path = "/chat/dm/1_2/plans", steps = {
+    "click .sidebar-toggle", "wait .sidebar-toggle[aria-expanded=true]",
+    "eval new Promise(function (r) { setTimeout(r, 400); })"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
@@ -398,11 +413,25 @@ for t in themes do
     end
   end
 end
+-- Cy, joined but never seen, is away until his first page, Browse, fetched
+-- here by his session while Steve's DM holds its stream open; then Steve's
+-- session again. Last, since he stays online.
+if with_states then
+  local size = SIZES[sizes[1]]
+  local name = themes[#themes] .. "-" .. re_replace(size, " ", "x") .. "-dm-came-online"
+  for step in {"size " .. size, "goto /chat/dm/1_2/plans",
+      "eval new Promise(function (r) { setTimeout(r, 700); })",
+      "cookie " .. more_cookies["Cy"], "eval fetch('/chat')", "cookie " .. steve,
+      "wait .notice-strip a", "shot " .. name} do
+    push(list, step)
+  end
+  push(names, name)
+end
 create(work .. "/shots.txt", join(list, "\n") .. "\n")
 
 -- 4. The pictures, one browser for all of them.
 local shot = must(run({"zig", "build", "run", "--", real(CHROME), real(work .. "/profile"), real(work .. "/shots.txt"), real(out)},
-  {cwd = "tools/shot", timeout_ms = 110000, tail = 60, nice = 19, cpu_budget_ms = 10000, stage = "the pictures"}))
+  {cwd = "tools/shot", timeout_ms = 110000, tail = 60, nice = 19, cpu_budget_ms = 14000, stage = "the pictures"}))
 alone_on(port, server_pid)
 for name in names do
   if not exists(out .. "/" .. name .. ".png") then fail("screenshot: " .. name .. ".png was not written\n" .. shot.out) end

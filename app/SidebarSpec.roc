@@ -84,8 +84,9 @@ form_at = |path, suggests| {
 
 ## One place: `name`, its button that offers a new topic, at `path`,
 ## starting as `opening`, holding `rows`, then its form. Steve's DM with
-## Apoorva names her, offline, as the tests draw it; his own DM's name says
-## it is his, "(you)" (`PageKit.own_name`).
+## Apoorva names her, offline, as the tests draw it; his own DM names him,
+## online, since the viewer always is, and its name says it is his, "(you)"
+## (`PageKit.own_name`).
 place_html : {
 	name : Str,
 	path : Str,
@@ -103,6 +104,8 @@ place_html = |{ name, path, opening, rows, suggests }| {
 	person =
 		if path == "/chat/dm/1_2" {
 			" data-person=\"2\" data-presence=\"offline\""
+		} else if path == "/chat/dm/1_1" {
+			" data-person=\"1\" data-presence=\"online\""
 		} else {
 			""
 		}
@@ -288,7 +291,8 @@ expect {
 	}
 }
 # A DM with another human names them and says whether they are online; the
-# viewer's own DM and a channel name no one.
+# viewer's own DM names the viewer, online whoever else is (Steve,
+# 2026-11-20: "You see green for Steve."); a channel names no one.
 expect {
 	drawn = |online_humans|
 		Str.from_utf8_lossy(
@@ -303,7 +307,8 @@ expect {
 	apoorva = Sample.user("Apoorva").id()
 	drawn([apoorva]).contains("data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\" data-person=\"2\" data-presence=\"online\">")
 		and drawn([]).contains("data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\" data-person=\"2\" data-presence=\"offline\">")
-		and drawn([steve.user().id(), apoorva]).contains("data-section=\"/chat/dm/1_1\" data-opening=\"always\">")
+		and drawn([]).contains("data-section=\"/chat/dm/1_1\" data-opening=\"always\" data-person=\"1\" data-presence=\"online\">")
+		and drawn([apoorva]).contains("data-section=\"/chat/dm/1_1\" data-opening=\"always\" data-person=\"1\" data-presence=\"online\">")
 		and drawn([apoorva]).contains("data-section=\"/chat/channel/general\" data-opening=\"collapsed\">")
 }
 # A group with no places is left out: with no channel, no Channels heading.
@@ -363,7 +368,8 @@ expect {
 }
 # A channel's members, after its topics and before its form, in its
 # roster's order: who posted lately with when, then the rest; a human with
-# their presence and the viewer's DM with them, an agent marked as one. A
+# their presence (the viewer online) and the viewer's DM with them, an
+# agent marked as one. A
 # DM lists none.
 expect {
 	everyone_in_general =
@@ -392,7 +398,7 @@ expect {
 			rosters: [roster],
 		}).to_utf8(),
 	)
-	members = "<ul class=\"sidebar-members\">\n<li data-person=\"3\" data-kind=\"agent\"><span class=\"sidebar-member-name\">CC</span><span class=\"sidebar-member-words\">posted 2 hours ago</span></li>\n<li data-person=\"2\" data-kind=\"human\" data-presence=\"online\" data-section=\"/chat/dm/1_2\"><span class=\"sidebar-member-name\">Apoorva</span></li>\n<li data-person=\"1\" data-kind=\"human\" data-section=\"/chat/dm/1_1\"><span class=\"sidebar-member-name\">Steve</span></li>\n</ul>\n"
+	members = "<ul class=\"sidebar-members\">\n<li data-person=\"3\" data-kind=\"agent\"><span class=\"sidebar-member-name\">CC</span><span class=\"sidebar-member-words\">posted 2 hours ago</span></li>\n<li data-person=\"2\" data-kind=\"human\" data-presence=\"online\" data-section=\"/chat/dm/1_2\"><span class=\"sidebar-member-name\">Apoorva</span></li>\n<li data-person=\"1\" data-kind=\"human\" data-presence=\"online\" data-section=\"/chat/dm/1_1\"><span class=\"sidebar-member-name\">Steve</span></li>\n</ul>\n"
 	shown.contains("<ul class=\"sidebar-topics\">\n</ul>\n${members}<form method=\"post\" action=\"/chat/channel/general\">")
 		and shown.split_on("sidebar-members").len() == 2
 }

@@ -26,17 +26,23 @@
 ## sidebar a drawer over the page. It finds each part by `PageContract`'s classes, and a place by
 ## its path (`data-section`).
 ##
-## A DM with another human names them (`data-person`) and says whether they
-## are online (`data-presence`, by `Presence`), so app/sidebar.js draws its
-## dot, and fills it when the page's stream says they have come online.
+## A DM names its person (`data-person`), the other human or, for the
+## viewer's own DM, the viewer, and says whether they are online
+## (`data-presence`, by `Presence`), so app/sidebar.js draws its dot, and
+## fills it when the page's stream says they have come online. The viewer
+## is always drawn online, since they are making this very request: their
+## own dot is green, which is how a reader learns what green means (Steve,
+## 2026-11-20: "Show the presence bubble for Steve to Steve. This is how we
+## teach people how presence works!").
 ## Clicking a place's name opens app/sidebar-popups.js's card about it, a
 ## channel's and a DM's alike: its name (the place's label), for a DM whether
 ## its person is online, its topics as links, and a new topic. A channel's
 ## card lists its members too, in `ChannelRoster`'s order, by participation:
 ## the server writes them after the channel's topics (`sidebar-members`),
 ## each naming who they are (`data-person`), whether a human or an agent
-## (`data-kind`), and for a human whether they are online and the path of
-## the viewer's DM with them (`data-section`), whose card theirs is; and when
+## (`data-kind`), and for a human, the viewer too, whether they are online
+## and the path of the viewer's DM with them (`data-section`), whose card
+## theirs is; and when
 ## they last posted, when lately. app/sidebar.js takes the list out of the
 ## sidebar, and the card shows it. When each
 ## human joined is not drawn yet: once accounts keep it,
@@ -156,32 +162,39 @@ group_section = |{ group, places }|
 		])
 	}
 
-## Who the page is for, and who is online.
+## Who the page is for, and who else is online.
 People : { viewer : SignedIn, online_humans : List(UserId) }
 
-## The attributes that say who the DM `place` is with, when it is another
-## human than the viewer, and whether they are online; none for a channel or
-## the viewer's own DM.
+## Whether the human `id` is drawn online: the viewer always is, since they
+## are making this very request, and anyone else while `online_humans`
+## holds them.
+presence_of : UserId, People -> [Online, Offline]
+presence_of = |id, people|
+	if id == people.viewer.user().id() or people.online_humans.contains(id) {
+		Online
+	} else {
+		Offline
+	}
+
+## The attributes that say whom the DM `place` is with, the other human or,
+## for the viewer's own DM, the viewer, and whether they are online; none for
+## a channel.
 person_attributes : { place : Place, people : People } -> List(Html.Attribute)
 person_attributes = |{ place, people }|
 	match place.which() {
 		Channel(_) => []
-		Dm(pair) =>
-			match pair.members().drop_if(|id| id == people.viewer.user().id()) {
-				[other] => [
-					PageContract.data_attribute(Person(PageKit.token(other.to_str()))),
-					PageContract.data_attribute(
-						Presence(
-							if people.online_humans.contains(other) {
-								Online
-							} else {
-								Offline
-							},
-						),
-					),
-				]
-				_ => []
-			}
+		Dm(pair) => {
+			viewer = people.viewer.user().id()
+			person =
+				match pair.members().drop_if(|id| id == viewer) {
+					[other] => other
+					_ => viewer
+				}
+			[
+				PageContract.data_attribute(Person(PageKit.token(person.to_str()))),
+				PageContract.data_attribute(Presence(presence_of(person, people))),
+			]
+		}
 	}
 
 ## One place: its name, how it starts, its topics, `current`'s marked, a
@@ -274,8 +287,8 @@ members_list = |{ place, rosters, people }|
 			])
 	}
 
-## One member's row: their name, and when they posted lately. A human says
-## whether they are online, but the viewer, as their own DM does not.
+## One member's row: their name, and when they posted lately. A human, the
+## viewer too, says whether they are online.
 member_row : ChannelRoster.Row, People -> TrustedHtml
 member_row = |row, people| {
 	who = PageContract.data_attribute(Person(PageKit.token(row.id.to_str())))
@@ -283,18 +296,12 @@ member_row = |row, people| {
 		match row.kind {
 			Human(dm) => {
 				dm_path = PageKit.site_path(ConversationKey.place_url_path(dm))
-				presence =
-					if row.id == people.viewer.user().id() {
-						[]
-					} else if people.online_humans.contains(row.id) {
-						[PageContract.data_attribute(Presence(Online))]
-					} else {
-						[PageContract.data_attribute(Presence(Offline))]
-					}
-				List.concat(
-					[who, PageContract.data_attribute(Kind(Human))],
-					presence.append(PageContract.data_attribute(Section(dm_path))),
-				)
+				[
+					who,
+					PageContract.data_attribute(Kind(Human)),
+					PageContract.data_attribute(Presence(presence_of(row.id, people))),
+					PageContract.data_attribute(Section(dm_path)),
+				]
 			}
 			Agent => [who, PageContract.data_attribute(Kind(Agent))]
 		}
