@@ -15,6 +15,7 @@
 ## (`AgentFiles`) and a human's invites (`InviteFiles`) are folders inside
 ## the account folder, which `account_folder_path` names for them.
 import AccountFolder
+import FactFile
 import FileFacts
 import GitHubId
 import GitHubSessionWord
@@ -228,6 +229,27 @@ AccountFiles :: [].{
 	)
 	create_github_id! = |id, github| FileFacts.create_fact!(github_id_path(id), github.to_file())
 
+	## The human `id`'s session generation, how many times they have signed
+	## their other devices out, which their sessions are signed over once it
+	## is above 0: 0 when there is no file; unless the file holds anything
+	## but its digits (`Damaged`), or the host's read failed.
+	read_session_generation! : UserId => Try(U64, [Damaged, NotUtf8, PathRefused, Failed])
+	read_session_generation! = |id|
+		match FileFacts.read_fact!(session_generation_path(id))? {
+			NoFile => Ok(0)
+			File(bytes) => FactFile.number_from_file(bytes).map_err(|NotANumber| Damaged)
+		}
+
+	## The human `id`'s session generation written whole as `generation`,
+	## atomically: every session signed over the one before ends.
+	replace_session_generation! : UserId,
+	U64 => Try(
+		{},
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
+	)
+	replace_session_generation! = |id, generation|
+		FileFacts.replace_fact!(session_generation_path(id), FactFile.number_to_file(generation))
+
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 	replace_user_counter! = |users| {
@@ -272,6 +294,11 @@ github_session_secret_path : UserId -> Str
 github_session_secret_path = |id|
 	"${AccountFiles.account_folder_path(AccountFolder.of(id))}/github-session-secret"
 
+## The path of the user `id`'s session generation.
+session_generation_path : UserId -> Str
+session_generation_path = |id|
+	"${AccountFiles.account_folder_path(AccountFolder.of(id))}/session-generation"
+
 ## The path of the counter of user ids.
 user_counter_path : Str
 user_counter_path = "${AccountFolder.accounts_root}/next-id.txt"
@@ -282,6 +309,7 @@ expect AccountFiles.account_folder_path(AccountFolder.of(UserId.chat_owner)) == 
 expect password_path(UserId.chat_owner) == "auth/1/password"
 expect github_session_secret_path(UserId.chat_owner) == "auth/1/github-session-secret"
 expect user_counter_path == "auth/next-id.txt"
+expect session_generation_path(UserId.chat_owner) == "auth/1/session-generation"
 expect github_id_path(UserId.chat_owner) == "auth/1/github-id"
 # A `github-id` fact: none links no one, an id links it, anything else is
 # damaged, never read as either.

@@ -16,25 +16,55 @@ SignInPage :: [].{
 	## GitHub's settings.
 	GitHubOffer : [Offered, NotOffered]
 
+	## Where the form that signs in by a device code posts (`DeviceCode`).
+	code_path : Str
+	code_path = "/login/code"
+
 	## The sign-in page, for `viewer`. For no one: `problem` when there is
 	## one; when `github` offers one, a link to sign in or sign up with
 	## GitHub, going to `next`, and a line for those with a password; then a
-	## form posting a name and a password to `/login`, and `next`, where to go
-	## once signed in, as a hidden field.
+	## form posting a name and a password to `/login`, its name field focused
+	## when the page opens fresh; then a form of one field posting a device
+	## code to `code_path`, focused after a refused code. Each form posts
+	## `next`, where to go once signed in, as a hidden field.
 	## For someone signed in, who has no use for a second account: `problem`,
 	## who they are and a button that signs them out, under the top bar.
 	login : {
 		viewer : SignedIn.Actor,
 		next : Html.SitePath,
-		problem : [NoProblem, Problem(Str)],
+		problem : SignInPage.Problem,
 		github : SignInPage.GitHubOffer,
 	} -> TrustedHtml
 	login = |{ viewer, next, problem, github }| {
 		said =
 			match problem {
 				NoProblem => TrustedHtml.join([])
-				Problem(text) => PageKit.paragraph(text)
+				Problem(text) | CodeProblem(text) => PageKit.paragraph(text)
 			}
+		(name_focus, code_focus) =
+			match problem {
+				NoProblem => ([Autofocus], [])
+				CodeProblem(_) => ([], [Autofocus])
+				Problem(_) => ([], [])
+			}
+		code_form = Html.element({
+			name: Form,
+			attributes: [MethodPost, Action(PageKit.site_path(SignInPage.code_path))],
+			inner: TrustedHtml.join([
+				Html.input([
+					InputType(Hidden),
+					FieldName(PageKit.token("next")),
+					Value(next),
+				]),
+				PageKit.newline,
+				code_field(code_focus),
+				Html.element({
+					name: Button,
+					attributes: [],
+					inner: Escape.text("Sign in with the code"),
+				}),
+			]),
+		})
 		form = Html.element({
 			name: Form,
 			attributes: [MethodPost, Action(PageKit.site_path("/login"))],
@@ -47,12 +77,15 @@ SignInPage :: [].{
 				PageKit.newline,
 				PageKit.labelled_input({
 					label: "Name",
-					attributes: [
-						InputType(Text),
-						FieldName(PageKit.token("name")),
-						Autocomplete(Username),
-						Required,
-					],
+					attributes: List.concat(
+						[
+							InputType(Text),
+							FieldName(PageKit.token("name")),
+							Autocomplete(Username),
+							Required,
+						],
+						name_focus,
+					),
 				}),
 				PageKit.labelled_input({
 					label: "Password",
@@ -113,10 +146,17 @@ SignInPage :: [].{
 						github_link,
 						form,
 						PageKit.newline,
+						code_form,
+						PageKit.newline,
 					]),
 				})
 		}
 	}
+
+	## What the sign-in page says above its forms: nothing, which focuses the
+	## name's field; a password's or GitHub's problem, which focuses none; or
+	## a device code's (`CodeProblem`), which focuses the code's field.
+	Problem : [NoProblem, Problem(Str), CodeProblem(Str)]
 
 	## What a name field shows: a name, or nothing.
 	NameField : [Named(Name), NoName]
@@ -210,3 +250,30 @@ no_offer_words = |why|
 		LoginTaken => "Your GitHub login is not offered: someone here has that name."
 		ChatFull => "Your GitHub login is not offered: the chat holds as many as it can."
 	}
+
+## The device code's field, labelled, with `focus`'s attributes: letters
+## typed as capitals, no correction, room for a pasted code with its dash
+## and spaces.
+code_field : List(Html.Attribute) -> TrustedHtml
+code_field = |focus| {
+	attributes = List.concat(
+		[
+			InputType(Text),
+			FieldName(PageKit.token("code")),
+			Autocomplete(OneTimeCode),
+			CodeTyping,
+			MaxLength(20),
+			Required,
+		],
+		focus,
+	)
+	label = Html.element({
+		name: Label,
+		attributes: [],
+		inner: TrustedHtml.join([
+			Escape.text("Have a code from your other device? "),
+			Html.input(attributes),
+		]),
+	})
+	TrustedHtml.join([Html.element({ name: P, attributes: [], inner: label }), PageKit.newline])
+}

@@ -4,24 +4,28 @@
 ## them to read or post where the route asks. No one asking for a page only
 ## someone signed in may see is sent to sign in, and any other such request
 ## is a 401. Each route's answer is a route module's (each `*Route`
-## imported below). Its two `match`es, one for the open routes and one for
-## the signed-in ones, show the whole server's surface in one place.
+## imported below); a signed-in route asked for by no one is
+## `AnonymousRefusal`'s. Its two `match`es, one for the open routes and one
+## for the signed-in ones, show the whole server's surface in one place.
 import pf.Http
 import Access
 import AgentsRoute
+import AnonymousRefusal
 import BrowseRoute
 import ChannelMembersRoute
 import Clock
 import ConversationKey
 import ConversationRoute
+import DeviceCodeRoute
+import DeviceSessionsRoute
 import Directory
 import Favicon
 import FirstStart
+import FullSessionRoutes
 import GitHubRoute
 import GitHubSignUpRoute
 import HttpAnswer
 import HumanInvitesRoute
-import Html
 import PageKit
 import Place
 import PresenceNotices
@@ -47,23 +51,38 @@ Dispatch :: [].{
 		directory : Directory,
 		actor : SignedIn.Actor,
 	} => Http.Response
-	serve_route! = |{ request, directory, actor }|
-		match Route.choose({ method: request.method, path: request.path, directory }) {
-			Open(open) => answer_open_route!({ open, request, directory, actor })
-			SignedInOnly(asked) =>
-				match actor {
-					Anonymous => anonymous_refusal(asked)
-					SignedIn(acting) => serve_signed_in_route!({
-						asked,
-						request,
-						directory,
-						acting,
-					})
-				}
-			MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
-			NotFound => HttpAnswer.page(404, PageKit.not_found)
+	serve_route! = |{ request, directory, actor }| {
+		choice = Route.choose({ method: request.method, path: request.path, directory })
+		match FullSessionRoutes.refusal_for({ choice, actor }) {
+			StartedByDeviceCode =>
+				HttpAnswer.page(
+					403,
+					PageKit.notice({ title: "Refused", text: FullSessionRoutes.refusal_words }),
+				)
+			Allowed => serve_chosen_route!({ choice, request, directory, actor })
 		}
+	}
 }
+
+## The answer to `choice`, for `actor`: an open route's to anyone; any
+## other's to someone signed in alone, once `Access` admits them.
+serve_chosen_route! : {
+	choice : Route.Choice,
+	request : Http.Request,
+	directory : Directory,
+	actor : SignedIn.Actor,
+} => Http.Response
+serve_chosen_route! = |{ choice, request, directory, actor }|
+	match choice {
+		Open(open) => answer_open_route!({ open, request, directory, actor })
+		SignedInOnly(asked) =>
+			match actor {
+				Anonymous => AnonymousRefusal.answer(asked)
+				SignedIn(acting) => serve_signed_in_route!({ asked, request, directory, acting })
+			}
+		MethodNotAllowed(allowed) => HttpAnswer.method_not_allowed(allowed)
+		NotFound => HttpAnswer.page(404, PageKit.not_found)
+	}
 
 ## What a route asks of `Access` before it is answered: to read or post at
 ## a place, or nothing.
@@ -100,6 +119,11 @@ access_asked = |asked|
 		ShowInvites => AsksNoConversation
 		InviteHuman => AsksNoConversation
 		InviteHumanAgain(_) => AsksNoConversation
+		ShowDeviceCode => AsksNoConversation
+		MakeDeviceCode => AsksNoConversation
+		CancelDeviceCode => AsksNoConversation
+		OpenDevicesStream => AsksNoConversation
+		SignOutOtherDevices => AsksNoConversation
 	}
 
 ## The 403 for a reader or a writer the place doesn't admit.
@@ -114,42 +138,6 @@ access_refusal = |why| {
 	HttpAnswer.page(403, PageKit.notice({ title: "Forbidden", text: said }))
 }
 
-## The answer to a route only someone signed in may use, asked for by no
-## one: a page sends the browser to sign in, and comes back after; any
-## other request is a 401.
-anonymous_refusal : Route.SignedInChoice -> Http.Response
-anonymous_refusal = |asked|
-	match asked {
-		StartGitHubLink => unauthorized_refusal
-		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
-		ShowRecent => SignInRoute.login_redirect(site_path_of(PageKit.recent_path))
-		OpenRecentStream => unauthorized_refusal
-		StartTopic(_) => unauthorized_refusal
-		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
-		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
-		ShowChannels => SignInRoute.login_redirect(site_path_of("/channels"))
-		ShowChannelMembers(channel) =>
-			SignInRoute.login_redirect(site_path_of("/channels/${channel.to_str()}"))
-		CreateChannel => unauthorized_refusal
-		AddChannelMember(_) => unauthorized_refusal
-		RemoveChannelMember(_) => unauthorized_refusal
-		ShowInvites => SignInRoute.login_redirect(site_path_of(PageKit.invites_path))
-		InviteHuman => unauthorized_refusal
-		InviteHumanAgain(_) => unauthorized_refusal
-		AppendToConversation(_) => unauthorized_refusal
-		SendToConversation(_) => unauthorized_refusal
-		OpenConversationStream(_) => unauthorized_refusal
-		ServeRawTranscript(_) => unauthorized_refusal
-		UploadToConversation(_) => unauthorized_refusal
-		ReactInConversation(_) => unauthorized_refusal
-		ServeUploadedImage(_) => unauthorized_refusal
-		MakeAgent => unauthorized_refusal
-		InviteAgent(_) => unauthorized_refusal
-		RevokeInvite(_) => unauthorized_refusal
-		RevokeKey(_) => unauthorized_refusal
-		OpenAgentStream => unauthorized_refusal
-	}
-
 ## The 500 for a request whose coming online could not be told: a DM's
 ## topics could not be listed.
 presence_failure : Http.Response
@@ -161,22 +149,6 @@ presence_failure =
 			text: "Your DMs' topics could not be read, to tell the others you are online.",
 		}),
 	)
-
-## The 401 for a request that proves no one, at a route only someone
-## signed in may use.
-unauthorized_refusal : Http.Response
-unauthorized_refusal = HttpAnswer.text(401, unauthorized_words)
-
-unauthorized_words : Str
-unauthorized_words =
-	"No one is signed in: sign in at /login, or send Authorization: Bearer <id>-<secret>, a live key."
-
-## The site path `text` spells, a path this server answers: one that isn't
-## is a bug in its writer.
-site_path_of : Str -> Html.SitePath
-site_path_of = |text|
-	Html.SitePath.from_str(text)
-		?? crash "Dispatch.site_path_of: \"${text}\" is a path this server answers, and not a site path"
 
 ## The answer to an open route, for `actor`, whoever it is.
 answer_open_route! : {
@@ -205,7 +177,16 @@ answer_open_route! = |{ open, request, directory, actor }|
 				now: Clock.read_clock!({}),
 				github: GitHubRoute.load_offer!({}),
 			})
-		SignOut => SignInRoute.sign_out
+		SignOut => DeviceCodeRoute.sign_out!(actor)
+		RedeemDeviceCode =>
+			DeviceCodeRoute.redeem!({
+				viewer: actor,
+				users: directory.users(),
+				headers: request.headers,
+				body: request.body,
+				now: Clock.read_clock!({}),
+				github: GitHubRoute.load_offer!({}),
+			})
 		StartGitHubSignIn =>
 			GitHubRoute.serve_start!({
 				viewer: actor,
@@ -385,6 +366,13 @@ answer_route! = |{ asked, request, directory, acting }|
 				origin: own_origin_of(request),
 				now: Clock.read_clock!({}),
 			})
+		ShowDeviceCode =>
+			DeviceCodeRoute.show!({ acting, headers: request.headers, now: Clock.read_clock!({}) })
+		MakeDeviceCode => DeviceCodeRoute.make!({ acting, now: Clock.read_clock!({}) })
+		CancelDeviceCode => DeviceCodeRoute.revoke!(acting)
+		OpenDevicesStream => DeviceCodeRoute.open_stream(acting)
+		SignOutOtherDevices =>
+			DeviceSessionsRoute.sign_out_other_devices!({ acting, now: Clock.read_clock!({}) })
 	}
 
 ## The origin `request` came to, which main's `handle_http_request!` has
@@ -450,47 +438,6 @@ expect {
 			OpenAgentStream,
 			InviteAgent(UserId.chat_owner),
 		].all(|choice| access_asked(choice) == AsksNoConversation)
-}
-
-# No one asking for a page is sent to sign in, and back after; any other
-# route only someone signed in may use is a 401 to no one.
-expect {
-	key = ConversationKey.from_url_path({
-		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
-			?? crash "Dispatch's tests: a path is UTF-8",
-		directory: FirstStart.first_directory,
-	}).map_ok(|found| found.key) ?? crash "Dispatch's tests: Steve's own DM is a place"
-	image =
-		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "Dispatch's tests: an image's name"
-	shown = anonymous_refusal(ShowConversation(key))
-	agents = anonymous_refusal(ShowAgents)
-	browse = anonymous_refusal(ShowBrowse)
-	browse.status == 303
-		and browse.headers == [{ name: "location".to_utf8(), value: "/login?next=/chat".to_utf8() }]
-		and shown.status == 303
-		and shown.headers == [
-			{ name: "location".to_utf8(), value: "/login?next=/chat/dm/1_1/plans".to_utf8() },
-		]
-		and agents.status == 303
-		and agents.headers == [
-			{ name: "location".to_utf8(), value: "/login?next=/agents".to_utf8() },
-		]
-		and [
-			StartTopic(key.place()),
-			AppendToConversation(key),
-			SendToConversation(key),
-			OpenConversationStream(key),
-			ServeRawTranscript(key),
-			UploadToConversation(key),
-			ReactInConversation(key),
-			ServeUploadedImage({ key, image }),
-			MakeAgent,
-			InviteAgent(UserId.chat_owner),
-			OpenAgentStream,
-			StartGitHubLink,
-		].all(|asked| anonymous_refusal(asked) == unauthorized_refusal)
-		and unauthorized_refusal.status == 401
-		and unauthorized_refusal.body == "${unauthorized_words}\n".to_utf8()
 }
 
 # Each access refusal: a 403 saying which.

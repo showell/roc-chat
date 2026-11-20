@@ -59,7 +59,7 @@ foot = |url|
 ## How the top bar's right side opens: the Home link (`HomeLink`), and the
 ## links to Browse, Recent and the invites page.
 top_links : Str
-top_links = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
+top_links = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
@@ -193,13 +193,16 @@ expect
 		})
 
 ## The sign-in page as a test expects it, going on to `/agents`, with
-## `above`, what comes between its heading and its form.
-login_page : Str -> Str
-login_page = |above|
-	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n"
+## `above`, what comes between its heading and its forms: first the
+## password's, `name_focus` after its name field's attributes, then the
+## device code's, its field labelled, typed in capitals with no correction,
+## and `code_focus` after its attributes.
+login_page : Str, { name_focus : Str, code_focus : Str } -> Str
+login_page = |above, { name_focus, code_focus }|
+	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required${name_focus}></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n<form method=\"post\" action=\"/login/code\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p><label>Have a code from your other device? <input type=\"text\" name=\"code\" autocomplete=\"one-time-code\" autocapitalize=\"characters\" autocorrect=\"off\" spellcheck=\"false\" maxlength=\"20\" required${code_focus}></label></p>\n<button>Sign in with the code</button></form>\n"
 
 ## The sign-in page for `viewer`, with `problem`, as a test reads it.
-login_for : SignedIn.Actor, [NoProblem, Problem(Str)] -> Str
+login_for : SignedIn.Actor, SignInPage.Problem -> Str
 login_for = |viewer, problem|
 	Str.from_utf8_lossy(
 		SignInPage.login({
@@ -210,11 +213,17 @@ login_for = |viewer, problem|
 		}).to_utf8(),
 	)
 
-# The sign-in page: for no one, the form alone; with a problem, it first;
-# for someone signed in, under the top bar, who and the button that signs
-# them out, and no form.
-expect login_for(Anonymous, NoProblem) == login_page("")
-expect login_for(Anonymous, Problem("No <match>.")) == login_page("<p>No &lt;match&gt;.</p>\n")
+# The sign-in page: for no one, the forms alone, the name's field focused;
+# with a problem, it first: after a code's, the code's field focused; after
+# a password's, neither; for someone signed in, under the top bar, who and
+# the button that signs them out, and no form.
+expect login_for(Anonymous, NoProblem) == login_page("", { name_focus: " autofocus", code_focus: "" })
+expect
+	login_for(Anonymous, Problem("No <match>."))
+		== login_page("<p>No &lt;match&gt;.</p>\n", { name_focus: "", code_focus: "" })
+expect
+	login_for(Anonymous, CodeProblem("No <code>."))
+		== login_page("<p>No &lt;code&gt;.</p>\n", { name_focus: "", code_focus: " autofocus" })
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
 		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"

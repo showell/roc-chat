@@ -17,6 +17,7 @@ import AgentInvite
 import AgentKey
 import ChannelName
 import DateTime
+import DeviceCode
 import GitHubCode
 import GitHubState
 import Html
@@ -111,6 +112,11 @@ UnvalidatedString :: Str.{
 	## `Password.from_str`.
 	password : UnvalidatedString -> Try(Password, [NotAPassword])
 	password = |UnvalidatedString.(text)| Password.from_str(text)
+
+	## The device code it is, as the sign-in page's code field sends it,
+	## checked by `DeviceCode.Code.from_typed`.
+	device_code : UnvalidatedString -> Try(DeviceCode.Code, [NotACode])
+	device_code = |UnvalidatedString.(text)| DeviceCode.Code.from_typed(text)
 
 	## The path on this site it names, as a sign-in's `next` carries it,
 	## checked by `Html.SitePath.from_str`.

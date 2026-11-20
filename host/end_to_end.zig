@@ -304,6 +304,21 @@
 //!      sign-ups are paused, at the way back and at the name, nothing made;
 //!      an invite still makes its account;
 //! 48zw. a key at Browse, and starting a topic: 403 each;
+//! 48zy. a device code: Steve's page says he has made none; a code made, shown
+//!      once as two groups of four of the alphabet without 0, O, 1, I and L,
+//!      with the warning, never stored, and kept only as its HMAC; a second
+//!      cancels the first, whose redemption from a phone is refused; the
+//!      second, typed in lower case with a space, signs the phone in as Steve,
+//!      an ordinary session, and Steve's open stream hears "A new device
+//!      signed in"; it works once, and his page then says it was used; an
+//!      expired code, and one cancelled by the phone signing out, refused;
+//!      every refusal the same page; a key may not make one, nor redeem one;
+//! 48zz. a client's 5 failed codes lock the form for it, a 429 even for a
+//!      right code, while another client's is still tried; an IPv6 client is
+//!      its /64; a session a code started is marked, may not link GitHub or
+//!      make agents or their invites, and a password sign-in after is
+//!      ordinary; the page lists sign-ins by code, coarsely; "Sign out other
+//!      devices" ends every other session of the human's.
 //! 48zx. one `X-Forwarded-For` client at `requests_per_client_most`, 8 streams
 //!      and the rest requests with their bodies held back: each admitted; one
 //!      request more: a 429; another client and a request with no such
@@ -815,6 +830,7 @@ pub fn main(init: std.process.Init) !void {
         key_way_in.status == 303 and std.mem.eql(u8, key_way_in.header("location") orelse "", "/chat") and
         has(key_browse.body, "by their own session") and has(key_topic.body, "by their own session"));
 
+    try deviceCodeSteps(a, io, port, data, t, cc_bearer);
     try clientCapSteps(a, io, port, t);
 
     // 49.
@@ -995,6 +1011,256 @@ fn clientCapSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps) !void {
     }
     streams[0].close();
     try t.check("a stream ended for a newer one of its holder gives its count back: the client at one under its limit is served", room and newest.isEventStream() and got == 200);
+}
+
+/// Steps 48zy and 48zz: a device code made by Steve and redeemed by his
+/// phone, and each way one is refused.
+fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, cc_bearer: []const u8) !void {
+    const none_yet = try getAt(a, io, port, "/devices");
+    try t.check("a device code: Steve's page says he has made none, offers to make one, never stored", none_yet.status == 200 and
+        has(none_yet.body, "You have made no code yet.") and has(none_yet.body, "<form method=\"post\" action=\"/devices\"><button>Make a code</button></form>") and
+        std.mem.eql(u8, none_yet.header("cache-control") orelse "", "no-store"));
+
+    const first = try makeCode(a, io, port, steve_session);
+    const first_code = first.code;
+    const record = try readFile(a, io, data, "users/1/device-code");
+    const flash = first.made.header("set-cookie") orelse "";
+    try t.check("a code made: a 303 to the page, with a cookie for this host alone, for the code's five minutes, sent to no script and on no other site's request", first.made.status == 303 and
+        std.mem.eql(u8, first.made.header("location") orelse "", "/devices") and std.mem.startsWith(u8, flash, "__Host-device_code=") and
+        std.mem.endsWith(u8, flash, "; Path=/; Max-Age=300; HttpOnly; Secure; SameSite=Strict") and
+        std.mem.eql(u8, first.made.header("cache-control") orelse "", "no-store"));
+    try t.check("the page then shows it once, two groups of four of the alphabet, with its expiry, the warning and a button that cancels it; never stored; the cookie forgotten; its record holds its HMAC, not the code", first.page.status == 200 and
+        isDeviceCode(first_code) and has(first.page.body, "Type this only into your own device. Nobody will ever ask you for it.") and
+        has(first.page.body, "<time class=\"code-expiry\" datetime=\"") and
+        has(first.page.body, "<form method=\"post\" action=\"/devices/cancel\"><button>Cancel this code</button></form>") and
+        has(first.page.body, "<p class=\"code-status\" data-stream=\"/devices/stream\">") and
+        has(first.page.body, "<script src=\"/chat/assets/devices.js\"></script>") and
+        std.mem.eql(u8, first.page.header("cache-control") orelse "", "no-store") and
+        std.mem.eql(u8, first.page.header("set-cookie") orelse "", "__Host-device_code=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict") and
+        std.mem.startsWith(u8, record, "live ") and !has(record, first_code) and !has(record, first_code[0..4]) and !has(record, first_code[5..]));
+    const reloaded = try getAt(a, io, port, "/devices");
+    try t.check("a reload of the page shows no code and makes none: it says one is waiting, with the button that cancels it", reloaded.status == 200 and
+        !has(reloaded.body, "sign-in-code") and has(reloaded.body, "A code is waiting to be used, until ") and
+        has(reloaded.body, "action=\"/devices/cancel\"") and std.mem.eql(u8, try readFile(a, io, data, "users/1/device-code"), record));
+
+    const second = try makeCode(a, io, port, steve_session);
+    const second_code = second.code;
+    const phone = "x-forwarded-for: 192.0.2.10\r\n";
+    const replaced = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{first_code}));
+    try t.check("a second code cancels the first: its redemption from a phone, a 401 saying only that it didn't work, no cookie, never stored", second.made.status == 303 and
+        isDeviceCode(second_code) and !std.mem.eql(u8, first_code, second_code) and isCodeRefusal(replaced));
+
+    try data.writeFile(io, .{ .sub_path = "users/3/device-code", .data = "not a record\n" });
+    defer data.deleteFile(io, "users/3/device-code") catch {};
+    var steves_stream = try Stream.openWith(a, io, port, channel_url ++ "/stream?after=0", "");
+    defer steves_stream.close();
+    var devices_stream = try Stream.openWith(a, io, port, "/devices/stream", "");
+    defer devices_stream.close();
+    var typed: [9]u8 = undefined;
+    _ = std.ascii.lowerString(&typed, second_code);
+    typed[4] = '+';
+    const signed_in = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{&typed}));
+    const phone_session = try cookieLine(a, signed_in);
+    const phone_browse = try getAs(a, io, port, phone_session, "/chat");
+    var heard = false;
+    for (0..400) |_| {
+        const event = try steves_stream.event();
+        if (std.mem.startsWith(u8, event, "event: notice\n")) {
+            heard = std.mem.eql(u8, event, "event: notice\ndata: <a href=\"/devices#sign-out-others\">A new device signed in as you, with a code you made. Not you? Sign your other devices out.</a>\n\n");
+            break;
+        }
+    }
+    try t.check("the second code, in lower case with a space: a 303 to Browse with a session's cookie, marked as a code's, which reads Browse as Steve; his open stream hears that a new device signed in", signed_in.status == 303 and
+        std.mem.eql(u8, signed_in.header("location") orelse "", "/chat") and
+        std.mem.startsWith(u8, signed_in.header("set-cookie") orelse "", "__Host-gopher_auth=") and
+        has(signed_in.header("set-cookie") orelse "", ".d; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
+        std.mem.eql(u8, signed_in.header("cache-control") orelse "", "no-store") and
+        phone_browse.status == 200 and has(phone_browse.body, "<span class=\"viewer\">Steve</span>") and heard);
+    var used_event = try devices_stream.event();
+    if (std.mem.startsWith(u8, used_event, "event: notice\n")) used_event = try devices_stream.event();
+    try t.check("the device code page's own stream hears that the code was used, and when", devices_stream.isEventStream() and
+        std.mem.startsWith(u8, used_event, "event: device-used\ndata: 20") and std.mem.endsWith(u8, used_event, "Z\n\n"));
+
+    const again = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{second_code}));
+    try t.check("with another human's record damaged, logged and taken as none, Steve's code signed the phone in all the same", signed_in.status == 303);
+    const used = try getAt(a, io, port, "/devices");
+    try t.check("a code works once: again, the same refusal; Steve's page says it signed a device in", isCodeRefusal(again) and
+        std.mem.eql(u8, again.body, replaced.body) and has(used.body, "Your last code signed a device in at "));
+
+    const third = try makeCode(a, io, port, steve_session);
+    const third_code = third.code;
+    const live = try readFile(a, io, data, "users/1/device-code");
+    var words = std.mem.splitScalar(u8, live, ' ');
+    _ = words.next();
+    _ = words.next();
+    _ = words.next();
+    const hmacs = words.rest();
+    try data.writeFile(io, .{ .sub_path = "users/1/device-code", .data = try std.fmt.allocPrint(a, "live 1000 1300 {s}", .{hmacs}) });
+    const expired = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{third_code}));
+    const expired_page = try getAt(a, io, port, "/devices");
+    try t.check("an expired code: the same refusal, and Steve's page says it expired unused", isDeviceCode(third_code) and
+        std.mem.eql(u8, expired.body, replaced.body) and isCodeRefusal(expired) and has(expired_page.body, "Your last code expired unused."));
+
+    const fourth = try makeCode(a, io, port, phone_session);
+    const fourth_code = fourth.code;
+    const phone_out = try postAs(a, io, port, phone_session, "/logout", "");
+    const after_sign_out = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{fourth_code}));
+    try t.check("a code made on the phone, then the phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth_code) and
+        phone_out.status == 303 and std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
+        std.mem.eql(u8, after_sign_out.body, replaced.body) and isCodeRefusal(after_sign_out));
+
+    // A code whose material has changed since it was made: its record's
+    // material HMAC rewritten, as a new password or a GitHub link would
+    // leave it.
+    const sixth = try makeCode(a, io, port, steve_session);
+    const sixth_code = sixth.code;
+    const kept = try readFile(a, io, data, "users/1/device-code");
+    const zero_hmac: [64]u8 = @splat('0');
+    const other_material = try std.fmt.allocPrint(a, "{s}{s}\n", .{ kept[0 .. kept.len - 65], &zero_hmac });
+    try data.writeFile(io, .{ .sub_path = "users/1/device-code", .data = other_material });
+    const changed = try redeemFrom(a, io, port, "x-forwarded-for: 192.0.2.20\r\n", try std.fmt.allocPrint(a, "code={s}", .{sixth_code}));
+    try t.check("a code whose human's material changed since it was made: the same refusal, the record still live", isDeviceCode(sixth_code) and
+        isCodeRefusal(changed) and std.mem.eql(u8, changed.body, replaced.body) and
+        std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "live "));
+
+    const seventh = try makeCode(a, io, port, steve_session);
+    const cancelled = try post(a, io, port, .{ .path = "/devices/cancel", .form = "" });
+    const after_cancel = try redeemFrom(a, io, port, "x-forwarded-for: 192.0.2.21\r\n", try std.fmt.allocPrint(a, "code={s}", .{seventh.code}));
+    try t.check("\"Cancel this code\": a 303 to the page, the record cancelled, the cookie forgotten; the code then the same refusal", cancelled.status == 303 and
+        std.mem.eql(u8, cancelled.header("location") orelse "", "/devices") and
+        std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
+        std.mem.startsWith(u8, cancelled.header("set-cookie") orelse "", "__Host-device_code=; ") and isCodeRefusal(after_cancel));
+
+    const by_key_make = try postAs(a, io, port, cc_bearer, "/devices", "");
+    const by_key_redeem = try postAs(a, io, port, cc_bearer, "/login/code", "code=2222-2222");
+    const by_no_one = try anonymousPost(a, io, port, "/devices", "");
+    try t.check("a key may not make a code, nor redeem one: 403 each; no one may make one: 401", by_key_make.status == 403 and
+        has(by_key_make.body, "Only a human signed in on this device makes a device code.") and by_key_redeem.status == 403 and by_no_one.status == 401);
+
+    // 48zz.
+    const fifth = try makeCode(a, io, port, steve_session);
+    const fifth_code = fifth.code;
+    const guesser = "x-forwarded-for: 198.51.100.7\r\n";
+    var all_refused = true;
+    for (0..5) |_| all_refused = all_refused and isCodeRefusal(try redeemFrom(a, io, port, guesser, "code=2222-2222"));
+    const locked = try redeemFrom(a, io, port, guesser, try std.fmt.allocPrint(a, "code={s}", .{fifth_code}));
+    const neighbour = try redeemFrom(a, io, port, "x-forwarded-for: 198.51.100.8\r\n", "code=2222-2222");
+    try t.check("a client's 5 failed codes lock the form for it: a 429 saying so, even for a right code; another client's code is still tried", all_refused and
+        locked.status == 429 and has(locked.body, "Too many codes have been tried. Wait 15 minutes") and
+        isCodeRefusal(neighbour));
+
+    // An entry of no code's shape says what a code looks like, and counts no
+    // guess: six of them, then a wrong code, still a 401 and not a 429.
+    const typist = "x-forwarded-for: 198.51.100.30\r\n";
+    var all_malformed = true;
+    for ([_][]const u8{ "code=ABC", "code=ABCD-EFG0", "code=", "code=ABCD-EFGHJ", "next=%2Fchat", "code=ab%20cd%20ef%20gL" }) |form| {
+        const answer = try redeemFrom(a, io, port, typist, form);
+        all_malformed = all_malformed and answer.status == 400 and has(answer.body, "A code is 8 letters and digits, like ABCD-EFGH.") and
+            answer.header("set-cookie") == null;
+    }
+    const after_typos = try redeemFrom(a, io, port, typist, "code=2222-2222");
+    try t.check("an entry of no code's shape: a 400 saying what a code looks like, counted as no guess, so a wrong code after six is still a 401", all_malformed and isCodeRefusal(after_typos));
+
+    // An IPv6 client is its /64: another address of the same network shares
+    // its lock, and the next network is a client of its own.
+    const network = "x-forwarded-for: 2001:db8:1:2::5\r\n";
+    var network_refused = true;
+    for (0..5) |_| network_refused = network_refused and isCodeRefusal(try redeemFrom(a, io, port, network, "code=2222-2222"));
+    const same_network = try redeemFrom(a, io, port, "x-forwarded-for: 2001:DB8:1:2:ffff::9\r\n", "code=2222-2222");
+    const next_network = try redeemFrom(a, io, port, "x-forwarded-for: 2001:db8:1:3::5\r\n", "code=2222-2222");
+    try t.check("an IPv6 client is its /64: 5 failures lock the form for another address of that network, a 429, and not for the next network's", network_refused and
+        same_network.status == 429 and isCodeRefusal(next_network));
+
+    try deviceSessionSteps(a, io, port, data, t);
+}
+
+/// Step 48zz2: a session a code started, marked and limited; the list of
+/// sign-ins by code; and "Sign out other devices".
+fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !void {
+    const ipad = "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+    const tablet = "x-forwarded-for: 192.0.2.40\r\nuser-agent: " ++ ipad ++ "\r\n";
+    const code = try makeCode(a, io, port, steve_session);
+    const signed_in = try redeemFrom(a, io, port, tablet, try std.fmt.allocPrint(a, "code={s}", .{code.code}));
+    const cookie = signed_in.header("set-cookie") orelse "";
+    const tablet_session = try cookieLine(a, signed_in);
+    const browse = try getAs(a, io, port, tablet_session, "/chat");
+    const devices = try getAt(a, io, port, "/devices");
+    try t.check("a session a code started is marked in its cookie, reads Browse as any does, and Steve's page lists the sign-in, when and from what, not the whole User-Agent", signed_in.status == 303 and
+        std.mem.startsWith(u8, cookie, "__Host-gopher_auth=") and has(cookie, ".d; Path=/") and browse.status == 200 and
+        has(devices.body, ": Safari on iOS</li>") and !has(devices.body, "Mobile/15E148") and
+        has(try readFile(a, io, data, "users/1/device-sign-ins"), " safari ios\n"));
+
+    const refusal = "This device signed in with a code from another device. To link GitHub, or to make agents or their invites, sign out here, then sign in with your password or GitHub.";
+    const make_agent = try postAs(a, io, port, tablet_session, "/agents", "name=Tablet");
+    const link = try postAs(a, io, port, tablet_session, "/login/github/link", "");
+    const start = try getAs(a, io, port, tablet_session, "/login/github/start?next=/chat");
+    const invite_agent = try postAs(a, io, port, tablet_session, "/agents/2/invites", "read=everywhere&post=everywhere");
+    const agents_page = try getAs(a, io, port, tablet_session, "/agents");
+    try t.check("that session may not make an agent, invite one or link GitHub, by its button or through GitHub: a 403 each, saying to sign in with a password or GitHub; it reads /agents", make_agent.status == 403 and
+        has(make_agent.body, "sign out here, then sign in with your password or GitHub.") and link.status == 403 and start.status == 403 and
+        invite_agent.status == 403 and has(link.body, refusal[0..40]) and agents_page.status == 200);
+
+    const out = try postAs(a, io, port, tablet_session, "/logout", "");
+    const by_password = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple");
+    const ordinary = try cookieLine(a, by_password);
+    const ordinary_link = try postAs(a, io, port, ordinary, "/login/github/link", "");
+    try t.check("signed out, then in with the password on that device: an ordinary session, unmarked, which the limits leave alone", out.status == 303 and
+        by_password.status == 303 and !has(by_password.header("set-cookie") orelse "", ".d;") and ordinary_link.status != 403);
+
+    const second = try makeCode(a, io, port, steve_session);
+    const phone = try redeemFrom(a, io, port, "x-forwarded-for: 192.0.2.41\r\n", try std.fmt.allocPrint(a, "code={s}", .{second.code}));
+    const phone_session = try cookieLine(a, phone);
+    const signed_out = try post(a, io, port, .{ .path = "/devices/sign-out-others", .form = "" });
+    const steve_again = try cookieLine(a, signed_out);
+    const old_steve = try getAs(a, io, port, steve_session, "/chat");
+    const old_phone = try getAs(a, io, port, phone_session, "/chat");
+    const old_ordinary = try getAs(a, io, port, ordinary, "/chat");
+    const new_steve = try getAs(a, io, port, steve_again, "/chat");
+    try t.check("\"Sign out other devices\": a 303 to the page, this device's session signed again, unmarked; every other session of Steve's, a code's and a password's, and this one's old cookie, sent to sign in", signed_out.status == 303 and
+        std.mem.eql(u8, signed_out.header("location") orelse "", "/devices") and !has(signed_out.header("set-cookie") orelse "", ".d;") and
+        new_steve.status == 200 and old_steve.status == 303 and old_phone.status == 303 and old_ordinary.status == 303 and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "1"));
+    steve_session = try std.fmt.allocPrint(a, "{s}", .{steve_again});
+
+    try data.writeFile(io, .{ .sub_path = "users/1/device-sign-ins", .data = "not a list\n" });
+    const damaged = try getAt(a, io, port, "/devices");
+    try t.check("a damaged list of sign-ins by code is logged and taken as none: the page, 200", damaged.status == 200 and
+        has(damaged.body, "No device has signed in with a code yet."));
+}
+
+/// A device code made with the `Cookie` line `session`: the POST's answer,
+/// the page it leads to, carried there by its cookie, and the code shown.
+const Made = struct { made: Response, page: Response, code: []const u8 };
+
+fn makeCode(a: std.mem.Allocator, io: Io, port: u16, session: []const u8) !Made {
+    const made = try postAs(a, io, port, session, "/devices", "");
+    const set = made.header("set-cookie") orelse "";
+    const pair = set[0 .. std.mem.indexOfScalar(u8, set, ';') orelse set.len];
+    const both = try std.fmt.allocPrint(a, "{s}; {s}\r\n", .{ std.mem.trimEnd(u8, session, "\r\n"), pair });
+    const page = try getAs(a, io, port, both, "/devices");
+    return .{ .made = made, .page = page, .code = between(page.body, "<p class=\"sign-in-code\">", "</p>") orelse "" };
+}
+
+/// Whether `code` is as the page shows a device code: four characters of
+/// the alphabet, a dash, and four more.
+fn isDeviceCode(code: []const u8) bool {
+    const alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+    if (code.len != 9 or code[4] != '-') return false;
+    for (code, 0..) |c, i| if (i != 4 and std.mem.indexOfScalar(u8, alphabet, c) == null) return false;
+    return true;
+}
+
+/// Whether `answer` is the one refusal of a device code: a 401, the
+/// sign-in page saying only that it didn't work, no cookie, never stored.
+fn isCodeRefusal(answer: Response) bool {
+    return answer.status == 401 and has(answer.body, "That code didn&#39;t work. Check it and try again; a code lasts five minutes.") and
+        answer.header("set-cookie") == null and std.mem.eql(u8, answer.header("cache-control") orelse "", "no-store");
+}
+
+/// A device code's form POSTed to `/login/code` from the phone `client` (an
+/// `X-Forwarded-For` line), with no credential.
+fn redeemFrom(a: std.mem.Allocator, io: Io, port: u16, client: []const u8, form: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "POST /login/code HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{ port, client, form.len, form }));
 }
 
 /// Steps 50 and 51, on a server of their own, beside the first, whose data

@@ -128,7 +128,7 @@ The second kept under the key in the server's memory, replaced by the one given:
 The second kept under the key, `Found`, or `Missing`, `second` 0. *Why:* which humans a sidebar draws online.
 
 **`write_line_to_server_log! : List(U8) => {}`**
-The line in the server's log as a warning, `app: <line>`, every byte that is not printable ASCII escaped, so no line forges another. *Why:* a limit the server's owner should hear of, such as sign-ups paused (`app/SignUpLimits.roc`).
+The line in the server's log as a warning, `app: <line>`, every byte that is not printable ASCII escaped, so no line forges another. *Why:* a limit the server's owner should hear of, such as sign-ups paused (`app/SignUpLimits.roc`), a device code form under a flood of guesses, or a human's damaged device code files (`app/DeviceCodeTallies.roc`, `app/DeviceCodeRoute.roc`).
 
 **`end_every_stream_of_holder! : List(U8) => {}`**
 Every stream held by the holder ended now, its socket shut and its task woken; none held, and nothing happens. *Why:* a revoked key's agent stops listening at once, and reconnects to be refused (`app/AgentsRoute.roc`).

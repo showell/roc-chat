@@ -22,6 +22,15 @@
 ## site's form never carries it; and `__Host-`, so it names this host alone
 ## and no other site under the same domain can set one.
 ##
+## A session started by a device code (`Origin`'s `ByDeviceCode`) says so in
+## its cookie, a fourth part `d`, and in what it is signed over, so the mark
+## can't be added or taken off; such a session may not link GitHub or make
+## agents or their invites (`SignedIn.check_full_session`).
+##
+## A human's `session-generation` file, a count their "Sign out other
+## devices" raises, is part of the material once it is above 0, so raising
+## it ends every session signed before.
+##
 ## A `Session.Admitted` is made only by `admit`, from a claim whose
 ## signature the host said matches, and only `SignedIn.by_session` takes
 ## one: that is the session's door into `SignedIn`.
@@ -51,21 +60,31 @@ Session :: [].{
 
 	## What a cookie claims before its signature is checked: whose it is,
 	## the second it says it was signed at, and its signature.
+	## How a session was started: by a password, GitHub or an invite
+	## (`Ordinary`), or by a device code from another device of the human's
+	## (`ByDeviceCode`).
+	Origin : [Ordinary, ByDeviceCode]
+
 	Claim :: {
 		id : UserId,
 		signed_at : Timestamp,
+		origin : Session.Origin,
 		mac : List(U8),
 	}.{
 
 		## The bytes its signature is over, when its human's sign-in files
-		## hold `material`: the id's digits, a line feed, the second's
-		## digits, a line feed, the material.
+		## hold `material` (`Session.signed_bytes`).
 		signed_bytes : Session.Claim, Session.Material -> List(U8)
 		signed_bytes = |Session.Claim.(claim), material| Session.signed_bytes({
 			id: claim.id,
 			signed_at: claim.signed_at,
+			origin: claim.origin,
 			material,
 		})
+
+		## How the session it claims was started.
+		origin : Session.Claim -> Session.Origin
+		origin = |Session.Claim.(claim)| claim.origin
 
 		## The signature it carries, for the host to check.
 		mac : Session.Claim -> List(U8)
@@ -106,21 +125,44 @@ Session :: [].{
 		from_github_alone : GitHubSessionWord -> Session.Material
 		from_github_alone = |word| Session.Material.(List.concat(['\n'], word.bytes()))
 
+		## The material with the human's session generation, `generation`:
+		## the same bytes at 0, and else a line feed, `generation ` and its
+		## digits after them, which no hash or word holds.
+		with_generation : Session.Material, U64 -> Session.Material
+		with_generation = |Session.Material.(bytes), generation|
+			if generation == 0 {
+				Session.Material.(bytes)
+			} else {
+				Session.Material.(
+					List.concat(bytes, "\ngeneration ${generation.to_str()}".to_utf8()),
+				)
+			}
+
 		## The material's bytes, to sign.
 		bytes_to_sign : Session.Material -> List(U8)
 		bytes_to_sign = |Session.Material.(bytes)| bytes
 	}
 
-	## The bytes a session for `id`, signed at `signed_at`, is signed over,
-	## its human's sign-in files holding `material`.
+	## The bytes a session for `id`, signed at `signed_at`, started as
+	## `origin` says, is signed over, its human's sign-in files holding
+	## `material`: the id's digits, a line feed, the second's digits, a line
+	## feed, for a session started by a device code `by-device-code` and a
+	## line feed, then the material, which starts with `$` or a line feed.
 	signed_bytes : {
 		id : UserId,
 		signed_at : Timestamp,
+		origin : Session.Origin,
 		material : Session.Material,
 	} -> List(U8)
-	signed_bytes = |
-		{ id, signed_at, material },
-	| List.concat("${id.to_str()}\n${signed_at.to_str()}\n".to_utf8(), material.bytes_to_sign())
+	signed_bytes = |{ id, signed_at, origin, material }| {
+		mark =
+			match origin {
+				Ordinary => ""
+				ByDeviceCode => "by-device-code\n"
+			}
+		head = "${id.to_str()}\n${signed_at.to_str()}\n${mark}"
+		List.concat(head.to_utf8(), material.bytes_to_sign())
+	}
 
 	## The claim of the request's `Cookie` header, `header`; unless it holds
 	## no session cookie (`NoSession`), or one that is no claim, or more than
@@ -138,12 +180,17 @@ Session :: [].{
 		}
 	}
 
-	## A session, the human it admits; only `admit` makes one.
-	Admitted :: Users.Human.{
+	## A session, the human it admits and how it was started; only `admit`
+	## makes one.
+	Admitted :: { human : Users.Human, origin : Session.Origin }.{
 
 		## The human it admits.
 		human : Session.Admitted -> Users.Human
-		human = |Session.Admitted.(human)| human
+		human = |Session.Admitted.(admitted)| admitted.human
+
+		## How it was started.
+		origin : Session.Admitted -> Session.Origin
+		origin = |Session.Admitted.(admitted)| admitted.origin
 	}
 
 	## The human `claim` admits, at `now`, among `users`: when the host's
@@ -167,23 +214,33 @@ Session :: [].{
 						Err(NoSuchUser) => Err(SessionRefused)
 						Ok(user) =>
 							match user.as_human() {
-								Ok(human) => Ok(Session.Admitted.(human))
+								Ok(human) => Ok(
+									Session.Admitted.({ human, origin: claim.origin() }),
+								)
 								Err(Agent(_)) => Err(SessionRefused)
 							}
 					}
 				}
 		}
 
-	## The cookie's value for `id`, signed at `signed_at`, its signature
-	## `mac`, the host's HMAC of `signed_bytes`.
+	## The cookie's value for `id`, signed at `signed_at`, started as
+	## `origin` says, its signature `mac`, the host's HMAC of
+	## `signed_bytes`: three parts, and a fourth, `d`, for a session started
+	## by a device code.
 	cookie_value : {
 		id : UserId,
 		signed_at : Timestamp,
+		origin : Session.Origin,
 		mac : List(U8),
 	} -> Str
-	cookie_value = |
-		{ id, signed_at, mac },
-	| "${Base64Url.encode(id.to_str().to_utf8())}.${signed_at.to_str()}.${Base64Url.encode(mac)}"
+	cookie_value = |{ id, signed_at, origin, mac }| {
+		id_part = Base64Url.encode(id.to_str().to_utf8())
+		parts = "${id_part}.${signed_at.to_str()}.${Base64Url.encode(mac)}"
+		match origin {
+			Ordinary => parts
+			ByDeviceCode => "${parts}.d"
+		}
+	}
 
 	## The `Set-Cookie` header's value that sets the session's cookie to
 	## `value`, for a year.
@@ -219,20 +276,38 @@ is_outside_window = |{ now, signed_at }|
 claim_from_value : List(U8) -> Try(Session.Claim, [BadSession])
 claim_from_value = |value|
 	match value.split_on('.') {
-		[id_part, second_part, mac_part] => {
-			id_bytes = Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession
-			id_text = Str.from_utf8(id_bytes) ? |_| BadSession
-			id = UserId.from_str(id_text) ? |_| BadSession
-			signed_at = second_from_digits(second_part) ? |_| BadSession
-			mac = Base64Url.decode(Str.from_utf8(mac_part) ? |_| BadSession) ? |_| BadSession
-			if mac.len() == 32 {
-				Ok(Session.Claim.({ id, signed_at, mac }))
-			} else {
-				Err(BadSession)
-			}
-		}
+		[id_part, second_part, mac_part] => claim_from_parts({
+			id_part,
+			second_part,
+			mac_part,
+			origin: Ordinary,
+		})
+		[id_part, second_part, mac_part, ['d']] =>
+			claim_from_parts({ id_part, second_part, mac_part, origin: ByDeviceCode })
 		_ => Err(BadSession)
 	}
+
+## The claim a cookie's parts spell, started as `origin` says; unless they
+## are an id that is no user's, a second that is not its digits, or a
+## signature that is not 32 bytes (`BadSession`).
+claim_from_parts : {
+	id_part : List(U8),
+	second_part : List(U8),
+	mac_part : List(U8),
+	origin : Session.Origin,
+} -> Try(Session.Claim, [BadSession])
+claim_from_parts = |{ id_part, second_part, mac_part, origin }| {
+	id_bytes = Base64Url.decode(Str.from_utf8(id_part) ? |_| BadSession) ? |_| BadSession
+	id_text = Str.from_utf8(id_bytes) ? |_| BadSession
+	id = UserId.from_str(id_text) ? |_| BadSession
+	signed_at = second_from_digits(second_part) ? |_| BadSession
+	mac = Base64Url.decode(Str.from_utf8(mac_part) ? |_| BadSession) ? |_| BadSession
+	if mac.len() == 32 {
+		Ok(Session.Claim.({ id, signed_at, origin, mac }))
+	} else {
+		Err(BadSession)
+	}
+}
 
 ## The second `digits` spell: `0`, or a canonical number
 ## (`Ascii.canonical_number`) at most the largest `I64`; so each second has

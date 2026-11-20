@@ -21,6 +21,8 @@ import ChannelMembersSpec
 import ChannelsSpec
 import ConversationKeySpec
 import ConversationSpec
+import DeviceCodeSpec
+import DeviceSessionsSpec
 import DirectorySpec
 import DmSpec
 import FirstStartSpec

@@ -35,8 +35,8 @@
 import pf.Host
 import pf.Http
 import AccountFiles
+import DeviceCode
 import FileFacts
-import GitHubSessionWord
 import GitHubSignIn
 import Html
 import HttpAnswer
@@ -45,11 +45,11 @@ import PageKit
 import Password
 import PasswordHash
 import Session
+import SignInFiles
 import SignInPage
 import SignInRequest
 import SignedIn
 import Timestamp
-import UserId
 import Users
 
 SignInRoute :: [].{
@@ -76,7 +76,7 @@ SignInRoute :: [].{
 	)
 	sign_in_by_session! = |{ cookie, users, now }| {
 		claim = Session.claim_from_cookie_header(cookie)?
-		material = load_material!(claim.id())?
+		material = SignInFiles.load_material!(claim.id())?
 		verdict = Host.hmac_sha256_with_server_secret_matches!(
 			claim.signed_bytes(material),
 			claim.mac(),
@@ -123,7 +123,7 @@ SignInRoute :: [].{
 						Ok({ human, material }) =>
 							HttpAnswer.with_header(
 								HttpAnswer.see_other(next.to_str()),
-								sign_session_cookie!({ human, material, now }),
+								sign_session_cookie!({ human, origin: Ordinary, material, now }),
 							)
 						Err(NoMatch) => HttpAnswer.page(
 							401,
@@ -158,10 +158,18 @@ SignInRoute :: [].{
 	},
 	Timestamp => Http.Response
 	start_session_by_invite! = |{ admission, password_hash, next }, now|
-		match load_material_with_password!({ id: admission.human().id(), password_hash }) {
+		match SignInFiles.load_material_with_password!({
+			id: admission.human().id(),
+			password_hash,
+		}) {
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 			Ok(material) => {
-				cookie = sign_session_cookie!({ human: admission.human(), material, now })
+				cookie = sign_session_cookie!({
+					human: admission.human(),
+					origin: Ordinary,
+					material,
+					now,
+				})
 				onward = HttpAnswer.see_other(next.to_str())
 				HttpAnswer.never_stored(HttpAnswer.with_header(onward, cookie))
 			}
@@ -176,9 +184,9 @@ SignInRoute :: [].{
 	start_session_by_github! = |admission, now| {
 		human = admission.human()
 		started =
-			match make_github_session_secret!(human.id()) {
+			match SignInFiles.make_github_session_secret!(human.id()) {
 				Err(FileSystem(fault)) => Err(FileSystem(fault))
-				Ok({}) => load_material!(human.id())
+				Ok({}) => SignInFiles.load_material!(human.id())
 			}
 		answer =
 			match started {
@@ -190,7 +198,7 @@ SignInRoute :: [].{
 				Ok(material) =>
 					HttpAnswer.with_header(
 						HttpAnswer.see_other(admission.next().to_str()),
-						sign_session_cookie!({ human, material, now }),
+						sign_session_cookie!({ human, origin: Ordinary, material, now }),
 					)
 			}
 		HttpAnswer.never_stored(answer)
@@ -206,10 +214,56 @@ SignInRoute :: [].{
 	## Never stored.
 	start_session_by_github_link! : GitHubSignIn.Linked, Timestamp => Http.Response
 	start_session_by_github_link! = |linked, now|
-		match write_github_link!(linked) {
+		match SignInFiles.write_github_link!(linked) {
 			Ok({}) => SignInRoute.start_session_by_github!(linked.admission(), now)
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 		}
+
+	## The answer to a device code redeemed at `now`: an ordinary session for
+	## the human it signs in, signed over what their sign-in files hold now,
+	## as a password's is, and a 303 to `next` with its cookie. A 500 when
+	## their files can't be read, or hold nothing to sign a session over.
+	## Never stored.
+	start_session_by_device_code! : DeviceCode.Redemption,
+	{
+		next : Html.SitePath,
+		now : Timestamp,
+	} => Http.Response
+	start_session_by_device_code! = |redemption, { next, now }| {
+		human = redemption.owner()
+		answer =
+			match SignInFiles.load_material!(human.id()) {
+				Err(NoMaterial) => HttpAnswer.page(
+					500,
+					PageKit.notice({
+						title: "Failed",
+						text: "This account has nothing to sign a session over.",
+					}),
+				)
+				Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+				Ok(material) =>
+					HttpAnswer.with_header(
+						HttpAnswer.see_other(next.to_str()),
+						sign_session_cookie!({ human, origin: ByDeviceCode, material, now }),
+					)
+			}
+		HttpAnswer.never_stored(answer)
+	}
+
+	## The `Set-Cookie` header of a new session for `human`, started as
+	## `origin` says, signed at `now` over what their sign-in files hold now:
+	## the session of the device that signed every other out, signed again
+	## over the material that ended theirs; unless the files hold nothing to
+	## sign over, or can't be read.
+	sign_session_again! : {
+		human : Users.Human,
+		origin : Session.Origin,
+		now : Timestamp,
+	} => Try(Http.Header, [NoMaterial, FileSystem(FileFacts.Fault)])
+	sign_session_again! = |{ human, origin, now }| {
+		material = SignInFiles.load_material!(human.id())?
+		Ok(sign_session_cookie!({ human, origin, material, now }))
+	}
 
 	## A POST of `/logout`: the browser forgets the session's cookie, and goes
 	## to the sign-in page. Never stored.
@@ -252,101 +306,21 @@ SignInRoute :: [].{
 		)
 }
 
-## What the sessions of the user `id` are signed over now, from their sign-in
-## files; unless they hold nothing to sign over (`NoMaterial`), or a file
-## can't be read.
-load_material! : UserId => Try(Session.Material, [NoMaterial, FileSystem(FileFacts.Fault)])
-load_material! = |id| {
-	github = load_github_word!(id)?
-	match (AccountFiles.read_password_hash!(id), github) {
-		(Err(fault), _) => Err(FileSystem(fault))
-		(Ok(File(password_hash)), _) =>
-			Ok(Session.Material.from_password({ password_hash, github }))
-		(Ok(NoFile), GitHub(word)) => Ok(Session.Material.from_github_alone(word))
-		(Ok(NoFile), NoGitHub) => Err(NoMaterial)
-	}
-}
-
-## What a session of the user `id` is signed over when it starts from
-## `password_hash`, just checked or just written, not what the file holds by
-## now: a password rewritten meanwhile leaves a session that admits no one.
-load_material_with_password! : { id : UserId, password_hash : PasswordHash } => Try(
-	Session.Material,
-	[FileSystem(FileFacts.Fault)],
-)
-load_material_with_password! = |{ id, password_hash }| {
-	github = load_github_word!(id)?
-	Ok(Session.Material.from_password({ password_hash, github }))
-}
-
-## The word in the user `id`'s `github-session-secret`, read only while their
-## `github-id` ties them to GitHub, so removing that file ends their sessions
-## too. An empty file holds no word.
-load_github_word! : UserId => Try(
-	[NoGitHub, GitHub(GitHubSessionWord)],
-	[FileSystem(FileFacts.Fault)],
-)
-load_github_word! = |id|
-	match AccountFiles.read_github_link!(id) {
-		Err(fault) => Err(FileSystem(fault))
-		Ok(NotLinked) => Ok(NoGitHub)
-		Ok(Linked(_)) =>
-			match AccountFiles.read_github_session_secret!(id) {
-				Err(fault) => Err(FileSystem(fault))
-				Ok(NoFile) | Ok(File(Empty)) => Ok(NoGitHub)
-				Ok(File(Word(word))) => Ok(GitHub(word))
-			}
-	}
-
-## The user `id`'s `github-session-secret`, made first when there is none
-## (`GitHubSessionWord`). Sessions are signed over it under the server's
-## secret, so whoever reads the file can't forge one; it needs only to change
-## when its owner rewrites it.
-make_github_session_secret! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
-make_github_session_secret! = |id|
-	match AccountFiles.read_github_session_secret!(id) {
-		Err(fault) => Err(FileSystem(fault))
-		Ok(File(_)) => Ok({})
-		Ok(NoFile) => {
-			word = generate_github_session_word!({})
-			match AccountFiles.create_github_session_secret!(id, word) {
-				Ok({}) => Ok({})
-				Err(fault) => Err(FileSystem(fault))
-			}
-		}
-	}
-
-## The files that tie `linked`'s human to GitHub: a new `github-session-secret`,
-## which says nothing until `github-id` is there, and then the `github-id`, so
-## a link cut short between the two binds no one.
-write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileFacts.Fault)])
-write_github_link! = |linked| {
-	id = linked.human().id()
-	word = generate_github_session_word!({})
-	AccountFiles.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
-	AccountFiles.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
-	Ok({})
-}
-
-## A new GitHub word, of the host's random bytes.
-generate_github_session_word! : {} => GitHubSessionWord
-generate_github_session_word! = |{}| {
-	random_bytes = Host.fill_with_random_bytes!(GitHubSessionWord.random_byte_count)
-	GitHubSessionWord.of_random_bytes(random_bytes)
-}
-
-## The `Set-Cookie` header of a session for `human`, signed at `now` by the
-## host's HMAC under the server's secret, over `material`.
+## The `Set-Cookie` header of a session for `human`, started as `origin`
+## says, signed at `now` by the host's HMAC under the server's secret, over
+## `material`.
 sign_session_cookie! : {
 	human : Users.Human,
+	origin : Session.Origin,
 	material : Session.Material,
 	now : Timestamp,
 } => Http.Header
-sign_session_cookie! = |{ human, material, now }| {
+sign_session_cookie! = |{ human, origin, material, now }| {
+	signed_at = now
 	mac = Host.hmac_sha256_with_server_secret!(
-		Session.signed_bytes({ id: human.id(), signed_at: now, material }),
+		Session.signed_bytes({ id: human.id(), signed_at, origin, material }),
 	)
-	cookie = Session.cookie_value({ id: human.id(), signed_at: now, mac })
+	cookie = Session.cookie_value({ id: human.id(), signed_at, origin, mac })
 	set_cookie_header(Session.set_cookie_text(cookie))
 }
 
@@ -416,7 +390,10 @@ check_password_of! = |{ human, password }|
 			)
 			match verdict {
 				Matches =>
-					match load_material_with_password!({ id: human.id(), password_hash }) {
+					match SignInFiles.load_material_with_password!({
+						id: human.id(),
+						password_hash,
+					}) {
 						Ok(material) => Ok({ human, material })
 						Err(FileSystem(fault)) => Err(FileSystem(fault))
 					}

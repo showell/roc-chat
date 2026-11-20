@@ -35,6 +35,12 @@
 ##     POST /login/github/name                 a new human's name: `name=`
 ##     POST /login/github/link                 off to GitHub, to link it
 ##     POST /logout                            sign out
+##     POST /login/code                        sign in by a device code: `code=`
+##     GET  /devices                           sign in another device
+##     POST /devices                           make a device code
+##     POST /devices/cancel                    cancel it
+##     GET  /devices/stream                    the device code page's stream
+##     POST /devices/sign-out-others           sign out every other device
 ##     GET  /agents                            your agents, keys, invites
 ##     POST /agents                            make an agent: `name=`
 ##     POST /agents/<id>/invites               invite it: `read=`, `post=`
@@ -56,7 +62,8 @@
 ##
 ## A route is `Open`, answered to anyone, a request that proves no one
 ## included: the way in, the scripts, the icons, the sign-in routes but the
-## link to GitHub, an agent's redemption, and the join routes.
+## link to GitHub, a device code's redemption, an agent's redemption, and
+## the join routes.
 ## Every other is `SignedInOnly`. So which routes answer someone not signed
 ## in is said here once, by the type, and `Dispatch` answers each
 ## `SignedInOnly` route to no one but someone signed in.
@@ -112,6 +119,7 @@ Route :: [].{
 		ShowJoin,
 		LookUpJoinName,
 		Join,
+		RedeemDeviceCode,
 	]
 
 	## The routes only someone signed in may use.
@@ -143,6 +151,11 @@ Route :: [].{
 		ShowInvites,
 		InviteHuman,
 		InviteHumanAgain(UserId),
+		ShowDeviceCode,
+		MakeDeviceCode,
+		CancelDeviceCode,
+		OpenDevicesStream,
+		SignOutOtherDevices,
 	]
 
 	## The route for `method` and `path`, as the host handed them, each
@@ -362,6 +375,21 @@ sign_in_choice = |{ resource, method }|
 		(GitHubLink, Get) => Open(WrongMethodToGitHub(PostOnly))
 		(GitHubLink, Post) => SignedInOnly(StartGitHubLink)
 		(GitHubLink, Other) => Open(WrongMethodToGitHub(PostOnly))
+		(LoginCode, Get) => MethodNotAllowed(PostOnly)
+		(LoginCode, Post) => Open(RedeemDeviceCode)
+		(LoginCode, Other) => MethodNotAllowed(PostOnly)
+		(Devices, Get) => SignedInOnly(ShowDeviceCode)
+		(Devices, Post) => SignedInOnly(MakeDeviceCode)
+		(Devices, Other) => MethodNotAllowed(GetAndPost)
+		(DevicesCancel, Get) => MethodNotAllowed(PostOnly)
+		(DevicesCancel, Post) => SignedInOnly(CancelDeviceCode)
+		(DevicesCancel, Other) => MethodNotAllowed(PostOnly)
+		(DevicesStream, Get) => SignedInOnly(OpenDevicesStream)
+		(DevicesStream, Post) => MethodNotAllowed(GetOnly)
+		(DevicesStream, Other) => MethodNotAllowed(GetOnly)
+		(DevicesSignOutOthers, Get) => MethodNotAllowed(PostOnly)
+		(DevicesSignOutOthers, Post) => SignedInOnly(SignOutOtherDevices)
+		(DevicesSignOutOthers, Other) => MethodNotAllowed(PostOnly)
 	}
 
 ## The route for `method` and an `/agents` path's `resource`.
