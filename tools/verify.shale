@@ -101,9 +101,13 @@ for argv in roots do
   for a in argv do push(full, a) end
   local tested = run(full, {timeout_ms = 300000, whole = 2000000})
   local ok = tested.code == 0 and re_find(tested.out, "All \\([0-9]+\\) tests passed") ~= nil
+  -- A failed run prints all but its PASS lines, so a compile's error is
+  -- never lost past the output budget behind thousands of them.
   if not ok then
     all_passed = false
-    print(tested.out)
+    for l in lines(tested.out) do
+      if not starts_with(l, "PASS: ") then print(l) end
+    end
   end
   for l in re_lines(tested.out, "^PASS: app/") do passed[trim(sub(l.text, 7))] = true end
 end
