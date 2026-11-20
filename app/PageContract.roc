@@ -16,7 +16,8 @@
 ## (`data-upload`) and the most bytes an image may be
 ## (`data-image-byte-limit`), all read by app/compose.js. The messages pane
 ## also names where a reaction is posted (`data-react`) and where a
-## message's markdown is read (`data-raw`), and each reaction's button names
+## message's markdown is read (`data-raw`), where the conversation's
+## download is (`data-download`), and each reaction's button names
 ## its reactors' ids (`data-reactors`), all read by app/actions.js. Each place in the
 ## sidebar names its own path (`data-section`), which app/sidebar.js keeps
 ## its collapsed state by, and where a topic added to it belongs; a DM with
@@ -123,6 +124,7 @@ PageContract :: [].{
 		Section(Html.SitePath),
 		React(Html.SitePath),
 		Raw(Html.SitePath),
+		Download(Html.SitePath),
 		Reactors(Html.Token),
 		Person(Html.Token),
 		Presence([Online, Offline]),
@@ -143,6 +145,7 @@ PageContract :: [].{
 			Section(path) => Data(token("section"), Path(path))
 			React(path) => Data(token("react"), Path(path))
 			Raw(path) => Data(token("raw"), Path(path))
+			Download(path) => Data(token("download"), Path(path))
 			Reactors(ids) => Data(token("reactors"), Token(ids))
 			Person(id) => Data(token("person"), Token(id))
 			Presence(Online) => Data(token("presence"), Token(token("online")))
@@ -292,6 +295,7 @@ expect {
 		(Section(path), "<p data-section=\"/chat/dm/1_1/plans\"></p>"),
 		(React(path), "<p data-react=\"/chat/dm/1_1/plans\"></p>"),
 		(Raw(path), "<p data-raw=\"/chat/dm/1_1/plans\"></p>"),
+		(Download(path), "<p data-download=\"/chat/dm/1_1/plans\"></p>"),
 		(Reactors(token("1-3")), "<p data-reactors=\"1-3\"></p>"),
 		(Person(token("2")), "<p data-person=\"2\"></p>"),
 		(Presence(Online), "<p data-presence=\"online\"></p>"),
@@ -403,7 +407,8 @@ expect [
 ].all(|chosen| Str.from_utf8_lossy(Script.Chrome.bytes()).contains(".${class_name(chosen)} {"))
 # app/actions.js finds each message's reactions by their classes, styles
 # its reactions' strip and an edited message's parts, and reads where to
-# react, where to read a message's markdown, and who reacted; no other
+# react, where to read a message's markdown, where the download is, and
+# who reacted; no other
 # conversation script does.
 expect
 	[
@@ -427,11 +432,12 @@ expect
 	[
 		"data-react",
 		"data-raw",
+		"data-download",
 		"data-reactors",
 		"data-viewer",
 	].all(|name| is_read_by(Script.Actions.bytes(), name))
 expect
-	["data-react", "data-raw", "data-reactors"].all(
+	["data-react", "data-raw", "data-download", "data-reactors"].all(
 		|name| !is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
 	)
 # app/actions.js follows a reference in a message's markdown, roc-markdown's

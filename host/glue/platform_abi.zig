@@ -1047,7 +1047,7 @@ pub const __AnonStruct_acc3c8bd07c1fb22 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        decrefListOfListOfType29(value.stream_keys, roc_host);
+        decrefListOfListOfType30(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1073,7 +1073,7 @@ pub const __AnonStruct_acc3c8bd07c1fb22 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        decrefListOfListOfType29(value.stream_keys, roc_host);
+        decrefListOfListOfType30(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1914,6 +1914,13 @@ pub const HostBcrypt_hash_of_passwordArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.crc32_of_bytes!
+/// Roc signature: List(U8) => U32
+/// Refcounted fields are owned by the hosted function.
+pub const HostCrc32_of_bytesArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 /// Arguments for Host.create_file_with_binary_bytes_unless_it_exists!
 /// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]
 /// Refcounted fields are owned by the hosted function.
@@ -2154,7 +2161,7 @@ pub fn decrefListOf__AnonStruct_288155b7e13051cb(value: RocList(__AnonStruct_288
 ///
 /// The allocation's final reference is claimed atomically before any element
 /// is read, so concurrent owners cannot skip or duplicate element teardown.
-pub fn decrefListOfListOfType29(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
+pub fn decrefListOfListOfType30(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
     value.deinitWith(RocListSpineRelease(RocListWith(u8, false)), roc_host);
 }
 
@@ -2213,6 +2220,13 @@ pub extern fn append_utf8_bytes_to_file(arg0: RocListWith(u8, false), arg1: RocL
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn bcrypt_hash_of_password(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Hosted symbol for Host.crc32_of_bytes!
+/// Roc signature: List(U8) => U32
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn crc32_of_bytes(arg0: RocListWith(u8, false)) callconv(.c) u32;
 
 /// Hosted symbol for Host.create_file_with_binary_bytes_unless_it_exists!
 /// Roc signature: List(U8), List(U8) => [AlreadyExists, Created, Failed, MissingDirectory, PathRefused]

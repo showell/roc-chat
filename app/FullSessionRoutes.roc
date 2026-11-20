@@ -53,6 +53,7 @@ asks_full_session = |choice|
 		SignedInOnly(SendToConversation(_)) => Bool.False
 		SignedInOnly(OpenConversationStream(_)) => Bool.False
 		SignedInOnly(ServeRawTranscript(_)) => Bool.False
+		SignedInOnly(ServeDownload(_)) => Bool.False
 		SignedInOnly(ServeUploadedImage(_)) => Bool.False
 		SignedInOnly(ReactInConversation(_)) => Bool.False
 		SignedInOnly(ShowAgents) => Bool.False

@@ -49,7 +49,11 @@
 //
 // The `t` key opens the conversation's raw transcript (the pane's data-raw)
 // in a new tab, as chat-client's did (js/chat.js's viewRaw), so a reader
-// sees every message's markdown as written.
+// sees every message's markdown as written. The `d` key downloads the
+// conversation as a .tar.gz, its transcript and images (the pane's
+// data-download), as chat-client's did (js/chat.js's downloadBundle): the
+// server says it is an attachment, so a link's click saves it and the page
+// stays.
 //
 // In a narrow window (chrome.js's layout-narrow), a phone's, the buttons, the
 // reactions and the picker's emojis are larger, for a finger, and the
@@ -64,8 +68,9 @@
   var viewer = messages.getAttribute('data-viewer');
   var reactUrl = messages.getAttribute('data-react');
   var rawUrl = messages.getAttribute('data-raw');
-  if (!viewer || !reactUrl || !rawUrl) {
-    throw new Error('actions.js: .messages has no data-viewer, no data-react or no data-raw');
+  var downloadUrl = messages.getAttribute('data-download');
+  if (!viewer || !reactUrl || !rawUrl || !downloadUrl) {
+    throw new Error('actions.js: .messages has no data-viewer, no data-react, no data-raw or no data-download');
   }
 
   var s = document.createElement('style');
@@ -355,6 +360,13 @@
   Keys.register({ key: 'q', label: 'quote-reply to the selected message', aliases: ['r', '>'], run: quoteSelected });
   Keys.register({ key: 't', label: 'open the raw transcript in a new tab', run: function () {
     window.open(rawUrl, '_blank');
+  } });
+  Keys.register({ key: 'd', label: 'download transcript + images (.tar.gz)', run: function () {
+    var a = document.createElement('a');
+    a.href = downloadUrl;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   } });
 
   var drawn = messages.querySelectorAll('.message');

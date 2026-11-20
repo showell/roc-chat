@@ -67,6 +67,7 @@ readable_key = |{ file, acting, directory }| {
 		React => return Err(NotAConversation)
 		UploadedImage(_) => return Err(NotAConversation)
 		Raw => return Err(NotAConversation)
+		Download => return Err(NotAConversation)
 	}
 	Access.check({
 		acting,

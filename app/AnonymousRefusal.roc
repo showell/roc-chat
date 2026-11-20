@@ -47,6 +47,7 @@ AnonymousRefusal :: [].{
 			SendToConversation(_) => unauthorized_refusal
 			OpenConversationStream(_) => unauthorized_refusal
 			ServeRawTranscript(_) => unauthorized_refusal
+			ServeDownload(_) => unauthorized_refusal
 			UploadToConversation(_) => unauthorized_refusal
 			ReactInConversation(_) => unauthorized_refusal
 			ServeUploadedImage(_) => unauthorized_refusal
@@ -108,6 +109,7 @@ expect {
 			SendToConversation(key),
 			OpenConversationStream(key),
 			ServeRawTranscript(key),
+			ServeDownload(key),
 			UploadToConversation(key),
 			ReactInConversation(key),
 			ServeUploadedImage({ key, image }),

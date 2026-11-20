@@ -71,6 +71,14 @@ TranscriptFiles :: [].{
 			NoFile => Ok(Reactions.empty)
 		}
 
+	## A conversation's reactions file, its bytes unchecked, or `NoFile` when
+	## no one has reacted yet; unless the host's read failed.
+	read_reactions_file! : ConversationKey => Try(
+		[NoFile, File(List(U8))],
+		[NotUtf8, PathRefused, Failed],
+	)
+	read_reactions_file! = |key| FileFacts.read_fact!(reactions_path(key))
+
 	## A conversation's reactions, written whole over the file before,
 	## atomically, its folder made as needed; unless the host refused, and
 	## then the file is as it was.
@@ -105,6 +113,18 @@ TranscriptFiles :: [].{
 		[Missing, PathRefused, Failed],
 	)
 	read_uploaded_image! = |key, image| FileFacts.read_binary_file!(uploaded_image_path(key, image))
+
+	## Every image uploaded to a conversation, by name, none when it has no
+	## uploads folder; unless the folder holds a name no upload has
+	## (`NotAnUploadName`, naming it), or the host's listing failed.
+	list_uploaded_images! : ConversationKey => Try(
+		List(UploadedImage),
+		[NotAnUploadName(Str), NotUtf8, PathRefused, Failed],
+	)
+	list_uploaded_images! = |key| {
+		names = FileFacts.list_names_in!(uploads_folder_path(key))?
+		names.map_try(|name| UploadedImage.from_name(name).map_err(|_| NotAnUploadName(name)))
+	}
 
 	## A user's upload total, as their folder keeps it, read by
 	## `UploadTotal.from_file`; unless the host's read failed.

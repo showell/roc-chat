@@ -18,6 +18,7 @@ import ConversationKey
 import ConversationRoute
 import DeviceCodeRoute
 import DeviceSessionsRoute
+import DownloadRoute
 import Directory
 import Favicon
 import FirstStart
@@ -96,6 +97,7 @@ access_asked = |asked|
 		ShowConversation(key) => Asks({ place: key.place(), act: Read })
 		OpenConversationStream(key) => Asks({ place: key.place(), act: Read })
 		ServeRawTranscript(key) => Asks({ place: key.place(), act: Read })
+		ServeDownload(key) => Asks({ place: key.place(), act: Read })
 		ServeUploadedImage(found) => Asks({ place: found.key.place(), act: Read })
 		AppendToConversation(key) => Asks({ place: key.place(), act: Post })
 		SendToConversation(key) => Asks({ place: key.place(), act: Post })
@@ -263,7 +265,7 @@ serve_signed_in_route! = |{ asked, request, directory, acting }| {
 			})
 			match noted {
 				Ok({}) => answer_route!({ asked, request, directory, acting })
-				Err(_) => presence_failure
+				Err(_) => PresenceNotices.presence_failure
 			}
 		}
 	}
@@ -301,6 +303,7 @@ answer_route! = |{ asked, request, directory, acting }|
 				headers: request.headers,
 			})
 		ServeRawTranscript(key) => ConversationRoute.serve_raw!({ key, query: request.query })
+		ServeDownload(key) => DownloadRoute.serve_download!({ key, now: Clock.read_clock!({}) })
 		AppendToConversation(key) =>
 			ConversationRoute.post_sent_message!(
 				make_message_post!({ key, request, directory, acting }),
@@ -424,6 +427,7 @@ expect {
 		ShowConversation(key),
 		OpenConversationStream(key),
 		ServeRawTranscript(key),
+		ServeDownload(key),
 		ServeUploadedImage({ key, image }),
 	].all(|choice| access_asked(choice) == Asks({ place: key.place(), act: Read }))
 		and [

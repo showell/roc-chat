@@ -1,7 +1,7 @@
 ## This module builds the responses the chat gives, each in one place: a
 ## page with its status, a script, the site's icon, a redirect after a POST,
 ## the refusal of a method, and an event stream; an uploaded image, and the JSON that
-## answers an upload; and a refusal in plain words, of an upload or a send,
+## answers an upload; a conversation's download; and a refusal in plain words, of an upload or a send,
 ## which the compose box shows as it is. It knows nothing of what a page
 ## says: the routes build their pages with the page modules (`PageKit`,
 ## `ConversationPage` and the rest) and hand them here.
@@ -97,6 +97,24 @@ HttpAnswer :: [].{
 			status: 200,
 			headers: [
 				{ name: "content-type".to_utf8(), value: "text/plain; charset=utf-8".to_utf8() },
+				nosniff,
+			],
+			body: bytes,
+		})
+
+	## A gzip file, `bytes`, that the browser saves as `filename` rather
+	## than shows: a conversation's download. `filename` is the app's own,
+	## a strict name and `.tar.gz`, so it needs no quoting.
+	gzip_download : { filename : Str, bytes : List(U8) } -> Http.Response
+	gzip_download = |{ filename, bytes }|
+		whole_response({
+			status: 200,
+			headers: [
+				{ name: "content-type".to_utf8(), value: "application/gzip".to_utf8() },
+				{
+					name: "content-disposition".to_utf8(),
+					value: "attachment; filename=\"${filename}\"".to_utf8(),
+				},
 				nosniff,
 			],
 			body: bytes,

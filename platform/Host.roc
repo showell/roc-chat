@@ -124,6 +124,11 @@ Host := [].{
 	## holds no crypto of its own.
 	sha256_of_bytes! : List(U8) => List(U8)
 
+	## The CRC-32 of `bytes`, gzip's (the reflected polynomial 0xEDB88320).
+	## A download's gzip trailer holds it, and a loop over every byte of
+	## tens of MiB is far quicker in the host than in the Roc.
+	crc32_of_bytes! : List(U8) => U32
+
 	## `bytes` sent, as they are, to every stream held open on `key`
 	## (`Http.Response`'s `Stream`); none there, and nothing is sent.
 	publish_bytes_to_streams_on_key! : List(U8), List(U8) => {}

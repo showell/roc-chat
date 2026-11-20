@@ -119,6 +119,7 @@ ConversationPage :: [].{
 		stream_path = PageKit.site_path(key.url_path(Stream))
 		react_path = PageKit.site_path(key.url_path(React))
 		raw_path = PageKit.site_path(key.url_path(Raw))
+		download_path = PageKit.site_path(key.url_path(Download))
 		shown_count = PageKit.token(thread.messages().len().to_str())
 		{ toggle, nav, scripts } =
 			match sidebar {
@@ -160,6 +161,7 @@ ConversationPage :: [].{
 								PageContract.data_attribute(Viewer(user_id(viewer.user()))),
 								PageContract.data_attribute(React(react_path)),
 								PageContract.data_attribute(Raw(raw_path)),
+								PageContract.data_attribute(Download(download_path)),
 							],
 							inner: TrustedHtml.join([PageKit.newline, messages]),
 						}),

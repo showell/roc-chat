@@ -45,6 +45,7 @@ chosen_route = |method, path|
 		SignedInOnly(ServeUploadedImage(found)) =>
 			"image ${found.image.name()} of ${found.key.url_path(Page)}"
 		SignedInOnly(ServeRawTranscript(key)) => "raw ${key.url_path(Page)}"
+		SignedInOnly(ServeDownload(key)) => "download ${key.url_path(Page)}"
 		SignedInOnly(ShowAgents) => "agents"
 		SignedInOnly(MakeAgent) => "make an agent"
 		SignedInOnly(InviteAgent(agent)) => "invite ${agent.to_str()}"
@@ -251,6 +252,13 @@ expect chosen_route(
 expect chosen_route("POST", "/chat/dm/1_2/plans/raw".to_utf8()) == "not allowed: GET"
 expect chosen_route("PUT", "/chat/dm/1_2/plans/raw".to_utf8()) == "not allowed: GET"
 expect chosen_route("GET", "/chat/dm/1_3/plans/raw".to_utf8()) == "not found"
+# A conversation's download: GET alone, under a place that exists.
+expect chosen_route("GET", "/chat/dm/1_2/plans/download".to_utf8()) == "download /chat/dm/1_2/plans"
+expect
+	["POST", "PUT"].all(
+		|method| chosen_route(method, "/chat/dm/1_2/plans/download".to_utf8()) == "not allowed: GET",
+	)
+expect chosen_route("GET", "/chat/dm/1_3/plans/download".to_utf8()) == "not found"
 # The agents' page: GET and POST.
 expect chosen_route("GET", "/agents".to_utf8()) == "agents"
 expect chosen_route("POST", "/agents".to_utf8()) == "make an agent"

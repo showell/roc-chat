@@ -39,6 +39,7 @@ platform ""
 	hosted {
 		"append_utf8_bytes_to_file": Host.append_utf8_bytes_to_file!,
 		"bcrypt_hash_of_password": Host.bcrypt_hash_of_password!,
+		"crc32_of_bytes": Host.crc32_of_bytes!,
 		"create_file_with_binary_bytes_unless_it_exists": Host.create_file_with_binary_bytes_unless_it_exists!,
 		"create_file_with_utf8_bytes_unless_it_exists": Host.create_file_with_utf8_bytes_unless_it_exists!,
 		"current_utc_seconds_since_epoch": Host.current_utc_seconds_since_epoch!,
