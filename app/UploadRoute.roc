@@ -17,8 +17,8 @@
 ## A refusal is a line of plain text saying why, which the compose
 ## box shows as it is: no file is a 400, not an image a 415, too large a
 ## 413, and an allowance used up a 403, a new account's included. A total
-## that can't be read, or isn't a number, and a welcome that can't be read
-## (which dates the account), are a 500, and nothing is stored.
+## that can't be read, or isn't a number, and a `joined` file that can't be
+## read (which dates the account), are a 500, and nothing is stored.
 ##
 ## A GET answers an image of the conversation its URL names, by its name,
 ## with its type and `nosniff`. An image is only ever found under its own
@@ -112,7 +112,7 @@ keep_upload! : {
 		TooLarge,
 		LimitReached,
 		NewAccountLimitReached,
-		WelcomeUnreadable(Str),
+		JoinedUnreadable(Str),
 		NotANumber,
 		FileSystem(FileFacts.Fault),
 		Unrefunded(FileFacts.Fault),
@@ -174,7 +174,7 @@ upload_refusal_response : [
 	TooLarge,
 	LimitReached,
 	NewAccountLimitReached,
-	WelcomeUnreadable(Str),
+	JoinedUnreadable(Str),
 	NotANumber,
 	FileSystem(FileFacts.Fault),
 	Unrefunded(FileFacts.Fault),
@@ -192,7 +192,7 @@ upload_refusal_response = |why|
 			"Upload limit reached — you've used your ${UploadTotal.most_gib.to_str()} GiB upload allowance.",
 		)
 		NewAccountLimitReached => HttpAnswer.text(403, NewAccountUploads.limit_words)
-		WelcomeUnreadable(words) => HttpAnswer.text(500, "Upload failed: your account's age could not be read: ${words}")
+		JoinedUnreadable(words) => HttpAnswer.text(500, "Upload failed: your account's age could not be read: ${words}")
 		NotANumber => HttpAnswer.text(500, "Upload failed: your upload total is not a number.")
 		FileSystem(fault) => HttpAnswer.text(500, "Upload failed. ${FileFacts.fault_words(fault)}")
 		Unrefunded(fault) => HttpAnswer.text(
@@ -283,12 +283,12 @@ expect
 		(
 			NewAccountLimitReached,
 			403,
-			"Upload limit reached — a new account may upload 100 MiB in its first 7 days.",
+			"Upload limit reached — a new account may upload 100 MiB in its first 2 days.",
 		),
 		(
-			WelcomeUnreadable("no such user"),
+			JoinedUnreadable("its joined file holds no time"),
 			500,
-			"Upload failed: your account's age could not be read: no such user",
+			"Upload failed: your account's age could not be read: its joined file holds no time",
 		),
 		(NotANumber, 500, "Upload failed: your upload total is not a number."),
 		(FileSystem(AlreadyExists), 500, "Upload failed. The file system answered AlreadyExists."),

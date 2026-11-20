@@ -44,6 +44,7 @@ import HumanInvite
 import HumanInvites
 import InviteFiles
 import JoinPage
+import JoinedFiles
 import JsonOut
 import Name
 import PageKit
@@ -430,6 +431,7 @@ join_by_invite! = |request| {
 	DeviceCodeRoute.revoke_device_code!(human.id())?
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
 	AccountFiles.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
+	JoinedFiles.record_joined!(human.id(), request.now) ? |fault| FileSystem(fault)
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
 
