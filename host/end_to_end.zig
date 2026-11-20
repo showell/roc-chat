@@ -321,15 +321,20 @@
 //!      with the warning, never stored, and kept only as its HMAC; a second
 //!      cancels the first, whose redemption from a phone is refused; the
 //!      second, typed with a dash, signs the phone in as Steve,
-//!      an ordinary session, and Steve's open stream hears "A new device
-//!      signed in"; it works once, and his page then says it was used; an
-//!      expired code, and one cancelled by the phone signing out, refused;
-//!      every refusal the same page; a key may not make one, nor redeem one;
+//!      bound to a new device key, active, and Steve's open stream hears "A
+//!      new device signed in"; it works once, and his page then says it was
+//!      used; an expired code refused; the phone's "Sign out" asks first,
+//!      changing nothing, refused from another site, and confirmed revokes
+//!      the key, so the phone's old cookie is refused, and cancels the live
+//!      code; the key's state alone decides, a damaged or missing one
+//!      refusing; every refusal the same page; a key may not make one, nor
+//!      redeem one;
 //! 48zz. a client's 10 failed codes lock the form for it, a 429 even for a
 //!      right code, while another client's is still tried; an IPv6 client is
 //!      its /64; a session a code started is marked, may not link GitHub or
 //!      make agents or their invites, and a password sign-in after is
-//!      ordinary; the page lists sign-ins by code, coarsely; "Sign out other
+//!      ordinary and signs out at once, asked nothing; a cookie marked `d`
+//!      alone, as before device keys, is no session; the page lists sign-ins by code, coarsely; "Sign out other
 //!      devices" ends every other session of the human's.
 //! 48zx. one `X-Forwarded-For` client at `requests_per_client_most`, 8 streams
 //!      and the rest requests with their bodies held back: each admitted; one
@@ -1205,10 +1210,15 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
             break;
         }
     }
-    try t.check("the second code, typed with a dash: a 303 to Browse with a session's cookie, marked as a code's, which reads Browse as Steve; his open stream hears that a new device signed in", signed_in.status == 303 and
+    const phone_key = deviceKeyOf(signed_in) orelse "(none)";
+    const phone_key_state = try std.fmt.allocPrint(a, "auth/1/device-keys/{s}/state", .{phone_key});
+    const phone_key_created = try std.fmt.allocPrint(a, "auth/1/device-keys/{s}/created", .{phone_key});
+    try t.check("the second code, typed with a dash: a 303 to Browse with a session's cookie, marked as a code's and bound to a new device key, active, which reads Browse as Steve; his open stream hears that a new device signed in", signed_in.status == 303 and
         std.mem.eql(u8, signed_in.header("location") orelse "", "/chat") and
         std.mem.startsWith(u8, signed_in.header("set-cookie") orelse "", "__Host-gopher_auth=") and
-        has(signed_in.header("set-cookie") orelse "", ".d; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
+        has(signed_in.header("set-cookie") orelse "", "; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
+        std.mem.eql(u8, try readFile(a, io, data, phone_key_state), "active") and
+        std.mem.startsWith(u8, try readFile(a, io, data, phone_key_created), "17") and
         std.mem.eql(u8, signed_in.header("cache-control") orelse "", "no-store") and
         phone_browse.status == 200 and has(phone_browse.body, "<span class=\"viewer\">Steve</span>") and heard);
     const used_event = try devices_stream.expectEvent("event: device-used\n", &.{"event: notice\n"});
@@ -1240,12 +1250,40 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const phone_page = try getAs(a, io, port, phone_session, "/chat");
     try t.check("a phone signed in by a code has \"Sign out\" in its top bar, a POST of /logout", phone_page.status == 200 and
         has(phone_page.body, "<form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>"));
-    const phone_out = try postAs(a, io, port, phone_session, "/logout", "");
-    try t.check("signing out forgets the cookie that shows a code, beside the session's", has(phone_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; "));
+
+    // Step 48zy: the phone signs out, which revokes its device key.
+    const asked = try postAs(a, io, port, phone_session, "/logout", "next=%2Fchat%2Fdm%2F1_2%2Fplans");
+    const after_ask = try getAs(a, io, port, phone_session, "/chat");
+    try t.check("the phone's \"Sign out\" asks first: a 200 saying it removes this device's key, its button posting confirmed=yes, Cancel back to the page it was on; no cookie changed, the key active, the phone still signed in", asked.status == 200 and
+        has(asked.body, "Signing out removes this device&#39;s key. To sign in on this device again, you&#39;ll make a new code on a signed-in computer.") and
+        has(asked.body, "<input type=\"hidden\" name=\"confirmed\" value=\"yes\">") and
+        has(asked.body, "<a href=\"/chat/dm/1_2/plans\">Cancel</a>") and asked.header("set-cookie") == null and
+        std.mem.eql(u8, asked.header("cache-control") orelse "", "no-store") and
+        std.mem.eql(u8, try readFile(a, io, data, phone_key_state), "active") and after_ask.status == 200);
+    const forged_out = try postAs(a, io, port, try std.fmt.allocPrint(a, "{s}sec-fetch-site: cross-site\r\n", .{phone_session}), "/logout", "confirmed=yes");
+    try t.check("a sign-out another site's page posts, confirmed: a 403, the key still active, the phone still signed in", forged_out.status == 403 and
+        std.mem.eql(u8, try readFile(a, io, data, phone_key_state), "active") and (try getAs(a, io, port, phone_session, "/chat")).status == 200);
+    const phone_out = try postAs(a, io, port, phone_session, "/logout", "confirmed=yes&next=%2Fchat");
+    const after_out = try getAs(a, io, port, phone_session, "/chat");
+    try t.check("confirmed: the key's state revoked, then a 303 to sign in, the session's cookie and the one that shows a code forgotten; the old cookie, sent again, is refused (a 303 to sign in)", phone_out.status == 303 and
+        std.mem.eql(u8, phone_out.header("location") orelse "", "/login") and
+        has(phone_out.head, "\r\nset-cookie: __Host-gopher_auth=; Path=/; Max-Age=0; ") and
+        has(phone_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; ") and
+        std.mem.eql(u8, try readFile(a, io, data, phone_key_state), "revoked") and
+        after_out.status == 303 and std.mem.startsWith(u8, after_out.header("location") orelse "", "/login"));
     const after_sign_out = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{fourth_code}));
     try t.check("a code Steve makes, then his phone signs out: the code is cancelled, its redemption the same refusal", isDeviceCode(fourth.shown) and
-        phone_out.status == 303 and std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
+        std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
         std.mem.eql(u8, after_sign_out.body, replaced.body) and isCodeRefusal(after_sign_out));
+    try data.writeFile(io, .{ .sub_path = phone_key_state, .data = "active" });
+    const revived = try getAs(a, io, port, phone_session, "/chat");
+    try data.writeFile(io, .{ .sub_path = phone_key_state, .data = "lots\n" });
+    const damaged = try getAs(a, io, port, phone_session, "/chat");
+    try data.deleteFile(io, phone_key_state);
+    const missing = try getAs(a, io, port, phone_session, "/chat");
+    try data.writeFile(io, .{ .sub_path = phone_key_state, .data = "revoked" });
+    try t.check("it is the key's state alone that decides: written active by hand, the old cookie reads Browse again; a state that is no state, or none, refuses it", revived.status == 200 and
+        damaged.status == 303 and missing.status == 303);
 
     // A code whose material has changed since it was made: its record's
     // material HMAC rewritten, as a new password or a GitHub link would
@@ -1324,7 +1362,7 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const browse = try getAs(a, io, port, tablet_session, "/chat");
     const devices = try getAt(a, io, port, "/devices");
     try t.check("a session a code started is marked in its cookie, reads Browse as any does, and Steve's page lists the sign-in, when and from what, not the whole User-Agent", signed_in.status == 303 and
-        std.mem.startsWith(u8, cookie, "__Host-gopher_auth=") and has(cookie, ".d; Path=/") and browse.status == 200 and
+        std.mem.startsWith(u8, cookie, "__Host-gopher_auth=") and deviceKeyOf(signed_in) != null and browse.status == 200 and
         has(devices.body, ": Safari on iOS</li>") and !has(devices.body, "Mobile/15E148") and
         has(try readFile(a, io, data, "users/1/device-sign-ins"), " safari ios\n"));
 
@@ -1357,12 +1395,20 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
         has(make_agent.body, "sign out here, then sign in with your password or GitHub.") and link.status == 403 and start.status == 403 and
         invite_agent.status == 403 and has(link.body, refusal[0..40]) and agents_page.status == 200);
 
-    const out = try postAs(a, io, port, tablet_session, "/logout", "");
+    const out = try postAs(a, io, port, tablet_session, "/logout", "confirmed=yes");
     const by_password = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple");
     const ordinary = try cookieLine(a, by_password);
     const ordinary_link = try postAs(a, io, port, ordinary, "/login/github/link", "");
     try t.check("signed out, then in with the password on that device: an ordinary session, unmarked, which the limits leave alone", out.status == 303 and
-        by_password.status == 303 and !has(by_password.header("set-cookie") orelse "", ".d;") and ordinary_link.status != 403);
+        by_password.status == 303 and deviceKeyOf(by_password) == null and ordinary_link.status != 403);
+    const laptop = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple");
+    const laptop_out = try postAs(a, io, port, try cookieLine(a, laptop), "/logout", "");
+    try t.check("a session a password started signs out at once, asked nothing: a 303 to sign in, its cookie forgotten", laptop_out.status == 303 and
+        std.mem.eql(u8, laptop_out.header("location") orelse "", "/login") and
+        has(laptop_out.head, "\r\nset-cookie: __Host-gopher_auth=; Path=/; Max-Age=0; "));
+    const legacy = try std.fmt.allocPrint(a, "{s}.d\r\n", .{ordinary[0 .. ordinary.len - 2]});
+    const legacy_page = try getAs(a, io, port, legacy, "/chat");
+    try t.check("a cookie marked `d` alone, as a code's sessions were before device keys: no session, a 303 to sign in", legacy_page.status == 303);
 
     const second = try makeCode(a, io, port, steve_session);
     const phone = try redeemFrom(a, io, port, "x-forwarded-for: 192.0.2.41\r\n", try std.fmt.allocPrint(a, "code={s}", .{second.code}));
@@ -1378,7 +1424,7 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const old_ordinary = try getAs(a, io, port, ordinary, "/chat");
     const new_steve = try getAs(a, io, port, steve_again, "/chat");
     try t.check("\"Sign out other devices\": a 303 to the page, this device's session signed again, unmarked; every other session of Steve's, a code's and a password's, and this one's old cookie, sent to sign in", signed_out.status == 303 and
-        std.mem.eql(u8, signed_out.header("location") orelse "", "/devices") and !has(signed_out.header("set-cookie") orelse "", ".d;") and
+        std.mem.eql(u8, signed_out.header("location") orelse "", "/devices") and deviceKeyOf(signed_out) == null and
         new_steve.status == 200 and old_steve.status == 303 and old_phone.status == 303 and old_ordinary.status == 303 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "1"));
     steve_session = try std.fmt.allocPrint(a, "{s}", .{steve_again});
@@ -3403,6 +3449,20 @@ fn firstPageSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Step
 
 /// The session cookie a sign-in's answer sets, as a request's `Cookie`
 /// line, or none.
+/// The number of the device key the session `signed_in` sets is bound to,
+/// its cookie's fourth part after its `d`; null for a session no code
+/// started.
+fn deviceKeyOf(signed_in: Response) ?[]const u8 {
+    const cookie = signed_in.header("set-cookie") orelse return null;
+    const end = std.mem.indexOfScalar(u8, cookie, ';') orelse return null;
+    const value = cookie[0..end];
+    if (std.mem.count(u8, value, ".") != 3) return null;
+    const part = value[std.mem.lastIndexOfScalar(u8, value, '.').? + 1 ..];
+    if (part.len < 2 or part[0] != 'd') return null;
+    for (part[1..]) |c| if (!std.ascii.isDigit(c)) return null;
+    return part[1..];
+}
+
 fn cookieLine(a: std.mem.Allocator, signed_in: Response) ![]const u8 {
     const cookie = signed_in.header("set-cookie") orelse return "";
     const end = std.mem.indexOfScalar(u8, cookie, ';') orelse return "";

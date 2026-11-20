@@ -65,6 +65,9 @@
 --                     `message-notice` shows it (here handed to chrome.js's
 --                     Notices by the page's console), at both sizes
 --   dm-notice-dismissed  on a phone, that notice's ✕ tapped: the line gone
+--   sign-out-confirm  a phone signed in by a device code taps "Sign out":
+--                     the page that asks first (at both sizes; a state with
+--                     `as = "phone"` uses that device's session)
 -- and once, last, in the last theme (it brings Cy online for good, so
 -- every picture before it shows his hollow dot):
 --   dm-came-online    Cy's first page, while Steve's DM is open: his dot
@@ -257,6 +260,10 @@ const STATES = {
   {name = "dm-drawer", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     "click .sidebar-toggle", "wait .sidebar-toggle[aria-expanded=true]",
     "eval new Promise(function (r) { setTimeout(r, 400); })"}},
+  {name = "sign-out-confirm", as = "phone", path = "/chat/dm/1_2/plans", steps = {
+    "click .top-user .sign-out button", "wait input[name=confirmed]"}},
+  {name = "sign-out-confirm", as = "phone", size = "phone", path = "/chat/dm/1_2/plans", steps = {
+    "click .top-user .sign-out button", "wait input[name=confirmed]"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
@@ -386,6 +393,16 @@ expect_status(post_form(base, more_cookies["Ada"], "/chat/channel/general/roc-ch
 expect_status(post_form(base, steve, "/agents", {"name=CC"}), 303, "making CC")
 expect_status(post_form(base, steve, "/channels/general/members/5/add", {"x=1"}), 303, "adding CC to #general")
 
+-- A device of Steve's signed in by a code he makes: its session, for the
+-- states that ask for it.
+local made = post_form(base, steve, "/devices", {"none=1"})
+expect_status(made, 303, "making a device code")
+local device_code = re_find(made.text, "__Host-device_code=([0-9A-Z]+)")
+if device_code == nil then fail("screenshot: making a device code set no code's cookie") end
+local by_code = post_form(base, "none=1", "/login/code", {"code=" .. device_code.group})
+expect_status(by_code, 303, "the device code's sign-in")
+local sessions = {phone = cookie_of(by_code, "the device code's sign-in")}
+
 -- 3. The shot list: Steve's cookie, then each theme's pages at each size,
 -- then its states.
 local list = {"base " .. base, "cookie " .. steve}
@@ -406,9 +423,11 @@ for t in themes do
       local size = SIZES[get(st, "size", "desktop")]
       local name = t .. "-" .. re_replace(size, " ", "x") .. "-" .. st.name
       push(list, "size " .. size)
+      if has_key(st, "as") then push(list, "cookie " .. sessions[st.as]) end
       push(list, "goto " .. st.path)
       for step in st.steps do push(list, step) end
       push(list, "shot " .. name)
+      if has_key(st, "as") then push(list, "cookie " .. steve) end
       push(names, name)
     end
   end
