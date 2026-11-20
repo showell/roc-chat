@@ -61,6 +61,9 @@
 --   recent-search     Recent's 🔍 clicked and "thu" typed: the words found
 --   recent-arrival    a message sent while Recent is open: its tile arrived
 --                     live, glowing
+--   recent-own-arrival  Steve, on Recent, sends a message to his own DM: its
+--                     tile, "DM with Steve (you)", arrives live at the top,
+--                     glowing (at both sizes)
 --   dm-message-notice the notice of a message elsewhere, as the stream's
 --                     `message-notice` shows it (here handed to chrome.js's
 --                     Notices by the page's console), at both sizes
@@ -114,7 +117,7 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 70 s on a busy box for the 105 pictures once the server and the driver
+-- Budgets: about 70 s on a busy box for the 117 pictures once the server and the driver
 -- are built (10 to 12.6 s of CPU on 2026-11-20, about 0.1 s a picture,
 -- held to 16 s with the citation states; it was 2.5 s for 56, and the
 -- states added since cost more each, popups and waits); each about 0.5 s, its line
@@ -197,6 +200,13 @@ const SELF_NOTICE = {
   "eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself.')})",
   "wait .notice-strip.notice-message"}
 
+-- A message Steve sends to his own DM once Recent's stream is open: its
+-- tile arrives first, glowing, as any conversation's does.
+const OWN_ARRIVAL = {
+  "eval new Promise(function (r) { setTimeout(r, 700); })",
+  "eval fetch('/chat/dm/1_1/notes', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('A note to myself, live on Recent.')})",
+  "wait .recent-tile.recent-fresh[href=\"/chat/dm/1_1/notes\"]:first-child"}
+
 -- The notice of a message of Tam's in the channel, as the stream's
 -- `message-notice` brings it (app/MessageNotice.roc's words and link).
 const MESSAGE_NOTICE = "eval Notices.showUnlessHere('<a href=\"/chat/channel/general/roc-chat#msg-5\">Tam posted to general &gt; roc-chat.</a>')"
@@ -275,6 +285,10 @@ const STATES = {
     "eval new Promise(function (r) { setTimeout(r, 700); })",
     "eval fetch('/chat/dm/1_2/plans', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('Arrived **live**, with `code` and a [link](https://x.y).')})",
     "wait .recent-tile.recent-fresh"}},
+  -- Recent live, a message to Steve's own DM: its tile arrives like any
+  -- other's, at the top, glowing.
+  {name = "recent-own-arrival", path = "/chat/recent", steps = OWN_ARRIVAL},
+  {name = "recent-own-arrival", size = "phone", path = "/chat/recent", steps = OWN_ARRIVAL},
   {name = "dm-message-notice", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
   {name = "dm-message-notice", size = "phone", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
   {name = "dm-notice-dismissed", size = "phone", path = "/chat/dm/1_2/plans", steps = {

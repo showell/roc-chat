@@ -12,11 +12,13 @@
 ## (`data-presence`), as the sidebar's DMs do. A tile links to the
 ## conversation's page.
 ##
-## The places are Browse's (`Browse.places_for`), but for the viewer's own
-## DM, which Gopher's Recent left out. `RecentRoute` reads each
+## The places are Browse's (`Browse.places_for`), the viewer's own DM among
+## them, since a message to yourself behaves like a message from anyone
+## else (docs/ux.md, "Consistency teaches"). Its tile says "DM with" the
+## viewer's own name and a quiet "(you)" (`PageKit.own_name`), as Browse and
+## the sidebar name it, and its dot is the viewer's. `RecentRoute` reads each
 ## conversation's last message and answers; app/recent.js styles the tiles
 ## and says each time as how long ago it was.
-import Browse
 import ConversationKey
 import DateTime
 import Escape
@@ -33,8 +35,9 @@ import UserId
 RecentFeed :: [].{
 
 	## One conversation's tile: its key, its place's label (`#` and a
-	## channel's name, or a DM's other human's name), the DM's other human
-	## and whether they are online (`NoPerson` for a channel), and its last
+	## channel's name, or a DM's other human's name, the viewer's own for
+	## their own DM), the DM's other human (the viewer, in their own DM) and
+	## whether they are online (`NoPerson` for a channel), and its last
 	## message's time, author (`You` for the viewer) and excerpt.
 	Tile : {
 		key : ConversationKey,
@@ -44,21 +47,6 @@ RecentFeed :: [].{
 		who : Str,
 		excerpt : Str,
 	}
-
-	## The places Recent lists for `listed`, Browse's for the human `reader`:
-	## each but the reader's own DM.
-	places_without_own_dm : {
-		listed : List(Browse.ListedPlace),
-		reader : UserId,
-	} -> List(Browse.ListedPlace)
-	places_without_own_dm = |{ listed, reader }|
-		listed.drop_if(
-			|listed_place|
-				match listed_place.place.which() {
-					Dm(pair) => pair.members().all(|member| member == reader)
-					Channel(_) => Bool.False
-				},
-		)
 
 	## The tile of the conversation `key`, listed as `label`, whose last
 	## message is `latest`, as the human `reader`, named `viewer`, sees it,
@@ -85,19 +73,19 @@ RecentFeed :: [].{
 		person =
 			match key.place().which() {
 				Channel(_) => NoPerson
-				Dm(pair) =>
-					match pair.members().drop_if(|member| member == reader) {
-						[other] =>
-							Person(
-								other,
-								if online_humans.contains(other) {
-									Online
-								} else {
-									Offline
-								},
-							)
-						_ => NoPerson
-					}
+				Dm(pair) => {
+					# The other human, or the reader in their own DM, who is always
+					# online, since they are making the very request.
+					shown = pair.members().drop_if(|member| member == reader).first() ?? reader
+					Person(
+						shown,
+						if shown == reader or online_humans.contains(shown) {
+							Online
+						} else {
+							Offline
+						},
+					)
+				}
 			}
 		{
 			key,
@@ -223,7 +211,8 @@ span = |class, inner| Html.element({
 ## One tile: a link to its conversation's page. Its lead (a channel's bar,
 ## a DM's initial) and its place spelled out (`recent-where`, its mark a
 ## channel's colour or a DM's presence dot) are both written; app/recent.js
-## shows the one that fits the window.
+## shows the one that fits the window. A DM of one member is the viewer's
+## own, the only one of one they may read: "DM with" their name, "(you)".
 tile_element : RecentFeed.Tile -> TrustedHtml
 tile_element = |
 	{
@@ -248,9 +237,9 @@ tile_element = |
 						span(RecentTopic, Escape.text(topic)),
 					]),
 				),
-				label,
+				Escape.text(label),
 			)
-			Dm(_) => {
+			Dm(pair) => {
 				partner = if who == "You" {
 					label
 				} else {
@@ -259,7 +248,11 @@ tile_element = |
 				(
 					span(RecentAvatar, Escape.text(initial(partner))),
 					span(RecentTitle, Escape.text(topic)),
-					"DM with ${label}",
+					if pair.members().len() == 1 {
+						TrustedHtml.join([Escape.text("DM with "), PageKit.own_name(label)])
+					} else {
+						Escape.text("DM with ${label}")
+					},
 				)
 			}
 		}
@@ -282,7 +275,7 @@ tile_element = |
 		}
 	place = span(
 		RecentWhere,
-		TrustedHtml.join([span(RecentMark, TrustedHtml.join([])), Escape.text(place_words)]),
+		TrustedHtml.join([span(RecentMark, TrustedHtml.join([])), place_words]),
 	)
 	link = Link(PageKit.site_path(key.url_path(Page)))
 	person_attributes =

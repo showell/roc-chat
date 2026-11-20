@@ -5,8 +5,9 @@
 ## every human who may read it (`publish!`), the author included, each
 ## seeing it as their own page would ("You" for their own), and the page
 ## puts the tile at the top in place of the conversation's old one
-## (app/recent.js). The viewer's own DM is left out, as Recent leaves it
-## out.
+## (app/recent.js). The viewer's own DM's tile is sent to them too, its
+## label their own name, as Recent's page lists it: a message to yourself
+## behaves like a message from anyone else.
 import pf.Host
 import pf.Http
 import Clock
@@ -53,7 +54,8 @@ RecentStream :: [].{
 
 	## The tile `reader` sees for the conversation `key` whose last message is
 	## now `latest`, its users `users`, the humans of `online_humans` online;
-	## or `NoTile` for no human, or for the reader's own DM.
+	## or `NoTile` for no human. The reader's own DM is labelled with their
+	## own name.
 	reader_tile : {
 		key : ConversationKey,
 		reader : UserId,
@@ -73,7 +75,7 @@ RecentStream :: [].{
 									users.user(other)
 										.map_ok(|found| found.name().to_str())
 										.map_err(|_| NoTile)
-								[] => Err(NoTile)
+								[] => Ok(user.name().to_str())
 							}
 					}
 				match (user.role(), label) {
@@ -158,13 +160,13 @@ sent_to = |path, reader|
 	}
 
 # Each human reader sees their own tile: "You" for the author; a DM's label
-# is the other human's name, a channel's its `#` name. An agent, and the
-# reader's own DM, get none.
+# is the other human's name, a channel's its `#` name, the reader's own
+# DM's their own name. An agent gets none.
 expect sent_to("/chat/dm/1_2/plans", "Steve") == "Apoorva You"
 expect sent_to("/chat/dm/1_2/plans", "Apoorva") == "Steve Steve"
 expect sent_to("/chat/channel/general/plans", "Apoorva") == "#general Steve"
 expect sent_to("/chat/channel/general/plans", "CC") == "none"
-expect sent_to("/chat/dm/1_1/plans", "Steve") == "none"
+expect sent_to("/chat/dm/1_1/plans", "Steve") == "Steve You"
 # Each viewer's key, and the tile's event.
 expect RecentStream.bus_key(UserId.chat_owner) == "/recent/1".to_utf8()
 expect RecentStream.holder(UserId.chat_owner) == "1".to_utf8()

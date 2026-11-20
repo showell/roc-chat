@@ -4,8 +4,10 @@
 //
 // Each tile (.recent-tile, a link to its conversation) holds a lead (a DM's
 // avatar, the other human's initial, or a channel's coloured bar), its place
-// spelled out (.recent-where: "#general" or "DM with Apoorva", after a mark,
-// the channel's colour or the DM's presence dot), the place and topic, how
+// spelled out (.recent-where: "#general" or "DM with Apoorva", or for the
+// viewer's own DM "DM with Steve (you)", its "(you)" quiet as panel.js's
+// .you, after a mark, the channel's colour or the DM's presence dot), the
+// place and topic, how
 // long ago its last message was sent, and a "Who: excerpt" preview.
 //
 // In a narrow window, a phone's, the tile is chat-client's: the lead, then
@@ -78,6 +80,8 @@
     +                 ' color:var(--cc-body-muted-fg); white-space:nowrap;'
     +                 ' overflow:hidden; text-overflow:ellipsis; }'
     + '.recent-who { font-weight:600; color:var(--cc-meta-fg); }'
+    // panel.js's .you, here too for the tiles the stream brings later.
+    + '.recent-where .you { font-size:0.85em; font-weight:400; color:var(--cc-muted-fg); }'
     // A newly arrived tile glows, then fades back.
     + '@keyframes recent-arrive { from { background:var(--cc-search-mark-bg); } to { background:transparent; } }'
     + '.recent-tile.recent-fresh { animation:recent-arrive 2.5s ease-out; }'

@@ -1924,11 +1924,19 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
     const steves = try getAs(a, io, port, steve_session, "/chat/recent");
     const newest = std.mem.indexOf(u8, tams.body, "href=\"" ++ dm_plans ++ "\"") orelse tams.body.len;
     const older = std.mem.indexOf(u8, tams.body, "href=\"" ++ channel_url ++ "\"") orelse 0;
-    try t.check("Recent: both topics, the newest message's first, each with its last author and words; a DM only for its humans, and no one's own DM", in_channel.status == 201 and in_dm.status == 201 and
+    const own_dm = "/chat/dm/1_1";
+    const self_notes = own_dm ++ "/self-notes";
+    const own_where = "<span class=\"recent-mark\"></span>DM with Steve <span class=\"you\">(you)</span></span>";
+    const own_at = std.mem.indexOf(u8, steves.body, "href=\"" ++ self_notes ++ "\"") orelse 0;
+    const steves_newest = std.mem.indexOf(u8, steves.body, "href=\"" ++ dm_plans ++ "\"") orelse steves.body.len;
+    try t.check("Recent: both topics, the newest message's first, each with its last author and words; a DM only for its humans; Steve's own DM's topics in his alone, after his newer DM with Tam, \"DM with Steve (you)\" by his own green dot", in_channel.status == 201 and in_dm.status == 201 and
         tams.status == 200 and newest < older and older < tams.body.len and
         has(tams.body, "<span class=\"recent-who\">Steve: </span>Steve in the DM") and has(tams.body, "<span class=\"recent-who\">You: </span>Tam in the channel") and
         umas.status == 200 and has(umas.body, "href=\"" ++ channel_url ++ "\"") and !has(umas.body, dm_plans) and
-        steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and !has(steves.body, dm_url ++ "\"") and
+        !has(tams.body, own_dm) and !has(umas.body, own_dm) and !has(tams.body, "(you)") and !has(umas.body, "(you)") and
+        has(steves.body, "<a class=\"recent-tile\" href=\"" ++ self_notes ++ "\" data-person=\"1\" data-presence=\"online\">") and
+        has(steves.body, own_where) and steves_newest < own_at and
+        steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and
         has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>"));
     // The stream carries the viewer's own key too, so a new topic's
     // topic-added comes by as well, which the Recent page ignores.
@@ -1954,6 +1962,13 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         has(first, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and
         std.mem.startsWith(u8, second, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ dm_plans ++ "\" data-person=\"2\" data-presence=\"online\">") and
         has(second, "<span class=\"recent-who\">You: </span>Steve in the DM"));
+    // A message in Steve's own DM is a tile on his Recent stream, as any
+    // other's is; its notice comes by too, since his own DM tells him.
+    const to_self = try postAs(a, io, port, steve_session, self_notes ++ "/send", "markdown=Recent+hears+me");
+    const own_tile = try live.expectEvent("event: tile\n", &.{ "event: topic-added\n", "event: message-notice\n" });
+    try t.check("Recent's stream: a message in Steve's own DM is sent to his open Recent page as its tile, \"DM with Steve (you)\" by his green dot", to_self.status == 201 and
+        std.mem.startsWith(u8, own_tile, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ self_notes ++ "\" data-person=\"1\" data-presence=\"online\">") and
+        has(own_tile, own_where) and has(own_tile, "<span class=\"recent-who\">You: </span>Recent hears me"));
     try searchSteps(a, io, port, t, .{ .tam = who.tam, .uma = who.uma, .dm_plans = dm_plans });
 }
 

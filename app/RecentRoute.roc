@@ -1,6 +1,7 @@
 ## This module answers Recent's route (`Route` lists it). `RecentFeed`
 ## decides what is shown; this module reads, for each conversation of each
-## place Recent lists, its transcript's last message
+## place Recent lists (Browse's, the reader's own DM among them), its
+## transcript's last message
 ## (`Transcript.latest_message`, which reads the last record alone), and
 ## answers. A conversation with no messages yet has no tile.
 ##
@@ -33,9 +34,9 @@ RecentRoute :: [].{
 	show! : { acting : SignedIn, directory : Directory } => Http.Response
 	show! = |{ acting, directory }|
 		match (acting.human_in_session(), Browse.places_for({ acting, directory })) {
-			(Ok(reader), Ok(listed)) => {
+			(Ok(reader), Ok(places)) => {
 				reader_id = reader.user().id()
-				places = RecentFeed.places_without_own_dm({ listed, reader: reader_id })
+
 				humans = directory.users().to_list().keep_oks(|user| user.as_human())
 				online_humans = PresenceNotices.load_online_humans!({
 					humans: humans.map(|human| human.id()),

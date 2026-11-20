@@ -1,14 +1,12 @@
 ## These are the tests of `RecentFeed`: which places Recent lists, each
 ## conversation's tile, and their order. `PageSpec` holds its page.
 import Author
-import Browse
 import ChannelName
 import ConversationKey
 import DateTime
 import Directory
 import RecentFeed
 import Sample
-import SignedIn
 import UnvalidatedString
 
 RecentFeedSpec :: [].{}
@@ -59,18 +57,38 @@ steves_tile = |{ path, label, author, time, markdown }|
 		online_humans: [Sample.user("Apoorva").id()],
 	})
 
-# Recent lists Browse's places but the reader's own DM: Steve's DM with
-# Apoorva and the channel `general`, and not his own.
+# Steve's own DM is a tile like any other (Steve, 2026-11-20: "For some
+# reason DMs to myself don't show up in Recent"): it names him, by his own
+# name, always online, and its place is "DM with" him, "(you)"
+# quiet, as Browse and the sidebar name it. His DM with Apoorva says her
+# name plain.
 expect {
-	listed = Browse.places_for({
-		acting: SignedIn.dangerously_assume(Sample.steve),
-		directory: Sample.with_default_channel(Sample.directory),
-	}) ?? []
-	RecentFeed.places_without_own_dm({ listed, reader: Sample.steve.id() }).map(
-		|place| ConversationKey.place_url_path(place.place),
-	)
-		== ["/chat/dm/1_2", "/chat/channel/general"]
+	own = steves_tile({
+		path: "/chat/dm/1_1/plans",
+		label: "Steve",
+		author: "Steve",
+		time: "2026-11-02T19:11:32Z",
+		markdown: "a note",
+	})
+	html = Str.from_utf8_lossy(RecentFeed.tile_html(own).to_utf8())
+	own.person == Person(Sample.steve.id(), Online)
+		and own.who == "You"
+		and html.contains("<span class=\"recent-mark\"></span>DM with Steve <span class=\"you\">(you)</span></span>")
+		and html.contains("<span class=\"recent-avatar\">S</span>")
+		and html.contains("data-person=\"1\" data-presence=\"online\"")
 }
+expect
+	Str.from_utf8_lossy(
+		RecentFeed.tile_html(
+			steves_tile({
+				path: "/chat/dm/1_2/plans",
+				label: "Apoorva",
+				author: "Apoorva",
+				time: "2026-11-02T19:11:32Z",
+				markdown: "",
+			}),
+		).to_utf8(),
+	).contains("<span class=\"recent-mark\"></span>DM with Apoorva</span>")
 
 # A tile: "You" for the viewer's own last message, else its author's name;
 # the excerpt from its markdown.

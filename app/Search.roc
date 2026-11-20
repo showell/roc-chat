@@ -6,7 +6,7 @@
 ## the messages that hold a word (`messages_for`), each as an excerpt with
 ## the word marked (`excerpt_of`). The words are `SearchWords`'.
 ##
-## The conversations searched are Recent's (`places_searched`): every place
+## The conversations searched are Browse's (`places_searched`): every place
 ## the human may read but their own DM. Messages are listed in the places'
 ## order, each place's topics in turn, each topic's messages in order; at
 ## most `most_messages` are listed, and no more than `most_answer_bytes` of
@@ -17,7 +17,6 @@ import ConversationKey
 import Directory
 import JsonOut
 import Message
-import RecentFeed
 import SearchWords
 import SignedIn
 import UserId
@@ -82,7 +81,7 @@ Search :: [].{
 	excerpt_pad : U64
 	excerpt_pad = 90
 
-	## The places `acting` searches in `directory`: Recent's, each place they
+	## The places `acting` searches in `directory`: Browse's, each place they
 	## may read but their own DM; unless they act by an API key, or are an
 	## agent, who don't search.
 	places_searched : { acting : SignedIn, directory : Directory } -> Try(
@@ -90,9 +89,8 @@ Search :: [].{
 		[ByApiKey, Agent(UserId)],
 	)
 	places_searched = |{ acting, directory }| {
-		reader = acting.human_in_session()?
 		listed = Browse.places_for({ acting, directory })?
-		Ok(RecentFeed.places_without_own_dm({ listed, reader: reader.user().id() }))
+		Ok(listed.drop_if(|listed_place| Browse.is_own_dm(listed_place.place, acting)))
 	}
 
 	## The words of the messages of `topics` that begin with `prefix`, at
