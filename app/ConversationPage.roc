@@ -382,7 +382,7 @@ compose_box = |key| {
 			Html.element({
 				name: P,
 				attributes: [PageContract.class(Help)],
-				inner: Escape.text("Markdown supported · :emoji: autocompletes · attach an image · Ctrl/⌘-Enter to send"),
+				inner: Escape.text("Markdown supported · :emoji: autocompletes · paste or Upload an image · Ctrl/⌘-Enter to send"),
 			}),
 		]),
 	})

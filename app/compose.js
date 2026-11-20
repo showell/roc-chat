@@ -199,7 +199,13 @@
   composeBody.appendChild(status);
   composeBody.appendChild(help);
   box.rows = 3;
-  box.placeholder = 'Write a message…  Markdown is supported, and longer posts are welcome.';
+  box.placeholder = 'Write a message…  Longer posts are welcome.';
+  // The help line names both platforms' send keys, as the server can't tell
+  // which one reads it; the script keeps only this one's.
+  var BOTH_KEYS = 'Ctrl/⌘-Enter';
+  if (help.textContent.indexOf(BOTH_KEYS) < 0) throw new Error('compose.js: the help line names no ' + BOTH_KEYS);
+  var onMac = /Mac|iPhone|iPad|iPod/.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+  help.textContent = help.textContent.replace(BOTH_KEYS, onMac ? '⌘-Enter' : 'Ctrl-Enter');
 
   messages.tabIndex = -1;
 
