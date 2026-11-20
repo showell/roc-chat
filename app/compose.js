@@ -81,8 +81,17 @@
   styleSheet.textContent = [
     '.compose-actions{display:flex;gap:8px}',
     '.compose-status{font-size:12px;color:var(--cc-error);min-height:16px;margin-top:6px}',
-    '.compose textarea{box-sizing:border-box;font-family:inherit;font-size:14px;padding:8px;' +
+    '.compose textarea{box-sizing:border-box;font-family:inherit;font-size:14px;padding:8px;border-radius:8px;' +
       'background:var(--cc-card-bg);color:var(--cc-fg);border:1px solid var(--cc-input-border)}',
+    '.compose textarea:focus{outline:none;border-color:var(--cc-accent);box-shadow:0 0 0 1px var(--cc-accent)}',
+    // Send is the primary action, in the accent; Upload is drawn as
+    // panel.js draws a page's buttons.
+    '.compose-actions button{font-family:inherit;font-size:13px;padding:4px 12px;border-radius:6px;cursor:pointer}',
+    '.compose-send{background:var(--cc-accent);color:var(--cc-bg);border:1px solid var(--cc-accent)}',
+    '.compose-send:hover:not(:disabled){background:var(--cc-accent-hover);border-color:var(--cc-accent-hover)}',
+    '.compose-upload{background:var(--cc-mine-bg);color:var(--cc-search-tok-fg);border:1px solid var(--cc-quote-border)}',
+    '.compose-upload:hover:not(:disabled){background:var(--cc-accent-soft-hov)}',
+    '.compose-actions button:disabled{opacity:.5;cursor:default}',
     '.compose .help{font-size:12px;color:var(--cc-soft-muted-fg)}',
 
     // A narrow window: the messages, then the compose box below them.
@@ -153,8 +162,10 @@
   actions.className = 'compose-actions';
   form.insertBefore(actions, send);
   actions.appendChild(send);
+  send.className = 'compose-send';
   var uploadButton = document.createElement('button');
   uploadButton.type = 'button';
+  uploadButton.className = 'compose-upload';
   uploadButton.textContent = 'Upload';
   actions.appendChild(uploadButton);
   var picker = document.createElement('input');
