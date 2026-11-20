@@ -11,7 +11,9 @@
 // never discarded: the button that opens it again then reads "Open compose
 // box (draft)". In a narrower
 // window, a phone's, the compose box is a bar below the messages, as
-// chat-client's was (js/chat_responsive.js): it starts open, its ▾ button
+// chat-client's was (js/chat_responsive.js): it starts open, but not focused,
+// so the phone's keyboard doesn't rise over the messages until a tap on the
+// box (or a quote) asks for it; its ▾ button
 // closes it to the "Open compose box" button, and the keyboard help and the
 // help line, which a phone has no keys for, are left out.
 //
@@ -303,7 +305,8 @@
   Keys.register({ key: 'c', label: 'compose', run: openCompose });
 
   if (isNarrow()) {
-    openCompose();
+    compose.classList.add('open');
+    messages.focus();
   } else {
     messages.focus();
   }
