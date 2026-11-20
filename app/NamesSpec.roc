@@ -1,8 +1,7 @@
 ## These are the tests of sign-up hardening's names and invites: a new
 ## human's name refused when reserved or a lookalike
 ## (`Directory.check_new_human_name`), a lapsed invitee's name freed
-## (`LapsedInvitee`, `Directory.release_humans`), and a human made by GitHub
-## sign-up kept from inviting (`HumanInvites.check_inviter_origin`).
+## (`LapsedInvitee`, `Directory.release_humans`).
 import Directory
 import HumanInvite
 import HumanInvites
@@ -219,25 +218,7 @@ expect {
 		and released.directory.check_new_human_name({ name: Sample.name("Zoe"), leaving: NoOne }) == Err(NameTooClose)
 }
 
-# ── Who may invite
-# The `sign-up` file: none is any other origin, `github` a GitHub sign-up,
-# anything else no origin.
-expect HumanInvites.origin_from_file(NoFile) == Ok(OtherOrigin)
-expect HumanInvites.origin_from_file(File("github".to_utf8())) == Ok(GitHubSignUp)
-expect HumanInvites.origin_from_file(File(" github\n".to_utf8())) == Ok(GitHubSignUp)
-expect [
-	"",
-	"GitHub",
-	"invite",
-	"githubx",
-].all(|text| HumanInvites.origin_from_file(File(text.to_utf8())) == Err(NotAnOrigin))
-expect HumanInvites.check_inviter_origin(GitHubSignUp) == Err(SignedUpByGitHub)
-expect HumanInvites.check_inviter_origin(OtherOrigin) == Ok({})
 # The refusals' statuses and words.
-expect HumanInvites.refusal_notice(SignedUpByGitHub) == {
-	status: 403,
-	said: HumanInvites.github_sign_up_words,
-}
 expect {
 	reserved = HumanInvites.refusal_notice(NameReserved)
 	too_close = HumanInvites.refusal_notice(NameTooClose)
@@ -245,26 +226,4 @@ expect {
 		and reserved.said.contains("reserved")
 		and too_close.status == 409
 		and too_close.said.contains("too close")
-}
-# The invites page of one who may not invite has no form, and says why.
-expect {
-	page = |may_invite|
-		Str.from_utf8_lossy(
-			PeoplePages.invites({
-				viewer: SignedIn.dangerously_assume(Sample.user("Apoorva")),
-				users: Sample.directory.users(),
-				invited: [],
-				github: Offered,
-				may_invite,
-				shown: NoLink,
-				problem: NoProblem,
-				now: Timestamp.at_second(0),
-			}).to_utf8(),
-		)
-	refused = page(MayNotInvite(HumanInvites.github_sign_up_words))
-	allowed = page(MayInvite)
-	!refused.contains("action=\"/invites\"")
-		and refused.contains("Accounts made by signing up with GitHub")
-		and !allowed.contains("Accounts made by signing up with GitHub")
-		and allowed.contains("action=\"/invites\"")
 }

@@ -190,7 +190,6 @@ HumanInvitesRoute :: [].{
 Failure : [
 	Refused(HumanInvites.Refusal),
 	BadInviter(UserId),
-	BadSignUp(UserId),
 	ClockOutOfRange,
 	FileSystem(FileFacts.Fault),
 ]
@@ -203,10 +202,6 @@ failure_notice = |why|
 		BadInviter(id) => {
 			status: 500,
 			said: "The inviter file of user ${id.to_str()} names no user.",
-		}
-		BadSignUp(id) => {
-			status: 500,
-			said: "The sign-up file of user ${id.to_str()} says no way of signing up.",
 		}
 		ClockOutOfRange => { status: 500, said: "The server's clock is out of range." }
 		FileSystem(fault) => { status: 500, said: FileFacts.fault_words(fault) }
@@ -243,7 +238,7 @@ answer_refused_invite! = |{ acting, directory, now, why }|
 				Err(_) => refusal_page(why)
 			}
 		}
-		BadInviter(_) | BadSignUp(_) | ClockOutOfRange | FileSystem(_) => refusal_page(why)
+		BadInviter(_) | ClockOutOfRange | FileSystem(_) => refusal_page(why)
 	}
 
 ## The invites page for `acting` at `now`, saying `problem`, with `shown`'s link
@@ -258,11 +253,7 @@ load_invites_page! : {
 } => Try(TrustedHtml, _)
 load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	_ = acting.human_in_session() ? |why| Refused(why)
-	may_invite =
-		match HumanInvites.check_inviter_origin(InviteRights.load_origin!(acting.user().id())?) {
-			Ok({}) => MayInvite
-			Err(SignedUpByGitHub) => MayNotInvite(HumanInvites.github_sign_up_words)
-		}
+	may_invite = MayInvite
 	var $invited = []
 	for user in humans_of(directory) {
 		inviter = InviteRights.load_inviter!(user.id())?
@@ -301,7 +292,6 @@ invite_human! = |
 		now,
 	},
 | {
-	InviteRights.check_may_invite!(acting)?
 	open = count_open_invites!(as_read, { by: acting.user().id(), now })?
 	planned =
 		match HumanInvites.name_from_form(body) {
@@ -352,7 +342,6 @@ invite_human_again! : {
 	now : Timestamp,
 } => Try(TrustedHtml, _)
 invite_human_again! = |{ acting, directory, human, origin, now }| {
-	InviteRights.check_may_invite!(acting)?
 	inviter = InviteRights.load_inviter!(human)?
 	open = count_open_invites!(directory, { by: acting.user().id(), now })?
 	again = HumanInvites.reinvite(directory, { acting, human, inviter, open }) ? |why| Refused(why)

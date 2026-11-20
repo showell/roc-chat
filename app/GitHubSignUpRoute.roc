@@ -16,7 +16,7 @@
 ##   sign-up refused (an id with an account already, a name refused) frees
 ##   nothing. Then that release is written, if any (the channels that held
 ##   them, then their `name-released`), then the counter of ids, then the new
-##   human's `Welcome`, then `github-id`, then `sign-up`, then `name`, then
+##   human's `Welcome`, then `github-id`, then `name`, then
 ##   the default channel's members, and last the sign-up's slot in the day's
 ##   window, all in one turn, so two submits can't both see
 ##   the id free or the last slot open. The welcome goes before the account,

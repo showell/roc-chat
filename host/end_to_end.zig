@@ -3101,9 +3101,8 @@ fn signInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, se
     return finishLink(a, io, port, fake, session, try startSignInAs(a, io, port, fake), code);
 }
 
-/// Steps 48zo to 48zt5: the welcome, one account per GitHub account, and
-/// the names and invites rules: a GitHub sign-up never invites (48zt1), a
-/// reserved or lookalike name is refused (48zt2), an expired invite frees its
+/// Steps 48zo, 48zt and 48zt2 to 48zt5: the welcome, one account per GitHub account, and
+/// the names rules: a reserved or lookalike name is refused (48zt2), an expired invite frees its
 /// name (48zt3), a request refused after its name is judged frees nothing
 /// (48zt4), and a release from a channel besides #general leaves every page
 /// answering (48zt5).
@@ -3222,18 +3221,7 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
         !has(failed_invite.body, "invite-code") and !odile_after_failure and retried_invite.status == 200 and has(retried_invite.body, "invite-code") and
         has(try readFile(a, io, data, try welcomeFile(a, blocked_invite + 1)), steve_words));
 
-    // 48zt1.
-    const noor_id = blocked_up + 1;
-    const noor = try cookieLine(a, noor_in);
-    const noor_page = try getAs(a, io, port, noor, "/invites");
     const before_noor = try nextId(a, io, data);
-    const noor_invites = try postAs(a, io, port, noor, "/invites", "name=Pia");
-    const noor_again = try postAs(a, io, port, noor, try std.fmt.allocPrint(a, "/invites/{d}/again", .{blocked_invite + 1}), "");
-    const no_github_words = "Accounts made by signing up with GitHub can";
-    try t.check("a human made by GitHub sign-up: their sign-up file says github; their invites page has no form, saying why; inviting or inviting again: 403, saying why, nothing made", std.mem.eql(u8, try readFile(a, io, data, try std.fmt.allocPrint(a, "auth/{d}/sign-up", .{noor_id})), "github") and
-        noor_page.status == 200 and !has(noor_page.body, "action=\"/invites\"") and has(noor_page.body, no_github_words) and
-        noor_invites.status == 403 and has(noor_invites.body, no_github_words) and !has(noor_invites.body, "invite-code") and noor_again.status == 403 and
-        try nextId(a, io, data) == before_noor and !(try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/human-invites/2", .{blocked_invite + 1}))));
 
     // 48zt2.
     const reserved_invite = try postAs(a, io, port, debbie, "/invites", "name=Admin");

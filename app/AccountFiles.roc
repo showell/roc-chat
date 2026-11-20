@@ -11,8 +11,7 @@
 ## name, and its file, written last, makes the folder an account. A human's
 ## password's bcrypt hash is in `password`, the GitHub account that may sign
 ## in as them in `github-id`, and what their sessions are signed over beside
-## it in `github-session-secret`. A human made by GitHub sign-up has
-## `sign-up`, holding `github`, which says they may not invite. An invited
+## it in `github-session-secret`. An invited
 ## human who never joined, whose name was freed for another
 ## (`LapsedInvitee`), has `name-released`, the second it was, and their
 ## folder is no account from then on. An agent's keys and invites
@@ -23,7 +22,6 @@ import FactFile
 import FileFacts
 import GitHubId
 import GitHubSessionWord
-import HumanInvites
 import PasswordHash
 import Timestamp
 import UserId
@@ -146,14 +144,6 @@ AccountFiles :: [].{
 	replace_account_name! = |user| {
 		folder = AccountFiles.account_folder_path(AccountFolder.of(user.id()))
 		FileFacts.replace_fact!("${folder}/${name_fact}", Users.account_facts(user).name)
-	}
-
-	## The `sign-up` file of the human `id`, as it is, or `NoFile` when they
-	## have none; unless the host's read failed.
-	read_sign_up_file! : UserId => Try([NoFile, File(List(U8))], [NotUtf8, PathRefused, Failed])
-	read_sign_up_file! = |id| {
-		folder = AccountFiles.account_folder_path(AccountFolder.of(id))
-		FileFacts.read_fact!("${folder}/${sign_up_fact}")
 	}
 
 	## The user `id`'s `name-released` file made, once, holding `now`'s
@@ -317,11 +307,6 @@ password_path = |id| "${AccountFiles.account_folder_path(AccountFolder.of(id))}/
 ## account.
 name_fact : Str
 name_fact = "name"
-
-## The fact file that says how a human's account was made, when it was by
-## GitHub sign-up.
-sign_up_fact : Str
-sign_up_fact = "sign-up"
 
 ## The fact file whose making makes a lapsed invitee's folder no account.
 name_released_fact : Str

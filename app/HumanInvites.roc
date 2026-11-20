@@ -13,9 +13,6 @@
 ##   was never invited, is not.
 ## - A human has at most `open_most` open invites at once, counting every
 ##   invite they made that is live and unexpired.
-## - A human whose account was made by GitHub sign-up never invites
-##   (`check_inviter_origin`): sign-up is open, so an invite from them
-##   would let anyone make accounts with no GitHub behind them.
 ## - A new human's name, the inviter's choice or the invitee's, is held to
 ##   `Directory.check_new_human_name`: free in any case, not reserved, and
 ##   not one that looks like a name the chat holds.
@@ -33,7 +30,6 @@ import Admin
 import Agents
 import Channels
 import Directory
-import FactFile
 import HumanInvite
 import Name
 import Password
@@ -59,7 +55,6 @@ HumanInvites :: [].{
 		NameTaken,
 		NameReserved,
 		NameTooClose,
-		SignedUpByGitHub,
 		Full,
 		SignUpsPaused,
 		NoDefaultChannel,
@@ -106,7 +101,6 @@ HumanInvites :: [].{
 				status: 409,
 				said: "The name is too close to one the chat already has: it could be mistaken for it. Choose another.",
 			}
-			SignedUpByGitHub => { status: 403, said: HumanInvites.github_sign_up_words }
 			Full => { status: 409, said: "The chat holds as many as it can." }
 			SignUpsPaused => { status: 503, said: SignUpLimits.paused_words }
 			NoDefaultChannel => {
@@ -129,43 +123,6 @@ HumanInvites :: [].{
 				status: 409,
 				said: "Your name is chosen already, and stays as it is: join under it.",
 			}
-		}
-
-	## Why a human who signed up by GitHub can't invite, as the refusal and
-	## the invites page say it.
-	github_sign_up_words : Str
-	github_sign_up_words = "Accounts made by signing up with GitHub can't invite people. Anyone with GitHub can sign up on their own; an invite is for someone without GitHub, so it comes from someone the chat let in."
-
-	## How a human's account was made, as far as inviting goes: by GitHub
-	## sign-up (`GitHubSignUp`), or any other way (`OtherOrigin`: an invite,
-	## the first start, or by hand).
-	AccountMaking : [GitHubSignUp, OtherOrigin]
-
-	## The origin a human's `sign-up` file says: none, `OtherOrigin`; the word
-	## `github`, `GitHubSignUp`; anything else is no origin.
-	origin_from_file : [NoFile, File(List(U8))] -> Try(HumanInvites.AccountMaking, [NotAnOrigin])
-	origin_from_file = |file|
-		match file {
-			NoFile => Ok(OtherOrigin)
-			File(bytes) =>
-				if FactFile.word_from_file(bytes) == HumanInvites.github_sign_up_word {
-					Ok(GitHubSignUp)
-				} else {
-					Err(NotAnOrigin)
-				}
-		}
-
-	## What a GitHub sign-up's `sign-up` file holds.
-	github_sign_up_word : List(U8)
-	github_sign_up_word = "github".to_utf8()
-
-	## Whether a human whose account was made as `origin` may invite anyone,
-	## or invite anyone again: never one made by GitHub sign-up.
-	check_inviter_origin : HumanInvites.AccountMaking -> Try({}, [SignedUpByGitHub])
-	check_inviter_origin = |origin|
-		match origin {
-			GitHubSignUp => Err(SignedUpByGitHub)
-			OtherOrigin => Ok({})
 		}
 
 	## The most open invites one human may have at once.
