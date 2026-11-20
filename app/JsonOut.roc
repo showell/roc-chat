@@ -1,5 +1,5 @@
 ## This module builds JSON; nothing else writes it. A value is made only by
-## its builders (`string`, `zero`, `json_object`), so every field of every
+## its builders (`string`, `zero`, `number`, `array`, `json_object`), so every field of every
 ## answer is a whole value, escaped: no quote in a name ends a string, and
 ## no text becomes a field. The type is opaque, and `bytes` is its only way
 ## out; `HttpAnswer.json` is the only taker of a whole answer. It writes no
@@ -41,6 +41,11 @@ JsonOut :: List(U8).{
 	## A number, its decimal digits: a message's id in an agent's stream.
 	number : U64 -> JsonOut
 	number = |value| JsonOut.(value.to_str().to_utf8())
+
+	## The values in order: `[value,...]`, as search's answers list words
+	## and messages.
+	array : List(JsonOut) -> JsonOut
+	array = |values| JsonOut.([['['], commas(values.map(JsonOut.bytes)), [']']].join())
 
 	## The fields in order, each a name and a value: `{"name":value,...}`.
 	## A name is escaped as a string is.
@@ -103,6 +108,8 @@ expect
 	]).bytes()
 		== "{\"name\":\"Bea \\\"B\\\" \\\\ \\u0001\",\"n\":0}".to_utf8()
 expect JsonOut.json_object([]).bytes() == "{}".to_utf8()
+expect JsonOut.array([]).bytes() == "[]".to_utf8()
+expect JsonOut.array([JsonOut.zero, JsonOut.string("a")]).bytes() == "[0,\"a\"]".to_utf8()
 # A field's name is escaped too, and an object nests.
 expect
 	JsonOut.json_object([("a\"b", JsonOut.json_object([("c", JsonOut.zero)]))]).bytes()

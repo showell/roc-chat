@@ -34,6 +34,7 @@ import RecentRoute
 import RequestOrigin
 import ResumeRoute
 import Route
+import SearchRoute
 import SignInRoute
 import SignedIn
 import UnvalidatedString
@@ -104,7 +105,7 @@ access_asked = |asked|
 		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
 		ShowRecent => AsksNoConversation
-		OpenRecentStream => AsksNoConversation
+		OpenRecentStream | SearchEveryTopic(_) => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
 		InviteAgent(_) => AsksNoConversation
@@ -286,6 +287,7 @@ answer_route! = |{ asked, request, directory, acting }|
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
 		ShowRecent => RecentRoute.show!({ acting, directory })
 		OpenRecentStream => RecentRoute.open_stream(acting)
+		SearchEveryTopic(asked_of) => SearchRoute.serve!({ asked_of, acting, directory, request })
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>

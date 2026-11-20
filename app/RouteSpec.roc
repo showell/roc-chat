@@ -33,6 +33,8 @@ chosen_route = |method, path|
 		SignedInOnly(ShowBrowse) => "browse"
 		SignedInOnly(ShowRecent) => "recent"
 		SignedInOnly(OpenRecentStream) => "recent's stream"
+		SignedInOnly(SearchEveryTopic(Words)) => "search's words"
+		SignedInOnly(SearchEveryTopic(Messages)) => "search's messages"
 		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
 		SignedInOnly(AppendToConversation(key)) => "append ${key.url_path(Page)}"
@@ -118,6 +120,19 @@ expect chosen_route("POST", "/chat/recent".to_utf8()) == "not allowed: GET"
 expect chosen_route("PUT", "/chat/recent".to_utf8()) == "not allowed: GET"
 expect
 	["/chat/recent/", "/chat/Recent", "/chat/recents", "/chat/recent/stream/"].all(
+		|path| chosen_route("GET", path.to_utf8()) == "not found",
+	)
+# Search's two questions: GET alone, and exactly their paths.
+expect chosen_route("GET", "/chat/search/words".to_utf8()) == "search's words"
+expect chosen_route("GET", "/chat/search/messages".to_utf8()) == "search's messages"
+expect
+	["POST", "PUT"].all(
+		|method|
+			chosen_route(method, "/chat/search/words".to_utf8()) == "not allowed: GET"
+				and chosen_route(method, "/chat/search/messages".to_utf8()) == "not allowed: GET",
+	)
+expect
+	["/chat/search", "/chat/search/", "/chat/search/word", "/chat/search/words/", "/chat/Search/messages"].all(
 		|path| chosen_route("GET", path.to_utf8()) == "not found",
 	)
 # A new topic: POST alone, to a place that exists.

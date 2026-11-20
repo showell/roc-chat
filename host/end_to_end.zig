@@ -1620,6 +1620,26 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         has(first, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and
         std.mem.startsWith(u8, second, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ dm_plans ++ "\">") and
         has(second, "<span class=\"recent-who\">You: </span>Steve in the DM"));
+    try searchSteps(a, io, port, t, .{ .tam = who.tam, .uma = who.uma, .dm_plans = dm_plans });
+}
+
+/// Step 59: search, after Recent's posts: each human finds only what they
+/// may read, a key is refused, and a burst of searches meets the limit.
+fn searchSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { tam: []const u8, uma: []const u8, dm_plans: []const u8 }) !void {
+    const tams_words = try getAs(a, io, port, who.tam, "/chat/search/words?prefix=ST");
+    const tams = try getAs(a, io, port, who.tam, "/chat/search/messages?word=steve");
+    const umas = try getAs(a, io, port, who.uma, "/chat/search/messages?word=steve");
+    const page = try std.fmt.allocPrint(a, "\"page\":\"{s}\"", .{who.dm_plans});
+    try t.check("search: Tam is suggested `steve` and finds Steve's message in their DM, marked; Uma, in no DM with Steve, doesn't find it", tams_words.status == 200 and
+        has(tams_words.body, "{\"prefix\":\"st\",\"most\":20,\"unreadable\":0,\"words\":[") and has(tams_words.body, "{\"word\":\"steve\",\"count\":") and
+        tams.status == 200 and has(tams.body, page) and has(tams.body, "\"mark\":\"Steve\",\"after\":\" in the DM\"") and
+        umas.status == 200 and has(umas.body, "\"word\":\"steve\"") and !has(umas.body, page));
+    const anonymous = try anonymousGet(a, io, port, "/chat/search/words?prefix=st");
+    var refused: usize = 0;
+    for (0..16) |_| {
+        if ((try getAs(a, io, port, who.uma, "/chat/search/words?prefix=ta")).status == 429) refused += 1;
+    }
+    try t.check("search: no one is a 401; sixteen searches at once meet the limit of five a second, a 429", anonymous.status == 401 and refused > 0);
 }
 
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and

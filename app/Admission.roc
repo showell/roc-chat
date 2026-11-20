@@ -113,6 +113,7 @@ upload_asked = |choice|
 		SignedInOnly(ShowBrowse) => NoUpload
 		SignedInOnly(ShowRecent) => NoUpload
 		SignedInOnly(OpenRecentStream) => NoUpload
+		SignedInOnly(SearchEveryTopic(_)) => NoUpload
 		SignedInOnly(StartTopic(_)) => NoUpload
 		SignedInOnly(ShowConversation(_)) => NoUpload
 		SignedInOnly(AppendToConversation(_)) => NoUpload

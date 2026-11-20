@@ -25,7 +25,7 @@ AnonymousRefusal :: [].{
 			StartGitHubLink => unauthorized_refusal
 			ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
 			ShowRecent => SignInRoute.login_redirect(site_path_of(PageKit.recent_path))
-			OpenRecentStream => unauthorized_refusal
+			OpenRecentStream | SearchEveryTopic(_) => unauthorized_refusal
 			StartTopic(_) => unauthorized_refusal
 			ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 			ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))

@@ -46,6 +46,7 @@ asks_full_session = |choice|
 		SignedInOnly(ShowBrowse) => Bool.False
 		SignedInOnly(ShowRecent) => Bool.False
 		SignedInOnly(OpenRecentStream) => Bool.False
+		SignedInOnly(SearchEveryTopic(_)) => Bool.False
 		SignedInOnly(StartTopic(_)) => Bool.False
 		SignedInOnly(ShowConversation(_)) => Bool.False
 		SignedInOnly(AppendToConversation(_)) => Bool.False

@@ -5,6 +5,11 @@
 --
 --   shale tools/bench_recent.shale topics=250 messages=60
 --
+-- `path=` times another page on the same data, a search's question with
+-- its query (on stdin, with `--args-stdin`, for its `?` and `=`):
+-- `path=/chat/search/messages?word=words`, every message holding the word.
+-- `times` stays under search's limit of five a second.
+--
 -- `topics` are spread over 4 channels and 2 DMs, each topic's transcript
 -- `messages` messages of about 150 bytes. The data root is
 -- .zig-cache/bench-recent/data (removed first, and kept after, to look
@@ -18,6 +23,7 @@ local topics = arg("topics", 250)
 local messages = arg("messages", 60)
 local times = arg("times", 5)
 local port = arg("port", 9655)
+local path = arg("path", "/chat/recent")
 local data = ".zig-cache/bench-recent/data"
 
 must(run({"zig", "build", "-Doptimize=ReleaseSafe", "--prefix", OUT}, {timeout_ms = 900000, tail = 20, nice = 10}))
@@ -85,11 +91,11 @@ local cookie = re_find(signed.headers["set-cookie"], "^[^;]+").text
 local timings = {}
 local size = ""
 for n = 1, times do
-  local r = must(run({"curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{size_download} %{time_total}", "-H", "Cookie: " .. cookie, base .. "/chat/recent"}, {timeout_ms = 60000, whole = 200}))
+  local r = must(run({"curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{size_download} %{time_total}", "-H", "Cookie: " .. cookie, base .. path}, {timeout_ms = 60000, whole = 200}))
   local parts = words(r.out)
-  if parts[1] ~= "200" then fail("bench: GET /chat/recent answered " .. r.out) end
+  if parts[1] ~= "200" then fail("bench: GET " .. path .. " answered " .. r.out) end
   size = parts[2]
   push(timings, parts[3])
 end
-print("GET /chat/recent: " .. size .. " bytes; seconds: " .. join(timings, " "))
+print("GET " .. path .. ": " .. size .. " bytes; seconds: " .. join(timings, " "))
 job_stop(job)
