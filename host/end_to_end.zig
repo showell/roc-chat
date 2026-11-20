@@ -1587,7 +1587,7 @@ fn presenceSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, uma: []const
     const next = try stream.event();
     const after = try getAs(a, io, port, steve_session, dm);
     try t.check("presence: her next page tells no one: Steve's next event is his own message; his page now draws her online", again.status == 200 and said.status == 201 and
-        std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and !has(again.body, "data-person=\"3\""));
+        std.mem.startsWith(u8, next, "id: 2\ndata: <article") and has(after.body, here) and has(again.body, "data-section=\"/chat/dm/3_3\" data-opening=\"collapsed\">"));
     try t.check("presence: the line above his DM with her now says, as it is drawn, \"Uma is online.\"", has(after.body, "<p class=\"notice-strip\">Uma is online.</p>"));
 }
 

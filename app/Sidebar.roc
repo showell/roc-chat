@@ -81,7 +81,10 @@ Sidebar :: [].{
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
 		drawn = |ordered| place_section({ ordered, current, people, rosters })
-		channels = group_section({ group: Channels, places: in_order.keep_if(is_channel).map(drawn) })
+		channels = group_section({
+			group: Channels,
+			places: in_order.keep_if(is_channel).map(drawn),
+		})
 		dms = group_section({ group: Dms, places: in_order.drop_if(is_channel).map(drawn) })
 		groups =
 			match current.place().which() {
@@ -234,7 +237,11 @@ place_section = |{ ordered, current, people, rosters }| {
 ## The members of the channel `place`, as its roster among `rosters` orders
 ## them, each a row naming them and, when they posted lately, its words;
 ## nothing for a DM.
-members_list : { place : Place, rosters : List(ChannelRoster.Roster), people : People } -> TrustedHtml
+members_list : {
+	place : Place,
+	rosters : List(ChannelRoster.Roster),
+	people : People,
+} -> TrustedHtml
 members_list = |{ place, rosters, people }|
 	match rosters.find_first(|roster| roster.place == place) {
 		Err(NotFound) => TrustedHtml.join([])
@@ -246,7 +253,9 @@ members_list = |{ place, rosters, people }|
 					inner: TrustedHtml.join(
 						List.concat(
 							[PageKit.newline],
-							roster.rows.map(|row| TrustedHtml.join([member_row(row, people), PageKit.newline])),
+							roster.rows.map(
+								|row| TrustedHtml.join([member_row(row, people), PageKit.newline]),
+							),
 						),
 					),
 				}),
@@ -254,26 +263,28 @@ members_list = |{ place, rosters, people }|
 			])
 	}
 
-## One member's row: their name, and when they posted lately.
+## One member's row: their name, and when they posted lately. A human says
+## whether they are online, but the viewer, as their own DM does not.
 member_row : ChannelRoster.Row, People -> TrustedHtml
 member_row = |row, people| {
 	who = PageContract.data_attribute(Person(PageKit.token(row.id.to_str())))
 	attributes =
 		match row.kind {
-			Human(dm) => [
-				who,
-				PageContract.data_attribute(Kind(Human)),
-				PageContract.data_attribute(
-					Presence(
-						if people.online_humans.contains(row.id) {
-							Online
-						} else {
-							Offline
-						},
-					),
-				),
-				PageContract.data_attribute(Section(PageKit.site_path(ConversationKey.place_url_path(dm)))),
-			]
+			Human(dm) => {
+				dm_path = PageKit.site_path(ConversationKey.place_url_path(dm))
+				presence =
+					if row.id == people.viewer {
+						[]
+					} else if people.online_humans.contains(row.id) {
+						[PageContract.data_attribute(Presence(Online))]
+					} else {
+						[PageContract.data_attribute(Presence(Offline))]
+					}
+				List.concat(
+					[who, PageContract.data_attribute(Kind(Human))],
+					presence.append(PageContract.data_attribute(Section(dm_path))),
+				)
+			}
 			Agent => [who, PageContract.data_attribute(Kind(Agent))]
 		}
 	words =

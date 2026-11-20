@@ -72,15 +72,12 @@ ChannelRoster :: [].{
 		channel : Channels.Channel,
 		users : Users,
 		viewer : Users.Human,
-		posts : List(Transcript.Post),
+		posts : List(Transcript.Byline),
 		now : Timestamp,
 	} -> ChannelRoster.Roster
 	roster = |{ channel, users, viewer, posts, now }| {
 		members = channel.members().keep_oks(|id| users.user(id))
-		{
-			place: Place.channel(channel),
-			rows: ChannelRoster.rows({ members, viewer, posts, now }),
-		}
+		{ place: Place.channel(channel), rows: ChannelRoster.rows({ members, viewer, posts, now }) }
 	}
 
 	## `members` in the card's order at `now`: those with a post among
@@ -89,7 +86,7 @@ ChannelRoster :: [].{
 	rows : {
 		members : List(Users.User),
 		viewer : Users.Human,
-		posts : List(Transcript.Post),
+		posts : List(Transcript.Byline),
 		now : Timestamp,
 	} -> List(ChannelRoster.Row)
 	rows = |{ members, viewer, posts, now }| {
@@ -104,9 +101,18 @@ ChannelRoster :: [].{
 				),
 			},
 		)
-		posted = timed.keep_if(|one| one.last != NotLately).sort_with(by_latest)
-		quiet = timed.keep_if(|one| one.last == NotLately).sort_with(|one, other| by_name(one.member, other.member))
-		List.concat(posted, quiet).map(|one| row({ member: one.member, last: one.last, viewer, now }))
+		posted = timed.keep_if(|one| one.last != NotLately).sort_with(latest_order)
+		quiet = timed.keep_if(|one| one.last == NotLately).sort_with(
+			|one, other| name_order(one.member, other.member),
+		)
+		List.concat(posted, quiet).map(
+			|one| row({
+				member: one.member,
+				last: one.last,
+				viewer,
+				now,
+			}),
+		)
 	}
 
 	## How long ago `quiet` is, as a member's words say: "posted just now"
@@ -133,24 +139,31 @@ later = |so_far, time|
 	}
 
 ## Latest first, then by name.
-by_latest : { member : Users.User, last : Last }, { member : Users.User, last : Last } -> [Before, Same, After]
-by_latest = |one, other|
+latest_order : {
+	member : Users.User,
+	last : Last,
+},
+{ member : Users.User, last : Last } -> [Before, Same, After]
+latest_order = |one, other|
 	match (one.last, other.last) {
 		(At(one_time), At(other_time)) =>
 			match DateTime.compare(one_time, other_time) {
 				After => Before
 				Before => After
-				Same => by_name(one.member, other.member)
+				Same => name_order(one.member, other.member)
 			}
-		_ => by_name(one.member, other.member)
+		_ => name_order(one.member, other.member)
 	}
 
 ## By name, in any case of ASCII's letters, then as written.
-by_name : Users.User, Users.User -> [Before, Same, After]
-by_name = |one, other| {
+name_order : Users.User, Users.User -> [Before, Same, After]
+name_order = |one, other| {
 	one_name = one.name().to_str()
 	other_name = other.name().to_str()
-	match byte_order(one_name.with_ascii_lowercased().to_utf8(), other_name.with_ascii_lowercased().to_utf8()) {
+	match byte_order(
+		one_name.with_ascii_lowercased().to_utf8(),
+		other_name.with_ascii_lowercased().to_utf8(),
+	) {
 		Same => byte_order(one_name.to_utf8(), other_name.to_utf8())
 		order => order
 	}
@@ -175,7 +188,12 @@ byte_order = |bytes, others|
 	}
 
 ## `member`'s row for `viewer` at `now`, posted lately at `last`.
-row : { member : Users.User, last : Last, viewer : Users.Human, now : Timestamp } -> ChannelRoster.Row
+row : {
+	member : Users.User,
+	last : Last,
+	viewer : Users.Human,
+	now : Timestamp,
+} -> ChannelRoster.Row
 row = |{ member, last, viewer, now }| {
 	kind =
 		match member.as_human() {
@@ -187,5 +205,10 @@ row = |{ member, last, viewer, now }| {
 			At(time) => Posted(ChannelRoster.words(now.seconds_since(time.to_timestamp())))
 			NotLately => NotLately
 		}
-	{ id: member.id(), name: member.name().to_str(), kind, posted }
+	{
+		id: member.id(),
+		name: member.name().to_str(),
+		kind,
+		posted,
+	}
 }

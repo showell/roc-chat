@@ -385,7 +385,7 @@ expect {
 			rosters: [roster],
 		}).to_utf8(),
 	)
-	members = "<ul class=\"sidebar-members\">\n<li data-person=\"3\" data-kind=\"agent\"><span class=\"sidebar-member-name\">CC</span><span class=\"sidebar-member-words\">posted 2 hours ago</span></li>\n<li data-person=\"2\" data-kind=\"human\" data-presence=\"online\" data-section=\"/chat/dm/1_2\"><span class=\"sidebar-member-name\">Apoorva</span></li>\n<li data-person=\"1\" data-kind=\"human\" data-presence=\"offline\" data-section=\"/chat/dm/1_1\"><span class=\"sidebar-member-name\">Steve</span></li>\n</ul>\n"
+	members = "<ul class=\"sidebar-members\">\n<li data-person=\"3\" data-kind=\"agent\"><span class=\"sidebar-member-name\">CC</span><span class=\"sidebar-member-words\">posted 2 hours ago</span></li>\n<li data-person=\"2\" data-kind=\"human\" data-presence=\"online\" data-section=\"/chat/dm/1_2\"><span class=\"sidebar-member-name\">Apoorva</span></li>\n<li data-person=\"1\" data-kind=\"human\" data-section=\"/chat/dm/1_1\"><span class=\"sidebar-member-name\">Steve</span></li>\n</ul>\n"
 	shown.contains("<ul class=\"sidebar-topics\">\n</ul>\n${members}<form method=\"post\" action=\"/chat/channel/general\">")
 		and shown.split_on("sidebar-members").len() == 2
 }

@@ -53,6 +53,8 @@ import pf.Http
 import Actor
 import Admission
 import Browse
+import ChannelRoster
+import Channels
 import Conversation
 import ConversationKey
 import ConversationPage
@@ -65,6 +67,7 @@ import Reactions
 import RequestOrigin
 import Route
 import SignedIn
+import Timestamp
 import Topic
 import Transcript
 import TranscriptRefusal
@@ -132,8 +135,11 @@ demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner(
 ## The demo's sidebar: the founder's places at the first start, each with
 ## no topics of its own, so the page's own topic is its place's one, and
 ## none with a message, so `SidebarOrder` puts the page's place first and
-## the rest in Browse's order, collapsed; and no channel's members, as the
-## demo reads no transcript to order them by (`ChannelRoster`).
+## the rest in Browse's order, collapsed; and `general`'s members, the
+## founder alone, with no post lately: the demo's transcript is older than
+## any window the live server's clock now gives, so a server serving it
+## draws the same (the end to end holds the two alike). With no posts, the
+## roster's clock decides nothing, so the epoch stands in for it.
 demo_sidebar : ConversationPage.SidebarShown
 demo_sidebar = {
 	listed =
@@ -143,7 +149,16 @@ demo_sidebar = {
 		places: listed.map(|{ label, place }| { label, place, topics: [] }),
 		online_humans: [],
 		notice: NoNotice,
-		rosters: [],
+		rosters: [
+			ChannelRoster.roster({
+				channel: FirstStart.first_directory.channels().channel(Channels.default_name)
+					?? crash "main.demo_sidebar: the first start makes general",
+				users: FirstStart.first_directory.users(),
+				viewer: FirstStart.first_directory.chat_owner(),
+				posts: [],
+				now: Timestamp.at_second(0),
+			}),
+		],
 	})
 }
 

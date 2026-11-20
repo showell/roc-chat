@@ -366,7 +366,12 @@ expect
 ## The latest posts of `authors` in `text`, a transcript file's, from
 ## `since` on and among its last `most`, as a test reads them: each author
 ## and time.
-latest_posts_of : Str, { authors : List(Str), most : U64, since : Str } -> Try(List(Str), [Unreadable])
+latest_posts_of : Str,
+{
+	authors : List(Str),
+	most : U64,
+	since : Str,
+} -> Try(List(Str), [Unreadable])
 latest_posts_of = |text, { authors, most, since }|
 	Transcript.latest_posts(
 		Transcript.Utf8Transcript.unchecked_from_file(text.to_utf8()),
@@ -379,24 +384,32 @@ latest_posts_of = |text, { authors, most, since }|
 
 ## Four messages: Steve's hello, Apoorva's (holding a separator), CC's
 ## reply, then Steve again.
-four : Str
-four = Transcript.write(
+mixed_transcript : Str
+mixed_transcript = Transcript.write(
 	Sample.conversation(
 		Sample.plans,
 		[
 			Sample.hello,
-			Sample.unnumbered_message({ author: "Apoorva", time: "2026-11-02T19:12:00Z", markdown: "a\n-------------\nb" }),
+			Sample.unnumbered_message({
+				author: "Apoorva",
+				time: "2026-11-02T19:12:00Z",
+				markdown: "a\n-------------\nb",
+			}),
 			Sample.reply,
-			Sample.unnumbered_message({ author: "Steve", time: "2026-11-02T19:13:00Z", markdown: "again" }),
+			Sample.unnumbered_message({
+				author: "Steve",
+				time: "2026-11-02T19:13:00Z",
+				markdown: "again",
+			}),
 		],
 	),
 )
 
-## Everyone who writes in `four`.
-all_three : List(Str)
-all_three = ["Steve", "Apoorva", "CC"]
+## Everyone who writes in `mixed_transcript`.
+writers : List(Str)
+writers = ["Steve", "Apoorva", "CC"]
 
-## Before any of `four`.
+## Before any of `mixed_transcript`.
 early : Str
 early = "2026-11-01T00:00:00Z"
 
@@ -404,30 +417,98 @@ early = "2026-11-01T00:00:00Z"
 # second, never his first; a separator in a body never taken for a
 # record's start.
 expect
-	latest_posts_of(four, { authors: all_three, most: 10, since: early })
-		== Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
+	latest_posts_of(
+		mixed_transcript,
+		{
+			authors: writers,
+			most: 10,
+			since: early,
+		},
+	)
+		== Ok([
+			"Steve 2026-11-02T19:13:00Z",
+			"CC 2026-11-02T19:12:28Z",
+			"Apoorva 2026-11-02T19:12:00Z",
+		])
 # Only the authors asked for; the walk stops once each is found, so a bad
 # record before them is never read.
 expect
 	latest_posts_of(
-		"garbage\n${four}",
-		{ authors: ["CC"], most: 10, since: early },
+		"garbage\n${mixed_transcript}",
+		{
+			authors: ["CC"],
+			most: 10,
+			since: early,
+		},
 	)
 		== Ok(["CC 2026-11-02T19:12:28Z"])
-expect latest_posts_of(four, { authors: ["Bob"], most: 10, since: early }) == Ok([])
-expect latest_posts_of(four, { authors: [], most: 10, since: early }) == Ok([])
+expect latest_posts_of(
+	mixed_transcript,
+	{
+		authors: ["Bob"],
+		most: 10,
+		since: early,
+	},
+) == Ok([])
+expect latest_posts_of(mixed_transcript, { authors: [], most: 10, since: early }) == Ok([])
 # Among the last `most` records, whoever wrote them; none for an empty file.
-expect latest_posts_of(four, { authors: all_three, most: 2, since: early }) == Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z"])
-expect latest_posts_of(four, { authors: all_three, most: 0, since: early }) == Ok([])
-expect latest_posts_of("", { authors: all_three, most: 10, since: early }) == Ok([])
+expect latest_posts_of(
+	mixed_transcript,
+	{
+		authors: writers,
+		most: 2,
+		since: early,
+	},
+) == Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z"])
+expect latest_posts_of(
+	mixed_transcript,
+	{
+		authors: writers,
+		most: 0,
+		since: early,
+	},
+) == Ok([])
+expect latest_posts_of(
+	"",
+	{
+		authors: writers,
+		most: 10,
+		since: early,
+	},
+) == Ok([])
 # From `since` on: a post at it counts, the first before it stops the walk.
 expect
-	latest_posts_of(four, { authors: all_three, most: 10, since: "2026-11-02T19:12:00Z" })
-		== Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
+	latest_posts_of(
+		mixed_transcript,
+		{
+			authors: writers,
+			most: 10,
+			since: "2026-11-02T19:12:00Z",
+		},
+	)
+		== Ok([
+			"Steve 2026-11-02T19:13:00Z",
+			"CC 2026-11-02T19:12:28Z",
+			"Apoorva 2026-11-02T19:12:00Z",
+		])
 expect
-	latest_posts_of(four, { authors: all_three, most: 10, since: "2026-11-02T19:12:01Z" })
+	latest_posts_of(
+		mixed_transcript,
+		{
+			authors: writers,
+			most: 10,
+			since: "2026-11-02T19:12:01Z",
+		},
+	)
 		== Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z"])
 # A record read that is not one this module writes is refused.
 expect
-	latest_posts_of("-------------\nMSG_plans_1\nfrom: Steve\n\nHello\n\n", { authors: all_three, most: 10, since: early })
+	latest_posts_of(
+		"-------------\nMSG_plans_1\nfrom: Steve\n\nHello\n\n",
+		{
+			authors: writers,
+			most: 10,
+			since: early,
+		},
+	)
 		== Err(Unreadable)

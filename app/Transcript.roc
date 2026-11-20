@@ -145,7 +145,7 @@ Transcript :: [].{
 	}
 
 	## Who wrote a message of a transcript, and when; its markdown unread.
-	Post : { author : Author, time : DateTime }
+	Byline : { author : Author, time : DateTime }
 
 	## The latest post of each of `authors` among the transcript's last
 	## `most` messages, newest first, read back from its end a record at a
@@ -160,37 +160,53 @@ Transcript :: [].{
 		authors : List(Author),
 		most : U64,
 		since : DateTime,
-	} -> Try(List(Transcript.Post), [Unreadable])
+	} -> Try(List(Transcript.Byline), [Unreadable])
 	latest_posts = |Transcript.Utf8Transcript.(bytes), { authors, most, since }|
-		posts_before({ bytes, end: bytes.len(), left: most, since, wanted: authors, so_far: [] })
+		posts_before({
+			bytes,
+			end: bytes.len(),
+			left: most,
+			since,
+			wanted: authors,
+			found_posts: [],
+		})
 }
 
 ## The latest posts of `wanted` before `end` of `bytes`, newest first, after
-## `so_far`: from at most `left` more records, none written before `since`.
+## `found_posts`: from at most `left` more records, none written before `since`.
 posts_before : {
 	bytes : List(U8),
 	end : U64,
 	left : U64,
 	since : DateTime,
 	wanted : List(Author),
-	so_far : List(Transcript.Post),
-} -> Try(List(Transcript.Post), [Unreadable])
-posts_before = |{ bytes, end, left, since, wanted, so_far }|
+	found_posts : List(Transcript.Byline),
+} -> Try(List(Transcript.Byline), [Unreadable])
+posts_before = |
+	{
+		bytes,
+		end,
+		left,
+		since,
+		wanted,
+		found_posts,
+	},
+|
 	if end == 0 or left == 0 or wanted.is_empty() {
-		Ok(so_far)
+		Ok(found_posts)
 	} else {
 		opening = "${Separator.line}\n".to_utf8()
-		marker_len = "\n${Separator.line}\n".to_utf8().len()
+		marker_length = "\n${Separator.line}\n".to_utf8().len()
 		bounds =
 			match last_record_start({ bytes, at: end }) {
-				Found(at) => Ok({ start: at, before: at - marker_len + 1 })
+				Found(at) => Ok({ start: at, before: at - marker_length + 1 })
 				NoneFound if bytes.starts_with(opening) => Ok({ start: opening.len(), before: 0 })
 				NoneFound => Err(Unreadable)
 			}
 		{ start, before } = bounds?
 		post = post_from_record(bytes.sublist({ start, len: end - start }))?
 		if DateTime.compare(post.time, since) == Before {
-			Ok(so_far)
+			Ok(found_posts)
 		} else if wanted.contains(post.author) {
 			posts_before({
 				bytes,
@@ -198,20 +214,27 @@ posts_before = |{ bytes, end, left, since, wanted, so_far }|
 				left: left - 1,
 				since,
 				wanted: wanted.drop_if(|author| author == post.author),
-				so_far: so_far.append(post),
+				found_posts: found_posts.append(post),
 			})
 		} else {
-			posts_before({ bytes, end: before, left: left - 1, since, wanted, so_far })
+			posts_before({
+				bytes,
+				end: before,
+				left: left - 1,
+				since,
+				wanted,
+				found_posts,
+			})
 		}
 	}
 
 ## One record's author and time, from its head alone.
-post_from_record : List(U8) -> Try(Transcript.Post, [Unreadable])
+post_from_record : List(U8) -> Try(Transcript.Byline, [Unreadable])
 post_from_record = |record|
 	match Str.from_utf8(record) {
 		Ok(text) if text.ends_with("\n\n") =>
 			match text.split_on("\n") {
-				[head, from_line, date_line, "", ..] if head.starts_with("MSG_") and from_line.starts_with("from: ") and date_line.starts_with("date: ") => {
+				[head, from_line, date_line, "", ..] if is_head({ head, from_line, date_line }) => {
 					author = Author.from_str(from_line.drop_prefix("from: ")) ? |_| Unreadable
 					time = DateTime.from_str(date_line.drop_prefix("date: ")) ? |_| Unreadable
 					Ok({ author, time })
@@ -283,12 +306,12 @@ write_message = |conversation, message|
 	\\
 	\\
 
-## `so_far` with each record appended in order, or the first record's fault.
+## `found_posts` with each record appended in order, or the first record's fault.
 read_onto : Conversation, List(Str) -> Try(Conversation, _)
-read_onto = |so_far, records|
+read_onto = |found_posts, records|
 	match records {
-		[] => Ok(so_far)
-		[first, .. as rest] => read_onto(read_message(so_far, first)?, rest)
+		[] => Ok(found_posts)
+		[first, .. as rest] => read_onto(read_message(found_posts, first)?, rest)
 	}
 
 ## `conversation` with the message `written` appended, or why it can't be.
@@ -326,6 +349,16 @@ read_message = |conversation, written| {
 		_ => Err(BadHead(id))
 	}
 }
+
+## Whether a record's first three lines are a head this module writes: its
+## reference, its `from:` and its `date:`.
+is_head : {
+	head : Str,
+	from_line : Str,
+	date_line : Str,
+} -> Bool
+is_head = |{ head, from_line, date_line }|
+	head.starts_with("MSG_") and from_line.starts_with("from: ") and date_line.starts_with("date: ")
 
 # ── tests
 # The limit, at and around it: a file may hold exactly `most_bytes`.

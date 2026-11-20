@@ -106,8 +106,12 @@ DateTime :: Str.{
 	to_timestamp : DateTime -> Timestamp
 	to_timestamp = |DateTime.(text)| {
 		bytes = text.to_utf8()
-		field = |start, len| number(bytes.sublist({ start, len })).to_i64_wrap()
-		days = days_from_civil({ year: field(0, 4), month: field(5, 2), day: field(8, 2) })
+		field = |start, count| number(bytes.sublist({ start, len: count })).to_i64_wrap()
+		days = days_from_civil({
+			year: field(0, 4),
+			month: field(5, 2),
+			day: field(8, 2),
+		})
 		Timestamp.at_second(days * 86400 + field(11, 2) * 3600 + field(14, 2) * 60 + field(17, 2))
 	}
 
@@ -174,7 +178,11 @@ civil_from_days = |days| {
 ## Hinnant's `days_from_civil`: `civil_from_days` backwards, in the same
 ## 400-year eras from 0000-03-01. The years here are 0 to 9999, so an era is
 ## found by flooring, as the year before March of year 0 is -1.
-days_from_civil : { year : I64, month : I64, day : I64 } -> I64
+days_from_civil : {
+	year : I64,
+	month : I64,
+	day : I64,
+} -> I64
 days_from_civil = |{ year, month, day }| {
 	counted_year = if month <= 2 {
 		year - 1
@@ -340,10 +348,28 @@ expect time_text(1793646692) == Ok("2026-11-02T19:11:32Z")
 expect time_text(253402300799) == Ok("9999-12-31T23:59:59Z")
 expect time_text(-1) == Err(OutOfRange)
 expect time_text(253402300800) == Err(OutOfRange)
+
+## The clock's seconds the tests above name.
+clock_seconds : List(I64)
+clock_seconds = [
+	0,
+	59,
+	86399,
+	86400,
+	951782399,
+	951782400,
+	951868800,
+	1709251199,
+	1709251200,
+	1798761600,
+	1793646692,
+	253402300799,
+]
+
 # Each of those moments, back from its time: `to_timestamp` undoes
 # `from_timestamp`, and the year 0 before March, the edge of the floored era.
 expect
-	[0, 59, 86399, 86400, 951782399, 951782400, 951868800, 1709251199, 1709251200, 1798761600, 1793646692, 253402300799].all(
+	clock_seconds.all(
 		|seconds|
 			match DateTime.from_timestamp(Timestamp.at_second(seconds)) {
 				Ok(time) => time.to_timestamp() == Timestamp.at_second(seconds)

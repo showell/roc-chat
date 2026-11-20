@@ -106,12 +106,7 @@ empty_page = |{ path, viewer }, notice| {
 			key,
 			viewer: SignedIn.dangerously_assume(Sample.user(viewer)),
 			users: directory.users(),
-			sidebar: Sidebar({
-				places: [],
-				online_humans: [],
-				notice,
-				rosters: [],
-			}),
+			sidebar: Sidebar({ places: [], online_humans: [], notice, rosters: [] }),
 		}).to_utf8(),
 	)
 }
@@ -318,12 +313,7 @@ expect {
 			key: plans_key,
 			viewer: steve,
 			users: Sample.directory.users(),
-			sidebar: Sidebar({
-				places: [],
-				online_humans: [],
-				notice: NoNotice,
-				rosters: [],
-			}),
+			sidebar: Sidebar({ places: [], online_humans: [], notice: NoNotice, rosters: [] }),
 		}),
 		AgentsPage.agents({
 			viewer: steve,

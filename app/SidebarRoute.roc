@@ -96,7 +96,7 @@ load_timed_places! : {
 } => Try(
 	{
 		timed : List(SidebarOrder.TimedPlace),
-		channel_posts : List({ place : Place, posts : List(Transcript.Post) }),
+		channel_posts : List({ place : Place, posts : List(Transcript.Byline) }),
 	},
 	[UnreadableLatest(ConversationKey), FileSystem(FileFacts.Fault)],
 )
@@ -108,7 +108,10 @@ load_timed_places! = |{ places, since, directory }| {
 			match place.which() {
 				Channel(name) =>
 					match directory.channels().channel(name) {
-						Ok(channel) => channel.members().keep_oks(|id| directory.users().user(id)).map(|user| user.author())
+						Ok(channel) => {
+							users = channel.members().keep_oks(|id| directory.users().user(id))
+							users.map(|user| user.author())
+						}
 						Err(NoSuchChannel) => []
 					}
 				Dm(_) => []
@@ -128,7 +131,10 @@ load_timed_places! = |{ places, since, directory }| {
 					Ok(NoFile) => NoMessages
 					Ok(File(utf8)) => {
 						if is_channel {
-							match Transcript.latest_posts(utf8, { authors: members, most: ChannelRoster.most_per_topic, since }) {
+							match Transcript.latest_posts(
+								utf8,
+								{ authors: members, most: ChannelRoster.most_per_topic, since },
+							) {
 								Ok(posts) => {
 									$posts = List.concat($posts, posts)
 								}

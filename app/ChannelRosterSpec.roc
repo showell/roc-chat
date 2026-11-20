@@ -20,9 +20,9 @@ now = Timestamp.at_second(1793646692)
 ## and out of case: Ann, bea and Zed.
 users : Users
 users = {
-	with_ann = (Sample.directory.add_human(Sample.name("Ann")) ?? crash "ChannelRosterSpec: Ann is free").directory
-	with_bea = (with_ann.add_human(Sample.name("bea")) ?? crash "ChannelRosterSpec: bea is free").directory
-	(with_bea.add_human(Sample.name("Zed")) ?? crash "ChannelRosterSpec: Zed is free").directory.users()
+	one_more = (Sample.directory.add_human(Sample.name("Ann")) ?? crash "ChannelRosterSpec: Ann is free").directory
+	two_more = (one_more.add_human(Sample.name("bea")) ?? crash "ChannelRosterSpec: bea is free").directory
+	(two_more.add_human(Sample.name("Zed")) ?? crash "ChannelRosterSpec: Zed is free").directory.users()
 }
 
 ## The user named `text`.
@@ -32,7 +32,7 @@ member = |text|
 		?? crash "ChannelRosterSpec: the users hold ${text}"
 
 ## A post by `author`, `ago` seconds before `now`.
-post : Str, I64 -> Transcript.Post
+post : Str, I64 -> Transcript.Byline
 post = |author, ago| {
 	author: Author.from_str(author) ?? crash "ChannelRosterSpec: an author's name",
 	time: DateTime.from_timestamp(Timestamp.at_second(1793646692 - ago))
@@ -41,7 +41,7 @@ post = |author, ago| {
 
 ## The rows of `names`' members for Steve, ordered by `posts`, as a test reads
 ## them: each name and its words, or "-" for none.
-rows_of : List(Str), List(Transcript.Post) -> List((Str, Str))
+rows_of : List(Str), List(Transcript.Byline) -> List((Str, Str))
 rows_of = |names, posts|
 	ChannelRoster.rows({
 		members: names.map(member),
@@ -59,13 +59,20 @@ rows_of = |names, posts|
 	)
 
 ## Every member, given in no particular order.
-everyone : List(Str)
-everyone = ["Zed", "CC", "Apoorva", "bea", "Steve", "Ann"]
+member_names : List(Str)
+member_names = ["Zed", "CC", "Apoorva", "bea", "Steve", "Ann"]
 
 # Those who posted lately first, the latest first, each with when; then the
 # rest by name in any case (Ann, bea, Zed, never ASCII's Ann, Zed, bea).
 expect
-	rows_of(everyone, [post("Steve", 3 * 86_400), post("Apoorva", 2 * 3600), post("CC", 600)])
+	rows_of(
+		member_names,
+		[
+			post("Steve", 3 * 86_400),
+			post("Apoorva", 2 * 3600),
+			post("CC", 600),
+		],
+	)
 		== [
 			("CC", "posted 10 minutes ago"),
 			("Apoorva", "posted 2 hours ago"),
@@ -74,17 +81,35 @@ expect
 			("bea", "-"),
 			("Zed", "-"),
 		]
-# No posts: everyone by name.
+# No posts: member_names by name.
 expect
-	rows_of(everyone, [])
-		== [("Ann", "-"), ("Apoorva", "-"), ("bea", "-"), ("CC", "-"), ("Steve", "-"), ("Zed", "-")]
+	rows_of(member_names, [])
+		== [
+			("Ann", "-"),
+			("Apoorva", "-"),
+			("bea", "-"),
+			("CC", "-"),
+			("Steve", "-"),
+			("Zed", "-"),
+		]
 # A member's latest post decides, however the posts come (each topic's are
 # read in turn, so they are in no one order).
 expect
-	rows_of(["Steve", "Apoorva"], [post("Steve", 7200), post("Apoorva", 3600), post("Steve", 60), post("Steve", 86_400)])
+	rows_of(
+		["Steve", "Apoorva"],
+		[
+			post("Steve", 7200),
+			post("Apoorva", 3600),
+			post("Steve", 60),
+			post("Steve", 86_400),
+		],
+	)
 		== [("Steve", "posted 1 minute ago"), ("Apoorva", "posted 1 hour ago")]
 # Two who posted in one second, by name.
-expect rows_of(["Zed", "Ann"], [post("Zed", 300), post("Ann", 300)]) == [("Ann", "posted 5 minutes ago"), ("Zed", "posted 5 minutes ago")]
+expect rows_of(["Zed", "Ann"], [post("Zed", 300), post("Ann", 300)]) == [
+	("Ann", "posted 5 minutes ago"),
+	("Zed", "posted 5 minutes ago"),
+]
 # The window: 14 days ago exactly still counts, a second before it doesn't.
 expect
 	rows_of(["Steve", "Apoorva"], [post("Steve", 14 * 86_400), post("Apoorva", 14 * 86_400 + 1)])
@@ -113,9 +138,17 @@ expect {
 # The words: under a minute, or ahead of the clock, is just now; else the
 # largest whole unit.
 expect
-	[(0, "posted just now"), (59, "posted just now"), (-30, "posted just now"), (60, "posted 1 minute ago"), (3599, "posted 59 minutes ago"), (3600, "posted 1 hour ago"), (86_399, "posted 23 hours ago"), (86_400, "posted 1 day ago"), (10 * 86_400, "posted 10 days ago")].all(
-		|(seconds, words)| ChannelRoster.words(Seconds.of(seconds)) == words,
-	)
+	[
+		(0, "posted just now"),
+		(59, "posted just now"),
+		(-30, "posted just now"),
+		(60, "posted 1 minute ago"),
+		(3599, "posted 59 minutes ago"),
+		(3600, "posted 1 hour ago"),
+		(86_399, "posted 23 hours ago"),
+		(86_400, "posted 1 day ago"),
+		(10 * 86_400, "posted 10 days ago"),
+	].all(|(seconds, words)| ChannelRoster.words(Seconds.of(seconds)) == words)
 # Where `Transcript.latest_posts` stops: 14 days before the clock, or the
 # epoch for a clock nearer it than that.
 expect ChannelRoster.since(now).to_str() == "2026-10-19T19:11:32Z"

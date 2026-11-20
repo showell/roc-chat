@@ -328,7 +328,11 @@ expect
 		TopBar,
 	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))
 expect
-	[Problem, SidebarMemberName, SidebarMemberWords].all(|chosen| is_found_by(Script.SidebarPopups.bytes(), chosen))
+	[
+		Problem,
+		SidebarMemberName,
+		SidebarMemberWords,
+	].all(|chosen| is_found_by(Script.SidebarPopups.bytes(), chosen))
 expect
 	is_found_by(Script.Chrome.bytes(), NoticeStrip)
 		and !is_found_by(Script.Sidebar.bytes(), NoticeStrip)
