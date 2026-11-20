@@ -57,7 +57,10 @@ redeemed_at : {
 	second : I64,
 } -> Try(DeviceCode.Redemption, [NoMatch])
 redeemed_at = |{ held, verdict, material_verdict, second }| {
-	found = DeviceCode.matching_candidate([{ owner: steve, record: held, verdict }], Timestamp.at_second(second))?
+	found = DeviceCode.matching_candidate(
+		[{ owner: steve, record: held, verdict }],
+		Timestamp.at_second(second),
+	)?
 	DeviceCode.redeem({ found, material_verdict, now: Timestamp.at_second(second) })
 }
 
@@ -200,11 +203,18 @@ expect DeviceCode.matching_candidate([], made_at) == Err(NoMatch)
 # expired record whose HMAC matches the typed code never hides a live one
 # that matches too, and alone is no match.
 expect {
-	stale = [
-		{ owner: steve, record: spent_at(1_000_010), verdict: Matches },
-		{ owner: steve, record: record.cancel(), verdict: Matches },
-	]
-	live = { owner: steve, record: record_of(8), verdict: Matches }
+	stale = [spent_at(1_000_010), record.cancel()].map(
+		|held| {
+			owner: steve,
+			record: held,
+			verdict: Matches,
+		},
+	)
+	live = {
+		owner: steve,
+		record: record_of(8),
+		verdict: Matches,
+	}
 	at = Timestamp.at_second(1_000_020)
 	DeviceCode.matching_candidate(stale.append(live), at) == Ok(live)
 		and DeviceCode.matching_candidate(stale, at) == Err(NoMatch)

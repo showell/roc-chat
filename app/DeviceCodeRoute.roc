@@ -96,7 +96,11 @@ DeviceCodeRoute :: [].{
 	## A POST of `/devices` by `acting` at `now`: a new code, its record
 	## replacing the one before, and a 303 to the page, which shows it once,
 	## from a cookie, so a reload of the page makes no new one.
-	make! : { acting : SignedIn, users : Users, now : Timestamp } => Http.Response
+	make! : {
+		acting : SignedIn,
+		users : Users,
+		now : Timestamp,
+	} => Http.Response
 	make! = |{ acting, users, now }| {
 		answer =
 			match acting.human_in_session() {
@@ -253,8 +257,8 @@ draw_unheld_code! = |held| {
 }
 
 ## Every other human's record but the human `id`'s, among `users`.
-other_records! : Users, UserId => List(DeviceCode)
-other_records! = |users, id| {
+load_other_records! : Users, UserId => List(DeviceCode)
+load_other_records! = |users, id| {
 	others = users.to_list().keep_oks(|user| user.as_human()).drop_if(|human| human.id() == id)
 	var $records = []
 	for human in others {
@@ -300,7 +304,7 @@ find_redemption! = |{ users, code, now }| {
 			DeviceCode.redeem({ found, material_verdict, now })
 		}
 		Err(NoMatch) => {
-			compare_stand_in_material!({})
+			check_stand_in_material!({})
 			Err(NoMatch)
 		}
 	}
@@ -310,8 +314,8 @@ find_redemption! = |{ users, code, now }| {
 ## owner's material read and its HMAC compared with no record's, the verdict
 ## and any fault let go, so a code that matches nothing takes as long as one
 ## that matched a stale record.
-compare_stand_in_material! : {} => {}
-compare_stand_in_material! = |{}| {
+check_stand_in_material! : {} => {}
+check_stand_in_material! = |{}| {
 	_ =
 		match SignInFiles.load_material!(UserId.chat_owner) {
 			Ok(material) =>
@@ -360,13 +364,17 @@ load_record_or_stand_in! = |id|
 ## The code is drawn again while its HMAC is one another human's record
 ## among `users` keeps, so no typed code matches two records. Every other
 ## record is only read; the one file written is still the human's own.
-make_record! : { users : Users, id : UserId, now : Timestamp } => Try(
+make_record! : {
+	users : Users,
+	id : UserId,
+	now : Timestamp,
+} => Try(
 	{ code : DeviceCode.Code, record : DeviceCode },
 	[NoMaterial, GenerationDamaged, FileSystem(FileFacts.Fault)],
 )
 make_record! = |{ users, id, now }| {
 	material = SignInFiles.load_material!(id)?
-	{ code, mac } = draw_unheld_code!(other_records!(users, id))
+	{ code, mac } = draw_unheld_code!(load_other_records!(users, id))
 	record = DeviceCode.make({
 		mac,
 		material: Host.hmac_sha256_with_server_secret!(DeviceCode.material_bytes_to_sign(material)),
