@@ -463,3 +463,15 @@ expect {
 # Each access refusal: a 403 saying which.
 expect access_refusal(NotAMember).status == 403 and access_refusal(ScopeOff).status == 403
 expect access_refusal(NotAMember).body != access_refusal(ScopeOff).body
+expect
+	access_refusal(NotAMember)
+		== HttpAnswer.page(
+			403,
+			PageKit.notice({
+				title: "Forbidden",
+				text: "Only the members of this conversation's channel or DM may read or post in it.",
+			}),
+		)
+expect
+	access_refusal(ScopeOff)
+		== HttpAnswer.page(403, PageKit.notice({ title: "Forbidden", text: "This API key's scope doesn't reach that." }))

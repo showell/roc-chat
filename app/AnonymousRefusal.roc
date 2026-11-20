@@ -3,6 +3,9 @@
 ## page sends the browser to sign in, and back after; any other request is
 ## a 401 that says how to sign in.
 import pf.Http
+import AgentInvite
+import AgentKey
+import ChannelName
 import ConversationKey
 import DeviceCodePage
 import FirstStart
@@ -136,4 +139,39 @@ expect {
 		].all(|asked| AnonymousRefusal.answer(asked) == unauthorized_refusal)
 		and unauthorized_refusal.status == 401
 		and unauthorized_refusal.body == "${unauthorized_words}\n".to_utf8()
+}
+# The rest of the pages, each sent to sign in and back to itself; the rest
+# of the routes, each the one 401.
+expect {
+	team = ChannelName.from_str("team") ?? crash "AnonymousRefusal's tests: a channel's name"
+	key = AgentKey.Id.from_str("1") ?? crash "AnonymousRefusal's tests: a key's number"
+	invite = AgentInvite.Id.from_str("1") ?? crash "AnonymousRefusal's tests: an invite's number"
+	member = UserId.chat_owner
+	[
+		(ShowRecent, "/chat/recent"),
+		(ShowChannels, "/channels"),
+		(ShowChannelMembers(team), "/channels/team"),
+		(ShowInvites, "/invites"),
+	].all(
+		|(asked, next)| {
+			answer = AnonymousRefusal.answer(asked)
+			answer.status == 303
+				and answer.headers == [{ name: "location".to_utf8(), value: "/login?next=${next}".to_utf8() }]
+		},
+	)
+		and [
+			OpenRecentStream,
+			SearchEveryTopic(Words),
+			SearchEveryTopic(Messages),
+			CreateChannel,
+			AddChannelMember({ channel: team, member }),
+			RemoveChannelMember({ channel: team, member }),
+			InviteHuman,
+			InviteHumanAgain(member),
+			CancelDeviceCode,
+			OpenDevicesStream,
+			SignOutOtherDevices,
+			RevokeInvite({ agent: member, invite }),
+			RevokeKey({ agent: member, key }),
+		].all(|asked| AnonymousRefusal.answer(asked) == unauthorized_refusal)
 }

@@ -43,12 +43,12 @@ cc_by_key = {
 users : Users
 users = Sample.directory.users()
 
-## What the form `body` claims, from `viewer`, as a test reads it: the
-## password's bytes, and the name of the human it names, or `NoHuman`.
-claim_by : SignedIn.Actor, Str -> Try(
-	{ password : Str, claimant : [Human(Str), NoHuman] },
-	[ByApiKey, NoMatch],
-)
+## A claim as a test reads it: the password's bytes, and the name of the
+## human it names, or `NoHuman`; or the refusal.
+ReadClaim : Try({ password : Str, claimant : [Human(Str), NoHuman] }, [ByApiKey, NoMatch])
+
+## What the form `body` claims, from `viewer`, as a test reads it.
+claim_by : SignedIn.Actor, Str -> ReadClaim
 claim_by = |viewer, body| {
 	claim = SignInRequest.password_claim({ viewer, users, body: body.to_utf8() })?
 	claimant =
@@ -60,10 +60,7 @@ claim_by = |viewer, body| {
 }
 
 ## What the form `body` claims from no one signed in.
-claim : Str -> Try(
-	{ password : Str, claimant : [Human(Str), NoHuman] },
-	[ByApiKey, NoMatch],
-)
+claim : Str -> ReadClaim
 claim = |body| claim_by(Anonymous, body)
 
 # A human's name and a password: that human, and the password as typed,

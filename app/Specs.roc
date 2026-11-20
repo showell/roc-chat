@@ -48,6 +48,7 @@ import StoredDirectorySpec
 import TranscriptSpec
 import UsersSpec
 import PasswordClaimSpec
+import RefusalSpec
 
 ## Nothing: `roc test` runs the specs, and no host runs this app.
 main : Str

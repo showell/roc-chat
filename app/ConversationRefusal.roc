@@ -192,6 +192,9 @@ expect
 expect
 	[
 		(ReactionField({ fault: MissingField, name: "emoji" }), "The form has no field `emoji`."),
+		(ReactionField({ fault: RepeatedField, name: "msg" }), "The form has the field `msg` more than once."),
+		(ReactionField({ fault: BadEscape, name: "emoji" }), "The form's `emoji` holds a % that starts no two hex digits."),
+		(ReactionField({ fault: NotUtf8, name: "on" }), "The form's `on` is not UTF-8."),
 		(NotAMessageId, "The form's `msg` is no message's number."),
 		(NotAnEmoji, "The form's `emoji` is no emoji."),
 		(NotOnOrOff, "The form's `on` is neither 1 nor 0."),
@@ -218,6 +221,10 @@ expect ConversationRefusal.notice(ClockOutOfRange) == {
 expect ConversationRefusal.notice(Unreadable(TranscriptNotUtf8)) == {
 	status: 500,
 	words: { title: "Not a transcript", text: "Not a transcript: it is not UTF-8." },
+}
+expect ConversationRefusal.notice(UnreadableLatest(plans_key)) == {
+	status: 500,
+	words: { title: "Failed", text: "The last message of /chat/dm/1_1/plans is not one this chat writes." },
 }
 expect ConversationRefusal.notice(FileSystem(PathRefused)) == {
 	status: 500,
