@@ -3100,7 +3100,10 @@ fn signInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, se
     return finishLink(a, io, port, fake, session, try startSignInAs(a, io, port, fake), code);
 }
 
-/// Steps 48zo to 48zt: the welcome, and one account per GitHub account.
+/// Steps 48zo to 48zw: the welcome, one account per GitHub account, and the
+/// names and invites rules: a GitHub sign-up never invites (48zu), a reserved
+/// or lookalike name is refused (48zv), and an expired invite frees its name
+/// (48zw).
 fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, fake: *fake_github.Fake, debbie: []const u8) !void {
     // 48zo.
     const tess_id = try nextId(a, io, data);
@@ -3215,6 +3218,49 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     try t.check("and the invite a 500, no code, no account, the name free; the same invite then makes the next id, with its DM", failed_invite.status == 500 and
         !has(failed_invite.body, "invite-code") and !odile_after_failure and retried_invite.status == 200 and has(retried_invite.body, "invite-code") and
         has(try readFile(a, io, data, try welcomeFile(a, blocked_invite + 1)), steve_words));
+
+    // 48zu.
+    const noor_id = blocked_up + 1;
+    const noor = try cookieLine(a, noor_in);
+    const noor_page = try getAs(a, io, port, noor, "/invites");
+    const before_noor = try nextId(a, io, data);
+    const noor_invites = try postAs(a, io, port, noor, "/invites", "name=Pia");
+    const noor_again = try postAs(a, io, port, noor, try std.fmt.allocPrint(a, "/invites/{d}/again", .{blocked_invite + 1}), "");
+    const no_github_words = "Accounts made by signing up with GitHub can't invite people.";
+    try t.check("a human made by GitHub sign-up: their sign-up file says github; their invites page has no form, saying why; inviting or inviting again: 403, saying why, nothing made", std.mem.eql(u8, try readFile(a, io, data, try std.fmt.allocPrint(a, "auth/{d}/sign-up", .{noor_id})), "github") and
+        noor_page.status == 200 and !has(noor_page.body, "action=\"/invites\"") and has(noor_page.body, no_github_words) and
+        noor_invites.status == 403 and has(noor_invites.body, no_github_words) and !has(noor_invites.body, "invite-code") and noor_again.status == 403 and
+        try nextId(a, io, data) == before_noor and !(try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/human-invites/2", .{blocked_invite + 1}))));
+
+    // 48zv.
+    const reserved_invite = try postAs(a, io, port, debbie, "/invites", "name=Admin");
+    const close_invite = try postAs(a, io, port, debbie, "/invites", "name=Odlle");
+    const spaced_invite = try postAs(a, io, port, debbie, "/invites", "name=Ste+ve");
+    const sign_up_line = try signUpLine(a, try signInByGitHub(a, io, port, fake, "user-id-55"));
+    const reserved_up = try chooseName(a, io, port, sign_up_line, "Support");
+    const close_up = try chooseName(a, io, port, sign_up_line, "N+oor");
+    try t.check("a reserved name or one that looks like another's, by invite or sign-up: 409 each, saying which, nothing made", reserved_invite.status == 409 and
+        has(reserved_invite.body, "The name is reserved") and close_invite.status == 409 and has(close_invite.body, "too close to one the chat already has") and
+        spaced_invite.status == 409 and has(spaced_invite.body, "too close") and asksForName(reserved_up, 409) and has(reserved_up.body, "The name is reserved") and
+        asksForName(close_up, 409) and has(close_up.body, "too close") and try nextId(a, io, data) == before_noor);
+
+    // 48zw.
+    const pia_id = try nextId(a, io, data);
+    const pia_invited = try postAs(a, io, port, debbie, "/invites", "name=Pia");
+    const pia_link = between(pia_invited.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const pia_hash = std.mem.indexOfScalar(u8, pia_link, '#') orelse return error.NoCode;
+    const while_open = try postAs(a, io, port, debbie, "/invites", "name=Pla");
+    try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/human-invites/1/expires", .{pia_id}), .data = "1000" });
+    const anew = try postAs(a, io, port, debbie, "/invites", "name=Pia");
+    const general = try readFile(a, io, data, "chat/channel/general.channel");
+    const old_code = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Pia&password=x", .{pia_link[pia_hash + 1 ..]}));
+    const owner_browse = try getAs(a, io, port, steve_session, "/chat");
+    try t.check("an invite open holds its name, a lookalike too: 409; once it expires unredeemed, the name is free: a new account holds it, the old one released, out of #general, its code refused; the owner's pages still answer", pia_invited.status == 200 and
+        while_open.status == 409 and anew.status == 200 and has(anew.body, "invite-code") and
+        std.mem.eql(u8, try readFile(a, io, data, try std.fmt.allocPrint(a, "auth/{d}/name", .{pia_id + 1})), "Pia") and
+        try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/name-released", .{pia_id})) and
+        !has(general, try std.fmt.allocPrint(a, "\n{d}\n", .{pia_id})) and has(general, try std.fmt.allocPrint(a, "\n{d}\n", .{pia_id + 1})) and
+        old_code.status == 401 and owner_browse.status == 200);
 }
 
 /// Whether the new human `made` lands in #general: at `expected`, a page of
