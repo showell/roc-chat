@@ -6,7 +6,6 @@
 ## fault.
 import AccountFiles
 import Directory
-import HumanInvite
 import HumanInvites
 import InviteFiles
 import JoinedFiles
@@ -41,7 +40,7 @@ InviteRights :: [].{
 				NoFile => 0
 				Joined(since) => {
 					invites = load_every_humans_invites!(directory)?
-					NewcomerInvites.count_made(invites, { by, since })
+					NewcomerInvites.count_made(invites, { by, since: NewcomerInvites.counted_since(since, now) })
 				}
 			}
 		NewcomerInvites.check({
@@ -65,21 +64,24 @@ InviteRights :: [].{
 			Ok({}) => Ok(MayInvite)
 			Err(Refused(FirstDayFull(until))) => Ok(MayNotInvite(NewcomerInvites.full_words(until)))
 			Err(FileSystem(fault)) => Err(FileSystem(fault))
+			Err(BadInviter(id)) => Err(BadInviter(id))
 		}
 }
 
-## Each human's invites, a list a human, among `directory`'s.
-load_every_humans_invites! : Directory => Try(List(List(HumanInvite)), _)
+## Each human of `directory`, as the first day's count reads them: who
+## invited them, and their invites.
+load_every_humans_invites! : Directory => Try(List(NewcomerInvites.Invitee), _)
 load_every_humans_invites! = |directory| {
-	var $invites = []
+	var $invitees = []
 	for user in directory.users().to_list() {
 		match user.as_human() {
 			Ok(human) => {
-				theirs = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
-				$invites = $invites.append(theirs)
+				inviter = InviteRights.load_inviter!(human.id())?
+				invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
+				$invitees = $invitees.append({ inviter, invites })
 			}
 			Err(Agent(_)) => {}
 		}
 	}
-	Ok($invites)
+	Ok($invitees)
 }

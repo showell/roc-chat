@@ -106,13 +106,7 @@ NameRelease :: [].{
 			DirectoryFiles.replace_channel_members!(channel) ? |fault| FileSystem(fault)
 		}
 		for human in humans {
-			match AccountFiles.create_name_released!(human.id(), now) {
-				Ok({}) | Err(AlreadyExists) => {}
-				Err(MissingDirectory) => return Err(FileSystem(MissingDirectory))
-				Err(NotUtf8) => return Err(FileSystem(NotUtf8))
-				Err(PathRefused) => return Err(FileSystem(PathRefused))
-				Err(Failed) => return Err(FileSystem(Failed))
-			}
+			AccountFiles.write_name_released!(human.id(), now) ? |fault| FileSystem(fault)
 			Host.write_line_to_server_log!(
 				"the name of user ${human.id().to_str()}, invited and never joined, is free again".to_utf8(),
 			)

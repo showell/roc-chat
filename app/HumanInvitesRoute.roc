@@ -445,14 +445,19 @@ join_by_invite! = |request| {
 	name = HumanInvites.name_from_form(request.body) ? |why| Refused(why)
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
 	invitee = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
-	planned = NameRelease.plan_release!(
-		request.directory,
-		{
-			name,
-			leaving: Leaving(invitee.human.id()),
-			now: request.now,
-		},
-	) ? |FileSystem(fault)| FileSystem(fault)
+	planned =
+		if name == invitee.human.user().name() {
+			NameRelease.plan_release_of_none(request.directory)
+		} else {
+			NameRelease.plan_release!(
+				request.directory,
+				{
+					name,
+					leaving: Leaving(invitee.human.id()),
+					now: request.now,
+				},
+			) ? |FileSystem(fault)| FileSystem(fault)
+		}
 	directory = planned.directory
 	joined = HumanInvites.join(directory, { code, name }) ? |why| Refused(why)
 	human = joined.admission.human()

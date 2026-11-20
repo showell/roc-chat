@@ -36,11 +36,11 @@ may_at = |made, second| NewcomerInvites.check({
 expect [0, 1, 2].all(|made| may_at(made, 1000) == Ok({}))
 expect [3, 4].all(|made| may_at(made, 1000) == Err(FirstDayFull(Timestamp.at_second(87400))))
 expect may_at(3, 87399) == Err(FirstDayFull(Timestamp.at_second(87400)))
-# From the second a day after joining, no limit; nor before joining, which
-# a clock set back would say.
+# From the second a day after joining, no limit; a second before joining,
+# which a clock set back would say, is still new.
 expect may_at(3, 87400) == Ok({})
 expect may_at(10, 999999) == Ok({})
-expect may_at(3, 999) == Ok({})
+expect may_at(3, 999) == Err(FirstDayFull(Timestamp.at_second(87400)))
 # No `joined` file, an account older than it, has no limit; nor the owner.
 expect NewcomerInvites.check({
 	by: id("7"),
@@ -79,9 +79,30 @@ invite = |{ number, by, second }|
 ## How many new invites user 7 made since 1000, among `invites`.
 made_by_seven : List(List(HumanInvite)) -> U64
 made_by_seven = |invites| NewcomerInvites.count_made(
-	invites,
+	invites.map(|theirs| { inviter: InvitedBy(id("1")), invites: theirs }),
 	{ by: id("7"), since: Timestamp.at_second(1000) },
 )
+
+# A human user 7 invited whose invite was cut short as it was written (no
+# whole invite) counts, so inviting them again makes no uncounted person; one
+# someone else invited, or no one, doesn't.
+expect
+	NewcomerInvites.count_made(
+		[
+			{ inviter: InvitedBy(id("7")), invites: [] },
+			{ inviter: InvitedBy(id("1")), invites: [] },
+			{ inviter: NoInviter, invites: [] },
+		],
+		{ by: id("7"), since: Timestamp.at_second(1000) },
+	)
+		== 1
+# A `joined` ahead of the clock is new: the limit holds, until a day after
+# it; and every invite counts, from the start.
+expect may_at(3, 500) == Err(FirstDayFull(Timestamp.at_second(87400)))
+expect may_at(2, 500) == Ok({})
+expect NewcomerInvites.counted_since(Timestamp.at_second(1000), Timestamp.at_second(500)) == Timestamp.at_second(0)
+expect NewcomerInvites.counted_since(Timestamp.at_second(1000), Timestamp.at_second(1000)) == Timestamp.at_second(1000)
+expect NewcomerInvites.counted_since(Timestamp.at_second(1000), Timestamp.at_second(5000)) == Timestamp.at_second(1000)
 
 # Each human whose first invite user 7 made since joining counts once.
 expect

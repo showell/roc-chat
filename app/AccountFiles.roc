@@ -146,16 +146,18 @@ AccountFiles :: [].{
 		FileFacts.replace_fact!("${folder}/${name_fact}", Users.account_facts(user).name)
 	}
 
-	## The user `id`'s `name-released` file made, once, holding `now`'s
-	## second: from then on their folder is no account, and their name is
-	## free. `AlreadyExists`, nothing changed, when it is there.
-	create_name_released! : UserId,
+	## The user `id`'s `name-released` file written holding `now`'s second,
+	## whole and atomically (a temporary file fsynced, then renamed over the
+	## name), so no crash leaves it empty or half written, which would stop
+	## every read of the directory (`read_accounts!` holds it to a second).
+	## From then on their folder is no account, and their name is free.
+	write_name_released! : UserId,
 	Timestamp => Try(
 		{},
-		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_name_released! = |id, now|
-		FileFacts.create_fact!(
+	write_name_released! = |id, now|
+		FileFacts.replace_fact!(
 			"${AccountFiles.account_folder_path(AccountFolder.of(id))}/${name_released_fact}",
 			now.to_file(),
 		)
