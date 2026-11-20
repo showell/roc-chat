@@ -350,11 +350,11 @@
   }
 
   // The page's channel, on a channel's page (/chat/channel/<name>/<topic>);
-  // null on a DM's. And its topic, on either.
+  // null on a DM's. And its topic, on either, as the messages pane names it.
   var channelAt = /^\/chat\/channel\/([^\/]+)\//.exec(location.pathname);
   var channel = channelAt ? decodeURIComponent(channelAt[1]) : null;
-  var topicAt = /^\/chat\/(?:channel|dm)\/[^\/]+\/([^\/]+)$/.exec(location.pathname);
-  var topic = topicAt ? decodeURIComponent(topicAt[1]) : null;
+  var topic = messages.getAttribute('data-topic');
+  if (!topic) throw new Error('actions.js: .messages has no data-topic');
   // Where the server follows a link to a message on another page.
   var MESSAGE_LINK_PATH = '/chat/msg/';
   // The reference `label` as this page's headers write it: a long one's

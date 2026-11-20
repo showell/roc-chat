@@ -20,7 +20,9 @@
 ## the keyboard. app/citation.js writes a citation of a message and marks one
 ## in a message. app/actions.js gives each message its actions: reacting,
 ## quoting, citing, and editing the viewer's own. They find what they need by
-## `PageContract`'s names.
+## `PageContract`'s names. The messages pane names the page's place as the
+## viewer would (`place_of`) and its topic, for a citation's link and the
+## compose box's placeholder.
 ##
 ## Each message is drawn with its notes (`MessageNotes`). An edited message
 ## says which message edited it, and keeps its markdown, as written, folded
@@ -29,6 +31,7 @@
 ##
 ## A message's markdown goes in through `Markdown.message_html`, and
 ## everything else through `Escape.text` and `Html.element`.
+import ChannelName
 import ChannelRoster
 import Conversation
 import ConversationKey
@@ -126,6 +129,11 @@ ConversationPage :: [].{
 		raw_path = PageKit.site_path(key.url_path(Raw))
 		download_path = PageKit.site_path(key.url_path(Download))
 		shown_count = PageKit.token(thread.messages().len().to_str())
+		place =
+			match place_of({ key, viewer: viewer.user(), users }) {
+				Channel(name) => Channel(PageKit.token(name.to_str()))
+				Person(person) => Person(person.name())
+			}
 		{ toggle, notices, nav, scripts } =
 			match sidebar {
 				NoSidebar => {
@@ -175,6 +183,8 @@ ConversationPage :: [].{
 								PageContract.data_attribute(React(react_path)),
 								PageContract.data_attribute(Raw(raw_path)),
 								PageContract.data_attribute(Download(download_path)),
+								PageContract.data_attribute(Place(place)),
+								PageContract.data_attribute(Topic(PageKit.token(topic.to_str()))),
 							],
 							inner: TrustedHtml.join([PageKit.newline, messages]),
 						}),
@@ -399,20 +409,32 @@ top_title : {
 } -> Str
 top_title = |{ key, viewer, users }| {
 	topic = key.topic().to_str()
-	match key.place().which() {
+	match place_of({ key, viewer, users }) {
 		Channel(name) => "#${name.to_str()}: ${topic}"
-		Dm(pair) => {
-			person =
-				match pair.members().drop_if(|id| id == viewer.id()) {
-					[other] =>
-						users.user(other)
-							?? crash "ConversationPage.top_title: a DM is between users the directory holds"
-					_ => viewer
-				}
-			"${person.name().to_str()} on ${topic}"
-		}
+		Person(person) => "${person.name().to_str()} on ${topic}"
 	}
 }
+
+## Where the conversation `key` is, as `viewer` names it: its channel, or a
+## DM's other human, or for the viewer's own DM, the viewer.
+place_of : {
+	key : ConversationKey,
+	viewer : Users.User,
+	users : Users,
+} -> [Channel(ChannelName), Person(Users.User)]
+place_of = |{ key, viewer, users }|
+	match key.place().which() {
+		Channel(name) => Channel(name)
+		Dm(pair) =>
+			match pair.members().drop_if(|id| id == viewer.id()) {
+				[other] =>
+					Person(
+						users.user(other)
+							?? crash "ConversationPage.place_of: a DM is between users the directory holds",
+					)
+				_ => Person(viewer)
+			}
+	}
 
 ## A user's id, which the scripts compare: a message's author's with the
 ## viewer's.

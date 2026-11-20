@@ -2,6 +2,7 @@
 ## spelling (its classes' are PageSpec's). Which script reads which name is
 ## tested in `PageContract` itself, beside the helpers that look.
 import Html
+import Name
 import PageContract
 
 PageContractSpec :: [].{}
@@ -10,9 +11,11 @@ PageContractSpec :: [].{}
 token : Str -> Html.Token
 token = |text| Html.Token.from_str(text) ?? crash "PageContractSpec.token: \"${text}\" is a token"
 
-# Every `data-` attribute, each its one spelling, a path or a token.
+# Every `data-` attribute, each its one spelling, a path, a token (or one
+# after a `#`) or a name.
 expect {
 	path = Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "PageContract's tests: a site path"
+	name = Name.from_str("Ada Lovelace") ?? crash "PageContract's tests: a name"
 	[
 		(Stream(path), "<p data-stream=\"/chat/dm/1_1/plans\"></p>"),
 		(After(token("6")), "<p data-after=\"6\"></p>"),
@@ -36,6 +39,9 @@ expect {
 		(Joined(token("1763600000")), "<p data-joined=\"1763600000\"></p>"),
 		(Kind(Human), "<p data-kind=\"human\"></p>"),
 		(Kind(Agent), "<p data-kind=\"agent\"></p>"),
+		(Place(Channel(token("general"))), "<p data-place=\"#general\"></p>"),
+		(Place(Person(name)), "<p data-place=\"Ada Lovelace\"></p>"),
+		(Topic(token("roc-chat")), "<p data-topic=\"roc-chat\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])

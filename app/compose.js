@@ -368,10 +368,12 @@
   // still to be noticed.
   var awaitingArrival = Object.create(null);
 
-  // The topic's page path (the form's action), whose last part the
-  // placeholder names.
-  var topicPath = form.getAttribute('action');
-  if (!topicPath) throw new Error('compose.js: the form has no action, the topic\'s page path');
+  // The page's place and topic, as the messages pane names them (data-place:
+  // `#channel`, a DM's other human, or the viewer on their own DM;
+  // data-topic), which the placeholder and the sent notice name.
+  var place = messages.getAttribute('data-place');
+  var topic = messages.getAttribute('data-topic');
+  if (!place || !topic) throw new Error('compose.js: .messages has no data-place or no data-topic');
 
   // The drafts build of 2026-11-20 kept unsent text in this browser under
   // 'roc-chat drafts', shared by whoever signs in here and kept past sign-out;
@@ -468,16 +470,14 @@
 
   // The status line's notice that a message this page sent has arrived, a
   // link that brings it into view and selects it. It names where the
-  // message went, as the sidebar names the page's own place (the other
-  // human of a DM, or `#channel`), then the message's reference: "your
+  // message went, the page's place, then the message's reference: "your
   // message was sent to Apoorva as MSG_rant_8".
   function sentNotice(article) {
     var ref = article.querySelector('header a');
     var link = document.createElement('a');
     link.href = '#' + article.id;
     var reference = ref ? ref.textContent : article.id;
-    var place = placeName();
-    link.textContent = '✓ your message was sent to ' + (place ? place + ' as ' : '') + reference;
+    link.textContent = '✓ your message was sent to ' + place + ' as ' + reference;
     // script-calls: runtime-only: a click on the sent notice, once feed.js has run
     link.addEventListener('click', function (e) {
       e.preventDefault();
@@ -488,23 +488,10 @@
     status.appendChild(link);
     sentLink = link;
   }
-  // The page's own place as the sidebar names it: the other human of a DM,
-  // or `#channel`; '' when the page has no sidebar.
-  function placeName() {
-    var here = document.querySelector('.sidebar-place[data-opening="always"] .sidebar-place-name');
-    return here && here.lastChild ? here.lastChild.textContent.trim() : '';
-  }
   // The placeholder names where a message goes, as the sent notice does:
   // "Message Apoorva" in a DM, "Message #general › roc-chat" in a channel's
-  // topic, the topic being the last part of its page's path.
-  (function () {
-    var place = placeName();
-    var parts = topicPath.split('/');
-    var topic = decodeURIComponent(parts[parts.length - 1] || '');
-    if (!place) box.placeholder = 'Write a message…';
-    else if (place.charAt(0) === '#' && topic) box.placeholder = 'Message ' + place + ' › ' + topic;
-    else box.placeholder = 'Message ' + place;
-  })();
+  // topic.
+  box.placeholder = 'Message ' + place + (place.charAt(0) === '#' ? ' › ' + topic : '');
 
   function expectArrival(id) {
     var here = document.getElementById(id);

@@ -68,8 +68,8 @@ top_links_noticed = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <
 
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
-## pane, naming its stream, the `count` of messages it shows and the
-## viewer's id, holding `messages`, then the foot.
+## pane, naming its stream, the `count` of messages it shows, the
+## viewer's id and its place and topic, holding `messages`, then the foot.
 plans_page : {
 	viewer : Str,
 	viewer_id : Str,
@@ -77,7 +77,7 @@ plans_page : {
 	messages : Str,
 } -> Str
 plans_page = |{ viewer, viewer_id, count, messages }|
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\" data-download=\"/chat/dm/1_1/plans/download\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\" data-download=\"/chat/dm/1_1/plans/download\" data-place=\"Steve\" data-topic=\"plans\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str
@@ -132,6 +132,17 @@ expect
 expect
 	empty_page({ path: "/chat/dm/1_1/plans", viewer: "Steve" }, NoNotice)
 		.contains(title_at({ path: "/chat/dm/1_1/plans", words: "Steve on plans" }))
+
+# The messages pane names the page's place as a citation's link and the
+# compose box's placeholder name it, and its topic: a DM's other human, for
+# each of them; `#channel`; the viewer on their own DM, no "(you)".
+expect
+	[
+		({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, "data-place=\"Apoorva\" data-topic=\"plans\">"),
+		({ path: "/chat/dm/1_2/plans", viewer: "Apoorva" }, "data-place=\"Steve\" data-topic=\"plans\">"),
+		({ path: "/chat/channel/general/plans", viewer: "Steve" }, "data-place=\"#general\" data-topic=\"plans\">"),
+		({ path: "/chat/dm/1_1/plans", viewer: "Steve" }, "data-place=\"Steve\" data-topic=\"plans\">"),
+	].all(|(page, named)| empty_page(page, NoNotice).contains(named))
 
 # The top bar's notice line, between the section links and the viewer's
 # name, says what it is drawn with, escaped, or nothing.

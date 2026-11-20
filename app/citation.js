@@ -9,9 +9,10 @@
 // the message's markdown as written, at most its first three lines or
 // about 280 characters, whichever comes first, a cut one ending in "…",
 // each line quoted with `> `; a blank line; and a link, "<author> in
-// <place> › <topic>", the place named as the sidebar names this page's
-// (`#channel`, or a DM's other human, as compose.js's sent notice names
-// it), to the message on this topic's own page (its path and #msg-<n>).
+// <place> › <topic>", the place and topic as the page names them on its
+// messages pane (data-place: `#channel`, a DM's other human, or the viewer
+// on their own DM; data-topic), to the message on this topic's own page
+// (its path and #msg-<n>).
 // Copied, the status line says "✓ citation copied: paste it in any topic";
 // with the compose box open here, where a quote-reply is the better answer,
 // it says how to give one instead. While the box is closed, the status
@@ -32,8 +33,9 @@
   if (!window.Compose || !window.Viewport) throw new Error('citation.js: chrome.js and compose.js run first, and give Viewport and Compose');
   var rawUrl = messages.getAttribute('data-raw');
   if (!rawUrl) throw new Error('citation.js: .messages has no data-raw');
-  var topicAt = /^\/chat\/(?:channel|dm)\/[^\/]+\/([^\/]+)$/.exec(location.pathname);
-  var topic = topicAt ? decodeURIComponent(topicAt[1]) : null;
+  var place = messages.getAttribute('data-place');
+  var topic = messages.getAttribute('data-topic');
+  if (!place || !topic) throw new Error('citation.js: .messages has no data-place or no data-topic');
 
   var s = document.createElement('style');
   s.textContent = [
@@ -82,14 +84,11 @@
     if (kept.length < whole.length) kept += '…';
     return kept.split('\n').map(function (line) { return line ? '> ' + line : '>'; }).join('\n');
   }
-  // A citation's link to `article`, or null when the page names no author,
-  // place or topic. roc-markdown takes no `\[` in a link's text, so a
-  // bracket in a name is a parenthesis.
+  // A citation's link to `article`. roc-markdown takes no `\[` in a link's
+  // text, so a bracket in a name is a parenthesis.
   function linkTo(article) {
     var author = article.querySelector('header .author');
-    var here = document.querySelector('.sidebar-place[data-opening="always"] .sidebar-place-name');
-    var place = here && here.lastChild ? here.lastChild.textContent.trim() : '';
-    if (!author || !place || !topic) return null;
+    if (!author) throw new Error('citation.js: a message has no header .author');
     var label = (author.textContent.trim() + ' in ' + place + ' › ' + topic).replace(/\[/g, '(').replace(/\]/g, ')');
     return '[' + label + '](' + location.pathname + '#' + article.id + ')';
   }
@@ -133,10 +132,6 @@
   // pane's data-raw, with `?message=<n>`, as a quote-reply does), and says so.
   function copy(article) {
     var link = linkTo(article);
-    if (!link) {
-      tell('This page names no author, place or topic to cite.', true);
-      return;
-    }
     var citation = fetch(rawUrl + '?message=' + article.id.replace(/^msg-/, '')).then(function (r) {
       return r.text().then(function (text) {
         if (!r.ok) throw new Error('The message could not be read: ' + text.trim());

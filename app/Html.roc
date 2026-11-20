@@ -7,12 +7,12 @@
 ## - an attribute's name is its tag (`Attribute`), so a name and its value
 ##   can't be swapped; a `data-` attribute's name is a `Token`;
 ## - every value is a `Token` (ASCII letters, digits and `-`, checked by
-##   `Token.from_str`), a `SitePath` (`/` and parts of letters, digits,
-##   `-`, `_` and `.`, checked by `SitePath.from_str`), a `DateTime` (its
-##   one form, digits and `-:TZ`) or a `Name` (letters and single spaces,
-##   checked by `Name.from_str`), so no value holds a quote, `&` or `<`, and
-##   only a name holds a space; a flag (`MethodPost`, `Required`) holds no
-##   value.
+##   `Token.from_str`), perhaps after a `#`, a `SitePath` (`/` and parts of
+##   letters, digits, `-`, `_` and `.`, checked by `SitePath.from_str`), a
+##   `DateTime` (its one form, digits and `-:TZ`) or a `Name` (letters and
+##   single spaces, checked by `Name.from_str`), so no value holds a quote,
+##   `&` or `<`, and only a name holds a space; a flag (`MethodPost`,
+##   `Required`) holds no value.
 ##
 ## An `<input>` has no end tag and holds nothing (`input`). Its value is a
 ## site path (a form's hidden `next`), a token (a suggested topic) or a name.
@@ -149,8 +149,8 @@ Html :: [].{
 	## its most characters, a number; an
 	## input's type, its value (a site path) and what a browser may fill it
 	## with; a script's source; and a `data-` attribute for a page's
-	## scripts: its name after `data-`, a token, then its value, a token or
-	## a site path.
+	## scripts: its name after `data-`, a token, then its value, a token (or
+	## one after a `#`), a site path or a name.
 	Attribute : [
 		Class(Html.Token),
 		Id(Html.Token),
@@ -173,7 +173,7 @@ Html :: [].{
 		Autofocus,
 		CodeTyping,
 		Src(Html.SitePath),
-		Data(Html.Token, [Token(Html.Token), Path(Html.SitePath)]),
+		Data(Html.Token, [Token(Html.Token), HashToken(Html.Token), Path(Html.SitePath), Name(Name)]),
 	]
 
 	## An element: `<name a="v">inner</name>`, `inner` as it is, already
@@ -277,7 +277,9 @@ attribute = |given|
 		CodeTyping => " inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\""
 		Src(path) => " src=\"${path.to_str()}\""
 		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
+		Data(name, HashToken(token)) => " data-${name.to_str()}=\"#${token.to_str()}\""
 		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
+		Data(name, Name(chosen)) => " data-${name.to_str()}=\"${chosen.to_str()}\""
 	}
 
 # ── tests

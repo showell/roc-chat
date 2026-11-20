@@ -19,7 +19,11 @@
 ## also names where a reaction is posted (`data-react`) and where a
 ## message's markdown is read (`data-raw`), where the conversation's
 ## download is (`data-download`), and each reaction's button names
-## its reactors' ids (`data-reactors`), all read by app/actions.js. Each place in the
+## its reactors' ids (`data-reactors`), all read by app/actions.js. The pane
+## names the page's place as a citation and the compose box name it
+## (`data-place`: `#channel`, or a DM's other human, or the viewer for their
+## own DM) and its topic (`data-topic`), read by app/citation.js,
+## app/compose.js and, the topic, app/actions.js. Each place in the
 ## sidebar names its own path (`data-section`), which app/sidebar.js keeps
 ## its collapsed state by, and where a topic added to it belongs; a DM
 ## names its person (`data-person`), the viewer in their own, and says
@@ -38,6 +42,7 @@
 ## (`invite-code`) is its shown text alone: app/panel.js gives each one the
 ## button that copies it.
 import Html
+import Name
 import Script
 import SidebarOrder
 import TrustedHtml
@@ -155,6 +160,8 @@ PageContract :: [].{
 		Group([Channels, Dms]),
 		Joined(Html.Token),
 		Kind([Human, Agent]),
+		Place([Channel(Html.Token), Person(Name)]),
+		Topic(Html.Token),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -183,6 +190,9 @@ PageContract :: [].{
 			Joined(seconds) => Data(token("joined"), Token(seconds))
 			Kind(Human) => Data(token("kind"), Token(token("human")))
 			Kind(Agent) => Data(token("kind"), Token(token("agent")))
+			Place(Channel(name)) => Data(token("place"), HashToken(name))
+			Place(Person(name)) => Data(token("place"), Name(name))
+			Topic(topic) => Data(token("topic"), Token(topic))
 		}
 
 	## An element `attributes` alone opens, as a test reads it.
@@ -422,6 +432,15 @@ expect
 	["data-react", "data-raw", "data-download", "data-reactors"].all(
 		|name| !is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
 	)
+# The page's place and topic: a citation's and the compose box's words.
+expect
+	["data-place", "data-topic"].all(
+		|name| is_read_by(Script.Citation.bytes(), name)
+			and is_read_by(Script.Compose.bytes(), name)
+			and !is_read_by(Script.Feed.bytes(), name)
+			and !is_read_by(Script.Sidebar.bytes(), name),
+	)
+		and is_read_by(Script.Actions.bytes(), "data-topic")
 # app/actions.js follows a reference in a message's markdown, roc-markdown's
 # `a.msg-ref`, to the message whose header's reference is its label.
 expect {
