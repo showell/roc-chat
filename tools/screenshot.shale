@@ -24,13 +24,16 @@
 --   channel-card      #general's name clicked: the channel's card
 --   dm-people         "1 more person…" clicked: the people popup
 --   dm-selected       ↑ pressed twice: an older message selected
---   channel-compose   `c` pressed and a draft typed: the compose rail open,
---                     where the keyboard help was
+--   channel-compose   `c` pressed and a message typed: the compose rail
+--                     open, where the keyboard help was
 --   channel-emoji     `:sm` typed in the compose box: emoji autocomplete
---   channel-close-refused  a draft typed, then the rail's ✕: it stays open,
---                     the status line saying why
---   channel-draft-closed   a draft typed, then the page loaded again: the
---                     closed rail's "Open compose box (draft) (c)"
+--   channel-c-escape, dm-c-escape, channel-button-escape, dm-button-escape
+--                     the box opened by `c` or its button, then Escape: the
+--                     empty box closed (each `wait`s for it, so a box left
+--                     open stops the run)
+--   channel-text-escape  text typed, then Escape: the box open, the text kept
+--   channel-close-reopen text typed, the rail's ✕, then `c`: the text back
+--   channel-ctrl-enter   text typed, then Ctrl+Enter: the "✓ sent" notice
 --   devices-code      "Make a code" pressed: the code shown, large, in step 2
 --   browse-bad-topic  "two words" sent as a topic: the refusal beside its
 --                     place's form, which keeps what was typed
@@ -40,6 +43,8 @@
 --   invite-taken      "tam" sent as a new name: the refusal under the form,
 --                     which keeps the name
 -- and at 390x844 (a state's `size`):
+--   channel-escape    the open bar tapped, then Escape: closed to the
+--                     green "Open compose box" button
 --   dm-actions        the selected message's "⋯" tapped: its row of
 --                     actions open under its header
 --   sign-out-focus    the top bar's "Sign out" focused, as Tab reaches it
@@ -167,15 +172,36 @@ const STATES = {
     "key ArrowUp", "key ArrowUp", "wait .message.selected"}},
   {name = "channel-compose", path = "/chat/channel/general/roc-chat", steps = {
     "key c", "wait .compose.open",
-    "type A draft, kept while the rail is open: **Thursday** works for me."}},
+    "type A message typed in the open rail: **Thursday** works for me."}},
   {name = "channel-emoji", path = "/chat/channel/general/roc-chat", steps = {
     "key c", "wait .compose.open", "type Looks good :sm", "wait .chat-emoji-menu"}},
-  {name = "channel-close-refused", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "type Thursday works.", "click .compose-hide button"}},
-  {name = "channel-draft-closed", path = "/chat/channel/general/roc-chat", steps = {
-    "key c", "wait .compose.open", "type Thursday works.", "goto /chat/channel/general/roc-chat"}},
+  -- Escape in an empty box closes it, as Gopher's did, however it opened.
+  {name = "channel-c-escape", path = "/chat/channel/general/roc-chat", steps = {
+    "key c", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
+  {name = "dm-c-escape", path = "/chat/dm/1_2/plans", steps = {
+    "key c", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
+  {name = "channel-button-escape", path = "/chat/channel/general/roc-chat", steps = {
+    "click .open-compose", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
+  {name = "dm-button-escape", path = "/chat/dm/1_2/plans", steps = {
+    "click .open-compose", "wait .compose.open", "key Escape", "wait .compose:not(.open)"}},
+  -- Escape in a box holding text leaves it open, its text there.
+  {name = "channel-text-escape", path = "/chat/channel/general/roc-chat", steps = {
+    "key c", "wait .compose.open", "type Thursday works.", "key Escape",
+    "wait .compose.open textarea:not(:placeholder-shown)"}},
+  -- The ✕ closes a box holding text; opened again, the text is there.
+  {name = "channel-close-reopen", path = "/chat/channel/general/roc-chat", steps = {
+    "key c", "wait .compose.open", "type Thursday works.", "click .compose-hide button",
+    "wait .compose:not(.open)", "key c", "wait .compose.open textarea:not(:placeholder-shown)"}},
+  -- Ctrl+Enter sends: the status line's "✓ sent" link once it arrives.
+  {name = "channel-ctrl-enter", path = "/chat/channel/general/roc-chat", steps = {
+    "key c", "wait .compose.open", "type Sent with Ctrl+Enter.",
+    "eval document.querySelector('.compose textarea').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', ctrlKey: true, bubbles: true}))",
+    "wait .compose-status a"}},
   {name = "devices-code", path = "/devices", steps = {
     "click form[action=\"/devices\"] button", "wait .sign-in-code"}},
+  -- A phone's open bar, tapped, then Escape: closed to the green button.
+  {name = "channel-escape", size = "phone", path = "/chat/channel/general/roc-chat", steps = {
+    "wait .compose.open", "click .compose textarea", "key Escape", "wait .compose:not(.open)"}},
   {name = "dm-actions", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     "click .message.selected .actions-more", "wait .message.actions-open"}},
   {name = "sign-out-focus", path = "/chat/dm/1_2/plans", steps = {
@@ -234,10 +260,6 @@ function expect_status(answer, want, what)
   if answer.status ~= want then fail("screenshot: " .. what .. ": " .. answer.status .. ", not " .. want .. "\n" .. sub(answer.text, 1, 400)) end
 end
 
--- The step that clears compose.js's drafts, which the browser keeps per
--- topic: each theme's pages, and each state, start with none.
-const DRAFTS_CLEARED = "eval localStorage.removeItem('roc-chat drafts')"
-
 -- The steps that make `theme` the page's: localStorage, which belongs to
 -- the chat's origin, so a page of it is loaded first.
 function theme_steps(list, theme)
@@ -247,7 +269,6 @@ function theme_steps(list, theme)
   else
     push(list, "eval localStorage.removeItem('chat-theme')")
   end
-  push(list, DRAFTS_CLEARED)
 end
 
 -- 0. The server and the driver, built niced, so the job below starts at once.
@@ -351,7 +372,6 @@ for t in themes do
       local size = SIZES[get(st, "size", "desktop")]
       local name = t .. "-" .. re_replace(size, " ", "x") .. "-" .. st.name
       push(list, "size " .. size)
-      push(list, DRAFTS_CLEARED)
       push(list, "goto " .. st.path)
       for step in st.steps do push(list, step) end
       push(list, "shot " .. name)

@@ -5,16 +5,19 @@
 // messages are on the left and the compose box is a rail 320 pixels wide on
 // the right. The rail is either open, its textarea as tall as the window,
 // or closed, showing an "Open compose box" button and the keyboard help. It
-// starts closed, and opens with the button or the c key. Escape, or the ✕
-// button at the open rail's top, closes it, but only when the textarea is
-// empty: the box is never dismissed while it holds unsent text (Steve,
-// 2026-11-20: "never dismiss the compose box if it has unsent content.
-// That's worked remarkably well."), and the status line says why. In a narrower
+// starts closed, and opens with the button or the c key. Escape in the
+// textarea closes it when the textarea is empty, and does nothing while it
+// holds text, as chat-client's did (js/chat_compose.js); the ✕ button at the
+// open rail's top closes it whatever it holds, as chat-client's ▾ did, the
+// text left in the closed box, there when it opens again. Nothing is kept
+// past the page: there are no drafts (Steve, 2026-11-20: "Back the whole
+// drafts feature out. ... Using the same button to open the compose box and
+// a draft is not good UI. I may not want the draft."). In a narrower
 // window, a phone's, the compose box is a bar below the messages, as
 // chat-client's was (js/chat_responsive.js): it starts open, but not focused,
 // so the phone's keyboard doesn't rise over the messages until a tap on the
 // box (or a quote) asks for it; its ▾ button
-// closes it to the "Open compose box" button, by the same rule, and the keyboard help and the
+// closes it to the "Open compose box" button, as the ✕ does, and the keyboard help and the
 // help line, which a phone has no keys for, are left out.
 //
 // Ctrl+Enter (⌘+Enter on a Mac) sends, as chat-client does; plain Enter is
@@ -33,8 +36,7 @@
 // draft. With no answer in 3 seconds, the status line says "Still sending…"
 // and Send stays off, since the first post may yet be stored: a retry then
 // could post the message twice. The box is read-only meanwhile, so its text
-// can still be selected and copied, and the draft is kept in the browser
-// (below), so a reload keeps it. With no answer in 15 seconds the script
+// can still be selected and copied. With no answer in 15 seconds the script
 // asks whether the server answers at all, a GET of palette.js that is never
 // cached, given 5 seconds, and asks again every 15 seconds while the send
 // waits; the status line says plainly which it is: the server answers but
@@ -210,7 +212,7 @@
   var hideButton = document.createElement('button');
   hideButton.type = 'button';
   hideButton.textContent = '✕';
-  hideButton.title = 'Close the compose box (once it is empty)';
+  hideButton.title = 'Close the compose box';
   hideButton.setAttribute('aria-label', 'Close the compose box');
   hideButton.addEventListener('click', function () { closeCompose(); });
   hide.appendChild(hideButton);
@@ -235,25 +237,15 @@
     compose.classList.add('open');
     box.focus();
   }
-  // A box holding unsent text stays open, saying why.
+  // Closed, its text left in the box, as chat-client's closeCompose did.
   function closeCompose() {
-    if (box.value.trim() !== '') {
-      status.style.color = '';
-      status.textContent = pending
-        ? 'Your message is still sending: the box closes once it is sent.'
-        : 'The box stays open while it holds a draft: send it or clear it, then close.';
-      if (!pending) box.focus();
-      return;
-    }
     compose.classList.remove('open');
     messages.focus();
   }
 
-  // The closed rail's button names the c key where there are keys, and a
-  // draft when the box holds one.
+  // The closed rail's button names the c key where there are keys.
   function refreshOpenButton() {
-    var drafted = box.value.trim() !== '';
-    openButton.textContent = 'Open compose box' + (drafted ? ' (draft)' : '') + (isNarrow() ? '' : ' (c)');
+    openButton.textContent = 'Open compose box' + (isNarrow() ? '' : ' (c)');
   }
 
   var closedPanel = document.createElement('div');
@@ -376,58 +368,16 @@
   // still to be noticed.
   var awaitingArrival = Object.create(null);
 
-  // One draft per topic, kept in this browser (Steve, 2026-11-20: "Zulip
-  // holds on to a zillion drafts when you almost only ever need one"): the
-  // box's text, under the topic's page path (the form's action), in one
-  // localStorage entry holding the newest DRAFTS_KEPT topics' drafts, older
-  // ones dropped. It is written at each change of the box, emptied by a
-  // send the server stored, and put back in the box when the topic's page
-  // opens again. A draft is marked `sending` while a send of it is on its
-  // way, so a page left mid-send says so when the draft comes back. Private
-  // browsing, or storage that is full, keeps no draft: the box works as
-  // before.
-  var DRAFTS_KEY = 'roc-chat drafts';
-  var DRAFTS_KEPT = 20;
-  var draftPath = form.getAttribute('action');
-  if (!draftPath) throw new Error('compose.js: the form has no action, the topic\'s page path');
-  function readDrafts() {
-    try {
-      var drafts = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}');
-      return drafts && typeof drafts === 'object' && !Array.isArray(drafts) ? drafts : {};
-    } catch (e) { return {}; } // No storage, or an entry that is no JSON: no drafts.
-  }
-  function isDraft(entry) {
-    return !!entry && typeof entry.text === 'string' && typeof entry.at === 'number';
-  }
-  // What this page last wrote, so a page that never held a draft never
-  // removes another tab's.
-  var savedText = '';
-  var savedSending = false;
-  function saveDraft() {
-    var text = box.value.trim() === '' ? '' : box.value;
-    var sending = !!pending && text !== '';
-    if (text === savedText && sending === savedSending) return;
-    savedText = text;
-    savedSending = sending;
-    var drafts = readDrafts();
-    if (text === '') delete drafts[draftPath];
-    else drafts[draftPath] = { text: text, at: Date.now(), sending: sending };
-    var paths = Object.keys(drafts).filter(function (p) { return isDraft(drafts[p]); });
-    paths.sort(function (a, b) { return drafts[b].at - drafts[a].at; });
-    var kept = {};
-    paths.slice(0, DRAFTS_KEPT).forEach(function (p) { kept[p] = drafts[p]; });
-    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(kept)); } catch (e) { /* No storage: the draft lasts this page. */ }
-  }
-  var restored = readDrafts()[draftPath];
-  if (isDraft(restored) && box.value === '') {
-    box.value = restored.text;
-    savedText = restored.text;
-    savedSending = restored.sending === true;
-    if (savedSending) {
-      status.style.color = ERROR;
-      status.textContent = 'This draft was still sending when the page was left: look for it above before you send it again.';
-    }
-  }
+  // The topic's page path (the form's action), whose last part the
+  // placeholder names.
+  var topicPath = form.getAttribute('action');
+  if (!topicPath) throw new Error('compose.js: the form has no action, the topic\'s page path');
+
+  // The drafts build of 2026-11-20 kept unsent text in this browser under
+  // 'roc-chat drafts', shared by whoever signs in here and kept past sign-out;
+  // drafts are gone, so their leftover is removed. Delete this line once
+  // every browser that ran that build has loaded a page since (2026-12-20).
+  try { localStorage.removeItem('roc-chat drafts'); } catch (e) { /* No storage: nothing kept. */ }
 
   // The box and its buttons, on or off by what is on its way: while a send
   // is, all of them are off; while an upload is, Send and Upload are, so a
@@ -435,7 +385,6 @@
   // while the box holds nothing but space, so there is nothing to refuse.
   function refreshControls() {
     refreshOpenButton();
-    saveDraft();
     box.readOnly = !!pending;
     send.disabled = !!pending || uploading || box.value.trim() === '';
     uploadButton.disabled = !!pending || uploading;
@@ -477,7 +426,7 @@
   function checkServer(mine) {
     if (pending !== mine) return;
     var waited = Math.round((Date.now() - mine.started) / 1000);
-    var kept = ' Your draft is kept in this browser, and Send stays off until the server answers, so the message is never posted twice.';
+    var kept = ' Send stays off until the server answers, so the message is never posted twice.';
     function say(words) {
       if (pending !== mine) return;
       status.style.color = ERROR;
@@ -549,7 +498,7 @@
   // topic, the topic being the last part of its page's path.
   (function () {
     var place = placeName();
-    var parts = draftPath.split('/');
+    var parts = topicPath.split('/');
     var topic = decodeURIComponent(parts[parts.length - 1] || '');
     if (!place) box.placeholder = 'Write a message…';
     else if (place.charAt(0) === '#' && topic) box.placeholder = 'Message ' + place + ' › ' + topic;
@@ -681,8 +630,9 @@
   });
   box.addEventListener('keydown', function (e) {
     if (e.isComposing) return;
-    // Escape while emoji.js's menu is open is the menu's.
-    if (e.key === 'Escape' && !isNarrow() && !(window.Emoji && Emoji.isOpen())) {
+    // Escape closes an empty box and leaves one holding text, as chat-client's
+    // did; emoji.js's menu, open only over text, takes its own Escape.
+    if (e.key === 'Escape' && box.value.trim() === '') {
       e.preventDefault();
       closeCompose();
       return;
