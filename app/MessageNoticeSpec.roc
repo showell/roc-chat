@@ -48,8 +48,15 @@ expect
 
 ## The event that tells of the message `id` by `author` in the conversation
 ## at `path`, as text.
-frame_text : { author : Str, path : Str, id : Message.Id } -> Str
-frame_text = |{ author, path, id }| Str.from_utf8_lossy(MessageNotice.frame({ author, key: key_at(path), id }))
+frame_text : {
+	author : Str,
+	path : Str,
+	id : Message.Id,
+} -> Str
+frame_text = |{ author, path, id }| {
+	key = key_at(path)
+	Str.from_utf8_lossy(MessageNotice.frame({ author, key, id }))
+}
 
 ## The id of a topic's third message.
 third : Message.Id
