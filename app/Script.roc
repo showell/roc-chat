@@ -2,8 +2,8 @@
 ## compiled into the app, so the server always sends exactly what the file
 ## holds. Every page loads app/palette.js in its head, which sets the
 ## colours before the first paint. A conversation's page ends with
-## app/chrome.js (its top bar), app/sidebar.js (its sidebar, when it has
-## one), app/compose.js (its compose box), app/emoji.js (the emojis, and
+## app/chrome.js (its top bar), app/sidebar-popups.js and app/sidebar.js
+## (its sidebar and the sidebar's popups, when it has one), app/compose.js (its compose box), app/emoji.js (the emojis, and
 ## the compose box's autocomplete of them), app/feed.js (its messages) and
 ## app/citation.js (citations of messages), app/actions.js (each message's
 ## reactions, quote-reply, citation and edit) and app/search.js (the
@@ -16,6 +16,7 @@
 ## `url_path`, and `PageKit.script` links to them.
 import "palette.js" as palette_source : Str
 import "chrome.js" as chrome_source : Str
+import "sidebar-popups.js" as sidebar_popups_source : Str
 import "sidebar.js" as sidebar_source : Str
 import "compose.js" as compose_source : Str
 import "emoji.js" as emoji_source : Str
@@ -31,6 +32,7 @@ import "search.js" as search_source : Str
 Script := [
 	Palette,
 	Chrome,
+	SidebarPopups,
 	Sidebar,
 	Compose,
 	Emoji,
@@ -49,6 +51,7 @@ Script := [
 	all_scripts = [
 		Script.Palette,
 		Script.Chrome,
+		Script.SidebarPopups,
 		Script.Sidebar,
 		Script.Compose,
 		Script.Emoji,
@@ -79,6 +82,7 @@ file_name = |script|
 	match script {
 		Palette => "palette.js"
 		Chrome => "chrome.js"
+		SidebarPopups => "sidebar-popups.js"
 		Sidebar => "sidebar.js"
 		Compose => "compose.js"
 		Emoji => "emoji.js"
@@ -98,6 +102,7 @@ source = |script|
 	match script {
 		Palette => palette_source
 		Chrome => chrome_source
+		SidebarPopups => sidebar_popups_source
 		Sidebar => sidebar_source
 		Compose => compose_source
 		Emoji => emoji_source
@@ -119,6 +124,7 @@ expect
 		== [
 			"/chat/assets/palette.js",
 			"/chat/assets/chrome.js",
+			"/chat/assets/sidebar-popups.js",
 			"/chat/assets/sidebar.js",
 			"/chat/assets/compose.js",
 			"/chat/assets/emoji.js",
@@ -134,6 +140,7 @@ expect
 expect palette_source.starts_with("// This script runs in the head of every page")
 expect
 	[
+		sidebar_popups_source,
 		sidebar_source,
 		compose_source,
 		emoji_source,
@@ -153,6 +160,7 @@ expect
 	[
 		palette_source,
 		chrome_source,
+		sidebar_popups_source,
 		sidebar_source,
 		compose_source,
 		emoji_source,
@@ -169,6 +177,7 @@ expect
 	[
 		(Script.Palette, palette_source),
 		(Script.Chrome, chrome_source),
+		(Script.SidebarPopups, sidebar_popups_source),
 		(Script.Sidebar, sidebar_source),
 		(Script.Compose, compose_source),
 		(Script.Emoji, emoji_source),

@@ -9,7 +9,8 @@
 ## The script sends the same form to the conversation's `/send` instead, so
 ## the page stays put. The page ends with its scripts. app/chrome.js styles
 ## the top bar and adds its theme toggle. app/sidebar.js styles the sidebar
-## and collapses its places. app/compose.js lays the panes out, gives the compose box
+## and collapses its groups and places, and app/sidebar-popups.js gives it
+## its popups. app/compose.js lays the panes out, gives the compose box
 ## its keys and its Upload button, and sends a message without a reload.
 ## app/emoji.js autocompletes an emoji's `:name` in the compose box.
 ## app/feed.js styles the messages, marks the viewer's own, writes each
@@ -135,7 +136,7 @@ ConversationPage :: [].{
 							online_humans,
 						}),
 					],
-					scripts: [Script.Sidebar],
+					scripts: [Script.SidebarPopups, Script.Sidebar],
 				}
 			}
 		PageKit.document({

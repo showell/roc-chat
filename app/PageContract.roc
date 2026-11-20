@@ -1,5 +1,6 @@
 ## This module is the one contract between the pages, which the Roc writes,
 ## and the scripts that run on them (app/chrome.js, app/sidebar.js,
+## app/sidebar-popups.js,
 ## app/compose.js, app/emoji.js, app/feed.js, app/actions.js, app/panel.js and
 ## app/recent.js, which
 ## `Script` serves). The server sends
@@ -24,7 +25,10 @@
 ## another human names them (`data-person`) and says whether they are
 ## online (`data-presence`, by `Presence`), which app/sidebar.js draws as a
 ## dot; each place says how it starts (`data-opening`, by `SidebarOrder`),
-## which app/sidebar.js opens or collapses it by. The line
+## which app/sidebar.js opens or collapses it by. The places come in two
+## groups, each naming itself (`data-group`), which app/sidebar.js keeps a
+## group's collapsed state by; app/sidebar-popups.js says when a DM's
+## person joined (`data-joined`, not drawn yet). The line
 ## above the page (`notice-strip`), on a conversation with a sidebar and on
 ## Recent, is where app/chrome.js shows that someone has come online, or
 ## has written in one of the viewer's places.
@@ -77,6 +81,8 @@ PageContract :: [].{
 		SidebarNewTopic,
 		SidebarPlace,
 		SidebarPlaceName,
+		SidebarSection,
+		SidebarSectionName,
 		SidebarToggle,
 		SidebarTopics,
 		SignInCode,
@@ -129,6 +135,8 @@ PageContract :: [].{
 		Person(Html.Token),
 		Presence([Online, Offline]),
 		Opening(SidebarOrder.Opening),
+		Group([Channels, Dms]),
+		Joined(Html.Token),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -153,6 +161,9 @@ PageContract :: [].{
 			Opening(AlwaysOpen) => Data(token("opening"), Token(token("always")))
 			Opening(Open) => Data(token("opening"), Token(token("open")))
 			Opening(Collapsed) => Data(token("opening"), Token(token("collapsed")))
+			Group(Channels) => Data(token("group"), Token(token("channels")))
+			Group(Dms) => Data(token("group"), Token(token("dms")))
+			Joined(seconds) => Data(token("joined"), Token(seconds))
 		}
 
 	## An element `attributes` alone opens, as a test reads it.
@@ -205,6 +216,8 @@ class_name = |chosen|
 		SidebarNewTopic => "sidebar-new-topic"
 		SidebarPlace => "sidebar-place"
 		SidebarPlaceName => "sidebar-place-name"
+		SidebarSection => "sidebar-section"
+		SidebarSectionName => "sidebar-section-name"
 		SidebarToggle => "sidebar-toggle"
 		SidebarTopics => "sidebar-topics"
 		TopBar => "top-bar"
@@ -267,6 +280,8 @@ expect
 		(SidebarNewTopic, "sidebar-new-topic"),
 		(SidebarPlace, "sidebar-place"),
 		(SidebarPlaceName, "sidebar-place-name"),
+		(SidebarSection, "sidebar-section"),
+		(SidebarSectionName, "sidebar-section-name"),
 		(SidebarToggle, "sidebar-toggle"),
 		(SidebarTopics, "sidebar-topics"),
 		(TopBar, "top-bar"),
@@ -301,6 +316,9 @@ expect {
 		(Opening(AlwaysOpen), "<p data-opening=\"always\"></p>"),
 		(Opening(Open), "<p data-opening=\"open\"></p>"),
 		(Opening(Collapsed), "<p data-opening=\"collapsed\"></p>"),
+		(Group(Channels), "<p data-group=\"channels\"></p>"),
+		(Group(Dms), "<p data-group=\"dms\"></p>"),
+		(Joined(token("1763600000")), "<p data-joined=\"1763600000\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
@@ -350,10 +368,12 @@ expect
 		SidebarPlaceName,
 		SidebarTopics,
 		SidebarNewTopic,
-		Problem,
+		SidebarSection,
+		SidebarSectionName,
 		Current,
 		TopBar,
 	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))
+expect is_found_by(Script.SidebarPopups.bytes(), Problem)
 expect
 	is_found_by(Script.Chrome.bytes(), NoticeStrip)
 		and !is_found_by(Script.Sidebar.bytes(), NoticeStrip)
@@ -382,6 +402,9 @@ expect
 		and is_read_by(Script.Sidebar.bytes(), "data-person")
 		and is_read_by(Script.Sidebar.bytes(), "data-presence")
 		and is_read_by(Script.Sidebar.bytes(), "data-opening")
+		and is_read_by(Script.Sidebar.bytes(), "data-group")
+		and is_read_by(Script.SidebarPopups.bytes(), "data-joined")
+		and is_read_by(Script.SidebarPopups.bytes(), "data-presence")
 		and !is_read_by(Script.Feed.bytes(), "data-opening")
 		and !is_read_by(Script.Feed.bytes(), "data-person")
 		and !is_read_by(Script.Compose.bytes(), "data-section")

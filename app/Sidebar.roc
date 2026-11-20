@@ -1,6 +1,8 @@
 ## This module builds the sidebar of a conversation's page: the places
-## `Browse` lists for the viewer, in the order `SidebarOrder` gives them,
-## each place's topics under it as links, and at the end of each place's
+## `Browse` lists for the viewer, in two groups, Channels and then DMs, each
+## under its heading (`data-group`) and in the order `SidebarOrder` gives
+## them, a group with no places left out; each place's topics under it as
+## links, and at the end of each place's
 ## topics the form that starts one (`TopicForm`). Under each place's name is
 ## its button that offers that form, "New topic in" and the place's name:
 ## app/sidebar.js shows the button as a small "+" beside the name, and the
@@ -19,6 +21,11 @@
 ## A DM with another human names them (`data-person`) and says whether they
 ## are online (`data-presence`, by `Presence`), so app/sidebar.js draws its
 ## dot, and fills it when the page's stream says they have come online.
+## Clicking a DM's name opens app/sidebar-popups.js's card about the person:
+## their name (the place's label), whether they are online, the topics of
+## the DM as links, and a new topic. When each human joined is not drawn yet:
+## once accounts keep it, `person_attributes` adds `data-joined` (its seconds
+## since 1970, `PageContract`'s `Joined`), and the card says it.
 import ConversationKey
 import Escape
 import Html
@@ -55,17 +62,67 @@ Sidebar :: [].{
 	nav = |{ places, current, viewer, online_humans }| {
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
-		sections = in_order.map(|ordered| place_section({ ordered, current, people }))
+		drawn = |ordered| place_section({ ordered, current, people })
+		channels = in_order.keep_if(is_channel).map(drawn)
+		dms = in_order.drop_if(is_channel).map(drawn)
 		TrustedHtml.join([
 			Html.element({
 				name: Nav,
 				attributes: [PageContract.class(Sidebar)],
-				inner: TrustedHtml.join(List.concat([PageKit.newline], sections)),
+				inner: TrustedHtml.join([
+					PageKit.newline,
+					group_section({ group: Channels, places: channels }),
+					group_section({ group: Dms, places: dms }),
+				]),
 			}),
 			PageKit.newline,
 		])
 	}
 }
+
+## Whether `ordered` is a channel, which the Channels group lists; a DM
+## is listed under DMs.
+is_channel : SidebarOrder.OrderedPlace -> Bool
+is_channel = |ordered|
+	match ordered.place.which() {
+		Channel(_) => Bool.True
+		Dm(_) => Bool.False
+	}
+
+## One of the sidebar's two groups: its heading, which app/sidebar.js lets
+## collapse the whole group, and its `places`, in `SidebarOrder`'s order.
+## A group with no places is left out.
+group_section : { group : [Channels, Dms], places : List(TrustedHtml) } -> TrustedHtml
+group_section = |{ group, places }|
+	if places.is_empty() {
+		TrustedHtml.join([])
+	} else {
+		heading =
+			match group {
+				Channels => "Channels"
+				Dms => "DMs"
+			}
+		TrustedHtml.join([
+			Html.element({
+				name: Div,
+				attributes: [PageContract.class(SidebarSection), PageContract.data_attribute(Group(group))],
+				inner: TrustedHtml.join(
+					List.concat(
+						[
+							Html.element({
+								name: P,
+								attributes: [PageContract.class(SidebarSectionName)],
+								inner: Escape.text(heading),
+							}),
+							PageKit.newline,
+						],
+						places,
+					),
+				),
+			}),
+			PageKit.newline,
+		])
+	}
 
 ## Who the page is for, and who is online.
 People : { viewer : UserId, online_humans : List(UserId) }
