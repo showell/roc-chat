@@ -291,8 +291,8 @@ expect
 
 # A device whose session a code started sees no button it couldn't use: on
 # its device code page none that makes or cancels a code or signs other
-# devices out, on its agents page none at all, and a line saying why in
-# each; a session started otherwise sees them all.
+# devices out, on its agents page none but the top bar's "Sign out", and a
+# line saying why in each; a session started otherwise sees them all.
 ## The device code page for `viewer`, with a code waiting, as a test reads it.
 devices_page_for : SignedIn -> Str
 devices_page_for = |viewer|
@@ -332,7 +332,9 @@ expect {
 }
 expect {
 	by_code = agents_page_for(steve_by(ByDeviceCode))
-	!by_code.contains("<button>") and by_code.contains("This device signed in with a code, so it can&#39;t manage agents")
+	panel = by_code.split_on("</header>").drop_first(1)
+	signs_out = by_code.contains("<form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form>")
+	signs_out and !Str.join_with(panel, "").contains("<button>") and by_code.contains("This device signed in with a code, so it can&#39;t manage agents")
 }
 expect {
 	ordinary = agents_page_for(steve_by(Ordinary))

@@ -14,7 +14,7 @@
 ## Every page of someone signed in opens with the top bar (`top_bar`): its
 ## title, the links to Browse, Recent, the invites page and the device
 ## code page beside it, as Gopher Chat's section links were, then the Home
-## link (`HomeLink`) and the viewer's name. Under it, a page another module
+## link (`HomeLink`), the viewer's name and "Sign out". Under it, a page another module
 ## builds (`signed_in_page`) holds its parts in a panel, and ends with
 ## app/chrome.js, which styles the top bar and adds its theme toggle, and
 ## app/panel.js, which draws the panel as a card.
@@ -433,9 +433,22 @@ top_bar_titled = |{ title, viewer, notices }|
 						attributes: [PageContract.class(Viewer)],
 						inner: Escape.text(viewer.user().name().to_str()),
 					}),
+					Escape.text(" · "),
+					sign_out_form,
 				]),
 			}),
 		]),
+	})
+
+## The top bar's "Sign out", after the viewer's name: a form, so it is a
+## POST, held to this server's origin as every POST is (`SignInRoute`'s
+## `/logout`, by way of `DeviceCodeRoute.sign_out!`).
+sign_out_form : TrustedHtml
+sign_out_form =
+	Html.element({
+		name: Form,
+		attributes: [PageContract.class(SignOut), MethodPost, Action(PageKit.site_path("/logout"))],
+		inner: Html.element({ name: Button, attributes: [], inner: Escape.text("Sign out") }),
 	})
 
 ## The top bar's Home link and the separator after it, or nothing for a

@@ -92,6 +92,7 @@ PageContract :: [].{
 		SidebarToggle,
 		SidebarTopics,
 		SignInCode,
+		SignOut,
 		TopBar,
 		TopLinks,
 		TopTitle,
@@ -194,6 +195,7 @@ class_name = |chosen|
 		Help => "help"
 		InviteCode => "invite-code"
 		SignInCode => "sign-in-code"
+		SignOut => "sign-out"
 		Layout => "layout"
 		Message => "message"
 		MessageReference => "message-reference"
@@ -260,6 +262,7 @@ expect
 		(Help, "help"),
 		(InviteCode, "invite-code"),
 		(SignInCode, "sign-in-code"),
+		(SignOut, "sign-out"),
 		(Layout, "layout"),
 		(Message, "message"),
 		(MessageReference, "message-reference"),

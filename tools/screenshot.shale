@@ -29,6 +29,8 @@
 -- and at 390x844 (a state's `size`):
 --   dm-actions        the selected message's "⋯" tapped: its row of
 --                     actions open under its header
+--   sign-out-focus    the top bar's "Sign out" focused, as Tab reaches it
+--                     (at both sizes)
 -- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
 -- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
 --
@@ -143,6 +145,10 @@ const STATES = {
     "key c", "wait .compose.open", "type Looks good :sm", "wait .chat-emoji-menu"}},
   {name = "dm-actions", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     "click .message.selected .actions-more", "wait .message.actions-open"}},
+  {name = "sign-out-focus", path = "/chat/dm/1_2/plans", steps = {
+    "eval document.querySelector('.top-user .sign-out button').focus()"}},
+  {name = "sign-out-focus", size = "phone", path = "/chat/dm/1_2/plans", steps = {
+    "eval document.querySelector('.top-user .sign-out button').focus()"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end

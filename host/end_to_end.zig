@@ -1239,6 +1239,9 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
 
     const fourth = try makeCode(a, io, port, steve_session);
     const fourth_code = fourth.code;
+    const phone_page = try getAs(a, io, port, phone_session, "/chat");
+    try t.check("a phone signed in by a code has \"Sign out\" in its top bar, a POST of /logout", phone_page.status == 200 and
+        has(phone_page.body, "<form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>"));
     const phone_out = try postAs(a, io, port, phone_session, "/logout", "");
     try t.check("signing out forgets the cookie that shows a code, beside the session's", has(phone_out.head, "\r\nset-cookie: __Host-device_code=; Path=/; Max-Age=0; "));
     const after_sign_out = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{fourth_code}));

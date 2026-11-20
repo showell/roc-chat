@@ -173,6 +173,7 @@ apoorvavpendse@gmail.com would be better
 - **The invites page says what an invite is for,** mentioning GitHub only on a server that signs people up by it, and how to make one, above its form; a link just made comes first, as it is shown once. Below the form are the open invites, or a line saying there are none, and then each other human the reader may invite again, with what inviting them again does. A human with an open invite shows only their open ones.
 - **A new topic is an empty page, not a file.** The form sends the browser to the topic's page, and nothing is written: the page and its stream of a conversation with no transcript are served empty to whoever may read it, and its first message starts it. So a topic left with no message isn't kept, and Browse lists a topic only once it has a folder on disk.
 - **A signed-in human sees nothing that signs up** (Steve, 2026-11-05: "There's really no use case for humans having two accounts"). `/login` shows them who they are and a button that signs them out, with no form and no GitHub link. They link GitHub from `/agents`.
+- **Every signed-in page's top bar ends with "Sign out"** (Steve, 2026-11-20: "I need a way to sign out from my phone"), after the viewer's name, at every width, so a phone reaches it in one tap from any page. It is a form, a POST of `/logout`, held to this server's origin as every POST is (`PageKit`'s `sign_out_form`).
 
 ## Sign-in
 

@@ -5,7 +5,7 @@
 //
 // The frame is a top bar with the page's title on the left, the Browse, Recent and Invites links
 // beside it as Gopher Chat's section links were (zig-server's chat_chrome.zig and top_bar.zig), and
-// the Home link and the viewer's name on the right, then the page's layout filling the rest of the
+// the Home link, the viewer's name and "Sign out" on the right, then the page's layout filling the rest of the
 // window. In a narrow window the section links take a row of their own under the title. Only what
 // the layout holds scrolls. On a conversation, feed.js styles the messages, and compose.js the
 // compose box and how the two panes sit side by side; on any other page, panel.js styles the panel.
@@ -134,6 +134,11 @@ window.Notices = (function () {
     '.top-links a:hover { text-decoration: underline; }',
     '.top-user { font-size: 13px; color: var(--cc-body-muted-fg); white-space: nowrap; margin-left: auto; }',
     '.top-user .viewer { font-weight: bold; }',
+    // "Sign out" is a form, so it is a POST; its button reads as a link.
+    '.top-user .sign-out { display: inline; margin: 0; }',
+    '.top-user .sign-out button { background: none; border: none; padding: 0; font: inherit; color: var(--cc-accent);' +
+      ' cursor: pointer; }',
+    '.top-user .sign-out button:hover { text-decoration: underline; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
     'html.layout-narrow body { height: 100dvh; }',
@@ -148,6 +153,8 @@ window.Notices = (function () {
     'html.layout-narrow .top-links { order: 1; }',
     'html.layout-narrow .top-bar .notice-strip { order: 2; text-align: right; }',
     'html.layout-narrow .layout { padding: 8px; }',
+    // A finger's target on a phone: the same words, more room round them.
+    'html.layout-narrow .top-user .sign-out button { padding: 8px 4px; }',
     'html.layout-narrow input, html.layout-narrow textarea { font-size: 16px !important; }',
   ].join('\n');
   document.head.appendChild(s);

@@ -76,7 +76,7 @@ plans_page : {
 	messages : Str,
 } -> Str
 plans_page = |{ viewer, viewer_id, count, messages }|
-	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\" data-download=\"/chat/dm/1_1/plans/download\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
+	"${head("plans")}<header class=\"top-bar\"><span class=\"top-title\"><a href=\"/chat/dm/1_1/plans\">Steve on plans</a></span> ${top_links}<span class=\"viewer\">${viewer}</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"messages\" data-stream=\"/chat/dm/1_1/plans/stream\" data-after=\"${count}\" data-viewer=\"${viewer_id}\" data-react=\"/chat/dm/1_1/plans/react\" data-raw=\"/chat/dm/1_1/plans/raw\" data-download=\"/chat/dm/1_1/plans/download\">\n${messages}</div>\n${foot("/chat/dm/1_1/plans")}"
 
 ## Steve's page of `plans`, showing `count` messages, `messages`.
 steves_page : { count : Str, messages : Str } -> Str
@@ -239,7 +239,7 @@ expect
 		== login_page("<p>No &lt;code&gt;.</p>\n", { name_focus: "", code_focus: " autofocus" })
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
-		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 # With GitHub's settings, a link above the form, going on to `next`, and a
 # line for those with a password.
 expect
@@ -382,7 +382,7 @@ expect
 		problem: NoProblem,
 		now: Timestamp.at_second(0),
 	}).to_utf8()
-		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>An invite brings someone into the chat. They choose a password, and sign in with their name and that password.</p>\n<p>Write the name you know them by, and you get a link to send them. The link works once, for seven days. They can keep the name or choose another.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
+		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>An invite brings someone into the chat. They choose a password, and sign in with their name and that password.</p>\n<p>Write the name you know them by, and you get a link to send them. The link works once, for seven days. They can keep the name or choose another.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
 	PageKit.refusal("it <is> not UTF-8").to_utf8()
@@ -514,7 +514,7 @@ steves_recent = |tiles|
 ## empty, where app/chrome.js shows the notices, then `parts`.
 recent_page : Str -> Str
 recent_page = |parts|
-	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 
 # Recent with no conversation that has a message says so, above its list,
 # empty, which names its stream.
