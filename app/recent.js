@@ -5,7 +5,8 @@
 // Each tile (.recent-tile, a link to its conversation) holds a lead (a DM's
 // avatar, the other human's initial, or a channel's coloured bar), the place
 // and topic, how long ago its last message was sent, and a one-line "Who:
-// excerpt" preview. The script styles them (chat-client's styles, its colours
+// excerpt" preview. The page's panel is centered in the window. The script
+// styles the tiles (chat-client's styles, its colours
 // palette.js's), colours each channel's bar by its name, and says each time
 // as how long ago it was, again every 20 seconds, from its <time datetime>.
 //
@@ -25,6 +26,7 @@
 
   var s = document.createElement('style');
   s.textContent = ''
+    + '.panel { margin-left:auto; margin-right:auto; }'
     + '.recent-list { display:flex; flex-direction:column; }'
     + '.recent-tile { display:flex; align-items:flex-start; gap:10px;'
     +              ' padding:10px 8px 10px 12px; text-decoration:none;'
