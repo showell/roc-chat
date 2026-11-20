@@ -32,7 +32,7 @@
 --    and boundaries' `single`, `entry`, `constant` and `bool_param`, which
 --    are rules of thumb and questions for a reader.
 --    hunt_names also reads platform/, and two of its counts are held at
---    exactly a number rather than zero. In platform/, noun_effect holds 9:
+--    exactly a number rather than zero. In platform/, noun_effect holds 10:
 --    Host.roc's effects are named with the Zig host, so a rename is a change
 --    to the seam. container holds 1: `Http.Header`'s `value` is that
 --    header's own word and crosses the seam too.
@@ -145,7 +145,7 @@ const name_counts = {"state_effect ([0-9]+)", "question ([0-9]+)", "vague ([0-9]
 
 const hunts = {
   {recipe = "hunt_names", args = {}, counts = name_counts},
-  {recipe = "hunt_names", glob = "platform/**/*.roc", args = {}, counts = name_counts, held = {{count = "noun_effect ([0-9]+)", findings = 9}, {count = "container ([0-9]+)", findings = 1}}},
+  {recipe = "hunt_names", glob = "platform/**/*.roc", args = {}, counts = name_counts, held = {{count = "noun_effect ([0-9]+)", findings = 10}, {count = "container ([0-9]+)", findings = 1}}},
   {recipe = "check_errors", args = {}, counts = {"error_alias ([0-9]+)", "optional_tag ([0-9]+)", "set_fallback ([0-9]+)", "placeholder ([0-9]+)", "number_fallback ([0-9]+)"}},
   {recipe = "find_deep_calls", args = {"min=4"}, counts = {"nested ([0-9]+)"}},
   {recipe = "check_boundaries", args = {}, counts = {"fixed ([0-9]+)", "dead ([0-9]+)", "unused_api ([0-9]+)", "same_branches ([0-9]+)"}},
