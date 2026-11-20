@@ -5,7 +5,8 @@
 ## app/chrome.js (its top bar), app/sidebar.js (its sidebar, when it has
 ## one), app/compose.js (its compose box), app/emoji.js (the emojis, and
 ## the compose box's autocomplete of them), app/feed.js (its messages) and
-## app/actions.js (each message's reactions and edit) and app/search.js (the
+## app/cite.js (citations of messages), app/actions.js (each message's
+## reactions, quote-reply, citation and edit) and app/search.js (the
 ## search across every topic).
 ## Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in). The join page
@@ -19,6 +20,7 @@ import "sidebar.js" as sidebar_source : Str
 import "compose.js" as compose_source : Str
 import "emoji.js" as emoji_source : Str
 import "feed.js" as feed_source : Str
+import "cite.js" as cite_source : Str
 import "actions.js" as actions_source : Str
 import "panel.js" as panel_source : Str
 import "join.js" as join_source : Str
@@ -33,6 +35,7 @@ Script := [
 	Compose,
 	Emoji,
 	Feed,
+	Cite,
 	Actions,
 	Search,
 	Panel,
@@ -50,6 +53,7 @@ Script := [
 		Script.Compose,
 		Script.Emoji,
 		Script.Feed,
+		Script.Cite,
 		Script.Actions,
 		Script.Search,
 		Script.Panel,
@@ -79,6 +83,7 @@ file_name = |script|
 		Compose => "compose.js"
 		Emoji => "emoji.js"
 		Feed => "feed.js"
+		Cite => "cite.js"
 		Actions => "actions.js"
 		Search => "search.js"
 		Panel => "panel.js"
@@ -97,6 +102,7 @@ source = |script|
 		Compose => compose_source
 		Emoji => emoji_source
 		Feed => feed_source
+		Cite => cite_source
 		Actions => actions_source
 		Search => search_source
 		Panel => panel_source
@@ -117,6 +123,7 @@ expect
 			"/chat/assets/compose.js",
 			"/chat/assets/emoji.js",
 			"/chat/assets/feed.js",
+			"/chat/assets/cite.js",
 			"/chat/assets/actions.js",
 			"/chat/assets/search.js",
 			"/chat/assets/panel.js",
@@ -131,6 +138,7 @@ expect
 		compose_source,
 		emoji_source,
 		feed_source,
+		cite_source,
 		actions_source,
 		search_source,
 	].all(|text| text.starts_with("// This script runs on a conversation page"))
@@ -149,6 +157,7 @@ expect
 		compose_source,
 		emoji_source,
 		feed_source,
+		cite_source,
 		actions_source,
 		search_source,
 		panel_source,
@@ -164,6 +173,7 @@ expect
 		(Script.Compose, compose_source),
 		(Script.Emoji, emoji_source),
 		(Script.Feed, feed_source),
+		(Script.Cite, cite_source),
 		(Script.Actions, actions_source),
 		(Script.Search, search_source),
 		(Script.Panel, panel_source),

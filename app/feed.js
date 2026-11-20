@@ -25,7 +25,8 @@
 // stream sends again (a `replace` event) takes the place of the one shown.
 //
 // One message is selected, ringed, as chat-client's message view did
-// (js/message_view.js). The page starts with the newest selected. The arrow
+// (js/message_view.js). The page starts with the newest selected, or the
+// message its address names (#msg-<n>), in the middle of the pane. The arrow
 // keys move the selection to the next or previous message, Home and End to
 // the first or last, and Page Up and Page Down scroll a page, or select the
 // first or last message when there is no further to scroll. Scrolling
@@ -257,7 +258,7 @@
     else selectEnd(direction === 'up' ? 'first' : 'last');
   }
   // Brings `article` to the middle of the pane and selects it: the sent
-  // notice's link.
+  // notice's link, a link to a message on this page, and the address's.
   function centre(article) {
     arrivedWithHash = false;
     scrollAsScript(function () {
@@ -382,11 +383,19 @@
   Keys.register({ key: 'PageDown', cap: 'PgDn', label: 'a page down', run: function () { page('down'); } });
   window.Feed = { reveal: centre, formatLocalTime: formatLocalTime };
 
-  scrollToNewest();
-  var newestDrawn = allMessages().pop();
-  if (newestDrawn) select(newestDrawn, true);
-  // Images lay out late; the newest message stays in view once they have.
-  window.addEventListener('load', scrollToNewest);
+  // The page opens at the message its address names (a citation's link, a
+  // reload), else at the newest, selected. Images lay out late; once they
+  // have, it is brought back into view, unless the reader has moved.
+  var named = /^#msg-[0-9]+$/.test(location.hash) && document.getElementById(location.hash.slice(1));
+  var atAddress = named && messages.contains(named) ? named : null;
+  var opening = atAddress || allMessages().pop();
+  if (atAddress) centre(atAddress);
+  else scrollToNewest();
+  if (opening) select(opening, true);
+  window.addEventListener('load', function () {
+    if (!atAddress) scrollToNewest();
+    else if (selected === atAddress) centre(atAddress);
+  });
 
   // Whether the view is at or near the newest message, read before a new one
   // is appended below it. Near means the hidden part below is at most 15% of

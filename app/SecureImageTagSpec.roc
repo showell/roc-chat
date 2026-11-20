@@ -3,12 +3,13 @@
 ## exact URL path of an uploaded image of that conversation. Every other
 ## source, another conversation's uploads among them, comes out as the
 ## frozen rendering that is no image. A quote-reply renders as chat-client's
-## did.
+## did, and a citation as a quote with its link under it.
 import ChannelName
 import ConversationKey
 import Directory
 import Markdown
 import Sample
+import Script
 import SecureImageTag
 import TrustedHtml
 import UnvalidatedString
@@ -149,6 +150,40 @@ expect
 expect
 	message_html("In MSG_plans_3 I said:\n~~~~ quote\nIn MSG_plans_2 you said:\n~~~ quote\nhi\n~~~\n\nyes\n~~~~\n\nok")
 		== "<p>In <a href=\"#msg-plans_3\" class=\"msg-ref\">MSG_plans_3</a> I said:</p>\n<pre class=\"chat-quote\">In MSG_plans_2 you said:\n~~~ quote\nhi\n~~~\n\nyes\n</pre>\n<p>ok</p>\n"
+# A citation, as app/actions.js writes one: the quote a blockquote, then a
+# paragraph that is only the link to the message on its topic's page,
+# which app/actions.js recognises and app/feed.js styles quietly.
+expect
+	message_html("> We'll launch on the 3rd,\n> after the *invite* pass <b>…\n\n[Apoorva in #plans › launch](/chat/channel/plans/launch#msg-2)\n\n")
+		== "<blockquote>\n<p>We&#39;ll launch on the 3rd,<br>\nafter the <em>invite</em> pass &lt;b&gt;…</p>\n</blockquote>\n<p><a href=\"/chat/channel/plans/launch#msg-2\">Apoorva in #plans › launch</a></p>\n"
+# A blank line of the quote is `>` alone, and a name's brackets are
+# parentheses, as roc-markdown takes no `\[` in a link's text.
+expect
+	message_html("> a\n>\n> b\n\n[A (x) in Steve › plans](/chat/dm/1_1/plans#msg-12)")
+		== "<blockquote>\n<p>a</p>\n<p>b</p>\n</blockquote>\n<p><a href=\"/chat/dm/1_1/plans#msg-12\">A (x) in Steve › plans</a></p>\n"
+# app/actions.js gives every message its cite button and the keyboard help
+# its `l` row, each Cite.copy; app/cite.js writes the link to the message on
+# its topic's page, and marks the paragraph after a quote holding only a
+# link to a chat page.
+expect {
+	actions = Str.from_utf8_lossy(Script.Actions.bytes())
+	[
+		"citeButton.className = 'cite-open';",
+		"citeButton.textContent = 'cite';",
+		"if (e.target.closest('.cite-open')) { Cite.copy(article); return; }",
+		"Keys.register({ key: 'l', label: 'copy a citation of the selected message', run: function () {",
+	].all(|line| actions.contains(line))
+}
+expect {
+	cite = Str.from_utf8_lossy(Script.Cite.bytes())
+	[
+		"return '[' + label + '](' + location.pathname + '#' + article.id + ')';",
+		"'✓ citation copied. To answer it here, '",
+		"'✓ citation copied: paste it in any topic'",
+		"article.querySelectorAll('.body blockquote + p')",
+		"after[i].classList.add('citation-link')",
+	].all(|line| cite.contains(line))
+}
 # Rendered markup is trusted as it is: joined, its entities stay single.
 expect
 	TrustedHtml.join([

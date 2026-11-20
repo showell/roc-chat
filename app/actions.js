@@ -2,9 +2,9 @@
 // builds and app/Script.roc serves. It gives each message its actions:
 // reacting with an emoji, quoting it in a reply, and editing the viewer's
 // own, as chat-client's messages did (js/message.js, js/chat_reactions.js
-// and js/chat.js's doQuote and doEdit). It runs after compose.js, emoji.js
-// and feed.js, and feed.js hands it each message the stream brings, or
-// brings again (Actions.dress).
+// and js/chat.js's doQuote and doEdit), and citing it. It runs after
+// compose.js, emoji.js, feed.js and cite.js, and feed.js hands it each
+// message the stream brings, or brings again (Actions.dress).
 //
 // The server draws everything a message shows, its reactions and its edit
 // included, so this script only styles what it finds and sends what the
@@ -49,6 +49,12 @@
 // /chat/msg/<id>, the id as written, as chat-client's did: the server finds
 // where it is (app/MessageLinkRoute.roc), or says it can't.
 //
+// A citation cites a message in another topic. The "cite" button, on every
+// message, or the `l` key on the selected one, copies one to the clipboard
+// (cite.js's Cite.copy, which writes it; Cite.mark marks one in a message).
+// A link in a message to a message on this page, a citation's in its own
+// topic among them, brings it into view and selects it, in place.
+//
 // The `t` key opens the conversation's raw transcript (the pane's data-raw)
 // in a new tab, as chat-client's did (js/chat.js's viewRaw), so a reader
 // sees every message's markdown as written. The `d` key downloads the
@@ -67,6 +73,7 @@
   if (!window.Keys || !window.Compose) throw new Error('actions.js: compose.js runs first, and gives Keys and Compose');
   if (!window.Emoji) throw new Error('actions.js: emoji.js runs first, and gives Emoji');
   if (!window.Feed) throw new Error('actions.js: feed.js runs first, and gives Feed');
+  if (!window.Cite) throw new Error('actions.js: cite.js runs first, and gives Cite');
   var viewer = messages.getAttribute('data-viewer');
   var reactUrl = messages.getAttribute('data-react');
   var rawUrl = messages.getAttribute('data-raw');
@@ -268,6 +275,7 @@
   // What the script adds to a message the server drew: its action buttons,
   // and the viewer's own reactions marked.
   function dress(article) {
+    Cite.mark(article);
     var chips = article.querySelectorAll('.reaction-chip');
     for (var i = 0; i < chips.length; i++) {
       var mine = reactorsOf(chips[i]).indexOf(viewer) >= 0;
@@ -291,6 +299,12 @@
     quoteButton.textContent = 'quote-reply';
     quoteButton.title = 'Quote this message in a reply (q)';
     actions.appendChild(quoteButton);
+    var citeButton = document.createElement('button');
+    citeButton.type = 'button';
+    citeButton.className = 'cite-open';
+    citeButton.textContent = 'cite';
+    citeButton.title = 'Copy a citation of this message, to paste in any topic (l)';
+    actions.appendChild(citeButton);
     if (isMine(article)) {
       var editButton = document.createElement('button');
       editButton.type = 'button';
@@ -335,6 +349,15 @@
     window.open(MESSAGE_LINK_PATH + encodeURIComponent(label.replace(/^MSG_/, '')), '_blank', 'noopener');
   }
 
+  // A link in a message to a message on this page, a citation's in its own
+  // topic among them, brings it into view and selects it, in place.
+  function messageHere(link) {
+    if (link.origin !== location.origin || link.pathname !== location.pathname) return null;
+    if (!/^#msg-[0-9]+$/.test(link.hash)) return null;
+    var named = document.getElementById(link.hash.slice(1));
+    return named && messages.contains(named) ? named : null;
+  }
+
   messages.addEventListener('click', function (e) {
     var article = e.target.closest && e.target.closest('.message');
     if (!article) return;
@@ -344,10 +367,18 @@
       followReference(reference);
       return;
     }
+    var link = e.target.closest('.body a[href]');
+    var cited = link && messageHere(link);
+    if (cited) {
+      e.preventDefault();
+      Feed.reveal(cited);
+      return;
+    }
     var chip = e.target.closest('.reaction-chip');
     if (chip) { toggle(article, emojiOf(chip)); return; }
     if (e.target.closest('.react-open')) { openPicker(article); return; }
     if (e.target.closest('.quote-open')) { quote(article); return; }
+    if (e.target.closest('.cite-open')) { Cite.copy(article); return; }
     if (e.target.closest('.edit-open')) edit(article);
   });
 
@@ -369,6 +400,10 @@
     if (article) quote(article);
   }
   Keys.register({ key: 'q', label: 'quote-reply to the selected message', aliases: ['r', '>'], run: quoteSelected });
+  Keys.register({ key: 'l', label: 'copy a citation of the selected message', run: function () {
+    var article = selectedMessage();
+    if (article) Cite.copy(article);
+  } });
   Keys.register({ key: 't', label: 'open the raw transcript in a new tab', run: function () {
     window.open(rawUrl, '_blank');
   } });

@@ -373,8 +373,17 @@
   // its text replaced, and the caret at `caret`, as chat-client's edit did.
   // It puts a quote-reply at the caret with Compose.insert, the box opened
   // and the caret after the text; while a send is on its way it does
-  // nothing, as chat-client's quote did.
+  // nothing, as chat-client's quote did. It says a citation was copied with
+  // Compose.notice, the status line's words, which answers whether they
+  // were shown: only while the box is open and no send is on its way.
   window.Compose = {
+    isOpen: function () { return compose.classList.contains('open'); },
+    notice: function (words, failed) {
+      if (pending || !compose.classList.contains('open')) return false;
+      status.style.color = failed ? '' : 'var(--cc-notify-fg)';
+      status.textContent = words;
+      return true;
+    },
     arrived: function (article) {
       if (!awaitingArrival[article.id]) return;
       delete awaitingArrival[article.id];
