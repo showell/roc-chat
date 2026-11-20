@@ -27,7 +27,6 @@
 ##
 ## A message's markdown goes in through `Markdown.message_html`, and
 ## everything else through `Escape.text` and `Html.element`.
-import Browse
 import Conversation
 import ConversationKey
 import Escape
@@ -41,6 +40,7 @@ import PageKit
 import Reactions
 import Script
 import Sidebar
+import SidebarOrder
 import SignedIn
 import Topic
 import TrustedHtml
@@ -59,7 +59,7 @@ ConversationPage :: [].{
 		NoSidebar,
 		Sidebar(
 			{
-				places : List(Browse.PlaceWithTopics),
+				places : List(SidebarOrder.TimedPlace),
 				online_humans : List(UserId),
 				notice : [NoNotice, Notice(Str)],
 			},

@@ -1,10 +1,12 @@
 // This script runs on a conversation page that has a sidebar, which
 // app/Sidebar.roc builds and app/Script.roc serves. The server writes the
-// sidebar whole: the viewer's DMs, then their channels, each place's topics
-// under it as links, the current topic marked, and the form that starts a
+// sidebar whole, in app/SidebarOrder.roc's order: the page's own place
+// first, then the others newest first, each place's topics under it as
+// links, newest first, the current topic marked, and the form that starts a
 // topic at the end of each place. This script gives it chat-client's look and
 // behaviour (js/chat_left_sidebar.js), without that rail's pinning or
-// dragging.
+// dragging. It never moves a place: the order is the server's, as the page
+// was drawn.
 //
 // Presence, chat-client's: a DM with another human (data-person) has a dot
 // before its name, a hollow ring while they are away and solid green while
@@ -19,9 +21,12 @@
 //
 // In a window wider than 768 pixels the sidebar is a rail 180 pixels wide on
 // the left of the layout. Clicking a place's name, or Enter or Space on it,
-// collapses or opens its topics and its form, as chat-client's sections do,
-// and a collapsed place stays collapsed across reloads (localStorage, by the
-// place's data-section).
+// collapses or opens its topics and its form, as chat-client's sections do.
+// Each place starts as the server says (data-opening): `open`, `collapsed`,
+// or `always`, the page's own place, which opens on every load. Once a
+// person opens or collapses a place, their choice is kept across reloads
+// (localStorage, by the place's data-section) and wins over `open` and
+// `collapsed`.
 //
 // In a narrow window (chrome.js's Viewport) the sidebar is a drawer, as
 // chat-client's was (js/chrome_drawer.js and js/chat_responsive.js): the
@@ -36,8 +41,11 @@
 // `topic-added` event, sent to each human of a place on a topic's first
 // message (app/TopicAdded.roc), calls it through Sidebar.topicAdded: its data
 // is Gopher's three fields, a line each, the place's path, the topic and its
-// page. As chat-client's upsertSession, a topic already listed is left, and a
-// place this sidebar doesn't list is ignored.
+// page. A new topic's first message is its place's newest, so it goes first
+// among the place's topics, as the server would order it; no other row
+// moves, and a collapsed place stays collapsed. As chat-client's
+// upsertSession, a topic already listed is left, and a place this sidebar
+// doesn't list is ignored.
 //
 // It finds every part by app/PageContract.roc's classes, and styles each on
 // the DOM itself; its colours are palette.js's.
@@ -54,10 +62,6 @@ window.Sidebar = (function () {
   }
 
   Object.assign(sidebar.style, { overflowY: 'auto', borderRight: '1px solid var(--cc-border)', boxSizing: 'border-box' });
-  styleAll('.sidebar-heading', {
-    fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cc-muted-fg)',
-    fontWeight: 'bold', margin: '0 0 6px',
-  });
   styleAll('.sidebar-place', { marginBottom: '12px' });
   styleAll('.sidebar-place-name', {
     display: 'flex', alignItems: 'center', gap: '5px', margin: '0 0 4px', fontWeight: 'bold',
@@ -99,16 +103,21 @@ window.Sidebar = (function () {
   }
 
   // Collapsing, chat-client's: a caret that points down while the place is
-  // open and right while it is collapsed, kept per place.
+  // open and right while it is collapsed. A person's choice is kept per
+  // place, '1' collapsed and '0' open; with none kept, the server's
+  // data-opening decides.
   function collapseKey(section) { return 'chat-sidebar-collapsed:' + section; }
-  function isCollapsed(section) {
-    try { return localStorage.getItem(collapseKey(section)) === '1'; } catch (e) { return false; } // Private browsing: nothing kept.
+  function startsCollapsed(section, opening) {
+    if (opening === 'always') return false;
+    if (opening !== 'open' && opening !== 'collapsed') throw new Error('sidebar.js: a .sidebar-place has no data-opening of always, open or collapsed');
+    var kept = null;
+    try { kept = localStorage.getItem(collapseKey(section)); } catch (e) { /* Private browsing: nothing kept. */ }
+    if (kept === '1') return true;
+    if (kept === '0') return false;
+    return opening === 'collapsed';
   }
   function storeCollapsed(section, collapsed) {
-    try {
-      if (collapsed) localStorage.setItem(collapseKey(section), '1');
-      else localStorage.removeItem(collapseKey(section));
-    } catch (e) { /* Private browsing: the choice lasts this page. */ }
+    try { localStorage.setItem(collapseKey(section), collapsed ? '1' : '0'); } catch (e) { /* Private browsing: the choice lasts this page. */ }
   }
 
   // A DM's dot: chat-client's hollow ring, filled while the person is online.
@@ -153,7 +162,7 @@ window.Sidebar = (function () {
       if (form) form.style.display = collapsed ? 'none' : 'flex';
       name.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
-    var collapsed = isCollapsed(section);
+    var collapsed = startsCollapsed(section, place.getAttribute('data-opening'));
     show(collapsed);
     function flip() {
       collapsed = !collapsed;
@@ -232,8 +241,8 @@ window.Sidebar = (function () {
     if (e.target.closest && e.target.closest('.sidebar-topics a')) show(false);
   });
 
-  // A topic added to the place `section`, as the server writes a row, in
-  // byte order among the place's topics; a topic already there is left.
+  // A topic added to the place `section`, as the server writes a row, first
+  // among the place's topics, its newest; a topic already there is left.
   function addTopic(section, label, url) {
     var list = places[section];
     if (!list) return;
@@ -248,8 +257,7 @@ window.Sidebar = (function () {
     row.appendChild(link);
     styleRow(row);
     link.style.padding = narrow ? '9px 8px' : '4px 8px';
-    var after = rows.filter(function (other) { var a = other.querySelector('a'); return a && a.textContent > label; })[0];
-    list.insertBefore(row, after || null);
+    list.insertBefore(row, list.firstChild);
   }
 
   // A human come online: their DM's dot filled.

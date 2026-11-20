@@ -8,6 +8,7 @@ import Directory
 import Reactions
 import Sample
 import Sidebar
+import SidebarOrder
 import SignedIn
 import Topic
 import UnvalidatedString
@@ -30,15 +31,17 @@ key_at = |path| ConversationKey.from_url_path({
 }).map_ok(|found| found.key) ?? crash "SidebarSpec: a conversation's path"
 
 ## The places Browse lists for Steve, each with the topics `topics_of`
-## gives its URL path.
-places_with : (Str -> List(Topic)) -> List(Browse.PlaceWithTopics)
+## gives its URL path, none of them with a message yet.
+places_with : (Str -> List(Topic)) -> List(SidebarOrder.TimedPlace)
 places_with = |topics_of| {
 	listed = Browse.places_for({ acting: steve, directory }) ?? crash "SidebarSpec: Steve browses"
 	listed.map(
 		|{ label, place }| {
 			label,
 			place,
-			topics: topics_of(ConversationKey.place_url_path(place)),
+			topics: topics_of(ConversationKey.place_url_path(place)).map(
+				|topic| { topic, latest: NoMessages },
+			),
 		},
 	)
 }
@@ -68,32 +71,36 @@ form_at = |path, suggests| {
 	"<form method=\"post\" action=\"${path}\"><p>New topic <input type=\"text\" name=\"topic\" required${value}></p>\n<button>Add topic</button></form>\n"
 }
 
-## One place: `name`, at `path`, holding `rows`, then its form. Steve's DM
-## with Apoorva names her, offline, as the tests draw it.
+## One place: `name`, at `path`, starting as `opening`, holding `rows`,
+## then its form. Steve's DM with Apoorva names her, offline, as the tests
+## draw it.
 place_html : {
 	name : Str,
 	path : Str,
+	opening : Str,
 	rows : Str,
 	suggests : [Suggests, NoSuggestion],
 } -> Str
-place_html = |{ name, path, rows, suggests }| {
+place_html = |{ name, path, opening, rows, suggests }| {
 	person =
 		if path == "/chat/dm/1_2" {
 			" data-person=\"2\" data-presence=\"offline\""
 		} else {
 			""
 		}
-	"<div class=\"sidebar-place\" data-section=\"${path}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
+	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
 }
 
 ## A place's row for a place with no topics.
 empty_row : Str
 empty_row = "<li class=\"sidebar-empty\">No sessions yet</li>\n"
 
-# Steve's DMs, then his channels, each place's topics under it, only the
-# page's own topic marked: `plans` in his own DM, and not `plans` in
-# `general`, a topic of the same name in another place. A place with no
-# topics says so and suggests its first.
+# The page's own place first, always open, then the others in
+# `SidebarOrder`'s order (with no messages yet, Browse's), collapsed, with
+# no headings. Each place's topics are under it, only the page's own topic
+# marked: `plans` in Steve's own DM, and not `plans` in `general`, a topic
+# of the same name in another place. A place with no topics says so and
+# suggests its first.
 expect
 	sidebar_at({
 		current: "/chat/dm/1_1/plans",
@@ -104,17 +111,19 @@ expect
 				_ => []
 			},
 	})
-		== "<nav class=\"sidebar\">\n<p class=\"sidebar-heading\">DMs</p>\n${place_html({ name: "Steve", path: "/chat/dm/1_1", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n", suggests: NoSuggestion })}${
+		== "<nav class=\"sidebar\">\n${place_html({ name: "Steve", path: "/chat/dm/1_1", opening: "always", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n", suggests: NoSuggestion })}${
 			place_html({
 				name: "Apoorva",
 				path: "/chat/dm/1_2",
+				opening: "collapsed",
 				rows: empty_row,
 				suggests: Suggests,
 			})
-		}<p class=\"sidebar-heading\">Channels</p>\n${place_html({ name: "#general", path: "/chat/channel/general", rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n", suggests: NoSuggestion })}</nav>\n"
-# The page's own topic, before its first message gives it a folder, is
-# listed in its place after the others, marked, and its place's form then
-# suggests nothing.
+		}${place_html({ name: "#general", path: "/chat/channel/general", opening: "collapsed", rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n", suggests: NoSuggestion })}</nav>\n"
+# On a DM's page, the partner's place comes first, and Steve's own DM next,
+# collapsed. The page's own topic, before its first message gives it a
+# folder, is listed in its place after the others, marked, and its place's
+# form then suggests nothing.
 expect
 	sidebar_at({
 		current: "/chat/dm/1_2/plans",
@@ -124,30 +133,40 @@ expect
 				_ => []
 			},
 	})
-		== "<nav class=\"sidebar\">\n<p class=\"sidebar-heading\">DMs</p>\n${place_html({ name: "Steve", path: "/chat/dm/1_1", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n", suggests: NoSuggestion })}${
+		== "<nav class=\"sidebar\">\n${
 			place_html({
 				name: "Apoorva",
 				path: "/chat/dm/1_2",
+				opening: "always",
 				rows: "<li><a class=\"current\" href=\"/chat/dm/1_2/plans\">plans</a></li>\n",
 				suggests: NoSuggestion,
 			})
-		}<p class=\"sidebar-heading\">Channels</p>\n${place_html({ name: "#general", path: "/chat/channel/general", rows: empty_row, suggests: Suggests })}</nav>\n"
-# A group with no places has no heading: here, no channels.
+		}${place_html({ name: "Steve", path: "/chat/dm/1_1", opening: "collapsed", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n", suggests: NoSuggestion })}${place_html({ name: "#general", path: "/chat/channel/general", opening: "collapsed", rows: empty_row, suggests: Suggests })}</nav>\n"
+# A place with a message comes before those with none, and starts open:
+# here `general`, ahead of Apoorva's DM, which Browse lists first.
 expect {
-	dms_only = places_with(|_| []).keep_if(
-		|listed| ConversationKey.place_url_path(listed.place) != "/chat/channel/general",
+	dated = places_with(|_| []).map(
+		|listed|
+			if ConversationKey.place_url_path(listed.place) == "/chat/channel/general" {
+				{ ..listed, topics: [{ topic: Sample.other, latest: At(Sample.hello.time) }] }
+			} else {
+				listed
+			},
 	)
 	shown = Str.from_utf8_lossy(
 		Sidebar.nav({
-			places: dms_only,
+			places: dated,
 			current: key_at("/chat/dm/1_1/plans"),
 			viewer: steve.user().id(),
 			online_humans: [],
 		}).to_utf8(),
 	)
-	shown.contains("<p class=\"sidebar-heading\">DMs</p>")
-		and !shown.contains("Channels")
-		and !shown.contains("/chat/channel")
+	general = "data-section=\"/chat/channel/general\" data-opening=\"open\">"
+	apoorva = "data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\""
+	match shown.split_on(general) {
+		[before, after] => !before.contains(apoorva) and after.contains(apoorva)
+		_ => Bool.False
+	}
 }
 # A DM with another human names them and says whether they are online; the
 # viewer's own DM and a channel name no one.
@@ -162,10 +181,10 @@ expect {
 			}).to_utf8(),
 		)
 	apoorva = Sample.user("Apoorva").id()
-	drawn([apoorva]).contains("data-section=\"/chat/dm/1_2\" data-person=\"2\" data-presence=\"online\">")
-		and drawn([]).contains("data-section=\"/chat/dm/1_2\" data-person=\"2\" data-presence=\"offline\">")
-		and drawn([steve.user().id(), apoorva]).contains("data-section=\"/chat/dm/1_1\">")
-		and drawn([apoorva]).contains("data-section=\"/chat/channel/general\">")
+	drawn([apoorva]).contains("data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\" data-person=\"2\" data-presence=\"online\">")
+		and drawn([]).contains("data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\" data-person=\"2\" data-presence=\"offline\">")
+		and drawn([steve.user().id(), apoorva]).contains("data-section=\"/chat/dm/1_1\" data-opening=\"always\">")
+		and drawn([apoorva]).contains("data-section=\"/chat/channel/general\" data-opening=\"collapsed\">")
 }
 # The drawer's button.
 expect Sidebar.toggle.to_utf8() == "<button class=\"sidebar-toggle\">Conversations</button>\n".to_utf8()

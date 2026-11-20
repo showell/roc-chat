@@ -31,6 +31,7 @@ import RouteSpec
 import SecureImageTagSpec
 import SessionSpec
 import SignInRequestSpec
+import SidebarOrderSpec
 import SidebarSpec
 import TopicAddedSpec
 import StoredDirectorySpec

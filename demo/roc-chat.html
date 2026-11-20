@@ -7,20 +7,18 @@
 <button class="sidebar-toggle">Conversations</button>
 <p class="notice-strip"></p>
 <div class="layout"><nav class="sidebar">
-<p class="sidebar-heading">DMs</p>
-<div class="sidebar-place" data-section="/chat/dm/1_1"><p class="sidebar-place-name">Steve</p>
-<ul class="sidebar-topics">
-<li class="sidebar-empty">No sessions yet</li>
-</ul>
-<form method="post" action="/chat/dm/1_1"><p>New topic <input type="text" name="topic" required value="general"></p>
-<button>Add topic</button></form>
-</div>
-<p class="sidebar-heading">Channels</p>
-<div class="sidebar-place" data-section="/chat/channel/general"><p class="sidebar-place-name">#general</p>
+<div class="sidebar-place" data-section="/chat/channel/general" data-opening="always"><p class="sidebar-place-name">#general</p>
 <ul class="sidebar-topics">
 <li><a class="current" href="/chat/channel/general/roc-chat">roc-chat</a></li>
 </ul>
 <form method="post" action="/chat/channel/general"><p>New topic <input type="text" name="topic" required></p>
+<button>Add topic</button></form>
+</div>
+<div class="sidebar-place" data-section="/chat/dm/1_1" data-opening="collapsed"><p class="sidebar-place-name">Steve</p>
+<ul class="sidebar-topics">
+<li class="sidebar-empty">No sessions yet</li>
+</ul>
+<form method="post" action="/chat/dm/1_1"><p>New topic <input type="text" name="topic" required value="general"></p>
 <button>Add topic</button></form>
 </div>
 </nav>

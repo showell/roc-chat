@@ -3,8 +3,9 @@
 ## zig-server/src/chat_fanout.zig): on a topic's first message, every
 ## member of its place, the author included, is sent the event on their own
 ## stream (`Presence.viewer_stream_key`), which every conversation page's
-## stream of theirs carries, and app/sidebar.js adds the topic to its place
-## in byte order (chat-client's js/chat_left_sidebar.js, `upsertSession`).
+## stream of theirs carries, and app/sidebar.js adds the topic first among
+## its place's topics, its newest, as `SidebarOrder` would order it
+## (chat-client's js/chat_left_sidebar.js, `upsertSession`).
 ##
 ## The event carries Gopher's three fields, a line each: the place
 ## (Gopher's `conv`, here its path, the sidebar's `data-section`), the topic

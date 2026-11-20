@@ -65,6 +65,20 @@ RecentRoute :: [].{
 			Ok(reader) => RecentStream.response(reader.user().id())
 			Err(_) => key_refusal
 		}
+
+	## The last message of the conversation `key`, or `NoMessages` when it has
+	## no transcript or an empty one; unless the read failed, or the last
+	## message is not one the chat writes. A conversation's sidebar orders by
+	## it too (`ConversationRoute`).
+	load_latest_message! : ConversationKey => Try(
+		[NoMessages, Latest(Transcript.LatestMessage)],
+		[Unreadable(ConversationKey), FileSystem(FileFacts.Fault)],
+	)
+	load_latest_message! = |key|
+		match TranscriptFiles.read_transcript!(key) ? |fault| FileSystem(fault) {
+			NoFile => Ok(NoMessages)
+			File(utf8) => Transcript.latest_message(utf8).map_err(|Unreadable| Unreadable(key))
+		}
 }
 
 ## The tile of each conversation of `places` that has a message, as the
@@ -81,7 +95,7 @@ load_tiles! = |{ places, viewer }| {
 		for topic in topics {
 			key = ConversationKey.of({ place, topic })
 			$tiles =
-				match load_latest_message!(key)? {
+				match RecentRoute.load_latest_message!(key)? {
 					Latest(latest) => $tiles.append(RecentFeed.tile({ key, label, latest, viewer }))
 					NoMessages => $tiles
 				}
@@ -89,19 +103,6 @@ load_tiles! = |{ places, viewer }| {
 	}
 	Ok($tiles)
 }
-
-## The last message of the conversation `key`, or `NoMessages` when it has
-## no transcript or an empty one; unless the read failed, or the last
-## message is not one the chat writes.
-load_latest_message! : ConversationKey => Try(
-	[NoMessages, Latest(Transcript.LatestMessage)],
-	[Unreadable(ConversationKey), FileSystem(FileFacts.Fault)],
-)
-load_latest_message! = |key|
-	match TranscriptFiles.read_transcript!(key) ? |fault| FileSystem(fault) {
-		NoFile => Ok(NoMessages)
-		File(utf8) => Transcript.latest_message(utf8).map_err(|Unreadable| Unreadable(key))
-	}
 
 ## The 403 for a request with an API key.
 key_refusal : Http.Response

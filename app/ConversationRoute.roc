@@ -5,7 +5,8 @@
 ##
 ## A GET answers with a conversation's page, which for a human holds the
 ## sidebar of the places Browse lists for them, each with its topics
-## (`BrowseRoute.load_place_topics!`), and records the conversation as the
+## (`BrowseRoute.load_place_topics!`) and when each last had a message
+## (`RecentRoute.load_latest_message!`), and records the conversation as the
 ## last they opened (`ResumeRoute`). A POST takes a form whose
 ## field `markdown` holds a new message, adds the message to the
 ## conversation, sends it to the conversation's open pages
@@ -41,6 +42,7 @@ import ConversationStream
 import DateTime
 import Directory
 import Edit
+import FileFacts
 import HttpAnswer
 import Message
 import MessageNotes
@@ -50,7 +52,9 @@ import Presence
 import PresenceNotices
 import Reactions
 import RecentStream
+import RecentRoute
 import ResumeRoute
+import SidebarOrder
 import SignedIn
 import Timestamp
 import Transcript
@@ -199,7 +203,10 @@ load_page! : {
 	key : ConversationKey,
 	acting : SignedIn,
 	directory : Directory,
-} => Try(TrustedHtml, [Unreadable(TranscriptRefusal.Why), FileSystem(_)])
+} => Try(
+	TrustedHtml,
+	[Unreadable(TranscriptRefusal.Why), UnreadableLatest(ConversationKey), FileSystem(_)],
+)
 load_page! = |{ key, acting, directory }| {
 	loaded = load_conversation!(key)?
 	reactions = TranscriptFiles.read_reactions!(key) ? |fault| FileSystem(fault)
@@ -208,7 +215,8 @@ load_page! = |{ key, acting, directory }| {
 			Err(ByApiKey) => NoSidebar
 			Err(Agent(_)) => NoSidebar
 			Ok(listed) => {
-				places = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
+				with_topics = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
+				places = load_timed_places!(with_topics)?
 				humans = directory.users().to_list().keep_oks(|user| user.as_human())
 				now = Clock.read_clock!({})
 				online_humans = PresenceNotices.load_online_humans!({
@@ -235,6 +243,33 @@ load_page! = |{ key, acting, directory }| {
 			sidebar,
 		}),
 	)
+}
+
+## Each of `places` with when each of its topics last had a message, which
+## orders the sidebar (`SidebarOrder`); unless a read failed, or a last
+## message is not one the chat writes.
+load_timed_places! : List(Browse.PlaceWithTopics) => Try(
+	List(SidebarOrder.TimedPlace),
+	[UnreadableLatest(ConversationKey), FileSystem(FileFacts.Fault)],
+)
+load_timed_places! = |places| {
+	var $timed = []
+	for { label, place, topics } in places {
+		var $topics = []
+		for topic in topics {
+			key = ConversationKey.of({ place, topic })
+			latest =
+				match RecentRoute.load_latest_message!(key) {
+					Ok(NoMessages) => NoMessages
+					Ok(Latest(found)) => At(found.time)
+					Err(Unreadable(_)) => return Err(UnreadableLatest(key))
+					Err(FileSystem(fault)) => return Err(FileSystem(fault))
+				}
+			$topics = $topics.append({ topic, latest })
+		}
+		$timed = $timed.append({ label, place, topics: $topics })
+	}
+	Ok($timed)
 }
 
 ## The message in `post`'s form, added to its conversation and to the

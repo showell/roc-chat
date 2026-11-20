@@ -127,7 +127,9 @@ demo_viewer : SignedIn
 demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().user())
 
 ## The demo's sidebar: the founder's places at the first start, each with
-## no topics of its own, so the page's own topic is its place's one.
+## no topics of its own, so the page's own topic is its place's one, and
+## none with a message, so `SidebarOrder` puts the page's place first and
+## the rest in Browse's order, collapsed.
 demo_sidebar : ConversationPage.SidebarShown
 demo_sidebar = {
 	listed =

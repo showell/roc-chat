@@ -29,6 +29,7 @@ ConversationRefusal :: [].{
 		BadCount,
 		NoSuchConversation(ConversationKey),
 		Unreadable(TranscriptRefusal.Why),
+		UnreadableLatest(ConversationKey),
 		FileSystem(FileFacts.Fault),
 		Backdated,
 		Full,
@@ -79,6 +80,13 @@ ConversationRefusal :: [].{
 				words: {
 					title: "Not a transcript",
 					text: "Not a transcript: ${TranscriptRefusal.words(fault)}.",
+				},
+			}
+			UnreadableLatest(key) => {
+				status: 500,
+				words: {
+					title: "Failed",
+					text: "The last message of ${key.url_path(Page)} is not one this chat writes.",
 				},
 			}
 			FileSystem(fault) => {

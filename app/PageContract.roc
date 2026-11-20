@@ -22,11 +22,13 @@
 ## its collapsed state by, and where a topic added to it belongs; a DM with
 ## another human names them (`data-person`) and says whether they are
 ## online (`data-presence`, by `Presence`), which app/sidebar.js draws as a
-## dot. The line
+## dot; each place says how it starts (`data-opening`, by `SidebarOrder`),
+## which app/sidebar.js opens or collapses it by. The line
 ## above the page (`notice-strip`) is where app/sidebar.js shows that
 ## someone has come online.
 import Html
 import Script
+import SidebarOrder
 import TrustedHtml
 
 PageContract :: [].{
@@ -68,7 +70,6 @@ PageContract :: [].{
 		RecentWho,
 		Sidebar,
 		SidebarEmpty,
-		SidebarHeading,
 		SidebarPlace,
 		SidebarPlaceName,
 		SidebarToggle,
@@ -100,6 +101,7 @@ PageContract :: [].{
 		Reactors(Html.Token),
 		Person(Html.Token),
 		Presence([Online, Offline]),
+		Opening(SidebarOrder.Opening),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -120,6 +122,9 @@ PageContract :: [].{
 			Person(id) => Data(token("person"), Token(id))
 			Presence(Online) => Data(token("presence"), Token(token("online")))
 			Presence(Offline) => Data(token("presence"), Token(token("offline")))
+			Opening(AlwaysOpen) => Data(token("opening"), Token(token("always")))
+			Opening(Open) => Data(token("opening"), Token(token("open")))
+			Opening(Collapsed) => Data(token("opening"), Token(token("collapsed")))
 		}
 
 	## An element `attributes` alone opens, as a test reads it.
@@ -166,7 +171,6 @@ class_name = |chosen|
 		RecentWho => "recent-who"
 		Sidebar => "sidebar"
 		SidebarEmpty => "sidebar-empty"
-		SidebarHeading => "sidebar-heading"
 		SidebarPlace => "sidebar-place"
 		SidebarPlaceName => "sidebar-place-name"
 		SidebarToggle => "sidebar-toggle"
@@ -225,7 +229,6 @@ expect
 		(RecentWho, "recent-who"),
 		(Sidebar, "sidebar"),
 		(SidebarEmpty, "sidebar-empty"),
-		(SidebarHeading, "sidebar-heading"),
 		(SidebarPlace, "sidebar-place"),
 		(SidebarPlaceName, "sidebar-place-name"),
 		(SidebarToggle, "sidebar-toggle"),
@@ -258,6 +261,9 @@ expect {
 		(Person(token("2")), "<p data-person=\"2\"></p>"),
 		(Presence(Online), "<p data-presence=\"online\"></p>"),
 		(Presence(Offline), "<p data-presence=\"offline\"></p>"),
+		(Opening(AlwaysOpen), "<p data-opening=\"always\"></p>"),
+		(Opening(Open), "<p data-opening=\"open\"></p>"),
+		(Opening(Collapsed), "<p data-opening=\"collapsed\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
@@ -301,7 +307,6 @@ expect
 	[
 		Sidebar,
 		SidebarToggle,
-		SidebarHeading,
 		SidebarPlace,
 		SidebarPlaceName,
 		SidebarTopics,
@@ -334,6 +339,8 @@ expect
 	is_read_by(Script.Sidebar.bytes(), "data-section")
 		and is_read_by(Script.Sidebar.bytes(), "data-person")
 		and is_read_by(Script.Sidebar.bytes(), "data-presence")
+		and is_read_by(Script.Sidebar.bytes(), "data-opening")
+		and !is_read_by(Script.Feed.bytes(), "data-opening")
 		and !is_read_by(Script.Feed.bytes(), "data-person")
 		and !is_read_by(Script.Compose.bytes(), "data-section")
 		and !is_read_by(Script.Feed.bytes(), "data-section")
