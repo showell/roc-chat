@@ -380,7 +380,7 @@
   Keys.register({ key: 'End', label: 'last message', run: function () { selectEnd('last'); } });
   Keys.register({ key: 'PageUp', cap: 'PgUp', label: 'a page up', run: function () { page('up'); } });
   Keys.register({ key: 'PageDown', cap: 'PgDn', label: 'a page down', run: function () { page('down'); } });
-  window.Feed = { reveal: centre };
+  window.Feed = { reveal: centre, formatLocalTime: formatLocalTime };
 
   scrollToNewest();
   var newestDrawn = allMessages().pop();

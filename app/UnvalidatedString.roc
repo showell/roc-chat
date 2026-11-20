@@ -25,6 +25,7 @@ import Message
 import Name
 import Password
 import Reactions
+import SearchWords
 import SecretToken
 import Topic
 import UploadedImage
@@ -130,6 +131,11 @@ UnvalidatedString :: Str.{
 	## The time it writes, checked by `DateTime.from_str`.
 	date_time : UnvalidatedString -> Try(DateTime, [WrongShape, OutOfRange])
 	date_time = |UnvalidatedString.(text)| DateTime.from_str(text)
+
+	## The search key it spells, as search's query carries it, read by
+	## `SearchWords.SearchKey.of_typed`: a key is any text, trimmed and folded.
+	search_key : UnvalidatedString -> SearchWords.SearchKey
+	search_key = |UnvalidatedString.(text)| SearchWords.SearchKey.of_typed(text)
 
 	## A URL's path, split at its `/`s (`/chat/dm/1_1` is `chat`, `dm` and
 	## `1_1`), each part as unchecked as the whole; unless it does not start

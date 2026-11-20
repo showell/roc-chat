@@ -30,6 +30,7 @@ import RecentRoute
 import RequestOrigin
 import ResumeRoute
 import Route
+import SearchRoute
 import SignInRoute
 import SignedIn
 import UnvalidatedString
@@ -85,7 +86,7 @@ access_asked = |asked|
 		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
 		ShowRecent => AsksNoConversation
-		OpenRecentStream => AsksNoConversation
+		OpenRecentStream | SearchEveryTopic(_) => AsksNoConversation
 		ShowAgents => AsksNoConversation
 		MakeAgent => AsksNoConversation
 		InviteAgent(_) => AsksNoConversation
@@ -123,7 +124,7 @@ anonymous_refusal = |asked|
 		StartGitHubLink => unauthorized_refusal
 		ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
 		ShowRecent => SignInRoute.login_redirect(site_path_of(PageKit.recent_path))
-		OpenRecentStream => unauthorized_refusal
+		OpenRecentStream | SearchEveryTopic(_) => unauthorized_refusal
 		StartTopic(_) => unauthorized_refusal
 		ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 		ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
@@ -305,6 +306,7 @@ answer_route! = |{ asked, request, directory, acting }|
 		ShowBrowse => BrowseRoute.show!({ acting, directory })
 		ShowRecent => RecentRoute.show!({ acting, directory })
 		OpenRecentStream => RecentRoute.open_stream(acting)
+		SearchEveryTopic(asked_of) => SearchRoute.serve!({ asked_of, acting, directory, request })
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>

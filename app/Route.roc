@@ -6,6 +6,8 @@
 ##     GET  /chat                              Browse, every place you may open
 ##     GET  /chat/recent                       Recent, each conversation's last message
 ##     GET  /chat/recent/stream                Recent's live stream
+##     GET  /chat/search/words                 search's words: `?prefix=`
+##     GET  /chat/search/messages              search's messages: `?word=`
 ##     POST /chat/channel/<channel>            a new topic: `topic=`
 ##     POST /chat/dm/<pair>
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
@@ -80,6 +82,7 @@ import PageKit
 import PeoplePaths
 import Place
 import Script
+import Search
 import UnvalidatedString
 import UploadedImage
 import UserId
@@ -120,6 +123,7 @@ Route :: [].{
 		ShowBrowse,
 		ShowRecent,
 		OpenRecentStream,
+		SearchEveryTopic([Words, Messages]),
 		StartTopic(Place),
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
@@ -246,6 +250,16 @@ browse_path_choice = |{ path, method, directory }|
 	} else if path.is_exactly("${PageKit.recent_path}/stream") {
 		match method {
 			Get => SignedInOnly(OpenRecentStream)
+			Post | Other => MethodNotAllowed(GetOnly)
+		}
+	} else if path.is_exactly(Search.words_path) {
+		match method {
+			Get => SignedInOnly(SearchEveryTopic(Words))
+			Post | Other => MethodNotAllowed(GetOnly)
+		}
+	} else if path.is_exactly(Search.messages_path) {
+		match method {
+			Get => SignedInOnly(SearchEveryTopic(Messages))
 			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else {

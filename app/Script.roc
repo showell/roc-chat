@@ -5,7 +5,8 @@
 ## app/chrome.js (its top bar), app/sidebar.js (its sidebar, when it has
 ## one), app/compose.js (its compose box), app/emoji.js (the emojis, and
 ## the compose box's autocomplete of them), app/feed.js (its messages) and
-## app/actions.js (each message's reactions and edit).
+## app/actions.js (each message's reactions and edit) and app/search.js (the
+## search across every topic).
 ## Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in). The join page
 ## ends with app/join.js, which reads the invite's code from the link, and
@@ -21,8 +22,9 @@ import "actions.js" as actions_source : Str
 import "panel.js" as panel_source : Str
 import "join.js" as join_source : Str
 import "recent.js" as recent_source : Str
+import "search.js" as search_source : Str
 
-Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Panel, Join, Recent].{
+Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Search, Panel, Join, Recent].{
 
 	## Every script the pages load.
 	all_scripts : List(Script)
@@ -34,6 +36,7 @@ Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Panel, Join,
 		Script.Emoji,
 		Script.Feed,
 		Script.Actions,
+		Script.Search,
 		Script.Panel,
 		Script.Join,
 		Script.Recent,
@@ -61,6 +64,7 @@ file_name = |script|
 		Emoji => "emoji.js"
 		Feed => "feed.js"
 		Actions => "actions.js"
+		Search => "search.js"
 		Panel => "panel.js"
 		Join => "join.js"
 		Recent => "recent.js"
@@ -77,6 +81,7 @@ source = |script|
 		Emoji => emoji_source
 		Feed => feed_source
 		Actions => actions_source
+		Search => search_source
 		Panel => panel_source
 		Join => join_source
 		Recent => recent_source
@@ -95,6 +100,7 @@ expect
 			"/chat/assets/emoji.js",
 			"/chat/assets/feed.js",
 			"/chat/assets/actions.js",
+			"/chat/assets/search.js",
 			"/chat/assets/panel.js",
 			"/chat/assets/join.js",
 			"/chat/assets/recent.js",
@@ -107,6 +113,7 @@ expect
 		emoji_source,
 		feed_source,
 		actions_source,
+		search_source,
 	].all(|text| text.starts_with("// This script runs on a conversation page"))
 expect [
 	chrome_source,
@@ -123,6 +130,7 @@ expect
 		emoji_source,
 		feed_source,
 		actions_source,
+		search_source,
 		panel_source,
 		join_source,
 		recent_source,
@@ -136,6 +144,7 @@ expect
 		(Script.Emoji, emoji_source),
 		(Script.Feed, feed_source),
 		(Script.Actions, actions_source),
+		(Script.Search, search_source),
 		(Script.Panel, panel_source),
 		(Script.Join, join_source),
 		(Script.Recent, recent_source),

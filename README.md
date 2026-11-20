@@ -10,6 +10,7 @@ The code here was written by AI coding agents (Claude), with human supervision.
 - Messages in Markdown, with images uploaded or pasted.
 - Live updates: new messages appear without a reload.
 - A Recent page: every conversation you can read, newest first.
+- Search across every topic you can read, from the `/` key.
 - Who's online, with a notice when someone arrives.
 - Reactions, quote-replies and edits.
 - Keyboard shortcuts throughout.

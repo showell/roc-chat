@@ -172,7 +172,7 @@ ConversationPage :: [].{
 				TrustedHtml.join(
 					List.concat(
 						List.concat([Script.Chrome], scripts),
-						[Script.Compose, Script.Emoji, Script.Feed, Script.Actions],
+						[Script.Compose, Script.Emoji, Script.Feed, Script.Actions, Script.Search],
 					).map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
 				),
 			]),
