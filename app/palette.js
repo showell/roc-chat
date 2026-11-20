@@ -22,40 +22,67 @@ window.Palette = (function () {
   'use strict';
   var STORAGE = 'chat-theme';
 
-  var LIGHT = {
-    fg: '#111', mutedFg: '#888', softMutedFg: '#999', bodyMutedFg: '#444', metaFg: '#333',
-    accent: '#000080', accentHover: '#0000a0', accentSoftBg: '#eaeaff', accentSoftHov: '#d8d8ff',
-    bg: '#fff', cardBg: '#fafafa', mineBg: '#e7e7ff', theirsBg: '#f0f0e6',
-    quoteBg: '#f6f6fb', quoteBorder: '#b9b9e0', codeBg: '#f4f4ec', codeStrapBg: '#faf9f5', codeFg: '#222',
-    border: '#ddd', softBorder: '#e0e0e0', dialogBorder: '#bbb', inputBorder: '#e3e3ef',
-    searchSelBg: '#eef0ff', searchTokFg: '#23235a', searchMarkBg: '#ffe680',
-    error: '#b00020', savedFg: '#1a7a3a', backdrop: 'rgba(0,0,0,0.4)', notifyFg: '#1a5fb4', noticeFg: '#8a2be2',
-    goBg: '#2ecc5a', goHoverBg: '#27b04d', goFg: '#111',
-    topBarBg: '#f0ede4', topBarBorder: '#c9bfa7', presenceIdle: '#3b82f6', presenceOnline: '#22c55e',
-    lostBg: '#fdd', lostFg: '#600', selectRing: '#ffcf3a',
-    synComment: '#6e7781', synLiteral: '#0a3069', synKeyword: '#cf222e', synType: '#953800',
+  // Each colour, one a line, as `name: [light, dark]`. The dark colours are
+  // GitHub's, the bubbles a desaturated blue (the viewer's own) and a
+  // desaturated warm grey (everyone else's).
+  var COLOURS = {
+    fg: ['#111', '#e6edf3'],
+    mutedFg: ['#888', '#8b949e'],
+    softMutedFg: ['#999', '#7d8590'],
+    bodyMutedFg: ['#444', '#9aa4ae'],
+    metaFg: ['#333', '#b8c0c8'],
+    accent: ['#000080', '#58a6ff'],
+    accentHover: ['#0000a0', '#79b8ff'],
+    accentSoftBg: ['#eaeaff', '#1f2d4a'],
+    accentSoftHov: ['#d8d8ff', '#28395e'],
+    bg: ['#fff', '#0d1117'],
+    cardBg: ['#fafafa', '#161b22'],
+    mineBg: ['#e7e7ff', '#1c2433'],
+    theirsBg: ['#f0f0e6', '#22221c'],
+    quoteBg: ['#f6f6fb', '#161b22'],
+    quoteBorder: ['#b9b9e0', '#3a3a5c'],
+    codeBg: ['#f4f4ec', '#1a1f26'],
+    codeStrapBg: ['#faf9f5', '#13171d'],
+    codeFg: ['#222', '#e6edf3'],
+    border: ['#ddd', '#30363d'],
+    softBorder: ['#e0e0e0', '#272c33'],
+    dialogBorder: ['#bbb', '#3a3f47'],
+    inputBorder: ['#e3e3ef', '#30363d'],
+    searchSelBg: ['#eef0ff', '#1f2d4a'],
+    searchTokFg: ['#23235a', '#a8b1c5'],
+    searchMarkBg: ['#ffe680', '#6b5210'],
+    error: ['#b00020', '#ff7b72'],
+    savedFg: ['#1a7a3a', '#56d364'],
+    backdrop: ['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.6)'],
+    notifyFg: ['#1a5fb4', '#79b8ff'],
+    noticeFg: ['#8a2be2', '#b48cff'],
+    // The go colours (go...) are a call to action's: a bright green in each
+    // theme (Steve, 2026-11-20: "Is there a brighter green we can use? The
+    // current green is a bit dark."), its hover a step darker, and dark words
+    // on it, as white ones on a green this bright fail WCAG AA. Against goFg,
+    // goBg is 8.9:1 light and 10.5:1 dark, goHoverBg 6.6:1 and 8.1:1; savedFg
+    // is a green for text, not a button's.
+    goBg: ['#2ecc5a', '#3ddc6e'],
+    goHoverBg: ['#27b04d', '#33c25f'],
+    goFg: ['#111', '#0d1117'],
+    topBarBg: ['#f0ede4', '#161b22'],
+    topBarBorder: ['#c9bfa7', '#30363d'],
+    presenceIdle: ['#3b82f6', '#58a6ff'],
+    presenceOnline: ['#22c55e', '#3fb950'],
+    lostBg: ['#fdd', '#3d1418'],
+    lostFg: ['#600', '#ffb3ad'],
+    selectRing: ['#ffcf3a', '#ffcf3a'],
+    synComment: ['#6e7781', '#8b949e'],
+    synLiteral: ['#0a3069', '#a5d6ff'],
+    synKeyword: ['#cf222e', '#ff7b72'],
+    synType: ['#953800', '#ffa657'],
   };
-  // The go colours (go...) are a call to action's: a bright green in each
-  // theme (Steve, 2026-11-20: "Is there a brighter green we can use? The
-  // current green is a bit dark."), its hover a step darker, and dark words
-  // on it, as white ones on a green this bright fail WCAG AA. Against goFg,
-  // goBg is 8.9:1 light and 10.5:1 dark, goHoverBg 6.6:1 and 8.1:1; savedFg
-  // is a green for text, not a button's.
-// GitHub's dark colours, the bubbles a desaturated blue (the viewer's own)
-  // and a desaturated warm grey (everyone else's).
-  var DARK = {
-    fg: '#e6edf3', mutedFg: '#8b949e', softMutedFg: '#7d8590', bodyMutedFg: '#9aa4ae', metaFg: '#b8c0c8',
-    accent: '#58a6ff', accentHover: '#79b8ff', accentSoftBg: '#1f2d4a', accentSoftHov: '#28395e',
-    bg: '#0d1117', cardBg: '#161b22', mineBg: '#1c2433', theirsBg: '#22221c',
-    quoteBg: '#161b22', quoteBorder: '#3a3a5c', codeBg: '#1a1f26', codeStrapBg: '#13171d', codeFg: '#e6edf3',
-    border: '#30363d', softBorder: '#272c33', dialogBorder: '#3a3f47', inputBorder: '#30363d',
-    searchSelBg: '#1f2d4a', searchTokFg: '#a8b1c5', searchMarkBg: '#6b5210',
-    error: '#ff7b72', savedFg: '#56d364', backdrop: 'rgba(0,0,0,0.6)', notifyFg: '#79b8ff', noticeFg: '#b48cff',
-    goBg: '#3ddc6e', goHoverBg: '#33c25f', goFg: '#0d1117',
-    topBarBg: '#161b22', topBarBorder: '#30363d', presenceIdle: '#58a6ff', presenceOnline: '#3fb950',
-    lostBg: '#3d1418', lostFg: '#ffb3ad', selectRing: '#ffcf3a',
-    synComment: '#8b949e', synLiteral: '#a5d6ff', synKeyword: '#ff7b72', synType: '#ffa657',
-  };
+  var LIGHT = {};
+  var DARK = {};
+  Object.keys(COLOURS).forEach(function (k) {
+    LIGHT[k] = COLOURS[k][0];
+    DARK[k] = COLOURS[k][1];
+  });
 
   function varName(camel) {
     return '--cc-' + camel.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); });
