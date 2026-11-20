@@ -75,6 +75,9 @@
     '.message.mine { background: var(--cc-mine-bg); margin-left: auto; }',
     '.message.theirs { background: var(--cc-theirs-bg); margin-right: auto; }',
     '.message > header { font-size: 11px; color: var(--cc-muted-fg); margin-bottom: 3px; }',
+    // The author in the text's colour and weight 600, the time staying
+    // muted, so a reader scanning the pane finds who spoke first.
+    '.message > header .author { color: var(--cc-fg); font-weight: 600; }',
     '.message > header .message-reference { color: inherit; text-decoration: none; }',
     '.message > header .message-reference:hover { text-decoration: underline; }',
     // A phone's header is the author and the time alone, so it stays one
