@@ -1754,6 +1754,46 @@ fn searchSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         if ((try getAs(a, io, port, who.uma, "/chat/search/words?prefix=ta")).status == 429) refused += 1;
     }
     try t.check("search: no one is a 401; sixteen searches at once meet the limit of five a second, a 429", anonymous.status == 401 and refused > 0);
+    try messageLinkSteps(a, io, port, t, .{ .tam = who.tam, .uma = who.uma });
+}
+
+/// Step 60: links to a message, `/chat/msg/<id>`, as Gopher Chat's were. A
+/// topic's link goes to the reader's one conversation with that topic, never
+/// their own DM; two are a 409, none a 404. A channel's link goes to its
+/// topic, and a reader not in the channel is refused as its page refuses
+/// them. No one is sent to sign in and back.
+fn messageLinkSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { tam: []const u8, uma: []const u8 }) !void {
+    const posts = [_]Response{
+        try postAs(a, io, port, steve_session, "/chat/dm/1_2/solo/send", "markdown=Only+here"),
+        try postAs(a, io, port, steve_session, "/chat/dm/1_2/trips/send", "markdown=A+trip+in+the+DM"),
+        try postAs(a, io, port, steve_session, "/chat/channel/general/trips/send", "markdown=A+trip+in+the+channel"),
+        try postAs(a, io, port, steve_session, "/chat/dm/1_1/mine/send", "markdown=Note+to+self"),
+    };
+    var posted = true;
+    for (posts) |sent| posted = posted and sent.status == 201;
+    const solo = try getAs(a, io, port, steve_session, "/chat/msg/solo_1");
+    const in_channel = try getAs(a, io, port, steve_session, "/chat/msg/general.trips_1");
+    const umas = try getAs(a, io, port, who.uma, "/chat/msg/trips_1");
+    try t.check("a link to a message: a 302 to it on its topic's page; a topic's link to the one place it means for the reader, a channel's to that channel's topic", posted and
+        solo.status == 302 and std.mem.eql(u8, solo.header("location") orelse "", "/chat/dm/1_2/solo#msg-1") and
+        in_channel.status == 302 and std.mem.eql(u8, in_channel.header("location") orelse "", "/chat/channel/general/trips#msg-1") and
+        umas.status == 302 and std.mem.eql(u8, umas.header("location") orelse "", "/chat/channel/general/trips#msg-1"));
+    const steves = try getAs(a, io, port, steve_session, "/chat/msg/trips_1");
+    const tams = try getAs(a, io, port, who.tam, "/chat/msg/trips_2");
+    try t.check("a topic's link that means two of the reader's conversations: a 409 saying it is ambiguous, sent nowhere, for Steve and for Tam", steves.status == 409 and
+        has(steves.body, "This reference is ambiguous") and steves.header("location") == null and tams.status == 409);
+    var none_found = true;
+    inline for (.{ "/chat/msg/nothing_1", "/chat/msg/general.nothing_1", "/chat/msg/mine_1", "/chat/msg/trips", "/chat/msg/1st.trips_1", "/chat/msg/nowhere.trips_1" }) |path| {
+        const answer = try getAs(a, io, port, steve_session, path);
+        none_found = none_found and answer.status == 404 and answer.header("location") == null;
+    }
+    try t.check("a link to no topic of the reader's, to his own DM's (as Gopher's never looked there), of no reference's shape, or to no channel: 404", none_found);
+    const refused = try getAs(a, io, port, who.uma, "/chat/msg/crew.trips_1");
+    const page = try getAs(a, io, port, who.uma, "/chat/channel/crew/trips");
+    const anonymous = try anonymousGet(a, io, port, "/chat/msg/solo_1");
+    try t.check("a channel's link for a reader not in it: refused exactly as its page is, a 403; no one: a 303 to sign in, and back to the link", refused.status == 403 and
+        page.status == 403 and std.mem.eql(u8, refused.body, page.body) and anonymous.status == 303 and
+        std.mem.eql(u8, anonymous.header("location") orelse "", "/login?next=/chat/msg/solo_1"));
 }
 
 /// Steps 0a to 0e: Steve's password written, each refusal of a sign-in and
