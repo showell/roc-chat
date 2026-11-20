@@ -11,8 +11,10 @@
 //! slow client delays nobody else.
 //!
 //! Reads must finish within `Limits.read_ms` and writes within
-//! `Limits.write_ms`. A watchdog shuts the socket of a client that is too
-//! slow. An oversized head gets a 431, an oversized body a 413, and a late
+//! `Limits.write_ms`, and a whole answer within the app's grace more (a
+//! download's minute). A watchdog shuts the socket of a client that is too
+//! slow, so a reader that stalls holds its connection and its answer's
+//! memory no longer. An oversized head gets a 431, an oversized body a 413, and a late
 //! request a 408.
 //!
 //! The app judges each request's head before any body is read
@@ -62,7 +64,8 @@ pub const default_port: u16 = 9611;
 pub const Limits = struct {
     /// The request, head and body, read whole from the accept.
     read_ms: u32 = 10_000,
-    /// The response, written whole.
+    /// The response, written whole, and a whole answer's `write_grace_ms`
+    /// more.
     write_ms: u32 = 10_000,
     /// The most body bytes read or held at once, across every connection:
     /// a few uploads at their largest (the app's `upload_body_allowance`).
@@ -297,7 +300,7 @@ pub const Server = struct {
                 var req = p.req;
                 switch (s.answer_in_turn(arena, p.parsed)) {
                     .whole => |response| {
-                        var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.limits.write_ms, net.ShutdownHow.both, &fired }) catch |e| {
+                        var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.write_deadline_ms(response), net.ShutdownHow.both, &fired }) catch |e| {
                             log.warn("no task for the write's watchdog ({t}): closed", .{e});
                             return;
                         };
@@ -312,11 +315,17 @@ pub const Server = struct {
         }
     }
 
+    /// The time a whole answer has to be written: the write's own, and the
+    /// app's grace for it.
+    fn write_deadline_ms(s: *const Server, answer_written: Written) u32 {
+        return s.limits.write_ms +| answer_written.write_grace_ms;
+    }
+
     /// The refusal `r` written under the write deadline, its body unread,
     /// then what the client still sends drained (`linger`).
     fn refuse(s: *Server, connection: net.Stream, http: *std.http.Server, r: Refusal) void {
         var fired = std.atomic.Value(bool).init(false);
-        var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.limits.write_ms, net.ShutdownHow.both, &fired }) catch |e| {
+        var watchdog = s.io.concurrent(shut_after, .{ s.io, connection, s.write_deadline_ms(r.answer), net.ShutdownHow.both, &fired }) catch |e| {
             log.warn("no task for the write's watchdog ({t}): closed", .{e});
             return;
         };
@@ -474,12 +483,14 @@ pub const Parsed = struct {
     port: u16,
 };
 
-/// A response as the host writes it: a status std knows, and headers each
-/// free of CR, LF and NUL.
+/// A response as the host writes it: a status std knows, headers each
+/// free of CR, LF and NUL, and how much longer than `Limits.write_ms` it
+/// has to be written (the app's `write_grace_ms`; none for the host's own).
 const Written = struct {
     status: std.http.Status,
     headers: []const std.http.Header,
     body: []const u8,
+    write_grace_ms: u32 = 0,
 };
 
 /// A request read: std's, to answer it by, and its parts copied out.
@@ -665,7 +676,8 @@ const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .b
 
 /// Asks the app to answer `parsed`, and copies the answer into `arena`.
 /// An answer the app got wrong becomes a 500: a status std doesn't know, a
-/// header containing a CR, LF or NUL, or a malformed stream.
+/// header containing a CR, LF or NUL, or a malformed stream (one with a
+/// write grace among them).
 pub fn answer(arena: std.mem.Allocator, answering: Answering, parsed: Parsed) Answered {
     seam.begin(call_of(arena, answering));
     const r = seam.roc_handle_http_request(.{
@@ -757,7 +769,7 @@ fn checked(arena: std.mem.Allocator, parsed: Parsed, r: seam.Response) Answered 
                 log.warn("the app answered {f} whole, naming a stream's key or holder", .{files.loggable(parsed.path)});
                 return .{ .whole = failed };
             }
-            return .{ .whole = .{ .status = status, .headers = headers, .body = r.body.slice() } };
+            return .{ .whole = .{ .status = status, .headers = headers, .body = r.body.slice(), .write_grace_ms = r.write_grace_ms } };
         },
         .stream => {
             const keys = arena.alloc([]const u8, key_recs.len) catch return .{ .whole = failed };
@@ -766,8 +778,8 @@ fn checked(arena: std.mem.Allocator, parsed: Parsed, r: seam.Response) Answered 
                 key.* = rec.slice();
                 if (key.len == 0) empty_keys += 1;
             }
-            if (status != .ok or keys.len == 0 or keys.len > sse.keys_most or empty_keys != 0 or holder.len == 0 or holder.len > sse.holder_most) {
-                log.warn("the app answered {f} with a stream of status {d}, {d} keys ({d} empty) and a holder of {d} bytes (200, 1 to {d} keys of some bytes, and 1 to {d})", .{ files.loggable(parsed.path), r.status, keys.len, empty_keys, holder.len, sse.keys_most, sse.holder_most });
+            if (status != .ok or keys.len == 0 or keys.len > sse.keys_most or empty_keys != 0 or holder.len == 0 or holder.len > sse.holder_most or r.write_grace_ms != 0) {
+                log.warn("the app answered {f} with a stream of status {d}, {d} keys ({d} empty), a holder of {d} bytes and a write grace of {d} ms (200, 1 to {d} keys of some bytes, 1 to {d}, and 0)", .{ files.loggable(parsed.path), r.status, keys.len, empty_keys, holder.len, r.write_grace_ms, sse.keys_most, sse.holder_most });
                 return .{ .whole = failed };
             }
             return .{ .stream = .{ .headers = headers, .body = r.body.slice(), .keys = keys, .holder = holder } };

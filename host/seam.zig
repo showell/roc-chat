@@ -143,12 +143,14 @@ pub const Request = extern struct {
 /// Http.roc's `Response`'s `kind`, alphabetical.
 pub const AnswerKind = enum(u8) { stream, whole };
 
-/// Http.roc's `Response`: the lists by name, then the U16, then the tag.
+/// Http.roc's `Response`: the lists by name, then the U32, the U16, then
+/// the tag.
 pub const Response = extern struct {
     body: RocBytes,
     headers: HeaderList,
     stream_holder: RocBytes,
     stream_keys: RocBytesList,
+    write_grace_ms: u32,
     status: u16,
     kind: AnswerKind,
 };

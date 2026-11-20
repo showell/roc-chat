@@ -16,7 +16,8 @@
 ## holds at most `most_mib` of files, and one that would hold more is a
 ## 409, saying so, its images read only up to the one that passes it. Every
 ## file in the archive is dated when it was asked for, as the host says no
-## file's time.
+## file's time. It has a minute to be written (`write_grace_ms`), so a
+## reader that stalls holds its connection and the archive a minute at most.
 import pf.Host
 import pf.Http
 import ConversationKey
@@ -36,6 +37,13 @@ DownloadRoute :: [].{
 	most_mib : U64
 	most_mib = 32
 
+	## How much longer than the host's write time (10 s, `Limits.write_ms` in
+	## host/http.zig) a download has to be written: a minute in all
+	## (docs/design.md, "Pages"), so `most_mib` needs about half a MiB
+	## a second. A reader slower than that is cut off at the minute.
+	write_grace_ms : U32
+	write_grace_ms = 50 * 1000
+
 	## A GET of the conversation `key`'s download, its files dated `now`.
 	serve_download! : { key : ConversationKey, now : Timestamp } => Http.Response
 	serve_download! = |{ key, now }|
@@ -47,6 +55,7 @@ DownloadRoute :: [].{
 						HttpAnswer.gzip_download({
 							filename: "${key.topic().to_str()}.tar.gz",
 							bytes: Gzip.stored_file({ bytes: tar, crc32 }),
+							write_grace_ms: DownloadRoute.write_grace_ms,
 						})
 					}
 					Err(PathTooLong(path)) => download_refusal(PathTooLong(path))
@@ -197,8 +206,9 @@ expect {
 		]
 		and bare == [{ path: "plans/plans.md", bytes: "t".to_utf8() }]
 }
-# The cap, and each refusal's status.
+# The cap, its time to be written, and each refusal's status.
 expect most_bytes == 33554432
+expect DownloadRoute.write_grace_ms == 50_000
 expect reactions_size(File("abc".to_utf8())) == 3 and reactions_size(NoFile) == 0
 expect
 	[

@@ -199,7 +199,7 @@ test "the password rule `hash-password` asks is the app's: 1 to 72 bytes of UTF-
 
 test "a swap fails the check, naming the function, the field and the offsets" {
     // The response's first two lists exchanged, the size the same.
-    const Swapped = extern struct { headers: seam.HeaderList, body: seam.RocBytes, stream_holder: seam.RocBytes, stream_keys: seam.RocBytesList, status: u16, kind: seam.AnswerKind };
+    const Swapped = extern struct { headers: seam.HeaderList, body: seam.RocBytes, stream_holder: seam.RocBytes, stream_keys: seam.RocBytesList, write_grace_ms: u32, status: u16, kind: seam.AnswerKind };
     const m = comptime mismatch(Swapped, answerOf(glue.roc_handle_http_request), "answer").?;
     try std.testing.expect(contains(m, "answer.body: at byte 24 of "));
     try std.testing.expect(contains(m, "at byte 0 in roc glue"));

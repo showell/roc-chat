@@ -300,6 +300,93 @@ test "a request too slow is a 408, and the server serves the next" {
     try testing.expectEqual(404, try status(next));
 }
 
+test "a reader that stalls past the write time is cut off, its connection and its answer let go; a download has the app's grace more, and is read whole" {
+    var counting: Counting = .{ .child = gpa };
+    const r = try Running.start_on(.{ .write_ms = 300 }, counting.allocator());
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    // A transcript of about 10 MB, more than the socket's buffers take
+    // while the reader reads nothing.
+    var transcript: std.ArrayList(u8) = .empty;
+    for (1..2_500 + 1) |n| try transcript.print(a, "-------------\nMSG_plans_{d}\nfrom: Steve\ndate: 2026-11-02T18:02:11Z\n\n{s}\n\n", .{ n, @as([4000]u8, @splat('x')) });
+    try r.data.dir.createDirPath(io, "chat/dm/1_1/plans");
+    try r.data.dir.writeFile(io, .{ .sub_path = "chat/dm/1_1/plans/transcript", .data = transcript.items });
+
+    // Its `/raw` has the write's own time: the reader stalls past it, the
+    // server cuts it off and lets go of the answer while the reader still
+    // holds its side open, and what reaches it is short of the whole.
+    const raw = try Stalled.open(a, port, "GET /chat/dm/1_1/plans/raw HTTP/1.1");
+    defer raw.connection.close(io);
+    try wait_until_held(&counting, .above, transcript.items.len);
+    try wait_until_held(&counting, .below, 64 * 1024);
+    const cut = try raw.read_what_came(a);
+    try testing.expectEqual(200, try status(cut.bytes));
+    try testing.expect(cut.body_len < cut.content_length and cut.content_length == transcript.items.len);
+
+    // Its download has the app's grace more: the same stall, past the
+    // write's own time, and the whole archive comes once the reader reads.
+    const download = try Stalled.open(a, port, "GET /chat/dm/1_1/plans/download HTTP/1.1");
+    defer download.connection.close(io);
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(1_000) }, io);
+    try testing.expect(counting.held.load(.monotonic) > transcript.items.len);
+    const whole = try download.read_what_came(a);
+    try testing.expectEqual(200, try status(whole.bytes));
+    try testing.expect(has(whole.bytes, "content-type: application/gzip"));
+    try testing.expect(whole.body_len == whole.content_length and whole.content_length > transcript.items.len);
+}
+
+/// A GET by Steve whose answer is not read until `read_what_came`.
+const Stalled = struct {
+    connection: Io.net.Stream,
+
+    fn open(a: std.mem.Allocator, port: u16, comptime line: []const u8) !Stalled {
+        const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
+        const connection = try addr.connect(io, .{ .mode = .stream });
+        errdefer connection.close(io);
+        var w = connection.writer(io, &.{});
+        try w.interface.writeAll(try ours(a, port, line, "\r\n"));
+        return .{ .connection = connection };
+    }
+
+    /// Everything the server sent, to its end or its cut, with the body's
+    /// stated length and how much of it came.
+    fn read_what_came(s: Stalled, a: std.mem.Allocator) !struct { bytes: []const u8, content_length: usize, body_len: usize } {
+        var got: std.ArrayList(u8) = .empty;
+        var buf: [64 * 1024]u8 = undefined;
+        var r = s.connection.reader(io, &.{});
+        while (true) {
+            const n = r.interface.readSliceShort(&buf) catch break;
+            if (n == 0) break;
+            try got.appendSlice(a, buf[0..n]);
+        }
+        const head_end = (std.mem.indexOf(u8, got.items, "\r\n\r\n") orelse return error.NotAResponse) + 4;
+        const marker = "content-length: ";
+        const at = (std.mem.indexOf(u8, got.items[0..head_end], marker) orelse return error.NoContentLength) + marker.len;
+        const digits_end = std.mem.indexOfScalarPos(u8, got.items, at, '\r') orelse return error.NoContentLength;
+        return .{
+            .bytes = got.items,
+            .content_length = try std.fmt.parseInt(usize, got.items[at..digits_end], 10),
+            .body_len = got.items.len - head_end,
+        };
+    }
+};
+
+/// Waits at most 5 s for the server to hold more, or fewer, than `n` bytes.
+fn wait_until_held(counting: *Counting, side: enum { above, below }, n: usize) !void {
+    for (0..500) |_| {
+        const held = counting.held.load(.monotonic);
+        if (switch (side) {
+            .above => held > n,
+            .below => held < n,
+        }) return;
+        try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(10) }, io);
+    }
+    return error.TestServerStillHolds;
+}
+
 test "a refused client that never closes holds its own connection, not the server" {
     const r = try Running.start(.{ .write_ms = 5_000, .linger_ms = 1_000 });
     defer r.stop();
