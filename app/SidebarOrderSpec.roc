@@ -223,4 +223,8 @@ expect {
 }
 # No places: nothing to order.
 expect
-	SidebarOrder.ordered_places({ places: [], shown: NoConversation, viewer: steve.user().id() }).is_empty()
+	SidebarOrder.ordered_places({
+		places: [],
+		shown: NoConversation,
+		viewer: steve.user().id(),
+	}).is_empty()

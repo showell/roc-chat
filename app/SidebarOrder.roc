@@ -78,15 +78,8 @@ SidebarOrder :: [].{
 		is_second = |listed| own_next and is_own_dm(listed.place, viewer)
 		here = dated.keep_if(|d| is_here(d.listed))
 		second = dated.keep_if(|d| is_second(d.listed))
-		rest =
-			dated
-				.drop_if(|d| is_here(d.listed) or is_second(d.listed))
-				.sort_with(
-					|one, other| newest_first(
-						(one.latest, one.at),
-						(other.latest, other.at),
-					),
-				)
+		by_latest = |one, other| newest_first((one.latest, one.at), (other.latest, other.at))
+		rest = dated.drop_if(|d| is_here(d.listed) or is_second(d.listed)).sort_with(by_latest)
 		var $after = []
 		var $rank = 0
 		for d in rest {
@@ -187,15 +180,12 @@ ordered_place : {
 	shown : [Conversation(ConversationKey), NoConversation],
 } -> SidebarOrder.OrderedPlace
 ordered_place = |{ listed, opening, shown }| {
+	by_topic_latest = |one, other|
+		newest_first((one.timed.latest, one.at), (other.timed.latest, other.at))
 	sorted =
 		listed.topics
 			.map_with_index(|timed, at| { timed, at })
-			.sort_with(
-				|one, other| newest_first(
-					(one.timed.latest, one.at),
-					(other.timed.latest, other.at),
-				),
-			)
+			.sort_with(by_topic_latest)
 			.map(|d| d.timed.topic)
 	topics =
 		match shown {

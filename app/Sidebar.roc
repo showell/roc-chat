@@ -51,9 +51,8 @@ Sidebar :: [].{
 	} -> TrustedHtml
 	nav = |{ places, current, viewer, online_humans }| {
 		people = { viewer, online_humans }
-		sections = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer }).map(
-			|ordered| place_section({ ordered, current, people }),
-		)
+		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
+		sections = in_order.map(|ordered| place_section({ ordered, current, people }))
 		TrustedHtml.join([
 			Html.element({
 				name: Nav,
