@@ -377,12 +377,20 @@ for t in themes do
     end
   end
 end
+-- A state another one is `after` runs for its data even when `sizes=`
+-- leaves out each of its sizes: then at its first.
+local needed = {}
+for st in states do
+  if st.after ~= "" then needed[st.after] = true end
+end
 for st in states do
   if late(st) then
     local its_themes = themes
     if st.last then its_themes = {themes[#themes]} end
+    local its_sizes = sizes_of(st.sizes, sizes)
+    if #its_sizes == 0 and has_key(needed, st.name) then its_sizes = {st.sizes[1]} end
     for t in its_themes do
-      for s in sizes_of(st.sizes, sizes) do push(plan, {theme = t, size = s, state = st}) end
+      for s in its_sizes do push(plan, {theme = t, size = s, state = st}) end
     end
   end
 end
