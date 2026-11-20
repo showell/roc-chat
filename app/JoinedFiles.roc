@@ -26,9 +26,6 @@ import UserId
 
 JoinedFiles :: [].{
 
-	## Why a `joined` file could not be written: the host's answer.
-	WriteFault : [MissingDirectory, NotUtf8, PathRefused, Failed]
-
 	## When the human `id` joined, or `NoFile` when their account has none;
 	## unless the file holds no time (`Damaged`), or the host's read failed.
 	read_joined! : UserId => Try(
@@ -48,7 +45,11 @@ JoinedFiles :: [].{
 	## The human `id`'s first join by an invite, at `now`, recorded: their
 	## `joined` file made, when they have no `password` file yet; nothing
 	## when they have one, as this join only sets a new one.
-	record_first_join! : UserId, Timestamp => Try({}, JoinedFiles.WriteFault)
+	record_first_join! : UserId,
+	Timestamp => Try(
+		{},
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
+	)
 	record_first_join! = |id, now|
 		match AccountFiles.read_password_hash!(id)? {
 			File(_) => Ok({})
@@ -58,7 +59,7 @@ JoinedFiles :: [].{
 
 ## The human `id`'s `joined` file made holding `now`; one already there is
 ## kept, unless it holds no time, which is replaced.
-record_joined! : UserId, Timestamp => Try({}, JoinedFiles.WriteFault)
+record_joined! : UserId, Timestamp => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])
 record_joined! = |id, now|
 	match FileFacts.create_fact!(joined_path(id), now.to_file()) {
 		Ok({}) => Ok({})
