@@ -3,7 +3,8 @@
 ## holds. Every page loads app/palette.js in its head, which sets the
 ## colours before the first paint. A conversation's page ends with
 ## app/chrome.js (its top bar), app/sidebar-popups.js and app/sidebar.js
-## (its sidebar and the sidebar's popups, when it has one), app/compose.js (its compose box), app/emoji.js (the emojis, and
+## (its sidebar and the sidebar's popups, when it has one), app/compose.js
+## (its compose box), app/emoji.js (the emojis, and
 ## the compose box's autocomplete of them), app/feed.js (its messages) and
 ## app/citation.js (citations of messages), app/actions.js (each message's
 ## reactions, quote-reply, citation and edit) and app/search.js (the

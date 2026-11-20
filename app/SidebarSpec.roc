@@ -92,8 +92,8 @@ place_html = |{ name, path, opening, rows, suggests }| {
 }
 
 ## The group `group` headed `heading`, holding `places`.
-group_html : Str, Str, Str -> Str
-group_html = |group, heading, places|
+group_html : { group : Str, heading : Str, places : Str } -> Str
+group_html = |{ group, heading, places }|
 	"<div class=\"sidebar-section\" data-group=\"${group}\"><p class=\"sidebar-section-name\">${heading}</p>\n${places}</div>\n"
 
 # The channels under their heading, then the DMs under theirs, each group in
@@ -114,23 +114,29 @@ expect
 			},
 	})
 		== "<nav class=\"sidebar\">\n${
-			group_html(
-				"channels",
-				"Channels",
-				place_html({
+			group_html({
+				group: "channels",
+				heading: "Channels",
+				places: place_html({
 					name: "#general",
 					path: "/chat/channel/general",
 					opening: "collapsed",
 					rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n",
 					suggests: NoSuggestion,
 				}),
-			)
+			})
 		}${
-			group_html(
-				"dms",
-				"DMs",
-				Str.concat(
-					place_html({ name: "Steve", path: "/chat/dm/1_1", opening: "always", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n", suggests: NoSuggestion }),
+			group_html({
+				group: "dms",
+				heading: "DMs",
+				places: Str.concat(
+					place_html({
+						name: "Steve",
+						path: "/chat/dm/1_1",
+						opening: "always",
+						rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n",
+						suggests: NoSuggestion,
+					}),
 					place_html({
 						name: "Apoorva",
 						path: "/chat/dm/1_2",
@@ -139,7 +145,7 @@ expect
 						suggests: Suggests,
 					}),
 				),
-			)
+			})
 		}</nav>\n"
 # On a DM's page, the partner's place comes first, and Steve's own DM next,
 # collapsed. The page's own topic, before its first message gives it a
@@ -155,22 +161,22 @@ expect
 			},
 	})
 		== "<nav class=\"sidebar\">\n${
-			group_html(
-				"channels",
-				"Channels",
-				place_html({
+			group_html({
+				group: "channels",
+				heading: "Channels",
+				places: place_html({
 					name: "#general",
 					path: "/chat/channel/general",
 					opening: "collapsed",
 					rows: "",
 					suggests: Suggests,
 				}),
-			)
+			})
 		}${
-			group_html(
-				"dms",
-				"DMs",
-				Str.concat(
+			group_html({
+				group: "dms",
+				heading: "DMs",
+				places: Str.concat(
 					place_html({
 						name: "Apoorva",
 						path: "/chat/dm/1_2",
@@ -186,7 +192,7 @@ expect
 						suggests: NoSuggestion,
 					}),
 				),
-			)
+			})
 		}</nav>\n"
 # A place with a message starts open: here `general`, in the channels
 # ahead of Apoorva's DM, which has none and starts collapsed.
