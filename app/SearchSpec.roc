@@ -1,6 +1,7 @@
 ## These are the tests of `Search`: which places a human searches, the
 ## words suggested and their order, the messages found and their caps, and
 ## the answers' JSON. `SearchWords` holds the words' own tests.
+import Browse
 import ConversationKey
 import Directory
 import Search
@@ -48,7 +49,7 @@ topic_of = |{ path, place_label, markdowns }| {
 ## The pages of `human`'s places searched.
 searched_paths : Str -> List(Str)
 searched_paths = |human|
-	match Search.places_searched({
+	match Browse.places_for({
 		acting: SignedIn.dangerously_assume(Sample.user(human)),
 		directory,
 	}) {
@@ -87,14 +88,16 @@ hits_in = |topics, typed|
 		|hit| (hit.found_in.key.url_path(Page), hit.message.id().to_u64()),
 	)
 
-# The access rule: a human searches Recent's places, each they may read but
-# their own DM. Steve reads his DM with Apoorva and `#general`; Apoorva, who
-# is not in `#general`, reads only their DM. Neither searches their own DM.
-expect searched_paths("Steve") == ["/chat/dm/1_2", "/chat/channel/general"]
-expect searched_paths("Apoorva") == ["/chat/dm/1_2"]
+# The access rule: a human searches Browse's places, each they may read,
+# their own DM included (Steve, 2026-11-20: yes, a message to yourself is
+# like any other). Steve reads his own DM, his DM with Apoorva and
+# `#general`; Apoorva, who is not in `#general`, reads her DM with Steve and
+# her own, never his.
+expect searched_paths("Steve") == ["/chat/dm/1_1", "/chat/dm/1_2", "/chat/channel/general"]
+expect searched_paths("Apoorva") == ["/chat/dm/1_2", "/chat/dm/2_2"]
 # An agent's key, or any key, searches nothing.
 expect
-	Search.places_searched({
+	Browse.places_for({
 		acting: SignedIn.dangerously_assume(Sample.user("CC")),
 		directory,
 	}).is_err()

@@ -12,7 +12,7 @@
 ## once the file holds it). A message never changes, an edit being a new
 ## one, so the index only grows. The index answers which words and which
 ## messages of the topics it is asked about match; who may ask about which
-## topics is `Search.places_searched`'s, and the answer's shape `Search`'s.
+## topics is `Browse.places_for`'s, and the answer's shape `Search`'s.
 import pf.Host
 import Author
 import ConversationKey

@@ -393,7 +393,10 @@ apoorvavpendse@gmail.com would be better
   On a conversation's page the `/` key, listed in the keyboard help, and the 🔍 in the top bar open chat-client's search dialog (app/search.js); Recent has both too, since it is where a human watches for new activity (Steve, 2026-11-20: "that's a very important page").
   Typing asks `/chat/search/words?prefix=` for the words that begin so, at most 20, each with how many messages hold it; Enter asks `/chat/search/messages?word=` for the messages holding the word, at most 500, each an excerpt with the word marked, linked to the message.
   The server reads the words, as Gopher's did (`SearchWords`): split on ASCII whitespace, edge punctuation trimmed, ASCII folded, two bytes or more.
-  It searches Recent's places, every one the human may read but their own DM, by their own session (`Search`).
+  It searches Browse's places, every one the human may read, their own DM included, as Recent lists it, by their own session (`Search`).
+  Gopher's left the own DM out, but a message to yourself is like any other (Steve, 2026-11-20, asked whether search should cover it: "YES").
+  No one else's search reaches it.
+  End to end: Steve finds and is suggested a word only his own DM holds; Tam, in a DM with him, searching the same word, matches nothing.
   Five searches a second for each human, a 429 past that (`SearchLimit`).
 - **Search runs on an index in the host, as Gopher's did (Steve, 2026-11-20: "we want fast search. 750ms is borderline unacceptable"; "it's acceptable to keep that in zig.
   We should clearly disclose that on the README").**
@@ -415,7 +418,10 @@ apoorvavpendse@gmail.com would be better
   Messages for a word every message holds (`word=words`, 15,000 matched, 500 listed, 143 KB of answer), before 0.33 to 0.35; after, 0.61 first, then 0.15 to 0.18: what is left is the Roc's work on 500 hits at `--opt=dev`, their messages, excerpts and JSON, not the finding.
 - **A link to a message in another topic, as Gopher Chat's (Steve, 2026-11-20: "When in doubt just copy the feature verbatim").**
   A reference in a message, `MSG_<topic>_<n>` or `MSG_<channel>.<topic>_<n>`, to a message on the page brings it into view; one of the page's own topic that is not there says so; any other opens `/chat/msg/<topic>_<n>` (or the long form) in a new tab, as chat-client's did (app/actions.js).
-  The server answers as Gopher's `redirectToMsg`: a channel's reference is a 302 to that channel's topic, read under the same `Access` its page asks, so a reader who is not a member gets the page's 403, and a 404 when the channel has no such topic; a topic's is a 302 to the reader's one conversation with that topic, among their DMs with other humans and their channels (never their own DM, where Gopher's never looked), a 404 for none and a 409 for more than one, never a guess.
+  The server answers as Gopher's `redirectToMsg`: a channel's reference is a 302 to that channel's topic, read under the same `Access` its page asks, so a reader who is not a member gets the page's 403, and a 404 when the channel has no such topic; a topic's is a 302 to the reader's one conversation with that topic, among their DMs, their own included, and their channels, a 404 for none and a 409 for more than one, never a guess.
+  Gopher's never looked in the reader's own DM; this one does, as Recent and search do (Steve, 2026-11-20: "YES"), and never in anyone else's.
+  So a topic name the reader's own DM shares with another of their conversations is a 409 for them ("more than one of your conversations has a topic of that name"), while for the other human in that DM it is still the one place.
+  End to end: Steve's link to a topic only his own DM has goes there, and Tam's is a 404; a `solo` in both his own DM and his DM with Tam is a 409 for him and a 302 for her.
   Neither checks the message's number, as Gopher's didn't.
   No one is sent to sign in and back; a session a device code started may follow links (`MessageLink`, `MessageLinkPlaces`, `MessageLinkRoute`).
 - **A citation cites a message of one topic in another (Steve, 2026-11-20, every point agreed).**

@@ -1998,12 +1998,23 @@ fn searchSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         if ((try getAs(a, io, port, who.uma, "/chat/search/words?prefix=ta")).status == 429) refused += 1;
     }
     try t.check("search: no one is a 401; sixteen searches at once meet the limit of five a second, a 429", anonymous.status == 401 and refused > 0);
+    // Steve's own DM is searched as any place of his (step 58 wrote "Recent
+    // hears me" there), and no one else's search reaches it: Tam, in a DM
+    // with him, after a second, so the limit has passed.
+    try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(1100) }, io);
+    const own_words = try getAs(a, io, port, steve_session, "/chat/search/words?prefix=hea");
+    const own_hits = try getAs(a, io, port, steve_session, "/chat/search/messages?word=hears");
+    const tams_own = try getAs(a, io, port, who.tam, "/chat/search/messages?word=hears");
+    try t.check("search: Steve's own DM is searched as any place of his, suggested and marked; Tam's search never reaches it", own_words.status == 200 and
+        has(own_words.body, "{\"word\":\"hears\",\"count\":1}") and
+        own_hits.status == 200 and has(own_hits.body, "\"page\":\"/chat/dm/1_1/self-notes\"") and has(own_hits.body, "\"mark\":\"hears\"") and
+        tams_own.status == 200 and has(tams_own.body, "\"matched\":0,") and !has(tams_own.body, "/chat/dm/1_1"));
     try messageLinkSteps(a, io, port, t, .{ .tam = who.tam, .uma = who.uma });
 }
 
 /// Step 60: links to a message, `/chat/msg/<id>`, as Gopher Chat's were. A
-/// topic's link goes to the reader's one conversation with that topic, never
-/// their own DM; two are a 409, none a 404. A channel's link goes to its
+/// topic's link goes to the reader's one conversation with that topic, their
+/// own DM among them, never another's; two are a 409, none a 404. A channel's link goes to its
 /// topic, and a reader not in the channel is refused as its page refuses
 /// them. No one is sent to sign in and back.
 fn messageLinkSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { tam: []const u8, uma: []const u8 }) !void {
@@ -2026,12 +2037,25 @@ fn messageLinkSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: stru
     const tams = try getAs(a, io, port, who.tam, "/chat/msg/trips_2");
     try t.check("a topic's link that means two of the reader's conversations: a 409 saying it is ambiguous, sent nowhere, for Steve and for Tam", steves.status == 409 and
         has(steves.body, "This reference is ambiguous") and steves.header("location") == null and tams.status == 409);
+    // Steve's own DM is a place of his: its topic's link goes there, and
+    // its `solo` beside his DM's with Tam makes two for him, still one for
+    // Tam, who never links into his own DM.
+    const mine = try getAs(a, io, port, steve_session, "/chat/msg/mine_1");
+    const tams_mine = try getAs(a, io, port, who.tam, "/chat/msg/mine_1");
+    const own_solo = try postAs(a, io, port, steve_session, "/chat/dm/1_1/solo/send", "markdown=Solo+in+my+own+DM");
+    const steves_solo = try getAs(a, io, port, steve_session, "/chat/msg/solo_1");
+    const tams_solo = try getAs(a, io, port, who.tam, "/chat/msg/solo_1");
+    try t.check("a topic's link into Steve's own DM: a 302 for him, a 404 for Tam; a topic in both his own DM and his DM with Tam is a 409 for him, still a 302 for her", mine.status == 302 and
+        std.mem.eql(u8, mine.header("location") orelse "", "/chat/dm/1_1/mine#msg-1") and
+        tams_mine.status == 404 and tams_mine.header("location") == null and own_solo.status == 201 and
+        steves_solo.status == 409 and has(steves_solo.body, "This reference is ambiguous") and
+        tams_solo.status == 302 and std.mem.eql(u8, tams_solo.header("location") orelse "", "/chat/dm/1_2/solo#msg-1"));
     var none_found = true;
-    inline for (.{ "/chat/msg/nothing_1", "/chat/msg/general.nothing_1", "/chat/msg/mine_1", "/chat/msg/trips", "/chat/msg/1st.trips_1", "/chat/msg/nowhere.trips_1" }) |path| {
+    inline for (.{ "/chat/msg/nothing_1", "/chat/msg/general.nothing_1", "/chat/msg/trips", "/chat/msg/1st.trips_1", "/chat/msg/nowhere.trips_1" }) |path| {
         const answer = try getAs(a, io, port, steve_session, path);
         none_found = none_found and answer.status == 404 and answer.header("location") == null;
     }
-    try t.check("a link to no topic of the reader's, to his own DM's (as Gopher's never looked there), of no reference's shape, or to no channel: 404", none_found);
+    try t.check("a link to no topic of the reader's, of no reference's shape, or to no channel: 404", none_found);
     const refused = try getAs(a, io, port, who.uma, "/chat/msg/crew.trips_1");
     const page = try getAs(a, io, port, who.uma, "/chat/channel/crew/trips");
     const anonymous = try anonymousGet(a, io, port, "/chat/msg/solo_1");

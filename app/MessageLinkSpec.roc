@@ -49,11 +49,12 @@ meant_for = |name|
 		directory,
 	}).map(ConversationKey.place_url_path)
 
-# A topic's link may mean each place the reader may read, as Gopher's looked:
-# their DMs with each other human, then their channels; never their own DM,
-# and never a channel they are not in.
-expect meant_for("Steve") == ["/chat/dm/1_2", "/chat/channel/general"]
-expect meant_for("Apoorva") == ["/chat/dm/1_2", "/chat/channel/plans-room"]
+# A topic's link may mean each place the reader may read: their DMs, their
+# own among them (Steve, 2026-11-20: yes, as Recent and search), then their
+# channels; never another human's own DM, and never a channel they are not
+# in.
+expect meant_for("Steve") == ["/chat/dm/1_1", "/chat/dm/1_2", "/chat/channel/general"]
+expect meant_for("Apoorva") == ["/chat/dm/1_2", "/chat/dm/2_2", "/chat/channel/plans-room"]
 # An agent is in no DM: its channels alone.
 expect meant_for("CC") == ["/chat/channel/general"]
 
@@ -65,6 +66,11 @@ expect
 expect MessageLinkPlaces.destination([]) == Nowhere
 expect
 	MessageLinkPlaces.destination([key_at("/chat/dm/1_2/plans"), key_at("/chat/channel/general/plans")])
+		== Ambiguous
+# The reader's own DM counts as any place: its `plans` beside their DM's is
+# two, no guess.
+expect
+	MessageLinkPlaces.destination([key_at("/chat/dm/1_1/plans"), key_at("/chat/dm/1_2/plans")])
 		== Ambiguous
 
 # A link's path is the route's: a topic's and a channel's, written back.

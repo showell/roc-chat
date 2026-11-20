@@ -13,10 +13,10 @@ import SignedIn
 
 MessageLinkPlaces :: [].{
 
-	## The places a topic's link may mean for `acting`, as Gopher's looked:
-	## their DMs with each other human, then the channels, each one they may
-	## read; never their own DM, which Gopher's left out, as Recent and
-	## search do.
+	## The places a topic's link may mean for `acting`: their DMs, their own
+	## among them, by the other human's id, then the channels, each one they
+	## may read. Gopher's never looked in a human's own DM; this one does, as
+	## Recent and search do, since a message to yourself is like any other.
 	readable_places : { acting : SignedIn, directory : Directory } -> List(Place)
 	readable_places = |{ acting, directory }| {
 		dms =
@@ -24,7 +24,7 @@ MessageLinkPlaces :: [].{
 				Ok(reader) =>
 					directory.users().to_list()
 						.keep_oks(|user| user.as_human())
-						.drop_if(|other| other.id() == reader.id())
+
 						.map(|other| Place.dm(Dm.between({ one: reader, other })))
 				Err(Agent(_)) => []
 			}

@@ -1,6 +1,7 @@
 ## This module answers search's two routes (`Route` lists them), as Gopher
 ## Chat's `/chat/search/words` and `/chat/search/messages` did, in JSON.
-## For each place Recent lists the human (`Search.places_searched`), it lists
+## For each place the human may read (`Browse.places_for`, their own DM
+## among them, as Recent lists it), it lists
 ## the topics, and asks the host's search index (`SearchIndex`) which of
 ## their messages match; `Search` shapes the answer. A topic the index
 ## doesn't hold yet is read from its transcript and handed to it first, so
@@ -79,7 +80,7 @@ answer_search! : {
 )
 answer_search! = |{ asked_of, acting, directory, query }| {
 	human = acting.human_in_session() ? |_| NotAHuman
-	places = Search.places_searched({ acting, directory }) ? |_| NotAHuman
+	places = Browse.places_for({ acting, directory }) ? |_| NotAHuman
 	field =
 		match asked_of {
 			Words => "prefix"
