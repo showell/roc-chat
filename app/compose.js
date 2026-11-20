@@ -301,12 +301,18 @@
   }
 
   // The status line's notice that a message this page sent has arrived, a
-  // link that brings it into view and selects it.
+  // link that brings it into view and selects it. It names where the
+  // message went, as the sidebar names the page's own place (the other
+  // human of a DM, or `#channel`), then the message's reference: "your
+  // message was sent to Apoorva as MSG_rant_8".
   function sentNotice(article) {
     var ref = article.querySelector('header a');
     var link = document.createElement('a');
     link.href = '#' + article.id;
-    link.textContent = '✓ your message was sent to ' + (ref ? ref.textContent : article.id);
+    var reference = ref ? ref.textContent : article.id;
+    var here = document.querySelector('.sidebar-place[data-opening="always"] .sidebar-place-name');
+    var place = here && here.lastChild ? here.lastChild.textContent.trim() : '';
+    link.textContent = '✓ your message was sent to ' + (place ? place + ' as ' : '') + reference;
     link.addEventListener('click', function (e) {
       e.preventDefault();
       Feed.reveal(article);
