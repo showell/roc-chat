@@ -76,15 +76,11 @@ expect
 		== "<pre><code class=\"language-python\">if a &lt; b &amp; c: pass\n</code></pre>\n"
 expect message_html("```\nif a < b\n```") == "<pre><code>if a &lt; b\n</code></pre>\n"
 expect message_html("```Roc\nif a\n```") == "<pre><code class=\"language-Roc\">if a\n</code></pre>\n"
-# A block whose body, its last newline included, is
-# `Markdown.most_colored_bytes` is colored, and one a byte longer is plain.
+# A block as long as a message can hold is still colored: the chat sets
+# no size of its own.
 expect {
-	at_most = "#${"a".repeat(Markdown.most_colored_bytes - 2)}"
-	message_html("```roc\n${at_most}\n```") == "<pre><code class=\"language-roc\"><span class=\"syn-comment\">${at_most}</span>\n</code></pre>\n"
-}
-expect {
-	past = "#${"a".repeat(Markdown.most_colored_bytes - 1)}"
-	message_html("```roc\n${past}\n```") == "<pre><code class=\"language-roc\">${past}\n</code></pre>\n"
+	long = "#${"a".repeat(60 * 1024)}"
+	message_html("```roc\n${long}\n```") == "<pre><code class=\"language-roc\"><span class=\"syn-comment\">${long}</span>\n</code></pre>\n"
 }
 # A quote-reply is never colored, whatever it quotes.
 expect message_html("```quote\nif a < b\n```") == "<pre class=\"chat-quote\">if a &lt; b\n</pre>\n"
