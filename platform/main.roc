@@ -45,6 +45,7 @@ platform ""
 		"current_utc_seconds_since_epoch": Host.current_utc_seconds_since_epoch!,
 		"end_every_stream_of_holder": Host.end_every_stream_of_holder!,
 		"fill_with_random_bytes": Host.fill_with_random_bytes!,
+		"free_bytes_on_data_disk": Host.free_bytes_on_data_disk!,
 		"github_identity_for_code": Host.github_identity_for_code!,
 		"github_sign_in_settings": Host.github_sign_in_settings!,
 		"hmac_sha256_with_server_secret": Host.hmac_sha256_with_server_secret!,

@@ -115,6 +115,11 @@ Host := [].{
 	## **THE CLOCK**: whole seconds since 1970-01-01T00:00:00Z.
 	current_utc_seconds_since_epoch! : {} => I64
 
+	## **THE DATA ROOT'S FREE SPACE**: the bytes its file system has free
+	## for the server (statfs's `f_bavail`, by its fragment size), as a
+	## fact; a disk the host can't ask is logged and answered as 0.
+	free_bytes_on_data_disk! : {} => U64
+
 	## `count` bytes from the OS's secure random source, at most 1,024: more
 	## is the app's bug, and the host stops.
 	fill_with_random_bytes! : U64 => List(U8)

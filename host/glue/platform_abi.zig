@@ -2260,6 +2260,10 @@ pub extern fn end_every_stream_of_holder(arg0: RocListWith(u8, false)) callconv(
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn fill_with_random_bytes(arg0: u64) callconv(.c) RocListWith(u8, false);
 
+/// Hosted symbol for Host.free_bytes_on_data_disk!
+/// Roc signature: {} => U64
+pub extern fn free_bytes_on_data_disk() callconv(.c) u64;
+
 /// Hosted symbol for Host.github_identity_for_code!
 /// Roc signature: List(U8) => { github_id : U64, login : List(U8), status : [Busy, Denied, Failed, Identified] }
 /// Owned arguments. Release each exactly once before returning, unless it is

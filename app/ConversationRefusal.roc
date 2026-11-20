@@ -2,12 +2,14 @@
 ## `ReactionRoute`), and each one in words: its status, a title for a page,
 ## and what is wrong. A fault in the request (a form, a stream's count, a
 ## reaction's fields) is a 400, a conversation with no transcript a 404, the
-## conversation's refusal of a message, an edit or a reaction a 409, and the
-## server's own failure a 500.
+## conversation's refusal of a message, an edit or a reaction a 409, a
+## message past its author's rate (`MessageRate`) a 429, and the server's
+## own failure a 500.
 import ConversationKey
 import ConversationStream
 import Directory
 import FileFacts
+import MessageRate
 import Name
 import Transcript
 import TranscriptRefusal
@@ -42,6 +44,7 @@ ConversationRefusal :: [].{
 		NotOnOrOff,
 		NoSuchMessage,
 		TooManyReactions,
+		TooManyMessages,
 	]
 
 	## A refusal in words: its status, a title for a page, and what is wrong.
@@ -109,6 +112,10 @@ ConversationRefusal :: [].{
 					title: "Reaction refused",
 					text: "The conversation holds no such message.",
 				},
+			}
+			TooManyMessages => {
+				status: 429,
+				words: { title: "Message refused", text: MessageRate.too_many_words },
 			}
 			TooManyReactions => {
 				status: 409,

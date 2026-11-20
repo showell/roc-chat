@@ -57,11 +57,13 @@ import Conversation
 import ConversationKey
 import ConversationPage
 import DirectoryStore
+import DiskFloor
 import Dispatch
 import FirstStart
 import PageKit
 import Reactions
 import RequestOrigin
+import Route
 import SignedIn
 import Topic
 import Transcript
@@ -154,8 +156,9 @@ start! = |{}| DirectoryStore.prepare_directory!({})
 ## with a 403 before anything is read, so the host never reads its body.
 ## Then the directory is read and who is acting is found, as for the whole
 ## request (`Actor`): a credential refused is its 401 here, and a
-## directory that can't be read its 500. Any other is judged by
-## `Admission.admission_in`.
+## directory that can't be read its 500. A request that adds data while the
+## disk is near full is refused with a 507 (`DiskFloor`). Any other is
+## judged by `Admission.admission_in`.
 check_request_head! : Http.RequestHead => Http.Admission
 check_request_head! = |head|
 	match RequestOrigin.check(Admission.origin_of_head(head)) {
@@ -166,7 +169,11 @@ check_request_head! = |head|
 				Ok(directory) =>
 					match Actor.load_actor!({ headers: head.headers, directory }) {
 						Err(why) => Admission.head_refusal(Actor.identity_refusal(why))
-						Ok(actor) => Admission.admission_in({ head, directory, actor })
+						Ok(actor) =>
+							match DiskFloor.check!(Route.choose({ method: head.method, path: head.path, directory })) {
+								Err(LowOnDisk) => Admission.head_refusal(DiskFloor.refusal)
+								Ok({}) => Admission.admission_in({ head, directory, actor })
+							}
 					}
 			}
 	}
