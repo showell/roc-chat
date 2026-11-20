@@ -97,6 +97,7 @@ DeviceCodeRoute :: [].{
 				Ok(human) =>
 					match make_record!(human.id(), now) {
 						Err(NoMaterial) => material_missing_answer
+						Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
 						Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 						Ok({ code, record: _ }) =>
 							HttpAnswer.with_header(
@@ -277,7 +278,7 @@ check_material! = |found|
 					found.record.material_digest(),
 				),
 			)
-		Err(NoMaterial) => Ok(DoesNotMatch)
+		Err(NoMaterial) | Err(GenerationDamaged) => Ok(DoesNotMatch)
 		Err(FileSystem(fault)) => Err(FileSystem(fault))
 	}
 
@@ -301,7 +302,7 @@ load_record_or_stand_in! = |id|
 make_record! : UserId,
 Timestamp => Try(
 	{ code : DeviceCode.Code, record : DeviceCode },
-	[NoMaterial, FileSystem(FileFacts.Fault)],
+	[NoMaterial, GenerationDamaged, FileSystem(FileFacts.Fault)],
 )
 make_record! = |id, now| {
 	material = SignInFiles.load_material!(id)?

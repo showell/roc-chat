@@ -1222,6 +1222,18 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
         std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "1"));
     steve_session = try std.fmt.allocPrint(a, "{s}", .{steve_again});
 
+    // A session-generation file damaged by hand: Steve's session is refused,
+    // a 303 to sign in, not a 500 on every request; a password sign-in is a
+    // plain 500 saying so; mended, his session reads its page again.
+    try data.writeFile(io, .{ .sub_path = "auth/1/session-generation", .data = "lots\n" });
+    const refused_page = try getAt(a, io, port, "/chat");
+    const refused_sign_in = try anonymousPost(a, io, port, "/login", "name=Steve&password=correct+horse+battery+staple");
+    try data.writeFile(io, .{ .sub_path = "auth/1/session-generation", .data = "1" });
+    const mended = try getAt(a, io, port, "/chat");
+    try t.check("a damaged session-generation file: Steve's session refused, a 303 to sign in, not a 500; a password sign-in a plain 500 saying so; mended, his page again", refused_page.status == 303 and
+        std.mem.startsWith(u8, refused_page.header("location") orelse "", "/login") and refused_sign_in.status == 500 and
+        has(refused_sign_in.body, "Damaged") and refused_sign_in.header("set-cookie") == null and mended.status == 200);
+
     try data.writeFile(io, .{ .sub_path = "users/1/device-sign-ins", .data = "not a list\n" });
     const damaged = try getAt(a, io, port, "/devices");
     try t.check("a damaged list of sign-ins by code is logged and taken as none: the page, 200", damaged.status == 200 and

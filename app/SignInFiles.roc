@@ -16,12 +16,17 @@ import UserId
 SignInFiles :: [].{
 
 	## What the sessions of the user `id` are signed over now, from their sign-in
-	## files; unless they hold nothing to sign over (`NoMaterial`), or a file
+	## files; unless they hold nothing to sign over (`NoMaterial`), their
+	## `session-generation` file holds no count (`GenerationDamaged`, logged:
+	## every session of theirs is refused until it is mended), or a file
 	## can't be read.
-	load_material! : UserId => Try(Session.Material, [NoMaterial, FileSystem(FileFacts.Fault)])
+	load_material! : UserId => Try(
+		Session.Material,
+		[NoMaterial, GenerationDamaged, FileSystem(FileFacts.Fault)],
+	)
 	load_material! = |id| {
 		github = load_github_word!(id)?
-		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
+		generation = load_generation!(id)?
 		material =
 			match (AccountFiles.read_password_hash!(id), github) {
 				(Err(fault), _) => Err(FileSystem(fault))
@@ -38,11 +43,11 @@ SignInFiles :: [].{
 	## now: a password rewritten meanwhile leaves a session that admits no one.
 	load_material_with_password! : { id : UserId, password_hash : PasswordHash } => Try(
 		Session.Material,
-		[FileSystem(FileFacts.Fault)],
+		[GenerationDamaged, FileSystem(FileFacts.Fault)],
 	)
 	load_material_with_password! = |{ id, password_hash }| {
 		github = load_github_word!(id)?
-		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
+		generation = load_generation!(id)?
 		Ok(Session.Material.from_password({ password_hash, github }).with_generation(generation))
 	}
 
@@ -112,3 +117,19 @@ generate_github_session_word! = |{}| {
 	random_bytes = Host.fill_with_random_bytes!(GitHubSessionWord.random_byte_count)
 	GitHubSessionWord.of_random_bytes(random_bytes)
 }
+
+## The user `id`'s session generation, 0 with no file; unless the file holds
+## no count (`GenerationDamaged`), which is logged, or can't be read.
+load_generation! : UserId => Try(U64, [GenerationDamaged, FileSystem(FileFacts.Fault)])
+load_generation! = |id|
+	match AccountFiles.read_session_generation!(id) {
+		Ok(generation) => Ok(generation)
+		Err(Damaged) => {
+			said = "sessions: user ${id.to_str()}'s session-generation file holds no count; their sessions are refused until it is mended"
+			Host.write_line_to_server_log!(said.to_utf8())
+			Err(GenerationDamaged)
+		}
+		Err(NotUtf8) => Err(FileSystem(NotUtf8))
+		Err(PathRefused) => Err(FileSystem(PathRefused))
+		Err(Failed) => Err(FileSystem(Failed))
+	}
