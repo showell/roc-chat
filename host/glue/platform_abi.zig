@@ -1954,6 +1954,50 @@ comptime {
     }
 }
 
+/// Return type record for Host.find_texts_in_search_index!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostFind_texts_in_search_indexRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    matched: u64,
+    unsearchable: u64,
+    hits: RocList(__AnonStruct_c1816fa01f3f56dd),
+} else extern struct {
+    matched: u64,
+    unsearchable: u64,
+    hits: RocList(__AnonStruct_c1816fa01f3f56dd),
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostFind_texts_in_search_indexRetRecord) != 40) @compileError("HostFind_texts_in_search_indexRetRecord size mismatch");
+        if (@alignOf(HostFind_texts_in_search_indexRetRecord) != 8) @compileError("HostFind_texts_in_search_indexRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostFind_texts_in_search_indexRetRecord) != 32) @compileError("HostFind_texts_in_search_indexRetRecord size mismatch");
+        if (@alignOf(HostFind_texts_in_search_indexRetRecord) != 8) @compileError("HostFind_texts_in_search_indexRetRecord alignment mismatch");
+    }
+}
+
+/// Return type record for Host.find_words_in_search_index!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostFind_words_in_search_indexRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    unsearchable: u64,
+    words: RocList(__AnonStruct_693f516d634a2126),
+} else extern struct {
+    unsearchable: u64,
+    words: RocList(__AnonStruct_693f516d634a2126),
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostFind_words_in_search_indexRetRecord) != 32) @compileError("HostFind_words_in_search_indexRetRecord size mismatch");
+        if (@alignOf(HostFind_words_in_search_indexRetRecord) != 8) @compileError("HostFind_words_in_search_indexRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostFind_words_in_search_indexRetRecord) != 24) @compileError("HostFind_words_in_search_indexRetRecord size mismatch");
+        if (@alignOf(HostFind_words_in_search_indexRetRecord) != 8) @compileError("HostFind_words_in_search_indexRetRecord alignment mismatch");
+    }
+}
+
 /// Return type record for Host.github_identity_for_code!
 /// Fields ordered by compiler-emitted ABI offsets.
 pub const HostGithub_identity_for_codeRetRecord = if (@sizeOf(usize) == 4) extern struct {
@@ -2105,50 +2149,6 @@ comptime {
     }
 }
 
-/// Return type record for Host.texts_in_search_index!
-/// Fields ordered by compiler-emitted ABI offsets.
-pub const HostTexts_in_search_indexRetRecord = if (@sizeOf(usize) == 4) extern struct {
-    matched: u64,
-    unsearchable: u64,
-    hits: RocList(__AnonStruct_c1816fa01f3f56dd),
-} else extern struct {
-    matched: u64,
-    unsearchable: u64,
-    hits: RocList(__AnonStruct_c1816fa01f3f56dd),
-};
-
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(HostTexts_in_search_indexRetRecord) != 40) @compileError("HostTexts_in_search_indexRetRecord size mismatch");
-        if (@alignOf(HostTexts_in_search_indexRetRecord) != 8) @compileError("HostTexts_in_search_indexRetRecord alignment mismatch");
-    }
-    if (@sizeOf(usize) == 4) {
-        if (@sizeOf(HostTexts_in_search_indexRetRecord) != 32) @compileError("HostTexts_in_search_indexRetRecord size mismatch");
-        if (@alignOf(HostTexts_in_search_indexRetRecord) != 8) @compileError("HostTexts_in_search_indexRetRecord alignment mismatch");
-    }
-}
-
-/// Return type record for Host.words_in_search_index!
-/// Fields ordered by compiler-emitted ABI offsets.
-pub const HostWords_in_search_indexRetRecord = if (@sizeOf(usize) == 4) extern struct {
-    unsearchable: u64,
-    words: RocList(__AnonStruct_693f516d634a2126),
-} else extern struct {
-    unsearchable: u64,
-    words: RocList(__AnonStruct_693f516d634a2126),
-};
-
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(HostWords_in_search_indexRetRecord) != 32) @compileError("HostWords_in_search_indexRetRecord size mismatch");
-        if (@alignOf(HostWords_in_search_indexRetRecord) != 8) @compileError("HostWords_in_search_indexRetRecord alignment mismatch");
-    }
-    if (@sizeOf(usize) == 4) {
-        if (@sizeOf(HostWords_in_search_indexRetRecord) != 24) @compileError("HostWords_in_search_indexRetRecord size mismatch");
-        if (@alignOf(HostWords_in_search_indexRetRecord) != 8) @compileError("HostWords_in_search_indexRetRecord alignment mismatch");
-    }
-}
-
 /// Arguments for Host.append_text_to_search_index_key!
 /// Roc signature: List(U8), List(U8), List(U8) => {}
 /// Refcounted fields are owned by the hosted function.
@@ -2208,6 +2208,24 @@ pub const HostEnd_every_stream_of_holderArgs = extern struct {
 /// Refcounted fields are owned by the hosted function.
 pub const HostFill_with_random_bytesArgs = extern struct {
     arg0: u64,
+};
+
+/// Arguments for Host.find_texts_in_search_index!
+/// Roc signature: List(List(U8)), List(U8), U64 => { hits : List({ key_at : U64, label : List(U8), text : List(U8), text_at : U64 }), matched : U64, unsearchable : U64 }
+/// Refcounted fields are owned by the hosted function.
+pub const HostFind_texts_in_search_indexArgs = extern struct {
+    arg0: RocList(RocListWith(u8, false)),
+    arg1: RocListWith(u8, false),
+    arg2: u64,
+};
+
+/// Arguments for Host.find_words_in_search_index!
+/// Roc signature: List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }
+/// Refcounted fields are owned by the hosted function.
+pub const HostFind_words_in_search_indexArgs = extern struct {
+    arg0: RocList(RocListWith(u8, false)),
+    arg1: RocListWith(u8, false),
+    arg2: u64,
 };
 
 /// Arguments for Host.github_identity_for_code!
@@ -2321,24 +2339,6 @@ pub const HostSha256_of_bytesArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
-/// Arguments for Host.texts_in_search_index!
-/// Roc signature: List(List(U8)), List(U8), U64 => { hits : List({ key_at : U64, label : List(U8), text : List(U8), text_at : U64 }), matched : U64, unsearchable : U64 }
-/// Refcounted fields are owned by the hosted function.
-pub const HostTexts_in_search_indexArgs = extern struct {
-    arg0: RocList(RocListWith(u8, false)),
-    arg1: RocListWith(u8, false),
-    arg2: u64,
-};
-
-/// Arguments for Host.words_in_search_index!
-/// Roc signature: List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }
-/// Refcounted fields are owned by the hosted function.
-pub const HostWords_in_search_indexArgs = extern struct {
-    arg0: RocList(RocListWith(u8, false)),
-    arg1: RocListWith(u8, false),
-    arg2: u64,
-};
-
 /// Arguments for Host.write_line_to_server_log!
 /// Roc signature: List(U8) => {}
 /// Refcounted fields are owned by the hosted function.
@@ -2348,6 +2348,10 @@ pub const HostWrite_line_to_server_logArgs = extern struct {
 
 // Platform Type Aliases
 
+pub const HostFind_texts_in_search_index = __AnonStruct_7386f2b14771a157;
+pub const HostFind_texts_in_search_indexHits = __AnonStruct_c1816fa01f3f56dd;
+pub const HostFind_words_in_search_index = __AnonStruct_68517bf126ca0bca;
+pub const HostFind_words_in_search_indexWords = __AnonStruct_693f516d634a2126;
 pub const HostGithub_identity_for_code = __AnonStruct_c21c6671fc9a3d71;
 pub const HostGithub_sign_in_settings = __AnonStruct_50209078edfd2434;
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
@@ -2355,10 +2359,6 @@ pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
 pub const HostRead_second_kept_under_key = __AnonStruct_2cb02b6a756bd33f;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
 pub const HostReplace_second_kept_under_key = __AnonStruct_2cb02b6a756bd33f;
-pub const HostTexts_in_search_index = __AnonStruct_7386f2b14771a157;
-pub const HostTexts_in_search_indexHits = __AnonStruct_c1816fa01f3f56dd;
-pub const HostWords_in_search_index = __AnonStruct_68517bf126ca0bca;
-pub const HostWords_in_search_indexWords = __AnonStruct_693f516d634a2126;
 pub const Admission_for_hostArg0 = __AnonStruct_8ba57119b983c03c;
 pub const Admission_for_hostArg0Headers = __AnonStruct_288155b7e13051cb;
 pub const Admission_for_host = __AnonStruct_c6984c61d9a28262;
@@ -2612,6 +2612,24 @@ pub extern fn end_every_stream_of_holder(arg0: RocListWith(u8, false)) callconv(
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn fill_with_random_bytes(arg0: u64) callconv(.c) RocListWith(u8, false);
 
+/// Hosted symbol for Host.find_texts_in_search_index!
+/// Roc signature: List(List(U8)), List(U8), U64 => { hits : List({ key_at : U64, label : List(U8), text : List(U8), text_at : U64 }), matched : U64, unsearchable : U64 }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     decrefListOfListOfType2(arg0, roc_host);
+///     arg1.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn find_texts_in_search_index(arg0: RocList(RocListWith(u8, false)), arg1: RocListWith(u8, false), arg2: u64) callconv(.c) __AnonStruct_7386f2b14771a157;
+
+/// Hosted symbol for Host.find_words_in_search_index!
+/// Roc signature: List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     decrefListOfListOfType2(arg0, roc_host);
+///     arg1.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn find_words_in_search_index(arg0: RocList(RocListWith(u8, false)), arg1: RocListWith(u8, false), arg2: u64) callconv(.c) __AnonStruct_68517bf126ca0bca;
+
 /// Hosted symbol for Host.github_identity_for_code!
 /// Roc signature: List(U8) => { github_id : U64, login : List(U8), status : [Busy, Denied, Failed, Identified] }
 /// Owned arguments. Release each exactly once before returning, unless it is
@@ -2733,24 +2751,6 @@ pub extern fn search_index_keys_not_held(arg0: RocList(RocListWith(u8, false))) 
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn sha256_of_bytes(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
-
-/// Hosted symbol for Host.texts_in_search_index!
-/// Roc signature: List(List(U8)), List(U8), U64 => { hits : List({ key_at : U64, label : List(U8), text : List(U8), text_at : U64 }), matched : U64, unsearchable : U64 }
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     decrefListOfListOfType2(arg0, roc_host);
-///     arg1.decref(roc_host);
-/// The result is owned by Roc: return exactly one owned reference.
-pub extern fn texts_in_search_index(arg0: RocList(RocListWith(u8, false)), arg1: RocListWith(u8, false), arg2: u64) callconv(.c) __AnonStruct_7386f2b14771a157;
-
-/// Hosted symbol for Host.words_in_search_index!
-/// Roc signature: List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }
-/// Owned arguments. Release each exactly once before returning, unless it is
-/// moved into storage or into the result:
-///     decrefListOfListOfType2(arg0, roc_host);
-///     arg1.decref(roc_host);
-/// The result is owned by Roc: return exactly one owned reference.
-pub extern fn words_in_search_index(arg0: RocList(RocListWith(u8, false)), arg1: RocListWith(u8, false), arg2: u64) callconv(.c) __AnonStruct_68517bf126ca0bca;
 
 /// Hosted symbol for Host.write_line_to_server_log!
 /// Roc signature: List(U8) => {}

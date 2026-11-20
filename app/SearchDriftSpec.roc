@@ -43,51 +43,66 @@ topic_of = |name, markdowns| {
 	{ key, place_label: "#general", messages: conversation.messages() }
 }
 
-## The corpus's topics, in order: each `=== <topic>` line opens one, and a
-## `---` line splits its messages.
-topics : List(Search.Searched)
-topics = corpus.split_on("=== ").drop_first(1).map(
-	|piece|
-		match piece.split_on("\n") {
-			[name, .. as rest] =>
-				topic_of(name, Str.join_with(rest, "\n").drop_suffix("\n").split_on("\n---\n"))
-			[] => crash "SearchDriftSpec: a topic has a name"
-		},
-)
+## The topics of `text`, a corpus, in order: each `=== <topic>` line opens
+## one, and a `---` line splits its messages.
+topics_of : Str -> List(Search.Searched)
+topics_of = |text|
+	text.split_on("=== ").drop_first(1).map(
+		|piece|
+			match piece.split_on("\n") {
+				[name, .. as rest] => {
+					body = Str.join_with(rest, "\n").drop_suffix("\n")
+					topic_of(name, body.split_on("\n---\n"))
+				}
+				[] => crash "SearchDriftSpec: a topic has a name"
+			},
+	)
 
-## The reference's answer to one question, as the answers file writes it.
-answer_of : Str, SearchWords.SearchKey -> Str
-answer_of = |kind, key|
+## The reference's answer to one question, of `kind`, in `topics`, as the
+## answers file writes it.
+answer_of : {
+	topics : List(Search.Searched),
+	kind : Str,
+	key : SearchWords.SearchKey,
+} -> Str
+answer_of = |{ topics, kind, key }|
 	if kind == "words" {
-		Str.join_with(Search.words_for({ topics, prefix: key }).map(|{ word, count }| "${word}=${count.to_str()}"), " ")
+		words = Search.words_for({ topics, prefix: key })
+		Str.join_with(words.map(|{ word, count }| "${word}=${count.to_str()}"), " ")
 	} else {
 		found = Search.messages_for({ topics, word: key })
-		hits = found.hits.map(|hit| " ${hit.found_in.key.topic().to_str()}#${hit.message.id().to_str()}")
+		hits = found.hits.map(
+			|hit| " ${hit.found_in.key.topic().to_str()}#${hit.message.id().to_str()}",
+		)
 		"matched=${found.matched.to_str()}${Str.join_with(hits, "")}"
 	}
 
-## Each line of the answers file the reference doesn't give, with what it
-## gives instead; and each key that isn't one `of_typed` makes.
-mismatches : List(Str)
-mismatches = answers.drop_suffix("\n").split_on("\n").keep_oks(
-	|line|
-		match line.split_on("\t") {
-			[kind, typed, want] => {
-				key = SearchWords.SearchKey.of_typed(typed)
-				got = answer_of(kind, key)
-				if key.to_str() != typed {
-					Ok("${line}: not a key of_typed makes")
-				} else if got != want {
-					Ok("${line}: the reference gives ${got}")
-				} else {
-					Err(Agrees)
+## Each line of `asked`, the answers file, the reference doesn't give over
+## the corpus `text`, with what it gives instead; and each key that isn't
+## one `of_typed` makes.
+mismatches_of : Str, Str -> List(Str)
+mismatches_of = |text, asked| {
+	topics = topics_of(text)
+	asked.drop_suffix("\n").split_on("\n").keep_oks(
+		|line|
+			match line.split_on("\t") {
+				[kind, typed, want] => {
+					key = SearchWords.SearchKey.of_typed(typed)
+					got = answer_of({ topics, kind, key })
+					if key.to_str() != typed {
+						Ok("${line}: not a key of_typed makes")
+					} else if got != want {
+						Ok("${line}: the reference gives ${got}")
+					} else {
+						Err(Agrees)
+					}
 				}
-			}
-			_ => Ok("${line}: not a question and its answer")
-		},
-)
+				_ => Ok("${line}: not a question and its answer")
+			},
+	)
+}
 
 # Every answer of the drift corpus, as the host's index gives it, is the
 # reference's too.
-expect mismatches == []
-expect answers.split_on("\n").len() > 60 and topics.len() == 3
+expect mismatches_of(corpus, answers) == []
+expect answers.split_on("\n").len() > 60 and topics_of(corpus).len() == 3

@@ -214,16 +214,16 @@ pub const RememberedRec = extern struct { second: i64, status: RememberedStatus 
 
 /// Host.roc's `open_search_index_key!` argument, alphabetical.
 pub const SearchIndexKeyKind = enum(u8) { searchable, unsearchable };
-/// Host.roc's `words_in_search_index!` word: the U64, then the list.
+/// Host.roc's `find_words_in_search_index!` word: the U64, then the list.
 pub const WordCountRec = extern struct { count: u64, word: RocBytes };
 pub const WordCountList = RocList(WordCountRec, search_index.WordCount, struct {
     fn rec(w: search_index.WordCount) WordCountRec {
         return .{ .count = w.count, .word = .from(w.word) };
     }
 }.rec);
-/// Host.roc's `words_in_search_index!` answer: the U64, then the list.
+/// Host.roc's `find_words_in_search_index!` answer: the U64, then the list.
 pub const SearchWordsRec = extern struct { unsearchable: u64, words: WordCountList };
-/// Host.roc's `texts_in_search_index!` hit: the U64s, then the lists, each
+/// Host.roc's `find_texts_in_search_index!` hit: the U64s, then the lists, each
 /// by name (a list's alignment is a word's, a U64's at least that).
 pub const SearchHitRec = extern struct { key_at: u64, text_at: u64, label: RocBytes, text: RocBytes };
 pub const SearchHitList = RocList(SearchHitRec, search_index.Hit, struct {
@@ -231,7 +231,7 @@ pub const SearchHitList = RocList(SearchHitRec, search_index.Hit, struct {
         return .{ .key_at = h.key_at, .label = .from(h.label), .text = .from(h.text), .text_at = h.text_at };
     }
 }.rec);
-/// Host.roc's `texts_in_search_index!` answer: the U64s, then the list.
+/// Host.roc's `find_texts_in_search_index!` answer: the U64s, then the list.
 pub const SearchTextsRec = extern struct { matched: u64, unsearchable: u64, hits: SearchHitList };
 
 /// Host.roc's `github_sign_in_settings!` status, alphabetical.
@@ -464,14 +464,14 @@ pub export fn search_index_keys_not_held(keys: RocBytesList) callconv(.c) RocU64
 
 /// The answer's words live in the index until the call ends: they are
 /// copied into Roc's lists here.
-pub export fn words_in_search_index(keys: RocBytesList, prefix: RocBytes, most: u64) callconv(.c) SearchWordsRec {
-    const what = "words_in_search_index";
+pub export fn find_words_in_search_index(keys: RocBytesList, prefix: RocBytes, most: u64) callconv(.c) SearchWordsRec {
+    const what = "find_words_in_search_index";
     const got = search_of(what).words_for(call(what).arena, key_slices(what, keys), prefix.slice(), most) catch std.debug.panic(what ++ ": out of memory", .{});
     return .{ .unsearchable = got.unsearchable, .words = .from(got.words) };
 }
 
-pub export fn texts_in_search_index(keys: RocBytesList, word: RocBytes, most: u64) callconv(.c) SearchTextsRec {
-    const what = "texts_in_search_index";
+pub export fn find_texts_in_search_index(keys: RocBytesList, word: RocBytes, most: u64) callconv(.c) SearchTextsRec {
+    const what = "find_texts_in_search_index";
     const got = search_of(what).texts_for(call(what).arena, key_slices(what, keys), word.slice(), most) catch std.debug.panic(what ++ ": out of memory", .{});
     return .{ .hits = .from(got.hits), .matched = got.matched, .unsearchable = got.unsearchable };
 }

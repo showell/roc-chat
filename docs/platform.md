@@ -160,10 +160,10 @@ The text (the third) and its label (the second) at the end of the key's texts, s
 **`search_index_keys_not_held! : List(List(U8)) => List(U64)`**
 The places, from 0, of the keys the index doesn't hold, which the app then fills.
 
-**`words_in_search_index! : List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }`**
+**`find_words_in_search_index! : List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }`**
 At most `most` (the third) words of those keys' texts that begin with the prefix, folded, each with how many texts hold it: the most held first, then in byte order, none longer than 256 bytes; and how many of the keys are unsearchable.
 
-**`texts_in_search_index! : List(List(U8)), List(U8), U64 => { hits : List({ key_at, label, text, text_at }), matched : U64, unsearchable : U64 }`**
+**`find_texts_in_search_index! : List(List(U8)), List(U8), U64 => { hits : List({ key_at, label, text, text_at }), matched : U64, unsearchable : U64 }`**
 The texts of those keys that hold the word as a word of their own, in the keys' order and each key's: at most `most` listed, each with its key's place, its own place, its label and its text; how many hold it in all; and how many keys are unsearchable.
 
 ## Memory and crashes
