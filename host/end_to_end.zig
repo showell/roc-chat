@@ -134,7 +134,10 @@
 //! 35c. Steve's edit of it ("Edit of MSG_edits_1", a blank line, the new
 //!      text): 201; the edit's frame, then the original again as an
 //!      `event: replace` with no id, drawn as edited, exactly as the page
-//!      now draws it; both records on disk;
+//!      now draws it; both records on disk; the edit's `MSG_edits_1`
+//!      linked by the label the original's header writes, which the served
+//!      actions.js follows (its `a.msg-ref`), as roc-markdown's
+//!      `#msg-edits_1` names no element;
 //! 35d. an edit of a message not there, or of LC's in roc-chat: 409 each, in
 //!      words, nothing stored;
 //! 35e. a reaction (`/react`, `msg=2`, 👍, `on=1`): 200; the reactions file
@@ -895,6 +898,10 @@ fn editAndReactSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: S
         std.mem.eql(u8, again["event: replace\n".len..], (try frameOf(a, edited_page.body, "1"))["id: 1\n".len..]) and
         has(edited_page.body, "<div class=\"edited-markdown\">Helo there</div>") and
         has(kept, "\n\nHelo there\n\n") and has(kept, "\n\nEdit of MSG_edits_1\n\nHello there\n\n"));
+    const actions_script = try get(a, io, port, "/chat/assets/actions.js");
+    try t.check("the edit's reference is a link whose label is the original's header reference, which the page's actions.js follows by its label", has(try articleOf(edited_page.body, "2"), "<p>Edit of <a href=\"#msg-edits_1\" class=\"msg-ref\">MSG_edits_1</a></p>") and
+        has(try articleOf(edited_page.body, "1"), "<a class=\"message-reference\" href=\"#msg-1\">MSG_edits_1</a></header>") and
+        actions_script.status == 200 and has(actions_script.body, "'a.msg-ref'") and has(actions_script.body, "'.message header .message-reference'"));
 
     // 35d.
     const not_there = try post(a, io, port, .{ .path = edits_url ++ "/send", .form = "markdown=Edit+of+MSG_edits_9%0A%0Ax", .more = fetch_headers });

@@ -415,6 +415,13 @@ expect
 	["data-react", "data-raw", "data-reactors"].all(
 		|name| !is_read_by(Script.Feed.bytes(), name) and !is_read_by(Script.Compose.bytes(), name),
 	)
+# app/actions.js follows a reference in a message's markdown, roc-markdown's
+# `a.msg-ref`, to the message whose header's reference is its label.
+expect {
+	script = Str.from_utf8_lossy(Script.Actions.bytes())
+	script.contains("'a.msg-ref'")
+		and script.contains("'.message header .${class_name(MessageReference)}'")
+}
 # app/recent.js finds Recent's list, its tiles, their bars and their times
 # by their classes, and reads the list's stream; no conversation script
 # finds them.

@@ -37,6 +37,16 @@
 // caret after it. roc-markdown draws that fence as a quoted message
 // (<pre class="chat-quote">) and the reference as a link to the message.
 //
+// A reference in a message's markdown, MSG_<topic>_<n>, is roc-markdown's
+// link (a.msg-ref) to #msg-<topic>_<n>, which names no element: a message
+// here is msg-<n>. A click on one follows it as chat-client's navigateRef
+// did (js/chat.js): when its label is the reference of a message on this
+// page, as that message's header writes it, the message is brought into
+// view and selected (Feed.reveal). A long reference,
+// MSG_<channel>.<topic>_<n>, is this page's when its channel is the page's.
+// Any other names a message on another page, which Gopher's server found
+// (/chat/msg/<id>) and this one doesn't yet, so a notice says so.
+//
 // The `t` key opens the conversation's raw transcript (the pane's data-raw)
 // in a new tab, as chat-client's did (js/chat.js's viewRaw), so a reader
 // sees every message's markdown as written.
@@ -50,6 +60,7 @@
   if (!messages) throw new Error('actions.js: the page has no .messages');
   if (!window.Keys || !window.Compose) throw new Error('actions.js: compose.js runs first, and gives Keys and Compose');
   if (!window.Emoji) throw new Error('actions.js: emoji.js runs first, and gives Emoji');
+  if (!window.Feed) throw new Error('actions.js: feed.js runs first, and gives Feed');
   var viewer = messages.getAttribute('data-viewer');
   var reactUrl = messages.getAttribute('data-react');
   var rawUrl = messages.getAttribute('data-raw');
@@ -284,9 +295,39 @@
     header.appendChild(actions);
   }
 
+  // The page's channel, on a channel's page (/chat/channel/<name>/<topic>);
+  // null on a DM's.
+  var channelAt = /^\/chat\/channel\/([^\/]+)\//.exec(location.pathname);
+  var channel = channelAt ? decodeURIComponent(channelAt[1]) : null;
+  // The reference `label` as this page's headers write it: a long one's
+  // channel dropped when it is the page's.
+  function shortReference(label) {
+    var long = /^MSG_([A-Za-z][A-Za-z0-9-]{0,39})\.([A-Za-z0-9-]+_[0-9]+)$/.exec(label);
+    if (!long) return label;
+    return long[1] === channel ? 'MSG_' + long[2] : null;
+  }
+  function followReference(link) {
+    var label = link.textContent;
+    var wanted = shortReference(label);
+    var refs = messages.querySelectorAll('.message header .message-reference');
+    for (var i = 0; wanted && i < refs.length; i++) {
+      if (refs[i].textContent === wanted) {
+        Feed.reveal(refs[i].closest('.message'));
+        return;
+      }
+    }
+    showFailure(label + ' is not in this topic, and a link to another topic is not followed yet.');
+  }
+
   messages.addEventListener('click', function (e) {
     var article = e.target.closest && e.target.closest('.message');
     if (!article) return;
+    var reference = e.target.closest('a.msg-ref');
+    if (reference) {
+      e.preventDefault();
+      followReference(reference);
+      return;
+    }
     var chip = e.target.closest('.reaction-chip');
     if (chip) { toggle(article, emojiOf(chip)); return; }
     if (e.target.closest('.react-open')) { openPicker(article); return; }

@@ -425,6 +425,46 @@ expect {
 		and plain.contains("<div class=\"body\"><p>Helo &lt;b&gt;</p>\n</div></article>")
 }
 
+# A quote-reply's reference is linked by its label, exactly the quoted
+# message's header reference, which app/actions.js follows: roc-markdown's
+# link names `#msg-plans_1`, not the message's id, `msg-1`.
+expect {
+	conversation = Sample.conversation(
+		Sample.plans,
+		[
+			Sample.unnumbered_message({
+				author: "Steve",
+				time: "2026-11-02T19:11:32Z",
+				markdown: "Hello",
+			}),
+			Sample.unnumbered_message({
+				author: "Steve",
+				time: "2026-11-02T19:12:00Z",
+				markdown: "In MSG_plans_1 I said:\n~~~ quote\nHello\n~~~\n\nyes",
+			}),
+		],
+	)
+	drawn = conversation.messages().map(
+		|message|
+			Str.from_utf8_lossy(
+				ConversationPage.message({
+					conversation,
+					key: plans_key,
+					users: Sample.directory.users(),
+					message,
+					notes: MessageNotes.fresh,
+				}).to_utf8(),
+			),
+	)
+	match drawn {
+		[quoted, reply] =>
+			quoted.contains("<article class=\"message\" id=\"msg-1\"")
+				and quoted.contains("<a class=\"message-reference\" href=\"#msg-1\">MSG_plans_1</a></header>")
+				and reply.contains("<p>In <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a> I said:</p>")
+		_ => Bool.False
+	}
+}
+
 ## The conversation at `path` in the sample directory with its default
 ## channel, `general`.
 recent_key : Str -> ConversationKey
