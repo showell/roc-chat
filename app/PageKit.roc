@@ -440,16 +440,21 @@ top_bar_titled = |{ title, viewer, notices }|
 		]),
 	})
 
-## The top bar's "Sign out", after the viewer's name: a form, so it is a
-## POST, held to this server's origin as every POST is (`SignInRoute`'s
-## `/logout`, by way of `DeviceCodeRoute.sign_out!`).
+## The top bar's "Sign out": a form, so a POST, held to the origin.
 sign_out_form : TrustedHtml
-sign_out_form =
-	Html.element({
-		name: Form,
-		attributes: [PageContract.class(SignOut), MethodPost, Action(PageKit.site_path("/logout"))],
-		inner: Html.element({ name: Button, attributes: [], inner: Escape.text("Sign out") }),
-	})
+sign_out_form = Html.element({
+	name: Form,
+	attributes: [
+		PageContract.class(SignOut),
+		MethodPost,
+		Action(PageKit.site_path("/logout")),
+	],
+	inner: Html.element({
+		name: Button,
+		attributes: [],
+		inner: Escape.text("Sign out"),
+	}),
+})
 
 ## The top bar's Home link and the separator after it, or nothing for a
 ## fork with none (`HomeLink.NoHomeLink`).
