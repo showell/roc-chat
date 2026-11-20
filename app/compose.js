@@ -6,7 +6,10 @@
 // the right. The rail is either open, its textarea as tall as the window,
 // or closed, showing an "Open compose box" button and the keyboard help. It
 // starts closed, and opens with the button or the c key. Escape closes it
-// when the textarea is empty, so a draft stays where it is. In a narrower
+// when the textarea is empty, so a draft stays where it is; the ✕ button at
+// the open rail's top closes it whatever it holds, and a draft is hidden,
+// never discarded: the button that opens it again then reads "Open compose
+// box (draft)". In a narrower
 // window, a phone's, the compose box is a bar below the messages, as
 // chat-client's was (js/chat_responsive.js): it starts open, its ▾ button
 // closes it to the "Open compose box" button, and the keyboard help and the
@@ -97,6 +100,12 @@
     'html.layout-narrow .compose-collapse{display:flex;justify-content:flex-end}',
     '.compose-collapse button{background:none;border:none;color:var(--cc-muted-fg);font-size:18px;' +
       'cursor:pointer;padding:2px 8px;line-height:1}',
+    // The wide rail's close button, over the textarea's right end.
+    '.compose-hide{display:none}',
+    'html.layout-wide .compose-hide{display:flex;justify-content:flex-end;margin-bottom:2px}',
+    '.compose-hide button{background:none;border:none;color:var(--cc-muted-fg);font-size:14px;' +
+      'cursor:pointer;padding:2px 6px;line-height:1;border-radius:4px}',
+    '.compose-hide button:hover{color:var(--cc-fg);background:var(--cc-accent-soft-bg)}',
 
     // A wide window: the messages on the left, the compose rail on the right.
     'html.layout-wide .layout{flex-direction:row;align-items:stretch}',
@@ -164,6 +173,16 @@
   collapseButton.addEventListener('click', function () { closeCompose(); });
   collapse.appendChild(collapseButton);
   composeBody.appendChild(collapse);
+  var hide = document.createElement('div');
+  hide.className = 'compose-hide';
+  var hideButton = document.createElement('button');
+  hideButton.type = 'button';
+  hideButton.textContent = '✕';
+  hideButton.title = 'Close the compose box (a draft is kept)';
+  hideButton.setAttribute('aria-label', 'Close the compose box');
+  hideButton.addEventListener('click', function () { closeCompose(); });
+  hide.appendChild(hideButton);
+  composeBody.appendChild(hide);
   composeBody.appendChild(form);
   composeBody.appendChild(picker);
   composeBody.appendChild(status);
@@ -181,6 +200,7 @@
   }
   function closeCompose() {
     compose.classList.remove('open');
+    openButton.textContent = box.value.trim() === '' ? 'Open compose box' : 'Open compose box (draft)';
     messages.focus();
   }
 
