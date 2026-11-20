@@ -1,0 +1,204 @@
+-- Screenshots of roc-chat's pages, so an agent can see what it changed.
+-- It starts the chat on a throwaway data root seeded from the demo, signs
+-- Steve in, invites Tam, writes a DM between them, and saves a PNG of each
+-- page, in each theme, at a desktop's size and a phone's. Run it from
+-- roc-chat's root, naming the folder the PNGs go to (made if missing):
+--
+--   shale tools/screenshot.shale out=build:shots/my-change
+--
+-- Each PNG is `<theme>-<width>x<height>-<page>.png`:
+--   channel  /chat/channel/general/roc-chat, the demo's topic, with the
+--            keyboard help beside it at the desktop's size
+--   dm       /chat/dm/1_2/plans, Steve and Tam
+--   recent   /chat/recent
+--   browse   /chat
+--   invites  /invites
+-- at 1280x800 and 390x844 (a phone), dark (the app's default) and light.
+-- `themes=dark` or `sizes=phone` (or `desktop`) takes one alone.
+--
+-- What it can't reach yet: anything that takes a click, such as the person
+-- card (app/sidebar-popups.js) and the theme toggle's own button. Light is
+-- the theme saved in the browser's localStorage, written by a page served
+-- at the chat's port before the chat starts.
+--
+-- The browser is Chrome for Testing's chrome-headless-shell, pinned under
+-- Shale's `tools` mount (CHROME, below), run once a picture under `nice`,
+-- each run its own process group, which `run` ends when it returns. Its
+-- sandbox needs unprivileged user namespaces, which this box's AppArmor
+-- refuses, so it runs with `--no-sandbox`, and it loads only this local
+-- chat. The session cookie reaches it through a small page on a second
+-- port (busybox's httpd, the one `want`): a browser sends a cookie for
+-- `localhost` to every port, and the chat refuses a sign-in posted from
+-- another origin, so the page sets the cookie and goes on to the chat.
+--
+-- Budgets: about 12 s for all 20 pictures once the server is built (3 s
+-- for one theme at one size); each picture about 0.6 s, under 0.5 s of
+-- CPU, held to 15 s of CPU. A `zig build` after the app changed adds about
+-- 25 s. The browser runs one renderer, its JavaScript heap capped at
+-- 128 MB, one picture at a time. The data root, the profiles and the
+-- logs are under .zig-cache/screenshot.XXXXXX, removed at the end; a stop
+-- leaves them, and its jobs (the server, the page) end with it.
+
+const CHROME = "tools:chrome-headless-shell-158.0.8127.36/chrome-headless-shell-linux64/chrome-headless-shell"
+const PASSWORD = "correct horse battery staple"
+
+local out = arg("out", "")
+if out == "" then fail("screenshot: name the folder the PNGs go to, out=build:shots/<name>") end
+local port = arg("port", 9661)
+local page_port = arg("page_port", 9662)
+local themes_arg = arg("themes", "dark,light")
+local sizes_arg = arg("sizes", "desktop,phone")
+
+const PAGES = {
+  {name = "channel", path = "/chat/channel/general/roc-chat"},
+  {name = "dm", path = "/chat/dm/1_2/plans"},
+  {name = "recent", path = "/chat/recent"},
+  {name = "browse", path = "/chat"},
+  {name = "invites", path = "/invites"},
+}
+const SIZES = {desktop = "1280,800", phone = "390,844"}
+
+if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end
+
+-- The browser's argv for one picture: `profile` its user data, `size`
+-- "W,H", `png` where it goes, `url` what it loads.
+function browser(profile, size, png, url)
+  return {real(CHROME), "--headless", "--no-sandbox", "--disable-gpu",
+    "--disable-extensions", "--disable-background-networking", "--disable-component-update",
+    "--no-first-run", "--mute-audio", "--renderer-process-limit=1",
+    "--js-flags=--max-old-space-size=128",
+    "--user-data-dir=" .. real(profile), "--window-size=" .. size, "--hide-scrollbars",
+    "--screenshot=" .. png, url}
+end
+
+-- Whether anything answers HTTP at `url`.
+function http_ok(url)
+  local r = run({"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url}, {timeout_ms = 5000, whole = 100})
+  return r.code == 0 and r.out ~= "000"
+end
+
+-- busybox's httpd serving `folder` on 127.0.0.1:`at`, until `job_stop`.
+function serve_pages(folder, at, log)
+  local job = job_start({"busybox", "httpd", "-f", "-p", "127.0.0.1:" .. at, "-h", real(folder)},
+    {log = log, want = "httpd: a local page that hands the headless browser its cookie and theme"})
+  for n = 1, 50 do
+    if http_ok("http://127.0.0.1:" .. at .. "/") then return job end
+    sleep(100)
+  end
+  fail("screenshot: no page server on port " .. at .. "; see " .. log)
+end
+
+-- A form POSTed as `cookie` (a `name=value`), each field's value
+-- URL-encoded by curl: the answer's status, headers and body.
+function post_form(base, cookie, path, fields)
+  local argv = {"curl", "-s", "-D", "-", "-H", "Cookie: " .. cookie}
+  for f in fields do
+    push(argv, "--data-urlencode")
+    push(argv, f)
+  end
+  push(argv, base .. path)
+  local r = must(run(argv, {timeout_ms = 10000, whole = 200000}))
+  local status = re_find(r.out, "^HTTP/1\\.1 ([0-9]+)")
+  if status == nil then fail("screenshot: POST " .. path .. " gave no status: " .. sub(r.out, 1, 200)) end
+  return {status = tonumber(status.group), text = r.out}
+end
+
+-- The session cookie a 303's `Set-Cookie` sets, as `name=value`.
+function cookie_of(answer, what)
+  local c = re_find(answer.text, "(?:^|\n)[Ss]et-[Cc]ookie: (__Host-gopher_auth=[^;\r\n]+)")
+  if c == nil then fail("screenshot: " .. what .. " set no session cookie (" .. answer.status .. ")") end
+  return c.group
+end
+
+function expect_status(answer, want, what)
+  if answer.status ~= want then fail("screenshot: " .. what .. ": " .. answer.status .. ", not " .. want .. "\n" .. sub(answer.text, 1, 400)) end
+end
+
+-- 0. The server, built niced, so the job below starts at once.
+must(run({"zig", "build"}, {timeout_ms = 600000, tail = 20, nice = 19}))
+
+local work = fresh_dir(".zig-cache", "screenshot")
+local data = work .. "/data"
+local pages = work .. "/pages"
+mkdir(pages)
+mkdir(out)
+
+const themes = split(themes_arg, ",")
+const sizes = split(sizes_arg, ",")
+for t in themes do
+  if t ~= "dark" and t ~= "light" then fail("screenshot: themes= takes dark and light, not " .. t) end
+  mkdir(work .. "/profile-" .. t)
+end
+for s in sizes do
+  if not has_key(SIZES, s) then fail("screenshot: sizes= takes desktop and phone, not " .. s) end
+end
+
+-- 1. Light is a choice saved in localStorage, which belongs to the chat's
+-- own origin, port and all: a page at that port saves it into the light
+-- profile before the chat takes the port.
+if has_item(themes, "light") then
+  create(pages .. "/theme.html", "<!doctype html><script>localStorage.setItem('chat-theme', 'light');</script>")
+  local job = serve_pages(pages, port, work .. "/theme-page.log")
+  must(run(browser(work .. "/profile-light", "400,300", real(work) .. "/theme.png", "http://localhost:" .. port .. "/theme.html"),
+    {timeout_ms = 30000, tail = 5, nice = 19, cpu_budget_ms = 10000, stage = "the light theme saved"}))
+  job_stop(job)
+end
+
+-- 2. The chat, on the demo's topic; its first start makes Steve.
+mkdir(data)
+copy("demo/data/chat", data .. "/chat")
+local base = "http://localhost:" .. port
+local server = job_start({"zig", "build", "serve", "--", real(data), "--port", "" .. port}, {log = work .. "/server.log"})
+local up = job_wait(server, {timeout_ms = 60000, contains = "roc-chat: http://"})
+if up.ended ~= "found" then fail("screenshot: the server did not start (" .. up.ended .. "); see " .. work .. "/server.log") end
+
+local hashed = must(run({"zig", "build", "serve", "--", "hash-password"}, {stdin = PASSWORD .. "\n", timeout_ms = 60000, tail = 3}))
+create(data .. "/auth/1/password", trim(hashed.out) .. "\n")
+local steve = cookie_of(post_form(base, "none=1", "/login", {"name=Steve", "password=" .. PASSWORD, "next=/chat"}), "Steve's sign-in")
+
+-- 3. Tam, invited and joined, and a DM between them.
+local invited = post_form(base, steve, "/invites", {"name=Tam"})
+expect_status(invited, 200, "inviting Tam")
+local code = re_find(invited.text, "/join#([A-Za-z0-9_-]+)")
+if code == nil then fail("screenshot: inviting Tam showed no /join# link") end
+local joined = post_form(base, "none=1", "/join", {"code=" .. code.group, "name=Tam", "password=" .. PASSWORD})
+expect_status(joined, 303, "Tam joining")
+local tam = cookie_of(joined, "Tam's join")
+
+expect_status(post_form(base, steve, "/chat/dm/1_2", {"topic=plans"}), 303, "the DM's topic")
+const DM = {
+  {who = "steve", text = "Shall we meet **Thursday**? I can bring the draft of `docs/design.md`."},
+  {who = "tam", text = "Thursday works. Two things first:\n\n- the sidebar on a phone\n- the person card's DM list"},
+  {who = "steve", text = "Good. Here's the check I run:\n\n```shale\nshale tools/screenshot.shale out=build:shots/thursday\n```"},
+  {who = "tam", text = "> the sidebar on a phone\n\nI'll look at that one tonight."},
+}
+for m in DM do
+  local who = steve
+  if m.who == "tam" then who = tam end
+  expect_status(post_form(base, who, "/chat/dm/1_2/plans", {"markdown=" .. m.text}), 303, "a DM message")
+end
+
+-- 4. The pictures. The page at `page_port` sets Steve's cookie (a browser
+-- sends it to the chat's port too) and goes on to the page asked for.
+create(pages .. "/go.html", "<!doctype html><script>document.cookie = '" .. steve .. "; Path=/; Secure; SameSite=Lax; Max-Age=3600'; location.replace('" .. base .. "' + new URLSearchParams(location.search).get('to'));</script>")
+local page_server = serve_pages(pages, page_port, work .. "/go-page.log")
+
+local made = 0
+for t in themes do
+  for s in sizes do
+    for p in PAGES do
+      local size = SIZES[s]
+      local name = t .. "-" .. re_replace(size, ",", "x") .. "-" .. p.name .. ".png"
+      local png = real(out) .. "/" .. name
+      local url = "http://localhost:" .. page_port .. "/go.html?to=" .. p.path
+      local r = must(run(browser(work .. "/profile-" .. t, size, png, url),
+        {timeout_ms = 30000, tail = 5, nice = 19, cpu_budget_ms = 15000, stage = name}))
+      if find(r.out, "bytes written to file") == nil then fail("screenshot: " .. name .. " was not written\n" .. r.out) end
+      made = made + 1
+    end
+  end
+end
+job_stop(page_server)
+job_stop(server)
+remove_tree(work)
+print("screenshot: " .. made .. " PNGs in " .. out)
