@@ -325,7 +325,7 @@ append_posted_message! = |post| {
 		File(_) => {}
 	}
 	author = post.acting.user()
-	notice = MessageNotice.frame({ author: author.name().to_str(), key: post.key })
+	notice = MessageNotice.frame({ author: author.name().to_str(), key: post.key, id: grown.message.id() })
 	recipients = MessageNotice.recipients({ readers: post.readers, author: author.id() })
 	for reader in recipients {
 		Host.publish_bytes_to_streams_on_key!(Presence.viewer_stream_key(reader), notice)

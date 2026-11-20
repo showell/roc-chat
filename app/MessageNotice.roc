@@ -3,7 +3,12 @@
 ## `Fan.notify`): every reader of the message but its author is sent
 ## `message-notice` on their own stream (`Presence.viewer_stream_key`), which
 ## their conversation pages' streams and their Recent page's stream carry.
-## Its data is a link to the message's topic, worded as Gopher worded it:
+## Its data is a link to the message itself, on its topic's page with the
+## message's anchor (`#msg-N`), which that page opens at and selects, so the
+## click lands on the news. (Not `/chat/msg/<id>`, which comes to the same
+## place by a redirect, but whose DM form names a topic alone and is
+## ambiguous when two of the reader's DMs share a topic's name.) It is worded
+## as Gopher worded it:
 ## "Steve sent you a message on plans." in a DM, "Steve posted to general >
 ## plans." in a channel. app/chrome.js shows it in the top bar's notice line
 ## and paints the tab's icon violet, unless the page is that topic's own
@@ -13,6 +18,9 @@
 import ConversationKey
 import Escape
 import Html
+import Message
+import MessageAnchor
+import PageKit
 import Presence
 import ServerSentEvent
 import UserId
@@ -30,16 +38,21 @@ MessageNotice :: [].{
 		}
 	}
 
-	## The event that tells of a message by `author` in `key`:
-	## `message-notice`, its data a link to the topic's page.
-	frame : { author : Str, key : ConversationKey } -> List(U8)
-	frame = |given|
+	## The event that tells of the message `id` by `author` in `key`:
+	## `message-notice`, its data a link to that message on the topic's page.
+	frame : { author : Str, key : ConversationKey, id : Message.Id } -> List(U8)
+	frame = |{ author, key, id }|
 		ServerSentEvent.named_event({
 			name: "message-notice",
 			html: Html.element({
 				name: A,
-				attributes: [Link(Presence.link_to(given.key))],
-				inner: Escape.text(MessageNotice.words(given)),
+				attributes: [
+					LinkToPart({
+						path: Presence.link_to(key),
+						part: PageKit.token(MessageAnchor.of({ topic: key.topic(), id }).page_anchor()),
+					}),
+				],
+				inner: Escape.text(MessageNotice.words({ author, key })),
 			}),
 		})
 

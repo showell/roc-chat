@@ -4,6 +4,7 @@ import Access
 import Channels
 import ConversationKey
 import Directory
+import Message
 import MessageNotice
 import Sample
 import UnvalidatedString
@@ -44,13 +45,25 @@ expect
 expect
 	MessageNotice.words({ author: "Apoorva", key: key_at("/chat/channel/general/roc-chat-2") })
 		== "Apoorva posted to general > roc-chat-2."
-# The event: `message-notice`, a link to the topic's page, its words escaped;
-# no id, so a browser's count of messages is untouched.
+
+## The id of a topic's third message.
+third : Message.Id
+third = {
+	second = Message.Id.first.next() ?? crash "MessageNoticeSpec: the first id has a next"
+	second.next() ?? crash "MessageNoticeSpec: the second id has a next"
+}
+
+# The event: `message-notice`, a link to the message itself, its anchor on
+# its topic's page, in a DM and in a channel; its words escaped; no event
+# id, so a browser's count of messages is untouched.
 expect
-	MessageNotice.frame({ author: "Steve", key: key_at("/chat/dm/1_2/plans") })
-		== "event: message-notice\ndata: <a href=\"/chat/dm/1_2/plans\">Steve sent you a message on plans.</a>\n\n".to_utf8()
+	MessageNotice.frame({ author: "Steve", key: key_at("/chat/dm/1_2/plans"), id: third })
+		== "event: message-notice\ndata: <a href=\"/chat/dm/1_2/plans#msg-3\">Steve sent you a message on plans.</a>\n\n".to_utf8()
 expect
-	Str.from_utf8_lossy(MessageNotice.frame({ author: "A<b>", key: key_at("/chat/dm/1_2/plans") }))
+	MessageNotice.frame({ author: "Apoorva", key: key_at("/chat/channel/general/roc-chat-2"), id: Message.Id.first })
+		== "event: message-notice\ndata: <a href=\"/chat/channel/general/roc-chat-2#msg-1\">Apoorva posted to general &gt; roc-chat-2.</a>\n\n".to_utf8()
+expect
+	Str.from_utf8_lossy(MessageNotice.frame({ author: "A<b>", key: key_at("/chat/dm/1_2/plans"), id: third }))
 		.contains(">A&lt;b&gt; sent you a message on plans.</a>")
 # Who is told: every reader but the author. A DM's other human; a channel's
 # other members, an agent among them, as topic-added tells them; the author

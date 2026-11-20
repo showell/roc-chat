@@ -374,7 +374,8 @@
 //!      it; her next message there adds no topic again;
 //! 57c. each message tells every other reader, as Gopher Chat's notify did:
 //!      Steve's open stream hears `message-notice` for each of Tam's, linked
-//!      to its topic, even the page's own (the page drops that one), and his
+//!      to the message itself (its topic's page at `#msg-N`), even the page's
+//!      own topic's (the page drops that one), and his
 //!      open Recent page's stream hears it for her channel post; his own
 //!      messages tell him nothing.
 //! 57d. on the second server, a human just joined (Rita): her join writes
@@ -1739,14 +1740,15 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const tams_reply = try postAs(a, io, port, tam, url ++ "/send", "markdown=Seen");
     const next = try stream.event();
     const here_notice = try stream.event();
-    const lunch_said = "event: message-notice\ndata: <a href=\"" ++ lunch ++ "\">Tam sent you a message on lunch.</a>\n\n";
+    const lunch_said = "\">Tam sent you a message on lunch.</a>\n\n";
+    const lunch_link = "event: message-notice\ndata: <a href=\"" ++ lunch;
     try t.check("Tam adds a topic to their DM: Steve's open page hears topic-added for it; her second message there adds no topic again, so after its notice his next event is her reply on his page", tams_first.status == 201 and tams_second.status == 201 and tams_reply.status == 201 and
         std.mem.eql(u8, told, "event: topic-added\ndata: /chat/dm/1_2\ndata: lunch\ndata: " ++ lunch ++ "\n\n") and
         std.mem.startsWith(u8, next, "id: 2\ndata: <article"));
     // 57c.
-    try t.check("each of Tam's messages tells Steve's open stream, as Gopher Chat's notify did: message-notice, linked to its topic, after the message's own events; for the page's own topic too, which the page drops", std.mem.eql(u8, lunch_notice, lunch_said) and
-        std.mem.eql(u8, second_notice, lunch_said) and
-        std.mem.eql(u8, here_notice, "event: message-notice\ndata: <a href=\"" ++ url ++ "\">Tam sent you a message on plans.</a>\n\n"));
+    try t.check("each of Tam's messages tells Steve's open stream, as Gopher Chat's notify did: message-notice, linked to the message itself on its topic's page, after the message's own events; for the page's own topic too, which the page drops", std.mem.eql(u8, lunch_notice, lunch_link ++ "#msg-1" ++ lunch_said) and
+        std.mem.eql(u8, second_notice, lunch_link ++ "#msg-2" ++ lunch_said) and
+        std.mem.eql(u8, here_notice, "event: message-notice\ndata: <a href=\"" ++ url ++ "#msg-2\">Tam sent you a message on plans.</a>\n\n"));
     try recentSteps(a, io, port, t, .{ .tam = tam, .uma = uma });
 }
 
@@ -1855,7 +1857,18 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
     const notice = try nextNotTopicAdded(live);
     const first = try nextNotTopicAdded(live);
     const second = try nextNotTopicAdded(live);
-    try t.check("Recent's stream: Steve's open Recent page hears the notice of Tam's channel post, as Gopher Chat's Recent did, and none of his own", std.mem.eql(u8, notice, "event: message-notice\ndata: <a href=\"" ++ channel_url ++ "\">Tam posted to general &gt; roc-chat.</a>\n\n"));
+    // The notice links to Tam's post itself: its anchor names the article on
+    // the channel's page that holds her words.
+    const notice_head = "event: message-notice\ndata: <a href=\"" ++ channel_url ++ "#msg-";
+    const notice_tail = "\">Tam posted to general &gt; roc-chat.</a>\n\n";
+    const shaped = std.mem.startsWith(u8, notice, notice_head) and std.mem.endsWith(u8, notice, notice_tail) and notice.len > notice_head.len + notice_tail.len;
+    const notice_id = if (shaped) notice[notice_head.len .. notice.len - notice_tail.len] else "";
+    const channel_page = try getAs(a, io, port, who.tam, channel_url);
+    const article_head = try std.fmt.allocPrint(a, "<article class=\"message\" id=\"msg-{s}\"", .{notice_id});
+    const article_at = std.mem.indexOf(u8, channel_page.body, article_head);
+    const article_end = if (article_at) |at| std.mem.indexOfPos(u8, channel_page.body, at, "</article>") orelse at else 0;
+    const linked_post = if (article_at) |at| has(channel_page.body[at..article_end], "Tam in the channel") else false;
+    try t.check("Recent's stream: Steve's open Recent page hears the notice of Tam's channel post, as Gopher Chat's Recent did, linked to her post itself, and none of his own", shaped and linked_post);
     // A DM's tile names its other human, Tam, online since she just posted.
     try t.check("Recent's stream: Steve's open Recent page is sent each message's tile, as he sees it, Tam's first, then his own, naming Tam online", live.isEventStream() and
         has(steves.body, "data-stream=\"/chat/recent/stream\"") and
