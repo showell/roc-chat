@@ -5,16 +5,16 @@
 // messages are on the left and the compose box is a rail 320 pixels wide on
 // the right. The rail is either open, its textarea as tall as the window,
 // or closed, showing an "Open compose box" button and the keyboard help. It
-// starts closed, and opens with the button or the c key. Escape closes it
-// when the textarea is empty, so a draft stays where it is; the ✕ button at
-// the open rail's top closes it whatever it holds, and a draft is hidden,
-// never discarded: the button that opens it again then reads "Open compose
-// box (draft)". In a narrower
+// starts closed, and opens with the button or the c key. Escape, or the ✕
+// button at the open rail's top, closes it, but only when the textarea is
+// empty: the box is never dismissed while it holds unsent text (Steve,
+// 2026-11-20: "never dismiss the compose box if it has unsent content.
+// That's worked remarkably well."), and the status line says why. In a narrower
 // window, a phone's, the compose box is a bar below the messages, as
 // chat-client's was (js/chat_responsive.js): it starts open, but not focused,
 // so the phone's keyboard doesn't rise over the messages until a tap on the
 // box (or a quote) asks for it; its ▾ button
-// closes it to the "Open compose box" button, and the keyboard help and the
+// closes it to the "Open compose box" button, by the same rule, and the keyboard help and the
 // help line, which a phone has no keys for, are left out.
 //
 // Ctrl+Enter (⌘+Enter on a Mac) sends, as chat-client does; plain Enter is
@@ -191,7 +191,7 @@
   var hideButton = document.createElement('button');
   hideButton.type = 'button';
   hideButton.textContent = '✕';
-  hideButton.title = 'Close the compose box (a draft is kept)';
+  hideButton.title = 'Close the compose box (once it is empty)';
   hideButton.setAttribute('aria-label', 'Close the compose box');
   hideButton.addEventListener('click', function () { closeCompose(); });
   hide.appendChild(hideButton);
@@ -217,9 +217,17 @@
     compose.classList.add('open');
     box.focus();
   }
+  // A box holding unsent text stays open, saying why.
   function closeCompose() {
+    if (box.value.trim() !== '') {
+      status.style.color = '';
+      status.textContent = pending
+        ? 'Your message is still sending: the box closes once it is sent.'
+        : 'The box stays open while it holds a draft: send it or clear it, then close.';
+      if (!pending) box.focus();
+      return;
+    }
     compose.classList.remove('open');
-    openButton.textContent = box.value.trim() === '' ? 'Open compose box' : 'Open compose box (draft)';
     messages.focus();
   }
 
@@ -528,7 +536,8 @@
   });
   box.addEventListener('keydown', function (e) {
     if (e.isComposing) return;
-    if (e.key === 'Escape' && !isNarrow() && box.value.trim() === '') {
+    // Escape while emoji.js's menu is open is the menu's.
+    if (e.key === 'Escape' && !isNarrow() && !(window.Emoji && Emoji.isOpen())) {
       e.preventDefault();
       closeCompose();
       return;
