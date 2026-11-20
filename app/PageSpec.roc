@@ -334,7 +334,8 @@ expect {
 	].all(
 		|page| {
 			text = Str.from_utf8_lossy(page.to_utf8())
-			(text.contains(top_links) or text.contains(top_links_noticed)) and !text.contains("/join") and !text.contains("Sign in")
+			has_links = text.contains(top_links) or text.contains(top_links_noticed)
+			has_links and !text.contains("/join") and !text.contains("Sign in")
 		},
 	)
 		and [

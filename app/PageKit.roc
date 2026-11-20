@@ -233,7 +233,12 @@ PageKit :: [].{
 	## click from every page; the invites link is here so that a human in a
 	## conversation reaches invites in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
-	top_bar = |{ title, viewer }| top_bar_titled({ title: Escape.text(title), viewer, notices: NoNotices })
+	top_bar = |{ title, viewer }|
+		top_bar_titled({
+			title: Escape.text(title),
+			viewer,
+			notices: NoNotices,
+		})
 
 	## The top bar, its `title` a link to `link`, the page's own path, so a
 	## click on it reloads the page, holding `notices`.
@@ -263,7 +268,11 @@ PageKit :: [].{
 		parts : List(TrustedHtml),
 	} -> TrustedHtml
 	signed_in_page = |{ title, viewer, parts }|
-		panel_page({ title, top: PageKit.top_bar({ title, viewer }), parts })
+		panel_page({
+			title,
+			top: PageKit.top_bar({ title, viewer }),
+			parts,
+		})
 
 	## A page of a signed-in human's as `signed_in_page`, its top bar holding
 	## the notices' line, empty until app/chrome.js says a notice there
@@ -276,7 +285,11 @@ PageKit :: [].{
 	noticed_page = |{ title, viewer, parts }|
 		panel_page({
 			title,
-			top: top_bar_titled({ title: Escape.text(title), viewer, notices: Notices(NoNotice) }),
+			top: top_bar_titled({
+				title: Escape.text(title),
+				viewer,
+				notices: Notices(NoNotice),
+			}),
 			parts,
 		})
 
@@ -313,7 +326,11 @@ PageKit :: [].{
 
 ## A page of `title`: the top bar `top`, then `parts` in a panel, then the
 ## scripts that style them.
-panel_page : { title : Str, top : TrustedHtml, parts : List(TrustedHtml) } -> TrustedHtml
+panel_page : {
+	title : Str,
+	top : TrustedHtml,
+	parts : List(TrustedHtml),
+} -> TrustedHtml
 panel_page = |{ title, top, parts }|
 	PageKit.document({
 		title,
@@ -359,7 +376,11 @@ notice_strip = |notices|
 	}
 
 ## The top bar, `title` on its left, holding `notices`.
-top_bar_titled : { title : TrustedHtml, viewer : SignedIn, notices : PageKit.TopNotices } -> TrustedHtml
+top_bar_titled : {
+	title : TrustedHtml,
+	viewer : SignedIn,
+	notices : PageKit.TopNotices,
+} -> TrustedHtml
 top_bar_titled = |{ title, viewer, notices }|
 	Html.element({
 		name: Header,
