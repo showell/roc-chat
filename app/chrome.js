@@ -112,7 +112,10 @@ window.Notices = (function () {
   // dismissed (`strip`), a message on this page that came while the reader
   // was away (`here`). The tab is violet while either holds.
   var pending = { strip: false, here: false };
-  function repaint() { paintTab(pending.strip || pending.here ? '/chat/assets/alert-icon.svg' : '/favicon.ico'); }
+  function repaint() {
+    if (pending.strip || pending.here) paintTab('/chat/assets/alert-icon.svg');
+    else paintTab('/favicon.ico');
+  }
   function alertTab() { pending.strip = true; repaint(); }
   function clearTab() { pending.strip = false; repaint(); }
   // Whether the reader is away from the page: it is hidden, or another
