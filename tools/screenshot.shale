@@ -24,6 +24,14 @@
 -- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
 -- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
 --
+-- Lanes run it at once, so each picks its own port: the first one free
+-- (nothing listening, by `ss`) of PORTS, starting at a place its folder's
+-- path picks; `port=` names one instead. The server takes its port with
+-- SO_REUSEPORT, so a second server on a taken port starts without a word
+-- and the two share its connections: once ours is up, the script stops
+-- unless ours is the port's one listener, so it never posts to another
+-- lane's chat.
+--
 -- The browser is Chrome for Testing's chrome-headless-shell, pinned under
 -- Shale's `tools` mount (CHROME, below), driven by tools/shot/ (a small
 -- Zig program, its own build apart from the server's) through the
@@ -48,7 +56,7 @@ const PASSWORD = "correct horse battery staple"
 
 local out = arg("out", "")
 if out == "" then fail("screenshot: name the folder the PNGs go to, out=build:shots/<name>") end
-local port = arg("port", 9661)
+local port_arg = arg("port", 0)
 local themes_arg = arg("themes", "dark,light")
 local sizes_arg = arg("sizes", "desktop,phone")
 local with_states = arg("states", 1) == 1
@@ -61,6 +69,47 @@ const PAGES = {
   {name = "invites", path = "/invites"},
 }
 const SIZES = {desktop = "1280 800", phone = "390 844"}
+
+-- Where a port is looked for: 100 of them.
+const PORTS_FROM = 9661
+const PORTS = 100
+
+-- The pids listening on TCP `at`, by `ss` (one line a socket).
+function listeners(at)
+  local r = must(run({"ss", "-Hltnp", "sport = :" .. at}, {timeout_ms = 5000, tail = 20}))
+  local pids = {}
+  for l in re_lines(r.out, ".") do
+    local m = re_find(l.text, "pid=([0-9]+)")
+    if m == nil then fail("screenshot: a listener on port " .. at .. " with no pid shown: " .. l.text) end
+    push(pids, tonumber(m.group))
+  end
+  return pids
+end
+
+-- The first port of PORTS nothing listens on, from a place this checkout's
+-- path picks, so two lanes seldom try the same one first.
+function free_port()
+  local path = real(".")
+  local start = 0
+  for i = 1, #path do
+    local at = find("abcdefghijklmnopqrstuvwxyz0123456789-_./", sub(path, i, i))
+    if at == nil then at = 0 end
+    start = (start * 31 + at) % PORTS
+  end
+  for i = 0, PORTS - 1 do
+    local at = PORTS_FROM + (start + i) % PORTS
+    if #listeners(at) == 0 then return at end
+  end
+  fail("screenshot: no free port in " .. PORTS_FROM .. "-" .. (PORTS_FROM + PORTS - 1))
+end
+
+-- Stops the run unless `pid` is the one process listening on `at`.
+function alone_on(at, pid)
+  local listening = listeners(at)
+  if #listening ~= 1 or listening[1] ~= pid then
+    fail("screenshot: port " .. at .. " has listeners " .. join(listening, ",") .. ", not our server (" .. pid .. ") alone: another chat shares it, so its pages may be the other's; run again, or name a port with port=")
+  end
+end
 
 -- What a click or a key opens, at the desktop's size: each a page and the
 -- steps after its load (tools/shot/steps.zig's), then its picture. The
@@ -136,12 +185,23 @@ for s in sizes do
 end
 
 -- 1. The chat, on the demo's topic; its first start makes Steve.
+local port = port_arg
+if port == 0 then port = free_port() end
 mkdir(data)
 copy("demo/data/chat", data .. "/chat")
 local base = "http://localhost:" .. port
 local server = job_start({"zig", "build", "serve", "--", real(data), "--port", "" .. port}, {log = work .. "/server.log"})
 local up = job_wait(server, {timeout_ms = 60000, contains = "roc-chat: http://"})
 if up.ended ~= "found" then fail("screenshot: the server did not start (" .. up.ended .. "); see " .. work .. "/server.log") end
+-- Ours is the one process serving this data root, and it must be the
+-- port's one listener, now and once the pictures are taken.
+local ours = {}
+for p in procs() do
+  if p.name == "roc-chat" and find(p.args, real(data)) ~= nil then push(ours, p.pid) end
+end
+if #ours ~= 1 then fail("screenshot: " .. #ours .. " processes serve " .. data .. ", not 1") end
+const server_pid = ours[1]
+alone_on(port, server_pid)
 
 local hashed = must(run({"zig", "build", "serve", "--", "hash-password"}, {stdin = PASSWORD .. "\n", timeout_ms = 60000, tail = 3}))
 create(data .. "/auth/1/password", trim(hashed.out) .. "\n")
@@ -200,10 +260,11 @@ create(work .. "/shots.txt", join(list, "\n") .. "\n")
 -- 4. The pictures, one browser for all of them.
 local shot = must(run({"zig", "build", "run", "--", real(CHROME), real(work .. "/profile"), real(work .. "/shots.txt"), real(out)},
   {cwd = "tools/shot", timeout_ms = 110000, tail = 60, nice = 19, cpu_budget_ms = 10000, stage = "the pictures"}))
+alone_on(port, server_pid)
 for name in names do
   if not exists(out .. "/" .. name .. ".png") then fail("screenshot: " .. name .. ".png was not written\n" .. shot.out) end
 end
 job_stop(server)
 remove_tree(work)
 for l in re_lines(shot.out, "^shot ") do print(l.text) end
-print("screenshot: " .. #names .. " PNGs in " .. out .. " (" .. shot.ms .. " ms, " .. shot.cpu_ms .. " ms of CPU)")
+print("screenshot: " .. #names .. " PNGs in " .. out .. " (port " .. port .. ", " .. shot.ms .. " ms, " .. shot.cpu_ms .. " ms of CPU)")
