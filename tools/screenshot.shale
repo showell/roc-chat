@@ -16,6 +16,7 @@
 --   recent   /chat/recent
 --   browse   /chat
 --   invites  /invites
+--   devices  /devices, the "Add a device" page's steps
 -- and what takes a click or a key, at 1280x800 (STATES, below):
 --   dm-person-card    Tam's name clicked in the sidebar: the person card
 --   dm-new-topic      the DM's "+" clicked: its card on the new-topic form,
@@ -26,6 +27,11 @@
 --   channel-compose   `c` pressed and a draft typed: the compose rail open,
 --                     where the keyboard help was
 --   channel-emoji     `:sm` typed in the compose box: emoji autocomplete
+--   channel-close-refused  a draft typed, then the rail's ✕: it stays open,
+--                     the status line saying why
+--   channel-draft-closed   a draft typed, then the page loaded again: the
+--                     closed rail's "Open compose box (draft) (c)"
+--   devices-code      "Make a code" pressed: the code shown, large, in step 2
 -- and at 390x844 (a state's `size`):
 --   dm-actions        the selected message's "⋯" tapped: its row of
 --                     actions open under its header
@@ -52,7 +58,7 @@
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
--- Budgets: about 12 s for the 30 pictures once the server and the driver
+-- Budgets: about 15 s for the 40 pictures once the server and the driver
 -- are built (2.5 s of CPU, held to 10 s); each about 0.4 s, its line
 -- printed as `shot <name> <ms>`. A `zig build` after the app changed adds
 -- about 25 s, the driver's first build about 10 s.
@@ -77,6 +83,7 @@ const PAGES = {
   {name = "recent", path = "/chat/recent"},
   {name = "browse", path = "/chat"},
   {name = "invites", path = "/invites"},
+  {name = "devices", path = "/devices"},
 }
 const SIZES = {desktop = "1280 800", phone = "390 844"}
 
@@ -143,6 +150,12 @@ const STATES = {
     "type A draft, kept while the rail is open: **Thursday** works for me."}},
   {name = "channel-emoji", path = "/chat/channel/general/roc-chat", steps = {
     "key c", "wait .compose.open", "type Looks good :sm", "wait .chat-emoji-menu"}},
+  {name = "channel-close-refused", path = "/chat/channel/general/roc-chat", steps = {
+    "key c", "wait .compose.open", "type Thursday works.", "click .compose-hide button"}},
+  {name = "channel-draft-closed", path = "/chat/channel/general/roc-chat", steps = {
+    "key c", "wait .compose.open", "type Thursday works.", "goto /chat/channel/general/roc-chat"}},
+  {name = "devices-code", path = "/devices", steps = {
+    "click form[action=\"/devices\"] button", "wait .sign-in-code"}},
   {name = "dm-actions", size = "phone", path = "/chat/dm/1_2/plans", steps = {
     "click .message.selected .actions-more", "wait .message.actions-open"}},
   {name = "sign-out-focus", path = "/chat/dm/1_2/plans", steps = {
@@ -179,6 +192,10 @@ function expect_status(answer, want, what)
   if answer.status ~= want then fail("screenshot: " .. what .. ": " .. answer.status .. ", not " .. want .. "\n" .. sub(answer.text, 1, 400)) end
 end
 
+-- The step that clears compose.js's drafts, which the browser keeps per
+-- topic: each theme's pages, and each state, start with none.
+const DRAFTS_CLEARED = "eval localStorage.removeItem('roc-chat drafts')"
+
 -- The steps that make `theme` the page's: localStorage, which belongs to
 -- the chat's origin, so a page of it is loaded first.
 function theme_steps(list, theme)
@@ -188,6 +205,7 @@ function theme_steps(list, theme)
   else
     push(list, "eval localStorage.removeItem('chat-theme')")
   end
+  push(list, DRAFTS_CLEARED)
 end
 
 -- 0. The server and the driver, built niced, so the job below starts at once.
@@ -291,6 +309,7 @@ for t in themes do
       local size = SIZES[get(st, "size", "desktop")]
       local name = t .. "-" .. re_replace(size, " ", "x") .. "-" .. st.name
       push(list, "size " .. size)
+      push(list, DRAFTS_CLEARED)
       push(list, "goto " .. st.path)
       for step in st.steps do push(list, step) end
       push(list, "shot " .. name)
