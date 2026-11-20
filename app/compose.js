@@ -46,8 +46,9 @@
 // registers the keys that move between messages.
 //
 // An image goes into a message as chat-client's compose box puts one there.
-// The Upload button picks a file, and an image pasted into the box is sent
-// the same way. A large photo is first shrunk in the browser: its longest
+// The Upload button picks a file, and an image pasted into the box, or
+// dropped onto the open compose box, is sent the same way; a file dragged
+// over it outlines the box. A large photo is first shrunk in the browser: its longest
 // side to 2048 pixels, a JPEG over 1.5 MB re-encoded, a PNG scaled and kept
 // a PNG, and a GIF or WebP sent as it is. The original is sent whenever the
 // shrunk one is no smaller, or shrinking fails or takes over 15 seconds. One
@@ -86,6 +87,9 @@
     '.compose textarea{box-sizing:border-box;font-family:inherit;font-size:14px;padding:8px;border-radius:8px;' +
       'background:var(--cc-card-bg);color:var(--cc-fg);border:1px solid var(--cc-input-border)}',
     '.compose textarea:focus{outline:none;border-color:var(--cc-accent);box-shadow:0 0 0 1px var(--cc-accent)}',
+    // A file dragged over the open box: a dashed accent outline and a
+    // tinted textarea, until it is dropped or leaves.
+    '.compose.compose-drop-over textarea{border:2px dashed var(--cc-accent);background:var(--cc-accent-soft-bg)}',
     // Send is the primary action, in the accent; Upload is drawn as
     // panel.js draws a page's buttons.
     '.compose-actions button{font-family:inherit;font-size:13px;padding:4px 12px;border-radius:6px;cursor:pointer}',
@@ -753,6 +757,11 @@
 
   function uploadFile(file) {
     if (!file) return;
+    if (pending) {
+      status.style.color = '';
+      status.textContent = 'Wait for your send to finish, then add the image.';
+      return;
+    }
     if (uploading) {
       status.style.color = '';
       status.textContent = 'Still sending the last upload — one at a time, please.';
@@ -768,6 +777,44 @@
   refreshControls();
   uploadButton.addEventListener('click', function () { picker.click(); });
   picker.addEventListener('change', function () { uploadFile(picker.files[0]); picker.value = ''; });
+  // Drops: a count of the drag's enters and leaves over the box's parts,
+  // so moving between them keeps the outline.
+  var dragDepth = 0;
+  function carriesFiles(e) {
+    return !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0;
+  }
+  function endDrag() {
+    dragDepth = 0;
+    compose.classList.remove('compose-drop-over');
+  }
+  composeBody.addEventListener('dragenter', function (e) {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    compose.classList.add('compose-drop-over');
+  });
+  composeBody.addEventListener('dragover', function (e) {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  composeBody.addEventListener('dragleave', function (e) {
+    if (!carriesFiles(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) compose.classList.remove('compose-drop-over');
+  });
+  composeBody.addEventListener('drop', function (e) {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    endDrag();
+    var files = e.dataTransfer.files;
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].type.indexOf('image/') === 0) { uploadFile(files[i]); return; }
+    }
+    status.style.color = ERROR;
+    status.textContent = 'Only an image can be dropped here: PNG, JPEG, GIF or WebP.';
+  });
+  window.addEventListener('dragend', endDrag);
   box.addEventListener('paste', function (e) {
     var files = e.clipboardData && e.clipboardData.files;
     if (files) {
