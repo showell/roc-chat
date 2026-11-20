@@ -1,6 +1,6 @@
 # CLAUDE.md: working on roc-chat
 
-This file is for a coding agent working on roc-chat. Read `README.md` first for what the chat is and how it's built. The general habits for Roc code live in roc-apps' `CLAUDE.md` (https://github.com/showell/roc-apps/blob/master/CLAUDE.md), and this repo follows them. `docs/code-quality.md` is this repo's standard on top of them, and `docs/design.md` holds the owner's decisions. Read both before changing behavior or storage. This file covers only what's particular to roc-chat.
+This file is for a coding agent working on roc-chat. Read `README.md` first for what the chat is and how it's built. The general habits for Roc code live in roc-apps' `CLAUDE.md` (https://github.com/showell/roc-apps/blob/master/CLAUDE.md), and this repo follows them. `docs/code-quality.md` is this repo's standard on top of them, and `docs/design.md` holds the owner's decisions. Read both before changing behavior or storage, and read `docs/ux.md` before changing a page. This file covers only what's particular to roc-chat.
 
 ## The gate
 
