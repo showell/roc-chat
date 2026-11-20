@@ -7,7 +7,7 @@
 ## `![...](...)` is left whole, for `RecentExcerpt` to say `[image]`.
 ##
 ## A run of `*` or `_` is a mark when it stands at one edge of a word: not
-## inside a word (`snake_case`, `2*3` keep theirs), and not alone between
+## inside a word (a snake-case name's `_`, `2*3`'s `*`, keep theirs), and not alone between
 ## spaces (`5 * 3` keeps its). `~` is a mark only doubled, as strikethrough
 ## is written. A code fence's lines are not prose, and `RecentExcerpt`
 ## never hands them here.
@@ -17,8 +17,10 @@ MarkdownMarks :: [].{
 
 	## `line`, a line of prose, without its markdown marks.
 	prose_line : Str -> Str
-	prose_line = |line|
-		Str.from_utf8_lossy(inline_plain(drop_block_marks(line.to_utf8())))
+	prose_line = |line| {
+		unmarked = drop_block_marks(line.to_utf8())
+		Str.from_utf8_lossy(inline_plain(unmarked))
+	}
 }
 
 ## `bytes` without its leading spaces.
@@ -43,7 +45,11 @@ drop_quote_marks = |bytes|
 drop_block_marks : List(U8) -> List(U8)
 drop_block_marks = |bytes| {
 	unquoted = drop_quote_marks(drop_spaces(bytes))
-	hashes = count_run({ bytes: unquoted, from: 0, byte: '#' })
+	hashes = count_run({
+		bytes: unquoted,
+		from: 0,
+		byte: '#',
+	})
 	after = unquoted.get(hashes)
 	if hashes >= 1 and hashes <= 6 and (after == Ok(' ') or after == Err(OutOfBounds)) {
 		drop_spaces(unquoted.drop_first(hashes))
@@ -53,7 +59,11 @@ drop_block_marks = |bytes| {
 }
 
 ## How many of `byte` run in `bytes` from `from`.
-count_run : { bytes : List(U8), from : U64, byte : U8 } -> U64
+count_run : {
+	bytes : List(U8),
+	from : U64,
+	byte : U8,
+} -> U64
 count_run = |{ bytes, from, byte }|
 	match bytes.get(from) {
 		Ok(found) if found == byte => 1 + count_run({ bytes, from: from + 1, byte })
@@ -88,7 +98,11 @@ is_word_at = |bytes, at|
 
 ## Whether the run of `length` emphasis bytes at `at` is a mark: at one edge
 ## of a word, not inside one and not alone between spaces.
-is_emphasis_mark : { bytes : List(U8), at : U64, length : U64 } -> Bool
+is_emphasis_mark : {
+	bytes : List(U8),
+	at : U64,
+	length : U64,
+} -> Bool
 is_emphasis_mark = |{ bytes, at, length }| {
 	before = if at == 0 {
 		Err(OutOfBounds)
@@ -105,9 +119,17 @@ is_emphasis_mark = |{ bytes, at, length }| {
 ## text's end, or `NoLink`.
 link_end : { bytes : List(U8), at : U64 } -> [Link({ text_end : U64, end : U64 }), NoLink]
 link_end = |{ bytes, at }|
-	match find_byte({ bytes, byte: ']', from: at + 1 }) {
+	match find_byte({
+		bytes,
+		byte: ']',
+		from: at + 1,
+	}) {
 		Found(text_end) if bytes.get(text_end + 1) == Ok('(') =>
-			match find_byte({ bytes, byte: ')', from: text_end + 2 }) {
+			match find_byte({
+				bytes,
+				byte: ')',
+				from: text_end + 2,
+			}) {
 				Found(address_end) => Link({ text_end, end: address_end + 1 })
 				NoneFound => NoLink
 			}
@@ -115,7 +137,11 @@ link_end = |{ bytes, at }|
 	}
 
 ## Where the next `byte` of `bytes` is, from `from`, or `NoneFound`.
-find_byte : { bytes : List(U8), byte : U8, from : U64 } -> [Found(U64), NoneFound]
+find_byte : {
+	bytes : List(U8),
+	byte : U8,
+	from : U64,
+} -> [Found(U64), NoneFound]
 find_byte = |{ bytes, byte, from }|
 	match bytes.get(from) {
 		Ok(found) if found == byte => Found(from)

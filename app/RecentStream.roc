@@ -105,7 +105,11 @@ RecentStream :: [].{
 	publish! = |{ key, readers, users, latest }| {
 		online_humans =
 			match key.place().which() {
-				Dm(pair) => PresenceNotices.load_online_humans!({ humans: pair.members(), now: Clock.read_clock!({}) })
+				Dm(pair) =>
+					PresenceNotices.load_online_humans!({
+						humans: pair.members(),
+						now: Clock.read_clock!({}),
+					})
 				Channel(_) => []
 			}
 		for reader in readers {

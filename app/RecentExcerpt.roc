@@ -114,13 +114,12 @@ collapse_quotes = |lines| {
 						$kept = $kept.append(MarkdownMarks.prose_line(line))
 					}
 				}
-			InFence(opening) => {
+			InFence(opening) =>
 				if is_fence_closing(line, opening) {
 					$fence = NoFence
 				} else if opening.language != "quote" {
 					$kept = $kept.append(line)
 				}
-			}
 		}
 	}
 	Str.join_with($kept, "\n")

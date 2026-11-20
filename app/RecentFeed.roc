@@ -72,7 +72,16 @@ RecentFeed :: [].{
 		viewer : Name,
 		online_humans : List(UserId),
 	} -> RecentFeed.Tile
-	tile = |{ key, label, latest, reader, viewer, online_humans }| {
+	tile = |
+		{
+			key,
+			label,
+			latest,
+			reader,
+			viewer,
+			online_humans,
+		},
+	| {
 		author = latest.author.name()
 		person =
 			match key.place().which() {
@@ -226,7 +235,16 @@ span = |class, inner| Html.element({
 ## channel's colour or a DM's presence dot) are both written; app/recent.js
 ## shows the one that fits the window.
 tile_element : RecentFeed.Tile -> TrustedHtml
-tile_element = |{ key, label, person, time, who, excerpt }| {
+tile_element = |
+	{
+		key,
+		label,
+		person,
+		time,
+		who,
+		excerpt,
+	},
+| {
 	topic = key.topic().to_str()
 	(lead, context, place_words) =
 		match key.place().which() {
@@ -276,6 +294,7 @@ tile_element = |{ key, label, person, time, who, excerpt }| {
 		RecentWhere,
 		TrustedHtml.join([span(RecentMark, TrustedHtml.join([])), Escape.text(place_words)]),
 	)
+	link = Link(PageKit.site_path(key.url_path(Page)))
 	person_attributes =
 		match person {
 			NoPerson => []
@@ -287,13 +306,7 @@ tile_element = |{ key, label, person, time, who, excerpt }| {
 	TrustedHtml.join([
 		Html.element({
 			name: A,
-			attributes: List.concat(
-				[
-					PageContract.class(RecentTile),
-					Link(PageKit.site_path(key.url_path(Page))),
-				],
-				person_attributes,
-			),
+			attributes: List.concat([PageContract.class(RecentTile), link], person_attributes),
 			inner: TrustedHtml.join([
 				span(RecentLead, lead),
 				place,

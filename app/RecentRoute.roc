@@ -36,11 +36,17 @@ RecentRoute :: [].{
 			(Ok(reader), Ok(listed)) => {
 				reader_id = reader.user().id()
 				places = RecentFeed.places_without_own_dm({ listed, reader: reader_id })
+				humans = directory.users().to_list().keep_oks(|user| user.as_human())
 				online_humans = PresenceNotices.load_online_humans!({
-					humans: directory.users().to_list().keep_oks(|user| user.as_human()).map(|human| human.id()),
+					humans: humans.map(|human| human.id()),
 					now: Clock.read_clock!({}),
 				})
-				match load_tiles!({ places, reader: reader_id, viewer: reader.user().name(), online_humans }) {
+				match load_tiles!({
+					places,
+					reader: reader_id,
+					viewer: reader.user().name(),
+					online_humans,
+				}) {
 					Ok(tiles) =>
 						HttpAnswer.page(
 							200,
@@ -108,7 +114,16 @@ load_tiles! = |{ places, reader, viewer, online_humans }| {
 			$tiles =
 				match RecentRoute.load_latest_message!(key)? {
 					Latest(latest) =>
-						$tiles.append(RecentFeed.tile({ key, label, latest, reader, viewer, online_humans }))
+						$tiles.append(
+							RecentFeed.tile({
+								key,
+								label,
+								latest,
+								reader,
+								viewer,
+								online_humans,
+							}),
+						)
 					NoMessages => $tiles
 				}
 		}
