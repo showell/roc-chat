@@ -92,7 +92,11 @@ place_html = |{ name, path, opening, rows, suggests }| {
 }
 
 ## The group `group` headed `heading`, holding `places`.
-group_html : { group : Str, heading : Str, places : Str } -> Str
+group_html : {
+	group : Str,
+	heading : Str,
+	places : Str,
+} -> Str
 group_html = |{ group, heading, places }|
 	"<div class=\"sidebar-section\" data-group=\"${group}\"><p class=\"sidebar-section-name\">${heading}</p>\n${places}</div>\n"
 
