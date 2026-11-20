@@ -91,15 +91,11 @@ place_html = |{ name, path, opening, rows, suggests }| {
 	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<button class=\"sidebar-new-topic\">New topic in ${name}</button>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
 }
 
-## A place's row for a place with no topics.
-empty_row : Str
-empty_row = "<li class=\"sidebar-empty\">No sessions yet</li>\n"
-
 # The page's own place first, always open, then the others in
 # `SidebarOrder`'s order (with no messages yet, Browse's), collapsed, with
 # no headings. Each place's topics are under it, only the page's own topic
 # marked: `plans` in Steve's own DM, and not `plans` in `general`, a topic
-# of the same name in another place. A place with no topics says so and
+# of the same name in another place. A place with no topics lists none and
 # suggests its first.
 expect
 	sidebar_at({
@@ -116,7 +112,7 @@ expect
 				name: "Apoorva",
 				path: "/chat/dm/1_2",
 				opening: "collapsed",
-				rows: empty_row,
+				rows: "",
 				suggests: Suggests,
 			})
 		}${
@@ -162,7 +158,7 @@ expect
 				name: "#general",
 				path: "/chat/channel/general",
 				opening: "collapsed",
-				rows: empty_row,
+				rows: "",
 				suggests: Suggests,
 			})
 		}</nav>\n"

@@ -3,10 +3,16 @@
 // sidebar whole, in app/SidebarOrder.roc's order: the page's own place
 // first, then the others newest first, each place's topics under it as
 // links, newest first, the current topic marked, and the form that starts a
-// topic at the end of each place. This script gives it chat-client's look and
+// topic at the end of each place. This script gives it chat-client's
 // behaviour (js/chat_left_sidebar.js), without that rail's pinning or
 // dragging. It never moves a place: the order is the server's, as the page
 // was drawn.
+//
+// Its look is Steve's, not chat-client's: like a good referee, it should
+// feel invisible until you need it. Only the page's own place (data-opening
+// `always`) is bold, the current topic is marked by a thin line at its left,
+// the rows sit close, and a link pointed at shows by its text's colour, never
+// a fill.
 //
 // Presence, chat-client's: a DM with another human (data-person) has a dot
 // before its name, a hollow ring while they are away and solid green while
@@ -70,11 +76,13 @@ window.Sidebar = (function () {
   }
 
   Object.assign(sidebar.style, { overflowY: 'auto', borderRight: '1px solid var(--cc-border)', boxSizing: 'border-box' });
-  styleAll('.sidebar-place', { marginBottom: '12px' });
+  styleAll('.sidebar-place', { marginBottom: '6px' });
   styleAll('.sidebar-place-name', {
-    display: 'flex', alignItems: 'center', gap: '5px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'bold',
+    display: 'flex', alignItems: 'center', gap: '5px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'normal',
     color: 'var(--cc-meta-fg)', cursor: 'pointer', userSelect: 'none',
   });
+  // The page's own place, alone bold.
+  styleAll('.sidebar-place[data-opening="always"] .sidebar-place-name', { fontWeight: 'bold' });
   // The "+": light until pointed at, and a finger's size in the drawer.
   styleAll('.sidebar-new-topic', {
     flex: 'none', background: 'none', border: 'none', borderRadius: '4px', cursor: 'pointer',
@@ -94,27 +102,25 @@ window.Sidebar = (function () {
     color: 'var(--cc-search-tok-fg)', border: '1px solid var(--cc-quote-border)', borderRadius: '6px', cursor: 'pointer',
   });
 
-  // A list of topics, and each row in it, as chat-client styles them.
+  // A list of topics, and each row in it: the current topic marked by a
+  // thin line at its left, which every row leaves room for so the names
+  // line up, and a topic pointed at shown by its text's colour.
   function styleTopics(list) {
     Object.assign(list.style, { listStyle: 'none', padding: '0', margin: '0' });
   }
   function styleRow(row) {
     row.style.margin = '0';
-    if (row.classList.contains('sidebar-empty')) {
-      Object.assign(row.style, { color: 'var(--cc-muted-fg)', padding: '4px 8px', fontStyle: 'italic' });
-      return;
-    }
     var link = row.querySelector('a');
     if (!link) return;
     var current = row.querySelector('.current') === link;
     Object.assign(link.style, {
-      display: 'block', padding: '4px 8px', borderRadius: '3px', textDecoration: 'none',
-      overflowWrap: 'anywhere', color: current ? 'var(--cc-bg)' : 'var(--cc-accent)',
-      background: current ? 'var(--cc-accent)' : 'transparent', fontWeight: current ? 'bold' : 'normal',
+      display: 'block', padding: '2px 8px', textDecoration: 'none', overflowWrap: 'anywhere',
+      color: 'var(--cc-accent)', background: 'transparent', fontWeight: 'normal',
+      borderLeft: '2px solid ' + (current ? 'var(--cc-accent)' : 'transparent'),
     });
     if (!current) {
-      link.addEventListener('mouseenter', function () { link.style.background = 'var(--cc-accent-soft-bg)'; });
-      link.addEventListener('mouseleave', function () { link.style.background = 'transparent'; });
+      link.addEventListener('mouseenter', function () { link.style.color = 'var(--cc-fg)'; });
+      link.addEventListener('mouseleave', function () { link.style.color = 'var(--cc-accent)'; });
     }
   }
 
@@ -250,7 +256,7 @@ window.Sidebar = (function () {
     name.setAttribute('tabindex', '0');
 
     var row = document.createElement('div');
-    Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px', margin: '0 0 4px' });
+    Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px', margin: '0 0 2px' });
     place.insertBefore(row, name);
     row.appendChild(name);
     row.appendChild(plus);
@@ -324,7 +330,7 @@ window.Sidebar = (function () {
   sidebar.tabIndex = -1;
   // A finger's targets in the drawer, a mouse's on the rail.
   function sizeTargets() {
-    styleAll('.sidebar-topics a, .sidebar-empty', { padding: narrow ? '9px 8px' : '4px 8px' });
+    styleAll('.sidebar-topics a', { padding: narrow ? '9px 8px' : '2px 8px' });
     styleAll('.sidebar-place-name', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-new-topic', { padding: narrow ? '8px 12px' : '2px 6px' });
     forms.forEach(function (form) {
@@ -359,15 +365,13 @@ window.Sidebar = (function () {
     if (!list) return;
     var rows = Array.prototype.slice.call(list.querySelectorAll('li'));
     if (rows.some(function (row) { var link = row.querySelector('a'); return link && link.textContent === label; })) return;
-    var empty = list.querySelector('.sidebar-empty');
-    if (empty) empty.remove();
     var row = document.createElement('li');
     var link = document.createElement('a');
     link.href = url;
     link.textContent = label;
     row.appendChild(link);
     styleRow(row);
-    link.style.padding = narrow ? '9px 8px' : '4px 8px';
+    link.style.padding = narrow ? '9px 8px' : '2px 8px';
     list.insertBefore(row, list.firstChild);
   }
 

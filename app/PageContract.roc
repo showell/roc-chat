@@ -74,7 +74,6 @@ PageContract :: [].{
 		RecentTopic,
 		RecentWho,
 		Sidebar,
-		SidebarEmpty,
 		SidebarNewTopic,
 		SidebarPlace,
 		SidebarPlaceName,
@@ -203,7 +202,6 @@ class_name = |chosen|
 		RecentTopic => "recent-topic"
 		RecentWho => "recent-who"
 		Sidebar => "sidebar"
-		SidebarEmpty => "sidebar-empty"
 		SidebarNewTopic => "sidebar-new-topic"
 		SidebarPlace => "sidebar-place"
 		SidebarPlaceName => "sidebar-place-name"
@@ -266,7 +264,6 @@ expect
 		(RecentTopic, "recent-topic"),
 		(RecentWho, "recent-who"),
 		(Sidebar, "sidebar"),
-		(SidebarEmpty, "sidebar-empty"),
 		(SidebarNewTopic, "sidebar-new-topic"),
 		(SidebarPlace, "sidebar-place"),
 		(SidebarPlaceName, "sidebar-place-name"),
@@ -352,7 +349,6 @@ expect
 		SidebarPlace,
 		SidebarPlaceName,
 		SidebarTopics,
-		SidebarEmpty,
 		SidebarNewTopic,
 		Problem,
 		Current,

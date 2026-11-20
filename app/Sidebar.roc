@@ -96,7 +96,7 @@ person_attributes = |{ place, people }|
 	}
 
 ## One place: its name, how it starts, its topics, `current`'s marked, and
-## the form that starts a topic there.
+## the form that starts a topic there. A place with no topics lists none.
 place_section : {
 	ordered : SidebarOrder.OrderedPlace,
 	current : ConversationKey,
@@ -104,23 +104,12 @@ place_section : {
 } -> TrustedHtml
 place_section = |{ ordered, current, people }| {
 	topics = ordered.topics
-	rows =
-		if topics.is_empty() {
-			[
-				Html.element({
-					name: Li,
-					attributes: [PageContract.class(SidebarEmpty)],
-					inner: Escape.text("No sessions yet"),
-				}),
-			]
-		} else {
-			topics.map(
-				|topic| topic_row({
-					key: ConversationKey.of({ place: ordered.place, topic }),
-					current,
-				}),
-			)
-		}
+	rows = topics.map(
+		|topic| topic_row({
+			key: ConversationKey.of({ place: ordered.place, topic }),
+			current,
+		}),
+	)
 	section = PageKit.site_path(ConversationKey.place_url_path(ordered.place))
 	TrustedHtml.join([
 		Html.element({
