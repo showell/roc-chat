@@ -6,6 +6,7 @@ import Directory
 import HumanInvite
 import HumanInvites
 import LapsedInvitee
+import Name
 import Sample
 import SecretHash
 import SignedIn
@@ -29,7 +30,7 @@ expect [
 	"Stephen",
 	"Apoorva Smith",
 	"Steven",
-	"Admins",
+	"Helen Help",
 ].all(|text| new_name(text) == Ok({}))
 # A name another user or a channel has, in any case, is taken.
 expect ["steve", "APOORVA", "cc", "General"].all(|text| new_name(text) == Err(NameTaken))
@@ -54,8 +55,36 @@ expect
 		"Adrnin",
 		"Rnod",
 		"Lc",
+		"Admins",
 	]
 		.all(|text| new_name(text) == Err(NameReserved))
+# Admin is off limits anywhere in a name (Steve, 2026-11-20), as any one of
+# its words, lookalikes included.
+expect ["Chat Admin", "Chat AdmIn", "Our Sysadmin", "Chat Administrator"].all(|text| new_name(text) == Err(NameReserved))
+# `Adm1n` is no name, as a name holds no digit; asked for at an invite, it is
+# refused before any rule of names is asked.
+expect Name.from_str("Adm1n") == Err(ForbiddenCharacter)
+expect
+	HumanInvites.invite(
+		chat,
+		{
+			acting: SignedIn.dangerously_assume(Sample.steve),
+			body: "name=Adm1n".to_utf8(),
+			open: 0,
+		},
+	).is_err()
+# The owner's name is matched whole, never by its words (Steve, 2026-11-20:
+# "Allow Steve and Howell separately. Steve is a super common name."): beside
+# an owner named Steve Howell, Steve alone and Howell alone are free, and the
+# owner's full name, or a lookalike of it, is not.
+expect {
+	howell = Sample.with_default_channel(Directory.with_founder(Sample.name("Steve Howell")))
+	asked = |text| howell.check_new_human_name({ name: Sample.name(text), leaving: NoOne })
+	asked("Steve") == Ok({})
+		and asked("Howell") == Ok({})
+		and asked("Steve Howell") == Err(NameTaken)
+		and asked("Steve HoweII") == Err(NameTooClose)
+}
 # A name that looks like a user's or a channel's is too close: accents,
 # spaces, i for l, rn for m and vv for w.
 expect [

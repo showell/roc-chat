@@ -125,7 +125,8 @@ Directory :: {
 	## Whether `name` may be a new name for a human, beside every name but
 	## the one the human `leaving` holds: refused when another user or a
 	## channel has it in any case (`NameTaken`); when it looks like a
-	## reserved word (`NameSkeleton.is_reserved`, `NameReserved`); or when it
+	## reserved word or holds an admin word (`NameSkeleton.is_reserved_name`,
+	## `NameReserved`); or when it
 	## looks like another user's name or a channel's (their `NameSkeleton`s
 	## are equal, `NameTooClose`). Only a name being chosen is checked: the
 	## names the directory holds already are never judged.
@@ -150,7 +151,7 @@ Directory :: {
 				or channels.any(|channel| channel.name().key() == key)
 		if is_taken {
 			Err(NameTaken)
-		} else if skeleton.is_reserved() {
+		} else if NameSkeleton.is_reserved_name(name) {
 			Err(NameReserved)
 		} else if
 			others.any(|user| NameSkeleton.of_name(user.name()) == skeleton)

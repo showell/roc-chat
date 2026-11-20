@@ -62,6 +62,35 @@ NameSkeleton :: Str.{
 	is_reserved = |skeleton|
 		NameSkeleton.reserved_words.any(|word| NameSkeleton.of_word(word) == skeleton)
 
+	## The words no new human's name may hold anywhere, as any one of its
+	## words (Steve, 2026-11-20: "Admin is clearly off limits"): `Chat
+	## Admin` and `Bob the Sysadmin` are refused, where the other reserved
+	## words only refuse a whole name, so `Help` is refused and `Helen Help`
+	## is not.
+	admin_words : List(Str)
+	admin_words = [
+		"admin",
+		"admins",
+		"administrator",
+		"administrators",
+		"sysadmin",
+		"sysadmins",
+	]
+
+	## Whether `name` may not be a new human's: its skeleton is a reserved
+	## word's (`is_reserved`) or an admin word's, or one of its words'
+	## skeleton is an admin word's, a word being what lies between its
+	## spaces.
+	is_reserved_name : Name -> Bool
+	is_reserved_name = |name| {
+		admin_skeletons = NameSkeleton.admin_words.map(NameSkeleton.of_word)
+		name_words = name.plain_folded().split_on(" ")
+		whole = NameSkeleton.of_name(name)
+		whole.is_reserved()
+			or admin_skeletons.contains(whole)
+			or name_words.any(|word| admin_skeletons.contains(of_plain(word)))
+	}
+
 	## The skeleton's text, for the tests.
 	to_str : NameSkeleton -> Str
 	to_str = |NameSkeleton.(text)| text
@@ -179,3 +208,13 @@ expect
 expect
 	["Admins", "Rooted", "Helper", "Modesto", "Steve", "Zoe", "C"]
 		.all(|text| !NameSkeleton.of_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name").is_reserved())
+# An admin word anywhere in a name, as any one of its words, refuses it; the
+# other reserved words refuse only a whole name. (A name holds no digit, so
+# `Adm1n` is no name at all: `Name.from_str` refuses it.)
+expect
+	["Chat Admin", "Chat AdmIn", "Bob the Sysadmin", "Site Administrator", "AD MINS", "Zoe Adrnin"]
+		.all(|text| NameSkeleton.is_reserved_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name"))
+expect
+	["Steve", "Howell", "Steve Howell", "Helen Help", "Badminton", "Admiral", "Ad Minh", "Root"]
+		.map(|text| NameSkeleton.is_reserved_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name"))
+		== [Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.True]
