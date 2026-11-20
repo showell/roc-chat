@@ -44,7 +44,7 @@ key_at = |path| ConversationKey.from_url_path({
 ## own session, by their URLs.
 meant_for : Str -> List(Str)
 meant_for = |name|
-	MessageLinkPlaces.meant({
+	MessageLinkPlaces.readable_places({
 		acting: SignedIn.dangerously_assume(Sample.user(name)),
 		directory,
 	}).map(ConversationKey.place_url_path)

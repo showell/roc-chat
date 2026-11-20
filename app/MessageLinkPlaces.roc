@@ -1,7 +1,7 @@
 ## This module decides where a link to a message goes (`MessageLink`), as
 ## Gopher Chat's `/chat/msg/<id>` decided (angry-gopher's
 ## zig-server/src/chat.zig, `redirectToMsg` and `onlyPlace`):
-## the places a topic's link may mean for a reader (`meant`), and, of the
+## the places a topic's link may mean for a reader (`readable_places`), and, of the
 ## conversations found with its topic, the one it goes to, or why none
 ## (`destination`). `MessageLinkRoute` reads the topics and answers.
 import Access
@@ -17,8 +17,8 @@ MessageLinkPlaces :: [].{
 	## their DMs with each other human, then the channels, each one they may
 	## read; never their own DM, which Gopher's left out, as Recent and
 	## search do.
-	meant : { acting : SignedIn, directory : Directory } -> List(Place)
-	meant = |{ acting, directory }| {
+	readable_places : { acting : SignedIn, directory : Directory } -> List(Place)
+	readable_places = |{ acting, directory }| {
 		dms =
 			match acting.user().as_human() {
 				Ok(reader) =>
@@ -34,12 +34,12 @@ MessageLinkPlaces :: [].{
 		)
 	}
 
-	## Where a link goes, of the conversations `found` with its topic: the
+	## Where a link goes, of the conversations `found_keys` with its topic: the
 	## one, or nowhere when there is none, or no guess when there are more
 	## (`Ambiguous`).
 	destination : List(ConversationKey) -> [GoesTo(ConversationKey), Nowhere, Ambiguous]
-	destination = |found|
-		match found {
+	destination = |found_keys|
+		match found_keys {
 			[] => Nowhere
 			[key] => GoesTo(key)
 			_ => Ambiguous

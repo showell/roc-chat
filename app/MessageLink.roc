@@ -14,7 +14,13 @@ import Topic
 
 MessageLink :: [
 	InTopic({ topic : Topic, id : Message.Id }),
-	InChannel({ channel : ChannelName, topic : Topic, id : Message.Id }),
+	InChannel(
+		{
+			channel : ChannelName,
+			topic : Topic,
+			id : Message.Id,
+		},
+	),
 ].{
 
 	## The path every link to a message starts with.
@@ -37,7 +43,13 @@ MessageLink :: [
 	## Which reference it is: a topic's, or a channel's topic's.
 	which : MessageLink -> [
 		InTopic({ topic : Topic, id : Message.Id }),
-		InChannel({ channel : ChannelName, topic : Topic, id : Message.Id }),
+		InChannel(
+			{
+				channel : ChannelName,
+				topic : Topic,
+				id : Message.Id,
+			},
+		),
 	]
 	which = |MessageLink.(link)| link
 

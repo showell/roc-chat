@@ -257,7 +257,8 @@ serve_signed_in_route! = |{ asked, request, directory, acting }| {
 	admitted =
 		match access_asked(asked) {
 			AsksNoConversation => Ok({})
-			AsksAnyPlace(act) => Access.check_credential({ acting, act }).map_err(|ScopeOff| ScopeOff)
+			AsksAnyPlace(act) =>
+				Access.check_credential({ acting, act }).map_err(|ScopeOff| ScopeOff)
 			Asks({ place, act }) =>
 				Access.check({ acting, place, directory, act })
 		}
@@ -297,8 +298,8 @@ answer_route! = |{ asked, request, directory, acting }|
 		ShowRecent => RecentRoute.show!({ acting, directory })
 		OpenRecentStream => RecentRoute.open_stream(acting)
 		SearchEveryTopic(asked_of) => SearchRoute.serve!({ asked_of, acting, directory, request })
-		FollowTopicLink(link) => MessageLinkRoute.follow_by_topic!({ link, acting, directory })
-		FollowConversationLink(followed) => MessageLinkRoute.follow_in_conversation!(followed)
+		FollowTopicLink(link) => MessageLinkRoute.answer_topic_link!({ link, acting, directory })
+		FollowConversationLink(followed) => MessageLinkRoute.answer_channel_link!(followed)
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>

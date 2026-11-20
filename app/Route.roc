@@ -282,7 +282,7 @@ browse_path_choice = |{ path, method, directory }|
 			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else {
-		match message_link_choice({ path, method, directory }) {
+		match message_link_route({ path, method, directory }) {
 			Ok(chosen) => chosen
 			Err(NotAMessageLinkPath) =>
 				match ConversationKey.place_from_url_path({ path, directory }) {
@@ -296,12 +296,12 @@ browse_path_choice = |{ path, method, directory }|
 ## The route for `method` and a link to a message, `/chat/msg/<id>`: a
 ## channel's link is to its conversation, found in `directory`; unless the
 ## path is no link's (`NotAMessageLinkPath`).
-message_link_choice : {
+message_link_route : {
 	path : UnvalidatedString,
 	method : [Get, Post, Other],
 	directory : Directory,
 } -> Try(Route.Choice, [NotAMessageLinkPath])
-message_link_choice = |{ path, method, directory }|
+message_link_route = |{ path, method, directory }|
 	match path.url_path_parts() {
 		Ok([chat, msg, text]) if chat.is_exactly("chat") and msg.is_exactly("msg") =>
 			match (text.message_link(), method) {

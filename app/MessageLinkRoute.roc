@@ -30,22 +30,22 @@ MessageLinkRoute :: [].{
 	## A GET of a channel's `link`, to the conversation `key`, which `Access`
 	## has let the reader read: a 302 to the message, or a 404 when the
 	## channel has no such topic.
-	follow_in_conversation! : { key : ConversationKey, link : MessageLink } => Http.Response
-	follow_in_conversation! = |{ key, link }|
+	answer_channel_link! : { key : ConversationKey, link : MessageLink } => Http.Response
+	answer_channel_link! = |{ key, link }|
 		match DirectoryFiles.list_place_topics!(key.place()) {
 			Ok(topics) =>
-				answer({ link, found: [key].keep_if(|_| topics.contains(key.topic())) })
+				answer({ link, found_keys: [key].keep_if(|_| topics.contains(key.topic())) })
 			Err(fault) => listing_failure(fault)
 		}
 
 	## A GET of a topic's `link` by `acting`: a 302 to the message in the one
 	## place it can mean, a 404 for none, a 409 for more than one.
-	follow_by_topic! : {
+	answer_topic_link! : {
 		link : MessageLink,
 		acting : SignedIn,
 		directory : Directory,
 	} => Http.Response
-	follow_by_topic! = |{ link, acting, directory }| {
+	answer_topic_link! = |{ link, acting, directory }| {
 		topic =
 			match link.which() {
 				InTopic(named) => named.topic
@@ -53,7 +53,7 @@ MessageLinkRoute :: [].{
 			}
 		var $found = []
 		var $fault = Ok({})
-		for place in MessageLinkPlaces.meant({ acting, directory }) {
+		for place in MessageLinkPlaces.readable_places({ acting, directory }) {
 			match DirectoryFiles.list_place_topics!(place) {
 				Ok(topics) if topics.contains(topic) => {
 					$found = $found.append(ConversationKey.of({ place, topic }))
@@ -65,17 +65,17 @@ MessageLinkRoute :: [].{
 			}
 		}
 		match $fault {
-			Ok({}) => answer({ link, found: $found })
+			Ok({}) => answer({ link, found_keys: $found })
 			Err(fault) => listing_failure(fault)
 		}
 	}
 }
 
-## The answer to `link`, found in the conversations `found`: a 302 to the
+## The answer to `link`, found in the conversations `found_keys`: a 302 to the
 ## message when there is one, a 404 for none, a 409 for more than one.
-answer : { link : MessageLink, found : List(ConversationKey) } -> Http.Response
-answer = |{ link, found }|
-	match MessageLinkPlaces.destination(found) {
+answer : { link : MessageLink, found_keys : List(ConversationKey) } -> Http.Response
+answer = |{ link, found_keys }|
+	match MessageLinkPlaces.destination(found_keys) {
 		GoesTo(key) => HttpAnswer.found("${key.url_path(Page)}#${link.anchor().page_anchor()}")
 		Nowhere => HttpAnswer.page(404, PageKit.not_found)
 		Ambiguous => HttpAnswer.text(409, ambiguous_words)
@@ -109,23 +109,23 @@ sends_on = |response| response.headers.any(|header| header.name == "location".to
 # Found in one conversation: a 302 to the message on its page, by its
 # anchor there; a channel's link as a topic's.
 expect {
-	found = answer({ link: link_of("plans_2"), found: [key_at("/chat/dm/1_1/plans")] })
+	found = answer({ link: link_of("plans_2"), found_keys: [key_at("/chat/dm/1_1/plans")] })
 	found.status == 302
 		and found.headers == [{ name: "location".to_utf8(), value: "/chat/dm/1_1/plans#msg-2".to_utf8() }]
 }
 expect
-	answer({ link: link_of("general.roc-chat_6"), found: [key_at("/chat/channel/general/roc-chat")] }).headers
+	answer({ link: link_of("general.roc-chat_6"), found_keys: [key_at("/chat/channel/general/roc-chat")] }).headers
 		== [{ name: "location".to_utf8(), value: "/chat/channel/general/roc-chat#msg-6".to_utf8() }]
 # Found nowhere: a 404, sent nowhere.
 expect {
-	nowhere = answer({ link: link_of("plans_2"), found: [] })
+	nowhere = answer({ link: link_of("plans_2"), found_keys: [] })
 	nowhere.status == 404 and !sends_on(nowhere)
 }
 # Found in two: ambiguous, a 409 in Gopher's words, never a guess.
 expect {
 	both = answer({
 		link: link_of("plans_2"),
-		found: [key_at("/chat/dm/1_1/plans"), key_at("/chat/channel/general/plans")],
+		found_keys: [key_at("/chat/dm/1_1/plans"), key_at("/chat/channel/general/plans")],
 	})
 	both.status == 409
 		and both.body
