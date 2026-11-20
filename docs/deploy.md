@@ -39,7 +39,7 @@ It must say `active`, with no refusals in the journal and recent requests in the
 
 ## How a fresh data root is seeded
 
-An empty data root gets the first chat at the server's first start, before it listens. Files whose names start with `.` don't count, so the GitHub files can be there first. The start writes:
+An empty data root gets the first chat at the server's first start, once it holds its port and before it accepts a connection. Files whose names start with `.` don't count, so the GitHub files can be there first. The start writes:
 
 - `auth/1/name`, holding `Steve`, the owner and admin;
 - `chat/channel/general.channel`, holding `1`, so `general` exists with the owner in it before any sign-up;

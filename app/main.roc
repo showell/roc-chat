@@ -10,7 +10,7 @@
 ##   (`TranscriptRefusal` puts them in words). Its sidebar lists the
 ##   founder's places with no topic but the one shown (`demo_sidebar`), as
 ##   the sample's data folder holds them.
-## - `start!` (the server, host/http.zig, once, before it listens): when the
+## - `start!` (the server, host/http.zig, once, before it serves): when the
 ##   data folder holds no chat yet, the founder, Steve, id 1, is made, with
 ##   the channel `general`, of which he is the one member
 ##   (`FirstStart`). A folder that holds a chat is read, and one that

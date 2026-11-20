@@ -197,12 +197,18 @@ pub const Server = struct {
     body_bytes_in_flight: std.atomic.Value(usize) = .init(0),
     client_requests: ClientRequests = .{},
 
-    /// Starts the app on `setup.root` (`start_app`), reads the secret
-    /// there (made first when there is none) and GitHub's settings, then
-    /// listens on 127.0.0.1 at `setup.port` (`listen_alone`): a port
-    /// another process listens on is `error.PortTaken`. Tests pass 0 to get
-    /// any free port.
+    /// Listens on 127.0.0.1 at `setup.port` (`listen_alone`), then starts
+    /// the app on `setup.root` (`start_app`) and reads the secret there
+    /// (made first when there is none) and GitHub's settings. A port
+    /// another process listens on is `error.PortTaken`, before the data
+    /// root is read or seeded. Tests pass 0 to get any free port.
+    ///
+    /// *Why bind first:* a second server must never touch the data root of
+    /// the one that holds the port. Connections that arrive while the app
+    /// starts wait in the kernel's backlog until `run` accepts them.
     pub fn listen(io: Io, gpa: std.mem.Allocator, setup: Setup) !Server {
+        var listener = try listen_alone(setup.port);
+        errdefer listener.deinit(io);
         try start_app(io, gpa, setup.root);
         const secret = try sign_in.ServerSecret.load_or_create(io, setup.root.dir);
         const github_settings = try github.Settings.load(io, setup.root.dir);
@@ -210,7 +216,7 @@ pub const Server = struct {
             .io = io,
             .gpa = gpa,
             .limits = setup.limits,
-            .listener = try listen_alone(setup.port),
+            .listener = listener,
             .root = setup.root,
             .hub = .init(io, gpa),
             .seconds = .init(gpa),
@@ -499,7 +505,7 @@ pub const Server = struct {
     }
 };
 
-/// The app's start, once, before the server listens (`roc_start`): it
+/// The app's start, once, before the server serves (`roc_start`): it
 /// makes the first data in an empty data folder, and refuses a folder that
 /// holds part of a chat, so the server never serves from one.
 pub fn start_app(io: Io, gpa: std.mem.Allocator, root: *const files.DataRoot) error{AppStartFailed}!void {

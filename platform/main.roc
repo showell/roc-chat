@@ -3,7 +3,7 @@
 ##
 ## - `roc_page` (the demo, host/demo.zig): a topic's name and its transcript
 ##   in, the page out.
-## - `roc_start` (the server, host/http.zig, once, before it listens): the
+## - `roc_start` (the server, host/http.zig, once, before it serves): the
 ##   app makes its first data if there is none, and says whether it can
 ##   serve.
 ## - `roc_admission` (the server): a request's head in (Http.roc), before

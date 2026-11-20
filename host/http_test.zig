@@ -890,11 +890,14 @@ test "a port another server listens on is refused, never shared" {
     // Nor does std's `.reuse_address`, SO_REUSEPORT and all, share it.
     const address: Io.net.IpAddress = .{ .ip4 = .loopback(port) };
     try testing.expectError(error.AddressInUse, address.listen(io, .{ .reuse_address = true }));
-    // A whole server, its app started, is refused it too.
-    var other = testing.tmpDir(.{});
+    // A whole server is refused it too, before its app starts: its data
+    // root, empty, is neither read nor seeded.
+    var other = testing.tmpDir(.{ .iterate = true });
     defer other.cleanup();
     const other_root: files.DataRoot = .{ .io = io, .dir = other.dir };
     try testing.expectError(error.PortTaken, http.Server.listen(io, gpa, .{ .port = port, .root = &other_root }));
+    var names = other.dir.iterate();
+    try testing.expectEqual(null, try names.next(io));
 }
 
 test "a restart binds its port at once, past the last run's connections in TIME_WAIT" {
