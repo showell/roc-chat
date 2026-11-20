@@ -52,6 +52,7 @@ const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
 const github = @import("github_client.zig");
 const remembered = @import("remembered_seconds.zig");
+const search_index = @import("search_index.zig");
 
 const log = std.log.scoped(.http);
 
@@ -122,6 +123,8 @@ pub const Server = struct {
     slots: sse.Slots = .{},
     /// The seconds the app keeps between requests, under the turn.
     seconds: remembered.RememberedSeconds,
+    /// The search index, under the turn: a cache the app fills.
+    search: search_index.SearchIndex,
     /// The secret sessions are signed with, read from the data root.
     secret: sign_in.ServerSecret,
     /// The bucket every password check is taken from.
@@ -151,6 +154,7 @@ pub const Server = struct {
             .root = setup.root,
             .hub = .init(io, gpa),
             .seconds = .init(gpa),
+            .search = .init(gpa),
             .secret = secret,
             .password_checks = .init(.{
                 .burst = setup.limits.password_check_burst,
@@ -169,6 +173,7 @@ pub const Server = struct {
             .hub = &s.hub,
             .slots = &s.slots,
             .seconds = &s.seconds,
+            .search = &s.search,
             .secret = &s.secret,
             .password_checks = &s.password_checks,
             .turn = &s.turn,
@@ -188,6 +193,7 @@ pub const Server = struct {
     pub fn run(s: *Server) !void {
         defer s.client_requests.deinit(s.gpa);
         defer s.seconds.deinit();
+        defer s.search.deinit();
         defer s.hub.deinit();
         defer s.listener.deinit(s.io);
         var connections: Io.Group = .init;
@@ -646,6 +652,7 @@ pub const Answering = struct {
     hub: *bus.Hub,
     slots: *sse.Slots,
     seconds: *remembered.RememberedSeconds,
+    search: *search_index.SearchIndex,
     secret: *const sign_in.ServerSecret,
     password_checks: *sign_in.PasswordChecks,
     turn: *Io.Mutex,
@@ -682,6 +689,7 @@ fn call_of(arena: std.mem.Allocator, answering: Answering) seam.Call {
         .hub = answering.hub,
         .slots = answering.slots,
         .seconds = answering.seconds,
+        .search = answering.search,
         .secret = answering.secret,
         .password_checks = answering.password_checks,
         .turn = answering.turn,

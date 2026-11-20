@@ -26,6 +26,7 @@ import FileFacts
 import LastConversation
 import Name
 import Reactions
+import SearchIndex
 import Transcript
 import UploadTotal
 import UnvalidatedString
@@ -49,7 +50,8 @@ TranscriptFiles :: [].{
 
 	## One message's record, added at the end of its conversation's
 	## transcript: the conversation's folder made as needed, then the record
-	## appended (the file made when it is the first); unless the host
+	## appended (the file made when it is the first), and then the search
+	## index told of it (`SearchIndex.note_record!`); unless the host
 	## refused.
 	append_message! : ConversationKey,
 	Transcript.Utf8TranscriptMessage => Try(
@@ -58,7 +60,9 @@ TranscriptFiles :: [].{
 	)
 	append_message! = |key, record| {
 		FileFacts.make_folder!(folder_path(key))?
-		FileFacts.append_to_file!(transcript_path(key), record.to_utf8_bytes())
+		FileFacts.append_to_file!(transcript_path(key), record.to_utf8_bytes())?
+		SearchIndex.note_record!(key, record)
+		Ok({})
 	}
 
 	## A conversation's reactions, as its file holds them, or none when there

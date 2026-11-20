@@ -40,6 +40,7 @@ const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
 const github = @import("github_client.zig");
 const remembered = @import("remembered_seconds.zig");
+const search_index = @import("search_index.zig");
 
 const log = std.log.scoped(.seam);
 
@@ -98,6 +99,24 @@ fn RocList(comptime Rec: type, comptime Item: type, comptime rec: fn (Item) Rec)
 
 /// A Roc `List(List(U8))`.
 pub const RocBytesList = RocList(RocBytes, []const u8, RocBytes.from);
+
+/// A Roc `List(U64)`: its elements hold no lists, so one word before them,
+/// the refcount.
+pub const RocU64List = extern struct {
+    ptr: ?[*]u64,
+    length: usize,
+    capacity_or_alloc_ptr: usize,
+
+    pub fn from(items: []const u64) RocU64List {
+        if (items.len == 0) return .{ .ptr = null, .length = 0, .capacity_or_alloc_ptr = 0 };
+        const w = @sizeOf(usize);
+        const base = allocate(w + items.len * @sizeOf(u64), w);
+        std.mem.writeInt(usize, base[0..w], 1, .little);
+        const elems: [*]u64 = @ptrCast(@alignCast(base + w));
+        @memcpy(elems[0..items.len], items);
+        return .{ .ptr = elems, .length = items.len, .capacity_or_alloc_ptr = items.len << 1 };
+    }
+};
 
 // ── the HTTP records (platform/Http.roc) ────────────────────────────────────
 
@@ -193,6 +212,28 @@ pub const RememberedStatus = enum(u8) { found, missing };
 /// Their answer: the I64, then the tag. `second` is 0 when `Missing`.
 pub const RememberedRec = extern struct { second: i64, status: RememberedStatus };
 
+/// Host.roc's `open_search_index_key!` argument, alphabetical.
+pub const SearchIndexKeyKind = enum(u8) { searchable, unsearchable };
+/// Host.roc's `words_in_search_index!` word: the U64, then the list.
+pub const WordCountRec = extern struct { count: u64, word: RocBytes };
+pub const WordCountList = RocList(WordCountRec, search_index.WordCount, struct {
+    fn rec(w: search_index.WordCount) WordCountRec {
+        return .{ .count = w.count, .word = .from(w.word) };
+    }
+}.rec);
+/// Host.roc's `words_in_search_index!` answer: the U64, then the list.
+pub const SearchWordsRec = extern struct { unsearchable: u64, words: WordCountList };
+/// Host.roc's `texts_in_search_index!` hit: the U64s, then the lists, each
+/// by name (a list's alignment is a word's, a U64's at least that).
+pub const SearchHitRec = extern struct { key_at: u64, text_at: u64, label: RocBytes, text: RocBytes };
+pub const SearchHitList = RocList(SearchHitRec, search_index.Hit, struct {
+    fn rec(h: search_index.Hit) SearchHitRec {
+        return .{ .key_at = h.key_at, .label = .from(h.label), .text = .from(h.text), .text_at = h.text_at };
+    }
+}.rec);
+/// Host.roc's `texts_in_search_index!` answer: the U64s, then the list.
+pub const SearchTextsRec = extern struct { matched: u64, unsearchable: u64, hits: SearchHitList };
+
 /// Host.roc's `github_sign_in_settings!` status, alphabetical.
 pub const GitHubSettingsStatus = enum(u8) { configured, not_configured };
 /// Host.roc's `github_sign_in_settings!` answer: the lists by name, then the
@@ -224,6 +265,7 @@ pub const Call = struct {
     github: ?*const github.Settings = null,
     gpa: ?std.mem.Allocator = null,
     seconds: ?*remembered.RememberedSeconds = null,
+    search: ?*search_index.SearchIndex = null,
 };
 
 var current: ?Call = null;
@@ -392,6 +434,46 @@ pub export fn replace_second_kept_under_key(key: RocBytes, second: i64) callconv
 
 pub export fn read_second_kept_under_key(key: RocBytes) callconv(.c) RememberedRec {
     return remembered_rec(seconds_of("read_second_kept_under_key").recall(key.slice()));
+}
+
+fn search_of(comptime what: []const u8) *search_index.SearchIndex {
+    return call(what).search orelse @panic(what ++ ": this call has no search index (only the server's keeps one)");
+}
+
+/// The keys of a Roc `List(List(U8))`, as slices, in the call's arena.
+fn key_slices(comptime what: []const u8, keys: RocBytesList) []const []const u8 {
+    const held = keys.slice();
+    const out = call(what).arena.alloc([]const u8, held.len) catch std.debug.panic(what ++ ": out of memory", .{});
+    for (held, 0..) |*k, i| out[i] = k.slice();
+    return out;
+}
+
+pub export fn open_search_index_key(key: RocBytes, kind: SearchIndexKeyKind) callconv(.c) void {
+    search_of("open_search_index_key").open(key.slice(), kind == .searchable);
+}
+
+pub export fn append_text_to_search_index_key(key: RocBytes, label: RocBytes, text: RocBytes) callconv(.c) void {
+    search_of("append_text_to_search_index_key").append(key.slice(), label.slice(), text.slice());
+}
+
+pub export fn search_index_keys_not_held(keys: RocBytesList) callconv(.c) RocU64List {
+    const what = "search_index_keys_not_held";
+    const got = search_of(what).not_held(call(what).arena, key_slices(what, keys)) catch std.debug.panic(what ++ ": out of memory", .{});
+    return .from(got);
+}
+
+/// The answer's words live in the index until the call ends: they are
+/// copied into Roc's lists here.
+pub export fn words_in_search_index(keys: RocBytesList, prefix: RocBytes, most: u64) callconv(.c) SearchWordsRec {
+    const what = "words_in_search_index";
+    const got = search_of(what).words_for(call(what).arena, key_slices(what, keys), prefix.slice(), most) catch std.debug.panic(what ++ ": out of memory", .{});
+    return .{ .unsearchable = got.unsearchable, .words = .from(got.words) };
+}
+
+pub export fn texts_in_search_index(keys: RocBytesList, word: RocBytes, most: u64) callconv(.c) SearchTextsRec {
+    const what = "texts_in_search_index";
+    const got = search_of(what).texts_for(call(what).arena, key_slices(what, keys), word.slice(), most) catch std.debug.panic(what ++ ": out of memory", .{});
+    return .{ .hits = .from(got.hits), .matched = got.matched, .unsearchable = got.unsearchable };
 }
 
 pub export fn bcrypt_hash_of_password(password: RocBytes) callconv(.c) RocBytes {
