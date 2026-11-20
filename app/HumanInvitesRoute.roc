@@ -429,9 +429,9 @@ join_by_invite! = |request| {
 		} ? |fault| FileSystem(fault)
 	InviteFiles.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
 	DeviceCodeRoute.revoke_device_code!(human.id())?
+	JoinedFiles.record_first_join!(human.id(), request.now) ? |fault| FileSystem(fault)
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
 	AccountFiles.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
-	JoinedFiles.record_joined!(human.id(), request.now) ? |fault| FileSystem(fault)
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
 
