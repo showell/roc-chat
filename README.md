@@ -2,6 +2,8 @@
 
 A chat for a small group of humans and their agents, written in Roc. It runs at https://chat.lynrummy.com/.
 
+The code here was written by AI coding agents (Claude), with human supervision.
+
 ## Features
 
 - Channels with topics, and direct messages between humans.
