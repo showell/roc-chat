@@ -313,7 +313,7 @@
 //!      signed in"; it works once, and his page then says it was used; an
 //!      expired code, and one cancelled by the phone signing out, refused;
 //!      every refusal the same page; a key may not make one, nor redeem one;
-//! 48zz. a client's 5 failed codes lock the form for it, a 429 even for a
+//! 48zz. a client's 10 failed codes lock the form for it, a 429 even for a
 //!      right code, while another client's is still tried; an IPv6 client is
 //!      its /64; a session a code started is marked, may not link GitHub or
 //!      make agents or their invites, and a password sign-in after is
@@ -1142,10 +1142,10 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const fifth_code = fifth.code;
     const guesser = "x-forwarded-for: 198.51.100.7\r\n";
     var all_refused = true;
-    for (0..5) |_| all_refused = all_refused and isCodeRefusal(try redeemFrom(a, io, port, guesser, "code=2222-2222"));
+    for (0..10) |_| all_refused = all_refused and isCodeRefusal(try redeemFrom(a, io, port, guesser, "code=2222-2222"));
     const locked = try redeemFrom(a, io, port, guesser, try std.fmt.allocPrint(a, "code={s}", .{fifth_code}));
     const neighbour = try redeemFrom(a, io, port, "x-forwarded-for: 198.51.100.8\r\n", "code=2222-2222");
-    try t.check("a client's 5 failed codes lock the form for it: a 429 saying so, even for a right code; another client's code is still tried", all_refused and
+    try t.check("a client's 10 failed codes lock the form for it: a 429 saying so, even for a right code; another client's code is still tried", all_refused and
         locked.status == 429 and has(locked.body, "Too many codes have been tried. Wait 15 minutes") and
         isCodeRefusal(neighbour));
 
@@ -1165,10 +1165,10 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     // its lock, and the next network is a client of its own.
     const network = "x-forwarded-for: 2001:db8:1:2::5\r\n";
     var network_refused = true;
-    for (0..5) |_| network_refused = network_refused and isCodeRefusal(try redeemFrom(a, io, port, network, "code=2222-2222"));
+    for (0..10) |_| network_refused = network_refused and isCodeRefusal(try redeemFrom(a, io, port, network, "code=2222-2222"));
     const same_network = try redeemFrom(a, io, port, "x-forwarded-for: 2001:DB8:1:2:ffff::9\r\n", "code=2222-2222");
     const next_network = try redeemFrom(a, io, port, "x-forwarded-for: 2001:db8:1:3::5\r\n", "code=2222-2222");
-    try t.check("an IPv6 client is its /64: 5 failures lock the form for another address of that network, a 429, and not for the next network's", network_refused and
+    try t.check("an IPv6 client is its /64: 10 failures lock the form for another address of that network, a 429, and not for the next network's", network_refused and
         same_network.status == 429 and isCodeRefusal(next_network));
 
     try deviceSessionSteps(a, io, port, data, t);

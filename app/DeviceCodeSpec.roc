@@ -228,24 +228,20 @@ expect
 		"live 1000000 1000300 ${"07".repeat(32)} ${"09".repeat(31)}",
 	].all(|text| DeviceCode.from_file(text.to_utf8()) == Err(Damaged))
 
-# The limit: a client may fail 5 times in a window, everyone 1,000; the form
-# locks at that count, and not one before.
-expect DeviceCodeLimit.client_most == 5 and DeviceCodeLimit.everyone_most == 1_000
+# The limit: a client may fail 10 times in a window; the form locks for it
+# at that count, and not one before. Everyone's count locks nothing, and is
+# told of at 1,000.
+expect DeviceCodeLimit.client_most == 10 and DeviceCodeLimit.everyone_noted_at == 1_000
 expect {
 	tally = DeviceCodeLimit.tally_of({
-		failures: { second: 4, status: Found },
+		failures: { second: 9, status: Found },
 		since: { second: 4_900, status: Found },
 		now: Timestamp.at_second(5_000),
 	})
 	after = DeviceCodeLimit.tally_after_failure(tally)
 	!DeviceCodeLimit.is_locked(tally, DeviceCodeLimit.client_most)
 		and DeviceCodeLimit.is_locked(after, DeviceCodeLimit.client_most)
-		and after == { failures: 5, since: Timestamp.at_second(4_900) }
-}
-expect {
-	most = DeviceCodeLimit.everyone_most
-	!DeviceCodeLimit.is_locked({ failures: 999, since: made_at }, most)
-		and DeviceCodeLimit.is_locked({ failures: 1_000, since: made_at }, most)
+		and after == { failures: 10, since: Timestamp.at_second(4_900) }
 }
 # The window: 15 minutes from its first failure, then a fresh tally; none
 # kept is a fresh tally too.

@@ -1,9 +1,11 @@
 ## This module decides when the form that redeems a device code
-## (`DeviceCode`) is locked, so a code can't be guessed. Every failed
-## redemption is counted twice, for its client and for everyone together,
-## in a window of `window_seconds` that starts at the first failure; a
-## client with `client_most` failures in its window, or everyone with
-## `everyone_most`, finds the form locked until that window ends.
+## (`DeviceCode`) is locked for a client, so a code can't be guessed. Every
+## failed redemption is counted twice, for its client and for everyone
+## together, in a window of `window_seconds` that starts at the first
+## failure; a client with `client_most` failures in its window finds the
+## form locked until that window ends. Everyone's count locks nothing, since
+## a guesser with many addresses could lock the form for all; at
+## `everyone_noted_at` failures in a window the route logs a line, once.
 ##
 ## A client is the `X-Forwarded-For` value the proxy sets (docs/deploy.md,
 ## "The per-client cap"), an IPv4 address whole and an IPv6 address by its
@@ -13,9 +15,7 @@
 ## first 12 bits of the prefix's HMAC under the server's secret, so the
 ## host's memory holds a bounded number of keys whatever the clients, and
 ## no one outside can choose addresses that share a bucket; two clients in
-## one bucket share a tally, which only locks sooner. The limit for
-## everyone is high, so that a guesser with many addresses can't lock the
-## form for all cheaply, and the route logs when it is reached.
+## one bucket share a tally, which only locks sooner.
 ##
 ## The tallies are seconds the host keeps in memory under a key
 ## (`Host.replace_second_kept_under_key!`): a count and the window's start,
@@ -32,11 +32,12 @@ DeviceCodeLimit :: [].{
 
 	## How many failures a client may have in a window.
 	client_most : I64
-	client_most = 5
+	client_most = 10
 
-	## How many failures everyone together may have in a window.
-	everyone_most : I64
-	everyone_most = 1_000
+	## How many failures everyone together have in a window when the route
+	## logs it, so the server's owner hears of a flood of guesses.
+	everyone_noted_at : I64
+	everyone_noted_at = 1_000
 
 	## How many buckets clients are kept in: 4,096, two keys each in the
 	## host's memory.
