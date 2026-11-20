@@ -3109,7 +3109,8 @@ fn signInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, se
 /// name (48zt3), a request refused after its name is judged frees nothing
 /// (48zt4), and a release from a channel besides #general leaves every page
 /// answering (48zt5), and a person makes at most 3 new invites in their
-/// first day (48zt6).
+/// first day (48zt6), a cut-short invite among them; a join that keeps its
+/// name frees no look-alike (48zt7).
 fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, fake: *fake_github.Fake, debbie: []const u8) !void {
     // 48zo.
     const tess_id = try nextId(a, io, data);
@@ -3253,7 +3254,7 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     try t.check("an invite open holds its name, a lookalike too: 409; once it expires unredeemed, the name is free: a new account holds it, the old one released, out of #general, its code refused; the owner's pages still answer", pia_invited.status == 200 and
         while_open.status == 409 and anew.status == 200 and has(anew.body, "invite-code") and
         std.mem.eql(u8, try readFile(a, io, data, try std.fmt.allocPrint(a, "auth/{d}/name", .{pia_id + 1})), "Pia") and
-        try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/name-released", .{pia_id})) and
+        (try std.fmt.parseInt(i64, try readFile(a, io, data, try std.fmt.allocPrint(a, "auth/{d}/name-released", .{pia_id})), 10)) > 1000 and
         !has(general, try std.fmt.allocPrint(a, "\n{d}\n", .{pia_id})) and has(general, try std.fmt.allocPrint(a, "\n{d}\n", .{pia_id + 1})) and
         old_code.status == 401 and owner_browse.status == 200);
 
@@ -3292,6 +3293,9 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
         const made = try postAs(a, io, port, rhea, "/invites", try std.fmt.allocPrint(a, "name={s}", .{name}));
         if (made.status != 200 or !has(made.body, "invite-code")) first_three = false;
     }
+    // Uli's invite cut short as it was written, its hash never made: still
+    // counted, as an account Rhea made.
+    try data.deleteFile(io, try std.fmt.allocPrint(a, "auth/{d}/human-invites/1/hash", .{rhea_id + 3}));
     const before_fourth = try nextId(a, io, data);
     const fourth = try postAs(a, io, port, rhea, "/invites", "name=Vida");
     const rhea_page = try getAs(a, io, port, rhea, "/invites");
@@ -3304,6 +3308,23 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
     try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/joined", .{rhea_id}), .data = "1000" });
     const after_a_day = try postAs(a, io, port, rhea, "/invites", "name=Vida");
     try t.check("a day after joining, the fourth: 200", after_a_day.status == 200 and has(after_a_day.body, "invite-code"));
+
+    // 48zt7.
+    const opal_id = try nextId(a, io, data);
+    const opal_invited = try postAs(a, io, port, debbie, "/invites", "name=Opal");
+    const opal_link = between(opal_invited.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
+    const opal_hash = std.mem.indexOfScalar(u8, opal_link, '#') orelse return error.NoCode;
+    const omar_id = try nextId(a, io, data);
+    const omar_invited = try postAs(a, io, port, debbie, "/invites", "name=Omar");
+    try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/human-invites/1/expires", .{omar_id}), .data = "1000" });
+    // A look-alike of Opal's name, from before the rule, written by hand.
+    try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/name", .{omar_id}), .data = "Opai" });
+    const opal_joined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Opal&password=their+own", .{opal_link[opal_hash + 1 ..]}));
+    try t.check("a join that keeps its name frees no look-alike: Opal joins as Opal, and Opai, lapsed, keeps her name; the owner's Browse a 200", opal_invited.status == 200 and
+        omar_invited.status == 200 and opal_joined.status == 303 and opal_id + 1 == omar_id and
+        !(try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/name-released", .{omar_id}))) and
+        std.mem.eql(u8, try readFile(a, io, data, try std.fmt.allocPrint(a, "auth/{d}/name", .{omar_id})), "Opai") and
+        (try getAs(a, io, port, steve_session, "/chat")).status == 200);
 }
 
 /// Whether the new human `made` lands in #general: at `expected`, a page of
