@@ -67,8 +67,10 @@ Sidebar :: [].{
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
 		drawn = |ordered| place_section({ ordered, current, people })
-		channels = group_section({ group: Channels, places: in_order.keep_if(is_channel).map(drawn) })
-		dms = group_section({ group: Dms, places: in_order.drop_if(is_channel).map(drawn) })
+		channel_places = in_order.keep_if(is_channel).map(drawn)
+		dm_places = in_order.drop_if(is_channel).map(drawn)
+		channels = group_section({ group: Channels, places: channel_places })
+		dms = group_section({ group: Dms, places: dm_places })
 		groups =
 			match current.place().which() {
 				Channel(_) => [channels, dms]
