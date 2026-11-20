@@ -14,9 +14,9 @@
 ## starts (`data-opening`), open or collapsed, as `SidebarOrder` decides.
 ## The topic the page shows is marked current, and it is listed in its
 ## place even before its first message gives it a folder. The DMs group
-## shows only the DMs `DmShortlist` picks; the rest come last in it, under
-## a "more" row (`sidebar-more`), which app/sidebar.js hides behind the
-## row's popup.
+## lists every human, the viewer's own DM next after the page's own place
+## (Steve, 2026-11-20: "Show all the users. Scrolling is fine."), each
+## collapsed to its name's row but the page's own.
 ##
 ## Before the page's layout comes the sidebar's toggle, the button a narrow
 ## window's drawer opens the sidebar by. app/sidebar.js styles the sidebar,
@@ -43,14 +43,12 @@
 ## `PageContract`'s `Joined`), and the card says it.
 import ChannelRoster
 import ConversationKey
-import DmShortlist
 import Escape
 import Html
 import PageContract
 import PageKit
 import Place
 import SidebarOrder
-import Timestamp
 import TopicForm
 import TrustedHtml
 import UserId
@@ -69,34 +67,22 @@ Sidebar :: [].{
 	])
 
 	## The sidebar of `places` on `viewer`'s page of the conversation
-	## `current` at `now`, in `SidebarOrder`'s order, `current`'s group
-	## first, the DMs `DmShortlist` shows and the rest behind its "more" row,
-	## the humans in `online_humans` said to be online, each channel's
-	## members as `rosters` orders them.
+	## `current`, in `SidebarOrder`'s order, `current`'s group first, the
+	## humans in `online_humans` said to be online, each channel's members as
+	## `rosters` orders them.
 	nav : {
 		places : List(SidebarOrder.TimedPlace),
 		current : ConversationKey,
 		viewer : UserId,
 		online_humans : List(UserId),
-		now : Timestamp,
 		rosters : List(ChannelRoster.Roster),
 	} -> TrustedHtml
-	nav = |{ places, current, viewer, online_humans, now, rosters }| {
+	nav = |{ places, current, viewer, online_humans, rosters }| {
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
 		drawn = |ordered| place_section({ ordered, current, people, rosters })
-		channel_places = in_order.keep_if(is_channel).map(drawn)
-		dm_split = DmShortlist.split({
-			dm_places: in_order.drop_if(is_channel),
-			current: current.place(),
-			now,
-		})
-		channels = group_section({ group: Channels, places: channel_places, waiting_places: [] })
-		dms = group_section({
-			group: Dms,
-			places: dm_split.shown_places.map(drawn),
-			waiting_places: dm_split.waiting_places.map(drawn),
-		})
+		channels = group_section({ group: Channels, places: in_order.keep_if(is_channel).map(drawn) })
+		dms = group_section({ group: Dms, places: in_order.drop_if(is_channel).map(drawn) })
 		groups =
 			match current.place().which() {
 				Channel(_) => [channels, dms]
@@ -123,16 +109,11 @@ is_channel = |ordered|
 	}
 
 ## One of the sidebar's two groups: its heading, which app/sidebar.js lets
-## collapse the whole group, its `places`, in `SidebarOrder`'s order, and
-## `waiting_places` behind its "more" row (`more_section`), when there are
-## any. A group with no places shown or waiting is left out, as nothing.
-group_section : {
-	group : [Channels, Dms],
-	places : List(TrustedHtml),
-	waiting_places : List(TrustedHtml),
-} -> TrustedHtml
-group_section = |{ group, places, waiting_places }|
-	if places.is_empty() and waiting_places.is_empty() {
+## collapse the whole group, and its `places`, in `SidebarOrder`'s order. A
+## group with no places is left out, as nothing.
+group_section : { group : [Channels, Dms], places : List(TrustedHtml) } -> TrustedHtml
+group_section = |{ group, places }|
+	if places.is_empty() {
 		TrustedHtml.join([])
 	} else {
 		heading =
@@ -140,7 +121,6 @@ group_section = |{ group, places, waiting_places }|
 				Channels => "Channels"
 				Dms => "DMs"
 			}
-		listed = List.concat(places, more_section(waiting_places))
 		TrustedHtml.join([
 			Html.element({
 				name: Div,
@@ -158,50 +138,12 @@ group_section = |{ group, places, waiting_places }|
 							}),
 							PageKit.newline,
 						],
-						listed,
+						places,
 					),
 				),
 			}),
 			PageKit.newline,
 		])
-	}
-
-## `waiting_places`, the places behind a group's "more" row, under its words,
-## "N more people…", which app/sidebar.js makes the row that opens them in a
-## popup; nothing when none wait.
-more_section : List(TrustedHtml) -> List(TrustedHtml)
-more_section = |waiting_places|
-	if waiting_places.is_empty() {
-		[]
-	} else {
-		count = waiting_places.len()
-		words =
-			if count == 1 {
-				"1 more person…"
-			} else {
-				"${count.to_str()} more people…"
-			}
-		[
-			Html.element({
-				name: Div,
-				attributes: [PageContract.class(SidebarMore)],
-				inner: TrustedHtml.join(
-					List.concat(
-						[
-							PageKit.newline,
-							Html.element({
-								name: P,
-								attributes: [PageContract.class(SidebarMoreName)],
-								inner: Escape.text(words),
-							}),
-							PageKit.newline,
-						],
-						waiting_places,
-					),
-				),
-			}),
-			PageKit.newline,
-		]
 	}
 
 ## Who the page is for, and who is online.

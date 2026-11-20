@@ -28,7 +28,6 @@
 --                     place, with the way back to #general
 --   dm-card-topic     Tam's name clicked, `kickoff` typed and Enter, no
 --                     mouse after the click: the new topic's page
---   dm-people         "1 more person…" clicked: the people popup
 --   dm-selected       ↑ pressed twice: an older message selected
 --   channel-compose   `c` pressed and a message typed: the compose rail
 --                     open, where the keyboard help was
@@ -181,9 +180,6 @@ const STATES = {
     "wait dialog.place-popup[open]",
     "type kickoff", "key Enter",
     "wait .sidebar-place[data-opening=always] a.current[href$=\"/kickoff\"]"}},
-  {name = "dm-people", path = "/chat/dm/1_2/plans", steps = {
-    "click .sidebar-more-name",
-    "wait dialog.people-popup[open]"}},
   {name = "dm-selected", path = "/chat/dm/1_2/plans", steps = {
     "key ArrowUp", "key ArrowUp", "wait .message.selected"}},
   {name = "channel-compose", path = "/chat/channel/general/roc-chat", steps = {
@@ -350,10 +346,9 @@ for m in DM do
   expect_status(post_form(base, who, "/chat/dm/1_2/plans", {"markdown=" .. m.text}), 303, "a DM message")
 end
 
--- 2b. Two more humans, so the DMs group fills its three (app/DmShortlist.roc):
--- each joins with a welcome from Steve (ChitChat), which counts as talking,
--- and Ada writes to him too, so her DM comes first after Tam's. Steve's own
--- DM, with no message, waits behind the "1 more person…" row.
+-- 2b. Two more humans, so the DMs group lists four: each joins with a
+-- welcome from Steve (ChitChat), and Ada writes to him too, so her DM comes
+-- after Steve's own, which is always second (app/SidebarOrder.roc).
 const MORE = {"Ada", "Cy"}
 local more_cookies = {}
 for name in MORE do

@@ -1,8 +1,10 @@
 ## This module decides the order of a sidebar's places and topics, and which
 ## places start open, so that what a person will likely click next is at the
-## top. The page's own place comes first, open. On a DM page with another
-## human, the viewer's own DM comes next, collapsed, since people rarely
-## write to themselves. The other places follow newest first, by the last
+## top. The page's own place comes first, open. The viewer's own DM comes
+## next, whatever its time (Steve, 2026-11-20: "don't demote Steve below
+## other users for Steve! Steve comes second for Steve, beneath his
+## conversation partner."), so in the DMs group it is first on a channel's
+## page and second on a DM's. The other places follow newest first, by the last
 ## message in any of their topics, and each place's topics are newest first
 ## too. A place or topic with no messages comes after those with some, in the
 ## order it was given (Browse's, and topics' byte order), as do two of the
@@ -70,12 +72,7 @@ SidebarOrder :: [].{
 				Conversation(key) => listed.place == key.place()
 				NoConversation => Bool.False
 			}
-		own_next =
-			match shown {
-				Conversation(key) => is_dm_with_another(key.place(), viewer)
-				NoConversation => Bool.False
-			}
-		is_second = |listed| own_next and is_own_dm(listed.place, viewer)
+		is_second = |listed| !is_here(listed) and is_own_dm(listed.place, viewer)
 		here = dated.keep_if(|d| is_here(d.listed))
 		second = dated.keep_if(|d| is_second(d.listed))
 		by_latest = |one, other| newest_first((one.latest, one.at), (other.latest, other.at))
@@ -96,14 +93,6 @@ is_own_dm : Place, UserId -> Bool
 is_own_dm = |place, viewer|
 	match place.which() {
 		Dm(pair) => pair.members() == [viewer]
-		Channel(_) => Bool.False
-	}
-
-## Whether `place` is a DM of `viewer`'s with someone else.
-is_dm_with_another : Place, UserId -> Bool
-is_dm_with_another = |place, viewer|
-	match place.which() {
-		Dm(pair) => pair.members() != [viewer]
 		Channel(_) => Bool.False
 	}
 

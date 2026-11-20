@@ -27,12 +27,10 @@
 ## dot; each place says how it starts (`data-opening`, by `SidebarOrder`),
 ## which app/sidebar.js opens or collapses it by. The places come in two
 ## groups, each naming itself (`data-group`), which app/sidebar.js keeps a
-## group's collapsed state by, and the DMs group ends with the DMs that wait
-## behind its "more" row (`sidebar-more`, by `DmShortlist`); a channel lists
-## its members (`sidebar-members`, by `ChannelRoster`), each naming whether
-## a human or an agent (`data-kind`), which app/sidebar-popups.js shows in
-## the channel's card;
-## app/sidebar-popups.js says when a DM's person joined (`data-joined`, not
+## group's collapsed state by. A channel lists its members
+## (`sidebar-members`, by `ChannelRoster`), each naming whether a human or an
+## agent (`data-kind`), which app/sidebar-popups.js shows in the channel's
+## card; app/sidebar-popups.js says when a DM's person joined (`data-joined`, not
 ## drawn yet). The top bar's notice line (`notice-strip`), on a
 ## conversation with a sidebar and on Recent, is where app/chrome.js shows
 ## that someone has come online, or has written in one of the viewer's
@@ -94,8 +92,6 @@ PageContract :: [].{
 		SidebarMemberName,
 		SidebarMembers,
 		SidebarMemberWords,
-		SidebarMore,
-		SidebarMoreName,
 		SidebarNewTopic,
 		SidebarPlace,
 		SidebarPlaceName,
@@ -246,8 +242,6 @@ class_name = |chosen|
 		SidebarMemberName => "sidebar-member-name"
 		SidebarMembers => "sidebar-members"
 		SidebarMemberWords => "sidebar-member-words"
-		SidebarMore => "sidebar-more"
-		SidebarMoreName => "sidebar-more-name"
 		SidebarNewTopic => "sidebar-new-topic"
 		SidebarPlace => "sidebar-place"
 		SidebarPlaceName => "sidebar-place-name"
@@ -329,8 +323,6 @@ expect
 		SidebarNewTopic,
 		SidebarSection,
 		SidebarSectionName,
-		SidebarMore,
-		SidebarMoreName,
 		SidebarMembers,
 		Current,
 		TopBar,

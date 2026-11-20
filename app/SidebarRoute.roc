@@ -77,7 +77,7 @@ SidebarRoute :: [].{
 					directory,
 					now,
 				})
-				Ok(Sidebar({ places, online_humans, notice, now, rosters }))
+				Ok(Sidebar({ places, online_humans, notice, rosters }))
 			}
 		}
 	}

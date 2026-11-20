@@ -102,8 +102,9 @@ expect
 			"/chat/dm/1_4 collapsed ",
 			"/chat/dm/1_6 collapsed ",
 		]
-# A channel's page: the channel first; Steve's own DM is not second but
-# takes its place by its time, and is collapsed though it is the newest.
+# A channel's page: the channel first, then Steve's own DM, whatever its
+# time (Steve, 2026-11-20: "Steve comes second for Steve"), so it leads the
+# DMs group; collapsed.
 expect
 	sidebar_lines({ shown: Conversation(key_at("/chat/channel/general/roc")), topics_of: some_topics })
 		== [
@@ -127,12 +128,12 @@ expect
 			"/chat/dm/1_6 collapsed ",
 		]
 # A page of no conversation (Browse's, Recent's): no place opens always,
-# and Steve's own DM is collapsed wherever its time puts it.
+# and Steve's own DM comes first.
 expect
 	sidebar_lines({ shown: NoConversation, topics_of: some_topics })
 		== [
-			"/chat/channel/general collapsed roc",
 			"/chat/dm/1_1 collapsed notes",
+			"/chat/channel/general collapsed roc",
 			"/chat/dm/1_5 collapsed hello",
 			"/chat/dm/1_2 collapsed lunch,plans",
 			"/chat/dm/1_4 collapsed ",
@@ -176,9 +177,9 @@ expect {
 		}
 	sidebar_lines({ shown: NoConversation, topics_of: tied })
 		== [
+			"/chat/dm/1_1 collapsed ",
 			"/chat/dm/1_4 collapsed y,w,x",
 			"/chat/dm/1_5 collapsed z",
-			"/chat/dm/1_1 collapsed ",
 			"/chat/dm/1_2 collapsed ",
 			"/chat/dm/1_6 collapsed ",
 			"/chat/channel/general collapsed ",
@@ -227,3 +228,19 @@ expect
 		shown: NoConversation,
 		viewer: steve.user().id(),
 	}).is_empty()
+# Steve's own DM comes second on a channel's page even when it is the
+# oldest place, and leads the DMs.
+expect {
+	own_oldest = |path|
+		match path {
+			"/chat/dm/1_1" => [("notes", latest_at("01:00:00"))]
+			"/chat/dm/1_2" => [("plans", latest_at("08:00:00"))]
+			_ => []
+		}
+	sidebar_lines({ shown: Conversation(key_at("/chat/channel/general/roc")), topics_of: own_oldest }).take_first(3)
+		== [
+			"/chat/channel/general always roc",
+			"/chat/dm/1_1 collapsed notes",
+			"/chat/dm/1_2 collapsed plans",
+		]
+}

@@ -45,7 +45,6 @@ import Script
 import Sidebar
 import SidebarOrder
 import SignedIn
-import Timestamp
 import Topic
 import TrustedHtml
 import UploadedImage
@@ -58,8 +57,7 @@ ConversationPage :: [].{
 	## A human's page has the sidebar of the places Browse lists for them,
 	## with who of the humans is online, what the top bar's notices' line
 	## says as it is drawn (a DM's says where the other human is,
-	## `Presence.presence_words`), the time it is drawn, which decides
-	## the DMs it shows (`DmShortlist`), and each channel's members, by
+	## `Presence.presence_words`), and each channel's members, by
 	## participation (`ChannelRoster`); a key's has none.
 	SidebarShown : [
 		NoSidebar,
@@ -68,7 +66,6 @@ ConversationPage :: [].{
 				places : List(SidebarOrder.TimedPlace),
 				online_humans : List(UserId),
 				notice : [NoNotice, Notice(Str)],
-				now : Timestamp,
 				rosters : List(ChannelRoster.Roster),
 			},
 		),
@@ -132,7 +129,7 @@ ConversationPage :: [].{
 		{ toggle, notices, nav, scripts } =
 			match sidebar {
 				NoSidebar => { toggle: [], notices: NoNotices, nav: [], scripts: [] }
-				Sidebar({ places, online_humans, notice, now, rosters }) => {
+				Sidebar({ places, online_humans, notice, rosters }) => {
 					toggle: [Sidebar.toggle],
 					notices: Notices(notice),
 					nav: [
@@ -141,7 +138,6 @@ ConversationPage :: [].{
 							current: key,
 							viewer: viewer.user().id(),
 							online_humans,
-							now,
 							rosters,
 						}),
 					],

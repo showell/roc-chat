@@ -17,9 +17,8 @@
 // group's heading collapses its group as its triangle does, its text
 // darkening; a name, a person's or a channel's, opens its card in the
 // middle of the window, underlined; a topic opens its page, its whole row
-// tinted; the "+" opens the card on its form, in the accent colour; the
-// "N more people…" row opens the people popup, underlined as a name is.
-// Each has the pointer cursor.
+// tinted; the "+" opens the card on its form, in the accent colour. Each
+// has the pointer cursor.
 //
 // Its look is Steve's, not chat-client's: like a good referee, it should
 // feel invisible until you need it. On the rail it is a box with a thin
@@ -53,10 +52,10 @@
 // group's heading is a row whose name takes the room left, so
 // a small menu button can be added at its right end later.
 //
-// The DMs group shows only the people the reader is talking to
-// (app/DmShortlist.roc); the server writes the rest last in the group,
-// under one row, "N more people…" (.sidebar-more), and this script hides
-// them and makes the row open the people popup (sidebar-popups.js).
+// The DMs group lists every human, collapsed to a name's row but for the
+// page's own place (Steve, 2026-11-20: "Show all the users. Scrolling is
+// fine. We have infinite real estate in the left sidebar. We have
+// collapsing to help bring things above the fold.").
 //
 // Presence, chat-client's: a DM with another human (data-person) has a dot
 // before its name, a hollow ring while they are away and solid green while
@@ -281,8 +280,7 @@ window.Sidebar = (function () {
   var dots = {};
   var forms = [];
   var places = {};
-  // Each place's card, by its data-section, for the people popup and a
-  // channel card's members.
+  // Each place's card, by its data-section, for a channel card's members.
   var cards = {};
   function cardOf(section) { return cards[section]; }
   // The page's own place's card, opened on its new-topic form: the n key's.
@@ -331,31 +329,6 @@ window.Sidebar = (function () {
     name.title = 'About ' + label;
     hoverUnderline(name);
     onPress(name, function () { card.open('about', name); });
-  });
-
-  // The DMs that wait (app/DmShortlist.roc): kept out of sight, and the
-  // row before them, "N more people…", a place's name's indent in from the
-  // group, muted, opens the people popup that lists them. It has no
-  // triangle, since it never opens in place, and it collapses with its
-  // group.
-  sidebar.querySelectorAll('.sidebar-more').forEach(function (more) {
-    var row = more.querySelector('.sidebar-more-name');
-    if (!row) throw new Error('sidebar.js: a .sidebar-more has no .sidebar-more-name');
-    var people = [];
-    more.querySelectorAll('.sidebar-place').forEach(function (place) {
-      var section = place.getAttribute('data-section');
-      people.push({ label: place.querySelector('.sidebar-place-name').textContent, place: place, card: cards[section] });
-      place.style.display = 'none';
-    });
-    row.setAttribute('role', 'button');
-    row.setAttribute('tabindex', '0');
-    Object.assign(row.style, {
-      margin: '0', minHeight: '26px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none',
-      padding: '0 ' + RIGHT + 'px 0 ' + (INSET + STEP + TRIANGLE + GAP) + 'px',
-      color: 'var(--cc-muted-fg)', fontSize: '12px',
-    });
-    hoverUnderline(row);
-    onPress(row, SidebarPopups.peoplePopup(people, row).open);
   });
 
   // The drawer, chat-client's: the sidebar fixed at the window's left edge,
@@ -410,7 +383,6 @@ window.Sidebar = (function () {
     sidebar.querySelectorAll('.sidebar-topics a').forEach(padTopic);
     styleAll('.sidebar-place-name', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-section-name', { padding: narrow ? '6px 0' : '0' });
-    styleAll('.sidebar-more-name', { minHeight: narrow ? '38px' : '26px' });
     styleAll('[aria-expanded]', { padding: narrow ? '6px 0' : '0' });
     styleAll('.sidebar-new-topic', { padding: narrow ? '8px 12px' : '2px 6px' });
     forms.forEach(function (form) {

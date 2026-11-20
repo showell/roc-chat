@@ -29,10 +29,6 @@
 // typed. A popup is roomy, so its action is in it, and no popup opens
 // another.
 //
-// The people popup lists the DMs the sidebar keeps out of sight, behind
-// the DMs group's "more" row, with a filter field; choosing one shows their
-// card in the same popup.
-//
 // A channel's card lists its members too, under its topics (Steve,
 // 2026-11-20: "Showing membership is absolutely useful. Participation is
 // even better."), as the server orders them (app/ChannelRoster.roc): those
@@ -41,8 +37,8 @@
 // agent a quiet "agent". The topics come first, since opening one is what
 // the card is mostly for, and the members under them. A human's name is a
 // link that shows their card, the viewer's DM with them, in the same popup,
-// with a way back to the channel ("← #general"), as the people popup does,
-// since no popup opens another.
+// with a way back to the channel ("← #general"), since no popup opens
+// another.
 //
 // SidebarPopups.paintDot is the presence dot, chat-client's: a hollow ring
 // while the person is away, solid green while they are online. Its colours
@@ -294,7 +290,7 @@ window.SidebarPopups = (function () {
   // 2026-11-20). ↓ and ↑ move from the field through the topics' (and
   // members') links, Enter opens one, and the focus goes back to
   // what opened the card when it closes. `fill(body, mode)` writes the card
-  // into another popup's body, the people popup's.
+  // into another popup's body, a channel card's, for a member.
   function placePopup(place, who, list, topic, members, cardOf) {
     function open(mode, opener) {
       var popup = frame('place-popup', mode === 'new' ? 'New topic in ' + who : '', opener);
@@ -381,95 +377,5 @@ window.SidebarPopups = (function () {
     return { open: open, fill: fill, focusField: focusField };
   }
 
-  // The people popup, opened by the DMs group's "more" row (`opener`): the
-  // DMs the sidebar keeps out of sight (app/DmShortlist.roc), `people`, each
-  // `{ label, place, card }`, in the sidebar's order. A filter field at its
-  // top, focused, keeps those whose name holds what is typed, in any case;
-  // Enter with one left opens it. Choosing a person shows their card in this
-  // same popup, with a way back to the list, since no popup opens another.
-  // It is a popup and not a list in the sidebar because every human of the
-  // chat is a DM, so the list grows with the chat, and a field in the
-  // sidebar itself is clutter.
-  function peoplePopup(people, opener) {
-    function open() {
-      var popup = frame('people-popup', 'People', opener);
-      var filter = document.createElement('input');
-      filter.type = 'search';
-      filter.placeholder = 'Filter by name';
-      filter.setAttribute('aria-label', 'Filter people by name');
-      Object.assign(filter.style, {
-        boxSizing: 'border-box', width: '100%', fontFamily: 'inherit', fontSize: '14px', padding: '6px 8px',
-        background: 'var(--cc-bg)', color: 'var(--cc-fg)', border: '1px solid var(--cc-input-border)', borderRadius: '6px',
-      });
-      var rows = document.createElement('div');
-      Object.assign(rows.style, { margin: '8px 0 0', maxHeight: '50vh', overflowY: 'auto' });
-      function matching() {
-        var typed = filter.value.trim().toLowerCase();
-        return people.filter(function (person) { return person.label.toLowerCase().indexOf(typed) !== -1; });
-      }
-      function showCard(person) {
-        popup.body.textContent = '';
-        var back = document.createElement('button');
-        back.type = 'button';
-        back.textContent = '← All people';
-        back.className = 'popup-secondary';
-        back.style.marginBottom = '14px';
-        back.addEventListener('click', showList);
-        popup.body.appendChild(back);
-        person.card.fill(popup.body, 'about');
-        person.card.focusField();
-      }
-      function listRows() {
-        rows.textContent = '';
-        var shown = matching();
-        if (shown.length === 0) {
-          var none = cardLine('No one matches.');
-          none.style.color = 'var(--cc-muted-fg)';
-          rows.appendChild(none);
-        }
-        shown.forEach(function (person) {
-          var row = document.createElement('div');
-          row.setAttribute('role', 'button');
-          row.setAttribute('tabindex', '0');
-          Object.assign(row.style, {
-            display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '6px',
-            fontSize: '14px', cursor: 'pointer', overflowWrap: 'anywhere',
-          });
-          var presence = person.place.getAttribute('data-presence');
-          if (presence) {
-            var dot = document.createElement('span');
-            paintDot(dot, presence === 'online');
-            row.appendChild(dot);
-          }
-          row.appendChild(document.createTextNode(person.label));
-          row.addEventListener('mouseenter', function () { row.style.background = 'var(--cc-accent-soft-bg)'; });
-          row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
-          row.addEventListener('click', function () { showCard(person); });
-          row.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showCard(person); }
-          });
-          rows.appendChild(row);
-        });
-      }
-      function showList() {
-        popup.body.textContent = '';
-        popup.body.appendChild(filter);
-        popup.body.appendChild(rows);
-        listRows();
-        filter.focus();
-      }
-      filter.addEventListener('input', listRows);
-      filter.addEventListener('keydown', function (e) {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        var shown = matching();
-        if (shown.length === 1) showCard(shown[0]);
-      });
-      popup.show();
-      showList();
-    }
-    return { open: open };
-  }
-
-  return { isOpen: isOpen, paintDot: paintDot, topicForm: topicForm, placePopup: placePopup, peoplePopup: peoplePopup };
+  return { isOpen: isOpen, paintDot: paintDot, topicForm: topicForm, placePopup: placePopup };
 })();
