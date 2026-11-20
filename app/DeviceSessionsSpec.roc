@@ -150,6 +150,8 @@ any_session_routes = [
 	("GET", "/chat/dm/1_1/plans"),
 	("POST", "/chat/dm/1_1/plans"),
 	("POST", "/chat/dm/1_1/plans/react"),
+	("GET", "/chat/msg/plans_1"),
+	("GET", "/chat/msg/general.plans_1"),
 	("GET", "/invites"),
 	("GET", "/agents"),
 	("GET", "/devices"),

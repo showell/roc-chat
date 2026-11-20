@@ -8,6 +8,7 @@
 ##     GET  /chat/recent/stream                Recent's live stream
 ##     GET  /chat/search/words                 search's words: `?prefix=`
 ##     GET  /chat/search/messages              search's messages: `?word=`
+##     GET  /chat/msg/<id>                     a link to a message (`MessageLink`)
 ##     POST /chat/channel/<channel>            a new topic: `topic=`
 ##     POST /chat/dm/<pair>
 ##     GET  /chat/channel/<channel>/<topic>    the conversation's page
@@ -86,6 +87,7 @@ import ChannelName
 import ConversationKey
 import Directory
 import Favicon
+import MessageLink
 import PageKit
 import PeoplePaths
 import Place
@@ -133,6 +135,8 @@ Route :: [].{
 		ShowRecent,
 		OpenRecentStream,
 		SearchEveryTopic([Words, Messages]),
+		FollowTopicLink(MessageLink),
+		FollowConversationLink({ key : ConversationKey, link : MessageLink }),
 		StartTopic(Place),
 		ShowConversation(ConversationKey),
 		AppendToConversation(ConversationKey),
@@ -278,11 +282,45 @@ browse_path_choice = |{ path, method, directory }|
 			Post | Other => MethodNotAllowed(GetOnly)
 		}
 	} else {
-		match ConversationKey.place_from_url_path({ path, directory }) {
-			Ok(place) => place_choice({ place, method })
-			Err(NotAConversationPath) => NotFound
-			Err(BadName) | Err(NoSuchChannel) | Err(NoSuchHuman) => NotFound
+		match message_link_choice({ path, method, directory }) {
+			Ok(chosen) => chosen
+			Err(NotAMessageLinkPath) =>
+				match ConversationKey.place_from_url_path({ path, directory }) {
+					Ok(place) => place_choice({ place, method })
+					Err(NotAConversationPath) => NotFound
+					Err(BadName) | Err(NoSuchChannel) | Err(NoSuchHuman) => NotFound
+				}
 		}
+	}
+
+## The route for `method` and a link to a message, `/chat/msg/<id>`: a
+## channel's link is to its conversation, found in `directory`; unless the
+## path is no link's (`NotAMessageLinkPath`).
+message_link_choice : {
+	path : UnvalidatedString,
+	method : [Get, Post, Other],
+	directory : Directory,
+} -> Try(Route.Choice, [NotAMessageLinkPath])
+message_link_choice = |{ path, method, directory }|
+	match path.url_path_parts() {
+		Ok([chat, msg, text]) if chat.is_exactly("chat") and msg.is_exactly("msg") =>
+			match (text.message_link(), method) {
+				(Err(NotAMessageLink), _) => Ok(NotFound)
+				(Ok(_), Post) | (Ok(_), Other) => Ok(MethodNotAllowed(GetOnly))
+				(Ok(link), Get) =>
+					match link.which() {
+						InTopic(_) => Ok(SignedInOnly(FollowTopicLink(link)))
+						InChannel({ channel, topic, id: _ }) =>
+							match directory.channels().channel(channel) {
+								Ok(found) => {
+									key = ConversationKey.of({ place: Place.channel(found), topic })
+									Ok(SignedInOnly(FollowConversationLink({ key, link })))
+								}
+								Err(NoSuchChannel) => Ok(NotFound)
+							}
+					}
+			}
+		_ => Err(NotAMessageLinkPath)
 	}
 
 ## The route for `method` and a place's own path.

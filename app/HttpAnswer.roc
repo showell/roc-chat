@@ -33,6 +33,16 @@ HttpAnswer :: [].{
 			body: [],
 		})
 
+	## A 302 Found, to `url_path`: where a link to a message was looked up
+	## and found, as Gopher Chat's `/chat/msg/<id>` answered (`MessageLinkRoute`).
+	found : Str -> Http.Response
+	found = |url_path|
+		whole_response({
+			status: 302,
+			headers: [{ name: "location".to_utf8(), value: url_path.to_utf8() }],
+			body: [],
+		})
+
 	## A script, `bytes` (the app's own: `Script`), as UTF-8
 	## JavaScript, which `nosniff` requires of a script a page runs.
 	script : List(U8) -> Http.Response

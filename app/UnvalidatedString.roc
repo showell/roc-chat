@@ -23,6 +23,7 @@ import GitHubState
 import Html
 import KeyScope
 import Message
+import MessageLink
 import Name
 import Password
 import Reactions
@@ -73,6 +74,11 @@ UnvalidatedString :: Str.{
 	## checked by `Message.Id.from_digits`.
 	message_id : UnvalidatedString -> Try(Message.Id, [NotAMessageId])
 	message_id = |UnvalidatedString.(text)| Message.Id.from_digits(text.to_utf8())
+
+	## The link to a message it spells, the part of a `/chat/msg/<id>` path
+	## after `MessageLink.path_prefix`, checked by `MessageLink.from_str`.
+	message_link : UnvalidatedString -> Try(MessageLink, [NotAMessageLink])
+	message_link = |UnvalidatedString.(text)| MessageLink.from_str(text)
 
 	## The emoji it is, as a reaction's form carries it, checked by
 	## `Reactions.Emoji.from_str`.

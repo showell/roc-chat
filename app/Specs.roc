@@ -30,6 +30,7 @@ import GitHubSignInSpec
 import GitHubTripSpec
 import HumanInvitesSpec
 import LastConversationSpec
+import MessageLinkSpec
 import MessageNoticeSpec
 import PageSpec
 import PlaceSpec

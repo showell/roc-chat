@@ -8,6 +8,7 @@ import DeviceCodePage
 import FirstStart
 import Html
 import HttpAnswer
+import MessageLink
 import PageKit
 import Route
 import SignInRoute
@@ -26,6 +27,9 @@ AnonymousRefusal :: [].{
 			ShowBrowse => SignInRoute.login_redirect(site_path_of(ConversationKey.browse_path))
 			ShowRecent => SignInRoute.login_redirect(site_path_of(PageKit.recent_path))
 			OpenRecentStream | SearchEveryTopic(_) => unauthorized_refusal
+			FollowTopicLink(link) => SignInRoute.login_redirect(site_path_of(link.url_path()))
+			FollowConversationLink({ key: _, link }) =>
+				SignInRoute.login_redirect(site_path_of(link.url_path()))
 			StartTopic(_) => unauthorized_refusal
 			ShowConversation(key) => SignInRoute.login_redirect(site_path_of(key.url_path(Page)))
 			ShowAgents => SignInRoute.login_redirect(site_path_of("/agents"))
@@ -90,6 +94,11 @@ expect {
 	agents = AnonymousRefusal.answer(ShowAgents)
 	browse = AnonymousRefusal.answer(ShowBrowse)
 	devices = AnonymousRefusal.answer(ShowDeviceCode)
+	link = MessageLink.from_str("general.plans_1") ?? crash "AnonymousRefusal's tests: a link"
+	by_topic = AnonymousRefusal.answer(
+		FollowTopicLink(MessageLink.from_str("plans_1") ?? crash "AnonymousRefusal's tests: a link"),
+	)
+	in_conversation = AnonymousRefusal.answer(FollowConversationLink({ key, link }))
 	browse.status == 303
 		and browse.headers == [{ name: "location".to_utf8(), value: "/login?next=/chat".to_utf8() }]
 		and shown.status == 303
@@ -102,6 +111,12 @@ expect {
 		]
 		and devices.headers == [
 			{ name: "location".to_utf8(), value: "/login?next=/devices".to_utf8() },
+		]
+		and by_topic.headers == [
+			{ name: "location".to_utf8(), value: "/login?next=/chat/msg/plans_1".to_utf8() },
+		]
+		and in_conversation.headers == [
+			{ name: "location".to_utf8(), value: "/login?next=/chat/msg/general.plans_1".to_utf8() },
 		]
 		and [
 			StartTopic(key.place()),

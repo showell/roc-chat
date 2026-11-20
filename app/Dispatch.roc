@@ -27,6 +27,8 @@ import GitHubRoute
 import GitHubSignUpRoute
 import HttpAnswer
 import HumanInvitesRoute
+import MessageLink
+import MessageLinkRoute
 import PageKit
 import Place
 import PresenceNotices
@@ -87,9 +89,11 @@ serve_chosen_route! = |{ choice, request, directory, actor }|
 	}
 
 ## What a route asks of `Access` before it is answered: to read or post at
-## a place, or nothing.
+## a place, to read wherever the reader may (a credential that reads), or
+## nothing.
 access_asked : Route.SignedInChoice -> [
 	Asks({ place : Place, act : Access.Act }),
+	AsksAnyPlace(Access.Act),
 	AsksNoConversation,
 ]
 access_asked = |asked|
@@ -104,6 +108,8 @@ access_asked = |asked|
 		UploadToConversation(key) => Asks({ place: key.place(), act: Post })
 		ReactInConversation(key) => Asks({ place: key.place(), act: Post })
 		StartTopic(place) => Asks({ place, act: Post })
+		FollowConversationLink(followed) => Asks({ place: followed.key.place(), act: Read })
+		FollowTopicLink(_) => AsksAnyPlace(Read)
 		StartGitHubLink => AsksNoConversation
 		ShowBrowse => AsksNoConversation
 		ShowRecent => AsksNoConversation
@@ -251,6 +257,7 @@ serve_signed_in_route! = |{ asked, request, directory, acting }| {
 	admitted =
 		match access_asked(asked) {
 			AsksNoConversation => Ok({})
+			AsksAnyPlace(act) => Access.check_credential({ acting, act }).map_err(|ScopeOff| ScopeOff)
 			Asks({ place, act }) =>
 				Access.check({ acting, place, directory, act })
 		}
@@ -290,6 +297,8 @@ answer_route! = |{ asked, request, directory, acting }|
 		ShowRecent => RecentRoute.show!({ acting, directory })
 		OpenRecentStream => RecentRoute.open_stream(acting)
 		SearchEveryTopic(asked_of) => SearchRoute.serve!({ asked_of, acting, directory, request })
+		FollowTopicLink(link) => MessageLinkRoute.follow_by_topic!({ link, acting, directory })
+		FollowConversationLink(followed) => MessageLinkRoute.follow_in_conversation!(followed)
 		StartTopic(place) =>
 			BrowseRoute.start_topic!({ acting, directory, place, body: request.body })
 		ShowConversation(key) =>
@@ -414,7 +423,8 @@ make_message_post! = |{ key, request, directory, acting }| {
 
 # ── tests
 # Each route asks what it does of `Access`: every conversation's GET reads,
-# every write posts, and nothing else asks.
+# a channel's link reads its conversation, a topic's link asks for a
+# credential that reads, every write posts, and nothing else asks.
 expect {
 	key = ConversationKey.from_url_path({
 		path: UnvalidatedString.from_utf8("/chat/dm/1_1/plans".to_utf8())
@@ -423,13 +433,16 @@ expect {
 	}).map_ok(|found| found.key) ?? crash "Dispatch's tests: Steve's own DM is a place"
 	image =
 		UploadedImage.from_name("${"0a".repeat(16)}.png") ?? crash "Dispatch's tests: an image's name"
+	link = MessageLink.from_str("plans_1") ?? crash "Dispatch's tests: a link"
 	[
 		ShowConversation(key),
 		OpenConversationStream(key),
 		ServeRawTranscript(key),
 		ServeDownload(key),
 		ServeUploadedImage({ key, image }),
+		FollowConversationLink({ key, link }),
 	].all(|choice| access_asked(choice) == Asks({ place: key.place(), act: Read }))
+		and access_asked(FollowTopicLink(link)) == AsksAnyPlace(Read)
 		and [
 			AppendToConversation(key),
 			SendToConversation(key),

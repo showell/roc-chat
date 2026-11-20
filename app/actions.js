@@ -44,8 +44,10 @@
 // page, as that message's header writes it, the message is brought into
 // view and selected (Feed.reveal). A long reference,
 // MSG_<channel>.<topic>_<n>, is this page's when its channel is the page's.
-// Any other names a message on another page, which Gopher's server found
-// (/chat/msg/<id>) and this one doesn't yet, so a notice says so.
+// One of this page's topic that names no message here says so. Any other
+// names a message on another page, and opens in a new tab at
+// /chat/msg/<id>, the id as written, as chat-client's did: the server finds
+// where it is (app/MessageLinkRoute.roc), or says it can't.
 //
 // The `t` key opens the conversation's raw transcript (the pane's data-raw)
 // in a new tab, as chat-client's did (js/chat.js's viewRaw), so a reader
@@ -301,9 +303,13 @@
   }
 
   // The page's channel, on a channel's page (/chat/channel/<name>/<topic>);
-  // null on a DM's.
+  // null on a DM's. And its topic, on either.
   var channelAt = /^\/chat\/channel\/([^\/]+)\//.exec(location.pathname);
   var channel = channelAt ? decodeURIComponent(channelAt[1]) : null;
+  var topicAt = /^\/chat\/(?:channel|dm)\/[^\/]+\/([^\/]+)$/.exec(location.pathname);
+  var topic = topicAt ? decodeURIComponent(topicAt[1]) : null;
+  // Where the server follows a link to a message on another page.
+  var MESSAGE_LINK_PATH = '/chat/msg/';
   // The reference `label` as this page's headers write it: a long one's
   // channel dropped when it is the page's.
   function shortReference(label) {
@@ -321,7 +327,12 @@
         return;
       }
     }
-    showFailure(label + ' is not in this topic, and a link to another topic is not followed yet.');
+    var short = wanted && /^MSG_([A-Za-z0-9-]+)_[0-9]+$/.exec(wanted);
+    if (short && short[1] === topic) {
+      showFailure(label + ' is not in this topic.');
+      return;
+    }
+    window.open(MESSAGE_LINK_PATH + encodeURIComponent(label.replace(/^MSG_/, '')), '_blank');
   }
 
   messages.addEventListener('click', function (e) {

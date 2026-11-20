@@ -3,6 +3,7 @@
 import ChannelName
 import ConversationKey
 import Directory
+import MessageLink
 import Route
 import Sample
 
@@ -35,6 +36,9 @@ chosen_route = |method, path|
 		SignedInOnly(OpenRecentStream) => "recent's stream"
 		SignedInOnly(SearchEveryTopic(Words)) => "search's words"
 		SignedInOnly(SearchEveryTopic(Messages)) => "search's messages"
+		SignedInOnly(FollowTopicLink(link)) => "follow ${link.url_path()} by its topic"
+		SignedInOnly(FollowConversationLink({ key, link })) =>
+			"follow ${link.url_path()} in ${key.url_path(Page)}"
 		SignedInOnly(StartTopic(place)) => "start a topic in ${ConversationKey.place_url_path(place)}"
 		SignedInOnly(ShowConversation(key)) => "show ${key.url_path(Page)}"
 		SignedInOnly(AppendToConversation(key)) => "append ${key.url_path(Page)}"
@@ -136,6 +140,28 @@ expect
 	["/chat/search", "/chat/search/", "/chat/search/word", "/chat/search/words/", "/chat/Search/messages"].all(
 		|path| chosen_route("GET", path.to_utf8()) == "not found",
 	)
+# A link to a message: GET alone. A topic's is followed by its topic; a
+# channel's, to a channel that exists, in its conversation; any other is not
+# found.
+expect chosen_route("GET", "/chat/msg/plans_2".to_utf8()) == "follow /chat/msg/plans_2 by its topic"
+expect
+	chosen_route("GET", "${MessageLink.path_prefix}plans-room.ideas_1".to_utf8())
+		== "follow /chat/msg/plans-room.ideas_1 in /chat/channel/plans-room/ideas"
+expect
+	["POST", "PUT"].all(
+		|method| chosen_route(method, "/chat/msg/plans_2".to_utf8()) == "not allowed: GET",
+	)
+expect
+	[
+		"/chat/msg",
+		"/chat/msg/",
+		"/chat/msg/plans",
+		"/chat/msg/plans_0",
+		"/chat/msg/no-such-room.plans_1",
+		"/chat/msg/1_2.plans_1",
+		"/chat/msg/plans_1/x",
+		"/chat/Msg/plans_1",
+	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
 # A new topic: POST alone, to a place that exists.
 expect chosen_route("POST", "/chat/dm/1_2".to_utf8()) == "start a topic in /chat/dm/1_2"
 expect chosen_route(
