@@ -2,11 +2,15 @@
 ## Recent shows under a conversation's name, from the message's markdown,
 ## as Gopher Chat's Recent wrote it (recent_feed.zig's `recentExcerpt`).
 ## Each quote-reply's fence (a fence whose language is `quote`) becomes
-## `[quoted text]`, so a reply's new words survive the cut; each image, an
+## `[quoted text]`, so a reply's new words survive the cut; any other
+## fence loses its opening and closing lines, its code kept; each other line
+## loses its markdown marks (`MarkdownMarks`), so the excerpt reads as text;
+## each image, an
 ## HTML `<img ...>` or markdown's `![...](...)`, becomes `[image]`; each run
 ## of white space becomes one space, and the ends are trimmed; and the text
 ## is cut at `most_code_points`, with `…` after it.
 import Ascii
+import MarkdownMarks
 
 RecentExcerpt :: [].{
 
@@ -89,8 +93,9 @@ count_leading = |{ bytes, byte, from }|
 	}
 
 ## `lines` with each quote fence, to its closing line or the end, as the
-## line `[quoted text]`; any other fence is kept whole, so its lines are
-## never read as openings.
+## line `[quoted text]`; any other fence as its code alone, its lines never
+## read as openings or as prose; and every other line as prose
+## (`MarkdownMarks.prose_line`).
 collapse_quotes : List(Str) -> Str
 collapse_quotes = |lines| {
 	var $kept = []
@@ -103,20 +108,17 @@ collapse_quotes = |lines| {
 						$fence = InFence(opening)
 						if opening.language == "quote" {
 							$kept = $kept.append("[quoted text]")
-						} else {
-							$kept = $kept.append(line)
 						}
 					}
 					Err(NotAFence) => {
-						$kept = $kept.append(line)
+						$kept = $kept.append(MarkdownMarks.prose_line(line))
 					}
 				}
 			InFence(opening) => {
-				if opening.language != "quote" {
-					$kept = $kept.append(line)
-				}
 				if is_fence_closing(line, opening) {
 					$fence = NoFence
+				} else if opening.language != "quote" {
+					$kept = $kept.append(line)
 				}
 			}
 		}
@@ -281,8 +283,14 @@ cut_at_most = |text, most| {
 expect
 	RecentExcerpt.markdown_excerpt("In MSG_test_2 I said:\n~~~~ quote\nIn MSG_test_1 I said:\n~~~ quote\nhi\n~~~\n\nhello\n~~~~\n\nyo")
 		== "In MSG_test_2 I said: [quoted text] yo"
-# A code fence is kept, its lines joined by single spaces.
-expect RecentExcerpt.markdown_excerpt("look:\n```\ncode here\n```\ndone") == "look: ``` code here ``` done"
+# A code fence is its code, its marks gone and its lines joined by single
+# spaces; a code line is never read as prose.
+expect RecentExcerpt.markdown_excerpt("look:\n```\ncode here\n```\ndone") == "look: code here done"
+expect
+	RecentExcerpt.markdown_excerpt("through `Markdown`:\n```roc\nMarkdown.render(*md*)\n```")
+		== "through Markdown: Markdown.render(*md*)"
+# Prose loses its marks: a quote's `>`, emphasis.
+expect RecentExcerpt.markdown_excerpt("> the sidebar\n\n**yes**") == "the sidebar yes"
 # An unclosed quote runs to the end.
 expect RecentExcerpt.markdown_excerpt("a\n``` quote\nb\nc") == "a [quoted text]"
 # Images, HTML and markdown, as `[image]`; `<imgx` is no image.
