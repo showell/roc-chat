@@ -163,8 +163,9 @@ SignInPage :: [].{
 
 	## Why the name form offers no name of GitHub's: GitHub's login is none
 	## this chat shows (`NoLogin`), is no name here (`LoginNotAName`), or is
-	## taken (`LoginTaken`), or the chat is full (`ChatFull`).
-	NoOffer : [NoLogin, LoginNotAName, LoginTaken, ChatFull]
+	## taken (`LoginTaken`), is reserved or looks like a name here
+	## (`LoginTooClose`), or the chat is full (`ChatFull`).
+	NoOffer : [NoLogin, LoginNotAName, LoginTaken, LoginTooClose, ChatFull]
 
 	## The page that asks a human GitHub vouched for, who has no account, to
 	## choose a name: a form posting it to `/login/github/name`, filled in
@@ -248,6 +249,7 @@ no_offer_words = |why|
 		NoLogin => "GitHub sent no login this chat can show, so no name is filled in."
 		LoginNotAName => "Your GitHub login is not offered: a name here is letters and single spaces, at most ${Name.longest.to_str()}."
 		LoginTaken => "Your GitHub login is not offered: someone here has that name."
+		LoginTooClose => "Your GitHub login is not offered: it is reserved, or too close to a name the chat already has."
 		ChatFull => "Your GitHub login is not offered: the chat holds as many as it can."
 	}
 

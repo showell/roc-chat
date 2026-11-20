@@ -226,7 +226,7 @@ expect
 
 ## Apoorva renamed `text` in `directory`: her id and her name after, and
 ## then whether her old name, `Apoorva`, is free to a new human; or why not.
-apoorva_renamed : Directory, Str -> Try((Str, Str, Str), [NameTaken, NoSuchHuman])
+apoorva_renamed : Directory, Str -> Try((Str, Str, Str), [NameTaken, NameReserved, NameTooClose, NoSuchHuman])
 apoorva_renamed = |directory, text| {
 	done = directory.rename_human({ human: Sample.human("Apoorva"), name: Sample.name(text) })?
 	freed =

@@ -13,6 +13,7 @@ import ChannelName
 import Channels
 import Dm
 import Name
+import NameSkeleton
 import Place
 import SignUpLimits
 import UserId
@@ -64,15 +65,17 @@ Directory :: {
 	## them in the default channel (`Channels.add_new_human`), so the chat has
 	## a page for them. This is how a sign-up or an invite makes a human, so
 	## a chat at its most accounts (`SignUpLimits.check_room`) refuses first,
-	## with `SignUpsPaused`.
+	## with `SignUpsPaused`; then the name is held to a new human's rules
+	## (`check_new_human_name`).
 	add_new_human : Directory,
 	Name -> Try(
 		Directory.NewHuman,
-		[SignUpsPaused, Full, NameTaken, NoDefaultChannel],
+		[SignUpsPaused, Full, NameTaken, NameReserved, NameTooClose, NoDefaultChannel],
 	)
 	add_new_human = |directory, name| {
 		_ = SignUpLimits.check_room(directory.users()) ? |ChatFull| SignUpsPaused
 		addition = directory.add_human(name)?
+		directory.check_new_human_name({ name, leaving: NoOne })?
 		human =
 			addition.user.as_human() ?? crash "Directory.add_new_human: add_human makes a human"
 		Directory.(with_human) = addition.directory
@@ -100,20 +103,95 @@ Directory :: {
 	## The directory with the human `human` named `name` instead, and that
 	## human as renamed; unless another user or a channel has the name, in
 	## any case (`NameTaken`), or `human` is not among its users
-	## (`NoSuchHuman`). The human's own name is theirs, so they may keep it
-	## in another case, and the name they leave is free again.
+	## (`NoSuchHuman`), or the name breaks a new human's other rules
+	## (`check_new_human_name`). The human's own name is theirs, so they may
+	## keep it in another case, or one like it, and the name they leave is
+	## free again.
 	rename_human : Directory,
 	{ human : Users.Human, name : Name } -> Try(
 		{ directory : Directory, human : Users.Human },
-		[NameTaken, NoSuchHuman],
+		[NameTaken, NameReserved, NameTooClose, NoSuchHuman],
 	)
 	rename_human = |Directory.(directory), { human, name }| {
 		renamed = directory.users.rename_human({ human, name })?
+		Directory.(directory).check_new_human_name({ name, leaving: Leaving(human.id()) })?
 		keys = claim_key(directory.keys.remove(human.user().name().key()), name.key())?
 		Ok({
 			directory: Directory.({ ..directory, users: renamed.users, keys }),
 			human: renamed.human,
 		})
+	}
+
+	## Whether `name` may be a new name for a human, beside every name but
+	## the one the human `leaving` holds: refused when another user or a
+	## channel has it in any case (`NameTaken`); when it looks like a
+	## reserved word (`NameSkeleton.is_reserved`, `NameReserved`); or when it
+	## looks like another user's name or a channel's (their `NameSkeleton`s
+	## are equal, `NameTooClose`). Only a name being chosen is checked: the
+	## names the directory holds already are never judged.
+	check_new_human_name : Directory,
+	{ name : Name, leaving : [NoOne, Leaving(UserId)] } -> Try(
+		{},
+		[NameTaken, NameReserved, NameTooClose],
+	)
+	check_new_human_name = |Directory.(directory), { name, leaving }| {
+		others = directory.users.to_list().drop_if(
+			|user|
+				match leaving {
+					NoOne => Bool.False
+					Leaving(id) => user.id() == id
+				},
+		)
+		channels = directory.channels.to_list()
+		key = name.key()
+		skeleton = NameSkeleton.of_name(name)
+		if others.any(|user| user.name().key() == key) or channels.any(|channel| channel.name().key() == key) {
+			Err(NameTaken)
+		} else if skeleton.is_reserved() {
+			Err(NameReserved)
+		} else if
+			others.any(|user| NameSkeleton.of_name(user.name()) == skeleton)
+			or channels.any(|channel| NameSkeleton.of_channel(channel.name()) == skeleton)
+		{
+			Err(NameTooClose)
+		} else {
+			Ok({})
+		}
+	}
+
+	## The humans whose names look like `name`: their `NameSkeleton` is its
+	## skeleton, as it is whenever their name is `name` in any case.
+	humans_alike : Directory, Name -> List(Users.Human)
+	humans_alike = |Directory.(directory), name| {
+		skeleton = NameSkeleton.of_name(name)
+		directory.users.to_list()
+			.keep_if(|user| NameSkeleton.of_name(user.name()) == skeleton)
+			.keep_oks(|user| user.as_human())
+	}
+
+	## The directory without the humans `released`, whose names are free
+	## again, and every channel that held one of them, without them, for the
+	## caller to write. Only an invited human who never joined is released
+	## (`LapsedInvitee`); the caller decides that.
+	release_humans : Directory,
+	List(Users.Human) -> {
+		directory : Directory,
+		changed : List(Channels.Channel),
+	}
+	release_humans = |Directory.(directory), released| {
+		ids = released.map(|human| human.id())
+		left = directory.channels.without_members(ids)
+		keys = released.fold(directory.keys, |held, human| held.remove(human.user().name().key()))
+		{
+			directory: Directory.(
+				{
+					users: directory.users.without(ids),
+					channels: left.channels,
+					keys,
+				},
+			),
+			changed: left.changed,
+		}
 	}
 
 	## The directory with an empty channel named `name`, created by an

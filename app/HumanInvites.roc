@@ -13,6 +13,12 @@
 ##   was never invited, is not.
 ## - A human has at most `open_most` open invites at once, counting every
 ##   invite they made that is live and unexpired.
+## - A human whose account was made by GitHub sign-up never invites
+##   (`check_inviter_origin`): sign-up is open, so an invite from them
+##   would let anyone make accounts with no GitHub behind them.
+## - A new human's name, the inviter's choice or the invitee's, is held to
+##   `Directory.check_new_human_name`: free in any case, not reserved, and
+##   not one that looks like a name the chat holds.
 ## - The new account starts in the default channel, so the invited human has
 ##   somewhere to land when they join.
 ##
@@ -27,6 +33,7 @@ import Admin
 import Agents
 import Channels
 import Directory
+import FactFile
 import HumanInvite
 import Name
 import Password
@@ -50,6 +57,9 @@ HumanInvites :: [].{
 		BadForm(Str),
 		BadName,
 		NameTaken,
+		NameReserved,
+		NameTooClose,
+		SignedUpByGitHub,
 		Full,
 		SignUpsPaused,
 		NoDefaultChannel,
@@ -63,9 +73,10 @@ HumanInvites :: [].{
 	]
 
 	## A refusal in words, with its status: a request with a key, an agent,
-	## a human at the cap, or one who may not invite this human again, a
-	## 403; no such human, a 404; a form at fault, a name that is no name or
-	## a password that is none, a 400; a name taken or chosen already, the
+	## a human at the cap, one who signed up by GitHub, or one who may not
+	## invite this human again, a 403; no such human, a 404; a form at
+	## fault, a name that is no name or a password that is none, a 400; a
+	## name taken, reserved, too close to another or chosen already, the
 	## chat full, or a browser signed in already, a 409; no default channel,
 	## a 500; sign-ups paused (`SignUpLimits`), a 503; and any refusal of an
 	## invite's code one 401 that says no more.
@@ -87,6 +98,15 @@ HumanInvites :: [].{
 				said: "The name is not a name: letters and single spaces, at most 60.",
 			}
 			NameTaken => { status: 409, said: "The name is taken." }
+			NameReserved => {
+				status: 409,
+				said: "The name is reserved: it is, or looks like, a role's or the chat's own. Choose another.",
+			}
+			NameTooClose => {
+				status: 409,
+				said: "The name is too close to one the chat already has: it could be mistaken for it. Choose another.",
+			}
+			SignedUpByGitHub => { status: 403, said: HumanInvites.github_sign_up_words }
 			Full => { status: 409, said: "The chat holds as many as it can." }
 			SignUpsPaused => { status: 503, said: SignUpLimits.paused_words }
 			NoDefaultChannel => {
@@ -109,6 +129,43 @@ HumanInvites :: [].{
 				status: 409,
 				said: "Your name is chosen already, and stays as it is: join under it.",
 			}
+		}
+
+	## Why a human who signed up by GitHub can't invite, as the refusal and
+	## the invites page say it.
+	github_sign_up_words : Str
+	github_sign_up_words = "Accounts made by signing up with GitHub can't invite people. Anyone with GitHub can sign up on their own; an invite is for someone without GitHub, so it comes from someone the chat let in."
+
+	## How a human's account was made, as far as inviting goes: by GitHub
+	## sign-up (`GitHubSignUp`), or any other way (`OtherOrigin`: an invite,
+	## the first start, or by hand).
+	Origin : [GitHubSignUp, OtherOrigin]
+
+	## The origin a human's `sign-up` file says: none, `OtherOrigin`; the word
+	## `github`, `GitHubSignUp`; anything else is no origin.
+	origin_from_file : [NoFile, File(List(U8))] -> Try(HumanInvites.Origin, [NotAnOrigin])
+	origin_from_file = |file|
+		match file {
+			NoFile => Ok(OtherOrigin)
+			File(bytes) =>
+				if FactFile.word_from_file(bytes) == HumanInvites.github_sign_up_word {
+					Ok(GitHubSignUp)
+				} else {
+					Err(NotAnOrigin)
+				}
+		}
+
+	## What a GitHub sign-up's `sign-up` file holds.
+	github_sign_up_word : List(U8)
+	github_sign_up_word = "github".to_utf8()
+
+	## Whether a human whose account was made as `origin` may invite anyone,
+	## or invite anyone again: never one made by GitHub sign-up.
+	check_inviter_origin : HumanInvites.Origin -> Try({}, [SignedUpByGitHub])
+	check_inviter_origin = |origin|
+		match origin {
+			GitHubSignUp => Err(SignedUpByGitHub)
+			OtherOrigin => Ok({})
 		}
 
 	## The most open invites one human may have at once.
@@ -161,6 +218,8 @@ HumanInvites :: [].{
 			BadForm(Str),
 			BadName,
 			NameTaken,
+			NameReserved,
+			NameTooClose,
 			Full,
 			SignUpsPaused,
 			NoDefaultChannel,
@@ -302,7 +361,8 @@ HumanInvites :: [].{
 	## `Kept`. The code is judged first (`CodeRefused`), so a name is judged
 	## only for its invitee. A human who redeemed an invite before chose
 	## their name then, and keeps it (`NameChosen`); a new name another
-	## user or a channel has, in any case, is refused (`NameTaken`).
+	## user or a channel has, in any case, is refused (`NameTaken`), as is
+	## one reserved or too close to another (`Directory.rename_human`).
 	join : Directory,
 	{ code : HumanInvites.JoinCode, name : Name } -> Try(
 		{
@@ -310,7 +370,7 @@ HumanInvites :: [].{
 			admission : HumanInvite.Admission,
 			name : [Kept, Changed],
 		},
-		[CodeRefused, NameChosen, NameTaken],
+		[CodeRefused, NameChosen, NameTaken, NameReserved, NameTooClose],
 	)
 	join = |directory, { code, name }| {
 		found = HumanInvites.find_invitee(directory, code)?
@@ -328,6 +388,8 @@ HumanInvites :: [].{
 				match directory.rename_human({ human: found.human, name }) {
 					Ok(done) => Ok(done.human)
 					Err(NameTaken) => Err(NameTaken)
+					Err(NameReserved) => Err(NameReserved)
+					Err(NameTooClose) => Err(NameTooClose)
 					Err(NoSuchHuman) =>
 						crash "HumanInvites.join: the invitee is a human of the directory, found in it by id"
 				}?

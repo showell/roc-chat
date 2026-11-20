@@ -105,7 +105,8 @@ GitHubTrip :: [].{
 	}
 
 	## The name to offer the human `resumed` signs up: their GitHub login,
-	## when it is a name and free in `directory`; else why not.
+	## when it is a name, free in `directory` and a new human's to take
+	## (`Directory.check_new_human_name`); else why not.
 	name_offer : GitHubSignIn.SignUpResumed,
 	Directory -> [
 		Suggested(Name),
@@ -118,10 +119,11 @@ GitHubTrip :: [].{
 				match Name.from_str(login.to_str()) {
 					Err(_) => NotSuggested(LoginNotAName)
 					Ok(name) =>
-						match directory.add_human(name) {
-							Ok(_) => Suggested(name)
-							Err(NameTaken) => NotSuggested(LoginTaken)
-							Err(Full) => NotSuggested(ChatFull)
+						match (directory.add_human(name), directory.check_new_human_name({ name, leaving: NoOne })) {
+							(Err(Full), _) => NotSuggested(ChatFull)
+							(Err(NameTaken), _) | (_, Err(NameTaken)) => NotSuggested(LoginTaken)
+							(_, Err(NameReserved)) | (_, Err(NameTooClose)) => NotSuggested(LoginTooClose)
+							(Ok(_), Ok({})) => Suggested(name)
 						}
 				}
 		}
@@ -187,7 +189,16 @@ is_unreserved = |byte|
 ## again.
 account_refusal : {
 	name : Name,
-	why : [AccountExists, DuplicateAccount, SignUpsPaused, NameTaken, Full, NoDefaultChannel],
+	why : [
+		AccountExists,
+		DuplicateAccount,
+		SignUpsPaused,
+		NameTaken,
+		NameReserved,
+		NameTooClose,
+		Full,
+		NoDefaultChannel,
+	],
 } -> [
 	Refused(GitHubSignIn.Refusal),
 	NameRefused({ name : SignInPage.NameField, why : HumanInvites.Refusal }),
@@ -198,6 +209,8 @@ account_refusal = |{ name, why }|
 		DuplicateAccount => Refused(DuplicateAccount)
 		SignUpsPaused => Refused(SignUpsPaused)
 		NameTaken => NameRefused({ name: Named(name), why: NameTaken })
+		NameReserved => NameRefused({ name: Named(name), why: NameReserved })
+		NameTooClose => NameRefused({ name: Named(name), why: NameTooClose })
 		Full => NameRefused({ name: Named(name), why: Full })
 		NoDefaultChannel => Refused(NoDefaultChannel)
 	}

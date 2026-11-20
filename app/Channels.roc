@@ -143,6 +143,33 @@ Channels :: List(Channels.Channel).{
 		}
 	}
 
+	## The channels without the members whose ids are `ids`, and each
+	## channel that held one, as it is now, for its members file to be
+	## written. No admin is asked: only `Directory.release_humans` calls it,
+	## for humans whose names are freed.
+	without_members : Channels,
+	List(UserId) -> {
+		channels : Channels,
+		changed : List(Channels.Channel),
+	}
+	without_members = |Channels.(all), ids| {
+		held = |Channels.Channel.(inner)| ids.any(|id| inner.members.contains(id))
+		emptied = all.map(
+			|one|
+				if held(one) {
+					Channels.Channel.(inner) = one
+					Channels.Channel.({ ..inner, members: ids.fold(inner.members, |members, id| members.remove(id)) })
+				} else {
+					one
+				},
+		)
+		changed_names = all.keep_if(held).map(|one| one.name())
+		{
+			channels: Channels.(emptied),
+			changed: emptied.keep_if(|one| changed_names.contains(one.name())),
+		}
+	}
+
 	## Every channel, in the order they were created.
 	to_list : Channels -> List(Channels.Channel)
 	to_list = |Channels.(all)| all

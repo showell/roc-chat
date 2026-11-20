@@ -50,38 +50,65 @@ NameAlphabet :: [].{
 			.map(|point| utf8_bytes(fold(point)))
 			.join()
 			|> decode_utf8("NameAlphabet.case_fold: a letter folds to a letter, and letters are UTF-8")
+
+	## `text` case-folded, with each accented letter written as the plain
+	## ASCII letters it is written on (`accented_letters`), so `Zoë` and
+	## `ZOE` both read `zoe`, and `ß` reads `ss`. It is ASCII, and only
+	## `NameSkeleton` compares by it: a name's key keeps its accents.
+	plain_folded : NameAlphabet.Written -> Str
+	plain_folded = |text|
+		code_points(text)
+			.map(|point| plain_bytes(fold(point)))
+			.join()
+			|> decode_utf8("NameAlphabet.plain_folded: plain letters are ASCII")
 }
 
 ## The alphabet's accented letters, folded, a row for each ASCII letter they
-## are written on. A two-byte letter is in the alphabet exactly when its fold
-## is here. `İ` folds to itself, so it sits among the small letters.
-accented_letters : List(Str)
+## are written on, with those plain letters (`plain`). A two-byte letter is
+## in the alphabet exactly when its fold is here. `İ` folds to itself, so it
+## sits among the small letters.
+accented_letters : List({ plain : Str, letters : Str })
 accented_letters = [
-	"àáâãäåāăą",
-	"æ",
-	"çćĉċč",
-	"ðďđ",
-	"èéêëēĕėęě",
-	"ĝğġģ",
-	"ĥħ",
-	"ìíîïĩīĭįİ",
-	"ĳ",
-	"ĵ",
-	"ķ",
-	"ĺļľł",
-	"ñńņňŋ",
-	"òóôõöøōŏő",
-	"œ",
-	"ŕŗř",
-	"śŝşš",
-	"ß",
-	"ţťŧ",
-	"þ",
-	"ùúûüũūŭůűų",
-	"ŵ",
-	"ýÿŷ",
-	"źżž",
+	{ plain: "a", letters: "àáâãäåāăą" },
+	{ plain: "ae", letters: "æ" },
+	{ plain: "c", letters: "çćĉċč" },
+	{ plain: "d", letters: "ðďđ" },
+	{ plain: "e", letters: "èéêëēĕėęě" },
+	{ plain: "g", letters: "ĝğġģ" },
+	{ plain: "h", letters: "ĥħ" },
+	{ plain: "i", letters: "ìíîïĩīĭįİ" },
+	{ plain: "ij", letters: "ĳ" },
+	{ plain: "j", letters: "ĵ" },
+	{ plain: "k", letters: "ķ" },
+	{ plain: "l", letters: "ĺļľł" },
+	{ plain: "n", letters: "ñńņňŋ" },
+	{ plain: "o", letters: "òóôõöøōŏő" },
+	{ plain: "oe", letters: "œ" },
+	{ plain: "r", letters: "ŕŗř" },
+	{ plain: "s", letters: "śŝşš" },
+	{ plain: "ss", letters: "ß" },
+	{ plain: "t", letters: "ţťŧ" },
+	{ plain: "th", letters: "þ" },
+	{ plain: "u", letters: "ùúûüũūŭůűų" },
+	{ plain: "w", letters: "ŵ" },
+	{ plain: "y", letters: "ýÿŷ" },
+	{ plain: "z", letters: "źżž" },
 ]
+
+## The plain ASCII letters the letter `point`, already folded, is written
+## on: an ASCII letter or a space is itself, an accented letter its row's
+## `plain`.
+plain_bytes : U32 -> List(U8)
+plain_bytes = |point|
+	if point < 0x80 {
+		[point.to_u8_wrap()]
+	} else {
+		letter = decode_utf8(utf8_bytes(point), "NameAlphabet.plain_bytes: a code point below U+0800 is UTF-8")
+		match accented_letters.find_first(|row| row.letters.contains(letter)) {
+			Ok(row) => row.plain.to_utf8()
+			Err(NotFound) => crash "NameAlphabet.plain_bytes: every folded letter of the alphabet is in a row"
+		}
+	}
 
 ## Is `point`, once folded, a letter of the alphabet?
 is_letter : U32 -> Bool
@@ -94,7 +121,7 @@ is_letter = |point| {
 			utf8_bytes(folded),
 			"NameAlphabet.is_letter: a code point below U+0800 is UTF-8",
 		)
-		accented_letters.any(|row| row.contains(letter))
+		accented_letters.any(|row| row.letters.contains(letter))
 	}
 }
 
@@ -252,6 +279,10 @@ expect NameAlphabet.written_text("Zoëı") == Err(ForbiddenCharacter)
 expect NameAlphabet.written_text("").map_ok(NameAlphabet.Written.to_str) == Ok("")
 expect NameAlphabet.written_text("Zoë Ann").map_ok(NameAlphabet.Written.to_str) == Ok("Zoë Ann")
 
+## The plain fold of `text`.
+plain_text : Str -> Str
+plain_text = |text| NameAlphabet.plain_folded(text_in_alphabet(text))
+
 ## The fold of `text`.
 folded_text : Str -> Str
 folded_text = |text| NameAlphabet.case_fold(text_in_alphabet(text))
@@ -274,7 +305,13 @@ expect
 	["azàöøþÿ", "āįĳķĺľłňŋŷźž", "ßİ", " "].all(|text| folded_text(text) == text)
 # Every letter of every row is in the alphabet, and so are the capitals that
 # fold to them, at the ends of each range.
-expect accented_letters.all(is_written)
+expect accented_letters.all(|row| is_written(row.letters) and is_written(row.plain))
+# Plain letters: each accented letter, in either case, is written as the
+# ASCII letters it is written on; ASCII's letters and spaces fold alone.
+expect plain_text("Zoë ÉLODIE") == "zoe elodie"
+expect plain_text("ÆßĲŒÞ") == "aessijoeth"
+expect plain_text("İſŵŷ") == "iswy"
+expect plain_text("Steve Howell") == "steve howell"
 expect
 	[
 		"ÀÅÇÈËÌÏÐÑÒÖØÙÜÝŸ",

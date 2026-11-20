@@ -348,7 +348,16 @@ GitHubSignIn :: [].{
 				github : GitHubId,
 				admission : GitHubSignIn.Admission,
 			},
-			[AccountExists, DuplicateAccount, SignUpsPaused, NameTaken, Full, NoDefaultChannel],
+			[
+				AccountExists,
+				DuplicateAccount,
+				SignUpsPaused,
+				NameTaken,
+				NameReserved,
+				NameTooClose,
+				Full,
+				NoDefaultChannel,
+			],
 		)
 		create_account = |GitHubSignIn.SignUpResumed.(resumed), { name, links, directory }|
 			match GitHubLinks.humans_holding({

@@ -64,6 +64,11 @@ Name :: NameAlphabet.Written.{
 	key : Name -> Name.Key
 	key = |Name.(text)| Name.Key.(NameAlphabet.case_fold(text))
 
+	## The name case-folded, its accented letters written as plain ones
+	## (`NameAlphabet.plain_folded`), for `NameSkeleton` alone.
+	plain_folded : Name -> Str
+	plain_folded = |Name.(text)| NameAlphabet.plain_folded(text)
+
 	is_eq : _
 }
 
