@@ -30,8 +30,8 @@
 ## dot, and fills it when the page's stream says they have come online.
 ## Clicking a place's name opens app/sidebar-popups.js's card about it, a
 ## channel's and a DM's alike: its name (the place's label), for a DM whether
-## its person is online, its topics as links, and a new topic. When each human joined is not drawn yet:
-## once accounts keep it, `person_attributes` adds `data-joined` (its seconds
+## its person is online, its topics as links, and a new topic. When each
+## human joined is not drawn yet: once accounts keep it, `person_attributes` adds `data-joined` (its seconds
 ## since 1970, `PageContract`'s `Joined`), and the card says it.
 import ConversationKey
 import DmShortlist
@@ -75,12 +75,16 @@ Sidebar :: [].{
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
 		drawn = |ordered| place_section({ ordered, current, people })
 		channel_places = in_order.keep_if(is_channel).map(drawn)
-		dm_split = DmShortlist.split({ dms: in_order.drop_if(is_channel), current: current.place(), now })
-		channels = group_section({ group: Channels, places: channel_places, waiting: [] })
+		dm_split = DmShortlist.split({
+			dm_places: in_order.drop_if(is_channel),
+			current: current.place(),
+			now,
+		})
+		channels = group_section({ group: Channels, places: channel_places, waiting_places: [] })
 		dms = group_section({
 			group: Dms,
-			places: dm_split.shown.map(drawn),
-			waiting: dm_split.waiting.map(drawn),
+			places: dm_split.shown_places.map(drawn),
+			waiting_places: dm_split.waiting_places.map(drawn),
 		})
 		groups =
 			match current.place().which() {
@@ -109,15 +113,15 @@ is_channel = |ordered|
 
 ## One of the sidebar's two groups: its heading, which app/sidebar.js lets
 ## collapse the whole group, its `places`, in `SidebarOrder`'s order, and
-## the places `waiting` behind its "more" row (`more_section`), when there
-## are any. A group with no places shown or waiting is left out, as nothing.
+## `waiting_places` behind its "more" row (`more_section`), when there are
+## any. A group with no places shown or waiting is left out, as nothing.
 group_section : {
 	group : [Channels, Dms],
 	places : List(TrustedHtml),
-	waiting : List(TrustedHtml),
+	waiting_places : List(TrustedHtml),
 } -> TrustedHtml
-group_section = |{ group, places, waiting }|
-	if places.is_empty() and waiting.is_empty() {
+group_section = |{ group, places, waiting_places }|
+	if places.is_empty() and waiting_places.is_empty() {
 		TrustedHtml.join([])
 	} else {
 		heading =
@@ -125,6 +129,7 @@ group_section = |{ group, places, waiting }|
 				Channels => "Channels"
 				Dms => "DMs"
 			}
+		listed = List.concat(places, more_section(waiting_places))
 		TrustedHtml.join([
 			Html.element({
 				name: Div,
@@ -142,7 +147,7 @@ group_section = |{ group, places, waiting }|
 							}),
 							PageKit.newline,
 						],
-						List.concat(places, more_section(waiting)),
+						listed,
 					),
 				),
 			}),
@@ -150,15 +155,15 @@ group_section = |{ group, places, waiting }|
 		])
 	}
 
-## The places `waiting` behind a group's "more" row, under the row's words,
+## `waiting_places`, the places behind a group's "more" row, under its words,
 ## "N more people…", which app/sidebar.js makes the row that opens them in a
 ## popup; nothing when none wait.
 more_section : List(TrustedHtml) -> List(TrustedHtml)
-more_section = |waiting|
-	if waiting.is_empty() {
+more_section = |waiting_places|
+	if waiting_places.is_empty() {
 		[]
 	} else {
-		count = waiting.len()
+		count = waiting_places.len()
 		words =
 			if count == 1 {
 				"1 more person…"
@@ -180,7 +185,7 @@ more_section = |waiting|
 							}),
 							PageKit.newline,
 						],
-						waiting,
+						waiting_places,
 					),
 				),
 			}),

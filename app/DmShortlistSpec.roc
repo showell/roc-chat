@@ -45,12 +45,12 @@ key_at = |path| ConversationKey.from_url_path({
 ## Steve's DMs on the page of `shown`, in the sidebar's order, each place
 ## with one topic whose last message is `latest_of` its URL path, as lines:
 ## the DM's path and whether it is `shown` or `waiting`.
-shortlist_lines : {
-	shown : ConversationKey,
-	latest_of : Str -> SidebarOrder.Latest,
-} -> List(Str)
+shortlist_lines : { shown : ConversationKey, latest_of : Str -> SidebarOrder.Latest } -> List(Str)
 shortlist_lines = |{ shown, latest_of }| {
-	listed = Browse.places_for({ acting: steve, directory }) ?? crash "DmShortlistSpec: Steve browses"
+	listed = Browse.places_for({
+		acting: steve,
+		directory,
+	}) ?? crash "DmShortlistSpec: Steve browses"
 	places = listed.map(
 		|{ label, place }| {
 			label,
@@ -63,12 +63,16 @@ shortlist_lines = |{ shown, latest_of }| {
 			],
 		},
 	)
-	dms = SidebarOrder.ordered_places({ places, shown: Conversation(shown), viewer: steve.user().id() })
+	dms = SidebarOrder.ordered_places({
+		places,
+		shown: Conversation(shown),
+		viewer: steve.user().id(),
+	})
 		.drop_if(|ordered| is_channel(ordered.place))
-	split = DmShortlist.split({ dms, current: shown.place(), now })
+	split = DmShortlist.split({ dm_places: dms, current: shown.place(), now })
 	List.concat(
-		split.shown.map(|ordered| "${ConversationKey.place_url_path(ordered.place)} shown"),
-		split.waiting.map(|ordered| "${ConversationKey.place_url_path(ordered.place)} waiting"),
+		split.shown_places.map(|ordered| "${ConversationKey.place_url_path(ordered.place)} shown"),
+		split.waiting_places.map(|ordered| "${ConversationKey.place_url_path(ordered.place)} waiting"),
 	)
 }
 
@@ -152,11 +156,11 @@ expect {
 expect {
 	quiet = shortlist_lines({ shown: general_page, latest_of: |_| NoMessages })
 	on_dm = shortlist_lines({ shown: key_at("/chat/dm/1_2/talk"), latest_of: |_| NoMessages })
-	none = DmShortlist.split({ dms: [], current: general_page.place(), now })
+	none = DmShortlist.split({ dm_places: [], current: general_page.place(), now })
 	quiet.all(|line| line.ends_with(" waiting"))
 		and quiet.len() == 5
 		and on_dm.first() == Ok("/chat/dm/1_2 shown")
 		and on_dm.drop_first(1).all(|line| line.ends_with(" waiting"))
-		and none.shown.is_empty()
-		and none.waiting.is_empty()
+		and none.shown_places.is_empty()
+		and none.waiting_places.is_empty()
 }

@@ -32,36 +32,46 @@ DmShortlist :: [].{
 	## The DMs a sidebar shows, and those that wait behind its "more" row,
 	## each in the order they were given.
 	Split : {
-		shown : List(SidebarOrder.OrderedPlace),
-		waiting : List(SidebarOrder.OrderedPlace),
+		shown_places : List(SidebarOrder.OrderedPlace),
+		waiting_places : List(SidebarOrder.OrderedPlace),
 	}
 
-	## `dms`, in the sidebar's order, split into those shown on the page of
+	## `dm_places`, in the sidebar's order, split into those shown on the page of
 	## `current` at `now` and those that wait.
 	split : {
-		dms : List(SidebarOrder.OrderedPlace),
+		dm_places : List(SidebarOrder.OrderedPlace),
 		current : Place,
 		now : Timestamp,
 	} -> DmShortlist.Split
-	split = |{ dms, current, now }| {
-		window_start = DateTime.from_timestamp(now.plus(Seconds.of(0 - DmShortlist.recent_window.to_i128())))
+	split = |{ dm_places, current, now }| {
+		back_to_window = Seconds.of(0 - DmShortlist.recent_window.to_i128())
+		window_start = DateTime.from_timestamp(now.plus(back_to_window))
 		by_newest = |one, other| newest_first((one.time, one.at), (other.time, other.at))
 		recent =
-			dms
-				.map_with_index(|dm, at| { place: dm.place, time: recent_time(dm.latest, window_start), at })
+			dm_places
+				.map_with_index(
+					|dm, at| {
+						place: dm.place,
+						time: recent_time(dm.latest, window_start),
+						at,
+					},
+				)
 				.keep_if(|candidate| candidate.place != current and candidate.time != NotRecent)
 				.sort_with(by_newest)
 				.take_first(DmShortlist.shown_most)
 				.map(|candidate| candidate.place)
 		is_shown = |dm| dm.place == current or recent.contains(dm.place)
-		{ shown: dms.keep_if(is_shown), waiting: dms.drop_if(is_shown) }
+		{ shown_places: dm_places.keep_if(is_shown), waiting_places: dm_places.drop_if(is_shown) }
 	}
 }
+
+## When a DM's last message was, if it is in the window.
+RecentTime : [Recent(DateTime), NotRecent]
 
 ## When `latest` was, if it is at `window_start` or later. A window that
 ## starts before 1970 (`OutOfRange`) holds every message, since none is
 ## older.
-recent_time : SidebarOrder.Latest, Try(DateTime, [OutOfRange]) -> [Recent(DateTime), NotRecent]
+recent_time : SidebarOrder.Latest, Try(DateTime, [OutOfRange]) -> RecentTime
 recent_time = |latest, window_start|
 	match (latest, window_start) {
 		(NoMessages, _) => NotRecent
@@ -75,7 +85,7 @@ recent_time = |latest, window_start|
 	}
 
 ## Newest first; two of one second by where they were given (`at`).
-newest_first : ([Recent(DateTime), NotRecent], U64), ([Recent(DateTime), NotRecent], U64) -> [Before, Same, After]
+newest_first : (RecentTime, U64), (RecentTime, U64) -> [Before, Same, After]
 newest_first = |(one, one_at), (other, other_at)|
 	match (one, other) {
 		(Recent(one_time), Recent(other_time)) =>
