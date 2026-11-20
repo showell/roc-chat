@@ -63,7 +63,10 @@ expect steve_by(ByDeviceCode(key_three)).session_origin() == ByDeviceCode(key_th
 # once, whatever the form says: they can sign back in.
 expect
 	["", "confirmed=yes", "next=/chat"].all(
-		|body| choice_of(Anonymous, body) == "at once" and choice_of(SignedIn(steve_by(Ordinary)), body) == "at once",
+		|body| {
+			by_password = SignedIn(steve_by(Ordinary))
+			choice_of(Anonymous, body) == "at once" and choice_of(by_password, body) == "at once"
+		},
 	)
 # A device a code signed in is asked first, Cancel going back to the page it
 # was on; only `confirmed=yes` revokes its key, the one its cookie names.

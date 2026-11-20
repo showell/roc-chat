@@ -289,15 +289,26 @@ claim_from_value = |value|
 			mac_part,
 			origin: Ordinary,
 		})
-		[id_part, second_part, mac_part, ['d', .. as key_digits]] => {
-			key_text = Str.from_utf8(key_digits) ? |_| BadSession
-			key = DeviceKey.Id.from_str(key_text) ? |_| BadSession
+		[id_part, second_part, mac_part, mark] => {
+			key = device_key_of_mark(mark)?
 			claim_from_parts({
 				id_part,
 				second_part,
 				mac_part,
 				origin: ByDeviceCode(key),
 			})
+		}
+		_ => Err(BadSession)
+	}
+
+## The device key a cookie's fourth part, `mark`, names: `d` and the key's
+## number; unless it is anything else (`BadSession`), a bare `d` among them.
+device_key_of_mark : List(U8) -> Try(DeviceKey.Id, [BadSession])
+device_key_of_mark = |mark|
+	match mark {
+		['d', .. as key_digits] => {
+			key_text = Str.from_utf8(key_digits) ? |_| BadSession
+			DeviceKey.Id.from_str(key_text).map_err(|NotADeviceKeyId| BadSession)
 		}
 		_ => Err(BadSession)
 	}

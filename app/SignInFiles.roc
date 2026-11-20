@@ -59,7 +59,11 @@ SignInFiles :: [].{
 	## code started only while its key is active; else `SessionRefused` (a key
 	## revoked, never made or cut short, or a `state` file that holds no
 	## state, logged); unless the host's read failed.
-	check_session_key! : UserId, Session.Origin => Try({}, [SessionRefused, FileSystem(FileFacts.Fault)])
+	check_session_key! : UserId,
+	Session.Origin => Try(
+		{},
+		[SessionRefused, FileSystem(FileFacts.Fault)],
+	)
 	check_session_key! = |id, origin|
 		match origin {
 			Ordinary => Ok({})

@@ -35,7 +35,11 @@ DeviceKeyFiles :: [].{
 	## The state of the human `id`'s key `key`, or `NoKey` when it has no
 	## `state` file (never made, or cut short); unless the file holds no
 	## state (`Damaged`), or the host's read failed.
-	read_device_key_state! : UserId, DeviceKey.Id => Try([NoKey, Key(DeviceKey.State)], [FileSystem(FileFacts.Fault)])
+	read_device_key_state! : UserId,
+	DeviceKey.Id => Try(
+		[NoKey, Key(DeviceKey.State)],
+		[FileSystem(FileFacts.Fault)],
+	)
 	read_device_key_state! = |id, key|
 		match FileFacts.read_fact!(state_path(id, key)) {
 			Ok(NoFile) => Ok(NoKey)
