@@ -64,7 +64,7 @@ sidebar_at = |{ current, topics_of }|
 		Sidebar.nav({
 			places: places_with(topics_of),
 			current: key_at(current),
-			viewer: steve.user().id(),
+			viewer: steve,
 			online_humans: [],
 			rosters: [],
 		}).to_utf8(),
@@ -84,7 +84,8 @@ form_at = |path, suggests| {
 
 ## One place: `name`, its button that offers a new topic, at `path`,
 ## starting as `opening`, holding `rows`, then its form. Steve's DM with
-## Apoorva names her, offline, as the tests draw it.
+## Apoorva names her, offline, as the tests draw it; his own DM's name says
+## it is his, "(you)" (`PageKit.own_name`).
 place_html : {
 	name : Str,
 	path : Str,
@@ -93,13 +94,19 @@ place_html : {
 	suggests : [Suggests, NoSuggestion],
 } -> Str
 place_html = |{ name, path, opening, rows, suggests }| {
+	shown_name =
+		if path == "/chat/dm/1_1" {
+			"${name} <span class=\"you\">(you)</span>"
+		} else {
+			name
+		}
 	person =
 		if path == "/chat/dm/1_2" {
 			" data-person=\"2\" data-presence=\"offline\""
 		} else {
 			""
 		}
-	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<button class=\"sidebar-new-topic\">New topic in ${name}</button>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
+	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${shown_name}</p>\n<button class=\"sidebar-new-topic\">New topic in ${name}</button>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
 }
 
 ## The group `group` headed `heading`, holding `places`.
@@ -268,7 +275,7 @@ expect {
 		Sidebar.nav({
 			places: dated,
 			current: key_at("/chat/dm/1_1/plans"),
-			viewer: steve.user().id(),
+			viewer: steve,
 			online_humans: [],
 			rosters: [],
 		}).to_utf8(),
@@ -288,7 +295,7 @@ expect {
 			Sidebar.nav({
 				places: places_with(|_| []),
 				current: key_at("/chat/dm/1_1/plans"),
-				viewer: steve.user().id(),
+				viewer: steve,
 				online_humans,
 				rosters: [],
 			}).to_utf8(),
@@ -308,7 +315,7 @@ expect {
 		Sidebar.nav({
 			places: dms_only,
 			current: key_at("/chat/dm/1_1/plans"),
-			viewer: steve.user().id(),
+			viewer: steve,
 			online_humans: [],
 			rosters: [],
 		}).to_utf8(),
@@ -340,7 +347,7 @@ expect {
 		Sidebar.nav({
 			places,
 			current: key_at("/chat/dm/1_1/plans"),
-			viewer: steve.user().id(),
+			viewer: steve,
 			online_humans: [],
 			rosters: [],
 		}).to_utf8(),
@@ -380,7 +387,7 @@ expect {
 		Sidebar.nav({
 			places: places_with(|_| []),
 			current: key_at("/chat/dm/1_1/plans"),
-			viewer: steve.user().id(),
+			viewer: steve,
 			online_humans: [Sample.user("Apoorva").id()],
 			rosters: [roster],
 		}).to_utf8(),

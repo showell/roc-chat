@@ -14,7 +14,8 @@
 ## starts (`data-opening`), open or collapsed, as `SidebarOrder` decides.
 ## The topic the page shows is marked current, and it is listed in its
 ## place even before its first message gives it a folder. The DMs group
-## lists every human, the viewer's own DM next after the page's own place
+## lists every human, the viewer's own DM, named "<name> (you)"
+## (`PageKit.own_name`), next after the page's own place
 ## (Steve, 2026-11-20: "Show all the users. Scrolling is fine."), each
 ## collapsed to its name's row but the page's own.
 ##
@@ -41,6 +42,7 @@
 ## human joined is not drawn yet: once accounts keep it,
 ## `person_attributes` adds `data-joined` (its seconds since 1970,
 ## `PageContract`'s `Joined`), and the card says it.
+import Browse
 import ChannelRoster
 import ConversationKey
 import Escape
@@ -49,6 +51,7 @@ import PageContract
 import PageKit
 import Place
 import SidebarOrder
+import SignedIn
 import TopicForm
 import TrustedHtml
 import UserId
@@ -73,13 +76,17 @@ Sidebar :: [].{
 	nav : {
 		places : List(SidebarOrder.TimedPlace),
 		current : ConversationKey,
-		viewer : UserId,
+		viewer : SignedIn,
 		online_humans : List(UserId),
 		rosters : List(ChannelRoster.Roster),
 	} -> TrustedHtml
 	nav = |{ places, current, viewer, online_humans, rosters }| {
 		people = { viewer, online_humans }
-		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
+		in_order = SidebarOrder.ordered_places({
+			places,
+			shown: Conversation(current),
+			viewer: viewer.user().id(),
+		})
 		drawn = |ordered| place_section({ ordered, current, people, rosters })
 		channels = group_section({
 			group: Channels,
@@ -150,7 +157,7 @@ group_section = |{ group, places }|
 	}
 
 ## Who the page is for, and who is online.
-People : { viewer : UserId, online_humans : List(UserId) }
+People : { viewer : SignedIn, online_humans : List(UserId) }
 
 ## The attributes that say who the DM `place` is with, when it is another
 ## human than the viewer, and whether they are online; none for a channel or
@@ -160,7 +167,7 @@ person_attributes = |{ place, people }|
 	match place.which() {
 		Channel(_) => []
 		Dm(pair) =>
-			match pair.members().drop_if(|id| id == people.viewer) {
+			match pair.members().drop_if(|id| id == people.viewer.user().id()) {
 				[other] => [
 					PageContract.data_attribute(Person(PageKit.token(other.to_str()))),
 					PageContract.data_attribute(
@@ -206,7 +213,11 @@ place_section = |{ ordered, current, people, rosters }| {
 				Html.element({
 					name: P,
 					attributes: [PageContract.class(SidebarPlaceName)],
-					inner: Escape.text(ordered.label),
+					inner: if Browse.is_own_dm(place, people.viewer) {
+						PageKit.own_name(ordered.label)
+					} else {
+						Escape.text(ordered.label)
+					},
 				}),
 				PageKit.newline,
 				Html.element({
@@ -273,7 +284,7 @@ member_row = |row, people| {
 			Human(dm) => {
 				dm_path = PageKit.site_path(ConversationKey.place_url_path(dm))
 				presence =
-					if row.id == people.viewer {
+					if row.id == people.viewer.user().id() {
 						[]
 					} else if people.online_humans.contains(row.id) {
 						[PageContract.data_attribute(Presence(Online))]

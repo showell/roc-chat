@@ -136,7 +136,7 @@ ConversationPage :: [].{
 						Sidebar.nav({
 							places,
 							current: key,
-							viewer: viewer.user().id(),
+							viewer,
 							online_humans,
 							rosters,
 						}),

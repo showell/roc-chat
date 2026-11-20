@@ -133,6 +133,8 @@ window.Sidebar = (function () {
     color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none',
   });
   styleAll('.sidebar-place', { marginBottom: '6px' });
+  // The "(you)" after the viewer's own DM's name (PageKit.own_name): quiet.
+  styleAll('.you', { color: 'var(--cc-muted-fg)', fontSize: '0.85em', fontWeight: 'normal' });
   styleAll('.sidebar-place-name', {
     display: 'flex', alignItems: 'center', gap: '6px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'normal',
     color: 'var(--cc-meta-fg)', cursor: 'pointer', userSelect: 'none', overflowWrap: 'anywhere',
