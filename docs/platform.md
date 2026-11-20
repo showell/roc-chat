@@ -3,7 +3,7 @@
 The host is small on purpose. It serves HTTP with no routing, and it offers a few general file primitives, a clock, random bytes, and the crypto that needs a secret or a slow hash. The Roc decides everything else: routes, file layout, formats and pages. The primitives know nothing about chats.
 
 - Roc's declarations: `platform/Host.roc` (the primitives) and `platform/Http.roc` (the request and the response).
-- Zig: `host/file_primitives.zig` (the primitives and their tests), `host/remembered_seconds.zig` (the seconds kept in memory), `host/sign_in_primitives.zig` (bcrypt, the HMAC and the server's secret), `host/github_client.zig` (GitHub's settings and its code exchange; `host/fake_github.zig` stands in for GitHub in tests), `host/http.zig` (the server), `host/main.zig` (its command line, and `hash-password`), `host/bus.zig` (where a stream's frames are published), `host/sse.zig` (a stream's headers, keepalive and cap), `host/seam.zig` (the C seam). `host/seam_test.zig` holds every record and tag to `roc glue`'s layout.
+- Zig: `host/file_primitives.zig` (the primitives and their tests), `host/remembered_seconds.zig` (the seconds kept in memory), `host/search_index.zig` and `host/search_tokens.zig` (the search index), `host/sign_in_primitives.zig` (bcrypt, the HMAC and the server's secret), `host/github_client.zig` (GitHub's settings and its code exchange; `host/fake_github.zig` stands in for GitHub in tests), `host/http.zig` (the server), `host/main.zig` (its command line, and `hash-password`), `host/bus.zig` (where a stream's frames are published), `host/sse.zig` (a stream's headers, keepalive and cap), `host/seam.zig` (the C seam). `host/seam_test.zig` holds every record and tag to `roc glue`'s layout.
 - The only caller of the file primitives is `app/FileFacts.roc`, and the feature modules above it (`app/*Files.roc`) alone know which file holds what.
 
 ## The data root and confinement
@@ -146,6 +146,25 @@ Every stream held by the holder ended now, its socket shut and its task woken; n
 **127.0.0.1 alone does not keep out a web page.** A browser on this machine, or on a laptop through `ssh -L`, or anywhere through the public name, carries any page's requests to the server: a form on another site can POST to it, and a name rebound to 127.0.0.1 can read a page. So the app holds every request to its own origins from its head, before its body is read (`app/RequestOrigin.roc`): the `Host` must be exactly `127.0.0.1:<port>`, `localhost:<port>` or the public origin's name; a request whose `Origin` is not the one its `Host` names (`http://` and a local name for a local `Host`, the public origin exactly for its own) is refused, so the check never relies on a proxy taking an `Origin` off; a request that writes is refused when its `Sec-Fetch-Site` is not `same-origin`; and a GET another site's page made (`Sec-Fetch-Site` `cross-site` or `same-site`) is refused unless it is a navigation (`Sec-Fetch-Mode` `navigate`), so no other page can hold a stream open as a signed-in human. A header sent twice is refused as a foreign one. Each refusal is a 403. Every answer says `Cross-Origin-Resource-Policy: same-origin`, so a browser hands none of them to another site's page. The host decides none of this; it hands the app the headers, the port and the public origin.
 
 **An upload's room is a member's.** The head's judgement finds who is acting as the whole request's does; only someone signed in who may post in the conversation gets an upload's 10 MiB and five minutes, and anyone else a form's 64 KiB (`body_allowance` in `app/Admission.roc`).
+
+## The search index
+
+The one piece of the chat's logic the host holds: search's index, a port of Gopher Chat's (angry-gopher's `zig-server/src/search_index.zig` and `search_tokens.zig`), made general. It holds texts under keys, each text with a label, and counts each text's words as `app/SearchWords.roc` reads them (`host/search_tokens.zig`, its port). It knows nothing of chats or of who may read what: the app keys each topic by its conversation's page, labels each message with its author and time, decides which keys a viewer may search, and shapes the answer (`app/SearchIndex.roc`, `app/SearchRoute.roc`). **It is a cache, never the database**: nothing is written to disk, and a restart forgets it. The app fills a key from its transcript the first time a search reaches it, and adds each message to a held key after the transcript's append (`TranscriptFiles.append_message!`). **Its bounds:** at most 64 MiB of labels and texts in all (`text_most_total`), a text past it making its key unsearchable, and a key of 1 to 1,024 bytes; a key out of bounds, or no memory, stops the server. Only the Roc's calls reach it, in the turn, so it takes no lock. *Why in the host:* a search read and decoded every topic's transcript in the Roc at `--opt=dev`, 0.75 s for word suggestions over 250 topics. How the host's word rules are held to the Roc's is `docs/design.md`'s, "Search".
+
+**`open_search_index_key! : List(U8), [Searchable, Unsearchable] => {}`**
+The key held with no texts, or as unsearchable (a transcript the app could not decode), in place of what it held.
+
+**`append_text_to_search_index_key! : List(U8), List(U8), List(U8) => {}`**
+The text (the third) and its label (the second) at the end of the key's texts, so a text's place is its message's id less one. Nothing when the key isn't held, as a search reads it from its file, or is unsearchable.
+
+**`search_index_keys_not_held! : List(List(U8)) => List(U64)`**
+The places, from 0, of the keys the index doesn't hold, which the app then fills.
+
+**`words_in_search_index! : List(List(U8)), List(U8), U64 => { unsearchable : U64, words : List({ count : U64, word : List(U8) }) }`**
+At most `most` (the third) words of those keys' texts that begin with the prefix, folded, each with how many texts hold it: the most held first, then in byte order, none longer than 256 bytes; and how many of the keys are unsearchable.
+
+**`texts_in_search_index! : List(List(U8)), List(U8), U64 => { hits : List({ key_at, label, text, text_at }), matched : U64, unsearchable : U64 }`**
+The texts of those keys that hold the word as a word of their own, in the keys' order and each key's: at most `most` listed, each with its key's place, its own place, its label and its text; how many hold it in all; and how many keys are unsearchable.
 
 ## Memory and crashes
 
