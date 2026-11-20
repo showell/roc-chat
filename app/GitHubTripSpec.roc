@@ -44,16 +44,29 @@ offer_for = |login, directory| {
 		next: Html.SitePath.from_str("/chat") ?? crash "GitHubTripSpec: a site path",
 	})
 	resumed =
-		GitHubSignIn.SignUpResumed.resume({ sign_up: Signed(sign_up), viewer: Anonymous, now: Timestamp.at_second(1300) })
+		GitHubSignIn.SignUpResumed.resume({
+			sign_up: Signed(sign_up),
+			viewer: Anonymous,
+			now: Timestamp.at_second(1300),
+		})
 			?? crash "GitHubTripSpec: a sign-up in time"
 	GitHubTrip.name_offer(resumed, directory)
 }
 
 # The login is offered when it is a name and free, as GitHub spells it.
-expect offer_for("Zoe", Sample.directory) == Suggested(Name.from_str("Zoe") ?? crash "GitHubTripSpec: a name")
+expect offer_for(
+	"Zoe",
+	Sample.directory,
+) == Suggested(Name.from_str("Zoe") ?? crash "GitHubTripSpec: a name")
 # A login that is no name, one taken in any case, none this chat shows, and a
 # chat that is full, offer nothing, each saying why.
-expect ["person9", "mona-lisa"].all(|login| offer_for(login, Sample.directory) == NotSuggested(LoginNotAName))
-expect ["Steve", "sTeVe", "apoorva"].all(|login| offer_for(login, Sample.directory) == NotSuggested(LoginTaken))
+expect ["person9", "mona-lisa"].all(
+	|login| offer_for(login, Sample.directory) == NotSuggested(LoginNotAName),
+)
+expect [
+	"Steve",
+	"sTeVe",
+	"apoorva",
+].all(|login| offer_for(login, Sample.directory) == NotSuggested(LoginTaken))
 expect ["octo_cat", ""].all(|login| offer_for(login, Sample.directory) == NotSuggested(NoLogin))
 expect offer_for("Zoe", Sample.directory_with_ids_left(0)) == NotSuggested(ChatFull)

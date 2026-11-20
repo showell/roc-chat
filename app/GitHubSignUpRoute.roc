@@ -57,7 +57,7 @@ GitHubSignUpRoute :: [].{
 	} => Http.Response
 	ask_for_name! = |{ viewer, new_human, directory, now }|
 		match check_limits!(directory, now) {
-			Err(limit) => paused_answer!(viewer, limit)
+			Err(limit) => refuse_as_paused!(viewer, limit)
 			Ok(_) => {
 				sign_up = new_human.sign_up(now)
 				mac = Host.hmac_sha256_with_server_secret!(sign_up.signed_bytes())
@@ -78,7 +78,16 @@ GitHubSignUpRoute :: [].{
 		headers : List(Http.Header),
 		now : Timestamp,
 	} => Http.Response
-	serve! = |{ step, viewer, directory, body, headers, now }|
+	serve! = |
+		{
+			step,
+			viewer,
+			directory,
+			body,
+			headers,
+			now,
+		},
+	|
 		match step {
 			ShowForm => serve_name_form!({ viewer, directory, headers, now })
 			SubmitName => serve_sign_up!({ viewer, directory, body, headers, now })
@@ -102,11 +111,17 @@ serve_name_form! = |{ viewer, directory, headers, now }| {
 			(NotConfigured, _) => not_found
 			(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
 			(Configured, Ok({})) =>
-				match GitHubSignIn.SignUpResumed.resume({ sign_up: load_signed_sign_up!(headers), viewer, now }) {
-					Err(why) => with_sign_up_forgotten(page_answer(GitHubTrip.refusal_page({ viewer, why })))
+				match GitHubSignIn.SignUpResumed.resume({
+					sign_up: load_signed_sign_up!(headers),
+					viewer,
+					now,
+				}) {
+					Err(why) => with_sign_up_forgotten(
+						page_answer(GitHubTrip.refusal_page({ viewer, why })),
+					)
 					Ok(resumed) =>
 						match check_limits!(directory, now) {
-							Err(limit) => with_sign_up_forgotten(paused_answer!(viewer, limit))
+							Err(limit) => with_sign_up_forgotten(refuse_as_paused!(viewer, limit))
 							Ok(_) => HttpAnswer.page(200, name_form(resumed, directory))
 						}
 				}
@@ -138,12 +153,12 @@ serve_sign_up! = |request| {
 							SignInRoute.start_session_by_github!(admission, request.now),
 						)
 					Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-					Err(Paused(limit)) => with_sign_up_forgotten(paused_answer!(request.viewer, limit))
+					Err(Paused(limit)) => with_sign_up_forgotten(
+						refuse_as_paused!(request.viewer, limit),
+					)
 					Err(Refused(why)) =>
 						with_sign_up_forgotten(
-							page_answer(
-								GitHubTrip.refusal_page({ viewer: request.viewer, why }),
-							),
+							page_answer(GitHubTrip.refusal_page({ viewer: request.viewer, why })),
 						)
 					Err(NameRefused(refusal)) =>
 						page_answer(GitHubTrip.name_refusal_page(refusal))
@@ -160,8 +175,16 @@ not_found = HttpAnswer.page(404, PageKit.not_found)
 name_form : GitHubSignIn.SignUpResumed, Directory -> TrustedHtml
 name_form = |resumed, directory|
 	match GitHubTrip.name_offer(resumed, directory) {
-		Suggested(name) => SignInPage.github_sign_up({ name: Named(name), problem: NoProblem, login_note: NoNote })
-		NotSuggested(why) => SignInPage.github_sign_up({ name: NoName, problem: NoProblem, login_note: NotOffered(why) })
+		Suggested(name) => SignInPage.github_sign_up({
+			name: Named(name),
+			problem: NoProblem,
+			login_note: NoNote,
+		})
+		NotSuggested(why) => SignInPage.github_sign_up({
+			name: NoName,
+			problem: NoProblem,
+			login_note: NotOffered(why),
+		})
 	}
 
 ## The admission of the human the browser's sign-up and the form `body` make,
@@ -213,7 +236,7 @@ check_limits! : Directory, Timestamp => Try(List(U8), [DayFull, ChatFull])
 check_limits! = |directory, now| {
 	_ = SignUpLimits.check_room(directory.users())?
 	var $slots = []
-	for key in SignUpLimits.github_sign_up_keys {
+	for key in SignUpLimits.slot_keys {
 		kept = Host.read_second_kept_under_key!(key)
 		slot =
 			match kept.status {
@@ -226,8 +249,8 @@ check_limits! = |directory, now| {
 }
 
 ## The sign-in page saying sign-ups are paused, its limit in the server's log.
-paused_answer! : SignedIn.Actor, [DayFull, ChatFull] => Http.Response
-paused_answer! = |viewer, limit| {
+refuse_as_paused! : SignedIn.Actor, [DayFull, ChatFull] => Http.Response
+refuse_as_paused! = |viewer, limit| {
 	Host.write_line_to_server_log!(SignUpLimits.paused_log_line(limit))
 	page_answer(GitHubTrip.refusal_page({ viewer, why: SignUpsPaused }))
 }

@@ -45,5 +45,8 @@ expect
 	Access.members({ place: key_at("/chat/dm/1_2/plans").place(), directory }).map(UserId.to_str)
 		== ["1", "2"]
 expect
-	Access.members({ place: key_at("/chat/channel/general/plans").place(), directory }).map(UserId.to_str)
+	Access.members({
+		place: key_at("/chat/channel/general/plans").place(),
+		directory,
+	}).map(UserId.to_str)
 		== ["1", "2", "3"]

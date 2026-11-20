@@ -57,7 +57,10 @@ Agents :: [].{
 				said: "An API key can't do this: only a human, signed in, makes, invites and manages agents, and a key never mints a key.",
 			}
 			Agent(_) => { status: 403, said: "An agent can't make, invite or manage agents." }
-			NotAdmin => { status: 403, said: "Only the chat's admin makes, invites and manages agents." }
+			NotAdmin => {
+				status: 403,
+				said: "Only the chat's admin makes, invites and manages agents.",
+			}
 			NoSuchAgent => { status: 404, said: "No such agent." }
 			NotTheOwner => { status: 403, said: "Only the agent's owner manages it." }
 			BadForm(said) => { status: 400, said }
@@ -118,7 +121,15 @@ Agents :: [].{
 	make : Directory,
 	{ acting : SignedIn, body : List(U8) } -> Try(
 		Directory.Addition,
-		[ByApiKey, Agent(UserId), NotAdmin, BadForm(Str), BadName, NameTaken, Full],
+		[
+			ByApiKey,
+			Agent(UserId),
+			NotAdmin,
+			BadForm(Str),
+			BadName,
+			NameTaken,
+			Full,
+		],
 	)
 	make = |directory, { acting, body }| {
 		owner = Agents.agent_keeper(acting)?

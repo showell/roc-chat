@@ -71,10 +71,18 @@ expect Presence.viewer_stream_key(UserId.chat_owner) == "/viewers/1".to_utf8()
 expect Presence.online_frame(Sample.user("Apoorva").id()) == "event: online\ndata: 2\n\n".to_utf8()
 expect Presence.notice_words("Apoorva") == "Apoorva has come online."
 expect
-	Presence.notice_frame({ name: "Apoorva", link: Presence.link_to(key_at("/chat/dm/1_2/ChitChat")) })
+	Presence.notice_frame({
+		name: "Apoorva",
+		link: Presence.link_to(key_at("/chat/dm/1_2/ChitChat")),
+	})
 		== "event: notice\ndata: <a href=\"/chat/dm/1_2/ChitChat\">Apoorva has come online.</a>\n\n".to_utf8()
 expect
-	Str.from_utf8_lossy(Presence.notice_frame({ name: "<b>", link: Presence.link_to(key_at("/chat/dm/1_2/plans")) }))
+	Str.from_utf8_lossy(
+		Presence.notice_frame({
+			name: "<b>",
+			link: Presence.link_to(key_at("/chat/dm/1_2/plans")),
+		}),
+	)
 		.contains(">&lt;b&gt; has come online.</a>")
 
 # What a DM's page says of the other human as it is drawn: online; else how

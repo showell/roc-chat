@@ -275,14 +275,14 @@ expect
 # A new human's name: the form a GET, the name a POST, and every other method
 # a refusal the route gives.
 expect chosen_route("POST", "/login/github/name".to_utf8()) == "a new human's name (open)"
-expect chosen_route("GET", "/login/github/name".to_utf8()) == "the form asking a new human's name (open)"
+expect chosen_route(
+	"GET",
+	"/login/github/name".to_utf8(),
+) == "the form asking a new human's name (open)"
 expect chosen_route("PUT", "/login/github/name".to_utf8()) == "no route takes this"
 expect chosen_route("POST", "/login/github/link".to_utf8()) == "off to GitHub to link it"
 expect
-	[
-		("GET", "/login/github/link"),
-		("PUT", "/login/github/link"),
-	].all(
+	[("GET", "/login/github/link"), ("PUT", "/login/github/link")].all(
 		|(method, path)| chosen_route(
 			method,
 			path.to_utf8(),

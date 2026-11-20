@@ -136,11 +136,23 @@ judgement_of = |{ name, markdown }|
 
 # Who may edit: the author edits their own message; another author's, and a
 # message not there, are refused.
-expect judgement_of({ name: "Steve", markdown: "Edit of MSG_plans_1\n\nHello!" }) == Ok(EditOf(id_of("1")))
+expect judgement_of({
+	name: "Steve",
+	markdown: "Edit of MSG_plans_1\n\nHello!",
+}) == Ok(EditOf(id_of("1")))
 expect judgement_of({ name: "CC", markdown: "Edit of MSG_plans_2" }) == Ok(EditOf(id_of("2")))
-expect judgement_of({ name: "CC", markdown: "Edit of MSG_plans_1\n\nHello!" }) == Err(EditOfAnotherAuthorsMessage)
-expect judgement_of({ name: "Steve", markdown: "Edit of MSG_plans_2 typo" }) == Err(EditOfAnotherAuthorsMessage)
-expect judgement_of({ name: "Steve", markdown: "Edit of MSG_plans_3\n\nx" }) == Err(EditOfNoSuchMessage)
+expect judgement_of({
+	name: "CC",
+	markdown: "Edit of MSG_plans_1\n\nHello!",
+}) == Err(EditOfAnotherAuthorsMessage)
+expect judgement_of({
+	name: "Steve",
+	markdown: "Edit of MSG_plans_2 typo",
+}) == Err(EditOfAnotherAuthorsMessage)
+expect judgement_of({
+	name: "Steve",
+	markdown: "Edit of MSG_plans_3\n\nx",
+}) == Err(EditOfNoSuchMessage)
 # What is no edit: another topic's reference, no id, a reference later in
 # the message, and a near miss of the first words.
 expect

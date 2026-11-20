@@ -81,7 +81,10 @@ SignInPage :: [].{
 							inner: Html.element({
 								name: A,
 								attributes: [
-									LinkWithNext({ path: PageKit.site_path("/login/github/start"), next }),
+									LinkWithNext({
+										path: PageKit.site_path("/login/github/start"),
+										next,
+									}),
 								],
 								inner: Escape.text("Sign in or sign up with GitHub"),
 							}),

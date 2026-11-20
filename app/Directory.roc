@@ -65,7 +65,11 @@ Directory :: {
 	## a page for them. This is how a sign-up or an invite makes a human, so
 	## a chat at its most accounts (`SignUpLimits.check_room`) refuses first,
 	## with `SignUpsPaused`.
-	add_new_human : Directory, Name -> Try(Directory.NewHuman, [SignUpsPaused, Full, NameTaken, NoDefaultChannel])
+	add_new_human : Directory,
+	Name -> Try(
+		Directory.NewHuman,
+		[SignUpsPaused, Full, NameTaken, NoDefaultChannel],
+	)
 	add_new_human = |directory, name| {
 		_ = SignUpLimits.check_room(directory.users()) ? |ChatFull| SignUpsPaused
 		addition = directory.add_human(name)?

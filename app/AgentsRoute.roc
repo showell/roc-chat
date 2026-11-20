@@ -228,14 +228,7 @@ load_agents_page! = |{ acting, directory, shown }| {
 				Kept($summaries)
 			}
 		}
-	Ok(
-		AgentsPage.agents({
-			viewer: acting,
-			agents,
-			shown,
-			github_link,
-		}),
-	)
+	Ok(AgentsPage.agents({ viewer: acting, agents, shown, github_link }))
 }
 
 make_agent! : {

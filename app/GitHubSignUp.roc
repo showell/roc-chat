@@ -2,8 +2,8 @@
 ## choose. GitHub has said who they are, no account holds that yet, and the
 ## name comes in a later request. So the server hands their browser a token
 ## holding the GitHub id, the second it was issued, where to go after and
-## the GitHub login, if GitHub's was one (`GitHubLogin`), signed by the host with the server's secret, in a cookie that lasts ten
-## minutes. A browser that rewrites the id breaks the signature, and another
+## the GitHub login, if GitHub's was one (`GitHubLogin`), signed by the host
+## with the server's secret, in a cookie that lasts ten minutes. A browser that rewrites the id breaks the signature, and another
 ## site can't set a `__Host-` cookie, so no one can plant their own sign-up on
 ## someone else's browser.
 ##
@@ -165,7 +165,10 @@ claim_from_token = |text|
 			match Base64Url.decode(mac_part) {
 				Ok(mac) => Ok(
 					GitHubSignUp.Claim.(
-						{ payload: "${github_part}.${second_part}.${next_part}.${login_part}", mac },
+						{
+							payload: "${github_part}.${second_part}.${next_part}.${login_part}",
+							mac,
+						},
 					),
 				)
 				Err(NotBase64Url) => Err(NotAClaim)
@@ -284,13 +287,22 @@ expect {
 # A sign-up with no login keeps none, and one with a login keeps it.
 expect {
 	read_back = |sign_up| {
+		whole = sign_up.set_cookie_text(tests_mac)
+		value = whole.split_on(";").first() ?? crash "GitHubSignUp's tests: a cookie has a value"
 		claim =
-			GitHubSignUp.Claim.from_cookie_header((sign_up.set_cookie_text(tests_mac).split_on(";").first() ?? crash "GitHubSignUp's tests: a cookie has a value").to_utf8())
+			GitHubSignUp.Claim.from_cookie_header(value.to_utf8())
 				?? crash "GitHubSignUp's tests: a cookie"
 		GitHubSignUp.from_claim({ claim, verdict: Matches })
 	}
-	no_login = GitHubSignUp.issue({ github: github_id, login: NoLogin, now: Timestamp.at_second(1000), next: agents_path })
-	read_back(no_login) == Signed(no_login) and read_back(issued) == Signed(issued) and no_login.login() == NoLogin
+	no_login = GitHubSignUp.issue({
+		github: github_id,
+		login: NoLogin,
+		now: Timestamp.at_second(1000),
+		next: agents_path,
+	})
+	read_back(no_login) == Signed(no_login)
+		and read_back(issued) == Signed(issued)
+		and no_login.login() == NoLogin
 }
 expect
 	GitHubSignUp.clear_cookie_text

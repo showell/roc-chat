@@ -109,7 +109,10 @@ agent_section = |{ agent, keys, invites }| {
 			inner: Escape.text("${agent.name().to_str()} (id ${agent.id().to_str()})"),
 		}),
 		PageKit.newline,
-		PageKit.post_button({ action: "${folder}/invites", label: "Invite ${agent.name().to_str()}" }),
+		PageKit.post_button({
+			action: "${folder}/invites",
+			label: "Invite ${agent.name().to_str()}",
+		}),
 		TrustedHtml.join(
 			keys.map(
 				|key| {

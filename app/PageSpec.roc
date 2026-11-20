@@ -243,22 +243,45 @@ sign_up_words = "GitHub says who you are, and you have no account here yet. Choo
 # above the words when there is one.
 expect {
 	zoe = Name.from_str("Zoë Ann") ?? crash "PageSpec: a name"
-	SignInPage.github_sign_up({ name: Named(zoe), problem: NoProblem, login_note: NoNote }).to_utf8()
+	SignInPage.github_sign_up({
+		name: Named(zoe),
+		problem: NoProblem,
+		login_note: NoNote,
+	}).to_utf8()
 		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\" value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n".to_utf8()
 }
 expect
-	SignInPage.github_sign_up({ name: NoName, problem: Problem("The <name> is taken."), login_note: NoNote }).to_utf8()
+	SignInPage.github_sign_up({
+		name: NoName,
+		problem: Problem("The <name> is taken."),
+		login_note: NoNote,
+	}).to_utf8()
 		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\"></p>\n<button>Join</button></form>\n".to_utf8()
 # A login not offered says why, above the form.
 expect
 	[
-		(NoLogin, "<p>GitHub sent no login this chat can show, so no name is filled in.</p>\n<form"),
-		(LoginNotAName, "<p>Your GitHub login is not offered: a name here is letters and single spaces, at most 60.</p>\n<form"),
+		(
+			NoLogin,
+			"<p>GitHub sent no login this chat can show, so no name is filled in.</p>\n<form",
+		),
+		(
+			LoginNotAName,
+			"<p>Your GitHub login is not offered: a name here is letters and single spaces, at most 60.</p>\n<form",
+		),
 		(LoginTaken, "<p>Your GitHub login is not offered: someone here has that name.</p>\n<form"),
-		(ChatFull, "<p>Your GitHub login is not offered: the chat holds as many as it can.</p>\n<form"),
+		(
+			ChatFull,
+			"<p>Your GitHub login is not offered: the chat holds as many as it can.</p>\n<form",
+		),
 	].all(
 		|(why, said)|
-			Str.from_utf8_lossy(SignInPage.github_sign_up({ name: NoName, problem: NoProblem, login_note: NotOffered(why) }).to_utf8())
+			Str.from_utf8_lossy(
+				SignInPage.github_sign_up({
+					name: NoName,
+					problem: NoProblem,
+					login_note: NotOffered(why),
+				}).to_utf8(),
+			)
 				.contains(said),
 	)
 # Every page of someone signed in has the links to Browse and the invites
@@ -299,7 +322,11 @@ expect {
 		and [
 			JoinPage.join,
 			PageKit.notice({ title: "t", text: "x" }),
-			SignInPage.github_sign_up({ name: NoName, problem: NoProblem, login_note: NoNote }),
+			SignInPage.github_sign_up({
+				name: NoName,
+				problem: NoProblem,
+				login_note: NoNote,
+			}),
 			SignInPage.login({
 				viewer: Anonymous,
 				next: Html.SitePath.from_str("/chat") ?? crash "PageSpec: a site path",

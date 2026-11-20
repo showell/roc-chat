@@ -295,7 +295,11 @@ GitHubSignIn :: [].{
 	}
 
 	## A sign-up back from its browser, signed and in time.
-	SignUpResumed :: { github : GitHubId, login : GitHubSignIn.LoginHeard, next : Html.SitePath }.{
+	SignUpResumed :: {
+		github : GitHubId,
+		login : GitHubSignIn.LoginHeard,
+		next : Html.SitePath,
+	}.{
 
 		## What GitHub called the account, when it was a login.
 		login : GitHubSignIn.SignUpResumed -> GitHubSignIn.LoginHeard
@@ -322,7 +326,11 @@ GitHubSignIn :: [].{
 						Expired => Err(SignUpExpired)
 						Valid => Ok(
 							GitHubSignIn.SignUpResumed.(
-								{ github: signed.github(), login: signed.login(), next: signed.next() },
+								{
+									github: signed.github(),
+									login: signed.login(),
+									next: signed.next(),
+								},
 							),
 						)
 					}
@@ -478,7 +486,14 @@ resumed_up = {
 	github = GitHubId.from_u64(300) ?? crash "GitHubSignIn's tests: a GitHub id"
 	next = Html.SitePath.from_str("/agents") ?? crash "GitHubSignIn's tests: a site path"
 	GitHubSignIn.SignUpResumed.resume({
-		sign_up: Signed(GitHubSignUp.issue({ github, login: NoLogin, now: Timestamp.at_second(1000), next })),
+		sign_up: Signed(
+			GitHubSignUp.issue({
+				github,
+				login: NoLogin,
+				now: Timestamp.at_second(1000),
+				next,
+			}),
+		),
 		viewer: Anonymous,
 		now: Timestamp.at_second(1300),
 	}) ?? crash "GitHubSignIn's tests: a sign-up in time"

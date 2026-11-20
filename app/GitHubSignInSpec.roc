@@ -204,12 +204,21 @@ expect
 expect
 	round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Failed } })
 		== Err(GitHubUnreachable)
-expect round_trip({ ..good_return, heard: { ..github_answer(0, ""), status: Busy } }) == Err(GitHubBusy)
+expect round_trip({
+	..good_return,
+	heard: { ..github_answer(0, ""), status: Busy },
+}) == Err(GitHubBusy)
 expect round_trip({ ..good_return, heard: github_answer(0, "showell") }) == Err(BadIdentity)
 # A login that is no login (`GitHubLogin`) still signs in, and a new human
 # with one is offered no name.
-expect round_trip({ ..good_return, heard: github_answer(100, "not a login") }) == Ok(Admitted("Steve", "/agents"))
-expect round_trip({ ..good_return, heard: github_answer(300, "x".repeat(40)) }) == Ok(NewHumanNamed(""))
+expect round_trip({
+	..good_return,
+	heard: github_answer(100, "not a login"),
+}) == Ok(Admitted("Steve", "/agents"))
+expect round_trip({
+	..good_return,
+	heard: github_answer(300, "x".repeat(40)),
+}) == Ok(NewHumanNamed(""))
 
 ## The user `text` names, signed in by a session.
 viewer_of : Str -> SignedIn.Actor

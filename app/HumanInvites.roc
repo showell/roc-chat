@@ -67,7 +67,8 @@ HumanInvites :: [].{
 	## 403; no such human, a 404; a form at fault, a name that is no name or
 	## a password that is none, a 400; a name taken or chosen already, the
 	## chat full, or a browser signed in already, a 409; no default channel,
-	## a 500; sign-ups paused (`SignUpLimits`), a 503; and any refusal of an invite's code one 401 that says no more.
+	## a 500; sign-ups paused (`SignUpLimits`), a 503; and any refusal of an
+	## invite's code one 401 that says no more.
 	refusal_notice : HumanInvites.Refusal -> { status : U16, said : Str }
 	refusal_notice = |why|
 		match why {

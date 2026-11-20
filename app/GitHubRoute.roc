@@ -169,7 +169,12 @@ GitHubRoute :: [].{
 							Ok(Known(admission)) =>
 								SignInRoute.start_session_by_github!(admission, now)
 							Ok(Unknown(new_human)) =>
-								GitHubSignUpRoute.ask_for_name!({ viewer, new_human, directory, now })
+								GitHubSignUpRoute.ask_for_name!({
+									viewer,
+									new_human,
+									directory,
+									now,
+								})
 							Ok(Linking(linked)) =>
 								SignInRoute.start_session_by_github_link!(linked, now)
 							Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)

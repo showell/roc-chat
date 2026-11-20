@@ -5,7 +5,7 @@
 ##
 ## - At most `github_sign_ups_per_day_most` accounts are made by GitHub
 ##   sign-up in any 24 hours, server-wide. Each one made is remembered in
-##   the server's memory, one key a slot (`github_sign_up_keys`), so a
+##   the server's memory, one key a slot (`slot_keys`), so a
 ##   restart forgets the window and allows that many again; the second limit
 ##   still holds.
 ## - At most `accounts_most` accounts in all, humans and agents together,
@@ -54,8 +54,8 @@ SignUpLimits :: [].{
 
 	## The keys the server's memory holds the GitHub sign-ups' seconds
 	## under, one a slot.
-	github_sign_up_keys : List(List(U8))
-	github_sign_up_keys =
+	slot_keys : List(List(U8))
+	slot_keys =
 		List.repeat({}, SignUpLimits.github_sign_ups_per_day_most)
 			.map_with_index(|{}, slot| "github-sign-up/${slot.to_str()}".to_utf8())
 
@@ -75,16 +75,9 @@ SignUpLimits :: [].{
 		match ages.first() {
 			Err(ListWasEmpty) => crash "SignUpLimits.slot_for_sign_up: one slot a key, and some keys"
 			Ok(first) => {
-				oldest = ages.drop_first(1).fold(
-					first,
-					|kept, slot| if is_older(slot.age, kept.age) {
-						slot
-					} else {
-						kept
-					},
-				)
+				oldest = ages.drop_first(1).fold(first, older_slot)
 				if is_out_of_window(oldest.age) {
-					Ok(SignUpLimits.github_sign_up_keys.get(oldest.index) ?? crash "SignUpLimits: one key a slot")
+					Ok(SignUpLimits.slot_keys.get(oldest.index) ?? crash "SignUpLimits: one key a slot")
 				} else {
 					Err(DayFull)
 				}
@@ -109,7 +102,19 @@ is_older = |one, other|
 		(Never, Never) => Bool.False
 		(Never, Ago(_)) => Bool.True
 		(Ago(_), Never) => Bool.False
-		(Ago(a), Ago(b)) => a.is_more_than(b)
+		(Ago(one_age), Ago(other_age)) => one_age.is_more_than(other_age)
+	}
+
+## A slot by its place among the keys, and how long ago it was used.
+SlotAge : { index : U64, age : [Never, Ago(Seconds)] }
+
+## Of `kept` and `slot`, the older; `kept` when they are as old.
+older_slot : SlotAge, SlotAge -> SlotAge
+older_slot = |kept, slot|
+	if is_older(slot.age, kept.age) {
+		slot
+	} else {
+		kept
 	}
 
 ## Whether a chat of `count` accounts has room for one more.
@@ -140,34 +145,40 @@ slots_aged = |ages|
 key_of : U64 -> Try(List(U8), [DayFull])
 key_of = |slot| Ok("github-sign-up/${slot.to_str()}".to_utf8())
 
+## The slot a sign-up at noon takes, the slots aged as `ages` says.
+slot_taken : List([Never, Ago(I64)]) -> Try(List(U8), [DayFull])
+slot_taken = |ages| SignUpLimits.slot_for_sign_up(slots_aged(ages), at_noon)
+
+## A day in seconds.
+day : I64
+day = 24 * 60 * 60
+
 # Twenty keys, one a slot.
-expect SignUpLimits.github_sign_up_keys.len() == 20
-expect SignUpLimits.github_sign_up_keys.first() == Ok("github-sign-up/0".to_utf8())
-expect SignUpLimits.github_sign_up_keys.last() == Ok("github-sign-up/19".to_utf8())
+expect SignUpLimits.slot_keys.len() == 20
+expect SignUpLimits.slot_keys.first() == Ok("github-sign-up/0".to_utf8())
+expect SignUpLimits.slot_keys.last() == Ok("github-sign-up/19".to_utf8())
 # A slot never used is taken first, the first of them.
-expect SignUpLimits.slot_for_sign_up(slots_aged(List.repeat(Never, 20)), at_noon) == key_of(0)
-expect
-	SignUpLimits.slot_for_sign_up(slots_aged([Ago(5), Never, Never].concat(List.repeat(Ago(9), 17))), at_noon)
-		== key_of(1)
+expect slot_taken(List.repeat(Never, 20)) == key_of(0)
+expect {
+	recent = List.repeat(Ago(9), 17)
+	slot_taken(List.concat([Ago(5), Never, Never], recent)) == key_of(1)
+}
 # Twenty in the window: the twenty-first is refused, at the window's last
 # second too.
-expect SignUpLimits.slot_for_sign_up(slots_aged(List.repeat(Ago(60), 20)), at_noon) == Err(DayFull)
-expect
-	SignUpLimits.slot_for_sign_up(slots_aged(List.repeat(Ago(24 * 60 * 60 - 1), 20)), at_noon)
-		== Err(DayFull)
+expect slot_taken(List.repeat(Ago(60), 20)) == Err(DayFull)
+expect slot_taken(List.repeat(Ago(day - 1), 20)) == Err(DayFull)
 # One a whole window old frees its slot; the oldest of those is taken.
-expect
-	SignUpLimits.slot_for_sign_up(
-		slots_aged(List.repeat(Ago(60), 18).concat([Ago(24 * 60 * 60), Ago(30 * 60 * 60)])),
-		at_noon,
-	)
-		== key_of(19)
-expect
-	SignUpLimits.slot_for_sign_up(slots_aged(List.repeat(Ago(60), 19).append(Ago(24 * 60 * 60))), at_noon)
-		== key_of(19)
+expect {
+	recent = List.repeat(Ago(60), 18)
+	slot_taken(List.concat(recent, [Ago(day), Ago(day + 6 * 60 * 60)])) == key_of(19)
+}
+expect slot_taken(List.repeat(Ago(60), 19).append(Ago(day))) == key_of(19)
 # The chat's room: under the most, at it, past it.
 expect room_for(0) == Ok({}) and room_for(1999) == Ok({})
 expect room_for(2000) == Err(ChatFull) and room_for(2001) == Err(ChatFull)
 expect SignUpLimits.paused_words == "Sign-ups are paused for now; please try again later."
-expect SignUpLimits.paused_log_line(DayFull) == "sign-ups paused: 20 GitHub sign-ups in the last 24 hours".to_utf8()
+expect {
+	day_full = "sign-ups paused: 20 GitHub sign-ups in the last 24 hours"
+	SignUpLimits.paused_log_line(DayFull) == day_full.to_utf8()
+}
 expect SignUpLimits.paused_log_line(ChatFull) == "sign-ups paused: 2000 accounts, the most".to_utf8()
