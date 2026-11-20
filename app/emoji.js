@@ -29,25 +29,54 @@ window.Emoji = (function () {
   var textarea = compose && compose.querySelector('textarea');
   if (!textarea) throw new Error('emoji.js: the page has no .compose with a textarea');
 
-  // The menu's order is this order.
+  // The menu's order is this order. The first group is ordered by how often
+  // each was a reaction on the Roc Zulip (its last 1,000 reactions, 2026-11-20),
+  // leaving out the negative ones, the custom images and the emojis that take
+  // more than one code point.
   var EMOJI = [
+    { name: 'thumbsup', glyph: '👍' },
+    { name: 'tada', glyph: '🎉' },
+    { name: 'heart', glyph: '❤️' }, // The red heart is text without its variation selector.
+    { name: '100', glyph: '💯' },
+    { name: 'octopus', glyph: '🐙' },
+    { name: 'fire', glyph: '🔥' },
+    { name: 'hearteyes', glyph: '😍' },
+    { name: 'wave', glyph: '👋' },
+    { name: 'eyes', glyph: '👀' },
+    { name: 'rocket', glyph: '🚀' },
+    { name: 'plus', glyph: '➕' },
     { name: 'smile', glyph: '😄' },
+    { name: 'pray', glyph: '🙏' },
+    { name: 'slightsmile', glyph: '🙂' },
+    { name: 'cool', glyph: '🆒' },
+    { name: 'check', glyph: '✅' },
     { name: 'joy', glyph: '😂' },
+    { name: 'wow', glyph: '😮' },
+    { name: 'sparkles', glyph: '✨' },
+    { name: 'rockon', glyph: '🤘' },
+    { name: 'racecar', glyph: '🏎️' },
+    { name: 'muscle', glyph: '💪' },
+    { name: 'airplane', glyph: '🛩️' },
+    { name: 'thinking', glyph: '🤔' },
+    { name: 'rofl', glyph: '🤣' },
+    { name: 'smilinghearts', glyph: '🥰' },
+    { name: 'tools', glyph: '🛠️' },
+    { name: 'mindblown', glyph: '🤯' },
+    { name: 'laughing', glyph: '😆' },
+    { name: 'grin', glyph: '😁' },
+    { name: 'firecracker', glyph: '🧨' },
+    { name: 'smiley', glyph: '😃' },
+    { name: 'ok', glyph: '👌' },
+    { name: 'salute', glyph: '🫡' },
+    { name: 'monocle', glyph: '🧐' },
+    { name: 'disguise', glyph: '🥸' },
+    { name: 'cowboy', glyph: '🤠' },
+    { name: 'pointup', glyph: '👆' },
+    { name: 'bangbang', glyph: '‼️' },
+    // Gopher Chat's own.
     { name: 'sob', glyph: '😭' },
     { name: 'wink', glyph: '😉' },
-    { name: 'thinking', glyph: '🤔' },
-    { name: 'thumbsup', glyph: '👍' },
-    { name: 'thumbsdown', glyph: '👎' },
-    { name: 'heart', glyph: '❤️' }, // The red heart is text without its variation selector.
-    { name: 'tada', glyph: '🎉' },
-    { name: 'rocket', glyph: '🚀' },
-    { name: 'fire', glyph: '🔥' },
-    { name: 'eyes', glyph: '👀' },
-    { name: '100', glyph: '💯' },
-    { name: 'check', glyph: '✅' },
-    { name: 'wave', glyph: '👋' },
     // Fitness.
-    { name: 'muscle', glyph: '💪' },
     { name: 'run', glyph: '🏃' },
     { name: 'bike', glyph: '🚴' },
     { name: 'swim', glyph: '🏊' },
