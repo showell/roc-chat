@@ -11,6 +11,7 @@ import JoinPage
 import Message
 import MessageNotes
 import Name
+import PageContract
 import PageKit
 import PeoplePages
 import Reactions
@@ -369,8 +370,8 @@ expect {
 			},
 		)
 }
-# The invites page of someone with no one to invite again: what an invite is
-# for, the form, and that nothing is open.
+# The invites page of someone with no one to invite again: the steps, what an
+# invite is for, the form, and that nothing is open.
 expect
 	PeoplePages.invites({
 		viewer: SignedIn.dangerously_assume(Sample.user("Steve")),
@@ -382,7 +383,7 @@ expect
 		problem: NoProblem,
 		now: Timestamp.at_second(0),
 	}).to_utf8()
-		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>An invite brings someone into the chat. They choose a password, and sign in with their name and that password.</p>\n<p>Write the name you know them by, and you get a link to send them. The link works once, for seven days. They can keep the name or choose another.</p>\n<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
+		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>1. Type their name.</p>\n<p>2. Copy the link.</p>\n<p>3. Send it to them; it works once, for 7 days.</p>\n<p class=\"help\">They choose a password when they join, and may keep the name or choose another.</p><form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
 	PageKit.refusal("it <is> not UTF-8").to_utf8()
@@ -551,3 +552,73 @@ expect {
 			"<div class=\"recent-list\" data-stream=\"/chat/recent/stream\"><a class=\"recent-tile\" href=\"/chat/channel/general/plans\"><span class=\"recent-lead\"><span class=\"recent-bar\"></span></span><span class=\"recent-where\"><span class=\"recent-mark\"></span>#general</span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-context\"><span class=\"recent-place\">#general</span><span class=\"recent-dot\">  ·  </span><span class=\"recent-topic\">plans</span></span><time class=\"recent-ago\" datetime=\"2026-11-03T10:00:00Z\">2026-11-03T10:00:00Z</time></span><span class=\"recent-preview\"><span class=\"recent-who\">You: </span>a &lt; b</span></span></a>\n<a class=\"recent-tile\" href=\"/chat/dm/1_2/books\" data-person=\"2\" data-presence=\"online\"><span class=\"recent-lead\"><span class=\"recent-avatar\">A</span></span><span class=\"recent-where\"><span class=\"recent-mark\"></span>DM with Apoorva</span><span class=\"recent-body\"><span class=\"recent-top\"><span class=\"recent-title\">books</span><time class=\"recent-ago\" datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time></span></span></a>\n</div>",
 		)
 }
+
+# Every class, each its one spelling.
+expect
+	[
+		(Author, "author"),
+		(Body, "body"),
+		(BrowsePanes, "browse-panes"),
+		(CodeExpiry, "code-expiry"),
+		(CodeStatus, "code-status"),
+		(Compose, "compose"),
+		(Current, "current"),
+		(EditedMarkdown, "edited-markdown"),
+		(EditedNote, "edited-note"),
+		(EditedOriginal, "edited-original"),
+		(Empty, "empty"),
+		(Help, "help"),
+		(InviteCode, "invite-code"),
+		(InviteMade, "invite-made"),
+		(InviteRow, "invite-row"),
+		(SignInCode, "sign-in-code"),
+		(SignOut, "sign-out"),
+		(Layout, "layout"),
+		(Message, "message"),
+		(MessageReference, "message-reference"),
+		(Messages, "messages"),
+		(NoticeStrip, "notice-strip"),
+		(Panel, "panel"),
+		(Problem, "problem"),
+		(ReactionChip, "reaction-chip"),
+		(ReactionEmoji, "reaction-emoji"),
+		(ReactionStrip, "reaction-strip"),
+		(RecentAgo, "recent-ago"),
+		(RecentAvatar, "recent-avatar"),
+		(RecentBar, "recent-bar"),
+		(RecentBody, "recent-body"),
+		(RecentContext, "recent-context"),
+		(RecentDot, "recent-dot"),
+		(RecentLead, "recent-lead"),
+		(RecentList, "recent-list"),
+		(RecentMark, "recent-mark"),
+		(RecentPlace, "recent-place"),
+		(RecentPreview, "recent-preview"),
+		(RecentTile, "recent-tile"),
+		(RecentTitle, "recent-title"),
+		(RecentTop, "recent-top"),
+		(RecentTopic, "recent-topic"),
+		(RecentWhere, "recent-where"),
+		(RecentWho, "recent-who"),
+		(Sidebar, "sidebar"),
+		(SidebarMore, "sidebar-more"),
+		(SidebarMoreName, "sidebar-more-name"),
+		(SidebarNewTopic, "sidebar-new-topic"),
+		(SidebarPlace, "sidebar-place"),
+		(SidebarPlaceName, "sidebar-place-name"),
+		(SidebarSection, "sidebar-section"),
+		(SidebarSectionName, "sidebar-section-name"),
+		(SidebarToggle, "sidebar-toggle"),
+		(SidebarTopics, "sidebar-topics"),
+		(TopBar, "top-bar"),
+		(TopLinks, "top-links"),
+		(TopTitle, "top-title"),
+		(TopicLink, "topic-link"),
+		(TopUser, "top-user"),
+		(Viewer, "viewer"),
+		(You, "you"),
+	].all(
+		|
+			(chosen, spelled),
+		| PageContract.empty_paragraph([PageContract.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8(),
+	)

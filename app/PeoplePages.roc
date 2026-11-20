@@ -4,7 +4,12 @@
 ## human invites' page, `/invites` (`HumanInvitesRoute`). The invited human
 ## joins at the link that page shows (`JoinPage.join`).
 import Channels
+import DateWords
+import Escape
+import Html
 import HumanInvite
+import Name
+import PageContract
 import PageKit
 import SignInPage
 import SignedIn
@@ -67,18 +72,25 @@ PeoplePages :: [].{
 	## One human the viewer may invite again, with their invites.
 	InvitedHuman : { human : Users.User, invites : List(HumanInvite) }
 
-	## What the invites page's lines are written from: who is in the chat, and
-	## the moment that says which invites are open.
-	InvitesContext : { users : Users, now : Timestamp }
+	## What the invites page's lines are written from: who is in the chat,
+	## who is reading, and the moment that says which invites are open.
+	InvitesContext : {
+		users : Users,
+		viewer : SignedIn,
+		now : Timestamp,
+	}
 
-	## The invites page, for `viewer`: `problem`, when there is one; when an
-	## invite was just made, the link that joins by it, the one time it is
-	## shown (`shown`); what an invite is for, which depends on whether
-	## `github` signs people up too; a form that invites someone by a name,
-	## or, when the viewer may not invite (`may_invite`), the line saying why;
-	## then those of `invited` who have an invite open at `now`, and last the
-	## rest. Each human has a button that invites them again, and each maker
-	## is found among `users`.
+	## The invites page, for `viewer`. When an invite was just made, first a
+	## card of the link that joins by it (`shown`), the one time it is shown,
+	## and everything else behind a quiet "Invite someone else". Then the
+	## steps of inviting, a quiet line of what an invite is for, which depends
+	## on whether `github` signs people up too, and a form that invites
+	## someone by a name, or, when the viewer may not invite (`may_invite`),
+	## the line saying why; `problem` under it, when there is one, the form
+	## holding the name that was typed. Then those of `invited` who have an
+	## invite open at `now`, and last the rest, each human a row of their
+	## invites in words, with a button that makes a new link. Each maker is
+	## found among `users`.
 	invites : {
 		viewer : SignedIn,
 		users : Users,
@@ -86,7 +98,7 @@ PeoplePages :: [].{
 		github : SignInPage.GitHubOffer,
 		may_invite : [MayInvite, MayNotInvite(Str)],
 		shown : [NoLink, Link({ human : Users.User, link : Str })],
-		problem : [NoProblem, Problem(Str)],
+		problem : [NoProblem, Problem({ words : Str, typed : [Typed(Name), NothingTyped] })],
 		now : Timestamp,
 	} -> TrustedHtml
 	invites = |
@@ -101,42 +113,28 @@ PeoplePages :: [].{
 			now,
 		},
 	| {
-		said =
+		(said, typed) =
 			match problem {
-				NoProblem => []
-				Problem(text) => [PageKit.paragraph(text)]
-			}
-		code =
-			match shown {
-				NoLink => []
-				Link({ human, link }) => [
-					PageKit.paragraph("Send this link to ${human.name().to_str()}. It is shown only this once, so copy it now."),
-					PageKit.shown_code(link),
-				]
+				NoProblem => ([], NothingTyped)
+				Problem({ words, typed: kept }) => ([PageKit.problem(words)], kept)
 			}
 		form =
 			match may_invite {
-				MayInvite =>
-					PageKit.text_form({
-						action: PageKit.invites_path,
-						fields: [{ label: "Their name", name: "name" }],
-						label: "Invite someone",
-					})
+				MayInvite => invite_form(typed)
 				MayNotInvite(why) => PageKit.paragraph(why)
 			}
+		ask_parts = [
+			invite_steps,
+			[quiet(invite_purpose(github)), form],
+			said,
+		].join()
 		{ waiting_humans, past_humans } = split_by_open_invite(invited, now)
-		context = { users, now }
+		context = { users, viewer, now }
 		PageKit.signed_in_page({
 			title: "Invites",
 			viewer,
 			parts: [
-				said,
-				code,
-				[
-					PageKit.paragraph(invite_purpose(github)),
-					PageKit.paragraph(invite_steps),
-					form,
-				],
+				made_parts(shown, ask_parts),
 				open_section_parts(waiting_humans, context),
 				past_section_parts(past_humans, context),
 			].join(),
@@ -144,32 +142,132 @@ PeoplePages :: [].{
 	}
 }
 
-## What an invite is for. It mentions GitHub only on a server that signs
-## people up by GitHub.
+## The top of the invites page: `ask_parts` (the steps and the form) alone;
+## or, when a link was just made, its card, and `ask_parts` behind "Invite
+## someone else", closed until asked.
+made_parts :
+	[NoLink, Link({ human : Users.User, link : Str })], List(TrustedHtml) -> List(TrustedHtml)
+made_parts = |shown, ask_parts|
+	match shown {
+		NoLink => ask_parts
+		Link({ human, link }) => [
+			Html.element({
+				name: Div,
+				attributes: [PageContract.class(InviteMade)],
+				inner: TrustedHtml.join([
+					PageKit.paragraph("Send this link to ${human.name().to_str()}. It works once, for 7 days, and is shown only this once, so copy it now."),
+					PageKit.shown_code(link),
+				]),
+			}),
+			PageKit.newline,
+			Html.element({
+				name: Details,
+				attributes: [],
+				inner: TrustedHtml.join(
+					List.concat(
+						[
+							Html.element({
+								name: Summary,
+								attributes: [],
+								inner: Escape.text("Invite someone else"),
+							}),
+						],
+						ask_parts,
+					),
+				),
+			}),
+			PageKit.newline,
+		]
+	}
+
+## The form that invites someone by a name, holding `typed`, the name a
+## refused invite was for.
+invite_form : [Typed(Name), NothingTyped] -> TrustedHtml
+invite_form = |typed| {
+	value =
+		match typed {
+			Typed(name) => [NameValue(name)]
+			NothingTyped => []
+		}
+	Html.element({
+		name: Form,
+		attributes: [MethodPost, Action(PageKit.site_path(PageKit.invites_path))],
+		inner: TrustedHtml.join([
+			PageKit.labelled_input({
+				label: "Their name",
+				attributes: List.concat(
+					[
+						InputType(Text),
+						FieldName(PageKit.token("name")),
+						Required,
+					],
+					value,
+				),
+			}),
+			Html.element({
+				name: Button,
+				attributes: [],
+				inner: Escape.text("Invite someone"),
+			}),
+		]),
+	})
+}
+
+## A quiet line (`Help`) of `said`.
+quiet : Str -> TrustedHtml
+quiet = |said|
+	Html.element({
+		name: P,
+		attributes: [PageContract.class(Help)],
+		inner: Escape.text(said),
+	})
+
+## What an invite is for, in one quiet line. It mentions GitHub only on a
+## server that signs people up by GitHub.
 invite_purpose : SignInPage.GitHubOffer -> Str
 invite_purpose = |github|
 	match github {
-		Offered => "An invite brings in someone who doesn't use GitHub. They choose a password, and sign in with their name and that password. Anyone with GitHub can sign up on their own, with no invite."
-		NotOffered => "An invite brings someone into the chat. They choose a password, and sign in with their name and that password."
+		Offered => "An invite is for someone without GitHub: anyone with GitHub can sign up on their own."
+		NotOffered => "They choose a password when they join, and may keep the name or choose another."
 	}
 
-## How to make an invite.
-invite_steps : Str
-invite_steps = "Write the name you know them by, and you get a link to send them. The link works once, for seven days. They can keep the name or choose another."
+## How to invite someone, a step a line.
+invite_steps : List(TrustedHtml)
+invite_steps = [
+	PageKit.paragraph("1. Type their name."),
+	PageKit.paragraph("2. Copy the link."),
+	PageKit.paragraph("3. Send it to them; it works once, for 7 days."),
+]
+
+## One human on the invites page, and whether any invite of theirs was ever
+## spent, so they have joined.
+ListedHuman : {
+	human : Users.User,
+	invites : List(HumanInvite),
+	joined : Bool,
+}
 
 ## `invited` split in two at `now`: first the humans with an open invite, each
 ## with only their open invites, then everyone else, with all of theirs.
 split_by_open_invite : List(PeoplePages.InvitedHuman),
 Timestamp -> {
-	waiting_humans : List(PeoplePages.InvitedHuman),
-	past_humans : List(PeoplePages.InvitedHuman),
+	waiting_humans : List(ListedHuman),
+	past_humans : List(ListedHuman),
 }
 split_by_open_invite = |invited, now| {
 	has_open = |listed| listed.invites.any(|invite| invite.is_open(now))
+	joined = |invites| invites.any(|invite| invite.state() == Spent)
 	waiting_humans = invited.keep_if(has_open).map(
-		|{ human, invites }| { human, invites: invites.keep_if(|invite| invite.is_open(now)) },
+		|{ human, invites }| {
+			human,
+			invites: invites.keep_if(|invite| invite.is_open(now)),
+			joined: joined(invites),
+		},
 	)
-	{ waiting_humans, past_humans: invited.drop_if(has_open) }
+	past_humans = invited.drop_if(has_open).map(
+		|{ human, invites }| { human, invites, joined: joined(invites) },
+	)
+	{ waiting_humans, past_humans }
 }
 
 ## A user as a channel's page names them: their name, whether a human or an
@@ -204,26 +302,23 @@ member_button = |{ folder, user, act }| {
 }
 
 ## The invites page's list of open invites, which says so when it has none.
-open_section_parts : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
+open_section_parts : List(ListedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
 open_section_parts = |waiting_humans, context| {
 	heading = PageKit.heading("Open invites")
 	if waiting_humans.is_empty() {
 		[heading, PageKit.paragraph("No open invites.")]
 	} else {
 		List.concat(
-			[
-				heading,
-				PageKit.paragraph("A link is shown only once. If one is lost, invite them again for a new link."),
-			],
-			waiting_humans.map(|human| invited_rows(human, context)),
+			[heading, quiet("A link is shown only once. If one is lost, make a new link.")],
+			waiting_humans.map(|human| invited_row(human, context)),
 		)
 	}
 }
 
 ## The invites page's list of everyone else, shown only when there is someone.
-## It says what inviting a human again does, as for someone who has joined
-## that is how a lost password is replaced.
-past_section_parts : List(PeoplePages.InvitedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
+## It says what a new link does, as for someone who has joined that is how a
+## lost password is replaced.
+past_section_parts : List(ListedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
 past_section_parts = |past_humans, context|
 	if past_humans.is_empty() {
 		[]
@@ -231,45 +326,71 @@ past_section_parts = |past_humans, context|
 		List.concat(
 			[
 				PageKit.heading("Past invites"),
-				PageKit.paragraph("Inviting someone again makes a new link. If they have joined, they keep their name, and the link sets a new password."),
+				quiet("A new link for someone who has joined lets them set a new password; they keep their name."),
 			],
-			past_humans.map(|human| invited_rows(human, context)),
+			past_humans.map(|human| invited_row(human, context)),
 		)
 	}
 
-## One human's rows on the invites page: a line for each of their invites, or
-## a line saying they have none, and the button that invites them again. A
-## human has none when writing their invite failed after their account.
-invited_rows : PeoplePages.InvitedHuman, PeoplePages.InvitesContext -> TrustedHtml
-invited_rows = |{ human, invites }, context| {
+## One human's row on the invites page (`InviteRow`): a line for each of
+## their invites, or a line saying they have none, and at the row's right
+## the button that makes them a new link. A human has none when writing their
+## invite failed after their account.
+invited_row : ListedHuman, PeoplePages.InvitesContext -> TrustedHtml
+invited_row = |{ human, invites, joined }, context| {
 	name = human.name().to_str()
 	said =
 		if invites.is_empty() {
-			[PageKit.paragraph("${name}: no invite yet.")]
+			[PageKit.paragraph("${name} has no link yet")]
 		} else {
-			invites.map(|invite| PageKit.paragraph("${name}: ${invite_words(invite, context)}"))
+			invites.map(|invite| PageKit.paragraph(invite_words({ invite, name, joined, context })))
 		}
-	again = PageKit.post_button({
-		action: "${PageKit.invites_path}/${human.id().to_str()}/again",
-		label: "Invite ${name} again",
-	})
-	TrustedHtml.join(said.append(again))
+	TrustedHtml.join([
+		Html.element({
+			name: Div,
+			attributes: [PageContract.class(InviteRow)],
+			inner: TrustedHtml.join([
+				Html.element({
+					name: Div,
+					attributes: [],
+					inner: TrustedHtml.join(said),
+				}),
+				PageKit.post_button({
+					action: "${PageKit.invites_path}/${human.id().to_str()}/again",
+					label: "New link",
+				}),
+			]),
+		}),
+		PageKit.newline,
+	])
 }
 
-## One invite in words: used, open, or past its date at `now`, and who made it.
-invite_words : HumanInvite, PeoplePages.InvitesContext -> Str
-invite_words = |invite, { users, now }| {
-	date = PageKit.date_words(invite.expires())
+## One invite of the human `name` in plain words, at `now`: they joined by
+## it; it is open, and they haven't joined (or, when they have, it is their
+## new link); or it expired. Then who made it, unless the reader did.
+invite_words : {
+	invite : HumanInvite,
+	name : Str,
+	joined : Bool,
+	context : PeoplePages.InvitesContext,
+} -> Str
+invite_words = |{ invite, name, joined, context }| {
+	{ users, viewer, now } = context
+	date = DateWords.phrase({ moment: invite.expires(), now })
 	standing =
 		match invite.state() {
-			Spent => "used"
-			Live if invite.is_open(now) => "open until ${date}"
-			Live => "expired on ${date}"
+			Spent => "${name} joined"
+			Live if invite.is_open(now) and joined => "${name}'s new link expires ${date}"
+			Live if invite.is_open(now) => "${name} hasn't joined · link expires ${date}"
+			Live => "${name}'s link expired ${date}"
 		}
-	maker =
-		match users.user(invite.invite_maker()) {
-			Ok(user) => user.name().to_str()
-			Err(NoSuchUser) => "user ${invite.invite_maker().to_str()}"
+	maker = invite.invite_maker()
+	if maker == viewer.user().id() {
+		standing
+	} else {
+		match users.user(maker) {
+			Ok(user) => "${standing} · made by ${user.name().to_str()}"
+			Err(NoSuchUser) => "${standing} · made by user ${maker.to_str()}"
 		}
-	"${standing}, made by ${maker}."
+	}
 }

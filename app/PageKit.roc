@@ -24,14 +24,12 @@
 ## (`TrustedHtml.dangerously_trust`) for one constant: the doctype and the
 ## head's two `<meta>` elements.
 import ConversationKey
-import DateTime
 import Escape
 import HomeLink
 import Html
 import PageContract
 import Script
 import SignedIn
-import Timestamp
 import TrustedHtml
 
 PageKit :: [].{
@@ -146,15 +144,7 @@ PageKit :: [].{
 
 	## A heading of `said`.
 	heading : Str -> TrustedHtml
-	heading = |said|
-		TrustedHtml.join([
-			Html.element({
-				name: H1,
-				attributes: [],
-				inner: Escape.text(said),
-			}),
-			PageKit.newline,
-		])
+	heading = |said| PageKit.heading_of(Escape.text(said))
 
 	## A paragraph holding a link to `path`, a page of this site, of `text`.
 	link_paragraph : { path : Str, text : Str } -> TrustedHtml
@@ -174,23 +164,32 @@ PageKit :: [].{
 
 	## A one-time code shown on a page, in the class a reader finds it by.
 	shown_code : Str -> TrustedHtml
-	shown_code = |code|
+	shown_code = |code| marked_paragraph(InviteCode, Escape.text(code))
+
+	## What was wrong with a form, said beside it, marked as the problem
+	## (`Problem`): app/panel.js draws it as an error, and app/sidebar-popups.js
+	## finds it in Browse's answer to its new-topic popup.
+	problem : Str -> TrustedHtml
+	problem = |said| marked_paragraph(Problem, Escape.text(said))
+
+	## The reader's own name where a list names them among others (their own
+	## DM): the name, then "(you)" in a quiet span (`You`), as Zulip does.
+	## Browse's headings use it, and a conversation's sidebar can.
+	own_name : Str -> TrustedHtml
+	own_name = |name|
 		TrustedHtml.join([
+			Escape.text("${name} "),
 			Html.element({
-				name: P,
-				attributes: [PageContract.class(InviteCode)],
-				inner: Escape.text(code),
+				name: Span,
+				attributes: [PageContract.class(You)],
+				inner: Escape.text("(you)"),
 			}),
-			PageKit.newline,
 		])
 
-	## The date of `moment`, or its seconds when it is out of a date's range.
-	date_words : Timestamp -> Str
-	date_words = |moment|
-		match DateTime.from_timestamp(moment) {
-			Ok(time) => time.date_to_str()
-			Err(OutOfRange) => "at ${moment.to_str()} seconds"
-		}
+	## A heading of `inner`, already markup.
+	heading_of : TrustedHtml -> TrustedHtml
+	heading_of = |inner|
+		TrustedHtml.join([Html.element({ name: H1, attributes: [], inner }), PageKit.newline])
 
 	## The element that loads `chosen`, one of this server's scripts.
 	script : Script -> TrustedHtml
@@ -323,6 +322,18 @@ PageKit :: [].{
 			}),
 		})
 }
+
+## A paragraph of `inner` in the class `chosen`, and a line end.
+marked_paragraph : PageContract.Class, TrustedHtml -> TrustedHtml
+marked_paragraph = |chosen, inner|
+	TrustedHtml.join([
+		Html.element({
+			name: P,
+			attributes: [PageContract.class(chosen)],
+			inner,
+		}),
+		PageKit.newline,
+	])
 
 ## A page of `title`: the top bar `top`, then `parts` in a panel, then the
 ## scripts that style them.

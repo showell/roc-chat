@@ -1,12 +1,13 @@
 ## This module decides what Browse shows a human and writes its page. Browse
 ## lists every place a human may open: every human as a DM, the reader too
 ## (their own DM), then each channel the reader is a member of, each with its
-## topics and a form that starts a new one. A conversation's sidebar
-## (`Sidebar`) lists the same places. Above them is the link to the invites page,
-## as every human who browses may invite. `Access` decides what is listed, so a place
-## the reader couldn't open is never shown. A problem with a form, such as a
-## name that is no topic, is said first, in a paragraph marked as the
-## problem. `BrowseRoute` reads the topics and answers.
+## topics and a form that starts a new one, in two panes, the channels and
+## the DMs. A conversation's sidebar (`Sidebar`) lists the same places, and
+## Browse is where someone who can't find a place there looks, so it opens
+## with a few quiet lines for someone new. `Access` decides what is listed,
+## so a place the reader couldn't open is never shown. A problem with a
+## form, such as a name that is no topic, is said beside that form, which
+## keeps what was typed. `BrowseRoute` reads the topics and answers.
 import Access
 import ConversationKey
 import Directory
@@ -20,6 +21,7 @@ import SignedIn
 import Topic
 import TopicForm
 import TrustedHtml
+import UnvalidatedString
 import UserId
 import Users
 
@@ -65,43 +67,115 @@ Browse :: [].{
 		)
 	}
 
-	## The Browse page for `viewer`: `problem`, when there is one, the link
-	## to the invites page, then each of `places`.
+	## A form's problem on Browse: the place whose form was refused, what was
+	## typed there, if anything, and why, said beside that place's form.
+	TopicProblem : [
+		NoProblem,
+		Problem(
+			{
+				place : Place,
+				typed : [Typed(UnvalidatedString), NothingTyped],
+				words : Str,
+			},
+		),
+	]
+
+	## The Browse page for `viewer`: a few quiet lines for someone new, then
+	## two panes, the channels and the DMs, each place with its topics and
+	## its form; `problem`, when there is one, beside its place's form, or
+	## first when no place listed is its own.
 	page : {
 		viewer : SignedIn,
 		places : List(Browse.PlaceWithTopics),
-		problem : [NoProblem, Problem(Str)],
+		problem : Browse.TopicProblem,
 	} -> TrustedHtml
 	page = |{ viewer, places, problem }| {
-		said =
+		is_listed = |place| places.any(|listed| listed.place == place)
+		unplaced =
 			match problem {
-				NoProblem => []
-				Problem(text) => [problem_paragraph(text)]
+				Problem({ place, typed: _, words }) if !is_listed(place) =>
+					[PageKit.problem(words)]
+				_ => []
 			}
+		section = |listed| place_section(listed, { viewer, problem })
+		channels = places.keep_if(|listed| is_channel(listed.place))
+		dms = places.drop_if(|listed| is_channel(listed.place))
 		PageKit.signed_in_page({
 			title: "Browse",
 			viewer,
-			parts: List.concat(said.append(invite_link), places.map(place_section)),
+			parts: List.concat(
+				unplaced,
+				[
+					newcomer_lines,
+					Html.element({
+						name: Div,
+						attributes: [PageContract.class(BrowsePanes)],
+						inner: TrustedHtml.join([
+							pane("Channels", channels.map(section)),
+							pane("Direct messages", dms.map(section)),
+						]),
+					}),
+					PageKit.newline,
+				],
+			),
 		})
 	}
+
+	## Whether `place` is the DM of `viewer` alone, their own DM, which Browse
+	## and the sidebar label with `PageKit.own_name`.
+	is_own_dm : Place, SignedIn -> Bool
+	is_own_dm = |place, viewer|
+		match place.which() {
+			Dm(pair) => pair.members().all(|id| id == viewer.user().id())
+			Channel(_) => Bool.False
+		}
 }
 
-## The paragraph that says what was wrong, marked so a script that posted
-## the form finds it (app/sidebar.js's new-topic popup).
-problem_paragraph : Str -> TrustedHtml
-problem_paragraph = |text|
-	TrustedHtml.join([
-		Html.element({
-			name: P,
-			attributes: [PageContract.class(Problem)],
-			inner: Escape.text(text),
-		}),
-		PageKit.newline,
-	])
+## The path of `topic`'s page in `place`.
+topic_path : Place, Topic -> Str
+topic_path = |place, topic| ConversationKey.of({ place, topic }).url_path(Page)
 
-## The link to the invites page.
-invite_link : TrustedHtml
-invite_link = PageKit.link_paragraph({ path: PageKit.invites_path, text: "Invite someone" })
+## Whether `place` is a channel.
+is_channel : Place -> Bool
+is_channel = |place|
+	match place.which() {
+		Channel(_) => Bool.True
+		Dm(_) => Bool.False
+	}
+
+## One of the page's two panes: its heading, then `sections`, or a line
+## saying it has none.
+pane : Str, List(TrustedHtml) -> TrustedHtml
+pane = |title, sections|
+	Html.element({
+		name: Div,
+		attributes: [],
+		inner: TrustedHtml.join(
+			List.concat(
+				[PageKit.heading(title)],
+				if sections.is_empty() {
+					[PageKit.paragraph("None yet.")]
+				} else {
+					sections
+				},
+			),
+		),
+	})
+
+## The quiet lines for someone new: what the chat has and how to reach it.
+newcomer_lines : TrustedHtml
+newcomer_lines =
+	Html.element({
+		name: Div,
+		attributes: [PageContract.class(Help)],
+		inner: TrustedHtml.join([
+			PageKit.paragraph("New here? Every place you can read is below: open a topic, or start one with its place's form."),
+			PageKit.paragraph("In a conversation, the sidebar lists your places, and its + starts a topic or a DM."),
+			PageKit.paragraph("Recent shows the newest messages everywhere, as they arrive."),
+			PageKit.paragraph("In a topic, c writes, q quote-replies, and / searches; the keys are listed beside the messages."),
+			PageKit.paragraph("To bring someone in, use Invites in the top bar."),
+		]),
+	})
 
 ## The DM between `reader` and `other`, shown by `other`'s name.
 dm_listed : { reader : Users.Human, other : Users.Human } -> Browse.ListedPlace
@@ -110,24 +184,47 @@ dm_listed = |{ reader, other }| {
 	place: Place.dm(Dm.between({ one: reader, other })),
 }
 
-## One place on the page: its name, its topics as links, and the form that
-## starts a topic. A place with no topics yet says so and suggests its first.
-place_section : Browse.PlaceWithTopics -> TrustedHtml
-place_section = |{ label, place, topics }| {
+## One place on the page: its name, the reader's own DM marked "(you)", its
+## topics as links, and the form that starts a topic, holding what was typed
+## and saying `problem` when that form was refused. A place with no topics
+## yet says so and suggests its first.
+place_section :
+	Browse.PlaceWithTopics, { viewer : SignedIn, problem : Browse.TopicProblem } -> TrustedHtml
+place_section = |{ label, place, topics }, { viewer, problem }| {
+	name =
+		if Browse.is_own_dm(place, viewer) {
+			PageKit.own_name(label)
+		} else {
+			Escape.text(label)
+		}
 	listed =
 		if topics.is_empty() {
 			[PageKit.paragraph("No topics yet")]
 		} else {
 			topics.map(
 				|topic|
-					PageKit.link_paragraph({
-						path: ConversationKey.of({ place, topic }).url_path(Page),
-						text: topic.to_str(),
-					}),
+					TrustedHtml.join([
+						Html.element({
+							name: P,
+							attributes: [],
+							inner: Html.element({
+								name: A,
+								attributes: [
+									PageContract.class(TopicLink),
+									Link(PageKit.site_path(topic_path(place, topic))),
+								],
+								inner: Escape.text(topic.to_str()),
+							}),
+						}),
+						PageKit.newline,
+					]),
 			)
 		}
-	TrustedHtml.join(
-		List.concat([PageKit.heading(label)], listed)
-			.append(TopicForm.form({ place, topics })),
-	)
+	form =
+		match problem {
+			Problem({ place: refused, typed, words }) if refused == place =>
+				TopicForm.refused_form({ place, typed, problem: words })
+			_ => TopicForm.form({ place, topics })
+		}
+	TrustedHtml.join(List.concat([PageKit.heading_of(name)], listed).append(form))
 }

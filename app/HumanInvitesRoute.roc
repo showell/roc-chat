@@ -112,6 +112,7 @@ HumanInvitesRoute :: [].{
 				directory: request.directory,
 				now: request.now,
 				why,
+				typed: kept_name(request.body),
 			})
 		}
 
@@ -133,6 +134,7 @@ HumanInvitesRoute :: [].{
 				directory: request.directory,
 				now: request.now,
 				why,
+				typed: NothingTyped,
 			})
 		}
 
@@ -214,16 +216,17 @@ refusal_page = |why| {
 	HttpAnswer.page(notice.status, PageKit.notice({ title: "Refused", text: notice.said }))
 }
 
-## The answer to an invite that failed for `why`: the invites page again,
-## saying why, with the refusal's status; or the refusal alone, for a failure
-## no rule decided, or for an asker that page isn't for.
+## The answer to an invite refused for `why`: the invites page again, saying
+## why, its form holding `typed`, with the refusal's status; or the refusal
+## alone, for a failure no rule decided, or for an asker that page isn't for.
 answer_refused_invite! : {
 	acting : SignedIn,
 	directory : Directory,
 	now : Timestamp,
 	why : Failure,
+	typed : [Typed(Name), NothingTyped],
 } => Http.Response
-answer_refused_invite! = |{ acting, directory, now, why }|
+answer_refused_invite! = |{ acting, directory, now, why, typed }|
 	match why {
 		Refused(refusal) => {
 			notice = HumanInvites.refusal_notice(refusal)
@@ -231,7 +234,7 @@ answer_refused_invite! = |{ acting, directory, now, why }|
 				acting,
 				directory,
 				shown: NoLink,
-				problem: Problem(notice.said),
+				problem: Problem({ words: notice.said, typed }),
 				now,
 			}) {
 				Ok(html) => HttpAnswer.page(notice.status, html)
@@ -241,6 +244,10 @@ answer_refused_invite! = |{ acting, directory, now, why }|
 		BadInviter(_) | ClockOutOfRange | FileSystem(_) => refusal_page(why)
 	}
 
+## The name a refused invite's form `body` named, for the form to hold again.
+kept_name : List(U8) -> [Typed(Name), NothingTyped]
+kept_name = |body| HumanInvites.name_from_form(body).map_ok(|name| Typed(name)) ?? NothingTyped
+
 ## The invites page for `acting` at `now`, saying `problem`, with `shown`'s link
 ## if an invite was just made: every human `acting` may invite again, each with
 ## their invites.
@@ -248,7 +255,7 @@ load_invites_page! : {
 	acting : SignedIn,
 	directory : Directory,
 	shown : [NoLink, Link({ human : Users.User, link : Str })],
-	problem : [NoProblem, Problem(Str)],
+	problem : [NoProblem, Problem({ words : Str, typed : [Typed(Name), NothingTyped] })],
 	now : Timestamp,
 } => Try(TrustedHtml, _)
 load_invites_page! = |{ acting, directory, shown, problem, now }| {
@@ -478,14 +485,7 @@ join_by_invite! = |request| {
 
 ## Every human of `directory`.
 humans_of : Directory -> List(Users.User)
-humans_of = |directory|
-	directory.users().to_list().keep_if(
-		|user|
-			match user.role() {
-				Human => Bool.True
-				Agent(_) => Bool.False
-			},
-	)
+humans_of = |directory| directory.users().to_list().keep_if(|user| user.as_human().is_ok())
 
 ## How many invites `by` made that are open at `now`, among every human's.
 count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)

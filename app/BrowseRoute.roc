@@ -5,7 +5,7 @@
 ## topic's page, empty and ready to write in. Nothing is written, since only a
 ## message's POST starts a conversation (`ConversationRoute`), so a topic left
 ## with no message leaves no trace. A name that is no topic is Browse again,
-## saying why.
+## saying why beside that place's form, which holds what was typed.
 ##
 ## Both routes are a human's, by their own session: a key is refused.
 ## `Dispatch` has asked `Access` that the human may post at the place.
@@ -21,6 +21,7 @@ import Place
 import SignedIn
 import StrictName
 import Topic
+import UnvalidatedString
 import UrlEncodedForm
 
 BrowseRoute :: [].{
@@ -73,7 +74,7 @@ BrowseRoute :: [].{
 							acting,
 							directory,
 							status: 400,
-							problem: Problem(words),
+							problem: Problem({ place, typed: typed_topic(body), words }),
 						})
 				}
 		}
@@ -84,7 +85,7 @@ answer_page! : {
 	acting : SignedIn,
 	directory : Directory,
 	status : U16,
-	problem : [NoProblem, Problem(Str)],
+	problem : Browse.TopicProblem,
 } => Http.Response
 answer_page! = |{ acting, directory, status, problem }|
 	match Browse.places_for({ acting, directory }) {
@@ -110,6 +111,15 @@ topic_from_form = |body| {
 	}
 	unchecked.topic().map_err(|_| NotATopic(topic_rule_words))
 }
+
+## What a new topic's form `body` holds as its topic, given back in the form
+## when it was refused.
+typed_topic : List(U8) -> [Typed(UnvalidatedString), NothingTyped]
+typed_topic = |body|
+	match UrlEncodedForm.field({ body, name: UrlEncodedForm.topic_name }) {
+		Ok(typed) => Typed(typed)
+		Err(_) => NothingTyped
+	}
 
 topic_rule_words : Str
 topic_rule_words =

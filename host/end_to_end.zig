@@ -1631,7 +1631,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const no_last_way_in = try getAs(a, io, port, steve_session, "/");
     try t.check("/ for someone signed in whose last conversation they can't read, or who has none: a 303 to Browse, which shows them it, with no sign-in form", unreadable_way_in.status == 303 and
         std.mem.eql(u8, unreadable_way_in.header("location") orelse "", "/chat") and steves_way_on.status == 200 and
-        has(steves_way_on.body, "<h1>Steve</h1>") and !has(steves_way_on.body, "action=\"/login\"") and
+        has(steves_way_on.body, "<h1>Steve <span class=\"you\">(you)</span></h1>") and !has(steves_way_on.body, "action=\"/login\"") and
         no_last_way_in.status == 303 and std.mem.eql(u8, no_last_way_in.header("location") orelse "", "/chat"));
     const post_way_in = try anonymousPost(a, io, port, "/", "");
     const steves_post_way_in = try postAs(a, io, port, steve_session, "/", "");
@@ -1647,7 +1647,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const steves = try getAs(a, io, port, steve_session, "/chat");
     const tams = try getAs(a, io, port, tam, "/chat");
     try t.check("Steve's Browse: every human, himself too, each DM's topics, and both his channels, each with its form", created.status == 303 and joined_crew.status == 303 and steves.status == 200 and
-        has(steves.body, "<h1>Steve</h1>") and has(steves.body, "<h1>Tam</h1>") and has(steves.body, "<h1>Uma</h1>") and has(steves.body, "<h1>#general</h1>") and has(steves.body, "<h1>#crew</h1>") and
+        has(steves.body, "<h1>Steve <span class=\"you\">(you)</span></h1>") and has(steves.body, "<h1>Tam</h1>") and has(steves.body, "<h1>Uma</h1>") and has(steves.body, "<h1>#general</h1>") and has(steves.body, "<h1>#crew</h1>") and
         has(steves.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(steves.body, "href=\"/chat/dm/1_3/ChitChat\"") and
         has(steves.body, "action=\"/chat/dm/1_1\"") and has(steves.body, "action=\"/chat/channel/crew\"") and has(steves.body, "action=\"/chat/channel/general\""));
     try t.check("Browse in its panel, ending with the scripts that style it, the frame's first", has(steves.body, "<div class=\"layout\"><div class=\"panel\">") and
@@ -1657,10 +1657,11 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         !has(tams.body, "crew") and !has(tams.body, "/chat/dm/1_3"));
 
     // 53a.
-    const invite_link = "<a href=\"/invites\">Invite someone</a>";
-    const invites_from_link = try getAs(a, io, port, steve_session, between(steves.body, "<p><a href=\"", "\">Invite someone</a>") orelse "");
-    const tams_invites = try getAs(a, io, port, tam, between(tams.body, "<p><a href=\"", "\">Invite someone</a>") orelse "");
-    try t.check("the link to /invites on Browse, for the owner and any other human, reaches the form that invites someone", has(steves.body, invite_link) and has(tams.body, invite_link) and
+    const invite_link = "<a href=\"/invites\">Invites</a>";
+    const invites_from_link = try getAs(a, io, port, steve_session, between(steves.body, "Recent</a> · <a href=\"", "\">Invites</a>") orelse "");
+    const tams_invites = try getAs(a, io, port, tam, between(tams.body, "Recent</a> · <a href=\"", "\">Invites</a>") orelse "");
+    try t.check("Browse's one link to /invites is the top bar's, which, for the owner and any other human, reaches the form that invites someone", has(steves.body, invite_link) and has(tams.body, invite_link) and
+        !has(steves.body, "<p><a href=\"/invites\">") and
         invites_from_link.status == 200 and has(invites_from_link.body, "action=\"/invites\"") and tams_invites.status == 200 and has(tams_invites.body, "action=\"/invites\""));
     const top_bar_link = "<a href=\"/invites\">Invites</a>";
     const conversation_page = try getAs(a, io, port, steve_session, "/chat/dm/1_2/ChitChat");
@@ -2361,7 +2362,7 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const page = try get(a, io, port, "/invites");
     try t.check("GET /invites: Steve's page, a form inviting someone by name, in the card; nothing open, nothing past, and that GitHub signs people up too", page.status == 200 and has(page.body, "<div class=\"panel\">") and
         has(page.body, "<form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>") and
-        has(page.body, "<p>No open invites.</p>") and !has(page.body, "Past invites") and has(page.body, "Anyone with GitHub can sign up on their own"));
+        has(page.body, "<p>No open invites.</p>") and !has(page.body, "Past invites") and has(page.body, "anyone with GitHub can sign up on their own"));
 
     // 48i.
     const invited = try post(a, io, port, .{ .path = "/invites", .form = "name=Deb" });
@@ -2383,11 +2384,11 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const taken = try post(a, io, port, .{ .path = "/invites", .form = "name=DEB" });
     const unready = try anonymousPost(a, io, port, "/login", "name=Deb&password=anything");
     try t.check("her name again in any case: 409, the invites page again, saying why, with no link; signing in as her before she joins: 401", taken.status == 409 and
-        has(taken.body, "<p>The name is taken.</p>") and has(taken.body, "action=\"/invites\"") and has(taken.body, browse_link) and !has(taken.body, "invite-code") and
+        has(taken.body, "value=\"DEB\"></p>\n<button>Invite someone</button></form><p class=\"problem\">The name is taken.</p>") and has(taken.body, "action=\"/invites\"") and has(taken.body, browse_link) and !has(taken.body, "invite-code") and
         unready.status == 401);
     const open_page = try get(a, io, port, "/invites");
-    try t.check("her invite on the page: open, by Steve, and a button to invite her again; no link", has(open_page.body, "<h1>Open invites</h1>") and
-        has(open_page.body, "<p>Deb: open until ") and has(open_page.body, ", made by Steve.</p>") and has(open_page.body, "action=\"/invites/3/again\"") and
+    try t.check("her invite on the page: open, by Steve, the reader, so no maker said, and a button to invite her again; no link", has(open_page.body, "<h1>Open invites</h1>") and
+        has(open_page.body, "<p>Deb hasn&#39;t joined · link expires ") and has(open_page.body, " (in 7 days)</p>") and !has(open_page.body, "made by") and has(open_page.body, "action=\"/invites/3/again\"") and
         !has(open_page.body, "invite-code") and !has(open_page.body, "No open invites."));
 
     // 48j.
@@ -2466,8 +2467,8 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         std.mem.eql(u8, try readFile(a, io, data, "auth/4/human-invites/1/state"), "live") and !(try exists(io, data, "auth/4/password")));
     const standing_page = try get(a, io, port, "/invites");
     try t.check("on the page, Deb's invite past its expiry: expired, not open; Debbie's spent one: used; both past", has(standing_page.body, "<h1>Past invites</h1>") and
-        has(standing_page.body, "<p>Deb: expired on 1970-01-01, made by Steve.</p>") and has(standing_page.body, "<p>No open invites.</p>") and
-        !has(standing_page.body, "open until") and has(standing_page.body, "<p>Debbie: used, made by Steve.</p>"));
+        has(standing_page.body, "<p>Deb&#39;s link expired Jan 1, 1970 (") and has(standing_page.body, "<p>No open invites.</p>") and
+        !has(standing_page.body, "link expires") and has(standing_page.body, "<p>Debbie joined</p>"));
 
     // 48m.
     const reinvited = try post(a, io, port, .{ .path = "/invites/3/again", .form = "" });

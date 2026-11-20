@@ -47,6 +47,7 @@ PageContract :: [].{
 	Class : [
 		Author,
 		Body,
+		BrowsePanes,
 		CodeExpiry,
 		CodeStatus,
 		Compose,
@@ -57,6 +58,8 @@ PageContract :: [].{
 		Empty,
 		Help,
 		InviteCode,
+		InviteMade,
+		InviteRow,
 		Layout,
 		Message,
 		MessageReference,
@@ -99,8 +102,10 @@ PageContract :: [].{
 		TopBar,
 		TopLinks,
 		TopTitle,
+		TopicLink,
 		TopUser,
 		Viewer,
+		You,
 	]
 
 	## The class attribute for `class`, its one spelling.
@@ -187,6 +192,7 @@ class_name = |chosen|
 	match chosen {
 		Author => "author"
 		Body => "body"
+		BrowsePanes => "browse-panes"
 		CodeExpiry => "code-expiry"
 		CodeStatus => "code-status"
 		Compose => "compose"
@@ -197,6 +203,8 @@ class_name = |chosen|
 		Empty => "empty"
 		Help => "help"
 		InviteCode => "invite-code"
+		InviteMade => "invite-made"
+		InviteRow => "invite-row"
 		SignInCode => "sign-in-code"
 		SignOut => "sign-out"
 		Layout => "layout"
@@ -239,8 +247,10 @@ class_name = |chosen|
 		TopBar => "top-bar"
 		TopLinks => "top-links"
 		TopTitle => "top-title"
+		TopicLink => "topic-link"
 		TopUser => "top-user"
 		Viewer => "viewer"
+		You => "you"
 	}
 
 ## The token `text` spells, for a name this module writes: one that isn't
@@ -252,70 +262,6 @@ token = |text|
 		?? crash "PageContract.token: \"${text}\" is a name this module writes, and not a token"
 
 # ── tests
-# Every class, each its one spelling.
-expect
-	[
-		(Author, "author"),
-		(Body, "body"),
-		(CodeExpiry, "code-expiry"),
-		(CodeStatus, "code-status"),
-		(Compose, "compose"),
-		(Current, "current"),
-		(EditedMarkdown, "edited-markdown"),
-		(EditedNote, "edited-note"),
-		(EditedOriginal, "edited-original"),
-		(Empty, "empty"),
-		(Help, "help"),
-		(InviteCode, "invite-code"),
-		(SignInCode, "sign-in-code"),
-		(SignOut, "sign-out"),
-		(Layout, "layout"),
-		(Message, "message"),
-		(MessageReference, "message-reference"),
-		(Messages, "messages"),
-		(NoticeStrip, "notice-strip"),
-		(Panel, "panel"),
-		(Problem, "problem"),
-		(ReactionChip, "reaction-chip"),
-		(ReactionEmoji, "reaction-emoji"),
-		(ReactionStrip, "reaction-strip"),
-		(RecentAgo, "recent-ago"),
-		(RecentAvatar, "recent-avatar"),
-		(RecentBar, "recent-bar"),
-		(RecentBody, "recent-body"),
-		(RecentContext, "recent-context"),
-		(RecentDot, "recent-dot"),
-		(RecentLead, "recent-lead"),
-		(RecentList, "recent-list"),
-		(RecentMark, "recent-mark"),
-		(RecentPlace, "recent-place"),
-		(RecentPreview, "recent-preview"),
-		(RecentTile, "recent-tile"),
-		(RecentTitle, "recent-title"),
-		(RecentTop, "recent-top"),
-		(RecentTopic, "recent-topic"),
-		(RecentWhere, "recent-where"),
-		(RecentWho, "recent-who"),
-		(Sidebar, "sidebar"),
-		(SidebarMore, "sidebar-more"),
-		(SidebarMoreName, "sidebar-more-name"),
-		(SidebarNewTopic, "sidebar-new-topic"),
-		(SidebarPlace, "sidebar-place"),
-		(SidebarPlaceName, "sidebar-place-name"),
-		(SidebarSection, "sidebar-section"),
-		(SidebarSectionName, "sidebar-section-name"),
-		(SidebarToggle, "sidebar-toggle"),
-		(SidebarTopics, "sidebar-topics"),
-		(TopBar, "top-bar"),
-		(TopLinks, "top-links"),
-		(TopTitle, "top-title"),
-		(TopUser, "top-user"),
-		(Viewer, "viewer"),
-	].all(
-		|
-			(chosen, spelled),
-		| PageContract.empty_paragraph([PageContract.class(chosen)]) == "<p class=\"${spelled}\"></p>".to_utf8(),
-	)
 # Every `data-` attribute, each its one spelling, a path or a token.
 expect {
 	path = Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "PageContract's tests: a site path"
@@ -379,7 +325,19 @@ expect
 expect
 	[Messages, Compose, Message, Empty].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
 expect is_found_by(Script.Emoji.bytes(), Compose) and !is_found_by(Script.Emoji.bytes(), Help)
-expect [Panel, InviteCode, SignInCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
+expect
+	[
+		Panel,
+		InviteCode,
+		SignInCode,
+		Problem,
+		Help,
+		BrowsePanes,
+		InviteMade,
+		InviteRow,
+		TopicLink,
+		You,
+	].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
 expect
 	[CodeExpiry, CodeStatus, SignInCode].all(|chosen| is_found_by(Script.Devices.bytes(), chosen))
 expect

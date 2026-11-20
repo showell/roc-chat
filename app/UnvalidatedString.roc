@@ -48,6 +48,11 @@ UnvalidatedString :: Str.{
 	name : UnvalidatedString -> Try(Name, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
 	name = |UnvalidatedString.(text)| Name.from_str(text)
 
+	## The HTML token it spells, checked by `Html.Token.from_str`: a refused
+	## form's field given back as it was typed (`TopicForm.refused_form`).
+	html_token : UnvalidatedString -> Try(Html.Token, [Empty, ForbiddenByte])
+	html_token = |UnvalidatedString.(text)| Html.Token.from_str(text)
+
 	## The topic it names, checked by `Topic.from_str`.
 	topic : UnvalidatedString -> Try(Topic, [Empty, StartsWithNonLetter, TooLong, ForbiddenByte])
 	topic = |UnvalidatedString.(text)| Topic.from_str(text)
