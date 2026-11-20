@@ -21,7 +21,7 @@ The smallest fix, not built: in `top_bar_titled`, when `Admin.of(viewer)` is `Ok
 It prints these groups, each with its count and "none" when it's empty:
 
 - **The user:** their id and name, whether they are a human or an agent (and their owner), whether the folder is an account, and the counter of ids.
-- **Their account folder**, `auth/<id>/`: every file. The words of plain facts (`name`, `inviter`, `joined`, an invite's `by`, `state` and times) are shown. Every other file is shown by its size alone, so no password hash, key hash or session word is ever printed.
+- **Their account folder**, `auth/<id>/`: every file, their device keys (`device-keys/<n>/`), human invites and an agent's keys included. The words of plain facts (`name`, `inviter`, `joined`, an invite's `by`, `state` and times) are shown. Every other file is shown by its size alone, so no password hash, key hash or session word is ever printed.
 - **Their user folder**, `users/<id>/`.
 - **The channels whose members files list them.**
 - **Their DMs**: each folder whose pair holds their id, with its topics, its message counts and its uploads.
@@ -98,7 +98,9 @@ data = /var/lib/roc-chat/data
 - a write through the read-only mount is refused, and so is a path out of the mount;
 - the removal refuses Cy, a wrong `confirm=`, and Tam while the server is up;
 - the removal then removes Tam, and the footprint finds no folder of Tam's;
-- the server, started again, answers every page the others had: Browse, Recent, `general` (where Tam reacted), `#team`, the channels page, the invites pages (Ada's inviter gone), Ada's DM with Steve and its sidebar, and a search. Tam's DMs are 404s, Tam's session is refused, and Steve's `/` goes to Browse.
+- Tam's footprint lists the device key that Tam's phone signed in with (a real device code, redeemed);
+- a second removal in a row works too: Ada, whose inviter was Tam, with the counter still 5;
+- the server, started again, answers every page the others had: Browse, Recent, `general` (where Tam reacted), `#team`, the channels page, the invites pages, Cy's DM with Steve and its sidebar, and a search. Tam's and Ada's DMs are 404s, their sessions are refused (the phone's device-key session too), and Steve's `/` goes to Browse.
 
 It takes about 2 seconds once the server is built (the first `zig build` of a fresh checkout takes about a minute and a half). It isn't part of `tools/verify.shale`, since the scripts change only when the layout does.
 

@@ -21,8 +21,11 @@
 -- - it removes Tam, and the footprint then finds no folder of Tam's;
 -- - the server starts on what is left, and every page the others had
 --   answers as it should: Browse, Recent, general, #team, the invites page,
---   Ada's DM with Steve, a search; Tam's DMs are 404s, Tam's session is
---   refused, and Steve's / goes to Browse.
+--   Cy's DM with Steve, a search; Tam's DMs are 404s, Tam's session is
+--   refused, and Steve's / goes to Browse;
+-- - Tam's footprint lists the device key their phone signed in with, and
+--   that session is refused after;
+-- - a second removal in a row, Ada's, works too, the counter still 5.
 -- The data root is under .zig-cache/admin-proof.XXXXXX, removed at the end;
 -- a stop leaves it, and its jobs (the server) end with it.
 -- budget: steps=50000000
@@ -149,6 +152,14 @@ expect_status(ask(base, steve, "/chat/channel/general/roc-chat", {"markdown=Than
 local cy = invite_and_join(base, steve, "Cy")
 expect_status(ask(base, cy, "/chat/channel/general/roc-chat", {"markdown=Cy was here."}), 303, "Cy in general")
 expect_status(ask(base, steve, "/chat/dm/1_2/plans"), 200, "Steve opening his DM with Tam")
+-- Tam's phone, signed in by a device code: a device key in auth/2/.
+local made = ask(base, tam, "/devices", {})
+expect_status(made, 303, "Tam making a device code")
+local code = re_find(made.text, "__Host-device_code=([A-Z0-9]{8})")
+if code == nil then fail("check_remove_user: Tam's device code set no code cookie") end
+local phone = ask(base, "none=1", "/login/code", {"code=" .. code.group, "next=/chat"})
+expect_status(phone, 303, "Tam's phone signing in by the code")
+const tam_phone = cookie_of(phone, "Tam's phone")
 job_stop(server)
 
 -- 2. The mounts files: the data root, read-only and writable.
@@ -159,7 +170,7 @@ create(work .. "/write.mounts", "data = " .. real(data) .. "\n")
 local tam_fp = admin_run(work, "read.mounts", {"user_footprint.shale", "user=Tam"})
 print(tam_fp.out)
 if tam_fp.code ~= 0 then fail("check_remove_user: Tam's footprint exited " .. tam_fp.code) end
-for part in {"user 2, Tam: a human, an account", "auth/2/inviter  1", "auth/2/password  (", "chat/channel/general.channel", "chat/channel/team.channel", "chat/dm/1_2/  (with user 1", "chat/dm/2_3/  (with user 3", "chat/channel/general/roc-chat/reactions:1  {\"msg\":1,\"uid\":2,", "auth/3/inviter  (Ada", "auth/3/human-invites/1/by", "users/1/last-conv  /chat/dm/1_2/plans", "users/3/last-conv  /chat/dm/2_3/hi", "Thanks @Tam", "remove_user.shale may remove them: user=2 confirm=Tam"} do
+for part in {"user 2, Tam: a human, an account", "auth/2/inviter  1", "auth/2/password  (", "auth/2/device-keys/1/state  active", "users/2/device-sign-ins", "chat/channel/general.channel", "chat/channel/team.channel", "chat/dm/1_2/  (with user 1", "chat/dm/2_3/  (with user 3", "chat/channel/general/roc-chat/reactions:1  {\"msg\":1,\"uid\":2,", "auth/3/inviter  (Ada", "auth/3/human-invites/1/by", "users/1/last-conv  /chat/dm/1_2/plans", "users/3/last-conv  /chat/dm/2_3/hi", "Thanks @Tam", "remove_user.shale may remove them: user=2 confirm=Tam"} do
   expect_holds(tam_fp.out, part, "Tam's footprint")
 end
 if find(tam_fp.out, "$2b$") ~= nil then fail("check_remove_user: the footprint printed a password's hash") end
@@ -203,6 +214,16 @@ expect_holds(gone.out, "no folder auth/2/", "the footprint after")
 expect_holds(read(data .. "/auth/next-id.txt"), "5", "the counter after")
 print("PASS Tam is removed; the counter stays 5")
 
+-- 6b. A second removal in a row: Ada, whose inviter was Tam.
+local ada_fp = admin_run(work, "read.mounts", {"user_footprint.shale", "user=Ada"})
+expect_holds(ada_fp.out, "remove_user.shale may remove them: user=3 confirm=Ada", "Ada's footprint after Tam's removal")
+local rm2 = admin_run(work, "write.mounts", {"remove_user.shale", "user=3", "confirm=Ada"})
+print(rm2.out)
+if rm2.code ~= 0 then fail("check_remove_user: Ada's removal exited " .. rm2.code) end
+if exists(data .. "/auth/3") or exists(data .. "/chat/dm/1_3") then fail("check_remove_user: Ada's folder or DM is still there") end
+expect_holds(read(data .. "/auth/next-id.txt"), "5", "the counter after both")
+print("PASS Ada is removed too; the counter still stays 5")
+
 -- 7. The chat on what is left.
 server = start_server(work, data, port, "after.log")
 -- Steve's / first: opening any conversation's page records it as his last.
@@ -217,13 +238,19 @@ local general = ask(base, steve, "/chat/channel/general/roc-chat")
 expect_status(general, 200, "general, where Tam reacted")
 expect_status(ask(base, steve, "/channels/team"), 200, "#team's admin page")
 expect_status(ask(base, steve, "/channels"), 200, "the channels page")
-expect_status(ask(base, steve, "/invites"), 200, "Steve's invites page, Ada's inviter gone")
+expect_status(ask(base, steve, "/invites"), 200, "Steve's invites page")
 expect_status(ask(base, steve, "/chat/search/words?prefix=pl"), 200, "a search")
 expect_status(ask(base, steve, "/chat/dm/1_2/plans"), 404, "Steve's DM with Tam")
-expect_status(ask(base, ada, "/chat/dm/1_3/ChitChat"), 200, "Ada's DM with Steve, its sidebar")
-expect_status(ask(base, ada, "/chat/dm/2_3/hi"), 404, "Ada's DM with Tam")
-expect_status(ask(base, ada, "/invites"), 200, "Ada's invites page")
+expect_status(ask(base, cy, "/chat/dm/1_4/ChitChat"), 200, "Cy's DM with Steve, its sidebar")
+expect_status(ask(base, cy, "/chat/channel/general/roc-chat"), 200, "general for Cy")
+expect_status(ask(base, cy, "/invites"), 200, "Cy's invites page")
 expect_status(ask(base, cy, "/chat"), 200, "Cy's Browse")
+expect_status(ask(base, steve, "/chat/dm/1_3/ChitChat"), 404, "Steve's DM with Ada")
+local ada_after = ask(base, ada, "/chat")
+if ada_after.status == 200 then fail("check_remove_user: Ada's session still admits her") end
+local phone_after = ask(base, tam_phone, "/chat")
+if phone_after.status == 200 then fail("check_remove_user: Tam's phone, by its device key, still admits them") end
+print("PASS Ada's session and Tam's device-key session are refused")
 local tam_after = ask(base, tam, "/chat")
 if tam_after.status == 200 then fail("check_remove_user: Tam's session still admits them") end
 print("PASS Tam's session is refused (" .. tam_after.status .. ")")
