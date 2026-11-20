@@ -46,6 +46,7 @@ DeviceSessionsRoute :: [].{
 									cookie,
 								)
 								Err(NoMaterial) => material_missing_answer
+								Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
 								Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
 							}
 						}

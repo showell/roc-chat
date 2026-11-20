@@ -57,8 +57,9 @@ SignInRoute :: [].{
 	## The human the session in the `Cookie` header `cookie` admits, among
 	## `users`, at `now`; unless it holds no session (`NoSession`), one that
 	## is no session's spelling (`BadSession`), or one that admits no one
-	## (`SessionRefused`: its signature, its date or its user), or its human
-	## has nothing a session is signed over (`NoMaterial`), or a sign-in file
+	## (`SessionRefused`: its signature, its date, its user, or a human whose
+	## `session-generation` file holds no count, logged), or its human has
+	## nothing a session is signed over (`NoMaterial`), or a sign-in file
 	## could not be read (`AccountFiles`).
 	sign_in_by_session! : {
 		cookie : List(U8),
@@ -76,7 +77,7 @@ SignInRoute :: [].{
 	)
 	sign_in_by_session! = |{ cookie, users, now }| {
 		claim = Session.claim_from_cookie_header(cookie)?
-		material = SignInFiles.load_material!(claim.id())?
+		material = SignInFiles.load_material!(claim.id()) ? |why| refusal_of_material(why)
 		verdict = Host.hmac_sha256_with_server_secret_matches!(
 			claim.signed_bytes(material),
 			claim.mac(),
@@ -163,6 +164,7 @@ SignInRoute :: [].{
 			password_hash,
 		}) {
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
+			Err(GenerationDamaged) => HttpAnswer.never_stored(SignInRoute.fault_answer(Damaged))
 			Ok(material) => {
 				cookie = sign_session_cookie!({
 					human: admission.human(),
@@ -195,6 +197,7 @@ SignInRoute :: [].{
 					PageKit.notice({ title: "Failed", text: no_material_words }),
 				)
 				Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+				Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
 				Ok(material) =>
 					HttpAnswer.with_header(
 						HttpAnswer.see_other(admission.next().to_str()),
@@ -241,6 +244,7 @@ SignInRoute :: [].{
 					}),
 				)
 				Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+				Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
 				Ok(material) =>
 					HttpAnswer.with_header(
 						HttpAnswer.see_other(next.to_str()),
@@ -259,7 +263,7 @@ SignInRoute :: [].{
 		human : Users.Human,
 		origin : Session.Origin,
 		now : Timestamp,
-	} => Try(Http.Header, [NoMaterial, FileSystem(FileFacts.Fault)])
+	} => Try(Http.Header, [NoMaterial, GenerationDamaged, FileSystem(FileFacts.Fault)])
 	sign_session_again! = |{ human, origin, now }| {
 		material = SignInFiles.load_material!(human.id())?
 		Ok(sign_session_cookie!({ human, origin, material, now }))
@@ -396,12 +400,28 @@ check_password_of! = |{ human, password }|
 					}) {
 						Ok(material) => Ok({ human, material })
 						Err(FileSystem(fault)) => Err(FileSystem(fault))
+						Err(GenerationDamaged) => Err(FileSystem(Damaged))
 					}
 				DoesNotMatch => Err(NoMatch)
 				NotABcryptHash => Err(check_against_dummy_hash!(password))
 				TooManyChecks => Err(TooManyChecks)
 			}
 		}
+	}
+
+## Why a session's material couldn't be had, as a session's check answers:
+## a human whose `session-generation` file holds no count has their
+## sessions refused, not every request of theirs failed.
+refusal_of_material : [NoMaterial, GenerationDamaged, FileSystem(FileFacts.Fault)] -> [
+	NoMaterial,
+	SessionRefused,
+	FileSystem(FileFacts.Fault),
+]
+refusal_of_material = |why|
+	match why {
+		NoMaterial => NoMaterial
+		GenerationDamaged => SessionRefused
+		FileSystem(fault) => FileSystem(fault)
 	}
 
 ## `password` checked against `dummy_hash`, which no sign-in may match: the
@@ -441,3 +461,9 @@ expect
 		query: "next=x".to_utf8(),
 		github: NotOffered,
 	}).status == 400
+# A human whose `session-generation` file holds no count has their sessions
+# refused, not every request of theirs failed; every other reason is as it
+# was.
+expect refusal_of_material(GenerationDamaged) == SessionRefused
+expect refusal_of_material(NoMaterial) == NoMaterial
+expect refusal_of_material(FileSystem(Failed)) == FileSystem(Failed)
