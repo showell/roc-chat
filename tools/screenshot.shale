@@ -41,6 +41,10 @@
 --   recent-search     Recent's 🔍 clicked and "thu" typed: the words found
 --   recent-arrival    a message sent while Recent is open: its tile arrived
 --                     live, glowing
+--   dm-message-notice the notice of a message elsewhere, as the stream's
+--                     `message-notice` shows it (here handed to chrome.js's
+--                     Notices by the page's console), at both sizes
+--   dm-notice-dismissed  on a phone, that notice's ✕ tapped: the line gone
 -- in dark (the app's default) and light. `themes=dark` or `sizes=phone`
 -- (or `desktop`) takes one alone; `states=0` leaves the STATES out.
 --
@@ -132,6 +136,10 @@ function alone_on(at, pid)
   end
 end
 
+-- The notice of a message of Tam's in the channel, as the stream's
+-- `message-notice` brings it (app/MessageNotice.roc's words and link).
+const MESSAGE_NOTICE = "eval Notices.showUnlessHere('<a href=\"/chat/channel/general/roc-chat#msg-5\">Tam posted to general &gt; roc-chat.</a>')"
+
 -- What a click or a key opens, at the desktop's size: each a page and the
 -- steps after its load (tools/shot/steps.zig's), then its picture.
 const STATES = {
@@ -175,6 +183,10 @@ const STATES = {
     "eval new Promise(function (r) { setTimeout(r, 700); })",
     "eval fetch('/chat/dm/1_2/plans', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'markdown=' + encodeURIComponent('Arrived **live**, with `code` and a [link](https://x.y).')})",
     "wait .recent-tile.recent-fresh"}},
+  {name = "dm-message-notice", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
+  {name = "dm-message-notice", size = "phone", path = "/chat/dm/1_2/plans", steps = {MESSAGE_NOTICE, "wait .notice-strip.notice-message"}},
+  {name = "dm-notice-dismissed", size = "phone", path = "/chat/dm/1_2/plans", steps = {
+    MESSAGE_NOTICE, "wait .notice-strip.notice-message", "click .notice-strip .notice-dismiss"}},
 }
 
 if not exists(CHROME) then fail("screenshot: no browser at " .. CHROME .. "; Chrome for Testing's chrome-headless-shell, that version, unzipped there") end

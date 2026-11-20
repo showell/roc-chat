@@ -8,6 +8,9 @@
 // localStorage under 'chat-theme', and dark when none is saved. Every other
 // script styles its widgets with var(--cc-...). Palette.toggle() flips the
 // theme and saves the choice; chrome.js wires it to the top bar's button.
+// noticeFg is Gopher Chat's violet, the tab's when news comes (#8a2be2,
+// app/alert-icon.svg), lightened in the dark to read on its bar; chrome.js
+// writes a message's notice in it.
 window.Palette = (function () {
   'use strict';
   var STORAGE = 'chat-theme';
@@ -19,7 +22,7 @@ window.Palette = (function () {
     quoteBg: '#f6f6fb', quoteBorder: '#b9b9e0', codeBg: '#f4f4ec', codeStrapBg: '#faf9f5', codeFg: '#222',
     border: '#ddd', softBorder: '#e0e0e0', dialogBorder: '#bbb', inputBorder: '#e3e3ef',
     searchSelBg: '#eef0ff', searchTokFg: '#23235a', searchMarkBg: '#ffe680',
-    error: '#b00020', savedFg: '#1a7a3a', backdrop: 'rgba(0,0,0,0.4)', notifyFg: '#1a5fb4',
+    error: '#b00020', savedFg: '#1a7a3a', backdrop: 'rgba(0,0,0,0.4)', notifyFg: '#1a5fb4', noticeFg: '#8a2be2',
     goBg: '#1f883d', goHoverBg: '#1a7f37', goFg: '#fff',
     topBarBg: '#f0ede4', topBarBorder: '#c9bfa7', presenceIdle: '#3b82f6', presenceOnline: '#22c55e',
     lostBg: '#fdd', lostFg: '#600', selectRing: '#ffcf3a',
@@ -37,7 +40,7 @@ window.Palette = (function () {
     quoteBg: '#161b22', quoteBorder: '#3a3a5c', codeBg: '#1a1f26', codeStrapBg: '#13171d', codeFg: '#e6edf3',
     border: '#30363d', softBorder: '#272c33', dialogBorder: '#3a3f47', inputBorder: '#30363d',
     searchSelBg: '#1f2d4a', searchTokFg: '#a8b1c5', searchMarkBg: '#6b5210',
-    error: '#ff7b72', savedFg: '#56d364', backdrop: 'rgba(0,0,0,0.6)', notifyFg: '#79b8ff',
+    error: '#ff7b72', savedFg: '#56d364', backdrop: 'rgba(0,0,0,0.6)', notifyFg: '#79b8ff', noticeFg: '#b48cff',
     goBg: '#238636', goHoverBg: '#2ea043', goFg: '#fff',
     topBarBg: '#161b22', topBarBorder: '#30363d', presenceIdle: '#58a6ff', presenceOnline: '#3fb950',
     lostBg: '#3d1418', lostFg: '#ffb3ad', selectRing: '#ffcf3a',

@@ -28,13 +28,16 @@
 // The notices are chat-client's js/notify.js, on the pages that have its
 // strip as Gopher Chat's did (a conversation with a sidebar, and Recent): a
 // page's stream passes on two events from the viewer's own key (feed.js,
-// recent.js). `notice`, a link saying a human has come online, goes to
-// Notices.show; `message-notice`, a link to the topic of a message someone
-// else wrote in one of the viewer's places, to Notices.showUnlessHere, which
-// drops it on that topic's own page. Each is shown in the top bar's notice line
-// (.notice-strip, chat-client's #chat-notify), in place of the last one, and
-// paints the tab's icon violet, whether or not the tab is in view, until the
-// notice's link is followed, with no timer. notify.js drew the violet as a
+// recent.js). `notice`, a link saying a human has come online (or that a
+// new device signed in), goes to Notices.show; `message-notice`, a link to a
+// message someone else wrote in one of the viewer's places, to
+// Notices.showUnlessHere, which drops it on that topic's own page. Each is
+// shown in the top bar's notice line (.notice-strip, chat-client's
+// #chat-notify), in place of the last one, and paints the tab's icon violet,
+// whether or not the tab is in view, until the notice's link is followed or
+// the notice dismissed, with no timer. A message's notice is the tab's violet
+// (palette.js's noticeFg), a dot before it, so news of a message stands out;
+// any other is the bar's muted text. notify.js drew the violet as a
 // data: URL, which this site's policy refuses, so it is a file the server
 // serves (app/Favicon.roc); and where notify.js cleared the tab to a blank
 // icon, the site's own icon comes back. The <link> is made anew each time, as
@@ -77,18 +80,15 @@ window.LocalTime = (function () {
 window.Notices = (function () {
   'use strict';
   var strip = document.querySelector('.notice-strip');
-  // The strip is economical with the page's height (Steve, 2026-11-20): it
-  // lives in the top bar, between the section links and the viewer's name,
-  // so it spends no row of its own. It is one line of 12-pixel muted text
+  // The strip is economical with the page's height (Steve, 2026-11-20). In
+  // a wide window it lives in the top bar, between the section links and the
+  // viewer's name, so it spends no row of its own: one line of 12-pixel text
   // that takes the bar's spare width, cut with an ellipsis when it is longer.
-  // In a narrow window it shares the section links' row, on its right (the
-  // style sheet below, `.top-bar .notice-strip`).
-  if (strip) {
-    Object.assign(strip.style, {
-      margin: '0', fontSize: '12px', lineHeight: '1.3', color: 'var(--cc-body-muted-fg)', overflow: 'hidden',
-      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', flex: '1 1 0',
-    });
-  }
+  // A phone's bar has no spare width, so there it is a thin line of its own
+  // along the bar's foot, 13-pixel text, with a ✕ that dismisses the notice
+  // shown (a new one shows again), and no line at all when it says nothing.
+  // The strip is the server's markup, so its rules are in the style sheet
+  // below (`.notice-strip`).
   function paintTab(href) {
     var old = document.getElementById('favicon');
     if (old) old.remove();
@@ -101,16 +101,47 @@ window.Notices = (function () {
   function alertTab() { paintTab('/chat/assets/alert-icon.svg'); }
   function clearTab() { paintTab('/favicon.ico'); }
 
+  // The strip, saying `nodes`: a message's news (`message`) with its violet
+  // dot, then the words, then the ✕ that empties the strip. Following a
+  // link or dismissing clears the tab.
+  function fill(nodes, message) {
+    var words = document.createElement('span');
+    words.className = 'notice-words';
+    nodes.forEach(function (node) { words.appendChild(node); });
+    words.querySelectorAll('a').forEach(function (link) { link.addEventListener('click', clearTab); });
+    var dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'notice-dismiss';
+    dismiss.textContent = '✕';
+    dismiss.title = 'Dismiss this notice';
+    dismiss.setAttribute('aria-label', 'Dismiss this notice');
+    dismiss.addEventListener('click', function () { strip.replaceChildren(); clearTab(); });
+    strip.replaceChildren();
+    strip.classList.toggle('notice-message', message);
+    if (message) {
+      var dot = document.createElement('span');
+      dot.className = 'notice-dot';
+      strip.appendChild(dot);
+    }
+    strip.appendChild(words);
+    strip.appendChild(dismiss);
+  }
+  // What the page was drawn saying (a DM's line of where the other human
+  // is) gets its ✕ too.
+  if (strip && strip.textContent.trim() !== '') fill(Array.prototype.slice.call(strip.childNodes), false);
+
+  // The nodes of the server's HTML, `html`.
+  function parsed(html) {
+    var holder = document.createElement('template');
+    holder.innerHTML = html;
+    return Array.prototype.slice.call(holder.content.childNodes);
+  }
+
   // A notice, the server's HTML (a link), shown in the strip in place of
-  // the last one, and the tab painted. The link is the notices' colour, so
-  // news stands out from the muted words the page was drawn with.
-  function show(html) {
+  // the last one, and the tab painted.
+  function show(html, message) {
     if (!strip) return;
-    strip.innerHTML = html;
-    strip.querySelectorAll('a').forEach(function (link) {
-      link.style.color = 'var(--cc-notify-fg)';
-      link.addEventListener('click', clearTab);
-    });
+    fill(parsed(html), message === true);
     alertTab();
   }
 
@@ -122,10 +153,10 @@ window.Notices = (function () {
     holder.innerHTML = html;
     var link = holder.content.querySelector('a');
     if (link && new URL(link.getAttribute('href'), location.href).pathname === location.pathname) return;
-    show(html);
+    show(html, true);
   }
 
-  return { show: show, showUnlessHere: showUnlessHere };
+  return { show: function (html) { show(html, false); }, showUnlessHere: showUnlessHere };
 })();
 
 (function () {
@@ -156,17 +187,32 @@ window.Notices = (function () {
     '.top-user .sign-out button:hover { text-decoration: underline; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
+    // The notice line. In the bar's spare width on a wide window; a
+    // message's news violet, any other muted.
+    '.notice-strip { margin: 0; font-size: 12px; line-height: 1.3; color: var(--cc-body-muted-fg); min-width: 0;' +
+      ' flex: 1 1 0; display: flex; align-items: center; gap: 6px; }',
+    '.notice-strip a { color: inherit; }',
+    '.notice-strip.notice-message { color: var(--cc-notice-fg); font-weight: 600; }',
+    '.notice-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+    '.notice-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--cc-notice-fg); }',
+    '.notice-dismiss { flex: none; margin-left: auto; background: none; border: none; cursor: pointer; padding: 0 2px 0 8px;' +
+      ' font-size: 12px; line-height: 1; color: var(--cc-body-muted-fg); }',
+    'html.layout-wide .notice-dismiss { display: none; }',
     'html.layout-narrow body { height: 100dvh; }',
     'html.layout-narrow .top-bar { padding: 8px 12px; gap: 8px; align-items: center; }',
     'html.layout-narrow .top-bar { flex-wrap: wrap; }',
     'html.layout-narrow .top-title { flex: 1; }',
-    // A narrow bar's second row: the section links, then the notice line on
-    // the right. The empty ::after ends the first row, so the second holds
-    // the two whatever the title's length.
+    // A narrow bar's second row: the section links. The empty ::after ends
+    // the first row, so the second holds them whatever the title's length.
+    // The notice line is a third row, edge to edge along the bar's foot,
+    // ruled off above; none when it says nothing.
     'html.layout-narrow .top-bar { row-gap: 2px; }',
     'html.layout-narrow .top-bar::after { content: ""; order: 0; flex-basis: 100%; height: 0; }',
     'html.layout-narrow .top-links { order: 1; }',
-    'html.layout-narrow .top-bar .notice-strip { order: 2; text-align: right; }',
+    'html.layout-narrow .top-bar .notice-strip { order: 2; flex: 1 1 100%; margin: 4px -12px -8px; padding: 4px 12px;' +
+      ' font-size: 13px; border-top: 1px solid var(--cc-top-bar-border); }',
+    'html.layout-narrow .top-bar .notice-strip:empty { display: none; }',
+    'html.layout-narrow .notice-dismiss { font-size: 14px; }',
     'html.layout-narrow .layout { padding: 8px; }',
     // A finger's target on a phone: the same words, more room round them.
     'html.layout-narrow .top-user .sign-out button { padding: 8px 4px; }',
