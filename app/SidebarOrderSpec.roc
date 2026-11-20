@@ -69,7 +69,6 @@ sidebar_lines = |{ shown, topics_of }|
 			opening =
 				match ordered.opening {
 					AlwaysOpen => "always"
-					Open => "open"
 					Collapsed => "collapsed"
 				}
 			names = Str.join_with(ordered.topics.map(|one| one.to_str()), ",")
@@ -90,16 +89,16 @@ some_topics = |path|
 	}
 
 # A DM's page: the partner first, open always; Steve's own DM next,
-# collapsed, though it is newer than most; then the rest newest first, the
-# newest with a message open, and those with none collapsed, in Browse's
-# order. The partner's topics are newest first.
+# though it is newer than most; then the rest newest first, and those with
+# no message in Browse's order; all but the partner collapsed. The
+# partner's topics are newest first.
 expect
 	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: some_topics })
 		== [
 			"/chat/dm/1_2 always lunch,plans",
 			"/chat/dm/1_1 collapsed notes",
-			"/chat/channel/general open roc",
-			"/chat/dm/1_5 open hello",
+			"/chat/channel/general collapsed roc",
+			"/chat/dm/1_5 collapsed hello",
 			"/chat/dm/1_4 collapsed ",
 			"/chat/dm/1_6 collapsed ",
 		]
@@ -110,8 +109,8 @@ expect
 		== [
 			"/chat/channel/general always roc",
 			"/chat/dm/1_1 collapsed notes",
-			"/chat/dm/1_5 open hello",
-			"/chat/dm/1_2 open lunch,plans",
+			"/chat/dm/1_5 collapsed hello",
+			"/chat/dm/1_2 collapsed lunch,plans",
 			"/chat/dm/1_4 collapsed ",
 			"/chat/dm/1_6 collapsed ",
 		]
@@ -121,9 +120,9 @@ expect
 	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_1/notes")), topics_of: some_topics })
 		== [
 			"/chat/dm/1_1 always notes",
-			"/chat/channel/general open roc",
-			"/chat/dm/1_5 open hello",
-			"/chat/dm/1_2 open lunch,plans",
+			"/chat/channel/general collapsed roc",
+			"/chat/dm/1_5 collapsed hello",
+			"/chat/dm/1_2 collapsed lunch,plans",
 			"/chat/dm/1_4 collapsed ",
 			"/chat/dm/1_6 collapsed ",
 		]
@@ -132,15 +131,16 @@ expect
 expect
 	sidebar_lines({ shown: NoConversation, topics_of: some_topics })
 		== [
-			"/chat/channel/general open roc",
+			"/chat/channel/general collapsed roc",
 			"/chat/dm/1_1 collapsed notes",
-			"/chat/dm/1_5 open hello",
-			"/chat/dm/1_2 open lunch,plans",
+			"/chat/dm/1_5 collapsed hello",
+			"/chat/dm/1_2 collapsed lunch,plans",
 			"/chat/dm/1_4 collapsed ",
 			"/chat/dm/1_6 collapsed ",
 		]
-# Only the `open_recent_most` newest places after the page's own start
-# open: here, of four with a message, the oldest is collapsed.
+# Only the page's own place starts open: every other is collapsed, however
+# new its last message (Steve, 2026-11-20: "Collapse topics for everybody
+# but the current partner").
 expect {
 	four = |path|
 		match path {
@@ -150,16 +150,15 @@ expect {
 			"/chat/channel/general" => [("d", latest_at("12:00:00"))]
 			_ => []
 		}
-	SidebarOrder.open_recent_most == 3
-		and sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: four })
-			== [
-				"/chat/dm/1_2 always plans",
-				"/chat/dm/1_1 collapsed ",
-				"/chat/channel/general open d",
-				"/chat/dm/1_6 open c",
-				"/chat/dm/1_5 open b",
-				"/chat/dm/1_4 collapsed a",
-			]
+	sidebar_lines({ shown: Conversation(key_at("/chat/dm/1_2/plans")), topics_of: four })
+		== [
+			"/chat/dm/1_2 always plans",
+			"/chat/dm/1_1 collapsed ",
+			"/chat/channel/general collapsed d",
+			"/chat/dm/1_6 collapsed c",
+			"/chat/dm/1_5 collapsed b",
+			"/chat/dm/1_4 collapsed a",
+		]
 }
 # Ties: places whose newest messages are of one second keep Browse's order,
 # and so do topics of one second; topics with no message come after those
@@ -177,8 +176,8 @@ expect {
 		}
 	sidebar_lines({ shown: NoConversation, topics_of: tied })
 		== [
-			"/chat/dm/1_4 open y,w,x",
-			"/chat/dm/1_5 open z",
+			"/chat/dm/1_4 collapsed y,w,x",
+			"/chat/dm/1_5 collapsed z",
 			"/chat/dm/1_1 collapsed ",
 			"/chat/dm/1_2 collapsed ",
 			"/chat/dm/1_6 collapsed ",
@@ -218,7 +217,7 @@ expect {
 		== [
 			"/chat/dm/1_2 always plans",
 			"/chat/dm/1_1 collapsed ",
-			"/chat/channel/general open roc",
+			"/chat/channel/general collapsed roc",
 		]
 }
 # No places: nothing to order.

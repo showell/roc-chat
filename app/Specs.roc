@@ -36,6 +36,7 @@ import MessageLinkSpec
 import MessageNoticeSpec
 import NamesSpec
 import NewcomerInvitesSpec
+import PageContractSpec
 import PageSpec
 import PlaceSpec
 import PresenceSpec

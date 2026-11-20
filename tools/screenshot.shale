@@ -21,7 +21,13 @@
 --   dm-person-card    Tam's name clicked in the sidebar: the person card
 --   dm-new-topic      the DM's "+" clicked: its card on the new-topic form,
 --                     the topics under it
---   channel-card      #general's name clicked: the channel's card
+--   channel-card      #general's name clicked: the channel's card, its
+--                     members by who posted lately (Tam, Ada), then the
+--                     rest (Cy, CC the agent, Steve)
+--   channel-member    a member's name clicked in it: their card in its
+--                     place, with the way back to #general
+--   dm-card-topic     Tam's name clicked, `kickoff` typed and Enter, no
+--                     mouse after the click: the new topic's page
 --   dm-people         "1 more person…" clicked: the people popup
 --   dm-selected       ↑ pressed twice: an older message selected
 --   channel-compose   `c` pressed and a message typed: the compose rail
@@ -165,6 +171,16 @@ const STATES = {
   {name = "channel-card", path = "/chat/dm/1_2/plans", steps = {
     "click [data-group=channels] .sidebar-place-name",
     "wait dialog.place-popup[open]"}},
+  {name = "channel-member", path = "/chat/dm/1_2/plans", steps = {
+    "click [data-group=channels] .sidebar-place-name",
+    "wait dialog.place-popup[open] .popup-member",
+    "click dialog.place-popup .popup-member",
+    "wait dialog.place-popup .popup-secondary"}},
+  {name = "dm-card-topic", path = "/chat/dm/1_2/plans", steps = {
+    "click .sidebar-place[data-person] .sidebar-place-name",
+    "wait dialog.place-popup[open]",
+    "type kickoff", "key Enter",
+    "wait .sidebar-place[data-opening=always] a.current[href$=\"/kickoff\"]"}},
   {name = "dm-people", path = "/chat/dm/1_2/plans", steps = {
     "click .sidebar-more-name",
     "wait dialog.people-popup[open]"}},
@@ -351,6 +367,14 @@ for name in MORE do
 end
 expect_status(post_form(base, more_cookies["Ada"], "/chat/dm/1_3", {"topic=hello"}), 303, "Ada's DM's topic")
 expect_status(post_form(base, more_cookies["Ada"], "/chat/dm/1_3/hello", {"markdown=Hi Steve, is the sidebar quieter now?"}), 303, "Ada's message")
+
+-- 2c. The channel card's members (app/ChannelRoster.roc): every human
+-- joined #general, the default channel; Tam and then Ada post in it, so
+-- they lead, Ada the latest; CC, Steve's agent, is added by the admin.
+expect_status(post_form(base, tam, "/chat/channel/general/roc-chat", {"markdown=The channel card lists who's here now."}), 303, "Tam in #general")
+expect_status(post_form(base, more_cookies["Ada"], "/chat/channel/general/roc-chat", {"markdown=And who spoke last."}), 303, "Ada in #general")
+expect_status(post_form(base, steve, "/agents", {"name=CC"}), 303, "making CC")
+expect_status(post_form(base, steve, "/channels/general/members/5/add", {"x=1"}), 303, "adding CC to #general")
 
 -- 3. The shot list: Steve's cookie, then each theme's pages at each size,
 -- then its states.

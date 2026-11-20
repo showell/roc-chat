@@ -28,7 +28,10 @@
 ## which app/sidebar.js opens or collapses it by. The places come in two
 ## groups, each naming itself (`data-group`), which app/sidebar.js keeps a
 ## group's collapsed state by, and the DMs group ends with the DMs that wait
-## behind its "more" row (`sidebar-more`, by `DmShortlist`);
+## behind its "more" row (`sidebar-more`, by `DmShortlist`); a channel lists
+## its members (`sidebar-members`, by `ChannelRoster`), each naming whether
+## a human or an agent (`data-kind`), which app/sidebar-popups.js shows in
+## the channel's card;
 ## app/sidebar-popups.js says when a DM's person joined (`data-joined`, not
 ## drawn yet). The top bar's notice line (`notice-strip`), on a
 ## conversation with a sidebar and on Recent, is where app/chrome.js shows
@@ -178,7 +181,6 @@ PageContract :: [].{
 			Presence(Online) => Data(token("presence"), Token(token("online")))
 			Presence(Offline) => Data(token("presence"), Token(token("offline")))
 			Opening(AlwaysOpen) => Data(token("opening"), Token(token("always")))
-			Opening(Open) => Data(token("opening"), Token(token("open")))
 			Opening(Collapsed) => Data(token("opening"), Token(token("collapsed")))
 			Group(Channels) => Data(token("group"), Token(token("channels")))
 			Group(Dms) => Data(token("group"), Token(token("dms")))
@@ -271,40 +273,6 @@ token = |text|
 		?? crash "PageContract.token: \"${text}\" is a name this module writes, and not a token"
 
 # ── tests
-# Every `data-` attribute, each its one spelling, a path or a token.
-expect {
-	path = Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "PageContract's tests: a site path"
-	[
-		(Stream(path), "<p data-stream=\"/chat/dm/1_1/plans\"></p>"),
-		(After(token("6")), "<p data-after=\"6\"></p>"),
-		(Viewer(token("1")), "<p data-viewer=\"1\"></p>"),
-		(Author(token("3")), "<p data-author=\"3\"></p>"),
-		(Send(path), "<p data-send=\"/chat/dm/1_1/plans\"></p>"),
-		(Upload(path), "<p data-upload=\"/chat/dm/1_1/plans\"></p>"),
-		(ImageByteLimit(token("10485760")), "<p data-image-byte-limit=\"10485760\"></p>"),
-		(Section(path), "<p data-section=\"/chat/dm/1_1/plans\"></p>"),
-		(React(path), "<p data-react=\"/chat/dm/1_1/plans\"></p>"),
-		(Raw(path), "<p data-raw=\"/chat/dm/1_1/plans\"></p>"),
-		(Download(path), "<p data-download=\"/chat/dm/1_1/plans\"></p>"),
-		(Reactors(token("1-3")), "<p data-reactors=\"1-3\"></p>"),
-		(Person(token("2")), "<p data-person=\"2\"></p>"),
-		(Presence(Online), "<p data-presence=\"online\"></p>"),
-		(Presence(Offline), "<p data-presence=\"offline\"></p>"),
-		(Opening(AlwaysOpen), "<p data-opening=\"always\"></p>"),
-		(Opening(Open), "<p data-opening=\"open\"></p>"),
-		(Opening(Collapsed), "<p data-opening=\"collapsed\"></p>"),
-		(Group(Channels), "<p data-group=\"channels\"></p>"),
-		(Group(Dms), "<p data-group=\"dms\"></p>"),
-		(Joined(token("1763600000")), "<p data-joined=\"1763600000\"></p>"),
-		(Kind(Human), "<p data-kind=\"human\"></p>"),
-		(Kind(Agent), "<p data-kind=\"agent\"></p>"),
-	].all(
-		|(chosen, expected)|
-			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
-				== expected.to_utf8(),
-	)
-}
-
 ## Whether the script `bytes` finds the class `chosen` by its selector, a
 ## string literal in any of JavaScript's three quotes.
 is_found_by : List(U8), PageContract.Class -> Bool

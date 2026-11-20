@@ -8,8 +8,9 @@
 ## Lately is within `window` (14 days) of the page's drawing, among the last
 ## `most_per_topic` (100) messages of each of the channel's topics: the
 ## page already reads each topic's transcript to order the sidebar, and
-## `Transcript.recent_posts` reads those messages' heads back from its end,
-## so a long topic costs no more than its last hundred. A member whose last
+## `Transcript.latest_posts` reads message heads back from its end until
+## each member's latest is found, so a busy topic costs a handful of records
+## and a long quiet one no more than its last hundred. A member whose last
 ## post is further back than either counts as not posting lately. The
 ## words are "posted ... ago", and not a count ("3 messages this week"),
 ## since one time a member costs nothing to keep, and the latest is what
@@ -51,7 +52,7 @@ ChannelRoster :: [].{
 	Roster : { place : Place, rows : List(ChannelRoster.Row) }
 
 	## The earliest time a post counts as lately at `now`, which
-	## `Transcript.recent_posts` stops at; the epoch when the window starts
+	## `Transcript.latest_posts` stops at; the epoch when the window starts
 	## before it.
 	since : Timestamp -> DateTime
 	since = |now| {

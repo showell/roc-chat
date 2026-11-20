@@ -363,41 +363,71 @@ expect
 		"Hello\n\n",
 	].all(|text| latest_of(text) == Err(Unreadable))
 
-## The recent posts of `text`, a transcript file's, from `since` on and at
-## most `most`, as a test reads them: each author and time.
-recent_of : Str, { most : U64, since : Str } -> Try(List(Str), [Unreadable])
-recent_of = |text, { most, since }|
-	Transcript.recent_posts(
+## The latest posts of `authors` in `text`, a transcript file's, from
+## `since` on and among its last `most`, as a test reads them: each author
+## and time.
+latest_posts_of : Str, { authors : List(Str), most : U64, since : Str } -> Try(List(Str), [Unreadable])
+latest_posts_of = |text, { authors, most, since }|
+	Transcript.latest_posts(
 		Transcript.Utf8Transcript.unchecked_from_file(text.to_utf8()),
-		{ most, since: DateTime.from_str(since) ?? crash "TranscriptSpec.recent_of: a time" },
+		{
+			authors: authors.map(|name| Author.from_str(name) ?? crash "TranscriptSpec.latest_posts_of: a name"),
+			most,
+			since: DateTime.from_str(since) ?? crash "TranscriptSpec.latest_posts_of: a time",
+		},
 	).map_ok(|posts| posts.map(|post| "${post.author.to_str()} ${post.time.to_str()}"))
 
-## Three messages, a minute apart, the middle one holding a separator.
-three : Str
-three = Transcript.write(
+## Four messages: Steve's hello, Apoorva's (holding a separator), CC's
+## reply, then Steve again.
+four : Str
+four = Transcript.write(
 	Sample.conversation(
 		Sample.plans,
 		[
 			Sample.hello,
 			Sample.unnumbered_message({ author: "Apoorva", time: "2026-11-02T19:12:00Z", markdown: "a\n-------------\nb" }),
 			Sample.reply,
+			Sample.unnumbered_message({ author: "Steve", time: "2026-11-02T19:13:00Z", markdown: "again" }),
 		],
 	),
 )
 
-# The posts back from the end, newest first, a separator in a body never
-# taken for a record's start.
+## Everyone who writes in `four`.
+all_three : List(Str)
+all_three = ["Steve", "Apoorva", "CC"]
+
+## Before any of `four`.
+early : Str
+early = "2026-11-01T00:00:00Z"
+
+# Each author's latest, newest first, read back from the end: Steve's
+# second, never his first; a separator in a body never taken for a
+# record's start.
 expect
-	recent_of(three, { most: 10, since: "2026-11-01T00:00:00Z" })
-		== Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z", "Steve 2026-11-02T19:11:32Z"])
-# At most `most`; none for `most` 0 or an empty file.
-expect recent_of(three, { most: 2, since: "2026-11-01T00:00:00Z" }) == Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
-expect recent_of(three, { most: 0, since: "2026-11-01T00:00:00Z" }) == Ok([])
-expect recent_of("", { most: 10, since: "2026-11-01T00:00:00Z" }) == Ok([])
+	latest_posts_of(four, { authors: all_three, most: 10, since: early })
+		== Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
+# Only the authors asked for; the walk stops once each is found, so a bad
+# record before them is never read.
+expect
+	latest_posts_of(
+		"garbage\n${four}",
+		{ authors: ["CC"], most: 10, since: early },
+	)
+		== Ok(["CC 2026-11-02T19:12:28Z"])
+expect latest_posts_of(four, { authors: ["Bob"], most: 10, since: early }) == Ok([])
+expect latest_posts_of(four, { authors: [], most: 10, since: early }) == Ok([])
+# Among the last `most` records, whoever wrote them; none for an empty file.
+expect latest_posts_of(four, { authors: all_three, most: 2, since: early }) == Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z"])
+expect latest_posts_of(four, { authors: all_three, most: 0, since: early }) == Ok([])
+expect latest_posts_of("", { authors: all_three, most: 10, since: early }) == Ok([])
 # From `since` on: a post at it counts, the first before it stops the walk.
-expect recent_of(three, { most: 10, since: "2026-11-02T19:11:32Z" }) == Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z", "Steve 2026-11-02T19:11:32Z"])
-expect recent_of(three, { most: 10, since: "2026-11-02T19:11:33Z" }) == Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
-# A record read that is not one this module writes is refused; one the
-# walk stops short of is not read.
-expect recent_of("-------------\nMSG_plans_1\nfrom: Steve\n\nHello\n\n", { most: 10, since: "2026-11-01T00:00:00Z" }) == Err(Unreadable)
-expect recent_of("garbage\n-------------\nMSG_plans_2\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n", { most: 1, since: "2026-11-01T00:00:00Z" }) == Ok(["Steve 2026-11-02T19:11:32Z"])
+expect
+	latest_posts_of(four, { authors: all_three, most: 10, since: "2026-11-02T19:12:00Z" })
+		== Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
+expect
+	latest_posts_of(four, { authors: all_three, most: 10, since: "2026-11-02T19:12:01Z" })
+		== Ok(["Steve 2026-11-02T19:13:00Z", "CC 2026-11-02T19:12:28Z"])
+# A record read that is not one this module writes is refused.
+expect
+	latest_posts_of("-------------\nMSG_plans_1\nfrom: Steve\n\nHello\n\n", { authors: all_three, most: 10, since: early })
+		== Err(Unreadable)

@@ -4,12 +4,8 @@
 ## decodes and encodes it, and `Conversation` decides what may be added.
 ##
 ## A GET answers with a conversation's page, which for a human holds the
-## sidebar of the places Browse lists for them, each with its topics
-## (`BrowseRoute.load_place_topics!`) and when each last had a message
-## (`Transcript.latest_message`), each channel with its members by who
-## posted in it lately (`ChannelRoster`, from `Transcript.recent_posts` of
-## the same transcript, read once), and records the conversation as the
-## last they opened (`ResumeRoute`). A POST takes a form whose
+## sidebar `SidebarRoute` reads for them, and records the conversation as
+## the last they opened (`ResumeRoute`). A POST takes a form whose
 ## field `markdown` holds a new message, adds the message to the
 ## conversation, sends it to the conversation's open pages
 ## (`ConversationStream`), and sends the browser back to the page (a 303).
@@ -33,19 +29,14 @@ import pf.Http
 import pf.Host
 import AgentStream
 import Author
-import Browse
-import BrowseRoute
-import Clock
 import Conversation
 import ConversationKey
 import ConversationPage
 import ConversationRefusal
-import ChannelRoster
 import ConversationStream
 import DateTime
 import Directory
 import Edit
-import FileFacts
 import HttpAnswer
 import Message
 import MessageNotes
@@ -53,13 +44,11 @@ import MessageNotice
 import MessageRate
 import Name
 import PageKit
-import Place
 import Presence
-import PresenceNotices
 import Reactions
 import RecentStream
 import ResumeRoute
-import SidebarOrder
+import SidebarRoute
 import SignedIn
 import Timestamp
 import Transcript
@@ -219,40 +208,7 @@ load_page! : {
 load_page! = |{ key, acting, directory }| {
 	loaded = load_conversation!(key)?
 	reactions = TranscriptFiles.read_reactions!(key) ? |fault| FileSystem(fault)
-	sidebar =
-		match (Browse.places_for({ acting, directory }), acting.human_in_session()) {
-			(Err(ByApiKey), _) => NoSidebar
-			(Err(Agent(_)), _) => NoSidebar
-			(_, Err(_)) => NoSidebar
-			(Ok(listed), Ok(reader)) => {
-				with_topics = BrowseRoute.load_place_topics!(listed) ? |fault| FileSystem(fault)
-				now = Clock.read_clock!({})
-				sidebar_places = load_timed_places!(with_topics, ChannelRoster.since(now))?
-				places = sidebar_places.timed
-				rosters = sidebar_places.channel_posts.keep_oks(
-					|{ place, posts }|
-						match place.which() {
-							Channel(name) =>
-								directory.channels().channel(name).map_ok(
-									|channel| ChannelRoster.roster({ channel, users: directory.users(), viewer: reader, posts, now }),
-								)
-							Dm(_) => Err(NoSuchChannel)
-						},
-				)
-				humans = directory.users().to_list().keep_oks(|user| user.as_human())
-				online_humans = PresenceNotices.load_online_humans!({
-					humans: humans.map(|human| human.id()),
-					now,
-				})
-				notice = PresenceNotices.load_dm_notice!({
-					key,
-					viewer: acting.user().id(),
-					directory,
-					now,
-				})
-				Sidebar({ places, online_humans, notice, now, rosters })
-			}
-		}
+	sidebar = SidebarRoute.load_sidebar!({ key, acting, directory })?
 	ResumeRoute.record_opened!({ key, acting })?
 	Ok(
 		ConversationPage.conversation({
@@ -264,61 +220,6 @@ load_page! = |{ key, acting, directory }| {
 			sidebar,
 		}),
 	)
-}
-
-## Each of `places` with when each of its topics last had a message, which
-## orders the sidebar (`SidebarOrder`), and each channel's posts from
-## `since` on, among each topic's last `ChannelRoster.most_per_topic`, which
-## order its members (`ChannelRoster`); each transcript read once; unless a
-## read failed, or a message read is not one the chat writes.
-load_timed_places! : List(Browse.PlaceWithTopics), DateTime => Try(
-	{
-		timed : List(SidebarOrder.TimedPlace),
-		channel_posts : List({ place : Place, posts : List(Transcript.Post) }),
-	},
-	[UnreadableLatest(ConversationKey), FileSystem(FileFacts.Fault)],
-)
-load_timed_places! = |places, since| {
-	var $timed = []
-	var $channel_posts = []
-	for { label, place, topics } in places {
-		is_channel =
-			match place.which() {
-				Channel(_) => Bool.True
-				Dm(_) => Bool.False
-			}
-		var $topics = []
-		var $posts = []
-		for topic in topics {
-			key = ConversationKey.of({ place, topic })
-			latest =
-				match TranscriptFiles.read_transcript!(key) {
-					Err(fault) => return Err(FileSystem(fault))
-					Ok(NoFile) => NoMessages
-					Ok(File(utf8)) => {
-						if is_channel {
-							match Transcript.recent_posts(utf8, { most: ChannelRoster.most_per_topic, since }) {
-								Ok(posts) => {
-									$posts = List.concat($posts, posts)
-								}
-								Err(Unreadable) => return Err(UnreadableLatest(key))
-							}
-						}
-						match Transcript.latest_message(utf8) {
-							Ok(NoMessages) => NoMessages
-							Ok(Latest(found)) => At(found.time)
-							Err(Unreadable) => return Err(UnreadableLatest(key))
-						}
-					}
-				}
-			$topics = $topics.append({ topic, latest })
-		}
-		$timed = $timed.append({ label, place, topics: $topics })
-		if is_channel {
-			$channel_posts = $channel_posts.append({ place, posts: $posts })
-		}
-	}
-	Ok({ timed: $timed, channel_posts: $channel_posts })
 }
 
 ## The message in `post`'s form, added to its conversation and to the

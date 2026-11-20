@@ -1,10 +1,12 @@
 // This script runs on a conversation page that has a sidebar, before
 // app/sidebar.js, which opens its popups. app/Script.roc serves it. Each
 // popup is a modal dialog over a dimmed page, as feed.js's code popup is: a
-// strap at its top with its heading and a Close button, made afresh at each
-// opening and removed once closed, the focus going back to what opened it.
-// Escape, Close, or a click outside it closes it. A dialog sits above the
-// phone's drawer, so each works there too.
+// strap at its top with its heading and a small × at its right end, made
+// afresh at each opening and removed once closed, the focus going back to
+// what opened it. Escape, the ×, or a click outside it closes it (Steve,
+// 2026-11-20: "our users are smart enough to hit escape and/or click a
+// little x icon"). A dialog sits above the phone's drawer, so each works
+// there too.
 //
 // A place has one popup, its card, opened two ways (Steve, 2026-11-20:
 // "popups can be roomy and convenient... if you click the + icon, the popup
@@ -19,7 +21,7 @@
 // topics, then the form. A DM's card and a channel's are one card (Steve,
 // 2026-11-20: "channels UX features mostly match DM UX"). Either way the
 // focus starts in the form's field: Enter adds the topic, ↓ and ↑ move
-// through the topics' links, Enter on one opens it, and Escape or Close
+// through the topics' links, Enter on one opens it, and Escape or the ×
 // closes the card. The form posts as it always has, to the place's path,
 // but by fetch: a topic the server takes answers with its page, which the
 // browser then opens; one it refuses answers with Browse, whose problem
@@ -65,6 +67,9 @@ window.SidebarPopups = (function () {
       'color:var(--cc-accent);text-decoration:none;overflow-wrap:anywhere}',
     '.sidebar-popup .popup-topic:hover,.sidebar-popup .popup-topic:focus-visible{background:var(--cc-accent-soft-bg)}',
     '.sidebar-popup .popup-topic[aria-current]{color:var(--cc-fg);font-weight:600}',
+    '.sidebar-popup .popup-close{padding:0;width:28px;height:28px;font-size:20px;line-height:1;background:none;' +
+      'border:none;color:var(--cc-muted-fg);display:inline-flex;align-items:center;justify-content:center}',
+    '.sidebar-popup .popup-close:hover{background:var(--cc-accent-soft-hov);color:var(--cc-fg)}',
     '.sidebar-popup .popup-member{color:var(--cc-accent);text-decoration:none;border-radius:4px}',
     '.sidebar-popup .popup-member:hover{text-decoration:underline}',
   ].join('\n');
@@ -97,15 +102,19 @@ window.SidebarPopups = (function () {
     var controls = document.createElement('div');
     Object.assign(controls.style, {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-      padding: '8px 10px 8px 20px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
+      padding: '4px 6px 4px 20px', minHeight: '28px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
     });
     var heading = document.createElement('span');
     heading.textContent = words;
     Object.assign(heading.style, { fontWeight: 'bold', fontSize: '13px', overflowWrap: 'anywhere' });
+    // The ×: small and quiet, a 28-pixel target, its name for a screen
+    // reader and a pointer's tip saying Escape does the same.
     var close = document.createElement('button');
     close.type = 'button';
-    close.textContent = 'Close';
-    close.className = 'popup-secondary';
+    close.textContent = '×';
+    close.title = 'Close (Esc)';
+    close.setAttribute('aria-label', 'Close (Esc)');
+    close.className = 'popup-close';
     close.addEventListener('click', function () { dlg.close(); });
     controls.appendChild(heading);
     controls.appendChild(close);
@@ -291,8 +300,7 @@ window.SidebarPopups = (function () {
       var popup = frame('place-popup', mode === 'new' ? 'New topic in ' + who : '', opener);
       fill(popup.body, mode);
       popup.show();
-      topic.input.focus();
-      topic.input.select();
+      focusField();
     }
     function about(body) {
       var title = document.createElement('p');
@@ -362,9 +370,15 @@ window.SidebarPopups = (function () {
       });
       into.appendChild(back);
       card.fill(into, 'about');
-      back.focus();
+      card.focusField();
     }
-    return { open: open, fill: fill };
+    // The focus in the form's field, its text selected, so typing a name
+    // and Enter makes the topic.
+    function focusField() {
+      topic.input.focus();
+      topic.input.select();
+    }
+    return { open: open, fill: fill, focusField: focusField };
   }
 
   // The people popup, opened by the DMs group's "more" row (`opener`): the
@@ -403,7 +417,7 @@ window.SidebarPopups = (function () {
         back.addEventListener('click', showList);
         popup.body.appendChild(back);
         person.card.fill(popup.body, 'about');
-        back.focus();
+        person.card.focusField();
       }
       function listRows() {
         rows.textContent = '';

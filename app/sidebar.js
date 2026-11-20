@@ -33,11 +33,13 @@
 // person and a channel's about the channel, alike (Steve, 2026-11-20:
 // "channels UX features mostly match DM UX"); only the triangle collapses
 // a place. A group starts open, and a place as the server says
-// (data-opening): `open`, `collapsed`, or `always`, the page's own place,
-// which opens on every load. Once a person opens or collapses a group or a
-// place, their choice is kept across reloads (localStorage, by the group's
-// data-group or the place's data-section) and wins over `open` and
-// `collapsed`. A group's heading is a row whose name takes the room left, so
+// (data-opening): `always`, the page's own place, open, and `collapsed`,
+// every other, to its name's row with its presence dot (Steve, 2026-11-20:
+// "Collapse topics for everybody but the current partner"). Once a person
+// collapses or opens a group, their choice is kept across reloads
+// (localStorage, by its data-group); a place opened or collapsed by hand
+// stays so for that page alone, so the next page is as uncluttered. A
+// group's heading is a row whose name takes the room left, so
 // a small menu button can be added at its right end later.
 //
 // The DMs group shows only the people the reader is talking to
@@ -184,18 +186,15 @@ window.Sidebar = (function () {
   function keep(key, collapsed) {
     try { localStorage.setItem(key, collapsed ? '1' : '0'); } catch (e) { /* Private browsing: the choice lasts this page. */ }
   }
-  function startsCollapsed(section, opening) {
-    if (opening === 'always') return false;
-    if (opening !== 'open' && opening !== 'collapsed') throw new Error('sidebar.js: a .sidebar-place has no data-opening of always, open or collapsed');
-    var choice = kept('chat-sidebar-collapsed:' + section);
-    if (choice === '1') return true;
-    if (choice === '0') return false;
+  function startsCollapsed(opening) {
+    if (opening !== 'always' && opening !== 'collapsed') throw new Error('sidebar.js: a .sidebar-place has no data-opening of always or collapsed');
     return opening === 'collapsed';
   }
 
   // A disclosure triangle for `what`, its glyph swapped and never rotated
   // (the old 9-pixel caret, turned to point right, read as a bullet),
-  // showing `shown` while it is open and hiding it while collapsed, and the person's choice kept under `key`.
+  // showing `shown` while it is open and hiding it while collapsed, and the
+  // person's choice kept under `key` (a place's, null, is kept nowhere).
   // It gives `flip`, for a name that collapses too.
   function disclosure(what, shown, key, collapsed) {
     var triangle = document.createElement('span');
@@ -216,7 +215,7 @@ window.Sidebar = (function () {
     }
     function flip() {
       collapsed = !collapsed;
-      keep(key, collapsed);
+      if (key !== null) keep(key, collapsed);
       show();
     }
     show();
@@ -306,7 +305,7 @@ window.Sidebar = (function () {
     plus.addEventListener('click', function () { card.open('new', plus); });
     if (place.getAttribute('data-opening') === 'always') newTopicHere = function () { card.open('new', plus); };
 
-    var shut = disclosure(label, list, 'chat-sidebar-collapsed:' + section, startsCollapsed(section, place.getAttribute('data-opening')));
+    var shut = disclosure(label, list, null, startsCollapsed(place.getAttribute('data-opening')));
     headingRow(name, [shut.triangle, name, plus], 1);
     name.title = 'About ' + label;
     hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');

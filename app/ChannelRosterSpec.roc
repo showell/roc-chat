@@ -116,7 +116,7 @@ expect
 	[(0, "posted just now"), (59, "posted just now"), (-30, "posted just now"), (60, "posted 1 minute ago"), (3599, "posted 59 minutes ago"), (3600, "posted 1 hour ago"), (86_399, "posted 23 hours ago"), (86_400, "posted 1 day ago"), (10 * 86_400, "posted 10 days ago")].all(
 		|(seconds, words)| ChannelRoster.words(Seconds.of(seconds)) == words,
 	)
-# Where `Transcript.recent_posts` stops: 14 days before the clock, or the
+# Where `Transcript.latest_posts` stops: 14 days before the clock, or the
 # epoch for a clock nearer it than that.
 expect ChannelRoster.since(now).to_str() == "2026-10-19T19:11:32Z"
 expect ChannelRoster.since(Timestamp.at_second(86_400)).to_str() == "1970-01-01T00:00:00Z"

@@ -112,6 +112,10 @@ pub fn main(init: std.process.Init) !void {
             .key => {
                 if (steps.namedKey(step.arg)) |k| {
                     call(&b, step.line, "Input.dispatchKeyEvent", .{ .type = "rawKeyDown", .key = k.name, .code = k.name, .windowsVirtualKeyCode = k.vk });
+                    // A real Enter also types "\r", which is what submits a
+                    // form from its field; a raw key down alone does not.
+                    if (std.mem.eql(u8, k.name, "Enter"))
+                        call(&b, step.line, "Input.dispatchKeyEvent", .{ .type = "char", .key = k.name, .text = "\r" });
                     call(&b, step.line, "Input.dispatchKeyEvent", .{ .type = "keyUp", .key = k.name, .code = k.name, .windowsVirtualKeyCode = k.vk });
                 } else if ((std.unicode.utf8CountCodepoints(step.arg) catch 0) == 1) {
                     call(&b, step.line, "Input.dispatchKeyEvent", .{ .type = "keyDown", .key = step.arg, .text = step.arg });

@@ -267,8 +267,9 @@ expect
 				}),
 			})
 		}</nav>\n"
-# A place with a message starts open: here `general`, while Apoorva's DM,
-# which has none, starts collapsed. On this DM's page the DMs come first.
+# A place with a message starts collapsed too, as every place but the
+# page's own does: here `general`, and Apoorva's DM, which has none. On
+# this DM's page the DMs come first.
 expect {
 	dated = places_with(|_| []).map(
 		|listed|
@@ -288,7 +289,7 @@ expect {
 			rosters: [],
 		}).to_utf8(),
 	)
-	general = "data-section=\"/chat/channel/general\" data-opening=\"open\">"
+	general = "data-section=\"/chat/channel/general\" data-opening=\"collapsed\">"
 	apoorva = "data-section=\"/chat/dm/1_2\" data-opening=\"collapsed\""
 	match shown.split_on(general) {
 		[before, after] => before.contains(apoorva) and !after.contains(apoorva)

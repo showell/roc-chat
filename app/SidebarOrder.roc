@@ -8,11 +8,14 @@
 ## order it was given (Browse's, and topics' byte order), as do two of the
 ## same second.
 ##
-## Of the places after the page's own (and the viewer's own DM), the
-## `open_recent_most` newest that have a message start open; the rest start
-## collapsed, and the viewer's own DM always does. A person's own choice to
-## collapse or open a place outlasts this (app/sidebar.js keeps it), except
-## for the page's own place, which always opens.
+## Only the page's own place starts open; every other starts collapsed to
+## its name's row (Steve, 2026-11-20: "I'm usually only DM'ing with one
+## person, so a tiny bit of friction to go to a new conversation is
+## acceptable. Collapse topics for everybody but the current partner. We
+## mostly care about the away bubbles for other people when we're DMing.
+## Likewise for chat."). A person may open one by its triangle, for that
+## page alone: app/sidebar.js keeps no place's choice, so the next page is
+## as uncluttered.
 ##
 ## The order is decided once, when the page is drawn. `Sidebar` writes it.
 import ConversationKey
@@ -36,10 +39,9 @@ SidebarOrder :: [].{
 		topics : List(SidebarOrder.TimedTopic),
 	}
 
-	## How a place starts when the page loads. `AlwaysOpen` is the page's
-	## own place, open whatever the person chose before; `Open` and
-	## `Collapsed` hold until the person chooses.
-	Opening : [AlwaysOpen, Open, Collapsed]
+	## How a place starts when the page loads: `AlwaysOpen` is the page's
+	## own place, and every other is `Collapsed`.
+	Opening : [AlwaysOpen, Collapsed]
 
 	## A place in the sidebar's order, its topics in theirs, and when any
 	## of them last had a message.
@@ -50,10 +52,6 @@ SidebarOrder :: [].{
 		opening : SidebarOrder.Opening,
 		latest : SidebarOrder.Latest,
 	}
-
-	## How many places after the page's own start open, at most.
-	open_recent_most : U64
-	open_recent_most = 3
 
 	## `places` in the order the sidebar shows them to `viewer` on a page of
 	## `shown`, each with how it starts. The page's own topic is listed in
@@ -82,24 +80,13 @@ SidebarOrder :: [].{
 		second = dated.keep_if(|d| is_second(d.listed))
 		by_latest = |one, other| newest_first((one.latest, one.at), (other.latest, other.at))
 		rest = dated.drop_if(|d| is_here(d.listed) or is_second(d.listed)).sort_with(by_latest)
-		var $after = []
-		var $rank = 0
-		for d in rest {
-			own = is_own_dm(d.listed.place, viewer)
-			opening = rest_opening({ own, latest: d.latest, rank: $rank })
-			$after = $after.append(ordered_place({ listed: d.listed, opening, shown }))
-			$rank = if own {
-				$rank
-			} else {
-				$rank + 1
-			}
-		}
+		after = rest.map(|d| ordered_place({ listed: d.listed, opening: Collapsed, shown }))
 		List.concat(
 			List.concat(
 				here.map(|d| ordered_place({ listed: d.listed, opening: AlwaysOpen, shown })),
 				second.map(|d| ordered_place({ listed: d.listed, opening: Collapsed, shown })),
 			),
-			$after,
+			after,
 		)
 	}
 }
@@ -118,20 +105,6 @@ is_dm_with_another = |place, viewer|
 	match place.which() {
 		Dm(pair) => pair.members() != [viewer]
 		Channel(_) => Bool.False
-	}
-
-## How a place after the page's own starts: the viewer's own DM collapsed,
-## and another open while it has a message and `rank` places other than the
-## viewer's own DM come before it among the rest.
-rest_opening : {
-	own : Bool,
-	latest : SidebarOrder.Latest,
-	rank : U64,
-} -> SidebarOrder.Opening
-rest_opening = |{ own, latest, rank }|
-	match latest {
-		At(_) if !own and rank < SidebarOrder.open_recent_most => Open
-		_ => Collapsed
 	}
 
 ## The newest of a place's topics' last messages.

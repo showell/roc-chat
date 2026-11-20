@@ -147,31 +147,35 @@ Transcript :: [].{
 	## Who wrote a message of a transcript, and when; its markdown unread.
 	Post : { author : Author, time : DateTime }
 
-	## The transcript's last `most` messages, newest first, read back from
-	## its end a record at a time and stopping at the first one written
-	## before `since` (a conversation's times never go backwards), so its
-	## cost is those records' and not the file's; or `Unreadable` when one of
-	## them is not a record this module writes. A channel's card reads its
-	## members' participation so (`ChannelRoster`).
-	recent_posts : Transcript.Utf8Transcript, { most : U64, since : DateTime } -> Try(
-		List(Transcript.Post),
-		[Unreadable],
-	)
-	recent_posts = |Transcript.Utf8Transcript.(bytes), { most, since }|
-		posts_before({ bytes, end: bytes.len(), left: most, since, so_far: [] })
+	## The latest post of each of `authors` among the transcript's last
+	## `most` messages, newest first, read back from its end a record at a
+	## time and stopping once each of them is found, or at the first record
+	## written before `since` (a conversation's times never go backwards), so
+	## its cost is those records' and not the file's; or `Unreadable` when
+	## one of them is not a record this module writes. A channel's card reads
+	## its members' participation so (`ChannelRoster`): with a handful of
+	## members, a busy topic is a handful of records.
+	latest_posts : Transcript.Utf8Transcript, {
+		authors : List(Author),
+		most : U64,
+		since : DateTime,
+	} -> Try(List(Transcript.Post), [Unreadable])
+	latest_posts = |Transcript.Utf8Transcript.(bytes), { authors, most, since }|
+		posts_before({ bytes, end: bytes.len(), left: most, since, wanted: authors, so_far: [] })
 }
 
-## The posts of `bytes` before `end`, newest first, after `so_far`: at most
-## `left` more, none written before `since`.
+## The latest posts of `wanted` before `end` of `bytes`, newest first, after
+## `so_far`: from at most `left` more records, none written before `since`.
 posts_before : {
 	bytes : List(U8),
 	end : U64,
 	left : U64,
 	since : DateTime,
+	wanted : List(Author),
 	so_far : List(Transcript.Post),
 } -> Try(List(Transcript.Post), [Unreadable])
-posts_before = |{ bytes, end, left, since, so_far }|
-	if end == 0 or left == 0 {
+posts_before = |{ bytes, end, left, since, wanted, so_far }|
+	if end == 0 or left == 0 or wanted.is_empty() {
 		Ok(so_far)
 	} else {
 		opening = "${Separator.line}\n".to_utf8()
@@ -186,8 +190,17 @@ posts_before = |{ bytes, end, left, since, so_far }|
 		post = post_from_record(bytes.sublist({ start, len: end - start }))?
 		if DateTime.compare(post.time, since) == Before {
 			Ok(so_far)
+		} else if wanted.contains(post.author) {
+			posts_before({
+				bytes,
+				end: before,
+				left: left - 1,
+				since,
+				wanted: wanted.drop_if(|author| author == post.author),
+				so_far: so_far.append(post),
+			})
 		} else {
-			posts_before({ bytes, end: before, left: left - 1, since, so_far: so_far.append(post) })
+			posts_before({ bytes, end: before, left: left - 1, since, wanted, so_far })
 		}
 	}
 
