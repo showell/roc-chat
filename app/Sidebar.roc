@@ -105,7 +105,10 @@ group_section = |{ group, places }|
 		TrustedHtml.join([
 			Html.element({
 				name: Div,
-				attributes: [PageContract.class(SidebarSection), PageContract.data_attribute(Group(group))],
+				attributes: [
+					PageContract.class(SidebarSection),
+					PageContract.data_attribute(Group(group)),
+				],
 				inner: TrustedHtml.join(
 					List.concat(
 						[
