@@ -117,7 +117,8 @@ expect
 # Such a session may not hand out a credential or take one from the human's
 # other devices: link GitHub, by its button or through GitHub; make, invite
 # or revoke for an agent; invite a human or invite one again; make or cancel
-# a code; sign the other devices out. It reads and posts as any session
+# a code; sign the other devices out; use the channels' admin pages,
+# create a channel or add or remove its members. It reads and posts as any session
 # does. An ordinary session may do all of it, and no
 # one is left to the routes' own refusals.
 ## The routes a session started by a code may not use.
@@ -135,6 +136,11 @@ full_session_routes = [
 	("POST", "/devices"),
 	("POST", "/devices/cancel"),
 	("POST", "/devices/sign-out-others"),
+	("GET", "/channels"),
+	("POST", "/channels"),
+	("GET", "/channels/general"),
+	("POST", "/channels/general/members/2/add"),
+	("POST", "/channels/general/members/2/remove"),
 ]
 
 ## Routes every session may use.
