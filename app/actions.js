@@ -65,7 +65,14 @@
 //
 // In a narrow window (chrome.js's layout-narrow), a phone's, the buttons, the
 // reactions and the picker's emojis are larger, for a finger, and the
-// picker opens across the window's width under the message.
+// picker opens across the window's width under the message. There the
+// buttons wait behind a "⋯" at the header's right end, so a header is one
+// line, the author and the time: a phone is mostly for catching up, and
+// four finger-sized buttons on every message cost each one a second line.
+// A tap on "⋯" opens the buttons as a row under that message's header, in
+// place (no popup), and closes the row open on any other; a tap on "⋯"
+// again, or on one of the buttons, closes it. Nothing opens or closes as
+// the reader scrolls, so the messages never move under a finger.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
@@ -104,6 +111,12 @@
     '.reaction-picker button:hover { background: var(--cc-accent-soft-bg); }',
     '.reaction-picker button:focus-visible { background: var(--cc-accent-soft-bg); outline: 2px solid var(--cc-accent);' +
       ' outline-offset: -2px; }',
+    '.message .actions-more { display: none; }',
+    'html.layout-narrow .message .actions-more { display: inline; float: right; font: inherit; font-size: 16px; line-height: 1;' +
+      ' color: var(--cc-muted-fg); background: none; border: none; padding: 0 4px 2px 12px; cursor: pointer; }',
+    'html.layout-narrow .message.actions-open .actions-more { color: var(--cc-accent); }',
+    'html.layout-narrow .message:not(.actions-open) .actions { display: none; }',
+    'html.layout-narrow .message.actions-open .actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0 -8px; }',
     'html.layout-narrow .message .actions button { font-size: 13px; padding: 6px 8px; }',
     'html.layout-narrow .reaction-chip { font-size: 14px; padding: 5px 10px; border-radius: 14px; }',
     'html.layout-narrow .reaction-picker { max-width: none; gap: 4px; }',
@@ -313,7 +326,27 @@
       editButton.title = 'Load this message into the compose box as an edit (e)';
       actions.appendChild(editButton);
     }
+    var more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'actions-more';
+    more.textContent = '⋯';
+    more.title = 'Actions';
+    more.setAttribute('aria-label', 'Actions');
+    more.setAttribute('aria-expanded', 'false');
+    header.appendChild(more);
     header.appendChild(actions);
+  }
+
+  // A phone's row of buttons under one message's header ("⋯"), opened or
+  // closed; opening one closes the row open on any other.
+  function showActions(article, open) {
+    var shown = messages.querySelectorAll('.message.actions-open');
+    for (var i = 0; i < shown.length; i++) {
+      if (shown[i] !== article) showActions(shown[i], false);
+    }
+    article.classList.toggle('actions-open', open);
+    var more = article.querySelector('.actions-more');
+    if (more) more.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
   // The page's channel, on a channel's page (/chat/channel/<name>/<topic>);
@@ -376,6 +409,8 @@
     }
     var chip = e.target.closest('.reaction-chip');
     if (chip) { toggle(article, emojiOf(chip)); return; }
+    if (e.target.closest('.actions-more')) { showActions(article, !article.classList.contains('actions-open')); return; }
+    if (e.target.closest('.actions button')) showActions(article, false);
     if (e.target.closest('.react-open')) { openPicker(article); return; }
     if (e.target.closest('.quote-open')) { quote(article); return; }
     if (e.target.closest('.cite-open')) { Citation.copy(article); return; }
