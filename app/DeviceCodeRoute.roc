@@ -47,7 +47,8 @@ import Users
 DeviceCodeRoute :: [].{
 
 	## A GET of `/devices` by `acting`, its `headers` holding the cookie of a
-	## code just made, at `now`: the page, showing that code when it is the
+	## code just made, at `now`, at this server's `origin`, whose sign-in
+	## page the page names: the page, showing that code when it is the
 	## one their live record holds, else what became of their last code. A
 	## cookie sent is forgotten, so a code is shown once. A damaged record is
 	## logged and taken as none.
@@ -55,8 +56,9 @@ DeviceCodeRoute :: [].{
 		acting : SignedIn,
 		headers : List(Http.Header),
 		now : Timestamp,
+		origin : Str,
 	} => Http.Response
-	show! = |{ acting, headers, now }| {
+	show! = |{ acting, headers, now, origin }| {
 		cookie_header =
 			match RequestHeader.header_value(headers, "cookie") {
 				Sent(value) => value
@@ -73,7 +75,7 @@ DeviceCodeRoute :: [].{
 						sign_ins = DeviceSessionsRoute.load_sign_ins!(human.id())
 						HttpAnswer.page(
 							200,
-							DeviceCodePage.page({ viewer: acting, shown, sign_ins }),
+							DeviceCodePage.page({ viewer: acting, shown, sign_ins, sign_in_url: "${origin}/login" }),
 						)
 					}
 			}

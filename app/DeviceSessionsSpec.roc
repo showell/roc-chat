@@ -277,10 +277,14 @@ page_with = |sign_ins|
 			viewer: SignedIn.dangerously_assume(steve.user()),
 			shown: Status(NoCode),
 			sign_ins,
+			sign_in_url: "https://chat.example.com/login",
 		}).to_utf8(),
 	)
 
-expect page_with([sign_in_from_safari(0)]).contains("<li>1970-01-01T00:00:00Z: Safari on iOS</li>")
+expect
+	page_with([sign_in_from_safari(0)]).contains(
+		"<li><time datetime=\"1970-01-01T00:00:00Z\">1970-01-01T00:00:00Z</time>: Safari on iOS</li>",
+	)
 expect page_with([]).contains("No device has signed in with a code yet.")
 expect
 	page_with([]).contains(
@@ -301,6 +305,7 @@ devices_page_for = |viewer|
 			viewer,
 			shown: Status(Waiting(signed_at)),
 			sign_ins: [],
+			sign_in_url: "https://chat.example.com/login",
 		}).to_utf8(),
 	)
 

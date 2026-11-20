@@ -382,7 +382,12 @@ answer_route! = |{ asked, request, directory, acting }|
 				now: Clock.read_clock!({}),
 			})
 		ShowDeviceCode =>
-			DeviceCodeRoute.show!({ acting, headers: request.headers, now: Clock.read_clock!({}) })
+			DeviceCodeRoute.show!({
+				acting,
+				headers: request.headers,
+				now: Clock.read_clock!({}),
+				origin: own_origin_of(request),
+			})
 		MakeDeviceCode => DeviceCodeRoute.make!({ acting, now: Clock.read_clock!({}) })
 		CancelDeviceCode => DeviceCodeRoute.revoke!(acting)
 		OpenDevicesStream => DeviceCodeRoute.open_stream(acting)

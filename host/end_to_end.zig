@@ -1152,8 +1152,8 @@ fn uploadAs(a: std.mem.Allocator, io: Io, port: u16, headers: []const u8, png: [
 /// phone, and each way one is refused.
 fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, cc_bearer: []const u8) !void {
     const none_yet = try getAt(a, io, port, "/devices");
-    try t.check("a device code: Steve's page says he has made none, offers to make one, never stored", none_yet.status == 200 and
-        has(none_yet.body, "You have made no code yet.") and has(none_yet.body, "<form method=\"post\" action=\"/devices\"><button>Make a code</button></form>") and
+    try t.check("a device code: Steve's page says first to open the sign-in page on his phone, offers to make a code, never stored", none_yet.status == 200 and
+        has(none_yet.body, "<li>On your phone, open this page:<p class=\"invite-code\">http://") and has(none_yet.body, "<form method=\"post\" action=\"/devices\"><button>Make a code</button></form>") and
         std.mem.eql(u8, none_yet.header("cache-control") orelse "", "no-store"));
 
     const first = try makeCode(a, io, port, steve_session);
@@ -1217,8 +1217,8 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const again = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{second_code}));
     try t.check("with another human's record damaged, logged and taken as none, Steve's code signed the phone in all the same", signed_in.status == 303);
     const used = try getAt(a, io, port, "/devices");
-    try t.check("a code works once: again, the same refusal; Steve's page says it signed a device in", isCodeRefusal(again) and
-        std.mem.eql(u8, again.body, replaced.body) and has(used.body, "Your last code signed a device in at "));
+    try t.check("a code works once: again, the same refusal; Steve's page lists the sign-in", isCodeRefusal(again) and
+        std.mem.eql(u8, again.body, replaced.body) and has(used.body, "<li><time datetime=\"20"));
 
     const third = try makeCode(a, io, port, steve_session);
     const third_code = third.code;

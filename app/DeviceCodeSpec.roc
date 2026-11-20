@@ -340,6 +340,7 @@ page_text = |shown|
 			viewer: SignedIn.dangerously_assume(steve.user()),
 			shown,
 			sign_ins: [],
+			sign_in_url: "https://chat.example.com/login",
 		}).to_utf8(),
 	)
 
@@ -369,6 +370,23 @@ expect
 	].all(
 		|shown| !page_text(shown).contains("/devices/cancel") and !page_text(shown).contains("sign-in-code"),
 	)
+# The page is three numbered steps, in the order the human acts: open the
+# sign-in page on the phone, its address copyable; make a code here; type
+# it on the phone. What became of the last code is a quiet line below
+# them, in plain words, never a raw time.
+expect {
+	text = page_text(Status(NoCode))
+	text.contains(
+		"<ol><li>On your phone, open this page:<p class=\"invite-code\">https://chat.example.com/login</p></li>\n<li>Make a code here:<form method=\"post\" action=\"/devices\"><button>Make a code</button></form>",
+	)
+		and text.contains("<li>On your phone, type the code under &quot;Have a code from your other device?&quot;. It works once, for 5 minutes.</li>\n</ol>")
+}
+expect {
+	used = page_text(Status(Used(made_at)))
+	!used.contains("signed a device in at")
+		and !used.contains("1970-01-12T13:46:40Z")
+		and page_text(Status(Expired)).contains("<p>Your last code expired unused.</p>")
+}
 # The page hears that its code was used, and when.
 expect
 	Str.from_utf8_lossy(DeviceCodePage.used_frame(made_at))

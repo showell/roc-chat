@@ -1,12 +1,18 @@
 ## This module builds the page a signed-in human makes a device code on,
 ## `/devices`, which `DeviceCodeRoute` serves, and the events their pages
-## hear when a code signs a new device in. The page says what became of the
-## last code, offers a button that makes a new one, and, once one is made,
-## shows it, with when it expires, the warning that nobody will ever ask for
-## it, and a button that cancels it. app/devices.js shows each time in the
-## viewer's own zone, counts the code's minutes down, hears on the viewer's
-## stream that it was used, and takes the code off the page when the page
-## is left.
+## hear when a code signs a new device in. The page is three numbered steps
+## in the order the human acts (Steve, 2026-11-20: "use imperative voice to
+## tell the user what to do. They should go to a url on their phone
+## **before** generating the code"): open the sign-in page on the phone, its
+## address large and copyable; make a code here, a button, or, once one is
+## made, the code itself, large, with when it expires, the warning that
+## nobody will ever ask for it, and a button that cancels it; type it on the
+## phone. What became of the last code is a quiet line below the steps, in
+## plain words, and the sign-ins by code under it, each time said as how
+## long ago. app/devices.js centres the page, shows each time in the
+## viewer's own zone or as how long ago, counts the code's minutes down,
+## hears on the viewer's stream that it was used, and takes the code off
+## the page when the page is left.
 import DateTime
 import DeviceCode
 import DeviceSignIns
@@ -42,13 +48,15 @@ DeviceCodePage :: [].{
 	## record of the last one says.
 	Shown : [Made({ code : DeviceCode.Code, expires : Timestamp }), Status(DeviceCode.Status)]
 
-	## The page for `viewer`, showing `shown`.
+	## The page for `viewer`, showing `shown`; `sign_in_url` is the sign-in
+	## page's whole address, which the phone opens.
 	page : {
 		viewer : SignedIn,
 		shown : DeviceCodePage.Shown,
 		sign_ins : List(DeviceSignIns.SignIn),
+		sign_in_url : Str,
 	} -> TrustedHtml
-	page = |{ viewer, shown, sign_ins }| {
+	page = |{ viewer, shown, sign_ins, sign_in_url }| {
 		full_session = viewer.check_full_session().is_ok()
 		buttons_or = |made|
 			if full_session {
@@ -56,11 +64,11 @@ DeviceCodePage :: [].{
 			} else {
 				TrustedHtml.join([])
 			}
-		said =
+		make_step =
 			match shown {
 				Made({ code, expires }) =>
 					TrustedHtml.join([
-						PageKit.paragraph("Type this code on your other device, under \"Have a code from your other device?\" on its sign-in page:"),
+						Escape.text("Your code:"),
 						shown_code(code),
 						sentence([
 							Escape.text("It works once, until "),
@@ -68,11 +76,12 @@ DeviceCodePage :: [].{
 							Escape.text("."),
 						]),
 						PageKit.paragraph(DeviceCodePage.warning_words),
-						status_line(Escape.text("Waiting for your other device.")),
-						buttons_or(cancel_button),
+						status_line(Escape.text("Waiting for your phone.")),
+						cancel_button,
 					])
 				Status(Waiting(expires)) =>
 					TrustedHtml.join([
+						Escape.text("Make a code here:"),
 						status_line(
 							TrustedHtml.join([
 								Escape.text("A code is waiting to be used, until "),
@@ -80,24 +89,43 @@ DeviceCodePage :: [].{
 								Escape.text(". It is shown only once; make a new code to see one."),
 							]),
 						),
-						buttons_or(cancel_button),
+						make_button,
+						cancel_button,
 					])
-				Status(status) => status_line(status_words(status))
+				Status(_) =>
+					TrustedHtml.join([Escape.text("Make a code here:"), make_button])
+			}
+		steps =
+			if full_session {
+				Html.element({
+					name: Ol,
+					attributes: [],
+					inner: TrustedHtml.join([
+						step(
+							TrustedHtml.join([
+								Escape.text("On your phone, open this page:"),
+								Html.element({
+									name: P,
+									attributes: [PageContract.class(InviteCode)],
+									inner: Escape.text(sign_in_url),
+								}),
+							]),
+						),
+						step(make_step),
+						step(Escape.text("On your phone, type the code under \"Have a code from your other device?\". It works once, for 5 minutes.")),
+					]),
+				})
+			} else {
+				PageKit.paragraph(DeviceCodePage.code_session_words)
 			}
 		PageKit.signed_in_page({
 			title: "Sign in another device",
 			viewer,
 			parts: [
-				PageKit.paragraph("A code from here signs your phone, or any other device, in as you, with no password."),
-				said,
-				if full_session {
-					TrustedHtml.join([
-						PageKit.post_button({ action: DeviceCodePage.path, label: "Make a code" }),
-						PageKit.paragraph("Making a code cancels the one before. Signing out cancels it too."),
-					])
-				} else {
-					PageKit.paragraph(DeviceCodePage.code_session_words)
-				},
+				PageKit.paragraph("Sign your phone, or any other device, in as you, with no password:"),
+				steps,
+				PageKit.newline,
+				last_code_line(shown),
 				PageKit.heading("Sign-ins by code"),
 				sign_ins_list(sign_ins),
 				PageKit.heading("Your other devices"),
@@ -178,8 +206,29 @@ sign_out_others_button =
 		PageKit.newline,
 	])
 
+## One numbered step of the page's, holding `inner`.
+step : TrustedHtml -> TrustedHtml
+step = |inner|
+	TrustedHtml.join([Html.element({ name: Li, attributes: [], inner }), PageKit.newline])
+
+## The button that makes a code, cancelling the one before.
+make_button : TrustedHtml
+make_button = PageKit.post_button({ action: DeviceCodePage.path, label: "Make a code" })
+
+## What became of the last code, below the steps, in plain words: nothing
+## while one is shown or waiting, or before any was made, and nothing for
+## one used, which the sign-ins list below says.
+last_code_line : DeviceCodePage.Shown -> TrustedHtml
+last_code_line = |shown|
+	match shown {
+		Status(Expired) => PageKit.paragraph("Your last code expired unused.")
+		Status(Cancelled) => PageKit.paragraph("Your last code was cancelled.")
+		_ => TrustedHtml.join([])
+	}
+
 ## The viewer's last sign-ins by code, newest first, each when and from
-## what; or a line saying there are none.
+## what, the time one app/devices.js says as how long ago; or a line
+## saying there are none.
 sign_ins_list : List(DeviceSignIns.SignIn) -> TrustedHtml
 sign_ins_list = |sign_ins|
 	if sign_ins.is_empty() {
@@ -190,7 +239,10 @@ sign_ins_list = |sign_ins|
 				Html.element({
 					name: Li,
 					attributes: [],
-					inner: Escape.text("${time_words(at)}: ${DeviceSignIns.device_words(device)}"),
+					inner: TrustedHtml.join([
+						sign_in_time(at),
+						Escape.text(": ${DeviceSignIns.device_words(device)}"),
+					]),
 				}),
 		)
 		TrustedHtml.join([
@@ -264,18 +316,18 @@ expiry_time = |moment|
 		Err(OutOfRange) => Escape.text(time_words(moment))
 	}
 
-## What the page says of the last code's `status`.
-status_words : DeviceCode.Status -> TrustedHtml
-status_words = |status|
-	match status {
-		NoCode => Escape.text("You have made no code yet.")
-		Waiting(expires) => TrustedHtml.join([
-			Escape.text("A code is waiting until "),
-			expiry_time(expires),
-		])
-		Used(at) => Escape.text("Your last code signed a device in at ${time_words(at)}.")
-		Expired => Escape.text("Your last code expired unused.")
-		Cancelled => Escape.text("Your last code was cancelled.")
+## When a device signed in by a code, a time app/devices.js says as how
+## long ago.
+sign_in_time : Timestamp -> TrustedHtml
+sign_in_time = |moment|
+	match DateTime.from_timestamp(moment) {
+		Ok(time) =>
+			Html.element({
+				name: Time,
+				attributes: [DateTime(time)],
+				inner: Escape.text(time.to_str()),
+			})
+		Err(OutOfRange) => Escape.text(time_words(moment))
 	}
 
 ## `moment` as a transcript writes one, or its seconds when it is out of a

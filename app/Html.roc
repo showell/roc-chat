@@ -47,6 +47,7 @@ Html :: [].{
 		Label,
 		Li,
 		Nav,
+		Ol,
 		P,
 		Script,
 		Span,
@@ -234,6 +235,7 @@ name_of = |name|
 		Label => "label"
 		Li => "li"
 		Nav => "nav"
+		Ol => "ol"
 		P => "p"
 		Script => "script"
 		Span => "span"

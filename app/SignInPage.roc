@@ -273,7 +273,7 @@ code_field = |focus| {
 		name: Label,
 		attributes: [],
 		inner: TrustedHtml.join([
-			Escape.text("Have a code from your other device? "),
+			Escape.text("Have a code from your other device? Type its 8 digits: "),
 			Html.input(attributes),
 		]),
 	})
