@@ -3,14 +3,15 @@
 ## name comes in a later request. So the server hands their browser a token
 ## holding the GitHub id, the second it was issued, where to go after and
 ## the GitHub login, if GitHub's was one (`GitHubLogin`), signed by the host
-## with the server's secret, in a cookie that lasts ten minutes. A browser that rewrites the id breaks the signature, and another
-## site can't set a `__Host-` cookie, so no one can plant their own sign-up on
-## someone else's browser.
+## with the server's secret, in a cookie that lasts ten minutes. A browser
+## that rewrites the id breaks the signature, and another site can't set a
+## `__Host-` cookie, so no one can plant their own sign-up on someone else's
+## browser.
 ##
 ## The token is the id and the second in decimal, the path in base64url, and
-## the login or nothing, joined by `.`, and then a `.` and the signature. What is signed starts
-## `github-sign-up`, so a state's or a session's signature can't stand for
-## one.
+## the login or nothing, joined by `.`, and then a `.` and the signature.
+## What is signed starts `github-sign-up`, so a state's or a session's
+## signature can't stand for one.
 ##
 ## This module is the pure part. The host makes the signature (`GitHubRoute`
 ## asks it), and `GitHubSignIn` calls `check`. A token is not spent: once its

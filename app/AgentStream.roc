@@ -7,9 +7,9 @@
 ##     data: {"conversation":"/chat/dm/1_1/a","id":3,"from":"Steve","from_id":1,
 ##            "date":"...","markdown":"Hi"}
 ##
-## (shown here on two lines), then a blank line. `conversation` is the conversation's URL path, which
-## also names its `/raw` transcript and where to post a reply; `id` its
-## number there; `from` its author's name and `from_id` their user id, so
+## (shown here on two lines), then a blank line. `conversation` is the
+## conversation's URL path, which also names its `/raw` transcript and
+## where to post a reply; `id` its number there; `from` its author's name and `from_id` their user id, so
 ## an agent can act on its owner's posts alone (a name no user holds now has
 ## no `from_id`); `date` its time as the transcript writes it; `markdown`
 ## exactly as written.
@@ -90,7 +90,7 @@ AgentStream :: [].{
 			("date", JsonOut.string(message.time().to_str())),
 			("markdown", JsonOut.string(message.markdown())),
 		]
-		fields = JsonOut.json_object(List.join([named, author_id, dated]))
+		fields = JsonOut.json_object([named, author_id, dated].join())
 		List.concat(List.concat("data: ".to_utf8(), fields.bytes()), "\n\n".to_utf8())
 	}
 
