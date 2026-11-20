@@ -134,7 +134,8 @@ demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner(
 ## no topics of its own, so the page's own topic is its place's one, and
 ## none with a message, so `SidebarOrder` puts the page's place first and
 ## the rest in Browse's order, collapsed, every DM but the page's own
-## waiting behind the "more" row (`DmShortlist`).
+## waiting behind the "more" row (`DmShortlist`); and no channel's members,
+## as the demo reads no transcript to order them by (`ChannelRoster`).
 demo_sidebar : ConversationPage.SidebarShown
 demo_sidebar = {
 	listed =
@@ -145,6 +146,7 @@ demo_sidebar = {
 		online_humans: [],
 		notice: NoNotice,
 		now: demo_time,
+		rosters: [],
 	})
 }
 

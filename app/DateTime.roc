@@ -99,6 +99,18 @@ DateTime :: Str.{
 		}
 	}
 
+	## The moment the time names, in seconds since 1970-01-01T00:00:00Z,
+	## negative before it: `from_timestamp` backwards, by Hinnant's
+	## `days_from_civil`, so a time read from a transcript can say how long
+	## ago it was.
+	to_timestamp : DateTime -> Timestamp
+	to_timestamp = |DateTime.(text)| {
+		bytes = text.to_utf8()
+		field = |start, len| number(bytes.sublist({ start, len })).to_i64_wrap()
+		days = days_from_civil({ year: field(0, 4), month: field(5, 2), day: field(8, 2) })
+		Timestamp.at_second(days * 86400 + field(11, 2) * 3600 + field(14, 2) * 60 + field(17, 2))
+	}
+
 	## The time as written.
 	to_str : DateTime -> Str
 	to_str = |DateTime.(text)| text
@@ -156,6 +168,33 @@ civil_from_days = |days| {
 		}
 	)
 	{ year, month, day }
+}
+
+## How many days the date is after 1970-01-01, negative before it, by
+## Hinnant's `days_from_civil`: `civil_from_days` backwards, in the same
+## 400-year eras from 0000-03-01. The years here are 0 to 9999, so an era is
+## found by flooring, as the year before March of year 0 is -1.
+days_from_civil : { year : I64, month : I64, day : I64 } -> I64
+days_from_civil = |{ year, month, day }| {
+	counted_year = if month <= 2 {
+		year - 1
+	} else {
+		year
+	}
+	era = if counted_year >= 0 {
+		counted_year // 400
+	} else {
+		(counted_year - 399) // 400
+	}
+	year_of_era = counted_year - era * 400
+	month_from_march = if month > 2 {
+		month - 3
+	} else {
+		month + 9
+	}
+	day_of_year = (153 * month_from_march + 2) // 5 + day - 1
+	day_of_era = year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year
+	era * 146097 + day_of_era - 719468
 }
 
 ## `value`, zero or more, in at least `width` digits, zeros before.
@@ -301,6 +340,22 @@ expect time_text(1793646692) == Ok("2026-11-02T19:11:32Z")
 expect time_text(253402300799) == Ok("9999-12-31T23:59:59Z")
 expect time_text(-1) == Err(OutOfRange)
 expect time_text(253402300800) == Err(OutOfRange)
+# Each of those moments, back from its time: `to_timestamp` undoes
+# `from_timestamp`, and the year 0 before March, the edge of the floored era.
+expect
+	[0, 59, 86399, 86400, 951782399, 951782400, 951868800, 1709251199, 1709251200, 1798761600, 1793646692, 253402300799].all(
+		|seconds|
+			match DateTime.from_timestamp(Timestamp.at_second(seconds)) {
+				Ok(time) => time.to_timestamp() == Timestamp.at_second(seconds)
+				Err(_) => Bool.False
+			},
+	)
+expect
+	DateTime.from_str("0000-01-01T00:00:00Z").map_ok(DateTime.to_timestamp)
+		== Ok(Timestamp.at_second(-62167219200))
+expect
+	DateTime.from_str("0000-03-01T00:00:00Z").map_ok(DateTime.to_timestamp)
+		== Ok(Timestamp.at_second(-62162035200))
 # Every time the clock gives is one `from_str` accepts.
 expect
 	[0, 951782400, 1793560292, 253402300799].all(

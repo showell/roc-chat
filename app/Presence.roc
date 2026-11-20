@@ -107,7 +107,7 @@ Presence :: [].{
 			"${name} is online."
 		} else {
 			match last_seen {
-				SeenAt(seen) => "${name} was last active ${time_ago(now.seconds_since(seen))} ago."
+				SeenAt(seen) => "${name} was last active ${Presence.time_ago(now.seconds_since(seen))} ago."
 				NeverSeen => "${name} hasn't been on since the server started."
 			}
 		}
@@ -128,24 +128,26 @@ Presence :: [].{
 	link_to = |key|
 		Html.SitePath.from_str(key.url_path(Page))
 			?? crash "Presence.link_to: a conversation's page is a site path"
-}
 
-## How long `quiet` is, in the largest whole unit of minutes, hours and days
-## it holds at least one of: "5 minutes", "1 hour", "3 days".
-time_ago : Seconds -> Str
-time_ago = |quiet| {
-	seconds = quiet.to_i128()
-	(count, unit) =
-		if seconds < 3600 {
-			(seconds // 60, "minute")
-		} else if seconds < 86_400 {
-			(seconds // 3600, "hour")
+	## How long `quiet` is, in the largest whole unit of minutes, hours and
+	## days it holds at least one of: "5 minutes", "1 hour", "3 days". A
+	## channel's card says when each member last posted in the same words
+	## (`ChannelRoster`).
+	time_ago : Seconds -> Str
+	time_ago = |quiet| {
+		seconds = quiet.to_i128()
+		(count, unit) =
+			if seconds < 3600 {
+				(seconds // 60, "minute")
+			} else if seconds < 86_400 {
+				(seconds // 3600, "hour")
+			} else {
+				(seconds // 86_400, "day")
+			}
+		if count == 1 {
+			"1 ${unit}"
 		} else {
-			(seconds // 86_400, "day")
+			"${count.to_str()} ${unit}s"
 		}
-	if count == 1 {
-		"1 ${unit}"
-	} else {
-		"${count.to_str()} ${unit}s"
 	}
 }

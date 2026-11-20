@@ -111,6 +111,7 @@ empty_page = |{ path, viewer }, notice| {
 				online_humans: [],
 				notice,
 				now: Timestamp.at_second(0),
+				rosters: [],
 			}),
 		}).to_utf8(),
 	)
@@ -323,6 +324,7 @@ expect {
 				online_humans: [],
 				notice: NoNotice,
 				now: Timestamp.at_second(0),
+				rosters: [],
 			}),
 		}),
 		AgentsPage.agents({
@@ -603,6 +605,9 @@ expect
 		(Sidebar, "sidebar"),
 		(SidebarMore, "sidebar-more"),
 		(SidebarMoreName, "sidebar-more-name"),
+		(SidebarMemberName, "sidebar-member-name"),
+		(SidebarMembers, "sidebar-members"),
+		(SidebarMemberWords, "sidebar-member-words"),
 		(SidebarNewTopic, "sidebar-new-topic"),
 		(SidebarPlace, "sidebar-place"),
 		(SidebarPlaceName, "sidebar-place-name"),

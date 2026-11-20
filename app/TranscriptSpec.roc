@@ -3,6 +3,7 @@
 ## the second.
 import Author
 import Conversation
+import DateTime
 import Message
 import Sample
 import Transcript
@@ -361,3 +362,42 @@ expect
 		"-------------\nMSG_plans_1\nfrom: \ndate: 2026-11-02T19:11:32Z\n\nHello\n\n",
 		"Hello\n\n",
 	].all(|text| latest_of(text) == Err(Unreadable))
+
+## The recent posts of `text`, a transcript file's, from `since` on and at
+## most `most`, as a test reads them: each author and time.
+recent_of : Str, { most : U64, since : Str } -> Try(List(Str), [Unreadable])
+recent_of = |text, { most, since }|
+	Transcript.recent_posts(
+		Transcript.Utf8Transcript.unchecked_from_file(text.to_utf8()),
+		{ most, since: DateTime.from_str(since) ?? crash "TranscriptSpec.recent_of: a time" },
+	).map_ok(|posts| posts.map(|post| "${post.author.to_str()} ${post.time.to_str()}"))
+
+## Three messages, a minute apart, the middle one holding a separator.
+three : Str
+three = Transcript.write(
+	Sample.conversation(
+		Sample.plans,
+		[
+			Sample.hello,
+			Sample.unnumbered_message({ author: "Apoorva", time: "2026-11-02T19:12:00Z", markdown: "a\n-------------\nb" }),
+			Sample.reply,
+		],
+	),
+)
+
+# The posts back from the end, newest first, a separator in a body never
+# taken for a record's start.
+expect
+	recent_of(three, { most: 10, since: "2026-11-01T00:00:00Z" })
+		== Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z", "Steve 2026-11-02T19:11:32Z"])
+# At most `most`; none for `most` 0 or an empty file.
+expect recent_of(three, { most: 2, since: "2026-11-01T00:00:00Z" }) == Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
+expect recent_of(three, { most: 0, since: "2026-11-01T00:00:00Z" }) == Ok([])
+expect recent_of("", { most: 10, since: "2026-11-01T00:00:00Z" }) == Ok([])
+# From `since` on: a post at it counts, the first before it stops the walk.
+expect recent_of(three, { most: 10, since: "2026-11-02T19:11:32Z" }) == Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z", "Steve 2026-11-02T19:11:32Z"])
+expect recent_of(three, { most: 10, since: "2026-11-02T19:11:33Z" }) == Ok(["CC 2026-11-02T19:12:28Z", "Apoorva 2026-11-02T19:12:00Z"])
+# A record read that is not one this module writes is refused; one the
+# walk stops short of is not read.
+expect recent_of("-------------\nMSG_plans_1\nfrom: Steve\n\nHello\n\n", { most: 10, since: "2026-11-01T00:00:00Z" }) == Err(Unreadable)
+expect recent_of("garbage\n-------------\nMSG_plans_2\nfrom: Steve\ndate: 2026-11-02T19:11:32Z\n\nHello\n\n", { most: 1, since: "2026-11-01T00:00:00Z" }) == Ok(["Steve 2026-11-02T19:11:32Z"])

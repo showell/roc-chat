@@ -143,7 +143,69 @@ Transcript :: [].{
 		time : DateTime,
 		markdown : Str,
 	}
+
+	## Who wrote a message of a transcript, and when; its markdown unread.
+	Post : { author : Author, time : DateTime }
+
+	## The transcript's last `most` messages, newest first, read back from
+	## its end a record at a time and stopping at the first one written
+	## before `since` (a conversation's times never go backwards), so its
+	## cost is those records' and not the file's; or `Unreadable` when one of
+	## them is not a record this module writes. A channel's card reads its
+	## members' participation so (`ChannelRoster`).
+	recent_posts : Transcript.Utf8Transcript, { most : U64, since : DateTime } -> Try(
+		List(Transcript.Post),
+		[Unreadable],
+	)
+	recent_posts = |Transcript.Utf8Transcript.(bytes), { most, since }|
+		posts_before({ bytes, end: bytes.len(), left: most, since, so_far: [] })
 }
+
+## The posts of `bytes` before `end`, newest first, after `so_far`: at most
+## `left` more, none written before `since`.
+posts_before : {
+	bytes : List(U8),
+	end : U64,
+	left : U64,
+	since : DateTime,
+	so_far : List(Transcript.Post),
+} -> Try(List(Transcript.Post), [Unreadable])
+posts_before = |{ bytes, end, left, since, so_far }|
+	if end == 0 or left == 0 {
+		Ok(so_far)
+	} else {
+		opening = "${Separator.line}\n".to_utf8()
+		marker_len = "\n${Separator.line}\n".to_utf8().len()
+		bounds =
+			match last_record_start({ bytes, at: end }) {
+				Found(at) => Ok({ start: at, before: at - marker_len + 1 })
+				NoneFound if bytes.starts_with(opening) => Ok({ start: opening.len(), before: 0 })
+				NoneFound => Err(Unreadable)
+			}
+		{ start, before } = bounds?
+		post = post_from_record(bytes.sublist({ start, len: end - start }))?
+		if DateTime.compare(post.time, since) == Before {
+			Ok(so_far)
+		} else {
+			posts_before({ bytes, end: before, left: left - 1, since, so_far: so_far.append(post) })
+		}
+	}
+
+## One record's author and time, from its head alone.
+post_from_record : List(U8) -> Try(Transcript.Post, [Unreadable])
+post_from_record = |record|
+	match Str.from_utf8(record) {
+		Ok(text) if text.ends_with("\n\n") =>
+			match text.split_on("\n") {
+				[head, from_line, date_line, "", ..] if head.starts_with("MSG_") and from_line.starts_with("from: ") and date_line.starts_with("date: ") => {
+					author = Author.from_str(from_line.drop_prefix("from: ")) ? |_| Unreadable
+					time = DateTime.from_str(date_line.drop_prefix("date: ")) ? |_| Unreadable
+					Ok({ author, time })
+				}
+				_ => Err(Unreadable)
+			}
+		_ => Err(Unreadable)
+	}
 
 ## Where the last record of `bytes` before `at` starts: just after the
 ## last separator line that follows a line end, or `NoneFound`.

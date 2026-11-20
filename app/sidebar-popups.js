@@ -31,6 +31,17 @@
 // the DMs group's "more" row, with a filter field; choosing one shows their
 // card in the same popup.
 //
+// A channel's card lists its members too, under its topics (Steve,
+// 2026-11-20: "Showing membership is absolutely useful. Participation is
+// even better."), as the server orders them (app/ChannelRoster.roc): those
+// who posted in it lately first, latest first, each with when ("posted 2
+// hours ago"), then the rest by name. A human has the presence dot and an
+// agent a quiet "agent". The topics come first, since opening one is what
+// the card is mostly for, and the members under them. A human's name is a
+// link that shows their card, the viewer's DM with them, in the same popup,
+// with a way back to the channel ("← #general"), as the people popup does,
+// since no popup opens another.
+//
 // SidebarPopups.paintDot is the presence dot, chat-client's: a hollow ring
 // while the person is away, solid green while they are online. Its colours
 // are palette.js's.
@@ -54,6 +65,8 @@ window.SidebarPopups = (function () {
       'color:var(--cc-accent);text-decoration:none;overflow-wrap:anywhere}',
     '.sidebar-popup .popup-topic:hover,.sidebar-popup .popup-topic:focus-visible{background:var(--cc-accent-soft-bg)}',
     '.sidebar-popup .popup-topic[aria-current]{color:var(--cc-fg);font-weight:600}',
+    '.sidebar-popup .popup-member{color:var(--cc-accent);text-decoration:none;border-radius:4px}',
+    '.sidebar-popup .popup-member:hover{text-decoration:underline}',
   ].join('\n');
   document.head.appendChild(rules);
 
@@ -203,19 +216,77 @@ window.SidebarPopups = (function () {
     return column;
   }
 
+  // A channel's `members` (the server's .sidebar-members, in its order) as
+  // a column, a row each: a human's dot and name, the name a link that
+  // shows their card by `showPerson(section)`; an agent's name and a quiet
+  // "agent"; then, for one who posted lately, the server's words, muted, at
+  // the row's right end.
+  function memberRows(members, showPerson) {
+    var column = document.createElement('div');
+    Object.assign(column.style, { display: 'flex', flexDirection: 'column', maxHeight: '30vh', overflowY: 'auto' });
+    members.querySelectorAll('li').forEach(function (member) {
+      var name = member.querySelector('.sidebar-member-name');
+      var words = member.querySelector('.sidebar-member-words');
+      var kind = member.getAttribute('data-kind');
+      if (!name || (kind !== 'human' && kind !== 'agent')) throw new Error('sidebar-popups.js: a member has no .sidebar-member-name, or no data-kind of human or agent');
+      var row = document.createElement('div');
+      Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '14px' });
+      var dot = document.createElement('span');
+      if (kind === 'human') {
+        paintDot(dot, member.getAttribute('data-presence') === 'online');
+      } else {
+        Object.assign(dot.style, { display: 'inline-block', width: '9px', flex: 'none' });
+      }
+      row.appendChild(dot);
+      var label;
+      if (kind === 'human') {
+        var section = member.getAttribute('data-section');
+        if (!section) throw new Error('sidebar-popups.js: a human member has no data-section');
+        label = document.createElement('a');
+        label.href = section;
+        label.className = 'popup-member';
+        label.title = 'About ' + name.textContent;
+        label.addEventListener('click', function (e) { e.preventDefault(); showPerson(section); });
+      } else {
+        label = document.createElement('span');
+      }
+      label.textContent = name.textContent;
+      Object.assign(label.style, { minWidth: '0', overflowWrap: 'anywhere' });
+      row.appendChild(label);
+      if (kind === 'agent') {
+        var agent = document.createElement('span');
+        agent.textContent = 'agent';
+        Object.assign(agent.style, { fontSize: '12px', color: 'var(--cc-muted-fg)' });
+        row.appendChild(agent);
+      }
+      if (words) {
+        var when = document.createElement('span');
+        when.textContent = words.textContent;
+        Object.assign(when.style, { marginLeft: 'auto', flex: 'none', fontSize: '12px', color: 'var(--cc-muted-fg)' });
+        row.appendChild(when);
+      }
+      column.appendChild(row);
+    });
+    return column;
+  }
+
   // The card of `place`, a DM or a channel, named `who`, its topics `list`
-  // and its new-topic form `topic` (a topicForm). One card, opened two ways,
+  // and its new-topic form `topic` (a topicForm); a channel's `members`
+  // (its .sidebar-members, null for a DM) and `cardOf(section)`, the card
+  // of the place whose data-section that is. One card, opened two ways,
   // with the focus in the form's field either way, Enter adding the topic:
   // `open('new', plus)`, by the "+", has the form on top and the place's
   // topics under it, so the popup also shows where one can go next;
   // `open('about', name)`, by the place's name, says the place's name and,
   // for a DM, its person's presence and when they joined, then the topics,
-  // then the form. A popup is roomy, so its action is right in it, never
-  // behind a second popup (Steve, 2026-11-20). ↓ and ↑ move from the field
-  // through the topics' links, Enter opens one, and the focus goes back to
+  // then, for a channel, its members, then the form; a member's name shows
+  // their card in its place, with a way back. A popup is roomy, so its
+  // action is right in it, never behind a second popup (Steve,
+  // 2026-11-20). ↓ and ↑ move from the field through the topics' (and
+  // members') links, Enter opens one, and the focus goes back to
   // what opened the card when it closes. `fill(body, mode)` writes the card
   // into another popup's body, the people popup's.
-  function placePopup(place, who, list, topic) {
+  function placePopup(place, who, list, topic, members, cardOf) {
     function open(mode, opener) {
       var popup = frame('place-popup', mode === 'new' ? 'New topic in ' + who : '', opener);
       fill(popup.body, mode);
@@ -255,12 +326,16 @@ window.SidebarPopups = (function () {
         about(body);
         body.appendChild(cardHeading('Topics', '14px'));
         body.appendChild(topics);
+        if (members) {
+          body.appendChild(cardHeading('Members', '18px'));
+          body.appendChild(memberRows(members, function (section) { showPerson(into, mode, section); }));
+        }
         start.style.marginTop = '18px';
         body.appendChild(start);
       }
       body.addEventListener('keydown', function (e) {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-        var stops = [topic.input].concat(Array.prototype.slice.call(body.querySelectorAll('.popup-topic')));
+        var stops = [topic.input].concat(Array.prototype.slice.call(body.querySelectorAll('.popup-topic, .popup-member')));
         var at = stops.indexOf(document.activeElement);
         if (at === -1) return;
         e.preventDefault();
@@ -268,6 +343,26 @@ window.SidebarPopups = (function () {
         var next = stops[Math.max(0, Math.min(stops.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
         next.focus();
       });
+    }
+    // A member's card, the place `section`'s, in `into` in place of this
+    // one, after a way back to this one, drawn again as `mode`.
+    function showPerson(into, mode, section) {
+      var card = cardOf(section);
+      if (!card) throw new Error('sidebar-popups.js: a member\'s data-section is no place of the sidebar');
+      into.textContent = '';
+      var back = document.createElement('button');
+      back.type = 'button';
+      back.textContent = '← ' + who;
+      back.className = 'popup-secondary';
+      back.style.marginBottom = '14px';
+      back.addEventListener('click', function () {
+        into.textContent = '';
+        fill(into, mode);
+        topic.input.focus();
+      });
+      into.appendChild(back);
+      card.fill(into, 'about');
+      back.focus();
     }
     return { open: open, fill: fill };
   }

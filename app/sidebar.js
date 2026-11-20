@@ -81,6 +81,10 @@
 // its label. The "+" opens the place's card on its new-topic form
 // (sidebar-popups.js), and so does the n key, for the page's own place.
 //
+// A channel's members (.sidebar-members, app/ChannelRoster.roc's order)
+// are taken out of the sidebar too, for its card alone, which shows each
+// human's card, their DM's, by the member's data-section.
+//
 // It finds every part by app/PageContract.roc's classes, and styles each on
 // the DOM itself; its colours are palette.js's.
 window.Sidebar = (function () {
@@ -257,8 +261,10 @@ window.Sidebar = (function () {
   var dots = {};
   var forms = [];
   var places = {};
-  // Each place's card, by its data-section, for the people popup.
+  // Each place's card, by its data-section, for the people popup and a
+  // channel card's members.
   var cards = {};
+  function cardOf(section) { return cards[section]; }
   // The page's own place's card, opened on its new-topic form: the n key's.
   var newTopicHere = null;
   sidebar.querySelectorAll('.sidebar-place').forEach(function (place) {
@@ -292,7 +298,10 @@ window.Sidebar = (function () {
     hoverColour(plus, 'var(--cc-muted-fg)', 'var(--cc-accent)');
     form.remove();
     forms.push(form);
-    var card = SidebarPopups.placePopup(place, label, list, SidebarPopups.topicForm(form));
+    // A channel's members, which its card lists: out of the sidebar.
+    var members = place.querySelector('.sidebar-members');
+    if (members) members.remove();
+    var card = SidebarPopups.placePopup(place, label, list, SidebarPopups.topicForm(form), members, cardOf);
     cards[section] = card;
     plus.addEventListener('click', function () { card.open('new', plus); });
     if (place.getAttribute('data-opening') === 'always') newTopicHere = function () { card.open('new', plus); };

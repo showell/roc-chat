@@ -29,6 +29,7 @@
 ##
 ## A message's markdown goes in through `Markdown.message_html`, and
 ## everything else through `Escape.text` and `Html.element`.
+import ChannelRoster
 import Conversation
 import ConversationKey
 import Escape
@@ -57,8 +58,9 @@ ConversationPage :: [].{
 	## A human's page has the sidebar of the places Browse lists for them,
 	## with who of the humans is online, what the top bar's notices' line
 	## says as it is drawn (a DM's says where the other human is,
-	## `Presence.presence_words`), and the time it is drawn, which decides
-	## the DMs it shows (`DmShortlist`); a key's has none.
+	## `Presence.presence_words`), the time it is drawn, which decides
+	## the DMs it shows (`DmShortlist`), and each channel's members, by
+	## participation (`ChannelRoster`); a key's has none.
 	SidebarShown : [
 		NoSidebar,
 		Sidebar(
@@ -67,6 +69,7 @@ ConversationPage :: [].{
 				online_humans : List(UserId),
 				notice : [NoNotice, Notice(Str)],
 				now : Timestamp,
+				rosters : List(ChannelRoster.Roster),
 			},
 		),
 	]
@@ -129,7 +132,7 @@ ConversationPage :: [].{
 		{ toggle, notices, nav, scripts } =
 			match sidebar {
 				NoSidebar => { toggle: [], notices: NoNotices, nav: [], scripts: [] }
-				Sidebar({ places, online_humans, notice, now }) => {
+				Sidebar({ places, online_humans, notice, now, rosters }) => {
 					toggle: [Sidebar.toggle],
 					notices: Notices(notice),
 					nav: [
@@ -139,6 +142,7 @@ ConversationPage :: [].{
 							viewer: viewer.user().id(),
 							online_humans,
 							now,
+							rosters,
 						}),
 					],
 					scripts: [Script.SidebarPopups, Script.Sidebar],

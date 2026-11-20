@@ -30,10 +30,18 @@
 ## dot, and fills it when the page's stream says they have come online.
 ## Clicking a place's name opens app/sidebar-popups.js's card about it, a
 ## channel's and a DM's alike: its name (the place's label), for a DM whether
-## its person is online, its topics as links, and a new topic. When each
+## its person is online, its topics as links, and a new topic. A channel's
+## card lists its members too, in `ChannelRoster`'s order, by participation:
+## the server writes them after the channel's topics (`sidebar-members`),
+## each naming who they are (`data-person`), whether a human or an agent
+## (`data-kind`), and for a human whether they are online and the path of
+## the viewer's DM with them (`data-section`), whose card theirs is; and when
+## they last posted, when lately. app/sidebar.js takes the list out of the
+## sidebar, and the card shows it. When each
 ## human joined is not drawn yet: once accounts keep it,
 ## `person_attributes` adds `data-joined` (its seconds since 1970,
 ## `PageContract`'s `Joined`), and the card says it.
+import ChannelRoster
 import ConversationKey
 import DmShortlist
 import Escape
@@ -63,18 +71,20 @@ Sidebar :: [].{
 	## The sidebar of `places` on `viewer`'s page of the conversation
 	## `current` at `now`, in `SidebarOrder`'s order, `current`'s group
 	## first, the DMs `DmShortlist` shows and the rest behind its "more" row,
-	## the humans in `online_humans` said to be online.
+	## the humans in `online_humans` said to be online, each channel's
+	## members as `rosters` orders them.
 	nav : {
 		places : List(SidebarOrder.TimedPlace),
 		current : ConversationKey,
 		viewer : UserId,
 		online_humans : List(UserId),
 		now : Timestamp,
+		rosters : List(ChannelRoster.Roster),
 	} -> TrustedHtml
-	nav = |{ places, current, viewer, online_humans, now }| {
+	nav = |{ places, current, viewer, online_humans, now, rosters }| {
 		people = { viewer, online_humans }
 		in_order = SidebarOrder.ordered_places({ places, shown: Conversation(current), viewer })
-		drawn = |ordered| place_section({ ordered, current, people })
+		drawn = |ordered| place_section({ ordered, current, people, rosters })
 		channel_places = in_order.keep_if(is_channel).map(drawn)
 		dm_split = DmShortlist.split({
 			dm_places: in_order.drop_if(is_channel),
@@ -222,14 +232,16 @@ person_attributes = |{ place, people }|
 			}
 	}
 
-## One place: its name, how it starts, its topics, `current`'s marked, and
-## the form that starts a topic there. A place with no topics lists none.
+## One place: its name, how it starts, its topics, `current`'s marked, a
+## channel's members as its roster among `rosters` orders them, and the form
+## that starts a topic there. A place with no topics lists none.
 place_section : {
 	ordered : SidebarOrder.OrderedPlace,
 	current : ConversationKey,
 	people : People,
+	rosters : List(ChannelRoster.Roster),
 } -> TrustedHtml
-place_section = |{ ordered, current, people }| {
+place_section = |{ ordered, current, people, rosters }| {
 	topics = ordered.topics
 	place = ordered.place
 	rows = topics.map(|topic| topic_row({ key: ConversationKey.of({ place, topic }), current }))
@@ -269,11 +281,86 @@ place_section = |{ ordered, current, people }| {
 					),
 				}),
 				PageKit.newline,
+				members_list({ place, rosters, people }),
 				TopicForm.form({ place, topics }),
 			]),
 		}),
 		PageKit.newline,
 	])
+}
+
+## The members of the channel `place`, as its roster among `rosters` orders
+## them, each a row naming them and, when they posted lately, its words;
+## nothing for a DM.
+members_list : { place : Place, rosters : List(ChannelRoster.Roster), people : People } -> TrustedHtml
+members_list = |{ place, rosters, people }|
+	match rosters.find_first(|roster| roster.place == place) {
+		Err(NotFound) => TrustedHtml.join([])
+		Ok(roster) =>
+			TrustedHtml.join([
+				Html.element({
+					name: Ul,
+					attributes: [PageContract.class(SidebarMembers)],
+					inner: TrustedHtml.join(
+						List.concat(
+							[PageKit.newline],
+							roster.rows.map(|row| TrustedHtml.join([member_row(row, people), PageKit.newline])),
+						),
+					),
+				}),
+				PageKit.newline,
+			])
+	}
+
+## One member's row: their name, and when they posted lately.
+member_row : ChannelRoster.Row, People -> TrustedHtml
+member_row = |row, people| {
+	who = PageContract.data_attribute(Person(PageKit.token(row.id.to_str())))
+	attributes =
+		match row.kind {
+			Human(dm) => [
+				who,
+				PageContract.data_attribute(Kind(Human)),
+				PageContract.data_attribute(
+					Presence(
+						if people.online_humans.contains(row.id) {
+							Online
+						} else {
+							Offline
+						},
+					),
+				),
+				PageContract.data_attribute(Section(PageKit.site_path(ConversationKey.place_url_path(dm)))),
+			]
+			Agent => [who, PageContract.data_attribute(Kind(Agent))]
+		}
+	words =
+		match row.posted {
+			Posted(text) => [
+				Html.element({
+					name: Span,
+					attributes: [PageContract.class(SidebarMemberWords)],
+					inner: Escape.text(text),
+				}),
+			]
+			NotLately => []
+		}
+	Html.element({
+		name: Li,
+		attributes,
+		inner: TrustedHtml.join(
+			List.concat(
+				[
+					Html.element({
+						name: Span,
+						attributes: [PageContract.class(SidebarMemberName)],
+						inner: Escape.text(row.name),
+					}),
+				],
+				words,
+			),
+		),
+	})
 }
 
 ## One topic's row: a link to the conversation `key`, marked when it is

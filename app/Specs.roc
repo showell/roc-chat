@@ -18,6 +18,7 @@ import AgentsSpec
 import BrowseSpec
 import CodeColorSpec
 import ChannelMembersSpec
+import ChannelRosterSpec
 import ChannelsSpec
 import ConversationKeySpec
 import ConversationSpec

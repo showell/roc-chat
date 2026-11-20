@@ -1,12 +1,16 @@
 ## These are the tests of `Sidebar`: a conversation page's sidebar, byte for
 ## byte, and the page around it.
+import Author
 import Browse
+import ChannelRoster
+import Channels
 import Conversation
 import ConversationKey
 import ConversationPage
 import Directory
 import Reactions
 import Sample
+import Seconds
 import Sidebar
 import SidebarOrder
 import SignedIn
@@ -63,6 +67,7 @@ sidebar_at = |{ current, topics_of }|
 			viewer: steve.user().id(),
 			online_humans: [],
 			now,
+			rosters: [],
 		}).to_utf8(),
 	)
 
@@ -280,6 +285,7 @@ expect {
 			viewer: steve.user().id(),
 			online_humans: [],
 			now,
+			rosters: [],
 		}).to_utf8(),
 	)
 	general = "data-section=\"/chat/channel/general\" data-opening=\"open\">"
@@ -300,6 +306,7 @@ expect {
 				viewer: steve.user().id(),
 				online_humans,
 				now,
+				rosters: [],
 			}).to_utf8(),
 		)
 	apoorva = Sample.user("Apoorva").id()
@@ -320,6 +327,7 @@ expect {
 			viewer: steve.user().id(),
 			online_humans: [],
 			now,
+			rosters: [],
 		}).to_utf8(),
 	)
 	!shown.contains("Channels") and shown.starts_with("<nav class=\"sidebar\">\n<div class=\"sidebar-section\" data-group=\"dms\"><p class=\"sidebar-section-name\">DMs</p>\n")
@@ -352,9 +360,10 @@ expect {
 			viewer: steve.user().id(),
 			online_humans: [],
 			now,
+			rosters: [],
 		}).to_utf8(),
 	)
-	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice, now }))
+	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice, now, rosters: [] }))
 	without = page_with(NoSidebar)
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\">")
@@ -362,4 +371,40 @@ expect {
 		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar-popups.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")
 		and without.contains("</header>\n<div class=\"layout\"><div class=\"messages\"")
 		and !without.contains("sidebar")
+}
+# A channel's members, after its topics and before its form, in its
+# roster's order: who posted lately with when, then the rest; a human with
+# their presence and the viewer's DM with them, an agent marked as one. A
+# DM lists none.
+expect {
+	everyone_in_general =
+		Directory.from_stored({
+			users: Sample.directory.users(),
+			channels: Channels.from_stored([{ name: Channels.default_name, members: "1\n2\n3\n".to_utf8() }])
+			?? crash "SidebarSpec: a members file",
+		})
+		?? crash "SidebarSpec: the members are users"
+	channel =
+		everyone_in_general.channels().channel(Channels.default_name)
+		?? crash "SidebarSpec: general is a channel"
+	roster = ChannelRoster.roster({
+		channel,
+		users: everyone_in_general.users(),
+		viewer: Sample.human("Steve"),
+		posts: [{ author: Author.from_str("CC") ?? crash "SidebarSpec: a name", time: Sample.hello.time }],
+		now: now.plus(Seconds.of(7200)),
+	})
+	shown = Str.from_utf8_lossy(
+		Sidebar.nav({
+			places: places_with(|_| []),
+			current: key_at("/chat/dm/1_1/plans"),
+			viewer: steve.user().id(),
+			online_humans: [Sample.user("Apoorva").id()],
+			now,
+			rosters: [roster],
+		}).to_utf8(),
+	)
+	members = "<ul class=\"sidebar-members\">\n<li data-person=\"3\" data-kind=\"agent\"><span class=\"sidebar-member-name\">CC</span><span class=\"sidebar-member-words\">posted 2 hours ago</span></li>\n<li data-person=\"2\" data-kind=\"human\" data-presence=\"online\" data-section=\"/chat/dm/1_2\"><span class=\"sidebar-member-name\">Apoorva</span></li>\n<li data-person=\"1\" data-kind=\"human\" data-presence=\"offline\" data-section=\"/chat/dm/1_1\"><span class=\"sidebar-member-name\">Steve</span></li>\n</ul>\n"
+	shown.contains("<ul class=\"sidebar-topics\">\n</ul>\n${members}<form method=\"post\" action=\"/chat/channel/general\">")
+		and shown.split_on("sidebar-members").len() == 2
 }

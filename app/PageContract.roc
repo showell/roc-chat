@@ -88,6 +88,9 @@ PageContract :: [].{
 		RecentWhere,
 		RecentWho,
 		Sidebar,
+		SidebarMemberName,
+		SidebarMembers,
+		SidebarMemberWords,
 		SidebarMore,
 		SidebarMoreName,
 		SidebarNewTopic,
@@ -152,6 +155,7 @@ PageContract :: [].{
 		Opening(SidebarOrder.Opening),
 		Group([Channels, Dms]),
 		Joined(Html.Token),
+		Kind([Human, Agent]),
 	]
 
 	## The `data-` attribute `chosen` names, with its value.
@@ -179,6 +183,8 @@ PageContract :: [].{
 			Group(Channels) => Data(token("group"), Token(token("channels")))
 			Group(Dms) => Data(token("group"), Token(token("dms")))
 			Joined(seconds) => Data(token("joined"), Token(seconds))
+			Kind(Human) => Data(token("kind"), Token(token("human")))
+			Kind(Agent) => Data(token("kind"), Token(token("agent")))
 		}
 
 	## An element `attributes` alone opens, as a test reads it.
@@ -235,6 +241,9 @@ class_name = |chosen|
 		RecentWhere => "recent-where"
 		RecentWho => "recent-who"
 		Sidebar => "sidebar"
+		SidebarMemberName => "sidebar-member-name"
+		SidebarMembers => "sidebar-members"
+		SidebarMemberWords => "sidebar-member-words"
 		SidebarMore => "sidebar-more"
 		SidebarMoreName => "sidebar-more-name"
 		SidebarNewTopic => "sidebar-new-topic"
@@ -287,6 +296,8 @@ expect {
 		(Group(Channels), "<p data-group=\"channels\"></p>"),
 		(Group(Dms), "<p data-group=\"dms\"></p>"),
 		(Joined(token("1763600000")), "<p data-joined=\"1763600000\"></p>"),
+		(Kind(Human), "<p data-kind=\"human\"></p>"),
+		(Kind(Agent), "<p data-kind=\"agent\"></p>"),
 	].all(
 		|(chosen, expected)|
 			PageContract.empty_paragraph([PageContract.data_attribute(chosen)])
@@ -352,10 +363,12 @@ expect
 		SidebarSectionName,
 		SidebarMore,
 		SidebarMoreName,
+		SidebarMembers,
 		Current,
 		TopBar,
 	].all(|chosen| is_found_by(Script.Sidebar.bytes(), chosen))
-expect is_found_by(Script.SidebarPopups.bytes(), Problem)
+expect
+	[Problem, SidebarMemberName, SidebarMemberWords].all(|chosen| is_found_by(Script.SidebarPopups.bytes(), chosen))
 expect
 	is_found_by(Script.Chrome.bytes(), NoticeStrip)
 		and !is_found_by(Script.Sidebar.bytes(), NoticeStrip)
@@ -387,6 +400,7 @@ expect
 		and is_read_by(Script.Sidebar.bytes(), "data-group")
 		and is_read_by(Script.SidebarPopups.bytes(), "data-joined")
 		and is_read_by(Script.SidebarPopups.bytes(), "data-presence")
+		and is_read_by(Script.SidebarPopups.bytes(), "data-kind")
 		and !is_read_by(Script.Feed.bytes(), "data-opening")
 		and !is_read_by(Script.Feed.bytes(), "data-person")
 		and !is_read_by(Script.Compose.bytes(), "data-section")
