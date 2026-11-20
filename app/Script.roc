@@ -26,7 +26,20 @@ import "recent.js" as recent_source : Str
 import "devices.js" as devices_source : Str
 import "search.js" as search_source : Str
 
-Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Search, Panel, Join, Recent, Devices].{
+Script := [
+	Palette,
+	Chrome,
+	Sidebar,
+	Compose,
+	Emoji,
+	Feed,
+	Actions,
+	Search,
+	Panel,
+	Join,
+	Recent,
+	Devices,
+].{
 
 	## Every script the pages load.
 	all_scripts : List(Script)

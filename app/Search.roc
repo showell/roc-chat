@@ -51,7 +51,7 @@ Search :: [].{
 	}
 
 	## The messages listed, and how many hold the word in all.
-	Found : { hits : List(Search.Hit), matched : U64 }
+	Results : { hits : List(Search.Hit), matched : U64 }
 
 	## Where the words that begin with what was typed are asked:
 	## `?prefix=<typed>`.
@@ -130,7 +130,10 @@ Search :: [].{
 	## in order, each with its excerpt: at most `most_messages`, and no more
 	## than `most_answer_bytes` of excerpts (the first always listed), every
 	## one counted. A key shorter than a word finds nothing.
-	messages_for : { topics : List(Search.Searched), word : SearchWords.SearchKey } -> Search.Found
+	messages_for : {
+		topics : List(Search.Searched),
+		word : SearchWords.SearchKey,
+	} -> Search.Results
 	messages_for = |{ topics, word }|
 		if !word.is_word_long() {
 			{ hits: [], matched: 0 }
@@ -225,7 +228,7 @@ Search :: [].{
 	## id, its author, its time and its excerpt.
 	messages_answer : {
 		word : SearchWords.SearchKey,
-		found : Search.Found,
+		found : Search.Results,
 		unreadable : U64,
 	} -> JsonOut
 	messages_answer = |{ word, found, unreadable }|
