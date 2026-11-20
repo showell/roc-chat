@@ -69,7 +69,9 @@ SearchIndex :: [].{
 	## At most `most` words of the messages of `keys` that begin with
 	## `prefix`, each with how many messages hold it, the most held first,
 	## then in byte order; and how many of `keys` the index couldn't read.
-	words! : List(ConversationKey), SearchWords.SearchKey, U64 => {
+	words! : List(ConversationKey),
+	SearchWords.SearchKey,
+	U64 => {
 		words : List({ word : Str, count : U64 }),
 		unsearchable : U64,
 	}
@@ -84,7 +86,9 @@ SearchIndex :: [].{
 	## At most `most` messages of `keys` that hold `word` as a word of their
 	## own, in order; how many hold it in all; and how many of `keys` the
 	## index couldn't read.
-	messages! : List(ConversationKey), SearchWords.SearchKey, U64 => {
+	messages! : List(ConversationKey),
+	SearchWords.SearchKey,
+	U64 => {
 		found : List(SearchIndex.Found),
 		matched : U64,
 		unsearchable : U64,
