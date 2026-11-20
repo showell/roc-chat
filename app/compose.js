@@ -284,17 +284,20 @@
   // still to be noticed.
   var awaitingArrival = Object.create(null);
 
-  function setEnabled(on) {
-    box.disabled = !on;
-    var buttons = form.querySelectorAll('button');
-    for (var i = 0; i < buttons.length; i++) buttons[i].disabled = !on;
+  // The box and its buttons, on or off by what is on its way: while a send
+  // is, all of them are off; while an upload is, Send and Upload are, so a
+  // message never goes without the image being put in it.
+  function refreshControls() {
+    box.disabled = !!pending;
+    send.disabled = !!pending || uploading;
+    uploadButton.disabled = !!pending || uploading;
   }
   function settle() {
     clearTimeout(pending.timer);
     pending = null;
     status.textContent = '';
     status.style.color = '';
-    setEnabled(true);
+    refreshControls();
   }
 
   function showAlert(said) {
@@ -374,12 +377,12 @@
   }
 
   function sendMessage() {
-    if (pending) return;
+    if (pending || uploading) return;
     var markdown = box.value;
     if (!markdown.trim()) return;
     var mine = { timer: null };
     pending = mine;
-    setEnabled(false);
+    refreshControls();
     status.style.color = MUTED;
     status.textContent = 'Sending…';
     mine.timer = setTimeout(function () { stillSending(mine); }, STILL_SENDING_MS);
@@ -564,7 +567,7 @@
 
   function uploadDone(line) {
     uploading = false;
-    uploadButton.disabled = false;
+    refreshControls();
     status.style.color = '';
     status.textContent = line;
   }
@@ -610,7 +613,7 @@
       return;
     }
     uploading = true;
-    uploadButton.disabled = true;
+    refreshControls();
     status.style.color = MUTED;
     status.textContent = 'Preparing image…';
     shrinkPicture(file, sendFile);
