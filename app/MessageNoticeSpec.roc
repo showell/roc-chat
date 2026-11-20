@@ -32,7 +32,7 @@ key_at = |path| ConversationKey.from_url_path({
 ## Who of the readers of `path` is told of a message by the user `author`.
 told_at : Str, UserId -> List(Str)
 told_at = |path, author|
-	MessageNotice.told({
+	MessageNotice.recipients({
 		readers: Access.members({ place: key_at(path).place(), directory }),
 		author,
 	}).map(UserId.to_str)

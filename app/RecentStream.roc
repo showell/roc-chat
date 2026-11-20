@@ -153,7 +153,9 @@ expect RecentStream.bus_key(UserId.chat_owner) == "/recent/1".to_utf8()
 expect RecentStream.holder(UserId.chat_owner) == "1".to_utf8()
 expect {
 	response = RecentStream.response(UserId.chat_owner)
-	response.kind == Stream and response.body == [] and response.stream_keys == ["/recent/1".to_utf8(), "/viewers/1".to_utf8()]
+	response.kind == Stream
+		and response.body == []
+		and response.stream_keys == ["/recent/1".to_utf8(), "/viewers/1".to_utf8()]
 }
 expect
 	Str.from_utf8_lossy(

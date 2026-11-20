@@ -9,7 +9,7 @@
 ## and paints the tab's icon violet, unless the page is that topic's own
 ## (chat-client's js/notify.js dropped a ping for the open topic). An edit is
 ## a message appended, so it is told too. `ConversationRoute` sends it to
-## each of `told`.
+## each of `recipients`.
 import ConversationKey
 import Escape
 import Html
@@ -45,7 +45,7 @@ MessageNotice :: [].{
 
 	## Who of `readers` is told of a message by `author`: all but the author,
 	## as Gopher Chat never told anyone of their own message.
-	told : { readers : List(UserId), author : UserId } -> List(UserId)
-	told = |{ readers, author }| readers.drop_if(|reader| reader == author)
+	recipients : { readers : List(UserId), author : UserId } -> List(UserId)
+	recipients = |{ readers, author }| readers.drop_if(|reader| reader == author)
 
 }

@@ -127,7 +127,11 @@ RecentFeed :: [].{
 			parts: List.concat(
 				List.concat(
 					[
-						Html.element({ name: P, attributes: [PageContract.class(NoticeStrip)], inner: TrustedHtml.join([]) }),
+						Html.element({
+							name: P,
+							attributes: [PageContract.class(NoticeStrip)],
+							inner: TrustedHtml.join([]),
+						}),
 						PageKit.newline,
 					],
 					nothing_yet,

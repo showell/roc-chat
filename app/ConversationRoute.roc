@@ -322,7 +322,7 @@ append_posted_message! = |post| {
 		File(_) => {}
 	}
 	notice = MessageNotice.frame({ author: post.acting.user().name().to_str(), key: post.key })
-	for reader in MessageNotice.told({ readers: post.readers, author: post.acting.user().id() }) {
+	for reader in MessageNotice.recipients({ readers: post.readers, author: post.acting.user().id() }) {
 		Host.publish_bytes_to_streams_on_key!(Presence.viewer_stream_key(reader), notice)
 	}
 	match edit {

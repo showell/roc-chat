@@ -1722,9 +1722,11 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         umas.status == 200 and has(umas.body, "href=\"" ++ channel_url ++ "\"") and !has(umas.body, dm_plans) and
         steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and !has(steves.body, dm_url ++ "\"") and
         has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>"));
-    const notice = try live.event();
-    const first = try live.event();
-    const second = try live.event();
+    // The stream carries the viewer's own key too, so a new topic's
+    // topic-added comes by as well, which the Recent page ignores.
+    const notice = try nextNotTopicAdded(live);
+    const first = try nextNotTopicAdded(live);
+    const second = try nextNotTopicAdded(live);
     try t.check("Recent's stream: Steve's open Recent page hears the notice of Tam's channel post, as Gopher Chat's Recent did, and none of his own", std.mem.eql(u8, notice, "event: message-notice\ndata: <a href=\"" ++ channel_url ++ "\">Tam posted to general &gt; roc-chat.</a>\n\n"));
     try t.check("Recent's stream: Steve's open Recent page is sent each message's tile, as he sees it, Tam's first, then his own", live.isEventStream() and
         has(steves.body, "data-stream=\"/chat/recent/stream\"") and
@@ -3229,6 +3231,14 @@ const Stream = struct {
         }
     }
 };
+
+/// The stream's next event that is not a `topic-added`.
+fn nextNotTopicAdded(s: *Stream) ![]const u8 {
+    while (true) {
+        const e = try s.event();
+        if (!std.mem.startsWith(u8, e, "event: topic-added\n")) return e;
+    }
+}
 
 fn shutAfter(io: Io, connection: Io.net.Stream, ms: u32) void {
     Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch return;
