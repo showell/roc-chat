@@ -20,6 +20,7 @@
 ##     GET  /chat/assets/palette.js            the pages' scripts
 ##     GET  /chat/assets/chrome.js
 ##     GET  /chat/assets/compose.js
+##     GET  /chat/assets/emoji.js
 ##     GET  /chat/assets/feed.js
 ##     GET  /chat/assets/panel.js
 ##     GET  /chat/assets/join.js

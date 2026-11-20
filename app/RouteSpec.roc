@@ -183,7 +183,7 @@ expect chosen_route("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8())
 expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
 # Each script's path: GET alone, and exactly its path.
 expect
-	["palette.js", "chrome.js", "compose.js", "feed.js", "panel.js"].all(
+	["palette.js", "chrome.js", "compose.js", "emoji.js", "feed.js", "panel.js"].all(
 		|name| {
 			path = "/chat/assets/${name}".to_utf8()
 			chosen_route("GET", path) == "the script at /chat/assets/${name} (open)"

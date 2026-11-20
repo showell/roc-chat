@@ -11,6 +11,7 @@
 ## the top bar and adds its theme toggle. app/sidebar.js styles the sidebar
 ## and collapses its places. app/compose.js lays the panes out, gives the compose box
 ## its keys and its Upload button, and sends a message without a reload.
+## app/emoji.js autocompletes an emoji's `:name` in the compose box.
 ## app/feed.js styles the messages, marks the viewer's own, writes each
 ## time in the viewer's time zone, appends each message the conversation's
 ## stream brings, puts a message the stream sends again in place of the one
@@ -171,7 +172,7 @@ ConversationPage :: [].{
 				TrustedHtml.join(
 					List.concat(
 						List.concat([Script.Chrome], scripts),
-						[Script.Compose, Script.Feed, Script.Actions],
+						[Script.Compose, Script.Emoji, Script.Feed, Script.Actions],
 					).map(|chosen| TrustedHtml.join([PageKit.script(chosen), PageKit.newline])),
 				),
 			]),
@@ -373,7 +374,7 @@ compose_box = |key| {
 			Html.element({
 				name: P,
 				attributes: [PageContract.class(Help)],
-				inner: Escape.text("Markdown supported · attach an image · Ctrl/⌘-Enter to send"),
+				inner: Escape.text("Markdown supported · :emoji: autocompletes · attach an image · Ctrl/⌘-Enter to send"),
 			}),
 		]),
 	})

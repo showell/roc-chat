@@ -2,8 +2,9 @@
 // builds and app/Script.roc serves. It gives each message its actions:
 // reacting with an emoji, quoting it in a reply, and editing the viewer's
 // own, as chat-client's messages did (js/message.js, js/chat_reactions.js
-// and js/chat.js's doQuote and doEdit). It runs after compose.js and feed.js, and feed.js hands it each
-// message the stream brings, or brings again (Actions.dress).
+// and js/chat.js's doQuote and doEdit). It runs after compose.js, emoji.js
+// and feed.js, and feed.js hands it each message the stream brings, or
+// brings again (Actions.dress).
 //
 // The server draws everything a message shows, its reactions and its edit
 // included, so this script only styles what it finds and sends what the
@@ -11,9 +12,9 @@
 // (data-reactors); the viewer's own are highlighted, and a click takes the
 // viewer's reaction back, or adds it. The `+` key toggles 👍 on the
 // selected message, as chat-client's did, with no picker. The "react"
-// button, or the `:` key on the selected message, opens a small picker of
-// emojis. The picker works by keys too: its first emoji has the focus, the
-// arrows move it through the grid, Tab and Shift+Tab within the picker,
+// button, or the `:` key on the selected message, opens a picker of
+// emoji.js's emojis (Emoji.glyphs). The picker works by keys too: its first
+// emoji has the focus, the arrows move it through the grid, Tab and Shift+Tab within the picker,
 // Enter or Space picks, and Escape closes it and gives the focus back to
 // where it was. A tap picks, as a click does. Each reaction is
 // a POST to the messages pane's data-react (`msg`, `emoji`, `on`), and is
@@ -48,16 +49,13 @@
   var messages = document.querySelector('.messages');
   if (!messages) throw new Error('actions.js: the page has no .messages');
   if (!window.Keys || !window.Compose) throw new Error('actions.js: compose.js runs first, and gives Keys and Compose');
+  if (!window.Emoji) throw new Error('actions.js: emoji.js runs first, and gives Emoji');
   var viewer = messages.getAttribute('data-viewer');
   var reactUrl = messages.getAttribute('data-react');
   var rawUrl = messages.getAttribute('data-raw');
   if (!viewer || !reactUrl || !rawUrl) {
     throw new Error('actions.js: .messages has no data-viewer, no data-react or no data-raw');
   }
-
-  // The picker's emojis, a few of chat-client's (js/chat_emoji.js), in its
-  // order.
-  var EMOJIS = ['👍', '❤️', '😂', '🎉', '🙏', '👀', '✅', '🤔', '😮', '😢', '🔥', '💯'];
 
   var s = document.createElement('style');
   s.textContent = [
@@ -177,7 +175,7 @@
     picker.className = 'reaction-picker';
     picker.setAttribute('role', 'menu');
     picker.addEventListener('keydown', pickerKey);
-    EMOJIS.forEach(function (emoji) {
+    Emoji.glyphs.forEach(function (emoji) {
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = emoji;
@@ -303,7 +301,7 @@
   } });
   Keys.register({ key: '+', label: 'thumbs-up the selected message', run: function () {
     var article = selectedMessage();
-    if (article) toggle(article, '👍');
+    if (article) toggle(article, Emoji.glyphOf('thumbsup'));
   } });
   Keys.register({ key: 'e', label: 'edit the selected message, if yours', run: function () {
     var article = selectedMessage();

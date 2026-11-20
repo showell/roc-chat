@@ -14,6 +14,8 @@
 //
 // Ctrl+Enter (⌘+Enter on a Mac) sends, as chat-client does; plain Enter is
 // a new line. The Send button sends too, which is how a phone sends.
+// emoji.js, which runs next, autocompletes an emoji's `:name` in the box,
+// and while its menu is open, Enter and Tab take the emoji instead.
 //
 // A send stays on the page, as chat-client's did (js/chat_compose.js). The
 // script posts the form to the conversation's `/send` (the form's

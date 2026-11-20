@@ -1,6 +1,6 @@
 ## This module is the one contract between the pages, which the Roc writes,
 ## and the scripts that run on them (app/chrome.js, app/sidebar.js,
-## app/compose.js, app/feed.js, app/actions.js, app/panel.js and
+## app/compose.js, app/emoji.js, app/feed.js, app/actions.js, app/panel.js and
 ## app/recent.js, which
 ## `Script` serves). The server sends
 ## structure and class names only, and each script finds what it needs by
@@ -295,6 +295,7 @@ expect
 	[Layout, Messages, Compose, Help].all(|chosen| is_found_by(Script.Compose.bytes(), chosen))
 expect
 	[Messages, Compose, Message, Empty].all(|chosen| is_found_by(Script.Feed.bytes(), chosen))
+expect is_found_by(Script.Emoji.bytes(), Compose) and !is_found_by(Script.Emoji.bytes(), Help)
 expect [Panel, InviteCode].all(|chosen| is_found_by(Script.Panel.bytes(), chosen))
 expect
 	[

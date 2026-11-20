@@ -3,7 +3,8 @@
 ## holds. Every page loads app/palette.js in its head, which sets the
 ## colours before the first paint. A conversation's page ends with
 ## app/chrome.js (its top bar), app/sidebar.js (its sidebar, when it has
-## one), app/compose.js (its compose box), app/feed.js (its messages) and
+## one), app/compose.js (its compose box), app/emoji.js (the emojis, and
+## the compose box's autocomplete of them), app/feed.js (its messages) and
 ## app/actions.js (each message's reactions and edit).
 ## Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in). The join page
@@ -14,13 +15,14 @@ import "palette.js" as palette_source : Str
 import "chrome.js" as chrome_source : Str
 import "sidebar.js" as sidebar_source : Str
 import "compose.js" as compose_source : Str
+import "emoji.js" as emoji_source : Str
 import "feed.js" as feed_source : Str
 import "actions.js" as actions_source : Str
 import "panel.js" as panel_source : Str
 import "join.js" as join_source : Str
 import "recent.js" as recent_source : Str
 
-Script := [Palette, Chrome, Sidebar, Compose, Feed, Actions, Panel, Join, Recent].{
+Script := [Palette, Chrome, Sidebar, Compose, Emoji, Feed, Actions, Panel, Join, Recent].{
 
 	## Every script the pages load.
 	all_scripts : List(Script)
@@ -29,6 +31,7 @@ Script := [Palette, Chrome, Sidebar, Compose, Feed, Actions, Panel, Join, Recent
 		Script.Chrome,
 		Script.Sidebar,
 		Script.Compose,
+		Script.Emoji,
 		Script.Feed,
 		Script.Actions,
 		Script.Panel,
@@ -55,6 +58,7 @@ file_name = |script|
 		Chrome => "chrome.js"
 		Sidebar => "sidebar.js"
 		Compose => "compose.js"
+		Emoji => "emoji.js"
 		Feed => "feed.js"
 		Actions => "actions.js"
 		Panel => "panel.js"
@@ -70,6 +74,7 @@ source = |script|
 		Chrome => chrome_source
 		Sidebar => sidebar_source
 		Compose => compose_source
+		Emoji => emoji_source
 		Feed => feed_source
 		Actions => actions_source
 		Panel => panel_source
@@ -87,6 +92,7 @@ expect
 			"/chat/assets/chrome.js",
 			"/chat/assets/sidebar.js",
 			"/chat/assets/compose.js",
+			"/chat/assets/emoji.js",
 			"/chat/assets/feed.js",
 			"/chat/assets/actions.js",
 			"/chat/assets/panel.js",
@@ -98,6 +104,7 @@ expect
 	[
 		sidebar_source,
 		compose_source,
+		emoji_source,
 		feed_source,
 		actions_source,
 	].all(|text| text.starts_with("// This script runs on a conversation page"))
@@ -113,6 +120,7 @@ expect
 		chrome_source,
 		sidebar_source,
 		compose_source,
+		emoji_source,
 		feed_source,
 		actions_source,
 		panel_source,
@@ -125,6 +133,7 @@ expect
 		(Script.Chrome, chrome_source),
 		(Script.Sidebar, sidebar_source),
 		(Script.Compose, compose_source),
+		(Script.Emoji, emoji_source),
 		(Script.Feed, feed_source),
 		(Script.Actions, actions_source),
 		(Script.Panel, panel_source),
