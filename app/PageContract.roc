@@ -51,6 +51,7 @@ PageContract :: [].{
 		Messages,
 		NoticeStrip,
 		Panel,
+		Problem,
 		ReactionChip,
 		ReactionEmoji,
 		ReactionStrip,
@@ -70,6 +71,7 @@ PageContract :: [].{
 		RecentWho,
 		Sidebar,
 		SidebarEmpty,
+		SidebarNewTopic,
 		SidebarPlace,
 		SidebarPlaceName,
 		SidebarToggle,
@@ -172,6 +174,7 @@ class_name = |chosen|
 		Messages => "messages"
 		NoticeStrip => "notice-strip"
 		Panel => "panel"
+		Problem => "problem"
 		ReactionChip => "reaction-chip"
 		ReactionEmoji => "reaction-emoji"
 		ReactionStrip => "reaction-strip"
@@ -191,6 +194,7 @@ class_name = |chosen|
 		RecentWho => "recent-who"
 		Sidebar => "sidebar"
 		SidebarEmpty => "sidebar-empty"
+		SidebarNewTopic => "sidebar-new-topic"
 		SidebarPlace => "sidebar-place"
 		SidebarPlaceName => "sidebar-place-name"
 		SidebarToggle => "sidebar-toggle"
@@ -230,6 +234,7 @@ expect
 		(Messages, "messages"),
 		(NoticeStrip, "notice-strip"),
 		(Panel, "panel"),
+		(Problem, "problem"),
 		(ReactionChip, "reaction-chip"),
 		(ReactionEmoji, "reaction-emoji"),
 		(ReactionStrip, "reaction-strip"),
@@ -249,6 +254,7 @@ expect
 		(RecentWho, "recent-who"),
 		(Sidebar, "sidebar"),
 		(SidebarEmpty, "sidebar-empty"),
+		(SidebarNewTopic, "sidebar-new-topic"),
 		(SidebarPlace, "sidebar-place"),
 		(SidebarPlaceName, "sidebar-place-name"),
 		(SidebarToggle, "sidebar-toggle"),
@@ -331,6 +337,8 @@ expect
 		SidebarPlaceName,
 		SidebarTopics,
 		SidebarEmpty,
+		SidebarNewTopic,
+		Problem,
 		Current,
 		TopBar,
 		NoticeStrip,

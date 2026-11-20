@@ -47,6 +47,17 @@
 // upsertSession, a topic already listed is left, and a place this sidebar
 // doesn't list is ignored.
 //
+// A new topic is rare, so its form stays out of sight. The server writes each
+// place's form after its topics, and before them a button, "New topic in"
+// and the place's name; this script takes the form out of the sidebar and
+// shows the button as a small "+" beside the place's name, its words kept as
+// its label. The "+" opens a popup, a modal dialog as feed.js's code popup
+// is, holding the form, its field focused: Enter adds the topic, and Escape
+// or Close cancels. The form posts as it always has, to the place's path: a
+// topic the server takes answers with its page, which the browser then
+// opens; one it refuses answers with Browse, whose problem paragraph
+// (.problem) the popup shows, keeping what was typed.
+//
 // It finds every part by app/PageContract.roc's classes, and styles each on
 // the DOM itself; its colours are palette.js's.
 window.Sidebar = (function () {
@@ -64,16 +75,24 @@ window.Sidebar = (function () {
   Object.assign(sidebar.style, { overflowY: 'auto', borderRight: '1px solid var(--cc-border)', boxSizing: 'border-box' });
   styleAll('.sidebar-place', { marginBottom: '12px' });
   styleAll('.sidebar-place-name', {
-    display: 'flex', alignItems: 'center', gap: '5px', margin: '0 0 4px', fontWeight: 'bold',
+    display: 'flex', alignItems: 'center', gap: '5px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'bold',
     color: 'var(--cc-meta-fg)', cursor: 'pointer', userSelect: 'none',
   });
+  // The "+": light until pointed at, and a finger's size in the drawer.
+  styleAll('.sidebar-new-topic', {
+    flex: 'none', background: 'none', border: 'none', borderRadius: '4px', cursor: 'pointer',
+    color: 'var(--cc-muted-fg)', fontSize: '15px', lineHeight: '1', fontFamily: 'inherit',
+  });
+  var backdropRule = document.createElement('style');
+  backdropRule.textContent = 'dialog.topic-popup::backdrop { background: var(--cc-backdrop); }';
+  document.head.appendChild(backdropRule);
   styleAll('form', { margin: '4px 0 0', display: 'flex', flexDirection: 'column', gap: '4px' });
   styleAll('form p', { margin: '0', fontSize: '12px', color: 'var(--cc-muted-fg)' });
   styleAll('input', {
     boxSizing: 'border-box', width: '100%', fontFamily: 'inherit', fontSize: '12px', padding: '2px 6px',
     background: 'var(--cc-bg)', color: 'var(--cc-fg)', border: '1px solid var(--cc-input-border)', borderRadius: '4px',
   });
-  styleAll('button', {
+  styleAll('form button', {
     alignSelf: 'flex-start', fontSize: '12px', padding: '2px 10px', background: 'var(--cc-mine-bg)',
     color: 'var(--cc-search-tok-fg)', border: '1px solid var(--cc-quote-border)', borderRadius: '6px', cursor: 'pointer',
   });
@@ -131,13 +150,90 @@ window.Sidebar = (function () {
     dot.title = online ? 'online' : 'away';
   }
 
+  // A place's new-topic popup, `form` in a modal dialog headed `words`, made
+  // afresh at each opening and removed once closed, giving the focus back
+  // to `plus`. The form is posted by fetch, so a refusal stays in the popup.
+  var forms = [];
+  var popupOpen = false;
+  function topicPopup(form, words, plus) {
+    forms.push(form);
+    var input = form.querySelector('input');
+    var submit = form.querySelector('button');
+    if (!input || !submit) throw new Error('sidebar.js: a new-topic form has no input or button');
+    var problem = document.createElement('p');
+    Object.assign(problem.style, { margin: '8px 0 0', fontSize: '13px', color: 'var(--cc-notify-fg)' });
+    var dlg = null;
+    function say(text) {
+      problem.textContent = text;
+      submit.disabled = false;
+      input.focus();
+    }
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submit.disabled = true;
+      problem.textContent = '';
+      fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)), credentials: 'same-origin' })
+        .then(function (answer) {
+          if (answer.ok && answer.redirected) { window.location.assign(answer.url); return; }
+          return answer.text().then(function (html) {
+            var said = new DOMParser().parseFromString(html, 'text/html').querySelector('.problem');
+            say(said ? said.textContent : 'The server answered ' + answer.status + ' and said nothing more.');
+          });
+        }, function () { say('The server did not answer; try again.'); });
+    });
+    function open() {
+      dlg = document.createElement('dialog');
+      dlg.className = 'topic-popup';
+      Object.assign(dlg.style, {
+        width: 'min(320px, 90vw)', padding: '0', border: '1px solid var(--cc-dialog-border)', borderRadius: '8px',
+        background: 'var(--cc-bg)', color: 'var(--cc-fg)',
+      });
+      var controls = document.createElement('div');
+      Object.assign(controls.style, {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+        padding: '6px 8px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
+      });
+      var heading = document.createElement('span');
+      heading.textContent = words;
+      Object.assign(heading.style, { fontWeight: 'bold', fontSize: '13px', overflowWrap: 'anywhere' });
+      var close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = 'Close';
+      close.addEventListener('click', function () { dlg.close(); });
+      controls.appendChild(heading);
+      controls.appendChild(close);
+      var body = document.createElement('div');
+      body.style.padding = '12px 14px';
+      Object.assign(form.style, { margin: '0' });
+      body.appendChild(form);
+      body.appendChild(problem);
+      dlg.appendChild(controls);
+      dlg.appendChild(body);
+      dlg.addEventListener('close', function () {
+        popupOpen = false;
+        problem.textContent = '';
+        submit.disabled = false;
+        dlg.remove();
+        plus.focus();
+      });
+      dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+      document.body.appendChild(dlg);
+      popupOpen = true;
+      dlg.showModal();
+      input.focus();
+      input.select();
+    }
+    return { open: open };
+  }
+
   var places = {};
   sidebar.querySelectorAll('.sidebar-place').forEach(function (place) {
     var section = place.getAttribute('data-section');
     var name = place.querySelector('.sidebar-place-name');
     var list = place.querySelector('.sidebar-topics');
     var form = place.querySelector('form');
-    if (!section || !name || !list) throw new Error('sidebar.js: a .sidebar-place has no data-section, .sidebar-place-name or .sidebar-topics');
+    var plus = place.querySelector('.sidebar-new-topic');
+    if (!section || !name || !list || !form || !plus) throw new Error('sidebar.js: a .sidebar-place has no data-section, .sidebar-place-name, .sidebar-topics, form or .sidebar-new-topic');
     places[section] = list;
     styleTopics(list);
     list.querySelectorAll('li').forEach(styleRow);
@@ -156,10 +252,25 @@ window.Sidebar = (function () {
     name.setAttribute('role', 'button');
     name.setAttribute('tabindex', '0');
 
+    var row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px', margin: '0 0 4px' });
+    place.insertBefore(row, name);
+    row.appendChild(name);
+    row.appendChild(plus);
+    var words = plus.textContent;
+    plus.type = 'button';
+    plus.textContent = '+';
+    plus.title = words;
+    plus.setAttribute('aria-label', words);
+    plus.addEventListener('mouseenter', function () { plus.style.color = 'var(--cc-accent)'; });
+    plus.addEventListener('mouseleave', function () { plus.style.color = 'var(--cc-muted-fg)'; });
+    form.remove();
+    var popup = topicPopup(form, words, plus);
+    plus.addEventListener('click', popup.open);
+
     function show(collapsed) {
       caret.style.transform = collapsed ? 'rotate(-90deg)' : 'none';
       list.style.display = collapsed ? 'none' : 'block';
-      if (form) form.style.display = collapsed ? 'none' : 'flex';
       name.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
     var collapsed = startsCollapsed(section, place.getAttribute('data-opening'));
@@ -218,7 +329,10 @@ window.Sidebar = (function () {
   function sizeTargets() {
     styleAll('.sidebar-topics a, .sidebar-empty', { padding: narrow ? '9px 8px' : '4px 8px' });
     styleAll('.sidebar-place-name', { padding: narrow ? '6px 0' : '0' });
-    styleAll('button', { padding: narrow ? '6px 14px' : '2px 10px' });
+    styleAll('.sidebar-new-topic', { padding: narrow ? '8px 12px' : '2px 6px' });
+    forms.forEach(function (form) {
+      form.querySelectorAll('button').forEach(function (button) { button.style.padding = narrow ? '6px 14px' : '2px 10px'; });
+    });
   }
   Viewport.onChange(function (isNarrow) {
     narrow = isNarrow;
@@ -235,7 +349,7 @@ window.Sidebar = (function () {
   });
   backdrop.addEventListener('click', function () { show(false); });
   document.addEventListener('keydown', function (e) {
-    if (open && e.key === 'Escape') { e.preventDefault(); show(false); toggle.focus(); }
+    if (open && !popupOpen && e.key === 'Escape') { e.preventDefault(); show(false); toggle.focus(); }
   });
   sidebar.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('.sidebar-topics a')) show(false);

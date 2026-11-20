@@ -1,16 +1,19 @@
 ## This module builds the sidebar of a conversation's page: the places
 ## `Browse` lists for the viewer, in the order `SidebarOrder` gives them,
 ## each place's topics under it as links, and at the end of each place's
-## topics the form that starts one (`TopicForm`). Each place says how it
+## topics the form that starts one (`TopicForm`). Under each place's name is
+## its button that offers that form, "New topic in" and the place's name:
+## app/sidebar.js shows the button as a small "+" beside the name, and the
+## form only in a popup the button opens. Each place says how it
 ## starts (`data-opening`), open or collapsed, as `SidebarOrder` decides.
 ## The topic the page shows is marked current, and it is listed in its
 ## place even before its first message gives it a folder.
 ##
 ## Before the page's layout comes the sidebar's toggle, the button a narrow
 ## window's drawer opens the sidebar by. app/sidebar.js styles the sidebar,
-## lets each place's topics collapse, and in a narrow window, a phone's,
-## moves the toggle into the top bar and makes the sidebar a drawer over
-## the page. It finds each part by `PageContract`'s classes, and a place by
+## lets each place's topics collapse, opens the new-topic popup, and in a
+## narrow window, a phone's, moves the toggle into the top bar and makes the
+## sidebar a drawer over the page. It finds each part by `PageContract`'s classes, and a place by
 ## its path (`data-section`).
 ##
 ## A DM with another human names them (`data-person`) and says whether they
@@ -135,6 +138,12 @@ place_section = |{ ordered, current, people }| {
 					name: P,
 					attributes: [PageContract.class(SidebarPlaceName)],
 					inner: Escape.text(ordered.label),
+				}),
+				PageKit.newline,
+				Html.element({
+					name: Button,
+					attributes: [PageContract.class(SidebarNewTopic)],
+					inner: Escape.text("New topic in ${ordered.label}"),
 				}),
 				PageKit.newline,
 				Html.element({

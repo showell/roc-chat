@@ -123,10 +123,10 @@ expect
 expect
 	page_of([Sample.other, Sample.plans], NoProblem)
 		== "${page_head}${invite_link}<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/other\">other</a></p>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
-# A problem comes first, as text, before the link.
+# A problem comes first, as text, marked as the problem, before the link.
 expect
 	page_of([Sample.plans], Problem("No <topic>."))
-		== "${page_head}<p>No &lt;topic&gt;.</p>\n${invite_link}<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
+		== "${page_head}<p class=\"problem\">No &lt;topic&gt;.</p>\n${invite_link}<h1>Apoorva</h1>\n<p><a href=\"/chat/dm/1_2/plans\">plans</a></p>\n<form method=\"post\" action=\"/chat/dm/1_2\"><p>New topic <input type=\"text\" name=\"topic\" required></p>\n<button>Add topic</button></form>\n${page_foot}"
 # Any human's page has the link, whether they own the chat or not.
 expect
 	Str.from_utf8_lossy(

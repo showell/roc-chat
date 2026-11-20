@@ -71,8 +71,8 @@ form_at = |path, suggests| {
 	"<form method=\"post\" action=\"${path}\"><p>New topic <input type=\"text\" name=\"topic\" required${value}></p>\n<button>Add topic</button></form>\n"
 }
 
-## One place: `name`, at `path`, starting as `opening`, holding `rows`,
-## then its form. Steve's DM with Apoorva names her, offline, as the tests
+## One place: `name`, its button that offers a new topic, at `path`,
+## starting as `opening`, holding `rows`, then its form. Steve's DM with Apoorva names her, offline, as the tests
 ## draw it.
 place_html : {
 	name : Str,
@@ -88,7 +88,7 @@ place_html = |{ name, path, opening, rows, suggests }| {
 		} else {
 			""
 		}
-	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
+	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<button class=\"sidebar-new-topic\">New topic in ${name}</button>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
 }
 
 ## A place's row for a place with no topics.

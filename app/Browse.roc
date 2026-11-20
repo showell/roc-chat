@@ -4,12 +4,16 @@
 ## topics and a form that starts a new one. A conversation's sidebar
 ## (`Sidebar`) lists the same places. Above them is the link to the invites page,
 ## as every human who browses may invite. `Access` decides what is listed, so a place
-## the reader couldn't open is never shown. `BrowseRoute` reads the topics and
-## answers.
+## the reader couldn't open is never shown. A problem with a form, such as a
+## name that is no topic, is said first, in a paragraph marked as the
+## problem. `BrowseRoute` reads the topics and answers.
 import Access
 import ConversationKey
 import Directory
 import Dm
+import Escape
+import Html
+import PageContract
 import PageKit
 import Place
 import SignedIn
@@ -72,7 +76,7 @@ Browse :: [].{
 		said =
 			match problem {
 				NoProblem => []
-				Problem(text) => [PageKit.paragraph(text)]
+				Problem(text) => [problem_paragraph(text)]
 			}
 		PageKit.signed_in_page({
 			title: "Browse",
@@ -81,6 +85,19 @@ Browse :: [].{
 		})
 	}
 }
+
+## The paragraph that says what was wrong, marked so a script that posted
+## the form finds it (app/sidebar.js's new-topic popup).
+problem_paragraph : Str -> TrustedHtml
+problem_paragraph = |text|
+	TrustedHtml.join([
+		Html.element({
+			name: P,
+			attributes: [PageContract.class(Problem)],
+			inner: Escape.text(text),
+		}),
+		PageKit.newline,
+	])
 
 ## The link to the invites page.
 invite_link : TrustedHtml
