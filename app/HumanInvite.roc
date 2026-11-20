@@ -107,6 +107,15 @@ HumanInvite :: {
 			Spent => Bool.False
 		}
 
+	## Whether the invite is live and past its expiry at `now`: it was never
+	## redeemed, and never will be.
+	is_expired : HumanInvite, Timestamp -> Bool
+	is_expired = |HumanInvite.(invite), now|
+		match invite.state {
+			Live => now.seconds_since(invite.expires).to_i128() >= 0
+			Spent => Bool.False
+		}
+
 	## The invite among `invites` whose code's hash is `hash`, open for
 	## redemption at `now`. Refused when none has the hash (`NoSuchInvite`),
 	## when it is spent (`Spent`), or when `now` is at or past its expiry, or

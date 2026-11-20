@@ -175,7 +175,12 @@ Directory :: {
 	## The directory without the humans `released`, whose names are free
 	## again, and every channel that held one of them, without them, for the
 	## caller to write. Only an invited human who never joined is released
-	## (`LapsedInvitee`); the caller decides that.
+	## (`LapsedInvitee`); the caller decides that. Releasing makes ids
+	## disappear from the directory, which nothing did before: a channel's
+	## members written from a directory read before a release would name a
+	## member who is no user, and the chat would refuse to read its
+	## directory. So any future point that lets the turn go between reading
+	## the directory and writing members needs review.
 	release_humans : Directory,
 	List(Users.Human) -> {
 		directory : Directory,

@@ -35,7 +35,7 @@ DirectoryFiles :: [].{
 	## folder of channels holds none.
 	read_directory_files! : {} => Try(
 		DirectoryFiles.Contents,
-		[Missing, NotUtf8, PathRefused, Failed],
+		[Missing, Damaged, NotUtf8, PathRefused, Failed],
 	)
 	read_directory_files! = |{}| {
 		counter = AccountFiles.read_user_counter!({})?

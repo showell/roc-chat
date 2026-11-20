@@ -43,13 +43,6 @@ LapsedInvitee :: [].{
 			and password == NoPassword
 			and github == NotLinked
 			and !invites.is_empty()
-			and invites.all(|invite| invite.state() == Live and has_expired(invite, now))
+			and invites.all(|invite| invite.is_expired(now))
 	}
 }
-
-## Whether `invite` is past its expiry at `now`.
-has_expired : HumanInvite, Timestamp -> Bool
-has_expired = |
-	invite,
-	now,
-| now.to_seconds_since_epoch() >= invite.expires().to_seconds_since_epoch()

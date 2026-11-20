@@ -10,10 +10,15 @@
 ## - `GET /login/github/name` is the form that asks the name, from that
 ##   cookie, so a reload asks again rather than saying the state is spent.
 ## - `POST /login/github/name` is that name: the sign-up checked, the limits
-##   checked again, the account made, and a session started. The counter of
-##   ids is written first, then the new human's `Welcome`, then `github-id`,
-##   then `sign-up`, then `name`, then the default channel's members, and last the sign-up's
-##   slot in the day's window, all in one turn, so two submits can't both see
+##   checked again, the account made, and a session started. The account is
+##   judged against the directory with any lapsed invitee who holds a name
+##   like the new one released (`NameRelease`, which reads and plans), so a
+##   sign-up refused (an id with an account already, a name refused) frees
+##   nothing. Then that release is written, if any (the channels that held
+##   them, then their `name-released`), then the counter of ids, then the new
+##   human's `Welcome`, then `github-id`, then `sign-up`, then `name`, then
+##   the default channel's members, and last the sign-up's slot in the day's
+##   window, all in one turn, so two submits can't both see
 ##   the id free or the last slot open. The welcome goes before the account,
 ##   so no account lacks one: a failure there spends an id and binds nothing,
 ##   and the same sign-up tries again. They land where `FirstPage` says. A
@@ -26,12 +31,14 @@ import pf.Http
 import AccountFiles
 import Directory
 import DirectoryFiles
+import FileFacts
 import FirstPage
 import GitHubSignIn
 import GitHubSignUp
 import GitHubTrip
 import HttpAnswer
 import HumanInvites
+import Name
 import NameRelease
 import PageKit
 import RequestHeader
@@ -123,7 +130,11 @@ serve_name_form! = |{ viewer, directory, headers, now }| {
 					Ok(resumed) =>
 						match check_limits!(directory, now) {
 							Err(limit) => with_sign_up_forgotten(refuse_as_paused!(viewer, limit))
-							Ok(_) => HttpAnswer.page(200, name_form(resumed, directory))
+							Ok(_) =>
+								match load_offer_directory!(resumed, directory, now) {
+									Ok(offered) => HttpAnswer.page(200, name_form(resumed, offered))
+									Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
+								}
 						}
 				}
 		}
@@ -172,6 +183,22 @@ serve_sign_up! = |request| {
 not_found : Http.Response
 not_found = HttpAnswer.page(404, PageKit.not_found)
 
+## The directory the name form's offer of `resumed`'s GitHub login is judged
+## against at `now`: with any lapsed invitee in its way released, as a submit
+## of it would find it (`NameRelease.plan_release!`). Nothing is written.
+load_offer_directory! : GitHubSignIn.SignUpResumed, Directory, Timestamp => Try(Directory, [FileSystem(FileFacts.Fault)])
+load_offer_directory! = |resumed, directory, now|
+	match resumed.login() {
+		NoLogin => Ok(directory)
+		Login(login) =>
+			match Name.from_str(login.to_str()) {
+				Err(_) => Ok(directory)
+				Ok(name) =>
+					NameRelease.plan_release!(directory, { name, leaving: NoOne, now })
+						.map_ok(|planned| planned.directory)
+			}
+	}
+
 ## The form that asks the name of the human `resumed` signs up.
 name_form : GitHubSignIn.SignUpResumed, Directory -> TrustedHtml
 name_form = |resumed, directory|
@@ -209,7 +236,7 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 	slot = check_limits!(directory, now) ? |limit| Paused(limit)
 	name = HumanInvites.name_from_form(body) ? |why| NameRefused({ name: NoName, why })
 	links = AccountFiles.read_github_links!({}) ? |fault| FileSystem(fault)
-	freed = NameRelease.free_name!(
+	planned = NameRelease.plan_release!(
 		directory,
 		{ name, leaving: NoOne, now },
 	) ? |FileSystem(fault)| FileSystem(fault)
@@ -218,7 +245,7 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 			resumed,
 			name,
 			links,
-			directory: freed,
+			directory: planned.directory,
 			now,
 		}) {
 			Ok(account) => account
@@ -226,6 +253,7 @@ sign_up! = |{ viewer, directory, body, headers, now }| {
 			Err(why) => return Err(why)
 		}
 	human = made.admission.human()
+	NameRelease.write_release!(planned.pending, now) ? |FileSystem(fault)| FileSystem(fault)
 	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	TranscriptFiles.append_message!(
 		welcome.key(),

@@ -4,9 +4,13 @@
 ## `HumanInvites`' to decide; this module reads, writes and answers. An invite
 ## refused by one of those rules is the invites page again, saying why.
 ##
-## Inviting someone writes, in order: the counter of ids, the new human's
-## `Welcome`, their account (`inviter`, then `name`), the default channel's
-## members, then the invite (its `hash` last). The welcome goes before the
+## Inviting someone is judged first, against the directory with any lapsed
+## invitee who holds a name like the new one released (`NameRelease`, which
+## reads and plans), and writes nothing when refused. Then it writes, in
+## order: that release, if any (the channels that held them, then their
+## `name-released`), the counter of ids, the new human's `Welcome`, their
+## account (`inviter`, then `name`), the default channel's members, then the
+## invite (its `hash` last). The welcome goes before the
 ## account, so no account lacks one: a failure there spends an id and holds no
 ## name, and the inviter tries again. A failure after it leaves an account
 ## holding the name with no code, which its inviter invites again, never a
@@ -22,8 +26,10 @@
 ## says no more. `GET /join` is the join page (`JoinPage.join`), the same for
 ## anyone but a human signed in already, who goes to Browse; its script asks
 ## `POST /join/name` for the name the invite holds, a line of JSON. `POST
-## /join` redeems: the code is judged, then the name; a name refused
-## spends nothing. Then the name is written, if it changed, so the name it
+## /join` redeems: the code is judged, then the name, against the directory
+## with any lapsed invitee in its way released; a name refused spends and
+## frees nothing. Then that release is written, if any, then the name, if it
+## changed, so the name it
 ## leaves is free; the invite is spent before the password is written, so
 ## a code redeems once even when that write fails; then the human's
 ## password's bcrypt hash, made by the host at its standard cost, replaces
@@ -297,17 +303,17 @@ invite_human! = |
 | {
 	InviteRights.check_may_invite!(acting)?
 	open = count_open_invites!(as_read, { by: acting.user().id(), now })?
-	directory =
+	planned =
 		match HumanInvites.name_from_form(body) {
-			Ok(name) if open < HumanInvites.open_most =>
-				NameRelease.free_name!(
+			Ok(name) =>
+				NameRelease.plan_release!(
 					as_read,
 					{ name, leaving: NoOne, now },
 				) ? |FileSystem(fault)| FileSystem(fault)
-			_ => as_read
+			Err(_) => NameRelease.plan_release_of_none(as_read)
 		}
 	made =
-		match HumanInvites.invite(directory, { acting, body, open }) {
+		match HumanInvites.invite(planned.directory, { acting, body, open }) {
 			Ok(invited) => invited
 			Err(SignUpsPaused) => {
 				Host.write_line_to_server_log!(SignUpLimits.paused_log_line(ChatFull))
@@ -317,6 +323,7 @@ invite_human! = |
 		}
 	human = made.human.as_human() ?? crash "HumanInvitesRoute.invite_human!: an invite makes a human"
 	welcome = Welcome.make({ directory: made.directory, human, now })?
+	NameRelease.write_release!(planned.pending, now) ? |FileSystem(fault)| FileSystem(fault)
 	AccountFiles.replace_user_counter!(made.directory.users()) ? |fault| FileSystem(fault)
 	TranscriptFiles.append_message!(
 		welcome.key(),
@@ -448,7 +455,7 @@ join_by_invite! = |request| {
 	name = HumanInvites.name_from_form(request.body) ? |why| Refused(why)
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
 	invitee = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
-	directory = NameRelease.free_name!(
+	planned = NameRelease.plan_release!(
 		request.directory,
 		{
 			name,
@@ -456,9 +463,11 @@ join_by_invite! = |request| {
 			now: request.now,
 		},
 	) ? |FileSystem(fault)| FileSystem(fault)
+	directory = planned.directory
 	joined = HumanInvites.join(directory, { code, name }) ? |why| Refused(why)
 	human = joined.admission.human()
 	next = FirstPage.load!({ directory, human, wanted: SignInRequest.default_next })?
+	NameRelease.write_release!(planned.pending, request.now) ? |FileSystem(fault)| FileSystem(fault)
 	_ =
 		match joined.name {
 			Kept => Ok({})

@@ -3101,10 +3101,12 @@ fn signInAs(a: std.mem.Allocator, io: Io, port: u16, fake: *fake_github.Fake, se
     return finishLink(a, io, port, fake, session, try startSignInAs(a, io, port, fake), code);
 }
 
-/// Steps 48zo to 48zw: the welcome, one account per GitHub account, and the
-/// names and invites rules: a GitHub sign-up never invites (48zu), a reserved
-/// or lookalike name is refused (48zv), and an expired invite frees its name
-/// (48zw).
+/// Steps 48zo to 48zt5: the welcome, one account per GitHub account, and
+/// the names and invites rules: a GitHub sign-up never invites (48zt1), a
+/// reserved or lookalike name is refused (48zt2), an expired invite frees its
+/// name (48zt3), a request refused after its name is judged frees nothing
+/// (48zt4), and a release from a channel besides #general leaves every page
+/// answering (48zt5).
 fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, fake: *fake_github.Fake, debbie: []const u8) !void {
     // 48zo.
     const tess_id = try nextId(a, io, data);
@@ -3220,7 +3222,7 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
         !has(failed_invite.body, "invite-code") and !odile_after_failure and retried_invite.status == 200 and has(retried_invite.body, "invite-code") and
         has(try readFile(a, io, data, try welcomeFile(a, blocked_invite + 1)), steve_words));
 
-    // 48zu.
+    // 48zt1.
     const noor_id = blocked_up + 1;
     const noor = try cookieLine(a, noor_in);
     const noor_page = try getAs(a, io, port, noor, "/invites");
@@ -3233,7 +3235,7 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
         noor_invites.status == 403 and has(noor_invites.body, no_github_words) and !has(noor_invites.body, "invite-code") and noor_again.status == 403 and
         try nextId(a, io, data) == before_noor and !(try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/human-invites/2", .{blocked_invite + 1}))));
 
-    // 48zv.
+    // 48zt2.
     const reserved_invite = try postAs(a, io, port, debbie, "/invites", "name=Admin");
     const close_invite = try postAs(a, io, port, debbie, "/invites", "name=Odlle");
     const spaced_invite = try postAs(a, io, port, debbie, "/invites", "name=Ste+ve");
@@ -3245,7 +3247,7 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
         spaced_invite.status == 409 and has(spaced_invite.body, "too close") and asksForName(reserved_up, 409) and has(reserved_up.body, "The name is reserved") and
         asksForName(close_up, 409) and has(close_up.body, "too close") and try nextId(a, io, data) == before_noor);
 
-    // 48zw.
+    // 48zt3.
     const pia_id = try nextId(a, io, data);
     const pia_invited = try postAs(a, io, port, debbie, "/invites", "name=Pia");
     const pia_link = between(pia_invited.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
@@ -3262,6 +3264,33 @@ fn welcomeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps,
         try exists(io, data, try std.fmt.allocPrint(a, "auth/{d}/name-released", .{pia_id})) and
         !has(general, try std.fmt.allocPrint(a, "\n{d}\n", .{pia_id})) and has(general, try std.fmt.allocPrint(a, "\n{d}\n", .{pia_id + 1})) and
         old_code.status == 401 and owner_browse.status == 200);
+
+    // 48zt4.
+    const quin_id = try nextId(a, io, data);
+    const quin_invited = try postAs(a, io, port, debbie, "/invites", "name=Quin");
+    const annex = try postAs(a, io, port, steve_session, "/channels", "name=annex");
+    const quin_in_annex = try postAs(a, io, port, steve_session, try std.fmt.allocPrint(a, "/channels/annex/{d}/add", .{quin_id}), "");
+    try data.writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "auth/{d}/human-invites/1/expires", .{quin_id}), .data = "1000" });
+    const quin_released = try std.fmt.allocPrint(a, "auth/{d}/name-released", .{quin_id});
+    const quin_line = try std.fmt.allocPrint(a, "{d}\n", .{quin_id});
+    const replayed = try chooseName(a, io, port, noor_line, "Quin");
+    const after_replay = try nextId(a, io, data);
+    try t.check("a sign-up refused once its name is judged (Noor's sign-up, its id holding an account, replayed with a lapsed invitee's name): nothing released, Quin still in #annex, no id spent", quin_invited.status == 200 and
+        annex.status == 303 and quin_in_annex.status == 303 and replayed.status != 303 and !has(replayed.head, "__Host-gopher_auth=") and
+        !(try exists(io, data, quin_released)) and has(try readFile(a, io, data, "chat/channel/annex.channel"), quin_line) and after_replay == quin_id + 1);
+
+    // 48zt5.
+    const quin_anew = try postAs(a, io, port, debbie, "/invites", "name=Quin");
+    const annex_after = try readFile(a, io, data, "chat/channel/annex.channel");
+    var all_answer = true;
+    for ([_][]const u8{ "/chat", "/channels", "/channels/annex", "/channels/general", "/invites", "/agents", "/devices" }) |path| {
+        const page = try getAs(a, io, port, steve_session, path);
+        if (page.status != 200) all_answer = false;
+    }
+    const debbies = try getAs(a, io, port, debbie, "/invites");
+    const debbies_browse = try getAs(a, io, port, debbie, "/chat");
+    try t.check("Quin's name asked for again: released, out of #annex as well as #general, and the owner's pages and Debbie's each a 200", quin_anew.status == 200 and
+        try exists(io, data, quin_released) and !has(annex_after, quin_line) and all_answer and debbies.status == 200 and debbies_browse.status == 200);
 }
 
 /// Whether the new human `made` lands in #general: at `expected`, a page of

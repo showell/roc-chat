@@ -4,18 +4,28 @@
 ## lapsed invitee whose name nobody asks for keeps it, and their inviter may
 ## still invite them again.
 ##
-## Freeing is done only when it lets the name through: every human whose name
-## looks like it (`Directory.humans_alike_list`) that is a lapsed invitee is
-## released, and only when the name then passes
-## `Directory.check_new_human_name`. Releasing writes, in order, each channel
-## that held one of them without them (so no channel names a member who is no
-## user), then each one's `name-released` (`AccountFiles`), after which their
-## folder is no account. A failure between leaves a lapsed invitee in fewer
-## channels, still holding the name, and the next ask tries again. Their id
-## is never given again, as the counter of ids never goes back, and nothing
-## of theirs is removed.
+## Freeing is two steps. `plan_release!` reads, and writes nothing: every
+## human whose name looks like the one asked for
+## (`Directory.humans_alike_list`) that is a lapsed invitee is released from
+## the directory (`Directory.release_humans`, pure), and only when the name
+## then passes `Directory.check_new_human_name`; else nothing is planned. The
+## caller judges its request against the planned directory, and only once the
+## request is sure to make its account calls `write_release!`, before the
+## account's own writes. So a request refused for any reason (a GitHub id
+## with an account already, the chat full, a joiner's name chosen already)
+## frees nothing, and the release is written only when it lets the name
+## through to a new account or name.
+##
+## `write_release!` writes, in order, each channel that held one of them
+## without them (so no channel names a member who is no user), then each
+## one's `name-released` (`AccountFiles`), after which their folder is no
+## account. A failure between leaves a lapsed invitee in fewer channels,
+## still holding the name, and the next ask tries again. Their id is never
+## given again, as the counter of ids never goes back, and nothing of theirs
+## is removed.
 import pf.Host
 import AccountFiles
+import Channels
 import Directory
 import DirectoryFiles
 import FileFacts
@@ -29,17 +39,27 @@ import Users
 
 NameRelease :: [].{
 
+	## A release worked out and not yet written: the lapsed invitees, and
+	## each channel that held one, as it is without them. Only
+	## `plan_release!` makes one.
+	Pending :: { humans : List(Users.Human), changed : List(Channels.Channel) }.{}
+
 	## `directory` with every lapsed invitee whose name looks like `name`
-	## released, and their release written, when that frees `name` for a
-	## human (`leaving` their own name, if they hold one); else `directory`
-	## as it is, nothing written.
-	free_name! : Directory,
+	## released, when that frees `name` for a human (`leaving` their own
+	## name, if they hold one), and the release to write once the request is
+	## judged; else `directory` as it is, and nothing to write. It reads, and
+	## writes nothing.
+	plan_release! : Directory,
 	{
 		name : Name,
 		leaving : [NoOne, Leaving(UserId)],
 		now : Timestamp,
-	} => Try(Directory, [FileSystem(FileFacts.Fault)])
-	free_name! = |directory, { name, leaving, now }| {
+	} => Try(
+		{ directory : Directory, pending : NameRelease.Pending },
+		[FileSystem(FileFacts.Fault)],
+	)
+	plan_release! = |directory, { name, leaving, now }| {
+		nothing = NameRelease.plan_release_of_none(directory)
 		alike = directory.humans_alike_list(name).drop_if(
 			|human|
 				match leaving {
@@ -54,31 +74,45 @@ NameRelease :: [].{
 			}
 		}
 		if $lapsed.is_empty() {
-			Ok(directory)
+			Ok(nothing)
 		} else {
 			released = directory.release_humans($lapsed)
 			match released.directory.check_new_human_name({ name, leaving }) {
-				Err(_) => Ok(directory)
-				Ok({}) => {
-					for channel in released.changed {
-						DirectoryFiles.replace_channel_members!(channel) ? |fault| FileSystem(fault)
-					}
-					for human in $lapsed {
-						match AccountFiles.create_name_released!(human.id(), now) {
-							Ok({}) | Err(AlreadyExists) => {}
-							Err(MissingDirectory) => return Err(FileSystem(MissingDirectory))
-							Err(NotUtf8) => return Err(FileSystem(NotUtf8))
-							Err(PathRefused) => return Err(FileSystem(PathRefused))
-							Err(Failed) => return Err(FileSystem(Failed))
-						}
-						Host.write_line_to_server_log!(
-							"the name of user ${human.id().to_str()}, invited and never joined, is free again".to_utf8(),
-						)
-					}
-					Ok(released.directory)
-				}
+				Err(_) => Ok(nothing)
+				Ok({}) =>
+					Ok({
+						directory: released.directory,
+						pending: NameRelease.Pending.({ humans: $lapsed, changed: released.changed }),
+					})
 			}
 		}
+	}
+
+	## `directory` as it is, with nothing to release: for a request with no
+	## name to free.
+	plan_release_of_none : Directory -> { directory : Directory, pending : NameRelease.Pending }
+	plan_release_of_none = |directory| { directory, pending: NameRelease.Pending.({ humans: [], changed: [] }) }
+
+	## The release `pending` written at `now`: each channel it changed, then
+	## each lapsed invitee's `name-released`. Nothing, for none.
+	write_release! : NameRelease.Pending, Timestamp => Try({}, [FileSystem(FileFacts.Fault)])
+	write_release! = |NameRelease.Pending.({ humans, changed }), now| {
+		for channel in changed {
+			DirectoryFiles.replace_channel_members!(channel) ? |fault| FileSystem(fault)
+		}
+		for human in humans {
+			match AccountFiles.create_name_released!(human.id(), now) {
+				Ok({}) | Err(AlreadyExists) => {}
+				Err(MissingDirectory) => return Err(FileSystem(MissingDirectory))
+				Err(NotUtf8) => return Err(FileSystem(NotUtf8))
+				Err(PathRefused) => return Err(FileSystem(PathRefused))
+				Err(Failed) => return Err(FileSystem(Failed))
+			}
+			Host.write_line_to_server_log!(
+				"the name of user ${human.id().to_str()}, invited and never joined, is free again".to_utf8(),
+			)
+		}
+		Ok({})
 	}
 }
 

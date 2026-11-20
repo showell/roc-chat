@@ -1,7 +1,7 @@
 ## This module is a name's skeleton: what is left of it once everything that
 ## lets one name pass for another is folded away. A new human's name is
 ## refused when its skeleton is another name's (`Directory`), so no one signs
-## up as `Steve Howel1` beside `Steve Howell`, or as `rnod` beside `mod`.
+## up as `Steve HoweII` beside `Steve Howell`, or as `rnod` beside `mod`.
 ##
 ## The skeleton of a name is made in this order:
 ##
@@ -11,8 +11,10 @@
 ##   name holds: `Roc Chat` and `roc-chat` are both `rocchat`;
 ## - the digits and letters that look alike made one: `0` is `o`, and `1`
 ##   and `i` are `l`;
-## - then the pairs that look like one letter made it, left to right: `rn`
-##   is `m`, and `vv` is `w`.
+## - then each letter that looks like two written as those two: `m` is
+##   `rn`, `w` is `vv`, and `d` is `cl`. Expanding, rather than collapsing
+##   pairs, brings every spelling to one form: `vw`, `wv` and `vvv` are all
+##   `vvv`, where a left-to-right collapse would leave `vw` apart.
 ##
 ## A skeleton is never shown and never stored: it is worked out from the
 ## names at each check, so existing names are never touched.
@@ -69,14 +71,15 @@ NameSkeleton :: Str.{
 }
 
 ## The skeleton of `text`, ASCII already lowercased: its separators dropped,
-## then its lookalike characters, then its lookalike pairs, folded.
+## then its lookalike characters folded, then its two-looking letters
+## expanded.
 of_plain : Str -> NameSkeleton
 of_plain = |text| {
 	singles =
 		text.to_utf8()
 			.drop_if(|byte| byte == ' ' or byte == '-')
 			.map(fold_single)
-	folded = fold_pairs({ out: [], bytes: singles })
+	folded = singles.join_map(expand_double)
 	NameSkeleton.(Str.from_utf8(folded) ?? crash "NameSkeleton.of_plain: ASCII folds to ASCII")
 }
 
@@ -91,16 +94,18 @@ fold_single = |byte|
 		byte
 	}
 
-## `out` with `bytes` appended, `rn` as `m` and `vv` as `w`, left to right.
-fold_pairs : { out : List(U8), bytes : List(U8) } -> List(U8)
-fold_pairs = |{ out, bytes }|
-	match bytes {
-		[] => out
-		[first, second, .. as rest] if first == 'r' and second == 'n' =>
-			fold_pairs({ out: out.append('m'), bytes: rest })
-		[first, second, .. as rest] if first == 'v' and second == 'v' =>
-			fold_pairs({ out: out.append('w'), bytes: rest })
-		[byte, .. as rest] => fold_pairs({ out: out.append(byte), bytes: rest })
+## The letters `byte` looks like: `m` is `rn`, `w` is `vv`, `d` is `cl`;
+## any other is itself.
+expand_double : U8 -> List(U8)
+expand_double = |byte|
+	if byte == 'm' {
+		['r', 'n']
+	} else if byte == 'w' {
+		['v', 'v']
+	} else if byte == 'd' {
+		['c', 'l']
+	} else {
+		[byte]
 	}
 
 # ── tests
@@ -115,23 +120,28 @@ channel_skeleton_of = |text|
 	NameSkeleton.of_channel(ChannelName.from_str(text) ?? crash "NameSkeleton's tests: a channel's name").to_str()
 
 # Case, accents and spaces fold away.
-expect skeleton_of("Steve Howell") == "stevehowell"
+expect skeleton_of("Steve Howell") == "stevehovvell"
 expect skeleton_of("sTeVe HoWeLL") == skeleton_of("Steve Howell")
 expect skeleton_of("Stéve Hówell") == skeleton_of("Steve Howell")
 expect skeleton_of("Zoë") == "zoe"
 expect skeleton_of("SteveHowell") == skeleton_of("Steve Howell")
-# `i` and `l` look alike, and so do `rn` and `m`, and `vv` and `w`.
+# `i` and `l` look alike, and so do `rn` and `m`, `vv` and `w`, and `cl`
+# and `d`.
 expect skeleton_of("Iris") == skeleton_of("Lrls")
 expect skeleton_of("Steve HoweII") == skeleton_of("Steve Howell")
 expect skeleton_of("rnod") == skeleton_of("mod")
 expect skeleton_of("Vvalt") == skeleton_of("Walt")
+expect skeleton_of("Clara") == skeleton_of("Dara")
 expect skeleton_of("Ivy") == "lvy"
-# A pair is folded once, left to right: `rnn` is `mn`, `vvv` is `wv`.
-expect skeleton_of("rnn") == "mn"
-expect skeleton_of("vvv") == "wv"
-# A space between the pair's letters still makes it one: separators go
-# first.
-expect skeleton_of("r n") == "m"
+# Every spelling of a run reaches one form: `vw`, `wv` and `vvv` are one,
+# and so are `rnm`, `mrn` and `rnrn`.
+expect skeleton_of("vw") == skeleton_of("vvv")
+expect skeleton_of("wv") == skeleton_of("vvv")
+expect skeleton_of("vvv") == "vvv"
+expect skeleton_of("rnm") == skeleton_of("mrn") and skeleton_of("mrn") == skeleton_of("rnrn")
+expect skeleton_of("Mm") == "rnrn"
+# A space between a pair's letters still makes it one: separators go first.
+expect skeleton_of("r n") == skeleton_of("M")
 # A strict name's digits and `-` fold too: `0` is `o`, `1` is `l`, and `-`
 # is dropped.
 expect channel_skeleton_of("r00t") == "root"

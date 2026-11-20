@@ -201,6 +201,24 @@ expect {
 		and released.directory.add_new_human(Sample.name("Zoe")).is_ok()
 }
 
+# An invite is expired from its expiry's second on, never a second before,
+# and a spent one never.
+expect !invite_made(1).is_expired(Timestamp.at_second(604799))
+expect invite_made(1).is_expired(Timestamp.at_second(604800))
+expect !spend(invite_made(1)).is_expired(Timestamp.at_second(999999))
+# A lapsed invitee beside a lookalike who is not lapsed frees nothing: with
+# the lapsed one released, the name is still too close to the other's, so
+# no release is planned (`NameRelease.plan_release!` keeps the directory as
+# it was, and writes nothing).
+expect {
+	with_zoe = chat.add_new_human(Sample.name("Zoe")) ?? crash "NamesSpec: Zoe's name is free"
+	lapsed = with_zoe.user.as_human() ?? crash "NamesSpec: Zoe is a human"
+	both = (with_zoe.directory.add_human(Sample.name("Zoé")) ?? crash "NamesSpec: a free key").directory
+	released = both.release_humans([lapsed])
+	both.humans_alike_list(Sample.name("Zoe")).len() == 2
+		and released.directory.check_new_human_name({ name: Sample.name("Zoe"), leaving: NoOne }) == Err(NameTooClose)
+}
+
 # ── Who may invite
 # The `sign-up` file: none is any other origin, `github` a GitHub sign-up,
 # anything else no origin.

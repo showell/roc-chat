@@ -44,8 +44,10 @@ AccountFiles :: [].{
 	## read: a folder whose name is no id is not an account, and no accounts root
 	## holds none. An account folder with no `name` is no account: it is one
 	## cut short as it was made, and the counter of ids was advanced before
-	## it, so its id is never given again.
-	read_accounts! : {} => Try(List(Users.AccountFacts), [NotUtf8, PathRefused, Failed])
+	## it, so its id is never given again. A folder with `name-released` is no
+	## account either, and that file must hold a second, or the read fails
+	## (`Damaged`): a file that says nothing is never taken as a release.
+	read_accounts! : {} => Try(List(Users.AccountFacts), [Damaged, NotUtf8, PathRefused, Failed])
 	read_accounts! = |{}| {
 		account_ids =
 			FileFacts.list_names_in!(AccountFolder.accounts_root)?.keep_oks(UserId.from_str)
@@ -56,7 +58,12 @@ AccountFiles :: [].{
 				FileFacts.read_fact!("${folder}/${name_fact}")?,
 				FileFacts.read_fact!("${folder}/${name_released_fact}")?,
 			) {
-				(NoFile, _) | (_, File(_)) => {}
+				(NoFile, _) => {}
+				(_, File(released)) =>
+					match Timestamp.from_file(released) {
+						Ok(_) => {}
+						Err(NotATime) => return Err(Damaged)
+					}
 				(File(name), NoFile) => {
 					owner =
 						match FileFacts.read_fact!("${folder}/owner")? {
