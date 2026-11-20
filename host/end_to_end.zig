@@ -1849,18 +1849,19 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         has(tams.body, "<span class=\"recent-who\">Steve: </span>Steve in the DM") and has(tams.body, "<span class=\"recent-who\">You: </span>Tam in the channel") and
         umas.status == 200 and has(umas.body, "href=\"" ++ channel_url ++ "\"") and !has(umas.body, dm_plans) and
         steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and !has(steves.body, dm_url ++ "\"") and
-        has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>"));
+        has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>"));
     // The stream carries the viewer's own key too, so a new topic's
     // topic-added comes by as well, which the Recent page ignores.
     const notice = try nextNotTopicAdded(live);
     const first = try nextNotTopicAdded(live);
     const second = try nextNotTopicAdded(live);
     try t.check("Recent's stream: Steve's open Recent page hears the notice of Tam's channel post, as Gopher Chat's Recent did, and none of his own", std.mem.eql(u8, notice, "event: message-notice\ndata: <a href=\"" ++ channel_url ++ "\">Tam posted to general &gt; roc-chat.</a>\n\n"));
-    try t.check("Recent's stream: Steve's open Recent page is sent each message's tile, as he sees it, Tam's first, then his own", live.isEventStream() and
+    // A DM's tile names its other human, Tam, online since she just posted.
+    try t.check("Recent's stream: Steve's open Recent page is sent each message's tile, as he sees it, Tam's first, then his own, naming Tam online", live.isEventStream() and
         has(steves.body, "data-stream=\"/chat/recent/stream\"") and
         std.mem.startsWith(u8, first, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ channel_url ++ "\">") and
         has(first, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and
-        std.mem.startsWith(u8, second, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ dm_plans ++ "\">") and
+        std.mem.startsWith(u8, second, "event: tile\ndata: <a class=\"recent-tile\" href=\"" ++ dm_plans ++ "\" data-person=\"2\" data-presence=\"online\">") and
         has(second, "<span class=\"recent-who\">You: </span>Steve in the DM"));
     try searchSteps(a, io, port, t, .{ .tam = who.tam, .uma = who.uma, .dm_plans = dm_plans });
 }
