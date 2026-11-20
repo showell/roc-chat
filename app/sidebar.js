@@ -1,18 +1,33 @@
 // This script runs on a conversation page that has a sidebar, which
 // app/Sidebar.roc builds and app/Script.roc serves. The server writes the
-// sidebar whole, in app/SidebarOrder.roc's order: the page's own place
-// first, then the others newest first, each place's topics under it as
-// links, newest first, the current topic marked, and the form that starts a
-// topic at the end of each place. This script gives it chat-client's
-// behaviour (js/chat_left_sidebar.js), without that rail's pinning or
-// dragging. It never moves a place: the order is the server's, as the page
-// was drawn.
+// sidebar whole, in two groups, Channels and then DMs (.sidebar-section,
+// data-group), each under its heading; in each, app/SidebarOrder.roc's
+// order: the page's own place first, then the others newest first, each
+// place's topics under it as links, newest first, the current topic marked,
+// and the form that starts a topic at the end of each place. This script
+// gives it chat-client's behaviour (js/chat_left_sidebar.js), without that
+// rail's pinning or dragging. It never moves a place: the order is the
+// server's, as the page was drawn.
 //
 // Its look is Steve's, not chat-client's: like a good referee, it should
-// feel invisible until you need it. Only the page's own place (data-opening
-// `always`) is bold, the current topic is marked by a thin line at its left,
-// the rows sit close, and a link pointed at shows by its text's colour, never
-// a fill.
+// feel invisible until you need it. The two groups are divided by a thin
+// line, each headed by its name, small and muted ("DMs" kept in its own
+// case, so no capitals). Only the page's own place
+// (data-opening `always`) is bold, the current topic is marked by a thin
+// line at its left, the rows sit close, and a link pointed at shows by its
+// text's colour, never a fill.
+//
+// Collapsing: a standard disclosure triangle before each group's heading
+// and each place's name, ▾ open and ▸ collapsed, collapses or opens it, by
+// a click or by Enter or Space on it. A group's heading, and a channel's
+// name, do the same; a DM's name opens instead the card about its person
+// (sidebar-popups.js). A group starts open, and a place as the server says
+// (data-opening): `open`, `collapsed`, or `always`, the page's own place,
+// which opens on every load. Once a person opens or collapses a group or a
+// place, their choice is kept across reloads (localStorage, by the group's
+// data-group or the place's data-section) and wins over `open` and
+// `collapsed`. A group's heading is a row whose name takes the room left, so
+// a small menu button can be added at its right end later.
 //
 // Presence, chat-client's: a DM with another human (data-person) has a dot
 // before its name, a hollow ring while they are away and solid green while
@@ -23,21 +38,13 @@
 // above the page, and the tab's violet icon, are chrome.js's (Notices).
 //
 // In a window wider than 768 pixels the sidebar is a rail 180 pixels wide on
-// the left of the layout. Clicking a place's name, or Enter or Space on it,
-// collapses or opens its topics and its form, as chat-client's sections do.
-// Each place starts as the server says (data-opening): `open`, `collapsed`,
-// or `always`, the page's own place, which opens on every load. Once a
-// person opens or collapses a place, their choice is kept across reloads
-// (localStorage, by the place's data-section) and wins over `open` and
-// `collapsed`.
-//
-// In a narrow window (chrome.js's Viewport) the sidebar is a drawer, as
-// chat-client's was (js/chrome_drawer.js and js/chat_responsive.js): the
-// server's toggle button moves to the start of the top bar as a ☰, and a tap
-// slides the sidebar in from the left over the page, a backdrop dimming the
-// rest. A tap on the backdrop, Escape, the ☰ again, or choosing a topic
-// closes it, and so does widening the window. Its links and buttons are
-// larger, for a finger.
+// the left of the layout. In a narrow window (chrome.js's Viewport) it is a
+// drawer, as chat-client's was (js/chrome_drawer.js and
+// js/chat_responsive.js): the server's toggle button moves to the start of
+// the top bar as a ☰, and a tap slides the sidebar in from the left over the
+// page, a backdrop dimming the rest. A tap on the backdrop, Escape, the ☰
+// again, or choosing a topic closes it, and so does widening the window. Its
+// links and buttons are larger, for a finger.
 //
 // Sidebar.addTopic(section, label, url) adds a topic to the place whose
 // data-section is `section`, built as the server's rows are. The stream's
@@ -54,12 +61,7 @@
 // place's form after its topics, and before them a button, "New topic in"
 // and the place's name; this script takes the form out of the sidebar and
 // shows the button as a small "+" beside the place's name, its words kept as
-// its label. The "+" opens a popup, a modal dialog as feed.js's code popup
-// is, holding the form, its field focused: Enter adds the topic, and Escape
-// or Close cancels. The form posts as it always has, to the place's path: a
-// topic the server takes answers with its page, which the browser then
-// opens; one it refuses answers with Browse, whose problem paragraph
-// (.problem) the popup shows, keeping what was typed.
+// its label. The "+" opens the place's new-topic popup (sidebar-popups.js).
 //
 // It finds every part by app/PageContract.roc's classes, and styles each on
 // the DOM itself; its colours are palette.js's.
@@ -70,12 +72,19 @@ window.Sidebar = (function () {
   var topBar = document.querySelector('.top-bar');
   if (!sidebar || !toggle || !topBar) throw new Error('sidebar.js: the page has no .sidebar, .sidebar-toggle or .top-bar');
   if (!window.Viewport) throw new Error('sidebar.js: chrome.js runs first, and gives Viewport');
+  if (!window.SidebarPopups) throw new Error('sidebar.js: sidebar-popups.js runs first, and gives SidebarPopups');
 
   function styleAll(selector, style) {
     sidebar.querySelectorAll(selector).forEach(function (element) { Object.assign(element.style, style); });
   }
 
   Object.assign(sidebar.style, { overflowY: 'auto', borderRight: '1px solid var(--cc-border)', boxSizing: 'border-box' });
+  styleAll('.sidebar-section', { margin: '0 0 8px' });
+  styleAll('.sidebar-section + .sidebar-section', { borderTop: '1px solid var(--cc-soft-border)', paddingTop: '8px' });
+  styleAll('.sidebar-section-name', {
+    margin: '0', flex: '1', minWidth: '0', fontSize: '12px', fontWeight: '600', letterSpacing: '0.03em',
+    color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none',
+  });
   styleAll('.sidebar-place', { marginBottom: '6px' });
   styleAll('.sidebar-place-name', {
     display: 'flex', alignItems: 'center', gap: '5px', margin: '0', flex: '1', minWidth: '0', fontWeight: 'normal',
@@ -88,9 +97,6 @@ window.Sidebar = (function () {
     flex: 'none', background: 'none', border: 'none', borderRadius: '4px', cursor: 'pointer',
     color: 'var(--cc-muted-fg)', fontSize: '15px', lineHeight: '1', fontFamily: 'inherit',
   });
-  var backdropRule = document.createElement('style');
-  backdropRule.textContent = 'dialog.topic-popup::backdrop { background: var(--cc-backdrop); }';
-  document.head.appendChild(backdropRule);
   styleAll('form', { margin: '4px 0 0', display: 'flex', flexDirection: 'column', gap: '4px' });
   styleAll('form p', { margin: '0', fontSize: '12px', color: 'var(--cc-muted-fg)' });
   styleAll('input', {
@@ -118,117 +124,89 @@ window.Sidebar = (function () {
       color: 'var(--cc-accent)', background: 'transparent', fontWeight: 'normal',
       borderLeft: '2px solid ' + (current ? 'var(--cc-accent)' : 'transparent'),
     });
-    if (!current) {
-      link.addEventListener('mouseenter', function () { link.style.color = 'var(--cc-fg)'; });
-      link.addEventListener('mouseleave', function () { link.style.color = 'var(--cc-accent)'; });
-    }
+    if (!current) hoverColour(link, 'var(--cc-accent)', 'var(--cc-fg)');
+  }
+  function hoverColour(element, resting, pointed) {
+    element.addEventListener('mouseenter', function () { element.style.color = pointed; });
+    element.addEventListener('mouseleave', function () { element.style.color = resting; });
   }
 
-  // Collapsing, chat-client's: a caret that points down while the place is
-  // open and right while it is collapsed. A person's choice is kept per
-  // place, '1' collapsed and '0' open; with none kept, the server's
-  // data-opening decides.
-  function collapseKey(section) { return 'chat-sidebar-collapsed:' + section; }
+  // A person's choice to collapse a group or a place, kept under `key`:
+  // '1' collapsed, '0' open, null none kept.
+  function kept(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; } // Private browsing: nothing kept.
+  }
+  function keep(key, collapsed) {
+    try { localStorage.setItem(key, collapsed ? '1' : '0'); } catch (e) { /* Private browsing: the choice lasts this page. */ }
+  }
   function startsCollapsed(section, opening) {
     if (opening === 'always') return false;
     if (opening !== 'open' && opening !== 'collapsed') throw new Error('sidebar.js: a .sidebar-place has no data-opening of always, open or collapsed');
-    var kept = null;
-    try { kept = localStorage.getItem(collapseKey(section)); } catch (e) { /* Private browsing: nothing kept. */ }
-    if (kept === '1') return true;
-    if (kept === '0') return false;
+    var choice = kept('chat-sidebar-collapsed:' + section);
+    if (choice === '1') return true;
+    if (choice === '0') return false;
     return opening === 'collapsed';
   }
-  function storeCollapsed(section, collapsed) {
-    try { localStorage.setItem(collapseKey(section), collapsed ? '1' : '0'); } catch (e) { /* Private browsing: the choice lasts this page. */ }
+
+  // A disclosure triangle for `what`, showing `shown` while it is open and
+  // hiding it while collapsed, and the person's choice kept under `key`.
+  // It gives `flip`, for a name that collapses too.
+  function disclosure(what, shown, key, collapsed) {
+    var triangle = document.createElement('span');
+    triangle.setAttribute('role', 'button');
+    triangle.setAttribute('tabindex', '0');
+    triangle.setAttribute('aria-label', 'Collapse or open ' + what);
+    Object.assign(triangle.style, {
+      flex: 'none', display: 'inline-block', width: '12px', textAlign: 'center', fontSize: '10px', lineHeight: '1',
+      color: 'var(--cc-muted-fg)', cursor: 'pointer', userSelect: 'none',
+    });
+    function show() {
+      triangle.textContent = collapsed ? '▸' : '▾';
+      triangle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      shown.style.display = collapsed ? 'none' : 'block';
+    }
+    function flip() {
+      collapsed = !collapsed;
+      keep(key, collapsed);
+      show();
+    }
+    show();
+    onPress(triangle, flip);
+    return { triangle: triangle, flip: flip };
+  }
+  // A click on `element`, or Enter or Space on it.
+  function onPress(element, act) {
+    element.addEventListener('click', act);
+    element.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); }
+    });
+  }
+  // A heading's row: `parts` side by side, the last-but-one taking the room.
+  function headingRow(before, parts) {
+    var row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px', margin: '0 0 2px' });
+    before.parentNode.insertBefore(row, before);
+    parts.forEach(function (part) { row.appendChild(part); });
+    return row;
   }
 
-  // A DM's dot: chat-client's hollow ring, filled while the person is online.
+  // The groups: each heading's places wrapped, so the heading collapses
+  // them all.
+  sidebar.querySelectorAll('.sidebar-section').forEach(function (group) {
+    var name = group.getAttribute('data-group');
+    var heading = group.querySelector('.sidebar-section-name');
+    if ((name !== 'channels' && name !== 'dms') || !heading) throw new Error('sidebar.js: a .sidebar-section has no data-group of channels or dms, or no .sidebar-section-name');
+    var body = document.createElement('div');
+    group.querySelectorAll('.sidebar-place').forEach(function (place) { body.appendChild(place); });
+    group.appendChild(body);
+    var key = 'chat-sidebar-group-collapsed:' + name;
+    var shut = disclosure(heading.textContent, body, key, kept(key) === '1');
+    headingRow(heading, [shut.triangle, heading]).style.margin = '0 0 4px';
+    heading.addEventListener('click', shut.flip);
+  });
+
   var dots = {};
-  function paintDot(dot, online) {
-    Object.assign(dot.style, {
-      display: 'inline-block', width: '9px', height: '9px', borderRadius: '50%', boxSizing: 'border-box',
-      flex: 'none', border: '1.5px solid ' + (online ? 'var(--cc-presence-online)' : 'var(--cc-presence-idle)'),
-      background: online ? 'var(--cc-presence-online)' : 'transparent',
-    });
-    dot.title = online ? 'online' : 'away';
-  }
-
-  // A place's new-topic popup, `form` in a modal dialog headed `words`, made
-  // afresh at each opening and removed once closed, giving the focus back
-  // to `plus`. The form is posted by fetch, so a refusal stays in the popup.
   var forms = [];
-  var popupOpen = false;
-  function topicPopup(form, words, plus) {
-    forms.push(form);
-    var input = form.querySelector('input');
-    var submit = form.querySelector('button');
-    if (!input || !submit) throw new Error('sidebar.js: a new-topic form has no input or button');
-    var problem = document.createElement('p');
-    Object.assign(problem.style, { margin: '8px 0 0', fontSize: '13px', color: 'var(--cc-notify-fg)' });
-    var dlg = null;
-    function say(text) {
-      problem.textContent = text;
-      submit.disabled = false;
-      input.focus();
-    }
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-      submit.disabled = true;
-      problem.textContent = '';
-      fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)), credentials: 'same-origin' })
-        .then(function (answer) {
-          if (answer.ok && answer.redirected) { window.location.assign(answer.url); return; }
-          return answer.text().then(function (html) {
-            var said = new DOMParser().parseFromString(html, 'text/html').querySelector('.problem');
-            say(said ? said.textContent : 'The server answered ' + answer.status + ' and said nothing more.');
-          });
-        }, function () { say('The server did not answer; try again.'); });
-    });
-    function open() {
-      dlg = document.createElement('dialog');
-      dlg.className = 'topic-popup';
-      Object.assign(dlg.style, {
-        width: 'min(320px, 90vw)', padding: '0', border: '1px solid var(--cc-dialog-border)', borderRadius: '8px',
-        background: 'var(--cc-bg)', color: 'var(--cc-fg)',
-      });
-      var controls = document.createElement('div');
-      Object.assign(controls.style, {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-        padding: '6px 8px', borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
-      });
-      var heading = document.createElement('span');
-      heading.textContent = words;
-      Object.assign(heading.style, { fontWeight: 'bold', fontSize: '13px', overflowWrap: 'anywhere' });
-      var close = document.createElement('button');
-      close.type = 'button';
-      close.textContent = 'Close';
-      close.addEventListener('click', function () { dlg.close(); });
-      controls.appendChild(heading);
-      controls.appendChild(close);
-      var body = document.createElement('div');
-      body.style.padding = '12px 14px';
-      Object.assign(form.style, { margin: '0' });
-      body.appendChild(form);
-      body.appendChild(problem);
-      dlg.appendChild(controls);
-      dlg.appendChild(body);
-      dlg.addEventListener('close', function () {
-        popupOpen = false;
-        problem.textContent = '';
-        submit.disabled = false;
-        dlg.remove();
-        plus.focus();
-      });
-      dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
-      document.body.appendChild(dlg);
-      popupOpen = true;
-      dlg.showModal();
-      input.focus();
-      input.select();
-    }
-    return { open: open };
-  }
-
   var places = {};
   sidebar.querySelectorAll('.sidebar-place').forEach(function (place) {
     var section = place.getAttribute('data-section');
@@ -236,57 +214,43 @@ window.Sidebar = (function () {
     var list = place.querySelector('.sidebar-topics');
     var form = place.querySelector('form');
     var plus = place.querySelector('.sidebar-new-topic');
-    if (!section || !name || !list || !form || !plus) throw new Error('sidebar.js: a .sidebar-place has no data-section, .sidebar-place-name, .sidebar-topics, form or .sidebar-new-topic');
+    var group = place.closest('.sidebar-section');
+    if (!section || !name || !list || !form || !plus || !group) throw new Error('sidebar.js: a .sidebar-place has no data-section, .sidebar-place-name, .sidebar-topics, form or .sidebar-new-topic, or is in no .sidebar-section');
     places[section] = list;
     styleTopics(list);
     list.querySelectorAll('li').forEach(styleRow);
+    var label = name.textContent;
 
-    var caret = document.createElement('span');
-    caret.textContent = '▾';
-    Object.assign(caret.style, { display: 'inline-block', fontSize: '9px', transition: 'transform 0.15s ease' });
     var person = place.getAttribute('data-person');
     if (person) {
       var dot = document.createElement('span');
-      paintDot(dot, place.getAttribute('data-presence') === 'online');
+      SidebarPopups.paintDot(dot, place.getAttribute('data-presence') === 'online');
       dots[person] = { dot: dot, place: place };
       name.insertBefore(dot, name.firstChild);
     }
-    name.insertBefore(caret, name.firstChild);
     name.setAttribute('role', 'button');
     name.setAttribute('tabindex', '0');
 
-    var row = document.createElement('div');
-    Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '4px', margin: '0 0 2px' });
-    place.insertBefore(row, name);
-    row.appendChild(name);
-    row.appendChild(plus);
     var words = plus.textContent;
     plus.type = 'button';
     plus.textContent = '+';
     plus.title = words;
     plus.setAttribute('aria-label', words);
-    plus.addEventListener('mouseenter', function () { plus.style.color = 'var(--cc-accent)'; });
-    plus.addEventListener('mouseleave', function () { plus.style.color = 'var(--cc-muted-fg)'; });
+    hoverColour(plus, 'var(--cc-muted-fg)', 'var(--cc-accent)');
     form.remove();
-    var popup = topicPopup(form, words, plus);
+    forms.push(form);
+    var popup = SidebarPopups.topicPopup(form, words, plus);
     plus.addEventListener('click', popup.open);
 
-    function show(collapsed) {
-      caret.style.transform = collapsed ? 'rotate(-90deg)' : 'none';
-      list.style.display = collapsed ? 'none' : 'block';
-      name.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    var shut = disclosure(label, list, 'chat-sidebar-collapsed:' + section, startsCollapsed(section, place.getAttribute('data-opening')));
+    headingRow(name, [shut.triangle, name, plus]);
+    if (group.getAttribute('data-group') === 'dms') {
+      name.title = 'About ' + label;
+      hoverColour(name, 'var(--cc-meta-fg)', 'var(--cc-accent)');
+      onPress(name, SidebarPopups.personPopup(place, label, list, name, popup.open).open);
+    } else {
+      onPress(name, shut.flip);
     }
-    var collapsed = startsCollapsed(section, place.getAttribute('data-opening'));
-    show(collapsed);
-    function flip() {
-      collapsed = !collapsed;
-      storeCollapsed(section, collapsed);
-      show(collapsed);
-    }
-    name.addEventListener('click', flip);
-    name.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
-    });
   });
 
   // The drawer, chat-client's: the sidebar fixed at the window's left edge,
@@ -332,6 +296,8 @@ window.Sidebar = (function () {
   function sizeTargets() {
     styleAll('.sidebar-topics a', { padding: narrow ? '9px 8px' : '2px 8px' });
     styleAll('.sidebar-place-name', { padding: narrow ? '6px 0' : '0' });
+    styleAll('.sidebar-section-name', { padding: narrow ? '6px 0' : '0' });
+    styleAll('[aria-expanded]', { padding: narrow ? '6px 4px' : '0' });
     styleAll('.sidebar-new-topic', { padding: narrow ? '8px 12px' : '2px 6px' });
     forms.forEach(function (form) {
       form.querySelectorAll('button').forEach(function (button) { button.style.padding = narrow ? '6px 14px' : '2px 10px'; });
@@ -352,7 +318,7 @@ window.Sidebar = (function () {
   });
   backdrop.addEventListener('click', function () { show(false); });
   document.addEventListener('keydown', function (e) {
-    if (open && !popupOpen && e.key === 'Escape') { e.preventDefault(); show(false); toggle.focus(); }
+    if (open && !SidebarPopups.isOpen() && e.key === 'Escape') { e.preventDefault(); show(false); toggle.focus(); }
   });
   sidebar.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('.sidebar-topics a')) show(false);
@@ -380,7 +346,7 @@ window.Sidebar = (function () {
     var shown = dots[person];
     if (!shown) return;
     shown.place.setAttribute('data-presence', 'online');
-    paintDot(shown.dot, true);
+    SidebarPopups.paintDot(shown.dot, true);
   }
 
   // A `topic-added` event's data: the place's path, the topic and its page.

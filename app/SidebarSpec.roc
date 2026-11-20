@@ -91,9 +91,15 @@ place_html = |{ name, path, opening, rows, suggests }| {
 	"<div class=\"sidebar-place\" data-section=\"${path}\" data-opening=\"${opening}\"${person}><p class=\"sidebar-place-name\">${name}</p>\n<button class=\"sidebar-new-topic\">New topic in ${name}</button>\n<ul class=\"sidebar-topics\">\n${rows}</ul>\n${form_at(path, suggests)}</div>\n"
 }
 
-# The page's own place first, always open, then the others in
-# `SidebarOrder`'s order (with no messages yet, Browse's), collapsed, with
-# no headings. Each place's topics are under it, only the page's own topic
+## The group `group` headed `heading`, holding `places`.
+group_html : Str, Str, Str -> Str
+group_html = |group, heading, places|
+	"<div class=\"sidebar-section\" data-group=\"${group}\"><p class=\"sidebar-section-name\">${heading}</p>\n${places}</div>\n"
+
+# The channels under their heading, then the DMs under theirs, each group in
+# `SidebarOrder`'s order: the page's own place first, always open, then the
+# others (with no messages yet, in Browse's order), collapsed. Each place's
+# topics are under it, only the page's own topic
 # marked: `plans` in Steve's own DM, and not `plans` in `general`, a topic
 # of the same name in another place. A place with no topics lists none and
 # suggests its first.
@@ -107,22 +113,33 @@ expect
 				_ => []
 			},
 	})
-		== "<nav class=\"sidebar\">\n${place_html({ name: "Steve", path: "/chat/dm/1_1", opening: "always", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n", suggests: NoSuggestion })}${
-			place_html({
-				name: "Apoorva",
-				path: "/chat/dm/1_2",
-				opening: "collapsed",
-				rows: "",
-				suggests: Suggests,
-			})
+		== "<nav class=\"sidebar\">\n${
+			group_html(
+				"channels",
+				"Channels",
+				place_html({
+					name: "#general",
+					path: "/chat/channel/general",
+					opening: "collapsed",
+					rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n",
+					suggests: NoSuggestion,
+				}),
+			)
 		}${
-			place_html({
-				name: "#general",
-				path: "/chat/channel/general",
-				opening: "collapsed",
-				rows: "<li><a href=\"/chat/channel/general/plans\">plans</a></li>\n",
-				suggests: NoSuggestion,
-			})
+			group_html(
+				"dms",
+				"DMs",
+				Str.concat(
+					place_html({ name: "Steve", path: "/chat/dm/1_1", opening: "always", rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n<li><a class=\"current\" href=\"/chat/dm/1_1/plans\">plans</a></li>\n", suggests: NoSuggestion }),
+					place_html({
+						name: "Apoorva",
+						path: "/chat/dm/1_2",
+						opening: "collapsed",
+						rows: "",
+						suggests: Suggests,
+					}),
+				),
+			)
 		}</nav>\n"
 # On a DM's page, the partner's place comes first, and Steve's own DM next,
 # collapsed. The page's own topic, before its first message gives it a
@@ -138,32 +155,41 @@ expect
 			},
 	})
 		== "<nav class=\"sidebar\">\n${
-			place_html({
-				name: "Apoorva",
-				path: "/chat/dm/1_2",
-				opening: "always",
-				rows: "<li><a class=\"current\" href=\"/chat/dm/1_2/plans\">plans</a></li>\n",
-				suggests: NoSuggestion,
-			})
+			group_html(
+				"channels",
+				"Channels",
+				place_html({
+					name: "#general",
+					path: "/chat/channel/general",
+					opening: "collapsed",
+					rows: "",
+					suggests: Suggests,
+				}),
+			)
 		}${
-			place_html({
-				name: "Steve",
-				path: "/chat/dm/1_1",
-				opening: "collapsed",
-				rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n",
-				suggests: NoSuggestion,
-			})
-		}${
-			place_html({
-				name: "#general",
-				path: "/chat/channel/general",
-				opening: "collapsed",
-				rows: "",
-				suggests: Suggests,
-			})
+			group_html(
+				"dms",
+				"DMs",
+				Str.concat(
+					place_html({
+						name: "Apoorva",
+						path: "/chat/dm/1_2",
+						opening: "always",
+						rows: "<li><a class=\"current\" href=\"/chat/dm/1_2/plans\">plans</a></li>\n",
+						suggests: NoSuggestion,
+					}),
+					place_html({
+						name: "Steve",
+						path: "/chat/dm/1_1",
+						opening: "collapsed",
+						rows: "<li><a href=\"/chat/dm/1_1/other\">other</a></li>\n",
+						suggests: NoSuggestion,
+					}),
+				),
+			)
 		}</nav>\n"
-# A place with a message comes before those with none, and starts open:
-# here `general`, ahead of Apoorva's DM, which Browse lists first.
+# A place with a message starts open: here `general`, in the channels
+# ahead of Apoorva's DM, which has none and starts collapsed.
 expect {
 	dated = places_with(|_| []).map(
 		|listed|
@@ -206,6 +232,21 @@ expect {
 		and drawn([steve.user().id(), apoorva]).contains("data-section=\"/chat/dm/1_1\" data-opening=\"always\">")
 		and drawn([apoorva]).contains("data-section=\"/chat/channel/general\" data-opening=\"collapsed\">")
 }
+# A group with no places is left out: with no channel, no Channels heading.
+expect {
+	dms_only = places_with(|_| []).drop_if(
+		|listed| ConversationKey.place_url_path(listed.place) == "/chat/channel/general",
+	)
+	shown = Str.from_utf8_lossy(
+		Sidebar.nav({
+			places: dms_only,
+			current: key_at("/chat/dm/1_1/plans"),
+			viewer: steve.user().id(),
+			online_humans: [],
+		}).to_utf8(),
+	)
+	!shown.contains("Channels") and shown.starts_with("<nav class=\"sidebar\">\n<div class=\"sidebar-section\" data-group=\"dms\"><p class=\"sidebar-section-name\">DMs</p>\n")
+}
 # The drawer's button.
 expect Sidebar.toggle.to_utf8() == "<button class=\"sidebar-toggle\">Conversations</button>\n".to_utf8()
 
@@ -238,7 +279,7 @@ expect {
 	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice }))
 	without = page_with(NoSidebar)
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<p class=\"notice-strip\"></p>\n<div class=\"layout\">${nav}<div class=\"messages\"")
-		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")
+		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar-popups.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")
 		and without.contains("</header>\n<div class=\"layout\"><div class=\"messages\"")
 		and !without.contains("sidebar")
 }

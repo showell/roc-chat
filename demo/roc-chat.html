@@ -7,6 +7,7 @@
 <button class="sidebar-toggle">Conversations</button>
 <p class="notice-strip"></p>
 <div class="layout"><nav class="sidebar">
+<div class="sidebar-section" data-group="channels"><p class="sidebar-section-name">Channels</p>
 <div class="sidebar-place" data-section="/chat/channel/general" data-opening="always"><p class="sidebar-place-name">#general</p>
 <button class="sidebar-new-topic">New topic in #general</button>
 <ul class="sidebar-topics">
@@ -15,12 +16,15 @@
 <form method="post" action="/chat/channel/general"><p>New topic <input type="text" name="topic" required></p>
 <button>Add topic</button></form>
 </div>
+</div>
+<div class="sidebar-section" data-group="dms"><p class="sidebar-section-name">DMs</p>
 <div class="sidebar-place" data-section="/chat/dm/1_1" data-opening="collapsed"><p class="sidebar-place-name">Steve</p>
 <button class="sidebar-new-topic">New topic in Steve</button>
 <ul class="sidebar-topics">
 </ul>
 <form method="post" action="/chat/dm/1_1"><p>New topic <input type="text" name="topic" required value="general"></p>
 <button>Add topic</button></form>
+</div>
 </div>
 </nav>
 <div class="messages" data-stream="/chat/channel/general/roc-chat/stream" data-after="5" data-viewer="1" data-react="/chat/channel/general/roc-chat/react" data-raw="/chat/channel/general/roc-chat/raw" data-download="/chat/channel/general/roc-chat/download">
@@ -57,6 +61,7 @@
 <p class="help">Markdown supported · :emoji: autocompletes · attach an image · Ctrl/⌘-Enter to send</p></div>
 </div>
 <script src="/chat/assets/chrome.js"></script>
+<script src="/chat/assets/sidebar-popups.js"></script>
 <script src="/chat/assets/sidebar.js"></script>
 <script src="/chat/assets/compose.js"></script>
 <script src="/chat/assets/emoji.js"></script>
