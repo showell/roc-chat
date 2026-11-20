@@ -31,8 +31,9 @@
 ## Clicking a place's name opens app/sidebar-popups.js's card about it, a
 ## channel's and a DM's alike: its name (the place's label), for a DM whether
 ## its person is online, its topics as links, and a new topic. When each
-## human joined is not drawn yet: once accounts keep it, `person_attributes` adds `data-joined` (its seconds
-## since 1970, `PageContract`'s `Joined`), and the card says it.
+## human joined is not drawn yet: once accounts keep it,
+## `person_attributes` adds `data-joined` (its seconds since 1970,
+## `PageContract`'s `Joined`), and the card says it.
 import ConversationKey
 import DmShortlist
 import Escape

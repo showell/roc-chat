@@ -169,8 +169,9 @@ expect
 		}</nav>\n"
 # On a DM's page, the partner's place comes first, and Steve's own DM next,
 # collapsed, waiting behind the "more" row, as it has no message. The
-# page's own topic, before its first message gives it a folder, is listed in its place after the others, marked, and its place's
-# form then suggests nothing.
+# page's own topic, before its first message gives it a folder, is listed
+# in its place after the others, marked, and its place's form then
+# suggests nothing.
 expect
 	sidebar_at({
 		current: "/chat/dm/1_2/plans",
