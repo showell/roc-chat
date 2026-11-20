@@ -403,6 +403,7 @@
 const std = @import("std");
 const Io = std.Io;
 const http = @import("http.zig");
+const sse = @import("sse.zig");
 const files = @import("file_primitives.zig");
 const fake_github = @import("fake_github.zig");
 const github = @import("github_client.zig");
@@ -1210,8 +1211,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
         has(signed_in.header("set-cookie") orelse "", ".d; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax") and
         std.mem.eql(u8, signed_in.header("cache-control") orelse "", "no-store") and
         phone_browse.status == 200 and has(phone_browse.body, "<span class=\"viewer\">Steve</span>") and heard);
-    var used_event = try devices_stream.event();
-    if (std.mem.startsWith(u8, used_event, "event: notice\n")) used_event = try devices_stream.event();
+    const used_event = try devices_stream.expectEvent("event: device-used\n", &.{"event: notice\n"});
     try t.check("the device code page's own stream hears that the code was used, and when", devices_stream.isEventStream() and
         std.mem.startsWith(u8, used_event, "event: device-used\ndata: 20") and std.mem.endsWith(u8, used_event, "Z\n\n"));
 
@@ -1855,9 +1855,9 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>"));
     // The stream carries the viewer's own key too, so a new topic's
     // topic-added comes by as well, which the Recent page ignores.
-    const notice = try nextNotTopicAdded(live);
-    const first = try nextNotTopicAdded(live);
-    const second = try nextNotTopicAdded(live);
+    const notice = try live.expectEvent("event: message-notice\n", &.{"event: topic-added\n"});
+    const first = try live.expectEvent("event: tile\n", &.{"event: topic-added\n"});
+    const second = try live.expectEvent("event: tile\n", &.{"event: topic-added\n"});
     // The notice links to Tam's post itself: its anchor names the article on
     // the channel's page that holds her words.
     const notice_head = "event: message-notice\ndata: <a href=\"" ++ channel_url ++ "#msg-";
@@ -2246,7 +2246,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     const ended_ms = revoking.untilNow(io, .awake).toMilliseconds();
     const after_revoke = try getWith(a, io, port, channel_url ++ "/raw", bearer);
     try t.check("revoke the key: 303; CC's open stream ended at once; the key is then a 401; its state on disk revoked", revoked.status == 303 and
-        stream_ended and ended_ms < Stream.stream_ms / 2 and after_revoke.status == 401 and
+        stream_ended and ended_ms < Stream.wait_ms / 2 and after_revoke.status == 401 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/1/state"), "revoked"));
 
     // 48.
@@ -2324,7 +2324,7 @@ fn memberSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
     const after_read = try getWith(a, io, port, crew_url ++ "/raw", bearer);
     try t.check("remove CC from #crew: 303, the members file empty, CC's open stream ended at once; again: 409", listening.isEventStream() and
         removed.status == 303 and std.mem.eql(u8, try readFile(a, io, data, "chat/channel/crew.channel"), "") and
-        stream_ended and ended_ms < Stream.stream_ms / 2 and not_in.status == 409);
+        stream_ended and ended_ms < Stream.wait_ms / 2 and not_in.status == 409);
     try t.check("CC, removed, posting in #crew and reading it: 403 each; its account stands", after_post.status == 403 and after_read.status == 403 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/2/name"), "CC"));
 
@@ -3472,18 +3472,19 @@ fn getWith(a: std.mem.Allocator, io: Io, port: u16, path: []const u8, more: []co
 }
 
 /// A stream held open: its head read whole, then its events one at a
-/// time. A watchdog shuts it after `stream_ms`, so a frame that never comes
-/// fails its step rather than hang the run.
+/// time. Each of those waits has `wait_ms`, after which a watchdog shuts
+/// the connection, so a frame that never comes fails its step rather than
+/// hang the run. No watchdog runs between waits, so a stream may stay open
+/// across any number of requests.
 const Stream = struct {
     a: std.mem.Allocator,
     io: Io,
     connection: Io.net.Stream,
     reader: Io.net.Stream.Reader,
-    watchdog: Io.Future(void),
     head: []const u8,
     buf: *[64 * 1024]u8,
 
-    const stream_ms = 5_000;
+    const wait_ms = 5_000;
 
     fn open(a: std.mem.Allocator, io: Io, port: u16, comptime path: []const u8) !*Stream {
         return openWith(a, io, port, path, "");
@@ -3497,18 +3498,30 @@ const Stream = struct {
         s.buf = try a.create([64 * 1024]u8);
         const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
         s.connection = try addr.connect(io, .{ .mode = .stream });
-        s.watchdog = try io.concurrent(shutAfter, .{ io, s.connection, stream_ms });
-        var w = s.connection.writer(io, &.{});
-        try w.interface.writeAll(try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}{s}\r\n", .{ path, port, steve_session, more }));
-        s.reader = s.connection.reader(io, s.buf);
-        var head: std.ArrayList(u8) = .empty;
-        while (!std.mem.endsWith(u8, head.items, "\r\n\r\n")) try head.append(a, try s.reader.interface.takeByte());
-        s.head = head.items;
+        var watchdog = try io.concurrent(shutAfter, .{ io, s.connection, wait_ms });
+        s.head = s.request(path, port, more) catch |e| return s.waitFailed(&watchdog, e);
+        _ = watchdog.cancel(io);
         return s;
     }
 
+    /// The stream's GET sent, and its head read whole.
+    fn request(s: *Stream, path: []const u8, port: u16, more: []const u8) ![]const u8 {
+        var w = s.connection.writer(s.io, &.{});
+        try w.interface.writeAll(try std.fmt.allocPrint(s.a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\naccept: text/event-stream\r\n{s}{s}\r\n", .{ path, port, steve_session, more }));
+        s.reader = s.connection.reader(s.io, s.buf);
+        var head: std.ArrayList(u8) = .empty;
+        while (!std.mem.endsWith(u8, head.items, "\r\n\r\n")) try head.append(s.a, try s.reader.interface.takeByte());
+        return head.items;
+    }
+
+    /// `e`, a wait's failure, once its watchdog is ended, saying so when
+    /// the watchdog is what shut the stream.
+    fn waitFailed(s: *Stream, watchdog: *Io.Future(bool), e: anyerror) anyerror {
+        if (watchdog.cancel(s.io)) std.debug.print("the stream sent nothing for {d} ms, so its watchdog shut it\n", .{wait_ms});
+        return e;
+    }
+
     fn close(s: *Stream) void {
-        s.watchdog.cancel(s.io);
         s.connection.close(s.io);
     }
 
@@ -3524,8 +3537,20 @@ const Stream = struct {
             std.mem.eql(u8, s.header("x-content-type-options") orelse "", "nosniff");
     }
 
-    /// The next event, its lines to the blank one that ends it.
+    /// The next event, its lines to the blank one that ends it. The
+    /// server's keepalive (`sse.ping`), a comment, is no event and is
+    /// passed.
     fn event(s: *Stream) ![]const u8 {
+        while (true) {
+            var watchdog = try s.io.concurrent(shutAfter, .{ s.io, s.connection, wait_ms });
+            const got = s.frame() catch |e| return s.waitFailed(&watchdog, e);
+            _ = watchdog.cancel(s.io);
+            if (!std.mem.eql(u8, got, sse.ping)) return got;
+        }
+    }
+
+    /// The next frame, a ping's included.
+    fn frame(s: *Stream) ![]const u8 {
         var bytes: std.ArrayList(u8) = .empty;
         while (true) {
             const line = try s.reader.interface.takeDelimiterInclusive('\n');
@@ -3533,19 +3558,25 @@ const Stream = struct {
             if (line.len == 1) return bytes.items;
         }
     }
+
+    /// The next event that starts with none of `skip`. One that doesn't
+    /// start with `want` is printed, then given back all the same, so the
+    /// step that reads it fails by its own name with the event in view.
+    fn expectEvent(s: *Stream, comptime want: []const u8, comptime skip: []const []const u8) ![]const u8 {
+        next: while (true) {
+            const e = try s.event();
+            inline for (skip) |passed| if (std.mem.startsWith(u8, e, passed)) continue :next;
+            if (!std.mem.startsWith(u8, e, want)) std.debug.print("wanted an event starting `{s}`, got:\n{s}", .{ want, e });
+            return e;
+        }
+    }
 };
 
-/// The stream's next event that is not a `topic-added`.
-fn nextNotTopicAdded(s: *Stream) ![]const u8 {
-    while (true) {
-        const e = try s.event();
-        if (!std.mem.startsWith(u8, e, "event: topic-added\n")) return e;
-    }
-}
-
-fn shutAfter(io: Io, connection: Io.net.Stream, ms: u32) void {
-    Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch return;
+/// Whether it shut `connection`, having slept `ms` without being cancelled.
+fn shutAfter(io: Io, connection: Io.net.Stream, ms: u32) bool {
+    Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(ms) }, io) catch return false;
     connection.shutdown(io, .both) catch {};
+    return true;
 }
 
 /// The frame a stream sends for the message `id` that `page` shows: `id:`,
