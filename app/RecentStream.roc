@@ -35,7 +35,7 @@ RecentStream :: [].{
 
 	## `viewer`'s Recent stream: live only, since the page is the backlog;
 	## each tile `publish!` sends them after, and what is sent to the viewer
-	## alone (`Presence.viewer_stream_key`), the notices above the page among
+	## alone (`Presence.viewer_stream_key`), the top bar's notices among
 	## it, as Gopher Chat's Recent page heard its notify stream.
 	response : UserId -> Http.Response
 	response = |viewer|

@@ -61,6 +61,10 @@ foot = |url|
 top_links : Str
 top_links = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
 
+## `top_links` in a top bar that holds the notice line, empty.
+top_links_noticed : Str
+top_links_noticed = "<span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · "
+
 ## A conversation's page as a test expects it, for the viewer `viewer`
 ## with the id `viewer_id`: the head, the top bar, then the messages'
 ## pane, naming its stream, the `count` of messages it shows and the
@@ -86,7 +90,7 @@ steves_page = |{ count, messages }|
 
 ## The page of the empty conversation at `path`, among the sample's users
 ## and the channel `general`, for the sample's user named `viewer`, with a
-## sidebar of no places whose line above the page says `notice`.
+## sidebar of no places whose top bar's notice line says `notice`.
 empty_page : { path : Str, viewer : Str }, [NoNotice, Notice(Str)] -> Str
 empty_page = |{ path, viewer }, notice| {
 	directory = Sample.with_default_channel(Sample.directory)
@@ -128,10 +132,11 @@ expect
 	empty_page({ path: "/chat/dm/1_1/plans", viewer: "Steve" }, NoNotice)
 		.contains(title_at({ path: "/chat/dm/1_1/plans", words: "Steve on plans" }))
 
-# The line above the page says what it is drawn with, escaped, or nothing.
+# The top bar's notice line, between the section links and the viewer's
+# name, says what it is drawn with, escaped, or nothing.
 expect
 	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, Notice("Apoorva is online."))
-		.contains("</button>\n<p class=\"notice-strip\">Apoorva is online.</p>\n<div class=\"layout\">")
+		.contains("Add a device</a></span> <p class=\"notice-strip\">Apoorva is online.</p> <div class=\"top-user\">")
 expect
 	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, Notice("<b> is online."))
 		.contains("<p class=\"notice-strip\">&lt;b&gt; is online.</p>")
@@ -329,7 +334,7 @@ expect {
 	].all(
 		|page| {
 			text = Str.from_utf8_lossy(page.to_utf8())
-			text.contains(top_links) and !text.contains("/join") and !text.contains("Sign in")
+			(text.contains(top_links) or text.contains(top_links_noticed)) and !text.contains("/join") and !text.contains("Sign in")
 		},
 	)
 		and [
@@ -494,11 +499,11 @@ steves_recent = |tiles|
 		RecentFeed.page({ viewer: SignedIn.dangerously_assume(Sample.steve), tiles }).to_utf8(),
 	)
 
-## Steve's Recent page as a test expects it: the line above the page,
+## Steve's Recent page as a test expects it: its top bar's notice line,
 ## empty, where app/chrome.js shows the notices, then `parts`.
 recent_page : Str -> Str
 recent_page = |parts|
-	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p class=\"notice-strip\"></p>\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n<script src=\"/chat/assets/recent.js\"></script>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 
 # Recent with no conversation that has a message says so, above its list,
 # empty, which names its stream.

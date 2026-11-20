@@ -1612,7 +1612,8 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const steves_last = try readFile(a, io, data, "users/1/last-conv");
     const steves_way_in = try getAs(a, io, port, steve_session, "/");
     try t.check("a conversation's page for someone signed in: its sidebar, the page's topic marked; the page recorded, bare, as their last; and / a 303 back to it", steves_page.status == 200 and
-        has(steves_page.body, "<button class=\"sidebar-toggle\">Conversations</button>\n<p class=\"notice-strip\"></p>\n<div class=\"layout\"><nav class=\"sidebar\">") and
+        has(steves_page.body, "</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\">") and
+        has(steves_page.body, "</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\"><nav class=\"sidebar\">") and
         has(steves_page.body, "<li><a class=\"current\" href=\"" ++ channel_url ++ "\">roc-chat</a></li>") and
         has(steves_page.body, "<script src=\"/chat/assets/sidebar.js\"></script>") and std.mem.eql(u8, steves_last, channel_url) and
         steves_way_in.status == 303 and std.mem.eql(u8, steves_way_in.header("location") orelse "", channel_url));

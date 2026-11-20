@@ -5,7 +5,7 @@
 ## their conversation pages' streams and their Recent page's stream carry.
 ## Its data is a link to the message's topic, worded as Gopher worded it:
 ## "Steve sent you a message on plans." in a DM, "Steve posted to general >
-## plans." in a channel. app/chrome.js shows it in the line above the page
+## plans." in a channel. app/chrome.js shows it in the top bar's notice line
 ## and paints the tab's icon violet, unless the page is that topic's own
 ## (chat-client's js/notify.js dropped a ping for the open topic). An edit is
 ## a message appended, so it is told too. `ConversationRoute` sends it to

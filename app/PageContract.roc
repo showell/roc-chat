@@ -28,8 +28,8 @@
 ## which app/sidebar.js opens or collapses it by. The places come in two
 ## groups, each naming itself (`data-group`), which app/sidebar.js keeps a
 ## group's collapsed state by; app/sidebar-popups.js says when a DM's
-## person joined (`data-joined`, not drawn yet). The line
-## above the page (`notice-strip`), on a conversation with a sidebar and on
+## person joined (`data-joined`, not drawn yet). The top
+## bar's notice line (`notice-strip`), on a conversation with a sidebar and on
 ## Recent, is where app/chrome.js shows that someone has come online, or
 ## has written in one of the viewer's places. An invite's link or code
 ## (`invite-code`) is its shown text alone: app/panel.js gives each one the

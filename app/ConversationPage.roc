@@ -54,8 +54,8 @@ import Users
 ConversationPage :: [].{
 
 	## A human's page has the sidebar of the places Browse lists for them,
-	## with who of the humans is online, and what the line above the page
-	## says as it is drawn (a DM's says where the other human is,
+	## with who of the humans is online, and what the top bar's notices'
+	## line says as it is drawn (a DM's says where the other human is,
 	## `Presence.presence_words`); a key's has none.
 	SidebarShown : [
 		NoSidebar,
@@ -123,11 +123,12 @@ ConversationPage :: [].{
 		raw_path = PageKit.site_path(key.url_path(Raw))
 		download_path = PageKit.site_path(key.url_path(Download))
 		shown_count = PageKit.token(thread.messages().len().to_str())
-		{ toggle, nav, scripts } =
+		{ toggle, notices, nav, scripts } =
 			match sidebar {
-				NoSidebar => { toggle: [], nav: [], scripts: [] }
+				NoSidebar => { toggle: [], notices: NoNotices, nav: [], scripts: [] }
 				Sidebar({ places, online_humans, notice }) => {
-					toggle: [Sidebar.toggle, notice_strip(notice)],
+					toggle: [Sidebar.toggle],
+					notices: Notices(notice),
 					nav: [
 						Sidebar.nav({
 							places,
@@ -146,6 +147,7 @@ ConversationPage :: [].{
 					title: top_title({ key, viewer: viewer.user(), users }),
 					link: PageKit.site_path(key.url_path(Page)),
 					viewer,
+					notices,
 				}),
 				PageKit.newline,
 				TrustedHtml.join(toggle),
@@ -387,22 +389,6 @@ compose_box = |key| {
 		]),
 	})
 }
-
-## The line above the layout, saying `notice` as the page is drawn, where
-## app/chrome.js later shows the notices of the viewer's stream.
-notice_strip : [NoNotice, Notice(Str)] -> TrustedHtml
-notice_strip = |notice|
-	TrustedHtml.join([
-		Html.element({
-			name: P,
-			attributes: [PageContract.class(NoticeStrip)],
-			inner: match notice {
-				NoNotice => TrustedHtml.join([])
-				Notice(words) => Escape.text(words)
-			},
-		}),
-		PageKit.newline,
-	])
 
 ## The top bar's title of the conversation `key`, on `viewer`'s page: a DM
 ## names the other human, then "on" and the topic ("Apoorva on ChitChat",

@@ -6,7 +6,7 @@
 ## of quiet, or a human's first since the server started, brings them
 ## online: every other human is told, on their own stream
 ## (`viewer_stream_key`), with a dot for their sidebar (`online_frame`) and
-## "<name> has come online." for the line above the page (`notice_frame`).
+## "<name> has come online." for the top bar's notice line (`notice_frame`).
 ## Nobody is told when a human goes quiet; their dot goes hollow on the
 ## next page drawn. An agent is never online: no sidebar lists one.
 ##
@@ -80,7 +80,7 @@ Presence :: [].{
 	notice_words : Str -> Str
 	notice_words = |name| "${name} has come online."
 
-	## The event that says `name` has come online, above the page: `notice`,
+	## The event that says `name` has come online, in the top bar: `notice`,
 	## its data a link to `link`, the recipient's DM with them.
 	notice_frame : { name : Str, link : Html.SitePath } -> List(U8)
 	notice_frame = |{ name, link }|
@@ -93,7 +93,7 @@ Presence :: [].{
 			}),
 		})
 
-	## What the line above a DM's page says of the other human, named
+	## What the notice line of a DM's page says of the other human, named
 	## `name`, as the page is drawn at `now`: that they are online; else
 	## when they were last active, in whole minutes, hours or days; else,
 	## never seen since the host last started, that they haven't been on.

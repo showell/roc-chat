@@ -31,7 +31,7 @@
 // recent.js). `notice`, a link saying a human has come online, goes to
 // Notices.show; `message-notice`, a link to the topic of a message someone
 // else wrote in one of the viewer's places, to Notices.showUnlessHere, which
-// drops it on that topic's own page. Each is shown in the line above the page
+// drops it on that topic's own page. Each is shown in the top bar's notice line
 // (.notice-strip, chat-client's #chat-notify), in place of the last one, and
 // paints the tab's icon violet, whether or not the tab is in view, until the
 // notice's link is followed, with no timer. notify.js drew the violet as a
@@ -62,15 +62,16 @@ window.Viewport = (function () {
 window.Notices = (function () {
   'use strict';
   var strip = document.querySelector('.notice-strip');
-  // The strip is economical with the page's height (Steve, 2026-11-20): one
-  // line of 13-pixel text, no margin, the layout's own 10 pixels of room
-  // below it and nothing more. Above a conversation's layout it lines up
-  // with the top bar's text (the style sheet below, `body > .notice-strip`);
-  // on Recent it is inside the panel, which pads it.
+  // The strip is economical with the page's height (Steve, 2026-11-20): it
+  // lives in the top bar, between the section links and the viewer's name,
+  // so it spends no row of its own. It is one line of 12-pixel muted text
+  // that takes the bar's spare width, cut with an ellipsis when it is longer.
+  // In a narrow window it shares the section links' row, on its right (the
+  // style sheet below, `.top-bar .notice-strip`).
   if (strip) {
     Object.assign(strip.style, {
-      margin: '0', fontSize: '13px', lineHeight: '1.3', color: 'var(--cc-notify-fg)', overflow: 'hidden',
-      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', minHeight: '1em',
+      margin: '0', fontSize: '12px', lineHeight: '1.3', color: 'var(--cc-body-muted-fg)', overflow: 'hidden',
+      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: '0', flex: '1 1 0',
     });
   }
   function paintTab(href) {
@@ -86,12 +87,13 @@ window.Notices = (function () {
   function clearTab() { paintTab('/favicon.ico'); }
 
   // A notice, the server's HTML (a link), shown in the strip in place of
-  // the last one, and the tab painted.
+  // the last one, and the tab painted. The link is the notices' colour, so
+  // news stands out from the muted words the page was drawn with.
   function show(html) {
     if (!strip) return;
     strip.innerHTML = html;
     strip.querySelectorAll('a').forEach(function (link) {
-      link.style.color = 'inherit';
+      link.style.color = 'var(--cc-notify-fg)';
       link.addEventListener('click', clearTab);
     });
     alertTab();
@@ -134,13 +136,17 @@ window.Notices = (function () {
     '.top-user .viewer { font-weight: bold; }',
     '.layout { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 10px 24px; box-sizing: border-box; }',
     'a { color: var(--cc-accent); }',
-    'body > .notice-strip { padding: 4px 24px 0; }',
-    'html.layout-narrow body > .notice-strip { padding: 4px 12px 0; }',
     'html.layout-narrow body { height: 100dvh; }',
     'html.layout-narrow .top-bar { padding: 8px 12px; gap: 8px; align-items: center; }',
     'html.layout-narrow .top-bar { flex-wrap: wrap; }',
     'html.layout-narrow .top-title { flex: 1; }',
-    'html.layout-narrow .top-links { order: 1; flex-basis: 100%; }',
+    // A narrow bar's second row: the section links, then the notice line on
+    // the right. The empty ::after ends the first row, so the second holds
+    // the two whatever the title's length.
+    'html.layout-narrow .top-bar { row-gap: 2px; }',
+    'html.layout-narrow .top-bar::after { content: ""; order: 0; flex-basis: 100%; height: 0; }',
+    'html.layout-narrow .top-links { order: 1; }',
+    'html.layout-narrow .top-bar .notice-strip { order: 2; text-align: right; }',
     'html.layout-narrow .layout { padding: 8px; }',
     'html.layout-narrow input, html.layout-narrow textarea { font-size: 16px !important; }',
   ].join('\n');

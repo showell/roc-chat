@@ -74,7 +74,7 @@ PresenceNotices :: [].{
 		$online_humans
 	}
 
-	## What the line above `viewer`'s page of the conversation `key` says
+	## What the notice line of `viewer`'s page of the conversation `key` says
 	## as it is drawn at `now`: for a DM with another human of `directory`,
 	## where they are (`Presence.presence_words`); nothing for a channel or
 	## the viewer's own DM.

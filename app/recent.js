@@ -14,7 +14,7 @@
 // conversation's tile after a new message: it takes the place of that
 // conversation's tile, at the top, as chat-client's upsert did. The stream
 // carries the viewer's notices too, `notice` and `message-notice`, which
-// chrome.js's Notices shows above the page, painting the tab, as Gopher
+// chrome.js's Notices shows in the top bar, painting the tab, as Gopher
 // Chat's Recent page did with notify.js.
 (function () {
   'use strict';

@@ -219,6 +219,13 @@ PageKit :: [].{
 			body,
 		])
 
+	## Whether a top bar holds the line where app/chrome.js shows the
+	## notices of the viewer's stream (`notice-strip`), and what it says as
+	## the page is drawn. A conversation with a sidebar and Recent hold it,
+	## between the section links and the viewer's name, so it costs the page
+	## no row of its own (Steve, 2026-11-20, wanting that area economical).
+	TopNotices : [NoNotices, Notices([NoNotice, Notice(Str)])]
+
 	## The top bar: `title` on the left, the links to Browse, Recent, the
 	## invites page and the device code page beside it, and on the right the
 	## Home link and the name of `viewer`, the user viewing the page. The
@@ -226,16 +233,17 @@ PageKit :: [].{
 	## click from every page; the invites link is here so that a human in a
 	## conversation reaches invites in one step.
 	top_bar : { title : Str, viewer : SignedIn } -> TrustedHtml
-	top_bar = |{ title, viewer }| top_bar_titled({ title: Escape.text(title), viewer })
+	top_bar = |{ title, viewer }| top_bar_titled({ title: Escape.text(title), viewer, notices: NoNotices })
 
 	## The top bar, its `title` a link to `link`, the page's own path, so a
-	## click on it reloads the page.
+	## click on it reloads the page, holding `notices`.
 	linked_top_bar : {
 		title : Str,
 		link : Html.SitePath,
 		viewer : SignedIn,
+		notices : PageKit.TopNotices,
 	} -> TrustedHtml
-	linked_top_bar = |{ title, link, viewer }|
+	linked_top_bar = |{ title, link, viewer, notices }|
 		top_bar_titled({
 			title: Html.element({
 				name: A,
@@ -243,6 +251,7 @@ PageKit :: [].{
 				inner: Escape.text(title),
 			}),
 			viewer,
+			notices,
 		})
 
 	## A page of a signed-in human's: the document, its top bar of `title`
@@ -254,26 +263,21 @@ PageKit :: [].{
 		parts : List(TrustedHtml),
 	} -> TrustedHtml
 	signed_in_page = |{ title, viewer, parts }|
-		PageKit.document({
+		panel_page({ title, top: PageKit.top_bar({ title, viewer }), parts })
+
+	## A page of a signed-in human's as `signed_in_page`, its top bar holding
+	## the notices' line, empty until app/chrome.js says a notice there
+	## (Recent's, as Gopher Chat's Recent had its #chat-notify).
+	noticed_page : {
+		title : Str,
+		viewer : SignedIn,
+		parts : List(TrustedHtml),
+	} -> TrustedHtml
+	noticed_page = |{ title, viewer, parts }|
+		panel_page({
 			title,
-			body: TrustedHtml.join([
-				PageKit.top_bar({ title, viewer }),
-				PageKit.newline,
-				Html.element({
-					name: Div,
-					attributes: [PageContract.class(Layout)],
-					inner: Html.element({
-						name: Div,
-						attributes: [PageContract.class(Panel)],
-						inner: TrustedHtml.join(List.concat([PageKit.newline], parts)),
-					}),
-				}),
-				PageKit.newline,
-				PageKit.script(Script.Chrome),
-				PageKit.newline,
-				PageKit.script(Script.Panel),
-				PageKit.newline,
-			]),
+			top: top_bar_titled({ title: Escape.text(title), viewer, notices: Notices(NoNotice) }),
+			parts,
 		})
 
 	## A page that says one thing: `title`, and `text` beneath it (no such
@@ -307,9 +311,56 @@ PageKit :: [].{
 		})
 }
 
-## The top bar, `title` on its left.
-top_bar_titled : { title : TrustedHtml, viewer : SignedIn } -> TrustedHtml
-top_bar_titled = |{ title, viewer }|
+## A page of `title`: the top bar `top`, then `parts` in a panel, then the
+## scripts that style them.
+panel_page : { title : Str, top : TrustedHtml, parts : List(TrustedHtml) } -> TrustedHtml
+panel_page = |{ title, top, parts }|
+	PageKit.document({
+		title,
+		body: TrustedHtml.join([
+			top,
+			PageKit.newline,
+			Html.element({
+				name: Div,
+				attributes: [PageContract.class(Layout)],
+				inner: Html.element({
+					name: Div,
+					attributes: [PageContract.class(Panel)],
+					inner: TrustedHtml.join(List.concat([PageKit.newline], parts)),
+				}),
+			}),
+			PageKit.newline,
+			PageKit.script(Script.Chrome),
+			PageKit.newline,
+			PageKit.script(Script.Panel),
+			PageKit.newline,
+		]),
+	})
+
+## The line in the top bar where app/chrome.js shows the notices, saying
+## `notice` as the page is drawn, and the space after it; nothing for a top
+## bar with none.
+notice_strip : PageKit.TopNotices -> TrustedHtml
+notice_strip = |notices|
+	match notices {
+		NoNotices => TrustedHtml.join([])
+		Notices(notice) =>
+			TrustedHtml.join([
+				Html.element({
+					name: P,
+					attributes: [PageContract.class(NoticeStrip)],
+					inner: match notice {
+						NoNotice => TrustedHtml.join([])
+						Notice(words) => Escape.text(words)
+					},
+				}),
+				PageKit.space,
+			])
+	}
+
+## The top bar, `title` on its left, holding `notices`.
+top_bar_titled : { title : TrustedHtml, viewer : SignedIn, notices : PageKit.TopNotices } -> TrustedHtml
+top_bar_titled = |{ title, viewer, notices }|
 	Html.element({
 		name: Header,
 		attributes: [PageContract.class(TopBar)],
@@ -350,6 +401,7 @@ top_bar_titled = |{ title, viewer }|
 				]),
 			}),
 			PageKit.space,
+			notice_strip(notices),
 			Html.element({
 				name: Div,
 				attributes: [PageContract.class(TopUser)],

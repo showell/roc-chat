@@ -444,7 +444,7 @@
   });
   // What the stream carries from the viewer's own key: for the sidebar, a
   // human come online and a new topic in one of the viewer's places
-  // (sidebar.js); for the line above the page and the tab, the notice that
+  // (sidebar.js); for the top bar's notice line and the tab, the notice that
   // a human has come online and the notice of a message in one of the
   // viewer's places (chrome.js's Notices).
   events.addEventListener('online', function (e) { if (window.Sidebar) Sidebar.markOnline(e.data); });
