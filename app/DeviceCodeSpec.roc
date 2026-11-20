@@ -240,7 +240,10 @@ expect {
 		now: Timestamp.at_second(5_000),
 	})
 	!DeviceCodeLimit.is_locked(everyone, DeviceCodeLimit.everyone_most)
-		and DeviceCodeLimit.is_locked(DeviceCodeLimit.tally_after_failure(everyone), DeviceCodeLimit.everyone_most)
+		and DeviceCodeLimit.is_locked(
+			DeviceCodeLimit.tally_after_failure(everyone),
+			DeviceCodeLimit.everyone_most,
+		)
 }
 expect {
 	tally = DeviceCodeLimit.tally_of({

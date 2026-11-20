@@ -215,6 +215,6 @@ expect
 	["Chat Admin", "Chat AdmIn", "Bob the Sysadmin", "Site Administrator", "AD MINS", "Zoe Adrnin"]
 		.all(|text| NameSkeleton.is_reserved_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name"))
 expect
-	["Steve", "Howell", "Steve Howell", "Helen Help", "Badminton", "Admiral", "Ad Minh", "Root"]
-		.map(|text| NameSkeleton.is_reserved_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name"))
-		== [Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.False, Bool.True]
+	["Steve", "Howell", "Steve Howell", "Helen Help", "Badminton", "Admiral", "Ad Minh"]
+		.all(|text| !NameSkeleton.is_reserved_name(Name.from_str(text) ?? crash "NameSkeleton's tests: a name"))
+expect NameSkeleton.is_reserved_name(Name.from_str("Root") ?? crash "NameSkeleton's tests: a name")

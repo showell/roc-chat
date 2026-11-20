@@ -75,7 +75,12 @@ DeviceCodeRoute :: [].{
 						sign_ins = DeviceSessionsRoute.load_sign_ins!(human.id())
 						HttpAnswer.page(
 							200,
-							DeviceCodePage.page({ viewer: acting, shown, sign_ins, sign_in_url: "${origin}/login" }),
+							DeviceCodePage.page({
+								viewer: acting,
+								shown,
+								sign_ins,
+								sign_in_url: "${origin}/login",
+							}),
 						)
 					}
 			}
