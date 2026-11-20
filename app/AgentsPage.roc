@@ -93,14 +93,21 @@ AgentsPage :: [].{
 						TrustedHtml.join([
 							make_form,
 							PageKit.newline,
-							TrustedHtml.join(summaries.map(|summary| agent_section(summary, WithButtons))),
+							TrustedHtml.join(
+								summaries.map(|summary| agent_section(summary, WithButtons)),
+							),
 						])
 					(Kept(summaries), WithoutButtons) =>
 						TrustedHtml.join([
 							PageKit.paragraph(AgentsPage.code_session_words),
-							TrustedHtml.join(summaries.map(|summary| agent_section(summary, WithoutButtons))),
+							TrustedHtml.join(
+								summaries.map(|summary| agent_section(summary, WithoutButtons)),
+							),
 						])
-					(NotTheKeeper, _) => PageKit.paragraph("Only the admin makes and manages agents.")
+					(
+						NotTheKeeper,
+						_,
+					) => PageKit.paragraph("Only the admin makes and manages agents.")
 				},
 				match (github_link, buttons) {
 					(LinkOffered, WithButtons) => PageKit.post_button({

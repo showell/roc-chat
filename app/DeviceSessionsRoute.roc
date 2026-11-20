@@ -43,9 +43,18 @@ DeviceSessionsRoute :: [].{
 							origin = acting.session_origin()
 							match SignInRoute.sign_session_again!({ human, origin, now }) {
 								Ok(cookie) => {
-									onward = HttpAnswer.with_header(HttpAnswer.see_other(DeviceCodePage.path), cookie)
+									onward = HttpAnswer.with_header(
+										HttpAnswer.see_other(DeviceCodePage.path),
+										cookie,
+									)
 									forgotten = DeviceCode.clear_flash_cookie_text
-									HttpAnswer.with_header(onward, { name: "set-cookie".to_utf8(), value: forgotten.to_utf8() })
+									HttpAnswer.with_header(
+										onward,
+										{
+											name: "set-cookie".to_utf8(),
+											value: forgotten.to_utf8(),
+										},
+									)
 								}
 								Err(NoMaterial) => material_missing_answer
 								Err(GenerationDamaged) => SignInRoute.fault_answer(Damaged)
@@ -97,7 +106,7 @@ DeviceSessionsRoute :: [].{
 ## generation advanced.
 sign_out_others! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 sign_out_others! = |id| {
-	DeviceCodeFiles.cancel_live_device_code!(id)?
+	DeviceCodeFiles.revoke_live_device_code!(id)?
 	SignInFiles.advance_session_generation!(id)
 }
 

@@ -217,7 +217,10 @@ login_for = |viewer, problem|
 # with a problem, it first: after a code's, the code's field focused; after
 # a password's, neither; for someone signed in, under the top bar, who and
 # the button that signs them out, and no form.
-expect login_for(Anonymous, NoProblem) == login_page("", { name_focus: " autofocus", code_focus: "" })
+expect login_for(Anonymous, NoProblem) == login_page(
+	"",
+	{ name_focus: " autofocus", code_focus: "" },
+)
 expect
 	login_for(Anonymous, Problem("No <match>."))
 		== login_page("<p>No &lt;match&gt;.</p>\n", { name_focus: "", code_focus: "" })

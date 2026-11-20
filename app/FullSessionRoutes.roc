@@ -4,9 +4,9 @@
 ## its button or by going through GitHub while signed in; making agents,
 ## inviting them, and revoking their invites and keys; inviting a human, or
 ## inviting one again, which sets their password; and making or cancelling
-## a device code, or signing the human's other devices out. Such a device signs in with a password or
-## GitHub first, after signing out, for those; everything else it does as
-## any session does. `Dispatch` asks before answering any route, and
+## a device code, or signing the human's other devices out. Such a device
+## signs in with a password or GitHub first, after signing out, for those;
+## everything else it does as any session does. `Dispatch` asks before answering any route, and
 ## answers a refusal with a 403 saying `refusal_words`.
 import Route
 import SignedIn
