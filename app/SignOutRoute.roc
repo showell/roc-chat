@@ -3,7 +3,8 @@
 ## confirmed, the device's key revoked and then signed out.
 ##
 ## Signing out ends with the browser forgetting the session's cookie and
-## the one that shows a code, and a 303 to the sign-in page; a human's live
+## the one that shows a code, clearing the site's cache and storage
+## (`SignInRoute.sign_out`), and a 303 to the sign-in page; a human's live
 ## device code is cancelled first (a failure logged, as a code's five
 ## minutes are all it leaves).
 ##
@@ -88,3 +89,20 @@ not_signed_out_answer = HttpAnswer.page(
 		text: "This device's key could not be removed, so you are still signed in. Try again.",
 	}),
 )
+
+# ── tests
+## Whether `answer` has the browser clear the site's data.
+clears_site_data : Http.Response -> Bool
+clears_site_data = |answer| answer.headers.any(|header| header.name == "clear-site-data".to_utf8())
+
+# Signed out: the 303, both cookies forgotten, the cache and storage
+# cleared. Not signed out (the key not revoked): nothing cleared, the
+# browser still signed in.
+expect
+	signed_out.status == 303
+		and clears_site_data(signed_out)
+		and signed_out.headers.keep_if(|header| header.name == "set-cookie".to_utf8()).len() == 2
+expect
+	not_signed_out_answer.status == 500
+		and !clears_site_data(not_signed_out_answer)
+		and !clears_site_data(HttpAnswer.never_stored(not_signed_out_answer))

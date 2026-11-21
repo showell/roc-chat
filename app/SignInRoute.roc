@@ -16,8 +16,8 @@
 ##   the answer takes says nothing of which names exist. When the host has
 ##   run as many checks as it lets run for now, the answer is a 429, at once.
 ##   No answer may be kept by a browser or a proxy.
-## - `POST /logout` has the browser forget the cookie, and sends it to the
-##   sign-in page.
+## - `POST /logout` has the browser forget the cookie and clear the site's
+##   cache and storage, and sends it to the sign-in page.
 ## - A human invite's redemption (`HumanInvitesRoute`) starts a session the
 ##   same way, once it has set the invited human's password
 ##   (`start_session_by_invite!`, which takes only what
@@ -278,13 +278,17 @@ SignInRoute :: [].{
 		Ok(sign_session_cookie!({ human, origin, material, now }))
 	}
 
-	## A POST of `/logout`: the browser forgets the session's cookie, and goes
-	## to the sign-in page. Never stored.
+	## A POST of `/logout`: the browser forgets the session's cookie, clears
+	## what it keeps of the site (`clear_site_data_header`), and goes to the
+	## sign-in page. Never stored.
 	sign_out : Http.Response
 	sign_out = HttpAnswer.never_stored(
 		HttpAnswer.with_header(
-			HttpAnswer.see_other("/login"),
-			set_cookie_header(Session.clear_cookie_text),
+			HttpAnswer.with_header(
+				HttpAnswer.see_other("/login"),
+				set_cookie_header(Session.clear_cookie_text),
+			),
+			clear_site_data_header,
 		),
 	)
 
@@ -340,6 +344,15 @@ sign_session_cookie! = |{ human, origin, material, now }| {
 ## A `Set-Cookie` header of `text`.
 set_cookie_header : Str -> Http.Header
 set_cookie_header = |text| { name: "set-cookie".to_utf8(), value: text.to_utf8() }
+
+## The header that has a signed-out browser clear the site's cache (its
+## pages and the scripts') and its storage (localStorage and the rest,
+## which hold the theme and the sidebar's collapsed places), so the next
+## person on the device finds none of them. Not "cookies": that clears
+## every cookie of the registrable domain, lynrummy.com's other sites'
+## too, and the session's own is already cleared by its `Set-Cookie`.
+clear_site_data_header : Http.Header
+clear_site_data_header = { name: "clear-site-data".to_utf8(), value: "\"cache\", \"storage\"".to_utf8() }
 
 ## The sign-in's words when a name and a password don't match.
 no_match_words : Str
@@ -447,8 +460,9 @@ check_against_dummy_hash! = |password|
 	}
 
 # ── tests
-# The redirect to sign in carries where to go after; signing out forgets the
-# cookie and is never stored.
+# The redirect to sign in carries where to go after, and clears nothing;
+# signing out forgets the cookie, clears the site's cache and storage, and
+# is never stored.
 expect
 	SignInRoute.login_redirect(Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "SignInRoute's tests: a site path")
 		.headers
@@ -459,6 +473,7 @@ expect
 			== [
 				{ name: "location".to_utf8(), value: "/login".to_utf8() },
 				set_cookie_header(Session.clear_cookie_text),
+				{ name: "clear-site-data".to_utf8(), value: "\"cache\", \"storage\"".to_utf8() },
 				{ name: "cache-control".to_utf8(), value: "no-store".to_utf8() },
 			]
 # The page, both sides of its query: 200 with a good one, 400 with a bad one.
