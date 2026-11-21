@@ -161,6 +161,14 @@ Anything marked **open** we haven't settled yet.
 - **A live message arrives as the same HTML a full reload would show.**
 - **If a browser's connection drops, it catches up as the Zig chat's did:** the browser reconnects by itself and the server sends only the messages it missed.
   If the stream dies for good, the page reloads itself; if it dies again within a minute, the page shows a notice instead (Steve, 2026-11-03).
+- **Live updates are Server-Sent Events (Steve, 2026-11-21: "SSE because it's the right tool for the job").**
+  A stream is plain HTTP: a `GET` answered with `text/event-stream` and held open.
+  The browser's `EventSource` reconnects by itself and sends the id of the last event it saw (`Last-Event-ID`), so the server sends only what was missed (`ConversationStream`).
+  It fits a Roc that answers one request at a time: a post is an ordinary request, the host holds the stream outside the Roc call, and the bus feeds it the frames a later call publishes (docs/platform.md, "HTTP, with no routing").
+  The host stays small, with no second protocol and no connection to upgrade.
+  The traffic is mostly the server's to its readers, the one direction SSE carries.
+  It is clearly better than long polling, which costs a request for every update.
+  Steve was inspired to try SSE after watching Delaney Gillilan's Datastar videos; roc-chat takes the idea, the server rendering HTML and streaming it, without Datastar itself.
 - **An agent holds one connection carrying all of its channels.**
   If that's awkward to build, that's a design smell.
   When the connection drops, the agent catches up by asking for **everything since a timestamp** (message ids would also work).
