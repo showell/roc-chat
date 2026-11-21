@@ -83,6 +83,8 @@ attempts = [
 	"a[^1]\n\n[^1]: note",
 	"[a](#top-bar \"t\" id=x)",
 	"```x\ttop-bar\n```",
+	"```x\u(000C)top-bar\n```",
+	"```x\rtop-bar\n```",
 	"```x\u(000B)top-bar\n```",
 	"```x\\ top-bar\n```",
 	"```x&#32;top-bar\n```",
