@@ -1,0 +1,11 @@
+# `+` pressed on the selected message: Steve's 👍 under it, drawn again by
+# the stream, its chip's title naming him and what a click does (the
+# title is what a hover shows; the driver can't hover, so `wait` checks
+# it instead). A 👍 an earlier picture left is clicked away first, and
+# its redraw waited for, so each picture starts from none.
+path = /chat/dm/1_2/plans
+sizes = desktop,phone
+mutates = Steve's 👍 on the DM's newest message
+eval (function () { var mine = function () { return document.querySelector('.message.selected .reaction-chip.mine'); }; if (!mine()) return true; mine().click(); return new Promise(function (r) { var t = setInterval(function () { if (!mine()) { clearInterval(t); r(true); } }, 50); }); })()
+key +
+wait .message.selected .reaction-chip.mine[title="Steve — click to take your reaction back"]
