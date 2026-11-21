@@ -165,7 +165,7 @@ Anything marked **open** we haven't settled yet.
   A stream is plain HTTP: a `GET` answered with `text/event-stream` and held open.
   The browser's `EventSource` reconnects by itself and sends the id of the last event it saw (`Last-Event-ID`), so a conversation's stream sends only what was missed (`ConversationStream`).
   Recent's stream is live only (`RecentStream`): a Recent page that reconnects hears new messages, and is not sent the ones it missed.
-  It fits a Roc that answers one request at a time: a post is an ordinary request, the host holds the stream outside the Roc call, and the bus feeds it the frames a later call publishes (docs/platform.md, "HTTP, with no routing").
+  It fits a Roc that runs one call at a time: a post is an ordinary request, the host holds the stream outside the Roc call, and the bus feeds it the frames a later call publishes (docs/platform.md, "HTTP, with no routing").
   The host stays small, with no second protocol and no connection to upgrade.
   The traffic is mostly the server's to its readers, the one direction SSE carries.
   It is clearly better than long polling, which costs a request for every update.
