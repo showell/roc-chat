@@ -6,11 +6,12 @@
 ## The one way in is `dangerously_trust`, named so that every call stands
 ## out, and its callers are what a security reader audits. Each vouches
 ## only for markup it built or escaped itself, and each is small:
-## `Escape.text` (text, escaped), `Html.element` (an element's tags, from
-## closed sets and strict tokens), `Markdown.message_html` (roc-markdown's output,
-## whose images `SecureImageTag` rules), and `PageKit`'s one constant, the
-## doctype and the head's two `<meta>` elements. `join` builds only from markup already vouched for, so it
-## vouches for nothing new.
+## `Escape.text` (text, escaped), `Html.element` and `Html.input` (an
+## element's tags, from closed sets and strict tokens),
+## `Markdown.message_html` (roc-markdown's output, whose images
+## `SecureImageTag` rules), and `PageKit`'s one constant, the doctype and
+## the head's two `<meta>` elements. `join` builds only from markup already
+## vouched for, so it vouches for nothing new.
 ##
 ## The one way out is bytes for the host (`to_utf8`). There is no way back
 ## to a `Str`, so trusted markup can't be handed to `Escape.text` and

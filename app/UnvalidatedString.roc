@@ -1,6 +1,6 @@
-## Text that arrives from outside, such as a request's path or a form's
-## field, is an `UnvalidatedString` until a check says what it is. The type
-## is opaque. Its one way in is `from_utf8`. Most ways out run a check and
+## A request's path, a form's fields and some other text from outside are
+## an `UnvalidatedString` until a check says what they are. The type is
+## opaque. Its one way in is `from_utf8`. Most ways out run a check and
 ## give a checked type (a `Name`, a `Topic`, a `UserId` and so on) or the
 ## check's refusal, so no checked value is built from outside text that
 ## skipped its check. The one way back to a `Str` is `markdown`: a
