@@ -172,7 +172,9 @@
   panel.querySelectorAll('.invite-code').forEach(addCopyButton);
   if (panel.querySelector('.invite-made')) history.replaceState(null, '', '/invites');
 
-  // The panel takes the focus, so the keyboard scrolls it from the start.
+  // The panel takes the focus, so the keyboard scrolls it from the start,
+  // unless a script before it put the focus inside it (recent.js, on the
+  // newest tile); the arrow keys still scroll the panel from there.
   panel.tabIndex = -1;
-  panel.focus();
+  if (!panel.contains(document.activeElement)) panel.focus();
 })();

@@ -1,0 +1,7 @@
+# Recent opens with the keyboard on the newest tile, so Enter opens its
+# conversation (the `wait` stops the run on a page that stayed put).
+path = /chat/recent
+sizes = desktop
+wait .recent-list .recent-tile
+key Enter
+wait .compose

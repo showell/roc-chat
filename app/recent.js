@@ -166,6 +166,12 @@
   paintAges();
   setInterval(paintAges, 20000);
 
+  // The keyboard starts on the newest tile (Steve, 2026-11-22: "keyboard
+  // navigation may be as simple as auto-focusing the top element"): each tile
+  // is a link, so Tab and Shift-Tab walk them and Enter opens one.
+  var top = list.querySelector('.recent-tile');
+  if (top && document.activeElement === document.body) top.focus({ preventScroll: true });
+
   // A new tile replaces its conversation's, matched by its link, and goes
   // first: its message is the newest. A tile already first is replaced where
   // it stands. The tile under the pointer, if any, is kept where it was on
@@ -181,6 +187,10 @@
     var hovered = list.querySelector('.recent-tile:hover');
     var hoveredTop = hovered ? hovered.getBoundingClientRect().top : 0;
     var href = tile.getAttribute('href');
+    // The focused tile, when it's the one replaced, hands its focus to the new
+    // one, so the keyboard keeps its place.
+    var focused = document.activeElement;
+    var refocus = focused && focused.classList && focused.classList.contains('recent-tile') && focused.getAttribute('href') === href;
     var first = list.querySelector('.recent-tile');
     if (first && first.getAttribute('href') === href) {
       list.replaceChild(tile, first);
@@ -193,6 +203,7 @@
     if (hovered && hovered.isConnected && panel) {
       panel.scrollTop += hovered.getBoundingClientRect().top - hoveredTop;
     }
+    if (refocus) tile.focus({ preventScroll: true });
     tile.classList.add('recent-fresh');
     tile.addEventListener('animationend', function () { tile.classList.remove('recent-fresh'); }, { once: true });
     var empty = document.querySelector('.empty');
