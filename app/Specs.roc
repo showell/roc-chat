@@ -32,6 +32,7 @@ import GitHubTripSpec
 import HtmlSpec
 import HumanInvitesSpec
 import LastConversationSpec
+import MarkdownSpec
 import MessageLinkSpec
 import MessageNoticeSpec
 import NamesSpec
