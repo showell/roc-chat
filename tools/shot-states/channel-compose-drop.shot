@@ -1,0 +1,8 @@
+# A file dragged over the open rail's textarea: the dashed accent outline,
+# the close button still in the textarea's top-right corner.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+eval (function () { var dt = new DataTransfer(); dt.items.add(new File(['x'], 'a.png', {type: 'image/png'})); document.querySelector('.compose textarea').dispatchEvent(new DragEvent('dragenter', {dataTransfer: dt, bubbles: true})); })()
+wait .compose.compose-drop-over

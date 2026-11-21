@@ -129,9 +129,14 @@
     'html.layout-narrow .compose-collapse{display:flex;justify-content:flex-end}',
     '.compose-collapse button{background:none;border:none;color:var(--cc-muted-fg);font-size:18px;' +
       'cursor:pointer;padding:2px 8px;line-height:1}',
-    // The wide rail's close button, over the textarea's right end.
+    // The wide rail's close button, over the textarea's top-right corner,
+    // so the textarea's top lines up with the message pane's. The textarea
+    // keeps 32px on its right, the button's 26px and a gap, so typed text
+    // never runs under it.
     '.compose-hide{display:none}',
-    'html.layout-wide .compose-hide{display:flex;justify-content:flex-end;margin-bottom:2px}',
+    'html.layout-wide .compose-body{position:relative}',
+    'html.layout-wide .compose-hide{display:block;position:absolute;top:3px;right:3px;z-index:1}',
+    'html.layout-wide .compose textarea{padding-right:32px}',
     '.compose-hide button{background:none;border:none;color:var(--cc-muted-fg);font-size:14px;' +
       'cursor:pointer;padding:2px 6px;line-height:1;border-radius:4px}',
     '.compose-hide button:hover{color:var(--cc-fg);background:var(--cc-accent-soft-bg)}',

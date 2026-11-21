@@ -1,0 +1,7 @@
+# A long first line typed in the open rail: it wraps short of the close
+# button in the textarea's top-right corner, never under it.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+type MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM and WWWWWWWWWWWWWWWWWWWWWWWWWWWW then more words to wrap the line again.
