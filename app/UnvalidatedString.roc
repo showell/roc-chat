@@ -1,11 +1,15 @@
 ## Text that arrives from outside, such as a request's path or a form's
 ## field, is an `UnvalidatedString` until a check says what it is. The type
-## is opaque. Its one way in is `from_utf8`, and it has no way back to a
-## `Str`: each way out runs a check and gives a checked type (a `Name`, a
-## `Topic`, a `UserId` and so on) or the check's refusal. So no checked
-## value is built from outside text that skipped its check. A transcript
-## file's bytes have their own type, `Transcript.Utf8Transcript`, which only
-## `Transcript.decode` opens.
+## is opaque. Its one way in is `from_utf8`. Most ways out run a check and
+## give a checked type (a `Name`, a `Topic`, a `UserId` and so on) or the
+## check's refusal, so no checked value is built from outside text that
+## skipped its check. The one way back to a `Str` is `markdown`: a
+## message's text, checked only that it isn't blank, which
+## `Markdown.message_html` escapes as it renders it. `search_key` reads any
+## text as a search key, `is_exactly` compares the text with a fixed word,
+## and `url_path_parts` splits a path into parts as unchecked as the whole.
+## A transcript file's bytes have their own type,
+## `Transcript.Utf8Transcript`, which only `Transcript.decode` opens.
 ##
 ## This module is one of the program's five trust boundaries, and the way
 ## text comes in. The others are `TrustedHtml`, the way markup goes out to a

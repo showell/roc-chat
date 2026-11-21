@@ -8,8 +8,8 @@
 ## only for markup it built or escaped itself, and each is small:
 ## `Escape.text` (text, escaped), `Html.element` (an element's tags, from
 ## closed sets and strict tokens), `Markdown.message_html` (roc-markdown's output,
-## whose images `SecureImageTag` rules), and `PageKit`'s fixed doctype and
-## style sheet. `join` builds only from markup already vouched for, so it
+## whose images `SecureImageTag` rules), and `PageKit`'s one constant, the
+## doctype and the head's two `<meta>` elements. `join` builds only from markup already vouched for, so it
 ## vouches for nothing new.
 ##
 ## The one way out is bytes for the host (`to_utf8`). There is no way back
