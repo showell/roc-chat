@@ -244,6 +244,14 @@ window.Notices = (function () {
     'html.layout-narrow .top-bar { row-gap: 2px; }',
     'html.layout-narrow .top-bar::after { content: ""; order: 0; flex-basis: 100%; height: 0; }',
     'html.layout-narrow .top-links { order: 1; }',
+    // A finger's target for each section link (Steve, 2026-11-21: "it's very
+    // easy to fat-finger Recent in mobile"): 44 pixels tall, and wide enough
+    // that the space between two links is the " · " alone. The negative left
+    // margin keeps the words where they were; the negative bottom one lets
+    // the targets take the bar's own padding, no further, so the notice line
+    // under them isn't overlapped.
+    'html.layout-narrow .top-links { margin: 0 0 -6px -8px; }',
+    'html.layout-narrow .top-links a { display: inline-block; padding: 10px 8px; line-height: 24px; }',
     'html.layout-narrow .top-bar .notice-strip { order: 2; flex: 1 1 100%; margin: 4px -12px -8px; padding: 4px 12px;' +
       ' font-size: 13px; border-top: 1px solid var(--cc-top-bar-border); }',
     'html.layout-narrow .top-bar .notice-strip:empty { display: none; }',
