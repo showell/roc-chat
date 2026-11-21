@@ -27,7 +27,8 @@
 ## Each message is drawn with its notes (`MessageNotes`). An edited message
 ## says which message edited it, and keeps its markdown, as written, folded
 ## away under "original". A message with reactions ends with a strip of
-## them, an emoji a button, each naming its reactors' ids for the script.
+## them, an emoji a button, each naming its reactors' ids for the script,
+## and their names in its title, which a browser shows on hover.
 ##
 ## A message's markdown goes in through `Markdown.message_html`, and
 ## everything else through `Escape.text` and `Html.element`.
@@ -267,7 +268,7 @@ ConversationPage :: [].{
 					attributes: [PageContract.class(Body)],
 					inner: body,
 				}),
-				reaction_strip(notes.chips()),
+				reaction_strip(notes.chips(), users),
 			]),
 		})
 		TrustedHtml.join([article, PageKit.newline])
@@ -314,9 +315,12 @@ edited_body = |{ edit_reference, markdown }|
 	])
 
 ## A message's reactions, an emoji a button, each naming its reactors'
-## ids, joined by `-`, and how many they are; nothing when there are none.
-reaction_strip : List(Reactions.Chip) -> TrustedHtml
-reaction_strip = |chips|
+## ids, joined by `-`, their names among `users` in its title, in the
+## order they reacted, and how many they are; nothing when there are none.
+## A reactor `users` doesn't hold is left out of the title, as an author
+## it doesn't hold has no id named.
+reaction_strip : List(Reactions.Chip), Users -> TrustedHtml
+reaction_strip = |chips, users|
 	if chips.is_empty() {
 		TrustedHtml.join([])
 	} else {
@@ -331,6 +335,7 @@ reaction_strip = |chips|
 							attributes: [
 								PageContract.class(ReactionChip),
 								PageContract.data_attribute(Reactors(reactors_token(chip))),
+								NamesTitle(chip.reactors.keep_oks(|id| users.user(id)).map(Users.User.name)),
 							],
 							inner: TrustedHtml.join([
 								Html.element({

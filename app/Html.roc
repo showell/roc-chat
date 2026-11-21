@@ -10,9 +10,9 @@
 ##   `Token.from_str`), perhaps after a `#`, a `SitePath` (`/` and parts of
 ##   letters, digits, `-`, `_` and `.`, checked by `SitePath.from_str`), a
 ##   `DateTime` (its one form, digits and `-:TZ`) or a `Name` (letters and
-##   single spaces, checked by `Name.from_str`), so no value holds a quote,
-##   `&` or `<`, and only a name holds a space; a flag (`MethodPost`,
-##   `Required`) holds no value.
+##   single spaces, checked by `Name.from_str`), or names joined by `, `
+##   (a `title`), so no value holds a quote, `&` or `<`, and only names hold
+##   a space or a comma; a flag (`MethodPost`, `Required`) holds no value.
 ##
 ## An `<input>` has no end tag and holds nothing (`input`). Its value is a
 ## site path (a form's hidden `next`), a token (a suggested topic) or a name.
@@ -148,7 +148,8 @@ Html :: [].{
 	## (always POST) and where it posts; whether a field is required, and
 	## its most characters, a number; an
 	## input's type, its value (a site path) and what a browser may fill it
-	## with; a script's source; and a `data-` attribute for a page's
+	## with; a script's source; a title of one or more names, which a browser
+	## shows on hover; and a `data-` attribute for a page's
 	## scripts: its name after `data-`, a token, then its value, a token (or
 	## one after a `#`), a site path or a name.
 	Attribute : [
@@ -173,6 +174,7 @@ Html :: [].{
 		Autofocus,
 		CodeTyping,
 		Src(Html.SitePath),
+		NamesTitle(List(Name)),
 		Data(
 			Html.Token,
 			[
@@ -284,6 +286,7 @@ attribute = |given|
 		Autofocus => " autofocus"
 		CodeTyping => " inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\""
 		Src(path) => " src=\"${path.to_str()}\""
+		NamesTitle(names) => " title=\"${Str.join_with(names.map(Name.to_str), ", ")}\""
 		Data(name, Token(token)) => " data-${name.to_str()}=\"${token.to_str()}\""
 		Data(name, HashToken(token)) => " data-${name.to_str()}=\"#${token.to_str()}\""
 		Data(name, Path(path)) => " data-${name.to_str()}=\"${path.to_str()}\""
@@ -342,6 +345,10 @@ expect
 		|path| attribute(Data(token("stream"), Path(path))),
 	)
 		== Ok(" data-stream=\"/chat/dm/1_1/plans/stream\"")
+# A title of names: each as given, in the order given, joined by `, `.
+expect
+	["Steve", "Ann Lee"].map_try(Name.from_str).map_ok(|names| attribute(NamesTitle(names)))
+		== Ok(" title=\"Steve, Ann Lee\"")
 expect
 	DateTime.from_str("2026-11-02T19:11:32Z").map_ok(|time| attribute(DateTime(time)))
 		== Ok(" datetime=\"2026-11-02T19:11:32Z\"")

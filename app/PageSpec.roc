@@ -424,8 +424,8 @@ expect
 
 # An edited message names its edit, linked, and keeps its markdown, as
 # written and escaped, folded away; a message with reactions ends with an
-# emoji a button, each naming its reactors' ids and their count; a message
-# with neither is drawn as before.
+# emoji a button, each naming its reactors' ids, their names and their
+# count; a message with neither is drawn as before.
 expect {
 	conversation = Sample.conversation(
 		Sample.plans,
@@ -484,10 +484,42 @@ expect {
 	drawn
 		== [
 			"<article class=\"message\" id=\"msg-1\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:11:32Z\">2026-11-02T19:11:32Z</time> <a class=\"message-reference\" href=\"#msg-1\">MSG_plans_1</a></header>\n<div class=\"body\"><p class=\"edited-note\">Edited in <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></p><details class=\"edited-original\"><summary>original</summary><div class=\"edited-markdown\">Helo &lt;b&gt;</div></details></div></article>\n",
-			"<article class=\"message\" id=\"msg-2\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:12:00Z\">2026-11-02T19:12:00Z</time> <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Edit of <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a></p>\n<p>Hello</p>\n</div><div class=\"reaction-strip\"><button class=\"reaction-chip\" data-reactors=\"1-3\"><span class=\"reaction-emoji\">👍</span> 2</button><button class=\"reaction-chip\" data-reactors=\"3\"><span class=\"reaction-emoji\">🎉</span> 1</button></div></article>\n",
+			"<article class=\"message\" id=\"msg-2\" data-author=\"1\"><header><span class=\"author\">Steve</span> <time datetime=\"2026-11-02T19:12:00Z\">2026-11-02T19:12:00Z</time> <a class=\"message-reference\" href=\"#msg-2\">MSG_plans_2</a></header>\n<div class=\"body\"><p>Edit of <a href=\"#msg-plans_1\" class=\"msg-ref\">MSG_plans_1</a></p>\n<p>Hello</p>\n</div><div class=\"reaction-strip\"><button class=\"reaction-chip\" data-reactors=\"1-3\" title=\"Steve, CC\"><span class=\"reaction-emoji\">👍</span> 2</button><button class=\"reaction-chip\" data-reactors=\"3\" title=\"CC\"><span class=\"reaction-emoji\">🎉</span> 1</button></div></article>\n",
 		]
 		and plain.contains("<div class=\"body\"><p>Helo &lt;b&gt;</p>\n</div></article>")
 }
+
+# A chip's title names its reactors in the order they reacted, not by id,
+# the viewer by name as everyone else (the stream sends one drawing to
+# every reader); a reactor no user holds is left out of the title, though
+# counted. A name holds no quote, `&`, `<` or `>` (`Name.from_str` refuses
+# each), so a title needs no escaping and none can break out of it.
+expect {
+	conversation = Sample.conversation(Sample.plans, [Sample.hello])
+	reaction = |user| {
+		message: Message.Id.first,
+		user: UserId.from_str(user) ?? crash "PageSpec: a user's id",
+		emoji: Reactions.Emoji.from_str("👍") ?? crash "PageSpec: an emoji",
+	}
+	reactions = ["3", "9", "1", "2"].fold(
+		Reactions.empty,
+		|so_far, user| so_far.set({ reaction: reaction(user), wanted: On }) ?? crash "PageSpec: a reaction fits",
+	)
+	drawn = Str.from_utf8_lossy(
+		ConversationPage.message({
+			conversation,
+			key: plans_key,
+			users: Sample.directory.users(),
+			message: conversation.messages().first() ?? crash "PageSpec: a message",
+			notes: MessageNotes.notes_of_messages({ conversation, reactions }).first() ?? crash "PageSpec: notes",
+		}).to_utf8(),
+	)
+	drawn.contains("<button class=\"reaction-chip\" data-reactors=\"3-9-1-2\" title=\"CC, Steve, Apoorva\"><span class=\"reaction-emoji\">👍</span> 4</button>")
+}
+expect
+	["Bo \"Al\"", "Bo <b>", "Bo > Al", "Bo & Al", "Bo's"].all(
+		|text| Name.from_str(text) == Err(ForbiddenCharacter),
+	)
 
 # A quote-reply's reference is linked by its label, exactly the quoted
 # message's header reference, which app/actions.js follows: roc-markdown's

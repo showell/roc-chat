@@ -9,8 +9,10 @@
 // The server draws everything a message shows, its reactions and its edit
 // included, so this script only styles what it finds and sends what the
 // reader asks for. A reaction's button names its reactors' ids
-// (data-reactors); the viewer's own are highlighted, and a click takes the
-// viewer's reaction back, or adds it. The `+` key toggles 👍 on the
+// (data-reactors) and, in its title, their names; the viewer's own are
+// highlighted, the title gains what a click does, as chat-client's did
+// ("Steve, CC — click to react too"), and a click takes the viewer's
+// reaction back, or adds it. The `+` key toggles 👍 on the
 // selected message, as chat-client's did, with no picker. The "react"
 // button, or the `:` key on the selected message, opens a picker of
 // emoji.js's emojis (Emoji.glyphs). The picker works by keys too: its first
@@ -295,7 +297,8 @@
       var mine = reactorsOf(chips[i]).indexOf(viewer) >= 0;
       chips[i].type = 'button';
       chips[i].classList.toggle('mine', mine);
-      chips[i].title = mine ? 'Click to take your reaction back' : 'Click to react too';
+      var names = chips[i].title.split(' — ')[0];
+      chips[i].title = names + ' — ' + (mine ? 'click to take your reaction back' : 'click to react too');
     }
     var header = article.querySelector('header');
     if (!header || header.querySelector('.actions')) return;
