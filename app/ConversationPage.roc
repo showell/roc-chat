@@ -42,6 +42,7 @@ import Markdown
 import Message
 import MessageAnchor
 import MessageNotes
+import Name
 import PageContract
 import PageKit
 import Reactions
@@ -335,7 +336,7 @@ reaction_strip = |chips, users|
 							attributes: [
 								PageContract.class(ReactionChip),
 								PageContract.data_attribute(Reactors(reactors_token(chip))),
-								NamesTitle(chip.reactors.keep_oks(|id| users.user(id)).map(Users.User.name)),
+								NamesTitle(reactor_names(chip, users)),
 							],
 							inner: TrustedHtml.join([
 								Html.element({
@@ -351,6 +352,10 @@ reaction_strip = |chips, users|
 			),
 		})
 	}
+
+## A chip's reactors' names, among `users`, in the order they reacted.
+reactor_names : Reactions.Chip, Users -> List(Name)
+reactor_names = |chip, users| chip.reactors.keep_oks(|id| users.user(id)).map(Users.User.name)
 
 ## A chip's reactors' ids, joined by `-`, as a token.
 reactors_token : Reactions.Chip -> Html.Token

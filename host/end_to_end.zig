@@ -985,7 +985,7 @@ fn editAndReactSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: S
     try t.check("react: 200; the reaction its file's one line; the message sent again with its reaction, as the page now draws it", reacted.status == 200 and
         std.mem.eql(u8, try data.readFileAlloc(io, reactions, a, .limited(1024)), "{\"msg\":2,\"uid\":1,\"emoji\":\"👍\"}\n") and
         std.mem.startsWith(u8, reacted_event, "event: replace\ndata: <article class=\"message\" id=\"msg-2\"") and
-        has(reacted_event, "<button class=\"reaction-chip\" data-reactors=\"1\"><span class=\"reaction-emoji\">👍</span> 1</button>") and
+        has(reacted_event, "<button class=\"reaction-chip\" data-reactors=\"1\" title=\"Steve\"><span class=\"reaction-emoji\">👍</span> 1</button>") and
         std.mem.eql(u8, reacted_event["event: replace\n".len..], (try frameOf(a, reacted_page.body, "2"))["id: 2\n".len..]));
 
     // 35f.
