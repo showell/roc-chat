@@ -1,0 +1,11 @@
+# app/join.js, run on a stand-in join form: it moves the invite's code
+# from the address into the form's hidden field, and leaves no `#` in the
+# address or this page's history entry. Steve is signed in, so the server
+# refuses the name it asks for, which this state doesn't look at; a fresh
+# Browse is the picture.
+path = /chat
+sizes = desktop
+eval (function () { var f = document.createElement('form'); f.id = 'shot-join'; f.setAttribute('action', '/join'); f.innerHTML = '<input type="hidden" name="code"><input name="name">'; document.body.appendChild(f); history.replaceState(null, '', location.pathname + '#shot-code'); })()
+eval new Promise(function (done, failed) { var s = document.createElement('script'); s.src = '/chat/assets/join.js'; s.onload = function () { done(true); }; s.onerror = function () { failed(new Error('join.js did not load')); }; document.body.appendChild(s); })
+eval if (location.hash !== '' || document.getElementById('shot-join').elements.code.value !== 'shot-code') throw new Error('join.js left the invite code in the address (' + location.href + '), or the form lost it (' + document.getElementById('shot-join').elements.code.value + ')')
+goto /chat

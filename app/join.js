@@ -1,8 +1,10 @@
 // This script runs on the join page, /join. The invite's code is after the
 // link's `#`, which no browser sends, so it reaches no server's log. The
-// script puts the code in the form's hidden `code` field, asks the server
-// for the name the invite holds (POST /join/name), and fills it in for the
-// invitee to keep or change. The form then posts itself to /join.
+// script puts the code in the form's hidden `code` field and takes it out of
+// the address, replacing this page's history entry, so neither the
+// browser's history nor a reload keeps it. It asks the server for the name
+// the invite holds (POST /join/name), and fills it in for the invitee to
+// keep or change. The form then posts itself to /join.
 (function () {
   "use strict";
   const form = document.querySelector("form[action='/join']");
@@ -18,6 +20,7 @@
     return;
   }
   form.elements.code.value = code;
+  history.replaceState(null, "", location.pathname + location.search);
   fetch("/join/name", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
