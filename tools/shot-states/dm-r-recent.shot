@@ -1,0 +1,6 @@
+# `r` on a conversation: Recent, its tiles (the `wait` stops the run on a
+# page that stayed put).
+path = /chat/dm/1_2/plans
+sizes = desktop
+key r
+wait .recent-list .recent-tile

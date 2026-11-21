@@ -348,6 +348,11 @@
     return { register: register };
   })();
   Keys.register({ key: 'c', label: 'compose a message', run: openCompose });
+  // `r` follows the top bar's Recent link (Steve, 2026-11-22), so the path
+  // has one home, the link the server writes.
+  var recentLink = document.querySelector('.top-links a[href="/chat/recent"]');
+  if (!recentLink) throw new Error('compose.js: the top bar has no Recent link');
+  Keys.register({ key: 'r', label: 'recent: go to Recent', run: function () { location.href = recentLink.href; } });
 
   Viewport.onChange(refreshOpenButton);
   if (isNarrow()) compose.classList.add('open');

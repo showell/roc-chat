@@ -1,0 +1,8 @@
+# `c`, then `r` typed in the box: an "r" in the box, the page kept, as any
+# key's letter is typed in a field.
+path = /chat/dm/1_2/plans
+sizes = desktop
+key c
+wait .compose.open
+key r
+wait .compose.open textarea:not(:placeholder-shown)
