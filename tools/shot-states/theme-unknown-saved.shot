@@ -1,0 +1,14 @@
+# A theme saved as neither `light` nor `dark` (markup, in `chat-theme`):
+# palette.js takes the default, dark, and the toggle still makes the page
+# light and saves that. The run's own theme is put back before the
+# picture, so it shows the DM in that theme.
+path = /chat/dm/1_2/plans
+sizes = desktop
+eval sessionStorage.setItem('shot-theme', Palette.current())
+eval localStorage.setItem('chat-theme', 'x" onload="alert(1)')
+goto /chat/dm/1_2/plans
+eval if (document.documentElement.getAttribute('data-theme') !== 'dark') throw new Error('palette.js took a saved theme that is neither light nor dark: ' + document.documentElement.getAttribute('data-theme'))
+click .top-user button
+eval if (document.documentElement.getAttribute('data-theme') !== 'light' || localStorage.getItem('chat-theme') !== 'light') throw new Error('the toggle did not make the page light and save it')
+eval if (sessionStorage.getItem('shot-theme') === 'light') localStorage.setItem('chat-theme', 'light'); else localStorage.removeItem('chat-theme')
+goto /chat/dm/1_2/plans

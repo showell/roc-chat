@@ -11,8 +11,10 @@
 //
 // The colours are chat-client's (js/colors.js), but for a code block's
 // (syn...), which are GitHub's: one palette of CSS custom
-// properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is the one saved in
-// localStorage under 'chat-theme', and dark when none is saved. Every other
+// properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is light when
+// localStorage's 'chat-theme' holds exactly 'light', and dark otherwise:
+// none saved, 'dark', or any other value, which is never written into the
+// page. Every other
 // script styles its widgets with var(--cc-...). Palette.toggle() flips the
 // theme and saves the choice; chrome.js wires it to the top bar's button.
 // noticeFg is Gopher Chat's violet, the tab's when news comes (#8a2be2,
@@ -96,7 +98,7 @@ window.Palette = (function () {
 
   var saved = null;
   try { saved = localStorage.getItem(STORAGE); } catch (e) { saved = null; } // Private browsing: no saved theme.
-  document.documentElement.setAttribute('data-theme', saved || 'dark');
+  document.documentElement.setAttribute('data-theme', saved === 'light' ? 'light' : 'dark');
   var s = document.createElement('style');
   s.textContent = block(':root', LIGHT) + '\n' + block('html[data-theme="dark"]', DARK) + '\n'
     + 'body { background: var(--cc-bg); color: var(--cc-fg); }\n'
