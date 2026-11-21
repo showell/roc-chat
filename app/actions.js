@@ -12,7 +12,8 @@
 // (data-reactors) and, in its title, their names; the viewer's own are
 // highlighted, the title gains what a click does, as chat-client's did
 // ("Steve, CC — click to react too"), and a click takes the viewer's
-// reaction back, or adds it. The `+` key toggles 👍 on the
+// reaction back, or adds it; a touch held on one shows the names, for a
+// phone has no hover (the long press, below). The `+` key toggles 👍 on the
 // selected message, as chat-client's did, with no picker. The "react"
 // button, or the `:` key on the selected message, opens a picker of
 // emoji.js's emojis (Emoji.glyphs). The picker works by keys too: its first
@@ -124,6 +125,10 @@
     'html.layout-narrow .reaction-chip { font-size: 14px; padding: 5px 10px; border-radius: 14px; }',
     'html.layout-narrow .reaction-picker { max-width: none; gap: 4px; }',
     'html.layout-narrow .reaction-picker button { font-size: 24px; padding: 6px 8px; }',
+    '@media (hover: none) { .reaction-chip { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }',
+    '.reactors-popover { position: fixed; z-index: 12; max-width: 260px; padding: 6px 10px; border-radius: 8px; font-size: 14px;' +
+      ' line-height: 1.3; color: var(--cc-fg); background: var(--cc-card-bg); border: 1px solid var(--cc-border);' +
+      ' box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); pointer-events: none; }',
     '.action-failed { position: fixed; z-index: 11; bottom: 16px; left: 50%; transform: translateX(-50%);' +
       ' padding: .5rem .75rem; border-radius: 6px; background: var(--cc-lost-bg); color: var(--cc-lost-fg); }',
   ].join('\n');
@@ -133,6 +138,10 @@
   function numberOf(article) { return article.id.replace(/^msg-/, ''); }
   function isMine(article) { return article.getAttribute('data-author') === viewer; }
   function reactorsOf(chip) { return (chip.getAttribute('data-reactors') || '').split('-'); }
+  // The reactors' names, as the server's title gives them, without the
+  // click hint dress adds after HINT_SEPARATOR.
+  var HINT_SEPARATOR = ' — ';
+  function namesOf(chip) { return chip.title.split(HINT_SEPARATOR)[0]; }
   function emojiOf(chip) {
     var glyph = chip.querySelector('.reaction-emoji');
     return glyph ? glyph.textContent : '';
@@ -292,13 +301,13 @@
   // and the viewer's own reactions marked.
   function dress(article) {
     Citation.mark(article);
+    if (popoverChip && !document.contains(popoverChip)) closePopover(); // the stream redrew its chip
     var chips = article.querySelectorAll('.reaction-chip');
     for (var i = 0; i < chips.length; i++) {
       var mine = reactorsOf(chips[i]).indexOf(viewer) >= 0;
       chips[i].type = 'button';
       chips[i].classList.toggle('mine', mine);
-      var names = chips[i].title.split(' — ')[0];
-      chips[i].title = names + ' — ' + (mine ? 'click to take your reaction back' : 'click to react too');
+      chips[i].title = namesOf(chips[i]) + HINT_SEPARATOR + (mine ? 'click to take your reaction back' : 'click to react too');
     }
     var header = article.querySelector('header');
     if (!header || header.querySelector('.actions')) return;
@@ -395,6 +404,84 @@
     return named && messages.contains(named) ? named : null;
   }
 
+  // A phone has no hover, so a long press on a reaction shows who reacted
+  // (owner, 2026-11-22): a touch held PRESS_MS on a chip, the finger moving
+  // at most SLOP_PX, opens a popover over the chip with the names its title
+  // gives (namesOf), and that touch's click, which would toggle the
+  // reaction, is cancelled. A shorter touch is a tap, and toggles as a
+  // click does; a touch that moves is a scroll, and does neither. The
+  // popover closes at the next touch or mouse press anywhere, on any
+  // scroll, after POPOVER_MS, or when the stream redraws its chip; one
+  // shows at a time. A chip's own long-press behaviours, the callout and
+  // text selection, are off where nothing hovers, and its context menu
+  // while it is pressed. A mouse sends no touch events, so a desktop keeps
+  // its hover title and its click.
+  var PRESS_MS = 500;
+  var SLOP_PX = 10;
+  var POPOVER_MS = 4000;
+  var press = null; // {x, y, timer}: a touch on a chip, not yet a long press
+  var pressedChip = null; // the chip a long press opened over, until its click is cancelled
+  var popover = null;
+  var popoverChip = null;
+  var popoverTimer = null;
+
+  function closePopover() {
+    if (popoverTimer) clearTimeout(popoverTimer);
+    if (popover) popover.remove();
+    popover = popoverChip = popoverTimer = null;
+  }
+  function openPopover(chip) {
+    closePopover();
+    popover = document.createElement('div');
+    popover.className = 'reactors-popover';
+    popover.setAttribute('role', 'tooltip');
+    popover.textContent = namesOf(chip);
+    document.body.appendChild(popover);
+    popoverChip = chip;
+    var at = chip.getBoundingClientRect();
+    var size = popover.getBoundingClientRect();
+    var top = at.top - size.height - 6;
+    if (top < 8) top = at.bottom + 6;
+    popover.style.left = Math.max(8, Math.min(at.left, window.innerWidth - size.width - 8)) + 'px';
+    popover.style.top = top + 'px';
+    popoverTimer = setTimeout(closePopover, POPOVER_MS);
+  }
+  function cancelPress() {
+    if (press) clearTimeout(press.timer);
+    press = null;
+  }
+  document.addEventListener('touchstart', function (e) {
+    closePopover();
+    cancelPress();
+    pressedChip = null;
+    var chip = e.touches.length === 1 && e.target.closest && e.target.closest('.reaction-chip');
+    if (!chip || !messages.contains(chip)) return;
+    var t = e.touches[0];
+    press = { x: t.clientX, y: t.clientY, timer: setTimeout(function () {
+      press = null;
+      // A chip the stream redrew under the finger gets the touch's end, which
+      // never reaches the document, so a tap on it may look held: no popover.
+      if (!document.contains(chip)) return;
+      pressedChip = chip;
+      openPopover(chip);
+    }, PRESS_MS) };
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (!press) return;
+    var t = e.touches[0];
+    if (Math.abs(t.clientX - press.x) > SLOP_PX || Math.abs(t.clientY - press.y) > SLOP_PX) cancelPress();
+  }, { passive: true });
+  document.addEventListener('touchcancel', cancelPress);
+  document.addEventListener('touchend', function (e) {
+    cancelPress();
+    if (pressedChip) e.preventDefault(); // no click, so no toggle
+  });
+  document.addEventListener('scroll', function () { cancelPress(); closePopover(); }, true);
+  document.addEventListener('mousedown', closePopover);
+  messages.addEventListener('contextmenu', function (e) {
+    if ((press || pressedChip) && e.target.closest && e.target.closest('.reaction-chip')) e.preventDefault();
+  });
+
   messages.addEventListener('click', function (e) {
     var article = e.target.closest && e.target.closest('.message');
     if (!article) return;
@@ -412,7 +499,12 @@
       return;
     }
     var chip = e.target.closest('.reaction-chip');
-    if (chip) { toggle(article, emojiOf(chip)); return; }
+    if (chip) {
+      // A long press's click, should touchend's cancel not have stopped it.
+      if (chip === pressedChip) { pressedChip = null; return; }
+      toggle(article, emojiOf(chip));
+      return;
+    }
     if (e.target.closest('.actions-more')) { showActions(article, !article.classList.contains('actions-open')); return; }
     if (e.target.closest('.actions button')) showActions(article, false);
     if (e.target.closest('.react-open')) { openPicker(article); return; }

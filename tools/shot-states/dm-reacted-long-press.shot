@@ -1,0 +1,15 @@
+# A phone's long press on the 👍 dm-reacted left: a popover over the chip
+# naming who reacted (the chip's title without its click hint), and the
+# reaction not toggled. The driver has no touch, so the page is sent
+# touch events by script, a second after it loads (the stream may draw
+# the message again as it starts), the chip found afresh at each touch:
+# first a 150 ms tap, which must open nothing (a synthetic touch makes no
+# click, so the tap's toggle isn't tried here); then a touch that moves
+# 40 px, a scroll, held past the press time, which must open nothing;
+# then a touch held 700 ms and lifted, and the click a browser might
+# still send after it, which must not take the reaction back.
+path = /chat/dm/1_2/plans
+sizes = phone
+after = dm-reacted
+eval (function () { function chip() { var c = document.querySelector('.message.selected .reaction-chip.mine'); if (!c) throw new Error('no reaction of Steve\'s to press'); return c; } function send(type, dy) { var c = chip(); var r = c.getBoundingClientRect(); var t = new Touch({ identifier: 1, target: c, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 + dy }); var held = type === 'touchend' ? [] : [t]; c.dispatchEvent(new TouchEvent(type, { touches: held, targetTouches: held, changedTouches: [t], bubbles: true, cancelable: true })); } function later(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); } function none(what) { if (document.querySelector('.reactors-popover')) throw new Error(what + ' opened the popover'); } return later(1000).then(function () { send('touchstart', 0); return later(150); }).then(function () { send('touchend', 0); return later(500); }).then(function () { none('a tap'); send('touchstart', 0); send('touchmove', 40); return later(700); }).then(function () { send('touchend', 40); none('a scroll'); send('touchstart', 0); return later(700); }).then(function () { send('touchend', 0); chip().click(); return later(500); }).then(function () { chip(); var shown = document.querySelector('.reactors-popover'); if (!shown || shown.textContent !== 'Steve') throw new Error('the popover says ' + (shown ? shown.textContent : 'nothing')); return true; }); })()
+wait .reactors-popover

@@ -384,6 +384,7 @@ apoorvavpendse@gmail.com would be better
   There the sidebar is a drawer, opened by the ☰ the server's toggle button becomes at the start of the top bar, and closed by the ☰, a tap outside it, Escape, or choosing a topic.
   The compose box is a bar under the messages, open at first, its ▾ closing it to an "Open compose box" button; a phone sends with the Send button, as chat-client's did, since Ctrl/⌘-Enter needs a keyboard, and the keyboard help is left out.
   Reactions, the message's buttons and the emoji picker are finger-sized, and a field's text is 16 pixels, so a phone doesn't zoom in on it.
+  A long press on a reaction shows who reacted, in a popover over it, since a phone has no hover for the chip's title (owner, 2026-11-22).
   The top bar's section links are 44 pixels tall and padded apart (Steve, 2026-11-21: "it's very easy to fat-finger Recent in mobile"), on their own row, in their order.
 - **`r` goes to Recent; quote-reply is `q` and `>` (owner, 2026-11-22),** where chat-client's `r` replied as `q` did.
 - **Resume where you left off (Steve, 2026-11-19).**
