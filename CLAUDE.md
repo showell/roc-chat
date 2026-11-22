@@ -28,7 +28,7 @@ Several agents often work on roc-chat at once, each in its own git worktree on i
 
 - **Run targeted checks, not the full gate.** The orchestrator runs `tools/verify.shale` once per merge; two of them at once on a small machine more than double each one's time. Pick the checks your change reaches:
   - `roc fmt --check app platform`, then `roc check` and `roc test` on `app/main.roc` and `app/Specs.roc`;
-  - `zig fmt --check host build.zig`, then `zig build test --summary all` or `zig build end-to-end` when host code or a route's behaviour changed;
+  - `zig fmt --check host build.zig`, then `zig build test --summary all` or `zig build end-to-end` when host code or a route's behaviour changed, and `zig build cost-check` when a route's file calls may have (a new route declares its cost class in `app/RouteCost.roc`);
   - `shale cookbook:check_syntax.shale files=<the files you touched>` for JS and Shale;
   - `shale tools/check_script_calls.shale` whenever a script's exports, globals or load order change (each page's order lives in `app/Script.roc`);
   - the style hunts verify runs (`check_stacking`, `hunt_names` and the rest, listed in its step 3) over the Roc files you touched;

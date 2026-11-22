@@ -21,6 +21,8 @@ const std = @import("std");
 const Io = std.Io;
 const http = @import("http.zig");
 const files = @import("file_primitives.zig");
+const fake_github = @import("fake_github.zig");
+const github = @import("github_client.zig");
 
 const probes_text = @embedFile("route_cost_probes");
 
@@ -54,7 +56,10 @@ const Counts = struct {
 
 const Probe = struct {
     class: []const u8,
-    who: enum { anyone, human },
+    /// `anyone`, no credential; `human`, Tam's session; `admin`, Steve's;
+    /// `github`, a browser back from GitHub's page, a sign-in begun at
+    /// `/login/github/start` for each request, the path its way back.
+    who: enum { anyone, human, admin, github },
     method: []const u8,
     path: []const u8,
     /// A form's body, for a POST: none, or the line's fifth word.
@@ -133,6 +138,9 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
     const data = try cwd.openDir(io, data_name, .{});
     defer data.close(io);
     try seed(a, io, data, size);
+    const fake = try fake_github.Fake.start(io, gpa);
+    defer fake.stop();
+    try writeGitHubSettings(io, data, fake);
 
     var calls: files.FileCalls = .{};
     var refused: std.atomic.Value(bool) = .init(false);
@@ -145,21 +153,12 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
     }
     const port = server.port();
     const cookie = try sessionCookie(a, io, data, .{ .id = "2", .hash = size.hash });
+    const steve = try sessionCookie(a, io, data, .{ .id = "1", .hash = size.hash });
 
     const counts = try a.alloc(Counts, size.probes.len);
     for (size.probes, counts) |probe, *c| {
-        const request = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{
-            probe.method,
-            probe.path,
-            port,
-            switch (probe.who) {
-                .anyone => "",
-                .human => cookie,
-            },
-            probe.form.len,
-            probe.form,
-        });
-        _ = try exchange(a, io, port, request);
+        _ = try exchange(a, io, port, try probeRequest(a, io, .{ .probe = probe, .port = port, .tam = cookie, .steve = steve, .fake = fake }));
+        const request = try probeRequest(a, io, .{ .probe = probe, .port = port, .tam = cookie, .steve = steve, .fake = fake });
         calls.clear();
         const status = (try exchange(a, io, port, request)).status;
         c.* = .{
@@ -175,10 +174,54 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
     }
     if (size.humans == small) try freshnessSteps(a, io, port, data, .{
         .tam = cookie,
-        .steve = try sessionCookie(a, io, data, .{ .id = "1", .hash = size.hash }),
+        .steve = steve,
         .refused = &refused,
     });
     return counts;
+}
+
+/// The request `asked.probe` makes, by its asker; for `github`, the way
+/// back from a sign-in begun now, GitHub's code `user-id-7`, an account no
+/// human has linked.
+fn probeRequest(a: std.mem.Allocator, io: Io, asked: struct { probe: Probe, port: u16, tam: []const u8, steve: []const u8, fake: *fake_github.Fake }) ![]const u8 {
+    const probe = asked.probe;
+    const port = asked.port;
+    if (probe.who == .github) {
+        const started = try exchange(a, io, port, try std.fmt.allocPrint(a, "GET /login/github/start?next=/chat HTTP/1.1\r\nhost: localhost:{d}\r\n\r\n", .{port}));
+        const location = started.header("location") orelse return error.NoLocation;
+        if (!std.mem.startsWith(u8, location, asked.fake.base())) return error.NotTheFake;
+        const agreed = try exchange(a, io, asked.fake.port, try std.fmt.allocPrint(a, "GET {s}&as=user-id-7 HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n", .{location[asked.fake.base().len..]}));
+        const back = agreed.header("location") orelse return error.NoLocation;
+        const here = try std.fmt.allocPrint(a, "http://localhost:{d}", .{port});
+        if (!std.mem.startsWith(u8, back, here) or !std.mem.startsWith(u8, back[here.len..], probe.path)) return error.NotTheWayBack;
+        const set = started.header("set-cookie") orelse return error.NoCookie;
+        const cookie_end = std.mem.indexOfScalar(u8, set, ';') orelse set.len;
+        return std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\ncookie: {s}\r\nsec-fetch-site: cross-site\r\nsec-fetch-mode: navigate\r\n\r\n", .{ back[here.len..], port, set[0..cookie_end] });
+    }
+    return std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{
+        probe.method,
+        probe.path,
+        port,
+        switch (probe.who) {
+            .anyone, .github => "",
+            .human => asked.tam,
+            .admin => asked.steve,
+        },
+        probe.form.len,
+        probe.form,
+    });
+}
+
+/// The `.github-` files that point the server at `fake`, readable by their
+/// owner alone, as the server asks.
+fn writeGitHubSettings(io: Io, data: Io.Dir, fake: *fake_github.Fake) !void {
+    const settings = [_][2][]const u8{
+        .{ github.client_id_name, fake_github.client_id ++ "\n" },
+        .{ github.client_secret_name, fake_github.client_secret ++ "\n" },
+        .{ github.oauth_base_name, fake.base() },
+        .{ github.api_base_name, fake.base() },
+    };
+    for (settings) |s| try data.writeFile(io, .{ .sub_path = s[0], .data = s[1], .flags = .{ .permissions = .fromMode(0o600) } });
 }
 
 /// **THE DIRECTORY IS NEVER STALE**, though the server keeps it between
@@ -354,7 +397,18 @@ fn sessionCookie(a: std.mem.Allocator, io: Io, data: Io.Dir, of: struct { id: []
     return std.fmt.allocPrint(a, "cookie: __Host-gopher_auth={s}.{d}.{s}\r\n", .{ b64.encode(id_text, of.id), signed_at, b64.encode(mac_text, &mac) });
 }
 
-const Response = struct { status: u16, body: []const u8 };
+const Response = struct {
+    status: u16,
+    head: []const u8,
+    body: []const u8,
+
+    fn header(r: Response, comptime name: []const u8) ?[]const u8 {
+        const at = std.mem.indexOf(u8, r.head, "\r\n" ++ name ++ ": ") orelse return null;
+        const from = at + name.len + 4;
+        const to = std.mem.indexOfPos(u8, r.head, from, "\r\n") orelse return null;
+        return r.head[from..to];
+    }
+};
 
 /// `request` on a connection of its own, read to the close.
 fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !Response {
@@ -368,5 +422,5 @@ fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !Respo
     const bytes = try r.interface.allocRemaining(a, .limited(64 * 1024 * 1024));
     if (!std.mem.startsWith(u8, bytes, "HTTP/1.1 ") or bytes.len < 12) return error.NotAResponse;
     const end = std.mem.indexOf(u8, bytes, "\r\n\r\n") orelse return error.NoHeadEnd;
-    return .{ .status = try std.fmt.parseInt(u16, bytes[9..12], 10), .body = bytes[end + 4 ..] };
+    return .{ .status = try std.fmt.parseInt(u16, bytes[9..12], 10), .head = bytes[0 .. end + 2], .body = bytes[end + 4 ..] };
 }
