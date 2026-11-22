@@ -38,7 +38,15 @@ DirectoryStore :: [].{
 
 	## The directory as the data folder holds it now, kept for the requests
 	## after once it reads as a whole one (`DirectoryCache`); or why not.
-	load_directory! : {} => Try(Directory, DirectoryStore.Refusal)
+	load_directory! : {} => Try(
+		Directory,
+		[
+			FileSystem(FileFacts.Fault),
+			StoredDirectory(Str),
+			Unwatched,
+			TooLarge,
+		],
+	)
 	load_directory! = |{}| {
 		read = DirectoryCache.read_directory_files!({})
 		match read {
@@ -57,13 +65,15 @@ DirectoryStore :: [].{
 		}
 	}
 
-	## Why the directory can't be read: a file's fault, files that are no
-	## whole directory, a folder of theirs that can't be watched for
+	## The 500 for a directory that can't be read: a file's fault, files that
+	## are no whole directory, a folder of theirs that can't be watched for
 	## changes, or more than the server keeps in memory.
-	Refusal : [FileSystem(FileFacts.Fault), StoredDirectory(Str), Unwatched, TooLarge]
-
-	## The 500 for a directory that can't be read.
-	directory_refusal : DirectoryStore.Refusal -> Http.Response
+	directory_refusal : [
+		FileSystem(FileFacts.Fault),
+		StoredDirectory(Str),
+		Unwatched,
+		TooLarge,
+	] -> Http.Response
 	directory_refusal = |why| {
 		said =
 			match why {
