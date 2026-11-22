@@ -1,14 +1,24 @@
 # The cost check's probes (host/cost_check.zig, `zig build cost-check`), a
 # request a line: the cost class its route declares (app/RouteCost.roc),
-# who asks (`anyone`, no credential; `human`, Tam's session), the method and
-# the path. app/RouteCostSpec.roc holds each path's route to its class.
+# who asks (`anyone`, no credential; `human`, Tam's session), the method,
+# the path and, for a POST, its form. app/RouteCostSpec.roc holds each
+# path's route to its class.
 Constant anyone GET /favicon.ico
 Constant anyone GET /chat/assets/compose.js
 Constant anyone GET /login
 Constant anyone GET /
+Constant anyone POST /login name=Tam&password=wrong
 Constant human GET /devices
+Constant human GET /agents
 Constant human GET /chat/channel/general/roc-chat/raw
+Constant human GET /chat/channel/general/roc-chat/download
+Constant human GET /chat/msg/general.roc-chat_1
+Constant human POST /chat/channel/general/roc-chat markdown=Hello
+Constant human GET /nowhere
 PerReaderPlaces human GET /chat
 PerReaderPlaces human GET /chat/recent
 PerReaderPlaces human GET /chat/channel/general/roc-chat
+PerReaderPlaces human GET /chat/msg/roc-chat_1
+PerReaderPlaces human GET /chat/search/words?prefix=ro
 PerHuman human GET /invites
+PerHuman human POST /devices

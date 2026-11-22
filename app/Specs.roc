@@ -43,6 +43,7 @@ import PlaceSpec
 import PresenceSpec
 import RecentFeedSpec
 import RouteSpec
+import RouteCostSpec
 import SearchDriftSpec
 import SearchSpec
 import SecureImageTagSpec

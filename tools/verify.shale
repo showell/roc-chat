@@ -61,9 +61,16 @@
 --    all (build.zig's `testRun`), so the summary's count is exactly
 --    ZIG_TESTS, each passing.
 -- 6. tools/listen.shale's own self-test, LC's listener's decisions.
--- 7. Last, the end to end (`zig build end-to-end`): the real server on a
+-- 7. The end to end (`zig build end-to-end`): the real server on a
 --    free port of 127.0.0.1, against a temporary data root, driven over
 --    HTTP; it stops the server and removes the root, pass or fail.
+-- 8. Last, the cost check (`zig build cost-check`, host/cost_check.zig):
+--    the server on chats of 10 and 300 humans, each probe of
+--    app/route_cost_probes.txt held to the cost class its route declares
+--    (app/RouteCost.roc), a `Constant` one to the same file calls at both
+--    sizes and any other to more at 300; and the directory the server
+--    keeps between requests seen fresh after edits by hand and the app's.
+--    Probes whose cost is not their class's are held at zero.
 --
 -- budget: steps=200000000
 
@@ -249,12 +256,19 @@ local listener = run({"shale", "tools/listen.shale", "self_test=1"}, {cwd = ".",
 say(listener.code == 0 and find(listener.out, "listen self_test: PASS") ~= nil, "tools/listen.shale self_test=1")
 if listener.code ~= 0 then print(listener.out) end
 
--- 7. The end to end, last.
+-- 7. The end to end.
 local e2e = run({"zig", "build", "end-to-end"}, {timeout_ms = 300000, whole = 1000000})
 for l in re_lines(e2e.out, "^(PASS|FAIL) ") do print("  " .. l.text) end
 local passed_all = re_find(e2e.out, "end-to-end: every step passed, in [0-9]+ ms")
 say(e2e.code == 0 and passed_all ~= nil, "the end to end: " .. (passed_all and passed_all.text or "failed"))
 if e2e.code ~= 0 then print(e2e.out) end
+
+-- 8. The cost check, last.
+local cost = run({"zig", "build", "cost-check"}, {timeout_ms = 300000, whole = 1000000})
+for l in re_lines(cost.out, "^(PASS|FAIL) ") do print("  " .. l.text) end
+local costed = re_find(cost.out, "cost-check: every probe costs as its class says, [0-9]+ probes")
+say(cost.code == 0 and costed ~= nil, "the cost check: " .. (costed and costed.text or "failed"))
+if cost.code ~= 0 then print(cost.out) end
 
 if board.failed > 0 then fail("verify: " .. board.failed .. " failed") end
 print("verify: every check passed")
