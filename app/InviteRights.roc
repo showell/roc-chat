@@ -101,9 +101,11 @@ InviteRights :: [].{
 	}
 
 	## Whether `acting` may make a new invite at `now` by the first day's
-	## limit (`NewcomerInvites.check`): their `joined` file, and the new
-	## invites they made since, among every human's of `directory`. Past it,
-	## `FirstDayFull`, a 403 saying when they may again.
+	## limit (`NewcomerInvites.check`): their `joined` file, and, for a
+	## person in their first day (`NewcomerInvites.standing`), the new
+	## invites they made since, among every human's of `directory`, which no
+	## one else's request reads. Past it, `FirstDayFull`, a 403 saying when
+	## they may again.
 	check_first_day! : {
 		acting : SignedIn,
 		directory : Directory,
@@ -113,9 +115,9 @@ InviteRights :: [].{
 		by = acting.user().id()
 		joined = JoinedFiles.read_joined!(by) ? |fault| FileSystem(fault)
 		made =
-			match joined {
-				NoFile => 0
-				Joined(since) => {
+			match NewcomerInvites.standing({ by, joined, now }) {
+				Unlimited => 0
+				FirstDay(since) => {
 					invites = load_every_humans_invites!(directory)?
 					NewcomerInvites.count_made(
 						invites,

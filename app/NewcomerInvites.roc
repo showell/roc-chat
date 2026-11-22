@@ -46,19 +46,37 @@ NewcomerInvites :: [].{
 		now : Timestamp,
 	} -> Try({}, [FirstDayFull(Timestamp)])
 	check = |{ by, joined, made, now }|
-		match joined {
-			NoFile => Ok({})
-			Joined(_) if by == UserId.chat_owner => Ok({})
-			Joined(at) => {
-				until = at.plus(NewcomerInvites.first_day)
-				if now.seconds_since(at).is_at_least(NewcomerInvites.first_day) {
-					Ok({})
-				} else if made < NewcomerInvites.most {
+		match NewcomerInvites.standing({ by, joined, now }) {
+			Unlimited => Ok({})
+			FirstDay(at) =>
+				if made < NewcomerInvites.most {
 					Ok({})
 				} else {
-					Err(FirstDayFull(until))
+					Err(FirstDayFull(at.plus(NewcomerInvites.first_day)))
 				}
-			}
+		}
+
+	## Whether the first day's limit holds the person `by`, whose `joined`
+	## file says `joined`, at `now`: `Unlimited` with no file, for the
+	## owner, and from a day after joining; else `FirstDay`, with when they
+	## joined, so the invites they made since must be counted. Deciding this
+	## first spares everyone else that count, which reads every human's
+	## invites.
+	standing : {
+		by : UserId,
+		joined : [NoFile, Joined(Timestamp)],
+		now : Timestamp,
+	} -> [Unlimited, FirstDay(Timestamp)]
+	standing = |{ by, joined, now }|
+		match joined {
+			NoFile => Unlimited
+			Joined(_) if by == UserId.chat_owner => Unlimited
+			Joined(at) =>
+				if now.seconds_since(at).is_at_least(NewcomerInvites.first_day) {
+					Unlimited
+				} else {
+					FirstDay(at)
+				}
 		}
 
 	## The second a newcomer's invites are counted from, when they joined at

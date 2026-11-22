@@ -54,6 +54,23 @@ expect NewcomerInvites.check({
 	made: 50,
 	now: Timestamp.at_second(1000),
 }) == Ok({})
+# Only someone in their first day is counted: not with no file, not the
+# owner, and not from the second a day after joining; a second before,
+# and a `joined` ahead of the clock, are.
+expect
+	[
+		(id("7"), NoFile, 1000),
+		(UserId.chat_owner, joined, 1000),
+		(id("7"), joined, 87400),
+		(id("7"), joined, 999999),
+	].all(
+		|(by, file, second)| NewcomerInvites.standing({ by, joined: file, now: Timestamp.at_second(second) }) == Unlimited,
+	)
+expect
+	[1000, 87399, 500].all(
+		|second| NewcomerInvites.standing({ by: id("7"), joined, now: Timestamp.at_second(second) })
+			== FirstDay(Timestamp.at_second(1000)),
+	)
 # The refusal: a 403 saying the limit and when they may invite again.
 expect {
 	notice = HumanInvites.refusal_notice(FirstDayFull(Timestamp.at_second(87400)))
