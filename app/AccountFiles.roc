@@ -26,6 +26,7 @@ import GitHubSessionWord
 import PasswordHash
 import Timestamp
 import UserId
+import UserStreams
 import Users
 
 AccountFiles :: [].{
@@ -178,15 +179,20 @@ AccountFiles :: [].{
 	## The password's bcrypt hash of the human whose account `proof` proves,
 	## written whole over the one before, atomically: a redeemed invite's
 	## choice, at their first join (`AccountProof`), so nothing writes one
-	## without the account's own proof. The hash is the host's
+	## without the account's own proof, nor without their streams ended
+	## (`revoker`, whose user `proof` must prove). The hash is the host's
 	## (`Host.bcrypt_hash_of_password!`); the password is never kept.
-	replace_password_hash! : AccountProof,
-	PasswordHash => Try(
+	replace_password_hash! : UserStreams.Revoker,
+	{ proof : AccountProof, hash : PasswordHash } => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_password_hash! = |proof, hash|
-		FileFacts.replace_fact!(password_path(proof.human()), hash.bytes())
+	replace_password_hash! = |revoker, { proof, hash }|
+		if proof.human() == revoker.user() {
+			FileFacts.replace_fact!(password_path(proof.human()), hash.bytes())
+		} else {
+			crash "AccountFiles.replace_password_hash!: the proof and the revoker name two users"
+		}
 
 	## The bcrypt hash of the user `id`'s password, as its file keeps it,
 	## or `NoFile` when they have none; unless the host's read failed. Only
@@ -263,24 +269,25 @@ AccountFiles :: [].{
 	create_github_session_secret! = |id, word|
 		FileFacts.create_fact!(github_session_secret_path(id), word.bytes())
 
-	## The user `id`'s `github-session-secret` file written whole over any
-	## before it, atomically.
-	replace_github_session_secret! : UserId,
+	## The `github-session-secret` file of the user `revoker` names, written
+	## whole over any before it, atomically.
+	replace_github_session_secret! : UserStreams.Revoker,
 	GitHubSessionWord => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_github_session_secret! = |id, word|
-		FileFacts.replace_fact!(github_session_secret_path(id), word.bytes())
+	replace_github_session_secret! = |revoker, word|
+		FileFacts.replace_fact!(github_session_secret_path(revoker.user()), word.bytes())
 
-	## The human `id`'s `github-id` file made holding `github`, once;
-	## `AlreadyExists`, nothing changed, when it is there.
-	create_github_id! : UserId,
+	## The `github-id` file of the human `revoker` names, made holding
+	## `github`, once; `AlreadyExists`, nothing changed, when it is there.
+	create_github_id! : UserStreams.Revoker,
 	GitHubId => Try(
 		{},
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_github_id! = |id, github| FileFacts.create_fact!(github_id_path(id), github.to_file())
+	create_github_id! = |revoker, github|
+		FileFacts.create_fact!(github_id_path(revoker.user()), github.to_file())
 
 	## The human `id`'s session generation, how many times they have signed
 	## their other devices out, which their sessions are signed over once it
@@ -293,15 +300,19 @@ AccountFiles :: [].{
 			File(bytes) => FactFile.number_from_file(bytes).map_err(|NotANumber| Damaged)
 		}
 
-	## The human `id`'s session generation written whole as `generation`,
-	## atomically: every session signed over the one before ends.
-	replace_session_generation! : UserId,
+	## The session generation of the human `revoker` names, written whole as
+	## `generation`, atomically: every session signed over the one before
+	## ends.
+	replace_session_generation! : UserStreams.Revoker,
 	U64 => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_session_generation! = |id, generation|
-		FileFacts.replace_fact!(session_generation_path(id), FactFile.number_to_file(generation))
+	replace_session_generation! = |revoker, generation|
+		FileFacts.replace_fact!(
+			session_generation_path(revoker.user()),
+			FactFile.number_to_file(generation),
+		)
 
 	## The counter of user ids, written whole as `users` holds it.
 	replace_user_counter! : Users => Try({}, [MissingDirectory, NotUtf8, PathRefused, Failed])

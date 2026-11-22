@@ -119,13 +119,13 @@ DeviceSessionsRoute :: [].{
 sign_out_others! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 sign_out_others! = |id| {
 	DeviceCodeFiles.revoke_or_log!(id)
-	signed_out =
-		match DeviceKeyFiles.revoke_every_active_device_key!(id) {
-			Ok({}) => SignInFiles.advance_session_generation!(id)
-			Err(fault) => Err(fault)
-		}
-	UserStreams.end_every_stream!(id)
-	signed_out
+	UserStreams.with_streams_ended!(
+		id,
+		|revoker| {
+			DeviceKeyFiles.revoke_every_active_device_key!(revoker)?
+			SignInFiles.advance_session_generation!(revoker)
+		},
+	)
 }
 
 ## The log's line for the human `id`'s sign-ins file and `fault`, saying

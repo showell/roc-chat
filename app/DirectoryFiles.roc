@@ -16,6 +16,7 @@ import ConversationKey
 import FileFacts
 import Place
 import Topic
+import UserStreams
 import Users
 
 DirectoryFiles :: [].{
@@ -77,6 +78,21 @@ DirectoryFiles :: [].{
 		FileFacts.make_folder!(channels_folder_path)?
 		FileFacts.replace_fact!(channel_members_path(channel.name()), channel.members_bytes())
 	}
+
+	## A channel's members file, written whole as `channel` holds them, once
+	## the user `revoker` names is removed from it: `channel` must not hold
+	## them.
+	replace_channel_members_without! : UserStreams.Revoker,
+	Channels.Channel => Try(
+		{},
+		[MissingDirectory, NotUtf8, PathRefused, Failed],
+	)
+	replace_channel_members_without! = |revoker, channel|
+		if channel.members().contains(revoker.user()) {
+			crash "DirectoryFiles.replace_channel_members_without!: the channel still holds the revoker's user"
+		} else {
+			DirectoryFiles.replace_channel_members!(channel)
+		}
 
 	## The topics of `place`'s conversations, by its folders, in byte order;
 	## a folder whose name is no topic is left out. A place with no

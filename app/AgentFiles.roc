@@ -22,6 +22,7 @@ import KeyScope
 import SecretHash
 import Timestamp
 import UserId
+import UserStreams
 
 AgentFiles :: [].{
 
@@ -143,14 +144,15 @@ AgentFiles :: [].{
 		record_facts(AgentFiles.key_files(key)),
 	)
 
-	## A key's state, written over the one before, as `key` holds it.
-	replace_agent_key_state! : UserId,
+	## A key's state, written over the one before, as `key` holds it, for
+	## the agent `revoker` names.
+	replace_agent_key_state! : UserStreams.Revoker,
 	AgentKey => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_agent_key_state! = |agent, key| FileFacts.replace_fact!(
-		"${key_folder_path(agent, key.id())}/${state_fact}",
+	replace_agent_key_state! = |revoker, key| FileFacts.replace_fact!(
+		"${key_folder_path(revoker.user(), key.id())}/${state_fact}",
 		key_state_word(key.state()),
 	)
 

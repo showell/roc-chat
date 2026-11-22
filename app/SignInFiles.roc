@@ -15,6 +15,7 @@ import GitHubSignIn
 import PasswordHash
 import Session
 import UserId
+import UserStreams
 
 SignInFiles :: [].{
 
@@ -80,15 +81,16 @@ SignInFiles :: [].{
 				}
 		}
 
-	## The human `id`'s other devices signed out: their session generation
-	## raised by one, so every session signed over the one before, this
-	## device's too until it is signed again, admits no one; a count at the
-	## largest a U64 holds, which only a hand edit makes, is `Damaged`.
-	advance_session_generation! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
-	advance_session_generation! = |id| {
-		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
+	## The other devices of the human `revoker` names signed out: their
+	## session generation raised by one, so every session signed over the one
+	## before, this device's too until it is signed again, admits no one; a
+	## count at the largest a U64 holds, which only a hand edit makes, is
+	## `Damaged`.
+	advance_session_generation! : UserStreams.Revoker => Try({}, [FileSystem(FileFacts.Fault)])
+	advance_session_generation! = |revoker| {
+		generation = AccountFiles.read_session_generation!(revoker.user()) ? |fault| FileSystem(fault)
 		next = SignInFiles.next_generation(generation) ? |Damaged| FileSystem(Damaged)
-		AccountFiles.replace_session_generation!(id, next) ? |fault| FileSystem(fault)
+		AccountFiles.replace_session_generation!(revoker, next) ? |fault| FileSystem(fault)
 		Ok({})
 	}
 
@@ -120,15 +122,18 @@ SignInFiles :: [].{
 			}
 		}
 
-	## The files that tie `linked`'s human to GitHub: a new `github-session-secret`,
-	## which says nothing until `github-id` is there, and then the `github-id`, so
-	## a link cut short between the two binds no one.
-	write_github_link! : GitHubSignIn.Linked => Try({}, [FileSystem(FileFacts.Fault)])
-	write_github_link! = |linked| {
-		id = linked.human().id()
+	## The files that tie `linked`'s human, the one `revoker` names, to GitHub:
+	## a new `github-session-secret`, which says nothing until `github-id` is
+	## there, and then the `github-id`, so a link cut short between the two
+	## binds no one.
+	write_github_link! : UserStreams.Revoker, GitHubSignIn.Linked => Try({}, [FileSystem(FileFacts.Fault)])
+	write_github_link! = |revoker, linked| {
+		if linked.human().id() != revoker.user() {
+			crash "SignInFiles.write_github_link!: the link and the revoker name two users"
+		}
 		word = generate_github_session_word!({})
-		AccountFiles.replace_github_session_secret!(id, word) ? |fault| FileSystem(fault)
-		AccountFiles.create_github_id!(id, linked.github()) ? |fault| FileSystem(fault)
+		AccountFiles.replace_github_session_secret!(revoker, word) ? |fault| FileSystem(fault)
+		AccountFiles.create_github_id!(revoker, linked.github()) ? |fault| FileSystem(fault)
 		Ok({})
 	}
 }

@@ -10,13 +10,14 @@
 ##
 ## A confirmed sign-out of a device a code signed in writes in this order:
 ## 1. its key's `state` rewritten `revoked`, atomically
-##    (`DeviceKeyFiles.revoke_device_key!`); a failure is logged and a 500
-##    saying the device is still signed in, and nothing else changes;
+##    (`DeviceKeyFiles.revoke_device_key!`);
 ## 2. every open stream of the human's ended
-##    (`UserStreams.end_every_stream!`), since a stream already open
-##    checks no key again: the signed-out device's pages, and also the
-##    human's other devices' streams, which share one holder and reconnect
-##    at once, admitted by their own sessions;
+##    (`UserStreams.with_streams_ended!`, around step 1), since a stream
+##    already open checks no key again: the signed-out device's pages, and
+##    also the human's other devices' streams, which share one holder and
+##    reconnect at once, admitted by their own sessions. A failure of step 1
+##    ends them too, and is logged and a 500 saying the device is still
+##    signed in, and nothing else changes;
 ## 3. the human's live device code cancelled;
 ## 4. the answer that signs the browser out.
 ## A crash before 1 has told no one anything, and the key still works. A
@@ -55,7 +56,10 @@ SignOutRoute :: [].{
 					HttpAnswer.page(200, SignOut.confirm_page({ viewer: acting, next })),
 				)
 			RevokeKey({ human, key }) =>
-				match DeviceKeyFiles.revoke_device_key!(human.id(), key) {
+				match UserStreams.with_streams_ended!(
+					human.id(),
+					|revoker| DeviceKeyFiles.revoke_device_key!(revoker, key),
+				) {
 					Err(FileSystem(fault)) => {
 						whose = "user ${human.id().to_str()}'s device key ${key.to_str()}"
 						said = "sign-out: ${whose} not revoked: ${FileFacts.fault_words(fault)}"
@@ -63,7 +67,6 @@ SignOutRoute :: [].{
 						HttpAnswer.never_stored(not_signed_out_answer)
 					}
 					Ok({}) => {
-						UserStreams.end_every_stream!(human.id())
 						DeviceCodeFiles.revoke_or_log!(human.id())
 						signed_out
 					}

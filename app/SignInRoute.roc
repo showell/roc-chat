@@ -219,11 +219,11 @@ SignInRoute :: [].{
 	## refused. A 500 when a file can't be written. Never stored.
 	start_session_by_github_link! : GitHubSignIn.Linked, Timestamp => Http.Response
 	start_session_by_github_link! = |linked, now|
-		match SignInFiles.write_github_link!(linked) {
-			Ok({}) => {
-				UserStreams.end_every_stream!(linked.human().id())
-				SignInRoute.start_session_by_github!(linked.admission(), now)
-			}
+		match UserStreams.with_streams_ended!(
+			linked.human().id(),
+			|revoker| SignInFiles.write_github_link!(revoker, linked),
+		) {
+			Ok({}) => SignInRoute.start_session_by_github!(linked.admission(), now)
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 		}
 

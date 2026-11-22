@@ -101,12 +101,14 @@ ChannelMembersRoute :: [].{
 		match ChannelMembers.remove(directory, { acting, channel, member }) {
 			Err(why) => refusal_page(Refused(why))
 			Ok(change) =>
-				match DirectoryFiles.replace_channel_members!(change.channel) {
-					Ok({}) => {
-						UserStreams.end_every_stream!(member)
-						HttpAnswer.see_other(channel_path(channel))
-					}
-					Err(fault) => refusal_page(FileSystem(fault))
+				match UserStreams.with_streams_ended!(
+					member,
+					|revoker|
+						DirectoryFiles.replace_channel_members_without!(revoker, change.channel)
+							.map_err(|fault| FileSystem(fault)),
+				) {
+					Ok({}) => HttpAnswer.see_other(channel_path(channel))
+					Err(FileSystem(fault)) => refusal_page(FileSystem(fault))
 				}
 		}
 }

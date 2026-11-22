@@ -490,7 +490,10 @@ join_by_invite! = |request| {
 	JoinedFiles.record_first_join!(human.id(), request.now) ? |fault| FileSystem(fault)
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
 	proof = AccountProof.of_first_join(joined.admission)
-	AccountFiles.replace_password_hash!(proof, hash) ? |fault| FileSystem(fault)
-	UserStreams.end_every_stream!(human.id())
+	UserStreams.with_streams_ended!(
+		human.id(),
+		|revoker|
+			AccountFiles.replace_password_hash!(revoker, { proof, hash }).map_err(|fault| FileSystem(fault)),
+	)?
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
