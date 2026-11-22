@@ -5,8 +5,9 @@
 ##   their session generation raised (`SignInFiles`), so every session of
 ##   theirs signed before admits no one, then this device's session signed
 ##   again, as it was started, and a 303 back to the page, the cookie that
-##   shows a code forgotten. A live device code is cancelled first, and every
-##   active device key revoked (`DeviceKeyFiles`).
+##   shows a code forgotten. A live device code is cancelled first, every
+##   active device key revoked (`DeviceKeyFiles`), and every open stream of
+##   theirs ended last (`UserStreams`).
 ## - The page's list of their last sign-ins by code (`DeviceSignIns`): read,
 ##   and a file that is damaged or can't be read logged and taken as none;
 ##   and each redemption noted in it, a failure to note one logged, as the
@@ -27,6 +28,7 @@ import SignInRoute
 import SignedIn
 import Timestamp
 import UserId
+import UserStreams
 
 DeviceSessionsRoute :: [].{
 
@@ -107,14 +109,23 @@ DeviceSessionsRoute :: [].{
 ## the page never shows a dead one as waiting (a failure logged, and the
 ## sign-out goes on), then every active device key of theirs revoked, so
 ## none on disk says it admits a device, then their session generation
-## advanced, which ends every session, a code's included. The device asking
-## holds a session a password, GitHub or an invite started, never a code's
-## (`FullSessionRoutes`), so no key it needs is revoked.
+## advanced, which ends every session, a code's included. Last, every open
+## stream of theirs ended (`UserStreams`), even when a write failed after
+## some keys were revoked, since an open stream checks no session again:
+## each reconnects, the asking device's by its session signed again, and
+## every other's refused. The device asking holds a session a password,
+## GitHub or an invite started, never a code's (`FullSessionRoutes`), so no
+## key it needs is revoked.
 sign_out_others! : UserId => Try({}, [FileSystem(FileFacts.Fault)])
 sign_out_others! = |id| {
 	DeviceCodeFiles.revoke_or_log!(id)
-	DeviceKeyFiles.revoke_every_active_device_key!(id)?
-	SignInFiles.advance_session_generation!(id)
+	signed_out =
+		match DeviceKeyFiles.revoke_every_active_device_key!(id) {
+			Ok({}) => SignInFiles.advance_session_generation!(id)
+			Err(fault) => Err(fault)
+		}
+	UserStreams.end_every_stream!(id)
+	signed_out
 }
 
 ## The log's line for the human `id`'s sign-ins file and `fault`, saying

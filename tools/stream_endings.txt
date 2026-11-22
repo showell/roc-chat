@@ -1,0 +1,46 @@
+# The table tools/check_stream_endings.shale reads: every function in app/
+# that writes a file (calls a FileFacts writer), each judged once, and each
+# action that calls an `ends` writer yet needs no stream ended. One entry a
+# line: a verdict, the function as `Module.name`, and why.
+#
+#   ends    its write ends a session, revokes a credential or removes
+#           someone's access, so every action that reaches it ends the
+#           affected user's open streams (`UserStreams.end_every_stream!`)
+#   keeps   its write ends no session, credential or access an open stream
+#           was admitted by
+#   exempt  an action that reaches an `ends` writer and needs no stream
+#           ended, and why
+#
+# A new writer, a writer gone, or an entry for no function fails the check,
+# so the table is judged again whenever what writes changes.
+
+ends    AccountFiles.replace_password_hash!        a new password ends every session signed over the old one
+ends    AccountFiles.replace_github_session_secret!  a new GitHub word ends every session signed over the old one
+ends    AccountFiles.create_github_id!             a GitHub link: every session is signed over the word from then on
+ends    AccountFiles.replace_session_generation!   "Sign out other devices": every session signed before admits no one
+ends    AgentFiles.replace_agent_key_state!        an agent's key revoked
+ends    DeviceKeyFiles.revoke_device_key!          a device's key revoked, and the session bound to it
+ends    DirectoryFiles.replace_channel_members!    a member removed from a channel loses its conversations
+
+keeps   AccountFiles.create_account!               a new account, which no stream holds yet
+keeps   AccountFiles.create_invited_account!       a new account, which no stream holds yet
+keeps   AccountFiles.create_github_account!        a new account, which no stream holds yet
+keeps   AccountFiles.replace_account_name!         a name is no credential
+keeps   AccountFiles.write_name_released!          a lapsed invitee never joined, so holds no session
+keeps   AccountFiles.create_github_session_secret!  made only where there is none, so it changes no session's material
+keeps   AccountFiles.replace_user_counter!         the next id
+keeps   AgentFiles.create_agent_key!               a new key admits; it ends nothing
+keeps   AgentFiles.create_agent_invite!            an invite admits no stream
+keeps   AgentFiles.replace_agent_invite_state!     an invite admits no stream; its key is another file
+keeps   DeviceCodeFiles.replace_device_code!       a code admits no stream; the session it started is bound to its device key
+keeps   DeviceCodeFiles.replace_sign_ins!          the list of sign-ins by code
+keeps   DeviceKeyFiles.create_device_key!          a new key admits; it ends nothing
+keeps   InviteFiles.create_human_invite!           an invite admits no stream
+keeps   InviteFiles.replace_human_invite_state!    an invite admits no stream; joining by it writes the password
+keeps   JoinedFiles.record_joined!                 when a human joined
+keeps   TranscriptFiles.append_message!            a message
+keeps   TranscriptFiles.replace_reactions!         reactions
+keeps   TranscriptFiles.store_uploaded_image!      an image
+keeps   TranscriptFiles.replace_upload_total!      a count of bytes
+keeps   TranscriptFiles.replace_last_conversation!  where a human was
+keeps   FileFacts.create_facts_from!               FileFacts itself, beneath every writer above

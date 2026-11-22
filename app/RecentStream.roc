@@ -20,6 +20,7 @@ import RecentFeed
 import Presence
 import PresenceNotices
 import ServerSentEvent
+import StreamHolder
 import Transcript
 import UserId
 import Users
@@ -30,12 +31,6 @@ RecentStream :: [].{
 	bus_key : UserId -> List(U8)
 	bus_key = |viewer| "/recent/${viewer.to_str()}".to_utf8()
 
-	## Who holds a Recent page's stream: its viewer, as their conversation
-	## pages' streams are held, so the host's cap on one holder's streams
-	## counts them together.
-	holder : UserId -> List(U8)
-	holder = |viewer| viewer.to_str().to_utf8()
-
 	## `viewer`'s Recent stream: live only, since the page is the backlog;
 	## each tile `publish!` sends them after, and what is sent to the viewer
 	## alone (`Presence.viewer_stream_key`), the top bar's notices among
@@ -44,7 +39,7 @@ RecentStream :: [].{
 	response = |viewer|
 		HttpAnswer.stream({
 			keys: [RecentStream.bus_key(viewer), Presence.viewer_stream_key(viewer)],
-			holder: RecentStream.holder(viewer),
+			holder: StreamHolder.user(viewer),
 			backlog: [],
 		})
 
@@ -169,7 +164,6 @@ expect sent_to("/chat/channel/general/plans", "CC") == "none"
 expect sent_to("/chat/dm/1_1/plans", "Steve") == "Steve You"
 # Each viewer's key, and the tile's event.
 expect RecentStream.bus_key(UserId.chat_owner) == "/recent/1".to_utf8()
-expect RecentStream.holder(UserId.chat_owner) == "1".to_utf8()
 expect {
 	response = RecentStream.response(UserId.chat_owner)
 	response.kind == Stream

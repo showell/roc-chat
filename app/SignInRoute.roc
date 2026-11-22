@@ -52,6 +52,7 @@ import SignInRequest
 import SignedIn
 import Timestamp
 import Users
+import UserStreams
 
 SignInRoute :: [].{
 
@@ -211,17 +212,18 @@ SignInRoute :: [].{
 	}
 
 	## The answer to a GitHub account linked at `now`: the id bound to the
-	## human, and a 303 to where they go, with a new session's cookie. A
-	## session is signed over `github-session-secret` once `github-id` is
-	## there, so these two files end every session of this human, the one that
-	## asked to link included, and only the new one here admits them. The
-	## secret is made anew even if an old one lies there, so a session from an
-	## earlier binding can't come back. A 500 when a file can't be written.
-	## Never stored.
+	## human, their open streams ended, and a 303 onward with a new session's
+	## cookie. Sessions are signed over `github-session-secret`, made anew, once
+	## `github-id` is there, so these files end every session of theirs (an
+	## earlier binding's too) and each stream reconnects on the new one or is
+	## refused. A 500 when a file can't be written. Never stored.
 	start_session_by_github_link! : GitHubSignIn.Linked, Timestamp => Http.Response
 	start_session_by_github_link! = |linked, now|
 		match SignInFiles.write_github_link!(linked) {
-			Ok({}) => SignInRoute.start_session_by_github!(linked.admission(), now)
+			Ok({}) => {
+				UserStreams.end_every_stream!(linked.human().id())
+				SignInRoute.start_session_by_github!(linked.admission(), now)
+			}
 			Err(FileSystem(fault)) => HttpAnswer.never_stored(SignInRoute.fault_answer(fault))
 		}
 

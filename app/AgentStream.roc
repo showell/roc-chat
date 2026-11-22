@@ -40,6 +40,7 @@ import HttpAnswer
 import JsonOut
 import Message
 import Name
+import StreamHolder
 import Topic
 import UnvalidatedString
 import UserId
@@ -122,18 +123,13 @@ AgentStream :: [].{
 			.join_map(|m| AgentStream.frame({ key: m.key, message: m.message, users }))
 	}
 
-	## Who holds the agent `agent`'s stream, as the host counts streams:
-	## the agent, under a name no user's id is.
-	holder : UserId -> List(U8)
-	holder = |agent| "agent-${agent.to_str()}".to_utf8()
-
 	## The agent `agent`'s stream: `backlog` first, then every event
 	## published to it.
 	response : { agent : UserId, backlog : List(U8) } -> Http.Response
 	response = |{ agent, backlog: events }|
 		HttpAnswer.stream({
 			keys: [bus_key(agent)],
-			holder: AgentStream.holder(agent),
+			holder: StreamHolder.agent(agent),
 			backlog: events,
 		})
 
@@ -330,7 +326,6 @@ expect backlog_markdown_texts([
 	conversation_of_count("plans", 101),
 	conversation_of_count("other", 3),
 ]).len() == 103
-expect AgentStream.holder(UserId.chat_owner) == "agent-1".to_utf8()
 # A date past every message, none; before every message, all.
 expect AgentStream.backlog({
 	conversations: [conversation_of("plans", [("2026-11-02T19:00:00Z", "p1")])],

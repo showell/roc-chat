@@ -13,7 +13,7 @@
 ##    (`DeviceKeyFiles.revoke_device_key!`); a failure is logged and a 500
 ##    saying the device is still signed in, and nothing else changes;
 ## 2. every open stream of the human's ended
-##    (`Host.end_every_stream_of_holder!`), since a stream already open
+##    (`UserStreams.end_every_stream!`), since a stream already open
 ##    checks no key again: the signed-out device's pages, and also the
 ##    human's other devices' streams, which share one holder and reconnect
 ##    at once, admitted by their own sessions;
@@ -28,7 +28,6 @@
 ## reconnects and is refused.
 import pf.Host
 import pf.Http
-import ConversationStream
 import DeviceCode
 import DeviceCodeFiles
 import DeviceKeyFiles
@@ -38,6 +37,7 @@ import PageKit
 import SignInRoute
 import SignOut
 import SignedIn
+import UserStreams
 
 SignOutRoute :: [].{
 
@@ -63,7 +63,7 @@ SignOutRoute :: [].{
 						HttpAnswer.never_stored(not_signed_out_answer)
 					}
 					Ok({}) => {
-						Host.end_every_stream_of_holder!(ConversationStream.holder(human.id()))
+						UserStreams.end_every_stream!(human.id())
 						DeviceCodeFiles.revoke_or_log!(human.id())
 						signed_out
 					}

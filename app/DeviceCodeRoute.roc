@@ -41,6 +41,7 @@ import SignInFiles
 import SignInRequest
 import SignInRoute
 import SignedIn
+import StreamHolder
 import Timestamp
 import UserId
 import Users
@@ -142,7 +143,8 @@ DeviceCodeRoute :: [].{
 	}
 
 	## A GET of `/devices/stream` by `acting`: their own stream, live only,
-	## on which the page hears that their code was used.
+	## on which the page hears that their code was used, held as their other
+	## pages' streams are (`StreamHolder.user`).
 	open_stream : SignedIn -> Http.Response
 	open_stream = |acting|
 		match acting.human_in_session() {
@@ -150,7 +152,7 @@ DeviceCodeRoute :: [].{
 			Ok(human) =>
 				HttpAnswer.stream({
 					keys: [Presence.viewer_stream_key(human.id())],
-					holder: human.id().to_str().to_utf8(),
+					holder: StreamHolder.user(human.id()),
 					backlog: [],
 				})
 		}

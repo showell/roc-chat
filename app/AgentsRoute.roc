@@ -30,7 +30,6 @@ import Agents
 import AgentsPage
 import Conversation
 import ConversationKey
-import ConversationStream
 import Directory
 import DirectoryFiles
 import FileFacts
@@ -48,6 +47,7 @@ import TranscriptFiles
 import TrustedHtml
 import UserId
 import Users
+import UserStreams
 
 AgentsRoute :: [].{
 
@@ -282,8 +282,7 @@ revoke_agent_key! = |{ acting, directory, agent, key }| {
 	keys = AgentFiles.read_agent_keys!(agent) ? |fault| FileSystem(fault)
 	revoked = Agents.revoked_key(keys, key) ? |why| Refused(why)
 	AgentFiles.replace_agent_key_state!(agent, revoked) ? |fault| FileSystem(fault)
-	Host.end_every_stream_of_holder!(AgentStream.holder(agent))
-	Host.end_every_stream_of_holder!(ConversationStream.holder(agent))
+	UserStreams.end_every_stream!(agent)
 	Ok({})
 }
 

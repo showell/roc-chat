@@ -33,6 +33,7 @@ import Reactions
 import RequestHeader
 import ServerSentEvent
 import SignedIn
+import StreamHolder
 import Topic
 import TrustedHtml
 import UnvalidatedString
@@ -128,7 +129,7 @@ ConversationStream :: [].{
 			seen = drawn.take_first(seen_count.to_u64())
 			HttpAnswer.stream({
 				keys: [bus_key(key), viewer_key],
-				holder: ConversationStream.holder(acting.user().id()),
+				holder: StreamHolder.user(acting.user().id()),
 				backlog: List.concat(
 					seen.keep_if(|one| !one.notes.is_fresh()).join_map(
 						|one| replacement_frame(one.html),
@@ -168,11 +169,6 @@ ConversationStream :: [].{
 			Err(NoSuchMessage) =>
 				crash "ConversationStream.publish_again!: the caller names a message the conversation holds"
 		}
-
-	## Who holds a conversation's stream that `user` opened, as the host
-	## counts streams: the user's id.
-	holder : UserId -> List(U8)
-	holder = |user| user.to_str().to_utf8()
 
 	## One message as one event: `id:` its number, then its `html`, a
 	## `data:` line a line, then the blank line that ends it.
@@ -276,7 +272,6 @@ expect
 expect
 	ConversationStream.count_refusal_words(BadCount)
 		== "The stream's count of the messages seen is not one: the digits of 0 to 65535, with no leading 0."
-expect ConversationStream.holder(UserId.chat_owner) == "1".to_utf8()
 
 ## The users of the tests' directory: Steve alone, id 1.
 users : Users

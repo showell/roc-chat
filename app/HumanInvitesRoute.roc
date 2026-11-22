@@ -69,6 +69,7 @@ import Timestamp
 import TranscriptFiles
 import TrustedHtml
 import UserId
+import UserStreams
 import Users
 import Welcome
 
@@ -437,7 +438,9 @@ load_join_name! = |request| {
 ## the invite spent, any live device code of the human's cancelled
 ## (`DeviceCodeRoute`) before the password is written, so a code never
 ## outlives the password it was made under; then the admission, the hash
-## written, which the session is signed over, and where the human lands.
+## written, which the session is signed over, and every open stream of the
+## human's ended (`UserStreams`), as a new password ends every session they
+## held and an open stream checks none again; and where the human lands.
 join_by_invite! : {
 	actor : SignedIn.Actor,
 	directory : Directory,
@@ -484,6 +487,7 @@ join_by_invite! = |request| {
 	JoinedFiles.record_first_join!(human.id(), request.now) ? |fault| FileSystem(fault)
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
 	AccountFiles.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
+	UserStreams.end_every_stream!(human.id())
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
 

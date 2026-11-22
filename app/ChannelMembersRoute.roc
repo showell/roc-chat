@@ -10,12 +10,9 @@
 ## the browser back to the channel's page (a 303). Removing a member ends
 ## every stream they hold, so a listener reconnects and is asked again
 ## whether it may read.
-import pf.Host
 import pf.Http
-import AgentStream
 import ChannelMembers
 import ChannelName
-import ConversationStream
 import Directory
 import DirectoryFiles
 import FileFacts
@@ -24,6 +21,7 @@ import PageKit
 import PeoplePages
 import SignedIn
 import UserId
+import UserStreams
 
 ChannelMembersRoute :: [].{
 
@@ -105,8 +103,7 @@ ChannelMembersRoute :: [].{
 			Ok(change) =>
 				match DirectoryFiles.replace_channel_members!(change.channel) {
 					Ok({}) => {
-						Host.end_every_stream_of_holder!(AgentStream.holder(member))
-						Host.end_every_stream_of_holder!(ConversationStream.holder(member))
+						UserStreams.end_every_stream!(member)
 						HttpAnswer.see_other(channel_path(channel))
 					}
 					Err(fault) => refusal_page(FileSystem(fault))

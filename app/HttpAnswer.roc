@@ -14,7 +14,9 @@
 ## `nosniff`, so a browser takes each answer as the type it says.
 import pf.Http
 import JsonOut
+import StreamHolder
 import TrustedHtml
+import UserId
 
 HttpAnswer :: [].{
 
@@ -185,7 +187,7 @@ HttpAnswer :: [].{
 	## `keys`. The host writes the stream's type; it is not sniffed.
 	stream : {
 		keys : List(List(U8)),
-		holder : List(U8),
+		holder : StreamHolder,
 		backlog : List(U8),
 	} -> Http.Response
 	stream = |{ keys, holder, backlog }| {
@@ -194,7 +196,7 @@ HttpAnswer :: [].{
 		body: backlog,
 		kind: Stream,
 		stream_keys: keys,
-		stream_holder: holder,
+		stream_holder: holder.to_bytes(),
 		write_grace_ms: 0,
 	}
 }
@@ -398,7 +400,7 @@ expect
 expect {
 	response = HttpAnswer.stream({
 		keys: ["k".to_utf8()],
-		holder: "1".to_utf8(),
+		holder: StreamHolder.user(UserId.chat_owner),
 		backlog: "id: 1\n".to_utf8(),
 	})
 	response.kind == Stream
