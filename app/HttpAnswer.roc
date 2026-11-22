@@ -24,7 +24,7 @@ HttpAnswer :: [].{
 		whole_response({ status, headers: page_headers, body: html.to_utf8() })
 
 	## `page` with `status`: the answer to a page that says its own status, as
-	## a refusal's does (`GitHubTrip`'s, `JoinPage.refused`).
+	## a refusal's does (`GitHubTrip`'s, `JoinPage.refusal`).
 	status_page : { status : U16, page : TrustedHtml } -> Http.Response
 	status_page = |{ status, page: html }| HttpAnswer.page(status, html)
 

@@ -464,8 +464,8 @@ check_against_dummy_hash! = |password|
 
 # ── tests
 # The redirect to sign in carries where to go after, and clears nothing;
-# /login/code's GET is the bare sign-in page, a 303; signing out forgets the cookie, clears the site's cache and storage, and
-# is never stored.
+# /login/code's GET is a 303 to the bare sign-in page; signing out forgets
+# the cookie, clears the site's cache and storage, and is never stored.
 expect
 	SignInRoute.login_redirect(Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "SignInRoute's tests: a site path")
 		.headers

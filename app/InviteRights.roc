@@ -1,6 +1,7 @@
 ## This module reads what a human's files say of their place among
 ## inviters, for `HumanInvitesRoute`: who invited them, which decides who may
-## invite them again, and, for a person in their first day, how many new
+## invite them again; how many of a human's invites are open, which the cap
+## of open invites counts; and, for a person in their first day, how many new
 ## invites they made since they joined (`NewcomerInvites`). Its failures are
 ## the route's: a refusal, a file that says no fact, or the file system's
 ## fault.
@@ -21,6 +22,18 @@ InviteRights :: [].{
 	load_inviter! = |id| {
 		file = AccountFiles.read_inviter_file!(id) ? |fault| FileSystem(fault)
 		HumanInvites.inviter_from_file(file).map_err(|NotAnInviter| BadInviter(id))
+	}
+
+	## How many invites `by` made that are open at `now`, among every human's
+	## of `directory`.
+	count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)
+	count_open_invites! = |directory, { by, now }| {
+		var $open = 0
+		for human in directory.users().to_list().keep_oks(|user| user.as_human()) {
+			invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
+			$open = $open + HumanInvites.open_count(invites, { by, now })
+		}
+		Ok($open)
 	}
 
 	## Whether `acting` may make a new invite at `now` by the first day's

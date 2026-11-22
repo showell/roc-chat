@@ -172,7 +172,8 @@ HumanInvitesRoute :: [].{
 
 	## A POST of `/join`, by `actor`, who may join: the invite the form's
 	## `code` names spent at `now`, its human named by the form's `name`,
-	## their password set to the form's `password`, and a session started.
+	## their password set to the form's `password`, and a session started; or
+	## the join page's refusal, saying why (`JoinPage.refusal`).
 	join! : {
 		actor : SignedIn.Actor,
 		directory : Directory,
@@ -182,7 +183,10 @@ HumanInvitesRoute :: [].{
 	join! = |request|
 		match join_by_invite!(request) {
 			Ok(joined) => SignInRoute.start_session_by_invite!(joined, request.now)
-			Err(why) => HttpAnswer.never_stored(HttpAnswer.status_page(JoinPage.refused(failure_notice(why))))
+			Err(why) => {
+				refusal = JoinPage.refusal(failure_notice(why))
+				HttpAnswer.never_stored(HttpAnswer.status_page(refusal))
+			}
 		}
 }
 
@@ -300,7 +304,7 @@ invite_human! = |
 	},
 | {
 	InviteRights.check_first_day!({ acting, directory: as_read, now })?
-	open = count_open_invites!(as_read, { by: acting.user().id(), now })?
+	open = InviteRights.count_open_invites!(as_read, { by: acting.user().id(), now })?
 	planned =
 		match HumanInvites.name_from_form(body) {
 			Ok(name) =>
@@ -351,7 +355,7 @@ invite_human_again! : {
 } => Try(TrustedHtml, _)
 invite_human_again! = |{ acting, directory, human, origin, now }| {
 	inviter = InviteRights.load_inviter!(human)?
-	open = count_open_invites!(directory, { by: acting.user().id(), now })?
+	open = InviteRights.count_open_invites!(directory, { by: acting.user().id(), now })?
 	again = HumanInvites.reinvite(directory, { acting, human, inviter, open }) ? |why| Refused(why)
 	code = issue_invite!({ human, by: again.by.id(), now })?
 	load_invites_page!({
@@ -486,14 +490,3 @@ join_by_invite! = |request| {
 ## Every human of `directory`.
 humans_of : Directory -> List(Users.User)
 humans_of = |directory| directory.users().to_list().keep_if(|user| user.as_human().is_ok())
-
-## How many invites `by` made that are open at `now`, among every human's.
-count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)
-count_open_invites! = |directory, { by, now }| {
-	var $open = 0
-	for user in humans_of(directory) {
-		invites = InviteFiles.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
-		$open = $open + HumanInvites.open_count(invites, { by, now })
-	}
-	Ok($open)
-}

@@ -170,7 +170,9 @@ serve_sign_up! = |request| {
 					)
 					Err(Refused(why)) =>
 						with_sign_up_forgotten(
-							HttpAnswer.status_page(GitHubTrip.refusal_page({ viewer: request.viewer, why })),
+							HttpAnswer.status_page(
+								GitHubTrip.refusal_page({ viewer: request.viewer, why }),
+							),
 						)
 					Err(NameRefused(refusal)) =>
 						HttpAnswer.status_page(GitHubTrip.name_refusal_page(refusal))

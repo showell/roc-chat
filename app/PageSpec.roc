@@ -301,7 +301,7 @@ expect
 # with its status, and the script that draws it as a card and puts /join in
 # the POST's place in the history; no form, so nothing posts the code again.
 expect {
-	refused = JoinPage.refused({ status: 409, said: "That name is taken." })
+	refused = JoinPage.refusal({ status: 409, said: "That name is taken." })
 	refused.status == 409
 		and refused.page.to_utf8()
 			== "${head("Join the chat")}<h1>Join the chat</h1>\n<p class=\"problem\">That name is taken.</p>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()

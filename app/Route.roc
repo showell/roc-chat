@@ -39,7 +39,7 @@
 ##     POST /login/github/name                 a new human's name: `name=`
 ##     POST /login/github/link                 off to GitHub, to link it
 ##     POST /logout                            sign out
-##     POST /login/code                        sign in by a device code: `code=`; GET, a 303 to /login
+##     POST /login/code                        sign in by a device code, `code=`; GET, to /login
 ##     GET  /devices                           sign in another device
 ##     POST /devices                           make a device code
 ##     POST /devices/cancel                    cancel it

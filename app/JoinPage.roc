@@ -3,7 +3,7 @@
 ## The page is the same for every invite: the invite's code is after the
 ## link's `#`, which only the page's script (app/join.js) reads; app/sign-in.js
 ## draws the page as a card, as it draws the sign-in page. A refused join is
-## answered by `refused`, a card of its own.
+## answered by `refusal`, a card of its own.
 import Escape
 import Html
 import PageKit
@@ -70,8 +70,8 @@ JoinPage :: [].{
 	## and `said`, marked as the problem (`PageKit.problem`), with no form.
 	## app/sign-in.js draws it as a card and puts `/join` in its place in the
 	## browser's history, so a reload is a plain GET that posts no code again.
-	refused : { status : U16, said : Str } -> { status : U16, page : TrustedHtml }
-	refused = |{ status, said }| {
+	refusal : { status : U16, said : Str } -> { status : U16, page : TrustedHtml }
+	refusal = |{ status, said }| {
 		status,
 		page: PageKit.document({
 			title: "Join the chat",
