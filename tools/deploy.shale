@@ -14,7 +14,12 @@
 -- `<secret PROD>`, and Shale scrubs it from what they print. ssh's and
 -- scp's own messages are off (LogLevel=QUIET), because they name the bare
 -- address, which the scrubber does not know; a step whose ssh fails says so
--- by its exit, 255, and `ssh <user>@<address> true` by hand says why.
+-- by its exit, 255, and `ssh <user>@<address> true` by hand says why. Shale
+-- confines every program to its mounts, and ssh's key is outside them, so
+-- each ssh and scp to prod runs `unconfined`, which Shale allows for a host
+-- of the box's hosts file (~/.config/shale/hosts) alone, and the push is
+-- `git_push`'s, unconfined over ssh to a remote of the remotes file
+-- (~/.config/shale/remotes) alone.
 --
 -- Each step refuses, by name, what it cannot do:
 --
@@ -91,7 +96,7 @@ end
 -- `script` run on prod by its shell, whatever its exit.
 function ssh_to_prod(script, timeout)
   return run({"ssh", "-o", "BatchMode=yes", "-o", "LogLevel=QUIET", "<secret PROD>", script},
-    with_dest({timeout_ms = timeout, whole = 100000, want = "ssh: the deploy's own steps on prod"}))
+    with_dest({timeout_ms = timeout, whole = 100000, want = "ssh: the deploy's own steps on prod", unconfined = "deploy: ssh reads its key, outside the mounts"}))
 end
 
 -- A command on prod that must succeed.
@@ -110,7 +115,7 @@ end
 
 function copy_to_prod(local_path, remote_path)
   local r = run({"scp", "-q", "-o", "BatchMode=yes", "-o", "LogLevel=QUIET", local_path, "<secret PROD>:" .. remote_path},
-    with_dest({timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod"}))
+    with_dest({timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod", unconfined = "deploy: scp reads its key, outside the mounts"}))
   if r.code ~= 0 then fail("deploy: " .. ssh_said(r, "the copy of " .. local_path .. " to prod's " .. remote_path)) end
 end
 
@@ -193,11 +198,12 @@ must(run({"gcc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Ic/foundation", "-
   {cwd = "repos:shale", timeout_ms = 300000, tail = 40, nice = 19}))
 print("built " .. SHALE_BUILT .. " from Shale " .. git_head("repos:shale") .. " (sha256 " .. sub(sha256_of(SHALE_BUILT), 1, 12) .. ")")
 
--- 5. The push.
+-- 5. The push: git_push's, unconfined over ssh (its key is outside the
+-- mounts), `main` to its upstream's branch of the same name.
 if git_upstream("") == nil then
   print("main has no upstream, so nothing is pushed: what serves is on this box alone")
 else
-  must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
+  git_push("")
 end
 local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
 print("deploying roc-chat " .. commit .. " to prod (" .. SECRET .. ")")
