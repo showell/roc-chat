@@ -35,7 +35,11 @@ UserStreams :: [].{
 	## credentials or access, then every stream `id` holds ended: when
 	## `revoke!` succeeds, and when it fails or returns early too, since a
 	## write may have landed before the failure.
-	with_streams_ended! : UserId, (UserStreams.Revoker => Try({}, [FileSystem(FileFacts.Fault)])) => Try({}, [FileSystem(FileFacts.Fault)])
+	with_streams_ended! : UserId,
+	(UserStreams.Revoker => Try({}, [FileSystem(FileFacts.Fault)])) => Try(
+		{},
+		[FileSystem(FileFacts.Fault)],
+	)
 	with_streams_ended! = |id, revoke!| {
 		revoked = revoke!(UserStreams.Revoker.(id))
 		end_every_stream!(id)

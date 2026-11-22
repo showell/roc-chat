@@ -283,7 +283,9 @@ revoke_agent_key! = |{ acting, directory, agent, key }| {
 	revoked = Agents.revoked_key(keys, key) ? |why| Refused(why)
 	UserStreams.with_streams_ended!(
 		agent,
-		|revoker| AgentFiles.replace_agent_key_state!(revoker, revoked).map_err(|fault| FileSystem(fault)),
+		|revoker|
+			AgentFiles.replace_agent_key_state!(revoker, revoked)
+				.map_err(|fault| FileSystem(fault)),
 	)
 }
 

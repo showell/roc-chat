@@ -88,7 +88,8 @@ SignInFiles :: [].{
 	## `Damaged`.
 	advance_session_generation! : UserStreams.Revoker => Try({}, [FileSystem(FileFacts.Fault)])
 	advance_session_generation! = |revoker| {
-		generation = AccountFiles.read_session_generation!(revoker.user()) ? |fault| FileSystem(fault)
+		id = revoker.user()
+		generation = AccountFiles.read_session_generation!(id) ? |fault| FileSystem(fault)
 		next = SignInFiles.next_generation(generation) ? |Damaged| FileSystem(Damaged)
 		AccountFiles.replace_session_generation!(revoker, next) ? |fault| FileSystem(fault)
 		Ok({})
@@ -126,7 +127,11 @@ SignInFiles :: [].{
 	## a new `github-session-secret`, which says nothing until `github-id` is
 	## there, and then the `github-id`, so a link cut short between the two
 	## binds no one.
-	write_github_link! : UserStreams.Revoker, GitHubSignIn.Linked => Try({}, [FileSystem(FileFacts.Fault)])
+	write_github_link! : UserStreams.Revoker,
+	GitHubSignIn.Linked => Try(
+		{},
+		[FileSystem(FileFacts.Fault)],
+	)
 	write_github_link! = |revoker, linked| {
 		if linked.human().id() != revoker.user() {
 			crash "SignInFiles.write_github_link!: the link and the revoker name two users"

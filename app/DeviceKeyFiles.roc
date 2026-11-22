@@ -77,14 +77,16 @@ DeviceKeyFiles :: [].{
 	## refused, and then the file is as it was. A key with no folder is
 	## `Missing`.
 	revoke_device_key! : UserStreams.Revoker, DeviceKey.Id => Try({}, [FileSystem(FileFacts.Fault)])
-	revoke_device_key! = |revoker, key|
-		match FileFacts.replace_fact!(state_path(revoker.user(), key), DeviceKey.state_to_file(Revoked)) {
+	revoke_device_key! = |revoker, key| {
+		path = state_path(revoker.user(), key)
+		match FileFacts.replace_fact!(path, DeviceKey.state_to_file(Revoked)) {
 			Ok({}) => Ok({})
 			Err(MissingDirectory) => Err(FileSystem(Missing))
 			Err(NotUtf8) => crash "DeviceKeyFiles.revoke_device_key!: a state's word is ASCII"
 			Err(PathRefused) => Err(FileSystem(PathRefused))
 			Err(Failed) => Err(FileSystem(Failed))
 		}
+	}
 }
 
 ## The fact file of a key's state.

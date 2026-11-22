@@ -89,7 +89,7 @@ DirectoryFiles :: [].{
 	)
 	replace_channel_members_without! = |revoker, channel|
 		if channel.members().contains(revoker.user()) {
-			crash "DirectoryFiles.replace_channel_members_without!: the channel still holds the revoker's user"
+			crash "DirectoryFiles.replace_channel_members_without!: the user is still a member"
 		} else {
 			DirectoryFiles.replace_channel_members!(channel)
 		}
