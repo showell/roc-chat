@@ -1,0 +1,14 @@
+# CC invited by the keyboard with Read set to nothing: the read group's
+# first button clicked, ArrowRight moves the choice to "nothing", then
+# Invite. The code it shows is redeemed for a key, and the page read again
+# lists that key: "Read: nothing. Post: every channel it's a member of."
+path = /agents
+sizes = desktop,phone
+mutates = invites CC and redeems a key
+click input[name=read][value=everywhere]
+key ArrowRight
+click form[action="/agents/5/invites"] button
+wait .invite-code
+eval fetch('/agents/redeem', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'code=' + document.querySelector('.invite-code').textContent.trim()}).then(function (r) { if (r.status !== 200) throw new Error('redeem ' + r.status); })
+goto /agents
+wait input[name=read][value=everywhere][checked]

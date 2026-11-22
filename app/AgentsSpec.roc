@@ -410,9 +410,10 @@ expect Access.members({
 	directory: with_lc,
 }) == [UserId.chat_owner, user_named("CC").id()]
 
-# The agents page: each agent's invite button, each active key's and live
-# invite's revoke button and no other, and an invite's code only when one
-# was just made, in its own class.
+# The agents page: each agent's invite form (`cc_invite_form`), each key's
+# and invite's scope, both reaches of each power said, each active key's
+# and live invite's revoke button and no other, and an invite's code only
+# when one was just made, in its own class.
 expect {
 	founded = Users.with_founder(Name.from_str("Steve") ?? crash "AgentsSpec: a name")
 	steve = founded.to_list().first() ?? crash "AgentsSpec: Steve is the first user"

@@ -15,7 +15,8 @@ KeyScope :: { read : KeyScope.Reach, post : KeyScope.Reach }.{
 	Reach : [Everywhere, Off]
 
 	## A scope that takes nothing away. An invite gives it only when its
-	## form asks for both, as the agents page's invite button does: a form
+	## form asks for both, as the agents page's invite form does unless the
+	## human chooses otherwise: a form
 	## that leaves either out is refused (`Agents.scope_from_form`).
 	everywhere : KeyScope
 	everywhere = KeyScope.({ read: Everywhere, post: Everywhere })

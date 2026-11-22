@@ -1,0 +1,5 @@
+# The agents page: CC with its invite form, Read and Post each a pair of
+# radio buttons, every channel it's a member of chosen to start with.
+path = /agents
+sizes = desktop,phone
+wait input[name=read][value=everywhere][checked]
