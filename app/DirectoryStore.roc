@@ -23,45 +23,80 @@ DirectoryStore :: [].{
 
 	## Whether the server may start on its data folder: `Ready` when the folder
 	## holds a whole chat, or held none and now holds the first
-	## (`FirstStart`); else `Failed`.
+	## (`FirstStart`), and the directory's folders can be watched for changes
+	## (`DirectoryCache`); else `Failed`.
 	prepare_directory! : {} => [Failed, Ready]
 	prepare_directory! = |{}|
-		match DirectoryFiles.read_directory_files!({}) {
-			Err(_) => Failed
-			Ok(files) =>
-				match files.counter {
-					File(_) =>
-						match directory_from_files(files) {
-							Ok(_) => Ready
-							Err(_) => Failed
-						}
-					NoFile if files.accounts.is_empty() and files.channels.is_empty() =>
-						match write_first_directory!({}) {
-							Ok({}) => Ready
-							Err(_) => Failed
-						}
-					NoFile => Failed
+		match prepare_files!({}) {
+			Ready =>
+				match DirectoryFiles.watch_directory_files!({}) {
+					Ok({}) => Ready
+					Err(_) => Failed
 				}
+			Failed => Failed
 		}
 
-	## The directory as the data folder holds it now; or why not.
-	load_directory! : {} => Try(Directory, [FileSystem(FileFacts.Fault), StoredDirectory(Str)])
+	## The directory as the data folder holds it now, kept for the requests
+	## after once it reads as a whole one (`DirectoryCache`); or why not.
+	load_directory! : {} => Try(Directory, DirectoryStore.Refusal)
 	load_directory! = |{}| {
-		files = DirectoryCache.read_directory_files!({}) ? |fault| FileSystem(fault)
-		directory_from_files(files)
+		read = DirectoryCache.read_directory_files!({})
+		match read {
+			Ok(Fresh(files)) => directory_from_files(files)
+			Ok(Unkept(reading)) => {
+				directory = directory_from_files(reading.contents)?
+				DirectoryCache.keep!(reading) ? |TooLarge| TooLarge
+				Ok(directory)
+			}
+			Err(Unwatched) => Err(Unwatched)
+			Err(Missing) => Err(FileSystem(Missing))
+			Err(Damaged) => Err(FileSystem(Damaged))
+			Err(NotUtf8) => Err(FileSystem(NotUtf8))
+			Err(PathRefused) => Err(FileSystem(PathRefused))
+			Err(Failed) => Err(FileSystem(Failed))
+		}
 	}
 
+	## Why the directory can't be read: a file's fault, files that are no
+	## whole directory, a folder of theirs that can't be watched for
+	## changes, or more than the server keeps in memory.
+	Refusal : [FileSystem(FileFacts.Fault), StoredDirectory(Str), Unwatched, TooLarge]
+
 	## The 500 for a directory that can't be read.
-	directory_refusal : [FileSystem(FileFacts.Fault), StoredDirectory(Str)] -> Http.Response
+	directory_refusal : DirectoryStore.Refusal -> Http.Response
 	directory_refusal = |why| {
 		said =
 			match why {
 				FileSystem(fault) => FileFacts.fault_words(fault)
 				StoredDirectory(words) => "The chat's directory on disk is not whole: ${words}."
+				Unwatched => "The server could not watch the chat's directory for changes, so it can't tell whether what it holds is current; its log says why."
+				TooLarge => "The chat's directory is larger than the server keeps in memory."
 			}
 		HttpAnswer.page(500, PageKit.notice({ title: "Failed", text: said }))
 	}
 }
+
+## Whether the data folder holds a whole chat, or held none and now holds
+## the first.
+prepare_files! : {} => [Failed, Ready]
+prepare_files! = |{}|
+	match DirectoryFiles.read_directory_files!({}) {
+		Err(_) => Failed
+		Ok(files) =>
+			match files.counter {
+				File(_) =>
+					match directory_from_files(files) {
+						Ok(_) => Ready
+						Err(_) => Failed
+					}
+				NoFile if files.accounts.is_empty() and files.channels.is_empty() =>
+					match write_first_directory!({}) {
+						Ok({}) => Ready
+						Err(_) => Failed
+					}
+				NoFile => Failed
+			}
+	}
 
 ## The first directory written: the founder's account, `general`'s members,
 ## then the counter of ids, which says the chat exists, last.

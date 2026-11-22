@@ -40,7 +40,15 @@ pub const Reach = enum(u8) { alone, with_its_folders };
 /// removed or given new rights in it, and the folder itself moved or
 /// removed.
 const changes_mask: u32 = linux.IN.MODIFY | linux.IN.ATTRIB | linux.IN.MOVED_FROM | linux.IN.MOVED_TO |
-    linux.IN.CREATE | linux.IN.DELETE | linux.IN.DELETE_SELF | linux.IN.MOVE_SELF | linux.IN.ONLYDIR;
+    linux.IN.CREATE | linux.IN.DELETE | linux.IN.DELETE_SELF | linux.IN.MOVE_SELF;
+
+/// What a folder above a watched one tells of: a name made, renamed or
+/// removed in it, and the folder itself moved or removed. A watch follows
+/// its folder, not its path, so a watched folder moved away (or one above
+/// it), and another put at its path, is told of here, and the app reads
+/// and watches again.
+const above_mask: u32 = linux.IN.CREATE | linux.IN.MOVED_FROM | linux.IN.MOVED_TO | linux.IN.DELETE |
+    linux.IN.DELETE_SELF | linux.IN.MOVE_SELF;
 
 pub const FolderWatch = struct {
     /// The kernel's queue of changes, made at the first watch.
@@ -55,12 +63,21 @@ pub const FolderWatch = struct {
 
     /// The folder `path` watched, and with `.with_its_folders` each folder
     /// directly in it, as they are now; a folder already watched stays so.
-    /// `missing` when it is not there, `path_refused` as every primitive
-    /// refuses a path, and `failed`, logged, when the kernel refuses a watch
-    /// (too many, or no memory): then some of them may not be watched.
+    /// Each folder above it, the data root included, is watched for a name
+    /// made, renamed or removed (`above_mask`), so a folder moved away and
+    /// another put at its path is told of. `missing` when it is not there,
+    /// those above it that are watched, so its making is told of;
+    /// `path_refused` as every primitive refuses a path; and `failed`,
+    /// logged, when the kernel refuses a watch (too many, or no memory):
+    /// then some of them may not be watched.
     pub fn watch(w: *FolderWatch, root: *const files.DataRoot, path: []const u8, reach: Reach) WatchAnswer {
         const what = "watch_folder_for_changes";
         root.count(.watches);
+        if (!files.path_rule(path)) return .path_refused;
+        if (root.watches_refused_for_test) |refused| if (refused.load(.acquire)) {
+            log.warn(what ++ " {f}: refused, as a test asked", .{files.loggable(path)});
+            return .failed;
+        };
         const queue = w.queue orelse made: {
             const rc = linux.inotify_init1(linux.IN.NONBLOCK | linux.IN.CLOEXEC);
             if (linux.errno(rc) != .SUCCESS) {
@@ -71,6 +88,23 @@ pub const FolderWatch = struct {
             w.queue = fd;
             break :made fd;
         };
+        add(queue, root.dir, "", "", above_mask) catch return .failed;
+        var above = std.mem.splitScalar(u8, path, '/');
+        var start: usize = 0;
+        while (above.next()) |part| {
+            const end = start + part.len;
+            if (end == path.len) break;
+            const prefix = path[0..end];
+            start = end + 1;
+            var upper = switch (root.open_folder(what, prefix)) {
+                .found => |d| d,
+                .missing => return .missing,
+                .path_refused => return .path_refused,
+                .failed => return .failed,
+            };
+            defer upper.close(root.io);
+            add(queue, upper, prefix, "", above_mask) catch return .failed;
+        }
         var folder = switch (root.open_folder(what, path)) {
             .found => |d| d,
             .missing => return .missing,
@@ -78,7 +112,7 @@ pub const FolderWatch = struct {
             .failed => return .failed,
         };
         defer folder.close(root.io);
-        add(queue, folder, path, "") catch return .failed;
+        add(queue, folder, path, "", changes_mask) catch return .failed;
         if (reach == .alone) return .watched;
         var it = folder.iterate();
         while (it.next(root.io) catch |e| {
@@ -95,7 +129,7 @@ pub const FolderWatch = struct {
                 },
             };
             defer inner.close(root.io);
-            add(queue, inner, path, entry.name) catch return .failed;
+            add(queue, inner, path, entry.name, changes_mask) catch return .failed;
         }
         return .watched;
     }
@@ -124,11 +158,13 @@ pub const FolderWatch = struct {
 };
 
 /// The watch set on `folder`, `path`'s folder `name` (or `path` itself,
-/// with `name` empty), as its descriptor names it.
-fn add(queue: linux.fd_t, folder: Io.Dir, path: []const u8, name: []const u8) !void {
+/// with `name` empty; the data root, with both empty), as its descriptor
+/// names it, for `mask`: added to any mask the folder is watched for
+/// already, so a folder both watched and above another keeps both.
+fn add(queue: linux.fd_t, folder: Io.Dir, path: []const u8, name: []const u8, mask: u32) !void {
     var buf: [64]u8 = undefined;
     const by_descriptor = std.fmt.bufPrintSentinel(&buf, "/proc/self/fd/{d}", .{folder.handle}, 0) catch unreachable;
-    const rc = linux.inotify_add_watch(queue, by_descriptor, changes_mask);
+    const rc = linux.inotify_add_watch(queue, by_descriptor, mask | linux.IN.ONLYDIR | linux.IN.MASK_ADD);
     if (linux.errno(rc) != .SUCCESS) {
         log.warn("watch_folder_for_changes {f}{s}{f}: inotify_add_watch: {t}", .{ files.loggable(path), if (name.len > 0) "/" else "", files.loggable(name), linux.errno(rc) });
         return error.WatchRefused;
@@ -196,6 +232,33 @@ test "a folder alone: its own files count, its folders' don't" {
     try testing.expectEqual(0, w.count_changes());
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "chat/channel/general.channel", .data = "1\n" });
     try testing.expect(w.count_changes() > 0);
+}
+
+test "a folder above a watched one: its folder moved away and another put in its place is a change; one not yet there is watched through its parent" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(testing.io, "chat/channel");
+    const root: files.DataRoot = .{ .io = testing.io, .dir = tmp.dir };
+    var w: FolderWatch = .{};
+    defer w.deinit();
+    try testing.expectEqual(WatchAnswer.watched, w.watch(&root, "chat/channel", .alone));
+    try tmp.dir.rename("chat", tmp.dir, "chat-moved", testing.io);
+    const moved = w.count_changes();
+    try testing.expect(moved > 0);
+    try testing.expectEqual(WatchAnswer.missing, w.watch(&root, "chat/channel", .alone));
+    try tmp.dir.createDirPath(testing.io, "chat/channel");
+    try testing.expect(w.count_changes() > moved);
+}
+
+test "a watch a test refuses fails" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(testing.io, "auth");
+    const refused: std.atomic.Value(bool) = .init(true);
+    const root: files.DataRoot = .{ .io = testing.io, .dir = tmp.dir, .watches_refused_for_test = &refused };
+    var w: FolderWatch = .{};
+    defer w.deinit();
+    try testing.expectEqual(WatchAnswer.failed, w.watch(&root, "auth", .with_its_folders));
 }
 
 test "missing, refused, and a link never watched" {

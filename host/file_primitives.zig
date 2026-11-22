@@ -176,6 +176,10 @@ pub const DataRoot = struct {
     /// itself here as it is asked, so host/cost_check.zig can say what a
     /// request cost. The server's own root (host/main.zig) never sets it.
     calls_for_test: ?*FileCalls = null,
+    /// **A TEST'S REFUSED WATCHES**: while set and true, every watch of
+    /// host/folder_watch.zig fails, as one the kernel refused would. The
+    /// server's own root never sets it.
+    watches_refused_for_test: ?*const std.atomic.Value(bool) = null,
 
     /// The calls counted, by kind, when `calls_for_test` is set.
     pub fn count(root: *const DataRoot, comptime kind: std.meta.FieldEnum(FileCalls)) void {

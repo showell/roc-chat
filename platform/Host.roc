@@ -176,10 +176,11 @@ Host := [].{
 	}
 
 	## `bytes` kept in the server's memory under `key`, 1 to 64 bytes, in
-	## place of what it held, until the server stops. At most 16 keys and
-	## 64 MiB in all: past either, or with a key outside its bounds, the
+	## place of what it held, until the server stops (`Kept`); or
+	## `TooLarge`, nothing changed, when they would pass 64 MiB kept in all.
+	## At most 16 keys: past that, or with a key outside its bounds, the
 	## server stops, as the app's bug.
-	replace_bytes_kept_under_key! : List(U8), List(U8) => {}
+	replace_bytes_kept_under_key! : List(U8), List(U8) => [Kept, TooLarge]
 
 	## The bytes kept under `key` (`Found`), or `Missing`, `bytes` empty,
 	## when none are.

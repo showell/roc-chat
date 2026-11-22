@@ -297,6 +297,8 @@ apoorvavpendse@gmail.com would be better
 
   The admin creates a channel at `/channels` and adds or removes its members, humans or agents, on its page, `/channels/<name>` (`app/ChannelMembers.roc`), which rewrites its `.channel` file whole, atomically; an admin may still edit the file by hand, as in the Zig chat.
   The server keeps the directory's files (the counter, each account's `name`, `name-released` and `owner`, and every `.channel`) in memory between requests, and reads them again once the kernel says anything in their folders changed (`app/DirectoryCache.roc`), so an edit by hand, like the app's own writes, is seen by the next request.
+  An edit by hand must be a plain write or rename on the data root's own mount, as `cat >`, an editor or `mv` makes: the kernel tells of no change made through a shared memory map, a bind mount, an overlay or a network file system, so the server would go on with what it read.
+  The server refuses to start when it can't watch the directory's folders, and a request that finds a watch refused is a 500 saying so: it never serves a directory it can't tell is current.
   Removing a member never removes their account or their id.
   A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash, and a password only as its bcrypt hash.
 

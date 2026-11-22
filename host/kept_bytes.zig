@@ -45,15 +45,17 @@ pub const KeptBytes = struct {
         return k.kept.get(key);
     }
 
-    /// `bytes`, copied, kept under `key` in place of what it held. A key
+    /// `bytes`, copied, kept under `key` in place of what it held:
+    /// `kept`; or `too_large`, nothing changed, when they would pass
+    /// `bytes_most` kept in all, since the bytes may come from files. A key
     /// that is empty or longer than `key_most`, a new key past
-    /// `keys_most`, more than `bytes_most` in all, or no memory, is the
-    /// app's bug or a server that can't go on: the server stops.
-    pub fn keep(k: *KeptBytes, key: []const u8, bytes: []const u8) void {
+    /// `keys_most`, or no memory, is the app's bug or a server that can't go
+    /// on: the server stops.
+    pub fn keep(k: *KeptBytes, key: []const u8, bytes: []const u8) KeepAnswer {
         if (key.len == 0 or key.len > key_most) std.debug.panic("replace_bytes_kept_under_key: a key of {d} bytes (1 to {d})", .{ key.len, key_most });
         const held = k.kept.getPtr(key);
         const before = if (held) |h| h.len else 0;
-        if (k.total - before + bytes.len > bytes_most) std.debug.panic("replace_bytes_kept_under_key: {d} bytes would pass the {d} kept in all", .{ k.total - before + bytes.len, bytes_most });
+        if (k.total - before + bytes.len > bytes_most) return .too_large;
         const copy = k.gpa.dupe(u8, bytes) catch std.debug.panic("replace_bytes_kept_under_key: no memory for {d} bytes", .{bytes.len});
         if (held) |h| {
             k.gpa.free(h.*);
@@ -64,8 +66,12 @@ pub const KeptBytes = struct {
             k.kept.put(k.gpa, key_copy, copy) catch std.debug.panic("replace_bytes_kept_under_key: no memory for a key", .{});
         }
         k.total = k.total - before + bytes.len;
+        return .kept;
     }
 };
+
+/// Host.roc's `replace_bytes_kept_under_key!` answer, alphabetical.
+pub const KeepAnswer = enum(u8) { kept, too_large };
 
 // ── tests: on std.testing.allocator, so anything left unfreed fails
 
@@ -75,14 +81,28 @@ test "a key holds nothing until bytes are kept, then the latest, each key its ow
     var k = KeptBytes.init(testing.allocator);
     defer k.deinit();
     try testing.expectEqual(null, k.recall("directory"));
-    k.keep("directory", "one");
+    _ = k.keep("directory", "one");
     try testing.expectEqualStrings("one", k.recall("directory").?);
-    k.keep("directory", "two, longer");
+    _ = k.keep("directory", "two, longer");
     try testing.expectEqualStrings("two, longer", k.recall("directory").?);
-    k.keep("other", "");
+    _ = k.keep("other", "");
     try testing.expectEqualStrings("", k.recall("other").?);
     try testing.expectEqualStrings("two, longer", k.recall("directory").?);
     try testing.expectEqual(11, k.total);
+}
+
+test "bytes past the most kept in all are refused, and what was kept stays" {
+    var k = KeptBytes.init(testing.allocator);
+    defer k.deinit();
+    try testing.expectEqual(KeepAnswer.kept, k.keep("a", "xy"));
+    const big = try testing.allocator.alloc(u8, bytes_most - 1);
+    defer testing.allocator.free(big);
+    try testing.expectEqual(KeepAnswer.too_large, k.keep("b", big));
+    try testing.expectEqual(null, k.recall("b"));
+    try testing.expectEqualStrings("xy", k.recall("a").?);
+    try testing.expectEqual(KeepAnswer.kept, k.keep("a", big));
+    try testing.expectEqual(bytes_most - 1, k.total);
+    try testing.expectEqual(bytes_most - 1, k.recall("a").?.len);
 }
 
 test "the key and the bytes are copied, so the caller's may change after" {
@@ -90,7 +110,7 @@ test "the key and the bytes are copied, so the caller's may change after" {
     defer k.deinit();
     var key = "a".*;
     var bytes = "xy".*;
-    k.keep(&key, &bytes);
+    _ = k.keep(&key, &bytes);
     key = "b".*;
     bytes = "zz".*;
     try testing.expectEqualStrings("xy", k.recall("a").?);
@@ -101,6 +121,6 @@ test "a key of the most bytes is kept" {
     var k = KeptBytes.init(testing.allocator);
     defer k.deinit();
     const longest: [key_most]u8 = @splat('k');
-    k.keep(&longest, "v");
+    _ = k.keep(&longest, "v");
     try testing.expectEqualStrings("v", k.recall(&longest).?);
 }

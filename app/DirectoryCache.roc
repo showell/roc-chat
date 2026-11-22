@@ -8,11 +8,15 @@
 ## whenever the count has moved, so what it is given is never older than
 ## the disk.
 ##
-## A read from disk watches the folders first, then takes the count, then
-## reads, and keeps what it read under that count. A change after the count
-## moves it, whether it came before the read or after, so none is missed.
-## When a folder can't be watched, nothing is kept, and the next request
-## reads the disk again.
+## A read from disk watches the folders, takes the count, watches them
+## again, then reads; the caller keeps what it read under that count once
+## it knows the files make a whole directory (`keep!`). A change after the
+## count moves it, whether it came before the read or after, so none is
+## missed; the second watch catches a folder made between the first one's
+## listing and the count, whose making the count took in. Each folder
+## above a watched one is watched too, so one moved away and another put
+## at its path is a change. A folder that can't be watched is `Unwatched`,
+## a refusal: the server never reads on unwatched.
 import pf.Host
 import ChannelName
 import DirectoryFiles
@@ -21,11 +25,16 @@ import UserId
 
 DirectoryCache :: [].{
 
-	## The directory's files: as kept, when no change was counted since they
-	## were read; else read from disk, and kept.
+	## The directory's files read from disk, and the count of changes taken
+	## before they were read.
+	Reading : { changes : U64, contents : DirectoryFiles.Contents }
+
+	## The directory's files: as kept (`Fresh`), when no change was counted
+	## since they were read; else read from disk (`Unkept`), for `keep!`.
+	## `Unwatched` when a folder of theirs can't be watched.
 	read_directory_files! : {} => Try(
-		DirectoryFiles.Contents,
-		[Missing, Damaged, NotUtf8, PathRefused, Failed],
+		[Fresh(DirectoryFiles.Contents), Unkept(DirectoryCache.Reading)],
+		[Missing, Damaged, NotUtf8, PathRefused, Failed, Unwatched],
 	)
 	read_directory_files! = |{}| {
 		changes = FileFacts.count_changes!({})
@@ -34,44 +43,43 @@ DirectoryCache :: [].{
 			Found => {
 				record = kept_from_bytes(kept.bytes)
 				if record.changes == changes {
-					Ok(record.contents)
+					Ok(Fresh(record.contents))
 				} else {
-					read_and_keep!({})
+					read_watched!({})
 				}
 			}
-			Missing => read_and_keep!({})
+			Missing => read_watched!({})
 		}
 	}
-}
 
-## What is kept: the directory's files, and the count of changes taken
-## before they were read.
-Kept : { changes : U64, contents : DirectoryFiles.Contents }
+	## What `reading` read, kept under its count, for the requests after;
+	## unless it would pass what the host keeps (`TooLarge`).
+	keep! : DirectoryCache.Reading => Try({}, [TooLarge])
+	keep! = |reading|
+		match Host.replace_bytes_kept_under_key!(kept_key, kept_to_bytes(reading)) {
+			Kept => Ok({})
+			TooLarge => Err(TooLarge)
+		}
+}
 
 ## The key the directory's files are kept under.
 kept_key : List(U8)
 kept_key = "directory".to_utf8()
 
-## The directory's files read from disk, their folders watched and the
-## count taken first, then kept under that count; or, when a folder can't
-## be watched, read and not kept.
-read_and_keep! : {} => Try(DirectoryFiles.Contents, _)
-read_and_keep! = |{}| {
-	watched = DirectoryFiles.watch_directory_files!({})
+## The directory's files read from disk, their folders watched, the count
+## taken, and the folders watched again first; or `Unwatched`.
+read_watched! : {} => Try([Fresh(DirectoryFiles.Contents), Unkept(DirectoryCache.Reading)], _)
+read_watched! = |{}| {
+	DirectoryFiles.watch_directory_files!({}) ? |_| Unwatched
 	changes = FileFacts.count_changes!({})
+	DirectoryFiles.watch_directory_files!({}) ? |_| Unwatched
 	contents = DirectoryFiles.read_directory_files!({})?
-	match watched {
-		Ok({}) => Host.replace_bytes_kept_under_key!(kept_key, kept_to_bytes({ changes, contents }))
-		Err(Missing) => {}
-		Err(PathRefused) => {}
-		Err(Failed) => {}
-	}
-	Ok(contents)
+	Ok(Unkept({ changes, contents }))
 }
 
 ## The bytes a kept record is held as: each of its parts (`kept_parts`) as
 ## a netstring, its length's digits, `:`, then its bytes.
-kept_to_bytes : Kept -> List(U8)
+kept_to_bytes : DirectoryCache.Reading -> List(U8)
 kept_to_bytes = |kept|
 	kept_parts(kept).join_map(|part| List.concat("${part.len().to_str()}:".to_utf8(), part))
 
@@ -79,7 +87,7 @@ kept_to_bytes = |kept|
 ## `file` and its bytes; how many accounts, then each one's id, name, and
 ## `no owner`, or `owner` and its bytes; how many channels, then each
 ## one's name and members.
-kept_parts : Kept -> List(List(U8))
+kept_parts : DirectoryCache.Reading -> List(List(U8))
 kept_parts = |{ changes, contents }| {
 	counter =
 		match contents.counter {
@@ -112,7 +120,7 @@ kept_parts = |{ changes, contents }| {
 ## The kept record `bytes` hold, as `kept_to_bytes` wrote them. Only this
 ## module writes them, so bytes that hold anything else are a broken
 ## promise, and crash.
-kept_from_bytes : List(U8) -> Kept
+kept_from_bytes : List(U8) -> DirectoryCache.Reading
 kept_from_bytes = |bytes| {
 	parts = parts_of(bytes)
 	changes = number_of(part_at(parts, 0))

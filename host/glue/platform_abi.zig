@@ -1272,7 +1272,7 @@ pub const __AnonStruct_e8efb18a305a4fe8 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        decrefListOfListOfType41(value.stream_keys, roc_host);
+        decrefListOfListOfType42(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1299,7 +1299,7 @@ pub const __AnonStruct_e8efb18a305a4fe8 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        decrefListOfListOfType41(value.stream_keys, roc_host);
+        decrefListOfListOfType42(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1801,6 +1801,34 @@ comptime {
     if (@sizeOf(usize) == 4) {
         if (@sizeOf(FoundOrMissing) != 1) @compileError("FoundOrMissing size mismatch");
         if (@alignOf(FoundOrMissing) != 1) @compileError("FoundOrMissing alignment mismatch");
+    }
+}
+
+/// Tag union: KeptOrTooLarge
+pub const KeptOrTooLarge = enum(u8) {
+    kept = 0,
+    too_large = 1,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(KeptOrTooLarge) != 1) @compileError("KeptOrTooLarge size mismatch");
+        if (@alignOf(KeptOrTooLarge) != 1) @compileError("KeptOrTooLarge alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(KeptOrTooLarge) != 1) @compileError("KeptOrTooLarge size mismatch");
+        if (@alignOf(KeptOrTooLarge) != 1) @compileError("KeptOrTooLarge alignment mismatch");
     }
 }
 
@@ -2444,7 +2472,7 @@ pub const HostRead_utf8_bytes_from_fileArgs = extern struct {
 };
 
 /// Arguments for Host.replace_bytes_kept_under_key!
-/// Roc signature: List(U8), List(U8) => {}
+/// Roc signature: List(U8), List(U8) => [Kept, TooLarge]
 /// Refcounted fields are owned by the hosted function.
 pub const HostReplace_bytes_kept_under_keyArgs = extern struct {
     arg0: RocListWith(u8, false),
@@ -2654,7 +2682,7 @@ pub fn decrefListOf__AnonStruct_288155b7e13051cb(value: RocList(__AnonStruct_288
 ///
 /// The allocation's final reference is claimed atomically before any element
 /// is read, so concurrent owners cannot skip or duplicate element teardown.
-pub fn decrefListOfListOfType41(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
+pub fn decrefListOfListOfType42(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
     value.deinitWith(RocListSpineRelease(RocListWith(u8, false)), roc_host);
 }
 
@@ -2896,12 +2924,12 @@ pub extern fn read_second_kept_under_key(arg0: RocListWith(u8, false)) callconv(
 pub extern fn read_utf8_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_c2b10c7c13915346;
 
 /// Hosted symbol for Host.replace_bytes_kept_under_key!
-/// Roc signature: List(U8), List(U8) => {}
+/// Roc signature: List(U8), List(U8) => [Kept, TooLarge]
 /// Owned arguments. Release each exactly once before returning, unless it is
 /// moved into storage or into the result:
 ///     arg0.decref(roc_host);
 ///     arg1.decref(roc_host);
-pub extern fn replace_bytes_kept_under_key(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
+pub extern fn replace_bytes_kept_under_key(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) KeptOrTooLarge;
 
 /// Hosted symbol for Host.replace_file_with_utf8_bytes_atomically!
 /// Roc signature: List(U8), List(U8) => [Failed, MissingDirectory, NotUtf8, PathRefused, Replaced]

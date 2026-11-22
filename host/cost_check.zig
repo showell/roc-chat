@@ -70,6 +70,7 @@ pub fn main(init: std.process.Init) !void {
     const hash = try passwordHash(a, io);
     const at_small = try measure(a, io, gpa, .{ .humans = small, .hash = hash, .probes = probes });
     const at_big = try measure(a, io, gpa, .{ .humans = big, .hash = hash, .probes = probes });
+    try unwatchedStartSteps(a, io, gpa, hash);
 
     var wrong: usize = 0;
     for (probes, at_small, at_big) |probe, s, b| {
@@ -134,7 +135,8 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
     try seed(a, io, data, size);
 
     var calls: files.FileCalls = .{};
-    const root: files.DataRoot = .{ .io = io, .dir = data, .calls_for_test = &calls };
+    var refused: std.atomic.Value(bool) = .init(false);
+    const root: files.DataRoot = .{ .io = io, .dir = data, .calls_for_test = &calls, .watches_refused_for_test = &refused };
     var server = try http.Server.listen(io, gpa, .{ .port = 0, .root = &root });
     var running = try io.concurrent(http.Server.run, .{&server});
     defer {
@@ -171,14 +173,18 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
             return error.CostCheckProbeFailed;
         }
     }
-    if (size.humans == small) try freshnessSteps(a, io, port, data, .{ .tam = cookie, .steve = try sessionCookie(a, io, data, .{ .id = "1", .hash = size.hash }) });
+    if (size.humans == small) try freshnessSteps(a, io, port, data, .{
+        .tam = cookie,
+        .steve = try sessionCookie(a, io, data, .{ .id = "1", .hash = size.hash }),
+        .refused = &refused,
+    });
     return counts;
 }
 
 /// **THE DIRECTORY IS NEVER STALE**, though the server keeps it between
 /// requests (app/DirectoryCache.roc): each edit by hand, and the server's
 /// own write, is seen by the next request.
-fn freshnessSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, who: struct { tam: []const u8, steve: []const u8 }) !void {
+fn freshnessSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, who: struct { tam: []const u8, steve: []const u8, refused: *std.atomic.Value(bool) }) !void {
     const page = "/chat/channel/general/roc-chat";
     const members_file = "chat/channel/general.channel";
     const members = try data.readFileAlloc(io, members_file, a, .limited(1024 * 1024));
@@ -204,6 +210,59 @@ fn freshnessSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, who: st
     const removal = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /channels/general/members/2/remove HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: 0\r\n\r\n", .{ port, who.steve }));
     const after_removal = try getAs(a, io, port, who.tam, page);
     try check("Steve removes Tam from `general` in the app: her next page is refused", removal.status == 303 and after_removal.status == 403);
+
+    try write(io, data, try std.fmt.allocPrint(a, "auth/{d}/name-released", .{small + 1}), "1000000000");
+    const released = try getAs(a, io, port, who.tam, "/chat");
+    try check("that account's `name-released` written by hand: Browse lists them no more", !has(released.body, "Human Made By Hand"));
+
+    // `chat/` moved away and another put in its place: the watch on the old
+    // folder of channels sees nothing, so the folders above it must.
+    try data.rename("chat", data, "chat-moved", io);
+    try write(io, data, members_file, members);
+    const swapped = try getAs(a, io, port, who.tam, page);
+    const removed_again = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /channels/general/members/2/remove HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: 0\r\n\r\n", .{ port, who.steve }));
+    const after_swap = try getAs(a, io, port, who.tam, page);
+    try check("`chat/` moved away and a copy holding Tam put in its place: her page at once; Steve then removes her in the app: refused at once", swapped.status == 200 and removed_again.status == 303 and after_swap.status == 403);
+
+    try data.rename("chat", data, "chat-gone", io);
+    const no_channels = try getAs(a, io, port, who.tam, page);
+    const no_channels_browse = try getAs(a, io, port, who.tam, "/chat");
+    try write(io, data, members_file, members);
+    const made_again = try getAs(a, io, port, who.tam, page);
+    try check("no `chat/` at all: her page a 404, Browse still served; `chat/channel/general.channel` made by hand: her page at once", no_channels.status == 404 and no_channels_browse.status == 200 and made_again.status == 200);
+
+    who.refused.store(true, .release);
+    try write(io, data, members_file, without_tam);
+    const unwatched = try getAs(a, io, port, who.tam, page);
+    who.refused.store(false, .release);
+    const watched_again = try getAs(a, io, port, who.tam, page);
+    try check("a watch the kernel refuses: a 500 saying the server could not watch the directory; refused no more: the page again, as the file now says", unwatched.status == 500 and
+        has(unwatched.body, "could not watch the chat&#39;s directory for changes") and watched_again.status == 403);
+}
+
+/// **A SERVER WHOSE WATCH IS REFUSED DOES NOT START**: so no server runs
+/// on a directory it can't tell is current.
+fn unwatchedStartSteps(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, hash: []const u8) !void {
+    const cwd = Io.Dir.cwd();
+    var name_buf: [64]u8 = undefined;
+    var random: [8]u8 = undefined;
+    io.random(&random);
+    const data_name = try std.fmt.bufPrint(&name_buf, ".zig-cache/cost-check-{x}", .{std.mem.readInt(u64, &random, .little)});
+    try cwd.createDirPath(io, data_name);
+    defer cwd.deleteTree(io, data_name) catch |e| std.debug.print("cost-check: {s} not removed ({t})\n", .{ data_name, e });
+    const data = try cwd.openDir(io, data_name, .{});
+    defer data.close(io);
+    try seed(a, io, data, .{ .humans = small, .hash = hash, .probes = &.{} });
+    const refused: std.atomic.Value(bool) = .init(true);
+    const root: files.DataRoot = .{ .io = io, .dir = data, .watches_refused_for_test = &refused };
+    var refusal: ?anyerror = null;
+    if (http.Server.listen(io, gpa, .{ .port = 0, .root = &root })) |s| {
+        var server = s;
+        var running = try io.concurrent(http.Server.run, .{&server});
+        server.stop();
+        running.await(io) catch {};
+    } else |e| refusal = e;
+    try check("a server whose watch of the directory is refused: it does not start", if (refusal) |e| e == error.AppStartFailed else false);
 }
 
 fn check(comptime what: []const u8, ok: bool) !void {
@@ -247,6 +306,9 @@ fn seed(a: std.mem.Allocator, io: Io, data: Io.Dir, size: Size) !void {
     try write(io, data, "auth/2/password", password_file);
     try write(io, data, "auth/2/joined", "1000000000");
     try write(io, data, "chat/channel/general.channel", members.items);
+    // The users' own folders' root, as a chat that has run holds it: its
+    // making is a change in the data root, which a probe would pay for.
+    try data.createDirPath(io, "users");
     try write(io, data, seed_path["demo/data/".len..], try Io.Dir.cwd().readFileAlloc(io, seed_path, a, .limited(1024 * 1024)));
 }
 

@@ -215,7 +215,9 @@ pub const Server = struct {
     pub fn listen(io: Io, gpa: std.mem.Allocator, setup: Setup) !Server {
         var listener = try listen_alone(setup.port);
         errdefer listener.deinit(io);
-        try start_app(io, gpa, setup.root);
+        var watch: folder_watch.FolderWatch = .{};
+        errdefer watch.deinit();
+        try start_app(io, gpa, setup.root, &watch);
         const secret = try sign_in.ServerSecret.load_or_create(io, setup.root.dir);
         const github_settings = try github.Settings.load(io, setup.root.dir);
         return .{
@@ -227,6 +229,7 @@ pub const Server = struct {
             .hub = .init(io, gpa),
             .seconds = .init(gpa),
             .kept = .init(gpa),
+            .watch = watch,
             .search = .init(gpa),
             .secret = secret,
             .password_checks = .init(.{
@@ -518,11 +521,13 @@ pub const Server = struct {
 
 /// The app's start, once, before the server serves (`roc_start`): it
 /// makes the first data in an empty data folder, and refuses a folder that
-/// holds part of a chat, so the server never serves from one.
-pub fn start_app(io: Io, gpa: std.mem.Allocator, root: *const files.DataRoot) error{AppStartFailed}!void {
+/// holds part of a chat, so the server never serves from one, and refuses
+/// to start when it can't watch the directory's folders on `watch`, which
+/// the server then keeps.
+pub fn start_app(io: Io, gpa: std.mem.Allocator, root: *const files.DataRoot, watch: *folder_watch.FolderWatch) error{AppStartFailed}!void {
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit();
-    seam.begin(.{ .arena = arena_state.allocator(), .root = root, .io = io });
+    seam.begin(.{ .arena = arena_state.allocator(), .root = root, .io = io, .watch = watch });
     const started = seam.roc_start();
     seam.end();
     if (started != .ready) {

@@ -11,6 +11,7 @@ pub const std_options: std.Options = .{ .log_level = .err };
 const Io = std.Io;
 const http = @import("http.zig");
 const files = @import("file_primitives.zig");
+const folder_watch = @import("folder_watch.zig");
 const sign_in = @import("sign_in_primitives.zig");
 
 const io = std.testing.io;
@@ -739,11 +740,13 @@ test "the app's start: an empty data folder gets the first chat; one holding par
     var empty = testing.tmpDir(.{});
     defer empty.cleanup();
     const empty_root: files.DataRoot = .{ .io = io, .dir = empty.dir };
-    try http.start_app(io, gpa, &empty_root);
+    var start_watch: folder_watch.FolderWatch = .{};
+    defer start_watch.deinit();
+    try http.start_app(io, gpa, &empty_root, &start_watch);
     var buf: [64]u8 = undefined;
     try testing.expectEqualStrings("2\n", try empty.dir.readFile(io, "auth/next-id.txt", &buf));
     // Started again, it reads the chat it made.
-    try http.start_app(io, gpa, &empty_root);
+    try http.start_app(io, gpa, &empty_root, &start_watch);
 
     // An account and no counter of ids: part of a chat.
     var partial = testing.tmpDir(.{});
@@ -751,28 +754,28 @@ test "the app's start: an empty data folder gets the first chat; one holding par
     try partial.dir.createDirPath(io, "auth/1");
     try partial.dir.writeFile(io, .{ .sub_path = "auth/1/name", .data = "Steve" });
     const partial_root: files.DataRoot = .{ .io = io, .dir = partial.dir };
-    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
+    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root, &start_watch));
     try testing.expectError(error.AppStartFailed, http.Server.listen(io, gpa, .{ .port = 0, .root = &partial_root }));
 
     // A counter behind its users: no chat.
     try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "1\n" });
-    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
+    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root, &start_watch));
     // Mended, it starts.
     try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "2\n" });
-    try http.start_app(io, gpa, &partial_root);
+    try http.start_app(io, gpa, &partial_root, &start_watch);
 
     // An account cut short as it was made, its owner written and no name:
     // no account, and the chat still starts. Its name written, it is one.
     try partial.dir.createDirPath(io, "auth/2");
     try partial.dir.writeFile(io, .{ .sub_path = "auth/2/owner", .data = "1" });
     try partial.dir.writeFile(io, .{ .sub_path = "auth/next-id.txt", .data = "3\n" });
-    try http.start_app(io, gpa, &partial_root);
+    try http.start_app(io, gpa, &partial_root, &start_watch);
     try partial.dir.writeFile(io, .{ .sub_path = "auth/2/name", .data = "CC" });
-    try http.start_app(io, gpa, &partial_root);
+    try http.start_app(io, gpa, &partial_root, &start_watch);
     // A name that is no name still stops the start: only a missing one is
     // an account cut short.
     try partial.dir.writeFile(io, .{ .sub_path = "auth/2/name", .data = "C!C" });
-    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root));
+    try testing.expectError(error.AppStartFailed, http.start_app(io, gpa, &partial_root, &start_watch));
 }
 
 /// A sign-in by no one, the form `form`, on a connection of its own, with

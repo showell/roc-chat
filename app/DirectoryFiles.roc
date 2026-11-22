@@ -57,13 +57,15 @@ DirectoryFiles :: [].{
 	}
 
 	## Every folder that holds a file `read_directory_files!` reads, watched
-	## for changes (`FileFacts.watch_folder!`): the accounts root, each
-	## account folder in it, and the folder of channels, for their members
-	## files alone.
-	watch_directory_files! : {} => Try({}, [Missing, PathRefused, Failed])
+	## for changes (`FileFacts.watch_folder!`), with each folder above it:
+	## the accounts root, each account folder in it, and the folder of
+	## channels, for their members files alone. A folder that is not there
+	## is no failure: none of channels holds no channel, and the host
+	## watches the folders above it, so its making is a change.
+	watch_directory_files! : {} => Try({}, [PathRefused, Failed])
 	watch_directory_files! = |{}| {
-		AccountFiles.watch_account_folders!({})?
-		FileFacts.watch_folder!(channels_folder_path, Alone)
+		absent_allowed(AccountFiles.watch_account_folders!({}))?
+		absent_allowed(FileFacts.watch_folder!(channels_folder_path, Alone))
 	}
 
 	## A channel's members file, written whole as `channel` holds them.
@@ -85,6 +87,16 @@ DirectoryFiles :: [].{
 		Ok(names.keep_oks(Topic.from_str))
 	}
 }
+
+## A watch's answer, a folder not there taken as watched (`watch_directory_files!`).
+absent_allowed : Try({}, [Missing, PathRefused, Failed]) -> Try({}, [PathRefused, Failed])
+absent_allowed = |watched|
+	match watched {
+		Ok({}) => Ok({})
+		Err(Missing) => Ok({})
+		Err(PathRefused) => Err(PathRefused)
+		Err(Failed) => Err(Failed)
+	}
 
 ## The folder of the channels: what holds each channel's folder and its
 ## members file.
