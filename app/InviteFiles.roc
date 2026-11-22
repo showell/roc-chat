@@ -181,7 +181,11 @@ read_invite_fact! = |folder, fact|
 
 ## A damaged invite of the human `human`'s, its `fact` file missing or
 ## holding no fact, said in the server's log: `Damaged`.
-log_damage! : { human : UserId, id : HumanInvite.Id, fact : Str } => [Damaged]
+log_damage! : {
+	human : UserId,
+	id : HumanInvite.Id,
+	fact : Str,
+} => [Damaged]
 log_damage! = |{ human, id, fact }| {
 	said = "invites: user ${human.to_str()}'s invite ${id.to_str()} has no ${fact} it can read; every request that reads their invites fails until it is mended"
 	Host.write_line_to_server_log!(said.to_utf8())
