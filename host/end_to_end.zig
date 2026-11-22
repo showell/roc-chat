@@ -336,7 +336,9 @@
 //!      its /64; a session a code started is marked, may not link GitHub or
 //!      make agents or their invites, and a password sign-in after is
 //!      ordinary and signs out at once, asked nothing; the page lists sign-ins by code, coarsely; "Sign out other
-//!      devices" ends every other session of the human's.
+//!      devices" ends every other session of the human's and every open
+//!      stream of theirs at once, the other devices' reconnects refused and
+//!      this device's served by its session signed again.
 //! 48zx. one `X-Forwarded-For` client at `requests_per_client_most`, 8 streams
 //!      and the rest requests with their bodies held back: each admitted; one
 //!      request more: a 429; another client and a request with no such
@@ -1084,7 +1086,17 @@ fn limitSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, f
     const again_link = between(again.body, "<p class=\"invite-code\">", "</p>") orelse return error.NoLink;
     const again_code = again_link[(std.mem.indexOfScalar(u8, again_link, '#') orelse return error.NoCode) + 1 ..];
     try Io.Clock.Duration.sleep(.{ .clock = .awake, .raw = .fromMilliseconds(1100) }, io);
+    // Her first session's open stream, which her new password must end.
+    const steves = steve_session;
+    steve_session = first_session;
+    var first_stream = try Stream.openWith(a, io, port, "/chat/recent/stream", "");
+    defer first_stream.close();
+    steve_session = steves;
+    const rejoining = Io.Clock.now(.awake, io);
     const rejoined = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Rita&password=their+new+own", .{again_code}));
+    const first_stream_ended = if (first_stream.event()) |_| false else |e| e == error.EndOfStream;
+    try t.check("joining again by an invite, a new password, ends every open stream of the human's at once, as it ends their sessions", first_stream.isEventStream() and
+        first_stream_ended and rejoining.untilNow(io, .awake).toMilliseconds() < Stream.wait_ms / 2);
     try t.check("Rita's join writes `joined`, the second she joined, its digits; invited again and joined again, it is kept", joined_at >= joining and joined_at <= joined_by and
         first_session.len > 0 and rejoined.status == 303 and std.mem.eql(u8, try readFile(a, io, data, joined_path), try std.fmt.allocPrint(a, "{d}", .{joined_at})));
     // Her new password ended the first session; the join's own signs her in.
@@ -1440,7 +1452,22 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
     const phone_session = try cookieLine(a, phone);
     const phone_key_state = try std.fmt.allocPrint(a, "auth/1/device-keys/{s}/state", .{deviceKeyOf(phone) orelse "(none)"});
     const waiting = try makeCode(a, io, port, steve_session);
+    // Step 48zz3: a stream open on the phone (Recent's), as a stolen cookie
+    // would hold one, and one open on this device (the device page's own).
+    const steves = steve_session;
+    steve_session = phone_session;
+    var phone_stream = try Stream.openWith(a, io, port, "/chat/recent/stream", "");
+    defer phone_stream.close();
+    steve_session = steves;
+    var own_stream = try Stream.openWith(a, io, port, "/devices/stream", "");
+    defer own_stream.close();
+    const signing_out = Io.Clock.now(.awake, io);
     const signed_out = try post(a, io, port, .{ .path = "/devices/sign-out-others", .form = "" });
+    const phone_stream_ended = if (phone_stream.event()) |_| false else |e| e == error.EndOfStream;
+    const own_stream_ended = if (own_stream.event()) |_| false else |e| e == error.EndOfStream;
+    const ended_ms = signing_out.untilNow(io, .awake).toMilliseconds();
+    try t.check("\"Sign out other devices\" ends every open stream of Steve's at once, the phone's and this device's own, as an open stream checks no session again", phone_stream.isEventStream() and
+        own_stream.isEventStream() and phone_stream_ended and own_stream_ended and ended_ms < Stream.wait_ms / 2);
     try t.check("signing other devices out cancels the live code first, and forgets the cookie that shows one; this device, still signed in, clears no site data", isDeviceCode(waiting.shown) and
         signed_out.header("clear-site-data") == null and
         std.mem.startsWith(u8, try readFile(a, io, data, "users/1/device-code"), "cancelled ") and
@@ -1455,7 +1482,21 @@ fn deviceSessionSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: 
         new_steve.status == 200 and old_steve.status == 303 and old_phone.status == 303 and old_ordinary.status == 303 and
         std.mem.eql(u8, try readFile(a, io, data, phone_key_state), "revoked") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/1/session-generation"), "1"));
+    // The streams reconnect: the phone's, and this device's by its old
+    // cookie, refused; this device's by its session signed again, served.
+    steve_session = phone_session;
+    var phone_again = try Stream.openWith(a, io, port, "/chat/recent/stream", "");
+    defer phone_again.close();
+    steve_session = steves;
+    var old_own = try Stream.openWith(a, io, port, "/devices/stream", "");
+    defer old_own.close();
     steve_session = try std.fmt.allocPrint(a, "{s}", .{steve_again});
+    var own_again = try Stream.openWith(a, io, port, "/devices/stream", "");
+    defer own_again.close();
+    var recent_again = try Stream.openWith(a, io, port, "/chat/recent/stream", "");
+    defer recent_again.close();
+    try t.check("their reconnects: the phone's stream and this device's old cookie's refused, a 401, no stream; this device's session signed again opens both its streams", std.mem.startsWith(u8, phone_again.head, "HTTP/1.1 401 ") and
+        std.mem.startsWith(u8, old_own.head, "HTTP/1.1 401 ") and own_again.isEventStream() and recent_again.isEventStream());
 
     // A session-generation file damaged by hand: Steve's session is refused,
     // a 303 to sign in, not a 500 on every request; a password sign-in is a
@@ -3186,10 +3227,21 @@ fn linkSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, he
         no_exchange and linkRefused(another, 403, "did not start from this account") and linkRefused(no_session, 403, "did not start from this account") and
         !(try exists(io, data, "auth/4/github-id")) and !(try exists(io, data, "auth/11/github-id")) and ivy_page.status == 200);
     try data.writeFile(io, .{ .sub_path = "auth/11/github-session-secret", .data = "an old word" });
+    // Her open stream, which the link, ending her sessions, must end too.
+    const steves = steve_session;
+    steve_session = ivy;
+    var ivy_stream = try Stream.openWith(a, io, port, "/chat/recent/stream", "");
+    defer ivy_stream.close();
+    steve_session = steves;
     const ivy_linked = try linkByGitHub(a, io, port, fake, ivy, "user-id-33");
+    const ivy_stream_ended = if (ivy_stream.event()) |_| false else |e| e == error.EndOfStream;
     const ivy_after = try getAs(a, io, port, try cookieLine(a, ivy_linked), "/invites");
-    try t.check("a github-session-secret left from an earlier binding is replaced as she links", ivy_linked.status == 303 and ivy_after.status == 200 and
-        (try readFile(a, io, data, "auth/11/github-session-secret")).len == 64);
+    steve_session = try cookieLine(a, ivy_linked);
+    var ivy_again = try Stream.openWith(a, io, port, "/chat/recent/stream", "");
+    defer ivy_again.close();
+    steve_session = steves;
+    try t.check("a github-session-secret left from an earlier binding is replaced as she links; her open stream is ended, and her new session opens it again", ivy_linked.status == 303 and ivy_after.status == 200 and
+        (try readFile(a, io, data, "auth/11/github-session-secret")).len == 64 and ivy_stream.isEventStream() and ivy_stream_ended and ivy_again.isEventStream());
 
     // 48zl.
     const by_key = try post(a, io, port, .{ .path = "/login/github/link", .form = "", .more = held.cc_bearer });

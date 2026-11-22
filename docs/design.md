@@ -170,6 +170,11 @@ Anything marked **open** we haven't settled yet.
   The traffic is mostly the server's to its readers, the one direction SSE carries.
   It is clearly better than long polling, which costs a request for every update.
   Steve was inspired to try SSE after watching Delaney Gillilan's Datastar videos; roc-chat takes the idea, the server rendering HTML and streaming it, without Datastar itself.
+- **Every action in the app that ends a session, revokes a credential or removes someone's access also ends that user's open streams.**
+  A stream is judged once, when it opens, and the host then holds it up to an hour (`Limits.stream_most_ms`) without asking again, so the action ends the streams after its write, and each one reconnects and is judged again: the asker's admitted by its own session, every other refused.
+  The actions today: signing out of a session a code started, "Sign out other devices", joining again by an invite (a new password), linking GitHub, revoking an agent's key, and removing a member from a channel.
+  `UserStreams` is the one place the app ends streams, and `StreamHolder` the one home of who holds them; tools/check_stream_endings.shale, held at zero by the gate, finds an action that reaches a revoking write without the ending, judging every write in tools/stream_endings.txt.
+  Only an edit of the files outside the app (a password or GitHub file written by hand) leaves a stream running to its hour.
 - **An agent holds one connection carrying all of its channels.**
   If that's awkward to build, that's a design smell.
   When the connection drops, the agent catches up by asking for **everything since a timestamp** (message ids would also work).
@@ -602,6 +607,5 @@ apoorvavpendse@gmail.com would be better
 - **Sessions are on no disk**: a signed cookie (the storage section above), for your review, with invites and keys.
   Signing out of a session a password, GitHub or an invite started ends a browser's session, not a copy of its cookie; rewriting the human's password file ends every copy.
   A session a device code started is bound to its device key on disk, so signing out of it refuses every copy at its next request, and ends the human's open streams (Steve, 2026-11-20).
-- **A rewritten password file leaves open streams running** until they reach their hour (`Limits.stream_most_ms`), when the browser reconnects and is refused.
-  The server never sees the file change, as its owner writes it by hand; a page that sets a password would end the human's streams there (`Host.end_every_stream_of_holder!`), as revoking a key ends an agent's.
-  Linking GitHub ends a human's sessions and leaves their streams the same way.
+- **A password file rewritten by hand leaves open streams running** until they reach their hour (`Limits.stream_most_ms`), when the browser reconnects and is refused.
+  The server never sees the file change; every change the app makes ends the streams ("Delivery", above).

@@ -27,3 +27,13 @@ StreamHolder :: List(U8).{
 # ── tests
 expect StreamHolder.user(UserId.chat_owner).to_bytes() == "1".to_utf8()
 expect StreamHolder.agent(UserId.chat_owner).to_bytes() == "agent-1".to_utf8()
+# The edges: a user and the agent of the same number are two holders, and
+# so are two users whose ids share digits, so ending one's streams ends no
+# other's.
+expect {
+	ten = UserId.from_str("10") ?? crash "StreamHolder's tests: 10 is an id"
+	one = UserId.chat_owner
+	StreamHolder.user(one).to_bytes() != StreamHolder.agent(one).to_bytes()
+		and StreamHolder.user(one).to_bytes() != StreamHolder.user(ten).to_bytes()
+		and StreamHolder.agent(one).to_bytes() != StreamHolder.agent(ten).to_bytes()
+}
