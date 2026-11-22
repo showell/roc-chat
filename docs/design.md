@@ -274,7 +274,7 @@ apoorvavpendse@gmail.com would be better
   | `auth/<human>/inviter` | an invited human's inviter's id, its digits; the founder, a human who signed up with GitHub, and a human the server's owner made by hand, have none, and no one invites them again. Written before `name` | |
   | `auth/<human>/human-invites/<n>/created`, `expires` | when the invite was made, and when it stops redeeming, seven days later, in seconds since 1970, digits | |
   | `auth/<human>/human-invites/<n>/state` | `live` or `spent` (there is no revoking a human invite yet) | |
-  | `auth/<human>/human-invites/<n>/by` | the id of the human who made it, its digits: the inviter, or the admin inviting them again. A human's open invites, those they made that are live and unexpired, are at most 10 | |
+  | `auth/<human>/human-invites/<n>/by` | the id of the human who made it, its digits: the inviter, or the admin inviting them again. A human's open invites, those they made that are live and unexpired for a human who hasn't joined, are at most 10 | |
   | `auth/<human>/human-invites/<n>/hash` | the SHA-256 of the one-time code's 32 secret bytes, 64 lowercase hex digits; never the code | |
   | `chat/channel/<name>.channel` | the channel's members, one id a line, each with a line end; a blank line or one starting `#` is skipped | the Zig chat's `<name>.channel`, beside the channel's folder of topics |
   | `users/<id>/upload-bytes` | the user's lifetime upload total, digits | the Zig chat |

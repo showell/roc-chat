@@ -14,7 +14,9 @@
 ##   (`HumanClaim`): for a human who joined, it is refused (`Joined`), as
 ##   their password changes only with their own proof.
 ## - A human has at most `open_most` open invites at once, counting every
-##   invite they made that is live and unexpired.
+##   invite they made that is live and unexpired for a human who has claimed
+##   nothing. A joined human's live invites redeem nothing, so they don't
+##   count.
 ## - In a person's first day they make at most a few new invites
 ##   (`NewcomerInvites`), a 403 past it.
 ## - A new human's name, the inviter's choice or the invitee's, is held to
@@ -139,12 +141,23 @@ HumanInvites :: [].{
 	open_most : U64
 	open_most = 10
 
-	## How many of `invites` the human `by` made that are open at `now`.
-	open_count : List(HumanInvite), { by : UserId, now : Timestamp } -> U64
-	open_count = |
-		invites,
-		{ by, now },
-	| invites.count_if(|invite| invite.invite_maker() == by and invite.is_open(now))
+	## How many of `invites`, one invited human's, the human `by` made that
+	## are open at `now`; none once that human has claimed their account
+	## (`claim`), since an invite then redeems nothing
+	## (`InviteRights.load_unclaimed_invitee!`).
+	open_count : List(HumanInvite),
+	{
+		by : UserId,
+		now : Timestamp,
+		claim : [Unclaimed(HumanClaim.Unclaimed), Claimed],
+	} -> U64
+	open_count = |invites, { by, now, claim }| {
+		open = invites.count_if(|invite| invite.invite_maker() == by and invite.is_open(now))
+		match claim {
+			Unclaimed(_) => open
+			Claimed => 0
+		}
+	}
 
 	## Who invited a human: the human `InvitedBy` names, or no one
 	## (`NoInviter`: the founder, or a human the server's owner made by hand).

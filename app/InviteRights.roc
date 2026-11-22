@@ -10,6 +10,7 @@
 import AccountFiles
 import Directory
 import HumanClaim
+import HumanInvite
 import HumanInvites
 import InviteFiles
 import JoinedFiles
@@ -34,24 +35,8 @@ InviteRights :: [].{
 	## lets an invite through.
 	load_claim! : Users.Human => Try([Unclaimed(HumanClaim.Unclaimed), Claimed], _)
 	load_claim! = |human| {
-		id = human.id()
-		password_file = AccountFiles.read_password_hash!(id) ? |fault| FileSystem(fault)
-		password =
-			match password_file {
-				NoFile => NoPassword
-				File(_) => HasPassword
-			}
-		github =
-			match AccountFiles.read_github_link!(id) {
-				Ok(NotLinked) => Ok(NotLinked)
-				Ok(Linked(_)) | Err(Damaged) => Ok(Linked)
-				Err(NotUtf8) => Err(FileSystem(NotUtf8))
-				Err(PathRefused) => Err(FileSystem(PathRefused))
-				Err(Failed) => Err(FileSystem(Failed))
-			}?
-		invites = InviteFiles.read_human_invites!(id) ? |fault| FileSystem(fault)
-		states = invites.map(|invite| invite.state())
-		Ok(HumanClaim.judge(human, { password, github, invites: states }))
+		invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
+		load_claim_given!(human, invites)
 	}
 
 	## Whether `human` has claimed their account (`load_claim!`), as the
@@ -89,13 +74,14 @@ InviteRights :: [].{
 	}
 
 	## How many invites `by` made that are open at `now`, among every human's
-	## of `directory`.
+	## of `directory`, a joined human's counting none (`HumanInvites.open_count`).
 	count_open_invites! : Directory, { by : UserId, now : Timestamp } => Try(U64, _)
 	count_open_invites! = |directory, { by, now }| {
 		var $open = 0
 		for human in directory.users().to_list().keep_oks(|user| user.as_human()) {
 			invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
-			$open = $open + HumanInvites.open_count(invites, { by, now })
+			claim = load_claim_given!(human, invites)?
+			$open = $open + HumanInvites.open_count(invites, { by, now, claim })
 		}
 		Ok($open)
 	}
@@ -148,6 +134,34 @@ InviteRights :: [].{
 			Err(FileSystem(fault)) => Err(FileSystem(fault))
 			Err(BadInviter(id)) => Err(BadInviter(id))
 		}
+}
+
+## Whether `human`, whose invites are `invites`, has claimed their account,
+## as `InviteRights.load_claim!` says: their password and GitHub link read
+## beside the invites.
+load_claim_given! : Users.Human,
+List(HumanInvite) => Try(
+	[Unclaimed(HumanClaim.Unclaimed), Claimed],
+	_,
+)
+load_claim_given! = |human, invites| {
+	id = human.id()
+	password_file = AccountFiles.read_password_hash!(id) ? |fault| FileSystem(fault)
+	password =
+		match password_file {
+			NoFile => NoPassword
+			File(_) => HasPassword
+		}
+	github =
+		match AccountFiles.read_github_link!(id) {
+			Ok(NotLinked) => Ok(NotLinked)
+			Ok(Linked(_)) | Err(Damaged) => Ok(Linked)
+			Err(NotUtf8) => Err(FileSystem(NotUtf8))
+			Err(PathRefused) => Err(FileSystem(PathRefused))
+			Err(Failed) => Err(FileSystem(Failed))
+		}?
+	states = invites.map(|invite| invite.state())
+	Ok(HumanClaim.judge(human, { password, github, invites: states }))
 }
 
 ## Each human of `directory`, as the first day's count reads them: who

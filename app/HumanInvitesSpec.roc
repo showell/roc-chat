@@ -669,24 +669,84 @@ expect !invite_made({ number: 1, by: "2" }).is_open(invite_expiry)
 expect !invite_made({ number: 1, by: "2" }).is_open(Timestamp.at_second(999))
 expect !spent_invite.is_open(Timestamp.at_second(1000))
 
-# The open invites a human made: theirs, live and unexpired, among every
-# human's.
-expect HumanInvites.open_count(
-	[
-		invite_made({ number: 1, by: "2" }),
-		invite_made({ number: 2, by: "2" }),
-		invite_made({ number: 3, by: "1" }),
-	],
-	{ by: id("2"), now: Timestamp.at_second(1000) },
-) == 2
-expect HumanInvites.open_count(
-	[invite_made({ number: 1, by: "2" })],
-	{ by: id("2"), now: invite_expiry },
-) == 0
-expect HumanInvites.open_count(
-	[spent_invite, invite_made({ number: 2, by: "2" })],
-	{ by: id("2"), now: Timestamp.at_second(1000) },
-) == 1
+## Zoe's claim: she has claimed nothing.
+zoe_unclaimed : [Unclaimed(HumanClaim.Unclaimed), Claimed]
+zoe_unclaimed = Unclaimed(unclaimed_of(zoe))
+
+## How many of `invites` the human `by` made are open at `now`, counted
+## for an invitee whose claim is `claim`.
+open_of : List(HumanInvite),
+{
+	by : Str,
+	now : Timestamp,
+	claim : [Unclaimed(HumanClaim.Unclaimed), Claimed],
+} -> U64
+open_of = |invites, { by, now, claim }| HumanInvites.open_count(invites, { by: id(by), now, claim })
+
+# The open invites a human made: theirs, live and unexpired, of a human who
+# has claimed nothing; of one who has, none.
+expect
+	open_of(
+		[
+			invite_made({ number: 1, by: "2" }),
+			invite_made({ number: 2, by: "2" }),
+			invite_made({ number: 3, by: "1" }),
+		],
+		{
+			by: "2",
+			now: Timestamp.at_second(1000),
+			claim: zoe_unclaimed,
+		},
+	)
+		== 2
+expect
+	open_of(
+		[invite_made({ number: 1, by: "2" }), invite_made({ number: 2, by: "2" })],
+		{
+			by: "2",
+			now: Timestamp.at_second(1000),
+			claim: Claimed,
+		},
+	)
+		== 0
+expect
+	open_of(
+		[invite_made({ number: 1, by: "2" })],
+		{
+			by: "2",
+			now: invite_expiry,
+			claim: zoe_unclaimed,
+		},
+	)
+		== 0
+expect
+	open_of(
+		[spent_invite, invite_made({ number: 2, by: "2" })],
+		{
+			by: "2",
+			now: Timestamp.at_second(1000),
+			claim: zoe_unclaimed,
+		},
+	)
+		== 1
+
+## Steve's open invites at 1000: nine to humans who have claimed nothing,
+## and one more to a human whose claim is `claim`.
+open_with_tenth : [Unclaimed(HumanClaim.Unclaimed), Claimed] -> U64
+open_with_tenth = |claim| {
+	now = Timestamp.at_second(1000)
+	nine = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(|number| invite_made({ number, by: "1" }))
+	tenth = [invite_made({ number: 10, by: "1" })]
+	open_of(nine, { by: "1", now, claim: zoe_unclaimed }) + open_of(tenth, { by: "1", now, claim })
+}
+
+# The cap, counted: a tenth live invite to a human who has joined doesn't
+# count, so Steve makes another; to one who hasn't, it does, and he makes
+# none.
+expect open_with_tenth(Claimed) == 9
+expect invite_of(steve, { body: "name=Zoe", open: open_with_tenth(Claimed) }) == Ok("Zoe 4 by 1")
+expect open_with_tenth(zoe_unclaimed) == 10
+expect invite_of(steve, { body: "name=Zoe", open: open_with_tenth(zoe_unclaimed) }) == Err(Capped)
 
 ## A code for the user `user`, carrying the secret of every byte 1, among
 ## `invites`, its hash `hash(code)`, at 1000.

@@ -246,7 +246,8 @@
 //!      password and session still hers; his page shows her no New link;
 //!      Debbie inviting again someone Steve invited, and Steve inviting
 //!      again the founder: 403 each; an agent: 404;
-//! 48n. ten open invites: each made; an eleventh, again or new: 403;
+//! 48n. ten open invites, Debbie's live link not among them as she has
+//!      joined: each made; an eleventh, again or new: 403;
 //! 48o. CC's key inviting, joining or asking the name: 403 each; no one:
 //!      /invites a 303 to sign in, an invite a 401;
 //! 48p. a cross-site form post inviting, inviting again or joining: 403
@@ -2680,8 +2681,6 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     try t.check("on Steve's page, Debbie's row has no New link button, and her old link says it no longer works", joined_row.status == 200 and
         !has(joined_row.body, "action=\"/invites/3/again\"") and has(joined_row.body, "<p>Debbie&#39;s link no longer works, as they have joined</p>") and
         has(joined_row.body, "A new link is only for someone who hasn&#39;t joined."));
-    // Her dead link no longer counts among Steve's open ones in 48n.
-    try data.writeFile(io, .{ .sub_path = "auth/3/human-invites/2/expires", .data = "1000" });
     const her_again = try postAs(a, io, port, debbie, "/invites/4/again", "");
     const founder_again = try post(a, io, port, .{ .path = "/invites/1/again", .form = "" });
     const agent_again = try post(a, io, port, .{ .path = "/invites/2/again", .form = "" });
@@ -2696,7 +2695,7 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     }
     const eleventh = try post(a, io, port, .{ .path = "/invites/4/again", .form = "" });
     const new_one = try post(a, io, port, .{ .path = "/invites", .form = "name=Fay" });
-    try t.check("ten open invites of Steve's: each 200; an eleventh, again or new: 403 each, nothing made", capped_ok and eleventh.status == 403 and
+    try t.check("ten open invites of Steve's, Debbie's live link not counted as she has joined: each 200; an eleventh, again or new: 403 each, nothing made", capped_ok and eleventh.status == 403 and
         new_one.status == 403 and (try exists(io, data, "auth/4/human-invites/11")) and
         !(try exists(io, data, "auth/4/human-invites/12")) and !(try exists(io, data, "auth/5")));
 
