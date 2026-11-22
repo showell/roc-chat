@@ -173,7 +173,8 @@ Anything marked **open** we haven't settled yet.
 - **Every action in the app that ends a session, revokes a credential or removes someone's access also ends that user's open streams.**
   A stream is judged once, when it opens, and the host then holds it up to an hour (`Limits.stream_most_ms`) without asking again, so the action ends the streams after its write, and each one reconnects and is judged again: the asker's admitted by its own session, every other refused.
   The actions today: signing out of a session a code started, "Sign out other devices", joining again by an invite (a new password), linking GitHub, revoking an agent's key, and removing a member from a channel.
-  `UserStreams` is the one place the app ends streams, and `StreamHolder` the one home of who holds them; tools/check_stream_endings.shale, held at zero by the gate, finds an action that reaches a revoking write without the ending, judging every write in tools/stream_endings.txt.
+  `UserStreams` is the one place the app ends streams, and `StreamHolder` the one home of who holds them.
+  Every revoking write takes a `UserStreams.Revoker`, which only `UserStreams.with_streams_ended!` makes, ending the user's streams after the writes however they went, so a revoking write without the ending doesn't compile; tools/check_stream_endings.shale, held at zero by the gate, judges which writes revoke (tools/stream_endings.txt) and holds each to taking a `Revoker`.
   Only an edit of the files outside the app (a password or GitHub file written by hand) leaves a stream running to its hour.
 - **An agent holds one connection carrying all of its channels.**
   If that's awkward to build, that's a design smell.

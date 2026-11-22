@@ -45,8 +45,9 @@
 --    among the names the script that gives X gives, and every page loads
 --    that script first, in app/Script.roc's order (its header has the
 --    rules). And tools/check_stream_endings.shale holds at zero every
---    action that ends a session, revokes a credential or removes someone's
---    access without ending the user's open streams after (its header and
+--    write that ends a session, revokes a credential or removes someone's
+--    access and takes no `UserStreams.Revoker`, the value only the bracket
+--    that ends the user's open streams makes (its header and
 --    tools/stream_endings.txt have the rules).
 --    And tools/check_credential_writers.shale holds every path to a human's
 --    credentials to tools/credential_writers.txt, each judged by its proof:
