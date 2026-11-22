@@ -122,6 +122,24 @@ expect
 			?? crash "UsersSpec: a filler is a human",
 		zed,
 	].all(|owner| agent_added(sample, { name: "Bot", owner }) == Err(NoSuchOwner))
+# Each user is found by their id, the first, the last and every one
+# between; an id past the last is no one's.
+expect {
+	crowd = Sample.crowded_directory(40).users()
+	last = crowd.to_list().last() ?? crash "UsersSpec: a crowd has users"
+	past = last.id().next() ?? crash "UsersSpec: a crowd's ids fit"
+	crowd.to_list().all(|user| crowd.user(user.id()) == Ok(user)) and crowd.user(past) == Err(NoSuchUser)
+}
+# A user left out is found no more, and the users around them still are.
+expect {
+	gone = id_after_steve(2)
+	thinner = Sample.crowded_directory(5).users().without([gone])
+	thinner.user(gone)
+		== Err(NoSuchUser)
+		and thinner.to_list().len()
+			== 7
+		and thinner.to_list().all(|user| thinner.user(user.id()) == Ok(user))
+}
 # The users alone take a name twice: `Directory` keeps names unique.
 expect human_added(sample, "Apoorva").map_ok(|user| user.id) == Ok("4")
 # A human, or an agent refused as one, by id.

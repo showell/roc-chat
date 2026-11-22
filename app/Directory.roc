@@ -284,8 +284,9 @@ Directory :: {
 		if keys.len() != all_keys.len() {
 			Err(NameTaken)
 		} else {
+			ids = Set.from_list(users.to_list().map(|user| user.id()))
 			match channels.to_list().find_first(
-				|channel| !channel.members().all(|id| is_user(users, id)),
+				|channel| !channel.members().all(|id| ids.contains(id)),
 			) {
 				Ok(stray) => Err(UnknownMember(stray.name()))
 				Err(NotFound) => Ok(Directory.({ users, channels, keys }))
@@ -319,14 +320,6 @@ admit_new_user = |Directory.(directory), grown| {
 	keys = claim_key(directory.keys, grown.user.name().key())?
 	Ok({ directory: Directory.({ ..directory, users: grown.users, keys }), user: grown.user })
 }
-
-## Whether `users` holds the user `id`.
-is_user : Users, UserId -> Bool
-is_user = |users, id|
-	match users.user(id) {
-		Ok(_) => Bool.True
-		Err(NoSuchUser) => Bool.False
-	}
 
 ## The taken names' keys with `key` added; unless it is already there.
 claim_key : Set(Name.Key), Name.Key -> Try(Set(Name.Key), [NameTaken])

@@ -169,11 +169,13 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 					Next(id),
 					Ok(latest),
 				) if UserId.compare(latest.id(), id) != Before => Err(CounterBehind)
-				_ =>
-					match all.find_first(|user| !has_human_owner(all, user)) {
+				_ => {
+					humans = Set.from_list(all.keep_if(|user| user.role() == Human).map(|user| user.id()))
+					match all.find_first(|user| !has_human_owner(humans, user)) {
 						Ok(stray) => Err(BadOwner(stray.id()))
 						Err(NotFound) => Ok(Users.({ all_users: all, next }))
 					}
+				}
 			}
 		}
 	}
@@ -224,13 +226,10 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 			Err(NoSuchHuman)
 		}
 
-	## The user with the id `id`, if there is one.
+	## The user with the id `id`, if there is one, found by halves, as every
+	## user is held in id order.
 	user : Users, UserId -> Try(Users.User, [NoSuchUser])
-	user = |Users.(users), id|
-		match users.all_users.find_first(|candidate| candidate.id() == id) {
-			Ok(found) => Ok(found)
-			Err(NotFound) => Err(NoSuchUser)
-		}
+	user = |Users.(users), id| user_between(users.all_users, id, { low: 0, high: users.all_users.len() })
 
 	## The user named `name`, if there is one. Names are case-sensitive, so
 	## `steve` is not `Steve`.
@@ -317,13 +316,28 @@ role_from_owner = |given|
 			}
 	}
 
-## Whether `user` is a human, or an agent whose owner is a human of `all_users`.
-has_human_owner : List(Users.User), Users.User -> Bool
-has_human_owner = |all_users, user|
+## Whether `user` is a human, or an agent whose owner is one of `humans`.
+has_human_owner : Set(UserId), Users.User -> Bool
+has_human_owner = |humans, user|
 	match user.role() {
 		Human => Bool.True
-		Agent({ owner }) =>
-			all_users.any(|candidate| candidate.id() == owner and candidate.role() == Human)
+		Agent({ owner }) => humans.contains(owner)
+	}
+
+## The user of `in_id_order` whose id is `id`, among those at `low` up to,
+## not including, `high`: the middle one's id says which half holds it.
+user_between : List(Users.User), UserId, { low : U64, high : U64 } -> Try(Users.User, [NoSuchUser])
+user_between = |in_id_order, id, { low, high }|
+	if low >= high {
+		Err(NoSuchUser)
+	} else {
+		middle = low + (high - low) // 2
+		candidate = in_id_order.get(middle) ?? crash "Users.user_between: the middle is between low and high"
+		match UserId.compare(candidate.id(), id) {
+			Same => Ok(candidate)
+			Before => user_between(in_id_order, id, { low: middle + 1, high })
+			After => user_between(in_id_order, id, { low, high: middle })
+		}
 	}
 
 ## The users with a user named `name` added in the role `role`, at the next
