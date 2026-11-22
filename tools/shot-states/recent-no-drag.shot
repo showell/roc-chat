@@ -1,0 +1,9 @@
+# A Recent tile drags nowhere: a dragstart on the newest tile is cancelled
+# (app/palette.js), while one on its text (a selection's drag starts on its
+# Text node) and one on an element marked draggable="true" are not. The
+# `eval` throws, stopping the run, when any of the three goes the other way;
+# the picture is Recent as it was, no ghost and nothing moved.
+path = /chat/recent
+sizes = desktop,phone
+wait .recent-list .recent-tile
+eval (function () { function drag(node) { var e = new DragEvent('dragstart', {bubbles: true, cancelable: true}); node.dispatchEvent(e); return e.defaultPrevented; } var tile = document.querySelector('.recent-tile'); if (!drag(tile)) throw new Error('a Recent tile still drags'); var walker = document.createTreeWalker(tile, NodeFilter.SHOW_TEXT); var text = walker.nextNode(); if (!text || drag(text)) throw new Error('a drag of a tile\'s text was cancelled'); var marked = document.createElement('span'); marked.setAttribute('draggable', 'true'); tile.appendChild(marked); var kept = !drag(marked); marked.remove(); if (!kept) throw new Error('a draggable="true" element lost its drag'); })()
