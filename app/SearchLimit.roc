@@ -26,11 +26,20 @@ SearchLimit :: [].{
 	## search of `now`'s second; else `TooFast`.
 	slot_for_search : List([NeverUsed, UsedAt(Timestamp)]), Timestamp -> Try(U64, [TooFast])
 	slot_for_search = |slots, now|
-		match slots.find_first_index(|slot| slot != UsedAt(now)) {
+		match slots.find_first_index(|slot| is_free_at(slot, now)) {
 			Ok(index) => Ok(index)
 			Err(NotFound) => Err(TooFast)
 		}
 }
+
+## Whether `slot` may take a search at `now`: one never used, or used in
+## another second.
+is_free_at : [NeverUsed, UsedAt(Timestamp)], Timestamp -> Bool
+is_free_at = |slot, now|
+	match slot {
+		NeverUsed => Bool.True
+		UsedAt(at) => at != now
+	}
 
 # ── tests
 noon : Timestamp

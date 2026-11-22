@@ -122,7 +122,7 @@ DeviceCodeLimit :: [].{
 					fresh
 				}
 			}
-			_ => fresh
+			(Found, Missing) | (Missing, Found) | (Missing, Missing) => fresh
 		}
 	}
 
