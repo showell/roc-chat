@@ -16,8 +16,9 @@ import SignedIn
 FullSessionRoutes :: [].{
 
 	## Whether `actor` may use `choice`: `StartedByDeviceCode` when the route
-	## asks for a session no device code started and `actor`'s was; else
-	## `Allowed`.
+	## asks for a full session and `actor`'s was started by a device code;
+	## else `Allowed`. Each pair is named, so a new way a session is started,
+	## or a new kind of route, is a decision here.
 	refusal_for : {
 		choice : Route.Choice,
 		actor : SignedIn.Actor,
@@ -26,9 +27,10 @@ FullSessionRoutes :: [].{
 		match actor {
 			Anonymous => Allowed
 			SignedIn(acting) =>
-				match (acting.check_full_session(), asks_full_session(choice)) {
-					(Err(StartedByDeviceCode), Bool.True) => StartedByDeviceCode
-					_ => Allowed
+				match (acting.check_full_session(), session_asked(choice)) {
+					(Err(StartedByDeviceCode), FullSession) => StartedByDeviceCode
+					(Err(StartedByDeviceCode), AnySession) => Allowed
+					(Ok({}), FullSession) | (Ok({}), AnySession) => Allowed
 				}
 		}
 
@@ -37,64 +39,64 @@ FullSessionRoutes :: [].{
 	refusal_words = "This device signed in with a code from another device. To invite people, manage channels or agents, link GitHub, make device codes or sign other devices out, sign out here, then sign in with your password or GitHub."
 }
 
-## Whether `choice` asks for a session no device code started: every route
-## named, so a new one is a decision here.
-asks_full_session : Route.Choice -> Bool
-asks_full_session = |choice|
+## The session `choice` asks for: `FullSession`, one no device code started,
+## or `AnySession`. Every route is named, so a new one is a decision here.
+session_asked : Route.Choice -> [FullSession, AnySession]
+session_asked = |choice|
 	match choice {
-		SignedInOnly(UploadToConversation(_)) => Bool.False
-		SignedInOnly(StartGitHubLink) => Bool.True
-		SignedInOnly(ShowBrowse) => Bool.False
-		SignedInOnly(ShowRecent) => Bool.False
-		SignedInOnly(OpenRecentStream) => Bool.False
-		SignedInOnly(SearchEveryTopic(_)) => Bool.False
-		SignedInOnly(FollowTopicLink(_)) => Bool.False
-		SignedInOnly(FollowConversationLink(_)) => Bool.False
-		SignedInOnly(StartTopic(_)) => Bool.False
-		SignedInOnly(ShowConversation(_)) => Bool.False
-		SignedInOnly(AppendToConversation(_)) => Bool.False
-		SignedInOnly(SendToConversation(_)) => Bool.False
-		SignedInOnly(OpenConversationStream(_)) => Bool.False
-		SignedInOnly(ServeRawTranscript(_)) => Bool.False
-		SignedInOnly(ServeDownload(_)) => Bool.False
-		SignedInOnly(ServeUploadedImage(_)) => Bool.False
-		SignedInOnly(ReactInConversation(_)) => Bool.False
-		SignedInOnly(ShowAgents) => Bool.False
-		SignedInOnly(MakeAgent) => Bool.True
-		SignedInOnly(InviteAgent(_)) => Bool.True
-		SignedInOnly(RevokeInvite(_)) => Bool.True
-		SignedInOnly(RevokeKey(_)) => Bool.True
-		SignedInOnly(OpenAgentStream) => Bool.False
-		SignedInOnly(ShowChannels) => Bool.True
-		SignedInOnly(CreateChannel) => Bool.True
-		SignedInOnly(ShowChannelMembers(_)) => Bool.True
-		SignedInOnly(AddChannelMember(_)) => Bool.True
-		SignedInOnly(RemoveChannelMember(_)) => Bool.True
-		SignedInOnly(ShowInvites) => Bool.False
-		SignedInOnly(InviteHuman) => Bool.True
-		SignedInOnly(InviteHumanAgain(_)) => Bool.True
-		SignedInOnly(ShowDeviceCode) => Bool.False
-		SignedInOnly(MakeDeviceCode) => Bool.True
-		SignedInOnly(CancelDeviceCode) => Bool.True
-		SignedInOnly(OpenDevicesStream) => Bool.False
-		SignedInOnly(SignOutOtherDevices) => Bool.True
-		Open(RedeemDeviceCode) => Bool.False
-		Open(ReturnToLogin) => Bool.False
-		Open(ResumeOrBrowse) => Bool.False
-		Open(ShowJoin) => Bool.False
-		Open(LookUpJoinName) => Bool.False
-		Open(Join) => Bool.False
-		Open(ServeScript(_)) => Bool.False
-		Open(ServeFavicon) => Bool.False
-		Open(ServeAlertIcon) => Bool.False
-		Open(ShowLogin) => Bool.False
-		Open(SignIn) => Bool.False
-		Open(SignOut) => Bool.False
-		Open(StartGitHubSignIn) => Bool.True
-		Open(FinishGitHubSignIn) => Bool.True
-		Open(GitHubSignUpStep(_)) => Bool.False
-		Open(WrongMethodToGitHub(_)) => Bool.False
-		Open(RedeemInvite) => Bool.False
-		NotFound => Bool.False
-		MethodNotAllowed(_) => Bool.False
+		SignedInOnly(UploadToConversation(_)) => AnySession
+		SignedInOnly(StartGitHubLink) => FullSession
+		SignedInOnly(ShowBrowse) => AnySession
+		SignedInOnly(ShowRecent) => AnySession
+		SignedInOnly(OpenRecentStream) => AnySession
+		SignedInOnly(SearchEveryTopic(_)) => AnySession
+		SignedInOnly(FollowTopicLink(_)) => AnySession
+		SignedInOnly(FollowConversationLink(_)) => AnySession
+		SignedInOnly(StartTopic(_)) => AnySession
+		SignedInOnly(ShowConversation(_)) => AnySession
+		SignedInOnly(AppendToConversation(_)) => AnySession
+		SignedInOnly(SendToConversation(_)) => AnySession
+		SignedInOnly(OpenConversationStream(_)) => AnySession
+		SignedInOnly(ServeRawTranscript(_)) => AnySession
+		SignedInOnly(ServeDownload(_)) => AnySession
+		SignedInOnly(ServeUploadedImage(_)) => AnySession
+		SignedInOnly(ReactInConversation(_)) => AnySession
+		SignedInOnly(ShowAgents) => AnySession
+		SignedInOnly(MakeAgent) => FullSession
+		SignedInOnly(InviteAgent(_)) => FullSession
+		SignedInOnly(RevokeInvite(_)) => FullSession
+		SignedInOnly(RevokeKey(_)) => FullSession
+		SignedInOnly(OpenAgentStream) => AnySession
+		SignedInOnly(ShowChannels) => FullSession
+		SignedInOnly(CreateChannel) => FullSession
+		SignedInOnly(ShowChannelMembers(_)) => FullSession
+		SignedInOnly(AddChannelMember(_)) => FullSession
+		SignedInOnly(RemoveChannelMember(_)) => FullSession
+		SignedInOnly(ShowInvites) => AnySession
+		SignedInOnly(InviteHuman) => FullSession
+		SignedInOnly(InviteHumanAgain(_)) => FullSession
+		SignedInOnly(ShowDeviceCode) => AnySession
+		SignedInOnly(MakeDeviceCode) => FullSession
+		SignedInOnly(CancelDeviceCode) => FullSession
+		SignedInOnly(OpenDevicesStream) => AnySession
+		SignedInOnly(SignOutOtherDevices) => FullSession
+		Open(RedeemDeviceCode) => AnySession
+		Open(ReturnToLogin) => AnySession
+		Open(ResumeOrBrowse) => AnySession
+		Open(ShowJoin) => AnySession
+		Open(LookUpJoinName) => AnySession
+		Open(Join) => AnySession
+		Open(ServeScript(_)) => AnySession
+		Open(ServeFavicon) => AnySession
+		Open(ServeAlertIcon) => AnySession
+		Open(ShowLogin) => AnySession
+		Open(SignIn) => AnySession
+		Open(SignOut) => AnySession
+		Open(StartGitHubSignIn) => FullSession
+		Open(FinishGitHubSignIn) => FullSession
+		Open(GitHubSignUpStep(_)) => AnySession
+		Open(WrongMethodToGitHub(_)) => AnySession
+		Open(RedeemInvite) => AnySession
+		NotFound => AnySession
+		MethodNotAllowed(_) => AnySession
 	}
