@@ -94,6 +94,7 @@ chosen_route = |method, path|
 		Open(WrongMethodToGitHub(GetAndPost)) => "no route takes this"
 		Open(RedeemInvite) => "redeem (open)"
 		Open(RedeemDeviceCode) => "sign in by a device code (open)"
+		Open(ReturnToLogin) => "back to the sign-in page (open)"
 		NotFound => "not found"
 		MethodNotAllowed(GetAndPost) => "not allowed: GET, POST"
 		MethodNotAllowed(GetOnly) => "not allowed: GET"
@@ -355,14 +356,16 @@ expect
 		"login",
 	].all(|path| chosen_route("POST", path.to_utf8()) == "not found")
 # A device code: its page by GET and a new one by POST to /devices, both
-# for someone signed in; signing in by one by POST alone to /login/code,
-# open; no other spelling.
+# for someone signed in; signing in by one by POST to /login/code, open,
+# whose GET (Enter in the address bar after a refused code) is back to the
+# sign-in page; no other spelling.
 expect chosen_route("GET", "/devices".to_utf8()) == "the device code page"
 expect chosen_route("POST", "/devices".to_utf8()) == "make a device code"
 expect chosen_route("PUT", "/devices".to_utf8()) == "not allowed: GET, POST"
 expect chosen_route("POST", "/login/code".to_utf8()) == "sign in by a device code (open)"
-expect chosen_route("GET", "/login/code".to_utf8()) == "not allowed: POST"
-expect chosen_route("PUT", "/login/code".to_utf8()) == "not allowed: POST"
+expect chosen_route("GET", "/login/code".to_utf8()) == "back to the sign-in page (open)"
+expect chosen_route("PUT", "/login/code".to_utf8()) == "not allowed: GET, POST"
+
 expect chosen_route("POST", "/devices/cancel".to_utf8()) == "cancel the device code"
 expect chosen_route("GET", "/devices/cancel".to_utf8()) == "not allowed: POST"
 expect chosen_route("GET", "/devices/stream".to_utf8()) == "the device code page's stream"

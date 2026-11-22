@@ -295,6 +295,11 @@ SignInRoute :: [].{
 	login_redirect : Html.SitePath -> Http.Response
 	login_redirect = |next| HttpAnswer.see_other("/login?next=${next.to_str()}")
 
+	## A GET of `/login/code`, where the device code's form posts: a 303 to
+	## the sign-in page, so Enter in the address bar there shows the form.
+	return_to_login : Http.Response
+	return_to_login = HttpAnswer.see_other("/login")
+
 	## The 400 for a `next` that is no path on this site.
 	bad_next_answer : Http.Response
 	bad_next_answer = HttpAnswer.page(
@@ -459,12 +464,13 @@ check_against_dummy_hash! = |password|
 
 # ── tests
 # The redirect to sign in carries where to go after, and clears nothing;
-# signing out forgets the cookie, clears the site's cache and storage, and
+# /login/code's GET is the bare sign-in page, a 303; signing out forgets the cookie, clears the site's cache and storage, and
 # is never stored.
 expect
 	SignInRoute.login_redirect(Html.SitePath.from_str("/chat/dm/1_1/plans") ?? crash "SignInRoute's tests: a site path")
 		.headers
 		== [{ name: "location".to_utf8(), value: "/login?next=/chat/dm/1_1/plans".to_utf8() }]
+expect SignInRoute.return_to_login == HttpAnswer.see_other("/login")
 expect
 	SignInRoute.sign_out.status == 303
 		and SignInRoute.sign_out.headers

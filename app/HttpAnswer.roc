@@ -23,6 +23,11 @@ HttpAnswer :: [].{
 	page = |status, html|
 		whole_response({ status, headers: page_headers, body: html.to_utf8() })
 
+	## `page` with `status`: the answer to a page that says its own status, as
+	## a refusal's does (`GitHubTrip`'s, `JoinPage.refused`).
+	status_page : { status : U16, page : TrustedHtml } -> Http.Response
+	status_page = |{ status, page: html }| HttpAnswer.page(status, html)
+
 	## A 303 See Other, to `url_path`: after a POST, the browser GETs the
 	## page, so a reload never posts again.
 	see_other : Str -> Http.Response

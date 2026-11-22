@@ -106,6 +106,7 @@ DiskFloor :: [].{
 			SignedInOnly(SignOutOtherDevices) => Bool.False
 			Open(GitHubSignUpStep(ShowForm)) => Bool.False
 			Open(RedeemDeviceCode) => Bool.False
+			Open(ReturnToLogin) => Bool.False
 			Open(ResumeOrBrowse) => Bool.False
 			Open(ShowJoin) => Bool.False
 			Open(LookUpJoinName) => Bool.False

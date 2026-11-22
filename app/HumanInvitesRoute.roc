@@ -182,7 +182,7 @@ HumanInvitesRoute :: [].{
 	join! = |request|
 		match join_by_invite!(request) {
 			Ok(joined) => SignInRoute.start_session_by_invite!(joined, request.now)
-			Err(why) => HttpAnswer.never_stored(refusal_page(why))
+			Err(why) => HttpAnswer.never_stored(HttpAnswer.status_page(JoinPage.refused(failure_notice(why))))
 		}
 }
 

@@ -297,6 +297,15 @@ expect
 expect
 	JoinPage.join.to_utf8()
 		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
+# A refused join: the join page's heading, the refusal marked as the problem,
+# with its status, and the script that draws it as a card and puts /join in
+# the POST's place in the history; no form, so nothing posts the code again.
+expect {
+	refused = JoinPage.refused({ status: 409, said: "That name is taken." })
+	refused.status == 409
+		and refused.page.to_utf8()
+			== "${head("Join the chat")}<h1>Join the chat</h1>\n<p class=\"problem\">That name is taken.</p>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()
+}
 
 ## The words above the form that asks a new human for a name.
 sign_up_words : Str

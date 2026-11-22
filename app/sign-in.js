@@ -1,7 +1,7 @@
 // This script runs on a signed-out visitor's page: the sign-in page, the
-// join page and the page where someone GitHub vouched for chooses a name,
-// which app/SignInPage.roc and app/JoinPage.roc build and app/Script.roc
-// serves.
+// join page, a refused join's page and the page where someone GitHub
+// vouched for chooses a name, which app/SignInPage.roc and app/JoinPage.roc
+// build and app/Script.roc serves.
 //
 // Each such page is a heading, a few lines and its forms, straight in the
 // body. The script draws the body as a card, as panel.js draws a signed-in
@@ -14,6 +14,16 @@
 // form sits under a rule. A problem (.problem) is drawn as panel.js draws
 // one. A form the page hides (join.js's, for a used invite) stays hidden.
 // Its colours are palette.js's.
+//
+// A page here with a problem answered a refused POST (a password, a device
+// code, a name, an invite) or GitHub's way back, at an address whose GET is
+// no clean form: /login/code takes no GET, and a reload would post again.
+// So the script puts its form's own page in its place in the history, as
+// panel.js does for the invites page: the sign-in page's, /login and its
+// `next`; the name page's, /login/github/name; a refused join's, /join,
+// which then holds the invite's code in no history entry. A reload, or Enter
+// in the address bar, is a plain GET that shows a clean form, and the
+// problem stays on this page until then.
 (function () {
   'use strict';
   var rules = document.createElement('style');
@@ -47,4 +57,13 @@
     '@media (max-width: 600px) { body { margin: 16px auto auto; padding: 16px; } input { font-size: 16px; } }',
   ].join('\n');
   document.head.appendChild(rules);
+
+  if (!document.querySelector('.problem')) return;
+  var next = document.querySelector('form[action="/login"] input[name="next"]');
+  var address;
+  if (next) address = '/login?next=' + next.value;
+  else if (document.querySelector('form[action="/login/github/name"]')) address = '/login/github/name';
+  else if (location.pathname === '/join' && !document.querySelector('form[action="/join"]')) address = '/join';
+  else throw new Error('sign-in.js: a problem on a page whose own GET this script does not know');
+  history.replaceState(null, '', address);
 })();

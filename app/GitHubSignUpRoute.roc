@@ -125,7 +125,7 @@ serve_name_form! = |{ viewer, directory, headers, now }| {
 					now,
 				}) {
 					Err(why) => with_sign_up_forgotten(
-						page_answer(GitHubTrip.refusal_page({ viewer, why })),
+						HttpAnswer.status_page(GitHubTrip.refusal_page({ viewer, why })),
 					)
 					Ok(resumed) =>
 						match check_limits!(directory, now) {
@@ -170,10 +170,10 @@ serve_sign_up! = |request| {
 					)
 					Err(Refused(why)) =>
 						with_sign_up_forgotten(
-							page_answer(GitHubTrip.refusal_page({ viewer: request.viewer, why })),
+							HttpAnswer.status_page(GitHubTrip.refusal_page({ viewer: request.viewer, why })),
 						)
 					Err(NameRefused(refusal)) =>
-						page_answer(GitHubTrip.name_refusal_page(refusal))
+						HttpAnswer.status_page(GitHubTrip.name_refusal_page(refusal))
 				}
 		}
 	HttpAnswer.never_stored(answer)
@@ -296,7 +296,7 @@ check_limits! = |directory, now| {
 refuse_as_paused! : SignedIn.Actor, [DayFull, ChatFull] => Http.Response
 refuse_as_paused! = |viewer, limit| {
 	Host.write_line_to_server_log!(SignUpLimits.paused_log_line(limit))
-	page_answer(GitHubTrip.refusal_page({ viewer, why: SignUpsPaused }))
+	HttpAnswer.status_page(GitHubTrip.refusal_page({ viewer, why: SignUpsPaused }))
 }
 
 ## The sign-up the request's cookie holds: `Signed` when the host says its
@@ -328,7 +328,3 @@ with_sign_up_forgotten = |answer|
 ## A `Set-Cookie` header of `text`.
 set_cookie_header : Str -> Http.Header
 set_cookie_header = |text| { name: "set-cookie".to_utf8(), value: text.to_utf8() }
-
-## `page` under `status`, as an answer.
-page_answer : { status : U16, page : TrustedHtml } -> Http.Response
-page_answer = |{ status, page }| HttpAnswer.page(status, page)

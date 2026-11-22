@@ -197,6 +197,7 @@ answer_open_route! = |{ open, request, directory, actor }|
 				now: Clock.read_clock!({}),
 				github: GitHubRoute.load_offer!({}),
 			})
+		ReturnToLogin => SignInRoute.return_to_login
 		StartGitHubSignIn =>
 			GitHubRoute.serve_start!({
 				viewer: actor,

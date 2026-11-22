@@ -39,7 +39,7 @@
 ##     POST /login/github/name                 a new human's name: `name=`
 ##     POST /login/github/link                 off to GitHub, to link it
 ##     POST /logout                            sign out
-##     POST /login/code                        sign in by a device code: `code=`
+##     POST /login/code                        sign in by a device code: `code=`; GET, a 303 to /login
 ##     GET  /devices                           sign in another device
 ##     POST /devices                           make a device code
 ##     POST /devices/cancel                    cancel it
@@ -126,6 +126,7 @@ Route :: [].{
 		LookUpJoinName,
 		Join,
 		RedeemDeviceCode,
+		ReturnToLogin,
 	]
 
 	## The routes only someone signed in may use.
@@ -432,9 +433,9 @@ sign_in_choice = |{ resource, method }|
 		(GitHubLink, Get) => Open(WrongMethodToGitHub(PostOnly))
 		(GitHubLink, Post) => SignedInOnly(StartGitHubLink)
 		(GitHubLink, Other) => Open(WrongMethodToGitHub(PostOnly))
-		(LoginCode, Get) => MethodNotAllowed(PostOnly)
+		(LoginCode, Get) => Open(ReturnToLogin)
 		(LoginCode, Post) => Open(RedeemDeviceCode)
-		(LoginCode, Other) => MethodNotAllowed(PostOnly)
+		(LoginCode, Other) => MethodNotAllowed(GetAndPost)
 		(Devices, Get) => SignedInOnly(ShowDeviceCode)
 		(Devices, Post) => SignedInOnly(MakeDeviceCode)
 		(Devices, Other) => MethodNotAllowed(GetAndPost)

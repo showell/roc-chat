@@ -178,7 +178,7 @@ GitHubRoute :: [].{
 							Ok(Linking(linked)) =>
 								SignInRoute.start_session_by_github_link!(linked, now)
 							Err(FileSystem(fault)) => SignInRoute.fault_answer(fault)
-							Err(Refused(why)) => page_answer(
+							Err(Refused(why)) => HttpAnswer.status_page(
 								GitHubTrip.refusal_page({ viewer, why }),
 							)
 						},
@@ -348,10 +348,6 @@ with_state_forgotten = |answer|
 ## A `Set-Cookie` header of `text`.
 set_cookie_header : Str -> Http.Header
 set_cookie_header = |text| { name: "set-cookie".to_utf8(), value: text.to_utf8() }
-
-## `page` under `status`, as an answer.
-page_answer : { status : U16, page : TrustedHtml } -> Http.Response
-page_answer = |{ status, page }| HttpAnswer.page(status, page)
 
 # ── tests
 # The cookie: this one, none, or two headers.

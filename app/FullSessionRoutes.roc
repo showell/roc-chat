@@ -78,6 +78,7 @@ asks_full_session = |choice|
 		SignedInOnly(OpenDevicesStream) => Bool.False
 		SignedInOnly(SignOutOtherDevices) => Bool.True
 		Open(RedeemDeviceCode) => Bool.False
+		Open(ReturnToLogin) => Bool.False
 		Open(ResumeOrBrowse) => Bool.False
 		Open(ShowJoin) => Bool.False
 		Open(LookUpJoinName) => Bool.False

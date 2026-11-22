@@ -145,6 +145,7 @@ upload_asked = |choice|
 		SignedInOnly(OpenDevicesStream) => NoUpload
 		SignedInOnly(SignOutOtherDevices) => NoUpload
 		Open(RedeemDeviceCode) => NoUpload
+		Open(ReturnToLogin) => NoUpload
 		Open(ResumeOrBrowse) => NoUpload
 		Open(ShowJoin) => NoUpload
 		Open(LookUpJoinName) => NoUpload
