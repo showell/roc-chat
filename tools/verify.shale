@@ -48,6 +48,11 @@
 --    action that ends a session, revokes a credential or removes someone's
 --    access without ending the user's open streams after (its header and
 --    tools/stream_endings.txt have the rules).
+--    And tools/check_credential_writers.shale holds every path to a human's
+--    credentials to tools/credential_writers.txt, each judged by its proof:
+--    unlisted and stale at zero, and not_own at exactly 1, the invite again
+--    that sets a joined human's password (docs/design.md, "Sign-in"), open
+--    for the owner's call; once it is decided, 0.
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -175,6 +180,7 @@ const hunts = {
   {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)", "peer_receiver ([0-9]+)"}},
   {recipe = "check_script_calls", script = "tools/check_script_calls.shale", args = {}, counts = {"script-calls ([0-9]+)"}, fails_on_findings = true},
   {recipe = "check_stream_endings", script = "tools/check_stream_endings.shale", args = {}, counts = {"stream-endings ([0-9]+)"}, fails_on_findings = true},
+  {recipe = "check_credential_writers", script = "tools/check_credential_writers.shale", args = {}, counts = {"unlisted ([0-9]+)", "stale ([0-9]+)", "not_own ([0-9]+)"}, held = {{count = "not_own ([0-9]+)", findings = 1}}},
 }
 function findings_allowed(hunt, count)
   for held in get(hunt, "held", {}) do
