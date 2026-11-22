@@ -100,6 +100,13 @@ fn status(bytes: []const u8) !u16 {
     return std.fmt.parseInt(u16, bytes[9..12], 10);
 }
 
+/// The status of an answer the host made itself, which says `nosniff` as
+/// every answer of the app's does.
+fn host_status(bytes: []const u8) !u16 {
+    if (!has(bytes, "\r\nx-content-type-options: nosniff\r\n")) return error.TestHostAnswerSniffable;
+    return status(bytes);
+}
+
 fn has(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
@@ -161,13 +168,13 @@ test "a body over the app's cap is a 413, one at it is read; a head over the cap
     const port = r.server.port();
     // Refused by its length alone, its body never sent.
     const over = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most + 1})));
-    try testing.expectEqual(413, try status(over));
+    try testing.expectEqual(413, try host_status(over));
     // At the cap: read, and the Roc refuses the form (no `markdown`).
     const at = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most}) ++ @as([form_most]u8, @splat('m'))));
     try testing.expectEqual(400, try status(at));
     try testing.expect(has(at, "The form has no field `markdown`."));
     const head = try exchange(a, port, "GET / HTTP/1.1\r\nx-big: " ++ @as([http.head_most]u8, @splat('h')) ++ "\r\n\r\n");
-    try testing.expectEqual(431, try status(head));
+    try testing.expectEqual(431, try host_status(head));
 }
 
 test "an upload's own cap: a routed upload at it reaches the Roc; past it, a 413; past a form's cap, a 413 for a message, a PUT, and a path ending /upload that is no conversation's" {
@@ -186,13 +193,13 @@ test "an upload's own cap: a routed upload at it reaches the Roc; past it, a 413
     // Each refused by its length alone, its body never sent.
     const past_form = std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{form_most + 1});
     const over = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", std.fmt.comptimePrint("content-length: {d}\r\n\r\n", .{upload_most + 1})));
-    try testing.expectEqual(413, try status(over));
+    try testing.expectEqual(413, try host_status(over));
     const message = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", past_form));
-    try testing.expectEqual(413, try status(message));
+    try testing.expectEqual(413, try host_status(message));
     const put = try exchange(a, port, try ours(a, port, "PUT /chat/dm/1_1/plans/upload HTTP/1.1", past_form));
-    try testing.expectEqual(413, try status(put));
+    try testing.expectEqual(413, try host_status(put));
     const unrouted = try exchange(a, port, try ours(a, port, "POST /x/upload HTTP/1.1", past_form));
-    try testing.expectEqual(413, try status(unrouted));
+    try testing.expectEqual(413, try host_status(unrouted));
 }
 
 test "a request from elsewhere is refused from its head, its body never waited for; one from here waits for its body" {
@@ -214,7 +221,7 @@ test "a request from elsewhere is refused from its head, its body never waited f
     const own = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "origin: http://127.0.0.1:0\r\ncontent-length: 1000\r\n\r\n"));
     try testing.expectEqual(403, try status(own));
     const here = try exchange(a, port, try std.fmt.allocPrint(a, "POST /chat/dm/1_1/plans HTTP/1.1\r\nhost: 127.0.0.1:{d}\r\norigin: http://127.0.0.1:{d}\r\ncontent-length: 1000\r\n\r\n", .{ port, port }));
-    try testing.expectEqual(408, try status(here));
+    try testing.expectEqual(408, try host_status(here));
 }
 
 test "the body bytes in flight are capped across connections: past the cap a 503, its body unread; at it, read; once answered, given back" {
@@ -234,7 +241,7 @@ test "the body bytes in flight are capped across connections: past the cap a 503
     try wait_until_in_flight(r, 60);
     const sixty = "markdown=" ++ @as([51]u8, @splat('s'));
     const busy = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 60\r\n\r\n" ++ sixty));
-    try testing.expectEqual(503, try status(busy));
+    try testing.expectEqual(503, try host_status(busy));
     const forty = "markdown=" ++ @as([31]u8, @splat('f'));
     const fits = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 40\r\n\r\n" ++ forty));
     try testing.expectEqual(303, try status(fits));
@@ -266,7 +273,7 @@ test "an upload's body has its own time: one that pauses past the read's time is
     const upload = try paused(a, port, try ours(a, port, "POST /chat/dm/1_1/plans/upload HTTP/1.1", "content-length: 9\r\n\r\nupl"), "oaded!");
     try testing.expectEqual(400, try status(upload));
     const message = try paused(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 9\r\n\r\nmar"), "kdown=");
-    try testing.expectEqual(408, try status(message));
+    try testing.expectEqual(408, try host_status(message));
 }
 
 /// `first` on a connection of its own, then a pause of 400 ms, then `rest`,
@@ -293,10 +300,10 @@ test "a request too slow is a 408, and the server serves the next" {
     const port = r.server.port();
     // A head never finished.
     const slow_head = try exchange(a, port, "GET /nowhere HTTP/1.1\r\nhost: x\r\n");
-    try testing.expectEqual(408, try status(slow_head));
+    try testing.expectEqual(408, try host_status(slow_head));
     // A body shorter than its length says.
     const slow_body = try exchange(a, port, try ours(a, port, "POST /chat/dm/1_1/plans HTTP/1.1", "content-length: 20\r\n\r\nmarkdown=x"));
-    try testing.expectEqual(408, try status(slow_body));
+    try testing.expectEqual(408, try host_status(slow_body));
     const next = try exchange(a, port, try ours(a, port, "GET /nowhere HTTP/1.1", "\r\n"));
     try testing.expectEqual(404, try status(next));
 }
@@ -403,7 +410,7 @@ test "a refused client that never closes holds its own connection, not the serve
     var buf: [4096]u8 = undefined;
     var rd = held.reader(io, &buf);
     // The refusal, read to the server's shut of its side; this side stays open.
-    try testing.expectEqual(413, try status(try rd.interface.allocRemaining(a, .limited(64 * 1024))));
+    try testing.expectEqual(413, try host_status(try rd.interface.allocRemaining(a, .limited(64 * 1024))));
     const began = Io.Clock.now(.awake, io);
     const next = try exchange(a, port, try ours(a, port, "GET /nowhere HTTP/1.1", "\r\n"));
     const waited = began.untilNow(io, .awake).toMilliseconds();
@@ -470,10 +477,10 @@ test "a client at its cap is served, one past it is a 429 before the app is aske
     // The header's name in another case is the same client.
     const second = try HeldRequest.open(a, port, "X-Forwarded-For: 203.0.113.7\r\n");
     const past = try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"));
-    try testing.expectEqual(429, try status(past));
+    try testing.expectEqual(429, try host_status(past));
     try testing.expect(has(past, "too many requests at once"));
     // Refused from its head: a stranger's Host would be the app's 403.
-    try testing.expectEqual(429, try status(try exchange(a, port, try std.fmt.allocPrint(a, page_of ++ "\r\nhost: evil.example\r\n" ++ a_client ++ "\r\n", .{}))));
+    try testing.expectEqual(429, try host_status(try exchange(a, port, try std.fmt.allocPrint(a, page_of ++ "\r\nhost: evil.example\r\n" ++ a_client ++ "\r\n", .{}))));
     try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, "x-forwarded-for: 203.0.113.8\r\n\r\n"))));
     try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, "\r\n"))));
     // A request with no such header takes none of a client's room.
@@ -502,11 +509,11 @@ test "a client's count is given back on every way out: answered, refused by the 
     // has read it.
     try testing.expectEqual(403, try status(try exchange(a, port, try std.fmt.allocPrint(a, page_of ++ "\r\nhost: evil.example\r\n" ++ a_client ++ "\r\n", .{}))));
     try testing.expectEqual(200, try page_status_once_not(a, port, 429));
-    try testing.expectEqual(413, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 100000\r\n\r\n"))));
+    try testing.expectEqual(413, try host_status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 100000\r\n\r\n"))));
     try testing.expectEqual(200, try page_status_once_not(a, port, 429));
-    try testing.expectEqual(503, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 21\r\n\r\n"))));
+    try testing.expectEqual(503, try host_status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 21\r\n\r\n"))));
     try testing.expectEqual(200, try page_status_once_not(a, port, 429));
-    try testing.expectEqual(408, try status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 10\r\n\r\nmark"))));
+    try testing.expectEqual(408, try host_status(try exchange(a, port, try ours(a, port, message_of, a_client ++ "content-length: 10\r\n\r\nmark"))));
     try testing.expectEqual(200, try page_status_once_not(a, port, 429));
 
     const gone = try HeldRequest.open(a, port, a_client);
@@ -518,7 +525,7 @@ test "a client's count is given back on every way out: answered, refused by the 
     defer stream.connection.close(io);
     var watchdog = try io.concurrent(shut_after, .{ stream.connection, 3_000 });
     defer watchdog.cancel(io);
-    try testing.expectEqual(429, try status(try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"))));
+    try testing.expectEqual(429, try host_status(try exchange(a, port, try ours(a, port, page_of, a_client ++ "\r\n"))));
     while (try stream.line()) |_| {}
     try testing.expectEqual(200, try page_status_once_not(a, port, 429));
     try testing.expectEqual(0, r.server.client_requests.in_flight.count());
@@ -702,6 +709,56 @@ const Counting = struct {
         of(ctx).moved(memory.len, 0);
     }
 };
+
+/// An allocator that refuses every allocation while `refusing` is set, and
+/// is its child's otherwise, so a test can run a server out of memory.
+const Refusing = struct {
+    child: std.mem.Allocator,
+    refusing: std.atomic.Value(bool) = .init(false),
+
+    fn allocator(r: *Refusing) std.mem.Allocator {
+        return .{ .ptr = r, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
+    }
+
+    fn of(ctx: *anyopaque) *Refusing {
+        return @ptrCast(@alignCast(ctx));
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
+        if (of(ctx).refusing.load(.monotonic)) return null;
+        return of(ctx).child.rawAlloc(len, alignment, ret);
+    }
+
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret: usize) bool {
+        if (of(ctx).refusing.load(.monotonic) and new_len > memory.len) return false;
+        return of(ctx).child.rawResize(memory, alignment, new_len, ret);
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret: usize) ?[*]u8 {
+        if (of(ctx).refusing.load(.monotonic) and new_len > memory.len) return null;
+        return of(ctx).child.rawRemap(memory, alignment, new_len, ret);
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
+        of(ctx).child.rawFree(memory, alignment, ret);
+    }
+};
+
+test "the host's own 500, for a request it has no memory to read, says nosniff; with memory again, the page" {
+    var refusing: Refusing = .{ .child = gpa };
+    const r = try Running.start_on(.{}, refusing.allocator());
+    defer r.stop();
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const port = r.server.port();
+    refusing.refusing.store(true, .monotonic);
+    const starved = try exchange(a, port, try ours(a, port, page_of, "\r\n"));
+    refusing.refusing.store(false, .monotonic);
+    try testing.expectEqual(500, try host_status(starved));
+    try testing.expect(has(starved, "failed\n"));
+    try testing.expectEqual(200, try status(try exchange(a, port, try ours(a, port, page_of, "\r\n"))));
+}
 
 test "a held stream keeps none of its call's arena: the transcript read, decoded and rendered is freed once its backlog is sent" {
     var counting: Counting = .{ .child = gpa };

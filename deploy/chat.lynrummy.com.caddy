@@ -41,8 +41,8 @@ chat.lynrummy.com {
 
 	# These security headers are lynrummy.com's. X-Content-Type-Options isn't
 	# among them: the app sends `nosniff` on every answer (app/HttpAnswer.roc),
-	# and a second copy from here made the header invalid to Mozilla's
-	# Observatory.
+	# and so does the host on its own refusals and 500s (host/http.zig), and a
+	# second copy from here made the header invalid to Mozilla's Observatory.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		Referrer-Policy "strict-origin-when-cross-origin"

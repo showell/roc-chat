@@ -17,6 +17,10 @@
 //! memory no longer. An oversized head gets a 431, an oversized body a 413, and a late
 //! request a 408.
 //!
+//! Every answer the host makes itself (its refusals and its own 500s) says
+//! `x-content-type-options: nosniff`, as every answer of the app's does
+//! (app/HttpAnswer.roc), so no answer from this server is sniffed.
+//!
 //! The app judges each request's head before any body is read
 //! (`roc_admission`): it refuses a request outright, or says how large a
 //! body to read and how much longer than the request's read time it may
@@ -547,7 +551,7 @@ const OpenStream = struct { answer: Streamed, sub: *bus.Subscriber };
 fn busy(io: Io, connection: net.Stream) void {
     defer connection.close(io);
     var w = connection.writer(io, &.{});
-    w.interface.writeAll("HTTP/1.1 503 Service Unavailable\r\nconnection: close\r\ncontent-length: 0\r\n\r\n") catch {};
+    w.interface.writeAll("HTTP/1.1 503 Service Unavailable\r\nconnection: close\r\n" ++ nosniff_line ++ "content-length: 0\r\n\r\n") catch {};
 }
 
 /// The parts of a request the Roc is handed, copied out of the read
@@ -587,11 +591,18 @@ const Read = union(enum) {
 /// written.
 const Refusal = struct { req: ?std.http.Server.Request, answer: Written };
 
+/// The one header of every answer the host makes itself, so a browser
+/// takes the answer as the type it says and never guesses another.
+const nosniff: std.http.Header = .{ .name = "x-content-type-options", .value = "nosniff" };
+const host_headers: []const std.http.Header = &.{nosniff};
+/// `nosniff` as a line of a head the host writes by hand.
+const nosniff_line = nosniff.name ++ ": " ++ nosniff.value ++ "\r\n";
+
 /// The answer when the bytes in flight are full.
-const in_flight_full: Written = .{ .status = .service_unavailable, .headers = &.{}, .body = "the server is busy; try again\n" };
+const in_flight_full: Written = .{ .status = .service_unavailable, .headers = host_headers, .body = "the server is busy; try again\n" };
 
 /// The answer to a client past `Limits.requests_per_client_most`.
-const client_too_busy: Written = .{ .status = .too_many_requests, .headers = &.{}, .body = "too many requests at once; try again\n" };
+const client_too_busy: Written = .{ .status = .too_many_requests, .headers = host_headers, .body = "too many requests at once; try again\n" };
 
 /// The client the proxy names in `headers`, or null for a request that did
 /// not come through the proxy. Caddy sets the header itself, dropping any
@@ -690,16 +701,16 @@ fn read_body(arena: std.mem.Allocator, received: Received, body_most: usize, fir
 }
 
 fn too_large(req: std.http.Server.Request) Read {
-    return .{ .refused = .{ .req = req, .answer = .{ .status = .payload_too_large, .headers = &.{}, .body = "the body is too large\n" } } };
+    return .{ .refused = .{ .req = req, .answer = .{ .status = .payload_too_large, .headers = host_headers, .body = "the body is too large\n" } } };
 }
 
 fn timed_out(req: std.http.Server.Request) Read {
-    return .{ .refused = .{ .req = req, .answer = .{ .status = .request_timeout, .headers = &.{}, .body = "the request was too slow\n" } } };
+    return .{ .refused = .{ .req = req, .answer = .{ .status = .request_timeout, .headers = host_headers, .body = "the request was too slow\n" } } };
 }
 
 /// A refusal with no head to answer: its status alone.
 fn status_only(status: std.http.Status) Read {
-    return .{ .refused = .{ .req = null, .answer = .{ .status = status, .headers = &.{}, .body = "" } } };
+    return .{ .refused = .{ .req = null, .answer = .{ .status = status, .headers = host_headers, .body = "" } } };
 }
 
 fn copy_head(arena: std.mem.Allocator, req: *const std.http.Server.Request, port: u16) !Parsed {
@@ -753,7 +764,7 @@ pub const Answering = struct {
     gpa: std.mem.Allocator,
 };
 
-const failed: Written = .{ .status = .internal_server_error, .headers = &.{}, .body = "failed\n" };
+const failed: Written = .{ .status = .internal_server_error, .headers = host_headers, .body = "failed\n" };
 
 /// Asks the app to answer `parsed`, and copies the answer into `arena`.
 /// An answer the app got wrong becomes a 500: a status std doesn't know, a
@@ -902,6 +913,6 @@ fn linger(io: Io, connection: net.Stream, ms: u32) void {
 /// A status written with no request to answer (a head that never came
 /// whole, or was too big), then the close.
 fn raw(http: *std.http.Server, status: std.http.Status) void {
-    http.out.print("HTTP/1.1 {d} {s}\r\nconnection: close\r\ncontent-length: 0\r\n\r\n", .{ @backingInt(status), status.phrase() orelse "" }) catch return;
+    http.out.print("HTTP/1.1 {d} {s}\r\nconnection: close\r\n" ++ nosniff_line ++ "content-length: 0\r\n\r\n", .{ @backingInt(status), status.phrase() orelse "" }) catch return;
     http.out.flush() catch {};
 }

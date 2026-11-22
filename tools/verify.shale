@@ -82,7 +82,7 @@ const ROC = real("tools:roc-" .. trim(read("roc-version")) .. "/roc")
 -- so the tests seam_test and http_test import count three times, and
 -- host/search_index.zig's four (its own root and the drift test's too),
 -- and host/file_primitives.zig's (its own root and host/folder_watch.zig's).
-const ZIG_TESTS = 235
+const ZIG_TESTS = 236
 
 const board = {failed = 0}
 
