@@ -70,7 +70,8 @@ RequestOrigin :: [].{
 					Ok(kind) =>
 						match RequestHeader.header_value(headers, "origin") {
 							Unsent => fetch_verdict({ method, headers })
-							Sent(origin) if kind.origins.contains(origin) => fetch_verdict({ method, headers })
+							Sent(origin) if kind.origins.contains(origin) =>
+								fetch_verdict({ method, headers })
 							Sent(_) | Repeated => Err(ForeignOrigin)
 						}
 				}

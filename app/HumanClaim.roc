@@ -33,7 +33,8 @@ HumanClaim :: [].{
 	judge : Users.Human, HumanClaim.Facts -> [Unclaimed(HumanClaim.Unclaimed), Claimed]
 	judge = |human, { password, github, invites }|
 		match (password, github) {
-			(NoPassword, NotLinked) if invites.all(is_live) => Unclaimed(HumanClaim.Unclaimed.(human))
+			(NoPassword, NotLinked) if invites.all(is_live) =>
+				Unclaimed(HumanClaim.Unclaimed.(human))
 			(NoPassword, NotLinked) | (HasPassword, _) | (_, Linked) => Claimed
 		}
 }
