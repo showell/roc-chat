@@ -35,20 +35,25 @@
 // app/alert-icon.svg), lightened in the dark to read on its bar; chrome.js
 // writes a message's notice in it.
 //
-// It is also the one home of what drags: a link or an image drags nowhere
-// in the chat, so the browser's own drag of one (a ghost with no place to
-// drop it, a Recent tile's above all) is cancelled at its dragstart, for
-// every page and whatever a script adds later (docs/design.md, "Pages").
-// A drag of selected text starts on its Text node and keeps it; an element
-// marked draggable="true", a drag with a meaning, keeps its own; and a file
-// dragged in from outside the page starts no drag here, so the compose box's
-// drop is untouched. A click, a middle click, a long press and the context
-// menu's "open in new tab" are not drags, and stay as they were.
-document.addEventListener('dragstart', function (e) {
-  var t = e.target;
-  if (!t || t.nodeType !== 1 || t.closest('[draggable="true"]')) return;
-  if (t.closest('a[href], img')) e.preventDefault();
-});
+// It is also the one home of what drags. A plain link or an image keeps the
+// browser's drag, which means something (to the tab bar, another window, the
+// desktop). A card that happens to be a link, a block whose drag ghost is the
+// whole card, means nothing dragged, so its drag is cancelled at its
+// dragstart, on every page and for a card a script adds later
+// (docs/design.md, "Pages"). CARDS lists them by the class each carries
+// (PageContract's names): Recent's tiles are the only one. A drag of
+// selected text starts on its Text node and keeps it; an element marked
+// draggable="true" keeps its own; and a file dragged in from outside starts
+// no drag here, so the compose box's drop is untouched.
+(function () {
+  'use strict';
+  var CARDS = '.recent-tile';
+  document.addEventListener('dragstart', function (e) {
+    var t = e.target;
+    if (!t || t.nodeType !== 1 || t.closest('[draggable="true"]')) return;
+    if (t.closest(CARDS)) e.preventDefault();
+  });
+})();
 
 window.Palette = (function () {
   'use strict';
