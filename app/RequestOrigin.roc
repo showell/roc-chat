@@ -30,9 +30,11 @@
 ##   a proxy taking an `Origin` off.
 ## - A request that writes (every method but GET) is refused when its
 ##   `Sec-Fetch-Site` is not `same-origin`.
-## - A GET is refused when its `Sec-Fetch-Site` says another site's page
-##   asked for it (`cross-site` or `same-site`), unless its `Sec-Fetch-Mode`
-##   is `navigate`: a link followed to a page here is served.
+## - A GET is served when its `Sec-Fetch-Site` says this origin's page or
+##   the user's own act asked for it (`same-origin` or `none`), and when it
+##   says another site's page did (`cross-site` or `same-site`) only if its
+##   `Sec-Fetch-Mode` is `navigate`: a link followed to a page here. Any
+##   other value is refused.
 ##
 ## A client that sends no `Origin` and no `Sec-Fetch-` headers (curl, as the
 ## README posts) passes. A header sent twice names no one value, and is
@@ -67,10 +69,9 @@ RequestOrigin :: [].{
 					Err(NotFound) => Err(ForeignHost)
 					Ok(kind) =>
 						match RequestHeader.header_value(headers, "origin") {
-							Sent(origin) if !kind.origins.contains(origin) => Err(ForeignOrigin)
-							Repeated => Err(ForeignOrigin)
-							Sent(_) => fetch_verdict({ method, headers })
 							Unsent => fetch_verdict({ method, headers })
+							Sent(origin) if kind.origins.contains(origin) => fetch_verdict({ method, headers })
+							Sent(_) | Repeated => Err(ForeignOrigin)
 						}
 				}
 		}
@@ -156,30 +157,39 @@ fetch_verdict = |{ method, headers }|
 		write_verdict(headers)
 	}
 
-## The verdict on a request that writes, by its `headers`: refused when its
-## `Sec-Fetch-Site` is not `same-origin`, or is sent twice.
+## The verdict on a request that writes, by its `headers`: allowed when its
+## `Sec-Fetch-Site` is `same-origin` or not sent; refused for any other
+## value, or one sent twice.
 write_verdict : List(Http.Header) -> Try({}, [CrossSiteFetch])
 write_verdict = |headers|
 	match RequestHeader.header_value(headers, "sec-fetch-site") {
-		Sent(site) if site != "same-origin".to_utf8() => Err(CrossSiteFetch)
-		Repeated => Err(CrossSiteFetch)
-		_ => Ok({})
+		Unsent => Ok({})
+		Sent(site) if site == "same-origin".to_utf8() => Ok({})
+		Sent(_) | Repeated => Err(CrossSiteFetch)
 	}
 
-## The verdict on a GET, by its `headers`: refused when its
-## `Sec-Fetch-Site` names another site's page and its `Sec-Fetch-Mode` is
-## not `navigate`, or when the site is sent twice.
+## The verdict on a GET, by its `headers`: allowed when its
+## `Sec-Fetch-Site` is not sent, names this site's page or the user's own
+## act (`is_own_site`), or names another site's page (`is_another_site`) and
+## its `Sec-Fetch-Mode` is `navigate`; refused for any other value, or the
+## site sent twice.
 read_verdict : List(Http.Header) -> Try({}, [CrossSiteFetch])
 read_verdict = |headers|
 	match (
 		RequestHeader.header_value(headers, "sec-fetch-site"),
 		RequestHeader.header_value(headers, "sec-fetch-mode"),
 	) {
+		(Unsent, _) => Ok({})
+		(Sent(site), _) if is_own_site(site) => Ok({})
 		(Sent(site), Sent(mode)) if is_another_site(site) and mode == "navigate".to_utf8() => Ok({})
-		(Sent(site), _) if is_another_site(site) => Err(CrossSiteFetch)
-		(Repeated, _) => Err(CrossSiteFetch)
-		_ => Ok({})
+		(Sent(_), _) | (Repeated, _) => Err(CrossSiteFetch)
 	}
+
+## Whether a `Sec-Fetch-Site` value names a page of this origin
+## (`same-origin`), or the user's own act, as a typed address or a bookmark
+## (`none`).
+is_own_site : List(U8) -> Bool
+is_own_site = |site| site == "same-origin".to_utf8() or site == "none".to_utf8()
 
 ## Whether a `Sec-Fetch-Site` value names a page of another site: one on
 ## another host, or on another port of this one (`same-site`).
@@ -297,7 +307,8 @@ expect
 		== Err(ForeignOrigin)
 # A GET's Sec-Fetch-Site and Sec-Fetch-Mode: another site's page is refused
 # unless it navigates here; this origin's, the user's own (`none`), or no
-# header (curl) passes.
+# header (curl) passes; any other value, a spelling in another case or an
+# empty one, is refused.
 expect
 	[
 		[("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Mode", "cors")],
@@ -312,6 +323,9 @@ expect
 			("Sec-Fetch-Mode", "navigate"),
 		],
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Site", "same-origin")],
+		[("Sec-Fetch-Site", "Same-Origin"), ("Sec-Fetch-Mode", "navigate")],
+		[("Sec-Fetch-Site", "")],
+		[("Sec-Fetch-Site", "same-site-later"), ("Sec-Fetch-Mode", "cors")],
 	].all(|more_headers| verdict_of_get(more_headers) == Err(CrossSiteFetch))
 expect
 	[
@@ -320,6 +334,8 @@ expect
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Mode", "cors")],
 		[("Sec-Fetch-Site", "same-origin"), ("Sec-Fetch-Mode", "no-cors")],
 		[("Sec-Fetch-Site", "none"), ("Sec-Fetch-Mode", "navigate")],
+		[("Sec-Fetch-Site", "none")],
+		[("Sec-Fetch-Site", "same-origin")],
 		[("Sec-Fetch-Mode", "cors")],
 	].all(|more_headers| verdict_of_get(more_headers) == Ok({}))
 # The public origin, both sides: configured, its name is a Host of this
