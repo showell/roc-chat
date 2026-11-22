@@ -2,12 +2,21 @@
 // app/Script.roc serves. It sets the colours before the first paint,
 // so a page never flashes the other theme.
 //
-// It also holds a conversation's messages pane unseen until app/feed.js has
-// placed it (`.messages.placed`). The page's scripts run at the end of its
-// body, and a browser paints the messages it has parsed before they do: the
-// pane unstyled, its oldest messages at the top, for a frame or more before
-// feed.js scrolls it to the newest. Unseen is `opacity`, not `visibility`,
-// so compose.js can focus the pane before it is placed.
+// It also holds the page's body unseen until the body's scripts have run.
+// They run at the end of the body, which a browser parses and paints before
+// they come, so the page would show as its bare markup, unstyled, for as
+// long as the scripts take to arrive and run. The body's scripts are
+// parser-blocking, so DOMContentLoaded comes after the last of them, and the
+// root then gets the class `scripted`, which shows the body. Until then the
+// eye sees the page's background, in its theme. A script that
+// throws, or doesn't load, still lets DOMContentLoaded come, so the page is
+// never held for good. Unseen is `opacity`, not `visibility`, so a script
+// can put the focus inside the body (compose.js, recent.js, panel.js)
+// while it is held.
+//
+// A conversation's messages pane is held a step longer, until app/feed.js
+// has placed it (`.messages.placed`): scrolled to the newest message, not
+// showing its oldest at the top for a frame.
 //
 // The colours are chat-client's (js/colors.js), but for a code block's
 // (syn...), which are GitHub's: one palette of CSS custom
@@ -110,8 +119,12 @@ window.Palette = (function () {
   var s = document.createElement('style');
   s.textContent = block(':root', LIGHT) + '\n' + block('html[data-theme="dark"]', DARK) + '\n'
     + 'body { background: var(--cc-bg); color: var(--cc-fg); }\n'
+    + 'html:not(.scripted) body { opacity: 0; }\n'
     + '.messages:not(.placed) { opacity: 0; }\n';
   document.head.appendChild(s);
+  document.addEventListener('DOMContentLoaded', function () {
+    document.documentElement.classList.add('scripted');
+  });
 
   function current() { return document.documentElement.getAttribute('data-theme') || 'light'; }
   var listeners = [];
