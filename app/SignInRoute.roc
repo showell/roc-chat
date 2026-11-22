@@ -282,15 +282,13 @@ SignInRoute :: [].{
 	## what it keeps of the site (`clear_site_data_header`), and goes to the
 	## sign-in page. Never stored.
 	sign_out : Http.Response
-	sign_out = HttpAnswer.never_stored(
-		HttpAnswer.with_header(
-			HttpAnswer.with_header(
-				HttpAnswer.see_other("/login"),
-				set_cookie_header(Session.clear_cookie_text),
-			),
-			clear_site_data_header,
-		),
-	)
+	sign_out = {
+		forgotten = HttpAnswer.with_header(
+			HttpAnswer.see_other("/login"),
+			set_cookie_header(Session.clear_cookie_text),
+		)
+		HttpAnswer.never_stored(HttpAnswer.with_header(forgotten, clear_site_data_header))
+	}
 
 	## A 303 to the sign-in page, which goes on to `next` once signed in: a
 	## page asked for by no one signed in.

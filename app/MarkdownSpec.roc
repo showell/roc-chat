@@ -46,10 +46,18 @@ attributes = |html|
 				{ before: "", is_value: Bool.False, found: [] },
 				|so_far, stretch|
 					if so_far.is_value {
-						name = (so_far.before.split_on(" ").last() ?? "").drop_suffix("=")
-						{ before: stretch, is_value: Bool.False, found: so_far.found.append((name, stretch)) }
+						last_word = so_far.before.split_on(" ").last() ?? crash "MarkdownSpec.attributes: a split gives at least one piece"
+						{
+							before: stretch,
+							is_value: Bool.False,
+							found: so_far.found.append((last_word.drop_suffix("="), stretch)),
+						}
 					} else {
-						{ before: stretch, is_value: Bool.True, found: so_far.found }
+						{
+							before: stretch,
+							is_value: Bool.True,
+							found: so_far.found,
+						}
 					},
 			).found
 		},
@@ -61,11 +69,15 @@ attributes = |html|
 is_markdown_class : Str -> Bool
 is_markdown_class = |value| {
 	bytes = value.to_utf8()
-	is_one_word = bytes != [] and !bytes.any(|byte| byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r' or byte == 12)
+	is_one_word = bytes != [] and !bytes.any(|byte| html_spaces.contains(byte))
 	is_own = ["chat-quote", "msg-ref", "md-malformed"].contains(value)
 	is_span = PageContract.syntax_classes.map(PageContract.syntax_class_name).contains(value)
 	is_one_word and (is_own or is_span or value.starts_with("language-"))
 }
+
+## The bytes HTML splits a class list on: space, tab, LF, CR and form feed.
+html_spaces : List(U8)
+html_spaces = [' ', '\t', '\n', '\r', 12]
 
 ## Markdown that tries for an id or a class: raw HTML, an image tag with
 ## more attributes, a heading and an attribute list, a footnote, and a
@@ -104,6 +116,12 @@ expect
 	)
 # The reading itself: an id and a class found, a class of two words or a
 # page's own refused, markdown's own and a language kept.
-expect attributes("<a href=\"#x\" class=\"msg-ref\">x</a> <img id=\"y\">") == [("href", "#x"), ("class", "msg-ref"), ("id", "y")]
+expect
+	attributes("<a href=\"#x\" class=\"msg-ref\">x</a> <img id=\"y\">")
+		== [
+			("href", "#x"),
+			("class", "msg-ref"),
+			("id", "y"),
+		]
 expect !is_markdown_class("language-x\u(000C)top-bar") and !is_markdown_class("top-bar") and !is_markdown_class("")
 expect ["chat-quote", "msg-ref", "md-malformed", "syn-keyword", "language-roc"].all(is_markdown_class)
