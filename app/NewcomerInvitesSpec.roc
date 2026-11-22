@@ -59,8 +59,8 @@ expect NewcomerInvites.check({
 # and a `joined` ahead of the clock, are.
 ## How the first day's limit holds `by`, whose `joined` file says `file`,
 ## at `second`.
-standing_at : UserId, [NoFile, Joined(Timestamp)], I64 -> [Unlimited, FirstDay(Timestamp)]
-standing_at = |by, file, second| {
+standing_at : (UserId, [NoFile, Joined(Timestamp)], I64) -> [Unlimited, FirstDay(Timestamp)]
+standing_at = |(by, file, second)| {
 	now = Timestamp.at_second(second)
 	NewcomerInvites.standing({ by, joined: file, now })
 }
@@ -71,10 +71,10 @@ expect
 		(UserId.chat_owner, joined, 1000),
 		(id("7"), joined, 87400),
 		(id("7"), joined, 999999),
-	].all(|(by, file, second)| standing_at(by, file, second) == Unlimited)
+	].all(|asked| standing_at(asked) == Unlimited)
 expect
 	[1000, 87399, 500].all(
-		|second| standing_at(id("7"), joined, second) == FirstDay(Timestamp.at_second(1000)),
+		|second| standing_at((id("7"), joined, second)) == FirstDay(Timestamp.at_second(1000)),
 	)
 # The refusal: a 403 saying the limit and when they may invite again.
 expect {
