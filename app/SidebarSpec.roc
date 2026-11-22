@@ -360,10 +360,16 @@ expect {
 	)
 	with_sidebar = page_with(Sidebar({ places, online_humans: [], notice: NoNotice, rosters: [] }))
 	without = page_with(NoSidebar)
+	sidebar_scripts = Str.join_with(
+		[Script.Chrome, Script.Keys, Script.SidebarPopups, Script.Sidebar, Script.Compose].map(
+			|script| "<script src=\"${script.url_path()}\"></script>\n",
+		),
+		"",
+	)
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\">")
 		and !without.contains("notice-strip")
-		and with_sidebar.contains("<script src=\"${Script.Chrome.url_path()}\"></script>\n<script src=\"${Script.Keys.url_path()}\"></script>\n<script src=\"${Script.SidebarPopups.url_path()}\"></script>\n<script src=\"${Script.Sidebar.url_path()}\"></script>\n<script src=\"${Script.Compose.url_path()}\"></script>\n")
+		and with_sidebar.contains(sidebar_scripts)
 		and without.contains("</header>\n<div class=\"layout\"><div class=\"messages\"")
 		and !without.contains("sidebar")
 }

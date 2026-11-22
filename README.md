@@ -77,7 +77,7 @@ A fork has a few of our names to change: the Home link in the top bar (`app/Home
 
 ## Pitfalls
 
-**The demo's page is frozen.** The gate holds the demo's output to `demo/roc-chat.html` byte for byte. A deliberate change to the page rewrites that file, and the commit says what moved and why.
+**The demo's page is frozen.** The gate holds the demo's output to `demo/roc-chat.html` byte for byte, but for each script's hash, which the file spells `<hash>` (`/chat/assets/compose.<hash>.js`), so an edit to a script leaves it as it is. A deliberate change to the page rewrites that file, and the commit says what moved and why.
 
 **A change to `platform/` needs `shale tools/glue.shale`.** Until the glue snapshot is regenerated, `zig build test` fails.
 

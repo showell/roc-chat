@@ -146,17 +146,20 @@ Script := [
 	url_path : Script -> Str
 	url_path = |script| "${unhashed_path_prefix(script)}${hash_of(script)}.js"
 
+	## A script, and whether a path names it by its bytes or by another name.
+	Named : { script : Script, name : [ByItsBytes, ByAnotherName] }
+
 	## The script `path` names: by its bytes (`url_path`), or by another
 	## name, its file's own (`/chat/assets/palette.js`) or another hash's,
 	## as a page from before a deploy names it.
-	named_by : List(U8) -> Try({ script : Script, name : [ByItsBytes, ByAnotherName] }, [NotAScript])
+	named_by : List(U8) -> Try(Script.Named, [NotFound])
 	named_by = |path|
 		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
 			Ok(script) => Ok({ script, name: ByItsBytes })
 			Err(NotFound) =>
 				match Script.all_scripts.find_first(|script| is_another_name(script, path)) {
 					Ok(script) => Ok({ script, name: ByAnotherName })
-					Err(NotFound) => Err(NotAScript)
+					Err(NotFound) => Err(NotFound)
 				}
 		}
 
@@ -248,7 +251,9 @@ source = |script|
 # Each script at its path, named by the hash of its bytes, and each its
 # whole file, from its first line to its last.
 expect
-	Script.all_scripts.map(|script| script.url_path().replace_each(Fnv.fnv_1a_64_hex(script.bytes()), "<hash>"))
+	Script.all_scripts.map(
+		|script| script.url_path().replace_each(Fnv.fnv_1a_64_hex(script.bytes()), "<hash>"),
+	)
 		== [
 			"/chat/assets/palette.<hash>.js",
 			"/chat/assets/chrome.<hash>.js",
@@ -276,9 +281,11 @@ expect {
 # hash name it by another; anything else names none.
 expect
 	Script.all_scripts.all(
-		|script|
+		|script| {
+			own_name = "/chat/assets/${file_name(script)}".to_utf8()
 			Script.named_by(script.url_path().to_utf8()) == Ok({ script, name: ByItsBytes })
-				and Script.named_by("/chat/assets/${file_name(script)}".to_utf8()) == Ok({ script, name: ByAnotherName }),
+				and Script.named_by(own_name) == Ok({ script, name: ByAnotherName })
+		},
 	)
 expect Script.named_by("/chat/assets/sign-in.ffffffffffffffff.js".to_utf8()) == Ok({ script: Script.SignIn, name: ByAnotherName })
 expect
@@ -290,7 +297,7 @@ expect
 		"/chat/assets/sign-in.",
 		"/chat/assets/sign.ffffffffffffffff.js",
 		"/chat/sign-in.js",
-	].all(|path| Script.named_by(path.to_utf8()) == Err(NotAScript))
+	].all(|path| Script.named_by(path.to_utf8()) == Err(NotFound))
 expect palette_source.starts_with("// This script runs in the head of every page")
 expect
 	[

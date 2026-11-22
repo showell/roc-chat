@@ -245,10 +245,7 @@ expect
 # A script by another name, an old page's: its file's own, or a hash of 16
 # lowercase hex digits but its own; GET alone.
 expect
-	[
-		"/chat/assets/compose.js",
-		"/chat/assets/compose.0123456789abcdef.js",
-	].all(
+	["/chat/assets/compose.js", "/chat/assets/compose.0123456789abcdef.js"].all(
 		|path|
 			chosen_route("GET", path.to_utf8()) == "the script at ${Script.Compose.url_path()}, by another name (open)"
 				and chosen_route("POST", path.to_utf8()) == "not allowed: GET",

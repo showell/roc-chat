@@ -21,7 +21,7 @@
 ##     POST the same paths and `/upload`       an image uploaded to it
 ##     POST the same paths and `/react`        a reaction: `msg=`, `emoji=`, `on=`
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
-##     GET  /chat/assets/palette.<hash>.js     the pages' scripts, by their bytes (`Script.url_path`)
+##     GET  /chat/assets/palette.<hash>.js     the pages' scripts, by their bytes
 ##     GET  /chat/assets/chrome.<hash>.js
 ##     GET  /chat/assets/palette.js            the same, by another name (`Script.named_by`)
 ##     GET  /chat/assets/alert-icon.svg        the tab's icon when a notice comes
@@ -106,7 +106,7 @@ Route :: [].{
 	## The routes anyone may use, a request that proves no one included.
 	OpenChoice : [
 		ResumeOrBrowse,
-		ServeScript({ script : Script, name : [ByItsBytes, ByAnotherName] }),
+		ServeScript(Script.Named),
 		ServeFavicon,
 		ServeAlertIcon,
 		ShowLogin,
@@ -175,10 +175,10 @@ Route :: [].{
 		asked = method_of(method)
 		match Script.named_by(path) {
 			Ok(named) => asset_choice(ServeScript(named), asked)
-			Err(NotAScript) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
-			Err(NotAScript) if path == Favicon.alert_url_path.to_utf8() =>
+			Err(NotFound) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
+			Err(NotFound) if path == Favicon.alert_url_path.to_utf8() =>
 				asset_choice(ServeAlertIcon, asked)
-			Err(NotAScript) =>
+			Err(NotFound) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) => path_choice({ path: unchecked, method: asked, directory })
 					Err(NotUtf8) => NotFound

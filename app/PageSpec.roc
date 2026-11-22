@@ -190,6 +190,11 @@ expect
 	empty_page({ path: "/chat/dm/1_2/plans", viewer: "Steve" }, NoNotice)
 		.contains("<p class=\"notice-strip\"></p>")
 
+## The `<script>` element of each of `scripts`, a line each, by the path
+## of its bytes.
+script_tags : List(Script) -> Str
+script_tags = |scripts| Str.join_with(scripts.map(|script| "<script src=\"${script.url_path()}\"></script>\n"), "")
+
 ## What every page opens with, titled `title` (already escaped): the
 ## doctype, the charset, the viewport, the title, and the colour script.
 head : Str -> Str
@@ -591,8 +596,10 @@ steves_recent = |tiles|
 ## Steve's Recent page as a test expects it: its top bar's notice line,
 ## empty, where app/chrome.js shows the notices, then `parts`.
 recent_page : Str -> Str
-recent_page = |parts|
-	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n</div></div>\n<script src=\"${Script.Chrome.url_path()}\"></script>\n<script src=\"${Script.Keys.url_path()}\"></script>\n<script src=\"${Script.Recent.url_path()}\"></script>\n<script src=\"${Script.Search.url_path()}\"></script>\n<script src=\"${Script.Panel.url_path()}\"></script>\n"
+recent_page = |parts| {
+	scripts = script_tags([Script.Chrome, Script.Keys, Script.Recent, Script.Search, Script.Panel])
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n</div></div>\n${scripts}"
+}
 
 # Recent with no conversation that has a message says so, above its list,
 # empty, which names its stream.

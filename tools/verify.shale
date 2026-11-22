@@ -53,7 +53,9 @@
 --    unlisted, stale and not_own, a path guarded by no proof of the
 --    account's own, each at zero.
 -- 4. The demo built through the host, its page exactly the frozen
---    demo/roc-chat.html.
+--    demo/roc-chat.html, but for each script's hash, which the file spells
+--    `<hash>` (`/chat/assets/compose.<hash>.js`), so an edit to a script
+--    leaves it as it is; the end to end holds each hash to its bytes.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
 --    seam held to roc glue's layout, the HTTP layer. Every run runs them
 --    all (build.zig's `testRun`), so the summary's count is exactly
@@ -226,9 +228,11 @@ for h in hunts do
   if not clean then print(r.out) end
 end
 
--- 4. The demo, through the host: the sample's page, exactly as frozen.
+-- 4. The demo, through the host: the sample's page, exactly as frozen, its
+-- scripts' hashes spelled `<hash>`.
 local demo = run({"zig", "build", "demo", "--", "/chat/channel/general/roc-chat", "demo/data/chat/channel/general/roc-chat/transcript"}, {timeout_ms = 300000, whole = 1000000})
-say(demo.code == 0 and demo.out == read("demo/roc-chat.html"), "the demo's page: exactly demo/roc-chat.html")
+local demo_page = re_replace(demo.out, "\\.[0-9a-f]{16}\\.js\"", ".<hash>.js\"")
+say(demo.code == 0 and demo_page == read("demo/roc-chat.html"), "the demo's page: exactly demo/roc-chat.html, its scripts' hashes spelled <hash>")
 if demo.code ~= 0 then print(demo.out) end
 
 -- 5. The host's tests.

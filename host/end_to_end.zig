@@ -37,14 +37,19 @@
 //!   3. GET it again: the message is there;
 //!   4. the transcript on disk: the seed and exactly one record more, dated
 //!      by the host's clock;
-//!   4a. GET the page's script: 200, JavaScript, `nosniff`, exactly
-//!      app/compose.js; palette.js, chrome.js and feed.js the same; a POST
-//!      to compose.js is a 405 allowing GET;
-//!   4aa. GET /favicon.ico: exactly app/favicon.ico, with every header a script
-//!       has, to no one, to a cookie that admits no one, to Steve, and to a
-//!       page's own request; another site's page: 403; a POST: 405;
+//!   4a. GET the page's script by the name the page links, its file's name
+//!      and the FNV-1a hash of its bytes (`compose.<16 hex digits>.js`):
+//!      200, JavaScript, `nosniff`, kept for good (`public,
+//!      max-age=31536000, immutable`), exactly app/compose.js; palette.js,
+//!      chrome.js and feed.js the same; compose.js by its file's own name or
+//!      another hash, as an old page names it: the same bytes, `no-cache`; a
+//!      POST to compose.js is a 405 allowing GET;
+//!   4aa. GET /favicon.ico: exactly app/favicon.ico, `no-cache`, with a
+//!       script's other headers, to no one, to a cookie that admits no one,
+//!       to Steve, and to a page's own request; another site's page: 403; a
+//!       POST: 405;
 //!   4ab. GET /chat/assets/alert-icon.svg: exactly app/alert-icon.svg, an
-//!       SVG, with a script's headers, to anyone; a POST: 405;
+//!       SVG, with the site's icon's headers, to anyone; a POST: 405;
 //!   4b. POST exactly as a browser submits the compose box (form-encoded,
 //!      its newline CRLF, `Origin` this server, `Sec-Fetch-Site`
 //!      same-origin, a navigation's other headers): a 303 to the page, and
@@ -426,7 +431,6 @@ const frozen_page = "demo/roc-chat.html";
 const channel_url = "/chat/channel/general/roc-chat";
 /// The origin the server is told a proxy serves it under.
 const public_origin = "https://chat.example.test";
-const script_url = "/chat/assets/compose.js";
 const script_file = "app/compose.js";
 /// The page's other scripts, each served as compose.js is.
 const other_scripts = [_][]const u8{ "palette.js", "chrome.js", "sidebar.js", "feed.js", "citation.js", "panel.js" };
@@ -498,15 +502,16 @@ pub fn main(init: std.process.Init) !void {
     try signInSteps(a, io, port, data, t);
 
     // 1.
+    const script_url = try scriptPath(a, io, "compose.js");
     const first = try get(a, io, port, channel_url);
-    try t.check("GET the seeded conversation: 200, exactly the demo's frozen page", first.status == 200 and
-        std.mem.eql(u8, first.body, try cwd.readFileAlloc(io, frozen_page, a, .limited(1024 * 1024))));
+    try t.check("GET the seeded conversation: 200, exactly the demo's frozen page, its scripts' hashes spelled <hash>", first.status == 200 and
+        std.mem.eql(u8, try withScriptHashesHidden(a, first.body), try cwd.readFileAlloc(io, frozen_page, a, .limited(1024 * 1024))));
     const policy = first.header("content-security-policy") orelse "";
     try t.check("its defences: the content security policy, scripts from this origin alone, and nosniff, as sent", std.mem.startsWith(u8, policy, "default-src 'none'; ") and
         has(policy, "; script-src 'self'; ") and !has(policy, "unsafe-eval") and !has(policy, "script-src 'unsafe-inline'") and
         std.mem.eql(u8, first.header("x-content-type-options") orelse "", "nosniff"));
     try t.check("its compose box: a form posting `markdown` to the conversation's own URL, sending to its `/send`, uploading to its `/upload`, and the script", has(first.body, "<form method=\"post\" action=\"" ++ channel_url ++ "\" data-send=\"" ++ channel_url ++ "/send\" data-upload=\"" ++ channel_url ++ "/upload\" data-image-byte-limit=\"10485760\"><textarea name=\"markdown\"></textarea>") and
-        has(first.body, "<script src=\"" ++ script_url ++ "\"></script>"));
+        has(first.body, try scriptTag(a, io, "compose.js")));
 
     // 2.
     const before = files.current_utc_seconds_since_epoch(io);
@@ -526,19 +531,33 @@ pub fn main(init: std.process.Init) !void {
     try t.check("the file on disk: the seed and exactly one record, dated by the host's clock", recordFits(a, on_disk, seed, "roc-chat_6", body, before, after));
 
     // 4a.
-    const script = try get(a, io, port, script_url);
-    try t.check("GET the page's script: 200, JavaScript, nosniff, exactly app/compose.js", script.status == 200 and
+    const script = try getAt(a, io, port, script_url);
+    const script_bytes = try cwd.readFileAlloc(io, script_file, a, .limited(1024 * 1024));
+    try t.check("GET the page's script by its bytes: 200, JavaScript, nosniff, kept for good, exactly app/compose.js", script.status == 200 and
         std.mem.eql(u8, script.header("content-type") orelse "", "text/javascript; charset=utf-8") and
         std.mem.eql(u8, script.header("x-content-type-options") orelse "", "nosniff") and
-        std.mem.eql(u8, script.body, try cwd.readFileAlloc(io, script_file, a, .limited(1024 * 1024))));
+        std.mem.eql(u8, script.header("cache-control") orelse "", "public, max-age=31536000, immutable") and
+        std.mem.eql(u8, script.body, script_bytes));
     var others_served = true;
     inline for (other_scripts) |name| {
-        const other = try get(a, io, port, "/chat/assets/" ++ name);
+        const other = try getAt(a, io, port, try scriptPath(a, io, name));
         others_served = others_served and other.status == 200 and
             std.mem.eql(u8, other.header("content-type") orelse "", "text/javascript; charset=utf-8") and
+            std.mem.eql(u8, other.header("cache-control") orelse "", "public, max-age=31536000, immutable") and
             std.mem.eql(u8, other.body, try cwd.readFileAlloc(io, "app/" ++ name, a, .limited(1024 * 1024)));
     }
-    try t.check("GET the page's other scripts: 200, JavaScript, each exactly its app/ file", others_served);
+    try t.check("GET the page's other scripts by their bytes: 200, JavaScript, kept for good, each exactly its app/ file", others_served);
+    const by_file_name = try get(a, io, port, "/chat/assets/compose.js");
+    const by_old_hash = try anonymousGet(a, io, port, "/chat/assets/compose.0123456789abcdef.js");
+    const by_short_hash = try get(a, io, port, "/chat/assets/compose.0123456789abcde.js");
+    var by_other_names = by_short_hash.status == 404;
+    for ([_]Response{ by_file_name, by_old_hash }) |old| {
+        by_other_names = by_other_names and old.status == 200 and std.mem.eql(u8, old.body, script_bytes) and
+            std.mem.eql(u8, old.header("content-type") orelse "", "text/javascript; charset=utf-8") and
+            std.mem.eql(u8, old.header("cache-control") orelse "", "no-cache") and
+            std.mem.eql(u8, old.header("x-content-type-options") orelse "", "nosniff");
+    }
+    try t.check("GET the script by its file's own name, or by another hash as an old page names it: today's bytes, asked about again (no-cache); a hash of 15 digits: 404", by_other_names);
     const script_post = try post(a, io, port, .{ .path = script_url, .form = "markdown=x" });
     try t.check("POST to the script: 405, allowing GET alone", script_post.status == 405 and
         std.mem.eql(u8, script_post.header("allow") orelse "", "GET"));
@@ -555,13 +574,14 @@ pub fn main(init: std.process.Init) !void {
     var icon_served = true;
     for (icon_answers) |icon| {
         icon_served = icon_served and icon.status == 200 and
-            std.mem.eql(u8, icon.header("content-type") orelse "", "image/x-icon") and std.mem.eql(u8, icon.body, icon_file);
-        inline for (.{ "cache-control", "x-content-type-options", "cross-origin-resource-policy" }) |name| {
+            std.mem.eql(u8, icon.header("content-type") orelse "", "image/x-icon") and std.mem.eql(u8, icon.body, icon_file) and
+            std.mem.eql(u8, icon.header("cache-control") orelse "", "no-cache");
+        inline for (.{ "x-content-type-options", "cross-origin-resource-policy" }) |name| {
             icon_served = icon_served and icon.header(name) != null and
                 std.mem.eql(u8, icon.header(name).?, script.header(name) orelse "");
         }
     }
-    try t.check("GET /favicon.ico, by no one, a cookie that admits no one, Steve and a page: 200, exactly app/favicon.ico, an icon, a script's other headers", icon_served);
+    try t.check("GET /favicon.ico, by no one, a cookie that admits no one, Steve and a page: 200, exactly app/favicon.ico, an icon, no-cache, a script's other headers", icon_served);
     const icon_elsewhere = try getAs(a, io, port, "sec-fetch-site: cross-site\r\nsec-fetch-mode: no-cors\r\nsec-fetch-dest: image\r\n", "/favicon.ico");
     const icon_post = try anonymousPost(a, io, port, "/favicon.ico", "");
     try t.check("the icon asked for by another site's page: 403; a POST: 405, allowing GET alone", icon_elsewhere.status == 403 and
@@ -581,11 +601,11 @@ pub fn main(init: std.process.Init) !void {
             std.mem.eql(u8, icon.header("content-type") orelse "", "image/svg+xml") and std.mem.eql(u8, icon.body, alert_file);
         inline for (.{ "cache-control", "x-content-type-options", "cross-origin-resource-policy" }) |name| {
             alert_served = alert_served and icon.header(name) != null and
-                std.mem.eql(u8, icon.header(name).?, script.header(name) orelse "");
+                std.mem.eql(u8, icon.header(name).?, icon_answers[0].header(name) orelse "");
         }
     }
     const alert_post = try anonymousPost(a, io, port, alert_path, "");
-    try t.check("GET the alert icon, by no one, Steve and a page: 200, exactly app/alert-icon.svg, an SVG, a script's other headers; a POST: 405", alert_served and
+    try t.check("GET the alert icon, by no one, Steve and a page: 200, exactly app/alert-icon.svg, an SVG, the site's icon's other headers; a POST: 405", alert_served and
         alert_post.status == 405 and std.mem.eql(u8, alert_post.header("allow") orelse "", "GET"));
 
     // 4b.
@@ -968,7 +988,7 @@ fn editAndReactSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: S
         std.mem.eql(u8, again["event: replace\n".len..], (try frameOf(a, edited_page.body, "1"))["id: 1\n".len..]) and
         has(edited_page.body, "<div class=\"edited-markdown\">Helo there</div>") and
         has(kept, "\n\nHelo there\n\n") and has(kept, "\n\nEdit of MSG_edits_1\n\nHello there\n\n"));
-    const actions_script = try get(a, io, port, "/chat/assets/actions.js");
+    const actions_script = try getAt(a, io, port, try scriptPath(a, io, "actions.js"));
     try t.check("the edit's reference is a link whose label is the original's header reference, which the page's actions.js follows by its label", has(try articleOf(edited_page.body, "2"), "<p>Edit of <a href=\"#msg-edits_1\" class=\"msg-ref\">MSG_edits_1</a></p>") and
         has(try articleOf(edited_page.body, "1"), "<a class=\"message-reference\" href=\"#msg-1\">MSG_edits_1</a></header>") and
         actions_script.status == 200 and has(actions_script.body, "'a.msg-ref'") and has(actions_script.body, "'.message header .message-reference'"));
@@ -1182,7 +1202,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
         has(first.page.body, "<time class=\"code-expiry\" datetime=\"") and
         has(first.page.body, "<form method=\"post\" action=\"/devices/cancel\"><button>Cancel this code</button></form>") and
         has(first.page.body, "<p class=\"code-status\" data-stream=\"/devices/stream\">") and
-        has(first.page.body, "<script src=\"/chat/assets/devices.js\"></script>") and
+        has(first.page.body, try scriptTag(a, io, "devices.js")) and
         std.mem.eql(u8, first.page.header("cache-control") orelse "", "no-store") and
         std.mem.eql(u8, first.page.header("set-cookie") orelse "", "__Host-device_code=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict") and
         std.mem.startsWith(u8, record, "live ") and !has(record, first_code) and !has(record, first_code[0..4]) and !has(record, first_code[4..]));
@@ -1200,7 +1220,7 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
         isDeviceCode(second.shown) and !std.mem.eql(u8, first_code, second_code) and isCodeRefusal(replaced));
     const entered = try anonymousGet(a, io, port, "/login/code");
     try t.check("the refused code's page is the sign-in page, whose script puts its own address in the POST's place; Enter in the address bar there, a GET of /login/code: a 303 to /login", has(replaced.body, "<form method=\"post\" action=\"/login/code\">") and
-        has(replaced.body, "<script src=\"/chat/assets/sign-in.js\"></script>") and
+        has(replaced.body, try scriptTag(a, io, "sign-in.js")) and
         entered.status == 303 and std.mem.eql(u8, entered.header("location") orelse "", "/login"));
 
     try data.writeFile(io, .{ .sub_path = "users/3/device-code", .data = "not a record\n" });
@@ -1722,7 +1742,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(steves_page.body, "</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\">") and
         has(steves_page.body, "</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\"><nav class=\"sidebar\">") and
         has(steves_page.body, "<li><a class=\"current\" href=\"" ++ channel_url ++ "\">roc-chat</a></li>") and
-        has(steves_page.body, "<script src=\"/chat/assets/sidebar.js\"></script>") and std.mem.eql(u8, steves_last, channel_url) and
+        has(steves_page.body, try scriptTag(a, io, "sidebar.js")) and std.mem.eql(u8, steves_last, channel_url) and
         steves_way_in.status == 303 and std.mem.eql(u8, steves_way_in.header("location") orelse "", channel_url));
     try data.writeFile(io, .{ .sub_path = "users/1/last-conv", .data = "/chat/channel/gone/plans" });
     const unreadable_way_in = try getAs(a, io, port, steve_session, "/");
@@ -1751,7 +1771,7 @@ fn browseSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
         has(steves.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(steves.body, "href=\"/chat/dm/1_3/ChitChat\"") and
         has(steves.body, "action=\"/chat/dm/1_1\"") and has(steves.body, "action=\"/chat/channel/crew\"") and has(steves.body, "action=\"/chat/channel/general\""));
     try t.check("Browse in its panel, ending with the scripts that style it, the frame's first", has(steves.body, "<div class=\"layout\"><div class=\"panel\">") and
-        has(steves.body, "</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"));
+        has(steves.body, try std.fmt.allocPrint(a, "</div></div>\n{s}\n{s}\n", .{ try scriptTag(a, io, "chrome.js"), try scriptTag(a, io, "panel.js") })));
     try t.check("Tam's Browse: her DMs and #general; not #crew, which she is not in, and not Steve's DM with Uma", tams.status == 200 and
         has(tams.body, "<h1>#general</h1>") and has(tams.body, "href=\"/chat/dm/1_2/ChitChat\"") and has(tams.body, "action=\"/chat/dm/2_3\"") and has(tams.body, "action=\"/chat/dm/2_2\"") and
         !has(tams.body, "crew") and !has(tams.body, "/chat/dm/1_3"));
@@ -1973,7 +1993,7 @@ fn recentSteps(a: std.mem.Allocator, io: Io, port: u16, t: Steps, who: struct { 
         has(steves.body, "<a class=\"recent-tile\" href=\"" ++ self_notes ++ "\" data-person=\"1\" data-presence=\"online\">") and
         has(steves.body, own_where) and steves_newest < own_at and
         steves.status == 200 and has(steves.body, "<span class=\"recent-who\">Tam: </span>Tam in the channel") and
-        has(steves.body, "<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>"));
+        has(steves.body, try std.fmt.allocPrint(a, "{s}\n{s}", .{ try scriptTag(a, io, "recent.js"), try scriptTag(a, io, "search.js") })));
     // The stream carries the viewer's own key too, so a new topic's
     // topic-added comes by as well, which the Recent page ignores.
     const notice = try live.expectEvent("event: message-notice\n", &.{"event: topic-added\n"});
@@ -2553,12 +2573,12 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
 
     // 48j.
     const join_page = try anonymousGet(a, io, port, "/join");
-    const join_script = try anonymousGet(a, io, port, "/chat/assets/join.js");
+    const join_script = try anonymousGet(a, io, port, try scriptPath(a, io, "join.js"));
     try t.check("GET /join, signed in by no one: 200, a form posting a hidden code, a name and a new password, and the script that reads the code from the link", join_page.status == 200 and
         has(join_page.body, "<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">") and
         has(join_page.body, "name=\"name\" autocomplete=\"username\" required") and
         has(join_page.body, "name=\"password\" autocomplete=\"new-password\" required") and
-        has(join_page.body, "<script src=\"/chat/assets/join.js\"></script>") and
+        has(join_page.body, try scriptTag(a, io, "join.js")) and
         join_script.status == 200 and has(join_script.body, "location.hash") and has(join_script.body, "\"/join/name\""));
     const code_form = try std.fmt.allocPrint(a, "code={s}", .{code});
     const looked_up = try anonymousPost(a, io, port, "/join/name", code_form);
@@ -2571,7 +2591,7 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const no_password = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=", .{code}));
     try t.check("join under a name taken in any case: 409; under a name that is no name: 400; with no password: 400; each spends nothing, her name and invite as they were; each a card saying why, with no form, whose script puts /join in the POST's place, never stored", taken_name.status == 409 and
         has(taken_name.body, "<h1>Join the chat</h1>\n<p class=\"problem\">") and !has(taken_name.body, "<form") and
-        has(taken_name.body, "<script src=\"/chat/assets/sign-in.js\"></script>") and std.mem.eql(u8, taken_name.header("cache-control") orelse "", "no-store") and
+        has(taken_name.body, try scriptTag(a, io, "sign-in.js")) and std.mem.eql(u8, taken_name.header("cache-control") orelse "", "no-store") and
         no_name.status == 400 and no_password.status == 400 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "live") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Deb") and !(try exists(io, data, "auth/3/password")));
@@ -3968,6 +3988,42 @@ fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !Respo
     if (!std.mem.startsWith(u8, bytes, "HTTP/1.1 ") or bytes.len < 12) return error.NotAResponse;
     const end = std.mem.indexOf(u8, bytes, "\r\n\r\n") orelse return error.NoHeadEnd;
     return .{ .status = try std.fmt.parseInt(u16, bytes[9..12], 10), .head = bytes[0 .. end + 2], .body = bytes[end + 4 ..] };
+}
+
+/// Where the page links app/`name`, a script: `/chat/assets/`, its name
+/// with the FNV-1a hash of its bytes, 16 lowercase hex digits, before `.js`
+/// (app/Script.roc's `url_path`, its hash taken here by Zig's own FNV-1a).
+fn scriptPath(a: std.mem.Allocator, io: Io, name: []const u8) ![]const u8 {
+    const bytes = try Io.Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(a, "app/{s}", .{name}), a, .limited(1024 * 1024));
+    const stem = name[0 .. name.len - ".js".len];
+    return std.fmt.allocPrint(a, "/chat/assets/{s}.{x:0>16}.js", .{ stem, std.hash.Fnv1a_64.hash(bytes) });
+}
+
+/// `page` with each script's hash spelled `<hash>`, as demo/roc-chat.html
+/// holds it (`compose.<hash>.js"`), so an edit to a script leaves the frozen
+/// page as it is; `scriptTag` holds each hash to its bytes.
+fn withScriptHashesHidden(a: std.mem.Allocator, page: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var at: usize = 0;
+    while (at < page.len) {
+        const hashed = page[at] == '.' and at + 21 <= page.len and std.mem.eql(u8, page[at + 17 .. at + 21], ".js\"") and
+            for (page[at + 1 .. at + 17]) |c| {
+                if (!std.ascii.isDigit(c) and !(c >= 'a' and c <= 'f')) break false;
+            } else true;
+        if (hashed) {
+            try out.appendSlice(a, ".<hash>.js\"");
+            at += 21;
+        } else {
+            try out.append(a, page[at]);
+            at += 1;
+        }
+    }
+    return out.items;
+}
+
+/// The `<script>` element that links app/`name` (`scriptPath`).
+fn scriptTag(a: std.mem.Allocator, io: Io, name: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(a, "<script src=\"{s}\"></script>", .{try scriptPath(a, io, name)});
 }
 
 fn has(haystack: []const u8, needle: []const u8) bool {
