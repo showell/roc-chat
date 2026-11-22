@@ -34,24 +34,24 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	}.{
 
 		id : Users.User -> UserId
-		id = |Users.User.(user)| user.id
+		id = |Users.User.(fields)| fields.id
 
 		name : Users.User -> Name
-		name = |Users.User.(user)| user.name
+		name = |Users.User.(fields)| fields.name
 
 		role : Users.User -> Users.Role
-		role = |Users.User.(user)| user.role
+		role = |Users.User.(fields)| fields.role
 
 		## The user as the author of a message.
 		author : Users.User -> Author
-		author = |Users.User.(user)| Author.of(user.name)
+		author = |Users.User.(fields)| Author.of(fields.name)
 
 		## The user as a human; an agent is refused, by its id.
 		as_human : Users.User -> Try(Users.Human, [Agent(UserId)])
-		as_human = |user|
-			match user.role() {
-				Human => Ok(Users.Human.(user))
-				Agent(_) => Err(Agent(user.id()))
+		as_human = |given|
+			match given.role() {
+				Human => Ok(Users.Human.(given))
+				Agent(_) => Err(Agent(given.id()))
 			}
 
 		is_eq : _
@@ -115,10 +115,10 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 
 	## The user's facts, as `from_stored` reads them back.
 	account_facts : Users.User -> Users.AccountFacts
-	account_facts = |user| {
-		id: user.id(),
-		name: user.name().to_str().to_utf8(),
-		owner: match user.role() {
+	account_facts = |given| {
+		id: given.id(),
+		name: given.name().to_str().to_utf8(),
+		owner: match given.role() {
 			Human => NoOwner
 			Agent({ owner }) => Owner(owner.to_file())
 		},
@@ -171,9 +171,9 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 				) if UserId.compare(latest.id(), id) != Before => Err(CounterBehind)
 				_ => {
 					humans = Set.from_list(
-						all.keep_if(|user| user.role() == Human).map(|user| user.id()),
+						all.keep_if(|each| each.role() == Human).map(|each| each.id()),
 					)
-					match all.find_first(|user| !has_human_owner(humans, user)) {
+					match all.find_first(|each| !has_human_owner(humans, each)) {
 						Ok(stray) => Err(BadOwner(stray.id()))
 						Err(NotFound) => Ok(Users.({ all_users: all, next }))
 					}
@@ -216,11 +216,11 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 			renamed = Users.User.({ id: human.id(), name, role: Human })
 			Users.(held) = users
 			all_users = held.all_users.map(
-				|user|
-					if user.id() == human.id() {
+				|each|
+					if each.id() == human.id() {
 						renamed
 					} else {
-						user
+						each
 					},
 			)
 			Ok({ users: Users.({ ..held, all_users }), human: Users.Human.(renamed) })

@@ -152,7 +152,7 @@ HumanInvites :: [].{
 		claim : [Unclaimed(HumanClaim.Unclaimed), Claimed],
 	} -> U64
 	open_count = |invites, { by, now, claim }| {
-		open = invites.count_if(|invite| invite.invite_maker() == by and invite.is_open(now))
+		open = invites.count_if(|each| each.invite_maker() == by and each.is_open(now))
 		match claim {
 			Unclaimed(_) => open
 			Claimed => 0

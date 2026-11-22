@@ -12,11 +12,11 @@ PasswordHash :: List(U8).{
 
 	## The hash the host's bcrypt answered.
 	of_bcrypt_answer : List(U8) -> PasswordHash
-	of_bcrypt_answer = |bytes| PasswordHash.(bytes)
+	of_bcrypt_answer = |answer| PasswordHash.(answer)
 
 	## The hash a `password` file's `bytes` hold.
 	from_file : List(U8) -> PasswordHash
-	from_file = |bytes| PasswordHash.(FactFile.word_from_file(bytes))
+	from_file = |file_bytes| PasswordHash.(FactFile.word_from_file(file_bytes))
 
 	## The hash's bytes: what its file keeps, what the host checks a password
 	## against, and what a session is signed over.

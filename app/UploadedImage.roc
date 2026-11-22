@@ -32,11 +32,11 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	## `most_bytes` (`TooLarge`).
 	checked_bytes : List(U8) -> Try(UploadedImage.Kind, [NotAnImage, TooLarge])
 	checked_bytes = |bytes| {
-		kind = kind_of_bytes(bytes)?
+		found_kind = kind_of_bytes(bytes)?
 		if bytes.len() > UploadedImage.most_bytes {
 			Err(TooLarge)
 		} else {
-			Ok(kind)
+			Ok(found_kind)
 		}
 	}
 
@@ -47,9 +47,9 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 	## A new image of `kind`, named by `random_bytes`, which are
 	## `random_bytes_per_name` bytes from the host's secure source.
 	with_random_name : { random_bytes : List(U8), kind : UploadedImage.Kind } -> UploadedImage
-	with_random_name = |{ random_bytes, kind }|
+	with_random_name = |{ random_bytes, kind: given_kind }|
 		if random_bytes.len() == UploadedImage.random_bytes_per_name {
-			UploadedImage.({ kind, digits: Hex.to_hex(random_bytes) })
+			UploadedImage.({ kind: given_kind, digits: Hex.to_hex(random_bytes) })
 		} else {
 			crash "UploadedImage.with_random_name: a name takes ${UploadedImage.random_bytes_per_name.to_str()} random bytes"
 		}
@@ -61,10 +61,10 @@ UploadedImage :: { kind : UploadedImage.Kind, digits : Str }.{
 		match text.to_utf8().split_first('.') {
 			Ok({ before, after }) if before.len()
 				== UploadedImage.random_bytes_per_name * 2 and before.all(Hex.is_lower_digit) => {
-				kind = kind_of_extension(after)?
+				found_kind = kind_of_extension(after)?
 				digits =
 					Str.from_utf8(before) ?? crash "UploadedImage.from_name: hex digits are ASCII"
-				Ok(UploadedImage.({ kind, digits }))
+				Ok(UploadedImage.({ kind: found_kind, digits }))
 			}
 			_ => Err(NotAnUploadName)
 		}

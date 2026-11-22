@@ -26,19 +26,19 @@ Channels :: List(Channels.Channel).{
 	Channel :: { name : ChannelName, members : Set(UserId) }.{
 
 		name : Channels.Channel -> ChannelName
-		name = |Channels.Channel.(channel)| channel.name
+		name = |Channels.Channel.(fields)| fields.name
 
 		## The members' ids, lowest first.
 		members : Channels.Channel -> List(UserId)
-		members = |Channels.Channel.(channel)| channel.members.to_list().sort_with(UserId.compare)
+		members = |Channels.Channel.(fields)| fields.members.to_list().sort_with(UserId.compare)
 
 		has_member : Channels.Channel, Users.User -> Bool
-		has_member = |Channels.Channel.(channel), user| channel.members.contains(user.id())
+		has_member = |Channels.Channel.(fields), user| fields.members.contains(user.id())
 
 		## The channel's members as its file holds them: each member's id and a line end,
 		## lowest first.
 		members_bytes : Channels.Channel -> List(U8)
-		members_bytes = |channel| channel.members().join_map(|id| "${id.to_str()}\n".to_utf8())
+		members_bytes = |given| given.members().join_map(|id| "${id.to_str()}\n".to_utf8())
 
 		is_eq : _
 	}
@@ -82,8 +82,8 @@ Channels :: List(Channels.Channel).{
 	## channel.
 	create : Channels, { by : Admin, name : ChannelName } -> Channels.Created
 	create = |Channels.(all), { by: _, name }| {
-		channel = Channels.Channel.({ name, members: Set.empty() })
-		{ channels: Channels.(all.append(channel)), channel }
+		made = Channels.Channel.({ name, members: Set.empty() })
+		{ channels: Channels.(all.append(made)), channel: made }
 	}
 
 	## The channel named exactly `name`, if there is one.

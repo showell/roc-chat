@@ -79,15 +79,22 @@ AgentKey :: {
 		now : Timestamp,
 		scope : KeyScope,
 	} -> AgentKey
-	mint = |{ id, hash, now, scope }|
+	mint = |
+		{
+			id: key_id,
+			hash,
+			now,
+			scope: key_scope,
+		},
+	|
 		AgentKey.(
 			{
-				id,
+				id: key_id,
 				hash,
 				created: now,
 				expires: now.plus(AgentKey.lifetime_seconds),
 				state: Active,
-				scope,
+				scope: key_scope,
 			},
 		)
 

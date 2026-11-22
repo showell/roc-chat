@@ -16,19 +16,19 @@ GitHubSessionWord :: List(U8).{
 	## The word the host's random `bytes` make. Any other count of bytes is
 	## the caller's bug, and crashes.
 	of_random_bytes : List(U8) -> GitHubSessionWord
-	of_random_bytes = |bytes|
-		if bytes.len() == GitHubSessionWord.random_byte_count {
-			GitHubSessionWord.(Hex.to_hex(bytes).to_utf8())
+	of_random_bytes = |random|
+		if random.len() == GitHubSessionWord.random_byte_count {
+			GitHubSessionWord.(Hex.to_hex(random).to_utf8())
 		} else {
-			crash "GitHubSessionWord.of_random_bytes: a word is made of ${GitHubSessionWord.random_byte_count.to_str()} bytes, not ${bytes.len().to_str()}"
+			crash "GitHubSessionWord.of_random_bytes: a word is made of ${GitHubSessionWord.random_byte_count.to_str()} bytes, not ${random.len().to_str()}"
 		}
 
 	## The word a `github-session-secret` file's `bytes` hold, with the spaces,
 	## tabs and line ends at either end taken off (`FactFile`), or `Empty`;
 	## unless they hold anything but 64 lowercase hex digits (`NotAWord`).
 	from_file : List(U8) -> Try([Empty, Word(GitHubSessionWord)], [NotAWord])
-	from_file = |bytes| {
-		digits = FactFile.word_from_file(bytes)
+	from_file = |file_bytes| {
+		digits = FactFile.word_from_file(file_bytes)
 		if digits.is_empty() {
 			Ok(Empty)
 		} else {

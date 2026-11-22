@@ -90,10 +90,10 @@ HumanInvite :: {
 		now : Timestamp,
 		by : UserId,
 	} -> HumanInvite
-	make = |{ id, hash, now, by }|
+	make = |{ id: invite_id, hash, now, by }|
 		HumanInvite.(
 			{
-				id,
+				id: invite_id,
 				hash,
 				created: now,
 				expires: now.plus(HumanInvite.lifetime_seconds),

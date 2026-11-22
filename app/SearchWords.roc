@@ -56,14 +56,14 @@ SearchWords :: [].{
 		## it is longer than `longest_key_bytes`.
 		of_typed : Str -> SearchWords.SearchKey
 		of_typed = |typed| {
-			bytes = typed.to_utf8()
-			first = bytes.find_first_index(|byte| !is_key_space(byte)) ?? bytes.len()
-			last = bytes.find_last_index(|byte| !is_key_space(byte)).map_ok(|at| at + 1) ?? first
-			word = trim({ bytes, span: { start: first, length: last - first } })
+			utf8 = typed.to_utf8()
+			first = utf8.find_first_index(|byte| !is_key_space(byte)) ?? utf8.len()
+			last = utf8.find_last_index(|byte| !is_key_space(byte)).map_ok(|at| at + 1) ?? first
+			word = trim({ bytes: utf8, span: { start: first, length: last - first } })
 			if word.length > SearchWords.longest_key_bytes {
 				SearchWords.SearchKey.([])
 			} else {
-				SearchWords.SearchKey.(SearchWords.fold_ascii(SearchWords.span_bytes(bytes, word)))
+				SearchWords.SearchKey.(SearchWords.fold_ascii(SearchWords.span_bytes(utf8, word)))
 			}
 		}
 

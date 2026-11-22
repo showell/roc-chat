@@ -39,8 +39,22 @@ GitHubSignUp :: {
 		now : Timestamp,
 		next : Html.SitePath,
 	} -> GitHubSignUp
-	issue = |{ github, login, now, next }|
-		GitHubSignUp.({ github, issued_at: now, next, login })
+	issue = |
+		{
+			github: account,
+			login: account_login,
+			now,
+			next: after,
+		},
+	|
+		GitHubSignUp.(
+			{
+				github: account,
+				issued_at: now,
+				next: after,
+				login: account_login,
+			},
+		)
 
 	## The bytes the host signs for this sign-up.
 	signed_bytes : GitHubSignUp -> List(U8)

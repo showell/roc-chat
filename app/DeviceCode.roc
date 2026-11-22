@@ -146,13 +146,13 @@ DeviceCode :: {
 		material : List(U8),
 		now : Timestamp,
 	} -> DeviceCode
-	make = |{ mac, material, now }|
+	make = |{ mac: code_mac, material, now }|
 		DeviceCode.(
 			{
 				state: Live,
 				created: now,
 				expires: now.plus(DeviceCode.lifetime_seconds),
-				mac,
+				mac: code_mac,
 				material,
 			},
 		)
@@ -199,7 +199,7 @@ DeviceCode :: {
 	## so a code drawn for one human never matches another's record: the
 	## caller draws again.
 	is_mac_held : List(U8), List(DeviceCode) -> Bool
-	is_mac_held = |mac, records| records.any(|DeviceCode.(record)| record.mac == mac)
+	is_mac_held = |wanted_mac, records| records.any(|DeviceCode.(record)| record.mac == wanted_mac)
 
 	## When the record's code expires.
 	expires : DeviceCode -> Timestamp

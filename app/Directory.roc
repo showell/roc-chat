@@ -143,19 +143,19 @@ Directory :: {
 					Leaving(id) => user.id() == id
 				},
 		)
-		channels = directory.channels.to_list()
+		held_channels = directory.channels.to_list()
 		key = name.key()
 		skeleton = NameSkeleton.of_name(name)
 		is_taken =
 			others.any(|user| user.name().key() == key)
-				or channels.any(|channel| channel.name().key() == key)
+				or held_channels.any(|channel| channel.name().key() == key)
 		if is_taken {
 			Err(NameTaken)
 		} else if NameSkeleton.is_reserved_name(name) {
 			Err(NameReserved)
 		} else if
 			others.any(|user| NameSkeleton.of_name(user.name()) == skeleton)
-				or channels.any(|channel| NameSkeleton.of_channel(channel.name()) == skeleton)
+				or held_channels.any(|channel| NameSkeleton.of_channel(channel.name()) == skeleton)
 				{
 					Err(NameTooClose)
 				} else {
@@ -223,16 +223,16 @@ Directory :: {
 	## `Channels.add_member` adds them.
 	add_member : Directory, Channels.MemberChange -> Try(Directory, [NoSuchChannel, AlreadyMember])
 	add_member = |Directory.(directory), change| {
-		channels = directory.channels.add_member(change)?
-		Ok(Directory.({ ..directory, channels }))
+		changed = directory.channels.add_member(change)?
+		Ok(Directory.({ ..directory, channels: changed }))
 	}
 
 	## The directory with a member removed from a channel, as
 	## `Channels.remove_member` removes them.
 	remove_member : Directory, Channels.MemberChange -> Try(Directory, [NoSuchChannel, NotMember])
 	remove_member = |Directory.(directory), change| {
-		channels = directory.channels.remove_member(change)?
-		Ok(Directory.({ ..directory, channels }))
+		changed = directory.channels.remove_member(change)?
+		Ok(Directory.({ ..directory, channels: changed }))
 	}
 
 	## The place a channel's name or a DM's pair names, if the directory
@@ -273,23 +273,26 @@ Directory :: {
 		Directory,
 		[NameTaken, UnknownMember(ChannelName)],
 	)
-	from_stored = |{ users, channels }| {
+	from_stored = |{ users: stored_users, channels: stored_channels }| {
 		all_keys =
 			List.concat(
-				users.to_list()
+				stored_users.to_list()
 					.map(|user| user.name().key()),
-				channels.to_list().map(|channel| channel.name().key()),
+				stored_channels.to_list().map(|channel| channel.name().key()),
 			)
 		keys = Set.from_list(all_keys)
 		if keys.len() != all_keys.len() {
 			Err(NameTaken)
 		} else {
-			ids = Set.from_list(users.to_list().map(|user| user.id()))
-			match channels.to_list().find_first(
+			ids = Set.from_list(stored_users.to_list().map(|user| user.id()))
+			match stored_channels.to_list().find_first(
 				|channel| !channel.members().all(|id| ids.contains(id)),
 			) {
 				Ok(stray) => Err(UnknownMember(stray.name()))
-				Err(NotFound) => Ok(Directory.({ users, channels, keys }))
+				Err(NotFound) => {
+					held = { users: stored_users, channels: stored_channels, keys }
+					Ok(Directory.(held))
+				}
 			}
 		}
 	}

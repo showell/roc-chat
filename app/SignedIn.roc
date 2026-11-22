@@ -56,7 +56,13 @@ SignedIn :: {
 	## start (`FirstStart`), which makes the founder, the demo's page and tests
 	## call it.
 	dangerously_assume : Users.User -> SignedIn
-	dangerously_assume = |user| SignedIn.({ user, credential: Session, origin: Ordinary })
+	dangerously_assume = |given| SignedIn.(
+		{
+			user: given,
+			credential: Session,
+			origin: Ordinary,
+		},
+	)
 
 	## The human a session admitted, signed in by that session.
 	by_session : Session.Admitted -> SignedIn

@@ -26,7 +26,7 @@ UploadTotal :: U64.{
 	from_file = |file|
 		match file {
 			NoFile => Ok(UploadTotal.(0))
-			File(bytes) => FactFile.number_from_file(bytes).map_ok(|number| UploadTotal.(number))
+			File(held) => FactFile.number_from_file(held).map_ok(|number| UploadTotal.(number))
 		}
 
 	## The total as its file keeps it: its decimal digits.

@@ -73,12 +73,12 @@ Message :: {
 
 	## The unnumbered message, numbered `id`.
 	numbered_message : { id : Message.Id, unnumbered : Message.Unnumbered(Author) } -> Message
-	numbered_message = |{ id, unnumbered: { payload, time } }|
+	numbered_message = |{ id: given_id, unnumbered: { payload, time: given_time } }|
 		Message.(
 			{
-				id,
+				id: given_id,
 				author: payload.author,
-				time,
+				time: given_time,
 				markdown: payload.markdown,
 			},
 		)

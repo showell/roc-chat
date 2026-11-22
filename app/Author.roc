@@ -7,7 +7,7 @@ Author :: Name.{
 
 	## The author named `name`, refused as `Name.from_str` refuses it.
 	from_str : Str -> Try(Author, [Empty, TooLong, ForbiddenCharacter, BadSpacing])
-	from_str = |name| Name.from_str(name).map_ok(Author.of)
+	from_str = |text| Name.from_str(text).map_ok(Author.of)
 
 	of : Name -> Author
 	of = |given| Author.(given)

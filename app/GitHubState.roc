@@ -59,9 +59,23 @@ GitHubState :: {
 		next : Html.SitePath,
 		errand : GitHubState.Errand,
 	} -> GitHubState
-	issue = |{ nonce, now, next, errand }|
+	issue = |
+		{
+			nonce,
+			now,
+			next: after,
+			errand: given_errand,
+		},
+	|
 		if nonce.len() == GitHubState.nonce_bytes {
-			GitHubState.({ nonce, issued_at: now, next, errand })
+			GitHubState.(
+				{
+					nonce,
+					issued_at: now,
+					next: after,
+					errand: given_errand,
+				},
+			)
 		} else {
 			crash "GitHubState.issue: a nonce is ${GitHubState.nonce_bytes.to_str()} bytes, not ${nonce.len().to_str()}"
 		}
@@ -92,14 +106,14 @@ GitHubState :: {
 			match text.split_on(".") {
 				[nonce_part, second_part, next_part, errand_part, mac_part] =>
 					match Base64Url.decode(mac_part) {
-						Ok(mac) => Ok(
+						Ok(decoded_mac) => Ok(
 							GitHubState.Claim.(
 								{
 									payload: Str.join_with(
 										[nonce_part, second_part, next_part, errand_part],
 										".",
 									),
-									mac,
+									mac: decoded_mac,
 								},
 							),
 						)

@@ -75,15 +75,22 @@ AgentInvite :: {
 		now : Timestamp,
 		scope : KeyScope,
 	} -> AgentInvite
-	make = |{ id, hash, now, scope }|
+	make = |
+		{
+			id: invite_id,
+			hash,
+			now,
+			scope: invite_scope,
+		},
+	|
 		AgentInvite.(
 			{
-				id,
+				id: invite_id,
 				hash,
 				created: now,
 				expires: now.plus(AgentInvite.lifetime_seconds),
 				state: Live,
-				scope,
+				scope: invite_scope,
 			},
 		)
 

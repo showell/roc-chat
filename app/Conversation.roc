@@ -13,7 +13,7 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 
 	## A conversation with no messages yet.
 	empty : Topic -> Conversation
-	empty = |topic| Conversation.({ topic, messages: [] })
+	empty = |given| Conversation.({ topic: given, messages: [] })
 
 	## Adds a message, giving it the next id. It refuses a message dated
 	## before the latest one. A message dated the same second as the latest
