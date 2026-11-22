@@ -5,11 +5,9 @@
 // the server (app/SearchRoute.roc): the server reads the words, and this
 // script sends what was typed and shows what comes back.
 //
-// The / key and the 🔍 button it puts in the top bar open a dialog. On a
-// conversation the key is in compose.js's table (Keys), which lists it in the
-// keyboard help; Recent has no compose box, so no table, and the script
-// listens for the key itself, by the table's rules: no text field focused,
-// no modifier held. Typing asks /chat/search/words?prefix= for the
+// The / key and the 🔍 button it puts in the top bar open a dialog. The key
+// is in keys.js's table (Keys), which on a conversation lists it in the
+// keyboard help. Typing asks /chat/search/words?prefix= for the
 // words that begin so, each with how many messages hold it, once typing
 // pauses for 150 ms. Enter, or a click, asks /chat/search/messages?word= for
 // the messages holding the word chosen (or, with none chosen, what was
@@ -28,9 +26,10 @@
   'use strict';
   // A conversation's page is the one with a messages pane.
   var onConversation = !!document.querySelector('.messages');
-  // script-calls: only on conversation_scripts: Recent has no Keys and no Feed
-  if (onConversation && (!window.Keys || !window.Feed)) {
-    throw new Error('search.js: on a conversation, compose.js and feed.js run first, and give Keys and Feed');
+  if (!window.Keys) throw new Error('search.js: keys.js runs first, and gives Keys');
+  // script-calls: only on conversation_scripts: Recent has no Feed
+  if (onConversation && !window.Feed) {
+    throw new Error('search.js: on a conversation, feed.js runs first, and gives Feed');
   }
   var top = document.querySelector('.top-bar');
   var user = top && top.querySelector('.top-user');
@@ -248,16 +247,5 @@
   button.addEventListener('click', show);
   user.parentNode.insertBefore(button, user);
 
-  // script-calls: only on conversation_scripts: Recent listens for the key itself
-  if (onConversation) {
-    Keys.register({ key: '/', label: 'search every topic', run: show });
-  } else {
-    document.addEventListener('keydown', function (e) {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-      var focused = document.activeElement;
-      if (focused && (focused.tagName === 'TEXTAREA' || focused.tagName === 'INPUT' || focused.isContentEditable)) return;
-      e.preventDefault();
-      show();
-    });
-  }
+  Keys.register({ key: '/', label: 'search every topic', run: show });
 })();

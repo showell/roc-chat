@@ -34,7 +34,7 @@
 // clicked. Once the selection has rested for 700 ms, the address bar's
 // #msg-<n> names it, so a reload or a copied address comes back to it; an
 // address that arrived with its own #msg-<n> keeps it until the reader
-// moves. The keys are registered in compose.js's table (Keys), so the
+// moves. The keys are registered in keys.js's table (Keys), so the
 // keyboard help lists them.
 //
 // A click on an image in a message opens it in a popup, chat-client's
@@ -56,7 +56,7 @@
   var messages = document.querySelector('.messages');
   var compose = document.querySelector('.compose');
   if (!messages || !compose) throw new Error('feed.js: the page has no .messages, or no .compose');
-  if (!window.Keys || !window.Compose) throw new Error('feed.js: compose.js runs first, and gives Keys and Compose');
+  if (!window.Keys || !window.Compose) throw new Error('feed.js: keys.js and compose.js run first, and give Keys and Compose');
   var stream = messages.getAttribute('data-stream');
   var after = messages.getAttribute('data-after');
   var viewer = messages.getAttribute('data-viewer');

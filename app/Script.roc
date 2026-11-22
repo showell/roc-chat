@@ -3,15 +3,17 @@
 ## server always sends exactly what the file holds. Every page loads
 ## app/palette.js in its head (`head_script`), which sets the colours before
 ## the first paint. A conversation's page ends with app/chrome.js (its top
-## bar), app/sidebar-popups.js and app/sidebar.js (its sidebar and the
-## sidebar's popups, when it has one), app/compose.js (its compose box),
+## bar), app/keys.js (its key table and Escape's closers),
+## app/sidebar-popups.js and app/sidebar.js (its sidebar and the sidebar's
+## popups, when it has one), app/compose.js (its compose box),
 ## app/emoji.js (the emojis, and the compose box's autocomplete of them),
 ## app/feed.js (its messages) and app/citation.js (citations of messages),
 ## app/actions.js (each message's reactions, quote-reply, citation and edit)
 ## and app/search.js (the search across every topic):
 ## `conversation_scripts`. Any other signed-in human's page ends with
 ## app/chrome.js and app/panel.js (the card its parts sit in), Recent with
-## app/recent.js (its tiles and their times) and app/search.js between them,
+## app/keys.js, app/recent.js (its tiles and their times) and app/search.js
+## between them,
 ## and the device code page with app/devices.js (which makes it live) before
 ## them: `panel_scripts`. The join page ends with app/join.js, which reads
 ## the invite's code from the link: `join_scripts`. `Route` serves each at
@@ -22,6 +24,7 @@
 ## page's order from the lists here and holds every such use to it.
 import "palette.js" as palette_source : Str
 import "chrome.js" as chrome_source : Str
+import "keys.js" as keys_source : Str
 import "sidebar-popups.js" as sidebar_popups_source : Str
 import "sidebar.js" as sidebar_source : Str
 import "compose.js" as compose_source : Str
@@ -38,6 +41,7 @@ import "search.js" as search_source : Str
 Script := [
 	Palette,
 	Chrome,
+	Keys,
 	SidebarPopups,
 	Sidebar,
 	Compose,
@@ -57,6 +61,7 @@ Script := [
 	all_scripts = [
 		Script.Palette,
 		Script.Chrome,
+		Script.Keys,
 		Script.SidebarPopups,
 		Script.Sidebar,
 		Script.Compose,
@@ -82,6 +87,7 @@ Script := [
 		match sidebar {
 			Alone => [
 				Script.Chrome,
+				Script.Keys,
 				Script.Compose,
 				Script.Emoji,
 				Script.Feed,
@@ -91,6 +97,7 @@ Script := [
 			]
 			WithSidebar => [
 				Script.Chrome,
+				Script.Keys,
 				Script.SidebarPopups,
 				Script.Sidebar,
 				Script.Compose,
@@ -108,7 +115,7 @@ Script := [
 	panel_scripts = |panel|
 		match panel {
 			PlainPanel => [Script.Chrome, Script.Panel]
-			RecentPanel => [Script.Chrome, Script.Recent, Script.Search, Script.Panel]
+			RecentPanel => [Script.Chrome, Script.Keys, Script.Recent, Script.Search, Script.Panel]
 			DeviceCodePanel => [Script.Devices, Script.Chrome, Script.Panel]
 		}
 
@@ -133,6 +140,7 @@ file_name = |script|
 	match script {
 		Palette => "palette.js"
 		Chrome => "chrome.js"
+		Keys => "keys.js"
 		SidebarPopups => "sidebar-popups.js"
 		Sidebar => "sidebar.js"
 		Compose => "compose.js"
@@ -153,6 +161,7 @@ source = |script|
 	match script {
 		Palette => palette_source
 		Chrome => chrome_source
+		Keys => keys_source
 		SidebarPopups => sidebar_popups_source
 		Sidebar => sidebar_source
 		Compose => compose_source
@@ -175,6 +184,7 @@ expect
 		== [
 			"/chat/assets/palette.js",
 			"/chat/assets/chrome.js",
+			"/chat/assets/keys.js",
 			"/chat/assets/sidebar-popups.js",
 			"/chat/assets/sidebar.js",
 			"/chat/assets/compose.js",
@@ -191,6 +201,7 @@ expect
 expect palette_source.starts_with("// This script runs in the head of every page")
 expect
 	[
+		keys_source,
 		sidebar_popups_source,
 		sidebar_source,
 		compose_source,
@@ -211,6 +222,7 @@ expect
 	[
 		palette_source,
 		chrome_source,
+		keys_source,
 		sidebar_popups_source,
 		sidebar_source,
 		compose_source,
@@ -228,6 +240,7 @@ expect
 	[
 		(Script.Palette, palette_source),
 		(Script.Chrome, chrome_source),
+		(Script.Keys, keys_source),
 		(Script.SidebarPopups, sidebar_popups_source),
 		(Script.Sidebar, sidebar_source),
 		(Script.Compose, compose_source),

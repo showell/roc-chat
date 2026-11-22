@@ -109,6 +109,7 @@ window.Sidebar = (function () {
   if (!sidebar || !toggle || !topBar) throw new Error('sidebar.js: the page has no .sidebar, .sidebar-toggle or .top-bar');
   if (!window.Viewport) throw new Error('sidebar.js: chrome.js runs first, and gives Viewport');
   if (!window.SidebarPopups) throw new Error('sidebar.js: sidebar-popups.js runs first, and gives SidebarPopups');
+  if (!window.Keys) throw new Error('sidebar.js: keys.js runs first, and gives Keys');
 
   function styleAll(selector, style) {
     sidebar.querySelectorAll(selector).forEach(function (element) { Object.assign(element.style, style); });
@@ -447,14 +448,9 @@ window.Sidebar = (function () {
   }
 
   // The n key opens the page's own place's card on its new-topic form, as
-  // its "+" does. Keys is compose.js's, which runs after this script, so
-  // the key is registered once every script of the page has run.
+  // its "+" does.
   if (!newTopicHere) throw new Error('sidebar.js: no .sidebar-place is the page\'s own (data-opening="always")');
-  // script-calls: runtime-only: DOMContentLoaded comes once every script has run
-  document.addEventListener('DOMContentLoaded', function () {
-    if (!window.Keys) throw new Error('sidebar.js: compose.js gives Keys');
-    Keys.register({ key: 'n', label: 'new topic here', run: newTopicHere });
-  });
+  Keys.register({ key: 'n', label: 'new topic here', run: newTopicHere });
 
   return { addTopic: addTopic, topicAdded: topicAdded, markOnline: markOnline };
 })();

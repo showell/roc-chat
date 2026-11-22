@@ -362,7 +362,7 @@ expect {
 	with_sidebar.contains("</header>\n<button class=\"sidebar-toggle\">Conversations</button>\n<div class=\"layout\">${nav}<div class=\"messages\"")
 		and with_sidebar.contains("</a></span> <p class=\"notice-strip\"></p> <div class=\"top-user\">")
 		and !without.contains("notice-strip")
-		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/sidebar-popups.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")
+		and with_sidebar.contains("<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/keys.js\"></script>\n<script src=\"/chat/assets/sidebar-popups.js\"></script>\n<script src=\"/chat/assets/sidebar.js\"></script>\n<script src=\"/chat/assets/compose.js\"></script>\n")
 		and without.contains("</header>\n<div class=\"layout\"><div class=\"messages\"")
 		and !without.contains("sidebar")
 }

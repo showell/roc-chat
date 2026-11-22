@@ -64,6 +64,7 @@ foot = |url|
 			"<p class=\"help\">Markdown supported · :emoji: autocompletes · paste or Upload an image · Ctrl/⌘-Enter to send</p></div>\n",
 			"</div>\n",
 			"<script src=\"/chat/assets/chrome.js\"></script>\n",
+			"<script src=\"/chat/assets/keys.js\"></script>\n",
 			"<script src=\"/chat/assets/compose.js\"></script>\n",
 			"<script src=\"/chat/assets/emoji.js\"></script>\n",
 			"<script src=\"/chat/assets/feed.js\"></script>\n",
@@ -580,7 +581,7 @@ steves_recent = |tiles|
 ## empty, where app/chrome.js shows the notices, then `parts`.
 recent_page : Str -> Str
 recent_page = |parts|
-	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/keys.js\"></script>\n<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
 
 # Recent with no conversation that has a message says so, above its list,
 # empty, which names its stream.

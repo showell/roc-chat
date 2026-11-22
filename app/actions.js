@@ -81,7 +81,7 @@
   'use strict';
   var messages = document.querySelector('.messages');
   if (!messages) throw new Error('actions.js: the page has no .messages');
-  if (!window.Keys || !window.Compose) throw new Error('actions.js: compose.js runs first, and gives Keys and Compose');
+  if (!window.Keys || !window.Compose) throw new Error('actions.js: keys.js and compose.js run first, and give Keys and Compose');
   if (!window.Emoji) throw new Error('actions.js: emoji.js runs first, and gives Emoji');
   if (!window.Feed) throw new Error('actions.js: feed.js runs first, and gives Feed');
   if (!window.Citation) throw new Error('actions.js: citation.js runs first, and gives Citation');
