@@ -180,13 +180,20 @@ DeviceCode :: {
 
 	## Whether the record is live and should be cancelled.
 	is_live : DeviceCode -> Bool
-	is_live = |DeviceCode.(record)| record.state == Live
+	is_live = |DeviceCode.(record)|
+		match record.state {
+			Live => Bool.True
+			Spent(_) | Cancelled => Bool.False
+		}
 
 	## Whether the record may redeem at `now`: live, and `now` within its
 	## life.
 	is_redeemable_at : DeviceCode, Timestamp -> Bool
 	is_redeemable_at = |DeviceCode.(record), now|
-		record.state == Live and now.is_during({ from: record.created, until: record.expires })
+		match record.state {
+			Live => now.is_during({ from: record.created, until: record.expires })
+			Spent(_) | Cancelled => Bool.False
+		}
 
 	## Whether `mac`, a new code's HMAC, is one that any of `records` keeps,
 	## so a code drawn for one human never matches another's record: the
