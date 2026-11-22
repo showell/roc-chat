@@ -5,9 +5,10 @@
 // messages are on the left and the compose box is a rail 320 pixels wide on
 // the right. The rail is either open, its textarea as tall as the window,
 // or closed, showing an "Open compose box" button and the keyboard help. It
-// starts closed, and opens with the button or the c key. Escape in the
-// textarea closes it when the textarea is empty, and does nothing while it
-// holds text, as chat-client's did (js/chat_compose.js); the ✕ button at the
+// starts closed, and opens with the button or the c key. Escape closes it
+// when the textarea is empty, and does nothing while it holds text, as
+// chat-client's did (js/chat_compose.js), once whatever opened over it has
+// closed (keys.js's Escape stack); the ✕ button at the
 // open rail's top closes it whatever it holds, as chat-client's ▾ did, the
 // text left in the closed box, there when it opens again. Nothing is kept
 // past the page: there are no drafts (Steve, 2026-11-20: "Back the whole
@@ -229,14 +230,30 @@
 
   function isNarrow() { return Viewport.isNarrow(); }
 
-  function openCompose() {
+  function isComposeOpen() { return compose.classList.contains('open'); }
+  // The box shown, and Escape's closer pushed (keys.js), once.
+  function showCompose() {
+    if (isComposeOpen()) return;
     compose.classList.add('open');
+    Keys.pushCloser(escapeCompose);
+  }
+  function openCompose() {
+    showCompose();
     box.focus();
   }
   // Closed, its text left in the box, as chat-client's closeCompose did.
   function closeCompose() {
-    compose.classList.remove('open');
+    if (isComposeOpen()) {
+      compose.classList.remove('open');
+      Keys.popCloser(escapeCompose);
+    }
     messages.focus();
+  }
+  // Escape closes an empty box and leaves one holding text, as
+  // chat-client's did. With text it does nothing, and the box, on top of
+  // Escape's stack, keeps anything under it open too.
+  function escapeCompose() {
+    if (box.value.trim() === '') closeCompose();
   }
 
   // The closed rail's button names the c key where there are keys.
@@ -262,7 +279,7 @@
   Keys.register({ key: 'r', label: 'recent: go to Recent', run: function () { location.href = recentLink.href; } });
 
   Viewport.onChange(refreshOpenButton);
-  if (isNarrow()) compose.classList.add('open');
+  if (isNarrow()) showCompose();
   messages.focus();
 
   var sendUrl = form.getAttribute('data-send');
@@ -330,7 +347,7 @@
     dialog.appendChild(ok);
     dialog.addEventListener('close', function () { dialog.remove(); box.focus(); });
     document.body.appendChild(dialog);
-    dialog.showModal();
+    Keys.showModal(dialog);
   }
   // No answer yet: the send may still be stored, so the draft stays locked.
   function stillSending(mine) {
@@ -490,9 +507,9 @@
   // answers whether they were shown: only while the box is open and no send
   // is on its way.
   window.Compose = {
-    isOpen: function () { return compose.classList.contains('open'); },
+    isOpen: isComposeOpen,
     notice: function (words, failed) {
-      if (pending || !compose.classList.contains('open')) return false;
+      if (pending || !isComposeOpen()) return false;
       status.style.color = failed ? ERROR : 'var(--cc-notify-fg)';
       status.textContent = words;
       return true;
@@ -535,13 +552,6 @@
   });
   box.addEventListener('keydown', function (e) {
     if (e.isComposing) return;
-    // Escape closes an empty box and leaves one holding text, as chat-client's
-    // did; emoji.js's menu, open only over text, takes its own Escape.
-    if (e.key === 'Escape' && box.value.trim() === '') {
-      e.preventDefault();
-      closeCompose();
-      return;
-    }
     if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     sendMessage();

@@ -3,10 +3,10 @@
 // popup is a modal dialog over a dimmed page, as feed.js's code popup is: a
 // strap at its top with its heading and a small × at its right end, made
 // afresh at each opening and removed once closed, the focus going back to
-// what opened it. Escape, the ×, or a click outside it closes it (Steve,
-// 2026-11-20: "our users are smart enough to hit escape and/or click a
-// little x icon"). A dialog sits above the phone's drawer, so each works
-// there too.
+// what opened it. Escape (keys.js's stack), the ×, or a click outside it
+// closes it (Steve, 2026-11-20: "our users are smart enough to hit escape
+// and/or click a little x icon"). A dialog sits above the phone's drawer,
+// so each works there too, Escape closing the popup before the drawer.
 //
 // A place has one popup, its card, opened two ways (Steve, 2026-11-20:
 // "popups can be roomy and convenient... if you click the + icon, the popup
@@ -45,6 +45,7 @@
 // are palette.js's.
 window.SidebarPopups = (function () {
   'use strict';
+  if (!window.Keys) throw new Error('sidebar-popups.js: keys.js runs first, and gives Keys');
   // What can't be inlined: the backdrop, and the buttons' and links' hover
   // and keyboard focus. The buttons are compose.js's family: the primary
   // action in the accent, the rest quiet, 13 pixels, 6-pixel corners.
@@ -70,10 +71,6 @@ window.SidebarPopups = (function () {
     '.sidebar-popup .popup-member:hover{text-decoration:underline}',
   ].join('\n');
   document.head.appendChild(rules);
-
-  // How many popups are open: sidebar.js leaves Escape to an open one.
-  var opened = 0;
-  function isOpen() { return opened > 0; }
 
   function paintDot(dot, online) {
     Object.assign(dot.style, {
@@ -119,20 +116,18 @@ window.SidebarPopups = (function () {
     dlg.appendChild(controls);
     dlg.appendChild(body);
     dlg.addEventListener('close', function () {
-      opened -= 1;
       dlg.remove();
       opener.focus();
     });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
     function show() {
       document.body.appendChild(dlg);
-      opened += 1;
-      dlg.showModal();
+      Keys.showModal(dlg);
     }
     return { heading: heading, body: body, show: show, close: function () { dlg.close(); } };
   }
 
-  // A place's new-topic popup, `form` headed `words`, giving the focus back  // A place's new-topic form, moved into whichever popup shows it. It is
+  // A place's new-topic form, moved into whichever popup shows it. It is
   // posted by fetch, so a refusal stays in the popup. Its field and its
   // button are restyled for a popup: the field roomy, the button the
   // house's primary one (as compose.js's Send).
@@ -381,5 +376,5 @@ window.SidebarPopups = (function () {
     return { open: open, fill: fill, focusField: focusField };
   }
 
-  return { isOpen: isOpen, paintDot: paintDot, topicForm: topicForm, placePopup: placePopup };
+  return { paintDot: paintDot, topicForm: topicForm, placePopup: placePopup };
 })();

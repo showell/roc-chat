@@ -22,6 +22,22 @@
 // does what the key does. Recent has no compose box, so its help is shown
 // nowhere.
 //
+// Escape closes the innermost thing open, one a press, and does nothing
+// while nothing is. Whatever opens (the compose box, a popup, a dialog, a
+// popover, a menu) gives Keys.pushCloser the function that closes it as
+// Escape should, and Keys.popCloser the same function when it closes,
+// however it closes (its ✕, a click outside, a choice made in it). Escape
+// runs the closer on top of the stack: the last opened of those still
+// open. A closer may decline, as the compose box's does while it holds
+// text; Escape then stops there, and closes nothing under it. A closer
+// pushed twice, or popped when it isn't there, is an error, so a thing
+// that forgets to pop is found. Escape is the stack's in any field, but
+// not with a modifier held or while an input method is composing.
+// Keys.showModal(dialog, closer) opens a modal <dialog> on the stack: the
+// closer (the dialog's close, when none is given) is pushed, and popped
+// when the dialog closes. The browser's own close request (a phone's back
+// gesture) runs the closer too, so a dialog closes one way.
+//
 // The script styles what it builds, with one style sheet of its own. Its
 // colours are palette.js's.
 window.Keys = (function () {
@@ -110,5 +126,32 @@ window.Keys = (function () {
     entry.run();
   });
 
-  return { register: register, help: keyhelp };
+  // The closers of what is open, innermost last.
+  var closers = [];
+  function pushCloser(closer) {
+    if (typeof closer !== 'function') throw new Error('Keys.pushCloser: a function');
+    if (closers.indexOf(closer) >= 0) throw new Error('Keys.pushCloser: a closer pushed twice');
+    closers.push(closer);
+  }
+  function popCloser(closer) {
+    var at = closers.indexOf(closer);
+    if (at < 0) throw new Error('Keys.popCloser: a closer that is not on the stack');
+    closers.splice(at, 1);
+  }
+  function showModal(dialog, closer) {
+    var close = closer || function () { dialog.close(); };
+    dialog.addEventListener('cancel', function (e) { e.preventDefault(); close(); });
+    dialog.addEventListener('close', function () { popCloser(close); });
+    pushCloser(close);
+    dialog.showModal();
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey || closers.length === 0) return;
+    e.preventDefault();
+    closers[closers.length - 1]();
+  });
+
+  return { register: register, help: keyhelp, pushCloser: pushCloser, popCloser: popCloser, showModal: showModal };
 })();

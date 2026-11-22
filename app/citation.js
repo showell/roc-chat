@@ -32,7 +32,7 @@
   'use strict';
   var messages = document.querySelector('.messages');
   if (!messages) throw new Error('citation.js: the page has no .messages');
-  if (!window.Compose || !window.Viewport) throw new Error('citation.js: chrome.js and compose.js run first, and give Viewport and Compose');
+  if (!window.Compose || !window.Viewport || !window.Keys) throw new Error('citation.js: chrome.js, keys.js and compose.js run first, and give Viewport, Keys and Compose');
   var rawUrl = messages.getAttribute('data-raw');
   if (!rawUrl) throw new Error('citation.js: .messages has no data-raw');
   var place = messages.getAttribute('data-place');
@@ -126,7 +126,7 @@
     dialog.append(said, area, close);
     dialog.addEventListener('close', function () { dialog.remove(); });
     document.body.appendChild(dialog);
-    dialog.showModal();
+    Keys.showModal(dialog);
     area.focus();
     area.select();
   }

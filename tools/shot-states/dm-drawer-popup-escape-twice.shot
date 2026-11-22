@@ -1,0 +1,13 @@
+# As dm-drawer-popup-escape, then Escape again: the drawer closed too.
+path = /chat/dm/1_2/plans
+sizes = phone
+click .sidebar-toggle
+wait .sidebar-toggle[aria-expanded=true]
+eval new Promise(function (r) { setTimeout(r, 400); })
+click .sidebar-place[data-section="/chat/dm/1_2"] .sidebar-place-name
+wait dialog.place-popup[open]
+key Escape
+eval new Promise(function (ok, no) { var t = Date.now(); (function look() { if (!document.querySelector('dialog.place-popup')) return ok(true); if (Date.now() - t > 2000) return no(new Error('Escape left the card open')); setTimeout(look, 50); })(); })
+key Escape
+wait .sidebar-toggle[aria-expanded=false]
+eval new Promise(function (r) { setTimeout(r, 400); })

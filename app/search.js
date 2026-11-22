@@ -218,13 +218,6 @@
     open = { dialog: dialog, input: input, list: list, status: status, phase: 'words', items: [], chosen: -1, word: '', timer: null };
     input.addEventListener('input', function () { open.phase = 'words'; scheduleWords(); });
     dialog.addEventListener('keydown', onKey);
-    // Escape: from the messages, back to the words; from the words, closed.
-    dialog.addEventListener('cancel', function (e) {
-      e.preventDefault();
-      if (!open) return;
-      if (open.phase === 'messages') { open.phase = 'words'; open.input.focus(); scheduleWords(); }
-      else close();
-    });
     dialog.addEventListener('click', onClick);
     dialog.addEventListener('close', function () {
       if (open && open.timer) clearTimeout(open.timer);
@@ -234,9 +227,16 @@
       var messages = document.querySelector('.messages');
       if (messages) messages.focus();
     });
-    dialog.showModal(); input.focus(); showPrompt();
+    Keys.showModal(dialog, stepBack); input.focus(); showPrompt();
   }
   function close() { if (open) open.dialog.close(); }
+  // Escape's closer (keys.js): from the messages, back to the words; from
+  // the words, closed.
+  function stepBack() {
+    if (!open) return;
+    if (open.phase === 'messages') { open.phase = 'words'; open.input.focus(); scheduleWords(); }
+    else close();
+  }
 
   var button = document.createElement('button');
   button.type = 'button';

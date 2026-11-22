@@ -21,13 +21,15 @@
 // the menu is closed.
 //
 // It runs after compose.js, so the box's own keys are handled first, as in
-// chat-client, and before actions.js. The menu is a fixed overlay over the
+// chat-client, and before actions.js. Escape is keys.js's: the open menu is
+// on its stack, above the compose box. The menu is a fixed overlay over the
 // box's bottom left, styled here with palette.js's colours.
 window.Emoji = (function () {
   'use strict';
   var compose = document.querySelector('.compose');
   var textarea = compose && compose.querySelector('textarea');
   if (!textarea) throw new Error('emoji.js: the page has no .compose with a textarea');
+  if (!window.Keys) throw new Error('emoji.js: keys.js runs first, and gives Keys');
 
   // The menu's order is this order. The first group is ordered by how often
   // each was a reaction on the Roc Zulip (its last 1,000 reactions, 2026-11-20),
@@ -138,10 +140,17 @@ window.Emoji = (function () {
   }
 
   // The floating menu: a list of rows, one highlighted, kept in view by a
-  // snap scroll, never a smooth one.
-  function createMenu(onAccept) {
+  // snap scroll, never a smooth one. While it shows, `onEscape` is Escape's
+  // closer (keys.js), so Escape closes the menu before the box under it.
+  function createMenu(onAccept, onEscape) {
     var el = null, list = null, rows = [], sel = 0;
-    function close() { if (el) el.remove(); el = null; list = null; rows = []; sel = 0; }
+    function close() {
+      if (el) {
+        el.remove();
+        Keys.popCloser(onEscape);
+      }
+      el = null; list = null; rows = []; sel = 0;
+    }
     function paint() {
       for (var i = 0; i < list.children.length; i++) {
         list.children[i].classList.toggle('chat-emoji-sel', i === sel);
@@ -156,6 +165,7 @@ window.Emoji = (function () {
         list.className = 'chat-emoji-list';
         el.appendChild(list);
         document.body.appendChild(el);
+        Keys.pushCloser(onEscape);
       }
       rows = entries;
       if (sel >= rows.length) sel = 0;
@@ -187,7 +197,7 @@ window.Emoji = (function () {
   }
 
   var hit = null; // The shortcode the menu is open for.
-  var menu = createMenu(function (entry) { insert(entry, ' '); });
+  var menu = createMenu(function (entry) { insert(entry, ' '); }, function () { menu.close(); hit = null; });
 
   // Replaces the `:query` run with the glyph and `tail`, the caret after them.
   function insert(entry, tail) {
@@ -225,7 +235,6 @@ window.Emoji = (function () {
     if (e.key === 'ArrowDown') { e.preventDefault(); menu.move(1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); menu.move(-1); }
     else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); menu.accept(); }
-    else if (e.key === 'Escape') { e.preventDefault(); menu.close(); hit = null; }
   });
 
   return {

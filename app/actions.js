@@ -186,8 +186,15 @@
   // What had the focus before the picker opened, given it back on Escape.
   var focusBefore = null;
   function closePicker() {
-    if (picker) picker.remove();
+    if (!picker) return;
+    picker.remove();
     picker = null;
+    Keys.popCloser(escapePicker);
+  }
+  // Escape's closer while the picker is open (keys.js).
+  function escapePicker() {
+    closePicker();
+    if (focusBefore && document.contains(focusBefore)) focusBefore.focus();
   }
   // The picker's emoji `delta` away from the focused one: ±1 along a row,
   // and a row's width up or down, the width read from where they wrapped.
@@ -202,10 +209,7 @@
   }
   var PICKER_MOVES = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 'up', ArrowDown: 'down' };
   function pickerKey(e) {
-    if (e.key === 'Escape') {
-      closePicker();
-      if (focusBefore && document.contains(focusBefore)) focusBefore.focus();
-    } else if (PICKER_MOVES[e.key] !== undefined) {
+    if (PICKER_MOVES[e.key] !== undefined) {
       moveFocus(PICKER_MOVES[e.key]);
     } else if (e.key === 'Tab') {
       moveFocus(e.shiftKey ? -1 : 1);
@@ -225,6 +229,7 @@
     picker.className = 'reaction-picker';
     picker.setAttribute('role', 'menu');
     picker.addEventListener('keydown', pickerKey);
+    Keys.pushCloser(escapePicker);
     Emoji.glyphs.forEach(function (emoji) {
       var b = document.createElement('button');
       b.type = 'button';
@@ -250,7 +255,6 @@
   document.addEventListener('click', function (e) {
     if (picker && !picker.contains(e.target) && !(e.target.closest && e.target.closest('.react-open'))) closePicker();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePicker(); });
 
   // The tilde fence a quote wraps `markdown` in: one longer than its longest
   // line-opening run of tildes, at least three, so a quote of a quote stays
@@ -411,7 +415,7 @@
   // reaction, is cancelled. A shorter touch is a tap, and toggles as a
   // click does; a touch that moves is a scroll, and does neither. The
   // popover closes at the next touch or mouse press anywhere, on any
-  // scroll, after POPOVER_MS, or when the stream redraws its chip; one
+  // scroll, after POPOVER_MS, on Escape, or when the stream redraws its chip; one
   // shows at a time. A chip's own long-press behaviours, the callout and
   // text selection, are off where nothing hovers, and its context menu
   // while it is pressed. A mouse sends no touch events, so a desktop keeps
@@ -425,10 +429,13 @@
   var popoverChip = null;
   var popoverTimer = null;
 
+  // The popover is on Escape's stack while it shows (keys.js).
   function closePopover() {
-    if (popoverTimer) clearTimeout(popoverTimer);
-    if (popover) popover.remove();
+    if (!popover) return;
+    clearTimeout(popoverTimer);
+    popover.remove();
     popover = popoverChip = popoverTimer = null;
+    Keys.popCloser(closePopover);
   }
   function openPopover(chip) {
     closePopover();
@@ -437,6 +444,7 @@
     popover.setAttribute('role', 'tooltip');
     popover.textContent = namesOf(chip);
     document.body.appendChild(popover);
+    Keys.pushCloser(closePopover);
     popoverChip = chip;
     var at = chip.getBoundingClientRect();
     var size = popover.getBoundingClientRect();

@@ -1,0 +1,8 @@
+# Nothing open (the desktop's box starts closed), then Escape: nothing
+# changes, and the key is left to the browser (not prevented), the
+# selection where it was.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+eval (function () { window.shotSelected = document.querySelector('.message.selected').id; window.addEventListener('keydown', function (e) { if (e.key === 'Escape') window.shotEscape = e.defaultPrevented ? 'prevented' : 'left'; }); return true; })()
+key Escape
+eval (function () { if (window.shotEscape !== 'left') throw new Error('Escape was ' + window.shotEscape); if (document.querySelector('.compose.open, dialog[open]')) throw new Error('something is open'); if (document.querySelector('.message.selected').id !== window.shotSelected) throw new Error('the selection moved'); return true; })()

@@ -42,7 +42,7 @@
 // modal dialog over a dimmed page, a slider that zooms from 1x to 8x, a
 // Close button, and a fixed frame of 70% of the window each way that the
 // image first fits and then scrolls in once zoomed. Escape closes it, as it
-// closes any modal dialog; a click outside it doesn't. A video has no popup.
+// closes any popup (keys.js); a click outside it doesn't. A video has no popup.
 //
 // A click on a code block in a message, any <pre> (a quote-reply's quoted
 // message among them, as in chat-client), opens its text in a popup,
@@ -329,7 +329,7 @@
       fitW = nw * scale; fitH = nh * scale; applyZoom();
     }
     range.addEventListener('input', applyZoom);
-    dlg.showModal();
+    Keys.showModal(dlg);
     img.addEventListener('load', fit);
     img.src = src;
     if (img.complete) fit();
@@ -370,7 +370,7 @@
     dlg.addEventListener('close', function () { dlg.remove(); });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
     document.body.appendChild(dlg);
-    dlg.showModal();
+    Keys.showModal(dlg);
   }
   // As chat-client's handleClick: an image first, then any <pre> around
   // what was clicked.

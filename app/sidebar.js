@@ -373,8 +373,12 @@ window.Sidebar = (function () {
   var layout = sidebar.parentNode;
   var slide = 'transform 0.25s ease, visibility 0.25s';
   var open = false;
+  // The drawer is on Escape's stack while it is open (keys.js).
   function show(opened) {
+    var was = open;
     open = opened && narrow;
+    if (open && !was) Keys.pushCloser(escapeDrawer);
+    if (was && !open) Keys.popCloser(escapeDrawer);
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     backdrop.style.display = open ? 'block' : 'none';
     if (!narrow) return;
@@ -409,9 +413,10 @@ window.Sidebar = (function () {
     show(!open);
   });
   backdrop.addEventListener('click', function () { show(false); });
-  document.addEventListener('keydown', function (e) {
-    if (open && !SidebarPopups.isOpen() && e.key === 'Escape') { e.preventDefault(); show(false); toggle.focus(); }
-  });
+  function escapeDrawer() {
+    show(false);
+    toggle.focus();
+  }
   sidebar.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('.sidebar-topics a')) show(false);
   });

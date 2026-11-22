@@ -1,0 +1,13 @@
+# `:sm` typed in the box, then Escape twice: the first closes the emoji
+# menu, and the second does nothing, since the box holds text, and
+# closes nothing under it. The box open, its text kept.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+type Looks good :sm
+wait .chat-emoji-menu
+key Escape
+eval (function () { if (document.querySelector('.chat-emoji-menu')) throw new Error('Escape left the emoji menu open'); return true; })()
+key Escape
+wait .compose.open textarea:not(:placeholder-shown)

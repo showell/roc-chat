@@ -322,7 +322,8 @@ apoorvavpendse@gmail.com would be better
   This is not good work.
   Using the same button to open the compose box and a draft is not good UI.
   I may not want the draft.").
-  The c key or the "Open compose box (c)" button opens it; Escape in the box closes it when it is empty and does nothing while it holds text; the ✕ (▾ on a phone) closes it whatever it holds, the text left in the closed box for when it opens again.
+  The c key or the "Open compose box (c)" button opens it; Escape closes it when it is empty and does nothing while it holds text; the ✕ (▾ on a phone) closes it whatever it holds, the text left in the closed box for when it opens again.
+  Escape closes the innermost thing open, one a press, and nothing while nothing is open: a popup, a dialog, a menu or a popover before the compose box under it, and the box holding text stops it there, closing nothing under it (app/keys.js's stack).
   Nothing is kept past the page, and the button never names a draft (app/compose.js, as chat-client's js/chat_compose.js and js/chat_right_sidebar.js).
 - **The sidebar** (Steve, 2026-11-19) lists the viewer's places, each place's topics under it, and the current topic marked.
   Starting a topic is rare, so its form is out of sight (Steve, 2026-11-20: "An extra step to create a topic is good friction"): each place has a small "+" beside its name, a button labelled "New topic in" and the place's name, which opens a popup holding the place's form; a refusal shows in the popup.
