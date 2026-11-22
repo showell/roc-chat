@@ -90,11 +90,11 @@ GitHubRoute :: [].{
 			match (settings.status, SignInRequest.check_not_by_api_key(viewer)) {
 				(NotConfigured, _) => not_found
 				(Configured, Err(ByApiKey)) => SignInRoute.by_api_key_answer
-				(Configured, Ok({})) if viewer != Anonymous => HttpAnswer.see_other("/agents")
 				(Configured, Ok({})) =>
-					match SignInRequest.next_from_query(query) {
-						Err(BadNext) => SignInRoute.bad_next_answer
-						Ok(next) => send_to_github!({
+					match (viewer, SignInRequest.next_from_query(query)) {
+						(SignedIn(_), _) => HttpAnswer.see_other("/agents")
+						(Anonymous, Err(BadNext)) => SignInRoute.bad_next_answer
+						(Anonymous, Ok(next)) => send_to_github!({
 							authorize_base: settings.authorize_base,
 							client_id: settings.client_id,
 							origin,
