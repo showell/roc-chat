@@ -148,12 +148,12 @@ Html :: [].{
 	## on this page, each a token; a link to another page of this site, a
 	## site path; a link off the site, an `HttpsUrl`; a time; a form's field name, its method
 	## (always POST) and where it posts; whether a field is required, and
-	## its most characters, a number; an
-	## input's type, whether a radio button starts chosen, its value (a site
-	## path) and what a browser may fill it with; a script's source; a title of one or more names, which a browser
-	## shows on hover; and a `data-` attribute for a page's
-	## scripts: its name after `data-`, a token, then its value, a token (or
-	## one after a `#`), a site path or a name.
+	## its most characters, a number; an input's type, whether a radio
+	## button starts chosen, its value (a site path) and what a browser may
+	## fill it with; a script's source; a title of one or more names, which a
+	## browser shows on hover; and a `data-` attribute for a page's scripts:
+	## its name after `data-`, a token, then its value, a token (or one after
+	## a `#`), a site path or a name.
 	Attribute : [
 		Class(Html.Token),
 		Id(Html.Token),

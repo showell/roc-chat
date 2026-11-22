@@ -39,10 +39,11 @@ AgentsPage :: [].{
 	## The agents page, for `viewer`: when they keep agents (`Kept`, the
 	## admin), a form that makes an agent, then each agent with a form that
 	## invites it (`invite_form`), and its keys and invites, each with its
-	## scope and each live one with a button that revokes it; else (`NotTheKeeper`) a line saying agents are the admin's.
-	## When an invite was just made, its code comes first (`shown`), the one
-	## time it is shown. Last, when `github_link` offers it, a button that
-	## links GitHub. A viewer whose session a device code started sees no
+	## scope and each live one with a button that revokes it; else
+	## (`NotTheKeeper`) a line saying agents are the admin's. When an invite
+	## was just made, its code comes first (`shown`), the one time it is
+	## shown. Last, when `github_link` offers it, a button that links GitHub.
+	## A viewer whose session a device code started sees no
 	## button, as none would work for them (`FullSessionRoutes`), and a line
 	## saying why.
 	agents : {
@@ -254,7 +255,10 @@ reach_choices = |power| {
 ## A key's or an invite's scope in the words the invite form chooses it by.
 scope_text : KeyScope -> Str
 scope_text = |scope|
-	"${power_name(Read)}: ${reach_words(Read, scope.read())}. ${power_name(Post)}: ${reach_words(Post, scope.post())}."
+	Str.concat(
+		"${power_name(Read)}: ${reach_words(Read, scope.read())}. ",
+		"${power_name(Post)}: ${reach_words(Post, scope.post())}.",
+	)
 
 power_name : [Read, Post] -> Str
 power_name = |power|
