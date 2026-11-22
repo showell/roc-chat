@@ -1,0 +1,222 @@
+-- This check holds the app to one rule (docs/design.md, "Streams"): every
+-- action that ends a session, revokes a credential or removes someone's
+-- access also ends the affected user's open streams, since the host judges
+-- a stream once, when it opens, and holds it up to an hour.
+--
+--   shale tools/check_stream_endings.shale
+--
+-- It reads app/*.roc (not the specs) through Roc's own parse tree
+-- (`roc_tree`), each top-level function and each function of a module's
+-- type by its `Module.name`, the calls in its body by name, and
+-- tools/stream_endings.txt, the table of every function that writes a file
+-- (calls a FileFacts writer): `ends` (its write ends a session, credential
+-- or access), `keeps` (it doesn't), or `exempt` (an action's one call of
+-- an `ends` writer, or of a `*Files` function reaching one, that needs no
+-- stream ended). Its findings:
+--
+--   unjudged_writer   a function that writes a file and has no `ends` or
+--                     `keeps` line, so a new writer is judged when it comes;
+--   stale_entry       a line for no function, an `ends` or `keeps` line for
+--                     a function that writes no file, or an `exempt` line
+--                     for a call the function doesn't make or that reaches
+--                     no `ends` writer;
+--   unended_streams   a function outside a `*Files` module that reaches an
+--                     `ends` writer (directly, or through a `*Files`
+--                     function that calls one) and calls no
+--                     `UserStreams.end_every_stream!` after that call;
+--   stray_ending      `Host.end_every_stream_of_holder!` called anywhere but
+--                     `UserStreams.end_every_stream!`;
+--   unended_holder    a `StreamHolder` function that makes a holder (every
+--                     one but `to_bytes`) that `UserStreams.end_every_stream!`
+--                     doesn't call, so a stream held under it would outlive
+--                     every revocation. `HttpAnswer.stream` takes a
+--                     `StreamHolder`, so Roc's types hold every stream to
+--                     those names.
+--
+-- A `*Files` module only writes (CLAUDE.md: only FileFacts touches files),
+-- so a revocation inside one is its caller's to follow with the ending;
+-- the caller is judged instead. What the check can't see: whether the
+-- ending names the same user as the write (it reads names, not values), and
+-- a revoking function reached as a method on a value (`x.f!()`) rather than
+-- by its module's name; every writer is called by its name today.
+--
+-- It prints each finding, then `stream-endings N`, and fails on any.
+-- budget: steps=300000000 arena_bytes=1000000000 reads=20000 kept_bytes=64000000
+
+const TABLE = "tools/stream_endings.txt"
+const ENDING = "UserStreams.end_every_stream!"
+const HOST_ENDING = "Host.end_every_stream_of_holder!"
+const WRITERS = {"FileFacts.create_fact!", "FileFacts.replace_fact!", "FileFacts.create_facts!", "FileFacts.append_to_file!", "FileFacts.create_binary_file!", "FileFacts.make_folder!"}
+
+-- Every function of the file at `p`, by `Module.name`, each with its line
+-- and the calls in its body, `{name, line}`, a bare name as it is written.
+function functions_of(p)
+  local f = roc_tree({p})[1]
+  if f.err ~= "" then fail("check_stream_endings: roc-ast refused " .. p .. ": " .. f.err) end
+  local module = sub(basename(p), 1, #basename(p) - 4)
+  local found = {}
+  local current = nil
+  local depth = -1
+  for i = 1, #f.nodes do
+    local n = f.nodes[i]
+    if current ~= nil and n.depth <= depth then current = nil end
+    if current == nil and n.kind == "s-decl" and n.parent > 0 then
+      local holder = f.nodes[n.parent]
+      local top = holder.kind == "associated" or (holder.kind == "statements" and f.nodes[holder.parent].kind == "file")
+      local named = f.nodes[n.kids[1]]
+      if top and named.kind == "p-ident" then
+        current = {name = module .. "." .. get(named, "raw", ""), module = module, line = n.line, calls = {}}
+        depth = n.depth
+        push(found, current)
+      end
+    end
+    if current ~= nil and n.kind == "e-ident" then push(current.calls, {name = get(n, "raw", ""), line = n.line}) end
+  end
+  return found
+end
+
+-- The table's lines, `{verdict, name, line}`, and an `exempt` line's
+-- `callee` too.
+function read_table()
+  local rows = {}
+  local at = 0
+  for l in lines(read(TABLE)) do
+    at = at + 1
+    local t = trim(l)
+    if t ~= "" and not starts_with(t, "#") then
+      local w = words(t)
+      if #w < 3 or not has_item({"ends", "keeps", "exempt"}, w[1]) or (w[1] == "exempt" and #w < 4) then fail(TABLE .. ":" .. at .. ": not `ends|keeps Module.name why` or `exempt Module.name Callee.name why`: " .. t) end
+      local row = {verdict = w[1], name = w[2], line = at, callee = ""}
+      if w[1] == "exempt" then row.callee = w[3] end
+      push(rows, row)
+    end
+  end
+  return rows
+end
+
+const funcs = {}
+for p in glob("app/*.roc") do
+  if not ends_with(p, "Spec.roc") and p ~= "app/Specs.roc" then
+    for fn in functions_of(p) do funcs[fn.name] = fn end
+  end
+  yield()
+end
+
+-- A call by its bare name is to the module's own function of that name.
+for name in keys(funcs) do
+  local fn = funcs[name]
+  for c in fn.calls do
+    if find(c.name, ".") == nil and has_key(funcs, fn.module .. "." .. c.name) then c.name = fn.module .. "." .. c.name end
+  end
+end
+
+const rows = read_table()
+const verdict = {}
+const exempt = {}
+for r in rows do
+  if r.verdict == "exempt" then exempt[r.name .. " " .. r.callee] = true else verdict[r.name] = r.verdict end
+end
+
+const findings = {}
+function finding(kind, text) push(findings, kind .. ": " .. text) end
+
+function writes_a_file(fn)
+  for c in fn.calls do
+    if has_item(WRITERS, c.name) then return true end
+  end
+  return false
+end
+
+function calls(fn, name)
+  for c in fn.calls do
+    if c.name == name then return true end
+  end
+  return false
+end
+
+-- Every writer judged, and every line naming a function as it is.
+for name in keys(funcs) do
+  local fn = funcs[name]
+  if fn.module ~= "FileFacts" or name == "FileFacts.create_facts_from!" then
+    if writes_a_file(fn) and get(verdict, name, "") ~= "ends" and get(verdict, name, "") ~= "keeps" then
+      finding("unjudged_writer", name .. " (app/" .. fn.module .. ".roc:" .. fn.line .. ") writes a file and has no `ends` or `keeps` line in " .. TABLE)
+    end
+  end
+end
+for r in rows do
+  if not has_key(funcs, r.name) then
+    finding("stale_entry", TABLE .. ":" .. r.line .. ": " .. r.name .. " is no function in app/")
+  elseif r.verdict ~= "exempt" and not writes_a_file(funcs[r.name]) then
+    finding("stale_entry", TABLE .. ":" .. r.line .. ": " .. r.name .. " writes no file")
+  end
+end
+
+-- What reaches an `ends` writer: the writers, and every function that
+-- calls one of them or a `*Files` function that does, as far as it goes.
+const revoking = {}
+for r in rows do
+  if r.verdict == "ends" then revoking[r.name] = true end
+end
+function passes_on(name)
+  return has_key(revoking, name) and (get(verdict, name, "") == "ends" or ends_with(funcs[name].module, "Files"))
+end
+local grew = true
+while grew do
+  grew = false
+  for name in keys(funcs) do
+    if not has_key(revoking, name) then
+      for c in funcs[name].calls do
+        if not has_key(revoking, name) and passes_on(c.name) then
+          revoking[name] = true
+          grew = true
+        end
+      end
+    end
+  end
+end
+
+for r in rows do
+  if r.verdict == "exempt" and has_key(funcs, r.name) and not (calls(funcs[r.name], r.callee) and passes_on(r.callee)) then
+    finding("stale_entry", TABLE .. ":" .. r.line .. ": " .. r.name .. " is exempt for " .. r.callee .. ", which it doesn't call or which reaches no `ends` writer")
+  end
+end
+
+local names = keys(funcs)
+sort(names)
+for name in names do
+  local fn = funcs[name]
+  if has_key(revoking, name) and get(verdict, name, "") == "" and not ends_with(fn.module, "Files") then
+    local first = nil
+    local reached = ""
+    for c in fn.calls do
+      if passes_on(c.name) and not has_key(exempt, name .. " " .. c.name) and (first == nil or c.line < first) then
+        first = c.line
+        reached = c.name
+      end
+    end
+    local ended = false
+    for c in fn.calls do
+      if first ~= nil and c.name == ENDING and c.line > first then ended = true end
+    end
+    if first ~= nil and not ended then
+      finding("unended_streams", "app/" .. fn.module .. ".roc:" .. first .. ": " .. name .. " calls " .. reached .. " and no " .. ENDING .. " after it")
+    end
+  end
+  for c in fn.calls do
+    if c.name == HOST_ENDING and name ~= ENDING then
+      finding("stray_ending", "app/" .. fn.module .. ".roc:" .. c.line .. ": " .. name .. " ends streams itself; " .. ENDING .. " is the one place")
+    end
+  end
+end
+
+-- Every holder StreamHolder makes, ended.
+if not has_key(funcs, ENDING) then fail("check_stream_endings: no " .. ENDING .. " in app/") end
+for name in names do
+  if funcs[name].module == "StreamHolder" and name ~= "StreamHolder.to_bytes" and not calls(funcs[ENDING], name) then
+    finding("unended_holder", "app/StreamHolder.roc:" .. funcs[name].line .. ": " .. ENDING .. " never ends the streams held under " .. name)
+  end
+end
+
+for l in findings do print(l) end
+print("stream-endings " .. #findings)
+if #findings > 0 then fail("check_stream_endings: " .. #findings .. " findings") end

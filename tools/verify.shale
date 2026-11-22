@@ -44,7 +44,10 @@
 --    page scripts (app/*.js) at zero: every `X.name` one script calls is
 --    among the names the script that gives X gives, and every page loads
 --    that script first, in app/Script.roc's order (its header has the
---    rules).
+--    rules). And tools/check_stream_endings.shale holds at zero every
+--    action that ends a session, revokes a credential or removes someone's
+--    access without ending the user's open streams after (its header and
+--    tools/stream_endings.txt have the rules).
 -- 4. The demo built through the host, its page exactly the frozen
 --    demo/roc-chat.html.
 -- 5. The host's Zig tests (`zig build test`): the file primitives, the
@@ -171,6 +174,7 @@ const hunts = {
   {recipe = "find_bare_floats", args = {}, counts = {"bare_float ([0-9]+)", "unused_exception ([0-9]+)"}},
   {recipe = "rewrite_method_calls", flags = {"--undo-on-stop"}, args = {"root=app/main.roc,app/Specs.roc"}, counts = {"rewritten ([0-9]+)", "peer_receiver ([0-9]+)"}},
   {recipe = "check_script_calls", script = "tools/check_script_calls.shale", args = {}, counts = {"script-calls ([0-9]+)"}, fails_on_findings = true},
+  {recipe = "check_stream_endings", script = "tools/check_stream_endings.shale", args = {}, counts = {"stream-endings ([0-9]+)"}, fails_on_findings = true},
 }
 function findings_allowed(hunt, count)
   for held in get(hunt, "held", {}) do

@@ -8,8 +8,9 @@
 #           affected user's open streams (`UserStreams.end_every_stream!`)
 #   keeps   its write ends no session, credential or access an open stream
 #           was admitted by
-#   exempt  an action that reaches an `ends` writer and needs no stream
-#           ended, and why
+#   exempt  an action that calls an `ends` writer (or a `*Files` function
+#           that reaches one), named after it, and needs no stream ended
+#           for that call, and why
 #
 # A new writer, a writer gone, or an entry for no function fails the check,
 # so the table is judged again whenever what writes changes.
@@ -44,3 +45,10 @@ keeps   TranscriptFiles.store_uploaded_image!      an image
 keeps   TranscriptFiles.replace_upload_total!      a count of bytes
 keeps   TranscriptFiles.replace_last_conversation!  where a human was
 keeps   FileFacts.create_facts_from!               FileFacts itself, beneath every writer above
+
+exempt  ChannelMembersRoute.add!  DirectoryFiles.replace_channel_members!  adding a member removes no one's access
+exempt  ChannelMembersRoute.create_channel!  DirectoryFiles.replace_channel_members!  a new channel's members, removing no one
+exempt  DirectoryStore.write_first_directory!  DirectoryFiles.replace_channel_members!  the first directory, before anyone holds a stream
+exempt  GitHubSignUpRoute.sign_up!  DirectoryFiles.replace_channel_members!  a new human added to the default channel, removing no one
+exempt  HumanInvitesRoute.invite_human!  DirectoryFiles.replace_channel_members!  a new human added to the default channel, removing no one
+exempt  NameRelease.write_release!  DirectoryFiles.replace_channel_members!  removes a lapsed invitee, who never joined, so holds no session or stream
