@@ -18,7 +18,7 @@ HumanClaim :: [].{
 		invites : List([Live, Spent]),
 	}
 
-	## A human with no password, no GitHub link and no invite spent: the only
+	## A human with no password, no GitHub link and every invite live: the only
 	## human an invite is made for, or redeems for. Only `judge` makes one.
 	Unclaimed :: Users.Human.{
 
@@ -28,12 +28,21 @@ HumanClaim :: [].{
 	}
 
 	## Whether `human`, whose files say `facts`, is `Unclaimed`, or has
-	## `Claimed` their account.
+	## `Claimed` their account. Unclaimed is one shape, named once: no
+	## password, no GitHub link, and every invite live. Any other is claimed.
 	judge : Users.Human, HumanClaim.Facts -> [Unclaimed(HumanClaim.Unclaimed), Claimed]
 	judge = |human, { password, github, invites }|
-		if password == NoPassword and github == NotLinked and !invites.contains(Spent) {
-			Unclaimed(HumanClaim.Unclaimed.(human))
-		} else {
-			Claimed
+		match (password, github) {
+			(NoPassword, NotLinked) if invites.all(is_live) => Unclaimed(HumanClaim.Unclaimed.(human))
+			(NoPassword, NotLinked) | (HasPassword, _) | (_, Linked) => Claimed
 		}
 }
+
+## Whether an invite in `state` leaves its human unclaimed: a live one does,
+## and a spent one was their join.
+is_live : [Live, Spent] -> Bool
+is_live = |state|
+	match state {
+		Live => Bool.True
+		Spent => Bool.False
+	}
