@@ -1,0 +1,10 @@
+# A refused join (here, an invite code that is no one's): the join page's
+# heading and why, drawn as a card, no form; the address /join, and a reload
+# a plain GET of it, which posts no code again: the join page with no code
+# in its link, its form hidden. The picture is the refusal.
+path = /login
+sizes = desktop,phone
+as = nobody
+eval (function () { var f = document.createElement('form'); f.method = 'post'; f.action = '/join'; f.innerHTML = '<input name="code" value="9-shot"><input name="name" value="Shot"><input name="password" value="shot">'; document.body.appendChild(f); f.submit(); })()
+wait .problem
+eval if (location.pathname !== '/join' || document.querySelector('form')) throw new Error('the refused join is at ' + location.href + ', or shows a form')

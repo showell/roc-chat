@@ -1,0 +1,12 @@
+# A reload after a refused code: a plain GET, not the POST again, so the
+# page is the clean sign-in form, the name's field focused (a POST again
+# would be the refusal, the code's field focused).
+path = /login
+sizes = desktop
+as = nobody
+mutates = counts a failed device code for the local client
+eval (function () { var f = document.querySelector("form[action='/login/code']"); f.elements.code.value = '1111-1111'; f.submit(); })()
+wait .problem
+eval setTimeout(function () { location.reload(); }, 0)
+wait form[action='/login'] input[name='name'][autofocus]
+eval if (document.querySelector('.problem')) throw new Error('the reload after a refused code posted it again')

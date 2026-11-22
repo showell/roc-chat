@@ -1,0 +1,11 @@
+# The sign-in page after a refused device code (notramo's report): the
+# problem above the forms, the code's field focused, and the address the
+# sign-in page's own, /login?next=/chat, not the POST's /login/code, so Enter
+# in the address bar or a reload is a plain GET.
+path = /login
+sizes = desktop,phone
+as = nobody
+mutates = counts a failed device code for the local client
+eval (function () { var f = document.querySelector("form[action='/login/code']"); f.elements.code.value = '1111-1111'; f.submit(); })()
+wait .problem
+eval if (location.pathname + location.search !== '/login?next=/chat') throw new Error('the refused code left the address at ' + location.href)

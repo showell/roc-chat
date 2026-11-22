@@ -1,0 +1,16 @@
+# Enter in the address bar after a refused code: a GET of the address the
+# page put there gives the clean sign-in form, the name's field focused;
+# and a GET of /login/code itself, as an address bar from before the fix
+# holds, goes to /login (once a bare "POST only"). The picture is the last.
+path = /login
+sizes = desktop
+as = nobody
+mutates = counts a failed device code for the local client
+eval (function () { var f = document.querySelector("form[action='/login/code']"); f.elements.code.value = '1111-1111'; f.submit(); })()
+wait .problem
+goto /login?next=/chat
+wait form[action='/login'] input[name='name'][autofocus]
+eval if (document.querySelector('.problem')) throw new Error('the GET after a refused code still shows a problem')
+goto /login/code
+wait form[action='/login'] input[name='name'][autofocus]
+eval if (location.pathname !== '/login' || document.querySelector('.problem')) throw new Error('GET /login/code did not land on a clean /login: ' + location.href)

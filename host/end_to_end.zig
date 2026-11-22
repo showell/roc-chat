@@ -320,7 +320,8 @@
 //! 48zy. a device code: Steve's page says he has made none; a code made, shown
 //!      once as two groups of four digits with a thin space between,
 //!      with the warning, never stored, and kept only as its HMAC; a second
-//!      cancels the first, whose redemption from a phone is refused; the
+//!      cancels the first, whose redemption from a phone is refused, on the
+//!      sign-in page and its script; a GET of /login/code goes to /login; the
 //!      second, typed with a dash, signs the phone in as Steve,
 //!      bound to a new device key, active, and Steve's open stream hears "A
 //!      new device signed in"; it works once, and his page then says it was
@@ -1201,6 +1202,10 @@ fn deviceCodeSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Ste
     const replaced = try redeemFrom(a, io, port, phone, try std.fmt.allocPrint(a, "code={s}", .{first_code}));
     try t.check("a second code cancels the first: its redemption from a phone, a 401 saying only that it didn't work, no cookie, never stored", second.made.status == 303 and
         isDeviceCode(second.shown) and !std.mem.eql(u8, first_code, second_code) and isCodeRefusal(replaced));
+    const entered = try anonymousGet(a, io, port, "/login/code");
+    try t.check("the refused code's page is the sign-in page, whose script puts its own address in the POST's place; Enter in the address bar there, a GET of /login/code: a 303 to /login", has(replaced.body, "<form method=\"post\" action=\"/login/code\">") and
+        has(replaced.body, "<script src=\"/chat/assets/sign-in.js\"></script>") and
+        entered.status == 303 and std.mem.eql(u8, entered.header("location") orelse "", "/login"));
 
     try data.writeFile(io, .{ .sub_path = "users/3/device-code", .data = "not a record\n" });
     defer data.deleteFile(io, "users/3/device-code") catch {};
@@ -2531,7 +2536,9 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const taken_name = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=steve&password=x", .{code}));
     const no_name = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Deb%21&password=x", .{code}));
     const no_password = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Debbie&password=", .{code}));
-    try t.check("join under a name taken in any case: 409; under a name that is no name: 400; with no password: 400; each spends nothing, her name and invite as they were", taken_name.status == 409 and
+    try t.check("join under a name taken in any case: 409; under a name that is no name: 400; with no password: 400; each spends nothing, her name and invite as they were; each a card saying why, with no form, whose script puts /join in the POST's place, never stored", taken_name.status == 409 and
+        has(taken_name.body, "<h1>Join the chat</h1>\n<p class=\"problem\">") and !has(taken_name.body, "<form") and
+        has(taken_name.body, "<script src=\"/chat/assets/sign-in.js\"></script>") and std.mem.eql(u8, taken_name.header("cache-control") orelse "", "no-store") and
         no_name.status == 400 and no_password.status == 400 and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/human-invites/1/state"), "live") and
         std.mem.eql(u8, try readFile(a, io, data, "auth/3/name"), "Deb") and !(try exists(io, data, "auth/3/password")));

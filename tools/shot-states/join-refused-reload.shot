@@ -1,0 +1,11 @@
+# A reload after a refused join: a plain GET of /join, not the POST, so no
+# code is posted again: the join page saying its link holds no code, its
+# form hidden.
+path = /login
+sizes = desktop
+as = nobody
+eval (function () { var f = document.createElement('form'); f.method = 'post'; f.action = '/join'; f.innerHTML = '<input name="code" value="9-shot"><input name="name" value="Shot"><input name="password" value="shot">'; document.body.appendChild(f); f.submit(); })()
+wait .problem
+eval setTimeout(function () { location.reload(); }, 0)
+wait form[action='/join'][hidden]
+eval if (document.querySelector('.problem')) throw new Error('the reload after a refused join posted it again')
