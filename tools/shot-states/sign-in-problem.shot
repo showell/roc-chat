@@ -1,0 +1,8 @@
+# The sign-in page after a wrong password: the problem above the forms,
+# drawn as the site's problem lines are. The name is no one's, so no
+# account's guesses are counted.
+path = /login
+sizes = desktop,phone
+as = nobody
+eval (function () { var f = document.querySelector("form[action='/login']"); f.elements.name.value = 'Nobody'; f.elements.password.value = 'wrong'; f.submit(); })()
+wait .problem

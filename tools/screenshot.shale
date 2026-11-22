@@ -19,6 +19,8 @@
 --   path = /chat/dm/1_2/plans  the page it starts on (required)
 --   sizes = desktop,phone      the sizes it is shot at (required)
 --   as = phone                 the session it is shot as, not Steve's
+--                              (`nobody`: a cookie that is no session, so
+--                              the page is a signed-out visitor's)
 --   mutates = what it changes  it changes the server's data, so it runs
 --                              after every picture that doesn't, each theme
 --                              in turn, and no page shows another theme's
@@ -92,7 +94,7 @@ const PAGES = {
 }
 const SIZES = {desktop = "1280 800", phone = "390 844"}
 -- The sessions a state may be shot as or switch to (`as`, `session`).
-const SESSIONS = {"steve", "phone", "cy"}
+const SESSIONS = {"steve", "phone", "cy", "nobody"}
 -- The driver's verbs a state's steps may use; `size`, `cookie`, `base` and
 -- `shot` are this script's to write.
 const STATE_VERBS = {"goto", "click", "key", "type", "wait", "eval"}
@@ -503,7 +505,8 @@ local device_code = re_find(made.text, "__Host-device_code=([0-9A-Z]+)")
 if device_code == nil then fail("screenshot: making a device code set no code's cookie") end
 local by_code = post_form(base, "none=1", "/login/code", {"code=" .. device_code.group})
 expect_status(by_code, 303, "the device code's sign-in")
-local sessions = {steve = steve, phone = cookie_of(by_code, "the device code's sign-in"), cy = more_cookies["Cy"]}
+local sessions = {steve = steve, phone = cookie_of(by_code, "the device code's sign-in"), cy = more_cookies["Cy"],
+  nobody = "__Host-gopher_auth=nobody"}
 
 -- 3. The shot list: Steve's cookie, then the plan's pictures, each theme
 -- set as the plan comes to it, each state's steps with its `session`s'

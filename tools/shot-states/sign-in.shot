@@ -1,0 +1,5 @@
+# The sign-in page, as a signed-out visitor lands on it: the name's field
+# focused, then the password, "Sign in", and the device code's form.
+path = /login
+sizes = desktop,phone
+as = nobody

@@ -15,8 +15,11 @@
 ## app/keys.js, app/recent.js (its tiles and their times) and app/search.js
 ## between them,
 ## and the device code page with app/devices.js (which makes it live) before
-## them: `panel_scripts`. The join page ends with app/join.js, which reads
-## the invite's code from the link: `join_scripts`. `Route` serves each at
+## them: `panel_scripts`. A signed-out visitor's page (the sign-in page,
+## the name a GitHub sign-up chooses) ends with app/sign-in.js, which draws
+## it as a card: `signed_out_scripts`. The join page ends with it and
+## app/join.js, which reads the invite's code from the link: `join_scripts`.
+## `Route` serves each at
 ## its `url_path`, and `PageKit.script` links to them.
 ##
 ## A script uses what the scripts before it on its page give (`Keys`,
@@ -34,6 +37,7 @@ import "citation.js" as citation_source : Str
 import "actions.js" as actions_source : Str
 import "panel.js" as panel_source : Str
 import "join.js" as join_source : Str
+import "sign-in.js" as sign_in_source : Str
 import "recent.js" as recent_source : Str
 import "devices.js" as devices_source : Str
 import "search.js" as search_source : Str
@@ -52,6 +56,7 @@ Script := [
 	Search,
 	Panel,
 	Join,
+	SignIn,
 	Recent,
 	Devices,
 ].{
@@ -72,6 +77,7 @@ Script := [
 		Script.Search,
 		Script.Panel,
 		Script.Join,
+		Script.SignIn,
 		Script.Recent,
 		Script.Devices,
 	]
@@ -119,9 +125,13 @@ Script := [
 			DeviceCodePanel => [Script.Devices, Script.Chrome, Script.Panel]
 		}
 
+	## The scripts at the foot of a signed-out visitor's page.
+	signed_out_scripts : List(Script)
+	signed_out_scripts = [Script.SignIn]
+
 	## The scripts at the foot of the join page.
 	join_scripts : List(Script)
-	join_scripts = [Script.Join]
+	join_scripts = [Script.SignIn, Script.Join]
 
 	## Where the script is served: `/chat/assets/` and its file's name.
 	url_path : Script -> Str
@@ -151,6 +161,7 @@ file_name = |script|
 		Search => "search.js"
 		Panel => "panel.js"
 		Join => "join.js"
+		SignIn => "sign-in.js"
 		Recent => "recent.js"
 		Devices => "devices.js"
 	}
@@ -172,6 +183,7 @@ source = |script|
 		Search => search_source
 		Panel => panel_source
 		Join => join_source
+		SignIn => sign_in_source
 		Recent => recent_source
 		Devices => devices_source
 	}
@@ -195,6 +207,7 @@ expect
 			"/chat/assets/search.js",
 			"/chat/assets/panel.js",
 			"/chat/assets/join.js",
+			"/chat/assets/sign-in.js",
 			"/chat/assets/recent.js",
 			"/chat/assets/devices.js",
 		]
@@ -216,6 +229,7 @@ expect [
 	panel_source,
 ].all(|text| text.starts_with("// This script runs on a signed-in"))
 expect join_source.starts_with("// This script runs on the join page")
+expect sign_in_source.starts_with("// This script runs on a signed-out visitor's page")
 expect recent_source.starts_with("// This script runs on the Recent page")
 expect devices_source.starts_with("// This script runs on the device code page")
 expect
@@ -233,6 +247,7 @@ expect
 		search_source,
 		panel_source,
 		join_source,
+		sign_in_source,
 		recent_source,
 		devices_source,
 	].all(|text| text.ends_with("\n})();\n"))
@@ -251,6 +266,7 @@ expect
 		(Script.Search, search_source),
 		(Script.Panel, panel_source),
 		(Script.Join, join_source),
+		(Script.SignIn, sign_in_source),
 		(Script.Recent, recent_source),
 		(Script.Devices, devices_source),
 	].all(|(script, text)| script.bytes() == text.to_utf8())

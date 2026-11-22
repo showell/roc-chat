@@ -249,7 +249,7 @@ expect
 ## and `code_focus` after its attributes.
 login_page : Str, { name_focus : Str, code_focus : Str } -> Str
 login_page = |above, { name_focus, code_focus }|
-	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required${name_focus}></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n<form method=\"post\" action=\"/login/code\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p><label>Have a code from your other device? Type its 8 digits: <input type=\"text\" name=\"code\" autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\" maxlength=\"20\" required${code_focus}></label></p>\n<button>Sign in with the code</button></form>\n"
+	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required${name_focus}></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n<form method=\"post\" action=\"/login/code\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p><label>Have a code from your other device? Type its 8 digits: <input type=\"text\" name=\"code\" autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\" maxlength=\"20\" required${code_focus}></label></p>\n<button>Sign in with the code</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n"
 
 ## The sign-in page for `viewer`, with `problem`, as a test reads it.
 login_for : SignedIn.Actor, SignInPage.Problem -> Str
@@ -273,10 +273,10 @@ expect login_for(Anonymous, NoProblem) == login_page(
 )
 expect
 	login_for(Anonymous, Problem("No <match>."))
-		== login_page("<p>No &lt;match&gt;.</p>\n", { name_focus: "", code_focus: "" })
+		== login_page("<p class=\"problem\">No &lt;match&gt;.</p>\n", { name_focus: "", code_focus: "" })
 expect
 	login_for(Anonymous, CodeProblem("No <code>."))
-		== login_page("<p>No &lt;code&gt;.</p>\n", { name_focus: "", code_focus: " autofocus" })
+		== login_page("<p class=\"problem\">No &lt;code&gt;.</p>\n", { name_focus: "", code_focus: " autofocus" })
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
 		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
@@ -292,10 +292,11 @@ expect
 		}).to_utf8(),
 	).contains("<h1>Sign in</h1>\n<p><a href=\"/login/github/start?next=/chat/dm/1_1/plans\">Sign in or sign up with GitHub</a></p>\n<p>Already have an account? Sign in with your password, then link GitHub.</p>\n<form method=\"post\" action=\"/login\">")
 # The join page: a hidden field for the code, the name and a new password,
-# then the script that reads the code from the link.
+# then the script that draws the page as a card and the one that reads the
+# code from the link.
 expect
 	JoinPage.join.to_utf8()
-		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
+		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
 
 ## The words above the form that asks a new human for a name.
 sign_up_words : Str
@@ -310,7 +311,7 @@ expect {
 		problem: NoProblem,
 		login_note: NoNote,
 	}).to_utf8()
-		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\" value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n".to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\" value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()
 }
 expect
 	SignInPage.github_sign_up({
@@ -318,7 +319,7 @@ expect
 		problem: Problem("The <name> is taken."),
 		login_note: NoNote,
 	}).to_utf8()
-		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\"></p>\n<button>Join</button></form>\n".to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p class=\"problem\">The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\"></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()
 # A login not offered says why, above the form.
 expect
 	[

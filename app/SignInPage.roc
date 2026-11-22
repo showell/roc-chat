@@ -2,11 +2,14 @@
 ## `SignInRoute` serves at `/login` and `GitHubRoute` shows again when a
 ## sign-in fails, and the page that asks a human GitHub vouched for, who has
 ## no account yet, to choose a name (`github_sign_up`, `GitHubRoute`'s).
-## Whether the server offers GitHub at all is `GitHubOffer`.
+## Whether the server offers GitHub at all is `GitHubOffer`. Each page for
+## no one ends with app/sign-in.js, which draws it as a card
+## (`Script.signed_out_scripts`).
 import Escape
 import Html
 import Name
 import PageKit
+import Script
 import SignedIn
 import TrustedHtml
 
@@ -21,8 +24,9 @@ SignInPage :: [].{
 	code_path = "/login/code"
 
 	## The sign-in page, for `viewer`. For no one: `problem` when there is
-	## one; when `github` offers one, a link to sign in or sign up with
-	## GitHub, going to `next`, and a line for those with a password; then a
+	## one, marked as the problem (`PageKit.problem`); when `github` offers
+	## one, a link to sign in or sign up with GitHub, going to `next`, and a
+	## line for those with a password; then a
 	## form posting a name and a password to `/login`, its name field focused
 	## when the page opens fresh; then a form of one field posting a device
 	## code to `code_path`, focused after a refused code. Each form posts
@@ -39,7 +43,7 @@ SignInPage :: [].{
 		said =
 			match problem {
 				NoProblem => TrustedHtml.join([])
-				Problem(text) | CodeProblem(text) => PageKit.paragraph(text)
+				Problem(text) | CodeProblem(text) => PageKit.problem(text)
 			}
 		(name_focus, code_focus) =
 			match problem {
@@ -149,6 +153,7 @@ SignInPage :: [].{
 						PageKit.newline,
 						code_form,
 						PageKit.newline,
+						PageKit.scripts(Script.signed_out_scripts),
 					]),
 				})
 		}
@@ -172,7 +177,8 @@ SignInPage :: [].{
 	## choose a name: a form posting it to `/login/github/name`, filled in
 	## with `name`, at most `Name.longest` characters. The server carries who
 	## they are in a cookie (`GitHubSignUp`), so the form holds nothing else.
-	## Above it, `problem` when there is one, then what the name is for, and
+	## Above it, `problem` when there is one, marked as the problem
+	## (`PageKit.problem`), then what the name is for, and
 	## `login_note`: why GitHub's login was not offered, when it was not.
 	github_sign_up : {
 		name : SignInPage.NameField,
@@ -183,7 +189,7 @@ SignInPage :: [].{
 		said =
 			match problem {
 				NoProblem => TrustedHtml.join([])
-				Problem(text) => PageKit.paragraph(text)
+				Problem(text) => PageKit.problem(text)
 			}
 		noted =
 			match login_note {
@@ -234,6 +240,7 @@ SignInPage :: [].{
 				noted,
 				form,
 				PageKit.newline,
+				PageKit.scripts(Script.signed_out_scripts),
 			]),
 		})
 	}

@@ -1,7 +1,8 @@
 ## This module builds the join page, which `HumanInvitesRoute` serves at
 ## `/join`: where a human someone invited chooses their name and password.
 ## The page is the same for every invite: the invite's code is after the
-## link's `#`, which only the page's script (app/join.js) reads.
+## link's `#`, which only the page's script (app/join.js) reads; app/sign-in.js
+## draws the page as a card, as it draws the sign-in page.
 import Escape
 import Html
 import PageKit
