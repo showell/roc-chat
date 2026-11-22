@@ -39,10 +39,12 @@ chat.lynrummy.com {
 		max_size 10551296
 	}
 
-	# These security headers are lynrummy.com's.
+	# These security headers are lynrummy.com's. X-Content-Type-Options isn't
+	# among them: the app sends `nosniff` on every answer (app/HttpAnswer.roc),
+	# and a second copy from here made the header invalid to Mozilla's
+	# Observatory.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "SAMEORIGIN"
 	}
