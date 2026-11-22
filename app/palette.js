@@ -35,7 +35,7 @@
 // app/alert-icon.svg), lightened in the dark to read on its bar; chrome.js
 // writes a message's notice in it.
 //
-// Last, it is the one home of what drags: a link or an image drags nowhere
+// It is also the one home of what drags: a link or an image drags nowhere
 // in the chat, so the browser's own drag of one (a ghost with no place to
 // drop it, a Recent tile's above all) is cancelled at its dragstart, for
 // every page and whatever a script adds later (docs/design.md, "Pages").
