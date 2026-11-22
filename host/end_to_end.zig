@@ -2664,6 +2664,15 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
     const redeemed_session = try getAs(a, io, port, try cookieLine(a, re_redeemed), "/invites");
     try t.check("her session from before the redemption: its page a 303 to sign in; the redemption's own session: 200", old_session.status == 303 and
         std.mem.startsWith(u8, old_session.header("location") orelse "", "/login") and redeemed_session.status == 200);
+    // The pentest's finding, reproduced: the new link is shown to Steve, the
+    // inviter, alone, so the password it sets is his choice, not Debbie's.
+    // Her account's own proof (her password, her session, a device she
+    // holds) played no part: Steve redeemed it, chose a password she never
+    // chose, and is signed in as her, while hers no longer works.
+    const taken_over = try getAs(a, io, port, try cookieLine(a, re_redeemed), "/channels");
+    try t.check("TAKEOVER (the finding, open for the owner's call): the inviter, holding none of Debbie's proof, redeems the new link he alone was shown, chooses her password, and is signed in as her, not as himself (the admin's /channels a 403); her own password and session end", reinvited.status == 200 and
+        re_redeemed.status == 303 and redeemed_session.status == 200 and taken_over.status == 403 and
+        new_password.status == 303 and old_password.status == 401 and old_session.status == 303);
     const her_again = try postAs(a, io, port, try cookieLine(a, new_password), "/invites/4/again", "");
     const founder_again = try post(a, io, port, .{ .path = "/invites/1/again", .form = "" });
     const agent_again = try post(a, io, port, .{ .path = "/invites/2/again", .form = "" });
