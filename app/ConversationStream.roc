@@ -37,7 +37,6 @@ import StreamHolder
 import Topic
 import TrustedHtml
 import UnvalidatedString
-import UserId
 import Users
 
 ConversationStream :: [].{
