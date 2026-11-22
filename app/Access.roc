@@ -30,10 +30,10 @@ Access :: [].{
 		act : Access.Act,
 	} -> Try({}, [NotAMember, ScopeOff])
 	check = |{ acting, place, directory, act }|
-		if !Access.members({ place, directory }).contains(acting.user().id()) {
-			Err(NotAMember)
-		} else {
+		if Access.members({ place, directory }).contains(acting.user().id()) {
 			Access.check_credential({ acting, act })
+		} else {
+			Err(NotAMember)
 		}
 
 	## Whether `acting`'s credential lets it `act` anywhere: `Ok` for a
