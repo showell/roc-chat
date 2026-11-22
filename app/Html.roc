@@ -41,10 +41,12 @@ Html :: [].{
 		Button,
 		Details,
 		Div,
+		Fieldset,
 		Form,
 		H1,
 		Header,
 		Label,
+		Legend,
 		Li,
 		Nav,
 		Ol,
@@ -147,8 +149,8 @@ Html :: [].{
 	## site path; a link off the site, an `HttpsUrl`; a time; a form's field name, its method
 	## (always POST) and where it posts; whether a field is required, and
 	## its most characters, a number; an
-	## input's type, its value (a site path) and what a browser may fill it
-	## with; a script's source; a title of one or more names, which a browser
+	## input's type, whether a radio button starts chosen, its value (a site
+	## path) and what a browser may fill it with; a script's source; a title of one or more names, which a browser
 	## shows on hover; and a `data-` attribute for a page's
 	## scripts: its name after `data-`, a token, then its value, a token (or
 	## one after a `#`), a site path or a name.
@@ -166,7 +168,8 @@ Html :: [].{
 		Action(Html.SitePath),
 		Required,
 		MaxLength(U64),
-		InputType([Hidden, Password, Text]),
+		InputType([Hidden, Password, Radio, Text]),
+		Checked,
 		Value(Html.SitePath),
 		TokenValue(Html.Token),
 		NameValue(Name),
@@ -239,10 +242,12 @@ name_of = |name|
 		Button => "button"
 		Details => "details"
 		Div => "div"
+		Fieldset => "fieldset"
 		Form => "form"
 		H1 => "h1"
 		Header => "header"
 		Label => "label"
+		Legend => "legend"
 		Li => "li"
 		Nav => "nav"
 		Ol => "ol"
@@ -275,7 +280,9 @@ attribute = |given|
 		MaxLength(most) => " maxlength=\"${most.to_str()}\""
 		InputType(Hidden) => " type=\"hidden\""
 		InputType(Password) => " type=\"password\""
+		InputType(Radio) => " type=\"radio\""
 		InputType(Text) => " type=\"text\""
+		Checked => " checked"
 		Value(path) => " value=\"${path.to_str()}\""
 		TokenValue(chosen) => " value=\"${chosen.to_str()}\""
 		NameValue(name) => " value=\"${name.to_str()}\""
@@ -357,10 +364,12 @@ expect name_of(Article) == "article"
 expect name_of(Button) == "button"
 expect name_of(Details) == "details"
 expect name_of(Div) == "div"
+expect name_of(Fieldset) == "fieldset"
 expect name_of(Form) == "form"
 expect name_of(H1) == "h1"
 expect name_of(Header) == "header"
 expect name_of(Label) == "label"
+expect name_of(Legend) == "legend"
 expect name_of(Li) == "li"
 expect name_of(Nav) == "nav"
 expect name_of(P) == "p"
@@ -424,6 +433,8 @@ expect {
 	[
 		(InputType(Hidden), " type=\"hidden\""),
 		(InputType(Password), " type=\"password\""),
+		(InputType(Radio), " type=\"radio\""),
+		(Checked, " checked"),
 		(InputType(Text), " type=\"text\""),
 		(Value(path), " value=\"/agents\""),
 		(TokenValue(token("general")), " value=\"general\""),

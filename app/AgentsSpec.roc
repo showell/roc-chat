@@ -428,7 +428,7 @@ expect {
 		id: AgentKey.Id.from_str("1") ?? crash "AgentsSpec: a number",
 		hash,
 		now: Timestamp.at_second(0),
-		scope: KeyScope.everywhere,
+		scope: KeyScope.of({ read: Everywhere, post: Off }),
 	})
 	revoked = AgentKey.mint({
 		id: AgentKey.Id.from_str("2") ?? crash "AgentsSpec: a number",
@@ -440,7 +440,7 @@ expect {
 		id: AgentInvite.Id.from_str("1") ?? crash "AgentsSpec: a number",
 		hash,
 		now: Timestamp.at_second(0),
-		scope: KeyScope.everywhere,
+		scope: KeyScope.of({ read: Off, post: Everywhere }),
 	})
 	spent = AgentInvite.redeem({
 		invites: [
@@ -490,16 +490,26 @@ expect {
 	!plain.contains("/login/github/link")
 		and showing.contains("<form method=\"post\" action=\"/login/github/link\"><button>Link GitHub</button></form>")
 		and plain.contains("<form method=\"post\" action=\"/agents\"><textarea name=\"name\" required></textarea>")
-		and plain.contains("<form method=\"post\" action=\"/agents/2/invites\"><input type=\"hidden\" name=\"read\" value=\"everywhere\"><input type=\"hidden\" name=\"post\" value=\"everywhere\"><button>Invite CC</button></form>")
+		and plain.contains(cc_invite_form)
 		and plain.contains("action=\"/agents/2/keys/1/revoke\"")
 		and !plain.contains("action=\"/agents/2/keys/2/revoke\"")
 		and plain.contains("action=\"/agents/2/invites/1/revoke\"")
 		and !plain.contains("action=\"/agents/2/invites/2/revoke\"")
-		and plain.contains("<p>Key 2: revoked, expires 1971-01-01T00:00:00Z, read everywhere, post everywhere.</p>")
-		and plain.contains("<p>Invite 2: redeemed, expires 1970-01-01T00:10:00Z.</p>")
+		and plain.contains("<p>Key 1: active, expires 1971-01-01T00:00:00Z. Read: every channel it&#39;s a member of. Post: nowhere.</p>")
+		and plain.contains("<p>Key 2: revoked, expires 1971-01-01T00:00:00Z. Read: every channel it&#39;s a member of. Post: every channel it&#39;s a member of.</p>")
+		and plain.contains("<p>Invite 1: live, expires 1970-01-01T00:10:00Z. Read: nothing. Post: every channel it&#39;s a member of.</p>")
+		and plain.contains("<p>Invite 2: redeemed, expires 1970-01-01T00:10:00Z. Read: every channel it&#39;s a member of. Post: every channel it&#39;s a member of.</p>")
 		and !plain.contains("invite-code")
 		and showing.contains("<p class=\"invite-code\">2-${"ab".repeat(32)}</p>")
 		and not_kept.contains("action=\"/login/github/link\"")
 		and not_kept.contains("<p>Only the admin makes and manages agents.</p>")
 		and !not_kept.contains("action=\"/agents\"")
 }
+
+## The agents page's form inviting CC: a choice for `read` and one for
+## `post`, each a radio button of every channel CC is a member of, chosen,
+## and one of none, then the button. A human who only clicks the button
+## asks for what the invite route gave before it offered a choice.
+cc_invite_form : Str
+cc_invite_form =
+	"<form method=\"post\" action=\"/agents/2/invites\"><fieldset><legend>Read</legend><label><input type=\"radio\" name=\"read\" value=\"everywhere\" checked> every channel it&#39;s a member of</label> <label><input type=\"radio\" name=\"read\" value=\"off\"> nothing</label></fieldset><fieldset><legend>Post</legend><label><input type=\"radio\" name=\"post\" value=\"everywhere\" checked> every channel it&#39;s a member of</label> <label><input type=\"radio\" name=\"post\" value=\"off\"> nowhere</label></fieldset><button>Invite CC</button></form>\n"

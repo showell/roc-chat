@@ -1,6 +1,7 @@
 ## This module builds the agents page, which `AgentsRoute` serves at
 ## `/agents`: the admin's agents, each with its keys and its invites, and the
-## buttons that make, invite and revoke them. Any other human sees a line
+## forms that make, invite and revoke them, inviting with a choice of how
+## far the agent's key reads and posts. Any other human sees a line
 ## saying agents are the admin's. A human with no GitHub account yet may be
 ## offered a button that links one (`GitHubLinkOffer`, which `GitHubRoute`
 ## decides).
@@ -36,9 +37,9 @@ AgentsPage :: [].{
 	GitHubLinkOffer : [LinkOffered, LinkNotOffered]
 
 	## The agents page, for `viewer`: when they keep agents (`Kept`, the
-	## admin), a form that makes an agent, then each agent with a button that
-	## invites it, and its keys and invites, each live one with a button that
-	## revokes it; else (`NotTheKeeper`) a line saying agents are the admin's.
+	## admin), a form that makes an agent, then each agent with a form that
+	## invites it (`invite_form`), and its keys and invites, each with its
+	## scope and each live one with a button that revokes it; else (`NotTheKeeper`) a line saying agents are the admin's.
 	## When an invite was just made, its code comes first (`shown`), the one
 	## time it is shown. Last, when `github_link` offers it, a button that
 	## links GitHub. A viewer whose session a device code started sees no
@@ -121,9 +122,9 @@ AgentsPage :: [].{
 	}
 }
 
-## One agent's part of the agents page: its name and id, the button that
-## invites it, then its keys and its invites, each live one with a button
-## that revokes it; the buttons left out `WithoutButtons`.
+## One agent's part of the agents page: its name and id, the form that
+## invites it, then its keys and its invites, each with its scope and each
+## live one with a button that revokes it; the buttons left out `WithoutButtons`.
 agent_section : AgentsPage.AgentSummary, [WithButtons, WithoutButtons] -> TrustedHtml
 agent_section = |{ agent, keys, invites }, buttons| {
 	folder = "/agents/${agent.id().to_str()}"
@@ -149,10 +150,8 @@ agent_section = |{ agent, keys, invites }, buttons| {
 							Revoked => "revoked"
 						}
 					expiry = time_text(key.expires())
-					read_word = KeyScope.reach_word(key.scope().read())
-					post_word = KeyScope.reach_word(key.scope().post())
 					said =
-						"Key ${key.id().to_str()}: ${state_word}, expires ${expiry}, read ${read_word}, post ${post_word}."
+						"Key ${key.id().to_str()}: ${state_word}, expires ${expiry}. ${scope_text(key.scope())}"
 					revoke =
 						match key.state() {
 							Active => PageKit.post_button({
@@ -170,7 +169,8 @@ agent_section = |{ agent, keys, invites }, buttons| {
 				|invite| {
 					state_word = invite_state_word(invite.state())
 					expiry = time_text(invite.expires())
-					said = "Invite ${invite.id().to_str()}: ${state_word}, expires ${expiry}."
+					said =
+						"Invite ${invite.id().to_str()}: ${state_word}, expires ${expiry}. ${scope_text(invite.scope())}"
 					revoke =
 						match invite.state() {
 							Live => PageKit.post_button({
@@ -187,25 +187,18 @@ agent_section = |{ agent, keys, invites }, buttons| {
 	])
 }
 
-## The button that invites the agent named `name`, whose folder is
-## `folder`: a form posting the scope its key will have, `read` and `post`,
-## each `everywhere`, since the invite route requires both and the page
-## offers no other choice yet.
+## The form that invites the agent named `name`, whose folder is `folder`:
+## a choice of how far its key will read and how far it will post, each
+## starting at every channel the agent is a member of, then the button.
 invite_form : { folder : Str, name : Str } -> TrustedHtml
-invite_form = |{ folder, name }| {
-	reach_input = |field|
-		Html.input([
-			InputType(Hidden),
-			FieldName(PageKit.token(field)),
-			TokenValue(PageKit.token(KeyScope.reach_word(Everywhere))),
-		])
+invite_form = |{ folder, name }|
 	TrustedHtml.join([
 		Html.element({
 			name: Form,
 			attributes: [MethodPost, Action(PageKit.site_path("${folder}/invites"))],
 			inner: TrustedHtml.join([
-				reach_input("read"),
-				reach_input("post"),
+				reach_choices(Read),
+				reach_choices(Post),
 				Html.element({
 					name: Button,
 					attributes: [],
@@ -215,7 +208,78 @@ invite_form = |{ folder, name }| {
 		}),
 		PageKit.newline,
 	])
+
+## One power's choices in the invite form: its name, then a radio button
+## for each reach, posting its word as the field `read` or `post`, the
+## first (every channel the agent is a member of) chosen.
+reach_choices : [Read, Post] -> TrustedHtml
+reach_choices = |power| {
+	choice = |reach|
+		Html.element({
+			name: Label,
+			attributes: [],
+			inner: TrustedHtml.join([
+				Html.input(
+					List.concat(
+						[
+							InputType(Radio),
+							FieldName(PageKit.token(power_field(power))),
+							TokenValue(PageKit.token(KeyScope.reach_word(reach))),
+						],
+						match reach {
+							Everywhere => [Checked]
+							Off => []
+						},
+					),
+				),
+				Escape.text(" ${reach_words(power, reach)}"),
+			]),
+		})
+	Html.element({
+		name: Fieldset,
+		attributes: [],
+		inner: TrustedHtml.join([
+			Html.element({
+				name: Legend,
+				attributes: [],
+				inner: Escape.text(power_name(power)),
+			}),
+			choice(Everywhere),
+			PageKit.space,
+			choice(Off),
+		]),
+	})
 }
+
+## A key's or an invite's scope in the words the invite form chooses it by.
+scope_text : KeyScope -> Str
+scope_text = |scope|
+	"${power_name(Read)}: ${reach_words(Read, scope.read())}. ${power_name(Post)}: ${reach_words(Post, scope.post())}."
+
+power_name : [Read, Post] -> Str
+power_name = |power|
+	match power {
+		Read => "Read"
+		Post => "Post"
+	}
+
+## The form field that carries `power`'s reach (`Agents.scope_from_form`).
+power_field : [Read, Post] -> Str
+power_field = |power|
+	match power {
+		Read => "read"
+		Post => "post"
+	}
+
+## How far `power` reaches, said for a reader. A key reaches no DM, as
+## agents take part only in channels (`Access`).
+reach_words : [Read, Post], KeyScope.Reach -> Str
+reach_words = |power, reach|
+	match (power, reach) {
+		(_, Everywhere) => "every channel it's a member of"
+		(Read, Off) => "nothing"
+		(Post, Off) => "nowhere"
+	}
 
 invite_state_word : AgentInvite.State -> Str
 invite_state_word = |state|
