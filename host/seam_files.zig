@@ -1,9 +1,11 @@
 //! **THE FILE PRIMITIVES**, part of the seam (host/seam.zig): Host.roc's
 //! reads, writes and listings under the data root, and the data disk's
-//! free bytes, each answered by host/file_primitives.zig.
+//! free bytes, each answered by host/file_primitives.zig; and the folders
+//! watched for changes, by host/folder_watch.zig.
 
 const std = @import("std");
 const files = @import("file_primitives.zig");
+const folder_watch = @import("folder_watch.zig");
 const seam_call = @import("seam_call.zig");
 const RocBytes = seam_call.RocBytes;
 const RocBytesList = seam_call.RocBytesList;
@@ -24,7 +26,7 @@ pub const BinaryReadStatus = enum(u8) { failed, found, missing, path_refused };
 pub const BinaryReadRec = extern struct { bytes: RocBytes, status: BinaryReadStatus };
 
 comptime {
-    for (.{ ReadStatus, BinaryReadStatus, files.AppendAnswer, files.CreateAnswer, files.BinaryCreateAnswer, files.ReplaceAnswer, files.MakeDirectoryAnswer }) |E| {
+    for (.{ ReadStatus, BinaryReadStatus, files.AppendAnswer, files.CreateAnswer, files.BinaryCreateAnswer, files.ReplaceAnswer, files.MakeDirectoryAnswer, folder_watch.WatchAnswer, folder_watch.Reach }) |E| {
         std.debug.assert(@sizeOf(E) == 1);
     }
 }
@@ -85,4 +87,17 @@ pub export fn list_names_in_directory(path: RocBytes) callconv(.c) ListRec {
 
 pub export fn free_bytes_on_data_disk() callconv(.c) u64 {
     return root_of("free_bytes_on_data_disk").free_bytes_on_data_disk();
+}
+
+fn watch_of(comptime what: []const u8) *folder_watch.FolderWatch {
+    return call(what).watch orelse @panic(what ++ ": this call watches no folders (only the server's does)");
+}
+
+pub export fn watch_folder_for_changes(path: RocBytes, reach: folder_watch.Reach) callconv(.c) folder_watch.WatchAnswer {
+    const what = "watch_folder_for_changes";
+    return watch_of(what).watch(root_of(what), path.slice(), reach);
+}
+
+pub export fn count_changes_in_watched_folders() callconv(.c) u64 {
+    return watch_of("count_changes_in_watched_folders").count_changes();
 }

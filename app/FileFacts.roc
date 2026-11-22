@@ -169,6 +169,24 @@ FileFacts :: [].{
 		}
 	}
 
+	## The folder `path` watched for changes from now on (`count_changes!`),
+	## and with `WithItsFolders` each folder directly in it too; unless it
+	## is not there (`Missing`), or the host refused.
+	watch_folder! : Str, [Alone, WithItsFolders] => Try({}, [Missing, PathRefused, Failed])
+	watch_folder! = |path, reach|
+		match Host.watch_folder_for_changes!(path.to_utf8(), reach) {
+			Watched => Ok({})
+			Missing => Err(Missing)
+			PathRefused => Err(PathRefused)
+			Failed => Err(Failed)
+		}
+
+	## How many changes the watched folders (`watch_folder!`) have had since
+	## the server started: a file or folder made, written, renamed or
+	## removed directly in one, by the server or anyone else. It only grows.
+	count_changes! : {} => U64
+	count_changes! = |{}| Host.count_changes_in_watched_folders!({})
+
 	## The folder `path`, and those above it, made as needed.
 	make_folder! : Str => Try({}, [PathRefused, Failed])
 	make_folder! = |path|

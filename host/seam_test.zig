@@ -213,9 +213,9 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
-test "roc glue declares every function the seam's parts have, and no other: twenty-nine primitives and five entries" {
+test "roc glue declares every function the seam's parts have, and no other: thirty-three primitives and five entries" {
     try std.testing.expectEqual(seam_names.len, glue_names.len);
-    try std.testing.expectEqual(29, primitive_names.len);
+    try std.testing.expectEqual(33, primitive_names.len);
     try std.testing.expectEqual(5, entry_names.len);
 }
 

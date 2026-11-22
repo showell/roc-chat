@@ -296,6 +296,7 @@ apoorvavpendse@gmail.com would be better
   The first start writes Steve's `name`, `general.channel` holding `1`, and the counter last; a data folder holding accounts or channels and no counter is part of a chat, and the server refuses to start on it.
 
   The admin creates a channel at `/channels` and adds or removes its members, humans or agents, on its page, `/channels/<name>` (`app/ChannelMembers.roc`), which rewrites its `.channel` file whole, atomically; an admin may still edit the file by hand, as in the Zig chat.
+  The server keeps the directory's files (the counter, each account's `name`, `name-released` and `owner`, and every `.channel`) in memory between requests, and reads them again once the kernel says anything in their folders changed (`app/DirectoryCache.roc`), so an edit by hand, like the app's own writes, is seen by the next request.
   Removing a member never removes their account or their id.
   A secret never reaches the disk: a key's and an invite's are shown once and kept only as their hash, and a password only as its bcrypt hash.
 

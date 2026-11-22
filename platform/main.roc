@@ -40,6 +40,7 @@ platform ""
 		"append_text_to_search_index_key": Host.append_text_to_search_index_key!,
 		"append_utf8_bytes_to_file": Host.append_utf8_bytes_to_file!,
 		"bcrypt_hash_of_password": Host.bcrypt_hash_of_password!,
+		"count_changes_in_watched_folders": Host.count_changes_in_watched_folders!,
 		"crc32_of_bytes": Host.crc32_of_bytes!,
 		"create_file_with_binary_bytes_unless_it_exists": Host.create_file_with_binary_bytes_unless_it_exists!,
 		"create_file_with_utf8_bytes_unless_it_exists": Host.create_file_with_utf8_bytes_unless_it_exists!,
@@ -59,12 +60,15 @@ platform ""
 		"password_matches_bcrypt_hash": Host.password_matches_bcrypt_hash!,
 		"publish_bytes_to_streams_on_key": Host.publish_bytes_to_streams_on_key!,
 		"read_binary_bytes_from_file": Host.read_binary_bytes_from_file!,
+		"read_bytes_kept_under_key": Host.read_bytes_kept_under_key!,
 		"read_second_kept_under_key": Host.read_second_kept_under_key!,
 		"read_utf8_bytes_from_file": Host.read_utf8_bytes_from_file!,
+		"replace_bytes_kept_under_key": Host.replace_bytes_kept_under_key!,
 		"replace_file_with_utf8_bytes_atomically": Host.replace_file_with_utf8_bytes_atomically!,
 		"replace_second_kept_under_key": Host.replace_second_kept_under_key!,
 		"search_index_keys_not_held": Host.search_index_keys_not_held!,
 		"sha256_of_bytes": Host.sha256_of_bytes!,
+		"watch_folder_for_changes": Host.watch_folder_for_changes!,
 		"write_line_to_server_log": Host.write_line_to_server_log!,
 	}
 	targets: {

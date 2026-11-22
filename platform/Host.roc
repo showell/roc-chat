@@ -112,6 +112,25 @@ Host := [].{
 		],
 	}
 
+	## **A WATCH FOR CHANGES** (host/folder_watch.zig): the folder, and with
+	## `WithItsFolders` each folder directly in it, watched from now on, a
+	## folder already watched staying so; `Missing` when it is not there;
+	## `Failed`, logged, when the kernel refuses a watch, and then some may
+	## not be watched.
+	watch_folder_for_changes! : List(U8),
+	[Alone, WithItsFolders] => [
+		Failed,
+		Missing,
+		PathRefused,
+		Watched,
+	]
+
+	## How many changes the watched folders have had since the server
+	## started, a count that only grows: a file or folder made, written,
+	## renamed, removed or given new rights directly in one, by the server
+	## or anyone else, and a watched folder moved or removed. A read is none.
+	count_changes_in_watched_folders! : {} => U64
+
 	## **THE CLOCK**: whole seconds since 1970-01-01T00:00:00Z.
 	current_utc_seconds_since_epoch! : {} => I64
 
@@ -153,6 +172,19 @@ Host := [].{
 	## none is.
 	read_second_kept_under_key! : List(U8) => {
 		second : I64,
+		status : [Found, Missing],
+	}
+
+	## `bytes` kept in the server's memory under `key`, 1 to 64 bytes, in
+	## place of what it held, until the server stops. At most 16 keys and
+	## 64 MiB in all: past either, or with a key outside its bounds, the
+	## server stops, as the app's bug.
+	replace_bytes_kept_under_key! : List(U8), List(U8) => {}
+
+	## The bytes kept under `key` (`Found`), or `Missing`, `bytes` empty,
+	## when none are.
+	read_bytes_kept_under_key! : List(U8) => {
+		bytes : List(U8),
 		status : [Found, Missing],
 	}
 

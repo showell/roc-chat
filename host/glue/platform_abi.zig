@@ -883,6 +883,52 @@ comptime {
     }
 }
 
+/// Element type for __AnonStruct_1adedc3eeee712e
+pub const __AnonStruct_1adedc3eeee712e = if (@sizeOf(usize) == 4) extern struct {
+    bytes: RocListWith(u8, false),
+    status: FoundOrMissing,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.bytes.decref(roc_host);
+        value.status.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.bytes.incref(amount);
+        value.status.incref(amount);
+    }
+} else extern struct {
+    bytes: RocListWith(u8, false),
+    status: FoundOrMissing,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.bytes.decref(roc_host);
+        value.status.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.bytes.incref(amount);
+        value.status.incref(amount);
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct_1adedc3eeee712e) != 32) @compileError("__AnonStruct_1adedc3eeee712e size mismatch");
+        if (@alignOf(__AnonStruct_1adedc3eeee712e) != 8) @compileError("__AnonStruct_1adedc3eeee712e alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(__AnonStruct_1adedc3eeee712e) != 16) @compileError("__AnonStruct_1adedc3eeee712e size mismatch");
+        if (@alignOf(__AnonStruct_1adedc3eeee712e) != 4) @compileError("__AnonStruct_1adedc3eeee712e alignment mismatch");
+    }
+}
+
 /// Element type for __AnonStruct_68517bf126ca0bca
 pub const __AnonStruct_68517bf126ca0bca = if (@sizeOf(usize) == 4) extern struct {
     unsearchable: u64,
@@ -1226,7 +1272,7 @@ pub const __AnonStruct_e8efb18a305a4fe8 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        decrefListOfListOfType38(value.stream_keys, roc_host);
+        decrefListOfListOfType41(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1253,7 +1299,7 @@ pub const __AnonStruct_e8efb18a305a4fe8 = if (@sizeOf(usize) == 4) extern struct
         value.body.decref(roc_host);
         decrefListOf__AnonStruct_288155b7e13051cb(value.headers, roc_host);
         value.stream_holder.decref(roc_host);
-        decrefListOfListOfType38(value.stream_keys, roc_host);
+        decrefListOfListOfType41(value.stream_keys, roc_host);
         value.kind.decref(roc_host);
     }
 
@@ -1669,6 +1715,64 @@ comptime {
     if (@sizeOf(usize) == 4) {
         if (@sizeOf(FailedOrMadeOrPathRefused) != 1) @compileError("FailedOrMadeOrPathRefused size mismatch");
         if (@alignOf(FailedOrMadeOrPathRefused) != 1) @compileError("FailedOrMadeOrPathRefused alignment mismatch");
+    }
+}
+
+/// Tag union: FailedOrMissingOrPathRefusedOrWatched
+pub const FailedOrMissingOrPathRefusedOrWatched = enum(u8) {
+    failed = 0,
+    missing = 1,
+    path_refused = 2,
+    watched = 3,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(FailedOrMissingOrPathRefusedOrWatched) != 1) @compileError("FailedOrMissingOrPathRefusedOrWatched size mismatch");
+        if (@alignOf(FailedOrMissingOrPathRefusedOrWatched) != 1) @compileError("FailedOrMissingOrPathRefusedOrWatched alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(FailedOrMissingOrPathRefusedOrWatched) != 1) @compileError("FailedOrMissingOrPathRefusedOrWatched size mismatch");
+        if (@alignOf(FailedOrMissingOrPathRefusedOrWatched) != 1) @compileError("FailedOrMissingOrPathRefusedOrWatched alignment mismatch");
+    }
+}
+
+/// Tag union: AloneOrWithItsFolders
+pub const AloneOrWithItsFolders = enum(u8) {
+    alone = 0,
+    with_its_folders = 1,
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(AloneOrWithItsFolders) != 1) @compileError("AloneOrWithItsFolders size mismatch");
+        if (@alignOf(AloneOrWithItsFolders) != 1) @compileError("AloneOrWithItsFolders alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(AloneOrWithItsFolders) != 1) @compileError("AloneOrWithItsFolders size mismatch");
+        if (@alignOf(AloneOrWithItsFolders) != 1) @compileError("AloneOrWithItsFolders alignment mismatch");
     }
 }
 
@@ -2088,6 +2192,27 @@ comptime {
     }
 }
 
+/// Return type record for Host.read_bytes_kept_under_key!
+/// Fields ordered by compiler-emitted ABI offsets.
+pub const HostRead_bytes_kept_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
+    bytes: RocListWith(u8, false),
+    status: FoundOrMissing,
+} else extern struct {
+    bytes: RocListWith(u8, false),
+    status: FoundOrMissing,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(HostRead_bytes_kept_under_keyRetRecord) != 32) @compileError("HostRead_bytes_kept_under_keyRetRecord size mismatch");
+        if (@alignOf(HostRead_bytes_kept_under_keyRetRecord) != 8) @compileError("HostRead_bytes_kept_under_keyRetRecord alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(HostRead_bytes_kept_under_keyRetRecord) != 16) @compileError("HostRead_bytes_kept_under_keyRetRecord size mismatch");
+        if (@alignOf(HostRead_bytes_kept_under_keyRetRecord) != 4) @compileError("HostRead_bytes_kept_under_keyRetRecord alignment mismatch");
+    }
+}
+
 /// Return type record for Host.read_second_kept_under_key!
 /// Fields ordered by compiler-emitted ABI offsets.
 pub const HostRead_second_kept_under_keyRetRecord = if (@sizeOf(usize) == 4) extern struct {
@@ -2297,6 +2422,13 @@ pub const HostRead_binary_bytes_from_fileArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.read_bytes_kept_under_key!
+/// Roc signature: List(U8) => { bytes : List(U8), status : [Found, Missing] }
+/// Refcounted fields are owned by the hosted function.
+pub const HostRead_bytes_kept_under_keyArgs = extern struct {
+    arg0: RocListWith(u8, false),
+};
+
 /// Arguments for Host.read_second_kept_under_key!
 /// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
 /// Refcounted fields are owned by the hosted function.
@@ -2309,6 +2441,14 @@ pub const HostRead_second_kept_under_keyArgs = extern struct {
 /// Refcounted fields are owned by the hosted function.
 pub const HostRead_utf8_bytes_from_fileArgs = extern struct {
     arg0: RocListWith(u8, false),
+};
+
+/// Arguments for Host.replace_bytes_kept_under_key!
+/// Roc signature: List(U8), List(U8) => {}
+/// Refcounted fields are owned by the hosted function.
+pub const HostReplace_bytes_kept_under_keyArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: RocListWith(u8, false),
 };
 
 /// Arguments for Host.replace_file_with_utf8_bytes_atomically!
@@ -2341,6 +2481,14 @@ pub const HostSha256_of_bytesArgs = extern struct {
     arg0: RocListWith(u8, false),
 };
 
+/// Arguments for Host.watch_folder_for_changes!
+/// Roc signature: List(U8), [Alone, WithItsFolders] => [Failed, Missing, PathRefused, Watched]
+/// Refcounted fields are owned by the hosted function.
+pub const HostWatch_folder_for_changesArgs = extern struct {
+    arg0: RocListWith(u8, false),
+    arg1: AloneOrWithItsFolders,
+};
+
 /// Arguments for Host.write_line_to_server_log!
 /// Roc signature: List(U8) => {}
 /// Refcounted fields are owned by the hosted function.
@@ -2358,6 +2506,7 @@ pub const HostGithub_identity_for_code = __AnonStruct_c21c6671fc9a3d71;
 pub const HostGithub_sign_in_settings = __AnonStruct_50209078edfd2434;
 pub const HostList_names_in_directory = __AnonStruct_e6f4ccf1b682ebd2;
 pub const HostRead_binary_bytes_from_file = __AnonStruct_b5c92d79cb1e25e2;
+pub const HostRead_bytes_kept_under_key = __AnonStruct_1adedc3eeee712e;
 pub const HostRead_second_kept_under_key = __AnonStruct_2cb02b6a756bd33f;
 pub const HostRead_utf8_bytes_from_file = __AnonStruct_c2b10c7c13915346;
 pub const HostReplace_second_kept_under_key = __AnonStruct_2cb02b6a756bd33f;
@@ -2393,6 +2542,12 @@ pub const __AnonStruct_e6f4ccf1b682ebd2Release = struct {
 
 pub const __AnonStruct_2cb02b6a756bd33fRelease = struct {
     pub fn release(value: __AnonStruct_2cb02b6a756bd33f, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
+
+pub const __AnonStruct_1adedc3eeee712eRelease = struct {
+    pub fn release(value: __AnonStruct_1adedc3eeee712e, roc_host: *RocHost) void {
         value.decref(roc_host);
     }
 };
@@ -2499,7 +2654,7 @@ pub fn decrefListOf__AnonStruct_288155b7e13051cb(value: RocList(__AnonStruct_288
 ///
 /// The allocation's final reference is claimed atomically before any element
 /// is read, so concurrent owners cannot skip or duplicate element teardown.
-pub fn decrefListOfListOfType38(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
+pub fn decrefListOfListOfType41(value: RocList(RocListWith(u8, false)), roc_host: *RocHost) void {
     value.deinitWith(RocListSpineRelease(RocListWith(u8, false)), roc_host);
 }
 
@@ -2510,6 +2665,7 @@ fn rocReleasePolicy(comptime T: type) type {
     if (T == __AnonStruct_b5c92d79cb1e25e2) return __AnonStruct_b5c92d79cb1e25e2Release;
     if (T == __AnonStruct_e6f4ccf1b682ebd2) return __AnonStruct_e6f4ccf1b682ebd2Release;
     if (T == RocList(RocListWith(u8, false))) return RocListRelease(RocList(RocListWith(u8, false)), RocListSpineRelease(RocListWith(u8, false)));
+    if (T == __AnonStruct_1adedc3eeee712e) return __AnonStruct_1adedc3eeee712eRelease;
     if (T == RocListWith(u64, false)) return RocListSpineRelease(RocListWith(u64, false));
     if (T == __AnonStruct_68517bf126ca0bca) return __AnonStruct_68517bf126ca0bcaRelease;
     if (T == RocList(__AnonStruct_693f516d634a2126)) return RocListRelease(RocList(__AnonStruct_693f516d634a2126), __AnonStruct_693f516d634a2126Release);
@@ -2574,6 +2730,10 @@ pub extern fn append_utf8_bytes_to_file(arg0: RocListWith(u8, false), arg1: RocL
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn bcrypt_hash_of_password(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Hosted symbol for Host.count_changes_in_watched_folders!
+/// Roc signature: {} => U64
+pub extern fn count_changes_in_watched_folders() callconv(.c) u64;
 
 /// Hosted symbol for Host.crc32_of_bytes!
 /// Roc signature: List(U8) => U32
@@ -2712,6 +2872,14 @@ pub extern fn publish_bytes_to_streams_on_key(arg0: RocListWith(u8, false), arg1
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn read_binary_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_b5c92d79cb1e25e2;
 
+/// Hosted symbol for Host.read_bytes_kept_under_key!
+/// Roc signature: List(U8) => { bytes : List(U8), status : [Found, Missing] }
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn read_bytes_kept_under_key(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_1adedc3eeee712e;
+
 /// Hosted symbol for Host.read_second_kept_under_key!
 /// Roc signature: List(U8) => { second : I64, status : [Found, Missing] }
 /// Owned arguments. Release each exactly once before returning, unless it is
@@ -2726,6 +2894,14 @@ pub extern fn read_second_kept_under_key(arg0: RocListWith(u8, false)) callconv(
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn read_utf8_bytes_from_file(arg0: RocListWith(u8, false)) callconv(.c) __AnonStruct_c2b10c7c13915346;
+
+/// Hosted symbol for Host.replace_bytes_kept_under_key!
+/// Roc signature: List(U8), List(U8) => {}
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+///     arg1.decref(roc_host);
+pub extern fn replace_bytes_kept_under_key(arg0: RocListWith(u8, false), arg1: RocListWith(u8, false)) callconv(.c) void;
 
 /// Hosted symbol for Host.replace_file_with_utf8_bytes_atomically!
 /// Roc signature: List(U8), List(U8) => [Failed, MissingDirectory, NotUtf8, PathRefused, Replaced]
@@ -2757,6 +2933,14 @@ pub extern fn search_index_keys_not_held(arg0: RocList(RocListWith(u8, false))) 
 ///     arg0.decref(roc_host);
 /// The result is owned by Roc: return exactly one owned reference.
 pub extern fn sha256_of_bytes(arg0: RocListWith(u8, false)) callconv(.c) RocListWith(u8, false);
+
+/// Hosted symbol for Host.watch_folder_for_changes!
+/// Roc signature: List(U8), [Alone, WithItsFolders] => [Failed, Missing, PathRefused, Watched]
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+///     arg1.decref(roc_host);
+pub extern fn watch_folder_for_changes(arg0: RocListWith(u8, false), arg1: AloneOrWithItsFolders) callconv(.c) FailedOrMissingOrPathRefusedOrWatched;
 
 /// Hosted symbol for Host.write_line_to_server_log!
 /// Roc signature: List(U8) => {}

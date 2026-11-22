@@ -408,7 +408,11 @@ expect
 		"/devices",
 	].all(
 		|path| {
-			choice = Route.choose({ method: "GET".to_utf8(), path: path.to_utf8(), directory: FirstStart.first_directory })
+			choice = Route.choose({
+				method: "GET".to_utf8(),
+				path: path.to_utf8(),
+				directory: FirstStart.first_directory,
+			})
 			!DiskFloor.adds_data(choice) and upload_asked(choice) == NoUpload
 		},
 	)

@@ -1,14 +1,16 @@
 ## This module keeps the chat's directory, its users and channels, in the
 ## data folder, through `DirectoryFiles` and `AccountFiles`. It prepares the folder when the server
 ## starts, writing the first start's directory (`FirstStart`) into an empty
-## one, and reads the directory back on each request, refusing a folder
-## that holds only part of one. It is the module to swap, with
+## one, and reads the directory back on each request, from memory while
+## its files are unchanged (`DirectoryCache`), refusing a folder that holds
+## only part of one. It is the module to swap, with
 ## those two, for a chat kept somewhere other than files.
 import pf.Http
 import AccountFiles
 import ChannelName
 import Channels
 import Directory
+import DirectoryCache
 import DirectoryFiles
 import FileFacts
 import FirstStart
@@ -45,7 +47,7 @@ DirectoryStore :: [].{
 	## The directory as the data folder holds it now; or why not.
 	load_directory! : {} => Try(Directory, [FileSystem(FileFacts.Fault), StoredDirectory(Str)])
 	load_directory! = |{}| {
-		files = DirectoryFiles.read_directory_files!({}) ? |fault| FileSystem(fault)
+		files = DirectoryCache.read_directory_files!({}) ? |fault| FileSystem(fault)
 		directory_from_files(files)
 	}
 

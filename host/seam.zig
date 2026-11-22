@@ -35,6 +35,7 @@ pub const primitive_parts = .{
     @import("seam_system.zig"),
     @import("seam_streams.zig"),
     @import("seam_remembered_seconds.zig"),
+    @import("seam_kept_bytes.zig"),
     @import("seam_search.zig"),
     @import("seam_sign_in.zig"),
     @import("seam_github.zig"),

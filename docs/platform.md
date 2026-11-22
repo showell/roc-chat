@@ -14,10 +14,11 @@ A primitive is declared in `platform/Host.roc` and answered in Zig by a `pub exp
 |---|---|
 | `host/seam_call.zig` | Not a primitive's home: the call, its arena, the Roc lists and the runtime every part stands on. |
 | `host/seam_entries.zig` | The app's five entries and the records of `platform/Http.roc`. |
-| `host/seam_files.zig` | Files under the data root, and the data disk's free bytes (`host/file_primitives.zig`). |
+| `host/seam_files.zig` | Files under the data root, and the data disk's free bytes (`host/file_primitives.zig`); the folders watched for changes (`host/folder_watch.zig`). |
 | `host/seam_system.zig` | The clock, random bytes, SHA-256, CRC-32 and the server's log. |
 | `host/seam_streams.zig` | A frame published on a key, a holder's streams ended (`host/bus.zig`, `host/sse.zig`). |
 | `host/seam_remembered_seconds.zig` | The seconds kept under a key (`host/remembered_seconds.zig`). |
+| `host/seam_kept_bytes.zig` | The bytes kept under a key (`host/kept_bytes.zig`). |
 | `host/seam_search.zig` | The search index (`host/search_index.zig`). |
 | `host/seam_sign_in.zig` | bcrypt and the HMAC with the server's secret (`host/sign_in_primitives.zig`). |
 | `host/seam_github.zig` | GitHub's settings and its word on a code (`host/github_client.zig`). |
@@ -80,6 +81,12 @@ Makes each missing folder on the path and fsyncs its parent. Folders that alread
 
 **`list_names_in_directory! : List(U8) => { names : List(List(U8)), status : [Failed, Found, Missing, NotUtf8, PathRefused] }`**
 The folder's names, sorted bytewise, never one starting with `.`. A name that is not UTF-8 makes the answer `NotUtf8`. *Why:* to find a place's topics, and later the users.
+
+**`watch_folder_for_changes! : List(U8), [Alone, WithItsFolders] => [Failed, Missing, PathRefused, Watched]`**
+The folder watched for changes from now on, and with `WithItsFolders` each folder directly in it, through the kernel's inotify (`host/folder_watch.zig`); a folder already watched stays so. The folder is opened as a listing opens it, no link followed, and the watch is set on what was opened, through `/proc/self/fd`. `Missing` when it is not there; `Failed`, logged, when the kernel refuses a watch (too many, or no memory), and then some of the folders may not be watched. *Why:* the directory is kept in memory between requests (`app/DirectoryCache.roc`), and must be read again when anything in its folders changes.
+
+**`count_changes_in_watched_folders! : {} => U64`**
+How many changes the watched folders have had since the server started, a count that only grows: a file or folder made, written, renamed, removed or given new rights directly in one, by the server or by anyone else, and a watched folder moved or removed; a read is none, and a change the kernel's queue dropped counts as one. A fact: what to do with it is the app's. *Why:* the app takes the count before it reads a folder's files, and reads them again once it has moved, so an edit made by hand is seen by the next request as the app's own writes are.
 
 ## The clock and randomness
 
@@ -149,6 +156,12 @@ The second kept under the key in the server's memory, replaced by the one given:
 
 **`read_second_kept_under_key! : List(U8) => { second : I64, status : [Found, Missing] }`**
 The second kept under the key, `Found`, or `Missing`, `second` 0. *Why:* which humans a sidebar draws online.
+
+**`replace_bytes_kept_under_key! : List(U8), List(U8) => {}`**
+The bytes kept in the server's memory under the key, in place of what it held (`host/kept_bytes.zig`), as a second is kept above. A key is 1 to 64 bytes, at most 16 are kept and at most 64 MiB in all; past any bound, or with no memory, the server stops, as the app's bug. Never written to disk, so a restart forgets them. *Why:* the directory's files, as last read, so a request needn't read them again (`app/DirectoryCache.roc`).
+
+**`read_bytes_kept_under_key! : List(U8) => { bytes : List(U8), status : [Found, Missing] }`**
+The bytes kept under the key, `Found`, or `Missing`, `bytes` empty.
 
 **`write_line_to_server_log! : List(U8) => {}`**
 The line in the server's log as a warning, `app: <line>`, every byte that is not printable ASCII escaped, so no line forges another. *Why:* a limit the server's owner should hear of, such as sign-ups paused (`app/SignUpLimits.roc`), a device code form under a flood of guesses, or a human's damaged device code files (`app/DeviceCodeTallies.roc`, `app/DeviceCodeRoute.roc`).

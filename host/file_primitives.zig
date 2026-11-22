@@ -139,19 +139,27 @@ fn temporary_name(buf: []u8, name: []const u8) []const u8 {
 }
 
 /// **THE FILE CALLS A TEST COUNTS** (`DataRoot.calls_for_test`): each
-/// file read, binary or text; each folder listed; and each write, an
-/// append, a create, a replace or a folder made.
+/// file read, binary or text; each folder listed; each write, an append, a
+/// create, a replace or a folder made; and each folder watched
+/// (host/folder_watch.zig).
 pub const FileCalls = struct {
     reads: std.atomic.Value(u64) = .init(0),
     listings: std.atomic.Value(u64) = .init(0),
     writes: std.atomic.Value(u64) = .init(0),
+    watches: std.atomic.Value(u64) = .init(0),
 
     /// Every count back to 0.
     pub fn clear(calls: *FileCalls) void {
-        calls.reads.store(0, .monotonic);
-        calls.listings.store(0, .monotonic);
-        calls.writes.store(0, .monotonic);
+        for ([_]*std.atomic.Value(u64){ &calls.reads, &calls.listings, &calls.writes, &calls.watches }) |n| n.store(0, .monotonic);
     }
+};
+
+/// A folder opened to be listed or watched (`DataRoot.open_folder`).
+pub const FolderAnswer = union(enum) {
+    failed,
+    found: Io.Dir,
+    missing,
+    path_refused,
 };
 
 pub const DataRoot = struct {
@@ -170,7 +178,7 @@ pub const DataRoot = struct {
     calls_for_test: ?*FileCalls = null,
 
     /// The calls counted, by kind, when `calls_for_test` is set.
-    fn count(root: *const DataRoot, comptime kind: std.meta.FieldEnum(FileCalls)) void {
+    pub fn count(root: *const DataRoot, comptime kind: std.meta.FieldEnum(FileCalls)) void {
         if (root.calls_for_test) |calls| _ = @field(calls, @tagName(kind)).fetchAdd(1, .monotonic);
     }
 
@@ -399,18 +407,11 @@ pub const DataRoot = struct {
     pub fn list_names_in_directory(root: *const DataRoot, arena: std.mem.Allocator, path: []const u8) ListAnswer {
         const what = "list_names_in_directory";
         root.count(.listings);
-        if (!path_rule(path)) return .path_refused;
-        const parent = root.walk(path, .open) catch |e| return switch (e) {
-            error.IsLink => .path_refused,
-            error.FileNotFound, error.NotDir => .missing,
-            else => root.failed(what, path, e, @as(ListAnswer, .failed)),
-        };
-        defer root.close_walked(parent);
-        const last = std.fs.path.basename(path);
-        var dir = parent.openDir(root.io, last, .{ .iterate = true, .follow_symlinks = false }) catch |e| return switch (link_or(root, parent, last, e)) {
-            error.IsLink => .path_refused,
-            error.FileNotFound => .missing,
-            else => |other| root.failed(what, path, other, @as(ListAnswer, .failed)),
+        var dir = switch (root.open_folder(what, path)) {
+            .found => |d| d,
+            .missing => return .missing,
+            .path_refused => return .path_refused,
+            .failed => return .failed,
         };
         defer dir.close(root.io);
         var names: std.ArrayList([]const u8) = .empty;
@@ -423,6 +424,27 @@ pub const DataRoot = struct {
         }
         std.mem.sort([]const u8, names.items, {}, bytewise_before);
         return .{ .found = names.items };
+    }
+
+    /// **THE FOLDER AT `path`, OPENED TO BE LISTED**, for the primitive
+    /// `what`, which a failure's log line names: no link followed on the
+    /// way or at it; `missing` when it, or a folder on its path, is not
+    /// there. The caller closes it.
+    pub fn open_folder(root: *const DataRoot, comptime what: []const u8, path: []const u8) FolderAnswer {
+        if (!path_rule(path)) return .path_refused;
+        const parent = root.walk(path, .open) catch |e| return switch (e) {
+            error.IsLink => .path_refused,
+            error.FileNotFound, error.NotDir => .missing,
+            else => root.failed(what, path, e, @as(FolderAnswer, .failed)),
+        };
+        defer root.close_walked(parent);
+        const last = std.fs.path.basename(path);
+        const dir = parent.openDir(root.io, last, .{ .iterate = true, .follow_symlinks = false }) catch |e| return switch (link_or(root, parent, last, e)) {
+            error.IsLink => .path_refused,
+            error.FileNotFound => .missing,
+            else => |other| root.failed(what, path, other, @as(FolderAnswer, .failed)),
+        };
+        return .{ .found = dir };
     }
 
     /// A failure, said once on the server's log with the primitive, the

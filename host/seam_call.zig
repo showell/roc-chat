@@ -25,6 +25,8 @@ const sse = @import("sse.zig");
 const sign_in = @import("sign_in_primitives.zig");
 const github = @import("github_client.zig");
 const remembered = @import("remembered_seconds.zig");
+const kept_bytes = @import("kept_bytes.zig");
+const folder_watch = @import("folder_watch.zig");
 const search_index = @import("search_index.zig");
 
 // ── the lists ───────────────────────────────────────────────────────────────
@@ -108,7 +110,9 @@ pub const RocU64List = extern struct {
 /// the hub its frames are published on, the slots of its held streams, the
 /// secret it signs with, the bucket its password checks are taken from,
 /// the turn it holds, which a password's check lets go of, GitHub's
-/// settings if it has them, and the allocator GitHub's client uses.
+/// settings if it has them, the allocator GitHub's client uses, and what
+/// the app keeps between requests: seconds, bytes, folders watched and the
+/// search index.
 pub const Call = struct {
     arena: std.mem.Allocator,
     root: ?*const files.DataRoot = null,
@@ -121,6 +125,8 @@ pub const Call = struct {
     github: ?*const github.Settings = null,
     gpa: ?std.mem.Allocator = null,
     seconds: ?*remembered.RememberedSeconds = null,
+    kept: ?*kept_bytes.KeptBytes = null,
+    watch: ?*folder_watch.FolderWatch = null,
     search: ?*search_index.SearchIndex = null,
 };
 

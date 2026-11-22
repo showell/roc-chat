@@ -56,6 +56,16 @@ DirectoryFiles :: [].{
 		Ok({ counter, accounts, channels: $channels })
 	}
 
+	## Every folder that holds a file `read_directory_files!` reads, watched
+	## for changes (`FileFacts.watch_folder!`): the accounts root, each
+	## account folder in it, and the folder of channels, for their members
+	## files alone.
+	watch_directory_files! : {} => Try({}, [Missing, PathRefused, Failed])
+	watch_directory_files! = |{}| {
+		AccountFiles.watch_account_folders!({})?
+		FileFacts.watch_folder!(channels_folder_path, Alone)
+	}
+
 	## A channel's members file, written whole as `channel` holds them.
 	replace_channel_members! : Channels.Channel => Try(
 		{},

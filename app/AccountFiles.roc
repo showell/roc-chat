@@ -76,6 +76,12 @@ AccountFiles :: [].{
 		Ok($accounts)
 	}
 
+	## The accounts root and each account folder in it, watched for changes
+	## (`FileFacts.watch_folder!`), as the directory's cache needs them.
+	watch_account_folders! : {} => Try({}, [Missing, PathRefused, Failed])
+	watch_account_folders! = |{}|
+		FileFacts.watch_folder!(AccountFolder.accounts_root, WithItsFolders)
+
 	## A new user's account folder, made once: an agent's `owner`, then the
 	## `name`, whose file makes the folder an account. The counter of ids is
 	## the caller's to advance first (`replace_user_counter!`), so an id is

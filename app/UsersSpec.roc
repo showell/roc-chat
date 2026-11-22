@@ -128,7 +128,8 @@ expect {
 	crowd = Sample.crowded_directory(40).users()
 	last = crowd.to_list().last() ?? crash "UsersSpec: a crowd has users"
 	past = last.id().next() ?? crash "UsersSpec: a crowd's ids fit"
-	crowd.to_list().all(|user| crowd.user(user.id()) == Ok(user)) and crowd.user(past) == Err(NoSuchUser)
+	each_found = crowd.to_list().all(|user| crowd.user(user.id()) == Ok(user))
+	each_found and crowd.user(past) == Err(NoSuchUser)
 }
 # A user left out is found no more, and the users around them still are.
 expect {

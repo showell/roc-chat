@@ -5,11 +5,11 @@
 //! The real server runs in this process's task, twice: once on a data root
 //! seeded with 10 humans, once with 300, each shaped alike (`seed`). For
 //! every probe of app/route_cost_probes.txt, a line `<class> <who> <method>
-//! <path>`, it asks once to warm the server (a human's first request tells
+//! <path>` and for a POST its form, it asks once to warm the server (a human's first request tells
 //! the others they came online, and a cache fills), then once more with the
 //! data root's count of file calls cleared (`DataRoot.calls_for_test`), and
-//! keeps the reads, listings and writes that request made, its head's
-//! judgement and its answer both.
+//! keeps the reads (r), listings (l), writes (w) and folders watched (W)
+//! that request made, its head's judgement and its answer both.
 //!
 //! A `Constant` probe must cost the same at both sizes; every other class
 //! must cost more at 300 than at 10, so a class that is wrong either way
@@ -41,13 +41,14 @@ const Counts = struct {
     reads: u64,
     listings: u64,
     writes: u64,
+    watches: u64,
 
     fn all(c: Counts) u64 {
-        return c.reads + c.listings + c.writes;
+        return c.reads + c.listings + c.writes + c.watches;
     }
 
     pub fn format(c: Counts, w: *Io.Writer) Io.Writer.Error!void {
-        try w.print("{d}r {d}l {d}w", .{ c.reads, c.listings, c.writes });
+        try w.print("{d}r {d}l {d}w {d}W", .{ c.reads, c.listings, c.writes, c.watches });
     }
 };
 
@@ -56,6 +57,8 @@ const Probe = struct {
     who: enum { anyone, human },
     method: []const u8,
     path: []const u8,
+    /// A form's body, for a POST: none, or the line's fifth word.
+    form: []const u8,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -91,12 +94,14 @@ fn readProbes(a: std.mem.Allocator) ![]const Probe {
         const who = words.next() orelse return error.BadProbe;
         const method = words.next() orelse return error.BadProbe;
         const path = words.next() orelse return error.BadProbe;
+        const form = words.next() orelse "";
         if (words.next() != null) return error.BadProbe;
         try out.append(a, .{
             .class = class,
             .who = std.meta.stringToEnum(@FieldType(Probe, "who"), who) orelse return error.BadProbe,
             .method = method,
             .path = path,
+            .form = form,
         });
     }
     return out.items;
@@ -137,11 +142,11 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
         running.await(io) catch |e| std.debug.print("cost-check: the server's run: {t}\n", .{e});
     }
     const port = server.port();
-    const cookie = try sessionCookie(a, io, data, size.hash);
+    const cookie = try sessionCookie(a, io, data, .{ .id = "2", .hash = size.hash });
 
     const counts = try a.alloc(Counts, size.probes.len);
     for (size.probes, counts) |probe, *c| {
-        const request = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-length: 0\r\n\r\n", .{
+        const request = try std.fmt.allocPrint(a, "{s} {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: {d}\r\n\r\n{s}", .{
             probe.method,
             probe.path,
             port,
@@ -149,21 +154,69 @@ fn measure(a: std.mem.Allocator, io: Io, gpa: std.mem.Allocator, size: Size) ![]
                 .anyone => "",
                 .human => cookie,
             },
+            probe.form.len,
+            probe.form,
         });
         _ = try exchange(a, io, port, request);
         calls.clear();
-        const status = try exchange(a, io, port, request);
+        const status = (try exchange(a, io, port, request)).status;
         c.* = .{
             .reads = calls.reads.load(.monotonic),
             .listings = calls.listings.load(.monotonic),
             .writes = calls.writes.load(.monotonic),
+            .watches = calls.watches.load(.monotonic),
         };
         if (status >= 500) {
             std.debug.print("cost-check: {s} {s} answered {d}\n", .{ probe.method, probe.path, status });
             return error.CostCheckProbeFailed;
         }
     }
+    if (size.humans == small) try freshnessSteps(a, io, port, data, .{ .tam = cookie, .steve = try sessionCookie(a, io, data, .{ .id = "1", .hash = size.hash }) });
     return counts;
+}
+
+/// **THE DIRECTORY IS NEVER STALE**, though the server keeps it between
+/// requests (app/DirectoryCache.roc): each edit by hand, and the server's
+/// own write, is seen by the next request.
+fn freshnessSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, who: struct { tam: []const u8, steve: []const u8 }) !void {
+    const page = "/chat/channel/general/roc-chat";
+    const members_file = "chat/channel/general.channel";
+    const members = try data.readFileAlloc(io, members_file, a, .limited(1024 * 1024));
+    const without_tam = try std.mem.replaceOwned(u8, a, members, "2\n", "");
+
+    const before = try getAs(a, io, port, who.tam, page);
+    try write(io, data, members_file, without_tam);
+    const removed = try getAs(a, io, port, who.tam, page);
+    try write(io, data, members_file, members);
+    const back = try getAs(a, io, port, who.tam, page);
+    try check("Tam's page, then `general.channel` edited by hand without her: refused at once; written back: hers again", before.status == 200 and removed.status == 403 and back.status == 200);
+
+    const renamed = try getAs(a, io, port, who.tam, "/chat");
+    try write(io, data, "auth/3/name", "Human Renamed");
+    const browse = try getAs(a, io, port, who.tam, "/chat");
+    try check("a human's `name` rewritten by hand: Browse names them so at once", !has(renamed.body, "Human Renamed") and has(browse.body, "Human Renamed"));
+
+    try write(io, data, "auth/next-id.txt", try std.fmt.allocPrint(a, "{d}\n", .{small + 2}));
+    try write(io, data, try std.fmt.allocPrint(a, "auth/{d}/name", .{small + 1}), "Human Made By Hand");
+    const made = try getAs(a, io, port, who.tam, "/chat");
+    try check("an account made by hand: Browse lists them at once", has(made.body, "Human Made By Hand"));
+
+    const removal = try exchange(a, io, port, try std.fmt.allocPrint(a, "POST /channels/general/members/2/remove HTTP/1.1\r\nhost: localhost:{d}\r\n{s}content-type: application/x-www-form-urlencoded\r\ncontent-length: 0\r\n\r\n", .{ port, who.steve }));
+    const after_removal = try getAs(a, io, port, who.tam, page);
+    try check("Steve removes Tam from `general` in the app: her next page is refused", removal.status == 303 and after_removal.status == 403);
+}
+
+fn check(comptime what: []const u8, ok: bool) !void {
+    std.debug.print("{s}  " ++ what ++ "\n", .{if (ok) "PASS" else "FAIL"});
+    if (!ok) return error.CostCheckStepFailed;
+}
+
+fn getAs(a: std.mem.Allocator, io: Io, port: u16, cookie: []const u8, path: []const u8) !Response {
+    return exchange(a, io, port, try std.fmt.allocPrint(a, "GET {s} HTTP/1.1\r\nhost: localhost:{d}\r\n{s}\r\n", .{ path, port, cookie }));
+}
+
+fn has(haystack: []const u8, needle: []const u8) bool {
+    return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
 /// The chat `size` holds: Steve, the founder; Tam, id 2, who joined long
@@ -224,22 +277,25 @@ fn write(io: Io, data: Io.Dir, path: []const u8, text: []const u8) !void {
     try data.writeFile(io, .{ .sub_path = path, .data = text });
 }
 
-/// The header line of Tam's session, signed now with the server's secret
-/// over her password's hash, as app/Session.roc signs one.
-fn sessionCookie(a: std.mem.Allocator, io: Io, data: Io.Dir, hash: []const u8) ![]const u8 {
+/// The header line of a session of the human `of.id`, signed now with the
+/// server's secret over their password's hash, as app/Session.roc signs
+/// one.
+fn sessionCookie(a: std.mem.Allocator, io: Io, data: Io.Dir, of: struct { id: []const u8, hash: []const u8 }) ![]const u8 {
     const secret = try data.readFileAlloc(io, ".session-secret", a, .limited(256));
     const signed_at = files.current_utc_seconds_since_epoch(io);
-    const signed = try std.fmt.allocPrint(a, "2\n{d}\n{s}", .{ signed_at, hash });
+    const signed = try std.fmt.allocPrint(a, "{s}\n{d}\n{s}", .{ of.id, signed_at, of.hash });
     var mac: [32]u8 = undefined;
     std.crypto.auth.hmac.sha2.HmacSha256.create(&mac, signed, secret);
     const b64 = std.base64.url_safe_no_pad.Encoder;
-    const id_text = try a.alloc(u8, b64.calcSize(1));
+    const id_text = try a.alloc(u8, b64.calcSize(of.id.len));
     const mac_text = try a.alloc(u8, b64.calcSize(mac.len));
-    return std.fmt.allocPrint(a, "cookie: __Host-gopher_auth={s}.{d}.{s}\r\n", .{ b64.encode(id_text, "2"), signed_at, b64.encode(mac_text, &mac) });
+    return std.fmt.allocPrint(a, "cookie: __Host-gopher_auth={s}.{d}.{s}\r\n", .{ b64.encode(id_text, of.id), signed_at, b64.encode(mac_text, &mac) });
 }
 
-/// `request` on a connection of its own, read to the close: the status.
-fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !u16 {
+const Response = struct { status: u16, body: []const u8 };
+
+/// `request` on a connection of its own, read to the close.
+fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !Response {
     const addr: Io.net.IpAddress = try .parse("127.0.0.1", port);
     const connection = try addr.connect(io, .{ .mode = .stream });
     defer connection.close(io);
@@ -249,5 +305,6 @@ fn exchange(a: std.mem.Allocator, io: Io, port: u16, request: []const u8) !u16 {
     var r = connection.reader(io, &buf);
     const bytes = try r.interface.allocRemaining(a, .limited(64 * 1024 * 1024));
     if (!std.mem.startsWith(u8, bytes, "HTTP/1.1 ") or bytes.len < 12) return error.NotAResponse;
-    return std.fmt.parseInt(u16, bytes[9..12], 10);
+    const end = std.mem.indexOf(u8, bytes, "\r\n\r\n") orelse return error.NoHeadEnd;
+    return .{ .status = try std.fmt.parseInt(u16, bytes[9..12], 10), .body = bytes[end + 4 ..] };
 }
