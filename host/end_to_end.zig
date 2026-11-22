@@ -2439,6 +2439,41 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     try t.check("an invite whose stored `post` is gone redeems for no key: 401, and no key made", isToken(unposted_code, "2-") and
         unposted_redeemed.status == 401 and !(try exists(io, data, "auth/2/keys/4")));
 
+    // 46c.
+    const offered = try get(a, io, port, "/agents");
+    try t.check("/agents offers CC's invite a choice for `read` and for `post`, each starting at `everywhere`, `off` beside it", offered.status == 200 and
+        has(offered.body, "<legend>Read</legend><label><input type=\"radio\" name=\"read\" value=\"everywhere\" checked> every channel it&#39;s a member of</label> <label><input type=\"radio\" name=\"read\" value=\"off\"> nothing</label>") and
+        has(offered.body, "<legend>Post</legend><label><input type=\"radio\" name=\"post\" value=\"everywhere\" checked> every channel it&#39;s a member of</label> <label><input type=\"radio\" name=\"post\" value=\"off\"> nowhere</label>"));
+    const read_off = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=off&post=everywhere" });
+    const read_off_code = between(read_off.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const read_off_key = std.mem.trimEnd(u8, (try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{read_off_code}))).body, "\n");
+    const read_off_bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{read_off_key});
+    const read_off_read = try getWith(a, io, port, channel_url ++ "/raw", read_off_bearer);
+    var read_off_stream = try Stream.openWith(a, io, port, "/agents/stream", read_off_bearer);
+    defer read_off_stream.close();
+    const read_off_post = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Posted+unread", .more = read_off_bearer });
+    const heard = try listening.event();
+    const read_off_listed = try get(a, io, port, "/agents");
+    try t.check("a key invited with read=off: reading and listening 403, posting 303 (CC's stream hears it); /agents says its scope", isToken(read_off_key, "2-") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/4/read"), "off") and std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/4/post"), "everywhere") and
+        read_off_read.status == 403 and std.mem.startsWith(u8, read_off_stream.head, "HTTP/1.1 403 ") and read_off_post.status == 303 and
+        has(heard, "\"markdown\":\"Posted unread\"") and
+        has(read_off_listed.body, "<p>Key 4: active, expires ") and has(read_off_listed.body, ". Read: nothing. Post: every channel it&#39;s a member of.</p>"));
+    const post_off = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere&post=off" });
+    const post_off_code = between(post_off.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const post_off_key = std.mem.trimEnd(u8, (try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{post_off_code}))).body, "\n");
+    const post_off_bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{post_off_key});
+    const post_off_post = try post(a, io, port, .{ .path = channel_url, .form = "markdown=Not+posted", .more = post_off_bearer });
+    const post_off_read = try getWith(a, io, port, channel_url ++ "/raw", post_off_bearer);
+    var post_off_stream = try Stream.openWith(a, io, port, "/agents/stream", post_off_bearer);
+    defer post_off_stream.close();
+    const post_off_listed = try get(a, io, port, "/agents");
+    try t.check("a key invited with post=off: posting 403, nothing written; reading 200 and listening an event stream; /agents says its scope", isToken(post_off_key, "2-") and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/5/read"), "everywhere") and std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/5/post"), "off") and
+        post_off_post.status == 403 and post_off_read.status == 200 and has(post_off_read.body, "Posted unread") and !has(post_off_read.body, "Not posted") and
+        post_off_stream.isEventStream() and
+        has(post_off_listed.body, "<p>Key 5: active, expires ") and has(post_off_listed.body, ". Read: every channel it&#39;s a member of. Post: nowhere.</p>"));
+
     // 47.
     const revoking = Io.Clock.now(.awake, io);
     const revoked = try post(a, io, port, .{ .path = "/agents/2/keys/1/revoke", .form = "" });
