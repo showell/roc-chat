@@ -74,7 +74,11 @@ PeoplePages :: [].{
 	## One human the viewer may invite again, with their invites, and whether
 	## they have claimed their account (`HumanClaim`): joined by an invite, or
 	## holding a password or a GitHub link, so a new link is no use to them.
-	InvitedHuman : { human : Users.User, invites : List(HumanInvite), joined : Bool }
+	InvitedHuman : {
+		human : Users.User,
+		invites : List(HumanInvite),
+		joined : Bool,
+	}
 
 	## What the invites page's lines are written from: who is in the chat,
 	## who is reading, and the moment that says which invites are open.

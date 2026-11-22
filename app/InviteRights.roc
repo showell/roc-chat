@@ -54,6 +54,15 @@ InviteRights :: [].{
 		Ok(HumanClaim.judge(human, { password, github, invites: states }))
 	}
 
+	## Whether `human` has claimed their account (`load_claim!`), as the
+	## invites page says it: they have joined.
+	load_joined! : Users.Human => Try(Bool, _)
+	load_joined! = |human|
+		match InviteRights.load_claim!(human)? {
+			Unclaimed(_) => Ok(Bool.False)
+			Claimed => Ok(Bool.True)
+		}
+
 	## `human`, who has claimed nothing, for a new invite of theirs; or, for a
 	## human who has, the refusal `Joined`.
 	load_unclaimed! : Users.Human => Try(HumanClaim.Unclaimed, _)
@@ -66,7 +75,11 @@ InviteRights :: [].{
 	## The invitee whose invite a join's `code` opens, who has claimed
 	## nothing; for any other, a code refused (`CodeRefused`), the one
 	## refusal of a code, so an invite never sets a joined human's password.
-	load_unclaimed_invitee! : Directory, HumanInvites.JoinCode => Try({ human : Users.Human, unclaimed : HumanClaim.Unclaimed }, _)
+	load_unclaimed_invitee! : Directory,
+	HumanInvites.JoinCode => Try(
+		{ human : Users.Human, unclaimed : HumanClaim.Unclaimed },
+		_,
+	)
 	load_unclaimed_invitee! = |directory, code| {
 		invitee = HumanInvites.find_invitee(directory, code) ? |why| Refused(why)
 		match InviteRights.load_claim!(invitee.human)? {

@@ -272,11 +272,7 @@ load_invites_page! = |{ acting, directory, shown, problem, now }| {
 		inviter = InviteRights.load_inviter!(human.id())?
 		if HumanInvites.is_theirs_to_invite_again(acting, inviter) {
 			invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
-			joined =
-				match InviteRights.load_claim!(human)? {
-					Unclaimed(_) => Bool.False
-					Claimed => Bool.True
-				}
+			joined = InviteRights.load_joined!(human)?
 			$invited = $invited.append({ human: human.user(), invites, joined })
 		}
 	}
@@ -465,22 +461,22 @@ join_by_invite! = |request| {
 	code = load_join_code!(request)?
 	name = HumanInvites.name_from_form(request.body) ? |why| Refused(why)
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
-	invitee = InviteRights.load_unclaimed_invitee!(request.directory, code)?
+	{ human: invited, unclaimed } = InviteRights.load_unclaimed_invitee!(request.directory, code)?
 	planned =
-		if name == invitee.human.user().name() {
+		if name == invited.user().name() {
 			NameRelease.plan_release_of_none(request.directory)
 		} else {
 			NameRelease.plan_release!(
 				request.directory,
 				{
 					name,
-					leaving: Leaving(invitee.human.id()),
+					leaving: Leaving(invited.id()),
 					now: request.now,
 				},
 			) ? |FileSystem(fault)| FileSystem(fault)
 		}
 	directory = planned.directory
-	joined = HumanInvites.join(directory, { code, name, unclaimed: invitee.unclaimed }) ? |why| Refused(why)
+	joined = HumanInvites.join(directory, { code, name, unclaimed }) ? |why| Refused(why)
 	human = joined.admission.human()
 	next = FirstPage.load!({ directory, human, wanted: SignInRequest.default_next })?
 	NameRelease.write_release!(planned.pending, request.now) ? |FileSystem(fault)| FileSystem(fault)
@@ -493,7 +489,8 @@ join_by_invite! = |request| {
 	DeviceCodeRoute.revoke_device_code!(human.id())?
 	JoinedFiles.record_first_join!(human.id(), request.now) ? |fault| FileSystem(fault)
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
-	AccountFiles.replace_password_hash!(AccountProof.of_first_join(joined.admission), hash) ? |fault| FileSystem(fault)
+	proof = AccountProof.of_first_join(joined.admission)
+	AccountFiles.replace_password_hash!(proof, hash) ? |fault| FileSystem(fault)
 	UserStreams.end_every_stream!(human.id())
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }

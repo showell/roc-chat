@@ -179,7 +179,8 @@ AccountFiles :: [].{
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_password_hash! = |proof, hash| FileFacts.replace_fact!(password_path(proof.human()), hash.bytes())
+	replace_password_hash! = |proof, hash|
+		FileFacts.replace_fact!(password_path(proof.human()), hash.bytes())
 
 	## The bcrypt hash of the user `id`'s password, as its file keeps it,
 	## or `NoFile` when they have none; unless the host's read failed. Only

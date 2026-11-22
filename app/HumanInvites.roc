@@ -332,7 +332,11 @@ HumanInvites :: [].{
 	## is refused (`NameTaken`), as is one reserved or too close to another
 	## (`Directory.rename_human`).
 	join : Directory,
-	{ code : HumanInvites.JoinCode, name : Name, unclaimed : HumanClaim.Unclaimed } -> Try(
+	{
+		code : HumanInvites.JoinCode,
+		name : Name,
+		unclaimed : HumanClaim.Unclaimed,
+	} -> Try(
 		{
 			spent : HumanInvite,
 			admission : HumanInvite.Admission,
