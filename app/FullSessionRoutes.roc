@@ -3,7 +3,8 @@
 ## or take one from the human's other devices. That is linking GitHub, by
 ## its button or by going through GitHub while signed in; making agents,
 ## inviting them, and revoking their invites and keys; inviting a human, or
-## inviting one again, which sets their password; the channels' admin
+## inviting one again, which makes a link to set the password of a human
+## who hasn't joined; the channels' admin
 ## pages, creating a channel and adding or removing its members; and making
 ## or cancelling a device code, or signing the human's other devices out. Such a device
 ## signs in with a password or GitHub first, after signing out, for those;

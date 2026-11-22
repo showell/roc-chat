@@ -5,7 +5,8 @@
 ## their password as they do, and is signed in. The chat keeps the code's hash, never the code. An
 ## invite lives seven days (`lifetime_seconds`) and
 ## redeems once. Inviting someone again is a new invite for the same
-## account (`HumanInvites.reinvite`), and redeeming it sets a new password.
+## account (`HumanInvites.reinvite`), only while they have claimed nothing
+## (`HumanClaim`): an invite never sets the password of a human who joined.
 ##
 ## `InviteFiles` keeps each fact in a file of its own, in the invited
 ## human's folder under `human-invites/<number>/`: `created` and `expires`
@@ -15,13 +16,16 @@
 ##
 ## Redeeming one is two steps: `find_redeemable` finds the invite a code's
 ## hash names, open at that moment, and `redeem` spends it for its human,
-## once the caller has settled their name. It ends in an `Admission`, which
-## only `redeem` makes, and
+## once the caller has settled their name, and only for a human who has
+## claimed nothing (`HumanClaim.Unclaimed`). It ends in an `Admission`, which
+## only `redeem` makes, which is the proof the password's writer takes
+## (`AccountProof.of_first_join`), and
 ## which `SignInRoute.start_session_by_invite!` takes to sign the human in:
 ## no other route mints a session without a password checked or GitHub's word
 ## (`GitHubSignIn`). This module
 ## is a trust boundary with `SignedIn`, `AgentKey` and `AgentInvite`: an
 ## invite's code is a credential for exactly one human's password.
+import HumanClaim
 import Seconds
 import SecretHash
 import SerialNumber
@@ -142,13 +146,14 @@ HumanInvite :: {
 	Redeemable :: HumanInvite.{}
 
 	## The redeemable invite spent, and `human` admitted: the human among
-	## whose invites it was found, as named once they chose their name.
+	## whose invites it was found, who has claimed nothing (`unclaimed`), as
+	## named once they chose their name.
 	redeem : HumanInvite.Redeemable,
-	Users.Human -> {
+	{ unclaimed : HumanClaim.Unclaimed, human : Users.Human } -> {
 		spent : HumanInvite,
 		admission : HumanInvite.Admission,
 	}
-	redeem = |HumanInvite.Redeemable.(HumanInvite.(invite)), human| {
+	redeem = |HumanInvite.Redeemable.(HumanInvite.(invite)), { unclaimed: _, human }| {
 		spent: HumanInvite.({ ..invite, state: Spent }),
 		admission: HumanInvite.Admission.(human),
 	}

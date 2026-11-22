@@ -71,8 +71,10 @@ PeoplePages :: [].{
 		})
 	}
 
-	## One human the viewer may invite again, with their invites.
-	InvitedHuman : { human : Users.User, invites : List(HumanInvite) }
+	## One human the viewer may invite again, with their invites, and whether
+	## they have claimed their account (`HumanClaim`): joined by an invite, or
+	## holding a password or a GitHub link, so a new link is no use to them.
+	InvitedHuman : { human : Users.User, invites : List(HumanInvite), joined : Bool }
 
 	## What the invites page's lines are written from: who is in the chat,
 	## who is reading, and the moment that says which invites are open.
@@ -242,34 +244,23 @@ invite_steps = [
 	PageKit.paragraph("3. Send it to them; it works once, for 7 days."),
 ]
 
-## One human on the invites page, and whether any invite of theirs was ever
-## spent, so they have joined.
-ListedHuman : {
-	human : Users.User,
-	invites : List(HumanInvite),
-	joined : Bool,
-}
+## One human on the invites page, and whether they have joined.
+ListedHuman : PeoplePages.InvitedHuman
 
-## `invited` split in two at `now`: first the humans with an open invite, each
-## with only their open invites, then everyone else, with all of theirs.
+## `invited` split in two at `now`: first the humans who haven't joined and
+## have an open invite, each with only their open invites, then everyone else,
+## with all of theirs.
 split_by_open_invite : List(PeoplePages.InvitedHuman),
 Timestamp -> {
 	waiting_humans : List(ListedHuman),
 	past_humans : List(ListedHuman),
 }
 split_by_open_invite = |invited, now| {
-	has_open = |listed| listed.invites.any(|invite| invite.is_open(now))
-	joined = |invites| invites.any(|invite| invite.state() == Spent)
+	has_open = |listed| !listed.joined and listed.invites.any(|invite| invite.is_open(now))
 	waiting_humans = invited.keep_if(has_open).map(
-		|{ human, invites }| {
-			human,
-			invites: invites.keep_if(|invite| invite.is_open(now)),
-			joined: joined(invites),
-		},
+		|listed| { ..listed, invites: listed.invites.keep_if(|invite| invite.is_open(now)) },
 	)
-	past_humans = invited.drop_if(has_open).map(
-		|{ human, invites }| { human, invites, joined: joined(invites) },
-	)
+	past_humans = invited.drop_if(has_open)
 	{ waiting_humans, past_humans }
 }
 
@@ -319,8 +310,8 @@ open_section_parts = |waiting_humans, context| {
 }
 
 ## The invites page's list of everyone else, shown only when there is someone.
-## It says what a new link does, as for someone who has joined that is how a
-## lost password is replaced.
+## It says that a new link is only for someone who hasn't joined, as someone
+## who has signs in with their own password or GitHub.
 past_section_parts : List(ListedHuman), PeoplePages.InvitesContext -> List(TrustedHtml)
 past_section_parts = |past_humans, context|
 	if past_humans.is_empty() {
@@ -329,7 +320,7 @@ past_section_parts = |past_humans, context|
 		List.concat(
 			[
 				PageKit.heading("Past invites"),
-				quiet("A new link for someone who has joined lets them set a new password; they keep their name."),
+				quiet("A new link is only for someone who hasn't joined. Someone who has signs in with their own password or GitHub."),
 			],
 			past_humans.map(|human| invited_row(human, context)),
 		)
@@ -338,7 +329,8 @@ past_section_parts = |past_humans, context|
 ## One human's row on the invites page (`InviteRow`): a line for each of
 ## their invites, or a line saying they have none, and at the row's right
 ## the button that makes them a new link. A human has none when writing their
-## invite failed after their account.
+## invite failed after their account. Someone who has joined has no button,
+## as a new link would change nothing for them.
 invited_row : ListedHuman, PeoplePages.InvitesContext -> TrustedHtml
 invited_row = |{ human, invites, joined }, context| {
 	name = human.name().to_str()
@@ -358,10 +350,14 @@ invited_row = |{ human, invites, joined }, context| {
 					attributes: [],
 					inner: TrustedHtml.join(said),
 				}),
-				PageKit.post_button({
-					action: "${PageKit.invites_path}/${human.id().to_str()}/again",
-					label: "New link",
-				}),
+				if joined {
+					TrustedHtml.join([])
+				} else {
+					PageKit.post_button({
+						action: "${PageKit.invites_path}/${human.id().to_str()}/again",
+						label: "New link",
+					})
+				},
 			]),
 		}),
 		PageKit.newline,
@@ -369,8 +365,8 @@ invited_row = |{ human, invites, joined }, context| {
 }
 
 ## One invite of the human `name` in plain words, at `now`: they joined by
-## it; it is open, and they haven't joined (or, when they have, it is their
-## new link); or it expired. Then who made it, unless the reader did.
+## it; it is open, and they haven't joined (or, when they have, it no longer
+## works); or it expired. Then who made it, unless the reader did.
 invite_words : {
 	invite : HumanInvite,
 	name : Str,
@@ -383,7 +379,7 @@ invite_words = |{ invite, name, joined, context }| {
 	standing =
 		match invite.state() {
 			Spent => "${name} joined"
-			Live if invite.is_open(now) and joined => "${name}'s new link expires ${date}"
+			Live if invite.is_open(now) and joined => "${name}'s link no longer works, as they have joined"
 			Live if invite.is_open(now) => "${name} hasn't joined · link expires ${date}"
 			Live => "${name}'s link expired ${date}"
 		}

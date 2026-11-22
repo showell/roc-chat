@@ -7,7 +7,9 @@
 ## The invites page says how each invite stands. `InviteFiles` tests how an
 ## invite's facts go to their files and come back.
 import AgentKey
+import AccountProof
 import Directory
+import HumanClaim
 import HumanInvite
 import HumanInvites
 import KeyScope
@@ -293,6 +295,37 @@ zoe =
 	(with_zoe_and_bob.users().user(id("4")) ?? crash "HumanInvitesSpec: Zoe is 4").as_human()
 		?? crash "HumanInvitesSpec: Zoe is a human"
 
+## No password, no GitHub link, and invites in the states `invites`: the
+## facts of a human who has claimed nothing when none is spent.
+claim_facts : List([Live, Spent]) -> HumanClaim.Facts
+claim_facts = |invites| { password: NoPassword, github: NotLinked, invites }
+
+## `human`, who has claimed nothing, as `HumanClaim.judge` alone makes one.
+unclaimed_of : Users.Human -> HumanClaim.Unclaimed
+unclaimed_of = |human|
+	match HumanClaim.judge(human, claim_facts([])) {
+		Unclaimed(unclaimed) => unclaimed
+		Claimed => crash "HumanInvitesSpec: a human with no password, GitHub link or spent invite has claimed nothing"
+	}
+
+## Whether a human whose files say `facts` has claimed their account.
+claim_word : HumanClaim.Facts -> Str
+claim_word = |facts|
+	match HumanClaim.judge(zoe, facts) {
+		Unclaimed(unclaimed) => "unclaimed ${unclaimed.human().id().to_str()}"
+		Claimed => "claimed"
+	}
+
+# Claimed by a password, a GitHub link, or any invite spent, alone or
+# together; unclaimed with none of them, whatever her live invites.
+expect claim_word(claim_facts([])) == "unclaimed 4"
+expect claim_word(claim_facts([Live, Live])) == "unclaimed 4"
+expect claim_word({ ..claim_facts([]), password: HasPassword }) == "claimed"
+expect claim_word({ ..claim_facts([]), github: Linked }) == "claimed"
+expect claim_word(claim_facts([Spent])) == "claimed"
+expect claim_word(claim_facts([Live, Spent, Live])) == "claimed"
+expect claim_word({ password: HasPassword, github: Linked, invites: [Spent] }) == "claimed"
+
 ## Zoe's invite 1 found by the hash `hash(code)` at `now`, and spent for
 ## her: its state after, and whom it admits; or why not.
 zoes_redemption : {
@@ -303,7 +336,7 @@ zoes_redemption : {
 zoes_redemption = |{ invites, code, now }|
 	HumanInvite.find_redeemable(invites, { hash: hash(code), now }).map_ok(
 		|redeemable| {
-			redeemed = HumanInvite.redeem(redeemable, zoe)
+			redeemed = HumanInvite.redeem(redeemable, { unclaimed: unclaimed_of(zoe), human: zoe })
 			"${state_word(redeemed.spent)}, admits ${redeemed.admission.human().id().to_str()}"
 		},
 	)
@@ -339,7 +372,7 @@ spent_invite =
 		[invite_made({ number: 1, by: "2" })],
 		{ hash: hash(1), now: Timestamp.at_second(1000) },
 	) {
-		Ok(redeemable) => HumanInvite.redeem(redeemable, zoe).spent
+		Ok(redeemable) => HumanInvite.redeem(redeemable, { unclaimed: unclaimed_of(zoe), human: zoe }).spent
 		Err(_) => crash "HumanInvitesSpec: Zoe's invite 1 is redeemable at 1000"
 	}
 
@@ -377,7 +410,12 @@ page_of_humans = |invited, now|
 
 ## The invites page at `now` of Zoe and `invite` alone, as a test reads it.
 page_of_invite : HumanInvite, Timestamp -> Str
-page_of_invite = |invite, now| page_of_humans([{ human: zoe.user(), invites: [invite] }], now)
+page_of_invite = |invite, now| page_of_humans([listed(zoe.user(), [invite])], now)
+
+## `human` with `invites` as the page lists them, joined when one is spent,
+## as their only claim.
+listed : Users.User, List(HumanInvite) -> PeoplePages.InvitedHuman
+listed = |human, invites| { human, invites, joined: invites.any(|invite| invite.state() == Spent) }
 
 ## The part of `page` after `heading`, empty when the page has no such heading.
 text_after_heading : Str, Str -> Str
@@ -405,12 +443,19 @@ past_part = |page| text_after_heading(page, "Past invites")
 zoe_again_button : Str
 zoe_again_button = "<form method=\"post\" action=\"/invites/4/again\"><button>New link</button></form>\n"
 
-## Zoe's row on the page, of `lines`, each a line's words as the page escapes them.
+## Zoe's row on the page, of `lines`, each a line's words as the page
+## escapes them, with the button that makes her a new link.
 zoe_row : List(Str) -> Str
-zoe_row = |lines| {
-	said = Str.join_with(lines.map(|line| "<p>${line}</p>\n"), "")
-	"<div class=\"invite-row\"><div>${said}</div>${zoe_again_button}</div>\n"
-}
+zoe_row = |lines| "<div class=\"invite-row\"><div>${lines_said(lines)}</div>${zoe_again_button}</div>\n"
+
+## Zoe's row once she has joined: no button, as a new link would change
+## nothing.
+zoe_joined_row : List(Str) -> Str
+zoe_joined_row = |lines| "<div class=\"invite-row\"><div>${lines_said(lines)}</div></div>\n"
+
+## `lines`, each a paragraph.
+lines_said : List(Str) -> Str
+lines_said = |lines| Str.join_with(lines.map(|line| "<p>${line}</p>\n"), "")
 
 # An invite on the page in plain words: open to its last second, expired from
 # the next, joined once spent, each naming who made it when the reader didn't.
@@ -422,7 +467,7 @@ expect
 		.contains(zoe_row(["Zoe&#39;s link expired Jan 8 (today) · made by Apoorva"]))
 expect
 	past_part(page_of_invite(spent_invite, Timestamp.at_second(1000)))
-		.contains(zoe_row(["Zoe joined · made by Apoorva"]))
+		.contains(zoe_joined_row(["Zoe joined · made by Apoorva"]))
 # The reader's own invite says no maker; one the chat doesn't hold is named by
 # their id.
 expect
@@ -449,17 +494,19 @@ expect {
 		and !page.contains("No open invites.")
 		and !page.contains("Past invites")
 }
-# Only past invites: nothing is open, and the button and what it does are
-# under the past invites.
+# Only past invites: nothing is open, and under the past invites, that a new
+# link is only for someone who hasn't joined; Zoe, who has, has no button.
 expect {
 	page = page_of_invite(spent_invite, Timestamp.at_second(1000))
 	open_part(page).contains("<p>No open invites.</p>")
-		and !open_part(page).contains(zoe_again_button)
-		and past_part(page).contains("they keep their name.</p>")
-		and past_part(page).contains(zoe_again_button)
+		and !page.contains(zoe_again_button)
+		and past_part(page).contains("<p class=\"help\">A new link is only for someone who hasn&#39;t joined. Someone who has signs in with their own password or GitHub.</p>")
 }
-# A human who joined and has a new link open: the link is their new one, and
-# their spent invite isn't shown while it is open. Each human is one row.
+# The edge: a past invite of someone who hasn't joined, expired, keeps the
+# button.
+expect past_part(page_of_invite(invite_made({ number: 1, by: "1" }), invite_expiry)).contains(zoe_again_button)
+# A human who joined and still has links open, made before or since: none of
+# them works, so none is open, and she has no button. Each human is one row.
 expect {
 	made_at = Timestamp.at_second(1000)
 	zoes = [
@@ -468,23 +515,24 @@ expect {
 		invite_made({ number: 3, by: "1" }),
 	]
 	invited = [
-		{ human: zoe.user(), invites: zoes },
-		{ human: bob_user, invites: [invite_made({ number: 1, by: "1" })] },
+		listed(zoe.user(), zoes),
+		listed(bob_user, [invite_made({ number: 1, by: "1" })]),
 	]
 	page = page_of_humans(invited, made_at.plus(Seconds.of(1)))
 	later = page_of_humans(invited, invite_expiry)
-	open_part(page).contains(
-		zoe_row([
-			"Zoe&#39;s new link expires Jan 8 (in 7 days) · made by Apoorva",
-			"Zoe&#39;s new link expires Jan 8 (in 7 days)",
+	past_part(page).contains(
+		zoe_joined_row([
+			"Zoe joined · made by Apoorva",
+			"Zoe&#39;s link no longer works, as they have joined · made by Apoorva",
+			"Zoe&#39;s link no longer works, as they have joined",
 		]),
 	)
-		and !page.contains("Zoe joined")
+		and !open_part(page).contains("Zoe")
+		and !page.contains(zoe_again_button)
 		and open_part(page).contains("<p>Bob hasn&#39;t joined · link expires Jan 8 (in 7 days)</p>")
-		and !page.contains("Past invites")
 		and open_part(later).contains("<p>No open invites.</p>")
 		and past_part(later).contains(
-			zoe_row([
+			zoe_joined_row([
 				"Zoe joined · made by Apoorva",
 				"Zoe&#39;s link expired Jan 8 (today) · made by Apoorva",
 				"Zoe&#39;s link expired Jan 8 (today)",
@@ -496,8 +544,8 @@ expect {
 expect {
 	page = page_of_humans(
 		[
-			{ human: zoe.user(), invites: [spent_invite] },
-			{ human: bob_user, invites: [invite_made({ number: 1, by: "1" })] },
+			listed(zoe.user(), [spent_invite]),
+			listed(bob_user, [invite_made({ number: 1, by: "1" })]),
 		],
 		Timestamp.at_second(1000),
 	)
@@ -508,7 +556,7 @@ expect {
 }
 # A human whose invite was never written is past, and says so.
 expect
-	past_part(page_of_humans([{ human: zoe.user(), invites: [] }], Timestamp.at_second(1000)))
+	past_part(page_of_humans([listed(zoe.user(), [])], Timestamp.at_second(1000)))
 		.contains(zoe_row(["Zoe has no link yet"]))
 
 ## The invites page at 1000 of no one, on a server whose offer is `github`.
@@ -681,18 +729,28 @@ expect
 		== Err(CodeRefused)
 
 ## Zoe, by the code for `user` among `invites` with the hash `hash(code)`,
-## joining as `name`: the invite's state after, whom it admits and under
-## what name, and whether the name changed; or why not.
+## joining as `name`, unclaimed: the invite's state after, whom it admits and
+## under what name, and whether the name changed; or why not.
 join_as : {
 	user : Str,
 	invites : List(HumanInvite),
 	code : U8,
 	name : Str,
 } -> Try(Str, _)
-join_as = |{ user, invites, code, name }|
+join_as = |request| join_unclaimed(request, unclaimed_of(zoe))
+
+## `join_as`, the joining human's claim judged `unclaimed`.
+join_unclaimed : {
+	user : Str,
+	invites : List(HumanInvite),
+	code : U8,
+	name : Str,
+},
+HumanClaim.Unclaimed -> Try(Str, _)
+join_unclaimed = |{ user, invites, code, name }, unclaimed|
 	HumanInvites.join(
 		with_zoe_and_bob,
-		{ code: join_code({ user, invites, code }), name: Sample.name(name) },
+		{ code: join_code({ user, invites, code }), name: Sample.name(name), unclaimed },
 	).map_ok(
 		|joined| {
 			changed =
@@ -755,26 +813,36 @@ expect join_as({
 	code: 1,
 	name: "Zoe",
 }) == Err(CodeRefused)
-# A human who redeemed an invite before chose her name then: redeeming a
-# later one keeps it exactly, and any other name, her own in another case
-# included, is refused.
-expect
-	join_as({
-		user: "4",
-		invites: [spent_invite, invite_made({ number: 2, by: "1" })],
-		code: 2,
-		name: "Zoe",
-	})
-		== Ok("spent, admits 4 as Zoe, kept")
-expect
-	["Zoey", "ZOE", "Bob"].all(
-		|name| join_as({
-			user: "4",
-			invites: [spent_invite, invite_made({ number: 2, by: "1" })],
-			code: 2,
-			name,
-		}) == Err(NameChosen),
+# A human who redeemed an invite before has claimed her account, so no join
+# can be asked for her: `HumanClaim` makes no `Unclaimed` of her (above).
+# One judged unclaimed must be the human the code names: anyone else's is the
+# one refusal, whatever the name.
+expect {
+	bob_human = bob_user.as_human() ?? crash "HumanInvitesSpec: Bob is a human"
+	["Zoe", "Zoey"].all(
+		|name| join_unclaimed(
+			{
+				user: "4",
+				invites: zoe_invites,
+				code: 1,
+				name,
+			},
+			unclaimed_of(bob_human),
+		) == Err(CodeRefused),
 	)
+}
+# The proof a first join gives the password's writer names the human it
+# admitted, and no one else.
+expect
+	HumanInvites.join(
+		with_zoe_and_bob,
+		{
+			code: join_code({ user: "4", invites: zoe_invites, code: 1 }),
+			name: Sample.name("Zoe"),
+			unclaimed: unclaimed_of(zoe),
+		},
+	).map_ok(|joined| AccountProof.of_first_join(joined.admission).human())
+		== Ok(id("4"))
 
 # Who may join: no one signed in; never a key, never a browser signed in.
 expect HumanInvites.admit_joiner(Anonymous) == Ok({})
@@ -825,10 +893,10 @@ expect
 		(NoSuchHuman, 404),
 		(NotInvited, 403),
 		(NotYours, 403),
+		(Joined, 403),
 		(BadPassword, 400),
 		(CodeRefused, 401),
 		(SignedInAlready, 409),
-		(NameChosen, 409),
 	].all(|(why, status)| HumanInvites.refusal_notice(why).status == status)
 
 ## The route `method` and `path` choose, in the sample directory.

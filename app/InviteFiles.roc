@@ -14,6 +14,7 @@ import AccountFiles
 import AccountFolder
 import FactFile
 import FileFacts
+import HumanClaim
 import HumanInvite
 import SecretHash
 import Timestamp
@@ -93,17 +94,17 @@ InviteFiles :: [].{
 		HumanInvite.Id.next_after(names.keep_oks(HumanInvite.Id.from_str))
 	}
 
-	## A new invite in the human `human`'s account folder, made once, its
-	## hash last.
-	create_human_invite! : UserId,
+	## A new invite in the account folder of `unclaimed`, a human who has
+	## claimed nothing (`HumanClaim`), made once, its hash last.
+	create_human_invite! : HumanClaim.Unclaimed,
 	HumanInvite => Try(
 		{},
 		[AlreadyExists, MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	create_human_invite! = |human, invite| {
+	create_human_invite! = |unclaimed, invite| {
 		files = InviteFiles.human_invite_files(invite)
 		FileFacts.create_facts!(
-			human_invite_folder_path(human, invite.id()),
+			human_invite_folder_path(unclaimed.human().id(), invite.id()),
 			[
 				("created", files.created),
 				("expires", files.expires),

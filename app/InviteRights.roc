@@ -2,11 +2,14 @@
 ## inviters, for `HumanInvitesRoute`: who invited them, which decides who may
 ## invite them again; how many of a human's invites are open, which the cap
 ## of open invites counts; and, for a person in their first day, how many new
-## invites they made since they joined (`NewcomerInvites`). Its failures are
+## invites they made since they joined (`NewcomerInvites`); and whether a
+## human has claimed their account (`HumanClaim`), which decides whether an
+## invite may be made or redeemed for them. Its failures are
 ## the route's: a refusal, a file that says no fact, or the file system's
 ## fault.
 import AccountFiles
 import Directory
+import HumanClaim
 import HumanInvites
 import InviteFiles
 import JoinedFiles
@@ -14,6 +17,7 @@ import NewcomerInvites
 import SignedIn
 import Timestamp
 import UserId
+import Users
 
 InviteRights :: [].{
 
@@ -22,6 +26,53 @@ InviteRights :: [].{
 	load_inviter! = |id| {
 		file = AccountFiles.read_inviter_file!(id) ? |fault| FileSystem(fault)
 		HumanInvites.inviter_from_file(file).map_err(|NotAnInviter| BadInviter(id))
+	}
+
+	## Whether `human` has claimed their account, as their files say
+	## (`HumanClaim.judge`): a password, a GitHub link, or an invite spent. A
+	## GitHub link that holds no id counts as one, so a damaged file never
+	## lets an invite through.
+	load_claim! : Users.Human => Try([Unclaimed(HumanClaim.Unclaimed), Claimed], _)
+	load_claim! = |human| {
+		id = human.id()
+		password_file = AccountFiles.read_password_hash!(id) ? |fault| FileSystem(fault)
+		password =
+			match password_file {
+				NoFile => NoPassword
+				File(_) => HasPassword
+			}
+		github =
+			match AccountFiles.read_github_link!(id) {
+				Ok(NotLinked) => Ok(NotLinked)
+				Ok(Linked(_)) | Err(Damaged) => Ok(Linked)
+				Err(NotUtf8) => Err(FileSystem(NotUtf8))
+				Err(PathRefused) => Err(FileSystem(PathRefused))
+				Err(Failed) => Err(FileSystem(Failed))
+			}?
+		invites = InviteFiles.read_human_invites!(id) ? |fault| FileSystem(fault)
+		states = invites.map(|invite| invite.state())
+		Ok(HumanClaim.judge(human, { password, github, invites: states }))
+	}
+
+	## `human`, who has claimed nothing, for a new invite of theirs; or, for a
+	## human who has, the refusal `Joined`.
+	load_unclaimed! : Users.Human => Try(HumanClaim.Unclaimed, _)
+	load_unclaimed! = |human|
+		match InviteRights.load_claim!(human)? {
+			Unclaimed(unclaimed) => Ok(unclaimed)
+			Claimed => Err(Refused(Joined))
+		}
+
+	## The invitee whose invite a join's `code` opens, who has claimed
+	## nothing; for any other, a code refused (`CodeRefused`), the one
+	## refusal of a code, so an invite never sets a joined human's password.
+	load_unclaimed_invitee! : Directory, HumanInvites.JoinCode => Try({ human : Users.Human, unclaimed : HumanClaim.Unclaimed }, _)
+	load_unclaimed_invitee! = |directory, code| {
+		invitee = HumanInvites.find_invitee(directory, code) ? |why| Refused(why)
+		match InviteRights.load_claim!(invitee.human)? {
+			Unclaimed(unclaimed) => Ok({ human: invitee.human, unclaimed })
+			Claimed => Err(Refused(CodeRefused))
+		}
 	}
 
 	## How many invites `by` made that are open at `now`, among every human's

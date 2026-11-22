@@ -10,7 +10,9 @@
 ## - Inviting someone again, by the human who invited them or by the admin,
 ##   is a new invite for the same account, never a new account or a new
 ##   id. Only a human someone invited is invited again: the founder, who
-##   was never invited, is not.
+##   was never invited, is not. And only while they have claimed nothing
+##   (`HumanClaim`): for a human who joined, it is refused (`Joined`), as
+##   their password changes only with their own proof.
 ## - A human has at most `open_most` open invites at once, counting every
 ##   invite they made that is live and unexpired.
 ## - In a person's first day they make at most a few new invites
@@ -24,14 +26,16 @@
 ## The invited human joins from a link that holds the code. Joining
 ## redeems it: they keep the name their inviter chose or take any other free
 ## name, and choose a password, as they sign in with one. Their name is
-## theirs from then on: redeeming a later invite for the same account keeps
-## it, and sets a new password. Joining needs no other credential; a
+## theirs from then on. An invite redeems only for a human who has claimed
+## nothing, so no invite, a later one or one made before they joined, sets
+## the password of a human who joined. Joining needs no other credential; a
 ## request with an API key, or from a browser signed in already, may not
 ## join. A name refused spends nothing, so the human tries another.
 import Admin
 import Agents
 import Channels
 import Directory
+import HumanClaim
 import HumanInvite
 import Name
 import NewcomerInvites
@@ -65,15 +69,16 @@ HumanInvites :: [].{
 		NoSuchHuman,
 		NotInvited,
 		NotYours,
+		Joined,
 		BadPassword,
 		CodeRefused,
 		SignedInAlready,
-		NameChosen,
 	]
 
 	## A refusal in words, with its status: a request with a key, an agent,
 	## a human at the cap, one past their first day's invites, or one who may
-	## not invite this human again, a 403; no such human, a 404; a form at
+	## not invite this human again, or one who has joined, a 403; no such
+	## human, a 404; a form at
 	## fault, a name that is no name or a password that is none, a 400; a
 	## name taken, reserved, too close to another or chosen already, the
 	## chat full, or a browser signed in already, a 409; no default channel,
@@ -118,15 +123,15 @@ HumanInvites :: [].{
 				status: 403,
 				said: "Only the human who invited them, or the admin, invites them again.",
 			}
+			Joined => {
+				status: 403,
+				said: "They have joined, so a new link would change nothing: they sign in with their own password or GitHub.",
+			}
 			BadPassword => { status: 400, said: "A password is 1 to 72 bytes." }
 			CodeRefused => { status: 401, said: "The invite code is not live." }
 			SignedInAlready => {
 				status: 409,
 				said: "You are signed in already. Sign out first, or open the link in a private window.",
-			}
-			NameChosen => {
-				status: 409,
-				said: "Your name is chosen already, and stays as it is: join under it.",
 			}
 		}
 
@@ -321,30 +326,31 @@ HumanInvites :: [].{
 	## The human the code names joining under `name`: the invite spent, the
 	## human admitted as named, and whether the name `Changed` or was
 	## `Kept`. The code is judged first (`CodeRefused`), so a name is judged
-	## only for its invitee. A human who redeemed an invite before chose
-	## their name then, and keeps it (`NameChosen`); a new name another
-	## user or a channel has, in any case, is refused (`NameTaken`), as is
-	## one reserved or too close to another (`Directory.rename_human`).
+	## only for its invitee, who must be `unclaimed`, the human the code
+	## names having claimed nothing (`HumanClaim`): any other is the same
+	## `CodeRefused`. A new name another user or a channel has, in any case,
+	## is refused (`NameTaken`), as is one reserved or too close to another
+	## (`Directory.rename_human`).
 	join : Directory,
-	{ code : HumanInvites.JoinCode, name : Name } -> Try(
+	{ code : HumanInvites.JoinCode, name : Name, unclaimed : HumanClaim.Unclaimed } -> Try(
 		{
 			spent : HumanInvite,
 			admission : HumanInvite.Admission,
 			name : [Kept, Changed],
 		},
-		[CodeRefused, NameChosen, NameTaken, NameReserved, NameTooClose],
+		[CodeRefused, NameTaken, NameReserved, NameTooClose],
 	)
-	join = |directory, { code, name }| {
+	join = |directory, { code, name, unclaimed }| {
 		found = HumanInvites.find_invitee(directory, code)?
-		if found.human.user().name() == name {
-			redeemed = HumanInvite.redeem(found.redeemable, found.human)
+		if unclaimed.human().id() != found.human.id() {
+			Err(CodeRefused)
+		} else if found.human.user().name() == name {
+			redeemed = HumanInvite.redeem(found.redeemable, { unclaimed, human: found.human })
 			Ok({
 				spent: redeemed.spent,
 				admission: redeemed.admission,
 				name: Kept,
 			})
-		} else if code.invites.any(|made| made.state() == Spent) {
-			Err(NameChosen)
 		} else {
 			renamed =
 				match directory.rename_human({ human: found.human, name }) {
@@ -355,7 +361,7 @@ HumanInvites :: [].{
 					Err(NoSuchHuman) =>
 						crash "HumanInvites.join: the invitee is a human of the directory, found in it by id"
 				}?
-			redeemed = HumanInvite.redeem(found.redeemable, renamed)
+			redeemed = HumanInvite.redeem(found.redeemable, { unclaimed, human: renamed })
 			Ok({
 				spent: redeemed.spent,
 				admission: redeemed.admission,

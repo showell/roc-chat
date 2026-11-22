@@ -26,18 +26,19 @@
 ## says no more. `GET /join` is the join page (`JoinPage.join`), the same for
 ## anyone but a human signed in already, who goes to Browse; its script asks
 ## `POST /join/name` for the name the invite holds, a line of JSON. `POST
-## /join` redeems: the code is judged, then the name, against the directory
-## with any lapsed invitee in its way released; a name refused spends and
-## frees nothing. Then that release is written, if any, then the name, if it
-## changed, so the name it
-## leaves is free; the invite is spent before the password is written, so
-## a code redeems once even when that write fails; then the human's
-## password's bcrypt hash, made by the host at its standard cost, replaces
-## any before it, and a session starts
-## (`SignInRoute.start_session_by_invite!`), landing where `FirstPage` says.
+## /join` redeems: the code is judged, and its human must have claimed
+## nothing (`HumanClaim`), so no invite resets a joined human's password;
+## then the name, against the directory with any lapsed invitee in its way
+## released; a name refused spends and frees nothing. Then that release is
+## written, if any, then the name, if it changed, so the name it leaves is
+## free; the invite is spent before the password is written, so a code
+## redeems once even when that write fails; then the human's password's
+## bcrypt hash (the host's, at its standard cost) is written, and a session
+## starts (`SignInRoute.start_session_by_invite!`) where `FirstPage` says.
 import pf.Host
 import pf.Http
 import AccountFiles
+import AccountProof
 import DeviceCodeRoute
 import Directory
 import DirectoryFiles
@@ -267,11 +268,16 @@ load_invites_page! = |{ acting, directory, shown, problem, now }| {
 	_ = acting.human_in_session() ? |why| Refused(why)
 	may_invite = InviteRights.load_offer!({ acting, directory, now })?
 	var $invited = []
-	for user in humans_of(directory) {
-		inviter = InviteRights.load_inviter!(user.id())?
+	for human in directory.users().to_list().keep_oks(|user| user.as_human()) {
+		inviter = InviteRights.load_inviter!(human.id())?
 		if HumanInvites.is_theirs_to_invite_again(acting, inviter) {
-			invites = InviteFiles.read_human_invites!(user.id()) ? |fault| FileSystem(fault)
-			$invited = $invited.append({ human: user, invites })
+			invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
+			joined =
+				match InviteRights.load_claim!(human)? {
+					Unclaimed(_) => Bool.False
+					Claimed => Bool.True
+				}
+			$invited = $invited.append({ human: human.user(), invites, joined })
 		}
 	}
 	Ok(
@@ -337,7 +343,7 @@ invite_human! = |
 		inviter: made.inviter.id(),
 	}) ? |fault| FileSystem(fault)
 	DirectoryFiles.replace_channel_members!(made.channel) ? |fault| FileSystem(fault)
-	code = issue_invite!({ human: made.human.id(), by: made.inviter.id(), now })?
+	code = issue_invite!({ human, by: made.inviter.id(), now })?
 	load_invites_page!({
 		acting,
 		directory: made.directory,
@@ -358,7 +364,7 @@ invite_human_again! = |{ acting, directory, human, origin, now }| {
 	inviter = InviteRights.load_inviter!(human)?
 	open = InviteRights.count_open_invites!(directory, { by: acting.user().id(), now })?
 	again = HumanInvites.reinvite(directory, { acting, human, inviter, open }) ? |why| Refused(why)
-	code = issue_invite!({ human, by: again.by.id(), now })?
+	code = issue_invite!({ human: again.human, by: again.by.id(), now })?
 	load_invites_page!({
 		acting,
 		directory,
@@ -368,15 +374,16 @@ invite_human_again! = |{ acting, directory, human, origin, now }| {
 	})
 }
 
-## A new invite for the human `human`, made by `by` at `now`, written, its
-## code's hash last; and its code, to show once.
+## A new invite for `human`, made by `by` at `now`, written, its code's hash
+## last; its code, to show once. For one who has joined, `Joined`, nothing.
 issue_invite! : {
-	human : UserId,
+	human : Users.Human,
 	by : UserId,
 	now : Timestamp,
 } => Try(SecretToken, _)
 issue_invite! = |{ human, by, now }| {
-	id = InviteFiles.find_next_human_invite_id!(human) ? |why| FileFacts.refusal_when_full(why)
+	unclaimed = InviteRights.load_unclaimed!(human)?
+	id = InviteFiles.find_next_human_invite_id!(human.id()) ? |why| FileFacts.refusal_when_full(why)
 	secret = Secret.from_random_bytes(Host.fill_with_random_bytes!(Secret.length))
 	invite = HumanInvite.make({
 		id,
@@ -384,8 +391,8 @@ issue_invite! = |{ human, by, now }| {
 		now,
 		by,
 	})
-	InviteFiles.create_human_invite!(human, invite) ? |fault| FileSystem(fault)
-	Ok(SecretToken.of({ user: human, secret }))
+	InviteFiles.create_human_invite!(unclaimed, invite) ? |fault| FileSystem(fault)
+	Ok(SecretToken.of({ user: human.id(), secret }))
 }
 
 ## The link that joins by `code`, at `origin`: the code after `#`, so no
@@ -430,7 +437,7 @@ load_join_name! : {
 } => Try(Name, _)
 load_join_name! = |request| {
 	code = load_join_code!(request)?
-	found = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
+	found = InviteRights.load_unclaimed_invitee!(request.directory, code)?
 	Ok(found.human.user().name())
 }
 
@@ -458,7 +465,7 @@ join_by_invite! = |request| {
 	code = load_join_code!(request)?
 	name = HumanInvites.name_from_form(request.body) ? |why| Refused(why)
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
-	invitee = HumanInvites.find_invitee(request.directory, code) ? |why| Refused(why)
+	invitee = InviteRights.load_unclaimed_invitee!(request.directory, code)?
 	planned =
 		if name == invitee.human.user().name() {
 			NameRelease.plan_release_of_none(request.directory)
@@ -473,7 +480,7 @@ join_by_invite! = |request| {
 			) ? |FileSystem(fault)| FileSystem(fault)
 		}
 	directory = planned.directory
-	joined = HumanInvites.join(directory, { code, name }) ? |why| Refused(why)
+	joined = HumanInvites.join(directory, { code, name, unclaimed: invitee.unclaimed }) ? |why| Refused(why)
 	human = joined.admission.human()
 	next = FirstPage.load!({ directory, human, wanted: SignInRequest.default_next })?
 	NameRelease.write_release!(planned.pending, request.now) ? |FileSystem(fault)| FileSystem(fault)
@@ -486,11 +493,7 @@ join_by_invite! = |request| {
 	DeviceCodeRoute.revoke_device_code!(human.id())?
 	JoinedFiles.record_first_join!(human.id(), request.now) ? |fault| FileSystem(fault)
 	hash = PasswordHash.of_bcrypt_answer(Host.bcrypt_hash_of_password!(password.bytes_to_check()))
-	AccountFiles.replace_password_hash!(human.id(), hash) ? |fault| FileSystem(fault)
+	AccountFiles.replace_password_hash!(AccountProof.of_first_join(joined.admission), hash) ? |fault| FileSystem(fault)
 	UserStreams.end_every_stream!(human.id())
 	Ok({ admission: joined.admission, password_hash: hash, next })
 }
-
-## Every human of `directory`.
-humans_of : Directory -> List(Users.User)
-humans_of = |directory| directory.users().to_list().keep_if(|user| user.as_human().is_ok())

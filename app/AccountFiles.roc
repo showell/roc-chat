@@ -18,6 +18,7 @@
 ## (`AgentFiles`) and a human's invites (`InviteFiles`) are folders inside
 ## the account folder, which `account_folder_path` names for them.
 import AccountFolder
+import AccountProof
 import FactFile
 import FileFacts
 import GitHubId
@@ -168,15 +169,17 @@ AccountFiles :: [].{
 	read_inviter_file! = |id|
 		FileFacts.read_fact!("${AccountFiles.account_folder_path(AccountFolder.of(id))}/inviter")
 
-	## The human `id`'s password's bcrypt hash written whole over the one
-	## before, atomically: a redeemed invite's choice. The hash is the
-	## host's (`Host.bcrypt_hash_of_password!`); the password is never kept.
-	replace_password_hash! : UserId,
+	## The password's bcrypt hash of the human whose account `proof` proves,
+	## written whole over the one before, atomically: a redeemed invite's
+	## choice, at their first join (`AccountProof`), so nothing writes one
+	## without the account's own proof. The hash is the host's
+	## (`Host.bcrypt_hash_of_password!`); the password is never kept.
+	replace_password_hash! : AccountProof,
 	PasswordHash => Try(
 		{},
 		[MissingDirectory, NotUtf8, PathRefused, Failed],
 	)
-	replace_password_hash! = |id, hash| FileFacts.replace_fact!(password_path(id), hash.bytes())
+	replace_password_hash! = |proof, hash| FileFacts.replace_fact!(password_path(proof.human()), hash.bytes())
 
 	## The bcrypt hash of the user `id`'s password, as its file keeps it,
 	## or `NoFile` when they have none; unless the host's read failed. Only

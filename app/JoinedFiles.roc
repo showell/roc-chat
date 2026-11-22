@@ -11,8 +11,8 @@
 ## - by an invite, at a join by a human with no `password` file yet, their
 ##   first, before the password is written (`record_first_join!`), so a
 ##   join cut short writes its `joined` again when it is tried again. A
-##   join by a human who has a password (an invite again, to set a new one)
-##   writes none, so it never makes an older account new: not one that
+##   human who has a password never joins again (`HumanClaim`), and the
+##   check stays, so a join never makes an older account new: not one that
 ##   joined before this file, which has none and stays established.
 ##
 ## Making an invite writes none. The first start's owner and agents have
