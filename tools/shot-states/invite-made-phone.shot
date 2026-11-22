@@ -1,6 +1,8 @@
-# Tam's "New link" pressed at a phone's width: the link's card.
+# Someone invited by the form at a phone's width: the link's card.
 path = /invites
 sizes = phone
-mutates = makes an invite link for Tam
-click .invite-row button
+mutates = makes an invite for a new name
+click input[name=name]
+eval document.querySelector('input[name=name]').value = 'Guest ' + Array.from({length: 6}, () => 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]).join('')
+click form[action="/invites"] button
 wait .invite-made
