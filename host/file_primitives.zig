@@ -138,6 +138,22 @@ fn temporary_name(buf: []u8, name: []const u8) []const u8 {
     return std.fmt.bufPrint(buf, ".{s}.replacing", .{name}) catch unreachable;
 }
 
+/// **THE FILE CALLS A TEST COUNTS** (`DataRoot.calls_for_test`): each
+/// file read, binary or text; each folder listed; and each write, an
+/// append, a create, a replace or a folder made.
+pub const FileCalls = struct {
+    reads: std.atomic.Value(u64) = .init(0),
+    listings: std.atomic.Value(u64) = .init(0),
+    writes: std.atomic.Value(u64) = .init(0),
+
+    /// Every count back to 0.
+    pub fn clear(calls: *FileCalls) void {
+        calls.reads.store(0, .monotonic);
+        calls.listings.store(0, .monotonic);
+        calls.writes.store(0, .monotonic);
+    }
+};
+
 pub const DataRoot = struct {
     io: Io,
     /// The data root, open for the server's life.
@@ -148,6 +164,15 @@ pub const DataRoot = struct {
     /// floor without filling a disk. The server's own root (host/main.zig)
     /// never sets it.
     free_bytes_for_test: ?*const std.atomic.Value(u64) = null,
+    /// **A TEST'S COUNT OF FILE CALLS**: when set, each primitive counts
+    /// itself here as it is asked, so host/cost_check.zig can say what a
+    /// request cost. The server's own root (host/main.zig) never sets it.
+    calls_for_test: ?*FileCalls = null,
+
+    /// The calls counted, by kind, when `calls_for_test` is set.
+    fn count(root: *const DataRoot, comptime kind: std.meta.FieldEnum(FileCalls)) void {
+        if (root.calls_for_test) |calls| _ = @field(calls, @tagName(kind)).fetchAdd(1, .monotonic);
+    }
 
     /// **THE DATA ROOT'S FREE SPACE**: the bytes its file system has free
     /// for an unprivileged writer, `f_bavail` blocks of `f_frsize` bytes
@@ -187,6 +212,7 @@ pub const DataRoot = struct {
     /// The whole file at `path`, read for the primitive `what`, which a
     /// failure's log line names.
     fn read_whole_file(root: *const DataRoot, comptime what: []const u8, arena: std.mem.Allocator, path: []const u8) BinaryReadAnswer {
+        root.count(.reads);
         if (!path_rule(path)) return .path_refused;
         const dir = root.walk(path, .open) catch |e| return switch (e) {
             error.IsLink => .path_refused,
@@ -216,6 +242,7 @@ pub const DataRoot = struct {
     /// may not last, not that they are absent.
     pub fn append_utf8_bytes_to_file(root: *const DataRoot, path: []const u8, bytes: []const u8) AppendAnswer {
         const what = "append_utf8_bytes_to_file";
+        root.count(.writes);
         if (!path_rule(path)) return .path_refused;
         if (!std.unicode.utf8ValidateSlice(bytes)) return .not_utf8;
         const dir = root.walk(path, .open) catch |e| return switch (e) {
@@ -275,6 +302,7 @@ pub const DataRoot = struct {
     /// The exclusive create both one-time primitives make, for the
     /// primitive `what`, which a failure's log line names.
     fn create_file_unless_it_exists(root: *const DataRoot, comptime what: []const u8, path: []const u8, bytes: []const u8) BinaryCreateAnswer {
+        root.count(.writes);
         if (!path_rule(path)) return .path_refused;
         const dir = root.walk(path, .open) catch |e| return switch (e) {
             error.IsLink => .path_refused,
@@ -305,6 +333,7 @@ pub const DataRoot = struct {
     /// rename leaves the old file whole. Its folder must exist.
     pub fn replace_file_with_utf8_bytes_atomically(root: *const DataRoot, path: []const u8, bytes: []const u8) ReplaceAnswer {
         const what = "replace_file_with_utf8_bytes_atomically";
+        root.count(.writes);
         if (!path_rule(path)) return .path_refused;
         if (!std.unicode.utf8ValidateSlice(bytes)) return .not_utf8;
         const dir = root.walk(path, .open) catch |e| return switch (e) {
@@ -348,6 +377,7 @@ pub const DataRoot = struct {
     /// when they all exist after, those already there included; each new
     /// folder's parent fsynced. A file in the way is `failed`.
     pub fn make_directory_and_its_parents(root: *const DataRoot, path: []const u8) MakeDirectoryAnswer {
+        root.count(.writes);
         if (!path_rule(path)) return .path_refused;
         const dir = root.walk(path, .make) catch |e| return switch (e) {
             error.IsLink => .path_refused,
@@ -368,6 +398,7 @@ pub const DataRoot = struct {
     /// one). `not_utf8` when a name is not UTF-8.
     pub fn list_names_in_directory(root: *const DataRoot, arena: std.mem.Allocator, path: []const u8) ListAnswer {
         const what = "list_names_in_directory";
+        root.count(.listings);
         if (!path_rule(path)) return .path_refused;
         const parent = root.walk(path, .open) catch |e| return switch (e) {
             error.IsLink => .path_refused,

@@ -60,6 +60,16 @@ pub fn build(b: *std.Build) void {
     e2e.setCwd(b.path("."));
     e2e.has_side_effects = true;
     b.step("end-to-end", "The server against a temporary data root: GET, POST, GET, the file on disk").dependOn(&e2e.step);
+
+    // **THE COST CHECK** (host/cost_check.zig): each probe of
+    // app/route_cost_probes.txt, its file calls counted at two sizes of chat
+    // and held to its route's declared class.
+    const cost_exe = withApp(b, "cost-check", "host/cost_check.zig", app, target, optimize);
+    cost_exe.root_module.addAnonymousImport("route_cost_probes", .{ .root_source_file = b.path("app/route_cost_probes.txt") });
+    const cost = b.addRunArtifact(cost_exe);
+    cost.setCwd(b.path("."));
+    cost.has_side_effects = true;
+    b.step("cost-check", "Each probe's file calls at 10 and 300 humans, held to its route's cost class").dependOn(&cost.step);
 }
 
 /// One root's tests, run on every `zig build test`. Zig otherwise replays a
