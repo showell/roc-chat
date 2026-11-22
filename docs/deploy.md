@@ -2,7 +2,7 @@
 
 This is the owner's runbook for https://chat.lynrummy.com. A command marked **[PROD WRITE]** changes the prod droplet. Claude runs `tools/deploy.shale` itself, on a `main` that has passed verify; anything else marked so is the owner's.
 
-roc-chat runs on the prod droplet, beside Caddy, on 127.0.0.1:9611. Caddy holds the certificate, logs every request and is the only way in. The droplet's address is the operator's, and the repo names none: below, `<host>` is its ssh destination, `<user>@<address>` (a user who may sudo there, and the droplet's IPv4 address), which the deploy takes as `host=` and checks against what chat.lynrummy.com resolves to.
+roc-chat runs on the prod droplet, beside Caddy, on 127.0.0.1:9611. Caddy holds the certificate, logs every request and is the only way in. The droplet's address is the operator's, and the repo names none: below, `<host>` is its ssh destination, `<user>@<address>` (a user who may sudo there, and the droplet's IPv4 address). The deploy takes it from the Shale secret `keys:prod-ssh`, which the owner stores once with `shale --secrets` (its `store`, the name `prod-ssh`; roc-apps' deploy reads the same one), hands it to ssh and scp alone through `run`'s `secret_args`, and checks it against what chat.lynrummy.com resolves to.
 
 The whole of lynrummy.com in production (the droplets, the Caddy that serves every site, the other sites and their owners, the logs and HSTS) is mapped in roc-apps' [docs/production.md](https://github.com/showell/roc-apps/blob/master/docs/production.md). This runbook stays the home of roc-chat's own steps.
 
@@ -24,7 +24,7 @@ From roc-chat's root, run the gate, then the deploy **[PROD WRITE]**:
 
 ```
 shale tools/verify.shale
-shale tools/deploy.shale host=<host>
+shale tools/deploy.shale
 ```
 
 The gate proves that `main`, which is what deploys, passes. It ends `verify: every check passed`.

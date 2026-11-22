@@ -2,18 +2,29 @@
 -- its Caddy at https://chat.lynrummy.com. It runs from roc-chat's root, on
 -- `main`, while the server runs. docs/deploy.md is the runbook.
 --
---   shale tools/deploy.shale host=<user>@<address>
+--   shale tools/deploy.shale
 --
--- `host=` is the one argument, and it is needed: the ssh destination of the
--- machine that serves the chat, a user who may sudo there and the machine's
--- IPv4 address. It is the operator's, so the repo names none.
+-- It takes no argument. The ssh destination of the machine that serves the
+-- chat, a user who may sudo there and the machine's IPv4 address,
+-- `<user>@<IPv4>`, is the secret keys:prod-ssh, which the owner stores once
+-- with `shale --secrets` (its `store`, the name `prod-ssh`); roc-apps'
+-- site/deploy.shale reads the same one. It is the operator's, so the repo
+-- names none, and this script never sees it either: every ssh and scp, and
+-- the two `expr` checks below, get it through `run`'s `secret_args`, at
+-- `<secret PROD>`, and Shale scrubs it from what they print. ssh's and
+-- scp's own messages are off (LogLevel=QUIET), because they name the bare
+-- address, which the scrubber does not know; a step whose ssh fails says so
+-- by its exit, 255, and `ssh <user>@<address> true` by hand says why.
 --
 -- Each step refuses, by name, what it cannot do:
 --
--- 1. It refuses unless chat.lynrummy.com resolves to the droplet, the tree is
---    clean and on `main`, and prod's Caddyfile imports /etc/caddy/sites/*.caddy
---    and defines the `access_log` snippet. That Caddyfile is angry-gopher's
---    deploy/Caddyfile, and this script never edits it.
+-- 1. It refuses unless the secret is `<user>@<IPv4>` and chat.lynrummy.com
+--    resolves (through 1.1.1.1) to its address: `expr` matches the secret
+--    against the address dig gives, so only "the same or not" reaches the
+--    script. Then unless the tree is clean and on `main`, and prod's
+--    Caddyfile imports /etc/caddy/sites/*.caddy and defines the `access_log`
+--    snippet. That Caddyfile is angry-gopher's deploy/Caddyfile, and this
+--    script never edits it.
 -- 2. It makes, once, the `rocchat` system user, /opt/roc-chat (root's) and
 --    /var/lib/roc-chat with data/ (rocchat's, mode 700).
 -- 3. It refuses when .github-client-id or .github-client-secret is not in the
@@ -40,13 +51,12 @@
 --    `/login/github/start` goes to GitHub. Then it says whether the owner has
 --    linked GitHub yet.
 --
--- budget: steps=50000000
+-- tools/deploy_test.shale tests what can be tested without prod: the
+-- refusals of step 1, under a planted secrets mount.
+--
+-- budget: steps=50000000 programs=100
 
-const HOST = arg("host", "")
-if re_find(HOST, "^[a-z_][a-z0-9_-]*@[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$") == nil then
-  fail("deploy: host= is needed, the ssh destination of the machine that serves the chat, <user>@<its IPv4 address>; got '" .. HOST .. "'")
-end
-const IP = split(HOST, "@")[2]
+const SECRET = "keys:prod-ssh"
 const NAME = "chat.lynrummy.com"
 const ORIGIN = "https://chat.lynrummy.com"
 const PORT = "9611"
@@ -65,20 +75,51 @@ const OUT = ".zig-cache/deploy"
 
 if not exists("deploy/" .. BLOCK) or not exists("deploy/" .. UNIT) then fail("deploy: run it from roc-chat's root") end
 
+-- `run`'s options `o` with the secret at `<secret PROD>`.
+function with_dest(o)
+  o.secret_args = {PROD = SECRET}
+  return o
+end
+
+-- What a failed ssh or scp says: 255 is its own failure, any other exit the
+-- command's.
+function ssh_said(r, what)
+  if r.code == 255 then return what .. ": ssh to prod failed (exit 255; its messages are off, so `ssh <user>@<address> true` by hand says why)" end
+  return what .. ": exit " .. r.code .. ", " .. trim(r.out)
+end
+
+-- `script` run on prod by its shell, whatever its exit.
+function ssh_to_prod(script, timeout)
+  return run({"ssh", "-o", "BatchMode=yes", "-o", "LogLevel=QUIET", "<secret PROD>", script},
+    with_dest({timeout_ms = timeout, whole = 100000, want = "ssh: the deploy's own steps on prod"}))
+end
+
 -- A command on prod that must succeed.
 function on_prod(script)
-  return must(run({"ssh", HOST, script}, {timeout_ms = 120000, whole = 100000, want = "ssh: the deploy's own steps on prod"}))
+  local r = ssh_to_prod(script, 120000)
+  if r.code ~= 0 then fail("deploy: " .. ssh_said(r, "a step on prod")) end
+  return r
 end
 
 -- A command on prod whose exit is an answer: 0 is yes and 1 is no.
 function asks_prod(script)
-  local r = run({"ssh", HOST, script}, {timeout_ms = 60000, whole = 100000, want = "ssh: a question to prod, its exit the answer"})
-  if r.code ~= 0 and r.code ~= 1 then fail("deploy: prod could not be asked (ssh exit " .. r.code .. "): " .. trim(r.out)) end
+  local r = ssh_to_prod(script, 60000)
+  if r.code ~= 0 and r.code ~= 1 then fail("deploy: prod could not be asked: " .. ssh_said(r, "a question")) end
   return r.code == 0
 end
 
 function copy_to_prod(local_path, remote_path)
-  must(run({"scp", "-q", local_path, HOST .. ":" .. remote_path}, {timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod"}))
+  local r = run({"scp", "-q", "-o", "BatchMode=yes", "-o", "LogLevel=QUIET", local_path, "<secret PROD>:" .. remote_path},
+    with_dest({timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod"}))
+  if r.code ~= 0 then fail("deploy: " .. ssh_said(r, "the copy of " .. local_path .. " to prod's " .. remote_path)) end
+end
+
+-- Whether the secret matches the BRE `pattern`, whole: expr prints the
+-- match's length, which stays here, and exits 0 for a match, 1 for none.
+function secret_matches(pattern)
+  local r = run({"expr", "<secret PROD>", ":", pattern}, with_dest({timeout_ms = 10000, tail = 1}))
+  if r.code ~= 0 and r.code ~= 1 then fail("deploy: expr could not match " .. SECRET .. ": exit " .. r.code .. ", " .. trim(r.out)) end
+  return r.code == 0
 end
 
 -- The Location of a GET of `path`, which must be a 303.
@@ -95,12 +136,21 @@ function must_send(path, to)
   if where ~= to then fail("deploy: " .. ORIGIN .. path .. " sends the browser to '" .. where .. "', not " .. to) end
 end
 
--- 1. The refusals that change nothing.
+-- 1. The refusals that change nothing: the secret's shape, then the name's
+-- address against it.
+if not secret_matches("[a-z_][a-z0-9_-]*@[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*$") then
+  fail("deploy: " .. SECRET .. " is not `<user>@<IPv4>`, the ssh destination of the machine that serves the chat: store it again with `shale --secrets`")
+end
 local dns = run({"dig", "+short", "@1.1.1.1", "A", NAME}, {timeout_ms = 30000, whole = 10000, want = "dig: the name's public answer"})
 local resolved = trim(dns.out)
-local last = resolved
+local last = ""
 for line in lines(resolved) do last = trim(line) end
-if last ~= IP then fail("deploy: " .. NAME .. " resolves to '" .. resolved .. "', not " .. IP) end
+if dns.code ~= 0 or re_find(last, "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$") == nil then
+  fail("deploy: " .. NAME .. " does not resolve to an IPv4 address through 1.1.1.1 (dig said '" .. resolved .. "'); the DNS record comes first")
+end
+if not secret_matches(".*@" .. join(split(last, "."), "\\.") .. "$") then
+  fail("deploy: " .. NAME .. " resolves to " .. last .. ", not the address in " .. SECRET .. "; the DNS record comes first")
+end
 local dirty = run({"git", "status", "--porcelain"}, {timeout_ms = 30000, whole = 100000})
 if trim(dirty.out) ~= "" then fail("deploy: the tree has changes not committed; commit them first:\n" .. dirty.out) end
 local branch = trim(must(run({"git", "rev-parse", "--abbrev-ref", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
@@ -150,7 +200,7 @@ else
   must(run({"git", "push", "-q"}, {timeout_ms = 60000, whole = 10000}))
 end
 local commit = trim(must(run({"git", "rev-parse", "--short", "HEAD"}, {timeout_ms = 10000, whole = 1000})).out)
-print("deploying roc-chat " .. commit .. " to " .. HOST)
+print("deploying roc-chat " .. commit .. " to prod (" .. SECRET .. ")")
 
 -- Everything copied to prod is staged in a folder of its own, made fresh under
 -- the deploy user's home with mode 700 and a name no one can guess, so no other local

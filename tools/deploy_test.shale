@@ -1,0 +1,65 @@
+-- tools/deploy_test.shale: what tools/deploy.shale does before it reaches
+-- prod, tested without prod, as roc-apps' site/deploy_test.shale tests its
+-- deploy. Each case runs the deploy as a child `shale` under a mounts file
+-- of its own, whose `keys` mount is a planted secrets folder made here, and
+-- holds its stop to the step it must stop at: an argument given (the old
+-- `host=`), no `keys` mount, no secret, a secret not `<user>@<IPv4>`, and a
+-- well-formed secret whose address is not the name's (192.0.2.1,
+-- TEST-NET-1, which no host answers). None reaches ssh or scp, which the
+-- child's --verbose record would show, and none prints the planted
+-- address.
+--
+--   shale tools/deploy_test.shale
+--
+-- tools/verify.shale runs it. The DNS case asks 1.1.1.1, so it needs the
+-- network.
+
+const PLANTED = "192.0.2.1"
+
+-- The deploy run under `mounts`, its mounts file, with `extra` words after
+-- the script: {code, out}.
+function deploy(mounts, extra)
+  local argv = {"shale", "--verbose", "tools/deploy.shale"}
+  for w in extra do push(argv, w) end
+  local r = run(argv, {cwd = ".", timeout_ms = 120000, tail = 60, env = {SHALE_MOUNTS = real(mounts)}})
+  return {code = r.code, out = r.out}
+end
+
+-- One case: the deploy must stop, its output must hold `want`, and it must
+-- neither run ssh or scp nor print the planted address.
+function expect_stop(name, mounts, extra, want)
+  local r = deploy(mounts, extra)
+  local why = ""
+  if r.code == 0 then
+    why = "it exited 0"
+  elseif not contains(r.out, want) then
+    why = "its output lacks `" .. want .. "`"
+  elseif contains(r.out, "run ssh") or contains(r.out, "run scp") then
+    why = "it reached prod's programs"
+  elseif contains(r.out, PLANTED) then
+    why = "it printed the planted address"
+  end
+  if why ~= "" then
+    print(r.out)
+    fail("deploy_test: " .. name .. ": " .. why)
+  end
+  print("ok: " .. name)
+  return nil
+end
+
+if not exists("tools/deploy.shale") then fail("deploy_test: run it from roc-chat's root") end
+local dir = fresh_dir("build:", "roc-chat-deploy-test")
+mkdir(dir .. "/keys")
+create(dir .. "/none.mounts", "")
+create(dir .. "/keys.mounts", "keys = " .. real(dir .. "/keys") .. " secrets\n")
+local m = dir .. "/keys.mounts"
+
+expect_stop("an argument is refused", m, {"host=x"}, "`host=` is given, and the script reads no `arg(\"host\")`")
+expect_stop("no keys mount", dir .. "/none.mounts", {}, "\"keys:prod-ssh\": `keys:` is not a mount")
+expect_stop("no secret", m, {}, "the secret `PROD`'s file keys:prod-ssh cannot be read: FileNotFound")
+create(dir .. "/keys/prod-ssh", "not-an-address\n")
+expect_stop("a secret not <user>@<IPv4>", m, {}, "keys:prod-ssh is not `<user>@<IPv4>`")
+replace(dir .. "/keys/prod-ssh", "deploy@" .. PLANTED .. "\n")
+expect_stop("the name resolves elsewhere", m, {}, ", not the address in keys:prod-ssh; the DNS record comes first")
+remove_tree(dir)
+print("deploy_test: 5 cases, each stopped before prod")

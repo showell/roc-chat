@@ -60,7 +60,9 @@
 --    seam held to roc glue's layout, the HTTP layer. Every run runs them
 --    all (build.zig's `testRun`), so the summary's count is exactly
 --    ZIG_TESTS, each passing.
--- 6. tools/listen.shale's own self-test, LC's listener's decisions.
+-- 6. tools/listen.shale's own self-test, LC's listener's decisions, and
+--    tools/deploy_test.shale, the deploy's refusals before it reaches prod
+--    (it asks 1.1.1.1, so it needs the network).
 -- 7. The end to end (`zig build end-to-end`): the real server on a
 --    free port of 127.0.0.1, against a temporary data root, driven over
 --    HTTP; it stops the server and removes the root, pass or fail.
@@ -255,6 +257,9 @@ if zig_tests.code ~= 0 then print(zig_tests.out) end
 local listener = run({"shale", "tools/listen.shale", "self_test=1"}, {cwd = ".", timeout_ms = 60000, whole = 100000})
 say(listener.code == 0 and find(listener.out, "listen self_test: PASS") ~= nil, "tools/listen.shale self_test=1")
 if listener.code ~= 0 then print(listener.out) end
+local deploy_test = run({"shale", "tools/deploy_test.shale"}, {cwd = ".", timeout_ms = 300000, whole = 100000})
+say(deploy_test.code == 0 and find(deploy_test.out, "deploy_test: 5 cases, each stopped before prod") ~= nil, "tools/deploy_test.shale: the deploy's refusals before prod")
+if deploy_test.code ~= 0 then print(deploy_test.out) end
 
 -- 7. The end to end.
 local e2e = run({"zig", "build", "end-to-end"}, {timeout_ms = 300000, whole = 1000000})
