@@ -1,0 +1,17 @@
+# FileFacts' writers: every function of app/FileFacts.roc that changes the
+# data folder, one a line. tools/check_stream_endings.shale and
+# tools/check_credential_writers.shale both read this list, so they agree on
+# what a write is: a function that calls one of these is a writer, judged in
+# each check's table.
+#
+# make_folder! is one. A folder made is a change to the data folder, and the
+# app reads some folders' names as facts (each account is a folder of
+# auth/, each channel a folder of chat/channel/), so a function that only makes
+# a folder is judged as one that writes a file is.
+
+create_fact!
+replace_fact!
+create_facts!
+append_to_file!
+create_binary_file!
+make_folder!

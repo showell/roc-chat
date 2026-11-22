@@ -9,7 +9,8 @@
 -- (`roc_tree`), each top-level function and each function of a module's
 -- type by its `Module.name`, the calls in its body by name, and
 -- tools/stream_endings.txt, the table of every function that writes a file
--- (calls a FileFacts writer): `ends` (its write ends a session, credential
+-- (calls a FileFacts writer, as tools/file_writers.txt lists them, the list
+-- tools/check_credential_writers.shale reads too): `ends` (its write ends a session, credential
 -- or access), `keeps` (it doesn't), or `exempt` (an action's one call of
 -- an `ends` writer, or of a `*Files` function reaching one, that needs no
 -- stream ended). Its findings:
@@ -52,7 +53,19 @@
 const TABLE = "tools/stream_endings.txt"
 const ENDING = "UserStreams.end_every_stream!"
 const HOST_ENDING = "Host.end_every_stream_of_holder!"
-const WRITERS = {"FileFacts.create_fact!", "FileFacts.replace_fact!", "FileFacts.create_facts!", "FileFacts.append_to_file!", "FileFacts.create_binary_file!", "FileFacts.make_folder!"}
+const WRITER_LIST = "tools/file_writers.txt"
+
+-- FileFacts' writers, as `FileFacts.name!`.
+function file_writers()
+  local found = {}
+  for l in lines(read(WRITER_LIST)) do
+    local t = trim(l)
+    if t ~= "" and not starts_with(t, "#") then push(found, "FileFacts." .. t) end
+  end
+  if #found == 0 then fail("check_stream_endings: " .. WRITER_LIST .. " names no writer") end
+  return found
+end
+const WRITERS = file_writers()
 
 -- Every function of the file at `p`, whose tree is `f`, by `Module.name`,
 -- each with its line and the calls in its body, `{name, line}`, a bare
