@@ -23,12 +23,12 @@ import Route
 
 RouteCost :: [].{
 
-	## How a route's file calls grow with the chat's humans.
-	Class : [Constant, PerReaderPlaces, PerHuman]
+	## How a route's file calls grow with the chat's humans: its cost class.
+	Growth : [Constant, PerReaderPlaces, PerHuman]
 
 	## The class of the route `choice`.
-	class_of : Route.Choice -> RouteCost.Class
-	class_of = |choice|
+	growth_of : Route.Choice -> RouteCost.Growth
+	growth_of = |choice|
 		match choice {
 			Open(ResumeOrBrowse) => Constant
 			Open(ServeScript(_)) => Constant
@@ -89,8 +89,8 @@ RouteCost :: [].{
 		}
 
 	## The class's name, as app/route_cost_probes.txt writes it.
-	class_name : RouteCost.Class -> Str
-	class_name = |class|
+	growth_name : RouteCost.Growth -> Str
+	growth_name = |class|
 		match class {
 			Constant => "Constant"
 			PerReaderPlaces => "PerReaderPlaces"
@@ -101,6 +101,8 @@ RouteCost :: [].{
 # ── tests
 # Each class's name.
 expect
-	[(Constant, "Constant"), (PerReaderPlaces, "PerReaderPlaces"), (PerHuman, "PerHuman")].all(
-		|(class, name)| RouteCost.class_name(class) == name,
-	)
+	[
+		(Constant, "Constant"),
+		(PerReaderPlaces, "PerReaderPlaces"),
+		(PerHuman, "PerHuman"),
+	].all(|(growth, name)| RouteCost.growth_name(growth) == name)

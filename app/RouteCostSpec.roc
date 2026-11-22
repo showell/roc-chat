@@ -30,7 +30,7 @@ declared_class = |line|
 				path: path.to_utf8(),
 				directory: FirstStart.first_directory,
 			})
-			{ named, declared: RouteCost.class_name(RouteCost.class_of(choice)) }
+			{ named, declared: RouteCost.growth_name(RouteCost.growth_of(choice)) }
 		}
 		_ => crash "RouteCostSpec.declared_class: a probe is a class, who asks, a method and a path"
 	}
