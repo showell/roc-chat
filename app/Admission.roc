@@ -4,16 +4,21 @@
 ## room its body may take. Only someone signed in who may post in a
 ## conversation gets an upload's room there; everyone else gets a form's,
 ## so no one gets the large room or its time before their credential is
-## checked. It also puts on every answer the resource policy that keeps
-## other sites' pages from loading it.
+## checked. A plain read, a GET with no `Authorization`, is admitted from
+## its origin alone (`is_plain_read`), so it costs no read of the
+## directory; every other head is judged as the whole request is. It also
+## puts on every answer the resource policy that keeps other sites' pages
+## from loading it.
 import pf.Http
 import Access
 import ConversationKey
 import Directory
+import DiskFloor
 import FirstStart
 import HttpAnswer
 import Name
 import PageKit
+import RequestHeader
 import RequestOrigin
 import Route
 import SignedIn
@@ -51,6 +56,22 @@ Admission :: [].{
 				Admit(body_allowance({ choice, directory, actor }))
 			}
 		}
+
+	## Whether a request's head needs nothing but its origin judged: a GET
+	## with no `Authorization` header. A GET adds no data, so the disk's
+	## floor never refuses one (`DiskFloor.adds_data`); it is no upload, so
+	## its room is a form's, and it has no body to read; and with no
+	## `Authorization`, who is acting is a session or no one, which the head
+	## never refuses. So the directory isn't read for it here, and the
+	## answer reads it once.
+	is_plain_read : Http.RequestHead -> Bool
+	is_plain_read = |head|
+		head.method == "GET".to_utf8() and RequestHeader.header_value(head.headers, "authorization") == Unsent
+
+	## A plain read's admission (`is_plain_read`): a form's room, since a
+	## GET has no body.
+	plain_read_admission : Http.Admission
+	plain_read_admission = Admit(form_body_allowance)
 
 	## The refusal of a request from its head, with `answer`, which no other
 	## site's page may load.
@@ -355,6 +376,43 @@ expect
 		head_of("POST /agents", [("Origin", "http://evil.example")]),
 		{ ..head_of("POST /chat/dm/1_1/plans/upload", []), port: 9612 },
 	].all(|head| admission_verdict(head) == Refused(403, forbidden_headers))
+# A plain read is a GET with no `Authorization`: not one with a key or a
+# header sent twice, and not a POST, a PUT or a HEAD.
+expect Admission.is_plain_read(head_of("GET /chat/dm/1_1/plans", [("Cookie", "a=b")]))
+expect
+	[
+		head_of("GET /chat/dm/1_1/plans", [("Authorization", "Bearer 2-x")]),
+		head_of("GET /chat/dm/1_1/plans", [("authorization", "x"), ("Authorization", "y")]),
+		head_of("POST /chat/dm/1_1/plans", []),
+		head_of("PUT /chat/dm/1_1/plans", []),
+		head_of("HEAD /chat/dm/1_1/plans", []),
+	].all(|head| !Admission.is_plain_read(head))
+# A plain read never needs what the directory would give: at every path
+# that adds data or uploads by a POST, a GET adds none and uploads nothing.
+expect
+	[
+		"/chat/dm/1_1/plans",
+		"/chat/dm/1_1/plans/send",
+		"/chat/dm/1_1/plans/upload",
+		"/chat/dm/1_1/plans/react",
+		"/chat/channel/general/plans/upload",
+		"/invites",
+		"/invites/2/again",
+		"/join",
+		"/login/github/name",
+		"/agents",
+		"/agents/1/invites",
+		"/agents/redeem",
+		"/channels",
+		"/channels/general/members/1/add",
+		"/devices",
+	].all(
+		|path| {
+			choice = Route.choose({ method: "GET".to_utf8(), path: path.to_utf8(), directory: FirstStart.first_directory })
+			!DiskFloor.adds_data(choice) and upload_asked(choice) == NoUpload
+		},
+	)
+expect Admission.plain_read_admission == Admit(form_body_allowance)
 # Every answer ends with its resource policy, after its own headers.
 expect
 	Admission.with_same_origin_resource_policy(HttpAnswer.see_other("/a")).headers

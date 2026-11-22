@@ -173,7 +173,8 @@ start! = |{}| DirectoryStore.prepare_directory!({})
 ## What the host may do with a request, judged from its head alone. A
 ## request from elsewhere (`RequestOrigin`, a trust boundary) is refused
 ## with a 403 before anything is read, so the host never reads its body.
-## Then the directory is read and who is acting is found, as for the whole
+## A plain read (`Admission.is_plain_read`) is admitted then. For any
+## other, the directory is read and who is acting is found, as for the whole
 ## request (`Actor`): a credential refused is its 401 here, and a
 ## directory that can't be read its 500. A request that adds data while the
 ## disk is near full is refused with a 507 (`DiskFloor`). Any other is
@@ -182,6 +183,7 @@ check_request_head! : Http.RequestHead => Http.Admission
 check_request_head! = |head|
 	match RequestOrigin.check(Admission.origin_of_head(head)) {
 		Err(why) => Admission.head_refusal(Admission.origin_refusal(why))
+		Ok({}) if Admission.is_plain_read(head) => Admission.plain_read_admission
 		Ok({}) =>
 			match DirectoryStore.load_directory!({}) {
 				Err(why) => Admission.head_refusal(DirectoryStore.directory_refusal(why))
