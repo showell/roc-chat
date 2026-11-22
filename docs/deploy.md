@@ -4,6 +4,8 @@ This is the owner's runbook for https://chat.lynrummy.com. A command marked **[P
 
 roc-chat runs on the prod droplet, beside Caddy, on 127.0.0.1:9611. Caddy holds the certificate, logs every request and is the only way in. The droplet's address is the operator's, and the repo names none: below, `<host>` is its ssh destination, `<user>@<address>` (a user who may sudo there, and the droplet's IPv4 address), which the deploy takes as `host=` and checks against what chat.lynrummy.com resolves to.
 
+The whole of lynrummy.com in production (the droplets, the Caddy that serves every site, the other sites and their owners, the logs and HSTS) is mapped in roc-apps' [docs/production.md](https://github.com/showell/roc-apps/blob/master/docs/production.md). This runbook stays the home of roc-chat's own steps.
+
 | What | Where on prod | From |
 |---|---|---|
 | the binary (static, ReleaseSafe) | `/opt/roc-chat/roc-chat`, root's, read-only to the service | built here by `tools/deploy.shale` |
