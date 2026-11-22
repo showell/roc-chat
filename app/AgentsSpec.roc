@@ -155,20 +155,37 @@ expect
 	).map_ok(|_| {})
 		== Err(Full)
 
-# An invite's scope: each field `everywhere` or `off`, everywhere when not
-# sent; anything else refused, naming the field.
-expect Agents.scope_from_form([]) == Ok(KeyScope.everywhere)
-expect Agents.scope_from_form("read=off".to_utf8()) == Ok(
+# An invite's scope: each field `everywhere` or `off`, and each required, so
+# a form that leaves one out reaches nothing; anything else refused, naming
+# the field.
+expect Agents.scope_from_form("read=everywhere&post=everywhere".to_utf8()) == Ok(KeyScope.everywhere)
+expect Agents.scope_from_form("read=off&post=everywhere".to_utf8()) == Ok(
 	KeyScope.of({ read: Off, post: Everywhere }),
 )
 expect Agents.scope_from_form("post=off&read=everywhere".to_utf8()) == Ok(
 	KeyScope.of({ read: Everywhere, post: Off }),
 )
+expect Agents.scope_from_form("read=off&post=off".to_utf8()) == Ok(
+	KeyScope.of({ read: Off, post: Off }),
+)
+expect
+	Agents.scope_from_form([])
+		== Err(BadForm("The form's `read` is required: `everywhere` or `off`."))
+expect
+	Agents.scope_from_form("read=off".to_utf8())
+		== Err(BadForm("The form's `post` is required: `everywhere` or `off`."))
+expect
+	Agents.scope_from_form("post=off".to_utf8())
+		== Err(BadForm("The form's `read` is required: `everywhere` or `off`."))
+expect
+	Agents.scope_from_form("reads=everywhere&post=everywhere".to_utf8())
+		== Err(BadForm("The form's `read` is required: `everywhere` or `off`."))
+expect Agents.refusal_notice(BadForm("The form's `read` is required: `everywhere` or `off`.")).status == 400
 expect
 	Agents.scope_from_form("read=on".to_utf8())
 		== Err(BadForm("The form's `read` is `everywhere` or `off`."))
 expect
-	Agents.scope_from_form("post=Off".to_utf8())
+	Agents.scope_from_form("read=everywhere&post=Off".to_utf8())
 		== Err(BadForm("The form's `post` is `everywhere` or `off`."))
 expect
 	Agents.scope_from_form("read=off&read=off".to_utf8())
@@ -473,7 +490,7 @@ expect {
 	!plain.contains("/login/github/link")
 		and showing.contains("<form method=\"post\" action=\"/login/github/link\"><button>Link GitHub</button></form>")
 		and plain.contains("<form method=\"post\" action=\"/agents\"><textarea name=\"name\" required></textarea>")
-		and plain.contains("<form method=\"post\" action=\"/agents/2/invites\"><button>Invite CC</button></form>")
+		and plain.contains("<form method=\"post\" action=\"/agents/2/invites\"><input type=\"hidden\" name=\"read\" value=\"everywhere\"><input type=\"hidden\" name=\"post\" value=\"everywhere\"><button>Invite CC</button></form>")
 		and plain.contains("action=\"/agents/2/keys/1/revoke\"")
 		and !plain.contains("action=\"/agents/2/keys/2/revoke\"")
 		and plain.contains("action=\"/agents/2/invites/1/revoke\"")

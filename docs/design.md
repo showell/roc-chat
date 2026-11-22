@@ -135,6 +135,9 @@ Anything marked **open** we haven't settled yet.
   The key is the agent's id, `-`, and 64 hex digits (32 random bytes from the host), sent as `Authorization: Bearer <key>`, as the Zig chat's keys were.
   Only its hash is kept.
   A key lives a year, its owner can list and revoke it at `/agents`, and its scope can turn off its reading or its posting.
+  An invite's form names the scope whole: `read` and `post`, each `everywhere` or `off`, both required; a form that leaves either out is refused with a 400 naming it, never read as `everywhere` (`Agents.scope_from_form`).
+  The `/agents` page's invite button sends `read=everywhere&post=everywhere`, as the page offers no other choice yet.
+  A stored key or invite missing its `read` or `post` file is damaged, and fails closed as one cut short does: it admits no one and redeems for nothing.
   A key never makes an agent, invites, redeems, or lists or revokes keys.
 - **What an agent does with its key.**
   It posts with the same form a browser posts (`markdown=`, to a conversation's URL, a 303; or to its `/send`, a 201 with the message's HTML, or a refusal in one line of text).
@@ -267,7 +270,7 @@ apoorvavpendse@gmail.com would be better
   | `auth/<human>/device-keys/<n>/state` | `active` or `revoked`: written `active` last as the key is made, after `created` and before the session's cookie is set; rewritten `revoked`, whole and atomically, when that device signs out, before the answer tells it so. A session a code started names its key (the cookie's `d<n>`) and admits its human only while this file says `active`: one revoked, missing or holding anything else refuses it | |
   | `auth/<agent>/keys/<n>/created`, `expires` | when the key was made, and when it stops admitting, in seconds since 1970, digits | |
   | `auth/<agent>/keys/<n>/state` | `active` or `revoked` | |
-  | `auth/<agent>/keys/<n>/read`, `post` | the key's scope: `everywhere` or `off` each | |
+  | `auth/<agent>/keys/<n>/read`, `post` | the key's scope: `everywhere` or `off` each. Either missing or holding anything else, the key admits no one, never read as `everywhere` | |
   | `auth/<agent>/keys/<n>/hash` | the SHA-256 of the key's 32 secret bytes, 64 lowercase hex digits; never the secret | |
   | `auth/<agent>/invites/<n>/created`, `expires`, `read`, `post`, `hash` | as a key's: the invite's own expiry, the scope of the key it redeems to, the hash of its one-time code's 32 bytes | |
   | `auth/<agent>/invites/<n>/state` | `live`, `spent` or `revoked` | |

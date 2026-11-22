@@ -2310,7 +2310,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
         has(listed.body, "<h1>CC (id 2)</h1>") and has(listed.body, "action=\"/agents/2/invites\""));
 
     // 39.
-    const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere&post=everywhere" });
     const code = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
     const redeemed = try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{code}));
     const key = std.mem.trimEnd(u8, redeemed.body, "\n");
@@ -2324,7 +2324,7 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
     const bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{key});
 
     // 40.
-    const second = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const second = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere&post=everywhere" });
     const late_code = between(second.body, "<p class=\"invite-code\">", "</p>") orelse "";
     try data.writeFile(io, .{ .sub_path = "auth/2/invites/2/expires", .data = "1000" });
     const late = try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{late_code}));
@@ -2415,6 +2415,30 @@ fn agentSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) !
         std.mem.eql(u8, try readFile(a, io, data, "auth/2/keys/2/read"), "off") and
         scoped_read.status == 403 and scoped_post.status == 403 and std.mem.startsWith(u8, scoped_stream.head, "HTTP/1.1 403 "));
 
+    // 46b.
+    const no_scope = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const no_post = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere" });
+    try t.check("an invite whose form leaves out `read` or `post`: 400 each, naming the field it needs; no invite made", no_scope.status == 400 and
+        has(no_scope.body, "The form&#39;s `read` is required: `everywhere` or `off`.") and no_post.status == 400 and
+        has(no_post.body, "The form&#39;s `post` is required: `everywhere` or `off`.") and !(try exists(io, data, "auth/2/invites/4")));
+    const whole = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere&post=everywhere" });
+    const whole_code = between(whole.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    const whole_key = std.mem.trimEnd(u8, (try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{whole_code}))).body, "\n");
+    const whole_bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{whole_key});
+    const whole_read = try getWith(a, io, port, channel_url ++ "/raw", whole_bearer);
+    try data.deleteFile(io, "auth/2/keys/3/read");
+    const damaged_read = try getWith(a, io, port, channel_url ++ "/raw", whole_bearer);
+    const damaged_listed = try get(a, io, port, "/agents");
+    try t.check("a key whose stored `read` is gone admits no one: it read before, it is a 401 after, and /agents lists it no more", isToken(whole_key, "2-") and
+        whole_read.status == 200 and damaged_read.status == 401 and damaged_listed.status == 200 and
+        has(damaged_listed.body, "<p>Key 2: ") and !has(damaged_listed.body, "<p>Key 3: "));
+    const unposted = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere&post=everywhere" });
+    const unposted_code = between(unposted.body, "<p class=\"invite-code\">", "</p>") orelse "";
+    try data.deleteFile(io, "auth/2/invites/5/post");
+    const unposted_redeemed = try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{unposted_code}));
+    try t.check("an invite whose stored `post` is gone redeems for no key: 401, and no key made", isToken(unposted_code, "2-") and
+        unposted_redeemed.status == 401 and !(try exists(io, data, "auth/2/keys/4")));
+
     // 47.
     const revoking = Io.Clock.now(.awake, io);
     const revoked = try post(a, io, port, .{ .path = "/agents/2/keys/1/revoke", .form = "" });
@@ -2470,7 +2494,7 @@ fn memberSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps) 
         has(page.body, "<form method=\"post\" action=\"/channels/crew/members/2/add\"><button>Add CC (agent, id 2)</button></form>"));
 
     // 48d.
-    const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "" });
+    const invited = try post(a, io, port, .{ .path = "/agents/2/invites", .form = "read=everywhere&post=everywhere" });
     const code = between(invited.body, "<p class=\"invite-code\">", "</p>") orelse "";
     const key = std.mem.trimEnd(u8, (try anonymousPost(a, io, port, "/agents/redeem", try std.fmt.allocPrint(a, "code={s}", .{code}))).body, "\n");
     const bearer = try std.fmt.allocPrint(a, "authorization: Bearer {s}\r\n", .{key});

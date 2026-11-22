@@ -147,8 +147,8 @@ Agents :: [].{
 	}
 
 	## The scope an invite's form `body` asks for: its `read` and `post`
-	## fields, each `everywhere` or `off`, and `everywhere` when the field
-	## is not sent; or why not.
+	## fields, each `everywhere` or `off` and each required, so a form that
+	## leaves one out reaches nothing by default; or why not.
 	scope_from_form : List(U8) -> Try(KeyScope, [BadForm(Str)])
 	scope_from_form = |body| {
 		read = reach_field({ body, name: "read" })?
@@ -187,12 +187,12 @@ Agents :: [].{
 		}
 }
 
-## The reach a form's field `name` asks for, `everywhere` when it is not
-## sent.
+## The reach a form's field `name` asks for; or why not, a field not sent
+## among the reasons.
 reach_field : { body : List(U8), name : Str } -> Try(KeyScope.Reach, [BadForm(Str)])
 reach_field = |{ body, name }|
 	match UrlEncodedForm.field({ body, name }) {
-		Err(MissingField) => Ok(Everywhere)
+		Err(MissingField) => Err(BadForm("The form's `${name}` is required: `everywhere` or `off`."))
 		Err(fault) => Err(BadForm(UrlEncodedForm.fault_words({ fault, name })))
 		Ok(unchecked) =>
 			unchecked.reach()

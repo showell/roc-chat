@@ -139,12 +139,7 @@ agent_section = |{ agent, keys, invites }, buttons| {
 			inner: Escape.text("${agent.name().to_str()} (id ${agent.id().to_str()})"),
 		}),
 		PageKit.newline,
-		button(
-			PageKit.post_button({
-				action: "${folder}/invites",
-				label: "Invite ${agent.name().to_str()}",
-			}),
-		),
+		button(invite_form({ folder, name: agent.name().to_str() })),
 		TrustedHtml.join(
 			keys.map(
 				|key| {
@@ -189,6 +184,36 @@ agent_section = |{ agent, keys, invites }, buttons| {
 				},
 			),
 		),
+	])
+}
+
+## The button that invites the agent named `name`, whose folder is
+## `folder`: a form posting the scope its key will have, `read` and `post`,
+## each `everywhere`, since the invite route requires both and the page
+## offers no other choice yet.
+invite_form : { folder : Str, name : Str } -> TrustedHtml
+invite_form = |{ folder, name }| {
+	reach_input = |field|
+		Html.input([
+			InputType(Hidden),
+			FieldName(PageKit.token(field)),
+			TokenValue(PageKit.token(KeyScope.reach_word(Everywhere))),
+		])
+	TrustedHtml.join([
+		Html.element({
+			name: Form,
+			attributes: [MethodPost, Action(PageKit.site_path("${folder}/invites"))],
+			inner: TrustedHtml.join([
+				reach_input("read"),
+				reach_input("post"),
+				Html.element({
+					name: Button,
+					attributes: [],
+					inner: Escape.text("Invite ${name}"),
+				}),
+			]),
+		}),
+		PageKit.newline,
 	])
 }
 
