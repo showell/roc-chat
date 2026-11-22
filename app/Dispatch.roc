@@ -170,7 +170,7 @@ answer_open_route! : {
 answer_open_route! = |{ open, request, directory, actor }|
 	match open {
 		ResumeOrBrowse => ResumeRoute.answer_way_in!({ actor, directory })
-		ServeScript(script) => HttpAnswer.script(script.bytes())
+		ServeScript({ script, name }) => HttpAnswer.script(name, script.bytes())
 		ServeFavicon => HttpAnswer.favicon(Favicon.bytes)
 		ServeAlertIcon => HttpAnswer.svg_icon(Favicon.alert_bytes)
 		ShowLogin =>

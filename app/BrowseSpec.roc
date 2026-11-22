@@ -8,6 +8,7 @@ import Directory
 import Html
 import Place
 import Sample
+import Script
 import SignInPage
 import SignedIn
 import Topic
@@ -94,7 +95,7 @@ steve_and_apoorva = {
 ## parts.
 page_head : Str
 page_head =
-	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>Browse</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<header class=\"top-bar\"><span class=\"top-title\">Browse</span> <span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · <span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n"
+	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>Browse</title>\n<script src=\"${Script.Palette.url_path()}\"></script>\n<header class=\"top-bar\"><span class=\"top-title\">Browse</span> <span class=\"top-links\"><a href=\"/chat\">Browse</a> · <a href=\"/chat/recent\">Recent</a> · <a href=\"/invites\">Invites</a> · <a href=\"/devices\">Add a device</a></span> <div class=\"top-user\"><a href=\"https://lynrummy.com/\">Home</a> · <span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n"
 
 ## The quiet lines for someone new, which every Browse page opens with.
 newcomer_lines : Str
@@ -103,7 +104,7 @@ newcomer_lines = "<div class=\"help\"><p>New here? Every place you can read is b
 ## What the page ends with, after its panel's parts: the panel's end and the
 ## scripts that style the page.
 page_foot : Str
-page_foot = "</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+page_foot = "</div></div>\n<script src=\"${Script.Chrome.url_path()}\"></script>\n<script src=\"${Script.Panel.url_path()}\"></script>\n"
 
 ## The page's two panes, holding `channels` and `dms`, each a place's markup.
 panes : Str, Str -> Str

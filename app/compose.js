@@ -357,7 +357,7 @@
   }
   // Long with no answer: whether the server answers anything, said plainly,
   // asked again until the send is answered.
-  var pingScript = document.querySelector('script[src$="/palette.js"]');
+  var pingScript = document.querySelector('script[src^="/chat/assets/palette."]');
   if (!pingScript) throw new Error('compose.js: the page loads no palette.js, which the server check asks for');
   var pingUrl = pingScript.src;
   function checkServer(mine) {

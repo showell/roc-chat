@@ -21,14 +21,9 @@
 ##     POST the same paths and `/upload`       an image uploaded to it
 ##     POST the same paths and `/react`        a reaction: `msg=`, `emoji=`, `on=`
 ##     GET  the same paths, `/uploads/<name>`  an image uploaded to it
-##     GET  /chat/assets/palette.js            the pages' scripts
-##     GET  /chat/assets/chrome.js
-##     GET  /chat/assets/compose.js
-##     GET  /chat/assets/emoji.js
-##     GET  /chat/assets/feed.js
-##     GET  /chat/assets/panel.js
-##     GET  /chat/assets/join.js
-##     GET  /chat/assets/recent.js
+##     GET  /chat/assets/palette.<hash>.js     the pages' scripts, by their bytes (`Script.url_path`)
+##     GET  /chat/assets/chrome.<hash>.js
+##     GET  /chat/assets/palette.js            the same, by another name (`Script.named_by`)
 ##     GET  /chat/assets/alert-icon.svg        the tab's icon when a notice comes
 ##     GET  /favicon.ico                       the site's icon
 ##     GET  /login                             the sign-in page
@@ -111,7 +106,7 @@ Route :: [].{
 	## The routes anyone may use, a request that proves no one included.
 	OpenChoice : [
 		ResumeOrBrowse,
-		ServeScript(Script),
+		ServeScript({ script : Script, name : [ByItsBytes, ByAnotherName] }),
 		ServeFavicon,
 		ServeAlertIcon,
 		ShowLogin,
@@ -178,12 +173,12 @@ Route :: [].{
 	} -> Route.Choice
 	choose = |{ method, path, directory }| {
 		asked = method_of(method)
-		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
-			Ok(script) => asset_choice(ServeScript(script), asked)
-			Err(NotFound) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
-			Err(NotFound) if path == Favicon.alert_url_path.to_utf8() =>
+		match Script.named_by(path) {
+			Ok(named) => asset_choice(ServeScript(named), asked)
+			Err(NotAScript) if path == Favicon.url_path.to_utf8() => asset_choice(ServeFavicon, asked)
+			Err(NotAScript) if path == Favicon.alert_url_path.to_utf8() =>
 				asset_choice(ServeAlertIcon, asked)
-			Err(NotFound) =>
+			Err(NotAScript) =>
 				match UnvalidatedString.from_utf8(path) {
 					Ok(unchecked) => path_choice({ path: unchecked, method: asked, directory })
 					Err(NotUtf8) => NotFound

@@ -377,7 +377,7 @@ expect
 	[
 		"/chat/channel/general/roc-chat",
 		"/chat/dm/1_1/plans",
-		"/chat/assets/compose.js",
+		"/chat/assets/compose.0123456789abcdef.js",
 		"/a",
 	].all(|text| Html.SitePath.from_str(text).map_ok(Html.SitePath.to_str) == Ok(text))
 expect
@@ -414,7 +414,7 @@ expect {
 		(Action(path("/chat/dm/1_1/plans")), " action=\"/chat/dm/1_1/plans\""),
 		(Required, " required"),
 		(MaxLength(60), " maxlength=\"60\""),
-		(Src(path("/chat/assets/compose.js")), " src=\"/chat/assets/compose.js\""),
+		(Src(path("/chat/assets/compose.0123456789abcdef.js")), " src=\"/chat/assets/compose.0123456789abcdef.js\""),
 	].all(|(given, expected)| attribute(given) == expected)
 }
 # An input's attributes, each as an open tag writes it.

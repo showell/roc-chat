@@ -22,9 +22,17 @@
 ## `Route` serves each at
 ## its `url_path`, and `PageKit.script` links to them.
 ##
+## A script's `url_path` names it by its bytes, so a browser keeps it for
+## good (`HttpAnswer.script`) and a changed script is a new name, which the
+## next page links. The hash is taken once, as the app is compiled
+## (`source_hashes`). `named_by` finds the script a path names, by its
+## bytes or by another name: an old page's, open across a deploy.
+##
 ## A script uses what the scripts before it on its page give (`Keys`,
 ## `Compose`, `Viewport`, ...), so tools/check_script_calls.shale reads each
 ## page's order from the lists here and holds every such use to it.
+import Fnv
+import Hex
 import "palette.js" as palette_source : Str
 import "chrome.js" as chrome_source : Str
 import "keys.js" as keys_source : Str
@@ -133,9 +141,24 @@ Script := [
 	join_scripts : List(Script)
 	join_scripts = [Script.SignIn, Script.Join]
 
-	## Where the script is served: `/chat/assets/` and its file's name.
+	## Where the script is served: `/chat/assets/`, its file's name and the
+	## hash of its bytes before `.js` (`palette.<16 hex digits>.js`).
 	url_path : Script -> Str
-	url_path = |script| "/chat/assets/${file_name(script)}"
+	url_path = |script| "${unhashed_path_prefix(script)}${hash_of(script)}.js"
+
+	## The script `path` names: by its bytes (`url_path`), or by another
+	## name, its file's own (`/chat/assets/palette.js`) or another hash's,
+	## as a page from before a deploy names it.
+	named_by : List(U8) -> Try({ script : Script, name : [ByItsBytes, ByAnotherName] }, [NotAScript])
+	named_by = |path|
+		match Script.all_scripts.find_first(|script| path == script.url_path().to_utf8()) {
+			Ok(script) => Ok({ script, name: ByItsBytes })
+			Err(NotFound) =>
+				match Script.all_scripts.find_first(|script| is_another_name(script, path)) {
+					Ok(script) => Ok({ script, name: ByAnotherName })
+					Err(NotFound) => Err(NotAScript)
+				}
+		}
 
 	## The script's bytes, exactly as its file holds them.
 	bytes : Script -> List(U8)
@@ -166,6 +189,39 @@ file_name = |script|
 		Devices => "devices.js"
 	}
 
+## `/chat/assets/`, the script's file's name without `.js`, and a dot.
+unhashed_path_prefix : Script -> Str
+unhashed_path_prefix = |script| "/chat/assets/${file_name(script).drop_suffix(".js")}."
+
+## Is `path` the script's file's own name under `/chat/assets/`, or its
+## name with a hash of 16 lowercase hex digits before `.js`?
+is_another_name : Script, List(U8) -> Bool
+is_another_name = |script, path|
+	if path == "/chat/assets/${file_name(script)}".to_utf8() {
+		Bool.True
+	} else {
+		prefix = unhashed_path_prefix(script).to_utf8()
+		if path.starts_with(prefix) and path.ends_with(".js".to_utf8()) {
+			digits = path.drop_first(prefix.len()).drop_last(3)
+			digits.len() == 16 and digits.all(Hex.is_lower_digit)
+		} else {
+			Bool.False
+		}
+	}
+
+## The hash of the script's bytes, as `url_path` names it.
+hash_of : Script -> Str
+hash_of = |script|
+	match source_hashes.find_first(|(hashed, _)| hashed == script) {
+		Ok((_, hash)) => hash
+		Err(NotFound) => crash "Script.hash_of: every script is in all_scripts"
+	}
+
+## Each script and the hash of its bytes (`Fnv.fnv_1a_64_hex`): a constant,
+## so it is taken once, as the app is compiled.
+source_hashes : List((Script, Str))
+source_hashes = Script.all_scripts.map(|script| (script, Fnv.fnv_1a_64_hex(script.bytes())))
+
 ## The script's file, as compiled in.
 source : Script -> Str
 source = |script|
@@ -189,28 +245,52 @@ source = |script|
 	}
 
 # ── tests
-# Each script at its path, and each its whole file, from its first line to
-# its last.
+# Each script at its path, named by the hash of its bytes, and each its
+# whole file, from its first line to its last.
 expect
-	Script.all_scripts.map(Script.url_path)
+	Script.all_scripts.map(|script| script.url_path().replace_each(Fnv.fnv_1a_64_hex(script.bytes()), "<hash>"))
 		== [
-			"/chat/assets/palette.js",
-			"/chat/assets/chrome.js",
-			"/chat/assets/keys.js",
-			"/chat/assets/sidebar-popups.js",
-			"/chat/assets/sidebar.js",
-			"/chat/assets/compose.js",
-			"/chat/assets/emoji.js",
-			"/chat/assets/feed.js",
-			"/chat/assets/citation.js",
-			"/chat/assets/actions.js",
-			"/chat/assets/search.js",
-			"/chat/assets/panel.js",
-			"/chat/assets/join.js",
-			"/chat/assets/sign-in.js",
-			"/chat/assets/recent.js",
-			"/chat/assets/devices.js",
+			"/chat/assets/palette.<hash>.js",
+			"/chat/assets/chrome.<hash>.js",
+			"/chat/assets/keys.<hash>.js",
+			"/chat/assets/sidebar-popups.<hash>.js",
+			"/chat/assets/sidebar.<hash>.js",
+			"/chat/assets/compose.<hash>.js",
+			"/chat/assets/emoji.<hash>.js",
+			"/chat/assets/feed.<hash>.js",
+			"/chat/assets/citation.<hash>.js",
+			"/chat/assets/actions.<hash>.js",
+			"/chat/assets/search.<hash>.js",
+			"/chat/assets/panel.<hash>.js",
+			"/chat/assets/join.<hash>.js",
+			"/chat/assets/sign-in.<hash>.js",
+			"/chat/assets/recent.<hash>.js",
+			"/chat/assets/devices.<hash>.js",
 		]
+# No two scripts share a path.
+expect {
+	paths = Script.all_scripts.map(Script.url_path)
+	paths.all(|path| paths.keep_if(|other| other == path).len() == 1)
+}
+# Each path names its script by its bytes; its file's own name and another
+# hash name it by another; anything else names none.
+expect
+	Script.all_scripts.all(
+		|script|
+			Script.named_by(script.url_path().to_utf8()) == Ok({ script, name: ByItsBytes })
+				and Script.named_by("/chat/assets/${file_name(script)}".to_utf8()) == Ok({ script, name: ByAnotherName }),
+	)
+expect Script.named_by("/chat/assets/sign-in.ffffffffffffffff.js".to_utf8()) == Ok({ script: Script.SignIn, name: ByAnotherName })
+expect
+	[
+		"/chat/assets/sign-in.fffffffffffffff.js",
+		"/chat/assets/sign-in.Ffffffffffffffff.js",
+		"/chat/assets/sign-in.ffffffffffffffff.js/",
+		"/chat/assets/sign-in.ffffffffffffffff",
+		"/chat/assets/sign-in.",
+		"/chat/assets/sign.ffffffffffffffff.js",
+		"/chat/sign-in.js",
+	].all(|path| Script.named_by(path.to_utf8()) == Err(NotAScript))
 expect palette_source.starts_with("// This script runs in the head of every page")
 expect
 	[

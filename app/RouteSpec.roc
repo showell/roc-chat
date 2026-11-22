@@ -6,6 +6,7 @@ import Directory
 import MessageLink
 import Route
 import Sample
+import Script
 
 RouteSpec :: [].{}
 
@@ -79,7 +80,8 @@ chosen_route = |method, path|
 		Open(ShowJoin) => "the join page (open)"
 		Open(LookUpJoinName) => "the name to join under (open)"
 		Open(Join) => "join (open)"
-		Open(ServeScript(script)) => "the script at ${script.url_path()} (open)"
+		Open(ServeScript({ script, name: ByItsBytes })) => "the script at ${script.url_path()} (open)"
+		Open(ServeScript({ script, name: ByAnotherName })) => "the script at ${script.url_path()}, by another name (open)"
 		Open(ServeFavicon) => "the icon (open)"
 		Open(ServeAlertIcon) => "the alert icon (open)"
 		Open(ShowLogin) => "the sign-in page (open)"
@@ -230,20 +232,43 @@ expect chosen_route(
 ) == "not allowed: GET"
 expect chosen_route("GET", "/chat/dm/1_3/plans/uploads/${image_name}".to_utf8()) == "not found"
 expect chosen_route("GET", "/chat/dm/1_2/plans/uploads/cat.png".to_utf8()) == "not found"
-# Each script's path: GET alone, and exactly its path.
+# Each script's path, by its bytes: GET alone, and exactly its path.
 expect
-	["palette.js", "chrome.js", "compose.js", "emoji.js", "feed.js", "panel.js"].all(
-		|name| {
-			path = "/chat/assets/${name}".to_utf8()
-			chosen_route("GET", path) == "the script at /chat/assets/${name} (open)"
+	Script.all_scripts.all(
+		|script| {
+			path = script.url_path().to_utf8()
+			chosen_route("GET", path) == "the script at ${script.url_path()} (open)"
 				and chosen_route("POST", path) == "not allowed: GET"
 				and chosen_route("HEAD", path) == "not allowed: GET"
 		},
 	)
-expect chosen_route("GET", "/chat/assets/compose.js/".to_utf8()) == "not found"
-expect chosen_route("GET", "/chat/assets/Compose.js".to_utf8()) == "not found"
-expect chosen_route("GET", "/chat/assets/other.js".to_utf8()) == "not found"
-expect chosen_route("GET", "/chat/assets".to_utf8()) == "not found"
+# A script by another name, an old page's: its file's own, or a hash of 16
+# lowercase hex digits but its own; GET alone.
+expect
+	[
+		"/chat/assets/compose.js",
+		"/chat/assets/compose.0123456789abcdef.js",
+	].all(
+		|path|
+			chosen_route("GET", path.to_utf8()) == "the script at ${Script.Compose.url_path()}, by another name (open)"
+				and chosen_route("POST", path.to_utf8()) == "not allowed: GET",
+	)
+expect
+	[
+		"/chat/assets/compose.js/",
+		"${Script.Compose.url_path()}/",
+		"/chat/assets/Compose.js",
+		"/chat/assets/other.js",
+		"/chat/assets",
+		"/chat/assets/compose.0123456789abcde.js",
+		"/chat/assets/compose.0123456789abcdef0.js",
+		"/chat/assets/compose.0123456789ABCDEF.js",
+		"/chat/assets/compose.0123456789abcdeg.js",
+		"/chat/assets/compose..js",
+		"/chat/assets/compose.0123456789abcdef.css",
+		"/chat/assets/other.0123456789abcdef.js",
+		"/chat/compose.0123456789abcdef.js",
+	].all(|path| chosen_route("GET", path.to_utf8()) == "not found")
 # The icon's path: GET alone, by anyone, and exactly its path.
 expect chosen_route("GET", "/favicon.ico".to_utf8()) == "the icon (open)"
 expect chosen_route("POST", "/favicon.ico".to_utf8()) == "not allowed: GET"

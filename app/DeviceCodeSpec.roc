@@ -9,6 +9,7 @@ import DeviceCodeLimit
 import DeviceCodePage
 import FirstStart
 import GitHubSessionWord
+import Script
 import Seconds
 import Session
 import SignedIn
@@ -387,7 +388,7 @@ expect {
 		"Type this only into your own device. Nobody will ever ask you for it.",
 		"<p class=\"code-status\" data-stream=\"/devices/stream\">",
 		"<form method=\"post\" action=\"/devices/cancel\"><button>Cancel this code</button></form>",
-		"<script src=\"/chat/assets/devices.js\"></script>",
+		"<script src=\"${Script.Devices.url_path()}\"></script>",
 	].all(|part| text.contains(part))
 }
 expect {

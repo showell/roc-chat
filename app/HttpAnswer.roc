@@ -51,17 +51,29 @@ HttpAnswer :: [].{
 		})
 
 	## A script, `bytes` (the app's own: `Script`), as UTF-8
-	## JavaScript, which `nosniff` requires of a script a page runs.
-	script : List(U8) -> Http.Response
-	script = |bytes| asset({ content_type: "text/javascript; charset=utf-8", bytes })
+	## JavaScript, which `nosniff` requires of a script a page runs. Asked
+	## for by its bytes (`Script.url_path`), it is kept for good by anyone
+	## (`public, max-age=31536000, immutable`), since a changed script is a
+	## new name; by another name, it is asked about again before each use
+	## (`no-cache`).
+	script : [ByItsBytes, ByAnotherName], List(U8) -> Http.Response
+	script = |name, bytes|
+		asset({
+			content_type: "text/javascript; charset=utf-8",
+			kept: match name {
+				ByItsBytes => ForGood
+				ByAnotherName => AskedAgain
+			},
+			bytes,
+		})
 
 	## The site's icon, `bytes` (the app's own: `Favicon`).
 	favicon : List(U8) -> Http.Response
-	favicon = |bytes| asset({ content_type: "image/x-icon", bytes })
+	favicon = |bytes| asset({ content_type: "image/x-icon", kept: AskedAgain, bytes })
 
 	## An icon drawn in SVG, `bytes` (the app's own: `Favicon`).
 	svg_icon : List(U8) -> Http.Response
-	svg_icon = |bytes| asset({ content_type: "image/svg+xml", bytes })
+	svg_icon = |bytes| asset({ content_type: "image/svg+xml", kept: AskedAgain, bytes })
 
 	## An uploaded image, `bytes`, served as `content_type`, which
 	## `nosniff` holds the browser to. The browser keeps it for good, since a
@@ -201,19 +213,27 @@ HttpAnswer :: [].{
 	}
 }
 
-## A file the app compiles in, `bytes`, as `content_type`. A browser asks again
-## before using its copy (`no-cache`), so a changed file is never stale.
-asset : { content_type : Str, bytes : List(U8) } -> Http.Response
-asset = |{ content_type, bytes }|
+## A file the app compiles in, `bytes`, as `content_type`. `ForGood`, a
+## browser or a proxy keeps it and never asks again, for a name that changes
+## with its bytes; `AskedAgain`, a browser asks before using its copy
+## (`no-cache`), so a changed file is never stale.
+asset : { content_type : Str, kept : [ForGood, AskedAgain], bytes : List(U8) } -> Http.Response
+asset = |{ content_type, kept, bytes }| {
+	cache_control =
+		match kept {
+			ForGood => "public, max-age=31536000, immutable"
+			AskedAgain => "no-cache"
+		}
 	whole_response({
 		status: 200,
 		headers: [
 			{ name: "content-type".to_utf8(), value: content_type.to_utf8() },
-			{ name: "cache-control".to_utf8(), value: "no-cache".to_utf8() },
+			{ name: "cache-control".to_utf8(), value: cache_control.to_utf8() },
 			nosniff,
 		],
 		body: bytes,
 	})
+}
 
 ## An answer that is its body, naming no stream, written in the host's own
 ## time.
@@ -383,7 +403,8 @@ expect
 	[
 		HttpAnswer.page(404, TrustedHtml.join([])),
 		HttpAnswer.see_other("/a"),
-		HttpAnswer.script([]),
+		HttpAnswer.script(ByItsBytes, []),
+		HttpAnswer.script(ByAnotherName, []),
 		HttpAnswer.favicon([]),
 		HttpAnswer.svg_icon([]),
 		HttpAnswer.method_not_allowed(GetOnly),
@@ -430,10 +451,22 @@ expect header_pairs(
 		{ name: "x".to_utf8(), value: "y".to_utf8() },
 	),
 ) == [("location", "/a"), ("x", "y")]
-# A script: JavaScript, never cached unasked, not sniffed, its bytes as
-# given; and no page's policy, which is a document's.
+# A script: JavaScript, not sniffed, its bytes as given, and no page's
+# policy, which is a document's; by its bytes kept for good by anyone, by
+# another name never used unasked.
 expect {
-	response = HttpAnswer.script("x();\n".to_utf8())
+	response = HttpAnswer.script(ByItsBytes, "x();\n".to_utf8())
+	response.status == 200
+		and header_pairs(response)
+			== [
+				("content-type", "text/javascript; charset=utf-8"),
+				("cache-control", "public, max-age=31536000, immutable"),
+				("x-content-type-options", "nosniff"),
+			]
+		and response.body == "x();\n".to_utf8()
+}
+expect {
+	response = HttpAnswer.script(ByAnotherName, "x();\n".to_utf8())
 	response.status == 200
 		and header_pairs(response)
 			== [
@@ -443,7 +476,8 @@ expect {
 			]
 		and response.body == "x();\n".to_utf8()
 }
-# The icon: as a script is but for its type, its bytes as given.
+# The icon: as a script by another name is but for its type, its bytes as
+# given.
 expect {
 	response = HttpAnswer.favicon([0, 0, 1, 0])
 	response.status == 200

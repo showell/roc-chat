@@ -17,6 +17,7 @@ import PeoplePages
 import Reactions
 import RecentFeed
 import Sample
+import Script
 import SignInPage
 import SignedIn
 import Timestamp
@@ -63,14 +64,14 @@ foot = |url|
 			"<button>Send</button></form>\n",
 			"<p class=\"help\">Markdown supported · :emoji: autocompletes · paste or Upload an image · Ctrl/⌘-Enter to send</p></div>\n",
 			"</div>\n",
-			"<script src=\"/chat/assets/chrome.js\"></script>\n",
-			"<script src=\"/chat/assets/keys.js\"></script>\n",
-			"<script src=\"/chat/assets/compose.js\"></script>\n",
-			"<script src=\"/chat/assets/emoji.js\"></script>\n",
-			"<script src=\"/chat/assets/feed.js\"></script>\n",
-			"<script src=\"/chat/assets/citation.js\"></script>\n",
-			"<script src=\"/chat/assets/actions.js\"></script>\n",
-			"<script src=\"/chat/assets/search.js\"></script>\n",
+			"<script src=\"${Script.Chrome.url_path()}\"></script>\n",
+			"<script src=\"${Script.Keys.url_path()}\"></script>\n",
+			"<script src=\"${Script.Compose.url_path()}\"></script>\n",
+			"<script src=\"${Script.Emoji.url_path()}\"></script>\n",
+			"<script src=\"${Script.Feed.url_path()}\"></script>\n",
+			"<script src=\"${Script.Citation.url_path()}\"></script>\n",
+			"<script src=\"${Script.Actions.url_path()}\"></script>\n",
+			"<script src=\"${Script.Search.url_path()}\"></script>\n",
 		],
 		"",
 	)
@@ -193,7 +194,7 @@ expect
 ## doctype, the charset, the viewport, the title, and the colour script.
 head : Str -> Str
 head = |title|
-	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>${title}</title>\n<script src=\"/chat/assets/palette.js\"></script>\n"
+	"<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n<title>${title}</title>\n<script src=\"${Script.Palette.url_path()}\"></script>\n"
 
 ## The sample's hello and reply, as a page shows them: Steve's names his
 ## id, 1, and CC's, an agent's, names CC's, 3.
@@ -249,7 +250,7 @@ expect
 ## and `code_focus` after its attributes.
 login_page : Str, { name_focus : Str, code_focus : Str } -> Str
 login_page = |above, { name_focus, code_focus }|
-	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required${name_focus}></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n<form method=\"post\" action=\"/login/code\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p><label>Have a code from your other device? Type its 8 digits: <input type=\"text\" name=\"code\" autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\" maxlength=\"20\" required${code_focus}></label></p>\n<button>Sign in with the code</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n"
+	"${head("Sign in")}<h1>Sign in</h1>\n${above}<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p>Name <input type=\"text\" name=\"name\" autocomplete=\"username\" required${name_focus}></p>\n<p>Password <input type=\"password\" name=\"password\" autocomplete=\"current-password\" required></p>\n<button>Sign in</button></form>\n<form method=\"post\" action=\"/login/code\"><input type=\"hidden\" name=\"next\" value=\"/agents\">\n<p><label>Have a code from your other device? Type its 8 digits: <input type=\"text\" name=\"code\" autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9\\s\\-]*\" title=\"The code's 8 digits\" autocorrect=\"off\" spellcheck=\"false\" maxlength=\"20\" required${code_focus}></label></p>\n<button>Sign in with the code</button></form>\n<script src=\"${Script.SignIn.url_path()}\"></script>\n"
 
 ## The sign-in page for `viewer`, with `problem`, as a test reads it.
 login_for : SignedIn.Actor, SignInPage.Problem -> Str
@@ -279,7 +280,7 @@ expect
 		== login_page("<p class=\"problem\">No &lt;code&gt;.</p>\n", { name_focus: "", code_focus: " autofocus" })
 expect
 	login_for(SignedIn(SignedIn.dangerously_assume(Sample.user("Steve"))), NoProblem)
-		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+		== "${head("Signed in")}<header class=\"top-bar\"><span class=\"top-title\">Signed in</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>You are signed in as Steve.</p>\n<form method=\"post\" action=\"/logout\"><button>Sign out</button></form>\n</div></div>\n<script src=\"${Script.Chrome.url_path()}\"></script>\n<script src=\"${Script.Panel.url_path()}\"></script>\n"
 # With GitHub's settings, a link above the form, going on to `next`, and a
 # line for those with a password.
 expect
@@ -296,7 +297,7 @@ expect
 # code from the link.
 expect
 	JoinPage.join.to_utf8()
-		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n<script src=\"/chat/assets/join.js\"></script>\n".to_utf8()
+		== "${head("Join")}<h1>Join the chat</h1>\n<p>Someone you know invited you. Keep the name they chose for you, or choose another that no one has; once you join, it is yours. Choose a password: you sign in with your name and it.</p>\n<form method=\"post\" action=\"/join\"><input type=\"hidden\" name=\"code\">\n<p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required></p>\n<p>Your password <input type=\"password\" name=\"password\" autocomplete=\"new-password\" required></p>\n<button>Join</button></form>\n<script src=\"${Script.SignIn.url_path()}\"></script>\n<script src=\"${Script.Join.url_path()}\"></script>\n".to_utf8()
 # A refused join: the join page's heading, the refusal marked as the problem,
 # with its status, and the script that draws it as a card and puts /join in
 # the POST's place in the history; no form, so nothing posts the code again.
@@ -304,7 +305,7 @@ expect {
 	refused = JoinPage.refusal({ status: 409, said: "That name is taken." })
 	refused.status == 409
 		and refused.page.to_utf8()
-			== "${head("Join the chat")}<h1>Join the chat</h1>\n<p class=\"problem\">That name is taken.</p>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()
+			== "${head("Join the chat")}<h1>Join the chat</h1>\n<p class=\"problem\">That name is taken.</p>\n<script src=\"${Script.SignIn.url_path()}\"></script>\n".to_utf8()
 }
 
 ## The words above the form that asks a new human for a name.
@@ -320,7 +321,7 @@ expect {
 		problem: NoProblem,
 		login_note: NoNote,
 	}).to_utf8()
-		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\" value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\" value=\"Zoë Ann\"></p>\n<button>Join</button></form>\n<script src=\"${Script.SignIn.url_path()}\"></script>\n".to_utf8()
 }
 expect
 	SignInPage.github_sign_up({
@@ -328,7 +329,7 @@ expect
 		problem: Problem("The <name> is taken."),
 		login_note: NoNote,
 	}).to_utf8()
-		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p class=\"problem\">The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\"></p>\n<button>Join</button></form>\n<script src=\"/chat/assets/sign-in.js\"></script>\n".to_utf8()
+		== "${head("Choose your name")}<h1>Choose your name</h1>\n<p class=\"problem\">The &lt;name&gt; is taken.</p>\n<p>${sign_up_words}</p>\n<form method=\"post\" action=\"/login/github/name\"><p>Your name <input type=\"text\" name=\"name\" autocomplete=\"username\" required maxlength=\"60\"></p>\n<button>Join</button></form>\n<script src=\"${Script.SignIn.url_path()}\"></script>\n".to_utf8()
 # A login not offered says why, above the form.
 expect
 	[
@@ -427,7 +428,7 @@ expect
 		problem: NoProblem,
 		now: Timestamp.at_second(0),
 	}).to_utf8()
-		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>1. Type their name.</p>\n<p>2. Copy the link.</p>\n<p>3. Send it to them; it works once, for 7 days.</p>\n<p class=\"help\">They choose a password when they join, and may keep the name or choose another.</p><form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n".to_utf8()
+		== "${head("Invites")}<header class=\"top-bar\"><span class=\"top-title\">Invites</span> ${top_links}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n<p>1. Type their name.</p>\n<p>2. Copy the link.</p>\n<p>3. Send it to them; it works once, for 7 days.</p>\n<p class=\"help\">They choose a password when they join, and may keep the name or choose another.</p><form method=\"post\" action=\"/invites\"><p>Their name <input type=\"text\" name=\"name\" required></p>\n<button>Invite someone</button></form><h1>Open invites</h1>\n<p>No open invites.</p>\n</div></div>\n<script src=\"${Script.Chrome.url_path()}\"></script>\n<script src=\"${Script.Panel.url_path()}\"></script>\n".to_utf8()
 # A refusal's words are text on its page.
 expect
 	PageKit.refusal("it <is> not UTF-8").to_utf8()
@@ -591,7 +592,7 @@ steves_recent = |tiles|
 ## empty, where app/chrome.js shows the notices, then `parts`.
 recent_page : Str -> Str
 recent_page = |parts|
-	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n</div></div>\n<script src=\"/chat/assets/chrome.js\"></script>\n<script src=\"/chat/assets/keys.js\"></script>\n<script src=\"/chat/assets/recent.js\"></script>\n<script src=\"/chat/assets/search.js\"></script>\n<script src=\"/chat/assets/panel.js\"></script>\n"
+	"${head("Recent")}<header class=\"top-bar\"><span class=\"top-title\">Recent</span> ${top_links_noticed}<span class=\"viewer\">Steve</span> · <form class=\"sign-out\" method=\"post\" action=\"/logout\"><button>Sign out</button></form></div></header>\n<div class=\"layout\"><div class=\"panel\">\n${parts}\n</div></div>\n<script src=\"${Script.Chrome.url_path()}\"></script>\n<script src=\"${Script.Keys.url_path()}\"></script>\n<script src=\"${Script.Recent.url_path()}\"></script>\n<script src=\"${Script.Search.url_path()}\"></script>\n<script src=\"${Script.Panel.url_path()}\"></script>\n"
 
 # Recent with no conversation that has a message says so, above its list,
 # empty, which names its stream.

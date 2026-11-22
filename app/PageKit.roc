@@ -515,4 +515,4 @@ expect
 		== "<!doctype html>\n<meta charset=utf-8>\n<meta name=viewport content=\"width=device-width, initial-scale=1\">\n".to_utf8()
 # A notice: its title and its words, each escaped, under the colour script.
 expect PageKit.notice({ title: "a<b", text: "x & y" }).to_utf8()
-	== "${doctype_text}<title>a&lt;b</title>\n<script src=\"/chat/assets/palette.js\"></script>\n<p>x &amp; y</p>".to_utf8()
+	== "${doctype_text}<title>a&lt;b</title>\n<script src=\"${Script.Palette.url_path()}\"></script>\n<p>x &amp; y</p>".to_utf8()
