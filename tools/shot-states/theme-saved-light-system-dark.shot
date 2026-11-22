@@ -1,0 +1,9 @@
+# Light saved as the choice, with the system dark: the saved choice wins,
+# so the page is light, whatever the run's theme.
+path = /chat/dm/1_2/plans
+sizes = desktop
+scheme dark
+eval localStorage.setItem('chat-theme', 'light')
+goto /chat/dm/1_2/plans
+eval if (Palette.current() !== 'light') throw new Error('light saved, the system dark, and the page is ' + Palette.current())
+eval var b = document.querySelector('.top-user button'); if (b.textContent !== '🌙') throw new Error('the toggle in the light reads ' + b.textContent)

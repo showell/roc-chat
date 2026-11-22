@@ -276,6 +276,7 @@ window.Notices = (function () {
     toggle.setAttribute('aria-label', label);
   }
   toggle.addEventListener('click', function () { Palette.toggle(); paint(); });
+  Palette.onChange(paint);
   paint();
   user.insertBefore(document.createTextNode(' · '), user.firstChild);
   user.insertBefore(toggle, user.firstChild);

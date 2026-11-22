@@ -1,0 +1,23 @@
+# No theme saved: the page follows the system live, light to dark with no
+# reload, the toggle's glyph with it; once the toggle is pressed, the
+# choice (light) is saved and wins, so the system's next flips change
+# nothing. The picture is the page light, by the choice, the system dark.
+# The system's change reaches the page at its next frame, not at once, so
+# each check after a flip waits for it.
+path = /chat/dm/1_2/plans
+sizes = desktop
+scheme light
+eval localStorage.removeItem('chat-theme')
+goto /chat/dm/1_2/plans
+eval if (Palette.current() !== 'light') throw new Error('no saved theme, the system light, and the page is ' + Palette.current())
+scheme dark
+eval new Promise(function (done, refuse) { var from = Date.now(); (function look() { if (Palette.current() === 'dark') done(true); else if (Date.now() - from > 2000) refuse(new Error('the system flipped to dark and the page stayed ' + Palette.current())); else setTimeout(look, 20); })(); })
+eval var b = document.querySelector('.top-user button'); if (b.textContent !== '☀️' || b.getAttribute('aria-label') !== 'Switch to light theme') throw new Error('after the flip the toggle reads ' + b.textContent + ' ' + b.getAttribute('aria-label'))
+click .top-user button
+eval if (Palette.current() !== 'light' || localStorage.getItem('chat-theme') !== 'light') throw new Error('the toggle did not make the page light and save it')
+scheme light
+use theme-settle
+scheme dark
+use theme-settle
+eval if (Palette.current() !== 'light') throw new Error('a saved choice gave way to the system: ' + Palette.current())
+eval var b = document.querySelector('.top-user button'); if (b.textContent !== '🌙') throw new Error('the toggle, light chosen, reads ' + b.textContent)

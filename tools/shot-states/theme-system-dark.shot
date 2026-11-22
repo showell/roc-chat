@@ -1,0 +1,9 @@
+# No theme saved, with the system dark: the page is dark, whatever the
+# run's theme, and the toggle offers light (☀️).
+path = /chat/dm/1_2/plans
+sizes = desktop
+scheme dark
+eval localStorage.removeItem('chat-theme')
+goto /chat/dm/1_2/plans
+eval if (Palette.current() !== 'dark') throw new Error('no saved theme, the system dark, and the page is ' + Palette.current())
+eval var b = document.querySelector('.top-user button'); if (b.textContent !== '☀️' || b.getAttribute('aria-label') !== 'Switch to light theme') throw new Error('the toggle in the dark reads ' + b.textContent + ' ' + b.getAttribute('aria-label'))

@@ -11,10 +11,11 @@
 //!   type :sm                     text typed into what has the focus
 //!   wait .person-popup           until the selector matches (5 s at most)
 //!   eval localStorage.clear()    a script run in the page (a promise is awaited)
+//!   scheme dark                  the system's colour scheme the page sees (`prefers-color-scheme`), dark or light
 //!   shot dark-dm-person-card     the page as <out>/<name>.png
 const std = @import("std");
 
-pub const Verb = enum { base, size, cookie, goto, click, key, type, wait, eval, shot };
+pub const Verb = enum { base, size, cookie, goto, click, key, type, wait, eval, scheme, shot };
 
 pub const Step = struct {
     verb: Verb,

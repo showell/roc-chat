@@ -316,6 +316,7 @@ apoorvavpendse@gmail.com would be better
   JavaScript adds live updates, the compose box's behaviour, the sidebar's collapsing, and all the styling.
 - **Styling lives in the JS** (Steve, 2026-11-01: "Keep the CSS as it was in JS... directly modify styles on the DOM").
   The server sends no CSS; it sends structure and class names (`PageContract`), and each script styles what it finds.
+- **The theme follows the system's light or dark setting until the person picks one with the 🌙/☀️ button** (Steve, 2026-11-22), live as the OS flips, and the saved choice wins from then on; this departs from Gopher's chat-client, which was dark until a choice was saved, and since sign-out clears the browser's storage, a signed-out page follows the system again (app/palette.js).
 - **The layout is the Zig chat's: three panes.**
   A left sidebar, the messages, and the compose box with keyboard help.
 - **The compose box behaves as Gopher Chat's, with no drafts** (Steve, 2026-11-20: "Back the whole drafts feature out.

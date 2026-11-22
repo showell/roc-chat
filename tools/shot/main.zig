@@ -133,6 +133,14 @@ pub fn main(init: std.process.Init) !void {
                 }
             },
             .eval => _ = try evaluate(&b, a, step.line, step.arg),
+            .scheme => {
+                if (!std.mem.eql(u8, step.arg, "dark") and !std.mem.eql(u8, step.arg, "light"))
+                    fail(step.line, "scheme takes dark or light, not {s}", .{step.arg});
+                // A page's matchMedia listeners hear the change, as an OS's flip.
+                call(&b, step.line, "Emulation.setEmulatedMedia", .{
+                    .features = &[_]struct { name: []const u8, value: []const u8 }{.{ .name = "prefers-color-scheme", .value = step.arg }},
+                });
+            },
             .shot => {
                 // Two frames and the fonts first, so what was just opened is drawn.
                 _ = try evaluate(&b, a, step.line,

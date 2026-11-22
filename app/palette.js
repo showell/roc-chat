@@ -11,12 +11,17 @@
 //
 // The colours are chat-client's (js/colors.js), but for a code block's
 // (syn...), which are GitHub's: one palette of CSS custom
-// properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is light when
-// localStorage's 'chat-theme' holds exactly 'light', and dark otherwise:
-// none saved, 'dark', or any other value, which is never written into the
-// page. Every other
+// properties (--cc-...), light under :root and dark under html[data-theme="dark"]. The theme is
+// the person's choice when localStorage's 'chat-theme' holds exactly 'light'
+// or 'dark'. With no choice saved (none, or any other value, which is never
+// written into the page) it is the system's, `prefers-color-scheme`: dark
+// when that matches dark, light otherwise, and it follows the system live,
+// so the page switches when the OS does. Gopher's chat-client was dark with
+// no choice saved; the owner chose the system's (docs/design.md). Every other
 // script styles its widgets with var(--cc-...). Palette.toggle() flips the
-// theme and saves the choice; chrome.js wires it to the top bar's button.
+// theme and saves the choice, which then wins and ends the following;
+// chrome.js wires it to the top bar's button, and Palette.onChange(fn) to
+// repaint the button when the system flips the theme.
 // noticeFg is Gopher Chat's violet, the tab's when news comes (#8a2be2,
 // app/alert-icon.svg), lightened in the dark to read on its bar; chrome.js
 // writes a message's notice in it.
@@ -98,7 +103,10 @@ window.Palette = (function () {
 
   var saved = null;
   try { saved = localStorage.getItem(STORAGE); } catch (e) { saved = null; } // Private browsing: no saved theme.
-  document.documentElement.setAttribute('data-theme', saved === 'light' ? 'light' : 'dark');
+  var chosen = saved === 'light' || saved === 'dark';
+  var system = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function systemTheme() { return system && system.matches ? 'dark' : 'light'; }
+  document.documentElement.setAttribute('data-theme', chosen ? saved : systemTheme());
   var s = document.createElement('style');
   s.textContent = block(':root', LIGHT) + '\n' + block('html[data-theme="dark"]', DARK) + '\n'
     + 'body { background: var(--cc-bg); color: var(--cc-fg); }\n'
@@ -106,11 +114,24 @@ window.Palette = (function () {
   document.head.appendChild(s);
 
   function current() { return document.documentElement.getAttribute('data-theme') || 'light'; }
+  var listeners = [];
+  function onChange(fn) { listeners.push(fn); }
+  // The system's flip, while no choice is saved.
+  if (system && !chosen) {
+    var follow = function () {
+      if (chosen) return;
+      document.documentElement.setAttribute('data-theme', systemTheme());
+      listeners.forEach(function (fn) { fn(); });
+    };
+    if (system.addEventListener) system.addEventListener('change', follow);
+    else if (system.addListener) system.addListener(follow);
+  }
   function toggle() {
     var next = current() === 'dark' ? 'light' : 'dark';
+    chosen = true;
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem(STORAGE, next); } catch (e) { /* Private browsing: the choice lasts this page. */ }
     return next;
   }
-  return { current: current, toggle: toggle };
+  return { current: current, toggle: toggle, onChange: onChange };
 })();

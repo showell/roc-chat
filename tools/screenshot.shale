@@ -9,13 +9,15 @@
 --   shale tools/screenshot.shale out=build:shots/my-change
 --
 -- Each PNG is `<theme>-<width>x<height>-<name>.png`. The pages (PAGES,
--- below) are shot at 1280x800 and 390x844 (a phone), in dark (the app's
--- default) and light. What a click or a key opens is a state, one file
+-- below) are shot at 1280x800 and 390x844 (a phone), in dark and light: the
+-- system's scheme set to the theme, and light saved as the choice too. What a click or a key opens is a state, one file
 -- each in tools/shot-states/: `<name>.shot`, read in name order. A state
 -- file starts with `#` lines that say what the picture shows, then its
 -- settings, one `key = value` a line, then its steps, one a line, as
 -- tools/shot/steps.zig reads them (`goto`, `click`, `key`, `type`, `wait`,
--- `eval`; `#` lines and blank lines are nothing). Its settings:
+-- `eval`, `scheme`; `#` lines and blank lines are nothing). A state that
+-- sets `scheme` (the system's light or dark) has the run's theme put back
+-- after its picture, the scheme and the saved choice both. Its settings:
 --   path = /chat/dm/1_2/plans  the page it starts on (required)
 --   sizes = desktop,phone      the sizes it is shot at (required)
 --   as = phone                 the session it is shot as, not Steve's
@@ -51,8 +53,8 @@
 -- Zig program, its own build apart from the server's) through the
 -- DevTools protocol over a pipe: one browser for every picture, each step
 -- of a list this script writes (tools/shot/steps.zig says the steps).
--- The session cookie and the theme (localStorage's `chat-theme`) are set
--- through the protocol, so no page of ours hands them over. Its sandbox
+-- The session cookie, the theme (localStorage's `chat-theme`) and the
+-- system's scheme (`prefers-color-scheme`) are set through the protocol, so no page of ours hands them over. Its sandbox
 -- needs unprivileged user namespaces, which this box's AppArmor refuses,
 -- so it runs with `--no-sandbox`, and it loads only this local chat.
 --
@@ -97,7 +99,7 @@ const SIZES = {desktop = "1280 800", phone = "390 844"}
 const SESSIONS = {"steve", "phone", "cy", "nobody"}
 -- The driver's verbs a state's steps may use; `size`, `cookie`, `base` and
 -- `shot` are this script's to write.
-const STATE_VERBS = {"goto", "click", "key", "type", "wait", "eval"}
+const STATE_VERBS = {"goto", "click", "key", "type", "wait", "eval", "scheme"}
 const SETTINGS = {"path", "sizes", "as", "mutates", "after", "last"}
 
 -- Where a port is looked for: 100 of them.
@@ -295,15 +297,25 @@ function expect_status(answer, want, what)
   if answer.status ~= want then fail("screenshot: " .. what .. ": " .. answer.status .. ", not " .. want .. "\n" .. sub(answer.text, 1, 400)) end
 end
 
--- The steps that make `theme` the page's: localStorage, which belongs to
--- the chat's origin, so a page of it is loaded first.
+-- The steps that make `theme` the page's: the system's scheme, and
+-- localStorage, which belongs to the chat's origin, so a page of it is
+-- loaded first. Light is saved as the choice; dark is the system's.
 function theme_steps(list, theme)
+  push(list, "scheme " .. theme)
   push(list, "goto /chat")
   if theme == "light" then
     push(list, "eval localStorage.setItem('chat-theme', 'light')")
   else
     push(list, "eval localStorage.removeItem('chat-theme')")
   end
+end
+
+-- Whether a state's steps set the system's scheme.
+function sets_scheme(st)
+  for step in st.steps do
+    if words(step)[1] == "scheme" then return true end
+  end
+  return false
 end
 
 -- A picture's PNG name.
@@ -544,6 +556,7 @@ for pic in plan do
   end
   push(list, "shot " .. name)
   if has_key(pic, "state") and pic.state.as ~= "steve" then push(list, "cookie " .. steve) end
+  if has_key(pic, "state") and sets_scheme(pic.state) then theme_steps(list, pic.theme) end
   push(names, name)
 end
 create(work .. "/shots.txt", join(list, "\n") .. "\n")

@@ -1,0 +1,3 @@
+# Two frames and a little more, so a change of the system's scheme
+# (`scheme`), which a page hears at its next frame, has reached it.
+eval new Promise(function (done) { requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(done, 50); }); }); })
