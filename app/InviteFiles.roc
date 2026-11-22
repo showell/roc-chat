@@ -9,7 +9,10 @@
 ## `state` (`live` or `spent`), `by` (the id of the human who made it) and
 ## `hash` (the code's hash). An invite is written one
 ## file at a time, each made once, its `hash` last, so an invite cut short
-## by a crash is never whole and admits no one.
+## by a crash is never whole and admits no one, and is left out; one damaged
+## after it was whole fails every read of its human's invites
+## (`read_human_invites!`).
+import pf.Host
 import AccountFiles
 import AccountFolder
 import FactFile
@@ -60,23 +63,28 @@ InviteFiles :: [].{
 		Ok(HumanInvite.from_facts(id, { created, expires, state, by, hash }))
 	}
 
-	## The invites in the human `human`'s account folder, each whole; one cut
-	## short or damaged is left out, as an agent's is.
-	read_human_invites! : UserId => Try(List(HumanInvite), [NotUtf8, PathRefused, Failed])
+	## The invites in the human `human`'s account folder, each whole. One cut
+	## short, with no `hash`, the file written last, was never redeemable and
+	## is left out. One damaged, with its `hash` but another file missing or
+	## any file holding no fact, fails the read (`Damaged`, logged): left
+	## out, it could be the spent invite that says the human joined, and an
+	## invite or a join would then set their password.
+	read_human_invites! : UserId => Try(List(HumanInvite), [Damaged, NotUtf8, PathRefused, Failed])
 	read_human_invites! = |human| {
 		names = FileFacts.list_names_in!(human_invites_folder_path(human))?
 		ids = names.keep_oks(HumanInvite.Id.from_str)
 		var $invites = []
 		for id in ids {
 			match read_human_invite_facts!(human_invite_folder_path(human, id)) {
-				Ok(files) =>
+				Ok(Whole(files)) =>
 					match InviteFiles.human_invite_from_files(id, files) {
 						Ok(invite) => {
 							$invites = $invites.append(invite)
 						}
-						Err(BadFact(_)) => {}
+						Err(BadFact(fact)) => return Err(log_damage!({ human, id, fact }))
 					}
-				Err(Missing) => {}
+				Ok(CutShort) => {}
+				Err(Missing(fact)) => return Err(log_damage!({ human, id, fact }))
 				Err(NotUtf8) => return Err(NotUtf8)
 				Err(PathRefused) => return Err(PathRefused)
 				Err(Failed) => return Err(Failed)
@@ -140,16 +148,44 @@ human_invites_folder_path = |human| "${AccountFiles.account_folder_path(AccountF
 human_invite_folder_path : UserId, HumanInvite.Id -> Str
 human_invite_folder_path = |human, id| "${human_invites_folder_path(human)}/${id.to_str()}"
 
-## The fact files of the human invite in `folder`; unless one is missing or
-## the host's read failed.
-read_human_invite_facts! : Str => Try(InviteFiles.HumanInviteFiles, _)
-read_human_invite_facts! = |folder| {
-	hash = FileFacts.read_needed_fact!("${folder}/hash")?
-	created = FileFacts.read_needed_fact!("${folder}/created")?
-	expires = FileFacts.read_needed_fact!("${folder}/expires")?
-	state = FileFacts.read_needed_fact!("${folder}/${state_fact}")?
-	by = FileFacts.read_needed_fact!("${folder}/by")?
-	Ok({ created, expires, state, by, hash })
+## The fact files of the human invite in `folder`: `Whole`, or `CutShort`
+## when it has no `hash`, the file written last; unless another file is
+## missing (`Missing`, naming it), or the host's read failed.
+read_human_invite_facts! : Str => Try(
+	[Whole(InviteFiles.HumanInviteFiles), CutShort],
+	[Missing(Str), NotUtf8, PathRefused, Failed],
+)
+read_human_invite_facts! = |folder|
+	match FileFacts.read_fact!("${folder}/hash")? {
+		NoFile => Ok(CutShort)
+		File(hash) => {
+			created = read_invite_fact!(folder, "created")?
+			expires = read_invite_fact!(folder, "expires")?
+			state = read_invite_fact!(folder, state_fact)?
+			by = read_invite_fact!(folder, "by")?
+			Ok(Whole({ created, expires, state, by, hash }))
+		}
+	}
+
+## The invite's fact file `fact` in `folder`; unless it is missing
+## (`Missing`, naming it), or the host's read failed.
+read_invite_fact! : Str, Str => Try(List(U8), [Missing(Str), NotUtf8, PathRefused, Failed])
+read_invite_fact! = |folder, fact|
+	match FileFacts.read_needed_fact!("${folder}/${fact}") {
+		Ok(bytes) => Ok(bytes)
+		Err(Missing) => Err(Missing(fact))
+		Err(NotUtf8) => Err(NotUtf8)
+		Err(PathRefused) => Err(PathRefused)
+		Err(Failed) => Err(Failed)
+	}
+
+## A damaged invite of the human `human`'s, its `fact` file missing or
+## holding no fact, said in the server's log: `Damaged`.
+log_damage! : { human : UserId, id : HumanInvite.Id, fact : Str } => [Damaged]
+log_damage! = |{ human, id, fact }| {
+	said = "invites: user ${human.to_str()}'s invite ${id.to_str()} has no ${fact} it can read; every request that reads their invites fails until it is mended"
+	Host.write_line_to_server_log!(said.to_utf8())
+	Damaged
 }
 
 ## An invite's state, as its `state` file holds it.

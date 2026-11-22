@@ -247,7 +247,10 @@
 //!      Debbie inviting again someone Steve invited, and Steve inviting
 //!      again the founder: 403 each; an agent: 404;
 //! 48n. ten open invites, Debbie's live link not among them as she has
-//!      joined: each made; an eleventh, again or new: 403;
+//!      joined: each made; an eleventh, again or new: 403; then Deb's first
+//!      invite's `state` garbled by hand, while she has no password: inviting
+//!      her again and joining by her live link, 500 each, saying `Damaged`,
+//!      nothing made and no password written, until it is mended;
 //! 48o. CC's key inviting, joining or asking the name: 403 each; no one:
 //!      /invites a 303 to sign in, an invite a 401;
 //! 48p. a cross-site form post inviting, inviting again or joining: 403
@@ -2689,15 +2692,30 @@ fn inviteSteps(a: std.mem.Allocator, io: Io, port: u16, data: Io.Dir, t: Steps, 
 
     // 48n.
     var capped_ok = true;
+    var live_link: []const u8 = "";
     for (0..10) |_| {
         const one = try post(a, io, port, .{ .path = "/invites/4/again", .form = "" });
         capped_ok = capped_ok and one.status == 200;
+        live_link = between(one.body, "<p class=\"invite-code\">", "</p>") orelse "";
     }
     const eleventh = try post(a, io, port, .{ .path = "/invites/4/again", .form = "" });
     const new_one = try post(a, io, port, .{ .path = "/invites", .form = "name=Fay" });
     try t.check("ten open invites of Steve's, Debbie's live link not counted as she has joined: each 200; an eleventh, again or new: 403 each, nothing made", capped_ok and eleventh.status == 403 and
         new_one.status == 403 and (try exists(io, data, "auth/4/human-invites/11")) and
         !(try exists(io, data, "auth/4/human-invites/12")) and !(try exists(io, data, "auth/5")));
+    // A damaged invite never grants: with one of Deb's invites holding no
+    // state, nothing proves she has claimed nothing, so no invite or join
+    // may set her password.
+    const live_code = if (std.mem.startsWith(u8, live_link, link_start)) live_link[link_start.len..] else "";
+    try data.writeFile(io, .{ .sub_path = "auth/4/human-invites/1/state", .data = "spnt" });
+    const damaged_again = try post(a, io, port, .{ .path = "/invites/4/again", .form = "" });
+    const damaged_join = try anonymousPost(a, io, port, "/join", try std.fmt.allocPrint(a, "code={s}&name=Deb&password=debs", .{live_code}));
+    try data.writeFile(io, .{ .sub_path = "auth/4/human-invites/1/state", .data = "live" });
+    try t.check("Deb's first invite's state garbled, she with no password: inviting her again and joining by her live link, 500 each, saying Damaged; nothing made, no password written", isToken(live_code, "4-") and
+        damaged_again.status == 500 and has(damaged_again.body, "Damaged") and
+        damaged_join.status == 500 and has(damaged_join.body, "Damaged") and
+        !(try exists(io, data, "auth/4/human-invites/12")) and !(try exists(io, data, "auth/4/password")) and
+        std.mem.eql(u8, try readFile(a, io, data, "auth/4/human-invites/11/state"), "live"));
 
     // 48o.
     const key_invites = try post(a, io, port, .{ .path = "/invites", .form = "name=Gus", .more = cc_bearer });

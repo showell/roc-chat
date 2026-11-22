@@ -11,7 +11,9 @@ import Users
 HumanClaim :: [].{
 
 	## What decides it, as the human's files hold them: each invite's state
-	## (`HumanInvite.State`).
+	## (`HumanInvite.State`). A damaged invite never reaches here, as its
+	## read fails (`InviteFiles.read_human_invites!`), so no request judges a
+	## human unclaimed without every invite of theirs read.
 	Facts : {
 		password : [NoPassword, HasPassword],
 		github : [NotLinked, Linked],
