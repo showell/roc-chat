@@ -5,10 +5,10 @@
 // messages are on the left and the compose box is a rail 320 pixels wide on
 // the right. The rail is either open, its textarea as tall as the window,
 // or closed, showing an "Open compose box" button and the keyboard help. It
-// starts closed, and opens with the button or the c key. Escape closes it
-// when the textarea is empty, and does nothing while it holds text, as
-// chat-client's did (js/chat_compose.js), once whatever opened over it has
-// closed (keys.js's Escape stack); the ✕ button at the
+// starts closed, and opens with the button or the c key. Escape in the
+// textarea closes it when the textarea is empty, and does nothing while it
+// holds text, as chat-client's did (js/chat_compose.js), once whatever
+// opened over it has closed (keys.js's Escape stack); the ✕ button at the
 // open rail's top closes it whatever it holds, as chat-client's ▾ did, the
 // text left in the closed box, there when it opens again. Nothing is kept
 // past the page: there are no drafts (Steve, 2026-11-20: "Back the whole
@@ -249,11 +249,12 @@
     }
     messages.focus();
   }
-  // Escape closes an empty box and leaves one holding text, as
-  // chat-client's did. With text it does nothing, and the box, on top of
-  // Escape's stack, keeps anything under it open too.
+  // Escape from inside the box closes it when it is empty, as
+  // chat-client's did. Holding text, or with the focus elsewhere, it does
+  // nothing, and the box, on top of Escape's stack, keeps anything under it
+  // open too (Steve, 2026-11-22: Escape may do more "local" things later).
   function escapeCompose() {
-    if (box.value.trim() === '') closeCompose();
+    if (document.activeElement === box && box.value.trim() === '') closeCompose();
   }
 
   // The closed rail's button names the c key where there are keys.

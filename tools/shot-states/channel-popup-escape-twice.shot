@@ -1,5 +1,7 @@
-# As channel-popup-escape, then Escape again: the empty box closed, to
-# the green "Open compose box" button.
+# As channel-popup-escape, then Escape again with the focus where the
+# closed search dialog gives it, the message list: the box stays open, as
+# Escape closes it only from inside. Then a click in the box and Escape:
+# the empty box closed, to the green "Open compose box" button.
 path = /chat/channel/general/roc-chat
 sizes = desktop,phone
 key c
@@ -8,5 +10,9 @@ click .search-open
 wait dialog.search-dialog[open]
 key Escape
 eval new Promise(function (ok, no) { var t = Date.now(); (function look() { if (!document.querySelector('dialog.search-dialog')) return document.querySelector('.compose.open') ? ok(true) : no(new Error('Escape closed the box with the dialog')); if (Date.now() - t > 2000) return no(new Error('Escape left the search dialog open')); setTimeout(look, 50); })(); })
+eval (function () { if (document.activeElement !== document.querySelector('.messages')) throw new Error('the focus is not in the message list'); return true; })()
+key Escape
+eval (function () { if (!document.querySelector('.compose.open')) throw new Error('Escape from the message list closed the box'); return true; })()
+click .compose textarea
 key Escape
 wait .compose:not(.open)

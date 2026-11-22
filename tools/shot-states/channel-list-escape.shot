@@ -1,0 +1,9 @@
+# The empty box open, the focus put in the message list, then Escape:
+# the box stays open, as Escape closes it only from inside.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+key c
+wait .compose.open
+eval (function () { document.querySelector('.messages').focus(); return true; })()
+key Escape
+eval (function () { if (!document.querySelector('.compose.open')) throw new Error('Escape from the message list closed the box'); return true; })()
