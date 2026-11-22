@@ -3,10 +3,11 @@
 ## device code page's) are held by the user, under their id, so the host's
 ## cap on one holder's streams counts them together; an agent's own stream
 ## is held under a name no user's id is. This module is the one home of
-## those names: `HttpAnswer.stream` takes a `StreamHolder`, so no stream is
-## held under a name made anywhere else, and `UserStreams` ends a user's
-## streams under each of them (tools/check_stream_endings.shale holds it to
-## every one).
+## those names. `HttpAnswer.stream` takes a `StreamHolder`, and
+## `UserStreams` ends a user's streams under each of them. `Http.Response`
+## is the platform's plain record, so Roc's types don't stop another module
+## setting its holder; tools/check_stream_endings.shale does, and
+## holds `UserStreams` to every name made here.
 import UserId
 
 StreamHolder :: List(U8).{

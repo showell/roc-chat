@@ -29,9 +29,15 @@
 --   unended_holder    a `StreamHolder` function that makes a holder (every
 --                     one but `to_bytes`) that `UserStreams.end_every_stream!`
 --                     doesn't call, so a stream held under it would outlive
---                     every revocation. `HttpAnswer.stream` takes a
---                     `StreamHolder`, so Roc's types hold every stream to
---                     those names.
+--                     every revocation;
+--   stray_holder      a record field `stream_holder` set in any module but
+--                     `HttpAnswer`. `Http.Response` is the platform's plain
+--                     record, so Roc's types let any module name a holder;
+--                     `HttpAnswer.stream`, which takes a `StreamHolder`, is
+--                     the one place that sets it to a holder (its `Whole`
+--                     answer sets it empty), and this finding holds every
+--                     other module to that, so every stream is held under
+--                     a name `StreamHolder` makes.
 --
 -- A `*Files` module only writes (CLAUDE.md: only FileFacts touches files),
 -- so a revocation inside one is its caller's to follow with the ending;
@@ -48,11 +54,10 @@ const ENDING = "UserStreams.end_every_stream!"
 const HOST_ENDING = "Host.end_every_stream_of_holder!"
 const WRITERS = {"FileFacts.create_fact!", "FileFacts.replace_fact!", "FileFacts.create_facts!", "FileFacts.append_to_file!", "FileFacts.create_binary_file!", "FileFacts.make_folder!"}
 
--- Every function of the file at `p`, by `Module.name`, each with its line
--- and the calls in its body, `{name, line}`, a bare name as it is written.
-function functions_of(p)
-  local f = roc_tree({p})[1]
-  if f.err ~= "" then fail("check_stream_endings: roc-ast refused " .. p .. ": " .. f.err) end
+-- Every function of the file at `p`, whose tree is `f`, by `Module.name`,
+-- each with its line and the calls in its body, `{name, line}`, a bare
+-- name as it is written.
+function functions_of(p, f)
   local module = sub(basename(p), 1, #basename(p) - 4)
   local found = {}
   local current = nil
@@ -94,10 +99,30 @@ function read_table()
   return rows
 end
 
+-- Every record field `stream_holder` set in a module but `HttpAnswer`,
+-- found by Roc's tree: a record's field is a `field` node with no line of
+-- its own, so its line is its record's.
+function stray_holders(p, f)
+  if p == "app/HttpAnswer.roc" then return {} end
+  local found = {}
+  for n in f.nodes do
+    if n.kind == "field" and get(n, "field", "") == "stream_holder" then
+      local at = n
+      while at.line == 0 and at.parent > 0 do at = f.nodes[at.parent] end
+      push(found, p .. ":" .. at.line)
+    end
+  end
+  return found
+end
+
 const funcs = {}
+const strays = {}
 for p in glob("app/*.roc") do
   if not ends_with(p, "Spec.roc") and p ~= "app/Specs.roc" then
-    for fn in functions_of(p) do funcs[fn.name] = fn end
+    local f = roc_tree({p})[1]
+    if f.err ~= "" then fail("check_stream_endings: roc-ast refused " .. p .. ": " .. f.err) end
+    for fn in functions_of(p, f) do funcs[fn.name] = fn end
+    for s in stray_holders(p, f) do push(strays, s) end
   end
   yield()
 end
@@ -215,6 +240,10 @@ for name in names do
   if funcs[name].module == "StreamHolder" and name ~= "StreamHolder.to_bytes" and not calls(funcs[ENDING], name) then
     finding("unended_holder", "app/StreamHolder.roc:" .. funcs[name].line .. ": " .. ENDING .. " never ends the streams held under " .. name)
   end
+end
+
+for s in strays do
+  finding("stray_holder", s .. ": sets a response's stream_holder; HttpAnswer.stream, given a StreamHolder, is the one place")
 end
 
 for l in findings do print(l) end
