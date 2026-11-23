@@ -77,9 +77,20 @@
 --
 -- budget: steps=200000000
 
--- The pinned Roc, under Shale's `tools` mount, where build.zig looks too
--- (`~/tools`, README.md, "You need").
-const ROC = real("tools:roc-" .. trim(read("roc-version")) .. "/roc")
+-- **THE PINNED ROC**: tools:roc-<pin>/roc, under Shale's `tools` mount,
+-- where build.zig looks too (`~/tools`, README.md, "You need"). A missing
+-- binary, or one whose `roc version` isn't exactly the pin, stops the run.
+function pinned_roc()
+  local pin = trim(read("roc-version"))
+  local at = "tools:roc-" .. pin .. "/roc"
+  if not exists(at) then fail("verify: no " .. at .. ": install the pinned Roc " .. pin .. " at ~/tools/roc-" .. pin .. "/") end
+  local said = run({real(at), "version"}, {timeout_ms = 30000, whole = 4000})
+  if trim(said.out) ~= "Roc compiler version " .. pin then
+    fail("verify: " .. at .. " is " .. trim(said.out) .. ", not " .. pin)
+  end
+  return real(at)
+end
+const ROC = pinned_roc()
 
 -- What `zig build test` counts: a test once for each root that reaches it,
 -- so the tests seam_test and http_test import count three times, and

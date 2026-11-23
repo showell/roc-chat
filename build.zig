@@ -116,11 +116,24 @@ fn rocInputs(b: *std.Build, run: *std.Build.Step.Run, folder: []const u8) void {
     }
 }
 
-const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \n");
+/// The `\r` is there because a Windows checkout ends the file's line with CRLF.
+const roc_pin = std.mem.trim(u8, @embedFile("roc-version"), " \r\n");
 
-/// **THE ROC IS PINNED** (roc-version): `~/tools/roc-<pin>/roc`, as
-/// roc-markdown's build finds it.
+/// **THE ROC IS PINNED** (roc-version): `-Droc=<path>`, else
+/// `~/tools/roc-<pin>/roc`, as roc-markdown's build finds it. Either is
+/// refused unless `roc version` names the pin exactly, because another Roc
+/// lays the seam out its own way (host/glue/platform_abi.zig).
 fn rocCompiler(b: *std.Build) []const u8 {
-    const home = b.graph.environ_map.get("HOME") orelse std.process.fatal("no HOME to find ~/tools/roc-{s}/roc", .{roc_pin});
-    return b.fmt("{s}/tools/roc-{s}/roc", .{ home, roc_pin });
+    const roc = b.option([]const u8, "roc", "The Roc compiler; it must be the pin in roc-version") orelse blk: {
+        const home = b.graph.environ_map.get("HOME") orelse std.process.fatal("no HOME to find ~/tools/roc-{s}/roc", .{roc_pin});
+        break :blk b.fmt("{s}/tools/roc-{s}/roc", .{ home, roc_pin });
+    };
+    var code: u8 = undefined;
+    const said = b.runAllowFail(&.{ roc, "version" }, &code, .ignore) catch |e|
+        std.process.fatal("the Roc: `{s} version` did not run ({t}); install the pin {s} there", .{ roc, e, roc_pin });
+    const version_line = std.mem.trim(u8, said, " \r\n");
+    const version = if (std.mem.lastIndexOfScalar(u8, version_line, ' ')) |i| version_line[i + 1 ..] else version_line;
+    if (!std.mem.eql(u8, version, roc_pin))
+        std.process.fatal("the Roc: {s} is not the pin {s} (roc-version); it says: {s}", .{ roc, roc_pin, version_line });
+    return roc;
 }

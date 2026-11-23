@@ -16,13 +16,20 @@ if not exists("platform/main.roc") then
   fail("glue: run it from roc-chat's root (no platform/main.roc here)")
 end
 
--- Glue from another Roc lays out another Roc's records.
+-- Glue from another Roc lays out another Roc's records, so the compiler
+-- must say exactly the pin.
 const pin = trim(read("roc-version"))
 const roc = real("tools:roc-" .. pin .. "/roc")
+local roc_said = must(run({roc, "version"}, {timeout_ms = 30000, tail = 2}))
+if trim(roc_said.out) ~= "Roc compiler version " .. pin then fail("glue: " .. roc .. " says " .. trim(roc_said.out) .. ", not " .. pin) end
+-- A nightly's pin ends in its commit. A release's names none, so the commit
+-- its binaries were built from is here (roc-lang/roc's tag 0.1.0_RC1).
+const RELEASE_COMMITS = {["0.1.0_RC1"] = "15177e9"}
 local parts = split(pin, "-")
-const spec = "tools:roc-" .. parts[#parts] .. "/src/glue/src/ZigGlue.roc"
+local commit = get(RELEASE_COMMITS, pin, parts[#parts])
+const spec = "tools:roc-" .. commit .. "/src/glue/src/ZigGlue.roc"
 if not exists(spec) then
-  fail("glue: no glue spec at " .. spec .. ": check out roc-lang/roc at " .. parts[#parts] .. " as ~/tools/roc-" .. parts[#parts])
+  fail("glue: no glue spec at " .. spec .. ": check out roc-lang/roc at " .. commit .. " as ~/tools/roc-" .. commit)
 end
 
 if exists(out_dir) then remove_tree(out_dir) end
