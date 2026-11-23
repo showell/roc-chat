@@ -40,7 +40,9 @@
 --    too, static, from the Shale checkout beside this repo (`repos:shale`),
 --    which must be clean: the admin scripts' runtime (docs/admin.md).
 -- 5. It pushes `main` when `main` has an upstream, and says so when it has none.
--- 6. It copies the binary, proves the copy by its sha256, swaps it in whole by a
+-- 6. It refuses a file to ship that is not a plain file (a symbolic link is
+--    not: scp copies what a link points at, wherever that is). It copies
+--    the binary, proves the copy by its sha256, swaps it in whole by a
 --    rename, and does the same for Shale (/opt/roc-chat/shale) and the admin
 --    scripts and their mounts files (/opt/roc-chat/admin/), all root's. Then it
 --    installs the systemd unit when it changed, restarts, and waits for
@@ -111,6 +113,18 @@ function asks_prod(script)
   local r = ssh_to_prod(script, 60000)
   if r.code ~= 0 and r.code ~= 1 then fail("deploy: prod could not be asked: " .. ssh_said(r, "a question")) end
   return r.code == 0
+end
+
+-- Stops unless the Shale path `p` is a plain file: a symbolic link (walk and
+-- stat call it `other`) would send whatever it points at.
+function stat_of(p)
+  return stat(p)
+end
+
+function must_be_file(p)
+  local s = attempt(stat_of, p)
+  if not s.ok or s.value.kind ~= "file" then fail("deploy: " .. p .. " is not a plain file (a symbolic link is not), so it is not shipped") end
+  return nil
 end
 
 function copy_to_prod(local_path, remote_path)
@@ -219,6 +233,7 @@ if find(STAGE, "/roc-chat-deploy.") == nil then fail("deploy: no staging folder 
 -- rename.
 function install_on_prod(local_path, remote_path, mode)
   local staged = STAGE .. "/" .. basename(remote_path) .. ".new"
+  must_be_file(local_path)
   local want = sha256_of(local_path)
   copy_to_prod(real(local_path), staged)
   local got = split(trim(on_prod("sha256sum " .. staged).out), " ")[1]
@@ -232,6 +247,7 @@ install_on_prod(SHALE_BUILT, SHALE_BIN, "755")
 on_prod("sudo install -d -o root -g root -m 755 " .. ADMIN)
 for f in ADMIN_FILES do install_on_prod(f, ADMIN .. "/" .. basename(f), "644") end
 print("installed " .. SHALE_BIN .. " and " .. #ADMIN_FILES .. " files in " .. ADMIN)
+must_be_file("deploy/" .. UNIT)
 copy_to_prod("deploy/" .. UNIT, STAGE .. "/" .. UNIT)
 -- cmp exits 2 on a file that is not there, so a first deploy's unit counts as changed.
 if asks_prod("[ -f /etc/systemd/system/" .. UNIT .. " ] && cmp -s " .. STAGE .. "/" .. UNIT .. " /etc/systemd/system/" .. UNIT) then
@@ -255,6 +271,7 @@ for name in {"auth/1/name", "auth/next-id.txt", "chat/channel/general.channel", 
 end
 
 -- 8. The site block, validated before it counts.
+must_be_file("deploy/" .. BLOCK)
 copy_to_prod("deploy/" .. BLOCK, STAGE .. "/" .. BLOCK)
 if asks_prod("[ -f /etc/caddy/sites/" .. BLOCK .. " ] && cmp -s " .. STAGE .. "/" .. BLOCK .. " /etc/caddy/sites/" .. BLOCK) then
   print("the site block is unchanged")
