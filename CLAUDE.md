@@ -31,7 +31,7 @@ Several agents often work on roc-chat at once, each in its own git worktree on i
   - `zig fmt --check host build.zig`, then `zig build test --summary all` or `zig build end-to-end` when host code or a route's behaviour changed, and `zig build cost-check` when a route's file calls may have (a new route declares its cost class in `app/RouteCost.roc`);
   - `shale cookbook:check_syntax.shale files=<the files you touched>` for JS and Shale;
   - `shale tools/check_script_calls.shale` whenever a script's exports, globals or load order change (each page's order lives in `app/Script.roc`);
-  - the style hunts verify runs (`check_stacking`, `hunt_names` and the rest, listed in its step 3) over the Roc files you touched;
+  - the style hunts verify runs (`check_and_fix_group_stacking`, `find_awkward_names` and the rest, listed in its step 3) over the Roc files you touched;
   - `zig build demo`, compared with `demo/roc-chat.html`, when a conversation page's markup changed;
   - `tools/screenshot.shale` for any page you changed (see `docs/ux.md`).
 - **Look at your pages.** Screenshot at desktop and phone, in both themes, and read the pictures before you report what a page looks like.
