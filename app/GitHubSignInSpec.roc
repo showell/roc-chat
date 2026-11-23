@@ -122,14 +122,14 @@ round_trip = |
 	known = checked.identify(heard)?
 	match known.resolve({ links, users: tests_users, viewer })? {
 		Known(admission) =>
-			Ok(Admitted(admission.human().user().name().to_str(), admission.next().to_str()))
+			Ok(Admitted(admission.human().as_user().name().to_str(), admission.next().to_str()))
 		Unknown(new_human) =>
 			match new_human.login() {
 				Login(login) => Ok(NewHumanNamed(login.to_str()))
 				NoLogin => Ok(NewHumanNamed(""))
 			}
 		Linking(linked) => {
-			name = linked.admission().human().user().name().to_str()
+			name = linked.admission().human().as_user().name().to_str()
 			Ok(LinkedTo(name, linked.github().to_str()))
 		}
 	}

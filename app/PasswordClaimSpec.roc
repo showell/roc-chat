@@ -53,7 +53,7 @@ claim_by = |viewer, body| {
 	claim = SignInRequest.password_claim({ viewer, users, body: body.to_utf8() })?
 	claimant =
 		match claim.claimant {
-			Human(human) => Human(human.user().name().to_str())
+			Human(human) => Human(human.as_user().name().to_str())
 			NoHuman => NoHuman
 		}
 	Ok({ password: Str.from_utf8_lossy(claim.password.bytes_to_check()), claimant })

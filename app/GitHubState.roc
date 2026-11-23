@@ -122,9 +122,9 @@ GitHubState :: {
 				_ => Err(NotAClaim)
 			}
 
-		## The bytes its signature must be over.
-		signed_bytes : GitHubState.Claim -> List(U8)
-		signed_bytes = |GitHubState.Claim.(claim)| bytes_signed_of(claim.payload)
+		## The bytes the host checks its signature against.
+		bytes_to_verify : GitHubState.Claim -> List(U8)
+		bytes_to_verify = |GitHubState.Claim.(claim)| bytes_signed_of(claim.payload)
 
 		## The signature it carries, for the host to check.
 		mac : GitHubState.Claim -> List(U8)
@@ -332,7 +332,7 @@ expect {
 	mac = List.repeat(7, 32)
 	claimed = GitHubState.Claim.from_str(issued.token(mac)) ?? crash "GitHubState's tests: a token"
 	claimed.mac() == mac
-		and claimed.signed_bytes() == issued.signed_bytes()
+		and claimed.bytes_to_verify() == issued.signed_bytes()
 		and GitHubState.from_claim({ claim: claimed, verdict: Matches }) == Signed(issued)
 		and GitHubState.from_claim({ claim: claimed, verdict: DoesNotMatch }) == Unsigned
 }

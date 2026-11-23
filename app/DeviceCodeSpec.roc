@@ -373,7 +373,7 @@ page_text : DeviceCodePage.Shown -> Str
 page_text = |shown|
 	Str.from_utf8_lossy(
 		DeviceCodePage.page({
-			viewer: SignedIn.dangerously_assume(steve.user()),
+			viewer: SignedIn.dangerously_assume(steve.as_user()),
 			shown,
 			sign_ins: [],
 			sign_in_url: "https://chat.example.com/login",

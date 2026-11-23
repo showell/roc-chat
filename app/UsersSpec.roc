@@ -146,13 +146,13 @@ expect human_added(sample, "Apoorva").map_ok(|user| user.id) == Ok("4")
 # A human, or an agent refused as one, by id.
 expect
 	["Steve", "Apoorva"].all(
-		|text| Sample.user(text).as_human().map_ok(|human| human.user().name().to_str())
+		|text| Sample.user(text).as_human().map_ok(|human| human.as_user().name().to_str())
 			== Ok(text),
 	)
 expect Sample.user("CC").as_human() == Err(Agent(id_after_steve(2)))
 expect Sample.human("Apoorva").id() == id_after_steve(1)
 expect Sample.human("Apoorva").author().to_str() == "Apoorva"
-expect Sample.human("Apoorva").user() == Sample.user("Apoorva")
+expect Sample.human("Apoorva").as_user() == Sample.user("Apoorva")
 # The next id at, under and over the highest: users with one id left take one
 # more, and then none, human or agent. The owner is asked before `Full`.
 expect {

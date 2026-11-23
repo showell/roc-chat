@@ -87,7 +87,7 @@ answer_search! = |{ asked_of, acting, directory, query }| {
 			Messages => "word"
 		}
 	key = typed_key(query, field) ? |words| BadQuery(words)
-	take_search_slot!(human.user().id(), Clock.read_clock!({}))?
+	take_search_slot!(human.as_user().id(), Clock.read_clock!({}))?
 	{ topics, unread } = load_index!(places) ? |fault| FileSystem(fault)
 	match asked_of {
 		Words => Ok(answer_words!({ topics, unread, prefix: key }))

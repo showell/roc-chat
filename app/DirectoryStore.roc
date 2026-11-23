@@ -112,7 +112,7 @@ prepare_files! = |{}|
 ## then the counter of ids, which says the chat exists, last.
 write_first_directory! : {} => Try({}, _)
 write_first_directory! = |{}| {
-	AccountFiles.create_account!(FirstStart.first_directory.chat_owner().user())?
+	AccountFiles.create_account!(FirstStart.first_directory.chat_owner().as_user())?
 	for channel in FirstStart.first_directory.channels().to_list() {
 		DirectoryFiles.replace_channel_members!(channel)?
 	}
@@ -172,7 +172,7 @@ directory_words = |why|
 ## The directory files of the first start, as the disk holds them.
 first_files : DirectoryFiles.Contents
 first_files = {
-	founder = FirstStart.first_directory.chat_owner().user()
+	founder = FirstStart.first_directory.chat_owner().as_user()
 	{
 		counter: File(FirstStart.first_directory.users().counter_bytes()),
 		accounts: [Users.account_facts(founder)],

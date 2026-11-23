@@ -181,7 +181,7 @@ newcomer_lines =
 ## The DM between `reader` and `other`, shown by `other`'s name.
 dm_listed : { reader : Users.Human, other : Users.Human } -> Browse.ListedPlace
 dm_listed = |{ reader, other }| {
-	label: other.user().name().to_str(),
+	label: other.as_user().name().to_str(),
 	place: Place.dm(Dm.between({ one: reader, other })),
 }
 

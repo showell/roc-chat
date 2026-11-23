@@ -204,7 +204,7 @@ upload_body_allowance = {
 # ── tests
 ## Steve, the first start's founder, signed in.
 steve : SignedIn
-steve = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().user())
+steve = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().as_user())
 
 ## The head of a request whose request line is `line` (`POST /a`), its Host
 ## this server's at port 9611, with `more_headers` (name, value).

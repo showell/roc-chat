@@ -49,7 +49,7 @@ Welcome :: { key : ConversationKey, record : Transcript.Utf8TranscriptMessage }.
 			to: human,
 			topic: Welcome.topic,
 			first_message: {
-				payload: { author: owner, markdown: Welcome.markdown(owner.user().name()) },
+				payload: { author: owner, markdown: Welcome.markdown(owner.as_user().name()) },
 				time,
 			},
 		})

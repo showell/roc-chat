@@ -69,7 +69,7 @@ SignedIn :: {
 	by_session = |admitted|
 		SignedIn.(
 			{
-				user: admitted.human().user(),
+				user: admitted.human().as_user(),
 				credential: Session,
 				origin: admitted.origin(),
 			},
@@ -80,7 +80,7 @@ SignedIn :: {
 	by_api_key = |admitted| SignedIn.(
 		{
 			user: admitted.user(),
-			credential: ApiKey(admitted.scope()),
+			credential: ApiKey(admitted.granted_scope()),
 			origin: Ordinary,
 		},
 	)
@@ -147,5 +147,8 @@ cc = tests_users.to_list().last() ?? crash "SignedIn's tests: CC is the last use
 expect SignedIn.dangerously_assume(steve).user() == steve
 expect SignedIn.dangerously_assume(steve).credential() == Session
 # A human by session is one; an agent by session is not, and nobody by key.
-expect SignedIn.dangerously_assume(steve).human_in_session().map_ok(Users.Human.user) == Ok(steve)
+expect {
+	in_session = SignedIn.dangerously_assume(steve).human_in_session()
+	in_session.map_ok(Users.Human.as_user) == Ok(steve)
+}
 expect SignedIn.dangerously_assume(cc).human_in_session() == Err(Agent(cc.id()))

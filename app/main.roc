@@ -130,7 +130,7 @@ password_verdict = |bytes|
 
 ## The demo's viewer: the founder, as the first start makes him.
 demo_viewer : SignedIn
-demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().user())
+demo_viewer = SignedIn.dangerously_assume(FirstStart.first_directory.chat_owner().as_user())
 
 ## The demo's sidebar: the founder's places at the first start, each with
 ## no topics of its own, so the page's own topic is its place's one, and

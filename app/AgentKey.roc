@@ -140,8 +140,8 @@ AgentKey :: {
 		user : AgentKey.Admitted -> Users.User
 		user = |AgentKey.Admitted.(admitted)| admitted.user
 
-		scope : AgentKey.Admitted -> KeyScope
-		scope = |AgentKey.Admitted.(admitted)| admitted.scope
+		granted_scope : AgentKey.Admitted -> KeyScope
+		granted_scope = |AgentKey.Admitted.(admitted)| admitted.scope
 	}
 
 	id : AgentKey -> AgentKey.Id

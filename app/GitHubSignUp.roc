@@ -94,9 +94,9 @@ GitHubSignUp :: {
 			}
 		}
 
-		## The bytes its signature must be over.
-		signed_bytes : GitHubSignUp.Claim -> List(U8)
-		signed_bytes = |GitHubSignUp.Claim.(claim)| bytes_signed_of(claim.payload)
+		## The bytes the host checks its signature against.
+		bytes_to_verify : GitHubSignUp.Claim -> List(U8)
+		bytes_to_verify = |GitHubSignUp.Claim.(claim)| bytes_signed_of(claim.payload)
 
 		## The signature it carries, for the host to check.
 		mac : GitHubSignUp.Claim -> List(U8)
@@ -257,7 +257,7 @@ expect {
 		GitHubSignUp.Claim.from_cookie_header("a=b; ${sent_cookie}; c=d".to_utf8())
 			?? crash "GitHubSignUp's tests: a cookie"
 	claimed.mac() == tests_mac
-		and claimed.signed_bytes() == issued.signed_bytes()
+		and claimed.bytes_to_verify() == issued.signed_bytes()
 		and GitHubSignUp.from_claim({ claim: claimed, verdict: Matches }) == Signed(issued)
 		and GitHubSignUp.from_claim({ claim: claimed, verdict: DoesNotMatch }) == Unsigned
 }

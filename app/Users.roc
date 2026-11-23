@@ -62,8 +62,8 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 	## agent or joining a DM, asks for a `Human` in its type.
 	Human :: Users.User.{
 
-		user : Users.Human -> Users.User
-		user = |Users.Human.(known)| known
+		as_user : Users.Human -> Users.User
+		as_user = |Users.Human.(known)| known
 
 		id : Users.Human -> UserId
 		id = |Users.Human.(known)| known.id()
@@ -197,7 +197,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 		[NoSuchOwner, Full],
 	)
 	add_agent = |users, { name, owner }|
-		if users.user(owner.id()) == Ok(owner.user()) {
+		if users.user(owner.id()) == Ok(owner.as_user()) {
 			add_user(users, { name, role: Agent({ owner: owner.id() }) })
 		} else {
 			Err(NoSuchOwner)
@@ -212,7 +212,7 @@ Users :: { all_users : List(Users.User), next : [Next(UserId), Full] }.{
 		[NoSuchHuman],
 	)
 	rename_human = |users, { human, name }|
-		if users.user(human.id()) == Ok(human.user()) {
+		if users.user(human.id()) == Ok(human.as_user()) {
 			renamed = Users.User.({ id: human.id(), name, role: Human })
 			Users.(held) = users
 			all_users = held.all_users.map(

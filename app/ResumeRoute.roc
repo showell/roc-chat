@@ -29,7 +29,7 @@ ResumeRoute :: [].{
 					Err(ByApiKey) => browse_redirect
 					Err(Agent(_)) => browse_redirect
 					Ok(human) => {
-						folder = UserFolder.of(human.user().id())
+						folder = UserFolder.of(human.as_user().id())
 						match TranscriptFiles.read_last_conversation!(folder) {
 							Ok(file) => HttpAnswer.see_other(
 								LastConversation.way_in({ file, acting, directory }),
@@ -60,7 +60,7 @@ ResumeRoute :: [].{
 			Err(ByApiKey) => Ok({})
 			Err(Agent(_)) => Ok({})
 			Ok(human) => {
-				folder = UserFolder.of(human.user().id())
+				folder = UserFolder.of(human.as_user().id())
 				last = LastConversation.of(key)
 				held = TranscriptFiles.read_last_conversation!(folder) ? |fault| FileSystem(fault)
 				if held == File(last.to_file()) {

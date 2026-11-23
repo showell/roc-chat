@@ -361,7 +361,7 @@ HumanInvites :: [].{
 		found = HumanInvites.find_invitee(directory, code)?
 		if unclaimed.human().id() != found.human.id() {
 			Err(CodeRefused)
-		} else if found.human.user().name() == name {
+		} else if found.human.as_user().name() == name {
 			redeemed = HumanInvite.redeem(found.redeemable, { unclaimed, human: found.human })
 			Ok({
 				spent: redeemed.spent,

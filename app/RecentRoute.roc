@@ -35,7 +35,7 @@ RecentRoute :: [].{
 	show! = |{ acting, directory }|
 		match (acting.human_in_session(), Browse.places_for({ acting, directory })) {
 			(Ok(reader), Ok(places)) => {
-				reader_id = reader.user().id()
+				reader_id = reader.as_user().id()
 
 				humans = directory.users().to_list().keep_oks(|user| user.as_human())
 				online_humans = PresenceNotices.load_online_humans!({
@@ -45,7 +45,7 @@ RecentRoute :: [].{
 				match load_tiles!({
 					places,
 					reader: reader_id,
-					viewer: reader.user().name(),
+					viewer: reader.as_user().name(),
 					online_humans,
 				}) {
 					Ok(tiles) =>
@@ -77,7 +77,7 @@ RecentRoute :: [].{
 	open_stream : SignedIn -> Http.Response
 	open_stream = |acting|
 		match acting.human_in_session() {
-			Ok(reader) => RecentStream.response(reader.user().id())
+			Ok(reader) => RecentStream.response(reader.as_user().id())
 			Err(_) => key_refusal
 		}
 

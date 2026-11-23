@@ -315,7 +315,7 @@ load_signed_sign_up! = |headers|
 					GitHubSignUp.from_claim({
 						claim,
 						verdict: Host.hmac_sha256_with_server_secret_matches!(
-							claim.signed_bytes(),
+							claim.bytes_to_verify(),
 							claim.mac(),
 						),
 					})

@@ -82,7 +82,7 @@ SignInRoute :: [].{
 		claim = Session.claim_from_cookie_header(cookie)?
 		material = SignInFiles.load_material!(claim.id()) ? |why| refusal_of_material(why)
 		verdict = Host.hmac_sha256_with_server_secret_matches!(
-			claim.signed_bytes(material),
+			claim.bytes_to_verify(material),
 			claim.mac(),
 		)
 		admitted = Session.admit({ claim, verdict, now, users })?

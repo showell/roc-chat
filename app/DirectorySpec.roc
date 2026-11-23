@@ -238,7 +238,7 @@ apoorva_renamed = |directory, text| {
 			Ok(_) => "Apoorva free"
 			Err(_) => "Apoorva taken"
 		}
-	Ok((done.human.id().to_str(), done.human.user().name().to_str(), freed))
+	Ok((done.human.id().to_str(), done.human.as_user().name().to_str(), freed))
 }
 
 # A human renamed keeps their id, and the name they leave is free again; a

@@ -115,7 +115,7 @@ Directory :: {
 	rename_human = |Directory.(directory), { human, name }| {
 		renamed = directory.users.rename_human({ human, name })?
 		Directory.(directory).check_new_human_name({ name, leaving: Leaving(human.id()) })?
-		keys = claim_key(directory.keys.remove(human.user().name().key()), name.key())?
+		keys = claim_key(directory.keys.remove(human.as_user().name().key()), name.key())?
 		Ok({
 			directory: Directory.({ ..directory, users: renamed.users, keys }),
 			human: renamed.human,
@@ -190,7 +190,10 @@ Directory :: {
 	release_humans = |Directory.(directory), released| {
 		ids = released.map(|human| human.id())
 		left = directory.channels.members_removed(ids)
-		keys = released.fold(directory.keys, |held, human| held.remove(human.user().name().key()))
+		keys = released.fold(
+			directory.keys,
+			|held, human| held.remove(human.as_user().name().key()),
+		)
 		{
 			directory: Directory.(
 				{

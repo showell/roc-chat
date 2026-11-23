@@ -77,10 +77,10 @@ Session :: [].{
 		mac : List(U8),
 	}.{
 
-		## The bytes its signature is over, when its human's sign-in files
-		## hold `material` (`Session.signed_bytes`).
-		signed_bytes : Session.Claim, Session.Material -> List(U8)
-		signed_bytes = |Session.Claim.(claim), material| Session.signed_bytes({
+		## The bytes the host checks its signature against, when its human's
+		## sign-in files hold `material` (`Session.signed_bytes` of its fields).
+		bytes_to_verify : Session.Claim, Session.Material -> List(U8)
+		bytes_to_verify = |Session.Claim.(claim), material| Session.signed_bytes({
 			id: claim.id,
 			signed_at: claim.signed_at,
 			origin: claim.origin,

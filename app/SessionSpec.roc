@@ -75,7 +75,7 @@ word_of = |byte| GitHubSessionWord.of_random_bytes(List.repeat(byte, 32))
 ## over, its human's password file keeping `h`, and the signature.
 claim_text : List(U8) -> Try((Str, List(U8)), [NoSession, BadSession])
 claim_text = |header| Session.claim_from_cookie_header(header).map_ok(
-	|claim| (Str.from_utf8_lossy(claim.signed_bytes(password_material("h"))), claim.mac()),
+	|claim| (Str.from_utf8_lossy(claim.bytes_to_verify(password_material("h"))), claim.mac()),
 )
 
 # The value: the id, the second and the signature, each in its spelling.
@@ -198,7 +198,7 @@ admitted_at : {
 admitted_at = |{ id, signed_at, now, verdict }| {
 	claim = Session.claim_from_cookie_header(cookie_for({ id, signed_at, byte: 7 }))?
 	admitted = Session.admit({ claim, verdict, now, users: tests_users })?
-	Ok(admitted.human().user().name().to_str())
+	Ok(admitted.human().as_user().name().to_str())
 }
 
 # A matching signature admits its human, at its second, a year after, and

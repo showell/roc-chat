@@ -419,7 +419,7 @@ page_of_humans = |invited, now|
 
 ## The invites page at `now` of Zoe and `invite` alone, as a test reads it.
 page_of_invite : HumanInvite, Timestamp -> Str
-page_of_invite = |invite, now| page_of_humans([listed_human(zoe.user(), [invite])], now)
+page_of_invite = |invite, now| page_of_humans([listed_human(zoe.as_user(), [invite])], now)
 
 ## `human` with `invites` as the page lists them, joined when one is spent,
 ## as their only claim.
@@ -531,7 +531,7 @@ expect {
 		invite_made({ number: 3, by: "1" }),
 	]
 	bobs = [invite_made({ number: 1, by: "1" })]
-	invited = [listed_human(zoe.user(), zoes), listed_human(bob_user, bobs)]
+	invited = [listed_human(zoe.as_user(), zoes), listed_human(bob_user, bobs)]
 	page = page_of_humans(invited, made_at.plus(Seconds.of(1)))
 	later = page_of_humans(invited, invite_expiry)
 	past_part(page).contains(
@@ -558,7 +558,7 @@ expect {
 expect {
 	page = page_of_humans(
 		[
-			listed_human(zoe.user(), [spent_invite]),
+			listed_human(zoe.as_user(), [spent_invite]),
 			listed_human(bob_user, [invite_made({ number: 1, by: "1" })]),
 		],
 		Timestamp.at_second(1000),
@@ -570,7 +570,7 @@ expect {
 }
 # A human whose invite was never written is past, and says so.
 expect
-	past_part(page_of_humans([listed_human(zoe.user(), [])], Timestamp.at_second(1000)))
+	past_part(page_of_humans([listed_human(zoe.as_user(), [])], Timestamp.at_second(1000)))
 		.contains(zoe_row(["Zoe has no link yet"]))
 
 ## The invites page at 1000 of no one, on a server whose offer is `github`.
@@ -622,7 +622,7 @@ expect
 expect {
 	page = invites_page({
 		invited: [],
-		shown: Link({ human: zoe.user(), link: "http://x/join#4-a" }),
+		shown: Link({ human: zoe.as_user(), link: "http://x/join#4-a" }),
 		problem: NoProblem,
 		now: Timestamp.at_second(1000),
 	})
@@ -773,7 +773,7 @@ invitee_of = |user|
 			invites: [invite_made({ number: 1, by: "2" })],
 			code: 1,
 		}),
-	).map_ok(|found| "${found.human.id().to_str()} ${found.human.user().name().to_str()}")
+	).map_ok(|found| "${found.human.id().to_str()} ${found.human.as_user().name().to_str()}")
 
 # A code finds the human it names and the name they hold; one naming an
 # agent or no one, or whose secret matches no invite or a spent one, is the
@@ -837,7 +837,7 @@ join_unclaimed = |{ user, invites, code, name }, unclaimed|
 					Changed => "changed"
 				}
 			human = joined.admission.human()
-			human_name = human.user().name().to_str()
+			human_name = human.as_user().name().to_str()
 			"${state_word(joined.spent)}, admits ${human.id().to_str()} as ${human_name}, ${changed}"
 		},
 	)

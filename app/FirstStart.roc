@@ -18,7 +18,7 @@ FirstStart :: [].{
 	first_directory : Directory
 	first_directory = {
 		founded = Directory.with_founder(FirstStart.founder_name)
-		founder = founded.chat_owner().user()
+		founder = founded.chat_owner().as_user()
 		admin =
 			Admin.of(SignedIn.dangerously_assume(founder))
 				?? crash "FirstStart.first_directory: Steve, id 1, is an admin"

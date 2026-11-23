@@ -133,7 +133,7 @@ tell_others! = |{ human, directory }| {
 		topics = DirectoryFiles.list_place_topics!(place)?
 		key = ConversationKey.of({ place, topic: Presence.notice_topic(topics) })
 		viewer_key = Presence.viewer_stream_key(other.id())
-		name = human.user().name().to_str()
+		name = human.as_user().name().to_str()
 		Host.publish_bytes_to_streams_on_key!(viewer_key, Presence.online_frame(human.id()))
 		Host.publish_bytes_to_streams_on_key!(
 			viewer_key,

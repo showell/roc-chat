@@ -254,4 +254,4 @@ expect {
 expect Directory.from_stored({
 	users: Sample.directory.users(),
 	channels: Channels.empty,
-}).map_ok(|directory| directory.chat_owner().user()) == Ok(Sample.steve)
+}).map_ok(|directory| directory.chat_owner().as_user()) == Ok(Sample.steve)

@@ -64,7 +64,7 @@ admitted_by = |{ keys, hash, now }|
 		hash,
 		now,
 	})
-		.map_ok(|admitted| (admitted.user().name().to_str(), admitted.scope()))
+		.map_ok(|admitted| (admitted.user().name().to_str(), admitted.granted_scope()))
 
 # A key admits its agent with its own scope, by its hash among several.
 expect admitted_by({

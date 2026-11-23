@@ -273,7 +273,7 @@ load_invites_page! = |{ acting, directory, shown, problem, now }| {
 		if HumanInvites.is_theirs_to_invite_again(acting, inviter) {
 			invites = InviteFiles.read_human_invites!(human.id()) ? |fault| FileSystem(fault)
 			joined = InviteRights.load_joined!(human)?
-			$invited = $invited.append({ human: human.user(), invites, joined })
+			$invited = $invited.append({ human: human.as_user(), invites, joined })
 		}
 	}
 	Ok(
@@ -364,7 +364,7 @@ invite_human_again! = |{ acting, directory, human, origin, now }| {
 	load_invites_page!({
 		acting,
 		directory,
-		shown: Link({ human: again.human.user(), link: join_link({ origin, code }) }),
+		shown: Link({ human: again.human.as_user(), link: join_link({ origin, code }) }),
 		problem: NoProblem,
 		now,
 	})
@@ -434,7 +434,7 @@ load_join_name! : {
 load_join_name! = |request| {
 	code = load_join_code!(request)?
 	found = InviteRights.load_unclaimed_invitee!(request.directory, code)?
-	Ok(found.human.user().name())
+	Ok(found.human.as_user().name())
 }
 
 ## The join: the form read, the name decided, then written if it changed,
@@ -463,7 +463,7 @@ join_by_invite! = |request| {
 	password = HumanInvites.password_from_form(request.body) ? |why| Refused(why)
 	{ human: invited, unclaimed } = InviteRights.load_unclaimed_invitee!(request.directory, code)?
 	planned =
-		if name == invited.user().name() {
+		if name == invited.as_user().name() {
 			NameRelease.plan_release_of_none(request.directory)
 		} else {
 			NameRelease.plan_release!(
@@ -483,7 +483,7 @@ join_by_invite! = |request| {
 	_ =
 		match joined.name {
 			Kept => Ok({})
-			Changed => AccountFiles.replace_account_name!(human.user())
+			Changed => AccountFiles.replace_account_name!(human.as_user())
 		} ? |fault| FileSystem(fault)
 	InviteFiles.replace_human_invite_state!(human.id(), joined.spent) ? |fault| FileSystem(fault)
 	DeviceCodeRoute.revoke_device_code!(human.id())?
