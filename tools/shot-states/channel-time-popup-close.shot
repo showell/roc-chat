@@ -1,0 +1,17 @@
+# The world clock closed three ways, as chat-client's closed: its Close
+# button, Escape, and a click outside it (on the dimmed page), each time
+# leaving no dialog behind. The picture is the page after the last close.
+path = /chat/channel/general/roc-chat
+sizes = desktop
+wait .message.selected > header time
+click .message.selected > header time
+wait dialog.time-popup[open]
+click dialog.time-popup button
+eval new Promise(function (ok, no) { var t = Date.now(); (function look() { if (!document.querySelector('dialog.time-popup')) return ok(true); if (Date.now() - t > 2000) return no(new Error('Close left the clock open')); setTimeout(look, 50); })(); })
+click .message.selected > header time
+wait dialog.time-popup[open]
+key Escape
+eval new Promise(function (ok, no) { var t = Date.now(); (function look() { if (!document.querySelector('dialog.time-popup')) return ok(true); if (Date.now() - t > 2000) return no(new Error('Escape left the clock open')); setTimeout(look, 50); })(); })
+click .message.selected > header time
+wait dialog.time-popup[open]
+eval (function () { var d = document.querySelector('dialog.time-popup'); d.dispatchEvent(new MouseEvent('click', { bubbles: true })); return new Promise(function (ok, no) { var t = Date.now(); (function look() { if (!document.querySelector('dialog.time-popup')) return ok(true); if (Date.now() - t > 2000) return no(new Error('a click outside left the clock open')); setTimeout(look, 50); })(); }); })()

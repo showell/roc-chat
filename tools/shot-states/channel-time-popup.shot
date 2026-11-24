@@ -1,0 +1,10 @@
+# A click on the newest message's time: the world clock, chat-client's,
+# with "Your time" first and highlighted, then New York, India, London,
+# San Francisco, Sydney and New Zealand (any that is the viewer's own zone
+# left out), each row a city, a date, a time and a GMT offset.
+path = /chat/channel/general/roc-chat
+sizes = desktop,phone
+wait .message.selected > header time
+click .message.selected > header time
+wait dialog.time-popup[open]
+eval (function () { var own = Intl.DateTimeFormat().resolvedOptions().timeZone; var listed = [['New York', 'America/New_York'], ['India', 'Asia/Kolkata'], ['London', 'Europe/London'], ['San Francisco', 'America/Los_Angeles'], ['Sydney', 'Australia/Sydney'], ['New Zealand', 'Pacific/Auckland']]; var want = ['Your time'].concat(listed.filter(function (z) { return z[1] !== own; }).map(function (z) { return z[0]; })); var rows = Array.prototype.slice.call(document.querySelectorAll('dialog.time-popup[open] > div:last-child > div')); var got = rows.map(function (r) { return r.children[0].textContent; }); if (got.join('|') !== want.join('|')) throw new Error('the clock\'s rows are ' + got.join(', ') + ', not ' + want.join(', ')); rows.forEach(function (r) { if (r.children.length !== 4 || !/^GMT/.test(r.children[3].textContent)) throw new Error('a row is not city, date, time, GMT offset: ' + r.textContent); }); if (own !== 'Pacific/Auckland' && got.indexOf('New Zealand') < 0) throw new Error('no New Zealand row'); return true; })()

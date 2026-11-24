@@ -51,6 +51,16 @@
 // 80% of the window each way, a strap with a Close button, and the code
 // unwrapped in a monospace font, scrolling when it is larger. Escape or a
 // click outside it closes it.
+//
+// A click on a message's time opens a world clock, chat-client's
+// (js/chat_time_popup.js, from js/message.js's handleClick), so readers in
+// New York and India can agree on when a message was sent: a modal dialog
+// over a dimmed page, a strap saying "Sent at" with a Close button, then one
+// row a zone in four columns that line up (city, date, time, zone as a GMT
+// offset), the browser's Intl.DateTimeFormat doing each conversion. The
+// viewer's own zone comes first, as "Your time", highlighted, and a listed
+// zone that is the viewer's isn't shown twice. The time is dotted-underlined
+// to show it opens something. Escape, Close or a click outside it closes it.
 (function () {
   'use strict';
   var messages = document.querySelector('.messages');
@@ -80,6 +90,9 @@
     '.message > header .author { color: var(--cc-fg); font-weight: 600; }',
     '.message > header .message-reference { color: inherit; text-decoration: none; }',
     '.message > header .message-reference:hover { text-decoration: underline; }',
+    // The time opens the world clock, as chat-client's .chat-time did.
+    '.message > header time { cursor: pointer; text-decoration: underline dotted; }',
+    '.message > header time:hover { color: var(--cc-accent); }',
     // A phone's header is the author and the time alone, so it stays one
     // line; the reference is kept on a desktop, where there is room.
     'html.layout-narrow .message > header .message-reference { display: none; }',
@@ -118,6 +131,7 @@
     // The popups' backdrops, the one rule their element styles can't hold.
     'dialog.image-popup::backdrop { background: var(--cc-backdrop); }',
     'dialog.code-popup::backdrop { background: var(--cc-backdrop); }',
+    'dialog.time-popup::backdrop { background: var(--cc-backdrop); }',
   ].join('\n');
   document.head.appendChild(s);
 
@@ -372,6 +386,94 @@
     document.body.appendChild(dlg);
     Keys.showModal(dlg);
   }
+  // The world clock, chat-client's js/chat_time_popup.js as it was, with New
+  // Zealand added (Steve, 2026-11-24: "one of our users is from there"). New
+  // York and India are where the chat's people were; the rest round it out.
+  var TIME_ZONES = [
+    { label: 'New York', zone: 'America/New_York' },
+    { label: 'India', zone: 'Asia/Kolkata' },
+    { label: 'London', zone: 'Europe/London' },
+    { label: 'San Francisco', zone: 'America/Los_Angeles' },
+    { label: 'Sydney', zone: 'Australia/Sydney' },
+    { label: 'New Zealand', zone: 'Pacific/Auckland' },
+  ];
+  // A moment in one zone as the row's three columns: "Sun, May 24",
+  // "10:17 AM" and "GMT+1", the offset always a GMT one, never a mix of
+  // abbreviations like EDT and PDT.
+  function timeParts(date, zone) {
+    var day = new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+    var time = new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(date);
+    var offset = new Intl.DateTimeFormat(undefined, { timeZone: zone, timeZoneName: 'shortOffset' }).formatToParts(date)
+      .filter(function (part) { return part.type === 'timeZoneName'; });
+    return { day: day, time: time, offset: offset.length ? offset[0].value : '' };
+  }
+  // One row of the clock: a table row, so the columns line up across rows.
+  function timeRow(label, date, zone, own) {
+    var parts = timeParts(date, zone);
+    var row = document.createElement('div');
+    row.style.display = 'table-row';
+    function cell(text, extra) {
+      var c = document.createElement('div');
+      c.textContent = text;
+      Object.assign(c.style, {
+        display: 'table-cell', padding: '7px 10px', whiteSpace: 'nowrap',
+        borderBottom: '1px solid var(--cc-soft-border)',
+      }, extra);
+      if (own) c.style.background = 'var(--cc-accent-soft-bg)';
+      row.appendChild(c);
+    }
+    cell(label, { color: 'var(--cc-muted-fg)', paddingLeft: '16px' });
+    cell(parts.day, { color: 'var(--cc-meta-fg)' });
+    cell(parts.time, { color: 'var(--cc-meta-fg)', fontWeight: '600', textAlign: 'right' });
+    cell(parts.offset, { color: 'var(--cc-muted-fg)', fontSize: '12px', paddingRight: '16px' });
+    return row;
+  }
+  // Each call builds a fresh dialog, which removes itself once closed.
+  function showTime(iso) {
+    var date = new Date(iso);
+    if (isNaN(date.getTime())) return;
+    var dlg = document.createElement('dialog');
+    dlg.className = 'time-popup';
+    Object.assign(dlg.style, {
+      maxWidth: '90vw', padding: '0',
+      border: '1px solid var(--cc-dialog-border)', borderRadius: '8px',
+      background: 'var(--cc-bg)', color: 'var(--cc-fg)',
+    });
+
+    var strap = document.createElement('div');
+    Object.assign(strap.style, {
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      gap: '16px', padding: '8px 12px 8px 16px',
+      borderBottom: '1px solid var(--cc-soft-border)', background: 'var(--cc-code-strap-bg)',
+    });
+    var title = document.createElement('span');
+    title.textContent = 'Sent at';
+    Object.assign(title.style, { fontSize: '13px', color: 'var(--cc-muted-fg)' });
+    var close = document.createElement('button');
+    close.type = 'button'; close.textContent = 'Close';
+    close.addEventListener('click', function () { dlg.close(); });
+    strap.appendChild(title); strap.appendChild(close);
+
+    var clock = document.createElement('div');
+    clock.style.display = 'table';
+    var own = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    clock.appendChild(timeRow('Your time', date, own, true));
+    TIME_ZONES.forEach(function (z) {
+      if (z.zone !== own) clock.appendChild(timeRow(z.label, date, z.zone, false));
+    });
+
+    dlg.appendChild(strap); dlg.appendChild(clock);
+    dlg.addEventListener('close', function () { dlg.remove(); });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    document.body.appendChild(dlg);
+    Keys.showModal(dlg);
+  }
+  // A click on a message's time opens the world clock, as chat-client's
+  // handleClick did first.
+  messages.addEventListener('click', function (e) {
+    var t = e.target.closest('.message > header time');
+    if (t) showTime(t.getAttribute('datetime'));
+  });
   // As chat-client's handleClick: an image first, then any <pre> around
   // what was clicked.
   messages.addEventListener('click', function (e) {
