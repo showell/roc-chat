@@ -128,7 +128,7 @@ function must_be_file(p)
 end
 
 function copy_to_prod(local_path, remote_path)
-  local r = run({"scp", "-q", "-o", "BatchMode=yes", "-o", "LogLevel=QUIET", local_path, "<secret PROD>:" .. remote_path},
+  local r = run({"scp", "-q", "-O", "-o", "BatchMode=yes", "-o", "LogLevel=QUIET", local_path, "<secret PROD>:" .. remote_path},
     with_dest({timeout_ms = 300000, whole = 10000, want = "scp: the deploy's copy to prod", unconfined = "deploy: scp reads its key, outside the mounts"}))
   if r.code ~= 0 then fail("deploy: " .. ssh_said(r, "the copy of " .. local_path .. " to prod's " .. remote_path)) end
 end
