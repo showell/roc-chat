@@ -48,12 +48,12 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 	## result is a Try of a record, copies the whole message list on every
 	## call, so Sample's 65,534 appends took 90 s. The loop here appends in
 	## place. It moves back to Sample once Roc fixes the copy.
-	repeated : {
+	copies : {
 		topic : Topic,
 		unnumbered : Message.Unnumbered(Author),
 		count : U64,
 	} -> Try(Conversation, [Full, Backdated])
-	repeated = |{ topic: given, unnumbered, count }| {
+	copies = |{ topic: given, unnumbered, count }| {
 		var $so_far = Conversation.empty(given)
 		for _ in List.from_iter(U64.until(0, count)) {
 			$so_far = $so_far.append(unnumbered)?.conversation

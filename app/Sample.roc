@@ -77,11 +77,15 @@ Sample :: [].{
 
 	## A conversation one message short of full: 65,534 of Steve's hello.
 	## It is a constant, so the specs that need it share one, built once at
-	## compile time, by `Conversation.repeated` (its doc says why the loop
+	## compile time, by `Conversation.copies` (its doc says why the loop
 	## lives there). Only the tests of the most a conversation holds use it.
 	almost_full : Conversation
 	almost_full =
-		Conversation.repeated({ topic: Sample.plans, unnumbered: Sample.hello, count: 65534 })
+		Conversation.copies({
+			topic: Sample.plans,
+			unnumbered: Sample.hello,
+			count: 65534,
+		})
 			?? crash "Sample.almost_full: the conversation has room"
 
 	## The first message's id.
