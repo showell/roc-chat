@@ -41,6 +41,26 @@ Conversation :: { topic : Topic, messages : List(Message) }.{
 		}
 	}
 
+	## `topic`'s conversation of `count` copies of `unnumbered`, appended in
+	## order, or the first refusal. Sample builds its almost-full
+	## conversation with it. It lives here rather than in Sample because of a
+	## Roc bug (0.1.0_RC1): an `append` called from another module, whose
+	## result is a Try of a record, copies the whole message list on every
+	## call, so Sample's 65,534 appends took 90 s. The loop here appends in
+	## place. It moves back to Sample once Roc fixes the copy.
+	repeated : {
+		topic : Topic,
+		unnumbered : Message.Unnumbered(Author),
+		count : U64,
+	} -> Try(Conversation, [Full, Backdated])
+	repeated = |{ topic: given, unnumbered, count }| {
+		var $so_far = Conversation.empty(given)
+		for _ in List.from_iter(U64.until(0, count)) {
+			$so_far = $so_far.append(unnumbered)?.conversation
+		}
+		Ok($so_far)
+	}
+
 	## The id the next message will get. `Transcript` also uses it, to name
 	## the message it is reading when it refuses a file.
 	next_id : Conversation -> Try(Message.Id, [Full])

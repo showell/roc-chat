@@ -76,11 +76,13 @@ Sample :: [].{
 	hello_and_reply = Sample.conversation(Sample.plans, [Sample.hello, Sample.reply])
 
 	## A conversation one message short of full: 65,534 of Steve's hello.
-	## It is a constant, so the specs that need it share one, built once: the
-	## build is about a second of a cold run. Only the tests of the most a
-	## conversation holds use it.
+	## It is a constant, so the specs that need it share one, built once at
+	## compile time, by `Conversation.repeated` (its doc says why the loop
+	## lives there). Only the tests of the most a conversation holds use it.
 	almost_full : Conversation
-	almost_full = append_hellos({ so_far: Conversation.empty(Sample.plans), count: 65534 })
+	almost_full =
+		Conversation.repeated({ topic: Sample.plans, unnumbered: Sample.hello, count: 65534 })
+			?? crash "Sample.almost_full: the conversation has room"
 
 	## The first message's id.
 	first : Message.Id
@@ -180,16 +182,3 @@ place_in_letters = |at|
 		'a' + (at // 26).to_u8_wrap(),
 		'a' + (at % 26).to_u8_wrap(),
 	]) ?? crash "Sample.place_in_letters: letters are UTF-8"
-
-## `so_far` with `count` more of Steve's hello.
-append_hellos : { so_far : Conversation, count : U64 } -> Conversation
-append_hellos = |{ so_far, count }|
-	if count == 0 {
-		so_far
-	} else {
-		append_hellos({
-			so_far: (so_far.append(Sample.hello) ?? crash "Sample.append_hellos: the conversation has room")
-				.conversation,
-			count: count - 1,
-		})
-	}
